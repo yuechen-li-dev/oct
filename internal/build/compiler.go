@@ -211,12 +211,13 @@ type MIRFlowRecordLiteralExpr struct {
 func (MIRFlowRecordLiteralExpr) mirFlowExpr() {}
 
 type MIRFlowUtilityWhenExpr struct {
-	SiteID     int
-	ResultType string
-	Hysteresis MIRFlowExpr
-	MinCommit  MIRFlowExpr
-	Cases      []MIRFlowUtilityCase
-	Else       MIRFlowExpr
+	SiteID          int
+	ControllerBound bool
+	ResultType      string
+	Hysteresis      MIRFlowExpr
+	MinCommit       MIRFlowExpr
+	Cases           []MIRFlowUtilityCase
+	Else            MIRFlowExpr
 }
 
 func (MIRFlowUtilityWhenExpr) mirFlowExpr() {}
@@ -4878,12 +4879,13 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			return nil, err
 		}
 		return MIRFlowUtilityWhenExpr{
-			SiteID:     e.SiteID,
-			ResultType: resultType,
-			Hysteresis: h,
-			MinCommit:  m,
-			Cases:      cases,
-			Else:       elseExpr,
+			SiteID:          e.SiteID,
+			ControllerBound: e.ControllerBound,
+			ResultType:      resultType,
+			Hysteresis:      h,
+			MinCommit:       m,
+			Cases:           cases,
+			Else:            elseExpr,
 		}, nil
 	case ast.SwitchExpr:
 		resultType, err := inferFlowExprType(expr, env, pkg, boardFieldTypes)
@@ -8030,8 +8032,12 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			}
 			cases = append(cases, fmt.Sprintf("{Valid: %s, Value: %s, Score: %s}", cond, v, score))
 		}
-		return fmt.Sprintf("__octUtilSelect[%s](f.utilitySites, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
-			valueType, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
+		sites := "map[int]__octUtilitySiteState{}"
+		if e.ControllerBound {
+			sites = "f.utilitySites"
+		}
+		return fmt.Sprintf("__octUtilSelect[%s](%s, %d, %s, %s, []__octUtilCandidate[%s]{%s}, %s)",
+			valueType, sites, e.SiteID, h, m, valueType, strings.Join(cases, ", "), elseExpr), nil
 	case MIRFlowSwitchExpr:
 		ifChain := make([]string, 0, len(e.Cases))
 		subject := ""

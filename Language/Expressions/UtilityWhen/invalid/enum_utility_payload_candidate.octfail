@@ -1,0 +1,15 @@
+expect error: "payload enum variants are not supported in judgment utility cases yet"
+
+package MainInvalid
+
+enum Decision {
+    Hold
+    Run(String)
+}
+
+fn Main(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Decision.Run("now") when flag score 10
+        else Decision.Hold
+    }
+}

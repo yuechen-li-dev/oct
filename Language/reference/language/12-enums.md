@@ -30,13 +30,10 @@ Variant references are qualified.
   - nested pattern matching and guards
 
 
-## Proposed: judgment enum utility selection
-
-**Status: proposed/design-only.** This syntax is not implemented in J1.
-See [J1 judgment enum utility selection design](../../../docs/internal/judgment_enums_j1.md).
+## Judgment enum utility selection
 
 Enums can serve as closed judgment spaces for one-shot utility-scored selection.
-The enum declaration remains ordinary; judgment behavior is introduced at an expression site by the proposed enum-targeted utility form:
+The enum declaration remains ordinary; judgment behavior is introduced at an expression site by the enum-targeted utility form:
 
 ```oct
 when utility TreatmentDecision {
@@ -46,12 +43,20 @@ when utility TreatmentDecision {
 }
 ```
 
+M0 rules:
+
+- The target after `utility` must resolve to an enum type.
+- The expression type is exactly the target enum type; the target is authoritative and is not inferred from arms.
+- Each `case` result and the required `else` fallback must be a qualified tag-only variant of the target enum.
+- Unqualified variants are rejected even when the target enum is known.
+- Payload variant candidates such as `TreatmentDecision.Treat(details)` are deferred and rejected in M0.
+- Not every enum variant must appear as a candidate; `else` is still required.
+- Conditions must be `Bool`, scores must be `Int`, highest score wins, equal scores keep the earliest matching case, and `else` is selected only when no case qualifies.
+
 `match` and judgment utility have opposite roles:
 
 - `match` analyzes an enum value that has already been selected and must be exhaustive.
-- Proposed `when utility EnumName` scores candidate variants and produces a selected enum value, with an explicit `else` fallback.
-
-The proposed M0 design keeps payload candidates deferred: tag-only candidate variants are the intended first implementation target.
+- `when utility EnumName` scores candidate variants and produces a selected enum value, with an explicit `else` fallback.
 
 ## Examples
 

@@ -1,0 +1,15 @@
+expect error: "utility score must be Int"
+
+package MainInvalid
+
+enum Decision {
+    Hold
+    Run
+}
+
+fn Main(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Decision.Run when flag score 10.5
+        else Decision.Hold
+    }
+}

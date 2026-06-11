@@ -1,0 +1,44 @@
+package MainValid
+
+enum PumpJudgment {
+    Hold
+    Prime
+    Run
+    Fault
+}
+
+fn JudgePump(pressure: Float, fault: Bool) -> PumpJudgment {
+    return when utility PumpJudgment {
+        case PumpJudgment.Fault when fault score 100
+        case PumpJudgment.Run when pressure > 20.0 score 60
+        case PumpJudgment.Prime when pressure <= 20.0 score 40
+        else PumpJudgment.Hold
+    }
+}
+
+fn TieJudgment() -> PumpJudgment {
+    return when utility PumpJudgment {
+        case PumpJudgment.Run when true score 5
+        case PumpJudgment.Fault when true score 5
+        else PumpJudgment.Hold
+    }
+}
+
+fn Classify(judgment: PumpJudgment) -> Int {
+    return switch judgment {
+        case PumpJudgment.Hold => 0
+        case PumpJudgment.Prime => 1
+        case PumpJudgment.Run => 2
+        case PumpJudgment.Fault => 3
+    }
+}
+
+[Fact]
+fn EnumTargetedUtilitySelectsJudgments() -> Void {
+    Assert.Equal(PumpJudgment.Fault, JudgePump(10.0, true), "highest score should win")
+    Assert.Equal(PumpJudgment.Run, JudgePump(30.0, false), "run candidate should win")
+    Assert.Equal(PumpJudgment.Prime, JudgePump(10.0, false), "prime candidate should win")
+    Assert.Equal(PumpJudgment.Hold, JudgePump(21.0, false), "else should win when no candidate qualifies")
+    Assert.Equal(PumpJudgment.Run, TieJudgment(), "equal scores should keep the earliest case")
+    Assert.Equal(3, Classify(JudgePump(10.0, true)), "selected enum should drive switch")
+}

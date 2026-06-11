@@ -1,0 +1,19 @@
+expect error: "utility case for Decision cannot return Other.Run"
+
+package MainInvalid
+
+enum Decision {
+    Hold
+    Run
+}
+
+enum Other {
+    Run
+}
+
+fn Main(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Other.Run when flag score 10
+        else Decision.Hold
+    }
+}

@@ -1182,8 +1182,37 @@ func TestBuildFileParsesStandaloneUtilityWhenWithExplicitPolicy(t *testing.T) {
 	}
 }
 
-func TestBuildFileRejectsUtilityWhenWithoutElse(t *testing.T) {
-	assertParseErrorContains(t, "flow Patrol(flag: Bool) -> Int { state Search { let x = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 10 } return x } }", "utility when requires else arm")
+func TestBuildFileParsesUtilityWhenWithoutElseForTypecheckDiagnostic(t *testing.T) {
+	file := parseSource(t, "flow Patrol(flag: Bool) -> Int { state Search { let x = when policy { hysteresis: 1 min_commit: 1 } { case 1 when flag score 10 } return x } }")
+	letStmt, ok := file.Flows[0].States[0].Body.Statements[0].(ast.LetStmt)
+	if !ok {
+		t.Fatalf("expected let statement, got %T", file.Flows[0].States[0].Body.Statements[0])
+	}
+	whenExpr, ok := letStmt.Value.(ast.UtilityWhenExpr)
+	if !ok {
+		t.Fatalf("expected utility when expression, got %T", letStmt.Value)
+	}
+	if whenExpr.Else != nil {
+		t.Fatal("expected missing else to remain nil for typecheck diagnostic")
+	}
+}
+
+func TestBuildFileParsesEnumTargetedUtilityWhen(t *testing.T) {
+	file := parseSource(t, "enum Decision { Hold Run } fn Main(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold } }")
+	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
+	if !ok {
+		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
+	}
+	whenExpr, ok := returnStmt.Value.(ast.UtilityWhenExpr)
+	if !ok {
+		t.Fatalf("expected utility when expression, got %T", returnStmt.Value)
+	}
+	if whenExpr.EnumTarget == nil || whenExpr.EnumTarget.Name != "Decision" {
+		t.Fatalf("expected enum target Decision, got %#v", whenExpr.EnumTarget)
+	}
+	if len(whenExpr.Cases) != 1 || whenExpr.Else == nil {
+		t.Fatalf("expected one case and else, got %d and %v", len(whenExpr.Cases), whenExpr.Else)
+	}
 }
 
 func TestBuildFileRejectsMalformedFlowState(t *testing.T) {

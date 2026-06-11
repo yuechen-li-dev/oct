@@ -1565,6 +1565,9 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 }
 
 func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ctx functionContext) (ExprType, error) {
+	if expr.EnumTarget != nil {
+		return c.checkEnumTargetedUtilityWhenExpr(scope, expr, ctx)
+	}
 	if expr.ControllerBound && !ctx.inState {
 		return ExprType{}, fmt.Errorf("when policy is only valid inside flow state bodies; outside flows use switch or when utility")
 	}
@@ -1651,6 +1654,114 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 		return ExprType{}, fmt.Errorf("utility when result arms must have matching types")
 	}
 	return ExprType{ValueType: resultType}, nil
+}
+
+func (c checker) checkEnumTargetedUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ctx functionContext) (ExprType, error) {
+	if expr.ControllerBound {
+		return ExprType{}, fmt.Errorf("when utility target cannot be used with when policy")
+	}
+	targetType, err := c.resolveNonReturnType(*expr.EnumTarget)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("when utility target must be an enum type")
+	}
+	if targetType.IsArray || targetType.Name == "" {
+		return ExprType{}, fmt.Errorf("when utility target must be an enum type")
+	}
+	enumDecl, ok := c.lookupEnum(targetType.Name)
+	if !ok {
+		return ExprType{}, fmt.Errorf("when utility target must be an enum type")
+	}
+
+	hysteresisType, err := c.checkExpr(scope, expr.Policy.Hysteresis, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis: %w", err)
+	}
+	if hysteresisType.Fallible {
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if hysteresisType.ValueType != (Type{Base: BaseTypeInt}) {
+		return ExprType{}, fmt.Errorf("utility when policy hysteresis must be Int")
+	}
+	minCommitType, err := c.checkExpr(scope, expr.Policy.MinCommit, ctx)
+	if err != nil {
+		return ExprType{}, fmt.Errorf("utility when policy min_commit: %w", err)
+	}
+	if minCommitType.Fallible {
+		return ExprType{}, fmt.Errorf("utility when policy min_commit: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if minCommitType.ValueType != (Type{Base: BaseTypeInt}) {
+		return ExprType{}, fmt.Errorf("utility when policy min_commit must be Int")
+	}
+
+	if expr.Else == nil {
+		return ExprType{}, fmt.Errorf("enum utility selection requires else fallback")
+	}
+
+	for idx, whenCase := range expr.Cases {
+		conditionType, err := c.checkExpr(scope, whenCase.Condition, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("utility when case %d condition: %w", idx+1, err)
+		}
+		if conditionType.Fallible {
+			return ExprType{}, fmt.Errorf("utility when case %d condition: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", idx+1)
+		}
+		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
+			return ExprType{}, fmt.Errorf("utility case condition must be Bool")
+		}
+
+		scoreType, err := c.checkExpr(scope, whenCase.Score, ctx)
+		if err != nil {
+			return ExprType{}, fmt.Errorf("utility when case %d score: %w", idx+1, err)
+		}
+		if scoreType.Fallible {
+			return ExprType{}, fmt.Errorf("utility when case %d score: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", idx+1)
+		}
+		if scoreType.ValueType != (Type{Base: BaseTypeInt}) {
+			return ExprType{}, fmt.Errorf("utility score must be Int")
+		}
+
+		if err := c.checkEnumUtilityVariantCandidate(targetType.Name, enumDecl, whenCase.Value, "case"); err != nil {
+			return ExprType{}, err
+		}
+	}
+
+	if err := c.checkEnumUtilityVariantCandidate(targetType.Name, enumDecl, expr.Else, "else"); err != nil {
+		return ExprType{}, err
+	}
+	return ExprType{ValueType: targetType}, nil
+}
+
+func (c checker) checkEnumUtilityVariantCandidate(targetEnum string, enumDecl enumInfo, expr ast.Expr, arm string) error {
+	candidateExpr := expr
+	if call, ok := expr.(ast.CallExpr); ok {
+		candidateExpr = call.Callee
+	}
+	field, ok := candidateExpr.(ast.FieldAccessExpr)
+	if !ok {
+		return fmt.Errorf("utility enum cases must use qualified variants, e.g. %s.%s", targetEnum, firstEnumVariantName(enumDecl))
+	}
+	enumName, variantName, ok := flattenEnumValueExpr(field)
+	if !ok {
+		return fmt.Errorf("utility enum cases must use qualified variants, e.g. %s.%s", targetEnum, firstEnumVariantName(enumDecl))
+	}
+	variant, exists := enumDecl.variants[variantName]
+	if enumName != targetEnum {
+		return fmt.Errorf("utility %s for %s cannot return %s.%s", arm, targetEnum, enumName, variantName)
+	}
+	if !exists {
+		return fmt.Errorf("enum '%s' has no variant '%s'", targetEnum, variantName)
+	}
+	if _, isCall := expr.(ast.CallExpr); isCall || variant.payload != nil {
+		return fmt.Errorf("payload enum variants are not supported in judgment utility cases yet")
+	}
+	return nil
+}
+
+func firstEnumVariantName(enumDecl enumInfo) string {
+	for name := range enumDecl.variants {
+		return name
+	}
+	return "Variant"
 }
 
 func (c checker) checkBatchExpr(scope *scope, expr ast.BatchExpr, ctx functionContext) (ExprType, error) {

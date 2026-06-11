@@ -834,3 +834,28 @@ func TestCheckValidatesPrometheusMatMulBuiltin(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Float> { let a = Matrix.fill(2, 2, 1.0) let b = Matrix.fill(2, 2, 2) return PrometheusMatMul(a, b) }", "function Main: function 'PrometheusMatMul' argument 2 expects Matrix<Float>, got Matrix<Int>")
 	assertTypeErrorContains(t, "fn Main() -> Matrix<Float> { let a = Matrix.fill(2, 2, 1.0) return PrometheusMatMul(a) }", "function Main: function 'PrometheusMatMul' expects 2 arguments, got 1")
 }
+
+func TestCheckEnumTargetedUtilityWhen(t *testing.T) {
+	validPrograms := []string{
+		"enum Decision { Hold Run Fault } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Fault when flag score 100 else Decision.Hold } }",
+		"enum Decision { Hold Run Fault(String) } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold } }",
+		"enum Decision { Hold Run Fault } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold } }",
+	}
+	for _, src := range validPrograms {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+
+	assertTypeErrorContains(t, "record Decision { Value: Int } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Value when flag score 10 else Decision.Value } }", "when utility target must be an enum type")
+	assertTypeErrorContains(t, "enum Decision { Hold Run } enum Other { Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Other.Run when flag score 10 else Decision.Hold } }", "utility case for Decision cannot return Other.Run")
+	assertTypeErrorContains(t, "enum Decision { Hold Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Run when flag score 10 else Decision.Hold } }", "utility enum cases must use qualified variants")
+	assertTypeErrorContains(t, "enum Decision { Hold Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 } }", "enum utility selection requires else fallback")
+	assertTypeErrorContains(t, "enum Decision { Hold Run } fn Judge(flag: Int) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold } }", "utility case condition must be Bool")
+	assertTypeErrorContains(t, "enum Decision { Hold Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10.5 else Decision.Hold } }", "utility score must be Int")
+	assertTypeErrorContains(t, "enum Decision { Hold Run(String) } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run(\"x\") when flag score 10 else Decision.Hold } }", "payload enum variants are not supported in judgment utility cases yet")
+	assertTypeErrorContains(t, "enum Decision { Hold Run } enum Other { Hold } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Other.Hold } }", "utility else for Decision cannot return Other.Hold")
+	assertTypeErrorContains(t, "enum Decision { Hold(String) Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold(\"x\") } }", "payload enum variants are not supported in judgment utility cases yet")
+	assertTypeErrorContains(t, "enum Decision { Hold(String) Run(Int) } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run(1) when flag score 10 else Decision.Hold(\"x\") } }", "payload enum variants are not supported in judgment utility cases yet")
+}

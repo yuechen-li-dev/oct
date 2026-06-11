@@ -381,12 +381,9 @@ Avoid this when a single guard decides the branch; guard `when` is the simpler f
 Contrast: if you only need `case tempHigh -> goto Alarm else -> goto Normal`, a guard `when` is enough.
 
 
-### Proposed judgment enum utility
+### Judgment enum utility
 
-**Status: proposed/design-only.** This syntax is not implemented in J1.
-See [J1 judgment enum utility selection design](../../../docs/internal/judgment_enums_j1.md).
-
-Standalone `when utility` can be extended with an explicit enum target to make a closed judgment space visible at the expression site:
+Standalone `when utility` may name an explicit enum target to make a closed judgment space visible at the expression site:
 
 ```oct
 when utility PumpJudgment {
@@ -396,7 +393,28 @@ when utility PumpJudgment {
 }
 ```
 
-This proposed form is still one-shot utility selection. It does not add hidden state, controller commitment memory, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
+This enum-targeted form is still one-shot utility selection. It does not add hidden state, controller commitment memory, hysteresis, `min_commit`, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
+
+A flow can compute an enum judgment with one-shot utility and then use ordinary enum control flow:
+
+```oct
+enum PumpJudgment { Hold Run Fault }
+
+flow PumpController(pressure: Float, fault: Bool) -> Int {
+    state Decide {
+        let judgment = when utility PumpJudgment {
+            case PumpJudgment.Fault when fault score 100
+            case PumpJudgment.Run when pressure > 20.0 score 60
+            else PumpJudgment.Hold
+        }
+        return switch judgment {
+            case PumpJudgment.Hold => 0
+            case PumpJudgment.Run => 1
+            case PumpJudgment.Fault => 2
+        }
+    }
+}
+```
 
 ## `hysteresis` and `min_commit` in practice
 
