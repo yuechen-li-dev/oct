@@ -1,0 +1,197 @@
+[FftCase {
+    CaseName: "impulse_n1"
+    N: (1)
+    InputRe: [1]
+    InputIm: [0]
+    CaseFamily: "impulse"
+    ExpectedSource: "known impulse spectrum"
+}, FftCase {
+    CaseName: "constant_n1"
+    N: (1)
+    InputRe: [1]
+    InputIm: [0]
+    CaseFamily: "constant"
+    ExpectedSource: "known DC-only spectrum"
+}, FftCase {
+    CaseName: "alternating_n1"
+    N: (1)
+    InputRe: [1]
+    InputIm: [0]
+    CaseFamily: "alternating-sign"
+    ExpectedSource: "known nyquist/DC behavior"
+}, FftCase {
+    CaseName: "single_bin_tone_n1"
+    N: (1)
+    InputRe: [1]
+    InputIm: [0]
+    CaseFamily: "single-bin-tone"
+    ExpectedSource: "analytic e^(j2πn/N)"
+}, FftCase {
+    CaseName: "arbitrary_n1"
+    N: (1)
+    InputRe: [0.25]
+    InputIm: [-0.2]
+    CaseFamily: "arbitrary"
+    ExpectedSource: "deterministic affine/trig mix"
+}, FftCase {
+    CaseName: "impulse_n2"
+    N: (2)
+    InputRe: [1, 0]
+    InputIm: [0, 0]
+    CaseFamily: "impulse"
+    ExpectedSource: "known impulse spectrum"
+}, FftCase {
+    CaseName: "constant_n2"
+    N: (2)
+    InputRe: [1, 1]
+    InputIm: [0, 0]
+    CaseFamily: "constant"
+    ExpectedSource: "known DC-only spectrum"
+}, FftCase {
+    CaseName: "alternating_n2"
+    N: (2)
+    InputRe: [1, -1]
+    InputIm: [0, 0]
+    CaseFamily: "alternating-sign"
+    ExpectedSource: "known nyquist/DC behavior"
+}, FftCase {
+    CaseName: "single_bin_tone_n2"
+    N: (2)
+    InputRe: [1, -1]
+    InputIm: [0, 1.2246467991473515e-16]
+    CaseFamily: "single-bin-tone"
+    ExpectedSource: "analytic e^(j2πn/N)"
+}, FftCase {
+    CaseName: "arbitrary_n2"
+    N: (2)
+    InputRe: [0.25, 0.35]
+    InputIm: [-0.2, -0.15000000000000002]
+    CaseFamily: "arbitrary"
+    ExpectedSource: "deterministic affine/trig mix"
+}, FftCase {
+    CaseName: "impulse_n4"
+    N: (4)
+    InputRe: [1, 0, 0, 0]
+    InputIm: [0, 0, 0, 0]
+    CaseFamily: "impulse"
+    ExpectedSource: "known impulse spectrum"
+}, FftCase {
+    CaseName: "constant_n4"
+    N: (4)
+    InputRe: [1, 1, 1, 1]
+    InputIm: [0, 0, 0, 0]
+    CaseFamily: "constant"
+    ExpectedSource: "known DC-only spectrum"
+}, FftCase {
+    CaseName: "alternating_n4"
+    N: (4)
+    InputRe: [1, -1, 1, -1]
+    InputIm: [0, 0, 0, 0]
+    CaseFamily: "alternating-sign"
+    ExpectedSource: "known nyquist/DC behavior"
+}, FftCase {
+    CaseName: "single_bin_tone_n4"
+    N: (4)
+    InputRe: [1, 6.123233995736757e-17, -1, -1.8369701987210272e-16]
+    InputIm: [0, 1, 1.2246467991473515e-16, -1]
+    CaseFamily: "single-bin-tone"
+    ExpectedSource: "analytic e^(j2πn/N)"
+}, FftCase {
+    CaseName: "arbitrary_n4"
+    N: (4)
+    InputRe: [0.25, 0.35, 0.45, 0.55]
+    InputIm: [-0.2, -0.15000000000000002, -0.1, -0.04999999999999999]
+    CaseFamily: "arbitrary"
+    ExpectedSource: "deterministic affine/trig mix"
+}, FftCase {
+    CaseName: "two_bin_tone_n4"
+    N: (4)
+    InputRe: [1, 1.2246467991473515e-16, -1.0000000000000002, 0]
+    InputIm: [0, 0.25, 3.061616997868379e-17, -0.25]
+    CaseFamily: "two-bin-tone"
+    ExpectedSource: "deterministic 2-bin mixture"
+}, FftCase {
+    CaseName: "impulse_n8"
+    N: (8)
+    InputRe: [1, 0, 0, 0, 0, 0, 0, 0]
+    InputIm: [0, 0, 0, 0, 0, 0, 0, 0]
+    CaseFamily: "impulse"
+    ExpectedSource: "known impulse spectrum"
+}, FftCase {
+    CaseName: "constant_n8"
+    N: (8)
+    InputRe: [1, 1, 1, 1, 1, 1, 1, 1]
+    InputIm: [0, 0, 0, 0, 0, 0, 0, 0]
+    CaseFamily: "constant"
+    ExpectedSource: "known DC-only spectrum"
+}, FftCase {
+    CaseName: "alternating_n8"
+    N: (8)
+    InputRe: [1, -1, 1, -1, 1, -1, 1, -1]
+    InputIm: [0, 0, 0, 0, 0, 0, 0, 0]
+    CaseFamily: "alternating-sign"
+    ExpectedSource: "known nyquist/DC behavior"
+}, FftCase {
+    CaseName: "single_bin_tone_n8"
+    N: (8)
+    InputRe: [1, 0.7071067811865476, 6.123233995736757e-17, -0.7071067811865475, -1, -0.7071067811865477, -1.8369701987210272e-16, 0.7071067811865475]
+    InputIm: [0, 0.7071067811865475, 1, 0.7071067811865476, 1.2246467991473515e-16, -0.7071067811865475, -1, -0.7071067811865477]
+    CaseFamily: "single-bin-tone"
+    ExpectedSource: "analytic e^(j2πn/N)"
+}, FftCase {
+    CaseName: "arbitrary_n8"
+    N: (8)
+    InputRe: [0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.8500000000000001, 0.9500000000000001]
+    InputIm: [-0.2, -0.15000000000000002, -0.1, -0.04999999999999999, 0, 0.04999999999999999, 0.10000000000000003, 0.15000000000000002]
+    CaseFamily: "arbitrary"
+    ExpectedSource: "deterministic affine/trig mix"
+}, FftCase {
+    CaseName: "two_bin_tone_n8"
+    N: (8)
+    InputRe: [1, 1.2071067811865475, 1.2246467991473515e-16, -1.2071067811865475, -1.0000000000000002, -0.20710678118654768, 0, 0.20710678118654746]
+    InputIm: [0, 0.17677669529663687, 0.25, 0.1767766952966369, 3.061616997868379e-17, -0.17677669529663687, -0.25, -0.17677669529663692]
+    CaseFamily: "two-bin-tone"
+    ExpectedSource: "deterministic 2-bin mixture"
+}, FftCase {
+    CaseName: "impulse_n16"
+    N: (16)
+    InputRe: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    InputIm: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    CaseFamily: "impulse"
+    ExpectedSource: "known impulse spectrum"
+}, FftCase {
+    CaseName: "constant_n16"
+    N: (16)
+    InputRe: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    InputIm: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    CaseFamily: "constant"
+    ExpectedSource: "known DC-only spectrum"
+}, FftCase {
+    CaseName: "alternating_n16"
+    N: (16)
+    InputRe: [1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1]
+    InputIm: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    CaseFamily: "alternating-sign"
+    ExpectedSource: "known nyquist/DC behavior"
+}, FftCase {
+    CaseName: "single_bin_tone_n16"
+    N: (16)
+    InputRe: [1, 0.9238795325112867, 0.7071067811865476, 0.38268343236508984, 6.123233995736757e-17, -0.3826834323650897, -0.7071067811865475, -0.9238795325112867, -1, -0.9238795325112868, -0.7071067811865477, -0.38268343236509034, -1.8369701987210272e-16, 0.38268343236509, 0.7071067811865475, 0.9238795325112865]
+    InputIm: [0, 0.3826834323650898, 0.7071067811865475, 0.9238795325112867, 1, 0.9238795325112867, 0.7071067811865476, 0.38268343236508984, 1.2246467991473515e-16, -0.38268343236508967, -0.7071067811865475, -0.9238795325112865, -1, -0.9238795325112866, -0.7071067811865477, -0.3826834323650904]
+    CaseFamily: "single-bin-tone"
+    ExpectedSource: "analytic e^(j2πn/N)"
+}, FftCase {
+    CaseName: "arbitrary_n16"
+    N: (16)
+    InputRe: [0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.8500000000000001, 0.9500000000000001, 1.05, 1.15, 1.25, 1.35, 1.4500000000000002, 1.55, 1.6500000000000001, 1.75]
+    InputIm: [-0.2, -0.15000000000000002, -0.1, -0.04999999999999999, 0, 0.04999999999999999, 0.10000000000000003, 0.15000000000000002, 0.2, 0.25, 0.3, 0.35000000000000003, 0.4000000000000001, 0.45, 0.5, 0.55]
+    CaseFamily: "arbitrary"
+    ExpectedSource: "deterministic affine/trig mix"
+}, FftCase {
+    CaseName: "two_bin_tone_n16"
+    N: (16)
+    InputRe: [1, 1.2774329231045605, 1.2071067811865475, 0.7362368229583636, 1.2246467991473515e-16, -0.7362368229583635, -1.2071067811865475, -1.2774329231045605, -1.0000000000000002, -0.5703261419180132, -0.20710678118654768, -0.029130041771816162, 0, 0.029130041771816106, 0.20710678118654746, 0.5703261419180123]
+    InputIm: [0, 0.09567085809127245, 0.17677669529663687, 0.23096988312782168, 0.25, 0.23096988312782168, 0.1767766952966369, 0.09567085809127246, 3.061616997868379e-17, -0.09567085809127242, -0.17677669529663687, -0.23096988312782163, -0.25, -0.23096988312782166, -0.17677669529663692, -0.0956708580912726]
+    CaseFamily: "two-bin-tone"
+    ExpectedSource: "deterministic 2-bin mixture"
+}]

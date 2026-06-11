@@ -1,0 +1,317 @@
+FftResultsArtifact {
+    Summary: FftSummary {
+        Total: (28)
+        Passed: (28)
+        Failed: (0)
+        Tolerance: (0.0001)
+    }
+    Rows: [FftResult {
+        CaseName: "impulse_n1"
+        N: (1)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "constant_n1"
+        N: (1)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "alternating_n1"
+        N: (1)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "single_bin_tone_n1"
+        N: (1)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "arbitrary_n1"
+        N: (1)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "impulse_n2"
+        N: (2)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "constant_n2"
+        N: (2)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (1.2246467991473515e-16)
+        ForwardMaxAbsError: (1.2246467991473515e-16)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "alternating_n2"
+        N: (2)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (1.2246467991473515e-16)
+        ForwardMaxAbsError: (1.2246467991473515e-16)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "single_bin_tone_n2"
+        N: (2)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (1.2246467991473515e-16)
+        ForwardMaxAbsError: (1.2246467991473515e-16)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "arbitrary_n2"
+        N: (2)
+        ForwardMaxReError: (1.3877787807814457e-17)
+        ForwardMaxImError: (5.551115123125783e-17)
+        ForwardMaxAbsError: (5.721958498152797e-17)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "impulse_n4"
+        N: (4)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "constant_n4"
+        N: (4)
+        ForwardMaxReError: (3.2904645469127686e-16)
+        ForwardMaxImError: (3.3306690738754696e-16)
+        ForwardMaxAbsError: (4.681934793881727e-16)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "alternating_n4"
+        N: (4)
+        ForwardMaxReError: (3.2904645469127686e-16)
+        ForwardMaxImError: (7.347880794884109e-16)
+        ForwardMaxAbsError: (7.347880794884109e-16)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "single_bin_tone_n4"
+        N: (4)
+        ForwardMaxReError: (3.0616169978683787e-16)
+        ForwardMaxImError: (2.449293598294703e-16)
+        ForwardMaxAbsError: (3.2974624219691177e-16)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "arbitrary_n4"
+        N: (4)
+        ForwardMaxReError: (2.0816681711721685e-16)
+        ForwardMaxImError: (1.6653345369377348e-16)
+        ForwardMaxAbsError: (2.665835984225005e-16)
+        RoundtripMaxReError: (5.551115123125783e-17)
+        RoundtripMaxImError: (2.7755575615628914e-17)
+        RoundtripMaxAbsError: (6.206335383118183e-17)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "two_bin_tone_n4"
+        N: (4)
+        ForwardMaxReError: (2.220446049250313e-16)
+        ForwardMaxImError: (2.143131898507866e-16)
+        ForwardMaxAbsError: (3.0859998366871723e-16)
+        RoundtripMaxReError: (2.220446049250313e-16)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (2.220446049250313e-16)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "impulse_n8"
+        N: (8)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "constant_n8"
+        N: (8)
+        ForwardMaxReError: (3.552713678800501e-15)
+        ForwardMaxImError: (1.2212453270876722e-15)
+        ForwardMaxAbsError: (3.722145839155691e-15)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "alternating_n8"
+        N: (8)
+        ForwardMaxReError: (5.329070518200751e-15)
+        ForwardMaxImError: (3.429011037612584e-15)
+        ForwardMaxAbsError: (5.9580819677934555e-15)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "single_bin_tone_n8"
+        N: (8)
+        ForwardMaxReError: (1.7763568394002505e-15)
+        ForwardMaxImError: (1.7786676624602377e-15)
+        ForwardMaxAbsError: (2.0380985511143445e-15)
+        RoundtripMaxReError: (1.1102230246251565e-16)
+        RoundtripMaxImError: (1.1102230246251565e-16)
+        RoundtripMaxAbsError: (1.5700924586837752e-16)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "arbitrary_n8"
+        N: (8)
+        ForwardMaxReError: (2.55351295663786e-15)
+        ForwardMaxImError: (1.7763568394002505e-15)
+        ForwardMaxAbsError: (3.1106063782808446e-15)
+        RoundtripMaxReError: (2.220446049250313e-16)
+        RoundtripMaxImError: (2.7755575615628914e-17)
+        RoundtripMaxAbsError: (2.2301825219878386e-16)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "two_bin_tone_n8"
+        N: (8)
+        ForwardMaxReError: (8.604228440844963e-16)
+        ForwardMaxImError: (9.102128065896444e-16)
+        ForwardMaxAbsError: (1.0127697564525958e-15)
+        RoundtripMaxReError: (2.220446049250313e-16)
+        RoundtripMaxImError: (5.551115123125783e-17)
+        RoundtripMaxAbsError: (2.221764860259147e-16)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "impulse_n16"
+        N: (16)
+        ForwardMaxReError: (0)
+        ForwardMaxImError: (0)
+        ForwardMaxAbsError: (0)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "constant_n16"
+        N: (16)
+        ForwardMaxReError: (1.509903313490213e-14)
+        ForwardMaxImError: (9.769962616701378e-15)
+        ForwardMaxAbsError: (1.7007170921933274e-14)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "alternating_n16"
+        N: (16)
+        ForwardMaxReError: (1.8318679906315083e-14)
+        ForwardMaxImError: (1.824847526856872e-14)
+        ForwardMaxAbsError: (2.0099406623643834e-14)
+        RoundtripMaxReError: (0)
+        RoundtripMaxImError: (0)
+        RoundtripMaxAbsError: (0)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "single_bin_tone_n16"
+        N: (16)
+        ForwardMaxReError: (6.504414161738241e-15)
+        ForwardMaxImError: (9.257713888939466e-15)
+        ForwardMaxAbsError: (1.1314268426941428e-14)
+        RoundtripMaxReError: (1.1102230246251565e-16)
+        RoundtripMaxImError: (1.1102230246251565e-16)
+        RoundtripMaxAbsError: (1.5700924586837752e-16)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "arbitrary_n16"
+        N: (16)
+        ForwardMaxReError: (2.5979218776228663e-14)
+        ForwardMaxImError: (1.199040866595169e-14)
+        ForwardMaxAbsError: (2.6039878107319088e-14)
+        RoundtripMaxReError: (4.440892098500626e-16)
+        RoundtripMaxImError: (6.938893903907228e-17)
+        RoundtripMaxAbsError: (4.47545209131181e-16)
+        Pass: true
+        Notes: ""
+    }, FftResult {
+        CaseName: "two_bin_tone_n16"
+        N: (16)
+        ForwardMaxReError: (6.440298369172973e-15)
+        ForwardMaxImError: (5.87846084178722e-15)
+        ForwardMaxAbsError: (8.672751437212968e-15)
+        RoundtripMaxReError: (2.220446049250313e-16)
+        RoundtripMaxImError: (1.1102230246251565e-16)
+        RoundtripMaxAbsError: (2.3714374201337736e-16)
+        Pass: true
+        Notes: ""
+    }]
+}
