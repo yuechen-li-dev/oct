@@ -604,7 +604,7 @@ func syncLockedGitPackage(projectRoot string, resolved ResolvedPackage) (Registr
 		return RegistrySyncResult{}, fmt.Errorf("create temporary git clone directory: %w", err)
 	}
 	defer os.RemoveAll(cloneDir)
-	if err := runGitPackageCommand(entry, resolved.Registry.Name, "clone", "git", "clone", entry.Source, cloneDir); err != nil {
+	if err := runGitPackageCommand(entry, resolved.Registry.Name, "clone", "git", "-c", "core.autocrlf=false", "clone", entry.Source, cloneDir); err != nil {
 		return RegistrySyncResult{}, err
 	}
 	checkoutEntry := entry
