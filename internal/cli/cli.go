@@ -308,7 +308,27 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			if relErr != nil {
 				relDest = dep.Destination
 			}
-			_, err = fmt.Fprintf(stdout, "Resolved %s %s from registry %s\nSynced %s %s to %s\n", dep.Name, dep.Version, dep.Registry, dep.Name, dep.Version, relDest)
+			chainNote := ""
+			if len(dep.Chain) > 2 {
+				chainNote = " required by " + strings.Join(dep.Chain[1:len(dep.Chain)-1], " -> ")
+			}
+			_, err = fmt.Fprintf(stdout, "Resolved %s %s from registry %s%s\n", dep.Name, dep.Version, dep.Registry, chainNote)
+			if err != nil {
+				return err
+			}
+			if dep.SourceKind == "git" {
+				_, err = fmt.Fprintf(stdout, "Cloned %s %s ref %s resolved %s\n", dep.Name, dep.Version, dep.Ref, dep.ResolvedCommit)
+				if err != nil {
+					return err
+				}
+				if !pkgmgr.IsFullCommitSHA(dep.Ref) {
+					_, err = fmt.Fprintf(stdout, "warning: Git ref %q is not a full commit SHA; recorded resolved commit %s\n", dep.Ref, dep.ResolvedCommit)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			_, err = fmt.Fprintf(stdout, "Synced %s %s to %s\n", dep.Name, dep.Version, relDest)
 			if err != nil {
 				return err
 			}
