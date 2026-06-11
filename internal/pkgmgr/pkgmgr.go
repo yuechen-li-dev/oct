@@ -514,17 +514,54 @@ func hasManifest(repoPath string) (bool, error) {
 }
 
 func gitClone(source string, repoPath string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-c", "core.autocrlf=false", "clone", "--depth", "1", source, repoPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("git clone timed out for %s", source)
-		}
-		return fmt.Errorf("git fetch/clone failed for %s: %s", source, strings.TrimSpace(string(output)))
+	return gitCloneConfigCheckout(source, repoPath, "HEAD", []string{"--depth", "1"}, directGitCommandRunner(source))
+}
+
+type gitCommandRunner func(operation string, name string, args ...string) (string, error)
+
+func gitCloneConfigCheckout(source string, repoPath string, ref string, cloneArgs []string, runner gitCommandRunner) error {
+	if strings.TrimSpace(ref) == "" {
+		ref = "HEAD"
+	}
+	args := []string{"-c", "core.autocrlf=false", "clone", "--no-checkout"}
+	args = append(args, cloneArgs...)
+	args = append(args, source, repoPath)
+	if _, err := runner("clone", "git", args...); err != nil {
+		return err
+	}
+	if _, err := runner("configure core.autocrlf", "git", "-C", repoPath, "config", "core.autocrlf", "false"); err != nil {
+		return err
+	}
+	if _, err := runner("configure core.eol", "git", "-C", repoPath, "config", "core.eol", "lf"); err != nil {
+		return err
+	}
+	if _, err := runner("checkout", "git", "-C", repoPath, "checkout", "--detach", ref); err != nil {
+		return err
 	}
 	return nil
+}
+
+func directGitCommandRunner(source string) gitCommandRunner {
+	return func(operation string, name string, args ...string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, name, args...)
+		output, err := cmd.CombinedOutput()
+		trimmed := strings.TrimSpace(string(output))
+		if err != nil {
+			if errors.Is(err, exec.ErrNotFound) {
+				return "", fmt.Errorf("git executable not found while fetching %s during %s", source, operation)
+			}
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return "", fmt.Errorf("git %s timed out for %s", operation, source)
+			}
+			if trimmed == "" {
+				trimmed = err.Error()
+			}
+			return "", fmt.Errorf("git %s failed for %s: %s", operation, source, trimmed)
+		}
+		return trimmed, nil
+	}
 }
 
 func gitHead(repoPath string) (string, error) {

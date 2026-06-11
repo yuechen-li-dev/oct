@@ -3,11 +3,12 @@ package interpret
 import (
 	"io"
 	"os/exec"
+	"runtime"
 	"testing"
 )
 
 func TestInterpretedWrapperClientCloseReapsStartedProcess(t *testing.T) {
-	cmd := exec.Command("sh", "-c", "cat >/dev/null")
+	cmd := sidecarStandInCommand()
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatalf("stdin pipe: %v", err)
@@ -27,6 +28,13 @@ func TestInterpretedWrapperClientCloseReapsStartedProcess(t *testing.T) {
 	if cmd.ProcessState == nil {
 		t.Fatalf("expected close to wait for sidecar process")
 	}
+}
+
+func sidecarStandInCommand() *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/C", "more >NUL")
+	}
+	return exec.Command("sh", "-c", "cat >/dev/null")
 }
 
 func TestInterpretedWrapperClientCacheCloseIsIdempotent(t *testing.T) {

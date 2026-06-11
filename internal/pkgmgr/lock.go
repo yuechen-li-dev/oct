@@ -604,13 +604,17 @@ func syncLockedGitPackage(projectRoot string, resolved ResolvedPackage) (Registr
 		return RegistrySyncResult{}, fmt.Errorf("create temporary git clone directory: %w", err)
 	}
 	defer os.RemoveAll(cloneDir)
-	if err := runGitPackageCommand(entry, resolved.Registry.Name, "clone", "git", "-c", "core.autocrlf=false", "clone", entry.Source, cloneDir); err != nil {
-		return RegistrySyncResult{}, err
-	}
 	checkoutEntry := entry
 	checkoutEntry.Ref = resolved.ResolvedCommit
-	if err := runGitPackageCommand(checkoutEntry, resolved.Registry.Name, "checkout locked commit", "git", "-C", cloneDir, "checkout", "--detach", resolved.ResolvedCommit); err != nil {
-		return RegistrySyncResult{}, fmt.Errorf("locked git checkout failed for %s %s source %s ref %s resolved commit %s: %w", entry.Name, entry.Version, entry.Source, entry.Ref, resolved.ResolvedCommit, err)
+	runner := func(operation string, name string, args ...string) (string, error) {
+		if operation == "checkout" {
+			operation = "checkout locked commit"
+			return runGitPackageOutput(checkoutEntry, resolved.Registry.Name, operation, name, args...)
+		}
+		return runGitPackageOutput(entry, resolved.Registry.Name, operation, name, args...)
+	}
+	if err := gitCloneConfigCheckout(entry.Source, cloneDir, resolved.ResolvedCommit, nil, runner); err != nil {
+		return RegistrySyncResult{}, fmt.Errorf("locked git clone/config/checkout failed for %s %s source %s ref %s resolved commit %s path %s: %w", entry.Name, entry.Version, entry.Source, entry.Ref, resolved.ResolvedCommit, entry.Path, err)
 	}
 	packageRoot, err := safePackageSourcePath(cloneDir, entry.Path)
 	if err != nil {

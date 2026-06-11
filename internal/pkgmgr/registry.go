@@ -318,10 +318,10 @@ func syncGitRegistryPackage(projectRoot string, resolved ResolvedPackage) (Regis
 		return RegistrySyncResult{}, fmt.Errorf("create temporary git clone directory: %w", err)
 	}
 	defer os.RemoveAll(cloneDir)
-	if err := runGitPackageCommand(entry, resolved.Registry.Name, "clone", "git", "-c", "core.autocrlf=false", "clone", entry.Source, cloneDir); err != nil {
-		return RegistrySyncResult{}, err
+	runner := func(operation string, name string, args ...string) (string, error) {
+		return runGitPackageOutput(entry, resolved.Registry.Name, operation, name, args...)
 	}
-	if err := runGitPackageCommand(entry, resolved.Registry.Name, "checkout", "git", "-C", cloneDir, "checkout", "--detach", entry.Ref); err != nil {
+	if err := gitCloneConfigCheckout(entry.Source, cloneDir, entry.Ref, nil, runner); err != nil {
 		return RegistrySyncResult{}, err
 	}
 	commit, err := runGitPackageOutput(entry, resolved.Registry.Name, "rev-parse", "git", "-C", cloneDir, "rev-parse", "HEAD")
