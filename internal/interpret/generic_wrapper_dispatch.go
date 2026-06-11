@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -238,25 +239,57 @@ func interpretedWrapperSidecarPath(fn interpretedWrapperFunction) (string, error
 		return "", interpretedWrapperMissingSidecarError(fn)
 	}
 	if exe, err := os.Executable(); err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), command)
-		if isExecutableFile(candidate) {
-			return candidate, nil
+		if path, ok := resolveSidecarInDir(filepath.Dir(exe), command, runtime.GOOS); ok {
+			return path, nil
 		}
 	}
 	wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
 	if wrapperPath != "" {
-		if info, err := os.Stat(wrapperPath); err == nil {
-			if info.IsDir() {
-				candidate := filepath.Join(wrapperPath, command)
-				if isExecutableFile(candidate) {
-					return candidate, nil
-				}
-			} else if filepath.Base(wrapperPath) == command && isExecutableFile(wrapperPath) {
-				return wrapperPath, nil
-			}
+		if path, ok := resolveSidecarFromWrapperPath(wrapperPath, command, runtime.GOOS); ok {
+			return path, nil
 		}
 	}
 	return "", interpretedWrapperMissingSidecarError(fn)
+}
+
+func resolveSidecarFromWrapperPath(wrapperPath string, command string, goos string) (string, bool) {
+	info, err := os.Stat(wrapperPath)
+	if err != nil {
+		return "", false
+	}
+	if info.IsDir() {
+		return resolveSidecarInDir(wrapperPath, command, goos)
+	}
+	if isSidecarCommandBasename(filepath.Base(wrapperPath), command, goos) && isExecutableFile(wrapperPath) {
+		return wrapperPath, true
+	}
+	return "", false
+}
+
+func resolveSidecarInDir(dir string, command string, goos string) (string, bool) {
+	for _, name := range sidecarCommandCandidates(command, goos) {
+		candidate := filepath.Join(dir, name)
+		if isExecutableFile(candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
+func sidecarCommandCandidates(command string, goos string) []string {
+	if goos == "windows" && !strings.HasSuffix(strings.ToLower(command), ".exe") {
+		return []string{command, command + ".exe"}
+	}
+	return []string{command}
+}
+
+func isSidecarCommandBasename(base string, command string, goos string) bool {
+	for _, candidate := range sidecarCommandCandidates(command, goos) {
+		if base == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func interpretedWrapperMissingSidecarError(fn interpretedWrapperFunction) error {

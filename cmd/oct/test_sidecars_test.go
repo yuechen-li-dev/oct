@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -40,7 +41,7 @@ func sharedTestSidecarDir(t *testing.T, names ...string) string {
 		if _, ok := testSidecarBuilt[name]; ok {
 			continue
 		}
-		outPath := filepath.Join(testSidecarDirPath, name)
+		outPath := filepath.Join(testSidecarDirPath, sidecarBinaryName(name))
 		build := exec.Command("go", "build", "-o", outPath, "./cmd/"+name)
 		build.Dir = repo
 		if out, err := build.CombinedOutput(); err != nil {
@@ -51,11 +52,18 @@ func sharedTestSidecarDir(t *testing.T, names ...string) string {
 	return testSidecarDirPath
 }
 
+func sidecarBinaryName(command string) string {
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(command), ".exe") {
+		return command + ".exe"
+	}
+	return command
+}
+
 func buildTestSidecarsInDir(t *testing.T, binDir string, names ...string) {
 	t.Helper()
 	repo := filepath.Join("..", "..")
 	for _, name := range names {
-		outPath := filepath.Join(binDir, name)
+		outPath := filepath.Join(binDir, sidecarBinaryName(name))
 		build := exec.Command("go", "build", "-o", outPath, "./cmd/"+name)
 		build.Dir = repo
 		if out, err := build.CombinedOutput(); err != nil {

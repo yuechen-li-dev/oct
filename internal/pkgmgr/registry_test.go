@@ -3,6 +3,7 @@ package pkgmgr
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -42,6 +43,18 @@ func TestLoadRegistryIndexParsesValidRegistry(t *testing.T) {
 	}
 	if len(idx.Packages) != 1 || idx.Packages[0].Name != "SignalTools" {
 		t.Fatalf("unexpected registry index: %#v", idx)
+	}
+}
+
+func TestRegistryIndexEscapesWindowsPathLiterals(t *testing.T) {
+	windowsPath := `C:\Users\RUNNER~1\AppData\Local\Temp\pkg`
+	root := writeRegistryIndex(t, validRegistryIndex("SignalTools", "0.1.0", "library", "local", windowsPath, "."))
+	idx, err := LoadRegistryIndex(root)
+	if err != nil {
+		t.Fatalf("load registry index with Windows path: %v", err)
+	}
+	if got, want := idx.Packages[0].Source, "C:/Users/RUNNER~1/AppData/Local/Temp/pkg"; got != want {
+		t.Fatalf("Source = %q, want %q", got, want)
 	}
 }
 
@@ -168,7 +181,11 @@ func registryIndexWithEntries(entries []string) string {
 }
 
 func packageEntry(name, version, kind, sourceKind, source, path string) string {
-	return `PackageEntry { Name: "` + name + `" Version: "` + version + `" Kind: "` + kind + `" SourceKind: "` + sourceKind + `" Source: "` + source + `" Path: "` + path + `" Description: "test" }`
+	return `PackageEntry { Name: "` + name + `" Version: "` + version + `" Kind: "` + kind + `" SourceKind: "` + sourceKind + `" Source: ` + octStringLiteralPath(source) + ` Path: ` + octStringLiteralPath(path) + ` Description: "test" }`
+}
+
+func octStringLiteralPath(path string) string {
+	return strconv.Quote(strings.ReplaceAll(filepath.ToSlash(path), `\`, "/"))
 }
 
 func writePackageSource(t *testing.T, name, version, kind string) string {

@@ -5463,7 +5463,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
-		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
+		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "runtime", "strings", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -5670,7 +5670,7 @@ func emitGo(m MIRModule) (string, error) {
 			b.WriteString(__octWriteHelpers)
 		}
 		if usesOctxiliaryBuiltins(usedBuiltins) {
-			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
+			for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "runtime", "strings", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 				importSet[pkg] = struct{}{}
 			}
 		}
@@ -9214,32 +9214,50 @@ func __octOctxiliaryGenericClient(sidecarCommand string) *__octOctxiliaryClient 
 
 func __octOctxiliarySidecarPath(sidecarCommand string) (string, error) {
 	if sidecarCommand == "" { return "", errors.New("Octxiliary sidecar command is empty") }
-	candidate := filepath.Join(filepath.Dir(os.Args[0]), sidecarCommand)
-	if _, err := os.Stat(candidate); err == nil { return candidate, nil }
+	if path, ok := __octOctxiliaryResolveSidecarInDir(filepath.Dir(os.Args[0]), sidecarCommand); ok { return path, nil }
 	wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
 	if wrapperPath != "" {
-		if info, err := os.Stat(wrapperPath); err == nil {
-			if info.IsDir() {
-				candidate = filepath.Join(wrapperPath, sidecarCommand)
-				if _, err := os.Stat(candidate); err == nil { return candidate, nil }
-			} else if filepath.Base(wrapperPath) == sidecarCommand {
-				return wrapperPath, nil
-			}
-		}
+		if path, ok := __octOctxiliaryResolveSidecarFromWrapperPath(wrapperPath, sidecarCommand); ok { return path, nil }
 	}
 	return "", fmt.Errorf("Octxiliary sidecar %q not found; set OCT_WRAPPER_PATH or place it beside .octbin", sidecarCommand)
 }
 
+func __octOctxiliaryResolveSidecarFromWrapperPath(wrapperPath string, sidecarCommand string) (string, bool) {
+	info, err := os.Stat(wrapperPath)
+	if err != nil { return "", false }
+	if info.IsDir() { return __octOctxiliaryResolveSidecarInDir(wrapperPath, sidecarCommand) }
+	if __octOctxiliarySidecarBasenameMatches(filepath.Base(wrapperPath), sidecarCommand) { return wrapperPath, true }
+	return "", false
+}
+
+func __octOctxiliaryResolveSidecarInDir(dir string, sidecarCommand string) (string, bool) {
+	for _, name := range __octOctxiliarySidecarCommandCandidates(sidecarCommand) {
+		candidate := filepath.Join(dir, name)
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() { return candidate, true }
+	}
+	return "", false
+}
+
+func __octOctxiliarySidecarCommandCandidates(sidecarCommand string) []string {
+	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(sidecarCommand), ".exe") { return []string{sidecarCommand, sidecarCommand + ".exe"} }
+	return []string{sidecarCommand}
+}
+
+func __octOctxiliarySidecarBasenameMatches(base string, sidecarCommand string) bool {
+	for _, candidate := range __octOctxiliarySidecarCommandCandidates(sidecarCommand) {
+		if base == candidate { return true }
+	}
+	return false
+}
+
 func __octOctxiliaryEnsure() error {
 	__octOctxiliaryOnce.Do(func(){
-		path := filepath.Join(filepath.Dir(os.Args[0]), "octxiliary-io")
-		if _, err := os.Stat(path); err != nil {
+		path, ok := __octOctxiliaryResolveSidecarInDir(filepath.Dir(os.Args[0]), "octxiliary-io")
+		if !ok {
 			wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
-			if wrapperPath != "" {
-				if info, statErr := os.Stat(wrapperPath); statErr == nil && info.IsDir() { path = filepath.Join(wrapperPath, "octxiliary-io") } else { path = wrapperPath }
-			}
+			if wrapperPath != "" { path, ok = __octOctxiliaryResolveSidecarFromWrapperPath(wrapperPath, "octxiliary-io") }
 		}
-		if path == "" { __octOctxiliaryErr = errors.New("Octxiliary sidecar not found; set OCT_WRAPPER_PATH or place octxiliary-io beside .octbin") ; return }
+		if !ok { __octOctxiliaryErr = errors.New("Octxiliary sidecar not found; set OCT_WRAPPER_PATH or place octxiliary-io beside .octbin") ; return }
 		cmd := exec.Command(path)
 		in, _ := cmd.StdinPipe(); out, _ := cmd.StdoutPipe(); if err := cmd.Start(); err != nil { __octOctxiliaryErr = err; return }
 		__octOctxiliaryCmd, __octOctxiliaryIn, __octOctxiliaryOut = cmd, in, out

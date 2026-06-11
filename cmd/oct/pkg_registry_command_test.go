@@ -54,7 +54,8 @@ fn UsesRegistrySyncedDependency() -> Void {
 		t.Fatalf("expected dependency without Source, got %s", manifest)
 	}
 	stdout, stderr, err = executeCLIInDir(consumerDir, "pkg", "sync")
-	if err != nil || !strings.Contains(stdout, "Synced SignalTools 0.1.0 to .oct/packages/SignalTools/0.1.0") {
+	expectedSyncPath := filepath.Join(".oct", "packages", "SignalTools", "0.1.0")
+	if err != nil || !strings.Contains(stdout, "Synced SignalTools 0.1.0 to "+expectedSyncPath) {
 		t.Fatalf("pkg sync failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
 	}
 	if _, err := os.Stat(filepath.Join(consumerDir, ".oct", "packages", "SignalTools", "0.1.0", "manifest.oct")); err != nil {
@@ -104,7 +105,7 @@ func validRegistryForCLI(signalDir string) string {
 record RegistryIndex { Packages: PackageEntry[] }
 record PackageEntry { Name: String Version: String Kind: String SourceKind: String Source: String Path: String Description: String }
 fn Registry() -> RegistryIndex {
-    return RegistryIndex { Packages: [PackageEntry { Name: "SignalTools" Version: "0.1.0" Kind: "library" SourceKind: "local" Source: "` + signalDir + `" Path: "." Description: "Signal helper functions" }] }
+    return RegistryIndex { Packages: [PackageEntry { Name: "SignalTools" Version: "0.1.0" Kind: "library" SourceKind: "local" Source: ` + octStringLiteralPath(signalDir) + ` Path: "." Description: "Signal helper functions" }] }
 }
 `
 }
