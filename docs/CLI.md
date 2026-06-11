@@ -71,3 +71,59 @@ or place the sidecar in an existing sibling-discovery location.
 `oct pkg sync --locked` requires `lock.octagon`, validates it against the current manifest, and syncs exactly the locked graph. Git packages are checked out at `ResolvedCommit`, not a mutable ref. Local packages are copied from the locked source/path.
 
 Plain `oct pkg sync` remains rolling: it does not read or write `lock.octagon`, and it never creates `oct.lock` or `lock.oct`. Lockfiles do not add `.octpkg` artifacts, package tree/source/registry digests, signing, federation/P2P, publishing, auth, mirrors, binary sidecar distribution, semver ranges, `latest`, or solver/backtracking behavior.
+
+## Version surface
+
+```sh
+oct version
+oct --version
+```
+
+Development builds print `oct dev`. Release builds may inject the tag with Go linker flags, for example:
+
+```sh
+go build -ldflags "-X github.com/yuechen-li-dev/oct/internal/cli.version=0.1.0" ./cmd/oct
+```
+
+## Package manager / canonical registry quick reference
+
+The v0.1 canonical first-party registry is local/source-controlled at `Registry/registry.oct`; it is not a hosted registry service. Configure a project to use a local Oct checkout with:
+
+```sh
+oct pkg registry add oct <path-to-oct-repo>/Registry
+oct pkg registry list
+oct pkg registry remove oct
+```
+
+Add and sync an exact dependency from that registry:
+
+```sh
+oct pkg add Mathematics@0.1.0
+oct pkg sync
+```
+
+`Mathematics` is the canonical math package name. There is no `Math` alias.
+
+Optional lockfile workflow:
+
+```sh
+oct pkg lock
+oct pkg sync --locked
+```
+
+`lock.octagon` is optional and project-root local. It records the resolved exact dependency graph; it does not yet provide package tree digests, artifact integrity, package signing, hosted publishing/auth, semver ranges, `latest`, or solver behavior.
+
+Wrapper packages are synced as source packages. Syncing a package that declares wrappers does not build or run native sidecars. Use inert inspection first:
+
+```sh
+oct pkg wrappers
+oct pkg wrappers --registry-out wrappers.octagon
+```
+
+Native wrapper sidecars require an explicit build permission:
+
+```sh
+oct pkg build-wrappers --allow-native
+```
+
+After building, use the printed `OCT_WRAPPER_PATH=.oct/wrappers/<platform>` guidance or place sidecars in an existing sibling-discovery location.

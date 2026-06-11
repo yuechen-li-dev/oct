@@ -18,6 +18,8 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
+var version = "dev"
+
 func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
 		return writeTopLevelHelp(stdout)
@@ -26,6 +28,9 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	command := args[0]
 	if command == "--help" || command == "-h" || command == "help" {
 		return writeTopLevelHelp(stdout)
+	}
+	if command == "--version" || command == "version" {
+		return writeVersion(stdout)
 	}
 
 	switch command {
@@ -196,6 +201,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
 		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|lock|registry|add|wrappers|build-wrappers>"))
 	}
+	if isHelpArg(args) {
+		return writePkgHelp(stdout)
+	}
 	manager, err := pkgmgr.NewManager()
 	if err != nil {
 		return reportCommandError(stderr, "pkg", err)
@@ -204,6 +212,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	case "registry":
 		return executePkgRegistry(args[1:], stdout, stderr)
 	case "add":
+		if isHelpArg(args[1:]) {
+			return writePkgAddHelp(stdout)
+		}
 		name, registryName, err := parsePkgAddArgs(args[1:])
 		if err != nil {
 			return reportCommandError(stderr, "pkg add", err)
@@ -215,6 +226,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintf(stdout, "Added dependency %s %s from registry %s\nRun oct pkg sync to fetch package sources.\n", result.Name, result.Version, result.Registry)
 		return err
 	case "get":
+		if isHelpArg(args[1:]) {
+			return writePkgGetHelp(stdout)
+		}
 		if len(args) != 2 {
 			return reportCommandError(stderr, "pkg get", fmt.Errorf("usage: oct pkg get <git-url>"))
 		}
@@ -248,6 +262,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "list":
+		if isHelpArg(args[1:]) {
+			return writePkgListHelp(stdout)
+		}
 		if len(args) != 1 {
 			return reportCommandError(stderr, "pkg list", fmt.Errorf("usage: oct pkg list"))
 		}
@@ -282,6 +299,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	case "lock":
+		if isHelpArg(args[1:]) {
+			return writePkgLockHelp(stdout)
+		}
 		if len(args) != 1 {
 			return reportCommandError(stderr, "pkg lock", fmt.Errorf("usage: oct pkg lock"))
 		}
@@ -301,6 +321,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintln(stdout, "Wrote lock.octagon")
 		return err
 	case "sync":
+		if isHelpArg(args[1:]) {
+			return writePkgSyncHelp(stdout)
+		}
 		locked := false
 		if len(args) == 2 && args[1] == "--locked" {
 			locked = true
@@ -380,6 +403,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintf(stdout, "Package sync complete: %d package\nsync complete\n", len(result.Dependencies)+len(result.RegistryDependencies))
 		return err
 	case "build-wrappers":
+		if isHelpArg(args[1:]) {
+			return writePkgBuildWrappersHelp(stdout)
+		}
 		allowNative, err := parsePkgBuildWrappersArgs(args[1:])
 		if err != nil {
 			return reportCommandError(stderr, "pkg build-wrappers", err)
@@ -406,6 +432,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintf(stdout, "Built wrapper sidecars: %d\nSet OCT_WRAPPER_PATH=.oct/wrappers/%s to use these sidecars with current runtime discovery.\n", len(result.Targets), platform)
 		return err
 	case "wrappers":
+		if isHelpArg(args[1:]) {
+			return writePkgWrappersHelp(stdout)
+		}
 		registryOut, err := parsePkgWrappersArgs(args[1:])
 		if err != nil {
 			return reportCommandError(stderr, "pkg wrappers", err)
@@ -439,6 +468,9 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
 		return reportCommandError(stderr, "pkg registry", fmt.Errorf("usage: oct pkg registry <add|list|remove>"))
+	}
+	if isHelpArg(args) {
+		return writePkgRegistryHelp(stdout)
 	}
 	switch args[0] {
 	case "add":
@@ -703,9 +735,60 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  fmt        Format Oct source files\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  fmt        Format Oct source files\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
+
+func writeVersion(out io.Writer) error {
+	_, err := fmt.Fprintf(out, "oct %s\n", version)
+	return err
+}
+
+func writePkgHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg <get|list|sync|lock|registry|add|wrappers|build-wrappers>\n\ncommands:\n  registry add <name> <path>    Add a local/source-controlled package registry\n  registry list                 List configured package registries\n  registry remove <name>        Remove a configured package registry\n  add <Name>@<Version>          Add an exact registry dependency to manifest.oct\n  sync [--locked]               Sync exact dependency graph sources; --locked uses lock.octagon\n  lock                          Write optional project-root lock.octagon\n  wrappers [--registry-out p]   Inspect manifest-declared wrappers without building sidecars\n  build-wrappers --allow-native Build declared native wrapper sidecars explicitly\n  get <git-url>                 Fetch a package source into the local cache\n  list                          List cached packages")
+	return err
+}
+
+func writePkgRegistryHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg registry <add|list|remove>\n\ncommands:\n  add <name> <path>    Add a local package registry directory containing registry.oct\n  list                 List project-local registry configuration\n  remove <name>        Remove a registry by name\n\nexample:\n  oct pkg registry add oct <repo>/Registry")
+	return err
+}
+
+func writePkgAddHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg add <Name>@<exact-version> [--registry <name>]\nAdd an exact registry dependency to manifest.oct. Example: oct pkg add Mathematics@0.1.0")
+	return err
+}
+
+func writePkgSyncHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg sync [--locked]\nSync package sources for the current project. --locked requires lock.octagon and syncs the locked exact graph.")
+	return err
+}
+
+func writePkgLockHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg lock\nWrite optional project-root lock.octagon from the current exact dependency graph.")
+	return err
+}
+
+func writePkgWrappersHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg wrappers [--registry-out <path>]\nInspect manifest-declared wrapper sidecars without building or running native code.")
+	return err
+}
+
+func writePkgBuildWrappersHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg build-wrappers --allow-native\nBuild manifest-declared native wrapper sidecars explicitly. Package sync does not build sidecars.")
+	return err
+}
+
+func writePkgGetHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg get <git-url>\nFetch one package source into the local package cache.")
+	return err
+}
+
+func writePkgListHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct pkg list\nList packages currently stored in the local package cache.")
+	return err
+}
+
 func writeNewHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library> <Name>\nCreate a deterministic package scaffold in the current working directory.")
 	return err

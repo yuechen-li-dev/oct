@@ -1,8 +1,13 @@
-// Package octxiliary provides the public Go SDK for writing Octxiliary
-// sidecars.
+// Package octxiliary provides the small framed protocol/runtime helpers used by
+// Oct native wrapper sidecars.
 //
-// Sidecars should use Serve or Main instead of hand-rolling the OCTWRAP
-// handshake, frame loop, request parsing, and response encoding.
+// It is intended for authors exposing Go libraries to Oct through explicit
+// Octxiliary sidecar processes declared by Oct package manifests. Sidecars use
+// Serve or Main instead of hand-rolling the OCTWRAP handshake, frame loop,
+// request parsing, and response encoding.
+//
+// The package is part of the pre-1.0 Oct toolchain preview, so API details may
+// evolve before a stable 1.0 release.
 package octxiliary
 
 import (

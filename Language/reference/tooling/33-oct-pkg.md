@@ -6,6 +6,33 @@
 Package metadata is declared in `manifest.oct`.
 Dependency sync is explicit and command-driven.
 
+
+## Canonical registry and v0.1 package boundaries
+
+The canonical first-party registry exists at `Registry/registry.oct` in this repository. PM7 registry use is local/source-controlled, not hosted. A consumer project configures a checkout with:
+
+```sh
+oct pkg registry add oct <path-to-oct-repo>/Registry
+```
+
+`Mathematics` is the canonical math package name in that registry. There is no `Math` alias.
+
+Use exact dependencies and explicit sync:
+
+```sh
+oct pkg add Mathematics@0.1.0
+oct pkg sync
+```
+
+Optional lockfile use is explicit:
+
+```sh
+oct pkg lock
+oct pkg sync --locked
+```
+
+Wrapper package sync copies source and manifest metadata only. It does not build sidecars, run sidecars, or create `.oct/wrappers`; native wrapper sidecars require `oct pkg build-wrappers --allow-native`.
+
 ## Manifest schema
 
 `manifest.oct` declares package metadata in package `Manifest`.
@@ -255,14 +282,15 @@ The current scaffold command has no flags. `<Name>` must be strict PascalCase (`
 - `oct pkg list` shows cached package entries.
 - `oct pkg registry add/list/remove` manages project-local `.oct/registries.oct`.
 - `oct pkg add <Name>@<exact-version> [--registry <name>]` adds a resolved registry dependency without `Source`.
-- `oct pkg sync` reads the current project's manifest and syncs direct dependencies.
+- `oct pkg sync` reads the current project's manifest and syncs direct/source plus exact registry dependencies.
 - `oct pkg sync` operates on the current directory as the project root.
+- `oct pkg lock` writes an optional project-root `lock.octagon`; `oct pkg sync --locked` requires and syncs that locked graph.
 - Sync output includes project path, manifest path, dependency count, per-dependency status, and completion line.
 - `oct pkg wrappers` reads the current package wrapper metadata plus direct dependencies that declare `Source`, then prints a deterministic wrapper build plan summary.
 - `oct pkg wrappers --registry-out <path>` writes an inert Octxiliary registry artifact to a `.octagon` path.
 - `oct pkg wrappers` always reports that no wrapper sidecars were built or executed.
-- Usage is strict: `oct pkg <get|list|sync|registry|add|wrappers|build-wrappers>`, with wrapper usage `oct pkg wrappers [--registry-out <path>]`.
-- Present limitations: package operations are manifest-driven and direct-dependency oriented; wrapper planning has no runtime consumption, lockfile generation, native build prompts, native build execution, or sidecar execution; third-party wrapper manifest hardening and native build lifecycle work remain future work.
+- Usage is strict: `oct pkg <get|list|sync|lock|registry|add|wrappers|build-wrappers>`, with wrapper usage `oct pkg wrappers [--registry-out <path>]`.
+- Present limitations: package operations are manifest-driven and exact-version oriented; lockfiles do not add package tree digests or artifact integrity; wrapper planning has no runtime consumption, native build prompts, implicit native build execution, or sidecar execution; third-party wrapper manifest hardening and broader native build lifecycle work remain future work.
 
 See also [13 Packages](../language/13-packages.md) for language-level `package` / `import` rules.
 

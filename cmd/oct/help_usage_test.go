@@ -50,6 +50,11 @@ func TestCommandHelp(t *testing.T) {
 		{[]string{"artifact", "--help"}, []string{"artifact"}},
 		{[]string{"fmt", "--help"}, []string{"--mode", "--check"}},
 		{[]string{"bench", "--help"}, []string{"--profile"}},
+		{[]string{"pkg", "--help"}, []string{"registry add", "sync [--locked]", "build-wrappers --allow-native"}},
+		{[]string{"pkg", "registry", "--help"}, []string{"registry.oct", "oct pkg registry add oct <repo>/Registry"}},
+		{[]string{"pkg", "lock", "--help"}, []string{"lock.octagon"}},
+		{[]string{"pkg", "sync", "--help"}, []string{"--locked"}},
+		{[]string{"pkg", "build-wrappers", "--help"}, []string{"--allow-native"}},
 	}
 	for _, tc := range cases {
 		var out, errOut bytes.Buffer

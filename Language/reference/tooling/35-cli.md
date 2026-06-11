@@ -34,8 +34,41 @@
 - `oct new wrapper-library` creates manifest wrapper metadata and sidecar reference files but does not build or run the sidecar.
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
+- `oct pkg registry add/list/remove` manages local registry configuration for the current project.
+- `oct pkg add <Name>@<exact-version>` adds an exact registry dependency to `manifest.oct`.
 - `oct pkg sync` syncs explicit-source dependencies and recursively syncs exact-version registry dependencies for the current directory.
+- `oct pkg lock` writes an optional project-root `lock.octagon`; `oct pkg sync --locked` syncs the locked graph.
+- `oct pkg wrappers` inspects wrapper metadata without building sidecars.
+- `oct pkg build-wrappers --allow-native` explicitly builds declared native wrapper sidecars.
+- `oct version` and `oct --version` print the CLI version surface.
 - `oct exp run <git-url>` clones and runs an experimental remote package entry workflow.
+
+
+## v0.1 package-manager commands
+
+The canonical first-party registry is local/source-controlled at `Registry/registry.oct`; it is not hosted in v0.1. Configure a project with:
+
+```text
+oct pkg registry add oct <path-to-oct-repo>/Registry
+```
+
+`Mathematics` is the canonical math package name. There is no `Math` alias.
+
+Common package commands:
+
+```text
+oct pkg registry add oct <path-to-oct-repo>/Registry
+oct pkg registry list
+oct pkg registry remove oct
+oct pkg add Mathematics@0.1.0
+oct pkg sync
+oct pkg lock
+oct pkg sync --locked
+oct pkg wrappers
+oct pkg build-wrappers --allow-native
+```
+
+Package sync does not build wrapper sidecars. Built sidecars require explicit native build permission and runtime discovery through `OCT_WRAPPER_PATH` or sibling discovery.
 
 ## Test execution modes
 
@@ -80,6 +113,13 @@ oct new experiment BrownNoiseKalman
 oct new wrapper-library OpenCV
 oct pkg get https://example.com/repo.git
 oct pkg list
+oct pkg registry add oct <path-to-oct-repo>/Registry
+oct pkg add Mathematics@0.1.0
 oct pkg sync
+oct pkg lock
+oct pkg sync --locked
+oct pkg wrappers
+oct pkg build-wrappers --allow-native
+oct version
 oct exp run https://example.com/repo.git
 ```
