@@ -32,7 +32,7 @@ func TestUtilityWrappers(t *testing.T) {
 		},
 		{
 			root:     "../../Libraries/Hash",
-			sidecars: []string{"octxiliary-hash"},
+			sidecars: []string{"octxiliary-hash", "octxiliary-io"},
 			markers: []string{
 				"PASS Hash.Sha256TextKnownValueChecks",
 				"PASS Hash.Sha256BytesKnownValueChecks",
@@ -63,7 +63,9 @@ func TestUtilityWrappers(t *testing.T) {
 		tc := tc
 		t.Run(filepath.Base(tc.root), func(t *testing.T) {
 			t.Parallel()
-			stdout, stderr, err := executeCLIWithSidecars(t, "test", tc.root, tc.sidecars...)
+			workDir := newWrapperTempProject(t)
+			target := repoPath(t, "Libraries", filepath.Base(tc.root))
+			stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", target, tc.sidecars...)
 			if err != nil {
 				t.Fatalf("oct test failed for %s: %v stderr=%s stdout=%s", tc.root, err, stderr, stdout)
 			}

@@ -1,27 +1,22 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompiledCompressionOctxiliaryWrapper(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	binDir := sharedTestSidecarDir(t, "octxiliary-compression", "octxiliary-io")
+	t.Parallel()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Compression")
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Compression", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-compression", "octxiliary-io")
 	if err != nil {
-		t.Fatalf("compiled compression wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled compression wrapper tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
-	assertOutputContains(t, string(out),
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
+	assertOutputContains(t, stdout,
 		"PASS Compression.GzipCompressAndDecompressBytesRoundTrip",
 		"PASS Compression.GzipCompressAndDecompressTextBytesRoundTrip",
 		"PASS Compression.GzipCompressAndDecompressFileRoundTrip",
@@ -31,18 +26,16 @@ func TestCompiledCompressionOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledCompressionOctxiliaryMissingSidecarMessage(t *testing.T) {
-	repo := filepath.Join("..", "..")
 	binDir := t.TempDir()
 	buildTestSidecarsInDir(t, binDir, "octxiliary-io")
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Compression", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Compression")
+	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, binDir, []string{"test", target, "--execution", "compiled"})
 	if err == nil {
-		t.Fatalf("expected missing compression sidecar failure, got success:\n%s", string(out))
+		t.Fatalf("expected missing compression sidecar failure, got success:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-compression" not found`) {
-		t.Fatalf("expected clear missing compression sidecar message, got:\n%s", string(out))
+	if !strings.Contains(stdout+stderr, `Octxiliary sidecar "octxiliary-compression" not found`) {
+		t.Fatalf("expected clear missing compression sidecar message, got:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 }

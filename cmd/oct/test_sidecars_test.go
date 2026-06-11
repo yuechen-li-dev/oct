@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,12 +20,19 @@ var (
 	testSidecarDirErr  error
 	testSidecarMu      sync.Mutex
 	testSidecarBuilt   = map[string]struct{}{}
+	testOctBinOnce     sync.Once
+	testOctBinDir      string
+	testOctBinPath     string
+	testOctBinErr      error
 )
 
 func TestMain(m *testing.M) {
 	code := m.Run()
 	if testSidecarDirPath != "" {
 		_ = os.RemoveAll(testSidecarDirPath)
+	}
+	if testOctBinDir != "" {
+		_ = os.RemoveAll(testOctBinDir)
 	}
 	os.Exit(code)
 }
@@ -91,6 +99,57 @@ func executeCLIWithSidecars(t *testing.T, command string, sourcePath string, nam
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+func executeCLIWithSidecarsInDir(t *testing.T, workDir string, command string, sourcePath string, names ...string) (string, string, error) {
+	t.Helper()
+	return executeOctWithSidecarsInDir(t, workDir, append([]string{command}, sourcePath), names...)
+}
+
+func executeOctWithSidecarsInDir(t *testing.T, workDir string, args []string, names ...string) (string, string, error) {
+	t.Helper()
+	return executeOctWithCustomWrapperPathInDir(t, workDir, sharedTestSidecarDir(t, names...), args)
+}
+
+func executeOctWithCustomWrapperPathInDir(t *testing.T, workDir string, wrapperPath string, args []string) (string, string, error) {
+	t.Helper()
+	cmd := exec.Command(sharedTestOctBinary(t), args...)
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(),
+		"OCT_WRAPPER_PATH="+wrapperPath,
+		"OCT_PKG_CACHE_DIR="+filepath.Join(workDir, ".oct", "pkg-cache"),
+	)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stdout.String(), stderr.String(), err
+}
+
+func sharedTestOctBinary(t *testing.T) string {
+	t.Helper()
+	testOctBinOnce.Do(func() {
+		testOctBinDir, testOctBinErr = os.MkdirTemp("", "oct-test-bin-*")
+		if testOctBinErr != nil {
+			return
+		}
+		repo := filepath.Join("..", "..")
+		name := "oct-test"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		testOctBinPath = filepath.Join(testOctBinDir, name)
+		build := exec.Command("go", "build", "-o", testOctBinPath, "./cmd/oct")
+		build.Dir = repo
+		if out, err := build.CombinedOutput(); err != nil {
+			testOctBinErr = fmt.Errorf("build oct test binary: %w\n%s", err, strings.TrimSpace(string(out)))
+		}
+	})
+	if testOctBinErr != nil {
+		t.Fatalf("%v", testOctBinErr)
+	}
+	return testOctBinPath
 }
 
 func repoRelativeTestPath(t *testing.T, repo string, sourcePath string) string {

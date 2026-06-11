@@ -1,27 +1,22 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompiledPlotOctxiliaryWrapper(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	binDir := sharedTestSidecarDir(t, "octxiliary-plot", "octxiliary-io")
+	t.Parallel()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Plot")
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Plot", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-plot", "octxiliary-io")
 	if err != nil {
-		t.Fatalf("compiled plot wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled plot wrapper tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
-	assertOutputContains(t, string(out),
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
+	assertOutputContains(t, stdout,
 		"PASS Plot.LinePlotWritesConfiguredPng",
 		"PASS Plot.ScatterPlotWritesConfiguredPng",
 		"PASS Plot.HistogramWritesConfiguredPng",
@@ -32,15 +27,13 @@ func TestCompiledPlotOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledPlotOctxiliaryMissingSidecarMessage(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Plot", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Plot")
+	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
 	if err == nil {
-		t.Fatalf("expected missing plot sidecar failure, got success:\n%s", string(out))
+		t.Fatalf("expected missing plot sidecar failure, got success:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-plot" not found`) {
-		t.Fatalf("expected clear missing plot sidecar message, got:\n%s", string(out))
+	if !strings.Contains(stdout+stderr, `Octxiliary sidecar "octxiliary-plot" not found`) {
+		t.Fatalf("expected clear missing plot sidecar message, got:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 }

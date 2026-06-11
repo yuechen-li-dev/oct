@@ -1,27 +1,22 @@
 package main
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompiledHashOctxiliaryWrapper(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	binDir := sharedTestSidecarDir(t, "octxiliary-hash")
+	t.Parallel()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Hash")
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Hash", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-hash", "octxiliary-io")
 	if err != nil {
-		t.Fatalf("compiled hash wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled hash wrapper tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
-	assertOutputContains(t, string(out),
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
+	assertOutputContains(t, stdout,
 		"PASS Hash.Sha256TextKnownValueChecks",
 		"PASS Hash.Sha256BytesKnownValueChecks",
 		"PASS Hash.Sha256FileKnownValueChecks",
@@ -30,16 +25,13 @@ func TestCompiledHashOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledHashOctxiliaryMissingSidecarMessage(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	target := filepath.Join("Libraries", "Hash", "Hash.CompiledSmoke.octest")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", target, "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Hash", "Hash.CompiledSmoke.octest")
+	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
 	if err == nil {
-		t.Fatalf("expected missing hash sidecar failure, got success:\n%s", string(out))
+		t.Fatalf("expected missing hash sidecar failure, got success:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-hash" not found`) {
-		t.Fatalf("expected clear missing hash sidecar message, got:\n%s", string(out))
+	if !strings.Contains(stdout+stderr, `Octxiliary sidecar "octxiliary-hash" not found`) {
+		t.Fatalf("expected clear missing hash sidecar message, got:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 }

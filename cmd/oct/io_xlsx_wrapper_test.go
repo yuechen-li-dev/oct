@@ -2,21 +2,19 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestIOXlsxWrapper(t *testing.T) {
-	outputPath := filepath.Join("..", "..", "io_xlsx_m0.xlsx")
-	_ = os.Remove(outputPath)
-	t.Cleanup(func() {
-		_ = os.Remove(outputPath)
-	})
+	t.Parallel()
 
-	root := filepath.Join("..", "..", "Libraries", "IO")
-	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
+	workDir := newWrapperTempProject(t)
+	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
+	outputPath := filepath.Join(workDir, "io_xlsx_m0.xlsx")
+	root := repoPath(t, "Libraries", "IO")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
@@ -48,43 +46,39 @@ func TestIOXlsxWrapper(t *testing.T) {
 }
 
 func TestCompiledIOXlsxWrapper(t *testing.T) {
-	outputPath := filepath.Join("..", "..", "io_xlsx_m0.xlsx")
-	_ = os.Remove(outputPath)
-	t.Cleanup(func() {
-		_ = os.Remove(outputPath)
-	})
+	t.Parallel()
 
-	repo := filepath.Join("..", "..")
-	binDir := sharedTestSidecarDir(t, "octxiliary-xlsx")
-
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/IO/IO.Xlsx.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	outputPath := filepath.Join(workDir, "io_xlsx_m0.xlsx")
+	target := repoPath(t, "Libraries", "IO", "IO.Xlsx.octest")
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-xlsx")
 	if err != nil {
-		t.Fatalf("compiled IO xlsx wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled IO xlsx wrapper tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
-	assertOutputContains(t, string(out),
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
+	assertOutputContains(t, stdout,
 		"PASS IO.XlsxWriteMiniWorkflow",
 		"PASS IO.XlsxRejectsMissingSheetWrites",
 		"PASS IO.XlsxRejectsInvalidWorkbookHandle",
 		"PASS IO.XlsxRejectsInvalidSavePathExtension",
 		"PASS IO.XlsxRejectsSaveWithInvalidWorkbookHandle",
 	)
+	if info, statErr := os.Stat(outputPath); statErr != nil {
+		t.Fatalf("expected compiled xlsx artifact at %s: %v", outputPath, statErr)
+	} else if info.Size() == 0 {
+		t.Fatalf("expected non-empty compiled xlsx artifact at %s", outputPath)
+	}
 }
 
 func TestCompiledIOXlsxMissingSidecarDiagnostic(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/IO/IO.Xlsx.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "IO", "IO.Xlsx.octest")
+	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
 	if err == nil {
-		t.Fatalf("expected missing xlsx sidecar failure, got success:\n%s", string(out))
+		t.Fatalf("expected missing xlsx sidecar failure, got success:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-xlsx" not found`) {
-		t.Fatalf("expected xlsx missing sidecar diagnostic, got:\n%s", string(out))
+	if !strings.Contains(stdout+stderr, `Octxiliary sidecar "octxiliary-xlsx" not found`) {
+		t.Fatalf("expected xlsx missing sidecar diagnostic, got:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 }

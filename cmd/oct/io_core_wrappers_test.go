@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -8,8 +9,10 @@ import (
 
 func TestIOCoreWrappers(t *testing.T) {
 	t.Parallel()
-	root := "../../Libraries/IO"
-	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
+	workDir := newWrapperTempProject(t)
+	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
+	root := repoPath(t, "Libraries", "IO")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-io", "octxiliary-csv", "octxiliary-json", "octxiliary-xlsx")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
@@ -52,7 +55,11 @@ func TestIOCoreWrappers(t *testing.T) {
 }
 
 func TestCsvReadMatrixCsvReadRowsCsvReadTableJsonParseJsonLoadAutoCompiledWithoutFallback(t *testing.T) {
-	stdout, stderr, err := executeCLIWithSidecars(t, "test", "../../Libraries/IO/IO.CoreWrappers.octest", "octxiliary-io", "octxiliary-csv", "octxiliary-json")
+	t.Parallel()
+	workDir := newWrapperTempProject(t)
+	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
+	target := repoPath(t, "Libraries", "IO", "IO.CoreWrappers.octest")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", target, "octxiliary-io", "octxiliary-csv", "octxiliary-json")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}

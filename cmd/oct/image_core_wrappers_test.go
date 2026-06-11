@@ -6,30 +6,21 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestImageCoreWrappers(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	if err := synthesizeImageCoreFixtures(repo); err != nil {
+	t.Parallel()
+
+	workDir := newWrapperTempProject(t)
+	if err := synthesizeImageCoreFixtures(workDir); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}
-	t.Cleanup(func() {
-		for _, path := range []string{
-			"mx103d_fixture_rect.png",
-			"mx103d_fixture_rect.jpg",
-			"mx103d_fixture_corrupt.img",
-			"mx103d_roundtrip.jpg",
-		} {
-			_ = os.Remove(filepath.Join(repo, path))
-		}
-	})
 
-	root := "../../Libraries/Image"
-	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-image")
+	root := repoPath(t, "Libraries", "Image")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-image")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
@@ -51,32 +42,20 @@ func TestImageCoreWrappers(t *testing.T) {
 }
 
 func TestCompiledImageCoreWrappers(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	if err := synthesizeImageCoreFixtures(repo); err != nil {
+	t.Parallel()
+
+	workDir := newWrapperTempProject(t)
+	if err := synthesizeImageCoreFixtures(workDir); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}
-	t.Cleanup(func() {
-		for _, path := range []string{
-			"mx103d_fixture_rect.png",
-			"mx103d_fixture_rect.jpg",
-			"mx103d_fixture_corrupt.img",
-			"mx103d_roundtrip.jpg",
-		} {
-			_ = os.Remove(filepath.Join(repo, path))
-		}
-	})
 
-	binDir := sharedTestSidecarDir(t, "octxiliary-image")
-
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Image", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	target := repoPath(t, "Libraries", "Image")
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-image")
 	if err != nil {
-		t.Fatalf("compiled Image tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled Image tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
 	for _, marker := range []string{
 		"PASS Image.LoadInspectAndSaveRoundTrip",
 		"PASS Image.MetadataMatchesJpegFixture",
@@ -84,23 +63,21 @@ func TestCompiledImageCoreWrappers(t *testing.T) {
 		"PASS Image.LoadCorruptImageFails",
 		"PASS Image.SaveUnsupportedExtensionFails",
 	} {
-		if !strings.Contains(string(out), marker) {
-			t.Fatalf("expected marker %q in compiled output, got:\n%s", marker, string(out))
+		if !strings.Contains(stdout, marker) {
+			t.Fatalf("expected marker %q in compiled output, got:\n%s", marker, stdout)
 		}
 	}
 }
 
 func TestCompiledImageMissingSidecarDiagnostic(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Image/Image.Core.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Image", "Image.Core.octest")
+	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
 	if err == nil {
-		t.Fatalf("expected missing image sidecar failure, got success:\n%s", string(out))
+		t.Fatalf("expected missing image sidecar failure, got success:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-image" not found`) {
-		t.Fatalf("expected image missing sidecar diagnostic, got:\n%s", string(out))
+	if !strings.Contains(stdout+stderr, `Octxiliary sidecar "octxiliary-image" not found`) {
+		t.Fatalf("expected image missing sidecar diagnostic, got:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 }
 

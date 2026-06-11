@@ -5,21 +5,18 @@ import (
 	"image/color"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestPdfCoreWrappers(t *testing.T) {
-	writeM30PNGFixture(t, filepath.Join("..", "..", "Libraries", "Pdf", "m30_fixture_rect.png"))
-	t.Cleanup(func() {
-		_ = os.Remove(filepath.Join("..", "..", "Libraries", "Pdf", "m30_fixture_rect.png"))
-		_ = os.Remove(filepath.Join("..", "..", "m21_pdf_compiled_text.pdf"))
-		_ = os.Remove(filepath.Join("..", "..", "m21_pdf_compiled_styled.pdf"))
-	})
-	root := "../../Libraries/Pdf"
-	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-pdf", "octxiliary-image", "octxiliary-io")
+	t.Parallel()
+
+	workDir := newWrapperTempProject(t)
+	writeM30PNGFixture(t, filepath.Join(workDir, "Libraries", "Pdf", "m30_fixture_rect.png"))
+	root := repoPath(t, "Libraries", "Pdf")
+	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-pdf", "octxiliary-image", "octxiliary-io")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
@@ -44,25 +41,18 @@ func TestPdfCoreWrappers(t *testing.T) {
 }
 
 func TestCompiledPdfImageBytesInterop(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	fixturePath := filepath.Join(repo, "Libraries", "Pdf", "m30_fixture_rect.png")
-	writeM30PNGFixture(t, fixturePath)
-	t.Cleanup(func() {
-		_ = os.Remove(filepath.Join(repo, "m30_pdf_image_bytes.pdf"))
-		_ = os.Remove(fixturePath)
-	})
-	binDir := sharedTestSidecarDir(t, "octxiliary-pdf", "octxiliary-image", "octxiliary-io")
+	t.Parallel()
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Pdf/Pdf.ImageBytes.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	writeM30PNGFixture(t, filepath.Join(workDir, "Libraries", "Pdf", "m30_fixture_rect.png"))
+	target := repoPath(t, "Libraries", "Pdf", "Pdf.ImageBytes.octest")
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-pdf", "octxiliary-image", "octxiliary-io")
 	if err != nil {
-		t.Fatalf("compiled Pdf image bytes tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled Pdf image bytes tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
-	assertOutputContains(t, string(out),
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
+	assertOutputContains(t, stdout,
 		"PASS Pdf.ImageEncodePngDrawImageBytesSizedAndSave",
 		"PASS Pdf.DrawImageBytesRejectsUnsupportedFormat",
 	)
@@ -83,6 +73,9 @@ func writeM30PNGFixture(t *testing.T, path string) {
 		}
 	}
 
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -95,23 +88,17 @@ func writeM30PNGFixture(t *testing.T, path string) {
 }
 
 func TestCompiledPdfTextWrappers(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	t.Cleanup(func() {
-		_ = os.Remove(filepath.Join(repo, "m21_pdf_compiled_text.pdf"))
-		_ = os.Remove(filepath.Join(repo, "m21_pdf_compiled_styled.pdf"))
-	})
-	binDir := sharedTestSidecarDir(t, "octxiliary-pdf")
+	t.Parallel()
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Pdf/Pdf.CompiledText.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Pdf", "Pdf.CompiledText.octest")
+	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-pdf")
 	if err != nil {
-		t.Fatalf("compiled Pdf text tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("compiled Pdf text tests failed: %v\nstderr:%s\nstdout:%s", err, strings.TrimSpace(stderr), stdout)
 	}
-	assertNoCompiledFallback(t, string(out), "")
-	assertCompiledCountAtLeast(t, string(out), 1)
-	assertOutputContains(t, string(out),
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
+	assertOutputContains(t, stdout,
 		"PASS Pdf.CompiledBasicTextSave",
 		"PASS Pdf.CompiledStyledTextSave",
 		"PASS Pdf.CompiledInvalidPageHandleFails",
@@ -120,15 +107,13 @@ func TestCompiledPdfTextWrappers(t *testing.T) {
 }
 
 func TestCompiledPdfMissingSidecarDiagnostic(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Pdf/Pdf.CompiledText.octest", "--execution", "compiled")
-	cmd.Dir = repo
-	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
-	out, err := cmd.CombinedOutput()
+	workDir := newWrapperTempProject(t)
+	target := repoPath(t, "Libraries", "Pdf", "Pdf.CompiledText.octest")
+	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
 	if err == nil {
-		t.Fatalf("expected missing pdf sidecar failure, got success:\n%s", string(out))
+		t.Fatalf("expected missing pdf sidecar failure, got success:\n%s%s", stdout, stderr)
 	}
-	if !strings.Contains(string(out), `Octxiliary sidecar "octxiliary-pdf" not found`) {
-		t.Fatalf("expected pdf missing sidecar diagnostic, got:\n%s", string(out))
+	if !strings.Contains(stdout+stderr, `Octxiliary sidecar "octxiliary-pdf" not found`) {
+		t.Fatalf("expected pdf missing sidecar diagnostic, got:\nstdout:%s\nstderr:%s", stdout, stderr)
 	}
 }
