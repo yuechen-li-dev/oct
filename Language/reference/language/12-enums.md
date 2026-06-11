@@ -29,6 +29,30 @@ Variant references are qualified.
   - tuple or record destructuring patterns
   - nested pattern matching and guards
 
+
+## Proposed: judgment enum utility selection
+
+**Status: proposed/design-only.** This syntax is not implemented in J1.
+See [J1 judgment enum utility selection design](../../../docs/internal/judgment_enums_j1.md).
+
+Enums can serve as closed judgment spaces for one-shot utility-scored selection.
+The enum declaration remains ordinary; judgment behavior is introduced at an expression site by the proposed enum-targeted utility form:
+
+```oct
+when utility TreatmentDecision {
+    case TreatmentDecision.Observe when risk < 0.3 score 40
+    case TreatmentDecision.Treat when risk >= 0.6 score 80
+    else TreatmentDecision.Observe
+}
+```
+
+`match` and judgment utility have opposite roles:
+
+- `match` analyzes an enum value that has already been selected and must be exhaustive.
+- Proposed `when utility EnumName` scores candidate variants and produces a selected enum value, with an explicit `else` fallback.
+
+The proposed M0 design keeps payload candidates deferred: tag-only candidate variants are the intended first implementation target.
+
 ## Examples
 
 Valid:

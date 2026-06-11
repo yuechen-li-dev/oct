@@ -380,6 +380,24 @@ Avoid this when a single guard decides the branch; guard `when` is the simpler f
 
 Contrast: if you only need `case tempHigh -> goto Alarm else -> goto Normal`, a guard `when` is enough.
 
+
+### Proposed judgment enum utility
+
+**Status: proposed/design-only.** This syntax is not implemented in J1.
+See [J1 judgment enum utility selection design](../../../docs/internal/judgment_enums_j1.md).
+
+Standalone `when utility` can be extended with an explicit enum target to make a closed judgment space visible at the expression site:
+
+```oct
+when utility PumpJudgment {
+    case PumpJudgment.Fault when fault score 100
+    case PumpJudgment.Run when pressure > 20.0 score 60
+    else PumpJudgment.Hold
+}
+```
+
+This proposed form is still one-shot utility selection. It does not add hidden state, controller commitment memory, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
+
 ## `hysteresis` and `min_commit` in practice
 
 `hysteresis` and `min_commit` exist to prevent unstable arbitration behavior.
