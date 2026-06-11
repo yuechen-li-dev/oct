@@ -1,0 +1,15 @@
+expect error: "utility enum cases must use qualified variants"
+
+package MainInvalid
+
+enum Decision {
+    Hold
+    Run
+}
+
+fn Main(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Run when flag score 10
+        else Decision.Hold
+    }
+}

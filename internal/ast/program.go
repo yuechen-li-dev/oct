@@ -444,6 +444,7 @@ type UtilityWhenCase struct {
 
 type UtilityWhenExpr struct {
 	SiteID          int
+	EnumTarget      *TypeRef
 	Policy          UtilityWhenPolicy
 	Cases           []UtilityWhenCase
 	Else            Expr

@@ -2,9 +2,7 @@
 
 ## Status
 
-J1 is **design-only**. It does not implement parser, AST, typechecker, interpreter, compiler, or runtime behavior.
-
-Recommended next milestone: **J2 — implement enum-targeted `when utility` M0**.
+J1 was **design-only**. J2 implements enum-targeted `when utility` M0 for qualified tag-only enum candidates, with payload candidates deferred.
 
 ## Motivation
 

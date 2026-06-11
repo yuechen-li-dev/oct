@@ -1654,6 +1654,7 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 		return nil, err
 	}
 	var (
+		enumTarget      *ast.TypeRef
 		policy          ast.UtilityWhenPolicy
 		controllerBound bool
 	)
@@ -1666,9 +1667,21 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 		}
 	case "utility":
 		controllerBound = false
-		policy, err = p.parseStandaloneUtilityWhenPolicy()
-		if err != nil {
-			return nil, err
+		if p.current().Kind == lex.Identifier {
+			target, err := p.parseTypeRef()
+			if err != nil {
+				return nil, err
+			}
+			enumTarget = &target
+			policy = ast.UtilityWhenPolicy{
+				Hysteresis: ast.IntegerLiteral{Value: "0"},
+				MinCommit:  ast.IntegerLiteral{Value: "0"},
+			}
+		} else {
+			policy, err = p.parseStandaloneUtilityWhenPolicy()
+			if err != nil {
+				return nil, err
+			}
 		}
 	default:
 		return nil, p.errorAtToken(modeToken, "expected 'policy' or 'utility' after 'when'")
@@ -1729,13 +1742,11 @@ func (p *parser) parseUtilityWhenExpr() (ast.Expr, error) {
 		}
 	}
 	p.advance()
-	if !hasElse {
-		return nil, p.errorAtCurrent("utility when requires else arm")
-	}
 	siteID := p.nextUtilityWhenSiteID
 	p.nextUtilityWhenSiteID++
 	return ast.UtilityWhenExpr{
 		SiteID:          siteID,
+		EnumTarget:      enumTarget,
 		Policy:          policy,
 		Cases:           cases,
 		Else:            elseValue,

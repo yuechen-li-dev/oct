@@ -1,0 +1,14 @@
+expect error: "enum utility selection requires else fallback"
+
+package MainInvalid
+
+enum Decision {
+    Hold
+    Run
+}
+
+fn Main(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Decision.Run when flag score 10
+    }
+}

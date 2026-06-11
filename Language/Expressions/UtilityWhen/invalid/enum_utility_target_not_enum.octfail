@@ -1,0 +1,14 @@
+expect error: "when utility target must be an enum type"
+
+package MainInvalid
+
+record Decision {
+    Value: Int
+}
+
+fn Main(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Decision.Value when flag score 10
+        else Decision.Value
+    }
+}
