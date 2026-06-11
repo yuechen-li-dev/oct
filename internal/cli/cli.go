@@ -194,7 +194,7 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 
 func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) < 1 {
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|registry|add|wrappers|build-wrappers>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|lock|registry|add|wrappers|build-wrappers>"))
 	}
 	manager, err := pkgmgr.NewManager()
 	if err != nil {
@@ -281,9 +281,53 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			}
 		}
 		return nil
-	case "sync":
+	case "lock":
 		if len(args) != 1 {
-			return reportCommandError(stderr, "pkg sync", fmt.Errorf("usage: oct pkg sync"))
+			return reportCommandError(stderr, "pkg lock", fmt.Errorf("usage: oct pkg lock"))
+		}
+		result, err := manager.Lock(".")
+		if err != nil {
+			return reportCommandError(stderr, "pkg lock", err)
+		}
+		_, err = fmt.Fprintf(stdout, "Resolved package graph: %d packages\n", len(result.Lock.Packages))
+		if err != nil {
+			return err
+		}
+		for _, warning := range result.LocalWarnings {
+			if _, err := fmt.Fprintln(stdout, warning); err != nil {
+				return err
+			}
+		}
+		_, err = fmt.Fprintln(stdout, "Wrote lock.octagon")
+		return err
+	case "sync":
+		locked := false
+		if len(args) == 2 && args[1] == "--locked" {
+			locked = true
+		} else if len(args) != 1 {
+			return reportCommandError(stderr, "pkg sync", fmt.Errorf("usage: oct pkg sync [--locked]"))
+		}
+		if locked {
+			result, err := manager.SyncLocked(".")
+			if err != nil {
+				return reportCommandError(stderr, "pkg sync", err)
+			}
+			if _, err := fmt.Fprintln(stdout, "Loaded lock.octagon"); err != nil {
+				return err
+			}
+			for _, dep := range result.Packages {
+				if dep.SourceKind == "git" {
+					if _, err := fmt.Fprintf(stdout, "Synced %s %s from locked git commit %s\n", dep.Name, dep.Version, dep.ResolvedCommit); err != nil {
+						return err
+					}
+				} else {
+					if _, err := fmt.Fprintf(stdout, "Synced %s %s from locked local source %s\n", dep.Name, dep.Version, dep.Source); err != nil {
+						return err
+					}
+				}
+			}
+			_, err = fmt.Fprintf(stdout, "Package sync complete: %d packages\n", len(result.Packages))
+			return err
 		}
 		result, err := manager.Sync(".")
 		if err != nil {
@@ -388,7 +432,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprintln(stdout, "No wrapper sidecars were built or executed.")
 		return err
 	default:
-		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|registry|add|wrappers|build-wrappers>"))
+		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|lock|registry|add|wrappers|build-wrappers>"))
 	}
 }
 

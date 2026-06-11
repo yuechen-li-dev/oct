@@ -63,3 +63,11 @@ OCT_WRAPPER_PATH=.oct/wrappers/linux-amd64 oct test .
 ```
 
 or place the sidecar in an existing sibling-discovery location.
+
+### Optional package lockfiles
+
+`oct pkg lock` writes an optional project-root `lock.octagon` from the current exact-version registry dependency graph. The file is deterministic and timestamp-free. Git entries record the original `Ref` plus a full `ResolvedCommit`; local entries are allowed but marked mutable and are not reproducible because PM6 records no content digest. Wrapper packages are locked as source only; this command does not build sidecars or create `.oct/wrappers`.
+
+`oct pkg sync --locked` requires `lock.octagon`, validates it against the current manifest, and syncs exactly the locked graph. Git packages are checked out at `ResolvedCommit`, not a mutable ref. Local packages are copied from the locked source/path.
+
+Plain `oct pkg sync` remains rolling: it does not read or write `lock.octagon`, and it never creates `oct.lock` or `lock.oct`. Lockfiles do not add `.octpkg` artifacts, package tree/source/registry digests, signing, federation/P2P, publishing, auth, mirrors, binary sidecar distribution, semver ranges, `latest`, or solver/backtracking behavior.

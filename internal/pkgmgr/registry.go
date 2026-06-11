@@ -61,10 +61,14 @@ type ResolvedPackage struct {
 type RegistrySyncResult struct {
 	Name           string
 	Version        string
+	Kind           string
 	Registry       string
+	RegistryPath   string
 	SourceKind     string
+	Source         string
 	Ref            string
 	ResolvedCommit string
+	Path           string
 	Destination    string
 	Chain          []string
 }
@@ -371,7 +375,7 @@ func installResolvedPackage(projectRoot string, resolved ResolvedPackage, packag
 		return RegistrySyncResult{}, fmt.Errorf("install synced package %s: %w", finalDir, err)
 	}
 	cleanup = false
-	return RegistrySyncResult{Name: entry.Name, Version: entry.Version, Registry: resolved.Registry.Name, SourceKind: entry.SourceKind, Ref: entry.Ref, ResolvedCommit: resolved.ResolvedCommit, Destination: finalDir}, nil
+	return RegistrySyncResult{Name: entry.Name, Version: entry.Version, Kind: entry.Kind, Registry: resolved.Registry.Name, RegistryPath: resolved.Registry.Path, SourceKind: entry.SourceKind, Source: entry.Source, Ref: entry.Ref, ResolvedCommit: resolved.ResolvedCommit, Path: entry.Path, Destination: finalDir}, nil
 }
 
 func runGitPackageCommand(entry PackageEntry, registry string, operation string, name string, args ...string) error {
