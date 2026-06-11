@@ -1,0 +1,181 @@
+package LanguageFrictionArrayMapGenerics
+
+import String
+
+fn FirstN(xs: Float[], n: Int) -> Float[] ! Error {
+    if n < 0 { return error("n must be non-negative") }
+    if n > Len(xs) { return error("n must not exceed length") }
+    var out: Float[] = []
+    for i in 0..n {
+        out = Append(out, xs[i])
+    }
+    return out
+}
+
+fn DropFirstN(xs: Float[], n: Int) -> Float[] ! Error {
+    if n < 0 { return error("n must be non-negative") }
+    if n > Len(xs) { return error("n must not exceed length") }
+    var out: Float[] = []
+    for i in n..Len(xs) {
+        out = Append(out, xs[i])
+    }
+    return out
+}
+
+fn Window(xs: Float[], start: Int, end: Int) -> Float[] ! Error {
+    if start < 0 { return error("start must be non-negative") }
+    if end < start { return error("end must not precede start") }
+    if end > Len(xs) { return error("end must not exceed length") }
+    var out: Float[] = []
+    for i in start..end {
+        out = Append(out, xs[i])
+    }
+    return out
+}
+
+fn EveryKth(xs: Float[], step: Int) -> Float[] ! Error {
+    if step <= 0 { return error("step must be positive") }
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        if (i / step) * step == i {
+            out = Append(out, xs[i])
+        }
+    }
+    return out
+}
+
+fn LastN(xs: Float[], n: Int) -> Float[] ! Error {
+    if n < 0 { return error("n must be non-negative") }
+    if n > Len(xs) { return error("n must not exceed length") }
+    return Window(xs, Len(xs) - n, Len(xs))?
+}
+
+fn ScaleFloat(xs: Float[], factor: Float) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, xs[i] * factor)
+    }
+    return out
+}
+
+fn FloatLabels(xs: Int[]) -> String[] {
+    var out: String[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, String.From<Int>(xs[i]))
+    }
+    return out
+}
+
+fn KeepAbove(xs: Float[], threshold: Float) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        if xs[i] > threshold {
+            out = Append(out, xs[i])
+        }
+    }
+    return out
+}
+
+fn SumFloat(xs: Float[]) -> Float {
+    var total = 0.0
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn NormalizeBySum(xs: Float[]) -> Float[] ! Error {
+    let total = SumFloat(xs)
+    if total == 0.0 { return error("cannot normalize zero sum") }
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, xs[i] / total)
+    }
+    return out
+}
+
+fn MovingAverage3(xs: Float[]) -> Float[] ! Error {
+    if Len(xs) < 3 { return error("moving average requires at least three samples") }
+    var out: Float[] = []
+    for i in 0..(Len(xs) - 2) {
+        out = Append(out, (xs[i] + xs[i + 1] + xs[i + 2]) / 3.0)
+    }
+    return out
+}
+
+fn ZScore(xs: Float[]) -> Float[] ! Error {
+    if Len(xs) == 0 { return error("z-score requires samples") }
+    let mean = SumFloat(xs) / Float(Len(xs))
+    var variance = 0.0
+    for i in 0..Len(xs) {
+        let delta = xs[i] - mean
+        variance = variance + delta * delta
+    }
+    let sigma = Sqrt(variance / Float(Len(xs)))
+    if sigma == 0.0 { return error("z-score requires variation") }
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, (xs[i] - mean) / sigma)
+    }
+    return out
+}
+
+fn AddIndex(xs: Float[]) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, xs[i] + Float(i))
+    }
+    return out
+}
+
+fn ZipAdd(xs: Float[], ys: Float[]) -> Float[] ! Error {
+    if Len(xs) != Len(ys) { return error("zip requires equal lengths") }
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, xs[i] + ys[i])
+    }
+    return out
+}
+
+[Fact]
+fn ManualSlicesWorkButRequireLoops() -> Void {
+    let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+    let first = Assert.LGTM(FirstN(xs, 2), "first n")
+    let dropped = Assert.LGTM(DropFirstN(xs, 2), "drop first n")
+    let mid = Assert.LGTM(Window(xs, 1, 4), "middle window")
+    let every = Assert.LGTM(EveryKth(xs, 2), "every kth")
+    let last = Assert.LGTM(LastN(xs, 2), "last n")
+
+    Assert.Equal(2, Len(first), "first length")
+    Assert.Equal(1.0, first[0], "first value")
+    Assert.Equal(3, Len(dropped), "dropped length")
+    Assert.Equal(3.0, dropped[0], "drop starts at index")
+    Assert.Equal(3, Len(mid), "window length")
+    Assert.Equal(2.0, mid[0], "window start inclusive")
+    Assert.Equal(3, Len(every), "every kth length")
+    Assert.Equal(5.0, every[2], "every kth final")
+    Assert.Equal(2, Len(last), "last n length")
+    Assert.Equal(4.0, last[0], "last n start")
+}
+
+[Fact]
+fn ManualMapFilterReduceZipWorkButAreConcrete() -> Void {
+    let scaled = ScaleFloat([1.0, 2.0, 3.0], 2.0)
+    let labels = FloatLabels([7, 8])
+    let kept = KeepAbove([0.5, 2.0, 3.0], 1.0)
+    let normalized = Assert.LGTM(NormalizeBySum([1.0, 1.0, 2.0]), "normalize")
+    let averaged = Assert.LGTM(MovingAverage3([1.0, 2.0, 3.0, 4.0]), "moving average")
+    let z = Assert.LGTM(ZScore([1.0, 2.0, 3.0]), "z-score")
+    let indexed = AddIndex([10.0, 10.0])
+    let zipped = Assert.LGTM(ZipAdd([1.0, 2.0], [10.0, 20.0]), "zip add")
+
+    Assert.Equal(6.0, scaled[2], "scaled last")
+    Assert.Equal("8", labels[1], "int to string label")
+    Assert.Equal(2, Len(kept), "filter length")
+    Assert.Equal(0.5, normalized[2], "normalize value")
+    Assert.Equal(2.0, averaged[0], "moving average first")
+    Assert.Near(0.0, SumFloat(z), 0.000001, "z-score centered")
+    Assert.Equal(11.0, indexed[1], "map with index")
+    Assert.Equal(22.0, zipped[1], "zip added")
+    Assert.Error(ZipAdd([1.0], [1.0, 2.0]), "zip shape check")
+}

@@ -1,0 +1,79 @@
+package LanguageFrictionArrayMapGenerics
+
+fn RowAsArray(m: Matrix<Float>, row: Int) -> Float[] ! Error {
+    if row < 0 { return error("row must be non-negative") }
+    if row >= m.rows { return error("row out of bounds") }
+    var out: Float[] = []
+    for c in 0..m.cols {
+        out = Append(out, m[row, c])
+    }
+    return out
+}
+
+fn ColumnAsArray(m: Matrix<Float>, col: Int) -> Float[] ! Error {
+    if col < 0 { return error("column must be non-negative") }
+    if col >= m.cols { return error("column out of bounds") }
+    var out: Float[] = []
+    for r in 0..m.rows {
+        out = Append(out, m[r, col])
+    }
+    return out
+}
+
+fn SumRows(m: Matrix<Float>) -> Float[] {
+    var out: Float[] = []
+    for r in 0..m.rows {
+        var total = 0.0
+        for c in 0..m.cols {
+            total = total + m[r, c]
+        }
+        out = Append(out, total)
+    }
+    return out
+}
+
+fn SumColumns(m: Matrix<Float>) -> Float[] {
+    var out: Float[] = []
+    for c in 0..m.cols {
+        var total = 0.0
+        for r in 0..m.rows {
+            total = total + m[r, c]
+        }
+        out = Append(out, total)
+    }
+    return out
+}
+
+fn UnitRowAsArray(m: Matrix<Float<K>>, row: Int) -> Float<K>[] ! Error {
+    if row < 0 { return error("row must be non-negative") }
+    if row >= m.rows { return error("row out of bounds") }
+    var out: Float<K>[] = []
+    for c in 0..m.cols {
+        out = Append(out, m[row, c])
+    }
+    return out
+}
+
+[Fact]
+fn MatrixRowsColumnsCanBeExtractedManuallyAsArrays() -> Void {
+    let m = matrix[[1.0, 2.0, 3.0] [4.0, 5.0, 6.0]]
+    let row = Assert.LGTM(RowAsArray(m, 1), "row extraction")
+    let col = Assert.LGTM(ColumnAsArray(m, 2), "column extraction")
+    let rowSums = SumRows(m)
+    let colSums = SumColumns(m)
+
+    Assert.Equal(3, Len(row), "row length")
+    Assert.Equal(4.0, row[0], "row first")
+    Assert.Equal(2, Len(col), "column length")
+    Assert.Equal(6.0, col[1], "column second")
+    Assert.Equal(6.0, rowSums[0], "row sum")
+    Assert.Equal(5.0, colSums[0], "column sum")
+}
+
+[Fact]
+fn DimensionedMatrixElementsPreserveUnitsThroughManualArrayExtraction() -> Void {
+    let temps = matrix[[280.0K, 281.0K] [282.0K, 283.0K]]
+    let row = Assert.LGTM(UnitRowAsArray(temps, 0), "unit row")
+    Assert.Equal(2, Len(row), "unit row length")
+    Assert.Equal(281.0K, row[1], "unit preserved")
+}

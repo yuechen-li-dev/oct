@@ -1,0 +1,35 @@
+package LanguageFrictionArrayMapGenerics
+
+import String
+
+flow Controller(temp: Float<K>) -> Float<K> {
+    board {
+        LastTemp: Float<K>
+    }
+
+    state Tick {
+        board.LastTemp = temp
+        suspend
+    }
+
+    state Done {
+        return board.LastTemp
+    }
+}
+
+[Fact]
+fn StringFromCompilerKnownScalarsWorks() -> Void {
+    Assert.Equal("42", String.From<Int>(42), "int conversion")
+    Assert.Equal("true", String.From<Bool>(true), "bool conversion")
+    Assert.Equal("ready", String.From<String>("ready"), "string conversion")
+    Assert.Equal("3.14", String.From<Float>(3.14), "float conversion")
+    Assert.Equal("3.1", FormatFloat(3.14, 1), "formatted float")
+}
+
+[Fact]
+fn DimensionedBoardFieldRunsAndSnapshotsInInterpretedAndCompiledModes() -> Void {
+    let c = Controller(295.0K)
+    Step(c)
+    let snapshot = BoardSnapshot(c)!
+    Assert.Equal(295.0K, snapshot.LastTemp, "snapshot preserves unit field")
+}
