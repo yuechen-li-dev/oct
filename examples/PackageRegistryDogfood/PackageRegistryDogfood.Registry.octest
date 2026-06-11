@@ -1,0 +1,9 @@
+package PackageRegistryDogfood
+
+import Mathematics
+
+[Fact]
+fn UsesCanonicalMathematicsPackage() -> Void {
+    let bounded = Mathematics.Clamp(12.5, 0.0, 10.0)
+    Assert.Equal(10.0, bounded, "canonical registry Mathematics dependency should load and execute")
+}

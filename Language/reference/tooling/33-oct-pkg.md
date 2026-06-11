@@ -132,6 +132,32 @@ PM4 supports `SourceKind: "local"` and `SourceKind: "git"`. `Ref` is optional in
 
 Registry `Kind` values are `library`, `experiment`, and `wrapper`; `library` maps to ordinary manifests with omitted/empty/normalized pure `Kind`. Versions are exact text only. There is no `latest`, range solving, semver interpretation, solver, or backtracking behavior.
 
+### Canonical first-party registry
+
+The Oct repository includes a PM7 canonical first-party registry at:
+
+```text
+Registry/registry.oct
+```
+
+This registry is local, source-controlled project data. It is not a hosted registry, does not imply publishing or auth support, and can be configured from a checkout with:
+
+```sh
+oct pkg registry add oct <repo-root>/Registry
+oct pkg add Mathematics@0.1.0
+oct pkg sync
+```
+
+From examples or tests nested inside the Oct repository, use a relative path that reaches the repository registry, for example:
+
+```sh
+oct pkg registry add oct ../../Registry
+```
+
+Canonical registry entries point at first-party library package source under `Libraries/`. Wrapper packages can be synced as source, but `oct pkg sync` does not build sidecars and does not create `.oct/wrappers`. Use `oct pkg build-wrappers --allow-native` only for current-package wrapper sidecars. `lock.octagon` remains optional; use `oct pkg lock` and `oct pkg sync --locked` when a project wants lockfile-backed sync.
+
+The canonical math package is `Mathematics`; PM7 does not define a `Math` alias.
+
 Add an exact registry dependency with:
 
 ```text
