@@ -516,7 +516,7 @@ func hasManifest(repoPath string) (bool, error) {
 func gitClone(source string, repoPath string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", source, repoPath)
+	cmd := exec.CommandContext(ctx, "git", "-c", "core.autocrlf=false", "clone", "--depth", "1", source, repoPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {

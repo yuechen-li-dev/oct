@@ -242,6 +242,86 @@ func TestSyncRegistryDependencyGitSubpath(t *testing.T) {
 	}
 }
 
+func TestSyncRegistryDependencyGitCheckoutIgnoresHostAutoCRLF(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	project := t.TempDir()
+	repo, commit := writeGitPackageRepoWithLineEndingFixture(t, "SignalTools", "0.1.0")
+	enableHostGitAutoCRLF(t)
+
+	reg := writeRegistryIndex(t, registryIndexWithRefEntries([]string{packageEntryWithRef("SignalTools", "0.1.0", "library", "git", repo, commit, ".")}))
+	if _, err := AddRegistry(project, "local", reg); err != nil {
+		t.Fatal(err)
+	}
+	result, err := SyncRegistryDependency(project, DependencyMetadata{Name: "SignalTools", VersionRequirement: "0.1.0"})
+	if err != nil {
+		t.Fatalf("sync git registry dependency: %v", err)
+	}
+	assertLineEndingFixtureHasLF(t, result.Destination)
+}
+
+func TestSyncLockedGitCheckoutIgnoresHostAutoCRLF(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	project := writePackageSourceWithDeps(t, "Consumer", "0.1.0", "", []DependencyMetadata{{Name: "SignalTools", VersionRequirement: "0.1.0"}})
+	repo, commit := writeGitPackageRepoWithLineEndingFixture(t, "SignalTools", "0.1.0")
+	lock := PackageLock{
+		LockVersion: CurrentLockVersion,
+		GeneratedBy: LockGeneratedBy,
+		Root:        LockRoot{Name: "Consumer", Version: "0.1.0"},
+		Packages: []LockPackage{{
+			Name:           "SignalTools",
+			Version:        "0.1.0",
+			Kind:           "library",
+			SourceKind:     "git",
+			Source:         repo,
+			Ref:            "main",
+			ResolvedCommit: commit,
+			Path:           ".",
+			Registry:       "local",
+			RegistryPath:   "../registry",
+		}},
+	}
+	if err := WritePackageLock(filepath.Join(project, LockFileName), lock); err != nil {
+		t.Fatal(err)
+	}
+	enableHostGitAutoCRLF(t)
+
+	manager, err := NewManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.SyncLocked(project)
+	if err != nil {
+		t.Fatalf("sync locked git dependency: %v", err)
+	}
+	if len(result.Packages) != 1 {
+		t.Fatalf("expected one locked package, got %#v", result.Packages)
+	}
+	assertLineEndingFixtureHasLF(t, result.Packages[0].Destination)
+}
+
+func TestManagerGetGitCloneIgnoresHostAutoCRLF(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	repo, _ := writeGitPackageRepoWithLineEndingFixture(t, "SignalTools", "0.1.0")
+	t.Setenv(envCacheDir, t.TempDir())
+	enableHostGitAutoCRLF(t)
+
+	manager, err := NewManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.Get(fileURLFromPath(repo))
+	if err != nil {
+		t.Fatalf("get git package: %v", err)
+	}
+	assertLineEndingFixtureHasLF(t, result.Path)
+}
+
 func TestSyncRegistryDependencyGitCheckoutFailureIncludesRef(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skipf("git unavailable: %v", err)
@@ -260,6 +340,41 @@ func TestSyncRegistryDependencyGitCheckoutFailureIncludesRef(t *testing.T) {
 	_, err := SyncRegistryDependency(project, DependencyMetadata{Name: "SignalTools", VersionRequirement: "0.1.0"})
 	if err == nil || !strings.Contains(err.Error(), "checkout") || !strings.Contains(err.Error(), "missing-ref") {
 		t.Fatalf("expected checkout ref error, got %v", err)
+	}
+}
+
+func writeGitPackageRepoWithLineEndingFixture(t *testing.T, name, version string) (string, string) {
+	t.Helper()
+	repo := writePackageSource(t, name, version, "")
+	if err := os.WriteFile(filepath.Join(repo, "LineEndings.txt"), []byte("commit A\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTestCommand(t, repo, "init")
+	runGitTestCommand(t, repo, "config", "user.email", "oct@example.invalid")
+	runGitTestCommand(t, repo, "config", "user.name", "Oct Test")
+	runGitTestCommand(t, repo, "add", ".")
+	runGitTestCommand(t, repo, "commit", "-m", "initial")
+	commit := strings.TrimSpace(runGitTestCommand(t, repo, "rev-parse", "HEAD"))
+	return repo, commit
+}
+
+func enableHostGitAutoCRLF(t *testing.T) {
+	t.Helper()
+	configPath := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(configPath, []byte("[core]\n\tautocrlf = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", configPath)
+}
+
+func assertLineEndingFixtureHasLF(t *testing.T, packageRoot string) {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(packageRoot, "LineEndings.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "commit A\n" {
+		t.Fatalf("expected git checkout to preserve LF line endings, got %q", string(body))
 	}
 }
 
