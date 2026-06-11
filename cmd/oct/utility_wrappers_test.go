@@ -1,11 +1,13 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestUtilityWrappers(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		root     string
 		sidecars []string
@@ -58,16 +60,20 @@ func TestUtilityWrappers(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		stdout, stderr, err := executeCLIWithSidecars(t, "test", tc.root, tc.sidecars...)
-		if err != nil {
-			t.Fatalf("oct test failed for %s: %v stderr=%s stdout=%s", tc.root, err, stderr, stdout)
-		}
-		assertNoCompiledFallback(t, stdout, stderr)
-		assertCompiledCountAtLeast(t, stdout, 1)
-		for _, marker := range tc.markers {
-			if !strings.Contains(stdout, marker) {
-				t.Fatalf("expected marker %q for root %s, got %q", marker, tc.root, stdout)
+		tc := tc
+		t.Run(filepath.Base(tc.root), func(t *testing.T) {
+			t.Parallel()
+			stdout, stderr, err := executeCLIWithSidecars(t, "test", tc.root, tc.sidecars...)
+			if err != nil {
+				t.Fatalf("oct test failed for %s: %v stderr=%s stdout=%s", tc.root, err, stderr, stdout)
 			}
-		}
+			assertNoCompiledFallback(t, stdout, stderr)
+			assertCompiledCountAtLeast(t, stdout, 1)
+			for _, marker := range tc.markers {
+				if !strings.Contains(stdout, marker) {
+					t.Fatalf("expected marker %q for root %s, got %q", marker, tc.root, stdout)
+				}
+			}
+		})
 	}
 }

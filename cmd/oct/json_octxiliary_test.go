@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompiledJsonOctxiliaryWrapper(t *testing.T) {
+	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-json", "octxiliary-io")
 

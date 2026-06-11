@@ -834,6 +834,7 @@ fn main() -> Int ! Error {
 }
 
 func TestCompileAndRunBatchFailWholeBatch(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -877,6 +878,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunFalliblePropagationAndMatch(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -917,6 +919,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunFallibleMatchErrBranch(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -952,6 +955,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunFallibleUnwrap(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -985,6 +989,7 @@ fn main() -> Int {
 }
 
 func TestCompileFallibleUnwrapFailureIsFatal(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1017,6 +1022,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunWriteOctagonSuccess(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	outPath := filepath.Join(root, "compiled-write.octagon")
 	mainPath := filepath.Join(root, "main.oct")
@@ -1059,6 +1065,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunLoadOctagonSuccessAndFallibleIntegration(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	inPath := filepath.Join(root, "input.octagon")
 	if err := os.WriteFile(inPath, []byte("Payload { Name: \"run\" Count: 7 }\n"), 0o644); err != nil {
@@ -1139,6 +1146,7 @@ fn main() -> Int ! Error {
 }
 
 func TestCompileAndRunLoadOctagonFailureReturnsErr(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	inPath := filepath.Join(root, "bad.octagon")
 	if err := os.WriteFile(inPath, []byte("7\n"), 0o644); err != nil {
@@ -1246,6 +1254,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunFlowCoreRuntimeBuiltins(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1313,6 +1322,7 @@ fn main() -> Int ! Error {
 }
 
 func TestCompileAndRunComplexBuiltinsAndArithmetic(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1349,6 +1359,7 @@ fn main() -> Float {
 }
 
 func TestCompileAndRunFloatBuiltinConvertsInt(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1553,6 +1564,7 @@ fn main() -> Int {
 }
 
 func TestCompileFlowResultBeforeCompletionFails(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1591,6 +1603,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunFlowRememberResumeAndResumeTarget(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1702,6 +1715,7 @@ fn main() -> Int ! Error {
 }
 
 func TestCompileFlowResumeEmptySlotFailsDeterministically(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -1953,6 +1967,7 @@ fn main() -> Int {
 }
 
 func TestCompileAndRunStandaloneUtilityWhenParity(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -2258,6 +2273,7 @@ fn Main() -> Int {
 }
 
 func TestCompileRunParityVectorsMatricesM93(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -2347,6 +2363,7 @@ fn Main() -> Matrix<Int> {
 }
 
 func TestCompileAndRunIfExpressionConditionSwitchSurface(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")
 	src := `package Main
@@ -2424,6 +2441,7 @@ func TestCompileForTestLowersPrometheusMatMulBuiltinOutsidePrometheusBlock(t *te
 }
 
 func TestCompileAndRunNumericShapeLoweringChimera(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "Main"), 0o755); err != nil {
 		t.Fatal(err)

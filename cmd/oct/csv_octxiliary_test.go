@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompiledCsvOctxiliaryWrapper(t *testing.T) {
+	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-csv")
 

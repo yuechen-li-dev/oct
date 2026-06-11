@@ -21,6 +21,7 @@ func TestConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
 }
 
 func TestPlotCoreWrappers(t *testing.T) {
+	t.Parallel()
 	root := "../../Libraries/Plot"
 	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-plot", "octxiliary-io")
 	if err != nil {
