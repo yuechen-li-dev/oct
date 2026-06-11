@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -29,6 +31,9 @@ func TestMain(m *testing.M) {
 
 func sharedTestSidecarDir(t *testing.T, names ...string) string {
 	t.Helper()
+	if envDir, ok := existingSidecarDir(names...); ok {
+		return envDir
+	}
 	testSidecarDirOnce.Do(func() {
 		testSidecarDirPath, testSidecarDirErr = os.MkdirTemp("", "oct-sidecars-*")
 	})
@@ -52,6 +57,24 @@ func sharedTestSidecarDir(t *testing.T, names ...string) string {
 		testSidecarBuilt[command] = struct{}{}
 	}
 	return testSidecarDirPath
+}
+
+func existingSidecarDir(names ...string) (string, bool) {
+	wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
+	if wrapperPath == "" {
+		return "", false
+	}
+	info, err := os.Stat(wrapperPath)
+	if err != nil || !info.IsDir() {
+		return "", false
+	}
+	for _, name := range names {
+		command := octxiliaryCommandName(name)
+		if _, err := os.Stat(filepath.Join(wrapperPath, sidecarBinaryName(command))); err != nil {
+			return "", false
+		}
+	}
+	return wrapperPath, true
 }
 
 func executeCLIWithSidecars(t *testing.T, command string, sourcePath string, names ...string) (string, string, error) {
@@ -96,6 +119,43 @@ func assertNoMissingSidecarFallback(t *testing.T, stdout string, stderr string) 
 	if strings.Contains(combined, "sidecar not found") || strings.Contains(combined, "not found; set OCT_WRAPPER_PATH") {
 		t.Fatalf("expected wrapper sidecars to be discoverable, got missing-sidecar output:\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
 	}
+}
+
+func assertNoCompiledFallback(t *testing.T, stdout string, stderr string) {
+	t.Helper()
+	combined := stdout + stderr
+	assertNoMissingSidecarFallback(t, stdout, stderr)
+	if strings.Contains(combined, "compiled mode does not yet support builtin") {
+		t.Fatalf("expected compiled wrapper support, got unsupported-builtin output:\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
+	}
+	if fallback, ok := executionSummaryCount(t, stdout, "interpreted fallback"); ok && fallback != 0 {
+		t.Fatalf("expected no interpreted fallback, got %d:\nstdout:\n%s\nstderr:\n%s", fallback, stdout, stderr)
+	}
+}
+
+func assertCompiledCountAtLeast(t *testing.T, stdout string, min int) {
+	t.Helper()
+	compiled, ok := executionSummaryCount(t, stdout, "compiled")
+	if !ok {
+		t.Fatalf("expected execution summary with compiled count in stdout, got:\n%s", stdout)
+	}
+	if compiled < min {
+		t.Fatalf("expected compiled count >= %d, got %d:\n%s", min, compiled, stdout)
+	}
+}
+
+func executionSummaryCount(t *testing.T, stdout string, label string) (int, bool) {
+	t.Helper()
+	pattern := regexp.MustCompile(regexp.QuoteMeta(label) + `: ([0-9]+)`)
+	match := pattern.FindStringSubmatch(stdout)
+	if match == nil {
+		return 0, false
+	}
+	value, err := strconv.Atoi(match[1])
+	if err != nil {
+		t.Fatalf("parse %s count %q: %v", label, match[1], err)
+	}
+	return value, true
 }
 
 func octxiliaryCommandName(name string) string {

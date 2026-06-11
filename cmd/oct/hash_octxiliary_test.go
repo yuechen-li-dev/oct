@@ -19,6 +19,8 @@ func TestCompiledHashOctxiliaryWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled hash wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Hash.Sha256TextKnownValueChecks",
 		"PASS Hash.Sha256BytesKnownValueChecks",

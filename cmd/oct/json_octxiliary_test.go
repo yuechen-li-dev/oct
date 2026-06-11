@@ -19,6 +19,8 @@ func TestCompiledJsonOctxiliaryWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled json wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Json.JsonSaveLoadRoundTrip",
 		"PASS Json.JsonInvalidSaveFails",

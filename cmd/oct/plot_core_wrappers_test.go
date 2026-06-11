@@ -22,10 +22,12 @@ func TestConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
 
 func TestPlotCoreWrappers(t *testing.T) {
 	root := "../../Libraries/Plot"
-	stdout, stderr, err := executeCLI("test", root)
+	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-plot", "octxiliary-io")
 	if err != nil {
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
 
 	expectedPasses := []string{
 		"PASS Plot.LinePlotWritesConfiguredPng",

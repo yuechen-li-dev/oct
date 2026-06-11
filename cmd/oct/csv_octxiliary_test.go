@@ -19,6 +19,8 @@ func TestCompiledCsvOctxiliaryWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled csv wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Csv.CsvSimpleReadFixture",
 		"PASS Csv.CsvSimpleWriteReadBack",
@@ -54,6 +56,8 @@ func TestCompiledIOCsvRowMajorOctxiliaryWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled IO csv wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out), "PASS IO.IOCsvRowMajorCompiledSmoke")
 }
 
@@ -63,6 +67,8 @@ func TestAutoIOCsvOctxiliarySidecarDiscoveryDoesNotFallback(t *testing.T) {
 		t.Fatalf("auto IO csv wrapper test failed: %v\nstderr:%s\nstdout:%s", err, stderr, stdout)
 	}
 	assertNoMissingSidecarFallback(t, stdout, stderr)
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
 	assertOutputContains(t, stdout,
 		"PASS IO.IOCsvRowMajorCompiledSmoke",
 		"Execution summary: compiled: 1 interpreted fallback: 0",

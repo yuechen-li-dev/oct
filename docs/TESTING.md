@@ -5,7 +5,16 @@
 Use the default unit-test command for local iteration and normal CI:
 
 ```bash
-go test ./...
+go run ./tools/build_sidecars --out dist/sidecars
+OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test ./... -count=1
+```
+
+PowerShell equivalent:
+
+```powershell
+go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
+go test ./... -count=1
 ```
 
 Default tests should remain focused on:
@@ -16,8 +25,9 @@ Default tests should remain focused on:
 Default tests should **not** require:
 - long science/benchmark sweeps,
 - large artifact sweeps,
-- real Prometheus sidecars/reactors,
-- Octxiliary sidecars.
+- real Prometheus sidecars/reactors.
+
+Compiled/auto wrapper tests are expected to use Octxiliary sidecars. Build them once with `tools/build_sidecars` and set `OCT_WRAPPER_PATH` for the fastest honest full-suite run; sidecar-aware Go tests can still build focused temporary sidecars when the environment is not set.
 
 ## Slow test workflow
 

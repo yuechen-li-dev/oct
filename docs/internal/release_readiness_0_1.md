@@ -101,10 +101,20 @@ oct pkg sync --locked
 Required checks:
 
 ```sh
+go run ./tools/build_sidecars --out dist/sidecars
+OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test ./... -count=1
 go test ./pkg/octxiliary ./internal/octxiliary
 go test ./internal/pkgmgr ./internal/project
 go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Wrappers|BuildWrappers'
 go test ./internal/... ./cmd/oct
+```
+
+PowerShell full-suite sidecar mode:
+
+```powershell
+go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
+go test ./... -count=1
 ```
 
 ## Suggested tag command

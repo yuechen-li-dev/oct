@@ -48,8 +48,13 @@ jobs:
           mkdir -p dist
           go build -o dist/${{ matrix.binary_name }} ./cmd/oct
 
+      - name: Build octxiliary sidecars
+        run: go run ./tools/build_sidecars --out dist/sidecars
+
       - name: Run tests
-        run: go test ./...
+        env:
+          OCT_WRAPPER_PATH: ${{ github.workspace }}/dist/sidecars
+        run: go test -count=1 -parallel 8 ./...
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

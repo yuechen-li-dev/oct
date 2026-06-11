@@ -57,6 +57,8 @@ func TestCsvReadMatrixCsvReadRowsCsvReadTableJsonParseJsonLoadAutoCompiledWithou
 		t.Fatalf("oct test failed: %v stderr=%s stdout=%s", err, stderr, stdout)
 	}
 	assertNoMissingSidecarFallback(t, stdout, stderr)
+	assertNoCompiledFallback(t, stdout, stderr)
+	assertCompiledCountAtLeast(t, stdout, 1)
 	assertOutputContains(t, stdout,
 		"PASS IO.JsonParseStringifyAndSaveLoadRoundTrip",
 		"PASS IO.CsvReadRowsRoundTripQuotedCommaQuoteAndEmpty",

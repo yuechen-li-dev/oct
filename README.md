@@ -155,9 +155,19 @@ go test ./pkg/octxiliary ./internal/octxiliary
 go test ./internal/pkgmgr ./internal/project
 go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Wrappers|BuildWrappers'
 go test ./internal/... ./cmd/oct
+go run ./tools/build_sidecars --out dist/sidecars
+OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test ./... -count=1
 go run ./cmd/oct --help
 go run ./cmd/oct pkg --help
 go run ./cmd/oct version
+```
+
+On PowerShell, use the same sidecar build command and set the wrapper path with:
+
+```powershell
+go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
+go test ./... -count=1
 ```
 
 For more details, start with:

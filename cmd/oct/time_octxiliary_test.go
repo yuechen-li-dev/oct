@@ -19,6 +19,8 @@ func TestCompiledTimeOctxiliaryWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled time wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Time.TimeParseFormatIso8601Sanity",
 		"PASS Time.TimeDeterministicIso8601Fixtures",

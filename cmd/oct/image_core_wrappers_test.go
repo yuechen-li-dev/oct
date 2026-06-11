@@ -75,6 +75,8 @@ func TestCompiledImageCoreWrappers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled Image tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	for _, marker := range []string{
 		"PASS Image.LoadInspectAndSaveRoundTrip",
 		"PASS Image.MetadataMatchesJpegFixture",

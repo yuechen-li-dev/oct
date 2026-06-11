@@ -60,6 +60,8 @@ func TestCompiledPdfImageBytesInterop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled Pdf image bytes tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Pdf.ImageEncodePngDrawImageBytesSizedAndSave",
 		"PASS Pdf.DrawImageBytesRejectsUnsupportedFormat",
@@ -107,6 +109,8 @@ func TestCompiledPdfTextWrappers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled Pdf text tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Pdf.CompiledBasicTextSave",
 		"PASS Pdf.CompiledStyledTextSave",

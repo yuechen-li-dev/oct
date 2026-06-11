@@ -47,6 +47,34 @@ func TestIOXlsxWrapper(t *testing.T) {
 	}
 }
 
+func TestCompiledIOXlsxWrapper(t *testing.T) {
+	outputPath := filepath.Join("..", "..", "io_xlsx_m0.xlsx")
+	_ = os.Remove(outputPath)
+	t.Cleanup(func() {
+		_ = os.Remove(outputPath)
+	})
+
+	repo := filepath.Join("..", "..")
+	binDir := sharedTestSidecarDir(t, "octxiliary-xlsx")
+
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/IO/IO.Xlsx.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("compiled IO xlsx wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
+	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
+	assertOutputContains(t, string(out),
+		"PASS IO.XlsxWriteMiniWorkflow",
+		"PASS IO.XlsxRejectsMissingSheetWrites",
+		"PASS IO.XlsxRejectsInvalidWorkbookHandle",
+		"PASS IO.XlsxRejectsInvalidSavePathExtension",
+		"PASS IO.XlsxRejectsSaveWithInvalidWorkbookHandle",
+	)
+}
+
 func TestCompiledIOXlsxMissingSidecarDiagnostic(t *testing.T) {
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/IO/IO.Xlsx.octest", "--execution", "compiled")

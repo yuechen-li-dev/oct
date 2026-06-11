@@ -19,6 +19,8 @@ func TestCompiledTextOctxiliaryWrapper(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compiled text wrapper tests failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
+	assertNoCompiledFallback(t, string(out), "")
+	assertCompiledCountAtLeast(t, string(out), 1)
 	assertOutputContains(t, string(out),
 		"PASS Text.RegexMatchFindReplaceSplit",
 		"PASS Text.RegexInvalidPatternFails",
