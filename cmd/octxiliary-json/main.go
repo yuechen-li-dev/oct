@@ -53,6 +53,15 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 		return octxiliary.Value{}, fmt.Errorf("generic args missing")
 	}
 	switch req.Function {
+	case "JsonNormalize", "JsonParse", "JsonStringify":
+		if err := expect(req.Args, octxiliary.ValueString); err != nil {
+			return octxiliary.Value{}, err
+		}
+		text, err := normalize([]byte(req.Args[0].String))
+		if err != nil {
+			return octxiliary.Value{}, err
+		}
+		return stringValue(text), nil
 	case "JsonLoad":
 		if err := expect(req.Args, octxiliary.ValueString); err != nil {
 			return octxiliary.Value{}, err

@@ -1277,7 +1277,7 @@ func unsupportedBuiltin(name string) error {
 
 func isOctxiliaryBuiltin(name string) bool {
 	switch canonicalCompiledBuiltinName(name) {
-	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
+	case "FileReadText", "FileReadLines", "FileReadBytes", "FileWriteText", "FileWriteLines", "FileWriteBytes", "FileDelete", "DirectoryList", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll", "CsvRead", "CsvReadRows", "CsvReadTable", "CsvReadMatrix", "CsvWrite", "CsvWriteRows", "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad", "JsonSave":
 		return true
 	default:
 		return false
@@ -3550,6 +3550,18 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Bool", true, false, nil
 			case "FileDelete", "DirectoryMake", "DirectoryMakeAll", "DirectoryRemoveAll":
 				return normalized, "Int", true, true, nil
+			case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
+				return normalized, "String", true, true, nil
+			case "JsonSave":
+				return normalized, "Int", true, true, nil
+			case "CsvRead", "CsvReadRows":
+				return normalized, "String[][]", true, true, nil
+			case "CsvReadTable":
+				return normalized, "Csv.Table", true, true, nil
+			case "CsvReadMatrix":
+				return normalized, "Float[][]", true, true, nil
+			case "CsvWrite", "CsvWriteRows":
+				return normalized, "Int", true, true, nil
 			case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
 				return normalized, "String", true, false, nil
 			default:
@@ -4267,6 +4279,54 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "Matrix<" + elemType + ">", nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin SymGrad for type %s", argTypes[0])
+	case "JsonNormalize", "JsonParse", "JsonStringify", "JsonLoad":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String", nil
+	case "JsonSave":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" || argTypes[1] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for argument types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "Int", nil
+	case "CsvRead", "CsvReadRows":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "String[][]", nil
+	case "CsvReadTable":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Csv.Table", nil
+	case "CsvReadMatrix":
+		if len(argTypes) != 1 {
+			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
+		}
+		return "Float[][]", nil
+	case "CsvWrite", "CsvWriteRows":
+		if len(argTypes) != 2 {
+			return "", fmt.Errorf("function '%s' expects 2 arguments, got %d", name, len(argTypes))
+		}
+		if argTypes[0] != "String" || argTypes[1] != "String[][]" {
+			return "", fmt.Errorf("compiled mode does not yet support builtin %s for argument types (%s, %s)", name, argTypes[0], argTypes[1])
+		}
+		return "Int", nil
 	case "FileReadText":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
@@ -5465,7 +5525,7 @@ func emitGo(m MIRModule) (string, error) {
 		}
 	}
 	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
-		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "runtime", "strings", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
+		for _, pkg := range []string{"errors", "io", "os", "os/exec", "path/filepath", "runtime", "strings", "strconv", "sync", "time", "github.com/yuechen-li-dev/oct/internal/octxiliary"} {
 			importSet[pkg] = struct{}{}
 		}
 	}
@@ -5512,6 +5572,9 @@ func emitGo(m MIRModule) (string, error) {
 		resultTypes["Bytes"] = struct{}{}
 		resultTypes["String"] = struct{}{}
 		resultTypes["String[]"] = struct{}{}
+		resultTypes["String[][]"] = struct{}{}
+		resultTypes["Float[][]"] = struct{}{}
+		resultTypes["Csv.Table"] = struct{}{}
 	}
 	resultTypes["Int"] = struct{}{}
 	resultNames := make([]string, 0, len(resultTypes))
@@ -5563,6 +5626,12 @@ func emitGo(m MIRModule) (string, error) {
 		b.WriteString("}\n\n")
 	}
 	needsRandomHelpers := usedBuiltins["Random.RandInt"] || usedBuiltins["Random.RandFloat01"] || usedBuiltins["Random.RandFloatRange"] || usedBuiltins["Random.RandBernoulli"] || usedBuiltins["Random.RandNormal"] || usedBuiltins["Random.CryptoRandInt"] || usedBuiltins["Random.CryptoRandFloat01"] || usedBuiltins["Random.CryptoRandBytes"]
+	if usesOctxiliaryBuiltins(usedBuiltins) || usesGenericOctxiliary {
+		if _, ok := emittedRecordTypes["Csv.Table"]; !ok {
+			b.WriteString("type Csv_Table struct{}\n\n")
+			emittedRecordTypes["Csv.Table"] = struct{}{}
+		}
+	}
 	if needsRandomHelpers {
 		if _, ok := emittedRecordTypes["Random.Rng"]; !ok {
 			b.WriteString("type Random_Rng struct {\n\t_State0 int\n\t_State1 int\n\t_State2 int\n\t_State3 int\n}\n\n")
@@ -6685,6 +6754,8 @@ func builtinImportDeps(name string) []string {
 	case "StringEscapeJSON", "StringQuoteJSON":
 		return []string{"strconv"}
 	case "FormatFloat":
+		return []string{"strconv"}
+	case "CsvReadMatrix":
 		return []string{"strconv"}
 	case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
 		if name == "PathStem" {
@@ -8566,6 +8637,20 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "LoadOctagon":
 				return fmt.Sprintf("%s = __octLoadOctagon_%s(%s)", st.Target, goSafeName(st.RetType), st.Args[0]), nil
+			case "JsonNormalize", "JsonParse", "JsonStringify":
+				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, canonicalCompiledBuiltinName(st.Callee), st.Args[0]), nil
+			case "JsonLoad":
+				return fmt.Sprintf("%s = __octJsonString(%q, %s)", st.Target, "JsonLoad", st.Args[0]), nil
+			case "JsonSave":
+				return fmt.Sprintf("%s = __octJsonSave(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "CsvRead", "CsvReadRows":
+				return fmt.Sprintf("%s = __octCsvReadRows(%s)", st.Target, st.Args[0]), nil
+			case "CsvWrite", "CsvWriteRows":
+				return fmt.Sprintf("%s = __octCsvWriteRows(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "CsvReadMatrix":
+				return fmt.Sprintf("%s = __octCsvReadMatrix(%s)", st.Target, st.Args[0]), nil
+			case "CsvReadTable":
+				return fmt.Sprintf("%s = __octCsvReadTable(%s)", st.Target, st.Args[0]), nil
 			case "FileReadText":
 				return fmt.Sprintf("%s = __octFileReadText(%s)", st.Target, st.Args[0]), nil
 			case "FileWriteText":
@@ -9030,6 +9115,69 @@ func __octOctxiliaryClose() {
 	__octOctxiliaryGenericClients = map[string]*__octOctxiliaryClient{}
 	__octOctxiliaryGenericMu.Unlock()
 	for _, client := range clients { __octOctxiliaryCloseClient(client) }
+}
+
+func __octGenericFallible(sidecarCommand string, family string, function string, args []octxiliary.Value, expected octxiliary.ValueKind) (octxiliary.Value, error) {
+	return __octOctxiliaryGenericCall(sidecarCommand, family, function, args, expected)
+}
+
+func __octJsonString(function string, input string) octResult_String {
+	value, err := __octGenericFallible("octxiliary-json", "Json", function, []octxiliary.Value{{Kind: octxiliary.ValueString, String: input}}, octxiliary.ValueString)
+	if err != nil { return octResult_String{Err: err.Error(), IsErr: true} }
+	return octResult_String{Value: value.String}
+}
+
+func __octJsonSave(path string, input string) octResult_Int {
+	value, err := __octGenericFallible("octxiliary-json", "Json", "JsonSave", []octxiliary.Value{{Kind: octxiliary.ValueString, String: path}, {Kind: octxiliary.ValueString, String: input}}, octxiliary.ValueInt)
+	if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	return octResult_Int{Value: value.Int}
+}
+
+func __octCsvReadRows(path string) octResult_StringSliceSlice {
+	value, err := __octGenericFallible("octxiliary-csv", "Csv", "CsvReadRows", []octxiliary.Value{{Kind: octxiliary.ValueString, String: path}}, octxiliary.ValueStringMatrix)
+	if err != nil { return octResult_StringSliceSlice{Err: err.Error(), IsErr: true} }
+	return octResult_StringSliceSlice{Value: value.Strings2}
+}
+
+func __octCsvWriteRows(path string, rows [][]string) octResult_Int {
+	value, err := __octGenericFallible("octxiliary-csv", "Csv", "CsvWriteRows", []octxiliary.Value{{Kind: octxiliary.ValueString, String: path}, {Kind: octxiliary.ValueStringMatrix, Strings2: rows}}, octxiliary.ValueInt)
+	if err != nil { return octResult_Int{Err: err.Error(), IsErr: true} }
+	return octResult_Int{Value: value.Int}
+}
+
+func __octCsvReadMatrix(path string) octResult_FloatSliceSlice {
+	rows := __octCsvReadRows(path)
+	if rows.IsErr { return octResult_FloatSliceSlice{Err: rows.Err, IsErr: true} }
+	if len(rows.Value) == 0 { return octResult_FloatSliceSlice{Err: "InvalidData: csv matrix requires at least one row", IsErr: true} }
+	matrix := make([][]float64, 0, len(rows.Value))
+	for rowIndex, row := range rows.Value {
+		floatRow := make([]float64, 0, len(row))
+		for colIndex, cell := range row {
+			parsed, err := strconv.ParseFloat(cell, 64)
+			if err != nil { return octResult_FloatSliceSlice{Err: fmt.Sprintf("InvalidData: non-numeric cell at row %d column %d: %q", rowIndex+1, colIndex+1, cell), IsErr: true} }
+			floatRow = append(floatRow, parsed)
+		}
+		matrix = append(matrix, floatRow)
+	}
+	return octResult_FloatSliceSlice{Value: matrix}
+}
+
+func __octCsvReadTable(path string) octResult_Csv_Table {
+	rows := __octCsvReadRows(path)
+	if rows.IsErr { return octResult_Csv_Table{Err: rows.Err, IsErr: true} }
+	if len(rows.Value) == 0 { return octResult_Csv_Table{Err: "InvalidData: csv table requires at least one header row", IsErr: true} }
+	headerRow := rows.Value[0]
+	if len(headerRow) == 0 { return octResult_Csv_Table{Err: "InvalidData: csv table header row cannot be empty", IsErr: true} }
+	seen := map[string]int{}
+	for idx, header := range headerRow {
+		if header == "" { return octResult_Csv_Table{Err: fmt.Sprintf("InvalidData: csv table header %d is empty", idx+1), IsErr: true} }
+		if prior, ok := seen[header]; ok { return octResult_Csv_Table{Err: fmt.Sprintf("InvalidData: duplicate csv table header %q at columns %d and %d", header, prior+1, idx+1), IsErr: true} }
+		seen[header] = idx
+	}
+	for rowIndex := 1; rowIndex < len(rows.Value); rowIndex++ {
+		if len(rows.Value[rowIndex]) != len(headerRow) { return octResult_Csv_Table{Err: fmt.Sprintf("InvalidData: inconsistent column count at row %d", rowIndex+1), IsErr: true} }
+	}
+	return octResult_Csv_Table{Value: Csv_Table{}}
 }
 
 func __octFileReadText(path string) octResult_String {

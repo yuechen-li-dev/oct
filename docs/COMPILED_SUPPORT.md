@@ -125,10 +125,10 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - Artifact-lane compiled support remains partial (artifact workflows should assume interpreted execution unless explicitly verified).
 - Flow expression calls still reject side-effectful wrappers and fallible calls in compiled mode.
 - **Direct compiled (no sidecar):** `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
-- **Octxiliary sidecar-backed compiled (`... ! Error`):** `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileReadBytes`, `FileWriteBytes`, `FileDelete`, `DirectoryList`, `DirectoryMake`, `DirectoryMakeAll`, `DirectoryRemoveAll`.
+- **Octxiliary sidecar-backed compiled (`... ! Error`):** `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileReadBytes`, `FileWriteBytes`, `FileDelete`, `DirectoryList`, `DirectoryMake`, `DirectoryMakeAll`, `DirectoryRemoveAll`, `CsvRead`, `CsvReadRows`, `CsvReadTable`, `CsvReadMatrix`, `CsvWrite`, `CsvWriteRows`, `JsonNormalize`, `JsonParse`, `JsonStringify`, `JsonLoad`, `JsonSave`.
 - **Deferred wrapper builtins in this family:** none for the IO file/directory wrapper set listed above.
-- Sidecar-backed compiled calls require Octxiliary availability (the required sidecar beside `.octbin` or discoverable through `OCT_WRAPPER_PATH`; Time wrapper calls require `octxiliary-time`).
-- IO/Csv/Json wrapper breadth remains mixed and should be verified per-target.
+- Sidecar-backed compiled calls require Octxiliary availability (the required sidecar beside `.octbin` or discoverable through `OCT_WRAPPER_PATH`; CSV calls require `octxiliary-csv`, JSON calls require `octxiliary-json`, and Time wrapper calls require `octxiliary-time`).
+- IO/Csv/Json wrapper breadth is still mixed for structured JSON graph helpers (`JsonLower`, `JsonLoadStructured`) and broader record/handle transports; the scalar JSON and CSV helpers listed above are compiled-supported when their sidecars are discoverable.
 - Octxiliary policy: fallible wrapper operations listed above route through the Octxiliary sidecar and propagate sidecar/process/protocol failures as `Error`; simple non-fallible host queries such as `FileExists(path: String) -> Bool` compile directly to host runtime checks so compiled execution does not require `OCT_WRAPPER_PATH` for that query. All other wrappers remain deferred unless explicitly listed as compiled-supported.
 - Some experiment packages still hit compiled-only blocker combinations (wrapper reachability, generated-Go mismatch, or timeout fallback pressure in auto).
 
@@ -213,11 +213,11 @@ The fixture covers generic `String`, `String[]`, `Bytes`, `Int`, `Float`, `Bool`
 Compiled generic Octxiliary wrapper lowering now covers these additional standard-library packages:
 
 - `Archive`: `ListEntries`, `ExtractAll`, and `CreateFromFiles` through `octxiliary-archive` using `String`, `String[]`, and `Int` transports.
-- `Json`: `Save` and `Load` through `octxiliary-json` using `String` and `Int` transports; `Object` remains direct pure Oct.
+- `Json`: `Save` and `Load` through `octxiliary-json` using `String` and `Int` transports; direct JSON builtins `JsonNormalize`, `JsonParse`, `JsonStringify`, `JsonLoad`, and `JsonSave` also lower to `octxiliary-json`; `Object` remains direct pure Oct.
 
 Deferred after the M11 sweep:
 
-- `Csv` remains blocked by `String[][]` row data (`needs_nested_array_transport`).
+- Historical M11 state: `Csv` was blocked by `String[][]` row data (`needs_nested_array_transport`); M13 and H3 now cover row-major CSV plus the narrow direct `CsvReadRows`, `CsvReadTable`, and `CsvReadMatrix` builtins.
 - `Markdown` remains blocked by record-of-`String[]` tables and nested block arrays (`needs_record_transport`, `needs_nested_array_transport`).
 - Historical M11 state: `Pdf` and `Image` were still blocked by opaque handles and record arguments (`needs_handle_transport`, `needs_record_transport`); later M19/M21/M30 sections below update that status.
 - `Plot` remains blocked by `Float[]` plot data and record arguments (`needs_float_array_transport`, `needs_record_transport`).
@@ -233,10 +233,13 @@ Compiled support now includes:
 - `Libraries/Csv.Read(path: String) -> String[][] ! Error`
 - `Libraries/Csv.Write(path: String, rows: String[][]) -> Int ! Error`
 - focused `Libraries/IO` row-major `Read`/`Write` aliases when `octxiliary-csv` is available
+- direct `CsvReadRows(path: String) -> String[][] ! Error` via `octxiliary-csv` `CsvReadRows`
+- direct `CsvReadTable(path: String) -> Csv.Table ! Error` via `octxiliary-csv` `CsvReadRows` plus compiled header/ragged validation
+- direct `CsvReadMatrix(path: String) -> Float[][] ! Error` via `octxiliary-csv` `CsvReadRows` plus compiled numeric conversion
 
-Raw CSV row reads preserve ragged rows and exact parsed string cells. CSV writes emit exactly the supplied row-major string data through Go's standard `encoding/csv` writer. The `octxiliary-csv` sidecar must be discoverable beside the `.octbin` or through `OCT_WRAPPER_PATH`.
+Raw CSV row reads preserve ragged rows and exact parsed string cells. CSV writes emit exactly the supplied row-major string data through Go's standard `encoding/csv` writer. Table and matrix convenience builtins intentionally reuse the row-major sidecar function and keep their validation/conversion in compiled runtime glue, matching the interpreted wrappers without changing the sidecar protocol. The `octxiliary-csv` sidecar must be discoverable beside the `.octbin` or through `OCT_WRAPPER_PATH`.
 
-Still unsupported/deferred: Markdown structured table transports, Plot numeric arrays, Pdf/Image/XLSX handle-backed workflows, structured JSON graph helpers, record transport, handle transport, dynamic `Any`, and broad nested-array generalization.
+Still unsupported/deferred: Markdown structured table transports, Plot numeric arrays, Pdf/Image/XLSX handle-backed workflows beyond their specifically listed support, structured JSON graph helpers (`JsonLower`, `JsonLoadStructured`), record transport beyond narrow handles/pseudo-table validation, dynamic `Any`, and broad nested-array generalization.
 
 ## M16 Octxiliary Plot status
 
