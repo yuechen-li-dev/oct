@@ -1720,21 +1720,25 @@ func (c checker) checkEnumTargetedUtilityWhenExpr(scope *scope, expr ast.Utility
 			return ExprType{}, fmt.Errorf("utility score must be Int")
 		}
 
-		if err := c.checkEnumUtilityVariantCandidate(targetType.Name, enumDecl, whenCase.Value, "case"); err != nil {
+		if err := c.checkEnumUtilityVariantCandidate(scope, ctx, targetType.Name, enumDecl, whenCase.Value, "case"); err != nil {
 			return ExprType{}, err
 		}
 	}
 
-	if err := c.checkEnumUtilityVariantCandidate(targetType.Name, enumDecl, expr.Else, "else"); err != nil {
+	if err := c.checkEnumUtilityVariantCandidate(scope, ctx, targetType.Name, enumDecl, expr.Else, "else"); err != nil {
 		return ExprType{}, err
 	}
 	return ExprType{ValueType: targetType}, nil
 }
 
-func (c checker) checkEnumUtilityVariantCandidate(targetEnum string, enumDecl enumInfo, expr ast.Expr, arm string) error {
+func (c checker) checkEnumUtilityVariantCandidate(scope *scope, ctx functionContext, targetEnum string, enumDecl enumInfo, expr ast.Expr, arm string) error {
 	candidateExpr := expr
+	var payloadArgs []ast.Expr
+	isConstruction := false
 	if call, ok := expr.(ast.CallExpr); ok {
 		candidateExpr = call.Callee
+		payloadArgs = call.Arguments
+		isConstruction = true
 	}
 	field, ok := candidateExpr.(ast.FieldAccessExpr)
 	if !ok {
@@ -1751,8 +1755,31 @@ func (c checker) checkEnumUtilityVariantCandidate(targetEnum string, enumDecl en
 	if !exists {
 		return fmt.Errorf("enum '%s' has no variant '%s'", targetEnum, variantName)
 	}
-	if _, isCall := expr.(ast.CallExpr); isCall || variant.payload != nil {
-		return fmt.Errorf("payload enum variants are not supported in judgment utility cases yet")
+	qualifiedVariant := fmt.Sprintf("%s.%s", targetEnum, variantName)
+	if variant.payload == nil {
+		if isConstruction && len(payloadArgs) != 0 {
+			return fmt.Errorf("enum variant %s does not accept a payload", qualifiedVariant)
+		}
+		if isConstruction && len(payloadArgs) == 0 {
+			return fmt.Errorf("enum variant %s does not accept a payload", qualifiedVariant)
+		}
+		return nil
+	}
+	if !isConstruction {
+		return fmt.Errorf("enum variant %s requires a payload", qualifiedVariant)
+	}
+	if len(payloadArgs) != 1 {
+		return fmt.Errorf("enum variant %s requires a payload", qualifiedVariant)
+	}
+	payloadType, err := c.checkExpr(scope, payloadArgs[0], ctx)
+	if err != nil {
+		return err
+	}
+	if payloadType.Fallible {
+		return fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if !isAssignable(payloadType.ValueType, *variant.payload) {
+		return fmt.Errorf("payload for %s must be %s", qualifiedVariant, *variant.payload)
 	}
 	return nil
 }

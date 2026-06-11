@@ -393,7 +393,9 @@ when utility PumpJudgment {
 }
 ```
 
-This enum-targeted form is still one-shot utility selection. It does not add hidden state, controller commitment memory, hysteresis, `min_commit`, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
+This enum-targeted form is still one-shot utility selection. It supports tag-only variants and explicit single-payload variant construction such as `LabDecision.Retest(3)`, `LabDecision.Treat(2.5)`, and `LabDecision.Escalate("critical")`. Payload expressions are evaluated only for the selected candidate or selected `else` fallback; losing candidate payloads are not evaluated. Utility cases do not bind payloads, and selected payloads are analyzed later with ordinary `match`.
+
+It does not add hidden state, controller commitment memory, hysteresis, `min_commit`, or enum-attached policy. Octomata remains responsible for behavioral progression through states, boards, guard `when`, and controller-bound `when policy`.
 
 A flow can compute an enum judgment with one-shot utility and then use ordinary enum control flow:
 

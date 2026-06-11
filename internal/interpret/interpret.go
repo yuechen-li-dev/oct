@@ -1737,6 +1737,10 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 	hysteresis := hysteresisResult.value.Int
 	minCommit := minCommitResult.value.Int
 
+	if expr.EnumTarget != nil && !expr.ControllerBound {
+		return i.evalEnumTargetedUtilityWhenExpr(env, pkgName, expr)
+	}
+
 	type candidate struct {
 		value Value
 		score int64
@@ -1835,6 +1839,63 @@ func (i interpreter) evalUtilityWhenExpr(env *environment, pkgName string, expr 
 	}
 
 	return evalResult{value: next.value}, nil
+}
+
+func (i interpreter) evalEnumTargetedUtilityWhenExpr(env *environment, pkgName string, expr ast.UtilityWhenExpr) (evalResult, error) {
+	type candidate struct {
+		valueExpr ast.Expr
+		score     int64
+	}
+	validCandidates := make([]candidate, 0, len(expr.Cases))
+	for _, whenCase := range expr.Cases {
+		condition, err := i.evalExpr(env, pkgName, whenCase.Condition)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if condition.hasError {
+			return evalResult{hasError: true, errorVal: condition.errorVal}, nil
+		}
+		if condition.value.Kind != ValueBool {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when case condition must be Bool, got %s", condition.value.Kind)
+		}
+		if !condition.value.Bool {
+			continue
+		}
+
+		scoreResult, err := i.evalExpr(env, pkgName, whenCase.Score)
+		if err != nil {
+			return evalResult{}, err
+		}
+		if scoreResult.hasError {
+			return evalResult{hasError: true, errorVal: scoreResult.errorVal}, nil
+		}
+		if scoreResult.value.Kind != ValueInt {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: utility when case score must be Int, got %s", scoreResult.value.Kind)
+		}
+		validCandidates = append(validCandidates, candidate{valueExpr: whenCase.Value, score: scoreResult.value.Int})
+	}
+
+	selectedExpr := expr.Else
+	if len(validCandidates) > 0 {
+		next := validCandidates[0]
+		for _, c := range validCandidates[1:] {
+			if c.score > next.score {
+				next = c
+			}
+		}
+		selectedExpr = next.valueExpr
+	}
+	if selectedExpr == nil {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: utility when could not select value")
+	}
+	valueResult, err := i.evalExpr(env, pkgName, selectedExpr)
+	if err != nil {
+		return evalResult{}, err
+	}
+	if valueResult.hasError {
+		return evalResult{hasError: true, errorVal: valueResult.errorVal}, nil
+	}
+	return evalResult{value: valueResult.value}, nil
 }
 
 func (i interpreter) evalSwitchExpr(env *environment, pkgName string, expr ast.SwitchExpr) (evalResult, error) {

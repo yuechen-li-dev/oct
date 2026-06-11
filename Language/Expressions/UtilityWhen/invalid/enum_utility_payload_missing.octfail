@@ -1,8 +1,8 @@
-expect error: "enum variant Decision.Hold requires a payload"
+expect error: "enum variant Decision.Run requires a payload"
 
 package MainInvalid
 
-enum Decision { Hold(String) Run }
+enum Decision { Hold Run(Int) }
 
 fn Judge(flag: Bool) -> Decision {
     return when utility Decision {

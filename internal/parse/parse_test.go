@@ -1198,7 +1198,7 @@ func TestBuildFileParsesUtilityWhenWithoutElseForTypecheckDiagnostic(t *testing.
 }
 
 func TestBuildFileParsesEnumTargetedUtilityWhen(t *testing.T) {
-	file := parseSource(t, "enum Decision { Hold Run } fn Main(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold } }")
+	file := parseSource(t, "enum Decision { Hold Run(Int) Fault(String) } fn Main(flag: Bool) -> Decision { return when utility Decision { case Decision.Run(3) when flag score 10 else Decision.Fault(\"fallback\") } }")
 	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)
 	if !ok {
 		t.Fatalf("expected return statement, got %T", file.Functions[0].Body.Statements[0])
@@ -1213,6 +1213,15 @@ func TestBuildFileParsesEnumTargetedUtilityWhen(t *testing.T) {
 	if len(whenExpr.Cases) != 1 || whenExpr.Else == nil {
 		t.Fatalf("expected one case and else, got %d and %v", len(whenExpr.Cases), whenExpr.Else)
 	}
+	caseCall, ok := whenExpr.Cases[0].Value.(ast.CallExpr)
+	if !ok || len(caseCall.Arguments) != 1 {
+		t.Fatalf("expected payload case constructor, got %T", whenExpr.Cases[0].Value)
+	}
+	elseCall, ok := whenExpr.Else.(ast.CallExpr)
+	if !ok || len(elseCall.Arguments) != 1 {
+		t.Fatalf("expected payload else constructor, got %T", whenExpr.Else)
+	}
+
 }
 
 func TestBuildFileRejectsMalformedFlowState(t *testing.T) {

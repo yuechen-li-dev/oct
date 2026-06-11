@@ -2871,6 +2871,9 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.BatchExpr:
 		return c.lowerBatchExpr(e)
 	case ast.UtilityWhenExpr:
+		if e.EnumTarget != nil && utilityWhenHasPayloadCandidate(e) {
+			return "", "", false, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
+		}
 		h, _, _, err := c.lowerExpr(e.Policy.Hysteresis)
 		if err != nil {
 			return "", "", false, err
@@ -2908,6 +2911,18 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	default:
 		return "", "", false, fmt.Errorf("unsupported expression %T", e)
 	}
+}
+
+func utilityWhenHasPayloadCandidate(e ast.UtilityWhenExpr) bool {
+	if _, ok := e.Else.(ast.CallExpr); ok {
+		return true
+	}
+	for _, c := range e.Cases {
+		if _, ok := c.Value.(ast.CallExpr); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error) {
@@ -4906,6 +4921,9 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			RetType:    typeName,
 		}, nil
 	case ast.UtilityWhenExpr:
+		if e.EnumTarget != nil && utilityWhenHasPayloadCandidate(e) {
+			return nil, unsupported("compiled enum-targeted utility payload candidates require delayed payload lowering")
+		}
 		resultType, err := inferFlowExprType(e.Else, env, pkg, boardFieldTypes)
 		if err != nil {
 			return nil, err

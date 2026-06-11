@@ -1,0 +1,12 @@
+expect error: "payload for Decision.Run must be Int"
+
+package MainInvalid
+
+enum Decision { Hold Run(Int) }
+
+fn Judge(flag: Bool) -> Decision {
+    return when utility Decision {
+        case Decision.Run("bad") when flag score 10
+        else Decision.Hold
+    }
+}
