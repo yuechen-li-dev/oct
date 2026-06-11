@@ -1,0 +1,5 @@
+package PackageRegistryDogfood
+
+fn SquareFloat(x: Float) -> Float {
+    return x * x
+}

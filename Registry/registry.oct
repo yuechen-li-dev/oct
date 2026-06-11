@@ -1,0 +1,373 @@
+package Registry
+
+record RegistryIndex {
+    Packages: PackageEntry[]
+}
+
+record PackageEntry {
+    Name: String
+    Version: String
+    Kind: String
+    SourceKind: String
+    Source: String
+    Ref: String
+    Path: String
+    Description: String
+}
+
+fn Registry() -> RegistryIndex {
+    return RegistryIndex {
+        Packages: [
+            PackageEntry {
+                Name: "Analysis"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Analysis"
+                Description: "Analysis package"
+            },
+            PackageEntry {
+                Name: "Archive"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Archive"
+                Description: "Thin archive wrappers for practical zip workflows"
+            },
+            PackageEntry {
+                Name: "Complex"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Complex"
+                Description: "Advanced complex-valued function extensions"
+            },
+            PackageEntry {
+                Name: "Compression"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Compression"
+                Description: "Thin compression wrappers for practical gzip workflows"
+            },
+            PackageEntry {
+                Name: "Cooking"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Cooking"
+                Description: "Do you smell what the Claude is Cookin'?"
+            },
+            PackageEntry {
+                Name: "Csv"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Csv"
+                Description: "Thin CSV wrappers for raw row-major string tables"
+            },
+            PackageEntry {
+                Name: "Deployment"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Deployment"
+                Description: "Explicit deployment/bootstrap helpers for practical Oct lab setup"
+            },
+            PackageEntry {
+                Name: "DifferentialEquations"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/DifferentialEquations"
+                Description: "Deterministic fixed-step ODE initial value solvers"
+            },
+            PackageEntry {
+                Name: "Distributions"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Distributions"
+                Description: "Deterministic core probability distribution evaluation"
+            },
+            PackageEntry {
+                Name: "Geometry"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Geometry"
+                Description: "Canonical planar and solid geometric relations"
+            },
+            PackageEntry {
+                Name: "Hash"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Hash"
+                Description: "Thin hashing wrappers for practical SHA-256 workflows"
+            },
+            PackageEntry {
+                Name: "IO"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/IO"
+                Description: "Thin IO wrappers for practical external package integration"
+            },
+            PackageEntry {
+                Name: "IfErrNotEqualNil"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/IfErrNotEqualNil"
+                Description: "Go compatibility wrapper for error handling."
+            },
+            PackageEntry {
+                Name: "Image"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Image"
+                Description: "Thin image wrappers for loading, saving, and metadata inspection"
+            },
+            PackageEntry {
+                Name: "Interpolation"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Interpolation"
+                Description: "Deterministic 1D linear interpolation core"
+            },
+            PackageEntry {
+                Name: "Json"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Json"
+                Description: "Thin JSON file wrappers with string payloads"
+            },
+            PackageEntry {
+                Name: "LinearAlgebra"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/LinearAlgebra"
+                Description: "Minimal deterministic vector and matrix operations"
+            },
+            PackageEntry {
+                Name: "Mathematics"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Mathematics"
+                Description: "Foundational numerical helpers"
+            },
+            PackageEntry {
+                Name: "Mechanics"
+                Version: "0.6.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Mechanics"
+                Description: "Mechanics stress, failure, fatigue, endurance-limit modifiers, notch fatigue concentration, and solid circular shaft critical-section core"
+            },
+            PackageEntry {
+                Name: "Numerics"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Numerics"
+                Description: "Deterministic scalar root-finding core (M0)"
+            },
+            PackageEntry {
+                Name: "Octomata"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Octomata"
+                Description: "Octomata library family for discrete-time control and estimation components"
+            },
+            PackageEntry {
+                Name: "Optimization"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Optimization"
+                Description: "Deterministic unconstrained optimization core (M0)"
+            },
+            PackageEntry {
+                Name: "Pdf"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Pdf"
+                Description: "Pixel-native PDF page composition wrappers"
+            },
+            PackageEntry {
+                Name: "Physics"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Physics"
+                Description: "Reusable physical constants with explicit SI-oriented units"
+            },
+            PackageEntry {
+                Name: "Plot"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Plot"
+                Description: "Advanced plotting wrappers with explicit sizing and labels"
+            },
+            PackageEntry {
+                Name: "RF"
+                Version: "0.2.4"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/RF"
+                Description: "First-principles RF helpers with fading/shadowing/multipath, deterministic sequence builders, Doppler/coherence reasoning, simple deterministic MIMO helpers, and deterministic 2-port S-parameter operations"
+            },
+            PackageEntry {
+                Name: "Random"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Random"
+                Description: "Placeholder Description"
+            },
+            PackageEntry {
+                Name: "Signal"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Signal"
+                Description: "Signal package"
+            },
+            PackageEntry {
+                Name: "Simulation"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Simulation"
+                Description: "Deterministic fixed-step simulation helpers built on Octomata flow/state"
+            },
+            PackageEntry {
+                Name: "Statistics"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Statistics"
+                Description: "Descriptive statistics core"
+            },
+            PackageEntry {
+                Name: "Structures"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Structures"
+                Description: "Structures package"
+            },
+            PackageEntry {
+                Name: "Text"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Text"
+                Description: "Thin text wrappers for practical regex workflows"
+            },
+            PackageEntry {
+                Name: "Thermofluids"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Thermofluids"
+                Description: "Lumped thermal and simple fluid process helpers"
+            },
+            PackageEntry {
+                Name: "Time"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Time"
+                Description: "Thin time wrappers for practical ISO-8601 workflows"
+            },
+            PackageEntry {
+                Name: "UI"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/UI"
+                Description: "Tiny declarative UI M0 surface over Go-owned reconciler runtime"
+            }
+        ]
+    }
+}
