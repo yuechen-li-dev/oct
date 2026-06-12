@@ -53,7 +53,7 @@ For matrix and tensor-focused language surface, see [16 vectors, matrices, and t
   - Explicit conversion using **nearest** with **halves away from zero**.
 - `BaseValue(x: Float | Float<D>) -> Float`.
 - `ToString(value: Int | Float | Bool) -> String`.
-- `String.From<T>(value) -> String` for compiler-known `T` only (`Int`, `Float`, `Bool`, `String`).
+- `String.From<T>(value) -> String` for compiler-known scalar `T` only (`Int`, `Float`, `Bool`, `String`) in interpreted and compiled execution.
 - `FormatFloat(value: Float, precision: Int) -> String`.
 
 ### Conversion guidance
@@ -68,7 +68,9 @@ For matrix and tensor-focused language surface, see [16 vectors, matrices, and t
 - Use `Float(x)` only for explicit `Int -> Float` conversion.
 - Use `FormatFloat(x, precision)` when display precision matters.
 - Use `String.From<T>(x)` as the preferred namespaced conversion in report/library code.
+- Use `FormatFloat(x, precision)` when dimensionless `Float` display precision matters.
 - `String.From<T>` requires explicit type arguments but does **not** introduce user-defined generics.
+- `String.From<T>` intentionally does not support enums, records, arrays, or dimensioned numeric values such as `Float<K>`; unit-aware formatting is future/separate.
 
 ### Constrained compiler-known type arguments
 

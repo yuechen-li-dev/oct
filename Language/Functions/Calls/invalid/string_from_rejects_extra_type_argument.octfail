@@ -1,0 +1,6 @@
+expect error: "expected statement"
+package Main
+
+fn Main() -> String {
+    return StringFrom<Int, String>(1)
+}

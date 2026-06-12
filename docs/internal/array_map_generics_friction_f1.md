@@ -3,7 +3,7 @@
 ## Executive summary
 
 F1 tested everyday scientific data-shaping tasks against the current Oct reference surface and runnable probes under `Experiments/LanguageFriction/ArrayMapGenerics/`.
-The main result is convergence state **meaningful progression**: array/vector/matrix scalar element access, manual loop transforms, concrete function-value helpers, SI-dimensioned array elements, and SI-dimensioned Octomata board snapshots work; the next blockers are now isolated as missing slice syntax, missing dictionary/map values, absent user-defined generics, and incomplete compiled support for `String.From<T>` in the probe package.
+The main result is convergence state **meaningful progression**: array/vector/matrix scalar element access, manual loop transforms, concrete function-value helpers, SI-dimensioned array elements, and SI-dimensioned Octomata board snapshots work; the next blockers are now isolated as missing slice syntax, missing dictionary/map values, absent user-defined generics, and the now-resolved F4 compiled support gap for scalar `String.From<T>` in the probe package.
 
 The current reference explicitly supports homogeneous arrays, `xs[i]` indexing, mutable indexed assignment, `Append`, `Len`, exact element type matching including SI dimensions, and element-wise array arithmetic.
 It does not document slices.
@@ -14,7 +14,7 @@ Post-F1 direction update: F2 supersedes the earlier "slice syntax" shorthand wit
 
 Recommended v0.1 direction:
 
-- **Must-have for v0.1:** add conservative 1D array slice syntax if schedule allows; fix/close the compiled support gap for promised `String.From<T>` scalar conversions; document the current map/dictionary absence; keep SI board-field behavior covered because the probe shows interpreted and compiled snapshot preservation works.
+- **Must-have for v0.1:** add conservative 1D array slice syntax if schedule allows; keep the F4 compiled parity fix for promised `String.From<T>` scalar conversions covered; document the current map/dictionary absence; keep SI board-field behavior covered because the probe shows interpreted and compiled snapshot preservation works.
 - **Nice-to-have for v0.1:** add concrete, non-generic `Array`/`Analysis` helpers for common `Float[]`, `Int[]`, and `String[]` workflows where they remove large boilerplate; add explicit matrix row/column extraction helpers returning arrays, not vectors, if they can be implemented without a full tensor-slicing design.
 - **Defer to v0.2:** full `Map<K,V>`, map literals, user-defined generics, bounded generics, iterator protocols, vector/matrix/tensor slicing, and automatic `String.From` for enums/records/arrays.
 
@@ -26,7 +26,7 @@ Recommended v0.1 direction:
 | B. Vector/matrix row and column operations | row extraction, column extraction, row/column reductions, SI-unit row extraction | **Works but awkward** when returning arrays; vector conversion and matrix slicing are **not available** | `vector_matrix_manual.octest`; `expected_fail/matrix_slice_not_supported.oct.disabled` |
 | C. Map/transform/filter/reduce/zip | Float map, Int-to-String map, filter, sum, normalize, moving average, z-score, map-with-index, zip with shape check | **Works but awkward** with concrete helper functions; reusable generic helpers are **impossible today** | `array_transform_manual.octest`; function-value docs show exact concrete signatures only |
 | D. Lookup tables/dictionaries/maps | String-to-Float lookup, enum score lookup, frequency counting, grouping, CSV named fields, missing-key lookup | **Impossible as a general data structure today**; records/enums substitute only for static/fixed cases | `expected_fail/map_literal_not_supported.oct.disabled` |
-| E. `String.From<T>` | `Int`, `Float`, `Bool`, `String`, enum, unit value, array, formatting | **Works interpreted for compiler-known scalar types**; enum/unit/array are intentionally rejected; compiled probe falls back/fails for `String.From` | `string_and_board_probe.octest`; `expected_fail/string_from_enum_not_supported.oct.disabled` |
+| E. `String.From<T>` | `Int`, `Float`, `Bool`, `String`, enum, unit value, array, formatting | **Works interpreted and, after F4, compiled for compiler-known scalar types**; enum/unit/array are intentionally rejected | `string_and_board_probe.octest`; `expected_fail/string_from_enum_not_supported.oct.disabled` |
 | F. Generics/bounded generics | user-defined `Identity<T>`, generic map/filter/reduce, typed `Map<K,V>` | **Impossible today** outside compiler-owned type arguments | `expected_fail/user_defined_generic_function_not_supported.oct.disabled` |
 | G. SI board fields | `board.LastTemp: Float<K>`, assignment, return, snapshot | **Works today** in interpreted and compiled probe for snapshot preservation | `string_and_board_probe.octest` |
 
@@ -391,17 +391,16 @@ Do not start with bounded generics before plain type parameters work; otherwise 
 It rejects enum, array, and dimensioned numeric type arguments with a clear M0 diagnostic.
 `FormatFloat(value, precision)` works for dimensionless `Float` precision control.
 
-### Compiled behavior gap
+### F1 compiled behavior gap (resolved by F4 for scalar conversions)
 
-Running the F1 probes with `--execution compiled` produced:
+Before F4, running the F1 probes with `--execution compiled` produced:
 
 ```text
 compiled execution required: function LanguageFrictionArrayMapGenerics.FloatLabels: unknown function 'String.From'
 compiled execution required: function LanguageFrictionArrayMapGenerics.StringFromCompilerKnownScalarsWorks: unknown function 'String.From'
 ```
 
-Auto mode fell back to interpreted for the affected tests.
-Because `String.From<T>` is in the reference and String library README, compiled lowering for the documented scalar M0 cases should be treated as a v0.1 must-fix or explicitly called out in compiled-support docs.
+Auto mode fell back to interpreted for the affected tests. F4 resolves this scalar lowering gap for `Int`, `Float`, `Bool`, and `String`; enum, array, record, and dimensioned numeric conversions remain intentionally unsupported.
 
 ### Recommended API direction
 
@@ -447,7 +446,7 @@ F1 did not add a normative test because it is an audit task and the probe remain
    - no negative indices;
    - no step;
    - no vector/matrix/tensor slicing.
-2. **Compiled scalar `String.From<T>` parity** for documented M0 type arguments (`Int`, `Float`, `Bool`, `String`) or an explicit compiled-support limitation if parity cannot land.
+2. **Compiled scalar `String.From<T>` parity** for documented M0 type arguments (`Int`, `Float`, `Bool`, `String`) is resolved by F4 and should remain covered.
 3. **Documentation clarity** that user-defined generics and maps/dictionaries are absent in v0.1, even though compiler-owned generic-looking forms exist.
 4. **SI board snapshot documentation cleanup** if dimensioned scalar board fields are intended to be supported.
 
@@ -508,7 +507,7 @@ Result:
 Result: 6 passed, 0 failed, 0 skipped
 ```
 
-Auto mode reported interpreted fallback for tests using `String.From` and several Assert-backed cases, while the SI board snapshot probe compiled.
+During F1, auto mode reported interpreted fallback for tests using `String.From` and several Assert-backed cases, while the SI board snapshot probe compiled. After F4, scalar `String.From<T>` no longer accounts for fallback; remaining strict compiled probe failures are separate Assert/package lowering gaps.
 
 ### Compiled probe command
 
@@ -516,7 +515,7 @@ Auto mode reported interpreted fallback for tests using `String.From` and severa
 go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution compiled
 ```
 
-Result: failed for 5 probe tests due to compiled-support limitations, including `String.From` lowering and Assert package lookup in these experiment tests; passed the SI board snapshot probe.
+Historical F1 result: failed for 5 probe tests due to compiled-support limitations, including then-missing `String.From` lowering and Assert package lookup in these experiment tests; after F4, the scalar `String.From<T>` cases compile while Assert package lookup remains separate.
 This is useful audit evidence, not a production regression.
 
 ### Expected-fail probes

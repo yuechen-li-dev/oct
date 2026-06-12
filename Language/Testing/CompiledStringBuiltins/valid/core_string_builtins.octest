@@ -39,3 +39,14 @@ fn SplitLinesAndJson() -> Void {
     Assert.Equal("a\\\"b\\n", StringEscapeJSON("a\"b\n"), "escape json")
     Assert.Equal("\"a\\\"b\"", StringQuoteJSON("a\"b"), "quote json")
 }
+
+[Fact]
+fn FromM0Scalars() -> Void {
+    Assert.Equal("0", StringFrom<Int>(0), "from zero int")
+    Assert.Equal("-42", StringFrom<Int>(-42), "from negative int")
+    Assert.Equal("3.5", StringFrom<Float>(3.5), "from simple float")
+    Assert.Equal("0", StringFrom<Float>(0.0), "from zero float")
+    Assert.Equal("true", StringFrom<Bool>(true), "from bool true")
+    Assert.Equal("false", StringFrom<Bool>(false), "from bool false")
+    Assert.Equal("abc", StringFrom<String>("abc"), "from string identity")
+}

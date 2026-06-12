@@ -11,7 +11,7 @@ go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution 
 go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution auto
 ```
 
-A strict `--execution compiled` run is expected to expose any remaining compiled-support gaps for this audit pack; `Array.CrossSection` itself is implemented in interpreted and compiled paths.
+A strict `--execution compiled` run is still useful for exposing remaining compiled-support gaps in this audit pack. F4 fixes compiled scalar `String.From<T>` parity for `Int`, `Float`, `Bool`, and `String`; the remaining strict compiled failures are separate probe gaps such as package-qualified `Assert` lowering in some manual-loop evidence tests. `Array.CrossSection` itself is implemented in interpreted and compiled paths.
 
 Current unsupported-probe diagnostics recorded during F1:
 

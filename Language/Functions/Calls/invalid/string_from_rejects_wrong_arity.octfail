@@ -1,0 +1,6 @@
+expect error: "function 'String.From' expects 1 argument, got 2"
+package Main
+
+fn Main() -> String {
+    return StringFrom<Int>(1, 2)
+}
