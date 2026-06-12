@@ -99,3 +99,5 @@ Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/project.assets.json
 Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/project.nuget.cache
 Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.assets.cache
 Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.csproj.AssemblyReference.cache
+markdown_m1_smoke.md
+markdown_smoke.md

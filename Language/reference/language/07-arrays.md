@@ -27,6 +27,11 @@ Type matching is exact, including dimensions and nominal names.
 - Nested arrays are still arrays (containers), not matrix values.
 - Nested arrays may be ragged/jagged (`[[1], [2, 3]]`) because they are container-of-container values.
 - `[]` never means null/nil; it is a zero-length array with a known element type.
+- `[]` can be passed directly as a function or flow call argument when the
+  corresponding parameter has a declared array type — the parameter type
+  supplies the "expected array type" context, e.g. `Combine([])` is valid
+  when `Combine` is declared as `fn Combine(xs: Measurement[]) -> ...`.
+- In any other position (e.g. assigned to `var`/`let`, or returned), `[]` still requires an explicit array-typed annotation: `var xs: Int[] = []`.
 - Oct does not have Python colon slice syntax: `xs[1:3]` is invalid.
 - Oct does not have bracket range extraction in M0: `xs[1..3]` is invalid. Use `Array.CrossSection(xs, 1..3)`.
 - `Array.CrossSection` is not a view; mutating the result array storage does not mutate the source array storage.

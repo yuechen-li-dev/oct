@@ -2512,7 +2512,7 @@ func (c checker) checkFlowCallArguments(displayName string, signature flowSignat
 		return ExprType{}, fmt.Errorf("flow '%s' expects %d arguments, got %d", displayName, len(signature.parameters), len(arguments))
 	}
 	for i, argumentExpr := range arguments {
-		argumentType, err := c.checkExpr(scope, argumentExpr, ctx)
+		argumentType, err := c.checkExprWithExpected(scope, argumentExpr, ctx, &signature.parameters[i])
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -2533,7 +2533,7 @@ func (c checker) checkFunctionCallArguments(displayName string, signature functi
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", displayName, len(signature.parameters), len(arguments))
 	}
 	for i, argumentExpr := range arguments {
-		argumentType, err := c.checkExpr(scope, argumentExpr, ctx)
+		argumentType, err := c.checkExprWithExpected(scope, argumentExpr, ctx, &signature.parameters[i])
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -2637,7 +2637,7 @@ func splitTwoSegmentQualifiedName(name string) (string, string, bool) {
 	if dot <= 0 || dot >= len(name)-1 {
 		return "", "", false
 	}
-	if strings.Index(name[dot+1:], ".") >= 0 {
+	if strings.Contains(name[dot+1:], ".") {
 		return "", "", false
 	}
 	return name[:dot], name[dot+1:], true
@@ -6439,7 +6439,7 @@ func splitQualifiedTypeName(typeName string) (string, string, bool) {
 	if dot <= 0 || dot == len(typeName)-1 {
 		return "", "", false
 	}
-	if strings.Index(typeName[dot+1:], ".") >= 0 {
+	if strings.Contains(typeName[dot+1:], ".") {
 		return "", "", false
 	}
 	return typeName[:dot], typeName[dot+1:], true
