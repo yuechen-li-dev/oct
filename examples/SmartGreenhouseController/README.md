@@ -8,7 +8,7 @@ This example is a small, runnable greenhouse control demo showing multiple core 
 - `switch` expressions
 - arrays vs vectors/matrices as distinct concepts
 - `batch` mapping over arrays
-- Octomata `flow`/`state` with scalar `board`
+- Octomata `flow`/`state` with scalar `board` fields, including `Float<K>` temperature state
 - `when policy` with `hysteresis` and `min_commit`
 - runtime flow inspection via `StateHistory` and `BoardSnapshot(machine)!`
 
@@ -23,5 +23,5 @@ go run ./cmd/oct test examples/SmartGreenhouseController --execution auto
 ## Notes
 
 - Compiled mode is currently green for this example (`go run ./cmd/oct test examples/SmartGreenhouseController --execution compiled`).
-- The flow uses scalar `board` fields (`Int`/`Float`) so snapshots can be observed directly in tests.
+- The flow keeps temperature as a dimensioned `Float<K>` board field; board snapshots preserve the unit-qualified scalar type instead of forcing manual unit stripping.
 - Candidate selection in `when policy` is intentionally static; dynamic candidate sets are demonstrated elsewhere via `Libraries/Octomata` helpers.

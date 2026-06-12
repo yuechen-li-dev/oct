@@ -9,7 +9,7 @@ This file is the **source of truth** for compiled support posture.
 
 Compiled mode now lowers the documented M0 scalar `String.From<T>` conversions for `Int`, `Float`, `Bool`, and `String`. The generated Go uses `strconv.Itoa`, `strconv.FormatFloat(value, 'g', -1, 64)`, `strconv.FormatBool`, and identity for `String`, matching interpreted output for the supported scalar values.
 
-Unsupported type arguments remain rejected before lowering: enums, records, arrays, and dimensioned numeric values such as `Float<K>` are not part of F4. Use `FormatFloat(value, precision)` when dimensionless `Float` display precision matters; unit-aware formatting remains a future/separate API.
+Unsupported type arguments remain rejected before lowering: enums, records, arrays, and dimensioned numeric values such as `Float<K>` are not part of `String.From<T>`. Use `FormatFloat(value, precision)` when dimensionless `Float` display precision matters; unit-aware formatting remains a future/separate API.
 
 
 ## M28a RF compiled cleanup status
@@ -179,7 +179,14 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 3. Isolate and clear remaining M2/M2b compiled blockers with focused fixtures.
 4. Expand compiled sweep fixtures only after each newly-green surface is measured.
 
-| BoardSnapshot(machine) | Supported | Supported (M0 scalar board fields) | `OctomataBoardSnapshot`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support is currently limited to detached/read-only snapshots of scalar board fields (`Bool`, `Int`, `Float`, `String`). Board arrays remain unsupported in compiled M0. |
+| BoardSnapshot(machine) | Supported | Supported (scalar board fields, including `Int<D>`/`Float<D>`) | `OctomataBoardSnapshot`; `DimensionedScalarBoardProbe`; `Experiments.FmBrownNoiseKalman.M3.FlowSmoke` | Compiled support returns detached/read-only snapshots of scalar board fields (`Bool`, `String`, `Int`/`Int<D>`, `Float`/`Float<D>`). Board arrays, vectors, matrices, records, and enums remain unsupported. |
+
+## 2026-06-12 F6 SI board and BaseUnit release contract
+
+- Compiled mode supports `BaseUnit(Float<D>) -> Float` and dimensionless `BaseUnit(Float) -> Float`; the lowering erases only the static dimension and leaves the numeric value unchanged. `BaseValue` remains accepted as the older spelling.
+- Compiled Octomata board fields support scalar `Int<D>` and `Float<D>` values in addition to `Bool`, `Int`, `Float`, and `String`.
+- Compiled `BoardSnapshot(machine)!` preserves exact dimensioned scalar field types in the generated snapshot record.
+- Board arrays, vectors, matrices, records, enums, and non-scalar runtime values remain outside the compiled board snapshot contract.
 
 ## 2026-05-23 SmartGreenhouse compiled convergence pass 2
 

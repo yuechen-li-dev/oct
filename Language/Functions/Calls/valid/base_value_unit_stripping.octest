@@ -1,14 +1,26 @@
 package Main
 
+[Fact]
 fn BaseValueStripsUnitsExplicitly() -> Void {
-    let t: Float<s> = 0.5<s>
-    Assert.LGTM(BaseValue(t), 0.5)
+    let t: Float<s> = 0.5s
+    Assert.Equal(0.5, BaseValue(t), "seconds payload")
 
-    let f: Float<Hz> = 60.0<Hz>
-    Assert.LGTM(BaseValue(f), 60.0)
+    let f: Float<Hz> = 60.0Hz
+    Assert.Equal(60.0, BaseValue(f), "hertz payload")
 
-    let a: Float<m*s^-2> = 9.8<m*s^-2>
-    Assert.LGTM(BaseValue(a), 9.8)
+    let a: Float<m*s^-2> = 9.8m*s^-2
+    Assert.Equal(9.8, BaseValue(a), "acceleration payload")
 
-    Assert.LGTM(BaseValue(3.0), 3.0)
+    Assert.Equal(3.0, BaseValue(3.0), "dimensionless identity")
+}
+
+[Fact]
+fn BaseUnitStripsUnitsExplicitly() -> Void {
+    let temperature: Float<K> = 300.0K
+    Assert.Equal(300.0, BaseUnit(temperature), "kelvin payload")
+
+    let length: Float<m> = 2.0m
+    Assert.Equal(2.0, BaseUnit(length), "meter payload")
+
+    Assert.Equal(3.0, BaseUnit(3.0), "dimensionless identity")
 }

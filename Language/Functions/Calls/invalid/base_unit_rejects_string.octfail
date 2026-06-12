@@ -1,0 +1,7 @@
+expect error: "function 'BaseUnit' argument 1 expects Float, got String"
+
+package MainInvalid
+
+fn Main() -> Float {
+    return BaseUnit("x")
+}

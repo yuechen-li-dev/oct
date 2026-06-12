@@ -646,13 +646,13 @@ func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
 		return Type{}, err
 	}
 	if t.IsArray || t.IsVector || t.IsMatrix || t.Name != "" || t.Base == BaseTypeError || t.Base == BaseTypeVoid || t.Base == BaseTypeComplex || t.Base == BaseTypeRange || t.Base == BaseTypeUI || t.Base == BaseTypeIndex {
-		return Type{}, fmt.Errorf("board fields must be one of Bool, Int, Float, or String")
+		return Type{}, fmt.Errorf("board fields must be scalar Bool, String, Int/Int<D>, or Float/Float<D>")
 	}
 	switch t.Base {
 	case BaseTypeBool, BaseTypeInt, BaseTypeFloat, BaseTypeString:
 		return t, nil
 	default:
-		return Type{}, fmt.Errorf("board fields must be one of Bool, Int, Float, or String")
+		return Type{}, fmt.Errorf("board fields must be scalar Bool, String, Int/Int<D>, or Float/Float<D>")
 	}
 }
 
@@ -4534,7 +4534,7 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Float, got %s", callee, argumentType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
-	case "BaseValue":
+	case "BaseValue", "BaseUnit":
 		if argumentType.ValueType.Base != BaseTypeFloat || argumentType.ValueType.IsArray || argumentType.ValueType.IsVector || argumentType.ValueType.IsMatrix {
 			return ExprType{}, fmt.Errorf("function '%s' argument 1 expects Float, got %s", callee, argumentType.ValueType)
 		}

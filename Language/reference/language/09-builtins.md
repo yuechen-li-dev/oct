@@ -51,7 +51,7 @@ For matrix and tensor-focused language surface, see [16 vectors, matrices, and t
   - Explicit conversion using ceil (`toward +infinity`).
 - `RoundToInt(x: Float) -> Int`.
   - Explicit conversion using **nearest** with **halves away from zero**.
-- `BaseValue(x: Float | Float<D>) -> Float`.
+- `BaseUnit(x: Float | Float<D>) -> Float` strips the static unit dimension and returns the unchanged numeric payload. `BaseValue` remains accepted as the older spelling.
 - `ToString(value: Int | Float | Bool) -> String`.
 - `String.From<T>(value) -> String` for compiler-known scalar `T` only (`Int`, `Float`, `Bool`, `String`) in interpreted and compiled execution.
 - `FormatFloat(value: Float, precision: Int) -> String`.

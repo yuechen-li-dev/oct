@@ -1,0 +1,12 @@
+expect error: "function 'BaseUnit' argument 1 expects Float, got Sample"
+
+package MainInvalid
+
+record Sample {
+    Value: Float
+}
+
+fn Main() -> Float {
+    let sample = Sample { Value: 1.0 }
+    return BaseUnit(sample)
+}

@@ -1,0 +1,29 @@
+package ControlFlowOctomataBoardSnapshot
+
+flow DimensionedScalarBoardProbe(temp: Float<K>, count: Int<m>) -> Float<K> {
+    board {
+        LastTemp: Float<K>
+        Distance: Int<m>
+    }
+
+    state Start {
+        board.LastTemp = temp
+        board.Distance = count
+        suspend
+        return board.LastTemp
+    }
+}
+
+[Fact]
+fn DimensionedScalarBoardFieldsAssignReturnAndSnapshotWithUnits() -> Void {
+    let m = DimensionedScalarBoardProbe(294.0K, 3m)
+    Step(m)
+    let snapshot = BoardSnapshot(m)!
+    let typedTemp: Float<K> = snapshot.LastTemp
+    let typedDistance: Int<m> = snapshot.Distance
+    Assert.Equal(294.0K, typedTemp, "Float<K> snapshot field should preserve unit type")
+    Assert.Equal(3m, typedDistance, "Int<m> snapshot field should preserve unit type")
+
+    Step(m)
+    Assert.Equal(294.0K, Result(m)!, "flow can return a dimensioned board field")
+}

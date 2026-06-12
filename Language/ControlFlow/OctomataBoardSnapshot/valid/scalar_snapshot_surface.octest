@@ -1,6 +1,4 @@
-package ControlFlow.OctomataBoardSnapshot
-
-import Test.Assert
+package ControlFlowOctomataBoardSnapshot
 
 flow ScalarBoardProbe(sample: Float) -> Int {
     board {
@@ -15,8 +13,6 @@ flow ScalarBoardProbe(sample: Float) -> Int {
         board.Estimate = sample
         board.Label = "step1"
         suspend
-    }
-    state Next {
         board.Count = board.Count + 1
         board.Estimate = board.Estimate + 1.0
         board.Label = "step2"
@@ -28,7 +24,8 @@ flow NoBoard() -> Int {
     state Start { return 1 }
 }
 
-test "BoardSnapshot returns typed scalar fields and detaches" {
+[Fact]
+fn BoardSnapshotReturnsTypedScalarFieldsAndDetaches() -> Void {
     let m = ScalarBoardProbe(2.5)
     Step(m)
     let a = BoardSnapshot(m)!
@@ -44,7 +41,8 @@ test "BoardSnapshot returns typed scalar fields and detaches" {
     Assert.Equal(3.5, b.Estimate, "latest float")
 }
 
-test "BoardSnapshot works while active and after completion" {
+[Fact]
+fn BoardSnapshotWorksWhileActiveAndAfterCompletion() -> Void {
     let m = ScalarBoardProbe(1.0)
     Step(m)
     Assert.Equal("Start", Active(m), "suspended active state")

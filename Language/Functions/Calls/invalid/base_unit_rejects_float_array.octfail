@@ -1,0 +1,8 @@
+expect error: "function 'BaseUnit' argument 1 expects Float, got Float[]"
+
+package MainInvalid
+
+fn Main() -> Float {
+    let values: Float[] = [1.0]
+    return BaseUnit(values)
+}

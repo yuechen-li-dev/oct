@@ -28,7 +28,7 @@ Recommended v0.1 direction:
 | D. Lookup tables/dictionaries/maps | String-to-Float lookup, enum score lookup, frequency counting, grouping, CSV named fields, missing-key lookup | **Impossible as a general data structure today**; records/enums substitute only for static/fixed cases | `expected_fail/map_literal_not_supported.oct.disabled` |
 | E. `String.From<T>` | `Int`, `Float`, `Bool`, `String`, enum, unit value, array, formatting | **Works interpreted and, after F4, compiled for compiler-known scalar types**; enum/unit/array are intentionally rejected | `string_and_board_probe.octest`; `expected_fail/string_from_enum_not_supported.oct.disabled` |
 | F. Generics/bounded generics | user-defined `Identity<T>`, generic map/filter/reduce, typed `Map<K,V>` | **Impossible today** outside compiler-owned type arguments | `expected_fail/user_defined_generic_function_not_supported.oct.disabled` |
-| G. SI board fields | `board.LastTemp: Float<K>`, assignment, return, snapshot | **Works today** in interpreted and compiled probe for snapshot preservation | `string_and_board_probe.octest` |
+| G. SI board fields | `board.LastTemp: Float<K>`, assignment, return, snapshot | **Resolved for v0.1/F6** in interpreted and compiled execution; `BoardSnapshot` preserves `Int<D>`/`Float<D>` scalar fields | `dimensioned_scalar_snapshot_surface.octest`; `si_board_baseunit_f6.md` |
 
 ## Works today
 
@@ -91,7 +91,7 @@ flow Controller(temp: Float<K>) -> Float<K> {
 
 Interpreted mode passed the snapshot assertion, and compiled mode also passed this particular board probe.
 This is better than expected from the older scalar-only wording in the Octomata reference, which says `BoardSnapshot` returns scalar board fields (`Bool`/`Int`/`Float`/`String` only).
-Because `Float<K>` is a dimensioned `Float`, the implementation currently preserves the unit type in the typed snapshot, but the reference wording should be tightened so this is not a documentation gap.
+Because `Float<K>` is a dimensioned `Float`, the implementation preserves the unit type in the typed snapshot; F6 tightened the reference wording and added interpreted/compiled language coverage for dimensioned scalar board fields.
 
 ## Awkward today
 
@@ -430,7 +430,7 @@ The requested SI board probe is materially supported today:
 
 Recommended v0.1 action is documentation/test hygiene rather than feature work:
 
-1. Update Octomata board snapshot wording to say scalar numeric board fields include dimensioned `Int<D>`/`Float<D>` if that is intended.
+1. Done in F6: Octomata board snapshot wording says scalar numeric board fields include dimensioned `Int<D>`/`Float<D>`.
 2. Add/keep a normative language test under `Language/ControlFlow/...` only if this is intended as a stable language contract.
 3. If compiled support is not intended to be guaranteed, update `docs/COMPILED_SUPPORT.md` instead.
 
