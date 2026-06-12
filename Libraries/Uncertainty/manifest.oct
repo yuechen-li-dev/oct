@@ -1,0 +1,25 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Uncertainty"
+        Version: "0.1.0"
+        Description: "Linear (first-order) propagation of measurement uncertainty through arithmetic and common functions"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "Statistics" VersionRequirement: "0.1.0" }
+        ]
+    }
+}

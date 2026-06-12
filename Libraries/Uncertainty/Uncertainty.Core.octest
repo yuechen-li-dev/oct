@@ -1,0 +1,227 @@
+package Uncertainty
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn NewRejectsNegativeUncertainty() -> Void {
+    let m = Assert.LGTM(New(5.0, 0.1), "non-negative uncertainty should succeed")
+    Assert.Near(5.0, m.Value, 1e-12, "value should be stored")
+    Assert.Near(0.1, m.Uncertainty, 1e-12, "uncertainty should be stored")
+
+    Assert.Error(New(5.0, -0.1), "negative uncertainty should be rejected")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn ExactHasZeroUncertainty() -> Void {
+    let m = Exact(3.0)
+    Assert.Near(3.0, m.Value, 1e-12, "exact value should be stored")
+    Assert.Near(0.0, m.Uncertainty, 1e-12, "exact value has zero uncertainty")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn AddCombinesUncertaintyInQuadrature() -> Void {
+    let a = Assert.LGTM(New(10.0, 0.3), "a should construct")
+    let b = Assert.LGTM(New(5.0, 0.4), "b should construct")
+    let sum = Add(a, b)
+
+    Assert.Near(15.0, sum.Value, 1e-12, "sum value")
+    // sqrt(0.3^2 + 0.4^2) = 0.5
+    Assert.Near(0.5, sum.Uncertainty, 1e-12, "sum uncertainty is the quadrature sum")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn SubCombinesUncertaintyInQuadratureRegardlessOfSign() -> Void {
+    let a = Assert.LGTM(New(10.0, 0.3), "a should construct")
+    let b = Assert.LGTM(New(5.0, 0.4), "b should construct")
+    let diff = Sub(a, b)
+
+    Assert.Near(5.0, diff.Value, 1e-12, "difference value")
+    Assert.Near(0.5, diff.Uncertainty, 1e-12, "difference uncertainty is the quadrature sum")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn NegPreservesUncertainty() -> Void {
+    let a = Assert.LGTM(New(4.0, 0.2), "a should construct")
+    let n = Neg(a)
+    Assert.Near(-4.0, n.Value, 1e-12, "negated value")
+    Assert.Near(0.2, n.Uncertainty, 1e-12, "uncertainty unchanged by negation")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn MulPropagatesRelativeUncertainties() -> Void {
+    // a = 2.0 +/- 0.1 (5%), b = 3.0 +/- 0.3 (10%)
+    let a = Assert.LGTM(New(2.0, 0.1), "a should construct")
+    let b = Assert.LGTM(New(3.0, 0.3), "b should construct")
+    let product = Mul(a, b)
+
+    Assert.Near(6.0, product.Value, 1e-12, "product value")
+    // sqrt((3*0.1)^2 + (2*0.3)^2) = sqrt(0.09 + 0.36) = sqrt(0.45)
+    Assert.Near(Sqrt(0.45), product.Uncertainty, 1e-12, "product uncertainty")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn ScaleMultipliesValueAndUncertaintyByAbsK() -> Void {
+    let a = Assert.LGTM(New(4.0, 0.5), "a should construct")
+    let scaled = Scale(a, -2.0)
+
+    Assert.Near(-8.0, scaled.Value, 1e-12, "scaled value")
+    Assert.Near(1.0, scaled.Uncertainty, 1e-12, "scaled uncertainty uses |k|")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn ScaleMatchesMulByExactConstant() -> Void {
+    let a = Assert.LGTM(New(4.0, 0.5), "a should construct")
+    let viaScale = Scale(a, 3.0)
+    let viaMul = Mul(a, Exact(3.0))
+
+    Assert.Near(viaMul.Value, viaScale.Value, 1e-12, "Scale and Mul-by-Exact should agree on value")
+    Assert.Near(viaMul.Uncertainty, viaScale.Uncertainty, 1e-12, "Scale and Mul-by-Exact should agree on uncertainty")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn DivPropagatesUncertaintyAndRejectsZeroDenominator() -> Void {
+    // a = 10.0 +/- 1.0 (10%), b = 2.0 +/- 0.2 (10%)
+    let a = Assert.LGTM(New(10.0, 1.0), "a should construct")
+    let b = Assert.LGTM(New(2.0, 0.2), "b should construct")
+    let quotient = Assert.LGTM(DivBy(a, b), "division should succeed")
+
+    Assert.Near(5.0, quotient.Value, 1e-12, "quotient value")
+    // relative uncertainties both 10% -> combined relative unc = sqrt(0.01+0.01) ~= 0.1414
+    let relUnc = Assert.LGTM(RelativeUncertainty(quotient), "relative uncertainty should compute")
+    Assert.Near(Sqrt(0.02), relUnc, 1e-9, "combined relative uncertainty")
+
+    Assert.Error(DivBy(a, Exact(0.0)), "division by an exactly-zero value should be rejected")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn PowIntMatchesAnalyticDerivativeForSquare() -> Void {
+    // a = 3.0 +/- 0.1 -> a^2 = 9.0, unc = |2*3| * 0.1 = 0.6
+    let a = Assert.LGTM(New(3.0, 0.1), "a should construct")
+    let squared = Assert.LGTM(PowInt(a, 2), "square should succeed")
+
+    Assert.Near(9.0, squared.Value, 1e-12, "squared value")
+    Assert.Near(0.6, squared.Uncertainty, 1e-9, "squared uncertainty matches 2x*unc(x)")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn PowIntRejectsZeroBaseWithNonPositiveExponent() -> Void {
+    let zero = Exact(0.0)
+    Assert.Error(PowInt(zero, 0), "0^0 derivative is undefined")
+    Assert.Error(PowInt(zero, -1), "0^-1 is undefined")
+
+    // Positive exponents on zero are fine (0^2 = 0, derivative 2*0^1 = 0).
+    let squared = Assert.LGTM(PowInt(zero, 2), "0^2 should succeed")
+    Assert.Near(0.0, squared.Value, 1e-12, "0^2 value")
+    Assert.Near(0.0, squared.Uncertainty, 1e-12, "0^2 uncertainty")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn SqrtMatchesAnalyticDerivative() -> Void {
+    // a = 4.0 +/- 0.2 -> sqrt(a) = 2.0, unc = 0.2 / (2*2.0) = 0.05
+    let a = Assert.LGTM(New(4.0, 0.2), "a should construct")
+    let root = Assert.LGTM(UncertaintySqrt(a), "sqrt should succeed")
+
+    Assert.Near(2.0, root.Value, 1e-12, "sqrt value")
+    Assert.Near(0.05, root.Uncertainty, 1e-12, "sqrt uncertainty")
+
+    Assert.Error(UncertaintySqrt(Exact(0.0)), "sqrt of zero should be rejected (undefined derivative)")
+    Assert.Error(UncertaintySqrt(Exact(-1.0)), "sqrt of a negative value should be rejected")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn ExpAndLnAreApproximateInverses() -> Void {
+    let a = Assert.LGTM(New(1.0, 0.05), "a should construct")
+    let exped = UncertaintyExp(a)
+    let back = Assert.LGTM(UncertaintyLn(exped), "ln of a positive value should succeed")
+
+    Assert.Near(a.Value, back.Value, 1e-9, "ln(exp(x)) recovers x")
+    Assert.Near(a.Uncertainty, back.Uncertainty, 1e-9, "ln(exp(x)) recovers unc(x) to first order")
+
+    Assert.Error(UncertaintyLn(Exact(0.0)), "ln of zero should be rejected")
+    Assert.Error(UncertaintyLn(Exact(-2.0)), "ln of a negative value should be rejected")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn SinAndCosUseComplementaryDerivatives() -> Void {
+    // At x = 0: sin'(0) = cos(0) = 1, cos'(0) = -sin(0) = 0.
+    let a = Exact(0.0)
+    let aWithUnc = Assert.LGTM(New(0.0, 0.01), "a with uncertainty should construct")
+
+    let s = UncertaintySin(aWithUnc)
+    let c = UncertaintyCos(aWithUnc)
+
+    Assert.Near(0.0, s.Value, 1e-12, "sin(0)")
+    Assert.Near(0.01, s.Uncertainty, 1e-9, "unc(sin(0)) = |cos(0)| * unc(x) = unc(x)")
+
+    Assert.Near(1.0, c.Value, 1e-12, "cos(0)")
+    Assert.Near(0.0, c.Uncertainty, 1e-9, "unc(cos(0)) = |sin(0)| * unc(x) = 0")
+
+    Assert.Equal(0.0, a.Value, "Exact(0.0) has value 0")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn ContainsWithinChecksStandardUncertaintyBands() -> Void {
+    let m = Assert.LGTM(New(10.0, 0.5), "m should construct")
+
+    Assert.True(Assert.LGTM(ContainsWithin(m, 10.4, 1.0), "1-sigma check should compute"), "10.4 is within 1 sigma of 10.0 +/- 0.5")
+    Assert.False(Assert.LGTM(ContainsWithin(m, 11.0, 1.0), "1-sigma check should compute"), "11.0 is not within 1 sigma of 10.0 +/- 0.5")
+    Assert.True(Assert.LGTM(ContainsWithin(m, 11.0, 2.0), "2-sigma check should compute"), "11.0 is within 2 sigma of 10.0 +/- 0.5")
+
+    Assert.Error(ContainsWithin(m, 10.0, -1.0), "negative k should be rejected")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn FromSamplesComputesMeanAndStandardErrorOfMean() -> Void {
+    let xs = [9.0, 10.0, 11.0]
+    let m = Assert.LGTM(FromSamples(xs), "FromSamples should succeed for 3 samples")
+
+    Assert.Near(10.0, m.Value, 1e-12, "mean of 9,10,11 is 10")
+    // sample std dev of [9,10,11] is 1.0; SEM = 1.0 / sqrt(3)
+    Assert.Near(1.0 / Sqrt(3.0), m.Uncertainty, 1e-12, "standard error of the mean")
+
+    Assert.Error(FromSamples([1.0]), "FromSamples requires at least 2 samples")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn CombineWeightsByInverseVarianceAndTightensUncertainty() -> Void {
+    // Two independent measurements of the same quantity.
+    let a = Assert.LGTM(New(10.0, 1.0), "a should construct")
+    let b = Assert.LGTM(New(12.0, 1.0), "b should construct")
+    let combined = Assert.LGTM(Combine([a, b]), "combine should succeed")
+
+    // Equal weights -> simple average.
+    Assert.Near(11.0, combined.Value, 1e-12, "equal-weight combination is the average")
+    // unc = sqrt(1 / (1/1^2 + 1/1^2)) = sqrt(1/2)
+    Assert.Near(Sqrt(0.5), combined.Uncertainty, 1e-12, "combined uncertainty shrinks below either input")
+    Assert.True(combined.Uncertainty < a.Uncertainty, "combining measurements should reduce uncertainty")
+
+    let empty: Measurement[] = []
+    Assert.Error(Combine(empty), "Combine requires at least one measurement")
+    Assert.Error(Combine([Exact(1.0)]), "Combine requires strictly positive uncertainty")
+}
+
+[Fact]
+[Suite("Uncertainty.Core")]
+fn ToDisplayStringIncludesValueAndUncertainty() -> Void {
+    let m = Assert.LGTM(New(3.5, 0.25), "m should construct")
+    let s = ToDisplayString(m)
+
+    Assert.True(Contains(s, "3.5"), "display string should include the value")
+    Assert.True(Contains(s, "0.25"), "display string should include the uncertainty")
+    Assert.True(Contains(s, "+/-"), "display string should include the +/- separator")
+}

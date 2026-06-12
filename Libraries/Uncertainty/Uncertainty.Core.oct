@@ -1,0 +1,226 @@
+package Uncertainty
+
+import Statistics
+
+// ---------------------------------------------------------------------
+// Uncertainty: linear (first-order) Gaussian error propagation
+// ---------------------------------------------------------------------
+//
+// A Measurement pairs a value with its standard uncertainty (1-sigma).
+// All operations below assume independent, uncorrelated, approximately
+// Gaussian errors and propagate them via standard first-order
+// (linearized / "delta method") rules:
+//
+//   - addition/subtraction:    uncertainties add in quadrature
+//   - multiplication/division: relative uncertainties add in quadrature
+//   - f(x):                    unc(f(x)) ~= |f'(x)| * unc(x)
+//
+// This mirrors the default behavior of Python's third-party
+// `uncertainties` package, but as explicit named functions with
+// `! Error` for domain violations (e.g. Sqrt of a negative value,
+// Div by an exactly-zero value) rather than operator overloading.
+//
+// Correlated-error propagation (covariance-aware combination) is not
+// covered here; see the README for a suggested follow-up milestone.
+
+record Measurement {
+    Value: Float
+    Uncertainty: Float
+}
+
+// ---------------------------------------------------------------------
+// Construction
+// ---------------------------------------------------------------------
+
+// Exact wraps a value with zero uncertainty (a known constant).
+fn Exact(value: Float) -> Measurement {
+    return Measurement { Value: value Uncertainty: 0.0 }
+}
+
+// New builds a Measurement from a value and a non-negative standard
+// uncertainty.
+fn New(value: Float, uncertainty: Float) -> Measurement ! Error {
+    if uncertainty < 0.0 {
+        return error("uncertainty must be non-negative")
+    }
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// FromSamples builds a Measurement from repeated independent
+// measurements of the same quantity: Value is the sample mean and
+// Uncertainty is the standard error of the mean
+// (sample standard deviation / sqrt(n)). Requires at least 2 samples.
+fn FromSamples(xs: Float[]) -> Measurement ! Error {
+    if Len(xs) < 2 {
+        return error("FromSamples requires at least 2 samples")
+    }
+    let mean = Statistics.Mean(xs)
+    let sd = Statistics.SampleStandardDeviation(xs)
+    let sem = sd / Sqrt(Float(Len(xs)))
+    return Measurement { Value: mean Uncertainty: sem }
+}
+
+// ---------------------------------------------------------------------
+// Arithmetic (independent operands)
+// ---------------------------------------------------------------------
+
+// Add: (a + b), uncertainties add in quadrature.
+fn Add(a: Measurement, b: Measurement) -> Measurement {
+    let value = a.Value + b.Value
+    let uncertainty = Sqrt(a.Uncertainty * a.Uncertainty + b.Uncertainty * b.Uncertainty)
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// Sub: (a - b), uncertainties add in quadrature (same as Add: the
+// covariance term vanishes for independent operands regardless of sign).
+fn Sub(a: Measurement, b: Measurement) -> Measurement {
+    let value = a.Value - b.Value
+    let uncertainty = Sqrt(a.Uncertainty * a.Uncertainty + b.Uncertainty * b.Uncertainty)
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// Neg: (-a). Uncertainty is unchanged.
+fn Neg(a: Measurement) -> Measurement {
+    return Measurement { Value: 0.0 - a.Value Uncertainty: a.Uncertainty }
+}
+
+// Mul: (a * b). Absolute uncertainty via partial derivatives:
+//   unc(ab) = sqrt((b*unc(a))^2 + (a*unc(b))^2)
+fn Mul(a: Measurement, b: Measurement) -> Measurement {
+    let value = a.Value * b.Value
+    let termA = b.Value * a.Uncertainty
+    let termB = a.Value * b.Uncertainty
+    let uncertainty = Sqrt(termA * termA + termB * termB)
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// Scale: (k * a) for an exact (zero-uncertainty) scalar k.
+// Equivalent to Mul(a, Exact(k)) but avoids a 0*0 term.
+fn Scale(a: Measurement, k: Float) -> Measurement {
+    return Measurement { Value: k * a.Value Uncertainty: Abs(k) * a.Uncertainty }
+}
+
+// DivBy: (a / b). Requires b.Value != 0. Absolute uncertainty via:
+//   unc(a/b) = sqrt((unc(a)/b)^2 + (a*unc(b)/b^2)^2)
+fn DivBy(a: Measurement, b: Measurement) -> Measurement ! Error {
+    if b.Value == 0.0 {
+        return error("DivBy requires a non-zero denominator value")
+    }
+    let value = a.Value / b.Value
+    let termA = a.Uncertainty / b.Value
+    let termB = a.Value * b.Uncertainty / (b.Value * b.Value)
+    let uncertainty = Sqrt(termA * termA + termB * termB)
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// PowInt: (a^n) for an exact integer exponent n (n may be negative or
+// zero). Uncertainty via unc(a^n) = |n * a^(n-1)| * unc(a).
+// Requires a.Value != 0 when n <= 0 (to avoid division by zero / an
+// undefined derivative at the origin).
+fn PowInt(a: Measurement, n: Int) -> Measurement ! Error {
+    if a.Value == 0.0 and n <= 0 {
+        return error("PowInt requires a non-zero base when the exponent is non-positive")
+    }
+    let value = Pow(a.Value, Float(n))
+    let derivative = Float(n) * Pow(a.Value, Float(n - 1))
+    let uncertainty = Abs(derivative) * a.Uncertainty
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// ---------------------------------------------------------------------
+// Transcendental functions
+// ---------------------------------------------------------------------
+
+// Sqrt: requires a.Value > 0 (the derivative 1/(2*sqrt(x)) is undefined
+// at and below zero).
+fn UncertaintySqrt(a: Measurement) -> Measurement ! Error {
+    if a.Value <= 0.0 {
+        return error("Sqrt requires a positive value")
+    }
+    let value = Sqrt(a.Value)
+    let uncertainty = a.Uncertainty / (2.0 * value)
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// Exp: unc(e^x) = e^x * unc(x).
+fn UncertaintyExp(a: Measurement) -> Measurement {
+    let value = Exp(a.Value)
+    return Measurement { Value: value Uncertainty: value * a.Uncertainty }
+}
+
+// Ln: requires a.Value > 0. unc(ln x) = unc(x) / x.
+fn UncertaintyLn(a: Measurement) -> Measurement ! Error {
+    if a.Value <= 0.0 {
+        return error("Ln requires a positive value")
+    }
+    return Measurement { Value: Ln(a.Value) Uncertainty: a.Uncertainty / a.Value }
+}
+
+// Sin: unc(sin x) = |cos x| * unc(x).
+fn UncertaintySin(a: Measurement) -> Measurement {
+    let value = Sin(a.Value)
+    let uncertainty = Abs(Cos(a.Value)) * a.Uncertainty
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// Cos: unc(cos x) = |sin x| * unc(x).
+fn UncertaintyCos(a: Measurement) -> Measurement {
+    let value = Cos(a.Value)
+    let uncertainty = Abs(Sin(a.Value)) * a.Uncertainty
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// ---------------------------------------------------------------------
+// Reporting and combination
+// ---------------------------------------------------------------------
+
+// RelativeUncertainty returns unc(a) / |a.Value|. Requires a.Value != 0.
+fn RelativeUncertainty(a: Measurement) -> Float ! Error {
+    if a.Value == 0.0 {
+        return error("RelativeUncertainty requires a non-zero value")
+    }
+    return a.Uncertainty / Abs(a.Value)
+}
+
+// ContainsWithin reports whether x lies within k standard uncertainties
+// of a.Value (k must be non-negative). A Measurement with zero
+// uncertainty only "contains" x == a.Value exactly.
+fn ContainsWithin(a: Measurement, x: Float, k: Float) -> Bool ! Error {
+    if k < 0.0 {
+        return error("ContainsWithin requires a non-negative k")
+    }
+    return Abs(x - a.Value) <= k * a.Uncertainty
+}
+
+// Combine performs inverse-variance weighting of independent
+// measurements of the same underlying quantity:
+//   value = sum(x_i / unc_i^2) / sum(1 / unc_i^2)
+//   unc   = sqrt(1 / sum(1 / unc_i^2))
+// Requires at least one measurement, all with strictly positive
+// uncertainty.
+fn Combine(measurements: Measurement[]) -> Measurement ! Error {
+    if Len(measurements) == 0 {
+        return error("Combine requires at least one measurement")
+    }
+
+    var weightedSum = 0.0
+    var weightSum = 0.0
+    for i in 0..Len(measurements) {
+        let m = measurements[i]
+        if m.Uncertainty <= 0.0 {
+            return error("Combine requires strictly positive uncertainty for every measurement")
+        }
+        let weight = 1.0 / (m.Uncertainty * m.Uncertainty)
+        weightedSum = weightedSum + weight * m.Value
+        weightSum = weightSum + weight
+    }
+
+    let value = weightedSum / weightSum
+    let uncertainty = Sqrt(1.0 / weightSum)
+    return Measurement { Value: value Uncertainty: uncertainty }
+}
+
+// ToDisplayString formats a Measurement as "value +/- uncertainty".
+fn ToDisplayString(a: Measurement) -> String {
+    return ToString(a.Value) + " +/- " + ToString(a.Uncertainty)
+}
