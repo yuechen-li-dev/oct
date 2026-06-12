@@ -3587,7 +3587,7 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, compiledMarkdownBuiltinReturnType(normalized), true, false, nil
 			case "RoundToInt", "FloorToInt", "CeilToInt":
 				return normalized, "Int", true, false, nil
-			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "Clamp01":
+			case "Pi", "E", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "BaseValue", "BaseUnit", "Clamp01":
 				return normalized, "Float", true, false, nil
 			case "Abs":
 				return normalized, "Float", true, false, nil
@@ -4262,11 +4262,11 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			return "Complex", nil
 		}
 		return "", fmt.Errorf("compiled mode does not yet support builtin %s for type %s", name, argTypes[0])
-	case "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "FloorToInt", "CeilToInt", "RoundToInt", "Math.FloorToInt", "Math.CeilToInt", "BaseValue":
+	case "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Exp", "Ln", "Log10", "Sinh", "Cosh", "Tanh", "FloorToInt", "CeilToInt", "RoundToInt", "Math.FloorToInt", "Math.CeilToInt", "BaseValue", "BaseUnit":
 		if len(argTypes) != 1 {
 			return "", fmt.Errorf("function '%s' expects 1 arguments, got %d", name, len(argTypes))
 		}
-		if name == "FloorToInt" || name == "CeilToInt" || name == "RoundToInt" || name == "Math.FloorToInt" || name == "Math.CeilToInt" || name == "BaseValue" {
+		if name == "FloorToInt" || name == "CeilToInt" || name == "RoundToInt" || name == "Math.FloorToInt" || name == "Math.CeilToInt" || name == "BaseValue" || name == "BaseUnit" {
 			if isFloatScalarTypeString(argTypes[0]) {
 				if name == "FloorToInt" || name == "CeilToInt" || name == "RoundToInt" || name == "Math.FloorToInt" || name == "Math.CeilToInt" {
 					return "Int", nil
@@ -5333,7 +5333,7 @@ func flattenFlowEnumValueExpr(expr ast.FieldAccessExpr) (string, string, bool) {
 func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, error) {
 	resolveBuiltin := func(name string) (string, string, bool, bool, error) {
 		switch name {
-		case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "Float", "Clamp01":
+		case "Abs", "Sqrt", "Sin", "Cos", "Tan", "Asin", "Acos", "Atan", "Atan2", "Exp", "Ln", "Pow", "Log10", "Sinh", "Cosh", "Tanh", "Pi", "E", "BaseValue", "BaseUnit", "Float", "Clamp01":
 			return name, "Float", true, false, nil
 		case "FloorToInt", "CeilToInt", "RoundToInt":
 			return name, "Int", true, false, nil
@@ -5629,7 +5629,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["fft"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] || usedBuiltins["fft"] {
 		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {
@@ -8672,7 +8672,7 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = int(math.Ceil(float64(%s)))", st.Target, st.Args[0]), nil
 			case "RoundToInt":
 				return fmt.Sprintf("%s = int(math.Round(float64(%s)))", st.Target, st.Args[0]), nil
-			case "BaseValue":
+			case "BaseValue", "BaseUnit":
 				return fmt.Sprintf("%s = float64(%s)", st.Target, st.Args[0]), nil
 			case "Contains":
 				return fmt.Sprintf("%s = strings.Contains(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil

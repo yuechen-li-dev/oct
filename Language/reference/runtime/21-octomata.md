@@ -32,7 +32,7 @@ Octomata and records are complementary:
 - Flow `when` actions are only `goto`, `suspend`, or `return`.
 - `board { Field: Type ... }` declares flow-local board memory with a fixed field shape.
 - Board fields must be declared up front and are not dynamically extensible.
-- Board fields are default-initialized from their declared type (for example: `Bool` -> `false`, `Int` -> `0`, `Float` -> `0.0`, `String` -> `""`).
+- Board fields are default-initialized from their declared scalar type (for example: `Bool` -> `false`, `Int`/`Int<D>` -> `0`, `Float`/`Float<D>` -> `0.0`, `String` -> `""`).
 - Board writes are valid only inside flow state bodies (including nested `if`/`when` inside a state body).
 - Controller utility form `when policy { hysteresis: Int min_commit: Int } { case value when condition score Int ... else value }` is valid only inside flow state bodies.
 - Standalone utility form `when utility { case value when condition score Int ... else value }` is an expression form valid wherever expressions are allowed.
@@ -50,8 +50,36 @@ Octomata and records are complementary:
 - `ResumeTarget(flow)` reports the current remembered target or `""` when slot is empty.
 - `StateHistory(flow)` returns state-entry history as `String[]`.
 - Builtins `Step`, `Active`, `Complete`, `Result`, `ResumeTarget`, `StateHistory`, and `BoardSnapshot` require a flow instance argument.
-- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current scalar board fields (Bool/Int/Float/String only) when the flow declares a board.
+- `BoardSnapshot(flow)` returns a fallible, read-only typed record snapshot of current scalar board fields when the flow declares a board. Supported board field types are `Bool`, `String`, scalar `Int`/`Int<D>`, and scalar `Float`/`Float<D>`; arrays, vectors, matrices, records, enums, and other non-scalar runtime types are unsupported.
 
+
+### Dimensioned scalar board fields
+
+Board fields may use dimensioned scalar numeric types. `BoardSnapshot` preserves the exact unit-qualified field type.
+
+```oct
+package Main
+
+flow TemperatureProbe(temp: Float<K>) -> Float<K> {
+    board {
+        LastTemp: Float<K>
+    }
+
+    state Start {
+        board.LastTemp = temp
+        return board.LastTemp
+    }
+}
+
+[Fact]
+fn SnapshotPreservesTemperatureUnits() -> Void {
+    let machine = TemperatureProbe(294.0K)
+    Step(machine)
+    let snapshot = BoardSnapshot(machine)!
+    let typed: Float<K> = snapshot.LastTemp
+    Assert.Equal(294.0K, typed, "temperature snapshot")
+}
+```
 
 ## Result handling
 

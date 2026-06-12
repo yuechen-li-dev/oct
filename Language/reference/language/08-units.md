@@ -34,6 +34,26 @@ Unit behavior is explicit and deterministic.
 - Use inverse-unit notation with signed exponents (for example `Float<s^-1>`); `<1/s>` is not supported in this milestone.
 - `Hz` is a named alias for `s^-1` and is dimensionally compatible with `Float<s^-1>`.
 
+## Unit stripping
+
+`BaseUnit(value)` strips the static unit dimension from a `Float` value and returns the bare `Float` numeric payload. It is a builtin, not a namespaced package function, and does not require type arguments. The older spelling `BaseValue(value)` remains accepted.
+
+`BaseUnit` does **not** convert units, choose a display unit, or format a value. It only erases the type-level dimension after normal literal/lowering semantics have produced the stored numeric value. For example, `BaseUnit(300.0K)` returns `300.0`; Celsius literals first follow the existing Celsius-to-Kelvin literal semantics, so `BaseUnit(0C)` returns `273.15`.
+
+```oct
+package Main
+
+fn TemperaturePayload(t: Float<K>) -> Float {
+    return BaseUnit(t)
+}
+
+fn LengthPayload(x: Float<m>) -> Float {
+    return BaseUnit(x)
+}
+```
+
+`BaseUnit` accepts `Float<D>` and dimensionless `Float` values. It rejects strings, records, arrays, vectors, matrices, and other non-`Float` values. Dimensioned `Int<D>` stripping is not part of the v0.1 contract.
+
 ## Examples
 
 Valid:

@@ -86,7 +86,7 @@ flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
     board {
         StepIndex: Int
         LastModeCode: Int
-        TempK: Float
+        Temp: Float < K >
         Moisture: Float
         Battery: Float
     }
@@ -94,7 +94,7 @@ flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
     state Initialize {
         board.StepIndex = 0
         board.LastModeCode = 0
-        board.TempK = initial.AirTemp / 1.0K
+        board.Temp = initial.AirTemp
         board.Moisture = initial.SoilMoisture
         board.Battery = initial.BatteryCharge
         goto Decide
@@ -105,8 +105,8 @@ flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
             hysteresis: 1
             min_commit: 2
         } {
-            case 1 when board.TempK < 292.15 score 90
-            case 2 when board.TempK > 299.15 score 88
+            case 1 when board.Temp < 292.15K score 90
+            case 2 when board.Temp > 299.15K score 88
             case 3 when board.Moisture < 0.42 score 86
             else 0
         }
@@ -116,11 +116,11 @@ flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
 
     state Apply {
         if board.LastModeCode == 1 {
-            board.TempK = board.TempK + 0.6
+            board.Temp = board.Temp + 0.6K
             board.Battery = board.Battery - 0.02
         }
         if board.LastModeCode == 2 {
-            board.TempK = board.TempK - 0.7
+            board.Temp = board.Temp - 0.7K
             board.Battery = board.Battery - 0.01
         }
         if board.LastModeCode == 3 {
@@ -128,7 +128,7 @@ flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
             board.Battery = board.Battery - 0.015
         }
         if board.LastModeCode == 0 {
-            board.TempK = board.TempK - 0.05
+            board.Temp = board.Temp - 0.05K
             board.Moisture = board.Moisture - 0.01
         }
         goto Advance
@@ -144,7 +144,7 @@ flow RunController(initial: GreenhouseState, maxSteps: Int) -> GreenhouseState {
 
     state Done {
         return GreenhouseState {
-            AirTemp: board.TempK * 1.0K
+            AirTemp: board.Temp
             SoilMoisture: board.Moisture
             LightLevel: initial.LightLevel
             BatteryCharge: board.Battery

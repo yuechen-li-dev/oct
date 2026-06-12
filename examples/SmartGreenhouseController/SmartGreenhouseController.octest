@@ -52,6 +52,8 @@ fn FlowCompletesAndHistoryPresent() -> Void {
     Assert.True(endState.BatteryCharge < init.BatteryCharge, "battery consumed")
     Assert.True(Len(history) >= 4, "visited multiple states")
     Assert.Equal(4, snap.StepIndex, "board tracked step count")
+    let snapTemp: Float < K > = snap.Temp
+    Assert.Equal(endState.AirTemp, snapTemp, "board snapshot preserves dimensioned temperature")
 }
 
 [Fact]

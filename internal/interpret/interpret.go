@@ -4218,7 +4218,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: RoundToInt expects Float, got %s", argument.value.Kind)
 		}
 		return evalResult{value: Value{Kind: ValueInt, Int: int64(math.Round(argument.value.Float))}}, nil
-	case "BaseValue":
+	case "BaseValue", "BaseUnit":
 		if argument.value.Kind != ValueFloat {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: BaseValue expects Float, got %s", argument.value.Kind)
 		}

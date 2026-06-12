@@ -1,0 +1,14 @@
+expect error: "function BadBoardUnitAssignment: assignment to board.LastTemp: expected Float<K>, got Float"
+
+package MainInvalid
+
+flow BadBoardUnitAssignment() -> Float<K> {
+    board {
+        LastTemp: Float<K>
+    }
+
+    state Start {
+        board.LastTemp = 294.0
+        return board.LastTemp
+    }
+}

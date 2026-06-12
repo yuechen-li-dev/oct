@@ -32,6 +32,7 @@ var names = map[string]struct{}{
 	"CeilToInt":                {},
 	"RoundToInt":               {},
 	"BaseValue":                {},
+	"BaseUnit":                 {},
 	"Pi":                       {},
 	"E":                        {},
 	"Print":                    {},

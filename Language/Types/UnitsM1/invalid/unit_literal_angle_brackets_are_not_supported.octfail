@@ -1,0 +1,7 @@
+expect error: "expected expression"
+
+package MainInvalid
+
+fn Main() -> Float<s> {
+    return 0.5<s>
+}

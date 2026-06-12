@@ -1,0 +1,14 @@
+expect error: "function BadBoardPlainAssignment: assignment to board.Temp: expected Float, got Float<K>"
+
+package MainInvalid
+
+flow BadBoardPlainAssignment() -> Float {
+    board {
+        Temp: Float
+    }
+
+    state Start {
+        board.Temp = 294.0K
+        return board.Temp
+    }
+}
