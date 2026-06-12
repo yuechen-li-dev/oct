@@ -429,12 +429,12 @@ func (b *builder) validateManifest(packageName string, directory string) (manife
 				} else if parentErr != nil && !os.IsNotExist(parentErr) {
 					return manifestValidationResult{}, fmt.Errorf("read package manifest %s: %w", parentManifestPath, parentErr)
 				} else if b.requireManifests {
-					return manifestValidationResult{}, fmt.Errorf("package manifest missing")
+					return manifestValidationResult{}, missingManifestError(filepath.Dir(directory))
 				} else {
 					return manifestValidationResult{}, nil
 				}
 			} else if b.requireManifests {
-				return manifestValidationResult{}, fmt.Errorf("package manifest missing")
+				return manifestValidationResult{}, missingManifestError(directory)
 			} else {
 				return manifestValidationResult{}, nil
 			}
@@ -479,12 +479,13 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 		}
 	}
 	if !b.requireManifests {
-		return "", fmt.Errorf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s)",
+		diagnostic := fmt.Sprintf("unknown package '%s' imported by package '%s' (active root: %s; searched: %s)",
 			importName,
 			packageName,
 			b.root,
 			strings.Join(searched, ", "),
 		)
+		return "", fmt.Errorf("%s%s", diagnostic, missingManifestSuggestionIfApplicable(b.root))
 	}
 	deps := b.manifestDeps[packageName]
 	if deps == nil {
@@ -527,6 +528,70 @@ func (b *builder) resolveImportDirectory(packageName string, importName string) 
 		)
 	}
 	return cachedDir, nil
+}
+
+func missingManifestError(root string) error {
+	return fmt.Errorf("package manifest missing: no manifest.oct found for this Oct package root\n\n%s", missingManifestSuggestion(root))
+}
+
+func missingManifestSuggestionIfApplicable(root string) string {
+	if hasFileAt(root, "manifest.oct") || !directoryContainsOctSource(root) {
+		return ""
+	}
+	return "\n\nno manifest.oct found for this Oct package root\n\n" + missingManifestSuggestion(root)
+}
+
+func missingManifestSuggestion(root string) string {
+	clean := filepath.Clean(root)
+	if pathContains(clean, "Experiments") {
+		return "This looks like an experiment directory. Run:\n  oct init experiment"
+	}
+	if pathContains(clean, "Libraries") {
+		return "This looks like a library directory. Run:\n  oct init library"
+	}
+	return "This directory contains Oct source/tests but is not initialized as an Oct package.\nIf this is an existing experiment, run:\n  oct init experiment\n\nIf this is an existing library, run:\n  oct init library\n\nFor wrapper libraries, run:\n  oct init wrapper-library"
+}
+
+func pathContains(path string, part string) bool {
+	for _, elem := range strings.Split(filepath.ToSlash(path), "/") {
+		if elem == part {
+			return true
+		}
+	}
+	return false
+}
+
+func directoryContainsOctSource(root string) bool {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if !isMilestoneDir(entry.Name()) {
+				continue
+			}
+			milestoneEntries, err := os.ReadDir(filepath.Join(root, entry.Name()))
+			if err != nil {
+				continue
+			}
+			for _, milestoneEntry := range milestoneEntries {
+				if !milestoneEntry.IsDir() && isOctSourceFile(milestoneEntry.Name()) {
+					return true
+				}
+			}
+			continue
+		}
+		if isOctSourceFile(entry.Name()) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOctSourceFile(name string) bool {
+	ext := filepath.Ext(name)
+	return ext == ".oct" || ext == ".octest"
 }
 
 func (b *builder) importSearchRoots() []string {

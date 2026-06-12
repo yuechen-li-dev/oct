@@ -30,7 +30,8 @@
 - Mixed `.octest` files are allowed; each command still executes only its matching lane attributes.
 - `oct fmt <path> [--mode readable|compact|en-llm] [--check]` formats one file or a directory tree in place (or checks formatting with `--check`).
 - `oct new <experiment|library|wrapper-library> <Name>` creates a deterministic package scaffold in the current working directory.
-- `oct new` uses strict PascalCase package names and rejects an existing target directory.
+- `oct init <experiment|library|wrapper-library>` creates `manifest.oct` in the current existing directory and refuses to overwrite an existing manifest.
+- `oct new` and `oct init` use strict PascalCase package names; `oct new` rejects an existing target directory, and `oct init` derives the name from the current directory basename.
 - `oct new wrapper-library` creates manifest wrapper metadata and sidecar reference files but does not build or run the sidecar.
 - `oct pkg get <git-url>` fetches one package source into cache.
 - `oct pkg list` lists cached package entries.
@@ -90,6 +91,16 @@ oct new wrapper-library <Name>
 
 The current command has no flags. `<Name>` must be strict PascalCase (`[A-Z][A-Za-z0-9]*`); invalid names are rejected rather than normalized.
 The target directory is always `./<Name>`, and the command fails if that target already exists.
+
+`oct init` initializes an existing current directory by writing only `manifest.oct`:
+
+```text
+oct init library
+oct init experiment
+oct init wrapper-library
+```
+
+`oct init` derives the package name from the current directory basename, uses the same manifest conventions as `oct new`, and refuses to overwrite an existing manifest. Existing experiment folders should use `oct init experiment`.
 `oct new wrapper-library` writes wrapper manifest metadata and sidecar reference files, but it does not build or run the sidecar. The generated package can be inspected with `oct pkg wrappers`.
 
 See also [31 octest](./31-octest.md), [32 ocfmt](./32-ocfmt.md), and [33 oct pkg](./33-oct-pkg.md).

@@ -1,4 +1,4 @@
-package LanguageFrictionArrayMapGenerics
+package ArrayMapGenerics
 
 fn Main() -> Float {
     let m = map[String, Float] {

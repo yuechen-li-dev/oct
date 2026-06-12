@@ -271,6 +271,8 @@ The current scaffold command has no flags. `<Name>` must be strict PascalCase (`
 
 `oct new wrapper-library <Name>` writes wrapper manifest metadata and package-local sidecar reference files, but it does not build or run the generated sidecar scaffold. The generated wrapper-library package can be inspected with `oct pkg wrappers`, and deterministic inert registry metadata can be written with `oct pkg wrappers --registry-out <path>`.
 
+Use `oct init experiment`, `oct init library`, or `oct init wrapper-library` from inside an existing directory that already contains Oct source/tests but lacks `manifest.oct`. `oct init` writes the same manifest shape as the matching `oct new` package kind, derives the package name from the current directory basename, and refuses to overwrite an existing manifest.
+
 ## Rules
 
 - Manifest metadata is declared by `fn Manifest() -> PackageManifest` in `manifest.oct`.

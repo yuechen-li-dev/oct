@@ -37,6 +37,18 @@ Names must match strict PascalCase `[A-Z][A-Za-z0-9]*`; non-PascalCase inputs su
 Wrapper-library scaffolds include manifest wrapper metadata and a package-local sidecar reference under `sidecars/octxiliary-<kebab>/`. `oct pkg wrappers` can inspect this metadata and render registry output, but `oct new wrapper-library` does not build or run native sidecars. The generated raw wrapper function is metadata only until future wrapper dispatch/build lifecycle milestones.
 
 
+## `oct init` existing package manifests
+
+Usage:
+
+```sh
+oct init <experiment|library|wrapper-library>
+```
+
+`oct new` creates a new package directory. `oct init` initializes the current existing directory by creating `manifest.oct` only. The package name is derived from the current directory basename using the same strict PascalCase validation as `oct new`; invalid directory names should be renamed until future explicit-name support exists.
+
+`oct init` refuses to overwrite an existing `manifest.oct`. Use `oct init experiment` for existing experiment folders, `oct init library` for reusable libraries, and `oct init wrapper-library` for wrapper-library manifests.
+
 ## `oct pkg` wrapper tooling
 
 Inspection remains inert:

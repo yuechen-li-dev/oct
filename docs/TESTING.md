@@ -60,6 +60,8 @@ go run ./cmd/oct test Experiments/FmBrownNoiseKalman/M4 --suite Experiments.FmBr
 go build -o .tmp/octxiliary-io ./cmd/octxiliary-io
 OCT_WRAPPER_PATH=$(pwd)/.tmp/octxiliary-io go run ./cmd/oct test Language/Testing/CompiledOctxiliary/valid --execution compiled
 go run ./cmd/oct test Libraries/String --execution compiled
+go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution interpreted
+go run ./cmd/oct test Experiments/LanguageFriction/ArrayMapGenerics --execution auto
 go run ./cmd/oct test Language/Testing --all-packages
 ```
 
@@ -78,3 +80,7 @@ Go-side tests should validate implementation and integration boundaries, includi
 - Language semantics belong in `Language/*.octest` and `Language/*.octfail`.
 - Go-side tests should validate implementation and integration boundaries.
 - Keep reusable user code in `Packages/` and temporary fixtures in `testdata/`.
+
+## Existing package directories
+
+Use `oct new <kind> <Name>` when creating a new package directory from scratch. Use `oct init experiment`, `oct init library`, or `oct init wrapper-library` from inside an existing directory when Oct source/tests already exist but `manifest.oct` is missing. `oct init` derives the package name from the current directory basename and refuses to overwrite an existing manifest. Existing experiment folders should normally use `oct init experiment`.

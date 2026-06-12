@@ -1,4 +1,4 @@
-package LanguageFrictionArrayMapGenerics
+package ArrayMapGenerics
 
 fn RowAsArray(m: Matrix<Float>, row: Int) -> Float[] ! Error {
     if row < 0 { return error("row must be non-negative") }
