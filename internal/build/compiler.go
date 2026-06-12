@@ -960,9 +960,15 @@ func collectExprCallsWithLocals(expr ast.Expr, functionValueLocals map[string]st
 	case ast.UnaryExpr:
 		calls = append(calls, collectExprCallsWithLocals(e.Operand, functionValueLocals)...)
 	case ast.RangeExpr:
-		calls = append(calls, collectExprCallsWithLocals(e.Start, functionValueLocals)...)
-		calls = append(calls, collectExprCallsWithLocals(e.End, functionValueLocals)...)
-		calls = append(calls, collectExprCallsWithLocals(e.Step, functionValueLocals)...)
+		if e.Start != nil {
+			calls = append(calls, collectExprCallsWithLocals(e.Start, functionValueLocals)...)
+		}
+		if e.End != nil {
+			calls = append(calls, collectExprCallsWithLocals(e.End, functionValueLocals)...)
+		}
+		if e.Step != nil {
+			calls = append(calls, collectExprCallsWithLocals(e.Step, functionValueLocals)...)
+		}
 	case ast.ParenExpr:
 		calls = append(calls, collectExprCallsWithLocals(e.Inner, functionValueLocals)...)
 	case ast.PropagateExpr:
@@ -1494,10 +1500,44 @@ func (c *lowerCtx) lowerWhileStmt(s ast.WhileStmt) error {
 	return nil
 }
 
+func (c *lowerCtx) lowerRangeExpr(e ast.RangeExpr) (string, string, bool, error) {
+	parts := []string{}
+	if e.Start != nil {
+		start, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Start) })
+		if err != nil {
+			return "", "", false, err
+		}
+		parts = append(parts, "Start: "+start, "HasStart: true")
+	}
+	if e.End != nil {
+		end, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.End) })
+		if err != nil {
+			return "", "", false, err
+		}
+		parts = append(parts, "End: "+end, "HasEnd: true")
+	}
+	if e.Step != nil {
+		if e.Start == nil || e.End == nil {
+			return "", "", false, fmt.Errorf("open-ended stepped ranges are not supported in M0")
+		}
+		step, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(e.Step) })
+		if err != nil {
+			return "", "", false, err
+		}
+		parts = append(parts, "Step: "+step, "HasStep: true")
+	} else {
+		parts = append(parts, "Step: 1")
+	}
+	return "__octRange{" + strings.Join(parts, ", ") + "}", "Range", false, nil
+}
+
 func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	rangeExpr, ok := s.Range.(ast.RangeExpr)
 	if !ok {
 		return unsupported("for range expression")
+	}
+	if rangeExpr.Start == nil || rangeExpr.End == nil {
+		return fmt.Errorf("for loop range requires start and end")
 	}
 	start, _, _, err := c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(rangeExpr.Start) })
 	if err != nil {
@@ -2863,7 +2903,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 	case ast.MatchExpr:
 		return c.lowerMatchExpr(e)
 	case ast.RangeExpr:
-		return "", "", false, unsupported("range")
+		return c.lowerRangeExpr(e)
 	case ast.PropagateExpr:
 		return c.lowerPropagateExpr(e)
 	case ast.UnwrapExpr:
@@ -3970,7 +4010,7 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 
 func isBuiltinTypeName(name string) bool {
 	switch name {
-	case "Int", "Float", "Complex", "Bool", "String", "Index", "Bytes", "Error", "Void":
+	case "Int", "Float", "Complex", "Bool", "String", "Index", "Bytes", "Error", "Void", "Range":
 		return true
 	default:
 		return false
@@ -5623,6 +5663,7 @@ func emitGo(m MIRModule) (string, error) {
 	if needsVoidType {
 		b.WriteString("type __octVoid struct{}\n\n")
 	}
+	b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
 	for _, t := range resultNames {
 		valueType := goType(t)
 		if t == "Void" {
@@ -8974,6 +9015,8 @@ func goType(t string) string {
 		return "complex128"
 	case "Bool":
 		return "bool"
+	case "Range":
+		return "__octRange"
 	case "String":
 		return "string"
 	case "Index":

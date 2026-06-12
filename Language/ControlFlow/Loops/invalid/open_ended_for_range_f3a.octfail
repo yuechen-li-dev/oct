@@ -1,0 +1,10 @@
+expect error: "for loop range requires start and end"
+
+package Main
+
+fn Main() -> Int {
+    for i in 0.. {
+        return i
+    }
+    return 0
+}

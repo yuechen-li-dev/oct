@@ -155,3 +155,45 @@ fn Main() -> Float {
 		t.Fatalf("expected positive result from Pow expression composition, got %#v", result)
 	}
 }
+
+func TestExecuteMainEvaluatesFirstClassRangeForms(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want RangeValue
+	}{
+		{name: "closed", src: "return 10..20", want: RangeValue{Start: 10, HasStart: true, End: 20, HasEnd: true, Step: 1}},
+		{name: "open end", src: "return 10..", want: RangeValue{Start: 10, HasStart: true, Step: 1}},
+		{name: "open start", src: "return ..20", want: RangeValue{End: 20, HasEnd: true, Step: 1}},
+		{name: "all open", src: "return ..", want: RangeValue{Step: 1}},
+		{name: "closed stepped", src: "return 0..100 step 10", want: RangeValue{Start: 0, HasStart: true, End: 100, HasEnd: true, Step: 10, HasStep: true}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			sourcePath := filepath.Join(dir, "main.oct")
+			source := "package Main\nfn Main() -> Range { " + tc.src + " }\n"
+			if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
+				t.Fatalf("write source: %v", err)
+			}
+			program, err := project.Load(dir)
+			if err != nil {
+				t.Fatalf("load program: %v", err)
+			}
+			if err := typecheck.CheckProgram(program); err != nil {
+				t.Fatalf("typecheck program: %v", err)
+			}
+			result, err := ExecuteMain(program, &bytes.Buffer{})
+			if err != nil {
+				t.Fatalf("execute program: %v", err)
+			}
+			if result.Kind != ValueRange {
+				t.Fatalf("expected Range value, got %#v", result)
+			}
+			if result.Range != tc.want {
+				t.Fatalf("expected range %#v, got %#v", tc.want, result.Range)
+			}
+		})
+	}
+}

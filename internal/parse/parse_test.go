@@ -1246,3 +1246,48 @@ func TestBuildFileParsesContextualKeywordsAsIdentifiers(t *testing.T) {
 		t.Fatalf("expected unchanged flow/state parse, got %+v", file.Flows)
 	}
 }
+
+func TestBuildFileParsesFirstClassRangeExpressionForms(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   string
+		hasStart bool
+		hasEnd   bool
+		hasStep  bool
+	}{
+		{name: "closed", source: "fn Main() -> Int { let r = 1..3 return 0 }", hasStart: true, hasEnd: true},
+		{name: "open end", source: "fn Main() -> Int { let r = 1.. return 0 }", hasStart: true},
+		{name: "open start", source: "fn Main() -> Int { let r = ..3 return 0 }", hasEnd: true},
+		{name: "all open", source: "fn Main() -> Int { let r = .. return 0 }"},
+		{name: "closed stepped", source: "fn Main() -> Int { let r = 1..10 step 2 return 0 }", hasStart: true, hasEnd: true, hasStep: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			file := parseSource(t, tc.source)
+			letStmt, ok := file.Functions[0].Body.Statements[0].(ast.LetStmt)
+			if !ok {
+				t.Fatalf("expected first statement to be LetStmt, got %T", file.Functions[0].Body.Statements[0])
+			}
+			rangeExpr, ok := letStmt.Value.(ast.RangeExpr)
+			if !ok {
+				t.Fatalf("expected let value to be RangeExpr, got %T", letStmt.Value)
+			}
+			if (rangeExpr.Start != nil) != tc.hasStart {
+				t.Fatalf("expected hasStart=%v, got start %#v", tc.hasStart, rangeExpr.Start)
+			}
+			if (rangeExpr.End != nil) != tc.hasEnd {
+				t.Fatalf("expected hasEnd=%v, got end %#v", tc.hasEnd, rangeExpr.End)
+			}
+			if (rangeExpr.Step != nil) != tc.hasStep {
+				t.Fatalf("expected hasStep=%v, got step %#v", tc.hasStep, rangeExpr.Step)
+			}
+		})
+	}
+}
+
+func TestBuildFileRejectsOpenEndedSteppedRangeForms(t *testing.T) {
+	assertParseErrorContains(t, "fn Main() -> Int { let r = 1.. step 2 return 0 }", "open-ended stepped ranges are not supported in M0")
+	assertParseErrorContains(t, "fn Main() -> Int { let r = ..10 step 2 return 0 }", "open-ended stepped ranges are not supported in M0")
+	assertParseErrorContains(t, "fn Main() -> Int { let r = .. step 2 return 0 }", "open-ended stepped ranges are not supported in M0")
+}

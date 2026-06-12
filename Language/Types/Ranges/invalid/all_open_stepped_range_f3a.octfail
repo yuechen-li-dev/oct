@@ -1,0 +1,7 @@
+expect error: "open-ended stepped ranges are not supported in M0"
+
+package Main
+
+fn Main() -> Range {
+    return .. step 2
+}

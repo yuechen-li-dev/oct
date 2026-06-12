@@ -22,6 +22,7 @@ Conditions never use implicit coercion.
 - Enum `match` must be exhaustive.
 - `switch`/`when` arrow positions accept both `->` and `=>`; no semantic distinction is attached to spelling.
 - `for i in start..end` uses inclusive start and exclusive end bounds.
+- `for` ranges must be closed: both `start` and `end` are required. Open-ended `Range` values are ordinary expressions but are not valid `for` loop ranges in M0.
 - `for` bounds must be `Int`.
 - `step` is optional.
 - `step` must be `Int` and greater than zero.
@@ -104,7 +105,7 @@ fn ClampNonNegative(v: Int) -> Int {
 
 ## Loop selection guidance
 
-Use `for i in start..end [step k]` for known-range and regular-step iteration.
+Use `for i in start..end [step k]` for known-range and regular-step iteration. Although `Range` expressions may omit endpoints in expression positions, `for` loops require closed ranges in M0.
 Use `while` when loop termination depends on a condition that evolves during execution.
 Using `while` to manually emulate a `for` loop is legal, but discouraged when the loop is structured iteration.
 

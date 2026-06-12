@@ -861,3 +861,29 @@ func TestCheckEnumTargetedUtilityWhen(t *testing.T) {
 	assertTypeErrorContains(t, "enum Decision { Hold(String) Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run when flag score 10 else Decision.Hold } }", "enum variant Decision.Hold requires a payload")
 	assertTypeErrorContains(t, "enum Decision { Hold Run } fn Judge(flag: Bool) -> Decision { return when utility Decision { case Decision.Run(1) when flag score 10 else Decision.Hold } }", "enum variant Decision.Run does not accept a payload")
 }
+
+func TestCheckFirstClassRangeExpressionTypes(t *testing.T) {
+	programs := []string{
+		"fn Main() -> Range { let r = 1..3 return r }",
+		"fn Main() -> Range { let r = 1.. return r }",
+		"fn Main() -> Range { let r = ..3 return r }",
+		"fn Main() -> Range { let r = .. return r }",
+		"fn Main() -> Range { return 1..10 step 2 }",
+		"fn MakeRange() -> Range { return 2..8 } fn Main() -> Range { return MakeRange() }",
+		"record Window { Bounds: Range } fn Main() -> Range { let w = Window { Bounds: ..10 } return w.Bounds }",
+	}
+	for _, src := range programs {
+		file := parseSource(t, src)
+		if err := Check(file); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+}
+
+func TestCheckFirstClassRangeDiagnostics(t *testing.T) {
+	assertTypeErrorContains(t, "fn Main() -> Range { return true..10 }", "range start must be Int")
+	assertTypeErrorContains(t, "fn Main() -> Range { return 1..false }", "range end must be Int")
+	assertTypeErrorContains(t, "fn Main() -> Range { return 1..10 step false }", "range step must be Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0.. { return i } return 0 }", "for loop range requires start and end")
+	assertTypeErrorContains(t, "fn Main() -> Int { for i in ..10 { return i } return 0 }", "for loop range requires start and end")
+}

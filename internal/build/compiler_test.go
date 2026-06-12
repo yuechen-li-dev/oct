@@ -2602,3 +2602,27 @@ fn Main() -> Int {
 		t.Fatalf("expected 0, got %q", got)
 	}
 }
+
+func TestCompileFirstClassRangeExpressionsOutsideForLoop(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+fn Closed() -> Range { return 1..3 }
+fn OpenEnd() -> Range { return 1.. }
+fn OpenStart() -> Range { return ..3 }
+fn AllOpen() -> Range { return .. }
+fn Stepped() -> Range { return 1..10 step 2 }
+
+fn main() -> Range {
+    return Stepped()
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Compile(mainPath); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+}

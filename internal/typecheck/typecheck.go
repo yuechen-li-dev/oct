@@ -986,6 +986,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
 			return false, fmt.Errorf("function %s: for %s: range expression expects Range, got %s", ctx.name, node.Name, rangeType.ValueType)
 		}
+		if rangeExpr, ok := node.Range.(ast.RangeExpr); ok && (rangeExpr.Start == nil || rangeExpr.End == nil) {
+			return false, fmt.Errorf("function %s: for %s: for loop range requires start and end", ctx.name, node.Name)
+		}
 		loopScope := newScope(scope)
 		loopScope.define(node.Name, Type{Base: BaseTypeInt}, false)
 		_, err = c.checkBlock(loopScope, node.Body, ctx)
@@ -1492,27 +1495,34 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			return ExprType{}, fmt.Errorf("unsupported unary operator %q", node.Operator)
 		}
 	case ast.RangeExpr:
-		startType, err := c.checkExpr(scope, node.Start, ctx)
-		if err != nil {
-			return ExprType{}, err
+		if node.Start != nil {
+			startType, err := c.checkExpr(scope, node.Start, ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if startType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+			}
+			if startType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("range start must be Int, got %s", startType.ValueType)
+			}
 		}
-		if startType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-		}
-		if startType.ValueType != (Type{Base: BaseTypeInt}) {
-			return ExprType{}, fmt.Errorf("range start must be Int, got %s", startType.ValueType)
-		}
-		endType, err := c.checkExpr(scope, node.End, ctx)
-		if err != nil {
-			return ExprType{}, err
-		}
-		if endType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-		}
-		if endType.ValueType != (Type{Base: BaseTypeInt}) {
-			return ExprType{}, fmt.Errorf("range end must be Int, got %s", endType.ValueType)
+		if node.End != nil {
+			endType, err := c.checkExpr(scope, node.End, ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if endType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+			}
+			if endType.ValueType != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("range end must be Int, got %s", endType.ValueType)
+			}
 		}
 		if node.Step != nil {
+			if node.Start == nil || node.End == nil {
+				return ExprType{}, fmt.Errorf("open-ended stepped ranges are not supported in M0")
+			}
 			stepType, err := c.checkExpr(scope, node.Step, ctx)
 			if err != nil {
 				return ExprType{}, err
@@ -5935,7 +5945,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 
 func resolveBaseType(name string) (BaseType, error) {
 	switch BaseType(name) {
-	case BaseTypeInt, BaseTypeFloat, BaseTypeComplex, BaseTypeBool, BaseTypeString, BaseTypeBytes, BaseTypeError, BaseTypeVoid, BaseTypeUI:
+	case BaseTypeInt, BaseTypeFloat, BaseTypeComplex, BaseTypeBool, BaseTypeString, BaseTypeBytes, BaseTypeError, BaseTypeVoid, BaseTypeRange, BaseTypeUI:
 		return BaseType(name), nil
 	default:
 		return "", fmt.Errorf("unknown type: %s", name)

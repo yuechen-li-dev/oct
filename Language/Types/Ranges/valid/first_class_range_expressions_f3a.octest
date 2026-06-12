@@ -1,0 +1,26 @@
+package MainValid
+
+record Window {
+    Bounds: Range
+}
+
+fn ClosedRange() -> Range { return 100..200 }
+fn TailRange() -> Range { return 100.. }
+fn PrefixRange() -> Range { return ..200 }
+fn AllRange() -> Range { return .. }
+fn SteppedRange(limit: Int) -> Range { return 0..limit step 10 }
+fn RecordRange() -> Range {
+    let window = Window { Bounds: ClosedRange() }
+    return window.Bounds
+}
+
+[Fact]
+fn FirstClassRangeValuesTypecheck() -> Void {
+    ClosedRange()
+    TailRange()
+    PrefixRange()
+    AllRange()
+    SteppedRange(100)
+    RecordRange()
+    Assert.True(true, "first-class Range values typecheck in returns, calls, and record fields")
+}
