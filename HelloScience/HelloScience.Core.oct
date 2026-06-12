@@ -1,0 +1,6 @@
+package HelloScience
+
+/// Return the input value unchanged.
+fn Identity(value: Int) -> Int {
+    return value
+}

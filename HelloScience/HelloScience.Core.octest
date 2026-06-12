@@ -1,0 +1,6 @@
+package HelloScience
+
+[Fact]
+fn IdentityReturnsInput() -> Void {
+    Assert.Equal(7, Identity(7), "identity should return the input")
+}
