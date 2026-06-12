@@ -1,8 +1,15 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-06-04._
+_Last updated: 2026-06-12._
 
 This file is the **source of truth** for compiled support posture.
+
+
+## F4 scalar `String.From<T>` compiled parity
+
+Compiled mode now lowers the documented M0 scalar `String.From<T>` conversions for `Int`, `Float`, `Bool`, and `String`. The generated Go uses `strconv.Itoa`, `strconv.FormatFloat(value, 'g', -1, 64)`, `strconv.FormatBool`, and identity for `String`, matching interpreted output for the supported scalar values.
+
+Unsupported type arguments remain rejected before lowering: enums, records, arrays, and dimensioned numeric values such as `Float<K>` are not part of F4. Use `FormatFloat(value, precision)` when dimensionless `Float` display precision matters; unit-aware formatting remains a future/separate API.
 
 
 ## M28a RF compiled cleanup status

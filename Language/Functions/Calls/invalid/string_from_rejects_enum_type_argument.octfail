@@ -1,0 +1,10 @@
+expect error: "String.From<T> supports Int, Float, Bool, and String in M0"
+package Main
+
+enum Mode {
+    Fast
+}
+
+fn Main() -> String {
+    return StringFrom<Mode>(Mode.Fast)
+}

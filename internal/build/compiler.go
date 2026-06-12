@@ -3634,9 +3634,12 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 			return "", "", false, false, fmt.Errorf("unsupported call target")
 		}
 		builtinName := pkgIdent.Name + "." + x.Field
-		if pkgIdent.Name == "Markdown" {
-			if aliasName, mapped := builtin.ResolveNamespacedAlias(pkgIdent.Name, x.Field); mapped {
+		if aliasName, mapped := builtin.ResolveNamespacedAlias(pkgIdent.Name, x.Field); mapped {
+			if isMarkdownCompiledBuiltin(aliasName) {
 				return aliasName, compiledMarkdownBuiltinReturnType(aliasName), true, false, nil
+			}
+			if builtin.IsName(aliasName) {
+				return c.resolveCompiledBuiltinAlias(aliasName)
 			}
 		}
 		if builtin.IsName(builtinName) {
@@ -3690,6 +3693,26 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		return "", "", false, false, fmt.Errorf("unknown function '%s.%s'", pkgIdent.Name, x.Field)
 	default:
 		return "", "", false, false, fmt.Errorf("unsupported callee %T", callee)
+	}
+}
+
+func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, bool, bool, error) {
+	switch name {
+	case "StringByteLength", "StringRuneCount", "StringJoin", "StringConcat", "StringFrom", "StringReplaceAll", "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringSplitLines", "StringEscapeJSON", "StringQuoteJSON":
+		ret := "String"
+		switch name {
+		case "StringByteLength", "StringRuneCount":
+			ret = "Int"
+		case "StringContains", "StringStartsWith", "StringEndsWith":
+			ret = "Bool"
+		case "StringSplitLines":
+			ret = "String[]"
+		}
+		return name, ret, true, false, nil
+	case "ArrayCrossSection":
+		return "ArrayCrossSection", "Void", true, false, nil
+	default:
+		return "", "", false, false, unsupportedBuiltin(name)
 	}
 }
 
@@ -5350,6 +5373,9 @@ func resolveFlowCall(callee ast.Expr, pkg string) (string, string, bool, bool, e
 			return "", "", false, false, unsupported(fmt.Sprintf("flow expression call target %T", callee))
 		}
 		qualified := pkgIdent.Name + "." + x.Field
+		if aliasName, mapped := builtin.ResolveNamespacedAlias(pkgIdent.Name, x.Field); mapped {
+			return resolveBuiltin(aliasName)
+		}
 		if builtin.IsName(qualified) {
 			return resolveBuiltin(qualified)
 		}
@@ -6817,9 +6843,9 @@ func builtinImportDeps(name string) []string {
 		return []string{"strings"}
 	case "StringRuneCount":
 		return []string{"unicode/utf8"}
-	case "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringJoin", "StringReplaceAll", "StringSplitLines":
+	case "StringContains", "StringStartsWith", "StringEndsWith", "StringTrim", "StringJoin", "StringConcat", "StringReplaceAll", "StringSplitLines":
 		return []string{"strings"}
-	case "StringEscapeJSON", "StringQuoteJSON":
+	case "StringEscapeJSON", "StringQuoteJSON", "StringFrom":
 		return []string{"strconv"}
 	case "FormatFloat":
 		return []string{"strconv"}
@@ -8260,6 +8286,32 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	}
 }
 
+func emitGoStringFromAssign(target string, args []string, argTypes []string) (string, error) {
+	if len(args) != 1 || len(argTypes) != 1 {
+		return "", fmt.Errorf("function 'StringFrom' expects 1 argument, got %d", len(args))
+	}
+	expr, err := emitGoStringFromExpr(args[0], argTypes[0])
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s = %s", target, expr), nil
+}
+
+func emitGoStringFromExpr(arg string, argType string) (string, error) {
+	switch argType {
+	case "Int":
+		return fmt.Sprintf("strconv.Itoa(%s)", arg), nil
+	case "Float":
+		return fmt.Sprintf("strconv.FormatFloat(%s, 'g', -1, 64)", arg), nil
+	case "Bool":
+		return fmt.Sprintf("strconv.FormatBool(%s)", arg), nil
+	case "String":
+		return arg, nil
+	default:
+		return "", fmt.Errorf("compiled mode does not yet support builtin StringFrom for type %s", argType)
+	}
+}
+
 func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 	switch canonicalCompiledBuiltinName(callee) {
 	case "Len":
@@ -8646,7 +8698,7 @@ func goStmt(s MIRStmt) (string, error) {
 			case "StringConcat":
 				return fmt.Sprintf("%s = strings.Join(%s, \"\")", st.Target, st.Args[0]), nil
 			case "StringFrom":
-				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
+				return emitGoStringFromAssign(st.Target, st.Args, st.ArgTypes)
 			case "StringReplaceAll":
 				return fmt.Sprintf("%s = strings.ReplaceAll(%s, %s, %s)", st.Target, st.Args[0], st.Args[1], st.Args[2]), nil
 			case "StringContains":

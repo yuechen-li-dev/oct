@@ -1,0 +1,6 @@
+expect error: "String.From<T> supports Int, Float, Bool, and String in M0"
+package Main
+
+fn Main() -> String {
+    return StringFrom<Int[]>([1])
+}

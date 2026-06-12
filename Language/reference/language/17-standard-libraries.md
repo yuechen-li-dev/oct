@@ -154,8 +154,9 @@ let reportText = String.Join(lines, "\n")
 ```
 
 Notes:
-- `String.From<T>` is compiler-known constrained generic syntax (closed contracts), not user-defined generic support.
+- `String.From<T>` is compiler-known constrained generic syntax (closed contracts), not user-defined generic support; `Int`, `Float`, `Bool`, and `String` are supported in interpreted and compiled execution.
 - `ToString(...)` remains available for compatibility, but `String.From<T>` is preferred in report/library code.
+- `String.From<T>` intentionally excludes enums, records, arrays, and dimensioned numeric values such as `Float<K>`; use `FormatFloat` for dimensionless `Float` precision control and keep unit-aware formatting separate.
 - Compatibility globals/backing aliases remain available during transition and should not be the preferred authoring style.
 
 Artifact guidance:
