@@ -39,6 +39,7 @@ func TestMain(m *testing.M) {
 
 func sharedTestSidecarDir(t *testing.T, names ...string) string {
 	t.Helper()
+	requireSlowOctxiliary(t)
 	if envDir, ok := existingSidecarDir(names...); ok {
 		return envDir
 	}
@@ -113,6 +114,7 @@ func executeOctWithSidecarsInDir(t *testing.T, workDir string, args []string, na
 
 func executeOctWithCustomWrapperPathInDir(t *testing.T, workDir string, wrapperPath string, args []string) (string, string, error) {
 	t.Helper()
+	requireSlowOctxiliary(t)
 	cmd := exec.Command(sharedTestOctBinary(t), args...)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(),
@@ -233,6 +235,7 @@ func sidecarBinaryName(command string) string {
 
 func buildTestSidecarsInDir(t *testing.T, binDir string, names ...string) {
 	t.Helper()
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	for _, name := range names {
 		command := octxiliaryCommandName(name)

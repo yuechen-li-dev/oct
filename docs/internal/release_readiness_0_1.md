@@ -90,31 +90,43 @@ oct pkg sync --locked
 
 ## Pre-tag checklist
 
-- README install and quickstart commands are accurate.
+- Worktree is clean before tagging.
+- README install and quickstart commands are accurate, including:
+
+  ```sh
+  go install github.com/yuechen-li-dev/oct/cmd/oct@v0.1.0
+  ```
+
 - Changelog includes v0.1.0 initial preview notes.
-- `pkg/octxiliary` package comment is suitable for pkg.go.dev.
-- CLI version surface works.
+- `pkg/octxiliary` package comment renders sensibly on pkg.go.dev.
+- CLI version surface works (`oct version`, or `go run ./cmd/oct version` from a checkout).
 - Package-manager docs mention registry, lockfile, and wrapper build boundaries.
+- Sidecars build successfully.
+- Fast/default tests pass.
+- Slow Octxiliary wrapper CI lane passes explicitly.
 - CI is green on supported platforms.
 - No major language semantics, package-manager semantics, or wrapper runtime behavior changed for release polish.
 
 Required checks:
 
 ```sh
-go run ./tools/build_sidecars --out dist/sidecars
-OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test ./... -count=1
 go test ./pkg/octxiliary ./internal/octxiliary
 go test ./internal/pkgmgr ./internal/project
-go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Wrappers|BuildWrappers'
+go test ./cmd/oct -run 'Init|New|Version|Help|Pkg|Registry|Lock|Language'
 go test ./internal/... ./cmd/oct
+go test -count=1 -parallel 8 ./...
+go run ./tools/build_sidecars --out dist/sidecars
+OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+go run ./cmd/oct version
 ```
 
-PowerShell full-suite sidecar mode:
+PowerShell slow-wrapper lane:
 
 ```powershell
 go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_SLOW_TESTS = "1"
 $env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
-go test ./... -count=1
+go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
 ```
 
 ## Suggested tag command

@@ -7,6 +7,7 @@ import (
 )
 
 func TestUtilityWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	testCases := []struct {
 		root     string

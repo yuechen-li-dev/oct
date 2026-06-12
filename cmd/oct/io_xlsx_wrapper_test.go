@@ -8,6 +8,7 @@ import (
 )
 
 func TestIOXlsxWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
@@ -46,6 +47,7 @@ func TestIOXlsxWrapper(t *testing.T) {
 }
 
 func TestCompiledIOXlsxWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
@@ -72,6 +74,7 @@ func TestCompiledIOXlsxWrapper(t *testing.T) {
 }
 
 func TestCompiledIOXlsxMissingSidecarDiagnostic(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "IO", "IO.Xlsx.octest")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})

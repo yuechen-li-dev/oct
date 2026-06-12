@@ -6,6 +6,7 @@ import (
 )
 
 func TestCompiledPlotOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Plot")
@@ -27,6 +28,7 @@ func TestCompiledPlotOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledPlotOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Plot")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})

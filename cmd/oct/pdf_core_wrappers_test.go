@@ -11,6 +11,7 @@ import (
 )
 
 func TestPdfCoreWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
@@ -41,6 +42,7 @@ func TestPdfCoreWrappers(t *testing.T) {
 }
 
 func TestCompiledPdfImageBytesInterop(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
@@ -88,6 +90,7 @@ func writeM30PNGFixture(t *testing.T, path string) {
 }
 
 func TestCompiledPdfTextWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
@@ -107,6 +110,7 @@ func TestCompiledPdfTextWrappers(t *testing.T) {
 }
 
 func TestCompiledPdfMissingSidecarDiagnostic(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Pdf", "Pdf.CompiledText.octest")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})

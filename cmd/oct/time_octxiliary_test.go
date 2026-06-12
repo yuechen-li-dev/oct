@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompiledTimeOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-time")
 
@@ -30,6 +31,7 @@ func TestCompiledTimeOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledTimeOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Time", "--execution", "compiled")
 	cmd.Dir = repo
