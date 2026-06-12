@@ -1,0 +1,192 @@
+package LinearAlgebra
+
+// ---------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------
+
+// Builds a k x k diagonal matrix from a length-k vector.
+fn BuildDiagonalMatrix(d: Float[]) -> Float[] ! Error {
+    let k = Len(d)
+    var out: Float[] = []
+    for i in 0..(k * k) {
+        out = Append(out, 0.0)
+    }
+    for i in 0..k {
+        out[FlatIndex(i, i, k)] = d[i]
+    }
+    return out
+}
+
+// Reconstructs U * diag(sigma) * V^T for a Rows x K, K x K, Cols x K SVD.
+fn ReconstructFromSVD(svd: SVDResult) -> Float[] ! Error {
+    let k = Len(svd.SingularValues)
+    let D = BuildDiagonalMatrix(svd.SingularValues)?
+    let UD = MatMul(svd.U, svd.Rows, k, D, k, k)?
+    let Vt = Transpose(svd.V, svd.Cols, k)?
+    return MatMul(UD, svd.Rows, k, Vt, k, svd.Cols)?
+}
+
+// Asserts that two flat matrices of the same shape are elementwise close.
+fn AssertMatrixNear(expected: Float[], actual: Float[], tol: Float, message: String) -> Void {
+    Assert.Equal(Len(expected), Len(actual), message + " (length mismatch)")
+    for i in 0..Len(expected) {
+        Assert.Near(expected[i], actual[i], tol, message + " (entry " + ToString(i) + ")")
+    }
+}
+
+// Asserts that the columns of an (rows x k) matrix are orthonormal,
+// i.e. M^T M ~= I_k.
+fn AssertColumnsOrthonormal(M: Float[], rows: Int, k: Int, tol: Float, message: String) -> Void {
+    let Mt = Assert.LGTM(Transpose(M, rows, k), message + " (transpose)")
+    let MtM = Assert.LGTM(MatMul(Mt, k, rows, M, rows, k), message + " (gram)")
+    let I = Assert.LGTM(Identity(k), message + " (identity)")
+    AssertMatrixNear(I, MtM, tol, message)
+}
+
+// ---------------------------------------------------------------------
+// Facts
+// ---------------------------------------------------------------------
+
+[Fact]
+[Suite("LinearAlgebra.SVD")]
+fn JacobiSVDDiagonalMatrixSortsSingularValuesDescending() -> Void {
+    // diag(1, 3, 2) -> singular values [3, 2, 1]
+    let A = [
+        1.0, 0.0, 0.0,
+        0.0, 3.0, 0.0,
+        0.0, 0.0, 2.0
+    ]
+
+    let svd = Assert.LGTM(JacobiSVD(A, 3, 3, 100, 1e-12), "diagonal matrix SVD should succeed")
+
+    Assert.Equal(3, Len(svd.SingularValues), "expect 3 singular values")
+    Assert.Near(3.0, svd.SingularValues[0], 1e-9, "largest singular value")
+    Assert.Near(2.0, svd.SingularValues[1], 1e-9, "middle singular value")
+    Assert.Near(1.0, svd.SingularValues[2], 1e-9, "smallest singular value")
+    Assert.True(svd.Converged, "diagonal matrix should converge")
+
+    let reconstructed = Assert.LGTM(ReconstructFromSVD(svd), "reconstruction should succeed")
+    AssertMatrixNear(A, reconstructed, 1e-9, "U*diag(sigma)*V^T should reconstruct diag(1,3,2)")
+}
+
+[Fact]
+[Suite("LinearAlgebra.SVD")]
+fn JacobiSVDIdentityIsUnitSingularValuesAndOrthonormalFactors() -> Void {
+    let A = Assert.LGTM(Identity(3), "identity construction should succeed")
+
+    let svd = Assert.LGTM(JacobiSVD(A, 3, 3, 100, 1e-12), "identity SVD should succeed")
+
+    for i in 0..3 {
+        Assert.Near(1.0, svd.SingularValues[i], 1e-9, "identity singular values are all 1")
+    }
+
+    AssertColumnsOrthonormal(svd.U, 3, 3, 1e-9, "U columns of identity SVD")
+    AssertColumnsOrthonormal(svd.V, 3, 3, 1e-9, "V columns of identity SVD")
+
+    let reconstructed = Assert.LGTM(ReconstructFromSVD(svd), "reconstruction should succeed")
+    AssertMatrixNear(A, reconstructed, 1e-9, "U*diag(sigma)*V^T should reconstruct the identity")
+}
+
+[Fact]
+[Suite("LinearAlgebra.SVD")]
+fn JacobiSVDReconstructsTallRectangularMatrix() -> Void {
+    // 3x2 matrix, full column rank.
+    let A = [
+        2.0, 0.0,
+        0.0, 1.0,
+        1.0, 1.0
+    ]
+
+    let svd = Assert.LGTM(JacobiSVD(A, 3, 2, 200, 1e-14), "tall matrix SVD should succeed")
+
+    Assert.Equal(2, Len(svd.SingularValues), "expect 2 singular values for a 3x2 matrix")
+    Assert.True(svd.SingularValues[0] >= svd.SingularValues[1], "singular values should be sorted descending")
+    Assert.True(svd.SingularValues[1] > 0.0, "3x2 full-rank matrix should have two positive singular values")
+    Assert.True(svd.Converged, "tall matrix SVD should converge")
+
+    AssertColumnsOrthonormal(svd.U, 3, 2, 1e-9, "U columns of tall SVD")
+    AssertColumnsOrthonormal(svd.V, 2, 2, 1e-9, "V columns of tall SVD")
+
+    let reconstructed = Assert.LGTM(ReconstructFromSVD(svd), "reconstruction should succeed")
+    AssertMatrixNear(A, reconstructed, 1e-9, "U*diag(sigma)*V^T should reconstruct the 3x2 matrix")
+}
+
+[Fact]
+[Suite("LinearAlgebra.SVD")]
+fn JacobiSVDHandlesWideMatrixViaTransposeTrick() -> Void {
+    // 2x3 matrix (cols > rows): K = min(rows, cols) = 2.
+    let A = [
+        2.0, 0.0, 1.0,
+        0.0, 1.0, 1.0
+    ]
+
+    let svd = Assert.LGTM(JacobiSVD(A, 2, 3, 200, 1e-14), "wide matrix SVD should succeed")
+
+    Assert.Equal(2, Len(svd.SingularValues), "expect K=2 singular values for a 2x3 matrix")
+    Assert.Equal(4, Len(svd.U), "U should be 2x2 (Rows x K)")
+    Assert.Equal(6, Len(svd.V), "V should be 3x2 (Cols x K)")
+    Assert.True(svd.SingularValues[0] >= svd.SingularValues[1], "singular values should be sorted descending")
+    Assert.True(svd.Converged, "wide matrix SVD should converge")
+
+    AssertColumnsOrthonormal(svd.U, 2, 2, 1e-9, "U columns of wide SVD")
+    AssertColumnsOrthonormal(svd.V, 3, 2, 1e-9, "V columns of wide SVD")
+
+    let reconstructed = Assert.LGTM(ReconstructFromSVD(svd), "reconstruction should succeed")
+    AssertMatrixNear(A, reconstructed, 1e-9, "U*diag(sigma)*V^T should reconstruct the 2x3 matrix")
+}
+
+[Fact]
+[Suite("LinearAlgebra.SVD")]
+fn JacobiSVDSingularValuesMatchGramMatrixEigenvalues() -> Void {
+    // sigma_i(A)^2 should match the eigenvalues of A^T A (here A is square
+    // so A^T A and A A^T share a spectrum), cross-checking JacobiSVD
+    // against the existing JacobiEigen path used elsewhere in this
+    // package and in Experiments/NewtonSchulzCoefficientProbe.
+    let A = [
+        2.0, 1.0,
+        1.0, 3.0
+    ]
+
+    let svd = Assert.LGTM(JacobiSVD(A, 2, 2, 200, 1e-14), "square matrix SVD should succeed")
+
+    let At = Assert.LGTM(Transpose(A, 2, 2), "transpose should succeed")
+    let G = Assert.LGTM(MatMul(A, 2, 2, At, 2, 2), "gram matrix should succeed")
+    let eig = Assert.LGTM(JacobiEigen(G, 2, 200, 1e-14), "gram matrix eigendecomposition should succeed")
+
+    var gramEigen: Float[] = []
+    for i in 0..Len(eig.Eigenvalues) {
+        let v = eig.Eigenvalues[i]
+        let clamped = if v < 0.0 { 0.0 } else { v }
+        gramEigen = Append(gramEigen, Sqrt(clamped))
+    }
+
+    // Sort the Gram-derived singular values descending for comparison.
+    var sortedGramEigen = CopyFloatArray(gramEigen)
+    for i in 0..Len(sortedGramEigen) {
+        var maxIdx = i
+        for j in (i + 1)..Len(sortedGramEigen) {
+            if sortedGramEigen[j] > sortedGramEigen[maxIdx] {
+                maxIdx = j
+            }
+        }
+        if maxIdx != i {
+            let tmp = sortedGramEigen[i]
+            sortedGramEigen[i] = sortedGramEigen[maxIdx]
+            sortedGramEigen[maxIdx] = tmp
+        }
+    }
+
+    for i in 0..Len(svd.SingularValues) {
+        Assert.Near(sortedGramEigen[i], svd.SingularValues[i], 1e-7, "JacobiSVD singular values should match sqrt(eig(A^T A))")
+    }
+}
+
+[Fact]
+[Suite("LinearAlgebra.SVD")]
+fn JacobiSVDRejectsInvalidInputs() -> Void {
+    let A = [1.0, 0.0, 0.0, 1.0]
+
+    Assert.Error(JacobiSVD(A, 2, 2, 0, 1e-12), "maxIter <= 0 should fail")
+    Assert.Error(JacobiSVD(A, 2, 2, 100, 0.0), "tol <= 0 should fail")
+    Assert.Error(JacobiSVD([1.0, 2.0, 3.0], 2, 2, 100, 1e-12), "mismatched matrix data should fail")
+}

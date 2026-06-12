@@ -1,0 +1,237 @@
+package LinearAlgebra
+
+// ---------------------------------------------------------------------
+// Singular Value Decomposition (one-sided Jacobi / Hestenes-Jacobi)
+// ---------------------------------------------------------------------
+//
+// LinearAlgebra.Eigen provides JacobiEigen for symmetric matrices, which
+// is enough to recover singular values indirectly via the eigenvalues of
+// the Gram matrix X X^T (sigma_i = sqrt(eig_i)). That route has two
+// practical gaps:
+//
+//   1. It squares the condition number: a singular value near 1e-6
+//      becomes a Gram eigenvalue near 1e-12, which is at or past
+//      Float64 precision for many small-but-meaningful directions.
+//   2. It only gives you the *values*, not the orthogonal factors U and
+//      V, so callers cannot reconstruct A, compute the orthogonal polar
+//      factor U V^T (e.g. the Muon optimizer's orthogonalization
+//      target), or project onto left/right singular subspaces.
+//
+// JacobiSVD below computes a full economy-size decomposition
+// A ~= U * diag(SingularValues) * V^T directly on A, via one-sided
+// Jacobi rotations that orthogonalize pairs of columns of A while
+// accumulating the rotations into V. This is the natural
+// SciPy-equivalent gap: `scipy.linalg.svd`.
+//
+// Shapes, for A of size Rows x Cols and K = min(Rows, Cols):
+//   U:              Rows x K, columns orthonormal (U^T U = I_K)
+//   SingularValues: length K, sorted descending, all >= 0
+//   V:              Cols x K, columns orthonormal (V^T V = I_K)
+//   A ~= U * diag(SingularValues) * V^T
+
+record SVDResult {
+    U: Float[]
+    SingularValues: Float[]
+    V: Float[]
+    Rows: Int
+    Cols: Int
+    Iterations: Int
+    Converged: Bool
+}
+
+record SVDSorted {
+    U: Float[]
+    SingularValues: Float[]
+    V: Float[]
+}
+
+// Rotates columns p and q of an (rows x cols) matrix by the given
+// (c, s) rotation: col_p' = c*col_p - s*col_q, col_q' = s*col_p + c*col_q.
+fn RotateColumnPair(A: Float[], rows: Int, cols: Int, p: Int, q: Int, c: Float, s: Float) -> Float[] {
+    var out = CopyFloatArray(A)
+    for i in 0..rows {
+        let aip = A[FlatIndex(i, p, cols)]
+        let aiq = A[FlatIndex(i, q, cols)]
+        out[FlatIndex(i, p, cols)] = c * aip - s * aiq
+        out[FlatIndex(i, q, cols)] = s * aip + c * aiq
+    }
+    return out
+}
+
+fn Sign(x: Float) -> Float {
+    if x < 0.0 {
+        return -1.0
+    }
+    return 1.0
+}
+
+// Sorts the columns of U and V and the entries of sigmas into descending
+// order of singular value.
+fn SortSVDDescending(U: Float[], sigmas: Float[], V: Float[], rows: Int, cols: Int, k: Int) -> SVDSorted {
+    var outU = CopyFloatArray(U)
+    var outV = CopyFloatArray(V)
+    var outSigma = CopyFloatArray(sigmas)
+
+    for i in 0..k {
+        var maxIdx = i
+        for j in (i + 1)..k {
+            if outSigma[j] > outSigma[maxIdx] {
+                maxIdx = j
+            }
+        }
+        if maxIdx != i {
+            let tmpSigma = outSigma[i]
+            outSigma[i] = outSigma[maxIdx]
+            outSigma[maxIdx] = tmpSigma
+
+            for r in 0..rows {
+                let tmp = outU[FlatIndex(r, i, k)]
+                outU[FlatIndex(r, i, k)] = outU[FlatIndex(r, maxIdx, k)]
+                outU[FlatIndex(r, maxIdx, k)] = tmp
+            }
+
+            for r in 0..cols {
+                let tmp = outV[FlatIndex(r, i, k)]
+                outV[FlatIndex(r, i, k)] = outV[FlatIndex(r, maxIdx, k)]
+                outV[FlatIndex(r, maxIdx, k)] = tmp
+            }
+        }
+    }
+
+    return SVDSorted { U: outU SingularValues: outSigma V: outV }
+}
+
+// JacobiSVD computes an economy-size SVD A ~= U * diag(SingularValues) * V^T
+// using one-sided Jacobi rotations. maxIter bounds the number of sweeps
+// over all column pairs; tol is the relative threshold (relative to
+// sqrt(||col_p||^2 * ||col_q||^2)) below which a pair of columns is
+// considered already orthogonal.
+fn JacobiSVD(A: Float[], rows: Int, cols: Int, maxIter: Int, tol: Float) -> SVDResult ! Error {
+    let mok = ValidateMatrixData(A, rows, cols)?
+
+    if maxIter <= 0 {
+        return error("jacobi svd requires maxIter > 0")
+    }
+    if tol <= 0.0 {
+        return error("jacobi svd requires tol > 0")
+    }
+
+    // Work on the taller-or-square orientation; recover the wide case by
+    // transposing, decomposing, and swapping U and V.
+    if cols > rows {
+        let At = Transpose(A, rows, cols)?
+        let svdT = JacobiSVD(At, cols, rows, maxIter, tol)?
+        return SVDResult {
+            U: svdT.V
+            SingularValues: svdT.SingularValues
+            V: svdT.U
+            Rows: rows
+            Cols: cols
+            Iterations: svdT.Iterations
+            Converged: svdT.Converged
+        }
+    }
+
+    let k = cols
+
+    if k == 1 {
+        var sumSquares = 0.0
+        for i in 0..rows {
+            sumSquares = sumSquares + A[i] * A[i]
+        }
+        let sigma = Sqrt(sumSquares)
+
+        var U = CopyFloatArray(A)
+        if sigma > PivotEpsilon() {
+            for i in 0..rows {
+                U[i] = U[i] / sigma
+            }
+        }
+
+        return SVDResult {
+            U: U
+            SingularValues: [sigma]
+            V: [1.0]
+            Rows: rows
+            Cols: cols
+            Iterations: 0
+            Converged: true
+        }
+    }
+
+    var work = CopyFloatArray(A)
+    var V = Identity(k)?
+    var iter = 0
+    var converged = false
+
+    while iter < maxIter and converged == false {
+        var anyRotation = false
+
+        for p in 0..k {
+            for q in (p + 1)..k {
+                var alpha = 0.0
+                var beta = 0.0
+                var gamma = 0.0
+                for i in 0..rows {
+                    let aip = work[FlatIndex(i, p, k)]
+                    let aiq = work[FlatIndex(i, q, k)]
+                    alpha = alpha + aip * aip
+                    beta = beta + aiq * aiq
+                    gamma = gamma + aip * aiq
+                }
+
+                let threshold = tol * Sqrt(alpha * beta)
+                if Abs(gamma) > threshold and Abs(gamma) > PivotEpsilon() {
+                    anyRotation = true
+
+                    let zeta = (beta - alpha) / (2.0 * gamma)
+                    let t = Sign(zeta) / (Abs(zeta) + Sqrt(1.0 + zeta * zeta))
+                    let c = 1.0 / Sqrt(1.0 + t * t)
+                    let s = c * t
+
+                    work = RotateColumnPair(work, rows, k, p, q, c, s)
+                    V = RotateColumnPair(V, k, k, p, q, c, s)
+                }
+            }
+        }
+
+        iter = iter + 1
+        if anyRotation == false {
+            converged = true
+        }
+    }
+
+    var sigmas: Float[] = []
+    var U = CopyFloatArray(work)
+    for j in 0..k {
+        var sumSquares = 0.0
+        for i in 0..rows {
+            let v = work[FlatIndex(i, j, k)]
+            sumSquares = sumSquares + v * v
+        }
+        let sigma = Sqrt(sumSquares)
+        sigmas = Append(sigmas, sigma)
+
+        if sigma > PivotEpsilon() {
+            for i in 0..rows {
+                U[FlatIndex(i, j, k)] = work[FlatIndex(i, j, k)] / sigma
+            }
+        } else {
+            for i in 0..rows {
+                U[FlatIndex(i, j, k)] = 0.0
+            }
+        }
+    }
+
+    let sorted = SortSVDDescending(U, sigmas, V, rows, k, k)
+
+    return SVDResult {
+        U: sorted.U
+        SingularValues: sorted.SingularValues
+        V: sorted.V
+        Rows: rows
+        Cols: cols
+        Iterations: iter
+        Converged: converged
+    }
+}
