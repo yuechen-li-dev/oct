@@ -6,6 +6,7 @@ import (
 )
 
 func TestCompiledHashOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Hash")
@@ -25,6 +26,7 @@ func TestCompiledHashOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledHashOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Hash", "Hash.CompiledSmoke.octest")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})

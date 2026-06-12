@@ -1,5 +1,35 @@
 # AGENTS.md
 
+## Quick field manual
+
+Before editing, read the smallest relevant slice of the repo truth:
+
+- `README.md` for user-facing workflow and release positioning.
+- `Language/reference/...` for Oct syntax, style, and supported language features.
+- Relevant `Language/...` fixtures; they are examples **and** semantic contracts.
+- Relevant `docs/internal/...` notes for release, package-manager, wrapper, or compiled-backend work.
+
+Testing guidance:
+
+- Language behavior belongs in `.octest` / `.octfail` corpus tests under `Language/`; prefer adding or updating those contracts over embedding Oct programs in Go tests.
+- If you change Go code, run targeted Go tests plus the relevant Oct language/library corpus lane.
+- If you only change docs, fixtures, or Oct examples, a full `go test ./...` is usually unnecessary; run the relevant `oct test` corpus/examples instead.
+- Do not force tests to interpreted mode to hide compiled failures. Do not weaken no-fallback or missing-sidecar assertions. If compiled support is absent, document that explicitly.
+
+Octxiliary/wrapper workflow:
+
+- Build sidecars explicitly with `go run ./tools/build_sidecars --out dist/sidecars`.
+- Run slow wrapper lanes explicitly with `OCT_WRAPPER_PATH` and `OCT_SLOW_TESTS=1` (or the legacy `OCT_RUN_SLOW_TESTS=1`).
+- Normal feature PRs should avoid broad slow wrapper lanes unless wrapper/octxiliary code changed or the lane was requested.
+- Keep generated and scratch artifacts out of commits: do not commit local `dist/`, temporary outputs, `.oct/` caches, or test artifacts.
+
+Release hygiene:
+
+- Prefer small surgical commits.
+- If touching release/tagging, follow `docs/internal/release_readiness_0_1.md`.
+- Do not create or push `v0.1.0` unless the release checklist is green and a human explicitly approves tagging.
+
+
 ## Language Reference Authority Rule (Oct Code)
 
 * The `Language/reference` directory is the **single source of truth** for:

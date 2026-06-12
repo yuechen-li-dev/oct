@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompiledTextOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-text")
 
@@ -30,6 +31,7 @@ func TestCompiledTextOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledTextOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	target := filepath.Join("Libraries", "Text", "Text.CompiledSmoke.octest")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", target, "--execution", "compiled")

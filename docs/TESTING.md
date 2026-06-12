@@ -5,16 +5,13 @@
 Use the default unit-test command for local iteration and normal CI:
 
 ```bash
-go run ./tools/build_sidecars --out dist/sidecars
-OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test ./... -count=1
+go test -count=1 -parallel 8 ./...
 ```
 
 PowerShell equivalent:
 
 ```powershell
-go run ./tools/build_sidecars --out dist/sidecars
-$env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
-go test ./... -count=1
+go test -count=1 -parallel 8 ./...
 ```
 
 Default tests should remain focused on:
@@ -27,17 +24,33 @@ Default tests should **not** require:
 - large artifact sweeps,
 - real Prometheus sidecars/reactors.
 
-Compiled/auto wrapper tests are expected to use Octxiliary sidecars. Build them once with `tools/build_sidecars` and set `OCT_WRAPPER_PATH` for the fastest honest full-suite run; sidecar-aware Go tests can still build focused temporary sidecars when the environment is not set.
+Sidecar-heavy compiled/auto wrapper tests are not part of the default fast lane. They are gated by `OCT_SLOW_TESTS=1` (or legacy `OCT_RUN_SLOW_TESTS=1`) and should still keep no-fallback and missing-sidecar assertions honest.
 
 ## Slow test workflow
 
-Slow integration/science style tests are gated by:
+General slow integration/science style tests are gated by:
 
 ```bash
 OCT_RUN_SLOW_TESTS=1 go test ./...
 ```
 
-Use this mode before releases or when specifically validating broader compiled/runtime paths.
+The explicit Octxiliary wrapper lane is:
+
+```bash
+go run ./tools/build_sidecars --out dist/sidecars
+OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+```
+
+PowerShell equivalent:
+
+```powershell
+go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_SLOW_TESTS = "1"
+$env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
+go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+```
+
+Use slow modes before releases, when wrapper/octxiliary code changes, or when specifically validating broader compiled/runtime paths.
 
 ## Prometheus integration workflow
 

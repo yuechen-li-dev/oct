@@ -1,13 +1,18 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompiledCompressionOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
+	copyOctxiliaryFixture(t, "mx103c_gzip_src.txt", filepath.Join(workDir, "mx103c_gzip_src.txt"))
+	copyOctxiliaryFixture(t, "m8_gzip_text_bytes_src.txt", filepath.Join(workDir, "m8_gzip_text_bytes_src.txt"))
+	copyOctxiliaryFixture(t, "mx103c_gzip_file_src.txt", filepath.Join(workDir, "mx103c_gzip_file_src.txt"))
 	target := repoPath(t, "Libraries", "Compression")
 
 	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-compression", "octxiliary-io")
@@ -26,6 +31,7 @@ func TestCompiledCompressionOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledCompressionOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	binDir := t.TempDir()
 	buildTestSidecarsInDir(t, binDir, "octxiliary-io")
 

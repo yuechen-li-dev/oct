@@ -7,6 +7,7 @@ import (
 )
 
 func TestIOJsonGoldenWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	root := filepath.Join("..", "..", "Libraries", "IO", "IO.Json.octest")
 	stdout, stderr, err := executeCLIWithSidecars(t, "test", root, "octxiliary-io", "octxiliary-json")

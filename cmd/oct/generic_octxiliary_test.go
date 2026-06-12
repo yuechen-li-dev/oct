@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
@@ -25,6 +26,7 @@ func TestCompiledGenericOctxiliaryWrapperFixture(t *testing.T) {
 }
 
 func TestCompiledGenericOctxiliaryRejectsManifestReturnMismatch(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/invalid/return_mismatch/bad_return.octest", "--execution", "compiled")
 	cmd.Dir = repo
@@ -40,6 +42,7 @@ func TestCompiledGenericOctxiliaryRejectsManifestReturnMismatch(t *testing.T) {
 }
 
 func TestCompiledGenericOctxiliaryRejectsManifestFallibleMismatch(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/invalid/fallible_mismatch/bad_fallible.octest", "--execution", "compiled")
 	cmd.Dir = repo
@@ -55,6 +58,7 @@ func TestCompiledGenericOctxiliaryRejectsManifestFallibleMismatch(t *testing.T) 
 }
 
 func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")
 	cmd.Dir = repo
@@ -69,6 +73,7 @@ func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 }
 
 func TestCompiledGenericOctxiliaryRejectsRecordReturn(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", filepath.Join("..", "..", "..", "..", "..", "cmd", "oct"), "pkg", "wrappers")
 	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "record_return")
@@ -83,6 +88,7 @@ func TestCompiledGenericOctxiliaryRejectsRecordReturn(t *testing.T) {
 }
 
 func TestCompiledGenericOctxiliaryRejectsUndeclaredRecordArg(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", filepath.Join("..", "..", "..", "..", "..", "cmd", "oct"), "pkg", "wrappers")
 	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "undeclared_record_arg")
@@ -96,6 +102,7 @@ func TestCompiledGenericOctxiliaryRejectsUndeclaredRecordArg(t *testing.T) {
 }
 
 func TestCompiledGenericOctxiliaryRejectsRecordArgMismatch(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/invalid/record_arg_mismatch/bad_record_arg_mismatch.octest", "--execution", "compiled")
 	cmd.Dir = repo
@@ -111,6 +118,7 @@ func TestCompiledGenericOctxiliaryRejectsRecordArgMismatch(t *testing.T) {
 }
 
 func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
@@ -130,6 +138,7 @@ func TestInterpretedGenericOctxiliaryWrapperFixture(t *testing.T) {
 }
 
 func TestInterpretedGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/InterpretedOctxiliary/valid/interpreted_generic_wrapper_w7b.octest", "--execution", "interpreted")
 	cmd.Dir = repo

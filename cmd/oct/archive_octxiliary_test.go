@@ -1,13 +1,16 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompiledArchiveOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
+	copyOctxiliaryFixtureDir(t, "mx103c_zip_src", filepath.Join(workDir, "mx103c_zip_src"))
 	target := repoPath(t, "Libraries", "Archive")
 
 	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-archive", "octxiliary-io")
@@ -24,6 +27,7 @@ func TestCompiledArchiveOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledArchiveOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	binDir := t.TempDir()
 	buildTestSidecarsInDir(t, binDir, "octxiliary-io")
 	workDir := newWrapperTempProject(t)

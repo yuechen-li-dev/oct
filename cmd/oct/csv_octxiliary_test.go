@@ -6,6 +6,7 @@ import (
 )
 
 func TestCompiledCsvOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Csv")
@@ -27,6 +28,7 @@ func TestCompiledCsvOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledCsvOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Csv", "Csv.octest")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
@@ -39,6 +41,7 @@ func TestCompiledCsvOctxiliaryMissingSidecarMessage(t *testing.T) {
 }
 
 func TestCompiledIOCsvRowMajorOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "IO", "IO.Csv.CompiledSmoke.octest")
@@ -53,6 +56,7 @@ func TestCompiledIOCsvRowMajorOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestAutoIOCsvOctxiliarySidecarDiscoveryDoesNotFallback(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "IO", "IO.Csv.CompiledSmoke.octest")

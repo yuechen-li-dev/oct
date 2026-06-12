@@ -7,6 +7,7 @@ import (
 )
 
 func TestConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
+	requireSlowOctxiliary(t)
 	outputPath := "m104_convenience_plot.png"
 	sourcePath := writeSourceFile(t, "m104_convenience_plot.oct", "fn Main() -> Int {\n    return PlotLine([0.0, 1.0, 2.0], [0.0, 1.0, 4.0], \""+outputPath+"\")\n}\n")
 
@@ -21,6 +22,7 @@ func TestConveniencePlotBuiltinsRemainNoImport(t *testing.T) {
 }
 
 func TestPlotCoreWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	root := repoPath(t, "Libraries", "Plot")

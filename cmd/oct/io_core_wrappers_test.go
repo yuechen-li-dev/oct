@@ -8,6 +8,7 @@ import (
 )
 
 func TestIOCoreWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))
@@ -55,6 +56,7 @@ func TestIOCoreWrappers(t *testing.T) {
 }
 
 func TestCsvReadMatrixCsvReadRowsCsvReadTableJsonParseJsonLoadAutoCompiledWithoutFallback(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	copyFixtureDir(t, repoPath(t, "Libraries", "IO", "testdata"), filepath.Join(workDir, "Libraries", "IO", "testdata"))

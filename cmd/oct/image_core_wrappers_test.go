@@ -12,12 +12,14 @@ import (
 )
 
 func TestImageCoreWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
 	if err := synthesizeImageCoreFixtures(workDir); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}
+	copyOctxiliaryFixture(t, "mx103d_unsupported.bmp", filepath.Join(workDir, "mx103d_unsupported.bmp"))
 
 	root := repoPath(t, "Libraries", "Image")
 	stdout, stderr, err := executeCLIWithSidecarsInDir(t, workDir, "test", root, "octxiliary-image")
@@ -42,12 +44,14 @@ func TestImageCoreWrappers(t *testing.T) {
 }
 
 func TestCompiledImageCoreWrappers(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 
 	workDir := newWrapperTempProject(t)
 	if err := synthesizeImageCoreFixtures(workDir); err != nil {
 		t.Fatalf("synthesize fixtures: %v", err)
 	}
+	copyOctxiliaryFixture(t, "mx103d_unsupported.bmp", filepath.Join(workDir, "mx103d_unsupported.bmp"))
 
 	target := repoPath(t, "Libraries", "Image")
 	stdout, stderr, err := executeOctWithSidecarsInDir(t, workDir, []string{"test", target, "--execution", "compiled"}, "octxiliary-image")
@@ -70,6 +74,7 @@ func TestCompiledImageCoreWrappers(t *testing.T) {
 }
 
 func TestCompiledImageMissingSidecarDiagnostic(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Image", "Image.Core.octest")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})

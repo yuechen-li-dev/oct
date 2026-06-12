@@ -51,6 +51,21 @@ func copyFixtureDir(t *testing.T, srcDir string, dstDir string) {
 	copyDir(t, srcDir, dstDir)
 }
 
+func octxiliaryFixturePath(t *testing.T, name string) string {
+	t.Helper()
+	return repoPath(t, "testdata", "octxiliary_fixtures", name)
+}
+
+func copyOctxiliaryFixture(t *testing.T, name string, dst string) {
+	t.Helper()
+	copyTestFixture(t, octxiliaryFixturePath(t, name), dst)
+}
+
+func copyOctxiliaryFixtureDir(t *testing.T, name string, dst string) {
+	t.Helper()
+	copyFixtureDir(t, octxiliaryFixturePath(t, name), dst)
+}
+
 func newWrapperTempProject(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

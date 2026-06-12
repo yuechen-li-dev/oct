@@ -2,15 +2,15 @@ package main
 
 import (
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestCompiledMarkdownHelpersNoSidecar(t *testing.T) {
-	repo := filepath.Join("..", "..")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Markdown", "--execution", "compiled")
-	cmd.Dir = repo
+	workDir := t.TempDir()
+	target := repoPath(t, "Libraries", "Markdown")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", target, "--execution", "compiled")
+	cmd.Dir = workDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("compiled markdown tests failed: %v\n%s", err, strings.TrimSpace(string(out)))

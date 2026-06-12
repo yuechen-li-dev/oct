@@ -6,6 +6,7 @@ import (
 )
 
 func TestCompiledJsonOctxiliaryWrapper(t *testing.T) {
+	requireSlowOctxiliary(t)
 	t.Parallel()
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Json")
@@ -24,6 +25,7 @@ func TestCompiledJsonOctxiliaryWrapper(t *testing.T) {
 }
 
 func TestCompiledJsonOctxiliaryMissingSidecarMessage(t *testing.T) {
+	requireSlowOctxiliary(t)
 	workDir := newWrapperTempProject(t)
 	target := repoPath(t, "Libraries", "Json", "Json.octest")
 	stdout, stderr, err := executeOctWithCustomWrapperPathInDir(t, workDir, t.TempDir(), []string{"test", target, "--execution", "compiled"})
