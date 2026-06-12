@@ -1,0 +1,8 @@
+expect error: "array indexing index must be Int, got Range"
+
+package Main
+
+fn Main() -> Int[] {
+    let xs = [1, 2, 3, 4]
+    return xs[1..3]
+}

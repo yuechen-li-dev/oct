@@ -3,6 +3,8 @@ package builtin
 var names = map[string]struct{}{
 	"Len":                      {},
 	"Append":                   {},
+	"ArrayCrossSection":        {},
+	"Array.CrossSection":       {},
 	"Complex":                  {},
 	"ComplexPolar":             {},
 	"I":                        {},

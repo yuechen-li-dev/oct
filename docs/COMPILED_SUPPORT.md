@@ -119,6 +119,12 @@ Notes:
 
 M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in flow expressions is removed, and compiled `BoardSnapshot` support is now green for M0 scalar board fields (`Bool`/`Int`/`Float`/`String`) with board arrays intentionally unsupported.
 
+## Array cross-section
+
+| Surface | Interpreted | Compiled | Coverage | Notes |
+| --- | --- | --- | --- | --- |
+| `Array.CrossSection(values: T[], range: Range) -> T[]` | Supported | Supported | `Language/Types/Arrays/valid/array_cross_section.octest` | 1D arrays only; returns a new copy, not a Go slice view; preserves exact element type including SI dimensions and record/enum element types. Colon slicing (`xs[1:3]`) and bracket range extraction (`xs[1..3]`) remain invalid. Negative indices, reverse ranges, views, `Array.TryCrossSection`, and `Array.Copy`/`Take`/`Drop`/`Window` aliases are deferred/not M0. |
+
 ## Current deferred / partial categories
 
 - Markdown wrapper-heavy paths are still largely interpreted/fallback territory.

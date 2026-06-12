@@ -1,6 +1,9 @@
 package builtin
 
 var namespaceAliases = map[string]map[string]string{
+	"Array": {
+		"CrossSection": "ArrayCrossSection",
+	},
 	"String": {
 		"Concat":     "StringConcat",
 		"From":       "StringFrom",
@@ -81,4 +84,13 @@ func ResolveNamespacedAlias(namespace string, symbol string) (string, bool) {
 	}
 	name, ok := ns[symbol]
 	return name, ok
+}
+
+func IsCompilerOwnedNamespace(namespace string) bool {
+	switch namespace {
+	case "Array":
+		return true
+	default:
+		return false
+	}
 }

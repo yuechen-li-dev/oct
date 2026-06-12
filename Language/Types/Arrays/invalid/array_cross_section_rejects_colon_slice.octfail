@@ -1,0 +1,8 @@
+expect error: "expected ']' after index expression"
+
+package Main
+
+fn Main() -> Int {
+    let xs = [1, 2, 3, 4]
+    return xs[1:3]
+}

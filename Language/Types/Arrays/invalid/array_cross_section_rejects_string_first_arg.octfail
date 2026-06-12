@@ -1,0 +1,7 @@
+expect error: "Array.CrossSection expects a 1D array as its first argument"
+
+package Main
+
+fn Main() -> String[] {
+    return Array.CrossSection("abc", ..)
+}

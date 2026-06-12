@@ -1,0 +1,8 @@
+expect error: "Array.CrossSection operates on arrays, not Vector<Float>; use Vector-specific APIs"
+
+package Main
+
+fn Main() -> Vector<Float> {
+    let v = vector[1.0, 2.0, 3.0]
+    return Array.CrossSection(v, ..)
+}

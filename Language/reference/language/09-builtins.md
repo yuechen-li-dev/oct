@@ -18,6 +18,12 @@ For matrix and tensor-focused language surface, see [16 vectors, matrices, and t
   - Prints the value and returns status code `Int`.
 - `Len(x: T[]) -> Int` and `Len(x: String) -> Int`.
 - `Append(xs: T[], value: T) -> T[]`.
+- `Array.CrossSection(values: T[], range: Range) -> T[]`.
+  - Compiler-owned polymorphism; this does not introduce user-defined generics.
+  - Accepts 1D arrays only, not scalar `String`, vectors, matrices, tensors, maps, or dictionaries.
+  - Returns a new array copy and preserves the exact element type, including SI dimensions and record/enum element types.
+  - It is the readable M0 replacement for Python-style slicing; `xs[1:3]` and `xs[1..3]` are not valid.
+  - Negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, and aliases such as `Array.Copy`, `Array.Take`, `Array.Drop`, and `Array.Window` are deferred/not part of M0.
 
 ## 2) Numeric / math
 

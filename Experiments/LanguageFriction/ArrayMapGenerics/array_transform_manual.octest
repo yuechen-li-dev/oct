@@ -2,52 +2,24 @@ package LanguageFrictionArrayMapGenerics
 
 import String
 
-fn FirstN(xs: Float[], n: Int) -> Float[] ! Error {
-    if n < 0 { return error("n must be non-negative") }
-    if n > Len(xs) { return error("n must not exceed length") }
-    var out: Float[] = []
-    for i in 0..n {
-        out = Append(out, xs[i])
-    }
-    return out
+fn FirstN(xs: Float[], n: Int) -> Float[] {
+    return Array.CrossSection(xs, ..n)
 }
 
-fn DropFirstN(xs: Float[], n: Int) -> Float[] ! Error {
-    if n < 0 { return error("n must be non-negative") }
-    if n > Len(xs) { return error("n must not exceed length") }
-    var out: Float[] = []
-    for i in n..Len(xs) {
-        out = Append(out, xs[i])
-    }
-    return out
+fn DropFirstN(xs: Float[], n: Int) -> Float[] {
+    return Array.CrossSection(xs, n..)
 }
 
-fn Window(xs: Float[], start: Int, end: Int) -> Float[] ! Error {
-    if start < 0 { return error("start must be non-negative") }
-    if end < start { return error("end must not precede start") }
-    if end > Len(xs) { return error("end must not exceed length") }
-    var out: Float[] = []
-    for i in start..end {
-        out = Append(out, xs[i])
-    }
-    return out
+fn Window(xs: Float[], start: Int, end: Int) -> Float[] {
+    return Array.CrossSection(xs, start..end)
 }
 
-fn EveryKth(xs: Float[], step: Int) -> Float[] ! Error {
-    if step <= 0 { return error("step must be positive") }
-    var out: Float[] = []
-    for i in 0..Len(xs) {
-        if (i / step) * step == i {
-            out = Append(out, xs[i])
-        }
-    }
-    return out
+fn EveryKth(xs: Float[], step: Int) -> Float[] {
+    return Array.CrossSection(xs, 0..Len(xs) step step)
 }
 
-fn LastN(xs: Float[], n: Int) -> Float[] ! Error {
-    if n < 0 { return error("n must be non-negative") }
-    if n > Len(xs) { return error("n must not exceed length") }
-    return Window(xs, Len(xs) - n, Len(xs))?
+fn LastN(xs: Float[], n: Int) -> Float[] {
+    return Array.CrossSection(xs, (Len(xs) - n)..)
 }
 
 fn ScaleFloat(xs: Float[], factor: Float) -> Float[] {
@@ -138,13 +110,13 @@ fn ZipAdd(xs: Float[], ys: Float[]) -> Float[] ! Error {
 }
 
 [Fact]
-fn ManualSlicesWorkButRequireLoops() -> Void {
+fn CrossSectionCoversFirstDropWindowCases() -> Void {
     let xs = [1.0, 2.0, 3.0, 4.0, 5.0]
-    let first = Assert.LGTM(FirstN(xs, 2), "first n")
-    let dropped = Assert.LGTM(DropFirstN(xs, 2), "drop first n")
-    let mid = Assert.LGTM(Window(xs, 1, 4), "middle window")
-    let every = Assert.LGTM(EveryKth(xs, 2), "every kth")
-    let last = Assert.LGTM(LastN(xs, 2), "last n")
+    let first = FirstN(xs, 2)
+    let dropped = DropFirstN(xs, 2)
+    let mid = Window(xs, 1, 4)
+    let every = EveryKth(xs, 2)
+    let last = LastN(xs, 2)
 
     Assert.Equal(2, Len(first), "first length")
     Assert.Equal(1.0, first[0], "first value")
