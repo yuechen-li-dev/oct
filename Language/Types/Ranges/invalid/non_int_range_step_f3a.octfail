@@ -1,0 +1,7 @@
+expect error: "range step must be Int"
+
+package Main
+
+fn Main() -> Range {
+    return 1..10 step false
+}

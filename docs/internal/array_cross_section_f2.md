@@ -676,3 +676,14 @@ F2 acceptance criteria status:
 13. Next milestone is recommended. **Done.**
 14. Production behavior changes. **None intended.**
 15. Full tests. **Run as part of this F2 change.**
+
+## F3a implementation status
+
+F3a completed the first-class `Range` value surface needed before `Array.CrossSection`:
+
+- valid expression forms are `start..end`, `start..`, `..end`, `..`, and `start..end step n`;
+- present endpoints and closed-range steps typecheck as `Int`;
+- open-ended stepped forms remain deferred and are rejected with `open-ended stepped ranges are not supported in M0`;
+- interpreted and compiled paths can represent general `Range` values outside `for` loop lowering;
+- `for` loops continue to require closed ranges;
+- bracket slicing and `Array.CrossSection` remain out of scope for F3a.

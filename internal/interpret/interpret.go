@@ -156,9 +156,12 @@ type ErrorValue struct {
 }
 
 type RangeValue struct {
-	Start int64
-	End   int64
-	Step  int64
+	Start    int64
+	HasStart bool
+	End      int64
+	HasEnd   bool
+	Step     int64
+	HasStep  bool
 }
 
 type RecordValue struct {
@@ -247,7 +250,19 @@ func (v Value) String() string {
 		}
 		return "matrix[" + strings.Join(rows, ", ") + "]"
 	case ValueRange:
-		return fmt.Sprintf("%d..%d step %d", v.Range.Start, v.Range.End, v.Range.Step)
+		start := ""
+		if v.Range.HasStart {
+			start = fmt.Sprintf("%d", v.Range.Start)
+		}
+		end := ""
+		if v.Range.HasEnd {
+			end = fmt.Sprintf("%d", v.Range.End)
+		}
+		out := start + ".." + end
+		if v.Range.HasStep {
+			out += fmt.Sprintf(" step %d", v.Range.Step)
+		}
+		return out
 	case ValueError:
 		return v.Error.Message
 	case ValueRecord:
@@ -976,6 +991,9 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if rangeValue.value.Kind != ValueRange {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
 		}
+		if !rangeValue.value.Range.HasStart || !rangeValue.value.Range.HasEnd {
+			return stmtResult{}, fmt.Errorf("runtime error: for loop range requires start and end")
+		}
 		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
 			if err := i.checkCancelled(); err != nil {
 				return stmtResult{}, err
@@ -1156,6 +1174,9 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 		}
 		if rangeValue.value.Kind != ValueRange {
 			return flowSignal{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
+		}
+		if !rangeValue.value.Range.HasStart || !rangeValue.value.Range.HasEnd {
+			return flowSignal{}, fmt.Errorf("runtime error: for loop range requires start and end")
 		}
 		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
 			iterationEnv := newEnvironment(env)
@@ -4512,28 +4533,39 @@ func flowBoardSnapshotValue(instance *FlowRuntimeInstance) (Value, bool) {
 }
 
 func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.RangeExpr) (Value, error) {
-	start, err := i.evalExpr(env, pkgName, expr.Start)
-	if err != nil {
-		return Value{}, err
+	rangeValue := RangeValue{Step: 1}
+	if expr.Start != nil {
+		start, err := i.evalExpr(env, pkgName, expr.Start)
+		if err != nil {
+			return Value{}, err
+		}
+		if start.hasError {
+			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range start")
+		}
+		if start.value.Kind != ValueInt || !start.value.Dimension.IsDimensionless() {
+			return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", valueTypeName(start.value))
+		}
+		rangeValue.Start = start.value.Int
+		rangeValue.HasStart = true
 	}
-	if start.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range start")
+	if expr.End != nil {
+		end, err := i.evalExpr(env, pkgName, expr.End)
+		if err != nil {
+			return Value{}, err
+		}
+		if end.hasError {
+			return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range end")
+		}
+		if end.value.Kind != ValueInt || !end.value.Dimension.IsDimensionless() {
+			return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", valueTypeName(end.value))
+		}
+		rangeValue.End = end.value.Int
+		rangeValue.HasEnd = true
 	}
-	if start.value.Kind != ValueInt || !start.value.Dimension.IsDimensionless() {
-		return Value{}, fmt.Errorf("runtime error: range start must be Int, got %s", valueTypeName(start.value))
-	}
-	end, err := i.evalExpr(env, pkgName, expr.End)
-	if err != nil {
-		return Value{}, err
-	}
-	if end.hasError {
-		return Value{}, fmt.Errorf("runtime invariant violation: unhandled error reached range end")
-	}
-	if end.value.Kind != ValueInt || !end.value.Dimension.IsDimensionless() {
-		return Value{}, fmt.Errorf("runtime error: range end must be Int, got %s", valueTypeName(end.value))
-	}
-	step := int64(1)
 	if expr.Step != nil {
+		if expr.Start == nil || expr.End == nil {
+			return Value{}, fmt.Errorf("runtime error: open-ended stepped ranges are not supported in M0")
+		}
 		stepValue, err := i.evalExpr(env, pkgName, expr.Step)
 		if err != nil {
 			return Value{}, err
@@ -4544,15 +4576,16 @@ func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.Ra
 		if stepValue.value.Kind != ValueInt || !stepValue.value.Dimension.IsDimensionless() {
 			return Value{}, fmt.Errorf("runtime error: range step must be Int, got %s", valueTypeName(stepValue.value))
 		}
-		step = stepValue.value.Int
+		rangeValue.Step = stepValue.value.Int
+		rangeValue.HasStep = true
 	}
-	if step <= 0 {
-		return Value{}, fmt.Errorf("runtime error: range step must be positive, got %d", step)
+	if rangeValue.Step <= 0 {
+		return Value{}, fmt.Errorf("runtime error: range step must be positive, got %d", rangeValue.Step)
 	}
-	if start.value.Int > end.value.Int {
-		return Value{}, fmt.Errorf("runtime error: range start must be less than or equal to end, got %d..%d", start.value.Int, end.value.Int)
+	if rangeValue.HasStart && rangeValue.HasEnd && rangeValue.Start > rangeValue.End {
+		return Value{}, fmt.Errorf("runtime error: range start must be less than or equal to end, got %d..%d", rangeValue.Start, rangeValue.End)
 	}
-	return Value{Kind: ValueRange, Range: RangeValue{Start: start.value.Int, End: end.value.Int, Step: step}}, nil
+	return Value{Kind: ValueRange, Range: rangeValue}, nil
 }
 
 func (i interpreter) evalArrayLiteralExpr(env *environment, pkgName string, expr ast.ArrayLiteralExpr) (Value, error) {

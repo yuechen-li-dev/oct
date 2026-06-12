@@ -1235,7 +1235,7 @@ func (p *parser) parseWhileStmt() (ast.Stmt, error) {
 
 func (p *parser) isExpressionStart(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus:
+	case lex.IntLiteral, lex.FloatLiteral, lex.KeywordTrue, lex.KeywordFalse, lex.StringLiteral, lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.LeftParen, lex.LeftBracket, lex.KeywordSwitch, lex.KeywordIf, lex.KeywordBatch, lex.KeywordWhen, lex.KeywordMatch, lex.KeywordNot, lex.Minus, lex.DotDot:
 		return true
 	default:
 		return false
@@ -1275,6 +1275,24 @@ func (p *parser) parseExpression() (ast.Expr, error) {
 }
 
 func (p *parser) parseRangeExpr() (ast.Expr, error) {
+	if p.match(lex.DotDot) {
+		var end ast.Expr
+		var err error
+		if p.current().Kind == lex.KeywordStep && p.isExpressionStart(p.peek(1).Kind) && p.peek(1).Kind != lex.LeftParen {
+			return nil, p.errorAtCurrent("open-ended stepped ranges are not supported in M0")
+		}
+		if p.isExpressionStart(p.current().Kind) {
+			end, err = p.parseBinaryExpr(precedenceOr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if p.current().Kind == lex.KeywordStep {
+			return nil, p.errorAtCurrent("open-ended stepped ranges are not supported in M0")
+		}
+		return ast.RangeExpr{End: end}, nil
+	}
+
 	start, err := p.parseBinaryExpr(precedenceOr)
 	if err != nil {
 		return nil, err
@@ -1283,13 +1301,22 @@ func (p *parser) parseRangeExpr() (ast.Expr, error) {
 		return start, nil
 	}
 
-	end, err := p.parseBinaryExpr(precedenceOr)
-	if err != nil {
-		return nil, err
+	var end ast.Expr
+	if p.current().Kind == lex.KeywordStep && p.isExpressionStart(p.peek(1).Kind) && p.peek(1).Kind != lex.LeftParen {
+		return nil, p.errorAtCurrent("open-ended stepped ranges are not supported in M0")
+	}
+	if p.isExpressionStart(p.current().Kind) {
+		end, err = p.parseBinaryExpr(precedenceOr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var step ast.Expr
 	if p.match(lex.KeywordStep) {
+		if end == nil {
+			return nil, p.errorAtCurrent("open-ended stepped ranges are not supported in M0")
+		}
 		step, err = p.parseBinaryExpr(precedenceOr)
 		if err != nil {
 			return nil, err

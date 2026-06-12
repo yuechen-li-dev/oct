@@ -32,6 +32,24 @@ Dimensions participate in expression typing.
 - Unary `-` negates an `Int`/`Float` expression and preserves type and dimension.
 - Unary `-` is distinct from binary subtraction and binds to its immediate operand.
 
+## Range expressions
+
+`Range` is a compiler-owned immutable value type. Range expressions are ordinary expressions wherever the typechecker allows `Range` values, including `let` bindings, function arguments, function returns, and record fields.
+
+M0 range expression forms are:
+
+```oct
+start..end
+start..
+..end
+..
+start..end step n
+```
+
+Present `start`, `end`, and `step` expressions must be `Int`. Omitted endpoints are preserved in the `Range` value and resolved by the consumer. An omitted step means the default step is `1`; consumers require positive steps. Open-ended stepped ranges are deferred in M0, so these forms are invalid: `start.. step n`, `..end step n`, and `.. step n`.
+
+Range values do not add bracket slicing. `xs[1..3]` and Python-like colon slicing are not part of range expressions. Use consumer APIs such as future `Array.CrossSection(values, range)` when they are implemented.
+
 ## Examples
 
 Valid:

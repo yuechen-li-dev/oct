@@ -1,0 +1,7 @@
+expect error: "range start must be Int"
+
+package Main
+
+fn Main() -> Range {
+    return true..10
+}
