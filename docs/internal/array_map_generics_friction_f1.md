@@ -10,6 +10,8 @@ It does not document slices.
 Vectors and matrices are intentionally separate from arrays: `Float[]` is not a `Vector<Float>`, `Float[][]` is not a `Matrix<Float>`, vectors use `v[i]`, matrices use `m[r, c]`, matrix shape is exposed as `m.rows`/`m.cols`, and vector/matrix slicing is not documented.
 The builtin surface documents `String.From<T>` only for compiler-known `Int`, `Float`, `Bool`, and `String`, and it explicitly says this does not introduce user-defined generics.
 
+Post-F1 direction update: F2 supersedes the earlier "slice syntax" shorthand with a readable `Array.CrossSection(values, range)` design and explicitly rejects Python-style colon slicing and bracket range extraction for M0. See `docs/internal/array_cross_section_f2.md`.
+
 Recommended v0.1 direction:
 
 - **Must-have for v0.1:** add conservative 1D array slice syntax if schedule allows; fix/close the compiled support gap for promised `String.From<T>` scalar conversions; document the current map/dictionary absence; keep SI board-field behavior covered because the probe shows interpreted and compiled snapshot preservation works.
