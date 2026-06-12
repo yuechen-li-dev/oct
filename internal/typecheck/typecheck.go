@@ -2407,7 +2407,7 @@ regularCall:
 	if hasDirectName {
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
 			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {
-				if _, imported := c.importedPackages[namespace]; !imported {
+				if _, imported := c.importedPackages[namespace]; !imported && !builtin.IsCompilerOwnedNamespace(namespace) {
 					return ExprType{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", namespace, namespace)
 				}
 				return c.checkBuiltinCallExpr(scope, builtinName, expr.TypeArguments, expr.Arguments, ctx)
@@ -2986,6 +2986,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 			return ExprType{}, fmt.Errorf("function 'Append' does not accept type arguments")
 		}
 		return c.checkAppendBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
+	if callee == "ArrayCrossSection" || callee == "Array.CrossSection" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Array.CrossSection' does not accept type arguments")
+		}
+		return c.checkArrayCrossSectionBuiltinCallExpr(scope, arguments, ctx)
 	}
 	if callee == "Step" {
 		if len(typeArguments) > 0 {
@@ -5464,6 +5470,42 @@ func (c checker) checkAppendBuiltinCallExpr(scope *scope, callee string, argumen
 	expectedElementType = peelArrayType(expectedElementType)
 	if elementType.ValueType != expectedElementType {
 		return ExprType{}, fmt.Errorf("Append element type must match array element type: expected %s, got %s", expectedElementType, elementType.ValueType)
+	}
+
+	return ExprType{ValueType: arrayType.ValueType}, nil
+}
+
+func (c checker) checkArrayCrossSectionBuiltinCallExpr(scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 2 {
+		return ExprType{}, fmt.Errorf("Array.CrossSection expects 2 arguments")
+	}
+
+	arrayType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if arrayType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if arrayType.ValueType.IsVector {
+		return ExprType{}, fmt.Errorf("Array.CrossSection operates on arrays, not %s; use Vector-specific APIs", arrayType.ValueType)
+	}
+	if arrayType.ValueType.IsMatrix {
+		return ExprType{}, fmt.Errorf("Array.CrossSection operates on arrays, not %s; use Matrix-specific APIs", arrayType.ValueType)
+	}
+	if !arrayType.ValueType.IsArray || arrayType.ValueType.ArrayDepth != 1 {
+		return ExprType{}, fmt.Errorf("Array.CrossSection expects a 1D array as its first argument")
+	}
+
+	rangeType, err := c.checkExpr(scope, arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if rangeType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
+		return ExprType{}, fmt.Errorf("Array.CrossSection expects a Range as its second argument")
 	}
 
 	return ExprType{ValueType: arrayType.ValueType}, nil

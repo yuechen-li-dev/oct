@@ -1341,6 +1341,8 @@ func canonicalCompiledBuiltinName(name string) string {
 		return "StringConcat"
 	case "String.From":
 		return "StringFrom"
+	case "Array.CrossSection":
+		return "ArrayCrossSection"
 	case "String.ReplaceAll":
 		return "StringReplaceAll"
 	case "String.Contains":
@@ -2570,7 +2572,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			args = append(args, v)
 			argTypes = append(argTypes, at)
 		}
-		if builtin && callee == "Append" && len(argTypes) > 0 {
+		if builtin && (callee == "Append" || callee == "ArrayCrossSection" || callee == "Array.CrossSection") && len(argTypes) > 0 {
 			ret = argTypes[0]
 		}
 		if builtin && isMarkdownCompiledBuiltin(callee) {
@@ -3593,6 +3595,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "String", true, false, nil
 			case "Require":
 				return normalized, "Void", true, false, nil
+			case "ArrayCrossSection", "Array.CrossSection":
+				return "ArrayCrossSection", "Void", true, false, nil
 			case "FileReadText":
 				return normalized, "String", true, true, nil
 			case "FileReadBytes":
@@ -3659,6 +3663,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return builtinName, "Float", true, true, nil
 			case "Random.CryptoRandBytes":
 				return builtinName, "Bytes", true, true, nil
+			case "Array.CrossSection":
+				return "ArrayCrossSection", "Void", true, false, nil
 			default:
 				ret := "String"
 				switch canonical {
@@ -5664,6 +5670,9 @@ func emitGo(m MIRModule) (string, error) {
 		b.WriteString("type __octVoid struct{}\n\n")
 	}
 	b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
+	if usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"] {
+		b.WriteString("func __octArrayCrossSection[T any](values []T, r __octRange) []T {\n\tstart := 0\n\tif r.HasStart { start = r.Start }\n\tend := len(values)\n\tif r.HasEnd { end = r.End }\n\tstep := 1\n\tif r.HasStep { step = r.Step }\n\tif step <= 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range step must be positive, got %d\", step)) }\n\tif start < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start must be >= 0, got %d\", start)) }\n\tif end < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end must be >= 0, got %d\", end)) }\n\tif start > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d exceeds array length %d\", start, len(values))) }\n\tif end > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end %d exceeds array length %d\", end, len(values))) }\n\tif start > end { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d must be <= end %d\", start, end)) }\n\tcount := 0\n\tif start < end { count = ((end - start - 1) / step) + 1 }\n\tout := make([]T, 0, count)\n\tfor i := start; i < end; i += step { out = append(out, values[i]) }\n\treturn out\n}\n\n")
+	}
 	for _, t := range resultNames {
 		valueType := goType(t)
 		if t == "Void" {
@@ -6814,6 +6823,8 @@ func builtinImportDeps(name string) []string {
 		return []string{"strconv"}
 	case "FormatFloat":
 		return []string{"strconv"}
+	case "ArrayCrossSection", "Array.CrossSection":
+		return []string{"fmt"}
 	case "CsvReadMatrix":
 		return []string{"strconv"}
 	case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
@@ -8499,6 +8510,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
 			case "Append":
 				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "ArrayCrossSection", "Array.CrossSection":
+				return fmt.Sprintf("%s = __octArrayCrossSection(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
 			case "Require":

@@ -1,0 +1,8 @@
+expect error: "Array.CrossSection operates on arrays, not Matrix<Float>; use Matrix-specific APIs"
+
+package Main
+
+fn Main() -> Matrix<Float> {
+    let m = matrix[[1.0, 2.0] [3.0, 4.0]]
+    return Array.CrossSection(m, ..)
+}

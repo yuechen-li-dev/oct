@@ -2086,7 +2086,7 @@ regularCall:
 	if hasDirectName {
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
 			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {
-				if _, imported := i.packageImports[pkgName][namespace]; !imported {
+				if _, imported := i.packageImports[pkgName][namespace]; !imported && !builtin.IsCompilerOwnedNamespace(namespace) {
 					return evalResult{}, fmt.Errorf("unknown namespace/module '%s'; did you forget `import %s`?", namespace, namespace)
 				}
 				return i.evalBuiltinCallExpr(env, pkgName, builtinName, expr.TypeArguments, expr.Arguments)
@@ -2578,6 +2578,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Append does not accept type arguments")
 		}
 		return i.evalAppendBuiltinCallExpr(env, pkgName, argumentExprs)
+	}
+	if callee == "ArrayCrossSection" || callee == "Array.CrossSection" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Array.CrossSection does not accept type arguments")
+		}
+		return i.evalArrayCrossSectionBuiltinCallExpr(env, pkgName, argumentExprs)
 	}
 	if callee == "Step" {
 		if len(typeArguments) != 0 {
@@ -4425,6 +4431,78 @@ func (i *interpreter) evalWorkbookSheetCellArgs(call wrapperCall, workbookArgInd
 		return nil, "", "", errResult, nil
 	}
 	return workbook, sheetName, cellValue, nil, nil
+}
+
+func (i interpreter) evalArrayCrossSectionBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {
+	if len(argumentExprs) != 2 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Array.CrossSection expects 2 arguments")
+	}
+
+	array, err := i.evalExpr(env, pkgName, argumentExprs[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if array.hasError {
+		return evalResult{hasError: true, errorVal: array.errorVal}, nil
+	}
+	if array.value.Kind != ValueArray {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Array.CrossSection expects Array as first argument, got %s", array.value.Kind)
+	}
+
+	rangeResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if rangeResult.hasError {
+		return evalResult{hasError: true, errorVal: rangeResult.errorVal}, nil
+	}
+	if rangeResult.value.Kind != ValueRange {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Array.CrossSection expects Range as second argument, got %s", rangeResult.value.Kind)
+	}
+
+	length := int64(len(array.value.Array))
+	rangeValue := rangeResult.value.Range
+	start := int64(0)
+	if rangeValue.HasStart {
+		start = rangeValue.Start
+	}
+	end := length
+	if rangeValue.HasEnd {
+		end = rangeValue.End
+	}
+	step := int64(1)
+	if rangeValue.HasStep {
+		step = rangeValue.Step
+	}
+
+	if step <= 0 {
+		return evalResult{}, fmt.Errorf("runtime error: Array.CrossSection range step must be positive, got %d", step)
+	}
+	if start < 0 {
+		return evalResult{}, fmt.Errorf("runtime error: Array.CrossSection range start must be >= 0, got %d", start)
+	}
+	if end < 0 {
+		return evalResult{}, fmt.Errorf("runtime error: Array.CrossSection range end must be >= 0, got %d", end)
+	}
+	if start > length {
+		return evalResult{}, fmt.Errorf("runtime error: Array.CrossSection range start %d exceeds array length %d", start, length)
+	}
+	if end > length {
+		return evalResult{}, fmt.Errorf("runtime error: Array.CrossSection range end %d exceeds array length %d", end, length)
+	}
+	if start > end {
+		return evalResult{}, fmt.Errorf("runtime error: Array.CrossSection range start %d must be <= end %d", start, end)
+	}
+
+	count := int64(0)
+	if start < end {
+		count = ((end - start - 1) / step) + 1
+	}
+	result := make([]Value, 0, int(count))
+	for idx := start; idx < end; idx += step {
+		result = append(result, array.value.Array[idx])
+	}
+	return evalResult{value: Value{Kind: ValueArray, Array: result}}, nil
 }
 
 func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {

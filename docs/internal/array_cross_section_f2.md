@@ -677,6 +677,18 @@ F2 acceptance criteria status:
 14. Production behavior changes. **None intended.**
 15. Full tests. **Run as part of this F2 change.**
 
+## F3b implementation status
+
+F3b implemented `Array.CrossSection(values, range)` M0 as the first consumer of first-class `Range` values:
+
+- `Array.CrossSection(values: T[], range: Range) -> T[]` is a compiler-owned namespaced builtin;
+- it accepts 1D arrays only and rejects scalar strings, vectors, matrices, and non-array values;
+- interpreted and compiled execution resolve open range endpoints, enforce positive steps and bounds, and return a new array copy rather than aliasing source storage;
+- compiled lowering uses a helper that allocates a fresh result and appends selected elements instead of returning a Go slice view;
+- exact element type is preserved for scalar, SI-dimensioned, record, and enum arrays covered by `Language/Types/Arrays/valid/array_cross_section.octest`;
+- Python colon slicing and bracket range extraction remain invalid;
+- vector/matrix/tensor cross-sections, maps/dictionaries, negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, and `Array.Copy`/`Take`/`Drop`/`Window` aliases remain deferred.
+
 ## F3a implementation status
 
 F3a completed the first-class `Range` value surface needed before `Array.CrossSection`:
@@ -686,4 +698,4 @@ F3a completed the first-class `Range` value surface needed before `Array.CrossSe
 - open-ended stepped forms remain deferred and are rejected with `open-ended stepped ranges are not supported in M0`;
 - interpreted and compiled paths can represent general `Range` values outside `for` loop lowering;
 - `for` loops continue to require closed ranges;
-- bracket slicing and `Array.CrossSection` remain out of scope for F3a.
+- bracket slicing remained out of scope for F3a; `Array.CrossSection` was subsequently implemented in F3b.

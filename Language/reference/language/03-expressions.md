@@ -48,7 +48,7 @@ start..end step n
 
 Present `start`, `end`, and `step` expressions must be `Int`. Omitted endpoints are preserved in the `Range` value and resolved by the consumer. An omitted step means the default step is `1`; consumers require positive steps. Open-ended stepped ranges are deferred in M0, so these forms are invalid: `start.. step n`, `..end step n`, and `.. step n`.
 
-Range values do not add bracket slicing. `xs[1..3]` and Python-like colon slicing are not part of range expressions. Use consumer APIs such as future `Array.CrossSection(values, range)` when they are implemented.
+Range values do not add bracket slicing. `xs[1..3]` and Python-like colon slicing are not part of range expressions. Use consumer APIs such as `Array.CrossSection(values, range)` for 1D array cross-section copies.
 
 ## Examples
 

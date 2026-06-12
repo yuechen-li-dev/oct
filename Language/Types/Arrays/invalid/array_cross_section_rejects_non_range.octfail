@@ -1,0 +1,7 @@
+expect error: "Array.CrossSection expects a Range as its second argument"
+
+package Main
+
+fn Main() -> Int[] {
+    return Array.CrossSection([1, 2, 3], 1)
+}
