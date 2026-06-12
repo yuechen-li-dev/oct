@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -36,6 +37,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	switch command {
 	case "new":
 		return executeNew(args[1:], stdout, stderr)
+	case "init":
+		return executeInit(args[1:], stdout, stderr)
 	case "pkg":
 		return executePkg(args[1:], stdout, stderr)
 	case "exp":
@@ -194,6 +197,44 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 		return reportCommandError(stderr, "new", err)
 	}
 	_, err := fmt.Fprintf(stdout, "Created %s package %s at %s\n", kind, name, name)
+	return err
+}
+
+func executeInit(args []string, stdout io.Writer, stderr io.Writer) error {
+	if isHelpArg(args) {
+		return writeInitHelp(stdout)
+	}
+	if len(args) == 2 && isHelpArg(args[1:]) {
+		kind := newpkg.Kind(args[0])
+		switch kind {
+		case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+			return writeInitKindHelp(stdout, kind)
+		default:
+			return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library>"))
+		}
+	}
+	if len(args) != 1 {
+		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library>"))
+	}
+	kind := newpkg.Kind(args[0])
+	switch kind {
+	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+		// recognized below
+	default:
+		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library>"))
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return reportCommandError(stderr, "init", fmt.Errorf("read current directory: %w", err))
+	}
+	name := filepath.Base(cwd)
+	if err := newpkg.InitWrite(newpkg.Options{Kind: kind, Name: name, Dir: "."}); err != nil {
+		if strings.Contains(err.Error(), "invalid package name") {
+			err = fmt.Errorf("%w; oct init derives the package name from the current directory basename %q; rename the directory or wait for future explicit-name support", err, name)
+		}
+		return reportCommandError(stderr, "init", err)
+	}
+	_, err = fmt.Fprintf(stdout, "Initialized %s package %s in %s\n", kind, name, cwd)
 	return err
 }
 
@@ -791,6 +832,16 @@ func writePkgListHelp(out io.Writer) error {
 
 func writeNewHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library> <Name>\nCreate a deterministic package scaffold in the current working directory.")
+	return err
+}
+
+func writeInitHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct init <experiment|library|wrapper-library>\nInitialize the current existing directory by creating manifest.oct. Refuses to overwrite an existing manifest.")
+	return err
+}
+
+func writeInitKindHelp(out io.Writer, kind newpkg.Kind) error {
+	_, err := fmt.Fprintf(out, "usage: oct init %s\nCreate manifest.oct for the current existing %s directory. The package name is derived from the directory basename. Existing manifests are never overwritten.\n", kind, kind)
 	return err
 }
 func writeRunHelp(out io.Writer) error {

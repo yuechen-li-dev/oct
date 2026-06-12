@@ -81,7 +81,7 @@ cd HelloScience
 oct test .
 ```
 
-The generated library contains an `Identity` function and an xUnit-style `[Fact]` test. Replace those with your package code as the experiment grows.
+The generated library contains an `Identity` function and an xUnit-style `[Fact]` test. Replace those with your package code as the experiment grows. For an existing directory that already contains Oct files, run `oct init experiment`, `oct init library`, or `oct init wrapper-library` from that directory to add only `manifest.oct`; `oct init` refuses to overwrite an existing manifest.
 
 From a repository checkout without installing first, the same flow is:
 
@@ -153,7 +153,7 @@ Useful commands from the repository root:
 ```sh
 go test ./pkg/octxiliary ./internal/octxiliary
 go test ./internal/pkgmgr ./internal/project
-go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Wrappers|BuildWrappers'
+go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Init|Wrappers|BuildWrappers'
 go test ./internal/... ./cmd/oct
 go run ./tools/build_sidecars --out dist/sidecars
 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test ./... -count=1

@@ -47,6 +47,7 @@ var reservedNames = map[string]string{
 	"Exp":      "top-level command family name",
 	"New":      "top-level command family name",
 	"Run":      "top-level command family name",
+	"Init":     "top-level command family name",
 	"Build":    "top-level command family name",
 	"Test":     "top-level command family name",
 	"Artifact": "top-level command family name",
@@ -72,6 +73,53 @@ func Plan(opts Options) ([]File, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+func InitWrite(opts Options) error {
+	if err := validateOptions(opts); err != nil {
+		return err
+	}
+	target := filepath.Clean(opts.Dir)
+	info, err := os.Stat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("target directory %q does not exist", opts.Dir)
+		}
+		return fmt.Errorf("check target directory %q: %w", opts.Dir, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("target %q is not a directory", opts.Dir)
+	}
+	manifestPath := filepath.Join(target, "manifest.oct")
+	if _, err := os.Stat(manifestPath); err == nil {
+		return fmt.Errorf("manifest.oct already exists in %q; oct init refuses to overwrite existing manifests", opts.Dir)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("check manifest.oct in %q: %w", opts.Dir, err)
+	}
+	content, err := Manifest(opts.Kind, opts.Name)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(manifestPath, []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write manifest.oct in %q: %w", opts.Dir, err)
+	}
+	return nil
+}
+
+func Manifest(kind Kind, name string) (string, error) {
+	if err := ValidateName(name); err != nil {
+		return "", err
+	}
+	switch kind {
+	case KindLibrary:
+		return libraryManifest(name), nil
+	case KindExperiment:
+		return experimentManifest(name), nil
+	case KindWrapperLibrary:
+		return wrapperManifest(name, KebabName(name)), nil
+	default:
+		return "", fmt.Errorf("unsupported package kind %q", kind)
+	}
 }
 
 func Write(opts Options) error {
