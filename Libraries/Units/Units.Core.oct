@@ -1,0 +1,43 @@
+package Units
+
+// ============================================================
+// Units.Core
+//
+// Design philosophy for the Units library:
+//
+// Oct's built-in SI dimension system covers all base and derived
+// SI units as first-class types: Float<m>, Float<kg>, Float<s>,
+// Float<A>, Float<K>, Float<mol>, Float<cd>, and Hz as a named
+// alias for Float<s^-1>.
+//
+// Non-SI units (American customary, British Imperial, spectroscopic,
+// astronomical, atomic) are record types. This is deliberate:
+//
+//   - SI units get angle-bracket syntax and full compiler arithmetic.
+//   - Non-SI units get record constructors and explicit ToSI conversion.
+//   - The path to SI is always shorter than staying non-SI.
+//   - You can't accidentally add Fahrenheit to Kelvin.
+//   - You can't pass a Pound where a Float<kg> is expected.
+//
+// There is no FromSI direction provided by default. If you want
+// to convert back to a non-SI unit, write it yourself. The language
+// is not helping you stay in non-SI territory.
+//
+// FRICTION BY DESIGN:
+//   Writing `Pound { Value: 2.0 }` instead of `2.0kg` is intentional.
+//   The extra ceremony is a constant reminder that you are operating
+//   outside the SI system. Convert early, convert once.
+//
+// The `unit` keyword does not exist — records are the right level
+// of explicitness for this purpose.
+// ============================================================
+
+// Pi — used in angular unit conversions.
+// Built-in Oct Pi() is available; this is just documentation.
+fn DegreesToRadians(degrees: Float) -> Float {
+    return degrees * Pi() / 180.0
+}
+
+fn RadiansToDegrees(radians: Float) -> Float {
+    return radians * 180.0 / Pi()
+}

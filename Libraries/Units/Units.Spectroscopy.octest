@@ -1,0 +1,61 @@
+package Units
+
+[Fact]
+fn PpmToRatioIsCorrect() -> Void {
+    let r = PpmToRatio(Ppm { Value: 1.0 })
+    Assert.Near(0.000001, r, 0.0000000001, "1 ppm = 1e-6 ratio")
+}
+
+[Fact]
+fn RatioToPpmIsCorrect() -> Void {
+    let p = RatioToPpm(0.000001)
+    Assert.Near(1.0, p.Value, 0.0000001, "1e-6 ratio = 1 ppm")
+}
+
+[Fact]
+fn PpmRatioRoundTrip() -> Void {
+    let original = Ppm { Value: 7.26 }
+    let back = RatioToPpm(PpmToRatio(original))
+    Assert.Near(7.26, back.Value, 0.0001, "7.26 ppm round trip")
+}
+
+[Fact]
+fn PpmToPpbIsThousandFold() -> Void {
+    let ppb = PpmToPpb(Ppm { Value: 1.0 })
+    Assert.Near(1000.0, ppb.Value, 0.001, "1 ppm = 1000 ppb")
+}
+
+[Fact]
+fn AbsorbanceTransmittanceRoundTrip() -> Void {
+    let t = Transmittance { Value: 0.5 }
+    let a = TransmittanceToAbsorbance(t)!
+    let tBack = AbsorbanceToTransmittance(a)!
+    Assert.Near(0.5, tBack.Value, 0.00001, "T=0.5 → A → T round trip")
+}
+
+[Fact]
+fn ZeroAbsorbanceIsFullTransmittance() -> Void {
+    let a = Absorbance { Value: 0.0 }
+    let t = AbsorbanceToTransmittance(a)!
+    Assert.Near(1.0, t.Value, 0.000001, "A=0 gives T=1")
+}
+
+[Fact]
+fn TransmittanceZeroIsError() -> Void {
+    Assert.Error(TransmittanceToAbsorbance(Transmittance { Value: 0.0 }),
+        "T=0 should error (log of zero)")
+}
+
+[Fact]
+fn WavenumberToReciprocalMeterIs100x() -> Void {
+    let rm = WavenumberToReciprocalMeter(Wavenumber { Value: 1.0 })
+    Assert.Near(100.0, rm / 1.0m^-1, 0.001, "1 cm⁻¹ = 100 m⁻¹")
+}
+
+[Fact]
+fn DaltonToKilogramIsCorrect() -> Void {
+    let kg = DaltonToKilogram(Dalton { Value: 1.0 })
+    // 1 Da = 1.66054e-27 kg
+    let ratio = kg / 0.000000000000000000000000001660539066610kg
+    Assert.Near(1.0, ratio, 0.0000001, "1 Da = 1.66054e-27 kg")
+}

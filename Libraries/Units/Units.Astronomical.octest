@@ -1,0 +1,45 @@
+package Units
+
+[Fact]
+fn AuToMeterIsCorrect() -> Void {
+    let m = AstronomicalUnitToMeter(AstronomicalUnit { Value: 1.0 })
+    Assert.Near(149597870700.0, m / 1.0m, 1.0, "1 AU = 1.496e11 m")
+}
+
+[Fact]
+fn LightYearToMeterIsCorrect() -> Void {
+    let m = LightYearToMeter(LightYear { Value: 1.0 })
+    // 1 ly ≈ 9.461e15 m
+    Assert.True(m > 9.46e15m, "1 ly > 9.46e15 m")
+    Assert.True(m < 9.47e15m, "1 ly < 9.47e15 m")
+}
+
+[Fact]
+fn ParsecIsLargerThanLightYear() -> Void {
+    let pc = ParsecToMeter(Parsec { Value: 1.0 })
+    let ly = LightYearToMeter(LightYear { Value: 1.0 })
+    Assert.True(pc > ly, "1 parsec > 1 light-year")
+}
+
+[Fact]
+fn ParsecIsAbout3point26LightYears() -> Void {
+    let pc = ParsecToMeter(Parsec { Value: 1.0 })
+    let ly326 = LightYearToMeter(LightYear { Value: 3.26 })
+    // 1 pc ≈ 3.2616 ly, so 3.26 ly should be slightly less
+    Assert.True(pc > ly326, "1 pc > 3.26 ly")
+    let ly327 = LightYearToMeter(LightYear { Value: 3.27 })
+    Assert.True(pc < ly327, "1 pc < 3.27 ly")
+}
+
+[Fact]
+fn SolarMassIsCorrect() -> Void {
+    let kg = SolarMassToKilogram(SolarMass { Value: 1.0 })
+    Assert.True(kg > 1.988e30kg, "M☉ > 1.988e30 kg")
+    Assert.True(kg < 1.990e30kg, "M☉ < 1.990e30 kg")
+}
+
+[Fact]
+fn JulianYearInSeconds() -> Void {
+    let s = JulianYearToSecond(JulianYear { Value: 1.0 })
+    Assert.Near(31557600.0, s / 1.0s, 1.0, "1 Julian year = 31,557,600 s")
+}

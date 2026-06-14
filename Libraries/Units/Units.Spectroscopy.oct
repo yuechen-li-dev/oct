@@ -1,0 +1,141 @@
+package Units
+
+// ============================================================
+// Units.Spectroscopy
+//
+// Spectroscopic and analytical chemistry units.
+//
+// The key insight: ppm (parts per million) is DIMENSIONLESS.
+// It is a ratio (10^-6), not an SI unit. Oct's type system is
+// correct to not have Float<ppm>. However, a Ppm record gives
+// nominal type safety — the compiler can distinguish a chemical
+// shift (Ppm) from an integration (Float) even though both are
+// dimensionless numbers.
+//
+// Coupling constants are Float<Hz> — a true SI dimension.
+// Chemical shifts are Ppm — a nominal wrapper.
+// This is the correct division and exactly what ChemistryNmr needs.
+// ============================================================
+
+// ============================================================
+// Dimensionless ratio units
+// ============================================================
+
+/// Parts per million (ppm). Dimensionless ratio × 10⁻⁶.
+/// Used for: NMR chemical shifts, solution concentrations,
+/// trace impurity levels, frequency offsets.
+record Ppm { Value: Float }
+
+/// Parts per billion (ppb). Dimensionless ratio × 10⁻⁹.
+/// Used for: trace contaminant analysis, atmospheric chemistry.
+record Ppb { Value: Float }
+
+/// Parts per trillion (ppt). Dimensionless ratio × 10⁻¹².
+record Ppt { Value: Float }
+
+/// Convert ppm to the underlying dimensionless ratio.
+fn PpmToRatio(p: Ppm) -> Float {
+    return p.Value / 1000000.0
+}
+
+/// Convert a dimensionless ratio to ppm.
+fn RatioToPpm(ratio: Float) -> Ppm {
+    return Ppm { Value: ratio * 1000000.0 }
+}
+
+/// Convert ppb to ratio.
+fn PpbToRatio(p: Ppb) -> Float {
+    return p.Value / 1000000000.0
+}
+
+/// Convert ppm to ppb (for concentration range changes).
+fn PpmToPpb(p: Ppm) -> Ppb {
+    return Ppb { Value: p.Value * 1000.0 }
+}
+
+// ============================================================
+// Absorbance and transmittance (UV-Vis spectroscopy)
+// ============================================================
+
+/// Absorbance (A) in Beer-Lambert law: A = -log₁₀(T).
+/// Dimensionless but semantically distinct from transmittance.
+record Absorbance { Value: Float }
+
+/// Transmittance (T): fraction of light transmitted (0.0 to 1.0).
+/// Dimensionless.
+record Transmittance { Value: Float }
+
+/// Convert transmittance to absorbance: A = -log₁₀(T).
+fn TransmittanceToAbsorbance(t: Transmittance) -> Absorbance ! Error {
+    if t.Value <= 0.0 or t.Value > 1.0 {
+        return error("transmittance must be in range (0, 1]")
+    }
+    return Absorbance { Value: 0.0 - Log10(t.Value) }
+}
+
+/// Convert absorbance to transmittance: T = 10^(-A).
+fn AbsorbanceToTransmittance(a: Absorbance) -> Transmittance ! Error {
+    if a.Value < 0.0 {
+        return error("absorbance must be non-negative")
+    }
+    return Transmittance { Value: Pow(10.0, 0.0 - a.Value) }
+}
+
+// ============================================================
+// Wavenumber (IR and Raman spectroscopy)
+// ============================================================
+
+/// Wavenumber in reciprocal centimetres (cm⁻¹).
+/// Used in IR and Raman spectroscopy. 1 cm⁻¹ = 100 m⁻¹ = 100 Float<m^-1>.
+/// Not using Float<m^-1> directly because the cm⁻¹ convention is so
+/// deeply embedded in IR practice that nominal typing is more useful.
+record Wavenumber { Value: Float }
+
+/// Convert wavenumber (cm⁻¹) to SI reciprocal metres.
+fn WavenumberToReciprocalMeter(w: Wavenumber) -> Float<m^-1> {
+    return w.Value * 100.0m^-1
+}
+
+/// Convert frequency (Hz) to wavenumber (cm⁻¹).
+/// ν̃ = ν / c, where c = speed of light in cm/s.
+fn FrequencyToWavenumber(freq: Float<Hz>) -> Wavenumber {
+    let cCmPerS = 29979245800.0   // speed of light in cm/s
+    let freqHz = freq / 1.0Hz     // dimensionless frequency in Hz
+    return Wavenumber { Value: freqHz / cCmPerS }
+}
+
+// ============================================================
+// Molar quantities
+// ============================================================
+
+/// Molar concentration in millimolar (mM). 1 mM = 10⁻³ mol/m³ × 1000 = 1 mol/m³.
+/// Actually: 1 mM = 1 mmol/L = 1 mol/m³. So Float<mol*m^-3> is correct.
+/// We provide a named wrapper for readability in biochemistry context.
+record Millimolar { Value: Float }
+
+fn MillimolarToSI(mM: Millimolar) -> Float<mol*m^-3> {
+    return mM.Value * 1.0mol*m^-3
+}
+
+/// Molar concentration in micromolar (μM). 1 μM = 10⁻³ mol/m³.
+record Micromolar { Value: Float }
+
+fn MicromolarToSI(uM: Micromolar) -> Float<mol*m^-3> {
+    return uM.Value * 0.001mol*m^-3
+}
+
+// ============================================================
+// Mass spectrometry
+// ============================================================
+
+/// Mass-to-charge ratio (m/z). Dimensionless in the MS convention
+/// (it's Da/e where both are units that cancel in practical usage).
+record MassToCharge { Value: Float }
+
+/// Dalton / unified atomic mass unit (Da = u).
+/// 1 Da = 1.66053906660×10⁻²⁷ kg (CODATA 2018).
+record Dalton { Value: Float }
+
+fn DaltonToKilogram(da: Dalton) -> Float<kg> {
+    return da.Value * 0.000000000000000000000000001660539066610kg
+}

@@ -1,0 +1,20 @@
+package Units
+
+[Fact]
+fn DegreesToRadiansIsCorrect() -> Void {
+    let r = DegreesToRadians(180.0)
+    Assert.Near(3.14159265, r, 0.000001, "180 degrees = pi radians")
+}
+
+[Fact]
+fn RadiansToDegreesIsCorrect() -> Void {
+    let d = RadiansToDegrees(Pi())
+    Assert.Near(180.0, d, 0.0001, "pi radians = 180 degrees")
+}
+
+[Fact]
+fn DegRadRoundTrip() -> Void {
+    let angle = 45.0
+    let back = RadiansToDegrees(DegreesToRadians(angle))
+    Assert.Near(45.0, back, 0.00001, "45 deg → rad → deg round trip")
+}

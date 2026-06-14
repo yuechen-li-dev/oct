@@ -1,0 +1,155 @@
+package Units
+
+// ============================================================
+// Units.Atomic
+//
+// Atomic and nuclear physics units with SI conversion.
+//
+// These are legitimate natural units for quantum mechanics,
+// atomic physics, and condensed matter. An atomic physicist
+// using Bohr radii or Hartrees is not being difficult —
+// these are the scales where the physics is natural.
+// ============================================================
+
+// ============================================================
+// Length
+// ============================================================
+
+/// Bohr radius (a₀). The most probable distance between the
+/// proton and electron in a hydrogen atom ground state.
+/// 1 a₀ = 5.29177210903×10⁻¹¹ m (CODATA 2018).
+record BohrRadius { Value: Float }
+
+fn BohrRadiusToMeter(a: BohrRadius) -> Float<m> {
+    return a.Value * 0.0000000000529177210903m
+}
+
+/// Angstrom (Å). 1 Å = 10⁻¹⁰ m.
+/// Ubiquitous in crystallography and molecular biology
+/// for bond lengths and lattice parameters.
+/// Note: ~1.89 Bohr radii.
+record Angstrom { Value: Float }
+
+fn AngstromToMeter(a: Angstrom) -> Float<m> {
+    return a.Value * 0.0000000001m
+}
+
+/// Fermi / femtometre (fm). 1 fm = 10⁻¹⁵ m.
+/// Natural scale for nuclear physics: proton radius ≈ 0.87 fm.
+record Fermi { Value: Float }
+
+fn FermiToMeter(f: Fermi) -> Float<m> {
+    return f.Value * 0.000000000000001m
+}
+
+// ============================================================
+// Energy
+// ============================================================
+
+/// Electron volt (eV). Energy gained by one elementary charge
+/// accelerating through 1 V potential difference.
+/// 1 eV = 1.602176634×10⁻¹⁹ J (exact since 2019 SI redefinition).
+record ElectronVolt { Value: Float }
+
+fn ElectronVoltToJoule(ev: ElectronVolt) -> Float<kg*m^2/s^2> {
+    return ev.Value * 0.0000000000000000001602176634kg*m^2/s^2
+}
+
+/// Kiloelectron volt (keV). 1 keV = 10³ eV.
+record KeV { Value: Float }
+
+fn KeVToJoule(kev: KeV) -> Float<kg*m^2/s^2> {
+    return kev.Value * 0.0000000000000001602176634kg*m^2/s^2
+}
+
+/// Megaelectron volt (MeV). 1 MeV = 10⁶ eV.
+/// Natural unit for nuclear binding energies and particle physics.
+record MeV { Value: Float }
+
+fn MeVToJoule(mev: MeV) -> Float<kg*m^2/s^2> {
+    return mev.Value * 0.0000000000001602176634kg*m^2/s^2
+}
+
+/// Gigaelectron volt (GeV). 1 GeV = 10⁹ eV.
+/// Natural unit for high-energy particle physics.
+/// Proton rest mass ≈ 0.938 GeV.
+record GeV { Value: Float }
+
+fn GeVToJoule(gev: GeV) -> Float<kg*m^2/s^2> {
+    return gev.Value * 0.0000000001602176634kg*m^2/s^2
+}
+
+/// Hartree (Eh). Atomic unit of energy.
+/// 1 Eh = 4.3597447222071×10⁻¹⁸ J ≈ 27.211 eV.
+/// Natural energy unit for quantum chemistry calculations.
+record Hartree { Value: Float }
+
+fn HartreeToJoule(h: Hartree) -> Float<kg*m^2/s^2> {
+    return h.Value * 0.0000000000000000043597447222071kg*m^2/s^2
+}
+
+fn HartreeToElectronVolt(h: Hartree) -> ElectronVolt {
+    return ElectronVolt { Value: h.Value * 27.211386245988 }
+}
+
+// ============================================================
+// Mass
+// ============================================================
+
+/// Dalton / unified atomic mass unit (u / Da).
+/// 1 Da = 1.66053906660×10⁻²⁷ kg (CODATA 2018).
+/// Also defined as 1/12 of carbon-12 mass.
+/// (Also in Units.Spectroscopy for mass spectrometry context.)
+record AtomicMassUnit { Value: Float }
+
+fn AtomicMassUnitToKilogram(u: AtomicMassUnit) -> Float<kg> {
+    return u.Value * 0.000000000000000000000000001660539066610kg
+}
+
+/// Electron rest mass (mₑ).
+/// 1 mₑ = 9.1093837015×10⁻³¹ kg.
+record ElectronMass { Value: Float }
+
+fn ElectronMassToKilogram(m: ElectronMass) -> Float<kg> {
+    return m.Value * 0.00000000000000000000000000000091093837015kg
+}
+
+/// Proton rest mass (mₚ).
+/// 1 mₚ = 1.67262192369×10⁻²⁷ kg ≈ 1836.15 mₑ.
+record ProtonMass { Value: Float }
+
+fn ProtonMassToKilogram(m: ProtonMass) -> Float<kg> {
+    return m.Value * 0.000000000000000000000000001672621923690kg
+}
+
+// ============================================================
+// Time
+// ============================================================
+
+/// Atomic unit of time (ℏ/Eh).
+/// 1 a.u. time = 2.4188843265857×10⁻¹⁷ s.
+/// Used in time-dependent quantum mechanics.
+record AtomicUnitTime { Value: Float }
+
+fn AtomicUnitTimeToSecond(t: AtomicUnitTime) -> Float<s> {
+    return t.Value * 0.000000000000000024188843265857s
+}
+
+// ============================================================
+// Cross section
+// ============================================================
+
+/// Barn (b). Unit of nuclear cross section.
+/// 1 barn = 10⁻²⁸ m² (historically: "as big as a barn" for uranium nucleus).
+record Barn { Value: Float }
+
+fn BarnToSquareMeter(b: Barn) -> Float<m^2> {
+    return b.Value * 0.0000000000000000000000000001m^2
+}
+
+/// Millibarn (mb). 1 mb = 10⁻³ barn = 10⁻³¹ m².
+record Millibarn { Value: Float }
+
+fn MillibarnToSquareMeter(mb: Millibarn) -> Float<m^2> {
+    return mb.Value * 0.0000000000000000000000000000001m^2
+}

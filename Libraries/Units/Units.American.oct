@@ -1,0 +1,226 @@
+package Units
+
+// ============================================================
+// Units.American
+//
+// American customary units as Oct records with SI conversion.
+//
+// These are not first-class dimension types. They are nominal
+// wrappers that give the type system something to enforce.
+// The compiler cannot verify American↔American arithmetic,
+// but it can prevent you from passing a Fahrenheit where
+// a Float<K> is expected — which is the important guarantee.
+//
+// No `2lb` literal exists. No `72F` literal exists.
+// Write `Pound { Value: 2.0 }` and convert to SI immediately.
+// Fahrenheit is going the way of the dodo. This library just
+// makes the migration path clear.
+// ============================================================
+
+// ============================================================
+// Temperature
+// ============================================================
+
+/// Temperature in degrees Fahrenheit.
+/// Conversion: K = (°F + 459.67) × 5/9
+record Fahrenheit { Value: Float }
+
+/// Convert Fahrenheit to Kelvin (SI).
+fn ToKelvin(f: Fahrenheit) -> Float<K> {
+    return (f.Value + 459.67) * (5.0 / 9.0) * 1.0K
+}
+
+/// Convert Fahrenheit to Celsius offset (°C = (°F − 32) × 5/9).
+/// Returns a bare Float — Celsius is not an SI dimension,
+/// it is an authoring convenience that lowers to Kelvin in Oct.
+/// Use 180C literal syntax for Celsius input instead where possible.
+fn ToCelsiusOffset(f: Fahrenheit) -> Float {
+    return (f.Value - 32.0) * (5.0 / 9.0)
+}
+
+// ============================================================
+// Mass
+// ============================================================
+
+/// Mass in avoirdupois pounds (lb).
+/// Conversion: 1 lb = 0.45359237 kg (exact by definition since 1959)
+record Pound { Value: Float }
+
+/// Convert pounds to kilograms (SI).
+fn ToKilogram(lb: Pound) -> Float<kg> {
+    return lb.Value * 0.45359237kg
+}
+
+/// Mass in avoirdupois ounces (oz). 16 oz = 1 lb.
+record Ounce { Value: Float }
+
+fn OunceToKilogram(oz: Ounce) -> Float<kg> {
+    return oz.Value * 0.028349523kg
+}
+
+/// Mass in US short tons (ton). 1 short ton = 2000 lb.
+/// Note: different from metric tonne (1000 kg) and British long ton (2240 lb).
+record ShortTon { Value: Float }
+
+fn ShortTonToKilogram(t: ShortTon) -> Float<kg> {
+    return t.Value * 907.18474kg
+}
+
+// ============================================================
+// Length
+// ============================================================
+
+/// Length in inches (in).
+/// Conversion: 1 in = 25.4 mm = 0.0254 m (exact by definition since 1959)
+record Inch { Value: Float }
+
+fn ToMeter(i: Inch) -> Float<m> {
+    return i.Value * 0.0254m
+}
+
+/// Length in feet (ft). 1 ft = 12 in.
+record Foot { Value: Float }
+
+fn FootToMeter(ft: Foot) -> Float<m> {
+    return ft.Value * 0.3048m
+}
+
+/// Length in yards (yd). 1 yd = 3 ft = 36 in.
+record Yard { Value: Float }
+
+fn YardToMeter(yd: Yard) -> Float<m> {
+    return yd.Value * 0.9144m
+}
+
+/// Length in statute miles (mi). 1 mi = 5280 ft.
+record Mile { Value: Float }
+
+fn MileToMeter(mi: Mile) -> Float<m> {
+    return mi.Value * 1609.344m
+}
+
+/// Length in nautical miles. 1 NM = 1852 m (exact).
+/// Used in aviation and maritime navigation.
+record NauticalMile { Value: Float }
+
+fn NauticalMileToMeter(nm: NauticalMile) -> Float<m> {
+    return nm.Value * 1852.0m
+}
+
+// ============================================================
+// Area
+// ============================================================
+
+/// Area in acres. 1 acre = 43560 ft² = 4046.8564224 m².
+record Acre { Value: Float }
+
+fn AcreToSquareMeter(a: Acre) -> Float<m^2> {
+    return a.Value * 4046.8564224m^2
+}
+
+// ============================================================
+// Volume
+// ============================================================
+
+/// Volume in US fluid ounces (fl oz).
+/// 1 US fl oz = 29.5735295625 mL (exact).
+/// Note: different from British fluid ounce (28.4130625 mL).
+record FluidOunce { Value: Float }
+
+fn FluidOunceToCubicMeter(oz: FluidOunce) -> Float<m^3> {
+    return oz.Value * 0.0000295735295625m^3
+}
+
+/// Volume in US cups. 1 cup = 8 fl oz.
+record Cup { Value: Float }
+
+fn CupToCubicMeter(c: Cup) -> Float<m^3> {
+    return c.Value * 0.0002365882365m^3
+}
+
+/// Volume in US pints. 1 US pint = 16 fl oz.
+/// Note: different from British pint (20 fl oz).
+record Pint { Value: Float }
+
+fn PintToCubicMeter(p: Pint) -> Float<m^3> {
+    return p.Value * 0.000473176473m^3
+}
+
+/// Volume in US quarts. 1 US quart = 2 pints.
+record Quart { Value: Float }
+
+fn QuartToCubicMeter(q: Quart) -> Float<m^3> {
+    return q.Value * 0.000946352946m^3
+}
+
+/// Volume in US gallons. 1 US gallon = 4 quarts = 231 in³.
+/// Note: different from British gallon (4.54609 L).
+record Gallon { Value: Float }
+
+fn GallonToCubicMeter(g: Gallon) -> Float<m^3> {
+    return g.Value * 0.003785411784m^3
+}
+
+// ============================================================
+// Speed
+// ============================================================
+
+/// Speed in miles per hour (mph).
+record MilePerHour { Value: Float }
+
+fn MilePerHourToMeterPerSecond(mph: MilePerHour) -> Float<m/s> {
+    return mph.Value * 0.44704m/s
+}
+
+/// Speed in feet per second (ft/s).
+record FootPerSecond { Value: Float }
+
+fn FootPerSecondToMeterPerSecond(fps: FootPerSecond) -> Float<m/s> {
+    return fps.Value * 0.3048m/s
+}
+
+/// Speed in knots (kn). 1 knot = 1 nautical mile per hour.
+record Knot { Value: Float }
+
+fn KnotToMeterPerSecond(kn: Knot) -> Float<m/s> {
+    return kn.Value * 0.514444m/s
+}
+
+// ============================================================
+// Force and pressure
+// ============================================================
+
+/// Force in pound-force (lbf).
+/// 1 lbf = 4.44822162 N (exact, defined from standard gravity).
+record PoundForce { Value: Float }
+
+fn PoundForceToNewton(lbf: PoundForce) -> Float<kg*m/s^2> {
+    return lbf.Value * 4.44822162kg*m/s^2
+}
+
+/// Pressure in pounds per square inch (psi).
+/// 1 psi = 6894.757 Pa.
+record Psi { Value: Float }
+
+fn PsiToPascal(psi: Psi) -> Float<kg*m^-1*s^-2> {
+    return psi.Value * 6894.757kg*m^-1*s^-2
+}
+
+// ============================================================
+// Energy
+// ============================================================
+
+/// Energy in British Thermal Units (BTU).
+/// 1 BTU (ISO) = 1055.06 J.
+record Btu { Value: Float }
+
+fn BtuToJoule(btu: Btu) -> Float<kg*m^2/s^2> {
+    return btu.Value * 1055.06kg*m^2/s^2
+}
+
+/// Power in horsepower (hp). 1 hp = 745.69987 W (mechanical horsepower).
+record Horsepower { Value: Float }
+
+fn HorsepowerToWatt(hp: Horsepower) -> Float<kg*m^2/s^3> {
+    return hp.Value * 745.69987kg*m^2/s^3
+}

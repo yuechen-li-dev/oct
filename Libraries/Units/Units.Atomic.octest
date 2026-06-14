@@ -1,0 +1,68 @@
+package Units
+
+[Fact]
+fn BohrRadiusIsCorrect() -> Void {
+    let m = BohrRadiusToMeter(BohrRadius { Value: 1.0 })
+    // 1 a₀ ≈ 5.292e-11 m
+    Assert.True(m > 5.29e-11m, "a₀ > 5.29e-11 m")
+    Assert.True(m < 5.30e-11m, "a₀ < 5.30e-11 m")
+}
+
+[Fact]
+fn AngstromIsCorrect() -> Void {
+    let m = AngstromToMeter(Angstrom { Value: 1.0 })
+    Assert.Near(0.0000000001, m / 1.0m, 0.0000000000001, "1 Å = 1e-10 m")
+}
+
+[Fact]
+fn AngstromIsAbout1point89BohrRadii() -> Void {
+    let ang = AngstromToMeter(Angstrom { Value: 1.89 })
+    let bohr = BohrRadiusToMeter(BohrRadius { Value: 1.0 })
+    // 1 Å ≈ 1.8897 a₀, so 1.89 a₀ should be close to 1 Å
+    Assert.Near(ang / 1.0m, bohr / 1.0m, 0.000000001, "1.89 a₀ ≈ 1 Å")
+}
+
+[Fact]
+fn ElectronVoltToJouleIsCorrect() -> Void {
+    let j = ElectronVoltToJoule(ElectronVolt { Value: 1.0 })
+    // 1 eV = 1.602176634e-19 J (exact)
+    Assert.True(j > 1.602e-19kg*m^2/s^2, "1 eV > 1.602e-19 J")
+    Assert.True(j < 1.603e-19kg*m^2/s^2, "1 eV < 1.603e-19 J")
+}
+
+[Fact]
+fn KeVIs1000eV() -> Void {
+    let j1000ev = ElectronVoltToJoule(ElectronVolt { Value: 1000.0 })
+    let j1kev   = KeVToJoule(KeV { Value: 1.0 })
+    Assert.Near(j1000ev / 1.0kg*m^2/s^2, j1kev / 1.0kg*m^2/s^2, 1e-25,
+        "1 keV = 1000 eV in joules")
+}
+
+[Fact]
+fn HartreeToEVIsAbout27() -> Void {
+    let ev = HartreeToElectronVolt(Hartree { Value: 1.0 })
+    Assert.Near(27.211, ev.Value, 0.01, "1 Hartree ≈ 27.211 eV")
+}
+
+[Fact]
+fn AtomicMassUnitIsCorrect() -> Void {
+    let kg = AtomicMassUnitToKilogram(AtomicMassUnit { Value: 1.0 })
+    // 1 u = 1.66054e-27 kg
+    Assert.True(kg > 1.660e-27kg, "1 u > 1.660e-27 kg")
+    Assert.True(kg < 1.661e-27kg, "1 u < 1.661e-27 kg")
+}
+
+[Fact]
+fn ProtonMassIsAbout1836ElectronMasses() -> Void {
+    let mp = ProtonMassToKilogram(ProtonMass { Value: 1.0 })
+    let me = ElectronMassToKilogram(ElectronMass { Value: 1836.15 })
+    // mp ≈ 1836.15 mₑ
+    Assert.Near(mp / 1.0kg, me / 1.0kg, 1e-30, "mp ≈ 1836.15 mₑ")
+}
+
+[Fact]
+fn BarnToSquareMeterIsCorrect() -> Void {
+    let m2 = BarnToSquareMeter(Barn { Value: 1.0 })
+    // 1 barn = 1e-28 m²
+    Assert.Near(1e-28, m2 / 1.0m^2, 1e-30, "1 barn = 1e-28 m²")
+}

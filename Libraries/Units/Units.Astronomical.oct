@@ -1,0 +1,130 @@
+package Units
+
+// ============================================================
+// Units.Astronomical
+//
+// Astronomical and cosmological units with SI conversion.
+//
+// These are legitimate non-SI units used in published literature.
+// An astronomer quoting "3.5 kpc" or "0.8 AU" is not being
+// sloppy — these are the natural scales for their domain.
+// Convert to SI for computation, use the originals for output.
+// ============================================================
+
+// ============================================================
+// Distance
+// ============================================================
+
+/// Astronomical Unit (AU). Mean Earth-Sun distance.
+/// 1 AU = 149,597,870,700 m (exact, IAU 2012 definition).
+record AstronomicalUnit { Value: Float }
+
+fn AstronomicalUnitToMeter(au: AstronomicalUnit) -> Float<m> {
+    return au.Value * 149597870700.0m
+}
+
+/// Light-year (ly). Distance light travels in one Julian year.
+/// 1 ly = 9.4607304725808×10¹⁵ m (exact).
+record LightYear { Value: Float }
+
+fn LightYearToMeter(ly: LightYear) -> Float<m> {
+    return ly.Value * 9460730472580800.0m
+}
+
+/// Parsec (pc). 1 pc = 648000/π AU ≈ 3.0856775814913673×10¹⁶ m.
+/// The fundamental distance unit of stellar and galactic astronomy.
+record Parsec { Value: Float }
+
+fn ParsecToMeter(pc: Parsec) -> Float<m> {
+    return pc.Value * 30856775814913673.0m
+}
+
+/// Kiloparsec (kpc). 1 kpc = 1000 pc.
+/// Used for distances within galaxies.
+record Kiloparsec { Value: Float }
+
+fn KiloparsecToMeter(kpc: Kiloparsec) -> Float<m> {
+    return kpc.Value * 30856775814913673000.0m
+}
+
+/// Megaparsec (Mpc). 1 Mpc = 10⁶ pc.
+/// Used for distances between galaxies and large-scale structure.
+record Megaparsec { Value: Float }
+
+fn MegaparsecToMeter(mpc: Megaparsec) -> Float<m> {
+    return mpc.Value * 30856775814913673000000000.0m
+}
+
+/// Solar radius (R☉). 1 R☉ = 6.957×10⁸ m (IAU 2015 nominal value).
+record SolarRadius { Value: Float }
+
+fn SolarRadiusToMeter(r: SolarRadius) -> Float<m> {
+    return r.Value * 695700000.0m
+}
+
+// ============================================================
+// Mass
+// ============================================================
+
+/// Solar mass (M☉). 1 M☉ = 1.98892×10³⁰ kg.
+/// The natural mass unit for stellar and galactic astronomy.
+record SolarMass { Value: Float }
+
+fn SolarMassToKilogram(m: SolarMass) -> Float<kg> {
+    return m.Value * 1988920000000000000000000000000.0kg
+}
+
+/// Earth mass (M⊕). 1 M⊕ = 5.9722×10²⁴ kg.
+/// Used for planetary science.
+record EarthMass { Value: Float }
+
+fn EarthMassToKilogram(m: EarthMass) -> Float<kg> {
+    return m.Value * 5972200000000000000000000.0kg
+}
+
+/// Jupiter mass (M♃). 1 M♃ = 1.89813×10²⁷ kg.
+/// Natural unit for gas giant and exoplanet mass.
+record JupiterMass { Value: Float }
+
+fn JupiterMassToKilogram(m: JupiterMass) -> Float<kg> {
+    return m.Value * 1898130000000000000000000000.0kg
+}
+
+// ============================================================
+// Luminosity and flux
+// ============================================================
+
+/// Solar luminosity (L☉). 1 L☉ = 3.828×10²⁶ W = 3.828×10²⁶ kg*m²/s³.
+record SolarLuminosity { Value: Float }
+
+fn SolarLuminosityToWatt(l: SolarLuminosity) -> Float<kg*m^2/s^3> {
+    return l.Value * 382800000000000000000000000.0kg*m^2/s^3
+}
+
+/// Jansky (Jy). Unit of spectral flux density.
+/// 1 Jy = 10⁻²⁶ W/(m²·Hz) = 10⁻²⁶ kg/s².
+/// Used in radio astronomy.
+record Jansky { Value: Float }
+
+fn JanskyToSI(jy: Jansky) -> Float<kg*s^-2> {
+    return jy.Value * 0.00000000000000000000000001kg*s^-2
+}
+
+// ============================================================
+// Time
+// ============================================================
+
+/// Julian year. Exactly 365.25 days = 31,557,600 s.
+/// Used in light-year definition and stellar age estimates.
+record JulianYear { Value: Float }
+
+fn JulianYearToSecond(y: JulianYear) -> Float<s> {
+    return y.Value * 31557600.0s
+}
+
+/// Million years (Myr). Used for geological and stellar timescales.
+record MillionYear { Value: Float }
+
+fn MillionYearToSecond(my: MillionYear) -> Float<s> {
+    return my.Value * 31557600000000.0s
+}

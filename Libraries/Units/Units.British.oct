@@ -1,0 +1,191 @@
+package Units
+
+// ============================================================
+// Units.British
+//
+// British Imperial units as Oct records with SI conversion.
+//
+// Many British Imperial units share names with American customary
+// units but have different values. The critical ones:
+//
+//   Fluid ounce: 1 UK fl oz = 28.4130625 mL  vs  29.5735 mL (US)
+//   Pint:        1 UK pint  = 568.261 mL      vs  473.176 mL (US)
+//   Gallon:      1 UK gallon = 4.54609 L      vs  3.78541 L (US)
+//   Ton:         1 UK long ton = 2240 lb      vs  2000 lb (US short ton)
+//
+// British units not found in American: stone, hundredweight (long),
+// and the fluid units differ throughout.
+// ============================================================
+
+// ============================================================
+// Mass
+// ============================================================
+
+/// Mass in stone (st). 1 stone = 14 lb = 6.35029318 kg.
+/// Used in the UK for body weight. Not used in American customary.
+record Stone { Value: Float }
+
+fn StoneToKilogram(st: Stone) -> Float<kg> {
+    return st.Value * 6.35029318kg
+}
+
+/// Mass in pounds (lb). Same definition as American: 0.45359237 kg.
+/// Included here for completeness in British context.
+record BritishPound { Value: Float }
+
+fn BritishPoundToKilogram(lb: BritishPound) -> Float<kg> {
+    return lb.Value * 0.45359237kg
+}
+
+/// Mass in ounces (avoirdupois). Same as American: 0.028349523 kg.
+record BritishOunce { Value: Float }
+
+fn BritishOunceToKilogram(oz: BritishOunce) -> Float<kg> {
+    return oz.Value * 0.028349523kg
+}
+
+/// Mass in long hundredweight (cwt). 1 UK cwt = 112 lb.
+/// Distinct from US short hundredweight (100 lb).
+record Hundredweight { Value: Float }
+
+fn HundredweightToKilogram(cwt: Hundredweight) -> Float<kg> {
+    return cwt.Value * 50.80234544kg
+}
+
+/// Mass in long tons (t). 1 UK long ton = 2240 lb = 1016.0469088 kg.
+/// Distinct from US short ton (2000 lb) and metric tonne (1000 kg).
+record LongTon { Value: Float }
+
+fn LongTonToKilogram(t: LongTon) -> Float<kg> {
+    return t.Value * 1016.0469088kg
+}
+
+// ============================================================
+// Length
+// ============================================================
+
+/// Length in inches. Same definition as American: 0.0254 m.
+record BritishInch { Value: Float }
+
+fn BritishInchToMeter(i: BritishInch) -> Float<m> {
+    return i.Value * 0.0254m
+}
+
+/// Length in feet. Same definition as American: 0.3048 m.
+record BritishFoot { Value: Float }
+
+fn BritishFootToMeter(ft: BritishFoot) -> Float<m> {
+    return ft.Value * 0.3048m
+}
+
+/// Length in yards. Same definition as American: 0.9144 m.
+record BritishYard { Value: Float }
+
+fn BritishYardToMeter(yd: BritishYard) -> Float<m> {
+    return yd.Value * 0.9144m
+}
+
+/// Length in furlongs. 1 furlong = 220 yards = 201.168 m.
+/// Used in horse racing.
+record Furlong { Value: Float }
+
+fn FurlongToMeter(f: Furlong) -> Float<m> {
+    return f.Value * 201.168m
+}
+
+/// Length in chains. 1 chain = 22 yards = 20.1168 m.
+/// Used in surveying and cricket pitch length.
+record Chain { Value: Float }
+
+fn ChainToMeter(c: Chain) -> Float<m> {
+    return c.Value * 20.1168m
+}
+
+/// Length in leagues. 1 land league = 3 miles = 4828.032 m.
+record League { Value: Float }
+
+fn LeagueToMeter(l: League) -> Float<m> {
+    return l.Value * 4828.032m
+}
+
+// ============================================================
+// Volume — note differences from American units
+// ============================================================
+
+/// Volume in UK fluid ounces.
+/// 1 UK fl oz = 28.4130625 mL = 0.0000284130625 m³.
+/// DIFFERENT FROM US: US fl oz = 29.5735 mL.
+record BritishFluidOunce { Value: Float }
+
+fn BritishFluidOunceToCubicMeter(oz: BritishFluidOunce) -> Float<m^3> {
+    return oz.Value * 0.0000284130625m^3
+}
+
+/// Volume in UK pints.
+/// 1 UK pint = 20 UK fl oz = 568.26125 mL.
+/// DIFFERENT FROM US: US pint = 16 fl oz = 473.176 mL.
+record BritishPint { Value: Float }
+
+fn BritishPintToCubicMeter(p: BritishPint) -> Float<m^3> {
+    return p.Value * 0.00056826125m^3
+}
+
+/// Volume in UK quarts. 1 UK quart = 2 UK pints.
+record BritishQuart { Value: Float }
+
+fn BritishQuartToCubicMeter(q: BritishQuart) -> Float<m^3> {
+    return q.Value * 0.0011365225m^3
+}
+
+/// Volume in UK gallons.
+/// 1 UK gallon = 4 UK quarts = 4.54609 L = 0.00454609 m³.
+/// DIFFERENT FROM US: US gallon = 3.78541 L.
+record BritishGallon { Value: Float }
+
+fn BritishGallonToCubicMeter(g: BritishGallon) -> Float<m^3> {
+    return g.Value * 0.00454609m^3
+}
+
+// ============================================================
+// Temperature
+// ============================================================
+
+/// Temperature in degrees Fahrenheit.
+/// Same conversion as American — included for British historical context.
+/// Officially replaced by Celsius in the UK (Weights and Measures Act 1985).
+record BritishFahrenheit { Value: Float }
+
+fn BritishFahrenheitToKelvin(f: BritishFahrenheit) -> Float<K> {
+    return (f.Value + 459.67) * (5.0 / 9.0) * 1.0K
+}
+
+// ============================================================
+// Speed
+// ============================================================
+
+/// Speed in miles per hour. Same as American.
+/// Used in UK road speed limits.
+record BritishMilePerHour { Value: Float }
+
+fn BritishMilePerHourToMeterPerSecond(mph: BritishMilePerHour) -> Float<m/s> {
+    return mph.Value * 0.44704m/s
+}
+
+// ============================================================
+// Area
+// ============================================================
+
+/// Area in acres. Same as American.
+record BritishAcre { Value: Float }
+
+fn BritishAcreToSquareMeter(a: BritishAcre) -> Float<m^2> {
+    return a.Value * 4046.8564224m^2
+}
+
+/// Area in roods. 1 rood = 1/4 acre = 1011.7141056 m².
+/// Historical British land measurement.
+record Rood { Value: Float }
+
+fn RoodToSquareMeter(r: Rood) -> Float<m^2> {
+    return r.Value * 1011.7141056m^2
+}

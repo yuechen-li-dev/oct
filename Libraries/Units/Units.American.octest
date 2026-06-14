@@ -1,0 +1,104 @@
+package Units
+
+// Temperature
+[Fact]
+fn FreezingPointInFahrenheit() -> Void {
+    // 32°F = 273.15 K (water freezing point)
+    let k = ToKelvin(Fahrenheit { Value: 32.0 })
+    Assert.Near(273.15, k / 1.0K, 0.01, "32F = 273.15 K")
+}
+
+[Fact]
+fn BoilingPointInFahrenheit() -> Void {
+    // 212°F = 373.15 K (water boiling point at standard pressure)
+    let k = ToKelvin(Fahrenheit { Value: 212.0 })
+    Assert.Near(373.15, k / 1.0K, 0.01, "212F = 373.15 K")
+}
+
+[Fact]
+fn AbsoluteZeroInFahrenheit() -> Void {
+    // -459.67°F = 0 K
+    let k = ToKelvin(Fahrenheit { Value: -459.67 })
+    Assert.Near(0.0, k / 1.0K, 0.001, "-459.67F = 0 K")
+}
+
+[Fact]
+fn BodyTemperatureInFahrenheit() -> Void {
+    // 98.6°F = 310.15 K (standard body temp = 37°C)
+    let k = ToKelvin(Fahrenheit { Value: 98.6 })
+    Assert.Near(310.15, k / 1.0K, 0.1, "98.6F = 310.15 K")
+}
+
+// Mass
+[Fact]
+fn OnePoundIsCorrectKg() -> Void {
+    let kg = ToKilogram(Pound { Value: 1.0 })
+    Assert.Near(0.453592, kg / 1.0kg, 0.000001, "1 lb = 0.453592 kg")
+}
+
+[Fact]
+fn OneShortTonIsCorrectKg() -> Void {
+    let kg = ShortTonToKilogram(ShortTon { Value: 1.0 })
+    Assert.Near(907.185, kg / 1.0kg, 0.001, "1 short ton = 907.185 kg")
+}
+
+// Length
+[Fact]
+fn OneInchIs0point0254m() -> Void {
+    let m = ToMeter(Inch { Value: 1.0 })
+    Assert.Near(0.0254, m / 1.0m, 0.000001, "1 inch = 0.0254 m")
+}
+
+[Fact]
+fn OneFoodIs0point3048m() -> Void {
+    let m = FootToMeter(Foot { Value: 1.0 })
+    Assert.Near(0.3048, m / 1.0m, 0.000001, "1 foot = 0.3048 m")
+}
+
+[Fact]
+fn OneMileIsCorrectMeters() -> Void {
+    let m = MileToMeter(Mile { Value: 1.0 })
+    Assert.Near(1609.344, m / 1.0m, 0.001, "1 mile = 1609.344 m")
+}
+
+[Fact]
+fn TwelveInchesEqualOneFoot() -> Void {
+    let inches = ToMeter(Inch { Value: 12.0 })
+    let foot   = FootToMeter(Foot { Value: 1.0 })
+    Assert.Near(inches / 1.0m, foot / 1.0m, 0.000001, "12 inches = 1 foot")
+}
+
+[Fact]
+fn FiveThousandTwentyEightFeetEqualOneMile() -> Void {
+    let feet = FootToMeter(Foot { Value: 5280.0 })
+    let mile = MileToMeter(Mile { Value: 1.0 })
+    Assert.Near(feet / 1.0m, mile / 1.0m, 0.001, "5280 feet = 1 mile")
+}
+
+// Speed
+[Fact]
+fn SixtyMphIsCorrectMps() -> Void {
+    let mps = MilePerHourToMeterPerSecond(MilePerHour { Value: 60.0 })
+    Assert.Near(26.8224, mps / 1.0m/s, 0.0001, "60 mph = 26.8224 m/s")
+}
+
+// Force and pressure
+[Fact]
+fn OnePoundForceIsCorrectNewtons() -> Void {
+    let n = PoundForceToNewton(PoundForce { Value: 1.0 })
+    Assert.Near(4.44822, n / 1.0kg*m/s^2, 0.0001, "1 lbf = 4.44822 N")
+}
+
+[Fact]
+fn StandardAtmosphereInPsi() -> Void {
+    // Standard atmosphere = 14.696 psi = 101325 Pa
+    let pa = PsiToPascal(Psi { Value: 14.696 })
+    Assert.Near(101325.0, pa / 1.0kg*m^-1*s^-2, 10.0, "14.696 psi = ~101325 Pa")
+}
+
+// Energy
+[Fact]
+fn OneHorsepowerInWatts() -> Void {
+    let w = HorsepowerToWatt(Horsepower { Value: 1.0 })
+    Assert.Near(745.7, w / 1.0kg*m^2/s^3, 0.1, "1 hp = 745.7 W")
+}
