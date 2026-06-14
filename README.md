@@ -22,6 +22,61 @@ Oct is for research code that has outgrown throwaway scripts but still needs to 
 - **Explicit integration:** Octxiliary sidecars expose Go libraries through manifest-declared wrappers instead of hidden ambient bindings.
 - **Agent-friendly workflow:** an LLM can create Oct experiments, run tests, sync packages, generate artifacts, and return reproducible code instead of a fragile transcript.
 
+## Example
+```oct
+package ReadmeDemo
+
+// Oct enforces physical units at compile time.
+// Wrong units are a type error — not a runtime surprise.
+
+fn KineticEnergy(mass: Float<kg>, velocity: Float<m/s>) -> Float<kg*m^2/s^2> {
+    return 0.5 * mass * velocity * velocity
+    // kg * (m/s)^2 = kg*m^2/s^2  ✓  compiler verifies this
+}
+
+fn StiffnessForce(K: Matrix<Float<kg/s^2>>, u: Vector<Float<m>>) -> Vector<Float<kg*m/s^2>> {
+    return K @ u
+    // Matrix<Float<kg/s^2>> @ Vector<Float<m>> → Vector<Float<kg*m/s^2>>  ✓  Newton's law
+}
+
+// Errors are values. ? propagates. match handles locally.
+fn AverageSpeed(distance: Float<m>, time: Float<s>) -> Float<m/s> ! Error {
+    if time <= 0.0s {
+        return error("time must be positive")
+    }
+    return distance / time
+}
+
+// State machines are a language primitive — explicit, named, typed.
+// Python's async/await secretly compiles to one of these.
+// Oct makes the states, transitions, and mutable board visible.
+flow HeatReactor(target: Float<K>, initial: Float<K>) -> Float<K> {
+    board {
+        Temp:  Float<K>
+        Ticks: Int
+    }
+
+    state Initialize {
+        board.Temp  = initial
+        board.Ticks = 0
+        goto Heating
+    }
+
+    state Heating {
+        board.Temp  = board.Temp + 0.5K
+        board.Ticks = board.Ticks + 1
+        when {
+            case board.Temp >= target -> goto Done
+            case board.Ticks > 1000  -> goto Done
+            else                     -> goto Heating
+        }
+    }
+
+    state Done { return board.Temp }
+}
+
+```
+
 ## Current status: v0.1 preview
 
 Oct 0.1 is an early preview: real enough to run, test, package, and compile scientific programs, but still pre-1.0 and evolving.
