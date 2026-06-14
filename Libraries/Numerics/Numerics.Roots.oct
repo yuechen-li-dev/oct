@@ -145,3 +145,206 @@ fn ValidateNewtonInputs(tolerance: Float, maxIterations: Int) -> Bool ! Error {
 fn NewtonDerivativeMinAbs() -> Float {
     return 0.000000000001
 }
+
+// ============================================================
+// Secant method
+//
+// Newton's method without requiring the analytic derivative.
+// Approximates f'(x) using a finite difference between the
+// two most recent iterates.
+//
+// Convergence: superlinear (order ≈ 1.618, the golden ratio).
+// Requires two initial points x0 and x1 (not necessarily bracketing).
+// ============================================================
+
+/// Secant method for root finding.
+///
+/// Requires two initial guesses x0 and x1. Does not require a
+/// sign change between them (unlike bisection), but also has
+/// no guaranteed convergence. Works well near a simple root.
+fn SecantRoot(
+    f: fn(Float) -> Float,
+    x0: Float,
+    x1: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> RootResult ! Error {
+    if tolerance <= 0.0 {
+        return error("SecantRoot: tolerance must be > 0")
+    }
+    if maxIterations <= 0 {
+        return error("SecantRoot: maxIterations must be > 0")
+    }
+
+    var xPrev = x0
+    var xCurr = x1
+    var fPrev = f(xPrev)
+    var fCurr = f(xCurr)
+    var iterations = 0
+    var converged = Abs(fCurr) <= tolerance
+
+    while iterations < maxIterations and not converged {
+        let df = fCurr - fPrev
+        if Abs(df) <= NewtonDerivativeMinAbs() {
+            return error("SecantRoot: consecutive f values too close — derivative vanishes")
+        }
+
+        let xNext = xCurr - fCurr * (xCurr - xPrev) / df
+        xPrev = xCurr
+        fPrev = fCurr
+        xCurr = xNext
+        fCurr = f(xCurr)
+        iterations = iterations + 1
+
+        if Abs(fCurr) <= tolerance or Abs(xCurr - xPrev) <= tolerance {
+            converged = true
+        }
+    }
+
+    return RootResult {
+        Root: xCurr
+        Value: fCurr
+        Iterations: iterations
+        Converged: converged
+    }
+}
+
+// ============================================================
+// Brent's root method
+//
+// The most robust 1D root finder. Combines bisection, secant,
+// and inverse quadratic interpolation. Guarantees convergence
+// if f(a) and f(b) have opposite signs (like bisection), but
+// converges much faster in practice (like secant).
+//
+// This is what scipy.optimize.brentq and MATLAB's fzero use.
+// Prefer this over bisection for general root finding.
+// ============================================================
+
+/// Brent's method for root finding on [a, b].
+///
+/// Requires f(a) and f(b) to have opposite signs.
+/// Combines bisection (guaranteed), secant (fast), and
+/// inverse quadratic interpolation (faster for smooth f).
+/// Production-grade root finder — prefer over BisectionRoot
+/// for smooth functions.
+fn BrentRoot(
+    f: fn(Float) -> Float,
+    a: Float,
+    b: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> RootResult ! Error {
+    if a >= b {
+        return error("BrentRoot: a must be < b")
+    }
+    if tolerance <= 0.0 {
+        return error("BrentRoot: tolerance must be > 0")
+    }
+    if maxIterations <= 0 {
+        return error("BrentRoot: maxIterations must be > 0")
+    }
+
+    var fa = f(a)
+    var fb = f(b)
+
+    if fa * fb > 0.0 {
+        return error("BrentRoot: f(a) and f(b) must have opposite signs")
+    }
+
+    if fa == 0.0 {
+        return RootResult { Root: a  Value: fa  Iterations: 0  Converged: true }
+    }
+    if fb == 0.0 {
+        return RootResult { Root: b  Value: fb  Iterations: 0  Converged: true }
+    }
+
+    var lo  = a
+    var hi  = b
+    var flo = fa
+    var fhi = fb
+
+    // Ensure |f(lo)| >= |f(hi)| so hi is the best current estimate
+    if Abs(flo) < Abs(fhi) {
+        var tmp = lo
+        lo = hi
+        hi = tmp
+        var ftmp = flo
+        flo = fhi
+        fhi = ftmp
+    }
+
+    var prev = lo
+    var fprev = flo
+    var mflag = true
+    var s = hi
+    var fs = fhi
+    var d = 0.0
+    var iterations = 0
+    var converged = false
+
+    while iterations < maxIterations and not converged {
+        if Abs(hi - lo) < tolerance or Abs(fs) <= tolerance {
+            converged = true
+        }
+
+        if not converged {
+            // Try inverse quadratic interpolation or secant
+            if flo != fprev and fhi != fprev {
+                // Inverse quadratic interpolation
+                let t1 = lo * fhi * fprev / ((flo - fhi) * (flo - fprev))
+                let t2 = hi * flo * fprev / ((fhi - flo) * (fhi - fprev))
+                let t3 = prev * flo * fhi / ((fprev - flo) * (fprev - fhi))
+                s = t1 + t2 + t3
+            } else {
+                // Secant
+                s = hi - fhi * (hi - lo) / (fhi - flo)
+            }
+
+            // Conditions to fall back to bisection
+            let cond1 = s < (3.0 * lo + hi) / 4.0 or s > hi
+            let cond2 = mflag and Abs(s - hi) >= Abs(hi - prev) / 2.0
+            let cond3 = not mflag and Abs(s - hi) >= Abs(prev - d) / 2.0
+            let cond4 = mflag and Abs(hi - prev) < tolerance
+            let cond5 = not mflag and Abs(prev - d) < tolerance
+
+            if cond1 or cond2 or cond3 or cond4 or cond5 {
+                s = (lo + hi) / 2.0
+                mflag = true
+            } else {
+                mflag = false
+            }
+
+            fs = f(s)
+            d = prev
+            prev = hi
+
+            if flo * fs < 0.0 {
+                hi = s
+                fhi = fs
+            } else {
+                lo = s
+                flo = fs
+            }
+
+            // Keep lo as the worse bound
+            if Abs(flo) < Abs(fhi) {
+                var tmp = lo
+                lo = hi
+                hi = tmp
+                var ftmp = flo
+                flo = fhi
+                fhi = ftmp
+            }
+        }
+
+        iterations = iterations + 1
+    }
+
+    return RootResult {
+        Root: s
+        Value: fs
+        Iterations: iterations
+        Converged: converged
+    }
+}

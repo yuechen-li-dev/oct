@@ -1,0 +1,128 @@
+package Numerics
+
+// ============================================================
+// Numerics.Differentiation
+//
+// Numerical differentiation via finite differences.
+//
+// All methods approximate f'(x) or higher derivatives from
+// function evaluations alone — no analytic derivative needed.
+//
+// Methods:
+//   ForwardDiff   — O(h),   1 extra evaluation
+//   BackwardDiff  — O(h),   1 extra evaluation
+//   CentralDiff   — O(h²),  2 extra evaluations — prefer this
+//   SecondDeriv   — O(h²),  3 evaluations
+//   Richardson    — O(h⁴),  4 evaluations, high accuracy
+//
+// Step size h: 1e-6 is a good default for Float64.
+// Too small → catastrophic cancellation. Too large → truncation error.
+// ============================================================
+
+/// Default step size for finite difference methods.
+/// Balances truncation error and floating-point cancellation for Float64.
+fn DefaultStep() -> Float {
+    return 0.000001
+}
+
+// ============================================================
+// First derivative approximations
+// ============================================================
+
+/// Forward difference approximation of f'(x).
+///
+/// f'(x) ≈ (f(x+h) - f(x)) / h
+/// Error: O(h) — first order.
+/// Cost: 2 function evaluations.
+/// Use when x is at the left boundary and backward is unavailable.
+fn ForwardDiff(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
+    if h <= 0.0 {
+        return error("ForwardDiff: h must be > 0")
+    }
+    return (f(x + h) - f(x)) / h
+}
+
+/// Backward difference approximation of f'(x).
+///
+/// f'(x) ≈ (f(x) - f(x-h)) / h
+/// Error: O(h) — first order.
+/// Cost: 2 function evaluations.
+fn BackwardDiff(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
+    if h <= 0.0 {
+        return error("BackwardDiff: h must be > 0")
+    }
+    return (f(x) - f(x - h)) / h
+}
+
+/// Central difference approximation of f'(x).
+///
+/// f'(x) ≈ (f(x+h) - f(x-h)) / (2h)
+/// Error: O(h²) — second order. Prefer over forward/backward.
+/// Cost: 2 function evaluations (does not evaluate f(x)).
+fn CentralDiff(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
+    if h <= 0.0 {
+        return error("CentralDiff: h must be > 0")
+    }
+    return (f(x + h) - f(x - h)) / (2.0 * h)
+}
+
+/// Central difference with default step size.
+fn Derivative(f: fn(Float) -> Float, x: Float) -> Float ! Error {
+    return CentralDiff(f, x, DefaultStep())?
+}
+
+// ============================================================
+// Second derivative
+// ============================================================
+
+/// Central difference approximation of f''(x).
+///
+/// f''(x) ≈ (f(x+h) - 2f(x) + f(x-h)) / h²
+/// Error: O(h²).
+/// Cost: 3 function evaluations.
+fn SecondDeriv(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
+    if h <= 0.0 {
+        return error("SecondDeriv: h must be > 0")
+    }
+    return (f(x + h) - 2.0 * f(x) + f(x - h)) / (h * h)
+}
+
+// ============================================================
+// Richardson extrapolation
+//
+// Combines two central difference estimates at step sizes h and h/2
+// to eliminate the leading O(h²) error term, giving O(h⁴) accuracy.
+//
+// Richardson(h) = (4 * CentralDiff(h/2) - CentralDiff(h)) / 3
+//
+// The factor 4 and denominator 3 come from the Richardson extrapolation
+// formula applied to the h² error term of central differences.
+// This is essentially what "Romberg integration" does for quadrature.
+// ============================================================
+
+/// Richardson extrapolation for high-accuracy first derivative.
+///
+/// f'(x) ≈ Richardson extrapolation from central differences at h and h/2.
+/// Error: O(h⁴) — fourth order.
+/// Cost: 4 function evaluations.
+/// Best choice when high accuracy is needed.
+fn RichardsonDiff(f: fn(Float) -> Float, x: Float, h: Float) -> Float ! Error {
+    if h <= 0.0 {
+        return error("RichardsonDiff: h must be > 0")
+    }
+    let d1 = CentralDiff(f, x, h)?
+    let d2 = CentralDiff(f, x, h / 2.0)?
+    return (4.0 * d2 - d1) / 3.0
+}
+
+/// Richardson extrapolation with default step.
+fn HighAccuracyDerivative(f: fn(Float) -> Float, x: Float) -> Float ! Error {
+    return RichardsonDiff(f, x, DefaultStep() * 100.0)?
+}
+
+// ============================================================
+// Note: PartialDiff and Gradient (multi-variable differentiation)
+// are deferred pending Float[] function type support in Oct.
+// Use the scalar CentralDiff with manual index variation for now.
+// ============================================================
+

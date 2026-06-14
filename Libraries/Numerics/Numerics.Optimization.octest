@@ -1,0 +1,71 @@
+package Numerics
+
+fn fParabola2(x: Float) -> Float { return (x - 2.0) * (x - 2.0) }
+fn fParabola3(x: Float) -> Float { return (x - 3.0) * (x - 3.0) }
+fn fParabolaOff(x: Float) -> Float { return (x - 0.7) * (x - 0.7) + 1.0 }
+fn fParabola25(x: Float) -> Float { return (x - 2.5) * (x - 2.5) }
+fn fSinOpt(x: Float) -> Float { return Sin(x) }
+fn fNegParabola(x: Float) -> Float { return x * x - 4.0 * x }
+
+[Fact]
+fn GoldenSectionFindsMinimum() -> Void {
+    let result = GoldenSection(fParabola2, 0.0, 4.0, 0.00001, 100)!
+    Assert.Near(2.0, result.XMin, 0.001, "golden section minimum of (x-2)² at x=2")
+    Assert.Near(0.0, result.FMin, 0.00001, "minimum value of (x-2)² is 0")
+    Assert.True(result.Converged, "golden section converged")
+}
+
+[Fact]
+fn GoldenSectionOffCentre() -> Void {
+    let result = GoldenSection(fParabolaOff, 0.0, 1.0, 0.00001, 100)!
+    Assert.Near(0.7, result.XMin, 0.001, "golden section minimum at x=0.7")
+}
+
+[Fact]
+fn GoldenSectionRejectsInvalidBounds() -> Void {
+    Assert.Error(GoldenSection(fParabola2, 1.0, 0.0, 0.001, 100),
+        "golden section a>=b should error")
+}
+
+[Fact]
+fn BrentFindsMinimum() -> Void {
+    let result = Brent(fParabola3, 0.0, 5.0, 0.000001, 100)!
+    Assert.Near(3.0, result.XMin, 0.0001, "Brent minimum of (x-3)² at x=3")
+    Assert.Near(0.0, result.FMin, 0.000001, "minimum value is 0")
+    Assert.True(result.Converged, "Brent converged")
+}
+
+[Fact]
+fn BrentFasterThanGoldenSection() -> Void {
+    let golden = GoldenSection(fParabola25, 0.0, 5.0, 0.000001, 200)!
+    let brent  = Brent(fParabola25, 0.0, 5.0, 0.000001, 200)!
+    Assert.True(brent.Iterations <= golden.Iterations,
+        "Brent uses fewer or equal iterations than golden section")
+}
+
+[Fact]
+fn BrentSinMinimum() -> Void {
+    let result = Brent(fSinOpt, Pi(), 2.0 * Pi(), 0.000001, 100)!
+    Assert.Near(3.0 * Pi() / 2.0, result.XMin, 0.001, "Brent finds sin minimum at 3π/2")
+    Assert.Near(-1.0, result.FMin, 0.00001, "sin minimum = -1")
+}
+
+[Fact]
+fn BrentRejectsZeroTolerance() -> Void {
+    Assert.Error(Brent(fParabola2, 0.0, 4.0, 0.0, 100),
+        "Brent zero tolerance should error")
+}
+
+[Fact]
+fn MaximizationByNegation() -> Void {
+    let result = Brent(fNegParabola, 0.0, 4.0, 0.000001, 100)!
+    Assert.Near(2.0, result.XMin, 0.0001, "maximum of -x²+4x found at x=2 by negation")
+}
+
+[Fact]
+fn MaximizationByNegation() -> Void {
+    // max of -x²+4x = -(x-2)²+4 at x=2
+    // minimize x²-4x
+    let result = Brent(fNegParabola, 0.0, 4.0, 0.000001, 100)!
+    Assert.Near(2.0, result.XMin, 0.0001, "maximum of -x²+4x found at x=2 by negation")
+}

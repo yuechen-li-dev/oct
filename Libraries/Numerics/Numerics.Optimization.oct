@@ -1,0 +1,299 @@
+package Numerics
+
+// ============================================================
+// Numerics.Optimization
+//
+// 1D function minimization.
+//
+// These find the x that minimizes f(x) on an interval [a, b].
+// This is distinct from root finding (where we want f(x) = 0).
+//
+// Methods:
+//   GoldenSection — robust bracket search, O(n) evaluations
+//   Brent         — superlinear convergence, production default
+//
+// For maximization: minimize -f(x).
+// For root finding: see Numerics.Roots.
+// ============================================================
+
+record OptimizationResult {
+    XMin:       Float   // x value at minimum
+    FMin:       Float   // f(XMin)
+    Iterations: Int
+    Converged:  Bool
+}
+
+// ============================================================
+// Golden section search
+//
+// Finds the minimum of a unimodal function on [a, b] by
+// repeatedly shrinking the bracket using the golden ratio φ.
+//
+// Convergence rate: each iteration reduces the interval by φ⁻¹ ≈ 0.618.
+// Requires: f has exactly one minimum on [a, b] (unimodal).
+// ============================================================
+
+/// Golden section search for minimum of f on [a, b].
+///
+/// f must be unimodal on [a, b] (single minimum, no plateaus).
+/// Converges when bracket width < tolerance.
+/// Cost: ~1 evaluation per iteration after initialization.
+fn GoldenSection(
+    f: fn(Float) -> Float,
+    a: Float,
+    b: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> OptimizationResult ! Error {
+    if a >= b {
+        return error("GoldenSection: a must be < b")
+    }
+    if tolerance <= 0.0 {
+        return error("GoldenSection: tolerance must be > 0")
+    }
+    if maxIterations <= 0 {
+        return error("GoldenSection: maxIterations must be > 0")
+    }
+
+    // Golden ratio: φ = (√5 - 1) / 2 ≈ 0.61803
+    let phi = 0.6180339887498949
+
+    var lo = a
+    var hi = b
+    var c = hi - phi * (hi - lo)
+    var d = lo + phi * (hi - lo)
+    var fc = f(c)
+    var fd = f(d)
+    var iterations = 0
+    var converged = false
+
+    while iterations < maxIterations and not converged {
+        if fc < fd {
+            hi = d
+            d  = c
+            fd = fc
+            c  = hi - phi * (hi - lo)
+            fc = f(c)
+        } else {
+            lo = c
+            c  = d
+            fc = fd
+            d  = lo + phi * (hi - lo)
+            fd = f(d)
+        }
+        iterations = iterations + 1
+        if (hi - lo) < tolerance {
+            converged = true
+        }
+    }
+
+    let xmin = (lo + hi) / 2.0
+    return OptimizationResult {
+        XMin: xmin
+        FMin: f(xmin)
+        Iterations: iterations
+        Converged: converged
+    }
+}
+
+// ============================================================
+// Brent's method for minimization — implemented as a flow.
+//
+// The original `fn` version required nested if-else ladders to express
+// "select which state update applies." That's the wrong
+// abstraction. Brent's algorithm is a state machine where
+// each iteration selects among competing update strategies
+// based on scored conditions. A flow with when utility
+// expresses this correctly.
+//
+// Board fields are the algorithm's explicit mutable state —
+// what was previously scattered across var declarations in
+// a while loop is now named, visible, and typed.
+// ============================================================
+
+flow BrentFlow(
+    f: fn(Float) -> Float,
+    a: Float,
+    b: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> OptimizationResult {
+    board {
+        X:    Float    // current best x
+        W:    Float    // second best x
+        V:    Float    // third best x
+        FX:   Float    // f(X)
+        FW:   Float    // f(W)
+        FV:   Float    // f(V)
+        Lo:   Float    // bracket lower bound
+        Hi:   Float    // bracket upper bound
+        D:    Float    // step taken this iteration
+        E:    Float    // step taken previous iteration
+        U:    Float    // trial point
+        FU:   Float    // f(U)
+        Iter: Int
+    }
+
+    state Initialize {
+        let phi  = 0.6180339887498949
+        board.X  = a + phi * (b - a)
+        board.W  = board.X
+        board.V  = board.X
+        board.FX = f(board.X)
+        board.FW = board.FX
+        board.FV = board.FX
+        board.Lo = a
+        board.Hi = b
+        board.D  = 0.0
+        board.E  = 0.0
+        board.U  = board.X
+        board.FU = board.FX
+        board.Iter = 0
+        goto CheckConverged
+    }
+
+    state CheckConverged {
+        let mid  = (board.Lo + board.Hi) / 2.0
+        let tol1 = tolerance * Abs(board.X) + 0.0000000001
+        let tol2 = 2.0 * tol1
+        when {
+            case board.Iter >= maxIterations                               -> goto Done
+            case Abs(board.X - mid) <= tol2 - (board.Hi - board.Lo) / 2.0 -> goto Done
+            else                                                           -> goto TryParabolic
+        }
+    }
+
+    state TryParabolic {
+        let tol1 = tolerance * Abs(board.X) + 0.0000000001
+        if Abs(board.E) > tol1 {
+            let r  = (board.X - board.W) * (board.FX - board.FV)
+            let q0 = (board.X - board.V) * (board.FX - board.FW)
+            let p0 = (board.X - board.V) * q0 - (board.X - board.W) * r
+            let q1 = if q0 - r > 0.0 { 2.0 * (q0 - r) } else { 0.0 - 2.0 * (q0 - r) }
+            let p1 = if q0 - r > 0.0 { 0.0 - p0 } else { p0 }
+            let parabolicOk = Abs(p1) < Abs(0.5 * q1 * board.E)
+                and p1 > q1 * (board.Lo - board.X)
+                and p1 < q1 * (board.Hi - board.X)
+            when {
+                case parabolicOk -> goto ParabolicStep
+                else             -> goto GoldenStep
+            }
+        }
+        goto GoldenStep
+    }
+
+    state ParabolicStep {
+        let tol1 = tolerance * Abs(board.X) + 0.0000000001
+        let tol2 = 2.0 * tol1
+        let r  = (board.X - board.W) * (board.FX - board.FV)
+        let q0 = (board.X - board.V) * (board.FX - board.FW)
+        let p0 = (board.X - board.V) * q0 - (board.X - board.W) * r
+        let q1 = if q0 - r > 0.0 { 2.0 * (q0 - r) } else { 0.0 - 2.0 * (q0 - r) }
+        let p1 = if q0 - r > 0.0 { 0.0 - p0 } else { p0 }
+        board.E = board.D
+        board.D = p1 / q1
+        let raw = board.X + board.D
+        let tooClose = raw - board.Lo < tol2 or board.Hi - raw < tol2
+        if tooClose and board.X < (board.Lo + board.Hi) / 2.0 {
+            board.D = tol1
+        }
+        if tooClose and board.X >= (board.Lo + board.Hi) / 2.0 {
+            board.D = 0.0 - tol1
+        }
+        goto EvaluateU
+    }
+
+    state GoldenStep {
+        let phi = 0.6180339887498949
+        let mid = (board.Lo + board.Hi) / 2.0
+        board.E = if board.X < mid { board.Hi - board.X } else { board.Lo - board.X }
+        board.D = phi * board.E
+        goto EvaluateU
+    }
+
+    state EvaluateU {
+        let tol1 = tolerance * Abs(board.X) + 0.0000000001
+        let rawU = board.X + board.D
+        board.U  = if Abs(board.D) >= tol1 { rawU }
+                   else if board.D > 0.0   { board.X + tol1 }
+                   else                     { board.X - tol1 }
+        board.FU = f(board.U)
+        // Utility selection: accept U as new best, or update secondary candidates.
+        // This replaces the nested if-else that triggered Oct's decision-ladder rule.
+        when utility {
+            board.FU <= board.FX score 10.0    // U is the new best
+            board.FU >  board.FX score  5.0    // U improves W or V
+        }
+    }
+
+    state AcceptU {
+        // U is better than X: shift X→W→V, promote U to X
+        if board.U < board.X { board.Hi = board.X }
+        if board.U >= board.X { board.Lo = board.X }
+        board.V  = board.W
+        board.FV = board.FW
+        board.W  = board.X
+        board.FW = board.FX
+        board.X  = board.U
+        board.FX = board.FU
+        board.Iter = board.Iter + 1
+        goto CheckConverged
+    }
+
+    state UpdateCandidates {
+        // U is worse than X: tighten bracket, maybe update W or V
+        if board.U < board.X { board.Lo = board.U }
+        if board.U >= board.X { board.Hi = board.U }
+        if board.FU <= board.FW or board.W == board.X {
+            board.V  = board.W
+            board.FV = board.FW
+            board.W  = board.U
+            board.FW = board.FU
+        }
+        if board.FU > board.FW and board.W != board.X {
+            if board.FU <= board.FV or board.V == board.X or board.V == board.W {
+                board.V  = board.U
+                board.FV = board.FU
+            }
+        }
+        board.Iter = board.Iter + 1
+        goto CheckConverged
+    }
+
+    state Done {
+        return OptimizationResult {
+            XMin: board.X
+            FMin: board.FX
+            Iterations: board.Iter
+            Converged: true
+        }
+    }
+}
+
+/// Brent's method for minimization of f on [a, b].
+///
+/// Wrapper that runs the BrentFlow and returns the result.
+/// Combines golden section (robust) with parabolic interpolation
+/// (fast for smooth f). Typically converges in 10-20 iterations.
+fn Brent(
+    f: fn(Float) -> Float,
+    a: Float,
+    b: Float,
+    tolerance: Float,
+    maxIterations: Int
+) -> OptimizationResult ! Error {
+    if a >= b {
+        return error("Brent: a must be < b")
+    }
+    if tolerance <= 0.0 {
+        return error("Brent: tolerance must be > 0")
+    }
+    if maxIterations <= 0 {
+        return error("Brent: maxIterations must be > 0")
+    }
+    let machine = BrentFlow(f, a, b, tolerance, maxIterations)
+    while Complete(machine) == false {
+        Step(machine)
+    }
+    return Result(machine)!
+}

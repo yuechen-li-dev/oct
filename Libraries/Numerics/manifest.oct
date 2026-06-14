@@ -16,7 +16,7 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Numerics"
         Version: "0.1.0"
-        Description: "Deterministic scalar root-finding core (M0)"
+        Description: "Deterministic scalar root-finding core"
         Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
     }
 }

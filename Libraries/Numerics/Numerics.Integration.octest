@@ -1,0 +1,85 @@
+package Numerics
+
+// Test functions
+fn fSquare(x: Float) -> Float { return x * x }
+fn fCube(x: Float) -> Float { return x * x * x }
+fn fFourth(x: Float) -> Float { return x * x * x * x }
+fn fNinth(x: Float) -> Float { return x * x * x * x * x * x * x * x * x }
+fn fSin(x: Float) -> Float { return Sin(x) }
+fn fExp(x: Float) -> Float { return Exp(x) }
+fn fConst5(x: Float) -> Float { return 5.0 }
+
+[Fact]
+fn TrapezoidPolynomial() -> Void {
+    let result = Trapezoid(fSquare, 0.0, 1.0, 1000)!
+    Assert.Near(0.333333, result, 0.0001, "trapezoid x² over [0,1] ≈ 1/3")
+}
+
+[Fact]
+fn TrapezoidRejectsNegativeN() -> Void {
+    Assert.Error(Trapezoid(fSquare, 0.0, 1.0, 0), "trapezoid n=0 should error")
+}
+
+[Fact]
+fn TrapezoidRejectsInvalidBounds() -> Void {
+    Assert.Error(Trapezoid(fSquare, 1.0, 0.0, 10), "trapezoid a>=b should error")
+}
+
+[Fact]
+fn SimpsonCubeExact() -> Void {
+    // Simpson exact for degree ≤ 3: ∫_0^1 x³ dx = 1/4
+    let result = Simpson(fCube, 0.0, 1.0, 2)!
+    Assert.Near(0.25, result, 0.000001, "Simpson x³ over [0,1] = 0.25 exactly")
+}
+
+[Fact]
+fn SimpsonBetterThanTrapezoid() -> Void {
+    let simp = Simpson(fFourth, 0.0, 1.0, 10)!
+    let trap = Trapezoid(fFourth, 0.0, 1.0, 10)!
+    Assert.True(Abs(simp - 0.2) < Abs(trap - 0.2),
+        "Simpson more accurate than trapezoid for x^4 with n=10")
+}
+
+[Fact]
+fn SimpsonRequiresEvenN() -> Void {
+    Assert.Error(Simpson(fSquare, 0.0, 1.0, 3), "Simpson odd n should error")
+}
+
+[Fact]
+fn GaussLegendre5NinthPower() -> Void {
+    // 5-point GL exact for degree ≤ 9: ∫_0^1 x^9 dx = 0.1
+    let result = GaussLegendre5(fNinth, 0.0, 1.0)!
+    Assert.Near(0.1, result, 0.0000001, "GaussLegendre5 x^9 = 0.1 exactly")
+}
+
+[Fact]
+fn GaussLegendre5Sin() -> Void {
+    // ∫_0^π sin(x) dx = 2
+    let result = GaussLegendre5(fSin, 0.0, Pi())!
+    Assert.Near(2.0, result, 0.00001, "GL5 sin over [0,π] = 2")
+}
+
+[Fact]
+fn AdaptiveSimpsonConstant() -> Void {
+    let result = AdaptiveSimpson(fConst5, 0.0, 1.0, 0.000001, 50)!
+    Assert.Near(5.0, result.Value, 0.000001, "adaptive Simpson of constant 5 = 5")
+}
+
+[Fact]
+fn AdaptiveSimpsonSin() -> Void {
+    let result = AdaptiveSimpson(fSin, 0.0, Pi(), 0.000001, 50)!
+    Assert.Near(2.0, result.Value, 0.0001, "adaptive Simpson sin over [0,π] = 2")
+}
+
+[Fact]
+fn AdaptiveSimpsonExp() -> Void {
+    // ∫_0^1 exp(x) dx = e - 1 ≈ 1.71828
+    let result = AdaptiveSimpson(fExp, 0.0, 1.0, 0.000001, 50)!
+    Assert.Near(1.71828182845, result.Value, 0.00001, "adaptive Simpson exp over [0,1] = e-1")
+}
+
+[Fact]
+fn AdaptiveSimpsonRejectsZeroTolerance() -> Void {
+    Assert.Error(AdaptiveSimpson(fSquare, 0.0, 1.0, 0.0, 50),
+        "adaptive Simpson tolerance=0 should error")
+}

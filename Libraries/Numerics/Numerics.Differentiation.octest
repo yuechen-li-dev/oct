@@ -1,0 +1,80 @@
+package Numerics
+
+fn fSquareDiff(x: Float) -> Float { return x * x }
+fn fSinDiff(x: Float) -> Float { return Sin(x) }
+fn fExpDiff(x: Float) -> Float { return Exp(x) }
+fn fIdentity(x: Float) -> Float { return x }
+
+[Fact]
+fn CentralDiffParabola() -> Void {
+    let d = CentralDiff(fSquareDiff, 2.0, 0.0001)!
+    Assert.Near(4.0, d, 0.0001, "central diff x² at x=2 gives 4")
+}
+
+[Fact]
+fn CentralDiffSin() -> Void {
+    let d = CentralDiff(fSinDiff, 0.0, 0.0001)!
+    Assert.Near(1.0, d, 0.0001, "central diff sin at x=0 gives 1")
+}
+
+[Fact]
+fn CentralDiffExp() -> Void {
+    let d = CentralDiff(fExpDiff, 1.0, 0.0001)!
+    Assert.Near(2.71828, d, 0.0001, "central diff exp at x=1 gives e")
+}
+
+[Fact]
+fn ForwardDiffLessAccurateThanCentral() -> Void {
+    let fd = ForwardDiff(fSquareDiff, 3.0, 0.001)!
+    let cd = CentralDiff(fSquareDiff, 3.0, 0.001)!
+    Assert.True(Abs(cd - 6.0) <= Abs(fd - 6.0),
+        "central diff more accurate than forward diff for x² at x=3")
+}
+
+[Fact]
+fn SecondDerivParabola() -> Void {
+    let d2 = SecondDeriv(fSquareDiff, 5.0, 0.001)!
+    Assert.Near(2.0, d2, 0.001, "second deriv of x² = 2")
+}
+
+[Fact]
+fn SecondDerivSin() -> Void {
+    let d2 = SecondDeriv(fSinDiff, Pi() / 2.0, 0.001)!
+    Assert.Near(-1.0, d2, 0.001, "second deriv of sin at π/2 = -1")
+}
+
+[Fact]
+fn RichardsonMoreAccurateThanCentral() -> Void {
+    let cd = CentralDiff(fExpDiff, 0.0, 0.01)!
+    let ri = RichardsonDiff(fExpDiff, 0.0, 0.01)!
+    Assert.True(Abs(ri - 1.0) <= Abs(cd - 1.0),
+        "Richardson more accurate than central diff")
+}
+
+[Fact]
+fn DerivativeDefaultStep() -> Void {
+    let d = Derivative(fSinDiff, Pi() / 4.0)!
+    Assert.Near(0.70711, d, 0.0001, "Derivative of sin at π/4 ≈ cos(π/4)")
+}
+
+[Fact]
+fn CentralDiffRejectsZeroStep() -> Void {
+    Assert.Error(CentralDiff(fIdentity, 0.0, 0.0), "CentralDiff h=0 should error")
+}
+
+[Fact]
+fn ForwardDiffRejectsNegativeStep() -> Void {
+    Assert.Error(ForwardDiff(fIdentity, 0.0, -1.0), "ForwardDiff negative h should error")
+}
+
+[Fact]
+fn BackwardDiffParabola() -> Void {
+    let d = BackwardDiff(fSquareDiff, 3.0, 0.0001)!
+    Assert.Near(6.0, d, 0.001, "backward diff x² at x=3 ≈ 6")
+}
+
+[Fact]
+fn HighAccuracyDerivativeExp() -> Void {
+    let d = HighAccuracyDerivative(fExpDiff, 0.0)!
+    Assert.Near(1.0, d, 0.000001, "high accuracy derivative of exp at 0 = 1")
+}

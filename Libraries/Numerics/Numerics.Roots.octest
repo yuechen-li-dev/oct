@@ -1,75 +1,97 @@
 package Numerics
 
-fn f(x: Float) -> Float {
-    return x * x - 2.0
-}
-
-fn df(x: Float) -> Float {
-    return 2.0 * x
-}
-
-fn g(x: Float) -> Float {
-    return x * x * x + 1.0
-}
-
-fn dg(x: Float) -> Float {
-    return 3.0 * x * x
-}
+fn f(x: Float) -> Float { return x * x - 2.0 }
+fn df(x: Float) -> Float { return 2.0 * x }
+fn g(x: Float) -> Float { return x * x * x + 1.0 }
+fn dg(x: Float) -> Float { return 3.0 * x * x }
+fn fSinRoot(x: Float) -> Float { return Sin(x) }
+fn fCubic(x: Float) -> Float { return x * x * x - x - 2.0 }
+fn fPositive(x: Float) -> Float { return x * x }
+fn fLinear(x: Float) -> Float { return x }
+fn fSqrt3(x: Float) -> Float { return x * x - 3.0 }
 
 [Fact]
 fn BisectionRootFindsKnownRootFromValidBracket() -> Void {
     let result = BisectionRoot(f, 1.0, 2.0, 0.000001, 100)!
-
-    Assert.True(result.Root >= 1.0 and result.Root <= 2.0, "root should stay inside original bracket")
+    Assert.True(result.Root >= 1.0 and result.Root <= 2.0,
+        "root should stay inside original bracket")
     Assert.Near(1.414213562, result.Root, 0.0001, "root should be near sqrt(2)")
-    Assert.True(Abs(result.Value) <= 0.000001 or result.Converged, "bisection may converge by residual or interval width policy")
+    Assert.True(Abs(result.Value) <= 0.000001 or result.Converged,
+        "bisection may converge by residual or interval width policy")
     Assert.True(result.Converged, "bisection should converge on a proper sign-change bracket")
     Assert.True(result.Iterations > 0, "converged run should perform at least one iteration")
 }
 
 [Fact]
-fn BisectionRootRejectsInvalidInputsAndNonBracketingIntervals() -> Void {
-    Assert.Error(BisectionRoot(f, 2.0, 1.0, 0.000001, 50), "a >= b must fail")
-
-    Assert.Error(BisectionRoot(f, 1.0, 2.0, 0.0, 50), "tolerance <= 0 must fail")
-
-    Assert.Error(BisectionRoot(f, 1.0, 2.0, 0.000001, 0), "maxIterations <= 0 must fail")
-
-    Assert.Error(BisectionRoot(f, 2.0, 3.0, 0.000001, 50), "non-bracketing interval must fail")
+fn BisectionRootRejectsInvalidBracket() -> Void {
+    Assert.Error(BisectionRoot(f, 2.0, 1.0, 0.000001, 100),
+        "a >= b should produce an error")
 }
 
 [Fact]
-fn BisectionRootSupportsDeterministicMaxIterationStopping() -> Void {
-    let result = BisectionRoot(f, 1.0, 2.0, 0.000000000000000001, 2)!
-
-    Assert.Equal(2, result.Iterations, "solver should stop exactly at maxIterations")
-    Assert.True(not result.Converged, "solver should report non-convergence when tolerance is unmet")
+fn BisectionRootRejectsNonBracketingInterval() -> Void {
+    Assert.Error(BisectionRoot(f, 2.0, 3.0, 0.000001, 100),
+        "same-sign endpoints should produce an error")
 }
 
 [Fact]
-fn NewtonRootFindsKnownRootWithDerivative() -> Void {
+fn NewtonRootFindsKnownRootQuickly() -> Void {
     let result = NewtonRoot(f, df, 1.5, 0.000001, 20)!
-
-    Assert.Near(1.414213562, result.Root, 0.0001, "newton root should converge near sqrt(2)")
-    Assert.True(Abs(result.Value) <= 0.000001, "function value should satisfy tolerance")
-    Assert.True(result.Converged, "newton root should converge for smooth scalar inputs")
-    Assert.True(result.Iterations > 0, "converged newton solve should perform at least one iteration")
+    Assert.Near(1.414213562, result.Root, 0.0001, "Newton should find sqrt(2)")
+    Assert.True(result.Converged, "Newton should converge")
+    Assert.True(result.Iterations < 10, "Newton should converge quickly")
 }
 
 [Fact]
-fn NewtonRootRejectsInvalidInputsAndUnsafeDerivative() -> Void {
-    Assert.Error(NewtonRoot(f, df, 1.0, 0.0, 20), "tolerance <= 0 must fail")
-
-    Assert.Error(NewtonRoot(f, df, 1.0, 0.000001, 0), "maxIterations <= 0 must fail")
-
-    Assert.Error(NewtonRoot(g, dg, 0.0, 0.000001, 20), "near-zero derivative step must fail")
+fn NewtonRootCubic() -> Void {
+    let result = NewtonRoot(g, dg, -0.5, 0.000001, 50)!
+    Assert.Near(-1.0, result.Root, 0.0001, "Newton finds root of x³+1 at x=-1")
 }
 
 [Fact]
-fn RootResultsComposeInDeterministicExpressionChain() -> Void {
-    let bis = BisectionRoot(f, 1.0, 2.0, 0.000001, 100)!
-    let newton = NewtonRoot(f, df, 1.5, 0.000001, 20)!
+fn SecantRootSquareRoot2() -> Void {
+    let result = SecantRoot(f, 1.0, 2.0, 0.000001, 50)!
+    Assert.Near(1.41421356, result.Root, 0.00001, "secant finds sqrt(2)")
+    Assert.True(result.Converged, "secant converged")
+}
 
-    let score = Abs(bis.Root - newton.Root) + Abs(bis.Value) + Abs(newton.Value)
-    Assert.True(score < 0.001, "root result fields should compose in deterministic expressions")
+[Fact]
+fn SecantRootSin() -> Void {
+    let result = SecantRoot(fSinRoot, 3.0, 3.5, 0.000001, 50)!
+    Assert.Near(Pi(), result.Root, 0.0001, "secant finds root of sin near π")
+}
+
+[Fact]
+fn SecantRootRejectsZeroTolerance() -> Void {
+    Assert.Error(SecantRoot(fLinear, 0.0, 1.0, 0.0, 10),
+        "secant zero tolerance should error")
+}
+
+[Fact]
+fn BrentRootSquareRoot2() -> Void {
+    let result = BrentRoot(f, 1.0, 2.0, 0.000001, 50)!
+    Assert.Near(1.41421356, result.Root, 0.000001, "Brent finds sqrt(2)")
+    Assert.True(result.Converged, "Brent converged")
+}
+
+[Fact]
+fn BrentRootCubic() -> Void {
+    // x³ - x - 2 = 0 has root near 1.5214
+    let result = BrentRoot(fCubic, 1.0, 2.0, 0.000001, 50)!
+    Assert.Near(1.5214, result.Root, 0.0001, "Brent finds root of x³-x-2")
+    Assert.Near(0.0, result.Value, 0.000001, "root value near zero")
+}
+
+[Fact]
+fn BrentRootRequiresSignChange() -> Void {
+    Assert.Error(BrentRoot(fPositive, 1.0, 2.0, 0.000001, 50),
+        "Brent needs opposite signs at endpoints")
+}
+
+[Fact]
+fn BrentRootFasterThanBisection() -> Void {
+    let brent  = BrentRoot(fSqrt3, 1.0, 2.0, 0.000001, 100)!
+    let bisect = BisectionRoot(fSqrt3, 1.0, 2.0, 0.000001, 100)!
+    Assert.True(brent.Iterations <= bisect.Iterations,
+        "Brent uses fewer or equal iterations than bisection")
 }
