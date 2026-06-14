@@ -1,0 +1,243 @@
+package ChemistryNmr
+
+// ============================================================
+// Tests for ChemistryNmr.Spectrum
+// ============================================================
+
+// ============================================================
+// Peak constructors
+// ============================================================
+
+[Fact]
+fn SingletHasCorrectFields() -> Void {
+    let p = Singlet(7.26, 1.0, "H-1")
+    Assert.Equal(7.26, p.ChemicalShift, "singlet shift")
+    Assert.Equal(0, Len(p.Coupling), "singlet has no couplings")
+    Assert.Equal(1.0, p.Integration, "singlet integration")
+    Assert.Equal("s", p.Multiplicity, "singlet multiplicity")
+    Assert.Equal("H-1", p.Assignment, "singlet assignment")
+}
+
+[Fact]
+fn DoubletHasOneCoupling() -> Void {
+    let p = Doublet(3.50, 7.5Hz, 2.0, "H-2")
+    Assert.Equal(1, Len(p.Coupling), "doublet has one coupling")
+    Assert.Equal("d", p.Multiplicity, "doublet multiplicity code")
+    // Coupling constant is Float<Hz> — dimensioned ✓
+    Assert.True(p.Coupling[0] > 7.4Hz, "coupling magnitude lower")
+    Assert.True(p.Coupling[0] < 7.6Hz, "coupling magnitude upper")
+}
+
+[Fact]
+fn TripletHasTwoCouplings() -> Void {
+    let p = Triplet(1.20, 7.0Hz, 3.0, "CH3")
+    Assert.Equal(2, Len(p.Coupling), "triplet has two J values")
+    Assert.Equal("t", p.Multiplicity, "triplet multiplicity code")
+    Assert.Equal(7.0Hz, p.Coupling[0], "triplet first J")
+    Assert.Equal(7.0Hz, p.Coupling[1], "triplet second J equals first")
+}
+
+[Fact]
+fn QuartetHasThreeCouplings() -> Void {
+    let p = Quartet(4.12, 7.1Hz, 2.0, "OCH2")
+    Assert.Equal(3, Len(p.Coupling), "quartet has three J values")
+    Assert.Equal("q", p.Multiplicity, "quartet multiplicity code")
+}
+
+[Fact]
+fn DoubletOfDoubletsHasTwoDistinctCouplings() -> Void {
+    // Typical aromatic dd: large ortho J ~8 Hz, small meta J ~2 Hz
+    let p = DoubletOfDoublets(7.45, 8.2Hz, 1.9Hz, 1.0, "H-3")
+    Assert.Equal(2, Len(p.Coupling), "dd has two couplings")
+    Assert.Equal("dd", p.Multiplicity, "dd multiplicity code")
+    Assert.True(p.Coupling[0] > p.Coupling[1], "dd coupling ordering")
+}
+
+[Fact]
+fn MultipletHasNoCouplings() -> Void {
+    let p = Multiplet(1.3, 6.0, "aliphatic CH")
+    Assert.Equal(0, Len(p.Coupling), "multiplet coupling list empty")
+    Assert.Equal("m", p.Multiplicity, "multiplet code")
+}
+
+// ============================================================
+// Spectrum construction and basic analysis
+// ============================================================
+
+[Fact]
+fn PeakCountMatchesListLength() -> Void {
+    let spec = Spectrum {
+        Peaks: [
+            Singlet(7.26, 1.0, "solvent"),
+            Doublet(4.12, 7.0Hz, 2.0, "H-1"),
+            Triplet(1.25, 7.0Hz, 3.0, "CH3")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    Assert.Equal(3, PeakCount(spec), "spectrum has 3 peaks")
+}
+
+[Fact]
+fn TotalIntegrationSumsAllPeaks() -> Void {
+    let spec = Spectrum {
+        Peaks: [
+            Singlet(7.26, 1.0, "H-a"),
+            Doublet(4.12, 7.0Hz, 2.0, "H-b"),
+            Triplet(1.25, 7.0Hz, 3.0, "H-c")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    // 1 + 2 + 3 = 6 total protons
+    Assert.Equal(6.0, TotalIntegration(spec), "total integration is 6")
+}
+
+[Fact]
+fn MostDownfieldPeakIsAromatic() -> Void {
+    // Aromatic proton at 7.26 ppm should be most downfield vs aliphatic at 1.25 ppm.
+    let spec = Spectrum {
+        Peaks: [
+            Triplet(1.25, 7.0Hz, 3.0, "CH3"),
+            Singlet(7.26, 1.0, "ArH")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let idx = MostDownfieldPeakIndex(spec)
+    Assert.Equal(1, idx, "aromatic peak (index 1) is most downfield")
+    Assert.Equal("ArH", spec.Peaks[idx].Assignment, "downfield peak is ArH")
+}
+
+[Fact]
+fn MostUpfieldPeakIsMethyl() -> Void {
+    let spec = Spectrum {
+        Peaks: [
+            Singlet(7.26, 1.0, "ArH"),
+            Triplet(1.25, 7.0Hz, 3.0, "CH3"),
+            Quartet(4.12, 7.0Hz, 2.0, "OCH2")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let idx = MostUpfieldPeakIndex(spec)
+    Assert.Equal(1, idx, "CH3 peak (index 1) is most upfield")
+}
+
+[Fact]
+fn ShiftRangeForEthylEster() -> Void {
+    // Ethyl ester ¹H pattern: ArH ~7.3, OCH2 ~4.1, CH3 ~1.3. Range ~ 6 ppm.
+    let spec = Spectrum {
+        Peaks: [
+            Singlet(7.30, 5.0, "ArH"),
+            Quartet(4.12, 7.0Hz, 2.0, "OCH2"),
+            Triplet(1.26, 7.0Hz, 3.0, "CH3")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let r = ShiftRange(spec)!
+    Assert.True(r > 5.9, "shift range lower")
+    Assert.True(r < 6.1, "shift range upper")
+}
+
+[Fact]
+fn FindByAssignmentFindsCorrectPeak() -> Void {
+    let spec = Spectrum {
+        Peaks: [
+            Singlet(7.26, 1.0, "H-1"),
+            Doublet(4.12, 7.0Hz, 2.0, "H-2"),
+            Triplet(1.25, 7.0Hz, 3.0, "H-3")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let idx = FindByAssignment(spec, "H-2")
+    Assert.Equal(1, idx, "H-2 is at index 1")
+    Assert.Equal(4.12, spec.Peaks[idx].ChemicalShift, "H-2 shift is 4.12")
+}
+
+[Fact]
+fn FindByAssignmentReturnsMinusOneIfMissing() -> Void {
+    let spec = Spectrum {
+        Peaks: [Singlet(7.26, 1.0, "H-1")]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let idx = FindByAssignment(spec, "H-99")
+    Assert.Equal(-1, idx, "missing assignment returns -1")
+}
+
+// ============================================================
+// ppm ↔ Hz conversion with spectrum context
+// ============================================================
+
+[Fact]
+fn ShiftToHzAt400MHz() -> Void {
+    // 1 ppm at 400 MHz = exactly 400 Hz.
+    let spec = Spectrum {
+        Peaks: []
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let hz = ShiftToHz(spec, 1.0)  // 1 ppm → Hz
+    Assert.True(hz > 399.9Hz, "ppm-to-hz lower")
+    Assert.True(hz < 400.1Hz, "ppm-to-hz upper")
+}
+
+[Fact]
+fn CDCl3SolventPeakIsCorrectInHz() -> Void {
+    // CDCl3 at 7.26 ppm on 400 MHz = 7.26 × 400 = 2904 Hz from reference.
+    let spec = Spectrum {
+        Peaks: [Singlet(CDCl3ProtonShift(), 1.0, "solvent")]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    let hz = ShiftToHz(spec, spec.Peaks[0].ChemicalShift)
+    Assert.True(hz > 2903.0Hz, "CDCl3 Hz lower")
+    Assert.True(hz < 2905.0Hz, "CDCl3 Hz upper")
+}
+
+// ============================================================
+// Window queries
+// ============================================================
+
+[Fact]
+fn PeakInWindowCorrectlyClassifies() -> Void {
+    let p = Singlet(7.26, 1.0, "ArH")
+    Assert.True(PeakInWindow(p, 7.0, 1.0), "peak in window hit")
+    Assert.False(PeakInWindow(p, 1.0, 0.5), "peak in window miss")
+}
+
+[Fact]
+fn AromaticWindowCountsCorrectly() -> Void {
+    // A mixed aromatic/aliphatic spectrum: 3 aromatic peaks, 2 aliphatic.
+    let spec = Spectrum {
+        Peaks: [
+            Singlet(8.10, 1.0, "H-a"),
+            Doublet(7.65, 8.0Hz, 1.0, "H-b"),
+            Doublet(7.32, 7.8Hz, 1.0, "H-c"),
+            Quartet(4.12, 7.0Hz, 2.0, "OCH2"),
+            Triplet(1.25, 7.0Hz, 3.0, "CH3")
+        ]
+        SpectrometerFrequency: 400000000.0Hz
+        Nucleus: "1H"
+        Solvent: "CDCl3"
+    }
+    // Aromatic window: 6.5-8.5 ppm → center 7.5, width 2.0
+    let aromaticCount = PeaksInWindow(spec, 7.5, 2.0)
+    Assert.Equal(3, aromaticCount, "3 aromatic peaks in 6.5-8.5 ppm window")
+    // Non-aromatic window: 0-5.5 ppm → center 2.75, width 5.5
+    // Covers CH3 (1.25) and OCH2 (4.12), but not the aromatic peaks
+    let aliphaticCount = PeaksInWindow(spec, 2.75, 5.5)
+    Assert.Equal(2, aliphaticCount, "2 non-aromatic peaks in 0-5.5 ppm window")
+}

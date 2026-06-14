@@ -1,0 +1,130 @@
+package ChemistryNmr
+
+// ============================================================
+// Tests for ChemistryNmr.Core
+// ============================================================
+
+// --- Larmor frequency ---
+
+[Fact]
+fn LarmorFrequencyProtonAt400MHz() -> Void {
+    // ¹H at 9.394 T should give ~400 MHz Larmor frequency.
+    // 400 MHz = 400,000,000 Hz. We allow ±1 MHz tolerance
+    // given rounding in the field constant.
+    let freq = LarmorFrequency(GammaProton(), Field400MHz())
+    // freq is Float<Hz>, 400 MHz = 400,000,000 Hz
+    // Check within 1 MHz of 400 MHz
+    Assert.True(freq > 399000000.0Hz, "larmor ¹H 400MHz lower bound")
+    Assert.True(freq < 401000000.0Hz, "larmor ¹H 400MHz upper bound")
+}
+
+[Fact]
+fn LarmorFrequencyCarbon13At400MHz() -> Void {
+    // ¹³C at 400 MHz ¹H field should give ~100.6 MHz.
+    // ¹³C/¹H frequency ratio ≈ 0.2515.
+    let freq = Carbon13LarmorFrequency(Field400MHz())
+    Assert.True(freq > 100000000.0Hz, "larmor ¹³C lower bound")
+    Assert.True(freq < 101500000.0Hz, "larmor ¹³C upper bound")
+}
+
+[Fact]
+fn LarmorFrequency600MHzIsHigherThan400MHz() -> Void {
+    // Higher field → higher Larmor frequency. Trivial but dimensional sanity check.
+    let f400 = ProtonLarmorFrequency(Field400MHz())
+    let f600 = ProtonLarmorFrequency(Field600MHz())
+    Assert.True(f600 > f400, "field ordering sanity")
+}
+
+[Fact]
+fn LarmorFrequencyLinearInField() -> Void {
+    // ν_L is linear in B₀. Field900MHz ≈ 3× Field300MHz, so Larmor should be ~3× too.
+    // We check the ratio is near 3.0 within 0.5% tolerance.
+    let f300 = ProtonLarmorFrequency(Field300MHz())
+    let f900 = ProtonLarmorFrequency(Field900MHz())
+    let ratio = f900 / f300
+    // ratio is Float<Hz>/Float<Hz> = Float (dimensionless ✓)
+    Assert.True(ratio > 2.98, "larmor linearity lower")
+    Assert.True(ratio < 3.02, "larmor linearity upper")
+}
+
+// --- Chemical shift arithmetic ---
+
+[Fact]
+fn ChemicalShiftOfReferenceIsZero() -> Void {
+    // When sample frequency equals reference frequency, δ = 0 ppm.
+    let vRef = 400000000.0Hz
+    let delta = ChemicalShift(vRef, vRef)
+    // delta is Float (ppm by convention), should be 0.0
+    Assert.True(delta > -0.001 and delta < 0.001, "TMS self-reference")
+}
+
+[Fact]
+fn ChemicalShiftOneMillionthUpIsOnePpm() -> Void {
+    // A sample 400 Hz higher than reference at 400 MHz gives exactly 1.000 ppm.
+    // 400 Hz / 400,000,000 Hz × 10^6 = 1.000 ppm.
+    let vRef  = 400000000.0Hz
+    let vSamp = 400000400.0Hz   // 400 Hz higher
+    let delta = ChemicalShift(vSamp, vRef)
+    Assert.True(delta > 0.999, "ppm arithmetic lower")
+    Assert.True(delta < 1.001, "ppm arithmetic upper")
+}
+
+[Fact]
+fn PpmToHzRoundTrip() -> Void {
+    // PpmToHz and HzToPpm should be exact inverses.
+    let vRef   = 400000000.0Hz
+    let ppm    = 7.26      // CDCl3 residual solvent peak
+    let hz     = PpmToHz(ppm, vRef)
+    let ppmOut = HzToPpm(hz, vRef)
+    // Should round-trip to within floating point error
+    Assert.True(ppmOut > ppm - 0.00001, "ppm-hz round trip")
+    Assert.True(ppmOut < ppm + 0.00001, "ppm-hz round trip precise")
+}
+
+[Fact]
+fn ChemicalShiftToFrequencyRoundTrip() -> Void {
+    // ChemicalShift and ChemicalShiftToFrequency are inverses.
+    let vRef  = 500000000.0Hz
+    let delta = 3.5           // arbitrary shift
+    let vSamp = ChemicalShiftToFrequency(delta, vRef)
+    let back  = ChemicalShift(vSamp, vRef)
+    Assert.True(back > delta - 0.00001, "shift round trip")
+    Assert.True(back < delta + 0.00001, "shift round trip exact")
+}
+
+// --- Gyromagnetic ratios ---
+
+[Fact]
+fn ProtonGammaIsLargest() -> Void {
+    // ¹H has the highest gyromagnetic ratio of common NMR nuclei,
+    // giving the highest sensitivity and highest Larmor frequency at any given field.
+    Assert.True(GammaProton() > GammaCarbon13(), "gamma ordering 1H vs 13C")
+    Assert.True(GammaProton() > GammaNitrogen15(), "gamma ordering 1H vs 15N")
+    Assert.True(GammaFluorine19() > GammaCarbon13(), "gamma ordering 19F vs 13C")
+}
+
+[Fact]
+fn Carbon13FrequencyIsQuarterProtonFrequency() -> Void {
+    // ¹³C Larmor frequency ≈ 25.15% of ¹H frequency at the same field.
+    // This is the practical consequence of γ(¹³C) ≈ γ(¹H)/4.
+    let b0   = Field400MHz()
+    let fH   = ProtonLarmorFrequency(b0)
+    let fC13 = Carbon13LarmorFrequency(b0)
+    let ratio = fC13 / fH   // Float<Hz>/Float<Hz> = Float ✓
+    Assert.True(ratio > 0.249, "C13 quarter ratio lower")
+    Assert.True(ratio < 0.254, "C13 quarter ratio upper")
+}
+
+// --- Reference constants ---
+
+[Fact]
+fn TmsIsZeroPpm() -> Void {
+    Assert.True(TmsProtonShift() == 0.0, "TMS definition")
+    Assert.True(TmsCarbon13Shift() == 0.0, "TMS 13C definition")
+}
+
+[Fact]
+fn CDCl3SolventPeakIsDownfieldOfTMS() -> Void {
+    // CDCl3 residual ¹H peak at 7.26 ppm — far downfield of TMS at 0.
+    Assert.True(CDCl3ProtonShift() > TmsProtonShift(), "solvent vs TMS ordering")
+}

@@ -1,0 +1,230 @@
+package ChemistryNmr
+
+// ============================================================
+// ChemistryNmr.Spectrum
+//
+// NMR peak and spectrum records, multiplicity analysis.
+//
+// DIMENSIONAL NOTES:
+//   Chemical shift fields are Float (ppm by convention — see Core).
+//   Coupling constant fields are Float<Hz> (true SI dimension).
+//   Spectrometer frequency is Float<Hz>.
+//   This is where Oct's type system provides partial protection:
+//   you can't accidentally pass a coupling constant (Float<Hz>)
+//   where a chemical shift (Float) is expected, and vice versa.
+// ============================================================
+
+// ============================================================
+// Peak record
+// ============================================================
+
+/// A single resolved peak or multiplet in an NMR spectrum.
+///
+/// ChemicalShift: position in ppm (Float, dimensionless by convention).
+///   FRICTION: Cannot be Float<ppm> — ppm is not an SI unit in Oct.
+///   The type system cannot distinguish a shift value from any other Float.
+///   Naming discipline must carry this burden.
+///
+/// Coupling: J coupling constants in Hz (Float<Hz>[]).
+///   The type system DOES enforce this. Float<Hz> cannot be confused
+///   with Float (the shift) because they are different types.
+///   This is the correct division: shifts dimensionless, couplings dimensioned.
+///
+/// Integration: relative integration (Float, dimensionless ratio).
+///   Normalized to the number of contributing protons by convention.
+record Peak {
+    ChemicalShift:  Float         // δ in ppm (dimensionless by convention)
+    Coupling:       Float<Hz>[]   // J values in Hz (dimensioned ✓)
+    Integration:    Float         // relative proton count (dimensionless)
+    Multiplicity:   String        // "s", "d", "t", "q", "dd", "dt", "m" etc.
+    Assignment:     String        // e.g. "H-3", "NH", "OMe", "" if unknown
+}
+
+/// Construct a singlet peak (no coupling).
+fn Singlet(shift: Float, integration: Float, assignment: String) -> Peak {
+    return Peak {
+        ChemicalShift: shift
+        Coupling: []
+        Integration: integration
+        Multiplicity: "s"
+        Assignment: assignment
+    }
+}
+
+/// Construct a doublet peak (one coupling constant).
+fn Doublet(shift: Float, j: Float<Hz>, integration: Float, assignment: String) -> Peak {
+    return Peak {
+        ChemicalShift: shift
+        Coupling: [j]
+        Integration: integration
+        Multiplicity: "d"
+        Assignment: assignment
+    }
+}
+
+/// Construct a triplet peak (two equal couplings, conventionally).
+fn Triplet(shift: Float, j: Float<Hz>, integration: Float, assignment: String) -> Peak {
+    return Peak {
+        ChemicalShift: shift
+        Coupling: [j, j]
+        Integration: integration
+        Multiplicity: "t"
+        Assignment: assignment
+    }
+}
+
+/// Construct a quartet peak (three equal couplings, e.g. CH₂CH₃).
+fn Quartet(shift: Float, j: Float<Hz>, integration: Float, assignment: String) -> Peak {
+    return Peak {
+        ChemicalShift: shift
+        Coupling: [j, j, j]
+        Integration: integration
+        Multiplicity: "q"
+        Assignment: assignment
+    }
+}
+
+/// Construct a multiplet (complex overlap, no resolved couplings).
+fn Multiplet(shift: Float, integration: Float, assignment: String) -> Peak {
+    return Peak {
+        ChemicalShift: shift
+        Coupling: []
+        Integration: integration
+        Multiplicity: "m"
+        Assignment: assignment
+    }
+}
+
+/// Construct a doublet of doublets (two distinct couplings).
+fn DoubletOfDoublets(shift: Float, j1: Float<Hz>, j2: Float<Hz>, integration: Float, assignment: String) -> Peak {
+    return Peak {
+        ChemicalShift: shift
+        Coupling: [j1, j2]
+        Integration: integration
+        Multiplicity: "dd"
+        Assignment: assignment
+    }
+}
+
+// ============================================================
+// Spectrum record
+//
+// A complete 1D NMR spectrum: a list of peaks plus instrument context.
+// The spectrometer frequency (Float<Hz>) gives the field context that
+// allows conversion between ppm and Hz for any peak in this spectrum.
+// ============================================================
+
+/// A complete 1D NMR spectrum.
+///
+/// SpectrometerFrequency: ¹H Larmor frequency of the instrument in Hz.
+///   e.g. 400,000,000.0Hz for a 400 MHz instrument.
+///   This is the anchor that makes ppm values meaningful — a 7.26 ppm shift
+///   at 400 MHz corresponds to 7.26 × 400 = 2904 Hz from the reference.
+///
+/// Nucleus: "1H" or "13C" (determines interpretation of shifts).
+///
+/// Solvent: affects residual solvent peak and some shift values.
+///   Common values: "CDCl3", "DMSO-d6", "D2O", "MeOD", "CD3OD"
+record Spectrum {
+    Peaks:                  Peak[]
+    SpectrometerFrequency:  Float<Hz>    // ¹H channel frequency (dimensioned ✓)
+    Nucleus:                String       // "1H", "13C", "19F", "31P"
+    Solvent:                String       // "CDCl3", "DMSO-d6", etc.
+}
+
+// ============================================================
+// Spectrum analysis functions
+// ============================================================
+
+/// Number of peaks in the spectrum.
+fn PeakCount(spectrum: Spectrum) -> Int {
+    return Len(spectrum.Peaks)
+}
+
+/// Total integration across all peaks.
+/// For a correctly normalized ¹H spectrum this equals the proton count.
+fn TotalIntegration(spectrum: Spectrum) -> Float {
+    var total = 0.0
+    for i in 0 .. Len(spectrum.Peaks) {
+        total = total + spectrum.Peaks[i].Integration
+    }
+    return total
+}
+
+/// Find the peak with the largest chemical shift (most downfield).
+/// Returns the peak index, or -1 if the spectrum is empty.
+fn MostDownfieldPeakIndex(spectrum: Spectrum) -> Int {
+    if Len(spectrum.Peaks) == 0 {
+        return -1
+    }
+    var best = 0
+    for i in 1 .. Len(spectrum.Peaks) {
+        if spectrum.Peaks[i].ChemicalShift > spectrum.Peaks[best].ChemicalShift {
+            best = i
+        }
+    }
+    return best
+}
+
+/// Find the peak with the smallest chemical shift (most upfield).
+fn MostUpfieldPeakIndex(spectrum: Spectrum) -> Int {
+    if Len(spectrum.Peaks) == 0 {
+        return -1
+    }
+    var best = 0
+    for i in 1 .. Len(spectrum.Peaks) {
+        if spectrum.Peaks[i].ChemicalShift < spectrum.Peaks[best].ChemicalShift {
+            best = i
+        }
+    }
+    return best
+}
+
+/// Chemical shift range spanned by the spectrum (downfield - upfield, in ppm).
+/// Returns Float (ppm convention, dimensionless).
+fn ShiftRange(spectrum: Spectrum) -> Float ! Error {
+    if Len(spectrum.Peaks) == 0 {
+        return error("ShiftRange: empty spectrum")
+    }
+    let down = MostDownfieldPeakIndex(spectrum)
+    let up   = MostUpfieldPeakIndex(spectrum)
+    return spectrum.Peaks[down].ChemicalShift - spectrum.Peaks[up].ChemicalShift
+}
+
+/// Find a peak by assignment label. Returns peak index or -1 if not found.
+fn FindByAssignment(spectrum: Spectrum, label: String) -> Int {
+    for i in 0 .. Len(spectrum.Peaks) {
+        if spectrum.Peaks[i].Assignment == label {
+            return i
+        }
+    }
+    return -1
+}
+
+/// Convert a chemical shift in this spectrum from ppm to Hz (from reference).
+/// Uses the spectrum's spectrometer frequency as the conversion anchor.
+/// Returns: Float<Hz> (dimensioned ✓ — J-coupling territory).
+fn ShiftToHz(spectrum: Spectrum, deltaPpm: Float) -> Float<Hz> {
+    // Δν (Hz) = δ (ppm) × ν_spectrometer (Hz) / 10⁶
+    // Float × Float<Hz> / Float = Float<Hz> ✓
+    return spectrum.SpectrometerFrequency * deltaPpm / 1000000.0
+}
+
+/// Check whether a peak falls within a given chemical shift window.
+/// windowCenter and windowWidth are in ppm (Float, dimensionless convention).
+fn PeakInWindow(peak: Peak, windowCenter: Float, windowWidth: Float) -> Bool {
+    let halfWidth = windowWidth / 2.0
+    return peak.ChemicalShift >= windowCenter - halfWidth and
+           peak.ChemicalShift <= windowCenter + halfWidth
+}
+
+/// Count how many peaks fall within a chemical shift window.
+fn PeaksInWindow(spectrum: Spectrum, windowCenter: Float, windowWidth: Float) -> Int {
+    var count = 0
+    for i in 0 .. Len(spectrum.Peaks) {
+        if PeakInWindow(spectrum.Peaks[i], windowCenter, windowWidth) {
+            count = count + 1
+        }
+    }
+    return count
+}

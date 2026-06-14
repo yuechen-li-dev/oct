@@ -1,0 +1,252 @@
+package ChemistryNmr
+
+// ============================================================
+// ChemistryNmr.Core
+//
+// Core constants and functions for NMR spectroscopy.
+//
+// DIMENSIONAL NOTES:
+//   Oct's SI dimension system covers all NMR-relevant quantities except ppm.
+//   Chemical shift (δ) is dimensionless — it is a ratio (Δν/ν_ref × 10^6).
+//   ppm is a convention, not an SI unit. Chemical shift values are Float (no dimension).
+//   Coupling constants (J) are true frequencies: Float<Hz> = Float<s^-1>.
+//   Magnetic field strength (B₀) is in Tesla = kg/(A·s²) → Float<kg*s^-2*A^-1>.
+//   Gyromagnetic ratio (γ) is in rad/(s·T) = A·s/kg → Float<A*s*kg^-1>.
+//   Molar mass is Float<kg*mol^-1>.
+//   Larmor equation: ν_L = γ·B₀/(2π), dimensionally:
+//     Float<A*s*kg^-1> × Float<kg*s^-2*A^-1> = Float<s^-1> = Float<Hz> ✓
+// ============================================================
+
+// ============================================================
+// Gyromagnetic ratios (γ, in A·s/kg = rad/(s·T))
+//
+// These are the most important NMR constants.
+// γ > 0: magnetization precesses in the same sense as B₀.
+// γ < 0: not representable here; Oct does not support negative unit literals.
+// All values are positive magnitudes (|γ|) for common NMR nuclei.
+// ============================================================
+
+/// Proton (¹H) gyromagnetic ratio magnitude.
+/// NIST value: 2.6752218744×10⁸ rad/(s·T).
+/// Units: A·s/kg (rad is dimensionless in SI).
+fn GammaProton() -> Float<A*s*kg^-1> {
+    return 267522187.44A*s*kg^-1
+}
+
+/// Carbon-13 (¹³C) gyromagnetic ratio magnitude.
+/// NIST value: 6.728284×10⁷ rad/(s·T).
+fn GammaCarbon13() -> Float<A*s*kg^-1> {
+    return 67282840.0A*s*kg^-1
+}
+
+/// Nitrogen-15 (¹⁵N) gyromagnetic ratio magnitude.
+/// Note: ¹⁵N has negative γ (antiparallel), important for NOE.
+/// This is the magnitude only.
+fn GammaNitrogen15() -> Float<A*s*kg^-1> {
+    return 27116100.0A*s*kg^-1
+}
+
+/// Fluorine-19 (¹⁹F) gyromagnetic ratio magnitude.
+/// Similar sensitivity to ¹H; important in drug discovery.
+fn GammaFluorine19() -> Float<A*s*kg^-1> {
+    return 251814800.0A*s*kg^-1
+}
+
+/// Phosphorus-31 (³¹P) gyromagnetic ratio magnitude.
+/// Important in nucleic acid and metabolomics NMR.
+fn GammaPhosphorus31() -> Float<A*s*kg^-1> {
+    return 108394000.0A*s*kg^-1
+}
+
+// ============================================================
+// Standard spectrometer field strengths
+//
+// Spectrometers are conventionally named by their ¹H Larmor frequency
+// at their operating field. The actual B₀ values here are the magnetic
+// fields that produce those ¹H frequencies.
+//
+// B₀ in Tesla = kg/(A·s²) → Float<kg*s^-2*A^-1>
+// ============================================================
+
+/// Magnetic field for a 300 MHz (¹H) spectrometer.
+/// B₀ = 2π × 300×10⁶ / γ_H = 7.0459 T.
+fn Field300MHz() -> Float<kg*s^-2*A^-1> {
+    return 7.04589kg*s^-2*A^-1
+}
+
+/// Magnetic field for a 400 MHz (¹H) spectrometer.
+fn Field400MHz() -> Float<kg*s^-2*A^-1> {
+    return 9.39412kg*s^-2*A^-1
+}
+
+/// Magnetic field for a 500 MHz (¹H) spectrometer.
+fn Field500MHz() -> Float<kg*s^-2*A^-1> {
+    return 11.74265kg*s^-2*A^-1
+}
+
+/// Magnetic field for a 600 MHz (¹H) spectrometer.
+fn Field600MHz() -> Float<kg*s^-2*A^-1> {
+    return 14.09118kg*s^-2*A^-1
+}
+
+/// Magnetic field for a 900 MHz (¹H) spectrometer (cryogenic magnet).
+fn Field900MHz() -> Float<kg*s^-2*A^-1> {
+    return 21.13676kg*s^-2*A^-1
+}
+
+// ============================================================
+// Larmor frequency
+//
+// The Larmor (or resonance) frequency is the frequency at which a
+// nucleus precesses in a magnetic field:
+//
+//   ν_L = γ · B₀ / (2π)
+//
+// This is the fundamental equation of NMR. The spectrometer frequency
+// determines what chemical shifts in ppm correspond to in Hz.
+// ============================================================
+
+/// Larmor frequency of a nucleus in a given field.
+///
+/// Parameters:
+///   gamma — gyromagnetic ratio of the nucleus (Float<A*s*kg^-1>)
+///   b0    — static magnetic field strength (Float<kg*s^-2*A^-1>)
+///
+/// Returns: Larmor frequency in Hz.
+///
+/// Dimension check: (A·s/kg) × (kg/(A·s²)) = 1/s = Hz ✓
+fn LarmorFrequency(gamma: Float<A*s*kg^-1>, b0: Float<kg*s^-2*A^-1>) -> Float<Hz> {
+    return gamma * b0 / (2.0 * Pi())
+}
+
+/// Larmor frequency of ¹H at the given field.
+/// Convenience wrapper — most NMR work is proton-based.
+fn ProtonLarmorFrequency(b0: Float<kg*s^-2*A^-1>) -> Float<Hz> {
+    return LarmorFrequency(GammaProton(), b0)
+}
+
+/// Larmor frequency of ¹³C at the given field.
+fn Carbon13LarmorFrequency(b0: Float<kg*s^-2*A^-1>) -> Float<Hz> {
+    return LarmorFrequency(GammaCarbon13(), b0)
+}
+
+// ============================================================
+// Chemical shift arithmetic
+//
+// Chemical shift δ (ppm) is a dimensionless ratio:
+//   δ = (ν_sample - ν_reference) / ν_reference × 10⁶
+//
+// It is NOT expressible as an Oct dimensional type because ppm is not SI.
+// FRICTION: We use Float (bare) for all chemical shift values.
+// The ppm convention is enforced by function naming and documentation,
+// not by the type system. This is the one gap in NMR's dimensional coverage.
+//
+// Coupling constants (J) ARE dimensioned: Float<Hz>.
+// ============================================================
+
+/// Compute chemical shift in ppm from absolute frequencies.
+///
+/// vSample  — frequency of the sample nucleus (Hz)
+/// vRef     — frequency of the reference compound (Hz)
+///            For ¹H: TMS (tetramethylsilane) at 0.00 ppm.
+///            For ¹³C: TMS at 0.0 ppm.
+///
+/// Returns: chemical shift δ in ppm (Float, dimensionless by convention).
+fn ChemicalShift(vSample: Float<Hz>, vRef: Float<Hz>) -> Float {
+    // δ = (ν_sample - ν_ref) / ν_ref × 10⁶
+    // Division of Float<Hz>/Float<Hz> cancels to Float ✓
+    return (vSample - vRef) / vRef * 1000000.0
+}
+
+/// Convert chemical shift (ppm) back to absolute frequency offset from reference.
+///
+/// delta   — chemical shift in ppm (Float, dimensionless convention)
+/// vRef    — reference frequency (Float<Hz>)
+///
+/// Returns: frequency of sample nucleus (Float<Hz>).
+fn ChemicalShiftToFrequency(delta: Float, vRef: Float<Hz>) -> Float<Hz> {
+    // ν_sample = ν_ref × (1 + δ × 10⁻⁶)
+    return vRef * (1.0 + delta / 1000000.0)
+}
+
+/// Frequency difference corresponding to a chemical shift range.
+///
+/// Useful for knowing how many Hz a given ppm window spans at a given field.
+/// e.g. 1 ppm at 400 MHz ¹H = 400 Hz.
+///
+/// deltaPpm — chemical shift width in ppm (Float)
+/// vRef     — spectrometer Larmor frequency (Float<Hz>)
+///
+/// Returns: frequency width in Hz.
+fn PpmToHz(deltaPpm: Float, vRef: Float<Hz>) -> Float<Hz> {
+    return vRef * deltaPpm / 1000000.0
+}
+
+/// Convert a frequency separation to ppm at a given spectrometer frequency.
+///
+/// deltaHz  — frequency separation (Float<Hz>)
+/// vRef     — spectrometer Larmor frequency (Float<Hz>)
+///
+/// Returns: chemical shift separation in ppm (Float, dimensionless).
+fn HzToPpm(deltaHz: Float<Hz>, vRef: Float<Hz>) -> Float {
+    return deltaHz / vRef * 1000000.0
+}
+
+// ============================================================
+// Coupling constants
+//
+// J coupling (scalar coupling) between nuclei is a true frequency: Hz.
+// Float<Hz> is the correct type — it IS an SI dimension (s^-1).
+// ============================================================
+
+/// Typical ¹H-¹H vicinal coupling range (3J).
+/// Returns the lower bound of typical vicinal coupling in Hz.
+fn VicinCouplingLow() -> Float<Hz> {
+    return 2.0Hz
+}
+
+/// Returns the upper bound of typical vicinal coupling in Hz.
+fn VicinCouplingHigh() -> Float<Hz> {
+    return 13.0Hz
+}
+
+/// Typical ¹H-¹³C one-bond coupling constant (1J_CH).
+fn OneJCH() -> Float<Hz> {
+    return 125.0Hz
+}
+
+// ============================================================
+// Reference standards
+//
+// Common NMR reference compounds and their conventional chemical shifts.
+// TMS (tetramethylsilane) is 0.00 ppm for both ¹H and ¹³C.
+// DSS (sodium 2,2-dimethylsilapentane-5-sulfonate) for aqueous ¹H.
+//
+// These return Float (ppm convention) because ppm is not an SI unit.
+// ============================================================
+
+/// TMS reference shift for ¹H NMR (by definition: 0.00 ppm).
+fn TmsProtonShift() -> Float {
+    return 0.0
+}
+
+/// TMS reference shift for ¹³C NMR (by definition: 0.0 ppm).
+fn TmsCarbon13Shift() -> Float {
+    return 0.0
+}
+
+/// Residual solvent peak for CDCl₃ in ¹H NMR (7.26 ppm).
+/// Used as secondary reference when TMS is not present.
+fn CDCl3ProtonShift() -> Float {
+    return 7.26
+}
+
+/// Residual solvent peak for DMSO-d₆ in ¹H NMR (2.50 ppm).
+fn DMSOd6ProtonShift() -> Float {
+    return 2.50
+}
+
+/// Residual solvent peak for D₂O in ¹H NMR (4.79 ppm).
+fn D2OProtonShift() -> Float {
+    return 4.79
+}
