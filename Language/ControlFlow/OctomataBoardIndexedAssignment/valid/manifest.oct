@@ -1,0 +1,7 @@
+package ControlFlowOctomataBoardIndexedAssignment
+
+manifest {
+    Name: "ControlFlowOctomataBoardIndexedAssignment"
+    Version: "0.1.0"
+    Kind: "experiment"
+}

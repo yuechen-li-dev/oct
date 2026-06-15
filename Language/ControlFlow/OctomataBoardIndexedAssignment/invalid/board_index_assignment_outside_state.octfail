@@ -1,0 +1,7 @@
+expect error: "board field index assignment is only valid"
+
+package ControlFlowOctomataBoardIndexedAssignment
+
+fn Bad() -> Void {
+    board.Values[0] = 1
+}
