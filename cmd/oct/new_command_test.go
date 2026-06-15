@@ -118,7 +118,7 @@ func TestNewExplicitPathOverridesCollectionDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("oct new explicit path failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
-	assertOutputContains(t, stdout, filepath.Join("Custom", "SignalTools"))
+	assertOutputContains(t, stdout, "Created library package SignalTools at Custom/SignalTools")
 	assertNewFilesExist(t, filepath.Join(root, "Custom", "SignalTools"), "manifest.oct")
 }
 
