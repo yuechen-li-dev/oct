@@ -674,8 +674,18 @@ func TestBuildFileParsesFieldAssignment(t *testing.T) {
 	}
 }
 
-func TestBuildFileRejectsNestedIndexAssignmentTarget(t *testing.T) {
-	assertParseErrorContains(t, "fn Main() -> Int { let xs = [1, 2] xs[0][0] = 3 return 0 }", "nested index assignment targets are not supported")
+func TestBuildFileParsesNestedIndexAssignmentTarget(t *testing.T) {
+	file := parseSource(t, "fn Main() -> Int { var xs = [[1, 2]] xs[0][0] = 3 return 0 }")
+	assignStmt, ok := file.Functions[0].Body.Statements[1].(ast.IndexAssignStmt)
+	if !ok {
+		t.Fatalf("expected IndexAssignStmt, got %T", file.Functions[0].Body.Statements[1])
+	}
+	if assignStmt.Target != "xs" {
+		t.Fatalf("expected assignment target xs, got %q", assignStmt.Target)
+	}
+	if got := len(assignStmt.Indices); got != 2 {
+		t.Fatalf("expected two indices, got %d", got)
+	}
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {

@@ -1101,6 +1101,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				v = coerceExprToType(v, t, hint)
 				t = hint
 			}
+			v = cloneCompiledValueExpr(v, t)
 			c.declareLocal(s.Name, t)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.VarStmt:
@@ -1120,6 +1121,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				v = coerceExprToType(v, t, hint)
 				t = hint
 			}
+			v = cloneCompiledValueExpr(v, t)
 			c.declareLocal(s.Name, t)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.AssignStmt:
@@ -1132,6 +1134,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return err
 			}
 			v = coerceExprToType(v, t, targetType)
+			v = cloneCompiledValueExpr(v, targetType)
 			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: c.goLocalName(s.Name), Value: v})
 		case ast.DestructureAssignStmt:
 			call, ok := s.Value.(ast.CallExpr)
@@ -1191,7 +1194,7 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return fmt.Errorf("index assignment to unknown local '%s'", s.Target)
 			}
 			switch {
-			case strings.HasPrefix(targetType, "[][]"), strings.HasPrefix(targetType, "Matrix<"):
+			case strings.HasSuffix(targetType, "[][]") || strings.HasPrefix(targetType, "[][]") || strings.HasPrefix(targetType, "Matrix<"):
 				if len(indexExprs) != 2 {
 					return fmt.Errorf("matrix index assignment requires exactly 2 indices, got %d", len(indexExprs))
 				}
@@ -5583,7 +5586,7 @@ func emitGo(m MIRModule) (string, error) {
 			}
 		}
 	}
-	importSet := map[string]struct{}{"fmt": {}, "os": {}}
+	importSet := map[string]struct{}{"fmt": {}, "os": {}, "reflect": {}}
 	if needsUtilityHelpers {
 		importSet["reflect"] = struct{}{}
 	}
@@ -5696,6 +5699,7 @@ func emitGo(m MIRModule) (string, error) {
 		b.WriteString("type __octVoid struct{}\n\n")
 	}
 	b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
+	b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
 	if usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"] {
 		b.WriteString("func __octArrayCrossSection[T any](values []T, r __octRange) []T {\n\tstart := 0\n\tif r.HasStart { start = r.Start }\n\tend := len(values)\n\tif r.HasEnd { end = r.End }\n\tstep := 1\n\tif r.HasStep { step = r.Step }\n\tif step <= 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range step must be positive, got %d\", step)) }\n\tif start < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start must be >= 0, got %d\", start)) }\n\tif end < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end must be >= 0, got %d\", end)) }\n\tif start > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d exceeds array length %d\", start, len(values))) }\n\tif end > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end %d exceeds array length %d\", end, len(values))) }\n\tif start > end { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d must be <= end %d\", start, end)) }\n\tcount := 0\n\tif start < end { count = ((end - start - 1) / step) + 1 }\n\tout := make([]T, 0, count)\n\tfor i := start; i < end; i += step { out = append(out, values[i]) }\n\treturn out\n}\n\n")
 	}
@@ -8561,7 +8565,11 @@ func goStmt(s MIRStmt) (string, error) {
 			case "Len":
 				return fmt.Sprintf("%s = len(%s)", st.Target, st.Args[0]), nil
 			case "Append":
-				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+				value := st.Args[1]
+				if len(st.ArgTypes) > 1 {
+					value = cloneCompiledValueExpr(value, st.ArgTypes[1])
+				}
+				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], value), nil
 			case "ArrayCrossSection", "Array.CrossSection":
 				return fmt.Sprintf("%s = __octArrayCrossSection(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
@@ -9109,6 +9117,23 @@ func goType(t string) string {
 		return strings.ReplaceAll(t, ".", "_")
 	}
 	return t
+}
+
+func cloneCompiledValueExpr(expr string, typeName string) string {
+	if typeName == "Bytes" || strings.HasSuffix(typeName, "[]") || parseMatrixElemTypeOK(typeName) || parseVectorElemTypeOK(typeName) {
+		return "__octClone(" + expr + ")"
+	}
+	return expr
+}
+
+func parseMatrixElemTypeOK(t string) bool {
+	_, ok := parseMatrixElemType(t)
+	return ok
+}
+
+func parseVectorElemTypeOK(t string) bool {
+	_, ok := parseVectorElemType(t)
+	return ok
 }
 
 func goIdentList(names []string) []string {
