@@ -16,7 +16,7 @@ func TestNewLibraryCreatesScaffoldAndTestsPass(t *testing.T) {
 	}
 	assertOutputContains(t, stdout, "Created library package SignalTools at SignalTools")
 	assertNewFilesExist(t, filepath.Join(root, "SignalTools"), "manifest.oct", "README.md", "SignalTools.Core.oct", "SignalTools.Core.octest")
-	assertFileContains(t, filepath.Join(root, "SignalTools", "manifest.oct"), "Name: \"SignalTools\"", "Description: \"SignalTools package\"")
+	assertFileContains(t, filepath.Join(root, "SignalTools", "manifest.oct"), "Name: \"SignalTools\"", "Description: \"SignalTools package\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\"")
 	assertGeneratedPackageTestsPass(t, root, "SignalTools")
 }
 
@@ -30,7 +30,7 @@ func TestNewExperimentCreatesScaffoldAndTestsPass(t *testing.T) {
 	assertOutputContains(t, stdout, "Created experiment package BrownNoiseKalman at BrownNoiseKalman")
 	packageDir := filepath.Join(root, "BrownNoiseKalman")
 	assertNewFilesExist(t, packageDir, "manifest.oct", "README.md", "REPORT.md", "M0/brown_noise_kalman_m0.oct", "M0/brown_noise_kalman_m0.octest")
-	assertFileContains(t, filepath.Join(packageDir, "manifest.oct"), "Kind: \"experiment\"", "EntryMilestone: \"M0\"")
+	assertFileContains(t, filepath.Join(packageDir, "manifest.oct"), "Kind: \"experiment\"", "EntryMilestone: \"M0\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\"")
 	assertGeneratedPackageTestsPass(t, root, "BrownNoiseKalman")
 }
 
@@ -47,7 +47,7 @@ func TestNewWrapperLibraryCreatesScaffoldAndWrappersMetadata(t *testing.T) {
 		"manifest.oct", "README.md", "OpenCV.Core.oct", "OpenCV.Core.octest",
 		"sidecars/octxiliary-open-cv/go.mod", "sidecars/octxiliary-open-cv/main.go", "sidecars/octxiliary-open-cv/README.md",
 	)
-	assertFileContains(t, filepath.Join(packageDir, "manifest.oct"), "SidecarCommand: \"octxiliary-open-cv\"", "WireName: \"OpenCVEchoString\"")
+	assertFileContains(t, filepath.Join(packageDir, "manifest.oct"), "SidecarCommand: \"octxiliary-open-cv\"", "WireName: \"OpenCVEchoString\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\"")
 	assertGeneratedPackageTestsPass(t, root, "OpenCV")
 
 	wrappersOut, wrappersErr, wrappersRunErr := executeCLIInDir(packageDir, "pkg", "wrappers")
@@ -78,13 +78,56 @@ func TestNewWrapperLibraryCreatesScaffoldAndWrappersMetadata(t *testing.T) {
 	assertOutputContains(t, string(registryBytes), "PackageName: \"OpenCV\"", "WrapperName: \"open-cv\"", "SidecarCommand: \"octxiliary-open-cv\"", "WireName: \"OpenCVEchoString\"")
 }
 
+func TestNewDefaultsToCollectionDirectoriesWhenPresent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Experiments"), 0o755); err != nil {
+		t.Fatalf("mkdir Experiments: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "Libraries"), 0o755); err != nil {
+		t.Fatalf("mkdir Libraries: %v", err)
+	}
+
+	stdout, stderr, err := executeCLIInDir(root, "new", "experiment", "ProbeLab")
+	if err != nil {
+		t.Fatalf("oct new experiment failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, filepath.Join("Experiments", "ProbeLab"))
+	assertNewFilesExist(t, filepath.Join(root, "Experiments", "ProbeLab"), "manifest.oct")
+
+	stdout, stderr, err = executeCLIInDir(root, "new", "library", "SignalTools")
+	if err != nil {
+		t.Fatalf("oct new library failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, filepath.Join("Libraries", "SignalTools"))
+	assertNewFilesExist(t, filepath.Join(root, "Libraries", "SignalTools"), "manifest.oct")
+
+	stdout, stderr, err = executeCLIInDir(root, "new", "wrapper-library", "OpenCV")
+	if err != nil {
+		t.Fatalf("oct new wrapper-library failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, filepath.Join("Libraries", "OpenCV"))
+	assertNewFilesExist(t, filepath.Join(root, "Libraries", "OpenCV"), "manifest.oct")
+}
+
+func TestNewExplicitPathOverridesCollectionDefault(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "Libraries"), 0o755); err != nil {
+		t.Fatalf("mkdir Libraries: %v", err)
+	}
+	stdout, stderr, err := executeCLIInDir(root, "new", "library", "SignalTools", "Custom/SignalTools")
+	if err != nil {
+		t.Fatalf("oct new explicit path failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, filepath.Join("Custom", "SignalTools"))
+	assertNewFilesExist(t, filepath.Join(root, "Custom", "SignalTools"), "manifest.oct")
+}
+
 func TestNewUsageErrors(t *testing.T) {
 	root := t.TempDir()
 	cases := [][]string{
 		{"new"},
 		{"new", "library"},
 		{"new", "unknown", "Name"},
-		{"new", "library", "SignalTools", "extra"},
 	}
 	for _, args := range cases {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {

@@ -182,22 +182,45 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 	if isHelpArg(args) {
 		return writeNewHelp(stdout)
 	}
-	if len(args) != 2 {
-		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name>"))
+	if len(args) != 2 && len(args) != 3 {
+		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name> [path]"))
 	}
 	kind := newpkg.Kind(args[0])
 	switch kind {
 	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
 		// recognized below
 	default:
-		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name>"))
+		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name> [path]"))
 	}
 	name := args[1]
-	if err := newpkg.Write(newpkg.Options{Kind: kind, Name: name, Dir: name}); err != nil {
+	target := defaultNewTarget(kind, name, args[2:])
+	if err := newpkg.Write(newpkg.Options{Kind: kind, Name: name, Dir: target}); err != nil {
 		return reportCommandError(stderr, "new", err)
 	}
-	_, err := fmt.Fprintf(stdout, "Created %s package %s at %s\n", kind, name, name)
+	_, err := fmt.Fprintf(stdout, "Created %s package %s at %s\n", kind, name, target)
 	return err
+}
+
+func defaultNewTarget(kind newpkg.Kind, name string, explicit []string) string {
+	if len(explicit) > 0 {
+		return explicit[0]
+	}
+	switch kind {
+	case newpkg.KindExperiment:
+		if isDirectory("Experiments") {
+			return filepath.Join("Experiments", name)
+		}
+	case newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+		if isDirectory("Libraries") {
+			return filepath.Join("Libraries", name)
+		}
+	}
+	return name
+}
+
+func isDirectory(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 func executeInit(args []string, stdout io.Writer, stderr io.Writer) error {
@@ -831,7 +854,7 @@ func writePkgListHelp(out io.Writer) error {
 }
 
 func writeNewHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library> <Name>\nCreate a deterministic package scaffold in the current working directory.")
+	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library> <Name> [path]\nCreate a deterministic package scaffold. Defaults to Experiments/<Name> for experiments when Experiments/ exists, Libraries/<Name> for libraries and wrapper-libraries when Libraries/ exists, and ./<Name> otherwise. Explicit [path] is preserved.")
 	return err
 }
 

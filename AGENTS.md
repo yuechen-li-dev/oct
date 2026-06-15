@@ -5,6 +5,7 @@
 Before editing, read the smallest relevant slice of the repo truth:
 
 - `README.md` for user-facing workflow and release positioning.
+- First-party `manifest.oct` files should include ordered `Authors: String[]` and ISO `Date: String` metadata; preserve explicit author policy when updating package manifests.
 - `Language/reference/...` for Oct syntax, style, and supported language features.
 - Relevant `Language/...` fixtures; they are examples **and** semantic contracts.
 - Relevant `docs/internal/...` notes for release, package-manager, wrapper, or compiled-backend work.

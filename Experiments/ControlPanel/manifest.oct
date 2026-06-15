@@ -4,6 +4,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Dependencies: Dependency[]
 }
 
@@ -16,6 +18,8 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "ControlPanel"
         Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-06-15"
         Description: "UI M0 friction probe for explicit event/state control-panel authoring"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }

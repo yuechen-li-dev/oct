@@ -739,3 +739,93 @@ func TestLoadManifestMetadataHandleTransportTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadManifestMetadataAcceptsAuthorsAndDate(t *testing.T) {
+	manifestPath := writeManifest(t, strings.Join([]string{
+		"package Manifest",
+		"",
+		"record PackageManifest {",
+		"    Name: String",
+		"    Version: String",
+		"    Description: String",
+		"    Authors: String[]",
+		"    Date: String",
+		"    Dependencies: Dependency[]",
+		"}",
+		"",
+		"record Dependency {",
+		"    Name: String",
+		"    VersionRequirement: String",
+		"}",
+		"",
+		"fn Manifest() -> PackageManifest {",
+		"    return PackageManifest {",
+		"        Name: \"DemoPkg\"",
+		"        Version: \"0.1.0\"",
+		"        Description: \"demo package\"",
+		"        Authors: [\"Codex\", \"Claude\"]",
+		"        Date: \"2026-06-15\"",
+		"        Dependencies: []",
+		"    }",
+		"}",
+	}, "\n")+"\n")
+
+	metadata, err := loadManifestMetadata(manifestPath)
+	if err != nil {
+		t.Fatalf("load manifest metadata: %v", err)
+	}
+	if !reflect.DeepEqual(metadata.Authors, []string{"Codex", "Claude"}) {
+		t.Fatalf("unexpected authors: %#v", metadata.Authors)
+	}
+	if metadata.Date != "2026-06-15" {
+		t.Fatalf("unexpected date: %q", metadata.Date)
+	}
+}
+
+func TestLoadManifestMetadataRejectsInvalidAuthorsAndDate(t *testing.T) {
+	cases := []struct {
+		name    string
+		record  string
+		literal string
+		want    string
+	}{
+		{name: "authors declaration", record: "    Authors: String", literal: "        Authors: [\"Codex\"]", want: "Authors"},
+		{name: "authors literal", record: "    Authors: String[]", literal: "        Authors: \"Codex\"", want: "Authors"},
+		{name: "date declaration", record: "    Date: Int", literal: "        Date: \"2026-06-15\"", want: "Date"},
+		{name: "date literal", record: "    Date: String", literal: "        Date: 20260615", want: "Date"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifestPath := writeManifest(t, strings.Join([]string{
+				"package Manifest",
+				"",
+				"record PackageManifest {",
+				"    Name: String",
+				"    Version: String",
+				"    Description: String",
+				tc.record,
+				"    Dependencies: Dependency[]",
+				"}",
+				"",
+				"record Dependency {",
+				"    Name: String",
+				"    VersionRequirement: String",
+				"}",
+				"",
+				"fn Manifest() -> PackageManifest {",
+				"    return PackageManifest {",
+				"        Name: \"DemoPkg\"",
+				"        Version: \"0.1.0\"",
+				"        Description: \"demo package\"",
+				tc.literal,
+				"        Dependencies: []",
+				"    }",
+				"}",
+			}, "\n")+"\n")
+			_, err := loadManifestMetadata(manifestPath)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+		})
+	}
+}

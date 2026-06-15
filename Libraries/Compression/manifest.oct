@@ -4,6 +4,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Kind: String
     Dependencies: Dependency[]
     Wrappers: Wrapper[]
@@ -35,6 +37,8 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Compression"
         Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-06-15"
         Description: "Thin compression wrappers for practical gzip workflows"
         Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
