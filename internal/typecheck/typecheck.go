@@ -645,14 +645,18 @@ func (c checker) resolveFlowBoardFieldType(ref ast.TypeRef) (Type, error) {
 	if err != nil {
 		return Type{}, err
 	}
-	if t.IsArray || t.IsVector || t.IsMatrix || t.Name != "" || t.Base == BaseTypeError || t.Base == BaseTypeVoid || t.Base == BaseTypeComplex || t.Base == BaseTypeRange || t.Base == BaseTypeUI || t.Base == BaseTypeIndex {
-		return Type{}, fmt.Errorf("board fields must be scalar Bool, String, Int/Int<D>, or Float/Float<D>")
+	if t.IsVector || t.IsMatrix || t.Name != "" || t.Base == BaseTypeError || t.Base == BaseTypeVoid || t.Base == BaseTypeComplex || t.Base == BaseTypeRange || t.Base == BaseTypeUI || t.Base == BaseTypeIndex {
+		return Type{}, fmt.Errorf("board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types")
 	}
-	switch t.Base {
+	scalar := t
+	for scalar.IsArray {
+		scalar = peelArrayType(scalar)
+	}
+	switch scalar.Base {
 	case BaseTypeBool, BaseTypeInt, BaseTypeFloat, BaseTypeString:
 		return t, nil
 	default:
-		return Type{}, fmt.Errorf("board fields must be scalar Bool, String, Int/Int<D>, or Float/Float<D>")
+		return Type{}, fmt.Errorf("board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types")
 	}
 }
 
@@ -853,50 +857,33 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if !target.mutable {
 			return false, fmt.Errorf("function %s: cannot assign to immutable binding '%s'; use `var %s = ...` for bindings that must be reassigned, or bind a new value with `let`", ctx.name, node.Target, node.Target)
 		}
-		if len(node.Indices) == 0 {
-			return false, fmt.Errorf("function %s: index assignment requires at least one index", ctx.name)
+		if err := checkIndexAssignmentTarget(c, scope, node.Indices, node.Value, target.valueType, ctx, "index assignment"); err != nil {
+			return false, err
 		}
-		for _, idxExpr := range node.Indices {
-			indexType, err := c.checkExpr(scope, idxExpr, ctx)
-			if err != nil {
-				return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
-			}
-			if indexType.Fallible {
-				return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
-			}
-			if indexType.ValueType != (Type{Base: BaseTypeInt}) {
-				return false, fmt.Errorf("function %s: index assignment indices must be Int", ctx.name)
-			}
+		return false, nil
+	case ast.FieldIndexAssignStmt:
+		if !ctx.inState {
+			return false, fmt.Errorf("function %s: board field index assignment is only valid for `board.field[i] = ...` inside flow state bodies", ctx.name)
 		}
-
-		var elementType Type
-		switch {
-		case target.valueType.IsArray:
-			elementType = target.valueType
-			for range node.Indices {
-				if !elementType.IsArray {
-					return false, fmt.Errorf("function %s: nested array index assignment has too many indices for %s", ctx.name, target.valueType)
-				}
-				elementType = peelArrayType(elementType)
+		if node.Target != "board" {
+			return false, fmt.Errorf("function %s: inside flow state bodies, field index assignment is only supported on `board`, e.g. `board.Values[i] = value`", ctx.name)
+		}
+		target, ok := scope.lookup(node.Target)
+		if !ok {
+			return false, fmt.Errorf("function %s: unknown binding '%s'", ctx.name, node.Target)
+		}
+		var fieldType Type
+		if ctx.board != nil && target.valueType == ctx.boardType {
+			var exists bool
+			fieldType, exists = ctx.board[node.Field]
+			if !exists {
+				return false, fmt.Errorf("function %s: type '%s' has no field '%s'", ctx.name, target.valueType.Name, node.Field)
 			}
-		case target.valueType.IsMatrix:
-			if len(node.Indices) != 2 {
-				return false, fmt.Errorf("function %s: matrix index assignment (`x[i, j] = ...`) requires exactly 2 indices, got %d", ctx.name, len(node.Indices))
-			}
-			elementType = Type{Base: target.valueType.Base, Dimension: target.valueType.Dimension}
-		default:
-			return false, fmt.Errorf("function %s: index assignment (`x[i] = ...`) requires an array or matrix target, got %s. For records, use immutable update (`x = x with { Field: value }`); for scalars, assign the whole value", ctx.name, target.valueType)
+		} else {
+			return false, fmt.Errorf("function %s: board field index assignment requires board to be a record type, got %s", ctx.name, target.valueType)
 		}
-
-		valueType, err := c.checkExpr(scope, node.Value, ctx)
-		if err != nil {
-			return false, fmt.Errorf("function %s: index assignment: %w", ctx.name, err)
-		}
-		if valueType.Fallible {
-			return false, fmt.Errorf("function %s: index assignment: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name)
-		}
-		if !isAssignable(valueType.ValueType, elementType) {
-			return false, fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
+		if err := checkIndexAssignmentTarget(c, scope, node.Indices, node.Value, fieldType, ctx, "board field index assignment"); err != nil {
+			return false, err
 		}
 		return false, nil
 	case ast.FieldAssignStmt:
@@ -1138,6 +1125,55 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 	}
 }
 
+func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, value ast.Expr, targetType Type, ctx functionContext, label string) error {
+	if len(indices) == 0 {
+		return fmt.Errorf("function %s: %s requires at least one index", ctx.name, label)
+	}
+	for _, idxExpr := range indices {
+		indexType, err := c.checkExpr(scope, idxExpr, ctx)
+		if err != nil {
+			return fmt.Errorf("function %s: %s: %w", ctx.name, label, err)
+		}
+		if indexType.Fallible {
+			return fmt.Errorf("function %s: %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, label)
+		}
+		if indexType.ValueType != (Type{Base: BaseTypeInt}) {
+			return fmt.Errorf("function %s: %s indices must be Int", ctx.name, label)
+		}
+	}
+
+	var elementType Type
+	switch {
+	case targetType.IsArray:
+		elementType = targetType
+		for range indices {
+			if !elementType.IsArray {
+				return fmt.Errorf("function %s: nested array index assignment has too many indices for %s", ctx.name, targetType)
+			}
+			elementType = peelArrayType(elementType)
+		}
+	case targetType.IsMatrix:
+		if len(indices) != 2 {
+			return fmt.Errorf("function %s: matrix index assignment (`x[i, j] = ...`) requires exactly 2 indices, got %d", ctx.name, len(indices))
+		}
+		elementType = Type{Base: targetType.Base, Dimension: targetType.Dimension}
+	default:
+		return fmt.Errorf("function %s: index assignment (`x[i] = ...`) requires an array or matrix target, got %s. For records, use immutable update (`x = x with { Field: value }`); for scalars, assign the whole value", ctx.name, targetType)
+	}
+
+	valueType, err := c.checkExpr(scope, value, ctx)
+	if err != nil {
+		return fmt.Errorf("function %s: %s: %w", ctx.name, label, err)
+	}
+	if valueType.Fallible {
+		return fmt.Errorf("function %s: %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, label)
+	}
+	if !isAssignable(valueType.ValueType, elementType) {
+		return fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
+	}
+	return nil
+}
+
 func isPermittedExpressionStatementCall(expr ast.Expr) bool {
 	switch node := expr.(type) {
 	case ast.CallExpr:
@@ -1168,7 +1204,7 @@ func (c checker) checkWhenAction(scope *scope, action ast.WhenAction, ctx functi
 		}
 		for i, statement := range node.Statements {
 			switch statement.(type) {
-			case ast.RememberStmt, ast.ResumeStmt, ast.GotoStmt, ast.SuspendStmt, ast.ReturnStmt, ast.FieldAssignStmt:
+			case ast.RememberStmt, ast.ResumeStmt, ast.GotoStmt, ast.SuspendStmt, ast.ReturnStmt, ast.FieldAssignStmt, ast.FieldIndexAssignStmt:
 				// allowed
 			default:
 				return false, fmt.Errorf("function %s: a `when` action block may only contain flow-control actions (`remember`, `resume`, `goto`, `suspend`, `return`) and `board.field = ...` updates; move ordinary computation before the `when`, or use a normal block outside the flow guard", ctx.name)

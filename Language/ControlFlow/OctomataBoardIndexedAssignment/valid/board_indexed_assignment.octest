@@ -1,0 +1,102 @@
+package ControlFlowOctomataBoardIndexedAssignment
+
+flow BoardIntArrayProbe() -> Int {
+    board {
+        Values: Int[]
+    }
+
+    state Start {
+        board.Values = [1, 2, 3]
+        board.Values[1] = 99
+        return board.Values[1]
+    }
+}
+
+flow BoardFloatArrayProbe() -> Float {
+    board {
+        Values: Float[]
+    }
+
+    state Start {
+        board.Values = [1.0, 2.0, 3.0]
+        board.Values[2] = 7.5
+        return board.Values[2]
+    }
+}
+
+flow BoardDimensionedFloatArrayProbe() -> Float<m> {
+    board {
+        Values: Float<m>[]
+    }
+
+    state Start {
+        board.Values = [1.0m, 2.0m, 3.0m]
+        board.Values[0] = 4.5m
+        return board.Values[0]
+    }
+}
+
+flow BoardNestedFloatArrayProbe() -> Float {
+    board {
+        Matrix: Float[][]
+    }
+
+    state Start {
+        board.Matrix = [[1.0, 2.0], [3.0, 4.0]]
+        board.Matrix[1][0] = 9.0
+        return board.Matrix[1][0]
+    }
+}
+
+flow BoardSnapshotArrayProbe() -> String {
+    board {
+        Values: Int[]
+    }
+
+    state Start {
+        board.Values = [1, 2, 3]
+        board.Values[1] = 42
+        suspend
+        return "done"
+    }
+}
+
+[Fact]
+fn BoardIntArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardIntArrayProbe()
+    Step(machine)
+    let value = Result(machine)!
+    Assert.Equal(99, value, "updated int board array element")
+}
+
+[Fact]
+fn BoardFloatArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardFloatArrayProbe()
+    Step(machine)
+    let value = Result(machine)!
+    Assert.Equal(7.5, value, "updated float board array element")
+}
+
+[Fact]
+fn BoardDimensionedFloatArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardDimensionedFloatArrayProbe()
+    Step(machine)
+    let value = Result(machine)!
+    Assert.Equal(4.5m, value, "updated dimensioned float board array element")
+}
+
+[Fact]
+fn BoardNestedFloatArrayIndexedAssignmentReturnsUpdatedValue() -> Void {
+    let machine = BoardNestedFloatArrayProbe()
+    Step(machine)
+    let value = Result(machine)!
+    Assert.Equal(9.0, value, "updated nested float board array element")
+}
+
+[Fact]
+fn BoardSnapshotReflectsIndexedBoardMutation() -> Void {
+    let machine = BoardSnapshotArrayProbe()
+    Step(machine)
+    let snapshot = BoardSnapshot(machine)!
+    Assert.Equal(42, snapshot.Values[1], "snapshot sees indexed mutation")
+}

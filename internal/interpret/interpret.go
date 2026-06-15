@@ -707,6 +707,9 @@ func (i interpreter) instantiateFlow(flow ast.FlowDecl, pkgName string, argument
 }
 
 func defaultFlowBoardValue(fieldType ast.TypeRef) Value {
+	if fieldType.IsArray || fieldType.ArrayDepth > 0 {
+		return Value{Kind: ValueArray, Array: []Value{}}
+	}
 	switch fieldType.Name {
 	case "Bool":
 		return Value{Kind: ValueBool, Bool: false}
@@ -927,6 +930,66 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if !env.assign(node.Target, updated) {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Target)
 		}
+		return stmtResult{}, nil
+	case ast.FieldIndexAssignStmt:
+		targetBinding, ok := env.lookup(node.Target)
+		if !ok {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: undefined variable %s", node.Target)
+		}
+		if targetBinding.value.Kind != ValueRecord {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: field index assignment requires record target")
+		}
+		if len(node.Indices) == 0 {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: index assignment requires at least one index")
+		}
+		indices := make([]int64, 0, len(node.Indices))
+		for _, idxExpr := range node.Indices {
+			index, err := i.evalExpr(env, pkgName, idxExpr)
+			if err != nil {
+				return stmtResult{}, err
+			}
+			if index.hasError {
+				return stmtResult{value: index.errorVal, returned: true}, nil
+			}
+			if index.value.Kind != ValueInt || !index.value.Dimension.IsDimensionless() {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: index must be Int, got %s", valueTypeName(index.value))
+			}
+			indices = append(indices, index.value.Int)
+		}
+		value, err := i.evalExpr(env, pkgName, node.Value)
+		if err != nil {
+			return stmtResult{}, err
+		}
+		if value.hasError {
+			return stmtResult{value: value.errorVal, returned: true}, nil
+		}
+		updated := targetBinding.value
+		fieldValue, exists := updated.Record.Fields[node.Field]
+		if !exists {
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: record type '%s' has no field '%s'", updated.Record.TypeName, node.Field)
+		}
+		switch fieldValue.Kind {
+		case ValueArray:
+			assigned, err := assignNestedArrayIndex(fieldValue, indices, value.value)
+			if err != nil {
+				return stmtResult{}, err
+			}
+			updated.Record.Fields[node.Field] = assigned
+		case ValueMatrix:
+			if len(indices) != 2 {
+				return stmtResult{}, fmt.Errorf("runtime invariant violation: matrix index assignment requires exactly 2 indices, got %d", len(indices))
+			}
+			r := indices[0]
+			c := indices[1]
+			if r < 0 || c < 0 || r >= int64(fieldValue.Matrix.Rows) || c >= int64(fieldValue.Matrix.Cols) {
+				return stmtResult{}, fmt.Errorf("runtime error: index [%d, %d] out of bounds for matrix of shape %dx%d", r, c, fieldValue.Matrix.Rows, fieldValue.Matrix.Cols)
+			}
+			fieldValue.Matrix.Elements[r*int64(fieldValue.Matrix.Cols)+c] = value.value
+			updated.Record.Fields[node.Field] = fieldValue
+		default:
+			return stmtResult{}, fmt.Errorf("runtime invariant violation: index assignment requires array or matrix target")
+		}
+		_ = env.assign(node.Target, updated)
 		return stmtResult{}, nil
 	case ast.FieldAssignStmt:
 		targetBinding, ok := env.lookup(node.Target)

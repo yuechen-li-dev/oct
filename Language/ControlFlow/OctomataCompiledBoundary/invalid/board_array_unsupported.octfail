@@ -1,17 +1,10 @@
-expect error: "flow BoardArrayUnsupported board field Samples: board fields must be scalar Bool, String, Int/Int<D>, or Float/Float<D>"
+expect error: "flow BoardComplexUnsupported board field Samples: board fields must be Bool, String, Int/Int<D>, Float/Float<D>, or arrays of those types"
 
-package MainInvalid
+package ControlFlowOctomataCompiledBoundary
 
-flow BoardArrayUnsupported() -> Void {
+flow BoardComplexUnsupported() -> Void {
     board {
-        Samples: Float[]
+        Samples: Complex[]
     }
-
-    state Start {
-        suspend
-    }
-}
-
-fn Main() -> Int {
-    return 0
+    state Start { return }
 }

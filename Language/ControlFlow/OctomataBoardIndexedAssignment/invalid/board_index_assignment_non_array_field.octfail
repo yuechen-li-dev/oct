@@ -1,0 +1,14 @@
+expect error: "index assignment (`x[i] = ...`) requires an array or matrix target"
+
+package ControlFlowOctomataBoardIndexedAssignment
+
+flow Bad() -> Void {
+    board {
+        Value: Int
+    }
+
+    state Start {
+        board.Value[0] = 1
+        return
+    }
+}

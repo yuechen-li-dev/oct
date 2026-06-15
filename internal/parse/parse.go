@@ -1085,6 +1085,21 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
+		if p.match(lex.LeftBracket) {
+			indices, err := p.parseAssignmentIndexChain()
+			if err != nil {
+				return nil, false, err
+			}
+			if !p.match(lex.Assign) {
+				p.position = savedPosition
+				return nil, false, nil
+			}
+			value, err := p.parseExpression()
+			if err != nil {
+				return nil, false, err
+			}
+			return ast.FieldIndexAssignStmt{Target: name.Lexeme, Field: field.Lexeme, Indices: indices, Value: value}, true, nil
+		}
 		if !p.match(lex.Assign) {
 			p.position = savedPosition
 			return nil, false, nil
@@ -1101,31 +1116,9 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 		return nil, false, nil
 	}
 
-	indices := make([]ast.Expr, 0, 2)
-	index, err := p.parseExpression()
+	indices, err := p.parseAssignmentIndexChain()
 	if err != nil {
 		return nil, false, err
-	}
-	indices = append(indices, index)
-	for p.match(lex.Comma) {
-		nextIndex, nextErr := p.parseExpression()
-		if nextErr != nil {
-			return nil, false, nextErr
-		}
-		indices = append(indices, nextIndex)
-	}
-	if _, err := p.expect(lex.RightBracket, "expected ']' after index assignment target"); err != nil {
-		return nil, false, err
-	}
-	for p.match(lex.LeftBracket) {
-		nestedIndex, nestedErr := p.parseExpression()
-		if nestedErr != nil {
-			return nil, false, nestedErr
-		}
-		indices = append(indices, nestedIndex)
-		if _, err := p.expect(lex.RightBracket, "expected ']' after nested index assignment target"); err != nil {
-			return nil, false, err
-		}
 	}
 	if !p.match(lex.Assign) {
 		p.position = savedPosition
@@ -1137,6 +1130,36 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 		return nil, false, err
 	}
 	return ast.IndexAssignStmt{Target: name.Lexeme, Indices: indices, Value: value}, true, nil
+}
+
+func (p *parser) parseAssignmentIndexChain() ([]ast.Expr, error) {
+	indices := make([]ast.Expr, 0, 2)
+	index, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	indices = append(indices, index)
+	for p.match(lex.Comma) {
+		nextIndex, nextErr := p.parseExpression()
+		if nextErr != nil {
+			return nil, nextErr
+		}
+		indices = append(indices, nextIndex)
+	}
+	if _, err := p.expect(lex.RightBracket, "expected ']' after index assignment target"); err != nil {
+		return nil, err
+	}
+	for p.match(lex.LeftBracket) {
+		nestedIndex, nestedErr := p.parseExpression()
+		if nestedErr != nil {
+			return nil, nestedErr
+		}
+		indices = append(indices, nestedIndex)
+		if _, err := p.expect(lex.RightBracket, "expected ']' after nested index assignment target"); err != nil {
+			return nil, err
+		}
+	}
+	return indices, nil
 }
 
 func (p *parser) parseReturnStmt() (ast.Stmt, error) {

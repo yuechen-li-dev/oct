@@ -90,6 +90,15 @@ type MIRFlowFieldAssign struct {
 
 func (MIRFlowFieldAssign) mirFlowStmt() {}
 
+type MIRFlowFieldIndexAssign struct {
+	Target  string
+	Field   string
+	Indices []MIRFlowExpr
+	Value   MIRFlowExpr
+}
+
+func (MIRFlowFieldIndexAssign) mirFlowStmt() {}
+
 type MIRFlowLetStmt struct {
 	Name  string
 	Type  string
@@ -4760,6 +4769,20 @@ func lowerFlowStmt(stmt ast.Stmt, env map[string]string, locals map[string]bool,
 			return nil, err
 		}
 		return MIRFlowFieldAssign{Target: s.Target, Field: s.Field, Value: v}, nil
+	case ast.FieldIndexAssignStmt:
+		indices := make([]MIRFlowExpr, 0, len(s.Indices))
+		for _, index := range s.Indices {
+			lowered, err := lowerFlowExpr(index, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			indices = append(indices, lowered)
+		}
+		v, err := lowerFlowExpr(s.Value, env, locals, pkg, boardFieldTypes)
+		if err != nil {
+			return nil, err
+		}
+		return MIRFlowFieldIndexAssign{Target: s.Target, Field: s.Field, Indices: indices, Value: v}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return MIRFlowReturn{}, nil
@@ -4940,6 +4963,28 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			args = append(args, v)
 		}
 		return MIRFlowCallExpr{Callee: callee, Args: args, Builtin: builtin, RetType: ret, Fallible: fallible}, nil
+	case ast.ArrayLiteralExpr:
+		elemType := "Int"
+		if len(e.Elements) > 0 {
+			inferred, err := inferFlowExprType(e.Elements[0], env, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			elemType = inferred
+		}
+		values := make([]string, 0, len(e.Elements))
+		for _, element := range e.Elements {
+			lowered, err := lowerFlowExpr(element, env, locals, pkg, boardFieldTypes)
+			if err != nil {
+				return nil, err
+			}
+			goValue, err := emitGoFlowExpr(lowered, pkg)
+			if err != nil {
+				return nil, err
+			}
+			values = append(values, goValue)
+		}
+		return MIRFlowLiteralExpr{Value: fmt.Sprintf("%s{%s}", goType(elemType+"[]"), strings.Join(values, ", "))}, nil
 	case ast.IndexExpr:
 		if len(e.Indices) != 1 {
 			return nil, unsupported("compiled flow expression indexing only supports single-dimension indexing")
@@ -5210,6 +5255,16 @@ func inferFlowExprType(expr ast.Expr, env map[string]string, pkg string, boardFi
 			return "", fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
 		}
 		return ret, nil
+	case ast.ArrayLiteralExpr:
+		elemType := "Int"
+		if len(e.Elements) > 0 {
+			inferred, err := inferFlowExprType(e.Elements[0], env, pkg, boardFieldTypes)
+			if err != nil {
+				return "", err
+			}
+			elemType = inferred
+		}
+		return elemType + "[]", nil
 	case ast.IndexExpr:
 		if len(e.Indices) != 1 {
 			return "", unsupported("compiled flow expression indexing only supports single-dimension indexing")
@@ -5457,6 +5512,12 @@ func dumpFlowStmt(stmt MIRFlowStmt) string {
 		return "resume"
 	case MIRFlowFieldAssign:
 		return fmt.Sprintf("%s.%s = %s", s.Target, s.Field, dumpFlowExpr(s.Value))
+	case MIRFlowFieldIndexAssign:
+		parts := make([]string, 0, len(s.Indices))
+		for _, index := range s.Indices {
+			parts = append(parts, dumpFlowExpr(index))
+		}
+		return fmt.Sprintf("%s.%s[%s] = %s", s.Target, s.Field, strings.Join(parts, "]["), dumpFlowExpr(s.Value))
 	case MIRFlowReturn:
 		if s.Value == nil {
 			return "return"
@@ -7665,6 +7726,16 @@ func flowStmtHasUtility(stmt MIRFlowStmt) bool {
 	switch s := stmt.(type) {
 	case MIRFlowFieldAssign:
 		return flowExprHasUtility(s.Value)
+	case MIRFlowFieldIndexAssign:
+		if flowExprHasUtility(s.Value) {
+			return true
+		}
+		for _, index := range s.Indices {
+			if flowExprHasUtility(index) {
+				return true
+			}
+		}
+		return false
 	case MIRFlowLetStmt:
 		return flowExprHasUtility(s.Value)
 	case MIRFlowReturn:
@@ -7913,6 +7984,8 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 			return fmt.Sprintf("f.board.%s = %s\nf.instruction++\ncontinue", s.Field, v), nil
 		}
 		return fmt.Sprintf("f.%s.%s = %s\nf.instruction++\ncontinue", s.Target, s.Field, v), nil
+	case MIRFlowFieldIndexAssign:
+		return emitGoFlowFieldIndexAssign(s, pkg, true)
 	case MIRFlowLetStmt:
 		v, err := emitGoFlowExpr(s.Value, pkg)
 		if err != nil {
@@ -7974,6 +8047,30 @@ func emitGoFlowStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int, resul
 	}
 }
 
+func emitGoFlowFieldIndexAssign(s MIRFlowFieldIndexAssign, pkg string, advance bool) (string, error) {
+	v, err := emitGoFlowExpr(s.Value, pkg)
+	if err != nil {
+		return "", err
+	}
+	indices := make([]string, 0, len(s.Indices))
+	for _, index := range s.Indices {
+		lowered, err := emitGoFlowExpr(index, pkg)
+		if err != nil {
+			return "", err
+		}
+		indices = append(indices, lowered)
+	}
+	target := "f." + s.Target + "." + s.Field
+	if s.Target == "board" {
+		target = "f.board." + s.Field
+	}
+	assignment := fmt.Sprintf("%s[%s] = %s", target, strings.Join(indices, "]["), v)
+	if advance {
+		assignment += "\nf.instruction++\ncontinue"
+	}
+	return assignment, nil
+}
+
 func emitGoFlowInlineBlock(stmts []MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
 	lines := make([]string, 0, len(stmts))
 	for _, stmt := range stmts {
@@ -7997,6 +8094,8 @@ func emitGoFlowInlineStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]int,
 			return fmt.Sprintf("f.board.%s = %s", s.Field, v), nil
 		}
 		return fmt.Sprintf("f.%s.%s = %s", s.Target, s.Field, v), nil
+	case MIRFlowFieldIndexAssign:
+		return emitGoFlowFieldIndexAssign(s, pkg, false)
 	case MIRFlowLetStmt:
 		v, err := emitGoFlowExpr(s.Value, pkg)
 		if err != nil {
@@ -8060,6 +8159,8 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 			return fmt.Sprintf("f.board.%s = %s", s.Field, v), nil
 		}
 		return fmt.Sprintf("f.%s.%s = %s", s.Target, s.Field, v), nil
+	case MIRFlowFieldIndexAssign:
+		return emitGoFlowFieldIndexAssign(s, pkg, false)
 	case MIRFlowGoto:
 		target, ok := stateIDs[s.Target]
 		if !ok {

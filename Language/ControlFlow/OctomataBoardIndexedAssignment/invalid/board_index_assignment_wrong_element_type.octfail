@@ -1,0 +1,15 @@
+expect error: "assigned value type does not match indexed element type"
+
+package ControlFlowOctomataBoardIndexedAssignment
+
+flow Bad() -> Void {
+    board {
+        Values: Int[]
+    }
+
+    state Start {
+        board.Values = [1]
+        board.Values[0] = "bad"
+        return
+    }
+}

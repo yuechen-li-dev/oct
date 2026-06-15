@@ -171,6 +171,15 @@ type FieldAssignStmt struct {
 
 func (FieldAssignStmt) stmtNode() {}
 
+type FieldIndexAssignStmt struct {
+	Target  string
+	Field   string
+	Indices []Expr
+	Value   Expr
+}
+
+func (FieldIndexAssignStmt) stmtNode() {}
+
 type ReturnStmt struct {
 	Value Expr
 }
