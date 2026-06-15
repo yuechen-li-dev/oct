@@ -872,10 +872,13 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		var elementType Type
 		switch {
 		case target.valueType.IsArray:
-			if len(node.Indices) != 1 {
-				return false, fmt.Errorf("function %s: array index assignment (`x[i] = ...`) requires exactly 1 index, got %d", ctx.name, len(node.Indices))
+			elementType = target.valueType
+			for range node.Indices {
+				if !elementType.IsArray {
+					return false, fmt.Errorf("function %s: nested array index assignment has too many indices for %s", ctx.name, target.valueType)
+				}
+				elementType = peelArrayType(elementType)
 			}
-			elementType = peelArrayType(target.valueType)
 		case target.valueType.IsMatrix:
 			if len(node.Indices) != 2 {
 				return false, fmt.Errorf("function %s: matrix index assignment (`x[i, j] = ...`) requires exactly 2 indices, got %d", ctx.name, len(node.Indices))
@@ -2425,6 +2428,19 @@ regularCall:
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
 		}
 		return ExprType{}, fmt.Errorf("call target does not accept type arguments")
+	}
+
+	if ident, ok := expr.Callee.(ast.IdentifierExpr); ok {
+		if binding, exists := scope.lookup(ident.Name); exists {
+			if !binding.valueType.IsFunction {
+				return ExprType{}, fmt.Errorf("call target must be a function value, got %s", binding.valueType)
+			}
+			signature, ok := c.functionTypes[binding.valueType.FunctionSignature]
+			if !ok {
+				return ExprType{}, fmt.Errorf("internal error: missing function type metadata for %s", binding.valueType.FunctionSignature)
+			}
+			return c.checkFunctionCallArguments(ident.Name, signature, scope, expr.Arguments, ctx)
+		}
 	}
 
 	if hasDirectName {

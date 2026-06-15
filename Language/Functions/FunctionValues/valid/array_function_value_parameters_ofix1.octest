@@ -1,0 +1,67 @@
+package FunctionValuesValid
+
+fn DoubleFloat(x: Float) -> Float {
+    return x * 2.0
+}
+
+fn SumFloat(xs: Float[]) -> Float {
+    var total = 0.0
+    for i in 0..Len(xs) {
+        total = total + xs[i]
+    }
+    return total
+}
+
+fn ScaleArray(xs: Float[]) -> Float[] {
+    var out: Float[] = []
+    for i in 0..Len(xs) {
+        out = Append(out, xs[i] * 2.0)
+    }
+    return out
+}
+
+fn DotShift(xs: Float[], shift: Float) -> Float {
+    var total = 0.0
+    for i in 0..Len(xs) {
+        total = total + xs[i] + shift
+    }
+    return total
+}
+
+fn ApplyScalar(f: fn(Float) -> Float, value: Float) -> Float {
+    return f(value)
+}
+
+fn ApplyVec(f: fn(Float[]) -> Float, v: Float[]) -> Float {
+    return f(v)
+}
+
+fn ApplyVecToVec(f: fn(Float[]) -> Float[], v: Float[]) -> Float[] {
+    return f(v)
+}
+
+fn ApplyVecAndScalar(f: fn(Float[], Float) -> Float, v: Float[], x: Float) -> Float {
+    return f(v, x)
+}
+
+[Fact]
+fn ExistingScalarFunctionParameterStillWorks() -> Void {
+    Assert.Equal(6.0, ApplyScalar(DoubleFloat, 3.0), "fn(Float) -> Float remains callable")
+}
+
+[Fact]
+fn FunctionParameterAcceptingFloatArrayIsCallableInterpreted() -> Void {
+    Assert.Equal(6.0, ApplyVec(SumFloat, [1.0, 2.0, 3.0]), "fn(Float[]) -> Float parameter is callable")
+}
+
+[Fact]
+fn FunctionParameterReturningFloatArrayIsCallableInterpreted() -> Void {
+    let values = ApplyVecToVec(ScaleArray, [2.0, 3.0])
+    Assert.Equal(4.0, values[0], "fn(Float[]) -> Float[] parameter returns first value")
+    Assert.Equal(6.0, values[1], "fn(Float[]) -> Float[] parameter returns second value")
+}
+
+[Fact]
+fn FunctionParameterAcceptingFloatArrayAndScalarIsCallableInterpreted() -> Void {
+    Assert.Equal(9.0, ApplyVecAndScalar(DotShift, [1.0, 2.0], 3.0), "fn(Float[], Float) -> Float parameter is callable")
+}

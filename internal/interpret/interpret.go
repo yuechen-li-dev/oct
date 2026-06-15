@@ -821,7 +821,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
-		env.define(node.Name, value.value, false)
+		env.define(node.Name, cloneValue(value.value), false)
 		return stmtResult{}, nil
 	case ast.VarStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
@@ -831,7 +831,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
-		env.define(node.Name, value.value, true)
+		env.define(node.Name, cloneValue(value.value), true)
 		return stmtResult{}, nil
 	case ast.DestructureAssignStmt:
 		value, err := i.evalExpr(env, pkgName, node.Value)
@@ -865,7 +865,7 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		if value.hasError {
 			return stmtResult{value: value.errorVal, returned: true}, nil
 		}
-		if !env.assign(node.Name, value.value) {
+		if !env.assign(node.Name, cloneValue(value.value)) {
 			return stmtResult{}, fmt.Errorf("runtime invariant violation: assignment target '%s' is not a mutable binding", node.Name)
 		}
 		return stmtResult{}, nil
@@ -906,13 +906,11 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		updated := targetBinding.value
 		switch updated.Kind {
 		case ValueArray:
-			if len(indices) != 1 {
-				return stmtResult{}, fmt.Errorf("runtime invariant violation: array index assignment requires exactly 1 index, got %d", len(indices))
+			var err error
+			updated, err = assignNestedArrayIndex(updated, indices, value.value)
+			if err != nil {
+				return stmtResult{}, err
 			}
-			if indices[0] < 0 || indices[0] >= int64(len(updated.Array)) {
-				return stmtResult{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", indices[0], len(updated.Array))
-			}
-			updated.Array[indices[0]] = value.value
 		case ValueMatrix:
 			if len(indices) != 2 {
 				return stmtResult{}, fmt.Errorf("runtime invariant violation: matrix index assignment requires exactly 2 indices, got %d", len(indices))
@@ -1069,6 +1067,30 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 	default:
 		return stmtResult{}, fmt.Errorf("runtime invariant violation: unsupported statement %T", stmt)
 	}
+}
+
+func assignNestedArrayIndex(target Value, indices []int64, value Value) (Value, error) {
+	if len(indices) == 0 {
+		return value, nil
+	}
+	if target.Kind != ValueArray {
+		return Value{}, fmt.Errorf("runtime invariant violation: nested array index assignment requires array target")
+	}
+	index := indices[0]
+	if index < 0 || index >= int64(len(target.Array)) {
+		return Value{}, fmt.Errorf("runtime error: index %d out of bounds for array of length %d", index, len(target.Array))
+	}
+	updated := cloneValue(target)
+	if len(indices) == 1 {
+		updated.Array[index] = value
+		return updated, nil
+	}
+	child, err := assignNestedArrayIndex(updated.Array[index], indices[1:], value)
+	if err != nil {
+		return Value{}, err
+	}
+	updated.Array[index] = child
+	return updated, nil
 }
 
 func (i interpreter) executeFlowBlock(parent *environment, pkgName string, block ast.Block) (flowSignal, error) {
@@ -2107,7 +2129,14 @@ regularCall:
 	}
 
 	functionKey := ""
-	if hasDirectName {
+	if ident, ok := expr.Callee.(ast.IdentifierExpr); ok {
+		if binding, exists := env.lookup(ident.Name); exists && binding.value.Kind == ValueFunc {
+			functionKey = binding.value.Function.Key
+		}
+	}
+	if functionKey != "" {
+		// Function-typed locals and parameters shadow package-level lookup.
+	} else if hasDirectName {
 		functionKey = calleeName
 		if !strings.Contains(functionKey, ".") {
 			functionKey = pkgName + "." + functionKey
@@ -4534,8 +4563,10 @@ func (i interpreter) evalAppendBuiltinCallExpr(env *environment, pkgName string,
 	}
 
 	result := make([]Value, 0, len(array.value.Array)+1)
-	result = append(result, array.value.Array...)
-	result = append(result, element.value)
+	for _, existing := range array.value.Array {
+		result = append(result, cloneValue(existing))
+	}
+	result = append(result, cloneValue(element.value))
 	return evalResult{value: Value{Kind: ValueArray, Array: result}}, nil
 }
 

@@ -1117,8 +1117,15 @@ func (p *parser) tryParseIdentifierLeadingAssignment() (ast.Stmt, bool, error) {
 	if _, err := p.expect(lex.RightBracket, "expected ']' after index assignment target"); err != nil {
 		return nil, false, err
 	}
-	if p.current().Kind == lex.LeftBracket {
-		return nil, false, p.errorAtCurrent("nested index assignment targets are not supported")
+	for p.match(lex.LeftBracket) {
+		nestedIndex, nestedErr := p.parseExpression()
+		if nestedErr != nil {
+			return nil, false, nestedErr
+		}
+		indices = append(indices, nestedIndex)
+		if _, err := p.expect(lex.RightBracket, "expected ']' after nested index assignment target"); err != nil {
+			return nil, false, err
+		}
 	}
 	if !p.match(lex.Assign) {
 		p.position = savedPosition

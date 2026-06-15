@@ -1,0 +1,101 @@
+package MainValid
+
+record SampleRow {
+    Values: Int[]
+}
+
+enum SampleFlag {
+    Off
+    On
+}
+
+[Fact]
+fn IntArrayAssignmentCopiesStorage() -> Void {
+    let Source = [1, 2, 3]
+    var Copy = Source
+    Copy[0] = 99
+
+    Assert.Equal(1, Source[0], "let Int[] source keeps original storage")
+    Assert.Equal(99, Copy[0], "Int[] copy mutates independently")
+}
+
+[Fact]
+fn FloatArrayVarAssignmentCopiesStorage() -> Void {
+    var Source = [1.0, 2.0, 3.0]
+    var Copy = Source
+    Copy[1] = 77.0
+
+    Assert.Equal(2.0, Source[1], "var Float[] source keeps original storage")
+    Assert.Equal(77.0, Copy[1], "Float[] copy mutates independently")
+}
+
+[Fact]
+fn StringAndBoolArrayAssignmentsCopyStorage() -> Void {
+    var Names = ["a", "b"]
+    var NamesCopy = Names
+    NamesCopy[0] = "z"
+
+    var Flags = [true, false]
+    var FlagsCopy = Flags
+    FlagsCopy[1] = true
+
+    Assert.Equal("a", Names[0], "String[] source keeps original storage")
+    Assert.Equal("z", NamesCopy[0], "String[] copy mutates independently")
+    Assert.False(Flags[1], "Bool[] source keeps original storage")
+    Assert.True(FlagsCopy[1], "Bool[] copy mutates independently")
+}
+
+[Fact]
+fn DimensionedFloatArrayAssignmentCopiesStorage() -> Void {
+    var Values = [1.0m, 2.0m]
+    var Copy = Values
+    Copy[0] = 9.0m
+
+    Assert.Equal(1.0m, Values[0], "dimensioned Float[] source keeps original storage")
+    Assert.Equal(9.0m, Copy[0], "dimensioned Float[] copy mutates independently")
+}
+
+[Fact]
+fn RecordAndEnumArrayAssignmentsCopyStorage() -> Void {
+    var Rows = [SampleRow { Values: [1, 2] }]
+    var RowsCopy = Rows
+    RowsCopy[0] = SampleRow { Values: [9] }
+
+    var Flags = [SampleFlag.Off]
+    var FlagsCopy = Flags
+    FlagsCopy[0] = SampleFlag.On
+
+    Assert.Equal(2, Rows[0].Values[1], "record array source keeps original storage")
+    Assert.Equal(9, RowsCopy[0].Values[0], "record array copy mutates independently")
+    Assert.Equal(SampleFlag.Off, Flags[0], "enum array source keeps original storage")
+    Assert.Equal(SampleFlag.On, FlagsCopy[0], "enum array copy mutates independently")
+}
+
+[Fact]
+fn AppendedRowsDoNotAliasReusedRowStorage() -> Void {
+    var Row = [0.0, 0.0]
+    var Matrix: Float[][] = []
+    Matrix = Append(Matrix, Row)
+    Matrix = Append(Matrix, Row)
+
+    Matrix[0][0] = 7.0
+
+    Assert.Equal(7.0, Matrix[0][0], "first appended row mutates")
+    Assert.Equal(0.0, Matrix[1][0], "second appended row does not alias reused row storage")
+}
+
+fn PickFloat(m: Float[][], i: Int, j: Int) -> Float {
+    return m[i][j]
+}
+
+[Fact]
+fn NestedFloatMatrixReadWorks() -> Void {
+    let m = [[1.0, 2.0], [3.0, 4.0]]
+    Assert.Equal(4.0, m[1][1], "nested matrix read")
+}
+
+[Fact]
+fn NestedFloatMatrixReadThroughFunctionParameterWorks() -> Void {
+    let m = [[1.0, 2.0], [3.0, 4.0]]
+    Assert.Equal(3.0, PickFloat(m, 1, 0), "nested matrix read through function parameter")
+}
