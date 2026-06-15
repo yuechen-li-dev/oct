@@ -67,6 +67,8 @@ func requirePackageManifestRecord(file ast.File) error {
 		"Dependencies": {Name: "Dependency", IsArray: true},
 	}
 	optional := map[string]ast.TypeRef{
+		"Authors":        {Name: "String", IsArray: true},
+		"Date":           {Name: "String"},
 		"Kind":           {Name: "String"},
 		"EntryMilestone": {Name: "String"},
 		"Wrappers":       manifestwrapper.PackageManifestWrappersType(),
@@ -218,6 +220,22 @@ func validateManifestFunctionBody(packageName string, fn ast.FunctionDecl, manif
 	}
 	if _, ok := fields["Description"].(ast.StringLiteralExpr); !ok {
 		return fmt.Errorf("manifest function returned invalid package metadata")
+	}
+	if authors, ok := fields["Authors"]; ok {
+		authorArray, ok := authors.(ast.ArrayLiteralExpr)
+		if !ok {
+			return fmt.Errorf("manifest function returned invalid package metadata")
+		}
+		for _, author := range authorArray.Elements {
+			if _, ok := author.(ast.StringLiteralExpr); !ok {
+				return fmt.Errorf("manifest function returned invalid package metadata")
+			}
+		}
+	}
+	if date, ok := fields["Date"]; ok {
+		if _, ok := date.(ast.StringLiteralExpr); !ok {
+			return fmt.Errorf("manifest function returned invalid package metadata")
+		}
 	}
 	deps, ok := fields["Dependencies"].(ast.ArrayLiteralExpr)
 	if !ok {

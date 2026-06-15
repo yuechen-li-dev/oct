@@ -13,6 +13,8 @@ import (
 type Kind string
 
 const (
+	DefaultManifestDate = "2026-06-15"
+
 	KindLibrary        Kind = "library"
 	KindExperiment     Kind = "experiment"
 	KindWrapperLibrary Kind = "wrapper-library"
@@ -136,7 +138,7 @@ func Write(opts Options) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("check target directory %q: %w", opts.Dir, err)
 	}
-	if err := os.Mkdir(target, 0o755); err != nil {
+	if err := os.MkdirAll(target, 0o755); err != nil {
 		return fmt.Errorf("create target directory %q: %w", opts.Dir, err)
 	}
 	createdTarget := true
@@ -289,6 +291,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Dependencies: Dependency[]
 }
 
@@ -302,10 +306,12 @@ fn Manifest() -> PackageManifest {
         Name: %q
         Version: "0.1.0"
         Description: %q
+        Authors: ["Unknown"]
+        Date: %q
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
-`, name, name+" package")
+`, name, name+" package", DefaultManifestDate)
 }
 
 func libraryCore(name string) string {
@@ -344,6 +350,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Kind: String
     EntryMilestone: String
     Dependencies: Dependency[]
@@ -359,12 +367,14 @@ fn Manifest() -> PackageManifest {
         Name: %q
         Version: "0.1.0"
         Description: %q
+        Authors: ["Unknown"]
+        Date: %q
         Kind: "experiment"
         EntryMilestone: "M0"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }
-`, name, name+" experiment")
+`, name, name+" experiment", DefaultManifestDate)
 }
 
 func experimentCore(name string) string {
@@ -413,6 +423,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Kind: String
     Dependencies: Dependency[]
     Wrappers: Wrapper[]
@@ -445,6 +457,8 @@ fn Manifest() -> PackageManifest {
         Name: %q
         Version: "0.1.0"
         Description: %q
+        Authors: ["Unknown"]
+        Date: %q
         Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
         Wrappers: [
@@ -461,7 +475,7 @@ fn Manifest() -> PackageManifest {
         ]
     }
 }
-`, name, name+" wrapper package", kebab, name, sidecarCommand, "sidecars/"+sidecarCommand, name+"EchoString")
+`, name, name+" wrapper package", DefaultManifestDate, kebab, name, sidecarCommand, "sidecars/"+sidecarCommand, name+"EchoString")
 }
 
 func wrapperCore(name string) string {

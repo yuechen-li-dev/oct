@@ -4,6 +4,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Kind: String
     EntryMilestone: String
     Dependencies: Dependency[]
@@ -18,6 +20,8 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "ArrayMapGenerics"
         Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-06-15"
         Description: "ArrayMapGenerics experiment"
         Kind: "experiment"
         EntryMilestone: "M0"

@@ -4,6 +4,8 @@ record PackageManifest {
     Name: String
     Version: String
     Description: String
+    Authors: String[]
+    Date: String
     Dependencies: Dependency[]
 }
 
@@ -16,6 +18,8 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Simulation"
         Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-06-15"
         Description: "Deterministic fixed-step simulation helpers built on Octomata flow/state"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }

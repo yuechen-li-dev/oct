@@ -31,7 +31,7 @@ PM2 should explicitly not implement federation. A registry MVP is a deterministi
 
 ### Package manifests
 
-Current package manifests are ordinary `manifest.oct` files with `package Manifest`, a `PackageManifest` record, a `Dependency` record, and `fn Manifest() -> PackageManifest`. The package-manager loader requires `Name`, `Version`, `Description`, and `Dependencies`, and recognizes optional `Kind`, `EntryMilestone`, and `Wrappers` fields.
+Current package manifests are ordinary `manifest.oct` files with `package Manifest`, a `PackageManifest` record, a `Dependency` record, and `fn Manifest() -> PackageManifest`. The package-manager loader requires `Name`, `Version`, `Description`, and `Dependencies`, and recognizes optional `Authors`, `Date`, `Kind`, `EntryMilestone`, and `Wrappers` fields. `Authors` is an ordered one-dimensional `String[]` where the first element is the first author. `Date` is a `String` using ISO `YYYY-MM-DD`; old manifests without these metadata fields remain accepted for compatibility.
 
 The current manifest kind vocabulary is normalized by Go implementation code rather than Oct user code. Omitted or empty `Kind` is treated as pure/library-style package metadata; explicit supported kinds include `experiment` and `wrapper`. Existing docs sometimes call pure packages “pure,” while the user-facing scaffold command calls them “library.” PM2 should surface this vocabulary mismatch rather than silently inventing a new manifest kind. Recommended registry `Kind` values for PM2 are `library`, `experiment`, and `wrapper`, where `library` maps to an omitted/normalized pure manifest kind during validation.
 

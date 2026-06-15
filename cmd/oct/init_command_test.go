@@ -13,9 +13,9 @@ func TestInitCreatesManifestForExistingDirectories(t *testing.T) {
 		name     string
 		snippets []string
 	}{
-		{kind: "experiment", name: "BrownNoiseKalman", snippets: []string{"Name: \"BrownNoiseKalman\"", "Kind: \"experiment\"", "EntryMilestone: \"M0\""}},
-		{kind: "library", name: "SignalTools", snippets: []string{"Name: \"SignalTools\"", "Description: \"SignalTools package\""}},
-		{kind: "wrapper-library", name: "OpenCV", snippets: []string{"Name: \"OpenCV\"", "Kind: \"wrapper\"", "SidecarCommand: \"octxiliary-open-cv\""}},
+		{kind: "experiment", name: "BrownNoiseKalman", snippets: []string{"Name: \"BrownNoiseKalman\"", "Kind: \"experiment\"", "EntryMilestone: \"M0\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
+		{kind: "library", name: "SignalTools", snippets: []string{"Name: \"SignalTools\"", "Description: \"SignalTools package\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
+		{kind: "wrapper-library", name: "OpenCV", snippets: []string{"Name: \"OpenCV\"", "Kind: \"wrapper\"", "SidecarCommand: \"octxiliary-open-cv\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {

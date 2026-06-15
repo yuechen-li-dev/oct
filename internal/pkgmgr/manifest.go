@@ -2,6 +2,7 @@ package pkgmgr
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
@@ -15,6 +16,8 @@ type ManifestMetadata struct {
 	Name           string
 	Version        string
 	Description    string
+	Authors        []string
+	Date           string
 	Kind           string
 	EntryMilestone string
 	Dependencies   []DependencyMetadata
@@ -65,6 +68,8 @@ func extractManifestMetadata(file ast.File) (ManifestMetadata, error) {
 		"Description":  {Name: "String"},
 		"Dependencies": {Name: "Dependency", IsArray: true},
 	}, map[string]ast.TypeRef{
+		"Authors":        {Name: "String", IsArray: true},
+		"Date":           {Name: "String"},
 		"Kind":           {Name: "String"},
 		"EntryMilestone": {Name: "String"},
 		"Wrappers":       manifestwrapper.PackageManifestWrappersType(),
@@ -209,6 +214,14 @@ func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, 
 	if err != nil {
 		return ManifestMetadata{}, err
 	}
+	authors, err := optionalStringArrayField(fieldValues, "Authors")
+	if err != nil {
+		return ManifestMetadata{}, err
+	}
+	date, err := optionalISODateField(fieldValues, "Date")
+	if err != nil {
+		return ManifestMetadata{}, err
+	}
 	kind, err := optionalStringField(fieldValues, "Kind")
 	if err != nil {
 		return ManifestMetadata{}, err
@@ -268,6 +281,8 @@ func extractManifestReturn(fn ast.FunctionDecl, manifestFields map[string]bool, 
 		Name:           name,
 		Version:        version,
 		Description:    description,
+		Authors:        authors,
+		Date:           date,
 		Kind:           normalizedKind,
 		EntryMilestone: entryMilestone,
 		Dependencies:   deps,
@@ -309,6 +324,8 @@ func stringField(fields map[string]ast.Expr, fieldName string) (string, error) {
 	return str.Value, nil
 }
 
+var isoDatePattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
 func optionalStringField(fields map[string]ast.Expr, fieldName string) (string, error) {
 	expr, ok := fields[fieldName]
 	if !ok {
@@ -319,6 +336,37 @@ func optionalStringField(fields map[string]ast.Expr, fieldName string) (string, 
 		return "", fmt.Errorf("manifest field '%s' must be a string literal", fieldName)
 	}
 	return str.Value, nil
+}
+
+func optionalStringArrayField(fields map[string]ast.Expr, fieldName string) ([]string, error) {
+	expr, ok := fields[fieldName]
+	if !ok {
+		return nil, nil
+	}
+	array, ok := expr.(ast.ArrayLiteralExpr)
+	if !ok {
+		return nil, fmt.Errorf("manifest field '%s' must be a String[] literal", fieldName)
+	}
+	values := make([]string, 0, len(array.Elements))
+	for idx, element := range array.Elements {
+		str, ok := element.(ast.StringLiteralExpr)
+		if !ok {
+			return nil, fmt.Errorf("manifest field '%s' element %d must be a string literal", fieldName, idx)
+		}
+		values = append(values, str.Value)
+	}
+	return values, nil
+}
+
+func optionalISODateField(fields map[string]ast.Expr, fieldName string) (string, error) {
+	value, err := optionalStringField(fields, fieldName)
+	if err != nil {
+		return "", err
+	}
+	if value != "" && !isoDatePattern.MatchString(value) {
+		return "", fmt.Errorf("manifest field '%s' must use ISO date format YYYY-MM-DD", fieldName)
+	}
+	return value, nil
 }
 
 func normalizePackageKind(kind string) (string, error) {
