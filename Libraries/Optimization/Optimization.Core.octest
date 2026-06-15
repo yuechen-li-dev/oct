@@ -1,65 +1,70 @@
 package Optimization
 
-fn f(x: Float) -> Float {
-    let dx = x - 3.0
-    return dx * dx + 1.0
-}
-
-fn grad(x: Float) -> Float {
-    return 2.0 * (x - 3.0)
+[Fact]
+fn L2NormBasic() -> Void {
+    let v = [3.0, 4.0]
+    Assert.Near(5.0, L2Norm(v)!, 0.0001, "L2 norm of [3,4] = 5")
 }
 
 [Fact]
-fn GoldenSectionSearchFindsKnownMinimum() -> Void {
-    let result = GoldenSectionSearch(f, 0.0 - 5.0, 10.0, 0.000001, 200)
-
-    Assert.True(result.Point >= (0.0 - 5.0) and result.Point <= 10.0, "point should remain inside search interval")
-    Assert.Near(3.0, result.Point, 0.001, "minimum should be near x=3")
-    Assert.Near(1.0, result.Value, 0.001, "minimum value should be near 1")
-    Assert.True(result.Converged, "search should converge on a convex interval")
+fn LInfNormBasic() -> Void {
+    let v = [1.0, -5.0, 3.0]
+    Assert.Near(5.0, LInfNorm(v)!, 0.0001, "L∞ norm of [1,-5,3] = 5")
 }
 
 [Fact]
-fn GoldenSectionSearchRejectsInvalidInputs() -> Void {
-    /// Converted to Require preconditions in M7c; invalid-argument checks now trap instead of returning Error.
-    Assert.True(true, "invalid-input contract is now enforced via Require")
+fn DotProductBasic() -> Void {
+    let a = [1.0, 2.0, 3.0]
+    let b = [4.0, 5.0, 6.0]
+    Assert.Near(32.0, Dot(a, b)!, 0.0001, "[1,2,3]·[4,5,6] = 32")
 }
 
 [Fact]
-fn GradientDescentStepComputesSingleUpdate() -> Void {
-    let next = GradientDescentStep(5.0, 4.0, 0.25)
-    Assert.Near(4.0, next, 0.000001, "step should apply x - alpha * gradient")
+fn ScaleVector() -> Void {
+    let v = [1.0, 2.0, 3.0]
+    let s = Scale(v, 2.0)
+    Assert.Near(2.0, s[0], 0.0001, "scale [1,2,3]*2 gives 2")
+    Assert.Near(4.0, s[1], 0.0001, "scale [1,2,3]*2 gives 4")
+    Assert.Near(6.0, s[2], 0.0001, "scale [1,2,3]*2 gives 6")
 }
 
 [Fact]
-fn GradientDescentSolveConvergesOnQuadratic() -> Void {
-    let result = GradientDescentSolve(f, grad, 10.0, 0.2, 0.000001, 200)
-
-    Assert.Near(3.0, result.Point, 0.001, "gradient descent should converge near minimizer")
-    Assert.Near(1.0, result.Value, 0.001, "objective value should converge near minimum")
-    Assert.True(result.Converged, "gradient magnitude should reach tolerance")
-    Assert.True(result.Iterations > 0, "converged solve should perform at least one iteration")
+fn VecAddBasic() -> Void {
+    let a = [1.0, 2.0]
+    let b = [3.0, 4.0]
+    let c = VecAdd(a, b)!
+    Assert.Near(4.0, c[0], 0.0001, "vecadd [0]")
+    Assert.Near(6.0, c[1], 0.0001, "vecadd [1]")
 }
 
 [Fact]
-fn GradientDescentSolveSupportsMaxIterationStopping() -> Void {
-    let result = GradientDescentSolve(f, grad, 10.0, 0.01, 0.000000000001, 2)
-
-    Assert.Equal(2, result.Iterations, "solver should stop at maxIterations when not converged")
-    Assert.True(not result.Converged, "solver should report non-convergence when limit is hit")
+fn VecSubBasic() -> Void {
+    let a = [5.0, 3.0]
+    let b = [2.0, 1.0]
+    let c = VecSub(a, b)!
+    Assert.Near(3.0, c[0], 0.0001, "vecsub [0]")
+    Assert.Near(2.0, c[1], 0.0001, "vecsub [1]")
 }
 
 [Fact]
-fn GradientDescentRejectsInvalidInputs() -> Void {
-    /// Converted to Require preconditions in M7c; invalid-argument checks now trap instead of returning Error.
-    Assert.True(true, "invalid-input contract is now enforced via Require")
+fn RSSBasic() -> Void {
+    let r = RSS([3.0, 4.0])
+    Assert.Near(25.0, r, 0.0001, "RSS of [3,4] = 25")
 }
 
 [Fact]
-fn OptimizationResultsComposeInExpressionChain() -> Void {
-    let gs = GoldenSectionSearch(f, 0.0, 6.0, 0.000001, 200)
-    let gd = GradientDescentSolve(f, grad, 6.0, 0.2, 0.000001, 200)
+fn LInfNormRejectsEmpty() -> Void {
+    var empty: Float[] = []
+    Assert.Error(LInfNorm(empty), "LInfNorm of empty should error")
+}
 
-    let score = gs.Value + gd.Value + Abs(gs.Point - gd.Point)
-    Assert.True(score >= 2.0, "result fields should compose in deterministic expressions")
+[Fact]
+fn L2NormRejectsEmpty() -> Void {
+    var empty: Float[] = []
+    Assert.Error(L2Norm(empty), "L2Norm of empty should error")
+}
+
+[Fact]
+fn DotRejectsMismatch() -> Void {
+    Assert.Error(Dot([1.0, 2.0], [1.0]), "Dot length mismatch should error")
 }

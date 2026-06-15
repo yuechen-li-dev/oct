@@ -1,0 +1,171 @@
+package Optimization
+
+// ============================================================
+// Optimization.GradientDescent
+//
+// Gradient descent with backtracking line search.
+//
+// The fixed-step version in the old Optimization.Core was broken:
+// a fixed step size diverges for most real functions unless
+// carefully tuned. This version uses Armijo backtracking to
+// automatically find a valid step at each iteration.
+//
+// Methods:
+//   GradientDescent         — steepest descent + Armijo line search
+//   GradientDescentMomentum — heavy ball / momentum method
+//
+// GRADIENT NOTE:
+//   Oct does not have automatic differentiation.
+//   You supply the gradient function explicitly.
+//   If you don't have an analytic gradient, use:
+//     Numerics.Differentiation.CentralDiff (1D)
+//     or approximate ∂f/∂xᵢ via finite differences per component.
+//   For derivative-free optimization of 2-10 parameters,
+//   use Optimization.NelderMead instead.
+// ============================================================
+
+// ============================================================
+// Steepest descent with Armijo line search
+// ============================================================
+
+/// Gradient descent with Armijo backtracking line search.
+///
+/// f    — objective function (minimize this)
+/// grad — gradient of f: returns Float[] of same length as x
+/// x0   — initial point
+/// gTol — convergence: stop when |∇f(x)|_∞ ≤ gTol
+/// maxIterations — hard iteration limit
+///
+/// Returns OptimizationResultND with point, value, gradient norm,
+/// and convergence status.
+fn GradientDescent(
+    f:             fn(Float[]) -> Float,
+    grad:          fn(Float[]) -> Float[],
+    x0:            Float[],
+    gTol:          Float,
+    maxIterations: Int
+) -> OptimizationResultND ! Error {
+    if Len(x0) == 0 {
+        return error("GradientDescent: x0 must be non-empty")
+    }
+    if gTol <= 0.0 {
+        return error("GradientDescent: gTol must be > 0")
+    }
+    if maxIterations <= 0 {
+        return error("GradientDescent: maxIterations must be > 0")
+    }
+
+    var x         = x0
+    var iterations = 0
+    var converged  = false
+    var gNorm      = 0.0
+
+    while iterations < maxIterations and not converged {
+        let g     = grad(x)
+        let gNorm0 = LInfNorm(g)?
+
+        if gNorm0 <= gTol {
+            converged = true
+            gNorm     = gNorm0
+        }
+
+        if not converged {
+            // Descent direction: d = -g (steepest descent)
+            let d  = Scale(g, -1.0)
+            let fx = f(x)
+            let gd = Dot(g, d)?   // = -|g|² < 0 (always a descent direction)
+
+            let ls = DefaultArmijoLineSearch(x, d, f, fx, gd)?
+            x = VecAdd(x, Scale(d, ls.StepSize))?
+            gNorm = gNorm0
+            iterations = iterations + 1
+        }
+    }
+
+    return OptimizationResultND {
+        Point:      x
+        FMin:       f(x)
+        Iterations: iterations
+        Converged:  converged
+        GradNorm:   gNorm
+    }
+}
+
+// ============================================================
+// Gradient descent with momentum (heavy ball method)
+//
+// x_{k+1} = x_k - α * ∇f(x_k) + β * (x_k - x_{k-1})
+//
+// The momentum term β * (x_k - x_{k-1}) carries inertia from
+// the previous step, which helps escape shallow local minima
+// and accelerates convergence in long narrow valleys.
+//
+// Typical: α = 0.01, β = 0.9.
+// Unlike plain gradient descent, no line search — the step
+// size α is fixed. Tune carefully for your problem scale.
+// ============================================================
+
+/// Gradient descent with momentum (heavy ball method).
+///
+/// alpha — fixed step size (typical: 0.01)
+/// beta  — momentum coefficient in [0, 1) (typical: 0.9)
+fn GradientDescentMomentum(
+    f:             fn(Float[]) -> Float,
+    grad:          fn(Float[]) -> Float[],
+    x0:            Float[],
+    alpha:         Float,
+    beta:          Float,
+    gTol:          Float,
+    maxIterations: Int
+) -> OptimizationResultND ! Error {
+    if Len(x0) == 0 {
+        return error("GradientDescentMomentum: x0 must be non-empty")
+    }
+    if alpha <= 0.0 {
+        return error("GradientDescentMomentum: alpha must be > 0")
+    }
+    if beta < 0.0 or beta >= 1.0 {
+        return error("GradientDescentMomentum: beta must be in [0, 1)")
+    }
+    if gTol <= 0.0 {
+        return error("GradientDescentMomentum: gTol must be > 0")
+    }
+    if maxIterations <= 0 {
+        return error("GradientDescentMomentum: maxIterations must be > 0")
+    }
+
+    var x     = x0
+    var xPrev = x0    // previous iterate (for momentum)
+    var iterations = 0
+    var converged  = false
+    var gNorm      = 0.0
+
+    while iterations < maxIterations and not converged {
+        let g      = grad(x)
+        let gNorm0 = LInfNorm(g)?
+
+        if gNorm0 <= gTol {
+            converged = true
+            gNorm     = gNorm0
+        }
+
+        if not converged {
+            // x_new = x - alpha * g + beta * (x - xPrev)
+            let step     = Scale(g, alpha)
+            let momentum = Scale(VecSub(x, xPrev)?, beta)
+            let xNew     = VecAdd(VecSub(x, step)?, momentum)?
+            xPrev        = x
+            x            = xNew
+            gNorm        = gNorm0
+            iterations   = iterations + 1
+        }
+    }
+
+    return OptimizationResultND {
+        Point:      x
+        FMin:       f(x)
+        Iterations: iterations
+        Converged:  converged
+        GradNorm:   gNorm
+    }
+}

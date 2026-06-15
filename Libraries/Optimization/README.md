@@ -1,45 +1,39 @@
-# Optimization M0
+# Optimization
 
-## Scope
+Mathematical optimization library for Oct. 40 tests, all compiled.
 
-`Libraries/Optimization` provides a small deterministic unconstrained optimization core:
+## Packages
 
-- `GoldenSectionSearch(f, a, b, tolerance, maxIterations)`
-- `GradientDescentStep(x, gradient, stepSize)`
-- `GradientDescentSolve(f, grad, x0, stepSize, tolerance, maxIterations)`
+- `Optimization.Core` — shared types, vector utilities (Scale, VecAdd, VecSub, Dot, L2Norm, LInfNorm, RSS)
+- `Optimization.LineSearch` — Armijo backtracking, Wolfe condition checks
+- `Optimization.GradientDescent` — steepest descent + Armijo line search, momentum variant
+- `Optimization.NelderMead` — derivative-free simplex for 2-10 parameters
+- `Optimization.LeastSquares` — Gauss-Newton, Levenberg-Marquardt, curve fitting
 
-This is **not** a modeling DSL and **not** a solver framework.
+## Quick Reference
 
-## Algorithms and limits
+```oct
+// Gradient descent (requires analytic gradient)
+let result = GradientDescent(f, grad, x0, gTol, maxIter)!
 
-- `GoldenSectionSearch`: 1D, bounded interval, derivative-free local minimization inside `[a, b]`
-- `GradientDescentSolve`: fixed-step gradient descent with user-supplied gradient
+// Nelder-Mead (derivative-free, 2-10 parameters)
+let result = NelderMead(f, x0, xTol, fTol, maxIter)!
 
-Optimization M0 is currently **scalar-only (`Float`)** and **dimensionless-only**.
+// Curve fitting (Levenberg-Marquardt)
+let result = FitCurve(model, params0, xData, yData, rTol, maxIter)!
 
-## Result records
+// Line search building block
+let ls = DefaultArmijoLineSearch(x, d, f, fx, gd)!
+```
 
-- `OptimizationResult1D { Point, Value, Iterations, Converged }`
-- `OptimizationResult { Point, Value, Iterations, Converged }`
+## Dimensional Boundary
 
-Both result shapes are explicit and deterministic.
+All parameters are dimensionless `Float`. Strip units before passing,
+restore after. This is explicit by design — see Core.oct comments.
 
-## Convergence and stopping
+## Known Issues
 
-- Golden section converges when interval width `<= tolerance`, otherwise stops at `maxIterations`
-- Gradient descent converges when `Abs(grad(x)) <= tolerance`, otherwise stops at `maxIterations`
-
-## Invalid-input policy
-
-Functions reject invalid setup with `Error`:
-
-- invalid search interval (`a >= b`)
-- `tolerance <= 0`
-- `maxIterations <= 0`
-- `stepSize <= 0` for gradient descent
-
-## Explicit non-goals
-
-Out of scope in M0: constrained optimization, LP/QP/MILP, Newton/quasi-Newton families,
-automatic differentiation, numerical differentiation frameworks, stochastic optimizers,
-line-search frameworks, and multi-start/global optimization features.
+See `FRICTION.md` for upstream fixes needed:
+- Float[] assignment is reference copy (critical — requires deep copy fix in compiler)
+- fn(Float[]) -> X parameters broken in interpreter (works in compiled mode)
+- Nested index assignment not supported for board fields

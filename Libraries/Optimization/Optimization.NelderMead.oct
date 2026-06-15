@@ -1,0 +1,249 @@
+package Optimization
+
+// ============================================================
+// Optimization.NelderMead
+//
+// Nelder-Mead downhill simplex method.
+// Derivative-free minimization for 2-10 parameter problems.
+//
+// Implemented as a plain function with local Float[][] state.
+// The flow version was considered but Float[][] board field
+// indexed assignment is not yet supported in Oct.
+// Float[][] local var indexed assignment works correctly.
+//
+// The simplex has n+1 vertices in n dimensions.
+// Each iteration applies one of four operations:
+//   Reflect   — reflect worst vertex through centroid
+//   Expand    — extend reflection if it's the new best
+//   Contract  — pull toward centroid if reflection is poor
+//   Shrink    — shrink whole simplex toward best vertex
+//
+// Parameters (Nelder & Mead 1965):
+//   α = 1.0  (reflection)
+//   γ = 2.0  (expansion)
+//   ρ = 0.5  (contraction)
+//   σ = 0.5  (shrink)
+// ============================================================
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/// Index of minimum in Float[].
+fn ArgMin(v: Float[]) -> Int {
+    var best = 0
+    for i in 1 .. Len(v) {
+        if v[i] < v[best] {
+            best = i
+        }
+    }
+    return best
+}
+
+/// Index of maximum in Float[].
+fn ArgMax(v: Float[]) -> Int {
+    var best = 0
+    for i in 1 .. Len(v) {
+        if v[i] > v[best] {
+            best = i
+        }
+    }
+    return best
+}
+
+/// Index of second-maximum in Float[] (index of second-worst vertex).
+fn ArgSecondMax(v: Float[], worstIdx: Int) -> Int {
+    var best = if worstIdx == 0 { 1 } else { 0 }
+    for i in 0 .. Len(v) {
+        if i != worstIdx and v[i] > v[best] {
+            best = i
+        }
+    }
+    return best
+}
+
+/// Centroid of all vertices except worstIdx.
+fn Centroid(simplex: Float[][], worstIdx: Int) -> Float[] ! Error {
+    let n  = Len(simplex[0])
+    let ns = Len(simplex)
+    var c  = [0.0]
+    for j in 1 .. n {
+        c = Append(c, 0.0)
+    }
+    for i in 0 .. ns {
+        if i != worstIdx {
+            let row = simplex[i]
+            for j in 0 .. n {
+                c[j] = c[j] + row[j]
+            }
+        }
+    }
+    let denom  = Float(ns - 1)
+    var result = [c[0] / denom]
+    for j in 1 .. n {
+        result = Append(result, c[j] / denom)
+    }
+    return result
+}
+
+/// Build initial simplex from x0.
+fn InitialSimplex(x0: Float[]) -> Float[][] {
+    let n = Len(x0)
+    var s = [x0]
+    for i in 0 .. n {
+        // Build a fresh copy of x0 via Append to avoid aliasing
+        var v = [x0[0]]
+        for k in 1 .. n {
+            v = Append(v, x0[k])
+        }
+        if Abs(x0[i]) > 0.0001 {
+            v[i] = x0[i] * 1.05
+        } else {
+            v[i] = 0.1
+        }
+        s = Append(s, v)
+    }
+    return s
+}
+
+/// Read simplex[i][j] safely via row copy.
+fn SimplexGet(simplex: Float[][], i: Int, j: Int) -> Float {
+    let row = simplex[i]
+    return row[j]
+}
+
+/// Compute a new point: base + scale * (a - b).
+fn SimplexCombine(base: Float[], a: Float[], b: Float[], scale: Float) -> Float[] ! Error {
+    if Len(base) != Len(a) or Len(a) != Len(b) {
+        return error("SimplexCombine: vector length mismatch")
+    }
+    var result = [base[0] + scale * (a[0] - b[0])]
+    for j in 1 .. Len(base) {
+        result = Append(result, base[j] + scale * (a[j] - b[j]))
+    }
+    return result
+}
+
+// ============================================================
+// Main Nelder-Mead function
+// ============================================================
+
+/// Nelder-Mead derivative-free minimization.
+///
+/// f      — objective function fn(Float[]) -> Float
+/// x0     — initial guess (dimensionless, see Core notes)
+/// xTol   — convergence: stop when max simplex edge < xTol
+/// fTol   — convergence: stop when f-range across vertices < fTol
+/// maxIter — hard iteration limit
+///
+/// Good for: 2-10 parameter problems without analytic gradient.
+/// For 1D: use Numerics.Optimization.Brent instead.
+/// For problems with analytic gradient: use GradientDescent.
+fn NelderMead(
+    f:       fn(Float[]) -> Float,
+    x0:      Float[],
+    xTol:    Float,
+    fTol:    Float,
+    maxIter: Int
+) -> OptimizationResultND ! Error {
+    if Len(x0) == 0 {
+        return error("NelderMead: x0 must be non-empty")
+    }
+    if xTol <= 0.0 {
+        return error("NelderMead: xTol must be > 0")
+    }
+    if fTol <= 0.0 {
+        return error("NelderMead: fTol must be > 0")
+    }
+    if maxIter <= 0 {
+        return error("NelderMead: maxIter must be > 0")
+    }
+
+    let n = Len(x0)
+
+    // Build initial simplex and evaluate f at each vertex
+    var simplex = InitialSimplex(x0)
+    var fvals   = [f(simplex[0])]
+    for i in 1 .. n + 1 {
+        fvals = Append(fvals, f(simplex[i]))
+    }
+
+    var iter      = 0
+    var converged = false
+
+    while iter < maxIter and not converged {
+        let bestIdx    = ArgMin(fvals)
+        let worstIdx   = ArgMax(fvals)
+        let sndWorstIdx = ArgSecondMax(fvals, worstIdx)
+
+        // Convergence check
+        let fRange = fvals[worstIdx] - fvals[bestIdx]
+        let edgeDiff = VecSub(simplex[worstIdx], simplex[bestIdx])?
+        let edgeLen  = L2Norm(edgeDiff)?
+
+        if fRange <= fTol and edgeLen <= xTol {
+            converged = true
+        }
+
+        if not converged {
+            let centroid = Centroid(simplex, worstIdx)?
+
+            // Reflect: xr = centroid + 1 * (centroid - worst)
+            let xr = SimplexCombine(centroid, centroid, simplex[worstIdx], 1.0)?
+            let fr = f(xr)
+
+            if fr < fvals[bestIdx] {
+                // Expand: xe = centroid + 2 * (xr - centroid)
+                let xe = SimplexCombine(centroid, xr, centroid, 2.0)?
+                let fe = f(xe)
+                if fe < fr {
+                    simplex[worstIdx] = xe
+                    fvals[worstIdx]   = fe
+                }
+                if fe >= fr {
+                    simplex[worstIdx] = xr
+                    fvals[worstIdx]   = fr
+                }
+            }
+
+            if fr >= fvals[bestIdx] and fr < fvals[sndWorstIdx] {
+                // Accept reflection
+                simplex[worstIdx] = xr
+                fvals[worstIdx]   = fr
+            }
+
+            if fr >= fvals[sndWorstIdx] {
+                // Contract: xc = centroid + 0.5 * (worst - centroid)
+                let xc = SimplexCombine(centroid, simplex[worstIdx], centroid, 0.5)?
+                let fc = f(xc)
+
+                if fc < fvals[worstIdx] {
+                    simplex[worstIdx] = xc
+                    fvals[worstIdx]   = fc
+                }
+                if fc >= fvals[worstIdx] {
+                    // Shrink toward best
+                    let xBest = simplex[bestIdx]
+                    for i in 0 .. n + 1 {
+                        if i != bestIdx {
+                            let xs = SimplexCombine(xBest, simplex[i], xBest, 0.5)?
+                            simplex[i] = xs
+                            fvals[i]   = f(xs)
+                        }
+                    }
+                }
+            }
+
+            iter = iter + 1
+        }
+    }
+
+    let bestIdx = ArgMin(fvals)
+    return OptimizationResultND {
+        Point:      simplex[bestIdx]
+        FMin:       fvals[bestIdx]
+        Iterations: iter
+        Converged:  converged
+        GradNorm:   0.0
+    }
+}

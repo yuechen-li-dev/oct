@@ -1,0 +1,58 @@
+package Optimization
+
+// f(x,y) = (x-1)² + (y-2)², min at [1,2]
+fn fGD(v: Float[]) -> Float {
+    return (v[0]-1.0)*(v[0]-1.0) + (v[1]-2.0)*(v[1]-2.0)
+}
+fn gradGD(v: Float[]) -> Float[] {
+    return [2.0*(v[0]-1.0), 2.0*(v[1]-2.0)]
+}
+
+// f(x,y) = x² + 10y², min at [0,0] (ill-conditioned — tests momentum benefit)
+fn fElliptic(v: Float[]) -> Float {
+    return v[0]*v[0] + 10.0*v[1]*v[1]
+}
+fn gradElliptic(v: Float[]) -> Float[] {
+    return [2.0*v[0], 20.0*v[1]]
+}
+
+[Fact]
+fn GradientDescentFindsMinimum() -> Void {
+    let result = GradientDescent(fGD, gradGD, [0.0, 0.0], 0.0001, 500)!
+    Assert.Near(1.0, result.Point[0], 0.01, "GD converges to x=1")
+    Assert.Near(2.0, result.Point[1], 0.01, "GD converges to y=2")
+    Assert.True(result.Converged, "GD should converge")
+}
+
+[Fact]
+fn GradientDescentMinimumIsNearZero() -> Void {
+    let result = GradientDescent(fGD, gradGD, [0.0, 0.0], 0.0001, 500)!
+    Assert.Near(0.0, result.FMin, 0.0001, "minimum value near 0")
+}
+
+[Fact]
+fn GradientDescentRejectsEmptyX0() -> Void {
+    var emptyGD: Float[] = []
+    Assert.Error(GradientDescent(fGD, gradGD, emptyGD, 0.0001, 100),
+        "empty x0 should error")
+}
+
+[Fact]
+fn GradientDescentRejectsNegativeTol() -> Void {
+    Assert.Error(GradientDescent(fGD, gradGD, [0.0, 0.0], -1.0, 100),
+        "negative gTol should error")
+}
+
+[Fact]
+fn GradientDescentMomentumConverges() -> Void {
+    let result = GradientDescentMomentum(fGD, gradGD, [0.0, 0.0], 0.1, 0.9, 0.0001, 500)!
+    Assert.Near(1.0, result.Point[0], 0.01, "GD+momentum converges to x=1")
+    Assert.Near(2.0, result.Point[1], 0.01, "GD+momentum converges to y=2")
+}
+
+[Fact]
+fn GradientDescentMomentumRejectsBetaOOB() -> Void {
+    Assert.Error(
+        GradientDescentMomentum(fGD, gradGD, [0.0, 0.0], 0.1, 1.0, 0.0001, 100),
+        "beta=1 should error")
+}

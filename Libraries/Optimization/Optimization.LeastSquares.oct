@@ -1,0 +1,432 @@
+package Optimization
+
+// ============================================================
+// Optimization.LeastSquares
+//
+// Nonlinear least-squares fitting: find parameters p that
+// minimize the residual sum of squares:
+//
+//   RSS(p) = Σᵢ (model(p, xData[i]) - yData[i])²
+//
+// Methods:
+//   GaussNewton          — fast, requires good starting guess
+//   LevenbergMarquardt   — robust, interpolates GN and grad descent
+//
+// WHEN TO USE:
+//   GaussNewton        — smooth, well-scaled problems, good x0
+//   LevenbergMarquardt — production default, handles bad starts
+//
+// DIMENSIONAL BOUNDARY:
+//   Parameters p are dimensionless. Convert your physical
+//   parameters to/from SI before and after fitting. See Core notes.
+//
+//   xData and yData are also dimensionless — strip units at the
+//   call site and reattach them to the fitted parameters after.
+//
+// GRADIENT COMPUTATION:
+//   Both methods require the Jacobian J where J[i][j] = ∂r_i/∂p_j.
+//   This is approximated via central finite differences unless
+//   you supply an analytic Jacobian. The `jacobianCD` helper
+//   computes it automatically.
+// ============================================================
+
+// ============================================================
+// Residual and Jacobian computation
+// ============================================================
+
+/// Compute residuals: r[i] = model(params, xData[i]) - yData[i].
+fn ComputeResiduals(
+    model:  fn(Float[], Float) -> Float,
+    params: Float[],
+    xData:  Float[],
+    yData:  Float[]
+) -> Float[] ! Error {
+    if Len(xData) != Len(yData) {
+        return error("ComputeResiduals: xData and yData must have equal length")
+    }
+    if Len(xData) == 0 {
+        return error("ComputeResiduals: data must be non-empty")
+    }
+
+    var r = [model(params, xData[0]) - yData[0]]
+    for i in 1 .. Len(xData) {
+        r = Append(r, model(params, xData[i]) - yData[i])
+    }
+    return r
+}
+
+/// Compute Jacobian via central differences.
+/// J[i][j] = ∂r_i/∂p_j ≈ (r_i(p + h·eⱼ) - r_i(p - h·eⱼ)) / (2h)
+///
+/// Returns a Float[][] where J[i] is the i-th row (one per data point)
+/// and J[i][j] is the partial derivative w.r.t. parameter j.
+fn JacobianCD(
+    model:  fn(Float[], Float) -> Float,
+    params: Float[],
+    xData:  Float[],
+    yData:  Float[],
+    h:      Float
+) -> Float[][] ! Error {
+    if h <= 0.0 {
+        return error("JacobianCD: h must be > 0")
+    }
+    let m  = Len(xData)
+    let np = Len(params)
+    if m == 0 or np == 0 {
+        return error("JacobianCD: data and params must be non-empty")
+    }
+
+    // J is m x np: one row per data point, one col per parameter
+    // Build each row independently — Float[] assignment is reference copy,
+    // so reusing firstRow would make all rows aliases of the same array.
+    var J = [[0.0]]
+    var r0 = [0.0]
+    for k in 1 .. np { r0 = Append(r0, 0.0) }
+    J[0] = r0
+    for i in 1 .. m {
+        var ri = [0.0]
+        for k in 1 .. np { ri = Append(ri, 0.0) }
+        J = Append(J, ri)
+    }
+
+    for j in 0 .. np {
+        // Build fresh copies via Append to avoid aliasing
+        var pFwd = [params[0]]
+        var pBwd = [params[0]]
+        for kk in 1 .. Len(params) {
+            pFwd = Append(pFwd, params[kk])
+            pBwd = Append(pBwd, params[kk])
+        }
+        pFwd[j] = params[j] + h
+        pBwd[j] = params[j] - h
+
+        for i in 0 .. m {
+            let rFwd = model(pFwd, xData[i]) - yData[i]
+            let rBwd = model(pBwd, xData[i]) - yData[i]
+            var jrow = J[i]
+            jrow[j] = (rFwd - rBwd) / (2.0 * h)
+            J[i] = jrow
+        }
+    }
+
+    return J
+}
+
+/// Compute Jᵀ·r (gradient of RSS/2 w.r.t. params).
+/// g[j] = Σᵢ J[i][j] * r[i]
+fn JtR(J: Float[][], r: Float[]) -> Float[] ! Error {
+    if Len(J) == 0 {
+        return error("JtR: empty Jacobian")
+    }
+    let m  = Len(r)
+    let np = Len(J[0])
+    if Len(J) != m {
+        return error("JtR: J rows must equal r length")
+    }
+
+    var g = [0.0]
+    for j in 1 .. np {
+        g = Append(g, 0.0)
+    }
+
+    for j in 0 .. np {
+        var sum = 0.0
+        for i in 0 .. m {
+            sum = sum + J[i][j] * r[i]
+        }
+        g[j] = sum
+    }
+    return g
+}
+
+/// Compute Jᵀ·J (approximate Hessian of RSS).
+/// H[j][k] = Σᵢ J[i][j] * J[i][k]
+fn JtJ(J: Float[][]) -> Float[][] ! Error {
+    if Len(J) == 0 {
+        return error("JtJ: empty Jacobian")
+    }
+    let np = Len(J[0])
+    var H  = [[0.0]]
+    var h0 = [0.0]
+    for k in 1 .. np { h0 = Append(h0, 0.0) }
+    H[0] = h0
+    for j in 1 .. np {
+        var hj = [0.0]
+        for k in 1 .. np { hj = Append(hj, 0.0) }
+        H = Append(H, hj)
+    }
+
+    for j in 0 .. np {
+        for k in 0 .. np {
+            var sum = 0.0
+            for i in 0 .. Len(J) {
+                sum = sum + J[i][j] * J[i][k]
+            }
+            var hrow = H[j]
+            hrow[k] = sum
+            H[j] = hrow
+        }
+    }
+    return H
+}
+
+// ============================================================
+// Solve (Jᵀ·J + λ·I)·Δp = -Jᵀ·r  via Gaussian elimination.
+// This is the core linear system for LM and Gauss-Newton.
+// ============================================================
+
+/// Solve A·x = b via Gaussian elimination with partial pivoting.
+/// Returns the solution vector x.
+fn GaussElim(A: Float[][], b: Float[]) -> Float[] ! Error {
+    let n = Len(b)
+    if Len(A) != n {
+        return error("GaussElim: A must be n x n")
+    }
+
+    // Augmented matrix [A | b] — build each row independently
+    var M = [Append(A[0], b[0])]
+    for i in 1 .. n {
+        M = Append(M, Append(A[i], b[i]))
+    }
+
+    // Forward elimination with partial pivoting
+    for col in 0 .. n {
+        // Find pivot
+        var pivotRow = col
+        for row in col + 1 .. n {
+            let mrowPiv    = M[row]
+            let mrowCurPiv = M[pivotRow]
+            if Abs(mrowPiv[col]) > Abs(mrowCurPiv[col]) {
+                pivotRow = row
+            }
+        }
+
+        // Swap rows col and pivotRow
+        if pivotRow != col {
+            let tmp       = M[col]
+            M[col]        = M[pivotRow]
+            M[pivotRow]   = tmp
+        }
+
+        if Abs(M[col][col]) < 0.0000000000001 {
+            return error("GaussElim: singular or near-singular matrix")
+        }
+
+        // Eliminate below
+        for row in col + 1 .. n {
+            let factor = M[row][col] / M[col][col]
+            for k in col .. n + 1 {
+                var mrowGE = M[row]
+                mrowGE[k] = mrowGE[k] - factor * M[col][k]
+                M[row] = mrowGE
+            }
+        }
+    }
+
+    // Back substitution
+    var x = [0.0]
+    for i in 1 .. n {
+        x = Append(x, 0.0)
+    }
+
+    var bsI = n - 1
+    while bsI >= 0 {
+        let mrowBS = M[bsI]
+        var bsSum  = mrowBS[n]
+        for j in bsI + 1 .. n {
+            let mrowJ = M[bsI]
+            bsSum = bsSum - mrowJ[j] * x[j]
+        }
+        x[bsI] = bsSum / mrowBS[bsI]
+        bsI = bsI - 1
+    }
+
+    return x
+}
+
+// ============================================================
+// Gauss-Newton
+//
+// Linearizes the residuals around current params and solves:
+//   (Jᵀ·J)·Δp = -Jᵀ·r
+//
+// Fast when it converges, but can diverge far from the minimum.
+// Use LevenbergMarquardt for robustness.
+// ============================================================
+
+/// Gauss-Newton nonlinear least-squares.
+///
+/// model  — fn(params, x) -> Float: the model to fit
+/// params0 — initial parameter guess
+/// xData, yData — observed data
+/// rTol   — convergence: stop when |Δp|₂ / |p|₂ < rTol
+/// maxIter
+fn GaussNewton(
+    model:   fn(Float[], Float) -> Float,
+    params0: Float[],
+    xData:   Float[],
+    yData:   Float[],
+    rTol:    Float,
+    maxIter: Int
+) -> LeastSquaresResult ! Error {
+    if Len(xData) != Len(yData) {
+        return error("GaussNewton: xData and yData must have equal length")
+    }
+    if rTol <= 0.0 {
+        return error("GaussNewton: rTol must be > 0")
+    }
+
+    let h  = 0.000001   // finite difference step
+    // Build p as independent copy to avoid aliasing params0
+    var p = [params0[0]]
+    for k in 1 .. Len(params0) { p = Append(p, params0[k]) }
+    var iterations = 0
+    var converged  = false
+
+    while iterations < maxIter and not converged {
+        let r  = ComputeResiduals(model, p, xData, yData)?
+        let J  = JacobianCD(model, p, xData, yData, h)?
+        let JtJmat = JtJ(J)?
+        let JtRvec = JtR(J, r)?
+        // Solve JtJ · Δp = -JtR
+        let neg_JtR = Scale(JtRvec, -1.0)
+        let dp  = GaussElim(JtJmat, neg_JtR)?
+
+        p = VecAdd(p, dp)?
+        let dpNorm = L2Norm(dp)?
+        let pNorm  = L2Norm(p)?
+
+        let relConverged = pNorm > 0.0000000001 and dpNorm / pNorm < rTol
+        let absConverged = pNorm <= 0.0000000001 and dpNorm < rTol
+        if relConverged or absConverged {
+            converged = true
+        }
+        iterations = iterations + 1
+    }
+
+    let rFinal = ComputeResiduals(model, p, xData, yData)?
+    return LeastSquaresResult {
+        Params:     p
+        Residuals:  rFinal
+        RSS:        RSS(rFinal)
+        Iterations: iterations
+        Converged:  converged
+    }
+}
+
+// ============================================================
+// Levenberg-Marquardt
+//
+// Solves: (Jᵀ·J + λ·I)·Δp = -Jᵀ·r
+//
+// λ (damping) interpolates between:
+//   λ → 0: pure Gauss-Newton (fast near minimum)
+//   λ → ∞: gradient descent with small step (stable far away)
+//
+// λ is increased when a step increases the RSS (bad step)
+// and decreased when a step decreases it (good step).
+//
+// This is what scipy.optimize.curve_fit uses internally.
+// ============================================================
+
+/// Levenberg-Marquardt nonlinear least-squares.
+///
+/// lambda0   — initial damping parameter (typical: 0.001)
+/// nu        — damping multiplier (typical: 10.0)
+fn LevenbergMarquardt(
+    model:   fn(Float[], Float) -> Float,
+    params0: Float[],
+    xData:   Float[],
+    yData:   Float[],
+    rTol:    Float,
+    maxIter: Int,
+    lambda0: Float,
+    nu:      Float
+) -> LeastSquaresResult ! Error {
+    if Len(xData) != Len(yData) {
+        return error("LevenbergMarquardt: xData and yData must have equal length")
+    }
+    if rTol <= 0.0 {
+        return error("LevenbergMarquardt: rTol must be > 0")
+    }
+    if lambda0 <= 0.0 {
+        return error("LevenbergMarquardt: lambda0 must be > 0")
+    }
+    if nu <= 1.0 {
+        return error("LevenbergMarquardt: nu must be > 1")
+    }
+
+    let h  = 0.000001
+    let np = Len(params0)
+    var p = [params0[0]]
+    for k in 1 .. Len(params0) { p = Append(p, params0[k]) }
+    var lam = lambda0
+    var iterations = 0
+    var converged  = false
+
+    while iterations < maxIter and not converged {
+        let r        = ComputeResiduals(model, p, xData, yData)?
+        let rssCurr  = RSS(r)
+        let J        = JacobianCD(model, p, xData, yData, h)?
+        let JtJmat   = JtJ(J)?
+        let JtRvec   = JtR(J, r)?
+
+        // Add damping: (JᵀJ + λI)
+        // Build fresh copy of JtJmat for A to avoid aliasing
+        var A = [JtJmat[0]]
+        for ai in 1 .. np { A = Append(A, JtJmat[ai]) }
+        for j in 0 .. np {
+            var arow = A[j]
+            arow[j] = arow[j] + lam
+            A[j] = arow
+        }
+
+        let neg_JtR = Scale(JtRvec, -1.0)
+        let dp = GaussElim(A, neg_JtR)?
+
+        let pNew    = VecAdd(p, dp)?
+        let rNew    = ComputeResiduals(model, pNew, xData, yData)?
+        let rssNew  = RSS(rNew)
+
+        if rssNew < rssCurr {
+            // Good step: accept, decrease damping
+            p    = pNew
+            lam  = lam / nu
+        }
+        if rssNew >= rssCurr {
+            // Bad step: reject, increase damping
+            lam  = lam * nu
+        }
+
+        let dpNorm = L2Norm(dp)?
+        let pNorm  = L2Norm(p)?
+        let relConverged = pNorm > 0.0000000001 and dpNorm / pNorm < rTol
+        let absConverged = pNorm <= 0.0000000001 and dpNorm < rTol
+        if relConverged or absConverged {
+            converged = true
+        }
+        iterations = iterations + 1
+    }
+
+    let rFinal = ComputeResiduals(model, p, xData, yData)?
+    return LeastSquaresResult {
+        Params:     p
+        Residuals:  rFinal
+        RSS:        RSS(rFinal)
+        Iterations: iterations
+        Converged:  converged
+    }
+}
+
+/// Levenberg-Marquardt with default damping parameters.
+/// lambda0=0.001, nu=10.0.
+fn FitCurve(
+    model:   fn(Float[], Float) -> Float,
+    params0: Float[],
+    xData:   Float[],
+    yData:   Float[],
+    rTol:    Float,
+    maxIter: Int
+) -> LeastSquaresResult ! Error {
+    return LevenbergMarquardt(model, params0, xData, yData, rTol, maxIter, 0.001, 10.0)?
+}

@@ -15,8 +15,8 @@ record Dependency {
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Optimization"
-        Version: "0.1.0"
-        Description: "Deterministic unconstrained optimization core (M0)"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Version: "0.2.0"
+        Description: "Mathematical optimization library. Multivariate gradient descent with Armijo backtracking, Nelder-Mead derivative-free simplex, nonlinear least-squares via Gauss-Newton and Levenberg-Marquardt, line search utilities. All 40 tests pass in compiled mode. See FRICTION.md for known interpreter limitations and upstream fixes needed."
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

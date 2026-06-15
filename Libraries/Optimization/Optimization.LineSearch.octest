@@ -1,0 +1,74 @@
+package Optimization
+
+// f(x) = (x[0]-2)² + (x[1]-3)²
+// f([2,3]) = 0, gradient = [2(x[0]-2), 2(x[1]-3)]
+fn fParaboloid(v: Float[]) -> Float {
+    return (v[0] - 2.0) * (v[0] - 2.0) + (v[1] - 3.0) * (v[1] - 3.0)
+}
+
+[Fact]
+fn ArmijoFindsSufficientDecrease() -> Void {
+    let x  = [0.0, 0.0]   // far from minimum
+    let d  = [1.0, 1.5]   // direction toward minimum
+    let fx = fParaboloid(x)
+    let gd = -2.0 * 2.0 - 2.0 * 3.0 * 1.5   // ∇f·d (negative = descent)
+    let ls = ArmijoLineSearch(x, d, fParaboloid, fx, gd, 0.0001, 0.5, 1.0, 50)!
+    Assert.True(ls.Satisfied, "Armijo should find sufficient decrease")
+    Assert.True(ls.StepSize > 0.0, "step size must be positive")
+    Assert.True(ls.FNew < fx, "new f value must be less than old")
+}
+
+[Fact]
+fn ArmijoRejectsBadDirection() -> Void {
+    let x  = [0.0, 0.0]
+    let d  = [1.0, 1.0]
+    let fx = fParaboloid(x)
+    Assert.Error(
+        ArmijoLineSearch(x, d, fParaboloid, fx, 1.0, 0.0001, 0.5, 1.0, 50),
+        "positive directional derivative should error")
+}
+
+[Fact]
+fn ArmijoRejectsInvalidC1() -> Void {
+    let x  = [0.0, 0.0]
+    let d  = [-1.0, -1.0]
+    Assert.Error(
+        ArmijoLineSearch(x, d, fParaboloid, 13.0, -1.0, 1.5, 0.5, 1.0, 50),
+        "c1 > 1 should error")
+}
+
+[Fact]
+fn ArmijoConditionMetWhenDecrease() -> Void {
+    Assert.True(
+        ArmijoConditionMet(0.9, 1.0, 0.1, -1.0, 0.0001),
+        "Armijo: f decreased sufficiently")
+}
+
+[Fact]
+fn ArmijoConditionNotMetWhenNoDecrease() -> Void {
+    Assert.False(
+        ArmijoConditionMet(1.0, 1.0, 0.1, -1.0, 0.5),
+        "Armijo: no decrease should not satisfy")
+}
+
+[Fact]
+fn WolfeCurvatureConditionBasic() -> Void {
+    // |gd_new| ≤ c2 * |gd|: curvature reduced enough
+    Assert.True(
+        WolfeCurvatureConditionMet(-0.1, -1.0, 0.9),
+        "|-0.1| ≤ 0.9 * |-1.0| should satisfy Wolfe curvature")
+    Assert.False(
+        WolfeCurvatureConditionMet(-0.95, -1.0, 0.9),
+        "|-0.95| > 0.9 * |-1.0| should not satisfy curvature")
+}
+
+[Fact]
+fn DefaultArmijoWorks() -> Void {
+    let x  = [0.0, 0.0]
+    let d  = [2.0, 3.0]   // direction toward min
+    let fx = fParaboloid(x)
+    let gd = -2.0 * (2.0 * 2.0 + 3.0 * 3.0)   // negative
+    let ls = DefaultArmijoLineSearch(x, d, fParaboloid, fx, gd)!
+    Assert.True(ls.Satisfied, "default Armijo should satisfy")
+    Assert.True(ls.FNew < fx, "should decrease f")
+}

@@ -1,0 +1,77 @@
+package Optimization
+
+// f(x,y) = (x-1)² + (y-2)², minimum at [1,2], fmin=0
+fn fNM2D(v: Float[]) -> Float {
+    return (v[0]-1.0)*(v[0]-1.0) + (v[1]-2.0)*(v[1]-2.0)
+}
+
+// Rosenbrock: f(x,y) = (1-x)² + 100(y-x²)², minimum at [1,1]
+// Classic hard test for optimizers
+fn fRosenbrock(v: Float[]) -> Float {
+    let x = v[0]
+    let y = v[1]
+    return (1.0-x)*(1.0-x) + 100.0*(y - x*x)*(y - x*x)
+}
+
+// f(x,y,z) = x² + y² + z², minimum at [0,0,0]
+fn fSphere3D(v: Float[]) -> Float {
+    return v[0]*v[0] + v[1]*v[1] + v[2]*v[2]
+}
+
+[Fact]
+fn NelderMeadSimpleParaboloid() -> Void {
+    let result = NelderMead(fNM2D, [0.0, 0.0], 0.00001, 0.00001, 1000)!
+    Assert.Near(1.0, result.Point[0], 0.01, "NM finds x=1")
+    Assert.Near(2.0, result.Point[1], 0.01, "NM finds y=2")
+    Assert.Near(0.0, result.FMin, 0.0001, "NM fmin=0")
+    Assert.True(result.Converged, "NM converged")
+}
+
+[Fact]
+fn NelderMeadRosenbrock() -> Void {
+    // Rosenbrock is notoriously hard — allow more iterations and looser tolerance
+    let result = NelderMead(fRosenbrock, [0.0, 0.0], 0.0001, 0.0001, 5000)!
+    Assert.Near(1.0, result.Point[0], 0.1, "NM finds Rosenbrock x≈1")
+    Assert.Near(1.0, result.Point[1], 0.1, "NM finds Rosenbrock y≈1")
+    Assert.True(result.FMin < 0.01, "NM Rosenbrock fmin near 0")
+}
+
+[Fact]
+fn NelderMead3D() -> Void {
+    let result = NelderMead(fSphere3D, [1.0, 2.0, 3.0], 0.00001, 0.00001, 2000)!
+    Assert.Near(0.0, result.Point[0], 0.01, "NM 3D x≈0")
+    Assert.Near(0.0, result.Point[1], 0.01, "NM 3D y≈0")
+    Assert.Near(0.0, result.Point[2], 0.01, "NM 3D z≈0")
+}
+
+[Fact]
+fn NelderMeadRejectsEmptyX0() -> Void {
+    var emptyNM: Float[] = []
+    Assert.Error(NelderMead(fNM2D, emptyNM, 0.001, 0.001, 100),
+        "empty x0 should error")
+}
+
+[Fact]
+fn NelderMeadRejectsZeroTol() -> Void {
+    Assert.Error(NelderMead(fNM2D, [0.0, 0.0], 0.0, 0.001, 100),
+        "xTol=0 should error")
+}
+
+[Fact]
+fn ArgMinFindsMinimum() -> Void {
+    let v = [5.0, 2.0, 8.0, 1.0, 3.0]
+    Assert.Equal(3, ArgMin(v), "ArgMin of [5,2,8,1,3] = index 3")
+}
+
+[Fact]
+fn ArgMaxFindsMaximum() -> Void {
+    let v = [5.0, 2.0, 8.0, 1.0, 3.0]
+    Assert.Equal(2, ArgMax(v), "ArgMax of [5,2,8,1,3] = index 2")
+}
+
+[Fact]
+fn InitialSimplexHasN1Vertices() -> Void {
+    let x0 = [1.0, 2.0, 3.0]
+    let s  = InitialSimplex(x0)
+    Assert.Equal(4, Len(s), "initial simplex has n+1=4 vertices for n=3")
+}

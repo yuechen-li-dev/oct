@@ -1,141 +1,171 @@
 package Optimization
 
+// ============================================================
+// Optimization.Core
+//
+// Shared types and design notes for the Optimization library.
+//
+// DIMENSIONAL BOUNDARY NOTE:
+//   Optimizers perturb parameters numerically: x[i] + step.
+//   This requires parameters to be bare Float — dimensional
+//   types cannot be added to dimensionless step sizes.
+//   Convention: strip dimensions before passing to any optimizer,
+//   restore them after. This boundary should be explicit in
+//   your calling code, not hidden.
+//
+// ARRAY SEMANTICS NOTE:
+//   Oct Float[] assignment is reference copy, not value copy.
+//   `var out = v` creates an alias — mutating out[i] mutates v[i].
+//   All vector operations in this library use Append to build
+//   new arrays from scratch rather than starting with copies.
+//
+// FILE STRUCTURE:
+//   Optimization.Core        — this file: shared types
+//   Optimization.LineSearch  — Armijo and Wolfe line search
+//   Optimization.GradientDescent — gradient descent with line search
+//   Optimization.NelderMead  — derivative-free multivariate minimizer
+//   Optimization.LeastSquares — Gauss-Newton and Levenberg-Marquardt
+//
+// For 1D minimization, use Numerics.Optimization.Brent or
+// Numerics.Optimization.GoldenSection.
+// ============================================================
+
+// ============================================================
+// Shared result types
+// ============================================================
+
+/// Result of a 1D optimization.
 record OptimizationResult1D {
-    Point: Float
-    Value: Float
+    XMin:       Float
+    FMin:       Float
     Iterations: Int
-    Converged: Bool
+    Converged:  Bool
 }
 
-record OptimizationResult {
-    Point: Float
-    Value: Float
+/// Result of a multivariate optimization.
+record OptimizationResultND {
+    Point:      Float[]
+    FMin:       Float
     Iterations: Int
-    Converged: Bool
+    Converged:  Bool
+    GradNorm:   Float
 }
 
-fn GoldenSectionSearch(
-    f: fn(Float) -> Float,
-    a: Float,
-    b: Float,
-    tolerance: Float,
-    maxIterations: Int
-) -> OptimizationResult1D {
-    ValidateGoldenSectionInputs(a, b, tolerance, maxIterations)
+/// Result of a least-squares fitting problem.
+record LeastSquaresResult {
+    Params:     Float[]
+    Residuals:  Float[]
+    RSS:        Float
+    Iterations: Int
+    Converged:  Bool
+}
 
-    let phi = (1.0 + Sqrt(5.0)) / 2.0
-    let ratio = phi - 1.0
+// ============================================================
+// Vector operations — all build new arrays with Append
+// to avoid Float[] reference-copy aliasing.
+// ============================================================
 
-    var left = a
-    var right = b
-    var c = right - ratio * (right - left)
-    var d = left + ratio * (right - left)
-    var fc = f(c)
-    var fd = f(d)
-    var iterations = 0
-
-    while iterations < maxIterations and (right - left) > tolerance {
-        if fc < fd {
-            right = d
-            d = c
-            fd = fc
-            c = right - ratio * (right - left)
-            fc = f(c)
-        } else {
-            left = c
-            c = d
-            fc = fd
-            d = left + ratio * (right - left)
-            fd = f(d)
-        }
-
-        iterations = iterations + 1
+/// L∞ norm (max absolute value) of a Float[].
+fn LInfNorm(v: Float[]) -> Float ! Error {
+    if Len(v) == 0 {
+        return error("LInfNorm: empty vector")
     }
-
-    let point = (left + right) / 2.0
-    let value = f(point)
-
-    return OptimizationResult1D {
-        Point: point
-        Value: value
-        Iterations: iterations
-        Converged: (right - left) <= tolerance
-    }
-}
-
-fn GradientDescentStep(x: Float, gradient: Float, stepSize: Float) -> Float {
-    ValidateStepSize(stepSize)
-    return x - stepSize * gradient
-}
-
-fn GradientDescentSolve(
-    f: fn(Float) -> Float,
-    grad: fn(Float) -> Float,
-    x0: Float,
-    stepSize: Float,
-    tolerance: Float,
-    maxIterations: Int
-) -> OptimizationResult {
-    ValidateGradientDescentInputs(stepSize, tolerance, maxIterations)
-
-    var x = x0
-    var value = f(x)
-    var iterations = 0
-    var converged = false
-
-    while iterations < maxIterations and not converged {
-        let g = grad(x)
-        if Abs(g) <= tolerance {
-            converged = true
-        } else {
-            x = GradientDescentStep(x, g, stepSize)
-            value = f(x)
-            iterations = iterations + 1
+    var best = Abs(v[0])
+    for i in 1 .. Len(v) {
+        let a = Abs(v[i])
+        if a > best {
+            best = a
         }
     }
-
-    return OptimizationResult {
-        Point: x
-        Value: value
-        Iterations: iterations
-        Converged: converged
-    }
+    return best
 }
 
-fn ValidateGoldenSectionInputs(a: Float, b: Float, tolerance: Float, maxIterations: Int) -> Bool {
-    if a >= b {
-        Require(a < b, "GoldenSectionSearch requires a < b")
+/// L2 norm of a Float[].
+fn L2Norm(v: Float[]) -> Float ! Error {
+    if Len(v) == 0 {
+        return error("L2Norm: empty vector")
     }
-
-    if tolerance <= 0.0 {
-        Require(tolerance > 0.0, "GoldenSectionSearch requires tolerance > 0")
+    var sum = 0.0
+    for i in 0 .. Len(v) {
+        sum = sum + v[i] * v[i]
     }
-
-    if maxIterations <= 0 {
-        Require(maxIterations > 0, "GoldenSectionSearch requires maxIterations > 0")
-    }
-
-    return true
+    return Sqrt(sum)
 }
 
-fn ValidateStepSize(stepSize: Float) -> Bool {
-    if stepSize <= 0.0 {
-        Require(stepSize > 0.0, "GradientDescentStep requires stepSize > 0")
+/// Dot product of two Float[] vectors.
+fn Dot(a: Float[], b: Float[]) -> Float ! Error {
+    if Len(a) != Len(b) {
+        return error("Dot: vectors must have equal length")
     }
-
-    return true
+    var sum = 0.0
+    for i in 0 .. Len(a) {
+        sum = sum + a[i] * b[i]
+    }
+    return sum
 }
 
-fn ValidateGradientDescentInputs(stepSize: Float, tolerance: Float, maxIterations: Int) -> Bool {
-    ValidateStepSize(stepSize)
-
-    if tolerance <= 0.0 {
-        Require(tolerance > 0.0, "GradientDescentSolve requires tolerance > 0")
+/// Scale a Float[] by a scalar: returns v * s.
+/// Builds a new array — does NOT mutate v.
+fn Scale(v: Float[], s: Float) -> Float[] {
+    if Len(v) == 0 {
+        return v
     }
-
-    if maxIterations <= 0 {
-        Require(maxIterations > 0, "GradientDescentSolve requires maxIterations > 0")
+    var out = [v[0] * s]
+    for i in 1 .. Len(v) {
+        out = Append(out, v[i] * s)
     }
+    return out
+}
 
-    return true
+/// Add two Float[] vectors element-wise.
+/// Builds a new array — does NOT mutate a or b.
+fn VecAdd(a: Float[], b: Float[]) -> Float[] ! Error {
+    if Len(a) != Len(b) {
+        return error("VecAdd: vectors must have equal length")
+    }
+    if Len(a) == 0 {
+        return a
+    }
+    var out = [a[0] + b[0]]
+    for i in 1 .. Len(a) {
+        out = Append(out, a[i] + b[i])
+    }
+    return out
+}
+
+/// Subtract two Float[] vectors element-wise.
+/// Builds a new array — does NOT mutate a or b.
+fn VecSub(a: Float[], b: Float[]) -> Float[] ! Error {
+    if Len(a) != Len(b) {
+        return error("VecSub: vectors must have equal length")
+    }
+    if Len(a) == 0 {
+        return a
+    }
+    var out = [a[0] - b[0]]
+    for i in 1 .. Len(a) {
+        out = Append(out, a[i] - b[i])
+    }
+    return out
+}
+
+/// Residual sum of squares from a Float[] of residuals.
+fn RSS(residuals: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0 .. Len(residuals) {
+        sum = sum + residuals[i] * residuals[i]
+    }
+    return sum
+}
+
+/// Build a zero Float[] of length n.
+fn ZeroVec(n: Int) -> Float[] ! Error {
+    if n <= 0 {
+        return error("ZeroVec: n must be > 0")
+    }
+    var out = [0.0]
+    for i in 1 .. n {
+        out = Append(out, 0.0)
+    }
+    return out
 }

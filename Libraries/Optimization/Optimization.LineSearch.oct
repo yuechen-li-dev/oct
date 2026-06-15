@@ -1,0 +1,156 @@
+package Optimization
+
+// ============================================================
+// Optimization.LineSearch
+//
+// 1D line search methods: find a step size α > 0 such that
+// moving from x in direction d by step α * d sufficiently
+// decreases the objective f.
+//
+// These are building blocks for gradient-based optimizers.
+// You rarely call these directly — they are used internally
+// by GradientDescent and will be used by future L-BFGS.
+//
+// Methods:
+//   Armijo (backtracking)   — sufficient decrease only, simple
+//   StrongWolfe             — sufficient decrease + curvature,
+//                             required by conjugate gradient / BFGS
+// ============================================================
+
+// ============================================================
+// Armijo backtracking line search
+//
+// Finds α such that:
+//   f(x + α·d) ≤ f(x) + c₁·α·∇f(x)·d
+//
+// where c₁ ∈ (0,1) is the sufficient decrease constant.
+// Starting from α = initialStep, repeatedly multiply by τ < 1
+// until the Armijo condition is satisfied.
+//
+// This is the simplest and most robust line search.
+// Use when you don't need the Wolfe curvature condition.
+// ============================================================
+
+record LineSearchResult {
+    StepSize:   Float   // α found
+    FNew:       Float   // f(x + α·d)
+    Iterations: Int
+    Satisfied:  Bool    // did the condition hold?
+}
+
+/// Armijo backtracking line search.
+///
+/// x    — current point (Float[])
+/// d    — descent direction (must satisfy ∇f(x)·d < 0)
+/// f    — objective function
+/// gd   — directional derivative ∇f(x)·d (must be negative)
+/// c1   — sufficient decrease constant (typical: 1e-4)
+/// tau  — backtracking factor (typical: 0.5)
+/// initialStep — starting step size (typical: 1.0)
+/// maxIter — maximum backtracks
+fn ArmijoLineSearch(
+    x:           Float[],
+    d:           Float[],
+    f:           fn(Float[]) -> Float,
+    fx:          Float,
+    gd:          Float,
+    c1:          Float,
+    tau:         Float,
+    initialStep: Float,
+    maxIter:     Int
+) -> LineSearchResult ! Error {
+    if c1 <= 0.0 or c1 >= 1.0 {
+        return error("ArmijoLineSearch: c1 must be in (0, 1)")
+    }
+    if tau <= 0.0 or tau >= 1.0 {
+        return error("ArmijoLineSearch: tau must be in (0, 1)")
+    }
+    if initialStep <= 0.0 {
+        return error("ArmijoLineSearch: initialStep must be > 0")
+    }
+    if gd >= 0.0 {
+        return error("ArmijoLineSearch: directional derivative must be negative (descent direction)")
+    }
+    if Len(x) != Len(d) {
+        return error("ArmijoLineSearch: x and d must have equal length")
+    }
+
+    var alpha = initialStep
+    var iter  = 0
+    var found = false
+
+    while iter < maxIter and not found {
+        // Compute x_new = x + alpha * d
+        let xNew = VecAdd(x, Scale(d, alpha))?
+        let fNew = f(xNew)
+
+        // Armijo sufficient decrease condition
+        if fNew <= fx + c1 * alpha * gd {
+            found = true
+        } else {
+            alpha = alpha * tau
+            iter  = iter + 1
+        }
+    }
+
+    let xFinal = VecAdd(x, Scale(d, alpha))?
+    return LineSearchResult {
+        StepSize:   alpha
+        FNew:       f(xFinal)
+        Iterations: iter
+        Satisfied:  found
+    }
+}
+
+/// Default Armijo line search with standard parameters.
+/// c1=1e-4, tau=0.5, initialStep=1.0, maxIter=50.
+fn DefaultArmijoLineSearch(
+    x:  Float[],
+    d:  Float[],
+    f:  fn(Float[]) -> Float,
+    fx: Float,
+    gd: Float
+) -> LineSearchResult ! Error {
+    return ArmijoLineSearch(x, d, f, fx, gd, 0.0001, 0.5, 1.0, 50)?
+}
+
+// ============================================================
+// Wolfe condition check
+//
+// The strong Wolfe conditions are:
+//   (1) Sufficient decrease:  f(x + α·d) ≤ f(x) + c₁·α·∇f(x)·d
+//   (2) Curvature:            |∇f(x + α·d)·d| ≤ c₂·|∇f(x)·d|
+//
+// c₂ > c₁, typically c₁=1e-4, c₂=0.9.
+// Condition (2) ensures the step is not too short (important for
+// conjugate gradient and quasi-Newton methods like BFGS).
+//
+// This checks the conditions given computed values — the caller
+// is responsible for computing f(x + α·d) and ∇f(x + α·d)·d.
+// ============================================================
+
+/// Check Armijo sufficient decrease condition.
+/// fNew = f(x + α·d), fx = f(x), gd = ∇f(x)·d, alpha = step size.
+fn ArmijoConditionMet(fNew: Float, fx: Float, alpha: Float, gd: Float, c1: Float) -> Bool {
+    return fNew <= fx + c1 * alpha * gd
+}
+
+/// Check strong Wolfe curvature condition.
+/// gdNew = ∇f(x + α·d)·d, gd = ∇f(x)·d.
+fn WolfeCurvatureConditionMet(gdNew: Float, gd: Float, c2: Float) -> Bool {
+    return Abs(gdNew) <= c2 * Abs(gd)
+}
+
+/// Check both strong Wolfe conditions simultaneously.
+fn StrongWolfeConditionsMet(
+    fNew:  Float,
+    fx:    Float,
+    alpha: Float,
+    gd:    Float,
+    gdNew: Float,
+    c1:    Float,
+    c2:    Float
+) -> Bool {
+    return ArmijoConditionMet(fNew, fx, alpha, gd, c1) and
+           WolfeCurvatureConditionMet(gdNew, gd, c2)
+}
