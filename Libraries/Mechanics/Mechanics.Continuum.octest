@@ -348,3 +348,20 @@ fn PureHydrostaticLoadProducesNoShearStress() -> Void {
     let sigma = LinearIsotropicStress2D(eps, 100.0, 50.0)
     Assert.Near(0.0, sigma[0, 1], 0.000001, "no shear stress for hydrostatic strain")
 }
+
+[Fact]
+fn PlaneStress2DFromYoungPoissonMatchesTextbookUniaxialStrain() -> Void {
+    // Plane stress D = E/(1-nu^2) * [[1, nu, 0], [nu, 1, 0], [0, 0, (1-nu)/2]].
+    // With E=200, nu=0.25, eps_xx=0.001, eps_yy=gamma_xy=0:
+    // factor=213.3333333333, sigma_x=0.2133333333, sigma_y=0.0533333333, tau_xy=0.
+    let E = 200.0
+    let nu = 0.25
+    let eps = matrix[[0.001, 0.0] [0.0, 0.0]]
+
+    let sigma = LinearIsotropicStressPlaneStress2DFromYoungPoisson(eps, E, nu)
+
+    Assert.Near(0.2133333333, sigma[0, 0], 0.0000001, "textbook plane-stress sigma_x")
+    Assert.Near(0.0533333333, sigma[1, 1], 0.0000001, "textbook plane-stress sigma_y")
+    Assert.Near(0.0, sigma[0, 1], 0.0000001, "textbook plane-stress tau_xy")
+    Assert.Near(0.0, sigma[1, 0], 0.0000001, "textbook plane-stress symmetric tau_yx")
+}

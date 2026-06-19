@@ -7,9 +7,14 @@ package Mechanics
 /// constitutive maps under plane stress and plane strain assumptions, and
 /// engineering parameter conversion (Young's modulus E, Poisson's ratio nu).
 ///
-/// All tensors are 2×2 Matrix<Float> in Voigt-like arrangement.
+/// Materialized strain and stress tensors are 2×2 Matrix<Float> values.
 /// Flat-array forms are not used here — the Matrix<Float> builtin and
 /// Einstein index notation express the operations directly.
+///
+/// Differential operators such as Grad, Div, and SymGrad are symbolic,
+/// typechecking/representation-only building blocks for field-form contracts;
+/// they are not numerical derivative evaluators. The constitutive helpers below
+/// operate numerically when given materialized Matrix<Float> strain values.
 
 // ============================================================
 // Material parameter bridges

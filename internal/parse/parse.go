@@ -765,6 +765,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
+	var typeRef ast.TypeRef
 	if token.Lexeme == "Vector" || token.Lexeme == "Matrix" {
 		container := token.Lexeme
 		if _, err := p.expect(lex.LeftAngle, fmt.Sprintf("expected '<' after %s", container)); err != nil {
@@ -778,13 +779,14 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 			return ast.TypeRef{}, err
 		}
 		if container == "Vector" {
-			return ast.TypeRef{VectorOf: &elementType}, nil
+			typeRef = ast.TypeRef{VectorOf: &elementType}
+		} else {
+			typeRef = ast.TypeRef{MatrixOf: &elementType}
 		}
-		return ast.TypeRef{MatrixOf: &elementType}, nil
+	} else {
+		typeRef = ast.TypeRef{Name: token.Lexeme}
 	}
-
-	typeRef := ast.TypeRef{Name: token.Lexeme}
-	if p.match(lex.Dot) {
+	if typeRef.VectorOf == nil && typeRef.MatrixOf == nil && p.match(lex.Dot) {
 		typeName, err := p.expect(lex.Identifier, "expected type name after '.'")
 		if err != nil {
 			return ast.TypeRef{}, err
@@ -792,7 +794,7 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 		typeRef.Package = token.Lexeme
 		typeRef.Name = typeName.Lexeme
 	}
-	if p.match(lex.LeftAngle) {
+	if typeRef.VectorOf == nil && typeRef.MatrixOf == nil && p.match(lex.LeftAngle) {
 		dim, err := p.parseDimensionSpec()
 		if err != nil {
 			return ast.TypeRef{}, err

@@ -1203,12 +1203,17 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return fmt.Errorf("index assignment to unknown local '%s'", s.Target)
 			}
 			switch {
+			case strings.HasSuffix(targetType, "[]") && !strings.HasSuffix(targetType, "[][]"):
+				if len(indexExprs) != 1 {
+					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
+				}
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s]", c.goLocalName(s.Target), indexExprs[0]), Value: val})
 			case strings.HasSuffix(targetType, "[][]") || strings.HasPrefix(targetType, "[][]") || strings.HasPrefix(targetType, "Matrix<"):
 				if len(indexExprs) != 2 {
 					return fmt.Errorf("matrix index assignment requires exactly 2 indices, got %d", len(indexExprs))
 				}
 				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", c.goLocalName(s.Target), indexExprs[0], indexExprs[1]), Value: val})
-			case strings.HasPrefix(targetType, "[]"), strings.HasSuffix(targetType, "[]"):
+			case strings.HasPrefix(targetType, "[]"):
 				if len(indexExprs) != 1 {
 					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
 				}
@@ -4021,16 +4026,16 @@ func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
 		}
 		return "(" + strings.Join(parts, ", ") + ")"
 	}
+	base := t.Name
 	if t.VectorOf != nil {
-		return "Vector<" + typeRefStringForPackage(currentPkg, *t.VectorOf) + ">"
+		base = "Vector<" + typeRefStringForPackage(currentPkg, *t.VectorOf) + ">"
 	}
 	if t.MatrixOf != nil {
-		return "Matrix<" + typeRefStringForPackage(currentPkg, *t.MatrixOf) + ">"
+		base = "Matrix<" + typeRefStringForPackage(currentPkg, *t.MatrixOf) + ">"
 	}
-	base := t.Name
 	if t.Package != "" {
 		base = t.Package + "." + base
-	} else if currentPkg != "" && base != "" && !isBuiltinTypeName(base) {
+	} else if currentPkg != "" && base != "" && !isBuiltinTypeName(base) && !strings.Contains(base, "<") {
 		base = currentPkg + "." + base
 	}
 	if base == "" {
