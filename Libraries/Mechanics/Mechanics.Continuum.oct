@@ -13,8 +13,10 @@ package Mechanics
 ///
 /// Differential operators such as Grad, Div, and SymGrad are symbolic,
 /// typechecking/representation-only building blocks for field-form contracts;
-/// they are not numerical derivative evaluators. The constitutive helpers below
-/// operate numerically when given materialized Matrix<Float> strain values.
+/// they are not numerical derivative evaluators. Use Tensor2D.Gradient,
+/// Tensor2D.Jacobian, Tensor2D.Divergence, and Tensor2D.SymmetricGradient for
+/// explicit 2D numerical finite-difference evaluation. The constitutive helpers
+/// below operate numerically when given materialized Matrix<Float> strain values.
 
 // ============================================================
 // Material parameter bridges

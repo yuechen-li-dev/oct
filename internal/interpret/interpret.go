@@ -4118,10 +4118,13 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if argument.value.Kind == ValueBytes {
 			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Bytes))}}, nil
 		}
-		if argument.value.Kind != ValueArray {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String, Bytes, or Array, got %s", argument.value.Kind)
+		if argument.value.Kind == ValueArray {
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Array))}}, nil
 		}
-		return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Array))}}, nil
+		if argument.value.Kind == ValueVector {
+			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Vector))}}, nil
+		}
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String, Bytes, Array, or Vector, got %s", argument.value.Kind)
 	case "Abs":
 		switch argument.value.Kind {
 		case ValueInt:

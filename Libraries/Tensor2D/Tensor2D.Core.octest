@@ -1,0 +1,66 @@
+package Tensor2D
+
+fn Phi(p: Vector<Float>) -> Float {
+    let x = p[0]
+    let y = p[1]
+    return 2.0 * x + 3.0 * y
+}
+
+fn U(p: Vector<Float>) -> Vector<Float> {
+    let x = p[0]
+    let y = p[1]
+    return vector[
+        2.0 * x + 3.0 * y,
+        4.0 * x - 1.0 * y
+    ]
+}
+
+fn BadU(p: Vector<Float>) -> Vector<Float> {
+    return vector[1.0]
+}
+
+[Fact]
+fn GradientOfLinearScalarFieldMatchesExactDerivative() -> Void ! Error {
+    let g = Gradient(Phi, vector[1.25, -2.0], 0.01)?
+    Assert.Near(2.0, g[0], 0.000001, "d phi / dx")
+    Assert.Near(3.0, g[1], 0.000001, "d phi / dy")
+}
+
+[Fact]
+fn JacobianOfLinearVectorFieldMatchesExactDerivative() -> Void ! Error {
+    let J = Jacobian(U, vector[1.25, -2.0], 0.01)?
+    Assert.Near(2.0,  J[0, 0], 0.000001, "du0/dx")
+    Assert.Near(3.0,  J[0, 1], 0.000001, "du0/dy")
+    Assert.Near(4.0,  J[1, 0], 0.000001, "du1/dx")
+    Assert.Near(-1.0, J[1, 1], 0.000001, "du1/dy")
+}
+
+[Fact]
+fn DivergenceOfLinearVectorFieldMatchesTraceOfJacobian() -> Void ! Error {
+    let div = Divergence(U, vector[1.25, -2.0], 0.01)?
+    Assert.Near(1.0, div, 0.000001, "divergence is du0/dx + du1/dy")
+}
+
+[Fact]
+fn SymmetricGradientOfLinearVectorFieldMatchesExpectedStrain() -> Void ! Error {
+    let eps = SymmetricGradient(U, vector[1.25, -2.0], 0.01)?
+    Assert.Near(2.0,  eps[0, 0], 0.000001, "eps00")
+    Assert.Near(3.5,  eps[0, 1], 0.000001, "eps01")
+    Assert.Near(3.5,  eps[1, 0], 0.000001, "eps10")
+    Assert.Near(-1.0, eps[1, 1], 0.000001, "eps11")
+}
+
+[Fact]
+fn InvalidStepFailsClearly() -> Void {
+    Assert.Error(Gradient(Phi, vector[1.0, 2.0], 0.0), "h <= 0 must fail")
+}
+
+[Fact]
+fn WrongLengthPointFailsClearly() -> Void {
+    Assert.Error(Gradient(Phi, vector[1.0], 0.01), "point length must be 2")
+}
+
+[Fact]
+fn WrongLengthVectorFieldOutputFailsClearly() -> Void {
+    Assert.Error(Jacobian(BadU, vector[1.0, 2.0], 0.01), "vector field output length must be 2")
+}

@@ -579,7 +579,7 @@ func TestRunCommandRejectsInvalidBuiltins(t *testing.T) {
     return Len(1)
 }
 `,
-			wantMessage: "run failed: function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int",
+			wantMessage: "run failed: function Main: function 'Len' argument 1 expects String, Bytes, array type, or Vector, got Int",
 		},
 		{
 			name: "abs wrong type",
@@ -707,7 +707,7 @@ func TestBuildCommandHandlesBuiltins(t *testing.T) {
 		if stdout != "" {
 			t.Fatalf("expected empty stdout, got %q", stdout)
 		}
-		want := "build failed: function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int"
+		want := "build failed: function Main: function 'Len' argument 1 expects String, Bytes, array type, or Vector, got Int"
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
