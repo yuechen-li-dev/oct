@@ -1,4 +1,4 @@
-expect error: "function 'Trace' expects 1 arguments, got 2"
+expect error: "function 'Trace' expects 1 argument, got 2"
 
 package Main
 
