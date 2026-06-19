@@ -37,17 +37,16 @@ func TestSelectedFileCompiledRunnerSelectedFileCompiledRunnerLinkage(t *testing.
 	}
 }
 
-func TestSelectedFileCompiledRunnerDirectoryTargetStillSeesInvalidSibling(t *testing.T) {
+func TestSelectedFileCompiledRunnerDirectoryTargetIncludesInvalidSiblingFixture(t *testing.T) {
 	targetDir, err := filepath.Abs(filepath.Join("..", "..", "Language", "Testing", "SelectedFileCompiled"))
 	if err != nil {
 		t.Fatalf("resolve fixture dir path: %v", err)
 	}
 	stdout, stderr, err := executeCLIArgs("test", targetDir, "--execution", "compiled")
-	if err == nil {
-		t.Fatalf("directory target should fail due to invalid sibling, stdout=%q stderr=%q", stdout, stderr)
+	if err != nil {
+		t.Fatalf("directory target should pass with sibling .octfail fixture, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
-	combined := stdout + "\n" + stderr
-	if !strings.Contains(combined, "sibling_invalid.octfail") {
-		t.Fatalf("expected directory mode to include sibling invalid diagnostic, got stdout=%q stderr=%q", stdout, stderr)
+	if !strings.Contains(stdout, "PASS sibling_invalid.octfail") {
+		t.Fatalf("expected directory mode to include sibling .octfail fixture, got stdout=%q stderr=%q", stdout, stderr)
 	}
 }

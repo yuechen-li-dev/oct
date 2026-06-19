@@ -1,0 +1,12 @@
+package MainValid
+
+fn DimensionedVectorDotProduct() -> Float<kg*m/s^2> {
+    return vector[1.0m, 2.0m] @ vector[3.0kg/s^2, 4.0kg/s^2]
+}
+
+[Fact]
+fn VectorVectorDotProductPropagatesDimensions() -> Void {
+    let workLike = DimensionedVectorDotProduct()
+
+    Assert.Equal(11.0kg*m/s^2, workLike, "vector dot product combines SI dimensions")
+}
