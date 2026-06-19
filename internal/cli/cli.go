@@ -102,12 +102,14 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		if isHelpArg(args[1:]) {
 			return writeArtifactHelp(stdout)
 		}
-		if len(args) != 2 {
-			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct artifact --help for usage"))
-		}
-		path := args[1]
-		if err := tester.ExecuteArtifacts(path, stdout); err != nil {
+		options, paths, err := parseArtifactOptions(args[1:])
+		if err != nil {
 			return reportCommandError(stderr, command, err)
+		}
+		for _, path := range paths {
+			if err := tester.ExecuteArtifactsWithOptions(path, stdout, options); err != nil {
+				return reportCommandError(stderr, command, err)
+			}
 		}
 		return nil
 	case "bench":
@@ -884,7 +886,7 @@ func writeTestHelp(out io.Writer) error {
 	return err
 }
 func writeArtifactHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root>\nRun artifact generation for discovered artifact blocks.")
+	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--execution <compiled|interpreted>]\nRun artifact generation for discovered artifact blocks.\nDefault execution: interpreted.\nExample: oct artifact path/to/file.oct --execution compiled")
 	return err
 }
 func writeBenchHelp(out io.Writer) error {
@@ -960,6 +962,33 @@ func parseBenchOptions(path string, args []string) (tester.BenchmarkOptions, err
 		}
 	}
 	return options, nil
+}
+
+func parseArtifactOptions(args []string) (tester.ArtifactOptions, []string, error) {
+	options := tester.ArtifactOptions{}
+	paths := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--execution" {
+			if i+1 >= len(args) {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--execution <compiled|interpreted>]")
+			}
+			i++
+			options.Execution = strings.TrimSpace(args[i])
+			if options.Execution == "" {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("--execution requires a non-empty value")
+			}
+			if options.Execution != "compiled" && options.Execution != "interpreted" {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("invalid artifact execution mode %q (expected compiled|interpreted)", options.Execution)
+			}
+			continue
+		}
+		paths = append(paths, arg)
+	}
+	if len(paths) == 0 {
+		return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--execution <compiled|interpreted>]")
+	}
+	return options, paths, nil
 }
 
 func parseTestOptions(args []string) (tester.TestOptions, []string, error) {

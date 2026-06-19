@@ -1,0 +1,9 @@
+expect error: "not defined for A"
+
+package Main
+
+enum A { One Two }
+
+fn Main() -> Bool {
+    return A.One < A.Two
+}

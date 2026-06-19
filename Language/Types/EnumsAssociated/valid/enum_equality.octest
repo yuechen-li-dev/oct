@@ -1,0 +1,43 @@
+package EnumsAssociated
+
+enum Regime {
+    BrownNoiseKalman
+    Stabilized
+}
+
+fn IsBrown(r: Regime) -> Bool {
+    return r == Regime.BrownNoiseKalman
+}
+
+fn IsNotBrown(r: Regime) -> Bool {
+    return r != Regime.BrownNoiseKalman
+}
+
+fn ScoreIfBrown(r: Regime) -> Int {
+    if r == Regime.BrownNoiseKalman {
+        return 1
+    }
+    return 0
+}
+
+[Fact]
+fn EnumEqualityReturnsTrueAndFalse() -> Void {
+    Assert.True(Regime.BrownNoiseKalman == Regime.BrownNoiseKalman, "same enum variant equality should be true")
+    Assert.False(Regime.BrownNoiseKalman == Regime.Stabilized, "different variants of same enum should not be equal")
+}
+
+[Fact]
+fn EnumInequalityReturnsTrueAndFalse() -> Void {
+    Assert.True(Regime.BrownNoiseKalman != Regime.Stabilized, "different variants of same enum should be unequal")
+    Assert.False(Regime.Stabilized != Regime.Stabilized, "same enum variant inequality should be false")
+}
+
+[Fact]
+fn EnumEqualityWorksInIfAndHelperReturn() -> Void {
+    let isBrown: Bool = IsBrown(Regime.BrownNoiseKalman)
+    let isNotBrown: Bool = IsNotBrown(Regime.Stabilized)
+    Assert.True(isBrown, "enum equality should assign to Bool")
+    Assert.True(isNotBrown, "enum inequality should assign to Bool")
+    Assert.Equal(1, ScoreIfBrown(Regime.BrownNoiseKalman), "enum equality should work in if conditions")
+    Assert.Equal(0, ScoreIfBrown(Regime.Stabilized), "enum equality false branch should work")
+}

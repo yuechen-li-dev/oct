@@ -1,0 +1,9 @@
+expect error: "not defined for A and Int"
+
+package Main
+
+enum A { One }
+
+fn Main() -> Bool {
+    return A.One == 1
+}

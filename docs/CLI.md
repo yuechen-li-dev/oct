@@ -13,6 +13,7 @@ Common commands:
 - `go run ./cmd/oct test <path> --execution compiled`
 - `go run ./cmd/oct test <path> --all-packages`
 - `go run ./cmd/oct artifact <path>`
+- `go run ./cmd/oct artifact <path> --execution compiled`
 - `go run ./cmd/oct fmt <path> --mode en-llm --check`
 - `go run ./cmd/oct fmt <path> --mode en-llm-compact --check`
 - `go run ./cmd/oct bench <path> --profile`
@@ -21,6 +22,19 @@ Common commands:
 - `go run ./cmd/oct new wrapper-library OpenCV`
 
 `oct test` defaults to running tests only from the selected entry package/root. Imported packages are still loaded for typechecking, but their tests are excluded unless `--all-packages` is specified.
+
+## `oct artifact` execution modes
+
+Usage:
+
+```sh
+oct artifact <file-or-root> [--execution <interpreted|compiled>]
+oct artifact path/to/file.oct --execution compiled
+```
+
+`oct artifact` runs discovered `[Artifact]` entrypoints. The default remains interpreted execution. Passing `--execution interpreted` makes that default explicit; passing `--execution compiled` requires the compiled path and fails instead of silently falling back to interpreted execution if compilation is unsupported. Artifact command output includes stable execution metadata, for example `Execution: compiled`, so a later reader can tell which path generated the artifact output.
+
+Artifact-producing labs should still validate scientific correctness separately from successful execution. Prefer comparing headline outputs against analytic solutions, Python/reference implementations, published values, or fixed golden outputs, and use `Assert.Close` or the closest available assertion before trusting artifact headline numbers.
 
 ## `oct new` package scaffolding
 
