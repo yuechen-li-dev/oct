@@ -1,0 +1,10 @@
+expect error: "requires matching enum types"
+
+package Main
+
+enum A { One }
+enum B { One }
+
+fn Main() -> Bool {
+    return A.One == B.One
+}

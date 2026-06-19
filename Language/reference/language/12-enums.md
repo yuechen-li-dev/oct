@@ -19,7 +19,10 @@ Variant references are qualified.
 - `match` over enum variants is exhaustive and binds payload names per case:
   - `case Name.Variant(v) => ...` for payload variants
   - `case Name.Tag => ...` for tag-only variants
-- Enum values are compared and switched by qualified variants.
+- Same-enum values support equality and inequality with `==` and `!=`; the result is `Bool`.
+- Enum values from different enum types are not comparable.
+- Enum ordering comparisons (`<`, `>`, `<=`, `>=`) are rejected; enum declarations do not define ordering.
+- Enum values are switched by qualified variants.
 - `switch` over an enum is exhaustive when all variants are listed.
 - Non-exhaustive enum `switch` requires an `else` arm.
 - Duplicate enum case labels are rejected.
@@ -29,6 +32,24 @@ Variant references are qualified.
   - tuple or record destructuring patterns
   - nested pattern matching and guards
 
+
+
+Equality example:
+
+```oct
+enum Regime {
+    BrownNoiseKalman
+    Stabilized
+}
+
+fn IsBrown(r: Regime) -> Bool {
+    return r == Regime.BrownNoiseKalman
+}
+
+fn Changed(a: Regime, b: Regime) -> Bool {
+    return a != b
+}
+```
 
 ## Judgment enum utility selection
 

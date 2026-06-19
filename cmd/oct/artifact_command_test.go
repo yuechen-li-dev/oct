@@ -132,3 +132,42 @@ func TestOctArtifactRealFixtureTemplateExample(t *testing.T) {
 		t.Fatalf("expected CSV template output from artifact, got %q", stdout.String())
 	}
 }
+
+func TestOctArtifactExecutionModesAndMetadata(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "artifact.octest", "package Main\n[Artifact]\nfn Generate() -> Void { Print(\"artifact-mode-ok\") }\n")
+
+	for _, mode := range []string{"interpreted", "compiled"} {
+		t.Run(mode, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if err := cli.Execute([]string{"artifact", root, "--execution", mode}, &stdout, &stderr); err != nil {
+				t.Fatalf("expected artifact %s success, got err=%v stderr=%q stdout=%q", mode, err, stderr.String(), stdout.String())
+			}
+			output := stdout.String()
+			if !strings.Contains(output, "Execution: "+mode) {
+				t.Fatalf("expected execution metadata for %s, got %q", mode, output)
+			}
+			if !strings.Contains(output, "artifact-mode-ok") || !strings.Contains(output, "PASS Main.Generate") {
+				t.Fatalf("expected artifact output/pass for %s, got %q", mode, output)
+			}
+		})
+	}
+}
+
+func TestOctArtifactRejectsInvalidExecutionMode(t *testing.T) {
+	root := t.TempDir()
+	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
+	writeOctPkgFile(t, root, "Main", "artifact.octest", "package Main\n[Artifact]\nfn Generate() -> Void { return }\n")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.Execute([]string{"artifact", root, "--execution", "banana"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("expected invalid execution mode failure")
+	}
+	if !strings.Contains(stderr.String(), "invalid artifact execution mode \"banana\" (expected compiled|interpreted)") {
+		t.Fatalf("expected clear invalid mode diagnostic, got stderr=%q stdout=%q err=%v", stderr.String(), stdout.String(), err)
+	}
+}
