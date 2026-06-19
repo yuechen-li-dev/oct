@@ -425,7 +425,7 @@ func TestCheckRejectsInvalidM105PdfBuiltins(t *testing.T) {
 }
 
 func TestCheckRejectsInvalidM7Builtins(t *testing.T) {
-	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String, Bytes, or array type, got Int")
+	assertTypeErrorContains(t, "fn Main() -> Int { return Len(1) }", "function Main: function 'Len' argument 1 expects String, Bytes, array type, or Vector, got Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { return Abs(true) }", "function Main: function 'Abs' argument 1 expects Int, Float, or Complex, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Sqrt(true) }", "function Main: function 'Sqrt' argument 1 expects Int or Float, got Bool")
 	assertTypeErrorContains(t, "fn Main() -> Float { return Cos(true) }", "function Main: function 'Cos' argument 1 expects Int or Float, got Bool")

@@ -1,0 +1,12 @@
+expect error: "function 'SymmetricGradient' argument 1 expects fn(Vector<Float>) -> Vector<Float>, got fn(Vector<Float>) -> Float"
+package Tensor2D
+
+fn SymmetricGradient(u: fn(Vector<Float>) -> Vector<Float>, point: Vector<Float>, h: Float) -> Matrix<Float> { return matrix[[0.0, 0.0] [0.0, 0.0]] }
+
+fn Phi(p: Vector<Float>) -> Float {
+    return 1.0
+}
+
+fn Main() -> Matrix<Float> ! Error {
+    return SymmetricGradient(Phi, vector[0.0, 0.0], 0.01)?
+}

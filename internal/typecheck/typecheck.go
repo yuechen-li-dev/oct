@@ -4516,8 +4516,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if argumentType.ValueType == (Type{Base: BaseTypeBytes}) {
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		}
-		if !argumentType.ValueType.IsArray {
-			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Bytes, or array type, got %s", argumentType.ValueType)
+		if !argumentType.ValueType.IsArray && !argumentType.ValueType.IsVector {
+			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Bytes, array type, or Vector, got %s", argumentType.ValueType)
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 	case "Abs":

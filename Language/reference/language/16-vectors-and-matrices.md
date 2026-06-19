@@ -151,6 +151,34 @@ Validation mirrors addition:
 - Shapes or lengths must match at runtime.
 - There is no automatic transposition, reordering, or broadcasting for `A[i, j] - B[j, i]` or `a[i] - b[j]`.
 
+
+## Numerical finite-difference tensor calculus (2D)
+
+The symbolic operators `Grad`, `Div`, and `SymGrad` are representational/typechecking-only notation for continuum mechanics contracts. They do not compute finite differences or symbolic derivatives.
+
+Use `Tensor2D` for numerical pointwise finite-difference evaluation in coordinate dimension 2:
+
+```oct
+import Tensor2D
+
+let g = Tensor2D.Gradient(Phi, point, h)?
+let J = Tensor2D.Jacobian(U, point, h)?
+let div = Tensor2D.Divergence(U, point, h)?
+let eps = Tensor2D.SymmetricGradient(U, point, h)?
+```
+
+`Tensor2D.Gradient` accepts a scalar field `fn(Vector<Float>) -> Float` and returns a `Vector<Float>` of length 2. `Tensor2D.Jacobian`, `Tensor2D.Divergence`, and `Tensor2D.SymmetricGradient` accept vector fields `fn(Vector<Float>) -> Vector<Float>` whose outputs have length 2. `point` must be a length-2 `Vector<Float>`, and `h` must be positive.
+
+The central-difference convention is:
+
+- `df/dx ≈ (f(vector[x + h, y]) - f(vector[x - h, y])) / (2h)`
+- `df/dy ≈ (f(vector[x, y + h]) - f(vector[x, y - h])) / (2h)`
+- `J[row, col] = d u_row / d x_col`
+- `Divergence(u) = J[0, 0] + J[1, 1]`
+- `SymmetricGradient(u) = 0.5 * (J + J^T)`
+
+These operators deliberately accept and return mathematical `Vector<Float>` and `Matrix<Float>` values, not `Float[]` or `Float[][]` collections. CM2 does not add grid/PDE boundary-condition operators, 3D operators, symbolic differentiation, overloads, named arguments, or rank-polymorphic tensor dispatch.
+
 ## `@` as Einstein contraction shorthand
 
 `@` is not arbitrary array multiplication.
@@ -207,7 +235,7 @@ Indexed rank-2 matrix tensor notation, rank-1 vector indexed notation, mixed vec
 - Compiled mode supports concrete vector/matrix indexing, `@` helper lowering for matrix-matrix, matrix-vector, vector-matrix, and vector-vector dot products, `Idx`, rank-2 matrix indexed Einstein `*`, `+`, `-`, and matrix/matrix scalar double contractions, and rank-1 vector indexed Einstein `+`, `-`, dot, outer, matrix-vector, and vector-matrix contractions.
 - Trace-style `A[i, i]`, arbitrary rank-N tensors, broadcasting, covariant/contravariant variance, and raising/lowering remain unsupported.
 - `@` remains limited to the four supported vector/matrix contractions and does not apply to arrays or scalars.
-- Differential tensor operators are not documented as compiled-parity guarantees in the current corpus.
+- Symbolic differential tensor operators (`Grad`, `Div`, and `SymGrad`) remain representational/typechecking operators; they are not numerical derivative evaluators. Numerical pointwise 2D finite-difference tensor calculus is provided by the first-party `Tensor2D` package: `Tensor2D.Gradient`, `Tensor2D.Jacobian`, `Tensor2D.Divergence`, and `Tensor2D.SymmetricGradient`. CM2 uses `Tensor2D.*` rather than `Tensor.D2.*` because current Oct package-qualified calls are two segments (`Package.Function(...)`) and nested package namespaces are not supported.
 
 Derived from the compiled parity corpus (`internal/build/compiler_test.go`) and compiler lowering (`internal/build/compiler.go`):
 

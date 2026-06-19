@@ -1,0 +1,101 @@
+package Tensor2D
+
+/// Numerical 2D finite-difference tensor calculus operators.
+///
+/// CM2 uses the Tensor2D.* package surface because Oct M0 package calls are
+/// exactly two segments (`Package.Function(...)`); nested `Tensor.D2.*` names
+/// are not legal package resolution today.
+///
+/// These helpers are numerical pointwise operators. They do not change the
+/// symbolic/representational `Grad`, `Div`, or `SymGrad` operators.
+/// Points are mathematical `Vector<Float>` values of length 2, not `Float[]`
+/// collections. Jacobian-like results are mathematical `Matrix<Float>` values.
+
+fn ValidatePoint(point: Vector<Float>) -> Int ! Error {
+    if Len(point) != 2 {
+        return error("Tensor2D point must be a Vector<Float> of length 2")
+    }
+    return 0
+}
+
+fn ValidateStep(h: Float) -> Int ! Error {
+    if h <= 0.0 {
+        return error("Tensor2D finite-difference step h must be positive")
+    }
+    return 0
+}
+
+fn ValidateVectorFieldOutput(value: Vector<Float>) -> Int ! Error {
+    if Len(value) != 2 {
+        return error("Tensor2D vector field output must be a Vector<Float> of length 2")
+    }
+    return 0
+}
+
+/// Gradient of a scalar field f: R^2 -> R at a point, using central differences.
+fn Gradient(f: fn(Vector<Float>) -> Float, point: Vector<Float>, h: Float) -> Vector<Float> ! Error {
+    let pointOk = ValidatePoint(point)?
+    let stepOk = ValidateStep(h)?
+
+    let x = point[0]
+    let y = point[1]
+    let denom = 2.0 * h
+
+    let fxPlus  = f(vector[x + h, y])
+    let fxMinus = f(vector[x - h, y])
+    let fyPlus  = f(vector[x, y + h])
+    let fyMinus = f(vector[x, y - h])
+
+    return vector[
+        (fxPlus - fxMinus) / denom,
+        (fyPlus - fyMinus) / denom
+    ]
+}
+
+/// Jacobian of a vector field u: R^2 -> R^2 at a point, using central differences.
+/// J[row, col] = d u_row / d x_col.
+fn Jacobian(u: fn(Vector<Float>) -> Vector<Float>, point: Vector<Float>, h: Float) -> Matrix<Float> ! Error {
+    let pointOk = ValidatePoint(point)?
+    let stepOk = ValidateStep(h)?
+
+    let x = point[0]
+    let y = point[1]
+    let denom = 2.0 * h
+
+    let uxPlus  = u(vector[x + h, y])
+    let uxMinus = u(vector[x - h, y])
+    let uyPlus  = u(vector[x, y + h])
+    let uyMinus = u(vector[x, y - h])
+
+    let xPlusOk  = ValidateVectorFieldOutput(uxPlus)?
+    let xMinusOk = ValidateVectorFieldOutput(uxMinus)?
+    let yPlusOk  = ValidateVectorFieldOutput(uyPlus)?
+    let yMinusOk = ValidateVectorFieldOutput(uyMinus)?
+
+    return matrix[[
+        (uxPlus[0] - uxMinus[0]) / denom,
+        (uyPlus[0] - uyMinus[0]) / denom
+    ] [
+        (uxPlus[1] - uxMinus[1]) / denom,
+        (uyPlus[1] - uyMinus[1]) / denom
+    ]]
+}
+
+/// Divergence of a vector field u: R^2 -> R^2 at a point.
+fn Divergence(u: fn(Vector<Float>) -> Vector<Float>, point: Vector<Float>, h: Float) -> Float ! Error {
+    let J = Jacobian(u, point, h)?
+    return J[0, 0] + J[1, 1]
+}
+
+/// Symmetric gradient of a vector field u: R^2 -> R^2 at a point.
+/// Returns 0.5 * (J + J^T).
+fn SymmetricGradient(u: fn(Vector<Float>) -> Vector<Float>, point: Vector<Float>, h: Float) -> Matrix<Float> ! Error {
+    let J = Jacobian(u, point, h)?
+    return matrix[[
+        J[0, 0],
+        0.5 * (J[0, 1] + J[1, 0])
+    ] [
+        0.5 * (J[1, 0] + J[0, 1]),
+        J[1, 1]
+    ]]
+}

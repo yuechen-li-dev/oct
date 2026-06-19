@@ -1,0 +1,12 @@
+expect error: "function 'Gradient' argument 1 expects fn(Vector<Float>) -> Float, got fn(Vector<Float>) -> Vector<Float>"
+package Tensor2D
+
+fn Gradient(f: fn(Vector<Float>) -> Float, point: Vector<Float>, h: Float) -> Vector<Float> { return vector[0.0, 0.0] }
+
+fn U(p: Vector<Float>) -> Vector<Float> {
+    return vector[1.0, 2.0]
+}
+
+fn Main() -> Vector<Float> ! Error {
+    return Gradient(U, vector[0.0, 0.0], 0.01)?
+}
