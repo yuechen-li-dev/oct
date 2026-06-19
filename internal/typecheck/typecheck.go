@@ -94,9 +94,6 @@ func (t Type) String() string {
 	if isDimensionCapableBaseType(t.Base) && !t.Dimension.IsDimensionless() {
 		base += "<" + t.Dimension.String() + ">"
 	}
-	if t.IsArray {
-		return base + strings.Repeat("[]", t.ArrayDepth)
-	}
 	if t.IsFunction {
 		return t.FunctionSignature
 	}
@@ -104,10 +101,13 @@ func (t Type) String() string {
 		return "FlowInstance<" + t.FlowResultType + ">"
 	}
 	if t.IsVector {
-		return "Vector<" + base + ">"
+		base = "Vector<" + base + ">"
 	}
 	if t.IsMatrix {
-		return "Matrix<" + base + ">"
+		base = "Matrix<" + base + ">"
+	}
+	if t.IsArray {
+		return base + strings.Repeat("[]", t.ArrayDepth)
 	}
 	return base
 }
@@ -5738,7 +5738,7 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		}
 	}
 
-	return withArrayDepth(Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension}, firstType.ValueType.ArrayDepth+1), nil
+	return withArrayDepth(Type{Name: firstType.ValueType.Name, Base: firstType.ValueType.Base, Dimension: firstType.ValueType.Dimension, IsVector: firstType.ValueType.IsVector, IsMatrix: firstType.ValueType.IsMatrix}, firstType.ValueType.ArrayDepth+1), nil
 }
 
 func (c checker) checkVectorLiteralExpr(scope *scope, expr ast.VectorLiteralExpr, ctx functionContext) (Type, error) {
@@ -5971,7 +5971,7 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 			}
 			return Type{}, fmt.Errorf("Matrix does not support %s elements in M16", elementType)
 		}
-		return Type{Base: elementType.Base, Dimension: elementType.Dimension, IsVector: isVector, IsMatrix: !isVector}, nil
+		return withArrayDepth(Type{Base: elementType.Base, Dimension: elementType.Dimension, IsVector: isVector, IsMatrix: !isVector}, arrayDepth), nil
 	}
 
 	qualifiedName := typeRef.Name

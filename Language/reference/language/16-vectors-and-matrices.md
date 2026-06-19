@@ -25,6 +25,9 @@ Arrays are general ordered collection/storage values, while vectors and matrices
 - Arrays (`T[]`, `T[][]`, ...) are generic containers; vectors/matrices are mathematical values.
 - Arrays are not implicitly reinterpreted as vectors or matrices by expected type.
 - `[[...], [...]]` is an array-of-arrays literal, not a matrix literal.
+- `Vector<Float>[]` is a collection of vector values; it is not interchangeable with `Float[][]` or `Float[]`.
+- `Matrix<Float>[]` is a collection of matrix values; it is not interchangeable with `Float[][]`.
+- Use arrays for bulk storage of many samples, and vector/matrix values for mathematical operations on each sample.
 
 ## Vector and matrix literals and constructors
 

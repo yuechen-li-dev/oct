@@ -1,0 +1,36 @@
+package MainValid
+
+[Fact]
+fn VectorArrayStoresIndexesMutatesCopiesAndAppendsVectorValues() -> Void {
+    var dirs: Vector<Float>[] = [
+        vector[1.0, 0.0],
+        vector[0.0, 1.0]
+    ]
+
+    let first = dirs[0]
+    Assert.Near(1.0, first[0], 0.000001, "vector array indexing returns vector value")
+
+    dirs[0] = vector[0.5, 0.5]
+    Assert.Near(0.5, dirs[0][1], 0.000001, "vector array index assignment stores vector value")
+
+    var copy = dirs
+    dirs[0] = vector[2.0, 2.0]
+    Assert.Near(0.5, copy[0][0], 0.000001, "array copy does not alias vector array storage")
+
+    dirs = Append(dirs, vector[1.0, 1.0])
+    Assert.Near(1.0, dirs[2][1], 0.000001, "Append accepts vector element")
+}
+
+[Fact]
+fn MatrixArrayStoresMatrixValuesWithoutBecomingFloatArrayArrays() -> Void {
+    var transforms: Matrix<Float>[] = [
+        matrix[[1.0, 0.0] [0.0, 1.0]],
+        matrix[[2.0, 0.0] [0.0, 2.0]]
+    ]
+
+    let identity = transforms[0]
+    Assert.Near(1.0, identity[1, 1], 0.000001, "matrix array indexing returns matrix value")
+
+    transforms[1] = matrix[[3.0, 0.0] [0.0, 4.0]]
+    Assert.Near(4.0, transforms[1][1, 1], 0.000001, "matrix array index assignment stores matrix value")
+}
