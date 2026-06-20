@@ -6638,6 +6638,14 @@ func isAssignable(actual Type, expected Type) bool {
 		return actual.IsFlowInstance && expected.IsFlowInstance && actual.FlowResultType == expected.FlowResultType
 	}
 	if actual.Name != "" || expected.Name != "" {
+		if actual.Name == expected.Name {
+			return true
+		}
+		if actual.IsArray == expected.IsArray && actual.ArrayDepth == expected.ArrayDepth && actual.IsVector == expected.IsVector && actual.IsMatrix == expected.IsMatrix && actual.Dimension == expected.Dimension {
+			if strings.HasSuffix(actual.Name, "."+expected.Name) || strings.HasSuffix(expected.Name, "."+actual.Name) {
+				return true
+			}
+		}
 		return false
 	}
 	if actual.IsArray != expected.IsArray || actual.ArrayDepth != expected.ArrayDepth || actual.IsVector != expected.IsVector || actual.IsMatrix != expected.IsMatrix || actual.Dimension != expected.Dimension {

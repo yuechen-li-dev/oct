@@ -436,6 +436,11 @@ func ExecuteFunctionWithArgs(program project.Program, pkgName string, functionNa
 }
 
 func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, functionName string, arguments []Value, stdout io.Writer, options ExecuteOptions) error {
+	_, err := CallFunctionWithArgsAndOptions(program, pkgName, functionName, arguments, stdout, options)
+	return err
+}
+
+func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, functionName string, arguments []Value, stdout io.Writer, options ExecuteOptions) (Value, error) {
 	clearPrefix := func() {}
 	if options.OutputPathPrefix != "" {
 		clearPrefix = SetOutputPathPrefix(options.OutputPathPrefix)
@@ -444,7 +449,7 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 
 	interpreter, err := newInterpreter(program, stdout)
 	if err != nil {
-		return err
+		return Value{}, err
 	}
 	defer interpreter.close()
 	interpreter.assertRecorder = options.AssertionRecorder
@@ -454,19 +459,19 @@ func ExecuteFunctionWithArgsAndOptions(program project.Program, pkgName string, 
 	key := pkgName + "." + functionName
 	function, ok := interpreter.functions[key]
 	if !ok {
-		return fmt.Errorf("missing function %s", key)
+		return Value{}, fmt.Errorf("missing function %s", key)
 	}
 	if len(function.Parameters) != len(arguments) {
-		return fmt.Errorf("test function %s expects %d arguments, got %d", key, len(function.Parameters), len(arguments))
+		return Value{}, fmt.Errorf("test function %s expects %d arguments, got %d", key, len(function.Parameters), len(arguments))
 	}
 	result, err := interpreter.executeFunction(function, pkgName, arguments)
 	if err != nil {
-		return err
+		return Value{}, err
 	}
 	if result.hasError {
-		return fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
+		return Value{}, fmt.Errorf("fatal error: %s", result.errorVal.Error.Message)
 	}
-	return nil
+	return result.value, nil
 }
 
 func (i interpreter) checkCancelled() error {

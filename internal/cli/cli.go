@@ -11,6 +11,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/build"
 	"github.com/yuechen-li-dev/oct/internal/exprun"
+	"github.com/yuechen-li-dev/oct/internal/makecmd"
 	"github.com/yuechen-li-dev/oct/internal/newpkg"
 	"github.com/yuechen-li-dev/oct/internal/ocfmt"
 	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
@@ -69,6 +70,18 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		_, err = fmt.Fprintf(stdout, "build succeeded: %s\n", result.ArtifactPath)
 		return err
+	case "make":
+		if isHelpArg(args[1:]) {
+			return writeMakeHelp(stdout)
+		}
+		options, err := parseMakeOptions(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		if err := makecmd.Execute(options, stdout, stderr); err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		return nil
 	case "fmt":
 		if isHelpArg(args[1:]) {
 			return writeFmtHelp(stdout)
@@ -801,7 +814,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  fmt        Format Oct source files\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
 
@@ -877,6 +890,11 @@ func writeBuildHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root>\nCompile a program and emit an artifact.")
 	return err
 }
+func writeMakeHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace]\nRun Make.oct targets with the M0 direct backend. Make.oct is discovered at the project root unless --file is provided. --backend only accepts direct; Ninja is not implemented in M0.")
+	return err
+}
+
 func writeFmtHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]\nFormat Oct source files with deterministic structural whitespace normalization.\nDefault mode: en-llm.\nModes:\n  en-llm          LLM-oriented readable structural formatting.\n  en-llm-compact  LLM-oriented compact structural formatting.\nAuto line wrapping/reflow is intentionally not enabled in v0.1.\nExamples:\n  oct fmt Language/Testing --mode en-llm\n  oct fmt Language/Testing --mode en-llm-compact --check")
 	return err
@@ -1044,4 +1062,39 @@ func parseBenchOctagonOut(args []string) (string, error) {
 		return "", fmt.Errorf("bench --octagon-out path must end with .octagon")
 	}
 	return args[1], nil
+}
+
+func parseMakeOptions(args []string) (makecmd.Options, error) {
+	options := makecmd.Options{Backend: "direct"}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--file":
+			if i+1 >= len(args) {
+				return options, fmt.Errorf("make --file requires a value")
+			}
+			i++
+			options.File = args[i]
+		case "--backend":
+			if i+1 >= len(args) {
+				return options, fmt.Errorf("make --backend requires a value")
+			}
+			i++
+			options.Backend = args[i]
+		case "--list":
+			options.List = true
+		case "--dry-run":
+			options.DryRun = true
+		case "--trace":
+			options.Trace = true
+		default:
+			if strings.HasPrefix(args[i], "--") {
+				return options, fmt.Errorf("unknown make flag %s", args[i])
+			}
+			if options.Target != "" {
+				return options, fmt.Errorf("oct make accepts at most one target")
+			}
+			options.Target = args[i]
+		}
+	}
+	return options, nil
 }
