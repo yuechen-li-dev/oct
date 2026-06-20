@@ -32,6 +32,7 @@ type Plan struct {
 	Config          Config
 	CommandTargets  []CommandTarget
 	FunctionTargets []FunctionTarget
+	FlowTargets     []FlowTarget
 	PhonyTargets    []PhonyTarget
 }
 type CommandTarget struct {
@@ -46,6 +47,12 @@ type FunctionTarget struct {
 	Inputs, Outputs, Deps []string
 	Function              string
 }
+type FlowTarget struct {
+	Name                  string
+	Inputs, Outputs, Deps []string
+	Flow                  string
+	MaxSteps              int64
+}
 type PhonyTarget struct {
 	Name string
 	Deps []string
@@ -55,6 +62,7 @@ type target struct {
 	order      int
 	command    *CommandTarget
 	function   *FunctionTarget
+	flow       *FlowTarget
 	phony      *PhonyTarget
 }
 type decision struct {
@@ -64,6 +72,13 @@ type decision struct {
 	CommandArgs                       []string
 	CommandCwd                        string
 	Function                          string
+	Flow                              string
+	MaxSteps                          int64
+	Steps                             int
+	FinalState                        string
+	StateHistory                      []string
+	ResultCode                        int64
+	Suspended                         bool
 	ExitCode                          int
 	Stdout, Stderr, Error             string
 	StartedUnixNano, FinishedUnixNano int64
@@ -171,7 +186,7 @@ func convertPlan(v interpret.Value) (Plan, error) {
 		return Plan{}, fmt.Errorf("Plan() must return Make.Plan")
 	}
 	f := v.Record.Fields
-	return Plan{Default: str(f, "Default"), Config: config(f["Config"]), CommandTargets: commands(f["CommandTargets"]), FunctionTargets: functions(f["FunctionTargets"]), PhonyTargets: phonies(f["PhonyTargets"])}, nil
+	return Plan{Default: str(f, "Default"), Config: config(f["Config"]), CommandTargets: commands(f["CommandTargets"]), FunctionTargets: functions(f["FunctionTargets"]), FlowTargets: flows(f["FlowTargets"]), PhonyTargets: phonies(f["PhonyTargets"])}, nil
 }
 func str(m map[string]interpret.Value, k string) string {
 	if v, ok := m[k]; ok && v.Kind == interpret.ValueString {
@@ -190,6 +205,12 @@ func arr(v interpret.Value) []string {
 		}
 	}
 	return out
+}
+func integer(m map[string]interpret.Value, k string) int64 {
+	if v, ok := m[k]; ok && v.Kind == interpret.ValueInt {
+		return v.Int
+	}
+	return 0
 }
 
 func config(v interpret.Value) Config {
@@ -235,6 +256,19 @@ func functions(v interpret.Value) []FunctionTarget {
 		if e.Kind == interpret.ValueRecord {
 			f := e.Record.Fields
 			out = append(out, FunctionTarget{Name: str(f, "Name"), Inputs: arr(f["Inputs"]), Outputs: arr(f["Outputs"]), Deps: arr(f["Deps"]), Function: str(f, "Function")})
+		}
+	}
+	return out
+}
+func flows(v interpret.Value) []FlowTarget {
+	out := []FlowTarget{}
+	if v.Kind != interpret.ValueArray {
+		return out
+	}
+	for _, e := range v.Array {
+		if e.Kind == interpret.ValueRecord {
+			f := e.Record.Fields
+			out = append(out, FlowTarget{Name: str(f, "Name"), Inputs: arr(f["Inputs"]), Outputs: arr(f["Outputs"]), Deps: arr(f["Deps"]), Flow: str(f, "Flow"), MaxSteps: integer(f, "MaxSteps")})
 		}
 	}
 	return out
@@ -292,6 +326,17 @@ func validate(p Plan) (map[string]*target, error) {
 			return nil, err
 		}
 	}
+	for i := range p.FlowTargets {
+		if p.FlowTargets[i].Flow == "" {
+			return nil, fmt.Errorf("target %q: Flow must be non-empty", p.FlowTargets[i].Name)
+		}
+		if p.FlowTargets[i].MaxSteps <= 0 {
+			return nil, fmt.Errorf("target %q: MaxSteps must be positive", p.FlowTargets[i].Name)
+		}
+		if err := add(p.FlowTargets[i].Name, "flow", &target{flow: &p.FlowTargets[i]}); err != nil {
+			return nil, err
+		}
+	}
 	for i := range p.PhonyTargets {
 		if err := add(p.PhonyTargets[i].Name, "phony", &target{phony: &p.PhonyTargets[i]}); err != nil {
 			return nil, err
@@ -316,6 +361,9 @@ func deps(t *target) []string {
 	}
 	if t.function != nil {
 		return t.function.Deps
+	}
+	if t.flow != nil {
+		return t.flow.Deps
 	}
 	return t.phony.Deps
 }
@@ -446,6 +494,58 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 				decs = append(decs, d)
 				return decs, fmt.Errorf("target %q: function %q failed: %w", n, fn, err)
 			}
+		} else if t.flow != nil {
+			ft := t.flow
+			result, err := withMakeAuthorityFlow(func() (interpret.FlowRunResult, error) {
+				return interpret.RunFlowToCompletionWithOptions(program, program.Entry, ft.Flow, int(ft.MaxSteps), stdout, interpret.ExecuteOptions{})
+			})
+			d.Steps = result.Steps
+			d.FinalState = result.FinalState
+			d.StateHistory = result.StateHistory
+			d.Suspended = result.Suspended
+			if result.Result.Kind == interpret.ValueInt {
+				d.ResultCode = result.Result.Int
+				d.ExitCode = int(result.Result.Int)
+			}
+			if err != nil {
+				d.Status = "Failed"
+				d.Error = err.Error()
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
+				return decs, fmt.Errorf("target %q: flow %q failed: %w", n, ft.Flow, err)
+			}
+			if result.Suspended {
+				msg := fmt.Sprintf("target %q: flow %q suspended before completion; persistent make flow resume is not supported in MAKE4", n, ft.Flow)
+				d.Status = "Failed"
+				d.Error = msg
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
+				return decs, fmt.Errorf("%s", msg)
+			}
+			if !result.Completed {
+				msg := fmt.Sprintf("flow %q did not complete", ft.Flow)
+				d.Status = "Failed"
+				d.Error = msg
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
+				return decs, fmt.Errorf("target %q: %s", n, msg)
+			}
+			if result.Result.Kind != interpret.ValueInt {
+				msg := fmt.Sprintf("flow %q returned %s; FlowTarget requires Int result", ft.Flow, result.Result.Kind)
+				d.Status = "Failed"
+				d.Error = msg
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
+				return decs, fmt.Errorf("target %q: %s", n, msg)
+			}
+			if result.Result.Int != 0 {
+				msg := fmt.Sprintf("flow %q returned nonzero result %d", ft.Flow, result.Result.Int)
+				d.Status = "Failed"
+				d.Error = msg
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
+				return decs, fmt.Errorf("target %q: %s", n, msg)
+			}
 		}
 		d.FinishedUnixNano = time.Now().UnixNano()
 		decs = append(decs, d)
@@ -524,6 +624,9 @@ func paths(t *target, root string) ([]string, []string) {
 	} else if t.function != nil {
 		ins = t.function.Inputs
 		outs = t.function.Outputs
+	} else if t.flow != nil {
+		ins = t.flow.Inputs
+		outs = t.flow.Outputs
 	}
 	conv := func(xs []string) []string {
 		r := []string{}
@@ -594,6 +697,10 @@ func newDecision(t *target, root, status, reason string) decision {
 	if t.function != nil {
 		d.Function = t.function.Function
 	}
+	if t.flow != nil {
+		d.Flow = t.flow.Flow
+		d.MaxSteps = t.flow.MaxSteps
+	}
 	return d
 }
 func rawPaths(t *target) ([]string, []string) {
@@ -602,6 +709,9 @@ func rawPaths(t *target) ([]string, []string) {
 	}
 	if t.function != nil {
 		return t.function.Inputs, t.function.Outputs
+	}
+	if t.flow != nil {
+		return t.flow.Inputs, t.flow.Outputs
 	}
 	return nil, nil
 }
@@ -626,7 +736,13 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		writeStringArray(&b, d.Outputs)
 		fmt.Fprintf(&b, "\n            CommandProgram: %q\n            CommandArgs: ", d.CommandProgram)
 		writeStringArray(&b, d.CommandArgs)
-		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n        }\n", d.CommandCwd, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
+		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandCwd, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
+		if d.Kind == "flow" {
+			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
+			writeStringArray(&b, d.StateHistory)
+			fmt.Fprintf(&b, "\n            ResultCode: %d\n            Suspended: %t\n", d.ResultCode, d.Suspended)
+		}
+		b.WriteString("        }\n")
 	}
 	b.WriteString("    ]\n}\n")
 	return os.WriteFile(filepath.Join(dir, "trace.octagon"), []byte(b.String()), 0644)
@@ -660,7 +776,11 @@ func maybeState(opts Options, plan Plan, root, selected string, targets map[stri
 	for _, n := range names {
 		t := targets[n]
 		ins, outs := rawPaths(t)
-		fmt.Fprintf(&b, "        MakeTargetState {\n            Name: %q\n            LastStatus: %q\n            LastRunUnixNano: %d\n            Inputs: [\n", n, status[n], time.Now().UnixNano())
+		fmt.Fprintf(&b, "        MakeTargetState {\n            Name: %q\n            Kind: %q\n            LastStatus: %q\n            LastRunUnixNano: %d\n", n, t.kind, status[n], time.Now().UnixNano())
+		if d, ok := decisionByName(decs, n); ok && t.kind == "flow" {
+			fmt.Fprintf(&b, "            FinalState: %q\n            ResultCode: %d\n", d.FinalState, d.ResultCode)
+		}
+		b.WriteString("            Inputs: [\n")
 		for _, p := range ins {
 			writePathState(&b, root, p)
 		}
@@ -687,7 +807,27 @@ func writePathState(b *strings.Builder, root, p string) {
 	}
 	fmt.Fprintf(b, "                MakePathState { Path: %q Exists: %t ModifiedUnixNano: %d Hash: %q }\n", filepath.ToSlash(p), exists, mod, "")
 }
+func decisionByName(decs []decision, name string) (decision, bool) {
+	for _, d := range decs {
+		if d.Name == name {
+			return d, true
+		}
+	}
+	return decision{}, false
+}
 func withMakeAuthorityValue(fn func() (interpret.Value, error)) (interpret.Value, error) {
+	old, had := os.LookupEnv("OCT_MAKE_AUTHORITY")
+	os.Setenv("OCT_MAKE_AUTHORITY", "1")
+	defer func() {
+		if had {
+			os.Setenv("OCT_MAKE_AUTHORITY", old)
+		} else {
+			os.Unsetenv("OCT_MAKE_AUTHORITY")
+		}
+	}()
+	return fn()
+}
+func withMakeAuthorityFlow(fn func() (interpret.FlowRunResult, error)) (interpret.FlowRunResult, error) {
 	old, had := os.LookupEnv("OCT_MAKE_AUTHORITY")
 	os.Setenv("OCT_MAKE_AUTHORITY", "1")
 	defer func() {

@@ -474,6 +474,75 @@ func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, fun
 	return result.value, nil
 }
 
+type FlowRunResult struct {
+	Result       Value
+	Completed    bool
+	Suspended    bool
+	Steps        int
+	FinalState   string
+	StateHistory []string
+}
+
+func RunFlowToCompletionWithOptions(program project.Program, pkgName string, flowName string, maxSteps int, stdout io.Writer, options ExecuteOptions) (FlowRunResult, error) {
+	if maxSteps <= 0 {
+		return FlowRunResult{}, fmt.Errorf("flow %q MaxSteps must be positive", flowName)
+	}
+	interpreter, err := newInterpreter(program, stdout)
+	if err != nil {
+		return FlowRunResult{}, err
+	}
+	defer interpreter.close()
+	interpreter.assertRecorder = options.AssertionRecorder
+	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
+	interpreter.ctx = options.Context
+	key := pkgName + "." + flowName
+	flow, ok := interpreter.flows[key]
+	if !ok {
+		return FlowRunResult{}, fmt.Errorf("missing flow %s", key)
+	}
+	if len(flow.Parameters) != 0 {
+		return FlowRunResult{}, fmt.Errorf("flow %q must take no arguments for oct make FlowTarget M0", flowName)
+	}
+	if flow.ReturnType.Name != "Int" || flow.ReturnType.IsArray || flow.ReturnType.ArrayDepth > 0 {
+		return FlowRunResult{}, fmt.Errorf("flow %q must return Int for oct make FlowTarget M0", flowName)
+	}
+	instance := interpreter.instantiateFlow(flow, pkgName, nil)
+	total := 0
+	for !instance.Completed {
+		if err := interpreter.checkCancelled(); err != nil {
+			return FlowRunResult{}, err
+		}
+		remaining := maxSteps - total
+		if remaining <= 0 {
+			return flowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flowName, maxSteps)
+		}
+		steps, exhausted, suspended, err := interpreter.stepFlowWithTransitionLimit(instance, remaining)
+		total += steps
+		if err != nil {
+			return flowRunResult(instance, total, false), err
+		}
+		if exhausted {
+			return flowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flowName, maxSteps)
+		}
+		if suspended {
+			return flowRunResult(instance, total, true), nil
+		}
+	}
+	return flowRunResult(instance, total, false), nil
+}
+
+func flowRunResult(instance *FlowRuntimeInstance, steps int, suspended bool) FlowRunResult {
+	history := append([]string(nil), instance.StateHistory...)
+	return FlowRunResult{
+		Result:       instance.Result,
+		Completed:    instance.Completed,
+		Suspended:    suspended && !instance.Completed,
+		Steps:        steps,
+		FinalState:   instance.CurrentState,
+		StateHistory: history,
+	}
+}
+
 func (i interpreter) checkCancelled() error {
 	if i.ctx == nil {
 		return nil
@@ -747,8 +816,21 @@ type flowSignal struct {
 const flowInstanceBindingName = "__oct_flow_instance"
 
 func (i interpreter) stepFlow(instance *FlowRuntimeInstance) error {
+	_, exhausted, _, err := i.stepFlowWithTransitionLimit(instance, 0)
+	if exhausted {
+		return fmt.Errorf("runtime invariant violation: unbounded Step exhausted an impossible transition limit")
+	}
+	return err
+}
+
+func (i interpreter) stepFlowWithTransitionLimit(instance *FlowRuntimeInstance, maxTransitions int) (int, bool, bool, error) {
+	transitions := 0
+	countTransition := func() bool {
+		transitions++
+		return maxTransitions > 0 && transitions > maxTransitions
+	}
 	if instance.Completed {
-		return nil
+		return 0, false, false, nil
 	}
 	if instance.CurrentState == "" {
 		instance.CurrentState = instance.Decl.EntryState
@@ -756,36 +838,42 @@ func (i interpreter) stepFlow(instance *FlowRuntimeInstance) error {
 		instance.StateEnv = newEnvironment(instance.RootEnv)
 		instance.StateEnv.define(flowInstanceBindingName, Value{Kind: ValueFlow, Flow: instance}, false)
 		instance.StateHistory = append(instance.StateHistory, instance.CurrentState)
+		if countTransition() {
+			return transitions, true, false, nil
+		}
 	}
 	for {
 		state, ok := findFlowState(instance.Decl, instance.CurrentState)
 		if !ok {
-			return fmt.Errorf("runtime invariant violation: unknown flow state %s", instance.CurrentState)
+			return transitions, false, false, fmt.Errorf("runtime invariant violation: unknown flow state %s", instance.CurrentState)
 		}
 		if instance.InstructionIndex >= len(state.Body.Statements) {
-			return fmt.Errorf("runtime invariant violation: flow state %s exited without suspend or return", state.Name)
+			return transitions, false, false, fmt.Errorf("runtime invariant violation: flow state %s exited without suspend or return", state.Name)
 		}
 		signal, err := i.executeFlowStmt(instance.StateEnv, instance.Package, state.Body.Statements[instance.InstructionIndex])
 		if err != nil {
-			return err
+			return transitions, false, false, err
 		}
 		switch signal.kind {
 		case flowSignalNone:
 			instance.InstructionIndex++
 		case flowSignalSuspend:
 			instance.InstructionIndex++
-			return nil
+			return transitions, false, true, nil
 		case flowSignalGoto:
 			instance.CurrentState = signal.target
 			instance.InstructionIndex = 0
 			instance.StateEnv = newEnvironment(instance.RootEnv)
 			instance.StateEnv.define(flowInstanceBindingName, Value{Kind: ValueFlow, Flow: instance}, false)
 			instance.StateHistory = append(instance.StateHistory, instance.CurrentState)
+			if countTransition() {
+				return transitions, true, false, nil
+			}
 		case flowSignalReturn:
 			instance.Completed = true
 			instance.CurrentState = ""
 			instance.Result = signal.value
-			return nil
+			return transitions, false, false, nil
 		}
 	}
 }
