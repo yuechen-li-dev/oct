@@ -9,6 +9,27 @@ Process execution uses `program` plus `args`; it does not invoke a shell string.
 File primitives are intended for project build orchestration. MAKE1 does not yet enforce project-root path policy inside the sidecar; future `oct make` will provide authority and project-root scoping. Ninja backends, C/C++ helpers, Go helpers, target DAGs, and `Make.oct` plan execution are deferred.
 
 
+## `Make.oct` and `Make.octest`
+
+`Make.oct` is ordinary Oct source. It may contain build plan functions, configuration helper functions, target metadata helpers, and action helper functions. The current direct `oct make` path looks for a `Plan() -> Make.Plan` function, but the source file itself is still normal Oct code.
+
+`Make.octest` is the natural xUnit-style companion test file for `Make.oct`. It has the same meaning as any other `.octest` file: a same-package test file loaded beside sibling `.oct` sources. Run it explicitly with `oct test Make.octest`; `oct make` does not automatically discover or run `Make.octest` before building. This keeps the build executor and the xUnit test lane separate.
+
+Pure `Make.octest` tests should focus on plan/config data that can be checked without make authority:
+
+- `Plan()` shape and selected default target;
+- config helper functions such as debug/release profiles;
+- target metadata;
+- target inputs, outputs, and deps;
+- `with`-based config/profile composition.
+
+`[Fact]` and `[Theory]` are the recommended attributes for these pure assertions. `[Artifact]` may later be useful for pure plan snapshots or target-table evidence, but it must not become hidden build execution. `[Benchmark]` is not important for ordinary Make plan tests.
+
+Side-effectful Make primitive tests are different. Tests that call `Make.Exec`, `Make.WriteText`, `Make.ReadText`, `Make.HashFile`, or other host primitives require explicit make authority and sidecar discovery. Keep that coverage in `Libraries/Make`, explicit sidecar/integration lanes, or Go CLI tests for `oct make`; ordinary `oct test Make.octest` does not receive `OCT_MAKE_AUTHORITY=1`.
+
+A future pure helper such as `Make.ValidatePlan` or `Make.CheckPlan` may be useful, but it is deferred until it can reuse executor validation logic without creating a second source of truth.
+
+
 ## `oct make` plan configuration
 
 `Make.Plan` includes a typed `Make.Config` record. Build configuration belongs in Oct data rather than a growing set of CLI profile flags. The default values are:

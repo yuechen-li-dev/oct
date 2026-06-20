@@ -23,6 +23,19 @@ Common commands:
 
 `oct test` defaults to running tests only from the selected entry package/root. Imported packages are still loaded for typechecking, but their tests are excluded unless `--all-packages` is specified.
 
+## `oct make` and `Make.octest`
+
+`Make.oct` is ordinary Oct source for build plan, config, target metadata, and action helper functions. The build lane is explicit: `oct make` evaluates `Plan() -> Make.Plan` and executes selected build targets, but it does not automatically run `Make.octest`.
+
+`Make.octest` is the normal xUnit-style same-package companion for `Make.oct`. Run pure plan/config checks directly with:
+
+```sh
+oct test Make.octest
+```
+
+Use `[Fact]` and `[Theory]` for ordinary assertions over `Plan()`, config helpers, target metadata, the default target, inputs/outputs/deps, and `with`-based profile composition. `[Artifact]` may later be useful for pure plan snapshots, but it must not hide build execution; `[Benchmark]` is not important for ordinary Make plan tests. Side-effectful Make primitive coverage requires explicit make authority and belongs in `Libraries/Make`, explicit sidecar/integration lanes, or Go CLI tests for `oct make`.
+
+
 ## `oct artifact` execution modes
 
 Usage:
