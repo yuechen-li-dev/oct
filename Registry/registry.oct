@@ -209,6 +209,16 @@ fn Registry() -> RegistryIndex {
                 Description: "Foundational numerical helpers"
             },
             PackageEntry {
+                Name: "Make"
+                Version: "0.1.0"
+                Kind: "wrapper"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Make"
+                Description: "Make-authorized host capability primitives for future oct make orchestration"
+            },
+            PackageEntry {
                 Name: "Mechanics"
                 Version: "0.6.0"
                 Kind: "library"

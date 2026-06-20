@@ -1,0 +1,63 @@
+package Make
+
+record ProcessResult {
+    ExitCode: Int
+    Stdout: String
+    Stderr: String
+}
+
+fn Exec(program: String, args: String[]) -> ProcessResult ! Error {
+    return MakeExecRaw(program, args)?
+}
+
+fn ExecIn(cwd: String, program: String, args: String[]) -> ProcessResult ! Error {
+    return MakeExecInRaw(cwd, program, args)?
+}
+
+fn Tool(name: String) -> String ! Error {
+    return MakeToolRaw(name)?
+}
+
+fn Exists(path: String) -> Bool {
+    return MakeExistsRaw(path)
+}
+
+fn IsFile(path: String) -> Bool {
+    return MakeIsFileRaw(path)
+}
+
+fn IsDir(path: String) -> Bool {
+    return MakeIsDirRaw(path)
+}
+
+fn MkdirAll(path: String) -> Int ! Error {
+    return MakeMkdirAllRaw(path)?
+}
+
+fn Remove(path: String) -> Int ! Error {
+    return MakeRemoveRaw(path)?
+}
+
+fn Copy(src: String, dst: String) -> Int ! Error {
+    return MakeCopyRaw(src, dst)?
+}
+
+fn ReadText(path: String) -> String ! Error {
+    return MakeReadTextRaw(path)?
+}
+
+fn WriteText(path: String, text: String) -> Int ! Error {
+    return MakeWriteTextRaw(path, text)?
+}
+
+fn Glob(pattern: String) -> String[] ! Error {
+    return MakeGlobRaw(pattern)?
+}
+
+fn ModifiedTime(path: String) -> Int ! Error {
+    return MakeModifiedTimeRaw(path)?
+}
+
+fn HashFile(path: String) -> String ! Error {
+    return MakeHashFileRaw(path)?
+}

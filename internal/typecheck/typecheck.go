@@ -3021,6 +3021,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkHashBuiltinCallExpr(scope, callee, arguments, ctx)
 	}
+	if strings.HasPrefix(callee, "Make") && strings.HasSuffix(callee, "Raw") {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
+		}
+		return c.checkMakeHostBuiltinCallExpr(scope, callee, arguments, ctx)
+	}
 	if callee == "RegexIsMatch" || callee == "RegexFindAll" || callee == "RegexReplaceAll" || callee == "RegexSplit" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", callee)
@@ -5207,6 +5213,50 @@ func (c checker) checkHashBuiltinCallExpr(scope *scope, callee string, arguments
 	return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true})
 }
 
+func (c checker) checkMakeHostBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	processResult := ExprType{ValueType: Type{Name: "ProcessResult"}, Fallible: true}
+	switch callee {
+	case "MakeExecRaw":
+		if err := c.requireStringAndStringArrayArgs(scope, callee, arguments, ctx); err != nil {
+			return ExprType{}, err
+		}
+		return processResult, nil
+	case "MakeExecInRaw":
+		if len(arguments) != 3 {
+			return ExprType{}, fmt.Errorf("function '%s' expects 3 arguments, got %d", callee, len(arguments))
+		}
+		for idx, wantArray := range []bool{false, false, true} {
+			argType, err := c.checkExpr(scope, arguments[idx], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if argType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+			}
+			want := Type{Base: BaseTypeString}
+			if wantArray {
+				want = withArrayDepth(want, 1)
+			}
+			if argType.ValueType != want {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, want, argType.ValueType)
+			}
+		}
+		return processResult, nil
+	case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true})
+	case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeBool}})
+	case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeModifiedTimeRaw":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
+	case "MakeCopyRaw", "MakeWriteTextRaw":
+		return c.checkTwoStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeInt}, Fallible: true})
+	case "MakeGlobRaw":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: withArrayDepth(Type{Base: BaseTypeString}, 1), Fallible: true})
+	default:
+		return ExprType{}, fmt.Errorf("unknown make host builtin %s", callee)
+	}
+}
+
 func (c checker) checkRegexBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	if callee == "RegexReplaceAll" {
 		if len(arguments) != 3 {
@@ -5291,6 +5341,25 @@ func (c checker) requireTwoStringArgs(scope *scope, callee string, arguments []a
 		}
 		if argType.ValueType != (Type{Base: BaseTypeString}) {
 			return fmt.Errorf("function '%s' argument %d expects String, got %s", callee, idx+1, argType.ValueType)
+		}
+	}
+	return nil
+}
+
+func (c checker) requireStringAndStringArrayArgs(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) error {
+	if len(arguments) != 2 {
+		return fmt.Errorf("function '%s' expects 2 arguments, got %d", callee, len(arguments))
+	}
+	for idx, want := range []Type{{Base: BaseTypeString}, withArrayDepth(Type{Base: BaseTypeString}, 1)} {
+		argType, err := c.checkExpr(scope, arguments[idx], ctx)
+		if err != nil {
+			return err
+		}
+		if argType.Fallible {
+			return fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+		}
+		if argType.ValueType != want {
+			return fmt.Errorf("function '%s' argument %d expects %s, got %s", callee, idx+1, want, argType.ValueType)
 		}
 	}
 	return nil

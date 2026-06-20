@@ -1,0 +1,34 @@
+package main
+
+import (
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+func TestMakeHostOctxiliaryRequiresAuthority(t *testing.T) {
+	requireSlowOctxiliary(t)
+	binDir := sharedTestSidecarDir(t, "octxiliary-makehost")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Make", "--execution", "interpreted")
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
+	cmd.Env = appendWithoutKey(cmd.Env, "OCT_MAKE_AUTHORITY")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected make host authority failure, got success: %s", out)
+	}
+	if !strings.Contains(string(out), "Make host capabilities are only available under oct make") {
+		t.Fatalf("expected make authority diagnostic, got: %s", out)
+	}
+}
+
+func appendWithoutKey(env []string, key string) []string {
+	prefix := key + "="
+	out := env[:0]
+	for _, item := range env {
+		if !strings.HasPrefix(item, prefix) {
+			out = append(out, item)
+		}
+	}
+	return out
+}

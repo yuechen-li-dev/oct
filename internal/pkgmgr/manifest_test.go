@@ -726,7 +726,6 @@ func TestLoadManifestMetadataHandleTransportTypes(t *testing.T) {
 		{"two fields", strings.Replace(valid, "WrapperTransportField { Name: \"Handle\" Type: \"Int\" }", "WrapperTransportField { Name: \"Handle\" Type: \"Int\" }, WrapperTransportField { Name: \"Other\" Type: \"Int\" }", 1), "exactly one"},
 		{"wrong field name", strings.Replace(valid, "Name: \"Handle\" Type: \"Int\"", "Name: \"ID\" Type: \"Int\"", 1), "Handle"},
 		{"wrong field type", strings.Replace(valid, "Name: \"Handle\" Type: \"Int\"", "Name: \"Handle\" Type: \"String\"", 1), "Int"},
-		{"record return rejected", strings.Replace(strings.Replace(valid, "Kind: \"handle\"", "Kind: \"record\"", 1), "Return: \"IO.Workbook\"", "Return: \"IO.Workbook\"", 1), "record returns"},
 		{"undeclared custom arg", strings.Replace(valid, "Args: [\"IO.Workbook\", \"String\"]", "Args: [\"Other.Workbook\", \"String\"]", 1), "unsupported transport type"},
 		{"undeclared custom return", strings.Replace(valid, "Return: \"IO.Workbook\"", "Return: \"Other.Workbook\"", 1), "unsupported transport type"},
 	}

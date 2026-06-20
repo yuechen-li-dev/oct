@@ -2609,7 +2609,11 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if meta, ok, err := c.genericWrapperMetadataForCallee(e.Callee); err != nil {
 			return "", "", false, err
 		} else if ok {
-			if ret != meta.Return {
+			effectiveReturn := meta.Return
+			if !strings.Contains(effectiveReturn, ".") && ret == meta.PackageName+"."+effectiveReturn {
+				effectiveReturn = ret
+			}
+			if ret != effectiveReturn {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s manifest return %s does not match Oct stub return %s", meta.PackageName, meta.OctName, meta.Return, ret)
 			}
 			if fallible != meta.Fallible {
@@ -2628,20 +2632,16 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 					return "", "", false, fmt.Errorf("wrapper function %s.%s argument %d uses unsupported transport type %s", meta.PackageName, meta.OctName, i+1, meta.Args[i])
 				}
 			}
-			if transport := findTransportRecord(meta.TransportTypes, meta.Return); transport.ok {
-				if transport.typ.Kind != "handle" {
-					return "", "", false, fmt.Errorf("wrapper function %s.%s return uses declared record transport type %s; record returns are not supported", meta.PackageName, meta.OctName, meta.Return)
-				}
-			} else if !isOctxiliaryTransportType(meta.Return) {
+			if transport := findTransportRecord(meta.TransportTypes, meta.Return); !transport.ok && !isOctxiliaryTransportType(meta.Return) {
 				return "", "", false, fmt.Errorf("wrapper function %s.%s return uses unsupported transport type %s", meta.PackageName, meta.OctName, meta.Return)
 			}
-			localType := meta.Return
+			localType := effectiveReturn
 			if meta.Fallible {
-				localType = fallibleType(meta.Return)
+				localType = fallibleType(effectiveReturn)
 			}
 			tmp := c.temp(localType)
-			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: effectiveArgTypes, RetType: meta.Return, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
-			return tmp, meta.Return, meta.Fallible, nil
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRGenericOctxiliaryCall{Target: tmp, PackageName: meta.PackageName, OctName: meta.OctName, Family: meta.Family, WireName: meta.WireName, SidecarCommand: meta.SidecarCommand, Args: args, ArgTypes: effectiveArgTypes, RetType: effectiveReturn, Fallible: meta.Fallible, TransportTypes: meta.TransportTypes})
+			return tmp, effectiveReturn, meta.Fallible, nil
 		}
 		if builtin && callee == "BoardSnapshot" {
 			if len(argTypes) != 1 {
@@ -3566,6 +3566,13 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return c.pkg.Name + "." + x.Name, flowInstanceTypeString(typeRefStringForPackage(c.pkg.Name, flow.ReturnType)), false, false, nil
 			}
 		}
+		if meta, ok := findGenericWrapperFunction(c.pkg, x.Name); ok {
+			ret := meta.Return
+			if !strings.Contains(ret, ".") && findTransportRecord(meta.TransportTypes, ret).ok {
+				ret = meta.PackageName + "." + ret
+			}
+			return x.Name, ret, true, meta.Fallible, nil
+		}
 		if builtin.IsName(x.Name) {
 			normalized := x.Name
 			if c.pkg.Name == "Random" {
@@ -3638,6 +3645,16 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Float[][]", true, true, nil
 			case "CsvWrite", "CsvWriteRows":
 				return normalized, "Int", true, true, nil
+			case "MakeExecRaw", "MakeExecInRaw":
+				return normalized, "Make.ProcessResult", true, true, nil
+			case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
+				return normalized, "String", true, true, nil
+			case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
+				return normalized, "Bool", true, false, nil
+			case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeCopyRaw", "MakeWriteTextRaw", "MakeModifiedTimeRaw":
+				return normalized, "Int", true, true, nil
+			case "MakeGlobRaw":
+				return normalized, "String[]", true, true, nil
 			case "PathJoin", "PathBaseName", "PathExtension", "PathStem", "PathParent", "PathClean":
 				return normalized, "String", true, false, nil
 			default:
@@ -3795,7 +3812,7 @@ type transportRecordLookup struct {
 
 func findTransportRecord(types []project.TransportTypeMetadata, name string) transportRecordLookup {
 	for _, typ := range types {
-		if typ.Name == name {
+		if typ.Name == name || (!strings.Contains(typ.Name, ".") && strings.HasSuffix(name, "."+typ.Name)) {
 			return transportRecordLookup{typ: typ, ok: true}
 		}
 	}
@@ -8487,6 +8504,9 @@ func octxiliaryKindExprWithTransport(t string, transportTypes []project.Transpor
 	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
 		return "octxiliary.ValueHandle"
 	}
+	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "record" {
+		return "octxiliary.ValueRecord"
+	}
 	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
 		return "octxiliary.ValueInt"
 	}
@@ -8572,6 +8592,13 @@ func octxiliaryValueExtractExpr(t string, value string) string {
 func octxiliaryValueExtractExprWithTransport(t string, value string, transportTypes []project.TransportTypeMetadata) string {
 	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
 		return fmt.Sprintf("%s{Handle: %s.HandleID}", goType(t), value)
+	}
+	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "record" {
+		parts := make([]string, 0, len(transport.typ.Fields))
+		for idx, field := range transport.typ.Fields {
+			parts = append(parts, fmt.Sprintf("%s: %s", field.Name, octxiliaryValueExtractExprWithTransport(field.Type, fmt.Sprintf("%s.Fields[%d].Value", value, idx), transportTypes)))
+		}
+		return fmt.Sprintf("%s{%s}", goType(t), strings.Join(parts, ", "))
 	}
 	if strings.HasPrefix(t, "Int<") && strings.HasSuffix(t, ">") {
 		return value + ".Int"

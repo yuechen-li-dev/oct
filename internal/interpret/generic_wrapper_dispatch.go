@@ -528,7 +528,31 @@ func unpackInterpretedWrapperReturn(fn interpretedWrapperFunction, value octxili
 			return Value{}, fmt.Errorf("unsupported transport return type %s", typ)
 		}
 		if transport.Kind != "handle" {
-			return Value{}, fmt.Errorf("record returns are not supported for transport type %s", typ)
+			if value.Kind != octxiliary.ValueRecord {
+				return Value{}, fmt.Errorf("Octxiliary record response type mismatch: expected %s, got %s", typ, value.Kind)
+			}
+			if value.RecordType != typ {
+				return Value{}, fmt.Errorf("Octxiliary record response type mismatch: expected %s, got %s", typ, value.RecordType)
+			}
+			fields := make(map[string]Value, len(transport.Fields))
+			order := make([]string, 0, len(transport.Fields))
+			byName := make(map[string]octxiliary.Value, len(value.Fields))
+			for _, field := range value.Fields {
+				byName[field.Name] = field.Value
+			}
+			for _, field := range transport.Fields {
+				raw, ok := byName[field.Name]
+				if !ok {
+					return Value{}, fmt.Errorf("Octxiliary record response %s missing field %s", typ, field.Name)
+				}
+				unpacked, err := unpackInterpretedWrapperReturn(interpretedWrapperFunction{Return: field.Type, TransportTypes: fn.TransportTypes, Family: fn.Family}, raw)
+				if err != nil {
+					return Value{}, fmt.Errorf("Octxiliary record response %s field %s: %w", typ, field.Name, err)
+				}
+				fields[field.Name] = unpacked
+				order = append(order, field.Name)
+			}
+			return Value{Kind: ValueRecord, Record: RecordValue{TypeName: typ, FieldOrder: order, Fields: fields}}, nil
 		}
 		if value.HandleFamily != fn.Family {
 			return Value{}, fmt.Errorf("Octxiliary handle response family mismatch: expected %s, got %s", fn.Family, value.HandleFamily)
