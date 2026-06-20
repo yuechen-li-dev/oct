@@ -1,6 +1,7 @@
 package makecmd
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -20,8 +21,15 @@ type Options struct {
 	List, DryRun, Trace   bool
 }
 
+type Config struct {
+	Profile, StateDir string
+	Trace             bool
+	Staleness         string
+}
+
 type Plan struct {
 	Default         string
+	Config          Config
 	CommandTargets  []CommandTarget
 	FunctionTargets []FunctionTarget
 	PhonyTargets    []PhonyTarget
@@ -49,7 +57,17 @@ type target struct {
 	function   *FunctionTarget
 	phony      *PhonyTarget
 }
-type decision struct{ Name, Kind, Status, Reason string }
+type decision struct {
+	Name, Kind, Status, Reason        string
+	Deps, Inputs, Outputs             []string
+	CommandProgram                    string
+	CommandArgs                       []string
+	CommandCwd                        string
+	Function                          string
+	ExitCode                          int
+	Stdout, Stderr, Error             string
+	StartedUnixNano, FinishedUnixNano int64
+}
 
 func Execute(opts Options, stdout, stderr io.Writer) error {
 	if opts.Backend == "" {
@@ -93,14 +111,26 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 	}
 	if opts.List {
 		list(plan, targets, stdout)
-		return maybeTrace(opts, root, makeFile, selected, nil, nil)
+		return maybeTrace(opts, plan, root, makeFile, selected, nil, nil, time.Now(), time.Now())
 	}
-	decisions, runErr := run(order, targets, root, program, opts, stdout, stderr)
-	traceErr := maybeTrace(opts, root, makeFile, selected, order, decisions)
+	started := time.Now()
+	decisions, runErr := run(order, targets, root, program, plan, opts, stdout, stderr)
+	finished := time.Now()
+	traceErr := maybeTrace(opts, plan, root, makeFile, selected, order, decisions, started, finished)
+	stateErr := maybeState(opts, plan, root, selected, targets, decisions)
 	if runErr != nil {
+		if traceErr != nil {
+			return traceErr
+		}
+		if stateErr != nil {
+			return stateErr
+		}
 		return runErr
 	}
-	return traceErr
+	if traceErr != nil {
+		return traceErr
+	}
+	return stateErr
 }
 
 func discover(explicit string) (string, string, error) {
@@ -141,7 +171,7 @@ func convertPlan(v interpret.Value) (Plan, error) {
 		return Plan{}, fmt.Errorf("Plan() must return Make.Plan")
 	}
 	f := v.Record.Fields
-	return Plan{Default: str(f, "Default"), CommandTargets: commands(f["CommandTargets"]), FunctionTargets: functions(f["FunctionTargets"]), PhonyTargets: phonies(f["PhonyTargets"])}, nil
+	return Plan{Default: str(f, "Default"), Config: config(f["Config"]), CommandTargets: commands(f["CommandTargets"]), FunctionTargets: functions(f["FunctionTargets"]), PhonyTargets: phonies(f["PhonyTargets"])}, nil
 }
 func str(m map[string]interpret.Value, k string) string {
 	if v, ok := m[k]; ok && v.Kind == interpret.ValueString {
@@ -160,6 +190,28 @@ func arr(v interpret.Value) []string {
 		}
 	}
 	return out
+}
+
+func config(v interpret.Value) Config {
+	c := Config{Profile: "Default", StateDir: ".octmake", Trace: false, Staleness: "Timestamp"}
+	if v.Kind != interpret.ValueRecord {
+		return c
+	}
+	f := v.Record.Fields
+	if p := str(f, "Profile"); p != "" {
+		c.Profile = p
+	}
+	c.StateDir = str(f, "StateDir")
+	if c.StateDir == "" {
+		c.StateDir = ".octmake"
+	}
+	if tv, ok := f["Trace"]; ok && tv.Kind == interpret.ValueBool {
+		c.Trace = tv.Bool
+	}
+	if sv, ok := f["Staleness"]; ok && sv.Kind == interpret.ValueEnum {
+		c.Staleness = sv.Enum.Variant
+	}
+	return c
 }
 func commands(v interpret.Value) []CommandTarget {
 	out := []CommandTarget{}
@@ -202,6 +254,12 @@ func phonies(v interpret.Value) []PhonyTarget {
 }
 
 func validate(p Plan) (map[string]*target, error) {
+	if p.Config.Profile == "" {
+		p.Config.Profile = "Default"
+	}
+	if p.Config.Staleness != "Timestamp" && p.Config.Staleness != "Always" {
+		return nil, fmt.Errorf("Config.Staleness must be Timestamp or Always")
+	}
 	m := map[string]*target{}
 	order := 0
 	add := func(n, k string, t *target) error {
@@ -328,12 +386,12 @@ func closure(sel string, m map[string]*target) ([]string, error) {
 	return out, visit(sel)
 }
 
-func run(order []string, m map[string]*target, root string, program project.Program, opts Options, stdout, stderr io.Writer) ([]decision, error) {
+func run(order []string, m map[string]*target, root string, program project.Program, plan Plan, opts Options, stdout, stderr io.Writer) ([]decision, error) {
 	ran := map[string]bool{}
 	decs := []decision{}
 	for _, n := range order {
 		t := m[n]
-		stale, reason, err := stale(t, root, ran)
+		stale, reason, err := stale(t, root, ran, plan.Config.Staleness)
 		if err != nil {
 			return decs, err
 		}
@@ -341,18 +399,40 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 			stale = true
 			reason = "phony"
 		}
-		status := "skip"
+		status := "Skipped"
 		if stale {
-			status = "run"
+			status = "Ran"
 		}
-		decs = append(decs, decision{n, t.kind, status, reason})
-		fmt.Fprintf(stdout, "%s %s (%s)\n", status, n, reason)
+		if opts.DryRun && stale {
+			status = "Skipped"
+			reason = "DryRunWouldRun"
+		}
+		d := newDecision(t, root, status, reason)
+		d.StartedUnixNano = time.Now().UnixNano()
+		verb := "skip"
+		if stale {
+			verb = "run"
+		}
+		fmt.Fprintf(stdout, "%s %s (%s)\n", verb, n, reason)
 		if opts.DryRun || !stale {
+			d.FinishedUnixNano = time.Now().UnixNano()
+			decs = append(decs, d)
 			continue
 		}
 		if t.command != nil {
-			if err := runCommand(*t.command, root, stdout, stderr); err != nil {
+			if out, errOut, code, err := runCommand(*t.command, root, stdout, stderr); err != nil {
+				d.Status = "Failed"
+				d.ExitCode = code
+				d.Stdout = out
+				d.Stderr = errOut
+				d.Error = err.Error()
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
 				return decs, fmt.Errorf("target %q: %w", n, err)
+			} else {
+				d.ExitCode = code
+				d.Stdout = out
+				d.Stderr = errOut
 			}
 		} else if t.function != nil {
 			fn := t.function.Function
@@ -360,14 +440,20 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 				return interpret.CallFunctionWithArgsAndOptions(program, program.Entry, fn, nil, stdout, interpret.ExecuteOptions{})
 			})
 			if err != nil {
+				d.Status = "Failed"
+				d.Error = err.Error()
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
 				return decs, fmt.Errorf("target %q: function %q failed: %w", n, fn, err)
 			}
 		}
+		d.FinishedUnixNano = time.Now().UnixNano()
+		decs = append(decs, d)
 		ran[n] = true
 	}
 	return decs, nil
 }
-func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) error {
+func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) (string, string, int, error) {
 	cwd := c.Cwd
 	if cwd == "" {
 		cwd = root
@@ -377,14 +463,20 @@ func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) error {
 	}
 	cmd := exec.Command(c.Program, c.Args...)
 	cmd.Dir = cwd
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
-		return err
+	var outb, errb bytes.Buffer
+	cmd.Stdout = io.MultiWriter(stdout, &outb)
+	cmd.Stderr = io.MultiWriter(stderr, &errb)
+	err := cmd.Run()
+	code := 0
+	if cmd.ProcessState != nil {
+		code = cmd.ProcessState.ExitCode()
 	}
-	return nil
+	return outb.String(), errb.String(), code, err
 }
-func stale(t *target, root string, ran map[string]bool) (bool, string, error) {
+func stale(t *target, root string, ran map[string]bool, policy string) (bool, string, error) {
+	if policy == "Always" && t.kind != "phony" {
+		return true, "Always", nil
+	}
 	for _, d := range deps(t) {
 		if ran[d] {
 			return true, "dependency ran", nil
@@ -470,30 +562,130 @@ func list(p Plan, m map[string]*target, out io.Writer) {
 		_ = mark
 	}
 }
-func maybeTrace(opts Options, root, makeFile, selected string, order []string, decs []decision) error {
-	if !opts.Trace {
+func stateDir(root string, p Plan) string {
+	d := p.Config.StateDir
+	if d == "" {
+		d = ".octmake"
+	}
+	if filepath.IsAbs(d) {
+		return filepath.Clean(d)
+	}
+	return filepath.Join(root, filepath.Clean(d))
+}
+func quote(s string) string { return fmt.Sprintf("%q", s) }
+func writeStringArray(b *strings.Builder, xs []string) {
+	b.WriteString("[")
+	for i, x := range xs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(quote(x))
+	}
+	b.WriteString("]")
+}
+func newDecision(t *target, root, status, reason string) decision {
+	ins, outs := rawPaths(t)
+	d := decision{Name: t.name, Kind: t.kind, Status: status, Reason: reason, Deps: deps(t), Inputs: ins, Outputs: outs, ExitCode: 0}
+	if t.command != nil {
+		d.CommandProgram = t.command.Program
+		d.CommandArgs = t.command.Args
+		d.CommandCwd = t.command.Cwd
+	}
+	if t.function != nil {
+		d.Function = t.function.Function
+	}
+	return d
+}
+func rawPaths(t *target) ([]string, []string) {
+	if t.command != nil {
+		return t.command.Inputs, t.command.Outputs
+	}
+	if t.function != nil {
+		return t.function.Inputs, t.function.Outputs
+	}
+	return nil, nil
+}
+func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order []string, decs []decision, started, finished time.Time) error {
+	if !opts.Trace && !plan.Config.Trace {
 		return nil
 	}
-	dir := filepath.Join(root, ".octmake")
+	dir := stateDir(root, plan)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
 	var b strings.Builder
 	b.WriteString("MakeTrace {\n")
-	fmt.Fprintf(&b, "    Selected: %q\n    Backend: %q\n    MakeFile: %q\n", selected, opts.Backend, filepath.ToSlash(makeFile))
-	b.WriteString("    Order: [")
-	for i, n := range order {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		fmt.Fprintf(&b, "%q", n)
-	}
-	b.WriteString("]\n    Decisions: [\n")
+	fmt.Fprintf(&b, "    Version: 0\n    Backend: %q\n    MakeFile: %q\n    SelectedTarget: %q\n    DefaultTarget: %q\n    Profile: %q\n    StateDir: %q\n    DryRun: %t\n    TraceRequested: %t\n    StartedUnixNano: %d\n    FinishedUnixNano: %d\n", opts.Backend, filepath.ToSlash(makeFile), selected, plan.Default, plan.Config.Profile, filepath.ToSlash(plan.Config.StateDir), opts.DryRun, opts.Trace || plan.Config.Trace, started.UnixNano(), finished.UnixNano())
+	b.WriteString("    Decisions: [\n")
 	for _, d := range decs {
-		fmt.Fprintf(&b, "        Decision { Name: %q Kind: %q Status: %q Reason: %q }\n", d.Name, d.Kind, d.Status, d.Reason)
+		fmt.Fprintf(&b, "        MakeDecision {\n            Name: %q\n            Kind: %q\n            Status: %q\n            Reason: %q\n            Deps: ", d.Name, d.Kind, d.Status, d.Reason)
+		writeStringArray(&b, d.Deps)
+		b.WriteString("\n            Inputs: ")
+		writeStringArray(&b, d.Inputs)
+		b.WriteString("\n            Outputs: ")
+		writeStringArray(&b, d.Outputs)
+		fmt.Fprintf(&b, "\n            CommandProgram: %q\n            CommandArgs: ", d.CommandProgram)
+		writeStringArray(&b, d.CommandArgs)
+		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n        }\n", d.CommandCwd, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
 	}
 	b.WriteString("    ]\n}\n")
 	return os.WriteFile(filepath.Join(dir, "trace.octagon"), []byte(b.String()), 0644)
+}
+func maybeState(opts Options, plan Plan, root, selected string, targets map[string]*target, decs []decision) error {
+	if opts.DryRun {
+		return nil
+	}
+	dir := stateDir(root, plan)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	status := map[string]string{}
+	for _, d := range decs {
+		if d.Status == "Failed" {
+			status[d.Name] = "Failed"
+		} else if d.Status == "Ran" {
+			status[d.Name] = "Succeeded"
+		} else {
+			status[d.Name] = "Skipped"
+		}
+	}
+	var b strings.Builder
+	b.WriteString("MakeState {\n")
+	fmt.Fprintf(&b, "    Version: 0\n    Backend: %q\n    LastRunTarget: %q\n    Targets: [\n", "direct", selected)
+	names := make([]string, 0, len(targets))
+	for n := range targets {
+		names = append(names, n)
+	}
+	sort.SliceStable(names, func(i, j int) bool { return targets[names[i]].order < targets[names[j]].order })
+	for _, n := range names {
+		t := targets[n]
+		ins, outs := rawPaths(t)
+		fmt.Fprintf(&b, "        MakeTargetState {\n            Name: %q\n            LastStatus: %q\n            LastRunUnixNano: %d\n            Inputs: [\n", n, status[n], time.Now().UnixNano())
+		for _, p := range ins {
+			writePathState(&b, root, p)
+		}
+		b.WriteString("            ]\n            Outputs: [\n")
+		for _, p := range outs {
+			writePathState(&b, root, p)
+		}
+		b.WriteString("            ]\n        }\n")
+	}
+	b.WriteString("    ]\n}\n")
+	return os.WriteFile(filepath.Join(dir, "state.octagon"), []byte(b.String()), 0644)
+}
+func writePathState(b *strings.Builder, root, p string) {
+	full := p
+	if !filepath.IsAbs(full) {
+		full = filepath.Join(root, p)
+	}
+	exists := true
+	mod := int64(0)
+	if info, err := os.Stat(full); err == nil {
+		mod = info.ModTime().UnixNano()
+	} else {
+		exists = false
+	}
+	fmt.Fprintf(b, "                MakePathState { Path: %q Exists: %t ModifiedUnixNano: %d Hash: %q }\n", filepath.ToSlash(p), exists, mod, "")
 }
 func withMakeAuthorityValue(fn func() (interpret.Value, error)) (interpret.Value, error) {
 	old, had := os.LookupEnv("OCT_MAKE_AUTHORITY")

@@ -6,8 +6,30 @@ record ProcessResult {
     Stderr: String
 }
 
+enum Staleness {
+    Timestamp
+    Always
+}
+
+record Config {
+    Profile: String
+    StateDir: String
+    Trace: Bool
+    Staleness: Staleness
+}
+
+fn DefaultConfig() -> Config {
+    return Config {
+        Profile: "Default"
+        StateDir: ".octmake"
+        Trace: false
+        Staleness: Staleness.Timestamp
+    }
+}
+
 record Plan {
     Default: String
+    Config: Config
     CommandTargets: CommandTarget[]
     FunctionTargets: FunctionTarget[]
     PhonyTargets: PhonyTarget[]

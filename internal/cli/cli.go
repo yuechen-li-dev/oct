@@ -891,7 +891,7 @@ func writeBuildHelp(out io.Writer) error {
 	return err
 }
 func writeMakeHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace]\nRun Make.oct targets with the M0 direct backend. Make.oct is discovered at the project root unless --file is provided. --backend only accepts direct; Ninja is not implemented in M0.")
+	_, err := fmt.Fprintln(out, "usage: oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace]\nRun Make.oct targets with the direct backend. Make.oct is discovered at the project root unless --file is provided. Project configuration belongs in Make.Plan.Config records; compose profiles with record `with` updates. CLI flags select execution behavior only. --backend only accepts direct; Ninja is not implemented.")
 	return err
 }
 
