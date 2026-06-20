@@ -36,6 +36,7 @@ Start with [00-overview.md](./00-overview.md).
 - [21 Octomata](./runtime/21-octomata.md)
 - [22 Batch](./runtime/22-batch.md)
 - [23 Prometheus (Experimental)](./runtime/23-prometheus.md)
+- [UIBridge v0](./runtime/uibridge.md)
 
 ## Tooling
 

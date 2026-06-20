@@ -1,0 +1,10 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "InvokeRequest"
+    RequestId: "req-001"
+    Target: "Counter.Increment"
+    Args: CounterIncrementArgs {
+        Amount: 1
+    }
+}

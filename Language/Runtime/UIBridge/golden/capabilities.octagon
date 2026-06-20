@@ -1,0 +1,8 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "Capabilities"
+    Encodings: ["octagon-document", "octagon-frame", "json-projection"]
+    SupportsStatePatch: true
+    SupportsEvents: true
+}

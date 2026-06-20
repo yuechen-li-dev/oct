@@ -1,0 +1,10 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "InvokeResponse"
+    RequestId: "req-001"
+    Ok: true
+    Result: CounterValue {
+        Value: 42
+    }
+}

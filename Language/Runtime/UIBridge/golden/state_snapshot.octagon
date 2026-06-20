@@ -1,0 +1,8 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "StateSnapshot"
+    State: CounterState {
+        Value: 42
+    }
+}
