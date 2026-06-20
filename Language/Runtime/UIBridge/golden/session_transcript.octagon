@@ -1,0 +1,56 @@
+UIBridgeTranscript {
+    Protocol: "ui.bridge"
+    Version: 0
+    Messages: [
+        UIBridgeMessage {
+            Protocol: "ui.bridge"
+            Version: 0
+            Kind: "Handshake"
+            Client: "MachinaUIBridge"
+        },
+        UIBridgeMessage {
+            Protocol: "ui.bridge"
+            Version: 0
+            Kind: "Capabilities"
+            Encodings: ["octagon-document", "octagon-frame", "json-projection"]
+            SupportsStatePatch: true
+            SupportsEvents: true
+        },
+        UIBridgeMessage {
+            Protocol: "ui.bridge"
+            Version: 0
+            Kind: "InvokeRequest"
+            RequestId: "req-001"
+            Target: "Counter.Increment"
+            Args: CounterIncrementArgs {
+                Amount: 1
+            }
+        },
+        UIBridgeMessage {
+            Protocol: "ui.bridge"
+            Version: 0
+            Kind: "InvokeResponse"
+            RequestId: "req-001"
+            Ok: true
+            Result: CounterValue {
+                Value: 42
+            }
+        },
+        UIBridgeMessage {
+            Protocol: "ui.bridge"
+            Version: 0
+            Kind: "StatePatch"
+            Patch: CounterPatch {
+                Value: 43
+            }
+        },
+        UIBridgeMessage {
+            Protocol: "ui.bridge"
+            Version: 0
+            Kind: "Event"
+            Event: CounterChanged {
+                Value: 43
+            }
+        }
+    ]
+}

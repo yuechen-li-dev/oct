@@ -1,0 +1,9 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "StateSnapshot"
+    State: MotionState {
+        Speed: 3.2m/s
+        Acceleration: 9.81m/s^2
+    }
+}

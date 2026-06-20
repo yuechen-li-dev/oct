@@ -1,0 +1,8 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "Event"
+    Event: CounterChanged {
+        Value: 43
+    }
+}

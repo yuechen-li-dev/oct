@@ -8,6 +8,8 @@ The recommendation is:
 
 > Octagon is the canonical schema and native message format for UIBridge. JSON is a compatibility projection generated from the Octagon schema.
 
+UIB2 follow-up status: the normative UIBridge v0 contract now lives at [`Language/reference/runtime/uibridge.md`](../../Language/reference/runtime/uibridge.md), with parse-validated golden Octagon fixtures under `Language/Runtime/UIBridge/golden/`.
+
 `UIBridge` should name the canonical frontend/backend contract. `MachinaUIBridge` may name a Machina-specific host/client implementation of that contract. Avoid using `Oct UI Bridge` as the product/API name because the contract is not tied to one UI product surface and should also support non-Machina clients through projections.
 
 ## 1. Current survey findings

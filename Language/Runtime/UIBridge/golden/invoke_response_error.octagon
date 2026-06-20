@@ -1,0 +1,13 @@
+UIBridgeMessage {
+    Protocol: "ui.bridge"
+    Version: 0
+    Kind: "InvokeResponse"
+    RequestId: "req-002"
+    Ok: false
+    Error: UIBridgeError {
+        Code: "ValidationError"
+        Message: "Amount must be positive"
+        Source: "Backend"
+        Retryable: false
+    }
+}

@@ -8,10 +8,10 @@ import (
 )
 
 func TestLoadValidFixtures(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "Language", "Data", "Octagon", "valid", "*.octagon"))
-	if err != nil {
-		t.Fatalf("glob valid fixtures: %v", err)
-	}
+	paths := collectOctagonFixtures(t,
+		filepath.Join("..", "..", "Language", "Data", "Octagon", "valid", "*.octagon"),
+		filepath.Join("..", "..", "Language", "Runtime", "UIBridge", "golden", "*.octagon"),
+	)
 	if len(paths) == 0 {
 		t.Fatal("expected valid .octagon fixtures")
 	}
@@ -26,6 +26,22 @@ func TestLoadValidFixtures(t *testing.T) {
 			}
 		})
 	}
+}
+
+func collectOctagonFixtures(t *testing.T, patterns ...string) []string {
+	t.Helper()
+	var paths []string
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("glob valid fixtures %s: %v", pattern, err)
+		}
+		if len(matches) == 0 {
+			t.Fatalf("expected valid .octagon fixtures for %s", pattern)
+		}
+		paths = append(paths, matches...)
+	}
+	return paths
 }
 
 func TestLoadInvalidFixtures(t *testing.T) {
