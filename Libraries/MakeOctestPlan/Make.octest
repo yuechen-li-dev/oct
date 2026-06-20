@@ -1,0 +1,34 @@
+package Main
+
+import Make
+
+[Fact]
+fn PlanDefaultIsBuild() -> Void {
+    let plan = Plan()
+    Assert.Equal("Build", plan.Default, "default target should be Build")
+}
+
+[Fact]
+fn ReleaseConfigUsesReleaseStateDir() -> Void {
+    let cfg = ReleaseConfig()
+    Assert.Equal("Release", cfg.Profile, "release profile should be named Release")
+    Assert.Equal(".octmake/release", cfg.StateDir, "release state dir should be isolated")
+    Assert.True(cfg.Trace, "release config should enable trace")
+    Assert.Equal(Make.Staleness.Always, cfg.Staleness, "release config should use always staleness")
+}
+
+[Fact]
+fn PlanHasBuildFunctionTarget() -> Void {
+    let plan = Plan()
+    Assert.Equal(1, Len(plan.FunctionTargets), "plan should have one function target")
+    Assert.Equal("Build", BuildTargetName(), "target name should be Build")
+    Assert.Equal("src/main.oct", BuildTargetInput(), "target input should be metadata only")
+}
+
+[Fact]
+fn PlanIncludesConfigAndPhonyMetadata() -> Void {
+    let plan = Plan()
+    Assert.Equal(1, Len(plan.PhonyTargets), "plan should have one phony target")
+    Assert.Equal("All", PhonyTargetName(), "phony target name should be All")
+    Assert.Equal("Build", PhonyTargetDependency(), "phony target should depend on Build")
+}

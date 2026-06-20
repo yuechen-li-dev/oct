@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "MakeOctestPlan"
+        Version: "0.1.0"
+        Description: "Pure Make.octest plan/config companion fixture"
+        Authors: ["Codex"]
+        Date: "2026-06-20"
+        Dependencies: [Dependency { Name: "Make" VersionRequirement: "0.1.0" }]
+    }
+}

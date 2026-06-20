@@ -1,0 +1,86 @@
+package Main
+
+import Make
+
+fn DebugConfig() -> Make.Config {
+    return Make.Config {
+        Profile: "Debug"
+        StateDir: ".octmake/debug"
+        Trace: false
+        Staleness: Make.Staleness.Timestamp
+    }
+}
+
+fn ReleaseConfig() -> Make.Config {
+    return DebugConfig() with {
+        Profile: "Release"
+        StateDir: ".octmake/release"
+        Trace: true
+        Staleness: Make.Staleness.Always
+    }
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: DebugConfig()
+        CommandTargets: []
+        FunctionTargets: [
+            Make.FunctionTarget {
+                Name: "Build"
+                Inputs: ["src/main.oct"]
+                Outputs: ["dist/app"]
+                Deps: []
+                Function: "Build"
+            }
+        ]
+        PhonyTargets: [
+            Make.PhonyTarget {
+                Name: "All"
+                Deps: ["Build"]
+            }
+        ]
+    }
+}
+
+fn BuildTargetName() -> String {
+    let target = Make.FunctionTarget {
+        Name: "Build"
+        Inputs: ["src/main.oct"]
+        Outputs: ["dist/app"]
+        Deps: []
+        Function: "Build"
+    }
+    return target.Name
+}
+
+fn BuildTargetInput() -> String {
+    let target = Make.FunctionTarget {
+        Name: "Build"
+        Inputs: ["src/main.oct"]
+        Outputs: ["dist/app"]
+        Deps: []
+        Function: "Build"
+    }
+    return target.Inputs[0]
+}
+
+fn PhonyTargetName() -> String {
+    let target = Make.PhonyTarget {
+        Name: "All"
+        Deps: ["Build"]
+    }
+    return target.Name
+}
+
+fn PhonyTargetDependency() -> String {
+    let target = Make.PhonyTarget {
+        Name: "All"
+        Deps: ["Build"]
+    }
+    return target.Deps[0]
+}
+
+fn Build() -> Int {
+    return 0
+}
