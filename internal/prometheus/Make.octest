@@ -1,0 +1,49 @@
+package Main
+
+import Make
+
+[Fact]
+fn PlanDefaultIsTestNative() -> Void {
+    Assert.Equal("TestNative", Plan().Default, "Prometheus dogfood default should be TestNative")
+}
+
+[Fact]
+fn DogfoodConfigUsesPrometheusStateAndTrace() -> Void {
+    let cfg = DogfoodConfig()
+    Assert.Equal("PrometheusDogfood", cfg.Profile, "dogfood profile should be named")
+    Assert.Equal(".octmake/prometheus", cfg.StateDir, "dogfood state should be isolated")
+    Assert.True(cfg.Trace, "dogfood config should enable trace")
+    Assert.Equal(Make.Staleness.Timestamp, cfg.Staleness, "dogfood config should use timestamp staleness")
+}
+
+[Fact]
+fn PlanHasExpectedTargetCounts() -> Void {
+    Assert.Equal(2, CommandTargetCount(), "plan should include build and harness command targets")
+    Assert.Equal(3, FunctionTargetCount(), "plan should include environment, tool, and clean function targets")
+    Assert.Equal(1, FlowTargetCount(), "plan should include one dogfood FlowTarget")
+    Assert.Equal(1, PhonyTargetCount(), "plan should include one default phony target")
+}
+
+[Fact]
+fn PlanIncludesDogfoodFlowTargetMetadata() -> Void {
+    Assert.Equal(16, PrometheusDogfoodMaxSteps(), "dogfood flow should have fixed M0 max steps")
+}
+
+[Fact]
+fn TestNativeDependsOnDogfoodFlow() -> Void {
+    Assert.Equal("PrometheusDogfoodFlow", TestNativeTargetDependency(), "TestNative should depend on PrometheusDogfoodFlow")
+}
+
+[Fact]
+fn PlanIncludesRequiredCommandTargets() -> Void {
+    Assert.Equal("BuildPrometheus", BuildPrometheusTargetName(), "plan should include BuildPrometheus")
+    Assert.Equal("RunHarness", RunHarnessTargetName(), "plan should include RunHarness")
+}
+
+[Fact]
+fn CommandTargetsUseStructuredProgramAndArgs() -> Void {
+    Assert.Equal("bash", BuildPrometheusTargetProgram(), "build command should use Program")
+    Assert.Equal("internal/prometheus/native/build_stub.sh", BuildPrometheusTargetFirstArg(), "build command should use Args")
+    Assert.Equal("out/prometheus/native/marionette_tests", RunHarnessTargetProgram(), "harness command should use Program")
+    Assert.Equal("PrometheusNativeHarness_Smoke", RunHarnessTargetFirstArg(), "harness command should use Args")
+}

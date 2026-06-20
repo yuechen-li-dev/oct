@@ -1,0 +1,230 @@
+package Main
+
+import Make
+
+fn DogfoodConfig() -> Make.Config {
+    return Make.DefaultConfig() with {
+        Profile: "PrometheusDogfood"
+        StateDir: ".octmake/prometheus"
+        Trace: true
+        Staleness: Make.Staleness.Timestamp
+    }
+}
+
+fn LinuxDogfoodConfig() -> Make.Config {
+    return DogfoodConfig() with {
+        Profile: "PrometheusDogfoodLinux"
+    }
+}
+
+fn WindowsDogfoodConfig() -> Make.Config {
+    return DogfoodConfig() with {
+        Profile: "PrometheusDogfoodWindows"
+    }
+}
+
+fn PrometheusDogfoodMaxSteps() -> Int {
+    return 16
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "TestNative"
+        Config: DogfoodConfig()
+        CommandTargets: [
+            Make.CommandTarget {
+                Name: "BuildPrometheus"
+                Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+                Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
+                Deps: ["CheckTools"]
+                Program: "bash"
+                Args: ["internal/prometheus/native/build_stub.sh"]
+                Cwd: "../.."
+            },
+            Make.CommandTarget {
+                Name: "RunHarness"
+                Inputs: ["../../out/prometheus/native/marionette_tests"]
+                Outputs: []
+                Deps: ["BuildPrometheus"]
+                Program: "out/prometheus/native/marionette_tests"
+                Args: ["PrometheusNativeHarness_Smoke"]
+                Cwd: "../.."
+            }
+        ]
+        FunctionTargets: [
+            Make.FunctionTarget {
+                Name: "ListEnvironment"
+                Inputs: []
+                Outputs: []
+                Deps: []
+                Function: "ListEnvironment"
+            },
+            Make.FunctionTarget {
+                Name: "CheckTools"
+                Inputs: []
+                Outputs: []
+                Deps: ["ListEnvironment"]
+                Function: "CheckTools"
+            },
+            Make.FunctionTarget {
+                Name: "Clean"
+                Inputs: []
+                Outputs: []
+                Deps: []
+                Function: "Clean"
+            }
+        ]
+        FlowTargets: [
+            Make.FlowTarget {
+                Name: "PrometheusDogfoodFlow"
+                Inputs: []
+                Outputs: []
+                Deps: []
+                Flow: "PrometheusDogfoodFlow"
+                MaxSteps: PrometheusDogfoodMaxSteps()
+            }
+        ]
+        PhonyTargets: [
+            Make.PhonyTarget {
+                Name: "TestNative"
+                Deps: ["PrometheusDogfoodFlow"]
+            }
+        ]
+    }
+}
+
+fn CommandTargetCount() -> Int { return 2 }
+
+fn FunctionTargetCount() -> Int { return 3 }
+
+fn FlowTargetCount() -> Int { return 1 }
+
+fn PhonyTargetCount() -> Int { return 1 }
+
+fn BuildPrometheusTargetName() -> String {
+    let target = Make.CommandTarget {
+        Name: "BuildPrometheus"
+        Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+        Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
+        Deps: ["CheckTools"]
+        Program: "bash"
+        Args: ["internal/prometheus/native/build_stub.sh"]
+        Cwd: "../.."
+    }
+    return target.Name
+}
+
+fn BuildPrometheusTargetProgram() -> String {
+    let target = Make.CommandTarget {
+        Name: "BuildPrometheus"
+        Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+        Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
+        Deps: ["CheckTools"]
+        Program: "bash"
+        Args: ["internal/prometheus/native/build_stub.sh"]
+        Cwd: "../.."
+    }
+    return target.Program
+}
+
+fn BuildPrometheusTargetFirstArg() -> String {
+    let target = Make.CommandTarget {
+        Name: "BuildPrometheus"
+        Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+        Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
+        Deps: ["CheckTools"]
+        Program: "bash"
+        Args: ["internal/prometheus/native/build_stub.sh"]
+        Cwd: "../.."
+    }
+    return target.Args[0]
+}
+
+fn RunHarnessTargetName() -> String {
+    let target = Make.CommandTarget {
+        Name: "RunHarness"
+        Inputs: ["../../out/prometheus/native/marionette_tests"]
+        Outputs: []
+        Deps: ["BuildPrometheus"]
+        Program: "out/prometheus/native/marionette_tests"
+        Args: ["PrometheusNativeHarness_Smoke"]
+        Cwd: "../.."
+    }
+    return target.Name
+}
+
+fn RunHarnessTargetProgram() -> String {
+    let target = Make.CommandTarget {
+        Name: "RunHarness"
+        Inputs: ["../../out/prometheus/native/marionette_tests"]
+        Outputs: []
+        Deps: ["BuildPrometheus"]
+        Program: "out/prometheus/native/marionette_tests"
+        Args: ["PrometheusNativeHarness_Smoke"]
+        Cwd: "../.."
+    }
+    return target.Program
+}
+
+fn RunHarnessTargetFirstArg() -> String {
+    let target = Make.CommandTarget {
+        Name: "RunHarness"
+        Inputs: ["../../out/prometheus/native/marionette_tests"]
+        Outputs: []
+        Deps: ["BuildPrometheus"]
+        Program: "out/prometheus/native/marionette_tests"
+        Args: ["PrometheusNativeHarness_Smoke"]
+        Cwd: "../.."
+    }
+    return target.Args[0]
+}
+
+fn TestNativeTargetDependency() -> String {
+    let target = Make.PhonyTarget {
+        Name: "TestNative"
+        Deps: ["PrometheusDogfoodFlow"]
+    }
+    return target.Deps[0]
+}
+
+fn ListEnvironment() -> Int {
+    return 10
+}
+
+fn CheckTools() -> Int {
+    return 10
+}
+
+fn Clean() -> Int {
+    return 10
+}
+
+flow PrometheusDogfoodFlow() -> Int {
+    state DetectPlatform {
+        goto CheckTools
+    }
+
+    state CheckTools {
+        goto PrepareVulkan
+    }
+
+    state PrepareVulkan {
+        goto BuildNative
+    }
+
+    state BuildNative {
+        goto RunSmokeHarness
+    }
+
+    state RunSmokeHarness {
+        goto Done
+    }
+
+    state Done {
+        return 0
+    }
+
+    state Failed {
+        return 10
+    }
+}
