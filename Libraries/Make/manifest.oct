@@ -1,0 +1,62 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Kind: String
+    Dependencies: Dependency[]
+    Wrappers: Wrapper[]
+}
+
+record Dependency { Name: String VersionRequirement: String }
+record Wrapper { Name: String Family: String Protocol: String SidecarCommand: String GoModuleDir: String TransportTypes: WrapperTransportType[] Functions: WrapperFunction[] }
+record WrapperTransportType { Name: String Kind: String Fields: WrapperTransportField[] }
+record WrapperTransportField { Name: String Type: String }
+record WrapperFunction { OctName: String WireName: String Args: String[] Return: String Fallible: Bool }
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Make"
+        Version: "0.1.0"
+        Authors: ["Codex"]
+        Date: "2026-06-20"
+        Description: "Make-authorized host capability primitives for future oct make orchestration"
+        Kind: "wrapper"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+        Wrappers: [
+            Wrapper {
+                Name: "makehost"
+                Family: "Make"
+                Protocol: "octxiliary.v0"
+                SidecarCommand: "octxiliary-makehost"
+                GoModuleDir: "octxiliary"
+                TransportTypes: [
+                    WrapperTransportType { Name: "ProcessResult" Kind: "record" Fields: [
+                        WrapperTransportField { Name: "ExitCode" Type: "Int" },
+                        WrapperTransportField { Name: "Stdout" Type: "String" },
+                        WrapperTransportField { Name: "Stderr" Type: "String" }
+                    ] }
+                ]
+                Functions: [
+                    WrapperFunction { OctName: "MakeExecRaw" WireName: "MakeExec" Args: ["String", "String[]"] Return: "ProcessResult" Fallible: true },
+                    WrapperFunction { OctName: "MakeExecInRaw" WireName: "MakeExecIn" Args: ["String", "String", "String[]"] Return: "ProcessResult" Fallible: true },
+                    WrapperFunction { OctName: "MakeToolRaw" WireName: "MakeTool" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "MakeExistsRaw" WireName: "MakeExists" Args: ["String"] Return: "Bool" Fallible: false },
+                    WrapperFunction { OctName: "MakeIsFileRaw" WireName: "MakeIsFile" Args: ["String"] Return: "Bool" Fallible: false },
+                    WrapperFunction { OctName: "MakeIsDirRaw" WireName: "MakeIsDir" Args: ["String"] Return: "Bool" Fallible: false },
+                    WrapperFunction { OctName: "MakeMkdirAllRaw" WireName: "MakeMkdirAll" Args: ["String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "MakeRemoveRaw" WireName: "MakeRemove" Args: ["String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "MakeCopyRaw" WireName: "MakeCopy" Args: ["String", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "MakeReadTextRaw" WireName: "MakeReadText" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "MakeWriteTextRaw" WireName: "MakeWriteText" Args: ["String", "String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "MakeGlobRaw" WireName: "MakeGlob" Args: ["String"] Return: "String[]" Fallible: true },
+                    WrapperFunction { OctName: "MakeModifiedTimeRaw" WireName: "MakeModifiedTime" Args: ["String"] Return: "Int" Fallible: true },
+                    WrapperFunction { OctName: "MakeHashFileRaw" WireName: "MakeHashFile" Args: ["String"] Return: "String" Fallible: true }
+                ]
+            }
+        ]
+    }
+}

@@ -23,6 +23,7 @@ var sidecars = []string{
 	"octxiliary-time",
 	"octxiliary-archive",
 	"octxiliary-compression",
+	"octxiliary-makehost",
 }
 
 func main() {

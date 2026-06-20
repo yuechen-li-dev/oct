@@ -282,11 +282,7 @@ func extractFunction(record ast.RecordLiteralExpr, functionFields map[string]boo
 	if err != nil {
 		return FunctionMetadata{}, err
 	}
-	if declared, ok := findDeclaredTransportType(returnType, transportTypes); ok {
-		if declared.Kind != "handle" {
-			return FunctionMetadata{}, fmt.Errorf("Return uses declared record transport type %q; record returns are not supported", returnType)
-		}
-	} else if !IsSupportedTransportType(returnType) {
+	if _, ok := findDeclaredTransportType(returnType, transportTypes); !ok && !IsSupportedTransportType(returnType) {
 		return FunctionMetadata{}, fmt.Errorf("Return has unsupported transport type %q", returnType)
 	}
 	fallible, ok := fields["Fallible"].(ast.BoolLiteral)

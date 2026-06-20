@@ -494,3 +494,11 @@ Testing:
 - Recommended host capability model: make-mode-only `Make` package, not ambient process execution.
 - C/C++ + Go implication: start with typed primitives and leave toolchain helpers to a later stage.
 - Next milestone: MAKE1 host capability primitives, not `oct make` DAG execution.
+
+## MAKE1 follow-up status
+
+MAKE1 adds the first make-authorized host primitive surface as a first-party `Make` wrapper-library package under `Libraries/Make`, backed by the `octxiliary-makehost` sidecar. The package is intentionally a primitive capability surface for future `oct make`; it does not add a target DAG executor, `Make.oct` discovery, manifest build metadata, target syntax, Ninja emission, typed C/C++ helpers, or Go build helpers.
+
+The sidecar is built and discovered through the existing Octxiliary wrapper lifecycle (`oct pkg wrappers`, `oct pkg build-wrappers --allow-native`, `tools/build_sidecars`, and `OCT_WRAPPER_PATH`). In MAKE1 test lanes, explicit make authority is represented by `OCT_MAKE_AUTHORITY=1`; without it, the sidecar returns `Make host capabilities are only available under oct make`. Future `oct make` should replace that harness knob with CLI-owned authority and project-root policy.
+
+The wrapper manifest declares `ProcessResult` as a record transport type, so interpreted and compiled generic wrapper calls can carry the process result across the Octxiliary boundary. This removes the previous generic-wrapper limitation that allowed record arguments but rejected non-handle record returns.
