@@ -866,6 +866,14 @@ func (p *parser) parseStatement() (ast.Stmt, error) {
 	case lex.KeywordWhen:
 		return p.parseWhenStmt()
 	default:
+		if p.current().Kind == lex.Identifier {
+			switch p.current().Lexeme {
+			case "continue":
+				return nil, p.errorAtCurrent("`continue` is not a loop-control keyword in Oct. Use a guard condition for simple loops, or Loop.Advance(state) with explicit Loop state helpers.")
+			case "break":
+				return nil, p.errorAtCurrent("`break` is not a loop-control keyword in Oct. Put the stop condition in the loop condition, or use Loop.Stop(state) with explicit Loop state helpers.")
+			}
+		}
 		if p.isIdentifierLike(p.current().Kind) {
 			if stmt, handled, err := p.tryParseIdentifierLeadingAssignment(); err != nil {
 				return nil, err

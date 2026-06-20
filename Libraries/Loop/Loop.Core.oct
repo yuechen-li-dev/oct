@@ -1,0 +1,61 @@
+package Loop
+
+/// Explicit immutable state for an increasing half-open integer range.
+record RangeState {
+    Current: Int
+    End: Int
+    Step: Int
+    Active: Bool
+}
+
+/// Construct an increasing half-open range [Start, End) with Step = 1.
+/// Ranges whose Start is at or beyond End are inactive in M0.
+fn Range(Start: Int, End: Int) -> RangeState {
+    return RangeState {
+        Current: Start
+        End: End
+        Step: 1
+        Active: Start < End
+    }
+}
+
+/// Construct an increasing half-open range [Start, End) with a positive custom step.
+/// M0 supports only positive steps; zero and negative steps are rejected.
+fn RangeStep(Start: Int, End: Int, Step: Int) -> RangeState ! Error {
+    if Step <= 0 {
+        return error("Loop.RangeStep requires a positive step")
+    }
+
+    return RangeState {
+        Current: Start
+        End: End
+        Step: Step
+        Active: Start < End
+    }
+}
+
+fn IsActive(State: RangeState) -> Bool {
+    return State.Active
+}
+
+fn Current(State: RangeState) -> Int {
+    return State.Current
+}
+
+/// Advance the range state by Step. This is a pure record transition,
+/// not Octomata resume flow control.
+fn Advance(State: RangeState) -> RangeState {
+    if not State.Active {
+        return State
+    }
+
+    let next = State.Current + State.Step
+    return State with {
+        Current: next
+        Active: next < State.End
+    }
+}
+
+fn Stop(State: RangeState) -> RangeState {
+    return State with { Active: false }
+}

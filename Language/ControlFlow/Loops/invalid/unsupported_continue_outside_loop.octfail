@@ -1,0 +1,8 @@
+expect error: "`continue` is not a loop-control keyword in Oct. Use a guard condition for simple loops, or Loop.Advance(state) with explicit Loop state helpers."
+
+package Main
+
+fn Main() -> Int {
+    continue
+    return 0
+}

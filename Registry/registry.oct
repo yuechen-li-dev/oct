@@ -189,6 +189,16 @@ fn Registry() -> RegistryIndex {
                 Description: "Minimal deterministic vector and matrix operations"
             },
             PackageEntry {
+                Name: "Loop"
+                Version: "0.1.0"
+                Kind: "library"
+                SourceKind: "local"
+                Source: ".."
+                Ref: ""
+                Path: "Libraries/Loop"
+                Description: "Explicit immutable loop-state helpers for increasing integer ranges"
+            },
+            PackageEntry {
                 Name: "Mathematics"
                 Version: "0.1.0"
                 Kind: "library"

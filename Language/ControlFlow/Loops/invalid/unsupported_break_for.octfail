@@ -1,0 +1,10 @@
+expect error: "`break` is not a loop-control keyword in Oct. Put the stop condition in the loop condition, or use Loop.Stop(state) with explicit Loop state helpers."
+
+package Main
+
+fn Main() -> Int {
+    for i in 0..3 {
+        break
+    }
+    return 0
+}

@@ -1257,6 +1257,22 @@ func TestBuildFileParsesContextualKeywordsAsIdentifiers(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesContinueAndBreakAsNonStatementIdentifiers(t *testing.T) {
+	file := parseSource(t, "record Example { continue: Int break: Int }\nfn Echo(continue: Int, break: Int) -> Int { let continue = continue let break = break return continue + break }")
+	if len(file.Records) != 1 || len(file.Records[0].Fields) != 2 {
+		t.Fatalf("expected continue/break record fields, got %+v", file.Records)
+	}
+	if file.Records[0].Fields[0].Name != "continue" || file.Records[0].Fields[1].Name != "break" {
+		t.Fatalf("unexpected record field names: %+v", file.Records[0].Fields)
+	}
+	if len(file.Functions) != 1 || len(file.Functions[0].Parameters) != 2 {
+		t.Fatalf("expected continue/break parameters, got %+v", file.Functions)
+	}
+	if file.Functions[0].Parameters[0].Name != "continue" || file.Functions[0].Parameters[1].Name != "break" {
+		t.Fatalf("unexpected parameter names: %+v", file.Functions[0].Parameters)
+	}
+}
+
 func TestBuildFileParsesFirstClassRangeExpressionForms(t *testing.T) {
 	tests := []struct {
 		name     string
