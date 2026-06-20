@@ -23,6 +23,7 @@ fn Plan() -> Make.Plan {
             Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["go-version.txt"] Deps: [] Program: "go" Args: ["version"] Cwd: "" }
         ]
         FunctionTargets: []
+        FlowTargets: []
         PhonyTargets: [
             Make.PhonyTarget { Name: "All" Deps: ["Build"] }
         ]
@@ -69,15 +70,15 @@ func TestMakeValidationFailures(t *testing.T) {
 	cases := []struct{ name, body, want string }{
 		{"missing dep", `package Main
 import Make
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "Build" Deps: ["Missing"] }] } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "Build" Deps: ["Missing"] }] } }
 `, `dependency "Missing" does not exist`},
 		{"duplicate", `package Main
 import Make
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["version"] Cwd: "" }] FunctionTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "Build" Deps: [] }] } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["version"] Cwd: "" }] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "Build" Deps: [] }] } }
 `, `duplicate target name`},
 		{"cycle", `package Main
 import Make
-fn Plan() -> Make.Plan { return Make.Plan { Default: "A" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "A" Deps: ["B"] }, Make.PhonyTarget { Name: "B" Deps: ["A"] }] } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "A" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "A" Deps: ["B"] }, Make.PhonyTarget { Name: "B" Deps: ["A"] }] } }
 `, `dependency cycle detected`},
 	}
 	for _, tc := range cases {
@@ -100,7 +101,7 @@ func TestMakeFunctionTargetGetsAuthority(t *testing.T) {
 	writeFile(t, makeFile, `package Main
 import Make
 
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }] PhonyTargets: [] } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
 fn Build() -> Void ! Error { let _w = Make.WriteText("out.txt", "made")? }
 `)
 	old := os.Getenv("OCT_WRAPPER_PATH")
@@ -166,6 +167,7 @@ fn Plan() -> Make.Plan {
         Config: Release
         CommandTargets: []
         FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }]
+        FlowTargets: []
         PhonyTargets: []
     }
 }
@@ -211,6 +213,7 @@ fn Plan() -> Make.Plan {
         Config: Make.Config { Profile: "Always" StateDir: "" Trace: false Staleness: Make.Staleness.Always }
         CommandTargets: []
         FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }]
+        FlowTargets: []
         PhonyTargets: []
     }
 }
@@ -244,7 +247,7 @@ fn Build() -> Void ! Error { let _w = Make.WriteText("out.txt", "made")? }
 
 	writeFile(t, makeFile, `package Main
 import Make
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "Fail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }] PhonyTargets: [] } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "Fail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
 fn Build() -> Void ! Error { return Error("boom") }
 `)
 	_, _, err := executeCLIArgs("make", "--file", makeFile)
@@ -272,6 +275,7 @@ fn Plan() -> Make.Plan {
         Config: Make.Config { Profile: "CommandFail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
         CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Program: "go" Args: ["definitely-not-a-go-subcommand"] Cwd: "" }]
         FunctionTargets: []
+        FlowTargets: []
         PhonyTargets: []
     }
 }
@@ -293,5 +297,172 @@ fn Plan() -> Make.Plan {
 	stateBody, _ := os.ReadFile(filepath.Join(root, ".octmake", "state.octagon"))
 	if !strings.Contains(string(stateBody), `LastStatus: "Failed"`) {
 		t.Fatalf("command failure state missing failed status:\n%s", stateBody)
+	}
+}
+
+func TestMakeFlowTargetSuccessTraceListDryRunAndPhony(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+flow BuildFlow() -> Int {
+    state Start { goto Done }
+    state Done { return 0 }
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "All"
+        Config: Make.Config { Profile: "Flow" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: [Make.FlowTarget { Name: "BuildFlowTarget" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }]
+        PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: ["BuildFlowTarget"] }]
+    }
+}
+`)
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile, "--list")
+	if err != nil {
+		t.Fatalf("list failed: %v stderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "BuildFlowTarget") || !strings.Contains(stdout, "flow") {
+		t.Fatalf("list missing flow target: %q", stdout)
+	}
+	stdout, stderr, err = executeCLIArgs("make", "--file", makeFile, "BuildFlowTarget", "--dry-run", "--trace")
+	if err != nil {
+		t.Fatalf("dry run failed: %v stderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "run BuildFlowTarget") {
+		t.Fatalf("dry run missing flow decision: %q", stdout)
+	}
+	tracePath := filepath.Join(root, ".octmake", "trace.octagon")
+	body, _ := os.ReadFile(tracePath)
+	if strings.Contains(string(body), `StateHistory: ["Start"`) {
+		t.Fatalf("dry run should not step flow:\n%s", body)
+	}
+	stdout, stderr, err = executeCLIArgs("make", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("flow make failed: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+	body, _ = os.ReadFile(tracePath)
+	for _, want := range []string{`Kind: "flow"`, `Flow: "BuildFlow"`, `ResultCode: 0`, `StateHistory: ["Start", "Done"]`, `Suspended: false`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("flow trace missing %s:\n%s", want, body)
+		}
+	}
+	stateBody, _ := os.ReadFile(filepath.Join(root, ".octmake", "state.octagon"))
+	if !strings.Contains(string(stateBody), `Kind: "flow"`) || !strings.Contains(string(stateBody), `LastStatus: "Succeeded"`) {
+		t.Fatalf("flow state missing evidence:\n%s", stateBody)
+	}
+}
+
+func TestMakeFlowTargetFailureModes(t *testing.T) {
+	tests := []struct {
+		name  string
+		flow  string
+		plan  string
+		want  string
+		trace []string
+	}{
+		{
+			name:  "nonzero",
+			flow:  `flow BuildFlow() -> Int { state Start { return 1 } }`,
+			plan:  `Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }`,
+			want:  `flow "BuildFlow" returned nonzero result 1`,
+			trace: []string{`ResultCode: 1`, `Status: "Failed"`},
+		},
+		{
+			name:  "suspend",
+			flow:  `flow BuildFlow() -> Int { state Start { suspend return 0 } }`,
+			plan:  `Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }`,
+			want:  `target "Build": flow "BuildFlow" suspended before completion; persistent make flow resume is not supported in MAKE4`,
+			trace: []string{`Suspended: true`, `StateHistory: ["Start"]`},
+		},
+		{
+			name:  "maxsteps",
+			flow:  `flow BuildFlow() -> Int { state A { goto B } state B { goto A } }`,
+			plan:  `Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 3 }`,
+			want:  `flow "BuildFlow" exceeded MaxSteps 3`,
+			trace: []string{`Steps: 4`, `Status: "Failed"`},
+		},
+		{
+			name:  "missing",
+			flow:  `flow OtherFlow() -> Int { state Start { return 0 } }`,
+			plan:  `Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }`,
+			want:  `missing flow Main.BuildFlow`,
+			trace: []string{`Flow: "BuildFlow"`, `Status: "Failed"`},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := repoTempDir(t)
+			makeFile := filepath.Join(root, "Make.oct")
+			writeFile(t, makeFile, `package Main
+import Make
+`+tc.flow+`
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "FlowFail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: [`+tc.plan+`]
+        PhonyTargets: []
+    }
+}
+`)
+			_, _, err := executeCLIArgs("make", "--file", makeFile)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected %q error, got %v", tc.want, err)
+			}
+			body, _ := os.ReadFile(filepath.Join(root, ".octmake", "trace.octagon"))
+			for _, want := range tc.trace {
+				if !strings.Contains(string(body), want) {
+					t.Fatalf("trace missing %s:\n%s", want, body)
+				}
+			}
+		})
+	}
+}
+
+func TestMakeFlowTargetValidationAndStaleness(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+flow BuildFlow() -> Int { state Start { return 0 } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 0 }] PhonyTargets: [] } }
+`)
+	_, _, err := executeCLIArgs("make", "--file", makeFile)
+	if err == nil || !strings.Contains(err.Error(), "MaxSteps must be positive") {
+		t.Fatalf("expected max steps validation error, got %v", err)
+	}
+
+	out := filepath.Join(root, "out.txt")
+	writeFile(t, out, "existing")
+	writeFile(t, makeFile, `package Main
+import Make
+flow BuildFlow() -> Int { state Start { goto Done } state Done { return 0 } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "FlowStale" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Timestamp } CommandTargets: [] FunctionTargets: [] FlowTargets: [Make.FlowTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }] PhonyTargets: [] } }
+`)
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("up-to-date flow failed: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "skip Build") {
+		t.Fatalf("expected up-to-date skip, got %q", stdout)
+	}
+	writeFile(t, makeFile, `package Main
+import Make
+flow BuildFlow() -> Int { state Start { goto Done } state Done { return 0 } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "FlowAlways" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [] FlowTargets: [Make.FlowTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }] PhonyTargets: [] } }
+`)
+	stdout, stderr, err = executeCLIArgs("make", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("always flow failed: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "run Build") {
+		t.Fatalf("expected always run, got %q", stdout)
 	}
 }

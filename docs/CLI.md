@@ -25,7 +25,7 @@ Common commands:
 
 ## `oct make` and `Make.octest`
 
-`Make.oct` is ordinary Oct source for build plan, config, target metadata, and action helper functions. The build lane is explicit: `oct make` evaluates `Plan() -> Make.Plan` and executes selected build targets, but it does not automatically run `Make.octest`.
+`Make.oct` is ordinary Oct source for build plan, config, target metadata, action helper functions, and direct-backend `FlowTarget` Octomata actions. The build lane is explicit: `oct make` evaluates `Plan() -> Make.Plan` and executes selected build targets, but it does not automatically run `Make.octest`.
 
 `Make.octest` is the normal xUnit-style same-package companion for `Make.oct`. Run pure plan/config checks directly with:
 

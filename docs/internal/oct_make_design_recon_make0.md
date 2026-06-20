@@ -520,3 +520,7 @@ Staleness is timestamp-based: targets with no outputs, missing outputs, inputs n
 When `oct make` invokes `Plan()` or function targets, it sets `OCT_MAKE_AUTHORITY=1` for Make sidecar calls while preserving normal wrapper discovery via `OCT_WRAPPER_PATH`. Ordinary `oct run` and ordinary tests still do not receive this authority automatically.
 
 `--trace` writes a deterministic M0 trace to `.octmake/trace.octagon` with selected target, backend, make file, dependency order, and target decisions. Trace richness is intentionally minimal in M0 and can grow with later MAKE milestones.
+
+## MAKE4 implementation status
+
+MAKE4 adds direct-backend `FlowTarget` support without adding Ninja lowering or persistent flow resume. `Make.Plan` now carries `FlowTargets`, each flow target names a zero-argument Octomata flow and a positive `MaxSteps` guard, and the direct executor steps the flow until completion, suspension, runtime error, or max-step exhaustion. The MAKE4 result convention is intentionally narrow: completed `Int` result `0` succeeds and non-zero fails. Suspended flows fail with a diagnostic that persistent make-flow resume is not supported in MAKE4. Flow decisions record flow name, max steps, steps taken, state history, result code when available, suspended status, errors, and timing in `trace.octagon`; `state.octagon` records kind `flow` and path status evidence.

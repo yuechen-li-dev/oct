@@ -32,6 +32,7 @@ record Plan {
     Config: Config
     CommandTargets: CommandTarget[]
     FunctionTargets: FunctionTarget[]
+    FlowTargets: FlowTarget[]
     PhonyTargets: PhonyTarget[]
 }
 
@@ -51,6 +52,15 @@ record FunctionTarget {
     Outputs: String[]
     Deps: String[]
     Function: String
+}
+
+record FlowTarget {
+    Name: String
+    Inputs: String[]
+    Outputs: String[]
+    Deps: String[]
+    Flow: String
+    MaxSteps: Int
 }
 
 record PhonyTarget {

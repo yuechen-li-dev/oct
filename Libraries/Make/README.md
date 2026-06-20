@@ -60,4 +60,11 @@ let Release = Base with {
 }
 ```
 
-`StateDir` controls where `oct make` writes `state.octagon` and `trace.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. `Staleness.Timestamp` uses input/output modified times. `Staleness.Always` reruns selected command/function targets. Hash staleness, Ninja output, and typed C/C++ or Go helper targets are intentionally deferred.
+`StateDir` controls where `oct make` writes `state.octagon` and `trace.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. `Staleness.Timestamp` uses input/output modified times. `Staleness.Always` reruns selected command/function/flow targets. Hash staleness, Ninja output, and typed C/C++ or Go helper targets are intentionally deferred.
+
+
+## `FlowTarget`
+
+`Make.FlowTarget` lets `oct make` run a named zero-argument Octomata flow as a direct-backend target action. A flow target participates in the same target graph, dependency validation, `--list`, `--dry-run`, timestamp staleness, state, and trace paths as command and function targets. It is intentionally direct-backend-only; Ninja lowering for flows is not implemented and should not be inferred.
+
+MAKE4 uses the narrow `Int` result convention: a completed flow returning `0` succeeds, and a completed flow returning any non-zero integer fails the target. `MaxSteps` must be positive and bounds flow transitions so accidental non-terminating flows fail clearly. If a flow suspends before completion, the target fails with a diagnostic explaining that persistent make-flow resume is not supported in MAKE4. `trace.octagon` records flow name, max steps, executed steps, state history, result code when available, suspended status, and errors; `state.octagon` records the target as kind `flow` with status and path state.
