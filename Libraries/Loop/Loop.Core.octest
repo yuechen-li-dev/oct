@@ -1,0 +1,77 @@
+package Loop
+
+[Fact]
+fn RangeBasicIterationSum() -> Void {
+    var loop = Range(0, 5)
+    var sum = 0
+
+    while IsActive(loop) {
+        sum = sum + Current(loop)
+        loop = Advance(loop)
+    }
+
+    Assert.Equal(10, sum, "Loop.Range sums 0 through 4")
+}
+
+[Fact]
+fn StopSupportsEarlyTermination() -> Void {
+    var loop = Range(0, 5)
+    var sum = 0
+
+    while IsActive(loop) {
+        let i = Current(loop)
+        if i == 3 {
+            loop = Stop(loop)
+        } else {
+            sum = sum + i
+            loop = Advance(loop)
+        }
+    }
+
+    Assert.Equal(3, sum, "Loop.Stop terminates after 0 + 1 + 2")
+}
+
+fn ShouldSkip(i: Int) -> Bool {
+    return i == 2
+}
+
+[Fact]
+fn AdvanceSupportsSkipBodyPattern() -> Void {
+    var loop = Range(0, 5)
+    var sum = 0
+
+    while IsActive(loop) {
+        let i = Current(loop)
+        if not ShouldSkip(i) {
+            sum = sum + i
+        }
+        loop = Advance(loop)
+    }
+
+    Assert.Equal(8, sum, "guard style skip omits 2")
+}
+
+[Fact]
+fn RangeStepVisitsPositiveStepValues() -> Void {
+    var loop = RangeStep(0, 6, 2)!
+    var sum = 0
+
+    while IsActive(loop) {
+        sum = sum + Current(loop)
+        loop = Advance(loop)
+    }
+
+    Assert.Equal(6, sum, "Loop.RangeStep visits 0, 2, 4")
+}
+
+[Fact]
+fn EmptyAndDecreasingRangesAreInactive() -> Void {
+    Assert.False(IsActive(Range(0, 0)), "empty range inactive")
+    Assert.False(IsActive(Range(3, 0)), "decreasing M0 range inactive")
+}
+
+[Fact]
+fn RangeStepRejectsNonPositiveSteps() -> Void {
+    Assert.Error(RangeStep(0, 10, 0), "zero step rejected")
+    Assert.Error(RangeStep(0, 10, 0 - 1), "negative step rejected")
+}

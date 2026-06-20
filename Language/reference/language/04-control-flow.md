@@ -228,3 +228,114 @@ fn Main() -> Int {
     }
 }
 ```
+
+## Unsupported loop-control words and explicit loop state
+
+`continue` and `break` are not loop-control keywords in Oct. A bare statement
+spelled `continue` or `break` is rejected with a dedicated diagnostic; these
+spellings are not globally reserved as ordinary identifiers in expression and
+binding contexts.
+
+For simple loop skipping, keep the skip condition explicit with a guard:
+
+```oct
+package Main
+
+fn SumExceptTwo() -> Int {
+    var sum = 0
+    for i in 0..5 {
+        if i != 2 {
+            sum = sum + i
+        }
+    }
+    return sum
+}
+```
+
+For early termination, put the stop condition in the `while` condition when that
+is the natural shape, or use `Loop.Stop(state)` with first-party Loop state
+helpers when the loop position should remain visible as data.
+
+`Loop` M0 is an explicit helper library, not a hidden iterator or generator
+protocol. It supports increasing integer ranges only, half-open `[Start, End)`
+bounds, positive steps only, explicit immutable record rebinding, interpreted
+and compiled execution, and no persistence/checkpointing. `Loop.Range(0, 0)` and
+`Loop.Range(3, 0)` are inactive in M0. `Loop.RangeStep` rejects zero or negative
+steps.
+
+```oct
+package Main
+
+import Loop
+
+fn SumRange() -> Int {
+    var loop = Loop.Range(0, 5)
+    var sum = 0
+
+    while Loop.IsActive(loop) {
+        sum = sum + Loop.Current(loop)
+        loop = Loop.Advance(loop)
+    }
+
+    return sum
+}
+```
+
+Early stop remains an explicit state transition:
+
+```oct
+package Main
+
+import Loop
+
+fn SumBeforeThree() -> Int {
+    var loop = Loop.Range(0, 5)
+    var sum = 0
+
+    while Loop.IsActive(loop) {
+        let i = Loop.Current(loop)
+        if i == 3 {
+            loop = Loop.Stop(loop)
+        } else {
+            sum = sum + i
+            loop = Loop.Advance(loop)
+        }
+    }
+
+    return sum
+}
+```
+
+Skip-body patterns should use a guard for simple loops, or
+`Loop.Advance(state)` when the loop position is explicit helper state:
+
+```oct
+package Main
+
+import Loop
+
+fn ShouldSkip(i: Int) -> Bool {
+    return i == 2
+}
+
+fn SumWithSkip() -> Int {
+    var loop = Loop.Range(0, 5)
+    var sum = 0
+
+    while Loop.IsActive(loop) {
+        let i = Loop.Current(loop)
+        if not ShouldSkip(i) {
+            sum = sum + i
+        }
+        loop = Loop.Advance(loop)
+    }
+
+    return sum
+}
+```
+
+`Loop.Advance` is intentionally distinct from Octomata `resume`: `Advance` is a
+pure record-state transition to the next loop position, while Octomata `resume`
+jumps to a remembered flow state. For resumable or generator-like local flows
+that need explicit control-state history, board state, `remember`, or `resume`,
+use Octomata rather than ordinary loop keywords.
