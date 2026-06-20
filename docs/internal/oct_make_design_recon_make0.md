@@ -502,3 +502,21 @@ MAKE1 adds the first make-authorized host primitive surface as a first-party `Ma
 The sidecar is built and discovered through the existing Octxiliary wrapper lifecycle (`oct pkg wrappers`, `oct pkg build-wrappers --allow-native`, `tools/build_sidecars`, and `OCT_WRAPPER_PATH`). In MAKE1 test lanes, explicit make authority is represented by `OCT_MAKE_AUTHORITY=1`; without it, the sidecar returns `Make host capabilities are only available under oct make`. Future `oct make` should replace that harness knob with CLI-owned authority and project-root policy.
 
 The wrapper manifest declares `ProcessResult` as a record transport type, so interpreted and compiled generic wrapper calls can carry the process result across the Octxiliary boundary. This removes the previous generic-wrapper limitation that allowed record arguments but rejected non-handle record returns.
+
+## MAKE2 status — direct executor M0
+
+MAKE2 adds the first `oct make` direct executor. The command discovers `Make.oct` at the project root or accepts `--file <path>`, calls `Plan()`, validates a typed `Make.Plan`, selects a target, computes a deterministic dependency closure, and runs the direct backend sequentially.
+
+Supported CLI shape:
+
+```text
+oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace]
+```
+
+M0 supports command, function, and phony targets. Command targets execute `Program` plus `Args` directly without a shell string. Function targets call named zero-argument functions from `Make.oct` and are direct-backend-only. Phony targets run dependencies and have no action. Flow targets, Ninja emission, manifest `Build` schema, C/C++ helpers, and Go typed helpers remain deferred.
+
+Staleness is timestamp-based: targets with no outputs, missing outputs, inputs newer than outputs, or dependencies that ran are considered stale. Missing inputs fail clearly. Hash-based staleness and environment modeling are deferred.
+
+When `oct make` invokes `Plan()` or function targets, it sets `OCT_MAKE_AUTHORITY=1` for Make sidecar calls while preserving normal wrapper discovery via `OCT_WRAPPER_PATH`. Ordinary `oct run` and ordinary tests still do not receive this authority automatically.
+
+`--trace` writes a deterministic M0 trace to `.octmake/trace.octagon` with selected target, backend, make file, dependency order, and target decisions. Trace richness is intentionally minimal in M0 and can grow with later MAKE milestones.

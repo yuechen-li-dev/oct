@@ -6,6 +6,36 @@ record ProcessResult {
     Stderr: String
 }
 
+record Plan {
+    Default: String
+    CommandTargets: CommandTarget[]
+    FunctionTargets: FunctionTarget[]
+    PhonyTargets: PhonyTarget[]
+}
+
+record CommandTarget {
+    Name: String
+    Inputs: String[]
+    Outputs: String[]
+    Deps: String[]
+    Program: String
+    Args: String[]
+    Cwd: String
+}
+
+record FunctionTarget {
+    Name: String
+    Inputs: String[]
+    Outputs: String[]
+    Deps: String[]
+    Function: String
+}
+
+record PhonyTarget {
+    Name: String
+    Deps: String[]
+}
+
 fn Exec(program: String, args: String[]) -> ProcessResult ! Error {
     return MakeExecRaw(program, args)?
 }
