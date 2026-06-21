@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/interpret"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
@@ -117,7 +118,7 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 		}
 	}
 	if opts.Mode == "doctor" {
-		return doctor(makeFile, root, plan, targets, stdout)
+		return doctorWithProgram(makeFile, root, plan, targets, program, stdout)
 	}
 	selected, err := selectTarget(opts.Target, plan, targets)
 	if err != nil {
@@ -131,7 +132,7 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 	case "explain":
 		return explain(selected, order, targets, root, plan, stdout)
 	case "doctor":
-		return doctor(makeFile, root, plan, targets, stdout)
+		return doctorWithProgram(makeFile, root, plan, targets, program, stdout)
 	case "run":
 	default:
 		return fmt.Errorf("unknown make mode %q", opts.Mode)
@@ -1220,6 +1221,10 @@ func explain(selected string, order []string, m map[string]*target, root string,
 }
 
 func doctor(makeFile, root string, plan Plan, m map[string]*target, out io.Writer) error {
+	return doctorWithProgram(makeFile, root, plan, m, project.Program{}, out)
+}
+
+func doctorWithProgram(makeFile, root string, plan Plan, m map[string]*target, program project.Program, out io.Writer) error {
 	state := filepath.Join(stateDir(root, plan), "state.octagon")
 	trace := filepath.Join(stateDir(root, plan), "trace.octagon")
 	fmt.Fprintln(out, "oct make doctor")
@@ -1234,6 +1239,7 @@ func doctor(makeFile, root string, plan Plan, m map[string]*target, out io.Write
 	}
 	fmt.Fprintln(out, "Targets:")
 	fmt.Fprintf(out, "  command: %d\n  function: %d\n  flow: %d\n  phony: %d\n", counts["command"], counts["function"], counts["flow"], counts["phony"])
+	writeMakeAttributeDiagnostics(out, program)
 	fmt.Fprintln(out, "Validation: ok")
 	fmt.Fprintln(out, "Dependencies: ok")
 	fmt.Fprintf(out, "State: %s (%s)\n", filepath.ToSlash(state), existence(state))
@@ -1256,6 +1262,397 @@ func doctor(makeFile, root string, plan Plan, m map[string]*target, out io.Write
 		}
 	}
 	return nil
+}
+
+func writeMakeAttributeDiagnostics(out io.Writer, program project.Program) {
+	functions := makeFunctions(program)
+	fmt.Fprintln(out, "Make attributes:")
+	if len(functions) == 0 {
+		fmt.Fprintln(out, "  Plan: metadata unavailable")
+		return
+	}
+	planFound := false
+	anyMarkers := false
+	for _, fn := range functions {
+		markers := makeMarkers(fn)
+		if len(markers) > 0 {
+			anyMarkers = true
+		}
+		if fn.Name == "Plan" {
+			planFound = true
+			if len(markers) == 0 {
+				fmt.Fprintln(out, "  Plan: conventional unmarked Plan()")
+			} else {
+				fmt.Fprintf(out, "  Plan: %s\n", strings.Join(markers, " "))
+			}
+		}
+	}
+	if !planFound {
+		fmt.Fprintln(out, "  Plan: not found")
+	} else if !anyMarkers {
+		fmt.Fprintln(out, "  Markers: none")
+	}
+	writeMarkerGroup(out, "  Authority functions:", functions, func(fn ast.FunctionDecl) bool { return fn.RequiresMakeAuthority })
+	writeMarkerGroup(out, "  Pure helpers:", functions, func(fn ast.FunctionDecl) bool { return fn.IsMakePure && fn.Name != "Plan" })
+	writePlanEntrypoint(out, functions)
+	writeAuthorityDiagnostics(out, functions)
+	writeTypedMakeIdiomSuggestions(out, functions)
+}
+
+func makeFunctions(program project.Program) []ast.FunctionDecl {
+	if program.Packages == nil {
+		return nil
+	}
+	pkg, ok := program.Packages[program.Entry]
+	if !ok {
+		return nil
+	}
+	out := []ast.FunctionDecl{}
+	for _, fn := range pkg.Functions {
+		if fn.IsMakeFile {
+			out = append(out, fn)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+func makeMarkers(fn ast.FunctionDecl) []string {
+	markers := []string{}
+	if fn.IsMakePlan {
+		markers = append(markers, "[MakePlan]")
+	}
+	if fn.IsMakePure {
+		markers = append(markers, "[Pure]")
+	}
+	if fn.IsMakeNoWhile {
+		markers = append(markers, "[NoWhile]")
+	}
+	if fn.RequiresMakeAuthority {
+		markers = append(markers, "[RequiresAuthority]")
+	}
+	return markers
+}
+
+func writeMarkerGroup(out io.Writer, header string, functions []ast.FunctionDecl, include func(ast.FunctionDecl) bool) {
+	wroteHeader := false
+	for _, fn := range functions {
+		if !include(fn) {
+			continue
+		}
+		if !wroteHeader {
+			fmt.Fprintln(out, header)
+			wroteHeader = true
+		}
+		fmt.Fprintf(out, "    %s: %s\n", fn.Name, strings.Join(makeMarkers(fn), " "))
+	}
+}
+
+func writePlanEntrypoint(out io.Writer, functions []ast.FunctionDecl) {
+	for _, fn := range functions {
+		if fn.Name != "Plan" {
+			continue
+		}
+		markers := makeMarkers(fn)
+		if fn.IsMakePlan {
+			fmt.Fprintf(out, "Plan entrypoint: Plan() %s\n", strings.Join(markers, " "))
+			return
+		}
+		fmt.Fprintln(out, "Plan entrypoint: Plan() conventional")
+		fmt.Fprintln(out, "Suggestion: consider [MakePlan] [Pure] [NoWhile] for stricter validation")
+		return
+	}
+}
+
+var makeHostPrimitives = map[string]bool{
+	"Exec": true, "ExecIn": true, "Tool": true, "Exists": true, "IsFile": true, "IsDir": true,
+	"MkdirAll": true, "Remove": true, "Copy": true, "ReadText": true, "WriteText": true,
+	"Glob": true, "ModifiedTime": true, "HashFile": true, "Env": true,
+}
+
+func writeAuthorityDiagnostics(out io.Writer, functions []ast.FunctionDecl) {
+	fmt.Fprintln(out, "Authority diagnostics:")
+	wrote := false
+	for _, fn := range functions {
+		calls := directMakeHostCalls(fn)
+		if len(calls) == 0 {
+			continue
+		}
+		wrote = true
+		if fn.RequiresMakeAuthority {
+			fmt.Fprintf(out, "  %s: ok ([RequiresAuthority])\n", fn.Name)
+		} else {
+			fmt.Fprintf(out, "  %s calls %s but is not marked [RequiresAuthority]\n", fn.Name, joinCallList(calls))
+			fmt.Fprintf(out, "    suggestion: add [RequiresAuthority] to %s\n", fn.Name)
+		}
+		if fn.IsMakePure {
+			fmt.Fprintf(out, "  %s is marked [Pure] but calls %s\n", fn.Name, joinCallList(calls))
+		}
+	}
+	if !wrote {
+		fmt.Fprintln(out, "  no direct Make host primitive calls found")
+	}
+}
+
+func joinCallList(calls []string) string {
+	prefixed := make([]string, len(calls))
+	for i, c := range calls {
+		prefixed[i] = "Make." + c
+	}
+	if len(prefixed) <= 1 {
+		return strings.Join(prefixed, "")
+	}
+	return strings.Join(prefixed[:len(prefixed)-1], ", ") + " and " + prefixed[len(prefixed)-1]
+}
+
+func directMakeHostCalls(fn ast.FunctionDecl) []string {
+	seen := map[string]bool{}
+	walkBlock(fn.Body, func(call ast.CallExpr) {
+		if name, ok := makeCallName(call.Callee); ok && makeHostPrimitives[name] {
+			seen[name] = true
+		}
+	})
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func writeTypedMakeIdiomSuggestions(out io.Writer, functions []ast.FunctionDecl) {
+	suggestions := []string{}
+	for _, fn := range functions {
+		walkBlock(fn.Body, func(call ast.CallExpr) {
+			if name, ok := makeCallName(call.Callee); !ok || name != "Exec" {
+				return
+			}
+			if len(call.Arguments) < 2 || stringLiteral(call.Arguments[0]) != "bash" {
+				return
+			}
+			args := stringArrayLiteral(call.Arguments[1])
+			if len(args) < 2 || args[0] != "-c" {
+				return
+			}
+			command := args[1]
+			if strings.Contains(command, "command -v ") {
+				tool := shellWordAfter(command, "command -v ")
+				if tool != "" {
+					suggestions = append(suggestions, fmt.Sprintf("  %s uses shell-shaped tool probe; prefer Make.Tool(\"%s\")", fn.Name, tool))
+				}
+			}
+			if strings.Contains(command, "test \"$") {
+				env := shellWordAfter(command, "test \"$")
+				if env != "" {
+					suggestions = append(suggestions, fmt.Sprintf("  %s uses shell-shaped env gate; prefer Make.Env(\"%s\")", fn.Name, env))
+				}
+			}
+		})
+	}
+	if len(suggestions) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "Typed Make idiom suggestions:")
+	for _, suggestion := range suggestions {
+		fmt.Fprintln(out, suggestion)
+	}
+}
+
+func shellWordAfter(s, prefix string) string {
+	idx := strings.Index(s, prefix)
+	if idx < 0 {
+		return ""
+	}
+	rest := s[idx+len(prefix):]
+	end := strings.IndexFunc(rest, func(r rune) bool { return r == ' ' || r == '\t' || r == '"' || r == '\'' || r == '>' || r == '=' })
+	if end >= 0 {
+		rest = rest[:end]
+	}
+	return strings.Trim(rest, "$")
+}
+
+func makeCallName(expr ast.Expr) (string, bool) {
+	field, ok := expr.(ast.FieldAccessExpr)
+	if !ok || field.Field == "" {
+		return "", false
+	}
+	target, ok := field.Target.(ast.IdentifierExpr)
+	return field.Field, ok && target.Name == "Make"
+}
+
+func stringLiteral(expr ast.Expr) string {
+	if lit, ok := expr.(ast.StringLiteralExpr); ok {
+		return lit.Value
+	}
+	return ""
+}
+
+func stringArrayLiteral(expr ast.Expr) []string {
+	arr, ok := expr.(ast.ArrayLiteralExpr)
+	if !ok {
+		return nil
+	}
+	out := []string{}
+	for _, elem := range arr.Elements {
+		lit, ok := elem.(ast.StringLiteralExpr)
+		if !ok {
+			return nil
+		}
+		out = append(out, lit.Value)
+	}
+	return out
+}
+
+func walkBlock(block ast.Block, visitCall func(ast.CallExpr)) {
+	for _, stmt := range block.Statements {
+		walkStmt(stmt, visitCall)
+	}
+}
+
+func walkStmt(stmt ast.Stmt, visitCall func(ast.CallExpr)) {
+	switch s := stmt.(type) {
+	case ast.LetStmt:
+		walkExpr(s.Value, visitCall)
+	case ast.VarStmt:
+		walkExpr(s.Value, visitCall)
+	case ast.AssignStmt:
+		walkExpr(s.Value, visitCall)
+	case ast.IndexAssignStmt:
+		for _, idx := range s.Indices {
+			walkExpr(idx, visitCall)
+		}
+		walkExpr(s.Value, visitCall)
+	case ast.FieldAssignStmt:
+		walkExpr(s.Value, visitCall)
+	case ast.FieldIndexAssignStmt:
+		for _, idx := range s.Indices {
+			walkExpr(idx, visitCall)
+		}
+		walkExpr(s.Value, visitCall)
+	case ast.ReturnStmt:
+		walkExpr(s.Value, visitCall)
+	case ast.ExprStmt:
+		walkExpr(s.Value, visitCall)
+	case ast.ForStmt:
+		walkExpr(s.Range, visitCall)
+		walkBlock(s.Body, visitCall)
+	case ast.MatchStmt:
+		walkExpr(s.Subject, visitCall)
+		walkBlock(s.OkBody, visitCall)
+		walkBlock(s.ErrBody, visitCall)
+	case ast.IfStmt:
+		walkExpr(s.Condition, visitCall)
+		walkBlock(s.ThenBody, visitCall)
+		if s.ElseBody != nil {
+			walkBlock(*s.ElseBody, visitCall)
+		}
+	case ast.WhileStmt:
+		walkExpr(s.Condition, visitCall)
+		walkBlock(s.Body, visitCall)
+	case ast.PrometheusStmt:
+		walkBlock(s.Body, visitCall)
+	case ast.WhenStmt:
+		for _, c := range s.Cases {
+			walkExpr(c.Condition, visitCall)
+			walkWhenAction(c.Action, visitCall)
+		}
+		walkWhenAction(s.Else, visitCall)
+	}
+}
+
+func walkWhenAction(action ast.WhenAction, visitCall func(ast.CallExpr)) {
+	switch a := action.(type) {
+	case ast.WhenReturnAction:
+		walkExpr(a.Value, visitCall)
+	case ast.WhenBlockAction:
+		for _, stmt := range a.Statements {
+			walkStmt(stmt, visitCall)
+		}
+	}
+}
+
+func walkExpr(expr ast.Expr, visitCall func(ast.CallExpr)) {
+	switch e := expr.(type) {
+	case ast.CallExpr:
+		visitCall(e)
+		walkExpr(e.Callee, visitCall)
+		for _, arg := range e.Arguments {
+			walkExpr(arg, visitCall)
+		}
+	case ast.ArrayLiteralExpr:
+		for _, elem := range e.Elements {
+			walkExpr(elem, visitCall)
+		}
+	case ast.VectorLiteralExpr:
+		for _, elem := range e.Elements {
+			walkExpr(elem, visitCall)
+		}
+	case ast.MatrixLiteralExpr:
+		for _, row := range e.Rows {
+			for _, elem := range row {
+				walkExpr(elem, visitCall)
+			}
+		}
+	case ast.IndexExpr:
+		walkExpr(e.Target, visitCall)
+		for _, idx := range e.Indices {
+			walkExpr(idx, visitCall)
+		}
+	case ast.FieldAccessExpr:
+		walkExpr(e.Target, visitCall)
+	case ast.BinaryExpr:
+		walkExpr(e.Left, visitCall)
+		walkExpr(e.Right, visitCall)
+	case ast.UnaryExpr:
+		walkExpr(e.Operand, visitCall)
+	case ast.RangeExpr:
+		walkExpr(e.Start, visitCall)
+		walkExpr(e.End, visitCall)
+		walkExpr(e.Step, visitCall)
+	case ast.ParenExpr:
+		walkExpr(e.Inner, visitCall)
+	case ast.PropagateExpr:
+		walkExpr(e.Inner, visitCall)
+	case ast.UnwrapExpr:
+		walkExpr(e.Inner, visitCall)
+	case ast.SwitchExpr:
+		walkExpr(e.Subject, visitCall)
+		for _, c := range e.Cases {
+			walkExpr(c.Match, visitCall)
+			walkExpr(c.Value, visitCall)
+		}
+		walkExpr(e.Else, visitCall)
+	case ast.MatchExpr:
+		walkExpr(e.Subject, visitCall)
+		for _, c := range e.Cases {
+			walkExpr(c.Value, visitCall)
+		}
+	case ast.IfExpr:
+		walkExpr(e.Condition, visitCall)
+		walkExpr(e.ThenExpr, visitCall)
+		walkExpr(e.ElseExpr, visitCall)
+	case ast.UtilityWhenExpr:
+		walkExpr(e.Policy.Hysteresis, visitCall)
+		walkExpr(e.Policy.MinCommit, visitCall)
+		for _, c := range e.Cases {
+			walkExpr(c.Value, visitCall)
+			walkExpr(c.Condition, visitCall)
+			walkExpr(c.Score, visitCall)
+		}
+		walkExpr(e.Else, visitCall)
+	case ast.BatchExpr:
+		walkExpr(e.Input, visitCall)
+		walkBlock(e.Body, visitCall)
+	case ast.RecordLiteralExpr:
+		for _, f := range e.Fields {
+			walkExpr(f.Value, visitCall)
+		}
+	case ast.RecordUpdateExpr:
+		walkExpr(e.Source, visitCall)
+		for _, f := range e.Fields {
+			walkExpr(f.Value, visitCall)
+		}
+	}
 }
 
 func existence(path string) string {
