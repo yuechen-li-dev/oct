@@ -22,7 +22,7 @@ fn Manifest() -> PackageManifest {
         Name: "Make"
         Version: "0.1.0"
         Authors: ["Codex"]
-        Date: "2026-06-20"
+        Date: "2026-06-21"
         Description: "Make-authorized host capability primitives for future oct make orchestration"
         Kind: "wrapper"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
@@ -38,12 +38,18 @@ fn Manifest() -> PackageManifest {
                         WrapperTransportField { Name: "ExitCode" Type: "Int" },
                         WrapperTransportField { Name: "Stdout" Type: "String" },
                         WrapperTransportField { Name: "Stderr" Type: "String" }
+                    ] },
+                    WrapperTransportType { Name: "EnvValue" Kind: "record" Fields: [
+                        WrapperTransportField { Name: "Name" Type: "String" },
+                        WrapperTransportField { Name: "Present" Type: "Bool" },
+                        WrapperTransportField { Name: "Value" Type: "String" }
                     ] }
                 ]
                 Functions: [
                     WrapperFunction { OctName: "MakeExecRaw" WireName: "MakeExec" Args: ["String", "String[]"] Return: "ProcessResult" Fallible: true },
                     WrapperFunction { OctName: "MakeExecInRaw" WireName: "MakeExecIn" Args: ["String", "String", "String[]"] Return: "ProcessResult" Fallible: true },
                     WrapperFunction { OctName: "MakeToolRaw" WireName: "MakeTool" Args: ["String"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "MakeEnvRaw" WireName: "MakeEnv" Args: ["String"] Return: "EnvValue" Fallible: true },
                     WrapperFunction { OctName: "MakeExistsRaw" WireName: "MakeExists" Args: ["String"] Return: "Bool" Fallible: false },
                     WrapperFunction { OctName: "MakeIsFileRaw" WireName: "MakeIsFile" Args: ["String"] Return: "Bool" Fallible: false },
                     WrapperFunction { OctName: "MakeIsDirRaw" WireName: "MakeIsDir" Args: ["String"] Return: "Bool" Fallible: false },

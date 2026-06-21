@@ -3677,6 +3677,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Make.ProcessResult", true, true, nil
 			case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
 				return normalized, "String", true, true, nil
+			case "MakeEnvRaw":
+				return normalized, "Make.EnvValue", true, true, nil
 			case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
 				return normalized, "Bool", true, false, nil
 			case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeCopyRaw", "MakeWriteTextRaw", "MakeModifiedTimeRaw":

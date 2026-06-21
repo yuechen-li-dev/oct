@@ -66,9 +66,11 @@ Privileged Make host primitive tests live at `Libraries/MakeHostPrivileged/Make.
 ```bash
 go run ./tools/build_sidecars --out dist/sidecars
 
+OCT_MAKE_ENV_TEST_VALUE=hello OCT_MAKE_EMPTY_ENV_TEST_VALUE= \
 OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
     go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
 
+OCT_MAKE_ENV_TEST_VALUE=hello OCT_MAKE_EMPTY_ENV_TEST_VALUE= \
 OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
     go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
 ```
@@ -79,11 +81,13 @@ PowerShell equivalent:
 go run ./tools/build_sidecars --out dist/sidecars
 $env:OCT_MAKE_AUTHORITY="1"
 $env:OCT_WRAPPER_PATH="$PWD\dist\sidecars"
+$env:OCT_MAKE_ENV_TEST_VALUE="hello"
+$env:OCT_MAKE_EMPTY_ENV_TEST_VALUE=""
 go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
 go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
 ```
 
-This separation preserves the authority boundary: ordinary `oct test Libraries/Make` does not set `OCT_MAKE_AUTHORITY=1`, while primitive host coverage remains available in an explicit privileged lane.
+This separation preserves the authority boundary: ordinary `oct test Libraries/Make` does not set `OCT_MAKE_AUTHORITY=1`, while primitive host coverage remains available in an explicit privileged lane. The privileged lane also sets `OCT_MAKE_ENV_TEST_VALUE` and `OCT_MAKE_EMPTY_ENV_TEST_VALUE` so `Make.Env` coverage does not depend on user-machine ambient environment.
 
 ## Prometheus integration workflow
 
