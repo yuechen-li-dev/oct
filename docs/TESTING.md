@@ -52,6 +52,39 @@ go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx
 
 Use slow modes before releases, when wrapper/octxiliary code changes, or when specifically validating broader compiled/runtime paths.
 
+## Make test lanes
+
+The Make package has two intentionally separate test lanes. Pure Make library tests exercise ordinary package data, including the C ABI artifact records in `Libraries/Make/Make.CAbi.octest`, and do not require Make host authority:
+
+```bash
+go run ./cmd/oct test Libraries/Make --execution interpreted
+go run ./cmd/oct test Libraries/Make --execution compiled
+```
+
+Privileged Make host primitive tests live at `Libraries/MakeHostPrivileged/Make.Primitives.octest`. They are side-effectful, call the `octxiliary-makehost` sidecar, and must be run explicitly with sidecar discovery plus make authority:
+
+```bash
+go run ./tools/build_sidecars --out dist/sidecars
+
+OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
+    go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
+
+OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
+    go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
+```
+
+PowerShell equivalent:
+
+```powershell
+go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_MAKE_AUTHORITY="1"
+$env:OCT_WRAPPER_PATH="$PWD\dist\sidecars"
+go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
+go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
+```
+
+This separation preserves the authority boundary: ordinary `oct test Libraries/Make` does not set `OCT_MAKE_AUTHORITY=1`, while primitive host coverage remains available in an explicit privileged lane.
+
 ## Prometheus integration workflow
 
 Real Prometheus reactor integration remains separately gated:
