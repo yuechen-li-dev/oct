@@ -16,6 +16,17 @@ fn RequireGo() -> Int ! Error {
     }
 }
 
+fn RequireChimeraGate() -> Int ! Error {
+    let env = Make.Env("OCT_CHIMERA_HELLO")?
+    if not env.Present {
+        return error("set OCT_CHIMERA_HELLO=1 to run the ChimeraHello native C ABI build")
+    }
+    if env.Value != "1" {
+        return error("set OCT_CHIMERA_HELLO=1 to run the ChimeraHello native C ABI build")
+    }
+    return 0
+}
+
 fn ChimeraConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "ChimeraHello"
@@ -127,11 +138,7 @@ fn Plan() -> Make.Plan {
 }
 
 fn CheckTools() -> Int ! Error {
-    // TODO(MAKE16-H1): replace this shell env gate with future Make.Env once available.
-    let gate = Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_HELLO\" = 1"])?
-    if gate.ExitCode != 0 {
-        return error("set OCT_CHIMERA_HELLO=1 to run the ChimeraHello native C ABI build")
-    }
+    let _gate = RequireChimeraGate()?
     let _cargo = RequireCargo()?
     let _goTool = RequireGo()?
     return 0

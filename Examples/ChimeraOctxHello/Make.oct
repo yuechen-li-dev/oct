@@ -16,6 +16,17 @@ fn RequireGo() -> Int ! Error {
     }
 }
 
+fn RequireChimeraOctxGate() -> Int ! Error {
+    let env = Make.Env("OCT_CHIMERA_OCTX_HELLO")?
+    if not env.Present {
+        return error("set OCT_CHIMERA_OCTX_HELLO=1 to run the ChimeraOctxHello process-boundary build")
+    }
+    if env.Value != "1" {
+        return error("set OCT_CHIMERA_OCTX_HELLO=1 to run the ChimeraOctxHello process-boundary build")
+    }
+    return 0
+}
+
 fn ChimeraOctxConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "ChimeraOctxHello"
@@ -111,11 +122,7 @@ fn Plan() -> Make.Plan {
 }
 
 fn CheckTools() -> Int ! Error {
-    // TODO(MAKE16-H1): replace this shell env gate with future Make.Env once available.
-    let gate = Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_OCTX_HELLO\" = 1"])?
-    if gate.ExitCode != 0 {
-        return error("set OCT_CHIMERA_OCTX_HELLO=1 to run the ChimeraOctxHello process-boundary build")
-    }
+    let _gate = RequireChimeraOctxGate()?
     let _cargo = RequireCargo()?
     let _goTool = RequireGo()?
     return 0

@@ -69,6 +69,16 @@ func handle(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, err
 		}
 		return octxiliary.StringValue(p), nil
+	case "MakeEnv":
+		name, err := octxiliary.ArgString(req, 0)
+		if err != nil {
+			return octxiliary.Value{}, err
+		}
+		if name == "" {
+			return octxiliary.Value{}, fmt.Errorf("environment variable name must not be empty")
+		}
+		value, present := os.LookupEnv(name)
+		return envValue(name, present, value), nil
 	case "MakeExists", "MakeIsFile", "MakeIsDir":
 		p, err := octxiliary.ArgString(req, 0)
 		if err != nil {
@@ -192,6 +202,10 @@ func runProcess(cwd, program string, args []string) (octxiliary.Value, error) {
 
 func processResult(code int, stdout, stderr string) octxiliary.Value {
 	return octxiliary.RecordValue("ProcessResult", []octxiliary.FieldValue{{Name: "ExitCode", Value: octxiliary.IntValue(code)}, {Name: "Stdout", Value: octxiliary.StringValue(stdout)}, {Name: "Stderr", Value: octxiliary.StringValue(stderr)}})
+}
+
+func envValue(name string, present bool, value string) octxiliary.Value {
+	return octxiliary.RecordValue("EnvValue", []octxiliary.FieldValue{{Name: "Name", Value: octxiliary.StringValue(name)}, {Name: "Present", Value: octxiliary.BoolValue(present)}, {Name: "Value", Value: octxiliary.StringValue(value)}})
 }
 
 func copyFile(src, dst string) error {

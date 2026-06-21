@@ -32,6 +32,32 @@ fn MakeToolAndExecGoVersion() -> Void ! Error {
 }
 
 [Fact]
+fn MakeEnvReadsPresentValue() -> Void ! Error {
+    let env = Make.Env("OCT_MAKE_ENV_TEST_VALUE")?
+    Assert.Equal("OCT_MAKE_ENV_TEST_VALUE", env.Name, "env result should preserve requested name")
+    Assert.True(env.Present, "test env var should be present")
+    Assert.Equal("hello", env.Value, "test env var should preserve value")
+}
+
+[Fact]
+fn MakeEnvDistinguishesMissingFromEmpty() -> Void ! Error {
+    let missing = Make.Env("OCT_MAKE_ENV_TEST_DEFINITELY_MISSING")?
+    Assert.Equal("OCT_MAKE_ENV_TEST_DEFINITELY_MISSING", missing.Name, "missing env result should preserve requested name")
+    Assert.True(not missing.Present, "missing test env var should not be present")
+    Assert.Equal("", missing.Value, "missing env var should report empty value")
+
+    let empty = Make.Env("OCT_MAKE_EMPTY_ENV_TEST_VALUE")?
+    Assert.Equal("OCT_MAKE_EMPTY_ENV_TEST_VALUE", empty.Name, "empty env result should preserve requested name")
+    Assert.True(empty.Present, "empty test env var should still be present")
+    Assert.Equal("", empty.Value, "present empty env var should report empty value")
+}
+
+[Fact]
+fn MakeEnvRejectsEmptyName() -> Void ! Error {
+    Assert.Error(Make.Env(""), "empty env name should be rejected")
+}
+
+[Fact]
 fn MakeMissingProgramIsLaunchError() -> Void ! Error {
     Assert.Error(Make.Exec("oct-definitely-missing-make-host-tool", []), "missing executable should be launch error")
 }

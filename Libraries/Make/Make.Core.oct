@@ -6,6 +6,12 @@ record ProcessResult {
     Stderr: String
 }
 
+record EnvValue {
+    Name: String
+    Present: Bool
+    Value: String
+}
+
 enum Staleness {
     Timestamp
     Always
@@ -118,6 +124,10 @@ fn ExecIn(cwd: String, program: String, args: String[]) -> ProcessResult ! Error
 
 fn Tool(name: String) -> String ! Error {
     return MakeToolRaw(name)?
+}
+
+fn Env(name: String) -> EnvValue ! Error {
+    return MakeEnvRaw(name)?
 }
 
 fn Exists(path: String) -> Bool {

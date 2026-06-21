@@ -6,6 +6,10 @@ The `octxiliary-makehost` sidecar requires explicit make authority (`OCT_MAKE_AU
 
 Process execution uses `program` plus `args`; it does not invoke a shell string. Launch failures are fallible errors. Non-zero process exits return `ProcessResult` with the non-zero `ExitCode`, captured `Stdout`, and captured `Stderr`.
 
+`Make.Env(name)` is an explicit make-authorized host primitive for reading exactly one named environment variable. It returns `Make.EnvValue { Name, Present, Value }`, where `Present: false, Value: ""` means the variable was missing and `Present: true, Value: ""` means the variable existed with an empty value. Empty names are rejected. The primitive does not enumerate the environment, does not mutate the environment, and has the same authority requirement as `Make.Exec`, `Make.Tool`, and file primitives.
+
+`Make.Env("NAME")` reads the host process environment during function execution. That read is not automatically included in a `CommandTarget` identity hash. If a command target's runtime environment should affect command identity, place explicit `NAME=value` entries in `CommandTarget.Env`; `Make.Env` does not alter `CommandTarget.Env` semantics.
+
 File primitives are intended for project build orchestration. MAKE1 does not yet enforce project-root path policy inside the sidecar; future `oct make` will provide authority and project-root scoping. Ninja backends, C/C++ helpers, Go helpers, target DAGs, and `Make.oct` plan execution are deferred.
 
 ## C ABI artifact records
@@ -64,7 +68,7 @@ Pure `Make.octest` tests should focus on plan/config data that can be checked wi
 
 `[Fact]` and `[Theory]` are the recommended attributes for these pure assertions. `[Artifact]` may later be useful for pure plan snapshots or target-table evidence, but it must not become hidden build execution. `[Benchmark]` is not important for ordinary Make plan tests.
 
-Side-effectful Make primitive tests are different. Tests that call `Make.Exec`, `Make.WriteText`, `Make.ReadText`, `Make.HashFile`, or other host primitives require explicit make authority and sidecar discovery. That coverage lives in `Libraries/MakeHostPrivileged/Make.Primitives.octest` and must be run explicitly with `OCT_MAKE_AUTHORITY=1` plus `OCT_WRAPPER_PATH`; ordinary `oct test Libraries/Make` and ordinary `oct test Make.octest` do not receive `OCT_MAKE_AUTHORITY=1`. This keeps pure Make package tests authority-free while preserving the Make host boundary.
+Side-effectful Make primitive tests are different. Tests that call `Make.Exec`, `Make.Env`, `Make.WriteText`, `Make.ReadText`, `Make.HashFile`, or other host primitives require explicit make authority and sidecar discovery. That coverage lives in `Libraries/MakeHostPrivileged/Make.Primitives.octest` and must be run explicitly with `OCT_MAKE_AUTHORITY=1` plus `OCT_WRAPPER_PATH`; ordinary `oct test Libraries/Make` and ordinary `oct test Make.octest` do not receive `OCT_MAKE_AUTHORITY=1`. This keeps pure Make package tests authority-free while preserving the Make host boundary.
 
 A future pure helper such as `Make.ValidatePlan` or `Make.CheckPlan` may be useful, but it is deferred until it can reuse executor validation logic without creating a second source of truth.
 
@@ -82,9 +86,11 @@ Privileged Make host primitive tests are side-effectful: they create/remove file
 ```sh
 go run ./tools/build_sidecars --out dist/sidecars
 
+OCT_MAKE_ENV_TEST_VALUE=hello OCT_MAKE_EMPTY_ENV_TEST_VALUE= \
 OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
     go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
 
+OCT_MAKE_ENV_TEST_VALUE=hello OCT_MAKE_EMPTY_ENV_TEST_VALUE= \
 OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
     go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
 ```
@@ -95,6 +101,8 @@ PowerShell equivalent:
 go run ./tools/build_sidecars --out dist/sidecars
 $env:OCT_MAKE_AUTHORITY="1"
 $env:OCT_WRAPPER_PATH="$PWD\dist\sidecars"
+$env:OCT_MAKE_ENV_TEST_VALUE="hello"
+$env:OCT_MAKE_EMPTY_ENV_TEST_VALUE=""
 go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
 go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
 ```

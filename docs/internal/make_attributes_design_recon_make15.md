@@ -186,14 +186,15 @@ They should be front-end metadata with identical validation for interpreted and 
 
 ## MAKE15-H1 follow-up: typed Make.oct idiom cleanup
 
-MAKE15-H1 implemented the Chimera example tool-probe cleanup without adding Make attributes, parser support, Make execution semantics, or new host authority primitives.
+MAKE15-H1 implemented the Chimera example tool-probe cleanup without adding Make attributes, parser support, or Make execution semantics. MAKE16 then added the missing typed environment primitive and finished the Chimera gate cleanup.
 
 - `Examples/ChimeraHello/Make.oct` now uses `Make.Tool("cargo")` and `Make.Tool("go")` through small fallible `RequireCargo` and `RequireGo` helpers. The helpers use fallible `match` to preserve the example-specific custom error messages.
 - `Examples/ChimeraOctxHello/Make.oct` uses the same fallible helper idiom for its Cargo and Go probes.
-- The existing Bash-backed environment gates remain in place because `Libraries/Make` does not yet expose a typed environment primitive. Both Chimera Make files carry TODO comments pointing at future `Make.Env` work.
-- Real shell command targets remain unchanged: the Chimera build/run commands and Prometheus native script invocation are command targets, not tool-discovery probes.
+- `Libraries/Make` now exposes `Make.Env(name) -> Make.EnvValue ! Error`, where `EnvValue` carries `Name`, `Present`, and `Value` so missing variables and present-empty variables are distinguishable.
+- The Chimera `OCT_CHIMERA_*` opt-in gates now use local Oct helpers over `Make.Env` instead of `bash -c test ...`.
+- Real shell command targets remain unchanged: the Chimera build/run commands and Prometheus native script invocation are command targets, not tool-discovery or environment-gate probes.
 
-The remaining environment-gate cleanup is still MAKE16-H1 scope: add a presence-aware `Make.Env`/`Make.Getenv` primitive and migrate the `OCT_CHIMERA_*` checks without shelling out.
+The MAKE16 environment-gate cleanup is implemented. `Make.Env("NAME")` is an explicit make-authorized host read of one variable; it is not ambient environment hashing, and it is not automatically part of `CommandTarget` identity unless the value is explicitly put in `CommandTarget.Env`.
 
 ## Missing Make primitive recommendations
 
@@ -226,7 +227,7 @@ Too magical for H1. Existing `Make.Tool(name)` is the right composable primitive
 ### 4. Smallest primitive/helper set to eliminate current Bash probes
 
 - Use existing `Make.Tool` for `cargo` and `go` probes.
-- Add one environment primitive: `Make.Env`/`Make.Getenv` returning a presence-aware record.
+- Use implemented `Make.Env` returning a presence-aware record.
 
 That pair eliminates the current `command -v` and `test "$ENV" = 1` probes without adding broad shell restrictions or one-off require helpers.
 
@@ -238,7 +239,7 @@ Replace shell-shaped `command -v` probes in Make files with `Make.Tool` where cu
 
 ### MAKE16-H1: environment primitive
 
-Add `Make.Env` or `Make.Getenv` with a presence-aware record. Update Chimera gates to compare the returned value in Oct rather than through `bash -c test ...`.
+Implemented: `Make.Env` returns a presence-aware `EnvValue` record, and Chimera gates compare the returned value in Oct rather than through `bash -c test ...`.
 
 ### ATTR-MAKE1: parser and AST metadata only
 

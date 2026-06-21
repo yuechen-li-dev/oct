@@ -5221,6 +5221,7 @@ func (c checker) checkHashBuiltinCallExpr(scope *scope, callee string, arguments
 
 func (c checker) checkMakeHostBuiltinCallExpr(scope *scope, callee string, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
 	processResult := ExprType{ValueType: Type{Name: "ProcessResult"}, Fallible: true}
+	envValue := ExprType{ValueType: Type{Name: "EnvValue"}, Fallible: true}
 	switch callee {
 	case "MakeExecRaw":
 		if err := c.requireStringAndStringArrayArgs(scope, callee, arguments, ctx); err != nil {
@@ -5250,6 +5251,8 @@ func (c checker) checkMakeHostBuiltinCallExpr(scope *scope, callee string, argum
 		return processResult, nil
 	case "MakeToolRaw", "MakeReadTextRaw", "MakeHashFileRaw":
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeString}, Fallible: true})
+	case "MakeEnvRaw":
+		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, envValue)
 	case "MakeExistsRaw", "MakeIsFileRaw", "MakeIsDirRaw":
 		return c.checkSingleStringArgBuiltin(scope, callee, arguments, ctx, ExprType{ValueType: Type{Base: BaseTypeBool}})
 	case "MakeMkdirAllRaw", "MakeRemoveRaw", "MakeModifiedTimeRaw":
