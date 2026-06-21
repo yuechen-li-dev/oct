@@ -895,7 +895,7 @@ func writeBuildHelp(out io.Writer) error {
 	return err
 }
 func writeMakeHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace]\nRun Make.oct targets with the direct backend. Make.oct is discovered at the project root unless --file is provided. Project configuration belongs in Make.Plan.Config records; compose profiles with record `with` updates. CLI flags select execution behavior only. --backend only accepts direct; Ninja is not implemented. FlowTarget actions run only on the direct backend and use Int result code semantics.")
+	_, err := fmt.Fprintln(out, "usage: oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace] [--plan-out <file.octagon>]\n       oct make explain [target] [--file <path>]\n       oct make doctor [--file <path>]\nRun Make.oct targets with the direct backend. Make.oct is discovered at the project root unless --file is provided. Project configuration belongs in Make.Plan.Config records; compose profiles with record `with` updates. CLI flags select execution behavior only. --backend only accepts direct; Ninja is not implemented. FlowTarget actions run only on the direct backend and use Int result code semantics.")
 	return err
 }
 
@@ -1069,7 +1069,11 @@ func parseBenchOctagonOut(args []string) (string, error) {
 }
 
 func parseMakeOptions(args []string) (makecmd.Options, error) {
-	options := makecmd.Options{Backend: "direct"}
+	options := makecmd.Options{Backend: "direct", Mode: "run"}
+	if len(args) > 0 && (args[0] == "explain" || args[0] == "doctor") {
+		options.Mode = args[0]
+		args = args[1:]
+	}
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--file":
@@ -1090,12 +1094,21 @@ func parseMakeOptions(args []string) (makecmd.Options, error) {
 			options.DryRun = true
 		case "--trace":
 			options.Trace = true
+		case "--plan-out":
+			if i+1 >= len(args) {
+				return options, fmt.Errorf("make --plan-out requires a value")
+			}
+			i++
+			options.PlanOut = args[i]
 		default:
 			if strings.HasPrefix(args[i], "--") {
 				return options, fmt.Errorf("unknown make flag %s", args[i])
 			}
 			if options.Target != "" {
 				return options, fmt.Errorf("oct make accepts at most one target")
+			}
+			if options.Mode == "doctor" {
+				return options, fmt.Errorf("oct make doctor does not accept a target")
 			}
 			options.Target = args[i]
 		}

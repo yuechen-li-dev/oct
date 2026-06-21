@@ -62,6 +62,22 @@ let Release = Base with {
 
 `StateDir` controls where `oct make` writes `state.octagon` and `trace.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. `Staleness.Timestamp` uses input/output modified times. `Staleness.Always` reruns selected command/function/flow targets. Hash staleness, Ninja output, and typed C/C++ or Go helper targets are intentionally deferred.
 
+## Read-only reporting
+
+`oct make --plan-out <file.octagon>` writes a valid Octagon snapshot of the full validated plan without adding execution decisions. The snapshot is intended for later comparison and includes the make file, default target, config, and all target metadata.
+
+`oct make explain [target] [--file <path>]` reports the selected target closure and current staleness reasons without executing targets or mutating state. `oct make doctor [--file <path>]` reports make health: profile, state directory, backend, default target, target counts, validation/dependency status, state/trace existence, and referenced programs.
+
+Example commands:
+
+```sh
+oct make --file Examples/ChimeraHello/Make.oct --plan-out .octmake/plan.octagon
+oct make explain --file Examples/ChimeraHello/Make.oct TestChimera
+oct make doctor --file internal/prometheus/Make.oct
+```
+
+Plan diffing, replay, failure artifact directories, hash staleness, and richer tool reports remain future work.
+
 
 ## `FlowTarget`
 

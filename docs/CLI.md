@@ -36,6 +36,24 @@ oct test Make.octest
 
 Use `[Fact]` and `[Theory]` for ordinary assertions over `Plan()`, config helpers, target metadata, the default target, inputs/outputs/deps, and `with`-based profile composition. `[Artifact]` may later be useful for pure plan snapshots, but it must not hide build execution; `[Benchmark]` is not important for ordinary Make plan tests. Side-effectful Make primitive coverage requires explicit make authority and belongs in `Libraries/Make`, explicit sidecar/integration lanes, or Go CLI tests for `oct make`.
 
+### `oct make` reporting
+
+`oct make --plan-out <file.octagon>` evaluates `Plan()`, validates the typed plan, and writes a read-only `MakePlanSnapshot` Octagon artifact. The snapshot records `Version`, `MakeFile`, `Default`, `Config`, and all command/function/flow/phony target metadata (`Name`, `Inputs`, `Outputs`, `Deps`, `Program`, `Args`, `Env`, `Cwd`, `Function`, `Flow`, and `MaxSteps` where applicable). It is plan evidence only; execution decisions belong in `trace.octagon`.
+
+`oct make explain [target] [--file <path>]` evaluates and validates the plan, selects the default target when no target is supplied, computes the selected dependency closure, and prints stable would-run/would-skip decisions without executing command targets, function targets, or flow targets. Reasons use the same canonical staleness names as traces: `NoOutputs`, `MissingOutput`, `MissingInput`, `InputNewerThanOutput`, `DependencyRan`, `UpToDate`, `Always`, `Phony`, and `DryRunWouldRun`.
+
+`oct make doctor [--file <path>]` is a read-only project health report. It prints the make file path, profile, state directory, direct backend, default target, target counts by kind, validation/dependency status, state and trace paths with existence, and referenced command programs. Doctor does not run target commands or require native toolchains beyond loading the make file.
+
+Examples:
+
+```sh
+oct make --file Examples/ChimeraHello/Make.oct --plan-out .octmake/plan.octagon
+oct make explain --file Examples/ChimeraHello/Make.oct TestChimera
+oct make doctor --file internal/prometheus/Make.oct
+```
+
+Future reporting work includes plan diffing, replay, failure artifact directories, hash-based staleness, and richer tool reports.
+
 
 ## `oct artifact` execution modes
 

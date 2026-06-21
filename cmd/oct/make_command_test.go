@@ -468,3 +468,73 @@ fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config
 		t.Fatalf("expected always run, got %q", stdout)
 	}
 }
+
+func TestMakePlanOutExplainAndDoctor(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	input := filepath.Join(root, "input.txt")
+	output := filepath.Join(root, "output.txt")
+	writeFile(t, input, "in")
+	writeFile(t, output, "out")
+	writeFile(t, makeFile, `package Main
+import Make
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "All"
+        Config: Make.Config { Profile: "Report" StateDir: ".octmake/report" Trace: false Staleness: Make.Staleness.Timestamp }
+        CommandTargets: [
+            Make.CommandTarget { Name: "Copy" Inputs: ["input.txt"] Outputs: ["output.txt"] Deps: [] Program: "sh" Args: ["-c", "cp input.txt output.txt"] Cwd: "" Env: [] },
+            Make.CommandTarget { Name: "Missing" Inputs: [] Outputs: ["missing.txt"] Deps: [] Program: "sh" Args: ["-c", "touch missing.txt"] Cwd: "" Env: [] }
+        ]
+        FunctionTargets: [Make.FunctionTarget { Name: "Check" Inputs: [] Outputs: [] Deps: [] Function: "Check" }]
+        FlowTargets: []
+        PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: ["Copy", "Check", "Missing"] }]
+    }
+}
+fn Check() -> Void { }
+`)
+	planOut := filepath.Join(root, "snapshots", "plan.octagon")
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile, "--plan-out", planOut)
+	if err != nil {
+		t.Fatalf("plan-out failed: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+	if _, err := octagon.Load(planOut); err != nil {
+		t.Fatalf("plan snapshot is not valid octagon: %v", err)
+	}
+	body, _ := os.ReadFile(planOut)
+	for _, want := range []string{`MakePlanSnapshot`, `Default: "All"`, `Profile: "Report"`, `Name: "Copy"`, `Function: "Check"`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("plan snapshot missing %s:\n%s", want, body)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "missing.txt")); !os.IsNotExist(err) {
+		t.Fatalf("plan-out unexpectedly created output/stat=%v", err)
+	}
+
+	stdout, stderr, err = executeCLIArgs("make", "explain", "All", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("explain failed: %v stderr=%s", err, stderr)
+	}
+	for _, want := range []string{"Explain target All:", "Copy [command]: would skip", "reason: UpToDate", "Check [function]: would run", "reason: NoOutputs", "Missing [command]: would run", "reason: MissingOutput", "All [phony]: would run", "reason: Phony"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("explain missing %q:\n%s", want, stdout)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".octmake", "report", "state.octagon")); !os.IsNotExist(err) {
+		t.Fatalf("explain created state/stat=%v", err)
+	}
+
+	stdout, stderr, err = executeCLIArgs("make", "doctor", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("doctor failed: %v stderr=%s", err, stderr)
+	}
+	for _, want := range []string{"oct make doctor", "Make file:", "Profile: Report", "State dir: .octmake/report", "Backend: direct", "Default target: All", "command: 2", "function: 1", "phony: 1", "Validation: ok", "State:", "Trace:", "Programs referenced:", "sh"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("doctor missing %q:\n%s", want, stdout)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "missing.txt")); !os.IsNotExist(err) {
+		t.Fatalf("doctor unexpectedly executed target/stat=%v", err)
+	}
+}
