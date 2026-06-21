@@ -44,6 +44,16 @@ Use `[Fact]` and `[Theory]` for ordinary assertions over `Plan()`, config helper
 
 `oct make doctor [--file <path>]` is a read-only project health report. It prints the make file path, profile, state directory, direct backend, default target, target counts by kind, validation/dependency status, state and trace paths with existence, and referenced command programs. Doctor does not run target commands or require native toolchains beyond loading the make file.
 
+When an actually executed target fails, `oct make` writes a durable Octagon diagnostic at `<StateDir>/failures/<target-name>/<run-id>/failure.octagon` (default `.octmake/failures/<target-name>/<run-id>/failure.octagon`). The path uses the active `Make.Config.StateDir`; target names are sanitized for path safety by replacing separators and unsafe characters with `_`, while the original target name remains inside the artifact. `failure.octagon` records the run id, UTC time, make file, state dir, trace path, target name/kind, failure reason/message, staleness decision reason, duration, and target-kind evidence such as command program/args/env/cwd, inputs/outputs/deps, exit code, stdout/stderr, `CommandHash`, function name/error, or flow state/result evidence. If tracing is enabled, `trace.octagon` also records `FailureArtifactPath` on the failed decision. Dry runs, `oct make explain`, `oct make doctor`, and plan-only `--plan-out` invocations do not execute targets and do not write failure artifact directories.
+
+Example failed run:
+
+```sh
+oct make Build
+# make failed: target Build failed
+# failure artifact: .octmake/failures/Build/20260621T153012Z/failure.octagon
+```
+
 Examples:
 
 ```sh
@@ -52,7 +62,7 @@ oct make explain --file Examples/ChimeraHello/Make.oct TestChimera
 oct make doctor --file internal/prometheus/Make.oct
 ```
 
-Future reporting work includes plan diffing, replay, failure artifact directories, hash-based staleness, and richer tool reports.
+Future reporting work includes stdout/stderr sidecar files, replay, failure artifact pruning, plan diffing, hash-based staleness, and richer tool/environment snapshots.
 
 
 ## `oct artifact` execution modes

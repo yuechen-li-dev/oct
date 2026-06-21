@@ -259,7 +259,7 @@ fn Build() -> Void ! Error { let _w = Make.WriteText("%s", "made")? }
 	writeFile(t, makeFile, fmt.Sprintf(`package Main
 import Make
 fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "Fail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["%s"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
-fn Build() -> Void ! Error { return error("boom") }
+fn Build() -> Int ! Error { return error("boom") }
 `, outPath))
 	_, stderr, err := executeCLIArgs("make", "--file", makeFile)
 	if err == nil {
@@ -283,16 +283,29 @@ fn Plan() -> Make.Plan {
     }
 }
 `)
-	_, _, err := executeCLIArgs("make", "--file", makeFile)
+	_, stderr, err := executeCLIArgs("make", "--file", makeFile)
 	if err == nil {
 		t.Fatalf("expected command failure")
+	}
+	if !strings.Contains(stderr, "failure artifact:") {
+		t.Fatalf("stderr missing failure artifact path:\n%s", stderr)
+	}
+	artifactPath := failureArtifactPathFromOutput(t, stderr)
+	if _, err := octagon.Load(artifactPath); err != nil {
+		t.Fatalf("failure artifact invalid: %v", err)
+	}
+	artifactBody, _ := os.ReadFile(artifactPath)
+	for _, want := range []string{`MakeFailureArtifact`, `Target: "Build"`, `TargetKind: "command"`, `Program: "go"`, `Args: ["definitely-not-a-go-subcommand"]`, `ExitCode: 2`, `CommandHash: "`} {
+		if !strings.Contains(string(artifactBody), want) {
+			t.Fatalf("failure artifact missing %s:\n%s", want, artifactBody)
+		}
 	}
 	trace := filepath.Join(root, ".octmake", "trace.octagon")
 	if _, err := octagon.Load(trace); err != nil {
 		t.Fatalf("command failure trace invalid: %v", err)
 	}
 	body, _ := os.ReadFile(trace)
-	for _, want := range []string{`Status: "Failed"`, `CommandProgram: "go"`, `ExitCode: 2`} {
+	for _, want := range []string{`Status: "Failed"`, `CommandProgram: "go"`, `ExitCode: 2`, `FailureArtifactPath: "`} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("command failure trace missing %s:\n%s", want, body)
 		}
@@ -301,6 +314,106 @@ fn Plan() -> Make.Plan {
 	if !strings.Contains(string(stateBody), `LastStatus: "Failed"`) {
 		t.Fatalf("command failure state missing failed status:\n%s", stateBody)
 	}
+}
+
+func TestMakeFailureArtifactStateDirAndNoArtifactReadOnlyModes(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "CommandFail" StateDir: "custom-state" Trace: false Staleness: Make.Staleness.Always }
+        CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Program: "go" Args: ["definitely-not-a-go-subcommand"] Cwd: "" Env: [] }]
+        FunctionTargets: []
+        FlowTargets: []
+        PhonyTargets: []
+    }
+}
+`)
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile, "--dry-run")
+	if err != nil || !strings.Contains(stdout, "run Build") {
+		t.Fatalf("dry-run failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "custom-state", "failures")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run created failure artifacts/stat=%v", err)
+	}
+	if _, stderr, err := executeCLIArgs("make", "explain", "--file", makeFile); err != nil {
+		t.Fatalf("explain failed: %v stderr=%s", err, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "custom-state", "failures")); !os.IsNotExist(err) {
+		t.Fatalf("explain created failure artifacts/stat=%v", err)
+	}
+	if _, stderr, err := executeCLIArgs("make", "doctor", "--file", makeFile); err != nil {
+		t.Fatalf("doctor failed: %v stderr=%s", err, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "custom-state", "failures")); !os.IsNotExist(err) {
+		t.Fatalf("doctor created failure artifacts/stat=%v", err)
+	}
+	planOut := filepath.Join(root, "plan.octagon")
+	if _, stderr, err := executeCLIArgs("make", "--file", makeFile, "--plan-out", planOut); err != nil {
+		t.Fatalf("plan-out failed: %v stderr=%s", err, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "custom-state", "failures")); !os.IsNotExist(err) {
+		t.Fatalf("plan-out created failure artifacts/stat=%v", err)
+	}
+
+	_, stderr, err = executeCLIArgs("make", "--file", makeFile)
+	if err == nil {
+		t.Fatalf("expected failure")
+	}
+	artifactPath := failureArtifactPathFromOutput(t, stderr)
+	if !strings.Contains(filepath.ToSlash(artifactPath), "/custom-state/failures/Build/") {
+		t.Fatalf("artifact not under custom state dir: %s", artifactPath)
+	}
+	if _, err := octagon.Load(artifactPath); err != nil {
+		t.Fatalf("custom state artifact invalid: %v", err)
+	}
+}
+
+func TestMakeFunctionFailureWritesArtifact(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "FunctionFail" StateDir: ".octmake" Trace: false Staleness: Make.Staleness.Always }
+        CommandTargets: []
+        FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Function: "Build" }]
+        FlowTargets: []
+        PhonyTargets: []
+    }
+}
+fn Build() -> Int ! Error { return error("boom") }
+`)
+	_, stderr, err := executeCLIArgs("make", "--file", makeFile)
+	if err == nil {
+		t.Fatalf("expected function failure")
+	}
+	artifactPath := failureArtifactPathFromOutput(t, stderr)
+	if _, err := octagon.Load(artifactPath); err != nil {
+		t.Fatalf("function failure artifact invalid: %v", err)
+	}
+	body, _ := os.ReadFile(artifactPath)
+	for _, want := range []string{`Target: "Build"`, `TargetKind: "function"`, `Function: "Build"`, `Error: "`, `boom`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("function artifact missing %s:\n%s", want, body)
+		}
+	}
+}
+
+func failureArtifactPathFromOutput(t *testing.T, output string) string {
+	t.Helper()
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "failure artifact: ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "failure artifact: "))
+		}
+	}
+	t.Fatalf("missing failure artifact path in output:\n%s", output)
+	return ""
 }
 
 func TestMakeFlowTargetSuccessTraceListDryRunAndPhony(t *testing.T) {

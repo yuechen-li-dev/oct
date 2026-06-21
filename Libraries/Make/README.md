@@ -132,7 +132,7 @@ let Release = Base with {
 }
 ```
 
-`StateDir` controls where `oct make` writes `state.octagon` and `trace.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. `Staleness.Timestamp` uses input/output modified times plus command identity hashing for command targets. `Staleness.Always` reruns selected command/function/flow targets. Ninja output and typed C/C++ or Go helper targets are intentionally deferred.
+`StateDir` controls where `oct make` writes `state.octagon`, `trace.octagon`, and failed-target diagnostics under `failures/<target-name>/<run-id>/failure.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. Failure artifacts are written for actual target execution failures even when tracing is not enabled, and their paths are printed in CLI error output. Target names are sanitized for directory names by preserving simple names and replacing path separators or unsafe characters with `_`; the original target name remains in `failure.octagon`. `Staleness.Timestamp` uses input/output modified times plus command identity hashing for command targets. `Staleness.Always` reruns selected command/function/flow targets. Ninja output and typed C/C++ or Go helper targets are intentionally deferred.
 
 ## Command identity hashing
 
@@ -140,7 +140,7 @@ let Release = Base with {
 
 After a successful command target run, `state.octagon` stores the current `CommandHash` on that target's state record. Existing state files that do not have `CommandHash` still parse; when outputs are otherwise present and up to date, a command target with older state but no hash is stale with reason `CommandHashMissing`. If the previous hash exists but differs from the current command metadata, the target is stale with reason `CommandChanged`. Missing outputs and missing inputs are still reported before command hash reasons; command hash reasons are checked before `InputNewerThanOutput`.
 
-`trace.octagon` records both `CommandHash` and `PreviousCommandHash` for command decisions, including dry runs and failed command executions. `oct make --plan-out` includes the computed `CommandHash` in each command target snapshot so plan snapshots can be diffed for command identity changes. `oct make explain` computes and compares hashes without executing commands or mutating state.
+`trace.octagon` records both `CommandHash` and `PreviousCommandHash` for command decisions, including dry runs and failed command executions. When a failing run writes `<StateDir>/failures/<target-name>/<run-id>/failure.octagon`, the failed trace decision includes `FailureArtifactPath`. `oct make --plan-out` includes the computed `CommandHash` in each command target snapshot so plan snapshots can be diffed for command identity changes. `oct make explain` computes and compares hashes without executing commands or mutating state.
 
 Example:
 
@@ -165,6 +165,8 @@ Changing `Args`, `Env`, `Program`, `Cwd`, or the declared inputs/outputs/depende
 
 `oct make explain [target] [--file <path>]` reports the selected target closure and current staleness reasons without executing targets or mutating state. `oct make doctor [--file <path>]` reports make health: profile, state directory, backend, default target, target counts, validation/dependency status, state/trace existence, and referenced programs.
 
+Actual failed target executions write a single canonical `failure.octagon` file intended for CI upload, debugging, and LLM-assisted diagnosis. The artifact includes the make file, state dir, trace path, target name and kind, failure reason/message, decision reason, duration, and kind-specific evidence: command targets include program, args, env, cwd, inputs, outputs, deps, exit code, stdout/stderr, `CommandHash`, and `PreviousCommandHash`; function targets include function name and error; flow targets include flow name, max steps, final state, step count, state history, suspension status, result code, and error when available. Dry runs, `oct make explain`, `oct make doctor`, and plan-only `--plan-out` invocations do not write failure artifacts.
+
 Example commands:
 
 ```sh
@@ -173,7 +175,17 @@ oct make explain --file Examples/ChimeraHello/Make.oct TestChimera
 oct make doctor --file internal/prometheus/Make.oct
 ```
 
-Plan diffing, replay, failure artifact directories, input content-hash staleness, and richer tool reports remain future work.
+Failure example:
+
+```sh
+oct make Build
+# make failed: target Build failed
+# failure artifact: .octmake/failures/Build/20260621T153012Z/failure.octagon
+```
+
+Future failure-artifact work may add `stdout.txt`/`stderr.txt` sidecars, replay, artifact pruning, plan diffing, and richer tool or environment snapshots.
+
+Plan diffing, replay, failure artifact pruning, input content-hash staleness, and richer tool/environment reports remain future work.
 
 
 ## `FlowTarget`

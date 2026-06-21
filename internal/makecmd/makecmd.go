@@ -89,6 +89,7 @@ type decision struct {
 	Suspended                         bool
 	ExitCode                          int
 	Stdout, Stderr, Error             string
+	FailureArtifactPath               string
 	StartedUnixNano, FinishedUnixNano int64
 }
 
@@ -142,16 +143,34 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 	started := time.Now()
 	decisions, runErr := run(order, targets, root, program, plan, opts, stdout, stderr)
 	finished := time.Now()
+	failurePath, failureErr := maybeFailureArtifact(opts, plan, root, makeFile, decisions, finished)
+	if failurePath != "" {
+		for i := range decisions {
+			if decisions[i].Status == "Failed" {
+				decisions[i].FailureArtifactPath = failurePath
+				break
+			}
+		}
+	}
 	traceErr := maybeTrace(opts, plan, root, makeFile, selected, order, decisions, started, finished)
 	stateErr := maybeState(opts, plan, root, selected, targets, decisions)
 	if runErr != nil {
+		if failureErr != nil {
+			return failureErr
+		}
 		if traceErr != nil {
 			return traceErr
 		}
 		if stateErr != nil {
 			return stateErr
 		}
+		if failurePath != "" {
+			return fmt.Errorf("%w\nfailure artifact: %s", runErr, filepath.ToSlash(failurePath))
+		}
 		return runErr
+	}
+	if failureErr != nil {
+		return failureErr
 	}
 	if traceErr != nil {
 		return traceErr
@@ -831,7 +850,7 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		writeStringArray(&b, d.CommandArgs)
 		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            CommandEnv: ", d.CommandCwd)
 		writeStringArray(&b, d.CommandEnv)
-		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandHash, d.PreviousCommandHash, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
+		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            FailureArtifactPath: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandHash, d.PreviousCommandHash, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, filepath.ToSlash(d.FailureArtifactPath), d.StartedUnixNano, d.FinishedUnixNano)
 		if d.Kind == "flow" {
 			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
 			writeStringArray(&b, d.StateHistory)
@@ -841,6 +860,96 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 	}
 	b.WriteString("    ]\n}\n")
 	return os.WriteFile(filepath.Join(dir, "trace.octagon"), []byte(b.String()), 0644)
+}
+
+func maybeFailureArtifact(opts Options, plan Plan, root, makeFile string, decs []decision, at time.Time) (string, error) {
+	if opts.DryRun {
+		return "", nil
+	}
+	for _, d := range decs {
+		if d.Status != "Failed" {
+			continue
+		}
+		runID := at.UTC().Format("20060102T150405.000000000Z")
+		dir := filepath.Join(stateDir(root, plan), "failures", sanitizeTargetName(d.Name), runID)
+		path := filepath.Join(dir, "failure.octagon")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", err
+		}
+		if err := os.WriteFile(path, []byte(failureArtifact(plan, makeFile, path, d, runID, at)), 0644); err != nil {
+			return "", err
+		}
+		return path, nil
+	}
+	return "", nil
+}
+
+func sanitizeTargetName(name string) string {
+	if name == "" {
+		return "_"
+	}
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
+}
+
+func failureArtifact(plan Plan, makeFile, path string, d decision, runID string, at time.Time) string {
+	durationMs := int64(0)
+	if d.StartedUnixNano > 0 && d.FinishedUnixNano >= d.StartedUnixNano {
+		durationMs = (d.FinishedUnixNano - d.StartedUnixNano) / int64(time.Millisecond)
+	}
+	reason := "TargetFailed"
+	if d.Kind == "command" {
+		reason = "CommandFailed"
+	} else if d.Kind == "function" {
+		reason = "FunctionFailed"
+	} else if d.Kind == "flow" {
+		reason = "FlowFailed"
+	}
+	var b strings.Builder
+	b.WriteString("MakeFailureArtifact {\n")
+	fmt.Fprintf(&b, "    Version: 0\n    RunId: %q\n    TimeUtc: %q\n    MakeFile: %q\n    StateDir: %q\n    TracePath: %q\n    FailureArtifactPath: %q\n    Target: %q\n    TargetKind: %q\n    Reason: %q\n    Message: %q\n", runID, at.UTC().Format(time.RFC3339Nano), filepath.ToSlash(makeFile), filepath.ToSlash(plan.Config.StateDir), filepath.ToSlash(filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(path)))), "trace.octagon")), filepath.ToSlash(path), d.Name, d.Kind, reason, d.Error)
+	fmt.Fprintf(&b, "    Decision: TargetDecision { Status: %q Reason: %q DurationMs: %d }\n", d.Status, d.Reason, durationMs)
+	switch d.Kind {
+	case "command":
+		fmt.Fprintf(&b, "    Command: CommandFailure {\n        Target: %q\n        TargetKind: %q\n        Program: %q\n        Args: ", d.Name, d.Kind, d.CommandProgram)
+		writeStringArray(&b, d.CommandArgs)
+		fmt.Fprintf(&b, "\n        Env: ")
+		writeStringArray(&b, d.CommandEnv)
+		fmt.Fprintf(&b, "\n        Cwd: %q\n        Inputs: ", d.CommandCwd)
+		writeStringArray(&b, d.Inputs)
+		fmt.Fprintf(&b, "\n        Outputs: ")
+		writeStringArray(&b, d.Outputs)
+		fmt.Fprintf(&b, "\n        Deps: ")
+		writeStringArray(&b, d.Deps)
+		fmt.Fprintf(&b, "\n        ExitCode: %d\n        Stdout: %q\n        Stderr: %q\n        CommandHash: %q\n        PreviousCommandHash: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.ExitCode, d.Stdout, d.Stderr, d.CommandHash, d.PreviousCommandHash, d.Reason, durationMs)
+	case "function":
+		fmt.Fprintf(&b, "    Function: FunctionFailure {\n        Target: %q\n        TargetKind: %q\n        Function: %q\n        Inputs: ", d.Name, d.Kind, d.Function)
+		writeStringArray(&b, d.Inputs)
+		fmt.Fprintf(&b, "\n        Outputs: ")
+		writeStringArray(&b, d.Outputs)
+		fmt.Fprintf(&b, "\n        Deps: ")
+		writeStringArray(&b, d.Deps)
+		fmt.Fprintf(&b, "\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Error, d.Reason, durationMs)
+	case "flow":
+		fmt.Fprintf(&b, "    Flow: FlowFailure {\n        Target: %q\n        TargetKind: %q\n        Flow: %q\n        MaxSteps: %d\n        Inputs: ", d.Name, d.Kind, d.Flow, d.MaxSteps)
+		writeStringArray(&b, d.Inputs)
+		fmt.Fprintf(&b, "\n        Outputs: ")
+		writeStringArray(&b, d.Outputs)
+		fmt.Fprintf(&b, "\n        Deps: ")
+		writeStringArray(&b, d.Deps)
+		fmt.Fprintf(&b, "\n        FinalState: %q\n        StepCount: %d\n        StateHistory: ", d.FinalState, d.Steps)
+		writeStringArray(&b, d.StateHistory)
+		fmt.Fprintf(&b, "\n        Suspended: %t\n        ResultCode: %d\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Suspended, d.ResultCode, d.Error, d.Reason, durationMs)
+	}
+	b.WriteString("}\n")
+	return b.String()
 }
 func maybeState(opts Options, plan Plan, root, selected string, targets map[string]*target, decs []decision) error {
 	if opts.DryRun {
