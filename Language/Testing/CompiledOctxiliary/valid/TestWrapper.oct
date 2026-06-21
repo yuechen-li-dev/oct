@@ -33,6 +33,10 @@ fn DescribeOptions(options: TestOptions) -> String ! Error {
     return error("TestWrapper.DescribeOptions requires compiled Octxiliary lowering")
 }
 
+fn ReturnOptions() -> TestOptions ! Error {
+    return error("TestWrapper.ReturnOptions requires compiled Octxiliary lowering")
+}
+
 fn Not(value: Bool) -> Bool ! Error {
     return error("TestWrapper.Not requires compiled Octxiliary lowering")
 }

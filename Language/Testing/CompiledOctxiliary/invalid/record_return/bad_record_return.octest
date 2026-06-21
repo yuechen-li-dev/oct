@@ -1,7 +1,0 @@
-package Main
-
-[Fact]
-fn GenericWrapperM16RecordReturnRejected() -> Void ! Error {
-    let value = BadRecordReturn()?
-    Assert.Equal(1, value.Count, "unreachable")
-}
