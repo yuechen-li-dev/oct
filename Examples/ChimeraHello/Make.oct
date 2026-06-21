@@ -43,7 +43,7 @@ fn RustArtifact() -> Make.CAbiLibrary {
 fn BuildRustCAbiTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "BuildRustCAbi"
-        Inputs: ["rust/Cargo.toml", "rust/src/lib.rs", "rust/chimera_rust.h"]
+        Inputs: ["rust/Cargo.toml", "rust/src/lib.rs", "rust/chimera_rust.h", "../../internal/chimera/rust-sdk/Cargo.toml", "../../internal/chimera/rust-sdk/src/lib.rs"]
         Outputs: ["rust/target/release/libchimera_rust.a"]
         Deps: ["CheckTools"]
         Program: "cargo"

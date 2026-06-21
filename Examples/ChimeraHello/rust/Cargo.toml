@@ -6,3 +6,6 @@ publish = false
 
 [lib]
 crate-type = ["staticlib"]
+
+[dependencies]
+chimera_rust_sdk = { path = "../../../internal/chimera/rust-sdk" }
