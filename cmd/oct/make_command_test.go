@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -516,7 +517,7 @@ fn Check() -> Void { }
 	if err != nil {
 		t.Fatalf("explain failed: %v stderr=%s", err, stderr)
 	}
-	for _, want := range []string{"Explain target All:", "Copy [command]: would skip", "reason: UpToDate", "Check [function]: would run", "reason: NoOutputs", "Missing [command]: would run", "reason: MissingOutput", "All [phony]: would run", "reason: Phony"} {
+	for _, want := range []string{"Explain target All:", "Copy [command]: would run", "reason: CommandHashMissing", "Missing [command]: would run", "reason: MissingOutput", "Check [function]: would run", "reason: NoOutputs", "All [phony]: would run", "reason: Phony"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("explain missing %q:\n%s", want, stdout)
 		}
@@ -529,12 +530,112 @@ fn Check() -> Void { }
 	if err != nil {
 		t.Fatalf("doctor failed: %v stderr=%s", err, stderr)
 	}
-	for _, want := range []string{"oct make doctor", "Make file:", "Profile: Report", "State dir: .octmake/report", "Backend: direct", "Default target: All", "command: 2", "function: 1", "phony: 1", "Validation: ok", "State:", "Trace:", "Programs referenced:", "sh"} {
+	for _, want := range []string{"oct make doctor", "Make file:", "Profile: Report", "State dir: .octmake/report", "Backend: direct", "Default target: All", "command: 2", "function: 1", "phony: 1", "Validation: ok", "State:", "Trace:", "Command identity hashing: enabled", "Programs referenced:", "sh"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("doctor missing %q:\n%s", want, stdout)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(root, "missing.txt")); !os.IsNotExist(err) {
 		t.Fatalf("doctor unexpectedly executed target/stat=%v", err)
+	}
+}
+
+func TestMakeCommandHashStateExplainTraceAndPlan(t *testing.T) {
+	root := repoTempDir(t)
+	helper := filepath.Join(root, "writefile.go")
+	writeFile(t, helper, `package main
+import (
+    "os"
+)
+func main() {
+    if len(os.Args) < 3 { os.Exit(2) }
+    if err := os.WriteFile(os.Args[1], []byte(os.Args[2]), 0644); err != nil { os.Exit(1) }
+}
+`)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeCommandHashMakefile := func(argValue, envValue string) {
+		writeFile(t, makeFile, fmt.Sprintf(`package Main
+import Make
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "Hash" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Timestamp }
+        CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Program: "go" Args: ["run", "writefile.go", "out.txt", "%s"] Cwd: "" Env: ["OCT_MAKE_HASH_TEST=%s"] }]
+        FunctionTargets: []
+        FlowTargets: []
+        PhonyTargets: []
+    }
+}
+`, argValue, envValue))
+	}
+
+	writeCommandHashMakefile("one", "A")
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile)
+	if err != nil || !strings.Contains(stdout, "run Build") {
+		t.Fatalf("initial make failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	statePath := filepath.Join(root, ".octmake", "state.octagon")
+	stateBody, _ := os.ReadFile(statePath)
+	if !strings.Contains(string(stateBody), `CommandHash: "`) {
+		t.Fatalf("state missing command hash:\n%s", stateBody)
+	}
+	beforeState := string(stateBody)
+
+	stdout, stderr, err = executeCLIArgs("make", "explain", "--file", makeFile, "Build")
+	if err != nil || !strings.Contains(stdout, "Build [command]: would skip") || !strings.Contains(stdout, "reason: UpToDate") {
+		t.Fatalf("same command explain failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	afterExplain, _ := os.ReadFile(statePath)
+	if string(afterExplain) != beforeState {
+		t.Fatalf("explain mutated state")
+	}
+
+	writeCommandHashMakefile("two", "A")
+	stdout, stderr, err = executeCLIArgs("make", "explain", "--file", makeFile, "Build")
+	if err != nil || !strings.Contains(stdout, "reason: CommandChanged") {
+		t.Fatalf("arg change explain failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	afterArgExplain, _ := os.ReadFile(statePath)
+	if string(afterArgExplain) != beforeState {
+		t.Fatalf("arg-change explain mutated state")
+	}
+
+	writeCommandHashMakefile("one", "B")
+	stdout, stderr, err = executeCLIArgs("make", "explain", "--file", makeFile, "Build")
+	if err != nil || !strings.Contains(stdout, "reason: CommandChanged") {
+		t.Fatalf("env change explain failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+
+	mutated := strings.Replace(beforeState, regexp.MustCompile(`(?m)^            CommandHash: "[^"]+"\n`).FindString(beforeState), "", 1)
+	if err := os.WriteFile(statePath, []byte(mutated), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeCommandHashMakefile("one", "A")
+	stdout, stderr, err = executeCLIArgs("make", "explain", "--file", makeFile, "Build")
+	if err != nil || !strings.Contains(stdout, "reason: CommandHashMissing") {
+		t.Fatalf("missing hash explain failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	if body, _ := os.ReadFile(statePath); string(body) != mutated {
+		t.Fatalf("missing-hash explain mutated state")
+	}
+
+	tracePath := filepath.Join(root, ".octmake", "trace.octagon")
+	stdout, stderr, err = executeCLIArgs("make", "--file", makeFile, "Build", "--dry-run", "--trace")
+	if err != nil || !strings.Contains(stdout, "run Build") {
+		t.Fatalf("dry-run failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	traceBody, _ := os.ReadFile(tracePath)
+	if !strings.Contains(string(traceBody), `CommandHash: "`) || !strings.Contains(string(traceBody), `PreviousCommandHash: "`) {
+		t.Fatalf("trace missing command hashes:\n%s", traceBody)
+	}
+
+	planOut := filepath.Join(root, "plan.octagon")
+	stdout, stderr, err = executeCLIArgs("make", "--file", makeFile, "--plan-out", planOut)
+	if err != nil {
+		t.Fatalf("plan-out failed err=%v stdout=%q stderr=%q", err, stdout, stderr)
+	}
+	planBody, _ := os.ReadFile(planOut)
+	if !strings.Contains(string(planBody), `CommandHash: "`) {
+		t.Fatalf("plan snapshot missing command hash:\n%s", planBody)
 	}
 }

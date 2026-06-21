@@ -2,6 +2,8 @@ package makecmd
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -75,6 +77,8 @@ type decision struct {
 	CommandArgs                       []string
 	CommandCwd                        string
 	CommandEnv                        []string
+	CommandHash                       string
+	PreviousCommandHash               string
 	Function                          string
 	Flow                              string
 	MaxSteps                          int64
@@ -479,11 +483,12 @@ func closure(sel string, m map[string]*target) ([]string, error) {
 }
 
 func run(order []string, m map[string]*target, root string, program project.Program, plan Plan, opts Options, stdout, stderr io.Writer) ([]decision, error) {
+	state := loadState(root, plan)
 	ran := map[string]bool{}
 	decs := []decision{}
 	for _, n := range order {
 		t := m[n]
-		stale, reason, err := stale(t, root, ran, plan.Config.Staleness)
+		stale, reason, err := stale(t, root, ran, plan.Config.Staleness, state)
 		if err != nil {
 			return decs, err
 		}
@@ -500,6 +505,9 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 			reason = "DryRunWouldRun"
 		}
 		d := newDecision(t, root, status, reason)
+		if t.command != nil {
+			d.PreviousCommandHash = state.commandHashes[t.name]
+		}
 		d.StartedUnixNano = time.Now().UnixNano()
 		verb := "skip"
 		if stale {
@@ -642,7 +650,7 @@ func mergeEnv(base, overlay []string) []string {
 	return out
 }
 
-func stale(t *target, root string, ran map[string]bool, policy string) (bool, string, error) {
+func stale(t *target, root string, ran map[string]bool, policy string, state makeState) (bool, string, error) {
 	if policy == "Always" && t.kind != "phony" {
 		return true, "Always", nil
 	}
@@ -671,6 +679,7 @@ func stale(t *target, root string, ran map[string]bool, policy string) (bool, st
 			oldestOut = info.ModTime()
 		}
 	}
+	inputNewer := false
 	for _, p := range inputs {
 		info, err := os.Stat(p)
 		if err != nil {
@@ -680,8 +689,21 @@ func stale(t *target, root string, ran map[string]bool, policy string) (bool, st
 			return false, "", err
 		}
 		if info.ModTime().After(oldestOut) {
-			return true, "InputNewerThanOutput", nil
+			inputNewer = true
 		}
+	}
+	if t.command != nil {
+		cur := commandHash(*t.command)
+		prev, ok := state.commandHashes[t.name]
+		if !ok || prev == "" {
+			return true, "CommandHashMissing", nil
+		}
+		if prev != cur {
+			return true, "CommandChanged", nil
+		}
+	}
+	if inputNewer {
+		return true, "InputNewerThanOutput", nil
 	}
 	return false, "UpToDate", nil
 }
@@ -763,6 +785,7 @@ func newDecision(t *target, root, status, reason string) decision {
 		d.CommandArgs = t.command.Args
 		d.CommandCwd = t.command.Cwd
 		d.CommandEnv = t.command.Env
+		d.CommandHash = commandHash(*t.command)
 	}
 	if t.function != nil {
 		d.Function = t.function.Function
@@ -808,7 +831,7 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		writeStringArray(&b, d.CommandArgs)
 		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            CommandEnv: ", d.CommandCwd)
 		writeStringArray(&b, d.CommandEnv)
-		fmt.Fprintf(&b, "\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
+		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandHash, d.PreviousCommandHash, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
 		if d.Kind == "flow" {
 			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
 			writeStringArray(&b, d.StateHistory)
@@ -849,6 +872,9 @@ func maybeState(opts Options, plan Plan, root, selected string, targets map[stri
 		t := targets[n]
 		ins, outs := rawPaths(t)
 		fmt.Fprintf(&b, "        MakeTargetState {\n            Name: %q\n            Kind: %q\n            LastStatus: %q\n            LastRunUnixNano: %d\n", n, t.kind, status[n], time.Now().UnixNano())
+		if t.command != nil {
+			fmt.Fprintf(&b, "            CommandHash: %q\n", commandHash(*t.command))
+		}
 		if d, ok := decisionByName(decs, n); ok && t.kind == "flow" {
 			fmt.Fprintf(&b, "            FinalState: %q\n            ResultCode: %d\n", d.FinalState, d.ResultCode)
 		}
@@ -912,6 +938,83 @@ func withMakeAuthorityFlow(fn func() (interpret.FlowRunResult, error)) (interpre
 	return fn()
 }
 
+type makeState struct {
+	commandHashes map[string]string
+}
+
+func loadState(root string, plan Plan) makeState {
+	state := makeState{commandHashes: map[string]string{}}
+	body, err := os.ReadFile(filepath.Join(stateDir(root, plan), "state.octagon"))
+	if err != nil {
+		return state
+	}
+	text := string(body)
+	for _, block := range strings.Split(text, "MakeTargetState {")[1:] {
+		end := strings.Index(block, "\n        }")
+		if end >= 0 {
+			block = block[:end]
+		}
+		name := fieldString(block, "Name")
+		if name == "" {
+			continue
+		}
+		state.commandHashes[name] = fieldString(block, "CommandHash")
+	}
+	return state
+}
+
+func fieldString(block, field string) string {
+	needle := field + ": \""
+	start := strings.Index(block, needle)
+	if start < 0 {
+		return ""
+	}
+	start += len(needle)
+	var b strings.Builder
+	escaped := false
+	for _, r := range block[start:] {
+		if escaped {
+			b.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if r == '"' {
+			return b.String()
+		}
+		b.WriteRune(r)
+	}
+	return ""
+}
+
+func commandHash(c CommandTarget) string {
+	h := sha256.New()
+	writeHashField(h, "Kind", "command")
+	writeHashField(h, "Name", c.Name)
+	writeHashField(h, "Program", c.Program)
+	writeHashList(h, "Args", c.Args)
+	writeHashList(h, "Env", c.Env)
+	writeHashField(h, "Cwd", c.Cwd)
+	writeHashList(h, "Outputs", c.Outputs)
+	writeHashList(h, "Inputs", c.Inputs)
+	writeHashList(h, "Deps", c.Deps)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func writeHashField(w io.Writer, name, value string) {
+	fmt.Fprintf(w, "%d:%s=%d:%s\n", len(name), name, len(value), value)
+}
+
+func writeHashList(w io.Writer, name string, values []string) {
+	fmt.Fprintf(w, "%d:%s[%d]\n", len(name), name, len(values))
+	for _, value := range values {
+		fmt.Fprintf(w, "%d:%s\n", len(value), value)
+	}
+}
+
 func writePlanSnapshot(path string, plan Plan, makeFile string) error {
 	if !strings.HasSuffix(path, ".octagon") {
 		return fmt.Errorf("make --plan-out path must end with .octagon")
@@ -936,7 +1039,7 @@ func writePlanSnapshot(path string, plan Plan, makeFile string) error {
 		writeStringArray(&b, t.Args)
 		fmt.Fprintf(&b, " Env: ")
 		writeStringArray(&b, t.Env)
-		fmt.Fprintf(&b, " Cwd: %q }", t.Cwd)
+		fmt.Fprintf(&b, " Cwd: %q CommandHash: %q }", t.Cwd, commandHash(t))
 		if i+1 < len(plan.CommandTargets) {
 			b.WriteString(",")
 		}
@@ -989,7 +1092,7 @@ func explain(selected string, order []string, m map[string]*target, root string,
 	ran := map[string]bool{}
 	for _, n := range order {
 		t := m[n]
-		wouldRun, reason, err := stale(t, root, ran, plan.Config.Staleness)
+		wouldRun, reason, err := stale(t, root, ran, plan.Config.Staleness, loadState(root, plan))
 		if err != nil {
 			return err
 		}
@@ -1031,6 +1134,7 @@ func doctor(makeFile, root string, plan Plan, m map[string]*target, out io.Write
 		programs = append(programs, t.Program)
 	}
 	sort.Strings(programs)
+	fmt.Fprintln(out, "Command identity hashing: enabled")
 	fmt.Fprintln(out, "Programs referenced:")
 	if len(programs) == 0 {
 		fmt.Fprintln(out, "  (none)")
