@@ -3051,6 +3051,12 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		}
 		return c.checkArrayCrossSectionBuiltinCallExpr(scope, arguments, ctx)
 	}
+	if callee == "ArrayWhere" || callee == "Array.Where" {
+		if len(typeArguments) > 0 {
+			return ExprType{}, fmt.Errorf("function 'Array.Where' does not accept type arguments")
+		}
+		return c.checkArrayWhereBuiltinCallExpr(scope, arguments, ctx)
+	}
 	if callee == "Step" {
 		if len(typeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function 'Step' does not accept type arguments")
@@ -5627,6 +5633,42 @@ func (c checker) checkArrayCrossSectionBuiltinCallExpr(scope *scope, arguments [
 	}
 	if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
 		return ExprType{}, fmt.Errorf("Array.CrossSection expects a Range as its second argument")
+	}
+
+	return ExprType{ValueType: arrayType.ValueType}, nil
+}
+
+func (c checker) checkArrayWhereBuiltinCallExpr(scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if len(arguments) != 2 {
+		return ExprType{}, fmt.Errorf("Array.Where expects 2 arguments")
+	}
+
+	arrayType, err := c.checkExpr(scope, arguments[0], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if arrayType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if !arrayType.ValueType.IsArray && arrayType.ValueType.IsVector {
+		return ExprType{}, fmt.Errorf("Array.Where operates on arrays, not %s; use Vector-specific APIs", arrayType.ValueType)
+	}
+	if !arrayType.ValueType.IsArray && arrayType.ValueType.IsMatrix {
+		return ExprType{}, fmt.Errorf("Array.Where operates on arrays, not %s; use Matrix-specific APIs", arrayType.ValueType)
+	}
+	if !arrayType.ValueType.IsArray || arrayType.ValueType.ArrayDepth != 1 {
+		return ExprType{}, fmt.Errorf("Array.Where expects a 1D array as its first argument")
+	}
+
+	maskType, err := c.checkExpr(scope, arguments[1], ctx)
+	if err != nil {
+		return ExprType{}, err
+	}
+	if maskType.Fallible {
+		return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+	}
+	if maskType.ValueType != (Type{Base: BaseTypeBool, IsArray: true, ArrayDepth: 1}) {
+		return ExprType{}, fmt.Errorf("Array.Where expects a Bool[] mask as its second argument")
 	}
 
 	return ExprType{ValueType: arrayType.ValueType}, nil

@@ -22,6 +22,9 @@ Type matching is exact, including dimensions and nominal names.
 - `Array.CrossSection` preserves the exact array element type, including SI dimensions and nominal record/enum types.
 - `Array.CrossSection` resolves omitted range start to `0`, omitted range end to `Len(xs)`, and omitted step to `1`.
 - `Array.CrossSection` checks that step is positive, bounds are non-negative and within `Len(xs)`, and start is not after end.
+- `Array.Where(values, mask)` requires a 1D array and a `Bool[]` mask, and returns a new `T[]` array containing values whose mask element is `true`.
+- `Array.Where` preserves the exact array element type, including SI dimensions and nominal record/enum types.
+- `Array.Where` requires `Len(mask) == Len(values)` at runtime; a scalar `Bool` is not a mask, and a length-1 `Bool[]` is not broadcast.
 - Element-wise arithmetic requires arrays with the same element type.
 - Element-wise arithmetic requires equal runtime lengths.
 - Nested arrays are still arrays (containers), not matrix values.
@@ -34,8 +37,11 @@ Type matching is exact, including dimensions and nominal names.
 - In any other position (e.g. assigned to `var`/`let`, or returned), `[]` still requires an explicit array-typed annotation: `var xs: Int[] = []`.
 - Oct does not have Python colon slice syntax: `xs[1:3]` is invalid.
 - Oct does not have bracket range extraction in M0: `xs[1..3]` is invalid. Use `Array.CrossSection(xs, 1..3)`.
+- Oct does not have logical indexing syntax yet: `values[mask]` is future sugar, not part of ARR2. Use `Array.Where(values, mask)`.
 - `Array.CrossSection` is not a view; mutating the result array storage does not mutate the source array storage.
-- `Array.CrossSection` is for 1D arrays only. Vectors, matrices, and tensors have separate rank-aware APIs and are not accepted.
+- `Array.CrossSection` and `Array.Where` are for 1D arrays only. Vectors, matrices, and tensors have separate rank-aware APIs and are not accepted as direct values.
+- `Array.Where` is a compiler-owned polymorphic array operation, not a general user-defined generic function; do not write or expose `Array.Where<T>`.
+- `Array.Where` does not add NumPy-style broadcasting, scalar masks, or matrix/vector/tensor mask indexing syntax.
 - Negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, `Array.Copy`, `Array.Take`, `Array.Drop`, and `Array.Window` are deferred/not part of M0.
 
 ## Examples
@@ -67,6 +73,16 @@ package Main
 fn Main() -> Int[] {
     let samples = [10, 20, 30, 40, 50]
     return Array.CrossSection(samples, 1..5 step 2)
+}
+```
+
+```oct
+package Main
+
+fn HotSamples() -> Float<K>[] {
+    let temps: Float<K>[] = [280.0K, 310.0K, 295.0K, 320.0K]
+    let hot = Array.Where(temps, temps > 305.0K)
+    return hot
 }
 ```
 

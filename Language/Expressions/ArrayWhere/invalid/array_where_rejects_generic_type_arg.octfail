@@ -1,0 +1,7 @@
+expect error: "Array.Where' does not accept type arguments"
+
+package Main
+
+fn Main() -> Float[] {
+    return Array.Where<Float>([1.0, 2.0], [true, false])
+}

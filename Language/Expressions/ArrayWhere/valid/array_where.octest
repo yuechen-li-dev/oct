@@ -1,0 +1,101 @@
+package MainValid
+
+record Sample {
+    Value: Float
+}
+
+enum Mode {
+    Slow
+    Fast
+}
+
+[Fact]
+fn ArrayWhereSelectsFloatValues() -> Void {
+    let xs: Float[] = [1.0, 2.0, 3.0]
+    let ys = Array.Where(xs, [false, true, true])
+    Assert.Equal(2, Len(ys), "where float selected length")
+    Assert.Equal(2.0, ys[0], "where float first")
+    Assert.Equal(3.0, ys[1], "where float second")
+}
+
+[Fact]
+fn ArrayWhereUsesComparisonMask() -> Void {
+    let xs: Float[] = [1.0, 2.0, 3.0]
+    let ys = Array.Where(xs, xs > 1.5)
+    Assert.Equal(2, Len(ys), "where comparison selected length")
+    Assert.Equal(2.0, ys[0], "where comparison first")
+    Assert.Equal(3.0, ys[1], "where comparison second")
+}
+
+[Fact]
+fn ArrayWherePreservesDimensionedValues() -> Void {
+    let temps: Float<K>[] = [280.0K, 310.0K, 295.0K, 320.0K]
+    let hot = Array.Where(temps, temps > 305.0K)
+    Assert.Equal(2, Len(hot), "where dimensioned length")
+    Assert.Equal(310.0K, hot[0], "where dimensioned first")
+    Assert.Equal(320.0K, hot[1], "where dimensioned second")
+}
+
+[Fact]
+fn ArrayWhereAllFalseAllTrueEmptyAndFresh() -> Void {
+    let xs = [1, 2, 3]
+    let none = Array.Where(xs, [false, false, false])
+    Assert.Equal(0, Len(none), "where all false is empty")
+
+    var source = [1, 2, 3]
+    var copy = Array.Where(source, [true, true, true])
+    Assert.Equal(3, Len(copy), "where all true length")
+    Assert.Equal(2, copy[1], "where all true value")
+    copy[1] = 99
+    Assert.Equal(2, source[1], "where result mutation does not mutate source")
+    source[1] = 77
+    Assert.Equal(99, copy[1], "where source mutation after copy does not mutate result")
+
+    let empty: Int[] = []
+    let emptyMask: Bool[] = []
+    let emptyOut = Array.Where(empty, emptyMask)
+    Assert.Equal(0, Len(emptyOut), "where empty inputs are empty")
+}
+
+[Fact]
+fn ArrayWhereOtherElementTypes() -> Void {
+    let words = ["cold", "hot", "warm"]
+    let warmWords = Array.Where(words, [false, true, true])
+    Assert.Equal(2, Len(warmWords), "where string length")
+    Assert.Equal("hot", warmWords[0], "where string first")
+
+    let flags = [true, false, true]
+    let keptFlags = Array.Where(flags, [true, false, true])
+    Assert.Equal(2, Len(keptFlags), "where bool length")
+    Assert.True(keptFlags[0], "where bool first")
+    Assert.True(keptFlags[1], "where bool second")
+
+    let samples = [Sample { Value: 1.0 }, Sample { Value: 2.0 }]
+    let selectedSamples = Array.Where(samples, [false, true])
+    Assert.Equal(1, Len(selectedSamples), "where record length")
+    Assert.Equal(2.0, selectedSamples[0].Value, "where record field")
+
+    let modes = [Mode.Slow, Mode.Fast, Mode.Slow]
+    let selectedModes = Array.Where(modes, [false, true, false])
+    Assert.Equal(1, Len(selectedModes), "where enum length")
+    Assert.True(selectedModes[0] == Mode.Fast, "where enum value")
+}
+
+[Fact]
+fn ArrayWhereVectorAndMatrixArrayElements() -> Void {
+    let dirs: Vector<Float>[] = [
+        vector[1.0, 0.0],
+        vector[0.0, 1.0]
+    ]
+    let selectedDirs = Array.Where(dirs, [false, true])
+    Assert.Equal(1, Len(selectedDirs), "where vector array length")
+    Assert.Near(1.0, selectedDirs[0][1], 0.000001, "where vector array element")
+
+    let transforms: Matrix<Float>[] = [
+        matrix[[1.0, 0.0] [0.0, 1.0]],
+        matrix[[2.0, 0.0] [0.0, 2.0]]
+    ]
+    let selectedTransforms = Array.Where(transforms, [false, true])
+    Assert.Equal(1, Len(selectedTransforms), "where matrix array length")
+    Assert.Near(2.0, selectedTransforms[0][1, 1], 0.000001, "where matrix array element")
+}

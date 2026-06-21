@@ -2770,6 +2770,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return i.evalArrayCrossSectionBuiltinCallExpr(env, pkgName, argumentExprs)
 	}
+	if callee == "ArrayWhere" || callee == "Array.Where" {
+		if len(typeArguments) != 0 {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Array.Where does not accept type arguments")
+		}
+		return i.evalArrayWhereBuiltinCallExpr(env, pkgName, argumentExprs)
+	}
 	if callee == "Step" {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: Step does not accept type arguments")
@@ -4689,6 +4695,48 @@ func (i interpreter) evalArrayCrossSectionBuiltinCallExpr(env *environment, pkgN
 	result := make([]Value, 0, int(count))
 	for idx := start; idx < end; idx += step {
 		result = append(result, array.value.Array[idx])
+	}
+	return evalResult{value: Value{Kind: ValueArray, Array: result}}, nil
+}
+
+func (i interpreter) evalArrayWhereBuiltinCallExpr(env *environment, pkgName string, argumentExprs []ast.Expr) (evalResult, error) {
+	if len(argumentExprs) != 2 {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Array.Where expects 2 arguments")
+	}
+
+	array, err := i.evalExpr(env, pkgName, argumentExprs[0])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if array.hasError {
+		return evalResult{hasError: true, errorVal: array.errorVal}, nil
+	}
+	if array.value.Kind != ValueArray {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Array.Where expects Array as first argument, got %s", array.value.Kind)
+	}
+
+	mask, err := i.evalExpr(env, pkgName, argumentExprs[1])
+	if err != nil {
+		return evalResult{}, err
+	}
+	if mask.hasError {
+		return evalResult{hasError: true, errorVal: mask.errorVal}, nil
+	}
+	if mask.value.Kind != ValueArray {
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Array.Where expects Bool[] as second argument, got %s", mask.value.Kind)
+	}
+	if len(array.value.Array) != len(mask.value.Array) {
+		return evalResult{}, fmt.Errorf("runtime error: Array.Where mask length must match values length")
+	}
+
+	result := make([]Value, 0, len(array.value.Array))
+	for idx, keep := range mask.value.Array {
+		if keep.Kind != ValueBool {
+			return evalResult{}, fmt.Errorf("runtime invariant violation: Array.Where expects Bool[] mask element, got %s", keep.Kind)
+		}
+		if keep.Bool {
+			result = append(result, cloneValue(array.value.Array[idx]))
+		}
 	}
 	return evalResult{value: Value{Kind: ValueArray, Array: result}}, nil
 }
