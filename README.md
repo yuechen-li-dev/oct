@@ -136,7 +136,7 @@ cd HelloScience
 oct test .
 ```
 
-The generated library contains an `Identity` function and an xUnit-style `[Fact]` test. Replace those with your package code as the experiment grows. For an existing directory that already contains Oct files, run `oct init experiment`, `oct init library`, or `oct init wrapper-library` from that directory to add only `manifest.oct`; `oct init` refuses to overwrite an existing manifest.
+The generated library contains an `Identity` function and an xUnit-style `[Fact]` test. Replace those with your package code as the experiment grows. For an existing directory that already contains Oct files, run `oct init experiment`, `oct init library`, `oct init application`, or `oct init wrapper-library` from that directory to add only `manifest.oct`; `oct init` refuses to overwrite an existing manifest.
 
 From a repository checkout without installing first, the same flow is:
 

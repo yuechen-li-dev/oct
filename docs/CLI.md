@@ -20,6 +20,7 @@ Common commands:
 - `go run ./cmd/oct new library SignalTools`
 - `go run ./cmd/oct new experiment BrownNoiseKalman`
 - `go run ./cmd/oct new wrapper-library OpenCV`
+- `go run ./cmd/oct new application MyApp`
 
 `oct test` defaults to running tests only from the selected entry package/root. Imported packages are still loaded for typechecking, but their tests are excluded unless `--all-packages` is specified.
 
@@ -54,14 +55,16 @@ Artifact-producing labs should still validate scientific correctness separately 
 Usage:
 
 ```sh
-oct new <experiment|library|wrapper-library> <Name> [path]
+oct new <experiment|library|wrapper-library|application|app> <Name> [path]
 ```
 
-`oct new` creates deterministic package scaffolds. By default, `oct new experiment Name` creates `Experiments/Name` when `Experiments/` exists in the current project/root, while `oct new library Name` and `oct new wrapper-library Name` create `Libraries/Name` when `Libraries/` exists. If those collection directories do not exist, the fallback remains `./Name`. Passing an explicit `[path]` preserves that path. The command rejects missing arguments, unknown scaffold kinds, invalid names, and any target directory that already exists.
+`oct new` creates deterministic package scaffolds. By default, `oct new experiment Name` creates `Experiments/Name` when `Experiments/` exists in the current project/root, while `oct new library Name` and `oct new wrapper-library Name` create `Libraries/Name` when `Libraries/` exists. `oct new application Name` and shorthand `oct new app Name` create `Applications/Name` when `Applications/` exists. If those collection directories do not exist, the fallback remains `./Name`. Passing an explicit `[path]` preserves that path. The command rejects missing arguments, unknown scaffold kinds, invalid names, and any target directory that already exists.
 
 Names must match strict PascalCase `[A-Z][A-Za-z0-9]*`; non-PascalCase inputs such as `oct-opencv`, `signal_tools`, and `openCV` are rejected instead of normalized. Reserved names such as `Manifest`, `Main`, built-in scalar/type family names, and top-level command family names are also rejected.
 
 Generated manifests include ordered `Authors: String[]` metadata and `Date: String` in ISO `YYYY-MM-DD` form. Public scaffolds default to `Authors: ["Unknown"]` because user-created packages are not assumed to be Codex-authored. The first author is the first array element; multiple authors are represented as a 1D string array.
+
+Application scaffolds create `manifest.oct`, `README.md`, `Main.oct`, and `Main.octest`. The manifest uses canonical `Kind: "application"`; `app` is only a CLI shorthand. Application packages are for runnable Oct programs/services/UIs/CLIs, distinct from experiments whose primary output is evidence/artifacts, reusable libraries imported by other packages, and wrapper libraries exposing external sidecars. APP1 does not add application packaging/build output conventions, deployment profiles, containers, optional `Make.oct` application templates, or UIBridge/Machina runtime integration.
 
 Wrapper-library scaffolds include manifest wrapper metadata and a package-local sidecar reference under `sidecars/octxiliary-<kebab>/`. `oct pkg wrappers` can inspect this metadata and render registry output, but `oct new wrapper-library` does not build or run native sidecars. The generated raw wrapper function is metadata only until future wrapper dispatch/build lifecycle milestones.
 
@@ -71,12 +74,12 @@ Wrapper-library scaffolds include manifest wrapper metadata and a package-local 
 Usage:
 
 ```sh
-oct init <experiment|library|wrapper-library>
+oct init <experiment|library|wrapper-library|application|app>
 ```
 
 `oct new` creates a new package directory. `oct init` initializes the current existing directory by creating `manifest.oct` only. The package name is derived from the current directory basename using the same strict PascalCase validation as `oct new`; invalid directory names should be renamed until future explicit-name support exists.
 
-`oct init` writes the same `Authors: ["Unknown"]` and ISO `Date` metadata as `oct new`, but it always initializes the current directory and never moves into `Experiments/` or `Libraries/`. `oct init` refuses to overwrite an existing `manifest.oct`. Use `oct init experiment` for existing experiment folders, `oct init library` for reusable libraries, and `oct init wrapper-library` for wrapper-library manifests.
+`oct init` writes the same `Authors: ["Unknown"]` and ISO `Date` metadata as `oct new`, but it always initializes the current directory and never moves into `Experiments/` or `Libraries/`. `oct init` refuses to overwrite an existing `manifest.oct`. Use `oct init experiment` for existing experiment folders, `oct init library` for reusable libraries, `oct init application` (or shorthand `oct init app`) for runnable programs/services/UIs/CLIs, and `oct init wrapper-library` for wrapper-library manifests.
 
 ## `oct pkg` wrapper tooling
 

@@ -34,6 +34,31 @@ func TestNewExperimentCreatesScaffoldAndTestsPass(t *testing.T) {
 	assertGeneratedPackageTestsPass(t, root, "BrownNoiseKalman")
 }
 
+func TestNewApplicationAliasesCreateScaffoldRunAndTest(t *testing.T) {
+	for _, kind := range []string{"app", "application"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+			root := t.TempDir()
+			stdout, stderr, err := executeCLIInDir(root, "new", kind, "MyApp")
+			if err != nil {
+				t.Fatalf("oct new %s failed: err=%v stderr=%q stdout=%q", kind, err, stderr, stdout)
+			}
+			assertOutputContains(t, stdout, "Created "+kind+" package MyApp at MyApp")
+			packageDir := filepath.Join(root, "MyApp")
+			assertNewFilesExist(t, packageDir, "manifest.oct", "README.md", "Main.oct", "Main.octest")
+			assertFileContains(t, filepath.Join(packageDir, "manifest.oct"), "Kind: \"application\"", "Description: \"Runnable Oct application.\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\"")
+			assertFileContains(t, filepath.Join(packageDir, "Main.oct"), "package MyApp", "fn Main() -> Int", "Hello from MyApp")
+
+			runOut, runErrOut, runErr := executeCLIInDir(root, "run", packageDir)
+			if runErr != nil {
+				t.Fatalf("oct run generated app failed: err=%v stderr=%q stdout=%q", runErr, runErrOut, runOut)
+			}
+			assertOutputContains(t, runOut, "Hello from MyApp")
+			assertGeneratedPackageTestsPass(t, root, "MyApp")
+		})
+	}
+}
+
 func TestNewWrapperLibraryCreatesScaffoldAndWrappersMetadata(t *testing.T) {
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	root := t.TempDir()
@@ -86,6 +111,9 @@ func TestNewDefaultsToCollectionDirectoriesWhenPresent(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(root, "Libraries"), 0o755); err != nil {
 		t.Fatalf("mkdir Libraries: %v", err)
 	}
+	if err := os.Mkdir(filepath.Join(root, "Applications"), 0o755); err != nil {
+		t.Fatalf("mkdir Applications: %v", err)
+	}
 
 	stdout, stderr, err := executeCLIInDir(root, "new", "experiment", "ProbeLab")
 	if err != nil {
@@ -107,6 +135,13 @@ func TestNewDefaultsToCollectionDirectoriesWhenPresent(t *testing.T) {
 	}
 	assertOutputContains(t, stdout, filepath.Join("Libraries", "OpenCV"))
 	assertNewFilesExist(t, filepath.Join(root, "Libraries", "OpenCV"), "manifest.oct")
+
+	stdout, stderr, err = executeCLIInDir(root, "new", "app", "MyApp")
+	if err != nil {
+		t.Fatalf("oct new app failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, filepath.Join("Applications", "MyApp"))
+	assertNewFilesExist(t, filepath.Join(root, "Applications", "MyApp"), "manifest.oct")
 }
 
 func TestNewExplicitPathOverridesCollectionDefault(t *testing.T) {
@@ -114,12 +149,22 @@ func TestNewExplicitPathOverridesCollectionDefault(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(root, "Libraries"), 0o755); err != nil {
 		t.Fatalf("mkdir Libraries: %v", err)
 	}
+	if err := os.Mkdir(filepath.Join(root, "Applications"), 0o755); err != nil {
+		t.Fatalf("mkdir Applications: %v", err)
+	}
 	stdout, stderr, err := executeCLIInDir(root, "new", "library", "SignalTools", "Custom/SignalTools")
 	if err != nil {
 		t.Fatalf("oct new explicit path failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
 	assertOutputContains(t, stdout, "Created library package SignalTools at Custom/SignalTools")
 	assertNewFilesExist(t, filepath.Join(root, "Custom", "SignalTools"), "manifest.oct")
+
+	stdout, stderr, err = executeCLIInDir(root, "new", "application", "MyApp", "Custom/MyApp")
+	if err != nil {
+		t.Fatalf("oct new application explicit path failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	assertOutputContains(t, stdout, "Created application package MyApp at Custom/MyApp")
+	assertNewFilesExist(t, filepath.Join(root, "Custom", "MyApp"), "manifest.oct")
 }
 
 func TestNewUsageErrors(t *testing.T) {
@@ -135,7 +180,7 @@ func TestNewUsageErrors(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected usage failure, stdout=%q stderr=%q", stdout, stderr)
 			}
-			if !strings.Contains(stderr, "usage: oct new <experiment|library|wrapper-library> <Name>") {
+			if !strings.Contains(stderr, "usage: oct new <experiment|library|wrapper-library|application|app> <Name>") {
 				t.Fatalf("expected usage error, got stderr=%q", stderr)
 			}
 		})

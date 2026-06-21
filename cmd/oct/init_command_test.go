@@ -16,6 +16,8 @@ func TestInitCreatesManifestForExistingDirectories(t *testing.T) {
 		{kind: "experiment", name: "BrownNoiseKalman", snippets: []string{"Name: \"BrownNoiseKalman\"", "Kind: \"experiment\"", "EntryMilestone: \"M0\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
 		{kind: "library", name: "SignalTools", snippets: []string{"Name: \"SignalTools\"", "Description: \"SignalTools package\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
 		{kind: "wrapper-library", name: "OpenCV", snippets: []string{"Name: \"OpenCV\"", "Kind: \"wrapper\"", "SidecarCommand: \"octxiliary-open-cv\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
+		{kind: "application", name: "MyApp", snippets: []string{"Name: \"MyApp\"", "Kind: \"application\"", "Description: \"Runnable Oct application.\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
+		{kind: "app", name: "SmallApp", snippets: []string{"Name: \"SmallApp\"", "Kind: \"application\"", "Description: \"Runnable Oct application.\"", "Authors: [\"Unknown\"]", "Date: \"2026-06-15\""}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {
@@ -86,9 +88,9 @@ func TestInitHelpAndUsage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("oct init --help failed: err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
-	assertOutputContains(t, stdout, "usage: oct init <experiment|library|wrapper-library>")
+	assertOutputContains(t, stdout, "usage: oct init <experiment|library|wrapper-library|application|app>")
 
-	for _, kind := range []string{"experiment", "library", "wrapper-library"} {
+	for _, kind := range []string{"experiment", "library", "wrapper-library", "application", "app"} {
 		stdout, stderr, err = executeCLIInDir(dir, "init", kind, "--help")
 		if err != nil {
 			t.Fatalf("oct init %s --help failed: err=%v stderr=%q stdout=%q", kind, err, stderr, stdout)
@@ -100,7 +102,7 @@ func TestInitHelpAndUsage(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected unknown usage failure, stdout=%q stderr=%q", stdout, stderr)
 	}
-	if !strings.Contains(stderr, "usage: oct init <experiment|library|wrapper-library>") {
+	if !strings.Contains(stderr, "usage: oct init <experiment|library|wrapper-library|application|app>") {
 		t.Fatalf("expected init usage, got %q", stderr)
 	}
 }

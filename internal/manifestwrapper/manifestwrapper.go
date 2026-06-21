@@ -132,7 +132,7 @@ func ValidateWrapperKindRules(kind string, wrappersPresent bool, wrapperCount in
 		if wrapperCount == 0 {
 			return fmt.Errorf("Kind \"wrapper\" requires non-empty Wrappers metadata")
 		}
-	case "pure", "experiment":
+	case "pure", "experiment", "application":
 		if wrapperCount > 0 {
 			return fmt.Errorf("Kind %q does not allow non-empty Wrappers metadata", kind)
 		}
