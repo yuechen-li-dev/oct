@@ -6373,33 +6373,67 @@ func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType 
 	if operator == "@" {
 		return Type{}, fmt.Errorf("operator '@' not defined for %s and %s", leftType, rightType)
 	}
-	if !leftType.IsArray || !rightType.IsArray {
-		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
-	}
 	if operator == "%" {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
-	if leftType.ArrayDepth != rightType.ArrayDepth {
-		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	if leftType.IsArray && rightType.IsArray {
+		if leftType.ArrayDepth != rightType.ArrayDepth {
+			return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+		}
+		leftElementType := peelArrayType(leftType)
+		rightElementType := peelArrayType(rightType)
+		if leftElementType.Base == BaseTypeBool || leftElementType.Base == BaseTypeString || leftElementType.Base == BaseTypeError ||
+			rightElementType.Base == BaseTypeBool || rightElementType.Base == BaseTypeString || rightElementType.Base == BaseTypeError {
+			return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+		}
+		result, err := c.checkBinaryExpr(operator, leftElementType, rightElementType)
+		if err != nil {
+			return Type{}, err
+		}
+		return withArrayDepth(result, result.ArrayDepth+1), nil
 	}
-	leftElementType := peelArrayType(leftType)
-	rightElementType := peelArrayType(rightType)
-	if leftElementType.Base == BaseTypeBool || leftElementType.Base == BaseTypeString || leftElementType.Base == BaseTypeError ||
-		rightElementType.Base == BaseTypeBool || rightElementType.Base == BaseTypeString || rightElementType.Base == BaseTypeError {
-		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	if leftType.IsArray && leftType.ArrayDepth == 1 && isNumericScalar(rightType) {
+		result, err := c.checkBinaryExpr(operator, peelArrayType(leftType), rightType)
+		if err != nil {
+			return Type{}, err
+		}
+		return withArrayDepth(result, 1), nil
 	}
-	result, err := c.checkBinaryExpr(operator, leftElementType, rightElementType)
-	if err != nil {
-		return Type{}, err
+	if rightType.IsArray && rightType.ArrayDepth == 1 && isNumericScalar(leftType) {
+		result, err := c.checkBinaryExpr(operator, leftType, peelArrayType(rightType))
+		if err != nil {
+			return Type{}, err
+		}
+		return withArrayDepth(result, 1), nil
 	}
-	return withArrayDepth(result, result.ArrayDepth+1), nil
+	return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 }
 
 func (c checker) checkComparisonExpr(operator string, leftType Type, rightType Type) (Type, error) {
 	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString}) || leftType == (Type{Base: BaseTypeBytes})) && leftType == rightType {
 		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
 	}
-	if leftType.IsArray || rightType.IsArray || leftType.IsVector || rightType.IsVector || leftType.IsMatrix || rightType.IsMatrix || leftType.Base == BaseTypeBytes || rightType.Base == BaseTypeBytes || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
+	if leftType.IsArray || rightType.IsArray {
+		if leftType.IsArray && rightType.IsArray {
+			return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+		}
+		if leftType.IsArray && leftType.ArrayDepth == 1 {
+			_, err := c.checkComparisonExpr(operator, peelArrayType(leftType), rightType)
+			if err != nil {
+				return Type{}, err
+			}
+			return withArrayDepth(Type{Base: BaseTypeBool}, 1), nil
+		}
+		if rightType.IsArray && rightType.ArrayDepth == 1 {
+			_, err := c.checkComparisonExpr(operator, leftType, peelArrayType(rightType))
+			if err != nil {
+				return Type{}, err
+			}
+			return withArrayDepth(Type{Base: BaseTypeBool}, 1), nil
+		}
+		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
+	}
+	if leftType.IsVector || rightType.IsVector || leftType.IsMatrix || rightType.IsMatrix || leftType.Base == BaseTypeBytes || rightType.Base == BaseTypeBytes || leftType.Base == BaseTypeRange || rightType.Base == BaseTypeRange || leftType.Base == BaseTypeError || rightType.Base == BaseTypeError {
 		return Type{}, fmt.Errorf("operator %q not defined for %s and %s", operator, leftType, rightType)
 	}
 

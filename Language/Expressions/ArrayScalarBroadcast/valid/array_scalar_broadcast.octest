@@ -1,0 +1,53 @@
+package MainValid
+
+[Fact]
+fn ArrayScalarArithmetic() -> Void {
+    let xs: Float[] = [1.0, 2.0, 4.0]
+    Assert.Equal(11.0, (xs + 10.0)[0], "array plus scalar")
+    Assert.Equal(12.0, (10.0 + xs)[1], "scalar plus array")
+    Assert.Equal(3.0, (xs - 1.0)[2], "array minus scalar")
+    Assert.Equal(8.0, (10.0 - xs)[1], "scalar minus array preserves order")
+    Assert.Equal(8.0, (xs * 2.0)[2], "array times scalar")
+    Assert.Equal(4.0, (2.0 * xs)[1], "scalar times array")
+    Assert.Equal(2.0, (xs / 2.0)[2], "array divided by scalar")
+    Assert.Equal(5.0, (10.0 / xs)[1], "scalar divided by array preserves order")
+}
+
+[Fact]
+fn EmptyArrayScalarArithmetic() -> Void {
+    let xs: Float[] = []
+    let ys = xs + 1.0
+    Assert.Equal(0, Len(ys), "empty array broadcast stays empty")
+}
+
+[Fact]
+fn ArrayScalarUnits() -> Void {
+    let d: Float<m>[] = [1.0m, 2.0m, 3.0m]
+    let shifted: Float<m>[] = d + 5.0m
+    let scaled: Float<m>[] = d * 2.0
+    let area: Float<m^2>[] = d * 2.0m
+    let speed: Float<m/s>[] = d / 2.0s
+    Assert.Equal(6.0m, shifted[0], "unit addition preserves dimension")
+    Assert.Equal(4.0m, scaled[1], "dimensioned array times dimensionless scalar")
+    Assert.Equal(6.0m^2, area[2], "dimension multiplication")
+    Assert.Equal(1.0m/s, speed[1], "dimension division")
+}
+
+[Fact]
+fn ArrayScalarComparisons() -> Void {
+    let xs: Float[] = [1.0, 2.0, 3.0]
+    Assert.Equal(false, (xs > 1.5)[0], "array greater than scalar")
+    Assert.Equal(true, (2.0 <= xs)[1], "scalar less-equal array")
+    Assert.Equal(true, (xs == 2.0)[1], "array scalar equality")
+    Assert.Equal(true, (xs != 0.0)[2], "array scalar inequality")
+}
+
+[Fact]
+fn ArrayScalarUnitComparisons() -> Void {
+    let temps: Float<K>[] = [280.0K, 310.0K, 295.0K]
+    let hot: Bool[] = temps > 305.0K
+    let hotter: Bool[] = 305.0K < temps
+    Assert.Equal(false, hot[0], "unit comparison false")
+    Assert.Equal(true, hot[1], "unit comparison true")
+    Assert.Equal(true, hotter[1], "scalar-left unit comparison true")
+}

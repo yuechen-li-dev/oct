@@ -1,0 +1,8 @@
+expect error: "cannot add"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let d: Float<m>[] = [1.0m, 2.0m]
+    let bad = d + 5.0s
+}

@@ -17,6 +17,11 @@ Dimensions participate in expression typing.
 - Unary numeric negation is `-expr` for `Int`/`Float` expressions.
 - `+` on `String` performs concatenation.
 - Array arithmetic is element-wise for matching numeric array types.
+- One-dimensional numeric arrays support narrow scalar broadcast for `+`, `-`, `*`, and `/` when exactly one operand is a scalar: `T[] op S` and `S op T[]` produce an array with the same length as the array operand. The element type and unit dimension are exactly the result of applying the existing scalar operation to one element and the scalar. For example, `Float<m>[] * Float<s>` produces `Float<m*s>[]`, and `Float<m>[] / Float<s>` produces `Float<m/s>[]`.
+- One-dimensional numeric arrays support scalar comparisons (`==`, `!=`, `<`, `<=`, `>`, `>=`) when exactly one operand is a scalar. The result is `Bool[]` with the same length as the array operand.
+- Array-array operations remain strict element-wise operations over equal lengths. A length-1 array is not a scalar.
+- Oct does not perform rank broadcasting, shape inference, silent reshaping, or NumPy-style broadcasting for arrays. `Float[][]` shapes such as `(n, 1)` and `(1, m)` are not combined into `(n, m)`.
+- Logical mask filtering is not part of array operators; use a future `Array.Where`-style API when that exists.
 - Array arithmetic requires equal element types.
 - Array arithmetic requires equal runtime lengths.
 - `+` and `-` require matching dimensions.
@@ -25,7 +30,7 @@ Dimensions participate in expression typing.
 - Euclidean modulo guarantees `0 <= (a % b) < Abs(b)` for any non-zero integer `b`.
 - `%` rejects `Float`, mixed numeric operands, and container operands.
 - Comparisons require compatible operand types.
-- Ordered comparison is undefined for `Bool`, `String`, `Complex`, records, enums, and arrays.
+- Ordered comparison is undefined for `Bool`, `String`, `Complex`, records, enums, and array-array operands. Numeric array-scalar comparisons are element-wise and return `Bool[]`.
 - Complex arithmetic supports `+`, `-`, `*`, `/` for `Complex` operands.
 - Real numeric scalars (`Int`/`Float`) promote to `Complex` only for `+`, `-`, `*`, `/` when paired with `Complex`.
 - Complex comparison supports equality only (`==`, `!=`).
