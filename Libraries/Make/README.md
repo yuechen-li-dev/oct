@@ -132,7 +132,32 @@ let Release = Base with {
 }
 ```
 
-`StateDir` controls where `oct make` writes `state.octagon` and `trace.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. `Staleness.Timestamp` uses input/output modified times. `Staleness.Always` reruns selected command/function/flow targets. Hash staleness, Ninja output, and typed C/C++ or Go helper targets are intentionally deferred.
+`StateDir` controls where `oct make` writes `state.octagon` and `trace.octagon`; an empty value falls back to `.octmake`. `Trace: true` writes trace evidence without `--trace`, while `--trace` can still force trace writing for operational debugging. `Staleness.Timestamp` uses input/output modified times plus command identity hashing for command targets. `Staleness.Always` reruns selected command/function/flow targets. Ninja output and typed C/C++ or Go helper targets are intentionally deferred.
+
+## Command identity hashing
+
+`oct make` tracks a deterministic `CommandHash` for every `Make.CommandTarget`. The hash is SHA-256 over stable, length-prefixed target metadata: target kind (`command`), target name, `Program`, `Args` in order, explicit `Env` entries in order, `Cwd`, `Outputs` in order, `Inputs` in order, and `Deps` in order. It deliberately excludes volatile values such as timestamps, command output, durations, current time, temporary absolute state paths, tool versions, and ambient operating-system environment variables that are not explicitly listed in `CommandTarget.Env`.
+
+After a successful command target run, `state.octagon` stores the current `CommandHash` on that target's state record. Existing state files that do not have `CommandHash` still parse; when outputs are otherwise present and up to date, a command target with older state but no hash is stale with reason `CommandHashMissing`. If the previous hash exists but differs from the current command metadata, the target is stale with reason `CommandChanged`. Missing outputs and missing inputs are still reported before command hash reasons; command hash reasons are checked before `InputNewerThanOutput`.
+
+`trace.octagon` records both `CommandHash` and `PreviousCommandHash` for command decisions, including dry runs and failed command executions. `oct make --plan-out` includes the computed `CommandHash` in each command target snapshot so plan snapshots can be diffed for command identity changes. `oct make explain` computes and compares hashes without executing commands or mutating state.
+
+Example:
+
+```oct
+Make.CommandTarget {
+    Name: "Build"
+    Program: "go"
+    Args: ["build", "-o", "out/app", "./cmd/app"]
+    Env: ["CGO_ENABLED=1"]
+    Cwd: ""
+    Inputs: []
+    Outputs: ["out/app"]
+    Deps: []
+}
+```
+
+Changing `Args`, `Env`, `Program`, `Cwd`, or the declared inputs/outputs/dependencies makes `Build` stale even when `out/app` already exists and file timestamps are unchanged. Future work may add input content-hash staleness, tool path/version hashing, and hermetic environment/input/output tracking.
 
 ## Read-only reporting
 
@@ -148,7 +173,7 @@ oct make explain --file Examples/ChimeraHello/Make.oct TestChimera
 oct make doctor --file internal/prometheus/Make.oct
 ```
 
-Plan diffing, replay, failure artifact directories, hash staleness, and richer tool reports remain future work.
+Plan diffing, replay, failure artifact directories, input content-hash staleness, and richer tool reports remain future work.
 
 
 ## `FlowTarget`
