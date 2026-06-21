@@ -1,0 +1,4 @@
+.octmake/
+out/
+rust-sidecar/target/
+rust-sidecar/Cargo.lock

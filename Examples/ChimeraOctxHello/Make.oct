@@ -1,0 +1,135 @@
+package ChimeraOctxHello
+
+import Make
+
+fn ChimeraOctxConfig() -> Make.Config {
+    return Make.DefaultConfig() with {
+        Profile: "ChimeraOctxHello"
+        StateDir: ".octmake/chimera-octx"
+        Trace: true
+        Staleness: Make.Staleness.Timestamp
+    }
+}
+
+fn RustSidecarPath() -> String {
+    return "rust-sidecar/target/release/chimera-octx-sidecar"
+}
+
+fn GoClientPath() -> String {
+    return "out/linux-amd64/chimera-octx-hello"
+}
+
+fn BuildRustSidecarTarget() -> Make.CommandTarget {
+    return Make.CommandTarget {
+        Name: "BuildRustSidecar"
+        Inputs: ["rust-sidecar/Cargo.toml", "rust-sidecar/src/main.rs"]
+        Outputs: ["rust-sidecar/target/release/chimera-octx-sidecar"]
+        Deps: ["CheckTools"]
+        Program: "cargo"
+        Args: ["build", "--release", "--manifest-path", "rust-sidecar/Cargo.toml"]
+        Cwd: ""
+        Env: []
+    }
+}
+
+fn BuildGoClientTarget() -> Make.CommandTarget {
+    return Make.CommandTarget {
+        Name: "BuildGoClient"
+        Inputs: ["go/main.go"]
+        Outputs: ["out/linux-amd64/chimera-octx-hello"]
+        Deps: ["CheckTools"]
+        Program: "go"
+        Args: ["build", "-o", "out/linux-amd64/chimera-octx-hello", "./go"]
+        Cwd: ""
+        Env: []
+    }
+}
+
+fn RunChimeraOctxTarget() -> Make.CommandTarget {
+    return Make.CommandTarget {
+        Name: "RunChimeraOctx"
+        Inputs: ["out/linux-amd64/chimera-octx-hello", "rust-sidecar/target/release/chimera-octx-sidecar"]
+        Outputs: []
+        Deps: ["BuildRustSidecar", "BuildGoClient"]
+        Program: "out/linux-amd64/chimera-octx-hello"
+        Args: ["rust-sidecar/target/release/chimera-octx-sidecar"]
+        Cwd: ""
+        Env: []
+    }
+}
+
+fn TestChimeraOctxTarget() -> Make.PhonyTarget {
+    return Make.PhonyTarget {
+        Name: "TestChimeraOctx"
+        Deps: ["RunChimeraOctx"]
+    }
+}
+
+fn CheckToolsTarget() -> Make.FunctionTarget {
+    return Make.FunctionTarget {
+        Name: "CheckTools"
+        Inputs: []
+        Outputs: []
+        Deps: []
+        Function: "CheckTools"
+    }
+}
+
+fn CleanTarget() -> Make.FunctionTarget {
+    return Make.FunctionTarget {
+        Name: "Clean"
+        Inputs: []
+        Outputs: []
+        Deps: []
+        Function: "Clean"
+    }
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "TestChimeraOctx"
+        Config: ChimeraOctxConfig()
+        CommandTargets: [BuildRustSidecarTarget(), BuildGoClientTarget(), RunChimeraOctxTarget()]
+        FunctionTargets: [CheckToolsTarget(), CleanTarget()]
+        FlowTargets: []
+        PhonyTargets: [TestChimeraOctxTarget()]
+    }
+}
+
+fn CheckTools() -> Int ! Error {
+    let gate = Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_OCTX_HELLO\" = 1"])?
+    if gate.ExitCode != 0 {
+        return error("set OCT_CHIMERA_OCTX_HELLO=1 to run the ChimeraOctxHello process-boundary build")
+    }
+    let cargo = Make.Exec("bash", ["-c", "command -v cargo >/dev/null"])?
+    if cargo.ExitCode != 0 {
+        return error("cargo is required for ChimeraOctxHello real build")
+    }
+    let goTool = Make.Exec("bash", ["-c", "command -v go >/dev/null"])?
+    if goTool.ExitCode != 0 {
+        return error("go is required for ChimeraOctxHello real build")
+    }
+    return 0
+}
+
+fn Clean() -> Int ! Error {
+    let _out = Make.Remove("out")?
+    let _state = Make.Remove(".octmake/chimera-octx")?
+    return 0
+}
+
+fn CommandTargetCount() -> Int { return 3 }
+fn FunctionTargetCount() -> Int { return 2 }
+fn PhonyTargetCount() -> Int { return 1 }
+fn FirstFunctionTargetName() -> String { return CheckToolsTarget().Name }
+fn BuildRustSidecarTargetName() -> String { return BuildRustSidecarTarget().Name }
+fn BuildGoClientTargetName() -> String { return BuildGoClientTarget().Name }
+fn RunChimeraOctxTargetName() -> String { return RunChimeraOctxTarget().Name }
+fn TestChimeraOctxDependency() -> String { return TestChimeraOctxTarget().Deps[0] }
+fn BuildRustSidecarProgram() -> String { return BuildRustSidecarTarget().Program }
+fn BuildRustSidecarFirstArg() -> String { return BuildRustSidecarTarget().Args[0] }
+fn BuildGoClientProgram() -> String { return BuildGoClientTarget().Program }
+fn BuildGoClientFirstArg() -> String { return BuildGoClientTarget().Args[0] }
+fn RunChimeraOctxProgram() -> String { return RunChimeraOctxTarget().Program }
+fn RunChimeraOctxFirstArg() -> String { return RunChimeraOctxTarget().Args[0] }
+fn BuildGoClientEnvCount() -> Int { return 0 }
