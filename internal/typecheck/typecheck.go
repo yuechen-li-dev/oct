@@ -148,18 +148,20 @@ func (s functionSignature) String() string {
 }
 
 type functionContext struct {
-	name        string
-	returnType  Type
-	isFallible  bool
-	isTestFile  bool
-	isFact      bool
-	isTheory    bool
-	isBenchmark bool
-	inFlow      bool
-	inState     bool
-	states      map[string]struct{}
-	boardType   Type
-	board       map[string]Type
+	name                  string
+	returnType            Type
+	isFallible            bool
+	isTestFile            bool
+	isFact                bool
+	isTheory              bool
+	isBenchmark           bool
+	isMakeFile            bool
+	requiresMakeAuthority bool
+	inFlow                bool
+	inState               bool
+	states                map[string]struct{}
+	boardType             Type
+	board                 map[string]Type
 }
 
 func Check(file ast.File) error {
@@ -569,7 +571,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		}
 	}
 
-	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark}
+	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -2444,6 +2446,9 @@ regularCall:
 		return ExprType{ValueType: Type{Base: BaseTypeError}}, nil
 	}
 	if hasDirectName {
+		if primitive, ok := directMakeHostPrimitiveName(calleeName); ok && ctx.isMakeFile && !ctx.requiresMakeAuthority {
+			return ExprType{}, fmt.Errorf("function %s calls Make.%s and must be marked [RequiresAuthority]", ctx.name, primitive)
+		}
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
 			if builtinName, mapped := builtin.ResolveNamespacedAlias(namespace, symbol); mapped {
 				if _, imported := c.importedPackages[namespace]; !imported && !builtin.IsCompilerOwnedNamespace(namespace) {
@@ -2864,6 +2869,22 @@ func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 		return valueType
 	}
 	return valueType
+}
+
+var makeHostPrimitiveNames = map[string]struct{}{
+	"Exec": {}, "ExecIn": {}, "Tool": {}, "Env": {}, "Exists": {}, "IsFile": {}, "IsDir": {},
+	"MkdirAll": {}, "Remove": {}, "Copy": {}, "ReadText": {}, "WriteText": {},
+	"Glob": {}, "ModifiedTime": {}, "HashFile": {},
+}
+
+func directMakeHostPrimitiveName(callee string) (string, bool) {
+	const prefix = "Make."
+	if !strings.HasPrefix(callee, prefix) {
+		return "", false
+	}
+	name := strings.TrimPrefix(callee, prefix)
+	_, ok := makeHostPrimitiveNames[name]
+	return name, ok
 }
 
 func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments []ast.TypeRef, arguments []ast.Expr, ctx functionContext) (ExprType, error) {

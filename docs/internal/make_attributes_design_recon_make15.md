@@ -308,4 +308,15 @@ ATTR-MAKE2 extends `oct make doctor` with advisory Make attribute diagnostics wi
 
 The authority/purity scan is intentionally shallow in this pass: it only recognizes direct call expressions whose callee is a known `Make.<Name>` host primitive (`Exec`, `ExecIn`, `Tool`, `Exists`, `IsFile`, `IsDir`, `MkdirAll`, `Remove`, `Copy`, `ReadText`, `WriteText`, `Glob`, `ModifiedTime`, `HashFile`, or `Env`). It does not build a transitive call graph and does not enforce errors. Doctor also performs best-effort literal pattern checks for shell-shaped `Make.Exec("bash", ["-c", ...])` probes and suggests typed `Make.Tool` or `Make.Env` calls for obvious `command -v` and env-gate cases.
 
-These ATTR-MAKE2 messages are migration guidance only. Conventional unmarked `fn Plan() -> Make.Plan` remains valid, `[MakePlan]` is not required, unmarked host primitive calls do not fail doctor, and `[Pure]` remains metadata-only until later ATTR-MAKE3/ATTR-MAKE4 enforcement work.
+These ATTR-MAKE2 messages were migration guidance only. Conventional unmarked `fn Plan() -> Make.Plan` remains valid and `[MakePlan]` is not required; ATTR-MAKE3 now turns missing authority markers for direct host primitive calls into checker errors, while broader `[Pure]` enforcement remains deferred to ATTR-MAKE4.
+
+
+## ATTR-MAKE3 implementation note
+
+ATTR-MAKE3 enforces `[RequiresAuthority]` for direct Make host primitive calls in files whose base name is exactly `Make.oct`. The enforced primitive set is `Make.Exec`, `Make.ExecIn`, `Make.Tool`, `Make.Env`, `Make.Exists`, `Make.IsFile`, `Make.IsDir`, `Make.MkdirAll`, `Make.Remove`, `Make.Copy`, `Make.ReadText`, `Make.WriteText`, `Make.Glob`, `Make.ModifiedTime`, and `Make.HashFile`, matching the first-party `Libraries/Make` host wrappers.
+
+The checker emits a hard diagnostic of the form `function CheckTools calls Make.Tool and must be marked [RequiresAuthority]`. The rule is intentionally direct-call-only: if `Helper()` directly calls `Make.Tool`, `Helper()` is rejected when unmarked; callers of `Helper()` are not separately analyzed until a later transitive authority pass.
+
+Data-only helpers remain valid without authority. Record constructors such as `Make.CommandTarget { ... }`, `Make.FunctionTarget { ... }`, `Make.FlowTarget { ... }`, `Make.PhonyTarget { ... }`, `Make.Plan { ... }`, `Make.Config { ... }`, and C ABI records are not host primitive calls. Conventional unmarked `Plan()` also remains valid when it only builds plan data.
+
+`[Pure]` remains metadata-only except through this authority boundary: a direct host primitive call requires `[RequiresAuthority]`, while `[Pure] + [RequiresAuthority]` is rejected as contradictory. Transitive authority analysis is deferred, and the broader `[Pure]` checker is deferred to ATTR-MAKE4. No Make execution semantics, target graph semantics, or host authority runtime behavior changed.

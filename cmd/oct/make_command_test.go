@@ -801,6 +801,36 @@ fn CheckTools() -> Int ! Error { return 0 }
 	}
 }
 
+func TestMakeCommandRequiresAuthorityForDirectHostPrimitive(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "All"
+        Config: Make.DefaultConfig()
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: []
+        PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: [] }]
+    }
+}
+
+fn CheckTools() -> String ! Error {
+    return Make.Tool("go")?
+}
+`)
+	stdout, stderr, err := executeCLIArgs("make", "doctor", "--file", makeFile)
+	if err == nil {
+		t.Fatalf("expected doctor to fail for missing [RequiresAuthority], stdout=%s stderr=%s", stdout, stderr)
+	}
+	if !strings.Contains(err.Error(), "function CheckTools calls Make.Tool and must be marked [RequiresAuthority]") {
+		t.Fatalf("unexpected error: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+}
+
 func TestMakeDoctorAttributeDiagnosticsAndSuggestions(t *testing.T) {
 	root := repoTempDir(t)
 	makeFile := filepath.Join(root, "Make.oct")
@@ -818,24 +848,17 @@ fn Plan() -> Make.Plan {
     }
 }
 
-fn Helper() -> String ! Error {
-    return Make.Tool("go")?
-}
-
-[Pure]
-fn PureProbe() -> String ! Error {
-    return Make.Tool("oct")?
-}
-
 [RequiresAuthority]
 fn CheckTools() -> String ! Error {
     return Make.Tool("cargo")?
 }
 
+[RequiresAuthority]
 fn ShellToolProbe() -> Make.ProcessResult ! Error {
     return Make.Exec("bash", ["-c", "command -v go >/dev/null"])?
 }
 
+[RequiresAuthority]
 fn ShellEnvGate() -> Make.ProcessResult ! Error {
     return Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_HELLO\" = yes"])?
 }
@@ -848,8 +871,6 @@ fn ShellEnvGate() -> Make.ProcessResult ! Error {
 		"Plan: conventional unmarked Plan()",
 		"Plan entrypoint: Plan() conventional",
 		"Suggestion: consider [MakePlan] [Pure] [NoWhile] for stricter validation",
-		"Helper calls Make.Tool but is not marked [RequiresAuthority]",
-		"PureProbe is marked [Pure] but calls Make.Tool",
 		"CheckTools: ok ([RequiresAuthority])",
 		"ShellToolProbe uses shell-shaped tool probe; prefer Make.Tool(\"go\")",
 		"ShellEnvGate uses shell-shaped env gate; prefer Make.Env(\"OCT_CHIMERA_HELLO\")",
