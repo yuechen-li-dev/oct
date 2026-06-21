@@ -72,18 +72,19 @@ func TestCompiledGenericOctxiliaryMissingSidecarMessage(t *testing.T) {
 	}
 }
 
-func TestCompiledGenericOctxiliaryRejectsRecordReturn(t *testing.T) {
+func TestCompiledGenericOctxiliarySupportsRecordReturn(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
-	cmd := exec.Command("go", "run", filepath.Join("..", "..", "..", "..", "..", "cmd", "oct"), "pkg", "wrappers")
-	cmd.Dir = filepath.Join(repo, "Language", "Testing", "CompiledOctxiliary", "invalid", "record_return")
+	binDir := sharedTestSidecarDir(t, "octxiliary-test-wrapper")
+	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Language/Testing/CompiledOctxiliary/valid/generic_wrapper_m6.octest", "--execution", "compiled")
+	cmd.Dir = repo
+	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("expected record return failure, got success:\n%s", string(out))
+	if err != nil {
+		t.Fatalf("expected compiled record return fixture to succeed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
-	text := string(out)
-	if !strings.Contains(text, "record transport type") && !strings.Contains(text, "record returns") {
-		t.Fatalf("expected record return diagnostic, got:\n%s", text)
+	if !strings.Contains(string(out), "PASS Main.GenericWrapperM6ScalarListBytesAndVoid") {
+		t.Fatalf("expected record return fixture pass, got:\n%s", string(out))
 	}
 }
 

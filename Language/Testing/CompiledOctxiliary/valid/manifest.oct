@@ -85,6 +85,7 @@ fn Manifest() -> PackageManifest {
                     WrapperFunction { OctName: "Half" WireName: "TestHalf" Args: ["Float"] Return: "Float" Fallible: true },
                     WrapperFunction { OctName: "SumFloats" WireName: "TestSumFloats" Args: ["Float[]"] Return: "Float" Fallible: true },
                     WrapperFunction { OctName: "DescribeOptions" WireName: "TestDescribeOptions" Args: ["Main.TestOptions"] Return: "String" Fallible: true },
+                    WrapperFunction { OctName: "ReturnOptions" WireName: "TestReturnOptions" Args: [] Return: "Main.TestOptions" Fallible: true },
                     WrapperFunction { OctName: "Touch" WireName: "TestTouch" Args: [] Return: "Void" Fallible: true },
                     WrapperFunction { OctName: "TouchDirect" WireName: "TestTouchDirect" Args: [] Return: "Void" Fallible: false },
                     WrapperFunction { OctName: "AlwaysFails" WireName: "TestAlwaysFails" Args: [] Return: "String" Fallible: true },

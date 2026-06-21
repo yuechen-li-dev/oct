@@ -112,6 +112,14 @@ func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
 			return octxiliary.Value{}, fmt.Errorf("unexpected record field kinds")
 		}
 		return octxiliary.Value{Kind: octxiliary.ValueString, String: fmt.Sprintf("%s:%d", req.Args[0].Fields[1].Value.String, req.Args[0].Fields[0].Value.Int)}, nil
+	case "TestReturnOptions":
+		if err := expect(req.Args); err != nil {
+			return octxiliary.Value{}, err
+		}
+		return octxiliary.Value{Kind: octxiliary.ValueRecord, RecordType: "Main.TestOptions", Fields: []octxiliary.FieldValue{
+			{Name: "Count", Value: octxiliary.Value{Kind: octxiliary.ValueInt, Int: 11}},
+			{Name: "Name", Value: octxiliary.Value{Kind: octxiliary.ValueString, String: "returned"}},
+		}}, nil
 	case "TestTouch", "TestTouchDirect":
 		if err := expect(req.Args); err != nil {
 			return octxiliary.Value{}, err

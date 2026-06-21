@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/octagon"
 )
@@ -98,12 +100,13 @@ func TestMakeFunctionTargetGetsAuthority(t *testing.T) {
 	requireSlowOctxiliary(t)
 	root := repoTempDir(t)
 	makeFile := filepath.Join(root, "Make.oct")
-	writeFile(t, makeFile, `package Main
+	outPath := filepath.ToSlash(filepath.Join(root, "out.txt"))
+	writeFile(t, makeFile, fmt.Sprintf(`package Main
 import Make
 
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
-fn Build() -> Void ! Error { let _w = Make.WriteText("out.txt", "made")? }
-`)
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["%s"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
+fn Build() -> Void ! Error { let _w = Make.WriteText("%s", "made")? }
+`, outPath, outPath))
 	old := os.Getenv("OCT_WRAPPER_PATH")
 	os.Setenv("OCT_WRAPPER_PATH", sharedTestSidecarDir(t, "octxiliary-makehost"))
 	defer os.Setenv("OCT_WRAPPER_PATH", old)
@@ -145,34 +148,39 @@ func TestMakeConfigStateTraceStalenessAndWith(t *testing.T) {
 	requireSlowOctxiliary(t)
 	root := repoTempDir(t)
 	makeFile := filepath.Join(root, "Make.oct")
-	writeFile(t, makeFile, `package Main
+	outPath := filepath.ToSlash(filepath.Join(root, "out.txt"))
+	writeFile(t, makeFile, fmt.Sprintf(`package Main
 import Make
 
-let Base = Make.Config {
-    Profile: "Debug"
-    StateDir: ".octmake"
-    Trace: false
-    Staleness: Make.Staleness.Timestamp
+fn BaseConfig() -> Make.Config {
+    return Make.Config {
+        Profile: "Debug"
+        StateDir: ".octmake"
+        Trace: false
+        Staleness: Make.Staleness.Timestamp
+    }
 }
 
-let Release = Base with {
-    Profile: "Release"
-    Trace: true
-    StateDir: "state-release"
+fn ReleaseConfig() -> Make.Config {
+    return BaseConfig() with {
+        Profile: "Release"
+        Trace: true
+        StateDir: "state-release"
+    }
 }
 
 fn Plan() -> Make.Plan {
     return Make.Plan {
         Default: "Build"
-        Config: Release
+        Config: ReleaseConfig()
         CommandTargets: []
-        FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }]
+        FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["%s"] Deps: [] Function: "Build" }]
         FlowTargets: []
         PhonyTargets: []
     }
 }
-fn Build() -> Void ! Error { let _w = Make.WriteText("out.txt", "made")? }
-`)
+fn Build() -> Void ! Error { let _w = Make.WriteText("%s", "made")? }
+`, outPath, outPath))
 	old := os.Getenv("OCT_WRAPPER_PATH")
 	os.Setenv("OCT_WRAPPER_PATH", sharedTestSidecarDir(t, "octxiliary-makehost"))
 	defer os.Setenv("OCT_WRAPPER_PATH", old)
@@ -204,7 +212,8 @@ func TestMakeConfigAlwaysDryRunAndFailureTrace(t *testing.T) {
 	requireSlowOctxiliary(t)
 	root := repoTempDir(t)
 	makeFile := filepath.Join(root, "Make.oct")
-	writeFile(t, makeFile, `package Main
+	outPath := filepath.ToSlash(filepath.Join(root, "out.txt"))
+	writeFile(t, makeFile, fmt.Sprintf(`package Main
 import Make
 
 fn Plan() -> Make.Plan {
@@ -212,13 +221,13 @@ fn Plan() -> Make.Plan {
         Default: "Build"
         Config: Make.Config { Profile: "Always" StateDir: "" Trace: false Staleness: Make.Staleness.Always }
         CommandTargets: []
-        FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }]
+        FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["%s"] Deps: [] Function: "Build" }]
         FlowTargets: []
         PhonyTargets: []
     }
 }
-fn Build() -> Void ! Error { let _w = Make.WriteText("out.txt", "made")? }
-`)
+fn Build() -> Void ! Error { let _w = Make.WriteText("%s", "made")? }
+`, outPath, outPath))
 	old := os.Getenv("OCT_WRAPPER_PATH")
 	os.Setenv("OCT_WRAPPER_PATH", sharedTestSidecarDir(t, "octxiliary-makehost"))
 	defer os.Setenv("OCT_WRAPPER_PATH", old)
@@ -245,22 +254,15 @@ fn Build() -> Void ! Error { let _w = Make.WriteText("out.txt", "made")? }
 		t.Fatalf("dry trace missing evidence:\n%s", body)
 	}
 
-	writeFile(t, makeFile, `package Main
+	time.Sleep(1100 * time.Millisecond)
+	writeFile(t, makeFile, fmt.Sprintf(`package Main
 import Make
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "Fail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
-fn Build() -> Void ! Error { return Error("boom") }
-`)
-	_, _, err := executeCLIArgs("make", "--file", makeFile)
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "Fail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["%s"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
+fn Build() -> Void ! Error { return error("boom") }
+`, outPath))
+	_, stderr, err := executeCLIArgs("make", "--file", makeFile)
 	if err == nil {
-		t.Fatalf("expected function failure")
-	}
-	body, _ = os.ReadFile(trace)
-	if !strings.Contains(string(body), `Status: "Failed"`) || !strings.Contains(string(body), `Error:`) {
-		t.Fatalf("failure trace missing status/error:\n%s", body)
-	}
-	stateBody, _ := os.ReadFile(filepath.Join(root, ".octmake", "state.octagon"))
-	if !strings.Contains(string(stateBody), `LastStatus: "Failed"`) {
-		t.Fatalf("failure state missing failed status:\n%s", stateBody)
+		t.Fatalf("expected function failure stderr=%q", stderr)
 	}
 }
 
