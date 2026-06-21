@@ -22,7 +22,7 @@ fn Plan() -> Make.Plan {
         Default: "Build"
         Config: Make.DefaultConfig()
         CommandTargets: [
-            Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["go-version.txt"] Deps: [] Program: "go" Args: ["version"] Cwd: "" }
+            Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["go-version.txt"] Deps: [] Program: "go" Args: ["version"] Cwd: "" Env: [] }
         ]
         FunctionTargets: []
         FlowTargets: []
@@ -76,7 +76,7 @@ fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Defaul
 `, `dependency "Missing" does not exist`},
 		{"duplicate", `package Main
 import Make
-fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["version"] Cwd: "" }] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "Build" Deps: [] }] } }
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["version"] Cwd: "" Env: [] }] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "Build" Deps: [] }] } }
 `, `duplicate target name`},
 		{"cycle", `package Main
 import Make
@@ -275,7 +275,7 @@ fn Plan() -> Make.Plan {
     return Make.Plan {
         Default: "Build"
         Config: Make.Config { Profile: "CommandFail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
-        CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Program: "go" Args: ["definitely-not-a-go-subcommand"] Cwd: "" }]
+        CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: ["out.txt"] Deps: [] Program: "go" Args: ["definitely-not-a-go-subcommand"] Cwd: "" Env: [] }]
         FunctionTargets: []
         FlowTargets: []
         PhonyTargets: []

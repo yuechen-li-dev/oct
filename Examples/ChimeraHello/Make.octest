@@ -1,0 +1,45 @@
+package ChimeraHello
+
+import Make
+
+[Fact]
+fn PlanDefaultIsTestChimera() -> Void {
+    Assert.Equal("TestChimera", Plan().Default, "ChimeraHello default should be TestChimera")
+}
+
+[Fact]
+fn ChimeraConfigUsesIsolatedTraceState() -> Void {
+    let cfg = ChimeraConfig()
+    Assert.Equal("ChimeraHello", cfg.Profile, "profile should name ChimeraHello")
+    Assert.Equal(".octmake/chimera", cfg.StateDir, "state should be example-local")
+    Assert.True(cfg.Trace, "trace should be enabled")
+    Assert.Equal(Make.Staleness.Timestamp, cfg.Staleness, "timestamp staleness should be used")
+}
+
+[Fact]
+fn PlanHasExpectedTargets() -> Void {
+    Assert.Equal(3, CommandTargetCount(), "plan should include Rust build, Go build, and run command targets")
+    Assert.Equal(2, FunctionTargetCount(), "plan should include CheckTools and Clean function targets")
+    Assert.Equal(1, PhonyTargetCount(), "plan should include TestChimera phony target")
+}
+
+[Fact]
+fn PlanIncludesChimeraCommandTargets() -> Void {
+    Assert.Equal("BuildRustCAbi", BuildRustCAbiTargetName(), "plan should include BuildRustCAbi")
+    Assert.Equal("BuildGoBinary", BuildGoBinaryTargetName(), "plan should include BuildGoBinary")
+    Assert.Equal("RunChimera", RunChimeraTargetName(), "plan should include RunChimera")
+}
+
+[Fact]
+fn TestChimeraDependsOnRunChimera() -> Void {
+    Assert.Equal("RunChimera", TestChimeraDependency(), "TestChimera should depend on RunChimera")
+}
+
+[Fact]
+fn CommandTargetsUseStructuredProgramArgsAndEnv() -> Void {
+    Assert.Equal("cargo", BuildRustCAbiProgram(), "Rust build should use structured Program")
+    Assert.Equal("build", BuildRustCAbiFirstArg(), "Rust build should use structured Args")
+    Assert.Equal("bash", BuildGoBinaryProgram(), "Go build should use structured Program")
+    Assert.Equal("-c", BuildGoBinaryFirstArg(), "Go build should use structured Args")
+    Assert.Equal("CGO_ENABLED=1", BuildGoBinaryFirstEnv(), "Go build should use structured cgo Env")
+}
