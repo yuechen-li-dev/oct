@@ -301,3 +301,11 @@ Implemented validation is intentionally small:
 - `[Pure]` and `[RequiresAuthority]` are stored as metadata only. ATTR-MAKE1 does not enforce effect purity, does not require authority markers for host primitive calls, and does not change Make execution semantics or host authority behavior.
 
 Deferred work remains intentionally scoped: ATTR-MAKE2 can surface marker metadata in doctor, plan snapshots, traces, or failure artifacts; ATTR-MAKE3 can validate authority use; ATTR-MAKE4 can implement real purity checks. This pass does not add user-defined attributes, macros, reflection, compiler plugins, decorators, attribute payloads, or a general purity system.
+
+## ATTR-MAKE2 implementation note
+
+ATTR-MAKE2 extends `oct make doctor` with advisory Make attribute diagnostics without changing Make execution semantics. Doctor now reads the parsed Make.oct function metadata already present on `ast.FunctionDecl` and reports the Plan entrypoint marker status, explicit `[Pure]`, `[NoWhile]`, and `[RequiresAuthority]` markers, direct Make host primitive calls in functions that are not marked `[RequiresAuthority]`, and direct host primitive calls from `[Pure]` functions.
+
+The authority/purity scan is intentionally shallow in this pass: it only recognizes direct call expressions whose callee is a known `Make.<Name>` host primitive (`Exec`, `ExecIn`, `Tool`, `Exists`, `IsFile`, `IsDir`, `MkdirAll`, `Remove`, `Copy`, `ReadText`, `WriteText`, `Glob`, `ModifiedTime`, `HashFile`, or `Env`). It does not build a transitive call graph and does not enforce errors. Doctor also performs best-effort literal pattern checks for shell-shaped `Make.Exec("bash", ["-c", ...])` probes and suggests typed `Make.Tool` or `Make.Env` calls for obvious `command -v` and env-gate cases.
+
+These ATTR-MAKE2 messages are migration guidance only. Conventional unmarked `fn Plan() -> Make.Plan` remains valid, `[MakePlan]` is not required, unmarked host primitive calls do not fail doctor, and `[Pure]` remains metadata-only until later ATTR-MAKE3/ATTR-MAKE4 enforcement work.

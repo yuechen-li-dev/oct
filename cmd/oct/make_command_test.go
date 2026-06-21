@@ -643,7 +643,7 @@ fn Check() -> Void { }
 	if err != nil {
 		t.Fatalf("doctor failed: %v stderr=%s", err, stderr)
 	}
-	for _, want := range []string{"oct make doctor", "Make file:", "Profile: Report", "State dir: .octmake/report", "Backend: direct", "Default target: All", "command: 2", "function: 1", "phony: 1", "Validation: ok", "State:", "Trace:", "Command identity hashing: enabled", "Programs referenced:", "sh"} {
+	for _, want := range []string{"oct make doctor", "Make file:", "Profile: Report", "State dir: .octmake/report", "Backend: direct", "Default target: All", "command: 2", "function: 1", "phony: 1", "Validation: ok", "State:", "Trace:", "Command identity hashing: enabled", "Programs referenced:", "sh", "Plan entrypoint: Plan() conventional", "Markers: none"} {
 		if !strings.Contains(stdout, want) {
 			t.Fatalf("doctor missing %q:\n%s", want, stdout)
 		}
@@ -787,7 +787,76 @@ fn CheckTools() -> Int ! Error { return 0 }
 	if err != nil {
 		t.Fatalf("doctor failed: %v stderr=%s", err, stderr)
 	}
-	if !strings.Contains(stdout, "Validation: ok") {
-		t.Fatalf("unexpected doctor output: %q", stdout)
+	for _, want := range []string{
+		"Make attributes:",
+		"Plan entrypoint: Plan() [MakePlan] [Pure] [NoWhile]",
+		"Authority functions:",
+		"CheckTools: [RequiresAuthority]",
+		"Authority diagnostics:",
+		"Validation: ok",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("doctor missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestMakeDoctorAttributeDiagnosticsAndSuggestions(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "All"
+        Config: Make.DefaultConfig()
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: []
+        PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: [] }]
+    }
+}
+
+fn Helper() -> String ! Error {
+    return Make.Tool("go")?
+}
+
+[Pure]
+fn PureProbe() -> String ! Error {
+    return Make.Tool("oct")?
+}
+
+[RequiresAuthority]
+fn CheckTools() -> String ! Error {
+    return Make.Tool("cargo")?
+}
+
+fn ShellToolProbe() -> Make.ProcessResult ! Error {
+    return Make.Exec("bash", ["-c", "command -v go >/dev/null"])?
+}
+
+fn ShellEnvGate() -> Make.ProcessResult ! Error {
+    return Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_HELLO\" = yes"])?
+}
+`)
+	stdout, stderr, err := executeCLIArgs("make", "doctor", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("doctor failed: %v stderr=%s stdout=%s", err, stderr, stdout)
+	}
+	for _, want := range []string{
+		"Plan: conventional unmarked Plan()",
+		"Plan entrypoint: Plan() conventional",
+		"Suggestion: consider [MakePlan] [Pure] [NoWhile] for stricter validation",
+		"Helper calls Make.Tool but is not marked [RequiresAuthority]",
+		"PureProbe is marked [Pure] but calls Make.Tool",
+		"CheckTools: ok ([RequiresAuthority])",
+		"ShellToolProbe uses shell-shaped tool probe; prefer Make.Tool(\"go\")",
+		"ShellEnvGate uses shell-shaped env gate; prefer Make.Env(\"OCT_CHIMERA_HELLO\")",
+		"Validation: ok",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("doctor missing %q:\n%s", want, stdout)
+		}
 	}
 }
