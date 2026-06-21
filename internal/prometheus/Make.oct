@@ -2,6 +2,8 @@ package Main
 
 import Make
 
+[Pure]
+[NoWhile]
 fn DogfoodConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "PrometheusDogfood"
@@ -11,22 +13,31 @@ fn DogfoodConfig() -> Make.Config {
     }
 }
 
+[Pure]
+[NoWhile]
 fn LinuxDogfoodConfig() -> Make.Config {
     return DogfoodConfig() with {
         Profile: "PrometheusDogfoodLinux"
     }
 }
 
+[Pure]
+[NoWhile]
 fn WindowsDogfoodConfig() -> Make.Config {
     return DogfoodConfig() with {
         Profile: "PrometheusDogfoodWindows"
     }
 }
 
+[Pure]
+[NoWhile]
 fn PrometheusDogfoodMaxSteps() -> Int {
     return 16
 }
 
+[MakePlan]
+[Pure]
+[NoWhile]
 fn Plan() -> Make.Plan {
     return Make.Plan {
         Default: "TestNative"
@@ -103,6 +114,8 @@ fn FlowTargetCount() -> Int { return 1 }
 
 fn PhonyTargetCount() -> Int { return 1 }
 
+[Pure]
+[NoWhile]
 fn BuildPrometheusTargetName() -> String {
     let target = Make.CommandTarget {
         Name: "BuildPrometheus"
@@ -117,6 +130,8 @@ fn BuildPrometheusTargetName() -> String {
     return target.Name
 }
 
+[Pure]
+[NoWhile]
 fn BuildPrometheusTargetProgram() -> String {
     let target = Make.CommandTarget {
         Name: "BuildPrometheus"
@@ -131,6 +146,8 @@ fn BuildPrometheusTargetProgram() -> String {
     return target.Program
 }
 
+[Pure]
+[NoWhile]
 fn BuildPrometheusTargetFirstArg() -> String {
     let target = Make.CommandTarget {
         Name: "BuildPrometheus"
@@ -145,6 +162,8 @@ fn BuildPrometheusTargetFirstArg() -> String {
     return target.Args[0]
 }
 
+[Pure]
+[NoWhile]
 fn RunHarnessTargetName() -> String {
     let target = Make.CommandTarget {
         Name: "RunHarness"
@@ -159,6 +178,8 @@ fn RunHarnessTargetName() -> String {
     return target.Name
 }
 
+[Pure]
+[NoWhile]
 fn RunHarnessTargetProgram() -> String {
     let target = Make.CommandTarget {
         Name: "RunHarness"
@@ -173,6 +194,8 @@ fn RunHarnessTargetProgram() -> String {
     return target.Program
 }
 
+[Pure]
+[NoWhile]
 fn RunHarnessTargetFirstArg() -> String {
     let target = Make.CommandTarget {
         Name: "RunHarness"
@@ -187,6 +210,8 @@ fn RunHarnessTargetFirstArg() -> String {
     return target.Args[0]
 }
 
+[Pure]
+[NoWhile]
 fn TestNativeTargetDependency() -> String {
     let target = Make.PhonyTarget {
         Name: "TestNative"

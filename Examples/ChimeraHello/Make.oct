@@ -2,6 +2,7 @@ package ChimeraHello
 
 import Make
 
+[RequiresAuthority]
 fn RequireCargo() -> Int ! Error {
     match Make.Tool("cargo") {
         ok(_) => { return 0 }
@@ -9,6 +10,7 @@ fn RequireCargo() -> Int ! Error {
     }
 }
 
+[RequiresAuthority]
 fn RequireGo() -> Int ! Error {
     match Make.Tool("go") {
         ok(_) => { return 0 }
@@ -16,6 +18,7 @@ fn RequireGo() -> Int ! Error {
     }
 }
 
+[RequiresAuthority]
 fn RequireChimeraGate() -> Int ! Error {
     let env = Make.Env("OCT_CHIMERA_HELLO")?
     if not env.Present {
@@ -27,6 +30,8 @@ fn RequireChimeraGate() -> Int ! Error {
     return 0
 }
 
+[Pure]
+[NoWhile]
 fn ChimeraConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "ChimeraHello"
@@ -36,14 +41,20 @@ fn ChimeraConfig() -> Make.Config {
     }
 }
 
+[Pure]
+[NoWhile]
 fn ChimeraOutputPath() -> String {
     return "out/linux-amd64/chimera-hello"
 }
 
+[Pure]
+[NoWhile]
 fn ChimeraRustLibraryPath() -> String {
     return "rust/target/release/libchimera_rust.a"
 }
 
+[Pure]
+[NoWhile]
 fn RustArtifact() -> Make.CAbiLibrary {
     return Make.CAbiLibrary {
         Name: "chimera_rust"
@@ -65,6 +76,8 @@ fn RustArtifact() -> Make.CAbiLibrary {
     }
 }
 
+[Pure]
+[NoWhile]
 fn BuildRustCAbiTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "BuildRustCAbi"
@@ -78,6 +91,8 @@ fn BuildRustCAbiTarget() -> Make.CommandTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn BuildGoBinaryTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "BuildGoBinary"
@@ -91,6 +106,8 @@ fn BuildGoBinaryTarget() -> Make.CommandTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn RunChimeraTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "RunChimera"
@@ -104,6 +121,8 @@ fn RunChimeraTarget() -> Make.CommandTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn TestChimeraTarget() -> Make.PhonyTarget {
     return Make.PhonyTarget {
         Name: "TestChimera"
@@ -111,6 +130,9 @@ fn TestChimeraTarget() -> Make.PhonyTarget {
     }
 }
 
+[MakePlan]
+[Pure]
+[NoWhile]
 fn Plan() -> Make.Plan {
     return Make.Plan {
         Default: "TestChimera"
@@ -137,6 +159,7 @@ fn Plan() -> Make.Plan {
     }
 }
 
+[RequiresAuthority]
 fn CheckTools() -> Int ! Error {
     let _gate = RequireChimeraGate()?
     let _cargo = RequireCargo()?
@@ -144,6 +167,7 @@ fn CheckTools() -> Int ! Error {
     return 0
 }
 
+[RequiresAuthority]
 fn Clean() -> Int ! Error {
     let _out = Make.Remove("out")?
     let _state = Make.Remove(".octmake/chimera")?
