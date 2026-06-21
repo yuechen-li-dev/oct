@@ -264,3 +264,40 @@ Investigate whether Chimera command targets should stop using `bash -c` for `go 
 ## Tiny cleanup performed after design
 
 MAKE15-H1 later replaced the Chimera `command -v` probes with `Make.Tool` while preserving custom error strings through local fallible helpers. The environment gate still needs a new primitive to remove the remaining shell-shaped check cleanly.
+
+## ATTR-MAKE1 implementation note: closed Make.oct-only attributes
+
+ATTR-MAKE1 implements the minimal closed Make attribute surface described above without adding a general attribute system.
+
+Accepted Make attributes are limited to files whose base name is exactly `Make.oct`:
+
+```oct
+[MakePlan]
+[Pure]
+[NoWhile]
+fn Plan() -> Make.Plan {
+    return Make.Plan { ... }
+}
+
+[RequiresAuthority]
+fn CheckTools() -> Int ! Error {
+    let _go = Make.Tool("go")?
+    return 0
+}
+```
+
+The parser still accepts Octest attributes only in `.octest` files. Ordinary `.oct` files, including `Main.oct`, `manifest.oct`, library files, and experiment files, continue to reject top-level attributes. Make attributes and Octest attributes are deliberately disjoint: `[Fact]`, `[Theory]`, `[Artifact]`, `[Benchmark]`, `[InlineData]`, `[Suite]`, and `[CycleTime]` are invalid in `Make.oct`, and `[MakePlan]`, `[Pure]`, `[NoWhile]`, and `[RequiresAuthority]` are invalid in `.octest`.
+
+Make attributes are closed, first-party, and payload-free in ATTR-MAKE1. `[Pure]` is valid, while `[Pure("x")]` is invalid; the same no-payload rule applies to `[MakePlan]`, `[NoWhile]`, and `[RequiresAuthority]`. Unknown Make attributes are rejected with an `unsupported Make attribute [Name]` diagnostic.
+
+Make attributes attach only to the next function declaration. They may not precede `record`, `enum`, `flow`, EOF, or any other non-function top-level shape. The AST representation remains specialized: Make markers lower into dedicated `FunctionDecl` booleans rather than a generic attribute list or metadata bag.
+
+Implemented validation is intentionally small:
+
+- Duplicate Make attributes are rejected.
+- `[Pure]` and `[RequiresAuthority]` on the same function are rejected as contradictory in this first pass.
+- `[MakePlan]` requires the function to be named `Plan`, accept zero parameters, and return exactly `Make.Plan`. Conventional unmarked `fn Plan() -> Make.Plan` remains accepted.
+- `[NoWhile]` walks the function body AST and rejects nested `while` statements anywhere inside that marked function.
+- `[Pure]` and `[RequiresAuthority]` are stored as metadata only. ATTR-MAKE1 does not enforce effect purity, does not require authority markers for host primitive calls, and does not change Make execution semantics or host authority behavior.
+
+Deferred work remains intentionally scoped: ATTR-MAKE2 can surface marker metadata in doctor, plan snapshots, traces, or failure artifacts; ATTR-MAKE3 can validate authority use; ATTR-MAKE4 can implement real purity checks. This pass does not add user-defined attributes, macros, reflection, compiler plugins, decorators, attribute payloads, or a general purity system.

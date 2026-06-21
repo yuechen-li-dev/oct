@@ -134,3 +134,39 @@ oct pkg build-wrappers --allow-native
 oct version
 oct exp run https://example.com/repo.git
 ```
+
+## `Make.oct` attributes
+
+`Make.oct` has a small, closed attribute surface for Make tooling. These attributes are valid only in a file whose base name is exactly `Make.oct`; ordinary `.oct` files still reject attributes, and `.octest` files continue to accept only Octest attributes.
+
+Supported Make attributes are:
+
+- `[MakePlan]`
+- `[Pure]`
+- `[NoWhile]`
+- `[RequiresAuthority]`
+
+They are compiler/tool-owned semantic markers, not decorators, macros, reflection metadata, user-defined attributes, or a general metaprogramming system. They do not accept payloads.
+
+Make attributes attach only to function declarations:
+
+```oct
+[MakePlan]
+[Pure]
+[NoWhile]
+fn Plan() -> Make.Plan {
+    return Make.Plan { ... }
+}
+
+[RequiresAuthority]
+fn CheckTools() -> Int ! Error {
+    let _go = Make.Tool("go")?
+    return 0
+}
+```
+
+`[MakePlan]` marks the conventional Make plan function and must be written on `fn Plan()` with zero parameters and return type `Make.Plan`. A conventional unmarked `fn Plan() -> Make.Plan` remains valid.
+
+`[NoWhile]` is a syntactic restriction: a marked function body must not contain any `while` statement, including nested `while` statements.
+
+`[Pure]` and `[RequiresAuthority]` are metadata-only in the first Make attribute pass. `[Pure]` does not yet enforce an effect-purity system, and `[RequiresAuthority]` is not yet required for Make host primitive calls. They may not be combined on the same function.
