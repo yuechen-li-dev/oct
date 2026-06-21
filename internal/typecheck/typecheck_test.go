@@ -7,6 +7,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
 	"github.com/yuechen-li-dev/oct/internal/parse"
+	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
@@ -885,4 +886,111 @@ func TestCheckFirstClassRangeDiagnostics(t *testing.T) {
 	assertTypeErrorContains(t, "fn Main() -> Range { return 1..10 step false }", "range step must be Int")
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in 0.. { return i } return 0 }", "for loop range requires start and end")
 	assertTypeErrorContains(t, "fn Main() -> Int { for i in ..10 { return i } return 0 }", "for loop range requires start and end")
+}
+
+func TestMakeRequiresAuthorityForDirectHostPrimitives(t *testing.T) {
+	valid := []string{
+		`import Make
+[RequiresAuthority]
+fn CheckTools() -> String ! Error { return Make.Tool("go")? }`,
+		`import Make
+[RequiresAuthority]
+fn ReadEnv() -> Make.EnvValue ! Error { return Make.Env("PATH")? }`,
+		`import Make
+[RequiresAuthority]
+fn Run() -> Int ! Error { let result = Make.Exec("go", ["version"])? return result.ExitCode }`,
+		`import Make
+[Pure]
+[NoWhile]
+fn Target() -> Make.CommandTarget { return Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["build"] Cwd: "." Env: [] } }`,
+		`import Make
+fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.DefaultConfig() CommandTargets: [Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["build"] Cwd: "." Env: [] }] FunctionTargets: [] FlowTargets: [] PhonyTargets: [] } }`,
+	}
+	for _, src := range valid {
+		program := makeAuthorityTestProgram(t, "Make.oct", src)
+		if err := CheckProgram(program); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+
+	invalid := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"tool", `import Make
+fn CheckTools() -> String ! Error { return Make.Tool("go")? }`, "function CheckTools calls Make.Tool and must be marked [RequiresAuthority]"},
+		{"env", `import Make
+fn ReadEnv() -> Make.EnvValue ! Error { return Make.Env("PATH")? }`, "function ReadEnv calls Make.Env and must be marked [RequiresAuthority]"},
+		{"exec", `import Make
+fn Run() -> Int ! Error { let result = Make.Exec("go", ["version"])? return result.ExitCode }`, "function Run calls Make.Exec and must be marked [RequiresAuthority]"},
+		{"pure", `import Make
+[Pure]
+fn CheckTools() -> String ! Error { return Make.Tool("go")? }`, "function CheckTools calls Make.Tool and must be marked [RequiresAuthority]"},
+		{"helper direct only", `import Make
+fn Helper() -> String ! Error { return Make.Tool("go")? }
+fn CheckTools() -> String ! Error { return Helper()? }`, "function Helper calls Make.Tool and must be marked [RequiresAuthority]"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.name, func(t *testing.T) {
+			program := makeAuthorityTestProgram(t, "Make.oct", tt.src)
+			err := CheckProgram(program)
+			if err == nil {
+				t.Fatal("expected type error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected error to contain %q, got %q", tt.want, err.Error())
+			}
+		})
+	}
+}
+
+func TestMakeRequiresAuthorityScopeOnlyMakeOct(t *testing.T) {
+	for _, path := range []string{"Ordinary.oct", "Example.octest"} {
+		program := makeAuthorityTestProgram(t, path, `import Make
+fn CheckTools() -> String ! Error { return Make.Tool("go")? }`)
+		if err := CheckProgram(program); err != nil {
+			t.Fatalf("Check returned error for %s: %v", path, err)
+		}
+	}
+}
+
+func makeAuthorityTestProgram(t *testing.T, mainPath string, mainSource string) project.Program {
+	t.Helper()
+	mainFile := parseSourceWithPath(t, mainPath, mainSource)
+	makeFile := parseSourceWithPath(t, "Make.Core.oct", `package Make
+record ProcessResult { ExitCode: Int Stdout: String Stderr: String }
+record EnvValue { Name: String Present: Bool Value: String }
+enum Staleness { Timestamp Always }
+record Config { Profile: String StateDir: String Trace: Bool Staleness: Staleness }
+record CommandTarget { Name: String Inputs: String[] Outputs: String[] Deps: String[] Program: String Args: String[] Cwd: String Env: String[] }
+record FunctionTarget { Name: String Inputs: String[] Outputs: String[] Deps: String[] Function: String }
+record FlowTarget { Name: String Inputs: String[] Outputs: String[] Deps: String[] Flow: String MaxSteps: Int }
+record PhonyTarget { Name: String Deps: String[] }
+record Plan { Default: String Config: Config CommandTargets: CommandTarget[] FunctionTargets: FunctionTarget[] FlowTargets: FlowTarget[] PhonyTargets: PhonyTarget[] }
+fn DefaultConfig() -> Config { return Config { Profile: "Default" StateDir: ".octmake" Trace: false Staleness: Staleness.Timestamp } }
+fn Tool(name: String) -> String ! Error { return error("host") }
+fn Env(name: String) -> EnvValue ! Error { return error("host") }
+fn Exec(program: String, args: String[]) -> ProcessResult ! Error { return error("host") }
+`)
+	return project.Program{Entry: mainFile.Package, Packages: map[string]project.Package{
+		mainFile.Package: {Name: mainFile.Package, Imports: mainFile.Imports, Records: mainFile.Records, Enums: mainFile.Enums, Functions: mainFile.Functions, Flows: mainFile.Flows},
+		makeFile.Package: {Name: makeFile.Package, Imports: makeFile.Imports, Records: makeFile.Records, Enums: makeFile.Enums, Functions: makeFile.Functions, Flows: makeFile.Flows},
+	}}
+}
+
+func parseSourceWithPath(t *testing.T, path string, text string) ast.File {
+	t.Helper()
+	if !strings.HasPrefix(strings.TrimSpace(text), "package ") {
+		text = "package Main\n" + text
+	}
+	lexed, err := lex.Analyze(source.File{Path: path, Text: text})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	file, err := parse.BuildFile(lexed)
+	if err != nil {
+		t.Fatalf("BuildFile returned error: %v", err)
+	}
+	return file
 }

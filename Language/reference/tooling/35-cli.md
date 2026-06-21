@@ -169,6 +169,6 @@ fn CheckTools() -> Int ! Error {
 
 `[NoWhile]` is a syntactic restriction: a marked function body must not contain any `while` statement, including nested `while` statements.
 
-`[Pure]` and `[RequiresAuthority]` are metadata-only in the first Make attribute pass. `[Pure]` does not yet enforce an effect-purity system, and `[RequiresAuthority]` is not yet required for Make host primitive calls. They may not be combined on the same function.
+`[RequiresAuthority]` is required on any `Make.oct` function that directly calls a Make host primitive such as `Make.Exec`, `Make.ExecIn`, `Make.Tool`, `Make.Env`, file/directory primitives, globbing, timestamp, or hashing helpers. This authority check is direct-call-only: it does not yet follow helper calls transitively, and target/config/plan record constructors such as `Make.CommandTarget { ... }` and `Make.Plan { ... }` are data construction, not host primitive calls. `[Pure]` does not yet enforce a broad effect-purity system, but a pure function cannot directly call a Make host primitive because those calls require `[RequiresAuthority]`, and `[Pure]` and `[RequiresAuthority]` may not be combined on the same function.
 
 Repository Make examples dogfood these markers: `Plan()` is marked `[MakePlan] [Pure] [NoWhile]` when it only constructs plan data, data-only target/config helpers are marked `[Pure] [NoWhile]`, and functions that call Make host primitives such as `Make.Tool`, `Make.Env`, or `Make.Remove` are marked `[RequiresAuthority]`.
