@@ -2,6 +2,20 @@ package ChimeraHello
 
 import Make
 
+fn RequireCargo() -> Int ! Error {
+    match Make.Tool("cargo") {
+        ok(_) => { return 0 }
+        err(_) => { return error("cargo is required for ChimeraHello real build") }
+    }
+}
+
+fn RequireGo() -> Int ! Error {
+    match Make.Tool("go") {
+        ok(_) => { return 0 }
+        err(_) => { return error("go is required for ChimeraHello real build") }
+    }
+}
+
 fn ChimeraConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "ChimeraHello"
@@ -113,18 +127,13 @@ fn Plan() -> Make.Plan {
 }
 
 fn CheckTools() -> Int ! Error {
+    // TODO(MAKE16-H1): replace this shell env gate with future Make.Env once available.
     let gate = Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_HELLO\" = 1"])?
     if gate.ExitCode != 0 {
         return error("set OCT_CHIMERA_HELLO=1 to run the ChimeraHello native C ABI build")
     }
-    let cargo = Make.Exec("bash", ["-c", "command -v cargo >/dev/null"])?
-    if cargo.ExitCode != 0 {
-        return error("cargo is required for ChimeraHello real build")
-    }
-    let goTool = Make.Exec("bash", ["-c", "command -v go >/dev/null"])?
-    if goTool.ExitCode != 0 {
-        return error("go is required for ChimeraHello real build")
-    }
+    let _cargo = RequireCargo()?
+    let _goTool = RequireGo()?
     return 0
 }
 
