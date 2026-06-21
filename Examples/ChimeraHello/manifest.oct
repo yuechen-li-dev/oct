@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ChimeraHello"
+        Version: "0.1.0"
+        Description: "Experimental oct make C ABI example: Go final executable calls Rust through an integer-only C ABI static library"
+        Authors: ["Codex"]
+        Date: "2026-06-21"
+        Dependencies: [Dependency { Name: "Make" VersionRequirement: "0.1.0" }]
+    }
+}

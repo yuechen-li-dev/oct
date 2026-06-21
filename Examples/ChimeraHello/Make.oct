@@ -1,0 +1,127 @@
+package ChimeraHello
+
+import Make
+
+fn ChimeraConfig() -> Make.Config {
+    return Make.DefaultConfig() with {
+        Profile: "ChimeraHello"
+        StateDir: ".octmake/chimera"
+        Trace: true
+        Staleness: Make.Staleness.Timestamp
+    }
+}
+
+fn ChimeraOutputPath() -> String {
+    return "out/linux-amd64/chimera-hello"
+}
+
+fn ChimeraRustLibraryPath() -> String {
+    return "rust/target/release/libchimera_rust.a"
+}
+
+fn BuildRustCAbiTarget() -> Make.CommandTarget {
+    return Make.CommandTarget {
+        Name: "BuildRustCAbi"
+        Inputs: ["rust/Cargo.toml", "rust/src/lib.rs", "rust/chimera_rust.h"]
+        Outputs: ["rust/target/release/libchimera_rust.a"]
+        Deps: ["CheckTools"]
+        Program: "cargo"
+        Args: ["build", "--release", "--manifest-path", "rust/Cargo.toml"]
+        Cwd: ""
+        Env: []
+    }
+}
+
+fn BuildGoBinaryTarget() -> Make.CommandTarget {
+    return Make.CommandTarget {
+        Name: "BuildGoBinary"
+        Inputs: ["go/go.mod", "go/main.go", "rust/chimera_rust.h", "rust/target/release/libchimera_rust.a"]
+        Outputs: ["out/linux-amd64/chimera-hello"]
+        Deps: ["BuildRustCAbi"]
+        Program: "bash"
+        Args: ["-c", "mkdir -p out/$(go env GOOS)-$(go env GOARCH) && go build -C go -o ../out/$(go env GOOS)-$(go env GOARCH)/chimera-hello ."]
+        Cwd: ""
+        Env: ["CGO_ENABLED=1"]
+    }
+}
+
+fn RunChimeraTarget() -> Make.CommandTarget {
+    return Make.CommandTarget {
+        Name: "RunChimera"
+        Inputs: ["out/linux-amd64/chimera-hello"]
+        Outputs: []
+        Deps: ["BuildGoBinary"]
+        Program: "bash"
+        Args: ["-c", "./out/$(go env GOOS)-$(go env GOARCH)/chimera-hello"]
+        Cwd: ""
+        Env: []
+    }
+}
+
+fn TestChimeraTarget() -> Make.PhonyTarget {
+    return Make.PhonyTarget {
+        Name: "TestChimera"
+        Deps: ["RunChimera"]
+    }
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "TestChimera"
+        Config: ChimeraConfig()
+        CommandTargets: [BuildRustCAbiTarget(), BuildGoBinaryTarget(), RunChimeraTarget()]
+        FunctionTargets: [
+            Make.FunctionTarget {
+                Name: "CheckTools"
+                Inputs: []
+                Outputs: []
+                Deps: []
+                Function: "CheckTools"
+            },
+            Make.FunctionTarget {
+                Name: "Clean"
+                Inputs: []
+                Outputs: []
+                Deps: []
+                Function: "Clean"
+            }
+        ]
+        FlowTargets: []
+        PhonyTargets: [TestChimeraTarget()]
+    }
+}
+
+fn CheckTools() -> Int ! Error {
+    let gate = Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_HELLO\" = 1"])?
+    if gate.ExitCode != 0 {
+        return error("set OCT_CHIMERA_HELLO=1 to run the ChimeraHello native C ABI build")
+    }
+    let cargo = Make.Exec("bash", ["-c", "command -v cargo >/dev/null"])?
+    if cargo.ExitCode != 0 {
+        return error("cargo is required for ChimeraHello real build")
+    }
+    let goTool = Make.Exec("bash", ["-c", "command -v go >/dev/null"])?
+    if goTool.ExitCode != 0 {
+        return error("go is required for ChimeraHello real build")
+    }
+    return 0
+}
+
+fn Clean() -> Int ! Error {
+    let _out = Make.Remove("out")?
+    let _state = Make.Remove(".octmake/chimera")?
+    return 0
+}
+
+fn CommandTargetCount() -> Int { return 3 }
+fn FunctionTargetCount() -> Int { return 2 }
+fn PhonyTargetCount() -> Int { return 1 }
+fn BuildRustCAbiTargetName() -> String { return BuildRustCAbiTarget().Name }
+fn BuildGoBinaryTargetName() -> String { return BuildGoBinaryTarget().Name }
+fn RunChimeraTargetName() -> String { return RunChimeraTarget().Name }
+fn TestChimeraDependency() -> String { return TestChimeraTarget().Deps[0] }
+fn BuildRustCAbiProgram() -> String { return BuildRustCAbiTarget().Program }
+fn BuildRustCAbiFirstArg() -> String { return BuildRustCAbiTarget().Args[0] }
+fn BuildGoBinaryProgram() -> String { return BuildGoBinaryTarget().Program }
+fn BuildGoBinaryFirstArg() -> String { return BuildGoBinaryTarget().Args[0] }
+fn BuildGoBinaryFirstEnv() -> String { return BuildGoBinaryTarget().Env[0] }

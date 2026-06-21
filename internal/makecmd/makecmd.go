@@ -41,6 +41,7 @@ type CommandTarget struct {
 	Program               string
 	Args                  []string
 	Cwd                   string
+	Env                   []string
 }
 type FunctionTarget struct {
 	Name                  string
@@ -71,6 +72,7 @@ type decision struct {
 	CommandProgram                    string
 	CommandArgs                       []string
 	CommandCwd                        string
+	CommandEnv                        []string
 	Function                          string
 	Flow                              string
 	MaxSteps                          int64
@@ -242,7 +244,7 @@ func commands(v interpret.Value) []CommandTarget {
 	for _, e := range v.Array {
 		if e.Kind == interpret.ValueRecord {
 			f := e.Record.Fields
-			out = append(out, CommandTarget{Name: str(f, "Name"), Inputs: arr(f["Inputs"]), Outputs: arr(f["Outputs"]), Deps: arr(f["Deps"]), Program: str(f, "Program"), Args: arr(f["Args"]), Cwd: str(f, "Cwd")})
+			out = append(out, CommandTarget{Name: str(f, "Name"), Inputs: arr(f["Inputs"]), Outputs: arr(f["Outputs"]), Deps: arr(f["Deps"]), Program: str(f, "Program"), Args: arr(f["Args"]), Cwd: str(f, "Cwd"), Env: arr(f["Env"])})
 		}
 	}
 	return out
@@ -563,6 +565,9 @@ func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) (string,
 	}
 	cmd := exec.Command(c.Program, c.Args...)
 	cmd.Dir = cwd
+	if len(c.Env) > 0 {
+		cmd.Env = mergeEnv(os.Environ(), c.Env)
+	}
 	var outb, errb bytes.Buffer
 	cmd.Stdout = io.MultiWriter(stdout, &outb)
 	cmd.Stderr = io.MultiWriter(stderr, &errb)
@@ -573,6 +578,28 @@ func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) (string,
 	}
 	return outb.String(), errb.String(), code, err
 }
+func mergeEnv(base, overlay []string) []string {
+	index := map[string]int{}
+	out := append([]string(nil), base...)
+	for i, kv := range out {
+		if eq := strings.IndexByte(kv, '='); eq >= 0 {
+			index[kv[:eq]] = i
+		}
+	}
+	for _, kv := range overlay {
+		if eq := strings.IndexByte(kv, '='); eq >= 0 {
+			key := kv[:eq]
+			if i, ok := index[key]; ok {
+				out[i] = kv
+			} else {
+				index[key] = len(out)
+				out = append(out, kv)
+			}
+		}
+	}
+	return out
+}
+
 func stale(t *target, root string, ran map[string]bool, policy string) (bool, string, error) {
 	if policy == "Always" && t.kind != "phony" {
 		return true, "Always", nil
@@ -693,6 +720,7 @@ func newDecision(t *target, root, status, reason string) decision {
 		d.CommandProgram = t.command.Program
 		d.CommandArgs = t.command.Args
 		d.CommandCwd = t.command.Cwd
+		d.CommandEnv = t.command.Env
 	}
 	if t.function != nil {
 		d.Function = t.function.Function
@@ -736,7 +764,9 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		writeStringArray(&b, d.Outputs)
 		fmt.Fprintf(&b, "\n            CommandProgram: %q\n            CommandArgs: ", d.CommandProgram)
 		writeStringArray(&b, d.CommandArgs)
-		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandCwd, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
+		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            CommandEnv: ", d.CommandCwd)
+		writeStringArray(&b, d.CommandEnv)
+		fmt.Fprintf(&b, "\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, d.StartedUnixNano, d.FinishedUnixNano)
 		if d.Kind == "flow" {
 			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
 			writeStringArray(&b, d.StateHistory)
