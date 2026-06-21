@@ -8,6 +8,45 @@ Process execution uses `program` plus `args`; it does not invoke a shell string.
 
 File primitives are intended for project build orchestration. MAKE1 does not yet enforce project-root path policy inside the sidecar; future `oct make` will provide authority and project-root scoping. Ninja backends, C/C++ helpers, Go helpers, target DAGs, and `Make.oct` plan execution are deferred.
 
+## C ABI artifact records
+
+MAKE11 adds pure data records for C ABI artifact metadata. These records are plain schema values that can move through `Make.Plan` helpers and `Make.octest` assertions; they do not compile, link, copy runtime libraries, alter `CommandTarget` execution, or require Rust, Cargo, cgo, C/C++ compilers, or native tools by themselves.
+
+`Make.CAbiHeader` describes one exported header file and the include root that should make that header visible to consumers:
+
+- `Path`: header file path.
+- `IncludeDir`: include root for compiler `-I`/equivalent flags.
+
+`Make.CAbiLibrary` describes a produced C ABI library artifact:
+
+- `Name`: logical artifact name.
+- `Kind`: `Make.CAbiLibraryKind.Static` or `Make.CAbiLibraryKind.Shared`.
+- `Headers`: exported `Make.CAbiHeader` values.
+- `IncludeDirs`: include roots required by consumers.
+- `LibraryPath`: main produced library path.
+- `LinkName`: link name for `-l<name>`-style consumers.
+- `LinkDirs`: library search directories.
+- `RuntimeFiles`: files to copy or place near an executable for shared library runtime loading.
+- `ImportLibraryPath`: Windows import library path for shared DLLs; empty for static libraries and Unix M0 artifacts.
+- `CallingConvention`: ABI calling convention. `Make.CAbiCallingConvention.C` is the default/recommended M0 convention. `Make.CAbiCallingConvention.Stdcall` exists for future Windows-specific helpers.
+- `Defines`: preprocessor defines required by consumers.
+
+`Make.CAbiConsumer` describes generated or assembled consumption data for one or more C ABI libraries:
+
+- `IncludeDirs`: include roots for compilation.
+- `Defines`: preprocessor defines.
+- `LinkDirs`: library search directories.
+- `LinkNames`: `-l<name>`-style link names.
+- `LibraryPaths`: direct library paths for consumers that link exact files.
+- `LinkArgs`: additional linker arguments.
+- `RuntimeFiles`: shared-library runtime files that must be staged near the executable or otherwise made discoverable.
+
+Future helpers can translate `CAbiConsumer` into `CGO_CFLAGS`, `CGO_LDFLAGS`, Rust `cargo:rustc-link-*` build-script output, or C/C++ compile and link arguments. MAKE11 does not automatically consume these records.
+
+Safety boundary: the C ABI is not a type-safety boundary. Strings, pointers, callbacks, heap ownership, structs passed by value, and panics/unwind crossing the ABI remain deferred and unsafe unless explicitly modeled by future helpers. M0 examples should use integer-only ABI surfaces.
+
+These records are intended to appear later in plan snapshots, target traces, helper outputs, C ABI helper expansion, and `Make.octest` assertions. Trace integration and helper expansion are deferred unless they happen automatically through existing plan snapshot support.
+
 
 ## `Make.oct` and `Make.octest`
 

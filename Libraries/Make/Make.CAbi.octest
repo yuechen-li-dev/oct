@@ -1,0 +1,82 @@
+package Make
+
+[Fact]
+fn CAbiHeaderCanBeConstructed() -> Void {
+    let header = CAbiHeader {
+        Path: "include/chimera.h"
+        IncludeDir: "include"
+    }
+    Assert.Equal("include/chimera.h", header.Path, "header path should be stored")
+    Assert.Equal("include", header.IncludeDir, "include root should be stored")
+}
+
+[Fact]
+fn CAbiStaticLibraryCanBeConstructed() -> Void {
+    let artifact = CAbiLibrary {
+        Name: "chimera_rust"
+        Kind: CAbiLibraryKind.Static
+        Headers: [CAbiHeader { Path: "rust/chimera_rust.h" IncludeDir: "rust" }]
+        IncludeDirs: ["rust"]
+        LibraryPath: "rust/target/release/libchimera_rust.a"
+        LinkName: "chimera_rust"
+        LinkDirs: ["rust/target/release"]
+        RuntimeFiles: []
+        ImportLibraryPath: ""
+        CallingConvention: CAbiCallingConvention.C
+        Defines: []
+    }
+
+    Assert.Equal("chimera_rust", artifact.Name, "logical artifact name should be stored")
+    Assert.Equal(CAbiLibraryKind.Static, artifact.Kind, "static library kind should be stored")
+    Assert.Equal("rust/chimera_rust.h", artifact.Headers[0].Path, "exported header path should be stored")
+    Assert.Equal("rust", artifact.IncludeDirs[0], "include dir array should be stored")
+    Assert.Equal(CAbiCallingConvention.C, artifact.CallingConvention, "C calling convention should be stored")
+}
+
+[Fact]
+fn CAbiSharedLibraryCanCarryRuntimeAndImportFiles() -> Void {
+    let artifact = CAbiLibrary {
+        Name: "chimera_shared"
+        Kind: CAbiLibraryKind.Shared
+        Headers: [CAbiHeader { Path: "include/chimera_shared.h" IncludeDir: "include" }]
+        IncludeDirs: ["include"]
+        LibraryPath: "out/chimera_shared.dll"
+        LinkName: "chimera_shared"
+        LinkDirs: ["out"]
+        RuntimeFiles: ["out/chimera_shared.dll"]
+        ImportLibraryPath: "out/chimera_shared.lib"
+        CallingConvention: CAbiCallingConvention.Stdcall
+        Defines: ["CHIMERA_SHARED=1"]
+    }
+
+    Assert.Equal(CAbiLibraryKind.Shared, artifact.Kind, "shared library kind should be stored")
+    Assert.Equal("out/chimera_shared.dll", artifact.RuntimeFiles[0], "runtime file should be stored")
+    Assert.Equal("out/chimera_shared.lib", artifact.ImportLibraryPath, "import library should be stored")
+    Assert.Equal("CHIMERA_SHARED=1", artifact.Defines[0], "defines array should be stored")
+}
+
+[Fact]
+fn CAbiConsumerCanBeConstructed() -> Void {
+    let consumer = CAbiConsumer {
+        IncludeDirs: ["rust", "include"]
+        Defines: ["CHIMERA=1"]
+        LinkDirs: ["rust/target/release"]
+        LinkNames: ["chimera_rust"]
+        LibraryPaths: ["rust/target/release/libchimera_rust.a"]
+        LinkArgs: ["-pthread"]
+        RuntimeFiles: []
+    }
+
+    Assert.Equal("rust", consumer.IncludeDirs[0], "first include dir should be stored")
+    Assert.Equal("include", consumer.IncludeDirs[1], "second include dir should be stored")
+    Assert.Equal("chimera_rust", consumer.LinkNames[0], "link name should be stored")
+    Assert.Equal("rust/target/release/libchimera_rust.a", consumer.LibraryPaths[0], "direct library path should be stored")
+    Assert.Equal("-pthread", consumer.LinkArgs[0], "link arg should be stored")
+}
+
+[Fact]
+fn CAbiEnumEqualityWorks() -> Void {
+    Assert.True(CAbiLibraryKind.Static == CAbiLibraryKind.Static, "static should equal itself")
+    Assert.True(CAbiLibraryKind.Static != CAbiLibraryKind.Shared, "static and shared should differ")
+    Assert.True(CAbiCallingConvention.C == CAbiCallingConvention.C, "C convention should equal itself")
+}
