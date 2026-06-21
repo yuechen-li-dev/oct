@@ -1,0 +1,8 @@
+expect error: "operator"
+
+package MainInvalid
+
+fn Main() -> Void {
+    let xs: Float[] = [1.0]
+    let bad = xs + "nope"
+}

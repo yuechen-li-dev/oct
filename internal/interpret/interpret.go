@@ -5414,26 +5414,46 @@ func evalMatrixMultiply(left Value, right Value) (Value, error) {
 }
 
 func evalArrayBinaryExpr(operator string, left Value, right Value) (Value, error) {
-	if isComparisonOperator(operator) {
-		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
-	}
-	if left.Kind != ValueArray || right.Kind != ValueArray {
-		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
-	}
-	if len(left.Array) != len(right.Array) {
-		return Value{}, fmt.Errorf("runtime error: array length mismatch: %d vs %d", len(left.Array), len(right.Array))
-	}
-
-	result := make([]Value, 0, len(left.Array))
-	for i := range left.Array {
-		element, err := evalBinaryExpr(operator, left.Array[i], right.Array[i])
-		if err != nil {
-			return Value{}, err
+	if left.Kind == ValueArray && right.Kind == ValueArray {
+		if isComparisonOperator(operator) {
+			return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 		}
-		result = append(result, element)
+		if len(left.Array) != len(right.Array) {
+			return Value{}, fmt.Errorf("runtime error: array length mismatch: %d vs %d", len(left.Array), len(right.Array))
+		}
+		result := make([]Value, 0, len(left.Array))
+		for i := range left.Array {
+			element, err := evalBinaryExpr(operator, left.Array[i], right.Array[i])
+			if err != nil {
+				return Value{}, err
+			}
+			result = append(result, element)
+		}
+		return Value{Kind: ValueArray, Array: result}, nil
 	}
-
-	return Value{Kind: ValueArray, Array: result}, nil
+	if left.Kind == ValueArray {
+		result := make([]Value, 0, len(left.Array))
+		for i := range left.Array {
+			element, err := evalBinaryExpr(operator, left.Array[i], right)
+			if err != nil {
+				return Value{}, err
+			}
+			result = append(result, element)
+		}
+		return Value{Kind: ValueArray, Array: result}, nil
+	}
+	if right.Kind == ValueArray {
+		result := make([]Value, 0, len(right.Array))
+		for i := range right.Array {
+			element, err := evalBinaryExpr(operator, left, right.Array[i])
+			if err != nil {
+				return Value{}, err
+			}
+			result = append(result, element)
+		}
+		return Value{Kind: ValueArray, Array: result}, nil
+	}
+	return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 }
 
 func evalIntBinaryExpr(operator string, left Value, right Value) (Value, error) {
@@ -5489,7 +5509,10 @@ func evalComplexBinaryExpr(operator string, left Value, right Value) (Value, err
 }
 
 func evalComparisonExpr(operator string, left Value, right Value) (Value, error) {
-	if left.Kind == ValueArray || right.Kind == ValueArray || left.Kind == ValueBytes || right.Kind == ValueBytes || left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
+	if left.Kind == ValueArray || right.Kind == ValueArray {
+		return evalArrayBinaryExpr(operator, left, right)
+	}
+	if left.Kind == ValueBytes || right.Kind == ValueBytes || left.Kind == ValueVector || right.Kind == ValueVector || left.Kind == ValueMatrix || right.Kind == ValueMatrix || left.Kind == ValueRecord || right.Kind == ValueRecord || left.Kind == ValueRange || right.Kind == ValueRange || left.Kind == ValueError || right.Kind == ValueError {
 		return Value{}, fmt.Errorf("runtime invariant violation: operator %q not defined for %s and %s", operator, valueTypeName(left), valueTypeName(right))
 	}
 	if (left.Kind == ValueInt || left.Kind == ValueFloat) && (right.Kind == ValueInt || right.Kind == ValueFloat) {

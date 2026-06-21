@@ -1339,7 +1339,7 @@ func usesLinearAlgebraHelpers(usedBuiltins map[string]bool) bool {
 		return true
 	}
 	for name := range usedBuiltins {
-		if strings.HasPrefix(name, "MatBinary") {
+		if strings.HasPrefix(name, "MatBinary") || strings.HasPrefix(name, "ArrayBinary") {
 			return true
 		}
 	}
@@ -2263,6 +2263,30 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 				RetType:  ret,
 			})
 			return tmp, ret, false, nil
+		}
+		if leftElem, ok := parseArrayElemType(lt); ok && !strings.HasSuffix(leftElem, "[]") && isLinearElementwiseOperatorString(e.Operator) && isNumericTypeString(rt) {
+			retElem := scalarBinaryResultTypeString(e.Operator, leftElem, rt)
+			ret := retElem + "[]"
+			tmp := c.temp(ret)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAS:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
+			return tmp, ret, false, nil
+		}
+		if rightElem, ok := parseArrayElemType(rt); ok && !strings.HasSuffix(rightElem, "[]") && isLinearElementwiseOperatorString(e.Operator) && isNumericTypeString(lt) {
+			retElem := scalarBinaryResultTypeString(e.Operator, lt, rightElem)
+			ret := retElem + "[]"
+			tmp := c.temp(ret)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: ret})
+			return tmp, ret, false, nil
+		}
+		if leftElem, ok := parseArrayElemType(lt); ok && !strings.HasSuffix(leftElem, "[]") && isComparisonOperatorString(e.Operator) && isNumericTypeString(rt) {
+			tmp := c.temp("Bool[]")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinaryAS:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
+			return tmp, "Bool[]", false, nil
+		}
+		if rightElem, ok := parseArrayElemType(rt); ok && !strings.HasSuffix(rightElem, "[]") && isComparisonOperatorString(e.Operator) && isNumericTypeString(lt) {
+			tmp := c.temp("Bool[]")
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{Target: tmp, Callee: "ArrayBinarySA:" + e.Operator, Args: []string{l, r}, ArgTypes: []string{lt, rt}, Builtin: true, RetType: "Bool[]"})
+			return tmp, "Bool[]", false, nil
 		}
 		ret := lt
 		switch e.Operator {
@@ -4131,6 +4155,10 @@ func isNumericTypeString(t string) bool {
 
 func isLinearElementwiseOperatorString(operator string) bool {
 	return operator == "+" || operator == "-" || operator == "*" || operator == "/"
+}
+
+func isComparisonOperatorString(operator string) bool {
+	return operator == "==" || operator == "!=" || operator == "<" || operator == "<=" || operator == ">" || operator == ">="
 }
 
 func scalarBinaryResultTypeString(operator string, leftType string, rightType string) string {
@@ -6325,6 +6353,60 @@ func __octMatMulMM[T __octNumber](left [][]T, right [][]T) [][]T {
 		result[r] = row
 	}
 	return result
+}
+
+func __octArrayBinaryValue[L __octNumber, R __octNumber, O any](left L, right R, op string) O {
+	lf, rf := float64(left), float64(right)
+	var zero O
+	switch any(zero).(type) {
+	case int:
+		switch op {
+		case "+":
+			return any(int(left) + int(right)).(O)
+		case "-":
+			return any(int(left) - int(right)).(O)
+		case "*":
+			return any(int(left) * int(right)).(O)
+		case "/":
+			return any(int(left) / int(right)).(O)
+		}
+	}
+	switch op {
+	case "+":
+		return any(lf + rf).(O)
+	case "-":
+		return any(lf - rf).(O)
+	case "*":
+		return any(lf * rf).(O)
+	case "/":
+		return any(lf / rf).(O)
+	case "==":
+		return any(lf == rf).(O)
+	case "!=":
+		return any(lf != rf).(O)
+	case "<":
+		return any(lf < rf).(O)
+	case "<=":
+		return any(lf <= rf).(O)
+	case ">":
+		return any(lf > rf).(O)
+	case ">=":
+		return any(lf >= rf).(O)
+	default:
+		panic(fmt.Sprintf("runtime invariant violation: unsupported array scalar operator %q", op))
+	}
+}
+
+func __octArrayBinaryAS[L __octNumber, R __octNumber, O any](left []L, right R, op string) []O {
+	out := make([]O, len(left))
+	for i := range left { out[i] = __octArrayBinaryValue[L, R, O](left[i], right, op) }
+	return out
+}
+
+func __octArrayBinarySA[L __octNumber, R __octNumber, O any](left L, right []R, op string) []O {
+	out := make([]O, len(right))
+	for i := range right { out[i] = __octArrayBinaryValue[L, R, O](left, right[i], op) }
+	return out
 }
 
 func __octMatBinaryValue[L __octNumber, R __octNumber, O __octNumber](left L, right R, op string) O {
@@ -9034,6 +9116,28 @@ func goStmt(s MIRStmt) (string, error) {
 				}
 				op := strings.TrimPrefix(st.Callee, "MatBinarySM:")
 				return fmt.Sprintf("%s = __octMatBinarySM[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
+			case "ArrayBinaryAS:+", "ArrayBinaryAS:-", "ArrayBinaryAS:*", "ArrayBinaryAS:/", "ArrayBinaryAS:==", "ArrayBinaryAS:!=", "ArrayBinaryAS:<", "ArrayBinaryAS:<=", "ArrayBinaryAS:>", "ArrayBinaryAS:>=":
+				leftElem, leftOK := parseArrayElemType(st.ArgTypes[0])
+				retElem, retOK := parseArrayElemType(st.RetType)
+				if st.RetType == "Bool[]" {
+					retElem, retOK = "Bool", true
+				}
+				if len(st.ArgTypes) != 2 || !leftOK || !isNumericTypeString(st.ArgTypes[1]) || !retOK {
+					return "", fmt.Errorf("invalid array-scalar binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				op := strings.TrimPrefix(st.Callee, "ArrayBinaryAS:")
+				return fmt.Sprintf("%s = __octArrayBinaryAS[%s, %s, %s](%s, %s, %q)", st.Target, goType(leftElem), goType(st.ArgTypes[1]), goType(retElem), st.Args[0], st.Args[1], op), nil
+			case "ArrayBinarySA:+", "ArrayBinarySA:-", "ArrayBinarySA:*", "ArrayBinarySA:/", "ArrayBinarySA:==", "ArrayBinarySA:!=", "ArrayBinarySA:<", "ArrayBinarySA:<=", "ArrayBinarySA:>", "ArrayBinarySA:>=":
+				rightElem, rightOK := parseArrayElemType(st.ArgTypes[1])
+				retElem, retOK := parseArrayElemType(st.RetType)
+				if st.RetType == "Bool[]" {
+					retElem, retOK = "Bool", true
+				}
+				if len(st.ArgTypes) != 2 || !isNumericTypeString(st.ArgTypes[0]) || !rightOK || !retOK {
+					return "", fmt.Errorf("invalid scalar-array binary types %v -> %s", st.ArgTypes, st.RetType)
+				}
+				op := strings.TrimPrefix(st.Callee, "ArrayBinarySA:")
+				return fmt.Sprintf("%s = __octArrayBinarySA[%s, %s, %s](%s, %s, %q)", st.Target, goType(st.ArgTypes[0]), goType(rightElem), goType(retElem), st.Args[0], st.Args[1], op), nil
 			case "PrometheusMatMulMM":
 				return fmt.Sprintf("%s = __octPrometheusMatMulMM(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Trace":
