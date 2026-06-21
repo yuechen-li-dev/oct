@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ChimeraOctxHello"
+        Version: "0.1.0"
+        Description: "Experimental oct make Octxiliary example: Go final executable talks to a Rust sidecar over typed process-boundary DTOs"
+        Authors: ["Codex"]
+        Date: "2026-06-21"
+        Dependencies: [Dependency { Name: "Make" VersionRequirement: "0.1.0" }]
+    }
+}

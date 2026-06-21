@@ -1,0 +1,52 @@
+package ChimeraOctxHello
+
+import Make
+
+[Fact]
+fn PlanDefaultIsTestChimeraOctx() -> Void {
+    Assert.Equal("TestChimeraOctx", Plan().Default, "ChimeraOctxHello default should be TestChimeraOctx")
+}
+
+[Fact]
+fn ChimeraOctxConfigUsesIsolatedTraceState() -> Void {
+    let cfg = ChimeraOctxConfig()
+    Assert.Equal("ChimeraOctxHello", cfg.Profile, "profile should name ChimeraOctxHello")
+    Assert.Equal(".octmake/chimera-octx", cfg.StateDir, "state should be example-local")
+    Assert.True(cfg.Trace, "trace should be enabled")
+    Assert.Equal(Make.Staleness.Timestamp, cfg.Staleness, "timestamp staleness should be used")
+}
+
+[Fact]
+fn PlanHasExpectedTargetCounts() -> Void {
+    Assert.Equal(3, CommandTargetCount(), "plan should include Rust build, Go build, and run command targets")
+    Assert.Equal(2, FunctionTargetCount(), "plan should include CheckTools and Clean function targets")
+    Assert.Equal(1, PhonyTargetCount(), "plan should include TestChimeraOctx phony target")
+}
+
+[Fact]
+fn PlanIncludesCheckTools() -> Void {
+    Assert.Equal("CheckTools", FirstFunctionTargetName(), "plan should include CheckTools")
+}
+
+[Fact]
+fn PlanIncludesChimeraOctxCommandTargets() -> Void {
+    Assert.Equal("BuildRustSidecar", BuildRustSidecarTargetName(), "plan should include BuildRustSidecar")
+    Assert.Equal("BuildGoClient", BuildGoClientTargetName(), "plan should include BuildGoClient")
+    Assert.Equal("RunChimeraOctx", RunChimeraOctxTargetName(), "plan should include RunChimeraOctx")
+}
+
+[Fact]
+fn TestChimeraOctxDependsOnRunChimeraOctx() -> Void {
+    Assert.Equal("RunChimeraOctx", TestChimeraOctxDependency(), "TestChimeraOctx should depend on RunChimeraOctx")
+}
+
+[Fact]
+fn CommandTargetsUseStructuredProgramArgsAndEnv() -> Void {
+    Assert.Equal("cargo", BuildRustSidecarProgram(), "Rust sidecar build should use structured Program")
+    Assert.Equal("build", BuildRustSidecarFirstArg(), "Rust sidecar build should use structured Args")
+    Assert.Equal("go", BuildGoClientProgram(), "Go client build should use structured Program")
+    Assert.Equal("build", BuildGoClientFirstArg(), "Go client build should use structured Args")
+    Assert.Equal("out/linux-amd64/chimera-octx-hello", RunChimeraOctxProgram(), "run target should use structured Program")
+    Assert.Equal("rust-sidecar/target/release/chimera-octx-sidecar", RunChimeraOctxFirstArg(), "run target should pass structured sidecar Args")
+    Assert.Equal(0, BuildGoClientEnvCount(), "unused Env should remain an empty structured string list")
+}
