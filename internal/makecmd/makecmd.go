@@ -18,6 +18,8 @@ import (
 
 type Options struct {
 	File, Backend, Target string
+	Mode                  string
+	PlanOut               string
 	List, DryRun, Trace   bool
 }
 
@@ -87,36 +89,30 @@ type decision struct {
 }
 
 func Execute(opts Options, stdout, stderr io.Writer) error {
+	if opts.Mode == "" {
+		opts.Mode = "run"
+	}
 	if opts.Backend == "" {
 		opts.Backend = "direct"
 	}
 	if opts.Backend != "direct" {
 		return fmt.Errorf("unsupported make backend %q; only %q is available in M0", opts.Backend, "direct")
 	}
-	makeFile, root, err := discover(opts.File)
+	ctx, err := loadContext(opts, stdout)
 	if err != nil {
 		return err
 	}
-	program, err := project.Load(makeFile)
-	if err != nil {
-		return err
+	makeFile, root, program, plan, targets := ctx.makeFile, ctx.root, ctx.program, ctx.plan, ctx.targets
+	if opts.PlanOut != "" {
+		if err := writePlanSnapshot(opts.PlanOut, plan, makeFile); err != nil {
+			return err
+		}
+		if opts.Mode == "run" && !opts.List && !opts.DryRun && !opts.Trace {
+			return nil
+		}
 	}
-	if err := typecheck.CheckProgram(program); err != nil {
-		return err
-	}
-	val, err := withMakeAuthorityValue(func() (interpret.Value, error) {
-		return interpret.CallFunctionWithArgsAndOptions(program, program.Entry, "Plan", nil, stdout, interpret.ExecuteOptions{})
-	})
-	if err != nil {
-		return fmt.Errorf("call Plan(): %w", err)
-	}
-	plan, err := convertPlan(val)
-	if err != nil {
-		return err
-	}
-	targets, err := validate(plan)
-	if err != nil {
-		return err
+	if opts.Mode == "doctor" {
+		return doctor(makeFile, root, plan, targets, stdout)
 	}
 	selected, err := selectTarget(opts.Target, plan, targets)
 	if err != nil {
@@ -125,6 +121,15 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 	order, err := closure(selected, targets)
 	if err != nil {
 		return err
+	}
+	switch opts.Mode {
+	case "explain":
+		return explain(selected, order, targets, root, plan, stdout)
+	case "doctor":
+		return doctor(makeFile, root, plan, targets, stdout)
+	case "run":
+	default:
+		return fmt.Errorf("unknown make mode %q", opts.Mode)
 	}
 	if opts.List {
 		list(plan, targets, stdout)
@@ -148,6 +153,43 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 		return traceErr
 	}
 	return stateErr
+}
+
+type context struct {
+	makeFile string
+	root     string
+	program  project.Program
+	plan     Plan
+	targets  map[string]*target
+}
+
+func loadContext(opts Options, stdout io.Writer) (context, error) {
+	makeFile, root, err := discover(opts.File)
+	if err != nil {
+		return context{}, err
+	}
+	program, err := project.Load(makeFile)
+	if err != nil {
+		return context{}, err
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		return context{}, err
+	}
+	val, err := withMakeAuthorityValue(func() (interpret.Value, error) {
+		return interpret.CallFunctionWithArgsAndOptions(program, program.Entry, "Plan", nil, stdout, interpret.ExecuteOptions{})
+	})
+	if err != nil {
+		return context{}, fmt.Errorf("call Plan(): %w", err)
+	}
+	plan, err := convertPlan(val)
+	if err != nil {
+		return context{}, err
+	}
+	targets, err := validate(plan)
+	if err != nil {
+		return context{}, err
+	}
+	return context{makeFile: makeFile, root: root, program: program, plan: plan, targets: targets}, nil
 }
 
 func discover(explicit string) (string, string, error) {
@@ -447,7 +489,7 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 		}
 		if t.kind == "phony" {
 			stale = true
-			reason = "phony"
+			reason = "Phony"
 		}
 		status := "Skipped"
 		if stale {
@@ -606,22 +648,22 @@ func stale(t *target, root string, ran map[string]bool, policy string) (bool, st
 	}
 	for _, d := range deps(t) {
 		if ran[d] {
-			return true, "dependency ran", nil
+			return true, "DependencyRan", nil
 		}
 	}
 	if t.kind == "phony" {
-		return true, "phony", nil
+		return true, "Phony", nil
 	}
 	inputs, outputs := paths(t, root)
 	if len(outputs) == 0 {
-		return true, "no outputs", nil
+		return true, "NoOutputs", nil
 	}
 	var oldestOut time.Time
 	for i, p := range outputs {
 		info, err := os.Stat(p)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return true, "output missing", nil
+				return true, "MissingOutput", nil
 			}
 			return false, "", err
 		}
@@ -638,10 +680,10 @@ func stale(t *target, root string, ran map[string]bool, policy string) (bool, st
 			return false, "", err
 		}
 		if info.ModTime().After(oldestOut) {
-			return true, "input newer than output", nil
+			return true, "InputNewerThanOutput", nil
 		}
 	}
-	return false, "outputs up to date", nil
+	return false, "UpToDate", nil
 }
 func paths(t *target, root string) ([]string, []string) {
 	var ins, outs []string
@@ -868,4 +910,144 @@ func withMakeAuthorityFlow(fn func() (interpret.FlowRunResult, error)) (interpre
 		}
 	}()
 	return fn()
+}
+
+func writePlanSnapshot(path string, plan Plan, makeFile string) error {
+	if !strings.HasSuffix(path, ".octagon") {
+		return fmt.Errorf("make --plan-out path must end with .octagon")
+	}
+	if dir := filepath.Dir(path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+	var b strings.Builder
+	b.WriteString("MakePlanSnapshot {\n")
+	fmt.Fprintf(&b, "    Version: 0\n    MakeFile: %q\n    Default: %q\n    Config: MakeConfigSnapshot { Profile: %q StateDir: %q Trace: %t Staleness: %q }\n", filepath.ToSlash(makeFile), plan.Default, plan.Config.Profile, plan.Config.StateDir, plan.Config.Trace, plan.Config.Staleness)
+	b.WriteString("    CommandTargets: [\n")
+	for i, t := range plan.CommandTargets {
+		fmt.Fprintf(&b, "        MakeCommandTargetSnapshot { Name: %q Inputs: ", t.Name)
+		writeStringArray(&b, t.Inputs)
+		b.WriteString(" Outputs: ")
+		writeStringArray(&b, t.Outputs)
+		b.WriteString(" Deps: ")
+		writeStringArray(&b, t.Deps)
+		fmt.Fprintf(&b, " Program: %q Args: ", t.Program)
+		writeStringArray(&b, t.Args)
+		fmt.Fprintf(&b, " Env: ")
+		writeStringArray(&b, t.Env)
+		fmt.Fprintf(&b, " Cwd: %q }", t.Cwd)
+		if i+1 < len(plan.CommandTargets) {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("    ]\n    FunctionTargets: [\n")
+	for i, t := range plan.FunctionTargets {
+		fmt.Fprintf(&b, "        MakeFunctionTargetSnapshot { Name: %q Inputs: ", t.Name)
+		writeStringArray(&b, t.Inputs)
+		b.WriteString(" Outputs: ")
+		writeStringArray(&b, t.Outputs)
+		b.WriteString(" Deps: ")
+		writeStringArray(&b, t.Deps)
+		fmt.Fprintf(&b, " Function: %q }", t.Function)
+		if i+1 < len(plan.FunctionTargets) {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("    ]\n    FlowTargets: [\n")
+	for i, t := range plan.FlowTargets {
+		fmt.Fprintf(&b, "        MakeFlowTargetSnapshot { Name: %q Inputs: ", t.Name)
+		writeStringArray(&b, t.Inputs)
+		b.WriteString(" Outputs: ")
+		writeStringArray(&b, t.Outputs)
+		b.WriteString(" Deps: ")
+		writeStringArray(&b, t.Deps)
+		fmt.Fprintf(&b, " Flow: %q MaxSteps: %d }", t.Flow, t.MaxSteps)
+		if i+1 < len(plan.FlowTargets) {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("    ]\n    PhonyTargets: [\n")
+	for i, t := range plan.PhonyTargets {
+		fmt.Fprintf(&b, "        MakePhonyTargetSnapshot { Name: %q Deps: ", t.Name)
+		writeStringArray(&b, t.Deps)
+		b.WriteString(" }")
+		if i+1 < len(plan.PhonyTargets) {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("    ]\n}\n")
+	return os.WriteFile(path, []byte(b.String()), 0644)
+}
+
+func explain(selected string, order []string, m map[string]*target, root string, plan Plan, out io.Writer) error {
+	fmt.Fprintf(out, "Explain target %s:\n", selected)
+	ran := map[string]bool{}
+	for _, n := range order {
+		t := m[n]
+		wouldRun, reason, err := stale(t, root, ran, plan.Config.Staleness)
+		if err != nil {
+			return err
+		}
+		if t.kind == "phony" {
+			wouldRun = true
+			reason = "Phony"
+		}
+		status := "would skip"
+		if wouldRun {
+			status = "would run"
+			ran[n] = true
+		}
+		fmt.Fprintf(out, "  %s [%s]: %s\n    reason: %s\n", n, t.kind, status, reason)
+	}
+	return nil
+}
+
+func doctor(makeFile, root string, plan Plan, m map[string]*target, out io.Writer) error {
+	state := filepath.Join(stateDir(root, plan), "state.octagon")
+	trace := filepath.Join(stateDir(root, plan), "trace.octagon")
+	fmt.Fprintln(out, "oct make doctor")
+	fmt.Fprintf(out, "Make file: %s\n", filepath.ToSlash(makeFile))
+	fmt.Fprintf(out, "Profile: %s\n", plan.Config.Profile)
+	fmt.Fprintf(out, "State dir: %s\n", filepath.ToSlash(plan.Config.StateDir))
+	fmt.Fprintln(out, "Backend: direct")
+	fmt.Fprintf(out, "Default target: %s\n", plan.Default)
+	counts := map[string]int{}
+	for _, t := range m {
+		counts[t.kind]++
+	}
+	fmt.Fprintln(out, "Targets:")
+	fmt.Fprintf(out, "  command: %d\n  function: %d\n  flow: %d\n  phony: %d\n", counts["command"], counts["function"], counts["flow"], counts["phony"])
+	fmt.Fprintln(out, "Validation: ok")
+	fmt.Fprintln(out, "Dependencies: ok")
+	fmt.Fprintf(out, "State: %s (%s)\n", filepath.ToSlash(state), existence(state))
+	fmt.Fprintf(out, "Trace: %s (%s)\n", filepath.ToSlash(trace), existence(trace))
+	programs := []string{}
+	for _, t := range plan.CommandTargets {
+		programs = append(programs, t.Program)
+	}
+	sort.Strings(programs)
+	fmt.Fprintln(out, "Programs referenced:")
+	if len(programs) == 0 {
+		fmt.Fprintln(out, "  (none)")
+	}
+	last := ""
+	for _, p := range programs {
+		if p != last {
+			fmt.Fprintf(out, "  %s\n", p)
+			last = p
+		}
+	}
+	return nil
+}
+
+func existence(path string) string {
+	if _, err := os.Stat(path); err == nil {
+		return "present"
+	}
+	return "missing"
 }
