@@ -2,6 +2,8 @@ package Main
 
 import Make
 
+[Pure]
+[NoWhile]
 fn DebugConfig() -> Make.Config {
     return Make.Config {
         Profile: "Debug"
@@ -11,6 +13,8 @@ fn DebugConfig() -> Make.Config {
     }
 }
 
+[Pure]
+[NoWhile]
 fn ReleaseConfig() -> Make.Config {
     return DebugConfig() with {
         Profile: "Release"
@@ -20,6 +24,9 @@ fn ReleaseConfig() -> Make.Config {
     }
 }
 
+[MakePlan]
+[Pure]
+[NoWhile]
 fn Plan() -> Make.Plan {
     return Make.Plan {
         Default: "Build"
@@ -44,6 +51,8 @@ fn Plan() -> Make.Plan {
     }
 }
 
+[Pure]
+[NoWhile]
 fn BuildTargetName() -> String {
     let target = Make.FunctionTarget {
         Name: "Build"
@@ -55,6 +64,8 @@ fn BuildTargetName() -> String {
     return target.Name
 }
 
+[Pure]
+[NoWhile]
 fn BuildTargetInput() -> String {
     let target = Make.FunctionTarget {
         Name: "Build"
@@ -66,6 +77,8 @@ fn BuildTargetInput() -> String {
     return target.Inputs[0]
 }
 
+[Pure]
+[NoWhile]
 fn PhonyTargetName() -> String {
     let target = Make.PhonyTarget {
         Name: "All"
@@ -74,6 +87,8 @@ fn PhonyTargetName() -> String {
     return target.Name
 }
 
+[Pure]
+[NoWhile]
 fn PhonyTargetDependency() -> String {
     let target = Make.PhonyTarget {
         Name: "All"
@@ -82,6 +97,8 @@ fn PhonyTargetDependency() -> String {
     return target.Deps[0]
 }
 
+[Pure]
+[NoWhile]
 fn Build() -> Int {
     return 0
 }

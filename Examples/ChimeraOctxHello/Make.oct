@@ -2,6 +2,7 @@ package ChimeraOctxHello
 
 import Make
 
+[RequiresAuthority]
 fn RequireCargo() -> Int ! Error {
     match Make.Tool("cargo") {
         ok(_) => { return 0 }
@@ -9,6 +10,7 @@ fn RequireCargo() -> Int ! Error {
     }
 }
 
+[RequiresAuthority]
 fn RequireGo() -> Int ! Error {
     match Make.Tool("go") {
         ok(_) => { return 0 }
@@ -16,6 +18,7 @@ fn RequireGo() -> Int ! Error {
     }
 }
 
+[RequiresAuthority]
 fn RequireChimeraOctxGate() -> Int ! Error {
     let env = Make.Env("OCT_CHIMERA_OCTX_HELLO")?
     if not env.Present {
@@ -27,6 +30,8 @@ fn RequireChimeraOctxGate() -> Int ! Error {
     return 0
 }
 
+[Pure]
+[NoWhile]
 fn ChimeraOctxConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "ChimeraOctxHello"
@@ -36,14 +41,20 @@ fn ChimeraOctxConfig() -> Make.Config {
     }
 }
 
+[Pure]
+[NoWhile]
 fn RustSidecarPath() -> String {
     return "rust-sidecar/target/release/chimera-octx-sidecar"
 }
 
+[Pure]
+[NoWhile]
 fn GoClientPath() -> String {
     return "out/linux-amd64/chimera-octx-hello"
 }
 
+[Pure]
+[NoWhile]
 fn BuildRustSidecarTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "BuildRustSidecar"
@@ -57,6 +68,8 @@ fn BuildRustSidecarTarget() -> Make.CommandTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn BuildGoClientTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "BuildGoClient"
@@ -70,6 +83,8 @@ fn BuildGoClientTarget() -> Make.CommandTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn RunChimeraOctxTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "RunChimeraOctx"
@@ -83,6 +98,8 @@ fn RunChimeraOctxTarget() -> Make.CommandTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn TestChimeraOctxTarget() -> Make.PhonyTarget {
     return Make.PhonyTarget {
         Name: "TestChimeraOctx"
@@ -90,6 +107,8 @@ fn TestChimeraOctxTarget() -> Make.PhonyTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn CheckToolsTarget() -> Make.FunctionTarget {
     return Make.FunctionTarget {
         Name: "CheckTools"
@@ -100,6 +119,8 @@ fn CheckToolsTarget() -> Make.FunctionTarget {
     }
 }
 
+[Pure]
+[NoWhile]
 fn CleanTarget() -> Make.FunctionTarget {
     return Make.FunctionTarget {
         Name: "Clean"
@@ -110,6 +131,9 @@ fn CleanTarget() -> Make.FunctionTarget {
     }
 }
 
+[MakePlan]
+[Pure]
+[NoWhile]
 fn Plan() -> Make.Plan {
     return Make.Plan {
         Default: "TestChimeraOctx"
@@ -121,6 +145,7 @@ fn Plan() -> Make.Plan {
     }
 }
 
+[RequiresAuthority]
 fn CheckTools() -> Int ! Error {
     let _gate = RequireChimeraOctxGate()?
     let _cargo = RequireCargo()?
@@ -128,6 +153,7 @@ fn CheckTools() -> Int ! Error {
     return 0
 }
 
+[RequiresAuthority]
 fn Clean() -> Int ! Error {
     let _out = Make.Remove("out")?
     let _state = Make.Remove(".octmake/chimera-octx")?
