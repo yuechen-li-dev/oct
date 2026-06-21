@@ -103,7 +103,7 @@ Ordinary `oct test Make.octest` should not cover:
 
 The repository already has an explicit slow/sidecar convention. `docs/TESTING.md` says sidecar-heavy compiled/auto wrapper tests are outside the default fast lane and are gated by `OCT_SLOW_TESTS=1` or legacy `OCT_RUN_SLOW_TESTS=1`, with `OCT_WRAPPER_PATH` pointing at built sidecars. Focused wrapper tests build sidecars into temp dirs and set `OCT_WRAPPER_PATH` in Go tests.
 
-`Libraries/Make/Make.Primitives.octest` already contains side-effectful Make primitive facts. Those tests create/remove files, invoke `go version`, and check process results. They are appropriate as make-host primitive coverage only when the lane explicitly supplies `OCT_WRAPPER_PATH` and `OCT_MAKE_AUTHORITY=1`. They are not a model for ordinary project `Make.octest` files.
+`Libraries/MakeHostPrivileged/Make.Primitives.octest` contains side-effectful Make primitive facts. Those tests create/remove files, invoke `go version`, and check process results. They are appropriate as make-host primitive coverage only when the lane explicitly supplies `OCT_WRAPPER_PATH` and `OCT_MAKE_AUTHORITY=1`. They are not a model for ordinary project `Make.octest` files.
 
 Recommendation: make-authorized tests should remain separate from ordinary tests. Use explicit environment-gated sidecar lanes for primitive coverage and Go CLI tests for `oct make` executor behavior.
 
@@ -150,11 +150,11 @@ Properties:
 
 - uses `Make.WriteText`, `Make.ReadText`, `Make.HashFile`, `Make.Exec`, or similar primitives;
 - requires make authority and sidecar discovery;
-- should live in `Libraries/Make` or explicit integration fixtures;
+- should live in explicit integration fixtures such as `Libraries/MakeHostPrivileged`;
 - should be run by an explicit command such as:
 
 ```bash
-OCT_WRAPPER_PATH="$PWD/dist/sidecars" OCT_MAKE_AUTHORITY=1 go run ./cmd/oct test Libraries/Make/Make.Primitives.octest --execution interpreted
+OCT_WRAPPER_PATH="$PWD/dist/sidecars" OCT_MAKE_AUTHORITY=1 go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
 ```
 
 Use this lane to validate the primitive capability surface, not ordinary project build plans.
@@ -328,7 +328,7 @@ Make.octest policy:
 - Do not grant Make host authority to ordinary oct test.
 - Keep normal project Make.octest examples pure: Plan(), config helpers, target metadata, and assertions only.
 - If adding a fixture, prove oct test Make.octest can call sibling Make.oct Plan()/config helpers without OCT_MAKE_AUTHORITY.
-- Keep side-effectful Make primitive tests in Libraries/Make or explicit integration lanes that set OCT_WRAPPER_PATH and OCT_MAKE_AUTHORITY=1.
+- Keep side-effectful Make primitive tests in explicit integration lanes that set OCT_WRAPPER_PATH and OCT_MAKE_AUTHORITY=1.
 - Keep oct make executor/state/trace/staleness tests as Go CLI integration tests.
 - Mention Make.ValidatePlan as a future pure helper; do not implement it unless it reuses executor validation directly and remains side-effect free.
 ```

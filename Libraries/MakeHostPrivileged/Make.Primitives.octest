@@ -1,0 +1,44 @@
+package MakeHostPrivileged
+
+import Make
+
+[Fact]
+fn MakeFilePrimitivesRoundTrip() -> Void ! Error {
+    let dir = "mx_make_host_tmp"
+    let file = "mx_make_host_tmp/input.txt"
+    let copy = "mx_make_host_tmp/copy.txt"
+    let _mkdir = Make.MkdirAll(dir)?
+    let _write = Make.WriteText(file, "hello")?
+    Assert.True(Make.Exists(file), "written file should exist")
+    Assert.True(Make.IsFile(file), "written path should be file")
+    Assert.True(Make.IsDir(dir), "created path should be directory")
+    Assert.Equal("hello", Make.ReadText(file)?, "read text should match write text")
+    let _copy = Make.Copy(file, copy)?
+    Assert.Equal("hello", Make.ReadText(copy)?, "copy should preserve bytes")
+    Assert.Equal("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", Make.HashFile(file)?, "hash file should be SHA-256 hex")
+    Assert.True(Make.ModifiedTime(file)? > 0, "modified time is Unix nanoseconds")
+    Assert.True(Len(Make.Glob("mx_make_host_tmp/*.txt")?) >= 2, "glob should find written files")
+    let _removeCopy = Make.Remove(copy)?
+    let _removeFile = Make.Remove(file)?
+    let _removeDir = Make.Remove(dir)?
+}
+
+[Fact]
+fn MakeToolAndExecGoVersion() -> Void ! Error {
+    let goTool = Make.Tool("go")?
+    let result = Make.Exec(goTool, ["version"])?
+    Assert.Equal(0, result.ExitCode, "go version should exit zero")
+    Assert.True(Len(result.Stdout) > 0, "go version should write stdout")
+}
+
+[Fact]
+fn MakeMissingProgramIsLaunchError() -> Void ! Error {
+    Assert.Error(Make.Exec("oct-definitely-missing-make-host-tool", []), "missing executable should be launch error")
+}
+
+[Fact]
+fn MakeNonZeroExitIsProcessResult() -> Void ! Error {
+    let goTool = Make.Tool("go")?
+    let result = Make.Exec(goTool, ["definitely-not-a-go-subcommand"])?
+    Assert.True(result.ExitCode != 0, "bad go subcommand should return non-zero ProcessResult")
+}

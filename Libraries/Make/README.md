@@ -64,9 +64,42 @@ Pure `Make.octest` tests should focus on plan/config data that can be checked wi
 
 `[Fact]` and `[Theory]` are the recommended attributes for these pure assertions. `[Artifact]` may later be useful for pure plan snapshots or target-table evidence, but it must not become hidden build execution. `[Benchmark]` is not important for ordinary Make plan tests.
 
-Side-effectful Make primitive tests are different. Tests that call `Make.Exec`, `Make.WriteText`, `Make.ReadText`, `Make.HashFile`, or other host primitives require explicit make authority and sidecar discovery. Keep that coverage in `Libraries/Make`, explicit sidecar/integration lanes, or Go CLI tests for `oct make`; ordinary `oct test Make.octest` does not receive `OCT_MAKE_AUTHORITY=1`.
+Side-effectful Make primitive tests are different. Tests that call `Make.Exec`, `Make.WriteText`, `Make.ReadText`, `Make.HashFile`, or other host primitives require explicit make authority and sidecar discovery. That coverage lives in `Libraries/MakeHostPrivileged/Make.Primitives.octest` and must be run explicitly with `OCT_MAKE_AUTHORITY=1` plus `OCT_WRAPPER_PATH`; ordinary `oct test Libraries/Make` and ordinary `oct test Make.octest` do not receive `OCT_MAKE_AUTHORITY=1`. This keeps pure Make package tests authority-free while preserving the Make host boundary.
 
 A future pure helper such as `Make.ValidatePlan` or `Make.CheckPlan` may be useful, but it is deferred until it can reuse executor validation logic without creating a second source of truth.
+
+## Test lanes
+
+Pure Make package tests exercise ordinary package data and helper behavior without host authority. They include `Make.CAbi.octest` and any future pure `Make.octest` plan/config assertions in `Libraries/Make`. Run them from the repository root with either execution backend:
+
+```sh
+go run ./cmd/oct test Libraries/Make --execution interpreted
+go run ./cmd/oct test Libraries/Make --execution compiled
+```
+
+Privileged Make host primitive tests are side-effectful: they create/remove files and invoke host programs through `octxiliary-makehost`. They are intentionally outside the broad `Libraries/Make` lane at `Libraries/MakeHostPrivileged/Make.Primitives.octest`, and they must be selected explicitly after building sidecars and granting make authority:
+
+```sh
+go run ./tools/build_sidecars --out dist/sidecars
+
+OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
+    go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
+
+OCT_MAKE_AUTHORITY=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" \
+    go run ./cmd/oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
+```
+
+PowerShell equivalent:
+
+```powershell
+go run ./tools/build_sidecars --out dist/sidecars
+$env:OCT_MAKE_AUTHORITY="1"
+$env:OCT_WRAPPER_PATH="$PWD\dist\sidecars"
+go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution interpreted
+go run .\cmd\oct test Libraries/MakeHostPrivileged/Make.Primitives.octest --execution compiled
+```
+
+The split is deliberate: pure Make tests do not require host authority, Make primitive tests remain explicit sidecar/authority tests, and ordinary `oct test` does not gain ambient Make host capabilities.
 
 
 ## `oct make` plan configuration

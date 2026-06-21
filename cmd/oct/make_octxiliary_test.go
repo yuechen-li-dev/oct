@@ -12,7 +12,7 @@ func TestMakeHostOctxiliaryRequiresAuthority(t *testing.T) {
 	requireSlowOctxiliary(t)
 	binDir := sharedTestSidecarDir(t, "octxiliary-makehost")
 	repo := filepath.Join("..", "..")
-	cmd := exec.Command(sharedTestOctBinary(t), "test", "Libraries/Make", "--execution", "interpreted")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Libraries/MakeHostPrivileged/Make.Primitives.octest", "--execution", "interpreted")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	cmd.Env = appendWithoutKey(cmd.Env, "OCT_MAKE_AUTHORITY")
