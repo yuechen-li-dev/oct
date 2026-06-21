@@ -18,6 +18,8 @@ const (
 	KindLibrary        Kind = "library"
 	KindExperiment     Kind = "experiment"
 	KindWrapperLibrary Kind = "wrapper-library"
+	KindApplication    Kind = "application"
+	KindApp            Kind = "app"
 )
 
 type Options struct {
@@ -66,6 +68,8 @@ func Plan(opts Options) ([]File, error) {
 	switch opts.Kind {
 	case KindLibrary:
 		files = libraryFiles(opts.Name)
+	case KindApplication, KindApp:
+		files = applicationFiles(opts.Name)
 	case KindExperiment:
 		files = experimentFiles(opts.Name)
 	case KindWrapperLibrary:
@@ -115,6 +119,8 @@ func Manifest(kind Kind, name string) (string, error) {
 	switch kind {
 	case KindLibrary:
 		return libraryManifest(name), nil
+	case KindApplication, KindApp:
+		return applicationManifest(name), nil
 	case KindExperiment:
 		return experimentManifest(name), nil
 	case KindWrapperLibrary:
@@ -250,6 +256,15 @@ func safeTargetPath(target string, rel string) (string, error) {
 	return path, nil
 }
 
+func applicationFiles(name string) []File {
+	return []File{
+		{Path: "README.md", Content: applicationReadme(name)},
+		{Path: "Main.oct", Content: applicationMain(name)},
+		{Path: "Main.octest", Content: applicationMainTest(name)},
+		{Path: "manifest.oct", Content: applicationManifest(name)},
+	}
+}
+
 func libraryFiles(name string) []File {
 	return []File{
 		{Path: "README.md", Content: libraryReadme(name)},
@@ -282,6 +297,74 @@ func wrapperLibraryFiles(name string) []File {
 		{Path: sidecarDir + "go.mod", Content: sidecarGoMod(kebab)},
 		{Path: sidecarDir + "main.go", Content: sidecarMain(name)},
 	}
+}
+
+func applicationManifest(name string) string {
+	return fmt.Sprintf(`package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Kind: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: %q
+        Version: "0.1.0"
+        Description: "Runnable Oct application."
+        Authors: ["Unknown"]
+        Date: %q
+        Kind: "application"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}
+`, name, DefaultManifestDate)
+}
+
+func applicationMain(name string) string {
+	return fmt.Sprintf(`package %s
+
+/// Return the scaffold greeting for this application.
+fn Greeting() -> String {
+    return %q
+}
+
+fn Main() -> Int {
+    Print(Greeting())
+    return 0
+}
+`, name, "Hello from "+name)
+}
+
+func applicationMainTest(name string) string {
+	return fmt.Sprintf(`package %s
+
+[Fact]
+fn GreetingReturnsMessage() -> Void {
+    Assert.Equal(%q, Greeting(), "greeting should match scaffold")
+}
+`, name, "Hello from "+name)
+}
+
+func applicationReadme(name string) string {
+	return fmt.Sprintf(`# %s
+
+Generated application scaffold by `+"`oct new application`"+`.
+
+Application packages are runnable Oct programs, services, UIs, or CLIs. They are distinct from reusable libraries, experiments whose primary outputs are evidence/artifacts, and wrapper libraries that expose external sidecars.
+
+APP1 records `+"`Kind: \"application\"`"+` and creates a runnable `+"`Main()`"+`; application packaging, deployment profiles, optional `+"`Make.oct`"+`, and UIBridge/Machina integration are future work.
+`, name)
 }
 
 func libraryManifest(name string) string {

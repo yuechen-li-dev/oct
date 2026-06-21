@@ -79,6 +79,16 @@ func TestPlanFilePathSets(t *testing.T) {
 			want: []string{"M0/brown_noise_kalman_m0.oct", "M0/brown_noise_kalman_m0.octest", "README.md", "REPORT.md", "manifest.oct"},
 		},
 		{
+			name: "application",
+			opts: Options{Kind: KindApplication, Name: "MyApp", Dir: "MyApp"},
+			want: []string{"Main.oct", "Main.octest", "README.md", "manifest.oct"},
+		},
+		{
+			name: "app alias",
+			opts: Options{Kind: KindApp, Name: "MyApp", Dir: "MyApp"},
+			want: []string{"Main.oct", "Main.octest", "README.md", "manifest.oct"},
+		},
+		{
 			name: "wrapper-library",
 			opts: Options{Kind: KindWrapperLibrary, Name: "OpenCV", Dir: "OpenCV"},
 			want: []string{"OpenCV.Core.oct", "OpenCV.Core.octest", "README.md", "manifest.oct", "sidecars/octxiliary-open-cv/README.md", "sidecars/octxiliary-open-cv/go.mod", "sidecars/octxiliary-open-cv/main.go"},
@@ -104,6 +114,23 @@ func TestPlanFilePathSets(t *testing.T) {
 				t.Fatalf("paths got %#v want %#v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestPlanApplicationContent(t *testing.T) {
+	filesByPath := planMap(t, Options{Kind: KindApplication, Name: "MyApp", Dir: "MyApp"})
+	for _, snippet := range []string{
+		`Kind: "application"`,
+		`Description: "Runnable Oct application."`,
+	} {
+		if !strings.Contains(filesByPath["manifest.oct"], snippet) {
+			t.Fatalf("application manifest missing %q:\n%s", snippet, filesByPath["manifest.oct"])
+		}
+	}
+	for _, snippet := range []string{`package MyApp`, `fn Greeting() -> String`, `fn Main() -> Int`, `Hello from MyApp`} {
+		if !strings.Contains(filesByPath["Main.oct"], snippet) {
+			t.Fatalf("application source missing %q:\n%s", snippet, filesByPath["Main.oct"])
+		}
 	}
 }
 

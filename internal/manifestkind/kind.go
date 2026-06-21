@@ -3,16 +3,17 @@ package manifestkind
 import "fmt"
 
 const (
-	Pure       = "pure"
-	Experiment = "experiment"
-	Wrapper    = "wrapper"
+	Pure        = "pure"
+	Experiment  = "experiment"
+	Wrapper     = "wrapper"
+	Application = "application"
 )
 
 func Normalize(kind string) (string, error) {
 	switch kind {
 	case "":
 		return Pure, nil
-	case Pure, Experiment, Wrapper:
+	case Pure, Experiment, Wrapper, Application:
 		return kind, nil
 	default:
 		return "", fmt.Errorf("invalid manifest Kind %q", kind)

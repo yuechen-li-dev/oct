@@ -198,14 +198,14 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 		return writeNewHelp(stdout)
 	}
 	if len(args) != 2 && len(args) != 3 {
-		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name> [path]"))
+		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library|application|app> <Name> [path]"))
 	}
 	kind := newpkg.Kind(args[0])
 	switch kind {
-	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary, newpkg.KindApplication, newpkg.KindApp:
 		// recognized below
 	default:
-		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library> <Name> [path]"))
+		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library|application|app> <Name> [path]"))
 	}
 	name := args[1]
 	target := defaultNewTarget(kind, name, args[2:])
@@ -229,6 +229,10 @@ func defaultNewTarget(kind newpkg.Kind, name string, explicit []string) string {
 		if isDirectory("Libraries") {
 			return filepath.Join("Libraries", name)
 		}
+	case newpkg.KindApplication, newpkg.KindApp:
+		if isDirectory("Applications") {
+			return filepath.Join("Applications", name)
+		}
 	}
 	return name
 }
@@ -245,21 +249,21 @@ func executeInit(args []string, stdout io.Writer, stderr io.Writer) error {
 	if len(args) == 2 && isHelpArg(args[1:]) {
 		kind := newpkg.Kind(args[0])
 		switch kind {
-		case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+		case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary, newpkg.KindApplication, newpkg.KindApp:
 			return writeInitKindHelp(stdout, kind)
 		default:
-			return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library>"))
+			return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library|application|app>"))
 		}
 	}
 	if len(args) != 1 {
-		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library>"))
+		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library|application|app>"))
 	}
 	kind := newpkg.Kind(args[0])
 	switch kind {
-	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary:
+	case newpkg.KindExperiment, newpkg.KindLibrary, newpkg.KindWrapperLibrary, newpkg.KindApplication, newpkg.KindApp:
 		// recognized below
 	default:
-		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library>"))
+		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library|application|app>"))
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -869,12 +873,12 @@ func writePkgListHelp(out io.Writer) error {
 }
 
 func writeNewHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library> <Name> [path]\nCreate a deterministic package scaffold. Defaults to Experiments/<Name> for experiments when Experiments/ exists, Libraries/<Name> for libraries and wrapper-libraries when Libraries/ exists, and ./<Name> otherwise. Explicit [path] is preserved.")
+	_, err := fmt.Fprintln(out, "usage: oct new <experiment|library|wrapper-library|application|app> <Name> [path]\nCreate a deterministic package scaffold. Defaults to Experiments/<Name> for experiments when Experiments/ exists, Libraries/<Name> for libraries and wrapper-libraries when Libraries/ exists, Applications/<Name> for applications when Applications/ exists, and ./<Name> otherwise. Explicit [path] is preserved.")
 	return err
 }
 
 func writeInitHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct init <experiment|library|wrapper-library>\nInitialize the current existing directory by creating manifest.oct. Refuses to overwrite an existing manifest.")
+	_, err := fmt.Fprintln(out, "usage: oct init <experiment|library|wrapper-library|application|app>\nInitialize the current existing directory by creating manifest.oct. Refuses to overwrite an existing manifest.")
 	return err
 }
 

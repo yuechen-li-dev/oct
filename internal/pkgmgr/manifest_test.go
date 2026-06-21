@@ -236,6 +236,12 @@ func TestLoadManifestMetadataPackageKindSemantics(t *testing.T) {
 			wantKind:    "experiment",
 		},
 		{
+			name:        "application Kind accepted",
+			recordPatch: "    Kind: String\n    Dependencies: Dependency[]",
+			bodyPatch:   "        Kind: \"application\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
+			wantKind:    "application",
+		},
+		{
 			name:           "wrapper Kind requires Wrappers",
 			recordPatch:    "    Kind: String\n    Dependencies: Dependency[]",
 			bodyPatch:      "        Kind: \"wrapper\"\n        Dependencies: [Dependency { Name: \"Signal\" VersionRequirement: \"1.0.0\" }]",
@@ -511,6 +517,7 @@ func TestLoadManifestMetadataAllowsEmptyWrappersForNonWrapperKinds(t *testing.T)
 	}{
 		{name: "pure", kind: "pure"},
 		{name: "experiment", kind: "experiment", entry: "M0"},
+		{name: "application", kind: "application"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
