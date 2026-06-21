@@ -183,6 +183,18 @@ They should be front-end metadata with identical validation for interpreted and 
 | `internal/prometheus/Make.oct` | `ListEnvironment`, `CheckTools`, `Clean` | Stubs return `10` | No shell-shaped logic in current file. | Future real implementation should use `Make.Tool`, `Make.Exists`/`IsFile`/`IsDir`, and `Make.Getenv` rather than shell probes. | Maybe | When implemented |
 | `Libraries/MakeOctestPlan/Make.oct` | `Build` | Stub returns `0` | No shell-shaped logic. | Keep. | No | None |
 
+
+## MAKE15-H1 follow-up: typed Make.oct idiom cleanup
+
+MAKE15-H1 implemented the Chimera example tool-probe cleanup without adding Make attributes, parser support, Make execution semantics, or new host authority primitives.
+
+- `Examples/ChimeraHello/Make.oct` now uses `Make.Tool("cargo")` and `Make.Tool("go")` through small fallible `RequireCargo` and `RequireGo` helpers. The helpers use fallible `match` to preserve the example-specific custom error messages.
+- `Examples/ChimeraOctxHello/Make.oct` uses the same fallible helper idiom for its Cargo and Go probes.
+- The existing Bash-backed environment gates remain in place because `Libraries/Make` does not yet expose a typed environment primitive. Both Chimera Make files carry TODO comments pointing at future `Make.Env` work.
+- Real shell command targets remain unchanged: the Chimera build/run commands and Prometheus native script invocation are command targets, not tool-discovery probes.
+
+The remaining environment-gate cleanup is still MAKE16-H1 scope: add a presence-aware `Make.Env`/`Make.Getenv` primitive and migrate the `OCT_CHIMERA_*` checks without shelling out.
+
 ## Missing Make primitive recommendations
 
 ### 1. Is `Make.Getenv` needed?
@@ -248,6 +260,6 @@ Enforce `[Pure]` for Make.oct functions by rejecting direct calls to known Make 
 
 Investigate whether Chimera command targets should stop using `bash -c` for `go env GOOS/GOARCH` path interpolation. This may require a portable platform/path primitive or a decision to keep stable declared output paths.
 
-## Tiny cleanup performed in this pass
+## Tiny cleanup performed after design
 
-None. This pass is intentionally design-only because replacing `command -v` with `Make.Tool` would slightly change error strings today, and the environment gate still needs a new primitive to remove the largest shell-shaped smell cleanly.
+MAKE15-H1 later replaced the Chimera `command -v` probes with `Make.Tool` while preserving custom error strings through local fallible helpers. The environment gate still needs a new primitive to remove the remaining shell-shaped check cleanly.

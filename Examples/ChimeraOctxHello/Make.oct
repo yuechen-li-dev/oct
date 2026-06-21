@@ -2,6 +2,20 @@ package ChimeraOctxHello
 
 import Make
 
+fn RequireCargo() -> Int ! Error {
+    match Make.Tool("cargo") {
+        ok(_) => { return 0 }
+        err(_) => { return error("cargo is required for ChimeraOctxHello real build") }
+    }
+}
+
+fn RequireGo() -> Int ! Error {
+    match Make.Tool("go") {
+        ok(_) => { return 0 }
+        err(_) => { return error("go is required for ChimeraOctxHello real build") }
+    }
+}
+
 fn ChimeraOctxConfig() -> Make.Config {
     return Make.DefaultConfig() with {
         Profile: "ChimeraOctxHello"
@@ -97,18 +111,13 @@ fn Plan() -> Make.Plan {
 }
 
 fn CheckTools() -> Int ! Error {
+    // TODO(MAKE16-H1): replace this shell env gate with future Make.Env once available.
     let gate = Make.Exec("bash", ["-c", "test \"$OCT_CHIMERA_OCTX_HELLO\" = 1"])?
     if gate.ExitCode != 0 {
         return error("set OCT_CHIMERA_OCTX_HELLO=1 to run the ChimeraOctxHello process-boundary build")
     }
-    let cargo = Make.Exec("bash", ["-c", "command -v cargo >/dev/null"])?
-    if cargo.ExitCode != 0 {
-        return error("cargo is required for ChimeraOctxHello real build")
-    }
-    let goTool = Make.Exec("bash", ["-c", "command -v go >/dev/null"])?
-    if goTool.ExitCode != 0 {
-        return error("go is required for ChimeraOctxHello real build")
-    }
+    let _cargo = RequireCargo()?
+    let _goTool = RequireGo()?
     return 0
 }
 
