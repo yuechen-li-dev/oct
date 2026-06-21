@@ -24,6 +24,11 @@ For matrix and tensor-focused language surface, see [16 vectors, matrices, and t
   - Returns a new array copy and preserves the exact element type, including SI dimensions and record/enum element types.
   - It is the readable M0 replacement for Python-style slicing; `xs[1:3]` and `xs[1..3]` are not valid.
   - Negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, and aliases such as `Array.Copy`, `Array.Take`, `Array.Drop`, and `Array.Window` are deferred/not part of M0.
+- `Array.Where(values: T[], mask: Bool[]) -> T[]`.
+  - Compiler-owned polymorphism; this does not introduce user-defined generics and does not expose `Array.Where<T>`.
+  - Accepts 1D arrays only with a `Bool[]` mask of equal runtime length.
+  - Returns a fresh array containing values whose corresponding mask element is `true`, preserving exact element type and SI dimensions.
+  - Scalar `Bool` masks and length-1 mask broadcasting are not supported; Oct does not add NumPy-style broadcasting or `values[mask]` logical indexing syntax here.
 
 ## 2) Numeric / math
 

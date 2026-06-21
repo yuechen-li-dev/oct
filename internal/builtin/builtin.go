@@ -5,6 +5,8 @@ var names = map[string]struct{}{
 	"Append":                   {},
 	"ArrayCrossSection":        {},
 	"Array.CrossSection":       {},
+	"ArrayWhere":               {},
+	"Array.Where":              {},
 	"Complex":                  {},
 	"ComplexPolar":             {},
 	"I":                        {},

@@ -1,0 +1,7 @@
+expect error: "Array.Where expects a Bool[] mask as its second argument"
+
+package Main
+
+fn Main() -> Float[] {
+    return Array.Where([1.0, 2.0], ["yes", "no"])
+}

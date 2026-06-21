@@ -3,6 +3,7 @@ package builtin
 var namespaceAliases = map[string]map[string]string{
 	"Array": {
 		"CrossSection": "ArrayCrossSection",
+		"Where":        "ArrayWhere",
 	},
 	"String": {
 		"Concat":     "StringConcat",

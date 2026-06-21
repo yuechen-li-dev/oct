@@ -1,0 +1,7 @@
+expect error: "Array.Where expects a 1D array as its first argument"
+
+package Main
+
+fn Main() -> Float[] {
+    return Array.Where(1.0, [true])
+}

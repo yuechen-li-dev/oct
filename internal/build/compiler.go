@@ -1360,6 +1360,8 @@ func canonicalCompiledBuiltinName(name string) string {
 		return "StringFrom"
 	case "Array.CrossSection":
 		return "ArrayCrossSection"
+	case "Array.Where":
+		return "ArrayWhere"
 	case "String.ReplaceAll":
 		return "StringReplaceAll"
 	case "String.Contains":
@@ -2613,7 +2615,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			args = append(args, v)
 			argTypes = append(argTypes, at)
 		}
-		if builtin && (callee == "Append" || callee == "ArrayCrossSection" || callee == "Array.CrossSection") && len(argTypes) > 0 {
+		if builtin && (callee == "Append" || callee == "ArrayCrossSection" || callee == "Array.CrossSection" || callee == "ArrayWhere" || callee == "Array.Where") && len(argTypes) > 0 {
 			ret = argTypes[0]
 		}
 		if builtin && isMarkdownCompiledBuiltin(callee) {
@@ -3645,6 +3647,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return normalized, "Void", true, false, nil
 			case "ArrayCrossSection", "Array.CrossSection":
 				return "ArrayCrossSection", "Void", true, false, nil
+			case "ArrayWhere", "Array.Where":
+				return "ArrayWhere", "Void", true, false, nil
 			case "FileReadText":
 				return normalized, "String", true, true, nil
 			case "FileReadBytes":
@@ -3726,6 +3730,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 				return builtinName, "Bytes", true, true, nil
 			case "Array.CrossSection":
 				return "ArrayCrossSection", "Void", true, false, nil
+			case "Array.Where":
+				return "ArrayWhere", "Void", true, false, nil
 			default:
 				ret := "String"
 				switch canonical {
@@ -3769,6 +3775,8 @@ func (c *lowerCtx) resolveCompiledBuiltinAlias(name string) (string, string, boo
 		return name, ret, true, false, nil
 	case "ArrayCrossSection":
 		return "ArrayCrossSection", "Void", true, false, nil
+	case "ArrayWhere":
+		return "ArrayWhere", "Void", true, false, nil
 	default:
 		return "", "", false, false, unsupportedBuiltin(name)
 	}
@@ -5813,6 +5821,9 @@ func emitGo(m MIRModule) (string, error) {
 	b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
 	if usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"] {
 		b.WriteString("func __octArrayCrossSection[T any](values []T, r __octRange) []T {\n\tstart := 0\n\tif r.HasStart { start = r.Start }\n\tend := len(values)\n\tif r.HasEnd { end = r.End }\n\tstep := 1\n\tif r.HasStep { step = r.Step }\n\tif step <= 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range step must be positive, got %d\", step)) }\n\tif start < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start must be >= 0, got %d\", start)) }\n\tif end < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end must be >= 0, got %d\", end)) }\n\tif start > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d exceeds array length %d\", start, len(values))) }\n\tif end > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end %d exceeds array length %d\", end, len(values))) }\n\tif start > end { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d must be <= end %d\", start, end)) }\n\tcount := 0\n\tif start < end { count = ((end - start - 1) / step) + 1 }\n\tout := make([]T, 0, count)\n\tfor i := start; i < end; i += step { out = append(out, values[i]) }\n\treturn out\n}\n\n")
+	}
+	if usedBuiltins["ArrayWhere"] || usedBuiltins["Array.Where"] {
+		b.WriteString("func __octArrayWhere[T any](values []T, mask []bool) []T {\n\tif len(values) != len(mask) { panic(\"runtime error: Array.Where mask length must match values length\") }\n\tout := make([]T, 0, len(values))\n\tfor i, keep := range mask { if keep { out = append(out, __octClone(values[i])) } }\n\treturn out\n}\n\n")
 	}
 	for _, t := range resultNames {
 		valueType := goType(t)
@@ -8787,6 +8798,8 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = append(%s, %s)", st.Target, st.Args[0], value), nil
 			case "ArrayCrossSection", "Array.CrossSection":
 				return fmt.Sprintf("%s = __octArrayCrossSection(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
+			case "ArrayWhere", "Array.Where":
+				return fmt.Sprintf("%s = __octArrayWhere(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
 			case "Require":
