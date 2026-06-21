@@ -3,6 +3,7 @@ package parse
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -35,7 +36,7 @@ type parser struct {
 
 func (p *parser) parseFile(src source.File) (ast.File, error) {
 	p.docByLine = scanDocComments(src.Text)
-	file := ast.File{Source: src, IsTest: strings.HasSuffix(src.Path, ".octest")}
+	file := ast.File{Source: src, IsTest: strings.HasSuffix(src.Path, ".octest"), IsMakeFile: filepath.Base(src.Path) == "Make.oct"}
 	if _, err := p.expect(lex.KeywordPackage, "missing package declaration"); err != nil {
 		return ast.File{}, err
 	}
@@ -69,14 +70,53 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingInlineData := make([]ast.InlineDataRow, 0)
 	pendingSuites := make([]string, 0)
 	var pendingCycleTime ast.Expr
+	pendingMakePlan := false
+	pendingMakePure := false
+	pendingMakeNoWhile := false
+	pendingRequiresMakeAuthority := false
 	for p.current().Kind != lex.EOF {
 		if p.current().Kind == lex.LeftBracket {
-			if !file.IsTest {
+			if !file.IsTest && !file.IsMakeFile {
 				attrName := "attribute"
 				if p.position+1 < len(p.tokens) && p.tokens[p.position+1].Kind == lex.Identifier {
 					attrName = "[" + p.tokens[p.position+1].Lexeme + "]"
 				}
-				return ast.File{}, p.errorAtCurrent(fmt.Sprintf("%s is only valid in .octest files", attrName))
+				return ast.File{}, p.errorAtCurrent(fmt.Sprintf("%s is only valid in .octest files or Make.oct", attrName))
+			}
+			if file.IsMakeFile {
+				attribute, err := p.parseMakeAttribute()
+				if err != nil {
+					return ast.File{}, err
+				}
+				switch attribute.kind {
+				case "MakePlan":
+					if pendingMakePlan {
+						return ast.File{}, p.errorAtCurrent("duplicate [MakePlan] attribute on function")
+					}
+					pendingMakePlan = true
+				case "Pure":
+					if pendingMakePure {
+						return ast.File{}, p.errorAtCurrent("duplicate [Pure] attribute on function")
+					}
+					if pendingRequiresMakeAuthority {
+						return ast.File{}, p.errorAtCurrent("[Pure] and [RequiresAuthority] cannot both apply to the same function")
+					}
+					pendingMakePure = true
+				case "NoWhile":
+					if pendingMakeNoWhile {
+						return ast.File{}, p.errorAtCurrent("duplicate [NoWhile] attribute on function")
+					}
+					pendingMakeNoWhile = true
+				case "RequiresAuthority":
+					if pendingRequiresMakeAuthority {
+						return ast.File{}, p.errorAtCurrent("duplicate [RequiresAuthority] attribute on function")
+					}
+					if pendingMakePure {
+						return ast.File{}, p.errorAtCurrent("[Pure] and [RequiresAuthority] cannot both apply to the same function")
+					}
+					pendingRequiresMakeAuthority = true
+				}
+				continue
 			}
 			attribute, err := p.parseTestAttribute()
 			if err != nil {
@@ -153,6 +193,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		}
 		switch p.current().Kind {
 		case lex.KeywordRecord:
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
+			}
 			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
@@ -162,6 +205,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Records = append(file.Records, record)
 		case lex.KeywordEnum:
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
+			}
 			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
@@ -255,8 +301,38 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			} else if pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("[CycleTime] must apply to a [Theory] function")
 			}
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+				function.IsMakeFile = file.IsMakeFile
+				function.IsMakePlan = pendingMakePlan
+				function.IsMakePure = pendingMakePure
+				function.IsMakeNoWhile = pendingMakeNoWhile
+				function.RequiresMakeAuthority = pendingRequiresMakeAuthority
+				if pendingMakePlan {
+					if function.Name != "Plan" {
+						return ast.File{}, p.errorAtCurrent("[MakePlan] function must be named Plan")
+					}
+					if len(function.Parameters) != 0 {
+						return ast.File{}, p.errorAtCurrent("[MakePlan] function must not declare parameters")
+					}
+					if !isMakePlanType(function.ReturnType) {
+						return ast.File{}, p.errorAtCurrent("[MakePlan] function must return Make.Plan")
+					}
+				}
+				if pendingMakeNoWhile && blockContainsWhile(function.Body) {
+					return ast.File{}, p.errorAtCurrent("[NoWhile] function must not contain while statements")
+				}
+				pendingMakePlan = false
+				pendingMakePure = false
+				pendingMakeNoWhile = false
+				pendingRequiresMakeAuthority = false
+			} else {
+				function.IsMakeFile = file.IsMakeFile
+			}
 			file.Functions = append(file.Functions, function)
 		case lex.KeywordFlow:
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
+			}
 			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
 			}
@@ -271,6 +347,9 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	}
 	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
 		return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
+	}
+	if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+		return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 	}
 	return file, nil
 }
@@ -357,6 +436,62 @@ func parseDocSection(line string) (ast.DocSection, bool) {
 		}
 	}
 	return ast.DocSection{}, false
+}
+
+type makeAttribute struct {
+	kind string
+}
+
+func (p *parser) parseMakeAttribute() (makeAttribute, error) {
+	if _, err := p.expect(lex.LeftBracket, "expected '['"); err != nil {
+		return makeAttribute{}, err
+	}
+	name, err := p.expect(lex.Identifier, "expected attribute name")
+	if err != nil {
+		return makeAttribute{}, err
+	}
+	switch name.Lexeme {
+	case "MakePlan", "Pure", "NoWhile", "RequiresAuthority":
+		if p.current().Kind == lex.LeftParen {
+			return makeAttribute{}, p.errorAtCurrent(fmt.Sprintf("Make attribute [%s] does not accept a payload", name.Lexeme))
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return makeAttribute{}, err
+		}
+		return makeAttribute{kind: name.Lexeme}, nil
+	default:
+		return makeAttribute{}, p.errorAtToken(name, fmt.Sprintf("unsupported Make attribute [%s]", name.Lexeme))
+	}
+}
+
+func isMakePlanType(typeRef ast.TypeRef) bool {
+	return typeRef.Package == "Make" && typeRef.Name == "Plan" && !typeRef.IsArray && typeRef.VectorOf == nil && typeRef.MatrixOf == nil && !typeRef.HasUnit && typeRef.Function == nil && len(typeRef.TupleOf) == 0
+}
+
+func blockContainsWhile(block ast.Block) bool {
+	for _, stmt := range block.Statements {
+		if stmtContainsWhile(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+func stmtContainsWhile(stmt ast.Stmt) bool {
+	switch s := stmt.(type) {
+	case ast.WhileStmt:
+		return true
+	case ast.ForStmt:
+		return blockContainsWhile(s.Body)
+	case ast.IfStmt:
+		return blockContainsWhile(s.ThenBody) || (s.ElseBody != nil && blockContainsWhile(*s.ElseBody))
+	case ast.MatchStmt:
+		return blockContainsWhile(s.OkBody) || blockContainsWhile(s.ErrBody)
+	case ast.PrometheusStmt:
+		return blockContainsWhile(s.Body)
+	default:
+		return false
+	}
 }
 
 type testAttribute struct {

@@ -1317,3 +1317,61 @@ func TestBuildFileRejectsOpenEndedSteppedRangeForms(t *testing.T) {
 	assertParseErrorContains(t, "fn Main() -> Int { let r = ..10 step 2 return 0 }", "open-ended stepped ranges are not supported in M0")
 	assertParseErrorContains(t, "fn Main() -> Int { let r = .. step 2 return 0 }", "open-ended stepped ranges are not supported in M0")
 }
+
+func TestBuildFileParsesMakeAttributesInMakeOct(t *testing.T) {
+	file := parseSourceWithPath(t, "Make.oct", `package Main
+import Make
+[MakePlan]
+[Pure]
+[NoWhile]
+fn Plan() -> Make.Plan { return Make.Plan { Default: "All" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [] } }
+[RequiresAuthority]
+fn CheckTools() -> Int ! Error { return 0 }
+`)
+	if !file.IsMakeFile {
+		t.Fatalf("expected Make.oct file flag")
+	}
+	if len(file.Functions) != 2 {
+		t.Fatalf("expected two functions, got %d", len(file.Functions))
+	}
+	plan := file.Functions[0]
+	if !plan.IsMakeFile || !plan.IsMakePlan || !plan.IsMakePure || !plan.IsMakeNoWhile || plan.RequiresMakeAuthority {
+		t.Fatalf("unexpected Plan make attributes: %+v", plan)
+	}
+	check := file.Functions[1]
+	if !check.RequiresMakeAuthority || check.IsMakePlan || check.IsMakePure || check.IsMakeNoWhile {
+		t.Fatalf("unexpected CheckTools make attributes: %+v", check)
+	}
+}
+
+func TestBuildFileParsesConventionalUnmarkedMakePlan(t *testing.T) {
+	file := parseSourceWithPath(t, "Make.oct", `package Main
+import Make
+fn Plan() -> Make.Plan { return Make.Plan { Default: "All" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [] } }
+`)
+	if len(file.Functions) != 1 || !file.Functions[0].IsMakeFile || file.Functions[0].IsMakePlan {
+		t.Fatalf("unexpected conventional Plan flags: %+v", file.Functions)
+	}
+}
+
+func TestBuildFileRejectsInvalidMakeAttributes(t *testing.T) {
+	cases := []struct{ name, path, source, want string }{
+		{"ordinary oct rejects", "Main.oct", "package Main\n[MakePlan]\nfn Plan() -> Int { return 0 }\n", "[MakePlan] is only valid in .octest files or Make.oct"},
+		{"octest rejects make", "x.octest", "package Main\n[MakePlan]\nfn Plan() -> Void { return }\n", "unsupported attribute [MakePlan]"},
+		{"make rejects octest", "Make.oct", "package Main\n[Fact]\nfn Plan() -> Int { return 0 }\n", "unsupported Make attribute [Fact]"},
+		{"make rejects unknown", "Make.oct", "package Main\n[Unknown]\nfn Plan() -> Int { return 0 }\n", "unsupported Make attribute [Unknown]"},
+		{"record attachment", "Make.oct", "package Main\n[Pure]\nrecord X { Value: Int }\n", "Make attributes must apply to a function declaration"},
+		{"enum attachment", "Make.oct", "package Main\n[Pure]\nenum X { A }\n", "Make attributes must apply to a function declaration"},
+		{"duplicate", "Make.oct", "package Main\n[Pure]\n[Pure]\nfn X() -> Int { return 0 }\n", "duplicate [Pure] attribute on function"},
+		{"pure authority", "Make.oct", "package Main\n[Pure]\n[RequiresAuthority]\nfn X() -> Int { return 0 }\n", "[Pure] and [RequiresAuthority] cannot both apply"},
+		{"makeplan params", "Make.oct", "package Main\nimport Make\n[MakePlan]\nfn Plan(x: Int) -> Make.Plan { return Make.Plan { Default: \"All\" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [] } }\n", "[MakePlan] function must not declare parameters"},
+		{"makeplan return", "Make.oct", "package Main\n[MakePlan]\nfn Plan() -> Int { return 0 }\n", "[MakePlan] function must return Make.Plan"},
+		{"nowhile", "Make.oct", "package Main\n[NoWhile]\nfn X() -> Int { while true { } return 0 }\n", "[NoWhile] function must not contain while statements"},
+		{"payload", "Make.oct", "package Main\n[Pure(\"x\")]\nfn X() -> Int { return 0 }\n", "Make attribute [Pure] does not accept a payload"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertParseErrorContainsWithPath(t, tc.path, tc.source, tc.want)
+		})
+	}
+}

@@ -752,3 +752,42 @@ fn Plan() -> Make.Plan {
 		t.Fatalf("plan snapshot missing command hash:\n%s", planBody)
 	}
 }
+
+func TestMakeCommandAcceptsMakeAttributes(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+[MakePlan]
+[Pure]
+[NoWhile]
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "All"
+        Config: Make.DefaultConfig()
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: []
+        PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: [] }]
+    }
+}
+
+[RequiresAuthority]
+fn CheckTools() -> Int ! Error { return 0 }
+`)
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile, "--list")
+	if err != nil {
+		t.Fatalf("list failed: %v stderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "All") || !strings.Contains(stdout, "phony") {
+		t.Fatalf("unexpected list output: %q", stdout)
+	}
+	stdout, stderr, err = executeCLIArgs("make", "doctor", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("doctor failed: %v stderr=%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Validation: ok") {
+		t.Fatalf("unexpected doctor output: %q", stdout)
+	}
+}

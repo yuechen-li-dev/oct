@@ -6,14 +6,15 @@ import (
 )
 
 type File struct {
-	Source    source.File
-	IsTest    bool
-	Package   string
-	Imports   []string
-	Records   []RecordDecl
-	Enums     []EnumDecl
-	Functions []FunctionDecl
-	Flows     []FlowDecl
+	Source     source.File
+	IsTest     bool
+	IsMakeFile bool
+	Package    string
+	Imports    []string
+	Records    []RecordDecl
+	Enums      []EnumDecl
+	Functions  []FunctionDecl
+	Flows      []FlowDecl
 }
 
 type DocComment struct {
@@ -51,22 +52,27 @@ type EnumVariantDecl struct {
 }
 
 type FunctionDecl struct {
-	Name        string
-	Doc         *DocComment
-	SourcePath  string
-	IsTestFile  bool
-	IsFact      bool
-	IsTheory    bool
-	IsArtifact  bool
-	IsBenchmark bool
-	InlineData  []InlineDataRow
-	Suites      []string
-	CycleTime   Expr
-	Parameters  []Parameter
-	ReturnType  TypeRef
-	IsFallible  bool
-	ErrorType   TypeRef
-	Body        Block
+	Name                  string
+	Doc                   *DocComment
+	SourcePath            string
+	IsTestFile            bool
+	IsFact                bool
+	IsTheory              bool
+	IsArtifact            bool
+	IsBenchmark           bool
+	IsMakeFile            bool
+	IsMakePlan            bool
+	IsMakePure            bool
+	IsMakeNoWhile         bool
+	RequiresMakeAuthority bool
+	InlineData            []InlineDataRow
+	Suites                []string
+	CycleTime             Expr
+	Parameters            []Parameter
+	ReturnType            TypeRef
+	IsFallible            bool
+	ErrorType             TypeRef
+	Body                  Block
 }
 
 type FlowDecl struct {
