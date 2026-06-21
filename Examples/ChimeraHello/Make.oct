@@ -19,6 +19,27 @@ fn ChimeraRustLibraryPath() -> String {
     return "rust/target/release/libchimera_rust.a"
 }
 
+fn RustArtifact() -> Make.CAbiLibrary {
+    return Make.CAbiLibrary {
+        Name: "chimera_rust"
+        Kind: Make.CAbiLibraryKind.Static
+        Headers: [
+            Make.CAbiHeader {
+                Path: "rust/chimera_rust.h"
+                IncludeDir: "rust"
+            }
+        ]
+        IncludeDirs: ["rust"]
+        LibraryPath: "rust/target/release/libchimera_rust.a"
+        LinkName: "chimera_rust"
+        LinkDirs: ["rust/target/release"]
+        RuntimeFiles: []
+        ImportLibraryPath: ""
+        CallingConvention: Make.CAbiCallingConvention.C
+        Defines: []
+    }
+}
+
 fn BuildRustCAbiTarget() -> Make.CommandTarget {
     return Make.CommandTarget {
         Name: "BuildRustCAbi"

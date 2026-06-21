@@ -11,11 +11,50 @@ enum Staleness {
     Always
 }
 
+enum CAbiLibraryKind {
+    Static
+    Shared
+}
+
+enum CAbiCallingConvention {
+    C
+    Stdcall
+}
+
 record Config {
     Profile: String
     StateDir: String
     Trace: Bool
     Staleness: Staleness
+}
+
+record CAbiHeader {
+    Path: String
+    IncludeDir: String
+}
+
+record CAbiLibrary {
+    Name: String
+    Kind: CAbiLibraryKind
+    Headers: CAbiHeader[]
+    IncludeDirs: String[]
+    LibraryPath: String
+    LinkName: String
+    LinkDirs: String[]
+    RuntimeFiles: String[]
+    ImportLibraryPath: String
+    CallingConvention: CAbiCallingConvention
+    Defines: String[]
+}
+
+record CAbiConsumer {
+    IncludeDirs: String[]
+    Defines: String[]
+    LinkDirs: String[]
+    LinkNames: String[]
+    LibraryPaths: String[]
+    LinkArgs: String[]
+    RuntimeFiles: String[]
 }
 
 fn DefaultConfig() -> Config {

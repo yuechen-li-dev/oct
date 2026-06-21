@@ -43,3 +43,19 @@ fn CommandTargetsUseStructuredProgramArgsAndEnv() -> Void {
     Assert.Equal("-c", BuildGoBinaryFirstArg(), "Go build should use structured Args")
     Assert.Equal("CGO_ENABLED=1", BuildGoBinaryFirstEnv(), "Go build should use structured cgo Env")
 }
+
+[Fact]
+fn RustArtifactDescribesCAbiStaticLibraryMetadata() -> Void {
+    let artifact = RustArtifact()
+    Assert.Equal("chimera_rust", artifact.Name, "Rust artifact should have a logical name")
+    Assert.Equal(Make.CAbiLibraryKind.Static, artifact.Kind, "Rust artifact should be a static C ABI library")
+    Assert.Equal(1, Len(artifact.Headers), "Rust artifact should export one C header")
+    Assert.Equal("rust", artifact.IncludeDirs[0], "Rust artifact should provide include dirs for consumers")
+    Assert.Equal(ChimeraRustLibraryPath(), artifact.LibraryPath, "Rust artifact should point at the staticlib output")
+    Assert.Equal("chimera_rust", artifact.LinkName, "Rust artifact should provide a link name")
+    Assert.Equal("rust/target/release", artifact.LinkDirs[0], "Rust artifact should provide a link directory")
+    Assert.Equal(0, Len(artifact.RuntimeFiles), "static Unix M0 artifact should not require runtime files")
+    Assert.Equal("", artifact.ImportLibraryPath, "static Unix M0 artifact should not require an import library")
+    Assert.Equal(Make.CAbiCallingConvention.C, artifact.CallingConvention, "Rust artifact should use the C calling convention")
+    Assert.Equal(0, Len(artifact.Defines), "Rust M0 artifact should not require preprocessor defines")
+}
