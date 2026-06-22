@@ -461,3 +461,63 @@ This design does not implement:
 - macros/reflection/metaprogramming;
 - language-wide purity;
 - attribute requirements for normal Oct code.
+
+## ATTR-MAKE4-H1 implementation note — Go-layer purity judgment diagnostics
+
+ATTR-MAKE4-H1 implements the first Make purity diagnostic pass without adding a full purity effect system and without moving hard Make authority semantics into scoring.
+
+### `internal/judgment` usage
+
+The implementation uses `internal/judgment` only to select the primary explanation when a `[Pure]` Make function has multiple direct evidence items. Evidence extraction and semantic classification remain owned by the Make checker/doctor code. The judgment candidates are diagnostic evidence records, not language semantics. The hard rule that direct Make host primitives require `[RequiresAuthority]` remains direct checker logic.
+
+The current scoring mirrors the design intent:
+
+| Evidence | Utility | Default severity |
+| --- | ---: | --- |
+| `HostAuthority` | 100 | `Error` |
+| `ObservableEffect` | 60 | `Warning` |
+| `UnknownCall` | 40 | `Warning` |
+| `PureData` | 0 | `Allow` |
+| `DeterministicFailure` | 0 | `Allow` |
+| `ControlFlow` | 0 | `Allow` |
+
+This means that a function with both `Make.ReadText(...)` and an unmarked helper call reports the host-authority contradiction as the primary explanation instead of burying it behind the lower-confidence unknown-call warning.
+
+### Evidence categories
+
+The H1 implementation keeps the evidence categories internal to Go and does not expose `Make.PurityJudgment` or `Make.JudgmentUtility` in `Libraries/Make`.
+
+- `PureData`: literals, arrays, records, enum values, target record construction, C ABI metadata construction, command strings as data, calls to directly marked `[Pure]` helpers, and non-host `Make` data helpers.
+- `HostAuthority`: direct calls to Make host primitives such as `Make.Tool`, `Make.Env`, `Make.Exec`, `Make.ReadText`, `Make.WriteText`, `Make.Remove`, `Make.HashFile`, and related host operations.
+- `ObservableEffect`: direct `Print(...)` calls in a `[Pure]` function.
+- `UnknownCall`: direct local/imported/helper calls whose purity is not known in H1.
+- `DeterministicFailure`: `error(...)` validation/failure construction; this remains allowed.
+- `ControlFlow`: `if`, `switch`, `match`, `for`, `while`, and `when utility`; these remain allowed by `[Pure]` in H1. `[NoWhile]` remains the separate while-loop policy.
+
+### Hard errors versus doctor warnings
+
+Direct Make host primitive calls remain hard errors in `Make.oct` functions unless the enclosing function has `[RequiresAuthority]`. For `[Pure]` functions the diagnostic is now purity-specific because `[Pure]` and `[RequiresAuthority]` cannot be combined:
+
+```text
+function RustArtifact is marked [Pure] but calls Make.ReadText, which requires host authority; move the call to a [RequiresAuthority] helper or pass read data into the pure planner
+```
+
+For non-`[Pure]` functions, the existing ATTR-MAKE3 diagnostic remains:
+
+```text
+function CheckTools calls Make.Tool and must be marked [RequiresAuthority]
+```
+
+`oct make doctor` reports `[Pure]` functions as `ok` when no concerning direct evidence is found. It warns for direct calls to helpers without `[Pure]` and for direct `Print(...)` observable output. Unknown-call and observable-effect warnings are advisory and do not become hard failures in H1.
+
+### Direct-call-only limitation
+
+ATTR-MAKE4-H1 is intentionally direct-call-only. If `[Pure] Plan()` calls unmarked `BuildTarget()`, doctor may warn that `BuildTarget` is not marked `[Pure]`, but the checker does not recursively inspect `BuildTarget` as part of `Plan()`'s purity. If `BuildTarget()` itself directly calls `Make.Tool` without `[RequiresAuthority]`, ATTR-MAKE3 rejects `BuildTarget()` directly. If `BuildTarget()` is marked `[Pure]`, the direct call from `Plan()` is treated as OK.
+
+### Public enum deferral
+
+The implementation model intentionally mirrors Oct's enum/judgment idiom and the Go-layer `internal/judgment` primitive, but no public Make enums are exposed yet. Public `Make.PurityJudgment` or `Make.JudgmentUtility` should wait for a structured user-facing `Make.Validate` or doctor API where the categories are stable.
+
+### Future strict/transitive mode
+
+A future ATTR-MAKE4 follow-up can add a strict/transitive mode that walks the Make helper graph, distinguishes imported package purity metadata, and optionally escalates unknown/effect evidence. That future mode should still keep authoritative host-capability rules as hard checker logic and reserve `internal/judgment` for selecting/ranking diagnostic explanations.

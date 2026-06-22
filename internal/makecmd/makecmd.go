@@ -1296,6 +1296,7 @@ func writeMakeAttributeDiagnostics(out io.Writer, program project.Program) {
 	writeMarkerGroup(out, "  Pure helpers:", functions, func(fn ast.FunctionDecl) bool { return fn.IsMakePure && fn.Name != "Plan" })
 	writePlanEntrypoint(out, functions)
 	writeAuthorityDiagnostics(out, functions)
+	writePureDiagnostics(out, functions)
 	writeTypedMakeIdiomSuggestions(out, functions)
 }
 
