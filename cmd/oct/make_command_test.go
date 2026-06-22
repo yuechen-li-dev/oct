@@ -881,3 +881,72 @@ fn ShellEnvGate() -> Make.ProcessResult ! Error {
 		}
 	}
 }
+
+func TestMakeDoctorPureJudgmentDiagnostics(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+[MakePlan]
+[Pure]
+fn Plan() -> Make.Plan {
+    return Make.Plan { Default: "All" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: [] }] }
+}
+
+fn NormalizePath(path: String) -> String { return path }
+
+[Pure]
+fn FormatOutputPath() -> String { return NormalizePath("out.txt") }
+
+[Pure]
+fn PureHelper() -> String { return "ok" }
+
+[Pure]
+fn UsesPureHelper() -> String { return PureHelper() }
+`)
+	stdout, stderr, err := executeCLIArgs("make", "doctor", "--file", makeFile)
+	if err != nil {
+		t.Fatalf("doctor failed: %v stderr=%s stdout=%s", err, stderr, stdout)
+	}
+	for _, want := range []string{
+		"Pure diagnostics:",
+		"Plan: ok",
+		"FormatOutputPath: warning: calls helper NormalizePath without [Pure]; transitive purity is not checked in this release",
+		"UsesPureHelper: ok",
+		"Validation: ok",
+	} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("doctor missing %q:\n%s", want, stdout)
+		}
+	}
+}
+
+func TestMakeDoctorPureJudgmentRanksMostSevereEvidence(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+[MakePlan]
+[Pure]
+fn Plan() -> Make.Plan {
+    return Make.Plan { Default: "All" Config: Make.DefaultConfig() CommandTargets: [] FunctionTargets: [] FlowTargets: [] PhonyTargets: [Make.PhonyTarget { Name: "All" Deps: [] }] }
+}
+
+fn NormalizePath(path: String) -> String { return path }
+
+[Pure]
+fn Mixed() -> String ! Error {
+    let path = NormalizePath("input.txt")
+    return Make.ReadText(path)?
+}
+`)
+	stdout, stderr, err := executeCLIArgs("make", "doctor", "--file", makeFile)
+	if err == nil {
+		t.Fatalf("expected doctor to fail on hard pure host authority error, stdout=%s stderr=%s", stdout, stderr)
+	}
+	if !strings.Contains(err.Error(), "function Mixed is marked [Pure] but calls Make.ReadText, which requires host authority") {
+		t.Fatalf("unexpected error: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+}

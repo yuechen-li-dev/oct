@@ -926,7 +926,7 @@ fn ReadEnv() -> Make.EnvValue ! Error { return Make.Env("PATH")? }`, "function R
 fn Run() -> Int ! Error { let result = Make.Exec("go", ["version"])? return result.ExitCode }`, "function Run calls Make.Exec and must be marked [RequiresAuthority]"},
 		{"pure", `import Make
 [Pure]
-fn CheckTools() -> String ! Error { return Make.Tool("go")? }`, "function CheckTools calls Make.Tool and must be marked [RequiresAuthority]"},
+fn CheckTools() -> String ! Error { return Make.Tool("go")? }`, "function CheckTools is marked [Pure] but calls Make.Tool, which requires host authority"},
 		{"helper direct only", `import Make
 fn Helper() -> String ! Error { return Make.Tool("go")? }
 fn CheckTools() -> String ! Error { return Helper()? }`, "function Helper calls Make.Tool and must be marked [RequiresAuthority]"},
@@ -942,6 +942,47 @@ fn CheckTools() -> String ! Error { return Helper()? }`, "function Helper calls 
 				t.Fatalf("expected error to contain %q, got %q", tt.want, err.Error())
 			}
 		})
+	}
+}
+
+func TestMakePureDirectEvidenceH1(t *testing.T) {
+	valid := []string{
+		`import Make
+[RequiresAuthority]
+fn Read() -> String ! Error { return Make.ReadText("in.txt")? }`,
+		`import Make
+[Pure]
+fn Target() -> Make.CommandTarget { return Make.CommandTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Program: "go" Args: ["build"] Cwd: "." Env: [] } }`,
+		`import Make
+[Pure]
+fn Fail() -> String ! Error { return error("nope") }`,
+		`import Make
+enum Mode { Fast Slow }
+[Pure]
+fn Pick(mode: Mode) -> String { return match mode { case Mode.Fast => "fast" case Mode.Slow => "slow" } }`,
+		`import Make
+[Pure]
+fn Helper() -> String { return "ok" }
+[Pure]
+fn PlanName() -> String { return Helper() }`,
+		`import Make
+fn Helper() -> String { return "ok" }
+[Pure]
+fn PlanName() -> String { return Helper() }`,
+	}
+	for _, src := range valid {
+		program := makeAuthorityTestProgram(t, "Make.oct", src)
+		if err := CheckProgram(program); err != nil {
+			t.Fatalf("Check returned error for %q: %v", src, err)
+		}
+	}
+
+	program := makeAuthorityTestProgram(t, "Make.oct", `import Make
+[Pure]
+fn Read() -> String ! Error { return Make.ReadText("in.txt")? }`)
+	err := CheckProgram(program)
+	if err == nil || !strings.Contains(err.Error(), "function Read is marked [Pure] but calls Make.ReadText, which requires host authority") {
+		t.Fatalf("expected pure host-authority diagnostic, got %v", err)
 	}
 }
 
@@ -972,6 +1013,7 @@ fn DefaultConfig() -> Config { return Config { Profile: "Default" StateDir: ".oc
 fn Tool(name: String) -> String ! Error { return error("host") }
 fn Env(name: String) -> EnvValue ! Error { return error("host") }
 fn Exec(program: String, args: String[]) -> ProcessResult ! Error { return error("host") }
+fn ReadText(path: String) -> String ! Error { return error("host") }
 `)
 	return project.Program{Entry: mainFile.Package, Packages: map[string]project.Package{
 		mainFile.Package: {Name: mainFile.Package, Imports: mainFile.Imports, Records: mainFile.Records, Enums: mainFile.Enums, Functions: mainFile.Functions, Flows: mainFile.Flows},

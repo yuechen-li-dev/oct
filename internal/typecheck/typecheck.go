@@ -157,6 +157,7 @@ type functionContext struct {
 	isBenchmark           bool
 	isMakeFile            bool
 	requiresMakeAuthority bool
+	isMakePure            bool
 	inFlow                bool
 	inState               bool
 	states                map[string]struct{}
@@ -571,7 +572,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		}
 	}
 
-	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority}
+	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -2447,6 +2448,9 @@ regularCall:
 	}
 	if hasDirectName {
 		if primitive, ok := directMakeHostPrimitiveName(calleeName); ok && ctx.isMakeFile && !ctx.requiresMakeAuthority {
+			if ctx.isMakePure {
+				return ExprType{}, fmt.Errorf("function %s is marked [Pure] but calls Make.%s, which requires host authority; move the call to a [RequiresAuthority] helper or pass read data into the pure planner", ctx.name, primitive)
+			}
 			return ExprType{}, fmt.Errorf("function %s calls Make.%s and must be marked [RequiresAuthority]", ctx.name, primitive)
 		}
 		if namespace, symbol, ok := splitTwoSegmentQualifiedName(calleeName); ok {
