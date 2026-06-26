@@ -2446,6 +2446,9 @@ func (p *parser) parseLiteralUnitSuffix(numberToken lex.Token) (dimension.Dimens
 		return dimension.Zero(), false, nil
 	}
 	if !tokensAdjacent(numberToken, p.current()) {
+		if numberToken.Line != p.current().Line {
+			return dimension.Zero(), false, nil
+		}
 		if _, ok := dimension.FromBaseName(p.current().Lexeme); !ok {
 			return dimension.Zero(), false, nil
 		}
