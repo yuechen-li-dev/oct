@@ -10,6 +10,7 @@ import "C"
 import "fmt"
 
 func main() {
+	C.ChimeraInit()
 	goNumber := int32(7)
 	rustNumber := int32(C.rust_hello_number())
 	total := goNumber + rustNumber
