@@ -105,7 +105,10 @@ fn ClampNonNegative(v: Int) -> Int {
 
 ## Loop selection guidance
 
-Use `for i in start..end [step k]` for known-range and regular-step iteration. Although `Range` expressions may omit endpoints in expression positions, `for` loops require closed ranges in M0.
+Use `for i in start..end [step k]` for ascending known-range and regular-step iteration. Use `for i in start..end descend k` for explicit descending iteration; bare `descend` is shorthand for `descend 1`. Although `Range` expressions may omit endpoints in expression positions, `for` loops require closed ranges in M0.
+
+`for` ranges are half-open in both directions: ascending loops visit `start` while `i < end`, and descending loops visit `start` while `i > end`. Ascending `step k` and descending `descend k` require a positive `Int` magnitude. `step` and `descend` are mutually exclusive; negative `step` is invalid, so write `descend <positive magnitude>` when counting down. Ascending loops require `start <= end`; descending loops require `start >= end`. Equal bounds produce zero iterations.
+
 Use `while` when loop termination depends on a condition that evolves during execution.
 Using `while` to manually emulate a `for` loop is legal, but discouraged when the loop is structured iteration.
 
@@ -120,6 +123,21 @@ fn SumEvenUnder(limit: Int) -> Int {
         sum = sum + i
     }
     return sum
+}
+```
+
+
+Preferred (`for` for descending half-open iteration):
+
+```oct
+package Main
+
+fn SumDown() -> Int {
+    var sum = 0
+    for i in 5..0 descend 1 {
+        sum = sum + i
+    }
+    return sum // 15: visits 5, 4, 3, 2, 1
 }
 ```
 

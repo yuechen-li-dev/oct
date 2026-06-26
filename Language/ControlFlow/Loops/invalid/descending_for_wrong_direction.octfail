@@ -1,0 +1,10 @@
+expect error: "descending range start must be greater than or equal to end"
+
+package Main
+
+fn Main() -> Int {
+    for i in 0..5 descend 1 {
+        return i
+    }
+    return 0
+}

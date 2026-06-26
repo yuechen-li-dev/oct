@@ -27,6 +27,7 @@ const (
 	KeywordIn         TokenKind = "KeywordIn"
 	KeywordAs         TokenKind = "KeywordAs"
 	KeywordStep       TokenKind = "KeywordStep"
+	KeywordDescend    TokenKind = "KeywordDescend"
 	KeywordTrue       TokenKind = "KeywordTrue"
 	KeywordFalse      TokenKind = "KeywordFalse"
 	KeywordMatch      TokenKind = "KeywordMatch"
@@ -436,6 +437,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordAs
 	case "step":
 		return KeywordStep
+	case "descend":
+		return KeywordDescend
 	case "true":
 		return KeywordTrue
 	case "false":

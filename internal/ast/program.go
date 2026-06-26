@@ -198,10 +198,19 @@ type ExprStmt struct {
 
 func (ExprStmt) stmtNode() {}
 
+type ForDirection int
+
+const (
+	ForDirectionAsc ForDirection = iota
+	ForDirectionDesc
+)
+
 type ForStmt struct {
-	Name  string
-	Range Expr
-	Body  Block
+	Name        string
+	Range       Expr
+	Direction   ForDirection
+	DescendStep Expr
+	Body        Block
 }
 
 func (ForStmt) stmtNode() {}

@@ -1340,11 +1340,22 @@ func (p *parser) parseForStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	direction := ast.ForDirectionAsc
+	var descendStep ast.Expr
+	if p.match(lex.KeywordDescend) {
+		direction = ast.ForDirectionDesc
+		if p.current().Kind != lex.LeftBrace {
+			descendStep, err = p.parseBinaryExpr(precedenceOr)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	body, err := p.parseBlock()
 	if err != nil {
 		return nil, err
 	}
-	return ast.ForStmt{Name: name.Lexeme, Range: rangeExpr, Body: body}, nil
+	return ast.ForStmt{Name: name.Lexeme, Range: rangeExpr, Direction: direction, DescendStep: descendStep, Body: body}, nil
 }
 
 func (p *parser) parseMatchStmt() (ast.Stmt, error) {
@@ -1803,7 +1814,7 @@ func (p *parser) parsePrimaryExpr() (ast.Expr, error) {
 	case lex.KeywordFalse:
 		p.advance()
 		return ast.BoolLiteral{Value: false}, nil
-	case lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep:
+	case lex.Identifier, lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.KeywordDescend:
 		p.advance()
 		if token.Lexeme == "vector" && p.current().Kind == lex.LeftBracket {
 			return p.parseVectorLiteralExpr()
@@ -2364,7 +2375,7 @@ func (p *parser) expect(kind lex.TokenKind, message string) (lex.Token, error) {
 
 func isContextualIdentifierToken(kind lex.TokenKind) bool {
 	switch kind {
-	case lex.KeywordFlow, lex.KeywordState, lex.KeywordStep:
+	case lex.KeywordFlow, lex.KeywordState, lex.KeywordStep, lex.KeywordDescend:
 		return true
 	default:
 		return false
