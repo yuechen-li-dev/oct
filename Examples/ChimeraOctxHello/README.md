@@ -52,12 +52,10 @@ On the wire they remain inside the existing Octxiliary typed-value envelopes. Th
 ## Boundaries
 
 This is not UIBridge, Machina, or a C ABI example. M0 has no C layer and no callbacks.
-The Rust code is not a full Rust Octxiliary SDK and is not a full Octagon parser. It recognizes only the exact M0 request subset emitted by the Go client:
+The Rust sidecar now uses the repository-local H1 Rust Octxiliary SDK at `internal/octxiliary/rust-sdk`. The SDK is still intentionally small and is not a full Octagon parser. It recognizes the current typed Octxiliary value subset needed by the example:
 
 - no arbitrary record parsing;
 - no arrays;
-- no floats;
-- no strings in DTO payloads;
 - no handles;
 - no comments;
 - no dimensions;
@@ -65,7 +63,7 @@ The Rust code is not a full Rust Octxiliary SDK and is not a full Octagon parser
 - no C layer;
 - no callbacks.
 
-The Go client uses the repository's existing internal Octxiliary encoder/parser helpers for this in-repo example, and uses direct process spawning for the Rust sidecar.
+The SDK public API deliberately uses PascalCase (`Request.FieldInt`, `Response::OkRecord`, `Dispatcher::New`, `Dispatcher.Handle`, `MainLoop`) to match Oct/Go/C#-style Chimera/Octxiliary conventions rather than Rust snake_case. The Go client uses the repository's existing internal Octxiliary encoder/parser helpers for this in-repo example, and uses direct process spawning for the Rust sidecar.
 
 ## Safe default validation
 
