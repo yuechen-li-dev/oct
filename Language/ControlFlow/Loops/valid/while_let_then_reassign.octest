@@ -1,0 +1,16 @@
+package MainValid
+
+[Fact]
+fn WhileLetThenReassign() -> Void {
+    var A = [0.0]
+    var i = 0
+    let n = 3
+
+    while i < n {
+        let v = Float(i) * 0.37
+        A = Append(A, v)
+        i = i + 1
+    }
+
+    Assert.Equal(4, Len(A), "while body let followed by reassignment parses and runs")
+}

@@ -1,6 +1,12 @@
 package tester
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/yuechen-li-dev/oct/internal/project"
+)
 
 func TestBenchmarkMetadataFromOutputDefaultsToCPUPath(t *testing.T) {
 	metadata := benchmarkMetadataFromOutput("[[19 22] [43 50]]\n0\n")
@@ -44,5 +50,35 @@ func TestBenchmarkMetadataFromOutputCapturesPrometheusTruth(t *testing.T) {
 	}
 	if metadata.ReportedWallNs != 0 {
 		t.Fatalf("expected parsed wall of 0ns, got %d", metadata.ReportedWallNs)
+	}
+}
+
+func TestBenchmarkRunnerCleanupAfterCompileFailure(t *testing.T) {
+	root := t.TempDir()
+	benchPath := filepath.Join(root, "bench.octest")
+	if err := os.WriteFile(benchPath, []byte("package Main\n[Benchmark]\nfn Bad() -> Void { Missing() }\n"), 0o644); err != nil {
+		t.Fatalf("write benchmark fixture: %v", err)
+	}
+	program, err := project.LoadForTest(benchPath)
+	if err != nil {
+		t.Fatalf("load benchmark fixture: %v", err)
+	}
+	_, _, err = executeBenchmarkCompiled(program, benchmarkCase{pkg: "Main", filePath: benchPath, name: "Bad"})
+	if err == nil {
+		t.Fatalf("expected benchmark compile failure")
+	}
+	runners, globErr := filepath.Glob(filepath.Join(root, "zz_oct_bench_runner_*.oct"))
+	if globErr != nil {
+		t.Fatalf("glob runner files: %v", globErr)
+	}
+	if len(runners) != 0 {
+		t.Fatalf("expected generated runner .oct files to be cleaned up, found %v", runners)
+	}
+	artifacts, globErr := filepath.Glob(filepath.Join(root, "zz_oct_bench_runner_*.oct.octbin"))
+	if globErr != nil {
+		t.Fatalf("glob runner artifacts: %v", globErr)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("expected generated runner .octbin files to be cleaned up, found %v", artifacts)
 	}
 }

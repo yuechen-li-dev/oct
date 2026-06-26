@@ -250,6 +250,7 @@ func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) 
 
 	result, err := build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, benchmark.filePath})
 	if err != nil {
+		cleanupArtifact(runnerPath + ".octbin")
 		return "", 0, err
 	}
 	defer cleanupArtifact(result.ArtifactPath)
