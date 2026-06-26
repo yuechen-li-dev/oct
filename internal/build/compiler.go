@@ -899,6 +899,7 @@ func collectFunctionCallsWithLocals(block ast.Block, functionValueLocals map[str
 			calls = append(calls, collectExprCallsWithLocals(s.Value, functionValueLocals)...)
 		case ast.ForStmt:
 			calls = append(calls, collectExprCallsWithLocals(s.Range, functionValueLocals)...)
+			calls = append(calls, collectExprCallsWithLocals(s.DescendStep, functionValueLocals)...)
 			calls = append(calls, collectFunctionCallsWithLocals(s.Body, functionValueLocals)...)
 		case ast.MatchStmt:
 			calls = append(calls, collectExprCallsWithLocals(s.Subject, functionValueLocals)...)
@@ -1568,10 +1569,18 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	if err != nil {
 		return err
 	}
+	if s.Direction == ast.ForDirectionDesc && rangeExpr.Step != nil {
+		return fmt.Errorf("for loop cannot use both step and descend")
+	}
 	step := "1"
-	hasExplicitStep := rangeExpr.Step != nil
+	hasExplicitStep := rangeExpr.Step != nil || s.DescendStep != nil
 	if rangeExpr.Step != nil {
 		step, _, _, err = c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(rangeExpr.Step) })
+		if err != nil {
+			return err
+		}
+	} else if s.DescendStep != nil {
+		step, _, _, err = c.withExpectedType("Int", func() (string, string, bool, error) { return c.lowerExpr(s.DescendStep) })
 		if err != nil {
 			return err
 		}
@@ -1622,8 +1631,12 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	}
 
 	c.cur = rangeCheckID
+	rangeCond := fmt.Sprintf("(%s <= %s)", startLocal, endLocal)
+	if s.Direction == ast.ForDirectionDesc {
+		rangeCond = fmt.Sprintf("(%s >= %s)", startLocal, endLocal)
+	}
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        fmt.Sprintf("(%s <= %s)", startLocal, endLocal),
+		Cond:        rangeCond,
 		TrueTarget:  c.blocks[condID].Label,
 		FalseTarget: c.blocks[rangeFailID].Label,
 	}
@@ -1642,8 +1655,12 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 
 	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: startLocal})
 	c.cur = condID
+	loopCond := fmt.Sprintf("(%s < %s)", loopGoName, endLocal)
+	if s.Direction == ast.ForDirectionDesc {
+		loopCond = fmt.Sprintf("(%s > %s)", loopGoName, endLocal)
+	}
 	c.blocks[c.cur].Terminator = MIRBranch{
-		Cond:        fmt.Sprintf("(%s < %s)", loopGoName, endLocal),
+		Cond:        loopCond,
 		TrueTarget:  c.blocks[bodyID].Label,
 		FalseTarget: c.blocks[exitID].Label,
 	}
@@ -1657,16 +1674,28 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 	}
 
 	c.cur = incrID
-	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: fmt.Sprintf("(%s + %s)", loopGoName, stepLocal)})
+	updateExpr := fmt.Sprintf("(%s + %s)", loopGoName, stepLocal)
+	if s.Direction == ast.ForDirectionDesc {
+		updateExpr = fmt.Sprintf("(%s - %s)", loopGoName, stepLocal)
+	}
+	c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: loopGoName, Value: updateExpr})
 	c.blocks[c.cur].Terminator = MIRJump{Target: c.blocks[condID].Label}
 
 	if hasExplicitStep {
 		c.cur = stepFailID
-		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s)", "runtime error: range step must be positive, got ", stepLocal)}
+		stepFailMessage := "runtime error: range step must be positive, got "
+		if s.Direction == ast.ForDirectionDesc {
+			stepFailMessage = "runtime error: descending for loop requires positive descend step, got "
+		}
+		c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s)", stepFailMessage, stepLocal)}
 	}
 
 	c.cur = rangeFailID
-	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s) + %q + fmt.Sprint(%s)", "runtime error: range start must be less than or equal to end, got ", startLocal, "..", endLocal)}
+	rangeFailMessage := "runtime error: range start must be less than or equal to end, got "
+	if s.Direction == ast.ForDirectionDesc {
+		rangeFailMessage = "runtime error: descending range start must be greater than or equal to end, got "
+	}
+	c.blocks[c.cur].Terminator = MIRFail{Value: fmt.Sprintf("%q + fmt.Sprint(%s) + %q + fmt.Sprint(%s)", rangeFailMessage, startLocal, "..", endLocal)}
 
 	c.cur = exitID
 	if bindLoopName && hadPrevious {

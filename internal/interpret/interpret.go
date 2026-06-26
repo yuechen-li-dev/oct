@@ -1135,20 +1135,28 @@ func (i interpreter) executeStmt(env *environment, pkgName string, stmt ast.Stmt
 		}
 		return stmtResult{}, nil
 	case ast.ForStmt:
-		rangeValue, err := i.evalExpr(env, pkgName, node.Range)
+		rangeValue, err := i.evalForLoopRange(env, pkgName, node)
 		if err != nil {
 			return stmtResult{}, err
 		}
-		if rangeValue.hasError {
-			return stmtResult{value: rangeValue.errorVal, returned: true}, nil
+		if node.Direction == ast.ForDirectionDesc {
+			for current := rangeValue.Start; current > rangeValue.End; current -= rangeValue.Step {
+				if err := i.checkCancelled(); err != nil {
+					return stmtResult{}, err
+				}
+				iterationEnv := newEnvironment(env)
+				iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current}, false)
+				result, err := i.executeBlock(iterationEnv, pkgName, node.Body)
+				if err != nil {
+					return stmtResult{}, err
+				}
+				if result.returned {
+					return result, nil
+				}
+			}
+			return stmtResult{}, nil
 		}
-		if rangeValue.value.Kind != ValueRange {
-			return stmtResult{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
-		}
-		if !rangeValue.value.Range.HasStart || !rangeValue.value.Range.HasEnd {
-			return stmtResult{}, fmt.Errorf("runtime error: for loop range requires start and end")
-		}
-		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
+		for current := rangeValue.Start; current < rangeValue.End; current += rangeValue.Step {
 			if err := i.checkCancelled(); err != nil {
 				return stmtResult{}, err
 			}
@@ -1343,20 +1351,25 @@ func (i interpreter) executeFlowStmt(env *environment, pkgName string, stmt ast.
 			}
 		}
 	case ast.ForStmt:
-		rangeValue, err := i.evalExpr(env, pkgName, node.Range)
+		rangeValue, err := i.evalForLoopRange(env, pkgName, node)
 		if err != nil {
 			return flowSignal{}, err
 		}
-		if rangeValue.hasError {
-			return flowSignal{kind: flowSignalReturn, value: rangeValue.errorVal}, nil
+		if node.Direction == ast.ForDirectionDesc {
+			for current := rangeValue.Start; current > rangeValue.End; current -= rangeValue.Step {
+				iterationEnv := newEnvironment(env)
+				iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current}, false)
+				signal, err := i.executeFlowBlock(iterationEnv, pkgName, node.Body)
+				if err != nil {
+					return flowSignal{}, err
+				}
+				if signal.kind != flowSignalNone {
+					return signal, nil
+				}
+			}
+			return flowSignal{}, nil
 		}
-		if rangeValue.value.Kind != ValueRange {
-			return flowSignal{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
-		}
-		if !rangeValue.value.Range.HasStart || !rangeValue.value.Range.HasEnd {
-			return flowSignal{}, fmt.Errorf("runtime error: for loop range requires start and end")
-		}
-		for current := rangeValue.value.Range.Start; current < rangeValue.value.Range.End; current += rangeValue.value.Range.Step {
+		for current := rangeValue.Start; current < rangeValue.End; current += rangeValue.Step {
 			iterationEnv := newEnvironment(env)
 			iterationEnv.define(node.Name, Value{Kind: ValueInt, Int: current}, false)
 			signal, err := i.executeFlowBlock(iterationEnv, pkgName, node.Body)
@@ -4846,6 +4859,87 @@ func flowBoardSnapshotValue(instance *FlowRuntimeInstance) (Value, bool) {
 		order = append(order, name)
 	}
 	return Value{Kind: ValueRecord, Record: RecordValue{TypeName: instance.Decl.Name + "BoardSnapshot", Fields: fields, FieldOrder: order}}, true
+}
+
+func (i interpreter) evalForLoopRange(env *environment, pkgName string, node ast.ForStmt) (RangeValue, error) {
+	rangeExpr, ok := node.Range.(ast.RangeExpr)
+	if !ok {
+		rangeValue, err := i.evalExpr(env, pkgName, node.Range)
+		if err != nil {
+			return RangeValue{}, err
+		}
+		if rangeValue.hasError {
+			return RangeValue{}, fmt.Errorf("runtime invariant violation: unhandled error reached for loop range")
+		}
+		if rangeValue.value.Kind != ValueRange {
+			return RangeValue{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.value.Kind)
+		}
+		if !rangeValue.value.Range.HasStart || !rangeValue.value.Range.HasEnd {
+			return RangeValue{}, fmt.Errorf("runtime error: for loop range requires start and end")
+		}
+		return rangeValue.value.Range, nil
+	}
+
+	if node.Direction != ast.ForDirectionDesc {
+		rangeValue, err := i.evalRangeExpr(env, pkgName, ast.RangeExpr{Start: rangeExpr.Start, End: rangeExpr.End, Step: rangeExpr.Step})
+		if err != nil {
+			return RangeValue{}, err
+		}
+		if rangeValue.Kind != ValueRange {
+			return RangeValue{}, fmt.Errorf("runtime invariant violation: for loop expected Range, got %s", rangeValue.Kind)
+		}
+		return rangeValue.Range, nil
+	}
+	if rangeExpr.Start == nil || rangeExpr.End == nil {
+		return RangeValue{}, fmt.Errorf("runtime error: for loop range requires start and end")
+	}
+	if rangeExpr.Step != nil {
+		return RangeValue{}, fmt.Errorf("runtime error: for loop cannot use both step and descend")
+	}
+	startValue, err := i.evalExpr(env, pkgName, rangeExpr.Start)
+	if err != nil {
+		return RangeValue{}, err
+	}
+	if startValue.hasError {
+		return RangeValue{}, fmt.Errorf("runtime invariant violation: unhandled error reached range start")
+	}
+	if startValue.value.Kind != ValueInt || !startValue.value.Dimension.IsDimensionless() {
+		return RangeValue{}, fmt.Errorf("runtime error: range start must be Int, got %s", valueTypeName(startValue.value))
+	}
+	endValue, err := i.evalExpr(env, pkgName, rangeExpr.End)
+	if err != nil {
+		return RangeValue{}, err
+	}
+	if endValue.hasError {
+		return RangeValue{}, fmt.Errorf("runtime invariant violation: unhandled error reached range end")
+	}
+	if endValue.value.Kind != ValueInt || !endValue.value.Dimension.IsDimensionless() {
+		return RangeValue{}, fmt.Errorf("runtime error: range end must be Int, got %s", valueTypeName(endValue.value))
+	}
+	resolved := RangeValue{Start: startValue.value.Int, HasStart: true, End: endValue.value.Int, HasEnd: true, Step: 1}
+	step := int64(1)
+	if node.DescendStep != nil {
+		stepValue, err := i.evalExpr(env, pkgName, node.DescendStep)
+		if err != nil {
+			return RangeValue{}, err
+		}
+		if stepValue.hasError {
+			return RangeValue{}, fmt.Errorf("runtime invariant violation: unhandled error reached descend step")
+		}
+		if stepValue.value.Kind != ValueInt || !stepValue.value.Dimension.IsDimensionless() {
+			return RangeValue{}, fmt.Errorf("runtime error: descending for loop descend step must be Int, got %s", valueTypeName(stepValue.value))
+		}
+		step = stepValue.value.Int
+	}
+	if step <= 0 {
+		return RangeValue{}, fmt.Errorf("runtime error: descending for loop requires positive descend step, got %d", step)
+	}
+	if resolved.Start < resolved.End {
+		return RangeValue{}, fmt.Errorf("runtime error: descending range start must be greater than or equal to end, got %d..%d", resolved.Start, resolved.End)
+	}
+	resolved.Step = step
+	resolved.HasStep = node.DescendStep != nil
+	return resolved, nil
 }
 
 func (i interpreter) evalRangeExpr(env *environment, pkgName string, expr ast.RangeExpr) (Value, error) {

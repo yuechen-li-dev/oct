@@ -1,0 +1,10 @@
+expect error: "for loop cannot use both step and descend"
+
+package Main
+
+fn Main() -> Int {
+    for i in 5..0 step 1 descend 1 {
+        return i
+    }
+    return 0
+}

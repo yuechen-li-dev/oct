@@ -1,0 +1,10 @@
+expect error: "descending for loop descend step must be Int"
+
+package Main
+
+fn Main() -> Int {
+    for i in 5..0 descend 1.0 {
+        return i
+    }
+    return 0
+}

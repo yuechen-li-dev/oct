@@ -979,8 +979,35 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if rangeType.ValueType != (Type{Base: BaseTypeRange}) {
 			return false, fmt.Errorf("function %s: for %s: range expression expects Range, got %s", ctx.name, node.Name, rangeType.ValueType)
 		}
-		if rangeExpr, ok := node.Range.(ast.RangeExpr); ok && (rangeExpr.Start == nil || rangeExpr.End == nil) {
-			return false, fmt.Errorf("function %s: for %s: for loop range requires start and end", ctx.name, node.Name)
+		if rangeExpr, ok := node.Range.(ast.RangeExpr); ok {
+			if rangeExpr.Start == nil || rangeExpr.End == nil {
+				return false, fmt.Errorf("function %s: for %s: for loop range requires start and end", ctx.name, node.Name)
+			}
+			if node.Direction == ast.ForDirectionDesc && rangeExpr.Step != nil {
+				return false, fmt.Errorf("function %s: for %s: for loop cannot use both step and descend", ctx.name, node.Name)
+			}
+			if node.Direction == ast.ForDirectionDesc {
+				if startValue, startOK := staticIntegerValue(rangeExpr.Start); startOK {
+					if endValue, endOK := staticIntegerValue(rangeExpr.End); endOK && startValue < endValue {
+						return false, fmt.Errorf("function %s: for %s: descending range start must be greater than or equal to end, got %d..%d", ctx.name, node.Name, startValue, endValue)
+					}
+				}
+			}
+		}
+		if node.Direction == ast.ForDirectionDesc && node.DescendStep != nil {
+			descendType, err := c.checkExpr(scope, node.DescendStep, ctx)
+			if err != nil {
+				return false, fmt.Errorf("function %s: for %s: %w", ctx.name, node.Name, err)
+			}
+			if descendType.Fallible {
+				return false, fmt.Errorf("function %s: for %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, node.Name)
+			}
+			if descendType.ValueType != (Type{Base: BaseTypeInt}) {
+				return false, fmt.Errorf("function %s: for %s: descending for loop descend step must be Int, got %s", ctx.name, node.Name, descendType.ValueType)
+			}
+			if stepValue, ok := staticIntegerValue(node.DescendStep); ok && stepValue <= 0 {
+				return false, fmt.Errorf("function %s: for %s: descending for loop requires positive descend step, got %d", ctx.name, node.Name, stepValue)
+			}
 		}
 		loopScope := newScope(scope)
 		loopScope.define(node.Name, Type{Base: BaseTypeInt}, false)
@@ -1939,6 +1966,15 @@ func staticIntegerValue(expr ast.Expr) (int64, bool) {
 		return value, true
 	case ast.ParenExpr:
 		return staticIntegerValue(node.Inner)
+	case ast.UnaryExpr:
+		if node.Operator != "-" {
+			return 0, false
+		}
+		value, ok := staticIntegerValue(node.Operand)
+		if !ok {
+			return 0, false
+		}
+		return -value, true
 	case ast.BinaryExpr:
 		left, ok := staticIntegerValue(node.Left)
 		if !ok {

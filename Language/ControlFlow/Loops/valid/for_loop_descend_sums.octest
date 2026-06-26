@@ -1,0 +1,50 @@
+package MainValid
+
+[Fact]
+fn ForLoopDescendSumsHalfOpen() -> Void {
+    var sum = 0
+    for i in 5..0 descend 1 {
+        sum = sum + i
+    }
+    Assert.Equal(15, sum, "descending for loop visits start down to but excluding end")
+}
+
+[Fact]
+fn ForLoopDescendStepTwo() -> Void {
+    var sum = 0
+    var count = 0
+    for i in 5..0 descend 2 {
+        sum = sum + i
+        count = count + 1
+    }
+    Assert.Equal(9, sum, "descending for loop supports positive magnitude greater than one")
+    Assert.Equal(3, count, "descending for loop with step two visits 5, 3, 1")
+}
+
+[Fact]
+fn ForLoopBareDescendDefaultsToOne() -> Void {
+    var sum = 0
+    for i in 3..0 descend {
+        sum = sum + i
+    }
+    Assert.Equal(6, sum, "bare descend defaults to magnitude one")
+}
+
+[Fact]
+fn ForLoopDescendEqualBoundsSkips() -> Void {
+    var count = 0
+    for i in 4..4 descend 1 {
+        count = count + i
+    }
+    Assert.Equal(0, count, "equal descending bounds produce zero iterations")
+}
+
+[Fact]
+fn ForLoopDescendDynamicMagnitude() -> Void {
+    let stepSize = 2
+    var sum = 0
+    for i in 6..0 descend stepSize {
+        sum = sum + i
+    }
+    Assert.Equal(12, sum, "descending for loop accepts dynamic positive Int magnitude")
+}
