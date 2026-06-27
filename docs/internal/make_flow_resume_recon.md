@@ -477,3 +477,47 @@ Future cleanup:
 ## No behavior changed
 
 This recon is documentation only. It intentionally does not implement persistent resume, checkpoint writing/loading, interpreter reconstruction, trace schema changes, failure artifact schema changes, CLI flags, Make APIs, attributes, or tests.
+
+## MAKE-FLOW-RESUME-M0 implementation stop — 2026-06-27
+
+Status: **honest stop, implementation not attempted**. The pre-implementation audit found that M0 cannot safely persist and resume arbitrary suspended `Make.FlowTarget` instances with the currently exposed logical state alone. The blocking issue is not checkpoint file placement or target-state integration; it is exact interpreter continuation after a mid-state `suspend`.
+
+### Audit answers
+
+1. **Can a fresh flow instance be reconstructed from checkpoint data without changing semantics?**
+
+   Not for the full current language. A fresh flow instance can be reconnected to the current flow declaration, current state name, board snapshot, resume slot, instruction index, and state history. However, the live `StateEnv` can contain locals introduced by statements before the `suspend` in the same state. Those locals are needed when execution resumes at the next statement. Reconstructing only the board and current state would silently change semantics for states that use pre-suspend locals after the suspension point.
+
+2. **Is `InstructionIndex` enough for continuation after `suspend`, or is additional resume cursor state required?**
+
+   `InstructionIndex` is required but not sufficient. The interpreter increments `InstructionIndex` before returning the suspended signal, so a correct resume must continue at the next statement, not restart the state. To do that safely, M0 would also need the state-local environment for all prior statements in the active state, or a validated restriction proving that no post-suspend code can observe those locals. Neither exists today.
+
+3. **Does utility-when state need persistence for correctness?**
+
+   Yes for flows that execute controller-bound utility `when` sites before suspension and can observe their hysteresis or `min_commit` state after resume. `FlowRuntimeInstance.UtilityWhenSites` stores this state separately from the board. Persisting only board values would reset utility decision history and can alter later choices. M0 should either serialize this state with a concrete schema or explicitly reject such checkpoints.
+
+4. **Can board values be serialized/deserialized through existing Octagon paths?**
+
+   Board values are likely serializable by construction under current board-field type restrictions: scalar `Bool`, `String`, `Int`, `Float`, dimensioned scalar values, and arrays of those scalar categories. The existing `BoardSnapshot` value path provides a detached typed record suitable for an Octagon-shaped checkpoint. This was not the blocker.
+
+5. **Are there flows that should be treated as non-checkpointable in M0?**
+
+   Yes. At minimum, any suspended state whose continuation depends on same-state locals before the `suspend`, and any flow with live controller-bound utility-when state, must be non-checkpointable until those runtime states have explicit checkpoint schemas and compatibility validation. Because the current interpreter does not expose a safe proof that a suspension is independent of these hidden states, the conservative M0 decision is to stop rather than implement a partial resume path that appears general.
+
+### Exact blockers
+
+- `internal/interpret/interpret.go`: `FlowRuntimeInstance.StateEnv` contains state-local bindings that are not represented by `BoardSnapshot`, `CurrentState`, `StateHistory`, or `InstructionIndex`.
+- `internal/interpret/interpret.go`: `stepFlowWithTransitionLimit` advances past `suspend` by incrementing `InstructionIndex`, making exact resume a mid-state continuation problem.
+- `internal/interpret/interpret.go`: `FlowRuntimeInstance.UtilityWhenSites` contains controller-bound utility decision state that can affect later execution and has no checkpoint schema.
+- `internal/makecmd/makecmd.go`: Make trace/failure/staleness code can be extended once the interpreter exposes a safe logical checkpoint, but doing that first would create a checkpoint file that cannot faithfully resume all valid flows.
+
+### Smallest safe next step
+
+Add an interpreter-owned logical checkpoint API before Make writes persistent checkpoints:
+
+1. Define a public `FlowCheckpointState` that includes board snapshot, current state, instruction index, resume slot, state history, utility-when site states, and a serializable representation of active state-local bindings.
+2. Add an interpreter validation method that either exports a complete checkpoint or returns a non-checkpointable diagnostic naming the hidden state that prevents persistence.
+3. Add a resume API that reconstructs `RootEnv`, `StateEnv`, board binding, utility-when state, resume slot, and cursor, then validates the cursor against the current flow declaration before executing.
+4. Only after that API exists should `internal/makecmd` implement `<StateDir>/flows/<sanitized-target>/checkpoint.octagon`, invalidation, staleness override, trace/failure fields, and CLI resume messages.
+
+This keeps the task in the **honest stop** convergence state: persistent resume remains desirable, but an incomplete implementation would risk wrong hidden state and semantic drift.
