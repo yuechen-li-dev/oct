@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -89,6 +90,16 @@ type decision struct {
 	ResultCode                        int64
 	Suspended                         bool
 	SuspendedIntentionally            bool
+	Resumed                           bool
+	CheckpointPath                    string
+	ResumeState                       string
+	PriorSteps, TotalSteps            int
+	CheckpointWritten                 bool
+	CheckpointDeleted                 bool
+	CheckpointInvalidated             bool
+	CheckpointInvalidationReason      string
+	ResumeSupported                   bool
+	CheckpointError                   string
 	ExitCode                          int
 	Stdout, Stderr, Error             string
 	FailureArtifactPath               string
@@ -143,7 +154,7 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 		return maybeTrace(opts, plan, root, makeFile, selected, nil, nil, time.Now(), time.Now())
 	}
 	started := time.Now()
-	decisions, runErr := run(order, targets, root, program, plan, opts, stdout, stderr)
+	decisions, runErr := run(order, targets, root, makeFile, program, plan, opts, stdout, stderr)
 	finished := time.Now()
 	failurePath, failureErr := maybeFailureArtifact(opts, plan, root, makeFile, decisions, finished)
 	if failurePath != "" {
@@ -503,15 +514,28 @@ func closure(sel string, m map[string]*target) ([]string, error) {
 	return out, visit(sel)
 }
 
-func run(order []string, m map[string]*target, root string, program project.Program, plan Plan, opts Options, stdout, stderr io.Writer) ([]decision, error) {
+func run(order []string, m map[string]*target, root, makeFile string, program project.Program, plan Plan, opts Options, stdout, stderr io.Writer) ([]decision, error) {
 	state := loadState(root, plan)
 	ran := map[string]bool{}
 	decs := []decision{}
 	for _, n := range order {
 		t := m[n]
+		var checkpoint makeFlowCheckpointFile
+		checkpointPath := ""
+		resumeCheckpoint := false
+		checkpointInvalidReason := ""
+		if t.flow != nil {
+			checkpoint, checkpointPath, resumeCheckpoint, checkpointInvalidReason = validFlowCheckpoint(root, makeFile, plan, *t.flow, ran, program)
+		}
 		stale, reason, err := stale(t, root, ran, plan.Config.Staleness, state)
 		if err != nil {
 			return decs, err
+		}
+		if resumeCheckpoint {
+			stale = true
+			reason = "CheckpointPresent"
+		} else if checkpointInvalidReason != "" {
+			fmt.Fprintf(stdout, "checkpoint for FlowTarget %s invalidated: %s; restarting flow\n", n, checkpointInvalidReason)
 		}
 		if t.kind == "phony" {
 			stale = true
@@ -581,10 +605,29 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 			}
 		} else if t.flow != nil {
 			ft := t.flow
-			result, err := withMakeAuthorityFlow(func() (interpret.FlowRunResult, error) {
-				return interpret.RunFlowToCompletionWithOptions(program, program.Entry, ft.Flow, int(ft.MaxSteps), stdout, interpret.ExecuteOptions{})
-			})
+			var result interpret.SuspendedFlowRunResult
+			var err error
+			if checkpointInvalidReason != "" {
+				d.CheckpointInvalidated = true
+				d.CheckpointInvalidationReason = checkpointInvalidReason
+				d.CheckpointPath = checkpointPath
+			}
+			if resumeCheckpoint {
+				d.Resumed = true
+				d.CheckpointPath = checkpointPath
+				d.ResumeState = checkpoint.InterpreterCheckpoint.CurrentState
+				d.PriorSteps = checkpoint.InterpreterCheckpoint.StepCount
+				fmt.Fprintf(stdout, "resuming FlowTarget %s from %s at state %s\n", n, filepath.ToSlash(checkpointPath), checkpoint.InterpreterCheckpoint.CurrentState)
+				result, err = withMakeAuthorityFlowSuspended(func() (interpret.SuspendedFlowRunResult, error) {
+					return interpret.RunFlowToSuspensionFromCheckpointWithOptions(program, program.Entry, ft.Flow, checkpoint.InterpreterCheckpoint, int(ft.MaxSteps), stdout, interpret.ExecuteOptions{})
+				})
+			} else {
+				result, err = withMakeAuthorityFlowSuspended(func() (interpret.SuspendedFlowRunResult, error) {
+					return interpret.RunFlowToSuspensionWithOptions(program, program.Entry, ft.Flow, int(ft.MaxSteps), stdout, interpret.ExecuteOptions{})
+				})
+			}
 			d.Steps = result.Steps
+			d.TotalSteps = d.PriorSteps + result.Steps
 			d.FinalState = result.FinalState
 			d.StateHistory = result.StateHistory
 			d.Suspended = result.Suspended
@@ -605,7 +648,30 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 				if state == "" && len(result.StateHistory) > 0 {
 					state = result.StateHistory[len(result.StateHistory)-1]
 				}
-				msg := fmt.Sprintf("target %q: flow %q suspended at state %s; persistent make flow resume is not supported yet; re-run oct make when ready or use an explicit gate target", n, ft.Flow, state)
+				cp, cpErr := result.ExportCheckpoint(interpret.FlowCheckpointOptions{StepCount: d.TotalSteps})
+				if cpErr == nil {
+					created := ""
+					if resumeCheckpoint {
+						created = checkpoint.CreatedAtUtc
+					}
+					wrapper := checkpointWrapper(root, makeFile, plan, *ft, cp, created)
+					path := flowCheckpointPath(root, plan, ft.Name)
+					if werr := writeMakeFlowCheckpoint(path, wrapper); werr == nil {
+						d.ResumeSupported = true
+						d.CheckpointWritten = true
+						d.CheckpointPath = path
+						fmt.Fprintf(stdout, "flow suspended at state %s; checkpoint written to %s; re-run oct make %s to resume\n", state, filepath.ToSlash(path), n)
+					} else {
+						d.ResumeSupported = false
+						d.CheckpointError = werr.Error()
+						fmt.Fprintf(stdout, "flow suspended at state %s; resume checkpoint unavailable: %s\n", state, werr.Error())
+					}
+				} else {
+					d.ResumeSupported = false
+					d.CheckpointError = cpErr.Error()
+					fmt.Fprintf(stdout, "flow suspended at state %s; resume checkpoint unavailable: %s\n", state, cpErr.Error())
+				}
+				msg := fmt.Sprintf("target %q: flow %q suspended at state %s", n, ft.Flow, state)
 				d.Status = "Failed"
 				d.Error = msg
 				d.FinishedUnixNano = time.Now().UnixNano()
@@ -635,6 +701,11 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 				d.FinishedUnixNano = time.Now().UnixNano()
 				decs = append(decs, d)
 				return decs, fmt.Errorf("target %q: %s", n, msg)
+			}
+			if resumeCheckpoint {
+				if err := os.Remove(checkpointPath); err == nil {
+					d.CheckpointDeleted = true
+				}
 			}
 		}
 		d.FinishedUnixNano = time.Now().UnixNano()
@@ -873,7 +944,7 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		if d.Kind == "flow" {
 			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
 			writeStringArray(&b, d.StateHistory)
-			fmt.Fprintf(&b, "\n            ResultCode: %d\n            Suspended: %t\n            SuspendedIntentionally: %t\n", d.ResultCode, d.Suspended, d.SuspendedIntentionally)
+			fmt.Fprintf(&b, "\n            ResultCode: %d\n            Suspended: %t\n            SuspendedIntentionally: %t\n            Resumed: %t\n            CheckpointPath: %q\n            ResumeState: %q\n            PriorSteps: %d\n            TotalSteps: %d\n            CheckpointWritten: %t\n            CheckpointDeleted: %t\n            CheckpointInvalidated: %t\n            CheckpointInvalidationReason: %q\n            ResumeSupported: %t\n            CheckpointError: %q\n", d.ResultCode, d.Suspended, d.SuspendedIntentionally, d.Resumed, filepath.ToSlash(d.CheckpointPath), d.ResumeState, d.PriorSteps, d.TotalSteps, d.CheckpointWritten, d.CheckpointDeleted, d.CheckpointInvalidated, d.CheckpointInvalidationReason, d.ResumeSupported, d.CheckpointError)
 		}
 		b.WriteString("        }\n")
 	}
@@ -965,7 +1036,7 @@ func failureArtifact(plan Plan, makeFile, path string, d decision, runID string,
 		writeStringArray(&b, d.Deps)
 		fmt.Fprintf(&b, "\n        FinalState: %q\n        StepCount: %d\n        StateHistory: ", d.FinalState, d.Steps)
 		writeStringArray(&b, d.StateHistory)
-		fmt.Fprintf(&b, "\n        Suspended: %t\n        SuspendedIntentionally: %t\n        ResultCode: %d\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Suspended, d.SuspendedIntentionally, d.ResultCode, d.Error, d.Reason, durationMs)
+		fmt.Fprintf(&b, "\n        Suspended: %t\n        SuspendedIntentionally: %t\n        ResumeSupported: %t\n        CheckpointPath: %q\n        CheckpointError: %q\n        CurrentState: %q\n        PriorSteps: %d\n        TotalSteps: %d\n        ResultCode: %d\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Suspended, d.SuspendedIntentionally, d.ResumeSupported, filepath.ToSlash(d.CheckpointPath), d.CheckpointError, d.FinalState, d.PriorSteps, d.TotalSteps, d.ResultCode, d.Error, d.Reason, durationMs)
 	}
 	b.WriteString("}\n")
 	return b.String()
@@ -1679,4 +1750,301 @@ func existence(path string) string {
 		return "present"
 	}
 	return "missing"
+}
+
+type makePathState struct {
+	Path             string
+	Exists           bool
+	ModifiedUnixNano int64
+	Hash             string
+}
+type makeFlowCheckpointFile struct {
+	Version                                                                                           int
+	Target, SanitizedTarget, Flow, CreatedAtUtc, UpdatedAtUtc, MakeFile, MakeFileHash, FlowTargetHash string
+	Inputs, Outputs                                                                                   []makePathState
+	Deps                                                                                              []string
+	InterpreterCheckpoint                                                                             interpret.FlowCheckpoint
+}
+
+func flowCheckpointPath(root string, plan Plan, targetName string) string {
+	return filepath.Join(stateDir(root, plan), "flows", sanitizeTargetName(targetName), "checkpoint.octagon")
+}
+func sha256File(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+func flowTargetHash(ft FlowTarget) string {
+	h := sha256.New()
+	fields := []string{"flow", ft.Name, ft.Flow, fmt.Sprint(ft.MaxSteps)}
+	for _, f := range fields {
+		fmt.Fprintf(h, "%d:%s\n", len(f), f)
+	}
+	for _, xs := range [][]string{ft.Inputs, ft.Outputs, ft.Deps} {
+		fmt.Fprintf(h, "n:%d\n", len(xs))
+		for _, x := range xs {
+			fmt.Fprintf(h, "%d:%s\n", len(x), x)
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+func snapshotPaths(root string, paths []string) []makePathState {
+	out := []makePathState{}
+	for _, p := range paths {
+		full := p
+		if !filepath.IsAbs(full) {
+			full = filepath.Join(root, p)
+		}
+		st := makePathState{Path: filepath.ToSlash(p)}
+		if info, err := os.Stat(full); err == nil {
+			st.Exists = true
+			st.ModifiedUnixNano = info.ModTime().UnixNano()
+		}
+		out = append(out, st)
+	}
+	return out
+}
+func samePathStates(a, b []makePathState) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+func checkpointWrapper(root, makeFile string, plan Plan, ft FlowTarget, cp interpret.FlowCheckpoint, created string) makeFlowCheckpointFile {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if created == "" {
+		created = now
+	}
+	return makeFlowCheckpointFile{Version: 0, Target: ft.Name, SanitizedTarget: sanitizeTargetName(ft.Name), Flow: ft.Flow, CreatedAtUtc: created, UpdatedAtUtc: now, MakeFile: filepath.ToSlash(makeFile), MakeFileHash: sha256File(makeFile), FlowTargetHash: flowTargetHash(ft), Inputs: snapshotPaths(root, ft.Inputs), Outputs: snapshotPaths(root, ft.Outputs), Deps: append([]string(nil), ft.Deps...), InterpreterCheckpoint: cp}
+}
+func writeMakeFlowCheckpoint(path string, f makeFlowCheckpointFile) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(renderMakeFlowCheckpoint(f)), 0644)
+}
+
+func renderMakeFlowCheckpoint(f makeFlowCheckpointFile) string {
+	var b strings.Builder
+	b.WriteString("MakeFlowCheckpointFile {\n")
+	fmt.Fprintf(&b, "    Version: %d\n    Target: %q\n    SanitizedTarget: %q\n    Flow: %q\n    CreatedAtUtc: %q\n    UpdatedAtUtc: %q\n    MakeFile: %q\n    MakeFileHash: %q\n    FlowTargetHash: %q\n", f.Version, f.Target, f.SanitizedTarget, f.Flow, f.CreatedAtUtc, f.UpdatedAtUtc, f.MakeFile, f.MakeFileHash, f.FlowTargetHash)
+	b.WriteString("    Inputs: [\n")
+	for _, p := range f.Inputs {
+		fmt.Fprintf(&b, "        MakePathState { Path: %q Exists: %t ModifiedUnixNano: %d Hash: %q }\n", p.Path, p.Exists, p.ModifiedUnixNano, p.Hash)
+	}
+	b.WriteString("    ]\n    Outputs: [\n")
+	for _, p := range f.Outputs {
+		fmt.Fprintf(&b, "        MakePathState { Path: %q Exists: %t ModifiedUnixNano: %d Hash: %q }\n", p.Path, p.Exists, p.ModifiedUnixNano, p.Hash)
+	}
+	b.WriteString("    ]\n    Deps: ")
+	writeStringArray(&b, f.Deps)
+	b.WriteString("\n    InterpreterCheckpoint: ")
+	renderFlowCheckpoint(&b, f.InterpreterCheckpoint, "    ")
+	b.WriteString("\n}\n")
+	return b.String()
+}
+func renderFlowCheckpoint(b *strings.Builder, c interpret.FlowCheckpoint, ind string) {
+	fmt.Fprintf(b, "FlowCheckpoint {\n%s    Version: %d\n%s    Package: %q\n%s    Flow: %q\n%s    FlowFingerprint: %q\n%s    CurrentState: %q\n%s    Cursor: FlowResumeCursor { InstructionIndex: %d CursorKind: %q StateBodyFingerprint: %q }\n%s    HasResumeTarget: %t\n%s    ResumeTarget: %q\n%s    Board: FlowBoardCheckpoint { TypeName: %q Fields: [", ind, c.Version, ind, c.Package, ind, c.Flow, ind, c.FlowFingerprint, ind, c.CurrentState, ind, c.Cursor.InstructionIndex, c.Cursor.CursorKind, c.Cursor.StateBodyFingerprint, ind, c.HasResumeTarget, ind, c.ResumeTarget, ind, c.Board.TypeName)
+	for i, f := range c.Board.Fields {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(b, "FlowCheckpointField { Name: %q Type: %q Value: ", f.Name, f.Type)
+		renderCPValue(b, f.Value)
+		b.WriteString(" }")
+	}
+	fmt.Fprintf(b, "] }\n%s    StateHistory: ", ind)
+	writeStringArray(b, c.StateHistory)
+	fmt.Fprintf(b, "\n%s    StepCount: %d\n%s}", ind, c.StepCount, ind)
+}
+func renderCPValue(b *strings.Builder, v interpret.FlowCheckpointValue) {
+	fmt.Fprintf(b, "FlowCheckpointValue { Kind: %q Dimension: %q Int: %d Float: %g Bool: %t String: %q Array: [", v.Kind, v.Dimension, v.Int, v.Float, v.Bool, v.String)
+	for i, e := range v.Array {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		renderCPValue(b, e)
+	}
+	b.WriteString("] }")
+}
+
+func loadMakeFlowCheckpoint(path string) (makeFlowCheckpointFile, error) {
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return makeFlowCheckpointFile{}, err
+	}
+	s := string(body)
+	f := makeFlowCheckpointFile{Version: int(fieldInt(s, "Version")), Target: fieldString(s, "Target"), SanitizedTarget: fieldString(s, "SanitizedTarget"), Flow: fieldString(s, "Flow"), CreatedAtUtc: fieldString(s, "CreatedAtUtc"), UpdatedAtUtc: fieldString(s, "UpdatedAtUtc"), MakeFile: fieldString(s, "MakeFile"), MakeFileHash: fieldString(s, "MakeFileHash"), FlowTargetHash: fieldString(s, "FlowTargetHash")}
+	f.Deps = parseStringArrayAfter(s, "Deps:")
+	f.Inputs = parsePathStates(section(s, "Inputs"))
+	f.Outputs = parsePathStates(section(s, "Outputs"))
+	f.InterpreterCheckpoint = parseInterpreterCheckpoint(s)
+	return f, nil
+}
+func fieldInt(s, field string) int64 {
+	needle := field + ":"
+	i := strings.Index(s, needle)
+	if i < 0 {
+		return 0
+	}
+	rest := strings.TrimSpace(s[i+len(needle):])
+	var v int64
+	fmt.Sscanf(rest, "%d", &v)
+	return v
+}
+func fieldBool(s, field string) bool {
+	needle := field + ":"
+	i := strings.Index(s, needle)
+	if i < 0 {
+		return false
+	}
+	rest := strings.TrimSpace(s[i+len(needle):])
+	return strings.HasPrefix(rest, "true")
+}
+func section(s, name string) string {
+	i := strings.Index(s, name+": [")
+	if i < 0 {
+		return ""
+	}
+	i += len(name + ": [")
+	j := strings.Index(s[i:], "]")
+	if j < 0 {
+		return ""
+	}
+	return s[i : i+j]
+}
+func parseStringArrayAfter(s, prefix string) []string {
+	i := strings.Index(s, prefix)
+	if i < 0 {
+		return nil
+	}
+	i = strings.Index(s[i:], "[") + i + 1
+	j := strings.Index(s[i:], "]")
+	if j < 0 {
+		return nil
+	}
+	inner := s[i : i+j]
+	var out []string
+	for _, part := range strings.Split(inner, ",") {
+		part = strings.TrimSpace(part)
+		if len(part) >= 2 && part[0] == '"' {
+			if u, err := strconv.Unquote(part); err == nil {
+				out = append(out, u)
+			}
+		}
+	}
+	return out
+}
+func parsePathStates(s string) []makePathState {
+	out := []makePathState{}
+	for _, blk := range strings.Split(s, "MakePathState {")[1:] {
+		end := strings.Index(blk, "}")
+		if end >= 0 {
+			blk = blk[:end]
+		}
+		out = append(out, makePathState{Path: fieldString(blk, "Path"), Exists: fieldBool(blk, "Exists"), ModifiedUnixNano: fieldInt(blk, "ModifiedUnixNano"), Hash: fieldString(blk, "Hash")})
+	}
+	return out
+}
+func parseInterpreterCheckpoint(s string) interpret.FlowCheckpoint {
+	idx := strings.Index(s, "InterpreterCheckpoint:")
+	if idx >= 0 {
+		s = s[idx:]
+	}
+	c := interpret.FlowCheckpoint{Version: int(fieldInt(s, "Version")), Package: fieldString(s, "Package"), Flow: fieldString(s, "Flow"), FlowFingerprint: fieldString(s, "FlowFingerprint"), CurrentState: fieldString(s, "CurrentState"), HasResumeTarget: fieldBool(s, "HasResumeTarget"), ResumeTarget: fieldString(s, "ResumeTarget"), StateHistory: parseStringArrayAfter(s, "StateHistory:"), StepCount: int(fieldInt(s, "StepCount"))}
+	c.Cursor = interpret.FlowResumeCursor{InstructionIndex: int(fieldInt(s, "InstructionIndex")), CursorKind: fieldString(s, "CursorKind"), StateBodyFingerprint: fieldString(s, "StateBodyFingerprint")}
+	c.Board.TypeName = fieldString(s, "TypeName")
+	if bi := strings.Index(s, "Fields: ["); bi >= 0 {
+		c.Board.Fields = parseCPFields(s[bi:])
+	}
+	return c
+}
+func parseCPFields(s string) []interpret.FlowCheckpointField {
+	out := []interpret.FlowCheckpointField{}
+	for _, blk := range strings.Split(s, "FlowCheckpointField {")[1:] {
+		end := strings.Index(blk, " }")
+		if end < 0 {
+			continue
+		}
+		b := blk[:end]
+		out = append(out, interpret.FlowCheckpointField{Name: fieldString(b, "Name"), Type: fieldString(b, "Type"), Value: parseCPValue(b)})
+	}
+	return out
+}
+func parseCPValue(s string) interpret.FlowCheckpointValue {
+	i := strings.Index(s, "FlowCheckpointValue {")
+	if i >= 0 {
+		s = s[i:]
+	}
+	return interpret.FlowCheckpointValue{Kind: fieldString(s, "Kind"), Dimension: fieldString(s, "Dimension"), Int: fieldInt(s, "Int"), Float: fieldFloat(s, "Float"), Bool: fieldBool(s, "Bool"), String: fieldString(s, "String")}
+}
+func fieldFloat(s, field string) float64 {
+	needle := field + ":"
+	i := strings.Index(s, needle)
+	if i < 0 {
+		return 0
+	}
+	rest := strings.TrimSpace(s[i+len(needle):])
+	var v float64
+	fmt.Sscanf(rest, "%f", &v)
+	return v
+}
+
+func validFlowCheckpoint(root, makeFile string, plan Plan, ft FlowTarget, ran map[string]bool, program project.Program) (makeFlowCheckpointFile, string, bool, string) {
+	path := flowCheckpointPath(root, plan, ft.Name)
+	f, err := loadMakeFlowCheckpoint(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return makeFlowCheckpointFile{}, path, false, ""
+		}
+		return makeFlowCheckpointFile{}, path, false, "ParseFailed"
+	}
+	reason := ""
+	switch {
+	case f.Version != 0:
+		reason = "UnsupportedVersion"
+	case f.Target != ft.Name || f.SanitizedTarget != sanitizeTargetName(ft.Name):
+		reason = "TargetMismatch"
+	case f.Flow != ft.Flow:
+		reason = "FlowMismatch"
+	case f.MakeFileHash != sha256File(makeFile):
+		reason = "MakeFileChanged"
+	case f.FlowTargetHash != flowTargetHash(ft):
+		reason = "FlowTargetChanged"
+	case !samePathStates(f.Inputs, snapshotPaths(root, ft.Inputs)):
+		reason = "InputChanged"
+	default:
+		for _, d := range ft.Deps {
+			if ran[d] {
+				reason = "DependencyRan"
+				break
+			}
+		}
+	}
+	if reason == "" {
+		if _, err := interpret.InstantiateFlowFromCheckpoint(program, program.Entry, ft.Flow, f.InterpreterCheckpoint, interpret.FlowRestoreOptions{}); err != nil {
+			reason = "RestoreInvalid"
+		}
+	}
+	return f, path, reason == "", reason
+}
+func withMakeAuthorityFlowSuspended(fn func() (interpret.SuspendedFlowRunResult, error)) (interpret.SuspendedFlowRunResult, error) {
+	old, had := os.LookupEnv("OCT_MAKE_AUTHORITY")
+	os.Setenv("OCT_MAKE_AUTHORITY", "1")
+	defer func() {
+		if had {
+			os.Setenv("OCT_MAKE_AUTHORITY", old)
+		} else {
+			os.Unsetenv("OCT_MAKE_AUTHORITY")
+		}
+	}()
+	return fn()
 }

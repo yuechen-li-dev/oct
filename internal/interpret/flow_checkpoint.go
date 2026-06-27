@@ -70,6 +70,46 @@ func InstantiateFlowFromCheckpoint(program project.Program, pkg string, flow str
 	return interpreter.instantiateFlowFromCheckpoint(pkg, flow, checkpoint, opts)
 }
 
+func RunFlowToSuspensionFromCheckpointWithOptions(program project.Program, pkg string, flow string, checkpoint FlowCheckpoint, maxSteps int, stdout io.Writer, options ExecuteOptions) (SuspendedFlowRunResult, error) {
+	if maxSteps <= 0 {
+		return SuspendedFlowRunResult{}, fmt.Errorf("flow %q MaxSteps must be positive", flow)
+	}
+	interpreter, err := newInterpreter(program, stdout)
+	if err != nil {
+		return SuspendedFlowRunResult{}, err
+	}
+	defer interpreter.close()
+	interpreter.assertRecorder = options.AssertionRecorder
+	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
+	interpreter.ctx = options.Context
+	instance, err := interpreter.instantiateFlowFromCheckpoint(pkg, flow, checkpoint, FlowRestoreOptions{})
+	if err != nil {
+		return SuspendedFlowRunResult{}, err
+	}
+	total := 0
+	for !instance.Completed {
+		if err := interpreter.checkCancelled(); err != nil {
+			return suspendedFlowRunResult(instance, total, false), err
+		}
+		remaining := maxSteps - total
+		if remaining <= 0 {
+			return suspendedFlowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flow, maxSteps)
+		}
+		steps, exhausted, suspended, err := interpreter.stepFlowWithTransitionLimit(instance, remaining)
+		total += steps
+		if err != nil {
+			return suspendedFlowRunResult(instance, total, false), err
+		}
+		if exhausted {
+			return suspendedFlowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flow, maxSteps)
+		}
+		if suspended {
+			return suspendedFlowRunResult(instance, total, true), nil
+		}
+	}
+	return suspendedFlowRunResult(instance, total, false), nil
+}
+
 func RunFlowToCompletionFromCheckpointWithOptions(program project.Program, pkg string, flow string, checkpoint FlowCheckpoint, maxSteps int, stdout io.Writer, options ExecuteOptions) (FlowRunResult, error) {
 	if maxSteps <= 0 {
 		return FlowRunResult{}, fmt.Errorf("flow %q MaxSteps must be positive", flow)
