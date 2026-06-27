@@ -462,7 +462,7 @@ fn Plan() -> Make.Plan {
 		t.Fatalf("flow make failed: %v stdout=%s stderr=%s", err, stdout, stderr)
 	}
 	body, _ = os.ReadFile(tracePath)
-	for _, want := range []string{`Kind: "flow"`, `Flow: "BuildFlow"`, `ResultCode: 0`, `StateHistory: ["Start", "Done"]`, `Suspended: false`} {
+	for _, want := range []string{`Kind: "flow"`, `Flow: "BuildFlow"`, `MaxSteps: 10`, `Steps: 2`, `ResultCode: 0`, `StateHistory: ["Start", "Done"]`, `Suspended: false`} {
 		if !strings.Contains(string(body), want) {
 			t.Fatalf("flow trace missing %s:\n%s", want, body)
 		}
@@ -492,8 +492,8 @@ func TestMakeFlowTargetFailureModes(t *testing.T) {
 			name:  "suspend",
 			flow:  `flow BuildFlow() -> Int { state Start { suspend return 0 } }`,
 			plan:  `Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }`,
-			want:  `target "Build": flow "BuildFlow" suspended before completion; persistent make flow resume is not supported in MAKE4`,
-			trace: []string{`Suspended: true`, `StateHistory: ["Start"]`},
+			want:  `flow "BuildFlow" suspended at state Start; persistent make flow resume is not supported yet`,
+			trace: []string{`Suspended: true`, `SuspendedIntentionally: true`, `StateHistory: ["Start"]`},
 		},
 		{
 			name:  "maxsteps",
@@ -539,6 +539,154 @@ fn Plan() -> Make.Plan {
 				}
 			}
 		})
+	}
+}
+
+func TestMakeFlowTargetTraceStepsUsesExecutedSteps(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+flow BuildFlow() -> Int {
+    state Start { goto Middle }
+    state Middle { goto Done }
+    state Done { return 0 }
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "FlowSteps" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: [Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 60 }]
+        PhonyTargets: []
+    }
+}
+`)
+	stdout, stderr, err := executeCLIArgs("make", "--file", makeFile, "--trace")
+	if err != nil {
+		t.Fatalf("flow make failed: %v stdout=%s stderr=%s", err, stdout, stderr)
+	}
+	body, _ := os.ReadFile(filepath.Join(root, ".octmake", "trace.octagon"))
+	for _, want := range []string{`MaxSteps: 60`, `Steps: 3`, `StateHistory: ["Start", "Middle", "Done"]`} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("trace missing %s:\n%s", want, body)
+		}
+	}
+	if regexp.MustCompile(`(?m)^\s+Steps: 60$`).Match(body) {
+		t.Fatalf("trace Steps should be executed steps, not MaxSteps:\n%s", body)
+	}
+}
+
+func TestMakeFunctionTargetIntResultSemantics(t *testing.T) {
+	tests := []struct {
+		name  string
+		fn    string
+		fail  bool
+		want  []string
+		trace []string
+	}{
+		{name: "zero succeeds", fn: `fn Build() -> Int ! Error { return 0 }`, trace: []string{`Kind: "function"`, `Function: "Build"`, `ExitCode: 0`, `ResultCode: 0`, `Status: "Ran"`}},
+		{name: "nonzero fails", fn: `fn Build() -> Int ! Error { return 2 }`, fail: true, want: []string{`function "Build" returned nonzero result 2`, `failure artifact:`}, trace: []string{`Kind: "function"`, `Function: "Build"`, `ExitCode: 2`, `ResultCode: 2`, `Status: "Failed"`, `FailureArtifactPath:`}},
+		{name: "error fails", fn: `fn Build() -> Int ! Error { return error("boom") }`, fail: true, want: []string{`function "Build" failed`, `boom`, `failure artifact:`}, trace: []string{`Kind: "function"`, `Function: "Build"`, `Status: "Failed"`}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := repoTempDir(t)
+			makeFile := filepath.Join(root, "Make.oct")
+			writeFile(t, makeFile, `package Main
+import Make
+`+tc.fn+`
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "FunctionInt" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
+        CommandTargets: []
+        FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Function: "Build" }]
+        FlowTargets: []
+        PhonyTargets: []
+    }
+}
+`)
+			_, _, err := executeCLIArgs("make", "--file", makeFile, "--trace")
+			if tc.fail && err == nil {
+				t.Fatalf("expected failure")
+			}
+			if !tc.fail && err != nil {
+				t.Fatalf("expected success, got %v", err)
+			}
+			for _, want := range tc.want {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Fatalf("error missing %s: %v", want, err)
+				}
+			}
+			body, _ := os.ReadFile(filepath.Join(root, ".octmake", "trace.octagon"))
+			for _, want := range tc.trace {
+				if !strings.Contains(string(body), want) {
+					t.Fatalf("trace missing %s:\n%s", want, body)
+				}
+			}
+			if tc.fail {
+				matches, _ := filepath.Glob(filepath.Join(root, ".octmake", "failures", "Build", "*", "failure.octagon"))
+				if len(matches) != 1 {
+					t.Fatalf("expected one failure artifact, got %v", matches)
+				}
+				failure, _ := os.ReadFile(matches[0])
+				for _, want := range tc.trace {
+					if strings.HasPrefix(want, `FailureArtifactPath`) {
+						continue
+					}
+					if !strings.Contains(string(failure), want) && (want == `ExitCode: 2` || want == `ResultCode: 2`) {
+						t.Fatalf("failure artifact missing %s:\n%s", want, failure)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestMakeFlowSuspensionFailureArtifactIsIntentional(t *testing.T) {
+	root := repoTempDir(t)
+	makeFile := filepath.Join(root, "Make.oct")
+	writeFile(t, makeFile, `package Main
+import Make
+
+flow BuildFlow() -> Int {
+    state Start { goto Gate }
+    state Gate { suspend return 0 }
+}
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "Build"
+        Config: Make.Config { Profile: "Suspend" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always }
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: [Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 60 }]
+        PhonyTargets: []
+    }
+}
+`)
+	_, _, err := executeCLIArgs("make", "--file", makeFile, "--trace")
+	if err == nil {
+		t.Fatalf("expected suspension failure")
+	}
+	for _, want := range []string{`suspended at state Gate`, `persistent make flow resume is not supported yet`, `failure artifact:`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error missing %s: %v", want, err)
+		}
+	}
+	matches, _ := filepath.Glob(filepath.Join(root, ".octmake", "failures", "Build", "*", "failure.octagon"))
+	if len(matches) != 1 {
+		t.Fatalf("expected one failure artifact, got %v", matches)
+	}
+	failure, _ := os.ReadFile(matches[0])
+	for _, want := range []string{`Suspended: true`, `SuspendedIntentionally: true`, `FinalState: "Gate"`, `StateHistory: ["Start", "Gate"]`, `persistent make flow resume is not supported yet`} {
+		if !strings.Contains(string(failure), want) {
+			t.Fatalf("failure artifact missing %s:\n%s", want, failure)
+		}
 	}
 }
 

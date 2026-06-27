@@ -88,6 +88,7 @@ type decision struct {
 	StateHistory                      []string
 	ResultCode                        int64
 	Suspended                         bool
+	SuspendedIntentionally            bool
 	ExitCode                          int
 	Stdout, Stderr, Error             string
 	FailureArtifactPath               string
@@ -556,15 +557,27 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 			}
 		} else if t.function != nil {
 			fn := t.function.Function
-			_, err := withMakeAuthorityValue(func() (interpret.Value, error) {
+			result, err := withMakeAuthorityValue(func() (interpret.Value, error) {
 				return interpret.CallFunctionWithArgsAndOptions(program, program.Entry, fn, nil, stdout, interpret.ExecuteOptions{})
 			})
+			if result.Kind == interpret.ValueInt {
+				d.ResultCode = result.Int
+				d.ExitCode = int(result.Int)
+			}
 			if err != nil {
 				d.Status = "Failed"
 				d.Error = err.Error()
 				d.FinishedUnixNano = time.Now().UnixNano()
 				decs = append(decs, d)
 				return decs, fmt.Errorf("target %q: function %q failed: %w", n, fn, err)
+			}
+			if result.Kind == interpret.ValueInt && result.Int != 0 {
+				msg := fmt.Sprintf("function %q returned nonzero result %d", fn, result.Int)
+				d.Status = "Failed"
+				d.Error = msg
+				d.FinishedUnixNano = time.Now().UnixNano()
+				decs = append(decs, d)
+				return decs, fmt.Errorf("target %q: %s", n, msg)
 			}
 		} else if t.flow != nil {
 			ft := t.flow
@@ -575,6 +588,7 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 			d.FinalState = result.FinalState
 			d.StateHistory = result.StateHistory
 			d.Suspended = result.Suspended
+			d.SuspendedIntentionally = result.Suspended
 			if result.Result.Kind == interpret.ValueInt {
 				d.ResultCode = result.Result.Int
 				d.ExitCode = int(result.Result.Int)
@@ -587,7 +601,11 @@ func run(order []string, m map[string]*target, root string, program project.Prog
 				return decs, fmt.Errorf("target %q: flow %q failed: %w", n, ft.Flow, err)
 			}
 			if result.Suspended {
-				msg := fmt.Sprintf("target %q: flow %q suspended before completion; persistent make flow resume is not supported in MAKE4", n, ft.Flow)
+				state := result.FinalState
+				if state == "" && len(result.StateHistory) > 0 {
+					state = result.StateHistory[len(result.StateHistory)-1]
+				}
+				msg := fmt.Sprintf("target %q: flow %q suspended at state %s; persistent make flow resume is not supported yet; re-run oct make when ready or use an explicit gate target", n, ft.Flow, state)
 				d.Status = "Failed"
 				d.Error = msg
 				d.FinishedUnixNano = time.Now().UnixNano()
@@ -851,11 +869,11 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		writeStringArray(&b, d.CommandArgs)
 		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            CommandEnv: ", d.CommandCwd)
 		writeStringArray(&b, d.CommandEnv)
-		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            Function: %q\n            ExitCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            FailureArtifactPath: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandHash, d.PreviousCommandHash, d.Function, d.ExitCode, d.Stdout, d.Stderr, d.Error, filepath.ToSlash(d.FailureArtifactPath), d.StartedUnixNano, d.FinishedUnixNano)
+		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            Function: %q\n            ExitCode: %d\n            ResultCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            FailureArtifactPath: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandHash, d.PreviousCommandHash, d.Function, d.ExitCode, d.ResultCode, d.Stdout, d.Stderr, d.Error, filepath.ToSlash(d.FailureArtifactPath), d.StartedUnixNano, d.FinishedUnixNano)
 		if d.Kind == "flow" {
 			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
 			writeStringArray(&b, d.StateHistory)
-			fmt.Fprintf(&b, "\n            ResultCode: %d\n            Suspended: %t\n", d.ResultCode, d.Suspended)
+			fmt.Fprintf(&b, "\n            ResultCode: %d\n            Suspended: %t\n            SuspendedIntentionally: %t\n", d.ResultCode, d.Suspended, d.SuspendedIntentionally)
 		}
 		b.WriteString("        }\n")
 	}
@@ -937,7 +955,7 @@ func failureArtifact(plan Plan, makeFile, path string, d decision, runID string,
 		writeStringArray(&b, d.Outputs)
 		fmt.Fprintf(&b, "\n        Deps: ")
 		writeStringArray(&b, d.Deps)
-		fmt.Fprintf(&b, "\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Error, d.Reason, durationMs)
+		fmt.Fprintf(&b, "\n        ExitCode: %d\n        ResultCode: %d\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.ExitCode, d.ResultCode, d.Error, d.Reason, durationMs)
 	case "flow":
 		fmt.Fprintf(&b, "    Flow: FlowFailure {\n        Target: %q\n        TargetKind: %q\n        Flow: %q\n        MaxSteps: %d\n        Inputs: ", d.Name, d.Kind, d.Flow, d.MaxSteps)
 		writeStringArray(&b, d.Inputs)
@@ -947,7 +965,7 @@ func failureArtifact(plan Plan, makeFile, path string, d decision, runID string,
 		writeStringArray(&b, d.Deps)
 		fmt.Fprintf(&b, "\n        FinalState: %q\n        StepCount: %d\n        StateHistory: ", d.FinalState, d.Steps)
 		writeStringArray(&b, d.StateHistory)
-		fmt.Fprintf(&b, "\n        Suspended: %t\n        ResultCode: %d\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Suspended, d.ResultCode, d.Error, d.Reason, durationMs)
+		fmt.Fprintf(&b, "\n        Suspended: %t\n        SuspendedIntentionally: %t\n        ResultCode: %d\n        Error: %q\n        DecisionReason: %q\n        DurationMs: %d\n    }\n", d.Suspended, d.SuspendedIntentionally, d.ResultCode, d.Error, d.Reason, durationMs)
 	}
 	b.WriteString("}\n")
 	return b.String()
