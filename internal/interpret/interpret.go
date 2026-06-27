@@ -483,13 +483,30 @@ type FlowRunResult struct {
 	StateHistory []string
 }
 
+type SuspendedFlowRunResult struct {
+	FlowRunResult
+	instance *FlowRuntimeInstance
+}
+
+func (r SuspendedFlowRunResult) ExportCheckpoint(options FlowCheckpointOptions) (FlowCheckpoint, error) {
+	if options.StepCount == 0 {
+		options.StepCount = r.Steps
+	}
+	return ExportFlowCheckpoint(r.instance, options)
+}
+
 func RunFlowToCompletionWithOptions(program project.Program, pkgName string, flowName string, maxSteps int, stdout io.Writer, options ExecuteOptions) (FlowRunResult, error) {
+	result, err := RunFlowToSuspensionWithOptions(program, pkgName, flowName, maxSteps, stdout, options)
+	return result.FlowRunResult, err
+}
+
+func RunFlowToSuspensionWithOptions(program project.Program, pkgName string, flowName string, maxSteps int, stdout io.Writer, options ExecuteOptions) (SuspendedFlowRunResult, error) {
 	if maxSteps <= 0 {
-		return FlowRunResult{}, fmt.Errorf("flow %q MaxSteps must be positive", flowName)
+		return SuspendedFlowRunResult{}, fmt.Errorf("flow %q MaxSteps must be positive", flowName)
 	}
 	interpreter, err := newInterpreter(program, stdout)
 	if err != nil {
-		return FlowRunResult{}, err
+		return SuspendedFlowRunResult{}, err
 	}
 	defer interpreter.close()
 	interpreter.assertRecorder = options.AssertionRecorder
@@ -498,37 +515,41 @@ func RunFlowToCompletionWithOptions(program project.Program, pkgName string, flo
 	key := pkgName + "." + flowName
 	flow, ok := interpreter.flows[key]
 	if !ok {
-		return FlowRunResult{}, fmt.Errorf("missing flow %s", key)
+		return SuspendedFlowRunResult{}, fmt.Errorf("missing flow %s", key)
 	}
 	if len(flow.Parameters) != 0 {
-		return FlowRunResult{}, fmt.Errorf("flow %q must take no arguments for oct make FlowTarget M0", flowName)
+		return SuspendedFlowRunResult{}, fmt.Errorf("flow %q must take no arguments for oct make FlowTarget M0", flowName)
 	}
 	if flow.ReturnType.Name != "Int" || flow.ReturnType.IsArray || flow.ReturnType.ArrayDepth > 0 {
-		return FlowRunResult{}, fmt.Errorf("flow %q must return Int for oct make FlowTarget M0", flowName)
+		return SuspendedFlowRunResult{}, fmt.Errorf("flow %q must return Int for oct make FlowTarget M0", flowName)
 	}
 	instance := interpreter.instantiateFlow(flow, pkgName, nil)
 	total := 0
 	for !instance.Completed {
 		if err := interpreter.checkCancelled(); err != nil {
-			return FlowRunResult{}, err
+			return SuspendedFlowRunResult{}, err
 		}
 		remaining := maxSteps - total
 		if remaining <= 0 {
-			return flowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flowName, maxSteps)
+			return suspendedFlowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flowName, maxSteps)
 		}
 		steps, exhausted, suspended, err := interpreter.stepFlowWithTransitionLimit(instance, remaining)
 		total += steps
 		if err != nil {
-			return flowRunResult(instance, total, false), err
+			return suspendedFlowRunResult(instance, total, false), err
 		}
 		if exhausted {
-			return flowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flowName, maxSteps)
+			return suspendedFlowRunResult(instance, total, false), fmt.Errorf("flow %q exceeded MaxSteps %d", flowName, maxSteps)
 		}
 		if suspended {
-			return flowRunResult(instance, total, true), nil
+			return suspendedFlowRunResult(instance, total, true), nil
 		}
 	}
-	return flowRunResult(instance, total, false), nil
+	return suspendedFlowRunResult(instance, total, false), nil
+}
+
+func suspendedFlowRunResult(instance *FlowRuntimeInstance, steps int, suspended bool) SuspendedFlowRunResult {
+	return SuspendedFlowRunResult{FlowRunResult: flowRunResult(instance, steps, suspended), instance: instance}
 }
 
 func flowRunResult(instance *FlowRuntimeInstance, steps int, suspended bool) FlowRunResult {

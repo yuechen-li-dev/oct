@@ -379,3 +379,65 @@ Language behavior tests should live in `Language/` when semantics are involved. 
 ## 14. Non-goals preserved
 
 This recon does not implement persistent Make resume, write checkpoint files, add Make CLI flags, alter Make staleness, alter failure artifact schemas, change Octomata semantics, serialize Go object graphs, introduce coroutines, persist arbitrary heap values, support handles/files/processes/sidecars in checkpoints, or touch Chimera/Octxiliary/Rust SDK work.
+
+## H1 implementation note: export-only interpreter checkpoints
+
+Status: implemented for interpreter-owned export only. Restore, persistent `oct make` resume, checkpoint files, staleness changes, Make CLI flags, failure-artifact schema changes, compiled-flow checkpoints, and Octomata semantic changes remain deferred.
+
+### API shape
+
+H1 adds an interpreter logical checkpoint payload and export API in `internal/interpret`:
+
+- `ExportFlowCheckpoint(instance *FlowRuntimeInstance, options FlowCheckpointOptions) (FlowCheckpoint, error)`;
+- `(*FlowRuntimeInstance).ExportCheckpoint(options FlowCheckpointOptions) (FlowCheckpoint, error)` for in-package runtime owners;
+- `RunFlowToSuspensionWithOptions(...) (SuspendedFlowRunResult, error)` for host callers that need to run a no-argument interpreted flow and then export a checkpoint without receiving a raw mutable instance;
+- `SuspendedFlowRunResult.ExportCheckpoint(options FlowCheckpointOptions)`.
+
+The existing `RunFlowToCompletionWithOptions` behavior is preserved and delegates through the new run helper.
+
+### Exported payload
+
+`FlowCheckpoint` version 1 contains:
+
+- package name and flow name;
+- a deterministic, non-security flow fingerprint;
+- current state;
+- top-level next-statement cursor with instruction index and state-body fingerprint;
+- resume slot (`HasResumeTarget`, `ResumeTarget`);
+- board checkpoint;
+- state history;
+- caller-provided or run-result step count.
+
+The fingerprint is intentionally structural and cheap: package/flow identity, declared board fields and types, state names, top-level statement counts, and top-level statement Go AST node kinds. It is intended for future compatibility diagnostics, not tamper resistance.
+
+### Safe subset and unsupported reasons
+
+H1 exports only suspended, incomplete interpreter flows. It rejects unsupported shapes with `FlowCheckpointError` and a precise `FlowCheckpointUnsupportedReason`:
+
+- `NotSuspended` for nil, unstarted, or otherwise not intentionally suspended instances;
+- `CompletedCheckpointUnsupported` for completed flows;
+- `StateMissing` when `CurrentState` is absent from the current declaration;
+- `InstructionIndexOutOfRange` when the cursor is outside the current state's top-level body;
+- `ResumeTargetMissing` when a populated resume slot names a missing state;
+- `StateLocalsUnsupported` when `StateEnv` contains any user binding;
+- `UtilityStateUnsupported` when controller-bound utility `when` state is non-empty;
+- `BoardSnapshotUnsupported` for missing or malformed board bindings;
+- `UnsupportedValueType` when a board value cannot be converted to the stable checkpoint value model.
+
+The only ignored state binding is the runtime synthetic `__oct_flow_instance`. H1 does not serialize state locals and does not reset or serialize utility-controller state.
+
+### Board value support
+
+Boardless flows export an explicit empty board checkpoint. Boarded flows export declared board fields in declaration order with field names, static type strings, and stable values. H1 supports checkpoint values for:
+
+- `Bool`;
+- `String`;
+- `Int`, including dimension metadata when present at runtime;
+- `Float`, including dimension metadata when present at runtime;
+- arrays recursively containing the same supported scalar values.
+
+The checkpoint does not persist raw `Value` objects or interpreter object graphs. Current implementation and language fixtures permit arrays of scalar board fields; older prose that described board snapshots as scalar-only should be treated as stale relative to the current semantic contracts.
+
+### Deferred work
+
+Restore remains an interpreter-owned follow-up. Make still owns future checkpoint files, Make target staleness, CLI/user experience, and cleanup policy, but should consume this logical API rather than serializing trace-visible runtime fields. Compiled flow checkpointing remains a separate design because generated flow structs do not yet expose this logical checkpoint format.
