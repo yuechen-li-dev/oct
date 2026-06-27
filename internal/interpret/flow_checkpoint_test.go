@@ -216,3 +216,153 @@ fn Main() -> Int { return 0 }
 		t.Fatalf("step count = %d, want %d", cp.StepCount, result.Steps)
 	}
 }
+
+func TestRestoreFlowCheckpointContinuesAfterSuspendExactlyOnce(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+flow ResumeExample() -> Int {
+    board { Count: Int }
+    state Start { board.Count = board.Count + 1 suspend board.Count = board.Count + 10 goto Done }
+    state Done { return board.Count }
+}
+fn Main() -> Int { return 0 }
+`)
+	first, err := RunFlowToSuspensionWithOptions(program, "Main", "ResumeExample", 10, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("run to suspend: %v", err)
+	}
+	cp, err := first.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	if cp.Board.Fields[0].Value.Int != 1 {
+		t.Fatalf("pre-suspend board count = %d, want 1", cp.Board.Fields[0].Value.Int)
+	}
+	resumed, err := RunFlowToCompletionFromCheckpointWithOptions(program, "Main", "ResumeExample", cp, 10, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if !resumed.Completed || resumed.Result.Kind != ValueInt || resumed.Result.Int != 11 {
+		t.Fatalf("result = %#v completed=%v, want Int(11) completed", resumed.Result, resumed.Completed)
+	}
+	wantHistory := []string{"Start", "Done"}
+	if len(resumed.StateHistory) != len(wantHistory) {
+		t.Fatalf("history = %#v", resumed.StateHistory)
+	}
+	for idx := range wantHistory {
+		if resumed.StateHistory[idx] != wantHistory[idx] {
+			t.Fatalf("history = %#v", resumed.StateHistory)
+		}
+	}
+}
+
+func TestInstantiateFlowFromCheckpointRestoresBoardScalarsAndArrays(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+flow Boarded() -> Int {
+    board { Flag: Bool Count: Int Ratio: Float Label: String Counts: Int[] }
+    state Start { board.Flag = true board.Count = 3 board.Ratio = 2.5 board.Label = "ready" board.Counts = [1, 2] suspend return board.Count }
+}
+fn Main() -> Int { return 0 }
+`)
+	first, err := RunFlowToSuspensionWithOptions(program, "Main", "Boarded", 10, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("run to suspend: %v", err)
+	}
+	cp, err := first.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	inst, err := InstantiateFlowFromCheckpoint(program, "Main", "Boarded", cp, FlowRestoreOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	binding, ok := inst.RootEnv.lookup("board")
+	if !ok || binding.value.Kind != ValueRecord {
+		t.Fatalf("missing board: %#v", binding.value)
+	}
+	fields := binding.value.Record.Fields
+	if !fields["Flag"].Bool || fields["Count"].Int != 3 || fields["Ratio"].Float != 2.5 || fields["Label"].Text != "ready" {
+		t.Fatalf("bad scalar fields: %#v", fields)
+	}
+	if got := fields["Counts"].Array; len(got) != 2 || got[0].Int != 1 || got[1].Int != 2 {
+		t.Fatalf("bad array field: %#v", fields["Counts"])
+	}
+	if len(inst.DirtyBoardFields) != 0 {
+		t.Fatalf("dirty board fields not cleared: %#v", inst.DirtyBoardFields)
+	}
+}
+
+func TestRestoreFlowCheckpointPreservesResumeSlotAndAppendsHistory(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+flow Remembering() -> Int { state Start { remember goto Hold } state Hold { suspend resume } }
+fn Main() -> Int { return 0 }
+`)
+	first, err := RunFlowToSuspensionWithOptions(program, "Main", "Remembering", 10, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("run to suspend: %v", err)
+	}
+	cp, err := first.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	resumed, err := RunFlowToCompletionFromCheckpointWithOptions(program, "Main", "Remembering", cp, 10, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if !resumed.Suspended {
+		t.Fatalf("expected second suspension after resume slot jump, got %#v", resumed)
+	}
+	want := []string{"Start", "Hold", "Start", "Hold"}
+	if len(resumed.StateHistory) != len(want) {
+		t.Fatalf("history = %#v, want %#v", resumed.StateHistory, want)
+	}
+	for idx := range want {
+		if resumed.StateHistory[idx] != want[idx] {
+			t.Fatalf("history = %#v, want %#v", resumed.StateHistory, want)
+		}
+	}
+}
+
+func TestRestoreFlowCheckpointValidationRejectsIncompatibleCheckpoints(t *testing.T) {
+	program := checkpointProgram(t, `package Main
+flow Waiter() -> Int { board { Count: Int } state Start { suspend return board.Count } state Other { return 0 } }
+fn Main() -> Int { return 0 }
+`)
+	first, err := RunFlowToSuspensionWithOptions(program, "Main", "Waiter", 10, &bytes.Buffer{}, ExecuteOptions{})
+	if err != nil {
+		t.Fatalf("run to suspend: %v", err)
+	}
+	base, err := first.ExportCheckpoint(FlowCheckpointOptions{})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	cases := []struct {
+		name   string
+		mutate func(*FlowCheckpoint)
+		reason FlowCheckpointUnsupportedReason
+		pkg    string
+		flow   string
+	}{
+		{name: "version", mutate: func(cp *FlowCheckpoint) { cp.Version = FlowCheckpointVersion + 1 }, reason: FlowCheckpointUnsupportedCheckpointVersion, pkg: "Main", flow: "Waiter"},
+		{name: "package", mutate: func(cp *FlowCheckpoint) {}, reason: FlowCheckpointPackageMismatch, pkg: "Other", flow: "Waiter"},
+		{name: "flow", mutate: func(cp *FlowCheckpoint) {}, reason: FlowCheckpointFlowMismatch, pkg: "Main", flow: "Other"},
+		{name: "fingerprint", mutate: func(cp *FlowCheckpoint) { cp.FlowFingerprint = "stale" }, reason: FlowCheckpointFlowFingerprintMismatch, pkg: "Main", flow: "Waiter"},
+		{name: "state", mutate: func(cp *FlowCheckpoint) { cp.CurrentState = "Missing" }, reason: FlowCheckpointStateMissing, pkg: "Main", flow: "Waiter"},
+		{name: "instruction", mutate: func(cp *FlowCheckpoint) { cp.Cursor.InstructionIndex = 99 }, reason: FlowCheckpointInstructionIndexOutOfRange, pkg: "Main", flow: "Waiter"},
+		{name: "body", mutate: func(cp *FlowCheckpoint) { cp.Cursor.StateBodyFingerprint = "changed" }, reason: FlowCheckpointStateBodyChanged, pkg: "Main", flow: "Waiter"},
+		{name: "cursor", mutate: func(cp *FlowCheckpoint) { cp.Cursor.CursorKind = "nested" }, reason: FlowCheckpointResumeCursorInvalid, pkg: "Main", flow: "Waiter"},
+		{name: "schema", mutate: func(cp *FlowCheckpoint) { cp.Board.Fields[0].Name = "Other" }, reason: FlowCheckpointBoardSchemaMismatch, pkg: "Main", flow: "Waiter"},
+		{name: "value", mutate: func(cp *FlowCheckpoint) { cp.Board.Fields[0].Value.Kind = string(ValueString) }, reason: FlowCheckpointBoardValueTypeMismatch, pkg: "Main", flow: "Waiter"},
+		{name: "resume", mutate: func(cp *FlowCheckpoint) { cp.HasResumeTarget = true; cp.ResumeTarget = "Missing" }, reason: FlowCheckpointResumeTargetMissing, pkg: "Main", flow: "Waiter"},
+		{name: "history", mutate: func(cp *FlowCheckpoint) { cp.StateHistory = append(cp.StateHistory, "Missing") }, reason: FlowCheckpointStateHistoryInvalid, pkg: "Main", flow: "Waiter"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cp := base
+			cp.StateHistory = append([]string(nil), base.StateHistory...)
+			cp.Board.Fields = append([]FlowCheckpointField(nil), base.Board.Fields...)
+			tc.mutate(&cp)
+			_, err := InstantiateFlowFromCheckpoint(program, tc.pkg, tc.flow, cp, FlowRestoreOptions{})
+			requireCheckpointReason(t, err, tc.reason)
+		})
+	}
+}
