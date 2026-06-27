@@ -492,7 +492,7 @@ func TestMakeFlowTargetFailureModes(t *testing.T) {
 			name:  "suspend",
 			flow:  `flow BuildFlow() -> Int { state Start { suspend return 0 } }`,
 			plan:  `Make.FlowTarget { Name: "Build" Inputs: [] Outputs: [] Deps: [] Flow: "BuildFlow" MaxSteps: 10 }`,
-			want:  `flow "BuildFlow" suspended at state Start; persistent make flow resume is not supported yet`,
+			want:  `flow "BuildFlow" suspended at state Start`,
 			trace: []string{`Suspended: true`, `SuspendedIntentionally: true`, `StateHistory: ["Start"]`},
 		},
 		{
@@ -673,7 +673,7 @@ fn Plan() -> Make.Plan {
 	if err == nil {
 		t.Fatalf("expected suspension failure")
 	}
-	for _, want := range []string{`suspended at state Gate`, `persistent make flow resume is not supported yet`, `failure artifact:`} {
+	for _, want := range []string{`suspended at state Gate`, `failure artifact:`} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("error missing %s: %v", want, err)
 		}
@@ -683,7 +683,7 @@ fn Plan() -> Make.Plan {
 		t.Fatalf("expected one failure artifact, got %v", matches)
 	}
 	failure, _ := os.ReadFile(matches[0])
-	for _, want := range []string{`Suspended: true`, `SuspendedIntentionally: true`, `FinalState: "Gate"`, `StateHistory: ["Start", "Gate"]`, `persistent make flow resume is not supported yet`} {
+	for _, want := range []string{`Suspended: true`, `SuspendedIntentionally: true`, `FinalState: "Gate"`, `StateHistory: ["Start", "Gate"]`, `ResumeSupported: true`} {
 		if !strings.Contains(string(failure), want) {
 			t.Fatalf("failure artifact missing %s:\n%s", want, failure)
 		}
