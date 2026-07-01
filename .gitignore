@@ -66,8 +66,9 @@ Thumbs.db
 
 # Dist / temp output
 dist/
-tmp/
+.tmp/
 temp/
+out/
 
 # ------------------------------
 # Dependency vendoring
@@ -101,3 +102,4 @@ Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.
 Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.csproj.AssemblyReference.cache
 markdown_m1_smoke.md
 markdown_smoke.md
+
