@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -195,9 +196,26 @@ func appendLocalReplace(t *testing.T, goModPath string) {
 	if err != nil {
 		t.Fatalf("open go.mod: %v", err)
 	}
-	defer file.Close()
 	if _, err := file.WriteString("\nreplace github.com/yuechen-li-dev/oct => " + filepath.ToSlash(repoRoot) + "\n"); err != nil {
+		file.Close()
 		t.Fatalf("append replace: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close go.mod: %v", err)
+	}
+
+	// A bare `replace` directive against a local checkout is only ever
+	// go.sum-consistent by accident: it depends on the replaced module's
+	// full dependency graph (go version, transitive requires) happening to
+	// match whatever go.sum/go.mod this scaffold was written with. Any
+	// future change to the root module (a new dependency, a go directive
+	// bump) invalidates that accident. `go mod tidy` is what a real sidecar
+	// author would run immediately after adding a local replace, so run it
+	// here too rather than assuming the frozen scaffold stays valid forever.
+	tidy := exec.Command("go", "mod", "tidy")
+	tidy.Dir = filepath.Dir(goModPath)
+	if out, err := tidy.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy after local replace: %v\n%s", err, out)
 	}
 }
 

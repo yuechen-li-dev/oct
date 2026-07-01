@@ -51,7 +51,7 @@ fn UsesRegistrySyncedDependency() -> Void {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(manifest), `Dependency { Name: "SignalTools" VersionRequirement: "0.1.0" }`) && !strings.Contains(string(manifest), `Dependency { Name: "SignalTools" VersionRequirement: "0.1.0" }`) {
+	if !strings.Contains(string(manifest), `Dependency { Name: "SignalTools" VersionRequirement: "0.1.0" }`) {
 		t.Fatalf("expected dependency without Source, got %s", manifest)
 	}
 	stdout, stderr, err = executeCLIInDir(consumerDir, "pkg", "sync")
