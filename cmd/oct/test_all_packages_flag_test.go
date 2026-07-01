@@ -51,4 +51,3 @@ func TestDirectoryTargetAllPackagesIncludesImports(t *testing.T) {
 		t.Fatalf("expected both package tests, got %q", stdout)
 	}
 }
-

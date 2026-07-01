@@ -2500,6 +2500,28 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 		}
 		if calleeName, ok := flattenDirectCallName(e.Callee); ok {
+			if calleeName == "Assert.LGTM" {
+				if len(e.Arguments) != 2 {
+					return "", "", false, fmt.Errorf("Assert.LGTM expects 2 arguments, got %d", len(e.Arguments))
+				}
+				resultVar, resultType, _, err := c.lowerExpr(e.Arguments[0])
+				if err != nil {
+					return "", "", false, err
+				}
+				messageVar, _, _, err := c.lowerExpr(e.Arguments[1])
+				if err != nil {
+					return "", "", false, err
+				}
+				tmp := c.temp(resultType)
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRCall{
+					Target:  tmp,
+					Callee:  "Assert.LGTM",
+					Args:    []string{resultVar, messageVar},
+					Builtin: true,
+					RetType: resultType,
+				})
+				return tmp, resultType, false, nil
+			}
 			if strings.HasPrefix(calleeName, "Assert.") {
 				args := make([]string, 0, len(e.Arguments))
 				for _, a := range e.Arguments {
@@ -5762,7 +5784,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] || usedBuiltins["Assert.Near"] || usedBuiltins["Assert.Error"] {
+	if usedBuiltins["Assert.True"] || usedBuiltins["Assert.False"] || usedBuiltins["Assert.Equal"] || usedBuiltins["Assert.Near"] || usedBuiltins["Assert.Error"] || usedBuiltins["Assert.LGTM"] {
 		importSet["os"] = struct{}{}
 	}
 	if usedBuiltins["Assert.Equal"] {
@@ -6096,9 +6118,17 @@ func emitGo(m MIRModule) (string, error) {
 	entryReturn := m.EntryReturn
 	entryFallible := m.EntryFallible
 	if entryReturn == "Void" && !entryFallible {
-		b.WriteString("\tfn_" + m.EntryPackage + "_" + m.EntryFunc + "()\n")
+		b.WriteString("\tfn_")
+		b.WriteString(m.EntryPackage)
+		b.WriteString("_")
+		b.WriteString(m.EntryFunc)
+		b.WriteString("()\n")
 	} else {
-		b.WriteString("\tresult := fn_" + m.EntryPackage + "_" + m.EntryFunc + "()\n")
+		b.WriteString("\tresult := fn_")
+		b.WriteString(m.EntryPackage)
+		b.WriteString("_")
+		b.WriteString(m.EntryFunc)
+		b.WriteString("()\n")
 	}
 	if entryFallible {
 		b.WriteString("\tif result.IsErr { panic(\"oct error: \" + result.Err) }\n")
@@ -8874,6 +8904,8 @@ func goStmt(s MIRStmt) (string, error) {
 					return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }", st.Args[0], st.Args[1]), nil
 				}
 				return fmt.Sprintf("__octAssertionCount++; if !%s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\n\", %s); os.Exit(1) }; %s = __octVoid{}", st.Args[0], st.Args[1], st.Target), nil
+			case "Assert.LGTM":
+				return fmt.Sprintf("__octAssertionCount++; if %s.IsErr { fmt.Fprintf(os.Stderr, \"assertion failed: %%s\\nunderlying error: %%s\\n\", %s, %s.Err); os.Exit(1) }; %s = %s.Value", st.Args[0], st.Args[1], st.Args[0], st.Target, st.Args[0]), nil
 			case "ToString":
 				return fmt.Sprintf("%s = fmt.Sprint(%s)", st.Target, st.Args[0]), nil
 			case "Float":
