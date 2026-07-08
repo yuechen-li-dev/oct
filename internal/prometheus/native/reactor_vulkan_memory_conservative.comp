@@ -1,0 +1,65 @@
+#version 450
+
+// PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE
+//
+// Design intent: minimize register and shared-memory footprint relative to
+// the other TILED-family kernels (tiled/srt_2accum_k/b2x2_row_major_biased/
+// a2x4_row_biased_accum8), for devices where occupancy_apply_safety_clamp's
+// register_file_class / shared_memory_class facts are low. Concretely:
+//
+//   - No `shared` workgroup memory declared at all (zero shared-memory
+//     pressure, vs. the tiled siblings which stage A/B tiles in shared mem).
+//   - Exactly one float accumulator per invocation (no 2x2/4x4/8-way
+//     register blocking), minimizing live register count per thread.
+//   - K-loop is unrolled by PROM_VK_TILE_K (8) purely for straight-line
+//     instruction-level parallelism on the load/FMA sequence; this does not
+//     add any additional persistent register state (the accumulator count
+//     stays at one), so it doesn't work against the memory-conservative goal.
+//
+// Buffer convention (matches sibling TILED kernels):
+//   A: row-major M x K
+//   B: row-major K x N
+//   C: row-major M x N
+// Dispatch convention (matches host dispatch code, reactor_vulkan_sgemm.c):
+//   global x -> row in [0, M), global y -> col in [0, N)
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) readonly buffer BufA { float a[]; };
+layout(set = 0, binding = 1) readonly buffer BufB { float b[]; };
+layout(set = 0, binding = 2) writeonly buffer BufC { float c[]; };
+
+layout(push_constant) uniform Push {
+    uint m;
+    uint n;
+    uint k;
+} pc;
+
+void main() {
+    uint row = gl_GlobalInvocationID.x;
+    uint col = gl_GlobalInvocationID.y;
+    if (row >= pc.m || col >= pc.n) {
+        return;
+    }
+
+    float acc = 0.0;
+    uint a_row_base = row * pc.k;
+    uint k_unrolled = pc.k & ~7u;
+    uint kk = 0u;
+
+    for (; kk < k_unrolled; kk += 8u) {
+        acc += a[a_row_base + kk + 0u] * b[(kk + 0u) * pc.n + col];
+        acc += a[a_row_base + kk + 1u] * b[(kk + 1u) * pc.n + col];
+        acc += a[a_row_base + kk + 2u] * b[(kk + 2u) * pc.n + col];
+        acc += a[a_row_base + kk + 3u] * b[(kk + 3u) * pc.n + col];
+        acc += a[a_row_base + kk + 4u] * b[(kk + 4u) * pc.n + col];
+        acc += a[a_row_base + kk + 5u] * b[(kk + 5u) * pc.n + col];
+        acc += a[a_row_base + kk + 6u] * b[(kk + 6u) * pc.n + col];
+        acc += a[a_row_base + kk + 7u] * b[(kk + 7u) * pc.n + col];
+    }
+    for (; kk < pc.k; ++kk) {
+        acc += a[a_row_base + kk] * b[kk * pc.n + col];
+    }
+
+    c[row * pc.n + col] = acc;
+}
