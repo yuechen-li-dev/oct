@@ -110,6 +110,25 @@ namespace
         return true;
     }
 
+    bool sequence_near_with_relative_tolerance(const std::vector<float>& expected,
+                                               const std::vector<float>& actual,
+                                               float abs_tolerance,
+                                               float rel_tolerance)
+    {
+        if (expected.size() != actual.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            const float abs_err = std::fabs(expected[i] - actual[i]);
+            const float denom = std::max(std::fabs(expected[i]), 1.0e-8f);
+            const float rel_err = abs_err / denom;
+            if (abs_err > abs_tolerance && rel_err > rel_tolerance) {
+                return false;
+            }
+        }
+        return true;
+    }
+
 }
 
 FACT(PrometheusReactor_ABIVersionIsStable)
@@ -1738,7 +1757,8 @@ FACT(PrometheusReactor_P13M2_OccupancyDiagnosticsPopulatedWithoutBehaviorChange)
     int detail = 0;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
                  "SGEMM should execute with occupancy selector diagnostics enabled");
-    ASSERT_TRUE(matrix_matches_oracle(m, n, k, a, b, c), "occupancy selector integration must not change SGEMM output behavior");
+    ASSERT_TRUE(sequence_near_with_relative_tolerance(expected, c, kGpuOracleTolerance, kGpuOracleTolerance),
+                "occupancy selector integration must not change SGEMM output behavior");
 
     PrometheusSgemmPolicyDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
@@ -1746,6 +1766,16 @@ FACT(PrometheusReactor_P13M2_OccupancyDiagnosticsPopulatedWithoutBehaviorChange)
     ASSERT_TRUE(diag.p13_m2_occupancy_shape_class >= 1u, "occupancy diagnostics should expose a shape class");
     ASSERT_TRUE(diag.p13_m2_occupancy_selected_variant >= 1u, "occupancy diagnostics should expose a selected variant");
     ASSERT_TRUE(diag.p13_m2_occupancy_unclamped_variant >= 1u, "occupancy diagnostics should expose the unclamped variant");
+    ASSERT_TRUE(diag.p13_m2_occupancy_selected_variant != static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                "valid occupancy selector facts should choose a non-baseline production variant");
+    ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
+                 diag.p13_m16b1_requested_occupancy_variant,
+                 "production dispatch request must adopt the judgment-engine occupancy selection");
+    ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
+                 diag.p13_m16b1_executed_occupancy_variant,
+                 "executed occupancy variant must match the production dispatch request");
+    ASSERT_TRUE(diag.p13_m16b1_variant_path_id != static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE),
+                "non-baseline production occupancy selection must bind a non-baseline tiled path when wired");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }

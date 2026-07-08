@@ -4744,6 +4744,61 @@ static uint32_t prom_occ_variant_path_status(uint32_t variant) {
   }
   return PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED;
 }
+
+static uint32_t prom_occ_variant_executed_identity(uint32_t variant) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    return variant;
+  }
+  return PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+}
+
+static uint32_t prom_occ_variant_path_id(uint32_t variant) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8;
+  }
+  return PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE;
+}
+
+static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    return PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    return PROM_OCCUPANCY_VARIANT_FALLBACK_NONE;
+  }
+  return PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
+}
+
+static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint32_t requested_variant) {
+  rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
+  rt->slot_diag.p13_m16b1_executed_occupancy_variant = prom_occ_variant_executed_identity(requested_variant);
+  rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
+  rt->slot_diag.p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_registered;
+  rt->slot_diag.p13_m16b1_variant_dvt_validated =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_pvt_validated =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_production_eligible =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_dispatch_enabled =
+      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
+  rt->slot_diag.p13_m16b1_variant_path_status = prom_occ_variant_path_status(requested_variant);
+  rt->slot_diag.p13_m16b1_variant_path_id = prom_occ_variant_path_id(requested_variant);
+  rt->slot_diag.p13_m16b1_fallback_reason = prom_occ_variant_fallback_reason(requested_variant);
+}
 /* Promotion seam terms:
  * DVT: local GPU correctness/sanity.
  * PVT: broader cloud/borrowed GPU validation.
@@ -4759,6 +4814,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                         uint32_t n,
                                                         uint32_t k,
                                                         uint32_t requested_variant,
+                                                        uint32_t selector_controls_dispatch_variant,
                                                         uint32_t* out_stage,
                                                         int* out_detail_code);
 
@@ -4773,6 +4829,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
                                      int* out_detail_code) {
   return prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k,
                                                       PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+                                                      1u,
                                                       out_stage, out_detail_code);
 }
 
@@ -4787,6 +4844,7 @@ int prom_reactor_runtime_sgemm_benchmark_variant_impl(void* handle,
                                                       uint32_t* out_stage,
                                                       int* out_detail_code) {
   return prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k, requested_variant,
+                                                      0u,
                                                       out_stage, out_detail_code);
 }
 
@@ -4798,6 +4856,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                      uint32_t n,
                                      uint32_t k,
                                      uint32_t requested_variant,
+                                     uint32_t selector_controls_dispatch_variant,
                                      uint32_t* out_stage,
                                      int* out_detail_code) {
   prometheus_runtime* rt;
@@ -4906,46 +4965,6 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
-  rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
-  rt->slot_diag.p13_m16b1_executed_occupancy_variant =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)
-          ? PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR
-          : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
-              requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
-              requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
-              requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
-                 ? requested_variant
-                 : PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
-  rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
-  rt->slot_diag.p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_registered;
-  rt->slot_diag.p13_m16b1_variant_dvt_validated =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_pvt_validated =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_production_eligible =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_dispatch_enabled =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_path_status = prom_occ_variant_path_status(requested_variant);
-  rt->slot_diag.p13_m16b1_variant_path_id =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)
-          ? PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE
-          : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE)
-                 ? PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K
-                 : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4)
-                        ? PROM_OCCUPANCY_VARIANT_PATH_ID_B2X2_ROW_MAJOR_BIASED
-                        : ((requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
-                               ? PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8
-                               : PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE)));
-  rt->slot_diag.p13_m16b1_fallback_reason =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE)
-          ? PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS
-          : (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
-             requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
-             requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
-             requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
-          ? PROM_OCCUPANCY_VARIANT_FALLBACK_NONE
-          : PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
   if (rt->available == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
     return PROM_ERROR;
@@ -5096,6 +5115,10 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   rt->slot_diag.p13_m2_occupancy_clamp_reason = occupancy_decision.clamp_reason;
   rt->slot_diag.p13_m2_occupancy_override_used = occupancy_decision.override_used;
   rt->slot_diag.p13_m2_occupancy_fallback_used = occupancy_decision.fallback_used;
+  if (selector_controls_dispatch_variant != 0u) {
+    requested_variant = occupancy_decision.selected_variant;
+  }
+  prom_record_requested_occupancy_variant(rt, requested_variant);
   memset(&path_compute_facts, 0, sizeof(path_compute_facts));
   path_compute_facts.m = m;
   path_compute_facts.n = n;
