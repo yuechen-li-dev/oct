@@ -432,9 +432,13 @@ State: **Success**
 Recommendation:
 
 - Close P13 DVT-2 as successful on the local Windows RTX 3070 machine.
-- Keep the current promotion seam unchanged:
-  - baseline remains production-eligible and dispatch-enabled
-  - non-baseline occupancy variants remain benchmark-only
+- Historical DVT-2 recommendation at the time was to keep the then-current promotion seam unchanged:
+  - baseline remained production-eligible and dispatch-enabled
+  - non-baseline occupancy variants remained benchmark-only
+- Px16 M3 later superseded that lifecycle gate:
+  - wired occupancy variants are EVT-dispatchable once they have a real path/pipeline
+  - DVT/PVT lifecycle fields remain telemetry rather than dispatch permission
+  - `occupancy_apply_safety_clamp` remains the real engineering safety gate
 - Proceed to PVT planning with the following explicit truths in hand:
   - real RTX 3070 hardware correctness is validated for the occupancy variant family
   - lifecycle diagnostics are truthful on hardware

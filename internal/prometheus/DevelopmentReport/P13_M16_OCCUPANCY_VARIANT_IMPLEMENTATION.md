@@ -10,7 +10,7 @@ M52 finalized the occupancy recipe mapping:
 - balanced-2x2-accum4 → B2x2-row-major-biased
 - aggressive-4x4-accum8 → A2x4-row-biased-accum8
 
-M16 implements these as benchmark-visible variants with correctness-first behavior and no dispatch actuation.
+M16 originally implemented these as benchmark-visible variants with correctness-first behavior and no dispatch actuation.
 
 ## 2) Implemented variants
 
@@ -22,7 +22,7 @@ Implemented and benchmark-available variants:
 - balanced-2x2-accum4
 - aggressive-4x4-accum8
 
-All non-baseline variants are marked benchmark-only via `variant_dispatch_enabled=false` in harness artifacts and runtime execution fallback behavior.
+That original benchmark-only limitation is now historical. After later wiring milestones plus Px16 M3 EVT semantics cleanup, all wired variants are dispatch-enabled / production-eligible under EVT rules, while DVT/PVT lifecycle fields remain telemetry only.
 
 ## 3) Implementation notes per variant
 
@@ -49,7 +49,7 @@ Fallback behavior is explicit in the benchmark harness:
 - available but dispatch-disabled variant → baseline fallback with reason `dispatch_disabled_benchmark_only`
 - aggressive variant on non-large shapes → baseline fallback with reason `aggressive_shape_gate_fallback`
 
-No silent correctness degradation is allowed.
+No silent correctness degradation is allowed. Real safety gating remains the judgment-engine clamp path rather than DVT/PVT promotion booleans.
 
 ## 5) Correctness validation results
 
@@ -71,7 +71,7 @@ This preserves benchmark observability while keeping dispatch actuation disabled
 ## 7) Limitations
 
 - No performance claims or tuning are included.
-- Non-baseline variants do not execute distinct GPU kernel bodies in this milestone; they are benchmark identities with explicit fallback to baseline execution.
+- This limitation applied to the original M16 implementation state and was removed by later wiring milestones.
 
 ## 8) Deferred work
 

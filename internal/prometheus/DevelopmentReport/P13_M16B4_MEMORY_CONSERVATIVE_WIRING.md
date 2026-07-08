@@ -22,7 +22,17 @@ Deferred intentionally:
 - No selector redesign or retuning beyond preserving existing reachability.
 - No SAFE-mode relaxation.
 - No P15 mismatch correction.
-- No new DVT/PVT/production eligibility claims.
+- No selector heuristics retune beyond existing reachability and safety clamp behavior.
+
+Px16 M3 EVT semantics cleanup:
+
+- Wired SGEMM occupancy variants are EVT-dispatchable by virtue of having a real wired path/pipeline.
+- `production_eligible` and `dispatch_enabled` now track wired-path reality rather than DVT/PVT/promotion closeout state.
+- `dvt_validated`, `pvt_validated`, and related lifecycle fields remain telemetry only; they do not gate dispatch.
+- `occupancy_apply_safety_clamp` remains the engineering safety mechanism.
+- Unknown or not-wired paths still cannot dispatch.
+- SAFE-mode force-direct policy is intentionally unchanged in this milestone.
+- P15 variant mismatch correction remains intentionally deferred.
 
 Production-selection coverage note:
 

@@ -1235,6 +1235,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B2_SrtVariantCorrectnessOddK, 1)
 VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_PromotionLifecycleFieldsExposed, 1)
 {
     const std::vector<std::uint32_t> variants = {
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
@@ -1244,10 +1245,21 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_PromotionLifecycleFieldsExposed, 1
         const BenchmarkRun run = run_benchmark(HarnessMode::Comparison, variant, false, false);
         for (const CaseResult& result : run.cases) {
             ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_benchmark_enabled, "benchmark_enabled must be true");
-            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_dvt_validated, "non-baseline dvt_validated must be false");
-            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_pvt_validated, "non-baseline pvt_validated must be false");
-            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_production_eligible, "non-baseline production_eligible must be false");
-            ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_dispatch_enabled, "wired non-baseline dispatch_enabled must be true");
+            ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_production_eligible, "wired EVT variant must be production eligible");
+            ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_dispatch_enabled, "wired EVT variant must be dispatch enabled");
+            if (variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)) {
+                ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_dvt_validated, "baseline dvt_validated must remain true");
+                ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_pvt_validated, "baseline pvt_validated must remain true");
+            } else {
+                ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_dvt_validated, "non-baseline dvt_validated must remain false");
+                ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_pvt_validated, "non-baseline pvt_validated must remain false");
+                ASSERT_EQUAL(variant,
+                             result.diag.p13_m16b1_requested_occupancy_variant,
+                             "telemetry-only DVT/PVT fields must not change requested variant");
+                ASSERT_EQUAL(variant,
+                             result.diag.p13_m16b1_executed_occupancy_variant,
+                             "telemetry-only DVT/PVT fields must not force a wired variant back to baseline");
+            }
         }
     }
 }
@@ -1296,6 +1308,14 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_NoRuntimeDispatchChange, 1)
     ASSERT_EQUAL(PROM_OK, status, "sgemm call should succeed");
     const CorrectnessSummary correctness = compare_against_oracle(cpu_oracle(m, n, k, a, b), c);
     ASSERT_TRUE(correctness.pass, "runtime SGEMM correctness should remain unchanged");
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "runtime diagnostics should succeed");
+    ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
+                 diag.p13_m16b1_requested_occupancy_variant,
+                 "selector-controlled production call should request the selected variant");
+    ASSERT_EQUAL(diag.p13_m16b1_requested_occupancy_variant,
+                 diag.p13_m16b1_executed_occupancy_variant,
+                 "selector-controlled production call should execute the requested variant identity");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
@@ -1447,7 +1467,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_DVT2_Rtx3070ValidationArtifact, 1)
             } else {
                 ASSERT_EQUAL(0u, observation.dvt_validated, "non-baseline dvt_validated must remain false before closeout");
                 ASSERT_EQUAL(0u, observation.pvt_validated, "non-baseline pvt_validated must remain false");
-                ASSERT_EQUAL(0u, observation.production_eligible, "non-baseline production_eligible must remain false");
+                ASSERT_EQUAL(1u, observation.production_eligible, "wired EVT non-baseline production_eligible must remain true");
                 ASSERT_EQUAL(1u, observation.dispatch_enabled, "wired non-baseline dispatch_enabled must remain true");
             }
             if (observation.timestamp_available != 0u && observation.timestamp_valid != 0u) {

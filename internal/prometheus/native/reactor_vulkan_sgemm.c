@@ -4764,25 +4764,28 @@ static uint32_t prom_occ_variant_registered(uint32_t variant) {
           variant <= PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) ? 1u : 0u;
 }
 
+static uint32_t prom_occ_variant_is_wired_evt_dispatchable(uint32_t variant) {
+  return (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8)
+             ? 1u
+             : 0u;
+}
+
 static uint32_t prom_occ_variant_path_status(uint32_t variant) {
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) {
     return PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE;
   }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+  if (prom_occ_variant_is_wired_evt_dispatchable(variant) != 0u) {
     return PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED;
   }
   return PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED;
 }
 
 static uint32_t prom_occ_variant_executed_identity(uint32_t variant) {
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+  if (prom_occ_variant_is_wired_evt_dispatchable(variant) != 0u) {
     return variant;
   }
   return PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
@@ -4805,11 +4808,7 @@ static uint32_t prom_occ_variant_path_id(uint32_t variant) {
 }
 
 static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
-      variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+  if (prom_occ_variant_is_wired_evt_dispatchable(variant) != 0u) {
     return PROM_OCCUPANCY_VARIANT_FALLBACK_NONE;
   }
   return PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
@@ -4817,6 +4816,7 @@ static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
 
 static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint32_t requested_variant) {
   const uint32_t path_status = prom_occ_variant_path_status(requested_variant);
+  const uint32_t evt_dispatchable = prom_occ_variant_is_wired_evt_dispatchable(requested_variant);
   rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
   rt->slot_diag.p13_m16b1_executed_occupancy_variant = prom_occ_variant_executed_identity(requested_variant);
   rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
@@ -4825,12 +4825,8 @@ static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint
       (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
   rt->slot_diag.p13_m16b1_variant_pvt_validated =
       (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_production_eligible =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_dispatch_enabled =
-      (path_status == PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE || path_status == PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED)
-          ? 1u
-          : 0u;
+  rt->slot_diag.p13_m16b1_variant_production_eligible = evt_dispatchable;
+  rt->slot_diag.p13_m16b1_variant_dispatch_enabled = evt_dispatchable;
   rt->slot_diag.p13_m16b1_variant_path_status = path_status;
   rt->slot_diag.p13_m16b1_variant_path_id = prom_occ_variant_path_id(requested_variant);
   rt->slot_diag.p13_m16b1_fallback_reason = prom_occ_variant_fallback_reason(requested_variant);
@@ -4838,8 +4834,8 @@ static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint
 /* Promotion seam terms:
  * DVT: local GPU correctness/sanity.
  * PVT: broader cloud/borrowed GPU validation.
- * production_eligible: allowed into production policy candidate set.
- * dispatch_enabled: runtime has a real dispatchable path independent of promotion telemetry.
+ * production_eligible / dispatch_enabled: EVT-wired variants with real paths may dispatch;
+ * DVT/PVT lifecycle fields remain telemetry only and do not gate a wired variant.
  */
 
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,

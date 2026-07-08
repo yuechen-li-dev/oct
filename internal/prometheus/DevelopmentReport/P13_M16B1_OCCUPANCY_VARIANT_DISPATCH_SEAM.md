@@ -22,10 +22,12 @@ Added policy diagnostics fields for M16b-1 lifecycle/dispatch truthfulness:
 - variant_path_id
 - fallback_reason
 
-M16b-1 state model:
+M16b-1 state model at introduction time:
 - baseline-scalar: registered/benchmark-enabled/production-eligible/dispatch-enabled
 - memory-conservative: registered + benchmark-enabled, production/dispatch disabled, alias-or-not-wired
 - small-register-tile / balanced-2x2-accum4 / aggressive-4x4-accum8: registered + benchmark-enabled, production/dispatch disabled, not-wired
+
+This milestone note is historical only. Later Px16 wiring milestones replaced those non-baseline placeholder states with real wired paths, and Px16 M3 EVT cleanup makes wired variants production-dispatchable without requiring DVT/PVT lifecycle fields to be true.
 
 ## 4) Benchmark override mechanism
 - Benchmark harness now requests variants via `prometheus_reactor_runtime_sgemm_benchmark_variant(...)`.

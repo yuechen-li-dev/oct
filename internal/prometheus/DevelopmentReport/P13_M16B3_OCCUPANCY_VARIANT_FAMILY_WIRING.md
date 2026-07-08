@@ -31,11 +31,15 @@ The runtime now explicitly exports lifecycle fields for each benchmark request:
 - `variant_production_eligible`
 - `variant_dispatch_enabled`
 
-Current M16b-3 truth model:
+Historical M16b-3 truth model at the time of wiring:
 - baseline: benchmark enabled + dvt/pvt validated + production eligible + dispatch enabled.
 - non-baseline variants: benchmark enabled, dvt/pvt false, production eligible false, dispatch enabled false.
 
-Promotion terminology is documented in-code to preserve a clean DVT -> PVT -> production transition path without dispatch architecture surgery.
+Px16 M3 supersedes that lifecycle gate:
+- all wired variants are now production eligible and dispatch enabled under EVT semantics,
+- DVT/PVT lifecycle fields remain observational telemetry only,
+- `occupancy_apply_safety_clamp` remains the real safety gate,
+- judgment-engine selection remains the sole production dispatch authority.
 
 ## 7) Correctness coverage
 Marionette benchmark-lane tests now validate B2x2 and A2x4 wired path identity and CPU-oracle correctness behavior, and verify MC alias diagnostics.
