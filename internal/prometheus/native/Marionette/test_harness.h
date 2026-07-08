@@ -98,9 +98,47 @@ namespace marionette::tests
         const char* file,
         int line);
 
-    struct BenchmarkContext
+    enum BenchmarkCategory : std::uint32_t
     {
+        MARIONETTE_BENCHMARK_CATEGORY_STANDARD = 1u << 0,
+        MARIONETTE_BENCHMARK_CATEGORY_VALIDATED = 1u << 1,
+        MARIONETTE_BENCHMARK_CATEGORY_ALL =
+            MARIONETTE_BENCHMARK_CATEGORY_STANDARD |
+            MARIONETTE_BENCHMARK_CATEGORY_VALIDATED
+    };
+
+    class BenchmarkContext
+    {
+    public:
+        explicit BenchmarkContext(std::string_view benchmarkName);
+
+        [[nodiscard]] std::string_view BenchmarkName() const;
+        [[nodiscard]] std::string DisplayName() const;
+        [[nodiscard]] const std::vector<Failure>& Failures() const;
+        [[nodiscard]] const std::vector<std::filesystem::path>& ArtifactPaths() const;
+        [[nodiscard]] const Skip* SkipState() const;
+        [[nodiscard]] bool HasFailures() const;
+        [[nodiscard]] bool IsSkipped() const;
+        [[nodiscard]] std::filesystem::path ArtifactDirectory() const;
+
+        void RecordFailure(
+            const char* file,
+            int line,
+            std::string_view assertion,
+            std::string_view message,
+            std::string_view expected = {},
+            std::string_view actual = {});
+        void SkipTest(const char* file, int line, std::string_view reason);
+        [[nodiscard]] bool WriteTextArtifact(std::string_view artifactName, std::string_view content);
+
         std::uint64_t iteration = 0;
+
+    private:
+        std::string benchmarkName_;
+        std::vector<Failure> failures_;
+        std::vector<std::filesystem::path> artifactPaths_;
+        Skip skip_;
+        bool skipped_ = false;
     };
 
     using BenchmarkFunction = void (*)(BenchmarkContext& context);
@@ -110,26 +148,38 @@ namespace marionette::tests
         std::string name;
         BenchmarkFunction function = nullptr;
         std::uint64_t iterations = 0;
+        std::uint32_t category = MARIONETTE_BENCHMARK_CATEGORY_STANDARD;
     };
 
     class BenchmarkRegistrar
     {
     public:
-        BenchmarkRegistrar(const char* benchmarkName, BenchmarkFunction function, std::uint64_t iterations);
+        BenchmarkRegistrar(const char* benchmarkName, BenchmarkFunction function, std::uint64_t iterations, std::uint32_t category);
     };
 
     struct BenchmarkResult
     {
         std::string name;
+        std::uint64_t configuredIterations = 0;
         std::uint64_t iterations = 0;
         std::uint64_t elapsedNanoseconds = 0;
+        std::uint32_t category = MARIONETTE_BENCHMARK_CATEGORY_STANDARD;
+        std::vector<Failure> failures;
+        std::vector<std::filesystem::path> artifactPaths;
+        Skip skip;
+        bool skipped = false;
+        bool failed = false;
     };
 
     [[nodiscard]] std::vector<TestCase>& Registry();
     [[nodiscard]] std::vector<BenchmarkCase>& BenchmarkRegistry();
     [[nodiscard]] int RunAllTests(std::string_view filter);
-    [[nodiscard]] int RunBenchmarks(std::string_view filter);
-    [[nodiscard]] std::vector<BenchmarkResult> ExecuteBenchmarks(std::string_view filter);
+    [[nodiscard]] int RunBenchmarks(
+        std::string_view filter,
+        std::uint32_t categoryMask = MARIONETTE_BENCHMARK_CATEGORY_STANDARD);
+    [[nodiscard]] std::vector<BenchmarkResult> ExecuteBenchmarks(
+        std::string_view filter,
+        std::uint32_t categoryMask = MARIONETTE_BENCHMARK_CATEGORY_STANDARD);
 
     [[nodiscard]] std::string FormatValue(bool value);
     [[nodiscard]] std::string FormatValue(double value);
@@ -142,9 +192,9 @@ namespace marionette::tests
     [[nodiscard]] std::string FormatValue(std::string_view value);
     [[nodiscard]] std::string FormatValue(unsigned int value);
 
-    template <typename NumericType>
+    template <typename ContextType, typename NumericType>
     void AssertNear(
-        TestContext& context,
+        ContextType& context,
         NumericType expected,
         NumericType actual,
         NumericType tolerance,
@@ -166,9 +216,9 @@ namespace marionette::tests
             FormatValue(actual));
     }
 
-    template <typename ExpectedRange, typename ActualRange>
+    template <typename ContextType, typename ExpectedRange, typename ActualRange>
     void AssertSequenceEqual(
-        TestContext& context,
+        ContextType& context,
         const ExpectedRange& expected,
         const ActualRange& actual,
         const char* file,
@@ -220,12 +270,38 @@ namespace marionette::tests
 
 #define BENCHMARK(BENCHMARK_NAME) \
     static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context); \
-    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar(#BENCHMARK_NAME, &BENCHMARK_NAME, 10000); \
+    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar( \
+        #BENCHMARK_NAME, \
+        &BENCHMARK_NAME, \
+        10000, \
+        ::marionette::tests::MARIONETTE_BENCHMARK_CATEGORY_STANDARD); \
     static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context)
 
 #define BENCHMARK_WITH_ITERATIONS(BENCHMARK_NAME, ITERATIONS) \
     static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context); \
-    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar(#BENCHMARK_NAME, &BENCHMARK_NAME, ITERATIONS); \
+    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar( \
+        #BENCHMARK_NAME, \
+        &BENCHMARK_NAME, \
+        ITERATIONS, \
+        ::marionette::tests::MARIONETTE_BENCHMARK_CATEGORY_STANDARD); \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context)
+
+#define VALIDATED_BENCHMARK(BENCHMARK_NAME) \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context); \
+    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar( \
+        #BENCHMARK_NAME, \
+        &BENCHMARK_NAME, \
+        10000, \
+        ::marionette::tests::MARIONETTE_BENCHMARK_CATEGORY_VALIDATED); \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context)
+
+#define VALIDATED_BENCHMARK_WITH_ITERATIONS(BENCHMARK_NAME, ITERATIONS) \
+    static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context); \
+    static const ::marionette::tests::BenchmarkRegistrar BENCHMARK_NAME##_benchmark_registrar( \
+        #BENCHMARK_NAME, \
+        &BENCHMARK_NAME, \
+        ITERATIONS, \
+        ::marionette::tests::MARIONETTE_BENCHMARK_CATEGORY_VALIDATED); \
     static void BENCHMARK_NAME(::marionette::tests::BenchmarkContext& context)
 
 #define ASSERT_TRUE(CONDITION, MESSAGE) \

@@ -35,6 +35,7 @@
 #include "reactor_vulkan_packed4_spirv.h"
 #include "reactor_vulkan_b2x2_row_major_biased_spirv.h"
 #include "reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
+#include "reactor_vulkan_memory_conservative_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
@@ -488,6 +489,8 @@ typedef struct prometheus_runtime {
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
   VkPipeline tiled_pipeline;
+  VkShaderModule memory_conservative_shader_module;
+  VkPipeline memory_conservative_pipeline;
   VkPipeline srt_2accum_k_pipeline;
   VkPipeline b2x2_row_major_biased_pipeline;
   VkPipeline a2x4_row_biased_accum8_pipeline;
@@ -3914,6 +3917,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->tiled_pipeline, NULL);
     rt->tiled_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->memory_conservative_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->memory_conservative_pipeline, NULL);
+    rt->memory_conservative_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->srt_2accum_k_pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->srt_2accum_k_pipeline, NULL);
     rt->srt_2accum_k_pipeline = VK_NULL_HANDLE;
@@ -3937,6 +3944,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->pipeline, NULL);
     rt->pipeline = VK_NULL_HANDLE;
+  }
+  if (rt->memory_conservative_shader_module != VK_NULL_HANDLE) {
+    vkDestroyShaderModule(rt->device, rt->memory_conservative_shader_module, NULL);
+    rt->memory_conservative_shader_module = VK_NULL_HANDLE;
   }
   if (rt->pipeline_layout != VK_NULL_HANDLE) {
     vkDestroyPipelineLayout(rt->device, rt->pipeline_layout, NULL);
@@ -4317,6 +4328,29 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) {
     return VK_ERROR_INITIALIZATION_FAILED;
+  }
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_memory_conservative_spirv);
+  shader_info.pCode = k_prom_sgemm_memory_conservative_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->memory_conservative_shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = rt->memory_conservative_shader_module;
+  stage_info.pName = "main";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->memory_conservative_pipeline);
+  if (result != VK_SUCCESS) {
+    return result;
   }
 
   memset(&shader_info, 0, sizeof(shader_info));
@@ -4735,12 +4769,10 @@ static uint32_t prom_occ_variant_path_status(uint32_t variant) {
     return PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE;
   }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
       variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
       variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
     return PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED;
-  }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
-    return PROM_OCCUPANCY_VARIANT_PATH_STATUS_ALIAS_OR_NOT_WIRED;
   }
   return PROM_OCCUPANCY_VARIANT_PATH_STATUS_NOT_WIRED;
 }
@@ -4757,6 +4789,9 @@ static uint32_t prom_occ_variant_executed_identity(uint32_t variant) {
 }
 
 static uint32_t prom_occ_variant_path_id(uint32_t variant) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE;
+  }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K;
   }
@@ -4770,10 +4805,8 @@ static uint32_t prom_occ_variant_path_id(uint32_t variant) {
 }
 
 static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
-    return PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS;
-  }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+      variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
       variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
       variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
       variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
@@ -4783,6 +4816,7 @@ static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
 }
 
 static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint32_t requested_variant) {
+  const uint32_t path_status = prom_occ_variant_path_status(requested_variant);
   rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
   rt->slot_diag.p13_m16b1_executed_occupancy_variant = prom_occ_variant_executed_identity(requested_variant);
   rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
@@ -4794,8 +4828,10 @@ static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint
   rt->slot_diag.p13_m16b1_variant_production_eligible =
       (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
   rt->slot_diag.p13_m16b1_variant_dispatch_enabled =
-      (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) ? 1u : 0u;
-  rt->slot_diag.p13_m16b1_variant_path_status = prom_occ_variant_path_status(requested_variant);
+      (path_status == PROM_OCCUPANCY_VARIANT_PATH_STATUS_BASELINE || path_status == PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED)
+          ? 1u
+          : 0u;
+  rt->slot_diag.p13_m16b1_variant_path_status = path_status;
   rt->slot_diag.p13_m16b1_variant_path_id = prom_occ_variant_path_id(requested_variant);
   rt->slot_diag.p13_m16b1_fallback_reason = prom_occ_variant_fallback_reason(requested_variant);
 }
@@ -4803,7 +4839,7 @@ static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint
  * DVT: local GPU correctness/sanity.
  * PVT: broader cloud/borrowed GPU validation.
  * production_eligible: allowed into production policy candidate set.
- * dispatch_enabled: production policy may actively dispatch it.
+ * dispatch_enabled: runtime has a real dispatchable path independent of promotion telemetry.
  */
 
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
@@ -5714,7 +5750,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   free(fp16_b_upload);
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
-    if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+    if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+      selected_pipeline = rt->memory_conservative_pipeline;
+    } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
       selected_pipeline = rt->srt_2accum_k_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
       selected_pipeline = rt->b2x2_row_major_biased_pipeline;

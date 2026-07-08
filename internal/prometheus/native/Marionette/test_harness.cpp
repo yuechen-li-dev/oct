@@ -71,7 +71,13 @@ namespace marionette::tests
             return false;
         }
 
-        void PrintFailure(const TestContext&, const Failure& failure)
+        [[nodiscard]] bool MatchesBenchmarkCategory(std::uint32_t category, std::uint32_t categoryMask)
+        {
+            return (category & categoryMask) != 0u;
+        }
+
+        template <typename ContextType>
+        void PrintFailure(const ContextType&, const Failure& failure)
         {
             std::cout
                 << "  FAIL " << failure.testName
@@ -85,7 +91,8 @@ namespace marionette::tests
             }
         }
 
-        void PrintSkip(const TestContext&, const Skip& skip)
+        template <typename ContextType>
+        void PrintSkip(const ContextType&, const Skip& skip)
         {
             std::cout
                 << "  SKIP " << skip.testName
@@ -93,7 +100,8 @@ namespace marionette::tests
                 << "    reason: " << skip.reason << "\n";
         }
 
-        void PrintArtifacts(const TestContext& context)
+        template <typename ContextType>
+        void PrintArtifacts(const ContextType& context)
         {
             for (const std::filesystem::path& artifactPath : context.ArtifactPaths()) {
                 std::cout << "    artifact: " << artifactPath.lexically_normal().string() << "\n";
@@ -195,6 +203,7 @@ namespace marionette::tests
     void TestContext::SkipTest(const char* file, int line, std::string_view reason)
     {
         skipped_ = true;
+        failures_.clear();
         skip_ = Skip{
             .testName = DisplayName(),
             .file = file,
@@ -214,6 +223,133 @@ namespace marionette::tests
     }
 
     [[nodiscard]] bool TestContext::WriteTextArtifact(std::string_view artifactName, std::string_view content)
+    {
+        const std::filesystem::path directory = ArtifactDirectory();
+        std::error_code error;
+        std::filesystem::create_directories(directory, error);
+        if (error) {
+            RecordFailure(
+                __FILE__,
+                __LINE__,
+                "WRITE_TEXT_ARTIFACT",
+                "failed to create artifact directory",
+                directory.string(),
+                error.message());
+            return false;
+        }
+
+        const std::filesystem::path artifactPath =
+            directory / (SanitizePathComponent(artifactName) + ".txt");
+        std::ofstream artifactFile(artifactPath, std::ios::binary | std::ios::trunc);
+        if (!artifactFile.is_open()) {
+            RecordFailure(
+                __FILE__,
+                __LINE__,
+                "WRITE_TEXT_ARTIFACT",
+                "failed to open artifact file",
+                artifactPath.string(),
+                "could not open file");
+            return false;
+        }
+
+        artifactFile << std::string(content);
+        artifactFile.close();
+        if (!artifactFile) {
+            RecordFailure(
+                __FILE__,
+                __LINE__,
+                "WRITE_TEXT_ARTIFACT",
+                "failed to write artifact file",
+                artifactPath.string(),
+                "write failed");
+            return false;
+        }
+
+        artifactPaths_.push_back(artifactPath);
+        return true;
+    }
+
+    BenchmarkContext::BenchmarkContext(std::string_view benchmarkName)
+        : benchmarkName_(benchmarkName)
+    {
+    }
+
+    [[nodiscard]] std::string_view BenchmarkContext::BenchmarkName() const
+    {
+        return benchmarkName_;
+    }
+
+    [[nodiscard]] std::string BenchmarkContext::DisplayName() const
+    {
+        return benchmarkName_;
+    }
+
+    [[nodiscard]] const std::vector<Failure>& BenchmarkContext::Failures() const
+    {
+        return failures_;
+    }
+
+    [[nodiscard]] const std::vector<std::filesystem::path>& BenchmarkContext::ArtifactPaths() const
+    {
+        return artifactPaths_;
+    }
+
+    [[nodiscard]] const Skip* BenchmarkContext::SkipState() const
+    {
+        if (!skipped_) {
+            return nullptr;
+        }
+
+        return &skip_;
+    }
+
+    [[nodiscard]] bool BenchmarkContext::HasFailures() const
+    {
+        return !failures_.empty();
+    }
+
+    [[nodiscard]] bool BenchmarkContext::IsSkipped() const
+    {
+        return skipped_;
+    }
+
+    [[nodiscard]] std::filesystem::path BenchmarkContext::ArtifactDirectory() const
+    {
+        return GetArtifactRoot() / SanitizePathComponent(DisplayName());
+    }
+
+    void BenchmarkContext::RecordFailure(
+        const char* file,
+        int line,
+        std::string_view assertion,
+        std::string_view message,
+        std::string_view expected,
+        std::string_view actual)
+    {
+        failures_.push_back(Failure{
+            .testName = DisplayName(),
+            .file = file,
+            .line = line,
+            .assertion = std::string(assertion),
+            .message = std::string(message),
+            .expected = std::string(expected),
+            .actual = std::string(actual)
+        });
+    }
+
+    void BenchmarkContext::SkipTest(const char* file, int line, std::string_view reason)
+    {
+        skipped_ = true;
+        failures_.clear();
+        skip_ = Skip{
+            .testName = DisplayName(),
+            .file = file,
+            .line = line,
+            .reason = std::string(reason)
+        };
+    }
+
+    [[nodiscard]] bool BenchmarkContext::WriteTextArtifact(std::string_view artifactName, std::string_view content)
     {
         const std::filesystem::path directory = ArtifactDirectory();
         std::error_code error;
@@ -355,12 +491,14 @@ namespace marionette::tests
     BenchmarkRegistrar::BenchmarkRegistrar(
         const char* benchmarkName,
         BenchmarkFunction function,
-        std::uint64_t iterations)
+        std::uint64_t iterations,
+        std::uint32_t category)
     {
         BenchmarkRegistry().push_back(BenchmarkCase{
             .name = benchmarkName,
             .function = function,
-            .iterations = iterations
+            .iterations = iterations,
+            .category = category
         });
     }
 
@@ -439,7 +577,7 @@ namespace marionette::tests
         return failedCount == 0 ? 0 : 1;
     }
 
-    [[nodiscard]] std::vector<BenchmarkResult> ExecuteBenchmarks(std::string_view filter)
+    [[nodiscard]] std::vector<BenchmarkResult> ExecuteBenchmarks(std::string_view filter, std::uint32_t categoryMask)
     {
         std::vector<BenchmarkCase>& benchmarks = BenchmarkRegistry();
         std::sort(
@@ -455,44 +593,97 @@ namespace marionette::tests
             if (!MatchesFilter(benchmark.name, filter)) {
                 continue;
             }
+            if (!MatchesBenchmarkCategory(benchmark.category, categoryMask)) {
+                continue;
+            }
 
-            BenchmarkContext context;
+            BenchmarkContext context(benchmark.name);
             const auto start = std::chrono::steady_clock::now();
+            std::uint64_t executedIterations = 0u;
             for (std::uint64_t iteration = 0; iteration < benchmark.iterations; ++iteration) {
                 context.iteration = iteration;
                 benchmark.function(context);
+                executedIterations += 1u;
+                if (context.IsSkipped() || context.HasFailures()) {
+                    break;
+                }
             }
             const auto stop = std::chrono::steady_clock::now();
             const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start);
 
             results.push_back(BenchmarkResult{
                 .name = benchmark.name,
-                .iterations = benchmark.iterations,
-                .elapsedNanoseconds = static_cast<std::uint64_t>(elapsed.count())
+                .configuredIterations = benchmark.iterations,
+                .iterations = executedIterations,
+                .elapsedNanoseconds = static_cast<std::uint64_t>(elapsed.count()),
+                .category = benchmark.category,
+                .failures = context.Failures(),
+                .artifactPaths = context.ArtifactPaths(),
+                .skip = context.SkipState() != nullptr ? *context.SkipState() : Skip{},
+                .skipped = context.IsSkipped(),
+                .failed = context.HasFailures()
             });
         }
 
         return results;
     }
 
-    [[nodiscard]] int RunBenchmarks(std::string_view filter)
+    [[nodiscard]] int RunBenchmarks(std::string_view filter, std::uint32_t categoryMask)
     {
-        const std::vector<BenchmarkResult> results = ExecuteBenchmarks(filter);
+        const std::vector<BenchmarkResult> results = ExecuteBenchmarks(filter, categoryMask);
+        int failedCount = 0;
+        int skippedCount = 0;
+        int totalFailureCount = 0;
 
         for (const BenchmarkResult& result : results) {
+            BenchmarkContext context(result.name);
             const std::uint64_t averageNanoseconds =
                 result.iterations == 0 ? 0 : result.elapsedNanoseconds / result.iterations;
 
+            if (result.skipped) {
+                ++skippedCount;
+                std::cout << "[SKIP] " << result.name << "\n";
+                PrintSkip(context, result.skip);
+                for (const std::filesystem::path& artifactPath : result.artifactPaths) {
+                    std::cout << "    artifact: " << artifactPath.lexically_normal().string() << "\n";
+                }
+                continue;
+            }
+            if (result.failed) {
+                ++failedCount;
+                totalFailureCount += static_cast<int>(result.failures.size());
+                std::cout << "[FAIL] " << result.name << "\n";
+                for (const Failure& failure : result.failures) {
+                    PrintFailure(context, failure);
+                }
+                for (const std::filesystem::path& artifactPath : result.artifactPaths) {
+                    std::cout << "    artifact: " << artifactPath.lexically_normal().string() << "\n";
+                }
+                continue;
+            }
+
             std::cout
                 << "[BENCH] " << result.name
-                << " iterations=" << result.iterations
+                << " iterations=" << result.iterations;
+            if (result.iterations != result.configuredIterations) {
+                std::cout << "/" << result.configuredIterations;
+            }
+            std::cout
                 << " elapsed_ns=" << result.elapsedNanoseconds
                 << " avg_ns=" << averageNanoseconds
                 << "\n";
+            for (const std::filesystem::path& artifactPath : result.artifactPaths) {
+                std::cout << "    artifact: " << artifactPath.lexically_normal().string() << "\n";
+            }
         }
 
-        std::cout << "\nBenchmark Summary: " << results.size() << " benchmark(s)\n";
-        return 0;
+        std::cout
+            << "\nBenchmark Summary: "
+            << results.size() << " benchmark(s), "
+            << skippedCount << " skipped, "
+            << failedCount << " failed, "
+            << totalFailureCount << " assertion failure(s)\n";
+        return failedCount == 0 ? 0 : 1;
     }
 
     [[nodiscard]] std::string FormatValue(bool value)

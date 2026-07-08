@@ -665,6 +665,20 @@ FACT(PrometheusJudgmentEngine_P13M2_OccupancySelectorClampAndOverrideRules)
     prom_judgment_engine_select_occupancy_variant(&facts, &small);
     ASSERT_TRUE(small.selected_variant != decision.selected_variant, "shape class should affect occupancy variant");
 
+    facts.register_file_class = 1u;
+    facts.shared_memory_class = 2u;
+    facts.memory_bandwidth_class = 2u;
+    facts.fp32_throughput_class = 2u;
+    facts.max_workgroup_class = 1u;
+    facts.queue_capability_class = 2u;
+    facts.m = 128u;
+    facts.n = 128u;
+    facts.k = 128u;
+    facts.work_units = static_cast<std::uint64_t>(facts.m) * facts.n * facts.k;
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), decision.selected_variant,
+                 "register-constrained small shapes should now reach memory-conservative");
+
     facts.register_file_class = 0u;
     facts.shared_memory_class = 0u;
     facts.memory_bandwidth_class = 0u;

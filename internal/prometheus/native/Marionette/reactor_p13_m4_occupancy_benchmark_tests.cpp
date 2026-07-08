@@ -220,6 +220,8 @@ namespace
                 return "b2x2_row_major_biased";
             case PROM_OCCUPANCY_VARIANT_PATH_ID_A2X4_ROW_BIASED_ACCUM8:
                 return "a2x4_row_biased_accum8";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE:
+                return "memory_conservative";
             default:
                 return "unknown";
         }
@@ -271,7 +273,7 @@ namespace
 
     bool variant_dispatch_enabled(std::uint32_t variant)
     {
-        return variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
+        return variant_is_implemented(variant);
     }
 
     bool aggressive_shape_supported(const BenchmarkShapeCase& shape)
@@ -448,8 +450,9 @@ namespace
     {
         switch (variant) {
             case PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR:
-            case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE);
+            case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE);
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K);
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
@@ -463,9 +466,8 @@ namespace
 
     std::uint32_t expected_variant_fallback_reason(std::uint32_t variant)
     {
-        return variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE)
-            ? static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS)
-            : static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE);
+        (void)variant;
+        return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE);
     }
 
     const std::vector<BenchmarkShapeCase>& dvt_shape_cases()
@@ -747,15 +749,6 @@ namespace
             result.fallback_reason = "unavailable_variant_fallback_to_baseline";
         }
 
-        if (result.variant_available && !variant_dispatch_enabled(requested_variant)) {
-            result.tested_variant = static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
-            result.fallback_reason = "dispatch_disabled_benchmark_only";
-            if (requested_variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) &&
-                !aggressive_shape_supported(shape)) {
-                result.fallback_reason = "aggressive_shape_gate_fallback";
-            }
-        }
-
         const std::uint32_t shape_salt = shape.m ^ (shape.n << 1u) ^ (shape.k << 2u);
         const std::vector<float> a = deterministic_matrix(shape.m, shape.k, shape_salt + 17u);
         const std::vector<float> b = deterministic_matrix(shape.k, shape.n, shape_salt + 73u);
@@ -1032,7 +1025,7 @@ namespace
 
 
 #ifndef MARIONETTE_EXCLUDE_BENCHMARK_TESTS
-FACT(P13_M4_SmokeModeRunsCompactCases)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_SmokeModeRunsCompactCases, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1043,7 +1036,7 @@ FACT(P13_M4_SmokeModeRunsCompactCases)
     ASSERT_EQUAL(std::string("smoke"), mode_name(run.mode), "smoke run mode should be explicit");
 }
 
-FACT(P13_M4_ArtifactSchemaFieldsPresent)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_ArtifactSchemaFieldsPresent, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1060,7 +1053,7 @@ FACT(P13_M4_ArtifactSchemaFieldsPresent)
     ASSERT_TRUE(context.WriteTextArtifact("p13_m4_smoke_artifact", artifact), "artifact should be emitted for inspection");
 }
 
-FACT(P13_M4_CorrectnessFailureBlocksActuation)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_CorrectnessFailureBlocksActuation, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1069,7 +1062,7 @@ FACT(P13_M4_CorrectnessFailureBlocksActuation)
     ASSERT_FALSE(run.final_actuation_ready, "correctness failure must block actuation readiness");
 }
 
-FACT(P13_M4_LowTimingConfidenceBlocksActuation)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_LowTimingConfidenceBlocksActuation, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1080,7 +1073,7 @@ FACT(P13_M4_LowTimingConfidenceBlocksActuation)
     ASSERT_FALSE(run.final_actuation_ready, "low timing confidence must block actuation readiness");
 }
 
-FACT(P13_M16_BenchmarkOnlyVariantsFallbackFromDispatch)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16_ExplicitBenchmarkDispatchPreservesRequestedVariant, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
@@ -1089,12 +1082,19 @@ FACT(P13_M16_BenchmarkOnlyVariantsFallbackFromDispatch)
     ASSERT_TRUE(!run.cases.empty(), "comparison mode should include compact cases");
     for (const CaseResult& result : run.cases) {
         ASSERT_TRUE(result.variant_available, "aggressive variant should report available in M16 harness");
-        ASSERT_FALSE(result.actuation_ready, "benchmark-only variant case must never become actuation-ready");
-        ASSERT_TRUE(!result.fallback_reason.empty(), "benchmark-only variants should report fallback reason");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+                     result.diag.p13_m16b1_requested_occupancy_variant,
+                     "benchmark dispatch should preserve the caller-requested variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+                     result.diag.p13_m16b1_executed_occupancy_variant,
+                     "benchmark dispatch should execute the requested wired variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE),
+                     result.diag.p13_m16b1_fallback_reason,
+                     "wired benchmark dispatch should not report fallback");
     }
 }
 
-FACT(P13_M16B3_B2x2VariantWiredPathIdentity)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_B2x2VariantWiredPathIdentity, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
@@ -1107,7 +1107,7 @@ FACT(P13_M16B3_B2x2VariantWiredPathIdentity)
     }
 }
 
-FACT(P13_M16B3_A2x4VariantWiredPathIdentity)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_A2x4VariantWiredPathIdentity, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
@@ -1120,7 +1120,7 @@ FACT(P13_M16B3_A2x4VariantWiredPathIdentity)
     }
 }
 
-FACT(P13_M16B3_MemoryConservativeAliasDiagnostics)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_MemoryConservativeVariantWiredPathIdentity, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
@@ -1129,12 +1129,49 @@ FACT(P13_M16B3_MemoryConservativeAliasDiagnostics)
     for (const CaseResult& result : run.cases) {
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), result.diag.p13_m16b1_requested_occupancy_variant, "MC request variant");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), result.diag.p13_m16b1_executed_occupancy_variant, "MC executed variant should preserve identity");
-        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE), result.diag.p13_m16b1_variant_path_id, "MC alias should run baseline path id");
-        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS), result.diag.p13_m16b1_fallback_reason, "MC alias reason required");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED), result.diag.p13_m16b1_variant_path_status, "MC path status should be wired");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE), result.diag.p13_m16b1_variant_path_id, "MC must bind its dedicated pipeline identity");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE), result.diag.p13_m16b1_fallback_reason, "MC should not report alias fallback");
     }
 }
 
-FACT(P13_M16B2_SrtVariantWiredPathIdentity)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_MemoryConservativeVariantCorrectnessOddK, 1)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    const std::vector<BenchmarkShapeCase> cases = {
+        {"1x1x1", 0u, 1u, 1u, 1u, true},
+        {"3x7x5", 0u, 3u, 7u, 5u, true},
+        {"8x8x9", 0u, 8u, 8u, 9u, true},
+        {"16x16x17", 0u, 16u, 16u, 17u, true},
+        {"wide-short-small", 0u, 4u, 19u, 7u, true},
+        {"tall-skinny-small", 0u, 21u, 5u, 11u, true},
+    };
+    for (const BenchmarkShapeCase& test_case : cases) {
+        const std::vector<float> a = deterministic_matrix(test_case.m, test_case.k, 13u);
+        const std::vector<float> b = deterministic_matrix(test_case.k, test_case.n, 31u);
+        std::vector<float> c(static_cast<std::size_t>(test_case.m) * static_cast<std::size_t>(test_case.n), 0.0f);
+        std::uint32_t stage = 0u;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_sgemm_benchmark_variant(handle,
+                                                                        a.data(),
+                                                                        b.data(),
+                                                                        c.data(),
+                                                                        test_case.m,
+                                                                        test_case.n,
+                                                                        test_case.k,
+                                                                        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+                                                                        &stage,
+                                                                        &detail),
+                     "MC benchmark call should succeed");
+        const CorrectnessSummary correctness = compare_against_oracle(cpu_oracle(test_case.m, test_case.n, test_case.k, a, b), c);
+        ASSERT_TRUE(correctness.pass, "MC benchmark output should match CPU oracle");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B2_SrtVariantWiredPathIdentity, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
@@ -1159,7 +1196,7 @@ FACT(P13_M16B2_SrtVariantWiredPathIdentity)
     }
 }
 
-FACT(P13_M16B2_SrtVariantCorrectnessOddK)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B2_SrtVariantCorrectnessOddK, 1)
 {
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
@@ -1195,7 +1232,7 @@ FACT(P13_M16B2_SrtVariantCorrectnessOddK)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
-FACT(P13_M16B3_PromotionLifecycleFieldsExposed)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_PromotionLifecycleFieldsExposed, 1)
 {
     const std::vector<std::uint32_t> variants = {
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
@@ -1210,12 +1247,12 @@ FACT(P13_M16B3_PromotionLifecycleFieldsExposed)
             ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_dvt_validated, "non-baseline dvt_validated must be false");
             ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_pvt_validated, "non-baseline pvt_validated must be false");
             ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_production_eligible, "non-baseline production_eligible must be false");
-            ASSERT_EQUAL(0u, result.diag.p13_m16b1_variant_dispatch_enabled, "non-baseline dispatch_enabled must be false");
+            ASSERT_EQUAL(1u, result.diag.p13_m16b1_variant_dispatch_enabled, "wired non-baseline dispatch_enabled must be true");
         }
     }
 }
 
-FACT(P13_M4_DiagnosticsAlignmentRequired)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_DiagnosticsAlignmentRequired, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1224,7 +1261,7 @@ FACT(P13_M4_DiagnosticsAlignmentRequired)
     ASSERT_FALSE(run.final_actuation_ready, "diagnostics mismatch must block actuation readiness");
 }
 
-FACT(P13_M4_BaselineCorrectnessSucceedsInSmoke)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_BaselineCorrectnessSucceedsInSmoke, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1239,7 +1276,7 @@ FACT(P13_M4_BaselineCorrectnessSucceedsInSmoke)
     }
 }
 
-FACT(P13_M4_NoRuntimeDispatchChange)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_NoRuntimeDispatchChange, 1)
 {
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
@@ -1262,7 +1299,7 @@ FACT(P13_M4_NoRuntimeDispatchChange)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
-FACT(P13_M4_Determinism_MetadataStableAcrossRuns)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_Determinism_MetadataStableAcrossRuns, 1)
 {
     const BenchmarkRun first = run_benchmark(HarnessMode::Smoke,
                                              static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1281,7 +1318,7 @@ FACT(P13_M4_Determinism_MetadataStableAcrossRuns)
     }
 }
 
-FACT(P13_M5_TimestampUnavailableFallback)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_TimestampUnavailableFallback, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1293,7 +1330,7 @@ FACT(P13_M5_TimestampUnavailableFallback)
     ASSERT_FALSE(run.final_actuation_ready, "timestamp-unavailable fallback cannot be actuation-ready");
 }
 
-FACT(P13_M5_TimestampAvailableHighConfidencePath)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_TimestampAvailableHighConfidencePath, 1)
 {
     BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
                                      static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1324,7 +1361,7 @@ FACT(P13_M5_TimestampAvailableHighConfidencePath)
     ASSERT_EQUAL(std::string("high"), run.timing_confidence, "high-confidence path should report high confidence");
 }
 
-FACT(P13_M5_InvalidTimestampResultBlocksConfidence)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_InvalidTimestampResultBlocksConfidence, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1337,7 +1374,7 @@ FACT(P13_M5_InvalidTimestampResultBlocksConfidence)
     ASSERT_FALSE(run.final_actuation_ready, "invalid timestamp result must block actuation readiness");
 }
 
-FACT(P13_M5_TimingDoesNotOverrideCorrectnessFailure)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_TimingDoesNotOverrideCorrectnessFailure, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1349,7 +1386,7 @@ FACT(P13_M5_TimingDoesNotOverrideCorrectnessFailure)
     ASSERT_FALSE(run.final_actuation_ready, "correctness failure must dominate timing confidence");
 }
 
-FACT(P13_M5_ArtifactSchemaIncludesTimestampFields)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_ArtifactSchemaIncludesTimestampFields, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
@@ -1366,7 +1403,7 @@ FACT(P13_M5_ArtifactSchemaIncludesTimestampFields)
     ASSERT_TRUE(artifact.find("\"gpu_duration_ns_mean\"") != std::string::npos, "artifact must include GPU duration statistics");
 }
 
-FACT(P13_M5_DVT2_Rtx3070ValidationArtifact)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_DVT2_Rtx3070ValidationArtifact, 1)
 {
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "DVT runtime create should succeed");
@@ -1411,7 +1448,7 @@ FACT(P13_M5_DVT2_Rtx3070ValidationArtifact)
                 ASSERT_EQUAL(0u, observation.dvt_validated, "non-baseline dvt_validated must remain false before closeout");
                 ASSERT_EQUAL(0u, observation.pvt_validated, "non-baseline pvt_validated must remain false");
                 ASSERT_EQUAL(0u, observation.production_eligible, "non-baseline production_eligible must remain false");
-                ASSERT_EQUAL(0u, observation.dispatch_enabled, "non-baseline dispatch_enabled must remain false");
+                ASSERT_EQUAL(1u, observation.dispatch_enabled, "wired non-baseline dispatch_enabled must remain true");
             }
             if (observation.timestamp_available != 0u && observation.timestamp_valid != 0u) {
                 ASSERT_TRUE(observation.gpu_duration_ns_mean > 0.0, "valid GPU timestamps must report positive duration");
@@ -1433,7 +1470,7 @@ FACT(P13_M5_DVT2_Rtx3070ValidationArtifact)
 }
 
 
-FACT(P13_M17_DvtArtifactTruthFieldsSeparated)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M17_DvtArtifactTruthFieldsSeparated, 1)
 {
     DvtObservation o{};
     o.shape_name = "truth-separation";
@@ -1453,7 +1490,7 @@ FACT(P13_M17_DvtArtifactTruthFieldsSeparated)
     ASSERT_TRUE(artifact.find("\"runtime_selected_fp16\": 0, \"device_supports_fp16\": 1") != std::string::npos, "artifact must separate FP16 capability from runtime selection");
 }
 
-FACT(P13_M5_SmokeModeCiSafe)
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_SmokeModeCiSafe, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Smoke,
                                            static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),

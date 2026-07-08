@@ -53,6 +53,8 @@ Windows bridge-loader milestone.
 ./marionette_tests <filter>         # run tests whose name contains <filter>
 ./marionette_tests --bench          # run all benchmarks
 ./marionette_tests --bench <filter> # run matching benchmarks
+./marionette_benchmarks             # run validated benchmark lane
+./marionette_benchmarks <filter>    # run matching validated benchmarks only
 ```
 
 Artifacts from passing and failing tests are written to `out/test-artifacts/<TestName>/`.
@@ -157,6 +159,10 @@ Artifacts are materialized under repository `out/test-artifacts/...` via the har
 ## Benchmarks (separate from correctness tests)
 
 Benchmarks register in a separate benchmark registry and are executed via bench mode.
+The harness now distinguishes:
+
+- standard benchmarks (`BENCHMARK`, `BENCHMARK_WITH_ITERATIONS`) for ordinary timing runs;
+- validated benchmarks (`VALIDATED_BENCHMARK`, `VALIDATED_BENCHMARK_WITH_ITERATIONS`) for dedicated CI-quality benchmark lanes with assertions, skips, artifacts, and failing exit codes.
 
 ### `BENCHMARK`
 
@@ -182,10 +188,22 @@ BENCHMARK_WITH_ITERATIONS(MyBenchmarkFixed, 128)
 
 Use when you need explicit fixed iteration count.
 
+### `VALIDATED_BENCHMARK`
+
+```cpp
+VALIDATED_BENCHMARK_WITH_ITERATIONS(MyValidatedBenchmark, 1)
+{
+    ASSERT_TRUE(true, "validated benchmarks can use normal assertions");
+    ASSERT_TRUE(context.WriteTextArtifact("summary", "ok"), "validated benchmarks can emit artifacts");
+}
+```
+
+Use validated benchmarks for dedicated benchmark lanes that must preserve correctness checks and artifact output. These registrations are excluded from ordinary `RunBenchmarks(...)` unless the validated category is requested explicitly by the caller.
+
 ### `ExecuteBenchmarks` vs `RunBenchmarks`
 
-- `ExecuteBenchmarks(filter)` runs matching benchmark functions and returns a structured `std::vector<BenchmarkResult>` (`name`, `iterations`, `elapsedNanoseconds`) for assertions, custom formatting, or artifact emission.
-- `RunBenchmarks(filter)` is the CLI-oriented wrapper: it calls `ExecuteBenchmarks`, prints `[BENCH] ...` summary lines, and returns process exit code `0`.
+- `ExecuteBenchmarks(filter)` runs matching standard benchmarks by default and returns structured `BenchmarkResult` entries, including timing plus validation/artifact state.
+- `RunBenchmarks(filter)` is the CLI-oriented wrapper: it calls `ExecuteBenchmarks`, prints timing lines for passing benchmarks, prints failure/skip detail for validated benchmarks when present, and returns nonzero if any executed benchmark failed.
 
 Use `ExecuteBenchmarks` from tests/library code when you need programmatic inspection; use `RunBenchmarks` for `main()` bench mode (`--bench`).
 

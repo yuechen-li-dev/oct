@@ -112,3 +112,9 @@ FACT(PrometheusNativeHarness_Smoke)
 {
     ASSERT_TRUE(true, "native Marionette harness smoke check should always run in non-Vulkan environments");
 }
+
+BENCHMARK_WITH_ITERATIONS(SmokeBenchmarkCountsIterations, 8)
+{
+    volatile std::uint64_t value = context.iteration + 1u;
+    (void)value;
+}

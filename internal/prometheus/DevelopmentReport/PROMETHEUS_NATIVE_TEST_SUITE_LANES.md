@@ -7,7 +7,7 @@
 ## Lane definitions
 - `marionette_tests`: default correctness lane; excludes slow and benchmark facts.
 - `marionette_slow_tests`: includes slow/stress cases plus normal correctness tests.
-- `marionette_benchmarks`: benchmark-harness facts (P13 M4/M5).
+- `marionette_benchmarks`: validated benchmark lane driven by explicit benchmark-category registration rather than hardcoded name prefixes.
 
 ## Files/tests moved
 - Guarded slow tests in `reactor_p11_m6_batch_tests.cpp` with `MARIONETTE_EXCLUDE_SLOW_TESTS`.
@@ -30,5 +30,4 @@
 - Built and executed all three binaries in Linux environment.
 
 ## Remaining cleanup TODOs
-- Convert benchmark harness facts to dedicated `BENCHMARK` registrations once benchmark assertion/reporting API supports correctness/artifact validation.
 - Complete Windows lane parity in `build_windows.cmd`.
