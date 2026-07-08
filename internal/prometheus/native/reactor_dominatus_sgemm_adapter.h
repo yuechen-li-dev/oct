@@ -177,6 +177,7 @@ typedef struct prom_dom_sgemm_path_compute_facts {
   uint32_t allow_fallback;
   uint32_t readback_required;
   uint32_t force_direct;
+  uint32_t force_direct_reason;
   uint32_t force_staged;
   uint32_t force_tiled;
   uint32_t tiled_shape;
@@ -198,11 +199,12 @@ typedef enum prom_dom_sgemm_path_compute_dependency_bit {
   PROM_DOM_PATH_COMPUTE_DEP_ALLOW_FALLBACK = 6,
   PROM_DOM_PATH_COMPUTE_DEP_READBACK_REQUIRED = 7,
   PROM_DOM_PATH_COMPUTE_DEP_FORCE_DIRECT = 8,
-  PROM_DOM_PATH_COMPUTE_DEP_FORCE_STAGED = 9,
-  PROM_DOM_PATH_COMPUTE_DEP_FORCE_TILED = 10,
-  PROM_DOM_PATH_COMPUTE_DEP_TILED_SHAPE = 11,
-  PROM_DOM_PATH_COMPUTE_DEP_SOFTWARE_VULKAN = 12,
-  PROM_DOM_PATH_COMPUTE_DEP_POLICY_MODE = 13,
+  PROM_DOM_PATH_COMPUTE_DEP_FORCE_DIRECT_REASON = 9,
+  PROM_DOM_PATH_COMPUTE_DEP_FORCE_STAGED = 10,
+  PROM_DOM_PATH_COMPUTE_DEP_FORCE_TILED = 11,
+  PROM_DOM_PATH_COMPUTE_DEP_TILED_SHAPE = 12,
+  PROM_DOM_PATH_COMPUTE_DEP_SOFTWARE_VULKAN = 13,
+  PROM_DOM_PATH_COMPUTE_DEP_POLICY_MODE = 14,
 } prom_dom_sgemm_path_compute_dependency_bit;
 
 typedef struct prom_dom_sgemm_path_compute_projection {

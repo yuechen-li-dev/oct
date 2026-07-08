@@ -12,4 +12,17 @@ The architecture rule for this milestone is:
 Deferred work:
 
 - Hooking up the memory-conservative SPIR-V kernel is intentionally deferred to a later Px16 milestone.
-- SAFE-mode force-direct policy relaxation is intentionally deferred.
+
+## Px16 M4
+
+Px16 M4 removes the blanket SAFE-mode SGEMM direct-path suppression that previously set `force_direct` solely because the controller was in `PROM_POLICY_MODE_SAFE`. SAFE mode now means guardrails, diagnostics, and concrete hazard fallback rather than automatic slow-path dispatch.
+
+The architecture rule for this milestone is:
+
+- SAFE policy may still reach tiled SGEMM production dispatch when the shape is eligible, the selected occupancy variant is wired, and no concrete hazard requires direct fallback.
+- The judgment engine remains the production dispatch authority.
+- `occupancy_apply_safety_clamp` remains the live engineering safety gate for occupancy variants.
+- Direct fallback remains available for explicit overrides and concrete hazards, with path-level diagnostics exposing force-direct reason and selected path/compute state.
+- DVT/PVT/promotion lifecycle fields remain telemetry only.
+- P15 mismatch correction remains deferred.
+- Selector performance tuning remains deferred.

@@ -1780,6 +1780,83 @@ FACT(PrometheusReactor_P13M2_OccupancyDiagnosticsPopulatedWithoutBehaviorChange)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
+FACT(PrometheusReactor_P13_M16B5_SafePolicyAllowsEligibleTiledDispatch)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; safe tiled dispatch regression needs runnable runtime");
+    }
+
+    const std::uint32_t pressure_m = 128u;
+    const std::uint32_t pressure_n = 128u;
+    const std::uint32_t pressure_k = 64u;
+    const std::vector<float> pressure_a = deterministic_matrix(pressure_m, pressure_k);
+    const std::vector<float> pressure_b = deterministic_matrix(pressure_k, pressure_n);
+    std::vector<float> pressure_c(pressure_m * pressure_n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+
+    for (int iter = 0; iter < 4; ++iter) {
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_sgemm(handle,
+                                                      pressure_a.data(),
+                                                      pressure_b.data(),
+                                                      pressure_c.data(),
+                                                      pressure_m,
+                                                      pressure_n,
+                                                      pressure_k,
+                                                      &stage,
+                                                      &detail),
+                     "pressure shape should execute so controller can retreat into safe mode");
+    }
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed after pressure");
+    ASSERT_TRUE(diag.current_mode == static_cast<std::uint32_t>(PROM_POLICY_MODE_SAFE) || diag.safe_mode_decisions >= 1u,
+                "preconditioning should leave the controller in safe mode or prove it spent time there");
+
+    const std::uint32_t m = 256u;
+    const std::uint32_t n = 128u;
+    const std::uint32_t k = 512u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    const std::vector<float> expected = cpu_oracle(m, n, k, a, b);
+
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
+                 "eligible safe-policy SGEMM should still execute");
+    ASSERT_TRUE(sequence_near_with_relative_tolerance(expected, c, kGpuOracleTolerance, kGpuOracleTolerance),
+                "safe tiled regression must preserve SGEMM correctness");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed after safe tiled run");
+    ASSERT_TRUE(diag.current_mode == static_cast<std::uint32_t>(PROM_POLICY_MODE_SAFE) || diag.safe_mode_decisions >= 1u,
+                "regression should measure a safe-policy execution window");
+    ASSERT_EQUAL(0u, diag.p13_m16b5_force_direct_requested, "safe policy alone must not request force-direct");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_SGEMM_FORCE_DIRECT_REASON_NONE),
+                 diag.p13_m16b5_force_direct_reason,
+                 "safe policy alone must not publish a force-direct reason");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED),
+                 diag.p13_m16b5_compute_mode,
+                 "safe eligible production SGEMM must keep tiled compute");
+    ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
+                 diag.p13_m16b1_requested_occupancy_variant,
+                 "selector-controlled safe tiled case must preserve selected/requested identity");
+    ASSERT_EQUAL(diag.p13_m16b1_requested_occupancy_variant,
+                 diag.p13_m16b1_executed_occupancy_variant,
+                 "selector-controlled safe tiled case must preserve requested/executed identity");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED),
+                 diag.p13_m16b1_variant_path_status,
+                 "safe tiled regression should execute through a wired occupancy path");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 FACT(PrometheusReactor_P13_M10_ResourceLease_SingleSgemmGrantYieldSmoke)
 {
     void* handle = nullptr;

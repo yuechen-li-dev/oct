@@ -5161,13 +5161,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   path_compute_facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
   path_compute_facts.readback_required = readback_required;
   path_compute_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
-  if (path_compute_facts.force_direct == 0u && policy_mode == PROM_POLICY_MODE_SAFE &&
-      (rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) == 0u && (rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) == 0u) {
-    /* SAFE mode currently biases to direct+baseline for conservative behavior.
-     * This can suppress direct+tiled on large shapes; keep unchanged in this pass
-     * and revisit with real GPU validation data before any policy relaxation. */
-    path_compute_facts.force_direct = 1u;
-  }
+  path_compute_facts.force_direct_reason =
+      path_compute_facts.force_direct != 0u ? PROM_SGEMM_FORCE_DIRECT_REASON_EXPLICIT_OVERRIDE : PROM_SGEMM_FORCE_DIRECT_REASON_NONE;
   path_compute_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
   path_compute_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
   path_compute_facts.tiled_shape = tiled_shape;
@@ -8132,6 +8127,7 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   const prom_sgemm_controller_defaults defaults = prom_sgemm_default_config();
   prom_dom_sgemm_m35_snapshot m35_snapshot;
   prom_dom_transfer_queue_snapshot transfer_snapshot;
+  prom_dom_sgemm_path_compute_snapshot path_compute_snapshot;
   prom_dom_sgemm_layout_precision_snapshot layout_precision_snapshot;
   prom_dom_slot_commit_snapshot slot_snapshot;
   prom_dom_slot_runtime_diag_snapshot slot_diag_snapshot;
@@ -8330,6 +8326,15 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
     out_diag->m31_transfer_failure_slot_id = rt->slot_diag.transfer_failure_slot_id;
     out_diag->m31_transfer_failure_reason = rt->slot_diag.transfer_failure_reason;
     out_diag->m31_async_transfer_complete = rt->slot_diag.async_transfer_complete;
+  }
+  if (prom_dom_sgemm_read_visible_path_compute_diagnostics(&rt->blackboard, &path_compute_snapshot) != 0u) {
+    out_diag->p13_m16b5_force_direct_requested = path_compute_snapshot.facts.force_direct;
+    out_diag->p13_m16b5_force_direct_applied =
+        (path_compute_snapshot.facts.force_direct != 0u && path_compute_snapshot.decision.selected_path == (uint32_t)PROM_VK_PATH_DIRECT) ? 1u : 0u;
+    out_diag->p13_m16b5_force_direct_reason = path_compute_snapshot.facts.force_direct_reason;
+    out_diag->p13_m16b5_requested_path = path_compute_snapshot.decision.requested_path;
+    out_diag->p13_m16b5_selected_path = path_compute_snapshot.decision.selected_path;
+    out_diag->p13_m16b5_compute_mode = path_compute_snapshot.decision.compute_mode;
   }
   if (prom_dom_sgemm_read_visible_m35(&rt->blackboard, &m35_snapshot) != 0u) {
     out_diag->m35_selected_buffering_mode = m35_snapshot.selected_mode;

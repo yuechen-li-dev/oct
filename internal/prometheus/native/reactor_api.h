@@ -124,6 +124,12 @@ enum {
 };
 
 enum {
+  PROM_SGEMM_FORCE_DIRECT_REASON_NONE = 0,
+  PROM_SGEMM_FORCE_DIRECT_REASON_EXPLICIT_OVERRIDE = 1,
+  PROM_SGEMM_FORCE_DIRECT_REASON_SAFE_CONCRETE_HAZARD = 2,
+};
+
+enum {
   PROM_DETAIL_INJECTED_UPLOAD_FAILURE = -6001,
   PROM_DETAIL_INJECTED_DISPATCH_FAILURE = -6002,
   PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE = -6003,
@@ -709,6 +715,12 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   int m31_transfer_failure_reason;
   uint32_t m31_upload_policy_marker;
   uint32_t m31_async_transfer_complete;
+  uint32_t p13_m16b5_force_direct_requested;
+  uint32_t p13_m16b5_force_direct_applied;
+  uint32_t p13_m16b5_force_direct_reason;
+  uint32_t p13_m16b5_requested_path;
+  uint32_t p13_m16b5_selected_path;
+  uint32_t p13_m16b5_compute_mode;
   uint32_t m35_selected_buffering_mode;
   uint32_t m35_fixed_feasible;
   uint32_t m35_pull_lag_feasible;

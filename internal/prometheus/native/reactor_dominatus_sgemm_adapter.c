@@ -127,6 +127,7 @@ static uint64_t path_compute_dependency_mask_last_commit(const prom_dom_blackboa
   if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_ALLOW_FALLBACK) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_ALLOW_FALLBACK;
   if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_READBACK_REQUIRED) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_READBACK_REQUIRED;
   if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_DIRECT;
+  if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT_REASON) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_DIRECT_REASON;
   if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_STAGED;
   if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_FORCE_TILED;
   if (prom_dom_dirty_key_last_commit(board, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE) != 0u) mask |= 1ull << PROM_DOM_PATH_COMPUTE_DEP_TILED_SHAPE;
@@ -1368,6 +1369,12 @@ uint32_t prom_dom_sgemm_stage_path_compute_facts(prom_dom_blackboard* board,
                        facts->readback_required,
                        (int32_t)facts->readback_required) == 0u) return 0u;
   if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT, 0u, facts->force_direct, (int32_t)facts->force_direct) == 0u) return 0u;
+  if (prom_dom_set_u32(board,
+                       PROM_DOM_SOURCE_JUDGMENT,
+                       PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT_REASON,
+                       0u,
+                       facts->force_direct_reason,
+                       (int32_t)facts->force_direct_reason) == 0u) return 0u;
   if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED, 0u, facts->force_staged, (int32_t)facts->force_staged) == 0u) return 0u;
   if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED, 0u, facts->force_tiled, (int32_t)facts->force_tiled) == 0u) return 0u;
   if (prom_dom_set_u32(board, PROM_DOM_SOURCE_JUDGMENT, PROM_DOM_KEY_SGEMM_FACT_TILED_SHAPE, 0u, facts->tiled_shape, (int32_t)facts->tiled_shape) == 0u) return 0u;
@@ -1412,6 +1419,8 @@ uint32_t prom_dom_sgemm_build_path_compute_facts_from_visible(
   facts.readback_required = u32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
   facts.force_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT_REASON, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
+  facts.force_direct_reason = u32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
   facts.force_staged = u32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED, 0u, &u32_value) == 0u) { out_projection->facts = facts; return 1u; }
@@ -1496,6 +1505,8 @@ uint32_t prom_dom_sgemm_read_visible_path_compute_diagnostics(const prom_dom_bla
   out_snapshot->facts.readback_required = u32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT, 0u, &u32_value) == 0u) return 0u;
   out_snapshot->facts.force_direct = u32_value;
+  if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT_REASON, 0u, &u32_value) == 0u) return 0u;
+  out_snapshot->facts.force_direct_reason = u32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_STAGED, 0u, &u32_value) == 0u) return 0u;
   out_snapshot->facts.force_staged = u32_value;
   if (prom_dom_get_u32(board, PROM_DOM_KEY_SGEMM_FACT_FORCE_TILED, 0u, &u32_value) == 0u) return 0u;

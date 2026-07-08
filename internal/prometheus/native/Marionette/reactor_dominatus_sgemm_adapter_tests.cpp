@@ -766,10 +766,10 @@ FACT(PrometheusDominatusSgemmAdapter_M10PathComputeInputSnapshotIsolation)
     prom_dom_sgemm_path_compute_projection projection{};
     prom_dom_blackboard_init(&board);
     a.m = 128u; a.n = 128u; a.k = 64u; a.work_units = 1048576u; a.can_stage = 1u; a.can_direct = 1u;
-    a.allow_fallback = 1u; a.readback_required = 1u; a.force_direct = 0u; a.force_staged = 0u; a.force_tiled = 0u;
+    a.allow_fallback = 1u; a.readback_required = 1u; a.force_direct = 0u; a.force_direct_reason = PROM_SGEMM_FORCE_DIRECT_REASON_NONE; a.force_staged = 0u; a.force_tiled = 0u;
     a.tiled_shape = 1u; a.software_vulkan = 0u; a.policy_mode = PROM_POLICY_MODE_AGGRESSIVE;
     b = a;
-    b.m = 32u; b.work_units = 32768u; b.can_stage = 0u; b.force_direct = 1u; b.tiled_shape = 0u; b.policy_mode = PROM_POLICY_MODE_SAFE;
+    b.m = 32u; b.work_units = 32768u; b.can_stage = 0u; b.force_direct = 1u; b.force_direct_reason = PROM_SGEMM_FORCE_DIRECT_REASON_EXPLICIT_OVERRIDE; b.tiled_shape = 0u; b.policy_mode = PROM_POLICY_MODE_SAFE;
 
     ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &a) == 1u, "staging facts A should succeed");
     prom_dom_sgemm_commit(&board);
@@ -777,10 +777,12 @@ FACT(PrometheusDominatusSgemmAdapter_M10PathComputeInputSnapshotIsolation)
     ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &b, &projection) == 1u, "pre-commit projection should build");
     ASSERT_EQUAL(a.m, projection.facts.m, "pre-commit projection should preserve visible A");
     ASSERT_EQUAL(a.force_direct, projection.facts.force_direct, "pre-commit projection should preserve visible A force-direct");
+    ASSERT_EQUAL(a.force_direct_reason, projection.facts.force_direct_reason, "pre-commit projection should preserve visible A force-direct reason");
     prom_dom_sgemm_commit(&board);
     ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &a, &projection) == 1u, "post-commit projection should build");
     ASSERT_EQUAL(b.m, projection.facts.m, "post-commit projection should read committed B");
     ASSERT_EQUAL(b.force_direct, projection.facts.force_direct, "post-commit projection should read committed B force-direct");
+    ASSERT_EQUAL(b.force_direct_reason, projection.facts.force_direct_reason, "post-commit projection should read committed B force-direct reason");
 }
 
 FACT(PrometheusDominatusSgemmAdapter_M10PathComputeFactsAffectDecisionOnlyAfterCommit)
@@ -795,9 +797,9 @@ FACT(PrometheusDominatusSgemmAdapter_M10PathComputeFactsAffectDecisionOnlyAfterC
     prom_judgment_decision after{};
     prom_dom_blackboard_init(&board);
     base.m = 128u; base.n = 128u; base.k = 64u; base.work_units = 1048576u; base.can_stage = 1u; base.can_direct = 1u;
-    base.allow_fallback = 1u; base.readback_required = 1u; base.force_direct = 0u; base.force_staged = 0u; base.force_tiled = 1u;
+    base.allow_fallback = 1u; base.readback_required = 1u; base.force_direct = 0u; base.force_direct_reason = PROM_SGEMM_FORCE_DIRECT_REASON_NONE; base.force_staged = 0u; base.force_tiled = 1u;
     base.tiled_shape = 1u; base.software_vulkan = 0u; base.policy_mode = PROM_POLICY_MODE_AGGRESSIVE;
-    changed = base; changed.force_direct = 1u; changed.force_staged = 0u; changed.force_tiled = 0u; changed.tiled_shape = 0u;
+    changed = base; changed.force_direct = 1u; changed.force_direct_reason = PROM_SGEMM_FORCE_DIRECT_REASON_EXPLICIT_OVERRIDE; changed.force_staged = 0u; changed.force_tiled = 0u; changed.tiled_shape = 0u;
     changed.readback_required = 0u; changed.can_stage = 0u; changed.software_vulkan = 1u;
 
     ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &base) == 1u, "baseline facts should stage");
@@ -868,7 +870,8 @@ FACT(PrometheusDominatusSgemmAdapter_M10PathComputeDirtyCoverage)
     prom_dom_sgemm_path_compute_projection projection{};
     prom_dom_blackboard_init(&board);
     a.m = 64u; a.n = 64u; a.k = 64u; a.work_units = 262144u; a.can_stage = 1u; a.can_direct = 1u; a.allow_fallback = 1u;
-    b = a; b.force_direct = 1u; b.readback_required = 1u; b.tiled_shape = 1u; b.software_vulkan = 1u;
+    a.force_direct_reason = PROM_SGEMM_FORCE_DIRECT_REASON_NONE;
+    b = a; b.force_direct = 1u; b.force_direct_reason = PROM_SGEMM_FORCE_DIRECT_REASON_EXPLICIT_OVERRIDE; b.readback_required = 1u; b.tiled_shape = 1u; b.software_vulkan = 1u;
     ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &a) == 1u, "initial facts should stage");
     prom_dom_sgemm_commit(&board);
     decision.success = 1u; decision.requested_path = PROM_VK_PATH_DIRECT; decision.selected_path = PROM_VK_PATH_DIRECT;
@@ -876,9 +879,11 @@ FACT(PrometheusDominatusSgemmAdapter_M10PathComputeDirtyCoverage)
     ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_facts(&board, &b) == 1u, "mutated facts should stage");
     ASSERT_TRUE(prom_dom_sgemm_stage_path_compute_decision(&board, &decision) == 1u, "decision should stage");
     ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) == 1u, "force-direct key should be staged dirty");
+    ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT_REASON) == 1u, "force-direct-reason key should be staged dirty");
     ASSERT_TRUE(prom_dom_dirty_key_staged(&board, PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_SCORE) == 1u, "winning-score key should be staged dirty");
     prom_dom_sgemm_commit(&board);
     ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT) == 1u, "force-direct key should be dirty on commit");
+    ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_FACT_FORCE_DIRECT_REASON) == 1u, "force-direct-reason key should be dirty on commit");
     ASSERT_TRUE(prom_dom_dirty_key_last_commit(&board, PROM_DOM_KEY_SGEMM_JUDGMENT_WINNING_SCORE) == 1u, "winning-score key should be dirty on commit");
     ASSERT_TRUE(prom_dom_sgemm_build_path_compute_facts_from_visible(&board, &a, &projection) == 1u, "projection should build");
     ASSERT_TRUE(projection.dependent_dirty_key_mask_last_commit != 0u, "path/compute dependency dirty mask should be non-zero");

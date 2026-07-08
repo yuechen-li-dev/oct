@@ -198,6 +198,26 @@ FACT(PrometheusJudgmentEngine_IntegrationParityWithReactorPolicyScenarios)
         ASSERT_EQUAL(PROM_VK_COMPUTE_BASELINE, decision.compute_mode, "mode-budget packed4 rejection should fallback to baseline compute");
         ASSERT_EQUAL(PROM_PACKED4_REJECT_MODE_BUDGET_DENIED, decision.packed4_reject_reason, "safe-mode over-budget rejection should be explicit");
     }
+
+    {
+        prom_judgment_facts facts = base_facts();
+        facts.policy_mode = PROM_POLICY_MODE_SAFE;
+        facts.m = 256u;
+        facts.n = 128u;
+        facts.k = 512u;
+        facts.work_units = static_cast<std::uint64_t>(facts.m) * static_cast<std::uint64_t>(facts.n) * static_cast<std::uint64_t>(facts.k);
+        facts.readback_required = 1u;
+        facts.tiled_shape = 1u;
+        facts.packed4_available = 0u;
+        facts.capability_fp16_storage = 0u;
+
+        prom_judgment_decision decision{};
+        prom_judgment_engine_select_sgemm_mode(&facts, &decision);
+        ASSERT_EQUAL(1u, decision.success, "safe eligible tiled shape should still select a path");
+        ASSERT_EQUAL(PROM_VK_PATH_STAGED_UPLOAD_READBACK, decision.selected_path, "safe eligible tiled shape should keep staged-readback path");
+        ASSERT_EQUAL(PROM_VK_COMPUTE_TILED, decision.compute_mode, "safe policy alone must not suppress tiled dispatch");
+        ASSERT_EQUAL(PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED, decision.final_detail, "safe tiled dispatch should stay explicitly observable");
+    }
 }
 
 FACT(PrometheusJudgmentEngine_FP16PolicyGatesAreExplicitAndDeterministic)
