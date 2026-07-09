@@ -1132,6 +1132,11 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_MemoryConservativeVariantWiredPath
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED), result.diag.p13_m16b1_variant_path_status, "MC path status should be wired");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE), result.diag.p13_m16b1_variant_path_id, "MC must bind its dedicated pipeline identity");
         ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE), result.diag.p13_m16b1_fallback_reason, "MC should not report alias fallback");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), result.diag.px16_m6_requested_dispatch_variant, "M6 should report MC requested dispatch");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), result.diag.px16_m6_executed_dispatch_variant, "M6 should report MC executed dispatch");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED), result.diag.px16_m6_variant_path_status, "M6 should report MC wired path status");
+        ASSERT_EQUAL(1u, result.diag.px16_m6_variant_production_eligible, "M6 should report MC as production eligible");
+        ASSERT_EQUAL(1u, result.diag.px16_m6_variant_dispatch_enabled, "M6 should report MC as dispatch enabled");
     }
 }
 
@@ -1169,6 +1174,27 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_MemoryConservativeVariantCorrectne
         ASSERT_TRUE(correctness.pass, "MC benchmark output should match CPU oracle");
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B6_MemoryConservativeDiagnosticsTruthSurface, 1)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+                                           false,
+                                           false);
+    for (const CaseResult& result : run.cases) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+                     result.diag.px16_m6_requested_dispatch_variant,
+                     "M6 should report the MC requested dispatch variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+                     result.diag.px16_m6_executed_dispatch_variant,
+                     "M6 should report the MC executed dispatch variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED),
+                     result.diag.px16_m6_variant_path_status,
+                     "M6 should report the MC path as wired");
+        ASSERT_EQUAL(1u, result.diag.px16_m6_variant_production_eligible, "M6 should report MC as production eligible");
+        ASSERT_EQUAL(1u, result.diag.px16_m6_variant_dispatch_enabled, "M6 should report MC as dispatch enabled");
+    }
 }
 
 VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B2_SrtVariantWiredPathIdentity, 1)
@@ -1259,6 +1285,18 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_PromotionLifecycleFieldsExposed, 1
                 ASSERT_EQUAL(variant,
                              result.diag.p13_m16b1_executed_occupancy_variant,
                              "telemetry-only DVT/PVT fields must not force a wired variant back to baseline");
+                ASSERT_EQUAL(1u,
+                             result.diag.px16_m6_variant_lifecycle_telemetry_only,
+                             "M6 should mark promotion lifecycle fields as telemetry-only");
+                ASSERT_EQUAL(0u,
+                             result.diag.px16_m6_variant_dvt_validated,
+                             "M6 should preserve DVT as telemetry-only false");
+                ASSERT_EQUAL(0u,
+                             result.diag.px16_m6_variant_pvt_validated,
+                             "M6 should preserve PVT as telemetry-only false");
+                ASSERT_EQUAL(variant,
+                             result.diag.px16_m6_executed_dispatch_variant,
+                             "M6 should not let telemetry-only DVT/PVT change the executed wired variant");
             }
         }
     }
@@ -1313,9 +1351,18 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M4_NoRuntimeDispatchChange, 1)
     ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
                  diag.p13_m16b1_requested_occupancy_variant,
                  "selector-controlled production call should request the selected variant");
-    ASSERT_EQUAL(diag.p13_m16b1_requested_occupancy_variant,
-                 diag.p13_m16b1_executed_occupancy_variant,
-                 "selector-controlled production call should execute the requested variant identity");
+    if (diag.p13_m16b5_compute_mode == static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED)) {
+        ASSERT_EQUAL(diag.p13_m16b1_requested_occupancy_variant,
+                     diag.p13_m16b1_executed_occupancy_variant,
+                     "tiled selector-controlled production call should execute the requested occupancy variant");
+    } else {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                     diag.p13_m16b1_executed_occupancy_variant,
+                     "non-tiled production call should publish baseline as the executed occupancy identity");
+        ASSERT_EQUAL(diag.p13_m16b1_executed_occupancy_variant,
+                     diag.px16_m6_executed_dispatch_variant,
+                     "M6 truth surface should mirror the non-tiled executed occupancy identity");
+    }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
@@ -1448,17 +1495,19 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_DVT2_Rtx3070ValidationArtifact, 1)
                 }
                 ASSERT_TRUE(observation.runtime_ok, observation.runtime_error.empty() ? "DVT observation should complete" : observation.runtime_error);
                 ASSERT_TRUE(observation.correctness.pass, "all DVT occupancy cases must match CPU oracle");
-            ASSERT_EQUAL(variant, observation.requested_variant, "requested variant identity must be preserved");
-            ASSERT_EQUAL(variant, observation.executed_variant, "executed variant identity must be preserved");
-            ASSERT_TRUE(observation.selector_recommended_variant == observation.requested_variant ||
-                        observation.selector_recommended_variant != observation.executed_variant ||
-                        observation.requested_variant != observation.executed_variant,
-                        "selector/request/executed fields must stay independently representable");
-            ASSERT_EQUAL(expected_variant_path_id(variant), observation.variant_path_id, "variant path id must match current wiring");
-            ASSERT_EQUAL(occupancy_variant_fallback_reason_name(expected_variant_fallback_reason(variant)),
-                         observation.fallback_reason,
-                         "fallback reason text must match current wiring");
-            ASSERT_EQUAL(1u, observation.benchmark_enabled, "all benchmark-seam variants should remain benchmark enabled");
+                ASSERT_EQUAL(variant, observation.requested_variant, "requested variant identity must be preserved");
+                ASSERT_TRUE(observation.executed_variant == variant ||
+                            observation.executed_variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
+                            "executed occupancy identity must either preserve the wired variant or truthfully fall back to baseline on non-tiled execution");
+                ASSERT_TRUE(observation.selector_recommended_variant == observation.requested_variant ||
+                            observation.selector_recommended_variant != observation.executed_variant ||
+                            observation.requested_variant != observation.executed_variant,
+                            "selector/request/executed fields must stay independently representable");
+                ASSERT_EQUAL(expected_variant_path_id(variant), observation.variant_path_id, "variant path id must match current wiring");
+                ASSERT_EQUAL(occupancy_variant_fallback_reason_name(expected_variant_fallback_reason(variant)),
+                             observation.fallback_reason,
+                             "fallback reason text must match current wiring");
+                ASSERT_EQUAL(1u, observation.benchmark_enabled, "all benchmark-seam variants should remain benchmark enabled");
             if (variant == static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR)) {
                 ASSERT_EQUAL(1u, observation.dvt_validated, "baseline dvt_validated should remain true");
                 ASSERT_EQUAL(1u, observation.pvt_validated, "baseline pvt_validated should remain true");

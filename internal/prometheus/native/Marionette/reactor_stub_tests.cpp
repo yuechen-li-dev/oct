@@ -1776,6 +1776,24 @@ FACT(PrometheusReactor_P13M2_OccupancyDiagnosticsPopulatedWithoutBehaviorChange)
                  "executed occupancy variant must match the production dispatch request");
     ASSERT_TRUE(diag.p13_m16b1_variant_path_id != static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE),
                 "non-baseline production occupancy selection must bind a non-baseline tiled path when wired");
+    ASSERT_EQUAL(diag.p13_m2_occupancy_unclamped_variant,
+                 diag.px16_m6_selector_recommended_variant,
+                 "M6 truth surface should expose the selector recommendation");
+    ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
+                 diag.px16_m6_selector_selected_variant,
+                 "M6 truth surface should expose the selector-selected variant");
+    ASSERT_EQUAL(diag.p13_m16b1_requested_occupancy_variant,
+                 diag.px16_m6_requested_dispatch_variant,
+                 "M6 truth surface should expose the requested dispatch variant");
+    ASSERT_EQUAL(diag.p13_m16b1_executed_occupancy_variant,
+                 diag.px16_m6_executed_dispatch_variant,
+                 "M6 truth surface should expose the executed dispatch variant");
+    ASSERT_EQUAL(diag.p13_m16b5_selected_path,
+                 diag.px16_m6_executed_path,
+                 "M6 truth surface should expose the executed path");
+    ASSERT_EQUAL(diag.p13_m16b5_compute_mode,
+                 diag.px16_m6_executed_compute_mode,
+                 "M6 truth surface should expose the executed compute mode");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
@@ -1844,6 +1862,18 @@ FACT(PrometheusReactor_P13_M16B5_SafePolicyAllowsEligibleTiledDispatch)
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED),
                  diag.p13_m16b5_compute_mode,
                  "safe eligible production SGEMM must keep tiled compute");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_PATH_STAGED_UPLOAD_READBACK),
+                 diag.px16_m6_requested_path,
+                 "safe eligible production SGEMM should still request a tiled staging path");
+    ASSERT_EQUAL(diag.p13_m16b5_selected_path,
+                 diag.px16_m6_selected_path,
+                 "M6 path truth should mirror selected path");
+    ASSERT_EQUAL(0u,
+                 diag.px16_m6_force_direct_applied,
+                 "safe policy alone must not publish forced direct application");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_SGEMM_FORCE_DIRECT_REASON_NONE),
+                 diag.px16_m6_force_direct_reason,
+                 "safe policy alone must not publish a forced direct reason");
     ASSERT_EQUAL(diag.p13_m2_occupancy_selected_variant,
                  diag.p13_m16b1_requested_occupancy_variant,
                  "selector-controlled safe tiled case must preserve selected/requested identity");
@@ -1884,6 +1914,51 @@ FACT(PrometheusReactor_P13_M10_ResourceLease_SingleSgemmGrantYieldSmoke)
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
         SKIP("single SGEMM lease diagnostics are not surfaced in this backend configuration");
     }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_Px16M6_ProductionDiagnosticsTruthSurface)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; Px16 M6 truth surface requires runnable SGEMM");
+    }
+
+    const std::uint32_t m = 128u;
+    const std::uint32_t n = 128u;
+    const std::uint32_t k = 512u;
+    const std::vector<float> a = deterministic_matrix(m, k);
+    const std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> c(m * n, 0.0f);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail),
+                 "SGEMM should execute for Px16 M6 truth-surface validation");
+
+    PrometheusSgemmPolicyDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag), "policy diagnostics query should succeed");
+    ASSERT_EQUAL(diag.px16_m6_selector_selected_variant,
+                 diag.px16_m6_requested_dispatch_variant,
+                 "selector-selected and requested dispatch variants must agree on the production path");
+    ASSERT_EQUAL(diag.px16_m6_requested_dispatch_variant,
+                 diag.px16_m6_executed_dispatch_variant,
+                 "requested and executed dispatch variants must agree on the tiled production path");
+    ASSERT_EQUAL(diag.p13_m16b5_selected_path,
+                 diag.px16_m6_executed_path,
+                 "executed path must mirror the selected path");
+    ASSERT_EQUAL(diag.p13_m16b5_compute_mode,
+                 diag.px16_m6_executed_compute_mode,
+                 "executed compute mode must mirror the selected compute mode");
+    ASSERT_EQUAL(1u,
+                 diag.px16_m6_variant_lifecycle_telemetry_only,
+                 "M6 must continue to mark lifecycle fields as telemetry only");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }

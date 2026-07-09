@@ -43,3 +43,36 @@ The architecture rule for this milestone is:
 Deviation note:
 
 - Native reuse of the existing reservation state machine still materializes stale mismatch cleanup as reservation expiry/cancellation transitions rather than adding a new reservation state enum.
+
+## Px16 M6
+
+Px16 M6 hardens the native SGEMM production diagnostics surface so one post-call snapshot can answer, without inference, what the selector recommended, what safety selected, what dispatch variant/path was requested, what path actually executed, whether direct was forced, and whether P15 agreed with the live decision.
+
+The architecture rule for this milestone is:
+
+- Diagnostics are the witness, not the dispatch authority.
+- The judgment engine remains the sole production dispatch authority.
+- `occupancy_apply_safety_clamp` remains the live safety gate.
+- P15 remains prestage/telemetry/correction only and does not override the live dispatch variant.
+- Wired EVT variants remain production-eligible and dispatch-enabled even when DVT/PVT/promotion lifecycle telemetry is false.
+- SAFE policy remains hazard/feasibility based; it is not a blanket direct-path override.
+
+Compact truth table:
+
+- `px16_m6_selector_recommended_variant`: the selector recommendation before clamp. In M6 this mirrors `p13_m2_occupancy_unclamped_variant`.
+- `px16_m6_selector_selected_variant`: the clamped live selector decision. In M6 this mirrors `p13_m2_occupancy_selected_variant`.
+- `px16_m6_requested_dispatch_variant`: the occupancy variant handed to dispatch after selector authority is applied.
+- `px16_m6_executed_dispatch_variant`: the occupancy variant identity actually bound by the executed compute mode. If the call ends up on a non-tiled compute path, this reports baseline rather than pretending a tiled occupancy pipeline ran.
+- `px16_m6_requested_path` / `px16_m6_selected_path` / `px16_m6_executed_path`: requested, chosen, and actually used Vulkan path identity.
+- `px16_m6_requested_compute_mode` / `px16_m6_selected_compute_mode` / `px16_m6_executed_compute_mode`: explicit compute-mode truth. M6 does not model a separate requested compute mode, so the requested field mirrors the selected mode.
+- `px16_m6_force_direct_requested`: explicit caller/test-seam direct request.
+- `px16_m6_force_direct_applied`: direct was actually forced by either explicit override or concrete fallback/hazard handling.
+- `px16_m6_force_direct_reason`: `EXPLICIT_OVERRIDE`, `SAFE_CONCRETE_HAZARD`, or `NONE`. SAFE alone must still report `NONE`.
+- `px16_m6_variant_path_status`, `px16_m6_variant_production_eligible`, `px16_m6_variant_dispatch_enabled`: factual EVT wiring/path truth for the requested occupancy variant.
+- `px16_m6_variant_dvt_validated`, `px16_m6_variant_pvt_validated`, `px16_m6_variant_lifecycle_telemetry_only`: DVT/PVT/promotion lifecycle fields remain telemetry only and do not gate a wired variant.
+- `px16_m6_p15_reservation_present`, `px16_m6_p15_reservation_matured`, `px16_m6_p15_reservation_consumed`: whether P15 had and used a relevant reservation.
+- `px16_m6_p15_reserved_variant_id`: the P15 reserved/prestaged occupancy variant.
+- `px16_m6_p15_live_selected_variant_id`: the live judgment-engine-selected occupancy variant used for reconciliation.
+- `px16_m6_p15_reconciliation_match`: whether P15 matched the live decision.
+- `px16_m6_p15_block_reason`, `px16_m6_p15_correction_action`, `px16_m6_p15_reservation_stale_or_expired`: mismatch/block/correction truth when P15 diverges from the live decision.
+- `px16_m6_p15_confidence_before` / `px16_m6_p15_confidence_after`: cheap before/after confidence snapshots around reconciliation/correction.

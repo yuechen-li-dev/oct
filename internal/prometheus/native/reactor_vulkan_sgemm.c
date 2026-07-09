@@ -297,6 +297,37 @@ typedef struct prom_slot_runtime_diag {
   uint32_t p13_m16b1_variant_path_status;
   uint32_t p13_m16b1_variant_path_id;
   uint32_t p13_m16b1_fallback_reason;
+  uint32_t px16_m6_selector_recommended_variant;
+  uint32_t px16_m6_selector_selected_variant;
+  uint32_t px16_m6_requested_dispatch_variant;
+  uint32_t px16_m6_executed_dispatch_variant;
+  uint32_t px16_m6_requested_path;
+  uint32_t px16_m6_selected_path;
+  uint32_t px16_m6_executed_path;
+  uint32_t px16_m6_requested_compute_mode;
+  uint32_t px16_m6_selected_compute_mode;
+  uint32_t px16_m6_executed_compute_mode;
+  uint32_t px16_m6_force_direct_requested;
+  uint32_t px16_m6_force_direct_applied;
+  uint32_t px16_m6_force_direct_reason;
+  uint32_t px16_m6_policy_mode;
+  uint32_t px16_m6_variant_path_status;
+  uint32_t px16_m6_variant_production_eligible;
+  uint32_t px16_m6_variant_dispatch_enabled;
+  uint32_t px16_m6_variant_dvt_validated;
+  uint32_t px16_m6_variant_pvt_validated;
+  uint32_t px16_m6_variant_lifecycle_telemetry_only;
+  uint32_t px16_m6_p15_reservation_present;
+  uint32_t px16_m6_p15_reservation_matured;
+  uint32_t px16_m6_p15_reservation_consumed;
+  uint32_t px16_m6_p15_reserved_variant_id;
+  uint32_t px16_m6_p15_live_selected_variant_id;
+  uint32_t px16_m6_p15_reconciliation_match;
+  uint32_t px16_m6_p15_block_reason;
+  uint32_t px16_m6_p15_correction_action;
+  uint32_t px16_m6_p15_reservation_stale_or_expired;
+  double px16_m6_p15_confidence_before;
+  double px16_m6_p15_confidence_after;
   uint64_t p11_m3_total_committed_bytes;
   uint64_t p11_m3_projected_committed_bytes;
   uint64_t p11_m3_budget_limit_bytes;
@@ -449,6 +480,10 @@ typedef struct prom_p15_feedforward_dispatch_state {
   uint32_t selected_variant_id;
   uint32_t reconciliation_match;
   uint32_t correction_action;
+  uint32_t reservation_consumed;
+  uint32_t reservation_stale_or_expired;
+  double confidence_before;
+  double confidence_after;
   uint64_t fallback_to_judgment_count;
   uint64_t reservation_consumed_count;
   uint64_t no_matured_reservation_count;
@@ -4808,6 +4843,13 @@ static uint32_t prom_occ_variant_executed_identity(uint32_t variant) {
   return PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
 }
 
+static uint32_t prom_occ_variant_executed_identity_for_dispatch(uint32_t variant, uint32_t compute_mode) {
+  if (compute_mode == (uint32_t)PROM_VK_COMPUTE_TILED) {
+    return prom_occ_variant_executed_identity(variant);
+  }
+  return PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+}
+
 static uint32_t prom_occ_variant_path_id(uint32_t variant) {
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE;
@@ -4829,6 +4871,19 @@ static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
     return PROM_OCCUPANCY_VARIANT_FALLBACK_NONE;
   }
   return PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
+}
+
+static uint32_t prom_sgemm_effective_force_direct_reason(const prom_dom_sgemm_path_compute_snapshot* path_compute_snapshot) {
+  if (path_compute_snapshot == NULL) return PROM_SGEMM_FORCE_DIRECT_REASON_NONE;
+  if (path_compute_snapshot->facts.force_direct != 0u) {
+    return path_compute_snapshot->facts.force_direct_reason;
+  }
+  if (path_compute_snapshot->decision.selected_path == (uint32_t)PROM_VK_PATH_DIRECT &&
+      (path_compute_snapshot->decision.used_fallback_to_direct != 0u ||
+       path_compute_snapshot->decision.requested_path != (uint32_t)PROM_VK_PATH_DIRECT)) {
+    return PROM_SGEMM_FORCE_DIRECT_REASON_SAFE_CONCRETE_HAZARD;
+  }
+  return PROM_SGEMM_FORCE_DIRECT_REASON_NONE;
 }
 
 static const prom_dominatus_reservation_request* prom_p15_prefer_earlier_reservation(
@@ -4877,11 +4932,25 @@ static prom_p15_feedforward_reservation_probe prom_p15_probe_feedforward_reserva
   return probe;
 }
 
-static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint32_t requested_variant) {
+static void prom_sgemm_publish_final_dispatch_diagnostics(prometheus_runtime* rt,
+                                                          uint32_t requested_variant,
+                                                          uint32_t policy_mode,
+                                                          const prom_dom_sgemm_path_compute_snapshot* path_compute_snapshot) {
   const uint32_t path_status = prom_occ_variant_path_status(requested_variant);
   const uint32_t evt_dispatchable = prom_occ_variant_is_wired_evt_dispatchable(requested_variant);
+  const uint32_t selected_compute_mode =
+      path_compute_snapshot != NULL ? path_compute_snapshot->decision.compute_mode : (uint32_t)PROM_VK_COMPUTE_BASELINE;
+  const uint32_t selected_path =
+      path_compute_snapshot != NULL ? path_compute_snapshot->decision.selected_path : (uint32_t)PROM_VK_PATH_DIRECT;
+  const uint32_t requested_path =
+      path_compute_snapshot != NULL ? path_compute_snapshot->decision.requested_path : (uint32_t)PROM_VK_PATH_DIRECT;
+  const uint32_t force_direct_reason = prom_sgemm_effective_force_direct_reason(path_compute_snapshot);
+  const uint32_t force_direct_requested = path_compute_snapshot != NULL ? path_compute_snapshot->facts.force_direct : 0u;
+  const uint32_t force_direct_applied =
+      (selected_path == (uint32_t)PROM_VK_PATH_DIRECT && force_direct_reason != PROM_SGEMM_FORCE_DIRECT_REASON_NONE) ? 1u : 0u;
   rt->slot_diag.p13_m16b1_requested_occupancy_variant = requested_variant;
-  rt->slot_diag.p13_m16b1_executed_occupancy_variant = prom_occ_variant_executed_identity(requested_variant);
+  rt->slot_diag.p13_m16b1_executed_occupancy_variant =
+      prom_occ_variant_executed_identity_for_dispatch(requested_variant, selected_compute_mode);
   rt->slot_diag.p13_m16b1_variant_registered = prom_occ_variant_registered(requested_variant);
   rt->slot_diag.p13_m16b1_variant_benchmark_enabled = rt->slot_diag.p13_m16b1_variant_registered;
   rt->slot_diag.p13_m16b1_variant_dvt_validated =
@@ -4893,6 +4962,38 @@ static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint
   rt->slot_diag.p13_m16b1_variant_path_status = path_status;
   rt->slot_diag.p13_m16b1_variant_path_id = prom_occ_variant_path_id(requested_variant);
   rt->slot_diag.p13_m16b1_fallback_reason = prom_occ_variant_fallback_reason(requested_variant);
+
+  rt->slot_diag.px16_m6_selector_recommended_variant = rt->slot_diag.p13_m2_occupancy_unclamped_variant;
+  rt->slot_diag.px16_m6_selector_selected_variant = rt->slot_diag.p13_m2_occupancy_selected_variant;
+  rt->slot_diag.px16_m6_requested_dispatch_variant = requested_variant;
+  rt->slot_diag.px16_m6_executed_dispatch_variant = rt->slot_diag.p13_m16b1_executed_occupancy_variant;
+  rt->slot_diag.px16_m6_requested_path = requested_path;
+  rt->slot_diag.px16_m6_selected_path = selected_path;
+  rt->slot_diag.px16_m6_executed_path = selected_path;
+  rt->slot_diag.px16_m6_requested_compute_mode = selected_compute_mode;
+  rt->slot_diag.px16_m6_selected_compute_mode = selected_compute_mode;
+  rt->slot_diag.px16_m6_executed_compute_mode = selected_compute_mode;
+  rt->slot_diag.px16_m6_force_direct_requested = force_direct_requested;
+  rt->slot_diag.px16_m6_force_direct_applied = force_direct_applied;
+  rt->slot_diag.px16_m6_force_direct_reason = force_direct_reason;
+  rt->slot_diag.px16_m6_policy_mode = policy_mode;
+  rt->slot_diag.px16_m6_variant_path_status = rt->slot_diag.p13_m16b1_variant_path_status;
+  rt->slot_diag.px16_m6_variant_production_eligible = rt->slot_diag.p13_m16b1_variant_production_eligible;
+  rt->slot_diag.px16_m6_variant_dispatch_enabled = rt->slot_diag.p13_m16b1_variant_dispatch_enabled;
+  rt->slot_diag.px16_m6_variant_dvt_validated = rt->slot_diag.p13_m16b1_variant_dvt_validated;
+  rt->slot_diag.px16_m6_variant_pvt_validated = rt->slot_diag.p13_m16b1_variant_pvt_validated;
+  rt->slot_diag.px16_m6_variant_lifecycle_telemetry_only = 1u;
+  rt->slot_diag.px16_m6_p15_reservation_present = rt->p15_feedforward_dispatch_state.reservation_present;
+  rt->slot_diag.px16_m6_p15_reservation_matured = rt->p15_feedforward_dispatch_state.reservation_matured;
+  rt->slot_diag.px16_m6_p15_reservation_consumed = rt->p15_feedforward_dispatch_state.reservation_consumed;
+  rt->slot_diag.px16_m6_p15_reserved_variant_id = rt->p15_feedforward_dispatch_state.reserved_variant_id;
+  rt->slot_diag.px16_m6_p15_live_selected_variant_id = rt->p15_feedforward_dispatch_state.selected_variant_id;
+  rt->slot_diag.px16_m6_p15_reconciliation_match = rt->p15_feedforward_dispatch_state.reconciliation_match;
+  rt->slot_diag.px16_m6_p15_block_reason = rt->p15_feedforward_dispatch_state.block_reason;
+  rt->slot_diag.px16_m6_p15_correction_action = rt->p15_feedforward_dispatch_state.correction_action;
+  rt->slot_diag.px16_m6_p15_reservation_stale_or_expired = rt->p15_feedforward_dispatch_state.reservation_stale_or_expired;
+  rt->slot_diag.px16_m6_p15_confidence_before = rt->p15_feedforward_dispatch_state.confidence_before;
+  rt->slot_diag.px16_m6_p15_confidence_after = rt->p15_feedforward_dispatch_state.confidence_after;
 }
 /* Promotion seam terms:
  * DVT: local GPU correctness/sanity.
@@ -5164,6 +5265,10 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   rt->p15_feedforward_dispatch_state.selected_variant_id = occupancy_decision.selected_variant;
   rt->p15_feedforward_dispatch_state.reconciliation_match = 0u;
   rt->p15_feedforward_dispatch_state.correction_action = PROM_DOM_CORRECTION_ACTION_NONE;
+  rt->p15_feedforward_dispatch_state.reservation_consumed = 0u;
+  rt->p15_feedforward_dispatch_state.reservation_stale_or_expired = 0u;
+  rt->p15_feedforward_dispatch_state.confidence_before = rt->p15_predictor_state.prediction_confidence;
+  rt->p15_feedforward_dispatch_state.confidence_after = rt->p15_predictor_state.prediction_confidence;
   if (rt->p15_feedforward_dispatch_state.enabled == 0u) {
     rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_DISABLED;
   } else if (rt->p15_shadow_authority_gate.state != PROM_SHADOW_AUTHORITY_HEALTHY) {
@@ -5200,6 +5305,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
         rt->p15_feedforward_dispatch_state.source = 1u;
         rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.exact_match->variant_id;
         rt->p15_feedforward_dispatch_state.reconciliation_match = 1u;
+        rt->p15_feedforward_dispatch_state.reservation_consumed = 1u;
         rt->p15_feedforward_dispatch_state.reservation_consumed_count += 1u;
         rt->p15_last_reservation = consume;
       }
@@ -5219,9 +5325,11 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       if (correction.valid != 0u) {
         rt->p15_last_reservation = correction;
         if (correction.expired != 0u || correction.cancelled != 0u) {
+          rt->p15_feedforward_dispatch_state.reservation_stale_or_expired = 1u;
           rt->p15_feedforward_dispatch_state.stale_reservation_count += 1u;
         }
       }
+      rt->p15_feedforward_dispatch_state.confidence_after = rt->p15_predictor_state.prediction_confidence;
     } else if (probe.shape_mismatch != NULL) {
       const prom_dominatus_reservation_decision correction =
           prom_dominatus_predictor_apply_reconciliation_to_reservation(&rt->p15_predictor_state,
@@ -5238,17 +5346,21 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       if (correction.valid != 0u) {
         rt->p15_last_reservation = correction;
         if (correction.expired != 0u || correction.cancelled != 0u) {
+          rt->p15_feedforward_dispatch_state.reservation_stale_or_expired = 1u;
           rt->p15_feedforward_dispatch_state.stale_reservation_count += 1u;
         }
       }
+      rt->p15_feedforward_dispatch_state.confidence_after = rt->p15_predictor_state.prediction_confidence;
     } else if (probe.stale != NULL) {
       rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_STALE_RESERVATION;
       rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.stale->variant_id;
+      rt->p15_feedforward_dispatch_state.reservation_stale_or_expired = 1u;
       rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
       rt->p15_feedforward_dispatch_state.stale_reservation_count += 1u;
     } else if (probe.cancelled != NULL) {
       rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_CANCELLED_RESERVATION;
       rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.cancelled->variant_id;
+      rt->p15_feedforward_dispatch_state.reservation_stale_or_expired = 1u;
       rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
     } else if (probe.consumed != NULL) {
       rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_ALREADY_CONSUMED;
@@ -5276,7 +5388,6 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   if (selector_controls_dispatch_variant != 0u) {
     requested_variant = occupancy_decision.selected_variant;
   }
-  prom_record_requested_occupancy_variant(rt, requested_variant);
   memset(&path_compute_facts, 0, sizeof(path_compute_facts));
   path_compute_facts.m = m;
   path_compute_facts.n = n;
@@ -5892,6 +6003,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   } else {
     selected_pipeline = rt->pipeline;
   }
+  prom_sgemm_publish_final_dispatch_diagnostics(rt, requested_variant, (uint32_t)policy_mode, &path_compute_snapshot);
 
   memset(buffer_infos, 0, sizeof(buffer_infos));
   buffer_infos[0].buffer = shader_a->buffer;
@@ -8456,8 +8568,11 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   if (prom_dom_sgemm_read_visible_path_compute_diagnostics(&rt->blackboard, &path_compute_snapshot) != 0u) {
     out_diag->p13_m16b5_force_direct_requested = path_compute_snapshot.facts.force_direct;
     out_diag->p13_m16b5_force_direct_applied =
-        (path_compute_snapshot.facts.force_direct != 0u && path_compute_snapshot.decision.selected_path == (uint32_t)PROM_VK_PATH_DIRECT) ? 1u : 0u;
-    out_diag->p13_m16b5_force_direct_reason = path_compute_snapshot.facts.force_direct_reason;
+        (path_compute_snapshot.decision.selected_path == (uint32_t)PROM_VK_PATH_DIRECT &&
+         prom_sgemm_effective_force_direct_reason(&path_compute_snapshot) != PROM_SGEMM_FORCE_DIRECT_REASON_NONE)
+            ? 1u
+            : 0u;
+    out_diag->p13_m16b5_force_direct_reason = prom_sgemm_effective_force_direct_reason(&path_compute_snapshot);
     out_diag->p13_m16b5_requested_path = path_compute_snapshot.decision.requested_path;
     out_diag->p13_m16b5_selected_path = path_compute_snapshot.decision.selected_path;
     out_diag->p13_m16b5_compute_mode = path_compute_snapshot.decision.compute_mode;
@@ -8720,6 +8835,37 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->p15_shadow_feedforward_reason_binding_block_count = rt->p15_feedforward_dispatch_state.reason_binding_block_count;
   out_diag->p15_shadow_feedforward_margin_block_count = rt->p15_feedforward_dispatch_state.margin_block_count;
   out_diag->p15_shadow_feedforward_dedup_block_count = rt->p15_feedforward_dispatch_state.dedup_block_count;
+  out_diag->px16_m6_selector_recommended_variant = rt->slot_diag.px16_m6_selector_recommended_variant;
+  out_diag->px16_m6_selector_selected_variant = rt->slot_diag.px16_m6_selector_selected_variant;
+  out_diag->px16_m6_requested_dispatch_variant = rt->slot_diag.px16_m6_requested_dispatch_variant;
+  out_diag->px16_m6_executed_dispatch_variant = rt->slot_diag.px16_m6_executed_dispatch_variant;
+  out_diag->px16_m6_requested_path = rt->slot_diag.px16_m6_requested_path;
+  out_diag->px16_m6_selected_path = rt->slot_diag.px16_m6_selected_path;
+  out_diag->px16_m6_executed_path = rt->slot_diag.px16_m6_executed_path;
+  out_diag->px16_m6_requested_compute_mode = rt->slot_diag.px16_m6_requested_compute_mode;
+  out_diag->px16_m6_selected_compute_mode = rt->slot_diag.px16_m6_selected_compute_mode;
+  out_diag->px16_m6_executed_compute_mode = rt->slot_diag.px16_m6_executed_compute_mode;
+  out_diag->px16_m6_force_direct_requested = rt->slot_diag.px16_m6_force_direct_requested;
+  out_diag->px16_m6_force_direct_applied = rt->slot_diag.px16_m6_force_direct_applied;
+  out_diag->px16_m6_force_direct_reason = rt->slot_diag.px16_m6_force_direct_reason;
+  out_diag->px16_m6_policy_mode = rt->slot_diag.px16_m6_policy_mode;
+  out_diag->px16_m6_variant_path_status = rt->slot_diag.px16_m6_variant_path_status;
+  out_diag->px16_m6_variant_production_eligible = rt->slot_diag.px16_m6_variant_production_eligible;
+  out_diag->px16_m6_variant_dispatch_enabled = rt->slot_diag.px16_m6_variant_dispatch_enabled;
+  out_diag->px16_m6_variant_dvt_validated = rt->slot_diag.px16_m6_variant_dvt_validated;
+  out_diag->px16_m6_variant_pvt_validated = rt->slot_diag.px16_m6_variant_pvt_validated;
+  out_diag->px16_m6_variant_lifecycle_telemetry_only = rt->slot_diag.px16_m6_variant_lifecycle_telemetry_only;
+  out_diag->px16_m6_p15_reservation_present = rt->slot_diag.px16_m6_p15_reservation_present;
+  out_diag->px16_m6_p15_reservation_matured = rt->slot_diag.px16_m6_p15_reservation_matured;
+  out_diag->px16_m6_p15_reservation_consumed = rt->slot_diag.px16_m6_p15_reservation_consumed;
+  out_diag->px16_m6_p15_reserved_variant_id = rt->slot_diag.px16_m6_p15_reserved_variant_id;
+  out_diag->px16_m6_p15_live_selected_variant_id = rt->slot_diag.px16_m6_p15_live_selected_variant_id;
+  out_diag->px16_m6_p15_reconciliation_match = rt->slot_diag.px16_m6_p15_reconciliation_match;
+  out_diag->px16_m6_p15_block_reason = rt->slot_diag.px16_m6_p15_block_reason;
+  out_diag->px16_m6_p15_correction_action = rt->slot_diag.px16_m6_p15_correction_action;
+  out_diag->px16_m6_p15_reservation_stale_or_expired = rt->slot_diag.px16_m6_p15_reservation_stale_or_expired;
+  out_diag->px16_m6_p15_confidence_before = rt->slot_diag.px16_m6_p15_confidence_before;
+  out_diag->px16_m6_p15_confidence_after = rt->slot_diag.px16_m6_p15_confidence_after;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {

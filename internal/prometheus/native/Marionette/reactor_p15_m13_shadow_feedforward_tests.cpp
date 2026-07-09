@@ -324,6 +324,19 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
     ASSERT_EQUAL(1u, used.p15_shadow_feedforward_source, "source should be shadow reservation");
     ASSERT_EQUAL(baseline.p13_m2_occupancy_selected_variant, used.p15_shadow_feedforward_reserved_variant_id,
                  "reserved variant should match seeded variant");
+    ASSERT_EQUAL(1u, used.px16_m6_p15_reservation_present, "M6 should expose reservation presence");
+    ASSERT_EQUAL(1u, used.px16_m6_p15_reservation_matured, "M6 should expose reservation maturity");
+    ASSERT_EQUAL(1u, used.px16_m6_p15_reservation_consumed, "M6 should expose reservation consumption");
+    ASSERT_EQUAL(baseline.p13_m2_occupancy_selected_variant,
+                 used.px16_m6_p15_reserved_variant_id,
+                 "M6 should expose reserved variant identity");
+    ASSERT_EQUAL(baseline.p13_m2_occupancy_selected_variant,
+                 used.px16_m6_p15_live_selected_variant_id,
+                 "M6 should expose the live selected variant");
+    ASSERT_EQUAL(1u, used.px16_m6_p15_reconciliation_match, "M6 should record a reconciliation hit");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_DOM_CORRECTION_ACTION_NONE),
+                 used.px16_m6_p15_correction_action,
+                 "M6 should not apply correction on a match");
     ASSERT_TRUE(used.p15_shadow_feedforward_reservation_consumed_count >= 1u, "reservation should be consumed");
     const uint64_t consumed_after_first_use = used.p15_shadow_feedforward_reservation_consumed_count;
 
@@ -400,12 +413,33 @@ FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorr
     ASSERT_EQUAL(PROM_DOM_CORRECTION_ACTION_LOWER_CONFIDENCE,
                  after.p15_shadow_feedforward_correction_action,
                  "mismatch lowers confidence");
+    ASSERT_EQUAL(0u, after.px16_m6_p15_reconciliation_match, "M6 should record mismatch as non-match");
+    ASSERT_EQUAL(mismatched_variant,
+                 after.px16_m6_p15_reserved_variant_id,
+                 "M6 should expose mismatched reserved variant");
+    ASSERT_EQUAL(selected_variant,
+                 after.px16_m6_p15_live_selected_variant_id,
+                 "M6 should expose the live selected variant");
+    ASSERT_EQUAL(PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
+                 after.px16_m6_p15_block_reason,
+                 "M6 should expose mismatch block reason");
+    ASSERT_EQUAL(PROM_DOM_CORRECTION_ACTION_LOWER_CONFIDENCE,
+                 after.px16_m6_p15_correction_action,
+                 "M6 should expose mismatch correction action");
+    ASSERT_TRUE(after.px16_m6_p15_confidence_after <= after.px16_m6_p15_confidence_before,
+                "M6 should expose non-increasing confidence across mismatch correction");
     ASSERT_EQUAL(selected_variant,
                  after.p13_m16b1_requested_occupancy_variant,
                  "requested dispatch still follows judgment engine");
     ASSERT_EQUAL(selected_variant,
                  after.p13_m16b1_executed_occupancy_variant,
                  "executed dispatch still follows judgment engine");
+    ASSERT_EQUAL(selected_variant,
+                 after.px16_m6_requested_dispatch_variant,
+                 "M6 should keep requested dispatch under judgment-engine control");
+    ASSERT_EQUAL(selected_variant,
+                 after.px16_m6_executed_dispatch_variant,
+                 "M6 should keep executed dispatch under judgment-engine control");
     ASSERT_EQUAL(PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
                  after.p15_reservation_reason,
                  "reservation reason maps to variant mismatch");
