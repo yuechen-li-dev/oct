@@ -17,6 +17,8 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
 	"github.com/yuechen-li-dev/oct/internal/prometheus"
 	"github.com/yuechen-li-dev/oct/internal/run"
+	"github.com/yuechen-li-dev/oct/internal/sdslv"
+	sdslvtest "github.com/yuechen-li-dev/oct/internal/sdslv/test"
 	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
@@ -94,6 +96,8 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, command, err)
 		}
 		return nil
+	case "sdslv":
+		return executeSDSLv(args[1:], stdout, stderr)
 	case "test":
 		if isHelpArg(args[1:]) {
 			return writeTestHelp(stdout)
@@ -192,6 +196,68 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 }
 func isHelpArg(args []string) bool { return len(args) == 1 && (args[0] == "--help" || args[0] == "-h") }
+
+func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
+	if len(args) < 1 || isHelpArg(args) {
+		return writeSDSLvHelp(stdout)
+	}
+	switch args[0] {
+	case "check":
+		if isHelpArg(args[1:]) || len(args) != 2 {
+			return reportCommandError(stderr, "sdslv check", fmt.Errorf("usage: oct sdslv check <file.sdslv>"))
+		}
+		if err := sdslv.CheckFile(args[1]); err != nil {
+			return reportCommandError(stderr, "sdslv check", err)
+		}
+		_, err := fmt.Fprintf(stdout, "sdslv check ok: %s\n", args[1])
+		return err
+	case "emit-hlsl":
+		if isHelpArg(args[1:]) {
+			return writeSDSLvHelp(stdout)
+		}
+		input, output, err := parseSDSLvEmitArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "sdslv emit-hlsl", err)
+		}
+		if output == "" {
+			text, err := sdslv.EmitHLSLFile(input)
+			if err != nil {
+				return reportCommandError(stderr, "sdslv emit-hlsl", err)
+			}
+			_, err = fmt.Fprint(stdout, text)
+			return err
+		}
+		if err := sdslv.WriteHLSLFile(input, output); err != nil {
+			return reportCommandError(stderr, "sdslv emit-hlsl", err)
+		}
+		_, err = fmt.Fprintf(stdout, "sdslv wrote HLSL: %s\n", output)
+		return err
+	case "test":
+		if isHelpArg(args[1:]) || len(args) != 2 {
+			return reportCommandError(stderr, "sdslv test", fmt.Errorf("usage: oct sdslv test <file.sdslvtest>"))
+		}
+		if err := sdslvtest.Execute(args[1], stdout); err != nil {
+			return reportCommandError(stderr, "sdslv test", err)
+		}
+		return nil
+	default:
+		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|test> ..."))
+	}
+}
+
+func parseSDSLvEmitArgs(args []string) (string, string, error) {
+	if len(args) != 1 && len(args) != 3 {
+		return "", "", fmt.Errorf("usage: oct sdslv emit-hlsl <file.sdslv> [-o out.hlsl]")
+	}
+	input := args[0]
+	if len(args) == 1 {
+		return input, "", nil
+	}
+	if args[1] != "-o" {
+		return "", "", fmt.Errorf("usage: oct sdslv emit-hlsl <file.sdslv> [-o out.hlsl]")
+	}
+	return input, args[2], nil
+}
 
 func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 	if isHelpArg(args) {
@@ -818,7 +884,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  sdslv      Check, test, and emit HLSL from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
 
@@ -901,6 +967,10 @@ func writeMakeHelp(out io.Writer) error {
 
 func writeFmtHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct fmt <file-or-root> [--mode en-llm|en-llm-compact] [--check]\nFormat Oct source files with deterministic structural whitespace normalization.\nDefault mode: en-llm.\nModes:\n  en-llm          LLM-oriented readable structural formatting.\n  en-llm-compact  LLM-oriented compact structural formatting.\nAuto line wrapping/reflow is intentionally not enabled in v0.1.\nExamples:\n  oct fmt Language/Testing --mode en-llm\n  oct fmt Language/Testing --mode en-llm-compact --check")
+	return err
+}
+func writeSDSLvHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|test> ...\n\ncommands:\n  check <file.sdslv>                    Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]  Emit deterministic HLSL\n  test <file.sdslvtest>                 Run M0 [Fact] shader-helper tests")
 	return err
 }
 func writeTestHelp(out io.Writer) error {

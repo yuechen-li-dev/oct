@@ -1,0 +1,38 @@
+namespace Prometheus.Kernels;
+
+type F32 = f32;
+
+record VectorParams {
+    Count: u32;
+}
+
+enum KernelMode {
+    Fast;
+    Safe;
+}
+
+shader VectorAdd {
+    resources {
+        A: readonly array<f32>;
+        B: readonly array<f32>;
+        C: readwrite array<f32>;
+    }
+
+    fn PickScale(useDouble: bool) -> f32 {
+        let scale: f32 = when utility {
+            case 2.0 when useDouble score 2.0
+            case 1.0 when true score 1.0
+            else 1.0
+        };
+        return scale;
+    }
+
+    stage compute [numthreads(16, 16, 1)] fn CS(params: VectorParams) -> void {
+        let index: u32 = DispatchThreadID.x;
+        if index < params.Count {
+            let scale: f32 = PickScale(false);
+            C[index] = (A[index] + B[index]) * scale;
+        }
+        return;
+    }
+}
