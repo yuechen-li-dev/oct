@@ -51,12 +51,13 @@ func Module(module ast.Module) (vdmir.Module, error) {
 			}
 			out.Functions = append(out.Functions, fn)
 		case ast.ShaderDecl:
-			for _, resource := range d.Resources {
+			for i, resource := range d.Resources {
 				out.Resources = append(out.Resources, vdmir.Resource{
 					Provenance:  l.provenance,
 					Name:        resource.Name,
 					ElementType: l.lowerResourceElementType(resource.Type),
 					Access:      lowerResourceAccess(resource.Access),
+					Binding:     vdmir.Binding{Set: 0, Binding: i},
 				})
 			}
 			for _, method := range d.Methods {

@@ -27,10 +27,11 @@ return;
 		t.Fatalf("emission is not deterministic")
 	}
 	for _, want := range []string{
-		"Buffer<float> A;",
-		"RWBuffer<float> C;",
+		"[[vk::binding(0, 0)]] Buffer<float> A;",
+		"[[vk::binding(1, 0)]] RWBuffer<float> C;",
+		"[[vk::push_constant]] ConstantBuffer<Params> params;",
 		"[numthreads(16, 16, 1)]",
-		"void VectorAdd_CS(Params params, uint3 DispatchThreadID : SV_DispatchThreadID",
+		"void VectorAdd_CS(uint3 DispatchThreadID : SV_DispatchThreadID",
 		"C[index] = A[index];",
 	} {
 		if !strings.Contains(first, want) {

@@ -19,6 +19,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/run"
 	"github.com/yuechen-li-dev/oct/internal/sdslv"
 	sdslvtest "github.com/yuechen-li-dev/oct/internal/sdslv/test"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/toolchain"
 	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
@@ -250,8 +251,62 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, "sdslv test", err)
 		}
 		return nil
+	case "compile-spv":
+		if isHelpArg(args[1:]) {
+			return writeSDSLvHelp(stdout)
+		}
+		opts, err := parseSDSLvCompileSPVArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "sdslv compile-spv", err)
+		}
+		result, err := sdslv.CompileSPIRV(opts)
+		if err != nil {
+			return reportCommandError(stderr, "sdslv compile-spv", err)
+		}
+		_, err = fmt.Fprintf(stdout, "sdslv wrote SPIR-V: %s\nentry: %s\ndxc: %s\nhlsl: %s\ndxc args: %s\n", result.SPIRVPath, result.EntryPoint, result.DXCPath, result.HLSLPath, strings.Join(result.DXCArgs, " "))
+		if err != nil {
+			return err
+		}
+		if result.ValidationAttempted {
+			if result.ValidationSucceeded {
+				_, err = fmt.Fprintf(stdout, "spirv-val: ok (%s)\n", result.SPIRVValidatorPath)
+			} else {
+				_, err = fmt.Fprintln(stdout, "spirv-val: not found; validation skipped")
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	case "generate-header":
+		if isHelpArg(args[1:]) {
+			return writeSDSLvHelp(stdout)
+		}
+		opts, err := parseSDSLvGenerateHeaderArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "sdslv generate-header", err)
+		}
+		result, err := sdslv.GenerateHeader(opts)
+		if err != nil {
+			return reportCommandError(stderr, "sdslv generate-header", err)
+		}
+		_, err = fmt.Fprintf(stdout, "sdslv wrote header: %s\nsymbol: %s\nentry: %s\nspv: %s\nhlsl: %s\ndxc: %s\ndxc args: %s\n", result.HeaderPath, result.Symbol, result.EntryPoint, result.SPIRVPath, result.HLSLPath, result.DXCPath, strings.Join(result.DXCArgs, " "))
+		if err != nil {
+			return err
+		}
+		if result.ValidationAttempted {
+			if result.ValidationSucceeded {
+				_, err = fmt.Fprintf(stdout, "spirv-val: ok (%s)\n", result.SPIRVValidatorPath)
+			} else {
+				_, err = fmt.Fprintln(stdout, "spirv-val: not found; validation skipped")
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
-		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|test> ..."))
+		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test> ..."))
 	}
 }
 
@@ -267,6 +322,125 @@ func parseSDSLvEmitArgs(args []string) (string, string, error) {
 		return "", "", fmt.Errorf("usage: oct sdslv emit-hlsl <file.sdslv> [-o out.hlsl]")
 	}
 	return input, args[2], nil
+}
+
+func parseSDSLvCompileSPVArgs(args []string) (toolchain.CompileOptions, error) {
+	if len(args) == 0 {
+		return toolchain.CompileOptions{}, fmt.Errorf("usage: oct sdslv compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path] [--hlsl-out out.hlsl] [--extra-dxc-arg arg] [--validate] [--require-spirv-val]")
+	}
+	opts := toolchain.CompileOptions{InputPath: args[0]}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			i++
+			if i >= len(args) {
+				return toolchain.CompileOptions{}, fmt.Errorf("missing value after -o")
+			}
+			opts.OutputPath = args[i]
+		case "--entry":
+			i++
+			if i >= len(args) {
+				return toolchain.CompileOptions{}, fmt.Errorf("missing value after --entry")
+			}
+			opts.EntryPoint = args[i]
+		case "--dxc":
+			i++
+			if i >= len(args) {
+				return toolchain.CompileOptions{}, fmt.Errorf("missing value after --dxc")
+			}
+			opts.DXCPath = args[i]
+		case "--hlsl-out":
+			i++
+			if i >= len(args) {
+				return toolchain.CompileOptions{}, fmt.Errorf("missing value after --hlsl-out")
+			}
+			opts.HLSLPath = args[i]
+		case "--extra-dxc-arg":
+			i++
+			if i >= len(args) {
+				return toolchain.CompileOptions{}, fmt.Errorf("missing value after --extra-dxc-arg")
+			}
+			opts.ExtraDXCArgs = append(opts.ExtraDXCArgs, args[i])
+		case "--validate":
+			opts.Validate = true
+		case "--require-spirv-val":
+			opts.Validate = true
+			opts.RequireSPIRVVal = true
+		default:
+			return toolchain.CompileOptions{}, fmt.Errorf("unknown sdslv compile-spv option %q", args[i])
+		}
+	}
+	if opts.OutputPath == "" {
+		return toolchain.CompileOptions{}, fmt.Errorf("usage: oct sdslv compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path] [--hlsl-out out.hlsl] [--extra-dxc-arg arg] [--validate] [--require-spirv-val]")
+	}
+	return opts, nil
+}
+
+func parseSDSLvGenerateHeaderArgs(args []string) (toolchain.GenerateHeaderOptions, error) {
+	if len(args) == 0 {
+		return toolchain.GenerateHeaderOptions{}, fmt.Errorf("usage: oct sdslv generate-header <file.sdslv> -o out.h --symbol name [--entry Name] [--dxc path] [--hlsl-out out.hlsl] [--spv-out out.spv] [--extra-dxc-arg arg] [--validate] [--require-spirv-val]")
+	}
+	opts := toolchain.GenerateHeaderOptions{
+		InputPath:   args[0],
+		CommandLine: "oct sdslv generate-header " + strings.Join(args, " "),
+	}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "-o":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after -o")
+			}
+			opts.OutputPath = args[i]
+		case "--symbol":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after --symbol")
+			}
+			opts.Symbol = args[i]
+		case "--entry":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after --entry")
+			}
+			opts.EntryPoint = args[i]
+		case "--dxc":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after --dxc")
+			}
+			opts.DXCPath = args[i]
+		case "--hlsl-out":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after --hlsl-out")
+			}
+			opts.HLSLPath = args[i]
+		case "--spv-out":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after --spv-out")
+			}
+			opts.SPIRVPath = args[i]
+		case "--extra-dxc-arg":
+			i++
+			if i >= len(args) {
+				return toolchain.GenerateHeaderOptions{}, fmt.Errorf("missing value after --extra-dxc-arg")
+			}
+			opts.ExtraDXCArgs = append(opts.ExtraDXCArgs, args[i])
+		case "--validate":
+			opts.Validate = true
+		case "--require-spirv-val":
+			opts.Validate = true
+			opts.RequireSPIRVVal = true
+		default:
+			return toolchain.GenerateHeaderOptions{}, fmt.Errorf("unknown sdslv generate-header option %q", args[i])
+		}
+	}
+	if opts.OutputPath == "" || opts.Symbol == "" {
+		return toolchain.GenerateHeaderOptions{}, fmt.Errorf("usage: oct sdslv generate-header <file.sdslv> -o out.h --symbol name [--entry Name] [--dxc path] [--hlsl-out out.hlsl] [--spv-out out.spv] [--extra-dxc-arg arg] [--validate] [--require-spirv-val]")
+	}
+	return opts, nil
 }
 
 func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
@@ -894,7 +1068,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  sdslv      Check, test, and emit HLSL from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
 
@@ -980,7 +1154,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|test> ...\n\ncommands:\n  check <file.sdslv>                    Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]  Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>               Dump deterministic VD-MIR for inspection\n  test <file.sdslvtest>                 Run M0 [Fact] shader-helper tests")
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test> ...\n\ncommands:\n  check <file.sdslv>                                                     Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                   Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]        Emit HLSL, invoke DXC with -spirv, and write SPIR-V\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]     Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest>                                                  Run M0 [Fact] shader-helper tests")
 	return err
 }
 func writeTestHelp(out io.Writer) error {

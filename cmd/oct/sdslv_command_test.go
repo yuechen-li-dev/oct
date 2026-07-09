@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,5 +26,48 @@ func TestSDSLvEmitVDMIRCommand(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
 		}
+	}
+}
+
+func TestSDSLvHelpMentionsSPIRVCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if err := cli.Execute([]string{"sdslv", "--help"}, &stdout, &stderr); err != nil {
+		t.Fatalf("sdslv --help failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"compile-spv", "generate-header"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("sdslv help missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSDSLvGenerateHeaderCommand(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	tmp := t.TempDir()
+	input := repoPath(t, "examples", "SDSL-V", "M0", "VectorAdd.sdslv")
+	output := filepath.Join(tmp, "vector_add_spirv.h")
+	args := []string{
+		"sdslv", "generate-header", input,
+		"-o", output,
+		"--symbol", "k_sdslv_vector_add_spirv",
+	}
+	if err := cli.Execute(args, &stdout, &stderr); err != nil {
+		if !strings.Contains(err.Error(), "dxc was not found") && !strings.Contains(stderr.String(), "dxc was not found") {
+			t.Fatalf("generate-header failed unexpectedly: %v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
+		}
+		return
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatalf("expected header output at %s: %v", output, err)
+	}
+	text, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatalf("read header output: %v", err)
+	}
+	if !strings.Contains(string(text), "k_sdslv_vector_add_spirv") {
+		t.Fatalf("header output missing symbol:\n%s", string(text))
 	}
 }

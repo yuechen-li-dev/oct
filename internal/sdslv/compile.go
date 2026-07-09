@@ -10,6 +10,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/toolchain"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 	"github.com/yuechen-li-dev/oct/internal/source"
@@ -51,6 +52,14 @@ func WriteHLSLFile(inputPath, outputPath string) error {
 		return fmt.Errorf("write HLSL %s: %w", outputPath, err)
 	}
 	return nil
+}
+
+func CompileSPIRV(opts toolchain.CompileOptions) (toolchain.CompileResult, error) {
+	return toolchain.CompileToSPIRV(opts)
+}
+
+func GenerateHeader(opts toolchain.GenerateHeaderOptions) (toolchain.GenerateHeaderResult, error) {
+	return toolchain.GenerateHeader(opts)
 }
 
 func LowerFile(path string) (vdmir.Module, error) {

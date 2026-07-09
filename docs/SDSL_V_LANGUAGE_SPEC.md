@@ -12,7 +12,7 @@ SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its
 
 The broad design pipeline is: `source → lex → parse → validate → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
-Current GoOct M1 stops at deterministic HLSL emission. DXC and SPIR-V generation remain deferred.
+Current GoOct M2 supports an opt-in DXC/SPIR-V/header generation lane for the compute-focused subset. Prometheus runtime wiring remains deferred.
 
 ---
 
