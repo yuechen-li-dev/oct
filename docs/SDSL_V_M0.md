@@ -66,6 +66,7 @@ They emit to `Buffer<T>` or `RWBuffer<T>`. Binding/register policy is deferred t
 Interfaces, generic shaders, compile declarations, graphics-stream semantics, vertex/pixel lowering, coordinate spaces, fallibility, `flow`, `switch`, `match`, full `.sdslvtest` theory support, Prometheus runtime dispatch changes, and full binding policy remain deferred. Unsupported top-level features produce a clear `not implemented in GoOct SDSL-V M0` diagnostic.
 
 Compute-oriented `stream`, named resource bundles, and immutable `with` updates arrive in M3 and are documented in `docs/SDSL_V_M3_COMPUTE_STREAMS.md`.
+Workgroup/shared memory, barrier intrinsics, and full compute builtin coverage arrive in M4 and are documented in `docs/SDSL_V_M4_WORKGROUP_MEMORY.md`.
 
 ## CLI
 

@@ -177,3 +177,5 @@ It gives the compute subset the missing ergonomics needed to author them cleanly
 - explicit compute-thread payloads;
 - reusable named resource bundles;
 - immutable copy-update style for shader helper records and streams.
+
+M4 builds directly on this surface by adding `workgroup` memory, workgroup/barrier intrinsics, and complete compute builtin coverage without changing the resource-bundle or `with` model. See `docs/SDSL_V_M4_WORKGROUP_MEMORY.md`.

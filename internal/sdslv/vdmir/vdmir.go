@@ -10,6 +10,7 @@ type Module struct {
 	Streams     []Stream
 	Enums       []Enum
 	Resources   []Resource
+	Workgroups  []WorkgroupMemoryDecl
 	Functions   []Function
 	EntryPoints []ComputeEntryPoint
 }
@@ -59,6 +60,15 @@ type Resource struct {
 	ElementType Type
 	Access      ResourceAccess
 	Binding     Binding
+}
+
+type WorkgroupMemoryDecl struct {
+	Provenance  Provenance
+	ShaderName  string
+	Name        string
+	Type        Type
+	ElementType Type
+	Length      int
 }
 
 type Binding struct {
@@ -202,6 +212,14 @@ type Expr interface {
 	Type() Type
 }
 
+type Intrinsic string
+
+const (
+	IntrinsicWorkgroupBarrier               Intrinsic = "WorkgroupBarrier"
+	IntrinsicWorkgroupMemoryBarrier         Intrinsic = "WorkgroupMemoryBarrier"
+	IntrinsicWorkgroupMemoryBarrierWithSync Intrinsic = "WorkgroupMemoryBarrierWithSync"
+)
+
 type LiteralExpr struct {
 	Provenance Provenance
 	ExprType   Type
@@ -270,6 +288,16 @@ type CallExpr struct {
 
 func (CallExpr) exprNode()    {}
 func (e CallExpr) Type() Type { return e.ExprType }
+
+type IntrinsicCallExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Intrinsic  Intrinsic
+	Arguments  []Expr
+}
+
+func (IntrinsicCallExpr) exprNode()    {}
+func (e IntrinsicCallExpr) Type() Type { return e.ExprType }
 
 type BinaryExpr struct {
 	Provenance Provenance
@@ -340,6 +368,9 @@ const (
 	TypeI32          TypeKind = "i32"
 	TypeU32          TypeKind = "u32"
 	TypeF32          TypeKind = "f32"
+	TypeUint2        TypeKind = "uint2"
+	TypeUint3        TypeKind = "uint3"
+	TypeUint4        TypeKind = "uint4"
 	TypeFloat2       TypeKind = "float2"
 	TypeFloat3       TypeKind = "float3"
 	TypeFloat4       TypeKind = "float4"

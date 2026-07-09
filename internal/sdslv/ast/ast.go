@@ -43,6 +43,7 @@ type ShaderDecl struct {
 	Name               string
 	ResourceBundleName string
 	Resources          []ResourceDecl
+	Workgroups         []WorkgroupDecl
 	Methods            []FunctionDecl
 }
 
@@ -75,6 +76,11 @@ type ResourceDecl struct {
 	Name   string
 	Access string
 	Type   TypeRef
+}
+
+type WorkgroupDecl struct {
+	Name string
+	Type TypeRef
 }
 
 type Field struct {

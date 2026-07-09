@@ -45,10 +45,11 @@ type functionInfo struct {
 type varOrigin string
 
 const (
-	varLocal    varOrigin = "local"
-	varParam    varOrigin = "param"
-	varResource varOrigin = "resource"
-	varBuiltin  varOrigin = "builtin"
+	varLocal     varOrigin = "local"
+	varParam     varOrigin = "param"
+	varResource  varOrigin = "resource"
+	varWorkgroup varOrigin = "workgroup"
+	varBuiltin   varOrigin = "builtin"
 )
 
 type varInfo struct {
@@ -67,11 +68,9 @@ func (v *validator) seedBuiltins() {
 	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4"} {
 		v.types[name] = typeInfo{name: name, kind: "builtin"}
 	}
-	v.types["uint3"] = typeInfo{name: "uint3", kind: "builtin", fields: map[string]fieldInfo{
-		"x": {typ: ast.TypeRef{Name: "u32"}},
-		"y": {typ: ast.TypeRef{Name: "u32"}},
-		"z": {typ: ast.TypeRef{Name: "u32"}},
-	}}
+	v.types["uint2"] = builtinUintVectorType(2)
+	v.types["uint3"] = builtinUintVectorType(3)
+	v.types["uint4"] = builtinUintVectorType(4)
 }
 
 func (v *validator) collect(module ast.Module) {
@@ -139,10 +138,11 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 			v.validateFields(d.Name, "record", d.Fields, false)
 		case ast.StreamDecl:
 			v.validateFields(d.Name, "stream", d.Fields, true)
+			v.validateComputeThreadStream(d)
 		case ast.ShaderDecl:
 			v.validateShader(d)
 		case ast.FunctionDecl:
-			v.validateFunction(d, "", nil)
+			v.validateFunction(d, "", "", nil, nil)
 		}
 	}
 }
@@ -160,12 +160,17 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 	if shader.ResourceBundleName != "" && len(shader.Resources) > 0 {
 		v.errorf("shader %s cannot use both resources %s; and resources { ... }", shader.Name, shader.ResourceBundleName)
 	}
+	seenShaderNames := map[string]string{}
 	resources := v.resolveShaderResources(shader)
 	v.resources = map[string]ast.ResourceDecl{}
 	for _, resource := range resources {
 		if _, exists := v.resources[resource.Name]; exists {
 			v.errorf("duplicate shader resource %s.%s", shader.Name, resource.Name)
 		}
+		if prior, exists := seenShaderNames[resource.Name]; exists {
+			v.errorf("shader %s name %s collides with %s", shader.Name, resource.Name, prior)
+		}
+		seenShaderNames[resource.Name] = "resource"
 		if resource.Access != "readonly" && resource.Access != "readwrite" {
 			v.errorf("resource %s.%s must be readonly or readwrite", shader.Name, resource.Name)
 		}
@@ -175,7 +180,24 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 		v.validateType(resource.Type)
 		v.resources[resource.Name] = resource
 	}
+	workgroups := map[string]ast.WorkgroupDecl{}
+	for _, workgroup := range shader.Workgroups {
+		if _, exists := workgroups[workgroup.Name]; exists {
+			v.errorf("duplicate shader workgroup %s.%s", shader.Name, workgroup.Name)
+			continue
+		}
+		if prior, exists := seenShaderNames[workgroup.Name]; exists {
+			v.errorf("shader %s name %s collides with %s", shader.Name, workgroup.Name, prior)
+		}
+		seenShaderNames[workgroup.Name] = "workgroup"
+		v.validateWorkgroup(shader.Name, workgroup)
+		workgroups[workgroup.Name] = workgroup
+	}
 	for _, method := range shader.Methods {
+		if prior, exists := seenShaderNames[method.Name]; exists {
+			v.errorf("shader %s name %s collides with %s", shader.Name, method.Name, prior)
+		}
+		seenShaderNames[method.Name] = "method"
 		if method.Stage != "" && method.Stage != "compute" {
 			v.errorf("stage %s is not implemented in GoOct SDSL-V M0; only compute is supported", method.Stage)
 		}
@@ -186,7 +208,7 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 				v.errorf("compute method %s.%s numthreads values must be positive integer literals", shader.Name, method.Name)
 			}
 		}
-		v.validateFunction(method, shader.Name, resources)
+		v.validateFunction(method, shader.Name, method.Stage, resources, shader.Workgroups)
 	}
 	v.resources = nil
 }
@@ -224,7 +246,7 @@ func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.Resource
 	return resources
 }
 
-func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, resources []ast.ResourceDecl) {
+func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, stage string, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl) {
 	v.validateType(fn.ReturnType)
 	scope := map[string]varInfo{
 		"DispatchThreadID": {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
@@ -235,6 +257,9 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, res
 	for _, resource := range resources {
 		scope[resource.Name] = varInfo{typ: resource.Type, origin: varResource}
 	}
+	for _, workgroup := range workgroups {
+		scope[workgroup.Name] = varInfo{typ: workgroup.Type, origin: varWorkgroup}
+	}
 	for _, param := range fn.Parameters {
 		if _, exists := scope[param.Name]; exists {
 			v.errorf("duplicate parameter or builtin name %s in %s", param.Name, fn.Name)
@@ -243,16 +268,17 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, res
 		scope[param.Name] = varInfo{typ: param.Type, origin: varParam}
 	}
 	for _, stmt := range fn.Body.Statements {
-		v.validateStmt(stmt, fn.ReturnType, scope, shaderName)
+		v.validateStmt(stmt, fn.ReturnType, scope, shaderName, stage)
 	}
 }
 
-func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string) {
+func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string) {
 	switch s := stmt.(type) {
 	case ast.LetStmt:
 		v.validateType(s.Type)
 		if s.Value != nil {
 			v.validateWithPlacement(s.Value, true)
+			v.validateBarrierUsage(s.Value, false, shaderName, stage)
 			valueType := v.exprType(s.Value, scope, shaderName)
 			if !v.compatible(s.Type, valueType) {
 				v.errorf("cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
@@ -265,6 +291,8 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	case ast.AssignStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
+		v.validateBarrierUsage(s.Target, false, shaderName, stage)
+		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		targetType := v.exprType(s.Target, scope, shaderName)
 		valueType := v.exprType(s.Value, scope, shaderName)
 		if !isAssignableTarget(s.Target) {
@@ -282,27 +310,33 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			return
 		}
 		v.validateWithPlacement(s.Value, true)
+		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		valueType := v.exprType(s.Value, scope, shaderName)
 		if !v.compatible(returnType, valueType) {
 			v.errorf("return type mismatch: expected %s, got %s", typeName(returnType), typeName(valueType))
 		}
 	case ast.ExprStmt:
 		v.validateWithPlacement(s.Value, false)
+		v.validateBarrierUsage(s.Value, true, shaderName, stage)
 		v.exprType(s.Value, scope, shaderName)
 	case ast.IfStmt:
 		v.validateWithPlacement(s.Condition, false)
+		v.validateBarrierUsage(s.Condition, false, shaderName, stage)
 		cond := v.exprType(s.Condition, scope, shaderName)
 		if cond.Name != "bool" {
 			v.errorf("if condition must be bool, got %s", typeName(cond))
 		}
-		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName)
+		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage)
 		if s.ElseBody != nil {
-			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName)
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage)
 		}
 	case ast.ForStmt:
 		v.validateWithPlacement(s.Start, false)
 		v.validateWithPlacement(s.End, false)
 		v.validateWithPlacement(s.Step, false)
+		v.validateBarrierUsage(s.Start, false, shaderName, stage)
+		v.validateBarrierUsage(s.End, false, shaderName, stage)
+		v.validateBarrierUsage(s.Step, false, shaderName, stage)
 		startType := v.exprType(s.Start, scope, shaderName)
 		endType := v.exprType(s.End, scope, shaderName)
 		if !isInteger(startType) || !isInteger(endType) {
@@ -313,13 +347,13 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 		loopScope := cloneScope(scope)
 		loopScope[s.Name] = varInfo{typ: startType, origin: varLocal}
-		v.validateBlock(s.Body, returnType, loopScope, shaderName)
+		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage)
 	}
 }
 
-func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope map[string]varInfo, shaderName string) {
+func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string) {
 	for _, stmt := range block.Statements {
-		v.validateStmt(stmt, returnType, scope, shaderName)
+		v.validateStmt(stmt, returnType, scope, shaderName, stage)
 	}
 }
 
@@ -471,6 +505,9 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 		if isVectorConstructor(id.Name) {
 			return ast.TypeRef{Name: id.Name}
 		}
+		if isBarrierBuiltin(id.Name) {
+			return ast.TypeRef{Name: "void"}
+		}
 		names := []string{id.Name}
 		if shaderName != "" {
 			names = append([]string{shaderName + "_" + id.Name}, names...)
@@ -594,6 +631,93 @@ func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 	}
 }
 
+func (v *validator) validateComputeThreadStream(stream ast.StreamDecl) {
+	if stream.Name != "ComputeThread" {
+		return
+	}
+	expected := map[string]string{
+		"DispatchId":    "uint3",
+		"GroupId":       "uint3",
+		"GroupThreadId": "uint3",
+		"GroupIndex":    "u32",
+	}
+	for _, field := range stream.Fields {
+		want, ok := expected[field.Name]
+		if !ok {
+			continue
+		}
+		got := v.resolveAlias(field.Type)
+		if got.Name != want {
+			v.errorf("ComputeThread.%s must be %s, got %s", field.Name, want, typeName(got))
+		}
+	}
+}
+
+func (v *validator) validateWorkgroup(shaderName string, decl ast.WorkgroupDecl) {
+	if decl.Type.Name != "array" {
+		v.errorf("workgroup %s.%s must use array<T, N>", shaderName, decl.Name)
+		return
+	}
+	if len(decl.Type.Args) != 1 || !decl.Type.HasArraySize {
+		v.errorf("workgroup %s.%s must use fixed-size array<T, N>", shaderName, decl.Name)
+		return
+	}
+	if decl.Type.ArraySize <= 0 {
+		v.errorf("workgroup %s.%s size must be positive", shaderName, decl.Name)
+	}
+	v.validateType(decl.Type)
+	if !isWorkgroupElementType(v.resolveAlias(decl.Type.Args[0])) {
+		v.errorf("workgroup %s.%s element type %s is not supported in GoOct SDSL-V M4", shaderName, decl.Name, typeName(v.resolveAlias(decl.Type.Args[0])))
+	}
+}
+
+func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, shaderName string, stage string) {
+	switch e := expr.(type) {
+	case ast.CallExpr:
+		if id, ok := e.Callee.(ast.IdentifierExpr); ok && isBarrierBuiltin(id.Name) {
+			if !topLevelExprStmt {
+				v.errorf("barrier builtin %s may only be used as an expression statement", id.Name)
+			}
+			if len(e.Arguments) != 0 {
+				v.errorf("barrier builtin %s expects 0 arguments, got %d", id.Name, len(e.Arguments))
+			}
+			if stage != "compute" && shaderName == "" {
+				v.errorf("barrier builtin %s is only valid in compute functions", id.Name)
+			}
+		}
+		v.validateBarrierUsage(e.Callee, false, shaderName, stage)
+		for _, arg := range e.Arguments {
+			v.validateBarrierUsage(arg, false, shaderName, stage)
+		}
+	case ast.FieldAccessExpr:
+		v.validateBarrierUsage(e.Target, false, shaderName, stage)
+	case ast.IndexExpr:
+		v.validateBarrierUsage(e.Target, false, shaderName, stage)
+		v.validateBarrierUsage(e.Index, false, shaderName, stage)
+	case ast.BinaryExpr:
+		v.validateBarrierUsage(e.Left, false, shaderName, stage)
+		v.validateBarrierUsage(e.Right, false, shaderName, stage)
+	case ast.UnaryExpr:
+		v.validateBarrierUsage(e.Operand, false, shaderName, stage)
+	case ast.ParenExpr:
+		v.validateBarrierUsage(e.Inner, false, shaderName, stage)
+	case ast.WhenUtilityExpr:
+		for _, c := range e.Cases {
+			v.validateBarrierUsage(c.Value, false, shaderName, stage)
+			v.validateBarrierUsage(c.Condition, false, shaderName, stage)
+			v.validateBarrierUsage(c.Score, false, shaderName, stage)
+		}
+		if e.Else != nil {
+			v.validateBarrierUsage(e.Else, false, shaderName, stage)
+		}
+	case ast.WithExpr:
+		v.validateBarrierUsage(e.Base, false, shaderName, stage)
+		for _, update := range e.Updates {
+			v.validateBarrierUsage(update.Value, false, shaderName, stage)
+		}
+	}
+}
+
 func (v *validator) errorf(format string, args ...any) {
 	v.errors = append(v.errors, fmt.Sprintf(format, args...))
 }
@@ -652,7 +776,7 @@ func isInteger(ref ast.TypeRef) bool {
 func isNumeric(ref ast.TypeRef) bool { return isInteger(ref) || isFloat(ref) }
 
 func isVectorConstructor(name string) bool {
-	return name == "float2" || name == "float3" || name == "float4"
+	return name == "float2" || name == "float3" || name == "float4" || name == "uint2" || name == "uint3" || name == "uint4"
 }
 
 func positiveIntegerLiteral(expr ast.Expr) bool {
@@ -672,4 +796,31 @@ func sortStrings(values []string) {
 			}
 		}
 	}
+}
+
+func builtinUintVectorType(dim int) typeInfo {
+	fields := map[string]fieldInfo{
+		"x": {typ: ast.TypeRef{Name: "u32"}},
+		"y": {typ: ast.TypeRef{Name: "u32"}},
+		"z": {typ: ast.TypeRef{Name: "u32"}},
+		"w": {typ: ast.TypeRef{Name: "u32"}},
+	}
+	trimmed := map[string]fieldInfo{}
+	for _, name := range []string{"x", "y", "z", "w"}[:dim] {
+		trimmed[name] = fields[name]
+	}
+	return typeInfo{name: fmt.Sprintf("uint%d", dim), kind: "builtin", fields: trimmed}
+}
+
+func isWorkgroupElementType(ref ast.TypeRef) bool {
+	switch ref.Name {
+	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+		return true
+	default:
+		return false
+	}
+}
+
+func isBarrierBuiltin(name string) bool {
+	return name == "WorkgroupBarrier" || name == "WorkgroupMemoryBarrier" || name == "WorkgroupMemoryBarrierWithSync"
 }

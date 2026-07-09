@@ -52,6 +52,7 @@ The MIR models:
 - typed expressions including `when utility`
 
 M3 later extends this boundary with compute streams, named resource bundles, and `with` expressions without routing through Oct MIR or bypassing VD-MIR.
+M4 further extends it with workgroup storage declarations and backend-neutral barrier intrinsics.
 
 ## `when utility` in VD-MIR
 

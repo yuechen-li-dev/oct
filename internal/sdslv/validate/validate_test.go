@@ -125,6 +125,108 @@ fn F(s: Surface) -> Surface { return s; }`)
 	}
 }
 
+func TestModuleAllowsWorkgroupArrayUseInComputeShader(t *testing.T) {
+	err := validateSource(`stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream TileCopyIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+shader TileCopy {
+resources TileCopyIO;
+workgroup Tile: array<f32, 256>;
+stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: Params) -> void {
+let idx: u32 = thread.DispatchId.x;
+let local: u32 = thread.GroupIndex;
+if idx < params.Count {
+Tile[local] = A[idx];
+}
+WorkgroupMemoryBarrierWithSync();
+if idx < params.Count {
+C[idx] = Tile[local];
+}
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsRuntimeSizedWorkgroupArray(t *testing.T) {
+	err := validateSource(`shader S {
+workgroup Tile: array<f32>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}`)
+	if err == nil || !strings.Contains(err.Error(), "fixed-size array") {
+		t.Fatalf("error = %v, want fixed-size workgroup diagnostic", err)
+	}
+}
+
+func TestModuleRejectsDuplicateWorkgroupNames(t *testing.T) {
+	err := validateSource(`shader S {
+workgroup Tile: array<f32, 16>;
+workgroup Tile: array<f32, 16>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}`)
+	if err == nil || !strings.Contains(err.Error(), "duplicate shader workgroup") {
+		t.Fatalf("error = %v, want duplicate workgroup diagnostic", err)
+	}
+}
+
+func TestModuleRejectsInvalidWorkgroupElementType(t *testing.T) {
+	err := validateSource(`record Surface { Roughness: f32; }
+shader S {
+workgroup Tile: array<Surface, 16>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}`)
+	if err == nil || !strings.Contains(err.Error(), "element type") {
+		t.Fatalf("error = %v, want invalid workgroup element diagnostic", err)
+	}
+}
+
+func TestModuleRejectsBarrierWrongArgCount(t *testing.T) {
+	err := validateSource(`shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+WorkgroupBarrier(1u);
+return;
+}
+}`)
+	if err == nil || !strings.Contains(err.Error(), "expects 0 arguments") {
+		t.Fatalf("error = %v, want barrier arg count diagnostic", err)
+	}
+}
+
+func TestModuleRejectsBarrierInValuePosition(t *testing.T) {
+	err := validateSource(`shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let x: void = WorkgroupBarrier();
+return;
+}
+}`)
+	if err == nil || !strings.Contains(err.Error(), "may only be used as an expression statement") {
+		t.Fatalf("error = %v, want barrier placement diagnostic", err)
+	}
+}
+
+func TestModuleRejectsWrongWorkgroupAssignmentType(t *testing.T) {
+	err := validateSource(`shader S {
+workgroup Tile: array<f32, 16>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+Tile[0u] = true;
+return;
+}
+}`)
+	if err == nil || !strings.Contains(err.Error(), "assignment type mismatch") {
+		t.Fatalf("error = %v, want workgroup assignment mismatch", err)
+	}
+}
+
 func validateSource(text string) error {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})
 	if err != nil {

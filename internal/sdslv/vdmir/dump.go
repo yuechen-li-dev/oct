@@ -48,6 +48,9 @@ func Dump(module Module) string {
 		}
 		line(0, text)
 	}
+	for _, workgroup := range module.Workgroups {
+		line(0, fmt.Sprintf("workgroup %s: %s shader %s", workgroup.Name, FormatType(workgroup.Type), workgroup.ShaderName))
+	}
 	for _, fn := range module.Functions {
 		line(0, fmt.Sprintf("function %s -> %s emitted %s", fn.Name, FormatType(fn.ReturnType), fn.EmittedName))
 		for _, param := range fn.Params {
@@ -137,6 +140,12 @@ func FormatExpr(expr Expr) string {
 			args = append(args, FormatExpr(arg))
 		}
 		return FormatExpr(e.Callee) + "(" + strings.Join(args, ", ") + ")"
+	case IntrinsicCallExpr:
+		args := make([]string, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			args = append(args, FormatExpr(arg))
+		}
+		return string(e.Intrinsic) + "(" + strings.Join(args, ", ") + ")"
 	case BinaryExpr:
 		return "(" + FormatExpr(e.Left) + " " + e.Operator + " " + FormatExpr(e.Right) + ")"
 	case UnaryExpr:
@@ -171,6 +180,12 @@ func FormatType(t Type) string {
 		return "u32"
 	case TypeF32:
 		return "f32"
+	case TypeUint2:
+		return "uint2"
+	case TypeUint3:
+		return "uint3"
+	case TypeUint4:
+		return "uint4"
 	case TypeFloat2:
 		return "float2"
 	case TypeFloat3:

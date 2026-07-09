@@ -101,6 +101,47 @@ return tile with { Acc0: A[thread.DispatchId.x] };
 	}
 }
 
+func TestEmitWorkgroupAndBarrierHLSLFromVDMIR(t *testing.T) {
+	text := `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream TileCopyIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+shader TileCopy {
+resources TileCopyIO;
+workgroup Tile: array<f32, 256>;
+stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: Params) -> void {
+let idx: u32 = thread.DispatchId.x;
+let local: u32 = thread.GroupIndex;
+if idx < params.Count { Tile[local] = A[idx]; }
+WorkgroupBarrier();
+WorkgroupMemoryBarrier();
+WorkgroupMemoryBarrierWithSync();
+if idx < params.Count { C[idx] = Tile[local]; }
+return;
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"groupshared float Tile[256];",
+		"uint3 GroupThreadID : SV_GroupThreadID",
+		"uint3 GroupID : SV_GroupID",
+		"uint GroupIndex : SV_GroupIndex",
+		"GroupMemoryBarrierWithGroupSync();",
+		"GroupMemoryBarrier();",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func emitSource(t *testing.T, text string) string {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

@@ -17,6 +17,7 @@ const (
 	KeywordEnum      Kind = "KeywordEnum"
 	KeywordShader    Kind = "KeywordShader"
 	KeywordResources Kind = "KeywordResources"
+	KeywordWorkgroup Kind = "KeywordWorkgroup"
 	KeywordReadonly  Kind = "KeywordReadonly"
 	KeywordReadwrite Kind = "KeywordReadwrite"
 	KeywordStage     Kind = "KeywordStage"
@@ -91,6 +92,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordShader
 	case "resources":
 		return KeywordResources
+	case "workgroup":
+		return KeywordWorkgroup
 	case "readonly":
 		return KeywordReadonly
 	case "readwrite":

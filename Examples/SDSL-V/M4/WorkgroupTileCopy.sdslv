@@ -1,0 +1,36 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream TileCopyIO {
+    A: readonly array<f32>;
+    C: readwrite array<f32>;
+}
+
+record TileParams {
+    Count: u32;
+}
+
+shader TileCopy {
+    resources TileCopyIO;
+
+    workgroup Tile: array<f32, 256>;
+
+    stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: TileParams) -> void {
+        let idx: u32 = thread.DispatchId.x;
+        let local: u32 = thread.GroupIndex;
+        if idx < params.Count {
+            Tile[local] = A[idx];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if idx < params.Count {
+            C[idx] = Tile[local];
+        }
+        return;
+    }
+}

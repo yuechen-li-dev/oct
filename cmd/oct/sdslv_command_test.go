@@ -71,3 +71,42 @@ func TestSDSLvGenerateHeaderCommand(t *testing.T) {
 		t.Fatalf("header output missing symbol:\n%s", string(text))
 	}
 }
+
+func TestSDSLvM4EmitCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "examples", "SDSL-V", "M4", "WorkgroupTileCopy.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"workgroup Tile: array<f32,256> shader TileCopy",
+		"expr WorkgroupMemoryBarrierWithSync()",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "workgroup_tile_copy.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"groupshared float Tile[256];",
+		"GroupMemoryBarrierWithGroupSync();",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+}

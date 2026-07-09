@@ -199,6 +199,12 @@ func (p *parser) parseShader() (ast.ShaderDecl, error) {
 			} else {
 				shader.Resources = append(shader.Resources, resources...)
 			}
+		case token.KeywordWorkgroup:
+			workgroup, err := p.parseWorkgroup()
+			if err != nil {
+				return ast.ShaderDecl{}, err
+			}
+			shader.Workgroups = append(shader.Workgroups, workgroup)
 		case token.KeywordStage:
 			method, err := p.parseStageFunction()
 			if err != nil {
@@ -212,11 +218,33 @@ func (p *parser) parseShader() (ast.ShaderDecl, error) {
 			}
 			shader.Methods = append(shader.Methods, method)
 		default:
-			return ast.ShaderDecl{}, p.errorAtCurrent("expected resources block or shader function")
+			return ast.ShaderDecl{}, p.errorAtCurrent("expected resources block, workgroup declaration, or shader function")
 		}
 	}
 	p.advance()
 	return shader, nil
+}
+
+func (p *parser) parseWorkgroup() (ast.WorkgroupDecl, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected workgroup name")
+	if err != nil {
+		return ast.WorkgroupDecl{}, err
+	}
+	if _, err := p.expect(token.Colon, "expected ':' after workgroup name"); err != nil {
+		return ast.WorkgroupDecl{}, err
+	}
+	ref, err := p.parseTypeRef()
+	if err != nil {
+		return ast.WorkgroupDecl{}, err
+	}
+	if p.match(token.Assign) {
+		return ast.WorkgroupDecl{}, p.errorAtCurrent("workgroup declarations must not have initializers")
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after workgroup declaration"); err != nil {
+		return ast.WorkgroupDecl{}, err
+	}
+	return ast.WorkgroupDecl{Name: name.Lexeme, Type: ref}, nil
 }
 
 func (p *parser) parseResources() ([]ast.ResourceDecl, error) {

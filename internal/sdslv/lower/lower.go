@@ -39,7 +39,7 @@ func Module(module ast.Module) (vdmir.Module, error) {
 				Variants:   append([]string(nil), d.Variants...),
 			})
 		case ast.FunctionDecl:
-			fn, err := l.lowerFunction("", d, nil)
+			fn, err := l.lowerFunction("", d, nil, nil)
 			if err != nil {
 				return vdmir.Module{}, err
 			}
@@ -59,8 +59,18 @@ func Module(module ast.Module) (vdmir.Module, error) {
 					Binding:     vdmir.Binding{Set: 0, Binding: i},
 				})
 			}
+			for _, workgroup := range d.Workgroups {
+				out.Workgroups = append(out.Workgroups, vdmir.WorkgroupMemoryDecl{
+					Provenance:  l.provenance,
+					ShaderName:  d.Name,
+					Name:        workgroup.Name,
+					Type:        l.lowerTypeRef(workgroup.Type),
+					ElementType: l.lowerTypeRef(workgroup.Type.Args[0]),
+					Length:      workgroup.Type.ArraySize,
+				})
+			}
 			for _, method := range d.Methods {
-				fn, err := l.lowerFunction(d.Name, method, resources)
+				fn, err := l.lowerFunction(d.Name, method, resources, d.Workgroups)
 				if err != nil {
 					return vdmir.Module{}, err
 				}
@@ -111,14 +121,9 @@ func (l *lowering) seedBuiltins() {
 	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4"} {
 		l.types[name] = typeInfo{kind: "builtin"}
 	}
-	l.types["uint3"] = typeInfo{
-		kind: "builtin",
-		fields: map[string]fieldInfo{
-			"x": {typ: ast.TypeRef{Name: "u32"}},
-			"y": {typ: ast.TypeRef{Name: "u32"}},
-			"z": {typ: ast.TypeRef{Name: "u32"}},
-		},
-	}
+	l.types["uint2"] = builtinUintVectorType(2)
+	l.types["uint3"] = builtinUintVectorType(3)
+	l.types["uint4"] = builtinUintVectorType(4)
 }
 
 func (l *lowering) collect(module ast.Module) {
@@ -200,7 +205,7 @@ func (l *lowering) resolveShaderResources(shader ast.ShaderDecl) ([]ast.Resource
 	return resources, shader.ResourceBundleName, nil
 }
 
-func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl) (vdmir.Function, error) {
+func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl) (vdmir.Function, error) {
 	out := vdmir.Function{
 		Provenance: l.provenance,
 		Name:       fn.Name,
@@ -217,6 +222,9 @@ func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resourc
 	addBuiltinBindings(scope)
 	for _, resource := range resources {
 		scope[resource.Name] = binding{name: resource.Name, kind: vdmir.VarResource, typ: resource.Type}
+	}
+	for _, workgroup := range workgroups {
+		scope[workgroup.Name] = binding{name: workgroup.Name, kind: vdmir.VarLocal, typ: workgroup.Type}
 	}
 	for _, param := range fn.Parameters {
 		scope[param.Name] = binding{name: param.Name, kind: vdmir.VarParam, typ: param.Type}
@@ -394,6 +402,22 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Index:      index,
 		}, nil
 	case ast.CallExpr:
+		if id, ok := e.Callee.(ast.IdentifierExpr); ok && isBarrierBuiltin(id.Name) {
+			args := make([]vdmir.Expr, 0, len(e.Arguments))
+			for _, arg := range e.Arguments {
+				lowered, err := l.lowerExpr(arg, scope, shaderName)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, lowered)
+			}
+			return vdmir.IntrinsicCallExpr{
+				Provenance: l.provenance,
+				ExprType:   vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
+				Intrinsic:  lowerIntrinsic(id.Name),
+				Arguments:  args,
+			}, nil
+		}
 		callee, err := l.lowerExpr(e.Callee, scope, shaderName)
 		if err != nil {
 			return nil, err
@@ -528,9 +552,9 @@ func (l *lowering) lowerComputeEntryPoint(shaderName string, fn ast.FunctionDecl
 		})
 	}
 	entry.Builtins = []vdmir.BuiltinParam{
-		{Name: "DispatchThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_DispatchThreadID", Builtin: vdmir.BuiltinDispatchThreadID, Available: true, Referenced: directBuiltins["DispatchThreadID"] || threadParams["DispatchThreadID"]},
-		{Name: "GroupThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupThreadID", Builtin: vdmir.BuiltinGroupThreadID, Available: true, Referenced: directBuiltins["GroupThreadID"] || threadParams["GroupThreadID"]},
-		{Name: "GroupID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupID", Builtin: vdmir.BuiltinGroupID, Available: true, Referenced: directBuiltins["GroupID"] || threadParams["GroupID"]},
+		{Name: "DispatchThreadID", Type: vdmir.Type{Kind: vdmir.TypeUint3, Name: "uint3"}, Semantic: "SV_DispatchThreadID", Builtin: vdmir.BuiltinDispatchThreadID, Available: true, Referenced: directBuiltins["DispatchThreadID"] || threadParams["DispatchThreadID"]},
+		{Name: "GroupThreadID", Type: vdmir.Type{Kind: vdmir.TypeUint3, Name: "uint3"}, Semantic: "SV_GroupThreadID", Builtin: vdmir.BuiltinGroupThreadID, Available: true, Referenced: directBuiltins["GroupThreadID"] || threadParams["GroupThreadID"]},
+		{Name: "GroupID", Type: vdmir.Type{Kind: vdmir.TypeUint3, Name: "uint3"}, Semantic: "SV_GroupID", Builtin: vdmir.BuiltinGroupID, Available: true, Referenced: directBuiltins["GroupID"] || threadParams["GroupID"]},
 		{Name: "GroupIndex", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Semantic: "SV_GroupIndex", Builtin: vdmir.BuiltinGroupIndex, Available: true, Referenced: directBuiltins["GroupIndex"] || threadParams["GroupIndex"]},
 	}
 	_ = resources
@@ -580,6 +604,12 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 		return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
 	case "f32", "float":
 		return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+	case "uint2":
+		return vdmir.Type{Kind: vdmir.TypeUint2, Name: "uint2"}
+	case "uint3":
+		return vdmir.Type{Kind: vdmir.TypeUint3, Name: "uint3"}
+	case "uint4":
+		return vdmir.Type{Kind: vdmir.TypeUint4, Name: "uint4"}
 	case "float2":
 		return vdmir.Type{Kind: vdmir.TypeFloat2, Name: "float2"}
 	case "float3":
@@ -623,7 +653,7 @@ func (l *lowering) resolveAlias(ref ast.TypeRef) ast.TypeRef {
 }
 
 func (l *lowering) fieldType(target vdmir.Type, field string) ast.TypeRef {
-	if target.Name == "uint3" {
+	if target.Name == "uint2" || target.Name == "uint3" || target.Name == "uint4" {
 		return ast.TypeRef{Name: "u32"}
 	}
 	info, ok := l.types[target.Name]
@@ -646,8 +676,10 @@ func (l *lowering) lookupFunction(shaderName, name string) (functionInfo, bool) 
 func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, shaderName string) vdmir.Type {
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
 		switch id.Name {
-		case "float2", "float3", "float4":
+		case "float2", "float3", "float4", "uint2", "uint3", "uint4":
 			return l.lowerTypeRef(ast.TypeRef{Name: id.Name})
+		case "WorkgroupBarrier", "WorkgroupMemoryBarrier", "WorkgroupMemoryBarrierWithSync":
+			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
 		}
 		if info, ok := l.lookupFunction(shaderName, id.Name); ok {
 			return l.lowerTypeRef(info.returnType)
@@ -827,5 +859,34 @@ func sortStrings(values []string) {
 				values[i], values[j] = values[j], values[i]
 			}
 		}
+	}
+}
+
+func builtinUintVectorType(dim int) typeInfo {
+	fields := map[string]fieldInfo{
+		"x": {typ: ast.TypeRef{Name: "u32"}},
+		"y": {typ: ast.TypeRef{Name: "u32"}},
+		"z": {typ: ast.TypeRef{Name: "u32"}},
+		"w": {typ: ast.TypeRef{Name: "u32"}},
+	}
+	trimmed := map[string]fieldInfo{}
+	for _, name := range []string{"x", "y", "z", "w"}[:dim] {
+		trimmed[name] = fields[name]
+	}
+	return typeInfo{kind: "builtin", fields: trimmed}
+}
+
+func isBarrierBuiltin(name string) bool {
+	return name == "WorkgroupBarrier" || name == "WorkgroupMemoryBarrier" || name == "WorkgroupMemoryBarrierWithSync"
+}
+
+func lowerIntrinsic(name string) vdmir.Intrinsic {
+	switch name {
+	case "WorkgroupBarrier":
+		return vdmir.IntrinsicWorkgroupBarrier
+	case "WorkgroupMemoryBarrier":
+		return vdmir.IntrinsicWorkgroupMemoryBarrier
+	default:
+		return vdmir.IntrinsicWorkgroupMemoryBarrierWithSync
 	}
 }

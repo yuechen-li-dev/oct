@@ -1,0 +1,26 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+record BarrierParams {
+    Count: u32;
+}
+
+shader BarrierSmoke {
+    workgroup Flags: array<u32, 64>;
+
+    stage compute [numthreads(64, 1, 1)] fn CS(thread: ComputeThread, params: BarrierParams) -> void {
+        if thread.DispatchId.x < params.Count {
+            Flags[thread.GroupIndex] = thread.GroupIndex;
+        }
+        WorkgroupBarrier();
+        WorkgroupMemoryBarrier();
+        WorkgroupMemoryBarrierWithSync();
+        return;
+    }
+}

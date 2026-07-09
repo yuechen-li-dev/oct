@@ -160,6 +160,50 @@ stage compute [numthreads(16, 16, 1)] fn CS(params: VectorParams) -> void {
 	}
 }
 
+func TestModuleLowersWorkgroupsAndBarriersToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream TileCopyIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+shader TileCopy {
+resources TileCopyIO;
+workgroup Tile: array<f32, 256>;
+stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: Params) -> void {
+let idx: u32 = thread.DispatchId.x;
+let local: u32 = thread.GroupIndex;
+if idx < params.Count {
+Tile[local] = A[idx];
+}
+WorkgroupMemoryBarrierWithSync();
+if idx < params.Count {
+C[idx] = Tile[local];
+}
+return;
+}
+}`)
+	if got := len(mir.Workgroups); got != 1 {
+		t.Fatalf("len(Workgroups) = %d, want 1", got)
+	}
+	if mir.Workgroups[0].Name != "Tile" || mir.Workgroups[0].Length != 256 {
+		t.Fatalf("workgroup = %#v", mir.Workgroups[0])
+	}
+	cs := findFunction(t, mir, "TileCopy_CS")
+	exprStmt, ok := cs.Body.Statements[3].(vdmir.ExprStmt)
+	if !ok {
+		t.Fatalf("stmt[3] = %T, want ExprStmt", cs.Body.Statements[3])
+	}
+	if intrinsic, ok := exprStmt.Value.(vdmir.IntrinsicCallExpr); !ok || intrinsic.Intrinsic != vdmir.IntrinsicWorkgroupMemoryBarrierWithSync {
+		t.Fatalf("expr stmt = %#v, want WorkgroupMemoryBarrierWithSync intrinsic", exprStmt.Value)
+	}
+}
+
 func lowerSource(t *testing.T, text string) vdmir.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

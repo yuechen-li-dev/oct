@@ -65,6 +65,35 @@ return s with { Roughness: 0.5, };
 	}
 }
 
+func TestBuildModuleParsesShaderWorkgroups(t *testing.T) {
+	module := parseTestModule(t, `shader TileCopy {
+workgroup TileA: array<f32, 256>;
+workgroup TileB: array<uint4, 16>;
+stage compute [numthreads(16, 16, 1)] fn CS() -> void { return; }
+}`)
+	shader, ok := module.Decls[0].(ast.ShaderDecl)
+	if !ok {
+		t.Fatalf("decl[0] = %T, want ShaderDecl", module.Decls[0])
+	}
+	if got := len(shader.Workgroups); got != 2 {
+		t.Fatalf("len(Workgroups) = %d, want 2", got)
+	}
+	if shader.Workgroups[0].Name != "TileA" || !shader.Workgroups[0].Type.HasArraySize || shader.Workgroups[0].Type.ArraySize != 256 {
+		t.Fatalf("first workgroup = %#v", shader.Workgroups[0])
+	}
+}
+
+func TestBuildModuleRejectsWorkgroupOutsideShader(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `workgroup Tile: array<f32, 16>;`})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	_, err = BuildModule(tokens)
+	if err == nil {
+		t.Fatalf("BuildModule() error = nil, want rejection")
+	}
+}
+
 func parseTestModule(t *testing.T, text string) ast.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

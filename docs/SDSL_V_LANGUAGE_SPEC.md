@@ -58,6 +58,9 @@ Seven declaration kinds are valid at module scope, in any order:
 | `bool` | `bool` | Condition operands only |
 | `i32` | `int` | Default integer literal type |
 | `u32` | `uint` | |
+| `uint2` | `uint2` | Compute vector |
+| `uint3` | `uint3` | Compute vector |
+| `uint4` | `uint4` | Compute vector |
 | `f32` | `float` | Alias for `float`; interchangeable in non-space contexts |
 | `float` | `float` | Same underlying as `f32` |
 | `float2` | `float2` | Vector; constructor `float2(s, s)` |
@@ -150,6 +153,8 @@ GoOct SDSL-V M3 also supports compute-oriented streams:
 
 Current M3 limitation: named resource bundles accept access-qualified `array<T>` resource fields. Mixed bundle streams that combine resources with plain payload fields remain deferred.
 
+GoOct SDSL-V M4 adds shader-scoped `workgroup` declarations and compute barrier builtins on top of this compute-oriented subset.
+
 ---
 
 ## Interfaces and shaders
@@ -195,7 +200,22 @@ shader FlatColor implements IBaseColor {
 
 **`material` block** — per-instance shader fields. Accessed directly by name within methods.
 
-**`stage` methods** — methods prefixed with `stage vertex` or `stage pixel` are GPU entry points. They emit as top-level HLSL functions named `ShaderName_MethodName` (e.g. `FlatColor_VS`, `FlatColor_PS`). Pixel stage methods automatically annotate their return with `SV_Target`. Supported stages: `vertex`, `pixel`. Unsupported stages (`geometry`, `compute`) are validation errors.
+**`stage` methods** — the broad language design includes graphics stages, but the current GoOct compute subset centers on `stage compute [numthreads(...)] fn`. The compute entry point emits as `ShaderName_MethodName` and carries HLSL system-value parameters as needed. Full graphics-stage emission remains outside the current compute-focused milestone line.
+
+**`workgroup` declarations (GoOct M4)** — shader bodies may declare backend-neutral workgroup/shared memory:
+
+```sdslv
+shader TileCopy {
+    workgroup Tile: array<f32, 256>;
+}
+```
+
+Current M4 rules:
+
+- `workgroup` is shader-scoped only;
+- current type shape is fixed-size `array<T, N>`;
+- runtime-sized arrays and initializers are rejected;
+- the HLSL backend lowers `workgroup` to `groupshared`.
 
 **Non-stage methods** — ordinary helper methods. Emit as `ShaderName_MethodName` HLSL functions. Not emitted as DXC entry points.
 
@@ -243,6 +263,8 @@ Fallible functions declare an error type with `! ErrorType`. Only `Error` is rec
 | `for i in start..end { ... }` | Bounded integer for loop |
 | `for i in start..end step n { ... }` | Bounded for loop with step |
 | `expr;` | Expression statement |
+
+In the compute subset, workgroup arrays are also mutable assignment targets. Barrier builtins such as `WorkgroupMemoryBarrierWithSync();` are only valid as expression statements.
 
 `while` loops are explicitly not supported. Use bounded `for` loops instead.
 
