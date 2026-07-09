@@ -2,6 +2,16 @@
 
 SDSL-V M0 adds a GoOct-native compiler scaffold for shader authoring experiments before Prometheus receives new SGEMM kernels. It is intentionally a runway milestone: parse, validate, test, and emit deterministic HLSL for a compute-focused subset, without changing Prometheus runtime dispatch or replacing existing SPIR-V headers.
 
+## Status after M1
+
+M0 still defines the language subset, but the compiler pipeline now includes `VD-MIR`:
+
+```text
+source -> lex -> parse -> validate -> lower to VD-MIR -> emit HLSL
+```
+
+`docs/SDSL_V_M1_VDMIR.md` documents the new middle layer and the backend boundary in detail.
+
 ## Compute extension
 
 The supplied SDSL-V spec documents only `vertex` and `pixel` stages. GoOct SDSL-V M0 adds an explicit Prometheus compute extension:
@@ -58,10 +68,15 @@ Interfaces, generic shaders, compile declarations, streams, vertex/pixel lowerin
 
 ```powershell
 go run ./cmd/oct sdslv check examples/SDSL-V/M0/VectorAdd.sdslv
+go run ./cmd/oct sdslv emit-vdmir examples/SDSL-V/M0/VectorAdd.sdslv
 go run ./cmd/oct sdslv emit-hlsl examples/SDSL-V/M0/VectorAdd.sdslv -o out/sdslv/vector_add.hlsl
 go run ./cmd/oct sdslv test examples/SDSL-V/M0/basic.sdslvtest
 ```
 
+`emit-hlsl` now emits from VD-MIR rather than directly from the parsed SDSL-V AST.
+
+`.sdslvtest` remains AST-interpreter-based in M1.
+
 ## Prometheus path
 
-Prometheus SGEMM Px16 showed that one-off SPIR-V patching is not enough. SDSL-V M0 creates a source-backed shader loop so later milestones can generate coherent compute kernel families, validate shader-helper decisions with `.sdslvtest`, emit deterministic HLSL, and then add DXC/SPIR-V and runtime wiring intentionally.
+Prometheus SGEMM Px16 showed that one-off SPIR-V patching is not enough. SDSL-V M0 creates a source-backed shader loop so later milestones can generate coherent compute kernel families, validate shader-helper decisions with `.sdslvtest`, lower into VD-MIR, emit deterministic HLSL, and then add DXC/SPIR-V and runtime wiring intentionally.

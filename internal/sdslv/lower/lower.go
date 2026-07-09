@@ -1,0 +1,708 @@
+package lower
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
+)
+
+func Module(module ast.Module) (vdmir.Module, error) {
+	l := lowering{
+		provenance: vdmir.ProvenanceFromFile(module.Source),
+		types:      map[string]typeInfo{},
+		functions:  map[string]functionInfo{},
+	}
+	l.seedBuiltins()
+	l.collect(module)
+	out := vdmir.Module{
+		Provenance: l.provenance,
+		Namespace:  module.Namespace,
+	}
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.TypeAliasDecl:
+			out.TypeAliases = append(out.TypeAliases, vdmir.TypeAlias{
+				Provenance: l.provenance,
+				Name:       d.Name,
+				Target:     l.lowerTypeRef(d.Type),
+			})
+		case ast.RecordDecl:
+			record := vdmir.Record{Provenance: l.provenance, Name: d.Name}
+			for _, field := range d.Fields {
+				record.Fields = append(record.Fields, vdmir.Field{
+					Provenance: l.provenance,
+					Name:       field.Name,
+					Type:       l.lowerTypeRef(field.Type),
+				})
+			}
+			out.Records = append(out.Records, record)
+		case ast.EnumDecl:
+			out.Enums = append(out.Enums, vdmir.Enum{
+				Provenance: l.provenance,
+				Name:       d.Name,
+				Variants:   append([]string(nil), d.Variants...),
+			})
+		case ast.FunctionDecl:
+			fn, err := l.lowerFunction("", d, nil)
+			if err != nil {
+				return vdmir.Module{}, err
+			}
+			out.Functions = append(out.Functions, fn)
+		case ast.ShaderDecl:
+			for _, resource := range d.Resources {
+				out.Resources = append(out.Resources, vdmir.Resource{
+					Provenance:  l.provenance,
+					Name:        resource.Name,
+					ElementType: l.lowerResourceElementType(resource.Type),
+					Access:      lowerResourceAccess(resource.Access),
+				})
+			}
+			for _, method := range d.Methods {
+				fn, err := l.lowerFunction(d.Name, method, d.Resources)
+				if err != nil {
+					return vdmir.Module{}, err
+				}
+				out.Functions = append(out.Functions, fn)
+				if method.Stage == "compute" {
+					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d.Name, method, d.Resources))
+				}
+			}
+		case ast.UnsupportedDecl:
+			return vdmir.Module{}, fmt.Errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
+		}
+	}
+	return out, nil
+}
+
+type typeInfo struct {
+	kind   string
+	target ast.TypeRef
+	fields map[string]ast.TypeRef
+}
+
+type functionInfo struct {
+	name        string
+	emittedName string
+	returnType  ast.TypeRef
+	params      []ast.Parameter
+	shaderName  string
+}
+
+type binding struct {
+	name string
+	kind vdmir.VarKind
+	typ  ast.TypeRef
+}
+
+type lowering struct {
+	provenance vdmir.Provenance
+	types      map[string]typeInfo
+	functions  map[string]functionInfo
+}
+
+func (l *lowering) seedBuiltins() {
+	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4"} {
+		l.types[name] = typeInfo{kind: "builtin"}
+	}
+	l.types["uint3"] = typeInfo{
+		kind: "builtin",
+		fields: map[string]ast.TypeRef{
+			"x": {Name: "u32"},
+			"y": {Name: "u32"},
+			"z": {Name: "u32"},
+		},
+	}
+}
+
+func (l *lowering) collect(module ast.Module) {
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.TypeAliasDecl:
+			l.types[d.Name] = typeInfo{kind: "alias", target: d.Type}
+		case ast.RecordDecl:
+			fields := map[string]ast.TypeRef{}
+			for _, field := range d.Fields {
+				fields[field.Name] = field.Type
+			}
+			l.types[d.Name] = typeInfo{kind: "record", fields: fields}
+		case ast.EnumDecl:
+			l.types[d.Name] = typeInfo{kind: "enum"}
+		case ast.FunctionDecl:
+			l.functions[d.Name] = functionInfo{name: d.Name, emittedName: d.Name, returnType: d.ReturnType, params: d.Parameters}
+		case ast.ShaderDecl:
+			for _, method := range d.Methods {
+				key := d.Name + "_" + method.Name
+				l.functions[key] = functionInfo{
+					name:        method.Name,
+					emittedName: key,
+					returnType:  method.ReturnType,
+					params:      method.Parameters,
+					shaderName:  d.Name,
+				}
+			}
+		}
+	}
+}
+
+func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl) (vdmir.Function, error) {
+	out := vdmir.Function{
+		Provenance: l.provenance,
+		Name:       fn.Name,
+		ShaderName: shaderName,
+		ReturnType: l.lowerTypeRef(fn.ReturnType),
+	}
+	if shaderName != "" {
+		out.EmittedName = shaderName + "_" + fn.Name
+	} else {
+		out.EmittedName = fn.Name
+	}
+
+	scope := map[string]binding{}
+	addBuiltinBindings(scope)
+	for _, resource := range resources {
+		scope[resource.Name] = binding{name: resource.Name, kind: vdmir.VarResource, typ: resource.Type}
+	}
+	for _, param := range fn.Parameters {
+		scope[param.Name] = binding{name: param.Name, kind: vdmir.VarParam, typ: param.Type}
+		out.Params = append(out.Params, vdmir.Parameter{
+			Provenance: l.provenance,
+			Name:       param.Name,
+			Type:       l.lowerTypeRef(param.Type),
+		})
+	}
+
+	locals := map[string]vdmir.Type{}
+	body, err := l.lowerBlock(fn.Body, scope, locals, shaderName)
+	if err != nil {
+		return vdmir.Function{}, err
+	}
+	out.Body = body
+	out.Locals = collectLocals(locals, l.provenance)
+	return out, nil
+}
+
+func (l *lowering) lowerBlock(block ast.Block, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Block, error) {
+	out := vdmir.Block{}
+	for _, stmt := range block.Statements {
+		lowered, err := l.lowerStmt(stmt, scope, locals, shaderName)
+		if err != nil {
+			return vdmir.Block{}, err
+		}
+		out.Statements = append(out.Statements, lowered)
+	}
+	return out, nil
+}
+
+func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
+	switch s := stmt.(type) {
+	case ast.LetStmt:
+		var value vdmir.Expr
+		var err error
+		if s.Value != nil {
+			value, err = l.lowerExpr(s.Value, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+		}
+		scope[s.Name] = binding{name: s.Name, kind: vdmir.VarLocal, typ: s.Type}
+		locals[s.Name] = l.lowerTypeRef(s.Type)
+		return vdmir.LetStmt{Provenance: l.provenance, Name: s.Name, Type: l.lowerTypeRef(s.Type), Value: value}, nil
+	case ast.AssignStmt:
+		target, err := l.lowerExpr(s.Target, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		value, err := l.lowerExpr(s.Value, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.AssignStmt{Provenance: l.provenance, Target: target, Value: value}, nil
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			return vdmir.ReturnStmt{Provenance: l.provenance}, nil
+		}
+		value, err := l.lowerExpr(s.Value, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.ReturnStmt{Provenance: l.provenance, Value: value}, nil
+	case ast.ExprStmt:
+		value, err := l.lowerExpr(s.Value, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.ExprStmt{Provenance: l.provenance, Value: value}, nil
+	case ast.IfStmt:
+		cond, err := l.lowerExpr(s.Condition, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		thenBody, err := l.lowerBlock(s.ThenBody, cloneScope(scope), locals, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		var elseBody *vdmir.Block
+		if s.ElseBody != nil {
+			body, err := l.lowerBlock(*s.ElseBody, cloneScope(scope), locals, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return vdmir.IfStmt{Provenance: l.provenance, Condition: cond, ThenBody: thenBody, ElseBody: elseBody}, nil
+	case ast.ForStmt:
+		start, err := l.lowerExpr(s.Start, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		end, err := l.lowerExpr(s.End, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		step, err := l.lowerExpr(s.Step, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		loopType := start.Type()
+		loopScope := cloneScope(scope)
+		loopScope[s.Name] = binding{name: s.Name, kind: vdmir.VarLocal, typ: astTypeFromVDMIR(loopType)}
+		locals[s.Name] = loopType
+		body, err := l.lowerBlock(s.Body, loopScope, locals, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.ForRangeStmt{
+			Provenance: l.provenance,
+			Name:       s.Name,
+			Type:       loopType,
+			Start:      start,
+			End:        end,
+			Step:       step,
+			Body:       body,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported statement in GoOct SDSL-V M0")
+	}
+}
+
+func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName string) (vdmir.Expr, error) {
+	switch e := expr.(type) {
+	case ast.IntegerLiteral:
+		typ := vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
+		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
+			typ = vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+		}
+		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: typ, Kind: vdmir.LiteralInteger, Value: e.Value}, nil
+	case ast.FloatLiteral:
+		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}, Kind: vdmir.LiteralFloat, Value: e.Value}, nil
+	case ast.BoolLiteral:
+		value := "false"
+		if e.Value {
+			value = "true"
+		}
+		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}, Kind: vdmir.LiteralBool, Value: value}, nil
+	case ast.StringLiteral:
+		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "string"}, Kind: vdmir.LiteralString, Value: fmt.Sprintf("%q", e.Value)}, nil
+	case ast.IdentifierExpr:
+		if b, ok := scope[e.Name]; ok {
+			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(b.typ)), Name: e.Name, Kind: b.kind}, nil
+		}
+		if fn, ok := l.lookupFunction(shaderName, e.Name); ok {
+			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(fn.returnType), Name: fn.emittedName, Kind: vdmir.VarFunction}, nil
+		}
+		return nil, fmt.Errorf("unknown identifier %s", e.Name)
+	case ast.FieldAccessExpr:
+		target, err := l.lowerExpr(e.Target, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.FieldAccessExpr{
+			Provenance: l.provenance,
+			ExprType:   l.lowerTypeRef(l.fieldType(target.Type(), e.Field)),
+			Target:     target,
+			Field:      e.Field,
+		}, nil
+	case ast.IndexExpr:
+		target, err := l.lowerExpr(e.Target, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		index, err := l.lowerExpr(e.Index, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.IndexExpr{
+			Provenance: l.provenance,
+			ExprType:   elementType(target.Type()),
+			Target:     target,
+			Index:      index,
+		}, nil
+	case ast.CallExpr:
+		callee, err := l.lowerExpr(e.Callee, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		args := make([]vdmir.Expr, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			lowered, err := l.lowerExpr(arg, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, lowered)
+		}
+		return vdmir.CallExpr{
+			Provenance: l.provenance,
+			ExprType:   l.callResultType(e, scope, shaderName),
+			Callee:     callee,
+			Arguments:  args,
+		}, nil
+	case ast.BinaryExpr:
+		left, err := l.lowerExpr(e.Left, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		right, err := l.lowerExpr(e.Right, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.BinaryExpr{
+			Provenance: l.provenance,
+			ExprType:   binaryResultType(left.Type(), e.Operator, right.Type()),
+			Left:       left,
+			Operator:   e.Operator,
+			Right:      right,
+		}, nil
+	case ast.UnaryExpr:
+		operand, err := l.lowerExpr(e.Operand, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.UnaryExpr{
+			Provenance: l.provenance,
+			ExprType:   operand.Type(),
+			Operator:   e.Operator,
+			Operand:    operand,
+		}, nil
+	case ast.ParenExpr:
+		return l.lowerExpr(e.Inner, scope, shaderName)
+	case ast.WhenUtilityExpr:
+		cases := make([]vdmir.WhenUtilityCase, 0, len(e.Cases))
+		var resultType vdmir.Type
+		for i, c := range e.Cases {
+			value, err := l.lowerExpr(c.Value, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			guard, err := l.lowerExpr(c.Condition, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			score, err := l.lowerExpr(c.Score, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			if i == 0 {
+				resultType = value.Type()
+			}
+			cases = append(cases, vdmir.WhenUtilityCase{
+				Provenance: l.provenance,
+				Value:      value,
+				Guard:      guard,
+				Score:      score,
+			})
+		}
+		elseExpr, err := l.lowerExpr(e.Else, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		if resultType.Kind == "" {
+			resultType = elseExpr.Type()
+		}
+		return vdmir.WhenUtilityExpr{
+			Provenance: l.provenance,
+			ExprType:   resultType,
+			Cases:      cases,
+			Else:       elseExpr,
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported expression in GoOct SDSL-V M0")
+	}
+}
+
+func (l *lowering) lowerComputeEntryPoint(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl) vdmir.ComputeEntryPoint {
+	entry := vdmir.ComputeEntryPoint{
+		Provenance:   l.provenance,
+		ShaderName:   shaderName,
+		FunctionName: fn.Name,
+		EmittedName:  shaderName + "_" + fn.Name,
+		NumThreadsX:  fn.NumThreads.X,
+		NumThreadsY:  fn.NumThreads.Y,
+		NumThreadsZ:  fn.NumThreads.Z,
+	}
+	for _, param := range fn.Parameters {
+		entry.Params = append(entry.Params, vdmir.Parameter{
+			Provenance: l.provenance,
+			Name:       param.Name,
+			Type:       l.lowerTypeRef(param.Type),
+		})
+	}
+	builtinNames := referencedBuiltins(fn.Body)
+	entry.Builtins = []vdmir.BuiltinParam{
+		{Name: "DispatchThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_DispatchThreadID", Builtin: vdmir.BuiltinDispatchThreadID, Available: true, Referenced: builtinNames["DispatchThreadID"]},
+		{Name: "GroupThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupThreadID", Builtin: vdmir.BuiltinGroupThreadID, Available: true, Referenced: builtinNames["GroupThreadID"]},
+		{Name: "GroupID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupID", Builtin: vdmir.BuiltinGroupID, Available: true, Referenced: builtinNames["GroupID"]},
+		{Name: "GroupIndex", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Semantic: "SV_GroupIndex", Builtin: vdmir.BuiltinGroupIndex, Available: true, Referenced: builtinNames["GroupIndex"]},
+	}
+	_ = resources
+	return entry
+}
+
+func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
+	resolved := l.resolveAlias(ref)
+	switch resolved.Name {
+	case "void":
+		return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
+	case "bool":
+		return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
+	case "i32":
+		return vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
+	case "u32":
+		return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+	case "f32", "float":
+		return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+	case "float2":
+		return vdmir.Type{Kind: vdmir.TypeFloat2, Name: "float2"}
+	case "float3":
+		return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3"}
+	case "float4":
+		return vdmir.Type{Kind: vdmir.TypeFloat4, Name: "float4"}
+	case "array":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		if resolved.HasArraySize {
+			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: resolved.ArraySize, HasArraySize: true}
+		}
+		return vdmir.Type{Kind: vdmir.TypeRuntimeArray, Name: "array", Element: &elem}
+	default:
+		if info, ok := l.types[resolved.Name]; ok {
+			switch info.kind {
+			case "record":
+				return vdmir.Type{Kind: vdmir.TypeRecord, Name: resolved.Name}
+			case "enum":
+				return vdmir.Type{Kind: vdmir.TypeEnum, Name: resolved.Name}
+			}
+		}
+		return vdmir.Type{Kind: vdmir.TypeBuiltin, Name: resolved.Name}
+	}
+}
+
+func (l *lowering) lowerResourceElementType(ref ast.TypeRef) vdmir.Type {
+	if len(ref.Args) == 0 {
+		return vdmir.Type{}
+	}
+	return l.lowerTypeRef(ref.Args[0])
+}
+
+func (l *lowering) resolveAlias(ref ast.TypeRef) ast.TypeRef {
+	info, ok := l.types[ref.Name]
+	if !ok || info.kind != "alias" {
+		return ref
+	}
+	return l.resolveAlias(info.target)
+}
+
+func (l *lowering) fieldType(target vdmir.Type, field string) ast.TypeRef {
+	if target.Name == "uint3" {
+		return ast.TypeRef{Name: "u32"}
+	}
+	info, ok := l.types[target.Name]
+	if !ok || info.fields == nil {
+		return ast.TypeRef{Name: "<error>"}
+	}
+	return l.resolveAlias(info.fields[field])
+}
+
+func (l *lowering) lookupFunction(shaderName, name string) (functionInfo, bool) {
+	if shaderName != "" {
+		if info, ok := l.functions[shaderName+"_"+name]; ok {
+			return info, true
+		}
+	}
+	info, ok := l.functions[name]
+	return info, ok
+}
+
+func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, shaderName string) vdmir.Type {
+	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
+		switch id.Name {
+		case "float2", "float3", "float4":
+			return l.lowerTypeRef(ast.TypeRef{Name: id.Name})
+		}
+		if info, ok := l.lookupFunction(shaderName, id.Name); ok {
+			return l.lowerTypeRef(info.returnType)
+		}
+	}
+	return vdmir.Type{}
+}
+
+func addBuiltinBindings(scope map[string]binding) {
+	scope["DispatchThreadID"] = binding{name: "DispatchThreadID", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "uint3"}}
+	scope["GroupThreadID"] = binding{name: "GroupThreadID", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "uint3"}}
+	scope["GroupID"] = binding{name: "GroupID", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "uint3"}}
+	scope["GroupIndex"] = binding{name: "GroupIndex", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "u32"}}
+}
+
+func collectLocals(locals map[string]vdmir.Type, provenance vdmir.Provenance) []vdmir.Local {
+	names := make([]string, 0, len(locals))
+	for name := range locals {
+		names = append(names, name)
+	}
+	sortStrings(names)
+	out := make([]vdmir.Local, 0, len(names))
+	for _, name := range names {
+		out = append(out, vdmir.Local{Provenance: provenance, Name: name, Type: locals[name]})
+	}
+	return out
+}
+
+func referencedBuiltins(block ast.Block) map[string]bool {
+	out := map[string]bool{}
+	for _, stmt := range block.Statements {
+		walkStmt(stmt, out)
+	}
+	return out
+}
+
+func walkStmt(stmt ast.Stmt, builtins map[string]bool) {
+	switch s := stmt.(type) {
+	case ast.LetStmt:
+		if s.Value != nil {
+			walkExpr(s.Value, builtins)
+		}
+	case ast.AssignStmt:
+		walkExpr(s.Target, builtins)
+		walkExpr(s.Value, builtins)
+	case ast.ReturnStmt:
+		if s.Value != nil {
+			walkExpr(s.Value, builtins)
+		}
+	case ast.ExprStmt:
+		walkExpr(s.Value, builtins)
+	case ast.IfStmt:
+		walkExpr(s.Condition, builtins)
+		for _, nested := range s.ThenBody.Statements {
+			walkStmt(nested, builtins)
+		}
+		if s.ElseBody != nil {
+			for _, nested := range s.ElseBody.Statements {
+				walkStmt(nested, builtins)
+			}
+		}
+	case ast.ForStmt:
+		walkExpr(s.Start, builtins)
+		walkExpr(s.End, builtins)
+		walkExpr(s.Step, builtins)
+		for _, nested := range s.Body.Statements {
+			walkStmt(nested, builtins)
+		}
+	}
+}
+
+func walkExpr(expr ast.Expr, builtins map[string]bool) {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		switch e.Name {
+		case "DispatchThreadID", "GroupThreadID", "GroupID", "GroupIndex":
+			builtins[e.Name] = true
+		}
+	case ast.FieldAccessExpr:
+		walkExpr(e.Target, builtins)
+	case ast.IndexExpr:
+		walkExpr(e.Target, builtins)
+		walkExpr(e.Index, builtins)
+	case ast.CallExpr:
+		walkExpr(e.Callee, builtins)
+		for _, arg := range e.Arguments {
+			walkExpr(arg, builtins)
+		}
+	case ast.BinaryExpr:
+		walkExpr(e.Left, builtins)
+		walkExpr(e.Right, builtins)
+	case ast.UnaryExpr:
+		walkExpr(e.Operand, builtins)
+	case ast.ParenExpr:
+		walkExpr(e.Inner, builtins)
+	case ast.WhenUtilityExpr:
+		for _, c := range e.Cases {
+			walkExpr(c.Value, builtins)
+			walkExpr(c.Condition, builtins)
+			walkExpr(c.Score, builtins)
+		}
+		if e.Else != nil {
+			walkExpr(e.Else, builtins)
+		}
+	}
+}
+
+func lowerResourceAccess(access string) vdmir.ResourceAccess {
+	if access == "readwrite" {
+		return vdmir.ResourceReadWrite
+	}
+	return vdmir.ResourceReadOnly
+}
+
+func elementType(t vdmir.Type) vdmir.Type {
+	if t.Element == nil {
+		return vdmir.Type{}
+	}
+	return *t.Element
+}
+
+func binaryResultType(left vdmir.Type, op string, right vdmir.Type) vdmir.Type {
+	switch op {
+	case "==", "!=", "<", "<=", ">", ">=":
+		return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
+	default:
+		if left.Kind == vdmir.TypeF32 || right.Kind == vdmir.TypeF32 {
+			return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+		}
+		if left.Kind == vdmir.TypeU32 || right.Kind == vdmir.TypeU32 {
+			return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+		}
+		return left
+	}
+}
+
+func astTypeFromVDMIR(t vdmir.Type) ast.TypeRef {
+	switch t.Kind {
+	case vdmir.TypeBool:
+		return ast.TypeRef{Name: "bool"}
+	case vdmir.TypeI32:
+		return ast.TypeRef{Name: "i32"}
+	case vdmir.TypeU32:
+		return ast.TypeRef{Name: "u32"}
+	case vdmir.TypeF32:
+		return ast.TypeRef{Name: "f32"}
+	default:
+		return ast.TypeRef{Name: t.Name}
+	}
+}
+
+func cloneScope(scope map[string]binding) map[string]binding {
+	out := make(map[string]binding, len(scope))
+	for k, v := range scope {
+		out[k] = v
+	}
+	return out
+}
+
+func sortStrings(values []string) {
+	for i := 0; i < len(values); i++ {
+		for j := i + 1; j < len(values); j++ {
+			if values[j] < values[i] {
+				values[i], values[j] = values[j], values[i]
+			}
+		}
+	}
+}

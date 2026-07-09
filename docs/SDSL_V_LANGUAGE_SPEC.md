@@ -10,7 +10,9 @@
 
 SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its design embeds the flow/board/state/when semantics of the Dominatus/Octomata behavioral model directly into the shader pipeline. A flow is a value-returning finite state machine — a stateful routing function that lowers to a standard HLSL helper. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
 
-The compilation pipeline is: `source → lex → parse → validate → emit HLSL → DXC → SPIR-V`.
+The broad design pipeline is: `source → lex → parse → validate → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
+
+Current GoOct M1 stops at deterministic HLSL emission. DXC and SPIR-V generation remain deferred.
 
 ---
 

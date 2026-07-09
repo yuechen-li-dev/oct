@@ -232,6 +232,16 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		_, err = fmt.Fprintf(stdout, "sdslv wrote HLSL: %s\n", output)
 		return err
+	case "emit-vdmir":
+		if isHelpArg(args[1:]) || len(args) != 2 {
+			return reportCommandError(stderr, "sdslv emit-vdmir", fmt.Errorf("usage: oct sdslv emit-vdmir <file.sdslv>"))
+		}
+		text, err := sdslv.EmitVDMIRFile(args[1])
+		if err != nil {
+			return reportCommandError(stderr, "sdslv emit-vdmir", err)
+		}
+		_, err = fmt.Fprint(stdout, text)
+		return err
 	case "test":
 		if isHelpArg(args[1:]) || len(args) != 2 {
 			return reportCommandError(stderr, "sdslv test", fmt.Errorf("usage: oct sdslv test <file.sdslvtest>"))
@@ -241,7 +251,7 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	default:
-		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|test> ..."))
+		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|test> ..."))
 	}
 }
 
@@ -970,7 +980,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|test> ...\n\ncommands:\n  check <file.sdslv>                    Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]  Emit deterministic HLSL\n  test <file.sdslvtest>                 Run M0 [Fact] shader-helper tests")
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|test> ...\n\ncommands:\n  check <file.sdslv>                    Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]  Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>               Dump deterministic VD-MIR for inspection\n  test <file.sdslvtest>                 Run M0 [Fact] shader-helper tests")
 	return err
 }
 func writeTestHelp(out io.Writer) error {
