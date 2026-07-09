@@ -27,8 +27,8 @@ return;
 		t.Fatalf("emission is not deterministic")
 	}
 	for _, want := range []string{
-		"[[vk::binding(0, 0)]] Buffer<float> A;",
-		"[[vk::binding(1, 0)]] RWBuffer<float> C;",
+		"[[vk::binding(0, 0)]] StructuredBuffer<float> A;",
+		"[[vk::binding(1, 0)]] RWStructuredBuffer<float> C;",
 		"[[vk::push_constant]] ConstantBuffer<Params> params;",
 		"[numthreads(16, 16, 1)]",
 		"void VectorAdd_CS(uint3 DispatchThreadID : SV_DispatchThreadID",
@@ -85,8 +85,8 @@ return tile with { Acc0: A[thread.DispatchId.x] };
 	for _, want := range []string{
 		"struct ComputeThread",
 		"struct Tile",
-		"[[vk::binding(0, 0)]] Buffer<float> A;",
-		"[[vk::binding(1, 0)]] RWBuffer<float> C;",
+		"[[vk::binding(0, 0)]] StructuredBuffer<float> A;",
+		"[[vk::binding(1, 0)]] RWStructuredBuffer<float> C;",
 		"[[vk::push_constant]] ConstantBuffer<Params> params;",
 		"Tile VectorAdd_CS(uint3 DispatchThreadID : SV_DispatchThreadID, uint3 GroupThreadID : SV_GroupThreadID, uint3 GroupID : SV_GroupID, uint GroupIndex : SV_GroupIndex)",
 		"ComputeThread thread;",
@@ -213,8 +213,8 @@ return;
 }`
 	out := emitSource(t, text)
 	for _, want := range []string{
-		"[[vk::binding(2, 0)]] Buffer<float> A;",
-		"[[vk::binding(0, 0)]] RWBuffer<float> C;",
+		"[[vk::binding(2, 0)]] StructuredBuffer<float> A;",
+		"[[vk::binding(0, 0)]] RWStructuredBuffer<float> C;",
 		"[loop]",
 		"for (uint i = 0u; i < 1u; i += 1)",
 	} {

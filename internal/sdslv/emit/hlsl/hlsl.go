@@ -118,10 +118,10 @@ func (e *emitter) emitResource(resource vdmir.Resource) {
 	elem := typeRef(resource.ElementType, "")
 	prefix := fmt.Sprintf("[[vk::binding(%d, %d)]] ", resource.Binding.Binding, resource.Binding.Set)
 	if resource.Access == vdmir.ResourceReadOnly {
-		e.line(fmt.Sprintf("%sBuffer<%s> %s;", prefix, elem, resource.Name))
+		e.line(fmt.Sprintf("%sStructuredBuffer<%s> %s;", prefix, elem, resource.Name))
 		return
 	}
-	e.line(fmt.Sprintf("%sRWBuffer<%s> %s;", prefix, elem, resource.Name))
+	e.line(fmt.Sprintf("%sRWStructuredBuffer<%s> %s;", prefix, elem, resource.Name))
 }
 
 func (e *emitter) emitWorkgroup(workgroup vdmir.WorkgroupMemoryDecl) {

@@ -196,6 +196,17 @@ namespace
         std::uint32_t dispatch_groups_x = 0u;
         std::uint32_t dispatch_groups_y = 0u;
         std::uint32_t dispatch_groups_z = 0u;
+        std::uint32_t logical_m_per_group = 0u;
+        std::uint32_t logical_n_per_group = 0u;
+        std::uint32_t metadata_numthreads_x = 0u;
+        std::uint32_t metadata_numthreads_y = 0u;
+        std::uint32_t metadata_numthreads_z = 0u;
+        std::uint32_t metadata_outputs_per_invocation_m = 0u;
+        std::uint32_t metadata_outputs_per_invocation_n = 0u;
+        std::uint32_t metadata_tile_m = 0u;
+        std::uint32_t metadata_tile_n = 0u;
+        std::uint32_t metadata_tile_k = 0u;
+        std::uint32_t metadata_unroll_k = 0u;
         std::uint64_t a_elements = 0u;
         std::uint64_t b_elements = 0u;
         std::uint64_t c_elements = 0u;
@@ -203,6 +214,14 @@ namespace
         std::uint64_t b_bytes = 0u;
         std::uint64_t c_bytes = 0u;
         std::uint32_t descriptor_binding_count = 3u;
+        std::uint32_t descriptor_binding_a = 0u;
+        std::uint32_t descriptor_binding_b = 1u;
+        std::uint32_t descriptor_binding_c = 2u;
+        bool shader_module_present = false;
+        std::uint32_t push_constant_bytes = 12u;
+        std::uint32_t push_constant_offset_m = 0u;
+        std::uint32_t push_constant_offset_n = 4u;
+        std::uint32_t push_constant_offset_k = 8u;
         std::uint32_t timestamp_query_slot_begin = 0u;
         std::uint32_t timestamp_query_slot_end = 1u;
         std::uint32_t resident_iteration_count = 0u;
@@ -741,6 +760,52 @@ namespace
         geometry.logical_m_per_group = 8u;
         geometry.logical_n_per_group = 8u;
         return geometry;
+    }
+
+    void fill_variant_metadata(std::uint32_t variant, ResidentFailureMatrixRow& row)
+    {
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
+            row.metadata_numthreads_x = k_prom_sgemm_scalar_plus_spirv_numthreads_x;
+            row.metadata_numthreads_y = k_prom_sgemm_scalar_plus_spirv_numthreads_y;
+            row.metadata_numthreads_z = k_prom_sgemm_scalar_plus_spirv_numthreads_z;
+            row.metadata_outputs_per_invocation_m = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m;
+            row.metadata_outputs_per_invocation_n = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n;
+            row.metadata_tile_m = k_prom_sgemm_scalar_plus_spirv_tile_m;
+            row.metadata_tile_n = k_prom_sgemm_scalar_plus_spirv_tile_n;
+            row.metadata_tile_k = 0u;
+            row.metadata_unroll_k = k_prom_sgemm_scalar_plus_spirv_unroll_k;
+            row.shader_module_present = true;
+            return;
+        }
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
+            row.metadata_numthreads_x = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x;
+            row.metadata_numthreads_y = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_y;
+            row.metadata_numthreads_z = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_z;
+            row.metadata_outputs_per_invocation_m = k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_m;
+            row.metadata_outputs_per_invocation_n = k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_n;
+            row.metadata_tile_m = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_m;
+            row.metadata_tile_n = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_n;
+            row.metadata_tile_k = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_k;
+            row.metadata_unroll_k = k_prom_sgemm_tile16x16_shared_fp32_spirv_unroll_k;
+            row.shader_module_present = true;
+            return;
+        }
+
+        row.metadata_numthreads_x = 8u;
+        row.metadata_numthreads_y = 8u;
+        row.metadata_numthreads_z = 1u;
+        row.metadata_outputs_per_invocation_m = 1u;
+        row.metadata_outputs_per_invocation_n = 1u;
+        row.metadata_tile_m = 1u;
+        row.metadata_tile_n = 1u;
+        row.metadata_tile_k = 0u;
+        row.metadata_unroll_k = 0u;
+        row.shader_module_present =
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8;
     }
 
     std::string vk_result_name(int detail_code)
@@ -1444,6 +1509,9 @@ namespace
         row.dispatch_groups_x = geometry.groups_x;
         row.dispatch_groups_y = geometry.groups_y;
         row.dispatch_groups_z = geometry.groups_z;
+        row.logical_m_per_group = geometry.logical_m_per_group;
+        row.logical_n_per_group = geometry.logical_n_per_group;
+        fill_variant_metadata(variant, row);
         row.selected_pipeline_present =
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
@@ -1565,6 +1633,17 @@ namespace
                 << ", \"dispatch_groups\": {\"x\": " << row.dispatch_groups_x
                 << ", \"y\": " << row.dispatch_groups_y
                 << ", \"z\": " << row.dispatch_groups_z << "}"
+                << ", \"logical_group_coverage\": {\"m\": " << row.logical_m_per_group
+                << ", \"n\": " << row.logical_n_per_group << "}"
+                << ", \"metadata\": {\"numthreads_x\": " << row.metadata_numthreads_x
+                << ", \"numthreads_y\": " << row.metadata_numthreads_y
+                << ", \"numthreads_z\": " << row.metadata_numthreads_z
+                << ", \"outputs_per_invocation_m\": " << row.metadata_outputs_per_invocation_m
+                << ", \"outputs_per_invocation_n\": " << row.metadata_outputs_per_invocation_n
+                << ", \"tile_m\": " << row.metadata_tile_m
+                << ", \"tile_n\": " << row.metadata_tile_n
+                << ", \"tile_k\": " << row.metadata_tile_k
+                << ", \"unroll_k\": " << row.metadata_unroll_k << "}"
                 << ", \"buffer_elements\": {\"a\": " << row.a_elements
                 << ", \"b\": " << row.b_elements
                 << ", \"c\": " << row.c_elements << "}"
@@ -1572,6 +1651,14 @@ namespace
                 << ", \"b\": " << row.b_bytes
                 << ", \"c\": " << row.c_bytes << "}"
                 << ", \"descriptor_binding_count\": " << row.descriptor_binding_count
+                << ", \"descriptor_bindings\": {\"a\": " << row.descriptor_binding_a
+                << ", \"b\": " << row.descriptor_binding_b
+                << ", \"c\": " << row.descriptor_binding_c << "}"
+                << ", \"shader_module_present\": " << bool_json(row.shader_module_present)
+                << ", \"push_constants\": {\"bytes\": " << row.push_constant_bytes
+                << ", \"m_offset\": " << row.push_constant_offset_m
+                << ", \"n_offset\": " << row.push_constant_offset_n
+                << ", \"k_offset\": " << row.push_constant_offset_k << "}"
                 << ", \"timestamp_query_slots\": {\"begin\": " << row.timestamp_query_slot_begin
                 << ", \"end\": " << row.timestamp_query_slot_end << "}"
                 << ", \"resident_iteration_count\": " << row.resident_iteration_count
@@ -1621,6 +1708,23 @@ namespace
                 << " | " << row.dispatch_groups_x << "x" << row.dispatch_groups_y << "x" << row.dispatch_groups_z
                 << " | " << row.a_bytes << "/" << row.b_bytes << "/" << row.c_bytes
                 << " |\n";
+        }
+        out << "\n## ABI and Dispatch Notes\n\n";
+        for (const ResidentFailureMatrixRow& row : rows) {
+            out << "### " << row.shape << " :: " << row.requested_variant << "\n\n";
+            out << "- dispatch groups: `(" << row.dispatch_groups_x << ", " << row.dispatch_groups_y << ", " << row.dispatch_groups_z << ")`\n";
+            out << "- logical group coverage: `M=" << row.logical_m_per_group << "`, `N=" << row.logical_n_per_group << "`\n";
+            out << "- metadata: `numthreads=(" << row.metadata_numthreads_x << ", " << row.metadata_numthreads_y << ", " << row.metadata_numthreads_z
+                << ")`, `outputs=(" << row.metadata_outputs_per_invocation_m << ", " << row.metadata_outputs_per_invocation_n
+                << ")`, `tile=(" << row.metadata_tile_m << ", " << row.metadata_tile_n << ", " << row.metadata_tile_k
+                << ")`, `unroll_k=" << row.metadata_unroll_k << "`\n";
+            out << "- descriptor bindings: `A=" << row.descriptor_binding_a << "`, `B=" << row.descriptor_binding_b
+                << "`, `C=" << row.descriptor_binding_c << "`, `count=" << row.descriptor_binding_count << "`\n";
+            out << "- push constants: `bytes=" << row.push_constant_bytes << "`, offsets `m/n/k = "
+                << row.push_constant_offset_m << "/" << row.push_constant_offset_n << "/" << row.push_constant_offset_k << "`\n";
+            out << "- shader module present: `" << (row.shader_module_present ? "yes" : "no")
+                << "`, pipeline present: `" << (row.selected_pipeline_present ? "yes" : "no") << "`\n";
+            out << "- buffers (bytes): `A=" << row.a_bytes << "`, `B=" << row.b_bytes << "`, `C=" << row.c_bytes << "`\n\n";
         }
         return out.str();
     }
@@ -2842,6 +2946,66 @@ FACT(PrometheusSgemmPx16ResidentExplicitFailureMatrix)
     }
     ASSERT_TRUE(observed_large_failure || all_large_rows_passed,
                 "focused matrix should either reproduce an isolated large-case failure or prove the fresh-runtime rows all pass");
+}
+
+FACT(PrometheusSgemmPx16M15aSdslScalarPlusLowKRepro)
+{
+    RuntimeHandleScope probe_runtime;
+    PrometheusCaps caps{};
+    std::string failure_reason;
+    if (!create_runtime(probe_runtime, caps, failure_reason)) {
+        SKIP("Vulkan runtime unavailable; M15a low-K repro cannot execute");
+    }
+
+    const std::vector<ShapeCase> shapes = {
+        {"lowk_128x128x64", 128u, 128u, 64u, false},
+        {"lowk_256x256x64", 256u, 256u, 64u, false},
+        {"lowk_512x512x64", 512u, 512u, 64u, false},
+        {"lowk_1024x1024x16", 1024u, 1024u, 16u, false},
+        {"lowk_1024x1024x32", 1024u, 1024u, 32u, false},
+        {"lowk_1024x1024x64", 1024u, 1024u, 64u, false},
+        {"lowk_1024x1024x65", 1024u, 1024u, 65u, false},
+    };
+    const std::vector<std::uint32_t> variants = {
+        PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+        PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
+    };
+
+    std::vector<ResidentFailureMatrixRow> rows;
+    rows.reserve(shapes.size() * variants.size());
+    for (const ShapeCase& shape : shapes) {
+        for (const std::uint32_t variant : variants) {
+            rows.push_back(build_failure_matrix_row(shape, variant));
+        }
+    }
+
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_px16_m15a_sdsl_scalar_plus_lowk_repro.json"),
+                    render_failure_matrix_json(rows)),
+                "M15a low-K repro JSON should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_px16_m15a_sdsl_scalar_plus_lowk_repro.md"),
+                    render_failure_matrix_markdown(rows)),
+                "M15a low-K repro markdown should be written");
+
+    bool saw_scalar_plus_row = false;
+    for (const ResidentFailureMatrixRow& row : rows) {
+        if (row.requested_variant == "SDSL_SCALAR_PLUS") {
+            saw_scalar_plus_row = true;
+            ASSERT_TRUE(row.metadata_numthreads_x != 0u && row.metadata_numthreads_y != 0u,
+                        "SDSL scalar-plus repro rows must record generated metadata");
+            ASSERT_TRUE(row.shader_module_present, "SDSL scalar-plus repro rows must report shader module presence");
+            ASSERT_TRUE(row.descriptor_binding_count == 3u, "SDSL scalar-plus repro rows must preserve descriptor binding count");
+            ASSERT_TRUE(row.push_constant_bytes == 12u, "SDSL scalar-plus repro rows must preserve push-constant ABI size");
+            ASSERT_NOT_EQUAL(std::string("VK_ERROR_DEVICE_LOST"), row.vk_result,
+                             "scalar-plus low-K repro should not lose the device after the ABI fix");
+        } else {
+            ASSERT_NOT_EQUAL(std::string("VK_ERROR_DEVICE_LOST"), row.vk_result,
+                             "control variants should not lose the device in the focused low-K repro");
+        }
+    }
+    ASSERT_TRUE(saw_scalar_plus_row, "M15a low-K repro must include scalar-plus rows");
 }
 
 BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionPerformanceLane, 1)

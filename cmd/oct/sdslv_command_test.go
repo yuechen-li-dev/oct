@@ -143,9 +143,9 @@ func TestSDSLvPrometheusSgemmScalarPlusSourceEmits(t *testing.T) {
 	}
 	body := string(text)
 	for _, want := range []string{
-		"[[vk::binding(0, 0)]] Buffer<float> A;",
-		"[[vk::binding(1, 0)]] Buffer<float> B;",
-		"[[vk::binding(2, 0)]] RWBuffer<float> C;",
+		"[[vk::binding(0, 0)]] StructuredBuffer<float> A;",
+		"[[vk::binding(1, 0)]] StructuredBuffer<float> B;",
+		"[[vk::binding(2, 0)]] RWStructuredBuffer<float> C;",
 		"[[vk::push_constant]] ConstantBuffer<SgemmParams> params;",
 		"void SgemmScalarBaselinePlus8x8_CS(",
 	} {
