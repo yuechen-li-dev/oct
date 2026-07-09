@@ -163,12 +163,12 @@ func (l *lexer) nextToken() (token.Token, error) {
 	case '&':
 		l.advanceRune()
 		if l.matchString("&") {
-			return token.Token{Kind: token.AndAnd, Lexeme: "&&", Line: line, Column: column}, nil
+			return token.Token{}, fmt.Errorf("use `and` instead of `&&` at %d:%d", line, column)
 		}
 	case '|':
 		l.advanceRune()
 		if l.matchString("|") {
-			return token.Token{Kind: token.OrOr, Lexeme: "||", Line: line, Column: column}, nil
+			return token.Token{}, fmt.Errorf("use `or` instead of `||` at %d:%d", line, column)
 		}
 	case '!':
 		l.advanceRune()
@@ -268,7 +268,8 @@ func (l *lexer) matchString(expected string) bool {
 	if len(l.source[l.offset:]) < len(expected) || l.source[l.offset:l.offset+len(expected)] != expected {
 		return false
 	}
-	for range expected {
+	for _, r := range expected {
+		_ = r
 		l.advanceRune()
 	}
 	return true

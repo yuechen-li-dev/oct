@@ -192,6 +192,31 @@ return scale;
 	}
 }
 
+func TestEmitSemanticBooleanOperatorsAsHLSLPunctuation(t *testing.T) {
+	out := emitSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let a: bool = true;
+let b: bool = false;
+let c: bool = a and not b or false;
+if c and not false {
+return;
+}
+return;
+}
+}`)
+	for _, want := range []string{
+		"bool c = ((a && !b) || false);",
+		"if ((c && !false))",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, " and ") || strings.Contains(out, " or ") {
+		t.Fatalf("HLSL should use punctuation operators:\n%s", out)
+	}
+}
+
 func TestEmitComputeThreadResourceBundleAndWithFromVDMIR(t *testing.T) {
 	text := `stream ComputeThread {
 DispatchId: uint3;

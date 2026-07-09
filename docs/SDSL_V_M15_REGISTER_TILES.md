@@ -75,3 +75,5 @@ let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
 ```
 
 The goal is for future `comptime for` to iterate a structured accumulator surface instead of forcing generated names such as `acc00`, `acc01`, `acc10`, and `acc11`.
+
+M15a keeps this storage model unchanged while aligning condition syntax with Oct source style: shader authors use `and`, `or`, and `not` in SDSL-V source, and emitted HLSL continues to use `&&`, `||`, and `!`.

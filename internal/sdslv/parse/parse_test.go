@@ -373,6 +373,84 @@ return;
 	}
 }
 
+func TestBuildModuleParsesSemanticBooleanOperatorsAndPrecedence(t *testing.T) {
+	module := parseTestModule(t, `fn F(A: bool, B: bool, C: bool, X: u32, Y: u32) -> bool {
+let v0: bool = not A and B;
+let v1: bool = A or B and C;
+let v2: bool = X == Y and C;
+return v0 or v1 or v2;
+}`)
+	fn := module.Decls[0].(ast.FunctionDecl)
+	v0 := fn.Body.Statements[0].(ast.LetStmt).Value.(ast.BinaryExpr)
+	if v0.Operator != "and" {
+		t.Fatalf("v0 operator = %q, want and", v0.Operator)
+	}
+	if unary, ok := v0.Left.(ast.UnaryExpr); !ok || unary.Operator != "not" {
+		t.Fatalf("v0 left = %#v, want unary not", v0.Left)
+	}
+	v1 := fn.Body.Statements[1].(ast.LetStmt).Value.(ast.BinaryExpr)
+	if v1.Operator != "or" {
+		t.Fatalf("v1 operator = %q, want or", v1.Operator)
+	}
+	if rhs, ok := v1.Right.(ast.BinaryExpr); !ok || rhs.Operator != "and" {
+		t.Fatalf("v1 right = %#v, want nested and", v1.Right)
+	}
+	v2 := fn.Body.Statements[2].(ast.LetStmt).Value.(ast.BinaryExpr)
+	if v2.Operator != "and" {
+		t.Fatalf("v2 operator = %q, want and", v2.Operator)
+	}
+	if lhs, ok := v2.Left.(ast.BinaryExpr); !ok || lhs.Operator != "==" {
+		t.Fatalf("v2 left = %#v, want comparison on left", v2.Left)
+	}
+}
+
+func TestBuildModuleParsesSemanticBooleanOperatorsInComptimeExpressions(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let UseFast: bool = true and not false;
+comptime if UseFast or false {
+static assert UseFast and not false;
+}
+return;
+}
+}`)
+	body := module.Decls[0].(ast.ShaderDecl).Methods[0].Body.Statements
+	comptimeLet := body[0].(ast.ComptimeLetStmt)
+	if bin, ok := comptimeLet.Value.(ast.BinaryExpr); !ok || bin.Operator != "and" {
+		t.Fatalf("comptime let value = %#v, want semantic and", comptimeLet.Value)
+	}
+	ctIf := body[1].(ast.ComptimeIfStmt)
+	if bin, ok := ctIf.Condition.(ast.BinaryExpr); !ok || bin.Operator != "or" {
+		t.Fatalf("comptime if condition = %#v, want semantic or", ctIf.Condition)
+	}
+}
+
+func TestBuildModuleRejectsCStyleLogicalNot(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `fn F(A: bool) -> bool { return !A; }`})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	_, err = BuildModule(tokens)
+	if err == nil || !strings.Contains(err.Error(), "use `not` instead of `!`") {
+		t.Fatalf("BuildModule() error = %v, want logical not diagnostic", err)
+	}
+}
+
+func TestAnalyzeRejectsCStyleLogicalAndOr(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want string
+	}{
+		{src: `fn F(A: bool, B: bool) -> bool { return A && B; }`, want: "use `and` instead of `&&`"},
+		{src: `fn F(A: bool, B: bool) -> bool { return A || B; }`, want: "use `or` instead of `||`"},
+	} {
+		_, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("Analyze() error = %v, want %q", err, tc.want)
+		}
+	}
+}
+
 func TestBuildModuleParsesStructuredConceptsDefaultsAndFatArrowConfig(t *testing.T) {
 	module := parseTestModule(t, `concept TileConfig {
 Threads: {

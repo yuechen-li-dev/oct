@@ -1040,9 +1040,9 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		left := v.exprType(e.Left, scope, shaderName, templateParam)
 		right := v.exprType(e.Right, scope, shaderName, templateParam)
 		switch e.Operator {
-		case "&&", "||":
+		case "and", "or":
 			if left.Name != "bool" || right.Name != "bool" {
-				v.errorf("logical operands must be bool")
+				v.errorf("operator `%s` requires bool operands", e.Operator)
 			}
 			return ast.TypeRef{Name: "bool"}
 		case "==", "!=", "<", "<=", ">", ">=":
@@ -1066,9 +1066,9 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 	case ast.UnaryExpr:
 		operand := v.exprType(e.Operand, scope, shaderName, templateParam)
 		switch e.Operator {
-		case "!":
+		case "not":
 			if operand.Name != "bool" {
-				v.errorf("unary ! requires bool operand")
+				v.errorf("operator `not` requires bool operand")
 			}
 			return ast.TypeRef{Name: "bool"}
 		default:

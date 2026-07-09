@@ -243,6 +243,51 @@ func TestSDSLvM15RegTileEmitCommands(t *testing.T) {
 	}
 }
 
+func TestSDSLvM15aSemanticBooleanEmitCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "examples", "SDSL-V", "M15a", "SemanticBooleanOperators.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"let runtimeFlag: bool = ((params.M > 0u) && (params.N > 0u))",
+		"if (runtimeFlag || (params.K == 0u))",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, " and ") || strings.Contains(out, " or ") || strings.Contains(out, " not ") {
+		t.Fatalf("emit-vdmir output should lower semantic operators to logical ops:\n%s", out)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "semantic_boolean_operators.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"bool runtimeFlag = ((params.M > 0u) && (params.N > 0u));",
+		"if ((runtimeFlag || (params.K == 0u)))",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, " and ") || strings.Contains(body, " or ") {
+		t.Fatalf("emit-hlsl output should use punctuation operators:\n%s", body)
+	}
+}
+
 func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_scalar_plus_spirv.h")
 	text, err := os.ReadFile(path)

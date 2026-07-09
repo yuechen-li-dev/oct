@@ -523,7 +523,7 @@ shader TileCopy {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
 comptime let TileElements: u32 = C.Tile.M * C.Tile.N;
 comptime let IsFull: bool = TileElements == 256u;
-comptime if C.UseFastPath && IsFull {
+comptime if C.UseFastPath and IsFull {
 let value: u32 = TileElements;
 } else {
 let value: u32 = 0u;
@@ -534,6 +534,55 @@ return;
 compile TileCopy<Tile16> as TileCopy16;`)
 	if err != nil {
 		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleValidatesSemanticBooleanOperators(t *testing.T) {
+	err := validateSource(`concept TileConfig {
+Tile: { K: u32; };
+UseFastPath: bool = true;
+DisableFastPath: bool = false;
+}
+config Tile16: TileConfig {
+Tile.K => 16u;
+}
+template<C: TileConfig>
+shader TileCopy {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let UseFast: bool = C.UseFastPath and not C.DisableFastPath;
+comptime if UseFast and C.Tile.K == 16u {
+static assert UseFast or C.Tile.K == 8u;
+}
+let runtimeFlag: bool = true and not false;
+if runtimeFlag or false {
+return;
+}
+return;
+}
+}
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsSemanticBooleanOperatorTypeErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "and non bool", src: `fn F() -> bool { return 1u and true; }`, want: "operator `and` requires bool operands"},
+		{name: "or non bool", src: `fn F() -> bool { return 1.0 or false; }`, want: "operator `or` requires bool operands"},
+		{name: "not non bool", src: `fn F() -> bool { return not 1u; }`, want: "operator `not` requires bool operand"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 

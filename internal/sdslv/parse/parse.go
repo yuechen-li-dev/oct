@@ -1018,7 +1018,10 @@ func (p *parser) parseBinary(minPrec int, stopAtRightAngle bool) (ast.Expr, erro
 }
 
 func (p *parser) parseUnary() (ast.Expr, error) {
-	if p.current().Kind == token.Minus || p.current().Kind == token.Bang {
+	if p.current().Kind == token.Bang {
+		return nil, p.errorAtCurrent("use `not` instead of `!` for logical negation")
+	}
+	if p.current().Kind == token.Minus || p.current().Kind == token.KeywordNot {
 		op := p.current().Lexeme
 		p.advance()
 		operand, err := p.parseUnary()
@@ -1647,9 +1650,9 @@ func (p *parser) errorAtToken(t token.Token, message string) error {
 
 func binaryPrecedence(kind token.Kind, stopAtRightAngle bool) (int, bool) {
 	switch kind {
-	case token.OrOr:
+	case token.KeywordOr, token.OrOr:
 		return 1, true
-	case token.AndAnd:
+	case token.KeywordAnd, token.AndAnd:
 		return 2, true
 	case token.EqualEqual, token.BangEqual, token.LeftAngle, token.LeftEqual, token.RightAngle, token.RightEqual:
 		if stopAtRightAngle && kind == token.RightAngle {

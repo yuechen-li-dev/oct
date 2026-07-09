@@ -73,6 +73,8 @@ Example diagnostics include:
 
 Allowed scrutinee inputs include literals, resolved config fields, prior `comptime let` values, and arithmetic/comparison/boolean operators already supported by consteval.
 
+Boolean operators in those compile-time expressions use `and`, `or`, and `not`. `!=` remains available as the comparison operator.
+
 Forbidden inputs include runtime parameters and push constants, shader resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads or writes, reductions, match payloads, and runtime function calls.
 
 ## Relationship to Other Branching

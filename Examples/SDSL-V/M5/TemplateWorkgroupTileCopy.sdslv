@@ -38,11 +38,11 @@ shader TileCopy {
         let idx: u32 = thread.DispatchId.x;
         let local: u32 = thread.GroupIndex;
         let tileElements: u32 = C.TILE_SIZE;
-        if idx < params.Count && local < tileElements {
+        if idx < params.Count and local < tileElements {
             Tile[local] = A[idx];
         }
         WorkgroupMemoryBarrierWithSync();
-        if idx < params.Count && local < tileElements {
+        if idx < params.Count and local < tileElements {
             C[idx] = Tile[local];
         }
         return;

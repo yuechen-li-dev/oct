@@ -55,6 +55,9 @@ const (
 	KeywordComptime  Kind = "KeywordComptime"
 	KeywordVertex    Kind = "KeywordVertex"
 	KeywordPixel     Kind = "KeywordPixel"
+	KeywordAnd       Kind = "KeywordAnd"
+	KeywordOr        Kind = "KeywordOr"
+	KeywordNot       Kind = "KeywordNot"
 
 	LeftParen    Kind = "LeftParen"
 	RightParen   Kind = "RightParen"
@@ -184,6 +187,12 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordVertex
 	case "pixel":
 		return KeywordPixel
+	case "and":
+		return KeywordAnd
+	case "or":
+		return KeywordOr
+	case "not":
+		return KeywordNot
 	default:
 		return Identifier
 	}

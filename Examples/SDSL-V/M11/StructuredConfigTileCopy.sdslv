@@ -64,13 +64,13 @@ shader TileCopy {
         let tileElements: u32 = C.Tile.M * C.Tile.N;
         let paddedTileK: u32 = C.Tile.K + C.Padding.K;
 
-        if idx < params.Count && local < tileElements && paddedTileK >= C.Tile.K {
+        if idx < params.Count and local < tileElements and paddedTileK >= C.Tile.K {
             Tile[local] = A[idx];
         }
 
         WorkgroupMemoryBarrierWithSync();
 
-        if idx < params.Count && local < tileElements {
+        if idx < params.Count and local < tileElements {
             C[idx] = Tile[local];
         }
 

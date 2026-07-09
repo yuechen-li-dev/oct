@@ -1570,9 +1570,9 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		}
 		return vdmir.BinaryExpr{
 			Provenance: l.provenance,
-			ExprType:   binaryResultType(left.Type(), e.Operator, right.Type()),
+			ExprType:   binaryResultType(left.Type(), lowerBinaryOperator(e.Operator), right.Type()),
 			Left:       left,
-			Operator:   e.Operator,
+			Operator:   lowerBinaryOperator(e.Operator),
 			Right:      right,
 		}, nil
 	case ast.UnaryExpr:
@@ -1583,7 +1583,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		return vdmir.UnaryExpr{
 			Provenance: l.provenance,
 			ExprType:   operand.Type(),
-			Operator:   e.Operator,
+			Operator:   lowerUnaryOperator(e.Operator),
 			Operand:    operand,
 		}, nil
 	case ast.ParenExpr:
@@ -2106,7 +2106,7 @@ func tileOrViewStride(t vdmir.Type) vdmir.Expr {
 
 func binaryResultType(left vdmir.Type, op string, right vdmir.Type) vdmir.Type {
 	switch op {
-	case "==", "!=", "<", "<=", ">", ">=":
+	case "&&", "||", "==", "!=", "<", "<=", ">", ">=":
 		return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
 	default:
 		if left.Kind == vdmir.TypeF32 || right.Kind == vdmir.TypeF32 {
@@ -2117,6 +2117,24 @@ func binaryResultType(left vdmir.Type, op string, right vdmir.Type) vdmir.Type {
 		}
 		return left
 	}
+}
+
+func lowerBinaryOperator(op string) string {
+	switch op {
+	case "and":
+		return "&&"
+	case "or":
+		return "||"
+	default:
+		return op
+	}
+}
+
+func lowerUnaryOperator(op string) string {
+	if op == "not" {
+		return "!"
+	}
+	return op
 }
 
 func astTypeFromVDMIR(t vdmir.Type) ast.TypeRef {

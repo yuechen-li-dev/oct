@@ -304,6 +304,15 @@ Current M14a additions:
 - highest-scoring eligible case selection, else-only fallback, and tied-top-score ambiguity rejection;
 - selected-case-only expansion before VD-MIR.
 
+Current M15a additions:
+
+- Oct-style semantic boolean operators in SDSL-V source: `and`, `or`, `not`;
+- precedence `not` > `and` > `or`, with comparisons binding tighter than `and` / `or`;
+- the existing `!=` comparison spelling remains valid;
+- runtime and comptime expressions share the same semantic boolean operator surface;
+- lowering reuses existing VD-MIR logical ops and emits HLSL punctuation `&&`, `||`, and `!`;
+- SDSL-V source rejects logical `&&`, `||`, and unary logical `!` in favor of semantic spellings.
+
 M13/M14/M14a `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
 
 ### Shader
@@ -443,6 +452,7 @@ Nested `if/else { if/else }` ladders are not permitted — use `switch { case ..
 | `callee(args)` | Function call |
 | `a + b`, `a - b`, `a * b`, `a / b` | Arithmetic |
 | `a == b`, `a != b`, `a < b`, `a <= b`, `a > b`, `a >= b` | Comparison |
+| `a and b`, `a or b`, `not a` | Semantic boolean operators |
 | `-expr` | Unary negation |
 | `sum i in start..end { expr }` | Indexed additive reduction |
 | `product i in start..end { expr }` | Indexed multiplicative reduction |
@@ -791,6 +801,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 | `error(...)` | Only valid as `return error(...)` in a fallible function |
 | Immutability | Stream and record parameters are immutable; use `with` for modified copies |
 | Array parameters | Immutable; element assignment rejected |
+| Semantic boolean source style | Use `and`, `or`, `not`; keep `!=` for inequality; reject logical `&&`, `||`, and unary logical `!` |
 | Vector constructors | Exact arity; numeric scalar arguments only |
 | Array literals | Target must be `array<T, N>`; length must match N; elements must match T |
 | Coordinate spaces | Space-annotated aliases are incompatible with base type and other space-annotated aliases |
@@ -802,7 +813,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 
 ## Reserved keywords
 
-The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`.
+The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`, `and`, `or`, `not`.
 
 ---
 

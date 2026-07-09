@@ -87,10 +87,10 @@ shader SgemmTileSharedFp32 {
             let aValue: f32 = 0.0;
             let bValue: f32 = 0.0;
 
-            if row < params.m && aCol < params.k {
+            if row < params.m and aCol < params.k {
                 aValue = AView[row, aCol];
             }
-            if bRow < params.k && col < params.n {
+            if bRow < params.k and col < params.n {
                 bValue = BView[bRow, col];
             }
 
@@ -107,7 +107,7 @@ shader SgemmTileSharedFp32 {
             WorkgroupMemoryBarrierWithSync();
         }
 
-        if row < params.m && col < params.n {
+        if row < params.m and col < params.n {
             CView[row, col] = acc;
         }
         return;

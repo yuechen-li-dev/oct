@@ -70,6 +70,8 @@ Allowed inputs include:
 - prior `comptime let` values in scope;
 - arithmetic, comparison, modulo, boolean, and parenthesized expressions already supported by consteval.
 
+Boolean expressions use Oct-style source spelling: `and`, `or`, and `not`. `!=` remains the comparison operator.
+
 Forbidden inputs include:
 
 - runtime parameters and push constants;

@@ -37,7 +37,7 @@ shader M14aComptimeWhenUtilityBasic {
         let value: f32 = 0.0;
 
         comptime when utility {
-            case Vector4 when Cfg.UseVectorizedLoad && Cfg.Tile.K == 16u score 100 {
+            case Vector4 when Cfg.UseVectorizedLoad and Cfg.Tile.K == 16u score 100 {
                 static assert Cfg.Tile.K == 16u;
                 if index < params.Count {
                     value = A[index];

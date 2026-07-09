@@ -11,7 +11,7 @@ import (
 )
 
 func TestEvalSupportsArithmeticComparisonAndBoolean(t *testing.T) {
-	value := evalExpr(t, "!(1u + 2u * 3u == 7u) || (10u % 4u == 2u)")
+	value := evalExpr(t, "not (1u + 2u * 3u == 7u) or (10u % 4u == 2u)")
 	if value.Type.Name != "bool" || !value.Bool {
 		t.Fatalf("value = %#v, want true bool", value)
 	}
@@ -44,8 +44,8 @@ func TestEvalSupportsNestedConfigFieldReferences(t *testing.T) {
 }
 
 func TestEvalRejectsTypeMismatch(t *testing.T) {
-	_, err := Eval(parseExpr(t, "1u && true"), nil)
-	if err == nil || !strings.Contains(err.Error(), "bool operands") {
+	_, err := Eval(parseExpr(t, "1u and true"), nil)
+	if err == nil || !strings.Contains(err.Error(), "operator `and` requires bool operands") {
 		t.Fatalf("error = %v, want bool operand diagnostic", err)
 	}
 }

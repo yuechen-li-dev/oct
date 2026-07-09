@@ -54,9 +54,9 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 			}
 			value.Int32 = -value.Int32
 			return value, nil
-		case "!":
+		case "not":
 			if value.Type.Name != "bool" {
-				return Value{}, fmt.Errorf("unary ! requires bool constant operand")
+				return Value{}, fmt.Errorf("operator `not` requires bool operand")
 			}
 			value.Bool = !value.Bool
 			return value, nil
@@ -122,12 +122,12 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 				return Value{}, fmt.Errorf("comparison constant expressions require integer or bool operands")
 			}
 			return compareInt(e.Operator, left.Int32, right.Int32)
-		case "&&", "||":
+		case "and", "or":
 			if left.Type.Name != "bool" || right.Type.Name != "bool" {
-				return Value{}, fmt.Errorf("logical constant expressions require bool operands")
+				return Value{}, fmt.Errorf("operator `%s` requires bool operands", e.Operator)
 			}
 			result := left.Bool && right.Bool
-			if e.Operator == "||" {
+			if e.Operator == "or" {
 				result = left.Bool || right.Bool
 			}
 			return Value{Type: ast.TypeRef{Name: "bool"}, Bool: result, IsKnown: true}, nil

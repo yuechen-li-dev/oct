@@ -46,7 +46,7 @@ shader ScaleCopy {
     stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: ScaleParams) -> void {
         let idx: u32 = thread.DispatchId.x + C.Padding.Left;
         let width: u32 = C.Tile.Width;
-        if idx < params.Count && width >= C.Threads.X {
+        if idx < params.Count and width >= C.Threads.X {
             C[idx] = A[idx];
         }
         return;

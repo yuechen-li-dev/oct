@@ -24,7 +24,7 @@ VD-MIR remains the compiler boundary. HLSL emits from VD-MIR and does not unders
 
 ```sdslv
 comptime when utility {
-    case Vector4 when C.UseVectorizedLoad && C.Tile.K == 16u score 100 {
+    case Vector4 when C.UseVectorizedLoad and C.Tile.K == 16u score 100 {
         static assert C.Tile.K == 16u;
     }
 
@@ -80,6 +80,8 @@ Allowed guard and score inputs include:
 - resolved config fields after template/config specialization;
 - prior `comptime let` values in scope;
 - arithmetic, comparison, modulo, boolean, and parenthesized expressions already supported by consteval.
+
+SDSL-V source uses `and`, `or`, and `not` in these compile-time guards and scores. Backend punctuation belongs only to emitted HLSL.
 
 Forbidden inputs include runtime parameters and push constants, shader resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads or writes, reductions, match payloads, and runtime function calls.
 

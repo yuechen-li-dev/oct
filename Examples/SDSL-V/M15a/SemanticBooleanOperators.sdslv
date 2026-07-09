@@ -1,0 +1,39 @@
+namespace Examples.SDSLV.M15a;
+
+record BoolParams {
+    M: u32;
+    N: u32;
+    K: u32;
+}
+
+concept BoolConfig {
+    UseVectorizedLoad: bool = true;
+    DisableVectorLoads: bool = false;
+    Tile: {
+        K: u32 = 16u;
+    };
+}
+
+config BoolDemo: BoolConfig {
+    UseVectorizedLoad => true;
+    DisableVectorLoads => false;
+    Tile.K => 16u;
+}
+
+template<C: BoolConfig>
+shader SemanticBooleanOperators {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS(params: BoolParams) -> void {
+        comptime let CanVectorize: bool =
+            C.UseVectorizedLoad and not C.DisableVectorLoads and C.Tile.K == 16u;
+
+        static assert CanVectorize;
+
+        let runtimeFlag: bool = params.M > 0u and params.N > 0u;
+        if runtimeFlag or params.K == 0u {
+            return;
+        }
+        return;
+    }
+}
+
+compile SemanticBooleanOperators<BoolDemo> as SemanticBooleanOperatorsDemo;

@@ -69,15 +69,17 @@ M6 compile-time expressions support:
 
 - integer literals;
 - bool literals;
-- unary `-` and `!`;
+- unary `-` and `not`;
 - `+`, `-`, `*`, `/`, `%`;
 - `==`, `!=`, `<`, `<=`, `>`, `>=`;
-- `&&`, `||`;
+- `and`, `or`;
 - parentheses;
 - bare config-field references such as `TILE_SIZE` inside concept/config requirements;
 - template config references such as `C.TILE_SIZE` inside template static asserts and other M5 compile-time positions.
 
 Float constant expressions remain deferred.
+
+`!=` remains the comparison spelling. SDSL-V source rejects logical `&&`, `||`, and unary logical `!` in favor of `and`, `or`, and `not`.
 
 M13 reuses this constant-expression machinery for `comptime let` initializers and `comptime if` conditions, with additional rejection of runtime shader values.
 

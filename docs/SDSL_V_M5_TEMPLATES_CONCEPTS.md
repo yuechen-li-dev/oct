@@ -63,11 +63,13 @@ Current M5 constant expressions support:
 - unary `-` on integers
 - `+`, `-`, `*`, `/`, `%`
 - `==`, `!=`, `<`, `<=`, `>`, `>=`
-- `&&`, `||`
+- `and`, `or`, `not`
 - parentheses
 - `C.FIELD` template-config field references
 
 `f32` concept fields are still intentionally narrow in this milestone. Integer and bool config values are the intended path for compute kernel families.
+
+SDSL-V source follows Oct-style semantic boolean operators. `!=` remains the comparison spelling; logical `&&`, `||`, and unary logical `!` are not author-facing source syntax.
 
 ## Monomorphization model
 

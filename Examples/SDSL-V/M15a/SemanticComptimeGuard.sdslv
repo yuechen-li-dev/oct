@@ -1,0 +1,44 @@
+namespace Examples.SDSLV.M15a;
+
+concept GuardConfig {
+    UseVectorizedLoad: bool = true;
+    DisableVectorLoads: bool = false;
+    Tile: {
+        K: u32 = 16u;
+    };
+    BaseScore: u32 = 90u;
+}
+
+config Guard16: GuardConfig {
+    UseVectorizedLoad => true;
+    DisableVectorLoads => false;
+    Tile.K => 16u;
+    BaseScore => 90u;
+}
+
+template<C: GuardConfig>
+shader SemanticComptimeGuard {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        comptime let CanVectorize: bool =
+            C.UseVectorizedLoad and not C.DisableVectorLoads and C.Tile.K == 16u;
+
+        comptime when utility {
+            case Vector4 when CanVectorize and C.Tile.K == 16u score C.BaseScore + 10u {
+                static assert CanVectorize;
+                let selected: u32 = C.Tile.K;
+            }
+
+            case Scalar when C.Tile.K == 8u or C.Tile.K == 16u score 10u {
+                static assert false;
+                let dropped: u32 = 0u;
+            }
+
+            else {
+                static assert false;
+            }
+        }
+        return;
+    }
+}
+
+compile SemanticComptimeGuard<Guard16> as SemanticComptimeGuard16;

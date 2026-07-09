@@ -545,6 +545,31 @@ return total + productValue;
 	}
 }
 
+func TestModuleLowersSemanticBooleanOperatorsToVDMIRLogicalOps(t *testing.T) {
+	mir := lowerSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let a: bool = true;
+let b: bool = false;
+let c: bool = a and not b or false;
+return;
+}
+}`)
+	fn := findFunction(t, mir, "Demo_CS")
+	letStmt := fn.Body.Statements[2].(vdmir.LetStmt)
+	orExpr, ok := letStmt.Value.(vdmir.BinaryExpr)
+	if !ok || orExpr.Operator != "||" {
+		t.Fatalf("let value = %#v, want logical or", letStmt.Value)
+	}
+	andExpr, ok := orExpr.Left.(vdmir.BinaryExpr)
+	if !ok || andExpr.Operator != "&&" {
+		t.Fatalf("or left = %#v, want logical and", orExpr.Left)
+	}
+	notExpr, ok := andExpr.Right.(vdmir.UnaryExpr)
+	if !ok || notExpr.Operator != "!" {
+		t.Fatalf("and right = %#v, want logical not", andExpr.Right)
+	}
+}
+
 func TestModuleLowersReductionLoopHintsToVDMIR(t *testing.T) {
 	mir := lowerSource(t, `fn Reduce(values: array<f32>) -> f32 {
 let total: f32 = [unroll] sum i in 0u..4u { values[i] };
@@ -750,7 +775,7 @@ case IneligibleHigh when K == 8u score 1000 {
 static assert false;
 let dropped: u32 = 8u;
 }
-case Vector4 when C.UseVectorizedLoad && K == 16u score C.BaseScore + 10u {
+case Vector4 when C.UseVectorizedLoad and K == 16u score C.BaseScore + 10u {
 comptime let LocalK: u32 = K;
 static assert LocalK == 16u;
 let selected: u32 = LocalK;
