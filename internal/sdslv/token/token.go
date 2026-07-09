@@ -30,10 +30,15 @@ const (
 	KeywordFor       Kind = "KeywordFor"
 	KeywordIn        Kind = "KeywordIn"
 	KeywordStep      Kind = "KeywordStep"
+	KeywordSum       Kind = "KeywordSum"
+	KeywordProduct   Kind = "KeywordProduct"
+	KeywordMax       Kind = "KeywordMax"
+	KeywordMin       Kind = "KeywordMin"
 	KeywordTrue      Kind = "KeywordTrue"
 	KeywordFalse     Kind = "KeywordFalse"
 	KeywordWhen      Kind = "KeywordWhen"
 	KeywordUtility   Kind = "KeywordUtility"
+	KeywordMatch     Kind = "KeywordMatch"
 	KeywordCase      Kind = "KeywordCase"
 	KeywordScore     Kind = "KeywordScore"
 	KeywordWith      Kind = "KeywordWith"
@@ -128,6 +133,14 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordIn
 	case "step":
 		return KeywordStep
+	case "sum":
+		return KeywordSum
+	case "product":
+		return KeywordProduct
+	case "max":
+		return KeywordMax
+	case "min":
+		return KeywordMin
 	case "true":
 		return KeywordTrue
 	case "false":
@@ -136,6 +149,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordWhen
 	case "utility":
 		return KeywordUtility
+	case "match":
+		return KeywordMatch
 	case "case":
 		return KeywordCase
 	case "score":

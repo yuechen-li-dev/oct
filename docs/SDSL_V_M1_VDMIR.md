@@ -51,10 +51,17 @@ The MIR models:
 - compute entry points with `numthreads` and builtin metadata
 - typed expressions including `when utility`
 
+As of M9, the enum/match portion of that boundary also includes:
+
+- payload enum variants;
+- enum construction expressions;
+- exhaustive enum `match` expressions with per-arm payload binding metadata.
+
 M3 later extends this boundary with compute streams, named resource bundles, and `with` expressions without routing through Oct MIR or bypassing VD-MIR.
 M4 further extends it with workgroup storage declarations and backend-neutral barrier intrinsics.
 M5 further extends it with template-shader monomorphization before lowering, so VD-MIR still receives only concrete shaders.
 M6 further extends it with loop-hint metadata and explicit-vs-implicit resource binding metadata, still without leaking raw backend strings into the AST.
+M10 further extends it with structured indexed reduction expressions so compute-math lowering still crosses the backend boundary through typed MIR rather than raw emitted loops.
 
 ## `when utility` in VD-MIR
 

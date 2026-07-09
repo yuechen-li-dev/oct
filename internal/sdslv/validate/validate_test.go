@@ -52,6 +52,115 @@ fn F(s: Surface) -> Surface { return s with { Missing: 0.5 }; }`)
 	}
 }
 
+func TestModuleRejectsDuplicateEnumVariant(t *testing.T) {
+	err := validateSource(`enum LoadValue { Zero; Zero; }`)
+	if err == nil || !strings.Contains(err.Error(), "duplicate enum variant") {
+		t.Fatalf("error = %v, want duplicate enum variant", err)
+	}
+}
+
+func TestModuleRejectsDuplicateEnumPayloadField(t *testing.T) {
+	err := validateSource(`enum LoadValue { Value { X: f32; X: f32; } }`)
+	if err == nil || !strings.Contains(err.Error(), "duplicate enum payload field") {
+		t.Fatalf("error = %v, want duplicate enum payload field", err)
+	}
+}
+
+func TestModuleRejectsEnumPayloadConstructionShapeErrors(t *testing.T) {
+	err := validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F() -> LoadValue { return LoadValue.Value; }`)
+	if err == nil || !strings.Contains(err.Error(), "requires payload construction") {
+		t.Fatalf("error = %v, want payload construction diagnostic", err)
+	}
+	err = validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F() -> LoadValue { return LoadValue.Value { Y: 1.0 }; }`)
+	if err == nil || !strings.Contains(err.Error(), "unknown payload field Y") {
+		t.Fatalf("error = %v, want unknown payload field diagnostic", err)
+	}
+	err = validateSource(`enum Bounds { Tail { Rows: u32; Cols: u32; } }
+fn F() -> Bounds { return Bounds.Tail { Rows: 1u }; }`)
+	if err == nil || !strings.Contains(err.Error(), "missing payload field Cols") {
+		t.Fatalf("error = %v, want missing payload field diagnostic", err)
+	}
+}
+
+func TestModuleRejectsEnumMatchErrors(t *testing.T) {
+	err := validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F(v: LoadValue) -> f32 {
+return match v {
+LoadValue.Zero => 0.0
+};
+}`)
+	if err == nil || !strings.Contains(err.Error(), "match missing arm") {
+		t.Fatalf("error = %v, want missing arm diagnostic", err)
+	}
+	err = validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F(v: LoadValue) -> f32 {
+return match v {
+LoadValue.Zero => 0.0
+LoadValue.Zero => 1.0
+};
+}`)
+	if err == nil || !strings.Contains(err.Error(), "duplicate match arm") {
+		t.Fatalf("error = %v, want duplicate match arm diagnostic", err)
+	}
+	err = validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+enum Other { Zero; }
+fn F(v: LoadValue) -> f32 {
+return match v {
+Other.Zero => 0.0
+LoadValue.Value(payload) => payload.X
+};
+}`)
+	if err == nil || !strings.Contains(err.Error(), "does not match subject enum") {
+		t.Fatalf("error = %v, want wrong enum diagnostic", err)
+	}
+}
+
+func TestModuleRejectsEnumMatchTypeAndScopeErrors(t *testing.T) {
+	err := validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F(v: LoadValue) -> f32 {
+return match v {
+LoadValue.Zero => 0.0
+LoadValue.Value(payload) => true
+};
+}`)
+	if err == nil || !strings.Contains(err.Error(), "uniform type") {
+		t.Fatalf("error = %v, want arm type mismatch diagnostic", err)
+	}
+	err = validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F(v: LoadValue) -> f32 {
+let out: f32 = match v {
+LoadValue.Zero => payload.X
+LoadValue.Value(payload) => payload.X
+};
+return out;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown identifier payload") {
+		t.Fatalf("error = %v, want payload scope diagnostic", err)
+	}
+	err = validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F(v: LoadValue) -> f32 {
+let out: f32 = match v {
+LoadValue.Zero(payload) => 0.0
+LoadValue.Value(bound) => bound.X
+};
+return out;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "must not bind payload") {
+		t.Fatalf("error = %v, want simple variant binding diagnostic", err)
+	}
+}
+
+func TestModuleRejectsNestedMatchPlacement(t *testing.T) {
+	err := validateSource(`enum LoadValue { Zero; Value { X: f32; } }
+fn F(v: LoadValue) -> f32 { return G(match v { LoadValue.Zero => 0.0 LoadValue.Value(payload) => payload.X }); }
+fn G(x: f32) -> f32 { return x; }`)
+	if err == nil || !strings.Contains(err.Error(), "match expression is only supported as a direct let initializer, assignment RHS, or return value") {
+		t.Fatalf("error = %v, want match placement diagnostic", err)
+	}
+}
+
 func TestModuleRejectsDuplicateWithField(t *testing.T) {
 	err := validateSource(`record Surface { Roughness: f32; }
 fn F(s: Surface) -> Surface { return s with { Roughness: 0.5, Roughness: 1.0 }; }`)
@@ -249,6 +358,66 @@ return;
 compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	if err != nil {
 		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleAllowsSumAndProductReductions(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = sum i in 0u..4u { values[i] };
+let productValue: f32 = product j in 1..4 step 2 { values[j] };
+return total + productValue;
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsReductionValidationErrors(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = sum i in 0.0..4u { values[i] };
+return total;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "sum reduction bounds must be integer") {
+		t.Fatalf("error = %v, want integer bounds diagnostic", err)
+	}
+	err = validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = sum i in 0u..4u step 0 { values[i] };
+return total;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "sum reduction step must be a positive integer literal") {
+		t.Fatalf("error = %v, want positive step diagnostic", err)
+	}
+	err = validateSource(`fn Reduce() -> f32 {
+let total: f32 = sum i in 0u..4u { true };
+return total;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "sum reduction body must be numeric") {
+		t.Fatalf("error = %v, want numeric body diagnostic", err)
+	}
+}
+
+func TestModuleRejectsNestedReductionPlacement(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+return 1.0 + sum i in 0u..4u { values[i] };
+}`)
+	if err == nil || !strings.Contains(err.Error(), "reduction expression is only supported as a direct let initializer, assignment RHS, or return value") {
+		t.Fatalf("error = %v, want reduction placement diagnostic", err)
+	}
+}
+
+func TestModuleRejectsReductionIndexOutOfScopeAndDeferredMax(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = sum i in 0u..4u { values[i] };
+return i;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown identifier i") {
+		t.Fatalf("error = %v, want index scope diagnostic", err)
+	}
+	err = validateSource(`fn Reduce(values: array<f32>) -> f32 {
+return max i in 0u..4u { values[i] };
+}`)
+	if err == nil || !strings.Contains(err.Error(), "max reduction is reserved but not yet implemented") {
+		t.Fatalf("error = %v, want deferred max diagnostic", err)
 	}
 }
 

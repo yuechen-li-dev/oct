@@ -100,6 +100,7 @@ stream TileCopyIO {
 Rules:
 
 - `[unroll]` and `[loop]` are mutually exclusive on one loop;
+- reductions added in M10 do not accept loop attributes yet; use an explicit `for` loop when an attribute is required;
 - `[binding(n)]` requires a non-negative integer literal;
 - duplicate explicit bindings in one shader resource set are rejected;
 - explicit bindings use descriptor set `0`;

@@ -44,7 +44,13 @@ type Stream struct {
 type Enum struct {
 	Provenance Provenance
 	Name       string
-	Variants   []string
+	Variants   []EnumVariant
+}
+
+type EnumVariant struct {
+	Name       string
+	Payload    []Field
+	HasPayload bool
 }
 
 type Field struct {
@@ -229,6 +235,15 @@ type Expr interface {
 	Type() Type
 }
 
+type ReductionOp string
+
+const (
+	ReductionSum     ReductionOp = "sum"
+	ReductionProduct ReductionOp = "product"
+	ReductionMax     ReductionOp = "max"
+	ReductionMin     ReductionOp = "min"
+)
+
 type Intrinsic string
 
 const (
@@ -364,9 +379,59 @@ type WithExpr struct {
 func (WithExpr) exprNode()    {}
 func (e WithExpr) Type() Type { return e.ExprType }
 
+type ReductionExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Op         ReductionOp
+	Name       string
+	IndexType  Type
+	Start      Expr
+	End        Expr
+	Step       Expr
+	Body       Expr
+}
+
+func (ReductionExpr) exprNode()    {}
+func (e ReductionExpr) Type() Type { return e.ExprType }
+
 type FieldUpdate struct {
 	Name  string
 	Value Expr
+}
+
+type EnumConstructExpr struct {
+	Provenance  Provenance
+	ExprType    Type
+	EnumName    string
+	VariantName string
+	Fields      []FieldInit
+}
+
+func (EnumConstructExpr) exprNode()    {}
+func (e EnumConstructExpr) Type() Type { return e.ExprType }
+
+type FieldInit struct {
+	Name  string
+	Value Expr
+}
+
+type MatchExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Subject    Expr
+	Arms       []MatchArm
+}
+
+func (MatchExpr) exprNode()    {}
+func (e MatchExpr) Type() Type { return e.ExprType }
+
+type MatchArm struct {
+	EnumName     string
+	VariantName  string
+	BindingName  string
+	BindingType  Type
+	VariantIndex int
+	Value        Expr
 }
 
 type Type struct {

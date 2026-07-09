@@ -41,11 +41,7 @@ func Module(module ast.Module) (vdmir.Module, error) {
 		case ast.StreamDecl:
 			out.Streams = append(out.Streams, l.lowerStream(d.Name, d.Fields))
 		case ast.EnumDecl:
-			out.Enums = append(out.Enums, vdmir.Enum{
-				Provenance: l.provenance,
-				Name:       d.Name,
-				Variants:   append([]string(nil), d.Variants...),
-			})
+			out.Enums = append(out.Enums, l.lowerEnum(d))
 		case ast.FunctionDecl:
 			fn, err := l.lowerFunction("", d, nil, nil)
 			if err != nil {
@@ -351,6 +347,27 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 			updates = append(updates, ast.FieldUpdate{Name: update.Name, Value: specializeExpr(update.Value, env)})
 		}
 		return ast.WithExpr{Base: specializeExpr(e.Base, env), Updates: updates}
+	case ast.EnumConstructExpr:
+		fields := make([]ast.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.FieldInit{Name: field.Name, Value: specializeExpr(field.Value, env)})
+		}
+		return ast.EnumConstructExpr{EnumName: e.EnumName, VariantName: e.VariantName, Fields: fields}
+	case ast.MatchExpr:
+		arms := make([]ast.MatchArm, 0, len(e.Arms))
+		for _, arm := range e.Arms {
+			arms = append(arms, ast.MatchArm{EnumName: arm.EnumName, VariantName: arm.VariantName, BindingName: arm.BindingName, Value: specializeExpr(arm.Value, env)})
+		}
+		return ast.MatchExpr{Subject: specializeExpr(e.Subject, env), Arms: arms}
+	case ast.ReductionExpr:
+		return ast.ReductionExpr{
+			Op:    e.Op,
+			Name:  e.Name,
+			Start: specializeExpr(e.Start, env),
+			End:   specializeExpr(e.End, env),
+			Step:  specializeExpr(e.Step, env),
+			Body:  specializeExpr(e.Body, env),
+		}
 	default:
 		return expr
 	}
@@ -386,10 +403,20 @@ type fieldInfo struct {
 	attributes []ast.Attribute
 }
 
+type enumVariantInfo struct {
+	name         string
+	fields       map[string]fieldInfo
+	fieldOrder   []string
+	payloadType  string
+	hasPayload   bool
+	variantIndex int
+}
+
 type typeInfo struct {
-	kind   string
-	target ast.TypeRef
-	fields map[string]fieldInfo
+	kind         string
+	target       ast.TypeRef
+	fields       map[string]fieldInfo
+	enumVariants map[string]enumVariantInfo
 }
 
 type functionInfo struct {
@@ -433,7 +460,7 @@ func (l *lowering) collect(module ast.Module) {
 		case ast.ConceptDecl:
 			l.types[d.Name] = typeInfo{kind: "concept", fields: collectFields(d.Fields)}
 		case ast.EnumDecl:
-			l.types[d.Name] = typeInfo{kind: "enum"}
+			l.collectEnum(d)
 		case ast.FunctionDecl:
 			l.functions[d.Name] = functionInfo{name: d.Name, emittedName: d.Name, returnType: d.ReturnType, params: d.Parameters}
 		case ast.ShaderDecl:
@@ -454,6 +481,46 @@ func (l *lowering) collect(module ast.Module) {
 			continue
 		}
 	}
+}
+
+func (l *lowering) collectEnum(enum ast.EnumDecl) {
+	variants := map[string]enumVariantInfo{}
+	for i, variant := range enum.Variants {
+		fields := collectFields(variant.Fields)
+		order := make([]string, 0, len(variant.Fields))
+		for _, field := range variant.Fields {
+			order = append(order, field.Name)
+		}
+		info := enumVariantInfo{
+			name:         variant.Name,
+			fields:       fields,
+			fieldOrder:   order,
+			hasPayload:   variant.Payload,
+			variantIndex: i,
+		}
+		if variant.Payload {
+			info.payloadType = payloadTypeName(enum.Name, variant.Name)
+			l.types[info.payloadType] = typeInfo{kind: "record", fields: fields}
+		}
+		variants[variant.Name] = info
+	}
+	l.types[enum.Name] = typeInfo{kind: "enum", enumVariants: variants}
+}
+
+func (l *lowering) lowerEnum(enum ast.EnumDecl) vdmir.Enum {
+	out := vdmir.Enum{Provenance: l.provenance, Name: enum.Name}
+	for _, variant := range enum.Variants {
+		entry := vdmir.EnumVariant{Name: variant.Name, HasPayload: variant.Payload}
+		for _, field := range variant.Fields {
+			entry.Payload = append(entry.Payload, vdmir.Field{
+				Provenance: l.provenance,
+				Name:       field.Name,
+				Type:       l.lowerTypeRef(field.Type),
+			})
+		}
+		out.Variants = append(out.Variants, entry)
+	}
+	return out
 }
 
 func (l *lowering) lowerRecord(name string, fields []ast.Field) vdmir.Record {
@@ -679,6 +746,16 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		}
 		return nil, fmt.Errorf("unknown identifier %s", e.Name)
 	case ast.FieldAccessExpr:
+		if id, ok := e.Target.(ast.IdentifierExpr); ok {
+			if enumInfo, exists := l.types[id.Name]; exists && enumInfo.kind == "enum" {
+				return vdmir.EnumConstructExpr{
+					Provenance:  l.provenance,
+					ExprType:    l.lowerTypeRef(ast.TypeRef{Name: id.Name}),
+					EnumName:    id.Name,
+					VariantName: e.Field,
+				}, nil
+			}
+		}
 		target, err := l.lowerExpr(e.Target, scope, shaderName)
 		if err != nil {
 			return nil, err
@@ -768,6 +845,60 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		}, nil
 	case ast.ParenExpr:
 		return l.lowerExpr(e.Inner, scope, shaderName)
+	case ast.EnumConstructExpr:
+		fields := make([]vdmir.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			value, err := l.lowerExpr(field.Value, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, vdmir.FieldInit{Name: field.Name, Value: value})
+		}
+		return vdmir.EnumConstructExpr{
+			Provenance:  l.provenance,
+			ExprType:    l.lowerTypeRef(ast.TypeRef{Name: e.EnumName}),
+			EnumName:    e.EnumName,
+			VariantName: e.VariantName,
+			Fields:      fields,
+		}, nil
+	case ast.MatchExpr:
+		subject, err := l.lowerExpr(e.Subject, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		enumInfo := l.types[subject.Type().Name]
+		arms := make([]vdmir.MatchArm, 0, len(e.Arms))
+		var resultType vdmir.Type
+		for i, arm := range e.Arms {
+			variant := enumInfo.enumVariants[arm.VariantName]
+			armScope := cloneScope(scope)
+			bindingType := vdmir.Type{}
+			if arm.BindingName != "" {
+				bindingType = l.lowerTypeRef(ast.TypeRef{Name: variant.payloadType})
+				armScope[arm.BindingName] = binding{name: arm.BindingName, kind: vdmir.VarLocal, typ: ast.TypeRef{Name: variant.payloadType}}
+			}
+			value, err := l.lowerExpr(arm.Value, armScope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			if i == 0 {
+				resultType = value.Type()
+			}
+			arms = append(arms, vdmir.MatchArm{
+				EnumName:     arm.EnumName,
+				VariantName:  arm.VariantName,
+				BindingName:  arm.BindingName,
+				BindingType:  bindingType,
+				VariantIndex: variant.variantIndex,
+				Value:        value,
+			})
+		}
+		return vdmir.MatchExpr{
+			Provenance: l.provenance,
+			ExprType:   resultType,
+			Subject:    subject,
+			Arms:       arms,
+		}, nil
 	case ast.WhenUtilityExpr:
 		cases := make([]vdmir.WhenUtilityCase, 0, len(e.Cases))
 		var resultType vdmir.Type
@@ -825,6 +956,36 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			ExprType:   base.Type(),
 			Base:       base,
 			Updates:    updates,
+		}, nil
+	case ast.ReductionExpr:
+		start, err := l.lowerExpr(e.Start, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		end, err := l.lowerExpr(e.End, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		step, err := l.lowerExpr(e.Step, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		bodyScope := cloneScope(scope)
+		bodyScope[e.Name] = binding{name: e.Name, kind: vdmir.VarLocal, typ: astTypeFromVDMIR(start.Type())}
+		body, err := l.lowerExpr(e.Body, bodyScope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.ReductionExpr{
+			Provenance: l.provenance,
+			ExprType:   body.Type(),
+			Op:         lowerReductionOp(e.Op),
+			Name:       e.Name,
+			IndexType:  start.Type(),
+			Start:      start,
+			End:        end,
+			Step:       step,
+			Body:       body,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported expression in GoOct SDSL-V M3")
@@ -1122,6 +1283,10 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 		walkExpr(e.Operand, builtins)
 	case ast.ParenExpr:
 		walkExpr(e.Inner, builtins)
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			walkExpr(field.Value, builtins)
+		}
 	case ast.WhenUtilityExpr:
 		for _, c := range e.Cases {
 			walkExpr(c.Value, builtins)
@@ -1136,6 +1301,16 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 		for _, update := range e.Updates {
 			walkExpr(update.Value, builtins)
 		}
+	case ast.MatchExpr:
+		walkExpr(e.Subject, builtins)
+		for _, arm := range e.Arms {
+			walkExpr(arm.Value, builtins)
+		}
+	case ast.ReductionExpr:
+		walkExpr(e.Start, builtins)
+		walkExpr(e.End, builtins)
+		walkExpr(e.Step, builtins)
+		walkExpr(e.Body, builtins)
 	}
 }
 
@@ -1191,6 +1366,10 @@ func cloneScope(scope map[string]binding) map[string]binding {
 	return out
 }
 
+func payloadTypeName(enumName, variantName string) string {
+	return enumName + "_" + variantName + "Payload"
+}
+
 func collectFields(fields []ast.Field) map[string]fieldInfo {
 	out := make(map[string]fieldInfo, len(fields))
 	for _, field := range fields {
@@ -1209,6 +1388,21 @@ func lowerLoopHint(attributes []ast.Attribute) vdmir.LoopHint {
 		}
 	}
 	return vdmir.LoopHintNone
+}
+
+func lowerReductionOp(op ast.ReductionOp) vdmir.ReductionOp {
+	switch op {
+	case ast.ReductionSum:
+		return vdmir.ReductionSum
+	case ast.ReductionProduct:
+		return vdmir.ReductionProduct
+	case ast.ReductionMax:
+		return vdmir.ReductionMax
+	case ast.ReductionMin:
+		return vdmir.ReductionMin
+	default:
+		return ""
+	}
 }
 
 func resolveResourceBinding(resources []ast.ResourceDecl, index int) vdmir.Binding {

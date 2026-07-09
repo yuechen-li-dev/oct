@@ -1,0 +1,28 @@
+namespace Prometheus.Kernels;
+
+enum LoadValue {
+    Zero;
+    Value { X: f32; }
+}
+
+fn ResolveLoad(value: LoadValue) -> f32 {
+    return match value {
+        LoadValue.Zero => 0.0
+        LoadValue.Value(payload) => payload.X
+    };
+}
+
+shader PayloadEnumBasic {
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let zero: LoadValue = LoadValue.Zero;
+        let one: LoadValue = LoadValue.Value { X: 1.0 };
+        let a: f32 = ResolveLoad(zero);
+        let b: f32 = match one {
+            LoadValue.Zero => 0.0
+            LoadValue.Value(payload) => payload.X
+        };
+        let sum: f32 = a + b;
+        let sink: f32 = sum;
+        return;
+    }
+}

@@ -76,10 +76,16 @@ func (ConfigDecl) declNode() {}
 
 type EnumDecl struct {
 	Name     string
-	Variants []string
+	Variants []EnumVariant
 }
 
 func (EnumDecl) declNode() {}
+
+type EnumVariant struct {
+	Name    string
+	Fields  []Field
+	Payload bool
+}
 
 type ShaderDecl struct {
 	Name               string
@@ -233,6 +239,15 @@ type StaticAssertStmt struct {
 
 type Expr interface{ exprNode() }
 
+type ReductionOp string
+
+const (
+	ReductionSum     ReductionOp = "sum"
+	ReductionProduct ReductionOp = "product"
+	ReductionMax     ReductionOp = "max"
+	ReductionMin     ReductionOp = "min"
+)
+
 type IntegerLiteral struct{ Value string }
 
 func (IntegerLiteral) exprNode() {}
@@ -313,7 +328,45 @@ type WithExpr struct {
 
 func (WithExpr) exprNode() {}
 
+type ReductionExpr struct {
+	Op    ReductionOp
+	Name  string
+	Start Expr
+	End   Expr
+	Step  Expr
+	Body  Expr
+}
+
+func (ReductionExpr) exprNode() {}
+
 type FieldUpdate struct {
 	Name  string
 	Value Expr
+}
+
+type EnumConstructExpr struct {
+	EnumName    string
+	VariantName string
+	Fields      []FieldInit
+}
+
+func (EnumConstructExpr) exprNode() {}
+
+type FieldInit struct {
+	Name  string
+	Value Expr
+}
+
+type MatchExpr struct {
+	Subject Expr
+	Arms    []MatchArm
+}
+
+func (MatchExpr) exprNode() {}
+
+type MatchArm struct {
+	EnumName    string
+	VariantName string
+	BindingName string
+	Value       Expr
 }

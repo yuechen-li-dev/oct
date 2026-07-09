@@ -196,6 +196,46 @@ compile TileCopy<Tile16> as TileCopy16;`)
 	}
 }
 
+func TestBuildModuleParsesPayloadEnumAndMatch(t *testing.T) {
+	module := parseTestModule(t, `enum LoadValue {
+Zero;
+Value { X: f32; }
+}
+fn Resolve(value: LoadValue) -> f32 {
+let loaded: LoadValue = LoadValue.Value { X: 1.0 };
+return match value {
+LoadValue.Zero => 0.0
+LoadValue.Value(payload) => payload.X
+};
+}`)
+	enumDecl, ok := module.Decls[0].(ast.EnumDecl)
+	if !ok {
+		t.Fatalf("decl[0] = %T, want EnumDecl", module.Decls[0])
+	}
+	if got := len(enumDecl.Variants); got != 2 {
+		t.Fatalf("len(Variants) = %d, want 2", got)
+	}
+	if !enumDecl.Variants[1].Payload || enumDecl.Variants[1].Fields[0].Name != "X" {
+		t.Fatalf("payload variant = %#v", enumDecl.Variants[1])
+	}
+	fn := module.Decls[1].(ast.FunctionDecl)
+	letStmt := fn.Body.Statements[0].(ast.LetStmt)
+	if _, ok := letStmt.Value.(ast.EnumConstructExpr); !ok {
+		t.Fatalf("let value = %T, want EnumConstructExpr", letStmt.Value)
+	}
+	ret := fn.Body.Statements[1].(ast.ReturnStmt)
+	matchExpr, ok := ret.Value.(ast.MatchExpr)
+	if !ok {
+		t.Fatalf("return value = %T, want MatchExpr", ret.Value)
+	}
+	if got := len(matchExpr.Arms); got != 2 {
+		t.Fatalf("len(Arms) = %d, want 2", got)
+	}
+	if matchExpr.Arms[1].BindingName != "payload" {
+		t.Fatalf("binding = %q, want payload", matchExpr.Arms[1].BindingName)
+	}
+}
+
 func TestBuildModuleRejectsAttributeOnNonForStatement(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `shader S {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
@@ -209,6 +249,50 @@ return;
 	_, err = BuildModule(tokens)
 	if err == nil {
 		t.Fatalf("BuildModule() error = nil, want rejection")
+	}
+}
+
+func TestBuildModuleParsesReductionExpressions(t *testing.T) {
+	module := parseTestModule(t, `fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = sum i in 0u..4u { values[i] };
+let productValue: f32 = product j in 1..4 step 2 { total };
+return max k in 0u..4u { values[k] };
+}`)
+	fn := module.Decls[0].(ast.FunctionDecl)
+	letSum := fn.Body.Statements[0].(ast.LetStmt)
+	sumExpr, ok := letSum.Value.(ast.ReductionExpr)
+	if !ok {
+		t.Fatalf("let value = %T, want ReductionExpr", letSum.Value)
+	}
+	if sumExpr.Op != ast.ReductionSum || sumExpr.Name != "i" {
+		t.Fatalf("sum expr = %#v", sumExpr)
+	}
+	letProduct := fn.Body.Statements[1].(ast.LetStmt)
+	productExpr := letProduct.Value.(ast.ReductionExpr)
+	if productExpr.Op != ast.ReductionProduct {
+		t.Fatalf("product op = %v, want product", productExpr.Op)
+	}
+	if lit, ok := productExpr.Step.(ast.IntegerLiteral); !ok || lit.Value != "2" {
+		t.Fatalf("product step = %#v, want int literal 2", productExpr.Step)
+	}
+	ret := fn.Body.Statements[2].(ast.ReturnStmt)
+	maxExpr, ok := ret.Value.(ast.ReductionExpr)
+	if !ok || maxExpr.Op != ast.ReductionMax {
+		t.Fatalf("return value = %#v, want max ReductionExpr", ret.Value)
+	}
+}
+
+func TestBuildModuleAllowsMaxKeywordAsCallCalleeWhenNotReduction(t *testing.T) {
+	module := parseTestModule(t, `fn Reduce(a: f32, b: f32) -> f32 { return max(a, b); }`)
+	fn := module.Decls[0].(ast.FunctionDecl)
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	call, ok := ret.Value.(ast.CallExpr)
+	if !ok {
+		t.Fatalf("return value = %T, want CallExpr", ret.Value)
+	}
+	callee, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok || callee.Name != "max" {
+		t.Fatalf("callee = %#v, want identifier max", call.Callee)
 	}
 }
 

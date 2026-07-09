@@ -224,6 +224,73 @@ return;
 	}
 }
 
+func TestEmitPayloadEnumsAndMatchFromVDMIR(t *testing.T) {
+	text := `enum LoadValue {
+Zero;
+Value { X: f32; }
+}
+fn Resolve(v: LoadValue) -> f32 {
+let initial: LoadValue = LoadValue.Zero;
+let out: f32 = match v {
+LoadValue.Zero => 0.0
+LoadValue.Value(payload) => payload.X
+};
+return out;
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"static const int LoadValue_Zero = 0;",
+		"static const int LoadValue_Value = 1;",
+		"struct LoadValue_ValuePayload",
+		"struct LoadValue",
+		"LoadValue __sdslv_make_LoadValue_Zero()",
+		"LoadValue __sdslv_make_LoadValue_Value(float X)",
+		"LoadValue __sdslv_match_subject_",
+		"if (__sdslv_match_subject_0.Tag == LoadValue_Zero)",
+		"LoadValue_ValuePayload payload = __sdslv_match_subject_0.Value;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestEmitReductionsFromVDMIR(t *testing.T) {
+	text := `shader S {
+resources {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+fn Reduce(values: array<f32>) -> f32 {
+return product i in 0u..4u { values[i] };
+}
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let total: f32 = sum i in 0u..4u { A[i] };
+let productValue: f32 = product j in 0u..4u { A[j] };
+let sink: f32 = 0.0;
+sink = sum k in 0u..4u { A[k] };
+C[0u] = total + productValue + sink + Reduce(A);
+return;
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"float total = 0.0;",
+		"for (uint i = 0u; i < 4u; i += 1)",
+		"total = total + (A[i]);",
+		"float productValue = 1.0;",
+		"productValue = productValue * (A[j]);",
+		"float __sdslv_reduce_1 = 0.0;",
+		"sink = __sdslv_reduce_1;",
+		"float __sdslv_reduce_0 = 1.0;",
+		"return __sdslv_reduce_0;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func emitSource(t *testing.T, text string) string {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

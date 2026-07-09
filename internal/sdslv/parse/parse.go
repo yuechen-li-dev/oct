@@ -246,7 +246,7 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 	if _, err := p.expect(token.LeftBrace, "expected '{' after enum name"); err != nil {
 		return ast.EnumDecl{}, err
 	}
-	var variants []string
+	var variants []ast.EnumVariant
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
 			return ast.EnumDecl{}, p.errorAtCurrent("expected '}' to close enum")
@@ -255,10 +255,33 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 		if err != nil {
 			return ast.EnumDecl{}, err
 		}
-		variants = append(variants, variant.Lexeme)
-		if _, err := p.expect(token.Semicolon, "expected ';' after enum variant"); err != nil {
-			return ast.EnumDecl{}, err
+		entry := ast.EnumVariant{Name: variant.Lexeme}
+		if p.match(token.LeftBrace) {
+			entry.Payload = true
+			for p.current().Kind != token.RightBrace {
+				fieldName, err := p.expect(token.Identifier, "expected payload field name")
+				if err != nil {
+					return ast.EnumDecl{}, err
+				}
+				if _, err := p.expect(token.Colon, "expected ':' after payload field name"); err != nil {
+					return ast.EnumDecl{}, err
+				}
+				ref, err := p.parseTypeRef()
+				if err != nil {
+					return ast.EnumDecl{}, err
+				}
+				if _, err := p.expect(token.Semicolon, "expected ';' after payload field"); err != nil {
+					return ast.EnumDecl{}, err
+				}
+				entry.Fields = append(entry.Fields, ast.Field{Name: fieldName.Lexeme, Type: ref})
+			}
+			p.advance()
+		} else {
+			if _, err := p.expect(token.Semicolon, "expected ';' after enum variant"); err != nil {
+				return ast.EnumDecl{}, err
+			}
 		}
+		variants = append(variants, entry)
 	}
 	p.advance()
 	return ast.EnumDecl{Name: name.Lexeme, Variants: variants}, nil
@@ -838,6 +861,14 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
+			if enumName, ok := identifierName(expr); ok && p.payloadInitializerStarts() {
+				fields, err := p.parseFieldInitializers()
+				if err != nil {
+					return nil, err
+				}
+				expr = ast.EnumConstructExpr{EnumName: enumName, VariantName: field.Lexeme, Fields: fields}
+				continue
+			}
 			expr = ast.FieldAccessExpr{Target: expr, Field: field.Lexeme}
 		case token.LeftBracket:
 			p.advance()
@@ -895,8 +926,16 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	case token.Identifier:
 		p.advance()
 		return ast.IdentifierExpr{Name: t.Lexeme}, nil
+	case token.KeywordSum, token.KeywordProduct, token.KeywordMax, token.KeywordMin:
+		if p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.KeywordIn {
+			return p.parseReductionExpr()
+		}
+		p.advance()
+		return ast.IdentifierExpr{Name: t.Lexeme}, nil
 	case token.KeywordWhen:
 		return p.parseWhenUtility()
+	case token.KeywordMatch:
+		return p.parseMatchExpr()
 	case token.LeftParen:
 		p.advance()
 		inner, err := p.parseExpression()
@@ -910,6 +949,128 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseReductionExpr() (ast.ReductionExpr, error) {
+	op, err := reductionOpFromToken(p.current())
+	if err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected reduction index variable")
+	if err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	if _, err := p.expect(token.KeywordIn, "expected 'in' after reduction index variable"); err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	start, err := p.parseExpression()
+	if err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	if _, err := p.expect(token.DotDot, "expected '..' in reduction range"); err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	end, err := p.parseExpression()
+	if err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	var step ast.Expr = ast.IntegerLiteral{Value: "1"}
+	if p.match(token.KeywordStep) {
+		step, err = p.parseExpression()
+		if err != nil {
+			return ast.ReductionExpr{}, err
+		}
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' before reduction body"); err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	body, err := p.parseExpression()
+	if err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	if _, err := p.expect(token.RightBrace, "expected '}' after reduction body"); err != nil {
+		return ast.ReductionExpr{}, err
+	}
+	return ast.ReductionExpr{Op: op, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
+}
+
+func (p *parser) parseMatchExpr() (ast.MatchExpr, error) {
+	p.advance()
+	subject, err := p.parseExpression()
+	if err != nil {
+		return ast.MatchExpr{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after match subject"); err != nil {
+		return ast.MatchExpr{}, err
+	}
+	var arms []ast.MatchArm
+	for p.current().Kind != token.RightBrace {
+		enumName, err := p.expect(token.Identifier, "expected enum name in match arm")
+		if err != nil {
+			return ast.MatchExpr{}, err
+		}
+		if _, err := p.expect(token.Dot, "expected '.' after enum name in match arm"); err != nil {
+			return ast.MatchExpr{}, err
+		}
+		variantName, err := p.expect(token.Identifier, "expected variant name in match arm")
+		if err != nil {
+			return ast.MatchExpr{}, err
+		}
+		arm := ast.MatchArm{EnumName: enumName.Lexeme, VariantName: variantName.Lexeme}
+		if p.match(token.LeftParen) {
+			binding, err := p.expect(token.Identifier, "expected payload binding name")
+			if err != nil {
+				return ast.MatchExpr{}, err
+			}
+			arm.BindingName = binding.Lexeme
+			if _, err := p.expect(token.RightParen, "expected ')' after payload binding"); err != nil {
+				return ast.MatchExpr{}, err
+			}
+		}
+		if _, err := p.expect(token.Arrow, "expected '=>' after match arm pattern"); err != nil {
+			return ast.MatchExpr{}, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return ast.MatchExpr{}, err
+		}
+		arm.Value = value
+		arms = append(arms, arm)
+	}
+	p.advance()
+	return ast.MatchExpr{Subject: subject, Arms: arms}, nil
+}
+
+func (p *parser) parseFieldInitializers() ([]ast.FieldInit, error) {
+	if _, err := p.expect(token.LeftBrace, "expected '{' before payload fields"); err != nil {
+		return nil, err
+	}
+	var fields []ast.FieldInit
+	for p.current().Kind != token.RightBrace {
+		name, err := p.expect(token.Identifier, "expected payload field name")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.Colon, "expected ':' after payload field name"); err != nil {
+			return nil, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, ast.FieldInit{Name: name.Lexeme, Value: value})
+		if !p.match(token.Comma) {
+			break
+		}
+		if p.current().Kind == token.RightBrace {
+			break
+		}
+	}
+	if _, err := p.expect(token.RightBrace, "expected '}' after payload fields"); err != nil {
+		return nil, err
+	}
+	return fields, nil
 }
 
 func (p *parser) parseWhenUtility() (ast.WhenUtilityExpr, error) {
@@ -1204,4 +1365,31 @@ func binaryPrecedence(kind token.Kind, stopAtRightAngle bool) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func identifierName(expr ast.Expr) (string, bool) {
+	id, ok := expr.(ast.IdentifierExpr)
+	if !ok {
+		return "", false
+	}
+	return id.Name, true
+}
+
+func reductionOpFromToken(tok token.Token) (ast.ReductionOp, error) {
+	switch tok.Kind {
+	case token.KeywordSum:
+		return ast.ReductionSum, nil
+	case token.KeywordProduct:
+		return ast.ReductionProduct, nil
+	case token.KeywordMax:
+		return ast.ReductionMax, nil
+	case token.KeywordMin:
+		return ast.ReductionMin, nil
+	default:
+		return "", fmt.Errorf("expected reduction operator at %d:%d near %q", tok.Line, tok.Column, tok.Lexeme)
+	}
+}
+
+func (p *parser) payloadInitializerStarts() bool {
+	return p.current().Kind == token.LeftBrace && p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.Colon
 }

@@ -1,0 +1,57 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream TileReductionIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record TileParams {
+    leadingDimension: u32;
+}
+
+concept TileShapeConfig {
+    THREADS_X: u32;
+    THREADS_Y: u32;
+    TILE_N: u32;
+    TILE_K: u32;
+
+    require THREADS_X > 0u;
+    require THREADS_Y > 0u;
+    require TILE_N > 0u;
+    require TILE_K > 0u;
+    require THREADS_X == TILE_K;
+    require THREADS_Y == TILE_N;
+}
+
+config Tile16x16: TileShapeConfig {
+    THREADS_X: 16u;
+    THREADS_Y: 16u;
+    TILE_N: 16u;
+    TILE_K: 16u;
+}
+
+template<C: TileShapeConfig>
+shader ReductionTileShape {
+    resources TileReductionIO;
+
+    stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: TileParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let rowBase: u32 = localRow * params.leadingDimension;
+        let tileAcc: f32 = sum kk in 0u..C.TILE_K {
+            A[rowBase + kk] * B[kk * C.TILE_N + localCol]
+        };
+        C[localRow * C.TILE_N + localCol] = tileAcc;
+        return;
+    }
+}
+
+compile ReductionTileShape<Tile16x16> as ReductionTileShape16x16;

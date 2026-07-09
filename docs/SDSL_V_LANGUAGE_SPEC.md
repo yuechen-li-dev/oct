@@ -48,7 +48,7 @@ Current GoOct SDSL-V accepts these top-level declaration kinds:
 | `shader` | `shader Name { ... }` | Concrete shader program |
 | `flow` | `flow Name(params) -> ReturnType { board? states }` | Value-returning FSM |
 | `compile` | `compile TemplateShader<Config> as Alias;` | Monomorphize a template shader |
-| `enum` | `enum Name { Variant; Variant; }` | Integer-backed discriminated union |
+| `enum` | `enum Name { Variant; Variant { Field: Type; } }` | Tagged value enum with optional payload |
 
 ---
 
@@ -99,9 +99,24 @@ type WorldNormal3 = float3 @space(world.normal);
 
 ```sdslv
 enum ShadowMode { None; Hard; Soft; }
+
+enum LoadValue {
+    Zero;
+    Value { X: f32; }
+}
 ```
 
-Enum variants lower to `static const int` HLSL constants in declaration order starting at 0: `ShadowMode_None = 0`, `ShadowMode_Hard = 1`, `ShadowMode_Soft = 2`. Enum fields in records and parameters lower to `int`. Qualified variant references (`ShadowMode.Hard`) lower to the constant name.
+Simple variants use `Variant;`.
+Payload variants use `Variant { Field: Type; }`.
+
+Construction uses a qualified variant name:
+
+```sdslv
+let z: LoadValue = LoadValue.Zero;
+let v: LoadValue = LoadValue.Value { X: 1.0 };
+```
+
+Current GoOct M9 lowers enums to deterministic tagged carrier structs in HLSL. Tag constants emit in declaration order starting at `0`: `ShadowMode_None = 0`, `ShadowMode_Hard = 1`, ...
 
 ### Compatibility rules
 
@@ -346,6 +361,10 @@ Nested `if/else { if/else }` ladders are not permitted — use `switch { case ..
 | `a + b`, `a - b`, `a * b`, `a / b` | Arithmetic |
 | `a == b`, `a != b`, `a < b`, `a <= b`, `a > b`, `a >= b` | Comparison |
 | `-expr` | Unary negation |
+| `sum i in start..end { expr }` | Indexed additive reduction |
+| `product i in start..end { expr }` | Indexed multiplicative reduction |
+| `max i in start..end { expr }` | Reserved indexed max reduction (parsed, validator-rejected in M10) |
+| `min i in start..end { expr }` | Reserved indexed min reduction (parsed, validator-rejected in M10) |
 | `base with { field: expr, ... }` | Functional record/stream update |
 | `switch { case cond => value ... else => value }` | Condition-switch expression |
 | `switch subject { case value => result ... else => result }` | Subject-switch expression |
@@ -365,6 +384,25 @@ let adjusted: SurfaceData = surface with { Roughness: 0.5, BaseColor: surface.Ba
 ```
 
 The base expression and fields must be of the same record/stream type. Duplicate fields and unknown fields are validation errors. Field value types must match the field's declared type. Lowers to a copy followed by individual field assignments in HLSL.
+
+### Indexed reduction expressions
+
+M10 adds explicit indexed reductions with visible bounds:
+
+```sdslv
+let acc: f32 = sum kk in 0u..C.TILE_K {
+    TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol]
+};
+```
+
+Current M10 rules:
+
+- `sum` and `product` are implemented;
+- `max` and `min` are reserved and parsed, but still rejected during validation in M10;
+- bounds must be integer and `step` must be a positive integer literal;
+- the index name is scoped only inside the reduction body;
+- reductions are currently bounded to direct `let` initializer, assignment RHS, and `return` positions;
+- `sum` and `product` use identity initialization and lower to deterministic HLSL loops through `VD-MIR`.
 
 ### `switch` expression
 
@@ -390,11 +428,17 @@ Two forms — enum match and fallible match:
 // enum match: exhaustive over all variants
 let quality: i32 = match mode { ShadowMode.None => 0 ShadowMode.Hard => 1 ShadowMode.Soft => 8 };
 
+// payload enum match
+let value: f32 = match load {
+    LoadValue.Zero => 0.0
+    LoadValue.Value(payload) => payload.X
+};
+
 // fallible match: over a fallible expression
 let value: i32 = match Parse(raw) { ok(v) => v err(_) => 30 };
 ```
 
-Enum match: subject must be an enum type. All variants must be covered exactly once. Arm types must be uniform. Variants from the wrong enum are rejected. Lowers to `if / else if / else` chain using the HLSL integer constants.
+Enum match: subject must be an enum type. All variants must be covered exactly once. Arm types must be uniform. Variants from the wrong enum are rejected. Payload variants must bind exactly one payload name in M9; simple variants must not bind payload. Lowers to `if / else if / else` chains over the carrier struct `Tag`.
 
 Fallible match: subject must be a fallible expression. Both `ok(binding)` and `err(binding)` arms are required. Binding names are scoped to their arm. `ok` arm receives the success value; `err` arm receives the error. Arm types must be uniform.
 
@@ -627,6 +671,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 | Switch cases | Condition must be `bool` (condition-switch) or match subject type (subject-switch); at least one case required; `else` required |
 | Match (enum) | Subject must be enum type; all variants covered exactly once; arm types uniform |
 | Match (fallible) | Subject must be fallible; both `ok` and `err` arms required; arm types uniform |
+| Indexed reductions | Bounds must be integer; step must be positive integer literal; `sum`/`product` bodies must be numeric |
 | Fallible handling | Every fallible expression in a body must be handled with `?` or `!` |
 | `?` context | Only valid inside a fallible function |
 | `error(...)` | Only valid as `return error(...)` in a fallible function |
@@ -643,7 +688,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 
 ## Reserved keywords
 
-The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`.
+The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`.
 
 ---
 
@@ -660,7 +705,8 @@ interface    ::= 'interface' IDENT '{' fn-sig* '}'
 shader       ::= 'shader' IDENT generic-params? implements? where-clause? '{' material? method* stage-method* '}'
 flow         ::= 'flow' IDENT '(' params ')' '->' type-ref '{' board? state+ '}'
 compile      ::= 'compile' path '<' type-args '>' 'as' IDENT ';'
-enum         ::= 'enum' IDENT '{' (IDENT ';')+ '}'
+enum         ::= 'enum' IDENT '{' enum-variant+ '}'
+enum-variant ::= IDENT ';' | IDENT '{' field+ '}'
 
 field        ::= IDENT ':' type-ref ';'
 params       ::= (IDENT ':' type-ref (',' IDENT ':' type-ref)*)?
@@ -687,5 +733,7 @@ for          ::= 'for' IDENT 'in' expr '..' expr ('step' expr)? '{' stmt* '}'
 expr         ::= ... (see expression table above)
 switch-expr  ::= 'switch' expr? '{' switch-case+ 'else' ('=>'|'->') expr '}'
 match-expr   ::= 'match' expr '{' match-arm+ '}'
+match-arm    ::= IDENT '.' IDENT ('(' IDENT ')')? '=>' expr
 when-utility ::= 'when' 'utility' ('{' utility-opts '}')? '{' utility-case+ 'else' expr '}'
+reduction    ::= ('sum' | 'product' | 'max' | 'min') IDENT 'in' expr '..' expr ('step' expr)? '{' expr '}'
 ```

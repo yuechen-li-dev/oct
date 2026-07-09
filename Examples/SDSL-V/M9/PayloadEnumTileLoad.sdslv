@@ -1,0 +1,54 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream TileLoadIO {
+    A: readonly array<f32>;
+    C: readwrite array<f32>;
+}
+
+record TileLoadParams {
+    Count: u32;
+}
+
+enum LoadF32 {
+    Zero;
+    Value { X: f32; }
+}
+
+shader PayloadEnumTileLoad {
+    resources TileLoadIO;
+
+    fn ResolveLoad(value: LoadF32) -> f32 {
+        return match value {
+            LoadF32.Zero => 0.0
+            LoadF32.Value(payload) => payload.X
+        };
+    }
+
+    fn LoadA(thread: ComputeThread, params: TileLoadParams) -> LoadF32 {
+        let index: u32 = thread.DispatchId.x;
+        if index < params.Count {
+            return LoadF32.Value { X: A[index] };
+        }
+        return LoadF32.Zero;
+    }
+
+    stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: TileLoadParams) -> void {
+        let index: u32 = thread.DispatchId.x;
+        let load: LoadF32 = LoadA(thread, params);
+        let value: f32 = match load {
+            LoadF32.Zero => 0.0
+            LoadF32.Value(payload) => payload.X
+        };
+        if index < params.Count {
+            C[index] = value;
+        }
+        return;
+    }
+}

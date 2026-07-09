@@ -22,3 +22,19 @@ func TestAnalyzeComputeShaderTokens(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyzeReductionKeywords(t *testing.T) {
+	result, err := Analyze(source.File{Path: "test.sdslv", Text: "fn F() -> f32 { return sum i in 0u..4u { max(1.0, product); }; }"})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	kinds := map[token.Kind]bool{}
+	for _, tok := range result.Tokens {
+		kinds[tok.Kind] = true
+	}
+	for _, kind := range []token.Kind{token.KeywordSum, token.KeywordMax, token.KeywordProduct, token.KeywordIn} {
+		if !kinds[kind] {
+			t.Fatalf("missing token kind %s in %#v", kind, result.Tokens)
+		}
+	}
+}

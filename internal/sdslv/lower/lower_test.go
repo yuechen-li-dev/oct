@@ -377,6 +377,93 @@ return;
 	}
 }
 
+func TestModuleLowersReductionExpressionsToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = sum i in 0u..4u { values[i] };
+let productValue: f32 = product j in 1..4 step 2 { values[j] };
+return total + productValue;
+}`)
+	fn := findFunction(t, mir, "Reduce")
+	total := fn.Body.Statements[0].(vdmir.LetStmt)
+	sumExpr, ok := total.Value.(vdmir.ReductionExpr)
+	if !ok {
+		t.Fatalf("stmt[0] value = %T, want ReductionExpr", total.Value)
+	}
+	if sumExpr.Op != vdmir.ReductionSum || sumExpr.Name != "i" {
+		t.Fatalf("sum expr = %#v", sumExpr)
+	}
+	if sumExpr.IndexType.Kind != vdmir.TypeU32 {
+		t.Fatalf("sum index type = %#v, want u32", sumExpr.IndexType)
+	}
+	product := fn.Body.Statements[1].(vdmir.LetStmt)
+	productExpr := product.Value.(vdmir.ReductionExpr)
+	if productExpr.Op != vdmir.ReductionProduct {
+		t.Fatalf("product expr = %#v", productExpr)
+	}
+	if got := vdmir.FormatExpr(productExpr); !strings.Contains(got, "step 2") {
+		t.Fatalf("formatted product reduction missing step: %s", got)
+	}
+}
+
+func TestModuleSpecializesTemplateConstantsInsideReductionExpressions(t *testing.T) {
+	mir := lowerSource(t, `concept TileConfig {
+TILE_K: u32;
+}
+config Tile4: TileConfig {
+TILE_K: 4u;
+}
+template<C: TileConfig>
+shader S {
+fn Reduce(values: array<f32>) -> f32 {
+return sum i in 0u..C.TILE_K { values[i] };
+}
+}
+compile S<Tile4> as S4;`)
+	fn := findFunction(t, mir, "S4_Reduce")
+	ret := fn.Body.Statements[0].(vdmir.ReturnStmt)
+	reduction := ret.Value.(vdmir.ReductionExpr)
+	if got := vdmir.FormatExpr(reduction); !strings.Contains(got, "0u..4u") {
+		t.Fatalf("specialized reduction = %s, want concrete bound", got)
+	}
+}
+
+func TestModuleLowersPayloadEnumsAndMatchToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `enum LoadValue {
+Zero;
+Value { X: f32; }
+}
+fn Resolve(v: LoadValue) -> f32 {
+let initial: LoadValue = LoadValue.Value { X: 1.0 };
+let out: f32 = match v {
+LoadValue.Zero => 0.0
+LoadValue.Value(payload) => payload.X
+};
+return out;
+}`)
+	if got := len(mir.Enums); got != 1 {
+		t.Fatalf("len(Enums) = %d, want 1", got)
+	}
+	if !mir.Enums[0].Variants[1].HasPayload || mir.Enums[0].Variants[1].Payload[0].Name != "X" {
+		t.Fatalf("enum payload variant = %#v", mir.Enums[0].Variants[1])
+	}
+	resolve := findFunction(t, mir, "Resolve")
+	initial := resolve.Body.Statements[0].(vdmir.LetStmt)
+	if _, ok := initial.Value.(vdmir.EnumConstructExpr); !ok {
+		t.Fatalf("initial value = %T, want EnumConstructExpr", initial.Value)
+	}
+	out := resolve.Body.Statements[1].(vdmir.LetStmt)
+	matchExpr, ok := out.Value.(vdmir.MatchExpr)
+	if !ok {
+		t.Fatalf("out value = %T, want MatchExpr", out.Value)
+	}
+	if got := len(matchExpr.Arms); got != 2 {
+		t.Fatalf("len(Arms) = %d, want 2", got)
+	}
+	if matchExpr.Arms[1].BindingName != "payload" || matchExpr.Arms[1].BindingType.Name != "LoadValue_ValuePayload" {
+		t.Fatalf("payload arm = %#v", matchExpr.Arms[1])
+	}
+}
+
 func lowerSource(t *testing.T, text string) vdmir.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

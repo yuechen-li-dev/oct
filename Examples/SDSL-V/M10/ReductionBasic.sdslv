@@ -1,0 +1,27 @@
+namespace Prometheus.Examples;
+
+stream ReductionIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+shader ReductionBasic {
+    resources ReductionIO;
+
+    fn Sum4() -> f32 {
+        return sum i in 0u..4u { A[i] };
+    }
+
+    fn Product4() -> f32 {
+        return product i in 0u..4u { A[i] };
+    }
+
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let total: f32 = sum i in 0u..4u { A[i] };
+        let productValue: f32 = product i in 0u..4u { A[i] };
+        let sink: f32 = 0.0;
+        sink = sum i in 0u..4u { A[i] };
+        C[0u] = total + productValue + sink + Sum4() + Product4();
+        return;
+    }
+}

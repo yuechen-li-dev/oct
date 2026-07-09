@@ -36,11 +36,20 @@ type fieldInfo struct {
 	attributes []ast.Attribute
 }
 
+type enumVariantInfo struct {
+	name        string
+	fields      map[string]fieldInfo
+	fieldOrder  []string
+	payloadType string
+	hasPayload  bool
+}
+
 type typeInfo struct {
-	name   string
-	kind   string
-	fields map[string]fieldInfo
-	target ast.TypeRef
+	name         string
+	kind         string
+	fields       map[string]fieldInfo
+	enumVariants map[string]enumVariantInfo
+	target       ast.TypeRef
 }
 
 type functionInfo struct {
@@ -113,7 +122,7 @@ func (v *validator) collect(module ast.Module) {
 			}
 			v.configs[d.Name] = configInfo{conceptName: d.ConceptName, fields: map[string]configValue{}}
 		case ast.EnumDecl:
-			v.addType(d.Name, typeInfo{name: d.Name, kind: "enum"})
+			v.addEnumType(d)
 		case ast.FunctionDecl:
 			v.addFunc(d.Name, d)
 		case ast.ShaderDecl:
@@ -142,6 +151,33 @@ func (v *validator) addFieldType(name, kind string, fields []ast.Field, label st
 		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type, attributes: field.Attributes}
 	}
 	v.addType(name, typeInfo{name: name, kind: kind, fields: collected})
+}
+
+func (v *validator) addEnumType(enum ast.EnumDecl) {
+	variants := map[string]enumVariantInfo{}
+	for _, variant := range enum.Variants {
+		if _, exists := variants[variant.Name]; exists {
+			v.errorf("duplicate enum variant %s.%s", enum.Name, variant.Name)
+			continue
+		}
+		fields := map[string]fieldInfo{}
+		order := make([]string, 0, len(variant.Fields))
+		for _, field := range variant.Fields {
+			if _, exists := fields[field.Name]; exists {
+				v.errorf("duplicate enum payload field %s.%s.%s", enum.Name, variant.Name, field.Name)
+				continue
+			}
+			fields[field.Name] = fieldInfo{typ: field.Type}
+			order = append(order, field.Name)
+		}
+		info := enumVariantInfo{name: variant.Name, fields: fields, fieldOrder: order, hasPayload: variant.Payload}
+		if variant.Payload {
+			info.payloadType = payloadTypeName(enum.Name, variant.Name)
+			v.addType(info.payloadType, typeInfo{name: info.payloadType, kind: "record", fields: fields})
+		}
+		variants[variant.Name] = info
+	}
+	v.addType(enum.Name, typeInfo{name: enum.Name, kind: "enum", enumVariants: variants})
 }
 
 func (v *validator) addType(name string, info typeInfo) {
@@ -174,6 +210,8 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 			v.validateConcept(d)
 		case ast.ConfigDecl:
 			v.validateConfig(d)
+		case ast.EnumDecl:
+			v.validateEnum(d)
 		case ast.ShaderDecl:
 			v.validateShader(d)
 		case ast.CompileDecl:
@@ -293,6 +331,23 @@ func (v *validator) validateConfig(config ast.ConfigDecl) {
 		}
 		if !value.boolVal {
 			v.errorf("config %s failed requirement %s", config.Name, requirement.Text)
+		}
+	}
+}
+
+func (v *validator) validateEnum(enum ast.EnumDecl) {
+	for _, variant := range enum.Variants {
+		for _, field := range variant.Fields {
+			if field.Access != "" {
+				v.errorf("enum payload field %s.%s.%s must not declare resource access", enum.Name, variant.Name, field.Name)
+			}
+			if len(field.Attributes) > 0 {
+				v.errorf("enum payload field %s.%s.%s does not support attributes", enum.Name, variant.Name, field.Name)
+			}
+			v.validateType(field.Type)
+			if !v.isAllowedEnumPayloadType(field.Type) {
+				v.errorf("enum payload field %s.%s.%s type %s is not supported in GoOct SDSL-V M9", enum.Name, variant.Name, field.Name, typeName(field.Type))
+			}
 		}
 	}
 }
@@ -491,6 +546,8 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateType(s.Type)
 		if s.Value != nil {
 			v.validateWithPlacement(s.Value, true)
+			v.validateMatchPlacement(s.Value, true)
+			v.validateReductionPlacement(s.Value, true)
 			v.validateBarrierUsage(s.Value, false, shaderName, stage)
 			valueType := v.exprType(s.Value, scope, shaderName, templateParam)
 			if !v.compatible(s.Type, valueType) {
@@ -504,6 +561,10 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	case ast.AssignStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
+		v.validateMatchPlacement(s.Target, false)
+		v.validateMatchPlacement(s.Value, true)
+		v.validateReductionPlacement(s.Target, false)
+		v.validateReductionPlacement(s.Value, true)
 		v.validateBarrierUsage(s.Target, false, shaderName, stage)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		targetType := v.exprType(s.Target, scope, shaderName, templateParam)
@@ -523,6 +584,8 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			return
 		}
 		v.validateWithPlacement(s.Value, true)
+		v.validateMatchPlacement(s.Value, true)
+		v.validateReductionPlacement(s.Value, true)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
 		if !v.compatible(returnType, valueType) {
@@ -530,10 +593,14 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 	case ast.ExprStmt:
 		v.validateWithPlacement(s.Value, false)
+		v.validateMatchPlacement(s.Value, false)
+		v.validateReductionPlacement(s.Value, false)
 		v.validateBarrierUsage(s.Value, true, shaderName, stage)
 		v.exprType(s.Value, scope, shaderName, templateParam)
 	case ast.IfStmt:
 		v.validateWithPlacement(s.Condition, false)
+		v.validateMatchPlacement(s.Condition, false)
+		v.validateReductionPlacement(s.Condition, false)
 		v.validateBarrierUsage(s.Condition, false, shaderName, stage)
 		cond := v.exprType(s.Condition, scope, shaderName, templateParam)
 		if cond.Name != "bool" {
@@ -548,6 +615,12 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateWithPlacement(s.Start, false)
 		v.validateWithPlacement(s.End, false)
 		v.validateWithPlacement(s.Step, false)
+		v.validateMatchPlacement(s.Start, false)
+		v.validateMatchPlacement(s.End, false)
+		v.validateMatchPlacement(s.Step, false)
+		v.validateReductionPlacement(s.Start, false)
+		v.validateReductionPlacement(s.End, false)
+		v.validateReductionPlacement(s.Step, false)
 		v.validateBarrierUsage(s.Start, false, shaderName, stage)
 		v.validateBarrierUsage(s.End, false, shaderName, stage)
 		v.validateBarrierUsage(s.Step, false, shaderName, stage)
@@ -611,6 +684,20 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		v.errorf("unknown identifier %s", e.Name)
 		return ast.TypeRef{Name: "<error>"}
 	case ast.FieldAccessExpr:
+		if id, ok := e.Target.(ast.IdentifierExpr); ok {
+			if enumInfo, exists := v.types[id.Name]; exists && enumInfo.kind == "enum" {
+				variant, ok := enumInfo.enumVariants[e.Field]
+				if !ok {
+					v.errorf("unknown enum variant %s.%s", id.Name, e.Field)
+					return ast.TypeRef{Name: "<error>"}
+				}
+				if variant.hasPayload {
+					v.errorf("payload variant %s.%s requires payload construction", id.Name, e.Field)
+					return ast.TypeRef{Name: id.Name}
+				}
+				return ast.TypeRef{Name: id.Name}
+			}
+		}
 		if id, ok := e.Target.(ast.IdentifierExpr); ok && templateParam != nil && id.Name == templateParam.Name {
 			concept, ok := v.types[templateParam.ConceptName]
 			if !ok || concept.kind != "concept" {
@@ -622,12 +709,6 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 			}
 			v.errorf("unknown template field %s on concept %s", e.Field, templateParam.ConceptName)
 			return ast.TypeRef{Name: "<error>"}
-		}
-		if id, ok := e.Target.(ast.IdentifierExpr); ok && templateParam == nil {
-			if _, inScope := scope[id.Name]; !inScope {
-				v.errorf("%s.%s is only valid inside template shader %s", id.Name, e.Field, shaderName)
-				return ast.TypeRef{Name: "<error>"}
-			}
 		}
 		target := v.exprType(e.Target, scope, shaderName, templateParam)
 		if info, ok := v.types[target.Name]; ok && info.fields != nil {
@@ -693,6 +774,94 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		return operand
 	case ast.ParenExpr:
 		return v.exprType(e.Inner, scope, shaderName, templateParam)
+	case ast.EnumConstructExpr:
+		enumInfo, ok := v.types[e.EnumName]
+		if !ok || enumInfo.kind != "enum" {
+			v.errorf("unknown enum %s", e.EnumName)
+			return ast.TypeRef{Name: "<error>"}
+		}
+		variant, ok := enumInfo.enumVariants[e.VariantName]
+		if !ok {
+			v.errorf("unknown enum variant %s.%s", e.EnumName, e.VariantName)
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if !variant.hasPayload {
+			if len(e.Fields) > 0 {
+				v.errorf("simple variant %s.%s must not be constructed with payload", e.EnumName, e.VariantName)
+			}
+			return ast.TypeRef{Name: e.EnumName}
+		}
+		seen := map[string]struct{}{}
+		for _, field := range e.Fields {
+			if _, exists := seen[field.Name]; exists {
+				v.errorf("duplicate payload field %s on %s.%s", field.Name, e.EnumName, e.VariantName)
+				continue
+			}
+			seen[field.Name] = struct{}{}
+			decl, ok := variant.fields[field.Name]
+			if !ok {
+				v.errorf("unknown payload field %s on %s.%s", field.Name, e.EnumName, e.VariantName)
+				continue
+			}
+			valueType := v.exprType(field.Value, scope, shaderName, templateParam)
+			if !v.compatible(decl.typ, valueType) {
+				v.errorf("payload field %s on %s.%s expects %s, got %s", field.Name, e.EnumName, e.VariantName, typeName(decl.typ), typeName(valueType))
+			}
+		}
+		for _, fieldName := range variant.fieldOrder {
+			if _, exists := seen[fieldName]; !exists {
+				v.errorf("missing payload field %s on %s.%s", fieldName, e.EnumName, e.VariantName)
+			}
+		}
+		return ast.TypeRef{Name: e.EnumName}
+	case ast.MatchExpr:
+		subjectType := v.resolveAlias(v.exprType(e.Subject, scope, shaderName, templateParam))
+		if v.typeKind(subjectType) != "enum" {
+			v.errorf("match subject must be enum, got %s", typeName(subjectType))
+			return ast.TypeRef{Name: "<error>"}
+		}
+		enumInfo := v.types[subjectType.Name]
+		seen := map[string]struct{}{}
+		var result ast.TypeRef
+		for i, arm := range e.Arms {
+			if arm.EnumName != subjectType.Name {
+				v.errorf("match arm %s.%s does not match subject enum %s", arm.EnumName, arm.VariantName, subjectType.Name)
+			}
+			variant, ok := enumInfo.enumVariants[arm.VariantName]
+			if !ok {
+				v.errorf("unknown enum variant %s.%s", arm.EnumName, arm.VariantName)
+				continue
+			}
+			if _, exists := seen[arm.VariantName]; exists {
+				v.errorf("duplicate match arm %s.%s", arm.EnumName, arm.VariantName)
+			}
+			seen[arm.VariantName] = struct{}{}
+			armScope := cloneScope(scope)
+			if variant.hasPayload {
+				if arm.BindingName == "" {
+					v.errorf("payload variant %s.%s must bind payload in match", arm.EnumName, arm.VariantName)
+				} else {
+					armScope[arm.BindingName] = varInfo{typ: ast.TypeRef{Name: variant.payloadType}, origin: varLocal}
+				}
+			} else if arm.BindingName != "" {
+				v.errorf("simple variant %s.%s must not bind payload", arm.EnumName, arm.VariantName)
+			}
+			valueType := v.exprType(arm.Value, armScope, shaderName, templateParam)
+			if i == 0 {
+				result = valueType
+			} else if !v.compatible(result, valueType) {
+				v.errorf("match arms must return a uniform type")
+			}
+		}
+		for variantName := range enumInfo.enumVariants {
+			if _, exists := seen[variantName]; !exists {
+				v.errorf("match missing arm for %s.%s", subjectType.Name, variantName)
+			}
+		}
+		if result.Name == "" {
+			return ast.TypeRef{Name: "<error>"}
+		}
+		return result
 	case ast.WhenUtilityExpr:
 		var result ast.TypeRef
 		for i, c := range e.Cases {
@@ -745,6 +914,36 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 			}
 		}
 		return baseType
+	case ast.ReductionExpr:
+		startType := v.exprType(e.Start, scope, shaderName, templateParam)
+		endType := v.exprType(e.End, scope, shaderName, templateParam)
+		if !isInteger(startType) || !isInteger(endType) {
+			v.errorf("%s reduction bounds must be integer", e.Op)
+		}
+		if !positiveIntegerLiteral(e.Step) {
+			v.errorf("%s reduction step must be a positive integer literal", e.Op)
+		}
+		bodyScope := cloneScope(scope)
+		bodyScope[e.Name] = varInfo{typ: startType, origin: varLocal}
+		bodyType := v.exprType(e.Body, bodyScope, shaderName, templateParam)
+		switch e.Op {
+		case ast.ReductionSum, ast.ReductionProduct:
+			if !isNumeric(bodyType) {
+				v.errorf("%s reduction body must be numeric", e.Op)
+				return ast.TypeRef{Name: "<error>"}
+			}
+			return bodyType
+		case ast.ReductionMax, ast.ReductionMin:
+			v.errorf("%s reduction is reserved but not yet implemented in GoOct SDSL-V M10; use an explicit loop for now", e.Op)
+			if !isNumeric(bodyType) {
+				v.errorf("%s reduction body must be numeric", e.Op)
+				return ast.TypeRef{Name: "<error>"}
+			}
+			return bodyType
+		default:
+			v.errorf("unknown reduction operator %s", e.Op)
+			return ast.TypeRef{Name: "<error>"}
+		}
 	default:
 		v.errorf("unsupported expression in GoOct SDSL-V M3")
 		return ast.TypeRef{Name: "<error>"}
@@ -844,6 +1043,10 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 
 func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 	switch e := expr.(type) {
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateWithPlacement(field.Value, false)
+		}
 	case ast.WithExpr:
 		if !topLevelAllowed {
 			v.errorf("with expression is only supported as a direct let initializer, assignment RHS, or return value in GoOct SDSL-V M3")
@@ -878,6 +1081,114 @@ func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 		}
 		if e.Else != nil {
 			v.validateWithPlacement(e.Else, false)
+		}
+	case ast.MatchExpr:
+		v.validateWithPlacement(e.Subject, false)
+		for _, arm := range e.Arms {
+			v.validateWithPlacement(arm.Value, false)
+		}
+	}
+}
+
+func (v *validator) validateMatchPlacement(expr ast.Expr, topLevelAllowed bool) {
+	switch e := expr.(type) {
+	case ast.MatchExpr:
+		if !topLevelAllowed {
+			v.errorf("match expression is only supported as a direct let initializer, assignment RHS, or return value in GoOct SDSL-V M9")
+			return
+		}
+		v.validateMatchPlacement(e.Subject, false)
+		for _, arm := range e.Arms {
+			v.validateMatchPlacement(arm.Value, false)
+		}
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateMatchPlacement(field.Value, false)
+		}
+	case ast.FieldAccessExpr:
+		v.validateMatchPlacement(e.Target, false)
+	case ast.IndexExpr:
+		v.validateMatchPlacement(e.Target, false)
+		v.validateMatchPlacement(e.Index, false)
+	case ast.CallExpr:
+		v.validateMatchPlacement(e.Callee, false)
+		for _, arg := range e.Arguments {
+			v.validateMatchPlacement(arg, false)
+		}
+	case ast.BinaryExpr:
+		v.validateMatchPlacement(e.Left, false)
+		v.validateMatchPlacement(e.Right, false)
+	case ast.UnaryExpr:
+		v.validateMatchPlacement(e.Operand, false)
+	case ast.ParenExpr:
+		v.validateMatchPlacement(e.Inner, false)
+	case ast.WhenUtilityExpr:
+		for _, c := range e.Cases {
+			v.validateMatchPlacement(c.Value, false)
+			v.validateMatchPlacement(c.Condition, false)
+			v.validateMatchPlacement(c.Score, false)
+		}
+		if e.Else != nil {
+			v.validateMatchPlacement(e.Else, false)
+		}
+	case ast.WithExpr:
+		v.validateMatchPlacement(e.Base, false)
+		for _, update := range e.Updates {
+			v.validateMatchPlacement(update.Value, false)
+		}
+	}
+}
+
+func (v *validator) validateReductionPlacement(expr ast.Expr, topLevelAllowed bool) {
+	switch e := expr.(type) {
+	case ast.ReductionExpr:
+		if !topLevelAllowed {
+			v.errorf("reduction expression is only supported as a direct let initializer, assignment RHS, or return value in GoOct SDSL-V M10")
+			return
+		}
+		v.validateReductionPlacement(e.Start, false)
+		v.validateReductionPlacement(e.End, false)
+		v.validateReductionPlacement(e.Step, false)
+		v.validateReductionPlacement(e.Body, false)
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateReductionPlacement(field.Value, false)
+		}
+	case ast.FieldAccessExpr:
+		v.validateReductionPlacement(e.Target, false)
+	case ast.IndexExpr:
+		v.validateReductionPlacement(e.Target, false)
+		v.validateReductionPlacement(e.Index, false)
+	case ast.CallExpr:
+		v.validateReductionPlacement(e.Callee, false)
+		for _, arg := range e.Arguments {
+			v.validateReductionPlacement(arg, false)
+		}
+	case ast.BinaryExpr:
+		v.validateReductionPlacement(e.Left, false)
+		v.validateReductionPlacement(e.Right, false)
+	case ast.UnaryExpr:
+		v.validateReductionPlacement(e.Operand, false)
+	case ast.ParenExpr:
+		v.validateReductionPlacement(e.Inner, false)
+	case ast.WhenUtilityExpr:
+		for _, c := range e.Cases {
+			v.validateReductionPlacement(c.Value, false)
+			v.validateReductionPlacement(c.Condition, false)
+			v.validateReductionPlacement(c.Score, false)
+		}
+		if e.Else != nil {
+			v.validateReductionPlacement(e.Else, false)
+		}
+	case ast.WithExpr:
+		v.validateReductionPlacement(e.Base, false)
+		for _, update := range e.Updates {
+			v.validateReductionPlacement(update.Value, false)
+		}
+	case ast.MatchExpr:
+		v.validateReductionPlacement(e.Subject, false)
+		for _, arm := range e.Arms {
+			v.validateReductionPlacement(arm.Value, false)
 		}
 	}
 }
@@ -984,6 +1295,10 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 		v.validateBarrierUsage(e.Operand, false, shaderName, stage)
 	case ast.ParenExpr:
 		v.validateBarrierUsage(e.Inner, false, shaderName, stage)
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateBarrierUsage(field.Value, false, shaderName, stage)
+		}
 	case ast.WhenUtilityExpr:
 		for _, c := range e.Cases {
 			v.validateBarrierUsage(c.Value, false, shaderName, stage)
@@ -998,6 +1313,16 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 		for _, update := range e.Updates {
 			v.validateBarrierUsage(update.Value, false, shaderName, stage)
 		}
+	case ast.MatchExpr:
+		v.validateBarrierUsage(e.Subject, false, shaderName, stage)
+		for _, arm := range e.Arms {
+			v.validateBarrierUsage(arm.Value, false, shaderName, stage)
+		}
+	case ast.ReductionExpr:
+		v.validateBarrierUsage(e.Start, false, shaderName, stage)
+		v.validateBarrierUsage(e.End, false, shaderName, stage)
+		v.validateBarrierUsage(e.Step, false, shaderName, stage)
+		v.validateBarrierUsage(e.Body, false, shaderName, stage)
 	}
 }
 
@@ -1186,6 +1511,10 @@ func sortStrings(values []string) {
 	}
 }
 
+func payloadTypeName(enumName, variantName string) string {
+	return enumName + "_" + variantName + "Payload"
+}
+
 func builtinUintVectorType(dim int) typeInfo {
 	fields := map[string]fieldInfo{
 		"x": {typ: ast.TypeRef{Name: "u32"}},
@@ -1202,6 +1531,16 @@ func builtinUintVectorType(dim int) typeInfo {
 
 func isWorkgroupElementType(ref ast.TypeRef) bool {
 	switch ref.Name {
+	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+		return true
+	default:
+		return false
+	}
+}
+
+func (v *validator) isAllowedEnumPayloadType(ref ast.TypeRef) bool {
+	resolved := v.resolveAlias(ref)
+	switch resolved.Name {
 	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true
 	default:

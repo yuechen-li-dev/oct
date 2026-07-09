@@ -69,8 +69,48 @@ func (e *emitter) emitStruct(name string, fields []vdmir.Field) {
 
 func (e *emitter) emitEnum(enum vdmir.Enum) {
 	for i, variant := range enum.Variants {
-		e.line(fmt.Sprintf("static const int %s_%s = %d;", enum.Name, variant, i))
+		e.line(fmt.Sprintf("static const int %s_%s = %d;", enum.Name, variant.Name, i))
 	}
+	for _, variant := range enum.Variants {
+		if !variant.HasPayload {
+			continue
+		}
+		e.emitStruct(enumPayloadTypeName(enum.Name, variant.Name), variant.Payload)
+	}
+	e.line("struct " + enum.Name)
+	e.line("{")
+	e.indent++
+	e.line("int Tag;")
+	for _, variant := range enum.Variants {
+		if !variant.HasPayload {
+			continue
+		}
+		e.line(fmt.Sprintf("%s %s;", enumPayloadTypeName(enum.Name, variant.Name), variant.Name))
+	}
+	e.indent--
+	e.line("};")
+	e.line("")
+	for _, variant := range enum.Variants {
+		e.emitEnumConstructor(enum.Name, variant)
+	}
+}
+
+func (e *emitter) emitEnumConstructor(enumName string, variant vdmir.EnumVariant) {
+	params := make([]string, 0, len(variant.Payload))
+	for _, field := range variant.Payload {
+		params = append(params, typeRef(field.Type, field.Name))
+	}
+	e.line(fmt.Sprintf("%s %s(%s)", enumName, enumConstructorName(enumName, variant.Name), strings.Join(params, ", ")))
+	e.line("{")
+	e.indent++
+	e.line(fmt.Sprintf("%s value;", enumName))
+	e.line(fmt.Sprintf("value.Tag = %s_%s;", enumName, variant.Name))
+	for _, field := range variant.Payload {
+		e.line(fmt.Sprintf("value.%s.%s = %s;", variant.Name, field.Name, field.Name))
+	}
+	e.line("return value;")
+	e.indent--
+	e.line("}")
 	e.line("")
 }
 
@@ -161,6 +201,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
 			return
 		}
+		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
+			e.emitReductionLet(s, reduction)
+			return
+		}
 		if utility, ok := s.Value.(vdmir.WhenUtilityExpr); ok {
 			e.emitWhenUtilityLet(s, utility)
 			return
@@ -169,8 +213,16 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitWithLet(s, withExpr)
 			return
 		}
+		if matchExpr, ok := s.Value.(vdmir.MatchExpr); ok {
+			e.emitMatchLet(s, matchExpr)
+			return
+		}
 		e.line(fmt.Sprintf("%s = %s;", typeRef(s.Type, s.Name), e.expr(s.Value)))
 	case vdmir.AssignStmt:
+		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
+			e.emitReductionAssign(e.expr(s.Target), reduction)
+			return
+		}
 		if utility, ok := s.Value.(vdmir.WhenUtilityExpr); ok {
 			e.emitWhenUtilityAssign(e.expr(s.Target), utility)
 			return
@@ -179,14 +231,26 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitWithAssign(e.expr(s.Target), withExpr)
 			return
 		}
+		if matchExpr, ok := s.Value.(vdmir.MatchExpr); ok {
+			e.emitMatchAssign(e.expr(s.Target), matchExpr)
+			return
+		}
 		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), e.expr(s.Value)))
 	case vdmir.ReturnStmt:
 		if s.Value == nil {
 			e.line("return;")
 			return
 		}
+		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
+			e.emitReductionReturn(reduction)
+			return
+		}
 		if withExpr, ok := s.Value.(vdmir.WithExpr); ok {
 			e.emitWithReturn(withExpr)
+			return
+		}
+		if matchExpr, ok := s.Value.(vdmir.MatchExpr); ok {
+			e.emitMatchReturn(matchExpr)
 			return
 		}
 		e.line("return " + e.expr(s.Value) + ";")
@@ -215,6 +279,35 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 func (e *emitter) emitWhenUtilityLet(stmt vdmir.LetStmt, utility vdmir.WhenUtilityExpr) {
 	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), e.expr(utility.Else)))
 	e.emitWhenUtilityAssign(stmt.Name, utility)
+}
+
+func (e *emitter) emitReductionLet(stmt vdmir.LetStmt, reduction vdmir.ReductionExpr) {
+	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), reductionIdentityLiteral(reduction)))
+	e.emitReductionLoop(stmt.Name, reduction)
+}
+
+func (e *emitter) emitReductionAssign(target string, reduction vdmir.ReductionExpr) {
+	tempName := e.nextTempWithPrefix("reduce")
+	e.line(fmt.Sprintf("%s = %s;", typeRef(reduction.Type(), tempName), reductionIdentityLiteral(reduction)))
+	e.emitReductionLoop(tempName, reduction)
+	e.line(fmt.Sprintf("%s = %s;", target, tempName))
+}
+
+func (e *emitter) emitReductionReturn(reduction vdmir.ReductionExpr) {
+	tempName := e.nextTempWithPrefix("reduce")
+	e.line(fmt.Sprintf("%s = %s;", typeRef(reduction.Type(), tempName), reductionIdentityLiteral(reduction)))
+	e.emitReductionLoop(tempName, reduction)
+	e.line("return " + tempName + ";")
+}
+
+func (e *emitter) emitReductionLoop(target string, reduction vdmir.ReductionExpr) {
+	loopType := typeRef(reduction.IndexType, "")
+	e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, reduction.Name, e.expr(reduction.Start), reduction.Name, e.expr(reduction.End), reduction.Name, e.expr(reduction.Step)))
+	e.line("{")
+	e.indent++
+	e.line(fmt.Sprintf("%s = %s %s (%s);", target, target, reductionCombineOperator(reduction.Op), e.expr(reduction.Body)))
+	e.indent--
+	e.line("}")
 }
 
 func (e *emitter) emitWhenUtilityAssign(target string, utility vdmir.WhenUtilityExpr) {
@@ -257,6 +350,38 @@ func (e *emitter) emitWithCopy(tempName string, withExpr vdmir.WithExpr) {
 	}
 }
 
+func (e *emitter) emitMatchLet(stmt vdmir.LetStmt, matchExpr vdmir.MatchExpr) {
+	e.line(fmt.Sprintf("%s;", typeRef(stmt.Type, stmt.Name)))
+	e.emitMatchAssign(stmt.Name, matchExpr)
+}
+
+func (e *emitter) emitMatchAssign(target string, matchExpr vdmir.MatchExpr) {
+	subjectName := e.nextTempWithPrefix("match_subject")
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(matchExpr.Subject.Type(), ""), subjectName, e.expr(matchExpr.Subject)))
+	for i, arm := range matchExpr.Arms {
+		keyword := "if"
+		if i > 0 {
+			keyword = "else if"
+		}
+		e.line(fmt.Sprintf("%s (%s.Tag == %s_%s)", keyword, subjectName, arm.EnumName, arm.VariantName))
+		e.line("{")
+		e.indent++
+		if arm.BindingName != "" {
+			e.line(fmt.Sprintf("%s %s = %s.%s;", typeRef(arm.BindingType, ""), arm.BindingName, subjectName, arm.VariantName))
+		}
+		e.line(fmt.Sprintf("%s = %s;", target, e.expr(arm.Value)))
+		e.indent--
+		e.line("}")
+	}
+}
+
+func (e *emitter) emitMatchReturn(matchExpr vdmir.MatchExpr) {
+	tempName := e.nextTempWithPrefix("match_result")
+	e.line(fmt.Sprintf("%s %s;", typeRef(matchExpr.Type(), ""), tempName))
+	e.emitMatchAssign(tempName, matchExpr)
+	e.line("return " + tempName + ";")
+}
+
 func (e *emitter) expr(expr vdmir.Expr) string {
 	switch x := expr.(type) {
 	case vdmir.LiteralExpr:
@@ -287,8 +412,58 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return e.whenUtility(x)
 	case vdmir.WithExpr:
 		return "/* unsupported with expr position */"
+	case vdmir.ReductionExpr:
+		return "/* unsupported reduction expr position */"
+	case vdmir.EnumConstructExpr:
+		args := make([]string, 0, len(x.Fields))
+		for _, field := range x.Fields {
+			args = append(args, e.expr(field.Value))
+		}
+		return enumConstructorName(x.EnumName, x.VariantName) + "(" + strings.Join(args, ", ") + ")"
+	case vdmir.MatchExpr:
+		return "/* unsupported match expr position */"
 	default:
 		return "/* unsupported */"
+	}
+}
+
+func reductionIdentityLiteral(expr vdmir.ReductionExpr) string {
+	switch expr.Op {
+	case vdmir.ReductionProduct:
+		return oneLiteral(expr.Type())
+	default:
+		return zeroLiteral(expr.Type())
+	}
+}
+
+func reductionCombineOperator(op vdmir.ReductionOp) string {
+	switch op {
+	case vdmir.ReductionProduct:
+		return "*"
+	default:
+		return "+"
+	}
+}
+
+func zeroLiteral(ref vdmir.Type) string {
+	switch ref.Kind {
+	case vdmir.TypeF32:
+		return "0.0"
+	case vdmir.TypeU32:
+		return "0u"
+	default:
+		return "0"
+	}
+}
+
+func oneLiteral(ref vdmir.Type) string {
+	switch ref.Kind {
+	case vdmir.TypeF32:
+		return "1.0"
+	case vdmir.TypeU32:
+		return "1u"
+	default:
+		return "1"
 	}
 }
 
@@ -313,7 +488,11 @@ func (e *emitter) whenUtility(expr vdmir.WhenUtilityExpr) string {
 }
 
 func (e *emitter) nextTemp() string {
-	name := fmt.Sprintf("__sdslv_with_%d", e.tempCounter)
+	return e.nextTempWithPrefix("with")
+}
+
+func (e *emitter) nextTempWithPrefix(prefix string) string {
+	name := fmt.Sprintf("__sdslv_%s_%d", prefix, e.tempCounter)
 	e.tempCounter++
 	return name
 }
@@ -381,4 +560,12 @@ func hlslIntrinsic(intrinsic vdmir.Intrinsic) string {
 	default:
 		return "GroupMemoryBarrierWithGroupSync"
 	}
+}
+
+func enumPayloadTypeName(enumName, variantName string) string {
+	return enumName + "_" + variantName + "Payload"
+}
+
+func enumConstructorName(enumName, variantName string) string {
+	return "__sdslv_make_" + sanitizeName(enumName) + "_" + sanitizeName(variantName)
 }

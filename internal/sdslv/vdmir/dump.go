@@ -38,7 +38,14 @@ func Dump(module Module) string {
 	for _, enum := range module.Enums {
 		line(0, "enum "+enum.Name)
 		for _, variant := range enum.Variants {
-			line(1, "variant "+variant)
+			if !variant.HasPayload {
+				line(1, "variant "+variant.Name)
+				continue
+			}
+			line(1, "variant "+variant.Name)
+			for _, field := range variant.Payload {
+				line(2, fmt.Sprintf("field %s: %s", field.Name, FormatType(field.Type)))
+			}
 		}
 	}
 	for _, resource := range module.Resources {
@@ -171,6 +178,31 @@ func FormatExpr(expr Expr) string {
 			parts = append(parts, fmt.Sprintf("%s: %s", update.Name, FormatExpr(update.Value)))
 		}
 		return FormatExpr(e.Base) + " with { " + strings.Join(parts, ", ") + " }"
+	case ReductionExpr:
+		step := ""
+		if lit, ok := e.Step.(LiteralExpr); !ok || lit.Value != "1" {
+			step = " step " + FormatExpr(e.Step)
+		}
+		return fmt.Sprintf("%s %s in %s..%s%s { %s }", e.Op, e.Name, FormatExpr(e.Start), FormatExpr(e.End), step, FormatExpr(e.Body))
+	case EnumConstructExpr:
+		if len(e.Fields) == 0 {
+			return e.EnumName + "." + e.VariantName
+		}
+		parts := make([]string, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			parts = append(parts, fmt.Sprintf("%s: %s", field.Name, FormatExpr(field.Value)))
+		}
+		return e.EnumName + "." + e.VariantName + " { " + strings.Join(parts, ", ") + " }"
+	case MatchExpr:
+		parts := make([]string, 0, len(e.Arms))
+		for _, arm := range e.Arms {
+			pattern := arm.EnumName + "." + arm.VariantName
+			if arm.BindingName != "" {
+				pattern += "(" + arm.BindingName + ")"
+			}
+			parts = append(parts, pattern+" => "+FormatExpr(arm.Value))
+		}
+		return "match " + FormatExpr(e.Subject) + " { " + strings.Join(parts, " | ") + " }"
 	default:
 		return "<expr>"
 	}
