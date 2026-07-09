@@ -320,6 +320,20 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			elseBody = &body
 		}
 		return ast.ComptimeIfStmt{Condition: specializeExpr(s.Condition, env), ThenBody: thenBody, ElseBody: elseBody}, nil
+	case ast.ComptimeMatchStmt:
+		arms := make([]ast.ComptimeMatchArm, 0, len(s.Arms))
+		for _, arm := range s.Arms {
+			body, err := specializeBlock(arm.Body, env)
+			if err != nil {
+				return nil, err
+			}
+			var pattern ast.Expr
+			if arm.Pattern != nil {
+				pattern = specializeExpr(arm.Pattern, env)
+			}
+			arms = append(arms, ast.ComptimeMatchArm{Pattern: pattern, IsElse: arm.IsElse, Body: body})
+		}
+		return ast.ComptimeMatchStmt{Subject: specializeExpr(s.Subject, env), Arms: arms}, nil
 	case ast.ForStmt:
 		body, err := specializeBlock(s.Body, env)
 		if err != nil {
@@ -469,6 +483,12 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 			return nil, err
 		}
 		return body.Statements, nil
+	case ast.ComptimeMatchStmt:
+		body, err := expandComptimeMatch(s, comptime, runtime)
+		if err != nil {
+			return nil, err
+		}
+		return body.Statements, nil
 	case ast.LetStmt:
 		out := s
 		if s.Value != nil {
@@ -524,6 +544,126 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 
 func expandRuntimeNestedBlock(block ast.Block, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (ast.Block, error) {
 	return expandComptimeBlock(block, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+}
+
+func expandComptimeMatch(stmt ast.ComptimeMatchStmt, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (ast.Block, error) {
+	subject, err := evalComptimeExpr(stmt.Subject, comptime, runtime, "comptime match scrutinee must be compile-time")
+	if err != nil {
+		return ast.Block{}, err
+	}
+	if !consteval.IsInteger(subject.Type) && subject.Type.Name != "bool" {
+		return ast.Block{}, fmt.Errorf("comptime match scrutinee must be compile-time")
+	}
+	seen := map[string]string{}
+	hasTrue := false
+	hasFalse := false
+	var elseBody *ast.Block
+	var selected *ast.Block
+	for _, arm := range stmt.Arms {
+		if arm.IsElse {
+			if elseBody != nil {
+				return ast.Block{}, fmt.Errorf("duplicate comptime match else arm")
+			}
+			body := arm.Body
+			elseBody = &body
+			continue
+		}
+		pattern, err := evalComptimeMatchPattern(arm.Pattern, comptime, runtime)
+		if err != nil {
+			return ast.Block{}, err
+		}
+		if !comptimePatternMatchesSubjectType(pattern, subject) {
+			return ast.Block{}, fmt.Errorf("comptime match arm pattern type %s does not match scrutinee type %s", pattern.Type.Name, subject.Type.Name)
+		}
+		key := comptimeValueKey(pattern)
+		label := comptimeValueLabel(pattern)
+		if prior, ok := seen[key]; ok {
+			return ast.Block{}, fmt.Errorf("duplicate comptime match arm for %s", prior)
+		}
+		seen[key] = label
+		if pattern.Type.Name == "bool" {
+			if pattern.Bool {
+				hasTrue = true
+			} else {
+				hasFalse = true
+			}
+		}
+		if selected == nil && comptimeValuesEqual(subject, pattern) {
+			body := arm.Body
+			selected = &body
+		}
+	}
+	if subject.Type.Name == "bool" {
+		if (!hasTrue || !hasFalse) && elseBody == nil {
+			return ast.Block{}, fmt.Errorf("bool comptime match requires else arm unless true and false arms are both present")
+		}
+	} else if consteval.IsInteger(subject.Type) && elseBody == nil {
+		return ast.Block{}, fmt.Errorf("comptime match over integer requires else arm")
+	}
+	if selected == nil {
+		selected = elseBody
+	}
+	if selected == nil {
+		return ast.Block{}, fmt.Errorf("no comptime match arm selected and no else arm provided")
+	}
+	return expandComptimeBlock(*selected, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+}
+
+func evalComptimeMatchPattern(expr ast.Expr, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (consteval.Value, error) {
+	switch expr.(type) {
+	case ast.IntegerLiteral, ast.BoolLiteral:
+	default:
+		return consteval.Value{}, fmt.Errorf("comptime match arm pattern must be compile-time literal")
+	}
+	value, err := evalComptimeExpr(expr, comptime, runtime, "comptime match arm pattern must be compile-time literal")
+	if err != nil {
+		return consteval.Value{}, err
+	}
+	if !consteval.IsInteger(value.Type) && value.Type.Name != "bool" {
+		return consteval.Value{}, fmt.Errorf("comptime match arm pattern must be compile-time literal")
+	}
+	return value, nil
+}
+
+func comptimePatternMatchesSubjectType(pattern, subject consteval.Value) bool {
+	if subject.Type.Name == "bool" || pattern.Type.Name == "bool" {
+		return subject.Type.Name == pattern.Type.Name
+	}
+	return consteval.IsInteger(subject.Type) && consteval.IsInteger(pattern.Type)
+}
+
+func comptimeValuesEqual(left, right consteval.Value) bool {
+	if left.Type.Name == "bool" && right.Type.Name == "bool" {
+		return left.Bool == right.Bool
+	}
+	if consteval.IsInteger(left.Type) && consteval.IsInteger(right.Type) {
+		return left.Int32 == right.Int32
+	}
+	return false
+}
+
+func comptimeValueKey(value consteval.Value) string {
+	if value.Type.Name == "bool" {
+		if value.Bool {
+			return "bool:true"
+		}
+		return "bool:false"
+	}
+	return "int:" + strconv.FormatInt(value.Int32, 10)
+}
+
+func comptimeValueLabel(value consteval.Value) string {
+	if value.Type.Name == "bool" {
+		if value.Bool {
+			return "true"
+		}
+		return "false"
+	}
+	text := strconv.FormatInt(value.Int32, 10)
+	if value.Type.Name == "u32" {
+		text += "u"
+	}
+	return text
 }
 
 func evalComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding, context string) (consteval.Value, error) {

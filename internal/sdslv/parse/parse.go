@@ -694,8 +694,10 @@ func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
 		return p.parseComptimeLet()
 	case token.KeywordIf:
 		return p.parseComptimeIf()
+	case token.KeywordMatch:
+		return p.parseComptimeMatch()
 	default:
-		return nil, p.errorAtCurrent("expected let or if after comptime")
+		return nil, p.errorAtCurrent("expected let, if, or match after comptime")
 	}
 }
 
@@ -744,6 +746,44 @@ func (p *parser) parseComptimeIf() (ast.ComptimeIfStmt, error) {
 		elseBody = &body
 	}
 	return ast.ComptimeIfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
+}
+
+func (p *parser) parseComptimeMatch() (ast.ComptimeMatchStmt, error) {
+	p.advance()
+	subject, err := p.parseExpression()
+	if err != nil {
+		return ast.ComptimeMatchStmt{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after comptime match subject"); err != nil {
+		return ast.ComptimeMatchStmt{}, err
+	}
+	var arms []ast.ComptimeMatchArm
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.ComptimeMatchStmt{}, p.errorAtCurrent("expected '}' to close comptime match")
+		}
+		arm := ast.ComptimeMatchArm{}
+		if p.match(token.KeywordElse) {
+			arm.IsElse = true
+		} else {
+			pattern, err := p.parseExpression()
+			if err != nil {
+				return ast.ComptimeMatchStmt{}, err
+			}
+			arm.Pattern = pattern
+		}
+		if _, err := p.expect(token.Arrow, "expected '=>' after comptime match arm pattern"); err != nil {
+			return ast.ComptimeMatchStmt{}, err
+		}
+		body, err := p.parseBlock()
+		if err != nil {
+			return ast.ComptimeMatchStmt{}, err
+		}
+		arm.Body = body
+		arms = append(arms, arm)
+	}
+	p.advance()
+	return ast.ComptimeMatchStmt{Subject: subject, Arms: arms}, nil
 }
 
 func (p *parser) parseLet() (ast.LetStmt, error) {

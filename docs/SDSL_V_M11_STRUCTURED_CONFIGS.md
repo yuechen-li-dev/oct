@@ -16,7 +16,7 @@ SDSL-V source
 
 Concepts and configs remain compile-time only. VD-MIR remains the boundary. Runtime shader semantics do not change unless source is migrated.
 
-M13 keeps this separation: structured configs choose concrete variants, while constrained `comptime` shapes code inside those variants after monomorphization.
+M13 keeps this separation: structured configs choose concrete variants, while constrained `comptime` shapes code inside those variants after monomorphization. M14 adds `comptime match` for multi-way structural selection over resolved config fields and prior comptime values.
 
 ## What M11 adds
 

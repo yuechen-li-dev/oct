@@ -263,7 +263,15 @@ Current M13 additions:
 - function-body `static assert` for selected comptime branches;
 - rejection of runtime parameters, resources, thread builtins, workgroup values, runtime locals, matrix views, tile reads, reductions, match payloads, and runtime function calls in comptime expressions.
 
-M13 `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
+Current M14 additions:
+
+- constrained multi-way compile-time shader staging with `comptime match`;
+- integer and bool literal arm patterns plus `else`;
+- integer matches require `else`;
+- bool matches are exhaustive with both `true` and `false`, otherwise they require `else`;
+- duplicate literal patterns are rejected.
+
+M13/M14 `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
 
 ### Shader
 
@@ -369,11 +377,14 @@ Fallible functions declare an error type with `! ErrorType`. Only `Error` is rec
 | `expr;` | Expression statement |
 | `comptime let name: Type = const_expr;` | Compile-time local binding removed before VD-MIR |
 | `comptime if const_bool { ... } else { ... }` | Compile-time branch selection before VD-MIR |
+| `comptime match const_expr { pattern => { ... } else => { ... } }` | Multi-way compile-time branch selection before VD-MIR |
 | `static assert const_bool;` | Compile-time assertion, including inside selected `comptime if` branches |
 
 In the compute subset, workgroup arrays are also mutable assignment targets. Barrier builtins such as `WorkgroupMemoryBarrierWithSync();` are only valid as expression statements.
 
-`comptime let` and `comptime if` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. No `comptime for` or comptime functions are supported in M13.
+`comptime let`, `comptime if`, and `comptime match` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. No `comptime for` or comptime functions are supported in M14.
+
+`comptime match` is a statement, not runtime branching. It supports integer literal patterns, bool literal patterns, and `else` in M14. Integer matches require an `else` arm. Bool matches require either both `true` and `false` arms or an `else` arm. Only the selected arm is spliced into the AST before VD-MIR lowering; non-selected arms do not fire `static assert` and do not reach HLSL. Runtime `match` remains a separate expression form that lowers through VD-MIR.
 
 `while` loops are explicitly not supported. Use bounded `for` loops instead.
 
@@ -794,10 +805,12 @@ stage-method ::= 'stage' STAGE 'fn' IDENT '(' params ')' '->' type-ref body
 STAGE        ::= 'vertex' | 'pixel'
 
 body         ::= '{' stmt* '}'
-stmt         ::= let | comptime-let | comptime-if | static-assert | assign | return | if | for | expr-stmt
+stmt         ::= let | comptime-let | comptime-if | comptime-match | static-assert | assign | return | if | for | expr-stmt
 let          ::= 'let' IDENT ':' type-ref ('=' expr)? ';'
 comptime-let ::= 'comptime' 'let' IDENT ':' type-ref '=' expr ';'
 comptime-if  ::= 'comptime' 'if' expr '{' stmt* '}' ('else' '{' stmt* '}')?
+comptime-match ::= 'comptime' 'match' expr '{' comptime-match-arm+ '}'
+comptime-match-arm ::= (expr | 'else') '=>' '{' stmt* '}'
 static-assert ::= 'static' 'assert' expr ';'
 assign       ::= expr '=' expr ';'
 for          ::= 'for' IDENT 'in' expr '..' expr ('step' expr)? '{' stmt* '}'

@@ -272,6 +272,42 @@ return;
 	}
 }
 
+func TestBuildModuleParsesComptimeMatch(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime match 16u {
+8u => {
+return;
+}
+16u => {
+comptime match true {
+true => { let x: u32 = 1u; }
+false => { let x: u32 = 0u; }
+}
+}
+else => {
+static assert false;
+}
+}
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	matchStmt, ok := shader.Methods[0].Body.Statements[0].(ast.ComptimeMatchStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want ComptimeMatchStmt", shader.Methods[0].Body.Statements[0])
+	}
+	if got := len(matchStmt.Arms); got != 3 {
+		t.Fatalf("len(Arms) = %d, want 3", got)
+	}
+	if !matchStmt.Arms[2].IsElse {
+		t.Fatalf("third arm should be else")
+	}
+	if _, ok := matchStmt.Arms[1].Body.Statements[0].(ast.ComptimeMatchStmt); !ok {
+		t.Fatalf("nested stmt = %T, want ComptimeMatchStmt", matchStmt.Arms[1].Body.Statements[0])
+	}
+}
+
 func TestBuildModuleParsesStructuredConceptsDefaultsAndFatArrowConfig(t *testing.T) {
 	module := parseTestModule(t, `concept TileConfig {
 Threads: {

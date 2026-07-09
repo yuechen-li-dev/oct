@@ -627,6 +627,70 @@ compile Demo<Tile16> as Demo16;`)
 	}
 }
 
+func TestModuleExpandsComptimeMatchBeforeVDMIR(t *testing.T) {
+	mir := lowerSource(t, `concept TileConfig {
+Tile: { K: u32; };
+UseFastPath: bool = true;
+}
+config Tile16: TileConfig {
+Tile.K => 16u;
+UseFastPath => true;
+}
+template<C: TileConfig>
+shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let K: u32 = C.Tile.K;
+comptime match K {
+8u => {
+static assert false;
+let dropped: u32 = 8u;
+}
+16u => {
+comptime let LocalK: u32 = 16u;
+static assert LocalK == C.Tile.K;
+let selected: u32 = LocalK;
+}
+else => {
+static assert false;
+let fallback: u32 = 0u;
+}
+}
+comptime match C.UseFastPath {
+true => {
+let fast: u32 = 1u;
+}
+false => {
+static assert false;
+let slow: u32 = 0u;
+}
+}
+return;
+}
+}
+compile Demo<Tile16> as Demo16;`)
+	fn := findFunction(t, mir, "Demo16_CS")
+	if got := len(fn.Body.Statements); got != 3 {
+		t.Fatalf("len(statements) = %d, want selected let, fast let, return", got)
+	}
+	selected, ok := fn.Body.Statements[0].(vdmir.LetStmt)
+	if !ok || selected.Name != "selected" {
+		t.Fatalf("stmt[0] = %#v, want selected let", fn.Body.Statements[0])
+	}
+	if lit, ok := selected.Value.(vdmir.LiteralExpr); !ok || lit.Value != "16u" {
+		t.Fatalf("selected value = %#v, want 16u literal", selected.Value)
+	}
+	fast, ok := fn.Body.Statements[1].(vdmir.LetStmt)
+	if !ok || fast.Name != "fast" {
+		t.Fatalf("stmt[1] = %#v, want fast let", fn.Body.Statements[1])
+	}
+	dump := vdmir.Dump(mir)
+	for _, banned := range []string{"comptime", "dropped", "fallback", "slow"} {
+		if strings.Contains(dump, banned) {
+			t.Fatalf("VDMIR should not contain %q:\n%s", banned, dump)
+		}
+	}
+}
+
 func TestModuleRejectsComptimeRuntimeDependencies(t *testing.T) {
 	cases := []struct {
 		name string
@@ -677,6 +741,33 @@ return;
 }`,
 			want: "comptime expression cannot reference runtime local `x`",
 		},
+		{
+			name: "comptime match runtime parameter field",
+			src: `record Params { M: u32; }
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+comptime match params.M {
+1u => { return; }
+else => { return; }
+}
+return;
+}
+}`,
+			want: "comptime expression cannot reference runtime parameter `params.M`",
+		},
+		{
+			name: "comptime match thread builtin",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime match GroupThreadID.x {
+0u => { return; }
+else => { return; }
+}
+return;
+}
+}`,
+			want: "comptime expression cannot reference thread builtin `GroupThreadID.x`",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -690,6 +781,89 @@ return;
 			}
 			if err := validate.Module(module); err != nil {
 				t.Fatalf("validate.Module() error = %v", err)
+			}
+			_, err = Module(module)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Module() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestModuleRejectsComptimeMatchErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "duplicate integer arm",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime match 16u {
+16u => { return; }
+16u => { return; }
+else => { return; }
+}
+return;
+}
+}`,
+			want: "duplicate comptime match arm for 16u",
+		},
+		{
+			name: "integer requires else",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime match 16u {
+16u => { return; }
+}
+return;
+}
+}`,
+			want: "comptime match over integer requires else arm",
+		},
+		{
+			name: "bool one arm requires else",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime match true {
+true => { return; }
+}
+return;
+}
+}`,
+			want: "bool comptime match requires else arm",
+		},
+		{
+			name: "unsupported pattern expression",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime match 16u {
+8u + 8u => { return; }
+else => { return; }
+}
+return;
+}
+}`,
+			want: "comptime match arm pattern must be compile-time literal",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatalf("BuildModule() error = %v", err)
+			}
+			validateErr := validate.Module(module)
+			if validateErr != nil && strings.Contains(validateErr.Error(), tc.want) {
+				return
+			}
+			if validateErr != nil {
+				t.Fatalf("validate.Module() error = %v, want %q", validateErr, tc.want)
 			}
 			_, err = Module(module)
 			if err == nil || !strings.Contains(err.Error(), tc.want) {

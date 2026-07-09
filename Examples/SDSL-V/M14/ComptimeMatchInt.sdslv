@@ -1,0 +1,28 @@
+namespace Examples.SDSLV.M14;
+
+shader M14ComptimeMatchInt {
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        comptime let TileK: u32 = 16u;
+
+        comptime match TileK {
+            8u => {
+                static assert false;
+                let dropped: u32 = 8u;
+            }
+            16u => {
+                comptime let KUnroll: u32 = 16u;
+                static assert KUnroll == TileK;
+                let selected: u32 = KUnroll;
+            }
+            32u => {
+                static assert false;
+                let dropped32: u32 = 32u;
+            }
+            else => {
+                static assert false;
+                let fallback: u32 = 0u;
+            }
+        }
+        return;
+    }
+}

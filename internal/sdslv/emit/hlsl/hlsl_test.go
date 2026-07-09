@@ -86,6 +86,35 @@ return;
 	}
 }
 
+func TestEmitComptimeMatchSelectedBranchOnly(t *testing.T) {
+	hlsl := emitSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let TileK: u32 = 16u;
+comptime match TileK {
+8u => {
+let dropped: u32 = 8u;
+}
+16u => {
+comptime let LocalK: u32 = 16u;
+let selected: u32 = LocalK;
+}
+else => {
+let fallback: u32 = 0u;
+}
+}
+return;
+}
+}`)
+	for _, banned := range []string{"comptime", "dropped", "fallback", "8u", "0u"} {
+		if strings.Contains(hlsl, banned) {
+			t.Fatalf("HLSL should not contain %q:\n%s", banned, hlsl)
+		}
+	}
+	if !strings.Contains(hlsl, "uint selected = 16u;") {
+		t.Fatalf("HLSL missing selected branch:\n%s", hlsl)
+	}
+}
+
 func TestEmitWhenUtilityFromVDMIR(t *testing.T) {
 	text := `shader Picker {
 fn Pick(flag: bool) -> f32 {

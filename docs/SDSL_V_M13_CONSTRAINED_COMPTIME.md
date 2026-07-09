@@ -111,6 +111,8 @@ M13 intentionally does not add:
 
 Future `comptime for` can build on the same constrained staging pass, but it is deferred.
 
+M14 extends the same constrained staging model with `comptime match` for multi-way compile-time selection. See `docs/SDSL_V_M14_COMPTIME_MATCH.md`.
+
 ## Examples
 
 - `examples/SDSL-V/M13/ComptimeLet.sdslv`

@@ -753,6 +753,35 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if s.ElseBody != nil {
 			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
 		}
+	case ast.ComptimeMatchStmt:
+		v.validateWithPlacement(s.Subject, false)
+		v.validateMatchPlacement(s.Subject, false)
+		v.validateReductionPlacement(s.Subject, false)
+		subjectType := v.exprType(s.Subject, scope, shaderName, templateParam)
+		if !isInteger(subjectType) && subjectType.Name != "bool" && subjectType.Name != "<error>" {
+			v.errorf("comptime match scrutinee must be compile-time")
+		}
+		seenElse := false
+		for _, arm := range s.Arms {
+			if arm.IsElse {
+				if seenElse {
+					v.errorf("duplicate comptime match else arm")
+				}
+				seenElse = true
+			} else {
+				if !isComptimeMatchLiteralPattern(arm.Pattern) {
+					v.errorf("comptime match arm pattern must be compile-time literal")
+				}
+				v.validateWithPlacement(arm.Pattern, false)
+				v.validateMatchPlacement(arm.Pattern, false)
+				v.validateReductionPlacement(arm.Pattern, false)
+				patternType := v.exprType(arm.Pattern, scope, shaderName, templateParam)
+				if subjectType.Name != "<error>" && patternType.Name != "<error>" && !v.compatible(subjectType, patternType) {
+					v.errorf("comptime match arm pattern type %s does not match scrutinee type %s", typeName(patternType), typeName(subjectType))
+				}
+			}
+			v.validateBlock(arm.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		}
 	case ast.ForStmt:
 		v.validateLoopAttributes(s.Attributes)
 		v.validateWithPlacement(s.Start, false)
@@ -1792,6 +1821,15 @@ func isFloat(ref ast.TypeRef) bool { return ref.Name == "f32" || ref.Name == "fl
 
 func isInteger(ref ast.TypeRef) bool {
 	return ref.Name == "i32" || ref.Name == "u32"
+}
+
+func isComptimeMatchLiteralPattern(expr ast.Expr) bool {
+	switch expr.(type) {
+	case ast.IntegerLiteral, ast.BoolLiteral:
+		return true
+	default:
+		return false
+	}
 }
 
 func isNumeric(ref ast.TypeRef) bool { return isInteger(ref) || isFloat(ref) }

@@ -263,6 +263,19 @@ type ComptimeIfStmt struct {
 
 func (ComptimeIfStmt) stmtNode() {}
 
+type ComptimeMatchStmt struct {
+	Subject Expr
+	Arms    []ComptimeMatchArm
+}
+
+func (ComptimeMatchStmt) stmtNode() {}
+
+type ComptimeMatchArm struct {
+	Pattern Expr
+	IsElse  bool
+	Body    Block
+}
+
 type ForStmt struct {
 	Attributes []Attribute
 	Name       string

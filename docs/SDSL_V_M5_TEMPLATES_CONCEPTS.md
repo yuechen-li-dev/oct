@@ -81,7 +81,7 @@ M5 monomorphizes before VD-MIR lowering.
 
 This keeps template logic out of both VD-MIR and the HLSL backend.
 
-M13 adds a separate `comptime` pass after monomorphization. Templates/configs still choose concrete variants; `comptime let` and `comptime if` only shape code inside the concrete specialized shader. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md`.
+M13 adds a separate `comptime` pass after monomorphization. Templates/configs still choose concrete variants; `comptime let` and `comptime if` only shape code inside the concrete specialized shader. M14 adds `comptime match` as the multi-way form of the same constrained staging model. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md` and `docs/SDSL_V_M14_COMPTIME_MATCH.md`.
 
 ## Generated metadata convention
 
