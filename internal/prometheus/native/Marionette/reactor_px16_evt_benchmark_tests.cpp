@@ -1,8 +1,11 @@
 #include "../reactor_api.h"
 #include "../reactor_dominatus_predictor.h"
+#include "../reactor_sgemm_dispatch_metadata.h"
 #include "../reactor_judgment_engine.h"
 #include "../reactor_policy_memory.h"
 #include "../reactor_vulkan.h"
+#include "../reactor_vulkan_sgemm_scalar_plus_spirv.h"
+#include "../reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
 #include "test_harness.h"
 
 #include <algorithm>
@@ -134,6 +137,8 @@ namespace
         bool skipped = false;
         std::string skip_reason;
         int runtime_status = PROM_OK;
+        std::uint32_t setup_stage = PROM_STAGE_NONE;
+        int setup_detail_code = 0;
         std::uint32_t final_stage = PROM_STAGE_NONE;
         int final_detail_code = 0;
         bool resident_mode_available = false;
@@ -153,6 +158,72 @@ namespace
         std::string gpu_timing_failure_reason = "UNKNOWN";
         PrometheusSgemmPolicyDiagnostics diag{};
         std::vector<std::string> anomalies;
+    };
+
+    struct ResidentFailureMatrixRow
+    {
+        std::string shape;
+        std::uint32_t m = 0u;
+        std::uint32_t n = 0u;
+        std::uint32_t k = 0u;
+        std::string requested_variant;
+        std::string staged_requested_variant;
+        std::string staged_executed_variant;
+        std::string resident_executed_variant;
+        std::string production_resident_executed_variant;
+        std::string staged_path;
+        std::string resident_failure_stage = "none";
+        std::string staged_warmup_result = "not_run";
+        std::string staged_measured_result = "not_run";
+        std::string resident_setup_result = "not_run";
+        std::string resident_warmup_result = "not_run";
+        std::string resident_measured_result = "not_run";
+        std::string vk_result = "none";
+        int staged_runtime_status = PROM_OK;
+        std::uint32_t staged_out_stage = PROM_STAGE_NONE;
+        int staged_out_detail_code = 0;
+        int resident_runtime_status = PROM_OK;
+        std::uint32_t resident_setup_stage = PROM_STAGE_NONE;
+        int resident_setup_detail_code = 0;
+        std::uint32_t resident_out_stage = PROM_STAGE_NONE;
+        int resident_out_detail_code = 0;
+        bool production_resident_succeeds = false;
+        bool resident_mode_available = false;
+        bool selected_pipeline_present = false;
+        bool descriptor_update_status = false;
+        bool timestamp_query_available = false;
+        bool timestamp_query_valid = false;
+        std::uint32_t dispatch_groups_x = 0u;
+        std::uint32_t dispatch_groups_y = 0u;
+        std::uint32_t dispatch_groups_z = 0u;
+        std::uint64_t a_elements = 0u;
+        std::uint64_t b_elements = 0u;
+        std::uint64_t c_elements = 0u;
+        std::uint64_t a_bytes = 0u;
+        std::uint64_t b_bytes = 0u;
+        std::uint64_t c_bytes = 0u;
+        std::uint32_t descriptor_binding_count = 3u;
+        std::uint32_t timestamp_query_slot_begin = 0u;
+        std::uint32_t timestamp_query_slot_end = 1u;
+        std::uint32_t resident_iteration_count = 0u;
+        std::vector<std::string> notes;
+    };
+
+    struct RuntimeHandleScope
+    {
+        void* handle = nullptr;
+
+        RuntimeHandleScope() = default;
+        RuntimeHandleScope(const RuntimeHandleScope&) = delete;
+        RuntimeHandleScope& operator=(const RuntimeHandleScope&) = delete;
+
+        ~RuntimeHandleScope()
+        {
+            if (handle != nullptr) {
+                (void)prometheus_reactor_runtime_destroy(handle);
+                handle = nullptr;
+            }
+        }
     };
 
     struct SelectorVsFastestRow
@@ -215,6 +286,13 @@ namespace
         bool resident_device_mode_available = false;
         bool explicit_cube_1024_enabled = false;
     };
+
+    VariantComparisonRow run_explicit_variant_case(void* handle, const ShapeCase& shape, std::uint32_t variant, bool validate_output);
+    ResidentBenchmarkRow run_resident_case(void* handle,
+                                           const ShapeCase& shape,
+                                           bool explicit_variant,
+                                           std::uint32_t requested_variant,
+                                           bool validate_output);
 
     std::string json_escape(std::string_view value)
     {
@@ -605,6 +683,116 @@ namespace
             return 5u;
         }
         return 3u;
+    }
+
+    bool create_runtime(RuntimeHandleScope& runtime, PrometheusCaps& caps, std::string& failure_reason)
+    {
+        runtime.handle = nullptr;
+        if (prometheus_reactor_runtime_create(nullptr, &runtime.handle) != PROM_OK || runtime.handle == nullptr) {
+            failure_reason = "runtime_create_failed";
+            return false;
+        }
+        if (prometheus_reactor_runtime_probe(runtime.handle, &caps) != PROM_OK) {
+            failure_reason = "runtime_probe_failed";
+            return false;
+        }
+        if (caps.available == 0u) {
+            failure_reason = "vulkan_runtime_unavailable";
+            return false;
+        }
+        return true;
+    }
+
+    prom_sgemm_dispatch_geometry dispatch_geometry_for_variant(std::uint32_t variant, std::uint32_t m, std::uint32_t n)
+    {
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
+            const prom_sgemm_kernel_dispatch_metadata metadata{
+                k_prom_sgemm_scalar_plus_spirv_numthreads_x,
+                k_prom_sgemm_scalar_plus_spirv_numthreads_y,
+                k_prom_sgemm_scalar_plus_spirv_numthreads_z,
+                k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m,
+                k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n,
+                k_prom_sgemm_scalar_plus_spirv_tile_m,
+                k_prom_sgemm_scalar_plus_spirv_tile_n,
+                0u,
+                k_prom_sgemm_scalar_plus_spirv_unroll_k
+            };
+            return prom_sgemm_dispatch_geometry_for_metadata(m, n, &metadata);
+        }
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
+            const prom_sgemm_kernel_dispatch_metadata metadata{
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_y,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_z,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_m,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_n,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_m,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_n,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_k,
+                k_prom_sgemm_tile16x16_shared_fp32_spirv_unroll_k
+            };
+            return prom_sgemm_dispatch_geometry_for_metadata(m, n, &metadata);
+        }
+
+        prom_sgemm_dispatch_geometry geometry{};
+        geometry.groups_x = prom_sgemm_ceil_div_u32(m, 8u);
+        geometry.groups_y = prom_sgemm_ceil_div_u32(n, 8u);
+        geometry.groups_z = 1u;
+        geometry.logical_m_per_group = 8u;
+        geometry.logical_n_per_group = 8u;
+        return geometry;
+    }
+
+    std::string vk_result_name(int detail_code)
+    {
+        switch (detail_code) {
+            case VK_SUCCESS:
+                return "VK_SUCCESS";
+            case VK_ERROR_DEVICE_LOST:
+                return "VK_ERROR_DEVICE_LOST";
+            case VK_ERROR_OUT_OF_HOST_MEMORY:
+                return "VK_ERROR_OUT_OF_HOST_MEMORY";
+            case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+                return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
+            case VK_ERROR_INITIALIZATION_FAILED:
+                return "VK_ERROR_INITIALIZATION_FAILED";
+            default:
+                return detail_code < 0 ? ("VK_RESULT_" + std::to_string(detail_code)) : "none";
+        }
+    }
+
+    std::string diagnostic_failure_stage(const VariantComparisonRow& row)
+    {
+        if (row.runtime_status == PROM_OK) {
+            return "none";
+        }
+        if (std::find(row.anomalies.begin(), row.anomalies.end(), "warmup_call_failed") != row.anomalies.end()) {
+            return "warmup_dispatch";
+        }
+        if (std::find(row.anomalies.begin(), row.anomalies.end(), "measured_call_failed") != row.anomalies.end()) {
+            return "measured_dispatch";
+        }
+        if (row.final_stage == PROM_STAGE_TRANSFER_IN) {
+            return "allocate_buffers";
+        }
+        return "unknown";
+    }
+
+    std::string diagnostic_failure_stage(const ResidentBenchmarkRow& row)
+    {
+        if (row.runtime_status == PROM_OK) {
+            return "none";
+        }
+        if (row.resident_mode_used && row.iterations == 0u) {
+            return "warmup_dispatch";
+        }
+        if (row.setup_stage != PROM_STAGE_NONE && row.resident_mode_used == false) {
+            return "setup_dispatch";
+        }
+        if (row.setup_stage == PROM_STAGE_TRANSFER_IN) {
+            return "allocate_buffers";
+        }
+        return "unknown";
     }
 
     std::vector<float> dense_deterministic_matrix(std::uint32_t rows, std::uint32_t cols, std::uint32_t salt)
@@ -1072,6 +1260,8 @@ namespace
         row.resident_mode_available = native.resident_mode_available != 0u;
         row.resident_mode_used = native.resident_mode_used != 0u;
         row.executed_variant = occupancy_variant_name(native.executed_variant);
+        row.setup_stage = native.setup_stage;
+        row.setup_detail_code = native.setup_detail_code;
         row.final_stage = native.final_stage;
         row.final_detail_code = native.final_detail_code;
         row.upload_once_ms = ns_to_ms(native.upload_once_wall_ns);
@@ -1184,6 +1374,255 @@ namespace
             row.reference_mode = "none";
         }
         return row;
+    }
+
+    VariantComparisonRow run_explicit_variant_case_fresh(const ShapeCase& shape, std::uint32_t variant, bool validate_output)
+    {
+        VariantComparisonRow row;
+        row.shape = shape.name;
+        row.m = shape.m;
+        row.n = shape.n;
+        row.k = shape.k;
+        row.variant = occupancy_variant_name(variant);
+        row.requested_variant = occupancy_variant_name(variant);
+
+        RuntimeHandleScope runtime;
+        PrometheusCaps caps{};
+        std::string failure_reason;
+        if (!create_runtime(runtime, caps, failure_reason)) {
+            row.runtime_status = PROM_ERROR;
+            row.final_stage = PROM_STAGE_INIT;
+            row.final_detail_code = PROM_ERROR;
+            row.anomalies.push_back(failure_reason);
+            return row;
+        }
+        return run_explicit_variant_case(runtime.handle, shape, variant, validate_output);
+    }
+
+    ResidentBenchmarkRow run_resident_case_fresh(const ShapeCase& shape,
+                                                 bool explicit_variant,
+                                                 std::uint32_t requested_variant,
+                                                 bool validate_output)
+    {
+        ResidentBenchmarkRow row;
+        row.shape = shape.name;
+        row.m = shape.m;
+        row.n = shape.n;
+        row.k = shape.k;
+        row.mode = explicit_variant ? "explicit_variant" : "production_selector";
+        row.variant = explicit_variant ? occupancy_variant_name(requested_variant) : "PRODUCTION_SELECTOR";
+        row.requested_variant = explicit_variant ? occupancy_variant_name(requested_variant) : "selector";
+
+        RuntimeHandleScope runtime;
+        PrometheusCaps caps{};
+        std::string failure_reason;
+        if (!create_runtime(runtime, caps, failure_reason)) {
+            row.runtime_status = PROM_ERROR;
+            row.final_stage = PROM_STAGE_INIT;
+            row.final_detail_code = PROM_ERROR;
+            row.anomalies.push_back(failure_reason);
+            return row;
+        }
+        return run_resident_case(runtime.handle, shape, explicit_variant, requested_variant, validate_output);
+    }
+
+    ResidentFailureMatrixRow build_failure_matrix_row(const ShapeCase& shape, std::uint32_t variant)
+    {
+        ResidentFailureMatrixRow row;
+        row.shape = shape.name;
+        row.m = shape.m;
+        row.n = shape.n;
+        row.k = shape.k;
+        row.requested_variant = occupancy_variant_name(variant);
+        row.a_elements = static_cast<std::uint64_t>(shape.m) * static_cast<std::uint64_t>(shape.k);
+        row.b_elements = static_cast<std::uint64_t>(shape.k) * static_cast<std::uint64_t>(shape.n);
+        row.c_elements = static_cast<std::uint64_t>(shape.m) * static_cast<std::uint64_t>(shape.n);
+        row.a_bytes = row.a_elements * sizeof(float);
+        row.b_bytes = row.b_elements * sizeof(float);
+        row.c_bytes = row.c_elements * sizeof(float);
+        const prom_sgemm_dispatch_geometry geometry = dispatch_geometry_for_variant(variant, shape.m, shape.n);
+        row.dispatch_groups_x = geometry.groups_x;
+        row.dispatch_groups_y = geometry.groups_y;
+        row.dispatch_groups_z = geometry.groups_z;
+        row.selected_pipeline_present =
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32 ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8;
+        row.descriptor_update_status = row.selected_pipeline_present;
+
+        const ResidentBenchmarkRow production_resident = run_resident_case_fresh(
+            shape,
+            false,
+            PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+            false);
+        row.production_resident_succeeds = production_resident.runtime_status == PROM_OK;
+        row.production_resident_executed_variant = production_resident.executed_variant;
+        if (!row.production_resident_succeeds) {
+            row.notes.push_back("production_resident_failed_on_fresh_runtime");
+        }
+
+        const VariantComparisonRow staged = run_explicit_variant_case_fresh(shape, variant, false);
+        row.staged_requested_variant = staged.requested_variant;
+        row.staged_executed_variant = staged.executed_variant;
+        row.staged_path = staged.path;
+        row.staged_runtime_status = staged.runtime_status;
+        row.staged_out_stage = staged.final_stage;
+        row.staged_out_detail_code = staged.final_detail_code;
+        row.staged_warmup_result = std::find(staged.anomalies.begin(), staged.anomalies.end(), "warmup_call_failed") != staged.anomalies.end()
+            ? "failed"
+            : "passed";
+        row.staged_measured_result = staged.runtime_status == PROM_OK
+            ? "passed"
+            : (std::find(staged.anomalies.begin(), staged.anomalies.end(), "measured_call_failed") != staged.anomalies.end()
+                ? "failed"
+                : "not_run");
+
+        const ResidentBenchmarkRow resident = run_resident_case_fresh(shape, true, variant, false);
+        row.resident_executed_variant = resident.executed_variant;
+        row.resident_runtime_status = resident.runtime_status;
+        row.resident_setup_stage = resident.setup_stage;
+        row.resident_setup_detail_code = resident.setup_detail_code;
+        row.resident_out_stage = resident.final_stage;
+        row.resident_out_detail_code = resident.final_detail_code;
+        row.resident_mode_available = resident.resident_mode_available;
+        row.resident_iteration_count = resident.iterations;
+        row.timestamp_query_available = resident.diag.p13_m5_timestamp_available != 0u;
+        row.timestamp_query_valid = resident.diag.p13_m5_last_gpu_timing_valid != 0u;
+        row.resident_setup_result = (resident.runtime_status == PROM_OK || resident.resident_mode_used) ? "passed" : "failed";
+        row.resident_warmup_result = resident.runtime_status == PROM_OK
+            ? "passed"
+            : (resident.resident_mode_used && resident.iterations == 0u ? "failed" : "not_run");
+        row.resident_measured_result = resident.runtime_status == PROM_OK && resident.iterations > 0u ? "passed" : "not_run";
+        row.resident_failure_stage = staged.runtime_status != PROM_OK
+            ? diagnostic_failure_stage(staged)
+            : diagnostic_failure_stage(resident);
+        row.vk_result = vk_result_name(
+            staged.runtime_status != PROM_OK ? staged.final_detail_code : resident.final_detail_code);
+        if (staged.runtime_status != PROM_OK) {
+            row.notes.push_back("fresh_runtime_staged_explicit_failed");
+        }
+        if (resident.runtime_status != PROM_OK) {
+            row.notes.push_back("fresh_runtime_resident_explicit_failed");
+        }
+        if (resident.runtime_status != PROM_OK &&
+            resident.final_stage == PROM_STAGE_INIT &&
+            resident.final_detail_code == PROM_ERROR) {
+            row.notes.push_back("runtime_unavailable_after_prior_device_loss");
+        }
+        if (resident.runtime_status != PROM_OK && resident.final_detail_code == VK_ERROR_DEVICE_LOST) {
+            row.notes.push_back("resident_explicit_hit_device_lost");
+        }
+        if (staged.runtime_status != PROM_OK && staged.final_detail_code == VK_ERROR_DEVICE_LOST) {
+            row.notes.push_back("staged_explicit_hit_device_lost");
+        }
+        return row;
+    }
+
+    std::string render_failure_matrix_json(const std::vector<ResidentFailureMatrixRow>& rows)
+    {
+        std::ostringstream out;
+        out << "{\n";
+        out << "  \"schema\": \"prometheus.sgemm.px16.resident_failure_matrix.v1\",\n";
+        out << "  \"timestamp_utc\": \"" << json_escape(timestamp_now_utc()) << "\",\n";
+        out << "  \"rows\": [\n";
+        for (std::size_t index = 0; index < rows.size(); ++index) {
+            const ResidentFailureMatrixRow& row = rows[index];
+            out << "    {\"shape\": \"" << json_escape(row.shape)
+                << "\", \"m\": " << row.m
+                << ", \"n\": " << row.n
+                << ", \"k\": " << row.k
+                << ", \"requested_variant\": \"" << json_escape(row.requested_variant)
+                << "\", \"staged_requested_variant\": \"" << json_escape(row.staged_requested_variant)
+                << "\", \"staged_executed_variant\": \"" << json_escape(row.staged_executed_variant)
+                << "\", \"resident_executed_variant\": \"" << json_escape(row.resident_executed_variant)
+                << "\", \"production_resident_executed_variant\": \"" << json_escape(row.production_resident_executed_variant)
+                << "\", \"staged_path\": \"" << json_escape(row.staged_path)
+                << "\", \"resident_failure_stage\": \"" << json_escape(row.resident_failure_stage)
+                << "\", \"staged_warmup_result\": \"" << json_escape(row.staged_warmup_result)
+                << "\", \"staged_measured_result\": \"" << json_escape(row.staged_measured_result)
+                << "\", \"resident_setup_result\": \"" << json_escape(row.resident_setup_result)
+                << "\", \"resident_warmup_result\": \"" << json_escape(row.resident_warmup_result)
+                << "\", \"resident_measured_result\": \"" << json_escape(row.resident_measured_result)
+                << "\", \"vk_result\": \"" << json_escape(row.vk_result)
+                << "\", \"staged_runtime_status\": " << row.staged_runtime_status
+                << ", \"staged_out_stage\": " << row.staged_out_stage
+                << ", \"staged_out_detail_code\": " << row.staged_out_detail_code
+                << ", \"resident_runtime_status\": " << row.resident_runtime_status
+                << ", \"resident_setup_stage\": " << row.resident_setup_stage
+                << ", \"resident_setup_detail_code\": " << row.resident_setup_detail_code
+                << ", \"resident_out_stage\": " << row.resident_out_stage
+                << ", \"resident_out_detail_code\": " << row.resident_out_detail_code
+                << ", \"production_resident_succeeds\": " << bool_json(row.production_resident_succeeds)
+                << ", \"resident_mode_available\": " << bool_json(row.resident_mode_available)
+                << ", \"selected_pipeline_present\": " << bool_json(row.selected_pipeline_present)
+                << ", \"descriptor_update_status\": " << bool_json(row.descriptor_update_status)
+                << ", \"timestamp_query_available\": " << bool_json(row.timestamp_query_available)
+                << ", \"timestamp_query_valid\": " << bool_json(row.timestamp_query_valid)
+                << ", \"dispatch_groups\": {\"x\": " << row.dispatch_groups_x
+                << ", \"y\": " << row.dispatch_groups_y
+                << ", \"z\": " << row.dispatch_groups_z << "}"
+                << ", \"buffer_elements\": {\"a\": " << row.a_elements
+                << ", \"b\": " << row.b_elements
+                << ", \"c\": " << row.c_elements << "}"
+                << ", \"buffer_bytes\": {\"a\": " << row.a_bytes
+                << ", \"b\": " << row.b_bytes
+                << ", \"c\": " << row.c_bytes << "}"
+                << ", \"descriptor_binding_count\": " << row.descriptor_binding_count
+                << ", \"timestamp_query_slots\": {\"begin\": " << row.timestamp_query_slot_begin
+                << ", \"end\": " << row.timestamp_query_slot_end << "}"
+                << ", \"resident_iteration_count\": " << row.resident_iteration_count
+                << ", \"notes\": [";
+            for (std::size_t note_index = 0; note_index < row.notes.size(); ++note_index) {
+                if (note_index != 0u) {
+                    out << ", ";
+                }
+                out << "\"" << json_escape(row.notes[note_index]) << "\"";
+            }
+            out << "]}";
+            if (index + 1u < rows.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ]\n";
+        out << "}\n";
+        return out.str();
+    }
+
+    std::string render_failure_matrix_markdown(const std::vector<ResidentFailureMatrixRow>& rows)
+    {
+        std::ostringstream out;
+        out << "# Prometheus SGEMM Px16 Resident Explicit Failure Matrix\n\n";
+        out << "## Path Differences\n\n";
+        out << "- Production resident setup uses `prometheus_reactor_runtime_sgemm(...)` and keeps selector authority intact.\n";
+        out << "- Explicit resident setup uses `prometheus_reactor_runtime_sgemm_benchmark_variant(...)` with `PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY`, then re-dispatches through `prom_sgemm_resident_dispatch_once(...)`.\n";
+        out << "- The focused matrix uses a fresh runtime per row so one `VK_ERROR_DEVICE_LOST` row does not poison later rows.\n\n";
+        out << "## Matrix\n\n";
+        out << "| shape | variant | production resident | staged warmup | staged measured | resident setup | resident warmup | resident measured | failure stage | vk_result | staged stage/detail | resident stage/detail | groups | bytes A/B/C |\n";
+        out << "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |\n";
+        for (const ResidentFailureMatrixRow& row : rows) {
+            out << "| " << row.shape
+                << " | " << row.requested_variant
+                << " | " << (row.production_resident_succeeds ? "pass" : "fail")
+                << " (" << row.production_resident_executed_variant << ")"
+                << " | " << row.staged_warmup_result
+                << " | " << row.staged_measured_result
+                << " | " << row.resident_setup_result
+                << " | " << row.resident_warmup_result
+                << " | " << row.resident_measured_result
+                << " | " << row.resident_failure_stage
+                << " | " << row.vk_result
+                << " | " << row.staged_out_stage << "/" << row.staged_out_detail_code
+                << " | " << row.resident_out_stage << "/" << row.resident_out_detail_code
+                << " | " << row.dispatch_groups_x << "x" << row.dispatch_groups_y << "x" << row.dispatch_groups_z
+                << " | " << row.a_bytes << "/" << row.b_bytes << "/" << row.c_bytes
+                << " |\n";
+        }
+        return out.str();
     }
 
     CaseResult run_evt_case(void* handle, const ShapeCase& shape, bool validate_output)
@@ -2093,6 +2532,7 @@ namespace
         out << "- Unit/FACT tests validate correctness; benchmarks measure performance.\n";
         out << "- Default performance benchmark mode reports `validation_status=not_run_in_benchmark_mode`; use the correctness lane for CPU oracle validation.\n";
         out << "- Explicit variant comparison uses `prometheus_reactor_runtime_sgemm_benchmark_variant(...)` and is labeled as comparison-only telemetry, not production selector behavior.\n";
+        out << "- Explicit comparison rows now use fresh runtime handles per row so a single `VK_ERROR_DEVICE_LOST` result does not cascade into unrelated variant rows.\n";
         out << "- `kernel_only_gflops` uses Vulkan timestamp kernel time only when every measured iteration produced a valid GPU timestamp. Otherwise the report calls kernel timing unavailable and falls back to end-to-end wall timing.\n";
         out << "- `STAGED_UPLOAD_READBACK` rows should be read using the decomposition table: upload/readback/sync buckets are host-observed wall slices, while `kernel_gpu_ms` is the Vulkan timestamp duration when valid.\n";
         out << "- Resident device benchmark mode is benchmark/diagnostic-only: it uploads A/B once, keeps A/B/C device-resident across timed iterations, and reads C back only when validation is explicitly requested.\n";
@@ -2335,6 +2775,75 @@ FACT(PrometheusSgemmPx16Resident)
     }
 }
 
+FACT(PrometheusSgemmPx16ResidentExplicitFailureMatrix)
+{
+    RuntimeHandleScope probe_runtime;
+    PrometheusCaps caps{};
+    std::string failure_reason;
+    if (!create_runtime(probe_runtime, caps, failure_reason)) {
+        SKIP("Vulkan runtime unavailable; resident explicit failure matrix cannot execute");
+    }
+
+    const std::vector<ShapeCase> shapes = {
+        {"small_64x64x64", 64u, 64u, 64u, false},
+        {"square_128x128x128", 128u, 128u, 128u, false},
+        {"square_256x256x256", 256u, 256u, 256u, false},
+        {"skinny_1024x64x1024", 1024u, 64u, 1024u, false},
+    };
+    const std::vector<std::uint32_t> variants = {
+        PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE,
+        PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32,
+    };
+
+    std::vector<ResidentFailureMatrixRow> rows;
+    for (const ShapeCase& shape : shapes) {
+        for (const std::uint32_t variant : variants) {
+            rows.push_back(build_failure_matrix_row(shape, variant));
+        }
+    }
+
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_px16_resident_failure_matrix.json"),
+                    render_failure_matrix_json(rows)),
+                "resident explicit failure matrix JSON should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_px16_resident_failure_matrix.md"),
+                    render_failure_matrix_markdown(rows)),
+                "resident explicit failure matrix markdown should be written");
+
+    bool observed_large_failure = false;
+    bool all_large_rows_passed = true;
+    for (const ResidentFailureMatrixRow& row : rows) {
+        if ((row.shape == "square_256x256x256" || row.shape == "skinny_1024x64x1024") &&
+            (row.staged_runtime_status != PROM_OK || row.resident_runtime_status != PROM_OK)) {
+            observed_large_failure = true;
+            all_large_rows_passed = false;
+            ASSERT_FALSE(row.resident_failure_stage.empty(), "failure matrix should populate a failure stage for large-case failures");
+            ASSERT_TRUE(row.staged_out_stage != PROM_STAGE_NONE || row.resident_out_stage != PROM_STAGE_NONE,
+                        "failure matrix should preserve out_stage for large-case failures");
+            ASSERT_TRUE(row.staged_out_detail_code != 0 || row.resident_out_detail_code != 0,
+                        "failure matrix should preserve out_detail_code for large-case failures");
+        }
+    }
+    if (!observed_large_failure) {
+        for (const ResidentFailureMatrixRow& row : rows) {
+            if (row.shape == "square_256x256x256" || row.shape == "skinny_1024x64x1024") {
+                ASSERT_EQUAL(std::string("passed"), row.staged_warmup_result,
+                             "large-case staged warmup should pass when the fresh-runtime matrix proves the old broad failure was a reuse cascade");
+                ASSERT_EQUAL(std::string("passed"), row.staged_measured_result,
+                             "large-case staged measured dispatch should pass when isolated on a fresh runtime");
+                ASSERT_EQUAL(std::string("passed"), row.resident_warmup_result,
+                             "large-case resident warmup should pass when isolated on a fresh runtime");
+            }
+        }
+    }
+    ASSERT_TRUE(observed_large_failure || all_large_rows_passed,
+                "focused matrix should either reproduce an isolated large-case failure or prove the fresh-runtime rows all pass");
+}
+
 BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionPerformanceLane, 1)
 {
     ReportData report;
@@ -2393,8 +2902,8 @@ BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionPerformanceLane, 1)
 
     for (const ShapeCase& shape : explicit_variant_shapes(report.explicit_cube_1024_enabled)) {
         for (const std::uint32_t variant : wired_variants()) {
-            report.variant_comparison.push_back(run_explicit_variant_case(handle, shape, variant, false));
-            report.resident_variant_comparison.push_back(run_resident_case(handle, shape, true, variant, false));
+            report.variant_comparison.push_back(run_explicit_variant_case_fresh(shape, variant, false));
+            report.resident_variant_comparison.push_back(run_resident_case_fresh(shape, true, variant, false));
         }
     }
 
@@ -2518,8 +3027,8 @@ FACT(PrometheusSgemmPx16Evt_CorrectnessValidationLane)
 
     for (const ShapeCase& shape : correctness_shapes()) {
         for (const std::uint32_t variant : wired_variants()) {
-            report.variant_comparison.push_back(run_explicit_variant_case(handle, shape, variant, true));
-            report.resident_variant_comparison.push_back(run_resident_case(handle, shape, true, variant, true));
+            report.variant_comparison.push_back(run_explicit_variant_case_fresh(shape, variant, true));
+            report.resident_variant_comparison.push_back(run_resident_case_fresh(shape, true, variant, true));
         }
     }
 

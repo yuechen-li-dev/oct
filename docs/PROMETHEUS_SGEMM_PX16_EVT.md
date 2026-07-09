@@ -259,6 +259,42 @@ The M8 report keeps the M7 `Production SGEMM Results` table and adds:
 - `Performance Diagnosis`
   - summarizes whether current evidence points to transfer/staging overhead, kernel-side slowdown, selector choice, or unresolved timing gaps
 
+## Px16 M15
+
+Px16 M15 is a runtime triage milestone for resident explicit SGEMM benchmark failures. The key finding is that the original broad correctness/benchmark report overstated the scope of the failure because one explicit comparison row could lose the Vulkan device and poison later rows that reused the same runtime/process state.
+
+The M15 harness changes therefore do two things first:
+
+- add a focused resident explicit failure matrix artifact at:
+  - `out/test-artifacts/prometheus_sgemm_px16_resident_failure_matrix.json`
+  - `out/test-artifacts/prometheus_sgemm_px16_resident_failure_matrix.md`
+- run explicit comparison rows on fresh runtime handles so the report can distinguish:
+  - isolated row failure
+  - later collateral fallout after `VK_ERROR_DEVICE_LOST`
+
+### Resident production vs explicit resident differences
+
+- Production resident setup uses `prometheus_reactor_runtime_sgemm(...)`, so selector authority and the normal production dispatch choice remain intact.
+- Explicit resident setup uses `prometheus_reactor_runtime_sgemm_benchmark_variant(...)` with `PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY`.
+- Explicit resident timed dispatches then bypass the single-call upload/readback path and re-dispatch device-resident buffers through `prom_sgemm_resident_dispatch_once(...)`.
+- The focused matrix uses fresh runtime handles per row specifically because one device-loss event can make later rows look unrelatedly broken.
+
+### Current M15 diagnosis
+
+- The originally reported resident explicit failures for:
+  - `square_256x256x256`
+  - `skinny_1024x64x1024`
+  do not reproduce in the fresh-runtime focused matrix. Their broad-report failures were a handle/process reuse cascade, not an isolated per-row resident-path failure.
+- The broad EVT benchmark still has a real remaining explicit failure outside that minimum matrix:
+  - `lowk_1024x1024x64` with explicit `SDSL_SCALAR_PLUS` fails at `PROM_STAGE_SUBMIT` with `VK_ERROR_DEVICE_LOST`
+- After that device-loss event, later explicit rows in the same benchmark process can degrade to `vulkan_runtime_unavailable`, so those later failures should be read as collateral until that first device-loss row is fixed.
+
+### How to run the focused M15 lane
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16ResidentExplicitFailureMatrix
+```
+
 ### Known limitations
 
 - Resident/persistent no-readback mode is not implemented in M8; the report records `resident_device_mode_available=false`.

@@ -7220,6 +7220,8 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
   uint32_t compute_mode;
   uint32_t compute_k;
   uint32_t i;
+  VkDeviceSize checked_buffer_size;
+  size_t checked_copy_size;
   size_t c_copy_size;
   uint64_t setup_begin_ns;
   uint64_t setup_end_ns;
@@ -7265,13 +7267,10 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
     out_result->setup_detail_code = rt->available == 0u ? rt->init_detail_code : PROM_ERROR;
     return PROM_ERROR;
   }
-  if (!prom_vk_checked_mul_u32(request->m, request->n, &compute_k)) {
-    out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
-    out_result->setup_detail_code = PROM_DETAIL_SIZE_OVERFLOW;
-    return PROM_ERROR;
-  }
-  c_copy_size = (size_t)request->m * (size_t)request->n * sizeof(float);
-  if (c_copy_size == 0u) {
+  if (!prom_vk_checked_mul_u32(request->m, request->n, &compute_k) ||
+      !checked_float_buffer_size(request->m, request->k, &checked_buffer_size, &checked_copy_size) ||
+      !checked_float_buffer_size(request->k, request->n, &checked_buffer_size, &checked_copy_size) ||
+      !checked_float_buffer_size(request->m, request->n, &checked_buffer_size, &c_copy_size)) {
     out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
     out_result->setup_detail_code = PROM_DETAIL_SIZE_OVERFLOW;
     return PROM_ERROR;
