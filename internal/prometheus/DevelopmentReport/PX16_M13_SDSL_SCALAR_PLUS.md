@@ -90,3 +90,13 @@ For `SDSL_SCALAR_PLUS`, that means:
 - `UNROLL_K = 4`
 
 Prometheus native dispatch now reads those generated constants for the SDSL explicit variant instead of hand-coding `8x8` geometry in C. This specifically prevents repeating the earlier host/shader drift bug where multi-output kernels were dispatched as though each invocation produced only one output.
+
+## Follow-on milestone
+
+M14 builds on this lane with the first source-backed shared-memory tiled SGEMM kernel:
+
+- report: `internal/prometheus/DevelopmentReport/PX16_M14_SDSL_TILE16X16_SHARED_FP32.md`
+- source: `internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv`
+- generated header: `internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h`
+
+That follow-on milestone keeps the same benchmark-only explicit-variant posture and the same generated-metadata dispatch authority rule, but upgrades the SDSL-V kernel structure from scalar-plus to a real `16x16x16` shared-memory tile with barriers and cooperative loads.

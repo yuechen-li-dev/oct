@@ -300,6 +300,7 @@ OUTPUTS_PER_INVOCATION_M: u32;
 OUTPUTS_PER_INVOCATION_N: u32;
 TILE_M: u32;
 TILE_N: u32;
+TILE_K: u32;
 UNROLL_K: u32;
 }
 config Rect: KernelConfig {
@@ -309,6 +310,7 @@ OUTPUTS_PER_INVOCATION_M: 3u;
 OUTPUTS_PER_INVOCATION_N: 5u;
 TILE_M: 12u;
 TILE_N: 10u;
+TILE_K: 8u;
 UNROLL_K: 7u;
 }
 template<C: KernelConfig>
@@ -319,23 +321,29 @@ return;
 }
 compile Kernel<Rect> as KernelRect;`)
 	entry := mir.EntryPoints[0]
-	if got := len(entry.Metadata); got != 5 {
-		t.Fatalf("len(Metadata) = %d, want 5", got)
+	if got := len(entry.Metadata); got != 6 {
+		t.Fatalf("len(Metadata) = %d, want 6", got)
 	}
 	if got := entry.Metadata[0]; got.Name != "OUTPUTS_PER_INVOCATION_M" || got.Value != 3 {
 		t.Fatalf("metadata[0] = %#v", got)
 	}
-	if got := entry.Metadata[4]; got.Name != "UNROLL_K" || got.Value != 7 {
+	if got := entry.Metadata[4]; got.Name != "TILE_K" || got.Value != 8 {
 		t.Fatalf("metadata[4] = %#v", got)
 	}
-	if got := len(entry.ConfigValues); got != 7 {
-		t.Fatalf("len(ConfigValues) = %d, want 7", got)
+	if got := entry.Metadata[5]; got.Name != "UNROLL_K" || got.Value != 7 {
+		t.Fatalf("metadata[5] = %#v", got)
+	}
+	if got := len(entry.ConfigValues); got != 8 {
+		t.Fatalf("len(ConfigValues) = %d, want 8", got)
 	}
 	if got := entry.ConfigValues[0]; got.Name != "OUTPUTS_PER_INVOCATION_M" || got.Value != 3 {
 		t.Fatalf("config[0] = %#v", got)
 	}
-	if got := entry.ConfigValues[6]; got.Name != "UNROLL_K" || got.Value != 7 {
+	if got := entry.ConfigValues[6]; got.Name != "TILE_N" || got.Value != 10 {
 		t.Fatalf("config[6] = %#v", got)
+	}
+	if got := entry.ConfigValues[7]; got.Name != "UNROLL_K" || got.Value != 7 {
+		t.Fatalf("config[7] = %#v", got)
 	}
 }
 

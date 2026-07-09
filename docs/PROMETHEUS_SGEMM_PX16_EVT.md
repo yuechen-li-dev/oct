@@ -251,6 +251,66 @@ The M8 report keeps the M7 `Production SGEMM Results` table and adds:
 - Resident/persistent no-readback mode is not implemented in M8; the report records `resident_device_mode_available=false`.
 - If GPU timestamps are unavailable or invalid for a case, `kernel_only_gflops` is unavailable for that case and the report says so explicitly instead of faking kernel-only timing.
 
+## Px16 M14
+
+Px16 M14 adds the first source-backed SDSL-V shared-memory tiled SGEMM kernel to the explicit-comparison lane without changing production selector authority.
+
+The architecture rule for this milestone is:
+
+- The new kernel is benchmark-only and explicit-variant only.
+- Production `prometheus_reactor_runtime_sgemm(...)` selection remains unchanged.
+- The judgment engine remains the sole production dispatch authority.
+- Dispatch geometry for the new SDSL-V tiled variant must come from generated metadata beside the checked-in SPIR-V header, not from hand-coded host constants.
+- Correctness validation remains separate from benchmark timing.
+
+### New explicit variant
+
+- Occupancy variant: `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32`
+- Path identity: `PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_TILE16X16_SHARED_FP32`
+- SDSL-V source: `internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv`
+- Generated header: `internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h`
+
+### Dispatch convention
+
+The generated metadata for `SDSL_TILE16X16_SHARED_FP32` uses:
+
+- `THREADS_X = 16`
+- `THREADS_Y = 16`
+- `OUTPUTS_PER_INVOCATION_M = 1`
+- `OUTPUTS_PER_INVOCATION_N = 1`
+- `TILE_M = 16`
+- `TILE_N = 16`
+- `TILE_K = 16`
+- `UNROLL_K = 16`
+
+Prometheus host dispatch continues to use the generated coverage convention:
+
+- `groups_x = ceil_div(M, THREADS_X * OUTPUTS_PER_INVOCATION_M)`
+- `groups_y = ceil_div(N, THREADS_Y * OUTPUTS_PER_INVOCATION_N)`
+
+For this kernel that resolves to `ceil_div(M, 16)` by `ceil_div(N, 16)`, but that `16` remains a shader-generated fact rather than a native hand-coded constant.
+
+### Regeneration
+
+```powershell
+powershell -ExecutionPolicy Bypass -File internal/prometheus/native/generate_sdslv_shaders.ps1
+```
+
+Ordinary native builds still consume checked-in generated headers and do not require `dxc` unless a shader is being regenerated.
+
+### Report interpretation for M14
+
+The existing `Resident Explicit Variant Comparison`, `Explicit Variant Comparison`, and `Selector vs Fastest Variant` sections now include `SDSL_TILE16X16_SHARED_FP32` alongside the earlier explicit SGEMM variants.
+
+This milestone is considered successful when the report shows:
+
+- the new SDSL-V tiled variant is requestable and reported as `WIRED`;
+- explicit/resident comparison rows include it;
+- its dispatch geometry is metadata-driven;
+- benchmark output is reported honestly even if the kernel is not the fastest option.
+
+Current repo evidence shows exactly that. The new kernel is present in resident and explicit comparison tables, and it can beat several older explicit kernels on resident kernel time for some shapes, but no selector promotion has been attempted.
+
 ## Px16 M9
 
 Px16 M9 separates SGEMM performance benchmarking from CPU correctness/oracle validation.

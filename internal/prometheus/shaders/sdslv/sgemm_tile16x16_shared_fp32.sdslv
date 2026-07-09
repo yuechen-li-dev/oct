@@ -1,0 +1,114 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+concept SharedTileSgemmConfig {
+    THREADS_X: u32;
+    THREADS_Y: u32;
+    OUTPUTS_PER_INVOCATION_M: u32;
+    OUTPUTS_PER_INVOCATION_N: u32;
+    TILE_M: u32;
+    TILE_N: u32;
+    TILE_K: u32;
+    UNROLL_K: u32;
+
+    require THREADS_X > 0u;
+    require THREADS_Y > 0u;
+    require OUTPUTS_PER_INVOCATION_M > 0u;
+    require OUTPUTS_PER_INVOCATION_N > 0u;
+    require TILE_M > 0u;
+    require TILE_N > 0u;
+    require TILE_K > 0u;
+    require UNROLL_K > 0u;
+    require THREADS_X * THREADS_Y <= 1024u;
+    require TILE_M == THREADS_X * OUTPUTS_PER_INVOCATION_M;
+    require TILE_N == THREADS_Y * OUTPUTS_PER_INVOCATION_N;
+    require UNROLL_K == TILE_K;
+}
+
+config Tile16x16SharedFp32: SharedTileSgemmConfig {
+    THREADS_X: 16u;
+    THREADS_Y: 16u;
+    OUTPUTS_PER_INVOCATION_M: 1u;
+    OUTPUTS_PER_INVOCATION_N: 1u;
+    TILE_M: 16u;
+    TILE_N: 16u;
+    TILE_K: 16u;
+    UNROLL_K: 16u;
+}
+
+template<C: SharedTileSgemmConfig>
+shader SgemmTileSharedFp32 {
+    resources SgemmIO;
+
+    static assert C.THREADS_X * C.THREADS_Y <= 1024u;
+    static assert C.TILE_M == C.THREADS_X * C.OUTPUTS_PER_INVOCATION_M;
+    static assert C.TILE_N == C.THREADS_Y * C.OUTPUTS_PER_INVOCATION_N;
+    static assert C.UNROLL_K == C.TILE_K;
+
+    workgroup TileA: array<f32, C.TILE_M * C.TILE_K>;
+    workgroup TileB: array<f32, C.TILE_K * C.TILE_N>;
+
+    stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let row: u32 = thread.GroupId.x * C.TILE_M + localRow;
+        let col: u32 = thread.GroupId.y * C.TILE_N + localCol;
+        let acc: f32 = 0.0;
+        let tileCount: u32 = (params.k + C.TILE_K - 1u) / C.TILE_K;
+
+        [loop]
+        for tile in 0u..tileCount {
+            let tileBaseK: u32 = tile * C.TILE_K;
+            let aCol: u32 = tileBaseK + localCol;
+            let bRow: u32 = tileBaseK + localRow;
+            let tileAIndex: u32 = localRow * C.TILE_K + localCol;
+            let tileBIndex: u32 = localRow * C.TILE_N + localCol;
+            let aValue: f32 = 0.0;
+            let bValue: f32 = 0.0;
+
+            if row < params.m && aCol < params.k {
+                aValue = A[row * params.k + aCol];
+            }
+            if bRow < params.k && col < params.n {
+                bValue = B[bRow * params.n + col];
+            }
+
+            TileA[tileAIndex] = aValue;
+            TileB[tileBIndex] = bValue;
+
+            WorkgroupMemoryBarrierWithSync();
+
+            [unroll]
+            for kk in 0u..C.TILE_K {
+                acc = acc + TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol];
+            }
+
+            WorkgroupMemoryBarrierWithSync();
+        }
+
+        if row < params.m && col < params.n {
+            C[row * params.n + col] = acc;
+        }
+        return;
+    }
+}
+
+compile SgemmTileSharedFp32<Tile16x16SharedFp32> as SgemmTile16x16SharedFp32;

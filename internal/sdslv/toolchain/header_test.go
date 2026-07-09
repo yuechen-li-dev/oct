@@ -17,6 +17,7 @@ func TestHeaderFromWordsDeterministic(t *testing.T) {
 			Metadata: []MetadataField{
 				{Name: "OUTPUTS_PER_INVOCATION_M", Value: 1},
 				{Name: "OUTPUTS_PER_INVOCATION_N", Value: 1},
+				{Name: "TILE_K", Value: 16},
 			},
 			ConfigValues: []MetadataField{
 				{Name: "THREADS_X", Value: 16},
@@ -45,6 +46,7 @@ func TestHeaderFromWordsDeterministic(t *testing.T) {
 		"// Entry point: VectorAdd_CS",
 		"static const uint32_t k_sdslv_vector_add_spirv_numthreads_x = 16u;",
 		"static const uint32_t k_sdslv_vector_add_spirv_outputs_per_invocation_m = 1u;",
+		"static const uint32_t k_sdslv_vector_add_spirv_tile_k = 16u;",
 		"static const uint32_t k_sdslv_vector_add_spirv_config_threads_x = 16u;",
 	} {
 		if !strings.Contains(first, want) {

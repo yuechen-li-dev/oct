@@ -200,6 +200,8 @@ namespace
                 return "memory-conservative";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
                 return "sdsl-scalar-plus";
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32:
+                return "sdsl-tile16x16-shared-fp32";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
                 return "small-register-tile";
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
@@ -228,6 +230,8 @@ namespace
                 return "memory_conservative";
             case PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS:
                 return "sdsl_scalar_plus";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_TILE16X16_SHARED_FP32:
+                return "sdsl_tile16x16_shared_fp32";
             default:
                 return "unknown";
         }
@@ -269,6 +273,7 @@ namespace
             case PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR:
             case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32:
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
             case PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8:
@@ -462,6 +467,8 @@ namespace
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE);
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS);
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_TILE16X16_SHARED_FP32);
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K);
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
@@ -1363,6 +1370,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_PromotionLifecycleFieldsExposed, 1
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
@@ -1580,6 +1588,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_DVT2_Rtx3070ValidationArtifact, 1)
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),

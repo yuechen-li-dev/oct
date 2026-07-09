@@ -875,6 +875,7 @@ func lowerEntryMetadata(config map[string]uint32) []vdmir.MetadataField {
 		"OUTPUTS_PER_INVOCATION_N",
 		"TILE_M",
 		"TILE_N",
+		"TILE_K",
 		"UNROLL_K",
 	}
 	fields := make([]vdmir.MetadataField, 0, len(names))

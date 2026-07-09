@@ -39,6 +39,7 @@
 #include "reactor_vulkan_memory_conservative_spirv.h"
 #include "reactor_sgemm_dispatch_metadata.h"
 #include "reactor_vulkan_sgemm_scalar_plus_spirv.h"
+#include "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
@@ -50,21 +51,39 @@
 #define PROM_VK_TILE_K 8u
 
 static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_metadata_for_variant(uint32_t variant) {
-  static prom_sgemm_kernel_dispatch_metadata metadata;
-  static uint32_t metadata_initialized = 0u;
+  static prom_sgemm_kernel_dispatch_metadata scalar_plus_metadata;
+  static prom_sgemm_kernel_dispatch_metadata tile16_metadata;
+  static uint32_t scalar_plus_metadata_initialized = 0u;
+  static uint32_t tile16_metadata_initialized = 0u;
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
-    if (metadata_initialized == 0u) {
-      metadata.threads_x = k_prom_sgemm_scalar_plus_spirv_numthreads_x;
-      metadata.threads_y = k_prom_sgemm_scalar_plus_spirv_numthreads_y;
-      metadata.threads_z = k_prom_sgemm_scalar_plus_spirv_numthreads_z;
-      metadata.outputs_per_invocation_m = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m;
-      metadata.outputs_per_invocation_n = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n;
-      metadata.tile_m = k_prom_sgemm_scalar_plus_spirv_tile_m;
-      metadata.tile_n = k_prom_sgemm_scalar_plus_spirv_tile_n;
-      metadata.unroll_k = k_prom_sgemm_scalar_plus_spirv_unroll_k;
-      metadata_initialized = 1u;
+    if (scalar_plus_metadata_initialized == 0u) {
+      scalar_plus_metadata.threads_x = k_prom_sgemm_scalar_plus_spirv_numthreads_x;
+      scalar_plus_metadata.threads_y = k_prom_sgemm_scalar_plus_spirv_numthreads_y;
+      scalar_plus_metadata.threads_z = k_prom_sgemm_scalar_plus_spirv_numthreads_z;
+      scalar_plus_metadata.outputs_per_invocation_m = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m;
+      scalar_plus_metadata.outputs_per_invocation_n = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n;
+      scalar_plus_metadata.tile_m = k_prom_sgemm_scalar_plus_spirv_tile_m;
+      scalar_plus_metadata.tile_n = k_prom_sgemm_scalar_plus_spirv_tile_n;
+      scalar_plus_metadata.tile_k = 0u;
+      scalar_plus_metadata.unroll_k = k_prom_sgemm_scalar_plus_spirv_unroll_k;
+      scalar_plus_metadata_initialized = 1u;
     }
-    return &metadata;
+    return &scalar_plus_metadata;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
+    if (tile16_metadata_initialized == 0u) {
+      tile16_metadata.threads_x = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x;
+      tile16_metadata.threads_y = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_y;
+      tile16_metadata.threads_z = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_z;
+      tile16_metadata.outputs_per_invocation_m = k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_m;
+      tile16_metadata.outputs_per_invocation_n = k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_n;
+      tile16_metadata.tile_m = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_m;
+      tile16_metadata.tile_n = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_n;
+      tile16_metadata.tile_k = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_k;
+      tile16_metadata.unroll_k = k_prom_sgemm_tile16x16_shared_fp32_spirv_unroll_k;
+      tile16_metadata_initialized = 1u;
+    }
+    return &tile16_metadata;
   }
   return NULL;
 }
@@ -583,6 +602,8 @@ typedef struct prometheus_runtime {
   VkPipeline memory_conservative_pipeline;
   VkShaderModule sdsl_scalar_plus_shader_module;
   VkPipeline sdsl_scalar_plus_pipeline;
+  VkShaderModule sdsl_tile16x16_shared_fp32_shader_module;
+  VkPipeline sdsl_tile16x16_shared_fp32_pipeline;
   VkPipeline srt_2accum_k_pipeline;
   VkPipeline b2x2_row_major_biased_pipeline;
   VkPipeline a2x4_row_biased_accum8_pipeline;
@@ -4065,6 +4086,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->sdsl_scalar_plus_pipeline, NULL);
     rt->sdsl_scalar_plus_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->sdsl_tile16x16_shared_fp32_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->sdsl_tile16x16_shared_fp32_pipeline, NULL);
+    rt->sdsl_tile16x16_shared_fp32_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->srt_2accum_k_pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->srt_2accum_k_pipeline, NULL);
     rt->srt_2accum_k_pipeline = VK_NULL_HANDLE;
@@ -4096,6 +4121,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->sdsl_scalar_plus_shader_module != VK_NULL_HANDLE) {
     vkDestroyShaderModule(rt->device, rt->sdsl_scalar_plus_shader_module, NULL);
     rt->sdsl_scalar_plus_shader_module = VK_NULL_HANDLE;
+  }
+  if (rt->sdsl_tile16x16_shared_fp32_shader_module != VK_NULL_HANDLE) {
+    vkDestroyShaderModule(rt->device, rt->sdsl_tile16x16_shared_fp32_shader_module, NULL);
+    rt->sdsl_tile16x16_shared_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->pipeline_layout != VK_NULL_HANDLE) {
     vkDestroyPipelineLayout(rt->device, rt->pipeline_layout, NULL);
@@ -4526,6 +4555,29 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   memset(&shader_info, 0, sizeof(shader_info));
   shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_tile16x16_shared_fp32_spirv);
+  shader_info.pCode = k_prom_sgemm_tile16x16_shared_fp32_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_tile16x16_shared_fp32_shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = rt->sdsl_tile16x16_shared_fp32_shader_module;
+  stage_info.pName = "SgemmTile16x16SharedFp32_CS";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_tile16x16_shared_fp32_pipeline);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_info.codeSize = sizeof(k_prom_sgemm_srt_2accum_k_spirv);
   shader_info.pCode = k_prom_sgemm_srt_2accum_k_spirv;
   result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
@@ -4932,12 +4984,13 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
 
 static uint32_t prom_occ_variant_registered(uint32_t variant) {
   return (variant >= PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
-          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) ? 1u : 0u;
+          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) ? 1u : 0u;
 }
 
 static uint32_t prom_occ_variant_is_wired_evt_dispatchable(uint32_t variant) {
   return (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32 ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
@@ -4973,6 +5026,9 @@ static uint32_t prom_occ_variant_executed_identity_for_dispatch(uint32_t variant
 static uint32_t prom_occ_variant_path_id(uint32_t variant) {
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_TILE16X16_SHARED_FP32;
   }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE;
@@ -6119,6 +6175,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
       selected_pipeline = rt->sdsl_scalar_plus_pipeline;
+    } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
+      selected_pipeline = rt->sdsl_tile16x16_shared_fp32_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
       selected_pipeline = rt->memory_conservative_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
@@ -6835,6 +6893,9 @@ static VkPipeline prom_sgemm_pipeline_for_resident_dispatch(prometheus_runtime* 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
       return rt->sdsl_scalar_plus_pipeline;
+    }
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
+      return rt->sdsl_tile16x16_shared_fp32_pipeline;
     }
     if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
       return rt->memory_conservative_pipeline;

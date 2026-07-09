@@ -155,6 +155,51 @@ func TestSDSLvPrometheusSgemmScalarPlusSourceEmits(t *testing.T) {
 	}
 }
 
+func TestSDSLvPrometheusSgemmTile16x16SharedSourceEmits(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "sgemm_tile16x16_shared_fp32.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"resource readonly A: array<f32> bundle SgemmIO binding(0,0)",
+		"resource readonly B: array<f32> bundle SgemmIO binding(1,0)",
+		"resource readwrite C: array<f32> bundle SgemmIO binding(2,0)",
+		"workgroup TileA: array<f32,256> shader SgemmTile16x16SharedFp32",
+		"workgroup TileB: array<f32,256> shader SgemmTile16x16SharedFp32",
+		"entry compute SgemmTile16x16SharedFp32_CS numthreads(16,16,1)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "sgemm_tile16x16_shared_fp32.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"groupshared float TileA[256];",
+		"groupshared float TileB[256];",
+		"GroupMemoryBarrierWithGroupSync();",
+		"void SgemmTile16x16SharedFp32_CS(",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_scalar_plus_spirv.h")
 	text, err := os.ReadFile(path)
@@ -170,6 +215,28 @@ func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_numthreads_x = ",
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m = ",
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_unroll_k = ",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("checked-in header missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestPrometheusSgemmTile16x16SharedHeaderCheckedIn(t *testing.T) {
+	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h")
+	text, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read checked-in header: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"// Source: internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv",
+		"// Entry point: SgemmTile16x16SharedFp32_CS",
+		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv[] = {",
+		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_word_count = ",
+		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x = ",
+		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_k = ",
+		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_tile_k = ",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("checked-in header missing %q:\n%s", want, body)

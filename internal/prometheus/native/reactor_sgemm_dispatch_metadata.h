@@ -11,6 +11,7 @@ typedef struct prom_sgemm_kernel_dispatch_metadata {
   uint32_t outputs_per_invocation_n;
   uint32_t tile_m;
   uint32_t tile_n;
+  uint32_t tile_k;
   uint32_t unroll_k;
 } prom_sgemm_kernel_dispatch_metadata;
 
