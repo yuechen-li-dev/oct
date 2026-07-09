@@ -1,0 +1,56 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream ScaleIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record ScaleParams {
+    Count: u32;
+}
+
+concept ScaleConfig {
+    Threads: {
+        X: u32;
+        Y: u32 = 1u;
+    };
+
+    Tile: {
+        Width: u32 = Threads.X;
+    };
+
+    Padding: {
+        Left: u32! = 0u;
+    };
+
+    require Threads.X * Threads.Y <= 1024u;
+}
+
+config Scale16: ScaleConfig {
+    Threads.X => 16u;
+}
+
+template<C: ScaleConfig>
+shader ScaleCopy {
+    resources ScaleIO;
+
+    static assert C.Threads.X > 0u;
+
+    stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: ScaleParams) -> void {
+        let idx: u32 = thread.DispatchId.x + C.Padding.Left;
+        let width: u32 = C.Tile.Width;
+        if idx < params.Count && width >= C.Threads.X {
+            C[idx] = A[idx];
+        }
+        return;
+    }
+}
+
+compile ScaleCopy<Scale16> as ScaleCopy16;

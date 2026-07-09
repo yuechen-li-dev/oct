@@ -64,22 +64,22 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 			return Value{}, fmt.Errorf("unsupported unary constant operator %s", e.Operator)
 		}
 	case ast.FieldAccessExpr:
-		id, ok := e.Target.(ast.IdentifierExpr)
+		path, ok := constFieldPath(e)
 		if !ok {
 			return Value{}, fmt.Errorf("unsupported constant field access")
 		}
 		if env == nil {
-			return Value{}, fmt.Errorf("unknown constant field %s.%s", id.Name, e.Field)
+			return Value{}, fmt.Errorf("unknown constant field %s", path)
 		}
-		if value, ok := env[id.Name+"."+e.Field]; ok {
+		if value, ok := env[path]; ok {
 			return value, nil
 		}
-		if value, ok := env[e.Field]; ok {
-			if id.Name == "C" || id.Name == "" {
+		if leaf := lastPathSegment(path); leaf != "" {
+			if value, ok := env[leaf]; ok {
 				return value, nil
 			}
 		}
-		return Value{}, fmt.Errorf("unknown constant field %s.%s", id.Name, e.Field)
+		return Value{}, fmt.Errorf("unknown constant field %s", path)
 	case ast.BinaryExpr:
 		left, err := Eval(e.Left, env)
 		if err != nil {
@@ -186,4 +186,29 @@ func compareBool(op string, left, right bool) (Value, error) {
 		return Value{}, fmt.Errorf("bool constant expressions support only == and !=")
 	}
 	return Value{Type: ast.TypeRef{Name: "bool"}, Bool: result, IsKnown: true}, nil
+}
+
+func constFieldPath(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		return e.Name, true
+	case ast.FieldAccessExpr:
+		prefix, ok := constFieldPath(e.Target)
+		if !ok {
+			return "", false
+		}
+		if prefix == "" {
+			return e.Field, true
+		}
+		return prefix + "." + e.Field, true
+	default:
+		return "", false
+	}
+}
+
+func lastPathSegment(path string) string {
+	if idx := strings.LastIndexByte(path, '.'); idx >= 0 && idx+1 < len(path) {
+		return path[idx+1:]
+	}
+	return path
 }

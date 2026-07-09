@@ -41,6 +41,7 @@ Rules:
 - config-local `require` is also allowed and checked against that config only;
 - requirement expressions must be compile-time evaluable and must produce `bool`;
 - requirements do not emit to VD-MIR or HLSL.
+- M11 also allows dotted concept/config paths inside requirements, such as `Threads.X * Threads.Y <= 1024u`.
 
 ## `static assert`
 

@@ -116,6 +116,8 @@ M6 extends this model with:
 
 See `docs/SDSL_V_M6_REQUIREMENTS_ATTRIBUTES.md`.
 
+M11 extends the same compile-time model with structured config groups, fat-arrow assignments, defaults, dotted references, and nonzero-by-default `u32` config fields. See `docs/SDSL_V_M11_STRUCTURED_CONFIGS.md`.
+
 ## Examples
 
 - `examples/SDSL-V/M5/TemplateTileConfig.sdslv`

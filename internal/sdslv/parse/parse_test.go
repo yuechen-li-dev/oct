@@ -197,6 +197,67 @@ compile TileCopy<Tile16> as TileCopy16;`)
 	}
 }
 
+func TestBuildModuleParsesStructuredConceptsDefaultsAndFatArrowConfig(t *testing.T) {
+	module := parseTestModule(t, `concept TileConfig {
+Threads: {
+X: u32;
+Y: u32;
+};
+Tile: {
+K: u32 = Threads.X * Threads.Y;
+Padding: {
+K: u32! = 0u;
+};
+};
+}
+config Tile16: TileConfig {
+Threads.X => 4u;
+Threads.Y => 4u;
+}`)
+	concept := module.Decls[0].(ast.ConceptDecl)
+	if got := len(concept.Members); got != 2 {
+		t.Fatalf("len(Members) = %d, want 2", got)
+	}
+	threads, ok := concept.Members[0].(ast.ConceptGroup)
+	if !ok || threads.Name != "Threads" || len(threads.Members) != 2 {
+		t.Fatalf("threads group = %#v", concept.Members[0])
+	}
+	tile, ok := concept.Members[1].(ast.ConceptGroup)
+	if !ok || tile.Name != "Tile" || len(tile.Members) != 2 {
+		t.Fatalf("tile group = %#v", concept.Members[1])
+	}
+	field, ok := tile.Members[0].(ast.ConceptField)
+	if !ok || field.Name != "K" || field.DefaultValue == nil {
+		t.Fatalf("tile field = %#v", tile.Members[0])
+	}
+	padding, ok := tile.Members[1].(ast.ConceptGroup)
+	if !ok || padding.Name != "Padding" {
+		t.Fatalf("padding group = %#v", tile.Members[1])
+	}
+	paddingField := padding.Members[0].(ast.ConceptField)
+	if !paddingField.Type.ZeroAllowed {
+		t.Fatalf("padding type = %#v, want ZeroAllowed", paddingField.Type)
+	}
+	config := module.Decls[1].(ast.ConfigDecl)
+	if got := len(config.Fields); got != 2 {
+		t.Fatalf("len(config.Fields) = %d, want 2", got)
+	}
+	if config.Fields[0].Path != "Threads.X" || config.Fields[0].Style != ast.ConfigAssignmentFatArrow {
+		t.Fatalf("config field[0] = %#v", config.Fields[0])
+	}
+}
+
+func TestBuildModuleRejectsU32BangOutsideConceptConfigField(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `record Bad { Count: u32!; }`})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	_, err = BuildModule(tokens)
+	if err == nil || !strings.Contains(err.Error(), "u32! is only valid for concept/config fields") {
+		t.Fatalf("BuildModule() error = %v, want u32! placement diagnostic", err)
+	}
+}
+
 func TestBuildModuleParsesPayloadEnumAndMatch(t *testing.T) {
 	module := parseTestModule(t, `enum LoadValue {
 Zero;

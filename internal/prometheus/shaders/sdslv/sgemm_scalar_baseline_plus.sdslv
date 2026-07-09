@@ -20,40 +20,41 @@ record SgemmParams {
 }
 
 concept ScalarSgemmConfig {
-    THREADS_X: u32;
-    THREADS_Y: u32;
-    OUTPUTS_PER_INVOCATION_M: u32;
-    OUTPUTS_PER_INVOCATION_N: u32;
-    TILE_M: u32;
-    TILE_N: u32;
-    UNROLL_K: u32;
+    Threads: {
+        X: u32;
+        Y: u32;
+    };
 
-    require THREADS_X > 0u;
-    require THREADS_Y > 0u;
-    require OUTPUTS_PER_INVOCATION_M > 0u;
-    require OUTPUTS_PER_INVOCATION_N > 0u;
-    require TILE_M > 0u;
-    require TILE_N > 0u;
-    require UNROLL_K > 0u;
+    OutputsPerInvocation: {
+        M: u32 = 1u;
+        N: u32 = 1u;
+    };
+
+    Tile: {
+        M: u32 = 1u;
+        N: u32 = 1u;
+    };
+
+    Unroll: {
+        K: u32;
+    };
+
+    require Threads.X * Threads.Y <= 1024u;
 }
 
 config Scalar8x8: ScalarSgemmConfig {
-    THREADS_X: 8u;
-    THREADS_Y: 8u;
-    OUTPUTS_PER_INVOCATION_M: 1u;
-    OUTPUTS_PER_INVOCATION_N: 1u;
-    TILE_M: 1u;
-    TILE_N: 1u;
-    UNROLL_K: 4u;
+    Threads.X => 8u;
+    Threads.Y => 8u;
+    Unroll.K => 4u;
 }
 
 template<C: ScalarSgemmConfig>
 shader SgemmScalarBaselinePlus {
     resources SgemmIO;
 
-    static assert C.THREADS_X * C.THREADS_Y <= 1024u;
+    static assert C.Threads.X * C.Threads.Y <= 1024u;
 
-    stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+    stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
         let row: u32 = thread.DispatchId.x;
         let col: u32 = thread.DispatchId.y;
 

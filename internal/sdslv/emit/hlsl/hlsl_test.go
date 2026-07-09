@@ -224,6 +224,57 @@ return;
 	}
 }
 
+func TestEmitStructuredConfigTemplateSpecializationToHLSL(t *testing.T) {
+	text := `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream TileCopyIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+concept TileCopyConfig {
+Threads: {
+X: u32;
+Y: u32;
+};
+Tile: {
+M: u32 = Threads.X;
+N: u32 = Threads.Y;
+K: u32;
+};
+}
+config Tile16: TileCopyConfig {
+Threads.X => 16u;
+Threads.Y => 8u;
+Tile.K => 4u;
+}
+template<C: TileCopyConfig>
+shader TileCopy {
+resources TileCopyIO;
+workgroup Tile: array<f32, C.Tile.M * C.Tile.N>;
+stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+let tileK: u32 = C.Tile.K;
+return;
+}
+}
+compile TileCopy<Tile16> as TileCopy16;`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"[numthreads(16, 8, 1)]",
+		"groupshared float Tile[128];",
+		"uint tileK = 4u;",
+		"void TileCopy16_CS(",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestEmitPayloadEnumsAndMatchFromVDMIR(t *testing.T) {
 	text := `enum LoadValue {
 Zero;

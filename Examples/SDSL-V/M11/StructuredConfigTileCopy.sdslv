@@ -1,0 +1,81 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream TileCopyIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record TileParams {
+    Count: u32;
+}
+
+concept TileCopyConfig {
+    Threads: {
+        X: u32;
+        Y: u32;
+    };
+
+    OutputsPerInvocation: {
+        M: u32 = 1u;
+        N: u32 = 1u;
+    };
+
+    Tile: {
+        M: u32 = Threads.X * OutputsPerInvocation.M;
+        N: u32 = Threads.Y * OutputsPerInvocation.N;
+        K: u32;
+    };
+
+    Padding: {
+        K: u32! = 0u;
+    };
+
+    require Threads.X * Threads.Y <= 1024u;
+    require Tile.M == Threads.X * OutputsPerInvocation.M;
+    require Tile.N == Threads.Y * OutputsPerInvocation.N;
+}
+
+config Tile16x16: TileCopyConfig {
+    Threads.X => 16u;
+    Threads.Y => 16u;
+    Tile.K => 16u;
+}
+
+template<C: TileCopyConfig>
+shader TileCopy {
+    resources TileCopyIO;
+
+    static assert C.Threads.X * C.Threads.Y <= 1024u;
+    static assert C.Tile.M == C.Threads.X * C.OutputsPerInvocation.M;
+    static assert C.Tile.N == C.Threads.Y * C.OutputsPerInvocation.N;
+
+    workgroup Tile: array<f32, C.Tile.M * C.Tile.N>;
+
+    stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: TileParams) -> void {
+        let idx: u32 = thread.DispatchId.x;
+        let local: u32 = thread.GroupIndex;
+        let tileElements: u32 = C.Tile.M * C.Tile.N;
+        let paddedTileK: u32 = C.Tile.K + C.Padding.K;
+
+        if idx < params.Count && local < tileElements && paddedTileK >= C.Tile.K {
+            Tile[local] = A[idx];
+        }
+
+        WorkgroupMemoryBarrierWithSync();
+
+        if idx < params.Count && local < tileElements {
+            C[idx] = Tile[local];
+        }
+
+        return;
+    }
+}
+
+compile TileCopy<Tile16x16> as TileCopy16x16;

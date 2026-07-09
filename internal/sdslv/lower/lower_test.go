@@ -347,6 +347,75 @@ compile Kernel<Rect> as KernelRect;`)
 	}
 }
 
+func TestModuleLowersStructuredConfigDefaultsAndCanonicalNames(t *testing.T) {
+	mir := lowerSource(t, `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+record Params { Count: u32; }
+concept KernelConfig {
+Threads: {
+X: u32;
+Y: u32;
+};
+OutputsPerInvocation: {
+M: u32 = 1u;
+N: u32 = 1u;
+};
+Tile: {
+M: u32 = Threads.X * OutputsPerInvocation.M;
+N: u32 = Threads.Y * OutputsPerInvocation.N;
+K: u32;
+};
+Unroll: {
+K: u32 = Tile.K;
+};
+}
+config Rect: KernelConfig {
+Threads.X => 4u;
+Threads.Y => 2u;
+Tile.K => 8u;
+}
+template<C: KernelConfig>
+shader Kernel {
+stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+let tileM: u32 = C.Tile.M;
+let unrollK: u32 = C.Unroll.K;
+return;
+}
+}
+compile Kernel<Rect> as KernelRect;`)
+	entry := mir.EntryPoints[0]
+	if got := len(entry.Metadata); got != 6 {
+		t.Fatalf("len(Metadata) = %d, want 6", got)
+	}
+	if got := entry.Metadata[0]; got.Name != "OUTPUTS_PER_INVOCATION_M" || got.Value != 1 {
+		t.Fatalf("metadata[0] = %#v", got)
+	}
+	if got := entry.Metadata[5]; got.Name != "UNROLL_K" || got.Value != 8 {
+		t.Fatalf("metadata[5] = %#v", got)
+	}
+	if got := len(entry.ConfigValues); got != 8 {
+		t.Fatalf("len(ConfigValues) = %d, want 8", got)
+	}
+	if got := entry.ConfigValues[0]; got.Name != "OUTPUTS_PER_INVOCATION_M" || got.Value != 1 {
+		t.Fatalf("config[0] = %#v", got)
+	}
+	if got := entry.ConfigValues[6]; got.Name != "TILE_N" || got.Value != 2 {
+		t.Fatalf("config[6] = %#v", got)
+	}
+	if got := entry.ConfigValues[7]; got.Name != "UNROLL_K" || got.Value != 8 {
+		t.Fatalf("config[7] = %#v", got)
+	}
+	cs := findFunction(t, mir, "KernelRect_CS")
+	tileM := cs.Body.Statements[0].(vdmir.LetStmt)
+	if lit, ok := tileM.Value.(vdmir.LiteralExpr); !ok || lit.Value != "4u" {
+		t.Fatalf("tileM value = %#v, want 4u literal", tileM.Value)
+	}
+}
+
 func TestModuleLowersLoopHintsAndExplicitBindings(t *testing.T) {
 	mir := lowerSource(t, `shader S {
 resources {

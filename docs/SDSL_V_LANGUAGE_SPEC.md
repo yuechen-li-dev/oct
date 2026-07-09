@@ -41,8 +41,8 @@ Current GoOct SDSL-V accepts these top-level declaration kinds:
 | `type` | `type Name = TypeRef @space(...);` | Type alias, optionally space-annotated |
 | `record` | `record Name { fields }` | Plain aggregate struct (no stage semantics) |
 | `stream` | `stream Name { fields }` | Stage I/O struct (auto-assigned HLSL semantics) |
-| `concept` | `concept Name { FIELD: Type; require expr; }` | Compile-time config schema and constraints |
-| `config` | `config Name: ConceptName { FIELD: const_expr; require expr; }` | Concrete compile-time config values |
+| `concept` | `concept Name { FIELD: Type; Group: { Field: Type = expr; }; require expr; }` | Compile-time config schema, grouped fields, defaults, and constraints |
+| `config` | `config Name: ConceptName { FIELD: const_expr; Path.To.Field => const_expr; require expr; }` | Concrete compile-time config values |
 | `interface` | `interface Name { fn signatures }` | Abstract method contract |
 | `template` + `shader` | `template<C: Concept> shader Name { ... }` | Compile-time specialized shader template |
 | `shader` | `shader Name { ... }` | Concrete shader program |
@@ -234,6 +234,14 @@ Current M6 additions:
 - compile-time expression support for arithmetic, comparisons, boolean operators, modulo, and config-field references;
 - loop attributes `[unroll]` and `[loop]`;
 - resource binding attributes `[binding(n)]`.
+
+Current M11 additions:
+
+- structured concept field groups;
+- fat-arrow config assignments with dotted paths;
+- concept field defaults;
+- dotted config references in requirements and template specialization;
+- nonzero-by-default `u32` concept/config fields, with `u32!` as the explicit zero-permitted form.
 
 ### Shader
 

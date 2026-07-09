@@ -102,22 +102,24 @@ type specializeValue struct {
 	boolVal bool
 }
 
+type conceptFieldSpec struct {
+	Path         string
+	Type         ast.TypeRef
+	DefaultValue ast.Expr
+	ZeroAllowed  bool
+}
+
 func specializeModule(module ast.Module) (ast.Module, error) {
-	configs := map[string]map[string]specializeValue{}
+	concepts := map[string]ast.ConceptDecl{}
+	configDecls := map[string]ast.ConfigDecl{}
 	templates := map[string]ast.ShaderDecl{}
 	var compileDecls []ast.CompileDecl
 	for _, decl := range module.Decls {
 		switch d := decl.(type) {
+		case ast.ConceptDecl:
+			concepts[d.Name] = d
 		case ast.ConfigDecl:
-			fields := map[string]specializeValue{}
-			for _, field := range d.Fields {
-				value, err := evalSpecializeConstExpr(field.Value, nil)
-				if err != nil {
-					return ast.Module{}, err
-				}
-				fields[field.Name] = value
-			}
-			configs[d.Name] = fields
+			configDecls[d.Name] = d
 		case ast.ShaderDecl:
 			if d.Template != nil {
 				templates[d.Name] = d
@@ -133,9 +135,17 @@ func specializeModule(module ast.Module) (ast.Module, error) {
 		if !ok {
 			return ast.Module{}, fmt.Errorf("unknown template shader %s", decl.ShaderName)
 		}
-		config, ok := configs[decl.ConfigName]
+		configDecl, ok := configDecls[decl.ConfigName]
 		if !ok {
 			return ast.Module{}, fmt.Errorf("unknown config %s", decl.ConfigName)
+		}
+		concept, ok := concepts[configDecl.ConceptName]
+		if !ok {
+			return ast.Module{}, fmt.Errorf("unknown concept %s", configDecl.ConceptName)
+		}
+		config, err := expandConfig(concept, configDecl)
+		if err != nil {
+			return ast.Module{}, err
 		}
 		env := map[string]specializeValue{}
 		for name, value := range config {
@@ -187,7 +197,7 @@ func lowerSpecializedConfig(env map[string]specializeValue) map[string]uint32 {
 		if value.int32 < 0 {
 			continue
 		}
-		out[field] = uint32(value.int32)
+		out[flattenConfigName(field)] = uint32(value.int32)
 	}
 	if len(out) == 0 {
 		return nil
@@ -315,8 +325,8 @@ func specializeIntExpr(expr ast.Expr, env map[string]specializeValue) (ast.Expr,
 func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 	switch e := expr.(type) {
 	case ast.FieldAccessExpr:
-		if id, ok := e.Target.(ast.IdentifierExpr); ok {
-			if value, ok := env[id.Name+"."+e.Field]; ok {
+		if path, ok := specializeFieldPath(e); ok {
+			if value, ok := env[path]; ok {
 				return literalExprForValue(value)
 			}
 		}
@@ -459,7 +469,7 @@ func (l *lowering) collect(module ast.Module) {
 		case ast.StreamDecl:
 			l.types[d.Name] = typeInfo{kind: "stream", fields: collectFields(d.Fields)}
 		case ast.ConceptDecl:
-			l.types[d.Name] = typeInfo{kind: "concept", fields: collectFields(d.Fields)}
+			l.types[d.Name] = typeInfo{kind: "concept", fields: collectConceptFields(d)}
 		case ast.EnumDecl:
 			l.collectEnum(d)
 		case ast.FunctionDecl:
@@ -1371,6 +1381,136 @@ func cloneScope(scope map[string]binding) map[string]binding {
 func payloadTypeName(enumName, variantName string) string {
 	return enumName + "_" + variantName + "Payload"
 }
+
+func collectConceptFields(concept ast.ConceptDecl) map[string]fieldInfo {
+	out := map[string]fieldInfo{}
+	for _, spec := range conceptFieldSpecs(concept) {
+		out[spec.Path] = fieldInfo{typ: spec.Type}
+	}
+	return out
+}
+
+func conceptFieldSpecs(concept ast.ConceptDecl) []conceptFieldSpec {
+	var out []conceptFieldSpec
+	var walk func([]ast.ConceptMember, []string)
+	walk = func(members []ast.ConceptMember, prefix []string) {
+		for _, member := range members {
+			switch m := member.(type) {
+			case ast.ConceptField:
+				out = append(out, conceptFieldSpec{
+					Path:         joinConceptPath(prefix, m.Name),
+					Type:         m.Type,
+					DefaultValue: m.DefaultValue,
+					ZeroAllowed:  m.Type.ZeroAllowed,
+				})
+			case ast.ConceptGroup:
+				walk(m.Members, append(append([]string(nil), prefix...), m.Name))
+			}
+		}
+	}
+	walk(concept.Members, nil)
+	return out
+}
+
+func joinConceptPath(prefix []string, name string) string {
+	if len(prefix) == 0 {
+		return name
+	}
+	return strings.Join(append(append([]string(nil), prefix...), name), ".")
+}
+
+func expandConfig(concept ast.ConceptDecl, config ast.ConfigDecl) (map[string]specializeValue, error) {
+	assignments := map[string]ast.Expr{}
+	for _, field := range config.Fields {
+		assignments[field.Path] = field.Value
+	}
+	values := map[string]specializeValue{}
+	for _, spec := range conceptFieldSpecs(concept) {
+		if expr, ok := assignments[spec.Path]; ok {
+			value, err := evalSpecializeConstExpr(expr, values)
+			if err != nil {
+				return nil, fmt.Errorf("config %s field %s: %w", config.Name, spec.Path, err)
+			}
+			if spec.Type.Name == "u32" && !spec.ZeroAllowed && value.int32 == 0 {
+				return nil, fmt.Errorf("config field %s is nonzero by default; use u32! if zero is intentional", spec.Path)
+			}
+			values[spec.Path] = value
+			continue
+		}
+		if spec.DefaultValue == nil {
+			return nil, fmt.Errorf("config field %s missing", spec.Path)
+		}
+		value, err := evalSpecializeConstExpr(spec.DefaultValue, values)
+		if err != nil {
+			return nil, fmt.Errorf("config %s field %s default: %w", config.Name, spec.Path, err)
+		}
+		if spec.Type.Name == "u32" && !spec.ZeroAllowed && value.int32 == 0 {
+			return nil, fmt.Errorf("config field %s is nonzero by default; use u32! if zero is intentional", spec.Path)
+		}
+		values[spec.Path] = value
+	}
+	return values, nil
+}
+
+func specializeFieldPath(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case ast.FieldAccessExpr:
+		if id, ok := e.Target.(ast.IdentifierExpr); ok {
+			return id.Name + "." + e.Field, true
+		}
+		prefix, ok := specializeFieldPath(e.Target)
+		if !ok {
+			return "", false
+		}
+		return prefix + "." + e.Field, true
+	default:
+		return "", false
+	}
+}
+
+func flattenConfigName(path string) string {
+	parts := strings.Split(path, ".")
+	words := make([]string, 0, len(parts)*2)
+	for _, part := range parts {
+		words = append(words, splitConfigWords(part)...)
+	}
+	return strings.Join(words, "_")
+}
+
+func splitConfigWords(part string) []string {
+	part = strings.ReplaceAll(part, "-", "_")
+	if part == "" {
+		return nil
+	}
+	var words []string
+	start := 0
+	for i := 1; i < len(part); i++ {
+		prev := part[i-1]
+		curr := part[i]
+		next := byte(0)
+		if i+1 < len(part) {
+			next = part[i+1]
+		}
+		if curr == '_' {
+			if start < i {
+				words = append(words, strings.ToUpper(part[start:i]))
+			}
+			start = i + 1
+			continue
+		}
+		if isLowerASCII(prev) && isUpperASCII(curr) || isUpperASCII(prev) && isUpperASCII(curr) && next != 0 && isLowerASCII(next) {
+			words = append(words, strings.ToUpper(part[start:i]))
+			start = i
+		}
+	}
+	if start < len(part) {
+		words = append(words, strings.ToUpper(part[start:]))
+	}
+	return words
+}
+
+func isLowerASCII(b byte) bool { return b >= 'a' && b <= 'z' }
+func isUpperASCII(b byte) bool { return b >= 'A' && b <= 'Z' }
 
 func collectFields(fields []ast.Field) map[string]fieldInfo {
 	out := make(map[string]fieldInfo, len(fields))

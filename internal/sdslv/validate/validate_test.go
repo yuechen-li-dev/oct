@@ -550,6 +550,121 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	}
 }
 
+func TestModuleAllowsStructuredConfigDefaultsAndDottedTemplateRefs(t *testing.T) {
+	err := validateSource(`stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream IO {
+[binding(0)] A: readonly array<f32>;
+[binding(1)] C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+concept TileConfig {
+Threads: {
+X: u32;
+Y: u32;
+};
+OutputsPerInvocation: {
+M: u32 = 1u;
+N: u32 = 1u;
+};
+Tile: {
+M: u32 = Threads.X * OutputsPerInvocation.M;
+N: u32 = Threads.Y * OutputsPerInvocation.N;
+K: u32;
+};
+Padding: {
+K: u32! = 0u;
+};
+require Threads.X * Threads.Y <= 1024u;
+}
+config Tile16: TileConfig {
+Threads.X => 16u;
+Threads.Y => 16u;
+Tile.K => 16u;
+}
+template<C: TileConfig>
+shader TileCopy {
+resources IO;
+workgroup Tile: array<f32, C.Tile.M * C.Tile.N>;
+stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+let tileK: u32 = C.Tile.K + C.Padding.K;
+if thread.DispatchId.x < params.Count {
+C[thread.DispatchId.x] = A[thread.DispatchId.x];
+}
+return;
+}
+}
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsConfigDefaultForwardReference(t *testing.T) {
+	err := validateSource(`concept BadConfig {
+Tile: { M: u32 = Threads.X; };
+Threads: { X: u32; };
+}
+config Bad: BadConfig { Threads.X => 4u; }`)
+	if err == nil || !strings.Contains(err.Error(), "unknown constant field Threads.X") {
+		t.Fatalf("error = %v, want forward-reference diagnostic", err)
+	}
+}
+
+func TestModuleRejectsZeroForPlainU32ConfigFieldAndAllowsU32Bang(t *testing.T) {
+	err := validateSource(`concept BadConfig {
+Tile: { K: u32 = 0u; };
+}
+config Bad: BadConfig {}`)
+	if err == nil || !strings.Contains(err.Error(), "config field Tile.K is nonzero by default") {
+		t.Fatalf("error = %v, want nonzero default diagnostic", err)
+	}
+	err = validateSource(`concept OkayConfig {
+Padding: { K: u32! = 0u; };
+}
+config Okay: OkayConfig {}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsStructuredConfigDuplicateUnknownAndMixedAssignments(t *testing.T) {
+	err := validateSource(`concept TileConfig {
+Threads: { X: u32; };
+}
+config Bad: TileConfig {
+Threads.X => 4u;
+Threads.X => 8u;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "duplicate config field Bad.Threads.X") {
+		t.Fatalf("error = %v, want duplicate dotted assignment diagnostic", err)
+	}
+	err = validateSource(`concept TileConfig {
+Threads: { X: u32; };
+}
+config Bad: TileConfig {
+Threads.Y => 4u;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown config field Bad.Threads.Y") {
+		t.Fatalf("error = %v, want unknown dotted field diagnostic", err)
+	}
+	err = validateSource(`concept TileConfig {
+Threads: { X: u32; };
+Y: u32;
+}
+config Bad: TileConfig {
+Threads.X => 4u;
+Y: 2u;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "must not mix legacy ':' assignments with fat-arrow") {
+		t.Fatalf("error = %v, want mixed assignment style diagnostic", err)
+	}
+}
+
 func TestModuleRejectsFailedConceptRequirement(t *testing.T) {
 	err := validateSource(`concept TileConfig {
 TILE_SIZE: u32;

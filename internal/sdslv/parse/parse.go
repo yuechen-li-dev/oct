@@ -96,7 +96,7 @@ func (p *parser) parseTypeAlias() (ast.TypeAliasDecl, error) {
 	if _, err := p.expect(token.Assign, "expected '=' in type alias"); err != nil {
 		return ast.TypeAliasDecl{}, err
 	}
-	ref, err := p.parseTypeRef()
+	ref, err := p.parseTypeRef(false)
 	if err != nil {
 		return ast.TypeAliasDecl{}, err
 	}
@@ -163,7 +163,7 @@ func (p *parser) parseConcept() (ast.ConceptDecl, error) {
 	if _, err := p.expect(token.LeftBrace, "expected '{' after concept name"); err != nil {
 		return ast.ConceptDecl{}, err
 	}
-	var fields []ast.Field
+	var members []ast.ConceptMember
 	var requirements []ast.RequireStmt
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
@@ -177,14 +177,14 @@ func (p *parser) parseConcept() (ast.ConceptDecl, error) {
 			requirements = append(requirements, requirement)
 			continue
 		}
-		field, err := p.parseField()
+		member, err := p.parseConceptMember()
 		if err != nil {
 			return ast.ConceptDecl{}, err
 		}
-		fields = append(fields, field)
+		members = append(members, member)
 	}
 	p.advance()
-	return ast.ConceptDecl{Name: name.Lexeme, Fields: fields, Requirements: requirements}, nil
+	return ast.ConceptDecl{Name: name.Lexeme, Members: members, Requirements: requirements}, nil
 }
 
 func (p *parser) parseConfig() (ast.ConfigDecl, error) {
@@ -205,6 +205,7 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 	}
 	var fields []ast.ConfigField
 	var requirements []ast.RequireStmt
+	style := ast.ConfigAssignmentStyle("")
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
 			return ast.ConfigDecl{}, p.errorAtCurrent("expected '}' to close config")
@@ -217,12 +218,26 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 			requirements = append(requirements, requirement)
 			continue
 		}
-		fieldName, err := p.expect(token.Identifier, "expected config field name")
+		fieldPath, err := p.parseDottedName("expected config field name")
 		if err != nil {
 			return ast.ConfigDecl{}, err
 		}
-		if _, err := p.expect(token.Colon, "expected ':' after config field name"); err != nil {
-			return ast.ConfigDecl{}, err
+		assignmentStyle := ast.ConfigAssignmentLegacy
+		if p.current().Kind == token.Colon {
+			p.advance()
+			if strings.Contains(fieldPath, ".") {
+				return ast.ConfigDecl{}, p.errorAtCurrent("dotted config field paths require '=>' assignments in SDSL-V M11")
+			}
+		} else if p.current().Kind == token.Arrow && p.current().Lexeme == "=>" {
+			p.advance()
+			assignmentStyle = ast.ConfigAssignmentFatArrow
+		} else {
+			return ast.ConfigDecl{}, p.errorAtCurrent("expected ':' or '=>' after config field name")
+		}
+		if style == "" {
+			style = assignmentStyle
+		} else if style != assignmentStyle {
+			return ast.ConfigDecl{}, p.errorAtCurrent("config declarations must not mix legacy ':' assignments with fat-arrow '=>' assignments")
 		}
 		value, err := p.parseExpression()
 		if err != nil {
@@ -231,7 +246,7 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after config field"); err != nil {
 			return ast.ConfigDecl{}, err
 		}
-		fields = append(fields, ast.ConfigField{Name: fieldName.Lexeme, Value: value})
+		fields = append(fields, ast.ConfigField{Path: fieldPath, Value: value, Style: assignmentStyle})
 	}
 	p.advance()
 	return ast.ConfigDecl{Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields, Requirements: requirements}, nil
@@ -266,7 +281,7 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 				if _, err := p.expect(token.Colon, "expected ':' after payload field name"); err != nil {
 					return ast.EnumDecl{}, err
 				}
-				ref, err := p.parseTypeRef()
+				ref, err := p.parseTypeRef(false)
 				if err != nil {
 					return ast.EnumDecl{}, err
 				}
@@ -425,7 +440,7 @@ func (p *parser) parseWorkgroup() (ast.WorkgroupDecl, error) {
 	if _, err := p.expect(token.Colon, "expected ':' after workgroup name"); err != nil {
 		return ast.WorkgroupDecl{}, err
 	}
-	ref, err := p.parseTypeRef()
+	ref, err := p.parseTypeRef(false)
 	if err != nil {
 		return ast.WorkgroupDecl{}, err
 	}
@@ -475,7 +490,7 @@ func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 		} else {
 			return nil, p.errorAtToken(accessToken, "expected readonly or readwrite resource access")
 		}
-		ref, err := p.parseTypeRef()
+		ref, err := p.parseTypeRef(false)
 		if err != nil {
 			return nil, err
 		}
@@ -566,7 +581,7 @@ func (p *parser) parseFunction(stage string) (ast.FunctionDecl, error) {
 	if _, err := p.expect(token.Arrow, "expected '->' before return type"); err != nil {
 		return ast.FunctionDecl{}, err
 	}
-	ret, err := p.parseTypeRef()
+	ret, err := p.parseTypeRef(false)
 	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
@@ -591,7 +606,7 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 			if _, err := p.expect(token.Colon, "expected ':' after parameter name"); err != nil {
 				return nil, err
 			}
-			ref, err := p.parseTypeRef()
+			ref, err := p.parseTypeRef(false)
 			if err != nil {
 				return nil, err
 			}
@@ -677,7 +692,7 @@ func (p *parser) parseLet() (ast.LetStmt, error) {
 	if _, err := p.expect(token.Colon, "expected ':' after local name"); err != nil {
 		return ast.LetStmt{}, err
 	}
-	ref, err := p.parseTypeRef()
+	ref, err := p.parseTypeRef(false)
 	if err != nil {
 		return ast.LetStmt{}, err
 	}
@@ -1137,14 +1152,23 @@ func (p *parser) parseWhenUtility() (ast.WhenUtilityExpr, error) {
 	return ast.WhenUtilityExpr{Cases: cases, Else: elseValue}, nil
 }
 
-func (p *parser) parseTypeRef() (ast.TypeRef, error) {
+func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 	name, err := p.expect(token.Identifier, "expected type name")
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
 	ref := ast.TypeRef{Name: name.Lexeme}
+	if p.match(token.Bang) {
+		if !allowZeroBang {
+			return ast.TypeRef{}, p.errorAtCurrent("u32! is only valid for concept/config fields in SDSL-V M11")
+		}
+		if ref.Name != "u32" {
+			return ast.TypeRef{}, p.errorAtCurrent("only u32! is supported as a zero-permitted concept/config field type in SDSL-V M11")
+		}
+		ref.ZeroAllowed = true
+	}
 	if ref.Name == "array" && p.match(token.LeftAngle) {
-		elem, err := p.parseTypeRef()
+		elem, err := p.parseTypeRef(false)
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
@@ -1182,7 +1206,7 @@ func (p *parser) parseField() (ast.Field, error) {
 	} else if p.match(token.KeywordReadwrite) {
 		access = "readwrite"
 	}
-	ref, err := p.parseTypeRef()
+	ref, err := p.parseTypeRef(false)
 	if err != nil {
 		return ast.Field{}, err
 	}
@@ -1190,6 +1214,67 @@ func (p *parser) parseField() (ast.Field, error) {
 		return ast.Field{}, err
 	}
 	return ast.Field{Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes}, nil
+}
+
+func (p *parser) parseConceptMember() (ast.ConceptMember, error) {
+	name, err := p.expect(token.Identifier, "expected concept field or group name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(token.Colon, "expected ':' after concept field or group name"); err != nil {
+		return nil, err
+	}
+	if p.match(token.LeftBrace) {
+		var members []ast.ConceptMember
+		for p.current().Kind != token.RightBrace {
+			if p.current().Kind == token.EOF {
+				return nil, p.errorAtCurrent("expected '}' to close concept group")
+			}
+			member, err := p.parseConceptMember()
+			if err != nil {
+				return nil, err
+			}
+			members = append(members, member)
+		}
+		p.advance()
+		if _, err := p.expect(token.Semicolon, "expected ';' after concept group"); err != nil {
+			return nil, err
+		}
+		return ast.ConceptGroup{Name: name.Lexeme, Members: members}, nil
+	}
+	ref, err := p.parseTypeRef(true)
+	if err != nil {
+		return nil, err
+	}
+	var defaultValue ast.Expr
+	if p.match(token.Assign) {
+		defaultValue, err = p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after concept field"); err != nil {
+		return nil, err
+	}
+	return ast.ConceptField{Name: name.Lexeme, Type: ref, DefaultValue: defaultValue}, nil
+}
+
+func (p *parser) parseDottedName(message string) (string, error) {
+	name, err := p.expect(token.Identifier, message)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(name.Lexeme)
+	for p.match(token.Dot) {
+		part, err := p.expect(token.Identifier, "expected identifier after '.'")
+		if err != nil {
+			return "", err
+		}
+		b.WriteByte('.')
+		b.WriteString(part.Lexeme)
+	}
+	return b.String(), nil
 }
 
 func (p *parser) parseRequireStmt() (ast.RequireStmt, error) {

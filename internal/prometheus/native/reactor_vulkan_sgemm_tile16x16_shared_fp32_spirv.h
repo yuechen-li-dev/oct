@@ -387,6 +387,7 @@ static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_k = 16u;
 static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_unroll_k = 16u;
 static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_outputs_per_invocation_m = 1u;
 static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_outputs_per_invocation_n = 1u;
+static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_padding_k = 0u;
 static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_threads_x = 16u;
 static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_threads_y = 16u;
 static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_config_tile_k = 16u;

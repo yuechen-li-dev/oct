@@ -20,67 +20,69 @@ record SgemmParams {
 }
 
 concept SharedTileSgemmConfig {
-    THREADS_X: u32;
-    THREADS_Y: u32;
-    OUTPUTS_PER_INVOCATION_M: u32;
-    OUTPUTS_PER_INVOCATION_N: u32;
-    TILE_M: u32;
-    TILE_N: u32;
-    TILE_K: u32;
-    UNROLL_K: u32;
+    Threads: {
+        X: u32;
+        Y: u32;
+    };
 
-    require THREADS_X > 0u;
-    require THREADS_Y > 0u;
-    require OUTPUTS_PER_INVOCATION_M > 0u;
-    require OUTPUTS_PER_INVOCATION_N > 0u;
-    require TILE_M > 0u;
-    require TILE_N > 0u;
-    require TILE_K > 0u;
-    require UNROLL_K > 0u;
-    require THREADS_X * THREADS_Y <= 1024u;
-    require TILE_M == THREADS_X * OUTPUTS_PER_INVOCATION_M;
-    require TILE_N == THREADS_Y * OUTPUTS_PER_INVOCATION_N;
-    require UNROLL_K == TILE_K;
+    OutputsPerInvocation: {
+        M: u32 = 1u;
+        N: u32 = 1u;
+    };
+
+    Tile: {
+        M: u32 = Threads.X * OutputsPerInvocation.M;
+        N: u32 = Threads.Y * OutputsPerInvocation.N;
+        K: u32;
+    };
+
+    Unroll: {
+        K: u32 = Tile.K;
+    };
+
+    Padding: {
+        K: u32! = 0u;
+    };
+
+    require Threads.X * Threads.Y <= 1024u;
+    require Tile.M == Threads.X * OutputsPerInvocation.M;
+    require Tile.N == Threads.Y * OutputsPerInvocation.N;
+    require Unroll.K == Tile.K;
 }
 
 config Tile16x16SharedFp32: SharedTileSgemmConfig {
-    THREADS_X: 16u;
-    THREADS_Y: 16u;
-    OUTPUTS_PER_INVOCATION_M: 1u;
-    OUTPUTS_PER_INVOCATION_N: 1u;
-    TILE_M: 16u;
-    TILE_N: 16u;
-    TILE_K: 16u;
-    UNROLL_K: 16u;
+    Threads.X => 16u;
+    Threads.Y => 16u;
+    Tile.K => 16u;
 }
 
 template<C: SharedTileSgemmConfig>
 shader SgemmTileSharedFp32 {
     resources SgemmIO;
 
-    static assert C.THREADS_X * C.THREADS_Y <= 1024u;
-    static assert C.TILE_M == C.THREADS_X * C.OUTPUTS_PER_INVOCATION_M;
-    static assert C.TILE_N == C.THREADS_Y * C.OUTPUTS_PER_INVOCATION_N;
-    static assert C.UNROLL_K == C.TILE_K;
+    static assert C.Threads.X * C.Threads.Y <= 1024u;
+    static assert C.Tile.M == C.Threads.X * C.OutputsPerInvocation.M;
+    static assert C.Tile.N == C.Threads.Y * C.OutputsPerInvocation.N;
+    static assert C.Unroll.K == C.Tile.K;
 
-    workgroup TileA: array<f32, C.TILE_M * C.TILE_K>;
-    workgroup TileB: array<f32, C.TILE_K * C.TILE_N>;
+    workgroup TileA: array<f32, C.Tile.M * C.Tile.K>;
+    workgroup TileB: array<f32, C.Tile.K * C.Tile.N>;
 
-    stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+    stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
         let localRow: u32 = thread.GroupThreadId.x;
         let localCol: u32 = thread.GroupThreadId.y;
-        let row: u32 = thread.GroupId.x * C.TILE_M + localRow;
-        let col: u32 = thread.GroupId.y * C.TILE_N + localCol;
+        let row: u32 = thread.GroupId.x * C.Tile.M + localRow;
+        let col: u32 = thread.GroupId.y * C.Tile.N + localCol;
         let acc: f32 = 0.0;
-        let tileCount: u32 = (params.k + C.TILE_K - 1u) / C.TILE_K;
+        let tileCount: u32 = (params.k + C.Tile.K - 1u) / C.Tile.K;
 
         [loop]
         for tile in 0u..tileCount {
-            let tileBaseK: u32 = tile * C.TILE_K;
+            let tileBaseK: u32 = tile * C.Tile.K;
             let aCol: u32 = tileBaseK + localCol;
             let bRow: u32 = tileBaseK + localRow;
-            let tileAIndex: u32 = localRow * C.TILE_K + localCol;
-            let tileBIndex: u32 = localRow * C.TILE_N + localCol;
+            let tileAIndex: u32 = localRow * C.Tile.K + localCol;
+            let tileBIndex: u32 = localRow * C.Tile.N + localCol;
             let aValue: f32 = 0.0;
             let bValue: f32 = 0.0;
 
@@ -97,8 +99,8 @@ shader SgemmTileSharedFp32 {
             WorkgroupMemoryBarrierWithSync();
 
             [unroll]
-            for kk in 0u..C.TILE_K {
-                acc = acc + TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol];
+            for kk in 0u..C.Unroll.K {
+                acc = acc + TileA[localRow * C.Tile.K + kk] * TileB[kk * C.Tile.N + localCol];
             }
 
             WorkgroupMemoryBarrierWithSync();

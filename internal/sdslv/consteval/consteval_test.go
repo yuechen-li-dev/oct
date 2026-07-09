@@ -30,6 +30,19 @@ func TestEvalSupportsConfigFieldReferences(t *testing.T) {
 	}
 }
 
+func TestEvalSupportsNestedConfigFieldReferences(t *testing.T) {
+	value, err := Eval(parseExpr(t, "C.Threads.X * Tile.K <= 256u"), map[string]Value{
+		"C.Threads.X": {Type: ast.TypeRef{Name: "u32"}, Int32: 16, IsKnown: true},
+		"Tile.K":      {Type: ast.TypeRef{Name: "u32"}, Int32: 16, IsKnown: true},
+	})
+	if err != nil {
+		t.Fatalf("Eval() error = %v", err)
+	}
+	if value.Type.Name != "bool" || !value.Bool {
+		t.Fatalf("value = %#v, want true bool", value)
+	}
+}
+
 func TestEvalRejectsTypeMismatch(t *testing.T) {
 	_, err := Eval(parseExpr(t, "1u && true"), nil)
 	if err == nil || !strings.Contains(err.Error(), "bool operands") {

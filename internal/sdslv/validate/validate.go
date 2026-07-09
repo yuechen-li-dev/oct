@@ -68,6 +68,13 @@ type configInfo struct {
 	fields      map[string]configValue
 }
 
+type conceptFieldSpec struct {
+	Path         string
+	Type         ast.TypeRef
+	DefaultValue ast.Expr
+	ZeroAllowed  bool
+}
+
 type varOrigin string
 
 const (
@@ -113,7 +120,7 @@ func (v *validator) collect(module ast.Module) {
 		case ast.StreamDecl:
 			v.addFieldType(d.Name, "stream", d.Fields, "stream")
 		case ast.ConceptDecl:
-			v.addFieldType(d.Name, "concept", d.Fields, "concept")
+			v.addType(d.Name, typeInfo{name: d.Name, kind: "concept", fields: v.collectConceptFieldMap(d)})
 			v.concepts[d.Name] = d
 		case ast.ConfigDecl:
 			if _, exists := v.configs[d.Name]; exists {
@@ -151,6 +158,58 @@ func (v *validator) addFieldType(name, kind string, fields []ast.Field, label st
 		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type, attributes: field.Attributes}
 	}
 	v.addType(name, typeInfo{name: name, kind: kind, fields: collected})
+}
+
+func (v *validator) collectConceptFieldMap(concept ast.ConceptDecl) map[string]fieldInfo {
+	collected := map[string]fieldInfo{}
+	for _, spec := range v.conceptFieldSpecs(concept) {
+		if _, exists := collected[spec.Path]; exists {
+			continue
+		}
+		collected[spec.Path] = fieldInfo{typ: spec.Type}
+	}
+	return collected
+}
+
+func (v *validator) conceptFieldSpecs(concept ast.ConceptDecl) []conceptFieldSpec {
+	var out []conceptFieldSpec
+	var walk func([]ast.ConceptMember, []string)
+	walk = func(members []ast.ConceptMember, prefix []string) {
+		seen := map[string]string{}
+		for _, member := range members {
+			switch m := member.(type) {
+			case ast.ConceptField:
+				if prior, exists := seen[m.Name]; exists {
+					if prior == "group" {
+						v.errorf("concept %s path %s cannot be both a group and field", concept.Name, joinConceptPath(prefix, m.Name))
+					} else {
+						v.errorf("duplicate concept field %s.%s", concept.Name, joinConceptPath(prefix, m.Name))
+					}
+					continue
+				}
+				seen[m.Name] = "field"
+				out = append(out, conceptFieldSpec{
+					Path:         joinConceptPath(prefix, m.Name),
+					Type:         m.Type,
+					DefaultValue: m.DefaultValue,
+					ZeroAllowed:  m.Type.ZeroAllowed,
+				})
+			case ast.ConceptGroup:
+				if prior, exists := seen[m.Name]; exists {
+					if prior == "field" {
+						v.errorf("concept %s path %s cannot be both a field and group", concept.Name, joinConceptPath(prefix, m.Name))
+					} else {
+						v.errorf("duplicate concept group %s.%s", concept.Name, joinConceptPath(prefix, m.Name))
+					}
+					continue
+				}
+				seen[m.Name] = "group"
+				walk(m.Members, append(append([]string(nil), prefix...), m.Name))
+			}
+		}
+	}
+	walk(concept.Members, nil)
+	return out
 }
 
 func (v *validator) addEnumType(enum ast.EnumDecl) {
@@ -235,21 +294,33 @@ func (v *validator) validateFields(owner, kind string, fields []ast.Field, allow
 }
 
 func (v *validator) validateConcept(concept ast.ConceptDecl) {
-	for _, field := range concept.Fields {
-		if field.Access != "" {
-			v.errorf("concept field %s.%s must not declare resource access", concept.Name, field.Name)
-		}
-		if len(field.Attributes) > 0 {
-			v.errorf("concept field %s.%s does not support attributes in SDSL-V M6", concept.Name, field.Name)
-		}
+	specs := v.conceptFieldSpecs(concept)
+	env := map[string]configValue{}
+	for _, field := range specs {
 		resolved := v.resolveAlias(field.Type)
 		switch resolved.Name {
 		case "u32", "i32", "bool", "f32", "float":
 		default:
-			v.errorf("concept field %s.%s must use a compile-time scalar type in SDSL-V M5", concept.Name, field.Name)
+			v.errorf("concept field %s.%s must use a compile-time scalar type in SDSL-V M5", concept.Name, field.Path)
 		}
+		if field.ZeroAllowed && resolved.Name != "u32" {
+			v.errorf("concept field %s.%s may only use u32! in SDSL-V M11", concept.Name, field.Path)
+		}
+		if field.DefaultValue != nil {
+			value, err := v.evalConstExpr(field.DefaultValue, env)
+			if err != nil {
+				v.errorf("concept field %s.%s default: %v", concept.Name, field.Path, err)
+			} else if !v.compatible(field.Type, value.typ) {
+				v.errorf("concept field %s.%s default expects %s, got %s", concept.Name, field.Path, typeName(field.Type), typeName(value.typ))
+			} else if resolved.Name == "u32" && !field.ZeroAllowed && value.int32 == 0 {
+				v.errorf("config field %s is nonzero by default; use u32! if zero is intentional", field.Path)
+			} else {
+				env[field.Path] = value
+				continue
+			}
+		}
+		env[field.Path] = placeholderConfigValue(resolved)
 	}
-	env := v.conceptRequirementEnv(concept)
 	for _, requirement := range concept.Requirements {
 		value, err := v.evalConstExpr(requirement.Expr, env)
 		if err != nil {
@@ -268,45 +339,71 @@ func (v *validator) validateConfig(config ast.ConfigDecl) {
 		v.errorf("unknown concept %s for config %s", config.ConceptName, config.Name)
 		return
 	}
+	concept := v.concepts[config.ConceptName]
+	specs := v.conceptFieldSpecs(concept)
 	seen := map[string]struct{}{}
-	values := map[string]configValue{}
+	assignments := map[string]ast.ConfigField{}
 	for _, field := range config.Fields {
-		if _, exists := seen[field.Name]; exists {
-			v.errorf("duplicate config field %s.%s", config.Name, field.Name)
+		if _, exists := seen[field.Path]; exists {
+			v.errorf("duplicate config field %s.%s", config.Name, field.Path)
 			continue
 		}
-		seen[field.Name] = struct{}{}
-		conceptField, ok := info.fields[field.Name]
+		seen[field.Path] = struct{}{}
+		conceptField, ok := info.fields[field.Path]
 		if !ok {
-			v.errorf("unknown config field %s.%s", config.Name, field.Name)
+			v.errorf("unknown config field %s.%s", config.Name, field.Path)
 			continue
 		}
-		value, err := v.evalConstExpr(field.Value, nil)
-		if err != nil {
-			v.errorf("config %s field %s: %v", config.Name, field.Name, err)
-			continue
-		}
-		if !v.compatible(conceptField.typ, value.typ) {
-			v.errorf("config %s field %s expects %s, got %s", config.Name, field.Name, typeName(conceptField.typ), typeName(value.typ))
-			continue
-		}
-		values[field.Name] = value
+		assignments[field.Path] = field
+		_ = conceptField
 	}
-	for name := range info.fields {
-		if _, exists := seen[name]; !exists {
-			v.errorf("config field %s missing", name)
+	values := map[string]configValue{}
+	for _, spec := range specs {
+		field := spec.Path
+		if assignment, exists := assignments[field]; exists {
+			value, err := v.evalConstExpr(assignment.Value, values)
+			if err != nil {
+				v.errorf("config %s field %s: %v", config.Name, field, err)
+				values[field] = placeholderConfigValue(v.resolveAlias(spec.Type))
+				continue
+			}
+			if !v.compatible(spec.Type, value.typ) {
+				v.errorf("config %s field %s expects %s, got %s", config.Name, field, typeName(spec.Type), typeName(value.typ))
+				values[field] = placeholderConfigValue(v.resolveAlias(spec.Type))
+				continue
+			}
+			if err := v.validateNonZeroConfigField(field, spec, value); err != nil {
+				v.errorf("%s", err.Error())
+			}
+			values[field] = value
+			continue
 		}
+		if spec.DefaultValue != nil {
+			value, err := v.evalConstExpr(spec.DefaultValue, values)
+			if err != nil {
+				v.errorf("config %s field %s default: %v", config.Name, field, err)
+				values[field] = placeholderConfigValue(v.resolveAlias(spec.Type))
+				continue
+			}
+			if !v.compatible(spec.Type, value.typ) {
+				v.errorf("config %s field %s default expects %s, got %s", config.Name, field, typeName(spec.Type), typeName(value.typ))
+				values[field] = placeholderConfigValue(v.resolveAlias(spec.Type))
+				continue
+			}
+			if err := v.validateNonZeroConfigField(field, spec, value); err != nil {
+				v.errorf("%s", err.Error())
+			}
+			values[field] = value
+			continue
+		}
+		v.errorf("config field %s missing", field)
+		values[field] = placeholderConfigValue(v.resolveAlias(spec.Type))
 	}
 	cfg := v.configs[config.Name]
 	cfg.fields = values
 	v.configs[config.Name] = cfg
-	env := map[string]configValue{}
-	for name, value := range values {
-		env[name] = value
-	}
-	concept := v.concepts[config.ConceptName]
 	for _, requirement := range concept.Requirements {
-		value, err := v.evalConstExpr(requirement.Expr, env)
+		value, err := v.evalConstExpr(requirement.Expr, values)
 		if err != nil {
 			v.errorf("config %s require %s: %v", config.Name, requirement.Text, err)
 			continue
@@ -320,7 +417,7 @@ func (v *validator) validateConfig(config ast.ConfigDecl) {
 		}
 	}
 	for _, requirement := range config.Requirements {
-		value, err := v.evalConstExpr(requirement.Expr, env)
+		value, err := v.evalConstExpr(requirement.Expr, values)
 		if err != nil {
 			v.errorf("config %s require %s: %v", config.Name, requirement.Text, err)
 			continue
@@ -645,6 +742,10 @@ func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope
 }
 
 func (v *validator) validateType(ref ast.TypeRef) {
+	if ref.ZeroAllowed {
+		v.errorf("u32! is only valid for concept/config fields in SDSL-V M11")
+		return
+	}
 	if ref.Name == "array" {
 		if len(ref.Args) != 1 {
 			v.errorf("array type requires one element type")
@@ -698,17 +799,19 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 				return ast.TypeRef{Name: id.Name}
 			}
 		}
-		if id, ok := e.Target.(ast.IdentifierExpr); ok && templateParam != nil && id.Name == templateParam.Name {
-			concept, ok := v.types[templateParam.ConceptName]
-			if !ok || concept.kind != "concept" {
-				v.errorf("unknown concept %s on template shader %s", templateParam.ConceptName, shaderName)
+		if templateParam != nil {
+			if path, ok := templateFieldPath(e, templateParam.Name); ok {
+				concept, ok := v.types[templateParam.ConceptName]
+				if !ok || concept.kind != "concept" {
+					v.errorf("unknown concept %s on template shader %s", templateParam.ConceptName, shaderName)
+					return ast.TypeRef{Name: "<error>"}
+				}
+				if fieldType, ok := concept.fields[path]; ok {
+					return v.resolveAlias(fieldType.typ)
+				}
+				v.errorf("unknown template field %s on concept %s", path, templateParam.ConceptName)
 				return ast.TypeRef{Name: "<error>"}
 			}
-			if fieldType, ok := concept.fields[e.Field]; ok {
-				return v.resolveAlias(fieldType.typ)
-			}
-			v.errorf("unknown template field %s on concept %s", e.Field, templateParam.ConceptName)
-			return ast.TypeRef{Name: "<error>"}
 		}
 		target := v.exprType(e.Target, scope, shaderName, templateParam)
 		if info, ok := v.types[target.Name]; ok && info.fields != nil {
@@ -1355,17 +1458,28 @@ func (v *validator) evalConstExpr(expr ast.Expr, env map[string]configValue) (co
 
 func (v *validator) conceptRequirementEnv(concept ast.ConceptDecl) map[string]configValue {
 	env := map[string]configValue{}
-	for _, field := range concept.Fields {
-		resolved := v.resolveAlias(field.Type)
-		value := configValue{typ: resolved}
-		if resolved.Name == "bool" {
-			value.boolVal = true
-		} else {
-			value.int32 = 1
-		}
-		env[field.Name] = value
+	for _, field := range v.conceptFieldSpecs(concept) {
+		env[field.Path] = placeholderConfigValue(v.resolveAlias(field.Type))
 	}
 	return env
+}
+
+func placeholderConfigValue(ref ast.TypeRef) configValue {
+	value := configValue{typ: ref}
+	if ref.Name == "bool" {
+		value.boolVal = true
+	} else {
+		value.int32 = 1
+	}
+	return value
+}
+
+func (v *validator) validateNonZeroConfigField(path string, spec conceptFieldSpec, value configValue) error {
+	resolved := v.resolveAlias(spec.Type)
+	if resolved.Name == "u32" && !spec.ZeroAllowed && value.int32 == 0 {
+		return fmt.Errorf("config field %s is nonzero by default; use u32! if zero is intentional", path)
+	}
+	return nil
 }
 
 func (v *validator) validateLoopAttributes(attributes []ast.Attribute) {
@@ -1522,6 +1636,29 @@ func sortStrings(values []string) {
 
 func payloadTypeName(enumName, variantName string) string {
 	return enumName + "_" + variantName + "Payload"
+}
+
+func joinConceptPath(prefix []string, name string) string {
+	if len(prefix) == 0 {
+		return name
+	}
+	return strings.Join(append(append([]string(nil), prefix...), name), ".")
+}
+
+func templateFieldPath(expr ast.Expr, root string) (string, bool) {
+	switch e := expr.(type) {
+	case ast.FieldAccessExpr:
+		if id, ok := e.Target.(ast.IdentifierExpr); ok && id.Name == root {
+			return e.Field, true
+		}
+		prefix, ok := templateFieldPath(e.Target, root)
+		if !ok {
+			return "", false
+		}
+		return prefix + "." + e.Field, true
+	default:
+		return "", false
+	}
 }
 
 func builtinUintVectorType(dim int) typeInfo {

@@ -55,15 +55,40 @@ func (StreamDecl) declNode() {}
 
 type ConceptDecl struct {
 	Name         string
-	Fields       []Field
+	Members      []ConceptMember
 	Requirements []RequireStmt
 }
 
 func (ConceptDecl) declNode() {}
 
+type ConceptMember interface{ conceptMemberNode() }
+
+type ConceptField struct {
+	Name         string
+	Type         TypeRef
+	DefaultValue Expr
+}
+
+func (ConceptField) conceptMemberNode() {}
+
+type ConceptGroup struct {
+	Name    string
+	Members []ConceptMember
+}
+
+func (ConceptGroup) conceptMemberNode() {}
+
+type ConfigAssignmentStyle string
+
+const (
+	ConfigAssignmentLegacy   ConfigAssignmentStyle = "legacy"
+	ConfigAssignmentFatArrow ConfigAssignmentStyle = "fat_arrow"
+)
+
 type ConfigField struct {
-	Name  string
+	Path  string
 	Value Expr
+	Style ConfigAssignmentStyle
 }
 
 type ConfigDecl struct {
@@ -161,6 +186,7 @@ type TypeRef struct {
 	Args         []TypeRef
 	ArraySize    Expr
 	HasArraySize bool
+	ZeroAllowed  bool
 }
 
 func (t TypeRef) String() string {
