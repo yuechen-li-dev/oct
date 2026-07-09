@@ -196,6 +196,8 @@ namespace
                 return "baseline-scalar";
             case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
                 return "memory-conservative";
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
+                return "sdsl-scalar-plus";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
                 return "small-register-tile";
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
@@ -222,6 +224,8 @@ namespace
                 return "a2x4_row_biased_accum8";
             case PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE:
                 return "memory_conservative";
+            case PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS:
+                return "sdsl_scalar_plus";
             default:
                 return "unknown";
         }
@@ -262,6 +266,7 @@ namespace
         switch (variant) {
             case PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR:
             case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
             case PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8:
@@ -453,6 +458,8 @@ namespace
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_BASELINE);
             case PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE:
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE);
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
+                return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS);
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
                 return static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SRT_2ACCUM_K);
             case PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4:
@@ -1176,6 +1183,62 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_MemoryConservativeVariantCorrectne
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_SdslScalarPlusVariantWiredPathIdentity, 1)
+{
+    const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
+                                           static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS),
+                                           false,
+                                           false);
+    for (const CaseResult& result : run.cases) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS), result.diag.p13_m16b1_requested_occupancy_variant, "SDSL scalar-plus request variant");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS), result.diag.p13_m16b1_executed_occupancy_variant, "SDSL scalar-plus executed variant should preserve identity");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED), result.diag.p13_m16b1_variant_path_status, "SDSL scalar-plus path status should be wired");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS), result.diag.p13_m16b1_variant_path_id, "SDSL scalar-plus must bind its dedicated pipeline identity");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_FALLBACK_NONE), result.diag.p13_m16b1_fallback_reason, "SDSL scalar-plus should not report fallback");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS), result.diag.px16_m6_requested_dispatch_variant, "M6 should report SDSL scalar-plus requested dispatch");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS), result.diag.px16_m6_executed_dispatch_variant, "M6 should report SDSL scalar-plus executed dispatch");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED), result.diag.px16_m6_variant_path_status, "M6 should report SDSL scalar-plus wired path status");
+        ASSERT_EQUAL(1u, result.diag.px16_m6_variant_production_eligible, "M6 should report SDSL scalar-plus as production eligible telemetry");
+        ASSERT_EQUAL(1u, result.diag.px16_m6_variant_dispatch_enabled, "M6 should report SDSL scalar-plus as dispatch enabled");
+    }
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_SdslScalarPlusVariantCorrectnessOddK, 1)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    const std::vector<BenchmarkShapeCase> cases = {
+        {"1x1x1", 0u, 1u, 1u, 1u, true},
+        {"3x7x5", 0u, 3u, 7u, 5u, true},
+        {"8x8x9", 0u, 8u, 8u, 9u, true},
+        {"16x16x17", 0u, 16u, 16u, 17u, true},
+        {"wide-short-small", 0u, 4u, 19u, 7u, true},
+        {"tall-skinny-small", 0u, 21u, 5u, 11u, true},
+    };
+    for (const BenchmarkShapeCase& test_case : cases) {
+        const std::vector<float> a = deterministic_matrix(test_case.m, test_case.k, 19u);
+        const std::vector<float> b = deterministic_matrix(test_case.k, test_case.n, 41u);
+        std::vector<float> c(static_cast<std::size_t>(test_case.m) * static_cast<std::size_t>(test_case.n), 0.0f);
+        std::uint32_t stage = 0u;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK,
+                     prometheus_reactor_runtime_sgemm_benchmark_variant(handle,
+                                                                        a.data(),
+                                                                        b.data(),
+                                                                        c.data(),
+                                                                        test_case.m,
+                                                                        test_case.n,
+                                                                        test_case.k,
+                                                                        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS),
+                                                                        &stage,
+                                                                        &detail),
+                     "SDSL scalar-plus benchmark call should succeed");
+        const CorrectnessSummary correctness = compare_against_oracle(cpu_oracle(test_case.m, test_case.n, test_case.k, a, b), c);
+        ASSERT_TRUE(correctness.pass, "SDSL scalar-plus benchmark output should match CPU oracle");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B6_MemoryConservativeDiagnosticsTruthSurface, 1)
 {
     const BenchmarkRun run = run_benchmark(HarnessMode::Comparison,
@@ -1263,6 +1326,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B3_PromotionLifecycleFieldsExposed, 1
     const std::vector<std::uint32_t> variants = {
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
@@ -1479,6 +1543,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M5_DVT2_Rtx3070ValidationArtifact, 1)
     const std::vector<std::uint32_t> variants = {
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE),
+        static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4),
         static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),

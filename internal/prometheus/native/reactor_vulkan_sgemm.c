@@ -37,6 +37,7 @@
 #include "reactor_vulkan_b2x2_row_major_biased_spirv.h"
 #include "reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
 #include "reactor_vulkan_memory_conservative_spirv.h"
+#include "reactor_vulkan_sgemm_scalar_plus_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 
@@ -544,6 +545,8 @@ typedef struct prometheus_runtime {
   VkPipeline tiled_pipeline;
   VkShaderModule memory_conservative_shader_module;
   VkPipeline memory_conservative_pipeline;
+  VkShaderModule sdsl_scalar_plus_shader_module;
+  VkPipeline sdsl_scalar_plus_pipeline;
   VkPipeline srt_2accum_k_pipeline;
   VkPipeline b2x2_row_major_biased_pipeline;
   VkPipeline a2x4_row_biased_accum8_pipeline;
@@ -4022,6 +4025,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->memory_conservative_pipeline, NULL);
     rt->memory_conservative_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->sdsl_scalar_plus_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->sdsl_scalar_plus_pipeline, NULL);
+    rt->sdsl_scalar_plus_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->srt_2accum_k_pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->srt_2accum_k_pipeline, NULL);
     rt->srt_2accum_k_pipeline = VK_NULL_HANDLE;
@@ -4049,6 +4056,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->memory_conservative_shader_module != VK_NULL_HANDLE) {
     vkDestroyShaderModule(rt->device, rt->memory_conservative_shader_module, NULL);
     rt->memory_conservative_shader_module = VK_NULL_HANDLE;
+  }
+  if (rt->sdsl_scalar_plus_shader_module != VK_NULL_HANDLE) {
+    vkDestroyShaderModule(rt->device, rt->sdsl_scalar_plus_shader_module, NULL);
+    rt->sdsl_scalar_plus_shader_module = VK_NULL_HANDLE;
   }
   if (rt->pipeline_layout != VK_NULL_HANDLE) {
     vkDestroyPipelineLayout(rt->device, rt->pipeline_layout, NULL);
@@ -4450,6 +4461,29 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
   result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->memory_conservative_pipeline);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_scalar_plus_spirv);
+  shader_info.pCode = k_prom_sgemm_scalar_plus_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_scalar_plus_shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = rt->sdsl_scalar_plus_shader_module;
+  stage_info.pName = "SgemmScalarBaselinePlus8x8_CS";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_scalar_plus_pipeline);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -4862,11 +4896,12 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
 
 static uint32_t prom_occ_variant_registered(uint32_t variant) {
   return (variant >= PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
-          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) ? 1u : 0u;
+          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) ? 1u : 0u;
 }
 
 static uint32_t prom_occ_variant_is_wired_evt_dispatchable(uint32_t variant) {
   return (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
@@ -4900,6 +4935,9 @@ static uint32_t prom_occ_variant_executed_identity_for_dispatch(uint32_t variant
 }
 
 static uint32_t prom_occ_variant_path_id(uint32_t variant) {
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS;
+  }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE;
   }
@@ -6042,7 +6080,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   rt->px16_m8_last_upload_wall_ns = prom_wall_clock_elapsed_ns(upload_begin_ns, upload_end_ns);
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
-    if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
+      selected_pipeline = rt->sdsl_scalar_plus_pipeline;
+    } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
       selected_pipeline = rt->memory_conservative_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
       selected_pipeline = rt->srt_2accum_k_pipeline;
@@ -6755,6 +6795,9 @@ static VkPipeline prom_sgemm_pipeline_for_resident_dispatch(prometheus_runtime* 
     return VK_NULL_HANDLE;
   }
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
+      return rt->sdsl_scalar_plus_pipeline;
+    }
     if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
       return rt->memory_conservative_pipeline;
     }

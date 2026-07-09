@@ -607,7 +607,7 @@ void prom_judgment_engine_select_buffering_mode(const prom_buffering_selector_fa
 
 static uint32_t occupancy_variant_valid(uint32_t variant) {
   return variant >= (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
-                 variant <= (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8
+                 variant <= (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS
              ? 1u
              : 0u;
 }

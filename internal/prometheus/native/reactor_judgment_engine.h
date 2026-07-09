@@ -197,6 +197,7 @@ typedef enum prom_occupancy_kernel_variant {
   PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE = 3,
   PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 = 4,
   PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8 = 5,
+  PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS = 6,
 } prom_occupancy_kernel_variant;
 
 typedef enum prom_occupancy_reason_code {

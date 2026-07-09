@@ -433,3 +433,74 @@ Generated artifacts under `out/test-artifacts/` are benchmark/test outputs and s
 Default benchmark mode does not run CPU oracle validation inside the timed loop. Resident mode performs no per-iteration readback. The FACT validation lane may request one final resident readback after timing, then runs the CPU oracle outside the native timed path.
 
 If resident mode is unavailable, the report says so explicitly instead of faking resident numbers.
+
+## Px16 M13
+
+Px16 M13 adds the first SDSL-V-authored Prometheus SGEMM kernel as a benchmark-only explicit occupancy variant. This milestone proves the end-to-end source-backed lane:
+
+`SDSL-V -> VD-MIR -> HLSL -> DXC/SPIR-V -> checked-in header -> Vulkan pipeline -> benchmark resident comparison`
+
+The new explicit variant is:
+
+- `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS`
+
+The new path identity is:
+
+- `PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_SCALAR_PLUS`
+
+The architecture rule for this milestone is:
+
+- The new SDSL-V kernel is benchmark/comparison surface only.
+- Production selector candidates and selector scoring are unchanged.
+- `BASELINE_SCALAR` remains the production scalar baseline identity.
+- Existing resident and explicit comparison variants remain intact.
+- Shared-memory tiled SDSL-V SGEMM remains deferred.
+
+### Source-backed kernel artifacts
+
+- SDSL-V source:
+  - `internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv`
+- Checked-in generated header:
+  - `internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.h`
+- Opt-in regeneration script:
+  - `internal/prometheus/native/generate_sdslv_shaders.ps1`
+
+The scalar-plus kernel keeps the current Prometheus SGEMM ABI:
+
+- binding `0`: row-major `A`
+- binding `1`: row-major `B`
+- binding `2`: row-major `C`
+- push constants `m`, `n`, `k` at offsets `0`, `4`, `8`
+- dispatch mapping `global x -> row`, `global y -> col`
+
+### Regeneration
+
+Ordinary native builds consume the checked-in generated header and do not require DXC. Regeneration is opt-in:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File internal/prometheus/native/generate_sdslv_shaders.ps1
+```
+
+That script:
+
+- checks the SDSL-V source;
+- emits HLSL and SPIR-V into `out/sdslv/`;
+- regenerates `reactor_vulkan_sgemm_scalar_plus_spirv.h`;
+- removes temporary native-side `.hlsl` / `.spv` sidecars so only the checked-in header remains under `internal/prometheus/native/`.
+
+### Benchmark and correctness status
+
+M13 extends the explicit variant comparison and resident explicit comparison tables to include `SDSL_SCALAR_PLUS`. Correctness remains separate from default timing:
+
+- benchmark/report lane:
+  - `out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt`
+- correctness lane:
+  - `out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16Evt_CorrectnessValidationLane`
+
+Coverage now includes the new source-backed variant across representative square, odd-K, and rectangular shapes such as:
+
+- `64x64x64`
+- `64x64x65`
+- `255x129x65`
+
+M13 intentionally does not retune selector scoring to prefer the new variant yet. If resident comparison shows it beating the current selector choice on some shapes, that is useful evidence for later milestones rather than a defect in this milestone.

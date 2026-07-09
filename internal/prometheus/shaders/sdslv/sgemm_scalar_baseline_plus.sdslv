@@ -1,0 +1,71 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+concept ScalarSgemmConfig {
+    THREADS_X: u32;
+    THREADS_Y: u32;
+
+    require THREADS_X > 0u;
+    require THREADS_Y > 0u;
+}
+
+config Scalar8x8: ScalarSgemmConfig {
+    THREADS_X: 8u;
+    THREADS_Y: 8u;
+}
+
+template<C: ScalarSgemmConfig>
+shader SgemmScalarBaselinePlus {
+    resources SgemmIO;
+
+    static assert C.THREADS_X * C.THREADS_Y <= 1024u;
+
+    stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+        let row: u32 = thread.DispatchId.x;
+        let col: u32 = thread.DispatchId.y;
+
+        if row >= params.m {
+            return;
+        }
+
+        if col >= params.n {
+            return;
+        }
+
+        let acc: f32 = 0.0;
+        let aRowBase: u32 = row * params.k;
+
+        for kk in 0u..params.k step 4u {
+            [unroll]
+            for lane in 0u..4u {
+                let kIndex: u32 = kk + lane;
+                if kIndex < params.k {
+                    acc = acc + A[aRowBase + kIndex] * B[kIndex * params.n + col];
+                }
+            }
+        }
+
+        C[row * params.n + col] = acc;
+        return;
+    }
+}
+
+compile SgemmScalarBaselinePlus<Scalar8x8> as SgemmScalarBaselinePlus8x8;

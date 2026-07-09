@@ -110,3 +110,66 @@ func TestSDSLvM4EmitCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestSDSLvPrometheusSgemmScalarPlusSourceEmits(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "sgemm_scalar_baseline_plus.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"resource readonly A: array<f32> bundle SgemmIO binding(0,0)",
+		"resource readonly B: array<f32> bundle SgemmIO binding(1,0)",
+		"resource readwrite C: array<f32> bundle SgemmIO binding(2,0)",
+		"entry compute SgemmScalarBaselinePlus8x8_CS numthreads(8,8,1)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "sgemm_scalar_baseline_plus.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"[[vk::binding(0, 0)]] Buffer<float> A;",
+		"[[vk::binding(1, 0)]] Buffer<float> B;",
+		"[[vk::binding(2, 0)]] RWBuffer<float> C;",
+		"[[vk::push_constant]] ConstantBuffer<SgemmParams> params;",
+		"void SgemmScalarBaselinePlus8x8_CS(",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
+	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_scalar_plus_spirv.h")
+	text, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read checked-in header: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"// Source: internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv",
+		"// Entry point: SgemmScalarBaselinePlus8x8_CS",
+		"static const uint32_t k_prom_sgemm_scalar_plus_spirv[] = {",
+		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_word_count = ",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("checked-in header missing %q:\n%s", want, body)
+		}
+	}
+}
