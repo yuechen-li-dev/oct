@@ -412,7 +412,8 @@ The M9 report schema is `prometheus.sgemm.px16.evt.v3`.
 - `validation_status_source=not_run_in_benchmark_mode` means correctness status is intentionally delegated to the FACT validation lane.
 - `benchmark_total_ms` is the measured SGEMM operation wall time for the production API call.
 - `kernel_gpu_ms` is the Vulkan timestamp kernel duration when available.
-- `upload_ms`, `readback_ms`, `dispatch_submit_ms`, and `sync_wait_ms` are host-observed runtime buckets from the current staged production API path.
+- `pre_dispatch_ms`, `command_record_ms`, `dispatch_submit_ms`, `sync_wait_ms`, `post_sync_ms`, `readback_ms`, and `post_readback_ms` are host-observed runtime buckets from the current staged production API path.
+- `upload_ms` remains reported as an informational sub-bucket. In the current runtime code order, upload happens before command-record begin and is therefore contained in `pre_dispatch_ms`.
 - `oracle_ms`, `validation_readback_ms`, and `validation_ms` are zero in default performance mode. They are populated only when validation is explicitly requested.
 - `unaccounted_host_ms` reports the remaining host-observed wall time not explained by the known runtime buckets.
 
@@ -642,11 +643,13 @@ The SDSL path now derives `groups_x` and `groups_y` from generated metadata so f
 
 Px16 M16 is an instrumentation milestone for the remaining host-side SGEMM timing gap. It does not optimize descriptor updates, change dispatch behavior, retune selector logic, change kernels, or add new SDSL-V surface area.
 
-The working hypothesis for M16 is H1:
+H1 tested command-buffer recording plus per-dispatch `vkUpdateDescriptorSets(...)`. Real hardware diagnostics ruled that out: `command_record_ms` was flat and tiny while the remaining host gap scaled with M*N*K.
 
-- a meaningful part of `unaccounted_host_ms` may be command-buffer recording plus per-dispatch `vkUpdateDescriptorSets(...)`;
-- previous EVT timing only bracketed upload, submit, wait, readback, and optional GPU kernel timestamps;
-- command recording work therefore escaped into `unaccounted_host_ms`.
+H2 adds coarse timing buckets around the still-unbracketed host windows inside `prom_reactor_runtime_sgemm_impl_with_variant`:
+
+- `pre_dispatch_ms`: after argument validation and size checks through command-record begin;
+- `post_sync_ms`: fence wait complete through readback begin;
+- `post_readback_ms`: readback end through function return.
 
 ### `command_record_ms`
 
@@ -664,27 +667,50 @@ Why descriptor updates are included:
 - splitting descriptor updates into a second bucket in this milestone would risk gaps or double-counting;
 - if descriptor update cost is small, that is still a useful diagnostic outcome.
 
+### Coarse H2 fields
+
+The runtime now also exports:
+
+- `px16_m8_last_pre_dispatch_wall_ns`
+- `px16_m8_last_post_sync_wall_ns`
+- `px16_m8_last_post_readback_wall_ns`
+
+Definitions:
+
+- `pre_dispatch_ms` includes occupancy facts, judgment-engine selection, P15 forecast/feedforward checks, path/compute-mode decision, buffering facts, layout/precision decision work, and current upload preparation/copies before command recording begins.
+- `post_sync_ms` includes `vkGetQueryPoolResults`, GPU timestamp interpretation, `prom_dominatus_measurement_filter_update`, P14 update logic, and P15 maturation/correction/reservation/shadow update logic after a real measurement.
+- `post_readback_ms` includes final slot/controller/bookkeeping before returning from the SGEMM call.
+
+The leading H2 suspect is `post_sync_ms`, but the diagnostic intentionally does not assert which bucket dominates.
+
 ### Timing decomposition
 
 Current EVT timing buckets are:
 
 - `kernel_ms`
 - `upload_ms`
-- `readback_ms`
-- `sync_wait_ms`
-- `dispatch_submit_ms`
+- `pre_dispatch_ms`
 - `command_record_ms`
+- `dispatch_submit_ms`
+- `sync_wait_ms`
+- `post_sync_ms`
+- `readback_ms`
+- `post_readback_ms`
 - `oracle_ms` / `validation_ms` when the correctness lane is used
 - `unaccounted_host_ms`
 
 `unaccounted_host_ms` is now computed as the production benchmark wall-clock remainder after subtracting:
 
-- `upload_ms`
+- `pre_dispatch_ms`
 - `command_record_ms`
 - `dispatch_submit_ms`
 - `sync_wait_ms`
+- `post_sync_ms`
 - `readback_ms`
+- `post_readback_ms`
 - `kernel_ms` when GPU timestamps are valid
+
+`upload_ms` is still printed as an informational sub-bucket, but it is not subtracted separately because it is inside the current `pre_dispatch_ms` window.
 
 ### Deep diagnostic lane
 
@@ -692,12 +718,15 @@ Run the focused deep-diagnostic FACT lane on the target Vulkan hardware:
 
 ```bat
 out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16DeepDiagnostics
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16Deep_CoarsePhaseLocalization
 ```
 
 It writes:
 
 - `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.json`
 - `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.md`
+- `out/test-artifacts/prometheus_sgemm_px16_deep_coarse_phase.json`
+- `out/test-artifacts/prometheus_sgemm_px16_deep_coarse_phase.md`
 
 The deep artifact includes:
 
@@ -706,7 +735,7 @@ The deep artifact includes:
 - policy mode;
 - requested / selected / executed variant;
 - executed path;
-- `kernel_ms`, `upload_ms`, `readback_ms`, `sync_wait_ms`, `dispatch_submit_ms`, `command_record_ms`, `unaccounted_host_ms`;
+- `kernel_ms`, `upload_ms`, `pre_dispatch_ms`, `command_record_ms`, `dispatch_submit_ms`, `sync_wait_ms`, `post_sync_ms`, `readback_ms`, `post_readback_ms`, `unaccounted_host_ms`;
 - `VK_INSTANCE_LAYERS`;
 - `VK_LOADER_LAYERS_ENABLE`;
 - resident-vs-production differential when resident mode is available;
@@ -718,11 +747,23 @@ Upload these files for follow-up analysis:
 
 - `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.json`
 - `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.md`
+- `out/test-artifacts/prometheus_sgemm_px16_deep_coarse_phase.json`
+- `out/test-artifacts/prometheus_sgemm_px16_deep_coarse_phase.md`
 - `out/test-artifacts/prometheus_sgemm_px16_evt_results.json`
 - `out/test-artifacts/prometheus_sgemm_px16_evt_report.md`
+
+### CPU-side work audit
+
+The H2 audit found these CPU loops in or adjacent to the measured path:
+
+- `prom_fp16_evaluate_tolerance(...)` is O(M*N*K), runs in `pre_dispatch_ms`, and is not guarded by a debug macro. It remains a suspect for an M*N*K-shaped host gap.
+- `prom_apply_debug_row_major_oracle(...)` performs an O(M*N*K) scalar oracle plus O(M*N) compare/update when `PROM_TESTCFG_PACKED4_DEBUG_ORACLE_CHECK` is enabled and packed4 mode executes. It is gated by an explicit test flag and is inside `readback_ms`; default EVT runs should not hit it.
+- Packed4 layout packing is O(M*K + K*N) and FP16 packing is O(M*K + K*N). Both are inside `upload_ms` when those compute modes are selected.
+- Output `memcpy` readback is O(M*N) and already sits in `readback_ms`.
+- P14/P15 measurement filtering, reservations, and shadow calibration use fixed-size rings/windows (`16` or smaller, filter window at most `9`) and do not iterate over matrix data or dimensions.
 
 ### Environment and subgroup notes
 
 - M16 reports `VK_INSTANCE_LAYERS` and `VK_LOADER_LAYERS_ENABLE`, but that does not detect every implicit Vulkan layer.
-- If `command_record_ms` does not explain the gap, run `vulkaninfo --summary` and inspect unexpected `Layers:` entries.
+- If the H2 buckets do not explain the gap, run `vulkaninfo --summary` and inspect unexpected `Layers:` entries, then widen the search to code between benchmark iterations.
 - The existing subgroup-size report field is still left unchanged in M16 and remains a separate follow-up.

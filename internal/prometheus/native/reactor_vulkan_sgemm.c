@@ -646,10 +646,13 @@ typedef struct prometheus_runtime {
   uint32_t last_gpu_timing_failure_reason;
   uint64_t last_gpu_duration_ns;
   uint64_t px16_m8_last_upload_wall_ns;
+  uint64_t px16_m8_last_pre_dispatch_wall_ns;
   uint64_t px16_m8_last_command_record_wall_ns;
   uint64_t px16_m8_last_dispatch_submit_wall_ns;
   uint64_t px16_m8_last_sync_wait_wall_ns;
+  uint64_t px16_m8_last_post_sync_wall_ns;
   uint64_t px16_m8_last_readback_wall_ns;
+  uint64_t px16_m8_last_post_readback_wall_ns;
   uint64_t px16_m8_last_total_wall_ns;
   uint32_t px16_m8_last_executed_explicit_variant_request;
   prom_dominatus_measurement_filter_state p14_measurement_filter_state;
@@ -4051,10 +4054,13 @@ static void reset_last_runtime_timing_decomposition(prometheus_runtime* rt) {
     return;
   }
   rt->px16_m8_last_upload_wall_ns = 0u;
+  rt->px16_m8_last_pre_dispatch_wall_ns = 0u;
   rt->px16_m8_last_command_record_wall_ns = 0u;
   rt->px16_m8_last_dispatch_submit_wall_ns = 0u;
   rt->px16_m8_last_sync_wait_wall_ns = 0u;
+  rt->px16_m8_last_post_sync_wall_ns = 0u;
   rt->px16_m8_last_readback_wall_ns = 0u;
+  rt->px16_m8_last_post_readback_wall_ns = 0u;
   rt->px16_m8_last_total_wall_ns = 0u;
 }
 
@@ -5322,6 +5328,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_resource_lease_decision lease_yield_decision;
   uint32_t lease_granted = 0u;
   uint64_t total_wall_begin_ns = 0u;
+  uint64_t pre_dispatch_begin_ns = 0u;
   uint64_t upload_begin_ns = 0u;
   uint64_t upload_end_ns = 0u;
   uint64_t command_record_begin_ns = 0u;
@@ -5329,8 +5336,11 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   uint64_t dispatch_submit_end_ns = 0u;
   uint64_t sync_wait_begin_ns = 0u;
   uint64_t sync_wait_end_ns = 0u;
+  uint64_t post_sync_begin_ns = 0u;
   uint64_t readback_begin_ns = 0u;
   uint64_t readback_end_ns = 0u;
+  uint64_t post_readback_begin_ns = 0u;
+  uint64_t function_return_ns = 0u;
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
   total_wall_begin_ns = prom_wall_clock_now_ns();
@@ -5375,6 +5385,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_SIZE_OVERFLOW);
     return PROM_ERROR;
   }
+  pre_dispatch_begin_ns = prom_wall_clock_now_ns();
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, 0);
   if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
     set_async_state(rt, PROM_ASYNC_STATE_IDLE, PROM_STAGE_NONE, 0);
@@ -6232,6 +6243,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   writes[2].dstBinding = 2u;
   writes[2].pBufferInfo = &buffer_infos[2];
   command_record_begin_ns = prom_wall_clock_now_ns();
+  rt->px16_m8_last_pre_dispatch_wall_ns =
+      prom_wall_clock_elapsed_ns(pre_dispatch_begin_ns, command_record_begin_ns);
   vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
 
   if (use_dedicated_transfer_upload != 0u && selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
@@ -6662,6 +6675,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
     }
     vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    sync_wait_end_ns = prom_wall_clock_now_ns();
+    rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
+    post_sync_begin_ns = sync_wait_end_ns;
     if (vk_result != VK_SUCCESS) {
       reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -6785,8 +6801,6 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
         }
       }
     }
-    sync_wait_end_ns = prom_wall_clock_now_ns();
-    rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
     rt->in_flight_submit = 0u;
     if (!prom_slot_mark_complete(rt, work_slot_id)) {
       prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
@@ -6806,6 +6820,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
     readback_begin_ns = prom_wall_clock_now_ns();
+    rt->px16_m8_last_post_sync_wall_ns = prom_wall_clock_elapsed_ns(post_sync_begin_ns, readback_begin_ns);
     if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
       prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->direct_c.mapped, m, n, k);
     }
@@ -6814,6 +6829,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     readback_end_ns = prom_wall_clock_now_ns();
   } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
     readback_begin_ns = prom_wall_clock_now_ns();
+    rt->px16_m8_last_post_sync_wall_ns = prom_wall_clock_elapsed_ns(post_sync_begin_ns, readback_begin_ns);
     if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
       prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->staged_readback_c.mapped, m, n, k);
     }
@@ -6821,10 +6837,13 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
     readback_end_ns = prom_wall_clock_now_ns();
   } else {
+    readback_begin_ns = prom_wall_clock_now_ns();
+    readback_end_ns = readback_begin_ns;
+    rt->px16_m8_last_post_sync_wall_ns = prom_wall_clock_elapsed_ns(post_sync_begin_ns, readback_begin_ns);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
   }
   rt->px16_m8_last_readback_wall_ns = prom_wall_clock_elapsed_ns(readback_begin_ns, readback_end_ns);
-  rt->px16_m8_last_total_wall_ns = prom_wall_clock_elapsed_ns(total_wall_begin_ns, prom_wall_clock_now_ns());
+  post_readback_begin_ns = readback_end_ns;
 
   if (out_stage != NULL &&
       out_detail_code != NULL &&
@@ -6861,14 +6880,26 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       lease_facts.max_outstanding_depth = 1u;
       if (prom_runtime_request_resource_lease(rt, &lease_facts, &lease_yield_decision) == 0u) {
         prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_CLEANUP, PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED);
+        function_return_ns = prom_wall_clock_now_ns();
+        rt->px16_m8_last_post_readback_wall_ns =
+            prom_wall_clock_elapsed_ns(post_readback_begin_ns, function_return_ns);
+        rt->px16_m8_last_total_wall_ns = prom_wall_clock_elapsed_ns(total_wall_begin_ns, function_return_ns);
         return PROM_ERROR;
       }
       lease_facts.lease_held = 0u;
       lease_facts.current_outstanding_depth = 0u;
     }
     note_last_execution_shape(rt, m, n, k);
+    function_return_ns = prom_wall_clock_now_ns();
+    rt->px16_m8_last_post_readback_wall_ns =
+        prom_wall_clock_elapsed_ns(post_readback_begin_ns, function_return_ns);
+    rt->px16_m8_last_total_wall_ns = prom_wall_clock_elapsed_ns(total_wall_begin_ns, function_return_ns);
     return PROM_OK;
   }
+  function_return_ns = prom_wall_clock_now_ns();
+  rt->px16_m8_last_post_readback_wall_ns =
+      prom_wall_clock_elapsed_ns(post_readback_begin_ns, function_return_ns);
+  rt->px16_m8_last_total_wall_ns = prom_wall_clock_elapsed_ns(total_wall_begin_ns, function_return_ns);
   return PROM_ERROR;
 }
 
@@ -9673,10 +9704,13 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->px16_m6_p15_confidence_before = rt->slot_diag.px16_m6_p15_confidence_before;
   out_diag->px16_m6_p15_confidence_after = rt->slot_diag.px16_m6_p15_confidence_after;
   out_diag->px16_m8_last_upload_wall_ns = rt->px16_m8_last_upload_wall_ns;
+  out_diag->px16_m8_last_pre_dispatch_wall_ns = rt->px16_m8_last_pre_dispatch_wall_ns;
   out_diag->px16_m8_last_command_record_wall_ns = rt->px16_m8_last_command_record_wall_ns;
   out_diag->px16_m8_last_dispatch_submit_wall_ns = rt->px16_m8_last_dispatch_submit_wall_ns;
   out_diag->px16_m8_last_sync_wait_wall_ns = rt->px16_m8_last_sync_wait_wall_ns;
+  out_diag->px16_m8_last_post_sync_wall_ns = rt->px16_m8_last_post_sync_wall_ns;
   out_diag->px16_m8_last_readback_wall_ns = rt->px16_m8_last_readback_wall_ns;
+  out_diag->px16_m8_last_post_readback_wall_ns = rt->px16_m8_last_post_readback_wall_ns;
   out_diag->px16_m8_last_total_wall_ns = rt->px16_m8_last_total_wall_ns;
   out_diag->px16_m8_last_gpu_timestamp_valid = rt->last_gpu_timing_valid;
   out_diag->px16_m8_resident_device_mode_available =

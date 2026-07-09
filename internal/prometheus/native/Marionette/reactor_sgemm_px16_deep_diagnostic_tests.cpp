@@ -51,10 +51,13 @@ namespace
         double total_wall_ms = 0.0;
         double kernel_ms = 0.0;
         double upload_ms = 0.0;
+        double pre_dispatch_ms = 0.0;
         double readback_ms = 0.0;
         double sync_wait_ms = 0.0;
+        double post_sync_ms = 0.0;
         double dispatch_submit_ms = 0.0;
         double command_record_ms = 0.0;
+        double post_readback_ms = 0.0;
         double unaccounted_host_ms = 0.0;
         bool gpu_timestamp_valid = false;
         bool resident_available = false;
@@ -299,10 +302,13 @@ namespace
         std::vector<double> total_wall_ns;
         std::vector<double> kernel_gpu_ns;
         std::vector<double> upload_wall_ns;
+        std::vector<double> pre_dispatch_wall_ns;
         std::vector<double> command_record_wall_ns;
         std::vector<double> dispatch_submit_wall_ns;
         std::vector<double> sync_wait_wall_ns;
+        std::vector<double> post_sync_wall_ns;
         std::vector<double> readback_wall_ns;
+        std::vector<double> post_readback_wall_ns;
         PrometheusSgemmPolicyDiagnostics final_diag{};
 
         for (int i = 0; i < 5; ++i) {
@@ -328,10 +334,13 @@ namespace
                 return row;
             }
             upload_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_upload_wall_ns));
+            pre_dispatch_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_pre_dispatch_wall_ns));
             command_record_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_command_record_wall_ns));
             dispatch_submit_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_dispatch_submit_wall_ns));
             sync_wait_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_sync_wait_wall_ns));
+            post_sync_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_post_sync_wall_ns));
             readback_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_readback_wall_ns));
+            post_readback_wall_ns.push_back(static_cast<double>(final_diag.px16_m8_last_post_readback_wall_ns));
             if (final_diag.p13_m5_last_gpu_timing_valid != 0u && final_diag.p13_m5_last_gpu_duration_ns > 0u) {
                 kernel_gpu_ns.push_back(static_cast<double>(final_diag.p13_m5_last_gpu_duration_ns));
             }
@@ -345,17 +354,22 @@ namespace
         row.total_wall_ms = median_ms_from_ns(total_wall_ns);
         row.kernel_ms = median_ms_from_ns(kernel_gpu_ns);
         row.upload_ms = median_ms_from_ns(upload_wall_ns);
+        row.pre_dispatch_ms = median_ms_from_ns(pre_dispatch_wall_ns);
         row.command_record_ms = median_ms_from_ns(command_record_wall_ns);
         row.dispatch_submit_ms = median_ms_from_ns(dispatch_submit_wall_ns);
         row.sync_wait_ms = median_ms_from_ns(sync_wait_wall_ns);
+        row.post_sync_ms = median_ms_from_ns(post_sync_wall_ns);
         row.readback_ms = median_ms_from_ns(readback_wall_ns);
+        row.post_readback_ms = median_ms_from_ns(post_readback_wall_ns);
         row.gpu_timestamp_valid = kernel_gpu_ns.size() == total_wall_ns.size() && !kernel_gpu_ns.empty();
         const double accounted_ms =
-            row.upload_ms +
+            row.pre_dispatch_ms +
             row.command_record_ms +
             row.dispatch_submit_ms +
             row.sync_wait_ms +
+            row.post_sync_ms +
             row.readback_ms +
+            row.post_readback_ms +
             (row.gpu_timestamp_valid ? row.kernel_ms : 0.0);
         row.unaccounted_host_ms = row.total_wall_ms - accounted_ms;
 
@@ -427,10 +441,13 @@ namespace
                 << "\", \"path\": \"" << json_escape(row.path)
                 << "\", \"kernel_ms\": " << row.kernel_ms
                 << ", \"upload_ms\": " << row.upload_ms
+                << ", \"pre_dispatch_ms\": " << row.pre_dispatch_ms
                 << ", \"readback_ms\": " << row.readback_ms
                 << ", \"sync_wait_ms\": " << row.sync_wait_ms
+                << ", \"post_sync_ms\": " << row.post_sync_ms
                 << ", \"dispatch_submit_ms\": " << row.dispatch_submit_ms
                 << ", \"command_record_ms\": " << row.command_record_ms
+                << ", \"post_readback_ms\": " << row.post_readback_ms
                 << ", \"unaccounted_host_ms\": " << row.unaccounted_host_ms
                 << ", \"gpu_timestamp_valid\": " << bool_json(row.gpu_timestamp_valid)
                 << ", \"resident_available\": " << bool_json(row.resident_available)
@@ -467,10 +484,10 @@ namespace
         out << "## Environment\n\n";
         out << "- VK_INSTANCE_LAYERS: " << report.vk_instance_layers << "\n";
         out << "- VK_LOADER_LAYERS_ENABLE: " << report.vk_loader_layers_enable << "\n";
-        out << "- Note: explicit env vars catch only the common layer-injection path. If `command_record_ms` does not explain the host gap, run `vulkaninfo --summary` and inspect unexpected Layers entries.\n\n";
+        out << "- Note: explicit env vars catch only the common layer-injection path. H2 coarse timing splits pre-dispatch, post-sync, and post-readback host work around command recording, submission, fence wait, and readback.\n\n";
         out << "## Timing Breakdown\n\n";
-        out << "| shape | policy | requested | selected | executed | path | kernel ms | upload ms | readback ms | sync wait ms | dispatch submit ms | command record ms | unaccounted host ms | resident loop avg ms | resident-production gap ms | runtime |\n";
-        out << "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
+        out << "| shape | policy | requested | selected | executed | path | kernel ms | upload ms | pre-dispatch ms | command record ms | dispatch submit ms | sync wait ms | post-sync ms | readback ms | post-readback ms | unaccounted host ms | resident loop avg ms | resident-production gap ms | runtime |\n";
+        out << "| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
         for (const DeepDiagnosticRow& row : report.rows) {
             std::ostringstream runtime;
             runtime << row.runtime_status << " (" << row.final_stage << "/" << row.final_detail_code << ")";
@@ -482,10 +499,13 @@ namespace
                 << " | " << row.path
                 << " | " << row.kernel_ms
                 << " | " << row.upload_ms
-                << " | " << row.readback_ms
-                << " | " << row.sync_wait_ms
-                << " | " << row.dispatch_submit_ms
+                << " | " << row.pre_dispatch_ms
                 << " | " << row.command_record_ms
+                << " | " << row.dispatch_submit_ms
+                << " | " << row.sync_wait_ms
+                << " | " << row.post_sync_ms
+                << " | " << row.readback_ms
+                << " | " << row.post_readback_ms
                 << " | " << row.unaccounted_host_ms
                 << " | " << row.resident_loop_avg_ms
                 << " | " << row.resident_vs_production_gap_ms
@@ -536,21 +556,213 @@ FACT(PrometheusSgemmPx16DeepDiagnostics)
 
     report.global_note =
         "H1 instrumentation measures command buffer recording plus descriptor-set updates inside `command_record_ms`. "
-        "`unaccounted_host_ms` is the production wall-clock remainder after subtracting upload, command-record, submit, wait, readback, and valid kernel GPU timing.";
+        "H2 instrumentation adds pre-dispatch, post-sync, and post-readback host timing. "
+        "`unaccounted_host_ms` is the production wall-clock remainder after subtracting pre-dispatch, command-record, submit, wait, post-sync, readback, post-readback, and valid kernel GPU timing. "
+        "`upload_ms` remains reported as an informational sub-bucket because the current code order places upload before command-record begin, inside `pre_dispatch_ms`.";
 
     const std::string json = render_json(report);
     const std::string markdown = render_markdown(report);
     ASSERT_TRUE(json.find("\"command_record_ms\"") != std::string::npos, "deep diagnostic JSON should include command-record timing");
+    ASSERT_TRUE(json.find("\"pre_dispatch_ms\"") != std::string::npos, "deep diagnostic JSON should include pre-dispatch timing");
+    ASSERT_TRUE(json.find("\"post_sync_ms\"") != std::string::npos, "deep diagnostic JSON should include post-sync timing");
+    ASSERT_TRUE(json.find("\"post_readback_ms\"") != std::string::npos, "deep diagnostic JSON should include post-readback timing");
     ASSERT_TRUE(markdown.find("command record ms") != std::string::npos, "deep diagnostic markdown should include command-record timing");
+    ASSERT_TRUE(markdown.find("post-sync ms") != std::string::npos, "deep diagnostic markdown should include post-sync timing");
     ASSERT_TRUE(json.find("\"VK_INSTANCE_LAYERS\"") != std::string::npos, "deep diagnostic JSON should include layer environment");
     ASSERT_TRUE(json.find("\"VK_LOADER_LAYERS_ENABLE\"") != std::string::npos, "deep diagnostic JSON should include loader layer environment");
     for (const DeepDiagnosticRow& row : report.rows) {
         if (row.runtime_status == PROM_OK) {
+            ASSERT_TRUE(row.pre_dispatch_ms >= 0.0, "pre-dispatch timing should be non-negative");
             ASSERT_TRUE(row.command_record_ms >= 0.0, "command-record timing should be non-negative");
+            ASSERT_TRUE(row.post_sync_ms >= 0.0, "post-sync timing should be non-negative");
+            ASSERT_TRUE(row.post_readback_ms >= 0.0, "post-readback timing should be non-negative");
         }
     }
     ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_deep_diagnostics.json"), json),
                 "deep diagnostic JSON should be written");
     ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_deep_diagnostics.md"), markdown),
                 "deep diagnostic markdown should be written");
+}
+
+FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
+{
+    void* handle = nullptr;
+    if (prometheus_reactor_runtime_create(nullptr, &handle) != PROM_OK || handle == nullptr) {
+        SKIP("Vulkan runtime unavailable; coarse-phase localization cannot execute");
+        return;
+    }
+
+    PrometheusCaps caps{};
+    if (prometheus_reactor_runtime_probe(handle, &caps) != PROM_OK || caps.available == 0u) {
+        (void)prometheus_reactor_runtime_destroy(handle);
+        SKIP("Vulkan runtime unavailable; coarse-phase localization cannot execute");
+        return;
+    }
+
+    struct CoarseRow
+    {
+        const char* shape = "";
+        double total_ms = 0.0;
+        double pre_dispatch_ms = 0.0;
+        double command_record_ms = 0.0;
+        double submit_ms = 0.0;
+        double sync_wait_ms = 0.0;
+        double post_sync_ms = 0.0;
+        double readback_ms = 0.0;
+        double post_readback_ms = 0.0;
+        double kernel_ms = 0.0;
+        double remaining_ms = 0.0;
+        double remaining_pct = 0.0;
+    };
+    std::vector<CoarseRow> rows;
+    bool observed_positive_h2_bucket = false;
+
+    for (const ShapeCase& shape : kDeepShapes) {
+        const std::size_t elems_a = static_cast<std::size_t>(shape.m) * shape.k;
+        const std::size_t elems_b = static_cast<std::size_t>(shape.k) * shape.n;
+        const std::size_t elems_c = static_cast<std::size_t>(shape.m) * shape.n;
+        std::vector<float> a(elems_a, 1.0f);
+        std::vector<float> b(elems_b, 1.0f);
+        std::vector<float> c(elems_c, 0.0f);
+
+        for (int i = 0; i < 5; ++i) {
+            std::uint32_t stage = PROM_STAGE_NONE;
+            int detail = 0;
+            (void)prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail);
+        }
+
+        std::vector<double> total_ns;
+        std::vector<double> pre_ns;
+        std::vector<double> record_ns;
+        std::vector<double> submit_ns;
+        std::vector<double> sync_ns;
+        std::vector<double> post_sync_ns;
+        std::vector<double> readback_ns;
+        std::vector<double> post_readback_ns;
+        std::vector<double> kernel_ns;
+        for (int i = 0; i < 20; ++i) {
+            std::uint32_t stage = PROM_STAGE_NONE;
+            int detail = 0;
+            const auto begin = std::chrono::steady_clock::now();
+            const int status =
+                prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail);
+            const auto end = std::chrono::steady_clock::now();
+            if (status != PROM_OK) {
+                continue;
+            }
+            total_ns.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()));
+
+            PrometheusSgemmPolicyDiagnostics diag{};
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag),
+                         "coarse-phase diagnostics should be copied out");
+            pre_ns.push_back(static_cast<double>(diag.px16_m8_last_pre_dispatch_wall_ns));
+            record_ns.push_back(static_cast<double>(diag.px16_m8_last_command_record_wall_ns));
+            submit_ns.push_back(static_cast<double>(diag.px16_m8_last_dispatch_submit_wall_ns));
+            sync_ns.push_back(static_cast<double>(diag.px16_m8_last_sync_wait_wall_ns));
+            post_sync_ns.push_back(static_cast<double>(diag.px16_m8_last_post_sync_wall_ns));
+            readback_ns.push_back(static_cast<double>(diag.px16_m8_last_readback_wall_ns));
+            post_readback_ns.push_back(static_cast<double>(diag.px16_m8_last_post_readback_wall_ns));
+            if (diag.p13_m5_last_gpu_timing_valid != 0u && diag.p13_m5_last_gpu_duration_ns > 0u) {
+                kernel_ns.push_back(static_cast<double>(diag.p13_m5_last_gpu_duration_ns));
+            }
+        }
+
+        CoarseRow row;
+        row.shape = shape.name;
+        row.total_ms = median_ms_from_ns(total_ns);
+        row.pre_dispatch_ms = median_ms_from_ns(pre_ns);
+        row.command_record_ms = median_ms_from_ns(record_ns);
+        row.submit_ms = median_ms_from_ns(submit_ns);
+        row.sync_wait_ms = median_ms_from_ns(sync_ns);
+        row.post_sync_ms = median_ms_from_ns(post_sync_ns);
+        row.readback_ms = median_ms_from_ns(readback_ns);
+        row.post_readback_ms = median_ms_from_ns(post_readback_ns);
+        row.kernel_ms = median_ms_from_ns(kernel_ns);
+        const double accounted =
+            row.pre_dispatch_ms +
+            row.command_record_ms +
+            row.submit_ms +
+            row.sync_wait_ms +
+            row.post_sync_ms +
+            row.readback_ms +
+            row.post_readback_ms +
+            row.kernel_ms;
+        row.remaining_ms = row.total_ms - accounted;
+        row.remaining_pct = row.total_ms > 0.0 ? (row.remaining_ms / row.total_ms) * 100.0 : 0.0;
+
+        ASSERT_TRUE(row.total_ms > 0.0, "total timing should be positive");
+        ASSERT_TRUE(row.pre_dispatch_ms >= 0.0, "pre-dispatch timing should be non-negative");
+        ASSERT_TRUE(row.command_record_ms >= 0.0, "command-record timing should be non-negative");
+        ASSERT_TRUE(row.submit_ms >= 0.0, "submit timing should be non-negative");
+        ASSERT_TRUE(row.sync_wait_ms >= 0.0, "sync-wait timing should be non-negative");
+        ASSERT_TRUE(row.post_sync_ms >= 0.0, "post-sync timing should be non-negative");
+        ASSERT_TRUE(row.readback_ms >= 0.0, "readback timing should be non-negative");
+        ASSERT_TRUE(row.post_readback_ms >= 0.0, "post-readback timing should be non-negative");
+        observed_positive_h2_bucket = observed_positive_h2_bucket ||
+            row.pre_dispatch_ms > 0.0 ||
+            row.post_sync_ms > 0.0 ||
+            row.post_readback_ms > 0.0;
+        rows.push_back(row);
+    }
+
+    std::ostringstream markdown;
+    markdown << "# SGEMM Deep Diagnostic: Coarse-Phase Localization (H2)\n\n";
+    markdown << "`post-sync ms` covers the window between fence-wait completing and readback starting. "
+             << "`pre-dispatch ms` covers occupancy selection through P15 forecast before command-buffer work begins. "
+             << "`post-readback ms` covers final bookkeeping before return.\n\n";
+    markdown << "| shape | total ms | pre-dispatch ms | command record ms | submit ms | sync wait ms | post-sync ms | readback ms | post-readback ms | kernel gpu ms | remaining unaccounted ms | remaining % |\n";
+    markdown << "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n";
+    for (const CoarseRow& row : rows) {
+        markdown << "| " << row.shape
+                 << " | " << row.total_ms
+                 << " | " << row.pre_dispatch_ms
+                 << " | " << row.command_record_ms
+                 << " | " << row.submit_ms
+                 << " | " << row.sync_wait_ms
+                 << " | " << row.post_sync_ms
+                 << " | " << row.readback_ms
+                 << " | " << row.post_readback_ms
+                 << " | " << row.kernel_ms
+                 << " | " << row.remaining_ms
+                 << " | " << row.remaining_pct << " |\n";
+    }
+    markdown << "\nCompare `post-sync ms` growth across shapes against M*N*K ratios. If post-sync grows at the same rate, sub-bracket P14 filter update versus P15 maturation next.\n";
+
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"schema\": \"prometheus.sgemm.px16.deep_coarse_phase.v1\",\n";
+    json << "  \"rows\": [\n";
+    for (std::size_t index = 0u; index < rows.size(); ++index) {
+        const CoarseRow& row = rows[index];
+        json << "    {\"shape\": \"" << json_escape(row.shape)
+             << "\", \"total_ms\": " << row.total_ms
+             << ", \"pre_dispatch_ms\": " << row.pre_dispatch_ms
+             << ", \"command_record_ms\": " << row.command_record_ms
+             << ", \"dispatch_submit_ms\": " << row.submit_ms
+             << ", \"sync_wait_ms\": " << row.sync_wait_ms
+             << ", \"post_sync_ms\": " << row.post_sync_ms
+             << ", \"readback_ms\": " << row.readback_ms
+             << ", \"post_readback_ms\": " << row.post_readback_ms
+             << ", \"kernel_ms\": " << row.kernel_ms
+             << ", \"unaccounted_host_ms\": " << row.remaining_ms
+             << ", \"remaining_pct\": " << row.remaining_pct << "}";
+        if (index + 1u < rows.size()) {
+            json << ",";
+        }
+        json << "\n";
+    }
+    json << "  ]\n";
+    json << "}\n";
+
+    ASSERT_TRUE(observed_positive_h2_bucket, "at least one coarse H2 bucket should be positive");
+    ASSERT_TRUE(markdown.str().find("remaining unaccounted ms") != std::string::npos,
+                "coarse-phase markdown should include remaining unaccounted timing");
+    ASSERT_TRUE(json.str().find("\"post_sync_ms\"") != std::string::npos,
+                "coarse-phase JSON should include post-sync timing");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_deep_coarse_phase.md"), markdown.str()),
+                "coarse phase markdown artifact should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_deep_coarse_phase.json"), json.str()),
+                "coarse phase JSON artifact should be written");
 }
