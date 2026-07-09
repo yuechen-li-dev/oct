@@ -290,12 +290,7 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 	case vdmir.ExprStmt:
 		e.line(e.expr(s.Value) + ";")
 	case vdmir.IfStmt:
-		e.line("if (" + e.expr(s.Condition) + ")")
-		e.emitBlock(s.ThenBody)
-		if s.ElseBody != nil {
-			e.line("else")
-			e.emitBlock(*s.ElseBody)
-		}
+		e.emitIfStmt(s)
 	case vdmir.ForRangeStmt:
 		switch s.LoopHint {
 		case vdmir.LoopHintUnroll:
@@ -307,6 +302,41 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, s.Name, e.expr(s.Start), s.Name, e.expr(s.End), s.Name, e.expr(s.Step)))
 		e.emitBlock(s.Body)
 	}
+}
+
+func (e *emitter) emitIfStmt(stmt vdmir.IfStmt) {
+	e.line("if (" + e.expr(stmt.Condition) + ")")
+	e.emitBlock(stmt.ThenBody)
+	if stmt.ElseBody == nil {
+		return
+	}
+	if len(stmt.ElseBody.Statements) == 1 {
+		if nested, ok := stmt.ElseBody.Statements[0].(vdmir.IfStmt); ok {
+			e.line("else " + "if (" + e.expr(nested.Condition) + ")")
+			e.emitBlock(nested.ThenBody)
+			if nested.ElseBody != nil {
+				e.emitElseTail(*nested.ElseBody)
+			}
+			return
+		}
+	}
+	e.line("else")
+	e.emitBlock(*stmt.ElseBody)
+}
+
+func (e *emitter) emitElseTail(block vdmir.Block) {
+	if len(block.Statements) == 1 {
+		if nested, ok := block.Statements[0].(vdmir.IfStmt); ok {
+			e.line("else " + "if (" + e.expr(nested.Condition) + ")")
+			e.emitBlock(nested.ThenBody)
+			if nested.ElseBody != nil {
+				e.emitElseTail(*nested.ElseBody)
+			}
+			return
+		}
+	}
+	e.line("else")
+	e.emitBlock(block)
 }
 
 func (e *emitter) emitWhenUtilityLet(stmt vdmir.LetStmt, utility vdmir.WhenUtilityExpr) {

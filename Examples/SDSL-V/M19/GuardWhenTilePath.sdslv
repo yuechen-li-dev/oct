@@ -1,0 +1,68 @@
+namespace Examples.SDSLV.M19;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams {
+    M: u32;
+    N: u32;
+    K: u32;
+}
+
+concept TileConfig {
+    Tile: {
+        M: u32 = 16u;
+        N: u32 = 16u;
+        K: u32 = 16u;
+    };
+}
+
+config Tile16: TileConfig {}
+
+template<C: TileConfig>
+shader GuardWhenTilePath {
+    resources SgemmIO;
+
+    workgroup TileA: tile<f32, C.Tile.M, C.Tile.K>;
+
+    stage compute [numthreads(C.Tile.M, C.Tile.N, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let baseRow: u32 = thread.GroupId.x * C.Tile.M;
+        let baseCol: u32 = thread.GroupId.y * C.Tile.N;
+        let tileBaseK: u32 = 0u;
+        let row: u32 = baseRow + localRow;
+        let k: u32 = tileBaseK + localCol;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+        let fullTile: bool =
+            baseRow + C.Tile.M <= params.M and
+            baseCol + C.Tile.N <= params.N and
+            tileBaseK + C.Tile.K <= params.K;
+
+        when {
+            case fullTile -> {
+                TileA[localRow, localCol] = AView[row, k];
+            }
+            case not fullTile -> {
+                TileA[localRow, localCol] =
+                    read AView[row, k] when row < params.M and k < params.K else 0.0;
+            }
+        }
+
+        WorkgroupMemoryBarrierWithSync();
+        return;
+    }
+}
+
+compile GuardWhenTilePath<Tile16> as GuardWhenTilePath16;
+

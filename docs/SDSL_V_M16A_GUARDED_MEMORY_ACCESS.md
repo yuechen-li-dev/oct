@@ -121,11 +121,28 @@ Use guarded read/write when the branch exists only to protect a memory access or
 
 Use `if` when the control flow itself is semantically meaningful.
 
+M19 adds Oct-style runtime guard `when` for ordered bounded statement flow:
+
+```sdslv
+when {
+    case fullTile -> {
+        TileA[localRow, localCol] = AView[row, k];
+    }
+    else -> {
+        TileA[localRow, localCol] =
+            read AView[row, k] when row < params.M and k < params.K else 0.0;
+    }
+}
+```
+
+This is distinct from guarded memory access. `read/write ... when ...` protects one memory operation; guard `when { case ... -> ... }` selects one bounded statement body.
+
 ## Examples
 
 - `examples/SDSL-V/M16a/GuardedReadBasic.sdslv`
 - `examples/SDSL-V/M16a/GuardedWriteBasic.sdslv`
 - `examples/SDSL-V/M16a/GuardedSgemmTileLoad.sdslv`
+- `examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
 
 ## Current Boundaries
 

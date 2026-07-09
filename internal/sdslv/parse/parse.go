@@ -665,9 +665,34 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		return p.parseGuardedWrite()
 	case token.KeywordIf:
 		return p.parseIf()
+	case token.KeywordWhen:
+		if p.peek(1).Kind == token.LeftBrace {
+			return p.parseGuardWhen()
+		}
+		if p.peek(1).Kind == token.Identifier && p.peek(1).Lexeme == "policy" {
+			return nil, p.errorAtCurrent("when policy requires persistent policy state; SDSL-V M19 does not support it yet")
+		}
+		left, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.Semicolon, "expected ';' after expression statement"); err != nil {
+			return nil, err
+		}
+		return ast.ExprStmt{Value: left}, nil
 	case token.KeywordFor:
 		return p.parseFor(nil)
 	default:
+		if p.current().Kind == token.Identifier {
+			switch p.current().Lexeme {
+			case "goto":
+				return nil, p.errorAtCurrent("SDSL-V M19 does not support `goto` in shader flow")
+			case "remember", "resume", "suspend":
+				return nil, p.errorAtCurrent("SDSL-V M19 supports bounded guard `when` bodies only")
+			case "flow", "state":
+				return nil, p.errorAtCurrent("SDSL-V flow/state controllers are planned but not supported in M19")
+			}
+		}
 		left, err := p.parseExpression()
 		if err != nil {
 			return nil, err
@@ -965,6 +990,70 @@ func (p *parser) parseIf() (ast.IfStmt, error) {
 	return ast.IfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
 }
 
+func (p *parser) parseGuardWhen() (ast.GuardWhenStmt, error) {
+	p.advance()
+	if _, err := p.expect(token.LeftBrace, "expected '{' after guard when"); err != nil {
+		return ast.GuardWhenStmt{}, err
+	}
+	var cases []ast.GuardWhenCase
+	var elseBody *ast.Block
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.GuardWhenStmt{}, p.errorAtCurrent("expected '}' to close guard when")
+		}
+		switch p.current().Kind {
+		case token.KeywordCase:
+			if elseBody != nil {
+				return ast.GuardWhenStmt{}, p.errorAtCurrent("guard when case cannot appear after else")
+			}
+			p.advance()
+			condition, err := p.parseExpression()
+			if err != nil {
+				return ast.GuardWhenStmt{}, err
+			}
+			if _, err := p.expect(token.Arrow, "expected '->' after guard when case condition"); err != nil {
+				return ast.GuardWhenStmt{}, err
+			}
+			body, err := p.parseWhenArmBody()
+			if err != nil {
+				return ast.GuardWhenStmt{}, err
+			}
+			cases = append(cases, ast.GuardWhenCase{Condition: condition, Body: body})
+		case token.KeywordElse:
+			if elseBody != nil {
+				return ast.GuardWhenStmt{}, p.errorAtCurrent("duplicate guard when else arm")
+			}
+			p.advance()
+			if _, err := p.expect(token.Arrow, "expected '->' after guard when else"); err != nil {
+				return ast.GuardWhenStmt{}, err
+			}
+			body, err := p.parseWhenArmBody()
+			if err != nil {
+				return ast.GuardWhenStmt{}, err
+			}
+			elseBody = &body
+		default:
+			return ast.GuardWhenStmt{}, p.errorAtCurrent("expected case or else in guard when")
+		}
+	}
+	p.advance()
+	if len(cases) == 0 {
+		return ast.GuardWhenStmt{}, p.errorAtCurrent("guard when requires at least one case")
+	}
+	return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}, nil
+}
+
+func (p *parser) parseWhenArmBody() (ast.Block, error) {
+	if p.current().Kind == token.LeftBrace {
+		return p.parseBlock()
+	}
+	stmt, err := p.parseStmt()
+	if err != nil {
+		return ast.Block{}, err
+	}
+	return ast.Block{Statements: []ast.Stmt{stmt}}, nil
+}
+
 func (p *parser) parseFor(attributes []ast.Attribute) (ast.ForStmt, error) {
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected for loop variable")
@@ -1187,6 +1276,12 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		p.advance()
 		return ast.IdentifierExpr{Name: t.Lexeme}, nil
 	case token.KeywordWhen:
+		if p.peek(1).Kind == token.LeftBrace {
+			return nil, p.errorAtCurrent("runtime guard when is a statement-only form in SDSL-V M19")
+		}
+		if p.peek(1).Kind == token.Identifier && p.peek(1).Lexeme == "policy" {
+			return nil, p.errorAtCurrent("when policy requires persistent policy state; SDSL-V M19 does not support it yet")
+		}
 		return p.parseWhenUtility()
 	case token.KeywordRead:
 		return p.parseGuardedRead()

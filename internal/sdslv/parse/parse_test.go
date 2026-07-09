@@ -173,6 +173,79 @@ return;
 	}
 }
 
+func TestBuildModuleParsesGuardWhen(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, full: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+when {
+case full -> {
+write CView[row, col] = AView[row, col] when row < 4u and col < 4u;
+}
+case not full -> {
+let value: f32 = read AView[row, col] when row < 4u and col < 4u else 0.0;
+write CView[row, col] = value when true;
+}
+else -> {
+return;
+}
+}
+return;
+}
+}`)
+	body := module.Decls[0].(ast.ShaderDecl).Methods[0].Body.Statements
+	whenStmt, ok := body[2].(ast.GuardWhenStmt)
+	if !ok {
+		t.Fatalf("stmt[2] = %T, want GuardWhenStmt", body[2])
+	}
+	if got := len(whenStmt.Cases); got != 2 {
+		t.Fatalf("len(Cases) = %d, want 2", got)
+	}
+	if _, ok := whenStmt.Cases[0].Body.Statements[0].(ast.GuardedWriteStmt); !ok {
+		t.Fatalf("first case stmt = %T, want GuardedWriteStmt", whenStmt.Cases[0].Body.Statements[0])
+	}
+	if whenStmt.ElseBody == nil {
+		t.Fatalf("missing else body")
+	}
+}
+
+func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "goto",
+			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS(flag: bool) -> void { when { case flag -> { goto Done } } return; } }`,
+			want: "SDSL-V M19 does not support `goto` in shader flow",
+		},
+		{
+			name: "flow state",
+			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { state Start { return; } return; } }`,
+			want: "SDSL-V flow/state controllers are planned but not supported in M19",
+		},
+		{
+			name: "when policy",
+			src:  `fn F(flag: bool) -> u32 { return when policy { hysteresis: 1 min_commit: 1 } { case 1u when flag score 2 else 0u }; }`,
+			want: "when policy requires persistent policy state",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			_, err = BuildModule(tokens)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestBuildModuleRejectsWorkgroupOutsideShader(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `workgroup Tile: array<f32, 16>;`})
 	if err != nil {

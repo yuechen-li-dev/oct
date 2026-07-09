@@ -310,6 +310,50 @@ return;
 	}
 }
 
+func TestModuleLowersGuardWhenToIfChain(t *testing.T) {
+	mir := lowerSource(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, full: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+when {
+case full -> {
+write CView[row, col] = AView[row, col] when row < 4u and col < 4u;
+}
+case not full -> {
+let value: f32 = read AView[row, col] when row < 4u and col < 4u else 0.0;
+write CView[row, col] = value when true;
+}
+else -> {
+return;
+}
+}
+return;
+}
+}`)
+	cs := findFunction(t, mir, "S_CS")
+	ifStmt, ok := cs.Body.Statements[2].(vdmir.IfStmt)
+	if !ok {
+		t.Fatalf("stmt[2] = %T, want IfStmt", cs.Body.Statements[2])
+	}
+	if _, ok := ifStmt.ThenBody.Statements[0].(vdmir.GuardedWriteStmt); !ok {
+		t.Fatalf("then stmt = %T, want GuardedWriteStmt", ifStmt.ThenBody.Statements[0])
+	}
+	if ifStmt.ElseBody == nil || len(ifStmt.ElseBody.Statements) != 1 {
+		t.Fatalf("missing nested else-if block: %#v", ifStmt.ElseBody)
+	}
+	nested, ok := ifStmt.ElseBody.Statements[0].(vdmir.IfStmt)
+	if !ok {
+		t.Fatalf("else stmt = %T, want nested IfStmt", ifStmt.ElseBody.Statements[0])
+	}
+	if _, ok := nested.Condition.(vdmir.UnaryExpr); !ok {
+		t.Fatalf("nested condition = %T, want unary not", nested.Condition)
+	}
+	if nested.ElseBody == nil {
+		t.Fatalf("nested if missing final else")
+	}
+}
+
 func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
 	mir := lowerSource(t, `stream ComputeThread {
 DispatchId: uint3;

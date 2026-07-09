@@ -1,0 +1,53 @@
+namespace Examples.SDSLV.M19;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream GuardWhenForIO {
+    [binding(0)] C: readwrite array<f32>;
+}
+
+record Params {
+    Count: u32;
+    Base: u32;
+}
+
+concept MicroConfig {
+    Outputs: {
+        N: u32 = 4u;
+    };
+}
+
+config FourWide: MicroConfig {}
+
+template<Cfg: MicroConfig>
+shader GuardWhenWithComptimeFor {
+    resources GuardWhenForIO;
+
+    stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+        let CView: matrix_view<f32> = row_major(C, 1u, params.Count);
+        let base: u32 = params.Base + thread.DispatchId.x * Cfg.Outputs.N;
+        let fullSpan: bool = base + Cfg.Outputs.N <= params.Count;
+
+        when {
+            case fullSpan -> {
+                comptime for i in 0u..Cfg.Outputs.N {
+                    CView[0u, base + i] = 1.0;
+                }
+            }
+            else -> {
+                comptime for i in 0u..Cfg.Outputs.N {
+                    write CView[0u, base + i] = 1.0 when base + i < params.Count;
+                }
+            }
+        }
+
+        return;
+    }
+}
+
+compile GuardWhenWithComptimeFor<FourWide> as GuardWhenWithComptimeFor4;

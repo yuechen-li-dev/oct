@@ -312,6 +312,24 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			elseBody = &body
 		}
 		return ast.IfStmt{Condition: specializeExpr(s.Condition, env), ThenBody: thenBody, ElseBody: elseBody}, nil
+	case ast.GuardWhenStmt:
+		cases := make([]ast.GuardWhenCase, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			body, err := specializeBlock(c.Body, env)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, ast.GuardWhenCase{Condition: specializeExpr(c.Condition, env), Body: body})
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body, err := specializeBlock(*s.ElseBody, env)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}, nil
 	case ast.ComptimeIfStmt:
 		thenBody, err := specializeBlock(s.ThenBody, env)
 		if err != nil {
@@ -579,6 +597,24 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 			elseBody = &body
 		}
 		return []ast.Stmt{ast.IfStmt{Condition: replaceComptimeExpr(s.Condition, comptime), ThenBody: thenBody, ElseBody: elseBody}}, nil
+	case ast.GuardWhenStmt:
+		cases := make([]ast.GuardWhenCase, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			body, err := expandRuntimeNestedBlock(c.Body, comptime, runtime)
+			if err != nil {
+				return nil, err
+			}
+			cases = append(cases, ast.GuardWhenCase{Condition: replaceComptimeExpr(c.Condition, comptime), Body: body})
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body, err := expandRuntimeNestedBlock(*s.ElseBody, comptime, runtime)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return []ast.Stmt{ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}}, nil
 	case ast.ForStmt:
 		body, err := expandRuntimeNestedBlock(s.Body, comptime, runtime)
 		if err != nil {
@@ -987,6 +1023,15 @@ func stmtExpansionCost(stmt ast.Stmt) int {
 			total += blockExpansionCost(*s.ElseBody)
 		}
 		return total
+	case ast.GuardWhenStmt:
+		total := 1
+		for _, c := range s.Cases {
+			total += blockExpansionCost(c.Body)
+		}
+		if s.ElseBody != nil {
+			total += blockExpansionCost(*s.ElseBody)
+		}
+		return total
 	case ast.ForStmt:
 		return 1 + blockExpansionCost(s.Body)
 	default:
@@ -1225,6 +1270,14 @@ type binding struct {
 	kind   vdmir.VarKind
 	typ    ast.TypeRef
 	access string
+}
+
+func cloneBindings(in map[string]binding) map[string]binding {
+	out := make(map[string]binding, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 type lowering struct {
@@ -1499,6 +1552,8 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 			elseBody = &body
 		}
 		return vdmir.IfStmt{Provenance: l.provenance, Condition: cond, ThenBody: thenBody, ElseBody: elseBody}, nil
+	case ast.GuardWhenStmt:
+		return l.lowerGuardWhenStmt(s, scope, locals, shaderName)
 	case ast.ForStmt:
 		start, err := l.lowerExpr(s.Start, scope, shaderName)
 		if err != nil {
@@ -1533,6 +1588,34 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 	default:
 		return nil, fmt.Errorf("unsupported statement in GoOct SDSL-V M3")
 	}
+}
+
+func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
+	var currentElse *vdmir.Block
+	if stmt.ElseBody != nil {
+		body, err := l.lowerBlock(*stmt.ElseBody, cloneBindings(scope), locals, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		currentElse = &body
+	}
+	for i := len(stmt.Cases) - 1; i >= 0; i-- {
+		c := stmt.Cases[i]
+		condition, err := l.lowerExpr(c.Condition, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		body, err := l.lowerBlock(c.Body, cloneBindings(scope), locals, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		next := vdmir.IfStmt{Provenance: l.provenance, Condition: condition, ThenBody: body, ElseBody: currentElse}
+		currentElse = &vdmir.Block{Statements: []vdmir.Stmt{next}}
+	}
+	if currentElse == nil || len(currentElse.Statements) == 0 {
+		return nil, fmt.Errorf("guard when requires at least one case")
+	}
+	return currentElse.Statements[0], nil
 }
 
 func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName string) (vdmir.Expr, error) {
@@ -2149,6 +2232,18 @@ func walkStmt(stmt ast.Stmt, builtins map[string]bool) {
 		walkExpr(s.Condition, builtins)
 		for _, nested := range s.ThenBody.Statements {
 			walkStmt(nested, builtins)
+		}
+		if s.ElseBody != nil {
+			for _, nested := range s.ElseBody.Statements {
+				walkStmt(nested, builtins)
+			}
+		}
+	case ast.GuardWhenStmt:
+		for _, c := range s.Cases {
+			walkExpr(c.Condition, builtins)
+			for _, nested := range c.Body.Statements {
+				walkStmt(nested, builtins)
+			}
 		}
 		if s.ElseBody != nil {
 			for _, nested := range s.ElseBody.Statements {

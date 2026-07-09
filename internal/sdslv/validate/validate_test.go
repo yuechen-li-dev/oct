@@ -187,6 +187,62 @@ return;
 	}
 }
 
+func TestModuleValidatesGuardWhen(t *testing.T) {
+	err := validateSource(`shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, full: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+when {
+case full -> {
+let value: f32 = AView[row, col];
+write CView[row, col] = value when row < 4u and col < 4u;
+}
+case not full -> {
+let value: f32 = read AView[row, col] when row < 4u and col < 4u else 0.0;
+write CView[row, col] = value when true;
+}
+}
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsInvalidGuardWhen(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "non bool guard",
+			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { when { case 1u -> { return; } } return; } }`,
+			want: "guard when case condition must be bool",
+		},
+		{
+			name: "runtime guard when expression",
+			src:  `fn F(flag: bool) -> u32 { let x: u32 = when { case flag -> { return 1u; } }; return x; }`,
+			want: "runtime guard when is a statement-only form",
+		},
+		{
+			name: "c style logical rejected",
+			src:  `fn F(a: bool, b: bool) -> void { when { case a && b -> { return; } } return; }`,
+			want: "use `and` instead of `&&`",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsInvalidGuardedMemoryAccess(t *testing.T) {
 	cases := []struct {
 		name string

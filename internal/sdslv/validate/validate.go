@@ -149,7 +149,11 @@ func (v *validator) collect(module ast.Module) {
 				v.addFunc(d.Name+"_"+method.Name, method)
 			}
 		case ast.UnsupportedDecl:
-			v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
+			if d.Kind == "flow" {
+				v.errorf("SDSL-V flow/state controllers are planned but not supported in M19")
+			} else {
+				v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
+			}
 		}
 	}
 }
@@ -815,6 +819,22 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("if condition must be bool, got %s", typeName(cond))
 		}
 		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		if s.ElseBody != nil {
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		}
+	case ast.GuardWhenStmt:
+		for _, c := range s.Cases {
+			v.validateWithPlacement(c.Condition, false)
+			v.validateGuardedReadPlacement(c.Condition, false)
+			v.validateMatchPlacement(c.Condition, false)
+			v.validateReductionPlacement(c.Condition, false)
+			v.validateBarrierUsage(c.Condition, false, shaderName, stage)
+			guardType := v.exprType(c.Condition, scope, shaderName, templateParam)
+			if guardType.Name != "bool" && guardType.Name != "<error>" {
+				v.errorf("guard when case condition must be bool")
+			}
+			v.validateBlock(c.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		}
 		if s.ElseBody != nil {
 			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
 		}

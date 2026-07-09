@@ -123,6 +123,43 @@ return;
 	}
 }
 
+func TestEmitGuardWhenToIfElseIfHLSL(t *testing.T) {
+	hlsl := emitSource(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, full: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+when {
+case full -> {
+write CView[row, col] = AView[row, col] when row < 4u and col < 4u;
+}
+case not full -> {
+let value: f32 = read AView[row, col] when row < 4u and col < 4u else 0.0;
+write CView[row, col] = value when true;
+}
+else -> {
+return;
+}
+}
+return;
+}
+}`)
+	for _, want := range []string{
+		"if (full)",
+		"else if (!full)",
+		"else",
+		"float value = 0.0;",
+		"C[((row) * (4u)) + (col)] = value;",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+	if strings.Contains(hlsl, "when {") || strings.Contains(hlsl, "case full") {
+		t.Fatalf("HLSL should not contain source guard when spelling:\n%s", hlsl)
+	}
+}
+
 func TestEmitComptimeSelectedBranchOnly(t *testing.T) {
 	hlsl := emitSource(t, `shader Demo {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {

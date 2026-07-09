@@ -263,6 +263,18 @@ type IfStmt struct {
 
 func (IfStmt) stmtNode() {}
 
+type GuardWhenStmt struct {
+	Cases    []GuardWhenCase
+	ElseBody *Block
+}
+
+func (GuardWhenStmt) stmtNode() {}
+
+type GuardWhenCase struct {
+	Condition Expr
+	Body      Block
+}
+
 type ComptimeIfStmt struct {
 	Condition Expr
 	ThenBody  Block

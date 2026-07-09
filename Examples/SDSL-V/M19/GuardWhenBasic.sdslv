@@ -1,0 +1,39 @@
+namespace Examples.SDSLV.M19;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream GuardWhenIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record Params {
+    Count: u32;
+}
+
+shader GuardWhenBasic {
+    resources GuardWhenIO;
+
+    stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+        let index: u32 = thread.DispatchId.x;
+        let value: f32 = 0.0;
+
+        when {
+            case index < params.Count -> {
+                value = A[index];
+            }
+            else -> {
+                value = 0.0;
+            }
+        }
+
+        write C[index] = value when index < params.Count;
+        return;
+    }
+}
+

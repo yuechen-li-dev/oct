@@ -102,6 +102,17 @@ Example diagnostics:
 
 Ordinary/runtime `when utility` remains an expression that lowers through VD-MIR. `comptime when utility` is a statement that expands away before VD-MIR. The HLSL backend must not special-case it.
 
+M19 adds a separate Oct-style runtime guard `when` statement:
+
+```sdslv
+when {
+    case guard -> { ... }
+    else -> { ... }
+}
+```
+
+That form is source-order first-match control flow. It is not utility scoring and it does not disappear before VD-MIR; it lowers to VD-MIR `IfStmt` chains. See `docs/SDSL_V_M19_RUNTIME_GUARD_WHEN.md`.
+
 ## Limits
 
 M14a intentionally does not add in this milestone:

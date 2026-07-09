@@ -2,13 +2,13 @@
 
 *Derived from the WyrmCoil (`src/Engine/shader/sdslv/`) and Aurelian (`src/Aurelian.Shaders/`) implementations. Authoritative source is the parser, validator, and emitter — not documentation.*
 
-*Milestone markers (M0, M13, M15, M55c, M56, M58, M59b, M60, M61, M62, M63, M64b/c, M65, M66b) appear where the implementation explicitly bounds a feature.*
+*Milestone markers (M0, M13, M15, M19, M55c, M56, M58, M59b, M60, M61, M62, M63, M64b/c, M65, M66b) appear where the implementation explicitly bounds a feature.*
 
 ---
 
 ## Overview
 
-SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its design embeds the flow/board/state/when semantics of the Dominatus/Octomata behavioral model directly into the shader pipeline. A flow is a value-returning finite state machine — a stateful routing function that lowers to a standard HLSL helper. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
+SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its GoOct subset uses VD-MIR as the compiler boundary and follows Oct syntax where Oct already has a matching construct. M19 adds bounded Oct guard `when` for shader-safe runtime control flow; full Octomata `flow`/`state` controllers and persistent policy state remain future work in this subset. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
 
 The broad design pipeline is: `source → lex → parse → validate → template/config monomorphization → comptime expansion → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
@@ -46,7 +46,7 @@ Current GoOct SDSL-V accepts these top-level declaration kinds:
 | `interface` | `interface Name { fn signatures }` | Abstract method contract |
 | `template` + `shader` | `template<C: Concept> shader Name { ... }` | Compile-time specialized shader template |
 | `shader` | `shader Name { ... }` | Concrete shader program |
-| `flow` | `flow Name(params) -> ReturnType { board? states }` | Value-returning FSM |
+| `flow` | `flow Name(params) -> ReturnType { board? states }` | Reserved for future Octomata-style controller support in the GoOct SDSL-V subset |
 | `compile` | `compile TemplateShader<Config> as Alias;` | Monomorphize a template shader |
 | `enum` | `enum Name { Variant; Variant { Field: Type; } }` | Tagged value enum with optional payload |
 
@@ -330,6 +330,14 @@ Current M16 additions:
 - expansion before VD-MIR so no `comptime for` reaches backend lowering;
 - conservative expansion-limit rejection to avoid AST explosion.
 
+Current M19 additions:
+
+- Oct-style runtime guard `when { case guard -> { ... } else -> { ... } }` as a bounded statement form;
+- source-order first-true semantics with optional `else`;
+- guard conditions must be `bool`;
+- lowering through VD-MIR `IfStmt` chains to HLSL `if / else if / else`;
+- clear rejection of `goto`, `remember`, `resume`, `suspend`, full `flow`/`state`, and `when policy` in shader code.
+
 M13/M14/M14a `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
 
 ### Shader
@@ -431,6 +439,7 @@ Fallible functions declare an error type with `! ErrorType`. Only `Error` is rec
 | `return expr;` | Return |
 | `if cond { ... }` | Conditional without else |
 | `if cond { ... } else { ... }` | Conditional with else |
+| `when { case cond -> { ... } else -> { ... } }` | M19 Oct-style bounded runtime guard flow lowered through VD-MIR |
 | `for i in start..end { ... }` | Bounded integer for loop |
 | `for i in start..end step n { ... }` | Bounded for loop with step |
 | `expr;` | Expression statement |
@@ -604,9 +613,46 @@ Guards must be `bool`. Score expressions must be numeric. Stateful options (`hys
 
 `when policy` is reserved for `flow`/`state` bodies and is rejected in ordinary shader function bodies.
 
+### Runtime guard `when` statement (GoOct M19)
+
+M19 implements the shader-safe subset of Oct guard `when` syntax:
+
+```sdslv
+when {
+    case fullTile -> {
+        TileA[localRow, localCol] = AView[row, k];
+    }
+    case not fullTile -> {
+        TileA[localRow, localCol] =
+            read AView[row, k] when row < params.M and k < params.K else 0.0;
+    }
+    else -> {
+        return;
+    }
+}
+```
+
+Rules:
+
+- guard `when` is a statement, not an expression;
+- at least one `case` is required;
+- `else` is optional;
+- cases are evaluated in source order;
+- the first true guard executes;
+- no case fallthrough occurs;
+- guards must be `bool`;
+- arm bodies validate as ordinary bounded SDSL-V statement blocks;
+- nested guard `when`, guarded read/write, and already-supported comptime constructs may appear in bodies.
+
+Lowering preserves first-match source order by converting the guard `when` to VD-MIR `IfStmt` chains. HLSL emits `if / else if / else`. Generated HLSL must not contain source-level `when {` spelling.
+
+M19 does not implement full Octomata controllers in shaders. `goto`, `remember`, `resume`, `suspend`, persistent board state, `flow`/`state`, and `when policy` are rejected with dedicated diagnostics. `when policy` is not lowered because Oct requires meaningful `hysteresis` and `min_commit` policy state; M19 shader code has no persistent policy-state machinery.
+
 ---
 
 ## Flow declarations
+
+The following describes the broader SDSL-V/Octomata design surface. In the current GoOct SDSL-V subset, full `flow`/`state` controllers, board persistence, and `when policy` are reserved for future work and are rejected rather than partially lowered. M19 implements only bounded runtime guard `when` inside ordinary shader/function bodies.
 
 A `flow` is a value-returning finite state machine. It lowers to a regular HLSL helper function.
 
@@ -811,6 +857,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 | Board assignments | Type of value must match field type |
 | For loops | Bounds must be integer; step must be positive integer literal |
 | `if` condition | Must be `bool` |
+| Runtime guard `when` | M19 statement-only; at least one case; guards must be `bool`; first true case executes; optional else |
 | Nested ladders | `if/else { if/else }` rejected — use `switch` |
 | Switch cases | Condition must be `bool` (condition-switch) or match subject type (subject-switch); at least one case required; `else` required |
 | Match (enum) | Subject must be enum type; all variants covered exactly once; arm types uniform |
@@ -827,7 +874,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 | Coordinate spaces | Space-annotated aliases are incompatible with base type and other space-annotated aliases |
 | Enum variants | Qualified references must use correct enum name |
 | `when utility` options | Recognized but not lowered in M66b; emit diagnostic |
-| `when policy` | Only valid in flow/state bodies |
+| `when policy` | Rejected in M19 shader code because Oct policy semantics require persistent `hysteresis` and `min_commit` state |
 
 ---
 
@@ -872,7 +919,7 @@ stage-method ::= 'stage' STAGE 'fn' IDENT '(' params ')' '->' type-ref body
 STAGE        ::= 'vertex' | 'pixel'
 
 body         ::= '{' stmt* '}'
-stmt         ::= let | comptime-let | comptime-if | comptime-match | comptime-when-utility | static-assert | assign | return | if | for | expr-stmt
+stmt         ::= let | comptime-let | comptime-if | comptime-match | comptime-when-utility | static-assert | assign | return | if | guard-when | for | expr-stmt
 let          ::= 'let' IDENT ':' type-ref ('=' expr)? ';'
 comptime-let ::= 'comptime' 'let' IDENT ':' type-ref '=' expr ';'
 comptime-if  ::= 'comptime' 'if' expr '{' stmt* '}' ('else' '{' stmt* '}')?
@@ -882,6 +929,9 @@ comptime-when-utility ::= 'comptime' 'when' 'utility' '{' comptime-utility-case+
 comptime-utility-case ::= 'case' path ('when' expr)? 'score' expr '{' stmt* '}'
 static-assert ::= 'static' 'assert' expr ';'
 assign       ::= expr '=' expr ';'
+guard-when   ::= 'when' '{' guard-case+ ('else' '->' when-body)? '}'
+guard-case   ::= 'case' expr '->' when-body
+when-body    ::= '{' stmt* '}' | stmt
 for          ::= 'for' IDENT 'in' expr '..' expr ('step' expr)? '{' stmt* '}'
 
 expr         ::= ... (see expression table above)
