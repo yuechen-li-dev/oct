@@ -1,0 +1,42 @@
+record StoreParams {
+    M: u32;
+    N: u32;
+    Row: u32;
+    Col: u32;
+}
+
+concept MicroConfig {
+    Outputs: {
+        M: u32 = 2u;
+        N: u32 = 2u;
+    };
+}
+
+config Micro2x2: MicroConfig {}
+
+template<C: MicroConfig>
+shader ComptimeForRegTile {
+    resources {
+        [binding(0)] C: readwrite array<f32>;
+    }
+
+    stage compute [numthreads(1, 1, 1)] fn CS(params: StoreParams) -> void {
+        let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+
+        comptime for i in 0u..C.Outputs.M {
+            comptime for j in 0u..C.Outputs.N {
+                Acc[i, j] = Acc[i, j] + 1.0;
+            }
+        }
+
+        comptime for i in 0u..C.Outputs.M {
+            comptime for j in 0u..C.Outputs.N {
+                CView[params.Row + i, params.Col + j] = Acc[i, j];
+            }
+        }
+        return;
+    }
+}
+
+compile ComptimeForRegTile<Micro2x2> as ComptimeForRegTile2x2;

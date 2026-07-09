@@ -361,6 +361,12 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			elseBody = &body
 		}
 		return ast.ComptimeWhenUtilityStmt{Cases: cases, ElseBody: elseBody}, nil
+	case ast.ComptimeForStmt:
+		body, err := specializeBlock(s.Body, env)
+		if err != nil {
+			return nil, err
+		}
+		return ast.ComptimeForStmt{Name: s.Name, Start: specializeExpr(s.Start, env), End: specializeExpr(s.End, env), Body: body}, nil
 	case ast.ForStmt:
 		body, err := specializeBlock(s.Body, env)
 		if err != nil {
@@ -393,6 +399,8 @@ const (
 type runtimeBinding struct {
 	origin runtimeOrigin
 }
+
+const maxComptimeForExpandedStatements = 256
 
 func expandComptimeModule(module ast.Module) (ast.Module, error) {
 	resourceBundles := map[string][]ast.ResourceDecl{}
@@ -518,6 +526,12 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 		return body.Statements, nil
 	case ast.ComptimeWhenUtilityStmt:
 		body, err := expandComptimeWhenUtility(s, comptime, runtime)
+		if err != nil {
+			return nil, err
+		}
+		return body.Statements, nil
+	case ast.ComptimeForStmt:
+		body, err := expandComptimeFor(s, comptime, runtime)
 		if err != nil {
 			return nil, err
 		}
@@ -701,6 +715,45 @@ func expandComptimeWhenUtility(stmt ast.ComptimeWhenUtilityStmt, comptime map[st
 		return ast.Block{}, fmt.Errorf("no comptime when utility case qualified and no else block provided")
 	}
 	return expandComptimeBlock(*selected, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+}
+
+func expandComptimeFor(stmt ast.ComptimeForStmt, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (ast.Block, error) {
+	start, err := evalComptimeExpr(stmt.Start, comptime, runtime, "comptime for start must be compile-time integer")
+	if err != nil {
+		return ast.Block{}, err
+	}
+	end, err := evalComptimeExpr(stmt.End, comptime, runtime, "comptime for end must be compile-time integer")
+	if err != nil {
+		return ast.Block{}, err
+	}
+	if !consteval.IsInteger(start.Type) {
+		return ast.Block{}, fmt.Errorf("comptime for start must be compile-time integer")
+	}
+	if !consteval.IsInteger(end.Type) {
+		return ast.Block{}, fmt.Errorf("comptime for end must be compile-time integer")
+	}
+	if start.Int32 < 0 || end.Int32 < 0 {
+		return ast.Block{}, fmt.Errorf("comptime for bounds must be non-negative in SDSL-V M16")
+	}
+	if start.Int32 > end.Int32 {
+		return ast.Block{}, fmt.Errorf("comptime for range start must be <= end")
+	}
+	out := ast.Block{Statements: []ast.Stmt{}}
+	totalExpanded := 0
+	for i := start.Int32; i < end.Int32; i++ {
+		iterComptime := cloneComptimeBindings(comptime)
+		iterComptime[stmt.Name] = comptimeBinding{typ: ast.TypeRef{Name: "u32"}, int32: i}
+		body, err := expandComptimeBlock(stmt.Body, iterComptime, cloneRuntimeBindings(runtime))
+		if err != nil {
+			return ast.Block{}, err
+		}
+		totalExpanded += blockExpansionCost(body)
+		if totalExpanded > maxComptimeForExpandedStatements {
+			return ast.Block{}, fmt.Errorf("comptime for expansion exceeds M16 limit of %d iterations", maxComptimeForExpandedStatements)
+		}
+		out.Statements = append(out.Statements, body.Statements...)
+	}
+	return out, nil
 }
 
 func annotateComptimeWhenExprError(err error, position string) error {
@@ -896,6 +949,29 @@ func cloneRuntimeBindings(in map[string]runtimeBinding) map[string]runtimeBindin
 		out[key] = value
 	}
 	return out
+}
+
+func blockExpansionCost(block ast.Block) int {
+	total := 0
+	for _, stmt := range block.Statements {
+		total += stmtExpansionCost(stmt)
+	}
+	return total
+}
+
+func stmtExpansionCost(stmt ast.Stmt) int {
+	switch s := stmt.(type) {
+	case ast.IfStmt:
+		total := 1 + blockExpansionCost(s.ThenBody)
+		if s.ElseBody != nil {
+			total += blockExpansionCost(*s.ElseBody)
+		}
+		return total
+	case ast.ForStmt:
+		return 1 + blockExpansionCost(s.Body)
+	default:
+		return 1
+	}
 }
 
 func rootNameForComptime(expr ast.Expr) (string, bool) {

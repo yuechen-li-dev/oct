@@ -846,6 +846,41 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if s.ElseBody != nil {
 			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
 		}
+	case ast.ComptimeForStmt:
+		v.validateWithPlacement(s.Start, false)
+		v.validateWithPlacement(s.End, false)
+		v.validateMatchPlacement(s.Start, false)
+		v.validateMatchPlacement(s.End, false)
+		v.validateReductionPlacement(s.Start, false)
+		v.validateReductionPlacement(s.End, false)
+		startType := v.exprType(s.Start, scope, shaderName, templateParam)
+		endType := v.exprType(s.End, scope, shaderName, templateParam)
+		if !isInteger(startType) || !isInteger(endType) {
+			v.errorf("comptime for bounds must be compile-time integers")
+		}
+		env := v.constEnv(scope, templateParam)
+		startValue, startErr := v.evalConstExpr(s.Start, env)
+		endValue, endErr := v.evalConstExpr(s.End, env)
+		if startErr != nil || endErr != nil {
+			v.errorf("comptime for bounds must be compile-time integers")
+		} else {
+			if !isInteger(startValue.typ) || !isInteger(endValue.typ) {
+				v.errorf("comptime for bounds must be compile-time integers")
+			}
+			if startValue.int32 < 0 || endValue.int32 < 0 {
+				v.errorf("comptime for bounds must be non-negative in SDSL-V M16")
+			}
+			if startValue.int32 > endValue.int32 {
+				v.errorf("comptime for range start must be <= end")
+			}
+		}
+		loopScope := cloneScope(scope)
+		loopScope[s.Name] = varInfo{
+			typ:    ast.TypeRef{Name: "u32"},
+			origin: varComptime,
+			value:  &configValue{typ: ast.TypeRef{Name: "u32"}, int32: 0},
+		}
+		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam)
 	case ast.ForStmt:
 		v.validateLoopAttributes(s.Attributes)
 		v.validateWithPlacement(s.Start, false)
@@ -1373,6 +1408,8 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 	switch info.origin {
 	case varBuiltin:
 		v.errorf("cannot assign to compute builtin %s", root)
+	case varComptime:
+		v.errorf("cannot assign to comptime binding %s", root)
 	case varParam:
 		kind := v.typeKind(info.typ)
 		switch {

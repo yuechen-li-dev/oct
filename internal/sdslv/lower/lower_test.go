@@ -1200,6 +1200,134 @@ return;
 	}
 }
 
+func TestModuleExpandsComptimeForBeforeVDMIR(t *testing.T) {
+	mir := lowerSource(t, `concept MicroConfig {
+Outputs: { M: u32 = 2u; N: u32 = 2u; };
+}
+config Micro2x2: MicroConfig {}
+template<C: MicroConfig>
+shader Demo {
+resources { C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32) -> void {
+let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+comptime for i in 0u..C.Outputs.M {
+comptime for j in 0u..C.Outputs.N {
+Acc[i, j] = Acc[i, j] + 1.0;
+CView[row + i, col + j] = Acc[i, j];
+}
+}
+return;
+}
+}
+compile Demo<Micro2x2> as Demo2x2;`)
+	dump := vdmir.Dump(mir)
+	if strings.Contains(dump, "comptime") {
+		t.Fatalf("VDMIR should not contain comptime for:\n%s", dump)
+	}
+	for _, want := range []string{
+		"assign Acc[0u, 0u] = (Acc[0u, 0u] + 1.0)",
+		"assign Acc[1u, 1u] = (Acc[1u, 1u] + 1.0)",
+		"assign CView[(row + 0u), (col + 1u)] = Acc[0u, 1u]",
+		"assign CView[(row + 1u), (col + 0u)] = Acc[1u, 0u]",
+	} {
+		if !strings.Contains(dump, want) {
+			t.Fatalf("VDMIR missing %q:\n%s", want, dump)
+		}
+	}
+}
+
+func TestModuleAllowsZeroIterationComptimeFor(t *testing.T) {
+	mir := lowerSource(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 2u..2u {
+let dropped: u32 = i;
+}
+return;
+}
+}`)
+	dump := vdmir.Dump(mir)
+	if strings.Contains(dump, "dropped") {
+		t.Fatalf("zero-iteration comptime for should emit nothing:\n%s", dump)
+	}
+}
+
+func TestModuleRejectsComptimeForErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "runtime bound",
+			src: `record Params { M: u32; }
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+comptime for i in 0u..params.M { return; }
+return;
+}
+}`,
+			want: "comptime for bounds must be compile-time integers",
+		},
+		{
+			name: "start greater than end",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 3u..2u { return; }
+return;
+}
+}`,
+			want: "comptime for range start must be <= end",
+		},
+		{
+			name: "negative bound",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in -1..2u { return; }
+return;
+}
+}`,
+			want: "comptime for bounds must be non-negative in SDSL-V M16",
+		},
+		{
+			name: "expansion limit",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 0u..17u {
+comptime for j in 0u..17u {
+let x: u32 = i + j;
+}
+}
+return;
+}
+}`,
+			want: "comptime for expansion exceeds M16 limit of 256 iterations",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatalf("BuildModule() error = %v", err)
+			}
+			if err := validate.Module(module); err != nil {
+				if strings.Contains(err.Error(), tc.want) {
+					return
+				}
+				t.Fatalf("validate.Module() error = %v", err)
+			}
+			_, err = Module(module)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Module() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func lowerSource(t *testing.T, text string) vdmir.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

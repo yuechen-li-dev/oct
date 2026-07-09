@@ -698,8 +698,10 @@ func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
 		return p.parseComptimeMatch()
 	case token.KeywordWhen:
 		return p.parseComptimeWhenUtility()
+	case token.KeywordFor:
+		return p.parseComptimeFor()
 	default:
-		return nil, p.errorAtCurrent("expected let, if, match, or when after comptime")
+		return nil, p.errorAtCurrent("expected let, if, match, when, or for after comptime")
 	}
 }
 
@@ -844,6 +846,33 @@ func (p *parser) parseComptimeWhenUtility() (ast.ComptimeWhenUtilityStmt, error)
 	}
 	p.advance()
 	return ast.ComptimeWhenUtilityStmt{Cases: cases, ElseBody: elseBody}, nil
+}
+
+func (p *parser) parseComptimeFor() (ast.ComptimeForStmt, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected comptime for loop variable")
+	if err != nil {
+		return ast.ComptimeForStmt{}, err
+	}
+	if _, err := p.expect(token.KeywordIn, "expected 'in' after comptime for loop variable"); err != nil {
+		return ast.ComptimeForStmt{}, err
+	}
+	start, err := p.parseExpression()
+	if err != nil {
+		return ast.ComptimeForStmt{}, err
+	}
+	if _, err := p.expect(token.DotDot, "expected '..' in comptime for range"); err != nil {
+		return ast.ComptimeForStmt{}, err
+	}
+	end, err := p.parseExpression()
+	if err != nil {
+		return ast.ComptimeForStmt{}, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return ast.ComptimeForStmt{}, err
+	}
+	return ast.ComptimeForStmt{Name: name.Lexeme, Start: start, End: end, Body: body}, nil
 }
 
 func (p *parser) parseLet() (ast.LetStmt, error) {

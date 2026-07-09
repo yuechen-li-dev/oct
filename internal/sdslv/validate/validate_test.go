@@ -537,6 +537,30 @@ compile TileCopy<Tile16> as TileCopy16;`)
 	}
 }
 
+func TestModuleAllowsComptimeForSyntaxValidation(t *testing.T) {
+	err := validateSource(`concept MicroConfig {
+Outputs: { M: u32 = 2u; N: u32 = 2u; };
+}
+config Micro2x2: MicroConfig {}
+template<C: MicroConfig>
+shader TileCopy {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+comptime for i in 0u..C.Outputs.M {
+comptime for j in 0u..C.Outputs.N {
+static assert i < C.Outputs.M and j < C.Outputs.N;
+Acc[i, j] = 1.0;
+}
+}
+return;
+}
+}
+compile TileCopy<Micro2x2> as TileCopy2x2;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
 func TestModuleValidatesSemanticBooleanOperators(t *testing.T) {
 	err := validateSource(`concept TileConfig {
 Tile: { K: u32; };
@@ -595,6 +619,87 @@ return;
 }`)
 	if err == nil || !strings.Contains(err.Error(), "cannot assign bool to comptime local Bad of type u32") {
 		t.Fatalf("error = %v, want comptime type mismatch", err)
+	}
+}
+
+func TestModuleRejectsComptimeForValidationErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "runtime start",
+			src: `record Params { M: u32; }
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+comptime for i in params.M..4u { return; }
+return;
+}
+}`,
+			want: "comptime for bounds must be compile-time integers",
+		},
+		{
+			name: "non integer end",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 0u..true { return; }
+return;
+}
+}`,
+			want: "comptime for bounds must be compile-time integers",
+		},
+		{
+			name: "negative bound",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in -1..2u { return; }
+return;
+}
+}`,
+			want: "comptime for bounds must be non-negative in SDSL-V M16",
+		},
+		{
+			name: "start greater than end",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 3u..2u { return; }
+return;
+}
+}`,
+			want: "comptime for range start must be <= end",
+		},
+		{
+			name: "assignment to index",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 0u..2u {
+i = 1u;
+}
+return;
+}
+}`,
+			want: "cannot assign to comptime binding i",
+		},
+		{
+			name: "out of scope after loop",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 0u..2u { return; }
+let x: u32 = i;
+return;
+}
+}`,
+			want: "unknown identifier i",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 

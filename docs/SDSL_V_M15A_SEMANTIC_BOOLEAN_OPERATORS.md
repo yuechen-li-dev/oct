@@ -51,7 +51,7 @@ No bitwise operators are added in M15a.
 
 ## Comptime and lowering
 
-The same semantic operators work in `require`, `static assert`, `comptime let`, `comptime if`, `comptime match`, and `comptime when utility`.
+The same semantic operators work in `require`, `static assert`, `comptime let`, `comptime if`, `comptime match`, `comptime when utility`, and `comptime for` bounds or nested compile-time guards.
 
 They do not relax existing comptime dependency restrictions.
 

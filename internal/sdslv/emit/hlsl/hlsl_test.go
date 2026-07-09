@@ -172,6 +172,42 @@ return;
 	}
 }
 
+func TestEmitComptimeForExpandedOnly(t *testing.T) {
+	hlsl := emitSource(t, `concept MicroConfig {
+Outputs: { M: u32 = 2u; N: u32 = 2u; };
+}
+config Micro2x2: MicroConfig {}
+template<C: MicroConfig>
+shader Demo {
+resources { C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32) -> void {
+let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+comptime for i in 0u..C.Outputs.M {
+comptime for j in 0u..C.Outputs.N {
+Acc[i, j] = Acc[i, j] + 1.0;
+CView[row + i, col + j] = Acc[i, j];
+}
+}
+return;
+}
+}
+compile Demo<Micro2x2> as Demo2x2;`)
+	if strings.Contains(hlsl, "comptime") {
+		t.Fatalf("HLSL should not mention comptime:\n%s", hlsl)
+	}
+	for _, want := range []string{
+		"Acc[((0u) * (2)) + (0u)] = (Acc[((0u) * (2)) + (0u)] + 1.0);",
+		"Acc[((1u) * (2)) + (1u)] = (Acc[((1u) * (2)) + (1u)] + 1.0);",
+		"C[(((row + 0u)) * (4u)) + ((col + 1u))] = Acc[((0u) * (2)) + (1u)];",
+		"C[(((row + 1u)) * (4u)) + ((col + 0u))] = Acc[((1u) * (2)) + (0u)];",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+}
+
 func TestEmitWhenUtilityFromVDMIR(t *testing.T) {
 	text := `shader Picker {
 fn Pick(flag: bool) -> f32 {

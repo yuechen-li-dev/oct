@@ -288,6 +288,53 @@ func TestSDSLvM15aSemanticBooleanEmitCommands(t *testing.T) {
 	}
 }
 
+func TestSDSLvM16ComptimeForEmitCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "examples", "SDSL-V", "M16", "ComptimeForRegTile.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	if strings.Contains(out, "comptime") {
+		t.Fatalf("emit-vdmir output should not mention comptime:\n%s", out)
+	}
+	for _, want := range []string{
+		"assign Acc[0u, 0u] = (Acc[0u, 0u] + 1.0)",
+		"assign Acc[1u, 1u] = (Acc[1u, 1u] + 1.0)",
+		"assign CView[(params.Row + 0u), (params.Col + 1u)] = Acc[0u, 1u]",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "m16_comptime_for_reg_tile.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	if strings.Contains(body, "comptime") {
+		t.Fatalf("emit-hlsl output should not mention comptime:\n%s", body)
+	}
+	for _, want := range []string{
+		"float Acc[4];",
+		"Acc[((0u) * (2)) + (0u)] = (Acc[((0u) * (2)) + (0u)] + 1.0);",
+		"C[(((params.Row + 1u)) * (params.N)) + ((params.Col + 1u))] = Acc[((1u) * (2)) + (1u)];",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_scalar_plus_spirv.h")
 	text, err := os.ReadFile(path)

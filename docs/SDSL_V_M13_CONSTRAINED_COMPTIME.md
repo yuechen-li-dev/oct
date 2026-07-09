@@ -57,7 +57,7 @@ comptime if C.UseFastPath {
 }
 ```
 
-Nested `comptime if` is supported. `comptime for`, comptime functions, generated identifiers, reflection, file I/O, process calls, heap objects, recursion, and runtime resource inspection are not part of M13.
+Nested `comptime if` is supported. `comptime for`, comptime functions, generated identifiers, reflection, file I/O, process calls, heap objects, recursion, and runtime resource inspection are not part of M13 itself.
 
 ## Compile-Time Expressions
 
@@ -111,11 +111,11 @@ M13 intentionally does not add:
 - P15/P14 changes;
 - FFT/P16 changes.
 
-Future `comptime for` can build on the same constrained staging pass, but it is deferred.
+M16 later adds constrained `comptime for` on the same staging pass; see `docs/SDSL_V_M16_COMPTIME_FOR.md`.
 
 M15 reuses the same constrained compile-time model for `reg_tile` dimensions, so patterns such as `let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();` may use prior `comptime let` bindings for `RM` and `RN`.
 
-M14 extends the same constrained staging model with `comptime match` for multi-way compile-time selection. M14a adds `comptime when utility` for utility-scored compile-time arbitration among guarded structural alternatives. See `docs/SDSL_V_M14_COMPTIME_MATCH.md` and `docs/SDSL_V_M14A_COMPTIME_WHEN_UTILITY.md`.
+M14 extends the same constrained staging model with `comptime match` for multi-way compile-time selection. M14a adds `comptime when utility` for utility-scored compile-time arbitration among guarded structural alternatives. M16 adds constrained compile-time loop expansion with `comptime for`. See `docs/SDSL_V_M14_COMPTIME_MATCH.md`, `docs/SDSL_V_M14A_COMPTIME_WHEN_UTILITY.md`, and `docs/SDSL_V_M16_COMPTIME_FOR.md`.
 
 ## Examples
 

@@ -66,7 +66,7 @@ Acc[((i) * (Cols)) + (j)]
 
 This favors correctness and structured authoring first. Future scalarization can specialize compile-time-indexed `reg_tile` usage without changing the source model.
 
-## Relationship to Future `comptime for`
+## Relationship to `comptime for`
 
 M15 is a stepping stone toward structured register-blocked kernels:
 
@@ -74,6 +74,6 @@ M15 is a stepping stone toward structured register-blocked kernels:
 let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
 ```
 
-The goal is for future `comptime for` to iterate a structured accumulator surface instead of forcing generated names such as `acc00`, `acc01`, `acc10`, and `acc11`.
+M16 adds constrained `comptime for` so shader authors can iterate a structured accumulator surface instead of forcing generated names such as `acc00`, `acc01`, `acc10`, and `acc11`.
 
-M15a keeps this storage model unchanged while aligning condition syntax with Oct source style: shader authors use `and`, `or`, and `not` in SDSL-V source, and emitted HLSL continues to use `&&`, `||`, and `!`.
+M15a keeps this storage model unchanged while aligning condition syntax with Oct source style: shader authors use `and`, `or`, and `not` in SDSL-V source, and emitted HLSL continues to use `&&`, `||`, and `!`. M16 builds directly on this storage model with `comptime for`; see `docs/SDSL_V_M16_COMPTIME_FOR.md`.

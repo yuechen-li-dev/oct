@@ -290,6 +290,15 @@ type ComptimeWhenUtilityCase struct {
 	Body      Block
 }
 
+type ComptimeForStmt struct {
+	Name  string
+	Start Expr
+	End   Expr
+	Body  Block
+}
+
+func (ComptimeForStmt) stmtNode() {}
+
 type ForStmt struct {
 	Attributes []Attribute
 	Name       string

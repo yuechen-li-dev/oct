@@ -49,7 +49,7 @@ M14 supports a deliberately small pattern set:
 - bool literals `true` and `false`;
 - `else`.
 
-M14 does not support ranges, guards, destructuring, payload matching, wildcard `_`, type patterns, multiple comma-separated patterns, generated identifiers, comptime functions, or `comptime for`.
+M14 does not support ranges, guards, destructuring, payload matching, wildcard `_`, type patterns, multiple comma-separated patterns, generated identifiers, or comptime functions. `comptime for` arrives later in M16.
 
 Enum/config-symbol patterns are deferred; use integer or bool config fields in M14.
 
@@ -83,7 +83,7 @@ Forbidden inputs include runtime parameters and push constants, shader resources
 
 Runtime `match` remains an expression that lowers to VD-MIR. `comptime match` is a statement that expands away before VD-MIR. The HLSL backend must not special-case it.
 
-M15 does not add `comptime for`, but `comptime match` can already choose among fixed `reg_tile` shapes or fixed explicit accumulator writeouts inside one specialized shader variant.
+Before M16, `comptime match` could choose among fixed `reg_tile` shapes or fixed explicit accumulator writeouts inside one specialized shader variant. M16 adds constrained `comptime for` for structured repeated expansion without generated identifiers.
 
 M14a adds `comptime when utility` as the utility-scored arbitration sibling to `comptime match`. Use `comptime match` when selecting by literal pattern over one scrutinee; use `comptime when utility` when multiple guarded candidates can qualify and should compete by compile-time score.
 

@@ -104,9 +104,8 @@ Ordinary/runtime `when utility` remains an expression that lowers through VD-MIR
 
 ## Limits
 
-M14a intentionally does not add:
+M14a intentionally does not add in this milestone:
 
-- `comptime for`;
 - comptime functions;
 - generated identifiers;
 - payload labels or destructuring;
@@ -116,9 +115,9 @@ M14a intentionally does not add:
 - P15/P14 changes;
 - FFT/P16 changes.
 
-Future `comptime for` can build on the same constrained staging pass, but it is deferred.
+M16 later adds constrained `comptime for` on the same staging pass; see `docs/SDSL_V_M16_COMPTIME_FOR.md`.
 
-M15 keeps that boundary intact: `reg_tile` gives structured per-thread accumulator storage now, while future `comptime for` remains the deferred mechanism for generating repeated indexed logic over that structure.
+M15 keeps that boundary intact: `reg_tile` gives structured per-thread accumulator storage, and M16 later adds `comptime for` as the constrained mechanism for generating repeated indexed logic over that structure.
 
 ## Examples
 

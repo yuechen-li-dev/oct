@@ -373,6 +373,31 @@ return;
 	}
 }
 
+func TestBuildModuleParsesComptimeFor(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime for i in 0u..4u {
+let x: u32 = i;
+comptime for j in 0u..i {
+let y: u32 = j;
+}
+}
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	loop, ok := shader.Methods[0].Body.Statements[0].(ast.ComptimeForStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want ComptimeForStmt", shader.Methods[0].Body.Statements[0])
+	}
+	if loop.Name != "i" {
+		t.Fatalf("loop.Name = %q, want i", loop.Name)
+	}
+	if _, ok := loop.Body.Statements[1].(ast.ComptimeForStmt); !ok {
+		t.Fatalf("nested stmt = %T, want ComptimeForStmt", loop.Body.Statements[1])
+	}
+}
+
 func TestBuildModuleParsesSemanticBooleanOperatorsAndPrecedence(t *testing.T) {
 	module := parseTestModule(t, `fn F(A: bool, B: bool, C: bool, X: u32, Y: u32) -> bool {
 let v0: bool = not A and B;

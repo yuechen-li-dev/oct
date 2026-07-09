@@ -313,6 +313,14 @@ Current M15a additions:
 - lowering reuses existing VD-MIR logical ops and emits HLSL punctuation `&&`, `||`, and `!`;
 - SDSL-V source rejects logical `&&`, `||`, and unary logical `!` in favor of semantic spellings.
 
+Current M16 additions:
+
+- constrained compile-time loop expansion with `comptime for`;
+- half-open compile-time integer ranges `start..end`;
+- compile-time loop indices scoped to the loop body;
+- expansion before VD-MIR so no `comptime for` reaches backend lowering;
+- conservative expansion-limit rejection to avoid AST explosion.
+
 M13/M14/M14a `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
 
 ### Shader
@@ -421,15 +429,18 @@ Fallible functions declare an error type with `! ErrorType`. Only `Error` is rec
 | `comptime if const_bool { ... } else { ... }` | Compile-time branch selection before VD-MIR |
 | `comptime match const_expr { pattern => { ... } else => { ... } }` | Multi-way compile-time branch selection before VD-MIR |
 | `comptime when utility { case Label when guard score score { ... } else { ... } }` | Utility-scored compile-time arbitration before VD-MIR |
+| `comptime for i in start..end { ... }` | Compile-time loop expansion over a half-open integer range before VD-MIR |
 | `static assert const_bool;` | Compile-time assertion, including inside selected `comptime if` branches |
 
 In the compute subset, workgroup arrays are also mutable assignment targets. Barrier builtins such as `WorkgroupMemoryBarrierWithSync();` are only valid as expression statements.
 
-`comptime let`, `comptime if`, `comptime match`, and `comptime when utility` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. No `comptime for` or comptime functions are supported in M14a.
+`comptime let`, `comptime if`, `comptime match`, `comptime when utility`, and `comptime for` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. Comptime functions are not supported.
 
 `comptime match` is a statement, not runtime branching. It supports integer literal patterns, bool literal patterns, and `else` in M14. Integer matches require an `else` arm. Bool matches require either both `true` and `false` arms or an `else` arm. Only the selected arm is spliced into the AST before VD-MIR lowering; non-selected arms do not fire `static assert` and do not reach HLSL. Runtime `match` remains a separate expression form that lowers through VD-MIR.
 
 `comptime when utility` is a statement, not runtime `when utility`. Each case has a label, optional compile-time bool guard, required compile-time numeric score, and body. A case without `when` is always eligible. The highest-scoring eligible case wins; `else` is selected only when no case qualifies. No eligible case without `else` is rejected. Equal highest scores are ambiguous in M14a. Only the selected body is spliced into the AST before VD-MIR lowering; non-selected bodies do not fire `static assert` and do not reach HLSL. Runtime `when utility` remains a separate expression form that lowers through VD-MIR.
+
+`comptime for` is constrained compile-time shader staging, not a runtime loop. It accepts only half-open integer ranges `start..end`, requires compile-time integer bounds, binds a compile-time loop index in the body scope, and expands repeated concrete statements before VD-MIR lowering. The loop index may appear in runtime code as a constant after expansion. M16 does not support steps, inclusive ranges, descending ranges, `break`, `continue`, arbitrary iterators, generated identifiers, or arbitrary compile-time execution.
 
 `while` loops are explicitly not supported. Use bounded `for` loops instead.
 
