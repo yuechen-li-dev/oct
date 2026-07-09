@@ -20,6 +20,7 @@
 #include <windows.h>
 #else
 #include <pthread.h>
+#include <time.h>
 #endif
 
 #include <vulkan/vulkan.h>
@@ -584,6 +585,12 @@ typedef struct prometheus_runtime {
   uint32_t last_gpu_timing_valid;
   uint32_t last_gpu_timing_failure_reason;
   uint64_t last_gpu_duration_ns;
+  uint64_t px16_m8_last_upload_wall_ns;
+  uint64_t px16_m8_last_dispatch_submit_wall_ns;
+  uint64_t px16_m8_last_sync_wait_wall_ns;
+  uint64_t px16_m8_last_readback_wall_ns;
+  uint64_t px16_m8_last_total_wall_ns;
+  uint32_t px16_m8_last_executed_explicit_variant_request;
   prom_dominatus_measurement_filter_state p14_measurement_filter_state;
   prom_dominatus_filtered_evidence p14_last_filtered_evidence;
   uint64_t p14_measurement_tick;
@@ -3947,6 +3954,48 @@ static void note_last_execution_shape(prometheus_runtime* rt, uint32_t m, uint32
   rt->last_execution_k = k;
 }
 
+static uint64_t prom_wall_clock_now_ns(void) {
+#if defined(_WIN32)
+  static LARGE_INTEGER frequency;
+  static uint32_t frequency_initialized = 0u;
+  LARGE_INTEGER counter;
+  if (frequency_initialized == 0u) {
+    if (QueryPerformanceFrequency(&frequency) == 0) {
+      frequency.QuadPart = 0;
+    }
+    frequency_initialized = 1u;
+  }
+  if (frequency.QuadPart <= 0 || QueryPerformanceCounter(&counter) == 0) {
+    return 0u;
+  }
+  return (uint64_t)((counter.QuadPart * 1000000000ll) / frequency.QuadPart);
+#else
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    return 0u;
+  }
+  return ((uint64_t)ts.tv_sec * 1000000000ull) + (uint64_t)ts.tv_nsec;
+#endif
+}
+
+static uint64_t prom_wall_clock_elapsed_ns(uint64_t start_ns, uint64_t end_ns) {
+  if (start_ns == 0u || end_ns == 0u || end_ns < start_ns) {
+    return 0u;
+  }
+  return end_ns - start_ns;
+}
+
+static void reset_last_runtime_timing_decomposition(prometheus_runtime* rt) {
+  if (rt == NULL) {
+    return;
+  }
+  rt->px16_m8_last_upload_wall_ns = 0u;
+  rt->px16_m8_last_dispatch_submit_wall_ns = 0u;
+  rt->px16_m8_last_sync_wait_wall_ns = 0u;
+  rt->px16_m8_last_readback_wall_ns = 0u;
+  rt->px16_m8_last_total_wall_ns = 0u;
+}
+
 static void reset_last_gpu_timing(prometheus_runtime* rt, uint32_t failure_reason) {
   if (rt == NULL) {
     return;
@@ -5139,8 +5188,18 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_resource_lease_decision lease_decision;
   prom_resource_lease_decision lease_yield_decision;
   uint32_t lease_granted = 0u;
+  uint64_t total_wall_begin_ns = 0u;
+  uint64_t upload_begin_ns = 0u;
+  uint64_t upload_end_ns = 0u;
+  uint64_t dispatch_submit_begin_ns = 0u;
+  uint64_t dispatch_submit_end_ns = 0u;
+  uint64_t sync_wait_begin_ns = 0u;
+  uint64_t sync_wait_end_ns = 0u;
+  uint64_t readback_begin_ns = 0u;
+  uint64_t readback_end_ns = 0u;
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
+  total_wall_begin_ns = prom_wall_clock_now_ns();
 
   if (handle == NULL || !registry_contains(handle)) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
@@ -5174,6 +5233,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   } else {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED);
   }
+  reset_last_runtime_timing_decomposition(rt);
+  rt->px16_m8_last_executed_explicit_variant_request = selector_controls_dispatch_variant == 0u ? requested_variant : 0u;
   if (!prom_vk_checked_mul_u32(m, k, &work_units_u32) || !prom_vk_checked_mul_u32(k, n, &work_units_u32) ||
       !prom_vk_checked_mul_u32(m, n, &work_units_u32) || !prom_vk_checked_mul_u32(m, n, &mn_product) ||
       !prom_vk_checked_mul_u32(mn_product, k, &work_units_u32)) {
@@ -5884,6 +5945,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     return PROM_ERROR;
   }
 
+  upload_begin_ns = prom_wall_clock_now_ns();
   if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
     packed_a_upload = (float*)malloc(a_copy_size);
     packed_b_upload = (float*)malloc(b_copy_size);
@@ -5976,6 +6038,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   free(packed_b_upload);
   free(fp16_a_upload);
   free(fp16_b_upload);
+  upload_end_ns = prom_wall_clock_now_ns();
+  rt->px16_m8_last_upload_wall_ns = prom_wall_clock_elapsed_ns(upload_begin_ns, upload_end_ns);
 
   if (compute_mode == PROM_VK_COMPUTE_TILED) {
     if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
@@ -6398,6 +6462,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
+  dispatch_submit_begin_ns = prom_wall_clock_now_ns();
   if (use_dedicated_transfer_upload != 0u) {
     wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     submit_info.waitSemaphoreCount = 1u;
@@ -6418,6 +6483,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
+  dispatch_submit_end_ns = prom_wall_clock_now_ns();
+  rt->px16_m8_last_dispatch_submit_wall_ns =
+      prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, dispatch_submit_end_ns);
   rt->in_flight_submit = 1u;
   if (!prom_slot_mark_submitted(rt, work_slot_id)) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
@@ -6440,6 +6508,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
 
   if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
+    sync_wait_begin_ns = prom_wall_clock_now_ns();
     if (use_dedicated_transfer_upload != 0u) {
       vk_result = vkWaitForFences(rt->device, 1u, &rt->transfer_submit_fence, VK_TRUE, UINT64_MAX);
       if (vk_result != VK_SUCCESS) {
@@ -6574,6 +6643,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
         }
       }
     }
+    sync_wait_end_ns = prom_wall_clock_now_ns();
+    rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
     rt->in_flight_submit = 0u;
     if (!prom_slot_mark_complete(rt, work_slot_id)) {
       prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
@@ -6592,20 +6663,26 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
 
   if (selected_path == PROM_VK_PATH_DIRECT) {
+    readback_begin_ns = prom_wall_clock_now_ns();
     if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
       prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->direct_c.mapped, m, n, k);
     }
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
     memcpy(c, rt->direct_c.mapped, c_copy_size);
+    readback_end_ns = prom_wall_clock_now_ns();
   } else if (selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
+    readback_begin_ns = prom_wall_clock_now_ns();
     if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
       prom_apply_debug_row_major_oracle(rt, a, b, (float*)rt->staged_readback_c.mapped, m, n, k);
     }
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, final_detail);
     memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
+    readback_end_ns = prom_wall_clock_now_ns();
   } else {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, final_detail);
   }
+  rt->px16_m8_last_readback_wall_ns = prom_wall_clock_elapsed_ns(readback_begin_ns, readback_end_ns);
+  rt->px16_m8_last_total_wall_ns = prom_wall_clock_elapsed_ns(total_wall_begin_ns, prom_wall_clock_now_ns());
 
   if (out_stage != NULL &&
       out_detail_code != NULL &&
@@ -8866,6 +8943,14 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->px16_m6_p15_reservation_stale_or_expired = rt->slot_diag.px16_m6_p15_reservation_stale_or_expired;
   out_diag->px16_m6_p15_confidence_before = rt->slot_diag.px16_m6_p15_confidence_before;
   out_diag->px16_m6_p15_confidence_after = rt->slot_diag.px16_m6_p15_confidence_after;
+  out_diag->px16_m8_last_upload_wall_ns = rt->px16_m8_last_upload_wall_ns;
+  out_diag->px16_m8_last_dispatch_submit_wall_ns = rt->px16_m8_last_dispatch_submit_wall_ns;
+  out_diag->px16_m8_last_sync_wait_wall_ns = rt->px16_m8_last_sync_wait_wall_ns;
+  out_diag->px16_m8_last_readback_wall_ns = rt->px16_m8_last_readback_wall_ns;
+  out_diag->px16_m8_last_total_wall_ns = rt->px16_m8_last_total_wall_ns;
+  out_diag->px16_m8_last_gpu_timestamp_valid = rt->last_gpu_timing_valid;
+  out_diag->px16_m8_resident_device_mode_available = 0u;
+  out_diag->px16_m8_last_executed_explicit_variant_request = rt->px16_m8_last_executed_explicit_variant_request;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {

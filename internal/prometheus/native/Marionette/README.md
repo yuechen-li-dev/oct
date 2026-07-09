@@ -53,8 +53,8 @@ Windows bridge-loader milestone.
 ./marionette_tests <filter>         # run tests whose name contains <filter>
 ./marionette_tests --bench          # run all benchmarks
 ./marionette_tests --bench <filter> # run matching benchmarks
-./marionette_benchmarks             # run validated benchmark lane
-./marionette_benchmarks <filter>    # run matching validated benchmarks only
+./marionette_benchmarks             # run standard and validated benchmark lanes
+./marionette_benchmarks <filter>    # run matching standard/validated benchmarks
 ```
 
 Artifacts from passing and failing tests are written to `out/test-artifacts/<TestName>/`.

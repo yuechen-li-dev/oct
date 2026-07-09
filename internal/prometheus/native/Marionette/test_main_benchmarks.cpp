@@ -23,5 +23,5 @@ int main(int argc, char** argv)
     }
     return ::marionette::tests::RunBenchmarks(
         ArgOrEmpty(argc, argv, 1),
-        ::marionette::tests::MARIONETTE_BENCHMARK_CATEGORY_VALIDATED);
+        ::marionette::tests::MARIONETTE_BENCHMARK_CATEGORY_ALL);
 }

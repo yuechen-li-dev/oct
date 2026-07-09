@@ -157,3 +157,169 @@ These flags are reporting aids only. They do not alter runtime dispatch behavior
 ### Known limitation
 
 If Vulkan timestamp queries are unavailable or invalid, timing falls back to CPU wall-clock. In that case the lane still reports correctness and diagnostics truth, but absolute performance numbers should be interpreted as lower-confidence host-observed timings rather than pure GPU execution timings.
+
+## Px16 M8
+
+Px16 M8 extends the EVT lane so the report can separate production-selector behavior from explicit-variant comparison and separate GPU kernel time from end-to-end staged-path wall time.
+
+The architecture rule for this milestone is:
+
+- The production EVT lane still measures `prometheus_reactor_runtime_sgemm(...)`.
+- Explicit variant comparison uses `prometheus_reactor_runtime_sgemm_benchmark_variant(...)` and is reported as explicit comparison only, not as production selector behavior.
+- The judgment engine remains the production dispatch authority.
+- P15 remains prestage/telemetry/correction only.
+- Diagnostics remain factual witness data and do not retune dispatch.
+
+### Hardware guard
+
+The M8 lane now records the exact Vulkan backend and adapter identity in the artifact and refuses to characterize performance on the wrong device.
+
+- Expected local adapter: `NVIDIA GeForce RTX 3070`
+- Expected backend: hardware `VULKAN`
+- Rejected backends/devices:
+  - `PROM_BACKEND_VULKAN_SOFTWARE`
+  - CPU Vulkan devices
+  - `llvmpipe`
+  - any non-3070 adapter selected by the runtime
+
+If the runtime is not on the expected local 3070 hardware path, the lane writes guarded artifacts and skips instead of silently publishing misleading numbers.
+
+### How to run M8
+
+Build the native Windows artifacts from a Visual Studio developer shell:
+
+```bat
+cmd /c "call \"C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat\" -arch=x64 -host_arch=x64 >nul && internal\prometheus\native\build_windows.cmd"
+```
+
+Run the focused regression checks:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusReactor_Px16M6_ProductionDiagnosticsTruthSurface
+out\prometheus\native\marionette_tests.exe PrometheusReactor_P13_M16B5_SafePolicyAllowsEligibleTiledDispatch
+out\prometheus\native\marionette_tests.exe PrometheusDominatusPredictorCorrection_ReconciliationVariantMismatchExpiresReservationAndLowersConfidence
+```
+
+Run the EVT lane:
+
+```bat
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+Optional knobs:
+
+```bat
+set OCT_PROMETHEUS_PX16_EVT_ENABLE_2048=1
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+```bat
+set OCT_PROMETHEUS_PX16_EVT_ENABLE_EXPLICIT_1024_CUBE=1
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+### Artifact paths
+
+The lane still writes the main production artifact pair:
+
+- `out/test-artifacts/prometheus_sgemm_px16_evt_results.json`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_report.md`
+
+These generated artifacts should not be committed by default.
+
+### Report interpretation
+
+The M8 report keeps the M7 `Production SGEMM Results` table and adds:
+
+- `Timing Decomposition`
+  - `total_wall_ms` is the median end-to-end host-observed call duration.
+  - `kernel_gpu_ms` is the median Vulkan timestamp kernel duration when every measured iteration produced a valid GPU timestamp.
+  - `upload_ms`, `readback_ms`, and `sync_wait_ms` are host-observed wall slices from the current SGEMM runtime path. They are factual diagnostics, not inferred estimates.
+  - `end_to_end_gflops` uses `total_wall_ms`.
+  - `kernel_only_gflops` uses `kernel_gpu_ms`.
+- `Explicit Variant Comparison`
+  - compares `BASELINE_SCALAR`, `SMALL_REGISTER_TILE`, `BALANCED_2X2_ACCUM4`, `AGGRESSIVE_4X4_ACCUM8`, and `MEMORY_CONSERVATIVE`
+  - every row still requires correctness
+- `Selector vs Fastest Variant`
+  - compares the production executed variant against the fastest correct explicit variant on the same shape
+  - uses kernel timing when valid for the full comparison set, otherwise total wall timing
+- `Performance Diagnosis`
+  - summarizes whether current evidence points to transfer/staging overhead, kernel-side slowdown, selector choice, or unresolved timing gaps
+
+### Known limitations
+
+- Resident/persistent no-readback mode is not implemented in M8; the report records `resident_device_mode_available=false`.
+- If GPU timestamps are unavailable or invalid for a case, `kernel_only_gflops` is unavailable for that case and the report says so explicitly instead of faking kernel-only timing.
+
+## Px16 M9
+
+Px16 M9 separates SGEMM performance benchmarking from CPU correctness/oracle validation.
+
+The architecture rule for this milestone is:
+
+- Unit/FACT tests validate correctness.
+- Benchmarks measure performance.
+- CPU oracle/reference work is not part of default benchmark timing.
+- The default benchmark reports production GPU SGEMM operation timing, not GPU SGEMM plus CPU oracle plus validation bookkeeping.
+- The judgment engine remains the production dispatch authority; M9 does not tune selector heuristics, optimize kernels, change FFT/P16 work, or add resident-buffer APIs.
+
+### What changed
+
+The default Px16 benchmark lane is now a standard benchmark:
+
+```bat
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+That command runs `PrometheusSgemmPx16Evt_ProductionPerformanceLane`. It prepares deterministic inputs, calls the production SGEMM path and explicit comparison variants, records timing, and writes the performance artifact pair. It does not build dense CPU oracle output or run full output validation for every benchmark shape by default.
+
+Correctness moved to a separate FACT lane:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16Evt_CorrectnessValidationLane
+```
+
+The validation lane uses focused small/medium shapes plus a structured large case. It verifies production SGEMM correctness, explicit variants, memory-conservative coverage through the wired variant set, odd-K behavior, and requested/executed diagnostic identity without making every large performance case pay for a dense CPU reference.
+
+### Artifact paths
+
+The performance benchmark writes:
+
+- `out/test-artifacts/prometheus_sgemm_px16_evt_results.json`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_report.md`
+
+The correctness lane writes:
+
+- `out/test-artifacts/prometheus_sgemm_px16_evt_validation_results.json`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_validation_report.md`
+
+These files are generated benchmark/test artifacts, not source edits, and should not be committed by default.
+
+### Report interpretation
+
+The M9 report schema is `prometheus.sgemm.px16.evt.v3`.
+
+- `run_mode=performance_benchmark` means CPU oracle/reference work was not run in the benchmark lane.
+- `validation_status_source=not_run_in_benchmark_mode` means correctness status is intentionally delegated to the FACT validation lane.
+- `benchmark_total_ms` is the measured SGEMM operation wall time for the production API call.
+- `kernel_gpu_ms` is the Vulkan timestamp kernel duration when available.
+- `upload_ms`, `readback_ms`, `dispatch_submit_ms`, and `sync_wait_ms` are host-observed runtime buckets from the current staged production API path.
+- `oracle_ms`, `validation_readback_ms`, and `validation_ms` are zero in default performance mode. They are populated only when validation is explicitly requested.
+- `unaccounted_host_ms` reports the remaining host-observed wall time not explained by the known runtime buckets.
+
+The current production API can still use staged upload/readback paths. M9 does not invent resident device buffers, so reports should be read with:
+
+```text
+resident_device_mode_available=false
+production API still includes staged path
+```
+
+### Selector-vs-fastest semantics
+
+M9 removes the ambiguous `picked fastest?` presentation. The report now splits:
+
+- `picked_same_variant_as_fastest_explicit`
+- `production_slower_than_fastest_explicit`
+- `production_vs_fastest_ratio`
+
+This distinguishes variant identity from measured speed. Production can run faster than an explicit row due to timing noise, warm state, or path differences even when it did not execute the same variant as the fastest explicit comparison row.

@@ -2,6 +2,7 @@
 #include "../reactor_dominatus_predictor.h"
 #include "../reactor_judgment_engine.h"
 #include "../reactor_policy_memory.h"
+#include "../reactor_vulkan.h"
 #include "test_harness.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <limits>
 #include <numeric>
@@ -33,14 +35,34 @@ namespace
 
     struct CorrectnessResult
     {
-        std::string status = "skip";
+        std::string status = "not_run_in_benchmark_mode";
         std::string reference_mode = "none";
+        std::string source = "see_correctness_lane";
         float max_abs_error = 0.0f;
         float max_rel_error = 0.0f;
         float tolerance = kAbsTolerance;
     };
 
-    struct TimingResult
+    struct TimingDecomposition
+    {
+        double upload_ms = 0.0;
+        double dispatch_submit_ms = 0.0;
+        double kernel_gpu_ms = 0.0;
+        double readback_ms = 0.0;
+        double sync_wait_ms = 0.0;
+        double total_wall_ms = 0.0;
+        double benchmark_total_ms = 0.0;
+        double oracle_ms = 0.0;
+        double validation_readback_ms = 0.0;
+        double validation_ms = 0.0;
+        double unaccounted_host_ms = 0.0;
+        double kernel_only_gflops = 0.0;
+        double end_to_end_gflops = 0.0;
+        bool gpu_timestamp_valid = false;
+        std::string timing_source = "unknown";
+    };
+
+    struct TimingStats
     {
         std::uint32_t warmup_iterations = 0u;
         std::uint32_t iterations = 0u;
@@ -64,8 +86,51 @@ namespace
         std::uint32_t final_stage = PROM_STAGE_NONE;
         int final_detail_code = 0;
         CorrectnessResult correctness;
-        TimingResult timing;
+        TimingStats timing;
+        TimingDecomposition timing_decomposition;
         PrometheusSgemmPolicyDiagnostics diag{};
+        std::vector<std::string> anomalies;
+    };
+
+    struct VariantComparisonRow
+    {
+        std::string shape;
+        std::uint32_t m = 0u;
+        std::uint32_t n = 0u;
+        std::uint32_t k = 0u;
+        std::string variant;
+        std::string requested_variant;
+        std::string executed_variant;
+        std::string path;
+        std::string correctness = "not_run_in_benchmark_mode";
+        std::string reference_mode = "none";
+        bool skipped = false;
+        std::string skip_reason;
+        int runtime_status = PROM_OK;
+        std::uint32_t final_stage = PROM_STAGE_NONE;
+        int final_detail_code = 0;
+        double median_total_ms = 0.0;
+        double median_kernel_ms = 0.0;
+        double end_to_end_gflops = 0.0;
+        double kernel_only_gflops = 0.0;
+        bool gpu_timestamp_valid = false;
+        std::string timing_source = "unknown";
+        PrometheusSgemmPolicyDiagnostics diag{};
+        std::vector<std::string> anomalies;
+    };
+
+    struct SelectorVsFastestRow
+    {
+        std::string shape;
+        std::string production_variant;
+        std::string executed_production_variant;
+        std::string fastest_variant;
+        std::string comparison_basis;
+        double production_median_ms = 0.0;
+        double fastest_median_ms = 0.0;
+        double slowdown_ratio = 0.0;
+        bool picked_same_variant_as_fastest_explicit = false;
+        bool production_slower_than_fastest_explicit = false;
         std::vector<std::string> anomalies;
     };
 
@@ -80,18 +145,36 @@ namespace
         std::size_t anomaly_count = 0u;
     };
 
-    struct ReportData
+    struct DeviceMetadata
     {
-        std::string schema = "prometheus.sgemm.px16.evt.v1";
-        std::string timestamp_utc;
-        std::string device_name = "unknown";
+        std::string name = "unknown";
+        std::string backend = "unknown";
+        std::string device_type = "unknown";
         std::uint32_t vendor_id = 0u;
         std::uint32_t device_id = 0u;
-        std::string driver = "unknown";
+        std::string driver_version = "unknown";
+        std::string api_version = "unknown";
+        std::uint32_t max_compute_workgroup_invocations = 0u;
+        std::uint32_t max_compute_shared_memory_size = 0u;
+        std::uint32_t subgroup_size = 0u;
+    };
+
+    struct ReportData
+    {
+        std::string schema = "prometheus.sgemm.px16.evt.v3";
+        std::string timestamp_utc;
         std::string benchmark_name;
+        DeviceMetadata device;
         Summary summary;
         std::vector<CaseResult> cases;
+        std::vector<VariantComparisonRow> variant_comparison;
+        std::vector<SelectorVsFastestRow> selector_vs_fastest;
+        std::vector<std::string> performance_diagnosis;
         std::string global_skip_reason;
+        std::string run_mode = "performance_benchmark";
+        std::string validation_status_source = "not_run_in_benchmark_mode";
+        bool resident_device_mode_available = false;
+        bool explicit_cube_1024_enabled = false;
     };
 
     std::string json_escape(std::string_view value)
@@ -145,6 +228,46 @@ namespace
         char buffer[32] = {};
         std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc_tm);
         return std::string(buffer);
+    }
+
+    std::string vulkan_version_name(std::uint32_t version)
+    {
+        if (version == 0u) {
+            return "unknown";
+        }
+        std::ostringstream out;
+        out << VK_VERSION_MAJOR(version) << "." << VK_VERSION_MINOR(version) << "." << VK_VERSION_PATCH(version);
+        return out.str();
+    }
+
+    std::string backend_name(std::uint32_t backend_type)
+    {
+        switch (backend_type) {
+            case PROM_BACKEND_STUB:
+                return "STUB";
+            case PROM_BACKEND_VULKAN:
+                return "VULKAN";
+            case PROM_BACKEND_VULKAN_SOFTWARE:
+                return "VULKAN_SOFTWARE";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    std::string vulkan_device_type_name(VkPhysicalDeviceType device_type)
+    {
+        switch (device_type) {
+            case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
+                return "INTEGRATED_GPU";
+            case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
+                return "DISCRETE_GPU";
+            case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
+                return "VIRTUAL_GPU";
+            case VK_PHYSICAL_DEVICE_TYPE_CPU:
+                return "CPU";
+            default:
+                return "OTHER";
+        }
     }
 
     std::string policy_mode_name(std::uint32_t mode)
@@ -338,22 +461,81 @@ namespace
         return cases;
     }
 
-    bool should_run_optional_large_case()
+    const std::vector<ShapeCase>& explicit_variant_shapes(bool enable_1024_cube)
+    {
+        static const std::vector<ShapeCase> base_cases = {
+            {"small_64x64x64", 64u, 64u, 64u, false},
+            {"square_128x128x128", 128u, 128u, 128u, false},
+            {"square_256x256x256", 256u, 256u, 256u, false},
+            {"square_512x512x512", 512u, 512u, 512u, false},
+            {"skinny_1024x64x1024", 1024u, 64u, 1024u, false},
+            {"wide_64x1024x1024", 64u, 1024u, 1024u, false},
+            {"lowk_1024x1024x64", 1024u, 1024u, 64u, false},
+            {"rect_255x129x65", 255u, 129u, 65u, false},
+        };
+        static const std::vector<ShapeCase> with_cube = {
+            {"small_64x64x64", 64u, 64u, 64u, false},
+            {"square_128x128x128", 128u, 128u, 128u, false},
+            {"square_256x256x256", 256u, 256u, 256u, false},
+            {"square_512x512x512", 512u, 512u, 512u, false},
+            {"square_1024x1024x1024", 1024u, 1024u, 1024u, true},
+            {"skinny_1024x64x1024", 1024u, 64u, 1024u, false},
+            {"wide_64x1024x1024", 64u, 1024u, 1024u, false},
+            {"lowk_1024x1024x64", 1024u, 1024u, 64u, false},
+            {"rect_255x129x65", 255u, 129u, 65u, false},
+        };
+        return enable_1024_cube ? with_cube : base_cases;
+    }
+
+    const std::vector<ShapeCase>& correctness_shapes()
+    {
+        static const std::vector<ShapeCase> cases = {
+            {"small_64x64x64", 64u, 64u, 64u, false},
+            {"square_128x128x128", 128u, 128u, 128u, false},
+            {"rect_255x129x65", 255u, 129u, 65u, false},
+            {"oddk_64x64x65", 64u, 64u, 65u, false},
+            {"square_256x256x256", 256u, 256u, 256u, false},
+            {"skinny_1024x64x1024", 1024u, 64u, 1024u, false},
+        };
+        return cases;
+    }
+
+    std::vector<std::uint32_t> wired_variants()
+    {
+        return {
+            PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+            PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE,
+            PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4,
+            PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8,
+            PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
+        };
+    }
+
+    bool env_flag_enabled(const char* name)
     {
 #if defined(_WIN32)
         char* value = nullptr;
         std::size_t value_length = 0u;
-        if (_dupenv_s(&value, &value_length, "OCT_PROMETHEUS_PX16_EVT_ENABLE_2048") != 0 || value == nullptr) {
+        if (_dupenv_s(&value, &value_length, name) != 0 || value == nullptr) {
             return false;
         }
-
         const bool enabled = std::string_view(value, value_length > 0u ? value_length - 1u : 0u) == "1";
         free(value);
         return enabled;
 #else
-        const char* value = std::getenv("OCT_PROMETHEUS_PX16_EVT_ENABLE_2048");
+        const char* value = std::getenv(name);
         return value != nullptr && std::string_view(value) == "1";
 #endif
+    }
+
+    bool should_run_optional_large_case()
+    {
+        return env_flag_enabled("OCT_PROMETHEUS_PX16_EVT_ENABLE_2048");
+    }
+
+    bool should_run_explicit_1024_cube()
+    {
+        return env_flag_enabled("OCT_PROMETHEUS_PX16_EVT_ENABLE_EXPLICIT_1024_CUBE");
     }
 
     std::uint32_t warmup_iterations_for(const ShapeCase& shape)
@@ -362,7 +544,6 @@ namespace
         if (flops <= 2ull * 64u * 64u * 64u) {
             return 2u;
         }
-
         return 1u;
     }
 
@@ -378,7 +559,6 @@ namespace
         if (flops <= 2ull * 512u * 512u * 512u) {
             return 5u;
         }
-
         return 3u;
     }
 
@@ -495,15 +675,33 @@ namespace
         if (size == 0u) {
             return 0u;
         }
-
         const double scaled = percentile * static_cast<double>(size - 1u);
         return static_cast<std::size_t>(std::ceil(scaled));
     }
 
-    void finalize_timing(const ShapeCase& shape,
-                         const std::vector<double>& samples_ns,
-                         std::string_view timing_source,
-                         TimingResult& timing)
+    double median_ms_from_ns(std::vector<double> samples_ns)
+    {
+        if (samples_ns.empty()) {
+            return 0.0;
+        }
+        std::sort(samples_ns.begin(), samples_ns.end());
+        return samples_ns[samples_ns.size() / 2u] / 1.0e6;
+    }
+
+    double gflops_from_ns(const ShapeCase& shape, double duration_ns)
+    {
+        if (duration_ns <= 0.0) {
+            return 0.0;
+        }
+        const double flops =
+            2.0 * static_cast<double>(shape.m) * static_cast<double>(shape.n) * static_cast<double>(shape.k);
+        return (flops / (duration_ns / 1.0e9)) / 1.0e9;
+    }
+
+    void finalize_timing_stats(const ShapeCase& shape,
+                               const std::vector<double>& samples_ns,
+                               std::string_view timing_source,
+                               TimingStats& timing)
     {
         timing.timing_source = std::string(timing_source);
         if (samples_ns.empty()) {
@@ -515,10 +713,7 @@ namespace
         timing.min_ms = sorted.front() / 1.0e6;
         timing.median_ms = sorted[sorted.size() / 2u] / 1.0e6;
         timing.p95_ms = sorted[percentile_index(sorted.size(), 0.95)] / 1.0e6;
-
-        const double flops = 2.0 * static_cast<double>(shape.m) * static_cast<double>(shape.n) * static_cast<double>(shape.k);
-        const double median_seconds = sorted[sorted.size() / 2u] / 1.0e9;
-        timing.gflops_median = median_seconds > 0.0 ? (flops / median_seconds) / 1.0e9 : 0.0;
+        timing.gflops_median = gflops_from_ns(shape, sorted[sorted.size() / 2u]);
     }
 
     bool is_large_shape(const ShapeCase& shape)
@@ -526,57 +721,112 @@ namespace
         return shape.m >= 512u && shape.n >= 512u && shape.k >= 512u;
     }
 
+    struct MeasurementBundle
+    {
+        std::vector<double> total_wall_ns;
+        std::vector<double> kernel_gpu_ns;
+        std::vector<double> upload_wall_ns;
+        std::vector<double> dispatch_submit_wall_ns;
+        std::vector<double> sync_wait_wall_ns;
+        std::vector<double> readback_wall_ns;
+    };
+
+    struct PreparedCaseData
+    {
+        bool use_dense_reference = true;
+        std::vector<float> a;
+        std::vector<float> b;
+        std::string reference_mode;
+    };
+
+    PreparedCaseData prepare_case_data(const ShapeCase& shape)
+    {
+        PreparedCaseData data;
+        data.use_dense_reference = static_cast<std::uint64_t>(shape.m) * shape.n * shape.k <= 16ull * 1024ull * 1024ull;
+        data.a = data.use_dense_reference
+            ? dense_deterministic_matrix(shape.m, shape.k, shape.m ^ (shape.k << 4u))
+            : separable_matrix_a(shape.m, shape.k);
+        data.b = data.use_dense_reference
+            ? dense_deterministic_matrix(shape.k, shape.n, shape.k ^ (shape.n << 5u) ^ 17u)
+            : separable_matrix_b(shape.k, shape.n);
+        data.reference_mode = data.use_dense_reference ? "dense_cpu_oracle" : "separable_rank1_oracle";
+        return data;
+    }
+
+    CorrectnessResult validate_case_output(const ShapeCase& shape,
+                                           const PreparedCaseData& data,
+                                           const std::vector<float>& actual,
+                                           TimingDecomposition& timing_decomposition)
+    {
+        const auto validation_begin = std::chrono::steady_clock::now();
+        const auto oracle_begin = std::chrono::steady_clock::now();
+        const std::vector<float> expected = data.use_dense_reference
+            ? cpu_oracle_dense(shape.m, shape.n, shape.k, data.a, data.b)
+            : cpu_oracle_separable(shape.m, shape.n, shape.k);
+        const auto oracle_end = std::chrono::steady_clock::now();
+        CorrectnessResult result = compare_with_tolerance(expected, actual);
+        const auto validation_end = std::chrono::steady_clock::now();
+
+        result.reference_mode = data.reference_mode;
+        result.source = "explicit_validation_lane";
+        timing_decomposition.oracle_ms =
+            static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(oracle_end - oracle_begin).count()) / 1.0e6;
+        timing_decomposition.validation_ms =
+            static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(validation_end - validation_begin).count()) / 1.0e6;
+        timing_decomposition.validation_readback_ms = 0.0;
+        return result;
+    }
+
     void detect_case_anomalies(CaseResult& result)
     {
         if (result.correctness.status == "fail") {
             result.anomalies.push_back("correctness_failure");
         }
-
         if (result.diag.px16_m6_selector_selected_variant != result.diag.px16_m6_requested_dispatch_variant) {
             result.anomalies.push_back("selector_selected_variant_differs_from_requested_dispatch_variant");
         }
-
         if (result.diag.px16_m6_selected_compute_mode == static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED) &&
             result.diag.px16_m6_requested_dispatch_variant != result.diag.px16_m6_executed_dispatch_variant) {
             result.anomalies.push_back("requested_dispatch_variant_differs_from_executed_variant_on_tiled_path");
         }
-
         if (result.diag.px16_m6_selected_path != result.diag.px16_m6_executed_path &&
             result.diag.px16_m6_executed_path == static_cast<std::uint32_t>(PROM_VK_PATH_DIRECT)) {
             result.anomalies.push_back("executed_path_fell_back_to_direct");
         }
-
         if (result.diag.px16_m6_policy_mode == static_cast<std::uint32_t>(PROM_POLICY_MODE_SAFE) &&
             result.diag.px16_m6_force_direct_applied != 0u &&
             result.diag.px16_m6_force_direct_reason == static_cast<std::uint32_t>(PROM_SGEMM_FORCE_DIRECT_REASON_NONE)) {
             result.anomalies.push_back("safe_policy_force_direct_without_reason");
         }
-
         if (result.diag.px16_m6_requested_dispatch_variant != static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) &&
             result.diag.px16_m6_variant_path_status != static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED)) {
             result.anomalies.push_back("wired_variant_not_reported_as_wired");
         }
-
         if (result.diag.px16_m6_requested_dispatch_variant != static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) &&
             result.diag.px16_m6_variant_production_eligible == 0u) {
             result.anomalies.push_back("wired_variant_not_reported_production_eligible");
         }
-
         if (result.diag.px16_m6_requested_dispatch_variant != static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) &&
             result.diag.px16_m6_variant_dispatch_enabled == 0u) {
             result.anomalies.push_back("wired_variant_not_reported_dispatch_enabled");
         }
-
         if (result.diag.px16_m6_p15_reservation_present != 0u &&
             result.diag.px16_m6_p15_reconciliation_match == 0u &&
             result.diag.px16_m6_p15_correction_action == static_cast<std::uint32_t>(PROM_DOM_CORRECTION_ACTION_NONE)) {
             result.anomalies.push_back("p15_mismatch_without_correction_action");
         }
-
         if (is_large_shape({ "", result.m, result.n, result.k, false }) &&
             result.diag.px16_m6_variant_production_eligible != 0u &&
             result.diag.px16_m6_executed_compute_mode != static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED)) {
             result.anomalies.push_back("large_eligible_shape_did_not_execute_tiled");
+        }
+        if (!result.timing_decomposition.gpu_timestamp_valid) {
+            result.anomalies.push_back("kernel_timing_unavailable");
+        }
+        if (result.diag.px16_m6_executed_path == static_cast<std::uint32_t>(PROM_VK_PATH_STAGED_UPLOAD_READBACK) &&
+            result.timing_decomposition.upload_ms + result.timing_decomposition.readback_ms + result.timing_decomposition.sync_wait_ms >
+                std::max(result.timing_decomposition.kernel_gpu_ms, 0.0) * 1.2) {
+            result.anomalies.push_back("staging_transfer_overhead_dominates");
         }
     }
 
@@ -584,7 +834,7 @@ namespace
     {
         std::vector<CaseResult*> successful;
         for (CaseResult& result : report.cases) {
-            if (!result.skipped && result.correctness.status == "pass" && result.timing.gflops_median > 0.0) {
+            if (!result.skipped && result.runtime_status == PROM_OK && result.timing.gflops_median > 0.0) {
                 successful.push_back(&result);
             }
         }
@@ -607,16 +857,15 @@ namespace
     void finalize_summary(ReportData& report)
     {
         report.summary.cases_total = report.cases.size();
-
         std::vector<double> passing_gflops;
         for (const CaseResult& result : report.cases) {
             if (result.skipped) {
                 ++report.summary.cases_skipped;
                 continue;
             }
-
             report.summary.anomaly_count += result.anomalies.size();
-            if (result.correctness.status == "pass" && result.runtime_status == PROM_OK) {
+            if (result.runtime_status == PROM_OK &&
+                (result.correctness.status == "pass" || result.correctness.status == "not_run_in_benchmark_mode")) {
                 ++report.summary.cases_passed;
                 if (result.timing.gflops_median > 0.0) {
                     passing_gflops.push_back(result.timing.gflops_median);
@@ -626,14 +875,147 @@ namespace
                 ++report.summary.cases_failed;
             }
         }
-
         if (!passing_gflops.empty()) {
             std::sort(passing_gflops.begin(), passing_gflops.end());
             report.summary.median_gflops = passing_gflops[passing_gflops.size() / 2u];
         }
     }
 
-    CaseResult run_evt_case(void* handle, const ShapeCase& shape)
+    bool fetch_device_metadata(void* handle, const PrometheusCaps& caps, DeviceMetadata& device)
+    {
+        prom_vk_runtime_services services{};
+        if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
+            services.physical_device == VK_NULL_HANDLE) {
+            return false;
+        }
+
+        VkPhysicalDeviceProperties props{};
+        vkGetPhysicalDeviceProperties(services.physical_device, &props);
+        device.name = props.deviceName;
+        device.backend = backend_name(caps.backend_type);
+        device.device_type = vulkan_device_type_name(props.deviceType);
+        device.vendor_id = props.vendorID;
+        device.device_id = props.deviceID;
+        device.driver_version = vulkan_version_name(props.driverVersion);
+        device.api_version = vulkan_version_name(props.apiVersion);
+        device.max_compute_workgroup_invocations = props.limits.maxComputeWorkGroupInvocations;
+        device.max_compute_shared_memory_size = props.limits.maxComputeSharedMemorySize;
+        device.subgroup_size = 0u;
+        return true;
+    }
+
+    bool collect_measurement(void* handle,
+                             const ShapeCase& shape,
+                             const PreparedCaseData& data,
+                             bool explicit_variant,
+                             std::uint32_t requested_variant,
+                             bool validate_output,
+                             TimingStats& timing,
+                             TimingDecomposition& timing_decomposition,
+                             CorrectnessResult& correctness,
+                             PrometheusSgemmPolicyDiagnostics& diag,
+                             std::uint32_t& final_stage,
+                             int& final_detail_code,
+                             int& runtime_status,
+                             std::vector<std::string>& anomalies)
+    {
+        std::vector<float> c(static_cast<std::size_t>(shape.m) * static_cast<std::size_t>(shape.n), 0.0f);
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail_code = 0;
+        timing.warmup_iterations = warmup_iterations_for(shape);
+        timing.iterations = measured_iterations_for(shape);
+
+        for (std::uint32_t i = 0u; i < timing.warmup_iterations; ++i) {
+            const int status = explicit_variant
+                ? prometheus_reactor_runtime_sgemm_benchmark_variant(
+                      handle, data.a.data(), data.b.data(), c.data(), shape.m, shape.n, shape.k, requested_variant, &stage, &detail_code)
+                : prometheus_reactor_runtime_sgemm(handle, data.a.data(), data.b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
+            if (status != PROM_OK) {
+                runtime_status = status;
+                final_stage = stage;
+                final_detail_code = detail_code;
+                anomalies.push_back("warmup_call_failed");
+                correctness.status = "fail";
+                return false;
+            }
+        }
+
+        MeasurementBundle samples;
+        for (std::uint32_t i = 0u; i < timing.iterations; ++i) {
+            const auto begin = std::chrono::steady_clock::now();
+            const int status = explicit_variant
+                ? prometheus_reactor_runtime_sgemm_benchmark_variant(
+                      handle, data.a.data(), data.b.data(), c.data(), shape.m, shape.n, shape.k, requested_variant, &stage, &detail_code)
+                : prometheus_reactor_runtime_sgemm(handle, data.a.data(), data.b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
+            const auto end = std::chrono::steady_clock::now();
+            samples.total_wall_ns.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()));
+
+            if (status != PROM_OK) {
+                runtime_status = status;
+                final_stage = stage;
+                final_detail_code = detail_code;
+                anomalies.push_back("measured_call_failed");
+                correctness.status = "fail";
+                return false;
+            }
+
+            if (prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag) != PROM_OK) {
+                runtime_status = PROM_ERROR;
+                final_stage = stage;
+                final_detail_code = detail_code;
+                anomalies.push_back("policy_diagnostics_query_failed");
+                correctness.status = "fail";
+                return false;
+            }
+
+            samples.upload_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_upload_wall_ns));
+            samples.dispatch_submit_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_dispatch_submit_wall_ns));
+            samples.sync_wait_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_sync_wait_wall_ns));
+            samples.readback_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_readback_wall_ns));
+            if (diag.p13_m5_last_gpu_timing_valid != 0u && diag.p13_m5_last_gpu_duration_ns > 0u) {
+                samples.kernel_gpu_ns.push_back(static_cast<double>(diag.p13_m5_last_gpu_duration_ns));
+            }
+        }
+
+        final_stage = stage;
+        final_detail_code = detail_code;
+        timing_decomposition.upload_ms = median_ms_from_ns(samples.upload_wall_ns);
+        timing_decomposition.dispatch_submit_ms = median_ms_from_ns(samples.dispatch_submit_wall_ns);
+        timing_decomposition.sync_wait_ms = median_ms_from_ns(samples.sync_wait_wall_ns);
+        timing_decomposition.readback_ms = median_ms_from_ns(samples.readback_wall_ns);
+        timing_decomposition.total_wall_ms = median_ms_from_ns(samples.total_wall_ns);
+        timing_decomposition.benchmark_total_ms = timing_decomposition.total_wall_ms;
+        timing_decomposition.gpu_timestamp_valid = samples.kernel_gpu_ns.size() == samples.total_wall_ns.size() && !samples.kernel_gpu_ns.empty();
+        timing_decomposition.kernel_gpu_ms = timing_decomposition.gpu_timestamp_valid ? median_ms_from_ns(samples.kernel_gpu_ns) : 0.0;
+        const double accounted_host_ms =
+            timing_decomposition.upload_ms +
+            timing_decomposition.dispatch_submit_ms +
+            timing_decomposition.sync_wait_ms +
+            timing_decomposition.readback_ms +
+            (timing_decomposition.gpu_timestamp_valid ? timing_decomposition.kernel_gpu_ms : 0.0);
+        timing_decomposition.unaccounted_host_ms = timing_decomposition.total_wall_ms - accounted_host_ms;
+        timing_decomposition.end_to_end_gflops =
+            gflops_from_ns(shape, timing_decomposition.total_wall_ms * 1.0e6);
+        timing_decomposition.kernel_only_gflops =
+            timing_decomposition.gpu_timestamp_valid ? gflops_from_ns(shape, timing_decomposition.kernel_gpu_ms * 1.0e6) : 0.0;
+        timing_decomposition.timing_source = timing_decomposition.gpu_timestamp_valid ? "mixed" : "cpu_wall";
+
+        if (timing_decomposition.gpu_timestamp_valid) {
+            finalize_timing_stats(shape, samples.kernel_gpu_ns, "vulkan_timestamp_query", timing);
+        } else {
+            finalize_timing_stats(shape, samples.total_wall_ns, "cpu_wall_clock", timing);
+        }
+        if (validate_output) {
+            correctness = validate_case_output(shape, data, c, timing_decomposition);
+        } else {
+            correctness.status = "not_run_in_benchmark_mode";
+            correctness.reference_mode = "none";
+            correctness.source = "see_correctness_lane";
+        }
+        return true;
+    }
+
+    CaseResult run_evt_case(void* handle, const ShapeCase& shape, bool validate_output)
     {
         CaseResult result;
         result.name = shape.name;
@@ -641,8 +1023,6 @@ namespace
         result.n = shape.n;
         result.k = shape.k;
         result.optional = shape.optional;
-        result.timing.warmup_iterations = warmup_iterations_for(shape);
-        result.timing.iterations = measured_iterations_for(shape);
 
         if (shape.optional && !should_run_optional_large_case()) {
             result.skipped = true;
@@ -650,87 +1030,263 @@ namespace
             return result;
         }
 
-        const bool use_dense_oracle = static_cast<std::uint64_t>(shape.m) * shape.n * shape.k <= 16ull * 1024ull * 1024ull;
-        std::vector<float> a = use_dense_oracle
-            ? dense_deterministic_matrix(shape.m, shape.k, shape.m ^ (shape.k << 4u))
-            : separable_matrix_a(shape.m, shape.k);
-        std::vector<float> b = use_dense_oracle
-            ? dense_deterministic_matrix(shape.k, shape.n, shape.k ^ (shape.n << 5u) ^ 17u)
-            : separable_matrix_b(shape.k, shape.n);
-        std::vector<float> c(static_cast<std::size_t>(shape.m) * static_cast<std::size_t>(shape.n), 0.0f);
-        const std::vector<float> expected = use_dense_oracle
-            ? cpu_oracle_dense(shape.m, shape.n, shape.k, a, b)
-            : cpu_oracle_separable(shape.m, shape.n, shape.k);
-        result.correctness.reference_mode = use_dense_oracle ? "dense_cpu_oracle" : "separable_rank1_oracle";
-
-        std::uint32_t stage = PROM_STAGE_NONE;
-        int detail_code = 0;
-
-        for (std::uint32_t i = 0u; i < result.timing.warmup_iterations; ++i) {
-            const int status = prometheus_reactor_runtime_sgemm(
-                handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
-            if (status != PROM_OK) {
-                result.runtime_status = status;
-                result.correctness.status = "fail";
-                result.anomalies.push_back("warmup_call_failed");
-                result.final_stage = stage;
-                result.final_detail_code = detail_code;
-                return result;
-            }
+        const PreparedCaseData data = prepare_case_data(shape);
+        const bool ok = collect_measurement(handle,
+                                            shape,
+                                            data,
+                                            false,
+                                            PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+                                            validate_output,
+                                            result.timing,
+                                            result.timing_decomposition,
+                                            result.correctness,
+                                            result.diag,
+                                            result.final_stage,
+                                            result.final_detail_code,
+                                            result.runtime_status,
+                                            result.anomalies);
+        if (ok) {
+            detect_case_anomalies(result);
         }
-
-        std::vector<double> cpu_samples_ns;
-        std::vector<double> gpu_samples_ns;
-        cpu_samples_ns.reserve(result.timing.iterations);
-        gpu_samples_ns.reserve(result.timing.iterations);
-
-        for (std::uint32_t i = 0u; i < result.timing.iterations; ++i) {
-            const auto begin = std::chrono::steady_clock::now();
-            const int status = prometheus_reactor_runtime_sgemm(
-                handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail_code);
-            const auto end = std::chrono::steady_clock::now();
-            cpu_samples_ns.push_back(static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count()));
-
-            if (status != PROM_OK) {
-                result.runtime_status = status;
-                result.correctness.status = "fail";
-                result.anomalies.push_back("measured_call_failed");
-                result.final_stage = stage;
-                result.final_detail_code = detail_code;
-                return result;
-            }
-
-            if (prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &result.diag) != PROM_OK) {
-                result.runtime_status = PROM_ERROR;
-                result.correctness.status = "fail";
-                result.anomalies.push_back("policy_diagnostics_query_failed");
-                result.final_stage = stage;
-                result.final_detail_code = detail_code;
-                return result;
-            }
-
-            if (result.diag.p13_m5_last_gpu_timing_valid != 0u && result.diag.p13_m5_last_gpu_duration_ns > 0u) {
-                gpu_samples_ns.push_back(static_cast<double>(result.diag.p13_m5_last_gpu_duration_ns));
-            }
-        }
-
-        result.final_stage = stage;
-        result.final_detail_code = detail_code;
-        result.correctness = compare_with_tolerance(expected, c);
-        result.correctness.reference_mode = use_dense_oracle ? "dense_cpu_oracle" : "separable_rank1_oracle";
-
-        if (gpu_samples_ns.size() == cpu_samples_ns.size() && !gpu_samples_ns.empty()) {
-            finalize_timing(shape, gpu_samples_ns, "vulkan_timestamp_query", result.timing);
-        } else {
-            finalize_timing(shape, cpu_samples_ns, "cpu_wall_clock", result.timing);
-        }
-
-        detect_case_anomalies(result);
-        if (result.diag.p13_m5_timestamp_available == 0u) {
-            result.anomalies.push_back("gpu_timing_unavailable_using_cpu_wall_clock");
-        }
-
         return result;
+    }
+
+    VariantComparisonRow run_explicit_variant_case(void* handle, const ShapeCase& shape, std::uint32_t variant, bool validate_output)
+    {
+        VariantComparisonRow row;
+        row.shape = shape.name;
+        row.m = shape.m;
+        row.n = shape.n;
+        row.k = shape.k;
+        row.variant = occupancy_variant_name(variant);
+        row.requested_variant = occupancy_variant_name(variant);
+
+        if (shape.optional && !should_run_explicit_1024_cube()) {
+            row.skipped = true;
+            row.skip_reason = "explicit_1024_cube_disabled";
+            return row;
+        }
+
+        const PreparedCaseData data = prepare_case_data(shape);
+        TimingStats timing;
+        TimingDecomposition decomposition;
+        CorrectnessResult correctness;
+        const bool ok = collect_measurement(handle,
+                                            shape,
+                                            data,
+                                            true,
+                                            variant,
+                                            validate_output,
+                                            timing,
+                                            decomposition,
+                                            correctness,
+                                            row.diag,
+                                            row.final_stage,
+                                            row.final_detail_code,
+                                            row.runtime_status,
+                                            row.anomalies);
+        row.executed_variant = occupancy_variant_name(row.diag.px16_m6_executed_dispatch_variant);
+        row.path = path_name(row.diag.px16_m6_executed_path);
+        row.correctness = correctness.status;
+        row.reference_mode = correctness.reference_mode;
+        row.median_total_ms = decomposition.total_wall_ms;
+        row.median_kernel_ms = decomposition.kernel_gpu_ms;
+        row.end_to_end_gflops = decomposition.end_to_end_gflops;
+        row.kernel_only_gflops = decomposition.kernel_only_gflops;
+        row.gpu_timestamp_valid = decomposition.gpu_timestamp_valid;
+        row.timing_source = decomposition.timing_source;
+
+        if (!ok) {
+            return row;
+        }
+
+        if (validate_output && row.correctness != "pass") {
+            row.anomalies.push_back("correctness_failure");
+        }
+        if (row.diag.px16_m8_last_executed_explicit_variant_request != variant) {
+            row.anomalies.push_back("explicit_variant_request_not_recorded");
+        }
+        if (row.diag.px16_m6_executed_dispatch_variant != variant &&
+            row.diag.px16_m6_selected_compute_mode == static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED)) {
+            row.anomalies.push_back("explicit_requested_variant_did_not_execute");
+        }
+        if (!row.gpu_timestamp_valid) {
+            row.anomalies.push_back("kernel_timing_unavailable");
+        }
+        if (row.diag.px16_m6_variant_path_status != static_cast<std::uint32_t>(PROM_OCCUPANCY_VARIANT_PATH_STATUS_WIRED) &&
+            variant != PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) {
+            row.skipped = true;
+            row.skip_reason = "variant_not_wired_for_runtime_path";
+        }
+        return row;
+    }
+
+    void postprocess_variant_comparison(ReportData& report)
+    {
+        for (const ShapeCase& shape : explicit_variant_shapes(report.explicit_cube_1024_enabled)) {
+            std::vector<VariantComparisonRow*> rows;
+            for (VariantComparisonRow& row : report.variant_comparison) {
+                if (row.shape == shape.name) {
+                    rows.push_back(&row);
+                }
+            }
+            auto find_variant = [&](std::uint32_t variant) -> VariantComparisonRow* {
+                for (VariantComparisonRow* row : rows) {
+                    if (row->requested_variant == occupancy_variant_name(variant)) {
+                        return row;
+                    }
+                }
+                return nullptr;
+            };
+            VariantComparisonRow* aggressive = find_variant(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8);
+            VariantComparisonRow* balanced = find_variant(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4);
+            VariantComparisonRow* srt = find_variant(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE);
+            VariantComparisonRow* mc = find_variant(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE);
+
+            if (aggressive != nullptr && balanced != nullptr && aggressive->runtime_status == PROM_OK && balanced->runtime_status == PROM_OK &&
+                aggressive->median_total_ms > balanced->median_total_ms * 1.2) {
+                aggressive->anomalies.push_back("aggressive_variant_much_slower_than_balanced");
+            }
+            if (aggressive != nullptr && srt != nullptr && aggressive->runtime_status == PROM_OK && srt->runtime_status == PROM_OK &&
+                aggressive->median_total_ms > srt->median_total_ms * 1.2) {
+                aggressive->anomalies.push_back("aggressive_variant_much_slower_than_srt");
+            }
+            if (mc != nullptr && mc->runtime_status == PROM_OK) {
+                const double peer_best = std::min(
+                    balanced != nullptr && balanced->runtime_status == PROM_OK ? balanced->median_total_ms : std::numeric_limits<double>::infinity(),
+                    srt != nullptr && srt->runtime_status == PROM_OK ? srt->median_total_ms : std::numeric_limits<double>::infinity());
+                if (std::isfinite(peer_best) && mc->median_total_ms < peer_best * 0.8) {
+                    mc->anomalies.push_back("memory_conservative_unexpectedly_wins");
+                }
+                if (std::isfinite(peer_best) && mc->median_total_ms > peer_best * 1.5) {
+                    mc->anomalies.push_back("memory_conservative_unexpectedly_loses");
+                }
+            }
+        }
+    }
+
+    void build_selector_vs_fastest(ReportData& report)
+    {
+        for (const ShapeCase& shape : explicit_variant_shapes(report.explicit_cube_1024_enabled)) {
+            const CaseResult* production = nullptr;
+            for (const CaseResult& result : report.cases) {
+                if (result.name == shape.name) {
+                    production = &result;
+                    break;
+                }
+            }
+            if (production == nullptr || production->skipped || production->runtime_status != PROM_OK) {
+                continue;
+            }
+
+            std::vector<const VariantComparisonRow*> valid_rows;
+            for (const VariantComparisonRow& row : report.variant_comparison) {
+                if (row.shape == shape.name && !row.skipped && row.runtime_status == PROM_OK) {
+                    valid_rows.push_back(&row);
+                }
+            }
+            if (valid_rows.empty()) {
+                continue;
+            }
+
+            const bool can_use_kernel_basis = std::all_of(valid_rows.begin(), valid_rows.end(), [](const VariantComparisonRow* row) {
+                return row->gpu_timestamp_valid && row->median_kernel_ms > 0.0;
+            }) && production->timing_decomposition.gpu_timestamp_valid && production->timing_decomposition.kernel_gpu_ms > 0.0;
+
+            const VariantComparisonRow* fastest = *std::min_element(
+                valid_rows.begin(),
+                valid_rows.end(),
+                [can_use_kernel_basis](const VariantComparisonRow* left, const VariantComparisonRow* right) {
+                    const double left_ms = can_use_kernel_basis ? left->median_kernel_ms : left->median_total_ms;
+                    const double right_ms = can_use_kernel_basis ? right->median_kernel_ms : right->median_total_ms;
+                    return left_ms < right_ms;
+                });
+
+            SelectorVsFastestRow row;
+            row.shape = shape.name;
+            row.production_variant = occupancy_variant_name(production->diag.px16_m6_selector_selected_variant);
+            row.executed_production_variant = occupancy_variant_name(production->diag.px16_m6_executed_dispatch_variant);
+            row.fastest_variant = fastest->executed_variant;
+            row.comparison_basis = can_use_kernel_basis ? "kernel_gpu_ms" : "total_wall_ms";
+            row.production_median_ms = can_use_kernel_basis ? production->timing_decomposition.kernel_gpu_ms
+                                                            : production->timing_decomposition.total_wall_ms;
+            row.fastest_median_ms = can_use_kernel_basis ? fastest->median_kernel_ms : fastest->median_total_ms;
+            row.slowdown_ratio = row.fastest_median_ms > 0.0 ? row.production_median_ms / row.fastest_median_ms : 0.0;
+            row.picked_same_variant_as_fastest_explicit = row.executed_production_variant == row.fastest_variant;
+            row.production_slower_than_fastest_explicit = row.slowdown_ratio > 1.0;
+
+            if (row.slowdown_ratio > 1.2) {
+                row.anomalies.push_back("production_more_than_20_percent_slower_than_fastest");
+            }
+            if (!row.picked_same_variant_as_fastest_explicit) {
+                row.anomalies.push_back("production_variant_differs_from_fastest_explicit_variant");
+            }
+            report.selector_vs_fastest.push_back(row);
+        }
+    }
+
+    void build_diagnosis(ReportData& report)
+    {
+        bool transfer_bound = false;
+        bool kernel_bound = false;
+        bool selector_issue = false;
+        bool timing_unavailable = false;
+        std::vector<std::string> large_shape_cases;
+
+        for (const CaseResult& result : report.cases) {
+            if (result.skipped || result.runtime_status != PROM_OK) {
+                continue;
+            }
+            if (!result.timing_decomposition.gpu_timestamp_valid) {
+                timing_unavailable = true;
+            }
+            if (result.diag.px16_m6_executed_path == static_cast<std::uint32_t>(PROM_VK_PATH_STAGED_UPLOAD_READBACK) &&
+                result.timing_decomposition.upload_ms + result.timing_decomposition.readback_ms + result.timing_decomposition.sync_wait_ms >
+                    std::max(result.timing_decomposition.kernel_gpu_ms, 0.0) * 1.2) {
+                transfer_bound = true;
+            }
+            if (result.timing_decomposition.gpu_timestamp_valid &&
+                result.timing_decomposition.kernel_only_gflops > 0.0 &&
+                result.timing_decomposition.end_to_end_gflops > 0.0 &&
+                result.timing_decomposition.kernel_only_gflops < result.timing_decomposition.end_to_end_gflops * 1.3) {
+                kernel_bound = true;
+            }
+            if (is_large_shape({ "", result.m, result.n, result.k, false }) && result.timing.gflops_median < 100.0) {
+                large_shape_cases.push_back(result.name);
+            }
+        }
+
+        for (const SelectorVsFastestRow& row : report.selector_vs_fastest) {
+            if (row.slowdown_ratio > 1.2 || !row.picked_same_variant_as_fastest_explicit) {
+                selector_issue = true;
+            }
+        }
+
+        if (transfer_bound) {
+            report.performance_diagnosis.push_back("Likely transfer-bound on staged cases: upload/readback/sync median wall time exceeds kernel time on at least one representative shape.");
+        }
+        if (kernel_bound) {
+            report.performance_diagnosis.push_back("Kernel-side slowdown is also present on at least one measured shape: kernel-only GFLOP/s remains low even when wall-time decomposition is available.");
+        }
+        if (selector_issue) {
+            report.performance_diagnosis.push_back("Selector issue observed: production executed variant is slower than the fastest correct explicit variant on at least one comparison shape.");
+        }
+        if (timing_unavailable) {
+            report.performance_diagnosis.push_back("Kernel-vs-transfer diagnosis is incomplete for some cases because GPU timestamps were unavailable or invalid and the lane fell back to CPU wall timing.");
+        }
+        if (!large_shape_cases.empty()) {
+            std::string joined;
+            for (std::size_t i = 0; i < large_shape_cases.size(); ++i) {
+                if (i != 0u) {
+                    joined += ", ";
+                }
+                joined += large_shape_cases[i];
+            }
+            report.performance_diagnosis.push_back("Large-shape collapse cases observed: " + joined + ".");
+        }
+        if (report.performance_diagnosis.empty()) {
+            report.performance_diagnosis.push_back("No dominant single bottleneck was isolated from the current measurements.");
+        }
     }
 
     std::string render_json(const ReportData& report)
@@ -738,13 +1294,23 @@ namespace
         std::ostringstream out;
         out << "{\n";
         out << "  \"schema\": \"" << json_escape(report.schema) << "\",\n";
+        out << "  \"timestamp_utc\": \"" << json_escape(report.timestamp_utc) << "\",\n";
+        out << "  \"benchmark_name\": \"" << json_escape(report.benchmark_name) << "\",\n";
+        out << "  \"run_mode\": \"" << json_escape(report.run_mode) << "\",\n";
+        out << "  \"validation_status_source\": \"" << json_escape(report.validation_status_source) << "\",\n";
         out << "  \"device\": {\n";
-        out << "    \"name\": \"" << json_escape(report.device_name) << "\",\n";
-        out << "    \"vendor_id\": " << report.vendor_id << ",\n";
-        out << "    \"device_id\": " << report.device_id << ",\n";
-        out << "    \"driver\": \"" << json_escape(report.driver) << "\",\n";
-        out << "    \"timestamp\": \"" << json_escape(report.timestamp_utc) << "\"\n";
+        out << "    \"name\": \"" << json_escape(report.device.name) << "\",\n";
+        out << "    \"backend\": \"" << json_escape(report.device.backend) << "\",\n";
+        out << "    \"device_type\": \"" << json_escape(report.device.device_type) << "\",\n";
+        out << "    \"vendor_id\": " << report.device.vendor_id << ",\n";
+        out << "    \"device_id\": " << report.device.device_id << ",\n";
+        out << "    \"driver_version\": \"" << json_escape(report.device.driver_version) << "\",\n";
+        out << "    \"api_version\": \"" << json_escape(report.device.api_version) << "\",\n";
+        out << "    \"max_compute_workgroup_invocations\": " << report.device.max_compute_workgroup_invocations << ",\n";
+        out << "    \"max_compute_shared_memory_size\": " << report.device.max_compute_shared_memory_size << ",\n";
+        out << "    \"subgroup_size\": " << report.device.subgroup_size << "\n";
         out << "  },\n";
+        out << "  \"resident_device_mode_available\": " << bool_json(report.resident_device_mode_available) << ",\n";
         out << "  \"summary\": {\n";
         out << "    \"cases_total\": " << report.summary.cases_total << ",\n";
         out << "    \"cases_passed\": " << report.summary.cases_passed << ",\n";
@@ -756,7 +1322,6 @@ namespace
         out << "  },\n";
         out << "  \"global_skip_reason\": \"" << json_escape(report.global_skip_reason) << "\",\n";
         out << "  \"cases\": [\n";
-
         for (std::size_t index = 0u; index < report.cases.size(); ++index) {
             const CaseResult& result = report.cases[index];
             out << "    {\n";
@@ -768,68 +1333,62 @@ namespace
             out << "      \"skipped\": " << bool_json(result.skipped) << ",\n";
             out << "      \"skip_reason\": \"" << json_escape(result.skip_reason) << "\",\n";
             out << "      \"policy_mode\": \"" << policy_mode_name(result.diag.px16_m6_policy_mode) << "\",\n";
-            out << "      \"path\": {\n";
-            out << "        \"requested\": \"" << path_name(result.diag.px16_m6_requested_path) << "\",\n";
-            out << "        \"selected\": \"" << path_name(result.diag.px16_m6_selected_path) << "\",\n";
-            out << "        \"executed\": \"" << path_name(result.diag.px16_m6_executed_path) << "\"\n";
-            out << "      },\n";
-            out << "      \"compute_mode\": {\n";
-            out << "        \"requested\": \"" << compute_mode_name(result.diag.px16_m6_requested_compute_mode) << "\",\n";
-            out << "        \"selected\": \"" << compute_mode_name(result.diag.px16_m6_selected_compute_mode) << "\",\n";
-            out << "        \"executed\": \"" << compute_mode_name(result.diag.px16_m6_executed_compute_mode) << "\"\n";
-            out << "      },\n";
-            out << "      \"variant\": {\n";
-            out << "        \"recommended\": \"" << occupancy_variant_name(result.diag.px16_m6_selector_recommended_variant) << "\",\n";
-            out << "        \"selected\": \"" << occupancy_variant_name(result.diag.px16_m6_selector_selected_variant) << "\",\n";
-            out << "        \"requested\": \"" << occupancy_variant_name(result.diag.px16_m6_requested_dispatch_variant) << "\",\n";
-            out << "        \"executed\": \"" << occupancy_variant_name(result.diag.px16_m6_executed_dispatch_variant) << "\",\n";
-            out << "        \"path_status\": \"" << variant_path_status_name(result.diag.px16_m6_variant_path_status) << "\",\n";
-            out << "        \"production_eligible\": " << bool_json(result.diag.px16_m6_variant_production_eligible != 0u) << ",\n";
-            out << "        \"dispatch_enabled\": " << bool_json(result.diag.px16_m6_variant_dispatch_enabled != 0u) << ",\n";
-            out << "        \"dvt_validated\": " << bool_json(result.diag.px16_m6_variant_dvt_validated != 0u) << ",\n";
-            out << "        \"pvt_validated\": " << bool_json(result.diag.px16_m6_variant_pvt_validated != 0u) << ",\n";
-            out << "        \"lifecycle_telemetry_only\": " << bool_json(result.diag.px16_m6_variant_lifecycle_telemetry_only != 0u) << "\n";
-            out << "      },\n";
-            out << "      \"force_direct\": {\n";
-            out << "        \"requested\": " << bool_json(result.diag.px16_m6_force_direct_requested != 0u) << ",\n";
-            out << "        \"applied\": " << bool_json(result.diag.px16_m6_force_direct_applied != 0u) << ",\n";
-            out << "        \"reason\": \"" << force_direct_reason_name(result.diag.px16_m6_force_direct_reason) << "\"\n";
-            out << "      },\n";
-            out << "      \"p15\": {\n";
-            out << "        \"reservation_present\": " << bool_json(result.diag.px16_m6_p15_reservation_present != 0u) << ",\n";
-            out << "        \"reservation_matured\": " << bool_json(result.diag.px16_m6_p15_reservation_matured != 0u) << ",\n";
-            out << "        \"reservation_consumed\": " << bool_json(result.diag.px16_m6_p15_reservation_consumed != 0u) << ",\n";
-            out << "        \"reserved_variant\": \"" << occupancy_variant_name(result.diag.px16_m6_p15_reserved_variant_id) << "\",\n";
-            out << "        \"live_selected_variant\": \"" << occupancy_variant_name(result.diag.px16_m6_p15_live_selected_variant_id) << "\",\n";
-            out << "        \"match\": " << bool_json(result.diag.px16_m6_p15_reconciliation_match != 0u) << ",\n";
-            out << "        \"block_reason\": \"" << p15_block_reason_name(result.diag.px16_m6_p15_block_reason) << "\",\n";
-            out << "        \"correction_action\": \"" << p15_correction_action_name(result.diag.px16_m6_p15_correction_action) << "\",\n";
-            out << "        \"reservation_stale_or_expired\": " << bool_json(result.diag.px16_m6_p15_reservation_stale_or_expired != 0u) << ",\n";
-            out << "        \"confidence_before\": " << result.diag.px16_m6_p15_confidence_before << ",\n";
-            out << "        \"confidence_after\": " << result.diag.px16_m6_p15_confidence_after << "\n";
-            out << "      },\n";
-            out << "      \"correctness\": {\n";
-            out << "        \"status\": \"" << json_escape(result.correctness.status) << "\",\n";
-            out << "        \"reference_mode\": \"" << json_escape(result.correctness.reference_mode) << "\",\n";
-            out << "        \"max_abs_error\": " << result.correctness.max_abs_error << ",\n";
-            out << "        \"max_rel_error\": " << result.correctness.max_rel_error << ",\n";
-            out << "        \"tolerance\": " << result.correctness.tolerance << "\n";
-            out << "      },\n";
-            out << "      \"timing\": {\n";
-            out << "        \"warmup_iterations\": " << result.timing.warmup_iterations << ",\n";
-            out << "        \"iterations\": " << result.timing.iterations << ",\n";
-            out << "        \"min_ms\": " << result.timing.min_ms << ",\n";
-            out << "        \"median_ms\": " << result.timing.median_ms << ",\n";
-            out << "        \"p95_ms\": " << result.timing.p95_ms << ",\n";
-            out << "        \"gflops_median\": " << result.timing.gflops_median << ",\n";
-            out << "        \"timing_source\": \"" << json_escape(result.timing.timing_source) << "\",\n";
-            out << "        \"gpu_timing_failure_reason\": \"" << timing_failure_reason_name(result.diag.p13_m5_last_gpu_timing_failure_reason) << "\"\n";
-            out << "      },\n";
-            out << "      \"runtime\": {\n";
-            out << "        \"status\": " << result.runtime_status << ",\n";
-            out << "        \"final_stage\": " << result.final_stage << ",\n";
-            out << "        \"final_detail_code\": " << result.final_detail_code << "\n";
-            out << "      },\n";
+            out << "      \"path\": {\"requested\": \"" << path_name(result.diag.px16_m6_requested_path)
+                << "\", \"selected\": \"" << path_name(result.diag.px16_m6_selected_path)
+                << "\", \"executed\": \"" << path_name(result.diag.px16_m6_executed_path) << "\"},\n";
+            out << "      \"compute_mode\": {\"requested\": \"" << compute_mode_name(result.diag.px16_m6_requested_compute_mode)
+                << "\", \"selected\": \"" << compute_mode_name(result.diag.px16_m6_selected_compute_mode)
+                << "\", \"executed\": \"" << compute_mode_name(result.diag.px16_m6_executed_compute_mode) << "\"},\n";
+            out << "      \"variant\": {\"recommended\": \"" << occupancy_variant_name(result.diag.px16_m6_selector_recommended_variant)
+                << "\", \"selected\": \"" << occupancy_variant_name(result.diag.px16_m6_selector_selected_variant)
+                << "\", \"requested\": \"" << occupancy_variant_name(result.diag.px16_m6_requested_dispatch_variant)
+                << "\", \"executed\": \"" << occupancy_variant_name(result.diag.px16_m6_executed_dispatch_variant)
+                << "\", \"path_status\": \"" << variant_path_status_name(result.diag.px16_m6_variant_path_status)
+                << "\", \"production_eligible\": " << bool_json(result.diag.px16_m6_variant_production_eligible != 0u)
+                << ", \"dispatch_enabled\": " << bool_json(result.diag.px16_m6_variant_dispatch_enabled != 0u) << "},\n";
+            out << "      \"force_direct\": {\"requested\": " << bool_json(result.diag.px16_m6_force_direct_requested != 0u)
+                << ", \"applied\": " << bool_json(result.diag.px16_m6_force_direct_applied != 0u)
+                << ", \"reason\": \"" << force_direct_reason_name(result.diag.px16_m6_force_direct_reason) << "\"},\n";
+            out << "      \"p15\": {\"reservation_present\": " << bool_json(result.diag.px16_m6_p15_reservation_present != 0u)
+                << ", \"reservation_matured\": " << bool_json(result.diag.px16_m6_p15_reservation_matured != 0u)
+                << ", \"reservation_consumed\": " << bool_json(result.diag.px16_m6_p15_reservation_consumed != 0u)
+                << ", \"reserved_variant\": \"" << occupancy_variant_name(result.diag.px16_m6_p15_reserved_variant_id)
+                << "\", \"live_selected_variant\": \"" << occupancy_variant_name(result.diag.px16_m6_p15_live_selected_variant_id)
+                << "\", \"match\": " << bool_json(result.diag.px16_m6_p15_reconciliation_match != 0u)
+                << ", \"block_reason\": \"" << p15_block_reason_name(result.diag.px16_m6_p15_block_reason)
+                << "\", \"correction_action\": \"" << p15_correction_action_name(result.diag.px16_m6_p15_correction_action) << "\"},\n";
+            out << "      \"correctness\": {\"status\": \"" << json_escape(result.correctness.status)
+                << "\", \"reference_mode\": \"" << json_escape(result.correctness.reference_mode)
+                << "\", \"source\": \"" << json_escape(result.correctness.source)
+                << "\", \"max_abs_error\": " << result.correctness.max_abs_error
+                << ", \"max_rel_error\": " << result.correctness.max_rel_error
+                << ", \"tolerance\": " << result.correctness.tolerance << "},\n";
+            out << "      \"timing\": {\"warmup_iterations\": " << result.timing.warmup_iterations
+                << ", \"iterations\": " << result.timing.iterations
+                << ", \"min_ms\": " << result.timing.min_ms
+                << ", \"median_ms\": " << result.timing.median_ms
+                << ", \"p95_ms\": " << result.timing.p95_ms
+                << ", \"gflops_median\": " << result.timing.gflops_median
+                << ", \"timing_source\": \"" << json_escape(result.timing.timing_source)
+                << "\", \"gpu_timing_failure_reason\": \"" << timing_failure_reason_name(result.diag.p13_m5_last_gpu_timing_failure_reason) << "\"},\n";
+            out << "      \"timing_decomposition\": {\"upload_ms\": " << result.timing_decomposition.upload_ms
+                << ", \"dispatch_submit_ms\": " << result.timing_decomposition.dispatch_submit_ms
+                << ", \"kernel_gpu_ms\": " << result.timing_decomposition.kernel_gpu_ms
+                << ", \"readback_ms\": " << result.timing_decomposition.readback_ms
+                << ", \"sync_wait_ms\": " << result.timing_decomposition.sync_wait_ms
+                << ", \"total_wall_ms\": " << result.timing_decomposition.total_wall_ms
+                << ", \"benchmark_total_ms\": " << result.timing_decomposition.benchmark_total_ms
+                << ", \"oracle_ms\": " << result.timing_decomposition.oracle_ms
+                << ", \"validation_readback_ms\": " << result.timing_decomposition.validation_readback_ms
+                << ", \"validation_ms\": " << result.timing_decomposition.validation_ms
+                << ", \"unaccounted_host_ms\": " << result.timing_decomposition.unaccounted_host_ms
+                << ", \"kernel_only_gflops\": " << result.timing_decomposition.kernel_only_gflops
+                << ", \"end_to_end_gflops\": " << result.timing_decomposition.end_to_end_gflops
+                << ", \"gpu_timestamp_valid\": " << bool_json(result.timing_decomposition.gpu_timestamp_valid)
+                << ", \"timing_source\": \"" << json_escape(result.timing_decomposition.timing_source) << "\"},\n";
+            out << "      \"runtime\": {\"status\": " << result.runtime_status
+                << ", \"final_stage\": " << result.final_stage
+                << ", \"final_detail_code\": " << result.final_detail_code << "},\n";
             out << "      \"anomalies\": [";
             for (std::size_t anomaly_index = 0u; anomaly_index < result.anomalies.size(); ++anomaly_index) {
                 if (anomaly_index != 0u) {
@@ -844,10 +1403,91 @@ namespace
             }
             out << "\n";
         }
-
-        out << "  ]\n";
+        out << "  ],\n";
+        out << "  \"variant_comparison\": [\n";
+        for (std::size_t index = 0u; index < report.variant_comparison.size(); ++index) {
+            const VariantComparisonRow& row = report.variant_comparison[index];
+            out << "    {\"shape\": \"" << json_escape(row.shape)
+                << "\", \"variant\": \"" << json_escape(row.variant)
+                << "\", \"requested_variant\": \"" << json_escape(row.requested_variant)
+                << "\", \"executed_variant\": \"" << json_escape(row.executed_variant)
+                << "\", \"path\": \"" << json_escape(row.path)
+                << "\", \"correctness\": \"" << json_escape(row.correctness)
+                << "\", \"reference_mode\": \"" << json_escape(row.reference_mode)
+                << "\", \"skipped\": " << bool_json(row.skipped)
+                << ", \"skip_reason\": \"" << json_escape(row.skip_reason)
+                << "\", \"median_total_ms\": " << row.median_total_ms
+                << ", \"median_kernel_ms\": " << row.median_kernel_ms
+                << ", \"end_to_end_gflops\": " << row.end_to_end_gflops
+                << ", \"kernel_only_gflops\": " << row.kernel_only_gflops
+                << ", \"gpu_timestamp_valid\": " << bool_json(row.gpu_timestamp_valid)
+                << ", \"timing_source\": \"" << json_escape(row.timing_source)
+                << "\", \"runtime_status\": " << row.runtime_status
+                << ", \"final_stage\": " << row.final_stage
+                << ", \"final_detail_code\": " << row.final_detail_code
+                << ", \"anomalies\": [";
+            for (std::size_t anomaly_index = 0u; anomaly_index < row.anomalies.size(); ++anomaly_index) {
+                if (anomaly_index != 0u) {
+                    out << ", ";
+                }
+                out << "\"" << json_escape(row.anomalies[anomaly_index]) << "\"";
+            }
+            out << "]}";
+            if (index + 1u < report.variant_comparison.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+        out << "  \"selector_vs_fastest\": [\n";
+        for (std::size_t index = 0u; index < report.selector_vs_fastest.size(); ++index) {
+            const SelectorVsFastestRow& row = report.selector_vs_fastest[index];
+            out << "    {\"shape\": \"" << json_escape(row.shape)
+                << "\", \"production_variant\": \"" << json_escape(row.production_variant)
+                << "\", \"executed_production_variant\": \"" << json_escape(row.executed_production_variant)
+                << "\", \"fastest_variant\": \"" << json_escape(row.fastest_variant)
+                << "\", \"comparison_basis\": \"" << json_escape(row.comparison_basis)
+                << "\", \"production_median_ms\": " << row.production_median_ms
+                << ", \"fastest_median_ms\": " << row.fastest_median_ms
+                << ", \"production_vs_fastest_ratio\": " << row.slowdown_ratio
+                << ", \"picked_same_variant_as_fastest_explicit\": " << bool_json(row.picked_same_variant_as_fastest_explicit)
+                << ", \"production_slower_than_fastest_explicit\": " << bool_json(row.production_slower_than_fastest_explicit)
+                << ", \"anomalies\": [";
+            for (std::size_t anomaly_index = 0u; anomaly_index < row.anomalies.size(); ++anomaly_index) {
+                if (anomaly_index != 0u) {
+                    out << ", ";
+                }
+                out << "\"" << json_escape(row.anomalies[anomaly_index]) << "\"";
+            }
+            out << "]}";
+            if (index + 1u < report.selector_vs_fastest.size()) {
+                out << ",";
+            }
+            out << "\n";
+        }
+        out << "  ],\n";
+        out << "  \"performance_diagnosis\": [";
+        for (std::size_t index = 0u; index < report.performance_diagnosis.size(); ++index) {
+            if (index != 0u) {
+                out << ", ";
+            }
+            out << "\"" << json_escape(report.performance_diagnosis[index]) << "\"";
+        }
+        out << "]\n";
         out << "}\n";
         return out.str();
+    }
+
+    std::string anomalies_or_none(const std::vector<std::string>& anomalies)
+    {
+        if (anomalies.empty()) {
+            return "none";
+        }
+        std::string out = anomalies.front();
+        for (std::size_t i = 1u; i < anomalies.size(); ++i) {
+            out += ", " + anomalies[i];
+        }
+        return out;
     }
 
     std::string render_markdown(const ReportData& report)
@@ -855,12 +1495,21 @@ namespace
         std::ostringstream out;
         out << "# Prometheus SGEMM Px16 EVT Report\n\n";
         out << "## Device / Runtime\n\n";
-        out << "- Device: " << report.device_name << "\n";
-        out << "- Vendor ID: " << report.vendor_id << "\n";
-        out << "- Device ID: " << report.device_id << "\n";
-        out << "- Driver: " << report.driver << "\n";
+        out << "- Device: " << report.device.name << "\n";
+        out << "- Backend: " << report.device.backend << "\n";
+        out << "- Device Type: " << report.device.device_type << "\n";
+        out << "- Vendor ID: " << report.device.vendor_id << "\n";
+        out << "- Device ID: " << report.device.device_id << "\n";
+        out << "- Driver Version: " << report.device.driver_version << "\n";
+        out << "- API Version: " << report.device.api_version << "\n";
+        out << "- Max Compute Workgroup Invocations: " << report.device.max_compute_workgroup_invocations << "\n";
+        out << "- Max Compute Shared Memory Size: " << report.device.max_compute_shared_memory_size << "\n";
+        out << "- Subgroup Size: " << report.device.subgroup_size << "\n";
+        out << "- Resident Device Mode Available: " << (report.resident_device_mode_available ? "true" : "false") << "\n";
         out << "- Timestamp: " << report.timestamp_utc << "\n";
         out << "- Benchmark: " << report.benchmark_name << "\n\n";
+        out << "- Run Mode: " << report.run_mode << "\n";
+        out << "- Validation Status Source: " << report.validation_status_source << "\n\n";
 
         out << "## Summary\n\n";
         out << "- Cases total: " << report.summary.cases_total << "\n";
@@ -875,9 +1524,10 @@ namespace
         }
         out << "\n";
 
-        out << "## Production SGEMM Results\n\n";
-        out << "| shape | policy | path | selected variant | executed variant | median ms | GFLOP/s | correctness | anomalies |\n";
-        out << "| --- | --- | --- | --- | --- | ---: | ---: | --- | --- |\n";
+        out << "## Performance Benchmark\n\n";
+        out << "This table measures the production GPU SGEMM operation. CPU oracle/reference work is not part of the default benchmark mode.\n\n";
+        out << "| shape | policy | path | selected variant | executed variant | kernel ms | gpu operation ms | GFLOP/s | timing source | validation status source | anomalies |\n";
+        out << "| --- | --- | --- | --- | --- | ---: | ---: | ---: | --- | --- | --- |\n";
         for (const CaseResult& result : report.cases) {
             const std::string path_summary =
                 path_name(result.diag.px16_m6_requested_path) + " -> " +
@@ -885,11 +1535,8 @@ namespace
                 path_name(result.diag.px16_m6_executed_path);
             const std::string correctness_summary = result.skipped
                 ? "skip"
-                : result.correctness.status + " (" + result.correctness.reference_mode + ")";
-            std::string anomaly_summary = result.anomalies.empty() ? "none" : result.anomalies.front();
-            for (std::size_t i = 1u; i < result.anomalies.size(); ++i) {
-                anomaly_summary += ", " + result.anomalies[i];
-            }
+                : result.correctness.status + " (" + result.correctness.source + ")";
+            std::string anomaly_summary = anomalies_or_none(result.anomalies);
             if (result.skipped && !result.skip_reason.empty()) {
                 anomaly_summary = "skip: " + result.skip_reason;
             }
@@ -898,57 +1545,96 @@ namespace
                 << " | " << path_summary
                 << " | " << occupancy_variant_name(result.diag.px16_m6_selector_selected_variant)
                 << " | " << occupancy_variant_name(result.diag.px16_m6_executed_dispatch_variant)
-                << " | " << result.timing.median_ms
+                << " | " << result.timing_decomposition.kernel_gpu_ms
+                << " | " << result.timing_decomposition.benchmark_total_ms
                 << " | " << result.timing.gflops_median
+                << " | " << result.timing.timing_source
                 << " | " << correctness_summary
                 << " | " << anomaly_summary << " |\n";
         }
         out << "\n";
 
-        out << "## Variant Distribution\n\n";
+        out << "## Timing Decomposition\n\n";
+        out << "| shape | path | variant | benchmark total ms | kernel ms | upload ms | readback ms | sync wait ms | unaccounted host ms | end-to-end GFLOP/s | kernel GFLOP/s | timing source |\n";
+        out << "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
         for (const CaseResult& result : report.cases) {
-            out << "- " << result.name
-                << ": selected=" << occupancy_variant_name(result.diag.px16_m6_selector_selected_variant)
-                << ", requested=" << occupancy_variant_name(result.diag.px16_m6_requested_dispatch_variant)
-                << ", executed=" << occupancy_variant_name(result.diag.px16_m6_executed_dispatch_variant)
-                << ", path_status=" << variant_path_status_name(result.diag.px16_m6_variant_path_status)
-                << "\n";
+            out << "| " << result.name
+                << " | " << path_name(result.diag.px16_m6_executed_path)
+                << " | " << occupancy_variant_name(result.diag.px16_m6_executed_dispatch_variant)
+                << " | " << result.timing_decomposition.benchmark_total_ms
+                << " | " << result.timing_decomposition.kernel_gpu_ms
+                << " | " << result.timing_decomposition.upload_ms
+                << " | " << result.timing_decomposition.readback_ms
+                << " | " << result.timing_decomposition.sync_wait_ms
+                << " | " << result.timing_decomposition.unaccounted_host_ms
+                << " | " << result.timing_decomposition.end_to_end_gflops
+                << " | " << result.timing_decomposition.kernel_only_gflops
+                << " | " << result.timing_decomposition.timing_source << " |\n";
         }
         out << "\n";
 
-        out << "## P15 Reconciliation Summary\n\n";
+        out << "## Oracle / Validation Cost\n\n";
+        out << "| shape | validation status | reference mode | oracle ms | validation readback ms | validation ms |\n";
+        out << "| --- | --- | --- | ---: | ---: | ---: |\n";
         for (const CaseResult& result : report.cases) {
-            out << "- " << result.name
-                << ": reservation_present=" << (result.diag.px16_m6_p15_reservation_present != 0u ? "true" : "false")
-                << ", reserved=" << occupancy_variant_name(result.diag.px16_m6_p15_reserved_variant_id)
-                << ", live=" << occupancy_variant_name(result.diag.px16_m6_p15_live_selected_variant_id)
-                << ", match=" << (result.diag.px16_m6_p15_reconciliation_match != 0u ? "true" : "false")
-                << ", block_reason=" << p15_block_reason_name(result.diag.px16_m6_p15_block_reason)
-                << ", correction_action=" << p15_correction_action_name(result.diag.px16_m6_p15_correction_action)
-                << "\n";
+            out << "| " << result.name
+                << " | " << result.correctness.status
+                << " | " << result.correctness.reference_mode
+                << " | " << result.timing_decomposition.oracle_ms
+                << " | " << result.timing_decomposition.validation_readback_ms
+                << " | " << result.timing_decomposition.validation_ms << " |\n";
         }
         out << "\n";
 
-        out << "## Anomalies / Suspected Performance Blockers\n\n";
-        bool wrote_anomaly = false;
-        for (const CaseResult& result : report.cases) {
-            for (const std::string& anomaly : result.anomalies) {
-                wrote_anomaly = true;
-                out << "- " << result.name << ": " << anomaly << "\n";
-            }
-        }
-        if (!wrote_anomaly) {
-            out << "- none\n";
+        out << "## Explicit Variant Comparison\n\n";
+        out << "| shape | variant | executed | median total ms | median kernel ms | e2e GFLOP/s | kernel GFLOP/s | correctness | anomalies |\n";
+        out << "| --- | --- | --- | ---: | ---: | ---: | ---: | --- | --- |\n";
+        for (const VariantComparisonRow& row : report.variant_comparison) {
+            const std::string correctness_summary = row.skipped ? "skip" : row.correctness + " (" + row.reference_mode + ")";
+            const std::string anomaly_summary = row.skipped && !row.skip_reason.empty()
+                ? "skip: " + row.skip_reason
+                : anomalies_or_none(row.anomalies);
+            out << "| " << row.shape
+                << " | " << row.variant
+                << " | " << row.executed_variant
+                << " | " << row.median_total_ms
+                << " | " << row.median_kernel_ms
+                << " | " << row.end_to_end_gflops
+                << " | " << row.kernel_only_gflops
+                << " | " << correctness_summary
+                << " | " << anomaly_summary << " |\n";
         }
         out << "\n";
 
-        out << "## Optional Explicit Variant Comparison\n\n";
-        out << "Not run in this lane. Production selector-controlled dispatch is the primary EVT measurement path for Px16 M7.\n\n";
+        out << "## Selector vs Fastest Variant\n\n";
+        out << "| shape | production variant | fastest explicit variant | production ms | fastest ms | production vs fastest ratio | picked same variant as fastest explicit | production slower than fastest explicit |\n";
+        out << "| --- | --- | --- | ---: | ---: | ---: | --- | --- |\n";
+        for (const SelectorVsFastestRow& row : report.selector_vs_fastest) {
+            out << "| " << row.shape
+                << " | " << row.executed_production_variant
+                << " | " << row.fastest_variant
+                << " | " << row.production_median_ms
+                << " | " << row.fastest_median_ms
+                << " | " << row.slowdown_ratio
+                << " | " << (row.picked_same_variant_as_fastest_explicit ? "yes" : "no")
+                << " | " << (row.production_slower_than_fastest_explicit ? "yes" : "no") << " |\n";
+        }
+        out << "\n";
+
+        out << "## Performance Diagnosis\n\n";
+        for (const std::string& diagnosis : report.performance_diagnosis) {
+            out << "- " << diagnosis << "\n";
+        }
+        out << "\n";
 
         out << "## Notes\n\n";
-        out << "- Main results use `prometheus_reactor_runtime_sgemm(...)` rather than explicit benchmark-variant dispatch.\n";
-        out << "- Timing source is reported per case. GPU timestamps win when valid for every measured iteration; otherwise CPU wall-clock is reported.\n";
-        out << "- Large-shape correctness uses a deterministic separable reference so the EVT lane stays locally repeatable without changing tolerance policy.\n";
+        out << "- Main production results still use `prometheus_reactor_runtime_sgemm(...)`.\n";
+        out << "- Unit/FACT tests validate correctness; benchmarks measure performance.\n";
+        out << "- Default performance benchmark mode reports `validation_status=not_run_in_benchmark_mode`; use the correctness lane for CPU oracle validation.\n";
+        out << "- Explicit variant comparison uses `prometheus_reactor_runtime_sgemm_benchmark_variant(...)` and is labeled as comparison-only telemetry, not production selector behavior.\n";
+        out << "- `kernel_only_gflops` uses Vulkan timestamp kernel time only when every measured iteration produced a valid GPU timestamp. Otherwise the report calls kernel timing unavailable and falls back to end-to-end wall timing.\n";
+        out << "- `STAGED_UPLOAD_READBACK` rows should be read using the decomposition table: upload/readback/sync buckets are host-observed wall slices, while `kernel_gpu_ms` is the Vulkan timestamp duration when valid.\n";
+        out << "- Resident device mode is not implemented in this milestone; the report records it as unavailable instead of faking a comparison.\n";
         out << "- Generated artifacts belong under `out/test-artifacts/` and should not be committed by default.\n";
         return out.str();
     }
@@ -958,6 +1644,15 @@ namespace
         ReportData report;
         report.timestamp_utc = "2026-07-08T00:00:00Z";
         report.benchmark_name = "synthetic";
+        report.device.name = "Synthetic GPU";
+        report.device.backend = "VULKAN";
+        report.device.device_type = "DISCRETE_GPU";
+        report.device.vendor_id = 4318u;
+        report.device.device_id = 9152u;
+        report.device.driver_version = "1.2.3";
+        report.device.api_version = "1.3.0";
+        report.device.max_compute_workgroup_invocations = 1024u;
+        report.device.max_compute_shared_memory_size = 49152u;
 
         CaseResult result;
         result.name = "square_512x512x512";
@@ -972,7 +1667,19 @@ namespace
         result.timing.median_ms = 1.0;
         result.timing.p95_ms = 1.2;
         result.timing.gflops_median = 250.0;
-        result.timing.timing_source = "cpu_wall_clock";
+        result.timing.timing_source = "vulkan_timestamp_query";
+        result.timing_decomposition.total_wall_ms = 1.0;
+        result.timing_decomposition.benchmark_total_ms = 1.0;
+        result.timing_decomposition.kernel_gpu_ms = 0.8;
+        result.timing_decomposition.upload_ms = 0.05;
+        result.timing_decomposition.readback_ms = 0.05;
+        result.timing_decomposition.sync_wait_ms = 0.08;
+        result.timing_decomposition.dispatch_submit_ms = 0.02;
+        result.timing_decomposition.unaccounted_host_ms = 0.0;
+        result.timing_decomposition.end_to_end_gflops = 250.0;
+        result.timing_decomposition.kernel_only_gflops = 312.5;
+        result.timing_decomposition.gpu_timestamp_valid = true;
+        result.timing_decomposition.timing_source = "mixed";
         result.diag.px16_m6_policy_mode = PROM_POLICY_MODE_SAFE;
         result.diag.px16_m6_selector_recommended_variant = PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
         result.diag.px16_m6_selector_selected_variant = PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
@@ -988,8 +1695,36 @@ namespace
         result.diag.px16_m6_variant_production_eligible = 1u;
         result.diag.px16_m6_variant_dispatch_enabled = 1u;
         result.anomalies.push_back("synthetic_anomaly");
-
         report.cases.push_back(result);
+
+        VariantComparisonRow comparison;
+        comparison.shape = "square_512x512x512";
+        comparison.variant = "BALANCED_2X2_ACCUM4";
+        comparison.requested_variant = "BALANCED_2X2_ACCUM4";
+        comparison.executed_variant = "BALANCED_2X2_ACCUM4";
+        comparison.path = "STAGED_UPLOAD_READBACK";
+        comparison.correctness = "pass";
+        comparison.reference_mode = "dense_cpu_oracle";
+        comparison.median_total_ms = 1.0;
+        comparison.median_kernel_ms = 0.8;
+        comparison.end_to_end_gflops = 250.0;
+        comparison.kernel_only_gflops = 312.5;
+        report.variant_comparison.push_back(comparison);
+
+        SelectorVsFastestRow selector;
+        selector.shape = "square_512x512x512";
+        selector.production_variant = "BALANCED_2X2_ACCUM4";
+        selector.executed_production_variant = "BALANCED_2X2_ACCUM4";
+        selector.fastest_variant = "BALANCED_2X2_ACCUM4";
+        selector.comparison_basis = "kernel_gpu_ms";
+        selector.production_median_ms = 0.8;
+        selector.fastest_median_ms = 0.8;
+        selector.slowdown_ratio = 1.0;
+        selector.picked_same_variant_as_fastest_explicit = true;
+        selector.production_slower_than_fastest_explicit = false;
+        report.selector_vs_fastest.push_back(selector);
+
+        report.performance_diagnosis.push_back("Synthetic diagnosis row.");
         finalize_summary(report);
         return report;
     }
@@ -1001,22 +1736,28 @@ FACT(PrometheusSgemmPx16Evt_ArtifactWritersEmitSchemaAndCaseRows)
     const std::string json = render_json(report);
     const std::string markdown = render_markdown(report);
 
-    ASSERT_TRUE(json.find("\"schema\": \"prometheus.sgemm.px16.evt.v1\"") != std::string::npos, "JSON artifact should include the EVT schema");
-    ASSERT_TRUE(json.find("\"anomalies\": [") != std::string::npos, "JSON artifact should include anomalies arrays");
-    ASSERT_TRUE(json.find("\"name\": \"square_512x512x512\"") != std::string::npos, "JSON artifact should include at least one case row");
-    ASSERT_TRUE(markdown.find("# Prometheus SGEMM Px16 EVT Report") != std::string::npos, "Markdown artifact should include the report heading");
-    ASSERT_TRUE(markdown.find("| square_512x512x512 |") != std::string::npos, "Markdown artifact should include at least one case row");
+    ASSERT_TRUE(json.find("\"schema\": \"prometheus.sgemm.px16.evt.v3\"") != std::string::npos, "JSON artifact should include the EVT schema");
+    ASSERT_TRUE(json.find("\"timing_decomposition\"") != std::string::npos, "JSON artifact should include timing decomposition");
+    ASSERT_TRUE(json.find("\"unaccounted_host_ms\"") != std::string::npos, "JSON artifact should include unaccounted host timing");
+    ASSERT_TRUE(json.find("\"oracle_ms\"") != std::string::npos, "JSON artifact should include oracle timing");
+    ASSERT_TRUE(json.find("\"variant_comparison\"") != std::string::npos, "JSON artifact should include variant comparison");
+    ASSERT_TRUE(json.find("\"picked_same_variant_as_fastest_explicit\"") != std::string::npos, "JSON artifact should split selector-vs-fastest identity");
+    ASSERT_TRUE(markdown.find("## Timing Decomposition") != std::string::npos, "Markdown artifact should include timing decomposition");
+    ASSERT_TRUE(markdown.find("## Explicit Variant Comparison") != std::string::npos, "Markdown artifact should include explicit variant comparison");
     ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_artifact_writer_smoke.json"), json),
                 "artifact writer smoke JSON should be created");
     ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_artifact_writer_smoke.md"), markdown),
                 "artifact writer smoke Markdown should be created");
 }
 
-VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionArtifactLane, 1)
+BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionPerformanceLane, 1)
 {
     ReportData report;
     report.timestamp_utc = timestamp_now_utc();
     report.benchmark_name = context.BenchmarkName();
+    report.run_mode = "performance_benchmark";
+    report.validation_status_source = "not_run_in_benchmark_mode";
+    report.explicit_cube_1024_enabled = should_run_explicit_1024_cube();
 
     void* handle = nullptr;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
@@ -1037,11 +1778,43 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionArtifactLan
         SKIP("Vulkan runtime unavailable; EVT SGEMM artifact lane cannot execute");
     }
 
-    for (const ShapeCase& shape : evt_shapes()) {
-        report.cases.push_back(run_evt_case(handle, shape));
+    (void)fetch_device_metadata(handle, caps, report.device);
+    const bool software_backend = caps.backend_type == PROM_BACKEND_VULKAN_SOFTWARE ||
+        report.device.backend == "VULKAN_SOFTWARE" ||
+        report.device.device_type == "CPU" ||
+        report.device.name.find("llvmpipe") != std::string::npos ||
+        report.device.name.find("LLVMPIPE") != std::string::npos;
+    const bool expected_3070 = report.device.name.find("RTX 3070") != std::string::npos;
+    if (software_backend || !expected_3070) {
+        report.global_skip_reason = software_backend
+            ? "benchmark_guard_rejected_software_vulkan_backend"
+            : "benchmark_guard_rejected_non_3070_device";
+        report.performance_diagnosis.push_back(
+            "Benchmark guard refused to run timing characterization because the runtime was not the expected hardware Vulkan path on the local RTX 3070.");
+        finalize_summary(report);
+        ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_results.json"), render_json(report)),
+                    "guard JSON artifact should be written");
+        ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_report.md"), render_markdown(report)),
+                    "guard Markdown artifact should be written");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP(software_backend ? "Software Vulkan backend detected; refusing to benchmark non-GPU path"
+                              : "Expected local RTX 3070 device was not selected; refusing to benchmark wrong adapter");
     }
 
+    for (const ShapeCase& shape : evt_shapes()) {
+        report.cases.push_back(run_evt_case(handle, shape, false));
+    }
+
+    for (const ShapeCase& shape : explicit_variant_shapes(report.explicit_cube_1024_enabled)) {
+        for (const std::uint32_t variant : wired_variants()) {
+            report.variant_comparison.push_back(run_explicit_variant_case(handle, shape, variant, false));
+        }
+    }
+
+    postprocess_variant_comparison(report);
+    build_selector_vs_fastest(report);
     detect_cross_case_anomalies(report);
+    build_diagnosis(report);
     finalize_summary(report);
 
     const std::string json = render_json(report);
@@ -1064,14 +1837,121 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionArtifactLan
                 result.name,
                 std::to_string(result.runtime_status));
         }
+    }
+
+    for (const VariantComparisonRow& row : report.variant_comparison) {
+        if (row.skipped) {
+            continue;
+        }
+        if (row.runtime_status != PROM_OK) {
+            context.RecordFailure(
+                __FILE__,
+                __LINE__,
+                "PX16_EVT_EXPLICIT_RUNTIME",
+                "explicit variant case runtime call failed",
+                row.shape + ":" + row.variant,
+                std::to_string(row.runtime_status));
+        }
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusSgemmPx16Evt_CorrectnessValidationLane)
+{
+    ReportData report;
+    report.timestamp_utc = timestamp_now_utc();
+    report.benchmark_name = context.TestName();
+    report.run_mode = "correctness_validation";
+    report.validation_status_source = "explicit_fact_lane";
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    if (handle == nullptr) {
+        return;
+    }
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "runtime probe should succeed");
+    if (caps.available == 0u) {
+        report.global_skip_reason = "vulkan_runtime_unavailable";
+        finalize_summary(report);
+        ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_validation_results.json"), render_json(report)),
+                    "skip validation JSON artifact should be written");
+        ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_validation_report.md"), render_markdown(report)),
+                    "skip validation Markdown artifact should be written");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; Px16 SGEMM validation lane cannot execute");
+    }
+
+    (void)fetch_device_metadata(handle, caps, report.device);
+
+    for (const ShapeCase& shape : correctness_shapes()) {
+        report.cases.push_back(run_evt_case(handle, shape, true));
+    }
+
+    for (const ShapeCase& shape : correctness_shapes()) {
+        for (const std::uint32_t variant : wired_variants()) {
+            report.variant_comparison.push_back(run_explicit_variant_case(handle, shape, variant, true));
+        }
+    }
+
+    postprocess_variant_comparison(report);
+    build_selector_vs_fastest(report);
+    detect_cross_case_anomalies(report);
+    build_diagnosis(report);
+    finalize_summary(report);
+
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_validation_results.json"), render_json(report)),
+                "validation JSON artifact should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_validation_report.md"), render_markdown(report)),
+                "validation Markdown artifact should be written");
+
+    for (const CaseResult& result : report.cases) {
+        if (result.skipped) {
+            continue;
+        }
+        if (result.runtime_status != PROM_OK) {
+            context.RecordFailure(
+                __FILE__,
+                __LINE__,
+                "PX16_EVT_VALIDATION_RUNTIME",
+                "validation case runtime call failed",
+                result.name,
+                std::to_string(result.runtime_status));
+        }
         if (result.correctness.status != "pass") {
             context.RecordFailure(
                 __FILE__,
                 __LINE__,
-                "PX16_EVT_CORRECTNESS",
-                "EVT case correctness failed",
+                "PX16_EVT_VALIDATION_CORRECTNESS",
+                "validation case correctness failed",
                 result.name,
                 result.correctness.status);
+        }
+    }
+
+    for (const VariantComparisonRow& row : report.variant_comparison) {
+        if (row.skipped) {
+            continue;
+        }
+        if (row.runtime_status != PROM_OK) {
+            context.RecordFailure(
+                __FILE__,
+                __LINE__,
+                "PX16_EVT_VALIDATION_EXPLICIT_RUNTIME",
+                "explicit variant validation case runtime call failed",
+                row.shape + ":" + row.variant,
+                std::to_string(row.runtime_status));
+        }
+        if (row.correctness != "pass") {
+            context.RecordFailure(
+                __FILE__,
+                __LINE__,
+                "PX16_EVT_VALIDATION_EXPLICIT_CORRECTNESS",
+                "explicit variant validation case correctness failed",
+                row.shape + ":" + row.variant,
+                row.correctness);
         }
     }
 

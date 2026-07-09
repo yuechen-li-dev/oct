@@ -1046,6 +1046,14 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t px16_m6_p15_reservation_stale_or_expired;
   double px16_m6_p15_confidence_before;
   double px16_m6_p15_confidence_after;
+  uint64_t px16_m8_last_upload_wall_ns;
+  uint64_t px16_m8_last_dispatch_submit_wall_ns;
+  uint64_t px16_m8_last_sync_wait_wall_ns;
+  uint64_t px16_m8_last_readback_wall_ns;
+  uint64_t px16_m8_last_total_wall_ns;
+  uint32_t px16_m8_last_gpu_timestamp_valid;
+  uint32_t px16_m8_resident_device_mode_available;
+  uint32_t px16_m8_last_executed_explicit_variant_request;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
