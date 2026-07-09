@@ -425,6 +425,46 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	}
 }
 
+func TestModuleAllowsComptimeLetAndIfSyntaxValidation(t *testing.T) {
+	err := validateSource(`concept TileConfig {
+Tile: { M: u32; N: u32; };
+UseFastPath: bool = true;
+}
+config Tile16: TileConfig {
+Tile.M => 16u;
+Tile.N => 16u;
+}
+template<C: TileConfig>
+shader TileCopy {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let TileElements: u32 = C.Tile.M * C.Tile.N;
+comptime let IsFull: bool = TileElements == 256u;
+comptime if C.UseFastPath && IsFull {
+let value: u32 = TileElements;
+} else {
+let value: u32 = 0u;
+}
+return;
+}
+}
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsComptimeTypeErrors(t *testing.T) {
+	err := validateSource(`shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let Bad: u32 = true;
+return;
+}
+}`)
+	if err == nil || !strings.Contains(err.Error(), "cannot assign bool to comptime local Bad of type u32") {
+		t.Fatalf("error = %v, want comptime type mismatch", err)
+	}
+}
+
 func TestModuleAllowsSumAndProductReductions(t *testing.T) {
 	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
 let total: f32 = sum i in 0u..4u { values[i] };

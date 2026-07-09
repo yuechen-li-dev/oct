@@ -220,6 +220,14 @@ type LetStmt struct {
 
 func (LetStmt) stmtNode() {}
 
+type ComptimeLetStmt struct {
+	Name  string
+	Type  TypeRef
+	Value Expr
+}
+
+func (ComptimeLetStmt) stmtNode() {}
+
 type AssignStmt struct {
 	Target Expr
 	Value  Expr
@@ -247,6 +255,14 @@ type IfStmt struct {
 
 func (IfStmt) stmtNode() {}
 
+type ComptimeIfStmt struct {
+	Condition Expr
+	ThenBody  Block
+	ElseBody  *Block
+}
+
+func (ComptimeIfStmt) stmtNode() {}
+
 type ForStmt struct {
 	Attributes []Attribute
 	Name       string
@@ -267,6 +283,8 @@ type StaticAssertStmt struct {
 	Expr Expr
 	Text string
 }
+
+func (StaticAssertStmt) stmtNode() {}
 
 type Expr interface{ exprNode() }
 

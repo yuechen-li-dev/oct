@@ -10,7 +10,7 @@
 
 SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its design embeds the flow/board/state/when semantics of the Dominatus/Octomata behavioral model directly into the shader pipeline. A flow is a value-returning finite state machine — a stateful routing function that lowers to a standard HLSL helper. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
 
-The broad design pipeline is: `source → lex → parse → validate → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
+The broad design pipeline is: `source → lex → parse → validate → template/config monomorphization → comptime expansion → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
 Current GoOct M2 supports an opt-in DXC/SPIR-V/header generation lane for the compute-focused subset. Prometheus runtime wiring remains deferred.
 
@@ -256,6 +256,15 @@ Current M11 additions:
 - dotted config references in requirements and template specialization;
 - nonzero-by-default `u32` concept/config fields, with `u32!` as the explicit zero-permitted form.
 
+Current M13 additions:
+
+- constrained compile-time shader staging with `comptime let` and `comptime if`;
+- comptime evaluation after template/config monomorphization and before VD-MIR lowering;
+- function-body `static assert` for selected comptime branches;
+- rejection of runtime parameters, resources, thread builtins, workgroup values, runtime locals, matrix views, tile reads, reductions, match payloads, and runtime function calls in comptime expressions.
+
+M13 `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
+
 ### Shader
 
 A shader is the core program unit. It may be generic, implement interfaces, and contain methods and stage methods.
@@ -358,8 +367,13 @@ Fallible functions declare an error type with `! ErrorType`. Only `Error` is rec
 | `for i in start..end { ... }` | Bounded integer for loop |
 | `for i in start..end step n { ... }` | Bounded for loop with step |
 | `expr;` | Expression statement |
+| `comptime let name: Type = const_expr;` | Compile-time local binding removed before VD-MIR |
+| `comptime if const_bool { ... } else { ... }` | Compile-time branch selection before VD-MIR |
+| `static assert const_bool;` | Compile-time assertion, including inside selected `comptime if` branches |
 
 In the compute subset, workgroup arrays are also mutable assignment targets. Barrier builtins such as `WorkgroupMemoryBarrierWithSync();` are only valid as expression statements.
+
+`comptime let` and `comptime if` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. No `comptime for` or comptime functions are supported in M13.
 
 `while` loops are explicitly not supported. Use bounded `for` loops instead.
 
@@ -780,8 +794,11 @@ stage-method ::= 'stage' STAGE 'fn' IDENT '(' params ')' '->' type-ref body
 STAGE        ::= 'vertex' | 'pixel'
 
 body         ::= '{' stmt* '}'
-stmt         ::= let | assign | return | if | for | expr-stmt
+stmt         ::= let | comptime-let | comptime-if | static-assert | assign | return | if | for | expr-stmt
 let          ::= 'let' IDENT ':' type-ref ('=' expr)? ';'
+comptime-let ::= 'comptime' 'let' IDENT ':' type-ref '=' expr ';'
+comptime-if  ::= 'comptime' 'if' expr '{' stmt* '}' ('else' '{' stmt* '}')?
+static-assert ::= 'static' 'assert' expr ';'
 assign       ::= expr '=' expr ';'
 for          ::= 'for' IDENT 'in' expr '..' expr ('step' expr)? '{' stmt* '}'
 

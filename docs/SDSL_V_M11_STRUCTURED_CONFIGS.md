@@ -8,12 +8,15 @@ SDSL-V source
   -> parse
   -> validate
   -> monomorphize compile declarations
+  -> expand constrained comptime staging
   -> lower concrete shaders to VD-MIR
   -> emit HLSL
   -> optional DXC / SPIR-V / generated header
 ```
 
 Concepts and configs remain compile-time only. VD-MIR remains the boundary. Runtime shader semantics do not change unless source is migrated.
+
+M13 keeps this separation: structured configs choose concrete variants, while constrained `comptime` shapes code inside those variants after monomorphization.
 
 ## What M11 adds
 

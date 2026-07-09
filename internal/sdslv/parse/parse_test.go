@@ -222,6 +222,56 @@ compile TileCopy<Tile16> as TileCopy16;`)
 	}
 }
 
+func TestBuildModuleParsesComptimeLetAndIf(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let TileElements: u32 = 16u * 16u;
+comptime if TileElements == 256u {
+static assert TileElements == 256u;
+let x: u32 = TileElements;
+} else {
+let x: u32 = 0u;
+}
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	body := shader.Methods[0].Body.Statements
+	if _, ok := body[0].(ast.ComptimeLetStmt); !ok {
+		t.Fatalf("stmt[0] = %T, want ComptimeLetStmt", body[0])
+	}
+	ctIf, ok := body[1].(ast.ComptimeIfStmt)
+	if !ok {
+		t.Fatalf("stmt[1] = %T, want ComptimeIfStmt", body[1])
+	}
+	if ctIf.ElseBody == nil {
+		t.Fatalf("comptime if missing else body")
+	}
+	if _, ok := ctIf.ThenBody.Statements[0].(ast.StaticAssertStmt); !ok {
+		t.Fatalf("then stmt[0] = %T, want StaticAssertStmt", ctIf.ThenBody.Statements[0])
+	}
+}
+
+func TestBuildModuleParsesNestedComptimeIf(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime if true {
+comptime if false {
+return;
+} else {
+return;
+}
+}
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	outer := shader.Methods[0].Body.Statements[0].(ast.ComptimeIfStmt)
+	if _, ok := outer.ThenBody.Statements[0].(ast.ComptimeIfStmt); !ok {
+		t.Fatalf("nested stmt = %T, want ComptimeIfStmt", outer.ThenBody.Statements[0])
+	}
+}
+
 func TestBuildModuleParsesStructuredConceptsDefaultsAndFatArrowConfig(t *testing.T) {
 	module := parseTestModule(t, `concept TileConfig {
 Threads: {

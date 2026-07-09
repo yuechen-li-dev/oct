@@ -653,6 +653,10 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		return p.parseFor(attributes)
 	}
 	switch p.current().Kind {
+	case token.KeywordComptime:
+		return p.parseComptimeStmt()
+	case token.KeywordStatic:
+		return p.parseStaticAssertStmt()
 	case token.KeywordLet:
 		return p.parseLet()
 	case token.KeywordReturn:
@@ -681,6 +685,65 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		}
 		return ast.ExprStmt{Value: left}, nil
 	}
+}
+
+func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
+	p.advance()
+	switch p.current().Kind {
+	case token.KeywordLet:
+		return p.parseComptimeLet()
+	case token.KeywordIf:
+		return p.parseComptimeIf()
+	default:
+		return nil, p.errorAtCurrent("expected let or if after comptime")
+	}
+}
+
+func (p *parser) parseComptimeLet() (ast.ComptimeLetStmt, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected comptime local name")
+	if err != nil {
+		return ast.ComptimeLetStmt{}, err
+	}
+	if _, err := p.expect(token.Colon, "expected ':' after comptime local name"); err != nil {
+		return ast.ComptimeLetStmt{}, err
+	}
+	ref, err := p.parseTypeRef(false)
+	if err != nil {
+		return ast.ComptimeLetStmt{}, err
+	}
+	if _, err := p.expect(token.Assign, "comptime let must be initialized"); err != nil {
+		return ast.ComptimeLetStmt{}, err
+	}
+	value, err := p.parseExpression()
+	if err != nil {
+		return ast.ComptimeLetStmt{}, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after comptime let"); err != nil {
+		return ast.ComptimeLetStmt{}, err
+	}
+	return ast.ComptimeLetStmt{Name: name.Lexeme, Type: ref, Value: value}, nil
+}
+
+func (p *parser) parseComptimeIf() (ast.ComptimeIfStmt, error) {
+	p.advance()
+	condition, err := p.parseExpression()
+	if err != nil {
+		return ast.ComptimeIfStmt{}, err
+	}
+	thenBody, err := p.parseBlock()
+	if err != nil {
+		return ast.ComptimeIfStmt{}, err
+	}
+	var elseBody *ast.Block
+	if p.match(token.KeywordElse) {
+		body, err := p.parseBlock()
+		if err != nil {
+			return ast.ComptimeIfStmt{}, err
+		}
+		elseBody = &body
+	}
+	return ast.ComptimeIfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseLet() (ast.LetStmt, error) {

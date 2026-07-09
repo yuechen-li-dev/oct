@@ -83,6 +83,7 @@ const (
 	varResource  varOrigin = "resource"
 	varWorkgroup varOrigin = "workgroup"
 	varBuiltin   varOrigin = "builtin"
+	varComptime  varOrigin = "comptime"
 )
 
 type varInfo struct {
@@ -675,6 +676,19 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		localType := s.Type
 		localType.Access = access
 		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access}
+	case ast.ComptimeLetStmt:
+		v.validateType(s.Type)
+		v.validateWithPlacement(s.Value, false)
+		v.validateMatchPlacement(s.Value, false)
+		v.validateReductionPlacement(s.Value, false)
+		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		if !v.compatible(s.Type, valueType) {
+			v.errorf("cannot assign %s to comptime local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
+		}
+		if _, exists := scope[s.Name]; exists {
+			v.errorf("duplicate local name %s", s.Name)
+		}
+		scope[s.Name] = varInfo{typ: s.Type, origin: varComptime}
 	case ast.AssignStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
@@ -727,6 +741,18 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if s.ElseBody != nil {
 			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
 		}
+	case ast.ComptimeIfStmt:
+		v.validateWithPlacement(s.Condition, false)
+		v.validateMatchPlacement(s.Condition, false)
+		v.validateReductionPlacement(s.Condition, false)
+		cond := v.exprType(s.Condition, scope, shaderName, templateParam)
+		if cond.Name != "bool" {
+			v.errorf("comptime if condition must be compile-time bool")
+		}
+		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		if s.ElseBody != nil {
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		}
 	case ast.ForStmt:
 		v.validateLoopAttributes(s.Attributes)
 		v.validateWithPlacement(s.Start, false)
@@ -752,6 +778,11 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		loopScope := cloneScope(scope)
 		loopScope[s.Name] = varInfo{typ: startType, origin: varLocal}
 		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam)
+	case ast.StaticAssertStmt:
+		typ := v.exprType(s.Expr, scope, shaderName, templateParam)
+		if typ.Name != "bool" && typ.Name != "<error>" {
+			v.errorf("static assert %s must evaluate to bool", s.Text)
+		}
 	}
 }
 

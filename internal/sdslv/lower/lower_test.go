@@ -585,6 +585,147 @@ return out;
 	}
 }
 
+func TestModuleExpandsComptimeLetAndIfBeforeVDMIR(t *testing.T) {
+	mir := lowerSource(t, `concept TileConfig {
+Tile: { M: u32; N: u32; };
+UseFastPath: bool = true;
+}
+config Tile16: TileConfig {
+Tile.M => 16u;
+Tile.N => 16u;
+}
+template<C: TileConfig>
+shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let TileElements: u32 = C.Tile.M * C.Tile.N;
+comptime if C.UseFastPath {
+static assert TileElements == 256u;
+let selected: u32 = TileElements;
+} else {
+static assert false;
+let dropped: u32 = 0u;
+}
+return;
+}
+}
+compile Demo<Tile16> as Demo16;`)
+	fn := findFunction(t, mir, "Demo16_CS")
+	if got := len(fn.Body.Statements); got != 2 {
+		t.Fatalf("len(statements) = %d, want selected let and return", got)
+	}
+	letStmt, ok := fn.Body.Statements[0].(vdmir.LetStmt)
+	if !ok || letStmt.Name != "selected" {
+		t.Fatalf("stmt[0] = %#v, want selected let", fn.Body.Statements[0])
+	}
+	lit, ok := letStmt.Value.(vdmir.LiteralExpr)
+	if !ok || lit.Value != "256u" {
+		t.Fatalf("selected value = %#v, want 256u literal", letStmt.Value)
+	}
+	dump := vdmir.Dump(mir)
+	if strings.Contains(dump, "comptime") || strings.Contains(dump, "dropped") {
+		t.Fatalf("VDMIR should not contain comptime or dropped branch:\n%s", dump)
+	}
+}
+
+func TestModuleRejectsComptimeRuntimeDependencies(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "runtime parameter field",
+			src: `record Params { M: u32; }
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+comptime let X: u32 = params.M;
+return;
+}
+}`,
+			want: "comptime expression cannot reference runtime parameter `params.M`",
+		},
+		{
+			name: "thread builtin",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime if GroupThreadID.x == 0u { return; }
+return;
+}
+}`,
+			want: "comptime expression cannot reference thread builtin `GroupThreadID.x`",
+		},
+		{
+			name: "resource bundle",
+			src: `stream IO { A: readonly array<f32>; }
+shader S {
+resources IO;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let y: f32 = A[0u];
+return;
+}
+}`,
+			want: "comptime expression cannot reference resource `A`",
+		},
+		{
+			name: "runtime local",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let x: u32 = 1u;
+comptime let y: u32 = x;
+return;
+}
+}`,
+			want: "comptime expression cannot reference runtime local `x`",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatalf("BuildModule() error = %v", err)
+			}
+			if err := validate.Module(module); err != nil {
+				t.Fatalf("validate.Module() error = %v", err)
+			}
+			_, err = Module(module)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Module() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestModuleEvaluatesSelectedComptimeStaticAssert(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime if true {
+static assert false;
+} else {
+static assert true;
+}
+return;
+}
+}`})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatalf("BuildModule() error = %v", err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatalf("validate.Module() error = %v", err)
+	}
+	_, err = Module(module)
+	if err == nil || !strings.Contains(err.Error(), "failed static assert false") {
+		t.Fatalf("Module() error = %v, want selected static assert failure", err)
+	}
+}
+
 func lowerSource(t *testing.T, text string) vdmir.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

@@ -1,0 +1,73 @@
+namespace Examples.SDSLV.M13;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream DemoIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record Params {
+    Count: u32;
+}
+
+concept TileConfig {
+    Threads: {
+        X: u32 = 16u;
+        Y: u32 = 1u;
+    };
+    Tile: {
+        M: u32 = 16u;
+        N: u32 = 16u;
+        K: u32 = 16u;
+    };
+    UseFastPath: bool = true;
+}
+
+config DemoTile: TileConfig {
+    Threads.X => 16u;
+    Threads.Y => 1u;
+    Tile.M => 16u;
+    Tile.N => 16u;
+    Tile.K => 16u;
+    UseFastPath => true;
+}
+
+template<C: TileConfig>
+shader M13TileConfigDemo {
+    resources DemoIO;
+    workgroup Tile: tile<f32, C.Tile.M, C.Tile.K>;
+
+    stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+        comptime let TileElements: u32 = C.Tile.M * C.Tile.N;
+        comptime let TileK: u32 = C.Tile.K;
+
+        let index: u32 = thread.DispatchId.x;
+        let value: f32 = 0.0;
+
+        comptime if C.UseFastPath {
+            static assert TileElements == 256u;
+            static assert TileK == 16u;
+            if index < params.Count {
+                value = A[index];
+            }
+        } else {
+            static assert false;
+            if index < params.Count {
+                value = 0.5;
+            }
+        }
+
+        if index < params.Count {
+            C[index] = value;
+        }
+        return;
+    }
+}
+
+compile M13TileConfigDemo<DemoTile> as M13TileConfigDemo16;

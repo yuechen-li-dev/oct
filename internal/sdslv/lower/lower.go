@@ -16,7 +16,11 @@ func Module(module ast.Module) (vdmir.Module, error) {
 	if err != nil {
 		return vdmir.Module{}, err
 	}
-	module = specialized
+	expanded, err := expandComptimeModule(specialized)
+	if err != nil {
+		return vdmir.Module{}, err
+	}
+	module = expanded
 	l := lowering{
 		provenance: vdmir.ProvenanceFromFile(module.Source),
 		types:      map[string]typeInfo{},
@@ -273,6 +277,12 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			value = specializeExpr(s.Value, env)
 		}
 		return ast.LetStmt{Name: s.Name, Type: ref, Value: value}, nil
+	case ast.ComptimeLetStmt:
+		ref, err := specializeTypeRef(s.Type, env)
+		if err != nil {
+			return nil, err
+		}
+		return ast.ComptimeLetStmt{Name: s.Name, Type: ref, Value: specializeExpr(s.Value, env)}, nil
 	case ast.AssignStmt:
 		return ast.AssignStmt{Target: specializeExpr(s.Target, env), Value: specializeExpr(s.Value, env)}, nil
 	case ast.ReturnStmt:
@@ -296,14 +306,374 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			elseBody = &body
 		}
 		return ast.IfStmt{Condition: specializeExpr(s.Condition, env), ThenBody: thenBody, ElseBody: elseBody}, nil
+	case ast.ComptimeIfStmt:
+		thenBody, err := specializeBlock(s.ThenBody, env)
+		if err != nil {
+			return nil, err
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body, err := specializeBlock(*s.ElseBody, env)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return ast.ComptimeIfStmt{Condition: specializeExpr(s.Condition, env), ThenBody: thenBody, ElseBody: elseBody}, nil
 	case ast.ForStmt:
 		body, err := specializeBlock(s.Body, env)
 		if err != nil {
 			return nil, err
 		}
 		return ast.ForStmt{Attributes: append([]ast.Attribute(nil), s.Attributes...), Name: s.Name, Start: specializeExpr(s.Start, env), End: specializeExpr(s.End, env), Step: specializeExpr(s.Step, env), Body: body}, nil
+	case ast.StaticAssertStmt:
+		return ast.StaticAssertStmt{Expr: specializeExpr(s.Expr, env), Text: s.Text}, nil
 	default:
 		return stmt, nil
+	}
+}
+
+type comptimeBinding struct {
+	typ     ast.TypeRef
+	int32   int64
+	boolVal bool
+}
+
+type runtimeOrigin string
+
+const (
+	runtimeParam     runtimeOrigin = "runtime parameter"
+	runtimeResource  runtimeOrigin = "resource"
+	runtimeWorkgroup runtimeOrigin = "workgroup value"
+	runtimeBuiltin   runtimeOrigin = "thread builtin"
+	runtimeLocal     runtimeOrigin = "runtime local"
+)
+
+type runtimeBinding struct {
+	origin runtimeOrigin
+}
+
+func expandComptimeModule(module ast.Module) (ast.Module, error) {
+	resourceBundles := map[string][]ast.ResourceDecl{}
+	for _, decl := range module.Decls {
+		stream, ok := decl.(ast.StreamDecl)
+		if !ok {
+			continue
+		}
+		for _, field := range stream.Fields {
+			if field.Access == "" {
+				continue
+			}
+			resourceBundles[stream.Name] = append(resourceBundles[stream.Name], ast.ResourceDecl{Name: field.Name, Access: field.Access, Type: field.Type, Attributes: field.Attributes})
+		}
+	}
+	out := module
+	out.Decls = make([]ast.Decl, 0, len(module.Decls))
+	for _, decl := range module.Decls {
+		shader, ok := decl.(ast.ShaderDecl)
+		if !ok || shader.Template != nil {
+			out.Decls = append(out.Decls, decl)
+			continue
+		}
+		expanded, err := expandComptimeShader(shader, resourceBundles)
+		if err != nil {
+			return ast.Module{}, err
+		}
+		out.Decls = append(out.Decls, expanded)
+	}
+	return out, nil
+}
+
+func expandComptimeShader(shader ast.ShaderDecl, resourceBundles map[string][]ast.ResourceDecl) (ast.ShaderDecl, error) {
+	out := shader
+	out.Methods = make([]ast.FunctionDecl, 0, len(shader.Methods))
+	resources := shader.Resources
+	if shader.ResourceBundleName != "" {
+		resources = append([]ast.ResourceDecl(nil), resourceBundles[shader.ResourceBundleName]...)
+	}
+	for _, method := range shader.Methods {
+		expanded, err := expandComptimeFunction(method, resources, shader.Workgroups)
+		if err != nil {
+			return ast.ShaderDecl{}, fmt.Errorf("shader %s.%s: %w", shader.Name, method.Name, err)
+		}
+		out.Methods = append(out.Methods, expanded)
+	}
+	return out, nil
+}
+
+func expandComptimeFunction(fn ast.FunctionDecl, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl) (ast.FunctionDecl, error) {
+	runtime := map[string]runtimeBinding{
+		"DispatchThreadID": {origin: runtimeBuiltin},
+		"GroupThreadID":    {origin: runtimeBuiltin},
+		"GroupID":          {origin: runtimeBuiltin},
+		"GroupIndex":       {origin: runtimeBuiltin},
+	}
+	for _, resource := range resources {
+		runtime[resource.Name] = runtimeBinding{origin: runtimeResource}
+	}
+	for _, workgroup := range workgroups {
+		runtime[workgroup.Name] = runtimeBinding{origin: runtimeWorkgroup}
+	}
+	for _, param := range fn.Parameters {
+		runtime[param.Name] = runtimeBinding{origin: runtimeParam}
+	}
+	body, err := expandComptimeBlock(fn.Body, nil, runtime)
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	out := fn
+	out.Body = body
+	return out, nil
+}
+
+func expandComptimeBlock(block ast.Block, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (ast.Block, error) {
+	ct := cloneComptimeBindings(comptime)
+	rt := cloneRuntimeBindings(runtime)
+	out := ast.Block{Statements: make([]ast.Stmt, 0, len(block.Statements))}
+	for _, stmt := range block.Statements {
+		expanded, err := expandComptimeStmt(stmt, ct, rt)
+		if err != nil {
+			return ast.Block{}, err
+		}
+		out.Statements = append(out.Statements, expanded...)
+	}
+	return out, nil
+}
+
+func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) ([]ast.Stmt, error) {
+	switch s := stmt.(type) {
+	case ast.ComptimeLetStmt:
+		value, err := evalComptimeExpr(s.Value, comptime, runtime, "comptime let initializer must be compile-time")
+		if err != nil {
+			return nil, err
+		}
+		comptime[s.Name] = comptimeBinding{typ: value.Type, int32: value.Int32, boolVal: value.Bool}
+		return nil, nil
+	case ast.ComptimeIfStmt:
+		value, err := evalComptimeExpr(s.Condition, comptime, runtime, "comptime if condition must be compile-time bool")
+		if err != nil {
+			return nil, err
+		}
+		if value.Type.Name != "bool" {
+			return nil, fmt.Errorf("comptime if condition must be compile-time bool")
+		}
+		selected := s.ElseBody
+		if value.Bool {
+			selected = &s.ThenBody
+		}
+		if selected == nil {
+			return nil, nil
+		}
+		body, err := expandComptimeBlock(*selected, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+		if err != nil {
+			return nil, err
+		}
+		return body.Statements, nil
+	case ast.LetStmt:
+		out := s
+		if s.Value != nil {
+			out.Value = replaceComptimeExpr(s.Value, comptime)
+		}
+		runtime[s.Name] = runtimeBinding{origin: runtimeLocal}
+		return []ast.Stmt{out}, nil
+	case ast.AssignStmt:
+		return []ast.Stmt{ast.AssignStmt{Target: replaceComptimeExpr(s.Target, comptime), Value: replaceComptimeExpr(s.Value, comptime)}}, nil
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			return []ast.Stmt{s}, nil
+		}
+		return []ast.Stmt{ast.ReturnStmt{Value: replaceComptimeExpr(s.Value, comptime)}}, nil
+	case ast.ExprStmt:
+		return []ast.Stmt{ast.ExprStmt{Value: replaceComptimeExpr(s.Value, comptime)}}, nil
+	case ast.IfStmt:
+		thenBody, err := expandRuntimeNestedBlock(s.ThenBody, comptime, runtime)
+		if err != nil {
+			return nil, err
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body, err := expandRuntimeNestedBlock(*s.ElseBody, comptime, runtime)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return []ast.Stmt{ast.IfStmt{Condition: replaceComptimeExpr(s.Condition, comptime), ThenBody: thenBody, ElseBody: elseBody}}, nil
+	case ast.ForStmt:
+		body, err := expandRuntimeNestedBlock(s.Body, comptime, runtime)
+		if err != nil {
+			return nil, err
+		}
+		return []ast.Stmt{ast.ForStmt{Attributes: append([]ast.Attribute(nil), s.Attributes...), Name: s.Name, Start: replaceComptimeExpr(s.Start, comptime), End: replaceComptimeExpr(s.End, comptime), Step: replaceComptimeExpr(s.Step, comptime), Body: body}}, nil
+	case ast.StaticAssertStmt:
+		value, err := evalComptimeExpr(s.Expr, comptime, runtime, "static assert must be compile-time")
+		if err != nil {
+			return nil, err
+		}
+		if value.Type.Name != "bool" {
+			return nil, fmt.Errorf("static assert %s must evaluate to bool", s.Text)
+		}
+		if !value.Bool {
+			return nil, fmt.Errorf("failed static assert %s", s.Text)
+		}
+		return nil, nil
+	default:
+		return []ast.Stmt{stmt}, nil
+	}
+}
+
+func expandRuntimeNestedBlock(block ast.Block, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (ast.Block, error) {
+	return expandComptimeBlock(block, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+}
+
+func evalComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding, context string) (consteval.Value, error) {
+	if err := rejectRuntimeComptimeRefs(expr, runtime); err != nil {
+		return consteval.Value{}, err
+	}
+	env := map[string]consteval.Value{}
+	for name, value := range comptime {
+		env[name] = consteval.Value{Type: value.typ, Int32: value.int32, Bool: value.boolVal, IsKnown: true}
+	}
+	value, err := consteval.Eval(expr, env)
+	if err != nil {
+		return consteval.Value{}, fmt.Errorf("%s: %w", context, err)
+	}
+	return value, nil
+}
+
+func rejectRuntimeComptimeRefs(expr ast.Expr, runtime map[string]runtimeBinding) error {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		if binding, ok := runtime[e.Name]; ok {
+			return fmt.Errorf("comptime expression cannot reference %s `%s`", binding.origin, e.Name)
+		}
+	case ast.FieldAccessExpr:
+		if root, ok := rootNameForComptime(e); ok {
+			if binding, exists := runtime[root]; exists {
+				return fmt.Errorf("comptime expression cannot reference %s `%s`", binding.origin, fieldPathForComptime(e))
+			}
+		}
+		return rejectRuntimeComptimeRefs(e.Target, runtime)
+	case ast.IndexExpr:
+		if err := rejectRuntimeComptimeRefs(e.Target, runtime); err != nil {
+			return err
+		}
+		if err := rejectRuntimeComptimeRefs(e.Index, runtime); err != nil {
+			return err
+		}
+		if e.HasSecond {
+			return rejectRuntimeComptimeRefs(e.Index2, runtime)
+		}
+	case ast.CallExpr:
+		return fmt.Errorf("comptime expression cannot call functions in SDSL-V M13")
+	case ast.BinaryExpr:
+		if err := rejectRuntimeComptimeRefs(e.Left, runtime); err != nil {
+			return err
+		}
+		return rejectRuntimeComptimeRefs(e.Right, runtime)
+	case ast.UnaryExpr:
+		return rejectRuntimeComptimeRefs(e.Operand, runtime)
+	case ast.ParenExpr:
+		return rejectRuntimeComptimeRefs(e.Inner, runtime)
+	case ast.ReductionExpr, ast.MatchExpr, ast.WithExpr, ast.EnumConstructExpr:
+		return fmt.Errorf("comptime expression cannot use runtime expression forms in SDSL-V M13")
+	}
+	return nil
+}
+
+func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast.Expr {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		if value, ok := comptime[e.Name]; ok {
+			return literalExprForValue(specializeValue{typ: value.typ, int32: value.int32, boolVal: value.boolVal})
+		}
+		return expr
+	case ast.FieldAccessExpr:
+		return ast.FieldAccessExpr{Target: replaceComptimeExpr(e.Target, comptime), Field: e.Field}
+	case ast.IndexExpr:
+		out := ast.IndexExpr{Target: replaceComptimeExpr(e.Target, comptime), Index: replaceComptimeExpr(e.Index, comptime), HasSecond: e.HasSecond}
+		if e.HasSecond {
+			out.Index2 = replaceComptimeExpr(e.Index2, comptime)
+		}
+		return out
+	case ast.CallExpr:
+		args := make([]ast.Expr, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			args = append(args, replaceComptimeExpr(arg, comptime))
+		}
+		return ast.CallExpr{Callee: replaceComptimeExpr(e.Callee, comptime), Arguments: args}
+	case ast.BinaryExpr:
+		return ast.BinaryExpr{Left: replaceComptimeExpr(e.Left, comptime), Operator: e.Operator, Right: replaceComptimeExpr(e.Right, comptime)}
+	case ast.UnaryExpr:
+		return ast.UnaryExpr{Operator: e.Operator, Operand: replaceComptimeExpr(e.Operand, comptime)}
+	case ast.ParenExpr:
+		return ast.ParenExpr{Inner: replaceComptimeExpr(e.Inner, comptime)}
+	case ast.WhenUtilityExpr:
+		cases := make([]ast.UtilityCase, 0, len(e.Cases))
+		for _, c := range e.Cases {
+			cases = append(cases, ast.UtilityCase{Value: replaceComptimeExpr(c.Value, comptime), Condition: replaceComptimeExpr(c.Condition, comptime), Score: replaceComptimeExpr(c.Score, comptime)})
+		}
+		return ast.WhenUtilityExpr{Cases: cases, Else: replaceComptimeExpr(e.Else, comptime)}
+	case ast.WithExpr:
+		updates := make([]ast.FieldUpdate, 0, len(e.Updates))
+		for _, update := range e.Updates {
+			updates = append(updates, ast.FieldUpdate{Name: update.Name, Value: replaceComptimeExpr(update.Value, comptime)})
+		}
+		return ast.WithExpr{Base: replaceComptimeExpr(e.Base, comptime), Updates: updates}
+	case ast.EnumConstructExpr:
+		fields := make([]ast.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.FieldInit{Name: field.Name, Value: replaceComptimeExpr(field.Value, comptime)})
+		}
+		return ast.EnumConstructExpr{EnumName: e.EnumName, VariantName: e.VariantName, Fields: fields}
+	case ast.MatchExpr:
+		arms := make([]ast.MatchArm, 0, len(e.Arms))
+		for _, arm := range e.Arms {
+			arms = append(arms, ast.MatchArm{EnumName: arm.EnumName, VariantName: arm.VariantName, BindingName: arm.BindingName, Value: replaceComptimeExpr(arm.Value, comptime)})
+		}
+		return ast.MatchExpr{Subject: replaceComptimeExpr(e.Subject, comptime), Arms: arms}
+	case ast.ReductionExpr:
+		return ast.ReductionExpr{Attributes: append([]ast.Attribute(nil), e.Attributes...), Op: e.Op, Name: e.Name, Start: replaceComptimeExpr(e.Start, comptime), End: replaceComptimeExpr(e.End, comptime), Step: replaceComptimeExpr(e.Step, comptime), Body: replaceComptimeExpr(e.Body, comptime)}
+	default:
+		return expr
+	}
+}
+
+func cloneComptimeBindings(in map[string]comptimeBinding) map[string]comptimeBinding {
+	out := make(map[string]comptimeBinding, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneRuntimeBindings(in map[string]runtimeBinding) map[string]runtimeBinding {
+	out := make(map[string]runtimeBinding, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func rootNameForComptime(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		return e.Name, true
+	case ast.FieldAccessExpr:
+		return rootNameForComptime(e.Target)
+	default:
+		return "", false
+	}
+}
+
+func fieldPathForComptime(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		return e.Name
+	case ast.FieldAccessExpr:
+		return fieldPathForComptime(e.Target) + "." + e.Field
+	default:
+		return ""
 	}
 }
 

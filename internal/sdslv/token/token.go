@@ -52,6 +52,7 @@ const (
 	KeywordRequire   Kind = "KeywordRequire"
 	KeywordStatic    Kind = "KeywordStatic"
 	KeywordAssert    Kind = "KeywordAssert"
+	KeywordComptime  Kind = "KeywordComptime"
 	KeywordVertex    Kind = "KeywordVertex"
 	KeywordPixel     Kind = "KeywordPixel"
 
@@ -177,6 +178,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordStatic
 	case "assert":
 		return KeywordAssert
+	case "comptime":
+		return KeywordComptime
 	case "vertex":
 		return KeywordVertex
 	case "pixel":

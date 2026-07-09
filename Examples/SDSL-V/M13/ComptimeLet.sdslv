@@ -1,0 +1,13 @@
+namespace Examples.SDSLV.M13;
+
+shader M13LetDemo {
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        comptime let TileM: u32 = 16u;
+        comptime let TileN: u32 = 16u;
+        comptime let TileElements: u32 = TileM * TileN;
+
+        static assert TileElements == 256u;
+        let selected: u32 = TileElements;
+        return;
+    }
+}

@@ -21,7 +21,11 @@ func CheckFile(path string) error {
 	if err != nil {
 		return err
 	}
-	return validate.Module(module)
+	if err := validate.Module(module); err != nil {
+		return err
+	}
+	_, err = lower.Module(module)
+	return err
 }
 
 func EmitHLSLFile(path string) (string, error) {

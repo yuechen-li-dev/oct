@@ -10,6 +10,7 @@ SDSL-V source
   -> parse
   -> validate
   -> monomorphize compile declarations
+  -> expand constrained comptime staging
   -> lower concrete shaders to VD-MIR
   -> emit HLSL
   -> optional DXC / SPIR-V / generated header
@@ -80,6 +81,8 @@ M5 monomorphizes before VD-MIR lowering.
 
 This keeps template logic out of both VD-MIR and the HLSL backend.
 
+M13 adds a separate `comptime` pass after monomorphization. Templates/configs still choose concrete variants; `comptime let` and `comptime if` only shape code inside the concrete specialized shader. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md`.
+
 ## Generated metadata convention
 
 When a concrete compute shader is generated through `compile Template<Config> as Alias;`, the specialized config values are also available to later toolchain stages.
@@ -117,6 +120,8 @@ M6 extends this model with:
 See `docs/SDSL_V_M6_REQUIREMENTS_ATTRIBUTES.md`.
 
 M11 extends the same compile-time model with structured config groups, fat-arrow assignments, defaults, dotted references, and nonzero-by-default `u32` config fields. See `docs/SDSL_V_M11_STRUCTURED_CONFIGS.md`.
+
+M13 adds constrained compile-time shader staging with `comptime let` and `comptime if`. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md`.
 
 ## Examples
 

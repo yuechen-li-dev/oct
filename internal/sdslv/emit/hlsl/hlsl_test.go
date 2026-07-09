@@ -66,6 +66,26 @@ return;
 	}
 }
 
+func TestEmitComptimeSelectedBranchOnly(t *testing.T) {
+	hlsl := emitSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let UseFastPath: bool = true;
+comptime if UseFastPath {
+let selected: u32 = 7u;
+} else {
+let dropped: u32 = 99u;
+}
+return;
+}
+}`)
+	if strings.Contains(hlsl, "comptime") || strings.Contains(hlsl, "dropped") || strings.Contains(hlsl, "99u") {
+		t.Fatalf("HLSL should contain only selected branch:\n%s", hlsl)
+	}
+	if !strings.Contains(hlsl, "uint selected = 7u;") {
+		t.Fatalf("HLSL missing selected branch:\n%s", hlsl)
+	}
+}
+
 func TestEmitWhenUtilityFromVDMIR(t *testing.T) {
 	text := `shader Picker {
 fn Pick(flag: bool) -> f32 {

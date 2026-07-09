@@ -3,7 +3,7 @@
 SDSL-V M12 raises tiled compute authoring above manual flat row-major indexing while preserving the existing compiler boundary:
 
 ```text
-source -> lex -> parse -> validate -> lower to VD-MIR -> emit HLSL -> optional DXC/SPIR-V
+source -> lex -> parse -> validate -> template/config monomorphization -> comptime expansion -> lower to VD-MIR -> emit HLSL -> optional DXC/SPIR-V
 ```
 
 VD-MIR remains the shader MIR boundary. HLSL lowering is deterministic flat index math; source code no longer has to hand-write every `row * stride + col`.
@@ -97,3 +97,5 @@ M12 intentionally does not add:
 - Prometheus selector retuning or dispatch authority changes.
 
 Future tensor notation can build on this explicit 2D indexing surface without changing the current contract.
+
+M13 `comptime` may compute tile dimensions and select code paths from resolved config values, but it may not inspect runtime `tile` or `matrix_view` values.

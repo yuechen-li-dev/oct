@@ -10,6 +10,7 @@ SDSL-V source
   -> parse
   -> validate
   -> monomorphize compile declarations
+  -> expand constrained comptime staging
   -> lower concrete shaders to VD-MIR
   -> emit HLSL
   -> optional DXC / SPIR-V / generated header
@@ -60,6 +61,7 @@ Rules:
 - config-dependent static asserts are evaluated during `compile Template<Config> as Alias`;
 - failing asserts stop monomorphization before VD-MIR lowering;
 - static asserts do not emit to VD-MIR or HLSL.
+- M13 also allows `static assert` inside shader function bodies when used with constrained `comptime if`; assertions in non-selected branches do not fire.
 
 ## Constant expressions
 
@@ -76,6 +78,8 @@ M6 compile-time expressions support:
 - template config references such as `C.TILE_SIZE` inside template static asserts and other M5 compile-time positions.
 
 Float constant expressions remain deferred.
+
+M13 reuses this constant-expression machinery for `comptime let` initializers and `comptime if` conditions, with additional rejection of runtime shader values.
 
 ## Attributes
 
