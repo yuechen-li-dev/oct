@@ -200,6 +200,12 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitBlock(*s.ElseBody)
 		}
 	case vdmir.ForRangeStmt:
+		switch s.LoopHint {
+		case vdmir.LoopHintUnroll:
+			e.line("[unroll]")
+		case vdmir.LoopHintLoop:
+			e.line("[loop]")
+		}
 		loopType := typeRef(s.Type, "")
 		e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, s.Name, e.expr(s.Start), s.Name, e.expr(s.End), s.Name, e.expr(s.Step)))
 		e.emitBlock(s.Body)

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/consteval"
 )
 
 func Module(module ast.Module) error {
@@ -14,6 +15,7 @@ func Module(module ast.Module) error {
 		types:          map[string]typeInfo{},
 		funcs:          map[string]functionInfo{},
 		configs:        map[string]configInfo{},
+		concepts:       map[string]ast.ConceptDecl{},
 		shaderDecls:    map[string]ast.ShaderDecl{},
 		compileAliases: map[string]struct{}{},
 	}
@@ -29,8 +31,9 @@ func Module(module ast.Module) error {
 }
 
 type fieldInfo struct {
-	access string
-	typ    ast.TypeRef
+	access     string
+	typ        ast.TypeRef
+	attributes []ast.Attribute
 }
 
 type typeInfo struct {
@@ -76,6 +79,7 @@ type validator struct {
 	types          map[string]typeInfo
 	funcs          map[string]functionInfo
 	configs        map[string]configInfo
+	concepts       map[string]ast.ConceptDecl
 	shaderDecls    map[string]ast.ShaderDecl
 	compileAliases map[string]struct{}
 	resources      map[string]ast.ResourceDecl
@@ -101,6 +105,7 @@ func (v *validator) collect(module ast.Module) {
 			v.addFieldType(d.Name, "stream", d.Fields, "stream")
 		case ast.ConceptDecl:
 			v.addFieldType(d.Name, "concept", d.Fields, "concept")
+			v.concepts[d.Name] = d
 		case ast.ConfigDecl:
 			if _, exists := v.configs[d.Name]; exists {
 				v.errorf("duplicate top-level name %s", d.Name)
@@ -134,7 +139,7 @@ func (v *validator) addFieldType(name, kind string, fields []ast.Field, label st
 		if _, exists := collected[field.Name]; exists {
 			v.errorf("duplicate %s field %s.%s", label, name, field.Name)
 		}
-		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type}
+		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type, attributes: field.Attributes}
 	}
 	v.addType(name, typeInfo{name: name, kind: kind, fields: collected})
 }
@@ -184,6 +189,9 @@ func (v *validator) validateFields(owner, kind string, fields []ast.Field, allow
 		if field.Access != "" && !allowAccess {
 			v.errorf("%s field %s.%s must not declare resource access", kind, owner, field.Name)
 		}
+		if len(field.Attributes) > 0 && (kind != "stream" || field.Access == "") {
+			v.errorf("%s field %s.%s does not support attributes in SDSL-V M6", kind, owner, field.Name)
+		}
 		v.validateType(field.Type)
 	}
 }
@@ -193,11 +201,25 @@ func (v *validator) validateConcept(concept ast.ConceptDecl) {
 		if field.Access != "" {
 			v.errorf("concept field %s.%s must not declare resource access", concept.Name, field.Name)
 		}
+		if len(field.Attributes) > 0 {
+			v.errorf("concept field %s.%s does not support attributes in SDSL-V M6", concept.Name, field.Name)
+		}
 		resolved := v.resolveAlias(field.Type)
 		switch resolved.Name {
 		case "u32", "i32", "bool", "f32", "float":
 		default:
 			v.errorf("concept field %s.%s must use a compile-time scalar type in SDSL-V M5", concept.Name, field.Name)
+		}
+	}
+	env := v.conceptRequirementEnv(concept)
+	for _, requirement := range concept.Requirements {
+		value, err := v.evalConstExpr(requirement.Expr, env)
+		if err != nil {
+			v.errorf("concept %s require %s: %v", concept.Name, requirement.Text, err)
+			continue
+		}
+		if value.typ.Name != "bool" {
+			v.errorf("concept %s require %s must evaluate to bool", concept.Name, requirement.Text)
 		}
 	}
 }
@@ -240,6 +262,39 @@ func (v *validator) validateConfig(config ast.ConfigDecl) {
 	cfg := v.configs[config.Name]
 	cfg.fields = values
 	v.configs[config.Name] = cfg
+	env := map[string]configValue{}
+	for name, value := range values {
+		env[name] = value
+	}
+	concept := v.concepts[config.ConceptName]
+	for _, requirement := range concept.Requirements {
+		value, err := v.evalConstExpr(requirement.Expr, env)
+		if err != nil {
+			v.errorf("config %s require %s: %v", config.Name, requirement.Text, err)
+			continue
+		}
+		if value.typ.Name != "bool" {
+			v.errorf("config %s require %s must evaluate to bool", config.Name, requirement.Text)
+			continue
+		}
+		if !value.boolVal {
+			v.errorf("config %s failed requirement %s", config.Name, requirement.Text)
+		}
+	}
+	for _, requirement := range config.Requirements {
+		value, err := v.evalConstExpr(requirement.Expr, env)
+		if err != nil {
+			v.errorf("config %s require %s: %v", config.Name, requirement.Text, err)
+			continue
+		}
+		if value.typ.Name != "bool" {
+			v.errorf("config %s require %s must evaluate to bool", config.Name, requirement.Text)
+			continue
+		}
+		if !value.boolVal {
+			v.errorf("config %s failed requirement %s", config.Name, requirement.Text)
+		}
+	}
 }
 
 func (v *validator) validateCompileDecl(decl ast.CompileDecl) {
@@ -269,6 +324,24 @@ func (v *validator) validateCompileDecl(decl ast.CompileDecl) {
 		v.errorf("compile config %s does not satisfy concept %s", decl.ConfigName, shader.Template.ConceptName)
 		return
 	}
+	env := map[string]configValue{}
+	for name, value := range config.fields {
+		env[shader.Template.Name+"."+name] = value
+	}
+	for _, staticAssert := range shader.StaticAsserts {
+		value, err := v.evalConstExpr(staticAssert.Expr, env)
+		if err != nil {
+			v.errorf("compile %s as %s static assert %s: %v", decl.ShaderName, decl.AliasName, staticAssert.Text, err)
+			continue
+		}
+		if value.typ.Name != "bool" {
+			v.errorf("compile %s as %s static assert %s must evaluate to bool", decl.ShaderName, decl.AliasName, staticAssert.Text)
+			continue
+		}
+		if !value.boolVal {
+			v.errorf("compile %s as %s failed static assert %s", decl.ShaderName, decl.AliasName, staticAssert.Text)
+		}
+	}
 	v.compileAliases[decl.AliasName] = struct{}{}
 }
 
@@ -293,9 +366,11 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 		if resource.Type.Name != "array" || len(resource.Type.Args) != 1 {
 			v.errorf("resource %s.%s must use array<T> in GoOct SDSL-V M3", shader.Name, resource.Name)
 		}
+		v.validateResourceAttributes(shader.Name, resource)
 		v.validateType(resource.Type)
 		v.resources[resource.Name] = resource
 	}
+	v.validateResourceBindings(shader.Name, resources)
 	workgroups := map[string]ast.WorkgroupDecl{}
 	for _, workgroup := range shader.Workgroups {
 		if _, exists := workgroups[workgroup.Name]; exists {
@@ -325,6 +400,28 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 			}
 		}
 		v.validateFunction(method, shader.Name, method.Stage, resources, shader.Workgroups, shader.Template)
+	}
+	for _, staticAssert := range shader.StaticAsserts {
+		typ := v.exprType(staticAssert.Expr, map[string]varInfo{}, shader.Name, shader.Template)
+		if typ.Name != "bool" && typ.Name != "<error>" {
+			v.errorf("shader %s static assert %s must evaluate to bool", shader.Name, staticAssert.Text)
+		}
+	}
+	if shader.Template == nil {
+		for _, staticAssert := range shader.StaticAsserts {
+			value, err := v.evalConstExpr(staticAssert.Expr, nil)
+			if err != nil {
+				v.errorf("shader %s static assert %s: %v", shader.Name, staticAssert.Text, err)
+				continue
+			}
+			if value.typ.Name != "bool" {
+				v.errorf("shader %s static assert %s must evaluate to bool", shader.Name, staticAssert.Text)
+				continue
+			}
+			if !value.boolVal {
+				v.errorf("shader %s failed static assert %s", shader.Name, staticAssert.Text)
+			}
+		}
 	}
 	v.resources = nil
 }
@@ -357,7 +454,7 @@ func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.Resource
 		if field.typ.Name != "array" || len(field.typ.Args) != 1 {
 			v.errorf("resource bundle %s field %s must use %s array<T>", shader.ResourceBundleName, name, field.access)
 		}
-		resources = append(resources, ast.ResourceDecl{Name: name, Access: field.access, Type: field.typ})
+		resources = append(resources, ast.ResourceDecl{Name: name, Access: field.access, Type: field.typ, Attributes: field.attributes})
 	}
 	return resources
 }
@@ -447,6 +544,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
 		}
 	case ast.ForStmt:
+		v.validateLoopAttributes(s.Attributes)
 		v.validateWithPlacement(s.Start, false)
 		v.validateWithPlacement(s.End, false)
 		v.validateWithPlacement(s.Step, false)
@@ -581,8 +679,16 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 	case ast.UnaryExpr:
 		operand := v.exprType(e.Operand, scope, shaderName, templateParam)
-		if !isNumeric(operand) {
-			v.errorf("unary %s requires numeric operand", e.Operator)
+		switch e.Operator {
+		case "!":
+			if operand.Name != "bool" {
+				v.errorf("unary ! requires bool operand")
+			}
+			return ast.TypeRef{Name: "bool"}
+		default:
+			if !isNumeric(operand) {
+				v.errorf("unary %s requires numeric operand", e.Operator)
+			}
 		}
 		return operand
 	case ast.ParenExpr:
@@ -910,111 +1016,108 @@ func typeName(ref ast.TypeRef) string {
 }
 
 func (v *validator) evalConstExpr(expr ast.Expr, env map[string]configValue) (configValue, error) {
-	switch e := expr.(type) {
-	case ast.IntegerLiteral:
-		value, err := strconv.ParseInt(strings.TrimRight(e.Value, "uU"), 10, 32)
-		if err != nil {
-			return configValue{}, fmt.Errorf("invalid integer literal %s", e.Value)
-		}
-		typ := ast.TypeRef{Name: "i32"}
-		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
-			typ = ast.TypeRef{Name: "u32"}
-		}
-		return configValue{typ: typ, int32: value}, nil
-	case ast.BoolLiteral:
-		return configValue{typ: ast.TypeRef{Name: "bool"}, boolVal: e.Value}, nil
-	case ast.FloatLiteral:
-		return configValue{}, fmt.Errorf("float constant expressions are not implemented in SDSL-V M5")
-	case ast.ParenExpr:
-		return v.evalConstExpr(e.Inner, env)
-	case ast.UnaryExpr:
-		value, err := v.evalConstExpr(e.Operand, env)
-		if err != nil {
-			return configValue{}, err
-		}
-		if e.Operator != "-" || !isInteger(value.typ) {
-			return configValue{}, fmt.Errorf("unsupported unary constant expression")
-		}
-		return configValue{typ: value.typ, int32: -value.int32}, nil
-	case ast.FieldAccessExpr:
-		id, ok := e.Target.(ast.IdentifierExpr)
-		if !ok || env == nil {
-			return configValue{}, fmt.Errorf("template config field references are not available here")
-		}
-		value, ok := env[id.Name+"."+e.Field]
-		if !ok {
-			return configValue{}, fmt.Errorf("unknown template field %s.%s", id.Name, e.Field)
-		}
-		return value, nil
-	case ast.BinaryExpr:
-		left, err := v.evalConstExpr(e.Left, env)
-		if err != nil {
-			return configValue{}, err
-		}
-		right, err := v.evalConstExpr(e.Right, env)
-		if err != nil {
-			return configValue{}, err
-		}
-		switch e.Operator {
-		case "+", "-", "*", "/", "%":
-			if !isInteger(left.typ) || !isInteger(right.typ) {
-				return configValue{}, fmt.Errorf("arithmetic constant expressions require integer operands")
-			}
-			if (e.Operator == "/" || e.Operator == "%") && right.int32 == 0 {
-				return configValue{}, fmt.Errorf("division by zero in constant expression")
-			}
-			out := configValue{typ: left.typ, int32: left.int32}
-			if left.typ.Name == "u32" || right.typ.Name == "u32" {
-				out.typ = ast.TypeRef{Name: "u32"}
-			}
-			switch e.Operator {
-			case "+":
-				out.int32 = left.int32 + right.int32
-			case "-":
-				out.int32 = left.int32 - right.int32
-			case "*":
-				out.int32 = left.int32 * right.int32
-			case "/":
-				out.int32 = left.int32 / right.int32
-			case "%":
-				out.int32 = left.int32 % right.int32
-			}
-			return out, nil
-		case "==", "!=", "<", "<=", ">", ">=":
-			if !isInteger(left.typ) || !isInteger(right.typ) {
-				return configValue{}, fmt.Errorf("comparison constant expressions require integer operands")
-			}
-			result := false
-			switch e.Operator {
-			case "==":
-				result = left.int32 == right.int32
-			case "!=":
-				result = left.int32 != right.int32
-			case "<":
-				result = left.int32 < right.int32
-			case "<=":
-				result = left.int32 <= right.int32
-			case ">":
-				result = left.int32 > right.int32
-			case ">=":
-				result = left.int32 >= right.int32
-			}
-			return configValue{typ: ast.TypeRef{Name: "bool"}, boolVal: result}, nil
-		case "&&", "||":
-			if left.typ.Name != "bool" || right.typ.Name != "bool" {
-				return configValue{}, fmt.Errorf("logical constant expressions require bool operands")
-			}
-			result := left.boolVal && right.boolVal
-			if e.Operator == "||" {
-				result = left.boolVal || right.boolVal
-			}
-			return configValue{typ: ast.TypeRef{Name: "bool"}, boolVal: result}, nil
-		default:
-			return configValue{}, fmt.Errorf("unsupported constant operator %s", e.Operator)
-		}
-	default:
-		return configValue{}, fmt.Errorf("expression is not a valid SDSL-V M5 constant expression")
+	ctEnv := map[string]consteval.Value{}
+	for key, value := range env {
+		ctEnv[key] = consteval.Value{Type: value.typ, Int32: value.int32, Bool: value.boolVal, IsKnown: true}
 	}
+	value, err := consteval.Eval(expr, ctEnv)
+	if err != nil {
+		return configValue{}, err
+	}
+	return configValue{typ: value.Type, int32: value.Int32, boolVal: value.Bool}, nil
+}
+
+func (v *validator) conceptRequirementEnv(concept ast.ConceptDecl) map[string]configValue {
+	env := map[string]configValue{}
+	for _, field := range concept.Fields {
+		resolved := v.resolveAlias(field.Type)
+		value := configValue{typ: resolved}
+		if resolved.Name == "bool" {
+			value.boolVal = true
+		} else {
+			value.int32 = 1
+		}
+		env[field.Name] = value
+	}
+	return env
+}
+
+func (v *validator) validateLoopAttributes(attributes []ast.Attribute) {
+	seenUnroll := false
+	seenLoop := false
+	for _, attr := range attributes {
+		if len(attr.Arguments) != 0 {
+			v.errorf("attribute [%s] does not take arguments", attr.Name)
+			continue
+		}
+		switch attr.Name {
+		case "unroll":
+			seenUnroll = true
+		case "loop":
+			seenLoop = true
+		default:
+			v.errorf("unknown attribute [%s]", attr.Name)
+		}
+	}
+	if seenUnroll && seenLoop {
+		v.errorf("loop cannot declare both [unroll] and [loop]")
+	}
+}
+
+func (v *validator) validateResourceAttributes(shaderName string, resource ast.ResourceDecl) {
+	for _, attr := range resource.Attributes {
+		switch attr.Name {
+		case "binding":
+			if len(attr.Arguments) != 1 {
+				v.errorf("resource %s.%s attribute [binding] expects exactly 1 argument", shaderName, resource.Name)
+				continue
+			}
+			lit, ok := attr.Arguments[0].(ast.IntegerLiteral)
+			if !ok {
+				v.errorf("resource %s.%s attribute [binding] requires a non-negative integer literal", shaderName, resource.Name)
+				continue
+			}
+			value, err := strconv.Atoi(strings.TrimRight(lit.Value, "uU"))
+			if err != nil || value < 0 {
+				v.errorf("resource %s.%s attribute [binding] requires a non-negative integer literal", shaderName, resource.Name)
+			}
+		default:
+			v.errorf("unknown attribute [%s] on resource %s.%s", attr.Name, shaderName, resource.Name)
+		}
+	}
+}
+
+func (v *validator) validateResourceBindings(shaderName string, resources []ast.ResourceDecl) {
+	seen := map[int]string{}
+	for _, resource := range resources {
+		binding, ok := explicitBinding(resource.Attributes)
+		if !ok {
+			continue
+		}
+		if prior, exists := seen[binding]; exists {
+			v.errorf("shader %s duplicate explicit binding %d on resources %s and %s", shaderName, binding, prior, resource.Name)
+			continue
+		}
+		seen[binding] = resource.Name
+	}
+}
+
+func explicitBinding(attributes []ast.Attribute) (int, bool) {
+	for _, attr := range attributes {
+		if attr.Name != "binding" || len(attr.Arguments) != 1 {
+			continue
+		}
+		lit, ok := attr.Arguments[0].(ast.IntegerLiteral)
+		if !ok {
+			return 0, false
+		}
+		value, err := strconv.Atoi(strings.TrimRight(lit.Value, "uU"))
+		if err != nil {
+			return 0, false
+		}
+		return value, true
+	}
+	return 0, false
 }
 
 func cloneScope(scope map[string]varInfo) map[string]varInfo {

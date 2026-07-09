@@ -46,6 +46,10 @@ func Dump(module Module) string {
 		if resource.BundleName != "" {
 			text += " bundle " + resource.BundleName
 		}
+		text += fmt.Sprintf(" binding(%d,%d)", resource.Binding.Binding, resource.Binding.Set)
+		if resource.Binding.Explicit {
+			text += " explicit"
+		}
 		line(0, text)
 	}
 	for _, workgroup := range module.Workgroups {
@@ -118,7 +122,11 @@ func dumpBlock(b *strings.Builder, indent int, block Block) {
 				dumpBlock(b, indent+1, *s.ElseBody)
 			}
 		case ForRangeStmt:
-			line(indent, fmt.Sprintf("for %s: %s in %s..%s step %s", s.Name, FormatType(s.Type), FormatExpr(s.Start), FormatExpr(s.End), FormatExpr(s.Step)))
+			hint := ""
+			if s.LoopHint != LoopHintNone {
+				hint = " [" + string(s.LoopHint) + "]"
+			}
+			line(indent, fmt.Sprintf("for%s %s: %s in %s..%s step %s", hint, s.Name, FormatType(s.Type), FormatExpr(s.Start), FormatExpr(s.End), FormatExpr(s.Step)))
 			dumpBlock(b, indent+1, s.Body)
 		}
 	}

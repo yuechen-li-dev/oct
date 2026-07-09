@@ -72,9 +72,18 @@ type WorkgroupMemoryDecl struct {
 }
 
 type Binding struct {
-	Set     int
-	Binding int
+	Set      int
+	Binding  int
+	Explicit bool
 }
+
+type LoopHint string
+
+const (
+	LoopHintNone   LoopHint = ""
+	LoopHintUnroll LoopHint = "unroll"
+	LoopHintLoop   LoopHint = "loop"
+)
 
 type ResourceAccess string
 
@@ -190,6 +199,7 @@ func (IfStmt) stmtNode() {}
 
 type ForRangeStmt struct {
 	Provenance Provenance
+	LoopHint   LoopHint
 	Name       string
 	Type       Type
 	Start      Expr

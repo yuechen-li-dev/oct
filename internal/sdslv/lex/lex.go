@@ -175,6 +175,7 @@ func (l *lexer) nextToken() (token.Token, error) {
 		if l.matchString("=") {
 			return token.Token{Kind: token.BangEqual, Lexeme: "!=", Line: line, Column: column}, nil
 		}
+		return token.Token{Kind: token.Bang, Lexeme: "!", Line: line, Column: column}, nil
 	}
 	return token.Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 }

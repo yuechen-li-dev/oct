@@ -238,8 +238,11 @@ if idx < params.Count {
 Tile[local] = A[idx];
 }
 WorkgroupMemoryBarrierWithSync();
+[unroll]
+for i in 0u..1u {
 if idx < params.Count {
 C[idx] = Tile[local];
+}
 }
 return;
 }
@@ -269,6 +272,40 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	lit, ok := letTileElements.Value.(vdmir.LiteralExpr)
 	if !ok || lit.Value != "256u" {
 		t.Fatalf("tileElements value = %#v, want 256u literal", letTileElements.Value)
+	}
+	loop, ok := cs.Body.Statements[5].(vdmir.ForRangeStmt)
+	if !ok || loop.LoopHint != vdmir.LoopHintUnroll {
+		t.Fatalf("stmt[5] = %#v, want unrolled for loop", cs.Body.Statements[5])
+	}
+}
+
+func TestModuleLowersLoopHintsAndExplicitBindings(t *testing.T) {
+	mir := lowerSource(t, `shader S {
+resources {
+[binding(2)] A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+[unroll]
+for i in 0u..1u {
+return;
+}
+return;
+}
+}`)
+	if mir.Resources[0].Binding.Binding != 2 || !mir.Resources[0].Binding.Explicit {
+		t.Fatalf("resource[0].Binding = %#v", mir.Resources[0].Binding)
+	}
+	if mir.Resources[1].Binding.Binding != 0 || mir.Resources[1].Binding.Explicit {
+		t.Fatalf("resource[1].Binding = %#v", mir.Resources[1].Binding)
+	}
+	cs := findFunction(t, mir, "S_CS")
+	loop, ok := cs.Body.Statements[0].(vdmir.ForRangeStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want ForRangeStmt", cs.Body.Statements[0])
+	}
+	if loop.LoopHint != vdmir.LoopHintUnroll {
+		t.Fatalf("loop hint = %q, want unroll", loop.LoopHint)
 	}
 }
 

@@ -164,9 +164,18 @@ func (p *parser) parseConcept() (ast.ConceptDecl, error) {
 		return ast.ConceptDecl{}, err
 	}
 	var fields []ast.Field
+	var requirements []ast.RequireStmt
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
 			return ast.ConceptDecl{}, p.errorAtCurrent("expected '}' to close concept")
+		}
+		if p.current().Kind == token.KeywordRequire {
+			requirement, err := p.parseRequireStmt()
+			if err != nil {
+				return ast.ConceptDecl{}, err
+			}
+			requirements = append(requirements, requirement)
+			continue
 		}
 		field, err := p.parseField()
 		if err != nil {
@@ -175,7 +184,7 @@ func (p *parser) parseConcept() (ast.ConceptDecl, error) {
 		fields = append(fields, field)
 	}
 	p.advance()
-	return ast.ConceptDecl{Name: name.Lexeme, Fields: fields}, nil
+	return ast.ConceptDecl{Name: name.Lexeme, Fields: fields, Requirements: requirements}, nil
 }
 
 func (p *parser) parseConfig() (ast.ConfigDecl, error) {
@@ -195,9 +204,18 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 		return ast.ConfigDecl{}, err
 	}
 	var fields []ast.ConfigField
+	var requirements []ast.RequireStmt
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
 			return ast.ConfigDecl{}, p.errorAtCurrent("expected '}' to close config")
+		}
+		if p.current().Kind == token.KeywordRequire {
+			requirement, err := p.parseRequireStmt()
+			if err != nil {
+				return ast.ConfigDecl{}, err
+			}
+			requirements = append(requirements, requirement)
+			continue
 		}
 		fieldName, err := p.expect(token.Identifier, "expected config field name")
 		if err != nil {
@@ -216,7 +234,7 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 		fields = append(fields, ast.ConfigField{Name: fieldName.Lexeme, Value: value})
 	}
 	p.advance()
-	return ast.ConfigDecl{Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields}, nil
+	return ast.ConfigDecl{Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields, Requirements: requirements}, nil
 }
 
 func (p *parser) parseEnum() (ast.EnumDecl, error) {
@@ -297,6 +315,12 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 			return ast.ShaderDecl{}, p.errorAtCurrent("expected '}' to close shader")
 		}
 		switch p.current().Kind {
+		case token.KeywordStatic:
+			staticAssert, err := p.parseStaticAssertStmt()
+			if err != nil {
+				return ast.ShaderDecl{}, err
+			}
+			shader.StaticAsserts = append(shader.StaticAsserts, staticAssert)
 		case token.KeywordResources:
 			resources, err := p.parseResources()
 			if err != nil {
@@ -408,6 +432,10 @@ func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 	}
 	var resources []ast.ResourceDecl
 	for p.current().Kind != token.RightBrace {
+		attributes, err := p.parseAttributes(ast.AttributePlacementField)
+		if err != nil {
+			return nil, err
+		}
 		name, err := p.expect(token.Identifier, "expected resource name")
 		if err != nil {
 			return nil, err
@@ -431,7 +459,7 @@ func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after resource"); err != nil {
 			return nil, err
 		}
-		resources = append(resources, ast.ResourceDecl{Name: name.Lexeme, Access: access, Type: ref})
+		resources = append(resources, ast.ResourceDecl{Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes})
 	}
 	p.advance()
 	return resources, nil
@@ -576,6 +604,16 @@ func (p *parser) parseBlock() (ast.Block, error) {
 }
 
 func (p *parser) parseStmt() (ast.Stmt, error) {
+	if p.current().Kind == token.LeftBracket {
+		attributes, err := p.parseAttributes(ast.AttributePlacementStmt)
+		if err != nil {
+			return nil, err
+		}
+		if p.current().Kind != token.KeywordFor {
+			return nil, p.errorAtCurrent("statement attributes currently apply only to for loops")
+		}
+		return p.parseFor(attributes)
+	}
 	switch p.current().Kind {
 	case token.KeywordLet:
 		return p.parseLet()
@@ -584,7 +622,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 	case token.KeywordIf:
 		return p.parseIf()
 	case token.KeywordFor:
-		return p.parseFor()
+		return p.parseFor(nil)
 	default:
 		left, err := p.parseExpression()
 		if err != nil {
@@ -669,7 +707,7 @@ func (p *parser) parseIf() (ast.IfStmt, error) {
 	return ast.IfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
 }
 
-func (p *parser) parseFor() (ast.ForStmt, error) {
+func (p *parser) parseFor(attributes []ast.Attribute) (ast.ForStmt, error) {
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected for loop variable")
 	if err != nil {
@@ -700,7 +738,7 @@ func (p *parser) parseFor() (ast.ForStmt, error) {
 	if err != nil {
 		return ast.ForStmt{}, err
 	}
-	return ast.ForStmt{Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
+	return ast.ForStmt{Attributes: attributes, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
 }
 
 func (p *parser) parseExpression() (ast.Expr, error) {
@@ -775,7 +813,7 @@ func (p *parser) parseBinary(minPrec int, stopAtRightAngle bool) (ast.Expr, erro
 }
 
 func (p *parser) parseUnary() (ast.Expr, error) {
-	if p.current().Kind == token.Minus {
+	if p.current().Kind == token.Minus || p.current().Kind == token.Bang {
 		op := p.current().Lexeme
 		p.advance()
 		operand, err := p.parseUnary()
@@ -950,6 +988,10 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 }
 
 func (p *parser) parseField() (ast.Field, error) {
+	attributes, err := p.parseAttributes(ast.AttributePlacementField)
+	if err != nil {
+		return ast.Field{}, err
+	}
 	name, err := p.expect(token.Identifier, "expected field name")
 	if err != nil {
 		return ast.Field{}, err
@@ -970,7 +1012,88 @@ func (p *parser) parseField() (ast.Field, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after field"); err != nil {
 		return ast.Field{}, err
 	}
-	return ast.Field{Name: name.Lexeme, Access: access, Type: ref}, nil
+	return ast.Field{Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes}, nil
+}
+
+func (p *parser) parseRequireStmt() (ast.RequireStmt, error) {
+	if _, err := p.expect(token.KeywordRequire, "expected require"); err != nil {
+		return ast.RequireStmt{}, err
+	}
+	start := p.position
+	expr, err := p.parseExpression()
+	if err != nil {
+		return ast.RequireStmt{}, err
+	}
+	text := p.exprText(start, p.position)
+	if _, err := p.expect(token.Semicolon, "expected ';' after require"); err != nil {
+		return ast.RequireStmt{}, err
+	}
+	return ast.RequireStmt{Expr: expr, Text: text}, nil
+}
+
+func (p *parser) parseStaticAssertStmt() (ast.StaticAssertStmt, error) {
+	if _, err := p.expect(token.KeywordStatic, "expected static"); err != nil {
+		return ast.StaticAssertStmt{}, err
+	}
+	if _, err := p.expect(token.KeywordAssert, "expected assert after static"); err != nil {
+		return ast.StaticAssertStmt{}, err
+	}
+	start := p.position
+	expr, err := p.parseExpression()
+	if err != nil {
+		return ast.StaticAssertStmt{}, err
+	}
+	text := p.exprText(start, p.position)
+	if _, err := p.expect(token.Semicolon, "expected ';' after static assert"); err != nil {
+		return ast.StaticAssertStmt{}, err
+	}
+	return ast.StaticAssertStmt{Expr: expr, Text: text}, nil
+}
+
+func (p *parser) parseAttributes(placement ast.AttributePlacement) ([]ast.Attribute, error) {
+	var attributes []ast.Attribute
+	for p.current().Kind == token.LeftBracket {
+		left := p.current()
+		p.advance()
+		name, err := p.expect(token.Identifier, "expected attribute name")
+		if err != nil {
+			return nil, err
+		}
+		attr := ast.Attribute{Name: name.Lexeme, Placement: placement, Line: left.Line, Column: left.Column}
+		if p.match(token.LeftParen) {
+			if p.current().Kind != token.RightParen {
+				for {
+					arg, err := p.parseExpression()
+					if err != nil {
+						return nil, err
+					}
+					attr.Arguments = append(attr.Arguments, arg)
+					if !p.match(token.Comma) {
+						break
+					}
+				}
+			}
+			if _, err := p.expect(token.RightParen, "expected ')' after attribute arguments"); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := p.expect(token.RightBracket, "expected ']' after attribute"); err != nil {
+			return nil, err
+		}
+		attributes = append(attributes, attr)
+	}
+	return attributes, nil
+}
+
+func (p *parser) exprText(start, end int) string {
+	parts := make([]string, 0, end-start)
+	for i := start; i < end && i < len(p.tokens); i++ {
+		if p.tokens[i].Kind == token.EOF {
+			break
+		}
+		parts = append(parts, p.tokens[i].Lexeme)
+	}
+	return strings.Join(parts, " ")
 }
 
 func (p *parser) parsePath() (string, error) {

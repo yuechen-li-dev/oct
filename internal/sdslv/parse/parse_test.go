@@ -145,6 +145,73 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	}
 }
 
+func TestBuildModuleParsesRequirementsStaticAssertsAndAttributes(t *testing.T) {
+	module := parseTestModule(t, `stream IO {
+[binding(0)] A: readonly array<f32>;
+[binding(3)] C: readwrite array<f32>;
+}
+concept TileConfig {
+TILE_SIZE: u32;
+require TILE_SIZE > 0u;
+}
+config Tile16: TileConfig {
+TILE_SIZE: 16u;
+require TILE_SIZE <= 1024u;
+}
+template<C: TileConfig>
+shader TileCopy {
+resources IO;
+static assert C.TILE_SIZE <= 1024u;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+[unroll]
+for i in 0u..C.TILE_SIZE {
+return;
+}
+return;
+}
+}
+compile TileCopy<Tile16> as TileCopy16;`)
+	concept := module.Decls[1].(ast.ConceptDecl)
+	if got := len(concept.Requirements); got != 1 {
+		t.Fatalf("len(Requirements) = %d, want 1", got)
+	}
+	config := module.Decls[2].(ast.ConfigDecl)
+	if got := len(config.Requirements); got != 1 {
+		t.Fatalf("len(config.Requirements) = %d, want 1", got)
+	}
+	shader := module.Decls[3].(ast.ShaderDecl)
+	if got := len(shader.StaticAsserts); got != 1 {
+		t.Fatalf("len(StaticAsserts) = %d, want 1", got)
+	}
+	loop, ok := shader.Methods[0].Body.Statements[0].(ast.ForStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want ForStmt", shader.Methods[0].Body.Statements[0])
+	}
+	if got := len(loop.Attributes); got != 1 {
+		t.Fatalf("len(loop.Attributes) = %d, want 1", got)
+	}
+	stream := module.Decls[0].(ast.StreamDecl)
+	if got := len(stream.Fields[0].Attributes); got != 1 {
+		t.Fatalf("len(field.Attributes) = %d, want 1", got)
+	}
+}
+
+func TestBuildModuleRejectsAttributeOnNonForStatement(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+[unroll]
+return;
+}
+}`})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	_, err = BuildModule(tokens)
+	if err == nil {
+		t.Fatalf("BuildModule() error = nil, want rejection")
+	}
+}
+
 func parseTestModule(t *testing.T, text string) ast.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

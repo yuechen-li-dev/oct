@@ -173,7 +173,10 @@ let idx: u32 = thread.DispatchId.x;
 let local: u32 = thread.GroupIndex;
 if idx < params.Count { Tile[local] = A[idx]; }
 WorkgroupMemoryBarrierWithSync();
+[unroll]
+for i in 0u..1u {
 if idx < params.Count { C[idx] = Tile[local]; }
+}
 return;
 }
 }
@@ -182,6 +185,7 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`
 	for _, want := range []string{
 		"[numthreads(16, 16, 1)]",
 		"groupshared float Tile[256];",
+		"[unroll]",
 		"void TileCopy16x16_CS(",
 	} {
 		if !strings.Contains(out, want) {
@@ -190,6 +194,33 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`
 	}
 	if strings.Contains(out, "void TileCopy_CS(") {
 		t.Fatalf("template entry point should not be emitted:\n%s", out)
+	}
+}
+
+func TestEmitLoopHintsAndExplicitBindingsFromVDMIR(t *testing.T) {
+	text := `shader S {
+resources {
+[binding(2)] A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+[loop]
+for i in 0u..1u {
+return;
+}
+return;
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"[[vk::binding(2, 0)]] Buffer<float> A;",
+		"[[vk::binding(0, 0)]] RWBuffer<float> C;",
+		"[loop]",
+		"for (uint i = 0u; i < 1u; i += 1)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
 	}
 }
 

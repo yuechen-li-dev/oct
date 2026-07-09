@@ -91,8 +91,15 @@ M5 intentionally does not add:
 - concept methods or inheritance
 - payload enums
 - tensor notation
-- static asserts
 - SGEMM kernels themselves
+
+M6 extends this model with:
+
+- concept/config `require` constraints;
+- shader-scope `static assert`;
+- backend attributes such as `[unroll]`, `[loop]`, and `[binding(n)]`.
+
+See `docs/SDSL_V_M6_REQUIREMENTS_ATTRIBUTES.md`.
 
 ## Examples
 

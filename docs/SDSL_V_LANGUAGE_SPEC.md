@@ -41,8 +41,8 @@ Current GoOct SDSL-V accepts these top-level declaration kinds:
 | `type` | `type Name = TypeRef @space(...);` | Type alias, optionally space-annotated |
 | `record` | `record Name { fields }` | Plain aggregate struct (no stage semantics) |
 | `stream` | `stream Name { fields }` | Stage I/O struct (auto-assigned HLSL semantics) |
-| `concept` | `concept Name { FIELD: Type; }` | Compile-time config schema |
-| `config` | `config Name: ConceptName { FIELD: const_expr; }` | Concrete compile-time config values |
+| `concept` | `concept Name { FIELD: Type; require expr; }` | Compile-time config schema and constraints |
+| `config` | `config Name: ConceptName { FIELD: const_expr; require expr; }` | Concrete compile-time config values |
 | `interface` | `interface Name { fn signatures }` | Abstract method contract |
 | `template` + `shader` | `template<C: Concept> shader Name { ... }` | Compile-time specialized shader template |
 | `shader` | `shader Name { ... }` | Concrete shader program |
@@ -212,6 +212,14 @@ Current M5 rules:
 - template shaders do not emit directly;
 - `compile` declarations monomorphize template shaders before VD-MIR lowering.
 
+Current M6 additions:
+
+- `require expr;` inside concepts and configs for compile-time constraints;
+- `static assert expr;` at shader scope inside template shaders;
+- compile-time expression support for arithmetic, comparisons, boolean operators, modulo, and config-field references;
+- loop attributes `[unroll]` and `[loop]`;
+- resource binding attributes `[binding(n)]`.
+
 ### Shader
 
 A shader is the core program unit. It may be generic, implement interfaces, and contain methods and stage methods.
@@ -257,6 +265,20 @@ Current M4 rules:
 - current type shape is fixed-size `array<T, N>`;
 - runtime-sized arrays and initializers are rejected;
 - the HLSL backend lowers `workgroup` to `groupshared`.
+
+GoOct M6 also adds backend-hint attributes in the compute subset:
+
+```sdslv
+stream TileCopyIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+[unroll]
+for i in 0u..1u {
+    return;
+}
+```
 
 **Non-stage methods** — ordinary helper methods. Emit as `ShaderName_MethodName` HLSL functions. Not emitted as DXC entry points.
 

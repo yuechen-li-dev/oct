@@ -317,6 +317,104 @@ compile TileCopy<Tile16> as TileCopy16;`)
 	}
 }
 
+func TestModuleValidatesConceptRequirementsAndStaticAsserts(t *testing.T) {
+	err := validateSource(`stream IO {
+[binding(0)] A: readonly array<f32>;
+[binding(1)] C: readwrite array<f32>;
+}
+concept TileConfig {
+THREADS_X: u32;
+THREADS_Y: u32;
+TILE_SIZE: u32;
+require THREADS_X > 0u;
+require TILE_SIZE == THREADS_X * THREADS_Y;
+}
+config Tile16x16: TileConfig {
+THREADS_X: 16u;
+THREADS_Y: 16u;
+TILE_SIZE: 256u;
+}
+template<C: TileConfig>
+shader TileCopy {
+resources IO;
+static assert C.TILE_SIZE <= 1024u;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+[unroll]
+for i in 0u..1u { return; }
+return;
+}
+}
+compile TileCopy<Tile16x16> as TileCopy16x16;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsFailedConceptRequirement(t *testing.T) {
+	err := validateSource(`concept TileConfig {
+TILE_SIZE: u32;
+require TILE_SIZE > 0u;
+}
+config Bad: TileConfig {
+TILE_SIZE: 0u;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "failed requirement") {
+		t.Fatalf("error = %v, want failed requirement", err)
+	}
+}
+
+func TestModuleRejectsStaticAssertFailure(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_SIZE: u32; }
+config Tile16: TileConfig { TILE_SIZE: 2048u; }
+template<C: TileConfig>
+shader TileCopy {
+static assert C.TILE_SIZE <= 1024u;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err == nil || !strings.Contains(err.Error(), "failed static assert") {
+		t.Fatalf("error = %v, want failed static assert", err)
+	}
+}
+
+func TestModuleRejectsConflictingLoopAttributes(t *testing.T) {
+	err := validateSource(`shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+[unroll][loop]
+for i in 0u..1u { return; }
+return;
+}
+}`)
+	if err == nil || !strings.Contains(err.Error(), "both [unroll] and [loop]") {
+		t.Fatalf("error = %v, want loop attribute conflict", err)
+	}
+}
+
+func TestModuleRejectsDuplicateExplicitBindings(t *testing.T) {
+	err := validateSource(`shader S {
+resources {
+[binding(0)] A: readonly array<f32>;
+[binding(0)] C: readwrite array<f32>;
+}
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}`)
+	if err == nil || !strings.Contains(err.Error(), "duplicate explicit binding 0") {
+		t.Fatalf("error = %v, want duplicate binding diagnostic", err)
+	}
+}
+
+func TestModuleRejectsUnknownAttribute(t *testing.T) {
+	err := validateSource(`shader S {
+resources {
+[mystery] A: readonly array<f32>;
+}
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown attribute") {
+		t.Fatalf("error = %v, want unknown attribute diagnostic", err)
+	}
+}
+
 func validateSource(text string) error {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})
 	if err != nil {

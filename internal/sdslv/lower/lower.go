@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/consteval"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 )
 
@@ -59,13 +60,14 @@ func Module(module ast.Module) (vdmir.Module, error) {
 				return vdmir.Module{}, err
 			}
 			for i, resource := range resources {
+				binding := resolveResourceBinding(resources, i)
 				out.Resources = append(out.Resources, vdmir.Resource{
 					Provenance:  l.provenance,
 					BundleName:  bundleName,
 					Name:        resource.Name,
 					ElementType: l.lowerResourceElementType(resource.Type),
 					Access:      lowerResourceAccess(resource.Access),
-					Binding:     vdmir.Binding{Set: 0, Binding: i},
+					Binding:     binding,
 				})
 			}
 			for _, workgroup := range d.Workgroups {
@@ -251,7 +253,7 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 		if err != nil {
 			return nil, err
 		}
-		return ast.ForStmt{Name: s.Name, Start: specializeExpr(s.Start, env), End: specializeExpr(s.End, env), Step: specializeExpr(s.Step, env), Body: body}, nil
+		return ast.ForStmt{Attributes: append([]ast.Attribute(nil), s.Attributes...), Name: s.Name, Start: specializeExpr(s.Start, env), End: specializeExpr(s.End, env), Step: specializeExpr(s.Step, env), Body: body}, nil
 	default:
 		return stmt, nil
 	}
@@ -332,83 +334,19 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 }
 
 func evalSpecializeConstExpr(expr ast.Expr, env map[string]specializeValue) (specializeValue, error) {
-	switch e := expr.(type) {
-	case ast.IntegerLiteral:
-		value, err := strconv.ParseInt(strings.TrimRight(e.Value, "uU"), 10, 32)
-		if err != nil {
-			return specializeValue{}, err
-		}
-		typ := ast.TypeRef{Name: "i32"}
-		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
-			typ = ast.TypeRef{Name: "u32"}
-		}
-		return specializeValue{typ: typ, int32: value}, nil
-	case ast.BoolLiteral:
-		return specializeValue{typ: ast.TypeRef{Name: "bool"}, boolVal: e.Value}, nil
-	case ast.ParenExpr:
-		return evalSpecializeConstExpr(e.Inner, env)
-	case ast.UnaryExpr:
-		value, err := evalSpecializeConstExpr(e.Operand, env)
-		if err != nil {
-			return specializeValue{}, err
-		}
-		if e.Operator != "-" {
-			return specializeValue{}, fmt.Errorf("unsupported constant operator %s", e.Operator)
-		}
-		value.int32 = -value.int32
-		return value, nil
-	case ast.FieldAccessExpr:
-		id, ok := e.Target.(ast.IdentifierExpr)
-		if !ok {
-			return specializeValue{}, fmt.Errorf("unsupported constant field access")
-		}
-		value, ok := env[id.Name+"."+e.Field]
-		if !ok {
-			return specializeValue{}, fmt.Errorf("unknown template constant %s.%s", id.Name, e.Field)
-		}
-		return value, nil
-	case ast.BinaryExpr:
-		left, err := evalSpecializeConstExpr(e.Left, env)
-		if err != nil {
-			return specializeValue{}, err
-		}
-		right, err := evalSpecializeConstExpr(e.Right, env)
-		if err != nil {
-			return specializeValue{}, err
-		}
-		out := specializeValue{typ: left.typ}
-		if left.typ.Name == "u32" || right.typ.Name == "u32" {
-			out.typ = ast.TypeRef{Name: "u32"}
-		}
-		switch e.Operator {
-		case "+":
-			out.int32 = left.int32 + right.int32
-		case "-":
-			out.int32 = left.int32 - right.int32
-		case "*":
-			out.int32 = left.int32 * right.int32
-		case "/":
-			out.int32 = left.int32 / right.int32
-		case "%":
-			out.int32 = left.int32 % right.int32
-		default:
-			return specializeValue{}, fmt.Errorf("unsupported constant operator %s", e.Operator)
-		}
-		return out, nil
-	default:
-		return specializeValue{}, fmt.Errorf("expression is not a concrete constant expression")
+	ctEnv := map[string]consteval.Value{}
+	for key, value := range env {
+		ctEnv[key] = consteval.Value{Type: value.typ, Int32: value.int32, Bool: value.boolVal, IsKnown: true}
 	}
+	value, err := consteval.Eval(expr, ctEnv)
+	if err != nil {
+		return specializeValue{}, err
+	}
+	return specializeValue{typ: value.Type, int32: value.Int32, boolVal: value.Bool}, nil
 }
 
 func literalExprForValue(value specializeValue) ast.Expr {
-	if value.typ.Name == "bool" {
-		return ast.BoolLiteral{Value: value.boolVal}
-	}
-	text := strconv.FormatInt(value.int32, 10)
-	if value.typ.Name == "u32" {
-		text += "u"
-	}
-	return ast.IntegerLiteral{Value: text}
+	return consteval.LiteralExpr(consteval.Value{Type: value.typ, Int32: value.int32, Bool: value.boolVal, IsKnown: true})
 }
 
 func mustConcreteInt(expr ast.Expr) int {
@@ -420,8 +358,9 @@ func mustConcreteInt(expr ast.Expr) int {
 }
 
 type fieldInfo struct {
-	access string
-	typ    ast.TypeRef
+	access     string
+	typ        ast.TypeRef
+	attributes []ast.Attribute
 }
 
 type typeInfo struct {
@@ -677,6 +616,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		}
 		return vdmir.ForRangeStmt{
 			Provenance: l.provenance,
+			LoopHint:   lowerLoopHint(s.Attributes),
 			Name:       s.Name,
 			Type:       loopType,
 			Start:      start,
@@ -1187,9 +1127,72 @@ func cloneScope(scope map[string]binding) map[string]binding {
 func collectFields(fields []ast.Field) map[string]fieldInfo {
 	out := make(map[string]fieldInfo, len(fields))
 	for _, field := range fields {
-		out[field.Name] = fieldInfo{access: field.Access, typ: field.Type}
+		out[field.Name] = fieldInfo{access: field.Access, typ: field.Type, attributes: field.Attributes}
 	}
 	return out
+}
+
+func lowerLoopHint(attributes []ast.Attribute) vdmir.LoopHint {
+	for _, attr := range attributes {
+		switch attr.Name {
+		case "unroll":
+			return vdmir.LoopHintUnroll
+		case "loop":
+			return vdmir.LoopHintLoop
+		}
+	}
+	return vdmir.LoopHintNone
+}
+
+func resolveResourceBinding(resources []ast.ResourceDecl, index int) vdmir.Binding {
+	used := map[int]struct{}{}
+	for _, resource := range resources {
+		if binding, ok := explicitBinding(resource.Attributes); ok {
+			used[binding] = struct{}{}
+		}
+	}
+	resource := resources[index]
+	if binding, ok := explicitBinding(resource.Attributes); ok {
+		return vdmir.Binding{Set: 0, Binding: binding, Explicit: true}
+	}
+	next := 0
+	for i := 0; i < index; i++ {
+		if binding, ok := explicitBinding(resources[i].Attributes); ok {
+			used[binding] = struct{}{}
+			continue
+		}
+		for {
+			if _, exists := used[next]; !exists {
+				used[next] = struct{}{}
+				break
+			}
+			next++
+		}
+	}
+	for {
+		if _, exists := used[next]; !exists {
+			return vdmir.Binding{Set: 0, Binding: next}
+		}
+		next++
+	}
+}
+
+func explicitBinding(attributes []ast.Attribute) (int, bool) {
+	for _, attr := range attributes {
+		if attr.Name != "binding" || len(attr.Arguments) != 1 {
+			continue
+		}
+		lit, ok := attr.Arguments[0].(ast.IntegerLiteral)
+		if !ok {
+			return 0, false
+		}
+		value, err := strconv.Atoi(strings.TrimRight(lit.Value, "uU"))
+		if err != nil {
+			return 0, false
+		}
+		return value, true
+	}
+	return 0, false
 }
 
 func sortStrings(values []string) {

@@ -44,6 +44,9 @@ const (
 	KeywordConcept   Kind = "KeywordConcept"
 	KeywordConfig    Kind = "KeywordConfig"
 	KeywordTemplate  Kind = "KeywordTemplate"
+	KeywordRequire   Kind = "KeywordRequire"
+	KeywordStatic    Kind = "KeywordStatic"
+	KeywordAssert    Kind = "KeywordAssert"
 	KeywordVertex    Kind = "KeywordVertex"
 	KeywordPixel     Kind = "KeywordPixel"
 
@@ -69,6 +72,7 @@ const (
 	Percent      Kind = "Percent"
 	AndAnd       Kind = "AndAnd"
 	OrOr         Kind = "OrOr"
+	Bang         Kind = "Bang"
 	BangEqual    Kind = "BangEqual"
 	EqualEqual   Kind = "EqualEqual"
 	LeftEqual    Kind = "LeftEqual"
@@ -152,6 +156,12 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordConfig
 	case "template":
 		return KeywordTemplate
+	case "require":
+		return KeywordRequire
+	case "static":
+		return KeywordStatic
+	case "assert":
+		return KeywordAssert
 	case "vertex":
 		return KeywordVertex
 	case "pixel":

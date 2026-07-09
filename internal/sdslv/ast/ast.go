@@ -16,6 +16,21 @@ type TemplateParam struct {
 	ConceptName string
 }
 
+type AttributePlacement string
+
+const (
+	AttributePlacementField AttributePlacement = "field"
+	AttributePlacementStmt  AttributePlacement = "stmt"
+)
+
+type Attribute struct {
+	Name      string
+	Arguments []Expr
+	Placement AttributePlacement
+	Line      int
+	Column    int
+}
+
 type TypeAliasDecl struct {
 	Name string
 	Type TypeRef
@@ -38,8 +53,9 @@ type StreamDecl struct {
 func (StreamDecl) declNode() {}
 
 type ConceptDecl struct {
-	Name   string
-	Fields []Field
+	Name         string
+	Fields       []Field
+	Requirements []RequireStmt
 }
 
 func (ConceptDecl) declNode() {}
@@ -53,6 +69,7 @@ type ConfigDecl struct {
 	Name        string
 	ConceptName string
 	Fields      []ConfigField
+	Requirements []RequireStmt
 }
 
 func (ConfigDecl) declNode() {}
@@ -70,6 +87,7 @@ type ShaderDecl struct {
 	ResourceBundleName string
 	Resources          []ResourceDecl
 	Workgroups         []WorkgroupDecl
+	StaticAsserts      []StaticAssertStmt
 	Methods            []FunctionDecl
 }
 
@@ -107,9 +125,10 @@ type NumThreads struct {
 }
 
 type ResourceDecl struct {
-	Name   string
-	Access string
-	Type   TypeRef
+	Name       string
+	Access     string
+	Type       TypeRef
+	Attributes []Attribute
 }
 
 type WorkgroupDecl struct {
@@ -118,9 +137,10 @@ type WorkgroupDecl struct {
 }
 
 type Field struct {
-	Name   string
-	Access string
-	Type   TypeRef
+	Name       string
+	Access     string
+	Type       TypeRef
+	Attributes []Attribute
 }
 
 type Parameter struct {
@@ -190,14 +210,25 @@ type IfStmt struct {
 func (IfStmt) stmtNode() {}
 
 type ForStmt struct {
-	Name  string
-	Start Expr
-	End   Expr
-	Step  Expr
-	Body  Block
+	Attributes []Attribute
+	Name       string
+	Start      Expr
+	End        Expr
+	Step       Expr
+	Body       Block
 }
 
 func (ForStmt) stmtNode() {}
+
+type RequireStmt struct {
+	Expr Expr
+	Text string
+}
+
+type StaticAssertStmt struct {
+	Expr Expr
+	Text string
+}
 
 type Expr interface{ exprNode() }
 

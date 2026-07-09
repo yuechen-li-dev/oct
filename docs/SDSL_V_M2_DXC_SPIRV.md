@@ -110,7 +110,7 @@ Two small backend changes were needed so DXC accepts the M0 compute subset:
 The current binding policy is deliberately provisional M2 policy:
 
 - all resources use set `0`
-- bindings are assigned in shader resource declaration order
+- bindings are assigned deterministically, with later M6 support for explicit `[binding(n)]` overrides and implicit next-free assignment for unannotated resources
 - the single compute parameter record is lowered as a push constant
 
 This is enough for deterministic toolchain generation and the `VectorAdd` proof. Full binding policy remains deferred.
