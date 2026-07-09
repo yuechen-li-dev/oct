@@ -581,6 +581,15 @@ enum {
   PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED = 6u,
 };
 
+enum {
+  PROM_SGEMM_RESIDENT_MODE_PRODUCTION_SELECTOR = 0u,
+  PROM_SGEMM_RESIDENT_MODE_EXPLICIT_VARIANT = 1u,
+};
+
+enum {
+  PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK = 1u << 0,
+};
+
 typedef struct PrometheusCaps {
   uint32_t available;
   uint32_t backend_type;
@@ -602,6 +611,48 @@ typedef struct PrometheusAsyncStatus {
   uint32_t consumed;
   uint32_t outstanding_tasks;
 } PrometheusAsyncStatus;
+
+typedef struct PrometheusSgemmResidentBenchmarkRequest {
+  uint32_t struct_size;
+  const float* a;
+  const float* b;
+  float* c;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t mode;
+  uint32_t requested_variant;
+  uint32_t warmup_iterations;
+  uint32_t iterations;
+  uint32_t flags;
+} PrometheusSgemmResidentBenchmarkRequest;
+
+typedef struct PrometheusSgemmResidentBenchmarkResult {
+  uint32_t struct_size;
+  uint32_t resident_mode_available;
+  uint32_t resident_mode_used;
+  uint32_t requested_variant;
+  uint32_t production_selected_variant;
+  uint32_t executed_variant;
+  uint32_t executed_compute_mode;
+  uint32_t setup_stage;
+  int32_t setup_detail_code;
+  uint32_t final_stage;
+  int32_t final_detail_code;
+  uint32_t iterations;
+  uint32_t gpu_timestamp_valid;
+  uint32_t gpu_timing_failure_reason;
+  uint64_t setup_wall_ns;
+  uint64_t upload_once_wall_ns;
+  uint64_t total_loop_wall_ns;
+  uint64_t kernel_min_ns;
+  uint64_t kernel_median_ns;
+  uint64_t kernel_p95_ns;
+  uint64_t readback_once_wall_ns;
+  uint64_t validation_wall_ns;
+  uint64_t dispatch_submit_wall_ns_median;
+  uint64_t sync_wait_wall_ns_median;
+} PrometheusSgemmResidentBenchmarkResult;
 
 typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t current_mode;
@@ -1079,6 +1130,10 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_benchmark_variant(void* ha
                                                                          uint32_t requested_variant,
                                                                          uint32_t* out_stage,
                                                                          int* out_detail_code);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_resident_benchmark(
+    void* handle,
+    const PrometheusSgemmResidentBenchmarkRequest* request,
+    PrometheusSgemmResidentBenchmarkResult* out_result);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch(void* handle,
                                                             const PrometheusSgemmBatchEntry* entries,
                                                             uint32_t entry_count,

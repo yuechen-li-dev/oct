@@ -6730,6 +6730,582 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   return PROM_ERROR;
 }
 
+static int prom_compare_u64(const void* left, const void* right) {
+  const uint64_t a = *(const uint64_t*)left;
+  const uint64_t b = *(const uint64_t*)right;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
+static uint64_t prom_percentile_u64(uint64_t* samples, uint32_t count, uint32_t numerator, uint32_t denominator) {
+  uint64_t scaled;
+  uint32_t index;
+  if (samples == NULL || count == 0u || denominator == 0u) {
+    return 0u;
+  }
+  qsort(samples, count, sizeof(uint64_t), prom_compare_u64);
+  scaled = ((uint64_t)(count - 1u) * (uint64_t)numerator + (uint64_t)(denominator - 1u)) / (uint64_t)denominator;
+  index = scaled > (uint64_t)(count - 1u) ? count - 1u : (uint32_t)scaled;
+  return samples[index];
+}
+
+static VkPipeline prom_sgemm_pipeline_for_resident_dispatch(prometheus_runtime* rt, uint32_t compute_mode, uint32_t variant) {
+  if (rt == NULL) {
+    return VK_NULL_HANDLE;
+  }
+  if (compute_mode == PROM_VK_COMPUTE_TILED) {
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+      return rt->memory_conservative_pipeline;
+    }
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+      return rt->srt_2accum_k_pipeline;
+    }
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+      return rt->b2x2_row_major_biased_pipeline;
+    }
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+      return rt->a2x4_row_biased_accum8_pipeline;
+    }
+    return rt->tiled_pipeline;
+  }
+  if (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32) {
+    return rt->packed4_pipeline;
+  }
+  if (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+    return rt->fp16_pipeline;
+  }
+  return rt->pipeline;
+}
+
+static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
+                                             uint32_t m,
+                                             uint32_t n,
+                                             uint32_t compute_k,
+                                             uint32_t compute_mode,
+                                             uint32_t variant,
+                                             uint32_t* out_stage,
+                                             int* out_detail_code) {
+  VkWriteDescriptorSet writes[3];
+  VkDescriptorBufferInfo buffer_infos[3];
+  VkCommandBufferBeginInfo begin_info;
+  VkSubmitInfo submit_info;
+  VkBufferMemoryBarrier barrier;
+  prom_vk_push push;
+  VkPipeline pipeline;
+  VkResult vk_result;
+  uint64_t dispatch_submit_begin_ns;
+  uint64_t dispatch_submit_end_ns;
+  uint64_t sync_wait_begin_ns;
+  uint64_t sync_wait_end_ns;
+
+  if (rt == NULL || rt->has_staged_buffers == 0u ||
+      rt->staged_device_a.buffer == VK_NULL_HANDLE ||
+      rt->staged_device_b.buffer == VK_NULL_HANDLE ||
+      rt->staged_device_c.buffer == VK_NULL_HANDLE) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  pipeline = prom_sgemm_pipeline_for_resident_dispatch(rt, compute_mode, variant);
+  if (pipeline == VK_NULL_HANDLE) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_ERROR);
+    return PROM_ERROR;
+  }
+
+  memset(buffer_infos, 0, sizeof(buffer_infos));
+  buffer_infos[0].buffer = rt->staged_device_a.buffer;
+  buffer_infos[0].range = rt->staged_device_a.size;
+  buffer_infos[1].buffer = rt->staged_device_b.buffer;
+  buffer_infos[1].range = rt->staged_device_b.size;
+  buffer_infos[2].buffer = rt->staged_device_c.buffer;
+  buffer_infos[2].range = rt->staged_device_c.size;
+  memset(writes, 0, sizeof(writes));
+  writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  writes[0].dstSet = rt->descriptor_set;
+  writes[0].dstBinding = 0u;
+  writes[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+  writes[0].descriptorCount = 1u;
+  writes[0].pBufferInfo = &buffer_infos[0];
+  writes[1] = writes[0];
+  writes[1].dstBinding = 1u;
+  writes[1].pBufferInfo = &buffer_infos[1];
+  writes[2] = writes[0];
+  writes[2].dstBinding = 2u;
+  writes[2].pBufferInfo = &buffer_infos[2];
+  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+
+  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+  if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+  if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+
+  memset(&barrier, 0, sizeof(barrier));
+  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = rt->staged_device_c.buffer;
+  barrier.size = rt->staged_device_c.size;
+  vkCmdPipelineBarrier(rt->command_buffer,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       0,
+                       0,
+                       NULL,
+                       1u,
+                       &barrier,
+                       0,
+                       NULL);
+
+  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+  vkCmdBindDescriptorSets(rt->command_buffer,
+                          VK_PIPELINE_BIND_POINT_COMPUTE,
+                          rt->pipeline_layout,
+                          0u,
+                          1u,
+                          &rt->descriptor_set,
+                          0u,
+                          NULL);
+  push.m = m;
+  push.n = n;
+  push.k = compute_k;
+  vkCmdPushConstants(rt->command_buffer,
+                     rt->pipeline_layout,
+                     VK_SHADER_STAGE_COMPUTE_BIT,
+                     0u,
+                     PROM_VK_SHADER_PUSH_BYTES,
+                     &push);
+
+  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    vkCmdResetQueryPool(rt->command_buffer, rt->sgemm_timestamp_query_pool, 0u, 2u);
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
+  }
+  vkCmdDispatch(rt->command_buffer,
+                (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
+                (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
+                1u);
+  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
+  }
+  vk_result = vkEndCommandBuffer(rt->command_buffer);
+  if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+
+  vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+  if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  memset(&submit_info, 0, sizeof(submit_info));
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.commandBufferCount = 1u;
+  submit_info.pCommandBuffers = &rt->command_buffer;
+  dispatch_submit_begin_ns = prom_wall_clock_now_ns();
+  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+  dispatch_submit_end_ns = prom_wall_clock_now_ns();
+  rt->px16_m8_last_dispatch_submit_wall_ns =
+      prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, dispatch_submit_end_ns);
+  if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+
+  sync_wait_begin_ns = prom_wall_clock_now_ns();
+  vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+  sync_wait_end_ns = prom_wall_clock_now_ns();
+  rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
+  if (vk_result != VK_SUCCESS) {
+    reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
+    return PROM_ERROR;
+  }
+
+  if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
+    uint64_t timestamps[2];
+    vk_result = vkGetQueryPoolResults(rt->device,
+                                      rt->sgemm_timestamp_query_pool,
+                                      0u,
+                                      2u,
+                                      sizeof(timestamps),
+                                      timestamps,
+                                      sizeof(uint64_t),
+                                      VK_QUERY_RESULT_64_BIT);
+    if (vk_result != VK_SUCCESS) {
+      reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
+    } else if (rt->timestamp_period_ns <= 0.0f) {
+      reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
+    } else if (timestamps[1] <= timestamps[0]) {
+      reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
+    } else {
+      const double duration = ((double)(timestamps[1] - timestamps[0])) * (double)rt->timestamp_period_ns;
+      if (duration <= 0.0) {
+        reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
+      } else {
+        rt->last_gpu_timing_valid = 1u;
+        rt->last_gpu_timing_failure_reason = PROM_SGEMM_GPU_TIMING_FAILURE_NONE;
+        rt->last_gpu_duration_ns = (uint64_t)duration;
+      }
+    }
+  }
+
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_PATH_STAGED_UPLOAD_TILED);
+  return PROM_OK;
+}
+
+static int prom_sgemm_resident_readback_once(prometheus_runtime* rt,
+                                             float* c,
+                                             size_t c_copy_size,
+                                             uint32_t* out_stage,
+                                             int* out_detail_code) {
+  VkCommandBufferBeginInfo begin_info;
+  VkSubmitInfo submit_info;
+  VkBufferMemoryBarrier barrier;
+  VkBufferCopy copy;
+  VkResult vk_result;
+  if (rt == NULL || c == NULL || c_copy_size == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+  if (vk_result != VK_SUCCESS) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+  if (vk_result != VK_SUCCESS) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  memset(&barrier, 0, sizeof(barrier));
+  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = rt->staged_device_c.buffer;
+  barrier.size = rt->staged_device_c.size;
+  vkCmdPipelineBarrier(rt->command_buffer,
+                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       0,
+                       0,
+                       NULL,
+                       1u,
+                       &barrier,
+                       0,
+                       NULL);
+  memset(&copy, 0, sizeof(copy));
+  copy.size = (VkDeviceSize)c_copy_size;
+  vkCmdCopyBuffer(rt->command_buffer, rt->staged_device_c.buffer, rt->staged_readback_c.buffer, 1u, &copy);
+  barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+  barrier.buffer = rt->staged_readback_c.buffer;
+  barrier.size = rt->staged_readback_c.size;
+  vkCmdPipelineBarrier(rt->command_buffer,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_HOST_BIT,
+                       0,
+                       0,
+                       NULL,
+                       1u,
+                       &barrier,
+                       0,
+                       NULL);
+  vk_result = vkEndCommandBuffer(rt->command_buffer);
+  if (vk_result != VK_SUCCESS) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+  if (vk_result != VK_SUCCESS) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  memset(&submit_info, 0, sizeof(submit_info));
+  submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit_info.commandBufferCount = 1u;
+  submit_info.pCommandBuffers = &rt->command_buffer;
+  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+  if (vk_result != VK_SUCCESS) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+  if (vk_result != VK_SUCCESS) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
+    return PROM_ERROR;
+  }
+  memcpy(c, rt->staged_readback_c.mapped, c_copy_size);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_PATH_STAGED_UPLOAD_READBACK_TILED);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
+                                                       const PrometheusSgemmResidentBenchmarkRequest* request,
+                                                       PrometheusSgemmResidentBenchmarkResult* out_result) {
+  prometheus_runtime* rt;
+  PrometheusSgemmPolicyDiagnostics diag;
+  float* scratch_c = NULL;
+  uint64_t* kernel_samples = NULL;
+  uint64_t* submit_samples = NULL;
+  uint64_t* wait_samples = NULL;
+  uint32_t stage = PROM_STAGE_NONE;
+  int detail_code = 0;
+  uint32_t saved_flags;
+  uint32_t iterations;
+  uint32_t warmup_iterations;
+  uint32_t executed_variant;
+  uint32_t compute_mode;
+  uint32_t compute_k;
+  uint32_t i;
+  size_t c_copy_size;
+  uint64_t setup_begin_ns;
+  uint64_t setup_end_ns;
+  uint64_t loop_begin_ns;
+  uint64_t loop_end_ns;
+  uint64_t readback_begin_ns;
+  uint64_t readback_end_ns;
+  int status;
+
+  if (out_result == NULL) {
+    return PROM_ERROR;
+  }
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->struct_size = (uint32_t)sizeof(*out_result);
+  if (handle == NULL || !registry_contains(handle)) {
+    out_result->setup_stage = PROM_STAGE_INIT;
+    out_result->setup_detail_code = PROM_INVALID_HANDLE;
+    return PROM_INVALID_HANDLE;
+  }
+  rt = (prometheus_runtime*)handle;
+  out_result->resident_mode_available =
+      (rt->available != 0u &&
+       rt->has_device_local_memory != 0u &&
+       (rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) == 0u)
+          ? 1u
+          : 0u;
+  if (request == NULL || request->a == NULL || request->b == NULL ||
+      request->m == 0u || request->n == 0u || request->k == 0u ||
+      (request->flags & PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK) != 0u && request->c == NULL) {
+    out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
+    out_result->setup_detail_code = PROM_ERROR;
+    return PROM_ERROR;
+  }
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
+    out_result->setup_stage = PROM_STAGE_INIT;
+    out_result->setup_detail_code = PROM_INVALID_HANDLE;
+    return PROM_INVALID_HANDLE;
+  }
+  if (rt->available == 0u ||
+      rt->has_device_local_memory == 0u ||
+      (rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
+    out_result->setup_stage = PROM_STAGE_INIT;
+    out_result->setup_detail_code = rt->available == 0u ? rt->init_detail_code : PROM_ERROR;
+    return PROM_ERROR;
+  }
+  if (!prom_vk_checked_mul_u32(request->m, request->n, &compute_k)) {
+    out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
+    out_result->setup_detail_code = PROM_DETAIL_SIZE_OVERFLOW;
+    return PROM_ERROR;
+  }
+  c_copy_size = (size_t)request->m * (size_t)request->n * sizeof(float);
+  if (c_copy_size == 0u) {
+    out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
+    out_result->setup_detail_code = PROM_DETAIL_SIZE_OVERFLOW;
+    return PROM_ERROR;
+  }
+  scratch_c = (float*)malloc(c_copy_size);
+  if (scratch_c == NULL) {
+    out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
+    out_result->setup_detail_code = PROM_ERROR;
+    return PROM_ERROR;
+  }
+  memset(scratch_c, 0, c_copy_size);
+  iterations = request->iterations == 0u ? 1u : request->iterations;
+  warmup_iterations = request->warmup_iterations;
+  kernel_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
+  submit_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
+  wait_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
+  if (kernel_samples == NULL || submit_samples == NULL || wait_samples == NULL) {
+    free(scratch_c);
+    free(kernel_samples);
+    free(submit_samples);
+    free(wait_samples);
+    out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
+    out_result->setup_detail_code = PROM_ERROR;
+    return PROM_ERROR;
+  }
+
+  saved_flags = rt->test_flags;
+  rt->test_flags = saved_flags | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY;
+  setup_begin_ns = prom_wall_clock_now_ns();
+  if (request->mode == PROM_SGEMM_RESIDENT_MODE_EXPLICIT_VARIANT) {
+    status = prom_reactor_runtime_sgemm_benchmark_variant_impl(handle,
+                                                               request->a,
+                                                               request->b,
+                                                               scratch_c,
+                                                               request->m,
+                                                               request->n,
+                                                               request->k,
+                                                               request->requested_variant,
+                                                               &stage,
+                                                               &detail_code);
+  } else {
+    status = prom_reactor_runtime_sgemm_impl(handle,
+                                             request->a,
+                                             request->b,
+                                             scratch_c,
+                                             request->m,
+                                             request->n,
+                                             request->k,
+                                             &stage,
+                                             &detail_code);
+  }
+  setup_end_ns = prom_wall_clock_now_ns();
+  rt->test_flags = saved_flags;
+  out_result->setup_stage = stage;
+  out_result->setup_detail_code = detail_code;
+  out_result->setup_wall_ns = prom_wall_clock_elapsed_ns(setup_begin_ns, setup_end_ns);
+  out_result->upload_once_wall_ns = rt->px16_m8_last_upload_wall_ns;
+  if (status != PROM_OK) {
+    free(scratch_c);
+    free(kernel_samples);
+    free(submit_samples);
+    free(wait_samples);
+    return status;
+  }
+  if (prom_reactor_runtime_sgemm_policy_diagnostics_impl(handle, &diag) != PROM_OK) {
+    free(scratch_c);
+    free(kernel_samples);
+    free(submit_samples);
+    free(wait_samples);
+    out_result->final_stage = PROM_STAGE_SUBMIT;
+    out_result->final_detail_code = PROM_ERROR;
+    return PROM_ERROR;
+  }
+
+  out_result->resident_mode_used = 1u;
+  out_result->requested_variant = request->mode == PROM_SGEMM_RESIDENT_MODE_EXPLICIT_VARIANT ? request->requested_variant : 0u;
+  out_result->production_selected_variant = diag.px16_m6_selector_selected_variant;
+  executed_variant = diag.px16_m6_executed_dispatch_variant;
+  compute_mode = diag.px16_m6_executed_compute_mode;
+  out_result->executed_variant = executed_variant;
+  out_result->executed_compute_mode = compute_mode;
+  compute_k = (compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ||
+               compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM)
+                  ? prom_round_up4_u32(request->k)
+                  : request->k;
+
+  for (i = 0u; i < warmup_iterations; ++i) {
+    status = prom_sgemm_resident_dispatch_once(rt,
+                                               request->m,
+                                               request->n,
+                                               compute_k,
+                                               compute_mode,
+                                               executed_variant,
+                                               &stage,
+                                               &detail_code);
+    if (status != PROM_OK) {
+      out_result->final_stage = stage;
+      out_result->final_detail_code = detail_code;
+      free(scratch_c);
+      free(kernel_samples);
+      free(submit_samples);
+      free(wait_samples);
+      return status;
+    }
+  }
+
+  loop_begin_ns = prom_wall_clock_now_ns();
+  for (i = 0u; i < iterations; ++i) {
+    status = prom_sgemm_resident_dispatch_once(rt,
+                                               request->m,
+                                               request->n,
+                                               compute_k,
+                                               compute_mode,
+                                               executed_variant,
+                                               &stage,
+                                               &detail_code);
+    if (status != PROM_OK) {
+      out_result->final_stage = stage;
+      out_result->final_detail_code = detail_code;
+      free(scratch_c);
+      free(kernel_samples);
+      free(submit_samples);
+      free(wait_samples);
+      return status;
+    }
+    submit_samples[i] = rt->px16_m8_last_dispatch_submit_wall_ns;
+    wait_samples[i] = rt->px16_m8_last_sync_wait_wall_ns;
+    if (rt->last_gpu_timing_valid != 0u && rt->last_gpu_duration_ns > 0u) {
+      kernel_samples[i] = rt->last_gpu_duration_ns;
+    }
+  }
+  loop_end_ns = prom_wall_clock_now_ns();
+
+  out_result->iterations = iterations;
+  out_result->total_loop_wall_ns = prom_wall_clock_elapsed_ns(loop_begin_ns, loop_end_ns);
+  out_result->dispatch_submit_wall_ns_median = prom_percentile_u64(submit_samples, iterations, 50u, 100u);
+  out_result->sync_wait_wall_ns_median = prom_percentile_u64(wait_samples, iterations, 50u, 100u);
+  out_result->gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
+  out_result->gpu_timestamp_valid = 1u;
+  for (i = 0u; i < iterations; ++i) {
+    if (kernel_samples[i] == 0u) {
+      out_result->gpu_timestamp_valid = 0u;
+      break;
+    }
+  }
+  if (out_result->gpu_timestamp_valid != 0u) {
+    out_result->kernel_min_ns = prom_percentile_u64(kernel_samples, iterations, 0u, 100u);
+    out_result->kernel_median_ns = prom_percentile_u64(kernel_samples, iterations, 50u, 100u);
+    out_result->kernel_p95_ns = prom_percentile_u64(kernel_samples, iterations, 95u, 100u);
+    out_result->gpu_timing_failure_reason = PROM_SGEMM_GPU_TIMING_FAILURE_NONE;
+  }
+
+  if ((request->flags & PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK) != 0u) {
+    readback_begin_ns = prom_wall_clock_now_ns();
+    status = prom_sgemm_resident_readback_once(rt, request->c, c_copy_size, &stage, &detail_code);
+    readback_end_ns = prom_wall_clock_now_ns();
+    out_result->readback_once_wall_ns = prom_wall_clock_elapsed_ns(readback_begin_ns, readback_end_ns);
+    out_result->validation_wall_ns = out_result->readback_once_wall_ns;
+    if (status != PROM_OK) {
+      out_result->final_stage = stage;
+      out_result->final_detail_code = detail_code;
+      free(scratch_c);
+      free(kernel_samples);
+      free(submit_samples);
+      free(wait_samples);
+      return status;
+    }
+  }
+
+  out_result->final_stage = PROM_STAGE_SUBMIT;
+  out_result->final_detail_code = PROM_DETAIL_PATH_STAGED_UPLOAD_TILED;
+  free(scratch_c);
+  free(kernel_samples);
+  free(submit_samples);
+  free(wait_samples);
+  return PROM_OK;
+}
+
 // ============================================================================
 // SGEMM Batch Dispatch / Worker Runtime
 // ============================================================================
@@ -8949,7 +9525,12 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->px16_m8_last_readback_wall_ns = rt->px16_m8_last_readback_wall_ns;
   out_diag->px16_m8_last_total_wall_ns = rt->px16_m8_last_total_wall_ns;
   out_diag->px16_m8_last_gpu_timestamp_valid = rt->last_gpu_timing_valid;
-  out_diag->px16_m8_resident_device_mode_available = 0u;
+  out_diag->px16_m8_resident_device_mode_available =
+      (rt->available != 0u &&
+       rt->has_device_local_memory != 0u &&
+       (rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) == 0u)
+          ? 1u
+          : 0u;
   out_diag->px16_m8_last_executed_explicit_variant_request = rt->px16_m8_last_executed_explicit_variant_request;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;

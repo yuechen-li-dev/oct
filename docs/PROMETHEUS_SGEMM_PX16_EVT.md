@@ -343,3 +343,93 @@ The selector still keeps the other wired variants in the candidate set: `BASELIN
 `occupancy_apply_safety_clamp` remains the authoritative safety gate after scoring. If a selected or manually overridden variant is unsafe for the facts, clamp behavior still demotes or rejects it. DVT/PVT/promotion lifecycle fields remain telemetry only, and P15 remains prestage/telemetry/correction rather than a production selector.
 
 The benchmark/report lane remains an honest measurement surface. Selector scoring changes may reduce selector-vs-fastest mismatches on MC-favored shapes, but the report still compares the production executed variant against the fastest correct explicit variant and continues to surface mismatches instead of hiding them.
+
+## Px16 M11
+
+Px16 M11 adds a benchmark-only resident device-buffer SGEMM mode. The new diagnostic path uploads A/B once through the existing staged device-local buffer machinery, keeps A/B/C resident across timed iterations, dispatches the selected SGEMM kernel repeatedly, and reads C back only after the timed loop when validation is explicitly requested.
+
+The architecture rule for this milestone is:
+
+- Production `prometheus_reactor_runtime_sgemm(...)` remains the public production path and dispatch authority.
+- The judgment engine remains the production selector authority.
+- Resident mode is benchmark/diagnostic surface area, not a normal Oct user API.
+- Explicit resident variant comparison is comparison-only telemetry.
+- Correctness validation remains separate from default benchmark timing.
+- Selector tuning, shader optimization, FFT/P16 work, and CUDA/vendor-specific paths are out of scope.
+
+### Staged vs resident
+
+The report now distinguishes:
+
+- staged production end-to-end timing from `prometheus_reactor_runtime_sgemm(...)`;
+- resident production selector timing, where the selector chooses the variant but A/B/C stay device-resident during timed iterations;
+- resident explicit variant timing for `BASELINE_SCALAR`, `SMALL_REGISTER_TILE`, `BALANCED_2X2_ACCUM4`, `AGGRESSIVE_4X4_ACCUM8`, and `MEMORY_CONSERVATIVE`;
+- Vulkan timestamp kernel timing when query results are valid.
+
+Resident timing currently uses one submit/wait per timed dispatch because the backend timestamp query pool provides one start/end timestamp pair. This still removes repeated upload/readback from timed iterations and gives a steady-state device-resident comparison surface.
+
+### How to run M11
+
+Build native artifacts:
+
+```bat
+cmd /c "call \"C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat\" -arch=x64 -host_arch=x64 >nul && internal\prometheus\native\build_windows.cmd"
+```
+
+Run the focused resident infrastructure test:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16Resident
+```
+
+Run the correctness lane:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16Evt_CorrectnessValidationLane
+```
+
+Run the benchmark/report lane:
+
+```bat
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+### Artifact fields
+
+The main performance benchmark still writes:
+
+- `out/test-artifacts/prometheus_sgemm_px16_evt_results.json`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_report.md`
+
+New resident fields include:
+
+- `resident_device_mode_available`
+- `resident_production`
+- `resident_variant_comparison`
+- `selector_vs_fastest_resident`
+- `resident_upload_once_ms`
+- `resident_setup_ms`
+- `resident_kernel_median_ms`
+- `resident_kernel_min_ms`
+- `resident_kernel_p95_ms`
+- `resident_total_loop_ms`
+- `resident_iterations`
+- `resident_readback_once_ms`
+- `resident_validation_ms`
+- `resident_kernel_only_gflops`
+- `resident_loop_gflops`
+- `gpu_timestamp_valid`
+
+The Markdown report adds:
+
+- `Resident Device Benchmark`
+- `Resident Explicit Variant Comparison`
+- `Selector vs Fastest Resident Variant`
+
+Generated artifacts under `out/test-artifacts/` are benchmark/test outputs and should not be committed by default.
+
+### Correctness discipline
+
+Default benchmark mode does not run CPU oracle validation inside the timed loop. Resident mode performs no per-iteration readback. The FACT validation lane may request one final resident readback after timing, then runs the CPU oracle outside the native timed path.
+
+If resident mode is unavailable, the report says so explicitly instead of faking resident numbers.

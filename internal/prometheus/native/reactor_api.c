@@ -46,6 +46,13 @@ int prometheus_reactor_runtime_sgemm_benchmark_variant(void* handle,
       handle, a, b, c, m, n, k, requested_variant, out_stage, out_detail_code);
 }
 
+int prometheus_reactor_runtime_sgemm_resident_benchmark(
+    void* handle,
+    const PrometheusSgemmResidentBenchmarkRequest* request,
+    PrometheusSgemmResidentBenchmarkResult* out_result) {
+  return prom_reactor_runtime_sgemm_resident_benchmark_impl(handle, request, out_result);
+}
+
 int prometheus_reactor_runtime_sgemm_batch(void* handle,
                                            const PrometheusSgemmBatchEntry* entries,
                                            uint32_t entry_count,

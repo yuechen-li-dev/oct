@@ -81,6 +81,9 @@ int prom_reactor_runtime_sgemm_benchmark_variant_impl(void* handle,
                                                       uint32_t requested_variant,
                                                       uint32_t* out_stage,
                                                       int* out_detail_code);
+int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
+                                                       const PrometheusSgemmResidentBenchmarkRequest* request,
+                                                       PrometheusSgemmResidentBenchmarkResult* out_result);
 int prom_reactor_runtime_sgemm_batch_impl(void* handle,
                                           const PrometheusSgemmBatchEntry* entries,
                                           uint32_t entry_count,
