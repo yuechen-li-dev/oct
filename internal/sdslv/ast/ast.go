@@ -66,9 +66,9 @@ type ConfigField struct {
 }
 
 type ConfigDecl struct {
-	Name        string
-	ConceptName string
-	Fields      []ConfigField
+	Name         string
+	ConceptName  string
+	Fields       []ConfigField
 	Requirements []RequireStmt
 }
 
@@ -89,6 +89,7 @@ type ShaderDecl struct {
 	Workgroups         []WorkgroupDecl
 	StaticAsserts      []StaticAssertStmt
 	Methods            []FunctionDecl
+	SpecializedConfig  map[string]uint32
 }
 
 func (ShaderDecl) declNode() {}

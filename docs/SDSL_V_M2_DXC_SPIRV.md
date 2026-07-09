@@ -129,8 +129,16 @@ The header includes:
 - `static const uint32_t <symbol>[]`
 - `<symbol>_word_count`
 - `<symbol>_byte_length`
+- compute entry metadata constants derived from the same lowered entry/config that produced the shader:
+  - `<symbol>_numthreads_x`
+  - `<symbol>_numthreads_y`
+  - `<symbol>_numthreads_z`
+  - optional semantic metadata such as `<symbol>_outputs_per_invocation_m`
+  - optional emitted config constants such as `<symbol>_config_unroll_k`
 
 The current format intentionally matches the broad style of existing checked-in Prometheus SPIR-V headers while adding explicit provenance comments and deterministic wrapping.
+
+This metadata lane closes an important source-of-truth gap for generated compute shaders: host dispatch code can consume workgroup and output-footprint constants emitted from the same SDSL-V config that generated the SPIR-V instead of hand-maintaining duplicate geometry in native code.
 
 ## Example proof
 

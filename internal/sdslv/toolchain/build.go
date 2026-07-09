@@ -83,6 +83,14 @@ func CompileToSPIRV(opts CompileOptions) (CompileResult, error) {
 }
 
 func GenerateHeader(opts GenerateHeaderOptions) (GenerateHeaderResult, error) {
+	_, mir, _, err := loadModuleAndHLSL(opts.InputPath)
+	if err != nil {
+		return GenerateHeaderResult{}, err
+	}
+	entry, err := resolveEntryPoint(mir, opts.EntryPoint)
+	if err != nil {
+		return GenerateHeaderResult{}, err
+	}
 	result, err := compileToSPIRV(defaultHost(), CompileOptions{
 		InputPath:          opts.InputPath,
 		OutputPath:         choosePath(opts.SPIRVPath, replaceExt(opts.OutputPath, ".spv")),
@@ -104,7 +112,7 @@ func GenerateHeader(opts GenerateHeaderOptions) (GenerateHeaderResult, error) {
 	headerText, err := HeaderFromSPIRVBytes(bytes, HeaderOptions{
 		Symbol:      opts.Symbol,
 		SourcePath:  opts.InputPath,
-		EntryPoint:  result.EntryPoint,
+		Compute:     computeHeaderMetadata(entry),
 		CommandLine: opts.CommandLine,
 		HeaderPath:  opts.OutputPath,
 	})
@@ -122,6 +130,28 @@ func GenerateHeader(opts GenerateHeaderOptions) (GenerateHeaderResult, error) {
 		HeaderPath:    opts.OutputPath,
 		Symbol:        opts.Symbol,
 	}, nil
+}
+
+func computeHeaderMetadata(entry vdmir.ComputeEntryPoint) *ComputeHeaderMetadata {
+	return &ComputeHeaderMetadata{
+		EntryPoint:   entry.EmittedName,
+		NumThreadsX:  uint32(entry.NumThreadsX),
+		NumThreadsY:  uint32(entry.NumThreadsY),
+		NumThreadsZ:  uint32(entry.NumThreadsZ),
+		Metadata:     copyMetadataFields(entry.Metadata),
+		ConfigValues: copyMetadataFields(entry.ConfigValues),
+	}
+}
+
+func copyMetadataFields(fields []vdmir.MetadataField) []MetadataField {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]MetadataField, 0, len(fields))
+	for _, field := range fields {
+		out = append(out, MetadataField{Name: field.Name, Value: field.Value})
+	}
+	return out
 }
 
 func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {

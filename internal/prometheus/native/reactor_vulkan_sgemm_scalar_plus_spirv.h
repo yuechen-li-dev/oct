@@ -204,5 +204,20 @@ static const uint32_t k_prom_sgemm_scalar_plus_spirv[] = {
 
 static const uint32_t k_prom_sgemm_scalar_plus_spirv_word_count = 763u;
 static const uint32_t k_prom_sgemm_scalar_plus_spirv_byte_length = 3052u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_numthreads_x = 8u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_numthreads_y = 8u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_numthreads_z = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_tile_m = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_tile_n = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_unroll_k = 4u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_outputs_per_invocation_m = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_outputs_per_invocation_n = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_threads_x = 8u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_threads_y = 8u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_tile_m = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_tile_n = 1u;
+static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_unroll_k = 4u;
 
 #endif  // OCT_INTERNAL_SDSLV_K_PROM_SGEMM_SCALAR_PLUS_SPIRV_H

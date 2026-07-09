@@ -80,6 +80,21 @@ M5 monomorphizes before VD-MIR lowering.
 
 This keeps template logic out of both VD-MIR and the HLSL backend.
 
+## Generated metadata convention
+
+When a concrete compute shader is generated through `compile Template<Config> as Alias;`, the specialized config values are also available to later toolchain stages.
+
+- `numthreads(...)` always becomes concrete entry metadata.
+- Integer config fields can be emitted into generated headers as deterministic constants.
+- For SGEMM-family kernels, the current metadata convention uses config fields such as:
+  - `OUTPUTS_PER_INVOCATION_M`
+  - `OUTPUTS_PER_INVOCATION_N`
+  - `TILE_M`
+  - `TILE_N`
+  - `UNROLL_K`
+
+This lets future `TILE16x16` or rectangular kernels generate both shader code and host-consumed dispatch metadata from the same compile-time config.
+
 ## Current limits
 
 M5 intentionally does not add:

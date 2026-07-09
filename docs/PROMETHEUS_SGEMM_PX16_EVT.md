@@ -504,3 +504,27 @@ Coverage now includes the new source-backed variant across representative square
 - `255x129x65`
 
 M13 intentionally does not retune selector scoring to prefer the new variant yet. If resident comparison shows it beating the current selector choice on some shapes, that is useful evidence for later milestones rather than a defect in this milestone.
+
+## Px16 M13a
+
+Px16 M13a closes the host/shader dispatch source-of-truth gap for SDSL-generated SGEMM kernels before real tiled kernels are introduced.
+
+The architecture rule for this milestone is:
+
+- generated SDSL-V shader headers must carry dispatch metadata derived from the same compute entry/config that generated the shader;
+- Prometheus host dispatch for `SDSL_SCALAR_PLUS` must consume those generated constants instead of hardcoded `8x8` / one-output assumptions;
+- benchmark-only SDSL wiring remains benchmark-only;
+- selector scoring, production dispatch authority, P15 behavior, FFT/P16 work, and legacy variant behavior remain unchanged.
+
+Current SDSL-generated headers now emit:
+
+- `numthreads_x/y/z`
+- semantic SGEMM coverage constants such as `outputs_per_invocation_m/n`, `tile_m/n`, and `unroll_k`
+- deterministic `config_*` constants for the concrete compile config
+
+For SGEMM dispatch, the native runtime still uses the existing row/column convention:
+
+- dispatch `x` covers rows (`m`)
+- dispatch `y` covers columns (`n`)
+
+The SDSL path now derives `groups_x` and `groups_y` from generated metadata so future multi-output kernels do not repeat the Px16 M12 B2x2/aggressive overdispatch drift bug.

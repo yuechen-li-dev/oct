@@ -37,6 +37,7 @@
 #include "reactor_vulkan_b2x2_row_major_biased_spirv.h"
 #include "reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
 #include "reactor_vulkan_memory_conservative_spirv.h"
+#include "reactor_sgemm_dispatch_metadata.h"
 #include "reactor_vulkan_sgemm_scalar_plus_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
@@ -47,6 +48,41 @@
 #define PROM_VK_LOCAL_SIZE_X 8u
 #define PROM_VK_LOCAL_SIZE_Y 8u
 #define PROM_VK_TILE_K 8u
+
+static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_metadata_for_variant(uint32_t variant) {
+  static prom_sgemm_kernel_dispatch_metadata metadata;
+  static uint32_t metadata_initialized = 0u;
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
+    if (metadata_initialized == 0u) {
+      metadata.threads_x = k_prom_sgemm_scalar_plus_spirv_numthreads_x;
+      metadata.threads_y = k_prom_sgemm_scalar_plus_spirv_numthreads_y;
+      metadata.threads_z = k_prom_sgemm_scalar_plus_spirv_numthreads_z;
+      metadata.outputs_per_invocation_m = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m;
+      metadata.outputs_per_invocation_n = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n;
+      metadata.tile_m = k_prom_sgemm_scalar_plus_spirv_tile_m;
+      metadata.tile_n = k_prom_sgemm_scalar_plus_spirv_tile_n;
+      metadata.unroll_k = k_prom_sgemm_scalar_plus_spirv_unroll_k;
+      metadata_initialized = 1u;
+    }
+    return &metadata;
+  }
+  return NULL;
+}
+
+static prom_sgemm_dispatch_geometry prom_sgemm_dispatch_geometry_for_variant(uint32_t variant, uint32_t m, uint32_t n) {
+  const prom_sgemm_kernel_dispatch_metadata* metadata =
+      prom_sgemm_generated_dispatch_metadata_for_variant(variant);
+  prom_sgemm_dispatch_geometry geometry;
+  if (metadata != NULL) {
+    return prom_sgemm_dispatch_geometry_for_metadata(m, n, metadata);
+  }
+  geometry.groups_x = prom_sgemm_ceil_div_u32(m, PROM_VK_LOCAL_SIZE_X);
+  geometry.groups_y = prom_sgemm_ceil_div_u32(n, PROM_VK_LOCAL_SIZE_Y);
+  geometry.groups_z = 1u;
+  geometry.logical_m_per_group = PROM_VK_LOCAL_SIZE_X;
+  geometry.logical_n_per_group = PROM_VK_LOCAL_SIZE_Y;
+  return geometry;
+}
 
 // ============================================================================
 // SGEMM Runtime State
@@ -5197,6 +5233,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_dom_sgemm_layout_precision_facts layout_precision_facts;
   prom_dom_sgemm_layout_precision_projection layout_precision_projection;
   prom_dom_sgemm_layout_precision_decision layout_precision_decision;
+  prom_sgemm_dispatch_geometry dispatch_geometry;
   prom_dom_sgemm_path_compute_facts path_compute_facts;
   prom_dom_sgemm_path_compute_projection path_compute_projection;
   prom_dom_sgemm_path_compute_decision path_compute_decision;
@@ -6404,10 +6441,11 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
 
   /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
+  dispatch_geometry = prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
   vkCmdDispatch(rt->command_buffer,
-                (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
-                (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
-                1u);
+                dispatch_geometry.groups_x,
+                dispatch_geometry.groups_y,
+                dispatch_geometry.groups_z);
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
   }
@@ -6841,6 +6879,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   uint64_t dispatch_submit_end_ns;
   uint64_t sync_wait_begin_ns;
   uint64_t sync_wait_end_ns;
+  prom_sgemm_dispatch_geometry dispatch_geometry;
 
   if (rt == NULL || rt->has_staged_buffers == 0u ||
       rt->staged_device_a.buffer == VK_NULL_HANDLE ||
@@ -6934,10 +6973,11 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
     vkCmdResetQueryPool(rt->command_buffer, rt->sgemm_timestamp_query_pool, 0u, 2u);
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
   }
+  dispatch_geometry = prom_sgemm_dispatch_geometry_for_variant(variant, m, n);
   vkCmdDispatch(rt->command_buffer,
-                (m + (PROM_VK_LOCAL_SIZE_X - 1u)) / PROM_VK_LOCAL_SIZE_X,
-                (n + (PROM_VK_LOCAL_SIZE_Y - 1u)) / PROM_VK_LOCAL_SIZE_Y,
-                1u);
+                dispatch_geometry.groups_x,
+                dispatch_geometry.groups_y,
+                dispatch_geometry.groups_z);
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
   }

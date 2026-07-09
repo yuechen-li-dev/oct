@@ -255,6 +255,12 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	if entry.EmittedName != "TileCopy16x16_CS" || entry.NumThreadsX != 16 || entry.NumThreadsY != 16 || entry.NumThreadsZ != 1 {
 		t.Fatalf("entry = %#v", entry)
 	}
+	if len(entry.ConfigValues) != 3 {
+		t.Fatalf("len(ConfigValues) = %d, want 3", len(entry.ConfigValues))
+	}
+	if len(entry.Metadata) != 0 {
+		t.Fatalf("len(Metadata) = %d, want 0", len(entry.Metadata))
+	}
 	if got := len(mir.Workgroups); got != 1 {
 		t.Fatalf("len(Workgroups) = %d, want 1", got)
 	}
@@ -276,6 +282,60 @@ compile TileCopy<Tile16x16> as TileCopy16x16;`)
 	loop, ok := cs.Body.Statements[5].(vdmir.ForRangeStmt)
 	if !ok || loop.LoopHint != vdmir.LoopHintUnroll {
 		t.Fatalf("stmt[5] = %#v, want unrolled for loop", cs.Body.Statements[5])
+	}
+}
+
+func TestModuleLowersDispatchMetadataFromConfigConvention(t *testing.T) {
+	mir := lowerSource(t, `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+record Params { M: u32; N: u32; K: u32; }
+concept KernelConfig {
+THREADS_X: u32;
+THREADS_Y: u32;
+OUTPUTS_PER_INVOCATION_M: u32;
+OUTPUTS_PER_INVOCATION_N: u32;
+TILE_M: u32;
+TILE_N: u32;
+UNROLL_K: u32;
+}
+config Rect: KernelConfig {
+THREADS_X: 4u;
+THREADS_Y: 2u;
+OUTPUTS_PER_INVOCATION_M: 3u;
+OUTPUTS_PER_INVOCATION_N: 5u;
+TILE_M: 12u;
+TILE_N: 10u;
+UNROLL_K: 7u;
+}
+template<C: KernelConfig>
+shader Kernel {
+stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+return;
+}
+}
+compile Kernel<Rect> as KernelRect;`)
+	entry := mir.EntryPoints[0]
+	if got := len(entry.Metadata); got != 5 {
+		t.Fatalf("len(Metadata) = %d, want 5", got)
+	}
+	if got := entry.Metadata[0]; got.Name != "OUTPUTS_PER_INVOCATION_M" || got.Value != 3 {
+		t.Fatalf("metadata[0] = %#v", got)
+	}
+	if got := entry.Metadata[4]; got.Name != "UNROLL_K" || got.Value != 7 {
+		t.Fatalf("metadata[4] = %#v", got)
+	}
+	if got := len(entry.ConfigValues); got != 7 {
+		t.Fatalf("len(ConfigValues) = %d, want 7", got)
+	}
+	if got := entry.ConfigValues[0]; got.Name != "OUTPUTS_PER_INVOCATION_M" || got.Value != 3 {
+		t.Fatalf("config[0] = %#v", got)
+	}
+	if got := entry.ConfigValues[6]; got.Name != "UNROLL_K" || got.Value != 7 {
+		t.Fatalf("config[6] = %#v", got)
 	}
 }
 

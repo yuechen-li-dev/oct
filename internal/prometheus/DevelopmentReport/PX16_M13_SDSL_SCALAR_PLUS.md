@@ -66,3 +66,27 @@ From `out/test-artifacts/prometheus_sgemm_px16_evt_report.md` after M13 wiring:
   - `MEMORY_CONSERVATIVE`: `0.050656 ms`
 
 That is acceptable for M13. The milestone goal is source-backed correctness and end-to-end generation/wiring, not immediate selector promotion or performance leadership.
+
+## M13a metadata follow-up
+
+M13a extends the generated header/toolchain so the checked-in SDSL SPIR-V header is no longer just a blob of words plus byte counts.
+
+The generated header now also carries deterministic dispatch metadata derived from the same SDSL-V config that generated the shader:
+
+- `numthreads_x/y/z`
+- `outputs_per_invocation_m/n`
+- `tile_m/n`
+- `unroll_k`
+- emitted `config_*` constants for the concrete config values
+
+For `SDSL_SCALAR_PLUS`, that means:
+
+- `THREADS_X = 8`
+- `THREADS_Y = 8`
+- `OUTPUTS_PER_INVOCATION_M = 1`
+- `OUTPUTS_PER_INVOCATION_N = 1`
+- `TILE_M = 1`
+- `TILE_N = 1`
+- `UNROLL_K = 4`
+
+Prometheus native dispatch now reads those generated constants for the SDSL explicit variant instead of hand-coding `8x8` geometry in C. This specifically prevents repeating the earlier host/shader drift bug where multi-output kernels were dispatched as though each invocation produced only one output.

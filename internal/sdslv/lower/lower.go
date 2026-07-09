@@ -2,6 +2,7 @@ package lower
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -87,7 +88,7 @@ func Module(module ast.Module) (vdmir.Module, error) {
 				}
 				out.Functions = append(out.Functions, fn)
 				if method.Stage == "compute" {
-					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d.Name, method, resources))
+					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d, method, resources))
 				}
 			}
 		case ast.ConceptDecl, ast.ConfigDecl, ast.CompileDecl:
@@ -157,6 +158,7 @@ func specializeShader(shader ast.ShaderDecl, alias string, env map[string]specia
 	out := shader
 	out.Name = alias
 	out.Template = nil
+	out.SpecializedConfig = lowerSpecializedConfig(env)
 	out.Workgroups = make([]ast.WorkgroupDecl, 0, len(shader.Workgroups))
 	for _, workgroup := range shader.Workgroups {
 		ref, err := specializeTypeRef(workgroup.Type, env)
@@ -174,6 +176,27 @@ func specializeShader(shader ast.ShaderDecl, alias string, env map[string]specia
 		out.Methods = append(out.Methods, specialized)
 	}
 	return out, nil
+}
+
+func lowerSpecializedConfig(env map[string]specializeValue) map[string]uint32 {
+	if len(env) == 0 {
+		return nil
+	}
+	out := map[string]uint32{}
+	for key, value := range env {
+		field := key
+		if dot := strings.IndexByte(field, '.'); dot >= 0 && dot+1 < len(field) {
+			field = field[dot+1:]
+		}
+		if value.int32 < 0 {
+			continue
+		}
+		out[field] = uint32(value.int32)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func specializeFunction(fn ast.FunctionDecl, env map[string]specializeValue) (ast.FunctionDecl, error) {
@@ -808,15 +831,17 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 	}
 }
 
-func (l *lowering) lowerComputeEntryPoint(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl) vdmir.ComputeEntryPoint {
+func (l *lowering) lowerComputeEntryPoint(shader ast.ShaderDecl, fn ast.FunctionDecl, resources []ast.ResourceDecl) vdmir.ComputeEntryPoint {
 	entry := vdmir.ComputeEntryPoint{
 		Provenance:   l.provenance,
-		ShaderName:   shaderName,
+		ShaderName:   shader.Name,
 		FunctionName: fn.Name,
-		EmittedName:  shaderName + "_" + fn.Name,
+		EmittedName:  shader.Name + "_" + fn.Name,
 		NumThreadsX:  mustConcreteInt(fn.NumThreads.X),
 		NumThreadsY:  mustConcreteInt(fn.NumThreads.Y),
 		NumThreadsZ:  mustConcreteInt(fn.NumThreads.Z),
+		Metadata:     lowerEntryMetadata(shader.SpecializedConfig),
+		ConfigValues: lowerConfigValues(shader.SpecializedConfig),
 	}
 	directBuiltins := referencedBuiltins(fn.Body)
 	threadParams := l.computeThreadBindings(fn.Parameters)
@@ -839,6 +864,47 @@ func (l *lowering) lowerComputeEntryPoint(shaderName string, fn ast.FunctionDecl
 	}
 	_ = resources
 	return entry
+}
+
+func lowerEntryMetadata(config map[string]uint32) []vdmir.MetadataField {
+	if len(config) == 0 {
+		return nil
+	}
+	names := []string{
+		"OUTPUTS_PER_INVOCATION_M",
+		"OUTPUTS_PER_INVOCATION_N",
+		"TILE_M",
+		"TILE_N",
+		"UNROLL_K",
+	}
+	fields := make([]vdmir.MetadataField, 0, len(names))
+	for _, name := range names {
+		value, ok := config[name]
+		if !ok {
+			continue
+		}
+		fields = append(fields, vdmir.MetadataField{Name: name, Value: value})
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
+}
+
+func lowerConfigValues(config map[string]uint32) []vdmir.MetadataField {
+	if len(config) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(config))
+	for name := range config {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	fields := make([]vdmir.MetadataField, 0, len(names))
+	for _, name := range names {
+		fields = append(fields, vdmir.MetadataField{Name: name, Value: config[name]})
+	}
+	return fields
 }
 
 func (l *lowering) computeThreadBindings(params []ast.Parameter) map[string]bool {

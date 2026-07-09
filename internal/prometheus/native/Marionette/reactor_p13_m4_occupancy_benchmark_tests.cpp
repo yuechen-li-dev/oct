@@ -1,5 +1,7 @@
 #include "../bridge.h"
 #include "../reactor_judgment_engine.h"
+#include "../reactor_sgemm_dispatch_metadata.h"
+#include "../reactor_vulkan_sgemm_scalar_plus_spirv.h"
 #include "test_harness.h"
 
 #include <algorithm>
@@ -1181,6 +1183,40 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_MemoryConservativeVariantCorrectne
         ASSERT_TRUE(correctness.pass, "MC benchmark output should match CPU oracle");
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_SdslScalarPlusGeneratedDispatchMetadataConstants, 1)
+{
+    ASSERT_EQUAL(8u, k_prom_sgemm_scalar_plus_spirv_numthreads_x, "SDSL scalar-plus numthreads x should come from generated metadata");
+    ASSERT_EQUAL(8u, k_prom_sgemm_scalar_plus_spirv_numthreads_y, "SDSL scalar-plus numthreads y should come from generated metadata");
+    ASSERT_EQUAL(1u, k_prom_sgemm_scalar_plus_spirv_numthreads_z, "SDSL scalar-plus numthreads z should come from generated metadata");
+    ASSERT_EQUAL(1u, k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m, "SDSL scalar-plus output coverage M should be generated");
+    ASSERT_EQUAL(1u, k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n, "SDSL scalar-plus output coverage N should be generated");
+    ASSERT_EQUAL(1u, k_prom_sgemm_scalar_plus_spirv_tile_m, "SDSL scalar-plus tile M should be generated");
+    ASSERT_EQUAL(1u, k_prom_sgemm_scalar_plus_spirv_tile_n, "SDSL scalar-plus tile N should be generated");
+    ASSERT_EQUAL(4u, k_prom_sgemm_scalar_plus_spirv_unroll_k, "SDSL scalar-plus unroll K should be generated");
+    ASSERT_EQUAL(8u, k_prom_sgemm_scalar_plus_spirv_config_threads_x, "SDSL scalar-plus config THREADS_X should be emitted");
+    ASSERT_EQUAL(4u, k_prom_sgemm_scalar_plus_spirv_config_unroll_k, "SDSL scalar-plus config UNROLL_K should be emitted");
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_DispatchGeometryUsesMetadataCoverage, 1)
+{
+    const prom_sgemm_kernel_dispatch_metadata metadata = {
+        3u,
+        5u,
+        1u,
+        2u,
+        4u,
+        6u,
+        20u,
+        7u,
+    };
+    const prom_sgemm_dispatch_geometry geometry = prom_sgemm_dispatch_geometry_for_metadata(13u, 37u, &metadata);
+    ASSERT_EQUAL(3u, geometry.groups_x, "groups_x should scale by metadata coverage, not a hardcoded local size");
+    ASSERT_EQUAL(2u, geometry.groups_y, "groups_y should scale by metadata coverage, not a hardcoded local size");
+    ASSERT_EQUAL(6u, geometry.logical_m_per_group, "logical M coverage per group should use outputs per invocation");
+    ASSERT_EQUAL(20u, geometry.logical_n_per_group, "logical N coverage per group should use outputs per invocation");
+    ASSERT_EQUAL(1u, geometry.groups_z, "SGEMM dispatch remains one group deep in z");
 }
 
 VALIDATED_BENCHMARK_WITH_ITERATIONS(P13_M16B4_SdslScalarPlusVariantWiredPathIdentity, 1)

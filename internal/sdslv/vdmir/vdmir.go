@@ -109,9 +109,16 @@ type ComputeEntryPoint struct {
 	NumThreadsX  int
 	NumThreadsY  int
 	NumThreadsZ  int
+	Metadata     []MetadataField
+	ConfigValues []MetadataField
 	Params       []Parameter
 	ThreadParams []ComputeThreadBinding
 	Builtins     []BuiltinParam
+}
+
+type MetadataField struct {
+	Name  string
+	Value uint32
 }
 
 type ComputeThreadBinding struct {

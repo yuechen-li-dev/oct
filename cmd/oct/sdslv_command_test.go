@@ -167,6 +167,9 @@ func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 		"// Entry point: SgemmScalarBaselinePlus8x8_CS",
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv[] = {",
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_word_count = ",
+		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_numthreads_x = ",
+		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m = ",
+		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_config_unroll_k = ",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("checked-in header missing %q:\n%s", want, body)
