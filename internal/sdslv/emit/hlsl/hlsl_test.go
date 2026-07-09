@@ -40,6 +40,32 @@ return;
 	}
 }
 
+func TestEmitTileAndMatrixView2DIndexing(t *testing.T) {
+	hlsl := emitSource(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 16, 8>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let AView: matrix_view<f32> = row_major(A, 16u, 8u);
+let CView: matrix_view<f32> = row_major(C, 16u, 8u);
+Tile[0u, 1u] = AView[0u, 1u];
+CView[0u, 1u] = Tile[0u, 1u];
+return;
+}
+}`)
+	for _, want := range []string{
+		"groupshared float Tile[16 * 8];",
+		"Tile[((0u) * (8)) + (1u)] = A[((0u) * (8u)) + (1u)];",
+		"C[((0u) * (8u)) + (1u)] = Tile[((0u) * (8)) + (1u)];",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+	if strings.Contains(hlsl, "AView") || strings.Contains(hlsl, "CView") {
+		t.Fatalf("matrix view aliases should not emit as HLSL locals:\n%s", hlsl)
+	}
+}
+
 func TestEmitWhenUtilityFromVDMIR(t *testing.T) {
 	text := `shader Picker {
 fn Pick(flag: bool) -> f32 {

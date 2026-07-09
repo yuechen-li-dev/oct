@@ -23,6 +23,70 @@ func TestModuleRejectsUnknownTypes(t *testing.T) {
 	}
 }
 
+func TestModuleValidatesTileAndMatrixViewIndexing(t *testing.T) {
+	err := validateSource(`shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 16, 16>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let AView: matrix_view<f32> = row_major(A, 16u, 16u);
+let CView: matrix_view<f32> = row_major(C, 16u, 16u);
+Tile[0u, 1u] = AView[0u, 1u];
+CView[0u, 1u] = Tile[0u, 1u];
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("validateSource() error = %v", err)
+	}
+}
+
+func TestModuleRejectsInvalidTileAndMatrixViewUse(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "tile one dimensional index",
+			src:  `shader S { workgroup Tile: tile<f32, 16, 16>; stage compute [numthreads(1, 1, 1)] fn CS() -> void { let x: f32 = Tile[0u]; return; } }`,
+			want: "tile values require explicit 2D indexing",
+		},
+		{
+			name: "readonly view write",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1, 1, 1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u, 4u); AView[0u, 0u] = 1.0; return; } }`,
+			want: "cannot assign through readonly matrix_view",
+		},
+		{
+			name: "row major local array",
+			src:  `fn F() -> void { let values: array<f32, 4>; let V: matrix_view<f32> = row_major(values, 2u, 2u); return; }`,
+			want: "row_major first argument must be a resource array",
+		},
+		{
+			name: "row major wrong arg count",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1, 1, 1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u); return; } }`,
+			want: "row_major expects 3 arguments",
+		},
+		{
+			name: "non integer 2D index",
+			src:  `shader S { workgroup Tile: tile<f32, 4, 4>; stage compute [numthreads(1, 1, 1)] fn CS() -> void { let x: f32 = Tile[true, 0u]; return; } }`,
+			want: "array index must be integer",
+		},
+		{
+			name: "zero tile dimension",
+			src:  `shader S { workgroup Tile: tile<f32, 0, 16>; stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }`,
+			want: "tile rows must be positive",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsBadReturnType(t *testing.T) {
 	err := validateSource(`fn F() -> u32 { return 1.0; }`)
 	if err == nil || !strings.Contains(err.Error(), "return type mismatch") {

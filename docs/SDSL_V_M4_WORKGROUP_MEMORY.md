@@ -43,6 +43,15 @@ Current M4 rules:
 - initializers are rejected;
 - workgroup storage is mutable inside compute code.
 
+M12 extends this same backend-neutral workgroup storage model with explicit 2D tiles:
+
+```sdslv
+workgroup Tile: tile<f32, 16, 16>;
+Tile[row, col] = value;
+```
+
+Tiles still lower to flat groupshared storage through VD-MIR, but source indexing remains row/column-shaped. See `docs/SDSL_V_M12_TILE_MATRIX_VIEWS.md`.
+
 ## Compute builtin model
 
 M4 completes the compute builtin surface:

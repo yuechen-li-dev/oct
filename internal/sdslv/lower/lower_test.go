@@ -204,6 +204,38 @@ return;
 	}
 }
 
+func TestModuleLowersTileAndMatrixViewsToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 16, 8>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let AView: matrix_view<f32> = row_major(A, 16u, 8u);
+let CView: matrix_view<f32> = row_major(C, 16u, 8u);
+Tile[0u, 1u] = AView[0u, 1u];
+CView[0u, 1u] = Tile[0u, 1u];
+return;
+}
+}`)
+	if got := len(mir.Workgroups); got != 1 {
+		t.Fatalf("len(Workgroups) = %d, want 1", got)
+	}
+	if !mir.Workgroups[0].IsTile || mir.Workgroups[0].Rows != 16 || mir.Workgroups[0].Cols != 8 || mir.Workgroups[0].Length != 128 {
+		t.Fatalf("workgroup = %#v, want tile 16x8", mir.Workgroups[0])
+	}
+	cs := findFunction(t, mir, "S_CS")
+	letView, ok := cs.Body.Statements[0].(vdmir.LetStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want LetStmt", cs.Body.Statements[0])
+	}
+	if _, ok := letView.Value.(vdmir.RowMajorViewExpr); !ok {
+		t.Fatalf("let value = %T, want RowMajorViewExpr", letView.Value)
+	}
+	assign := cs.Body.Statements[2].(vdmir.AssignStmt)
+	if _, ok := assign.Target.(vdmir.Index2DExpr); !ok {
+		t.Fatalf("assign target = %T, want Index2DExpr", assign.Target)
+	}
+}
+
 func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
 	mir := lowerSource(t, `stream ComputeThread {
 DispatchId: uint3;

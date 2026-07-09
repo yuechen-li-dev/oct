@@ -186,6 +186,10 @@ type TypeRef struct {
 	Args         []TypeRef
 	ArraySize    Expr
 	HasArraySize bool
+	TileRows     Expr
+	TileCols     Expr
+	HasTileShape bool
+	Access       string
 	ZeroAllowed  bool
 }
 
@@ -303,8 +307,10 @@ type FieldAccessExpr struct {
 func (FieldAccessExpr) exprNode() {}
 
 type IndexExpr struct {
-	Target Expr
-	Index  Expr
+	Target    Expr
+	Index     Expr
+	Index2    Expr
+	HasSecond bool
 }
 
 func (IndexExpr) exprNode() {}

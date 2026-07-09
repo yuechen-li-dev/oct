@@ -68,13 +68,32 @@ func Module(module ast.Module) (vdmir.Module, error) {
 				})
 			}
 			for _, workgroup := range d.Workgroups {
+				typ := l.lowerTypeRef(workgroup.Type)
+				elem := vdmir.Type{}
+				if typ.Element != nil {
+					elem = *typ.Element
+				}
+				rows := 0
+				cols := 0
+				isTile := workgroup.Type.Name == "tile"
+				length := 0
+				if isTile {
+					rows = mustConcreteInt(workgroup.Type.TileRows)
+					cols = mustConcreteInt(workgroup.Type.TileCols)
+					length = rows * cols
+				} else {
+					length = mustConcreteInt(workgroup.Type.ArraySize)
+				}
 				out.Workgroups = append(out.Workgroups, vdmir.WorkgroupMemoryDecl{
 					Provenance:  l.provenance,
 					ShaderName:  d.Name,
 					Name:        workgroup.Name,
-					Type:        l.lowerTypeRef(workgroup.Type),
-					ElementType: l.lowerTypeRef(workgroup.Type.Args[0]),
-					Length:      mustConcreteInt(workgroup.Type.ArraySize),
+					Type:        typ,
+					ElementType: elem,
+					Length:      length,
+					Rows:        rows,
+					Cols:        cols,
+					IsTile:      isTile,
 				})
 			}
 			for _, method := range d.Methods {
@@ -290,7 +309,7 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 
 func specializeTypeRef(ref ast.TypeRef, env map[string]specializeValue) (ast.TypeRef, error) {
 	out := ref
-	if ref.Name == "array" {
+	if ref.Name == "array" || ref.Name == "tile" || ref.Name == "matrix_view" {
 		args := make([]ast.TypeRef, len(ref.Args))
 		for i, arg := range ref.Args {
 			next, err := specializeTypeRef(arg, env)
@@ -306,6 +325,18 @@ func specializeTypeRef(ref ast.TypeRef, env map[string]specializeValue) (ast.Typ
 				return ast.TypeRef{}, err
 			}
 			out.ArraySize = sizeExpr
+		}
+		if ref.HasTileShape {
+			rows, err := specializeIntExpr(ref.TileRows, env)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			cols, err := specializeIntExpr(ref.TileCols, env)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			out.TileRows = rows
+			out.TileCols = cols
 		}
 	}
 	return out, nil
@@ -332,7 +363,11 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 		}
 		return ast.FieldAccessExpr{Target: specializeExpr(e.Target, env), Field: e.Field}
 	case ast.IndexExpr:
-		return ast.IndexExpr{Target: specializeExpr(e.Target, env), Index: specializeExpr(e.Index, env)}
+		out := ast.IndexExpr{Target: specializeExpr(e.Target, env), Index: specializeExpr(e.Index, env), HasSecond: e.HasSecond}
+		if e.HasSecond {
+			out.Index2 = specializeExpr(e.Index2, env)
+		}
+		return out
 	case ast.CallExpr:
 		args := make([]ast.Expr, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
@@ -439,9 +474,10 @@ type functionInfo struct {
 }
 
 type binding struct {
-	name string
-	kind vdmir.VarKind
-	typ  ast.TypeRef
+	name   string
+	kind   vdmir.VarKind
+	typ    ast.TypeRef
+	access string
 }
 
 type lowering struct {
@@ -601,7 +637,7 @@ func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resourc
 	scope := map[string]binding{}
 	addBuiltinBindings(scope)
 	for _, resource := range resources {
-		scope[resource.Name] = binding{name: resource.Name, kind: vdmir.VarResource, typ: resource.Type}
+		scope[resource.Name] = binding{name: resource.Name, kind: vdmir.VarResource, typ: resource.Type, access: resource.Access}
 	}
 	for _, workgroup := range workgroups {
 		scope[workgroup.Name] = binding{name: workgroup.Name, kind: vdmir.VarLocal, typ: workgroup.Type}
@@ -648,9 +684,15 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 				return nil, err
 			}
 		}
-		scope[s.Name] = binding{name: s.Name, kind: vdmir.VarLocal, typ: s.Type}
-		locals[s.Name] = l.lowerTypeRef(s.Type)
-		return vdmir.LetStmt{Provenance: l.provenance, Name: s.Name, Type: l.lowerTypeRef(s.Type), Value: value}, nil
+		loweredType := l.lowerTypeRef(s.Type)
+		access := s.Type.Access
+		if rowMajor, ok := value.(vdmir.RowMajorViewExpr); ok {
+			loweredType = rowMajor.Type()
+			access = string(rowMajor.Access)
+		}
+		scope[s.Name] = binding{name: s.Name, kind: vdmir.VarLocal, typ: s.Type, access: access}
+		locals[s.Name] = loweredType
+		return vdmir.LetStmt{Provenance: l.provenance, Name: s.Name, Type: loweredType, Value: value}, nil
 	case ast.AssignStmt:
 		target, err := l.lowerExpr(s.Target, scope, shaderName)
 		if err != nil {
@@ -786,6 +828,20 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		if err != nil {
 			return nil, err
 		}
+		if e.HasSecond {
+			index2, err := l.lowerExpr(e.Index2, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			return vdmir.Index2DExpr{
+				Provenance: l.provenance,
+				ExprType:   elementType(target.Type()),
+				Target:     target,
+				Row:        index,
+				Col:        index2,
+				Stride:     tileOrViewStride(target.Type()),
+			}, nil
+		}
 		return vdmir.IndexExpr{
 			Provenance: l.provenance,
 			ExprType:   elementType(target.Type()),
@@ -793,6 +849,32 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Index:      index,
 		}, nil
 	case ast.CallExpr:
+		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "row_major" {
+			args := make([]vdmir.Expr, 0, len(e.Arguments))
+			for _, arg := range e.Arguments {
+				lowered, err := l.lowerExpr(arg, scope, shaderName)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, lowered)
+			}
+			access := vdmir.ResourceReadOnly
+			if ref, ok := args[0].(vdmir.VarRefExpr); ok {
+				if b, exists := scope[ref.Name]; exists && b.access == "readwrite" {
+					access = vdmir.ResourceReadWrite
+				}
+			}
+			elem := elementType(args[0].Type())
+			viewType := vdmir.Type{Kind: vdmir.TypeMatrixView, Name: "matrix_view", Element: &elem, Access: access}
+			return vdmir.RowMajorViewExpr{
+				Provenance: l.provenance,
+				ExprType:   viewType,
+				Buffer:     args[0],
+				Rows:       args[1],
+				Cols:       args[2],
+				Access:     access,
+			}, nil
+		}
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && isBarrierBuiltin(id.Name) {
 			args := make([]vdmir.Expr, 0, len(e.Arguments))
 			for _, arg := range e.Arguments {
@@ -1142,6 +1224,14 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: mustConcreteInt(resolved.ArraySize), HasArraySize: true}
 		}
 		return vdmir.Type{Kind: vdmir.TypeRuntimeArray, Name: "array", Element: &elem}
+	case "tile":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		rows := mustConcreteInt(resolved.TileRows)
+		cols := mustConcreteInt(resolved.TileCols)
+		return vdmir.Type{Kind: vdmir.TypeTile, Name: "tile", Element: &elem, Rows: rows, Cols: cols, ArraySize: rows * cols, HasArraySize: true}
+	case "matrix_view":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		return vdmir.Type{Kind: vdmir.TypeMatrixView, Name: "matrix_view", Element: &elem, Access: lowerResourceAccess(resolved.Access)}
 	default:
 		if info, ok := l.types[resolved.Name]; ok {
 			switch info.kind {
@@ -1200,6 +1290,15 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 			return l.lowerTypeRef(ast.TypeRef{Name: id.Name})
 		case "WorkgroupBarrier", "WorkgroupMemoryBarrier", "WorkgroupMemoryBarrierWithSync":
 			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
+		case "row_major":
+			if len(call.Arguments) == 3 {
+				if first, ok := call.Arguments[0].(ast.IdentifierExpr); ok {
+					if b, exists := scope[first.Name]; exists {
+						elem := elementType(l.lowerTypeRef(b.typ))
+						return vdmir.Type{Kind: vdmir.TypeMatrixView, Name: "matrix_view", Element: &elem, Access: lowerResourceAccess(b.access)}
+					}
+				}
+			}
 		}
 		if info, ok := l.lookupFunction(shaderName, id.Name); ok {
 			return l.lowerTypeRef(info.returnType)
@@ -1283,6 +1382,9 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 	case ast.IndexExpr:
 		walkExpr(e.Target, builtins)
 		walkExpr(e.Index, builtins)
+		if e.HasSecond {
+			walkExpr(e.Index2, builtins)
+		}
 	case ast.CallExpr:
 		walkExpr(e.Callee, builtins)
 		for _, arg := range e.Arguments {
@@ -1338,6 +1440,13 @@ func elementType(t vdmir.Type) vdmir.Type {
 		return vdmir.Type{}
 	}
 	return *t.Element
+}
+
+func tileOrViewStride(t vdmir.Type) vdmir.Expr {
+	if t.Kind == vdmir.TypeTile {
+		return vdmir.LiteralExpr{ExprType: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Kind: vdmir.LiteralInteger, Value: strconv.Itoa(t.Cols)}
+	}
+	return nil
 }
 
 func binaryResultType(left vdmir.Type, op string, right vdmir.Type) vdmir.Type {

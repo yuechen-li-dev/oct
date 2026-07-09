@@ -167,8 +167,10 @@ func TestSDSLvPrometheusSgemmTile16x16SharedSourceEmits(t *testing.T) {
 		"resource readonly A: array<f32> bundle SgemmIO binding(0,0)",
 		"resource readonly B: array<f32> bundle SgemmIO binding(1,0)",
 		"resource readwrite C: array<f32> bundle SgemmIO binding(2,0)",
-		"workgroup TileA: array<f32,256> shader SgemmTile16x16SharedFp32",
-		"workgroup TileB: array<f32,256> shader SgemmTile16x16SharedFp32",
+		"workgroup TileA: tile<f32,16,16> shader SgemmTile16x16SharedFp32",
+		"workgroup TileB: tile<f32,16,16> shader SgemmTile16x16SharedFp32",
+		"let AView: readonly matrix_view<f32> = row_major(A, params.m, params.k)",
+		"assign CView[row, col] = acc",
 		"entry compute SgemmTile16x16SharedFp32_CS numthreads(16,16,1)",
 	} {
 		if !strings.Contains(out, want) {
@@ -189,8 +191,9 @@ func TestSDSLvPrometheusSgemmTile16x16SharedSourceEmits(t *testing.T) {
 	}
 	body := string(text)
 	for _, want := range []string{
-		"groupshared float TileA[256];",
-		"groupshared float TileB[256];",
+		"groupshared float TileA[16 * 16];",
+		"groupshared float TileB[16 * 16];",
+		"C[((row) * (params.n)) + (col)] = acc;",
 		"GroupMemoryBarrierWithGroupSync();",
 		"void SgemmTile16x16SharedFp32_CS(",
 	} {

@@ -791,6 +791,10 @@ func (p *parser) parseExpressionUntilRightAngle() (ast.Expr, error) {
 	return p.parseWithInternal(true)
 }
 
+func (p *parser) parseExpressionUntilCommaOrRightAngle() (ast.Expr, error) {
+	return p.parseWithInternal(true)
+}
+
 func (p *parser) parseWithInternal(stopAtRightAngle bool) (ast.Expr, error) {
 	base, err := p.parseBinary(0, stopAtRightAngle)
 	if err != nil {
@@ -891,10 +895,22 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
+			var index2 ast.Expr
+			hasSecond := false
+			if p.match(token.Comma) {
+				hasSecond = true
+				index2, err = p.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+				if p.match(token.Comma) {
+					return nil, p.errorAtCurrent("SDSL-V M12 supports at most two indices")
+				}
+			}
 			if _, err := p.expect(token.RightBracket, "expected ']' after index"); err != nil {
 				return nil, err
 			}
-			expr = ast.IndexExpr{Target: expr, Index: index}
+			expr = ast.IndexExpr{Target: expr, Index: index, Index2: index2, HasSecond: hasSecond}
 		case token.LeftParen:
 			p.advance()
 			var args []ast.Expr
@@ -1167,13 +1183,31 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 		}
 		ref.ZeroAllowed = true
 	}
-	if ref.Name == "array" && p.match(token.LeftAngle) {
+	if (ref.Name == "array" || ref.Name == "matrix_view" || ref.Name == "tile") && p.match(token.LeftAngle) {
 		elem, err := p.parseTypeRef(false)
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
 		ref.Args = append(ref.Args, elem)
-		if p.match(token.Comma) {
+		if ref.Name == "tile" {
+			if _, err := p.expect(token.Comma, "expected ',' after tile element type"); err != nil {
+				return ast.TypeRef{}, err
+			}
+			rows, err := p.parseExpressionUntilCommaOrRightAngle()
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			if _, err := p.expect(token.Comma, "expected ',' after tile row count"); err != nil {
+				return ast.TypeRef{}, err
+			}
+			cols, err := p.parseExpressionUntilRightAngle()
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			ref.TileRows = rows
+			ref.TileCols = cols
+			ref.HasTileShape = true
+		} else if p.match(token.Comma) {
 			sizeExpr, err := p.parseExpressionUntilRightAngle()
 			if err != nil {
 				return ast.TypeRef{}, err
@@ -1181,7 +1215,7 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 			ref.ArraySize = sizeExpr
 			ref.HasArraySize = true
 		}
-		if _, err := p.expect(token.RightAngle, "expected '>' after array type"); err != nil {
+		if _, err := p.expect(token.RightAngle, "expected '>' after type arguments"); err != nil {
 			return ast.TypeRef{}, err
 		}
 	}

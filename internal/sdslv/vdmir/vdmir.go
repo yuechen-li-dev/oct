@@ -75,6 +75,9 @@ type WorkgroupMemoryDecl struct {
 	Type        Type
 	ElementType Type
 	Length      int
+	Rows        int
+	Cols        int
+	IsTile      bool
 }
 
 type Binding struct {
@@ -311,6 +314,30 @@ type IndexExpr struct {
 func (IndexExpr) exprNode()    {}
 func (e IndexExpr) Type() Type { return e.ExprType }
 
+type Index2DExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Target     Expr
+	Row        Expr
+	Col        Expr
+	Stride     Expr
+}
+
+func (Index2DExpr) exprNode()    {}
+func (e Index2DExpr) Type() Type { return e.ExprType }
+
+type RowMajorViewExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Buffer     Expr
+	Rows       Expr
+	Cols       Expr
+	Access     ResourceAccess
+}
+
+func (RowMajorViewExpr) exprNode()    {}
+func (e RowMajorViewExpr) Type() Type { return e.ExprType }
+
 type CallExpr struct {
 	Provenance Provenance
 	ExprType   Type
@@ -441,6 +468,9 @@ type Type struct {
 	Element      *Type
 	ArraySize    int
 	HasArraySize bool
+	Rows         int
+	Cols         int
+	Access       ResourceAccess
 }
 
 type TypeKind string
@@ -459,6 +489,8 @@ const (
 	TypeFloat4       TypeKind = "float4"
 	TypeRuntimeArray TypeKind = "runtime_array"
 	TypeArray        TypeKind = "array"
+	TypeTile         TypeKind = "tile"
+	TypeMatrixView   TypeKind = "matrix_view"
 	TypeRecord       TypeKind = "record"
 	TypeStream       TypeKind = "stream"
 	TypeEnum         TypeKind = "enum"

@@ -1,0 +1,34 @@
+namespace Examples.SDSLV.M12;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream MatrixIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record MatrixParams {
+    Rows: u32;
+    Cols: u32;
+}
+
+shader MatrixViewRowMajor {
+    resources MatrixIO;
+
+    stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: MatrixParams) -> void {
+        let row: u32 = thread.DispatchId.x;
+        let col: u32 = thread.DispatchId.y;
+        let AView: matrix_view<f32> = row_major(A, params.Rows, params.Cols);
+        let CView: matrix_view<f32> = row_major(C, params.Rows, params.Cols);
+
+        if row < params.Rows && col < params.Cols {
+            CView[row, col] = AView[row, col];
+        }
+        return;
+    }
+}

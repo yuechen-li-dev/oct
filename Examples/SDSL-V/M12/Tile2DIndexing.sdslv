@@ -1,0 +1,42 @@
+namespace Examples.SDSLV.M12;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream TileCopyIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Output: readwrite array<f32>;
+}
+
+record TileCopyParams {
+    Count: u32;
+}
+
+shader Tile2DIndexing {
+    resources TileCopyIO;
+
+    workgroup Tile: tile<f32, 16, 16>;
+
+    stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: TileCopyParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let index: u32 = thread.GroupIndex;
+        let value: f32 = 0.0;
+
+        if index < params.Count {
+            value = Input[index];
+        }
+
+        Tile[localRow, localCol] = value;
+        WorkgroupMemoryBarrierWithSync();
+
+        if index < params.Count {
+            Output[index] = Tile[localRow, localCol];
+        }
+        return;
+    }
+}

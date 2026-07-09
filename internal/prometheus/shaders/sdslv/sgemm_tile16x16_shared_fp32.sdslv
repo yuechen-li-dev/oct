@@ -65,8 +65,8 @@ shader SgemmTileSharedFp32 {
     static assert C.Tile.N == C.Threads.Y * C.OutputsPerInvocation.N;
     static assert C.Unroll.K == C.Tile.K;
 
-    workgroup TileA: array<f32, C.Tile.M * C.Tile.K>;
-    workgroup TileB: array<f32, C.Tile.K * C.Tile.N>;
+    workgroup TileA: tile<f32, C.Tile.M, C.Tile.K>;
+    workgroup TileB: tile<f32, C.Tile.K, C.Tile.N>;
 
     stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
         let localRow: u32 = thread.GroupThreadId.x;
@@ -74,6 +74,9 @@ shader SgemmTileSharedFp32 {
         let row: u32 = thread.GroupId.x * C.Tile.M + localRow;
         let col: u32 = thread.GroupId.y * C.Tile.N + localCol;
         let acc: f32 = 0.0;
+        let AView: matrix_view<f32> = row_major(A, params.m, params.k);
+        let BView: matrix_view<f32> = row_major(B, params.k, params.n);
+        let CView: matrix_view<f32> = row_major(C, params.m, params.n);
         let tileCount: u32 = (params.k + C.Tile.K - 1u) / C.Tile.K;
 
         [loop]
@@ -81,33 +84,31 @@ shader SgemmTileSharedFp32 {
             let tileBaseK: u32 = tile * C.Tile.K;
             let aCol: u32 = tileBaseK + localCol;
             let bRow: u32 = tileBaseK + localRow;
-            let tileAIndex: u32 = localRow * C.Tile.K + localCol;
-            let tileBIndex: u32 = localRow * C.Tile.N + localCol;
             let aValue: f32 = 0.0;
             let bValue: f32 = 0.0;
 
             if row < params.m && aCol < params.k {
-                aValue = A[row * params.k + aCol];
+                aValue = AView[row, aCol];
             }
             if bRow < params.k && col < params.n {
-                bValue = B[bRow * params.n + col];
+                bValue = BView[bRow, col];
             }
 
-            TileA[tileAIndex] = aValue;
-            TileB[tileBIndex] = bValue;
+            TileA[localRow, localCol] = aValue;
+            TileB[localRow, localCol] = bValue;
 
             WorkgroupMemoryBarrierWithSync();
 
             [unroll]
             for kk in 0u..C.Unroll.K {
-                acc = acc + TileA[localRow * C.Tile.K + kk] * TileB[kk * C.Tile.N + localCol];
+                acc = acc + TileA[localRow, kk] * TileB[kk, localCol];
             }
 
             WorkgroupMemoryBarrierWithSync();
         }
 
         if row < params.m && col < params.n {
-            C[row * params.n + col] = acc;
+            CView[row, col] = acc;
         }
         return;
     }

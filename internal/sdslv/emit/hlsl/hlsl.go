@@ -53,6 +53,7 @@ type emitter struct {
 	builder     strings.Builder
 	indent      int
 	tempCounter int
+	viewAliases map[string]vdmir.RowMajorViewExpr
 }
 
 func (e *emitter) emitStruct(name string, fields []vdmir.Field) {
@@ -125,10 +126,15 @@ func (e *emitter) emitResource(resource vdmir.Resource) {
 }
 
 func (e *emitter) emitWorkgroup(workgroup vdmir.WorkgroupMemoryDecl) {
+	if workgroup.IsTile {
+		e.line(fmt.Sprintf("groupshared %s %s[%d * %d];", typeRef(workgroup.ElementType, ""), workgroup.Name, workgroup.Rows, workgroup.Cols))
+		return
+	}
 	e.line(fmt.Sprintf("groupshared %s;", typeRef(workgroup.Type, workgroup.Name)))
 }
 
 func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint) {
+	e.viewAliases = map[string]vdmir.RowMajorViewExpr{}
 	if entry.EmittedName != "" {
 		e.emitEntryParamGlobals(entry)
 	}
@@ -199,6 +205,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 	case vdmir.LetStmt:
 		if s.Value == nil {
 			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
+			return
+		}
+		if rowMajor, ok := s.Value.(vdmir.RowMajorViewExpr); ok {
+			e.viewAliases[s.Name] = rowMajor
 			return
 		}
 		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
@@ -398,6 +408,10 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return e.expr(x.Target) + "." + x.Field
 	case vdmir.IndexExpr:
 		return e.expr(x.Target) + "[" + e.expr(x.Index) + "]"
+	case vdmir.Index2DExpr:
+		return e.index2D(x)
+	case vdmir.RowMajorViewExpr:
+		return "/* matrix view */"
 	case vdmir.CallExpr:
 		args := make([]string, 0, len(x.Arguments))
 		for _, arg := range x.Arguments {
@@ -493,6 +507,24 @@ func (e *emitter) whenUtility(expr vdmir.WhenUtilityExpr) string {
 	return b.String()
 }
 
+func (e *emitter) index2D(expr vdmir.Index2DExpr) string {
+	target := e.expr(expr.Target)
+	stride := expr.Stride
+	if stride == nil {
+		if ref, ok := expr.Target.(vdmir.VarRefExpr); ok {
+			if alias, exists := e.viewAliases[ref.Name]; exists {
+				target = e.expr(alias.Buffer)
+				stride = alias.Cols
+			}
+		}
+	}
+	strideText := "0"
+	if stride != nil {
+		strideText = e.expr(stride)
+	}
+	return target + "[((" + e.expr(expr.Row) + ") * (" + strideText + ")) + (" + e.expr(expr.Col) + ")]"
+}
+
 func (e *emitter) nextTemp() string {
 	return e.nextTempWithPrefix("with")
 }
@@ -538,6 +570,19 @@ func typeRef(ref vdmir.Type, name string) string {
 			return fmt.Sprintf("%s %s[%d]", elem, name, ref.ArraySize)
 		}
 		return fmt.Sprintf("%s %s[]", elem, name)
+	}
+	if ref.Kind == vdmir.TypeTile && ref.Element != nil {
+		elem := typeRef(*ref.Element, "")
+		if name == "" {
+			return elem
+		}
+		return fmt.Sprintf("%s %s[%d]", elem, name, ref.Rows*ref.Cols)
+	}
+	if ref.Kind == vdmir.TypeMatrixView {
+		if name == "" {
+			return "/* matrix_view */"
+		}
+		return "/* matrix_view */ " + name
 	}
 	if name == "" {
 		return mapped

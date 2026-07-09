@@ -84,6 +84,19 @@ let weights: array<f32, 4> = [1.0, 2.0, 3.0, 4.0];
 
 Array literals lower to sequential element assignments in HLSL. Literal length must match the declared size. Element types must match the array element type. Array parameters are immutable — element assignment via `weights[i] = v` is rejected on parameters; only local array variables may be mutated.
 
+### Tile and matrix view types (GoOct M12)
+
+M12 adds explicit 2D compute views:
+
+```sdslv
+workgroup TileA: tile<f32, 16, 16>;
+let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+```
+
+`tile<T, Rows, Cols>` is currently valid only for shader-scoped `workgroup` declarations. `Rows` and `Cols` must be positive compile-time integer expressions, and HLSL emits flat `groupshared` storage sized `Rows * Cols`.
+
+`matrix_view<T>` is a lightweight local view over a resource array created by `row_major(buffer, rows, cols)`. It does not allocate storage. Access mode is inherited from the source resource: readonly views can be read but not assigned through; readwrite views can be read and written.
+
 ### Type aliases and coordinate spaces
 
 ```sdslv
@@ -365,6 +378,7 @@ Nested `if/else { if/else }` ladders are not permitted — use `switch { case ..
 | `[e, e, e]` | Array literal (typed local target only) |
 | `expr.field` | Field access |
 | `expr[index]` | Array index |
+| `expr[row, col]` | M12 tile or matrix-view 2D index |
 | `callee(args)` | Function call |
 | `a + b`, `a - b`, `a * b`, `a / b` | Arithmetic |
 | `a == b`, `a != b`, `a < b`, `a <= b`, `a > b`, `a >= b` | Comparison |
@@ -399,7 +413,7 @@ M10a adds optional prefix loop attributes on explicit indexed reductions:
 
 ```sdslv
 let acc: f32 = [unroll] sum kk in 0u..C.TILE_K {
-    TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol]
+    TileA[localRow, kk] * TileB[kk, localCol]
 };
 ```
 
@@ -407,9 +421,30 @@ The attribute-free form remains valid:
 
 ```sdslv
 let acc: f32 = sum kk in 0u..C.TILE_K {
-    TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol]
+    TileA[localRow, kk] * TileB[kk, localCol]
 };
 ```
+
+### 2D indexing and row-major matrix views
+
+M12 supports explicit `value[row, col]` indexing for `tile<T, Rows, Cols>` and `matrix_view<T>` values only. Both indices must be integer expressions. Bounds checks are not inserted; callers remain responsible for guarding edges.
+
+Tile indexing lowers through VD-MIR to flat workgroup storage:
+
+```sdslv
+TileA[localRow, kk]
+```
+
+lowers as `TileA[localRow * Cols + kk]` in HLSL. One-dimensional indexing of tile values is rejected.
+
+Matrix views are created with:
+
+```sdslv
+let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+```
+
+`row_major` requires a readonly/readwrite resource array and integer row/column expressions. `AView[row, col]` lowers to `A[row * params.K + col]`; assigning through a readonly view is rejected, while assigning through a readwrite view is accepted.
 
 Current M10 rules:
 
@@ -729,6 +764,8 @@ enum-variant ::= IDENT ';' | IDENT '{' field+ '}'
 field        ::= IDENT ':' type-ref ';'
 params       ::= (IDENT ':' type-ref (',' IDENT ':' type-ref)*)?
 type-ref     ::= path | 'array' '<' type-ref ',' INT '>'
+             | 'tile' '<' type-ref ',' const-expr ',' const-expr '>'
+             | 'matrix_view' '<' type-ref '>'
 
 board        ::= 'board' '{' (IDENT ':' type-ref ';')+ '}'
 state        ::= 'state' IDENT '{' flow-stmt+ '}'
@@ -749,6 +786,7 @@ assign       ::= expr '=' expr ';'
 for          ::= 'for' IDENT 'in' expr '..' expr ('step' expr)? '{' stmt* '}'
 
 expr         ::= ... (see expression table above)
+index-expr   ::= expr '[' expr ']' | expr '[' expr ',' expr ']'
 switch-expr  ::= 'switch' expr? '{' switch-case+ 'else' ('=>'|'->') expr '}'
 match-expr   ::= 'match' expr '{' match-arm+ '}'
 match-arm    ::= IDENT '.' IDENT ('(' IDENT ')')? '=>' expr

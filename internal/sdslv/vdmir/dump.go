@@ -149,6 +149,10 @@ func FormatExpr(expr Expr) string {
 		return FormatExpr(e.Target) + "." + e.Field
 	case IndexExpr:
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Index) + "]"
+	case Index2DExpr:
+		return FormatExpr(e.Target) + "[" + FormatExpr(e.Row) + ", " + FormatExpr(e.Col) + "]"
+	case RowMajorViewExpr:
+		return "row_major(" + FormatExpr(e.Buffer) + ", " + FormatExpr(e.Rows) + ", " + FormatExpr(e.Cols) + ")"
 	case CallExpr:
 		args := make([]string, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
@@ -246,6 +250,19 @@ func FormatType(t Type) string {
 			return "array<?>"
 		}
 		return fmt.Sprintf("array<%s,%d>", FormatType(*t.Element), t.ArraySize)
+	case TypeTile:
+		if t.Element == nil {
+			return "tile<?>"
+		}
+		return fmt.Sprintf("tile<%s,%d,%d>", FormatType(*t.Element), t.Rows, t.Cols)
+	case TypeMatrixView:
+		if t.Element == nil {
+			return "matrix_view<?>"
+		}
+		if t.Access != "" {
+			return fmt.Sprintf("%s matrix_view<%s>", t.Access, FormatType(*t.Element))
+		}
+		return fmt.Sprintf("matrix_view<%s>", FormatType(*t.Element))
 	case TypeRecord:
 		return "record " + t.Name
 	case TypeStream:

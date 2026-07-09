@@ -128,4 +128,6 @@ M10 intentionally does not add:
 
 The production `sgemm_tile16x16_shared_fp32.sdslv` inner fixed accumulation loop was evaluated for a `[unroll] sum` refactor in M10a, but the repository fallback rule is to keep the explicit `[unroll] for` form if native correctness/performance lanes do not stay green. The outer runtime tile loop remains on explicit `[loop] for`.
 
+M12 keeps reductions explicit and adds only tile/matrix view indexing. A reduction body may now read `TileA[localRow, kk] * TileB[kk, localCol]`, but repeated index names still do not imply Einstein notation or automatic reduction.
+
 This milestone is the explicit-bounds bridge from manual scalar loops toward future tensor and Einstein-style compute notation.

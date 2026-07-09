@@ -1,0 +1,72 @@
+namespace Examples.SDSLV.M12;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+shader SgemmTileShapeViews {
+    resources SgemmIO;
+
+    workgroup TileA: tile<f32, 16, 16>;
+    workgroup TileB: tile<f32, 16, 16>;
+
+    stage compute [numthreads(16, 16, 1)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let row: u32 = thread.GroupId.x * 16u + localRow;
+        let col: u32 = thread.GroupId.y * 16u + localCol;
+        let acc: f32 = 0.0;
+        let AView: matrix_view<f32> = row_major(A, params.m, params.k);
+        let BView: matrix_view<f32> = row_major(B, params.k, params.n);
+        let CView: matrix_view<f32> = row_major(C, params.m, params.n);
+        let tileCount: u32 = (params.k + 15u) / 16u;
+
+        [loop]
+        for tile in 0u..tileCount {
+            let tileBaseK: u32 = tile * 16u;
+            let aCol: u32 = tileBaseK + localCol;
+            let bRow: u32 = tileBaseK + localRow;
+            let aValue: f32 = 0.0;
+            let bValue: f32 = 0.0;
+
+            if row < params.m && aCol < params.k {
+                aValue = AView[row, aCol];
+            }
+            if bRow < params.k && col < params.n {
+                bValue = BView[bRow, col];
+            }
+
+            TileA[localRow, localCol] = aValue;
+            TileB[localRow, localCol] = bValue;
+
+            WorkgroupMemoryBarrierWithSync();
+
+            [unroll]
+            for kk in 0u..16u {
+                acc = acc + TileA[localRow, kk] * TileB[kk, localCol];
+            }
+
+            WorkgroupMemoryBarrierWithSync();
+        }
+
+        if row < params.m && col < params.n {
+            CView[row, col] = acc;
+        }
+        return;
+    }
+}

@@ -88,6 +88,7 @@ const (
 type varInfo struct {
 	typ    ast.TypeRef
 	origin varOrigin
+	access string
 }
 
 type validator struct {
@@ -620,7 +621,7 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 		"GroupIndex":       {typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin},
 	}
 	for _, resource := range resources {
-		scope[resource.Name] = varInfo{typ: resource.Type, origin: varResource}
+		scope[resource.Name] = varInfo{typ: resource.Type, origin: varResource, access: resource.Access}
 	}
 	for _, workgroup := range workgroups {
 		scope[workgroup.Name] = varInfo{typ: workgroup.Type, origin: varWorkgroup}
@@ -630,6 +631,9 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 			v.errorf("duplicate parameter or builtin name %s in %s", param.Name, fn.Name)
 		}
 		v.validateType(param.Type)
+		if param.Type.Name == "tile" || param.Type.Name == "matrix_view" {
+			v.errorf("%s parameters are not supported in SDSL-V M12", param.Type.Name)
+		}
 		scope[param.Name] = varInfo{typ: param.Type, origin: varParam}
 	}
 	for _, stmt := range fn.Body.Statements {
@@ -641,12 +645,22 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	switch s := stmt.(type) {
 	case ast.LetStmt:
 		v.validateType(s.Type)
+		if s.Type.Name == "tile" {
+			v.errorf("tile<T,R,C> is only valid for workgroup declarations in SDSL-V M12")
+		}
+		if s.Type.Name == "matrix_view" && s.Value == nil {
+			v.errorf("matrix_view locals must be initialized with row_major(...) in SDSL-V M12")
+		}
+		if s.Type.Name == "matrix_view" && s.Value != nil && !isRowMajorCall(s.Value) {
+			v.errorf("matrix_view locals must be initialized with row_major(...) in SDSL-V M12")
+		}
+		valueType := ast.TypeRef{}
 		if s.Value != nil {
 			v.validateWithPlacement(s.Value, true)
 			v.validateMatchPlacement(s.Value, true)
 			v.validateReductionPlacement(s.Value, true)
 			v.validateBarrierUsage(s.Value, false, shaderName, stage)
-			valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+			valueType = v.exprType(s.Value, scope, shaderName, templateParam)
 			if !v.compatible(s.Type, valueType) {
 				v.errorf("cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
 			}
@@ -654,7 +668,13 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if _, exists := scope[s.Name]; exists {
 			v.errorf("duplicate local name %s", s.Name)
 		}
-		scope[s.Name] = varInfo{typ: s.Type, origin: varLocal}
+		access := s.Type.Access
+		if s.Value != nil && valueType.Name == "matrix_view" {
+			access = valueType.Access
+		}
+		localType := s.Type
+		localType.Access = access
+		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access}
 	case ast.AssignStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
@@ -760,6 +780,22 @@ func (v *validator) validateType(ref ast.TypeRef) {
 		}
 		return
 	}
+	if ref.Name == "tile" {
+		if len(ref.Args) != 1 || !ref.HasTileShape {
+			v.errorf("tile type requires tile<T, Rows, Cols>")
+			return
+		}
+		v.validateType(ref.Args[0])
+		return
+	}
+	if ref.Name == "matrix_view" {
+		if len(ref.Args) != 1 {
+			v.errorf("matrix_view type requires one element type")
+			return
+		}
+		v.validateType(ref.Args[0])
+		return
+	}
 	if _, ok := v.types[ref.Name]; !ok {
 		v.errorf("unknown type %s", ref.Name)
 	}
@@ -826,6 +862,32 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		index := v.exprType(e.Index, scope, shaderName, templateParam)
 		if !isInteger(index) {
 			v.errorf("array index must be integer")
+		}
+		if e.HasSecond {
+			index2 := v.exprType(e.Index2, scope, shaderName, templateParam)
+			if !isInteger(index2) {
+				v.errorf("2D index second operand must be integer")
+			}
+			switch target.Name {
+			case "tile":
+				if len(target.Args) == 1 {
+					return v.resolveAlias(target.Args[0])
+				}
+			case "matrix_view":
+				if len(target.Args) == 1 {
+					return v.resolveAlias(target.Args[0])
+				}
+			}
+			v.errorf("2D indexing is only valid on tile<T,R,C> or matrix_view<T>, got %s", typeName(target))
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if target.Name == "tile" {
+			v.errorf("tile values require explicit 2D indexing")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if target.Name == "matrix_view" {
+			v.errorf("matrix_view values require explicit 2D indexing")
+			return ast.TypeRef{Name: "<error>"}
 		}
 		if target.Name == "array" && len(target.Args) == 1 {
 			return v.resolveAlias(target.Args[0])
@@ -1056,6 +1118,28 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 
 func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
+		if id.Name == "row_major" {
+			if len(call.Arguments) != 3 {
+				v.errorf("row_major expects 3 arguments, got %d", len(call.Arguments))
+				return ast.TypeRef{Name: "<error>"}
+			}
+			bufferID, ok := call.Arguments[0].(ast.IdentifierExpr)
+			if !ok {
+				v.errorf("row_major first argument must be a resource array")
+				return ast.TypeRef{Name: "<error>"}
+			}
+			info, ok := scope[bufferID.Name]
+			if !ok || info.origin != varResource || info.typ.Name != "array" || len(info.typ.Args) != 1 {
+				v.errorf("row_major first argument must be a resource array")
+				return ast.TypeRef{Name: "<error>"}
+			}
+			rows := v.exprType(call.Arguments[1], scope, shaderName, templateParam)
+			cols := v.exprType(call.Arguments[2], scope, shaderName, templateParam)
+			if !isInteger(rows) || !isInteger(cols) {
+				v.errorf("row_major rows and cols must be integer expressions")
+			}
+			return ast.TypeRef{Name: "matrix_view", Args: []ast.TypeRef{v.resolveAlias(info.typ.Args[0])}, Access: info.access}
+		}
 		if isVectorConstructor(id.Name) {
 			return ast.TypeRef{Name: id.Name}
 		}
@@ -1090,6 +1174,9 @@ func (v *validator) compatible(left, right ast.TypeRef) bool {
 	left = v.resolveAlias(left)
 	right = v.resolveAlias(right)
 	if left.Name == right.Name {
+		if left.Name == "matrix_view" || left.Name == "tile" {
+			return len(left.Args) == len(right.Args) && (len(left.Args) == 0 || v.compatible(left.Args[0], right.Args[0]))
+		}
 		if left.Name != "array" {
 			return true
 		}
@@ -1112,6 +1199,12 @@ func (v *validator) typeKind(ref ast.TypeRef) string {
 	if !ok {
 		if resolved.Name == "array" {
 			return "array"
+		}
+		if resolved.Name == "tile" {
+			return "tile"
+		}
+		if resolved.Name == "matrix_view" {
+			return "matrix_view"
 		}
 		return ""
 	}
@@ -1143,6 +1236,9 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 			}
 		}
 	}
+	if info.typ.Name == "matrix_view" && info.access != "readwrite" && !isDirectIdentifier(expr) {
+		v.errorf("cannot assign through readonly matrix_view %s", root)
+	}
 }
 
 func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
@@ -1165,6 +1261,9 @@ func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 	case ast.IndexExpr:
 		v.validateWithPlacement(e.Target, false)
 		v.validateWithPlacement(e.Index, false)
+		if e.HasSecond {
+			v.validateWithPlacement(e.Index2, false)
+		}
 	case ast.CallExpr:
 		v.validateWithPlacement(e.Callee, false)
 		for _, arg := range e.Arguments {
@@ -1214,6 +1313,9 @@ func (v *validator) validateMatchPlacement(expr ast.Expr, topLevelAllowed bool) 
 	case ast.IndexExpr:
 		v.validateMatchPlacement(e.Target, false)
 		v.validateMatchPlacement(e.Index, false)
+		if e.HasSecond {
+			v.validateMatchPlacement(e.Index2, false)
+		}
 	case ast.CallExpr:
 		v.validateMatchPlacement(e.Callee, false)
 		for _, arg := range e.Arguments {
@@ -1263,6 +1365,9 @@ func (v *validator) validateReductionPlacement(expr ast.Expr, topLevelAllowed bo
 	case ast.IndexExpr:
 		v.validateReductionPlacement(e.Target, false)
 		v.validateReductionPlacement(e.Index, false)
+		if e.HasSecond {
+			v.validateReductionPlacement(e.Index2, false)
+		}
 	case ast.CallExpr:
 		v.validateReductionPlacement(e.Callee, false)
 		for _, arg := range e.Arguments {
@@ -1342,6 +1447,34 @@ func (v *validator) validateNumThreads(shaderName string, method ast.FunctionDec
 }
 
 func (v *validator) validateWorkgroup(shaderName string, decl ast.WorkgroupDecl, templateParam *ast.TemplateParam) {
+	if decl.Type.Name == "tile" {
+		if len(decl.Type.Args) != 1 || !decl.Type.HasTileShape {
+			v.errorf("workgroup %s.%s must use tile<T, Rows, Cols>", shaderName, decl.Name)
+			return
+		}
+		for _, dim := range []struct {
+			name string
+			expr ast.Expr
+		}{
+			{"rows", decl.Type.TileRows},
+			{"cols", decl.Type.TileCols},
+		} {
+			typ := v.exprType(dim.expr, map[string]varInfo{}, shaderName, templateParam)
+			if !isInteger(typ) {
+				v.errorf("workgroup %s.%s tile %s must be an integer constant expression", shaderName, decl.Name, dim.name)
+			} else if templateParam == nil {
+				value, err := v.evalConstExpr(dim.expr, nil)
+				if err != nil || value.int32 <= 0 {
+					v.errorf("workgroup %s.%s tile %s must be positive", shaderName, decl.Name, dim.name)
+				}
+			}
+		}
+		v.validateType(decl.Type)
+		if !isWorkgroupElementType(v.resolveAlias(decl.Type.Args[0])) {
+			v.errorf("workgroup %s.%s element type %s is not supported in GoOct SDSL-V M12", shaderName, decl.Name, typeName(v.resolveAlias(decl.Type.Args[0])))
+		}
+		return
+	}
 	if decl.Type.Name != "array" {
 		v.errorf("workgroup %s.%s must use array<T, N>", shaderName, decl.Name)
 		return
@@ -1392,6 +1525,9 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 	case ast.IndexExpr:
 		v.validateBarrierUsage(e.Target, false, shaderName, stage)
 		v.validateBarrierUsage(e.Index, false, shaderName, stage)
+		if e.HasSecond {
+			v.validateBarrierUsage(e.Index2, false, shaderName, stage)
+		}
 	case ast.BinaryExpr:
 		v.validateBarrierUsage(e.Left, false, shaderName, stage)
 		v.validateBarrierUsage(e.Right, false, shaderName, stage)
@@ -1435,6 +1571,15 @@ func (v *validator) errorf(format string, args ...any) {
 }
 
 func typeName(ref ast.TypeRef) string {
+	if ref.Name == "matrix_view" && len(ref.Args) == 1 {
+		if ref.Access != "" {
+			return ref.Access + " matrix_view<" + typeName(ref.Args[0]) + ">"
+		}
+		return "matrix_view<" + typeName(ref.Args[0]) + ">"
+	}
+	if ref.Name == "tile" && len(ref.Args) == 1 {
+		return "tile<" + typeName(ref.Args[0]) + ",R,C>"
+	}
 	if ref.Name != "array" || len(ref.Args) == 0 {
 		return ref.Name
 	}
@@ -1601,6 +1746,15 @@ func rootIdentifier(expr ast.Expr) (string, bool) {
 func isDirectIdentifier(expr ast.Expr) bool {
 	_, ok := expr.(ast.IdentifierExpr)
 	return ok
+}
+
+func isRowMajorCall(expr ast.Expr) bool {
+	call, ok := expr.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	id, ok := call.Callee.(ast.IdentifierExpr)
+	return ok && id.Name == "row_major"
 }
 
 func isFloat(ref ast.TypeRef) bool { return ref.Name == "f32" || ref.Name == "float" }

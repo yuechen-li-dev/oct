@@ -90,6 +90,31 @@ stage compute [numthreads(16, 16, 1)] fn CS() -> void { return; }
 	}
 }
 
+func TestBuildModuleParsesTileMatrixViewsAnd2DIndexing(t *testing.T) {
+	module := parseTestModule(t, `shader TileCopy {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 16, 8>;
+stage compute [numthreads(16, 1, 1)] fn CS() -> void {
+let View: matrix_view<f32> = row_major(A, 16u, 8u);
+Tile[1u, 2u] = View[1u, 2u];
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	if shader.Workgroups[0].Type.Name != "tile" || !shader.Workgroups[0].Type.HasTileShape {
+		t.Fatalf("workgroup type = %#v, want tile shape", shader.Workgroups[0].Type)
+	}
+	letStmt := shader.Methods[0].Body.Statements[0].(ast.LetStmt)
+	if letStmt.Type.Name != "matrix_view" || len(letStmt.Type.Args) != 1 {
+		t.Fatalf("let type = %#v, want matrix_view<f32>", letStmt.Type)
+	}
+	assign := shader.Methods[0].Body.Statements[1].(ast.AssignStmt)
+	target := assign.Target.(ast.IndexExpr)
+	if !target.HasSecond {
+		t.Fatalf("assignment target = %#v, want 2D index", target)
+	}
+}
+
 func TestBuildModuleRejectsWorkgroupOutsideShader(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `workgroup Tile: array<f32, 16>;`})
 	if err != nil {

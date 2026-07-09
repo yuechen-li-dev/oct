@@ -119,6 +119,12 @@ set OCT_PROMETHEUS_PX16_EVT_ENABLE_2048=1
 out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
 ```
 
+## SDSL-V M12 Source Shape
+
+SDSL-V M12 refactors the source-backed Tile16x16 shared-memory SGEMM shader to use `tile<f32, R, C>` workgroup storage, `row_major(...)` matrix views, and explicit `value[row, col]` indexing. The generated HLSL/SPIR-V still lowers through VD-MIR to deterministic flat row-major index math.
+
+This is an authoring-surface change only. It does not retune the selector, change production dispatch authority, change P15, or alter FFT/P16 work.
+
 ### Artifact paths
 
 The lane writes:
