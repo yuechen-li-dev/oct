@@ -1,0 +1,35 @@
+namespace Examples.SDSLV.M16a;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream MatrixIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record MatrixParams {
+    M: u32;
+    N: u32;
+}
+
+shader GuardedReadBasic {
+    resources MatrixIO;
+
+    stage compute [numthreads(8, 8, 1)] fn CS(thread: ComputeThread, params: MatrixParams) -> void {
+        let row: u32 = thread.DispatchId.x;
+        let col: u32 = thread.DispatchId.y;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.N);
+        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+
+        let value: f32 =
+            read AView[row, col] when row < params.M and col < params.N else 0.0;
+
+        write CView[row, col] = value when row < params.M and col < params.N;
+        return;
+    }
+}

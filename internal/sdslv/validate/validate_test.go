@@ -171,6 +171,84 @@ func TestModuleRejectsInvalidRegTileUse(t *testing.T) {
 	}
 }
 
+func TestModuleValidatesGuardedMemoryAccess(t *testing.T) {
+	err := validateSource(`shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, guard: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+let value: f32 = read AView[row, col] when guard and not false else 0.0;
+write CView[row, col] = value when guard or false;
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsInvalidGuardedMemoryAccess(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "guarded read target must be indexed memory",
+			src:  `fn F(flag: bool) -> f32 { return read (1.0 + 2.0) when flag else 0.0; }`,
+			want: "guarded read target must be an indexed memory expression",
+		},
+		{
+			name: "guarded read guard must be bool",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u, 4u); let x: f32 = read AView[0u, 0u] when 1u else 0.0; return; } }`,
+			want: "guarded read condition must be bool",
+		},
+		{
+			name: "guarded read fallback type mismatch",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u, 4u); let x: f32 = read AView[0u, 0u] when true else 1u; return; } }`,
+			want: "guarded read fallback type does not match target element type",
+		},
+		{
+			name: "guarded write readonly rejected",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u, 4u); write AView[0u, 0u] = 1.0 when true; return; } }`,
+			want: "cannot guarded-write to readonly matrix view",
+		},
+		{
+			name: "guarded write condition must be bool",
+			src:  `shader S { resources { C: readwrite array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let CView: matrix_view<f32> = row_major(C, 4u, 4u); write CView[0u, 0u] = 1.0 when 1u; return; } }`,
+			want: "guarded write condition must be bool",
+		},
+		{
+			name: "guarded write value mismatch",
+			src:  `shader S { resources { C: readwrite array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let CView: matrix_view<f32> = row_major(C, 4u, 4u); write CView[0u, 0u] = 1u when true; return; } }`,
+			want: "guarded write value type does not match target element type",
+		},
+		{
+			name: "guarded write target must be writable indexed memory",
+			src:  `fn F(flag: bool) -> void { write flag = flag when true; return; }`,
+			want: "guarded write target must be a writable indexed memory expression",
+		},
+		{
+			name: "guarded read rejected in comptime",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u, 4u); comptime let X: f32 = read AView[0u, 0u] when true else 0.0; return; } }`,
+			want: "guarded read is not a compile-time expression",
+		},
+		{
+			name: "guarded read nested placement rejected",
+			src:  `shader S { resources { A: readonly array<f32>; } stage compute [numthreads(1,1,1)] fn CS() -> void { let AView: matrix_view<f32> = row_major(A, 4u, 4u); let x: f32 = 1.0 + read AView[0u, 0u] when true else 0.0; return; } }`,
+			want: "guarded read expression is only supported as a direct let initializer",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsBadReturnType(t *testing.T) {
 	err := validateSource(`fn F() -> u32 { return 1.0; }`)
 	if err == nil || !strings.Contains(err.Error(), "return type mismatch") {

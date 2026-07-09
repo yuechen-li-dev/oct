@@ -113,6 +113,8 @@ func dumpBlock(b *strings.Builder, indent int, block Block) {
 			}
 		case AssignStmt:
 			line(indent, fmt.Sprintf("assign %s = %s", FormatExpr(s.Target), FormatExpr(s.Value)))
+		case GuardedWriteStmt:
+			line(indent, fmt.Sprintf("guarded_write %s = %s when %s", FormatExpr(s.Target), FormatExpr(s.Value), FormatExpr(s.Condition)))
 		case ReturnStmt:
 			if s.Value == nil {
 				line(indent, "return")
@@ -151,6 +153,8 @@ func FormatExpr(expr Expr) string {
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Index) + "]"
 	case Index2DExpr:
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Row) + ", " + FormatExpr(e.Col) + "]"
+	case GuardedReadExpr:
+		return "guarded_read(" + FormatExpr(e.Target) + " when " + FormatExpr(e.Condition) + " else " + FormatExpr(e.Fallback) + ")"
 	case RegTileZeroExpr:
 		return "reg_tile_zero()"
 	case RowMajorViewExpr:

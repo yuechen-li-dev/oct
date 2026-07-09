@@ -97,6 +97,13 @@ let AView: matrix_view<f32> = row_major(A, params.M, params.K);
 
 `matrix_view<T>` is a lightweight local view over a resource array created by `row_major(buffer, rows, cols)`. It does not allocate storage. Access mode is inherited from the source resource: readonly views can be read but not assigned through; readwrite views can be read and written.
 
+GoOct M16a adds guarded memory forms that compose naturally with `matrix_view` indexing:
+
+```sdslv
+let a: f32 = read AView[row, col] when row < params.M and col < params.N else 0.0;
+write CView[row, col] = a when row < params.M and col < params.N;
+```
+
 ### Register tile types (GoOct M15)
 
 M15 adds structured per-thread local/register storage:
@@ -121,6 +128,8 @@ M15 currently supports:
 - mutation through indexed assignment.
 
 Whole-tile copy, whole-tile assignment, parameter passing, and return values are deferred.
+
+Guarded read/write do not change `reg_tile`'s role: `reg_tile` remains per-thread local storage, while guarded access is primarily for resource/view and tile boundary protection.
 
 ### Type aliases and coordinate spaces
 

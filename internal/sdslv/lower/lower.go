@@ -285,6 +285,12 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 		return ast.ComptimeLetStmt{Name: s.Name, Type: ref, Value: specializeExpr(s.Value, env)}, nil
 	case ast.AssignStmt:
 		return ast.AssignStmt{Target: specializeExpr(s.Target, env), Value: specializeExpr(s.Value, env)}, nil
+	case ast.GuardedWriteStmt:
+		return ast.GuardedWriteStmt{
+			Target:    specializeExpr(s.Target, env),
+			Value:     specializeExpr(s.Value, env),
+			Condition: specializeExpr(s.Condition, env),
+		}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return s, nil
@@ -546,6 +552,12 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 		return []ast.Stmt{out}, nil
 	case ast.AssignStmt:
 		return []ast.Stmt{ast.AssignStmt{Target: replaceComptimeExpr(s.Target, comptime), Value: replaceComptimeExpr(s.Value, comptime)}}, nil
+	case ast.GuardedWriteStmt:
+		return []ast.Stmt{ast.GuardedWriteStmt{
+			Target:    replaceComptimeExpr(s.Target, comptime),
+			Value:     replaceComptimeExpr(s.Value, comptime),
+			Condition: replaceComptimeExpr(s.Condition, comptime),
+		}}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return []ast.Stmt{s}, nil
@@ -860,6 +872,8 @@ func rejectRuntimeComptimeRefs(expr ast.Expr, runtime map[string]runtimeBinding)
 		if e.HasSecond {
 			return rejectRuntimeComptimeRefs(e.Index2, runtime)
 		}
+	case ast.GuardedReadExpr:
+		return fmt.Errorf("comptime expression cannot use guarded read in SDSL-V M16a")
 	case ast.CallExpr:
 		return fmt.Errorf("comptime expression cannot call functions in SDSL-V M13")
 	case ast.BinaryExpr:
@@ -892,6 +906,12 @@ func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast
 			out.Index2 = replaceComptimeExpr(e.Index2, comptime)
 		}
 		return out
+	case ast.GuardedReadExpr:
+		return ast.GuardedReadExpr{
+			Target:    replaceComptimeExpr(e.Target, comptime),
+			Condition: replaceComptimeExpr(e.Condition, comptime),
+			Fallback:  replaceComptimeExpr(e.Fallback, comptime),
+		}
 	case ast.CallExpr:
 		args := make([]ast.Expr, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
@@ -1089,6 +1109,12 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 			out.Index2 = specializeExpr(e.Index2, env)
 		}
 		return out
+	case ast.GuardedReadExpr:
+		return ast.GuardedReadExpr{
+			Target:    specializeExpr(e.Target, env),
+			Condition: specializeExpr(e.Condition, env),
+			Fallback:  specializeExpr(e.Fallback, env),
+		}
 	case ast.CallExpr:
 		args := make([]ast.Expr, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
@@ -1426,6 +1452,20 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 			return nil, err
 		}
 		return vdmir.AssignStmt{Provenance: l.provenance, Target: target, Value: value}, nil
+	case ast.GuardedWriteStmt:
+		target, err := l.lowerExpr(s.Target, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		value, err := l.lowerExpr(s.Value, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		condition, err := l.lowerExpr(s.Condition, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.GuardedWriteStmt{Provenance: l.provenance, Target: target, Value: value, Condition: condition}, nil
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			return vdmir.ReturnStmt{Provenance: l.provenance}, nil
@@ -1570,6 +1610,26 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			ExprType:   elementType(target.Type()),
 			Target:     target,
 			Index:      index,
+		}, nil
+	case ast.GuardedReadExpr:
+		target, err := l.lowerExpr(e.Target, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		condition, err := l.lowerExpr(e.Condition, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		fallback, err := l.lowerExpr(e.Fallback, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.GuardedReadExpr{
+			Provenance: l.provenance,
+			ExprType:   target.Type(),
+			Target:     target,
+			Condition:  condition,
+			Fallback:   fallback,
 		}, nil
 	case ast.CallExpr:
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "reg_tile_zero" {
@@ -2075,6 +2135,10 @@ func walkStmt(stmt ast.Stmt, builtins map[string]bool) {
 	case ast.AssignStmt:
 		walkExpr(s.Target, builtins)
 		walkExpr(s.Value, builtins)
+	case ast.GuardedWriteStmt:
+		walkExpr(s.Target, builtins)
+		walkExpr(s.Value, builtins)
+		walkExpr(s.Condition, builtins)
 	case ast.ReturnStmt:
 		if s.Value != nil {
 			walkExpr(s.Value, builtins)
@@ -2116,6 +2180,10 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 		if e.HasSecond {
 			walkExpr(e.Index2, builtins)
 		}
+	case ast.GuardedReadExpr:
+		walkExpr(e.Target, builtins)
+		walkExpr(e.Condition, builtins)
+		walkExpr(e.Fallback, builtins)
 	case ast.CallExpr:
 		walkExpr(e.Callee, builtins)
 		for _, arg := range e.Arguments {

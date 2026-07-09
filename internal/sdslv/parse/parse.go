@@ -661,6 +661,8 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		return p.parseLet()
 	case token.KeywordReturn:
 		return p.parseReturn()
+	case token.KeywordWrite:
+		return p.parseGuardedWrite()
 	case token.KeywordIf:
 		return p.parseIf()
 	case token.KeywordFor:
@@ -916,6 +918,32 @@ func (p *parser) parseReturn() (ast.ReturnStmt, error) {
 	return ast.ReturnStmt{Value: value}, nil
 }
 
+func (p *parser) parseGuardedWrite() (ast.GuardedWriteStmt, error) {
+	p.advance()
+	target, err := p.parseExpression()
+	if err != nil {
+		return ast.GuardedWriteStmt{}, err
+	}
+	if _, err := p.expect(token.Assign, "expected '=' after guarded write target"); err != nil {
+		return ast.GuardedWriteStmt{}, err
+	}
+	value, err := p.parseReductionValueOrExpression()
+	if err != nil {
+		return ast.GuardedWriteStmt{}, err
+	}
+	if _, err := p.expect(token.KeywordWhen, "expected 'when' after guarded write value"); err != nil {
+		return ast.GuardedWriteStmt{}, err
+	}
+	condition, err := p.parseExpression()
+	if err != nil {
+		return ast.GuardedWriteStmt{}, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after guarded write"); err != nil {
+		return ast.GuardedWriteStmt{}, err
+	}
+	return ast.GuardedWriteStmt{Target: target, Value: value, Condition: condition}, nil
+}
+
 func (p *parser) parseIf() (ast.IfStmt, error) {
 	p.advance()
 	condition, err := p.parseExpression()
@@ -1160,6 +1188,8 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return ast.IdentifierExpr{Name: t.Lexeme}, nil
 	case token.KeywordWhen:
 		return p.parseWhenUtility()
+	case token.KeywordRead:
+		return p.parseGuardedRead()
 	case token.KeywordMatch:
 		return p.parseMatchExpr()
 	case token.LeftParen:
@@ -1177,6 +1207,29 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseGuardedRead() (ast.GuardedReadExpr, error) {
+	p.advance()
+	target, err := p.parsePostfix()
+	if err != nil {
+		return ast.GuardedReadExpr{}, err
+	}
+	if _, err := p.expect(token.KeywordWhen, "expected 'when' after guarded read target"); err != nil {
+		return ast.GuardedReadExpr{}, err
+	}
+	condition, err := p.parseExpression()
+	if err != nil {
+		return ast.GuardedReadExpr{}, err
+	}
+	if _, err := p.expect(token.KeywordElse, "expected 'else' after guarded read condition"); err != nil {
+		return ast.GuardedReadExpr{}, err
+	}
+	fallback, err := p.parseExpression()
+	if err != nil {
+		return ast.GuardedReadExpr{}, err
+	}
+	return ast.GuardedReadExpr{Target: target, Condition: condition, Fallback: fallback}, nil
 }
 
 func (p *parser) parseReductionValueOrExpression() (ast.Expr, error) {

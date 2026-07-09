@@ -138,6 +138,41 @@ return;
 	}
 }
 
+func TestBuildModuleParsesGuardedReadAndWrite(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, ok: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+let value: f32 = read AView[row, col] when ok and not false else 0.0;
+write CView[row, col] = value when ok or false;
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	letStmt := shader.Methods[0].Body.Statements[2].(ast.LetStmt)
+	guardedRead, ok := letStmt.Value.(ast.GuardedReadExpr)
+	if !ok {
+		t.Fatalf("let value = %T, want GuardedReadExpr", letStmt.Value)
+	}
+	if _, ok := guardedRead.Target.(ast.IndexExpr); !ok {
+		t.Fatalf("guarded read target = %T, want IndexExpr", guardedRead.Target)
+	}
+	if cond, ok := guardedRead.Condition.(ast.BinaryExpr); !ok || cond.Operator != "and" {
+		t.Fatalf("guarded read condition = %#v, want semantic and", guardedRead.Condition)
+	}
+	writeStmt, ok := shader.Methods[0].Body.Statements[3].(ast.GuardedWriteStmt)
+	if !ok {
+		t.Fatalf("stmt[3] = %T, want GuardedWriteStmt", shader.Methods[0].Body.Statements[3])
+	}
+	if _, ok := writeStmt.Target.(ast.IndexExpr); !ok {
+		t.Fatalf("guarded write target = %T, want IndexExpr", writeStmt.Target)
+	}
+	if cond, ok := writeStmt.Condition.(ast.BinaryExpr); !ok || cond.Operator != "or" {
+		t.Fatalf("guarded write condition = %#v, want semantic or", writeStmt.Condition)
+	}
+}
+
 func TestBuildModuleRejectsWorkgroupOutsideShader(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `workgroup Tile: array<f32, 16>;`})
 	if err != nil {

@@ -67,3 +67,12 @@ This keeps source style Oct-like while keeping backend output target-native.
 
 - `examples/SDSL-V/M15a/SemanticBooleanOperators.sdslv`
 - `examples/SDSL-V/M15a/SemanticComptimeGuard.sdslv`
+
+M16a guarded memory access uses the same source-level boolean spelling:
+
+```sdslv
+let a: f32 =
+    read AView[row, k] when row < params.M and k < params.K else 0.0;
+
+write CView[row, col] = a when row < params.M and col < params.N;
+```

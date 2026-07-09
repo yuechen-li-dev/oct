@@ -85,6 +85,17 @@ Rules:
 - Assigning through a readonly matrix view is rejected.
 - Workgroup tiles are mutable.
 
+M16a builds directly on these memory surfaces with guarded access:
+
+```sdslv
+let value: f32 =
+    read AView[row, col] when row < params.Rows and col < params.Cols else 0.0;
+
+write CView[row, col] = value when row < params.Rows and col < params.Cols;
+```
+
+This keeps bounds/tail logic attached to the memory operation itself while preserving the existing `tile`/`matrix_view` indexing model.
+
 ## Limits
 
 M12 intentionally does not add:

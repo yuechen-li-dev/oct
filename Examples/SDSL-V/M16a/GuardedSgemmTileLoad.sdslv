@@ -1,0 +1,64 @@
+namespace Examples.SDSLV.M16a;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams {
+    M: u32;
+    N: u32;
+    K: u32;
+}
+
+concept TileConfig {
+    Tile: {
+        M: u32 = 16u;
+        N: u32 = 16u;
+        K: u32 = 16u;
+    };
+}
+
+config Tile16: TileConfig {}
+
+template<C: TileConfig>
+shader GuardedSgemmTileLoad {
+    resources SgemmIO;
+
+    workgroup TileA: tile<f32, C.Tile.M, C.Tile.K>;
+    workgroup TileB: tile<f32, C.Tile.K, C.Tile.N>;
+
+    stage compute [numthreads(C.Tile.M, C.Tile.N, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let row: u32 = thread.GroupId.x * C.Tile.M + localRow;
+        let col: u32 = thread.GroupId.y * C.Tile.N + localCol;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+        let BView: matrix_view<f32> = row_major(B, params.K, params.N);
+        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+        let aCol: u32 = localCol;
+        let bRow: u32 = localRow;
+        let acc: f32 = 0.0;
+
+        TileA[localRow, localCol] =
+            read AView[row, aCol] when row < params.M and aCol < params.K else 0.0;
+
+        TileB[localRow, localCol] =
+            read BView[bRow, col] when bRow < params.K and col < params.N else 0.0;
+
+        WorkgroupMemoryBarrierWithSync();
+
+        write CView[row, col] = acc when row < params.M and col < params.N;
+        return;
+    }
+}
+
+compile GuardedSgemmTileLoad<Tile16> as GuardedSgemmTileLoad16;

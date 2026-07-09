@@ -231,6 +231,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitMatchLet(s, matchExpr)
 			return
 		}
+		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
+			e.emitGuardedReadLet(s, guardedRead)
+			return
+		}
 		e.line(fmt.Sprintf("%s = %s;", typeRef(s.Type, s.Name), e.expr(s.Value)))
 	case vdmir.AssignStmt:
 		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
@@ -249,7 +253,18 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitMatchAssign(e.expr(s.Target), matchExpr)
 			return
 		}
+		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
+			e.emitGuardedReadAssign(e.expr(s.Target), guardedRead)
+			return
+		}
 		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), e.expr(s.Value)))
+	case vdmir.GuardedWriteStmt:
+		e.line("if (" + e.expr(s.Condition) + ")")
+		e.line("{")
+		e.indent++
+		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), e.expr(s.Value)))
+		e.indent--
+		e.line("}")
 	case vdmir.ReturnStmt:
 		if s.Value == nil {
 			e.line("return;")
@@ -265,6 +280,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		}
 		if matchExpr, ok := s.Value.(vdmir.MatchExpr); ok {
 			e.emitMatchReturn(matchExpr)
+			return
+		}
+		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
+			e.emitGuardedReadReturn(guardedRead)
 			return
 		}
 		e.line("return " + e.expr(s.Value) + ";")
@@ -402,6 +421,27 @@ func (e *emitter) emitMatchReturn(matchExpr vdmir.MatchExpr) {
 	e.line("return " + tempName + ";")
 }
 
+func (e *emitter) emitGuardedReadLet(stmt vdmir.LetStmt, guarded vdmir.GuardedReadExpr) {
+	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), e.expr(guarded.Fallback)))
+	e.emitGuardedReadAssign(stmt.Name, guarded)
+}
+
+func (e *emitter) emitGuardedReadAssign(target string, guarded vdmir.GuardedReadExpr) {
+	e.line("if (" + e.expr(guarded.Condition) + ")")
+	e.line("{")
+	e.indent++
+	e.line(fmt.Sprintf("%s = %s;", target, e.expr(guarded.Target)))
+	e.indent--
+	e.line("}")
+}
+
+func (e *emitter) emitGuardedReadReturn(guarded vdmir.GuardedReadExpr) {
+	tempName := e.nextTempWithPrefix("guarded_read")
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(guarded.Type(), ""), tempName, e.expr(guarded.Fallback)))
+	e.emitGuardedReadAssign(tempName, guarded)
+	e.line("return " + tempName + ";")
+}
+
 func (e *emitter) expr(expr vdmir.Expr) string {
 	switch x := expr.(type) {
 	case vdmir.LiteralExpr:
@@ -414,6 +454,8 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return e.expr(x.Target) + "[" + e.expr(x.Index) + "]"
 	case vdmir.Index2DExpr:
 		return e.index2D(x)
+	case vdmir.GuardedReadExpr:
+		return "/* unsupported guarded read expr position */"
 	case vdmir.RegTileZeroExpr:
 		return "/* reg_tile_zero */"
 	case vdmir.RowMajorViewExpr:

@@ -77,3 +77,14 @@ let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
 M16 adds constrained `comptime for` so shader authors can iterate a structured accumulator surface instead of forcing generated names such as `acc00`, `acc01`, `acc10`, and `acc11`.
 
 M15a keeps this storage model unchanged while aligning condition syntax with Oct source style: shader authors use `and`, `or`, and `not` in SDSL-V source, and emitted HLSL continues to use `&&`, `||`, and `!`. M16 builds directly on this storage model with `comptime for`; see `docs/SDSL_V_M16_COMPTIME_FOR.md`.
+
+M16a then adds guarded memory access around the storage/view surfaces that interact with `reg_tile` kernels:
+
+```sdslv
+let a: f32 =
+    read AView[row, k] when row < params.M and k < params.K else 0.0;
+
+write CView[row, col] = Acc[0u, 0u] when row < params.M and col < params.N;
+```
+
+The guard protects the memory operation. It does not change `reg_tile` indexing or introduce guarded whole-tile operations.

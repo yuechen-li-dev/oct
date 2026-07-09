@@ -235,6 +235,14 @@ type AssignStmt struct {
 
 func (AssignStmt) stmtNode() {}
 
+type GuardedWriteStmt struct {
+	Target    Expr
+	Value     Expr
+	Condition Expr
+}
+
+func (GuardedWriteStmt) stmtNode() {}
+
 type ReturnStmt struct {
 	Value Expr
 }
@@ -368,6 +376,14 @@ type IndexExpr struct {
 }
 
 func (IndexExpr) exprNode() {}
+
+type GuardedReadExpr struct {
+	Target    Expr
+	Condition Expr
+	Fallback  Expr
+}
+
+func (GuardedReadExpr) exprNode() {}
 
 type CallExpr struct {
 	Callee    Expr

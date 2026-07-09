@@ -275,6 +275,41 @@ compile S<Micro2x2> as S2x2;`)
 	}
 }
 
+func TestModuleLowersGuardedMemoryAccessToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, guard: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+let value: f32 = read AView[row, col] when guard else 0.0;
+write CView[row, col] = value when row < 4u and col < 4u;
+return;
+}
+}`)
+	cs := findFunction(t, mir, "S_CS")
+	letValue, ok := cs.Body.Statements[2].(vdmir.LetStmt)
+	if !ok {
+		t.Fatalf("stmt[2] = %T, want LetStmt", cs.Body.Statements[2])
+	}
+	guardedRead, ok := letValue.Value.(vdmir.GuardedReadExpr)
+	if !ok {
+		t.Fatalf("let value = %T, want GuardedReadExpr", letValue.Value)
+	}
+	if _, ok := guardedRead.Target.(vdmir.Index2DExpr); !ok {
+		t.Fatalf("guarded read target = %T, want Index2DExpr", guardedRead.Target)
+	}
+	if got := vdmir.FormatExpr(guardedRead); !strings.Contains(got, "guarded_read") {
+		t.Fatalf("FormatExpr(guardedRead) = %q, want normalized guarded_read form", got)
+	}
+	writeStmt, ok := cs.Body.Statements[3].(vdmir.GuardedWriteStmt)
+	if !ok {
+		t.Fatalf("stmt[3] = %T, want GuardedWriteStmt", cs.Body.Statements[3])
+	}
+	if _, ok := writeStmt.Target.(vdmir.Index2DExpr); !ok {
+		t.Fatalf("guarded write target = %T, want Index2DExpr", writeStmt.Target)
+	}
+}
+
 func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
 	mir := lowerSource(t, `stream ComputeThread {
 DispatchId: uint3;

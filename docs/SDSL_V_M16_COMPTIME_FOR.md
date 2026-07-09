@@ -116,6 +116,19 @@ This is intentionally conservative to avoid accidental AST explosion from nested
 
 Those constructs may appear inside a `comptime for` body, and the loop index may participate in their compile-time expressions.
 
+M16a guarded memory access composes with this expansion model in runtime statements inside the expanded body:
+
+```sdslv
+comptime for oi in 0u..C.Outputs.M {
+    comptime for oj in 0u..C.Outputs.N {
+        write CView[row + oi, col + oj] = Acc[oi, oj]
+            when row + oi < params.M and col + oj < params.N;
+    }
+}
+```
+
+The loop indices may contribute constants to the guard, but the guarded read/write itself remains a runtime memory operation rather than a compile-time expression.
+
 ## Examples
 
 - `examples/SDSL-V/M16/ComptimeForBasic.sdslv`

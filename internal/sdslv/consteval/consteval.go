@@ -80,6 +80,8 @@ func Eval(expr ast.Expr, env map[string]Value) (Value, error) {
 			}
 		}
 		return Value{}, fmt.Errorf("unknown constant field %s", path)
+	case ast.GuardedReadExpr:
+		return Value{}, fmt.Errorf("guarded read is not a compile-time expression in SDSL-V M16a")
 	case ast.BinaryExpr:
 		left, err := Eval(e.Left, env)
 		if err != nil {

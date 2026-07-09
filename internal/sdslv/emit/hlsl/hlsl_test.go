@@ -94,6 +94,35 @@ return;
 	}
 }
 
+func TestEmitGuardedMemoryAccessToSafeHLSL(t *testing.T) {
+	hlsl := emitSource(t, `shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, guard: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+let value: f32 = read AView[row, col] when guard and not false else 0.0;
+write CView[row, col] = value when row < 4u and col < 4u;
+return;
+}
+}`)
+	for _, want := range []string{
+		"float value = 0.0;",
+		"if ((guard && !false))",
+		"value = A[((row) * (4u)) + (col)];",
+		"if (((row < 4u) && (col < 4u)))",
+		"C[((row) * (4u)) + (col)] = value;",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+	for _, banned := range []string{"read AView", "write CView"} {
+		if strings.Contains(hlsl, banned) {
+			t.Fatalf("HLSL should not contain source guarded spelling %q:\n%s", banned, hlsl)
+		}
+	}
+}
+
 func TestEmitComptimeSelectedBranchOnly(t *testing.T) {
 	hlsl := emitSource(t, `shader Demo {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {

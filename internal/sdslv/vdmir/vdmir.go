@@ -197,6 +197,15 @@ type AssignStmt struct {
 
 func (AssignStmt) stmtNode() {}
 
+type GuardedWriteStmt struct {
+	Provenance Provenance
+	Target     Expr
+	Value      Expr
+	Condition  Expr
+}
+
+func (GuardedWriteStmt) stmtNode() {}
+
 type ReturnStmt struct {
 	Provenance Provenance
 	Value      Expr
@@ -325,6 +334,17 @@ type Index2DExpr struct {
 
 func (Index2DExpr) exprNode()    {}
 func (e Index2DExpr) Type() Type { return e.ExprType }
+
+type GuardedReadExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Target     Expr
+	Condition  Expr
+	Fallback   Expr
+}
+
+func (GuardedReadExpr) exprNode()    {}
+func (e GuardedReadExpr) Type() Type { return e.ExprType }
 
 type RegTileZeroExpr struct {
 	Provenance Provenance

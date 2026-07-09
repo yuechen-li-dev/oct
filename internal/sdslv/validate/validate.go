@@ -676,6 +676,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		valueType := ast.TypeRef{}
 		if s.Value != nil {
 			v.validateWithPlacement(s.Value, true)
+			v.validateGuardedReadPlacement(s.Value, true)
 			v.validateMatchPlacement(s.Value, true)
 			v.validateReductionPlacement(s.Value, true)
 			v.validateBarrierUsage(s.Value, false, shaderName, stage)
@@ -705,8 +706,12 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	case ast.ComptimeLetStmt:
 		v.validateType(s.Type)
 		v.validateWithPlacement(s.Value, false)
+		v.validateGuardedReadPlacement(s.Value, true)
 		v.validateMatchPlacement(s.Value, false)
 		v.validateReductionPlacement(s.Value, false)
+		if containsGuardedReadExpr(s.Value) {
+			v.errorf("guarded read is not a compile-time expression in SDSL-V M16a")
+		}
 		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
 		if !v.compatible(s.Type, valueType) {
 			v.errorf("cannot assign %s to comptime local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
@@ -722,6 +727,8 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	case ast.AssignStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
+		v.validateGuardedReadPlacement(s.Target, false)
+		v.validateGuardedReadPlacement(s.Value, true)
 		v.validateMatchPlacement(s.Target, false)
 		v.validateMatchPlacement(s.Value, true)
 		v.validateReductionPlacement(s.Target, false)
@@ -740,6 +747,37 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if !v.compatible(targetType, valueType) {
 			v.errorf("assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
 		}
+	case ast.GuardedWriteStmt:
+		v.validateWithPlacement(s.Target, false)
+		v.validateWithPlacement(s.Value, true)
+		v.validateWithPlacement(s.Condition, false)
+		v.validateGuardedReadPlacement(s.Target, false)
+		v.validateGuardedReadPlacement(s.Value, true)
+		v.validateGuardedReadPlacement(s.Condition, false)
+		v.validateMatchPlacement(s.Target, false)
+		v.validateMatchPlacement(s.Value, true)
+		v.validateMatchPlacement(s.Condition, false)
+		v.validateReductionPlacement(s.Target, false)
+		v.validateReductionPlacement(s.Value, true)
+		v.validateReductionPlacement(s.Condition, false)
+		v.validateBarrierUsage(s.Target, false, shaderName, stage)
+		v.validateBarrierUsage(s.Value, false, shaderName, stage)
+		v.validateBarrierUsage(s.Condition, false, shaderName, stage)
+		if !isGuardedMemoryReadTarget(s.Target) || !isGuardedMemoryWriteTarget(s.Target, scope) {
+			v.errorf("guarded write target must be a writable indexed memory expression")
+		}
+		if isReadonlyMatrixViewIndex(s.Target, scope) {
+			v.errorf("cannot guarded-write to readonly matrix view")
+		}
+		targetType := v.exprType(s.Target, scope, shaderName, templateParam)
+		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		guardType := v.exprType(s.Condition, scope, shaderName, templateParam)
+		if guardType.Name != "bool" {
+			v.errorf("guarded write condition must be bool")
+		}
+		if !v.compatible(targetType, valueType) {
+			v.errorf("guarded write value type does not match target element type")
+		}
 	case ast.ReturnStmt:
 		if s.Value == nil {
 			if returnType.Name != "void" {
@@ -748,6 +786,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			return
 		}
 		v.validateWithPlacement(s.Value, true)
+		v.validateGuardedReadPlacement(s.Value, true)
 		v.validateMatchPlacement(s.Value, true)
 		v.validateReductionPlacement(s.Value, true)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
@@ -760,12 +799,14 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 	case ast.ExprStmt:
 		v.validateWithPlacement(s.Value, false)
+		v.validateGuardedReadPlacement(s.Value, false)
 		v.validateMatchPlacement(s.Value, false)
 		v.validateReductionPlacement(s.Value, false)
 		v.validateBarrierUsage(s.Value, true, shaderName, stage)
 		v.exprType(s.Value, scope, shaderName, templateParam)
 	case ast.IfStmt:
 		v.validateWithPlacement(s.Condition, false)
+		v.validateGuardedReadPlacement(s.Condition, false)
 		v.validateMatchPlacement(s.Condition, false)
 		v.validateReductionPlacement(s.Condition, false)
 		v.validateBarrierUsage(s.Condition, false, shaderName, stage)
@@ -779,6 +820,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 	case ast.ComptimeIfStmt:
 		v.validateWithPlacement(s.Condition, false)
+		v.validateGuardedReadPlacement(s.Condition, false)
 		v.validateMatchPlacement(s.Condition, false)
 		v.validateReductionPlacement(s.Condition, false)
 		cond := v.exprType(s.Condition, scope, shaderName, templateParam)
@@ -827,6 +869,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			seenLabels[c.Label] = struct{}{}
 			if c.Condition != nil {
 				v.validateWithPlacement(c.Condition, false)
+				v.validateGuardedReadPlacement(c.Condition, false)
 				v.validateMatchPlacement(c.Condition, false)
 				v.validateReductionPlacement(c.Condition, false)
 				guardType := v.exprType(c.Condition, scope, shaderName, templateParam)
@@ -835,6 +878,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 				}
 			}
 			v.validateWithPlacement(c.Score, false)
+			v.validateGuardedReadPlacement(c.Score, false)
 			v.validateMatchPlacement(c.Score, false)
 			v.validateReductionPlacement(c.Score, false)
 			scoreType := v.exprType(c.Score, scope, shaderName, templateParam)
@@ -849,6 +893,8 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	case ast.ComptimeForStmt:
 		v.validateWithPlacement(s.Start, false)
 		v.validateWithPlacement(s.End, false)
+		v.validateGuardedReadPlacement(s.Start, false)
+		v.validateGuardedReadPlacement(s.End, false)
 		v.validateMatchPlacement(s.Start, false)
 		v.validateMatchPlacement(s.End, false)
 		v.validateReductionPlacement(s.Start, false)
@@ -886,6 +932,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateWithPlacement(s.Start, false)
 		v.validateWithPlacement(s.End, false)
 		v.validateWithPlacement(s.Step, false)
+		v.validateGuardedReadPlacement(s.Start, false)
+		v.validateGuardedReadPlacement(s.End, false)
+		v.validateGuardedReadPlacement(s.Step, false)
 		v.validateMatchPlacement(s.Start, false)
 		v.validateMatchPlacement(s.End, false)
 		v.validateMatchPlacement(s.Step, false)
@@ -907,6 +956,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		loopScope[s.Name] = varInfo{typ: startType, origin: varLocal}
 		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam)
 	case ast.StaticAssertStmt:
+		v.validateGuardedReadPlacement(s.Expr, false)
 		typ := v.exprType(s.Expr, scope, shaderName, templateParam)
 		if typ.Name != "bool" && typ.Name != "<error>" {
 			v.errorf("static assert %s must evaluate to bool", s.Text)
@@ -1069,6 +1119,20 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 		v.errorf("cannot index non-array type %s", typeName(target))
 		return ast.TypeRef{Name: "<error>"}
+	case ast.GuardedReadExpr:
+		if !isGuardedMemoryReadTarget(e.Target) {
+			v.errorf("guarded read target must be an indexed memory expression")
+		}
+		targetType := v.exprType(e.Target, scope, shaderName, templateParam)
+		guardType := v.exprType(e.Condition, scope, shaderName, templateParam)
+		fallbackType := v.exprType(e.Fallback, scope, shaderName, templateParam)
+		if guardType.Name != "bool" {
+			v.errorf("guarded read condition must be bool")
+		}
+		if !v.compatible(targetType, fallbackType) {
+			v.errorf("guarded read fallback type does not match target element type")
+		}
+		return targetType
 	case ast.CallExpr:
 		return v.callType(e, scope, shaderName, templateParam)
 	case ast.BinaryExpr:
@@ -1451,6 +1515,10 @@ func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 		if e.HasSecond {
 			v.validateWithPlacement(e.Index2, false)
 		}
+	case ast.GuardedReadExpr:
+		v.validateWithPlacement(e.Target, false)
+		v.validateWithPlacement(e.Condition, false)
+		v.validateWithPlacement(e.Fallback, false)
 	case ast.CallExpr:
 		v.validateWithPlacement(e.Callee, false)
 		for _, arg := range e.Arguments {
@@ -1503,6 +1571,10 @@ func (v *validator) validateMatchPlacement(expr ast.Expr, topLevelAllowed bool) 
 		if e.HasSecond {
 			v.validateMatchPlacement(e.Index2, false)
 		}
+	case ast.GuardedReadExpr:
+		v.validateMatchPlacement(e.Target, false)
+		v.validateMatchPlacement(e.Condition, false)
+		v.validateMatchPlacement(e.Fallback, false)
 	case ast.CallExpr:
 		v.validateMatchPlacement(e.Callee, false)
 		for _, arg := range e.Arguments {
@@ -1555,6 +1627,10 @@ func (v *validator) validateReductionPlacement(expr ast.Expr, topLevelAllowed bo
 		if e.HasSecond {
 			v.validateReductionPlacement(e.Index2, false)
 		}
+	case ast.GuardedReadExpr:
+		v.validateReductionPlacement(e.Target, false)
+		v.validateReductionPlacement(e.Condition, false)
+		v.validateReductionPlacement(e.Fallback, false)
 	case ast.CallExpr:
 		v.validateReductionPlacement(e.Callee, false)
 		for _, arg := range e.Arguments {
@@ -1586,6 +1662,67 @@ func (v *validator) validateReductionPlacement(expr ast.Expr, topLevelAllowed bo
 		for _, arm := range e.Arms {
 			v.validateReductionPlacement(arm.Value, false)
 		}
+	}
+}
+
+func (v *validator) validateGuardedReadPlacement(expr ast.Expr, topLevelAllowed bool) {
+	switch e := expr.(type) {
+	case ast.GuardedReadExpr:
+		if !topLevelAllowed {
+			v.errorf("guarded read expression is only supported as a direct let initializer, assignment RHS, or return value in SDSL-V M16a")
+			return
+		}
+		v.validateGuardedReadPlacement(e.Target, false)
+		v.validateGuardedReadPlacement(e.Condition, false)
+		v.validateGuardedReadPlacement(e.Fallback, false)
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateGuardedReadPlacement(field.Value, false)
+		}
+	case ast.FieldAccessExpr:
+		v.validateGuardedReadPlacement(e.Target, false)
+	case ast.IndexExpr:
+		v.validateGuardedReadPlacement(e.Target, false)
+		v.validateGuardedReadPlacement(e.Index, false)
+		if e.HasSecond {
+			v.validateGuardedReadPlacement(e.Index2, false)
+		}
+	case ast.CallExpr:
+		v.validateGuardedReadPlacement(e.Callee, false)
+		for _, arg := range e.Arguments {
+			v.validateGuardedReadPlacement(arg, false)
+		}
+	case ast.BinaryExpr:
+		v.validateGuardedReadPlacement(e.Left, false)
+		v.validateGuardedReadPlacement(e.Right, false)
+	case ast.UnaryExpr:
+		v.validateGuardedReadPlacement(e.Operand, false)
+	case ast.ParenExpr:
+		v.validateGuardedReadPlacement(e.Inner, false)
+	case ast.WhenUtilityExpr:
+		for _, c := range e.Cases {
+			v.validateGuardedReadPlacement(c.Value, false)
+			v.validateGuardedReadPlacement(c.Condition, false)
+			v.validateGuardedReadPlacement(c.Score, false)
+		}
+		if e.Else != nil {
+			v.validateGuardedReadPlacement(e.Else, false)
+		}
+	case ast.WithExpr:
+		v.validateGuardedReadPlacement(e.Base, false)
+		for _, update := range e.Updates {
+			v.validateGuardedReadPlacement(update.Value, false)
+		}
+	case ast.MatchExpr:
+		v.validateGuardedReadPlacement(e.Subject, false)
+		for _, arm := range e.Arms {
+			v.validateGuardedReadPlacement(arm.Value, false)
+		}
+	case ast.ReductionExpr:
+		v.validateGuardedReadPlacement(e.Start, false)
+		v.validateGuardedReadPlacement(e.End, false)
+		v.validateGuardedReadPlacement(e.Step, false)
+		v.validateGuardedReadPlacement(e.Body, false)
 	}
 }
 
@@ -1719,6 +1856,10 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 		if e.HasSecond {
 			v.validateBarrierUsage(e.Index2, false, shaderName, stage)
 		}
+	case ast.GuardedReadExpr:
+		v.validateBarrierUsage(e.Target, false, shaderName, stage)
+		v.validateBarrierUsage(e.Condition, false, shaderName, stage)
+		v.validateBarrierUsage(e.Fallback, false, shaderName, stage)
 	case ast.BinaryExpr:
 		v.validateBarrierUsage(e.Left, false, shaderName, stage)
 		v.validateBarrierUsage(e.Right, false, shaderName, stage)
@@ -1986,9 +2127,65 @@ func rootIdentifier(expr ast.Expr) (string, bool) {
 		return rootIdentifier(e.Target)
 	case ast.IndexExpr:
 		return rootIdentifier(e.Target)
+	case ast.GuardedReadExpr:
+		return rootIdentifier(e.Target)
 	default:
 		return "", false
 	}
+}
+
+func isGuardedMemoryReadTarget(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case ast.IndexExpr:
+		switch target := e.Target.(type) {
+		case ast.IdentifierExpr, ast.FieldAccessExpr, ast.IndexExpr:
+			_ = target
+			return true
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func isGuardedMemoryWriteTarget(expr ast.Expr, scope map[string]varInfo) bool {
+	index, ok := expr.(ast.IndexExpr)
+	if !ok {
+		return false
+	}
+	root, ok := rootIdentifier(index)
+	if !ok {
+		return false
+	}
+	info, ok := scope[root]
+	if !ok {
+		return false
+	}
+	switch info.origin {
+	case varResource, varWorkgroup:
+		return true
+	case varLocal:
+		return info.typ.Name == "tile" || info.typ.Name == "matrix_view"
+	default:
+		return false
+	}
+}
+
+func isReadonlyMatrixViewIndex(expr ast.Expr, scope map[string]varInfo) bool {
+	index, ok := expr.(ast.IndexExpr)
+	if !ok {
+		return false
+	}
+	root, ok := rootIdentifier(index)
+	if !ok {
+		return false
+	}
+	info, ok := scope[root]
+	if !ok {
+		return false
+	}
+	return info.typ.Name == "matrix_view" && info.access != "readwrite"
 }
 
 func isDirectIdentifier(expr ast.Expr) bool {
@@ -2003,6 +2200,68 @@ func isRowMajorCall(expr ast.Expr) bool {
 	}
 	id, ok := call.Callee.(ast.IdentifierExpr)
 	return ok && id.Name == "row_major"
+}
+
+func containsGuardedReadExpr(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case ast.GuardedReadExpr:
+		return true
+	case ast.FieldAccessExpr:
+		return containsGuardedReadExpr(e.Target)
+	case ast.IndexExpr:
+		return containsGuardedReadExpr(e.Target) || containsGuardedReadExpr(e.Index) || (e.HasSecond && containsGuardedReadExpr(e.Index2))
+	case ast.CallExpr:
+		if containsGuardedReadExpr(e.Callee) {
+			return true
+		}
+		for _, arg := range e.Arguments {
+			if containsGuardedReadExpr(arg) {
+				return true
+			}
+		}
+	case ast.BinaryExpr:
+		return containsGuardedReadExpr(e.Left) || containsGuardedReadExpr(e.Right)
+	case ast.UnaryExpr:
+		return containsGuardedReadExpr(e.Operand)
+	case ast.ParenExpr:
+		return containsGuardedReadExpr(e.Inner)
+	case ast.WhenUtilityExpr:
+		if containsGuardedReadExpr(e.Else) {
+			return true
+		}
+		for _, c := range e.Cases {
+			if containsGuardedReadExpr(c.Value) || containsGuardedReadExpr(c.Condition) || containsGuardedReadExpr(c.Score) {
+				return true
+			}
+		}
+	case ast.WithExpr:
+		if containsGuardedReadExpr(e.Base) {
+			return true
+		}
+		for _, update := range e.Updates {
+			if containsGuardedReadExpr(update.Value) {
+				return true
+			}
+		}
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			if containsGuardedReadExpr(field.Value) {
+				return true
+			}
+		}
+	case ast.MatchExpr:
+		if containsGuardedReadExpr(e.Subject) {
+			return true
+		}
+		for _, arm := range e.Arms {
+			if containsGuardedReadExpr(arm.Value) {
+				return true
+			}
+		}
+	case ast.ReductionExpr:
+		return containsGuardedReadExpr(e.Start) || containsGuardedReadExpr(e.End) || containsGuardedReadExpr(e.Step) || containsGuardedReadExpr(e.Body)
+	}
+	return false
 }
 
 func isFloat(ref ast.TypeRef) bool { return ref.Name == "f32" || ref.Name == "float" }
