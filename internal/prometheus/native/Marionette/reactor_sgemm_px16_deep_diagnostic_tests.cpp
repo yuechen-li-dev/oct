@@ -611,6 +611,9 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
         double readback_ms = 0.0;
         double post_readback_ms = 0.0;
         double kernel_ms = 0.0;
+        double tolerance_eval_ms = 0.0;
+        bool tolerance_eval_in_dispatch = false;
+        std::uint32_t tolerance_eval_source = 0u;
         double remaining_ms = 0.0;
         double remaining_pct = 0.0;
     };
@@ -640,6 +643,9 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
         std::vector<double> readback_ns;
         std::vector<double> post_readback_ns;
         std::vector<double> kernel_ns;
+        std::vector<double> tolerance_eval_ns;
+        std::uint32_t tolerance_eval_in_dispatch = 0u;
+        std::uint32_t tolerance_eval_source = 0u;
         for (int i = 0; i < 20; ++i) {
             std::uint32_t stage = PROM_STAGE_NONE;
             int detail = 0;
@@ -663,6 +669,9 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
             post_sync_ns.push_back(static_cast<double>(diag.px16_m8_last_post_sync_wall_ns));
             readback_ns.push_back(static_cast<double>(diag.px16_m8_last_readback_wall_ns));
             post_readback_ns.push_back(static_cast<double>(diag.px16_m8_last_post_readback_wall_ns));
+            tolerance_eval_ns.push_back(static_cast<double>(diag.px16_m17_last_tolerance_eval_wall_ns));
+            tolerance_eval_in_dispatch = diag.px16_m17_last_tolerance_eval_in_dispatch;
+            tolerance_eval_source = diag.px16_m17_last_tolerance_eval_source;
             if (diag.p13_m5_last_gpu_timing_valid != 0u && diag.p13_m5_last_gpu_duration_ns > 0u) {
                 kernel_ns.push_back(static_cast<double>(diag.p13_m5_last_gpu_duration_ns));
             }
@@ -679,6 +688,9 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
         row.readback_ms = median_ms_from_ns(readback_ns);
         row.post_readback_ms = median_ms_from_ns(post_readback_ns);
         row.kernel_ms = median_ms_from_ns(kernel_ns);
+        row.tolerance_eval_ms = median_ms_from_ns(tolerance_eval_ns);
+        row.tolerance_eval_in_dispatch = tolerance_eval_in_dispatch != 0u;
+        row.tolerance_eval_source = tolerance_eval_source;
         const double accounted =
             row.pre_dispatch_ms +
             row.command_record_ms +
@@ -699,6 +711,8 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
         ASSERT_TRUE(row.post_sync_ms >= 0.0, "post-sync timing should be non-negative");
         ASSERT_TRUE(row.readback_ms >= 0.0, "readback timing should be non-negative");
         ASSERT_TRUE(row.post_readback_ms >= 0.0, "post-readback timing should be non-negative");
+        ASSERT_TRUE(!row.tolerance_eval_in_dispatch, "production dispatch must not run tolerance evaluation");
+        ASSERT_EQUAL(0.0, row.tolerance_eval_ms, "production dispatch tolerance-eval timing should be zero");
         observed_positive_h2_bucket = observed_positive_h2_bucket ||
             row.pre_dispatch_ms > 0.0 ||
             row.post_sync_ms > 0.0 ||
@@ -711,8 +725,8 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
     markdown << "`post-sync ms` covers the window between fence-wait completing and readback starting. "
              << "`pre-dispatch ms` covers occupancy selection through P15 forecast before command-buffer work begins. "
              << "`post-readback ms` covers final bookkeeping before return.\n\n";
-    markdown << "| shape | total ms | pre-dispatch ms | command record ms | submit ms | sync wait ms | post-sync ms | readback ms | post-readback ms | kernel gpu ms | remaining unaccounted ms | remaining % |\n";
-    markdown << "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n";
+    markdown << "| shape | total ms | pre-dispatch ms | command record ms | submit ms | sync wait ms | post-sync ms | readback ms | post-readback ms | kernel gpu ms | tolerance eval ms | tolerance eval in dispatch | remaining unaccounted ms | remaining % |\n";
+    markdown << "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: |\n";
     for (const CoarseRow& row : rows) {
         markdown << "| " << row.shape
                  << " | " << row.total_ms
@@ -724,10 +738,31 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
                  << " | " << row.readback_ms
                  << " | " << row.post_readback_ms
                  << " | " << row.kernel_ms
+                 << " | " << row.tolerance_eval_ms
+                 << " | " << (row.tolerance_eval_in_dispatch ? "true" : "false")
                  << " | " << row.remaining_ms
                  << " | " << row.remaining_pct << " |\n";
     }
-    markdown << "\nCompare `post-sync ms` growth across shapes against M*N*K ratios. If post-sync grows at the same rate, sub-bracket P14 filter update versus P15 maturation next.\n";
+    double pre_128 = 0.0;
+    double pre_256 = 0.0;
+    double pre_512 = 0.0;
+    for (const CoarseRow& row : rows) {
+        if (std::string(row.shape) == "square_128x128x128") {
+            pre_128 = row.pre_dispatch_ms;
+        } else if (std::string(row.shape) == "square_256x256x256") {
+            pre_256 = row.pre_dispatch_ms;
+        } else if (std::string(row.shape) == "square_512x512x512") {
+            pre_512 = row.pre_dispatch_ms;
+        }
+    }
+    const double ratio_256_over_128 = pre_128 > 0.0 ? pre_256 / pre_128 : 0.0;
+    const double ratio_512_over_256 = pre_256 > 0.0 ? pre_512 / pre_256 : 0.0;
+    const bool cubic_scaling_warning = ratio_256_over_128 > 6.0 || ratio_512_over_256 > 6.0;
+    markdown << "\nM17 tolerance dispatch status: tolerance evaluation is expected to be outside production dispatch; "
+             << "`pre_dispatch_ms` can still include upload preparation, but should not show the old cubic tolerance-scan cost. "
+             << "Cube pre-dispatch ratios: 256/128=" << ratio_256_over_128
+             << ", 512/256=" << ratio_512_over_256
+             << (cubic_scaling_warning ? " (warning: inspect host-side scaling)" : " (no cubic-scan warning)") << ".\n";
 
     std::ostringstream json;
     json << "{\n";
@@ -745,6 +780,9 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
              << ", \"readback_ms\": " << row.readback_ms
              << ", \"post_readback_ms\": " << row.post_readback_ms
              << ", \"kernel_ms\": " << row.kernel_ms
+             << ", \"tolerance_eval_ms\": " << row.tolerance_eval_ms
+             << ", \"tolerance_eval_in_dispatch\": " << (row.tolerance_eval_in_dispatch ? "true" : "false")
+             << ", \"tolerance_eval_source\": " << row.tolerance_eval_source
              << ", \"unaccounted_host_ms\": " << row.remaining_ms
              << ", \"remaining_pct\": " << row.remaining_pct << "}";
         if (index + 1u < rows.size()) {
@@ -752,7 +790,10 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
         }
         json << "\n";
     }
-    json << "  ]\n";
+    json << "  ],\n";
+    json << "  \"m17_pre_dispatch_ratio_256_over_128\": " << ratio_256_over_128 << ",\n";
+    json << "  \"m17_pre_dispatch_ratio_512_over_256\": " << ratio_512_over_256 << ",\n";
+    json << "  \"m17_cubic_scaling_warning\": " << (cubic_scaling_warning ? "true" : "false") << "\n";
     json << "}\n";
 
     ASSERT_TRUE(observed_positive_h2_bucket, "at least one coarse H2 bucket should be positive");
@@ -765,4 +806,101 @@ FACT(PrometheusSgemmPx16Deep_CoarsePhaseLocalization)
                 "coarse phase markdown artifact should be written");
     ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_deep_coarse_phase.json"), json.str()),
                 "coarse phase JSON artifact should be written");
+}
+
+FACT(PrometheusSgemmPx16M17_ToleranceEvalNotInDispatch)
+{
+    void* handle = nullptr;
+    if (prometheus_reactor_runtime_create(nullptr, &handle) != PROM_OK || handle == nullptr) {
+        SKIP("Vulkan runtime unavailable; M17 tolerance regression cannot execute");
+        return;
+    }
+
+    PrometheusCaps caps{};
+    if (prometheus_reactor_runtime_probe(handle, &caps) != PROM_OK || caps.available == 0u) {
+        (void)prometheus_reactor_runtime_destroy(handle);
+        SKIP("Vulkan runtime unavailable; M17 tolerance regression cannot execute");
+        return;
+    }
+
+    struct M17Row
+    {
+        const char* shape = "";
+        double pre_dispatch_ms = 0.0;
+        double tolerance_eval_ms = 0.0;
+        bool tolerance_eval_in_dispatch = false;
+    };
+
+    const ShapeCase shapes[] = {
+        {"square_128x128x128", 128u, 128u, 128u, false},
+        {"square_256x256x256", 256u, 256u, 256u, false},
+        {"square_512x512x512", 512u, 512u, 512u, false},
+    };
+    std::vector<M17Row> rows;
+
+    for (const ShapeCase& shape : shapes) {
+        const std::size_t elems_a = static_cast<std::size_t>(shape.m) * shape.k;
+        const std::size_t elems_b = static_cast<std::size_t>(shape.k) * shape.n;
+        const std::size_t elems_c = static_cast<std::size_t>(shape.m) * shape.n;
+        std::vector<float> a(elems_a, 1.0f);
+        std::vector<float> b(elems_b, 1.0f);
+        std::vector<float> c(elems_c, 0.0f);
+        std::vector<double> pre_dispatch_ns;
+        std::vector<double> tolerance_eval_ns;
+        bool tolerance_eval_in_dispatch = false;
+
+        for (int i = 0; i < 8; ++i) {
+            std::uint32_t stage = PROM_STAGE_NONE;
+            int detail = 0;
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), shape.m, shape.n, shape.k, &stage, &detail),
+                         "M17 regression SGEMM call should succeed");
+
+            PrometheusSgemmPolicyDiagnostics diag{};
+            ASSERT_EQUAL(PROM_OK,
+                         prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &diag),
+                         "M17 regression diagnostics should be available");
+            pre_dispatch_ns.push_back(static_cast<double>(diag.px16_m8_last_pre_dispatch_wall_ns));
+            tolerance_eval_ns.push_back(static_cast<double>(diag.px16_m17_last_tolerance_eval_wall_ns));
+            tolerance_eval_in_dispatch = tolerance_eval_in_dispatch || diag.px16_m17_last_tolerance_eval_in_dispatch != 0u;
+        }
+
+        M17Row row;
+        row.shape = shape.name;
+        row.pre_dispatch_ms = median_ms_from_ns(pre_dispatch_ns);
+        row.tolerance_eval_ms = median_ms_from_ns(tolerance_eval_ns);
+        row.tolerance_eval_in_dispatch = tolerance_eval_in_dispatch;
+        ASSERT_TRUE(!row.tolerance_eval_in_dispatch, "M17 production dispatch must report no tolerance evaluation in dispatch");
+        ASSERT_EQUAL(0.0, row.tolerance_eval_ms, "M17 production dispatch tolerance-eval timing should remain zero");
+        rows.push_back(row);
+    }
+
+    const double ratio_256_over_128 = rows[0].pre_dispatch_ms > 0.0 ? rows[1].pre_dispatch_ms / rows[0].pre_dispatch_ms : 0.0;
+    const double ratio_512_over_256 = rows[1].pre_dispatch_ms > 0.0 ? rows[2].pre_dispatch_ms / rows[1].pre_dispatch_ms : 0.0;
+    const bool cubic_scaling_warning = ratio_256_over_128 > 6.0 || ratio_512_over_256 > 6.0;
+
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"schema\": \"prometheus.sgemm.px16.m17_tolerance_dispatch.v1\",\n";
+    json << "  \"rows\": [\n";
+    for (std::size_t index = 0u; index < rows.size(); ++index) {
+        const M17Row& row = rows[index];
+        json << "    {\"shape\": \"" << json_escape(row.shape)
+             << "\", \"pre_dispatch_ms\": " << row.pre_dispatch_ms
+             << ", \"tolerance_eval_ms\": " << row.tolerance_eval_ms
+             << ", \"tolerance_eval_in_dispatch\": " << (row.tolerance_eval_in_dispatch ? "true" : "false") << "}";
+        if (index + 1u < rows.size()) {
+            json << ",";
+        }
+        json << "\n";
+    }
+    json << "  ],\n";
+    json << "  \"pre_dispatch_ratio_256_over_128\": " << ratio_256_over_128 << ",\n";
+    json << "  \"pre_dispatch_ratio_512_over_256\": " << ratio_512_over_256 << ",\n";
+    json << "  \"cubic_scaling_warning\": " << (cubic_scaling_warning ? "true" : "false") << "\n";
+    json << "}\n";
+
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_m17_tolerance_dispatch.json"), json.str()),
+                "M17 tolerance regression JSON artifact should be written");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }

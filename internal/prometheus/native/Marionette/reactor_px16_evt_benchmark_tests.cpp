@@ -63,6 +63,7 @@ namespace
         double validation_readback_ms = 0.0;
         double validation_ms = 0.0;
         double unaccounted_host_ms = 0.0;
+        double tolerance_eval_ms = 0.0;
         double kernel_only_gflops = 0.0;
         double end_to_end_gflops = 0.0;
         bool gpu_timestamp_valid = false;
@@ -1052,6 +1053,7 @@ namespace
         std::vector<double> post_sync_wall_ns;
         std::vector<double> readback_wall_ns;
         std::vector<double> post_readback_wall_ns;
+        std::vector<double> tolerance_eval_wall_ns;
     };
 
     struct PreparedCaseData
@@ -1299,6 +1301,7 @@ namespace
             samples.post_sync_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_post_sync_wall_ns));
             samples.readback_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_readback_wall_ns));
             samples.post_readback_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_post_readback_wall_ns));
+            samples.tolerance_eval_wall_ns.push_back(static_cast<double>(diag.px16_m17_last_tolerance_eval_wall_ns));
             if (diag.p13_m5_last_gpu_timing_valid != 0u && diag.p13_m5_last_gpu_duration_ns > 0u) {
                 samples.kernel_gpu_ns.push_back(static_cast<double>(diag.p13_m5_last_gpu_duration_ns));
             }
@@ -1314,6 +1317,7 @@ namespace
         timing_decomposition.post_sync_ms = median_ms_from_ns(samples.post_sync_wall_ns);
         timing_decomposition.readback_ms = median_ms_from_ns(samples.readback_wall_ns);
         timing_decomposition.post_readback_ms = median_ms_from_ns(samples.post_readback_wall_ns);
+        timing_decomposition.tolerance_eval_ms = median_ms_from_ns(samples.tolerance_eval_wall_ns);
         timing_decomposition.total_wall_ms = median_ms_from_ns(samples.total_wall_ns);
         timing_decomposition.benchmark_total_ms = timing_decomposition.total_wall_ms;
         timing_decomposition.gpu_timestamp_valid = samples.kernel_gpu_ns.size() == samples.total_wall_ns.size() && !samples.kernel_gpu_ns.empty();
@@ -2240,6 +2244,9 @@ namespace
                 << ", \"validation_readback_ms\": " << result.timing_decomposition.validation_readback_ms
                 << ", \"validation_ms\": " << result.timing_decomposition.validation_ms
                 << ", \"unaccounted_host_ms\": " << result.timing_decomposition.unaccounted_host_ms
+                << ", \"tolerance_eval_ms\": " << result.timing_decomposition.tolerance_eval_ms
+                << ", \"tolerance_eval_in_dispatch\": " << bool_json(result.diag.px16_m17_last_tolerance_eval_in_dispatch != 0u)
+                << ", \"tolerance_eval_source\": " << result.diag.px16_m17_last_tolerance_eval_source
                 << ", \"kernel_only_gflops\": " << result.timing_decomposition.kernel_only_gflops
                 << ", \"end_to_end_gflops\": " << result.timing_decomposition.end_to_end_gflops
                 << ", \"gpu_timestamp_valid\": " << bool_json(result.timing_decomposition.gpu_timestamp_valid)
@@ -2523,8 +2530,8 @@ namespace
         out << "\n";
 
         out << "## Timing Decomposition\n\n";
-        out << "| shape | path | variant | benchmark total ms | kernel ms | upload ms | pre-dispatch ms | command record ms | dispatch submit ms | sync wait ms | post-sync ms | readback ms | post-readback ms | unaccounted host ms | end-to-end GFLOP/s | kernel GFLOP/s | timing source |\n";
-        out << "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
+        out << "| shape | path | variant | benchmark total ms | kernel ms | upload ms | pre-dispatch ms | command record ms | dispatch submit ms | sync wait ms | post-sync ms | readback ms | post-readback ms | unaccounted host ms | tolerance eval ms | tolerance eval in dispatch | end-to-end GFLOP/s | kernel GFLOP/s | timing source |\n";
+        out << "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- |\n";
         for (const CaseResult& result : report.cases) {
             out << "| " << result.name
                 << " | " << path_name(result.diag.px16_m6_executed_path)
@@ -2540,6 +2547,8 @@ namespace
                 << " | " << result.timing_decomposition.readback_ms
                 << " | " << result.timing_decomposition.post_readback_ms
                 << " | " << result.timing_decomposition.unaccounted_host_ms
+                << " | " << result.timing_decomposition.tolerance_eval_ms
+                << " | " << (result.diag.px16_m17_last_tolerance_eval_in_dispatch != 0u ? "true" : "false")
                 << " | " << result.timing_decomposition.end_to_end_gflops
                 << " | " << result.timing_decomposition.kernel_only_gflops
                 << " | " << result.timing_decomposition.timing_source << " |\n";
@@ -2719,6 +2728,7 @@ namespace
         result.timing_decomposition.dispatch_submit_ms = 0.02;
         result.timing_decomposition.unaccounted_host_ms =
             result.timing_decomposition.total_wall_ms - accounted_host_ms(result.timing_decomposition);
+        result.timing_decomposition.tolerance_eval_ms = 0.0;
         result.timing_decomposition.end_to_end_gflops = 250.0;
         result.timing_decomposition.kernel_only_gflops = 312.5;
         result.timing_decomposition.gpu_timestamp_valid = true;
@@ -2815,6 +2825,7 @@ FACT(PrometheusSgemmPx16Evt_ArtifactWritersEmitSchemaAndCaseRows)
     ASSERT_TRUE(json.find("\"timing_decomposition\"") != std::string::npos, "JSON artifact should include timing decomposition");
     ASSERT_TRUE(json.find("\"pre_dispatch_ms\"") != std::string::npos, "JSON artifact should include pre-dispatch timing");
     ASSERT_TRUE(json.find("\"command_record_ms\"") != std::string::npos, "JSON artifact should include command-record timing");
+    ASSERT_TRUE(json.find("\"tolerance_eval_in_dispatch\"") != std::string::npos, "JSON artifact should include tolerance eval dispatch status");
     ASSERT_TRUE(json.find("\"post_sync_ms\"") != std::string::npos, "JSON artifact should include post-sync timing");
     ASSERT_TRUE(json.find("\"post_readback_ms\"") != std::string::npos, "JSON artifact should include post-readback timing");
     ASSERT_TRUE(json.find("\"unaccounted_host_ms\"") != std::string::npos, "JSON artifact should include unaccounted host timing");
@@ -2827,6 +2838,7 @@ FACT(PrometheusSgemmPx16Evt_ArtifactWritersEmitSchemaAndCaseRows)
     ASSERT_TRUE(markdown.find("## Timing Decomposition") != std::string::npos, "Markdown artifact should include timing decomposition");
     ASSERT_TRUE(markdown.find("pre-dispatch ms") != std::string::npos, "Markdown artifact should include pre-dispatch timing");
     ASSERT_TRUE(markdown.find("command record ms") != std::string::npos, "Markdown artifact should include command-record timing");
+    ASSERT_TRUE(markdown.find("tolerance eval in dispatch") != std::string::npos, "Markdown artifact should include tolerance eval dispatch status");
     ASSERT_TRUE(markdown.find("post-sync ms") != std::string::npos, "Markdown artifact should include post-sync timing");
     ASSERT_TRUE(markdown.find("## Resident Device Benchmark") != std::string::npos, "Markdown artifact should include resident benchmark section");
     ASSERT_TRUE(markdown.find("## Selector vs Fastest Resident Variant") != std::string::npos, "Markdown artifact should include resident selector comparison");

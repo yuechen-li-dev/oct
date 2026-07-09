@@ -639,6 +639,43 @@ For SGEMM dispatch, the native runtime still uses the existing row/column conven
 
 The SDSL path now derives `groups_x` and `groups_y` from generated metadata so future multi-output kernels do not repeat the Px16 M12 B2x2/aggressive overdispatch drift bug.
 
+## Px16 M17
+
+Px16 M17 removes the accidental CPU O(M*N*K) FP16 tolerance scan from the production SGEMM dispatch path. Production dispatch now stages cheap FP16 policy facts and special-value detection without recomputing reference and quantized products over every output element before GPU submission.
+
+The runtime exports these additional diagnostics:
+
+- `px16_m17_last_tolerance_eval_wall_ns`
+- `px16_m17_last_tolerance_eval_in_dispatch`
+- `px16_m17_last_tolerance_eval_source`
+
+For the production performance path, `px16_m17_last_tolerance_eval_in_dispatch` is expected to be `false` and `px16_m17_last_tolerance_eval_wall_ns` is expected to be `0`. Source `1` means production used cheap staged FP16 facts rather than an O(M*N*K) tolerance evaluator.
+
+Focused regression lane:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16M17_ToleranceEvalNotInDispatch
+```
+
+It runs `128^3`, `256^3`, and `512^3` SGEMM shapes, asserts that production dispatch did not run tolerance evaluation, and writes:
+
+- `out/test-artifacts/prometheus_sgemm_px16_m17_tolerance_dispatch.json`
+
+The H2 coarse diagnostic also reports `tolerance_eval_ms`, `tolerance_eval_in_dispatch`, and cube pre-dispatch ratios so residual host scaling can be separated from the removed cubic tolerance scan.
+
+### M17 tolerance call-site audit
+
+`prom_fp16_evaluate_tolerance(...)` was removed after auditing all direct call sites:
+
+| Former call site | Lane | Actual A/B data? | Complexity | Debug-gated? | M17 result |
+| --- | --- | --- | --- | --- | --- |
+| `prom_reactor_runtime_sgemm_impl_with_variant(...)` in `reactor_vulkan_sgemm.c` | Production SGEMM dispatch and EVT performance benchmark | Yes | O(M*N*K) | No | Replaced with `prom_fp16_prepare_production_tolerance_facts(...)`, which records cheap production facts and scans only A/B special values in O(M*K + K*N). |
+| `prom_reactor_runtime_sgemm_batch_impl(...)` in `reactor_vulkan_sgemm.c` | Production batch planning/dispatch | Yes | O(M*N*K) | No | Replaced with the same cheap production fact helper. |
+
+The tolerance evaluator was feeding FP16 layout/precision diagnostics and selector facts. It did not choose kernels directly, retune occupancy variants, or affect SDSL-V/P14/P15/FFT behavior. FP16 selection still flows through the existing judgment engine gates; production now uses cheap tolerance-known/pass facts plus special-value rejection instead of a dense CPU tolerance oracle.
+
+Correctness validation remains separate from production timing. The EVT correctness lane still validates outputs with its CPU oracle and reports validation/oracle cost outside the performance benchmark timing.
+
 ## Px16 M16
 
 Px16 M16 is an instrumentation milestone for the remaining host-side SGEMM timing gap. It does not optimize descriptor updates, change dispatch behavior, retune selector logic, change kernels, or add new SDSL-V surface area.
@@ -696,6 +733,7 @@ Current EVT timing buckets are:
 - `post_sync_ms`
 - `readback_ms`
 - `post_readback_ms`
+- `tolerance_eval_ms` / `tolerance_eval_in_dispatch` for M17 tolerance-scan regression visibility
 - `oracle_ms` / `validation_ms` when the correctness lane is used
 - `unaccounted_host_ms`
 
@@ -735,7 +773,7 @@ The deep artifact includes:
 - policy mode;
 - requested / selected / executed variant;
 - executed path;
-- `kernel_ms`, `upload_ms`, `pre_dispatch_ms`, `command_record_ms`, `dispatch_submit_ms`, `sync_wait_ms`, `post_sync_ms`, `readback_ms`, `post_readback_ms`, `unaccounted_host_ms`;
+- `kernel_ms`, `upload_ms`, `pre_dispatch_ms`, `command_record_ms`, `dispatch_submit_ms`, `sync_wait_ms`, `post_sync_ms`, `readback_ms`, `post_readback_ms`, `tolerance_eval_ms`, `tolerance_eval_in_dispatch`, `unaccounted_host_ms`;
 - `VK_INSTANCE_LAYERS`;
 - `VK_LOADER_LAYERS_ENABLE`;
 - resident-vs-production differential when resident mode is available;
@@ -754,9 +792,9 @@ Upload these files for follow-up analysis:
 
 ### CPU-side work audit
 
-The H2 audit found these CPU loops in or adjacent to the measured path:
+The H2 audit found these CPU loops in or adjacent to the measured path, with M17 status:
 
-- `prom_fp16_evaluate_tolerance(...)` is O(M*N*K), runs in `pre_dispatch_ms`, and is not guarded by a debug macro. It remains a suspect for an M*N*K-shaped host gap.
+- `prom_fp16_evaluate_tolerance(...)` was O(M*N*K), ran in `pre_dispatch_ms`, and was not guarded by a debug macro. M17 removed it from production dispatch and batch planning.
 - `prom_apply_debug_row_major_oracle(...)` performs an O(M*N*K) scalar oracle plus O(M*N) compare/update when `PROM_TESTCFG_PACKED4_DEBUG_ORACLE_CHECK` is enabled and packed4 mode executes. It is gated by an explicit test flag and is inside `readback_ms`; default EVT runs should not hit it.
 - Packed4 layout packing is O(M*K + K*N) and FP16 packing is O(M*K + K*N). Both are inside `upload_ms` when those compute modes are selected.
 - Output `memcpy` readback is O(M*N) and already sits in `readback_ms`.

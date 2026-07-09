@@ -1111,6 +1111,9 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t px16_m8_last_gpu_timestamp_valid;
   uint32_t px16_m8_resident_device_mode_available;
   uint32_t px16_m8_last_executed_explicit_variant_request;
+  uint64_t px16_m17_last_tolerance_eval_wall_ns;
+  uint32_t px16_m17_last_tolerance_eval_in_dispatch;
+  uint32_t px16_m17_last_tolerance_eval_source;
 } PrometheusSgemmPolicyDiagnostics;
 
 PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);

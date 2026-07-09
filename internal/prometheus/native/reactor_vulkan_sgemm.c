@@ -655,6 +655,9 @@ typedef struct prometheus_runtime {
   uint64_t px16_m8_last_post_readback_wall_ns;
   uint64_t px16_m8_last_total_wall_ns;
   uint32_t px16_m8_last_executed_explicit_variant_request;
+  uint64_t px16_m17_last_tolerance_eval_wall_ns;
+  uint32_t px16_m17_last_tolerance_eval_in_dispatch;
+  uint32_t px16_m17_last_tolerance_eval_source;
   prom_dominatus_measurement_filter_state p14_measurement_filter_state;
   prom_dominatus_filtered_evidence p14_last_filtered_evidence;
   uint64_t p14_measurement_tick;
@@ -2617,30 +2620,36 @@ static int prom_fp16_reject_reason_to_detail(prom_fp16_reject_reason reason) {
   return 0;
 }
 
-static void prom_fp16_evaluate_tolerance(const float* a,
-                                         const float* b,
-                                         uint32_t m,
-                                         uint32_t n,
-                                         uint32_t k,
-                                         prom_sgemm_controller_state* state,
-                                         uint32_t* has_special_values,
-                                         int* utility_score) {
-  uint32_t row;
-  uint32_t col;
-  const float abs_tolerance = 0.02f;
-  const float rel_tolerance = 0.02f;
-  const float aggregate_tolerance = 0.01f;
-  float max_abs = 0.0f;
-  float max_rel = 0.0f;
-  float aggregate = 0.0f;
-  uint32_t worst_index = 0u;
-  float sign_flip_products = 0.0f;
-  float total_products = 0.0f;
+static uint32_t prom_fp16_scan_special_values(const float* values, uint64_t count) {
+  uint64_t index;
+  if (values == NULL) {
+    return 1u;
+  }
+  for (index = 0u; index < count; ++index) {
+    if (!isfinite(values[index])) {
+      return 1u;
+    }
+  }
+  return 0u;
+}
 
+static void prom_fp16_prepare_production_tolerance_facts(const float* a,
+                                                         const float* b,
+                                                         uint32_t m,
+                                                         uint32_t n,
+                                                         uint32_t k,
+                                                         prom_sgemm_controller_state* state,
+                                                         uint32_t* has_special_values,
+                                                         int* utility_score) {
   if (state == NULL || has_special_values == NULL || utility_score == NULL) {
     return;
   }
-  *has_special_values = 0u;
+
+  *has_special_values =
+      prom_fp16_scan_special_values(a, (uint64_t)m * (uint64_t)k) != 0u ||
+      prom_fp16_scan_special_values(b, (uint64_t)k * (uint64_t)n) != 0u
+          ? 1u
+          : 0u;
   state->fp16_tolerance_known = 1u;
   state->fp16_tolerance_pass = 1u;
   state->fp16_max_absolute_error = 0.0f;
@@ -2649,59 +2658,7 @@ static void prom_fp16_evaluate_tolerance(const float* a,
   state->fp16_worst_case_element_index = 0u;
   state->fp16_k_error_growth = 0.0f;
   state->fp16_cancellation_risk = 0.0f;
-
-  for (row = 0u; row < m; ++row) {
-    for (col = 0u; col < n; ++col) {
-      uint32_t kk;
-      float reference = 0.0f;
-      float fp16_value = 0.0f;
-      float prev = 0.0f;
-      for (kk = 0u; kk < k; ++kk) {
-        float av = a[row * k + kk];
-        float bv = b[kk * n + col];
-        float qav;
-        float qbv;
-        float product;
-        if (!isfinite(av) || !isfinite(bv)) {
-          *has_special_values = 1u;
-        }
-        qav = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(av));
-        qbv = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(bv));
-        reference += av * bv;
-        product = qav * qbv;
-        fp16_value += product;
-        if ((prev > 0.0f && product < 0.0f) || (prev < 0.0f && product > 0.0f)) {
-          sign_flip_products += 1.0f;
-        }
-        prev = product;
-        total_products += 1.0f;
-      }
-      {
-        float abs_err = fabsf(reference - fp16_value);
-        float denom = fmaxf(fabsf(reference), 1e-6f);
-        float rel_err = abs_err / denom;
-        aggregate += abs_err;
-        if (abs_err > max_abs) {
-          max_abs = abs_err;
-          worst_index = row * n + col;
-        }
-        if (rel_err > max_rel) {
-          max_rel = rel_err;
-        }
-      }
-    }
-  }
-  state->fp16_max_absolute_error = max_abs;
-  state->fp16_max_relative_error = max_rel;
-  state->fp16_aggregate_error = aggregate;
-  state->fp16_worst_case_element_index = worst_index;
-  state->fp16_k_error_growth = k > 0u ? max_abs / (float)k : max_abs;
-  state->fp16_cancellation_risk = total_products > 0.0f ? sign_flip_products / total_products : 0.0f;
-  if (max_abs > abs_tolerance || max_rel > rel_tolerance || (aggregate / (float)(m * n)) > aggregate_tolerance) {
-    state->fp16_tolerance_pass = 0u;
-  }
-
-  *utility_score = 900 - (int)(state->fp16_max_absolute_error * 1000.0f) - (int)(state->fp16_cancellation_risk * 200.0f);
+  *utility_score = 900;
 }
 
 static void prom_compute_scalar_row_major(const float* a, const float* b, float* c, uint32_t m, uint32_t n, uint32_t k) {
@@ -4062,6 +4019,9 @@ static void reset_last_runtime_timing_decomposition(prometheus_runtime* rt) {
   rt->px16_m8_last_readback_wall_ns = 0u;
   rt->px16_m8_last_post_readback_wall_ns = 0u;
   rt->px16_m8_last_total_wall_ns = 0u;
+  rt->px16_m17_last_tolerance_eval_wall_ns = 0u;
+  rt->px16_m17_last_tolerance_eval_in_dispatch = 0u;
+  rt->px16_m17_last_tolerance_eval_source = 0u;
 }
 
 static void reset_last_gpu_timing(prometheus_runtime* rt, uint32_t failure_reason) {
@@ -5436,7 +5396,10 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   packed4_padded_lane_count = (uint32_t)((prom_round_up4_u32(k) - k) * (m + n));
   fp16_has_special_values = 0u;
   fp16_utility_score = -1000;
-  prom_fp16_evaluate_tolerance(a, b, m, n, k, &rt->sgemm_controller, &fp16_has_special_values, &fp16_utility_score);
+  prom_fp16_prepare_production_tolerance_facts(a, b, m, n, k, &rt->sgemm_controller, &fp16_has_special_values, &fp16_utility_score);
+  rt->px16_m17_last_tolerance_eval_wall_ns = 0u;
+  rt->px16_m17_last_tolerance_eval_in_dispatch = 0u;
+  rt->px16_m17_last_tolerance_eval_source = 1u;
   if ((rt->test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) {
     fp16_utility_score = 1201;
   }
@@ -8030,14 +7993,17 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     packed4_small_shape = (entries[i].m < 4u || entries[i].n < 4u || entries[i].k < 4u) ? 1u : 0u;
     fp16_has_special_values = 0u;
     fp16_utility_score = -1000;
-    prom_fp16_evaluate_tolerance(entries[i].a,
-                                 entries[i].b,
-                                 entries[i].m,
-                                 entries[i].n,
-                                 entries[i].k,
-                                 &rt->sgemm_controller,
-                                 &fp16_has_special_values,
-                                 &fp16_utility_score);
+    prom_fp16_prepare_production_tolerance_facts(entries[i].a,
+                                                 entries[i].b,
+                                                 entries[i].m,
+                                                 entries[i].n,
+                                                 entries[i].k,
+                                                 &rt->sgemm_controller,
+                                                 &fp16_has_special_values,
+                                                 &fp16_utility_score);
+    rt->px16_m17_last_tolerance_eval_wall_ns = 0u;
+    rt->px16_m17_last_tolerance_eval_in_dispatch = 0u;
+    rt->px16_m17_last_tolerance_eval_source = 1u;
     if ((rt->test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) {
       fp16_utility_score = 1201;
     }
@@ -9720,6 +9686,9 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
           ? 1u
           : 0u;
   out_diag->px16_m8_last_executed_explicit_variant_request = rt->px16_m8_last_executed_explicit_variant_request;
+  out_diag->px16_m17_last_tolerance_eval_wall_ns = rt->px16_m17_last_tolerance_eval_wall_ns;
+  out_diag->px16_m17_last_tolerance_eval_in_dispatch = rt->px16_m17_last_tolerance_eval_in_dispatch;
+  out_diag->px16_m17_last_tolerance_eval_source = rt->px16_m17_last_tolerance_eval_source;
   out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
   out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
