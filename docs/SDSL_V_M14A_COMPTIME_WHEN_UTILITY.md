@@ -116,6 +116,8 @@ M14a intentionally does not add:
 
 Future `comptime for` can build on the same constrained staging pass, but it is deferred.
 
+M15 keeps that boundary intact: `reg_tile` gives structured per-thread accumulator storage now, while future `comptime for` remains the deferred mechanism for generating repeated indexed logic over that structure.
+
 ## Examples
 
 - `examples/SDSL-V/M14a/ComptimeWhenUtilityBasic.sdslv`

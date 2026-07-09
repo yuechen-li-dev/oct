@@ -326,6 +326,14 @@ type Index2DExpr struct {
 func (Index2DExpr) exprNode()    {}
 func (e Index2DExpr) Type() Type { return e.ExprType }
 
+type RegTileZeroExpr struct {
+	Provenance Provenance
+	ExprType   Type
+}
+
+func (RegTileZeroExpr) exprNode()    {}
+func (e RegTileZeroExpr) Type() Type { return e.ExprType }
+
 type RowMajorViewExpr struct {
 	Provenance Provenance
 	ExprType   Type
@@ -490,6 +498,7 @@ const (
 	TypeRuntimeArray TypeKind = "runtime_array"
 	TypeArray        TypeKind = "array"
 	TypeTile         TypeKind = "tile"
+	TypeRegTile      TypeKind = "reg_tile"
 	TypeMatrixView   TypeKind = "matrix_view"
 	TypeRecord       TypeKind = "record"
 	TypeStream       TypeKind = "stream"

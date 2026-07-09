@@ -111,6 +111,8 @@ M13 intentionally does not add:
 
 Future `comptime for` can build on the same constrained staging pass, but it is deferred.
 
+M15 reuses the same constrained compile-time model for `reg_tile` dimensions, so patterns such as `let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();` may use prior `comptime let` bindings for `RM` and `RN`.
+
 M14 extends the same constrained staging model with `comptime match` for multi-way compile-time selection. M14a adds `comptime when utility` for utility-scored compile-time arbitration among guarded structural alternatives. See `docs/SDSL_V_M14_COMPTIME_MATCH.md` and `docs/SDSL_V_M14A_COMPTIME_WHEN_UTILITY.md`.
 
 ## Examples

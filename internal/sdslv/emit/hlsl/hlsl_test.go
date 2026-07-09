@@ -66,6 +66,34 @@ return;
 	}
 }
 
+func TestEmitRegTileToLocalArrayHLSL(t *testing.T) {
+	hlsl := emitSource(t, `shader RegTileBasic {
+resources { C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+let CView: matrix_view<f32> = row_major(C, 2u, 2u);
+Acc[0u, 0u] = Acc[0u, 0u] + 1.0;
+Acc[1u, 1u] = Acc[1u, 1u] + 4.0;
+CView[1u, 1u] = Acc[1u, 1u];
+return;
+}
+}`)
+	for _, want := range []string{
+		"float Acc[4];",
+		"Acc[0] = 0.0;",
+		"Acc[3] = 0.0;",
+		"Acc[((0u) * (2)) + (0u)] = (Acc[((0u) * (2)) + (0u)] + 1.0);",
+		"C[((1u) * (2u)) + (1u)] = Acc[((1u) * (2)) + (1u)];",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+	if strings.Contains(hlsl, "reg_tile") {
+		t.Fatalf("HLSL should not mention reg_tile:\n%s", hlsl)
+	}
+}
+
 func TestEmitComptimeSelectedBranchOnly(t *testing.T) {
 	hlsl := emitSource(t, `shader Demo {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {

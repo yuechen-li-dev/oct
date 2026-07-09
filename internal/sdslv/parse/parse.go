@@ -1346,13 +1346,13 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 		}
 		ref.ZeroAllowed = true
 	}
-	if (ref.Name == "array" || ref.Name == "matrix_view" || ref.Name == "tile") && p.match(token.LeftAngle) {
+	if (ref.Name == "array" || ref.Name == "matrix_view" || ref.Name == "tile" || ref.Name == "reg_tile") && p.match(token.LeftAngle) {
 		elem, err := p.parseTypeRef(false)
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
 		ref.Args = append(ref.Args, elem)
-		if ref.Name == "tile" {
+		if ref.Name == "tile" || ref.Name == "reg_tile" {
 			if _, err := p.expect(token.Comma, "expected ',' after tile element type"); err != nil {
 				return ast.TypeRef{}, err
 			}

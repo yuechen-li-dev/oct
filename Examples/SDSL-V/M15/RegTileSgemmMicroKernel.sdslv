@@ -1,0 +1,43 @@
+record MicroParams {
+    M: u32;
+    N: u32;
+    Row: u32;
+    Col: u32;
+}
+
+concept MicroConfig {
+    Outputs: {
+        M: u32 = 2u;
+        N: u32 = 2u;
+    };
+}
+
+config Micro2x2: MicroConfig {}
+
+template<C: MicroConfig>
+shader RegTileSgemmMicroKernel {
+    resources {
+        [binding(0)] C: readwrite array<f32>;
+    }
+
+    stage compute [numthreads(1, 1, 1)] fn CS(params: MicroParams) -> void {
+        comptime let RM: u32 = C.Outputs.M;
+        comptime let RN: u32 = C.Outputs.N;
+
+        let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
+        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+
+        Acc[0u, 0u] = Acc[0u, 0u] + 1.0;
+        Acc[0u, 1u] = Acc[0u, 1u] + 2.0;
+        Acc[1u, 0u] = Acc[1u, 0u] + 3.0;
+        Acc[1u, 1u] = Acc[1u, 1u] + 4.0;
+
+        CView[params.Row + 0u, params.Col + 0u] = Acc[0u, 0u];
+        CView[params.Row + 0u, params.Col + 1u] = Acc[0u, 1u];
+        CView[params.Row + 1u, params.Col + 0u] = Acc[1u, 0u];
+        CView[params.Row + 1u, params.Col + 1u] = Acc[1u, 1u];
+        return;
+    }
+}
+
+compile RegTileSgemmMicroKernel<Micro2x2> as RegTileSgemmMicroKernel2x2;

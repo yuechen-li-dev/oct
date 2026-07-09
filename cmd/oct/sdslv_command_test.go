@@ -203,6 +203,46 @@ func TestSDSLvPrometheusSgemmTile16x16SharedSourceEmits(t *testing.T) {
 	}
 }
 
+func TestSDSLvM15RegTileEmitCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "examples", "SDSL-V", "M15", "RegTileBasic.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"let Acc: reg_tile<f32,2,2> = reg_tile_zero()",
+		"assign Acc[0u, 0u] = (Acc[0u, 0u] + 1.0)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "reg_tile_basic.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"float Acc[4];",
+		"Acc[0] = 0.0;",
+		"Acc[((1u) * (2)) + (1u)] = (Acc[((1u) * (2)) + (1u)] + 4.0);",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+}
+
 func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_scalar_plus_spirv.h")
 	text, err := os.ReadFile(path)

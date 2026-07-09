@@ -151,6 +151,8 @@ func FormatExpr(expr Expr) string {
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Index) + "]"
 	case Index2DExpr:
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Row) + ", " + FormatExpr(e.Col) + "]"
+	case RegTileZeroExpr:
+		return "reg_tile_zero()"
 	case RowMajorViewExpr:
 		return "row_major(" + FormatExpr(e.Buffer) + ", " + FormatExpr(e.Rows) + ", " + FormatExpr(e.Cols) + ")"
 	case CallExpr:
@@ -255,6 +257,11 @@ func FormatType(t Type) string {
 			return "tile<?>"
 		}
 		return fmt.Sprintf("tile<%s,%d,%d>", FormatType(*t.Element), t.Rows, t.Cols)
+	case TypeRegTile:
+		if t.Element == nil {
+			return "reg_tile<?>"
+		}
+		return fmt.Sprintf("reg_tile<%s,%d,%d>", FormatType(*t.Element), t.Rows, t.Cols)
 	case TypeMatrixView:
 		if t.Element == nil {
 			return "matrix_view<?>"

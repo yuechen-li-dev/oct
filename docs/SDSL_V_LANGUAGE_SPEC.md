@@ -2,7 +2,7 @@
 
 *Derived from the WyrmCoil (`src/Engine/shader/sdslv/`) and Aurelian (`src/Aurelian.Shaders/`) implementations. Authoritative source is the parser, validator, and emitter — not documentation.*
 
-*Milestone markers (M0, M13, M55c, M56, M58, M59b, M60, M61, M62, M63, M64b/c, M65, M66b) appear where the implementation explicitly bounds a feature.*
+*Milestone markers (M0, M13, M15, M55c, M56, M58, M59b, M60, M61, M62, M63, M64b/c, M65, M66b) appear where the implementation explicitly bounds a feature.*
 
 ---
 
@@ -96,6 +96,31 @@ let AView: matrix_view<f32> = row_major(A, params.M, params.K);
 `tile<T, Rows, Cols>` is currently valid only for shader-scoped `workgroup` declarations. `Rows` and `Cols` must be positive compile-time integer expressions, and HLSL emits flat `groupshared` storage sized `Rows * Cols`.
 
 `matrix_view<T>` is a lightweight local view over a resource array created by `row_major(buffer, rows, cols)`. It does not allocate storage. Access mode is inherited from the source resource: readonly views can be read but not assigned through; readwrite views can be read and written.
+
+### Register tile types (GoOct M15)
+
+M15 adds structured per-thread local/register storage:
+
+```sdslv
+let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+```
+
+`reg_tile<T, Rows, Cols>` is currently valid only for local variables. `Rows` and `Cols` must be positive compile-time integer expressions and `Rows * Cols` is currently limited to `64` elements.
+
+`reg_tile` is distinct from both M12 surfaces:
+
+- `tile<T, Rows, Cols>` is workgroup memory;
+- `matrix_view<T>` is a view over resource storage;
+- `reg_tile<T, Rows, Cols>` is per-thread local/register storage.
+
+M15 currently supports:
+
+- `f32` element type;
+- zero initialization through `reg_tile_zero()`;
+- 2D indexing with `Acc[row, col]`;
+- mutation through indexed assignment.
+
+Whole-tile copy, whole-tile assignment, parameter passing, and return values are deferred.
 
 ### Type aliases and coordinate spaces
 

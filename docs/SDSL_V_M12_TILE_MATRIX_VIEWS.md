@@ -99,3 +99,5 @@ M12 intentionally does not add:
 Future tensor notation can build on this explicit 2D indexing surface without changing the current contract.
 
 M13/M14/M14a `comptime` may compute tile dimensions and select code paths from resolved config values, including multi-way `comptime match` over values such as `C.Tile.K` and utility-scored `comptime when utility` policy choices. It may not inspect runtime `tile` or `matrix_view` values.
+
+M15 adds `reg_tile<T, Rows, Cols>` as the local per-thread sibling to these M12 storage/view forms. It uses the same `x[row, col]` source syntax but lowers to per-thread local storage rather than `groupshared` memory or resource-backed views.

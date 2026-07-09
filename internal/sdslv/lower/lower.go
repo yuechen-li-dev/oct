@@ -268,7 +268,7 @@ func specializeBlock(block ast.Block, env map[string]specializeValue) (ast.Block
 func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, error) {
 	switch s := stmt.(type) {
 	case ast.LetStmt:
-		ref, err := specializeTypeRef(s.Type, env)
+		ref, err := specializeLocalTypeRef(s.Type, env)
 		if err != nil {
 			return nil, err
 		}
@@ -278,7 +278,7 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 		}
 		return ast.LetStmt{Name: s.Name, Type: ref, Value: value}, nil
 	case ast.ComptimeLetStmt:
-		ref, err := specializeTypeRef(s.Type, env)
+		ref, err := specializeLocalTypeRef(s.Type, env)
 		if err != nil {
 			return nil, err
 		}
@@ -524,6 +524,7 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 		return body.Statements, nil
 	case ast.LetStmt:
 		out := s
+		out.Type = replaceComptimeTypeRef(s.Type, comptime)
 		if s.Value != nil {
 			out.Value = replaceComptimeExpr(s.Value, comptime)
 		}
@@ -919,9 +920,11 @@ func fieldPathForComptime(expr ast.Expr) string {
 	}
 }
 
+const maxRegTileElements = 64
+
 func specializeTypeRef(ref ast.TypeRef, env map[string]specializeValue) (ast.TypeRef, error) {
 	out := ref
-	if ref.Name == "array" || ref.Name == "tile" || ref.Name == "matrix_view" {
+	if ref.Name == "array" || ref.Name == "tile" || ref.Name == "reg_tile" || ref.Name == "matrix_view" {
 		args := make([]ast.TypeRef, len(ref.Args))
 		for i, arg := range ref.Args {
 			next, err := specializeTypeRef(arg, env)
@@ -949,6 +952,36 @@ func specializeTypeRef(ref ast.TypeRef, env map[string]specializeValue) (ast.Typ
 			}
 			out.TileRows = rows
 			out.TileCols = cols
+			if ref.Name == "reg_tile" {
+				rowsValue := mustConcreteInt(rows)
+				colsValue := mustConcreteInt(cols)
+				if rowsValue*colsValue > maxRegTileElements {
+					return ast.TypeRef{}, fmt.Errorf("reg_tile has %d elements; M15 limit is %d", rowsValue*colsValue, maxRegTileElements)
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+func specializeLocalTypeRef(ref ast.TypeRef, env map[string]specializeValue) (ast.TypeRef, error) {
+	out := ref
+	if ref.Name == "array" || ref.Name == "tile" || ref.Name == "reg_tile" || ref.Name == "matrix_view" {
+		args := make([]ast.TypeRef, len(ref.Args))
+		for i, arg := range ref.Args {
+			next, err := specializeLocalTypeRef(arg, env)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			args[i] = next
+		}
+		out.Args = args
+		if ref.HasArraySize {
+			out.ArraySize = specializeExpr(ref.ArraySize, env)
+		}
+		if ref.HasTileShape {
+			out.TileRows = specializeExpr(ref.TileRows, env)
+			out.TileCols = specializeExpr(ref.TileCols, env)
 		}
 	}
 	return out, nil
@@ -1288,15 +1321,17 @@ func (l *lowering) lowerBlock(block ast.Block, scope map[string]binding, locals 
 func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
 	switch s := stmt.(type) {
 	case ast.LetStmt:
+		loweredType := l.lowerTypeRef(s.Type)
 		var value vdmir.Expr
 		var err error
-		if s.Value != nil {
+		if isRegTileZeroCall(s.Value) {
+			value = vdmir.RegTileZeroExpr{Provenance: l.provenance, ExprType: loweredType}
+		} else if s.Value != nil {
 			value, err = l.lowerExpr(s.Value, scope, shaderName)
 			if err != nil {
 				return nil, err
 			}
 		}
-		loweredType := l.lowerTypeRef(s.Type)
 		access := s.Type.Access
 		if rowMajor, ok := value.(vdmir.RowMajorViewExpr); ok {
 			loweredType = rowMajor.Type()
@@ -1461,6 +1496,9 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Index:      index,
 		}, nil
 	case ast.CallExpr:
+		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "reg_tile_zero" {
+			return nil, fmt.Errorf("reg_tile_zero() is only supported as a direct reg_tile local initializer")
+		}
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "row_major" {
 			args := make([]vdmir.Expr, 0, len(e.Arguments))
 			for _, arg := range e.Arguments {
@@ -1841,6 +1879,11 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 		rows := mustConcreteInt(resolved.TileRows)
 		cols := mustConcreteInt(resolved.TileCols)
 		return vdmir.Type{Kind: vdmir.TypeTile, Name: "tile", Element: &elem, Rows: rows, Cols: cols, ArraySize: rows * cols, HasArraySize: true}
+	case "reg_tile":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		rows := mustConcreteInt(resolved.TileRows)
+		cols := mustConcreteInt(resolved.TileCols)
+		return vdmir.Type{Kind: vdmir.TypeRegTile, Name: "reg_tile", Element: &elem, Rows: rows, Cols: cols, ArraySize: rows * cols, HasArraySize: true}
 	case "matrix_view":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		return vdmir.Type{Kind: vdmir.TypeMatrixView, Name: "matrix_view", Element: &elem, Access: lowerResourceAccess(resolved.Access)}
@@ -2055,7 +2098,7 @@ func elementType(t vdmir.Type) vdmir.Type {
 }
 
 func tileOrViewStride(t vdmir.Type) vdmir.Expr {
-	if t.Kind == vdmir.TypeTile {
+	if t.Kind == vdmir.TypeTile || t.Kind == vdmir.TypeRegTile {
 		return vdmir.LiteralExpr{ExprType: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Kind: vdmir.LiteralInteger, Value: strconv.Itoa(t.Cols)}
 	}
 	return nil
@@ -2086,15 +2129,53 @@ func astTypeFromVDMIR(t vdmir.Type) ast.TypeRef {
 		return ast.TypeRef{Name: "u32"}
 	case vdmir.TypeF32:
 		return ast.TypeRef{Name: "f32"}
+	case vdmir.TypeRegTile:
+		if t.Element == nil {
+			return ast.TypeRef{Name: "reg_tile"}
+		}
+		return ast.TypeRef{
+			Name:         "reg_tile",
+			Args:         []ast.TypeRef{astTypeFromVDMIR(*t.Element)},
+			TileRows:     consteval.LiteralExpr(consteval.Value{Type: ast.TypeRef{Name: "u32"}, Int32: int64(t.Rows), IsKnown: true}),
+			TileCols:     consteval.LiteralExpr(consteval.Value{Type: ast.TypeRef{Name: "u32"}, Int32: int64(t.Cols), IsKnown: true}),
+			HasTileShape: true,
+		}
 	default:
 		return ast.TypeRef{Name: t.Name}
 	}
+}
+
+func isRegTileZeroCall(expr ast.Expr) bool {
+	call, ok := expr.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	id, ok := call.Callee.(ast.IdentifierExpr)
+	return ok && id.Name == "reg_tile_zero" && len(call.Arguments) == 0
 }
 
 func cloneScope(scope map[string]binding) map[string]binding {
 	out := make(map[string]binding, len(scope))
 	for k, v := range scope {
 		out[k] = v
+	}
+	return out
+}
+
+func replaceComptimeTypeRef(ref ast.TypeRef, comptime map[string]comptimeBinding) ast.TypeRef {
+	out := ref
+	if len(ref.Args) > 0 {
+		out.Args = make([]ast.TypeRef, 0, len(ref.Args))
+		for _, arg := range ref.Args {
+			out.Args = append(out.Args, replaceComptimeTypeRef(arg, comptime))
+		}
+	}
+	if ref.HasArraySize {
+		out.ArraySize = replaceComptimeExpr(ref.ArraySize, comptime)
+	}
+	if ref.HasTileShape {
+		out.TileRows = replaceComptimeExpr(ref.TileRows, comptime)
+		out.TileCols = replaceComptimeExpr(ref.TileCols, comptime)
 	}
 	return out
 }

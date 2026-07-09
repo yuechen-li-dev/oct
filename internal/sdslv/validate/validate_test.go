@@ -87,6 +87,90 @@ func TestModuleRejectsInvalidTileAndMatrixViewUse(t *testing.T) {
 	}
 }
 
+func TestModuleValidatesRegTileUse(t *testing.T) {
+	err := validateSource(`concept MicroConfig {
+Outputs: {
+M: u32 = 2u;
+N: u32 = 2u;
+};
+}
+config Micro2x2: MicroConfig {}
+template<C: MicroConfig>
+shader S {
+resources { C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let RM: u32 = C.Outputs.M;
+comptime let RN: u32 = C.Outputs.N;
+let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
+let CView: matrix_view<f32> = row_major(C, 2u, 2u);
+Acc[0u, 1u] = Acc[0u, 1u] + 1.0;
+CView[0u, 1u] = Acc[0u, 1u];
+return;
+}
+}
+compile S<Micro2x2> as S2x2;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsInvalidRegTileUse(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "runtime dimension",
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let n: u32 = 2u; let Acc: reg_tile<f32, n, 2u> = reg_tile_zero(); return; } }`,
+			want: "local reg_tile Acc rows must be a compile-time positive integer expression",
+		},
+		{
+			name: "too many elements",
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let Acc: reg_tile<f32, 8u, 9u> = reg_tile_zero(); return; } }`,
+			want: "reg_tile has 72 elements; M15 limit is 64",
+		},
+		{
+			name: "unsupported element",
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let Acc: reg_tile<bool, 2u, 2u> = reg_tile_zero(); return; } }`,
+			want: "element type bool is not supported",
+		},
+		{
+			name: "workgroup rejected",
+			src:  `shader S { workgroup Acc: reg_tile<f32, 2u, 2u>; stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }`,
+			want: "cannot use reg_tile",
+		},
+		{
+			name: "resource rejected",
+			src:  `stream IO { Acc: readonly reg_tile<f32, 2u, 2u>; } shader S { resources IO; stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }`,
+			want: "cannot use reg_tile",
+		},
+		{
+			name: "one dimensional index",
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero(); let x: f32 = Acc[0u]; return; } }`,
+			want: "reg_tile values require explicit 2D indexing",
+		},
+		{
+			name: "wrong initializer",
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let Acc: reg_tile<f32, 2u, 2u>; return; } }`,
+			want: "reg_tile locals must be initialized with reg_tile_zero()",
+		},
+		{
+			name: "whole tile copy rejected",
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let A: reg_tile<f32, 2u, 2u> = reg_tile_zero(); let B: reg_tile<f32, 2u, 2u> = A; return; } }`,
+			want: "reg_tile locals must be initialized with reg_tile_zero()",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsBadReturnType(t *testing.T) {
 	err := validateSource(`fn F() -> u32 { return 1.0; }`)
 	if err == nil || !strings.Contains(err.Error(), "return type mismatch") {

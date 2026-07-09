@@ -90,7 +90,10 @@ type varInfo struct {
 	typ    ast.TypeRef
 	origin varOrigin
 	access string
+	value  *configValue
 }
+
+const maxRegTileElements = 64
 
 type validator struct {
 	errors         []string
@@ -292,6 +295,9 @@ func (v *validator) validateFields(owner, kind string, fields []ast.Field, allow
 			v.errorf("%s field %s.%s does not support attributes in SDSL-V M6", kind, owner, field.Name)
 		}
 		v.validateType(field.Type)
+		if field.Type.Name == "reg_tile" {
+			v.errorf("%s field %s.%s cannot use reg_tile<T, Rows, Cols> in SDSL-V M15", kind, owner, field.Name)
+		}
 	}
 }
 
@@ -635,6 +641,9 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 		if param.Type.Name == "tile" || param.Type.Name == "matrix_view" {
 			v.errorf("%s parameters are not supported in SDSL-V M12", param.Type.Name)
 		}
+		if param.Type.Name == "reg_tile" {
+			v.errorf("reg_tile parameters are not supported in SDSL-V M15")
+		}
 		scope[param.Name] = varInfo{typ: param.Type, origin: varParam}
 	}
 	for _, stmt := range fn.Body.Statements {
@@ -649,11 +658,20 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if s.Type.Name == "tile" {
 			v.errorf("tile<T,R,C> is only valid for workgroup declarations in SDSL-V M12")
 		}
+		if s.Type.Name == "reg_tile" {
+			v.validateLocalRegTileType(s.Type, s.Name, scope, shaderName, templateParam)
+		}
 		if s.Type.Name == "matrix_view" && s.Value == nil {
 			v.errorf("matrix_view locals must be initialized with row_major(...) in SDSL-V M12")
 		}
 		if s.Type.Name == "matrix_view" && s.Value != nil && !isRowMajorCall(s.Value) {
 			v.errorf("matrix_view locals must be initialized with row_major(...) in SDSL-V M12")
+		}
+		if s.Type.Name == "reg_tile" && s.Value == nil {
+			v.errorf("reg_tile locals must be initialized with reg_tile_zero() in SDSL-V M15")
+		}
+		if s.Type.Name == "reg_tile" && s.Value != nil && !isRegTileZeroCall(s.Value) {
+			v.errorf("reg_tile locals must be initialized with reg_tile_zero() in SDSL-V M15")
 		}
 		valueType := ast.TypeRef{}
 		if s.Value != nil {
@@ -661,7 +679,11 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.validateMatchPlacement(s.Value, true)
 			v.validateReductionPlacement(s.Value, true)
 			v.validateBarrierUsage(s.Value, false, shaderName, stage)
-			valueType = v.exprType(s.Value, scope, shaderName, templateParam)
+			if s.Type.Name == "reg_tile" && isRegTileZeroCall(s.Value) {
+				valueType = s.Type
+			} else {
+				valueType = v.exprType(s.Value, scope, shaderName, templateParam)
+			}
 			if !v.compatible(s.Type, valueType) {
 				v.errorf("cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
 			}
@@ -675,7 +697,11 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 		localType := s.Type
 		localType.Access = access
-		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access}
+		var localValue *configValue
+		if s.Type.Name == "reg_tile" {
+			localValue = nil
+		}
+		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access, value: localValue}
 	case ast.ComptimeLetStmt:
 		v.validateType(s.Type)
 		v.validateWithPlacement(s.Value, false)
@@ -688,7 +714,11 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if _, exists := scope[s.Name]; exists {
 			v.errorf("duplicate local name %s", s.Name)
 		}
-		scope[s.Name] = varInfo{typ: s.Type, origin: varComptime}
+		value, err := v.evalConstExpr(s.Value, v.constEnv(scope, templateParam))
+		if err != nil {
+			value = placeholderConfigValue(v.resolveAlias(s.Type))
+		}
+		scope[s.Name] = varInfo{typ: s.Type, origin: varComptime, value: &value}
 	case ast.AssignStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
@@ -704,6 +734,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("assignment target is not assignable")
 		}
 		v.validateImmutableAssignmentTarget(s.Target, scope)
+		if targetType.Name == "reg_tile" || valueType.Name == "reg_tile" {
+			v.errorf("whole reg_tile assignment is not supported in SDSL-V M15")
+		}
 		if !v.compatible(targetType, valueType) {
 			v.errorf("assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
 		}
@@ -719,6 +752,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateReductionPlacement(s.Value, true)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		if valueType.Name == "reg_tile" || returnType.Name == "reg_tile" {
+			v.errorf("reg_tile return values are not supported in SDSL-V M15")
+		}
 		if !v.compatible(returnType, valueType) {
 			v.errorf("return type mismatch: expected %s, got %s", typeName(returnType), typeName(valueType))
 		}
@@ -876,6 +912,14 @@ func (v *validator) validateType(ref ast.TypeRef) {
 		v.validateType(ref.Args[0])
 		return
 	}
+	if ref.Name == "reg_tile" {
+		if len(ref.Args) != 1 || !ref.HasTileShape {
+			v.errorf("reg_tile type requires reg_tile<T, Rows, Cols>")
+			return
+		}
+		v.validateType(ref.Args[0])
+		return
+	}
 	if ref.Name == "matrix_view" {
 		if len(ref.Args) != 1 {
 			v.errorf("matrix_view type requires one element type")
@@ -961,16 +1005,24 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 				if len(target.Args) == 1 {
 					return v.resolveAlias(target.Args[0])
 				}
+			case "reg_tile":
+				if len(target.Args) == 1 {
+					return v.resolveAlias(target.Args[0])
+				}
 			case "matrix_view":
 				if len(target.Args) == 1 {
 					return v.resolveAlias(target.Args[0])
 				}
 			}
-			v.errorf("2D indexing is only valid on tile<T,R,C> or matrix_view<T>, got %s", typeName(target))
+			v.errorf("2D indexing is only valid on tile<T,R,C>, reg_tile<T,R,C>, or matrix_view<T>, got %s", typeName(target))
 			return ast.TypeRef{Name: "<error>"}
 		}
 		if target.Name == "tile" {
 			v.errorf("tile values require explicit 2D indexing")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if target.Name == "reg_tile" {
+			v.errorf("reg_tile values require explicit 2D indexing")
 			return ast.TypeRef{Name: "<error>"}
 		}
 		if target.Name == "matrix_view" {
@@ -1206,6 +1258,13 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 
 func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
+		if id.Name == "reg_tile_zero" {
+			if len(call.Arguments) != 0 {
+				v.errorf("reg_tile_zero expects 0 arguments, got %d", len(call.Arguments))
+			}
+			v.errorf("reg_tile_zero() is only valid as a direct reg_tile local initializer in SDSL-V M15")
+			return ast.TypeRef{Name: "<error>"}
+		}
 		if id.Name == "row_major" {
 			if len(call.Arguments) != 3 {
 				v.errorf("row_major expects 3 arguments, got %d", len(call.Arguments))
@@ -1262,7 +1321,7 @@ func (v *validator) compatible(left, right ast.TypeRef) bool {
 	left = v.resolveAlias(left)
 	right = v.resolveAlias(right)
 	if left.Name == right.Name {
-		if left.Name == "matrix_view" || left.Name == "tile" {
+		if left.Name == "matrix_view" || left.Name == "tile" || left.Name == "reg_tile" {
 			return len(left.Args) == len(right.Args) && (len(left.Args) == 0 || v.compatible(left.Args[0], right.Args[0]))
 		}
 		if left.Name != "array" {
@@ -1290,6 +1349,9 @@ func (v *validator) typeKind(ref ast.TypeRef) string {
 		}
 		if resolved.Name == "tile" {
 			return "tile"
+		}
+		if resolved.Name == "reg_tile" {
+			return "reg_tile"
 		}
 		if resolved.Name == "matrix_view" {
 			return "matrix_view"
@@ -1563,6 +1625,10 @@ func (v *validator) validateWorkgroup(shaderName string, decl ast.WorkgroupDecl,
 		}
 		return
 	}
+	if decl.Type.Name == "reg_tile" {
+		v.errorf("workgroup %s.%s cannot use reg_tile<T, Rows, Cols>; reg_tile is local per-thread storage in SDSL-V M15", shaderName, decl.Name)
+		return
+	}
 	if decl.Type.Name != "array" {
 		v.errorf("workgroup %s.%s must use array<T, N>", shaderName, decl.Name)
 		return
@@ -1668,6 +1734,9 @@ func typeName(ref ast.TypeRef) string {
 	if ref.Name == "tile" && len(ref.Args) == 1 {
 		return "tile<" + typeName(ref.Args[0]) + ",R,C>"
 	}
+	if ref.Name == "reg_tile" && len(ref.Args) == 1 {
+		return "reg_tile<" + typeName(ref.Args[0]) + ",R,C>"
+	}
 	if ref.Name != "array" || len(ref.Args) == 0 {
 		return ref.Name
 	}
@@ -1675,6 +1744,60 @@ func typeName(ref ast.TypeRef) string {
 		return fmt.Sprintf("array<%s,N>", typeName(ref.Args[0]))
 	}
 	return fmt.Sprintf("array<%s>", typeName(ref.Args[0]))
+}
+
+func isRegTileZeroCall(expr ast.Expr) bool {
+	call, ok := expr.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	id, ok := call.Callee.(ast.IdentifierExpr)
+	return ok && id.Name == "reg_tile_zero" && len(call.Arguments) == 0
+}
+
+func (v *validator) validateLocalRegTileType(ref ast.TypeRef, name string, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) {
+	if len(ref.Args) != 1 || !ref.HasTileShape {
+		return
+	}
+	elem := v.resolveAlias(ref.Args[0])
+	if elem.Name != "f32" && elem.Name != "float" {
+		v.errorf("local reg_tile %s element type %s is not supported in SDSL-V M15", name, typeName(elem))
+	}
+	env := v.constEnv(scope, templateParam)
+	rows, rowsErr := v.evalConstExpr(ref.TileRows, env)
+	cols, colsErr := v.evalConstExpr(ref.TileCols, env)
+	if rowsErr != nil {
+		v.errorf("local reg_tile %s rows must be a compile-time positive integer expression", name)
+	} else if !isInteger(rows.typ) || rows.int32 <= 0 {
+		v.errorf("local reg_tile %s rows must be a compile-time positive integer expression", name)
+	}
+	if colsErr != nil {
+		v.errorf("local reg_tile %s cols must be a compile-time positive integer expression", name)
+	} else if !isInteger(cols.typ) || cols.int32 <= 0 {
+		v.errorf("local reg_tile %s cols must be a compile-time positive integer expression", name)
+	}
+	if rowsErr == nil && colsErr == nil && isInteger(rows.typ) && isInteger(cols.typ) {
+		if rows.int32*cols.int32 > maxRegTileElements {
+			v.errorf("reg_tile has %d elements; M15 limit is %d", rows.int32*cols.int32, maxRegTileElements)
+		}
+	}
+}
+
+func (v *validator) constEnv(scope map[string]varInfo, templateParam *ast.TemplateParam) map[string]configValue {
+	env := map[string]configValue{}
+	if templateParam != nil {
+		if concept, ok := v.concepts[templateParam.ConceptName]; ok {
+			for _, spec := range v.conceptFieldSpecs(concept) {
+				env[templateParam.Name+"."+spec.Path] = placeholderConfigValue(v.resolveAlias(spec.Type))
+			}
+		}
+	}
+	for name, info := range scope {
+		if info.origin == varComptime && info.value != nil {
+			env[name] = *info.value
+		}
+	}
+	return env
 }
 
 func (v *validator) evalConstExpr(expr ast.Expr, env map[string]configValue) (configValue, error) {

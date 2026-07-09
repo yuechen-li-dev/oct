@@ -115,6 +115,29 @@ return;
 	}
 }
 
+func TestBuildModuleParsesRegTileAndZeroInitializer(t *testing.T) {
+	module := parseTestModule(t, `shader RegTileBasic {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+Acc[0u, 1u] = Acc[0u, 1u] + 1.0;
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	letStmt := shader.Methods[0].Body.Statements[0].(ast.LetStmt)
+	if letStmt.Type.Name != "reg_tile" || !letStmt.Type.HasTileShape {
+		t.Fatalf("let type = %#v, want reg_tile shape", letStmt.Type)
+	}
+	call, ok := letStmt.Value.(ast.CallExpr)
+	if !ok {
+		t.Fatalf("let value = %T, want CallExpr", letStmt.Value)
+	}
+	callee, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok || callee.Name != "reg_tile_zero" {
+		t.Fatalf("callee = %#v, want reg_tile_zero", call.Callee)
+	}
+}
+
 func TestBuildModuleRejectsWorkgroupOutsideShader(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `workgroup Tile: array<f32, 16>;`})
 	if err != nil {

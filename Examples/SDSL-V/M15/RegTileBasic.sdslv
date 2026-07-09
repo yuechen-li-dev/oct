@@ -1,0 +1,11 @@
+shader RegTileBasic {
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+
+        Acc[0u, 0u] = Acc[0u, 0u] + 1.0;
+        Acc[0u, 1u] = Acc[0u, 1u] + 2.0;
+        Acc[1u, 0u] = Acc[1u, 0u] + 3.0;
+        Acc[1u, 1u] = Acc[1u, 1u] + 4.0;
+        return;
+    }
+}

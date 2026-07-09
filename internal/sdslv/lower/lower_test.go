@@ -236,6 +236,45 @@ return;
 	}
 }
 
+func TestModuleLowersRegTileToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `concept MicroConfig {
+Outputs: {
+M: u32 = 2u;
+N: u32 = 2u;
+};
+}
+config Micro2x2: MicroConfig {}
+template<C: MicroConfig>
+shader S {
+resources { C: readwrite array<f32>; }
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let RM: u32 = C.Outputs.M;
+comptime let RN: u32 = C.Outputs.N;
+let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
+let CView: matrix_view<f32> = row_major(C, 2u, 2u);
+Acc[1u, 0u] = Acc[1u, 0u] + 3.0;
+CView[1u, 0u] = Acc[1u, 0u];
+return;
+}
+}
+compile S<Micro2x2> as S2x2;`)
+	cs := findFunction(t, mir, "S2x2_CS")
+	letAcc, ok := cs.Body.Statements[0].(vdmir.LetStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want LetStmt", cs.Body.Statements[0])
+	}
+	if letAcc.Type.Kind != vdmir.TypeRegTile || letAcc.Type.Rows != 2 || letAcc.Type.Cols != 2 {
+		t.Fatalf("let type = %#v, want 2x2 reg_tile", letAcc.Type)
+	}
+	if _, ok := letAcc.Value.(vdmir.RegTileZeroExpr); !ok {
+		t.Fatalf("let value = %T, want RegTileZeroExpr", letAcc.Value)
+	}
+	assign := cs.Body.Statements[2].(vdmir.AssignStmt)
+	if _, ok := assign.Target.(vdmir.Index2DExpr); !ok {
+		t.Fatalf("assign target = %T, want Index2DExpr", assign.Target)
+	}
+}
+
 func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
 	mir := lowerSource(t, `stream ComputeThread {
 DispatchId: uint3;

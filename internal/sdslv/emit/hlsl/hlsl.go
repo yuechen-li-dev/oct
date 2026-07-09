@@ -207,6 +207,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
 			return
 		}
+		if zero, ok := s.Value.(vdmir.RegTileZeroExpr); ok {
+			e.emitRegTileZeroLet(s.Name, zero.Type())
+			return
+		}
 		if rowMajor, ok := s.Value.(vdmir.RowMajorViewExpr); ok {
 			e.viewAliases[s.Name] = rowMajor
 			return
@@ -410,6 +414,8 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return e.expr(x.Target) + "[" + e.expr(x.Index) + "]"
 	case vdmir.Index2DExpr:
 		return e.index2D(x)
+	case vdmir.RegTileZeroExpr:
+		return "/* reg_tile_zero */"
 	case vdmir.RowMajorViewExpr:
 		return "/* matrix view */"
 	case vdmir.CallExpr:
@@ -525,6 +531,21 @@ func (e *emitter) index2D(expr vdmir.Index2DExpr) string {
 	return target + "[((" + e.expr(expr.Row) + ") * (" + strideText + ")) + (" + e.expr(expr.Col) + ")]"
 }
 
+func (e *emitter) emitRegTileZeroLet(name string, typ vdmir.Type) {
+	e.line(fmt.Sprintf("%s;", typeRef(typ, name)))
+	elemType := elementTypeForArrayish(typ)
+	for i := 0; i < typ.ArraySize; i++ {
+		e.line(fmt.Sprintf("%s[%d] = %s;", name, i, zeroLiteral(elemType)))
+	}
+}
+
+func elementTypeForArrayish(ref vdmir.Type) vdmir.Type {
+	if ref.Element == nil {
+		return vdmir.Type{}
+	}
+	return *ref.Element
+}
+
 func (e *emitter) nextTemp() string {
 	return e.nextTempWithPrefix("with")
 }
@@ -571,7 +592,7 @@ func typeRef(ref vdmir.Type, name string) string {
 		}
 		return fmt.Sprintf("%s %s[]", elem, name)
 	}
-	if ref.Kind == vdmir.TypeTile && ref.Element != nil {
+	if (ref.Kind == vdmir.TypeTile || ref.Kind == vdmir.TypeRegTile) && ref.Element != nil {
 		elem := typeRef(*ref.Element, "")
 		if name == "" {
 			return elem
