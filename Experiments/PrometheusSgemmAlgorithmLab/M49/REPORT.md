@@ -85,3 +85,7 @@ Modeled dimensions include register pressure, shared-memory pressure, bandwidth/
 ## Documentation consistency note
 
 M49 follows current `Language/reference`-style usage already present in nearby Prometheus lab experiments (`enum`, `record`, deterministic `Fact`, and `Artifact` emission patterns). No explicit contradiction was identified during this scoped task.
+
+## Px16 M10 RTX 3070 DVT feedback
+
+Real RTX 3070 Px16 DVT data showed that `memory-conservative` is not only a degraded/register-constrained fallback. It won or remained competitive on high-capability discrete GPU shapes including wide, rectangular, low-K, odd, and awkward cases, so native selector assumptions were widened beyond `REGISTER_CONSTRAINED` devices. M49's broader architecture conclusion still stands: variants are local execution recipes selected by feedforward policy, while HFSM/resource-lease control remains runtime actuation rather than dispatch authority.

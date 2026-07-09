@@ -323,3 +323,23 @@ M9 removes the ambiguous `picked fastest?` presentation. The report now splits:
 - `production_vs_fastest_ratio`
 
 This distinguishes variant identity from measured speed. Production can run faster than an explicit row due to timing noise, warm state, or path differences even when it did not execute the same variant as the fastest explicit comparison row.
+
+## Px16 M10
+
+Px16 M10 feeds real RTX 3070 DVT evidence back into the production SGEMM occupancy selector. This is a selector-policy milestone only: it does not optimize SPIR-V kernels, change FFT/P16 work, add resident-buffer APIs, or move dispatch authority away from the judgment engine.
+
+The selector now uses centralized, hand-tunable utility scores in `reactor_judgment_engine.c`. Those constants are DVT-tunable policy values, so future hardware evidence can adjust variant preference without rewriting the selector's control flow.
+
+The main DVT correction is that `MEMORY_CONSERVATIVE` is no longer treated as only a weak/register-constrained-device fallback. RTX 3070 measurements showed it can win or stay competitive on high-capability discrete GPUs for:
+
+- wide or short/wide shapes such as `64x1024x1024`,
+- rectangular or skinny-ish shapes,
+- low-K shapes where larger register-blocked kernels do not amortize cleanly,
+- odd or awkward dimensions such as `255x129x65`,
+- some small/medium shapes where footprint and overhead dominate.
+
+The selector still keeps the other wired variants in the candidate set: `BASELINE_SCALAR`, `SMALL_REGISTER_TILE`, `BALANCED_2X2_ACCUM4`, and `AGGRESSIVE_4X4_ACCUM8`. Large square and FFN-like compute-rich shapes can still prefer aggressive or balanced variants, and small square shapes can still prefer SRT. `MEMORY_CONSERVATIVE` is considered from general facts such as device band, register/shared-memory tolerance, shape class, aspect ratio, low-K status, and odd/awkward dimensions; the selector does not hardcode the RTX 3070 device name.
+
+`occupancy_apply_safety_clamp` remains the authoritative safety gate after scoring. If a selected or manually overridden variant is unsafe for the facts, clamp behavior still demotes or rejects it. DVT/PVT/promotion lifecycle fields remain telemetry only, and P15 remains prestage/telemetry/correction rather than a production selector.
+
+The benchmark/report lane remains an honest measurement surface. Selector scoring changes may reduce selector-vs-fastest mismatches on MC-favored shapes, but the report still compares the production executed variant against the fastest correct explicit variant and continues to surface mismatches instead of hiding them.

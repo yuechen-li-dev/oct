@@ -616,6 +616,112 @@ static uint32_t occupancy_shape_is_small(const prom_occupancy_selector_facts* fa
   return (facts->m <= 256u && facts->n <= 256u && facts->k <= 256u) ? 1u : 0u;
 }
 
+typedef struct prom_occ_shape_features {
+  uint32_t is_wide;
+  uint32_t is_tall_or_skinny;
+  uint32_t is_low_k;
+  uint32_t is_small;
+  uint32_t is_medium;
+  uint32_t is_large_square;
+  uint32_t is_rectangular;
+  uint32_t is_awkward_or_odd;
+} prom_occ_shape_features;
+
+typedef struct prom_occ_variant_utility_config {
+  int32_t baseline_scalar_score;
+  int32_t small_register_tile_score;
+  int32_t balanced_2x2_score;
+  int32_t aggressive_4x4_score;
+  int32_t memory_conservative_score;
+
+  int32_t register_constrained_memory_conservative_bonus;
+  int32_t register_constrained_small_register_tile_bonus;
+  int32_t register_constrained_aggressive_penalty;
+  int32_t balanced_small_register_tile_bonus;
+  int32_t balanced_2x2_bonus;
+  int32_t compute_rich_aggressive_bonus;
+  int32_t compute_rich_balanced_bonus;
+  int32_t compute_rich_memory_conservative_bonus;
+  int32_t memory_rich_balanced_bonus;
+  int32_t memory_rich_small_register_tile_bonus;
+
+  int32_t memory_conservative_wide_bonus;
+  int32_t memory_conservative_rectangular_bonus;
+  int32_t memory_conservative_low_k_bonus;
+  int32_t memory_conservative_awkward_bonus;
+  int32_t memory_conservative_large_square_penalty;
+  int32_t small_register_tile_wide_bonus;
+  int32_t small_register_tile_small_shape_bonus;
+  int32_t small_register_tile_medium_shape_bonus;
+  int32_t balanced_rectangular_bonus;
+  int32_t balanced_low_k_bonus;
+  int32_t balanced_large_square_bonus;
+  int32_t balanced_small_shape_penalty;
+  int32_t aggressive_large_square_bonus;
+  int32_t aggressive_ffn_like_bonus;
+  int32_t aggressive_wide_penalty;
+  int32_t aggressive_low_k_penalty;
+} prom_occ_variant_utility_config;
+
+/* Px16 M10 DVT-tunable selector policy.
+ * These constants are intentionally centralized so real hardware feedback can be
+ * folded into production selection without rewriting the selector. RTX 3070 DVT
+ * showed MEMORY_CONSERVATIVE is not merely a register-constrained fallback: it
+ * can win on high-capability devices for wide, rectangular, low-K, and awkward
+ * shapes while square/FFN-like shapes still need the register-blocked variants.
+ */
+static const prom_occ_variant_utility_config k_occupancy_utility = {
+    15,  /* baseline_scalar_score */
+    60,  /* small_register_tile_score */
+    70,  /* balanced_2x2_score */
+    75,  /* aggressive_4x4_score */
+    45,  /* memory_conservative_score */
+
+    65,  /* register_constrained_memory_conservative_bonus */
+    25,  /* register_constrained_small_register_tile_bonus */
+    -80, /* register_constrained_aggressive_penalty */
+    20,  /* balanced_small_register_tile_bonus */
+    20,  /* balanced_2x2_bonus */
+    35,  /* compute_rich_aggressive_bonus */
+    25,  /* compute_rich_balanced_bonus */
+    10,  /* compute_rich_memory_conservative_bonus */
+    35,  /* memory_rich_balanced_bonus */
+    15,  /* memory_rich_small_register_tile_bonus */
+
+    90,  /* memory_conservative_wide_bonus */
+    35,  /* memory_conservative_rectangular_bonus */
+    35,  /* memory_conservative_low_k_bonus */
+    45,  /* memory_conservative_awkward_bonus */
+    -25, /* memory_conservative_large_square_penalty */
+    20,  /* small_register_tile_wide_bonus */
+    55,  /* small_register_tile_small_shape_bonus */
+    15,  /* small_register_tile_medium_shape_bonus */
+    15,  /* balanced_rectangular_bonus */
+    55,  /* balanced_low_k_bonus */
+    45,  /* balanced_large_square_bonus */
+    -15, /* balanced_small_shape_penalty */
+    65,  /* aggressive_large_square_bonus */
+    45,  /* aggressive_ffn_like_bonus */
+    -25, /* aggressive_wide_penalty */
+    -35, /* aggressive_low_k_penalty */
+};
+
+static prom_occ_shape_features occupancy_shape_features(const prom_occupancy_selector_facts* facts, uint32_t shape_class) {
+  prom_occ_shape_features features;
+  const uint32_t max_mn = facts->m > facts->n ? facts->m : facts->n;
+  const uint32_t min_mn = facts->m < facts->n ? facts->m : facts->n;
+  features.is_wide = shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_WIDE_SHORT ? 1u : 0u;
+  features.is_tall_or_skinny = shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_TALL_SKINNY ? 1u : 0u;
+  features.is_low_k = facts->k <= 128u || (facts->k * 4u <= max_mn && facts->m >= 256u && facts->n >= 256u) ? 1u : 0u;
+  features.is_small = occupancy_shape_is_small(facts);
+  features.is_medium = shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_MEDIUM_SQUARE ? 1u : 0u;
+  features.is_large_square = shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ? 1u : 0u;
+  features.is_rectangular = ((uint64_t)max_mn * 2u >= (uint64_t)min_mn * 3u) ? 1u : 0u;
+  features.is_awkward_or_odd =
+      ((facts->m & 7u) != 0u || (facts->n & 7u) != 0u || (facts->k & 7u) != 0u) ? 1u : 0u;
+  return features;
+}
+
 static uint32_t occupancy_shape_classify(const prom_occupancy_selector_facts* facts) {
   const uint32_t max_mn = facts->m > facts->n ? facts->m : facts->n;
   const uint32_t min_mn = facts->m < facts->n ? facts->m : facts->n;
@@ -663,39 +769,106 @@ static uint32_t occupancy_device_band_classify(const prom_occupancy_selector_fac
   return (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_BALANCED;
 }
 
-static uint32_t occupancy_select_unclamped_variant(uint32_t band, uint32_t shape_class) {
+static int32_t occupancy_variant_utility_score(uint32_t variant,
+                                               uint32_t band,
+                                               uint32_t shape_class,
+                                               const prom_occ_shape_features* features) {
+  int32_t score = -100000;
+  if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) {
+    score = k_occupancy_utility.baseline_scalar_score;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+    score = k_occupancy_utility.small_register_tile_score;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+    score = k_occupancy_utility.balanced_2x2_score;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    score = k_occupancy_utility.aggressive_4x4_score;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    score = k_occupancy_utility.memory_conservative_score;
+  } else {
+    return score;
+  }
+
   if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_REGISTER_CONSTRAINED) {
-    if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE ||
-        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_TALL_SKINNY ||
-        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_WIDE_SHORT) {
-      return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE;
+    if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+      score += k_occupancy_utility.register_constrained_memory_conservative_bonus;
+    } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+      score += k_occupancy_utility.register_constrained_small_register_tile_bonus;
+    } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+      score += k_occupancy_utility.register_constrained_aggressive_penalty;
     }
-    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
-  }
-  if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH) {
-    if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
-        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY ||
-        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE) {
-      return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8;
+  } else if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH) {
+    if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+      score += (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
+                shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY ||
+                shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE)
+                   ? k_occupancy_utility.compute_rich_aggressive_bonus
+                   : 0;
+    } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+      score += k_occupancy_utility.compute_rich_balanced_bonus;
+    } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+      score += k_occupancy_utility.compute_rich_memory_conservative_bonus;
     }
-    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
-  }
-  if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_MEMORY_RICH) {
-    if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
-        shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE) {
-      return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+  } else if (band == (uint32_t)PROM_OCCUPANCY_DEVICE_BAND_MEMORY_RICH) {
+    if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+      score += k_occupancy_utility.memory_rich_balanced_bonus;
+    } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+      score += k_occupancy_utility.memory_rich_small_register_tile_bonus;
     }
-    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+  } else {
+    if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+      score += k_occupancy_utility.balanced_small_register_tile_bonus;
+    } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+      score += k_occupancy_utility.balanced_2x2_bonus;
+    }
   }
-  if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE) {
-    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+
+  if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+    score += (features->is_wide != 0u || features->is_tall_or_skinny != 0u) ? k_occupancy_utility.memory_conservative_wide_bonus : 0;
+    score += features->is_rectangular != 0u ? k_occupancy_utility.memory_conservative_rectangular_bonus : 0;
+    score += features->is_low_k != 0u ? k_occupancy_utility.memory_conservative_low_k_bonus : 0;
+    score += features->is_awkward_or_odd != 0u ? k_occupancy_utility.memory_conservative_awkward_bonus : 0;
+    score += features->is_large_square != 0u ? k_occupancy_utility.memory_conservative_large_square_penalty : 0;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE) {
+    score += (features->is_wide != 0u || features->is_tall_or_skinny != 0u) ? k_occupancy_utility.small_register_tile_wide_bonus : 0;
+    score += features->is_small != 0u ? k_occupancy_utility.small_register_tile_small_shape_bonus : 0;
+    score += features->is_medium != 0u ? k_occupancy_utility.small_register_tile_medium_shape_bonus : 0;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4) {
+    score += features->is_rectangular != 0u ? k_occupancy_utility.balanced_rectangular_bonus : 0;
+    score += features->is_low_k != 0u ? k_occupancy_utility.balanced_low_k_bonus : 0;
+    score += features->is_large_square != 0u ? k_occupancy_utility.balanced_large_square_bonus : 0;
+    score += features->is_small != 0u ? k_occupancy_utility.balanced_small_shape_penalty : 0;
+  } else if (variant == (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8) {
+    score += features->is_large_square != 0u ? k_occupancy_utility.aggressive_large_square_bonus : 0;
+    score += shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE ? k_occupancy_utility.aggressive_ffn_like_bonus : 0;
+    score += (features->is_wide != 0u || features->is_tall_or_skinny != 0u) ? k_occupancy_utility.aggressive_wide_penalty : 0;
+    score += features->is_low_k != 0u ? k_occupancy_utility.aggressive_low_k_penalty : 0;
   }
-  if (shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_LARGE_SQUARE ||
-      shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_K_HEAVY ||
-      shape_class == (uint32_t)PROM_OCCUPANCY_SHAPE_CLASS_ML_FFN_LIKE) {
-    return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4;
+
+  return score;
+}
+
+static uint32_t occupancy_select_unclamped_variant(const prom_occupancy_selector_facts* facts, uint32_t band, uint32_t shape_class) {
+  static const uint32_t k_candidates[] = {
+      (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
+      (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE,
+      (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4,
+      (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8,
+      (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
+  };
+  const uint32_t candidate_count = (uint32_t)(sizeof(k_candidates) / sizeof(k_candidates[0]));
+  const prom_occ_shape_features features = occupancy_shape_features(facts, shape_class);
+  uint32_t best_variant = (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+  int32_t best_score = -100000;
+  uint32_t candidate_index;
+  for (candidate_index = 0u; candidate_index < candidate_count; ++candidate_index) {
+    const uint32_t variant = k_candidates[candidate_index];
+    const int32_t score = occupancy_variant_utility_score(variant, band, shape_class, &features);
+    if (score > best_score) {
+      best_score = score;
+      best_variant = variant;
+    }
   }
-  return (uint32_t)PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE;
+  return best_variant;
 }
 
 static uint32_t occupancy_apply_safety_clamp(const prom_occupancy_selector_facts* facts,
@@ -749,7 +922,7 @@ void prom_judgment_engine_select_occupancy_variant(const prom_occupancy_selector
   }
   device_band = occupancy_device_band_classify(facts, &fallback_used);
   shape_class = occupancy_shape_classify(facts);
-  unclamped_variant = occupancy_select_unclamped_variant(device_band, shape_class);
+  unclamped_variant = occupancy_select_unclamped_variant(facts, device_band, shape_class);
   selected_variant = occupancy_apply_safety_clamp(facts, shape_class, unclamped_variant, &clamp_reason);
   if (facts->manual_override_enabled != 0u) {
     uint32_t override_reason = (uint32_t)PROM_OCCUPANCY_REASON_NONE;

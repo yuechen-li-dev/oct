@@ -53,6 +53,22 @@ namespace
         facts.hard_recovery_override = 0u;
         return facts;
     }
+
+    prom_occupancy_selector_facts compute_rich_occupancy_facts(std::uint32_t m, std::uint32_t n, std::uint32_t k)
+    {
+        prom_occupancy_selector_facts facts{};
+        facts.register_file_class = 5u;
+        facts.shared_memory_class = 4u;
+        facts.memory_bandwidth_class = 3u;
+        facts.fp32_throughput_class = 5u;
+        facts.max_workgroup_class = 4u;
+        facts.queue_capability_class = 4u;
+        facts.m = m;
+        facts.n = n;
+        facts.k = k;
+        facts.work_units = static_cast<std::uint64_t>(facts.m) * static_cast<std::uint64_t>(facts.n) * static_cast<std::uint64_t>(facts.k);
+        return facts;
+    }
 }
 
 FACT(PrometheusJudgmentEngine_DeterministicForSameFacts)
@@ -734,6 +750,83 @@ FACT(PrometheusJudgmentEngine_P13M2_OccupancySelectorClampAndOverrideRules)
     ASSERT_EQUAL(0u, decision.override_used, "unsafe occupancy override should be rejected");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED), decision.clamp_reason,
                  "rejected override should have explicit reason");
+}
+
+FACT(PrometheusJudgmentEngine_Px16M10_DvtUtilitySelectsMemoryConservativeForWideHighCapabilityShape)
+{
+    prom_occupancy_selector_facts facts = compute_rich_occupancy_facts(64u, 1024u, 1024u);
+    prom_occupancy_selector_decision decision{};
+
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+
+    ASSERT_EQUAL(1u, decision.success, "wide high-capability facts should produce a selector decision");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_DEVICE_BAND_COMPUTE_RICH), decision.device_band,
+                 "RTX-3070-like facts should classify as compute-rich without hardcoding the device name");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_SHAPE_CLASS_WIDE_SHORT), decision.shape_class,
+                 "64x1024x1024 should classify as wide-short");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), decision.unclamped_variant,
+                 "DVT utility should make memory-conservative reachable for wide high-capability shapes");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), decision.selected_variant,
+                 "safety clamp should allow the selected memory-conservative variant");
+}
+
+FACT(PrometheusJudgmentEngine_Px16M10_DvtUtilitySelectsMemoryConservativeForAwkwardRectangularShape)
+{
+    prom_occupancy_selector_facts facts = compute_rich_occupancy_facts(255u, 129u, 65u);
+    prom_occupancy_selector_decision decision{};
+
+    prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_SHAPE_CLASS_SMALL_SQUARE), decision.shape_class,
+                 "awkward DVT rectangle remains in the existing small-shape class");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE), decision.selected_variant,
+                 "odd rectangular small/medium shapes should consider memory-conservative on high-capability devices");
+}
+
+FACT(PrometheusJudgmentEngine_Px16M10_DvtUtilityDoesNotBlindlySelectMemoryConservative)
+{
+    {
+        prom_occupancy_selector_facts facts = compute_rich_occupancy_facts(128u, 128u, 128u);
+        prom_occupancy_selector_decision decision{};
+        prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE), decision.selected_variant,
+                     "small square high-capability shapes should keep the SRT choice");
+    }
+    {
+        prom_occupancy_selector_facts facts = compute_rich_occupancy_facts(2048u, 2048u, 2048u);
+        prom_occupancy_selector_decision decision{};
+        prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8), decision.selected_variant,
+                     "large square compute-rich shapes should still prefer aggressive");
+    }
+    {
+        prom_occupancy_selector_facts facts = compute_rich_occupancy_facts(2048u, 2048u, 64u);
+        prom_occupancy_selector_decision decision{};
+        prom_judgment_engine_select_occupancy_variant(&facts, &decision);
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4), decision.selected_variant,
+                     "large low-K square shapes should keep the balanced 2x2 selection");
+    }
+}
+
+FACT(PrometheusJudgmentEngine_Px16M10_InvalidVariantsNeverWinAndTieBreakIsStable)
+{
+    prom_occupancy_selector_facts facts = compute_rich_occupancy_facts(512u, 512u, 512u);
+    facts.manual_override_enabled = 1u;
+    facts.manual_override_variant = 999u;
+
+    prom_occupancy_selector_decision first{};
+    prom_occupancy_selector_decision second{};
+    prom_judgment_engine_select_occupancy_variant(&facts, &first);
+    prom_judgment_engine_select_occupancy_variant(&facts, &second);
+
+    ASSERT_EQUAL(0u, first.override_used, "unwired override variant should be rejected");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_OCCUPANCY_REASON_OVERRIDE_REJECTED), first.clamp_reason,
+                 "unwired override should report the override rejection reason");
+    ASSERT_TRUE(first.selected_variant >= static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR) &&
+                    first.selected_variant <= static_cast<std::uint32_t>(PROM_OCCUPANCY_KERNEL_VARIANT_AGGRESSIVE_4X4_ACCUM8),
+                "selector should only return wired occupancy variants");
+    ASSERT_EQUAL(first.selected_variant, second.selected_variant, "same score inputs should tie-break deterministically");
+    ASSERT_EQUAL(first.unclamped_variant, second.unclamped_variant, "same score inputs should keep the same unclamped winner");
 }
 
 FACT(PrometheusJudgmentEngine_P13M9_ResourceLeaseDecisionReasonsAndLookaheadBound)
