@@ -54,6 +54,7 @@ namespace marionette::tests
         void EnterTheoryCase(std::string_view caseName);
         void LeaveTheoryCase();
         [[nodiscard]] bool WriteTextArtifact(std::string_view artifactName, std::string_view content);
+        [[nodiscard]] bool WriteArtifactFile(const std::filesystem::path& relativePath, std::string_view content);
 
         template <typename CaseCollection, typename CaseFunction>
         void RunTheoryCases(const CaseCollection& cases, CaseFunction caseFunction)
@@ -130,6 +131,7 @@ namespace marionette::tests
             std::string_view actual = {});
         void SkipTest(const char* file, int line, std::string_view reason);
         [[nodiscard]] bool WriteTextArtifact(std::string_view artifactName, std::string_view content);
+        [[nodiscard]] bool WriteArtifactFile(const std::filesystem::path& relativePath, std::string_view content);
 
         std::uint64_t iteration = 0;
 

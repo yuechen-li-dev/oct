@@ -76,3 +76,84 @@ Compact truth table:
 - `px16_m6_p15_reconciliation_match`: whether P15 matched the live decision.
 - `px16_m6_p15_block_reason`, `px16_m6_p15_correction_action`, `px16_m6_p15_reservation_stale_or_expired`: mismatch/block/correction truth when P15 diverges from the live decision.
 - `px16_m6_p15_confidence_before` / `px16_m6_p15_confidence_after`: cheap before/after confidence snapshots around reconciliation/correction.
+
+## Px16 M7
+
+Px16 M7 adds the local Windows EVT benchmark/report lane that measures the production SGEMM path, validates correctness, captures timing, and emits deterministic artifacts that expose the full M6 truth surface for each representative shape.
+
+The architecture rule for this milestone is:
+
+- The lane measures and reports current behavior; it does not retune selector heuristics.
+- Main EVT results must call `prometheus_reactor_runtime_sgemm(...)`.
+- Explicit benchmark-variant dispatch remains optional and separate from the production lane.
+- The judgment engine remains the production dispatch authority.
+- P15 remains prestage/telemetry/correction only.
+- Diagnostics remain witness data, not dispatch authority.
+
+### How to run
+
+Build the native Windows artifacts from a Visual Studio developer shell:
+
+```bat
+cmd /c "call \"C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat\" -arch=x64 -host_arch=x64 >nul && internal\prometheus\native\build_windows.cmd"
+```
+
+Run the focused regression checks called out by the milestone:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusReactor_Px16M6_ProductionDiagnosticsTruthSurface
+out\prometheus\native\marionette_tests.exe PrometheusReactor_P13_M16B5_SafePolicyAllowsEligibleTiledDispatch
+out\prometheus\native\marionette_tests.exe PrometheusDominatusPredictorCorrection_ReconciliationVariantMismatchExpiresReservationAndLowersConfidence
+```
+
+Run the EVT lane directly:
+
+```bat
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+Optional 2048-cube coverage is intentionally off by default to keep the lane locally repeatable. Enable it explicitly when desired:
+
+```bat
+set OCT_PROMETHEUS_PX16_EVT_ENABLE_2048=1
+out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
+```
+
+### Artifact paths
+
+The lane writes:
+
+- `out/test-artifacts/prometheus_sgemm_px16_evt_results.json`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_report.md`
+
+These generated artifacts should not be committed by default.
+
+### Report interpretation
+
+- `Production SGEMM Results` is the main EVT table. Every row comes from the production API path, not from explicit benchmark variants.
+- `path` reports requested/selected/executed Vulkan path truth.
+- `compute_mode` reports requested/selected/executed compute truth, including whether execution stayed tiled.
+- `variant` reports selector recommended/selected plus requested/executed dispatch variant truth and the EVT wiring status.
+- `force_direct` reports whether direct execution was requested or actually applied, plus the concrete reason.
+- `p15` reports whether a matured reservation existed, whether it matched the live selected variant, and what correction action happened if it did not.
+- `correctness.reference_mode` explains whether the row used the dense CPU oracle or the deterministic separable large-shape oracle. Tolerance remains the repository SGEMM tolerance style.
+- `timing.timing_source` distinguishes `vulkan_timestamp_query` from `cpu_wall_clock`. If timestamps are unavailable or invalid for any measured iteration, the row falls back to wall-clock timing and the report says so explicitly.
+
+### Anomalies
+
+The lane flags explicit anomalies, including:
+
+- selected/requested/executed variant mismatches,
+- unexpected direct fallback,
+- SAFE force-direct without a concrete reason,
+- wired variants not reported as wired / production-eligible / dispatch-enabled,
+- P15 mismatch without correction action,
+- correctness failure,
+- large eligible shapes that did not execute tiled,
+- suspicious GFLOP/s drops versus neighboring successful shapes.
+
+These flags are reporting aids only. They do not alter runtime dispatch behavior.
+
+### Known limitation
+
+If Vulkan timestamp queries are unavailable or invalid, timing falls back to CPU wall-clock. In that case the lane still reports correctness and diagnostics truth, but absolute performance numbers should be interpreted as lower-confidence host-observed timings rather than pure GPU execution timings.

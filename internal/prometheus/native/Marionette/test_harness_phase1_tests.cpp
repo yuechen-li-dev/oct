@@ -23,6 +23,17 @@ FACT(MarionetteHarness_BenchmarkContextSupportsValidationState)
     ASSERT_TRUE(benchmarkContext.SkipState() != nullptr, "benchmark skip state should be queryable");
 }
 
+FACT(MarionetteHarness_CanWriteRootArtifactFiles)
+{
+    ::marionette::tests::BenchmarkContext benchmarkContext("benchmark_root_artifact_smoke");
+    const std::filesystem::path jsonPath("phase1-root/benchmark_validation_summary.json");
+    const bool wrote = benchmarkContext.WriteArtifactFile(jsonPath, "{\"schema\":\"marionette.phase1\"}\n");
+
+    ASSERT_TRUE(wrote, "benchmark context should support explicit artifact file paths");
+    ASSERT_FALSE(benchmarkContext.ArtifactPaths().empty(), "explicit artifact file path should be recorded");
+    ASSERT_TRUE(std::filesystem::exists(benchmarkContext.ArtifactPaths().front()), "explicit artifact file should be created on disk");
+}
+
 FACT(MarionetteHarness_StandardBenchmarksRemainFilterable)
 {
     const std::vector<::marionette::tests::BenchmarkResult> standardResults =

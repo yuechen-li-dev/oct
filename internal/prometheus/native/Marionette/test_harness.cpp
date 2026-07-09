@@ -20,6 +20,81 @@ namespace marionette::tests
             return std::filesystem::path{ MARIONETTE_TEST_REPO_ROOT } / "out" / "test-artifacts";
         }
 
+        [[nodiscard]] bool ArtifactPathIsSafe(const std::filesystem::path& relativePath)
+        {
+            if (relativePath.empty() || relativePath.is_absolute()) {
+                return false;
+            }
+
+            for (const std::filesystem::path& component : relativePath) {
+                if (component == "..") {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        template <typename ContextType>
+        [[nodiscard]] bool WriteArtifactFileImpl(ContextType& context,
+                                                 const std::filesystem::path& relativePath,
+                                                 std::string_view content,
+                                                 std::filesystem::path& outArtifactPath)
+        {
+            if (!ArtifactPathIsSafe(relativePath)) {
+                context.RecordFailure(
+                    __FILE__,
+                    __LINE__,
+                    "WRITE_ARTIFACT_FILE",
+                    "artifact path must stay within out/test-artifacts",
+                    "relative path without parent traversal",
+                    relativePath.string());
+                return false;
+            }
+
+            outArtifactPath = GetArtifactRoot() / relativePath;
+            const std::filesystem::path directory = outArtifactPath.parent_path();
+
+            std::error_code error;
+            std::filesystem::create_directories(directory, error);
+            if (error) {
+                context.RecordFailure(
+                    __FILE__,
+                    __LINE__,
+                    "WRITE_ARTIFACT_FILE",
+                    "failed to create artifact directory",
+                    directory.string(),
+                    error.message());
+                return false;
+            }
+
+            std::ofstream artifactFile(outArtifactPath, std::ios::binary | std::ios::trunc);
+            if (!artifactFile.is_open()) {
+                context.RecordFailure(
+                    __FILE__,
+                    __LINE__,
+                    "WRITE_ARTIFACT_FILE",
+                    "failed to open artifact file",
+                    outArtifactPath.string(),
+                    "could not open file");
+                return false;
+            }
+
+            artifactFile << std::string(content);
+            artifactFile.close();
+            if (!artifactFile) {
+                context.RecordFailure(
+                    __FILE__,
+                    __LINE__,
+                    "WRITE_ARTIFACT_FILE",
+                    "failed to write artifact file",
+                    outArtifactPath.string(),
+                    "write failed");
+                return false;
+            }
+            return true;
+        }
+
         [[nodiscard]] std::string SanitizePathComponent(std::string_view value)
         {
             std::string sanitized;
@@ -269,6 +344,17 @@ namespace marionette::tests
         return true;
     }
 
+    [[nodiscard]] bool TestContext::WriteArtifactFile(const std::filesystem::path& relativePath, std::string_view content)
+    {
+        std::filesystem::path artifactPath;
+        if (!WriteArtifactFileImpl(*this, relativePath, content, artifactPath)) {
+            return false;
+        }
+
+        artifactPaths_.push_back(artifactPath);
+        return true;
+    }
+
     BenchmarkContext::BenchmarkContext(std::string_view benchmarkName)
         : benchmarkName_(benchmarkName)
     {
@@ -389,6 +475,17 @@ namespace marionette::tests
                 "failed to write artifact file",
                 artifactPath.string(),
                 "write failed");
+            return false;
+        }
+
+        artifactPaths_.push_back(artifactPath);
+        return true;
+    }
+
+    [[nodiscard]] bool BenchmarkContext::WriteArtifactFile(const std::filesystem::path& relativePath, std::string_view content)
+    {
+        std::filesystem::path artifactPath;
+        if (!WriteArtifactFileImpl(*this, relativePath, content, artifactPath)) {
             return false;
         }
 
