@@ -53,6 +53,7 @@ The MIR models:
 
 M3 later extends this boundary with compute streams, named resource bundles, and `with` expressions without routing through Oct MIR or bypassing VD-MIR.
 M4 further extends it with workgroup storage declarations and backend-neutral barrier intrinsics.
+M5 further extends it with template-shader monomorphization before lowering, so VD-MIR still receives only concrete shaders.
 
 ## `when utility` in VD-MIR
 

@@ -98,13 +98,14 @@ That keeps the future SGEMM path clean without routing SDSL-V through Oct MIR or
 
 M4 intentionally does not add:
 
-- templates or concepts;
 - payload enums;
 - tensor notation;
 - SGEMM kernel wiring;
 - Prometheus runtime dispatch changes;
 - selector changes;
 - FFT/P16 changes.
+
+Templates and concepts for compile-time shader specialization arrive in M5 on top of this workgroup/barrier surface. See `docs/SDSL_V_M5_TEMPLATES_CONCEPTS.md`.
 
 ## Examples
 

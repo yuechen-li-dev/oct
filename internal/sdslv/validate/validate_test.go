@@ -227,6 +227,96 @@ return;
 	}
 }
 
+func TestModuleAllowsTemplateConfigCompileSpecialization(t *testing.T) {
+	err := validateSource(`concept TileCopyConfig {
+THREADS_X: u32;
+THREADS_Y: u32;
+TILE_SIZE: u32;
+}
+config Tile16x16: TileCopyConfig {
+THREADS_X: 16u;
+THREADS_Y: 16u;
+TILE_SIZE: 256u;
+}
+template<C: TileCopyConfig>
+shader TileCopy {
+workgroup Tile: array<f32, C.TILE_SIZE>;
+stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS() -> void {
+let tileElements: u32 = C.TILE_SIZE;
+return;
+}
+}
+compile TileCopy<Tile16x16> as TileCopy16x16;`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsConfigMissingField(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_M: u32; TILE_N: u32; }
+config Tile16: TileConfig { TILE_M: 16u; }`)
+	if err == nil || !strings.Contains(err.Error(), "config field TILE_N missing") {
+		t.Fatalf("error = %v, want missing config field", err)
+	}
+}
+
+func TestModuleRejectsConfigExtraField(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_M: u32; }
+config Tile16: TileConfig { TILE_M: 16u; TILE_N: 16u; }`)
+	if err == nil || !strings.Contains(err.Error(), "unknown config field Tile16.TILE_N") {
+		t.Fatalf("error = %v, want extra config field", err)
+	}
+}
+
+func TestModuleRejectsUnknownTemplateField(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_M: u32; }
+template<C: TileConfig>
+shader TileCopy {
+workgroup Tile: array<f32, 16>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let x: u32 = C.TILE_N;
+return;
+}
+}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown template field TILE_N") {
+		t.Fatalf("error = %v, want unknown template field", err)
+	}
+}
+
+func TestModuleRejectsCompileTargetNotTemplate(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_M: u32; }
+config Tile16: TileConfig { TILE_M: 16u; }
+shader TileCopy { stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err == nil || !strings.Contains(err.Error(), "must be a template shader") {
+		t.Fatalf("error = %v, want compile target template diagnostic", err)
+	}
+}
+
+func TestModuleRejectsCompileConfigWrongConcept(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_M: u32; }
+concept OtherConfig { TILE_M: u32; }
+config Tile16: OtherConfig { TILE_M: 16u; }
+template<C: TileConfig>
+shader TileCopy { stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err == nil || !strings.Contains(err.Error(), "does not satisfy concept") {
+		t.Fatalf("error = %v, want wrong concept diagnostic", err)
+	}
+}
+
+func TestModuleRejectsCompileAliasCollision(t *testing.T) {
+	err := validateSource(`concept TileConfig { TILE_M: u32; }
+config Tile16: TileConfig { TILE_M: 16u; }
+template<C: TileConfig>
+shader TileCopy { stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }
+record TileCopy16 {}
+compile TileCopy<Tile16> as TileCopy16;`)
+	if err == nil || !strings.Contains(err.Error(), "collides with top-level declaration") {
+		t.Fatalf("error = %v, want alias collision diagnostic", err)
+	}
+}
+
 func validateSource(text string) error {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})
 	if err != nil {

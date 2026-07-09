@@ -41,6 +41,9 @@ const (
 	KeywordStream    Kind = "KeywordStream"
 	KeywordFlow      Kind = "KeywordFlow"
 	KeywordCompile   Kind = "KeywordCompile"
+	KeywordConcept   Kind = "KeywordConcept"
+	KeywordConfig    Kind = "KeywordConfig"
+	KeywordTemplate  Kind = "KeywordTemplate"
 	KeywordVertex    Kind = "KeywordVertex"
 	KeywordPixel     Kind = "KeywordPixel"
 
@@ -63,6 +66,9 @@ const (
 	Minus        Kind = "Minus"
 	Star         Kind = "Star"
 	Slash        Kind = "Slash"
+	Percent      Kind = "Percent"
+	AndAnd       Kind = "AndAnd"
+	OrOr         Kind = "OrOr"
 	BangEqual    Kind = "BangEqual"
 	EqualEqual   Kind = "EqualEqual"
 	LeftEqual    Kind = "LeftEqual"
@@ -140,6 +146,12 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordFlow
 	case "compile":
 		return KeywordCompile
+	case "concept":
+		return KeywordConcept
+	case "config":
+		return KeywordConfig
+	case "template":
+		return KeywordTemplate
 	case "vertex":
 		return KeywordVertex
 	case "pixel":

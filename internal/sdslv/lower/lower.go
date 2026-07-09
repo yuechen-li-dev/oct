@@ -2,6 +2,7 @@ package lower
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
@@ -9,6 +10,11 @@ import (
 )
 
 func Module(module ast.Module) (vdmir.Module, error) {
+	specialized, err := specializeModule(module)
+	if err != nil {
+		return vdmir.Module{}, err
+	}
+	module = specialized
 	l := lowering{
 		provenance: vdmir.ProvenanceFromFile(module.Source),
 		types:      map[string]typeInfo{},
@@ -45,6 +51,9 @@ func Module(module ast.Module) (vdmir.Module, error) {
 			}
 			out.Functions = append(out.Functions, fn)
 		case ast.ShaderDecl:
+			if d.Template != nil {
+				continue
+			}
 			resources, bundleName, err := l.resolveShaderResources(d)
 			if err != nil {
 				return vdmir.Module{}, err
@@ -66,7 +75,7 @@ func Module(module ast.Module) (vdmir.Module, error) {
 					Name:        workgroup.Name,
 					Type:        l.lowerTypeRef(workgroup.Type),
 					ElementType: l.lowerTypeRef(workgroup.Type.Args[0]),
-					Length:      workgroup.Type.ArraySize,
+					Length:      mustConcreteInt(workgroup.Type.ArraySize),
 				})
 			}
 			for _, method := range d.Methods {
@@ -79,11 +88,335 @@ func Module(module ast.Module) (vdmir.Module, error) {
 					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d.Name, method, resources))
 				}
 			}
+		case ast.ConceptDecl, ast.ConfigDecl, ast.CompileDecl:
+			continue
 		case ast.UnsupportedDecl:
 			return vdmir.Module{}, fmt.Errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 		}
 	}
 	return out, nil
+}
+
+type specializeValue struct {
+	typ     ast.TypeRef
+	int32   int64
+	boolVal bool
+}
+
+func specializeModule(module ast.Module) (ast.Module, error) {
+	configs := map[string]map[string]specializeValue{}
+	templates := map[string]ast.ShaderDecl{}
+	var compileDecls []ast.CompileDecl
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.ConfigDecl:
+			fields := map[string]specializeValue{}
+			for _, field := range d.Fields {
+				value, err := evalSpecializeConstExpr(field.Value, nil)
+				if err != nil {
+					return ast.Module{}, err
+				}
+				fields[field.Name] = value
+			}
+			configs[d.Name] = fields
+		case ast.ShaderDecl:
+			if d.Template != nil {
+				templates[d.Name] = d
+			}
+		case ast.CompileDecl:
+			compileDecls = append(compileDecls, d)
+		}
+	}
+	out := module
+	out.Decls = append([]ast.Decl(nil), module.Decls...)
+	for _, decl := range compileDecls {
+		template, ok := templates[decl.ShaderName]
+		if !ok {
+			return ast.Module{}, fmt.Errorf("unknown template shader %s", decl.ShaderName)
+		}
+		config, ok := configs[decl.ConfigName]
+		if !ok {
+			return ast.Module{}, fmt.Errorf("unknown config %s", decl.ConfigName)
+		}
+		env := map[string]specializeValue{}
+		for name, value := range config {
+			env[template.Template.Name+"."+name] = value
+		}
+		instance, err := specializeShader(template, decl.AliasName, env)
+		if err != nil {
+			return ast.Module{}, err
+		}
+		out.Decls = append(out.Decls, instance)
+	}
+	return out, nil
+}
+
+func specializeShader(shader ast.ShaderDecl, alias string, env map[string]specializeValue) (ast.ShaderDecl, error) {
+	out := shader
+	out.Name = alias
+	out.Template = nil
+	out.Workgroups = make([]ast.WorkgroupDecl, 0, len(shader.Workgroups))
+	for _, workgroup := range shader.Workgroups {
+		ref, err := specializeTypeRef(workgroup.Type, env)
+		if err != nil {
+			return ast.ShaderDecl{}, err
+		}
+		out.Workgroups = append(out.Workgroups, ast.WorkgroupDecl{Name: workgroup.Name, Type: ref})
+	}
+	out.Methods = make([]ast.FunctionDecl, 0, len(shader.Methods))
+	for _, method := range shader.Methods {
+		specialized, err := specializeFunction(method, env)
+		if err != nil {
+			return ast.ShaderDecl{}, err
+		}
+		out.Methods = append(out.Methods, specialized)
+	}
+	return out, nil
+}
+
+func specializeFunction(fn ast.FunctionDecl, env map[string]specializeValue) (ast.FunctionDecl, error) {
+	out := fn
+	if fn.NumThreads != nil {
+		x, err := specializeIntExpr(fn.NumThreads.X, env)
+		if err != nil {
+			return ast.FunctionDecl{}, err
+		}
+		y, err := specializeIntExpr(fn.NumThreads.Y, env)
+		if err != nil {
+			return ast.FunctionDecl{}, err
+		}
+		z, err := specializeIntExpr(fn.NumThreads.Z, env)
+		if err != nil {
+			return ast.FunctionDecl{}, err
+		}
+		out.NumThreads = &ast.NumThreads{X: x, Y: y, Z: z}
+	}
+	body, err := specializeBlock(fn.Body, env)
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	out.Body = body
+	return out, nil
+}
+
+func specializeBlock(block ast.Block, env map[string]specializeValue) (ast.Block, error) {
+	out := ast.Block{Statements: make([]ast.Stmt, 0, len(block.Statements))}
+	for _, stmt := range block.Statements {
+		next, err := specializeStmt(stmt, env)
+		if err != nil {
+			return ast.Block{}, err
+		}
+		out.Statements = append(out.Statements, next)
+	}
+	return out, nil
+}
+
+func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, error) {
+	switch s := stmt.(type) {
+	case ast.LetStmt:
+		ref, err := specializeTypeRef(s.Type, env)
+		if err != nil {
+			return nil, err
+		}
+		var value ast.Expr
+		if s.Value != nil {
+			value = specializeExpr(s.Value, env)
+		}
+		return ast.LetStmt{Name: s.Name, Type: ref, Value: value}, nil
+	case ast.AssignStmt:
+		return ast.AssignStmt{Target: specializeExpr(s.Target, env), Value: specializeExpr(s.Value, env)}, nil
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			return s, nil
+		}
+		return ast.ReturnStmt{Value: specializeExpr(s.Value, env)}, nil
+	case ast.ExprStmt:
+		return ast.ExprStmt{Value: specializeExpr(s.Value, env)}, nil
+	case ast.IfStmt:
+		thenBody, err := specializeBlock(s.ThenBody, env)
+		if err != nil {
+			return nil, err
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body, err := specializeBlock(*s.ElseBody, env)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return ast.IfStmt{Condition: specializeExpr(s.Condition, env), ThenBody: thenBody, ElseBody: elseBody}, nil
+	case ast.ForStmt:
+		body, err := specializeBlock(s.Body, env)
+		if err != nil {
+			return nil, err
+		}
+		return ast.ForStmt{Name: s.Name, Start: specializeExpr(s.Start, env), End: specializeExpr(s.End, env), Step: specializeExpr(s.Step, env), Body: body}, nil
+	default:
+		return stmt, nil
+	}
+}
+
+func specializeTypeRef(ref ast.TypeRef, env map[string]specializeValue) (ast.TypeRef, error) {
+	out := ref
+	if ref.Name == "array" {
+		args := make([]ast.TypeRef, len(ref.Args))
+		for i, arg := range ref.Args {
+			next, err := specializeTypeRef(arg, env)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			args[i] = next
+		}
+		out.Args = args
+		if ref.HasArraySize {
+			sizeExpr, err := specializeIntExpr(ref.ArraySize, env)
+			if err != nil {
+				return ast.TypeRef{}, err
+			}
+			out.ArraySize = sizeExpr
+		}
+	}
+	return out, nil
+}
+
+func specializeIntExpr(expr ast.Expr, env map[string]specializeValue) (ast.Expr, error) {
+	value, err := evalSpecializeConstExpr(expr, env)
+	if err != nil {
+		return nil, err
+	}
+	if value.int32 <= 0 {
+		return nil, fmt.Errorf("expected positive integer constant expression")
+	}
+	return literalExprForValue(value), nil
+}
+
+func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
+	switch e := expr.(type) {
+	case ast.FieldAccessExpr:
+		if id, ok := e.Target.(ast.IdentifierExpr); ok {
+			if value, ok := env[id.Name+"."+e.Field]; ok {
+				return literalExprForValue(value)
+			}
+		}
+		return ast.FieldAccessExpr{Target: specializeExpr(e.Target, env), Field: e.Field}
+	case ast.IndexExpr:
+		return ast.IndexExpr{Target: specializeExpr(e.Target, env), Index: specializeExpr(e.Index, env)}
+	case ast.CallExpr:
+		args := make([]ast.Expr, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			args = append(args, specializeExpr(arg, env))
+		}
+		return ast.CallExpr{Callee: specializeExpr(e.Callee, env), Arguments: args}
+	case ast.BinaryExpr:
+		return ast.BinaryExpr{Left: specializeExpr(e.Left, env), Operator: e.Operator, Right: specializeExpr(e.Right, env)}
+	case ast.UnaryExpr:
+		return ast.UnaryExpr{Operator: e.Operator, Operand: specializeExpr(e.Operand, env)}
+	case ast.ParenExpr:
+		return ast.ParenExpr{Inner: specializeExpr(e.Inner, env)}
+	case ast.WhenUtilityExpr:
+		cases := make([]ast.UtilityCase, 0, len(e.Cases))
+		for _, c := range e.Cases {
+			cases = append(cases, ast.UtilityCase{Value: specializeExpr(c.Value, env), Condition: specializeExpr(c.Condition, env), Score: specializeExpr(c.Score, env)})
+		}
+		return ast.WhenUtilityExpr{Cases: cases, Else: specializeExpr(e.Else, env)}
+	case ast.WithExpr:
+		updates := make([]ast.FieldUpdate, 0, len(e.Updates))
+		for _, update := range e.Updates {
+			updates = append(updates, ast.FieldUpdate{Name: update.Name, Value: specializeExpr(update.Value, env)})
+		}
+		return ast.WithExpr{Base: specializeExpr(e.Base, env), Updates: updates}
+	default:
+		return expr
+	}
+}
+
+func evalSpecializeConstExpr(expr ast.Expr, env map[string]specializeValue) (specializeValue, error) {
+	switch e := expr.(type) {
+	case ast.IntegerLiteral:
+		value, err := strconv.ParseInt(strings.TrimRight(e.Value, "uU"), 10, 32)
+		if err != nil {
+			return specializeValue{}, err
+		}
+		typ := ast.TypeRef{Name: "i32"}
+		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
+			typ = ast.TypeRef{Name: "u32"}
+		}
+		return specializeValue{typ: typ, int32: value}, nil
+	case ast.BoolLiteral:
+		return specializeValue{typ: ast.TypeRef{Name: "bool"}, boolVal: e.Value}, nil
+	case ast.ParenExpr:
+		return evalSpecializeConstExpr(e.Inner, env)
+	case ast.UnaryExpr:
+		value, err := evalSpecializeConstExpr(e.Operand, env)
+		if err != nil {
+			return specializeValue{}, err
+		}
+		if e.Operator != "-" {
+			return specializeValue{}, fmt.Errorf("unsupported constant operator %s", e.Operator)
+		}
+		value.int32 = -value.int32
+		return value, nil
+	case ast.FieldAccessExpr:
+		id, ok := e.Target.(ast.IdentifierExpr)
+		if !ok {
+			return specializeValue{}, fmt.Errorf("unsupported constant field access")
+		}
+		value, ok := env[id.Name+"."+e.Field]
+		if !ok {
+			return specializeValue{}, fmt.Errorf("unknown template constant %s.%s", id.Name, e.Field)
+		}
+		return value, nil
+	case ast.BinaryExpr:
+		left, err := evalSpecializeConstExpr(e.Left, env)
+		if err != nil {
+			return specializeValue{}, err
+		}
+		right, err := evalSpecializeConstExpr(e.Right, env)
+		if err != nil {
+			return specializeValue{}, err
+		}
+		out := specializeValue{typ: left.typ}
+		if left.typ.Name == "u32" || right.typ.Name == "u32" {
+			out.typ = ast.TypeRef{Name: "u32"}
+		}
+		switch e.Operator {
+		case "+":
+			out.int32 = left.int32 + right.int32
+		case "-":
+			out.int32 = left.int32 - right.int32
+		case "*":
+			out.int32 = left.int32 * right.int32
+		case "/":
+			out.int32 = left.int32 / right.int32
+		case "%":
+			out.int32 = left.int32 % right.int32
+		default:
+			return specializeValue{}, fmt.Errorf("unsupported constant operator %s", e.Operator)
+		}
+		return out, nil
+	default:
+		return specializeValue{}, fmt.Errorf("expression is not a concrete constant expression")
+	}
+}
+
+func literalExprForValue(value specializeValue) ast.Expr {
+	if value.typ.Name == "bool" {
+		return ast.BoolLiteral{Value: value.boolVal}
+	}
+	text := strconv.FormatInt(value.int32, 10)
+	if value.typ.Name == "u32" {
+		text += "u"
+	}
+	return ast.IntegerLiteral{Value: text}
+}
+
+func mustConcreteInt(expr ast.Expr) int {
+	value, err := evalSpecializeConstExpr(expr, nil)
+	if err != nil {
+		panic(err)
+	}
+	return int(value.int32)
 }
 
 type fieldInfo struct {
@@ -135,11 +468,16 @@ func (l *lowering) collect(module ast.Module) {
 			l.types[d.Name] = typeInfo{kind: "record", fields: collectFields(d.Fields)}
 		case ast.StreamDecl:
 			l.types[d.Name] = typeInfo{kind: "stream", fields: collectFields(d.Fields)}
+		case ast.ConceptDecl:
+			l.types[d.Name] = typeInfo{kind: "concept", fields: collectFields(d.Fields)}
 		case ast.EnumDecl:
 			l.types[d.Name] = typeInfo{kind: "enum"}
 		case ast.FunctionDecl:
 			l.functions[d.Name] = functionInfo{name: d.Name, emittedName: d.Name, returnType: d.ReturnType, params: d.Parameters}
 		case ast.ShaderDecl:
+			if d.Template != nil {
+				continue
+			}
 			for _, method := range d.Methods {
 				key := d.Name + "_" + method.Name
 				l.functions[key] = functionInfo{
@@ -150,6 +488,8 @@ func (l *lowering) collect(module ast.Module) {
 					shaderName:  d.Name,
 				}
 			}
+		case ast.ConfigDecl, ast.CompileDecl:
+			continue
 		}
 	}
 }
@@ -534,9 +874,9 @@ func (l *lowering) lowerComputeEntryPoint(shaderName string, fn ast.FunctionDecl
 		ShaderName:   shaderName,
 		FunctionName: fn.Name,
 		EmittedName:  shaderName + "_" + fn.Name,
-		NumThreadsX:  fn.NumThreads.X,
-		NumThreadsY:  fn.NumThreads.Y,
-		NumThreadsZ:  fn.NumThreads.Z,
+		NumThreadsX:  mustConcreteInt(fn.NumThreads.X),
+		NumThreadsY:  mustConcreteInt(fn.NumThreads.Y),
+		NumThreadsZ:  mustConcreteInt(fn.NumThreads.Z),
 	}
 	directBuiltins := referencedBuiltins(fn.Body)
 	threadParams := l.computeThreadBindings(fn.Parameters)
@@ -619,7 +959,7 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 	case "array":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		if resolved.HasArraySize {
-			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: resolved.ArraySize, HasArraySize: true}
+			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: mustConcreteInt(resolved.ArraySize), HasArraySize: true}
 		}
 		return vdmir.Type{Kind: vdmir.TypeRuntimeArray, Name: "array", Element: &elem}
 	default:

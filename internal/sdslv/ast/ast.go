@@ -11,6 +11,11 @@ type Module struct {
 
 type Decl interface{ declNode() }
 
+type TemplateParam struct {
+	Name        string
+	ConceptName string
+}
+
 type TypeAliasDecl struct {
 	Name string
 	Type TypeRef
@@ -32,6 +37,26 @@ type StreamDecl struct {
 
 func (StreamDecl) declNode() {}
 
+type ConceptDecl struct {
+	Name   string
+	Fields []Field
+}
+
+func (ConceptDecl) declNode() {}
+
+type ConfigField struct {
+	Name  string
+	Value Expr
+}
+
+type ConfigDecl struct {
+	Name        string
+	ConceptName string
+	Fields      []ConfigField
+}
+
+func (ConfigDecl) declNode() {}
+
 type EnumDecl struct {
 	Name     string
 	Variants []string
@@ -41,6 +66,7 @@ func (EnumDecl) declNode() {}
 
 type ShaderDecl struct {
 	Name               string
+	Template           *TemplateParam
 	ResourceBundleName string
 	Resources          []ResourceDecl
 	Workgroups         []WorkgroupDecl
@@ -48,6 +74,14 @@ type ShaderDecl struct {
 }
 
 func (ShaderDecl) declNode() {}
+
+type CompileDecl struct {
+	ShaderName string
+	ConfigName string
+	AliasName  string
+}
+
+func (CompileDecl) declNode() {}
 
 type FunctionDecl struct {
 	Name       string
@@ -67,9 +101,9 @@ type UnsupportedDecl struct {
 func (UnsupportedDecl) declNode() {}
 
 type NumThreads struct {
-	X int
-	Y int
-	Z int
+	X Expr
+	Y Expr
+	Z Expr
 }
 
 type ResourceDecl struct {
@@ -97,7 +131,7 @@ type Parameter struct {
 type TypeRef struct {
 	Name         string
 	Args         []TypeRef
-	ArraySize    int
+	ArraySize    Expr
 	HasArraySize bool
 }
 

@@ -1,0 +1,100 @@
+# SDSL-V M5: Templates and Concepts M0 for Compute Shader Specialization
+
+SDSL-V M5 adds a narrow compile-time specialization system for compute shader families.
+
+The pipeline remains:
+
+```text
+SDSL-V source
+  -> lex
+  -> parse
+  -> validate
+  -> monomorphize compile declarations
+  -> lower concrete shaders to VD-MIR
+  -> emit HLSL
+  -> optional DXC / SPIR-V / generated header
+```
+
+## What M5 adds
+
+- `concept` declarations as compile-time config schemas;
+- `config` declarations as concrete compile-time values;
+- single-parameter `template<Param: Concept>` shader declarations;
+- `compile TemplateShader<Config> as Alias;` monomorphization;
+- narrow constant-expression support for:
+  - workgroup array sizes
+  - `numthreads(...)`
+  - ordinary shader expressions
+
+## Supported forms
+
+```sdslv
+concept SgemmTileConfig {
+    TILE_M: u32;
+    TILE_N: u32;
+    TILE_K: u32;
+}
+
+config Tile16x16x16: SgemmTileConfig {
+    TILE_M: 16u;
+    TILE_N: 16u;
+    TILE_K: 16u;
+}
+
+template<C: SgemmTileConfig>
+shader SgemmTile {
+    workgroup TileA: array<f32, C.TILE_M * C.TILE_K>;
+    stage compute [numthreads(C.TILE_M, C.TILE_N, 1u)] fn CS() -> void {
+        let tileElements: u32 = C.TILE_M * C.TILE_N;
+        return;
+    }
+}
+
+compile SgemmTile<Tile16x16x16> as SgemmTile16;
+```
+
+## Constant expressions
+
+Current M5 constant expressions support:
+
+- integer literals
+- bool literals
+- unary `-` on integers
+- `+`, `-`, `*`, `/`, `%`
+- `==`, `!=`, `<`, `<=`, `>`, `>=`
+- `&&`, `||`
+- parentheses
+- `C.FIELD` template-config field references
+
+`f32` concept fields are still intentionally narrow in this milestone. Integer and bool config values are the intended path for compute kernel families.
+
+## Monomorphization model
+
+M5 monomorphizes before VD-MIR lowering.
+
+- Template shaders do not emit on their own.
+- Each `compile` declaration clones the template shader into a concrete shader alias.
+- `C.FIELD` references are substituted with concrete config literals.
+- Workgroup sizes and `numthreads` become concrete integers before VD-MIR.
+- Entry points use the compile alias name, such as `TileCopy16x16_CS`.
+
+This keeps template logic out of both VD-MIR and the HLSL backend.
+
+## Current limits
+
+M5 intentionally does not add:
+
+- runtime generics
+- interface dispatch
+- multiple template parameters
+- generic functions, records, or streams
+- concept methods or inheritance
+- payload enums
+- tensor notation
+- static asserts
+- SGEMM kernels themselves
+
+## Examples
+
+- `examples/SDSL-V/M5/TemplateTileConfig.sdslv`
+- `examples/SDSL-V/M5/TemplateWorkgroupTileCopy.sdslv`

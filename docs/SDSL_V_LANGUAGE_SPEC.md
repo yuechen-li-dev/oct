@@ -34,17 +34,20 @@ Paths use `.` as separator: `WyrmCoil.Core`, `IBaseColor`, `TMat`.
 
 ## Top-level declarations
 
-Seven declaration kinds are valid at module scope, in any order:
+Current GoOct SDSL-V accepts these top-level declaration kinds:
 
 | Keyword | Form | Purpose |
 |---|---|---|
 | `type` | `type Name = TypeRef @space(...);` | Type alias, optionally space-annotated |
 | `record` | `record Name { fields }` | Plain aggregate struct (no stage semantics) |
 | `stream` | `stream Name { fields }` | Stage I/O struct (auto-assigned HLSL semantics) |
+| `concept` | `concept Name { FIELD: Type; }` | Compile-time config schema |
+| `config` | `config Name: ConceptName { FIELD: const_expr; }` | Concrete compile-time config values |
 | `interface` | `interface Name { fn signatures }` | Abstract method contract |
-| `shader` | `shader Name<T> implements I where T: I { ... }` | Shader program, possibly generic |
+| `template` + `shader` | `template<C: Concept> shader Name { ... }` | Compile-time specialized shader template |
+| `shader` | `shader Name { ... }` | Concrete shader program |
 | `flow` | `flow Name(params) -> ReturnType { board? states }` | Value-returning FSM |
-| `compile` | `compile GenericShader<TypeArg> as Alias;` | Monomorphize a generic shader |
+| `compile` | `compile TemplateShader<Config> as Alias;` | Monomorphize a template shader |
 | `enum` | `enum Name { Variant; Variant; }` | Integer-backed discriminated union |
 
 ---
@@ -171,6 +174,44 @@ interface IBaseColor {
 
 All methods in an interface are abstract (no body). Methods without a body in a shader are valid only for interface methods being fulfilled; all other shader methods must have a body.
 
+### Concepts, configs, and template shaders (GoOct M5)
+
+GoOct M5 adds a narrow compile-time specialization system for compute shader families.
+
+```sdslv
+concept TileCopyConfig {
+    THREADS_X: u32;
+    THREADS_Y: u32;
+    TILE_SIZE: u32;
+}
+
+config Tile16x16: TileCopyConfig {
+    THREADS_X: 16u;
+    THREADS_Y: 16u;
+    TILE_SIZE: 256u;
+}
+
+template<C: TileCopyConfig>
+shader TileCopy {
+    workgroup Tile: array<f32, C.TILE_SIZE>;
+    stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS() -> void {
+        let tileElements: u32 = C.TILE_SIZE;
+        return;
+    }
+}
+
+compile TileCopy<Tile16x16> as TileCopy16x16;
+```
+
+Current M5 rules:
+
+- concepts are compile-time config schemas only;
+- configs provide concrete compile-time scalar values;
+- template shaders accept exactly one concept-config parameter;
+- `C.FIELD` is valid only inside the template shader that declares `C`;
+- template shaders do not emit directly;
+- `compile` declarations monomorphize template shaders before VD-MIR lowering.
+
 ### Shader
 
 A shader is the core program unit. It may be generic, implement interfaces, and contain methods and stage methods.
@@ -221,19 +262,15 @@ Current M4 rules:
 
 **`implements`** — lists interface names the shader fulfills. Methods satisfying interface contracts must be marked `override`. The signature (name, parameter types, return type) must match exactly. Methods marked `override` that do not appear in any implemented interface are a validation error.
 
-**Generic shaders** — parameterized by type: `shader ForwardPass<TMat> where TMat: IBaseColor`. Generic shaders do not emit HLSL directly. They emit only when monomorphized via `compile`.
-
-**`where` constraints** — `where TMat: IBaseColor` requires `TMat` to implement `IBaseColor`. Unknown interface names in constraints are validation errors.
-
 ### Compile declaration
 
-Monomorphizes a generic shader and assigns it an alias for entry point naming:
+GoOct M5 monomorphizes a template shader and assigns it an alias for entry point naming:
 
 ```sdslv
-compile ForwardPass<FlatMaterial> as ForwardFlatMaterial;
+compile TileCopy<Tile16x16> as TileCopy16x16;
 ```
 
-The emitted entry point is named `ForwardFlatMaterial_PS` rather than `ForwardPass_PS`. The generic shader's `TMat` parameter is substituted with `FlatMaterial`. Interface call sites inside the shader are rewritten to the concrete type's method names (`FlatMaterial_BaseColor(s)`). The generic shader itself emits no entry points.
+The emitted entry point is named `TileCopy16x16_CS` rather than `TileCopy_CS`. The template shader itself emits no entry points.
 
 ---
 

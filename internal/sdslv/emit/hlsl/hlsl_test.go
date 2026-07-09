@@ -142,6 +142,57 @@ return;
 	}
 }
 
+func TestEmitMonomorphizedTemplateShaderHLSLFromVDMIR(t *testing.T) {
+	text := `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream TileCopyIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+concept TileCopyConfig {
+THREADS_X: u32;
+THREADS_Y: u32;
+TILE_SIZE: u32;
+}
+config Tile16x16: TileCopyConfig {
+THREADS_X: 16u;
+THREADS_Y: 16u;
+TILE_SIZE: 256u;
+}
+template<C: TileCopyConfig>
+shader TileCopy {
+resources TileCopyIO;
+workgroup Tile: array<f32, C.TILE_SIZE>;
+stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+let idx: u32 = thread.DispatchId.x;
+let local: u32 = thread.GroupIndex;
+if idx < params.Count { Tile[local] = A[idx]; }
+WorkgroupMemoryBarrierWithSync();
+if idx < params.Count { C[idx] = Tile[local]; }
+return;
+}
+}
+compile TileCopy<Tile16x16> as TileCopy16x16;`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"[numthreads(16, 16, 1)]",
+		"groupshared float Tile[256];",
+		"void TileCopy16x16_CS(",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "void TileCopy_CS(") {
+		t.Fatalf("template entry point should not be emitted:\n%s", out)
+	}
+}
+
 func emitSource(t *testing.T, text string) string {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

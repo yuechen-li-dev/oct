@@ -2,7 +2,6 @@ package parse
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
@@ -65,13 +64,21 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 		return p.parseRecord()
 	case token.KeywordStream:
 		return p.parseStream()
+	case token.KeywordConcept:
+		return p.parseConcept()
+	case token.KeywordConfig:
+		return p.parseConfig()
 	case token.KeywordEnum:
 		return p.parseEnum()
+	case token.KeywordTemplate:
+		return p.parseTemplateShader()
 	case token.KeywordShader:
-		return p.parseShader()
+		return p.parseShader(nil)
+	case token.KeywordCompile:
+		return p.parseCompileDecl()
 	case token.KeywordFn:
 		return p.parseFunction("")
-	case token.KeywordInterface, token.KeywordFlow, token.KeywordCompile:
+	case token.KeywordInterface, token.KeywordFlow:
 		kind := p.current().Lexeme
 		p.skipUnsupportedTopLevel()
 		return ast.UnsupportedDecl{Kind: kind}, nil
@@ -147,6 +154,71 @@ func (p *parser) parseStream() (ast.StreamDecl, error) {
 	return ast.StreamDecl{Name: name.Lexeme, Fields: fields}, nil
 }
 
+func (p *parser) parseConcept() (ast.ConceptDecl, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected concept name")
+	if err != nil {
+		return ast.ConceptDecl{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after concept name"); err != nil {
+		return ast.ConceptDecl{}, err
+	}
+	var fields []ast.Field
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.ConceptDecl{}, p.errorAtCurrent("expected '}' to close concept")
+		}
+		field, err := p.parseField()
+		if err != nil {
+			return ast.ConceptDecl{}, err
+		}
+		fields = append(fields, field)
+	}
+	p.advance()
+	return ast.ConceptDecl{Name: name.Lexeme, Fields: fields}, nil
+}
+
+func (p *parser) parseConfig() (ast.ConfigDecl, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected config name")
+	if err != nil {
+		return ast.ConfigDecl{}, err
+	}
+	if _, err := p.expect(token.Colon, "expected ':' after config name"); err != nil {
+		return ast.ConfigDecl{}, err
+	}
+	concept, err := p.expect(token.Identifier, "expected concept name after ':'")
+	if err != nil {
+		return ast.ConfigDecl{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after config concept"); err != nil {
+		return ast.ConfigDecl{}, err
+	}
+	var fields []ast.ConfigField
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.ConfigDecl{}, p.errorAtCurrent("expected '}' to close config")
+		}
+		fieldName, err := p.expect(token.Identifier, "expected config field name")
+		if err != nil {
+			return ast.ConfigDecl{}, err
+		}
+		if _, err := p.expect(token.Colon, "expected ':' after config field name"); err != nil {
+			return ast.ConfigDecl{}, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return ast.ConfigDecl{}, err
+		}
+		if _, err := p.expect(token.Semicolon, "expected ';' after config field"); err != nil {
+			return ast.ConfigDecl{}, err
+		}
+		fields = append(fields, ast.ConfigField{Name: fieldName.Lexeme, Value: value})
+	}
+	p.advance()
+	return ast.ConfigDecl{Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields}, nil
+}
+
 func (p *parser) parseEnum() (ast.EnumDecl, error) {
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected enum name")
@@ -174,7 +246,43 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 	return ast.EnumDecl{Name: name.Lexeme, Variants: variants}, nil
 }
 
-func (p *parser) parseShader() (ast.ShaderDecl, error) {
+func (p *parser) parseTemplateShader() (ast.ShaderDecl, error) {
+	param, err := p.parseTemplateParam()
+	if err != nil {
+		return ast.ShaderDecl{}, err
+	}
+	if p.current().Kind != token.KeywordShader {
+		return ast.ShaderDecl{}, p.errorAtCurrent("expected shader after template parameter")
+	}
+	return p.parseShader(&param)
+}
+
+func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
+	p.advance()
+	if _, err := p.expect(token.LeftAngle, "expected '<' after template"); err != nil {
+		return ast.TemplateParam{}, err
+	}
+	name, err := p.expect(token.Identifier, "expected template parameter name")
+	if err != nil {
+		return ast.TemplateParam{}, err
+	}
+	if _, err := p.expect(token.Colon, "expected ':' after template parameter name"); err != nil {
+		return ast.TemplateParam{}, err
+	}
+	concept, err := p.expect(token.Identifier, "expected concept name in template parameter")
+	if err != nil {
+		return ast.TemplateParam{}, err
+	}
+	if p.match(token.Comma) {
+		return ast.TemplateParam{}, p.errorAtCurrent("templates support exactly one concept config parameter in SDSL-V M5")
+	}
+	if _, err := p.expect(token.RightAngle, "expected '>' after template parameter"); err != nil {
+		return ast.TemplateParam{}, err
+	}
+	return ast.TemplateParam{Name: name.Lexeme, ConceptName: concept.Lexeme}, nil
+}
+
+func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, error) {
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected shader name")
 	if err != nil {
@@ -183,7 +291,7 @@ func (p *parser) parseShader() (ast.ShaderDecl, error) {
 	if _, err := p.expect(token.LeftBrace, "expected '{' after shader name"); err != nil {
 		return ast.ShaderDecl{}, err
 	}
-	shader := ast.ShaderDecl{Name: name.Lexeme}
+	shader := ast.ShaderDecl{Name: name.Lexeme, Template: templateParam}
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
 			return ast.ShaderDecl{}, p.errorAtCurrent("expected '}' to close shader")
@@ -223,6 +331,42 @@ func (p *parser) parseShader() (ast.ShaderDecl, error) {
 	}
 	p.advance()
 	return shader, nil
+}
+
+func (p *parser) parseCompileDecl() (ast.CompileDecl, error) {
+	p.advance()
+	shaderName, err := p.expect(token.Identifier, "expected template shader name after compile")
+	if err != nil {
+		return ast.CompileDecl{}, err
+	}
+	if _, err := p.expect(token.LeftAngle, "expected '<' after compile target"); err != nil {
+		return ast.CompileDecl{}, err
+	}
+	configName, err := p.expect(token.Identifier, "expected config name in compile declaration")
+	if err != nil {
+		return ast.CompileDecl{}, err
+	}
+	if p.match(token.Comma) {
+		return ast.CompileDecl{}, p.errorAtCurrent("templates support exactly one concept config parameter in SDSL-V M5")
+	}
+	if _, err := p.expect(token.RightAngle, "expected '>' after compile config"); err != nil {
+		return ast.CompileDecl{}, err
+	}
+	asTok, err := p.expect(token.Identifier, "expected 'as' in compile declaration")
+	if err != nil {
+		return ast.CompileDecl{}, err
+	}
+	if asTok.Lexeme != "as" {
+		return ast.CompileDecl{}, p.errorAtToken(asTok, "expected 'as' in compile declaration")
+	}
+	alias, err := p.expect(token.Identifier, "expected alias name in compile declaration")
+	if err != nil {
+		return ast.CompileDecl{}, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after compile declaration"); err != nil {
+		return ast.CompileDecl{}, err
+	}
+	return ast.CompileDecl{ShaderName: shaderName.Lexeme, ConfigName: configName.Lexeme, AliasName: alias.Lexeme}, nil
 }
 
 func (p *parser) parseWorkgroup() (ast.WorkgroupDecl, error) {
@@ -322,21 +466,21 @@ func (p *parser) parseStageFunction() (ast.FunctionDecl, error) {
 		if _, err := p.expect(token.LeftParen, "expected '(' after numthreads"); err != nil {
 			return ast.FunctionDecl{}, err
 		}
-		x, err := p.parsePositiveInt()
+		x, err := p.parseExpression()
 		if err != nil {
 			return ast.FunctionDecl{}, err
 		}
 		if _, err := p.expect(token.Comma, "expected ',' in numthreads"); err != nil {
 			return ast.FunctionDecl{}, err
 		}
-		y, err := p.parsePositiveInt()
+		y, err := p.parseExpression()
 		if err != nil {
 			return ast.FunctionDecl{}, err
 		}
 		if _, err := p.expect(token.Comma, "expected ',' in numthreads"); err != nil {
 			return ast.FunctionDecl{}, err
 		}
-		z, err := p.parsePositiveInt()
+		z, err := p.parseExpression()
 		if err != nil {
 			return ast.FunctionDecl{}, err
 		}
@@ -564,7 +708,15 @@ func (p *parser) parseExpression() (ast.Expr, error) {
 }
 
 func (p *parser) parseWith() (ast.Expr, error) {
-	base, err := p.parseBinary(0)
+	return p.parseWithInternal(false)
+}
+
+func (p *parser) parseExpressionUntilRightAngle() (ast.Expr, error) {
+	return p.parseWithInternal(true)
+}
+
+func (p *parser) parseWithInternal(stopAtRightAngle bool) (ast.Expr, error) {
+	base, err := p.parseBinary(0, stopAtRightAngle)
 	if err != nil {
 		return nil, err
 	}
@@ -601,19 +753,19 @@ func (p *parser) parseWith() (ast.Expr, error) {
 	return ast.WithExpr{Base: base, Updates: updates}, nil
 }
 
-func (p *parser) parseBinary(minPrec int) (ast.Expr, error) {
+func (p *parser) parseBinary(minPrec int, stopAtRightAngle bool) (ast.Expr, error) {
 	left, err := p.parseUnary()
 	if err != nil {
 		return nil, err
 	}
 	for {
-		prec, ok := binaryPrecedence(p.current().Kind)
+		prec, ok := binaryPrecedence(p.current().Kind, stopAtRightAngle)
 		if !ok || prec < minPrec {
 			break
 		}
 		op := p.current().Lexeme
 		p.advance()
-		right, err := p.parseBinary(prec + 1)
+		right, err := p.parseBinary(prec+1, stopAtRightAngle)
 		if err != nil {
 			return nil, err
 		}
@@ -783,15 +935,11 @@ func (p *parser) parseTypeRef() (ast.TypeRef, error) {
 		}
 		ref.Args = append(ref.Args, elem)
 		if p.match(token.Comma) {
-			sizeToken, err := p.expect(token.IntLiteral, "expected array size")
+			sizeExpr, err := p.parseExpressionUntilRightAngle()
 			if err != nil {
 				return ast.TypeRef{}, err
 			}
-			size, err := strconv.Atoi(strings.TrimRight(sizeToken.Lexeme, "uU"))
-			if err != nil || size <= 0 {
-				return ast.TypeRef{}, p.errorAtToken(sizeToken, "expected positive array size")
-			}
-			ref.ArraySize = size
+			ref.ArraySize = sizeExpr
 			ref.HasArraySize = true
 		}
 		if _, err := p.expect(token.RightAngle, "expected '>' after array type"); err != nil {
@@ -839,18 +987,6 @@ func (p *parser) parsePath() (string, error) {
 		segments = append(segments, next.Lexeme)
 	}
 	return strings.Join(segments, "."), nil
-}
-
-func (p *parser) parsePositiveInt() (int, error) {
-	t, err := p.expect(token.IntLiteral, "expected positive integer literal")
-	if err != nil {
-		return 0, err
-	}
-	value, err := strconv.Atoi(strings.TrimRight(t.Lexeme, "uU"))
-	if err != nil || value <= 0 {
-		return 0, p.errorAtToken(t, "expected positive integer literal")
-	}
-	return value, nil
 }
 
 func (p *parser) skipUnsupportedTopLevel() {
@@ -927,14 +1063,21 @@ func (p *parser) errorAtToken(t token.Token, message string) error {
 	return fmt.Errorf("%s at %d:%d near %q", message, t.Line, t.Column, t.Lexeme)
 }
 
-func binaryPrecedence(kind token.Kind) (int, bool) {
+func binaryPrecedence(kind token.Kind, stopAtRightAngle bool) (int, bool) {
 	switch kind {
-	case token.EqualEqual, token.BangEqual, token.LeftAngle, token.LeftEqual, token.RightAngle, token.RightEqual:
+	case token.OrOr:
 		return 1, true
-	case token.Plus, token.Minus:
+	case token.AndAnd:
 		return 2, true
-	case token.Star, token.Slash:
+	case token.EqualEqual, token.BangEqual, token.LeftAngle, token.LeftEqual, token.RightAngle, token.RightEqual:
+		if stopAtRightAngle && kind == token.RightAngle {
+			return 0, false
+		}
 		return 3, true
+	case token.Plus, token.Minus:
+		return 4, true
+	case token.Star, token.Slash, token.Percent:
+		return 5, true
 	default:
 		return 0, false
 	}

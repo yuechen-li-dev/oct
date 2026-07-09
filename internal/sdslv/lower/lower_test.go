@@ -204,6 +204,74 @@ return;
 	}
 }
 
+func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
+	mir := lowerSource(t, `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream TileCopyIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+concept TileCopyConfig {
+THREADS_X: u32;
+THREADS_Y: u32;
+TILE_SIZE: u32;
+}
+config Tile16x16: TileCopyConfig {
+THREADS_X: 16u;
+THREADS_Y: 16u;
+TILE_SIZE: 256u;
+}
+template<C: TileCopyConfig>
+shader TileCopy {
+resources TileCopyIO;
+workgroup Tile: array<f32, C.TILE_SIZE>;
+stage compute [numthreads(C.THREADS_X, C.THREADS_Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+let idx: u32 = thread.DispatchId.x;
+let local: u32 = thread.GroupIndex;
+let tileElements: u32 = C.TILE_SIZE;
+if idx < params.Count {
+Tile[local] = A[idx];
+}
+WorkgroupMemoryBarrierWithSync();
+if idx < params.Count {
+C[idx] = Tile[local];
+}
+return;
+}
+}
+compile TileCopy<Tile16x16> as TileCopy16x16;`)
+	if got := len(mir.EntryPoints); got != 1 {
+		t.Fatalf("len(EntryPoints) = %d, want 1", got)
+	}
+	entry := mir.EntryPoints[0]
+	if entry.EmittedName != "TileCopy16x16_CS" || entry.NumThreadsX != 16 || entry.NumThreadsY != 16 || entry.NumThreadsZ != 1 {
+		t.Fatalf("entry = %#v", entry)
+	}
+	if got := len(mir.Workgroups); got != 1 {
+		t.Fatalf("len(Workgroups) = %d, want 1", got)
+	}
+	if mir.Workgroups[0].Length != 256 {
+		t.Fatalf("workgroup length = %d, want 256", mir.Workgroups[0].Length)
+	}
+	if findFunctionOptional(mir, "TileCopy_CS").EmittedName != "" {
+		t.Fatalf("template entry should not be emitted")
+	}
+	cs := findFunction(t, mir, "TileCopy16x16_CS")
+	letTileElements, ok := cs.Body.Statements[2].(vdmir.LetStmt)
+	if !ok {
+		t.Fatalf("stmt[2] = %T, want LetStmt", cs.Body.Statements[2])
+	}
+	lit, ok := letTileElements.Value.(vdmir.LiteralExpr)
+	if !ok || lit.Value != "256u" {
+		t.Fatalf("tileElements value = %#v, want 256u literal", letTileElements.Value)
+	}
+}
+
 func lowerSource(t *testing.T, text string) vdmir.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})
@@ -232,5 +300,14 @@ func findFunction(t *testing.T, mir vdmir.Module, emittedName string) vdmir.Func
 		}
 	}
 	t.Fatalf("function %s not found", emittedName)
+	return vdmir.Function{}
+}
+
+func findFunctionOptional(mir vdmir.Module, emittedName string) vdmir.Function {
+	for _, fn := range mir.Functions {
+		if fn.EmittedName == emittedName {
+			return fn
+		}
+	}
 	return vdmir.Function{}
 }

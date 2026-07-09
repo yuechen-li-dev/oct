@@ -157,6 +157,19 @@ func (l *lexer) nextToken() (token.Token, error) {
 	case '/':
 		l.advanceRune()
 		return token.Token{Kind: token.Slash, Lexeme: "/", Line: line, Column: column}, nil
+	case '%':
+		l.advanceRune()
+		return token.Token{Kind: token.Percent, Lexeme: "%", Line: line, Column: column}, nil
+	case '&':
+		l.advanceRune()
+		if l.matchString("&") {
+			return token.Token{Kind: token.AndAnd, Lexeme: "&&", Line: line, Column: column}, nil
+		}
+	case '|':
+		l.advanceRune()
+		if l.matchString("|") {
+			return token.Token{Kind: token.OrOr, Lexeme: "||", Line: line, Column: column}, nil
+		}
 	case '!':
 		l.advanceRune()
 		if l.matchString("=") {

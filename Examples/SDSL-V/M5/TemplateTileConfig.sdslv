@@ -1,0 +1,13 @@
+namespace Prometheus.Kernels;
+
+concept TileCopyConfig {
+    THREADS_X: u32;
+    THREADS_Y: u32;
+    TILE_SIZE: u32;
+}
+
+config Tile16x16: TileCopyConfig {
+    THREADS_X: 16u;
+    THREADS_Y: 16u;
+    TILE_SIZE: 256u;
+}
