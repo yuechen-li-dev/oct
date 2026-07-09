@@ -115,6 +115,35 @@ return;
 	}
 }
 
+func TestEmitComptimeWhenUtilitySelectedCaseOnly(t *testing.T) {
+	hlsl := emitSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let TileK: u32 = 16u;
+comptime when utility {
+case Vector4 when TileK == 16u score 100 {
+comptime let LocalK: u32 = TileK;
+let selected: u32 = LocalK;
+}
+case Scalar score 10 {
+let dropped: u32 = 1u;
+}
+else {
+let fallback: u32 = 0u;
+}
+}
+return;
+}
+}`)
+	for _, banned := range []string{"comptime", "dropped", "fallback", "1u", "0u"} {
+		if strings.Contains(hlsl, banned) {
+			t.Fatalf("HLSL should not contain %q:\n%s", banned, hlsl)
+		}
+	}
+	if !strings.Contains(hlsl, "uint selected = 16u;") {
+		t.Fatalf("HLSL missing selected branch:\n%s", hlsl)
+	}
+}
+
 func TestEmitWhenUtilityFromVDMIR(t *testing.T) {
 	text := `shader Picker {
 fn Pick(flag: bool) -> f32 {

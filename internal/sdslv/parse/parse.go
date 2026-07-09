@@ -696,8 +696,10 @@ func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
 		return p.parseComptimeIf()
 	case token.KeywordMatch:
 		return p.parseComptimeMatch()
+	case token.KeywordWhen:
+		return p.parseComptimeWhenUtility()
 	default:
-		return nil, p.errorAtCurrent("expected let, if, or match after comptime")
+		return nil, p.errorAtCurrent("expected let, if, match, or when after comptime")
 	}
 }
 
@@ -784,6 +786,64 @@ func (p *parser) parseComptimeMatch() (ast.ComptimeMatchStmt, error) {
 	}
 	p.advance()
 	return ast.ComptimeMatchStmt{Subject: subject, Arms: arms}, nil
+}
+
+func (p *parser) parseComptimeWhenUtility() (ast.ComptimeWhenUtilityStmt, error) {
+	p.advance()
+	if _, err := p.expect(token.KeywordUtility, "expected 'utility' after comptime when"); err != nil {
+		return ast.ComptimeWhenUtilityStmt{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after comptime when utility"); err != nil {
+		return ast.ComptimeWhenUtilityStmt{}, err
+	}
+	var cases []ast.ComptimeWhenUtilityCase
+	var elseBody *ast.Block
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.ComptimeWhenUtilityStmt{}, p.errorAtCurrent("expected '}' to close comptime when utility")
+		}
+		switch p.current().Kind {
+		case token.KeywordCase:
+			p.advance()
+			label, err := p.parseDottedName("expected comptime when utility case label")
+			if err != nil {
+				return ast.ComptimeWhenUtilityStmt{}, err
+			}
+			var condition ast.Expr
+			if p.match(token.KeywordWhen) {
+				condition, err = p.parseExpression()
+				if err != nil {
+					return ast.ComptimeWhenUtilityStmt{}, err
+				}
+			}
+			if _, err := p.expect(token.KeywordScore, "expected score in comptime when utility case"); err != nil {
+				return ast.ComptimeWhenUtilityStmt{}, err
+			}
+			score, err := p.parseExpression()
+			if err != nil {
+				return ast.ComptimeWhenUtilityStmt{}, err
+			}
+			body, err := p.parseBlock()
+			if err != nil {
+				return ast.ComptimeWhenUtilityStmt{}, err
+			}
+			cases = append(cases, ast.ComptimeWhenUtilityCase{Label: label, Condition: condition, Score: score, Body: body})
+		case token.KeywordElse:
+			p.advance()
+			if elseBody != nil {
+				return ast.ComptimeWhenUtilityStmt{}, p.errorAtCurrent("duplicate comptime when utility else block")
+			}
+			body, err := p.parseBlock()
+			if err != nil {
+				return ast.ComptimeWhenUtilityStmt{}, err
+			}
+			elseBody = &body
+		default:
+			return ast.ComptimeWhenUtilityStmt{}, p.errorAtCurrent("expected case or else in comptime when utility")
+		}
+	}
+	p.advance()
+	return ast.ComptimeWhenUtilityStmt{Cases: cases, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseLet() (ast.LetStmt, error) {

@@ -691,6 +691,103 @@ compile Demo<Tile16> as Demo16;`)
 	}
 }
 
+func TestModuleExpandsComptimeWhenUtilityBeforeVDMIR(t *testing.T) {
+	mir := lowerSource(t, `concept TileConfig {
+Tile: { K: u32; };
+UseVectorizedLoad: bool = true;
+BaseScore: u32 = 90u;
+}
+config Tile16: TileConfig {
+Tile.K => 16u;
+UseVectorizedLoad => true;
+BaseScore => 90u;
+}
+template<C: TileConfig>
+shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime let K: u32 = C.Tile.K;
+comptime when utility {
+case IneligibleHigh when K == 8u score 1000 {
+static assert false;
+let dropped: u32 = 8u;
+}
+case Vector4 when C.UseVectorizedLoad && K == 16u score C.BaseScore + 10u {
+comptime let LocalK: u32 = K;
+static assert LocalK == 16u;
+let selected: u32 = LocalK;
+}
+case Scalar score 10 {
+static assert false;
+let scalar: u32 = 1u;
+}
+else {
+static assert false;
+let fallback: u32 = 0u;
+}
+}
+return;
+}
+}
+compile Demo<Tile16> as Demo16;`)
+	fn := findFunction(t, mir, "Demo16_CS")
+	if got := len(fn.Body.Statements); got != 2 {
+		t.Fatalf("len(statements) = %d, want selected let and return", got)
+	}
+	selected, ok := fn.Body.Statements[0].(vdmir.LetStmt)
+	if !ok || selected.Name != "selected" {
+		t.Fatalf("stmt[0] = %#v, want selected let", fn.Body.Statements[0])
+	}
+	if lit, ok := selected.Value.(vdmir.LiteralExpr); !ok || lit.Value != "16u" {
+		t.Fatalf("selected value = %#v, want 16u literal", selected.Value)
+	}
+	dump := vdmir.Dump(mir)
+	for _, banned := range []string{"comptime", "dropped", "scalar", "fallback"} {
+		if strings.Contains(dump, banned) {
+			t.Fatalf("VDMIR should not contain %q:\n%s", banned, dump)
+		}
+	}
+}
+
+func TestModuleExpandsComptimeWhenUtilityElseBeforeVDMIR(t *testing.T) {
+	mir := lowerSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case Never when false score 100 {
+static assert false;
+let dropped: u32 = 1u;
+}
+else {
+let selected_else: u32 = 2u;
+}
+}
+return;
+}
+}`)
+	fn := findFunction(t, mir, "Demo_CS")
+	selected, ok := fn.Body.Statements[0].(vdmir.LetStmt)
+	if !ok || selected.Name != "selected_else" {
+		t.Fatalf("stmt[0] = %#v, want else let", fn.Body.Statements[0])
+	}
+}
+
+func TestModuleAllowsLowerScoreComptimeWhenUtilityTie(t *testing.T) {
+	mir := lowerSource(t, `shader Demo {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case LowA score 10 { let lowA: u32 = 1u; }
+case LowB score 10 { let lowB: u32 = 2u; }
+case Winner score 20 { let selected: u32 = 3u; }
+}
+return;
+}
+}`)
+	fn := findFunction(t, mir, "Demo_CS")
+	selected, ok := fn.Body.Statements[0].(vdmir.LetStmt)
+	if !ok || selected.Name != "selected" {
+		t.Fatalf("stmt[0] = %#v, want selected let", fn.Body.Statements[0])
+	}
+}
+
 func TestModuleRejectsComptimeRuntimeDependencies(t *testing.T) {
 	cases := []struct {
 		name string
@@ -767,6 +864,34 @@ return;
 }
 }`,
 			want: "comptime expression cannot reference thread builtin `GroupThreadID.x`",
+		},
+		{
+			name: "comptime when guard runtime parameter field",
+			src: `record Params { M: u32; }
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+comptime when utility {
+case Bad when params.M == 1u score 10 { return; }
+else { return; }
+}
+return;
+}
+}`,
+			want: "comptime when guard cannot reference runtime parameter `params.M`",
+		},
+		{
+			name: "comptime when score runtime local",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let x: u32 = 1u;
+comptime when utility {
+case Bad score x { return; }
+else { return; }
+}
+return;
+}
+}`,
+			want: "comptime when score cannot reference runtime local `x`",
 		},
 	}
 	for _, tc := range cases {
@@ -863,6 +988,117 @@ return;
 				return
 			}
 			if validateErr != nil {
+				t.Fatalf("validate.Module() error = %v, want %q", validateErr, tc.want)
+			}
+			_, err = Module(module)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Module() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestModuleRejectsComptimeWhenUtilityErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "no eligible case and no else",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case Never when false score 10 { return; }
+}
+return;
+}
+}`,
+			want: "no comptime when utility case qualified and no else block provided",
+		},
+		{
+			name: "tied highest score",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case A score 10 { return; }
+case B score 10 { return; }
+else { return; }
+}
+return;
+}
+}`,
+			want: "ambiguous comptime when utility cases A and B have tied score 10",
+		},
+		{
+			name: "duplicate labels",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case Same score 10 { return; }
+case Same score 11 { return; }
+else { return; }
+}
+return;
+}
+}`,
+			want: "duplicate comptime when utility case label Same",
+		},
+		{
+			name: "guard non bool",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case Bad when 1u score 10 { return; }
+else { return; }
+}
+return;
+}
+}`,
+			want: "comptime when guard must be compile-time bool",
+		},
+		{
+			name: "score non numeric",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case Bad score true { return; }
+else { return; }
+}
+return;
+}
+}`,
+			want: "comptime when score must be compile-time numeric",
+		},
+		{
+			name: "selected static assert fires",
+			src: `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case Selected score 10 { static assert false; }
+case Lower score 1 { return; }
+}
+return;
+}
+}`,
+			want: "failed static assert false",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatalf("BuildModule() error = %v", err)
+			}
+			validateErr := validate.Module(module)
+			if validateErr != nil && strings.Contains(validateErr.Error(), tc.want) {
+				return
+			}
+			if validateErr != nil && !strings.Contains(tc.want, "duplicate comptime when utility case label") && !strings.Contains(tc.want, "guard must") && !strings.Contains(tc.want, "score must") {
 				t.Fatalf("validate.Module() error = %v, want %q", validateErr, tc.want)
 			}
 			_, err = Module(module)

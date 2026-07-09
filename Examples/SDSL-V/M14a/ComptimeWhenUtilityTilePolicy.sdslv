@@ -1,0 +1,76 @@
+namespace Examples.SDSLV.M14a;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream DemoIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record Params {
+    M: u32;
+    K: u32;
+}
+
+concept TilePolicy {
+    Threads: {
+        X: u32 = 16u;
+        Y: u32 = 1u;
+    };
+    Tile: {
+        M: u32 = 16u;
+        K: u32 = 16u;
+    };
+    Unroll: {
+        K: u32 = 8u;
+    };
+}
+
+config Tile16: TilePolicy {
+    Threads.X => 16u;
+    Threads.Y => 1u;
+    Tile.M => 16u;
+    Tile.K => 16u;
+    Unroll.K => 8u;
+}
+
+template<Cfg: TilePolicy>
+shader M14aComptimeWhenUtilityTilePolicy {
+    resources DemoIO;
+    workgroup TileA: tile<f32, Cfg.Tile.M, Cfg.Tile.K>;
+
+    stage compute [numthreads(Cfg.Threads.X, Cfg.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+        let index: u32 = thread.DispatchId.x;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+        let value: f32 = 0.0;
+
+        comptime let K: u32 = Cfg.Tile.K;
+        comptime when utility {
+            case ExactNoTail when K % Cfg.Unroll.K == 0u score 100 {
+                comptime let NeedsTailGuard: bool = false;
+                static assert NeedsTailGuard == false;
+                if index < params.M {
+                    value = AView[index, 0u];
+                }
+            }
+
+            case GenericTail score 10 {
+                comptime let NeedsTailGuard: bool = true;
+                static assert NeedsTailGuard == false;
+                let droppedTail: u32 = 1u;
+            }
+        }
+
+        if index < params.M {
+            C[index] = value;
+        }
+        return;
+    }
+}
+
+compile M14aComptimeWhenUtilityTilePolicy<Tile16> as M14aComptimeWhenUtilityTilePolicy16;

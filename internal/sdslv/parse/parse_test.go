@@ -308,6 +308,48 @@ return;
 	}
 }
 
+func TestBuildModuleParsesComptimeWhenUtility(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+comptime when utility {
+case UseVector4 when true score 100 {
+let selected: u32 = 4u;
+}
+case Policy.UseScalar score 10 {
+comptime when utility {
+case Nested score 1 { return; }
+else { return; }
+}
+}
+else {
+static assert false;
+}
+}
+return;
+}
+}`)
+	shader := module.Decls[0].(ast.ShaderDecl)
+	whenStmt, ok := shader.Methods[0].Body.Statements[0].(ast.ComptimeWhenUtilityStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want ComptimeWhenUtilityStmt", shader.Methods[0].Body.Statements[0])
+	}
+	if got := len(whenStmt.Cases); got != 2 {
+		t.Fatalf("len(Cases) = %d, want 2", got)
+	}
+	if whenStmt.Cases[0].Label != "UseVector4" || whenStmt.Cases[0].Condition == nil {
+		t.Fatalf("first case = %#v, want label and guard", whenStmt.Cases[0])
+	}
+	if whenStmt.Cases[1].Label != "Policy.UseScalar" || whenStmt.Cases[1].Condition != nil {
+		t.Fatalf("second case = %#v, want qualified unguarded label", whenStmt.Cases[1])
+	}
+	if whenStmt.ElseBody == nil {
+		t.Fatalf("missing else body")
+	}
+	if _, ok := whenStmt.Cases[1].Body.Statements[0].(ast.ComptimeWhenUtilityStmt); !ok {
+		t.Fatalf("nested stmt = %T, want ComptimeWhenUtilityStmt", whenStmt.Cases[1].Body.Statements[0])
+	}
+}
+
 func TestBuildModuleParsesStructuredConceptsDefaultsAndFatArrowConfig(t *testing.T) {
 	module := parseTestModule(t, `concept TileConfig {
 Threads: {

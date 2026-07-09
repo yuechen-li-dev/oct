@@ -271,7 +271,15 @@ Current M14 additions:
 - bool matches are exhaustive with both `true` and `false`, otherwise they require `else`;
 - duplicate literal patterns are rejected.
 
-M13/M14 `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
+Current M14a additions:
+
+- constrained compile-time utility-scored arbitration with `comptime when utility`;
+- case labels for diagnostics/readability;
+- optional compile-time bool guards and required compile-time numeric scores;
+- highest-scoring eligible case selection, else-only fallback, and tied-top-score ambiguity rejection;
+- selected-case-only expansion before VD-MIR.
+
+M13/M14/M14a `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
 
 ### Shader
 
@@ -378,13 +386,16 @@ Fallible functions declare an error type with `! ErrorType`. Only `Error` is rec
 | `comptime let name: Type = const_expr;` | Compile-time local binding removed before VD-MIR |
 | `comptime if const_bool { ... } else { ... }` | Compile-time branch selection before VD-MIR |
 | `comptime match const_expr { pattern => { ... } else => { ... } }` | Multi-way compile-time branch selection before VD-MIR |
+| `comptime when utility { case Label when guard score score { ... } else { ... } }` | Utility-scored compile-time arbitration before VD-MIR |
 | `static assert const_bool;` | Compile-time assertion, including inside selected `comptime if` branches |
 
 In the compute subset, workgroup arrays are also mutable assignment targets. Barrier builtins such as `WorkgroupMemoryBarrierWithSync();` are only valid as expression statements.
 
-`comptime let`, `comptime if`, and `comptime match` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. No `comptime for` or comptime functions are supported in M14.
+`comptime let`, `comptime if`, `comptime match`, and `comptime when utility` are evaluated after templates/configs have been specialized. They may reference literals, resolved config fields, and prior comptime values. They may not reference runtime parameters, resources, thread builtins, workgroup memory, runtime locals, matrix views, tile reads/writes, reductions, match payload values, or runtime function results. No `comptime for` or comptime functions are supported in M14a.
 
 `comptime match` is a statement, not runtime branching. It supports integer literal patterns, bool literal patterns, and `else` in M14. Integer matches require an `else` arm. Bool matches require either both `true` and `false` arms or an `else` arm. Only the selected arm is spliced into the AST before VD-MIR lowering; non-selected arms do not fire `static assert` and do not reach HLSL. Runtime `match` remains a separate expression form that lowers through VD-MIR.
+
+`comptime when utility` is a statement, not runtime `when utility`. Each case has a label, optional compile-time bool guard, required compile-time numeric score, and body. A case without `when` is always eligible. The highest-scoring eligible case wins; `else` is selected only when no case qualifies. No eligible case without `else` is rejected. Equal highest scores are ambiguous in M14a. Only the selected body is spliced into the AST before VD-MIR lowering; non-selected bodies do not fire `static assert` and do not reach HLSL. Runtime `when utility` remains a separate expression form that lowers through VD-MIR.
 
 `while` loops are explicitly not supported. Use bounded `for` loops instead.
 
@@ -805,12 +816,14 @@ stage-method ::= 'stage' STAGE 'fn' IDENT '(' params ')' '->' type-ref body
 STAGE        ::= 'vertex' | 'pixel'
 
 body         ::= '{' stmt* '}'
-stmt         ::= let | comptime-let | comptime-if | comptime-match | static-assert | assign | return | if | for | expr-stmt
+stmt         ::= let | comptime-let | comptime-if | comptime-match | comptime-when-utility | static-assert | assign | return | if | for | expr-stmt
 let          ::= 'let' IDENT ':' type-ref ('=' expr)? ';'
 comptime-let ::= 'comptime' 'let' IDENT ':' type-ref '=' expr ';'
 comptime-if  ::= 'comptime' 'if' expr '{' stmt* '}' ('else' '{' stmt* '}')?
 comptime-match ::= 'comptime' 'match' expr '{' comptime-match-arm+ '}'
 comptime-match-arm ::= (expr | 'else') '=>' '{' stmt* '}'
+comptime-when-utility ::= 'comptime' 'when' 'utility' '{' comptime-utility-case+ ('else' '{' stmt* '}')? '}'
+comptime-utility-case ::= 'case' path ('when' expr)? 'score' expr '{' stmt* '}'
 static-assert ::= 'static' 'assert' expr ';'
 assign       ::= expr '=' expr ';'
 for          ::= 'for' IDENT 'in' expr '..' expr ('step' expr)? '{' stmt* '}'

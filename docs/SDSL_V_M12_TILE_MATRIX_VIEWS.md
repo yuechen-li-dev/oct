@@ -98,4 +98,4 @@ M12 intentionally does not add:
 
 Future tensor notation can build on this explicit 2D indexing surface without changing the current contract.
 
-M13/M14 `comptime` may compute tile dimensions and select code paths from resolved config values, including multi-way `comptime match` over values such as `C.Tile.K`, but it may not inspect runtime `tile` or `matrix_view` values.
+M13/M14/M14a `comptime` may compute tile dimensions and select code paths from resolved config values, including multi-way `comptime match` over values such as `C.Tile.K` and utility-scored `comptime when utility` policy choices. It may not inspect runtime `tile` or `matrix_view` values.

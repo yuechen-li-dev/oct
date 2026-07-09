@@ -81,7 +81,7 @@ M5 monomorphizes before VD-MIR lowering.
 
 This keeps template logic out of both VD-MIR and the HLSL backend.
 
-M13 adds a separate `comptime` pass after monomorphization. Templates/configs still choose concrete variants; `comptime let` and `comptime if` only shape code inside the concrete specialized shader. M14 adds `comptime match` as the multi-way form of the same constrained staging model. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md` and `docs/SDSL_V_M14_COMPTIME_MATCH.md`.
+M13 adds a separate `comptime` pass after monomorphization. Templates/configs still choose concrete variants; `comptime let` and `comptime if` only shape code inside the concrete specialized shader. M14 adds `comptime match` as the multi-way form of the same constrained staging model. M14a adds `comptime when utility` for compile-time utility-scored arbitration. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md`, `docs/SDSL_V_M14_COMPTIME_MATCH.md`, and `docs/SDSL_V_M14A_COMPTIME_WHEN_UTILITY.md`.
 
 ## Generated metadata convention
 
@@ -121,7 +121,7 @@ See `docs/SDSL_V_M6_REQUIREMENTS_ATTRIBUTES.md`.
 
 M11 extends the same compile-time model with structured config groups, fat-arrow assignments, defaults, dotted references, and nonzero-by-default `u32` config fields. See `docs/SDSL_V_M11_STRUCTURED_CONFIGS.md`.
 
-M13 adds constrained compile-time shader staging with `comptime let` and `comptime if`. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md`.
+M13 adds constrained compile-time shader staging with `comptime let` and `comptime if`. M14/M14a extend that staging with `comptime match` and `comptime when utility`. See `docs/SDSL_V_M13_CONSTRAINED_COMPTIME.md`.
 
 ## Examples
 

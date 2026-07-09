@@ -1,0 +1,64 @@
+namespace Examples.SDSLV.M14a;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream DemoIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] C: readwrite array<f32>;
+}
+
+record Params {
+    Count: u32;
+}
+
+concept TileConfig {
+    Tile: {
+        K: u32 = 16u;
+    };
+    UseVectorizedLoad: bool = true;
+}
+
+config Tile16: TileConfig {
+    Tile.K => 16u;
+    UseVectorizedLoad => true;
+}
+
+template<Cfg: TileConfig>
+shader M14aComptimeWhenUtilityBasic {
+    resources DemoIO;
+
+    stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
+        let index: u32 = thread.DispatchId.x;
+        let value: f32 = 0.0;
+
+        comptime when utility {
+            case Vector4 when Cfg.UseVectorizedLoad && Cfg.Tile.K == 16u score 100 {
+                static assert Cfg.Tile.K == 16u;
+                if index < params.Count {
+                    value = A[index];
+                }
+            }
+
+            case Scalar score 10 {
+                static assert false;
+                let droppedScalar: u32 = 1u;
+            }
+
+            else {
+                static assert false;
+            }
+        }
+
+        if index < params.Count {
+            C[index] = value;
+        }
+        return;
+    }
+}
+
+compile M14aComptimeWhenUtilityBasic<Tile16> as M14aComptimeWhenUtilityBasic16;

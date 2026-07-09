@@ -334,6 +334,33 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			arms = append(arms, ast.ComptimeMatchArm{Pattern: pattern, IsElse: arm.IsElse, Body: body})
 		}
 		return ast.ComptimeMatchStmt{Subject: specializeExpr(s.Subject, env), Arms: arms}, nil
+	case ast.ComptimeWhenUtilityStmt:
+		cases := make([]ast.ComptimeWhenUtilityCase, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			body, err := specializeBlock(c.Body, env)
+			if err != nil {
+				return nil, err
+			}
+			var condition ast.Expr
+			if c.Condition != nil {
+				condition = specializeExpr(c.Condition, env)
+			}
+			cases = append(cases, ast.ComptimeWhenUtilityCase{
+				Label:     c.Label,
+				Condition: condition,
+				Score:     specializeExpr(c.Score, env),
+				Body:      body,
+			})
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body, err := specializeBlock(*s.ElseBody, env)
+			if err != nil {
+				return nil, err
+			}
+			elseBody = &body
+		}
+		return ast.ComptimeWhenUtilityStmt{Cases: cases, ElseBody: elseBody}, nil
 	case ast.ForStmt:
 		body, err := specializeBlock(s.Body, env)
 		if err != nil {
@@ -489,6 +516,12 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 			return nil, err
 		}
 		return body.Statements, nil
+	case ast.ComptimeWhenUtilityStmt:
+		body, err := expandComptimeWhenUtility(s, comptime, runtime)
+		if err != nil {
+			return nil, err
+		}
+		return body.Statements, nil
 	case ast.LetStmt:
 		out := s
 		if s.Value != nil {
@@ -607,6 +640,75 @@ func expandComptimeMatch(stmt ast.ComptimeMatchStmt, comptime map[string]comptim
 		return ast.Block{}, fmt.Errorf("no comptime match arm selected and no else arm provided")
 	}
 	return expandComptimeBlock(*selected, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+}
+
+func expandComptimeWhenUtility(stmt ast.ComptimeWhenUtilityStmt, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (ast.Block, error) {
+	seenLabels := map[string]struct{}{}
+	var selected *ast.Block
+	selectedLabel := ""
+	selectedScore := int64(0)
+	hasSelected := false
+	tiedHighestLabel := ""
+	for _, c := range stmt.Cases {
+		if _, exists := seenLabels[c.Label]; exists {
+			return ast.Block{}, fmt.Errorf("duplicate comptime when utility case label %s", c.Label)
+		}
+		seenLabels[c.Label] = struct{}{}
+		eligible := true
+		if c.Condition != nil {
+			guard, err := evalComptimeExpr(c.Condition, comptime, runtime, "comptime when guard must be compile-time bool")
+			if err != nil {
+				return ast.Block{}, annotateComptimeWhenExprError(err, "guard")
+			}
+			if guard.Type.Name != "bool" {
+				return ast.Block{}, fmt.Errorf("comptime when guard must be compile-time bool")
+			}
+			eligible = guard.Bool
+		}
+		if !eligible {
+			continue
+		}
+		score, err := evalComptimeExpr(c.Score, comptime, runtime, "comptime when score must be compile-time numeric")
+		if err != nil {
+			return ast.Block{}, annotateComptimeWhenExprError(err, "score")
+		}
+		if !consteval.IsInteger(score.Type) {
+			return ast.Block{}, fmt.Errorf("comptime when score must be compile-time numeric")
+		}
+		if hasSelected && score.Int32 == selectedScore {
+			if tiedHighestLabel == "" {
+				tiedHighestLabel = c.Label
+			}
+			continue
+		}
+		if !hasSelected || score.Int32 > selectedScore {
+			body := c.Body
+			selected = &body
+			selectedLabel = c.Label
+			selectedScore = score.Int32
+			hasSelected = true
+			tiedHighestLabel = ""
+		}
+	}
+	if hasSelected && tiedHighestLabel != "" {
+		return ast.Block{}, fmt.Errorf("ambiguous comptime when utility cases %s and %s have tied score %d", selectedLabel, tiedHighestLabel, selectedScore)
+	}
+	if !hasSelected {
+		selected = stmt.ElseBody
+	}
+	if selected == nil {
+		return ast.Block{}, fmt.Errorf("no comptime when utility case qualified and no else block provided")
+	}
+	return expandComptimeBlock(*selected, cloneComptimeBindings(comptime), cloneRuntimeBindings(runtime))
+}
+
+func annotateComptimeWhenExprError(err error, position string) error {
+	msg := err.Error()
+	const prefix = "comptime expression cannot reference "
+	if strings.HasPrefix(msg, prefix) {
+		return fmt.Errorf("comptime when %s cannot reference %s", position, strings.TrimPrefix(msg, prefix))
+	}
+	return err
 }
 
 func evalComptimeMatchPattern(expr ast.Expr, comptime map[string]comptimeBinding, runtime map[string]runtimeBinding) (consteval.Value, error) {

@@ -81,6 +81,8 @@ Forbidden inputs include runtime parameters and push constants, shader resources
 
 Runtime `match` remains an expression that lowers to VD-MIR. `comptime match` is a statement that expands away before VD-MIR. The HLSL backend must not special-case it.
 
+M14a adds `comptime when utility` as the utility-scored arbitration sibling to `comptime match`. Use `comptime match` when selecting by literal pattern over one scrutinee; use `comptime when utility` when multiple guarded candidates can qualify and should compete by compile-time score.
+
 ## Examples
 
 - `examples/SDSL-V/M14/ComptimeMatchInt.sdslv`

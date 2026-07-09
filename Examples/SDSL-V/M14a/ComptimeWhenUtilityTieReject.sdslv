@@ -1,0 +1,20 @@
+namespace Examples.SDSLV.M14a;
+
+shader M14aComptimeWhenUtilityTieReject {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        comptime when utility {
+            case First score 10 {
+                return;
+            }
+
+            case Second score 10 {
+                return;
+            }
+
+            else {
+                return;
+            }
+        }
+        return;
+    }
+}

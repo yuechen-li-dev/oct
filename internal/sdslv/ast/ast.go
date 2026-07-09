@@ -276,6 +276,20 @@ type ComptimeMatchArm struct {
 	Body    Block
 }
 
+type ComptimeWhenUtilityStmt struct {
+	Cases    []ComptimeWhenUtilityCase
+	ElseBody *Block
+}
+
+func (ComptimeWhenUtilityStmt) stmtNode() {}
+
+type ComptimeWhenUtilityCase struct {
+	Label     string
+	Condition Expr
+	Score     Expr
+	Body      Block
+}
+
 type ForStmt struct {
 	Attributes []Attribute
 	Name       string

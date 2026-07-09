@@ -782,6 +782,34 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			}
 			v.validateBlock(arm.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
 		}
+	case ast.ComptimeWhenUtilityStmt:
+		seenLabels := map[string]struct{}{}
+		for _, c := range s.Cases {
+			if _, exists := seenLabels[c.Label]; exists {
+				v.errorf("duplicate comptime when utility case label %s", c.Label)
+			}
+			seenLabels[c.Label] = struct{}{}
+			if c.Condition != nil {
+				v.validateWithPlacement(c.Condition, false)
+				v.validateMatchPlacement(c.Condition, false)
+				v.validateReductionPlacement(c.Condition, false)
+				guardType := v.exprType(c.Condition, scope, shaderName, templateParam)
+				if guardType.Name != "bool" && guardType.Name != "<error>" {
+					v.errorf("comptime when guard must be compile-time bool")
+				}
+			}
+			v.validateWithPlacement(c.Score, false)
+			v.validateMatchPlacement(c.Score, false)
+			v.validateReductionPlacement(c.Score, false)
+			scoreType := v.exprType(c.Score, scope, shaderName, templateParam)
+			if !isNumeric(scoreType) && scoreType.Name != "<error>" {
+				v.errorf("comptime when score must be compile-time numeric")
+			}
+			v.validateBlock(c.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		}
+		if s.ElseBody != nil {
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		}
 	case ast.ForStmt:
 		v.validateLoopAttributes(s.Attributes)
 		v.validateWithPlacement(s.Start, false)
