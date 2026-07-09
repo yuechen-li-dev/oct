@@ -4,6 +4,7 @@
 #include "../reactor_judgment_engine.h"
 #include "../reactor_policy_memory.h"
 #include "../reactor_vulkan.h"
+#include "../reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h"
 #include "../reactor_vulkan_sgemm_scalar_plus_spirv.h"
 #include "../reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
 #include "test_harness.h"
@@ -123,6 +124,7 @@ namespace
         double kernel_only_gflops = 0.0;
         bool gpu_timestamp_valid = false;
         std::string timing_source = "unknown";
+        TimingDecomposition timing_decomposition;
         PrometheusSgemmPolicyDiagnostics diag{};
         std::vector<std::string> anomalies;
     };
@@ -434,6 +436,8 @@ namespace
                 return "MEMORY_CONSERVATIVE";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS:
                 return "SDSL_SCALAR_PLUS";
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32:
+                return "SDSL_REG2X2_TILE16X16_FP32";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32:
                 return "SDSL_TILE16X16_SHARED_FP32";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
@@ -635,12 +639,14 @@ namespace
     const std::vector<ShapeCase>& correctness_shapes()
     {
         static const std::vector<ShapeCase> cases = {
-            {"small_64x64x64", 64u, 64u, 64u, false},
-            {"square_128x128x128", 128u, 128u, 128u, false},
-            {"rect_255x129x65", 255u, 129u, 65u, false},
-            {"oddk_64x64x65", 64u, 64u, 65u, false},
-            {"square_256x256x256", 256u, 256u, 256u, false},
-            {"skinny_1024x64x1024", 1024u, 64u, 1024u, false},
+            {"exact_16x16x16", 16u, 16u, 16u, false},
+            {"small_8x8x8", 8u, 8u, 8u, false},
+            {"odd_17x17x17", 17u, 17u, 17u, false},
+            {"odd_31x29x23", 31u, 29u, 23u, false},
+            {"skinny_64x16x64", 64u, 16u, 64u, false},
+            {"wide_16x64x64", 16u, 64u, 64u, false},
+            {"lowk_64x64x8", 64u, 64u, 8u, false},
+            {"medium_128x128x128", 128u, 128u, 128u, false},
         };
         return cases;
     }
@@ -650,6 +656,7 @@ namespace
         return {
             PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
             PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
+            PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32,
             PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32,
             PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE,
             PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4,
@@ -743,6 +750,20 @@ namespace
             };
             return prom_sgemm_dispatch_geometry_for_metadata(m, n, &metadata);
         }
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32) {
+            const prom_sgemm_kernel_dispatch_metadata metadata{
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_x,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_y,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_z,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_outputs_per_invocation_m,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_outputs_per_invocation_n,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_m,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_n,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_k,
+                k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_unroll_k
+            };
+            return prom_sgemm_dispatch_geometry_for_metadata(m, n, &metadata);
+        }
         if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
             const prom_sgemm_kernel_dispatch_metadata metadata{
                 k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x,
@@ -779,6 +800,19 @@ namespace
             row.metadata_tile_n = k_prom_sgemm_scalar_plus_spirv_tile_n;
             row.metadata_tile_k = 0u;
             row.metadata_unroll_k = k_prom_sgemm_scalar_plus_spirv_unroll_k;
+            row.shader_module_present = true;
+            return;
+        }
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32) {
+            row.metadata_numthreads_x = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_x;
+            row.metadata_numthreads_y = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_y;
+            row.metadata_numthreads_z = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_z;
+            row.metadata_outputs_per_invocation_m = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_outputs_per_invocation_m;
+            row.metadata_outputs_per_invocation_n = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_outputs_per_invocation_n;
+            row.metadata_tile_m = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_m;
+            row.metadata_tile_n = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_n;
+            row.metadata_tile_k = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_k;
+            row.metadata_unroll_k = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_unroll_k;
             row.shader_module_present = true;
             return;
         }
@@ -1542,6 +1576,7 @@ namespace
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32 ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32 ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
@@ -1829,6 +1864,7 @@ namespace
         row.path = path_name(row.diag.px16_m6_executed_path);
         row.correctness = correctness.status;
         row.reference_mode = correctness.reference_mode;
+        row.timing_decomposition = decomposition;
         row.median_total_ms = decomposition.total_wall_ms;
         row.median_kernel_ms = decomposition.kernel_gpu_ms;
         row.end_to_end_gflops = decomposition.end_to_end_gflops;
@@ -2314,10 +2350,15 @@ namespace
         for (std::size_t index = 0u; index < report.resident_variant_comparison.size(); ++index) {
             const ResidentBenchmarkRow& row = report.resident_variant_comparison[index];
             out << "    {\"shape\": \"" << json_escape(row.shape)
-                << "\", \"mode\": \"" << json_escape(row.mode)
+                << "\", \"m\": " << row.m
+                << ", \"n\": " << row.n
+                << ", \"k\": " << row.k
+                << ", \"mode\": \"" << json_escape(row.mode)
                 << "\", \"variant\": \"" << json_escape(row.variant)
                 << "\", \"requested_variant\": \"" << json_escape(row.requested_variant)
                 << "\", \"executed_variant\": \"" << json_escape(row.executed_variant)
+                << "\", \"selector_recommended_variant\": \"" << occupancy_variant_name(row.diag.px16_m6_selector_recommended_variant)
+                << "\", \"selector_selected_variant\": \"" << occupancy_variant_name(row.diag.px16_m6_selector_selected_variant)
                 << "\", \"skipped\": " << bool_json(row.skipped)
                 << ", \"skip_reason\": \"" << json_escape(row.skip_reason)
                 << "\", \"resident_mode_available\": " << bool_json(row.resident_mode_available)
@@ -2358,9 +2399,14 @@ namespace
         for (std::size_t index = 0u; index < report.variant_comparison.size(); ++index) {
             const VariantComparisonRow& row = report.variant_comparison[index];
             out << "    {\"shape\": \"" << json_escape(row.shape)
-                << "\", \"variant\": \"" << json_escape(row.variant)
+                << "\", \"m\": " << row.m
+                << ", \"n\": " << row.n
+                << ", \"k\": " << row.k
+                << ", \"variant\": \"" << json_escape(row.variant)
                 << "\", \"requested_variant\": \"" << json_escape(row.requested_variant)
                 << "\", \"executed_variant\": \"" << json_escape(row.executed_variant)
+                << "\", \"selector_recommended_variant\": \"" << occupancy_variant_name(row.diag.px16_m6_selector_recommended_variant)
+                << "\", \"selector_selected_variant\": \"" << occupancy_variant_name(row.diag.px16_m6_selector_selected_variant)
                 << "\", \"path\": \"" << json_escape(row.path)
                 << "\", \"correctness\": \"" << json_escape(row.correctness)
                 << "\", \"reference_mode\": \"" << json_escape(row.reference_mode)
@@ -2372,7 +2418,27 @@ namespace
                 << ", \"kernel_only_gflops\": " << row.kernel_only_gflops
                 << ", \"gpu_timestamp_valid\": " << bool_json(row.gpu_timestamp_valid)
                 << ", \"timing_source\": \"" << json_escape(row.timing_source)
-                << "\", \"runtime_status\": " << row.runtime_status
+                << "\", \"timing_decomposition\": {\"upload_ms\": " << row.timing_decomposition.upload_ms
+                << ", \"pre_dispatch_ms\": " << row.timing_decomposition.pre_dispatch_ms
+                << ", \"command_record_ms\": " << row.timing_decomposition.command_record_ms
+                << ", \"dispatch_submit_ms\": " << row.timing_decomposition.dispatch_submit_ms
+                << ", \"kernel_gpu_ms\": " << row.timing_decomposition.kernel_gpu_ms
+                << ", \"readback_ms\": " << row.timing_decomposition.readback_ms
+                << ", \"sync_wait_ms\": " << row.timing_decomposition.sync_wait_ms
+                << ", \"post_sync_ms\": " << row.timing_decomposition.post_sync_ms
+                << ", \"post_readback_ms\": " << row.timing_decomposition.post_readback_ms
+                << ", \"total_wall_ms\": " << row.timing_decomposition.total_wall_ms
+                << ", \"benchmark_total_ms\": " << row.timing_decomposition.benchmark_total_ms
+                << ", \"oracle_ms\": " << row.timing_decomposition.oracle_ms
+                << ", \"validation_readback_ms\": " << row.timing_decomposition.validation_readback_ms
+                << ", \"validation_ms\": " << row.timing_decomposition.validation_ms
+                << ", \"unaccounted_host_ms\": " << row.timing_decomposition.unaccounted_host_ms
+                << ", \"tolerance_eval_ms\": " << row.timing_decomposition.tolerance_eval_ms
+                << ", \"kernel_only_gflops\": " << row.timing_decomposition.kernel_only_gflops
+                << ", \"end_to_end_gflops\": " << row.timing_decomposition.end_to_end_gflops
+                << ", \"gpu_timestamp_valid\": " << bool_json(row.timing_decomposition.gpu_timestamp_valid)
+                << ", \"timing_source\": \"" << json_escape(row.timing_decomposition.timing_source) << "\"}"
+                << ", \"runtime_status\": " << row.runtime_status
                 << ", \"final_stage\": " << row.final_stage
                 << ", \"final_detail_code\": " << row.final_detail_code
                 << ", \"anomalies\": [";
@@ -2978,6 +3044,7 @@ FACT(PrometheusSgemmPx16ResidentExplicitFailureMatrix)
         PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE,
         PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32,
     };
 
@@ -3049,6 +3116,7 @@ FACT(PrometheusSgemmPx16M15aSdslScalarPlusLowKRepro)
         PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
         PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32,
     };
 
     std::vector<ResidentFailureMatrixRow> rows;
@@ -3085,6 +3153,95 @@ FACT(PrometheusSgemmPx16M15aSdslScalarPlusLowKRepro)
         }
     }
     ASSERT_TRUE(saw_scalar_plus_row, "M15a low-K repro must include scalar-plus rows");
+}
+
+FACT(PrometheusSgemmM17SdslReg2x2)
+{
+    RuntimeHandleScope probe_runtime;
+    PrometheusCaps caps{};
+    std::string failure_reason;
+    if (!create_runtime(probe_runtime, caps, failure_reason)) {
+        SKIP("Vulkan runtime unavailable; M17 explicit reg2x2 lane cannot execute");
+    }
+
+    const std::vector<ShapeCase> shapes = {
+        {"exact_16x16x16", 16u, 16u, 16u, false},
+        {"small_8x8x8", 8u, 8u, 8u, false},
+        {"odd_17x17x17", 17u, 17u, 17u, false},
+        {"odd_31x29x23", 31u, 29u, 23u, false},
+        {"skinny_64x16x64", 64u, 16u, 64u, false},
+        {"wide_16x64x64", 16u, 64u, 64u, false},
+        {"lowk_64x64x8", 64u, 64u, 8u, false},
+        {"medium_128x128x128", 128u, 128u, 128u, false},
+    };
+
+    std::vector<VariantComparisonRow> staged_rows;
+    std::vector<ResidentBenchmarkRow> resident_rows;
+    staged_rows.reserve(shapes.size());
+    resident_rows.reserve(shapes.size());
+    for (const ShapeCase& shape : shapes) {
+        staged_rows.push_back(run_explicit_variant_case_fresh(shape, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32, true));
+        resident_rows.push_back(run_resident_case_fresh(shape, true, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32, true));
+    }
+
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"schema\": \"prometheus.sgemm.sdslv.m17.reg2x2.v1\",\n";
+    json << "  \"variant\": \"SDSL_REG2X2_TILE16X16_FP32\",\n";
+    json << "  \"rows\": [\n";
+    for (std::size_t index = 0u; index < staged_rows.size(); ++index) {
+        const VariantComparisonRow& staged = staged_rows[index];
+        const ResidentBenchmarkRow& resident = resident_rows[index];
+        json << "    {\"shape\": \"" << json_escape(staged.shape)
+             << "\", \"m\": " << staged.m
+             << ", \"n\": " << staged.n
+             << ", \"k\": " << staged.k
+             << ", \"correctness\": \"" << json_escape(staged.correctness)
+             << "\", \"kernel_ms\": " << resident.kernel_median_ms
+             << ", \"wall_ms\": " << staged.median_total_ms
+             << ", \"gflops\": " << resident.kernel_only_gflops
+             << ", \"resident_mode_available\": " << bool_json(resident.resident_mode_available)
+             << ", \"executed_variant\": \"" << json_escape(resident.executed_variant) << "\"}";
+        if (index + 1u < staged_rows.size()) {
+            json << ",";
+        }
+        json << "\n";
+    }
+    json << "  ]\n";
+    json << "}\n";
+
+    std::ostringstream markdown;
+    markdown << "# Prometheus SDSL-V M17 Reg2x2 SGEMM\n\n";
+    markdown << "| shape | correctness | staged wall ms | resident kernel ms | resident GFLOP/s | executed variant |\n";
+    markdown << "| --- | --- | ---: | ---: | ---: | --- |\n";
+    for (std::size_t index = 0u; index < staged_rows.size(); ++index) {
+        const VariantComparisonRow& staged = staged_rows[index];
+        const ResidentBenchmarkRow& resident = resident_rows[index];
+        markdown << "| " << staged.shape
+                 << " | " << staged.correctness
+                 << " | " << staged.median_total_ms
+                 << " | " << resident.kernel_median_ms
+                 << " | " << resident.kernel_only_gflops
+                 << " | " << resident.executed_variant << " |\n";
+    }
+
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_sdslv_m17_reg2x2.json"),
+                    json.str()),
+                "M17 reg2x2 JSON artifact should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_sdslv_m17_reg2x2.md"),
+                    markdown.str()),
+                "M17 reg2x2 markdown artifact should be written");
+
+    for (const VariantComparisonRow& row : staged_rows) {
+        ASSERT_EQUAL(PROM_OK, row.runtime_status, "M17 staged explicit variant should run");
+        ASSERT_EQUAL(std::string("pass"), row.correctness, "M17 staged explicit variant should validate");
+    }
+    for (const ResidentBenchmarkRow& row : resident_rows) {
+        ASSERT_EQUAL(PROM_OK, row.runtime_status, "M17 resident explicit variant should run");
+        ASSERT_EQUAL(std::string("pass"), row.correctness, "M17 resident explicit variant should validate");
+    }
 }
 
 BENCHMARK_WITH_ITERATIONS(PrometheusSgemmPx16Evt_ProductionPerformanceLane, 1)

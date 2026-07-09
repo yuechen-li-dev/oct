@@ -219,10 +219,61 @@ set OCT_PROMETHEUS_PX16_EVT_ENABLE_2048=1
 out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
 ```
 
+## SDSL-V M17
+
+Px16 explicit SGEMM comparison now includes `SDSL_REG2X2_TILE16X16_FP32`, the first source-backed SDSL-V register-blocked 2x2 benchmark variant.
+
+The architecture rule for this milestone is:
+
+- `SDSL_REG2X2_TILE16X16_FP32` is explicit benchmark-only.
+- Production selector behavior is unchanged.
+- Dispatch geometry for the new source-backed variant comes from generated SDSL-V metadata rather than host hardcoding.
+- Correctness validation remains separate from performance timing.
+
+The variant is intended as a clean iteration surface for:
+
+- `matrix_view`
+- workgroup `tile`
+- `reg_tile`
+- `comptime for`
+- guarded load/store
+- generated dispatch metadata
+
 ```bat
 set OCT_PROMETHEUS_PX16_EVT_ENABLE_EXPLICIT_1024_CUBE=1
 out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
 ```
+
+## SDSL-V M18
+
+SDSL-V M18 is the performance autopsy for `SDSL_REG2X2_TILE16X16_FP32`.
+
+Fresh local artifacts now include:
+
+- `out/test-artifacts/prometheus_sgemm_sdslv_m18_reg2x2_autopsy.json`
+- `out/test-artifacts/prometheus_sgemm_sdslv_m18_reg2x2_autopsy.md`
+- `out/sdslv/sgemm_reg2x2_tile16x16_fp32_m18.hlsl`
+- `out/sdslv/sgemm_reg2x2_tile16x16_fp32_m18.spv`
+- `out/sdslv/sgemm_reg2x2_tile16x16_fp32_m18.spvasm`
+
+Key findings from the fresh M18 run:
+
+- `SDSL_REG2X2_TILE16X16_FP32` beats `SDSL_TILE16X16_SHARED_FP32` on all fresh EVT comparison shapes.
+- It also beats `MEMORY_CONSERVATIVE` on the fresh staged explicit comparison set.
+- It does not beat `BASELINE_SCALAR` universally.
+- Staged wall time is still dominated by readback and sync on larger shapes, so resident kernel time and staged GPU timestamp kernel time remain the primary optimization signals.
+- Fresh SPIR-V does not show a surviving function-local accumulator array, so reg-tile scalarization failure is not the leading hypothesis anymore.
+
+The current M18 recommendation is:
+
+- first: try the next register-blocked kernel in the `16x32/32x16` geometry family
+- second: if compiler-side work is preferred first, improve guarded-access lowering with a full-tile fast path
+
+Architecture status remains unchanged:
+
+- production selector behavior is unchanged
+- the M17/M18 reg2x2 kernel is still explicit benchmark-only
+- dispatch authority and runtime policy stay unchanged
 
 ## Px16 M10a Note
 
