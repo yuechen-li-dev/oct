@@ -637,3 +637,92 @@ For SGEMM dispatch, the native runtime still uses the existing row/column conven
 - dispatch `y` covers columns (`n`)
 
 The SDSL path now derives `groups_x` and `groups_y` from generated metadata so future multi-output kernels do not repeat the Px16 M12 B2x2/aggressive overdispatch drift bug.
+
+## Px16 M16
+
+Px16 M16 is an instrumentation milestone for the remaining host-side SGEMM timing gap. It does not optimize descriptor updates, change dispatch behavior, retune selector logic, change kernels, or add new SDSL-V surface area.
+
+The working hypothesis for M16 is H1:
+
+- a meaningful part of `unaccounted_host_ms` may be command-buffer recording plus per-dispatch `vkUpdateDescriptorSets(...)`;
+- previous EVT timing only bracketed upload, submit, wait, readback, and optional GPU kernel timestamps;
+- command recording work therefore escaped into `unaccounted_host_ms`.
+
+### `command_record_ms`
+
+The runtime now exports `px16_m8_last_command_record_wall_ns`, and the EVT report renders it as `command_record_ms`.
+
+Definition:
+
+- `command_record_ms` is the host wall-clock duration for the SGEMM command-recording preparation window;
+- it brackets `vkResetCommandBuffer`, `vkBeginCommandBuffer`, command recording, and `vkEndCommandBuffer`;
+- when descriptor updates happen as part of the same dispatch-preparation path, `vkUpdateDescriptorSets(...)` is included inside the same timing window on purpose.
+
+Why descriptor updates are included:
+
+- H1 is specifically about the combined cost of command recording and descriptor rewriting;
+- splitting descriptor updates into a second bucket in this milestone would risk gaps or double-counting;
+- if descriptor update cost is small, that is still a useful diagnostic outcome.
+
+### Timing decomposition
+
+Current EVT timing buckets are:
+
+- `kernel_ms`
+- `upload_ms`
+- `readback_ms`
+- `sync_wait_ms`
+- `dispatch_submit_ms`
+- `command_record_ms`
+- `oracle_ms` / `validation_ms` when the correctness lane is used
+- `unaccounted_host_ms`
+
+`unaccounted_host_ms` is now computed as the production benchmark wall-clock remainder after subtracting:
+
+- `upload_ms`
+- `command_record_ms`
+- `dispatch_submit_ms`
+- `sync_wait_ms`
+- `readback_ms`
+- `kernel_ms` when GPU timestamps are valid
+
+### Deep diagnostic lane
+
+Run the focused deep-diagnostic FACT lane on the target Vulkan hardware:
+
+```bat
+out\prometheus\native\marionette_tests.exe PrometheusSgemmPx16DeepDiagnostics
+```
+
+It writes:
+
+- `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.json`
+- `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.md`
+
+The deep artifact includes:
+
+- device / vendor / driver metadata;
+- benchmark shape;
+- policy mode;
+- requested / selected / executed variant;
+- executed path;
+- `kernel_ms`, `upload_ms`, `readback_ms`, `sync_wait_ms`, `dispatch_submit_ms`, `command_record_ms`, `unaccounted_host_ms`;
+- `VK_INSTANCE_LAYERS`;
+- `VK_LOADER_LAYERS_ENABLE`;
+- resident-vs-production differential when resident mode is available;
+- failure stage/detail fields when a case fails.
+
+### Upload guidance
+
+Upload these files for follow-up analysis:
+
+- `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.json`
+- `out/test-artifacts/prometheus_sgemm_px16_deep_diagnostics.md`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_results.json`
+- `out/test-artifacts/prometheus_sgemm_px16_evt_report.md`
+
+### Environment and subgroup notes
+
+- M16 reports `VK_INSTANCE_LAYERS` and `VK_LOADER_LAYERS_ENABLE`, but that does not detect every implicit Vulkan layer.
+- If `command_record_ms` does not explain the gap, run `vulkaninfo --summary` and inspect unexpected `Layers:` entries.
+- The existing subgroup-size report field is still left unchanged in M16 and remains a separate follow-up.

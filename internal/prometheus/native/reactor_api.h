@@ -1100,6 +1100,7 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   double px16_m6_p15_confidence_before;
   double px16_m6_p15_confidence_after;
   uint64_t px16_m8_last_upload_wall_ns;
+  uint64_t px16_m8_last_command_record_wall_ns;
   uint64_t px16_m8_last_dispatch_submit_wall_ns;
   uint64_t px16_m8_last_sync_wait_wall_ns;
   uint64_t px16_m8_last_readback_wall_ns;

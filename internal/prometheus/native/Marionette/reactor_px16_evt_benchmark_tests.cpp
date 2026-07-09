@@ -49,6 +49,7 @@ namespace
     struct TimingDecomposition
     {
         double upload_ms = 0.0;
+        double command_record_ms = 0.0;
         double dispatch_submit_ms = 0.0;
         double kernel_gpu_ms = 0.0;
         double readback_ms = 0.0;
@@ -1001,6 +1002,16 @@ namespace
         return static_cast<double>(ns) / 1.0e6;
     }
 
+    double accounted_host_ms(const TimingDecomposition& timing_decomposition)
+    {
+        return timing_decomposition.upload_ms +
+            timing_decomposition.command_record_ms +
+            timing_decomposition.dispatch_submit_ms +
+            timing_decomposition.sync_wait_ms +
+            timing_decomposition.readback_ms +
+            (timing_decomposition.gpu_timestamp_valid ? timing_decomposition.kernel_gpu_ms : 0.0);
+    }
+
     void finalize_timing_stats(const ShapeCase& shape,
                                const std::vector<double>& samples_ns,
                                std::string_view timing_source,
@@ -1029,6 +1040,7 @@ namespace
         std::vector<double> total_wall_ns;
         std::vector<double> kernel_gpu_ns;
         std::vector<double> upload_wall_ns;
+        std::vector<double> command_record_wall_ns;
         std::vector<double> dispatch_submit_wall_ns;
         std::vector<double> sync_wait_wall_ns;
         std::vector<double> readback_wall_ns;
@@ -1272,6 +1284,7 @@ namespace
             }
 
             samples.upload_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_upload_wall_ns));
+            samples.command_record_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_command_record_wall_ns));
             samples.dispatch_submit_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_dispatch_submit_wall_ns));
             samples.sync_wait_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_sync_wait_wall_ns));
             samples.readback_wall_ns.push_back(static_cast<double>(diag.px16_m8_last_readback_wall_ns));
@@ -1283,6 +1296,7 @@ namespace
         final_stage = stage;
         final_detail_code = detail_code;
         timing_decomposition.upload_ms = median_ms_from_ns(samples.upload_wall_ns);
+        timing_decomposition.command_record_ms = median_ms_from_ns(samples.command_record_wall_ns);
         timing_decomposition.dispatch_submit_ms = median_ms_from_ns(samples.dispatch_submit_wall_ns);
         timing_decomposition.sync_wait_ms = median_ms_from_ns(samples.sync_wait_wall_ns);
         timing_decomposition.readback_ms = median_ms_from_ns(samples.readback_wall_ns);
@@ -1290,13 +1304,7 @@ namespace
         timing_decomposition.benchmark_total_ms = timing_decomposition.total_wall_ms;
         timing_decomposition.gpu_timestamp_valid = samples.kernel_gpu_ns.size() == samples.total_wall_ns.size() && !samples.kernel_gpu_ns.empty();
         timing_decomposition.kernel_gpu_ms = timing_decomposition.gpu_timestamp_valid ? median_ms_from_ns(samples.kernel_gpu_ns) : 0.0;
-        const double accounted_host_ms =
-            timing_decomposition.upload_ms +
-            timing_decomposition.dispatch_submit_ms +
-            timing_decomposition.sync_wait_ms +
-            timing_decomposition.readback_ms +
-            (timing_decomposition.gpu_timestamp_valid ? timing_decomposition.kernel_gpu_ms : 0.0);
-        timing_decomposition.unaccounted_host_ms = timing_decomposition.total_wall_ms - accounted_host_ms;
+        timing_decomposition.unaccounted_host_ms = timing_decomposition.total_wall_ms - accounted_host_ms(timing_decomposition);
         timing_decomposition.end_to_end_gflops =
             gflops_from_ns(shape, timing_decomposition.total_wall_ms * 1.0e6);
         timing_decomposition.kernel_only_gflops =
@@ -2204,6 +2212,7 @@ namespace
                 << ", \"timing_source\": \"" << json_escape(result.timing.timing_source)
                 << "\", \"gpu_timing_failure_reason\": \"" << timing_failure_reason_name(result.diag.p13_m5_last_gpu_timing_failure_reason) << "\"},\n";
             out << "      \"timing_decomposition\": {\"upload_ms\": " << result.timing_decomposition.upload_ms
+                << ", \"command_record_ms\": " << result.timing_decomposition.command_record_ms
                 << ", \"dispatch_submit_ms\": " << result.timing_decomposition.dispatch_submit_ms
                 << ", \"kernel_gpu_ms\": " << result.timing_decomposition.kernel_gpu_ms
                 << ", \"readback_ms\": " << result.timing_decomposition.readback_ms
@@ -2497,8 +2506,8 @@ namespace
         out << "\n";
 
         out << "## Timing Decomposition\n\n";
-        out << "| shape | path | variant | benchmark total ms | kernel ms | upload ms | readback ms | sync wait ms | unaccounted host ms | end-to-end GFLOP/s | kernel GFLOP/s | timing source |\n";
-        out << "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
+        out << "| shape | path | variant | benchmark total ms | kernel ms | upload ms | command record ms | dispatch submit ms | readback ms | sync wait ms | unaccounted host ms | end-to-end GFLOP/s | kernel GFLOP/s | timing source |\n";
+        out << "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
         for (const CaseResult& result : report.cases) {
             out << "| " << result.name
                 << " | " << path_name(result.diag.px16_m6_executed_path)
@@ -2506,6 +2515,8 @@ namespace
                 << " | " << result.timing_decomposition.benchmark_total_ms
                 << " | " << result.timing_decomposition.kernel_gpu_ms
                 << " | " << result.timing_decomposition.upload_ms
+                << " | " << result.timing_decomposition.command_record_ms
+                << " | " << result.timing_decomposition.dispatch_submit_ms
                 << " | " << result.timing_decomposition.readback_ms
                 << " | " << result.timing_decomposition.sync_wait_ms
                 << " | " << result.timing_decomposition.unaccounted_host_ms
@@ -2679,10 +2690,12 @@ namespace
         result.timing_decomposition.benchmark_total_ms = 1.0;
         result.timing_decomposition.kernel_gpu_ms = 0.8;
         result.timing_decomposition.upload_ms = 0.05;
+        result.timing_decomposition.command_record_ms = 0.03;
         result.timing_decomposition.readback_ms = 0.05;
         result.timing_decomposition.sync_wait_ms = 0.08;
         result.timing_decomposition.dispatch_submit_ms = 0.02;
-        result.timing_decomposition.unaccounted_host_ms = 0.0;
+        result.timing_decomposition.unaccounted_host_ms =
+            result.timing_decomposition.total_wall_ms - accounted_host_ms(result.timing_decomposition);
         result.timing_decomposition.end_to_end_gflops = 250.0;
         result.timing_decomposition.kernel_only_gflops = 312.5;
         result.timing_decomposition.gpu_timestamp_valid = true;
@@ -2777,6 +2790,7 @@ FACT(PrometheusSgemmPx16Evt_ArtifactWritersEmitSchemaAndCaseRows)
 
     ASSERT_TRUE(json.find("\"schema\": \"prometheus.sgemm.px16.evt.v3\"") != std::string::npos, "JSON artifact should include the EVT schema");
     ASSERT_TRUE(json.find("\"timing_decomposition\"") != std::string::npos, "JSON artifact should include timing decomposition");
+    ASSERT_TRUE(json.find("\"command_record_ms\"") != std::string::npos, "JSON artifact should include command-record timing");
     ASSERT_TRUE(json.find("\"unaccounted_host_ms\"") != std::string::npos, "JSON artifact should include unaccounted host timing");
     ASSERT_TRUE(json.find("\"oracle_ms\"") != std::string::npos, "JSON artifact should include oracle timing");
     ASSERT_TRUE(json.find("\"variant_comparison\"") != std::string::npos, "JSON artifact should include variant comparison");
@@ -2785,6 +2799,7 @@ FACT(PrometheusSgemmPx16Evt_ArtifactWritersEmitSchemaAndCaseRows)
     ASSERT_TRUE(json.find("\"selector_vs_fastest_resident\"") != std::string::npos, "JSON artifact should include resident selector comparison");
     ASSERT_TRUE(json.find("\"picked_same_variant_as_fastest_explicit\"") != std::string::npos, "JSON artifact should split selector-vs-fastest identity");
     ASSERT_TRUE(markdown.find("## Timing Decomposition") != std::string::npos, "Markdown artifact should include timing decomposition");
+    ASSERT_TRUE(markdown.find("command record ms") != std::string::npos, "Markdown artifact should include command-record timing");
     ASSERT_TRUE(markdown.find("## Resident Device Benchmark") != std::string::npos, "Markdown artifact should include resident benchmark section");
     ASSERT_TRUE(markdown.find("## Selector vs Fastest Resident Variant") != std::string::npos, "Markdown artifact should include resident selector comparison");
     ASSERT_TRUE(markdown.find("## Explicit Variant Comparison") != std::string::npos, "Markdown artifact should include explicit variant comparison");
@@ -2792,6 +2807,24 @@ FACT(PrometheusSgemmPx16Evt_ArtifactWritersEmitSchemaAndCaseRows)
                 "artifact writer smoke JSON should be created");
     ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_evt_artifact_writer_smoke.md"), markdown),
                 "artifact writer smoke Markdown should be created");
+}
+
+FACT(PrometheusSgemmPx16Evt_CommandRecordAccounting)
+{
+    TimingDecomposition timing;
+    timing.total_wall_ms = 10.0;
+    timing.upload_ms = 1.0;
+    timing.command_record_ms = 2.0;
+    timing.dispatch_submit_ms = 0.5;
+    timing.sync_wait_ms = 1.5;
+    timing.readback_ms = 0.75;
+    timing.kernel_gpu_ms = 3.0;
+    timing.gpu_timestamp_valid = true;
+    timing.unaccounted_host_ms = timing.total_wall_ms - accounted_host_ms(timing);
+
+    ASSERT_NEAR(2.0, timing.command_record_ms, 1.0e-9, "command-record timing should be preserved");
+    ASSERT_TRUE(timing.command_record_ms >= 0.0, "command-record timing should be non-negative");
+    ASSERT_NEAR(1.25, timing.unaccounted_host_ms, 1.0e-9, "unaccounted host timing should subtract command-record timing");
 }
 
 FACT(PrometheusSgemmPx16Resident)

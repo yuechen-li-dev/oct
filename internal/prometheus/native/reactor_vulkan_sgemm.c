@@ -646,6 +646,7 @@ typedef struct prometheus_runtime {
   uint32_t last_gpu_timing_failure_reason;
   uint64_t last_gpu_duration_ns;
   uint64_t px16_m8_last_upload_wall_ns;
+  uint64_t px16_m8_last_command_record_wall_ns;
   uint64_t px16_m8_last_dispatch_submit_wall_ns;
   uint64_t px16_m8_last_sync_wait_wall_ns;
   uint64_t px16_m8_last_readback_wall_ns;
@@ -4050,6 +4051,7 @@ static void reset_last_runtime_timing_decomposition(prometheus_runtime* rt) {
     return;
   }
   rt->px16_m8_last_upload_wall_ns = 0u;
+  rt->px16_m8_last_command_record_wall_ns = 0u;
   rt->px16_m8_last_dispatch_submit_wall_ns = 0u;
   rt->px16_m8_last_sync_wait_wall_ns = 0u;
   rt->px16_m8_last_readback_wall_ns = 0u;
@@ -5322,6 +5324,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   uint64_t total_wall_begin_ns = 0u;
   uint64_t upload_begin_ns = 0u;
   uint64_t upload_end_ns = 0u;
+  uint64_t command_record_begin_ns = 0u;
   uint64_t dispatch_submit_begin_ns = 0u;
   uint64_t dispatch_submit_end_ns = 0u;
   uint64_t sync_wait_begin_ns = 0u;
@@ -6228,6 +6231,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   writes[2] = writes[0];
   writes[2].dstBinding = 2u;
   writes[2].pBufferInfo = &buffer_infos[2];
+  command_record_begin_ns = prom_wall_clock_now_ns();
   vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
 
   if (use_dedicated_transfer_upload != 0u && selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
@@ -6579,6 +6583,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
+  rt->px16_m8_last_command_record_wall_ns =
+      prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
@@ -6936,6 +6942,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   prom_vk_push push;
   VkPipeline pipeline;
   VkResult vk_result;
+  uint64_t command_record_begin_ns;
   uint64_t dispatch_submit_begin_ns;
   uint64_t dispatch_submit_end_ns;
   uint64_t sync_wait_begin_ns;
@@ -6975,6 +6982,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   writes[2] = writes[0];
   writes[2].dstBinding = 2u;
   writes[2].pBufferInfo = &buffer_infos[2];
+  command_record_begin_ns = prom_wall_clock_now_ns();
   vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
 
   vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
@@ -7048,6 +7056,8 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
     return PROM_ERROR;
   }
+  rt->px16_m8_last_command_record_wall_ns =
+      prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
 
   vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
@@ -9663,6 +9673,7 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->px16_m6_p15_confidence_before = rt->slot_diag.px16_m6_p15_confidence_before;
   out_diag->px16_m6_p15_confidence_after = rt->slot_diag.px16_m6_p15_confidence_after;
   out_diag->px16_m8_last_upload_wall_ns = rt->px16_m8_last_upload_wall_ns;
+  out_diag->px16_m8_last_command_record_wall_ns = rt->px16_m8_last_command_record_wall_ns;
   out_diag->px16_m8_last_dispatch_submit_wall_ns = rt->px16_m8_last_dispatch_submit_wall_ns;
   out_diag->px16_m8_last_sync_wait_wall_ns = rt->px16_m8_last_sync_wait_wall_ns;
   out_diag->px16_m8_last_readback_wall_ns = rt->px16_m8_last_readback_wall_ns;
