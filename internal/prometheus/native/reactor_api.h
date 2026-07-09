@@ -56,6 +56,23 @@ enum {
   PROM_ASYNC_STATE_CONSUMED = 4,
 };
 
+typedef enum prom_p15_shadow_feedforward_block_reason {
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NONE = 0,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_DISABLED = 1,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NOT_HEALTHY = 2,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_MARGIN_FAILED = 3,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_REASON_BINDING = 4,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NO_MATURED_RESERVATION = 5,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_SHAPE_MISMATCH = 6,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH = 7,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_CAPABILITY_MISMATCH = 8,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_STALE_RESERVATION = 9,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_CANCELLED_RESERVATION = 10,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_ALREADY_CONSUMED = 11,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_FALLBACK_REQUIRED = 12,
+  PROM_P15_SHADOW_FEEDFORWARD_BLOCK_RESERVATION_NOT_READY = 13
+} prom_p15_shadow_feedforward_block_reason;
+
 enum {
   PROM_TESTCFG_FAIL_DEVICE_CREATE = 1u << 0,
   PROM_TESTCFG_FAIL_PIPELINE_CREATE = 1u << 1,
@@ -933,8 +950,13 @@ typedef struct PrometheusSgemmPolicyDiagnostics {
   uint32_t p15_shadow_feedforward_enabled;
   uint32_t p15_shadow_feedforward_used;
   uint32_t p15_shadow_feedforward_source;
+  uint32_t p15_shadow_feedforward_reservation_present;
+  uint32_t p15_shadow_feedforward_reservation_matured;
   uint32_t p15_shadow_feedforward_block_reason;
   uint32_t p15_shadow_feedforward_reserved_variant_id;
+  uint32_t p15_shadow_feedforward_selected_variant_id;
+  uint32_t p15_shadow_feedforward_reconciliation_match;
+  uint32_t p15_shadow_feedforward_correction_action;
   uint64_t p15_shadow_feedforward_fallback_to_judgment_count;
   uint64_t p15_shadow_feedforward_reservation_consumed_count;
   uint64_t p15_shadow_feedforward_no_matured_reservation_count;

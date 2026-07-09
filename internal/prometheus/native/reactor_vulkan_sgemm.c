@@ -442,8 +442,13 @@ typedef struct prom_p15_feedforward_dispatch_state {
   uint32_t enabled;
   uint32_t used;
   uint32_t source;
+  uint32_t reservation_present;
+  uint32_t reservation_matured;
   uint32_t block_reason;
   uint32_t reserved_variant_id;
+  uint32_t selected_variant_id;
+  uint32_t reconciliation_match;
+  uint32_t correction_action;
   uint64_t fallback_to_judgment_count;
   uint64_t reservation_consumed_count;
   uint64_t no_matured_reservation_count;
@@ -454,6 +459,18 @@ typedef struct prom_p15_feedforward_dispatch_state {
   uint64_t margin_block_count;
   uint64_t dedup_block_count;
 } prom_p15_feedforward_dispatch_state;
+
+typedef struct prom_p15_feedforward_reservation_probe {
+  const prom_dominatus_reservation_request* exact_match;
+  const prom_dominatus_reservation_request* variant_mismatch;
+  const prom_dominatus_reservation_request* shape_mismatch;
+  const prom_dominatus_reservation_request* stale;
+  const prom_dominatus_reservation_request* cancelled;
+  const prom_dominatus_reservation_request* consumed;
+  const prom_dominatus_reservation_request* pending;
+  uint32_t present;
+  uint32_t matured;
+} prom_p15_feedforward_reservation_probe;
 
 typedef struct prometheus_runtime {
   uint32_t magic;
@@ -4814,6 +4831,52 @@ static uint32_t prom_occ_variant_fallback_reason(uint32_t variant) {
   return PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED;
 }
 
+static const prom_dominatus_reservation_request* prom_p15_prefer_earlier_reservation(
+    const prom_dominatus_reservation_request* current,
+    const prom_dominatus_reservation_request* candidate) {
+  if (candidate == NULL) return current;
+  if (current == NULL || candidate->target_tick < current->target_tick) return candidate;
+  return current;
+}
+
+static prom_p15_feedforward_reservation_probe prom_p15_probe_feedforward_reservation(
+    const prom_dominatus_reservation_state_set* reservations,
+    uint32_t dispatch_shape_class,
+    uint32_t dispatch_variant_id) {
+  uint32_t i;
+  prom_p15_feedforward_reservation_probe probe;
+  memset(&probe, 0, sizeof(probe));
+  if (reservations == NULL) return probe;
+
+  for (i = 0u; i < PROM_DOM_RESERVATION_CAP; ++i) {
+    const prom_dominatus_reservation_request* entry = &reservations->entries[i];
+    if (entry->valid == 0u) continue;
+    probe.present = 1u;
+    if (entry->state == PROM_DOM_RESERVATION_MATURED) probe.matured = 1u;
+    if (entry->shape_class == dispatch_shape_class && entry->variant_id == dispatch_variant_id) {
+      if (entry->state == PROM_DOM_RESERVATION_MATURED) {
+        probe.exact_match = prom_p15_prefer_earlier_reservation(probe.exact_match, entry);
+      } else if (entry->state == PROM_DOM_RESERVATION_EXPIRED) {
+        probe.stale = prom_p15_prefer_earlier_reservation(probe.stale, entry);
+      } else if (entry->state == PROM_DOM_RESERVATION_CANCELLED) {
+        probe.cancelled = prom_p15_prefer_earlier_reservation(probe.cancelled, entry);
+      } else if (entry->state == PROM_DOM_RESERVATION_YIELDED) {
+        probe.consumed = prom_p15_prefer_earlier_reservation(probe.consumed, entry);
+      } else if (entry->state == PROM_DOM_RESERVATION_REQUESTED || entry->state == PROM_DOM_RESERVATION_RESERVED) {
+        probe.pending = prom_p15_prefer_earlier_reservation(probe.pending, entry);
+      }
+      continue;
+    }
+    if (entry->state != PROM_DOM_RESERVATION_MATURED) continue;
+    if (entry->shape_class == dispatch_shape_class) {
+      probe.variant_mismatch = prom_p15_prefer_earlier_reservation(probe.variant_mismatch, entry);
+    } else {
+      probe.shape_mismatch = prom_p15_prefer_earlier_reservation(probe.shape_mismatch, entry);
+    }
+  }
+  return probe;
+}
+
 static void prom_record_requested_occupancy_variant(prometheus_runtime* rt, uint32_t requested_variant) {
   const uint32_t path_status = prom_occ_variant_path_status(requested_variant);
   const uint32_t evt_dispatchable = prom_occ_variant_is_wired_evt_dispatchable(requested_variant);
@@ -5094,50 +5157,113 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   rt->p15_feedforward_dispatch_state.enabled = rt->p15_shadow_canary_params.enabled != 0u ? 1u : 0u;
   rt->p15_feedforward_dispatch_state.used = 0u;
   rt->p15_feedforward_dispatch_state.source = 0u;
-  rt->p15_feedforward_dispatch_state.block_reason = 0u;
+  rt->p15_feedforward_dispatch_state.reservation_present = 0u;
+  rt->p15_feedforward_dispatch_state.reservation_matured = 0u;
+  rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NONE;
   rt->p15_feedforward_dispatch_state.reserved_variant_id = 0u;
+  rt->p15_feedforward_dispatch_state.selected_variant_id = occupancy_decision.selected_variant;
+  rt->p15_feedforward_dispatch_state.reconciliation_match = 0u;
+  rt->p15_feedforward_dispatch_state.correction_action = PROM_DOM_CORRECTION_ACTION_NONE;
   if (rt->p15_feedforward_dispatch_state.enabled == 0u) {
-    rt->p15_feedforward_dispatch_state.block_reason = 1u;
+    rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_DISABLED;
   } else if (rt->p15_shadow_authority_gate.state != PROM_SHADOW_AUTHORITY_HEALTHY) {
-    rt->p15_feedforward_dispatch_state.block_reason = 2u;
+    rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NOT_HEALTHY;
     rt->p15_feedforward_dispatch_state.reason_binding_block_count += 1u;
   } else if (occupancy_decision.fallback_used != 0u) {
-    rt->p15_feedforward_dispatch_state.block_reason = 6u;
+    rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_FALLBACK_REQUIRED;
     rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
   } else if (rt->p15_shadow_canary_state.healthy_margin_passed == 0u) {
-    rt->p15_feedforward_dispatch_state.block_reason = 3u;
+    rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_MARGIN_FAILED;
     rt->p15_feedforward_dispatch_state.margin_block_count += 1u;
   } else if (rt->p15_shadow_canary_state.reason_binding_passed == 0u) {
-    rt->p15_feedforward_dispatch_state.block_reason = 4u;
+    rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_REASON_BINDING;
     rt->p15_feedforward_dispatch_state.reason_binding_block_count += 1u;
   } else {
-    prom_dominatus_reservation_decision consume =
-        prom_dominatus_reservation_consume_matured(&rt->p15_predictor_state.reservations, occupancy_decision.shape_class, occupancy_decision.selected_variant);
-    if (consume.valid != 0u && consume.yielded != 0u) {
-      rt->p15_feedforward_dispatch_state.used = 1u;
-      rt->p15_feedforward_dispatch_state.source = 1u;
-      rt->p15_feedforward_dispatch_state.reserved_variant_id = occupancy_decision.selected_variant;
-      rt->p15_feedforward_dispatch_state.reservation_consumed_count += 1u;
-    } else {
-      uint32_t i;
-      uint32_t saw_shape_mismatch = 0u;
-      uint32_t saw_variant_mismatch = 0u;
-      for (i = 0u; i < PROM_DOM_RESERVATION_CAP; ++i) {
-        const prom_dominatus_reservation_request* e = &rt->p15_predictor_state.reservations.entries[i];
-        if (e->valid == 0u || e->state != PROM_DOM_RESERVATION_MATURED) continue;
-        if (e->shape_class != occupancy_decision.shape_class) {
-          saw_shape_mismatch = 1u;
-          continue;
-        }
-        if (e->variant_id != occupancy_decision.selected_variant) {
-          saw_variant_mismatch = 1u;
+    const prom_p15_feedforward_reservation_probe probe =
+        prom_p15_probe_feedforward_reservation(&rt->p15_predictor_state.reservations,
+                                               occupancy_decision.shape_class,
+                                               occupancy_decision.selected_variant);
+    rt->p15_feedforward_dispatch_state.reservation_present = probe.present;
+    rt->p15_feedforward_dispatch_state.reservation_matured = probe.matured;
+    if (probe.exact_match != NULL &&
+        prom_occ_variant_is_wired_evt_dispatchable(probe.exact_match->variant_id) == 0u) {
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_CAPABILITY_MISMATCH;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.exact_match->variant_id;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+    } else if (probe.exact_match != NULL) {
+      prom_dominatus_reservation_decision consume =
+          prom_dominatus_reservation_consume_matured(&rt->p15_predictor_state.reservations,
+                                                     occupancy_decision.shape_class,
+                                                     occupancy_decision.selected_variant);
+      if (consume.valid != 0u && consume.yielded != 0u) {
+        rt->p15_feedforward_dispatch_state.used = 1u;
+        rt->p15_feedforward_dispatch_state.source = 1u;
+        rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.exact_match->variant_id;
+        rt->p15_feedforward_dispatch_state.reconciliation_match = 1u;
+        rt->p15_feedforward_dispatch_state.reservation_consumed_count += 1u;
+        rt->p15_last_reservation = consume;
+      }
+    } else if (probe.variant_mismatch != NULL) {
+      const prom_dominatus_reservation_decision correction =
+          prom_dominatus_predictor_apply_reconciliation_to_reservation(&rt->p15_predictor_state,
+                                                                       &rt->p15_predictor_state.reservations,
+                                                                       probe.variant_mismatch->request_id,
+                                                                       PROM_DOM_CORRECTION_ACTION_LOWER_CONFIDENCE,
+                                                                       PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
+                                                                       rt->p14_measurement_tick);
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.variant_mismatch->variant_id;
+      rt->p15_feedforward_dispatch_state.correction_action = PROM_DOM_CORRECTION_ACTION_LOWER_CONFIDENCE;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+      rt->p15_feedforward_dispatch_state.variant_mismatch_count += 1u;
+      if (correction.valid != 0u) {
+        rt->p15_last_reservation = correction;
+        if (correction.expired != 0u || correction.cancelled != 0u) {
+          rt->p15_feedforward_dispatch_state.stale_reservation_count += 1u;
         }
       }
-      rt->p15_feedforward_dispatch_state.block_reason = 5u;
-      rt->p15_feedforward_dispatch_state.no_matured_reservation_count += 1u;
+    } else if (probe.shape_mismatch != NULL) {
+      const prom_dominatus_reservation_decision correction =
+          prom_dominatus_predictor_apply_reconciliation_to_reservation(&rt->p15_predictor_state,
+                                                                       &rt->p15_predictor_state.reservations,
+                                                                       probe.shape_mismatch->request_id,
+                                                                       PROM_DOM_CORRECTION_ACTION_MARK_STALE,
+                                                                       PROM_P15_SHADOW_FEEDFORWARD_BLOCK_SHAPE_MISMATCH,
+                                                                       rt->p14_measurement_tick);
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_SHAPE_MISMATCH;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.shape_mismatch->variant_id;
+      rt->p15_feedforward_dispatch_state.correction_action = PROM_DOM_CORRECTION_ACTION_MARK_STALE;
       rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
-      if (saw_shape_mismatch != 0u) rt->p15_feedforward_dispatch_state.shape_mismatch_count += 1u;
-      if (saw_variant_mismatch != 0u) rt->p15_feedforward_dispatch_state.variant_mismatch_count += 1u;
+      rt->p15_feedforward_dispatch_state.shape_mismatch_count += 1u;
+      if (correction.valid != 0u) {
+        rt->p15_last_reservation = correction;
+        if (correction.expired != 0u || correction.cancelled != 0u) {
+          rt->p15_feedforward_dispatch_state.stale_reservation_count += 1u;
+        }
+      }
+    } else if (probe.stale != NULL) {
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_STALE_RESERVATION;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.stale->variant_id;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+      rt->p15_feedforward_dispatch_state.stale_reservation_count += 1u;
+    } else if (probe.cancelled != NULL) {
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_CANCELLED_RESERVATION;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.cancelled->variant_id;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+    } else if (probe.consumed != NULL) {
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_ALREADY_CONSUMED;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.consumed->variant_id;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+      rt->p15_feedforward_dispatch_state.dedup_block_count += 1u;
+    } else if (probe.pending != NULL) {
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_RESERVATION_NOT_READY;
+      rt->p15_feedforward_dispatch_state.reserved_variant_id = probe.pending->variant_id;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+      rt->p15_feedforward_dispatch_state.no_matured_reservation_count += 1u;
+    } else {
+      rt->p15_feedforward_dispatch_state.block_reason = PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NO_MATURED_RESERVATION;
+      rt->p15_feedforward_dispatch_state.fallback_to_judgment_count += 1u;
+      rt->p15_feedforward_dispatch_state.no_matured_reservation_count += 1u;
     }
   }
   rt->slot_diag.p13_m2_occupancy_device_band = occupancy_decision.device_band;
@@ -8578,8 +8704,13 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->p15_shadow_feedforward_enabled = rt->p15_feedforward_dispatch_state.enabled;
   out_diag->p15_shadow_feedforward_used = rt->p15_feedforward_dispatch_state.used;
   out_diag->p15_shadow_feedforward_source = rt->p15_feedforward_dispatch_state.source;
+  out_diag->p15_shadow_feedforward_reservation_present = rt->p15_feedforward_dispatch_state.reservation_present;
+  out_diag->p15_shadow_feedforward_reservation_matured = rt->p15_feedforward_dispatch_state.reservation_matured;
   out_diag->p15_shadow_feedforward_block_reason = rt->p15_feedforward_dispatch_state.block_reason;
   out_diag->p15_shadow_feedforward_reserved_variant_id = rt->p15_feedforward_dispatch_state.reserved_variant_id;
+  out_diag->p15_shadow_feedforward_selected_variant_id = rt->p15_feedforward_dispatch_state.selected_variant_id;
+  out_diag->p15_shadow_feedforward_reconciliation_match = rt->p15_feedforward_dispatch_state.reconciliation_match;
+  out_diag->p15_shadow_feedforward_correction_action = rt->p15_feedforward_dispatch_state.correction_action;
   out_diag->p15_shadow_feedforward_fallback_to_judgment_count = rt->p15_feedforward_dispatch_state.fallback_to_judgment_count;
   out_diag->p15_shadow_feedforward_reservation_consumed_count = rt->p15_feedforward_dispatch_state.reservation_consumed_count;
   out_diag->p15_shadow_feedforward_no_matured_reservation_count = rt->p15_feedforward_dispatch_state.no_matured_reservation_count;

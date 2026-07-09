@@ -1,3 +1,4 @@
+#include "../reactor_api.h"
 #include "../reactor_dominatus_predictor.h"
 #include "test_harness.h"
 
@@ -121,4 +122,40 @@ FACT(PrometheusDominatusPredictorCorrection_ConfidenceRecovery)
     ASSERT_EQUAL(1u, prom_dominatus_predictor_issue(&s, &e, &p, 14u, nullptr), "issued recovery 2");
     (void)prom_dominatus_predictor_mature(&s, &p, 15u);
     ASSERT_TRUE(s.prediction_confidence > low, "confidence recovered");
+}
+
+FACT(PrometheusDominatusPredictorCorrection_ReconciliationVariantMismatchExpiresReservationAndLowersConfidence)
+{
+    prom_dominatus_predictor_state s{};
+    prom_dominatus_predictor_init(&s, nullptr);
+
+    prom_dominatus_future_lease_request req{};
+    req.valid = 1u;
+    req.request_id = 71u;
+    req.target_tick = 12u;
+    req.shape_class = 3u;
+    req.variant_id = 4u;
+    req.lookahead_depth = 1u;
+    req.confidence = 0.9;
+
+    s.future_lease_seam.last_request = req;
+    s.future_lease_seam.last_request.state = PROM_DOM_FUTURE_LEASE_GRANTED;
+    ASSERT_EQUAL(1u,
+                 prom_dominatus_predictor_try_reserve_future(&s, &s.reservations, &req, 10u).reserved,
+                 "reservation created");
+    ASSERT_EQUAL(1u, prom_dominatus_reservation_mature(&s.reservations, 12u).matured, "reservation matured");
+
+    const auto before = s.prediction_confidence;
+    const auto correction = prom_dominatus_predictor_apply_reconciliation_to_reservation(
+        &s,
+        &s.reservations,
+        req.request_id,
+        PROM_DOM_CORRECTION_ACTION_LOWER_CONFIDENCE,
+        PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
+        12u);
+
+    ASSERT_EQUAL(1u, correction.expired, "variant mismatch should expire matured reservation");
+    ASSERT_EQUAL(PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH, correction.reason, "reason preserved");
+    ASSERT_TRUE(s.prediction_confidence < before, "confidence reduced");
+    ASSERT_EQUAL(1u, s.correction_count, "correction counted");
 }

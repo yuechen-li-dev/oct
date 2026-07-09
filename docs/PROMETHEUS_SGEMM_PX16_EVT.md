@@ -26,3 +26,20 @@ The architecture rule for this milestone is:
 - DVT/PVT/promotion lifecycle fields remain telemetry only.
 - P15 mismatch correction remains deferred.
 - Selector performance tuning remains deferred.
+
+## Px16 M5
+
+Px16 M5 ports the Shadow Authority rake lab M5 feedforward validation model into the native SGEMM/P15 path. Native P15 reconciliation now compares the matured reserved/prestaged occupancy variant against the live judgment-engine-selected occupancy variant once per real SGEMM call, after the production decision exists.
+
+The architecture rule for this milestone is:
+
+- The judgment engine remains the sole production dispatch authority.
+- P15 feedforward remains prestage, latency-hiding, and telemetry only.
+- Matching matured reservations record a reconciliation hit and consume once.
+- Variant mismatch never overrides dispatch; the live SGEMM call still requests and executes the judgment-engine-selected variant.
+- Mismatch now feeds the existing predictor correction/confidence machinery and retires the stale reservation path instead of silently collapsing into a generic no-reservation bucket.
+- Native block reasons now follow the Shadow Authority rake lab M5 taxonomy, including `VariantMismatch`, `StaleReservation`, `CancelledReservation`, `AlreadyConsumed`, and `ReservationNotReady`.
+
+Deviation note:
+
+- Native reuse of the existing reservation state machine still materializes stale mismatch cleanup as reservation expiry/cancellation transitions rather than adding a new reservation state enum.

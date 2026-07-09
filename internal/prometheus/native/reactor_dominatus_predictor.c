@@ -6,6 +6,9 @@
 #define PROM_DOM_FALLBACK_NONE 0u
 #define PROM_DOM_FALLBACK_HARD_GATE 1u
 #define PROM_DOM_FALLBACK_RING_FULL 2u
+#define PROM_DOM_RESERVATION_CORRECTION_REASON_HARD_GATE 90u
+#define PROM_DOM_RESERVATION_CORRECTION_REASON_MISS_AT_MATURITY 91u
+#define PROM_DOM_RESERVATION_CORRECTION_REASON_PREMATURE_CANCEL 92u
 
 static prom_dominatus_reservation_decision reservation_transition_by_request_id(
     prom_dominatus_reservation_state_set* state,
@@ -380,7 +383,10 @@ prom_dominatus_reservation_decision prom_dominatus_predictor_apply_correction_to
       correction->valid == 0u || matured_entry->lease_request_id == 0u) return d;
 
   if (correction->action == PROM_DOM_CORRECTION_ACTION_MARK_STALE) {
-    d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_CANCELLED, 90u);
+    d = reservation_transition_by_request_id(reservations,
+                                             matured_entry->lease_request_id,
+                                             PROM_DOM_RESERVATION_CANCELLED,
+                                             PROM_DOM_RESERVATION_CORRECTION_REASON_HARD_GATE);
     if (d.cancelled != 0u) {
       (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, matured_entry->lease_request_id, d.reason, tick);
       predictor->future_lease_cancelled += 1u;
@@ -393,16 +399,62 @@ prom_dominatus_reservation_decision prom_dominatus_predictor_apply_correction_to
     return d;
   }
   if (tick >= matured_entry->target_tick) {
-    d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_EXPIRED, 91u);
+    d = reservation_transition_by_request_id(reservations,
+                                             matured_entry->lease_request_id,
+                                             PROM_DOM_RESERVATION_EXPIRED,
+                                             PROM_DOM_RESERVATION_CORRECTION_REASON_MISS_AT_MATURITY);
     if (d.expired != 0u) {
       (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, matured_entry->lease_request_id, d.reason, tick);
       predictor->future_lease_cancelled += 1u;
     }
     return d;
   }
-  d = reservation_transition_by_request_id(reservations, matured_entry->lease_request_id, PROM_DOM_RESERVATION_CANCELLED, 92u);
+  d = reservation_transition_by_request_id(reservations,
+                                           matured_entry->lease_request_id,
+                                           PROM_DOM_RESERVATION_CANCELLED,
+                                           PROM_DOM_RESERVATION_CORRECTION_REASON_PREMATURE_CANCEL);
   if (d.cancelled != 0u) {
     (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, matured_entry->lease_request_id, d.reason, tick);
+    predictor->future_lease_cancelled += 1u;
+  }
+  return d;
+}
+
+prom_dominatus_reservation_decision prom_dominatus_predictor_apply_reconciliation_to_reservation(
+    prom_dominatus_predictor_state* predictor,
+    prom_dominatus_reservation_state_set* reservations,
+    uint64_t request_id,
+    prom_dominatus_correction_action action,
+    uint32_t reason,
+    uint64_t tick) {
+  uint32_t i;
+  prom_dominatus_reservation_decision d;
+  memset(&d, 0, sizeof(d));
+  if (predictor == NULL || reservations == NULL || request_id == 0u || action == PROM_DOM_CORRECTION_ACTION_NONE) return d;
+
+  predictor->last_tick = tick;
+  predictor->correction_count += 1u;
+  predictor->prediction_confidence = clamp01(predictor->prediction_confidence - predictor->params.correction_penalty);
+
+  if (action == PROM_DOM_CORRECTION_ACTION_MARK_STALE) {
+    predictor->stale_prediction_count += 1u;
+    predictor->predictor_stale = 1u;
+  }
+
+  for (i = 0u; i < PROM_DOM_RESERVATION_CAP; ++i) {
+    prom_dominatus_reservation_request* entry;
+    if (reservations->entries[i].valid == 0u || reservations->entries[i].request_id != request_id) continue;
+    entry = &reservations->entries[i];
+    if (entry->state == PROM_DOM_RESERVATION_MATURED) {
+      d = reservation_transition(reservations, i, PROM_DOM_RESERVATION_EXPIRED, reason);
+    } else if (entry->state == PROM_DOM_RESERVATION_RESERVED) {
+      d = reservation_transition(reservations, i, PROM_DOM_RESERVATION_CANCELLED, reason);
+    }
+    break;
+  }
+
+  if (d.expired != 0u || d.cancelled != 0u) {
+    (void)prom_dominatus_future_lease_cancel(&predictor->future_lease_seam, request_id, d.reason, tick);
     predictor->future_lease_cancelled += 1u;
   }
   return d;

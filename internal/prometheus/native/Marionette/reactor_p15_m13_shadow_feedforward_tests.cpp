@@ -2,7 +2,16 @@
 #include <cstring>
 #include "../reactor_api.h"
 #include "../reactor_dominatus_predictor.h"
+#include "../reactor_judgment_engine.h"
 #include "test_harness.h"
+
+static uint32_t alternate_wired_variant(uint32_t selected)
+{
+    if (selected != PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
+        return PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE;
+    }
+    return PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR;
+}
 
 FACT(PrometheusP15M13ShadowFeedforward_DefaultOffDoesNotEnableAuthority)
 {
@@ -324,6 +333,84 @@ FACT(PrometheusP15M13ShadowFeedforward_EnabledHealthyMaturedReservationUsedBySge
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &after_second), "second diag query succeeds");
     ASSERT_EQUAL(consumed_after_first_use, after_second.p15_shadow_feedforward_reservation_consumed_count,
                  "same reservation should not be consumed twice");
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusP15M13ShadowFeedforward_VariantMismatchFallsBackToJudgmentAndCorrectsReservation)
+{
+    PrometheusReactorConfig cfg{};
+    cfg.struct_size = sizeof(cfg);
+    cfg.test_flags = PROM_TESTCFG_SKIP_SUBMIT_WAIT;
+    cfg.p15_shadow_canary_enabled = 1u;
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should succeed");
+
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; SGEMM feedforward reconciliation cannot be asserted");
+    }
+
+    std::vector<float> a(64u, 1.0f);
+    std::vector<float> b(64u, 1.0f);
+    std::vector<float> c(64u, 0.0f);
+    uint32_t stage = 0u;
+    int detail = 0;
+    const int baseline_status = prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail);
+    if (baseline_status != PROM_OK) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+        SKIP("baseline sgemm failed in environment; reconciliation path cannot be asserted");
+    }
+
+    PrometheusSgemmPolicyDiagnostics baseline{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &baseline), "baseline diag query succeeds");
+    const uint32_t selected_variant = baseline.p13_m2_occupancy_selected_variant;
+    const uint32_t mismatched_variant = alternate_wired_variant(selected_variant);
+    ASSERT_TRUE(mismatched_variant != selected_variant, "test needs a different wired variant");
+
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_p15_test_seed_matured_reservation(handle,
+                                                                              baseline.p13_m2_occupancy_shape_class,
+                                                                              mismatched_variant,
+                                                                              1u),
+                 "test seam should seed matured mismatched reservation");
+
+    const double confidence_before = baseline.p15_prediction_confidence;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), 8u, 8u, 8u, &stage, &detail),
+                 "reconciliation sgemm should succeed");
+
+    PrometheusSgemmPolicyDiagnostics after{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_policy_diagnostics(handle, &after), "diag query succeeds");
+    ASSERT_EQUAL(1u, after.p15_shadow_feedforward_reservation_present, "reservation visible");
+    ASSERT_EQUAL(1u, after.p15_shadow_feedforward_reservation_matured, "matured reservation visible");
+    ASSERT_EQUAL(0u, after.p15_shadow_feedforward_used, "variant mismatch must not use feedforward");
+    ASSERT_EQUAL(PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
+                 after.p15_shadow_feedforward_block_reason,
+                 "variant mismatch reason surfaced");
+    ASSERT_EQUAL(mismatched_variant,
+                 after.p15_shadow_feedforward_reserved_variant_id,
+                 "reserved variant reported");
+    ASSERT_EQUAL(selected_variant,
+                 after.p15_shadow_feedforward_selected_variant_id,
+                 "selected variant reported");
+    ASSERT_EQUAL(0u, after.p15_shadow_feedforward_reconciliation_match, "mismatch is not a reconciliation hit");
+    ASSERT_EQUAL(PROM_DOM_CORRECTION_ACTION_LOWER_CONFIDENCE,
+                 after.p15_shadow_feedforward_correction_action,
+                 "mismatch lowers confidence");
+    ASSERT_EQUAL(selected_variant,
+                 after.p13_m16b1_requested_occupancy_variant,
+                 "requested dispatch still follows judgment engine");
+    ASSERT_EQUAL(selected_variant,
+                 after.p13_m16b1_executed_occupancy_variant,
+                 "executed dispatch still follows judgment engine");
+    ASSERT_EQUAL(PROM_P15_SHADOW_FEEDFORWARD_BLOCK_VARIANT_MISMATCH,
+                 after.p15_reservation_reason,
+                 "reservation reason maps to variant mismatch");
+    ASSERT_TRUE(after.p15_prediction_confidence <= confidence_before, "confidence must not increase on mismatch");
+    ASSERT_TRUE(after.p15_shadow_feedforward_variant_mismatch_count >= 1u, "variant mismatch counted");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
