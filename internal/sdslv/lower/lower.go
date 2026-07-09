@@ -29,15 +29,9 @@ func Module(module ast.Module) (vdmir.Module, error) {
 				Target:     l.lowerTypeRef(d.Type),
 			})
 		case ast.RecordDecl:
-			record := vdmir.Record{Provenance: l.provenance, Name: d.Name}
-			for _, field := range d.Fields {
-				record.Fields = append(record.Fields, vdmir.Field{
-					Provenance: l.provenance,
-					Name:       field.Name,
-					Type:       l.lowerTypeRef(field.Type),
-				})
-			}
-			out.Records = append(out.Records, record)
+			out.Records = append(out.Records, l.lowerRecord(d.Name, d.Fields))
+		case ast.StreamDecl:
+			out.Streams = append(out.Streams, l.lowerStream(d.Name, d.Fields))
 		case ast.EnumDecl:
 			out.Enums = append(out.Enums, vdmir.Enum{
 				Provenance: l.provenance,
@@ -51,9 +45,14 @@ func Module(module ast.Module) (vdmir.Module, error) {
 			}
 			out.Functions = append(out.Functions, fn)
 		case ast.ShaderDecl:
-			for i, resource := range d.Resources {
+			resources, bundleName, err := l.resolveShaderResources(d)
+			if err != nil {
+				return vdmir.Module{}, err
+			}
+			for i, resource := range resources {
 				out.Resources = append(out.Resources, vdmir.Resource{
 					Provenance:  l.provenance,
+					BundleName:  bundleName,
 					Name:        resource.Name,
 					ElementType: l.lowerResourceElementType(resource.Type),
 					Access:      lowerResourceAccess(resource.Access),
@@ -61,13 +60,13 @@ func Module(module ast.Module) (vdmir.Module, error) {
 				})
 			}
 			for _, method := range d.Methods {
-				fn, err := l.lowerFunction(d.Name, method, d.Resources)
+				fn, err := l.lowerFunction(d.Name, method, resources)
 				if err != nil {
 					return vdmir.Module{}, err
 				}
 				out.Functions = append(out.Functions, fn)
 				if method.Stage == "compute" {
-					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d.Name, method, d.Resources))
+					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d.Name, method, resources))
 				}
 			}
 		case ast.UnsupportedDecl:
@@ -77,10 +76,15 @@ func Module(module ast.Module) (vdmir.Module, error) {
 	return out, nil
 }
 
+type fieldInfo struct {
+	access string
+	typ    ast.TypeRef
+}
+
 type typeInfo struct {
 	kind   string
 	target ast.TypeRef
-	fields map[string]ast.TypeRef
+	fields map[string]fieldInfo
 }
 
 type functionInfo struct {
@@ -109,10 +113,10 @@ func (l *lowering) seedBuiltins() {
 	}
 	l.types["uint3"] = typeInfo{
 		kind: "builtin",
-		fields: map[string]ast.TypeRef{
-			"x": {Name: "u32"},
-			"y": {Name: "u32"},
-			"z": {Name: "u32"},
+		fields: map[string]fieldInfo{
+			"x": {typ: ast.TypeRef{Name: "u32"}},
+			"y": {typ: ast.TypeRef{Name: "u32"}},
+			"z": {typ: ast.TypeRef{Name: "u32"}},
 		},
 	}
 }
@@ -123,11 +127,9 @@ func (l *lowering) collect(module ast.Module) {
 		case ast.TypeAliasDecl:
 			l.types[d.Name] = typeInfo{kind: "alias", target: d.Type}
 		case ast.RecordDecl:
-			fields := map[string]ast.TypeRef{}
-			for _, field := range d.Fields {
-				fields[field.Name] = field.Type
-			}
-			l.types[d.Name] = typeInfo{kind: "record", fields: fields}
+			l.types[d.Name] = typeInfo{kind: "record", fields: collectFields(d.Fields)}
+		case ast.StreamDecl:
+			l.types[d.Name] = typeInfo{kind: "stream", fields: collectFields(d.Fields)}
 		case ast.EnumDecl:
 			l.types[d.Name] = typeInfo{kind: "enum"}
 		case ast.FunctionDecl:
@@ -145,6 +147,57 @@ func (l *lowering) collect(module ast.Module) {
 			}
 		}
 	}
+}
+
+func (l *lowering) lowerRecord(name string, fields []ast.Field) vdmir.Record {
+	record := vdmir.Record{Provenance: l.provenance, Name: name}
+	for _, field := range fields {
+		record.Fields = append(record.Fields, vdmir.Field{
+			Provenance: l.provenance,
+			Name:       field.Name,
+			Type:       l.lowerTypeRef(field.Type),
+		})
+	}
+	return record
+}
+
+func (l *lowering) lowerStream(name string, fields []ast.Field) vdmir.Stream {
+	stream := vdmir.Stream{Provenance: l.provenance, Name: name}
+	for _, field := range fields {
+		if field.Access != "" {
+			continue
+		}
+		stream.Fields = append(stream.Fields, vdmir.Field{
+			Provenance: l.provenance,
+			Name:       field.Name,
+			Type:       l.lowerTypeRef(field.Type),
+		})
+	}
+	return stream
+}
+
+func (l *lowering) resolveShaderResources(shader ast.ShaderDecl) ([]ast.ResourceDecl, string, error) {
+	if shader.ResourceBundleName == "" {
+		return append([]ast.ResourceDecl(nil), shader.Resources...), "", nil
+	}
+	info, ok := l.types[shader.ResourceBundleName]
+	if !ok || info.kind != "stream" {
+		return nil, "", fmt.Errorf("unknown stream resource bundle %s", shader.ResourceBundleName)
+	}
+	names := make([]string, 0, len(info.fields))
+	for name := range info.fields {
+		names = append(names, name)
+	}
+	sortStrings(names)
+	resources := make([]ast.ResourceDecl, 0, len(names))
+	for _, name := range names {
+		field := info.fields[name]
+		if field.access == "" {
+			continue
+		}
+		resources = append(resources, ast.ResourceDecl{Name: name, Access: field.access, Type: field.typ})
+	}
+	return resources, shader.ResourceBundleName, nil
 }
 
 func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl) (vdmir.Function, error) {
@@ -284,7 +337,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 			Body:       body,
 		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported statement in GoOct SDSL-V M0")
+		return nil, fmt.Errorf("unsupported statement in GoOct SDSL-V M3")
 	}
 }
 
@@ -427,8 +480,27 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Cases:      cases,
 			Else:       elseExpr,
 		}, nil
+	case ast.WithExpr:
+		base, err := l.lowerExpr(e.Base, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		updates := make([]vdmir.FieldUpdate, 0, len(e.Updates))
+		for _, update := range e.Updates {
+			value, err := l.lowerExpr(update.Value, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			updates = append(updates, vdmir.FieldUpdate{Name: update.Name, Value: value})
+		}
+		return vdmir.WithExpr{
+			Provenance: l.provenance,
+			ExprType:   base.Type(),
+			Base:       base,
+			Updates:    updates,
+		}, nil
 	default:
-		return nil, fmt.Errorf("unsupported expression in GoOct SDSL-V M0")
+		return nil, fmt.Errorf("unsupported expression in GoOct SDSL-V M3")
 	}
 }
 
@@ -442,22 +514,57 @@ func (l *lowering) lowerComputeEntryPoint(shaderName string, fn ast.FunctionDecl
 		NumThreadsY:  fn.NumThreads.Y,
 		NumThreadsZ:  fn.NumThreads.Z,
 	}
+	directBuiltins := referencedBuiltins(fn.Body)
+	threadParams := l.computeThreadBindings(fn.Parameters)
 	for _, param := range fn.Parameters {
+		if binding, ok := computeThreadBindingForParam(param); ok {
+			entry.ThreadParams = append(entry.ThreadParams, binding)
+			continue
+		}
 		entry.Params = append(entry.Params, vdmir.Parameter{
 			Provenance: l.provenance,
 			Name:       param.Name,
 			Type:       l.lowerTypeRef(param.Type),
 		})
 	}
-	builtinNames := referencedBuiltins(fn.Body)
 	entry.Builtins = []vdmir.BuiltinParam{
-		{Name: "DispatchThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_DispatchThreadID", Builtin: vdmir.BuiltinDispatchThreadID, Available: true, Referenced: builtinNames["DispatchThreadID"]},
-		{Name: "GroupThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupThreadID", Builtin: vdmir.BuiltinGroupThreadID, Available: true, Referenced: builtinNames["GroupThreadID"]},
-		{Name: "GroupID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupID", Builtin: vdmir.BuiltinGroupID, Available: true, Referenced: builtinNames["GroupID"]},
-		{Name: "GroupIndex", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Semantic: "SV_GroupIndex", Builtin: vdmir.BuiltinGroupIndex, Available: true, Referenced: builtinNames["GroupIndex"]},
+		{Name: "DispatchThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_DispatchThreadID", Builtin: vdmir.BuiltinDispatchThreadID, Available: true, Referenced: directBuiltins["DispatchThreadID"] || threadParams["DispatchThreadID"]},
+		{Name: "GroupThreadID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupThreadID", Builtin: vdmir.BuiltinGroupThreadID, Available: true, Referenced: directBuiltins["GroupThreadID"] || threadParams["GroupThreadID"]},
+		{Name: "GroupID", Type: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "uint3"}, Semantic: "SV_GroupID", Builtin: vdmir.BuiltinGroupID, Available: true, Referenced: directBuiltins["GroupID"] || threadParams["GroupID"]},
+		{Name: "GroupIndex", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Semantic: "SV_GroupIndex", Builtin: vdmir.BuiltinGroupIndex, Available: true, Referenced: directBuiltins["GroupIndex"] || threadParams["GroupIndex"]},
 	}
 	_ = resources
 	return entry
+}
+
+func (l *lowering) computeThreadBindings(params []ast.Parameter) map[string]bool {
+	out := map[string]bool{}
+	for _, param := range params {
+		binding, ok := computeThreadBindingForParam(param)
+		if !ok {
+			continue
+		}
+		for _, field := range binding.Fields {
+			out[field.BuiltinName] = true
+		}
+	}
+	return out
+}
+
+func computeThreadBindingForParam(param ast.Parameter) (vdmir.ComputeThreadBinding, bool) {
+	if param.Type.Name != "ComputeThread" {
+		return vdmir.ComputeThreadBinding{}, false
+	}
+	return vdmir.ComputeThreadBinding{
+		ParamName: param.Name,
+		TypeName:  "ComputeThread",
+		Fields: []vdmir.ComputeThreadFieldBinding{
+			{FieldName: "DispatchId", BuiltinName: "DispatchThreadID"},
+			{FieldName: "GroupId", BuiltinName: "GroupID"},
+			{FieldName: "GroupThreadId", BuiltinName: "GroupThreadID"},
+			{FieldName: "GroupIndex", BuiltinName: "GroupIndex"},
+		},
+	}, true
 }
 
 func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
@@ -490,6 +597,8 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 			switch info.kind {
 			case "record":
 				return vdmir.Type{Kind: vdmir.TypeRecord, Name: resolved.Name}
+			case "stream":
+				return vdmir.Type{Kind: vdmir.TypeStream, Name: resolved.Name}
 			case "enum":
 				return vdmir.Type{Kind: vdmir.TypeEnum, Name: resolved.Name}
 			}
@@ -521,7 +630,7 @@ func (l *lowering) fieldType(target vdmir.Type, field string) ast.TypeRef {
 	if !ok || info.fields == nil {
 		return ast.TypeRef{Name: "<error>"}
 	}
-	return l.resolveAlias(info.fields[field])
+	return l.resolveAlias(info.fields[field].typ)
 }
 
 func (l *lowering) lookupFunction(shaderName, name string) (functionInfo, bool) {
@@ -643,6 +752,11 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 		if e.Else != nil {
 			walkExpr(e.Else, builtins)
 		}
+	case ast.WithExpr:
+		walkExpr(e.Base, builtins)
+		for _, update := range e.Updates {
+			walkExpr(update.Value, builtins)
+		}
 	}
 }
 
@@ -694,6 +808,14 @@ func cloneScope(scope map[string]binding) map[string]binding {
 	out := make(map[string]binding, len(scope))
 	for k, v := range scope {
 		out[k] = v
+	}
+	return out
+}
+
+func collectFields(fields []ast.Field) map[string]fieldInfo {
+	out := make(map[string]fieldInfo, len(fields))
+	for _, field := range fields {
+		out[field.Name] = fieldInfo{access: field.Access, typ: field.Type}
 	}
 	return out
 }

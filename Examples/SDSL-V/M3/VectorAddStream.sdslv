@@ -1,0 +1,43 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream VectorAddIO {
+    A: readonly array<f32>;
+    B: readonly array<f32>;
+    C: readwrite array<f32>;
+}
+
+record VectorParams {
+    Count: u32;
+    Bias: f32;
+}
+
+record DispatchInfo {
+    Index: u32;
+    Group: u32;
+}
+
+shader VectorAddStream {
+    resources VectorAddIO;
+
+    fn DescribeThread(thread: ComputeThread) -> DispatchInfo {
+        let info: DispatchInfo;
+        info.Index = thread.DispatchId.x;
+        info.Group = thread.GroupIndex;
+        return info;
+    }
+
+    stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: VectorParams) -> void {
+        let info: DispatchInfo = DescribeThread(thread);
+        if info.Index < params.Count {
+            C[info.Index] = A[info.Index] + B[info.Index] + params.Bias;
+        }
+        return;
+    }
+}

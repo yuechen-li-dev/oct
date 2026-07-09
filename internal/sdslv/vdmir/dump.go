@@ -29,6 +29,12 @@ func Dump(module Module) string {
 			line(1, fmt.Sprintf("field %s: %s", field.Name, FormatType(field.Type)))
 		}
 	}
+	for _, stream := range module.Streams {
+		line(0, "stream "+stream.Name)
+		for _, field := range stream.Fields {
+			line(1, fmt.Sprintf("field %s: %s", field.Name, FormatType(field.Type)))
+		}
+	}
 	for _, enum := range module.Enums {
 		line(0, "enum "+enum.Name)
 		for _, variant := range enum.Variants {
@@ -36,7 +42,11 @@ func Dump(module Module) string {
 		}
 	}
 	for _, resource := range module.Resources {
-		line(0, fmt.Sprintf("resource %s %s: %s", resource.Access, resource.Name, FormatType(Type{Kind: TypeRuntimeArray, Element: resource.ElementTypeRef()})))
+		text := fmt.Sprintf("resource %s %s: %s", resource.Access, resource.Name, FormatType(Type{Kind: TypeRuntimeArray, Element: resource.ElementTypeRef()}))
+		if resource.BundleName != "" {
+			text += " bundle " + resource.BundleName
+		}
+		line(0, text)
 	}
 	for _, fn := range module.Functions {
 		line(0, fmt.Sprintf("function %s -> %s emitted %s", fn.Name, FormatType(fn.ReturnType), fn.EmittedName))
@@ -53,6 +63,16 @@ func Dump(module Module) string {
 		line(1, fmt.Sprintf("function %s", entry.FunctionName))
 		for _, param := range entry.Params {
 			line(1, fmt.Sprintf("param %s: %s", param.Name, FormatType(param.Type)))
+		}
+		for _, thread := range entry.ThreadParams {
+			line(1, fmt.Sprintf("thread %s: %s", thread.ParamName, thread.TypeName))
+			for _, field := range thread.Fields {
+				label := fmt.Sprintf("field %s <- %s", field.FieldName, field.BuiltinName)
+				if field.BuiltinField != "" {
+					label += "." + field.BuiltinField
+				}
+				line(2, label)
+			}
 		}
 		for _, builtin := range entry.Builtins {
 			line(1, fmt.Sprintf("builtin %s: %s semantic %s referenced=%t", builtin.Name, FormatType(builtin.Type), builtin.Semantic, builtin.Referenced))
@@ -128,6 +148,12 @@ func FormatExpr(expr Expr) string {
 		}
 		parts = append(parts, "else "+FormatExpr(e.Else))
 		return "when utility { " + strings.Join(parts, " | ") + " }"
+	case WithExpr:
+		parts := make([]string, 0, len(e.Updates))
+		for _, update := range e.Updates {
+			parts = append(parts, fmt.Sprintf("%s: %s", update.Name, FormatExpr(update.Value)))
+		}
+		return FormatExpr(e.Base) + " with { " + strings.Join(parts, ", ") + " }"
 	default:
 		return "<expr>"
 	}
@@ -161,6 +187,10 @@ func FormatType(t Type) string {
 			return "array<?>"
 		}
 		return fmt.Sprintf("array<%s,%d>", FormatType(*t.Element), t.ArraySize)
+	case TypeRecord:
+		return "record " + t.Name
+	case TypeStream:
+		return "stream " + t.Name
 	default:
 		return t.Name
 	}

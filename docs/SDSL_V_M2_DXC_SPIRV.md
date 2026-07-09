@@ -157,3 +157,5 @@ M2 does not:
 ## Next step
 
 The next natural milestone is to use this opt-in generation lane to produce source-backed Prometheus shader artifacts intentionally, then wire those artifacts into the Prometheus runtime in a separate milestone.
+
+Before real SGEMM authoring, M3 improves the language surface with compute streams, named resource bundles, and immutable `with` updates while keeping this DXC/SPIR-V lane unchanged. See `docs/SDSL_V_M3_COMPUTE_STREAMS.md`.

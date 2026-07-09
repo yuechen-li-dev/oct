@@ -25,6 +25,13 @@ type RecordDecl struct {
 
 func (RecordDecl) declNode() {}
 
+type StreamDecl struct {
+	Name   string
+	Fields []Field
+}
+
+func (StreamDecl) declNode() {}
+
 type EnumDecl struct {
 	Name     string
 	Variants []string
@@ -33,9 +40,10 @@ type EnumDecl struct {
 func (EnumDecl) declNode() {}
 
 type ShaderDecl struct {
-	Name      string
-	Resources []ResourceDecl
-	Methods   []FunctionDecl
+	Name               string
+	ResourceBundleName string
+	Resources          []ResourceDecl
+	Methods            []FunctionDecl
 }
 
 func (ShaderDecl) declNode() {}
@@ -70,8 +78,9 @@ type ResourceDecl struct {
 }
 
 type Field struct {
-	Name string
-	Type TypeRef
+	Name   string
+	Access string
+	Type   TypeRef
 }
 
 type Parameter struct {
@@ -223,4 +232,16 @@ type UtilityCase struct {
 	Value     Expr
 	Condition Expr
 	Score     Expr
+}
+
+type WithExpr struct {
+	Base    Expr
+	Updates []FieldUpdate
+}
+
+func (WithExpr) exprNode() {}
+
+type FieldUpdate struct {
+	Name  string
+	Value Expr
 }

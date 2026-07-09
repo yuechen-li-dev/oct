@@ -25,16 +25,35 @@ func Module(module ast.Module) error {
 	return nil
 }
 
+type fieldInfo struct {
+	access string
+	typ    ast.TypeRef
+}
+
 type typeInfo struct {
 	name   string
 	kind   string
-	fields map[string]ast.TypeRef
+	fields map[string]fieldInfo
 	target ast.TypeRef
 }
 
 type functionInfo struct {
 	returnType ast.TypeRef
 	params     []ast.Parameter
+}
+
+type varOrigin string
+
+const (
+	varLocal    varOrigin = "local"
+	varParam    varOrigin = "param"
+	varResource varOrigin = "resource"
+	varBuiltin  varOrigin = "builtin"
+)
+
+type varInfo struct {
+	typ    ast.TypeRef
+	origin varOrigin
 }
 
 type validator struct {
@@ -48,10 +67,10 @@ func (v *validator) seedBuiltins() {
 	for _, name := range []string{"void", "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4"} {
 		v.types[name] = typeInfo{name: name, kind: "builtin"}
 	}
-	v.types["uint3"] = typeInfo{name: "uint3", kind: "builtin", fields: map[string]ast.TypeRef{
-		"x": {Name: "u32"},
-		"y": {Name: "u32"},
-		"z": {Name: "u32"},
+	v.types["uint3"] = typeInfo{name: "uint3", kind: "builtin", fields: map[string]fieldInfo{
+		"x": {typ: ast.TypeRef{Name: "u32"}},
+		"y": {typ: ast.TypeRef{Name: "u32"}},
+		"z": {typ: ast.TypeRef{Name: "u32"}},
 	}}
 }
 
@@ -61,14 +80,9 @@ func (v *validator) collect(module ast.Module) {
 		case ast.TypeAliasDecl:
 			v.addType(d.Name, typeInfo{name: d.Name, kind: "alias", target: d.Type})
 		case ast.RecordDecl:
-			fields := map[string]ast.TypeRef{}
-			for _, field := range d.Fields {
-				if _, exists := fields[field.Name]; exists {
-					v.errorf("duplicate record field %s.%s", d.Name, field.Name)
-				}
-				fields[field.Name] = field.Type
-			}
-			v.addType(d.Name, typeInfo{name: d.Name, kind: "record", fields: fields})
+			v.addFieldType(d.Name, "record", d.Fields, "record")
+		case ast.StreamDecl:
+			v.addFieldType(d.Name, "stream", d.Fields, "stream")
 		case ast.EnumDecl:
 			v.addType(d.Name, typeInfo{name: d.Name, kind: "enum"})
 		case ast.FunctionDecl:
@@ -87,6 +101,17 @@ func (v *validator) collect(module ast.Module) {
 			v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 		}
 	}
+}
+
+func (v *validator) addFieldType(name, kind string, fields []ast.Field, label string) {
+	collected := map[string]fieldInfo{}
+	for _, field := range fields {
+		if _, exists := collected[field.Name]; exists {
+			v.errorf("duplicate %s field %s.%s", label, name, field.Name)
+		}
+		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type}
+	}
+	v.addType(name, typeInfo{name: name, kind: kind, fields: collected})
 }
 
 func (v *validator) addType(name string, info typeInfo) {
@@ -111,9 +136,9 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		case ast.TypeAliasDecl:
 			v.validateType(d.Type)
 		case ast.RecordDecl:
-			for _, field := range d.Fields {
-				v.validateType(field.Type)
-			}
+			v.validateFields(d.Name, "record", d.Fields, false)
+		case ast.StreamDecl:
+			v.validateFields(d.Name, "stream", d.Fields, true)
 		case ast.ShaderDecl:
 			v.validateShader(d)
 		case ast.FunctionDecl:
@@ -122,9 +147,22 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 	}
 }
 
+func (v *validator) validateFields(owner, kind string, fields []ast.Field, allowAccess bool) {
+	for _, field := range fields {
+		if field.Access != "" && !allowAccess {
+			v.errorf("%s field %s.%s must not declare resource access", kind, owner, field.Name)
+		}
+		v.validateType(field.Type)
+	}
+}
+
 func (v *validator) validateShader(shader ast.ShaderDecl) {
+	if shader.ResourceBundleName != "" && len(shader.Resources) > 0 {
+		v.errorf("shader %s cannot use both resources %s; and resources { ... }", shader.Name, shader.ResourceBundleName)
+	}
+	resources := v.resolveShaderResources(shader)
 	v.resources = map[string]ast.ResourceDecl{}
-	for _, resource := range shader.Resources {
+	for _, resource := range resources {
 		if _, exists := v.resources[resource.Name]; exists {
 			v.errorf("duplicate shader resource %s.%s", shader.Name, resource.Name)
 		}
@@ -132,7 +170,7 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 			v.errorf("resource %s.%s must be readonly or readwrite", shader.Name, resource.Name)
 		}
 		if resource.Type.Name != "array" || len(resource.Type.Args) != 1 {
-			v.errorf("resource %s.%s must use array<T> in GoOct SDSL-V M0", shader.Name, resource.Name)
+			v.errorf("resource %s.%s must use array<T> in GoOct SDSL-V M3", shader.Name, resource.Name)
 		}
 		v.validateType(resource.Type)
 		v.resources[resource.Name] = resource
@@ -148,39 +186,73 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 				v.errorf("compute method %s.%s numthreads values must be positive integer literals", shader.Name, method.Name)
 			}
 		}
-		v.validateFunction(method, shader.Name, shader.Resources)
+		v.validateFunction(method, shader.Name, resources)
 	}
 	v.resources = nil
 }
 
+func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.ResourceDecl {
+	if shader.ResourceBundleName == "" {
+		return append([]ast.ResourceDecl(nil), shader.Resources...)
+	}
+	info, ok := v.types[shader.ResourceBundleName]
+	if !ok {
+		v.errorf("unknown resource bundle %s on shader %s", shader.ResourceBundleName, shader.Name)
+		return nil
+	}
+	if info.kind != "stream" {
+		v.errorf("resource bundle %s on shader %s must be a stream", shader.ResourceBundleName, shader.Name)
+		return nil
+	}
+	names := make([]string, 0, len(info.fields))
+	for name := range info.fields {
+		names = append(names, name)
+	}
+	sortStrings(names)
+	resources := make([]ast.ResourceDecl, 0, len(names))
+	for _, name := range names {
+		field := info.fields[name]
+		if field.access == "" {
+			v.errorf("resource bundle %s field %s must declare readonly or readwrite access", shader.ResourceBundleName, name)
+			continue
+		}
+		if field.typ.Name != "array" || len(field.typ.Args) != 1 {
+			v.errorf("resource bundle %s field %s must use %s array<T>", shader.ResourceBundleName, name, field.access)
+		}
+		resources = append(resources, ast.ResourceDecl{Name: name, Access: field.access, Type: field.typ})
+	}
+	return resources
+}
+
 func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, resources []ast.ResourceDecl) {
 	v.validateType(fn.ReturnType)
-	scope := map[string]ast.TypeRef{
-		"DispatchThreadID": {Name: "uint3"},
-		"GroupThreadID":    {Name: "uint3"},
-		"GroupID":          {Name: "uint3"},
-		"GroupIndex":       {Name: "u32"},
+	scope := map[string]varInfo{
+		"DispatchThreadID": {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
+		"GroupThreadID":    {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
+		"GroupID":          {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
+		"GroupIndex":       {typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin},
 	}
 	for _, resource := range resources {
-		scope[resource.Name] = resource.Type
+		scope[resource.Name] = varInfo{typ: resource.Type, origin: varResource}
 	}
 	for _, param := range fn.Parameters {
 		if _, exists := scope[param.Name]; exists {
 			v.errorf("duplicate parameter or builtin name %s in %s", param.Name, fn.Name)
 		}
 		v.validateType(param.Type)
-		scope[param.Name] = param.Type
+		scope[param.Name] = varInfo{typ: param.Type, origin: varParam}
 	}
 	for _, stmt := range fn.Body.Statements {
 		v.validateStmt(stmt, fn.ReturnType, scope, shaderName)
 	}
 }
 
-func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]ast.TypeRef, shaderName string) {
+func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string) {
 	switch s := stmt.(type) {
 	case ast.LetStmt:
 		v.validateType(s.Type)
 		if s.Value != nil {
+			v.validateWithPlacement(s.Value, true)
 			valueType := v.exprType(s.Value, scope, shaderName)
 			if !v.compatible(s.Type, valueType) {
 				v.errorf("cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
@@ -189,13 +261,16 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if _, exists := scope[s.Name]; exists {
 			v.errorf("duplicate local name %s", s.Name)
 		}
-		scope[s.Name] = s.Type
+		scope[s.Name] = varInfo{typ: s.Type, origin: varLocal}
 	case ast.AssignStmt:
+		v.validateWithPlacement(s.Target, false)
+		v.validateWithPlacement(s.Value, true)
 		targetType := v.exprType(s.Target, scope, shaderName)
 		valueType := v.exprType(s.Value, scope, shaderName)
 		if !isAssignableTarget(s.Target) {
 			v.errorf("assignment target is not assignable")
 		}
+		v.validateImmutableAssignmentTarget(s.Target, scope)
 		if !v.compatible(targetType, valueType) {
 			v.errorf("assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
 		}
@@ -206,13 +281,16 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			}
 			return
 		}
+		v.validateWithPlacement(s.Value, true)
 		valueType := v.exprType(s.Value, scope, shaderName)
 		if !v.compatible(returnType, valueType) {
 			v.errorf("return type mismatch: expected %s, got %s", typeName(returnType), typeName(valueType))
 		}
 	case ast.ExprStmt:
+		v.validateWithPlacement(s.Value, false)
 		v.exprType(s.Value, scope, shaderName)
 	case ast.IfStmt:
+		v.validateWithPlacement(s.Condition, false)
 		cond := v.exprType(s.Condition, scope, shaderName)
 		if cond.Name != "bool" {
 			v.errorf("if condition must be bool, got %s", typeName(cond))
@@ -222,6 +300,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName)
 		}
 	case ast.ForStmt:
+		v.validateWithPlacement(s.Start, false)
+		v.validateWithPlacement(s.End, false)
+		v.validateWithPlacement(s.Step, false)
 		startType := v.exprType(s.Start, scope, shaderName)
 		endType := v.exprType(s.End, scope, shaderName)
 		if !isInteger(startType) || !isInteger(endType) {
@@ -231,12 +312,12 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("for step must be a positive integer literal")
 		}
 		loopScope := cloneScope(scope)
-		loopScope[s.Name] = startType
+		loopScope[s.Name] = varInfo{typ: startType, origin: varLocal}
 		v.validateBlock(s.Body, returnType, loopScope, shaderName)
 	}
 }
 
-func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope map[string]ast.TypeRef, shaderName string) {
+func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope map[string]varInfo, shaderName string) {
 	for _, stmt := range block.Statements {
 		v.validateStmt(stmt, returnType, scope, shaderName)
 	}
@@ -256,7 +337,7 @@ func (v *validator) validateType(ref ast.TypeRef) {
 	}
 }
 
-func (v *validator) exprType(expr ast.Expr, scope map[string]ast.TypeRef, shaderName string) ast.TypeRef {
+func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName string) ast.TypeRef {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
 		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
@@ -271,7 +352,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]ast.TypeRef, shader
 		return ast.TypeRef{Name: "string"}
 	case ast.IdentifierExpr:
 		if t, ok := scope[e.Name]; ok {
-			return v.resolveAlias(t)
+			return v.resolveAlias(t.typ)
 		}
 		v.errorf("unknown identifier %s", e.Name)
 		return ast.TypeRef{Name: "<error>"}
@@ -279,7 +360,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]ast.TypeRef, shader
 		target := v.exprType(e.Target, scope, shaderName)
 		if info, ok := v.types[target.Name]; ok && info.fields != nil {
 			if fieldType, ok := info.fields[e.Field]; ok {
-				return v.resolveAlias(fieldType)
+				return v.resolveAlias(fieldType.typ)
 			}
 		}
 		v.errorf("unknown field %s on %s", e.Field, typeName(target))
@@ -346,17 +427,46 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]ast.TypeRef, shader
 			}
 		}
 		elseType := v.exprType(e.Else, scope, shaderName)
+		if result.Name == "" {
+			result = elseType
+		}
 		if !v.compatible(result, elseType) {
 			v.errorf("when utility else value must match case value type")
 		}
 		return result
+	case ast.WithExpr:
+		baseType := v.exprType(e.Base, scope, shaderName)
+		kind := v.typeKind(baseType)
+		if kind != "record" && kind != "stream" {
+			v.errorf("with base must be a record or stream, got %s", typeName(baseType))
+			return ast.TypeRef{Name: "<error>"}
+		}
+		info := v.types[baseType.Name]
+		seen := map[string]struct{}{}
+		for _, update := range e.Updates {
+			if _, exists := seen[update.Name]; exists {
+				v.errorf("duplicate with field %s", update.Name)
+				continue
+			}
+			seen[update.Name] = struct{}{}
+			field, ok := info.fields[update.Name]
+			if !ok {
+				v.errorf("unknown with field %s on %s", update.Name, typeName(baseType))
+				continue
+			}
+			valueType := v.exprType(update.Value, scope, shaderName)
+			if !v.compatible(field.typ, valueType) {
+				v.errorf("with field %s expects %s, got %s", update.Name, typeName(field.typ), typeName(valueType))
+			}
+		}
+		return baseType
 	default:
-		v.errorf("unsupported expression in GoOct SDSL-V M0")
+		v.errorf("unsupported expression in GoOct SDSL-V M3")
 		return ast.TypeRef{Name: "<error>"}
 	}
 }
 
-func (v *validator) callType(call ast.CallExpr, scope map[string]ast.TypeRef, shaderName string) ast.TypeRef {
+func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shaderName string) ast.TypeRef {
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
 		if isVectorConstructor(id.Name) {
 			return ast.TypeRef{Name: id.Name}
@@ -405,6 +515,85 @@ func (v *validator) resolveAlias(ref ast.TypeRef) ast.TypeRef {
 	return v.resolveAlias(info.target)
 }
 
+func (v *validator) typeKind(ref ast.TypeRef) string {
+	resolved := v.resolveAlias(ref)
+	info, ok := v.types[resolved.Name]
+	if !ok {
+		if resolved.Name == "array" {
+			return "array"
+		}
+		return ""
+	}
+	return info.kind
+}
+
+func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[string]varInfo) {
+	root, ok := rootIdentifier(expr)
+	if !ok {
+		return
+	}
+	info, ok := scope[root]
+	if !ok {
+		return
+	}
+	switch info.origin {
+	case varBuiltin:
+		v.errorf("cannot assign to compute builtin %s", root)
+	case varParam:
+		kind := v.typeKind(info.typ)
+		switch {
+		case kind == "record" || kind == "stream":
+			if !isDirectIdentifier(expr) {
+				v.errorf("cannot assign through immutable %s parameter %s; use with instead", kind, root)
+			}
+		case kind == "array":
+			if !isDirectIdentifier(expr) {
+				v.errorf("cannot assign through immutable array parameter %s", root)
+			}
+		}
+	}
+}
+
+func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
+	switch e := expr.(type) {
+	case ast.WithExpr:
+		if !topLevelAllowed {
+			v.errorf("with expression is only supported as a direct let initializer, assignment RHS, or return value in GoOct SDSL-V M3")
+			return
+		}
+		v.validateWithPlacement(e.Base, false)
+		for _, update := range e.Updates {
+			v.validateWithPlacement(update.Value, false)
+		}
+	case ast.FieldAccessExpr:
+		v.validateWithPlacement(e.Target, false)
+	case ast.IndexExpr:
+		v.validateWithPlacement(e.Target, false)
+		v.validateWithPlacement(e.Index, false)
+	case ast.CallExpr:
+		v.validateWithPlacement(e.Callee, false)
+		for _, arg := range e.Arguments {
+			v.validateWithPlacement(arg, false)
+		}
+	case ast.BinaryExpr:
+		v.validateWithPlacement(e.Left, false)
+		v.validateWithPlacement(e.Right, false)
+	case ast.UnaryExpr:
+		v.validateWithPlacement(e.Operand, false)
+	case ast.ParenExpr:
+		v.validateWithPlacement(e.Inner, false)
+	case ast.WhenUtilityExpr:
+		for _, c := range e.Cases {
+			v.validateWithPlacement(c.Value, false)
+			v.validateWithPlacement(c.Condition, false)
+			v.validateWithPlacement(c.Score, false)
+		}
+		if e.Else != nil {
+			v.validateWithPlacement(e.Else, false)
+		}
+	}
+}
+
 func (v *validator) errorf(format string, args ...any) {
 	v.errors = append(v.errors, fmt.Sprintf(format, args...))
 }
@@ -419,8 +608,8 @@ func typeName(ref ast.TypeRef) string {
 	return fmt.Sprintf("array<%s>", typeName(ref.Args[0]))
 }
 
-func cloneScope(scope map[string]ast.TypeRef) map[string]ast.TypeRef {
-	next := make(map[string]ast.TypeRef, len(scope))
+func cloneScope(scope map[string]varInfo) map[string]varInfo {
+	next := make(map[string]varInfo, len(scope))
 	for k, v := range scope {
 		next[k] = v
 	}
@@ -436,11 +625,32 @@ func isAssignableTarget(expr ast.Expr) bool {
 	}
 }
 
+func rootIdentifier(expr ast.Expr) (string, bool) {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		return e.Name, true
+	case ast.FieldAccessExpr:
+		return rootIdentifier(e.Target)
+	case ast.IndexExpr:
+		return rootIdentifier(e.Target)
+	default:
+		return "", false
+	}
+}
+
+func isDirectIdentifier(expr ast.Expr) bool {
+	_, ok := expr.(ast.IdentifierExpr)
+	return ok
+}
+
 func isFloat(ref ast.TypeRef) bool { return ref.Name == "f32" || ref.Name == "float" }
+
 func isInteger(ref ast.TypeRef) bool {
 	return ref.Name == "i32" || ref.Name == "u32"
 }
+
 func isNumeric(ref ast.TypeRef) bool { return isInteger(ref) || isFloat(ref) }
+
 func isVectorConstructor(name string) bool {
 	return name == "float2" || name == "float3" || name == "float4"
 }
@@ -452,4 +662,14 @@ func positiveIntegerLiteral(expr ast.Expr) bool {
 	}
 	value, err := strconv.Atoi(strings.TrimRight(lit.Value, "uU"))
 	return err == nil && value > 0
+}
+
+func sortStrings(values []string) {
+	for i := 0; i < len(values); i++ {
+		for j := i + 1; j < len(values); j++ {
+			if values[j] < values[i] {
+				values[i], values[j] = values[j], values[i]
+			}
+		}
+	}
 }

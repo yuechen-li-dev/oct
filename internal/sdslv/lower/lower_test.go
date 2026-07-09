@@ -77,6 +77,61 @@ stage compute [numthreads(16, 16, 1)] fn CS(params: VectorParams) -> void {
 	}
 }
 
+func TestModuleLowersComputeThreadResourceBundleAndWith(t *testing.T) {
+	mir := lowerSource(t, `namespace Prometheus.Kernels;
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+stream VectorAddIO {
+    A: readonly array<f32>;
+    C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+record Tile { Acc0: f32; }
+shader VectorAdd {
+resources VectorAddIO;
+fn Adjust(tile: Tile, value: f32) -> Tile {
+    return tile with { Acc0: tile.Acc0 + value };
+}
+stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: Params) -> Tile {
+    let tile: Tile = TileZero();
+    return tile with { Acc0: A[thread.DispatchId.x] };
+}
+fn TileZero() -> Tile {
+    let tile: Tile;
+    tile.Acc0 = 0.0;
+    return tile;
+}
+}`)
+	if got := len(mir.Streams); got != 2 {
+		t.Fatalf("len(Streams) = %d, want 2", got)
+	}
+	if got := len(mir.Resources); got != 2 {
+		t.Fatalf("len(Resources) = %d, want 2", got)
+	}
+	if mir.Resources[0].BundleName != "VectorAddIO" {
+		t.Fatalf("resource bundle = %#v", mir.Resources[0])
+	}
+	entry := mir.EntryPoints[0]
+	if len(entry.ThreadParams) != 1 || entry.ThreadParams[0].ParamName != "thread" {
+		t.Fatalf("thread params = %#v", entry.ThreadParams)
+	}
+	if !entry.Builtins[0].Referenced {
+		t.Fatalf("DispatchThreadID should be referenced via ComputeThread: %#v", entry.Builtins)
+	}
+	cs := findFunction(t, mir, "VectorAdd_CS")
+	ret, ok := cs.Body.Statements[1].(vdmir.ReturnStmt)
+	if !ok {
+		t.Fatalf("return stmt = %T, want ReturnStmt", cs.Body.Statements[1])
+	}
+	if _, ok := ret.Value.(vdmir.WithExpr); !ok {
+		t.Fatalf("return value = %T, want WithExpr", ret.Value)
+	}
+}
+
 func TestVDMIRDumpIsDeterministic(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 record VectorParams { Count: u32; }

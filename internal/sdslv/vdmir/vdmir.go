@@ -7,6 +7,7 @@ type Module struct {
 	Namespace   string
 	TypeAliases []TypeAlias
 	Records     []Record
+	Streams     []Stream
 	Enums       []Enum
 	Resources   []Resource
 	Functions   []Function
@@ -33,6 +34,12 @@ type Record struct {
 	Fields     []Field
 }
 
+type Stream struct {
+	Provenance Provenance
+	Name       string
+	Fields     []Field
+}
+
 type Enum struct {
 	Provenance Provenance
 	Name       string
@@ -47,6 +54,7 @@ type Field struct {
 
 type Resource struct {
 	Provenance  Provenance
+	BundleName  string
 	Name        string
 	ElementType Type
 	Access      ResourceAccess
@@ -83,7 +91,20 @@ type ComputeEntryPoint struct {
 	NumThreadsY  int
 	NumThreadsZ  int
 	Params       []Parameter
+	ThreadParams []ComputeThreadBinding
 	Builtins     []BuiltinParam
+}
+
+type ComputeThreadBinding struct {
+	ParamName string
+	TypeName  string
+	Fields    []ComputeThreadFieldBinding
+}
+
+type ComputeThreadFieldBinding struct {
+	FieldName    string
+	BuiltinName  string
+	BuiltinField string
 }
 
 type BuiltinParam struct {
@@ -288,6 +309,21 @@ type WhenUtilityCase struct {
 	Score      Expr
 }
 
+type WithExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Base       Expr
+	Updates    []FieldUpdate
+}
+
+func (WithExpr) exprNode()    {}
+func (e WithExpr) Type() Type { return e.ExprType }
+
+type FieldUpdate struct {
+	Name  string
+	Value Expr
+}
+
 type Type struct {
 	Kind         TypeKind
 	Name         string
@@ -310,6 +346,7 @@ const (
 	TypeRuntimeArray TypeKind = "runtime_array"
 	TypeArray        TypeKind = "array"
 	TypeRecord       TypeKind = "record"
+	TypeStream       TypeKind = "stream"
 	TypeEnum         TypeKind = "enum"
 	TypeAliasKind    TypeKind = "alias"
 	TypeBuiltin      TypeKind = "builtin"

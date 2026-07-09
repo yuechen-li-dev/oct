@@ -138,6 +138,18 @@ stream VertexOut {
 
 Stream parameters are immutable. Field assignment on a stream parameter is rejected. Use `with` to produce a modified copy.
 
+### Compute stream note (GoOct M3)
+
+The original `stream` model above describes graphics stage I/O semantics.
+
+GoOct SDSL-V M3 also supports compute-oriented streams:
+
+- `ComputeThread`-style thread/system-value payloads;
+- plain structured compute helper payloads;
+- named resource bundles used by `resources BundleName;`.
+
+Current M3 limitation: named resource bundles accept access-qualified `array<T>` resource fields. Mixed bundle streams that combine resources with plain payload fields remain deferred.
+
 ---
 
 ## Interfaces and shaders

@@ -63,13 +63,15 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 		return p.parseTypeAlias()
 	case token.KeywordRecord:
 		return p.parseRecord()
+	case token.KeywordStream:
+		return p.parseStream()
 	case token.KeywordEnum:
 		return p.parseEnum()
 	case token.KeywordShader:
 		return p.parseShader()
 	case token.KeywordFn:
 		return p.parseFunction("")
-	case token.KeywordInterface, token.KeywordStream, token.KeywordFlow, token.KeywordCompile:
+	case token.KeywordInterface, token.KeywordFlow, token.KeywordCompile:
 		kind := p.current().Lexeme
 		p.skipUnsupportedTopLevel()
 		return ast.UnsupportedDecl{Kind: kind}, nil
@@ -121,6 +123,30 @@ func (p *parser) parseRecord() (ast.RecordDecl, error) {
 	return ast.RecordDecl{Name: name.Lexeme, Fields: fields}, nil
 }
 
+func (p *parser) parseStream() (ast.StreamDecl, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected stream name")
+	if err != nil {
+		return ast.StreamDecl{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after stream name"); err != nil {
+		return ast.StreamDecl{}, err
+	}
+	var fields []ast.Field
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.StreamDecl{}, p.errorAtCurrent("expected '}' to close stream")
+		}
+		field, err := p.parseField()
+		if err != nil {
+			return ast.StreamDecl{}, err
+		}
+		fields = append(fields, field)
+	}
+	p.advance()
+	return ast.StreamDecl{Name: name.Lexeme, Fields: fields}, nil
+}
+
 func (p *parser) parseEnum() (ast.EnumDecl, error) {
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected enum name")
@@ -168,7 +194,11 @@ func (p *parser) parseShader() (ast.ShaderDecl, error) {
 			if err != nil {
 				return ast.ShaderDecl{}, err
 			}
-			shader.Resources = append(shader.Resources, resources...)
+			if len(resources) == 1 && resources[0].Name != "" && resources[0].Access == "" && resources[0].Type.Name == "" {
+				shader.ResourceBundleName = resources[0].Name
+			} else {
+				shader.Resources = append(shader.Resources, resources...)
+			}
 		case token.KeywordStage:
 			method, err := p.parseStageFunction()
 			if err != nil {
@@ -191,6 +221,16 @@ func (p *parser) parseShader() (ast.ShaderDecl, error) {
 
 func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 	p.advance()
+	if p.current().Kind == token.Identifier {
+		name, err := p.expect(token.Identifier, "expected resource bundle name")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.Semicolon, "expected ';' after resource bundle name"); err != nil {
+			return nil, err
+		}
+		return []ast.ResourceDecl{{Name: name.Lexeme}}, nil
+	}
 	if _, err := p.expect(token.LeftBrace, "expected '{' after resources"); err != nil {
 		return nil, err
 	}
@@ -492,7 +532,45 @@ func (p *parser) parseFor() (ast.ForStmt, error) {
 }
 
 func (p *parser) parseExpression() (ast.Expr, error) {
-	return p.parseBinary(0)
+	return p.parseWith()
+}
+
+func (p *parser) parseWith() (ast.Expr, error) {
+	base, err := p.parseBinary(0)
+	if err != nil {
+		return nil, err
+	}
+	if !p.match(token.KeywordWith) {
+		return base, nil
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after with"); err != nil {
+		return nil, err
+	}
+	var updates []ast.FieldUpdate
+	for p.current().Kind != token.RightBrace {
+		name, err := p.expect(token.Identifier, "expected field name in with update")
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(token.Colon, "expected ':' after with field name"); err != nil {
+			return nil, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, ast.FieldUpdate{Name: name.Lexeme, Value: value})
+		if !p.match(token.Comma) {
+			break
+		}
+		if p.current().Kind == token.RightBrace {
+			break
+		}
+	}
+	if _, err := p.expect(token.RightBrace, "expected '}' after with update"); err != nil {
+		return nil, err
+	}
+	return ast.WithExpr{Base: base, Updates: updates}, nil
 }
 
 func (p *parser) parseBinary(minPrec int) (ast.Expr, error) {
@@ -703,6 +781,12 @@ func (p *parser) parseField() (ast.Field, error) {
 	if _, err := p.expect(token.Colon, "expected ':' after field name"); err != nil {
 		return ast.Field{}, err
 	}
+	access := ""
+	if p.match(token.KeywordReadonly) {
+		access = "readonly"
+	} else if p.match(token.KeywordReadwrite) {
+		access = "readwrite"
+	}
 	ref, err := p.parseTypeRef()
 	if err != nil {
 		return ast.Field{}, err
@@ -710,7 +794,7 @@ func (p *parser) parseField() (ast.Field, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after field"); err != nil {
 		return ast.Field{}, err
 	}
-	return ast.Field{Name: name.Lexeme, Type: ref}, nil
+	return ast.Field{Name: name.Lexeme, Access: access, Type: ref}, nil
 }
 
 func (p *parser) parsePath() (string, error) {

@@ -60,6 +60,47 @@ return scale;
 	}
 }
 
+func TestEmitComputeThreadResourceBundleAndWithFromVDMIR(t *testing.T) {
+	text := `stream ComputeThread {
+DispatchId: uint3;
+GroupId: uint3;
+GroupThreadId: uint3;
+GroupIndex: u32;
+}
+stream VectorAddIO {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+record Params { Count: u32; }
+record Tile { Acc0: f32; }
+shader VectorAdd {
+resources VectorAddIO;
+stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: Params) -> Tile {
+let tile: Tile;
+tile.Acc0 = 0.0;
+return tile with { Acc0: A[thread.DispatchId.x] };
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"struct ComputeThread",
+		"struct Tile",
+		"[[vk::binding(0, 0)]] Buffer<float> A;",
+		"[[vk::binding(1, 0)]] RWBuffer<float> C;",
+		"[[vk::push_constant]] ConstantBuffer<Params> params;",
+		"Tile VectorAdd_CS(uint3 DispatchThreadID : SV_DispatchThreadID, uint3 GroupThreadID : SV_GroupThreadID, uint3 GroupID : SV_GroupID, uint GroupIndex : SV_GroupIndex)",
+		"ComputeThread thread;",
+		"thread.DispatchId = DispatchThreadID;",
+		"Tile __sdslv_with_0 = tile;",
+		"__sdslv_with_0.Acc0 = A[thread.DispatchId.x];",
+		"return __sdslv_with_0;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func emitSource(t *testing.T, text string) string {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

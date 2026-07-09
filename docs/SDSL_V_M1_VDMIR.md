@@ -51,6 +51,8 @@ The MIR models:
 - compute entry points with `numthreads` and builtin metadata
 - typed expressions including `when utility`
 
+M3 later extends this boundary with compute streams, named resource bundles, and `with` expressions without routing through Oct MIR or bypassing VD-MIR.
+
 ## `when utility` in VD-MIR
 
 M1 keeps `when utility` as a first-class VD-MIR expression instead of erasing it during lowering.

@@ -1,0 +1,15 @@
+namespace Prometheus.Kernels;
+
+record SgemmTile {
+    Acc0: f32;
+    Acc1: f32;
+}
+
+shader WithRecordExample {
+    fn Adjust(tile: SgemmTile, value: f32) -> SgemmTile {
+        let adjusted: SgemmTile = tile with {
+            Acc0: tile.Acc0 + value,
+        };
+        return adjusted;
+    }
+}
