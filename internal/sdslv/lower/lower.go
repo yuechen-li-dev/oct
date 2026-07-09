@@ -361,12 +361,13 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 		return ast.MatchExpr{Subject: specializeExpr(e.Subject, env), Arms: arms}
 	case ast.ReductionExpr:
 		return ast.ReductionExpr{
-			Op:    e.Op,
-			Name:  e.Name,
-			Start: specializeExpr(e.Start, env),
-			End:   specializeExpr(e.End, env),
-			Step:  specializeExpr(e.Step, env),
-			Body:  specializeExpr(e.Body, env),
+			Attributes: append([]ast.Attribute(nil), e.Attributes...),
+			Op:         e.Op,
+			Name:       e.Name,
+			Start:      specializeExpr(e.Start, env),
+			End:        specializeExpr(e.End, env),
+			Step:       specializeExpr(e.Step, env),
+			Body:       specializeExpr(e.Body, env),
 		}
 	default:
 		return expr
@@ -979,6 +980,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		return vdmir.ReductionExpr{
 			Provenance: l.provenance,
 			ExprType:   body.Type(),
+			LoopHint:   lowerLoopHint(e.Attributes),
 			Op:         lowerReductionOp(e.Op),
 			Name:       e.Name,
 			IndexType:  start.Type(),

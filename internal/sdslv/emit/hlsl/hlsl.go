@@ -301,6 +301,12 @@ func (e *emitter) emitReductionReturn(reduction vdmir.ReductionExpr) {
 }
 
 func (e *emitter) emitReductionLoop(target string, reduction vdmir.ReductionExpr) {
+	switch reduction.LoopHint {
+	case vdmir.LoopHintUnroll:
+		e.line("[unroll]")
+	case vdmir.LoopHintLoop:
+		e.line("[loop]")
+	}
 	loopType := typeRef(reduction.IndexType, "")
 	e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, reduction.Name, e.expr(reduction.Start), reduction.Name, e.expr(reduction.End), reduction.Name, e.expr(reduction.Step)))
 	e.line("{")

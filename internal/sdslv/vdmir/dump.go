@@ -179,11 +179,15 @@ func FormatExpr(expr Expr) string {
 		}
 		return FormatExpr(e.Base) + " with { " + strings.Join(parts, ", ") + " }"
 	case ReductionExpr:
+		hint := ""
+		if e.LoopHint != LoopHintNone {
+			hint = " [" + string(e.LoopHint) + "]"
+		}
 		step := ""
 		if lit, ok := e.Step.(LiteralExpr); !ok || lit.Value != "1" {
 			step = " step " + FormatExpr(e.Step)
 		}
-		return fmt.Sprintf("%s %s in %s..%s%s { %s }", e.Op, e.Name, FormatExpr(e.Start), FormatExpr(e.End), step, FormatExpr(e.Body))
+		return fmt.Sprintf("%s%s %s in %s..%s%s { %s }", hint, e.Op, e.Name, FormatExpr(e.Start), FormatExpr(e.End), step, FormatExpr(e.Body))
 	case EnumConstructExpr:
 		if len(e.Fields) == 0 {
 			return e.EnumName + "." + e.VariantName

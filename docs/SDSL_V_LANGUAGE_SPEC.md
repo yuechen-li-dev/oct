@@ -387,7 +387,15 @@ The base expression and fields must be of the same record/stream type. Duplicate
 
 ### Indexed reduction expressions
 
-M10 adds explicit indexed reductions with visible bounds:
+M10a adds optional prefix loop attributes on explicit indexed reductions:
+
+```sdslv
+let acc: f32 = [unroll] sum kk in 0u..C.TILE_K {
+    TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol]
+};
+```
+
+The attribute-free form remains valid:
 
 ```sdslv
 let acc: f32 = sum kk in 0u..C.TILE_K {
@@ -399,6 +407,8 @@ Current M10 rules:
 
 - `sum` and `product` are implemented;
 - `max` and `min` are reserved and parsed, but still rejected during validation in M10;
+- `[unroll]` and `[loop]` are accepted on reductions as backend hints only;
+- reduction attributes are mutually exclusive on one reduction;
 - bounds must be integer and `step` must be a positive integer literal;
 - the index name is scoped only inside the reduction body;
 - reductions are currently bounded to direct `let` initializer, assignment RHS, and `return` positions;
@@ -735,5 +745,6 @@ switch-expr  ::= 'switch' expr? '{' switch-case+ 'else' ('=>'|'->') expr '}'
 match-expr   ::= 'match' expr '{' match-arm+ '}'
 match-arm    ::= IDENT '.' IDENT ('(' IDENT ')')? '=>' expr
 when-utility ::= 'when' 'utility' ('{' utility-opts '}')? '{' utility-case+ 'else' expr '}'
-reduction    ::= ('sum' | 'product' | 'max' | 'min') IDENT 'in' expr '..' expr ('step' expr)? '{' expr '}'
+reduction    ::= reduction-attrs? ('sum' | 'product' | 'max' | 'min') IDENT 'in' expr '..' expr ('step' expr)? '{' expr '}'
+reduction-attrs ::= ('[' 'unroll' ']' | '[' 'loop' ']')+
 ```

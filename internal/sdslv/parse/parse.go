@@ -633,7 +633,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 			return nil, err
 		}
 		if p.current().Kind != token.KeywordFor {
-			return nil, p.errorAtCurrent("statement attributes currently apply only to for loops")
+			return nil, p.errorAtCurrent("statement attributes currently apply only to for loops; reduction attributes are only supported on direct let initializers, assignment RHS, or return values")
 		}
 		return p.parseFor(attributes)
 	}
@@ -652,7 +652,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 			return nil, err
 		}
 		if p.match(token.Assign) {
-			value, err := p.parseExpression()
+			value, err := p.parseReductionValueOrExpression()
 			if err != nil {
 				return nil, err
 			}
@@ -683,7 +683,7 @@ func (p *parser) parseLet() (ast.LetStmt, error) {
 	}
 	var value ast.Expr
 	if p.match(token.Assign) {
-		value, err = p.parseExpression()
+		value, err = p.parseReductionValueOrExpression()
 		if err != nil {
 			return ast.LetStmt{}, err
 		}
@@ -699,7 +699,7 @@ func (p *parser) parseReturn() (ast.ReturnStmt, error) {
 	if p.match(token.Semicolon) {
 		return ast.ReturnStmt{}, nil
 	}
-	value, err := p.parseExpression()
+	value, err := p.parseReductionValueOrExpression()
 	if err != nil {
 		return ast.ReturnStmt{}, err
 	}
@@ -928,7 +928,7 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return ast.IdentifierExpr{Name: t.Lexeme}, nil
 	case token.KeywordSum, token.KeywordProduct, token.KeywordMax, token.KeywordMin:
 		if p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.KeywordIn {
-			return p.parseReductionExpr()
+			return p.parseReductionExpr(nil)
 		}
 		p.advance()
 		return ast.IdentifierExpr{Name: t.Lexeme}, nil
@@ -946,12 +946,28 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 			return nil, err
 		}
 		return ast.ParenExpr{Inner: inner}, nil
+	case token.LeftBracket:
+		return nil, p.errorAtCurrent("reduction attributes are only supported before direct reduction expressions in let initializers, assignment RHS, or return values")
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
 }
 
-func (p *parser) parseReductionExpr() (ast.ReductionExpr, error) {
+func (p *parser) parseReductionValueOrExpression() (ast.Expr, error) {
+	if p.current().Kind == token.LeftBracket {
+		attributes, err := p.parseAttributes(ast.AttributePlacementExpr)
+		if err != nil {
+			return nil, err
+		}
+		if !isReductionToken(p.current().Kind) {
+			return nil, p.errorAtCurrent("reduction attributes must be followed by sum, product, max, or min")
+		}
+		return p.parseReductionExpr(attributes)
+	}
+	return p.parseExpression()
+}
+
+func (p *parser) parseReductionExpr(attributes []ast.Attribute) (ast.ReductionExpr, error) {
 	op, err := reductionOpFromToken(p.current())
 	if err != nil {
 		return ast.ReductionExpr{}, err
@@ -992,7 +1008,7 @@ func (p *parser) parseReductionExpr() (ast.ReductionExpr, error) {
 	if _, err := p.expect(token.RightBrace, "expected '}' after reduction body"); err != nil {
 		return ast.ReductionExpr{}, err
 	}
-	return ast.ReductionExpr{Op: op, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
+	return ast.ReductionExpr{Attributes: append([]ast.Attribute(nil), attributes...), Op: op, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
 }
 
 func (p *parser) parseMatchExpr() (ast.MatchExpr, error) {
@@ -1387,6 +1403,15 @@ func reductionOpFromToken(tok token.Token) (ast.ReductionOp, error) {
 		return ast.ReductionMin, nil
 	default:
 		return "", fmt.Errorf("expected reduction operator at %d:%d near %q", tok.Line, tok.Column, tok.Lexeme)
+	}
+}
+
+func isReductionToken(kind token.Kind) bool {
+	switch kind {
+	case token.KeywordSum, token.KeywordProduct, token.KeywordMax, token.KeywordMin:
+		return true
+	default:
+		return false
 	}
 }
 

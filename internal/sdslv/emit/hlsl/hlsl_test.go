@@ -291,6 +291,32 @@ return;
 	}
 }
 
+func TestEmitReductionLoopHintsFromVDMIR(t *testing.T) {
+	text := `shader S {
+resources {
+A: readonly array<f32>;
+C: readwrite array<f32>;
+}
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let total: f32 = [unroll] sum i in 0u..4u { A[i] };
+let productValue: f32 = [loop] product j in 0u..4u { A[j] };
+C[0u] = total + productValue;
+return;
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"[unroll]",
+		"for (uint i = 0u; i < 4u; i += 1)",
+		"[loop]",
+		"for (uint j = 0u; j < 4u; j += 1)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func emitSource(t *testing.T, text string) string {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

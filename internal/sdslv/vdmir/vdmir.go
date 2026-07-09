@@ -382,6 +382,7 @@ func (e WithExpr) Type() Type { return e.ExprType }
 type ReductionExpr struct {
 	Provenance Provenance
 	ExprType   Type
+	LoopHint   LoopHint
 	Op         ReductionOp
 	Name       string
 	IndexType  Type

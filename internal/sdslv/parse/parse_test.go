@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
@@ -279,6 +280,40 @@ return max k in 0u..4u { values[k] };
 	maxExpr, ok := ret.Value.(ast.ReductionExpr)
 	if !ok || maxExpr.Op != ast.ReductionMax {
 		t.Fatalf("return value = %#v, want max ReductionExpr", ret.Value)
+	}
+}
+
+func TestBuildModuleParsesReductionAttributes(t *testing.T) {
+	module := parseTestModule(t, `fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = [unroll] sum i in 0u..4u { values[i] };
+let productValue: f32 = [loop] product j in 0u..4u { values[j] };
+return [unroll] max k in 0u..4u { values[k] };
+}`)
+	fn := module.Decls[0].(ast.FunctionDecl)
+	total := fn.Body.Statements[0].(ast.LetStmt).Value.(ast.ReductionExpr)
+	if got := len(total.Attributes); got != 1 || total.Attributes[0].Name != "unroll" {
+		t.Fatalf("sum attributes = %#v, want [unroll]", total.Attributes)
+	}
+	product := fn.Body.Statements[1].(ast.LetStmt).Value.(ast.ReductionExpr)
+	if got := len(product.Attributes); got != 1 || product.Attributes[0].Name != "loop" {
+		t.Fatalf("product attributes = %#v, want [loop]", product.Attributes)
+	}
+	maxExpr := fn.Body.Statements[2].(ast.ReturnStmt).Value.(ast.ReductionExpr)
+	if got := len(maxExpr.Attributes); got != 1 || maxExpr.Attributes[0].Name != "unroll" {
+		t.Fatalf("max attributes = %#v, want [unroll]", maxExpr.Attributes)
+	}
+}
+
+func TestBuildModuleRejectsReductionAttributeInNestedExpression(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `fn F(values: array<f32>) -> f32 {
+return 1.0 + [unroll] sum i in 0u..4u { values[i] };
+}`})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	_, err = BuildModule(tokens)
+	if err == nil || !strings.Contains(err.Error(), "reduction attributes are only supported before direct reduction expressions") {
+		t.Fatalf("BuildModule() error = %v, want reduction attribute placement diagnostic", err)
 	}
 }
 

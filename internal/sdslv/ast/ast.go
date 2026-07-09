@@ -21,6 +21,7 @@ type AttributePlacement string
 const (
 	AttributePlacementField AttributePlacement = "field"
 	AttributePlacementStmt  AttributePlacement = "stmt"
+	AttributePlacementExpr  AttributePlacement = "expr"
 )
 
 type Attribute struct {
@@ -329,12 +330,13 @@ type WithExpr struct {
 func (WithExpr) exprNode() {}
 
 type ReductionExpr struct {
-	Op    ReductionOp
-	Name  string
-	Start Expr
-	End   Expr
-	Step  Expr
-	Body  Expr
+	Attributes []Attribute
+	Op         ReductionOp
+	Name       string
+	Start      Expr
+	End        Expr
+	Step       Expr
+	Body       Expr
 }
 
 func (ReductionExpr) exprNode() {}

@@ -405,6 +405,26 @@ return total + productValue;
 	}
 }
 
+func TestModuleLowersReductionLoopHintsToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = [unroll] sum i in 0u..4u { values[i] };
+let productValue: f32 = [loop] product j in 0u..4u { values[j] };
+return total + productValue;
+}`)
+	fn := findFunction(t, mir, "Reduce")
+	total := fn.Body.Statements[0].(vdmir.LetStmt).Value.(vdmir.ReductionExpr)
+	if total.LoopHint != vdmir.LoopHintUnroll {
+		t.Fatalf("sum loop hint = %q, want unroll", total.LoopHint)
+	}
+	product := fn.Body.Statements[1].(vdmir.LetStmt).Value.(vdmir.ReductionExpr)
+	if product.LoopHint != vdmir.LoopHintLoop {
+		t.Fatalf("product loop hint = %q, want loop", product.LoopHint)
+	}
+	if got := vdmir.FormatExpr(total); !strings.Contains(got, "[unroll]sum") {
+		t.Fatalf("formatted reduction = %s, want loop hint", got)
+	}
+}
+
 func TestModuleSpecializesTemplateConstantsInsideReductionExpressions(t *testing.T) {
 	mir := lowerSource(t, `concept TileConfig {
 TILE_K: u32;

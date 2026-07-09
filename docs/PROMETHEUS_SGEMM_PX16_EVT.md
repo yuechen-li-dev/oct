@@ -218,6 +218,19 @@ set OCT_PROMETHEUS_PX16_EVT_ENABLE_EXPLICIT_1024_CUBE=1
 out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
 ```
 
+## Px16 M10a Note
+
+M10a adds reduction loop attributes to SDSL-V so tile-style shader math can express `[unroll] sum` and `[loop] product` without dropping the backend hint.
+
+The `sgemm_tile16x16_shared_fp32.sdslv` inner fixed `TILE_K` accumulation loop was evaluated for a source-level refactor to `[unroll] sum`, but the production shader should stay on the explicit `[unroll] for` form unless the native correctness and EVT lanes remain green after regeneration.
+
+The architecture and runtime rules are unchanged:
+
+- the outer runtime tile loop remains explicitly `[loop]`;
+- production dispatch authority does not change;
+- selector tuning, P15, FFT/P16, and dispatch metadata do not change;
+- correctness validation remains separate from benchmark timing.
+
 ### Artifact paths
 
 The lane still writes the main production artifact pair:

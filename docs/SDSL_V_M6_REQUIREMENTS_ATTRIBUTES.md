@@ -78,7 +78,7 @@ Float constant expressions remain deferred.
 
 ## Attributes
 
-Loop attributes apply to `for` statements only:
+Loop attributes apply to `for` statements and, as of M10a, indexed reduction expressions in direct reduction positions:
 
 ```sdslv
 [unroll]
@@ -86,6 +86,10 @@ for i in 0u..C.TILE_SIZE { ... }
 
 [loop]
 for i in 0u..params.Count { ... }
+
+let tileAcc: f32 = [unroll] sum kk in 0u..C.TILE_K {
+    TileA[rowBase + kk] * TileB[kk * C.TILE_N + localCol]
+};
 ```
 
 Resource binding attributes apply to resource fields:
@@ -100,7 +104,8 @@ stream TileCopyIO {
 Rules:
 
 - `[unroll]` and `[loop]` are mutually exclusive on one loop;
-- reductions added in M10 do not accept loop attributes yet; use an explicit `for` loop when an attribute is required;
+- reductions accept `[unroll]` and `[loop]` only on a direct `let` initializer, assignment RHS, or `return` value;
+- reduction attributes are backend hints only; they do not change reduction semantics;
 - `[binding(n)]` requires a non-negative integer literal;
 - duplicate explicit bindings in one shader resource set are rejected;
 - explicit bindings use descriptor set `0`;
@@ -112,6 +117,7 @@ Rules:
 M6 keeps the backend boundary explicit:
 
 - loop attributes lower to `VD-MIR` loop-hint metadata, not raw HLSL strings;
+- reduction loop attributes also lower to `VD-MIR` loop-hint metadata;
 - resource bindings lower to `VD-MIR` binding metadata with `set`, `binding`, and explicit-vs-implicit tracking;
 - HLSL emits `[unroll]` / `[loop]` from `VD-MIR`;
 - HLSL emits `[[vk::binding(binding, 0)]]` from `VD-MIR`.

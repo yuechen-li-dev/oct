@@ -915,6 +915,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 		return baseType
 	case ast.ReductionExpr:
+		v.validateReductionAttributes(e.Attributes)
 		startType := v.exprType(e.Start, scope, shaderName, templateParam)
 		endType := v.exprType(e.End, scope, shaderName, templateParam)
 		if !isInteger(startType) || !isInteger(endType) {
@@ -1368,6 +1369,14 @@ func (v *validator) conceptRequirementEnv(concept ast.ConceptDecl) map[string]co
 }
 
 func (v *validator) validateLoopAttributes(attributes []ast.Attribute) {
+	v.validateLoopHintAttributes("loop", attributes)
+}
+
+func (v *validator) validateReductionAttributes(attributes []ast.Attribute) {
+	v.validateLoopHintAttributes("reduction", attributes)
+}
+
+func (v *validator) validateLoopHintAttributes(subject string, attributes []ast.Attribute) {
 	seenUnroll := false
 	seenLoop := false
 	for _, attr := range attributes {
@@ -1385,7 +1394,7 @@ func (v *validator) validateLoopAttributes(attributes []ast.Attribute) {
 		}
 	}
 	if seenUnroll && seenLoop {
-		v.errorf("loop cannot declare both [unroll] and [loop]")
+		v.errorf("%s cannot declare both [unroll] and [loop]", subject)
 	}
 }
 

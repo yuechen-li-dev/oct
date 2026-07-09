@@ -405,6 +405,37 @@ return 1.0 + sum i in 0u..4u { values[i] };
 	}
 }
 
+func TestModuleAcceptsReductionAttributes(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = [unroll] sum i in 0u..4u { values[i] };
+let productValue: f32 = [loop] product j in 1..4 step 2 { values[j] };
+return total + productValue;
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsConflictingReductionAttributes(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = [unroll][loop] sum i in 0u..4u { values[i] };
+return total;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "reduction cannot declare both [unroll] and [loop]") {
+		t.Fatalf("error = %v, want reduction attribute conflict", err)
+	}
+}
+
+func TestModuleRejectsUnknownReductionAttribute(t *testing.T) {
+	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
+let total: f32 = [mystery] sum i in 0u..4u { values[i] };
+return total;
+}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown attribute [mystery]") {
+		t.Fatalf("error = %v, want unknown reduction attribute", err)
+	}
+}
+
 func TestModuleRejectsReductionIndexOutOfScopeAndDeferredMax(t *testing.T) {
 	err := validateSource(`fn Reduce(values: array<f32>) -> f32 {
 let total: f32 = sum i in 0u..4u { values[i] };

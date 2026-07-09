@@ -10,7 +10,17 @@ source -> lex -> parse -> validate -> lower to VD-MIR -> emit HLSL -> optional D
 
 ## Syntax
 
-M10 adds explicit reduction expressions with visible bounds:
+M10a adds loop attributes on explicit reduction expressions while keeping reductions structured through `VD-MIR`.
+
+Reduction syntax now supports an optional prefix loop attribute:
+
+```sdslv
+let acc: f32 = [unroll] sum kk in 0u..C.TILE_K {
+    TileA[localRow * C.TILE_K + kk] * TileB[kk * C.TILE_N + localCol]
+};
+```
+
+The attribute-free M10 syntax remains valid:
 
 ```sdslv
 let acc: f32 = sum kk in 0u..C.TILE_K {
@@ -18,10 +28,11 @@ let acc: f32 = sum kk in 0u..C.TILE_K {
 };
 ```
 
-Supported syntax shape:
+Supported syntax shapes:
 
 ```text
-reduce-expr ::= REDUCE_OP IDENT 'in' expr '..' expr ('step' expr)? '{' expr '}'
+reduce-expr ::= reduce-attrs? REDUCE_OP IDENT 'in' expr '..' expr ('step' expr)? '{' expr '}'
+reduce-attrs ::= ('[' 'unroll' ']' | '[' 'loop' ']')+
 ```
 
 Recognized reduction operators in M10:
@@ -35,12 +46,14 @@ Recognized reduction operators in M10:
 
 ## Validation
 
-M10 validates:
+M10a validates:
 
 - bounds must be integer (`i32` or `u32`);
 - `step` must be a positive integer literal;
 - the reduction index is scoped only inside the body expression;
 - `sum` and `product` bodies must be numeric;
+- only `[unroll]` and `[loop]` are accepted on reductions;
+- `[unroll]` and `[loop]` are mutually exclusive on one reduction;
 - reductions are currently supported only as a direct `let` initializer, assignment RHS, or `return` value.
 
 Nested reductions such as `1.0 + sum i in 0u..N { ... }` are intentionally rejected in M10. This matches the existing `with` and `match` placement boundary and keeps HLSL lowering deterministic.
@@ -62,6 +75,7 @@ M10 keeps reductions as structured `VD-MIR` expressions rather than lowering dir
 - start/end/step expressions;
 - typed body expression;
 - result type.
+- loop hint metadata (`none`, `unroll`, `loop`).
 
 This keeps the backend boundary explicit and inspectable.
 
@@ -72,13 +86,14 @@ HLSL lowers reductions to deterministic temp-plus-loop code.
 For a direct `let` initializer:
 
 ```sdslv
-let acc: f32 = sum i in 0u..4u { A[i] };
+let acc: f32 = [unroll] sum i in 0u..4u { A[i] };
 ```
 
 the backend emits the canonical shape:
 
 ```hlsl
 float acc = 0.0;
+[unroll]
 for (uint i = 0u; i < 4u; i += 1)
 {
     acc = acc + (A[i]);
@@ -87,17 +102,19 @@ for (uint i = 0u; i < 4u; i += 1)
 
 Assignment RHS and return-value reductions materialize a deterministic `__sdslv_reduce_*` temporary first, then assign or return it.
 
-M10 does not attach loop attributes such as `[unroll]` to reductions yet. That is why the production tile16 SGEMM shader remains on its explicit `[unroll] for` loop in this milestone even though the language now supports reduction syntax.
+With M10a, reduction loop attributes lower through `VD-MIR` metadata rather than raw backend strings, and HLSL emits `[unroll]` / `[loop]` immediately before the generated reduction loop.
 
 ## Examples
 
 - `examples/SDSL-V/M10/ReductionBasic.sdslv`
 - `examples/SDSL-V/M10/ReductionTileShape.sdslv`
+- `examples/SDSL-V/M10a/ReductionAttributes.sdslv`
 
 These examples exercise:
 
 - `sum` in `let`, assignment, and `return` positions;
 - `product` in `let` and `return` positions;
+- `[unroll] sum` and `[loop] product` on direct reduction positions;
 - a tile-shaped compute expression that pressures the SGEMM-style math surface without changing Prometheus runtime dispatch.
 
 ## Limits and next steps
@@ -107,7 +124,8 @@ M10 intentionally does not add:
 - implicit Einstein repeated-index inference;
 - reduction identities for `max`/`min`;
 - nested reduction placement inside arbitrary expression trees;
-- reduction attributes such as `[unroll] sum ...`;
 - tensor shapes or full tensor notation.
+
+The production `sgemm_tile16x16_shared_fp32.sdslv` inner fixed accumulation loop was evaluated for a `[unroll] sum` refactor in M10a, but the repository fallback rule is to keep the explicit `[unroll] for` form if native correctness/performance lanes do not stay green. The outer runtime tile loop remains on explicit `[loop] for`.
 
 This milestone is the explicit-bounds bridge from manual scalar loops toward future tensor and Einstein-style compute notation.
