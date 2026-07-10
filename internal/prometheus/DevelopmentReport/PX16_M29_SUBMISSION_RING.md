@@ -71,3 +71,9 @@ Depth 2 improved wall time per dispatch by **11.06%** over depth 1. Depth 4 impr
 One reporting-only correction was made during validation: GPU timing now reports the mean across all harvested slot query pairs rather than the final harvested slot. Submission, lifetime, and synchronization behavior were unchanged. The focused run had zero resource-reuse failures; state ownership prevents reset, descriptor update, and query reuse until a slot is harvested READY.
 
 **Acceptance: ACCEPTED.** The physical ring reached true depth 2 and 4 with distinct Vulkan submissions, produced correct results, preserved resident/EVT/singleton-async compatibility, and passed both requested Go lanes. The remaining limitation is intentionally scoped: M29 is resident-only and does not provide public multi-token async output ownership.
+# M30a ownership note
+
+The M29 ring's `EMPTY` transition is now additionally guarded for public async
+work: a logical M30 task failure does not authorize command-buffer, descriptor,
+query-pair, or fence reuse. M30a introduces `QUARANTINED` until its fence is
+confirmed by the async reaper.

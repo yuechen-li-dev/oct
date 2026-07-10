@@ -1535,9 +1535,8 @@ FACT(PrometheusReactor_AsyncInFlightOwnershipAndAbandonmentAreSafe)
     int second_task = -1;
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &first_task, &stage, &detail), "first async submit should succeed");
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "second async submit during in-flight work should fail");
-    ASSERT_TRUE(detail == PROM_DETAIL_REUSE_IN_FLIGHT || detail == PROM_DETAIL_ASYNC_UNCONSUMED || detail == PROM_DETAIL_SLOT_BUSY_WAIT_REQUIRED,
-                "in-flight ownership hazard should be surfaced explicitly");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "M30 allows a second independent in-flight task");
+    ASSERT_TRUE(second_task != first_task, "independent in-flight task must receive another ID");
 
     PrometheusAsyncStatus status{};
     for (int attempts = 0; attempts < 2000; ++attempts) {
@@ -1548,8 +1547,12 @@ FACT(PrometheusReactor_AsyncInFlightOwnershipAndAbandonmentAreSafe)
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, first_task), "abandon after ready should be structurally safe");
 
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "submit after abandonment should succeed");
-    ASSERT_TRUE(second_task > first_task, "new submission should allocate a fresh task id");
+    for (int attempts = 0; attempts < 2000; ++attempts) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_query_async(handle, second_task, &status), "second task query should succeed");
+        if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) break;
+    }
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY), status.lifecycle_state, "second independent task should become ready");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, second_task), "second ready task should abandon safely");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
@@ -1592,12 +1595,13 @@ FACT(PrometheusReactor_AsyncFailureRemainsVisibleUntilExplicitAbandon)
     ASSERT_EQUAL(PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE, detail, "failed state should not collapse into not-ready semantics");
     ASSERT_TRUE(detail != PROM_DETAIL_ASYNC_NOT_READY, "failed and not-ready detail channels must remain distinct");
 
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "resubmit over failed slot should be rejected");
-    ASSERT_EQUAL(PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE, detail, "resubmit rejection should preserve explicit failed detail");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "replacement may use another empty physical slot while failed work is quarantined");
+    PrometheusSgemmAsyncDiagnostics quarantine_diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_async_diagnostics(handle, &quarantine_diag), "quarantine diagnostics should succeed");
+    ASSERT_TRUE(quarantine_diag.quarantine_event_count >= 1u, "observation failure must create a quarantine event even if a tiny dispatch already reaped");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, first_task), "explicit abandon should acknowledge failed slot");
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a.data(), b.data(), m, n, k, &second_task, &stage, &detail), "submit should succeed after explicit abandon");
-    ASSERT_TRUE(second_task > first_task, "post-abandon submission should allocate a fresh task id");
+    ASSERT_TRUE(second_task > first_task, "replacement must retain a fresh task id");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }

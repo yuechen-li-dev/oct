@@ -56,6 +56,28 @@ enum {
   PROM_ASYNC_STATE_CONSUMED = 4,
 };
 
+/* M30a keeps public task state distinct from physical submission ownership. */
+enum {
+  PROM_ASYNC_FAILURE_NONE = 0,
+  PROM_ASYNC_FAILURE_PRE_SUBMIT = 1,
+  PROM_ASYNC_FAILURE_OBSERVATION = 2,
+  PROM_ASYNC_FAILURE_QUERY = 3,
+  PROM_ASYNC_FAILURE_SUBMISSION = 4,
+  PROM_ASYNC_FAILURE_DEVICE_LOST = 5,
+};
+
+enum {
+  PROM_ASYNC_PHYSICAL_EMPTY = 0,
+  PROM_ASYNC_PHYSICAL_PREPARING = 1,
+  PROM_ASYNC_PHYSICAL_RECORDED = 2,
+  PROM_ASYNC_PHYSICAL_SUBMITTED = 3,
+  PROM_ASYNC_PHYSICAL_COMPLETE = 4,
+  PROM_ASYNC_PHYSICAL_READY = 5,
+  PROM_ASYNC_PHYSICAL_FAILED = 6,
+  PROM_ASYNC_PHYSICAL_QUARANTINED = 7,
+  PROM_ASYNC_PHYSICAL_FAILED_FATAL = 8,
+};
+
 typedef enum prom_p15_shadow_feedforward_block_reason {
   PROM_P15_SHADOW_FEEDFORWARD_BLOCK_NONE = 0,
   PROM_P15_SHADOW_FEEDFORWARD_BLOCK_DISABLED = 1,
@@ -128,6 +150,13 @@ enum {
   PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32 = 9,
   PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32 = 10,
   PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_REG2X2_TILE16X16_DERIVE_FP32 = 11,
+};
+
+/* Separate from the saturated legacy test_flags word.  These are narrow,
+   async-only simulation controls and never cause invalid Vulkan calls. */
+enum {
+  PROM_ASYNC_TESTCFG_FAIL_QUERY_RESULT = 1u << 0,
+  PROM_ASYNC_TESTCFG_DEVICE_LOST_AFTER_SUBMIT = 1u << 1,
 };
 
 enum {
@@ -630,6 +659,7 @@ typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
   uint32_t test_flags;
   uint32_t p15_shadow_canary_enabled;
+  uint32_t async_test_flags;
 } PrometheusReactorConfig;
 
 typedef struct PrometheusAsyncStatus {
@@ -654,6 +684,13 @@ typedef struct PrometheusSgemmAsyncTaskDiagnostics {
   uint32_t feedback_pending;
   uint32_t feedback_committed;
   int32_t failure_detail;
+  uint32_t failure_class;
+  uint32_t abandoned;
+  uint32_t physical_slot_state;
+  uint32_t quarantined;
+  uint32_t physical_completion_confirmed;
+  uint32_t reap_pending;
+  uint32_t reap_completed;
 } PrometheusSgemmAsyncTaskDiagnostics;
 
 typedef struct PrometheusSgemmAsyncDiagnostics {
@@ -671,6 +708,14 @@ typedef struct PrometheusSgemmAsyncDiagnostics {
   uint64_t feedback_committed_count;
   uint64_t feedback_skipped_count;
   uint64_t next_feedback_sequence;
+  uint32_t quarantined_slot_count;
+  uint64_t quarantine_event_count;
+  uint64_t reap_poll_count;
+  uint64_t reap_success_count;
+  uint64_t reap_wait_count;
+  uint64_t reap_failure_count;
+  uint32_t max_quarantine_depth;
+  uint32_t runtime_unsafe_to_reuse;
   PrometheusSgemmAsyncTaskDiagnostics tasks[4];
 } PrometheusSgemmAsyncDiagnostics;
 

@@ -57,3 +57,21 @@ dedicated transfer family distinct from the compute family. The M31 transfer
 queue discovery fact correctly selects `5`; M30 neither changes queue-family
 selection nor enables multi-queue execution. The test now asserts the named
 compute-plus-transfer topology.
+# M30a follow-up
+
+M30a supersedes the former implication that abandoning a failed public task
+immediately made its submission slot reusable. Observation-failed submissions
+now enter physical-slot quarantine and are reclaimed only after fence-confirmed
+completion; see `PX16_M30A_ASYNC_QUARANTINE_REAP.md`.
+
+The RTX 3070 M30a lane proves sticky observation failure, different-slot
+replacement, explicit queue-full pressure, ordered skipped feedback, safe
+reaping, stale IDs, and destruction drain. M30b completes final M30/M30a
+acceptance with the remaining query-result and device-lost class evidence plus
+green P11 and Go validation.
+
+M30b closes those lifecycle seams with async-only test controls: post-fence
+query failure remains physically safe and reusable, while deterministic
+post-submit device-loss classification transitions the runtime to fatal,
+non-reusable teardown ownership. The M30a hardware lane records both cases in
+the M30 JSON artifact.
