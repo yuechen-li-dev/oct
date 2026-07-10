@@ -482,10 +482,6 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 	return res, nil
 }
 
-func artifactPathFor(path string) string {
-	return OutputPath(filepath.Join(filepath.Dir(path), filepath.Base(path)), ArtifactExecutable, HostTarget())
-}
-
 func generatedBuildDir() (string, error) {
 	root, err := compilerModuleRoot()
 	if err != nil {
@@ -1982,10 +1978,6 @@ func (c *lowerCtx) einTerm(value string) (einsteinTermMeta, bool) {
 	}
 	term, ok := c.einTerms[value]
 	return term, ok
-}
-
-func (c *lowerCtx) setEinTerm(value string, labels []string) {
-	c.setEinTermMeta(value, labels, len(labels), "")
 }
 
 func (c *lowerCtx) setEinTermMeta(value string, labels []string, rank int, typ string) {
@@ -4130,10 +4122,6 @@ func lowerFlowEnumVariantExpr(program project.Program, currentPkg string, enumNa
 		}
 	}
 	return "", "", false
-}
-
-func typeRefString(t ast.TypeRef) string {
-	return typeRefStringForPackage("", t)
 }
 
 func typeRefStringForPackage(currentPkg string, t ast.TypeRef) string {
@@ -8395,18 +8383,6 @@ func emitGoFlowWhenBlockStmt(stmt MIRFlowStmt, pkg string, stateIDs map[string]i
 	}
 }
 
-func emitGoFlowBlock(block []MIRFlowStmt, pkg string, stateIDs map[string]int, resultType string) (string, error) {
-	parts := make([]string, 0, len(block))
-	for _, st := range block {
-		src, err := emitGoFlowStmt(st, pkg, stateIDs, resultType)
-		if err != nil {
-			return "", err
-		}
-		parts = append(parts, src)
-	}
-	return strings.Join(parts, "\n"), nil
-}
-
 func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 	switch e := expr.(type) {
 	case MIRFlowLiteralExpr:
@@ -8681,10 +8657,6 @@ func emitGoBuiltinCallExpr(callee string, args []string) (string, error) {
 	}
 }
 
-func octxiliaryKindExpr(t string) string {
-	return octxiliaryKindExprWithTransport(t, nil)
-}
-
 func octxiliaryKindExprWithTransport(t string, transportTypes []project.TransportTypeMetadata) string {
 	if transport := findTransportRecord(transportTypes, t); transport.ok && transport.typ.Kind == "handle" {
 		return "octxiliary.ValueHandle"
@@ -8717,14 +8689,6 @@ func octxiliaryKindExprWithTransport(t string, transportTypes []project.Transpor
 	default:
 		return "octxiliary.ValueKind(\"" + t + "\")"
 	}
-}
-
-func octxiliaryValueExpr(t string, expr string) (string, error) {
-	return octxiliaryValueExprWithTransport(t, expr, nil)
-}
-
-func octxiliaryValueExprWithTransport(t string, expr string, transportTypes []project.TransportTypeMetadata) (string, error) {
-	return octxiliaryValueExprWithTransportFamily(t, expr, transportTypes, "")
 }
 
 func octxiliaryValueExprWithTransportFamily(t string, expr string, transportTypes []project.TransportTypeMetadata, family string) (string, error) {
@@ -8768,10 +8732,6 @@ func octxiliaryValueExprWithTransportFamily(t string, expr string, transportType
 		}
 		return "", fmt.Errorf("unsupported Octxiliary transport type %s", t)
 	}
-}
-
-func octxiliaryValueExtractExpr(t string, value string) string {
-	return octxiliaryValueExtractExprWithTransport(t, value, nil)
 }
 
 func octxiliaryValueExtractExprWithTransport(t string, value string, transportTypes []project.TransportTypeMetadata) string {

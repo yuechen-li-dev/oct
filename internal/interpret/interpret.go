@@ -3522,11 +3522,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		text := markdownNormalizeInline(textResult.value.Text)
 		prefix := ""
-		if callee == "MarkdownH1" {
+		switch callee {
+		case "MarkdownH1":
 			prefix = "# "
-		} else if callee == "MarkdownH2" {
+		case "MarkdownH2":
 			prefix = "## "
-		} else if callee == "MarkdownH3" {
+		case "MarkdownH3":
 			prefix = "### "
 		}
 		if callee == "MarkdownParagraph" {
@@ -5224,7 +5225,7 @@ func splitQualifiedTypeName(typeName string) (string, string, bool) {
 	if dot <= 0 || dot == len(typeName)-1 {
 		return "", "", false
 	}
-	if strings.Index(typeName[dot+1:], ".") >= 0 {
+	if strings.Contains(typeName[dot+1:], ".") {
 		return "", "", false
 	}
 	return typeName[:dot], typeName[dot+1:], true
@@ -5262,7 +5263,7 @@ func splitTwoSegmentQualifiedName(name string) (string, string, bool) {
 	if dot <= 0 || dot >= len(name)-1 {
 		return "", "", false
 	}
-	if strings.Index(name[dot+1:], ".") >= 0 {
+	if strings.Contains(name[dot+1:], ".") {
 		return "", "", false
 	}
 	return name[:dot], name[dot+1:], true
