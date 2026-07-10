@@ -46,6 +46,13 @@ type RecordDecl struct {
 
 func (RecordDecl) declNode() {}
 
+type BoardDecl struct {
+	Name   string
+	Fields []Field
+}
+
+func (BoardDecl) declNode() {}
+
 type StreamDecl struct {
 	Name   string
 	Fields []Field
@@ -467,6 +474,13 @@ type EnumConstructExpr struct {
 }
 
 func (EnumConstructExpr) exprNode() {}
+
+type BoardLiteralExpr struct {
+	TypeName string
+	Fields   []FieldInit
+}
+
+func (BoardLiteralExpr) exprNode() {}
 
 type FieldInit struct {
 	Name  string

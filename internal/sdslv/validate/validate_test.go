@@ -23,6 +23,113 @@ func TestModuleRejectsUnknownTypes(t *testing.T) {
 	}
 }
 
+func TestModuleValidatesShaderLocalBoardValues(t *testing.T) {
+	err := validateSource(`board LoadCoord {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn MakeLoadCoord(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadCoord {
+let linear: u32 = localThreadLinear * 4u + lane;
+return LoadCoord { linear: linear; row: linear / tileK; col: linear % tileK; };
+}
+shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 16u, 16u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let localThreadLinear: u32 = GroupThreadID.x;
+let AView: matrix_view<f32> = row_major(A, 16u, 16u);
+comptime for lane in 0u..4u {
+let p: LoadCoord = MakeLoadCoord(localThreadLinear, lane, 16u);
+when {
+case fullTile -> {
+Tile[p.row, p.col] = AView[p.row, p.col];
+}
+else -> {
+Tile[p.row, p.col] = read AView[p.row, p.col] when p.row < 16u and p.col < 16u else 0.0;
+}
+}
+}
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("validateSource() error = %v", err)
+	}
+}
+
+func TestModuleRejectsInvalidBoardValues(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "duplicate board field",
+			src:  `board LoadCoord { row: u32; row: u32; }`,
+			want: "duplicate board field",
+		},
+		{
+			name: "unsupported field type",
+			src:  `board Bad { View: matrix_view<f32>; }`,
+			want: "board field Bad.View type matrix_view<f32> is not supported",
+		},
+		{
+			name: "missing literal field",
+			src:  `board LoadCoord { row: u32; col: u32; } fn F() -> LoadCoord { return LoadCoord { row: 1u; }; }`,
+			want: "missing board literal field col",
+		},
+		{
+			name: "duplicate literal field",
+			src:  `board LoadCoord { row: u32; } fn F() -> LoadCoord { return LoadCoord { row: 1u; row: 2u; }; }`,
+			want: "duplicate board literal field row",
+		},
+		{
+			name: "unknown literal field",
+			src:  `board LoadCoord { row: u32; } fn F() -> LoadCoord { return LoadCoord { row: 1u; col: 2u; }; }`,
+			want: "unknown board literal field col",
+		},
+		{
+			name: "field type mismatch",
+			src:  `board LoadCoord { row: u32; } fn F() -> LoadCoord { return LoadCoord { row: true; }; }`,
+			want: "board literal field row on LoadCoord expects u32, got bool",
+		},
+		{
+			name: "unknown field access",
+			src:  `board LoadCoord { row: u32; } fn F(p: LoadCoord) -> u32 { return p.col; }`,
+			want: "unknown field col on LoadCoord",
+		},
+		{
+			name: "field assignment",
+			src:  `board LoadCoord { row: u32; } fn F() -> LoadCoord { let p: LoadCoord = LoadCoord { row: 1u; }; p.row = 2u; return p; }`,
+			want: "board values are immutable in SDSL-V M21",
+		},
+		{
+			name: "comptime board",
+			src:  `board LoadCoord { row: u32; } fn F() -> void { comptime let p: LoadCoord = LoadCoord { row: 1u; }; return; }`,
+			want: "structured consteval boards are not supported",
+		},
+		{
+			name: "resource board element",
+			src:  `board LoadCoord { row: u32; } shader S { resources { P: readonly array<LoadCoord>; } stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; } }`,
+			want: "boards are shader-local values",
+		},
+		{
+			name: "stage board parameter",
+			src:  `board LoadCoord { row: u32; } shader S { stage compute [numthreads(1, 1, 1)] fn CS(p: LoadCoord) -> void { return; } }`,
+			want: "stage parameter p cannot use board type LoadCoord",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleValidatesTileAndMatrixViewIndexing(t *testing.T) {
 	err := validateSource(`shader S {
 resources { A: readonly array<f32>; C: readwrite array<f32>; }

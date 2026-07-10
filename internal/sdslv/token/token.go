@@ -14,6 +14,7 @@ const (
 	KeywordUse       Kind = "KeywordUse"
 	KeywordType      Kind = "KeywordType"
 	KeywordRecord    Kind = "KeywordRecord"
+	KeywordBoard     Kind = "KeywordBoard"
 	KeywordEnum      Kind = "KeywordEnum"
 	KeywordShader    Kind = "KeywordShader"
 	KeywordResources Kind = "KeywordResources"
@@ -107,6 +108,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordType
 	case "record":
 		return KeywordRecord
+	case "board":
+		return KeywordBoard
 	case "enum":
 		return KeywordEnum
 	case "shader":

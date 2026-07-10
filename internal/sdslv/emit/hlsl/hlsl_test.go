@@ -40,6 +40,48 @@ return;
 	}
 }
 
+func TestEmitBoardValuesAsHLSLStructs(t *testing.T) {
+	out := emitSource(t, `board LoadCoord {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn MakeLoadCoord(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadCoord {
+let linear: u32 = localThreadLinear * 4u + lane;
+return LoadCoord { linear: linear; row: linear / tileK; col: linear % tileK; };
+}
+shader S {
+resources { A: readonly array<f32>; }
+workgroup Tile: tile<f32, 16u, 16u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let localThreadLinear: u32 = GroupThreadID.x;
+let AView: matrix_view<f32> = row_major(A, 16u, 16u);
+comptime for lane in 0u..1u {
+let p: LoadCoord = MakeLoadCoord(localThreadLinear, lane, 16u);
+when {
+case fullTile -> { Tile[p.row, p.col] = AView[p.row, p.col]; }
+else -> { Tile[p.row, p.col] = read AView[p.row, p.col] when p.row < 16u and p.col < 16u else 0.0; }
+}
+}
+return;
+}
+}`)
+	for _, want := range []string{
+		"struct LoadCoord",
+		"uint linear_;",
+		"LoadCoord MakeLoadCoord(",
+		"LoadCoord __sdslv_board_0;",
+		"__sdslv_board_0.row = (linear_ / tileK);",
+		"LoadCoord p__ct0 = MakeLoadCoord(localThreadLinear, 0u, 16u);",
+		"Tile[((p__ct0.row) * (16)) + (p__ct0.col)]",
+		"if (((p__ct0.row < 16u) && (p__ct0.col < 16u)))",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestEmitTileAndMatrixView2DIndexing(t *testing.T) {
 	hlsl := emitSource(t, `shader S {
 resources { A: readonly array<f32>; C: readwrite array<f32>; }

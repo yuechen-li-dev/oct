@@ -1,0 +1,24 @@
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+}
+
+fn MakeLoadCoord(linear: u32, tileK: u32) -> LoadCoord {
+    return LoadCoord {
+        linear: linear;
+        row: linear / tileK;
+        col: linear % tileK;
+    };
+}
+
+shader BoardBasic {
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let p: LoadCoord = MakeLoadCoord(5u, 4u);
+        let sameTile: bool = p.row == 1u and not (p.col == 0u);
+        if sameTile or p.linear == 0u {
+            return;
+        }
+        return;
+    }
+}

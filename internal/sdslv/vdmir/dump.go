@@ -29,6 +29,12 @@ func Dump(module Module) string {
 			line(1, fmt.Sprintf("field %s: %s", field.Name, FormatType(field.Type)))
 		}
 	}
+	for _, board := range module.Boards {
+		line(0, "board "+board.Name)
+		for _, field := range board.Fields {
+			line(1, fmt.Sprintf("field %s: %s", field.Name, FormatType(field.Type)))
+		}
+	}
 	for _, stream := range module.Streams {
 		line(0, "stream "+stream.Name)
 		for _, field := range stream.Fields {
@@ -207,6 +213,12 @@ func FormatExpr(expr Expr) string {
 			parts = append(parts, fmt.Sprintf("%s: %s", field.Name, FormatExpr(field.Value)))
 		}
 		return e.EnumName + "." + e.VariantName + " { " + strings.Join(parts, ", ") + " }"
+	case BoardConstructExpr:
+		parts := make([]string, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			parts = append(parts, fmt.Sprintf("%s: %s", field.Name, FormatExpr(field.Value)))
+		}
+		return e.TypeName + " { " + strings.Join(parts, ", ") + " }"
 	case MatchExpr:
 		parts := make([]string, 0, len(e.Arms))
 		for _, arm := range e.Arms {
@@ -276,6 +288,8 @@ func FormatType(t Type) string {
 		return fmt.Sprintf("matrix_view<%s>", FormatType(*t.Element))
 	case TypeRecord:
 		return "record " + t.Name
+	case TypeBoard:
+		return "board " + t.Name
 	case TypeStream:
 		return "stream " + t.Name
 	default:

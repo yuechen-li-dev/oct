@@ -137,6 +137,15 @@ when {
 
 This is distinct from guarded memory access. `read/write ... when ...` protects one memory operation; guard `when { case ... -> ... }` selects one bounded statement body.
 
+M21 shader-local board fields may be used naturally in guarded memory targets and guards:
+
+```sdslv
+TileA[p.row, p.col] =
+    read AView[groupBaseRow + p.row, tileBaseK + p.col]
+        when groupBaseRow + p.row < params.M and tileBaseK + p.col < params.K
+        else 0.0;
+```
+
 ## Examples
 
 - `examples/SDSL-V/M16a/GuardedReadBasic.sdslv`

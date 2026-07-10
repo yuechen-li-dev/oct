@@ -42,6 +42,8 @@ func Module(module ast.Module) (vdmir.Module, error) {
 			})
 		case ast.RecordDecl:
 			out.Records = append(out.Records, l.lowerRecord(d.Name, d.Fields))
+		case ast.BoardDecl:
+			out.Boards = append(out.Boards, l.lowerBoard(d.Name, d.Fields))
 		case ast.StreamDecl:
 			out.Streams = append(out.Streams, l.lowerStream(d.Name, d.Fields))
 		case ast.EnumDecl:
@@ -795,6 +797,7 @@ func expandComptimeFor(stmt ast.ComptimeForStmt, comptime map[string]comptimeBin
 		if err != nil {
 			return ast.Block{}, err
 		}
+		body = renameComptimeIterationLocals(body, fmt.Sprintf("__ct%d", i))
 		totalExpanded += blockExpansionCost(body)
 		if totalExpanded > maxComptimeForExpandedStatements {
 			return ast.Block{}, fmt.Errorf("comptime for expansion exceeds M16 limit of %d iterations", maxComptimeForExpandedStatements)
@@ -802,6 +805,185 @@ func expandComptimeFor(stmt ast.ComptimeForStmt, comptime map[string]comptimeBin
 		out.Statements = append(out.Statements, body.Statements...)
 	}
 	return out, nil
+}
+
+func renameComptimeIterationLocals(block ast.Block, suffix string) ast.Block {
+	names := map[string]string{}
+	collectLocalLetNames(block, names, suffix)
+	if len(names) == 0 {
+		return block
+	}
+	return renameRuntimeLocalsInBlock(block, names)
+}
+
+func collectLocalLetNames(block ast.Block, names map[string]string, suffix string) {
+	for _, stmt := range block.Statements {
+		switch s := stmt.(type) {
+		case ast.LetStmt:
+			if _, exists := names[s.Name]; !exists {
+				names[s.Name] = s.Name + suffix
+			}
+		case ast.IfStmt:
+			collectLocalLetNames(s.ThenBody, names, suffix)
+			if s.ElseBody != nil {
+				collectLocalLetNames(*s.ElseBody, names, suffix)
+			}
+		case ast.GuardWhenStmt:
+			for _, c := range s.Cases {
+				collectLocalLetNames(c.Body, names, suffix)
+			}
+			if s.ElseBody != nil {
+				collectLocalLetNames(*s.ElseBody, names, suffix)
+			}
+		case ast.ForStmt:
+			collectLocalLetNames(s.Body, names, suffix)
+		}
+	}
+}
+
+func renameRuntimeLocalsInBlock(block ast.Block, names map[string]string) ast.Block {
+	out := ast.Block{Statements: make([]ast.Stmt, 0, len(block.Statements))}
+	for _, stmt := range block.Statements {
+		out.Statements = append(out.Statements, renameRuntimeLocalsInStmt(stmt, names))
+	}
+	return out
+}
+
+func renameRuntimeLocalsInStmt(stmt ast.Stmt, names map[string]string) ast.Stmt {
+	switch s := stmt.(type) {
+	case ast.LetStmt:
+		name := s.Name
+		if renamed, ok := names[name]; ok {
+			name = renamed
+		}
+		var value ast.Expr
+		if s.Value != nil {
+			value = renameRuntimeLocalsInExpr(s.Value, names)
+		}
+		return ast.LetStmt{Name: name, Type: s.Type, Value: value}
+	case ast.AssignStmt:
+		return ast.AssignStmt{Target: renameRuntimeLocalsInExpr(s.Target, names), Value: renameRuntimeLocalsInExpr(s.Value, names)}
+	case ast.GuardedWriteStmt:
+		return ast.GuardedWriteStmt{
+			Target:    renameRuntimeLocalsInExpr(s.Target, names),
+			Value:     renameRuntimeLocalsInExpr(s.Value, names),
+			Condition: renameRuntimeLocalsInExpr(s.Condition, names),
+		}
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			return s
+		}
+		return ast.ReturnStmt{Value: renameRuntimeLocalsInExpr(s.Value, names)}
+	case ast.ExprStmt:
+		return ast.ExprStmt{Value: renameRuntimeLocalsInExpr(s.Value, names)}
+	case ast.IfStmt:
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body := renameRuntimeLocalsInBlock(*s.ElseBody, names)
+			elseBody = &body
+		}
+		return ast.IfStmt{Condition: renameRuntimeLocalsInExpr(s.Condition, names), ThenBody: renameRuntimeLocalsInBlock(s.ThenBody, names), ElseBody: elseBody}
+	case ast.GuardWhenStmt:
+		cases := make([]ast.GuardWhenCase, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			cases = append(cases, ast.GuardWhenCase{Condition: renameRuntimeLocalsInExpr(c.Condition, names), Body: renameRuntimeLocalsInBlock(c.Body, names)})
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body := renameRuntimeLocalsInBlock(*s.ElseBody, names)
+			elseBody = &body
+		}
+		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}
+	case ast.ForStmt:
+		return ast.ForStmt{
+			Attributes: append([]ast.Attribute(nil), s.Attributes...),
+			Name:       s.Name,
+			Start:      renameRuntimeLocalsInExpr(s.Start, names),
+			End:        renameRuntimeLocalsInExpr(s.End, names),
+			Step:       renameRuntimeLocalsInExpr(s.Step, names),
+			Body:       renameRuntimeLocalsInBlock(s.Body, names),
+		}
+	default:
+		return stmt
+	}
+}
+
+func renameRuntimeLocalsInExpr(expr ast.Expr, names map[string]string) ast.Expr {
+	switch e := expr.(type) {
+	case ast.IdentifierExpr:
+		if renamed, ok := names[e.Name]; ok {
+			return ast.IdentifierExpr{Name: renamed}
+		}
+		return e
+	case ast.FieldAccessExpr:
+		return ast.FieldAccessExpr{Target: renameRuntimeLocalsInExpr(e.Target, names), Field: e.Field}
+	case ast.IndexExpr:
+		out := ast.IndexExpr{Target: renameRuntimeLocalsInExpr(e.Target, names), Index: renameRuntimeLocalsInExpr(e.Index, names), HasSecond: e.HasSecond}
+		if e.HasSecond {
+			out.Index2 = renameRuntimeLocalsInExpr(e.Index2, names)
+		}
+		return out
+	case ast.GuardedReadExpr:
+		return ast.GuardedReadExpr{
+			Target:    renameRuntimeLocalsInExpr(e.Target, names),
+			Condition: renameRuntimeLocalsInExpr(e.Condition, names),
+			Fallback:  renameRuntimeLocalsInExpr(e.Fallback, names),
+		}
+	case ast.CallExpr:
+		args := make([]ast.Expr, 0, len(e.Arguments))
+		for _, arg := range e.Arguments {
+			args = append(args, renameRuntimeLocalsInExpr(arg, names))
+		}
+		return ast.CallExpr{Callee: renameRuntimeLocalsInExpr(e.Callee, names), Arguments: args}
+	case ast.BinaryExpr:
+		return ast.BinaryExpr{Left: renameRuntimeLocalsInExpr(e.Left, names), Operator: e.Operator, Right: renameRuntimeLocalsInExpr(e.Right, names)}
+	case ast.UnaryExpr:
+		return ast.UnaryExpr{Operator: e.Operator, Operand: renameRuntimeLocalsInExpr(e.Operand, names)}
+	case ast.ParenExpr:
+		return ast.ParenExpr{Inner: renameRuntimeLocalsInExpr(e.Inner, names)}
+	case ast.WhenUtilityExpr:
+		cases := make([]ast.UtilityCase, 0, len(e.Cases))
+		for _, c := range e.Cases {
+			cases = append(cases, ast.UtilityCase{Value: renameRuntimeLocalsInExpr(c.Value, names), Condition: renameRuntimeLocalsInExpr(c.Condition, names), Score: renameRuntimeLocalsInExpr(c.Score, names)})
+		}
+		return ast.WhenUtilityExpr{Cases: cases, Else: renameRuntimeLocalsInExpr(e.Else, names)}
+	case ast.WithExpr:
+		updates := make([]ast.FieldUpdate, 0, len(e.Updates))
+		for _, update := range e.Updates {
+			updates = append(updates, ast.FieldUpdate{Name: update.Name, Value: renameRuntimeLocalsInExpr(update.Value, names)})
+		}
+		return ast.WithExpr{Base: renameRuntimeLocalsInExpr(e.Base, names), Updates: updates}
+	case ast.EnumConstructExpr:
+		fields := make([]ast.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.FieldInit{Name: field.Name, Value: renameRuntimeLocalsInExpr(field.Value, names)})
+		}
+		return ast.EnumConstructExpr{EnumName: e.EnumName, VariantName: e.VariantName, Fields: fields}
+	case ast.BoardLiteralExpr:
+		fields := make([]ast.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.FieldInit{Name: field.Name, Value: renameRuntimeLocalsInExpr(field.Value, names)})
+		}
+		return ast.BoardLiteralExpr{TypeName: e.TypeName, Fields: fields}
+	case ast.MatchExpr:
+		arms := make([]ast.MatchArm, 0, len(e.Arms))
+		for _, arm := range e.Arms {
+			arms = append(arms, ast.MatchArm{EnumName: arm.EnumName, VariantName: arm.VariantName, BindingName: arm.BindingName, Value: renameRuntimeLocalsInExpr(arm.Value, names)})
+		}
+		return ast.MatchExpr{Subject: renameRuntimeLocalsInExpr(e.Subject, names), Arms: arms}
+	case ast.ReductionExpr:
+		return ast.ReductionExpr{
+			Attributes: append([]ast.Attribute(nil), e.Attributes...),
+			Op:         e.Op,
+			Name:       e.Name,
+			Start:      renameRuntimeLocalsInExpr(e.Start, names),
+			End:        renameRuntimeLocalsInExpr(e.End, names),
+			Step:       renameRuntimeLocalsInExpr(e.Step, names),
+			Body:       renameRuntimeLocalsInExpr(e.Body, names),
+		}
+	default:
+		return expr
+	}
 }
 
 func annotateComptimeWhenExprError(err error, position string) error {
@@ -921,7 +1103,7 @@ func rejectRuntimeComptimeRefs(expr ast.Expr, runtime map[string]runtimeBinding)
 		return rejectRuntimeComptimeRefs(e.Operand, runtime)
 	case ast.ParenExpr:
 		return rejectRuntimeComptimeRefs(e.Inner, runtime)
-	case ast.ReductionExpr, ast.MatchExpr, ast.WithExpr, ast.EnumConstructExpr:
+	case ast.ReductionExpr, ast.MatchExpr, ast.WithExpr, ast.EnumConstructExpr, ast.BoardLiteralExpr:
 		return fmt.Errorf("comptime expression cannot use runtime expression forms in SDSL-V M13")
 	}
 	return nil
@@ -978,6 +1160,12 @@ func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast
 			fields = append(fields, ast.FieldInit{Name: field.Name, Value: replaceComptimeExpr(field.Value, comptime)})
 		}
 		return ast.EnumConstructExpr{EnumName: e.EnumName, VariantName: e.VariantName, Fields: fields}
+	case ast.BoardLiteralExpr:
+		fields := make([]ast.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.FieldInit{Name: field.Name, Value: replaceComptimeExpr(field.Value, comptime)})
+		}
+		return ast.BoardLiteralExpr{TypeName: e.TypeName, Fields: fields}
 	case ast.MatchExpr:
 		arms := make([]ast.MatchArm, 0, len(e.Arms))
 		for _, arm := range e.Arms {
@@ -1190,6 +1378,12 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 			fields = append(fields, ast.FieldInit{Name: field.Name, Value: specializeExpr(field.Value, env)})
 		}
 		return ast.EnumConstructExpr{EnumName: e.EnumName, VariantName: e.VariantName, Fields: fields}
+	case ast.BoardLiteralExpr:
+		fields := make([]ast.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.FieldInit{Name: field.Name, Value: specializeExpr(field.Value, env)})
+		}
+		return ast.BoardLiteralExpr{TypeName: e.TypeName, Fields: fields}
 	case ast.MatchExpr:
 		arms := make([]ast.MatchArm, 0, len(e.Arms))
 		for _, arm := range e.Arms {
@@ -1302,6 +1496,8 @@ func (l *lowering) collect(module ast.Module) {
 			l.types[d.Name] = typeInfo{kind: "alias", target: d.Type}
 		case ast.RecordDecl:
 			l.types[d.Name] = typeInfo{kind: "record", fields: collectFields(d.Fields)}
+		case ast.BoardDecl:
+			l.types[d.Name] = typeInfo{kind: "board", fields: collectFields(d.Fields)}
 		case ast.StreamDecl:
 			l.types[d.Name] = typeInfo{kind: "stream", fields: collectFields(d.Fields)}
 		case ast.ConceptDecl:
@@ -1380,6 +1576,18 @@ func (l *lowering) lowerRecord(name string, fields []ast.Field) vdmir.Record {
 		})
 	}
 	return record
+}
+
+func (l *lowering) lowerBoard(name string, fields []ast.Field) vdmir.Board {
+	board := vdmir.Board{Provenance: l.provenance, Name: name}
+	for _, field := range fields {
+		board.Fields = append(board.Fields, vdmir.Field{
+			Provenance: l.provenance,
+			Name:       field.Name,
+			Type:       l.lowerTypeRef(field.Type),
+		})
+	}
+	return board
 }
 
 func (l *lowering) lowerStream(name string, fields []ast.Field) vdmir.Stream {
@@ -1823,6 +2031,21 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			VariantName: e.VariantName,
 			Fields:      fields,
 		}, nil
+	case ast.BoardLiteralExpr:
+		fields := make([]vdmir.FieldInit, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			value, err := l.lowerExpr(field.Value, scope, shaderName)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, vdmir.FieldInit{Name: field.Name, Value: value})
+		}
+		return vdmir.BoardConstructExpr{
+			Provenance: l.provenance,
+			ExprType:   l.lowerTypeRef(ast.TypeRef{Name: e.TypeName}),
+			TypeName:   e.TypeName,
+			Fields:     fields,
+		}, nil
 	case ast.MatchExpr:
 		subject, err := l.lowerExpr(e.Subject, scope, shaderName)
 		if err != nil {
@@ -2111,6 +2334,8 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 			switch info.kind {
 			case "record":
 				return vdmir.Type{Kind: vdmir.TypeRecord, Name: resolved.Name}
+			case "board":
+				return vdmir.Type{Kind: vdmir.TypeBoard, Name: resolved.Name}
 			case "stream":
 				return vdmir.Type{Kind: vdmir.TypeStream, Name: resolved.Name}
 			case "enum":
@@ -2292,6 +2517,10 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 	case ast.ParenExpr:
 		walkExpr(e.Inner, builtins)
 	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			walkExpr(field.Value, builtins)
+		}
+	case ast.BoardLiteralExpr:
 		for _, field := range e.Fields {
 			walkExpr(field.Value, builtins)
 		}

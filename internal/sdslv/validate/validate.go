@@ -122,6 +122,8 @@ func (v *validator) collect(module ast.Module) {
 			v.addType(d.Name, typeInfo{name: d.Name, kind: "alias", target: d.Type})
 		case ast.RecordDecl:
 			v.addFieldType(d.Name, "record", d.Fields, "record")
+		case ast.BoardDecl:
+			v.addFieldType(d.Name, "board", d.Fields, "board")
 		case ast.StreamDecl:
 			v.addFieldType(d.Name, "stream", d.Fields, "stream")
 		case ast.ConceptDecl:
@@ -150,7 +152,7 @@ func (v *validator) collect(module ast.Module) {
 			}
 		case ast.UnsupportedDecl:
 			if d.Kind == "flow" {
-				v.errorf("SDSL-V flow/state controllers are planned but not supported in M19")
+				v.errorf("SDSL-V flow/state controllers are planned but not supported in M21")
 			} else {
 				v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 			}
@@ -271,6 +273,9 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 			v.validateType(d.Type)
 		case ast.RecordDecl:
 			v.validateFields(d.Name, "record", d.Fields, false)
+		case ast.BoardDecl:
+			v.validateFields(d.Name, "board", d.Fields, false)
+			v.validateBoardFields(d)
 		case ast.StreamDecl:
 			v.validateFields(d.Name, "stream", d.Fields, true)
 			v.validateComputeThreadStream(d)
@@ -302,6 +307,24 @@ func (v *validator) validateFields(owner, kind string, fields []ast.Field, allow
 		if field.Type.Name == "reg_tile" {
 			v.errorf("%s field %s.%s cannot use reg_tile<T, Rows, Cols> in SDSL-V M15", kind, owner, field.Name)
 		}
+	}
+}
+
+func (v *validator) validateBoardFields(board ast.BoardDecl) {
+	for _, field := range board.Fields {
+		if !v.isAllowedBoardFieldType(field.Type) {
+			v.errorf("board field %s.%s type %s is not supported in SDSL-V M21; board fields must be bool, i32, u32, f32, float, or supported scalar vector types", board.Name, field.Name, typeName(field.Type))
+		}
+	}
+}
+
+func (v *validator) isAllowedBoardFieldType(ref ast.TypeRef) bool {
+	resolved := v.resolveAlias(ref)
+	switch resolved.Name {
+	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -529,6 +552,8 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 		}
 		if resource.Type.Name != "array" || len(resource.Type.Args) != 1 {
 			v.errorf("resource %s.%s must use array<T> in GoOct SDSL-V M3", shader.Name, resource.Name)
+		} else if v.typeKind(resource.Type.Args[0]) == "board" {
+			v.errorf("resource %s.%s cannot use board element type %s; SDSL-V M21 boards are shader-local values and do not affect resource bindings", shader.Name, resource.Name, typeName(resource.Type.Args[0]))
 		}
 		v.validateResourceAttributes(shader.Name, resource)
 		v.validateType(resource.Type)
@@ -642,6 +667,9 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 			v.errorf("duplicate parameter or builtin name %s in %s", param.Name, fn.Name)
 		}
 		v.validateType(param.Type)
+		if stage != "" && v.typeKind(param.Type) == "board" {
+			v.errorf("stage parameter %s cannot use board type %s; SDSL-V M21 boards are shader-local values, not push constants or interface payloads", param.Name, typeName(param.Type))
+		}
 		if param.Type.Name == "tile" || param.Type.Name == "matrix_view" {
 			v.errorf("%s parameters are not supported in SDSL-V M12", param.Type.Name)
 		}
@@ -709,6 +737,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access, value: localValue}
 	case ast.ComptimeLetStmt:
 		v.validateType(s.Type)
+		if v.typeKind(s.Type) == "board" {
+			v.errorf("comptime let %s cannot use board type %s in SDSL-V M21; structured consteval boards are not supported", s.Name, typeName(s.Type))
+		}
 		v.validateWithPlacement(s.Value, false)
 		v.validateGuardedReadPlacement(s.Value, true)
 		v.validateMatchPlacement(s.Value, false)
@@ -747,6 +778,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateImmutableAssignmentTarget(s.Target, scope)
 		if targetType.Name == "reg_tile" || valueType.Name == "reg_tile" {
 			v.errorf("whole reg_tile assignment is not supported in SDSL-V M15")
+		}
+		if v.typeKind(targetType) == "board" || v.assignmentTouchesBoardField(s.Target, scope) {
+			v.errorf("board values are immutable in SDSL-V M21; board field assignment is reserved for flow-bound mutable board state")
 		}
 		if !v.compatible(targetType, valueType) {
 			v.errorf("assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
@@ -1238,6 +1272,35 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 			}
 		}
 		return ast.TypeRef{Name: e.EnumName}
+	case ast.BoardLiteralExpr:
+		info, ok := v.types[e.TypeName]
+		if !ok || info.kind != "board" {
+			v.errorf("unknown board type %s", e.TypeName)
+			return ast.TypeRef{Name: "<error>"}
+		}
+		seen := map[string]struct{}{}
+		for _, field := range e.Fields {
+			if _, exists := seen[field.Name]; exists {
+				v.errorf("duplicate board literal field %s on %s", field.Name, e.TypeName)
+				continue
+			}
+			seen[field.Name] = struct{}{}
+			decl, ok := info.fields[field.Name]
+			if !ok {
+				v.errorf("unknown board literal field %s on %s", field.Name, e.TypeName)
+				continue
+			}
+			valueType := v.exprType(field.Value, scope, shaderName, templateParam)
+			if !v.compatible(decl.typ, valueType) {
+				v.errorf("board literal field %s on %s expects %s, got %s", field.Name, e.TypeName, typeName(decl.typ), typeName(valueType))
+			}
+		}
+		for fieldName := range info.fields {
+			if _, exists := seen[fieldName]; !exists {
+				v.errorf("missing board literal field %s on %s", fieldName, e.TypeName)
+			}
+		}
+		return ast.TypeRef{Name: e.TypeName}
 	case ast.MatchExpr:
 		subjectType := v.resolveAlias(v.exprType(e.Subject, scope, shaderName, templateParam))
 		if v.typeKind(subjectType) != "enum" {
@@ -1315,6 +1378,10 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 	case ast.WithExpr:
 		baseType := v.exprType(e.Base, scope, shaderName, templateParam)
 		kind := v.typeKind(baseType)
+		if kind == "board" {
+			v.errorf("board values are immutable in SDSL-V M21; use a new board literal instead of with-update")
+			return ast.TypeRef{Name: "<error>"}
+		}
 		if kind != "record" && kind != "stream" {
 			v.errorf("with base must be a record or stream, got %s", typeName(baseType))
 			return ast.TypeRef{Name: "<error>"}
@@ -1501,6 +1568,10 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 			if !isDirectIdentifier(expr) {
 				v.errorf("cannot assign through immutable %s parameter %s; use with instead", kind, root)
 			}
+		case kind == "board":
+			if !isDirectIdentifier(expr) {
+				v.errorf("board values are immutable in SDSL-V M21; board field assignment is reserved for flow-bound mutable board state")
+			}
 		case kind == "array":
 			if !isDirectIdentifier(expr) {
 				v.errorf("cannot assign through immutable array parameter %s", root)
@@ -1512,9 +1583,28 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 	}
 }
 
+func (v *validator) assignmentTouchesBoardField(expr ast.Expr, scope map[string]varInfo) bool {
+	if _, ok := expr.(ast.FieldAccessExpr); !ok {
+		return false
+	}
+	root, ok := rootIdentifier(expr)
+	if !ok {
+		return false
+	}
+	info, ok := scope[root]
+	if !ok {
+		return false
+	}
+	return v.typeKind(info.typ) == "board"
+}
+
 func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 	switch e := expr.(type) {
 	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateWithPlacement(field.Value, false)
+		}
+	case ast.BoardLiteralExpr:
 		for _, field := range e.Fields {
 			v.validateWithPlacement(field.Value, false)
 		}
@@ -1583,6 +1673,10 @@ func (v *validator) validateMatchPlacement(expr ast.Expr, topLevelAllowed bool) 
 		for _, field := range e.Fields {
 			v.validateMatchPlacement(field.Value, false)
 		}
+	case ast.BoardLiteralExpr:
+		for _, field := range e.Fields {
+			v.validateMatchPlacement(field.Value, false)
+		}
 	case ast.FieldAccessExpr:
 		v.validateMatchPlacement(e.Target, false)
 	case ast.IndexExpr:
@@ -1636,6 +1730,10 @@ func (v *validator) validateReductionPlacement(expr ast.Expr, topLevelAllowed bo
 		v.validateReductionPlacement(e.Step, false)
 		v.validateReductionPlacement(e.Body, false)
 	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateReductionPlacement(field.Value, false)
+		}
+	case ast.BoardLiteralExpr:
 		for _, field := range e.Fields {
 			v.validateReductionPlacement(field.Value, false)
 		}
@@ -1696,6 +1794,10 @@ func (v *validator) validateGuardedReadPlacement(expr ast.Expr, topLevelAllowed 
 		v.validateGuardedReadPlacement(e.Condition, false)
 		v.validateGuardedReadPlacement(e.Fallback, false)
 	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateGuardedReadPlacement(field.Value, false)
+		}
+	case ast.BoardLiteralExpr:
 		for _, field := range e.Fields {
 			v.validateGuardedReadPlacement(field.Value, false)
 		}
@@ -1888,6 +1990,10 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 	case ast.ParenExpr:
 		v.validateBarrierUsage(e.Inner, false, shaderName, stage)
 	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			v.validateBarrierUsage(field.Value, false, shaderName, stage)
+		}
+	case ast.BoardLiteralExpr:
 		for _, field := range e.Fields {
 			v.validateBarrierUsage(field.Value, false, shaderName, stage)
 		}
@@ -2264,6 +2370,12 @@ func containsGuardedReadExpr(expr ast.Expr) bool {
 			}
 		}
 	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			if containsGuardedReadExpr(field.Value) {
+				return true
+			}
+		}
+	case ast.BoardLiteralExpr:
 		for _, field := range e.Fields {
 			if containsGuardedReadExpr(field.Value) {
 				return true

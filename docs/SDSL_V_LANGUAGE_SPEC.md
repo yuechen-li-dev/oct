@@ -40,6 +40,7 @@ Current GoOct SDSL-V accepts these top-level declaration kinds:
 |---|---|---|
 | `type` | `type Name = TypeRef @space(...);` | Type alias, optionally space-annotated |
 | `record` | `record Name { fields }` | Plain aggregate struct (no stage semantics) |
+| `board` | `board Name { fields }` | M21 shader-local immutable structured value type |
 | `stream` | `stream Name { fields }` | Stage I/O struct (auto-assigned HLSL semantics) |
 | `concept` | `concept Name { FIELD: Type; Group: { Field: Type = expr; }; require expr; }` | Compile-time config schema, grouped fields, defaults, and constraints |
 | `config` | `config Name: ConceptName { FIELD: const_expr; Path.To.Field => const_expr; require expr; }` | Concrete compile-time config values |
@@ -130,6 +131,30 @@ M15 currently supports:
 Whole-tile copy, whole-tile assignment, parameter passing, and return values are deferred.
 
 Guarded read/write do not change `reg_tile`'s role: `reg_tile` remains per-thread local storage, while guarded access is primarily for resource/view and tile boundary protection.
+
+### Board value types (GoOct M21)
+
+M21 adds shader-local immutable board values for naming derived per-phase facts such as load coordinates:
+
+```sdslv
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+}
+
+let p: LoadCoord = LoadCoord {
+    linear: linear;
+    row: linear / tileK;
+    col: linear % tileK;
+};
+```
+
+Board declarations are type declarations only. They do not allocate memory, do not create resource bindings, and do not affect dispatch metadata or host ABI. M21 board fields are restricted to shader-local value types: `bool`, `i32`, `u32`, `f32`/`float`, and supported scalar vector types.
+
+Board literals must provide every field exactly once. Field access (`p.row`) works in arithmetic, `tile`/`reg_tile`/`matrix_view` indices, guarded memory access, and runtime guard `when` bodies. Board helper functions may return board values.
+
+Board values are immutable in M21. Whole-board reassignment and `p.field = value` are rejected; mutable board state is reserved for future flow-bound semantics, matching Oct's convention that mutable board memory belongs inside flow/state control.
 
 ### Type aliases and coordinate spaces
 

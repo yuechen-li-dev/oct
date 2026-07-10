@@ -21,6 +21,9 @@ func Emit(module vdmir.Module) (string, error) {
 	for _, record := range module.Records {
 		e.emitStruct(record.Name, record.Fields)
 	}
+	for _, board := range module.Boards {
+		e.emitStruct(board.Name, board.Fields)
+	}
 	for _, stream := range module.Streams {
 		if len(stream.Fields) == 0 {
 			continue
@@ -86,7 +89,7 @@ func (e *emitter) emitEnum(enum vdmir.Enum) {
 		if !variant.HasPayload {
 			continue
 		}
-		e.line(fmt.Sprintf("%s %s;", enumPayloadTypeName(enum.Name, variant.Name), variant.Name))
+		e.line(fmt.Sprintf("%s %s;", enumPayloadTypeName(enum.Name, variant.Name), hlslIdentifier(variant.Name)))
 	}
 	e.indent--
 	e.line("};")
@@ -107,7 +110,7 @@ func (e *emitter) emitEnumConstructor(enumName string, variant vdmir.EnumVariant
 	e.line(fmt.Sprintf("%s value;", enumName))
 	e.line(fmt.Sprintf("value.Tag = %s_%s;", enumName, variant.Name))
 	for _, field := range variant.Payload {
-		e.line(fmt.Sprintf("value.%s.%s = %s;", variant.Name, field.Name, field.Name))
+		e.line(fmt.Sprintf("value.%s.%s = %s;", hlslIdentifier(variant.Name), hlslIdentifier(field.Name), hlslIdentifier(field.Name)))
 	}
 	e.line("return value;")
 	e.indent--
@@ -119,15 +122,15 @@ func (e *emitter) emitResource(resource vdmir.Resource) {
 	elem := typeRef(resource.ElementType, "")
 	prefix := fmt.Sprintf("[[vk::binding(%d, %d)]] ", resource.Binding.Binding, resource.Binding.Set)
 	if resource.Access == vdmir.ResourceReadOnly {
-		e.line(fmt.Sprintf("%sStructuredBuffer<%s> %s;", prefix, elem, resource.Name))
+		e.line(fmt.Sprintf("%sStructuredBuffer<%s> %s;", prefix, elem, hlslIdentifier(resource.Name)))
 		return
 	}
-	e.line(fmt.Sprintf("%sRWStructuredBuffer<%s> %s;", prefix, elem, resource.Name))
+	e.line(fmt.Sprintf("%sRWStructuredBuffer<%s> %s;", prefix, elem, hlslIdentifier(resource.Name)))
 }
 
 func (e *emitter) emitWorkgroup(workgroup vdmir.WorkgroupMemoryDecl) {
 	if workgroup.IsTile {
-		e.line(fmt.Sprintf("groupshared %s %s[%d * %d];", typeRef(workgroup.ElementType, ""), workgroup.Name, workgroup.Rows, workgroup.Cols))
+		e.line(fmt.Sprintf("groupshared %s %s[%d * %d];", typeRef(workgroup.ElementType, ""), hlslIdentifier(workgroup.Name), workgroup.Rows, workgroup.Cols))
 		return
 	}
 	e.line(fmt.Sprintf("groupshared %s;", typeRef(workgroup.Type, workgroup.Name)))
@@ -149,7 +152,7 @@ func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint)
 	} else {
 		for _, builtin := range entry.Builtins {
 			if builtin.Referenced {
-				params = append(params, fmt.Sprintf("%s %s : %s", typeRef(builtin.Type, ""), builtin.Name, builtin.Semantic))
+				params = append(params, fmt.Sprintf("%s %s : %s", typeRef(builtin.Type, ""), hlslIdentifier(builtin.Name), builtin.Semantic))
 			}
 		}
 	}
@@ -167,7 +170,7 @@ func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint)
 
 func (e *emitter) emitEntryParamGlobals(entry vdmir.ComputeEntryPoint) {
 	for _, param := range entry.Params {
-		e.line(fmt.Sprintf("[[vk::push_constant]] ConstantBuffer<%s> %s;", typeRef(param.Type, ""), param.Name))
+		e.line(fmt.Sprintf("[[vk::push_constant]] ConstantBuffer<%s> %s;", typeRef(param.Type, ""), hlslIdentifier(param.Name)))
 	}
 	if len(entry.Params) > 0 {
 		e.line("")
@@ -176,13 +179,13 @@ func (e *emitter) emitEntryParamGlobals(entry vdmir.ComputeEntryPoint) {
 
 func (e *emitter) emitEntryThreadLocals(entry vdmir.ComputeEntryPoint) {
 	for _, thread := range entry.ThreadParams {
-		e.line(fmt.Sprintf("%s %s;", thread.TypeName, thread.ParamName))
+		e.line(fmt.Sprintf("%s %s;", thread.TypeName, hlslIdentifier(thread.ParamName)))
 		for _, field := range thread.Fields {
 			value := field.BuiltinName
 			if field.BuiltinField != "" {
 				value += "." + field.BuiltinField
 			}
-			e.line(fmt.Sprintf("%s.%s = %s;", thread.ParamName, field.FieldName, value))
+			e.line(fmt.Sprintf("%s.%s = %s;", hlslIdentifier(thread.ParamName), hlslIdentifier(field.FieldName), hlslExprPath(value)))
 		}
 	}
 	if len(entry.ThreadParams) > 0 {
@@ -231,6 +234,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitMatchLet(s, matchExpr)
 			return
 		}
+		if board, ok := s.Value.(vdmir.BoardConstructExpr); ok {
+			e.emitBoardConstructLet(s, board)
+			return
+		}
 		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
 			e.emitGuardedReadLet(s, guardedRead)
 			return
@@ -251,6 +258,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		}
 		if matchExpr, ok := s.Value.(vdmir.MatchExpr); ok {
 			e.emitMatchAssign(e.expr(s.Target), matchExpr)
+			return
+		}
+		if board, ok := s.Value.(vdmir.BoardConstructExpr); ok {
+			e.emitBoardConstructAssign(e.expr(s.Target), board)
 			return
 		}
 		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
@@ -280,6 +291,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		}
 		if matchExpr, ok := s.Value.(vdmir.MatchExpr); ok {
 			e.emitMatchReturn(matchExpr)
+			return
+		}
+		if board, ok := s.Value.(vdmir.BoardConstructExpr); ok {
+			e.emitBoardConstructReturn(board)
 			return
 		}
 		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
@@ -341,12 +356,12 @@ func (e *emitter) emitElseTail(block vdmir.Block) {
 
 func (e *emitter) emitWhenUtilityLet(stmt vdmir.LetStmt, utility vdmir.WhenUtilityExpr) {
 	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), e.expr(utility.Else)))
-	e.emitWhenUtilityAssign(stmt.Name, utility)
+	e.emitWhenUtilityAssign(hlslIdentifier(stmt.Name), utility)
 }
 
 func (e *emitter) emitReductionLet(stmt vdmir.LetStmt, reduction vdmir.ReductionExpr) {
 	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), reductionIdentityLiteral(reduction)))
-	e.emitReductionLoop(stmt.Name, reduction)
+	e.emitReductionLoop(hlslIdentifier(stmt.Name), reduction)
 }
 
 func (e *emitter) emitReductionAssign(target string, reduction vdmir.ReductionExpr) {
@@ -415,13 +430,13 @@ func (e *emitter) emitWithReturn(withExpr vdmir.WithExpr) {
 func (e *emitter) emitWithCopy(tempName string, withExpr vdmir.WithExpr) {
 	e.line(fmt.Sprintf("%s %s = %s;", typeRef(withExpr.Type(), ""), tempName, e.expr(withExpr.Base)))
 	for _, update := range withExpr.Updates {
-		e.line(fmt.Sprintf("%s.%s = %s;", tempName, update.Name, e.expr(update.Value)))
+		e.line(fmt.Sprintf("%s.%s = %s;", tempName, hlslIdentifier(update.Name), e.expr(update.Value)))
 	}
 }
 
 func (e *emitter) emitMatchLet(stmt vdmir.LetStmt, matchExpr vdmir.MatchExpr) {
 	e.line(fmt.Sprintf("%s;", typeRef(stmt.Type, stmt.Name)))
-	e.emitMatchAssign(stmt.Name, matchExpr)
+	e.emitMatchAssign(hlslIdentifier(stmt.Name), matchExpr)
 }
 
 func (e *emitter) emitMatchAssign(target string, matchExpr vdmir.MatchExpr) {
@@ -436,7 +451,7 @@ func (e *emitter) emitMatchAssign(target string, matchExpr vdmir.MatchExpr) {
 		e.line("{")
 		e.indent++
 		if arm.BindingName != "" {
-			e.line(fmt.Sprintf("%s %s = %s.%s;", typeRef(arm.BindingType, ""), arm.BindingName, subjectName, arm.VariantName))
+			e.line(fmt.Sprintf("%s %s = %s.%s;", typeRef(arm.BindingType, ""), hlslIdentifier(arm.BindingName), subjectName, hlslIdentifier(arm.VariantName)))
 		}
 		e.line(fmt.Sprintf("%s = %s;", target, e.expr(arm.Value)))
 		e.indent--
@@ -453,7 +468,7 @@ func (e *emitter) emitMatchReturn(matchExpr vdmir.MatchExpr) {
 
 func (e *emitter) emitGuardedReadLet(stmt vdmir.LetStmt, guarded vdmir.GuardedReadExpr) {
 	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), e.expr(guarded.Fallback)))
-	e.emitGuardedReadAssign(stmt.Name, guarded)
+	e.emitGuardedReadAssign(hlslIdentifier(stmt.Name), guarded)
 }
 
 func (e *emitter) emitGuardedReadAssign(target string, guarded vdmir.GuardedReadExpr) {
@@ -472,14 +487,36 @@ func (e *emitter) emitGuardedReadReturn(guarded vdmir.GuardedReadExpr) {
 	e.line("return " + tempName + ";")
 }
 
+func (e *emitter) emitBoardConstructLet(stmt vdmir.LetStmt, board vdmir.BoardConstructExpr) {
+	e.line(fmt.Sprintf("%s;", typeRef(stmt.Type, stmt.Name)))
+	e.emitBoardFieldAssignments(hlslIdentifier(stmt.Name), board)
+}
+
+func (e *emitter) emitBoardConstructAssign(target string, board vdmir.BoardConstructExpr) {
+	e.emitBoardFieldAssignments(target, board)
+}
+
+func (e *emitter) emitBoardConstructReturn(board vdmir.BoardConstructExpr) {
+	tempName := e.nextTempWithPrefix("board")
+	e.line(fmt.Sprintf("%s;", typeRef(board.Type(), tempName)))
+	e.emitBoardFieldAssignments(tempName, board)
+	e.line("return " + tempName + ";")
+}
+
+func (e *emitter) emitBoardFieldAssignments(target string, board vdmir.BoardConstructExpr) {
+	for _, field := range board.Fields {
+		e.line(fmt.Sprintf("%s.%s = %s;", target, hlslIdentifier(field.Name), e.expr(field.Value)))
+	}
+}
+
 func (e *emitter) expr(expr vdmir.Expr) string {
 	switch x := expr.(type) {
 	case vdmir.LiteralExpr:
 		return x.Value
 	case vdmir.VarRefExpr:
-		return x.Name
+		return hlslIdentifier(x.Name)
 	case vdmir.FieldAccessExpr:
-		return e.expr(x.Target) + "." + x.Field
+		return e.expr(x.Target) + "." + hlslIdentifier(x.Field)
 	case vdmir.IndexExpr:
 		return e.expr(x.Target) + "[" + e.expr(x.Index) + "]"
 	case vdmir.Index2DExpr:
@@ -518,6 +555,8 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 			args = append(args, e.expr(field.Value))
 		}
 		return enumConstructorName(x.EnumName, x.VariantName) + "(" + strings.Join(args, ", ") + ")"
+	case vdmir.BoardConstructExpr:
+		return "/* unsupported board construct expr position */"
 	case vdmir.MatchExpr:
 		return "/* unsupported match expr position */"
 	default:
@@ -660,27 +699,47 @@ func typeRef(ref vdmir.Type, name string) string {
 			return elem
 		}
 		if ref.Kind == vdmir.TypeArray {
-			return fmt.Sprintf("%s %s[%d]", elem, name, ref.ArraySize)
+			return fmt.Sprintf("%s %s[%d]", elem, hlslIdentifier(name), ref.ArraySize)
 		}
-		return fmt.Sprintf("%s %s[]", elem, name)
+		return fmt.Sprintf("%s %s[]", elem, hlslIdentifier(name))
 	}
 	if (ref.Kind == vdmir.TypeTile || ref.Kind == vdmir.TypeRegTile) && ref.Element != nil {
 		elem := typeRef(*ref.Element, "")
 		if name == "" {
 			return elem
 		}
-		return fmt.Sprintf("%s %s[%d]", elem, name, ref.Rows*ref.Cols)
+		return fmt.Sprintf("%s %s[%d]", elem, hlslIdentifier(name), ref.Rows*ref.Cols)
 	}
 	if ref.Kind == vdmir.TypeMatrixView {
 		if name == "" {
 			return "/* matrix_view */"
 		}
-		return "/* matrix_view */ " + name
+		return "/* matrix_view */ " + hlslIdentifier(name)
+	}
+	if ref.Kind == vdmir.TypeBoard {
+		mapped = ref.Name
 	}
 	if name == "" {
 		return mapped
 	}
-	return mapped + " " + name
+	return mapped + " " + hlslIdentifier(name)
+}
+
+func hlslIdentifier(name string) string {
+	switch name {
+	case "linear":
+		return name + "_"
+	default:
+		return name
+	}
+}
+
+func hlslExprPath(path string) string {
+	parts := strings.Split(path, ".")
+	for i, part := range parts {
+		parts[i] = hlslIdentifier(part)
+	}
+	return strings.Join(parts, ".")
 }
 
 func sanitizeName(name string) string {

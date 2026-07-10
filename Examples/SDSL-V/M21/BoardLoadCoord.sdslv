@@ -1,0 +1,36 @@
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+}
+
+fn MakeLoadCoord(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadCoord {
+    let linear: u32 = localThreadLinear * 4u + lane;
+    return LoadCoord {
+        linear: linear;
+        row: linear / tileK;
+        col: linear % tileK;
+    };
+}
+
+shader BoardLoadCoord {
+    resources {
+        A: readonly array<f32>;
+        C: readwrite array<f32>;
+    }
+
+    workgroup TileA: tile<f32, 16u, 16u>;
+
+    stage compute [numthreads(8, 8, 1)] fn CS() -> void {
+        let localThreadLinear: u32 = GroupThreadID.x * 8u + GroupThreadID.y;
+        let AView: matrix_view<f32> = row_major(A, 16u, 16u);
+
+        comptime for lane in 0u..4u {
+            let p: LoadCoord = MakeLoadCoord(localThreadLinear, lane, 16u);
+            TileA[p.row, p.col] = AView[p.row, p.col];
+        }
+
+        C[localThreadLinear] = TileA[0u, 0u];
+        return;
+    }
+}

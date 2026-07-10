@@ -224,7 +224,7 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 		{
 			name: "flow state",
 			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { state Start { return; } return; } }`,
-			want: "SDSL-V flow/state controllers are planned but not supported in M19",
+			want: "SDSL-V flow/state controllers are planned but not supported in M21",
 		},
 		{
 			name: "when policy",
@@ -243,6 +243,37 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildModuleParsesBoardDeclarationLiteralAndFieldAccess(t *testing.T) {
+	module := parseTestModule(t, `board LoadCoord {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn Make(linear: u32, tileK: u32) -> LoadCoord {
+return LoadCoord { linear: linear; row: linear / tileK; col: linear % tileK; };
+}
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let p: LoadCoord = Make(1u, 16u);
+let row: u32 = p.row;
+return;
+}
+}`)
+	if _, ok := module.Decls[0].(ast.BoardDecl); !ok {
+		t.Fatalf("decl[0] = %T, want BoardDecl", module.Decls[0])
+	}
+	fn := module.Decls[1].(ast.FunctionDecl)
+	ret := fn.Body.Statements[0].(ast.ReturnStmt)
+	if _, ok := ret.Value.(ast.BoardLiteralExpr); !ok {
+		t.Fatalf("return value = %T, want BoardLiteralExpr", ret.Value)
+	}
+	shader := module.Decls[2].(ast.ShaderDecl)
+	letRow := shader.Methods[0].Body.Statements[1].(ast.LetStmt)
+	if _, ok := letRow.Value.(ast.FieldAccessExpr); !ok {
+		t.Fatalf("row init = %T, want FieldAccessExpr", letRow.Value)
 	}
 }
 

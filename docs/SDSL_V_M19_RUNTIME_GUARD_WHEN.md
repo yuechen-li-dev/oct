@@ -105,12 +105,14 @@ Rejected actions include:
 - persistent board field assignment
 - full `flow` / `state` controllers
 
+M21 adds a different, shader-local immutable `board` value type for derived coordinate bundles. It does not change this M19 restriction: mutable or persistent board state remains unsupported outside future flow/state controllers.
+
 Representative diagnostics:
 
 ```text
 SDSL-V M19 does not support `goto` in shader flow
 SDSL-V M19 supports bounded guard `when` bodies only
-SDSL-V flow/state controllers are planned but not supported in M19
+SDSL-V flow/state controllers are planned but not supported in M21
 ```
 
 ## `when policy`
@@ -137,6 +139,7 @@ when policy requires persistent policy state; SDSL-V M19 does not support it yet
 - `examples/SDSL-V/M19/GuardWhenBasic.sdslv`
 - `examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
 - `examples/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`
+- `examples/SDSL-V/M21/BoardGuardWhenTileLoad.sdslv`
 
 ## Prometheus M20 Usage
 

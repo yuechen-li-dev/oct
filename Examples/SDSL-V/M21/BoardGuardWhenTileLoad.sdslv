@@ -1,0 +1,53 @@
+record SgemmParams {
+    M: u32;
+    K: u32;
+    FullTile: bool;
+}
+
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+}
+
+fn MakeLoadCoord(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadCoord {
+    let linear: u32 = localThreadLinear * 4u + lane;
+    return LoadCoord {
+        linear: linear;
+        row: linear / tileK;
+        col: linear % tileK;
+    };
+}
+
+shader BoardGuardWhenTileLoad {
+    resources {
+        A: readonly array<f32>;
+    }
+
+    workgroup TileA: tile<f32, 16u, 16u>;
+
+    stage compute [numthreads(8, 8, 1)] fn CS(params: SgemmParams) -> void {
+        let localThreadLinear: u32 = GroupThreadID.x * 8u + GroupThreadID.y;
+        let groupBaseRow: u32 = GroupID.y * 16u;
+        let tileBaseK: u32 = GroupID.x * 16u;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+
+        comptime for lane in 0u..4u {
+            let p: LoadCoord = MakeLoadCoord(localThreadLinear, lane, 16u);
+
+            when {
+                case params.FullTile -> {
+                    TileA[p.row, p.col] = AView[groupBaseRow + p.row, tileBaseK + p.col];
+                }
+                else -> {
+                    TileA[p.row, p.col] =
+                        read AView[groupBaseRow + p.row, tileBaseK + p.col]
+                            when groupBaseRow + p.row < params.M and tileBaseK + p.col < params.K
+                            else 0.0;
+                }
+            }
+        }
+
+        return;
+    }
+}

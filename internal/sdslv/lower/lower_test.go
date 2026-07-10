@@ -77,6 +77,56 @@ stage compute [numthreads(16, 16, 1)] fn CS(params: VectorParams) -> void {
 	}
 }
 
+func TestModuleLowersBoardValuesThroughVDMIR(t *testing.T) {
+	mir := lowerSource(t, `board LoadCoord {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn MakeLoadCoord(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadCoord {
+let linear: u32 = localThreadLinear * 4u + lane;
+return LoadCoord { linear: linear; row: linear / tileK; col: linear % tileK; };
+}
+shader S {
+resources { A: readonly array<f32>; }
+workgroup Tile: tile<f32, 16u, 16u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let localThreadLinear: u32 = GroupThreadID.x;
+let AView: matrix_view<f32> = row_major(A, 16u, 16u);
+comptime for lane in 0u..1u {
+let p: LoadCoord = MakeLoadCoord(localThreadLinear, lane, 16u);
+when {
+case fullTile -> { Tile[p.row, p.col] = AView[p.row, p.col]; }
+else -> { Tile[p.row, p.col] = read AView[p.row, p.col] when p.row < 16u and p.col < 16u else 0.0; }
+}
+}
+return;
+}
+}`)
+	if got := len(mir.Boards); got != 1 {
+		t.Fatalf("len(Boards) = %d, want 1", got)
+	}
+	helper := findFunction(t, mir, "MakeLoadCoord")
+	ret, ok := helper.Body.Statements[1].(vdmir.ReturnStmt)
+	if !ok {
+		t.Fatalf("helper stmt[1] = %T, want ReturnStmt", helper.Body.Statements[1])
+	}
+	if _, ok := ret.Value.(vdmir.BoardConstructExpr); !ok {
+		t.Fatalf("helper return = %T, want BoardConstructExpr", ret.Value)
+	}
+	cs := findFunction(t, mir, "S_CS")
+	letP, ok := cs.Body.Statements[2].(vdmir.LetStmt)
+	if !ok {
+		t.Fatalf("CS stmt[2] = %T, want LetStmt", cs.Body.Statements[2])
+	}
+	if letP.Type.Kind != vdmir.TypeBoard || letP.Type.Name != "LoadCoord" {
+		t.Fatalf("board local type = %#v", letP.Type)
+	}
+	if !strings.Contains(vdmir.Dump(mir), "board LoadCoord") {
+		t.Fatalf("VD-MIR dump missing board declaration:\n%s", vdmir.Dump(mir))
+	}
+}
+
 func TestModuleLowersComputeThreadResourceBundleAndWith(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 stream ComputeThread {

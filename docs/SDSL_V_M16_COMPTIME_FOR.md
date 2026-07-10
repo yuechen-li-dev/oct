@@ -118,6 +118,8 @@ Those constructs may appear inside a `comptime for` body, and the loop index may
 
 M16a guarded memory access composes with this expansion model in runtime statements inside the expanded body:
 
+M21 shader-local board values also compose with this expansion model. A board literal inside a `comptime for` body is expanded as runtime code with the loop index substituted as a constant; M21 does not make board values valid structured consteval values.
+
 ```sdslv
 comptime for oi in 0u..C.Outputs.M {
     comptime for oj in 0u..C.Outputs.N {

@@ -62,6 +62,8 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 		return p.parseTypeAlias()
 	case token.KeywordRecord:
 		return p.parseRecord()
+	case token.KeywordBoard:
+		return p.parseBoard()
 	case token.KeywordStream:
 		return p.parseStream()
 	case token.KeywordConcept:
@@ -128,6 +130,30 @@ func (p *parser) parseRecord() (ast.RecordDecl, error) {
 	}
 	p.advance()
 	return ast.RecordDecl{Name: name.Lexeme, Fields: fields}, nil
+}
+
+func (p *parser) parseBoard() (ast.BoardDecl, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected board name")
+	if err != nil {
+		return ast.BoardDecl{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after board name"); err != nil {
+		return ast.BoardDecl{}, err
+	}
+	var fields []ast.Field
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.BoardDecl{}, p.errorAtCurrent("expected '}' to close board")
+		}
+		field, err := p.parseField()
+		if err != nil {
+			return ast.BoardDecl{}, err
+		}
+		fields = append(fields, field)
+	}
+	p.advance()
+	return ast.BoardDecl{Name: name.Lexeme, Fields: fields}, nil
 }
 
 func (p *parser) parseStream() (ast.StreamDecl, error) {
@@ -690,7 +716,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 			case "remember", "resume", "suspend":
 				return nil, p.errorAtCurrent("SDSL-V M19 supports bounded guard `when` bodies only")
 			case "flow", "state":
-				return nil, p.errorAtCurrent("SDSL-V flow/state controllers are planned but not supported in M19")
+				return nil, p.errorAtCurrent("SDSL-V flow/state controllers are planned but not supported in M21")
 			}
 		}
 		left, err := p.parseExpression()
@@ -1242,6 +1268,16 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Callee: expr, Arguments: args}
+		case token.LeftBrace:
+			typeName, ok := identifierName(expr)
+			if !ok || !p.payloadInitializerStarts() {
+				return expr, nil
+			}
+			fields, err := p.parseFieldInitializers()
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.BoardLiteralExpr{TypeName: typeName, Fields: fields}
 		default:
 			return expr, nil
 		}
@@ -1450,6 +1486,9 @@ func (p *parser) parseFieldInitializers() ([]ast.FieldInit, error) {
 			return nil, err
 		}
 		fields = append(fields, ast.FieldInit{Name: name.Lexeme, Value: value})
+		if p.match(token.Semicolon) {
+			continue
+		}
 		if !p.match(token.Comma) {
 			break
 		}

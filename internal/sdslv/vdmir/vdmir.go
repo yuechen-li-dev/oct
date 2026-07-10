@@ -7,6 +7,7 @@ type Module struct {
 	Namespace   string
 	TypeAliases []TypeAlias
 	Records     []Record
+	Boards      []Board
 	Streams     []Stream
 	Enums       []Enum
 	Resources   []Resource
@@ -30,6 +31,12 @@ type TypeAlias struct {
 }
 
 type Record struct {
+	Provenance Provenance
+	Name       string
+	Fields     []Field
+}
+
+type Board struct {
 	Provenance Provenance
 	Name       string
 	Fields     []Field
@@ -466,6 +473,16 @@ type EnumConstructExpr struct {
 func (EnumConstructExpr) exprNode()    {}
 func (e EnumConstructExpr) Type() Type { return e.ExprType }
 
+type BoardConstructExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	TypeName   string
+	Fields     []FieldInit
+}
+
+func (BoardConstructExpr) exprNode()    {}
+func (e BoardConstructExpr) Type() Type { return e.ExprType }
+
 type FieldInit struct {
 	Name  string
 	Value Expr
@@ -521,6 +538,7 @@ const (
 	TypeRegTile      TypeKind = "reg_tile"
 	TypeMatrixView   TypeKind = "matrix_view"
 	TypeRecord       TypeKind = "record"
+	TypeBoard        TypeKind = "board"
 	TypeStream       TypeKind = "stream"
 	TypeEnum         TypeKind = "enum"
 	TypeAliasKind    TypeKind = "alias"
