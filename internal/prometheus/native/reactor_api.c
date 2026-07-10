@@ -20,6 +20,11 @@ int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps) {
   return prom_reactor_runtime_probe_impl(handle, out_caps);
 }
 
+int prometheus_reactor_runtime_vulkan_device_diagnostics(void* handle, PrometheusVulkanDeviceDiagnostics* out_diag) {
+  return prom_reactor_runtime_vulkan_device_diagnostics_impl(handle, out_diag);
+}
+
+
 int prometheus_reactor_runtime_sgemm(void* handle,
                                      const float* a,
                                      const float* b,
@@ -76,6 +81,10 @@ int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
 
 int prometheus_reactor_runtime_sgemm_query_async(void* handle, int task_id, PrometheusAsyncStatus* out_status) {
   return prom_reactor_runtime_sgemm_query_async_impl(handle, task_id, out_status);
+}
+
+int prometheus_reactor_runtime_sgemm_async_diagnostics(void* handle, PrometheusSgemmAsyncDiagnostics* out_diag) {
+  return prom_reactor_runtime_sgemm_async_diagnostics_impl(handle, out_diag);
 }
 
 int prometheus_reactor_runtime_sgemm_consume_async(void* handle,

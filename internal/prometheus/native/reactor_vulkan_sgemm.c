@@ -55,6 +55,7 @@
 #define PROM_VK_TILE_K 8u
 #define PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH 4u
 #define PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH 2u
+#define PROM_SGEMM_ASYNC_MAX_TASKS 4u
 
 typedef enum prom_sgemm_submission_slot_state {
   PROM_SGEMM_SUBMISSION_SLOT_EMPTY = 0u,
@@ -102,6 +103,29 @@ typedef struct prom_sgemm_submission_ring_diag {
   uint64_t total_gpu_duration_ns;
   uint64_t gpu_timing_sample_count;
 } prom_sgemm_submission_ring_diag;
+
+/* Public async records own their host-visible input/output allocations.  They
+   deliberately do not borrow the resident diagnostic buffers: a task may be
+   consumed in any order after another task has completed. */
+typedef struct prom_sgemm_async_task {
+  uint32_t active;
+  uint32_t lifecycle_state;
+  uint32_t table_index;
+  uint32_t generation;
+  int32_t public_task_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint64_t submission_sequence;
+  uint32_t m, n, k, compute_k;
+  uint32_t selected_path, compute_mode, requested_variant, executed_variant;
+  uint32_t final_stage;
+  int32_t final_detail;
+  uint32_t timing_valid;
+  uint64_t gpu_duration_ns;
+  uint32_t feedback_pending, feedback_committed;
+  uint32_t output_ready, consumed, abandoned;
+  prom_vk_buffer a, b, c;
+} prom_sgemm_async_task;
 
 static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_metadata_for_variant(uint32_t variant) {
   static prom_sgemm_kernel_dispatch_metadata scalar_plus_metadata;
@@ -720,6 +744,14 @@ typedef struct prometheus_runtime {
      dedicated to synchronous/async compatibility paths. */
   prom_sgemm_submission_slot submission_ring[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
   prom_sgemm_submission_ring_diag submission_ring_diag;
+  prom_sgemm_async_task async_tasks[PROM_SGEMM_ASYNC_MAX_TASKS];
+  uint32_t async_task_cursor;
+  uint64_t async_next_feedback_sequence;
+  uint64_t async_next_submission_sequence;
+  uint64_t async_queue_full_count;
+  uint64_t async_stale_reject_count;
+  uint64_t async_feedback_committed_count;
+  uint64_t async_feedback_skipped_count;
   VkCommandBuffer command_buffer;
   VkCommandBuffer transfer_command_buffer;
   VkFence submit_fence;
@@ -4181,6 +4213,11 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->device != VK_NULL_HANDLE) {
     vkDeviceWaitIdle(rt->device);
   }
+  for (uint32_t async_index = 0u; async_index < PROM_SGEMM_ASYNC_MAX_TASKS; ++async_index) {
+    prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].c);
+    prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].b);
+    prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].a);
+  }
   destroy_all_execution_buffers(rt);
   if (rt->tiled_pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->tiled_pipeline, NULL);
@@ -5135,6 +5172,8 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->async_state = PROM_ASYNC_STATE_IDLE;
   runtime->async_stage = PROM_STAGE_NONE;
   runtime->async_failure_detail = 0;
+  runtime->async_next_feedback_sequence = 1u;
+  runtime->async_next_submission_sequence = 1u;
   commit_slot_runtime_diag_snapshot(runtime, 0);
   stage_commit_async_snapshot(runtime, PROM_DOM_EVENT_NONE, 0);
 
@@ -5287,6 +5326,28 @@ static uint32_t prom_occ_variant_registered(uint32_t variant) {
   return (variant >= PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
           variant <= PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) ? 1u : 0u;
 }
+
+int prom_reactor_runtime_vulkan_device_diagnostics_impl(void* handle, PrometheusVulkanDeviceDiagnostics* out_diag) {
+  prometheus_runtime* rt;
+  VkPhysicalDeviceProperties props;
+  if (out_diag == NULL) return PROM_ERROR;
+  memset(out_diag, 0, sizeof(*out_diag));
+  if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->physical_device == VK_NULL_HANDLE) return PROM_INVALID_HANDLE;
+  vkGetPhysicalDeviceProperties(rt->physical_device, &props);
+  memcpy(out_diag->device_name, props.deviceName, sizeof(out_diag->device_name) - 1u);
+  out_diag->vendor_id = props.vendorID;
+  out_diag->device_id = props.deviceID;
+  out_diag->device_type = (uint32_t)props.deviceType;
+  out_diag->driver_version = props.driverVersion;
+  out_diag->api_version = props.apiVersion;
+  out_diag->software_vulkan = rt->software_vulkan;
+  out_diag->compute_queue_family = rt->queue_family_index;
+  out_diag->transfer_queue_family = rt->transfer_queue_family_index;
+  return PROM_OK;
+}
+
 
 static uint32_t prom_occ_variant_is_wired_evt_dispatchable(uint32_t variant) {
   return (variant == PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR ||
@@ -9569,6 +9630,157 @@ batch_cleanup:
 // SGEMM Async Lifecycle
 // ============================================================================
 
+static int prom_async_task_id_encode(uint32_t index, uint32_t generation, int* out_id) {
+  /* Four table bits leave 27 generation bits and keep public IDs positive. */
+  uint32_t id = ((generation & 0x07ffffffu) << 4u) | (index + 1u);
+  if (out_id == NULL || id == 0u || (id & 0x80000000u) != 0u) return 0;
+  *out_id = (int)id;
+  return 1;
+}
+
+static prom_sgemm_async_task* prom_async_task_lookup(prometheus_runtime* rt, int task_id) {
+  uint32_t low, generation;
+  prom_sgemm_async_task* task;
+  if (rt == NULL || task_id <= 0) return NULL;
+  low = ((uint32_t)task_id & 0x0fu);
+  generation = ((uint32_t)task_id >> 4u) & 0x07ffffffu;
+  if (low == 0u || low > PROM_SGEMM_ASYNC_MAX_TASKS) return NULL;
+  task = &rt->async_tasks[low - 1u];
+  if (task->active == 0u || (task->generation & 0x07ffffffu) != generation || task->public_task_id != task_id) return NULL;
+  return task;
+}
+
+static void prom_async_task_destroy_buffers(prometheus_runtime* rt, prom_sgemm_async_task* task) {
+  if (rt == NULL || task == NULL) return;
+  prom_vk_destroy_buffer(rt->device, &task->c);
+  prom_vk_destroy_buffer(rt->device, &task->b);
+  prom_vk_destroy_buffer(rt->device, &task->a);
+}
+
+static void prom_async_task_release(prometheus_runtime* rt, prom_sgemm_async_task* task) {
+  uint32_t generation;
+  if (rt == NULL || task == NULL) return;
+  generation = task->generation;
+  prom_async_task_destroy_buffers(rt, task);
+  memset(task, 0, sizeof(*task));
+  task->generation = generation;
+}
+
+static prom_sgemm_async_task* prom_async_task_allocate(prometheus_runtime* rt) {
+  uint32_t offset;
+  if (rt == NULL) return NULL;
+  for (offset = 0u; offset < PROM_SGEMM_ASYNC_MAX_TASKS; ++offset) {
+    uint32_t index = (rt->async_task_cursor + offset) % PROM_SGEMM_ASYNC_MAX_TASKS;
+    prom_sgemm_async_task* task = &rt->async_tasks[index];
+    if (task->active != 0u && task->lifecycle_state == PROM_ASYNC_STATE_CONSUMED && task->feedback_pending == 0u) prom_async_task_release(rt, task);
+    if (task->active == 0u) {
+      uint32_t generation = task->generation + 1u;
+      memset(task, 0, sizeof(*task));
+      task->active = 1u; task->table_index = index; task->generation = generation == 0u ? 1u : generation;
+      task->lifecycle_state = PROM_ASYNC_STATE_IDLE;
+      if (!prom_async_task_id_encode(index, task->generation, &task->public_task_id)) { task->active = 0u; return NULL; }
+      rt->async_task_cursor = (index + 1u) % PROM_SGEMM_ASYNC_MAX_TASKS;
+      return task;
+    }
+  }
+  return NULL;
+}
+
+static int prom_async_record_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot, prom_sgemm_async_task* task) {
+  VkWriteDescriptorSet writes[3]; VkDescriptorBufferInfo infos[3]; VkCommandBufferBeginInfo begin; VkBufferMemoryBarrier barriers[3];
+  VkResult result; prom_vk_push push; prom_sgemm_dispatch_geometry geometry;
+  if (rt == NULL || slot == NULL || task == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_PREPARING) return PROM_ERROR;
+  memset(infos, 0, sizeof(infos));
+  infos[0].buffer=task->a.buffer; infos[0].range=task->a.size;
+  infos[1].buffer=task->b.buffer; infos[1].range=task->b.size;
+  infos[2].buffer=task->c.buffer; infos[2].range=task->c.size;
+  memset(writes, 0, sizeof(writes));
+  for (uint32_t i=0u;i<3u;++i) { writes[i].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet=slot->descriptor_set; writes[i].dstBinding=i; writes[i].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].descriptorCount=1u; writes[i].pBufferInfo=&infos[i]; }
+  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  result=vkResetCommandBuffer(slot->command_buffer,0u); if(result!=VK_SUCCESS) goto failed;
+  memset(&begin,0,sizeof(begin)); begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  result=vkBeginCommandBuffer(slot->command_buffer,&begin); if(result!=VK_SUCCESS) goto failed;
+  memset(barriers,0,sizeof(barriers));
+  for(uint32_t i=0u;i<3u;++i){ barriers[i].sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; barriers[i].srcAccessMask=VK_ACCESS_HOST_WRITE_BIT; barriers[i].dstAccessMask=i==2u?VK_ACCESS_SHADER_WRITE_BIT:VK_ACCESS_SHADER_READ_BIT; barriers[i].srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; barriers[i].dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED; barriers[i].buffer=infos[i].buffer; barriers[i].size=infos[i].range; }
+  vkCmdPipelineBarrier(slot->command_buffer,VK_PIPELINE_STAGE_HOST_BIT,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,0,0,NULL,3u,barriers,0,NULL);
+  vkCmdBindPipeline(slot->command_buffer,VK_PIPELINE_BIND_POINT_COMPUTE,rt->pipeline);
+  vkCmdBindDescriptorSets(slot->command_buffer,VK_PIPELINE_BIND_POINT_COMPUTE,rt->pipeline_layout,0u,1u,&slot->descriptor_set,0u,NULL);
+  push.m=task->m; push.n=task->n; push.k=task->k; vkCmdPushConstants(slot->command_buffer,rt->pipeline_layout,VK_SHADER_STAGE_COMPUTE_BIT,0u,PROM_VK_SHADER_PUSH_BYTES,&push);
+  if(rt->timestamp_query_supported!=0u){vkCmdResetQueryPool(slot->command_buffer,rt->sgemm_timestamp_query_pool,slot->query_base,2u);vkCmdWriteTimestamp(slot->command_buffer,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,rt->sgemm_timestamp_query_pool,slot->query_base);}
+  geometry=prom_sgemm_dispatch_geometry_for_variant(0u,task->m,task->n); vkCmdDispatch(slot->command_buffer,geometry.groups_x,geometry.groups_y,geometry.groups_z);
+  if(rt->timestamp_query_supported!=0u)vkCmdWriteTimestamp(slot->command_buffer,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,rt->sgemm_timestamp_query_pool,slot->query_base+1u);
+  result=vkEndCommandBuffer(slot->command_buffer); if(result!=VK_SUCCESS)goto failed;
+  slot->m=task->m;slot->n=task->n;slot->compute_k=task->k;slot->compute_mode=PROM_VK_COMPUTE_BASELINE;slot->variant=0u;slot->state=PROM_SGEMM_SUBMISSION_SLOT_RECORDED;return PROM_OK;
+failed: slot->state=PROM_SGEMM_SUBMISSION_SLOT_FAILED;slot->failure_stage=PROM_STAGE_SUBMIT;slot->failure_detail=(int)result;return PROM_ERROR;
+}
+
+static uint32_t prom_async_outstanding(const prometheus_runtime* rt);
+
+static int prom_async_poll_task(prometheus_runtime* rt, prom_sgemm_async_task* task) {
+  prom_sgemm_submission_slot* slot; int status;
+  if(rt==NULL||task==NULL||task->lifecycle_state!=PROM_ASYNC_STATE_SUBMITTED)return PROM_OK;
+  if((rt->test_flags&PROM_TESTCFG_FAIL_ASYNC_POLL)!=0u){task->lifecycle_state=PROM_ASYNC_STATE_FAILED;task->final_stage=PROM_STAGE_SUBMIT;task->final_detail=PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE;task->feedback_pending=1u;return PROM_ERROR;}
+  if(task->physical_slot_id>=PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH)return PROM_ERROR;
+  slot=&rt->submission_ring[task->physical_slot_id];
+  if(slot->generation!=task->physical_slot_generation){task->lifecycle_state=PROM_ASYNC_STATE_FAILED;task->final_detail=PROM_DETAIL_SLOT_ASYNC_OWNERSHIP;task->feedback_pending=1u;return PROM_ERROR;}
+  status=prom_sgemm_ring_poll_slot(rt,slot);
+  if(status!=PROM_OK||slot->state==PROM_SGEMM_SUBMISSION_SLOT_FAILED){task->lifecycle_state=PROM_ASYNC_STATE_FAILED;task->final_stage=slot->failure_stage;task->final_detail=slot->failure_detail!=0?slot->failure_detail:PROM_DETAIL_ASYNC_FAILED;task->feedback_pending=1u;return PROM_ERROR;}
+  if(slot->state==PROM_SGEMM_SUBMISSION_SLOT_READY){task->lifecycle_state=PROM_ASYNC_STATE_READY;task->output_ready=1u;task->timing_valid=slot->timing_valid;task->gpu_duration_ns=slot->gpu_duration_ns;task->feedback_pending=1u;}
+  return PROM_OK;
+}
+
+/* P14 receives only valid measured duration.  P15 receives the filtered
+   evidence derived from that same immutable completion attribution. */
+static void prom_sgemm_commit_completion_evidence(prometheus_runtime* rt, prom_sgemm_async_task* task) {
+  prom_dominatus_predictor_evidence evidence;
+  prom_dominatus_physical_observation observation;
+  if (rt == NULL || task == NULL || task->feedback_committed != 0u) return;
+  if (task->timing_valid == 0u || task->gpu_duration_ns == 0u || task->lifecycle_state == PROM_ASYNC_STATE_FAILED) {
+    task->feedback_committed = 1u;
+    rt->async_feedback_skipped_count += 1u;
+    return;
+  }
+  rt->p14_measurement_tick += 1u;
+  rt->p14_last_filtered_evidence = prom_dominatus_measurement_filter_update(
+      &rt->p14_measurement_filter_state, (double)task->gpu_duration_ns, rt->p14_measurement_tick);
+  evidence = prom_dominatus_predictor_evidence_from_filtered(&rt->p14_last_filtered_evidence);
+  memset(&observation, 0, sizeof(observation));
+  observation.tick = rt->p14_measurement_tick;
+  observation.actual_ready = 1u;
+  observation.slot_valid = 1u;
+  observation.memory_budget_ok = 1u;
+  observation.outstanding_depth = prom_async_outstanding(rt);
+  observation.outstanding_depth_cap = rt->p15_predictor_state.params.max_outstanding_depth;
+  memset(&rt->p15_last_prediction_issued, 0, sizeof(rt->p15_last_prediction_issued));
+  rt->p15_last_correction = prom_dominatus_predictor_update(
+      &rt->p15_predictor_state, &evidence, &observation, observation.tick, &rt->p15_last_prediction_issued);
+  (void)prom_dominatus_predictor_advance_reservations(&rt->p15_predictor_state, observation.tick);
+  task->feedback_committed = 1u;
+  rt->async_feedback_committed_count += 1u;
+}
+
+static void prom_async_process_completion_feedback(prometheus_runtime* rt) {
+  uint32_t progress = 1u;
+  if (rt == NULL) return;
+  while (progress != 0u) {
+    prom_sgemm_async_task* candidate = NULL;
+    progress = 0u;
+    for (uint32_t i = 0u; i < PROM_SGEMM_ASYNC_MAX_TASKS; ++i) {
+      prom_sgemm_async_task* task = &rt->async_tasks[i];
+      if (task->active != 0u && task->submission_sequence == rt->async_next_feedback_sequence) { candidate = task; break; }
+    }
+    if (candidate == NULL || candidate->feedback_pending == 0u) break;
+    if (candidate->lifecycle_state != PROM_ASYNC_STATE_READY && candidate->lifecycle_state != PROM_ASYNC_STATE_FAILED &&
+        candidate->lifecycle_state != PROM_ASYNC_STATE_CONSUMED) break;
+    prom_sgemm_commit_completion_evidence(rt, candidate);
+    candidate->feedback_pending = 0u;
+    rt->async_next_feedback_sequence += 1u;
+    progress = 1u;
+  }
+}
+
+static uint32_t prom_async_outstanding(const prometheus_runtime* rt) { uint32_t n=0u; for(uint32_t i=0u;i<PROM_SGEMM_ASYNC_MAX_TASKS;++i)if(rt->async_tasks[i].active!=0u&&rt->async_tasks[i].lifecycle_state!=PROM_ASYNC_STATE_CONSUMED)n++; return n; }
+
 int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
                                                  const float* a,
                                                  const float* b,
@@ -9579,8 +9791,7 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
                                                  uint32_t* out_stage,
                                                  int* out_detail_code) {
   prometheus_runtime* rt;
-  uint32_t saved_flags;
-  int status;
+  prom_sgemm_async_task* task; prom_sgemm_submission_slot* slot; uint32_t a_count,b_count,c_count; VkResult result;
 
   if (out_task_id == NULL) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
@@ -9592,21 +9803,28 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
   }
 
   rt = (prometheus_runtime*)handle;
-  saved_flags = rt->test_flags;
-  rt->test_flags = saved_flags | PROM_TESTCFG_SKIP_SUBMIT_WAIT;
-  status = prom_reactor_runtime_sgemm_impl(handle, a, b, NULL, m, n, k, out_stage, out_detail_code);
-  rt->test_flags = saved_flags;
-  if (status != PROM_OK) {
-    return status;
-  }
-
-  *out_task_id = rt->async_task_id;
+  if(rt->magic!=PROMETHEUS_RUNTIME_MAGIC||rt->available==0u||a==NULL||b==NULL||m==0u||n==0u||k==0u||!prom_vk_checked_mul_u32(m,k,&a_count)||!prom_vk_checked_mul_u32(k,n,&b_count)||!prom_vk_checked_mul_u32(m,n,&c_count)){prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_INIT,PROM_ERROR);return PROM_ERROR;}
+  /* A terminal failure is deliberately sticky until its owner abandons it.
+     This retains the legacy safety contract and prevents silent recycling. */
+  for(uint32_t i=0u;i<PROM_SGEMM_ASYNC_MAX_TASKS;++i) if(rt->async_tasks[i].active!=0u&&rt->async_tasks[i].lifecycle_state==PROM_ASYNC_STATE_FAILED){prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,rt->async_tasks[i].final_detail!=0?rt->async_tasks[i].final_detail:PROM_DETAIL_ASYNC_FAILED);return PROM_ERROR;}
+  for(uint32_t i=0u;i<PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH;++i) (void)prom_sgemm_ring_poll_slot(rt,&rt->submission_ring[i]);
+  task=prom_async_task_allocate(rt); if(task==NULL){rt->async_queue_full_count++;prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,PROM_DETAIL_ASYNC_QUEUE_FULL);return PROM_ERROR;}
+  slot=NULL; for(uint32_t i=0u;i<PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH;++i)if(rt->submission_ring[i].state==PROM_SGEMM_SUBMISSION_SLOT_EMPTY){slot=&rt->submission_ring[i];break;}
+  if(slot==NULL){prom_async_task_release(rt,task);rt->async_queue_full_count++;prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,PROM_DETAIL_ASYNC_QUEUE_FULL);return PROM_ERROR;}
+  slot->state=PROM_SGEMM_SUBMISSION_SLOT_PREPARING;slot->generation+=1u;slot->submission_sequence=rt->submission_ring_diag.next_sequence++;
+  task->m=m;task->n=n;task->k=k;task->compute_k=k;task->physical_slot_id=slot->slot_id;task->physical_slot_generation=slot->generation;task->submission_sequence=rt->async_next_submission_sequence++;task->selected_path=PROM_VK_PATH_DIRECT;task->compute_mode=PROM_VK_COMPUTE_BASELINE;task->final_detail=PROM_DETAIL_PATH_DIRECT;
+  result=prom_vk_create_buffer(rt->physical_device,rt->device,rt->test_flags,(VkDeviceSize)a_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->a); if(result==VK_SUCCESS)result=prom_vk_create_buffer(rt->physical_device,rt->device,rt->test_flags,(VkDeviceSize)b_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->b); if(result==VK_SUCCESS)result=prom_vk_create_buffer(rt->physical_device,rt->device,rt->test_flags,(VkDeviceSize)c_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->c);
+  if(result!=VK_SUCCESS){slot->state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;prom_async_task_release(rt,task);prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_TRANSFER_IN,(int)result);return PROM_ERROR;}
+  memcpy(task->a.mapped,a,(size_t)a_count*sizeof(float));memcpy(task->b.mapped,b,(size_t)b_count*sizeof(float));memset(task->c.mapped,0,(size_t)c_count*sizeof(float));
+  if(prom_async_record_slot(rt,slot,task)!=PROM_OK||prom_sgemm_ring_submit_slot(rt,slot)!=PROM_OK){slot->state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;prom_async_task_release(rt,task);prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,PROM_ERROR);return PROM_ERROR;}
+  task->lifecycle_state=PROM_ASYNC_STATE_SUBMITTED; *out_task_id=task->public_task_id; rt->async_task_id=*out_task_id;rt->async_state=PROM_ASYNC_STATE_SUBMITTED;
+  prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,0);
   return PROM_OK;
 }
 
 int prom_reactor_runtime_sgemm_query_async_impl(void* handle, int task_id, PrometheusAsyncStatus* out_status) {
   prometheus_runtime* rt;
-  prom_dom_async_snapshot async_snapshot;
+  prom_sgemm_async_task* task;
 
   if (out_status == NULL) {
     return PROM_ERROR;
@@ -9617,30 +9835,49 @@ int prom_reactor_runtime_sgemm_query_async_impl(void* handle, int task_id, Prome
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
-  mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     return PROM_INVALID_HANDLE;
   }
-  if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
+  task=prom_async_task_lookup(rt,task_id); if(task==NULL) {
     out_status->lifecycle_state = PROM_ASYNC_STATE_IDLE;
     out_status->detail_code = PROM_DETAIL_ASYNC_NO_TASK;
-    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_NO_TASK);
+    rt->async_stale_reject_count++;
     return PROM_ERROR;
   }
+  (void)prom_async_poll_task(rt,task); prom_async_process_completion_feedback(rt); out_status->lifecycle_state=task->lifecycle_state;out_status->stage=task->final_stage==0u?PROM_STAGE_SUBMIT:task->final_stage;out_status->detail_code=task->lifecycle_state==PROM_ASYNC_STATE_SUBMITTED?PROM_DETAIL_ASYNC_NOT_READY:task->final_detail;out_status->ready=task->lifecycle_state==PROM_ASYNC_STATE_READY;out_status->failed=task->lifecycle_state==PROM_ASYNC_STATE_FAILED;out_status->consumed=task->lifecycle_state==PROM_ASYNC_STATE_CONSUMED;out_status->outstanding_tasks=prom_async_outstanding(rt);
+  return PROM_OK;
+}
 
-  update_async_progress(rt);
-  if (prom_dom_sgemm_read_visible_async_snapshot(&rt->blackboard, &async_snapshot) == 0u) {
-    return PROM_ERROR;
-  }
-  out_status->lifecycle_state = async_snapshot.lifecycle_state;
-  out_status->stage = async_snapshot.stage;
-  out_status->detail_code = async_snapshot.detail_code;
-  out_status->ready = async_snapshot.ready;
-  out_status->failed = async_snapshot.failed;
-  out_status->consumed = async_snapshot.consumed;
-  out_status->outstanding_tasks = async_snapshot.outstanding_tasks;
-  if (async_snapshot.lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
-    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_NOT_READY, PROM_DETAIL_ASYNC_NOT_READY);
+int prom_reactor_runtime_sgemm_async_diagnostics_impl(void* handle, PrometheusSgemmAsyncDiagnostics* out_diag) {
+  prometheus_runtime* rt;
+  if (out_diag == NULL) return PROM_ERROR;
+  memset(out_diag, 0, sizeof(*out_diag));
+  if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) return PROM_INVALID_HANDLE;
+  out_diag->task_capacity = PROM_SGEMM_ASYNC_MAX_TASKS;
+  out_diag->queue_full_count = rt->async_queue_full_count;
+  out_diag->stale_id_rejection_count = rt->async_stale_reject_count;
+  out_diag->max_in_flight = rt->submission_ring_diag.max_outstanding;
+  out_diag->feedback_committed_count = rt->async_feedback_committed_count;
+  out_diag->feedback_skipped_count = rt->async_feedback_skipped_count;
+  out_diag->next_feedback_sequence = rt->async_next_feedback_sequence;
+  for (uint32_t i = 0u; i < PROM_SGEMM_ASYNC_MAX_TASKS; ++i) {
+    const prom_sgemm_async_task* task = &rt->async_tasks[i];
+    PrometheusSgemmAsyncTaskDiagnostics* dst = &out_diag->tasks[i];
+    if (task->active == 0u) continue;
+    out_diag->active_task_count += 1u;
+    if (task->lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) out_diag->submitted_count += 1u;
+    if (task->lifecycle_state == PROM_ASYNC_STATE_READY) out_diag->ready_count += 1u;
+    if (task->lifecycle_state == PROM_ASYNC_STATE_FAILED) out_diag->failed_count += 1u;
+    if (task->lifecycle_state == PROM_ASYNC_STATE_CONSUMED) out_diag->consumed_count += 1u;
+    if (task->abandoned != 0u) out_diag->abandoned_count += 1u;
+    if (task->feedback_pending != 0u) out_diag->feedback_pending_count += 1u;
+    dst->task_id = task->public_task_id; dst->generation = task->generation; dst->lifecycle_state = task->lifecycle_state;
+    dst->physical_slot_id = task->physical_slot_id; dst->physical_slot_generation = task->physical_slot_generation;
+    dst->submission_sequence = task->submission_sequence; dst->timing_valid = task->timing_valid;
+    dst->gpu_duration_ns = task->gpu_duration_ns; dst->feedback_pending = task->feedback_pending;
+    dst->feedback_committed = task->feedback_committed; dst->failure_detail = task->final_detail;
   }
   return PROM_OK;
 }
@@ -9652,7 +9889,7 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
                                                   uint32_t* out_stage,
                                                   int* out_detail_code) {
   prometheus_runtime* rt;
-  uint32_t required_len;
+  uint32_t required_len; prom_sgemm_async_task* task;
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
   if (handle == NULL || !registry_contains(handle)) {
@@ -9660,27 +9897,25 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
-  mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
-  if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
+  task=prom_async_task_lookup(rt,task_id); if(task==NULL) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_INVALID_TASK);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_INVALID_TASK);
     return PROM_ERROR;
   }
-  update_async_progress(rt);
-  if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
+  (void)prom_async_poll_task(rt,task); prom_async_process_completion_feedback(rt); if (task->lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_NOT_READY);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_NOT_READY, PROM_DETAIL_ASYNC_NOT_READY);
     return PROM_ERROR;
   }
-  if (rt->async_state == PROM_ASYNC_STATE_FAILED) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, rt->async_failure_detail != 0 ? rt->async_failure_detail : PROM_DETAIL_ASYNC_FAILED);
+  if (task->lifecycle_state == PROM_ASYNC_STATE_FAILED) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, task->final_detail != 0 ? task->final_detail : PROM_DETAIL_ASYNC_FAILED);
     return PROM_ERROR;
   }
-  if (rt->async_state == PROM_ASYNC_STATE_CONSUMED) {
+  if (task->lifecycle_state == PROM_ASYNC_STATE_CONSUMED) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_ALREADY_CONSUMED, PROM_DETAIL_ASYNC_ALREADY_CONSUMED);
     return PROM_ERROR;
@@ -9689,24 +9924,15 @@ int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
     return PROM_ERROR;
   }
-  required_len = rt->async_m * rt->async_n;
+  required_len = task->m * task->n;
   if (c_len < required_len) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_ERROR);
     return PROM_ERROR;
   }
 
-  if (rt->async_selected_path == PROM_VK_PATH_DIRECT) {
-    memcpy(c, rt->direct_c.mapped, rt->async_c_copy_size);
-  } else if (rt->async_selected_path == PROM_VK_PATH_STAGED_UPLOAD_READBACK) {
-    memcpy(c, rt->staged_readback_c.mapped, rt->async_c_copy_size);
-  } else {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, rt->async_final_detail);
-    set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, PROM_STAGE_SUBMIT, rt->async_final_detail);
-    return PROM_OK;
-  }
-
-  set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, PROM_STAGE_TRANSFER_OUT, rt->async_final_detail);
-  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, rt->async_final_detail);
+  memcpy(c,task->c.mapped,(size_t)required_len*sizeof(float)); task->consumed=1u;task->lifecycle_state=PROM_ASYNC_STATE_CONSUMED;
+  rt->submission_ring[task->physical_slot_id].state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, task->final_detail);
   return PROM_OK;
 }
 
@@ -9716,31 +9942,22 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
     return PROM_INVALID_HANDLE;
   }
   rt = (prometheus_runtime*)handle;
-  mirror_async_from_visible(rt);
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     return PROM_INVALID_HANDLE;
   }
-  if (task_id != rt->async_task_id || rt->async_state == PROM_ASYNC_STATE_IDLE) {
-    stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_INVALID_TASK, PROM_DETAIL_ASYNC_INVALID_TASK);
+  { prom_sgemm_async_task* task=prom_async_task_lookup(rt,task_id); if(task==NULL) {
     return PROM_ERROR;
-  }
-  update_async_progress(rt);
-  if (rt->async_state == PROM_ASYNC_STATE_SUBMITTED) {
+  } (void)prom_async_poll_task(rt,task); prom_async_process_completion_feedback(rt); if (task->lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
     rt->slot_diag.inflight_rejection_count += 1u;
     commit_slot_runtime_diag_snapshot(rt, PROM_DETAIL_ASYNC_UNCONSUMED);
     stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_UNCONSUMED_REJECTED, PROM_DETAIL_ASYNC_UNCONSUMED);
     return PROM_ERROR;
   }
-  if (rt->slot_diag.async_slot_id >= 0) {
-    const uint32_t slot_id = (uint32_t)rt->slot_diag.async_slot_id;
-    if (!prom_slot_cleanup_to_empty(rt, &rt->slots[slot_id])) {
-      prom_slot_mark_failure(rt, slot_id, PROM_DETAIL_SLOT_ASYNC_OWNERSHIP);
-      return PROM_ERROR;
-    }
-    rt->slot_diag.async_slot_id = -1;
+  rt->submission_ring[task->physical_slot_id].state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+  task->abandoned=1u; task->lifecycle_state=PROM_ASYNC_STATE_CONSUMED;
+  prom_async_process_completion_feedback(rt);
+  if (task->feedback_pending == 0u) prom_async_task_release(rt,task);
   }
-  set_async_state(rt, PROM_ASYNC_STATE_CONSUMED, rt->async_stage, rt->async_final_detail);
-  stage_commit_async_snapshot(rt, PROM_DOM_EVENT_ASYNC_ABANDONED, rt->async_final_detail);
   return PROM_OK;
 }
 

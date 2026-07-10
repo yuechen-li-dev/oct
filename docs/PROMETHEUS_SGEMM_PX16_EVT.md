@@ -1,5 +1,20 @@
 ## Px16 M1
 
+## Px16 M30
+
+Public async SGEMM is a bounded two-slot, single-compute-queue API backed by
+the M29 physical submission ring. Each accepted task has a generation-safe ID
+and independent A/B/C storage; callers may query and consume tasks in any
+order. Submit is non-blocking and returns `PROM_DETAIL_ASYNC_QUEUE_FULL` when
+both public slots remain occupied. Query only polls. A submitted task cannot
+be abandoned; ready or failed tasks require explicit ownership handling.
+
+Completion feedback is intentionally ordered by submission sequence: P14 uses
+valid GPU durations, P15 uses P14-filtered evidence, and failures/no-timestamp
+tasks advance the feedback cursor as skipped records. Admission never waits for
+this feedback. `PrometheusSgemmAsyncDiagnostics` is the aggregate diagnostic
+surface; `PrometheusAsyncStatus` is task-specific and authoritative.
+
 Px16 M1 wires the SGEMM occupancy judgment-engine decision into the production dispatch path. Production `prometheus_reactor_runtime_sgemm()` calls now bind the selector's clamped `selected_variant` as the dispatch variant used for tiled pipeline selection instead of staying pinned to baseline at the public API boundary.
 
 The architecture rule for this milestone is:

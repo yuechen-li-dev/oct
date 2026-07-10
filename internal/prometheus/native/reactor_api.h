@@ -184,6 +184,8 @@ enum {
   PROM_DETAIL_ASYNC_FAILED = -6114,
   PROM_DETAIL_ASYNC_UNCONSUMED = -6115,
   PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE = -6116,
+  /* M30: public async admission is intentionally non-blocking. */
+  PROM_DETAIL_ASYNC_QUEUE_FULL = -6117,
   PROM_DETAIL_PACKED4_PADDING_WASTE = -6201,
   PROM_DETAIL_PACKED4_SMALL_SHAPE = -6202,
   PROM_DETAIL_PACKED4_CAPABILITY_MISSING = -6203,
@@ -604,6 +606,26 @@ typedef struct PrometheusCaps {
   uint32_t reason_code;
 } PrometheusCaps;
 
+enum {
+  PROM_VK_DEVICE_TYPE_OTHER = 0u,
+  PROM_VK_DEVICE_TYPE_INTEGRATED_GPU = 1u,
+  PROM_VK_DEVICE_TYPE_DISCRETE_GPU = 2u,
+  PROM_VK_DEVICE_TYPE_VIRTUAL_GPU = 3u,
+  PROM_VK_DEVICE_TYPE_CPU = 4u,
+};
+
+typedef struct PrometheusVulkanDeviceDiagnostics {
+  char device_name[256];
+  uint32_t vendor_id;
+  uint32_t device_id;
+  uint32_t device_type;
+  uint32_t driver_version;
+  uint32_t api_version;
+  uint32_t software_vulkan;
+  uint32_t compute_queue_family;
+  uint32_t transfer_queue_family;
+} PrometheusVulkanDeviceDiagnostics;
+
 typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
   uint32_t test_flags;
@@ -619,6 +641,38 @@ typedef struct PrometheusAsyncStatus {
   uint32_t consumed;
   uint32_t outstanding_tasks;
 } PrometheusAsyncStatus;
+
+typedef struct PrometheusSgemmAsyncTaskDiagnostics {
+  int32_t task_id;
+  uint32_t generation;
+  uint32_t lifecycle_state;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint64_t submission_sequence;
+  uint32_t timing_valid;
+  uint64_t gpu_duration_ns;
+  uint32_t feedback_pending;
+  uint32_t feedback_committed;
+  int32_t failure_detail;
+} PrometheusSgemmAsyncTaskDiagnostics;
+
+typedef struct PrometheusSgemmAsyncDiagnostics {
+  uint32_t task_capacity;
+  uint32_t active_task_count;
+  uint32_t submitted_count;
+  uint32_t ready_count;
+  uint32_t failed_count;
+  uint32_t consumed_count;
+  uint32_t abandoned_count;
+  uint64_t queue_full_count;
+  uint64_t stale_id_rejection_count;
+  uint32_t max_in_flight;
+  uint32_t feedback_pending_count;
+  uint64_t feedback_committed_count;
+  uint64_t feedback_skipped_count;
+  uint64_t next_feedback_sequence;
+  PrometheusSgemmAsyncTaskDiagnostics tasks[4];
+} PrometheusSgemmAsyncDiagnostics;
 
 typedef struct PrometheusSgemmResidentBenchmarkRequest {
   uint32_t struct_size;
@@ -1147,6 +1201,8 @@ PROM_REACTOR_API uint32_t prometheus_reactor_abi_version(void);
 PROM_REACTOR_API int prometheus_reactor_runtime_create(void* config, void** out_handle);
 PROM_REACTOR_API int prometheus_reactor_runtime_destroy(void* handle);
 PROM_REACTOR_API int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps);
+PROM_REACTOR_API int prometheus_reactor_runtime_vulkan_device_diagnostics(void* handle,
+                                                                           PrometheusVulkanDeviceDiagnostics* out_diag);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       const float* a,
                                                       const float* b,
@@ -1188,6 +1244,8 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_query_async(void* handle,
                                                                   int task_id,
                                                                   PrometheusAsyncStatus* out_status);
+PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_async_diagnostics(void* handle,
+                                                                         PrometheusSgemmAsyncDiagnostics* out_diag);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_consume_async(void* handle,
                                                                     int task_id,
                                                                     float* c,

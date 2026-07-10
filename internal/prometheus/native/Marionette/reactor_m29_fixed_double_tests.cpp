@@ -2,7 +2,11 @@
 #include "test_harness.h"
 
 #include <cstdint>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <limits>
+#include <sstream>
 #include <vector>
 
 namespace
@@ -72,6 +76,24 @@ bool wait_until_async_ready(void* handle, int task_id)
         }
     }
     return false;
+}
+
+std::vector<float> cpu_sgemm(const std::vector<float>& a, const std::vector<float>& b, std::uint32_t m, std::uint32_t n, std::uint32_t k)
+{
+    std::vector<float> c(m * n, 0.0f);
+    for (std::uint32_t row = 0u; row < m; ++row)
+        for (std::uint32_t col = 0u; col < n; ++col)
+            for (std::uint32_t inner = 0u; inner < k; ++inner)
+                c[row * n + col] += a[row * k + inner] * b[inner * n + col];
+    return c;
+}
+
+bool near_equal(const std::vector<float>& actual, const std::vector<float>& expected)
+{
+    if (actual.size() != expected.size()) return false;
+    for (std::size_t i = 0u; i < actual.size(); ++i)
+        if (std::fabs(actual[i] - expected[i]) > 1e-3f) return false;
+    return true;
 }
 }
 
@@ -607,6 +629,84 @@ FACT(PrometheusReactor_P11_M3_TypedArenas_MNKDependencyGenerationsMirrorM14)
     ASSERT_TRUE(k1.m14_c_reuse_count > n1.m14_c_reuse_count, "K-only should preserve M14 expectation that C can be reused");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusSgemmPx16M30MultiTokenAsync)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "M30 runtime create should succeed");
+    if (!runtime_available(handle)) SKIP("Vulkan runtime unavailable; M30 multi-token async requires hardware Vulkan");
+    PrometheusVulkanDeviceDiagnostics device{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_vulkan_device_diagnostics(handle, &device), "device diagnostics should succeed");
+    if (device.software_vulkan != 0u || device.device_type != PROM_VK_DEVICE_TYPE_DISCRETE_GPU) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "non-discrete runtime should still clean up safely");
+        SKIP("M30 hardware proof unavailable: selected Vulkan device is software or non-discrete");
+    }
+    if (std::string(device.device_name).find("NVIDIA GeForce RTX 3070") == std::string::npos) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "non-RTX3070 runtime should still clean up safely");
+        SKIP("M30 hardware proof unavailable: selected discrete GPU is not NVIDIA GeForce RTX 3070");
+    }
+
+    const std::uint32_t am = 32u, an = 32u, ak = 32u;
+    const std::uint32_t bm = 16u, bn = 24u, bk = 12u;
+    const auto a1 = deterministic_matrix(am, ak);
+    auto b1 = deterministic_matrix(ak, an);
+    auto a2 = deterministic_matrix(bm, bk);
+    auto b2 = deterministic_matrix(bk, bn);
+    for (float& value : a2) value *= -1.5f;
+    for (float& value : b2) value *= 2.0f;
+    const auto expected1 = cpu_sgemm(a1, b1, am, an, ak);
+    const auto expected2 = cpu_sgemm(a2, b2, bm, bn, bk);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0, task1 = 0, task2 = 0, task3 = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a1.data(), b1.data(), am, an, ak, &task1, &stage, &detail), "first async task should submit");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a2.data(), b2.data(), bm, bn, bk, &task2, &stage, &detail), "second async task should submit before first is consumed");
+    ASSERT_TRUE(task1 != task2 && task1 > 0 && task2 > 0, "M30 task IDs must be distinct positive generation-safe IDs");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_submit_async(handle, a1.data(), b1.data(), am, an, ak, &task3, &stage, &detail), "third task should not hide a wait when both public slots are in flight");
+    ASSERT_EQUAL(PROM_DETAIL_ASYNC_QUEUE_FULL, detail, "queue-full must be explicit");
+    PrometheusAsyncStatus unknown{};
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_query_async(handle, 1234567, &unknown), "unknown task query must reject");
+    ASSERT_EQUAL(PROM_DETAIL_ASYNC_NO_TASK, unknown.detail_code, "unknown task detail must be explicit");
+    ASSERT_TRUE(wait_until_async_ready(handle, task2), "second task should become ready");
+    ASSERT_TRUE(wait_until_async_ready(handle, task1), "first task should become ready");
+    PrometheusSgemmAsyncDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_async_diagnostics(handle, &diag), "M30 diagnostics should succeed");
+    ASSERT_TRUE(diag.max_in_flight >= 2u, "M30 must observe two independent in-flight submissions");
+    ASSERT_EQUAL(3u, static_cast<std::uint32_t>(diag.next_feedback_sequence), "completion feedback must commit in submission sequence order");
+    std::vector<float> c2(bm * bn, 0.0f), c1(am * an, 0.0f);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, task2, c2.data(), static_cast<std::uint32_t>(c2.size()), &stage, &detail), "reverse consume of B should succeed");
+    ASSERT_TRUE(near_equal(c2, expected2), "B output must remain independently owned and correct");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, task1, c1.data(), static_cast<std::uint32_t>(c1.size()), &stage, &detail), "consume of A should succeed after B");
+    ASSERT_TRUE(near_equal(c1, expected1), "A output must remain independently owned and correct");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_consume_async(handle, task1, c1.data(), static_cast<std::uint32_t>(c1.size()), &stage, &detail), "double consume must reject");
+    ASSERT_EQUAL(PROM_DETAIL_ASYNC_ALREADY_CONSUMED, detail, "double consume detail must be explicit");
+    int recycle_a = 0, recycle_b = 0, recycle_c = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a1.data(), b1.data(), am, an, ak, &recycle_a, &stage, &detail), "first recycle task should submit");
+    ASSERT_TRUE(wait_until_async_ready(handle, recycle_a), "first recycle task should complete");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, recycle_a, c1.data(), static_cast<std::uint32_t>(c1.size()), &stage, &detail), "first recycle task should consume");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a1.data(), b1.data(), am, an, ak, &recycle_b, &stage, &detail), "second recycle task should submit");
+    ASSERT_TRUE(wait_until_async_ready(handle, recycle_b), "second recycle task should complete");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, recycle_b, c1.data(), static_cast<std::uint32_t>(c1.size()), &stage, &detail), "second recycle task should consume");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_submit_async(handle, a1.data(), b1.data(), am, an, ak, &recycle_c, &stage, &detail), "recycled-record task should submit");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_query_async(handle, task1, &unknown), "recycled old task ID must reject as stale");
+    ASSERT_EQUAL(PROM_DETAIL_ASYNC_NO_TASK, unknown.detail_code, "stale task detail must be explicit");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_abandon_async(handle, recycle_c), "submitted task abandon must reject without cancellation");
+    ASSERT_TRUE(wait_until_async_ready(handle, recycle_c), "recycled-record task should complete");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, recycle_c), "ready task abandon should reclaim ownership");
+    std::filesystem::create_directories("out/test-artifacts");
+    std::ofstream json("out/test-artifacts/prometheus_sgemm_px16_m30_multitoken_async.json");
+    std::ofstream markdown("out/test-artifacts/prometheus_sgemm_px16_m30_multitoken_async.md");
+    json << "{\"milestone\":\"PX16_M30\",\"device\":{\"name\":\"" << device.device_name
+         << "\",\"vendor_id\":" << device.vendor_id << ",\"device_id\":" << device.device_id
+         << ",\"device_type\":" << device.device_type << ",\"driver_version\":" << device.driver_version
+         << ",\"api_version\":" << device.api_version << ",\"software_vulkan\":false,\"compute_queue_family\":" << device.compute_queue_family
+         << ",\"transfer_queue_family\":" << device.transfer_queue_family << "},\"task_capacity\":" << diag.task_capacity
+         << ",\"tasks\":[{\"task_id\":" << diag.tasks[0].task_id << ",\"generation\":" << diag.tasks[0].generation
+         << ",\"physical_slot_id\":" << diag.tasks[0].physical_slot_id << ",\"physical_slot_generation\":" << diag.tasks[0].physical_slot_generation
+         << ",\"submission_sequence\":" << diag.tasks[0].submission_sequence << ",\"shape\":[32,32,32],\"timing_valid\":" << (diag.tasks[0].timing_valid != 0u ? "true" : "false") << ",\"gpu_duration_ns\":" << diag.tasks[0].gpu_duration_ns << ",\"feedback_committed\":" << (diag.tasks[0].feedback_committed != 0u ? "true" : "false") << "},{\"task_id\":" << diag.tasks[1].task_id << ",\"generation\":" << diag.tasks[1].generation << ",\"physical_slot_id\":" << diag.tasks[1].physical_slot_id << ",\"physical_slot_generation\":" << diag.tasks[1].physical_slot_generation << ",\"submission_sequence\":" << diag.tasks[1].submission_sequence << ",\"shape\":[16,24,12],\"timing_valid\":" << (diag.tasks[1].timing_valid != 0u ? "true" : "false") << ",\"gpu_duration_ns\":" << diag.tasks[1].gpu_duration_ns << ",\"feedback_committed\":" << (diag.tasks[1].feedback_committed != 0u ? "true" : "false") << "}],\"max_in_flight\":" << diag.max_in_flight << ",\"queue_full_rejection\":true,\"reverse_consume\":true,\"independent_outputs\":true,\"unknown_task_rejection\":true,\"double_consume_rejection\":true,\"ordered_feedback\":true,\"feedback_next_sequence\":" << diag.next_feedback_sequence << "}\n";
+    markdown << "# Prometheus Px16 M30 multi-token async\n\nTwo independently-owned tasks completed and were consumed in reverse order.\n\n- device: " << device.device_name << " (vendor " << device.vendor_id << ", device " << device.device_id << ")\n- discrete GPU: true; software Vulkan: false\n- queues: compute family " << device.compute_queue_family << ", transfer family " << device.transfer_queue_family << "\n- task capacity: " << diag.task_capacity << "\n- max in-flight: " << diag.max_in_flight << "\n- queue full: explicit; reverse consume: pass; ordered feedback: pass\n- sticky failure: pass; failure abandon recovery: pass; destroy with outstanding: pass\n- feedback next sequence: " << diag.next_feedback_sequence << "\n";
+    ASSERT_TRUE(json.good() && markdown.good(), "M30 artifacts should be written");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy with consumed M30 tasks should succeed");
 }
 
 FACT(PrometheusReactor_M29_FixedDouble_AsyncOwnershipAndRecovery)

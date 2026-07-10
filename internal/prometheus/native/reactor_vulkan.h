@@ -62,6 +62,7 @@ void prom_fft_diag_forget_handle(void* handle);
 
 int prom_reactor_runtime_destroy_impl(void* handle);
 int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps);
+int prom_reactor_runtime_vulkan_device_diagnostics_impl(void* handle, PrometheusVulkanDeviceDiagnostics* out_diag);
 int prom_reactor_runtime_sgemm_impl(void* handle,
                                     const float* a,
                                     const float* b,
@@ -100,6 +101,7 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
                                                  uint32_t* out_stage,
                                                  int* out_detail_code);
 int prom_reactor_runtime_sgemm_query_async_impl(void* handle, int task_id, PrometheusAsyncStatus* out_status);
+int prom_reactor_runtime_sgemm_async_diagnostics_impl(void* handle, PrometheusSgemmAsyncDiagnostics* out_diag);
 int prom_reactor_runtime_sgemm_consume_async_impl(void* handle,
                                                   int task_id,
                                                   float* c,

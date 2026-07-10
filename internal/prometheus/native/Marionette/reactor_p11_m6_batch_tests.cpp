@@ -1155,7 +1155,11 @@ FACT(PrometheusReactor_P11_M13_PerWorkerCommandResourceIdentityAndQueueMappingDi
     ASSERT_TRUE(diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_PHYSICAL_PER_WORKER ||
                     diag.worker_resource_mode == PROM_BATCH_WORKER_RESOURCE_MODE_SIMULATED_PER_WORKER,
                 "resource mode should explicitly report physical or diagnostics-only ownership");
-    ASSERT_EQUAL(PROM_BATCH_QUEUE_TOPOLOGY_PSEUDO_SHARED, diag.queue_topology_classification, "queue topology classification should be explicit");
+    /* M31 transfer discovery made this runtime a compute-plus-transfer
+       topology. Pseudo-shared means multiple reported compute queues that
+       collapse to one independent compute lane; it is not the same fact. */
+    ASSERT_EQUAL(PROM_BATCH_QUEUE_TOPOLOGY_COMPUTE_PLUS_TRANSFER, diag.queue_topology_classification,
+                 "dedicated transfer family must be reported as compute-plus-transfer topology");
     ASSERT_EQUAL(PROM_BATCH_QUEUE_MAPPING_PER_WORKER_MAPPED_SERIALIZED, diag.queue_mapping_mode, "queue mapping mode should be explicit");
     for (std::uint32_t w = 0; w < workers; ++w) {
         ASSERT_EQUAL(w, diag.worker_slot_id[w], "slot identity should be stable per worker");

@@ -1,5 +1,14 @@
 # P10 M12 — Async Lifecycle Dominatus Ownership Migration
 
+## M30 addendum — aggregate snapshot semantics
+
+M30 permits multiple public tasks. The existing Dominatus async snapshot is a
+compatibility last-event mirror only; it must not be interpreted as a global
+task state. `PrometheusAsyncStatus` is authoritative per task and
+`PrometheusSgemmAsyncDiagnostics` exposes aggregate counts. M30 completion
+feedback is sequenced separately from lifecycle visibility so an early
+completion cannot update P14/P15 ahead of an earlier submitted task.
+
 ## 1) migration scope
 
 M12 migrates async lifecycle status ownership into Dominatus staged/visible state while preserving the existing single-task async behavior.
