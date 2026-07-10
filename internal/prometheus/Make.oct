@@ -45,11 +45,11 @@ fn Plan() -> Make.Plan {
         CommandTargets: [
             Make.CommandTarget {
                 Name: "BuildPrometheus"
-                Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+                Inputs: ["native/build_linux.sh", "native/build_stub.sh", "native/build_windows.cmd"]
                 Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
                 Deps: ["CheckTools"]
                 Program: "bash"
-                Args: ["internal/prometheus/native/build_stub.sh"]
+                Args: ["internal/prometheus/native/build_linux.sh"]
                 Cwd: "../.."
                 Env: []
             },
@@ -119,11 +119,11 @@ fn PhonyTargetCount() -> Int { return 1 }
 fn BuildPrometheusTargetName() -> String {
     let target = Make.CommandTarget {
         Name: "BuildPrometheus"
-        Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+        Inputs: ["native/build_linux.sh", "native/build_stub.sh", "native/build_windows.cmd"]
         Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
         Deps: ["CheckTools"]
         Program: "bash"
-        Args: ["internal/prometheus/native/build_stub.sh"]
+        Args: ["internal/prometheus/native/build_linux.sh"]
         Cwd: "../.."
         Env: []
     }
@@ -135,11 +135,11 @@ fn BuildPrometheusTargetName() -> String {
 fn BuildPrometheusTargetProgram() -> String {
     let target = Make.CommandTarget {
         Name: "BuildPrometheus"
-        Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+        Inputs: ["native/build_linux.sh", "native/build_stub.sh", "native/build_windows.cmd"]
         Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
         Deps: ["CheckTools"]
         Program: "bash"
-        Args: ["internal/prometheus/native/build_stub.sh"]
+        Args: ["internal/prometheus/native/build_linux.sh"]
         Cwd: "../.."
         Env: []
     }
@@ -151,11 +151,11 @@ fn BuildPrometheusTargetProgram() -> String {
 fn BuildPrometheusTargetFirstArg() -> String {
     let target = Make.CommandTarget {
         Name: "BuildPrometheus"
-        Inputs: ["native/build_stub.sh", "native/build_windows.cmd"]
+        Inputs: ["native/build_linux.sh", "native/build_stub.sh", "native/build_windows.cmd"]
         Outputs: ["../../out/prometheus/native/marionette_tests", "../../out/prometheus/native/marionette_tests.exe"]
         Deps: ["CheckTools"]
         Program: "bash"
-        Args: ["internal/prometheus/native/build_stub.sh"]
+        Args: ["internal/prometheus/native/build_linux.sh"]
         Cwd: "../.."
         Env: []
     }

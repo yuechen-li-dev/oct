@@ -43,7 +43,7 @@ fn PlanIncludesRequiredCommandTargets() -> Void {
 [Fact]
 fn CommandTargetsUseStructuredProgramAndArgs() -> Void {
     Assert.Equal("bash", BuildPrometheusTargetProgram(), "build command should use Program")
-    Assert.Equal("internal/prometheus/native/build_stub.sh", BuildPrometheusTargetFirstArg(), "build command should use Args")
+    Assert.Equal("internal/prometheus/native/build_linux.sh", BuildPrometheusTargetFirstArg(), "build command should use Args")
     Assert.Equal("out/prometheus/native/marionette_tests", RunHarnessTargetProgram(), "harness command should use Program")
     Assert.Equal("PrometheusNativeHarness_Smoke", RunHarnessTargetFirstArg(), "harness command should use Args")
 }

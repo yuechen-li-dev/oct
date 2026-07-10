@@ -1,0 +1,47 @@
+{
+  "production_sources": [
+    "reactor_api.c", "reactor_judgment_engine.c", "reactor_dominatus_blackboard.c",
+    "reactor_dominatus_filter.c", "reactor_dominatus_filter_policy.c",
+    "reactor_dominatus_measurement_filter.c", "reactor_dominatus_predictor.c",
+    "reactor_dominatus_prestage.c", "reactor_dominatus_sgemm_adapter.c",
+    "reactor_dominatus_slot_adapter.c", "reactor_policy_memory.c", "reactor_slot_hfsm.c",
+    "reactor_vulkan_common.c", "reactor_vulkan_sgemm.c", "reactor_vulkan_fft.c",
+    "reactor_vulkan_fused_reduction.c"
+  ],
+  "native_test_sources": [
+    "Marionette/test_harness.cpp", "Marionette/test_doom.cpp", "Marionette/smoke_tests.cpp",
+    "Marionette/test_harness_phase1_tests.cpp", "Marionette/test_harness_doom_tests.cpp",
+    "Marionette/reactor_stub_tests.cpp", "Marionette/reactor_judgment_engine_tests.cpp",
+    "Marionette/reactor_dominatus_blackboard_tests.cpp", "Marionette/reactor_dominatus_filter_tests.cpp",
+    "Marionette/reactor_dominatus_filter_policy_tests.cpp", "Marionette/reactor_dominatus_future_lease_seam_tests.cpp",
+    "Marionette/reactor_dominatus_measurement_filter_tests.cpp", "Marionette/reactor_dominatus_predictor_tests.cpp",
+    "Marionette/reactor_dominatus_predictor_correction_tests.cpp", "Marionette/reactor_dominatus_prestage_tests.cpp",
+    "Marionette/reactor_dominatus_reservation_tests.cpp", "Marionette/reactor_dominatus_sgemm_adapter_tests.cpp",
+    "Marionette/reactor_dominatus_slot_adapter_tests.cpp", "Marionette/reactor_slot_hfsm_tests.cpp",
+    "Marionette/reactor_m29_fixed_double_tests.cpp", "Marionette/reactor_m31_transfer_queue_tests.cpp",
+    "Marionette/reactor_m35_buffering_selector_tests.cpp", "Marionette/reactor_m15_layout_precision_selector_cache_tests.cpp",
+    "Marionette/reactor_p13_m4_occupancy_benchmark_tests.cpp", "Marionette/reactor_px16_evt_benchmark_tests.cpp",
+    "Marionette/reactor_sgemm_px16_deep_diagnostic_tests.cpp", "Marionette/reactor_p14_m8_filtered_evidence_tests.cpp",
+    "Marionette/reactor_p15_m7_predictive_diagnostics_tests.cpp", "Marionette/reactor_p15_m8_shadow_hfsm_tests.cpp",
+    "Marionette/reactor_p15_m9_shadow_calibration_tests.cpp", "Marionette/reactor_p15_m10_shadow_authority_gate_tests.cpp",
+    "Marionette/reactor_p15_m11_shadow_would_act_tests.cpp", "Marionette/reactor_p15_m12_shadow_canary_tests.cpp",
+    "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp",
+    "Marionette/reactor_fft_benchmarks.cpp"
+  ],
+  "slow_only_test_sources": ["Marionette/reactor_p11_m6_batch_tests.cpp"],
+  "test_mains": {
+    "normal": "Marionette/test_main.cpp",
+    "slow": "Marionette/test_main_slow.cpp",
+    "benchmarks": "Marionette/test_main_benchmarks.cpp"
+  },
+  "generated_headers": [
+    "reactor_vulkan_fp16_spirv.h", "reactor_vulkan_packed4_spirv.h",
+    "reactor_vulkan_b2x2_row_major_biased_spirv.h", "reactor_vulkan_a2x4_row_biased_accum8_spirv.h",
+    "reactor_vulkan_memory_conservative_spirv.h", "reactor_vulkan_sgemm_scalar_plus_spirv.h",
+    "reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h", "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h",
+    "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h", "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h",
+    "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h", "reactor_vulkan_srt_2accum_k_spirv.h",
+    "reactor_vulkan_tiled_spirv.h"
+  ],
+  "platform_exceptions": {"windows": [], "linux": []}
+}

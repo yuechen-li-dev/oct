@@ -23,7 +23,7 @@ g++ -std=c++20 -O2 \
 Run from the repository root so `$(pwd)` resolves correctly and artifacts land under `out/test-artifacts/`.
 
 For the Prometheus native Reactor flow in this repository, the repo helper
-`internal/prometheus/native/build_stub.sh` builds both the shared Reactor
+`internal/prometheus/native/build_linux.sh` builds both the shared Reactor
 library and the Marionette test binary into `out/prometheus/native/`.
 
 When adding your own tests, append your `.cpp` files to the same compile command — no registration step required beyond the `FACT`/`THEORY`/`BENCHMARK` macros in source.

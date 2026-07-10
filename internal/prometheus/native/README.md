@@ -27,7 +27,8 @@ Scope guardrails for this topology:
 
 Supported native build helpers:
 
-- Linux: `bash internal/prometheus/native/build_stub.sh`
+- Linux: `bash internal/prometheus/native/build_linux.sh`
+- Compatibility: `build_stub.sh` prints a deprecation warning and forwards to `build_linux.sh`.
 - Windows: `internal\prometheus\native\build_windows.cmd`
 
 Expected Windows outputs:
