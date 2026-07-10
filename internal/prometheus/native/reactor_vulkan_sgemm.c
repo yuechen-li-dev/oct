@@ -5198,11 +5198,16 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->async_failure_detail = 0;
   runtime->async_next_feedback_sequence = 1u;
   runtime->async_next_submission_sequence = 1u;
+  runtime->submission_ring_diag.configured_depth = PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH;
   commit_slot_runtime_diag_snapshot(runtime, 0);
   stage_commit_async_snapshot(runtime, PROM_DOM_EVENT_NONE, 0);
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, batch_ring_depth) + sizeof(cfg->batch_ring_depth) &&
+        cfg->batch_ring_depth >= 1u && cfg->batch_ring_depth <= PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH) {
+      runtime->submission_ring_diag.configured_depth = cfg->batch_ring_depth;
+    }
     if (cfg->struct_size >= sizeof(PrometheusReactorConfig)) {
       runtime->test_flags = cfg->test_flags;
       runtime->async_test_flags = cfg->async_test_flags;
@@ -8173,6 +8178,13 @@ resident_timing_complete:
 // SGEMM Batch Dispatch / Worker Runtime
 // ============================================================================
 
+static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
+                                        const PrometheusSgemmBatchEntry* entries,
+                                        uint32_t entry_count,
+                                        uint32_t flags,
+                                        uint32_t* out_stage,
+                                        int* out_detail_code);
+
 int prom_reactor_runtime_sgemm_batch_impl(void* handle,
                                           const PrometheusSgemmBatchEntry* entries,
                                           uint32_t entry_count,
@@ -8293,6 +8305,16 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
+  }
+  /* M31 is the production Vulkan route.  The large P11 implementation below
+     remains the software/topology contract lane; it is intentionally not used
+     when a persistent physical ring is available. */
+  /* P11's non-zero flags are topology/worker-resource diagnostic controls for
+     the retained contract executor.  Normal public admission (and M31's
+     narrow encoded post-submit failure seam) uses the shared physical ring. */
+  if (rt->available != 0u && rt->submission_ring_diag.configured_depth != 0u &&
+      ((flags == 0u) || ((flags & ~PROM_BATCH_FLAG_TEST_FAIL_ENTRY_MASK) == 0u))) {
+    return prom_sgemm_batch_refill_ring(rt, entries, entry_count, flags, out_stage, out_detail_code);
   }
   if (entries == NULL || entry_count == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
@@ -10154,6 +10176,187 @@ int prom_reactor_runtime_sgemm_abandon_async_impl(void* handle, int task_id) {
   if (task->feedback_pending == 0u) prom_async_task_release(rt,task);
   }
   return PROM_OK;
+}
+
+/* M31 batch executor.  This deliberately uses the same task-owned buffer and
+   physical-slot recording lifecycle as M30, but keeps batch planning and
+   caller-visible output ownership local to the batch.  A logical worker is a
+   plan attribute only: the rotating M29 slot acquired below is never welded
+   to that worker. */
+static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
+                                        const PrometheusSgemmBatchEntry* entries,
+                                        uint32_t entry_count,
+                                        uint32_t flags,
+                                        uint32_t* out_stage,
+                                        int* out_detail_code) {
+  prom_sgemm_async_task** jobs = NULL;
+  float** staged = NULL;
+  uint32_t* worker = NULL;
+  uint32_t* elements = NULL;
+  uint32_t next = 0u, completed = 0u, completion_count = 0u, failed_entry = UINT32_MAX;
+  uint32_t failed_worker = UINT32_MAX, failure_stage = PROM_STAGE_NONE;
+  int failure_detail = 0;
+  uint32_t requested_workers, effective_depth, i;
+  const uint32_t injected_failure_entry = batch_test_failure_entry_from_flags(flags, entry_count);
+  uint64_t submits0, polls0, waits0, full0, harvest0, quarantine0, reap0, feedback0, skipped0;
+  int failed = 0;
+
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
+  if (entries == NULL || entry_count == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  requested_workers = batch_requested_workers_from_flags(flags);
+  if (requested_workers == 0u) requested_workers = 1u;
+  effective_depth = rt->submission_ring_diag.configured_depth;
+  if (effective_depth > PROM_SGEMM_ASYNC_MAX_TASKS) effective_depth = PROM_SGEMM_ASYNC_MAX_TASKS;
+  if (effective_depth == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
+    return PROM_ERROR;
+  }
+  jobs = (prom_sgemm_async_task**)calloc(entry_count, sizeof(*jobs));
+  staged = (float**)calloc(entry_count, sizeof(*staged));
+  worker = (uint32_t*)calloc(entry_count, sizeof(*worker));
+  elements = (uint32_t*)calloc(entry_count, sizeof(*elements));
+  if (jobs == NULL || staged == NULL || worker == NULL || elements == NULL) goto oom;
+  memset(&rt->batch_diag, 0, sizeof(rt->batch_diag));
+  rt->batch_diag.last_batch_entry_count = entry_count;
+  rt->batch_diag.requested_workers = requested_workers;
+  rt->batch_diag.effective_workers = requested_workers > 8u ? 8u : requested_workers;
+  rt->batch_diag.partition_policy = (flags & PROM_BATCH_FLAG_PARTITION_CONTIGUOUS) ? PROM_BATCH_PARTITION_CONTIGUOUS : PROM_BATCH_PARTITION_ROUND_ROBIN;
+  rt->batch_diag.batch_state = PROM_BATCH_STATE_RUNNING;
+  rt->batch_diag.execution_mode = PROM_BATCH_EXECUTION_SINGLE_WORKER;
+  rt->batch_diag.worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_SHARED;
+  rt->batch_diag.queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE;
+  rt->batch_diag.queue_mapping_mode = PROM_BATCH_QUEUE_MAPPING_SINGLE_QUEUE_SERIALIZED;
+  rt->batch_diag.physical_ring_depth_configured = rt->submission_ring_diag.configured_depth;
+  rt->batch_diag.physical_ring_depth_effective = effective_depth;
+  submits0 = rt->submission_ring_diag.total_submits; polls0 = rt->submission_ring_diag.total_polls;
+  waits0 = rt->submission_ring_diag.total_forced_waits; full0 = rt->submission_ring_diag.ring_full_count;
+  harvest0 = rt->submission_ring_diag.total_query_harvests; quarantine0 = rt->async_quarantine_event_count;
+  reap0 = rt->async_reap_success_count; feedback0 = rt->async_feedback_committed_count; skipped0 = rt->async_feedback_skipped_count;
+
+  /* Immutable preflight: no Vulkan admission occurs until every entry has a
+     valid shape and its separate caller-output staging allocation. */
+  for (i = 0u; i < entry_count; ++i) {
+    uint32_t a_count, b_count, c_count;
+    if (entries[i].a == NULL || entries[i].b == NULL || entries[i].c == NULL ||
+        entries[i].m == 0u || entries[i].n == 0u || entries[i].k == 0u ||
+        !prom_vk_checked_mul_u32(entries[i].m, entries[i].k, &a_count) ||
+        !prom_vk_checked_mul_u32(entries[i].k, entries[i].n, &b_count) ||
+        !prom_vk_checked_mul_u32(entries[i].m, entries[i].n, &c_count)) {
+      failed = 1; failed_entry = i; failed_worker = batch_worker_partition(i, entry_count, requested_workers, flags);
+      failure_stage = PROM_STAGE_INIT; failure_detail = PROM_DETAIL_BATCH_PLAN_INVALID; break;
+    }
+    worker[i] = batch_worker_partition(i, entry_count, requested_workers, flags);
+    elements[i] = c_count;
+    staged[i] = (float*)calloc(c_count, sizeof(float));
+    if (staged[i] == NULL) { failed = 1; failed_entry = i; failed_worker = worker[i]; failure_stage = PROM_STAGE_TRANSFER_OUT; failure_detail = PROM_ERROR; break; }
+    if (worker[i] < 8u) rt->batch_diag.worker_assigned_count[worker[i]] += 1u;
+  }
+  while (!failed && completed < entry_count) {
+    uint32_t made_progress = 0u;
+    /* Stable entry-ID admission is the central schedule. */
+    while (next < entry_count && !failed) {
+      prom_sgemm_submission_slot* slot = NULL;
+      prom_sgemm_async_task* task;
+      uint32_t a_count, b_count;
+      VkResult result;
+      if (rt->submission_ring_diag.outstanding >= effective_depth) { rt->submission_ring_diag.ring_full_count += 1u; break; }
+      for (i = 0u; i < effective_depth; ++i) if (rt->submission_ring[i].state == PROM_SGEMM_SUBMISSION_SLOT_EMPTY) { slot = &rt->submission_ring[i]; break; }
+      if (slot == NULL) { rt->submission_ring_diag.ring_full_count += 1u; break; }
+      task = prom_async_task_allocate(rt);
+      if (task == NULL) { failed = 1; failed_entry = next; failed_worker = worker[next]; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_ASYNC_QUEUE_FULL; break; }
+      if (!prom_vk_checked_mul_u32(entries[next].m, entries[next].k, &a_count) || !prom_vk_checked_mul_u32(entries[next].k, entries[next].n, &b_count)) { prom_async_task_release(rt, task); failed = 1; failed_entry = next; failed_worker = worker[next]; failure_stage = PROM_STAGE_INIT; failure_detail = PROM_DETAIL_BATCH_PLAN_INVALID; break; }
+      slot->state = PROM_SGEMM_SUBMISSION_SLOT_PREPARING; slot->generation += 1u;
+      slot->submission_sequence = rt->submission_ring_diag.next_sequence++; slot->physical_completion_confirmed = 0u;
+      task->m = entries[next].m; task->n = entries[next].n; task->k = entries[next].k; task->compute_k = entries[next].k;
+      task->physical_slot_id = slot->slot_id; task->physical_slot_generation = slot->generation;
+      task->submission_sequence = rt->async_next_submission_sequence++; task->selected_path = PROM_VK_PATH_DIRECT;
+      task->compute_mode = PROM_VK_COMPUTE_BASELINE; task->requested_variant = 0u; task->executed_variant = 0u;
+      result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)a_count * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->a);
+      if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)b_count * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->b);
+      if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)elements[next] * sizeof(float), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->c);
+      if (result != VK_SUCCESS) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = next; failed_worker = worker[next]; failure_stage = PROM_STAGE_TRANSFER_IN; failure_detail = (int)result; break; }
+      memcpy(task->a.mapped, entries[next].a, (size_t)a_count * sizeof(float)); memcpy(task->b.mapped, entries[next].b, (size_t)b_count * sizeof(float)); memset(task->c.mapped, 0, (size_t)elements[next] * sizeof(float));
+      if (prom_async_record_slot(rt, slot, task) != PROM_OK || prom_sgemm_ring_submit_slot(rt, slot) != PROM_OK) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = next; failed_worker = worker[next]; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED; break; }
+      task->lifecycle_state = PROM_ASYNC_STATE_SUBMITTED; jobs[next] = task;
+      if (next < 64u) { rt->batch_diag.m31_submission_sequence[next] = task->submission_sequence; rt->batch_diag.m31_physical_slot_id[next] = slot->slot_id; }
+      if (worker[next] < 8u) { rt->batch_diag.worker_submit_count[worker[next]] += 1u; rt->batch_diag.worker_event_count[worker[next]] += 2u; }
+      rt->batch_diag.refill_count += (next >= effective_depth) ? 1u : 0u;
+      ++next; made_progress = 1u;
+      if ((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && next == 1u) { failed = 1; failed_entry = 0u; failed_worker = worker[0]; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; }
+      if (!failed && next - 1u == injected_failure_entry) { failed = 1; failed_entry = injected_failure_entry; failed_worker = worker[injected_failure_entry]; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; }
+    }
+    for (i = 0u; i < next; ++i) {
+      prom_sgemm_async_task* task = jobs[i];
+      if (task == NULL || task->lifecycle_state != PROM_ASYNC_STATE_SUBMITTED) continue;
+      if (prom_async_poll_task(rt, task) != PROM_OK || task->lifecycle_state == PROM_ASYNC_STATE_FAILED) { if (!failed) { failed = 1; failed_entry = i; failed_worker = worker[i]; failure_stage = task->final_stage; failure_detail = task->final_detail; } continue; }
+      if (task->lifecycle_state == PROM_ASYNC_STATE_READY) {
+        memcpy(staged[i], task->c.mapped, (size_t)elements[i] * sizeof(float));
+        rt->submission_ring[task->physical_slot_id].state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+        task->lifecycle_state = PROM_ASYNC_STATE_CONSUMED;
+        if (i < 64u) { rt->batch_diag.m31_completion_status[i] = 1u; rt->batch_diag.m31_gpu_duration_ns[i] = task->gpu_duration_ns; rt->batch_diag.m31_completion_order[completion_count] = i; }
+        ++completion_count; ++completed; made_progress = 1u;
+        if (worker[i] < 8u) { rt->batch_diag.worker_completed_count[worker[i]] += 1u; rt->batch_diag.worker_event_count[worker[i]] += 1u; }
+      }
+    }
+    prom_async_process_completion_feedback(rt);
+    /* A consumed M30 record becomes eligible for table reuse after ordered
+       feedback.  Clear the batch's pointer at the same transition so a later
+       refill cannot be mistaken for the earlier entry on a recycled record. */
+    for (i = 0u; i < next; ++i) {
+      if (jobs[i] != NULL && jobs[i]->lifecycle_state == PROM_ASYNC_STATE_CONSUMED && jobs[i]->feedback_pending == 0u) {
+        prom_async_task_release(rt, jobs[i]);
+        jobs[i] = NULL;
+      }
+    }
+    if (!failed && completed < entry_count && !made_progress && rt->submission_ring_diag.outstanding != 0u) {
+      if (prom_sgemm_ring_wait_oldest(rt) != PROM_OK) { failed = 1; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_FENCE_WAIT_FAILED; }
+    }
+  }
+  /* Batch failure stops admission, then resolves every owned submission before
+     releasing its independent buffers.  Quarantined ownership uses M30a's
+     explicit reaper rather than recycling a possibly-live slot. */
+  for (i = 0u; i < next; ++i) {
+    prom_sgemm_async_task* task = jobs[i];
+    if (task == NULL) continue;
+    if (task->lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
+      VkFence fence = rt->submission_ring[task->physical_slot_id].fence;
+      rt->submission_ring_diag.total_forced_waits += 1u;
+      (void)vkWaitForFences(rt->device, 1u, &fence, VK_TRUE, UINT64_MAX);
+      (void)prom_async_poll_task(rt, task);
+    }
+    prom_async_process_completion_feedback(rt);
+    if (task->slot_quarantined != 0u) (void)prom_async_reap_quarantined_slots(rt, 1u);
+    if (task->physical_slot_id < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH && task->slot_quarantined == 0u) rt->submission_ring[task->physical_slot_id].state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+    prom_async_task_release(rt, task);
+  }
+  rt->batch_diag.physical_ring_depth_configured = rt->submission_ring_diag.configured_depth;
+  rt->batch_diag.physical_ring_depth_effective = effective_depth;
+  rt->batch_diag.current_in_flight = rt->submission_ring_diag.outstanding;
+  rt->batch_diag.max_in_flight = rt->submission_ring_diag.max_outstanding;
+  rt->batch_diag.total_submits = rt->submission_ring_diag.total_submits - submits0; rt->batch_diag.total_polls = rt->submission_ring_diag.total_polls - polls0;
+  rt->batch_diag.total_forced_waits = rt->submission_ring_diag.total_forced_waits - waits0; rt->batch_diag.ring_full_count = rt->submission_ring_diag.ring_full_count - full0;
+  rt->batch_diag.query_harvest_count = rt->submission_ring_diag.total_query_harvests - harvest0; rt->batch_diag.quarantine_count = rt->async_quarantine_event_count - quarantine0;
+  rt->batch_diag.reap_count = rt->async_reap_success_count - reap0; rt->batch_diag.feedback_committed_count = rt->async_feedback_committed_count - feedback0; rt->batch_diag.feedback_skipped_count = rt->async_feedback_skipped_count - skipped0;
+  rt->batch_diag.m31_completion_count = completion_count;
+  if (!failed && completed == entry_count) {
+    for (i = 0u; i < entry_count; ++i) { memcpy(entries[i].c, staged[i], (size_t)elements[i] * sizeof(float)); if (i < 64u) rt->batch_diag.m31_commit_order[i] = i; }
+    rt->batch_diag.m31_commit_count = entry_count; rt->batch_diag.output_committed = 1u; rt->batch_diag.batch_state = PROM_BATCH_STATE_SUCCEEDED;
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
+  } else {
+    rt->batch_diag.batch_state = PROM_BATCH_STATE_FAILED; rt->batch_diag.failed_entry_id = failed_entry; rt->batch_diag.failed_worker_id = failed_worker;
+    rt->batch_diag.failure_stage = failure_stage; rt->batch_diag.failure_detail = failure_detail; rt->batch_diag.failure_count = 1u; rt->batch_diag.first_failure_stable = 1u;
+    prom_vk_set_status(out_stage, out_detail_code, failure_stage == PROM_STAGE_NONE ? PROM_STAGE_SUBMIT : failure_stage, failure_detail == 0 ? PROM_ERROR : failure_detail);
+  }
+  for (i = 0u; i < entry_count; ++i) free(staged[i]); free(elements); free(worker); free(staged); free(jobs);
+  return failed || completed != entry_count ? PROM_ERROR : PROM_OK;
+oom:
+  for (i = 0u; i < entry_count; ++i) if (staged != NULL) free(staged[i]);
+  free(elements); free(worker); free(staged); free(jobs);
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
+  return PROM_ERROR;
 }
 
 // ============================================================================

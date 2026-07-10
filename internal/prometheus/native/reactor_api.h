@@ -497,6 +497,31 @@ typedef struct PrometheusSgemmBatchDiagnostics {
   uint32_t p13_m10_lookahead_allowed;
   uint32_t p13_m10_lookahead_blocked_reason;
   uint32_t p13_m10_selected_recipe_variant;
+  /* PX16 M31: the batch owns logical plans; these describe the shared M29
+     physical ring used to execute them.  Arrays are deliberately bounded like
+     the existing diagnostics export, not an ABI-visible allocation protocol. */
+  uint32_t physical_ring_depth_configured;
+  uint32_t physical_ring_depth_effective;
+  uint32_t current_in_flight;
+  uint32_t max_in_flight;
+  uint64_t total_submits;
+  uint64_t total_polls;
+  uint64_t total_forced_waits;
+  uint64_t ring_full_count;
+  uint64_t refill_count;
+  uint64_t query_harvest_count;
+  uint64_t quarantine_count;
+  uint64_t reap_count;
+  uint64_t feedback_committed_count;
+  uint64_t feedback_skipped_count;
+  uint32_t m31_completion_count;
+  uint32_t m31_commit_count;
+  uint64_t m31_submission_sequence[64];
+  uint32_t m31_physical_slot_id[64];
+  uint32_t m31_completion_status[64];
+  uint64_t m31_gpu_duration_ns[64];
+  uint32_t m31_completion_order[64];
+  uint32_t m31_commit_order[64];
 } PrometheusSgemmBatchDiagnostics;
 
 enum {
@@ -660,6 +685,8 @@ typedef struct PrometheusReactorConfig {
   uint32_t test_flags;
   uint32_t p15_shadow_canary_enabled;
   uint32_t async_test_flags;
+  /* Test-only M31 override. Zero preserves the production default depth two. */
+  uint32_t batch_ring_depth;
 } PrometheusReactorConfig;
 
 typedef struct PrometheusAsyncStatus {

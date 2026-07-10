@@ -2,6 +2,7 @@
 #include "test_harness.h"
 
 #include <cstdint>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -1071,4 +1072,114 @@ FACT(PrometheusReactor_M29_FixedDouble_CleanupRejectsInflightOwnership)
     ASSERT_TRUE(diag.m29_inflight_rejection_count >= 1u, "illegal in-flight cleanup attempt should increment in-flight rejection diagnostics");
 
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
+FACT(PrometheusSgemmBatchRefillRing)
+{
+    struct Shape { std::uint32_t m, n, k; };
+    const std::vector<Shape> shapes = {
+        {128u, 128u, 128u}, {256u, 256u, 64u}, {64u, 512u, 128u}, {512u, 64u, 128u},
+        {31u, 29u, 23u}, {17u, 17u, 17u}, {192u, 320u, 96u}, {96u, 96u, 96u}
+    };
+    const float sentinel = -98765.25f;
+    PrometheusVulkanDeviceDiagnostics device{};
+    void* identity_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &identity_handle), "batch refill runtime create should succeed");
+    if (!runtime_available(identity_handle)) SKIP("batch refill ring requires hardware Vulkan");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_vulkan_device_diagnostics(identity_handle, &device), "device diagnostics should succeed");
+    if (device.software_vulkan != 0u || device.device_type != PROM_VK_DEVICE_TYPE_DISCRETE_GPU ||
+        std::string(device.device_name).find("NVIDIA GeForce RTX 3070") == std::string::npos) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(identity_handle), "non-RTX3070 runtime should clean up");
+        SKIP("batch refill hardware proof requires NVIDIA GeForce RTX 3070");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(identity_handle), "identity runtime should clean up");
+
+    std::ostringstream depth_json;
+    std::ostringstream depth_markdown;
+    depth_json << "[";
+    depth_markdown << "| depth | wall ns | max in-flight | submits | polls | waits | ring full | refills | query harvests | gpu ns | correctness |\n|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n";
+    for (const std::uint32_t depth : {1u, 2u, 4u}) {
+        PrometheusReactorConfig config{};
+        config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+        config.batch_ring_depth = depth;
+        void* handle = nullptr;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "depth runtime create should succeed");
+        std::vector<std::vector<float>> a, b, c, expected;
+        std::vector<PrometheusSgemmBatchEntry> entries;
+        a.reserve(shapes.size()); b.reserve(shapes.size()); c.reserve(shapes.size()); expected.reserve(shapes.size()); entries.reserve(shapes.size());
+        for (std::size_t i = 0; i < shapes.size(); ++i) {
+            a.push_back(deterministic_matrix(shapes[i].m, shapes[i].k));
+            b.push_back(deterministic_matrix(shapes[i].k, shapes[i].n));
+            for (float& value : a.back()) value += static_cast<float>(i) * 0.03125f;
+            for (float& value : b.back()) value -= static_cast<float>(i) * 0.015625f;
+            c.emplace_back(shapes[i].m * shapes[i].n, sentinel);
+            expected.push_back(cpu_sgemm(a.back(), b.back(), shapes[i].m, shapes[i].n, shapes[i].k));
+            entries.push_back({a.back().data(), b.back().data(), c.back().data(), shapes[i].m, shapes[i].n, shapes[i].k});
+        }
+        const auto begin = std::chrono::steady_clock::now();
+        std::uint32_t stage = PROM_STAGE_NONE;
+        int detail = 0;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "public batch refill call should succeed");
+        const auto wall_ns = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count());
+        PrometheusSgemmBatchDiagnostics diag{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics should succeed");
+        ASSERT_EQUAL(depth, diag.physical_ring_depth_configured, "configured batch depth must be truthful");
+        ASSERT_EQUAL(depth, diag.physical_ring_depth_effective, "effective batch depth must be truthful");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(entries.size()), static_cast<std::uint32_t>(diag.total_submits), "every entry must have a physical submission");
+        ASSERT_EQUAL(1u, diag.output_committed, "successful batch must atomically commit");
+        ASSERT_EQUAL(0u, diag.current_in_flight, "successful batch must leave no in-flight ownership");
+        ASSERT_TRUE(diag.refill_count > 0u, "batch must refill physical slots");
+        ASSERT_TRUE(depth == 1u || diag.max_in_flight >= 2u, "depth two and four must prove multiple outstanding entries");
+        for (std::size_t i = 0; i < entries.size(); ++i) {
+            ASSERT_TRUE(near_equal(c[i], expected[i]), "each committed batch result must match the CPU oracle");
+            ASSERT_EQUAL(static_cast<std::uint32_t>(i), diag.m31_commit_order[i], "caller commit order must be entry order");
+            ASSERT_TRUE(diag.m31_submission_sequence[i] != 0u, "each entry must retain submission attribution");
+        }
+        std::uint64_t gpu_ns = 0u;
+        for (std::size_t i = 0; i < entries.size(); ++i) gpu_ns += diag.m31_gpu_duration_ns[i];
+        depth_json << (depth == 1u ? "" : ",") << "{\"requested_depth\":" << depth << ",\"effective_depth\":" << diag.physical_ring_depth_effective
+                   << ",\"entry_count\":" << entries.size() << ",\"wall_ns\":" << wall_ns << ",\"max_in_flight\":" << diag.max_in_flight
+                   << ",\"submits\":" << diag.total_submits << ",\"polls\":" << diag.total_polls << ",\"forced_waits\":" << diag.total_forced_waits
+                   << ",\"ring_full\":" << diag.ring_full_count << ",\"refills\":" << diag.refill_count << ",\"query_harvests\":" << diag.query_harvest_count
+                   << ",\"aggregate_gpu_ns\":" << gpu_ns << ",\"completion_order\":[";
+        for (std::size_t i = 0; i < entries.size(); ++i) depth_json << (i == 0u ? "" : ",") << diag.m31_completion_order[i];
+        depth_json << "],\"commit_order\":[0,1,2,3,4,5,6,7],\"correctness\":true,\"output_committed\":true}";
+        depth_markdown << "| " << depth << " | " << wall_ns << " | " << diag.max_in_flight << " | " << diag.total_submits << " | " << diag.total_polls << " | " << diag.total_forced_waits << " | " << diag.ring_full_count << " | " << diag.refill_count << " | " << diag.query_harvest_count << " | " << gpu_ns << " | pass |\n";
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "success depth runtime should clean up");
+    }
+
+    PrometheusReactorConfig failure_config{};
+    failure_config.struct_size = static_cast<std::uint32_t>(sizeof(failure_config));
+    failure_config.batch_ring_depth = 4u;
+    void* failure_handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&failure_config, &failure_handle), "failure runtime create should succeed");
+    std::vector<std::vector<float>> fa, fb, fc;
+    std::vector<PrometheusSgemmBatchEntry> failure_entries;
+    fa.reserve(shapes.size()); fb.reserve(shapes.size()); fc.reserve(shapes.size()); failure_entries.reserve(shapes.size());
+    for (const Shape& shape : shapes) {
+        fa.push_back(deterministic_matrix(shape.m, shape.k)); fb.push_back(deterministic_matrix(shape.k, shape.n));
+        fc.emplace_back(shape.m * shape.n, sentinel);
+        failure_entries.push_back({fa.back().data(), fb.back().data(), fc.back().data(), shape.m, shape.n, shape.k});
+    }
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t failure_entry = 2u;
+    const std::uint32_t failure_flags = (failure_entry + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(failure_handle, failure_entries.data(), static_cast<std::uint32_t>(failure_entries.size()), failure_flags, &stage, &detail), "injected post-submit batch failure must fail");
+    PrometheusSgemmBatchDiagnostics failure_diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(failure_handle, &failure_diag), "failure diagnostics should succeed");
+    ASSERT_EQUAL(0u, failure_diag.output_committed, "failed batch must not commit caller outputs");
+    ASSERT_EQUAL(failure_entry, failure_diag.failed_entry_id, "first injected failure entry must remain authoritative");
+    ASSERT_EQUAL(PROM_STAGE_SUBMIT, failure_diag.failure_stage, "injected failure stage must remain authoritative");
+    ASSERT_TRUE(failure_diag.total_submits >= failure_entry + 1u && failure_diag.total_submits < failure_entries.size(), "failure must stop admission after already-submitted work");
+    ASSERT_EQUAL(0u, failure_diag.current_in_flight, "failure drain must resolve submitted ownership");
+    for (const auto& output : fc) for (const float value : output) ASSERT_EQUAL(sentinel, value, "failed batch must leave every caller output sentinel intact");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(failure_handle), "failure runtime should clean up");
+
+    std::filesystem::create_directories("out/test-artifacts");
+    std::ofstream json("out/test-artifacts/prometheus_sgemm_batch_refill_ring.json");
+    std::ofstream markdown("out/test-artifacts/prometheus_sgemm_batch_refill_ring.md");
+    json << "{\"test\":\"PrometheusSgemmBatchRefillRing\",\"hardware_proof\":true,\"real_multi_submit_proof\":true,\"atomic_success_commit\":true,\"atomic_failure_no_commit\":true,\"acceptance_evidence_complete\":true,\"device\":{\"name\":\"" << device.device_name << "\",\"vendor_id\":" << device.vendor_id << ",\"device_id\":" << device.device_id << ",\"device_type\":" << device.device_type << ",\"driver_version\":" << device.driver_version << ",\"api_version\":" << device.api_version << ",\"software_vulkan\":false,\"compute_queue_family\":" << device.compute_queue_family << ",\"transfer_queue_family\":" << device.transfer_queue_family << "},\"depths\":" << depth_json.str() << "],\"failure\":{\"first_failure_entry\":2,\"output_committed\":false,\"drained\":true}}\n";
+    markdown << "# Prometheus batch refill ring\n\nFocused test: `PrometheusSgemmBatchRefillRing`. RTX 3070 hardware proof; public batch API; one compute queue.\n\n" << depth_markdown.str() << "\nSuccess: atomic entry-ID commit and CPU-oracle correctness pass. Failure: post-submit admission stop, drain, and sentinel-preserving no-commit pass.\n";
+    ASSERT_TRUE(json.good() && markdown.good(), "batch refill artifacts should be written");
 }
