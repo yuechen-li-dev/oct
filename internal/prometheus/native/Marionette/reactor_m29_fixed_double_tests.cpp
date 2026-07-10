@@ -240,6 +240,114 @@ FACT(PrometheusSgemmBatchPlanIsBuiltOnce)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
+FACT(PrometheusSgemmBatchSupportedFlagsNeverReachLegacyExecutor)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "unavailable runtime should clean up");
+        SKIP("public M31 authority proof requires Vulkan");
+    }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 5u);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    const std::uint32_t flags = 3u | PROM_BATCH_FLAG_PARTITION_CONTIGUOUS;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), flags, &stage, &detail), "supported public flags must execute M31");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics should succeed");
+    ASSERT_EQUAL(3u, diag.requested_workers, "requested width is logical metadata");
+    ASSERT_EQUAL(3u, diag.effective_workers, "planned width must be deterministic");
+    ASSERT_EQUAL(PROM_BATCH_PARTITION_CONTIGUOUS, diag.partition_policy, "public contiguous flag must reach immutable M31 plan");
+    ASSERT_EQUAL(static_cast<uint64_t>(entries.size()), diag.total_submits, "supported public batch must have real submissions");
+    ASSERT_EQUAL(0u, diag.real_worker_thread_count, "M31 must not claim P11 worker threads");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusSgemmBatchUnsupportedFlagsFailBeforeAdmission)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 2u);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT, &stage, &detail), "public injection flag must be rejected");
+    ASSERT_EQUAL(PROM_STAGE_INIT, stage, "unsupported flag must fail before admission");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_UNSUPPORTED_OPTION, detail, "unsupported flag detail must be stable");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics should succeed");
+    ASSERT_EQUAL(0u, static_cast<std::uint32_t>(diag.total_submits), "unsupported flag must submit nothing");
+    ASSERT_EQUAL(0u, diag.output_committed, "unsupported flag must not commit");
+    for (const auto& output : c) for (float value : output) ASSERT_EQUAL(-1.0f, value, "unsupported flag must preserve outputs");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime remains reusable and destroyable");
+}
+
+FACT(PrometheusSgemmBatchLogicalWidthsUseRealEngine)
+{
+    for (const std::uint32_t width : {1u, 2u, 4u}) {
+        void* handle = nullptr;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+        if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("public M31 authority requires Vulkan"); }
+        std::vector<std::vector<float>> a, b, c;
+        const auto entries = make_plan_entries(a, b, c, 8u);
+        std::vector<std::vector<float>> expected;
+        for (std::uint32_t i = 0u; i < static_cast<std::uint32_t>(entries.size()); ++i) expected.push_back(cpu_sgemm(a[i], b[i], entries[i].m, entries[i].n, entries[i].k));
+        std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), width, &stage, &detail), "public logical width must execute M31");
+        PrometheusSgemmBatchDiagnostics diag{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+        ASSERT_EQUAL(width, diag.requested_workers, "requested logical width must be preserved");
+        ASSERT_EQUAL(width, diag.effective_workers, "planned logical width must be deterministic");
+        ASSERT_EQUAL(PROM_BATCH_PARTITION_ROUND_ROBIN, diag.partition_policy, "round robin is the public default");
+        ASSERT_EQUAL(static_cast<uint64_t>(entries.size()), diag.total_submits, "M31 must submit every entry to Vulkan");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(entries.size()), diag.m31_completion_count, "M31 must complete every entry");
+        ASSERT_EQUAL(1u, diag.output_committed, "M31 must atomically commit outputs");
+        ASSERT_TRUE(diag.physical_ring_depth_effective > 0u, "M31 ring evidence must be present");
+        ASSERT_EQUAL(0u, diag.real_worker_thread_count, "logical widths must not create P11 workers");
+        ASSERT_EQUAL(PROM_BATCH_EXECUTION_SINGLE_WORKER, diag.execution_mode, "M31 must not use the P11 executor");
+        for (std::uint32_t lane = 0u; lane < width; ++lane) ASSERT_EQUAL(8u / width, diag.worker_assigned_count[lane], "round-robin logical lane map must be exact");
+        for (std::uint32_t i = 0u; i < static_cast<std::uint32_t>(entries.size()); ++i) ASSERT_TRUE(near_equal(c[i], expected[i]), "real M31 output must match oracle");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+    }
+}
+
+FACT(PrometheusSgemmBatchLogicalWidthCapsAtEntryCount)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("public M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 3u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 7u, &stage, &detail), "oversized public logical width must execute M31");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics should succeed");
+    ASSERT_EQUAL(7u, diag.requested_workers, "requested width remains visible");
+    ASSERT_EQUAL(3u, diag.effective_workers, "planned width must cap at entry count");
+    ASSERT_EQUAL(3u, static_cast<std::uint32_t>(diag.total_submits), "real M31 submits remain per entry");
+    ASSERT_EQUAL(0u, diag.real_worker_thread_count, "logical cap must not claim physical threads");
+    ASSERT_EQUAL(PROM_BATCH_EXECUTION_SINGLE_WORKER, diag.execution_mode, "logical cap must not select P11");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusSgemmBatchUnsupportedTopologyIsExplicit)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 3u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), PROM_BATCH_FLAG_TEST_SEPARATE_COMPUTE_FAMILY, &stage, &detail), "legacy separate-family request must be explicit unsupported");
+    ASSERT_EQUAL(PROM_DETAIL_BATCH_UNSUPPORTED_OPTION, detail, "unsupported topology detail must be stable");
+    PrometheusSgemmBatchDiagnostics rejected{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &rejected), "diagnostics should succeed");
+    ASSERT_EQUAL(0u, static_cast<std::uint32_t>(rejected.total_submits), "topology request must not submit or reach P11");
+    for (const auto& output : c) for (float value : output) ASSERT_EQUAL(-1.0f, value, "rejected topology must preserve outputs");
+    if (runtime_available(handle)) ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "runtime remains reusable for valid M31 batch");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 FACT(PrometheusReactor_M29_FixedDouble_HappyPathAndWipBounded)
 {
     void* handle = nullptr;
@@ -1309,7 +1417,7 @@ FACT(PrometheusSgemmBatchRefillRing)
     int detail = 0;
     const std::uint32_t failure_entry = 2u;
     const std::uint32_t failure_flags = (failure_entry + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT;
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(failure_handle, failure_entries.data(), static_cast<std::uint32_t>(failure_entries.size()), failure_flags, &stage, &detail), "injected post-submit batch failure must fail");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch_m31_test(failure_handle, failure_entries.data(), static_cast<std::uint32_t>(failure_entries.size()), failure_flags, &stage, &detail), "test-only injected post-submit batch failure must fail");
     PrometheusSgemmBatchDiagnostics failure_diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(failure_handle, &failure_diag), "failure diagnostics should succeed");
     ASSERT_EQUAL(0u, failure_diag.output_committed, "failed batch must not commit caller outputs");
@@ -1339,7 +1447,7 @@ FACT(PrometheusSgemmBatchFirstFailureDeterministic)
     std::vector<std::vector<float>> a, b, c;
     const auto entries = make_plan_entries(a, b, c, 8u);
     std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO, &stage, &detail), "dual candidate seam should fail");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch_m31_test(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO, &stage, &detail), "test-only dual candidate seam should fail");
     PrometheusSgemmBatchDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
     ASSERT_EQUAL(0u, diag.failed_entry_id, "reducer must select lowest caller entry id, not discovery order");
@@ -1359,7 +1467,7 @@ FACT(PrometheusSgemmBatchStopsAdmissionAfterFailure)
     const auto entries = make_plan_entries(a, b, c, 10u);
     std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
     const std::uint32_t flags = (2u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT;
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), flags, &stage, &detail), "post-submit failure");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch_m31_test(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), flags, &stage, &detail), "test-only post-submit failure");
     PrometheusSgemmBatchDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
     ASSERT_EQUAL(2u, diag.failed_entry_id, "failure identity");
@@ -1380,7 +1488,7 @@ FACT(PrometheusSgemmBatchFailureIsAtomic)
     const auto entries = make_plan_entries(a, b, c, 6u);
     for (auto& output : c) std::fill(output.begin(), output.end(), -7331.0f);
     std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), (1u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT, &stage, &detail), "failure after real submit");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch_m31_test(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), (1u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT, &stage, &detail), "test-only failure after real submit");
     PrometheusSgemmBatchDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
     ASSERT_EQUAL(0u, diag.output_committed, "no partial output publish");
@@ -1457,7 +1565,7 @@ FACT(PrometheusSgemmBatchDrainsSubmittedEntriesSafely)
     std::vector<std::vector<float>> a, b, c;
     const auto entries = make_plan_entries(a, b, c, 8u);
     std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
-    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), (2u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT, &stage, &detail), "failure while ring contains multiple submitted entries");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch_m31_test(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), (2u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT, &stage, &detail), "test-only failure while ring contains multiple submitted entries");
     PrometheusSgemmBatchDiagnostics diag{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
     ASSERT_TRUE(diag.max_in_flight >= 2u, "test must have multiple real submissions in flight");

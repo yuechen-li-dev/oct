@@ -248,6 +248,8 @@ enum {
   PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED = -6610,
   PROM_DETAIL_BATCH_DEVICE_LOST = -6611,
   PROM_DETAIL_BATCH_DRAIN_TIMEOUT = -6612,
+  /* R2d: a known legacy batch option is not a production execution option. */
+  PROM_DETAIL_BATCH_UNSUPPORTED_OPTION = -6613,
   /* Backward-compat alias used by earlier P8d tests/reports. */
   PROM_DETAIL_PATH_TILED = PROM_DETAIL_PATH_DIRECT_TILED,
 };
@@ -539,6 +541,9 @@ enum {
    */
   PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT = 10u,
   PROM_BATCH_FLAG_TEST_HW_CAP_MASK = 0xFu << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT,
+  /* ABI alias: retained P11 separate-family topology request. R2d rejects it
+     through the public batch entry; it never fabricates a second compute lane. */
+  PROM_BATCH_FLAG_TEST_SEPARATE_COMPUTE_FAMILY = 1u << PROM_BATCH_FLAG_TEST_HW_CAP_SHIFT,
   PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT = 14u,
   PROM_BATCH_FLAG_TEST_ARENA_SCALE_MASK = 0x3u << PROM_BATCH_FLAG_TEST_ARENA_SCALE_SHIFT,
   PROM_BATCH_FLAG_TEST_EVENT_CAPACITY_SHIFT = 16u,
@@ -1304,6 +1309,21 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch(void* handle,
                                                             uint32_t flags,
                                                             uint32_t* out_stage,
                                                             int* out_detail_code);
+/* Test-only compatibility entries.  They are deliberately separate from the
+   production batch API: R2d must not let an ordinary flag select P11 or an
+   M31 fault injection. */
+int prometheus_reactor_runtime_sgemm_batch_m31_test(void* handle,
+                                                     const PrometheusSgemmBatchEntry* entries,
+                                                     uint32_t entry_count,
+                                                     uint32_t flags,
+                                                     uint32_t* out_stage,
+                                                     int* out_detail_code);
+int prometheus_reactor_runtime_sgemm_batch_legacy_test(void* handle,
+                                                        const PrometheusSgemmBatchEntry* entries,
+                                                        uint32_t entry_count,
+                                                        uint32_t flags,
+                                                        uint32_t* out_stage,
+                                                        int* out_detail_code);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
                                                                    const float* a,
                                                                    const float* b,

@@ -8219,7 +8219,81 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
                                         uint32_t* out_stage,
                                         int* out_detail_code);
 
+/* The public v1 word is intentionally narrower than its historical namespace.
+   Low eight bits are a logical planning width; bit 8 is the partition policy.
+   Every other retained value is a tombstone or an explicit test control. */
+#define PROM_BATCH_PRODUCTION_FLAG_MASK (0xffu | PROM_BATCH_FLAG_PARTITION_CONTIGUOUS)
+
+static int prom_sgemm_batch_reject_unsupported_options(prometheus_runtime* rt,
+                                                       uint32_t entry_count,
+                                                       uint32_t flags,
+                                                       uint32_t* out_stage,
+                                                       int* out_detail_code) {
+  const uint32_t unsupported = flags & ~PROM_BATCH_PRODUCTION_FLAG_MASK;
+  memset(&rt->batch_diag, 0, sizeof(rt->batch_diag));
+  rt->batch_diag.last_batch_entry_count = entry_count;
+  rt->batch_diag.requested_workers = batch_requested_workers_from_flags(flags);
+  rt->batch_diag.effective_workers = rt->batch_diag.requested_workers > 8u
+                                       ? 8u
+                                       : rt->batch_diag.requested_workers;
+  if (entry_count != 0u && rt->batch_diag.effective_workers > entry_count) {
+    rt->batch_diag.effective_workers = entry_count;
+  }
+  rt->batch_diag.partition_policy = (flags & PROM_BATCH_FLAG_PARTITION_CONTIGUOUS) != 0u
+                                      ? PROM_BATCH_PARTITION_CONTIGUOUS
+                                      : PROM_BATCH_PARTITION_ROUND_ROBIN;
+  rt->batch_diag.plan_generation = 1u;
+  rt->batch_diag.batch_state = PROM_BATCH_STATE_FAILED;
+  rt->batch_diag.failure_stage = PROM_STAGE_INIT;
+  rt->batch_diag.failure_detail = PROM_DETAIL_BATCH_UNSUPPORTED_OPTION;
+  rt->batch_diag.failure_count = 1u;
+  /* No plan, task, ring slot, submit, completion, or caller-output mutation. */
+  (void)unsupported;
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_UNSUPPORTED_OPTION);
+  return PROM_ERROR;
+}
+
 int prom_reactor_runtime_sgemm_batch_impl(void* handle,
+                                          const PrometheusSgemmBatchEntry* entries,
+                                          uint32_t entry_count,
+                                          uint32_t flags,
+                                          uint32_t* out_stage,
+                                          int* out_detail_code) {
+  prometheus_runtime* rt;
+  prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
+  if (handle == NULL || !registry_contains(handle)) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    return PROM_INVALID_HANDLE;
+  }
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
+    return PROM_INVALID_HANDLE;
+  }
+  if ((flags & ~PROM_BATCH_PRODUCTION_FLAG_MASK) != 0u) {
+    return prom_sgemm_batch_reject_unsupported_options(rt, entry_count, flags, out_stage, out_detail_code);
+  }
+  if (rt->available == 0u || rt->submission_ring_diag.configured_depth == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
+    return PROM_ERROR;
+  }
+  return prom_sgemm_batch_refill_ring(rt, entries, entry_count, flags, out_stage, out_detail_code);
+}
+
+int prom_reactor_runtime_sgemm_batch_m31_test_impl(void* handle,
+                                                   const PrometheusSgemmBatchEntry* entries,
+                                                   uint32_t entry_count,
+                                                   uint32_t flags,
+                                                   uint32_t* out_stage,
+                                                   int* out_detail_code) {
+  prometheus_runtime* rt;
+  if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) return PROM_INVALID_HANDLE;
+  return prom_sgemm_batch_refill_ring(rt, entries, entry_count, flags, out_stage, out_detail_code);
+}
+
+int prom_reactor_runtime_sgemm_batch_legacy_test_impl(void* handle,
                                           const PrometheusSgemmBatchEntry* entries,
                                           uint32_t entry_count,
                                           uint32_t flags,
@@ -8339,16 +8413,6 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
-  }
-  /* M31 is the production Vulkan route.  The large P11 implementation below
-     remains the software/topology contract lane; it is intentionally not used
-     when a persistent physical ring is available. */
-  /* P11's non-zero flags are topology/worker-resource diagnostic controls for
-     the retained contract executor.  Normal public admission (and M31's
-     narrow encoded post-submit failure seam) uses the shared physical ring. */
-  if (rt->available != 0u && rt->submission_ring_diag.configured_depth != 0u &&
-      ((flags == 0u) || ((flags & ~PROM_BATCH_FLAG_TEST_FAIL_ENTRY_MASK) == 0u))) {
-    return prom_sgemm_batch_refill_ring(rt, entries, entry_count, flags, out_stage, out_detail_code);
   }
   if (entries == NULL || entry_count == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
@@ -10251,6 +10315,9 @@ int prom_sgemm_batch_plan_build(const PrometheusSgemmBatchEntry* entries,
   planned_logical_width = requested_logical_width;
   if (planned_logical_width > PROM_SGEMM_BATCH_MAX_LOGICAL_WIDTH) {
     planned_logical_width = PROM_SGEMM_BATCH_MAX_LOGICAL_WIDTH;
+  }
+  if (planned_logical_width > entry_count) {
+    planned_logical_width = entry_count;
   }
   if (planned_logical_width == 0u) {
     return PROM_ERROR;

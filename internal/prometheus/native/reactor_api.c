@@ -67,6 +67,24 @@ int prometheus_reactor_runtime_sgemm_batch(void* handle,
   return prom_reactor_runtime_sgemm_batch_impl(handle, entries, entry_count, flags, out_stage, out_detail_code);
 }
 
+int prometheus_reactor_runtime_sgemm_batch_m31_test(void* handle,
+                                                     const PrometheusSgemmBatchEntry* entries,
+                                                     uint32_t entry_count,
+                                                     uint32_t flags,
+                                                     uint32_t* out_stage,
+                                                     int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_batch_m31_test_impl(handle, entries, entry_count, flags, out_stage, out_detail_code);
+}
+
+int prometheus_reactor_runtime_sgemm_batch_legacy_test(void* handle,
+                                                        const PrometheusSgemmBatchEntry* entries,
+                                                        uint32_t entry_count,
+                                                        uint32_t flags,
+                                                        uint32_t* out_stage,
+                                                        int* out_detail_code) {
+  return prom_reactor_runtime_sgemm_batch_legacy_test_impl(handle, entries, entry_count, flags, out_stage, out_detail_code);
+}
+
 int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
                                                   const float* a,
                                                   const float* b,
