@@ -131,16 +131,14 @@ shader SgemmReg2x2Tile16x16DeriveFp32 {
                             BView[load.bRow, load.bCol];
                     }
                     else -> {
-                        let aValue: f32 =
+                        TileA[load.tileRow, load.tileCol] =
                             read AView[load.aRow, load.aCol]
                                 when load.validA
                                 else 0.0;
-                        let bValue: f32 =
+                        TileB[load.tileRow, load.tileCol] =
                             read BView[load.bRow, load.bCol]
                                 when load.validB
                                 else 0.0;
-                        TileA[load.tileRow, load.tileCol] = aValue;
-                        TileB[load.tileRow, load.tileCol] = bValue;
                     }
                 }
             }

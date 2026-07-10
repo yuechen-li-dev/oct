@@ -99,9 +99,9 @@ Generated HLSL observations:
 
 Important backend note:
 
-- A first draft that directly assigned `TileA[...] = read ... when ... else 0.0` inside the flow state mis-lowered in HLSL tail code and left stale shared-tile values when a guard was false.
-- The final M24 shader keeps the board-based coordinates but materializes explicit `aValue` / `bValue` fallback-zero temporaries before writing `TileA` / `TileB`.
-- No new language feature was required; this was a source-level correctness fix within the existing M21-M23 surface.
+- Before M27, direct guarded-read assignment mis-lowered in HLSL tail code as a conditional shared-tile store and could leave stale values.
+- M27 fixes the compiler emission path: guarded reads now materialize a fallback-initialized value temporary before an unconditional tile assignment.
+- M24 therefore uses direct guarded-read tail assignments again; its flow/board structure, barriers, metadata, and geometry are unchanged.
 
 SPIR-V sanity:
 

@@ -6,6 +6,8 @@ The detailed M20 report lives in:
 
 M20 remains the explicit benchmark-only exact-tail reg2x2 baseline for later source-architecture experiments.
 
+M27 restores direct guarded-read assignment in M20's tail path. The compiler materializes load-or-fallback before the unconditional shared-tile store; M20's direct-load exact path remains separate.
+
 Follow-up:
 
 - M24 keeps the same geometry, metadata, and exact/tail behavior, but rewrites the source around M21-M23 `board` / `flow` / `state`.

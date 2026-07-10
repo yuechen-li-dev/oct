@@ -1,0 +1,26 @@
+namespace Examples.SDSLV.M27;
+
+stream IO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] Out: readwrite array<f32>;
+}
+
+record Params { row: u32; col: u32; valid: bool; }
+
+shader GuardedReadAssignmentContexts {
+    resources IO;
+    workgroup Tile: tile<f32, 2u, 2u>;
+
+    fn Load(index: u32, valid: bool) -> f32 {
+        return read A[index] when valid else 3.0;
+    }
+
+    stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+        let AView: matrix_view<f32> = row_major(A, 2u, 2u);
+        let value: f32 = read AView[params.row, params.col] when params.valid else 1.0;
+        Tile[0u, 0u] = read AView[params.row, params.col] when params.valid else 2.0;
+        Out[0u] = value;
+        Out[1u] = Load(params.row * 2u + params.col, params.valid);
+        return;
+    }
+}

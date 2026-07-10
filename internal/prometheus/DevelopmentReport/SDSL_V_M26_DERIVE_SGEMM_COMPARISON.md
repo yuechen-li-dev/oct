@@ -59,10 +59,8 @@ The K-tile loop stays direct and linear:
 
 Important correctness note:
 
-- The first draft used direct guarded `read ... when ... else 0.0` assignments into `TileA` / `TileB`.
-- Current HLSL lowering still turns that tail form into conditional shared-memory stores without an `else`, which can leave stale workgroup values alive.
-- Final M26 keeps `derive` for coordinates but materializes explicit `aValue` / `bValue` fallback-zero temporaries before writing shared tiles.
-- This is the same narrow correctness discipline M24 needed; it is not new language-surface work.
+- Before M27, direct guarded-read assignments into `TileA` / `TileB` could lower as conditional shared-memory stores and leave stale workgroup values alive.
+- M27 repairs the compiler's value materialization path, so M26 again uses direct guarded reads while preserving derive coordinates and all kernel structure.
 
 ## Readability Comparison
 

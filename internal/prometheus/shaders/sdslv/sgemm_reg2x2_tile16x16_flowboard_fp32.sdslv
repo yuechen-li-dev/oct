@@ -147,16 +147,14 @@ shader SgemmReg2x2Tile16x16FlowBoardFp32 {
                                     BView[Load.bRow, Load.bCol];
                             }
                             else -> {
-                                let aValue: f32 =
+                                TileA[Load.tileRow, Load.tileCol] =
                                     read AView[Load.aRow, Load.aCol]
                                         when Load.validA
                                         else 0.0;
-                                let bValue: f32 =
+                                TileB[Load.tileRow, Load.tileCol] =
                                     read BView[Load.bRow, Load.bCol]
                                         when Load.validB
                                         else 0.0;
-                                TileA[Load.tileRow, Load.tileCol] = aValue;
-                                TileB[Load.tileRow, Load.tileCol] = bValue;
                             }
                         }
                     }

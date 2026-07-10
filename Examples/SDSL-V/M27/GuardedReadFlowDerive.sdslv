@@ -1,0 +1,29 @@
+namespace Examples.SDSLV.M27;
+
+stream IO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] Out: readwrite array<f32>;
+}
+
+record Coord { row: u32; col: u32; valid: bool; }
+record Params { row: u32; col: u32; enabled: bool; }
+
+shader GuardedReadFlowDerive {
+    resources IO;
+    workgroup Tile: tile<f32, 2u, 2u>;
+
+    stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+        let AView: matrix_view<f32> = row_major(A, 2u, 2u);
+        let coord: Coord = derive { row = params.row; col = params.col; valid = params.enabled; };
+        flow Load {
+            state Copy {
+                when {
+                    case params.enabled -> { Tile[0u, 0u] = read AView[coord.row, coord.col] when coord.valid else 0.0; }
+                    else -> { Tile[0u, 0u] = read AView[coord.row, coord.col] when false else 0.0; }
+                }
+            }
+        }
+        Out[0u] = Tile[0u, 0u];
+        return;
+    }
+}

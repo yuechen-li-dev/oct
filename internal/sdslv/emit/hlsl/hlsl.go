@@ -481,23 +481,31 @@ func (e *emitter) emitMatchReturn(matchExpr vdmir.MatchExpr) {
 }
 
 func (e *emitter) emitGuardedReadLet(stmt vdmir.LetStmt, guarded vdmir.GuardedReadExpr) {
-	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), e.expr(guarded.Fallback)))
-	e.emitGuardedReadAssign(hlslIdentifier(stmt.Name), guarded)
+	tempName := e.emitGuardedReadValue(guarded)
+	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), tempName))
 }
 
 func (e *emitter) emitGuardedReadAssign(target string, guarded vdmir.GuardedReadExpr) {
+	tempName := e.emitGuardedReadValue(guarded)
+	// A guarded read is a value expression.  Keep the surrounding assignment
+	// outside its conditional load so false guards still write the fallback.
+	e.line(fmt.Sprintf("%s = %s;", target, tempName))
+}
+
+func (e *emitter) emitGuardedReadValue(guarded vdmir.GuardedReadExpr) string {
+	tempName := e.nextTempWithPrefix("guarded_read")
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(guarded.Type(), ""), tempName, e.expr(guarded.Fallback)))
 	e.line("if (" + e.expr(guarded.Condition) + ")")
 	e.line("{")
 	e.indent++
-	e.line(fmt.Sprintf("%s = %s;", target, e.expr(guarded.Target)))
+	e.line(fmt.Sprintf("%s = %s;", tempName, e.expr(guarded.Target)))
 	e.indent--
 	e.line("}")
+	return tempName
 }
 
 func (e *emitter) emitGuardedReadReturn(guarded vdmir.GuardedReadExpr) {
-	tempName := e.nextTempWithPrefix("guarded_read")
-	e.line(fmt.Sprintf("%s %s = %s;", typeRef(guarded.Type(), ""), tempName, e.expr(guarded.Fallback)))
-	e.emitGuardedReadAssign(tempName, guarded)
+	tempName := e.emitGuardedReadValue(guarded)
 	e.line("return " + tempName + ";")
 }
 

@@ -136,79 +136,18 @@ shader SgemmReg2x2Tile16x16ExactTailFp32 {
                         ];
                 }
                 else -> {
-                    let aValue0: f32 =
-                        read AView[
-                                groupBaseRow + ((localThreadLinear * 4u + 0u) / C.Tile.K),
-                                tileBaseK + ((localThreadLinear * 4u + 0u) % C.Tile.K)
-                            ]
-                            when groupBaseRow + ((localThreadLinear * 4u + 0u) / C.Tile.K) < params.m and
-                                 tileBaseK + ((localThreadLinear * 4u + 0u) % C.Tile.K) < params.k
-                            else 0.0;
-                    let bValue0: f32 =
-                        read BView[
-                                tileBaseK + ((localThreadLinear * 4u + 0u) / C.Tile.K),
-                                groupBaseCol + ((localThreadLinear * 4u + 0u) % C.Tile.K)
-                            ]
-                            when tileBaseK + ((localThreadLinear * 4u + 0u) / C.Tile.K) < params.k and
-                                 groupBaseCol + ((localThreadLinear * 4u + 0u) % C.Tile.K) < params.n
-                            else 0.0;
-                    let aValue1: f32 =
-                        read AView[
-                                groupBaseRow + ((localThreadLinear * 4u + 1u) / C.Tile.K),
-                                tileBaseK + ((localThreadLinear * 4u + 1u) % C.Tile.K)
-                            ]
-                            when groupBaseRow + ((localThreadLinear * 4u + 1u) / C.Tile.K) < params.m and
-                                 tileBaseK + ((localThreadLinear * 4u + 1u) % C.Tile.K) < params.k
-                            else 0.0;
-                    let bValue1: f32 =
-                        read BView[
-                                tileBaseK + ((localThreadLinear * 4u + 1u) / C.Tile.K),
-                                groupBaseCol + ((localThreadLinear * 4u + 1u) % C.Tile.K)
-                            ]
-                            when tileBaseK + ((localThreadLinear * 4u + 1u) / C.Tile.K) < params.k and
-                                 groupBaseCol + ((localThreadLinear * 4u + 1u) % C.Tile.K) < params.n
-                            else 0.0;
-                    let aValue2: f32 =
-                        read AView[
-                                groupBaseRow + ((localThreadLinear * 4u + 2u) / C.Tile.K),
-                                tileBaseK + ((localThreadLinear * 4u + 2u) % C.Tile.K)
-                            ]
-                            when groupBaseRow + ((localThreadLinear * 4u + 2u) / C.Tile.K) < params.m and
-                                 tileBaseK + ((localThreadLinear * 4u + 2u) % C.Tile.K) < params.k
-                            else 0.0;
-                    let bValue2: f32 =
-                        read BView[
-                                tileBaseK + ((localThreadLinear * 4u + 2u) / C.Tile.K),
-                                groupBaseCol + ((localThreadLinear * 4u + 2u) % C.Tile.K)
-                            ]
-                            when tileBaseK + ((localThreadLinear * 4u + 2u) / C.Tile.K) < params.k and
-                                 groupBaseCol + ((localThreadLinear * 4u + 2u) % C.Tile.K) < params.n
-                            else 0.0;
-                    let aValue3: f32 =
-                        read AView[
-                                groupBaseRow + ((localThreadLinear * 4u + 3u) / C.Tile.K),
-                                tileBaseK + ((localThreadLinear * 4u + 3u) % C.Tile.K)
-                            ]
-                            when groupBaseRow + ((localThreadLinear * 4u + 3u) / C.Tile.K) < params.m and
-                                 tileBaseK + ((localThreadLinear * 4u + 3u) % C.Tile.K) < params.k
-                            else 0.0;
-                    let bValue3: f32 =
-                        read BView[
-                                tileBaseK + ((localThreadLinear * 4u + 3u) / C.Tile.K),
-                                groupBaseCol + ((localThreadLinear * 4u + 3u) % C.Tile.K)
-                            ]
-                            when tileBaseK + ((localThreadLinear * 4u + 3u) / C.Tile.K) < params.k and
-                                 groupBaseCol + ((localThreadLinear * 4u + 3u) % C.Tile.K) < params.n
-                            else 0.0;
-
-                    TileA[(localThreadLinear * 4u + 0u) / C.Tile.K, (localThreadLinear * 4u + 0u) % C.Tile.K] = aValue0;
-                    TileB[(localThreadLinear * 4u + 0u) / C.Tile.K, (localThreadLinear * 4u + 0u) % C.Tile.K] = bValue0;
-                    TileA[(localThreadLinear * 4u + 1u) / C.Tile.K, (localThreadLinear * 4u + 1u) % C.Tile.K] = aValue1;
-                    TileB[(localThreadLinear * 4u + 1u) / C.Tile.K, (localThreadLinear * 4u + 1u) % C.Tile.K] = bValue1;
-                    TileA[(localThreadLinear * 4u + 2u) / C.Tile.K, (localThreadLinear * 4u + 2u) % C.Tile.K] = aValue2;
-                    TileB[(localThreadLinear * 4u + 2u) / C.Tile.K, (localThreadLinear * 4u + 2u) % C.Tile.K] = bValue2;
-                    TileA[(localThreadLinear * 4u + 3u) / C.Tile.K, (localThreadLinear * 4u + 3u) % C.Tile.K] = aValue3;
-                    TileB[(localThreadLinear * 4u + 3u) / C.Tile.K, (localThreadLinear * 4u + 3u) % C.Tile.K] = bValue3;
+                    comptime for lane in 0u..4u {
+                        let tileRow: u32 = (localThreadLinear * 4u + lane) / C.Tile.K;
+                        let tileCol: u32 = (localThreadLinear * 4u + lane) % C.Tile.K;
+                        TileA[tileRow, tileCol] =
+                            read AView[groupBaseRow + tileRow, tileBaseK + tileCol]
+                                when groupBaseRow + tileRow < params.m and tileBaseK + tileCol < params.k
+                                else 0.0;
+                        TileB[tileRow, tileCol] =
+                            read BView[tileBaseK + tileRow, groupBaseCol + tileCol]
+                                when tileBaseK + tileRow < params.k and groupBaseCol + tileCol < params.n
+                                else 0.0;
+                    }
                 }
             }
 

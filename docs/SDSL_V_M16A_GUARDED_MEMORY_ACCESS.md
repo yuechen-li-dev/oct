@@ -105,6 +105,14 @@ if (guard) {
 }
 ```
 
+`tmp` is the guarded read's result value. When a guarded read is used on an assignment RHS, the surrounding destination assignment is unconditional and follows this block:
+
+```hlsl
+destination = tmp;
+```
+
+Fallback and guard are evaluated once; the target is evaluated only in the true branch. This is deliberately distinct from guarded write lowering.
+
 Guarded write lowers to:
 
 ```hlsl

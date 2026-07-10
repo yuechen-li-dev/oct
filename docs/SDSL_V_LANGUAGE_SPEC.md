@@ -105,6 +105,8 @@ let a: f32 = read AView[row, col] when row < params.M and col < params.N else 0.
 write CView[row, col] = a when row < params.M and col < params.N;
 ```
 
+M27 hardens the distinction: guarded read is a value expression. It always materializes either the guarded target value or its fallback before the surrounding let, assignment, or return consumes it. Guarded write is a conditional side effect and performs no store for a false guard. HLSL uses a fallback-initialized temporary and `if`, not a ternary, to keep invalid target reads unreachable.
+
 ### Register tile types (GoOct M15)
 
 M15 adds structured per-thread local/register storage:

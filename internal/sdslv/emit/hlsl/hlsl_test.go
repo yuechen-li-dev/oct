@@ -176,9 +176,10 @@ return;
 }
 }`)
 	for _, want := range []string{
-		"float value = 0.0;",
+		"float __sdslv_guarded_read_0 = 0.0;",
 		"if ((guard && !false))",
-		"value = A[((row) * (4u)) + (col)];",
+		"__sdslv_guarded_read_0 = A[((row) * (4u)) + (col)];",
+		"float value = __sdslv_guarded_read_0;",
 		"if (((row < 4u) && (col < 4u)))",
 		"C[((row) * (4u)) + (col)] = value;",
 	} {
@@ -190,6 +191,31 @@ return;
 		if strings.Contains(hlsl, banned) {
 			t.Fatalf("HLSL should not contain source guarded spelling %q:\n%s", banned, hlsl)
 		}
+	}
+}
+
+func TestEmitGuardedReadAssignmentMaterializesValueBeforeTileStore(t *testing.T) {
+	hlsl := emitSource(t, `shader S {
+resources { A: readonly array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32, guard: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+Tile[row, col] = read AView[row, col] when guard else 7.0;
+return;
+}
+}`)
+	for _, want := range []string{
+		"float __sdslv_guarded_read_0 = 7.0;",
+		"if (guard)",
+		"__sdslv_guarded_read_0 = A[((row) * (4u)) + (col)];",
+		"Tile[((row) * (4)) + (col)] = __sdslv_guarded_read_0;",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+	if strings.Contains(hlsl, "if (guard)\n    {\n        Tile[") {
+		t.Fatalf("guarded read must not lower as a conditional tile store:\n%s", hlsl)
 	}
 }
 
@@ -218,7 +244,8 @@ return;
 		"if (full)",
 		"else if (!full)",
 		"else",
-		"float value = 0.0;",
+		"float __sdslv_guarded_read_0 = 0.0;",
+		"float value = __sdslv_guarded_read_0;",
 		"C[((row) * (4u)) + (col)] = value;",
 	} {
 		if !strings.Contains(hlsl, want) {

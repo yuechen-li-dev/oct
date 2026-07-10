@@ -1,0 +1,26 @@
+namespace Examples.SDSLV.M27;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream TileIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] Out: readwrite array<f32>;
+}
+
+shader GuardedReadTileFallback {
+    resources TileIO;
+    workgroup Tile: tile<f32, 1u, 1u>;
+
+    stage compute [numthreads(1, 1, 1)] fn CS(thread: ComputeThread) -> void {
+        Tile[0u, 0u] = 9.0;
+        Tile[0u, 0u] = read A[0u] when false else 0.0;
+        WorkgroupMemoryBarrierWithSync();
+        Out[0u] = Tile[0u, 0u];
+        return;
+    }
+}
