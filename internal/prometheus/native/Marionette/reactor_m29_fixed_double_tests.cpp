@@ -1,4 +1,5 @@
 #include "../bridge.h"
+#include "../reactor_vulkan.h"
 #include "test_harness.h"
 
 #include <cstdint>
@@ -8,6 +9,7 @@
 #include <fstream>
 #include <limits>
 #include <sstream>
+#include <thread>
 #include <vector>
 
 namespace
@@ -65,16 +67,40 @@ bool runtime_available(void* handle)
     return caps.available != 0u;
 }
 
+std::vector<PrometheusSgemmBatchEntry> make_plan_entries(std::vector<std::vector<float>>& a,
+                                                         std::vector<std::vector<float>>& b,
+                                                         std::vector<std::vector<float>>& c,
+                                                         std::uint32_t count)
+{
+    std::vector<PrometheusSgemmBatchEntry> entries;
+    a.reserve(count);
+    b.reserve(count);
+    c.reserve(count);
+    entries.reserve(count);
+    for (std::uint32_t entry_id = 0u; entry_id < count; ++entry_id) {
+        const std::uint32_t m = 2u + entry_id;
+        const std::uint32_t n = 3u;
+        const std::uint32_t k = 4u;
+        a.push_back(deterministic_matrix(m, k));
+        b.push_back(deterministic_matrix(k, n));
+        c.emplace_back(m * n, -1.0f);
+        entries.push_back({a.back().data(), b.back().data(), c.back().data(), m, n, k});
+    }
+    return entries;
+}
+
 bool wait_until_async_ready(void* handle, int task_id)
 {
     PrometheusAsyncStatus status{};
-    for (int attempts = 0; attempts < 2000; ++attempts) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
         if (prometheus_reactor_runtime_sgemm_query_async(handle, task_id, &status) != PROM_OK) {
             return false;
         }
         if (status.lifecycle_state == PROM_ASYNC_STATE_READY) {
             return true;
         }
+        std::this_thread::yield();
     }
     return false;
 }
@@ -96,6 +122,122 @@ bool near_equal(const std::vector<float>& actual, const std::vector<float>& expe
         if (std::fabs(actual[i] - expected[i]) > 1e-3f) return false;
     return true;
 }
+}
+
+FACT(PrometheusSgemmBatchPlanDeterministicRoundRobin)
+{
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 7u);
+    prom_sgemm_batch_plan plan{};
+    std::uint32_t failed_entry = UINT32_MAX;
+    ASSERT_EQUAL(PROM_OK, prom_sgemm_batch_plan_build(entries.data(), static_cast<std::uint32_t>(entries.size()), 3u, &plan, &failed_entry), "round-robin plan should build");
+    ASSERT_EQUAL(3u, plan.requested_logical_width, "requested width must be preserved");
+    ASSERT_EQUAL(3u, plan.planned_logical_width, "planned width must be independent of ring depth");
+    ASSERT_EQUAL(PROM_BATCH_PARTITION_ROUND_ROBIN, plan.partition_policy, "default partition must be round robin");
+    ASSERT_EQUAL(1u, plan.plan_generation, "plan generation must be stable");
+    for (std::uint32_t entry_id = 0u; entry_id < plan.entry_count; ++entry_id) {
+        const auto& entry = plan.entries[entry_id];
+        ASSERT_EQUAL(entry_id, entry.entry_id, "entry identity must follow caller order");
+        ASSERT_EQUAL(entry_id % 3u, entry.logical_lane, "round-robin lane must be deterministic");
+        ASSERT_EQUAL(1u, entry.plan_generation, "entry generation must match plan");
+        ASSERT_EQUAL(static_cast<std::size_t>((2u + entry_id) * 4u), entry.a_element_count, "A count must be immutable");
+        ASSERT_EQUAL(static_cast<std::size_t>((2u + entry_id) * 3u), entry.c_element_count, "C count must be immutable");
+    }
+    prom_sgemm_batch_plan_destroy(&plan);
+}
+
+FACT(PrometheusSgemmBatchPlanDeterministicContiguous)
+{
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 7u);
+    prom_sgemm_batch_plan plan{};
+    const std::uint32_t flags = 3u | PROM_BATCH_FLAG_PARTITION_CONTIGUOUS;
+    ASSERT_EQUAL(PROM_OK, prom_sgemm_batch_plan_build(entries.data(), static_cast<std::uint32_t>(entries.size()), flags, &plan, nullptr), "contiguous plan should build");
+    const std::uint32_t expected_lanes[] = {0u, 0u, 0u, 1u, 1u, 2u, 2u};
+    ASSERT_EQUAL(PROM_BATCH_PARTITION_CONTIGUOUS, plan.partition_policy, "contiguous policy must be retained");
+    for (std::uint32_t entry_id = 0u; entry_id < plan.entry_count; ++entry_id) {
+        ASSERT_EQUAL(expected_lanes[entry_id], plan.entries[entry_id].logical_lane, "contiguous lane must use floor(entry_id * width / entry_count)");
+    }
+    prom_sgemm_batch_plan_destroy(&plan);
+}
+
+FACT(PrometheusSgemmBatchPlanValidatesBeforeAdmission)
+{
+    std::vector<std::vector<float>> a, b, c;
+    auto entries = make_plan_entries(a, b, c, 4u);
+    entries[3].b = nullptr;
+    prom_sgemm_batch_plan plan{};
+    std::uint32_t failed_entry = UINT32_MAX;
+    ASSERT_EQUAL(PROM_ERROR, prom_sgemm_batch_plan_build(entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &plan, &failed_entry), "invalid later entry must fail plan construction");
+    ASSERT_EQUAL(3u, failed_entry, "plan failure must preserve caller-order identity");
+    ASSERT_TRUE(plan.entries == nullptr, "failed preflight must leave no plan allocation");
+
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "unavailable runtime should clean up");
+        SKIP("M31 preflight proof requires hardware Vulkan");
+    }
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "invalid later entry must fail before M31 admission");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "preflight diagnostics should succeed");
+    ASSERT_EQUAL(0u, static_cast<std::uint32_t>(diag.total_submits), "preflight failure must submit no physical work");
+    ASSERT_EQUAL(3u, diag.failed_entry_id, "M31 preflight failure identity must remain stable");
+    ASSERT_EQUAL(0u, diag.output_committed, "preflight failure must not commit output");
+    for (const auto& output : c) for (const float value : output) ASSERT_EQUAL(-1.0f, value, "preflight failure must preserve caller output");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusSgemmBatchPlanEntryIdentitySurvivesTaskReuse)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.batch_ring_depth = 1u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "unavailable runtime should clean up");
+        SKIP("task-reuse authority proof requires hardware Vulkan");
+    }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 8u);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "depth-one batch should recycle M30 task records safely");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics should succeed");
+    ASSERT_EQUAL(1u, diag.plan_generation, "M31 diagnostics must report immutable plan generation");
+    for (std::uint32_t entry_id = 0u; entry_id < static_cast<std::uint32_t>(entries.size()); ++entry_id) {
+        ASSERT_EQUAL(entry_id, diag.m31_commit_order[entry_id], "recycled tasks must retain entry-order attribution");
+        ASSERT_TRUE(diag.m31_submission_sequence[entry_id] != 0u, "each immutable entry must retain its own submission evidence");
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusSgemmBatchPlanIsBuiltOnce)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.batch_ring_depth = 2u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "unavailable runtime should clean up");
+        SKIP("batch plan authority proof requires hardware Vulkan");
+    }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 8u);
+    std::uint32_t stage = PROM_STAGE_NONE;
+    int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "batch should succeed");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "batch diagnostics should succeed");
+    ASSERT_EQUAL(1u, diag.plan_generation, "all admissions must consume one immutable plan generation");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(entries.size()), diag.m31_completion_count, "every planned entry must complete exactly once");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(entries.size()), diag.m31_commit_count, "every planned entry must commit exactly once");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
 }
 
 FACT(PrometheusReactor_M29_FixedDouble_HappyPathAndWipBounded)
