@@ -125,6 +125,8 @@ enum {
   PROM_TESTCFG_FAIL_TRANSFER_SUBMIT = 1u << 26,
   PROM_TESTCFG_DISABLE_SELECTOR_CACHE = 1u << 27,
   PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT = 1u << 28,
+  /* Retired P11 batch controls. Numeric tombstones remain for test-config ABI
+     compatibility; no production or test execution path reads them. */
   PROM_TESTCFG_P11_BATCH_ENABLE_REAL_THREADS = 1u << 29,
   PROM_TESTCFG_P11_BATCH_FORCE_LANE_SIMULATED = 1u << 30,
   PROM_TESTCFG_P11_BATCH_TEST_FORCE_WRONG_RESOURCE_OWNER = 1u << 31,
@@ -1309,21 +1311,13 @@ PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_batch(void* handle,
                                                             uint32_t flags,
                                                             uint32_t* out_stage,
                                                             int* out_detail_code);
-/* Test-only compatibility entries.  They are deliberately separate from the
-   production batch API: R2d must not let an ordinary flag select P11 or an
-   M31 fault injection. */
+/* Test-only M31 fault-injection entry. Production flags never select it. */
 int prometheus_reactor_runtime_sgemm_batch_m31_test(void* handle,
                                                      const PrometheusSgemmBatchEntry* entries,
                                                      uint32_t entry_count,
                                                      uint32_t flags,
                                                      uint32_t* out_stage,
                                                      int* out_detail_code);
-int prometheus_reactor_runtime_sgemm_batch_legacy_test(void* handle,
-                                                        const PrometheusSgemmBatchEntry* entries,
-                                                        uint32_t entry_count,
-                                                        uint32_t flags,
-                                                        uint32_t* out_stage,
-                                                        int* out_detail_code);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm_submit_async(void* handle,
                                                                    const float* a,
                                                                    const float* b,

@@ -271,6 +271,9 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
   rt->batch_diag.partition_policy = plan.partition_policy;
   rt->batch_diag.plan_generation = plan.plan_generation;
   rt->batch_diag.batch_state = PROM_BATCH_STATE_RUNNING;
+  /* v1 compatibility fields: one shared physical queue, no batch worker
+     threads or worker-local resources. Per-lane arrays below are logical
+     planning aggregates only; P11-only resource and slot fields stay zero. */
   rt->batch_diag.execution_mode = PROM_BATCH_EXECUTION_SINGLE_WORKER;
   rt->batch_diag.worker_resource_mode = PROM_BATCH_WORKER_RESOURCE_SHARED;
   rt->batch_diag.queue_topology_classification = PROM_BATCH_QUEUE_TOPOLOGY_SINGLE_QUEUE;

@@ -598,101 +598,6 @@ typedef struct prom_selector_cache_layout_precision {
   prom_judgment_layout_precision_decision decision;
 } prom_selector_cache_layout_precision;
 
-typedef struct prom_batch_plan {
-  uint32_t entry_id;
-  uint32_t worker_id;
-  uint32_t m;
-  uint32_t n;
-  uint32_t k;
-  uint64_t work_units;
-  const float* a;
-  const float* b;
-  float* c;
-  uint32_t selected_path;
-  uint32_t compute_mode;
-  uint32_t buffering_mode;
-  uint32_t transfer_policy;
-  uint32_t layout_precision_mode;
-  uint64_t arena_required_bytes;
-  uint32_t expected_output_elements;
-  uint32_t plan_generation;
-  uint32_t slot_id;
-  int32_t failure_policy;
-} prom_batch_plan;
-
-typedef enum prom_batch_event_kind {
-  PROM_BATCH_EVENT_PLAN_STARTED = 1,
-  PROM_BATCH_EVENT_PLAN_SUBMITTED = 2,
-  PROM_BATCH_EVENT_PLAN_COMPLETED = 3,
-  PROM_BATCH_EVENT_PLAN_FAILED = 4,
-  PROM_BATCH_EVENT_WORKER_IDLE = 5,
-  PROM_BATCH_EVENT_WORKER_DRAINED = 6,
-  PROM_BATCH_EVENT_BATCH_FAILURE_OBSERVED = 7,
-} prom_batch_event_kind;
-
-typedef struct prom_batch_worker_event {
-  uint32_t kind;
-  uint32_t entry_id;
-  uint32_t stage;
-  int32_t detail;
-} prom_batch_worker_event;
-
-typedef struct prom_batch_worker_state {
-  uint32_t worker_id;
-  uint32_t assigned_count;
-  uint32_t completed_count;
-  uint32_t event_count;
-  uint32_t next_scan_index;
-  uint32_t active;
-  uint32_t failure_observed;
-  uint32_t failure_entry_id;
-  uint32_t failure_stage;
-  int32_t failure_detail;
-  uint32_t resource_mode;
-} prom_batch_worker_state;
-
-typedef struct prom_batch_worker_resources {
-  uint32_t worker_id;
-  uint32_t queue_index;
-  uint32_t queue_family_index;
-  uint32_t command_pool_id;
-  uint32_t command_buffer_id;
-  uint32_t fence_id;
-  uint32_t slot_id;
-  uint32_t output_staging_id;
-  uint32_t arena_bank_id;
-  uint32_t submit_count;
-  uint32_t wait_count;
-  uint32_t reset_count;
-  uint32_t record_count;
-  uint32_t physical_valid;
-  uint32_t in_flight;
-  uint32_t failed;
-  VkCommandPool command_pool;
-  VkCommandBuffer command_buffer;
-  VkFence fence;
-} prom_batch_worker_resources;
-
-typedef struct prom_batch_slot_runtime {
-  uint32_t slot_id;
-  uint32_t owner_worker_id;
-  uint32_t state;
-  uint32_t generation;
-  uint32_t assigned_plan_id;
-  uint32_t assigned_entry_id;
-  uint32_t queue_id;
-  uint32_t command_resource_id;
-  uint32_t arena_id;
-  uint32_t output_staging_id;
-  uint32_t in_flight;
-  uint32_t ready;
-  uint32_t invalidated;
-  uint32_t failure_stage;
-  int32_t failure_detail;
-} prom_batch_slot_runtime;
-
-typedef struct prom_batch_shared_state prom_batch_shared_state;
-
 typedef struct prom_p15_feedforward_dispatch_state {
   uint32_t valid;
   uint32_t enabled;
@@ -749,9 +654,6 @@ typedef struct prometheus_runtime {
   uint32_t dedicated_transfer_available;
   uint32_t transfer_queue_enabled;
   VkQueue compute_queue;
-  VkQueue compute_queues[8];
-  uint32_t reported_compute_queue_count;
-  uint32_t independent_compute_queue_count;
   VkQueue transfer_queue;
   VkCommandPool command_pool;
   VkCommandPool transfer_command_pool;

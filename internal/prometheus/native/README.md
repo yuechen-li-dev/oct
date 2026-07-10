@@ -7,7 +7,11 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 - `reactor_vulkan_common.c`
   - shared Vulkan plumbing helpers used by reactor families.
 - `reactor_vulkan_sgemm.c`
-  - complete SGEMM reactor family implementation (authoritative SGEMM runtime path).
+  - synchronous/async SGEMM runtime support and shared M29/M30 lifecycle helpers.
+- `reactor_sgemm_batch_m31.c`
+  - the sole production batch engine: immutable logical plans, centralized
+    shared-ring refill, deterministic failure reduction, staged atomic commit,
+    and truthful M31 evidence.
 - `reactor_vulkan_fft.c`
   - inert future FFT reactor family stub; no capability/API/runtime behavior claims.
 - `reactor_vulkan_fused_reduction.c`
@@ -16,6 +20,22 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 Topology rule:
 
 > Split by compute primitive family, not by internal SGEMM subsystem.
+
+## Batch execution
+
+Public SGEMM batch execution is M31-only. The low eight flag bits are a
+requested logical planning width and bit `0x00000100` selects contiguous
+logical partitioning; neither creates a thread, queue, or lane-owned Vulkan
+resource. All other legacy/test bits are rejected before admission with
+`PROM_DETAIL_BATCH_UNSUPPORTED_OPTION` (`-6613`).
+
+There is no native CPU batch fallback, empty-submit batch path, worker-thread
+bridge, worker-local batch command resource, or fake multi-queue batch mode.
+The v1 diagnostic fields retained from that history are ABI tombstones or
+logical-plan aggregates; M31 ring, submission, completion, commit, feedback,
+and quarantine evidence is authoritative. Historical P11 reports are retained
+under `internal/prometheus/DevelopmentReport/`; see
+`PROMETHEUS_P11_ARCHITECTURE_RETROSPECTIVE.md` for the deleted design.
 
 Scope guardrails for this topology:
 
@@ -35,7 +55,6 @@ Supported native build helpers:
 Expected Windows outputs:
 
 - `out\prometheus\native\marionette_tests.exe`
-- `out\prometheus\native\marionette_slow_tests.exe`
 - `out\prometheus\native\marionette_benchmarks.exe`
 
 Benchmark-lane note:

@@ -57,8 +57,7 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/reactor_fft_benchmarks.cpp"
 )
 PROMETHEUS_MARIONETTE_SLOW_ONLY=(
-  "$NATIVE_DIR/Marionette/reactor_p11_m6_batch_tests.cpp"
 )
 PROMETHEUS_MARIONETTE_MAIN="$NATIVE_DIR/Marionette/test_main.cpp"
-PROMETHEUS_MARIONETTE_SLOW_MAIN="$NATIVE_DIR/Marionette/test_main_slow.cpp"
+PROMETHEUS_MARIONETTE_SLOW_MAIN=
 PROMETHEUS_MARIONETTE_BENCH_MAIN="$NATIVE_DIR/Marionette/test_main_benchmarks.cpp"

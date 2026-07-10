@@ -28,10 +28,9 @@
     "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp",
     "Marionette/reactor_fft_benchmarks.cpp"
   ],
-  "slow_only_test_sources": ["Marionette/reactor_p11_m6_batch_tests.cpp"],
+  "slow_only_test_sources": [],
   "test_mains": {
     "normal": "Marionette/test_main.cpp",
-    "slow": "Marionette/test_main_slow.cpp",
     "benchmarks": "Marionette/test_main_benchmarks.cpp"
   },
   "generated_headers": [

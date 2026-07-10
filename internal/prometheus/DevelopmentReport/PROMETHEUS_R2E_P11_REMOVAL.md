@@ -71,3 +71,23 @@ No distinct current M31 behavior remains uncovered.  The replacement matrix was
 checked against the green R2b/R2c/R2d and M29/M30/M30a/M31 lanes.  No production
 deletion was performed in R2e0b.
 Production P11 deletion has not begun.
+
+## R2e2 completion
+
+R2e2 deletes the residual P11 executor, CPU batch result authority, empty-submit
+path, worker bridge, worker-local resources and slots, fake queue topology,
+event ring, legacy compatibility entry, and slow test lane. Public batch is
+M31-only; legacy v1 diagnostic and numeric flag fields remain neutral ABI
+tombstones. The P11 M3 arena accounting remains separate allocation work.
+
+The Windows launcher build, manifest parity, Linux shell syntax, both Go lanes,
+RTX 3070 M29/M30/M30a/M31 authority tests, three failure-sensitive repetitions,
+and isolated fatal unsafe classification pass. Post-deletion resident, EVT,
+synchronous/deep correctness, explicit implementation, FP16 numerical
+selection and rejection, packed4 cache/artifact reuse, and buffering-selector
+lanes passed 16/16 with no skips or failures.
+The detailed history is preserved in
+`PROMETHEUS_P11_ARCHITECTURE_RETROSPECTIVE.md`; deletion and reachability proof
+are in the R2e2 artifacts.
+
+R2e2 ACCEPTED — P11 is historical documentation, not executable architecture.

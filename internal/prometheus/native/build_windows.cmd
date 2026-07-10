@@ -62,8 +62,10 @@ if errorlevel 1 goto :fail
 call :build_marionette "%MARIONETTE_EXE%" "%MARIONETTE_PDB%" %PROMETHEUS_MARIONETTE_MAIN% "/DMARIONETTE_EXCLUDE_SLOW_TESTS /DMARIONETTE_EXCLUDE_BENCHMARK_TESTS" ""
 if errorlevel 1 goto :fail
 
-call :build_marionette "%MARIONETTE_SLOW_EXE%" "%MARIONETTE_SLOW_PDB%" %PROMETHEUS_MARIONETTE_SLOW_MAIN% "/DMARIONETTE_EXCLUDE_BENCHMARK_TESTS" "%PROMETHEUS_MARIONETTE_SLOW_ONLY_SRCS%"
-if errorlevel 1 goto :fail
+if not "%PROMETHEUS_MARIONETTE_SLOW_MAIN%"=="" (
+  call :build_marionette "%MARIONETTE_SLOW_EXE%" "%MARIONETTE_SLOW_PDB%" %PROMETHEUS_MARIONETTE_SLOW_MAIN% "/DMARIONETTE_EXCLUDE_BENCHMARK_TESTS" "%PROMETHEUS_MARIONETTE_SLOW_ONLY_SRCS%"
+  if errorlevel 1 goto :fail
+)
 
 call :build_marionette "%MARIONETTE_BENCH_EXE%" "%MARIONETTE_BENCH_PDB%" %PROMETHEUS_MARIONETTE_BENCH_MAIN% "" ""
 if errorlevel 1 goto :fail
@@ -73,7 +75,6 @@ popd
 echo Built reactor library: %REACTOR_DLL%
 echo Copied for bridge discovery: %REACTOR_DIR%\prometheus_reactor.dll
 echo Built Marionette tests: %MARIONETTE_EXE%
-echo Built Marionette slow tests: %MARIONETTE_SLOW_EXE%
 echo Built Marionette benchmarks: %MARIONETTE_BENCH_EXE%
 exit /b 0
 

@@ -98,12 +98,6 @@ int prom_reactor_runtime_sgemm_batch_m31_test_impl(void* handle,
                                                    uint32_t flags,
                                                    uint32_t* out_stage,
                                                    int* out_detail_code);
-int prom_reactor_runtime_sgemm_batch_legacy_test_impl(void* handle,
-                                                      const PrometheusSgemmBatchEntry* entries,
-                                                      uint32_t entry_count,
-                                                      uint32_t flags,
-                                                      uint32_t* out_stage,
-                                                      int* out_detail_code);
 int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
                                                  const float* a,
                                                  const float* b,

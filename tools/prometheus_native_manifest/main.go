@@ -48,7 +48,9 @@ func validate(root string, m manifest) error {
 	if err := checkUnique("test", m.Tests); err != nil { return err }
 	if err := checkUnique("slow test", m.Slow); err != nil { return err }
 	all := append(append(append([]string{}, m.Production...), m.Tests...), m.Slow...)
-	all = append(all, m.Mains.Normal, m.Mains.Slow, m.Mains.Benchmarks)
+	for _, main := range []string{m.Mains.Normal, m.Mains.Slow, m.Mains.Benchmarks} {
+		if main != "" { all = append(all, main) }
+	}
 	for _, p := range all {
 		if _, err := os.Stat(filepath.Join(root, "internal", "prometheus", "native", filepath.FromSlash(p))); err != nil { return fmt.Errorf("manifest entry missing: %s", p) }
 	}
@@ -76,7 +78,7 @@ func windows(m manifest) []byte {
 	write("PROMETHEUS_MARIONETTE_CPP_SRCS", m.Tests)
 	write("PROMETHEUS_MARIONETTE_SLOW_ONLY_SRCS", m.Slow)
 	fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_MAIN=%s\"\r\n", qWin(m.Mains.Normal))
-	fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_SLOW_MAIN=%s\"\r\n", qWin(m.Mains.Slow))
+	if m.Mains.Slow == "" { b.WriteString("set \"PROMETHEUS_MARIONETTE_SLOW_MAIN=\"\r\n") } else { fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_SLOW_MAIN=%s\"\r\n", qWin(m.Mains.Slow)) }
 	fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_BENCH_MAIN=%s\"\r\n", qWin(m.Mains.Benchmarks))
 	return []byte(b.String())
 }
@@ -93,7 +95,7 @@ func shell(m manifest) []byte {
 	write("PROMETHEUS_MARIONETTE_CPP", m.Tests)
 	write("PROMETHEUS_MARIONETTE_SLOW_ONLY", m.Slow)
 	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_MAIN=%s\n", qSh(m.Mains.Normal))
-	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_SLOW_MAIN=%s\n", qSh(m.Mains.Slow))
+	if m.Mains.Slow == "" { b.WriteString("PROMETHEUS_MARIONETTE_SLOW_MAIN=\n") } else { fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_SLOW_MAIN=%s\n", qSh(m.Mains.Slow)) }
 	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_BENCH_MAIN=%s\n", qSh(m.Mains.Benchmarks))
 	return []byte(b.String())
 }

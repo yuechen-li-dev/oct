@@ -106,11 +106,13 @@ do_build \
   "MARIONETTE_EXCLUDE_SLOW_TESTS" \
   "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"
 
-do_build \
-  "$OUT_DIR/marionette_slow_tests" \
-  "$PROMETHEUS_MARIONETTE_SLOW_MAIN" \
-  "${PROMETHEUS_MARIONETTE_SLOW_ONLY[0]}" \
-  "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"
+if [[ -n "${PROMETHEUS_MARIONETTE_SLOW_MAIN:-}" ]]; then
+  do_build \
+    "$OUT_DIR/marionette_slow_tests" \
+    "$PROMETHEUS_MARIONETTE_SLOW_MAIN" \
+    "${PROMETHEUS_MARIONETTE_SLOW_ONLY[0]}" \
+    "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"
+fi
 
 do_build \
   "$OUT_DIR/marionette_benchmarks" \
