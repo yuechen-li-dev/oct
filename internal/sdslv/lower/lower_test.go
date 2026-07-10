@@ -461,6 +461,59 @@ return;
 	}
 }
 
+func TestModuleLowersFlowBoundMutableBoards(t *testing.T) {
+	mir := lowerSource(t, `board LoadCoord {
+linear: u32;
+row: u32;
+valid: bool;
+}
+shader S {
+resources { A: readonly array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(flag: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+flow TileLoad {
+board Load: LoadCoord = LoadCoord { linear: 0u; row: 0u; valid: false; };
+state Compute {
+comptime for lane in 0u..2u {
+Load.linear = lane;
+Load.row = Load.linear;
+when {
+case flag -> {
+Load.valid = true;
+}
+else -> {
+Load.valid = false;
+}
+}
+Tile[Load.row, Load.row] = read AView[Load.row, Load.row] when Load.valid else 0.0;
+}
+}
+}
+return;
+}
+}`)
+	cs := findFunction(t, mir, "S_CS")
+	flowBlock, ok := cs.Body.Statements[1].(vdmir.BlockStmt)
+	if !ok {
+		t.Fatalf("stmt[1] = %T, want BlockStmt", cs.Body.Statements[1])
+	}
+	if _, ok := flowBlock.Body.Statements[0].(vdmir.LetStmt); !ok {
+		t.Fatalf("flow stmt[0] = %T, want flow board local let", flowBlock.Body.Statements[0])
+	}
+	dump := vdmir.Dump(mir)
+	for _, want := range []string{
+		"let Load: board LoadCoord = LoadCoord { linear: 0u, row: 0u, valid: false }",
+		"assign Load.linear = 0u",
+		"assign Load.row = Load.linear",
+		"assign Load.valid = true",
+	} {
+		if !strings.Contains(dump, want) {
+			t.Fatalf("VD-MIR dump missing %q:\n%s", want, dump)
+		}
+	}
+}
+
 func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
 	mir := lowerSource(t, `stream ComputeThread {
 DispatchId: uint3;

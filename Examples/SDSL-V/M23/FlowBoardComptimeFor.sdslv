@@ -1,0 +1,48 @@
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+    valid: bool;
+}
+
+shader FlowBoardComptimeFor {
+    resources {
+        A: readonly array<f32>;
+    }
+
+    workgroup TileA: tile<f32, 16u, 16u>;
+
+    stage compute [numthreads(8, 8, 1)] fn CS() -> void {
+        let localThreadLinear: u32 = GroupThreadID.x * 8u + GroupThreadID.y;
+        let AView: matrix_view<f32> = row_major(A, 16u, 16u);
+
+        flow TileLoad {
+            board Load: LoadCoord = LoadCoord {
+                linear: 0u;
+                row: 0u;
+                col: 0u;
+                valid: false;
+            };
+
+            state LoadTiles {
+                comptime for lane in 0u..4u {
+                    Load.linear = localThreadLinear * 4u + lane;
+                    Load.row = Load.linear / 16u;
+                    Load.col = Load.linear % 16u;
+                    Load.valid = Load.row < 16u and Load.col < 16u;
+
+                    TileA[Load.row, Load.col] =
+                        read AView[Load.row, Load.col]
+                            when Load.valid
+                            else 0.0;
+                }
+            }
+
+            state Sync {
+                WorkgroupMemoryBarrierWithSync();
+            }
+        }
+
+        return;
+    }
+}

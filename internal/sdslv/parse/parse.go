@@ -699,7 +699,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 			return p.parseGuardWhen()
 		}
 		if p.peek(1).Kind == token.Identifier && p.peek(1).Lexeme == "policy" {
-			return nil, p.errorAtCurrent("when policy requires persistent policy state; SDSL-V M19 does not support it yet")
+			return nil, p.errorAtCurrent("SDSL-V M23 does not support when policy; hysteresis/min_commit require persistent policy state")
 		}
 		left, err := p.parseExpression()
 		if err != nil {
@@ -717,9 +717,9 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		if p.current().Kind == token.Identifier {
 			switch p.current().Lexeme {
 			case "goto":
-				return nil, p.errorAtCurrent("SDSL-V M22 does not support goto in shader flow; mutable/transition flow is planned for M23+")
+				return nil, p.errorAtCurrent("SDSL-V M23 does not support goto transitions")
 			case "remember", "resume", "suspend":
-				return nil, p.errorAtCurrent("SDSL-V M22 does not support remember/resume/suspend; persistent flow state is deferred")
+				return nil, p.errorAtCurrent("SDSL-V M23 does not support remember/resume/suspend")
 			case "state":
 				return nil, p.errorAtCurrent("state blocks are only valid inside flow blocks in SDSL-V M22")
 			}
@@ -754,19 +754,61 @@ func (p *parser) parseFlowStmt() (ast.FlowStmt, error) {
 	if _, err := p.expect(token.LeftBrace, "expected '{' after flow name"); err != nil {
 		return ast.FlowStmt{}, err
 	}
+	boards := make([]ast.FlowBoardDecl, 0, 2)
 	states := make([]ast.StateBlock, 0, 2)
+	seenState := false
 	for p.current().Kind != token.RightBrace {
 		if p.current().Kind == token.EOF {
 			return ast.FlowStmt{}, p.errorAtCurrent("expected '}' to close flow")
+		}
+		if p.current().Kind == token.KeywordBoard {
+			if seenState {
+				return ast.FlowStmt{}, p.errorAtCurrent("flow board declarations must appear before states in SDSL-V M23")
+			}
+			board, err := p.parseFlowBoardDecl()
+			if err != nil {
+				return ast.FlowStmt{}, err
+			}
+			boards = append(boards, board)
+			continue
 		}
 		state, err := p.parseStateBlock()
 		if err != nil {
 			return ast.FlowStmt{}, err
 		}
+		seenState = true
 		states = append(states, state)
 	}
 	p.advance()
-	return ast.FlowStmt{Name: name.Lexeme, States: states}, nil
+	return ast.FlowStmt{Name: name.Lexeme, Boards: boards, States: states}, nil
+}
+
+func (p *parser) parseFlowBoardDecl() (ast.FlowBoardDecl, error) {
+	if _, err := p.expect(token.KeywordBoard, "expected board"); err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	name, err := p.expect(token.Identifier, "expected flow board instance name")
+	if err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	if _, err := p.expect(token.Colon, "expected ':' after flow board instance name"); err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	ref, err := p.parseTypeRef(false)
+	if err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	if _, err := p.expect(token.Assign, "expected '=' after flow board instance type"); err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	value, err := p.parseReductionValueOrExpression()
+	if err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after flow board declaration"); err != nil {
+		return ast.FlowBoardDecl{}, err
+	}
+	return ast.FlowBoardDecl{Name: name.Lexeme, Type: ref, Initializer: value}, nil
 }
 
 func (p *parser) parseStateBlock() (ast.StateBlock, error) {
@@ -1361,7 +1403,7 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 			return nil, p.errorAtCurrent("runtime guard when is a statement-only form in SDSL-V M19")
 		}
 		if p.peek(1).Kind == token.Identifier && p.peek(1).Lexeme == "policy" {
-			return nil, p.errorAtCurrent("when policy requires persistent policy state; SDSL-V M19 does not support it yet")
+			return nil, p.errorAtCurrent("SDSL-V M23 does not support when policy; hysteresis/min_commit require persistent policy state")
 		}
 		return p.parseWhenUtility()
 	case token.KeywordRead:

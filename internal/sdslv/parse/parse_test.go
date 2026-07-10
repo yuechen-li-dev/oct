@@ -219,7 +219,7 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 		{
 			name: "goto",
 			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS(flag: bool) -> void { when { case flag -> { goto Done } } return; } }`,
-			want: "SDSL-V M22 does not support goto in shader flow",
+			want: "SDSL-V M23 does not support goto transitions",
 		},
 		{
 			name: "state outside flow",
@@ -229,7 +229,7 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 		{
 			name: "when policy",
 			src:  `fn F(flag: bool) -> u32 { return when policy { hysteresis: 1 min_commit: 1 } { case 1u when flag score 2 else 0u }; }`,
-			want: "when policy requires persistent policy state",
+			want: "SDSL-V M23 does not support when policy",
 		},
 	}
 	for _, tc := range cases {
@@ -294,6 +294,41 @@ return;
 	}
 	if _, ok := flowStmt.States[0].Body.Statements[0].(ast.ComptimeForStmt); !ok {
 		t.Fatalf("state body stmt = %T, want ComptimeForStmt", flowStmt.States[0].Body.Statements[0])
+	}
+}
+
+func TestBuildModuleParsesFlowBoardDeclarations(t *testing.T) {
+	module := parseTestModule(t, `board LoadCoord {
+row: u32;
+}
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord = LoadCoord { row: 0u; };
+state Compute {
+Load.row = 1u;
+}
+}
+return;
+}
+}`)
+	body := module.Decls[1].(ast.ShaderDecl).Methods[0].Body.Statements
+	flowStmt, ok := body[0].(ast.FlowStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want FlowStmt", body[0])
+	}
+	if len(flowStmt.Boards) != 1 {
+		t.Fatalf("len(Boards) = %d, want 1", len(flowStmt.Boards))
+	}
+	if flowStmt.Boards[0].Name != "Load" || flowStmt.Boards[0].Type.Name != "LoadCoord" {
+		t.Fatalf("board = %#v", flowStmt.Boards[0])
+	}
+	assign, ok := flowStmt.States[0].Body.Statements[0].(ast.AssignStmt)
+	if !ok {
+		t.Fatalf("state stmt = %T, want AssignStmt", flowStmt.States[0].Body.Statements[0])
+	}
+	if _, ok := assign.Target.(ast.FieldAccessExpr); !ok {
+		t.Fatalf("assign target = %T, want FieldAccessExpr", assign.Target)
 	}
 }
 

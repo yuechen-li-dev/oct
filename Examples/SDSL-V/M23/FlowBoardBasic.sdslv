@@ -1,0 +1,49 @@
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+    valid: bool;
+}
+
+shader FlowBoardBasic {
+    resources {
+        A: readonly array<f32>;
+        C: readwrite array<f32>;
+    }
+
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let fullWrite: bool = true;
+
+        flow TileLoad {
+            board Load: LoadCoord = LoadCoord {
+                linear: 0u;
+                row: 0u;
+                col: 0u;
+                valid: false;
+            };
+
+            state Compute {
+                Load.linear = 0u;
+                Load.row = Load.linear;
+                Load.col = Load.linear;
+
+                when {
+                    case fullWrite -> {
+                        Load.valid = true;
+                    }
+                    else -> {
+                        Load.valid = false;
+                    }
+                }
+            }
+
+            state Store {
+                let sample: f32 =
+                    read A[Load.linear] when Load.valid else 0.0;
+                write C[Load.linear] = sample when Load.valid;
+            }
+        }
+
+        return;
+    }
+}

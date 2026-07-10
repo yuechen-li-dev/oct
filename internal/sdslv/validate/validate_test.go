@@ -415,7 +415,7 @@ return;
 			want: "duplicate flow block name TileLoad",
 		},
 		{
-			name: "board field assignment in state",
+			name: "immutable board field assignment in state",
 			src: `board LoadCoord { row: u32; }
 shader S {
 stage compute [numthreads(1,1,1)] fn CS() -> void {
@@ -428,7 +428,150 @@ p.row = 2u;
 return;
 }
 }`,
-			want: "board field assignment is not supported in M22",
+			want: "only flow-owned board instances may be mutated in SDSL-V M23",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestModuleValidatesFlowBoundMutableBoards(t *testing.T) {
+	err := validateSource(`board LoadCoord {
+row: u32;
+col: u32;
+valid: bool;
+}
+shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1,1,1)] fn CS(flag: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+flow TileLoad {
+board Load: LoadCoord = LoadCoord { row: 0u; col: 0u; valid: false; };
+state Compute {
+comptime for lane in 0u..1u {
+Load.row = lane;
+Load.col = lane;
+when {
+case flag -> {
+Load.valid = true;
+}
+else -> {
+Load.valid = false;
+}
+}
+Tile[Load.row, Load.col] = read AView[Load.row, Load.col] when Load.valid else 0.0;
+write CView[Load.row, Load.col] = Tile[Load.row, Load.col] when Load.valid;
+}
+}
+}
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsInvalidFlowBoundMutableBoards(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "initializer required",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord;
+state Compute { return; }
+}
+return;
+}
+}`,
+			want: "expected '=' after flow board instance type",
+		},
+		{
+			name: "initializer type mismatch",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord = true;
+state Compute { return; }
+}
+return;
+}
+}`,
+			want: "flow TileLoad board Load initializer expects LoadCoord, got bool",
+		},
+		{
+			name: "duplicate flow board names",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord = LoadCoord { row: 0u; };
+board Load: LoadCoord = LoadCoord { row: 1u; };
+state Compute { return; }
+}
+return;
+}
+}`,
+			want: "flow TileLoad: duplicate board instance name Load",
+		},
+		{
+			name: "unknown board type",
+			src: `shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: Missing = 1u;
+state Compute { return; }
+}
+return;
+}
+}`,
+			want: "flow TileLoad board Load must use a board type, got Missing",
+		},
+		{
+			name: "whole board reassignment rejected",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord = LoadCoord { row: 0u; };
+state Compute {
+Load = LoadCoord { row: 1u; };
+}
+}
+return;
+}
+}`,
+			want: "whole-board reassignment is not supported for flow-owned board Load in SDSL-V M23",
+		},
+		{
+			name: "board not visible outside flow",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord = LoadCoord { row: 0u; };
+state Compute { return; }
+}
+Load.row = 1u;
+return;
+}
+}`,
+			want: "unknown identifier Load",
 		},
 	}
 	for _, tc := range cases {

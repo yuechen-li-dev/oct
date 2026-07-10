@@ -284,10 +284,17 @@ type GuardWhenCase struct {
 
 type FlowStmt struct {
 	Name   string
+	Boards []FlowBoardDecl
 	States []StateBlock
 }
 
 func (FlowStmt) stmtNode() {}
+
+type FlowBoardDecl struct {
+	Name        string
+	Type        TypeRef
+	Initializer Expr
+}
 
 type StateBlock struct {
 	Name string

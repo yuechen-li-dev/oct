@@ -80,9 +80,9 @@ M22 allows immutable M21 board values inside `flow` / `state` bodies:
 
 M22 does not change M21 immutability:
 
-- board field assignment is rejected;
+- ordinary board field assignment is rejected;
 - whole-board mutation is rejected;
-- mutable board state is reserved for flow-bound board mutation in M23.
+- M23 later adds flow-owned board instances as the only mutable board surface.
 
 ## Unsupported Octomata Actions
 
@@ -99,9 +99,9 @@ M22 rejects these forms explicitly:
 Representative diagnostics:
 
 ```text
-SDSL-V M22 does not support goto in shader flow; mutable/transition flow is planned for M23+
-SDSL-V M22 does not support remember/resume/suspend; persistent flow state is deferred
-when policy requires persistent policy state; SDSL-V M19 does not support it yet
+SDSL-V M23 does not support goto transitions
+SDSL-V M23 does not support remember/resume/suspend
+SDSL-V M23 does not support when policy; hysteresis/min_commit require persistent policy state
 board field assignment is not supported in M22; mutable board state is reserved for flow-bound board mutation in M23
 ```
 
@@ -116,7 +116,7 @@ Generated HLSL must not contain source-level `flow` or `state` spelling.
 - M19 adds runtime guard `when`.
 - M21 adds immutable shader-local board values.
 - M22 adds bounded shader-local `flow` / `state` grouping.
-- M23 is reserved for mutable board state inside flow/state only.
+- M23 adds flow-bound mutable board state inside flow/state only.
 
 ## Examples
 

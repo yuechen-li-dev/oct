@@ -131,7 +131,7 @@ Those fields are meaningful only if the implementation preserves policy memory a
 Diagnostic:
 
 ```text
-when policy requires persistent policy state; SDSL-V M19 does not support it yet
+SDSL-V M23 does not support when policy; hysteresis/min_commit require persistent policy state
 ```
 
 ## Examples

@@ -84,6 +84,7 @@ const (
 	varWorkgroup varOrigin = "workgroup"
 	varBuiltin   varOrigin = "builtin"
 	varComptime  varOrigin = "comptime"
+	varFlowBoard varOrigin = "flow_board"
 )
 
 type varInfo struct {
@@ -778,10 +779,10 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("whole reg_tile assignment is not supported in SDSL-V M15")
 		}
 		if v.typeKind(targetType) == "board" || v.assignmentTouchesBoardField(s.Target, scope) {
-			if insideFlowState {
-				v.errorf("board field assignment is not supported in M22; mutable board state is reserved for flow-bound board mutation in M23")
-			} else {
+			if !insideFlowState {
 				v.errorf("board values are immutable in SDSL-V M21; board field assignment is reserved for flow-bound mutable board state")
+			} else if err := v.validateFlowBoardAssignmentTarget(s.Target, scope); err != nil {
+				v.errorf("%s", err.Error())
 			}
 		}
 		if !v.compatible(targetType, valueType) {
@@ -1031,14 +1032,49 @@ func (v *validator) validateFlowStmt(stmt ast.FlowStmt, returnType ast.TypeRef, 
 		v.errorf("flow %s must declare at least one state in SDSL-V M22", stmt.Name)
 		return
 	}
+	flowScope := cloneScope(scope)
+	seenBoards := map[string]struct{}{}
 	seenStates := map[string]struct{}{}
+	for _, board := range stmt.Boards {
+		if _, exists := flowScope[board.Name]; exists {
+			v.errorf("flow %s: duplicate board instance name %s", stmt.Name, board.Name)
+			continue
+		}
+		if _, exists := seenBoards[board.Name]; exists {
+			v.errorf("flow %s: duplicate board instance name %s", stmt.Name, board.Name)
+			continue
+		}
+		if _, exists := seenStates[board.Name]; exists {
+			v.errorf("flow %s: board instance %s collides with state name", stmt.Name, board.Name)
+			continue
+		}
+		v.validateType(board.Type)
+		if v.typeKind(board.Type) != "board" {
+			v.errorf("flow %s board %s must use a board type, got %s", stmt.Name, board.Name, typeName(board.Type))
+		}
+		v.validateWithPlacement(board.Initializer, true)
+		v.validateGuardedReadPlacement(board.Initializer, true)
+		v.validateMatchPlacement(board.Initializer, true)
+		v.validateReductionPlacement(board.Initializer, true)
+		v.validateBarrierUsage(board.Initializer, false, shaderName, stage)
+		initType := v.exprType(board.Initializer, flowScope, shaderName, templateParam)
+		if !v.compatible(board.Type, initType) {
+			v.errorf("flow %s board %s initializer expects %s, got %s", stmt.Name, board.Name, typeName(board.Type), typeName(initType))
+		}
+		seenBoards[board.Name] = struct{}{}
+		flowScope[board.Name] = varInfo{typ: board.Type, origin: varFlowBoard}
+	}
 	for _, state := range stmt.States {
+		if _, exists := seenBoards[state.Name]; exists {
+			v.errorf("flow %s: state %s collides with board instance name", stmt.Name, state.Name)
+			continue
+		}
 		if _, exists := seenStates[state.Name]; exists {
 			v.errorf("flow %s: duplicate state %s", stmt.Name, state.Name)
 			continue
 		}
 		seenStates[state.Name] = struct{}{}
-		v.validateBlock(state.Body, returnType, cloneScope(scope), shaderName, stage, templateParam, true)
+		v.validateBlock(state.Body, returnType, cloneScope(flowScope), shaderName, stage, templateParam, true)
 	}
 }
 
@@ -1608,6 +1644,10 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 				v.errorf("cannot assign through immutable array parameter %s", root)
 			}
 		}
+	case varFlowBoard:
+		if isDirectIdentifier(expr) {
+			v.errorf("whole-board reassignment is not supported for flow-owned board %s in SDSL-V M23", root)
+		}
 	}
 	if info.typ.Name == "matrix_view" && info.access != "readwrite" && !isDirectIdentifier(expr) {
 		v.errorf("cannot assign through readonly matrix_view %s", root)
@@ -1615,10 +1655,11 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 }
 
 func (v *validator) assignmentTouchesBoardField(expr ast.Expr, scope map[string]varInfo) bool {
-	if _, ok := expr.(ast.FieldAccessExpr); !ok {
+	field, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
 		return false
 	}
-	root, ok := rootIdentifier(expr)
+	root, ok := rootIdentifier(field)
 	if !ok {
 		return false
 	}
@@ -1627,6 +1668,28 @@ func (v *validator) assignmentTouchesBoardField(expr ast.Expr, scope map[string]
 		return false
 	}
 	return v.typeKind(info.typ) == "board"
+}
+
+func (v *validator) validateFlowBoardAssignmentTarget(expr ast.Expr, scope map[string]varInfo) error {
+	field, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
+		root, hasRoot := rootIdentifier(expr)
+		if hasRoot {
+			if info, exists := scope[root]; exists && info.origin == varFlowBoard {
+				return fmt.Errorf("whole-board reassignment is not supported for flow-owned board %s in SDSL-V M23", root)
+			}
+		}
+		return fmt.Errorf("board field assignment in SDSL-V M23 requires a flow-owned board field target of the form `BoardName.field`")
+	}
+	root, ok := field.Target.(ast.IdentifierExpr)
+	if !ok {
+		return fmt.Errorf("board field assignment in SDSL-V M23 requires a flow-owned board field target of the form `BoardName.field`")
+	}
+	info, exists := scope[root.Name]
+	if !exists || info.origin != varFlowBoard {
+		return fmt.Errorf("only flow-owned board instances may be mutated in SDSL-V M23; %s is not a mutable flow board", root.Name)
+	}
+	return nil
 }
 
 func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {

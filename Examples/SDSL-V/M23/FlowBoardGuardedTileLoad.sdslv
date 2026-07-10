@@ -1,0 +1,80 @@
+record SgemmParams {
+    M: u32;
+    N: u32;
+    K: u32;
+}
+
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+    validA: bool;
+    validB: bool;
+}
+
+shader FlowBoardGuardedTileLoad {
+    resources {
+        A: readonly array<f32>;
+        C: readwrite array<f32>;
+    }
+
+    workgroup TileA: tile<f32, 16u, 16u>;
+
+    stage compute [numthreads(8, 8, 1)] fn CS(params: SgemmParams) -> void {
+        let localThreadLinear: u32 = GroupThreadID.x * 8u + GroupThreadID.y;
+        let groupBaseRow: u32 = GroupID.y * 16u;
+        let groupBaseCol: u32 = GroupID.x * 16u;
+        let tileBaseK: u32 = GroupID.x * 16u;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+
+        flow TileLoad {
+            board Load: LoadCoord = LoadCoord {
+                linear: 0u;
+                row: 0u;
+                col: 0u;
+                validA: false;
+                validB: false;
+            };
+
+            state ComputeCoord {
+                Load.linear = localThreadLinear;
+                Load.row = Load.linear / 16u;
+                Load.col = Load.linear % 16u;
+
+                when {
+                    case groupBaseRow + Load.row < params.M and tileBaseK + Load.col < params.K -> {
+                        Load.validA = true;
+                    }
+                    else -> {
+                        Load.validA = false;
+                    }
+                }
+
+                when {
+                    case groupBaseRow + Load.row < params.M and groupBaseCol + Load.col < params.N -> {
+                        Load.validB = true;
+                    }
+                    else -> {
+                        Load.validB = false;
+                    }
+                }
+            }
+
+            state LoadTile {
+                TileA[Load.row, Load.col] =
+                    read AView[groupBaseRow + Load.row, tileBaseK + Load.col]
+                        when Load.validA
+                        else 0.0;
+            }
+
+            state StoreTile {
+                write CView[groupBaseRow + Load.row, groupBaseCol + Load.col] =
+                    TileA[Load.row, Load.col]
+                    when Load.validB;
+            }
+        }
+
+        return;
+    }
+}

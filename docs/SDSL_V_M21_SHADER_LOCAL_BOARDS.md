@@ -56,7 +56,7 @@ TileA[p.row, p.col] =
 
 ## Immutability
 
-Board values are immutable in M21. Local board values and helper returns are supported, but whole-board reassignment and field assignment are rejected. M22 does not change this: board field assignment remains reserved for future flow-bound mutable board state.
+Board values are immutable in M21. Local board values and helper returns are supported, but whole-board reassignment and field assignment are rejected. M22 does not change this. M23 adds a separate flow-owned mutable board-instance surface inside bounded `flow` / `state`, but ordinary M21 board values remain immutable snapshots.
 
 ## Lowering
 

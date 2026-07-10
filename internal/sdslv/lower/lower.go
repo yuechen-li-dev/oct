@@ -336,6 +336,14 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 		}
 		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}, nil
 	case ast.FlowStmt:
+		boards := make([]ast.FlowBoardDecl, 0, len(s.Boards))
+		for _, board := range s.Boards {
+			boards = append(boards, ast.FlowBoardDecl{
+				Name:        board.Name,
+				Type:        board.Type,
+				Initializer: specializeExpr(board.Initializer, env),
+			})
+		}
 		states := make([]ast.StateBlock, 0, len(s.States))
 		for _, state := range s.States {
 			body, err := specializeBlock(state.Body, env)
@@ -344,7 +352,7 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			}
 			states = append(states, ast.StateBlock{Name: state.Name, Body: body})
 		}
-		return ast.FlowStmt{Name: s.Name, States: states}, nil
+		return ast.FlowStmt{Name: s.Name, Boards: boards, States: states}, nil
 	case ast.ComptimeIfStmt:
 		thenBody, err := specializeBlock(s.ThenBody, env)
 		if err != nil {
@@ -631,6 +639,14 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 		}
 		return []ast.Stmt{ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}}, nil
 	case ast.FlowStmt:
+		boards := make([]ast.FlowBoardDecl, 0, len(s.Boards))
+		for _, board := range s.Boards {
+			boards = append(boards, ast.FlowBoardDecl{
+				Name:        board.Name,
+				Type:        replaceComptimeTypeRef(board.Type, comptime),
+				Initializer: replaceComptimeExpr(board.Initializer, comptime),
+			})
+		}
 		states := make([]ast.StateBlock, 0, len(s.States))
 		for _, state := range s.States {
 			body, err := expandRuntimeNestedBlock(state.Body, comptime, runtime)
@@ -639,7 +655,7 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 			}
 			states = append(states, ast.StateBlock{Name: state.Name, Body: body})
 		}
-		return []ast.Stmt{ast.FlowStmt{Name: s.Name, States: states}}, nil
+		return []ast.Stmt{ast.FlowStmt{Name: s.Name, Boards: boards, States: states}}, nil
 	case ast.ForStmt:
 		body, err := expandRuntimeNestedBlock(s.Body, comptime, runtime)
 		if err != nil {
@@ -922,11 +938,19 @@ func renameRuntimeLocalsInStmt(stmt ast.Stmt, names map[string]string) ast.Stmt 
 		}
 		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}
 	case ast.FlowStmt:
+		boards := make([]ast.FlowBoardDecl, 0, len(s.Boards))
+		for _, board := range s.Boards {
+			boards = append(boards, ast.FlowBoardDecl{
+				Name:        board.Name,
+				Type:        board.Type,
+				Initializer: renameRuntimeLocalsInExpr(board.Initializer, names),
+			})
+		}
 		states := make([]ast.StateBlock, 0, len(s.States))
 		for _, state := range s.States {
 			states = append(states, ast.StateBlock{Name: state.Name, Body: renameRuntimeLocalsInBlock(state.Body, names)})
 		}
-		return ast.FlowStmt{Name: s.Name, States: states}
+		return ast.FlowStmt{Name: s.Name, Boards: boards, States: states}
 	case ast.ForStmt:
 		return ast.ForStmt{
 			Attributes: append([]ast.Attribute(nil), s.Attributes...),
@@ -1255,11 +1279,19 @@ func replaceComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding) ast
 		}
 		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}
 	case ast.FlowStmt:
+		boards := make([]ast.FlowBoardDecl, 0, len(s.Boards))
+		for _, board := range s.Boards {
+			boards = append(boards, ast.FlowBoardDecl{
+				Name:        board.Name,
+				Type:        replaceComptimeTypeRef(board.Type, comptime),
+				Initializer: replaceComptimeExpr(board.Initializer, comptime),
+			})
+		}
 		states := make([]ast.StateBlock, 0, len(s.States))
 		for _, state := range s.States {
 			states = append(states, ast.StateBlock{Name: state.Name, Body: replaceComptimeBlock(state.Body, comptime)})
 		}
-		return ast.FlowStmt{Name: s.Name, States: states}
+		return ast.FlowStmt{Name: s.Name, Boards: boards, States: states}
 	case ast.ForStmt:
 		return ast.ForStmt{
 			Attributes: append([]ast.Attribute(nil), s.Attributes...),
@@ -1905,8 +1937,24 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 
 func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
 	block := vdmir.Block{}
+	flowScope := cloneScope(scope)
+	for _, board := range stmt.Boards {
+		value, err := l.lowerExpr(board.Initializer, flowScope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		loweredType := l.lowerTypeRef(board.Type)
+		flowScope[board.Name] = binding{name: board.Name, kind: vdmir.VarLocal, typ: board.Type}
+		locals[board.Name] = loweredType
+		block.Statements = append(block.Statements, vdmir.LetStmt{
+			Provenance: l.provenance,
+			Name:       board.Name,
+			Type:       loweredType,
+			Value:      value,
+		})
+	}
 	for _, state := range stmt.States {
-		lowered, err := l.lowerBlock(state.Body, cloneScope(scope), locals, shaderName)
+		lowered, err := l.lowerBlock(state.Body, cloneScope(flowScope), locals, shaderName)
 		if err != nil {
 			return nil, err
 		}
@@ -2593,6 +2641,9 @@ func walkStmt(stmt ast.Stmt, builtins map[string]bool) {
 			}
 		}
 	case ast.FlowStmt:
+		for _, board := range s.Boards {
+			walkExpr(board.Initializer, builtins)
+		}
 		for _, state := range s.States {
 			for _, nested := range state.Body.Statements {
 				walkStmt(nested, builtins)

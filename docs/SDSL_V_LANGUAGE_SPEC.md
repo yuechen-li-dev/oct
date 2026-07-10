@@ -8,7 +8,7 @@
 
 ## Overview
 
-SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its GoOct subset uses VD-MIR as the compiler boundary and follows Oct syntax where Oct already has a matching construct. M19 adds bounded Oct guard `when` for shader-safe runtime control flow, M21 adds immutable shader-local board values, and M22 adds bounded shader-local `flow` / `state` phase blocks. Full Octomata persistent transitions, mutable board state, and persistent policy state remain future work in this subset. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
+SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its GoOct subset uses VD-MIR as the compiler boundary and follows Oct syntax where Oct already has a matching construct. M19 adds bounded Oct guard `when` for shader-safe runtime control flow, M21 adds immutable shader-local board values, M22 adds bounded shader-local `flow` / `state` phase blocks, and M23 adds flow-bound mutable board instances inside those bounded flows. Full Octomata persistent transitions and persistent policy state remain future work in this subset. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
 
 The broad design pipeline is: `source → lex → parse → validate → template/config monomorphization → comptime expansion → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
@@ -154,7 +154,7 @@ Board declarations are type declarations only. They do not allocate memory, do n
 
 Board literals must provide every field exactly once. Field access (`p.row`) works in arithmetic, `tile`/`reg_tile`/`matrix_view` indices, guarded memory access, and runtime guard `when` bodies. Board helper functions may return board values.
 
-Board values are immutable in M21. Whole-board reassignment and `p.field = value` are rejected; mutable board state is reserved for future flow-bound semantics, matching Oct's convention that mutable board memory belongs inside flow/state control.
+Board values are immutable in M21. Whole-board reassignment and `p.field = value` are rejected on ordinary board values. M23 later adds flow-owned mutable board instances inside bounded `flow` / `state`, matching Oct's convention that mutable board memory belongs inside flow/state control.
 
 ### Bounded flow/state blocks (GoOct M22)
 
@@ -172,18 +172,22 @@ flow TileLoad {
 }
 ```
 
-Current M22 rules:
+Current M22/M23 flow rules:
 
 - `flow` is a function-local statement, not a top-level declaration;
+- flow-owned board instance declarations use `board Name: BoardType = expr;` before states;
 - a flow must declare at least one `state`;
 - state names must be unique within the flow;
+- flow-owned board instance names must be unique within the flow and must not collide with state names;
 - flow names must be unique within one lexical block;
 - states execute once in source order;
 - lowering desugars `flow` / `state` to ordinary structured statements before HLSL emission;
-- immutable board values, runtime guard `when`, guarded read/write, and supported comptime forms are valid inside state bodies;
+- immutable board values, flow-owned mutable board fields, runtime guard `when`, guarded read/write, and supported comptime forms are valid inside state bodies;
 - nested `flow` blocks are rejected;
 - `goto`, `remember`, `resume`, `suspend`, and `when policy` remain rejected;
-- mutable board state remains reserved for M23.
+- flow-owned board mutation is limited to `BoardName.field = expr;`;
+- ordinary board values remain immutable;
+- no persistent Octomata state exists.
 
 ### Type aliases and coordinate spaces
 
@@ -392,12 +396,13 @@ Current M19 additions:
 - lowering through VD-MIR `IfStmt` chains to HLSL `if / else if / else`;
 - clear rejection of `goto`, `remember`, `resume`, `suspend`, full `flow`/`state`, and `when policy` in shader code.
 
-Current M22 additions:
+Current M22/M23 additions:
 
 - bounded shader-local `flow` / `state` blocks inside ordinary function bodies;
 - sequential source-order state execution;
 - state bodies reuse ordinary bounded SDSL-V statements;
 - desugaring through VD-MIR to ordinary statement blocks;
+- flow-bound mutable board instances as execution scratch/state surface;
 - explicit rejection of transition/persistent Octomata actions in shader flow.
 
 M13/M14/M14a `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
@@ -708,7 +713,7 @@ Rules:
 
 Lowering preserves first-match source order by converting the guard `when` to VD-MIR `IfStmt` chains. HLSL emits `if / else if / else`. Generated HLSL must not contain source-level `when {` spelling.
 
-M19 does not implement full Octomata controllers in shaders. `goto`, `remember`, `resume`, `suspend`, persistent board state, `flow`/`state`, and `when policy` are rejected with dedicated diagnostics. `when policy` is not lowered because Oct requires meaningful `hysteresis` and `min_commit` policy state; M19 shader code has no persistent policy-state machinery.
+M19 does not implement full Octomata controllers in shaders. `goto`, `remember`, `resume`, `suspend`, persistent board state, `flow`/`state`, and `when policy` are rejected with dedicated diagnostics. `when policy` is not lowered because Oct requires meaningful `hysteresis` and `min_commit` policy state; M23 shader code still has no persistent policy-state machinery.
 
 ---
 
@@ -734,8 +739,9 @@ Rules:
 
 - states execute once in source order;
 - no transition machinery exists in M22;
+- flow-owned board instances may be declared before the states and are mutable only as `BoardName.field = expr;` inside those state bodies;
 - no `goto`, `remember`, `resume`, or `suspend`;
-- no persistent board block exists inside M22 flow;
+- no persistent board block exists inside shader flow;
 - state bodies allow ordinary bounded SDSL-V statements;
 - lowering desugars the flow to ordinary nested statement blocks through VD-MIR;
 - generated HLSL must not contain source-level `flow` / `state` spelling.
