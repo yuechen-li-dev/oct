@@ -615,6 +615,19 @@ The report now distinguishes:
 
 Resident timing currently uses one submit/wait per timed dispatch because the backend timestamp query pool provides one start/end timestamp pair. This still removes repeated upload/readback from timed iterations and gives a steady-state device-resident comparison surface.
 
+### M28 feed-path diagnostic mode
+
+M28 adds a benchmark-only `diagnostic_batch_depth` to the resident request. Depth `1` preserves the serial record/submit/wait/query cadence; depths `2/4/8/16` record repeated, independent-in-observation resident dispatches into one command buffer and issue one submit/fence wait/query per batch. This does not alter production dispatch, selector authority, or P14/P15 semantics. The final output is read back and validated only after timed work.
+
+Run the focused experiment and optional Vulkan Nsight Systems capture:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File internal/prometheus/native/tools/Run-Px16M28FeedPath.ps1
+powershell -ExecutionPolicy Bypass -File internal/prometheus/native/tools/Run-Px16M28NsightSystems.ps1
+```
+
+The experiment writes `out/test-artifacts/prometheus_sgemm_px16_m28_feed_path.{json,md}`. See `internal/prometheus/DevelopmentReport/PX16_M28_GPU_FEED_PATH_AUTOPSY.md` for the code-path and synchronization audit.
+
 ### How to run M11
 
 Build native artifacts:

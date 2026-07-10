@@ -630,6 +630,9 @@ typedef struct PrometheusSgemmResidentBenchmarkRequest {
   uint32_t requested_variant;
   uint32_t warmup_iterations;
   uint32_t iterations;
+  /* M28 diagnostic only: 0/1 preserves serial submit/wait behavior; >1 records
+     this many resident dispatches into one command buffer and waits once. */
+  uint32_t diagnostic_batch_depth;
   uint32_t flags;
 } PrometheusSgemmResidentBenchmarkRequest;
 
@@ -658,6 +661,13 @@ typedef struct PrometheusSgemmResidentBenchmarkResult {
   uint64_t validation_wall_ns;
   uint64_t dispatch_submit_wall_ns_median;
   uint64_t sync_wait_wall_ns_median;
+  uint32_t diagnostic_batch_depth;
+  uint32_t queue_submissions;
+  uint32_t fence_waits;
+  uint32_t command_buffer_recordings;
+  uint32_t command_buffer_resets;
+  uint32_t descriptor_updates;
+  uint64_t query_result_wall_ns_median;
 } PrometheusSgemmResidentBenchmarkResult;
 
 typedef struct PrometheusSgemmPolicyDiagnostics {

@@ -3163,6 +3163,58 @@ FACT(PrometheusSgemmPx16Resident)
     }
 }
 
+FACT(PrometheusSgemmPx16M28FeedPath)
+{
+    const ShapeCase shape{"m28_512x512x512", 512u, 512u, 512u, false};
+    const PreparedCaseData data = prepare_case_data(shape);
+    std::vector<float> c(static_cast<std::size_t>(shape.m) * static_cast<std::size_t>(shape.n), 0.0f);
+    const std::vector<std::uint32_t> depths = {1u, 2u, 4u, 8u, 16u};
+    std::ostringstream json;
+    std::ostringstream markdown;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "M28 runtime create should succeed");
+    if (handle == nullptr) return;
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "M28 runtime probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "M28 runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; M28 feed-path experiment cannot execute");
+    }
+    json << "{\n  \"milestone\": \"PX16_M28\",\n  \"mode\": \"diagnostic_resident_batched\",\n  \"rows\": [\n";
+    markdown << "# Prometheus Px16 M28 feed-path measurement\n\n"
+             << "Diagnostic-only resident experiment; each batch records repeated overwriting dispatches and waits once. Correctness readback occurs after timing.\n\n"
+             << "| batch depth | dispatches | submissions | waits | wall ns | kernel median ns | submit median ns | fence wait median ns | query median ns | correctness |\n|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n";
+    for (std::size_t index = 0u; index < depths.size(); ++index) {
+        PrometheusSgemmResidentBenchmarkRequest request{};
+        request.struct_size = sizeof(request);
+        request.a = data.a.data(); request.b = data.b.data(); request.c = c.data();
+        request.m = shape.m; request.n = shape.n; request.k = shape.k;
+        request.mode = PROM_SGEMM_RESIDENT_MODE_EXPLICIT_VARIANT;
+        request.requested_variant = PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32;
+        request.warmup_iterations = 2u; request.iterations = 10u;
+        request.diagnostic_batch_depth = depths[index];
+        request.flags = PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK;
+        PrometheusSgemmResidentBenchmarkResult result{};
+        const int status = prometheus_reactor_runtime_sgemm_resident_benchmark(handle, &request, &result);
+        ASSERT_EQUAL(PROM_OK, status, "M28 resident diagnostic batch should execute");
+        TimingDecomposition ignored_timing;
+        const CorrectnessResult correctness = validate_case_output(shape, data, c, ignored_timing);
+        ASSERT_EQUAL(std::string("pass"), correctness.status, "M28 batch output should validate after timed batch");
+        json << "    {\"batch_depth\":" << depths[index] << ",\"dispatches\":" << result.iterations
+             << ",\"queue_submissions\":" << result.queue_submissions << ",\"fence_waits\":" << result.fence_waits
+             << ",\"total_wall_ns\":" << result.total_loop_wall_ns << ",\"kernel_median_ns\":" << result.kernel_median_ns
+             << ",\"submit_median_ns\":" << result.dispatch_submit_wall_ns_median << ",\"fence_wait_median_ns\":" << result.sync_wait_wall_ns_median
+             << ",\"query_result_median_ns\":" << result.query_result_wall_ns_median << ",\"correctness\":\"" << correctness.status << "\"}" << (index + 1u == depths.size() ? "\n" : ",\n");
+        markdown << "| " << depths[index] << " | " << result.iterations << " | " << result.queue_submissions << " | " << result.fence_waits
+                 << " | " << result.total_loop_wall_ns << " | " << result.kernel_median_ns << " | " << result.dispatch_submit_wall_ns_median
+                 << " | " << result.sync_wait_wall_ns_median << " | " << result.query_result_wall_ns_median << " | " << correctness.status << " |\n";
+    }
+    json << "  ]\n}\n";
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_m28_feed_path.json"), json.str()), "M28 JSON artifact should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_m28_feed_path.md"), markdown.str()), "M28 Markdown artifact should be written");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "M28 runtime destroy should succeed");
+}
+
 FACT(PrometheusSgemmPx16ResidentExplicitFailureMatrix)
 {
     RuntimeHandleScope probe_runtime;

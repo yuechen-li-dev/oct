@@ -736,6 +736,7 @@ typedef struct prometheus_runtime {
   uint64_t px16_m8_last_command_record_wall_ns;
   uint64_t px16_m8_last_dispatch_submit_wall_ns;
   uint64_t px16_m8_last_sync_wait_wall_ns;
+  uint64_t px16_m8_last_query_result_wall_ns;
   uint64_t px16_m8_last_post_sync_wall_ns;
   uint64_t px16_m8_last_readback_wall_ns;
   uint64_t px16_m8_last_post_readback_wall_ns;
@@ -7192,6 +7193,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
                                              uint32_t compute_k,
                                              uint32_t compute_mode,
                                              uint32_t variant,
+                                             uint32_t dispatch_count,
                                              uint32_t* out_stage,
                                              int* out_detail_code) {
   VkWriteDescriptorSet writes[3];
@@ -7303,10 +7305,15 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
   }
   dispatch_geometry = prom_sgemm_dispatch_geometry_for_variant(variant, m, n);
-  vkCmdDispatch(rt->command_buffer,
-                dispatch_geometry.groups_x,
-                dispatch_geometry.groups_y,
-                dispatch_geometry.groups_z);
+  /* M28 diagnostic batching deliberately reuses the same resident inputs and
+     output.  Each kernel overwrites C, so only the final output is observed;
+     this is a feed-path experiment, not a production scheduling path. */
+  for (uint32_t dispatch_index = 0u; dispatch_index < dispatch_count; ++dispatch_index) {
+    vkCmdDispatch(rt->command_buffer,
+                  dispatch_geometry.groups_x,
+                  dispatch_geometry.groups_y,
+                  dispatch_geometry.groups_z);
+  }
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
   }
@@ -7352,6 +7359,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
 
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     uint64_t timestamps[2];
+    const uint64_t query_begin_ns = prom_wall_clock_now_ns();
     vk_result = vkGetQueryPoolResults(rt->device,
                                       rt->sgemm_timestamp_query_pool,
                                       0u,
@@ -7360,6 +7368,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
                                       timestamps,
                                       sizeof(uint64_t),
                                       VK_QUERY_RESULT_64_BIT);
+    rt->px16_m8_last_query_result_wall_ns = prom_wall_clock_elapsed_ns(query_begin_ns, prom_wall_clock_now_ns());
     if (vk_result != VK_SUCCESS) {
       reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
     } else if (rt->timestamp_period_ns <= 0.0f) {
@@ -7481,11 +7490,13 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
   uint64_t* kernel_samples = NULL;
   uint64_t* submit_samples = NULL;
   uint64_t* wait_samples = NULL;
+  uint64_t* query_samples = NULL;
   uint32_t stage = PROM_STAGE_NONE;
   int detail_code = 0;
   uint32_t saved_flags;
   uint32_t iterations;
   uint32_t warmup_iterations;
+  uint32_t diagnostic_batch_depth;
   uint32_t executed_variant;
   uint32_t compute_mode;
   uint32_t compute_k;
@@ -7554,14 +7565,17 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
   memset(scratch_c, 0, c_copy_size);
   iterations = request->iterations == 0u ? 1u : request->iterations;
   warmup_iterations = request->warmup_iterations;
+  diagnostic_batch_depth = request->diagnostic_batch_depth == 0u ? 1u : request->diagnostic_batch_depth;
   kernel_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
   submit_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
   wait_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
-  if (kernel_samples == NULL || submit_samples == NULL || wait_samples == NULL) {
+  query_samples = (uint64_t*)calloc(iterations, sizeof(uint64_t));
+  if (kernel_samples == NULL || submit_samples == NULL || wait_samples == NULL || query_samples == NULL) {
     free(scratch_c);
     free(kernel_samples);
     free(submit_samples);
     free(wait_samples);
+    free(query_samples);
     out_result->setup_stage = PROM_STAGE_TRANSFER_IN;
     out_result->setup_detail_code = PROM_ERROR;
     return PROM_ERROR;
@@ -7634,6 +7648,7 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                                compute_k,
                                                compute_mode,
                                                executed_variant,
+                                               diagnostic_batch_depth,
                                                &stage,
                                                &detail_code);
     if (status != PROM_OK) {
@@ -7643,6 +7658,7 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
       free(kernel_samples);
       free(submit_samples);
       free(wait_samples);
+      free(query_samples);
       return status;
     }
   }
@@ -7655,6 +7671,7 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                                compute_k,
                                                compute_mode,
                                                executed_variant,
+                                               diagnostic_batch_depth,
                                                &stage,
                                                &detail_code);
     if (status != PROM_OK) {
@@ -7664,20 +7681,29 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
       free(kernel_samples);
       free(submit_samples);
       free(wait_samples);
+      free(query_samples);
       return status;
     }
     submit_samples[i] = rt->px16_m8_last_dispatch_submit_wall_ns;
     wait_samples[i] = rt->px16_m8_last_sync_wait_wall_ns;
+    query_samples[i] = rt->px16_m8_last_query_result_wall_ns;
     if (rt->last_gpu_timing_valid != 0u && rt->last_gpu_duration_ns > 0u) {
       kernel_samples[i] = rt->last_gpu_duration_ns;
     }
   }
   loop_end_ns = prom_wall_clock_now_ns();
 
-  out_result->iterations = iterations;
+  out_result->iterations = iterations * diagnostic_batch_depth;
   out_result->total_loop_wall_ns = prom_wall_clock_elapsed_ns(loop_begin_ns, loop_end_ns);
   out_result->dispatch_submit_wall_ns_median = prom_percentile_u64(submit_samples, iterations, 50u, 100u);
   out_result->sync_wait_wall_ns_median = prom_percentile_u64(wait_samples, iterations, 50u, 100u);
+  out_result->query_result_wall_ns_median = prom_percentile_u64(query_samples, iterations, 50u, 100u);
+  out_result->diagnostic_batch_depth = diagnostic_batch_depth;
+  out_result->queue_submissions = iterations;
+  out_result->fence_waits = iterations;
+  out_result->command_buffer_recordings = iterations;
+  out_result->command_buffer_resets = iterations;
+  out_result->descriptor_updates = iterations;
   out_result->gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
   out_result->gpu_timestamp_valid = 1u;
   for (i = 0u; i < iterations; ++i) {
@@ -7706,6 +7732,7 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
       free(kernel_samples);
       free(submit_samples);
       free(wait_samples);
+      free(query_samples);
       return status;
     }
   }
@@ -7716,6 +7743,7 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
   free(kernel_samples);
   free(submit_samples);
   free(wait_samples);
+  free(query_samples);
   return PROM_OK;
 }
 
