@@ -8,6 +8,9 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir "..\..\..")
 Push-Location $repoRoot
 try {
     $outDir = "out/sdslv"
+    # The registry manifest is the declarative source of SDSL-V asset wiring.
+    # Stable shader and implementation IDs remain reviewed manifest facts.
+    $manifest = Get-Content -Raw "internal/prometheus/native/shaders/manifest.json" | ConvertFrom-Json
     $jobs = @(
         @{
             Shader = "internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv"
@@ -58,6 +61,11 @@ try {
             NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.spv"
         }
     )
+    $jobs = @($manifest.shader_assets | Where-Object { $_.source_language -eq "sdslv" } | Sort-Object id | ForEach-Object {
+        $stem = [IO.Path]::GetFileNameWithoutExtension($_.source)
+        @{ Shader = $_.source; Stem = $stem; Header = "internal/prometheus/native/" + $_.header; Symbol = $_.symbol;
+           NativeTempHlsl = "internal/prometheus/native/" + $_.header + ".hlsl"; NativeTempSpv = "internal/prometheus/native/" + $_.header + ".spv" }
+    })
 
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 

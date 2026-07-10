@@ -6,6 +6,7 @@
 // ============================================================================
 
 #include "reactor_vulkan.h"
+#include "reactor_shader_registry.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -145,6 +146,10 @@ typedef struct prom_sgemm_async_task {
 
 
 static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_metadata_for_variant(uint32_t variant) {
+  const prom_sgemm_kernel_dispatch_metadata* registered = prom_shader_registry_dispatch_metadata(variant);
+  if (registered != NULL) {
+    return registered;
+  }
   static prom_sgemm_kernel_dispatch_metadata scalar_plus_metadata;
   static prom_sgemm_kernel_dispatch_metadata reg2x2_metadata;
   static prom_sgemm_kernel_dispatch_metadata reg2x2_exacttail_metadata;
@@ -707,6 +712,8 @@ typedef struct prometheus_runtime {
   VkPipeline a2x4_row_biased_accum8_pipeline;
   VkPipeline packed4_pipeline;
   VkPipeline fp16_pipeline;
+  /* Mutable Vulkan state is separate from immutable registry descriptors. */
+  prom_compute_pipeline_instance compute_pipeline_instances[11u];
   prom_vk_buffer direct_a;
   prom_vk_buffer direct_b;
   prom_vk_buffer direct_c;
