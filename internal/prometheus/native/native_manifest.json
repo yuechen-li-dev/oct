@@ -5,7 +5,7 @@
     "reactor_dominatus_measurement_filter.c", "reactor_dominatus_predictor.c",
     "reactor_dominatus_prestage.c", "reactor_dominatus_sgemm_adapter.c",
     "reactor_dominatus_slot_adapter.c", "reactor_policy_memory.c", "reactor_slot_hfsm.c",
-    "reactor_vulkan_common.c", "reactor_vulkan_sgemm.c", "reactor_vulkan_fft.c",
+    "reactor_vulkan_common.c", "reactor_vulkan_sgemm.c", "reactor_sgemm_batch_m31.c", "reactor_vulkan_fft.c",
     "reactor_vulkan_fused_reduction.c"
   ],
   "native_test_sources": [

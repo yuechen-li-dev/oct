@@ -2,6 +2,7 @@
 #define OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_VULKAN_H
 
 #include "reactor_api.h"
+#include "reactor_sgemm_batch_m31.h"
 #include <vulkan/vulkan.h>
 
 #ifdef __cplusplus
@@ -26,79 +27,6 @@ typedef struct prom_vk_runtime_services {
   uint32_t backend_reason_code;
   uint32_t test_flags;
 } prom_vk_runtime_services;
-
-/*
- * Immutable SGEMM batch planning is internal native API, not public ABI.
- * These records contain caller-order logical facts only. They deliberately do
- * not own Vulkan resources, output staging, task records, or completion state.
- */
-typedef struct prom_sgemm_batch_entry_plan {
-  uint32_t entry_id;
-  uint32_t logical_lane;
-  uint32_t plan_generation;
-  uint32_t m;
-  uint32_t n;
-  uint32_t k;
-  size_t a_element_count;
-  size_t b_element_count;
-  size_t c_element_count;
-  size_t a_byte_count;
-  size_t b_byte_count;
-  size_t c_byte_count;
-  const float* a;
-  const float* b;
-  float* c;
-  uint32_t selected_path;
-  uint32_t compute_mode;
-  uint32_t requested_variant;
-  uint32_t executed_variant;
-  uint32_t planning_flags;
-} prom_sgemm_batch_entry_plan;
-
-typedef struct prom_sgemm_batch_plan {
-  uint32_t entry_count;
-  uint32_t requested_logical_width;
-  uint32_t planned_logical_width;
-  uint32_t partition_policy;
-  uint32_t plan_generation;
-  prom_sgemm_batch_entry_plan* entries;
-} prom_sgemm_batch_plan;
-
-/* Mutable M31 execution facts.  This is deliberately separate from the
- * immutable plan: task records and ring slots may be recycled while this
- * caller-order record remains the batch's stable identity. */
-typedef enum prom_batch_entry_state {
-  PROM_BATCH_ENTRY_PLANNED = 1u,
-  PROM_BATCH_ENTRY_ADMITTED = 2u,
-  PROM_BATCH_ENTRY_SUBMITTED = 3u,
-  PROM_BATCH_ENTRY_COMPLETED = 4u,
-  PROM_BATCH_ENTRY_FAILED = 5u,
-  PROM_BATCH_ENTRY_SKIPPED = 6u,
-  PROM_BATCH_ENTRY_DRAINED = 7u,
-  PROM_BATCH_ENTRY_COMMITTED = 8u,
-} prom_batch_entry_state;
-
-typedef struct prom_sgemm_batch_entry_runtime {
-  uint32_t entry_id;
-  uint32_t plan_generation;
-  uint32_t logical_lane;
-  prom_batch_entry_state state;
-  uint64_t submission_sequence;
-  uint32_t physical_slot_id;
-  uint32_t physical_slot_generation;
-  uint32_t failure_phase;
-  int32_t failure_detail;
-  uint64_t observation_sequence;
-  uint32_t feedback_committed;
-  uint32_t feedback_skipped;
-} prom_sgemm_batch_entry_runtime;
-
-int prom_sgemm_batch_plan_build(const PrometheusSgemmBatchEntry* entries,
-                                uint32_t entry_count,
-                                uint32_t flags,
-                                prom_sgemm_batch_plan* out_plan,
-                                uint32_t* out_failed_entry_id);
-void prom_sgemm_batch_plan_destroy(prom_sgemm_batch_plan* plan);
 
 void prom_vk_set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail);
 int prom_vk_checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value);
