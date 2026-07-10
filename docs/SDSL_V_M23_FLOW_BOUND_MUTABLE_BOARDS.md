@@ -89,3 +89,14 @@ SDSL-V M23 does not support when policy; hysteresis/min_commit require persisten
 - `examples/SDSL-V/M23/FlowBoardBasic.sdslv`
 - `examples/SDSL-V/M23/FlowBoardComptimeFor.sdslv`
 - `examples/SDSL-V/M23/FlowBoardGuardedTileLoad.sdslv`
+
+## M24 Follow-Up
+
+M24 is the first real Prometheus SGEMM kernel to rely on M23 flow-bound mutable boards:
+
+- `LoadCoord` is mutated only inside `TileLoad` states;
+- `StoreCoord` is mutated only inside `StoreOutput` states;
+- no whole-board reassignment is used;
+- no board state escapes the current invocation.
+
+The detailed outcome is documented in `internal/prometheus/DevelopmentReport/SDSL_V_M24_FLOW_BOARD_SGEMM.md`.

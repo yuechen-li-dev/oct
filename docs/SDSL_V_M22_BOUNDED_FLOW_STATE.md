@@ -134,3 +134,13 @@ These examples demonstrate:
 - semantic boolean operators;
 - no mutable board state;
 - no `goto` / `remember` / `resume` / `suspend`.
+
+## M24 Follow-Up
+
+M24 uses the bounded sequential execution model in a real Prometheus SGEMM kernel:
+
+- one `flow TileLoad` inside the runtime K-tile loop;
+- ordered `LoadLanes`, `SyncAfterLoad`, `Accumulate`, and `SyncBeforeNextTile` states;
+- one `flow StoreOutput` for the final writeback phase.
+
+This confirms the M22 execution model is viable for real GPU phase grouping without adding a scheduler illusion. Generated HLSL contains ordinary structured statements only; source-level `flow` / `state` spelling does not survive emission.

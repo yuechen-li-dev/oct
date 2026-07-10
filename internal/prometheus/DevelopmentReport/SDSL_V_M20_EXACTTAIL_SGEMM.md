@@ -138,3 +138,8 @@ M20 does not establish a broad performance win. The branch removal is real, but 
 Do not production-promote M20 and do not retune the selector from this result.
 
 The next useful step is still geometry/reuse work from the M18 recommendation, especially a `16x32/32x16` style kernel that increases useful math per shared-memory phase. Compiler-side guarded-access lowering may still be useful, but M20 shows that shader-level full/tail splitting alone is not enough to move the main performance frontier.
+
+Follow-up:
+
+- M24 keeps the same geometry and exact/tail behavior but rewrites the source around M21-M23 `board` / `flow` / `state`.
+- See `internal/prometheus/DevelopmentReport/SDSL_V_M24_FLOW_BOARD_SGEMM.md`.

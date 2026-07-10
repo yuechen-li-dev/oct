@@ -219,6 +219,26 @@ set OCT_PROMETHEUS_PX16_EVT_ENABLE_2048=1
 out\prometheus\native\marionette_benchmarks.exe PrometheusSgemmPx16Evt
 ```
 
+## SDSL-V M24 FlowBoard
+
+Px16 EVT explicit-variant comparison now includes the explicit benchmark-only variant:
+
+- `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32`
+
+Rules:
+
+- production selection remains unchanged;
+- explicit EVT comparison and focused correctness facts can request M24 directly;
+- generated dispatch metadata matches the M20 exact-tail kernel;
+- correctness validation remains separate from the timing benchmark lane.
+
+Focused M24 artifacts:
+
+- `out/test-artifacts/prometheus_sgemm_sdslv_m24_flowboard.json`
+- `out/test-artifacts/prometheus_sgemm_sdslv_m24_flowboard.md`
+
+Detailed analysis lives in `internal/prometheus/DevelopmentReport/SDSL_V_M24_FLOW_BOARD_SGEMM.md`.
+
 ## SDSL-V M17
 
 Px16 explicit SGEMM comparison now includes `SDSL_REG2X2_TILE16X16_FP32`, the first source-backed SDSL-V register-blocked 2x2 benchmark variant.
