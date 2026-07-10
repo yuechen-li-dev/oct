@@ -10,7 +10,6 @@ import (
 )
 
 func TestNewLibraryCreatesScaffoldAndTestsPass(t *testing.T) {
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	root := t.TempDir()
 	stdout, stderr, err := executeCLIInDir(root, "new", "library", "SignalTools")
 	if err != nil {
@@ -23,7 +22,6 @@ func TestNewLibraryCreatesScaffoldAndTestsPass(t *testing.T) {
 }
 
 func TestNewExperimentCreatesScaffoldAndTestsPass(t *testing.T) {
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	root := t.TempDir()
 	stdout, stderr, err := executeCLIInDir(root, "new", "experiment", "BrownNoiseKalman")
 	if err != nil {
@@ -39,7 +37,6 @@ func TestNewExperimentCreatesScaffoldAndTestsPass(t *testing.T) {
 func TestNewApplicationAliasesCreateScaffoldRunAndTest(t *testing.T) {
 	for _, kind := range []string{"app", "application"} {
 		t.Run(kind, func(t *testing.T) {
-			t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 			root := t.TempDir()
 			stdout, stderr, err := executeCLIInDir(root, "new", kind, "MyApp")
 			if err != nil {
@@ -62,7 +59,6 @@ func TestNewApplicationAliasesCreateScaffoldRunAndTest(t *testing.T) {
 }
 
 func TestNewWrapperLibraryCreatesScaffoldAndWrappersMetadata(t *testing.T) {
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
 	root := t.TempDir()
 	stdout, stderr, err := executeCLIInDir(root, "new", "wrapper-library", "OpenCV")
 	if err != nil {

@@ -96,8 +96,9 @@ fn TimesOut() -> Void {
 		if globErr != nil || len(retained) != 1 {
 			t.Fatalf("expected one retained scope, got %v (err=%v)", retained, globErr)
 		}
-		if _, statErr := os.Stat(filepath.Join(retained[0], "runner.octest.octbin")); statErr != nil {
-			t.Fatalf("retained compiled artifact missing: %v", statErr)
+		matches, globErr := filepath.Glob(filepath.Join(retained[0], "*.exe"))
+		if globErr != nil || len(matches) != 1 {
+			t.Fatalf("retained native harness missing: %v (err=%v)", matches, globErr)
 		}
 		if removeErr := os.RemoveAll(retained[0]); removeErr != nil {
 			t.Fatalf("remove retained test scope: %v", removeErr)
@@ -145,12 +146,78 @@ func TestUserRequestedBuildArtifactRemainsPersistent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user build: %v", err)
 	}
-	if result.ArtifactPath != sourcePath+".octbin" {
+	if result.ArtifactPath != build.OutputPath(sourcePath, build.ArtifactExecutable, build.HostTarget()) {
 		t.Fatalf("unexpected persistent build path: %s", result.ArtifactPath)
 	}
 	if _, err := os.Stat(result.ArtifactPath); err != nil {
 		t.Fatalf("user-requested build output was removed: %v", err)
 	}
+	header := make([]byte, 2)
+	file, err := os.Open(result.ArtifactPath)
+	if err != nil {
+		t.Fatalf("open native build: %v", err)
+	}
+	_, err = file.Read(header)
+	_ = file.Close()
+	if err != nil {
+		t.Fatalf("read native build header: %v", err)
+	}
+	if string(header) != "MZ" {
+		t.Fatalf("Windows native build header = %q, want PE MZ", header)
+	}
+}
+
+func TestCompiledSuiteAcrossFilesUsesOneRetainedHarness(t *testing.T) {
+	artifactRoot := t.TempDir()
+	t.Setenv(testArtifactRootEnv, artifactRoot)
+	t.Setenv(keepTestArtifactsEnv, "1")
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"one.octest": "package Main\n[Suite(\"Numerics\")]\n[Fact]\nfn One() -> Void { Assert.True(true, \"one\") }\n",
+		"two.octest": "package Main\n[Suite(\"Numerics\")]\n[Fact]\nfn Two() -> Void { Assert.True(true, \"two\") }\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	if err := ExecuteWithOptions(root, &out, TestOptions{Execution: "compiled"}); err != nil {
+		t.Fatalf("compiled suite: %v (%s)", err, out.String())
+	}
+	retained, err := filepath.Glob(filepath.Join(artifactRoot, "octest-run-*"))
+	if err != nil || len(retained) != 1 {
+		t.Fatalf("suite should own one harness scope, got %v (err=%v)", retained, err)
+	}
+	if err := os.RemoveAll(retained[0]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCompiledHarnessMetricsProveSuiteFileAndTheoryBatching(t *testing.T) {
+	artifactRoot := t.TempDir()
+	t.Setenv(testArtifactRootEnv, artifactRoot)
+	t.Setenv("OCT_TEST_METRICS", "1")
+	root := t.TempDir()
+	fixtures := map[string]string{
+		"suite_one.octest": "package Main\n[Suite(\"Numerics\")]\n[Fact]\nfn One() -> Void { Assert.True(true, \"one\") }\n",
+		"suite_two.octest": "package Main\n[Suite(\"Numerics\")]\n[Fact]\nfn Two() -> Void { Assert.True(true, \"two\") }\n",
+		"rows.octest":      "package Main\n[Theory]\n[InlineData(1)]\n[InlineData(2)]\n[InlineData(3)]\nfn Rows(value: Int) -> Void { Assert.True(value > 0, \"positive\") }\n",
+	}
+	for name, body := range fixtures {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	if err := ExecuteWithOptions(root, &out, TestOptions{Execution: "compiled"}); err != nil {
+		t.Fatalf("compiled metrics fixture: %v (%s)", err, out.String())
+	}
+	want := "Test metrics: cases=5 suite_groups=1 file_groups=1 harness_groups=2 native_compilations=2 process_launches=5 single_case_reruns=0 artifact_scopes_created=2 artifact_scopes_cleaned=2"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("metrics mismatch; want %q in:\n%s", want, out.String())
+	}
+	t.Log(want)
+	assertNoArtifactScopes(t, artifactRoot)
 }
 
 func lifecycleTestCase(path string, name string, cycle time.Duration) testCase {

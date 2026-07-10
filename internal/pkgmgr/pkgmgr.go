@@ -67,7 +67,15 @@ type index struct {
 }
 
 func NewManager() (*Manager, error) {
-	cacheDir := os.Getenv(envCacheDir)
+	return NewManagerWithCacheDir("")
+}
+
+// NewManagerWithCacheDir creates a manager with an explicit cache root. An
+// empty root preserves the process-boundary environment/default behavior.
+func NewManagerWithCacheDir(cacheDir string) (*Manager, error) {
+	if cacheDir == "" {
+		cacheDir = os.Getenv(envCacheDir)
+	}
 	if cacheDir == "" {
 		userCache, err := os.UserCacheDir()
 		if err != nil {

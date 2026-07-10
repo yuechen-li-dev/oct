@@ -410,6 +410,15 @@ func CompileForTest(path string) (Result, error) {
 
 type compileOptions struct {
 	selectedReachableOnly bool
+	testHarnessCases      []TestHarnessCase
+}
+
+// TestHarnessCase is one already-lowered, zero-argument Oct helper function.
+// It is intentionally small so tester can request a reusable native harness
+// without giving build package knowledge of Octest metadata.
+type TestHarnessCase struct {
+	ID       string
+	Function string
 }
 
 func compileProgram(program project.Program, options compileOptions) (Result, error) {
@@ -426,8 +435,18 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 	if err != nil {
 		return Result{}, err
 	}
+	if len(options.testHarnessCases) > 0 {
+		goSrc, err = injectTestHarnessMain(goSrc, module.EntryPackage, options.testHarnessCases)
+		if err != nil {
+			return Result{}, err
+		}
+	}
 
-	artifactPath := artifactPathFor(program.EntrySource)
+	artifactKind := ArtifactExecutable
+	if len(options.testHarnessCases) > 0 {
+		artifactKind = ArtifactTestExecutable
+	}
+	artifactPath := OutputPath(filepath.Join(filepath.Dir(program.EntrySource), filepath.Base(program.EntrySource)), artifactKind, HostTarget())
 	genDir, err := generatedBuildDir()
 	if err != nil {
 		return Result{}, err
@@ -464,7 +483,7 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 }
 
 func artifactPathFor(path string) string {
-	return filepath.Join(filepath.Dir(path), filepath.Base(path)+".octbin")
+	return OutputPath(filepath.Join(filepath.Dir(path), filepath.Base(path)), ArtifactExecutable, HostTarget())
 }
 
 func generatedBuildDir() (string, error) {
@@ -9553,6 +9572,50 @@ func CompileForTestWithSelectedFilesInPackage(path string, packageDir string, se
 	return compileProgram(program, compileOptions{selectedReachableOnly: true})
 }
 
+// CompileTestHarnessWithSelectedFilesInPackage emits one native executable
+// that dispatches to the supplied generated helper functions by --case ID.
+func CompileTestHarnessWithSelectedFilesInPackage(path string, packageDir string, selectedFiles []string, cases []TestHarnessCase) (Result, error) {
+	program, err := project.LoadForTestWithSelectedFilesInPackage(path, packageDir, selectedFiles)
+	if err != nil {
+		return Result{}, err
+	}
+	return compileProgram(program, compileOptions{selectedReachableOnly: true, testHarnessCases: cases})
+}
+
+func injectTestHarnessMain(src, pkg string, cases []TestHarnessCase) (string, error) {
+	start := strings.Index(src, "func main() {")
+	if start < 0 {
+		return "", fmt.Errorf("generated program has no main function")
+	}
+	open := start + len("func main() ")
+	depth := 0
+	end := -1
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				end = i + 1
+				i = len(src)
+			}
+		}
+	}
+	if end < 0 {
+		return "", fmt.Errorf("generated main function is malformed")
+	}
+	var b strings.Builder
+	b.WriteString("func main() {\n")
+	b.WriteString("\tif len(os.Args) != 3 || os.Args[1] != \"--case\" { fmt.Fprintln(os.Stderr, \"usage: harness --case <stable-id>\"); os.Exit(2) }\n")
+	b.WriteString("\tswitch os.Args[2] {\n")
+	for _, tc := range cases {
+		fmt.Fprintf(&b, "\tcase %q:\n\t\tfn_%s_%s()\n\t\tfmt.Printf(\"{\\\"case_id\\\":%%q,\\\"status\\\":\\\"pass\\\"}\\n\", os.Args[2])\n", tc.ID, pkg, tc.Function)
+	}
+	b.WriteString("\tdefault: fmt.Fprintln(os.Stderr, \"unknown test case\"); os.Exit(2)\n\t}\n}\n")
+	return src[:start] + b.String() + src[end:], nil
+}
+
 const __octOctxiliaryHelpers = `
 var __octOctxiliaryOnce sync.Once
 var __octOctxiliaryCmd *exec.Cmd
@@ -9861,7 +9924,7 @@ func __octOctxiliarySidecarPath(sidecarCommand string) (string, error) {
 	if wrapperPath != "" {
 		if path, ok := __octOctxiliaryResolveSidecarFromWrapperPath(wrapperPath, sidecarCommand); ok { return path, nil }
 	}
-	return "", fmt.Errorf("Octxiliary sidecar %q not found; set OCT_WRAPPER_PATH or place it beside .octbin", sidecarCommand)
+	return "", fmt.Errorf("Octxiliary sidecar %q not found; set OCT_WRAPPER_PATH or place it beside the compiled executable", sidecarCommand)
 }
 
 func __octOctxiliaryResolveSidecarFromWrapperPath(wrapperPath string, sidecarCommand string) (string, bool) {
@@ -9899,7 +9962,7 @@ func __octOctxiliaryEnsure() error {
 			wrapperPath := os.Getenv("OCT_WRAPPER_PATH")
 			if wrapperPath != "" { path, ok = __octOctxiliaryResolveSidecarFromWrapperPath(wrapperPath, "octxiliary-io") }
 		}
-		if !ok { __octOctxiliaryErr = errors.New("Octxiliary sidecar not found; set OCT_WRAPPER_PATH or place octxiliary-io beside .octbin") ; return }
+		if !ok { __octOctxiliaryErr = errors.New("Octxiliary sidecar not found; set OCT_WRAPPER_PATH or place octxiliary-io beside the compiled executable") ; return }
 		cmd := exec.Command(path)
 		in, _ := cmd.StdinPipe(); out, _ := cmd.StdoutPipe(); if err := cmd.Start(); err != nil { __octOctxiliaryErr = err; return }
 		__octOctxiliaryCmd, __octOctxiliaryIn, __octOctxiliaryOut = cmd, in, out

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/yuechen-li-dev/oct/internal/build"
 	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
@@ -20,6 +21,10 @@ func parallelBoundaryTest(t *testing.T) {
 	t.Parallel()
 	boundaryTestSlots <- struct{}{}
 	t.Cleanup(func() { <-boundaryTestSlots })
+}
+
+func nativeArtifactPath(sourcePath string) string {
+	return build.OutputPath(sourcePath, build.ArtifactExecutable, build.HostTarget())
 }
 
 func octStringLiteralPath(path string) string {
@@ -50,19 +55,19 @@ func executeCLI(command string, sourcePath string) (string, string, error) {
 	return executeCLIArgs(command, sourcePath)
 }
 
-// executeCLIInDir is deliberately serial: several package commands resolve the
-// project from the process working directory. Tests using it must not call
-// t.Parallel until the production API accepts an explicit working directory.
 func executeCLIInDir(dir string, args ...string) (string, string, error) {
-	oldWD, err := os.Getwd()
-	if err != nil {
-		return "", "", err
-	}
-	if err := os.Chdir(dir); err != nil {
-		return "", "", err
-	}
-	defer func() { _ = os.Chdir(oldWD) }()
-	return executeCLIArgs(args...)
+	return executeCLIInDirWithCache(dir, "", args...)
+}
+
+func executeCLIInDirWithCache(dir string, cacheRoot string, args ...string) (string, string, error) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	err := cli.ExecuteWithContext(args, cli.ExecutionContext{WorkingDir: dir, CacheRoot: cacheRoot, Stdout: &stdout, Stderr: &stderr})
+	return stdout.String(), stderr.String(), err
+}
+
+func executeCLIWithCache(cacheRoot string, args ...string) (string, string, error) {
+	return executeCLIInDirWithCache(".", cacheRoot, args...)
 }
 
 func assertFileContains(t *testing.T, path string, snippets ...string) {

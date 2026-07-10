@@ -46,7 +46,7 @@ func TestCelsiusLiteralRejectsTypeLevelC(t *testing.T) {
 	if !strings.Contains(stderr, "unknown base unit: C") {
 		t.Fatalf("expected unknown base unit diagnostic, got %q", stderr)
 	}
-	if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 	}
 }

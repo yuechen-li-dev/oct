@@ -26,6 +26,40 @@ import (
 var version = "dev"
 
 func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
+	return ExecuteWithContext(args, ExecutionContext{Stdout: stdout, Stderr: stderr})
+}
+
+// ExecutionContext carries the small set of process-boundary values needed by
+// in-process callers. Empty fields retain normal CLI defaults.
+type ExecutionContext struct {
+	WorkingDir string
+	CacheRoot  string
+	Stdin      io.Reader
+	Stdout     io.Writer
+	Stderr     io.Writer
+}
+
+func ExecuteWithContext(args []string, ctx ExecutionContext) error {
+	stdout, stderr := ctx.Stdout, ctx.Stderr
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	workingDir := ctx.WorkingDir
+	if workingDir == "" {
+		var err error
+		workingDir, err = os.Getwd()
+		if err != nil {
+			return fmt.Errorf("read working directory: %w", err)
+		}
+	}
+	absWorkingDir, err := filepath.Abs(workingDir)
+	if err != nil {
+		return fmt.Errorf("resolve working directory: %w", err)
+	}
+	workingDir = absWorkingDir
 	if len(args) < 1 {
 		return writeTopLevelHelp(stdout)
 	}
@@ -40,13 +74,13 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 
 	switch command {
 	case "new":
-		return executeNew(args[1:], stdout, stderr)
+		return executeNew(args[1:], stdout, stderr, workingDir)
 	case "init":
-		return executeInit(args[1:], stdout, stderr)
+		return executeInit(args[1:], stdout, stderr, workingDir)
 	case "pkg":
-		return executePkg(args[1:], stdout, stderr)
+		return executePkg(args[1:], stdout, stderr, workingDir, ctx.CacheRoot)
 	case "exp":
-		return executeExp(args[1:], stdout, stderr)
+		return executeExp(args[1:], stdout, stderr, ctx.CacheRoot)
 	case "run":
 		if isHelpArg(args[1:]) {
 			return writeRunHelp(stdout)
@@ -54,7 +88,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		if len(args) != 2 {
 			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct run --help for usage"))
 		}
-		path := args[1]
+		path := resolveWorkingPath(workingDir, args[1])
 		if err := run.Execute(path, stdout); err != nil {
 			return reportCommandError(stderr, command, err)
 		}
@@ -66,7 +100,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		if len(args) != 2 {
 			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct build --help for usage"))
 		}
-		path := args[1]
+		path := resolveWorkingPath(workingDir, args[1])
 		result, err := build.Compile(path)
 		if err != nil {
 			return reportCommandError(stderr, command, err)
@@ -93,7 +127,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		if err != nil {
 			return reportCommandError(stderr, command, err)
 		}
-		if err := ocfmt.FormatPathWithOptions(fmtOptions.path, fmtOptions.options); err != nil {
+		if err := ocfmt.FormatPathWithOptions(resolveWorkingPath(workingDir, fmtOptions.path), fmtOptions.options); err != nil {
 			return reportCommandError(stderr, command, err)
 		}
 		return nil
@@ -111,6 +145,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, command, err)
 		}
 		for _, path := range paths {
+			path = resolveWorkingPath(workingDir, path)
 			if err := tester.ExecuteWithOptions(path, stdout, options); err != nil {
 				return reportCommandError(stderr, command, err)
 			}
@@ -125,6 +160,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, command, err)
 		}
 		for _, path := range paths {
+			path = resolveWorkingPath(workingDir, path)
 			if err := tester.ExecuteArtifactsWithOptions(path, stdout, options); err != nil {
 				return reportCommandError(stderr, command, err)
 			}
@@ -137,7 +173,7 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 		if len(args) < 2 {
 			return reportCommandError(stderr, command, fmt.Errorf("missing path; run oct bench --help for usage"))
 		}
-		path := args[1]
+		path := resolveWorkingPath(workingDir, args[1])
 		options, err := parseBenchOptions(path, args[2:])
 		if err != nil {
 			return reportCommandError(stderr, command, err)
@@ -195,6 +231,13 @@ func Execute(args []string, stdout io.Writer, stderr io.Writer) error {
 	default:
 		return reportCommandError(stderr, command, fmt.Errorf("unknown command %q; run oct --help for available commands", command))
 	}
+}
+
+func resolveWorkingPath(workingDir, path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(workingDir, path)
 }
 func isHelpArg(args []string) bool { return len(args) == 1 && (args[0] == "--help" || args[0] == "-h") }
 
@@ -443,7 +486,7 @@ func parseSDSLvGenerateHeaderArgs(args []string) (toolchain.GenerateHeaderOption
 	return opts, nil
 }
 
-func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
+func executeNew(args []string, stdout io.Writer, stderr io.Writer, workingDir string) error {
 	if isHelpArg(args) {
 		return writeNewHelp(stdout)
 	}
@@ -458,33 +501,40 @@ func executeNew(args []string, stdout io.Writer, stderr io.Writer) error {
 		return reportCommandError(stderr, "new", fmt.Errorf("usage: oct new <experiment|library|wrapper-library|application|app> <Name> [path]"))
 	}
 	name := args[1]
-	target := defaultNewTarget(kind, name, args[2:])
+	target := defaultNewTarget(kind, name, args[2:], workingDir)
 	if err := newpkg.Write(newpkg.Options{Kind: kind, Name: name, Dir: target}); err != nil {
 		return reportCommandError(stderr, "new", err)
 	}
-	_, err := fmt.Fprintf(stdout, "Created %s package %s at %s\n", kind, name, target)
+	displayTarget, relErr := filepath.Rel(workingDir, target)
+	if relErr != nil || strings.HasPrefix(displayTarget, "..") {
+		displayTarget = target
+	}
+	if len(args) == 3 {
+		displayTarget = args[2]
+	}
+	_, err := fmt.Fprintf(stdout, "Created %s package %s at %s\n", kind, name, displayTarget)
 	return err
 }
 
-func defaultNewTarget(kind newpkg.Kind, name string, explicit []string) string {
+func defaultNewTarget(kind newpkg.Kind, name string, explicit []string, workingDir string) string {
 	if len(explicit) > 0 {
-		return explicit[0]
+		return resolveWorkingPath(workingDir, explicit[0])
 	}
 	switch kind {
 	case newpkg.KindExperiment:
-		if isDirectory("Experiments") {
-			return filepath.Join("Experiments", name)
+		if isDirectory(filepath.Join(workingDir, "Experiments")) {
+			return filepath.Join(workingDir, "Experiments", name)
 		}
 	case newpkg.KindLibrary, newpkg.KindWrapperLibrary:
-		if isDirectory("Libraries") {
-			return filepath.Join("Libraries", name)
+		if isDirectory(filepath.Join(workingDir, "Libraries")) {
+			return filepath.Join(workingDir, "Libraries", name)
 		}
 	case newpkg.KindApplication, newpkg.KindApp:
-		if isDirectory("Applications") {
-			return filepath.Join("Applications", name)
+		if isDirectory(filepath.Join(workingDir, "Applications")) {
+			return filepath.Join(workingDir, "Applications", name)
 		}
 	}
-	return name
+	return filepath.Join(workingDir, name)
 }
 
 func isDirectory(path string) bool {
@@ -492,7 +542,7 @@ func isDirectory(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func executeInit(args []string, stdout io.Writer, stderr io.Writer) error {
+func executeInit(args []string, stdout io.Writer, stderr io.Writer, workingDir string) error {
 	if isHelpArg(args) {
 		return writeInitHelp(stdout)
 	}
@@ -515,35 +565,31 @@ func executeInit(args []string, stdout io.Writer, stderr io.Writer) error {
 	default:
 		return reportCommandError(stderr, "init", fmt.Errorf("usage: oct init <experiment|library|wrapper-library|application|app>"))
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return reportCommandError(stderr, "init", fmt.Errorf("read current directory: %w", err))
-	}
-	name := filepath.Base(cwd)
-	if err := newpkg.InitWrite(newpkg.Options{Kind: kind, Name: name, Dir: "."}); err != nil {
+	name := filepath.Base(workingDir)
+	if err := newpkg.InitWrite(newpkg.Options{Kind: kind, Name: name, Dir: workingDir}); err != nil {
 		if strings.Contains(err.Error(), "invalid package name") {
 			err = fmt.Errorf("%w; oct init derives the package name from the current directory basename %q; rename the directory or wait for future explicit-name support", err, name)
 		}
 		return reportCommandError(stderr, "init", err)
 	}
-	_, err = fmt.Fprintf(stdout, "Initialized %s package %s in %s\n", kind, name, cwd)
+	_, err := fmt.Fprintf(stdout, "Initialized %s package %s in %s\n", kind, name, workingDir)
 	return err
 }
 
-func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
+func executePkg(args []string, stdout io.Writer, stderr io.Writer, workingDir string, cacheRoot string) error {
 	if len(args) < 1 {
 		return reportCommandError(stderr, "pkg", fmt.Errorf("usage: oct pkg <get|list|sync|lock|registry|add|wrappers|build-wrappers>"))
 	}
 	if isHelpArg(args) {
 		return writePkgHelp(stdout)
 	}
-	manager, err := pkgmgr.NewManager()
+	manager, err := pkgmgr.NewManagerWithCacheDir(cacheRoot)
 	if err != nil {
 		return reportCommandError(stderr, "pkg", err)
 	}
 	switch args[0] {
 	case "registry":
-		return executePkgRegistry(args[1:], stdout, stderr)
+		return executePkgRegistry(args[1:], stdout, stderr, workingDir)
 	case "add":
 		if isHelpArg(args[1:]) {
 			return writePkgAddHelp(stdout)
@@ -552,7 +598,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		if err != nil {
 			return reportCommandError(stderr, "pkg add", err)
 		}
-		result, err := pkgmgr.AddDependency(".", name, registryName)
+		result, err := pkgmgr.AddDependency(workingDir, name, registryName)
 		if err != nil {
 			return reportCommandError(stderr, "pkg add", err)
 		}
@@ -638,7 +684,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		if len(args) != 1 {
 			return reportCommandError(stderr, "pkg lock", fmt.Errorf("usage: oct pkg lock"))
 		}
-		result, err := manager.Lock(".")
+		result, err := manager.Lock(workingDir)
 		if err != nil {
 			return reportCommandError(stderr, "pkg lock", err)
 		}
@@ -664,7 +710,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			return reportCommandError(stderr, "pkg sync", fmt.Errorf("usage: oct pkg sync [--locked]"))
 		}
 		if locked {
-			result, err := manager.SyncLocked(".")
+			result, err := manager.SyncLocked(workingDir)
 			if err != nil {
 				return reportCommandError(stderr, "pkg sync", err)
 			}
@@ -685,7 +731,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			_, err = fmt.Fprintf(stdout, "Package sync complete: %d packages\n", len(result.Packages))
 			return err
 		}
-		result, err := manager.Sync(".")
+		result, err := manager.Sync(workingDir)
 		if err != nil {
 			return reportCommandError(stderr, "pkg sync", err)
 		}
@@ -746,7 +792,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		if !allowNative {
 			return reportCommandError(stderr, "pkg build-wrappers", fmt.Errorf("native wrapper builds require --allow-native; use oct pkg wrappers to inspect sidecars without building"))
 		}
-		targets, err := manager.BuildWrapperBuildTargetsForProject(".")
+		targets, err := manager.BuildWrapperBuildTargetsForProject(workingDir)
 		if err != nil {
 			return reportCommandError(stderr, "pkg build-wrappers", err)
 		}
@@ -772,7 +818,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 		if err != nil {
 			return reportCommandError(stderr, "pkg wrappers", err)
 		}
-		plan, err := manager.BuildWrapperPlanForProject(".")
+		plan, err := manager.BuildWrapperPlanForProject(workingDir)
 		if err != nil {
 			return reportCommandError(stderr, "pkg wrappers", err)
 		}
@@ -784,6 +830,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 			if err != nil {
 				return reportCommandError(stderr, "pkg wrappers", err)
 			}
+			registryOut = resolveWorkingPath(workingDir, registryOut)
 			if err := pkgmgr.WriteOctxiliaryRegistryOctagon(registryOut, registry); err != nil {
 				return reportCommandError(stderr, "pkg wrappers", err)
 			}
@@ -798,7 +845,7 @@ func executePkg(args []string, stdout io.Writer, stderr io.Writer) error {
 	}
 }
 
-func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer) error {
+func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer, workingDir string) error {
 	if len(args) < 1 {
 		return reportCommandError(stderr, "pkg registry", fmt.Errorf("usage: oct pkg registry <add|list|remove>"))
 	}
@@ -810,7 +857,7 @@ func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer) error
 		if len(args) != 3 {
 			return reportCommandError(stderr, "pkg registry add", fmt.Errorf("usage: oct pkg registry add <name> <path>"))
 		}
-		if _, err := pkgmgr.AddRegistry(".", args[1], args[2]); err != nil {
+		if _, err := pkgmgr.AddRegistry(workingDir, args[1], args[2]); err != nil {
 			return reportCommandError(stderr, "pkg registry add", err)
 		}
 		_, err := fmt.Fprintf(stdout, "Added package registry %s: %s\n", args[1], args[2])
@@ -819,7 +866,7 @@ func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer) error
 		if len(args) != 1 {
 			return reportCommandError(stderr, "pkg registry list", fmt.Errorf("usage: oct pkg registry list"))
 		}
-		config, err := pkgmgr.LoadRegistryConfig(".")
+		config, err := pkgmgr.LoadRegistryConfig(workingDir)
 		if err != nil {
 			return reportCommandError(stderr, "pkg registry list", err)
 		}
@@ -840,7 +887,7 @@ func executePkgRegistry(args []string, stdout io.Writer, stderr io.Writer) error
 		if len(args) != 2 {
 			return reportCommandError(stderr, "pkg registry remove", fmt.Errorf("usage: oct pkg registry remove <name>"))
 		}
-		if _, err := pkgmgr.RemoveRegistry(".", args[1]); err != nil {
+		if _, err := pkgmgr.RemoveRegistry(workingDir, args[1]); err != nil {
 			return reportCommandError(stderr, "pkg registry remove", err)
 		}
 		_, err := fmt.Fprintf(stdout, "Removed package registry %s\n", args[1])
@@ -1014,7 +1061,7 @@ func yesNo(value bool) string {
 	return "no"
 }
 
-func executeExp(args []string, stdout io.Writer, stderr io.Writer) error {
+func executeExp(args []string, stdout io.Writer, stderr io.Writer, cacheRoot string) error {
 	if len(args) < 1 {
 		return reportCommandError(stderr, "exp", fmt.Errorf("usage: oct exp run <git-url>"))
 	}
@@ -1023,7 +1070,7 @@ func executeExp(args []string, stdout io.Writer, stderr io.Writer) error {
 		if len(args) != 2 {
 			return reportCommandError(stderr, "exp run", fmt.Errorf("usage: oct exp run <git-url>"))
 		}
-		_, err := exprun.RunFromGit(args[1], stdout)
+		_, err := exprun.RunFromGitWithCacheDir(args[1], stdout, cacheRoot)
 		if err != nil {
 			return reportCommandError(stderr, "exp run", err)
 		}

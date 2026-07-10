@@ -66,7 +66,7 @@ func TestGeneratedGoHardeningM23BuildsRepresentativeShapes(t *testing.T) {
 			if stderr != "" {
 				t.Fatalf("expected empty stderr, got %q", stderr)
 			}
-			if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+			if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
 				t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 			}
 		})

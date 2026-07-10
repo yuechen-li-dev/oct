@@ -22,7 +22,11 @@ type Result struct {
 }
 
 func RunFromGit(source string, stdout io.Writer) (Result, error) {
-	manager, err := pkgmgr.NewManager()
+	return RunFromGitWithCacheDir(source, stdout, "")
+}
+
+func RunFromGitWithCacheDir(source string, stdout io.Writer, cacheDir string) (Result, error) {
+	manager, err := pkgmgr.NewManagerWithCacheDir(cacheDir)
 	if err != nil {
 		return Result{}, err
 	}

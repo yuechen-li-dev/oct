@@ -83,7 +83,7 @@ func TestAnalysisPackageIntegrationRunAndBuild(t *testing.T) {
 	if !strings.Contains(buildStderr, "compiled mode does not yet support builtin PlotLine") {
 		t.Fatalf("expected unsupported builtin PlotLine diagnostic, got %q", buildStderr)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(nativeArtifactPath(entry)); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 	}
 }
@@ -112,7 +112,7 @@ func TestAnalysisBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	if !strings.Contains(stderr, "expects Float[]") {
 		t.Fatalf("unexpected stderr %q", stderr)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(nativeArtifactPath(entry)); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact, stat err = %v", statErr)
 	}
 }

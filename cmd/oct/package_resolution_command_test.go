@@ -71,7 +71,7 @@ func TestCanonicalRepoWideImportResolutionParity(t *testing.T) {
 	if buildErr != nil {
 		t.Fatalf("build failed: err=%v stderr=%q stdout=%q", buildErr, buildStderr, buildStdout)
 	}
-	artifactPath := filepath.Join(milestoneRoot, "Main.octbin")
+	artifactPath := nativeArtifactPath(filepath.Join(milestoneRoot, "Main"))
 	if _, err := os.Stat(artifactPath); err != nil {
 		t.Fatalf("expected build artifact at %s: %v", artifactPath, err)
 	}

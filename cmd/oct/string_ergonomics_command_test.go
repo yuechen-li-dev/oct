@@ -110,7 +110,7 @@ func TestStringErgonomics(t *testing.T) {
 					if buildStderr != "" {
 						t.Fatalf("expected empty build stderr, got %q", buildStderr)
 					}
-					if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+					if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
 						t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 					}
 				} else {
@@ -123,7 +123,7 @@ func TestStringErgonomics(t *testing.T) {
 					if !strings.Contains(buildStderr, test.wantBuildErr) {
 						t.Fatalf("expected build stderr to contain %q, got %q", test.wantBuildErr, buildStderr)
 					}
-					if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+					if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 						t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 					}
 				}
@@ -147,7 +147,7 @@ func TestStringErgonomics(t *testing.T) {
 			if !strings.Contains(buildStderr, wantBuildErr) {
 				t.Fatalf("expected build stderr to contain %q, got %q", wantBuildErr, buildStderr)
 			}
-			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 			}
 		})

@@ -54,6 +54,7 @@ jobs:
         run: go test -count=1 -parallel 8 ./...
 
       - name: Run compiler and CLI integration tests
+        # T3: Suite/file harnesses share compilation while preserving --case isolation.
         run: go test -count=1 -parallel 8 -tags=integration ./...
 
       - name: Run external-tool tests
@@ -78,6 +79,7 @@ jobs:
           retention-days: 7
 
       - name: Clean compiled-test temp root
+        # Failure uploads happen first; successful and failed jobs then remove the owned root.
         if: always()
         shell: pwsh
         run: |

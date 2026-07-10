@@ -17,6 +17,25 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
+// inspectProgram proves lowering and generated-source structure without
+// crossing the native toolchain boundary. Executable tests call Compile
+// explicitly and remain the representative end-to-end layer.
+func inspectProgram(path string) (MIRModule, string, error) {
+	program, err := project.Load(path)
+	if err != nil {
+		return MIRModule{}, "", err
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		return MIRModule{}, "", err
+	}
+	module, err := lowerProgram(program, compileOptions{})
+	if err != nil {
+		return MIRModule{}, "", err
+	}
+	source, err := emitGo(module)
+	return module, source, err
+}
+
 func TestLowerProgramBuildsMIRShape(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
@@ -1204,16 +1223,11 @@ fn main() -> Int ! Error {
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OCT_MIR_DUMP", "1")
-	result, err := Compile(mainPath)
+	module, _, err := inspectProgram(mainPath)
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		t.Fatalf("inspect: %v", err)
 	}
-	data, err := os.ReadFile(result.MIRDumpPath)
-	if err != nil {
-		t.Fatalf("read MIR dump: %v", err)
-	}
-	text := string(data)
+	text := dumpMIR(module)
 	if !strings.Contains(text, "call WriteOctagon(") {
 		t.Fatalf("expected WriteOctagon runtime call in MIR, got:\n%s", text)
 	}
@@ -1237,16 +1251,11 @@ fn main() -> Int {
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OCT_MIR_DUMP", "1")
-	result, err := Compile(mainPath)
+	module, _, err := inspectProgram(mainPath)
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		t.Fatalf("inspect: %v", err)
 	}
-	data, err := os.ReadFile(result.MIRDumpPath)
-	if err != nil {
-		t.Fatalf("read MIR dump: %v", err)
-	}
-	text := string(data)
+	text := dumpMIR(module)
 	if !strings.Contains(text, "batch_map") {
 		t.Fatalf("expected batch_map in MIR, got:\n%s", text)
 	}
@@ -1528,35 +1537,9 @@ fn main() -> Int {
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OCT_KEEP_GEN", "1")
-	result, err := Compile(mainPath)
+	_, text, err := inspectProgram(mainPath)
 	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	out, err := exec.Command(result.ArtifactPath).CombinedOutput()
-	if err != nil {
-		t.Fatalf("run artifact: %v (%s)", err, string(out))
-	}
-	if strings.TrimSpace(string(out)) != "4" {
-		t.Fatalf("expected 4, got %q", strings.TrimSpace(string(out)))
-	}
-	generatedPaths, err := filepath.Glob(filepath.Join("..", "..", ".octbuild", "gen-*", filepath.Base(result.ArtifactPath)+".gen.go"))
-	if err != nil {
-		t.Fatalf("glob generated Go: %v", err)
-	}
-	var text string
-	for _, path := range generatedPaths {
-		generated, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read generated Go %s: %v", path, err)
-		}
-		if strings.Contains(string(generated), "fn_Main_Repeat") {
-			text = string(generated)
-			break
-		}
-	}
-	if text == "" {
-		t.Fatalf("generated Go for Repeat not found in %v", generatedPaths)
+		t.Fatalf("inspect generated source: %v", err)
 	}
 	for _, bad := range []string{"if (_ <", "_ = (_ +"} {
 		if strings.Contains(text, bad) {
@@ -1776,16 +1759,11 @@ fn main() -> Int {
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OCT_MIR_DUMP", "1")
-	result, err := Compile(mainPath)
+	module, _, err := inspectProgram(mainPath)
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		t.Fatalf("inspect: %v", err)
 	}
-	data, err := os.ReadFile(result.MIRDumpPath)
-	if err != nil {
-		t.Fatalf("read MIR dump: %v", err)
-	}
-	text := string(data)
+	text := dumpMIR(module)
 	if !strings.Contains(text, "when { case flag -> return 1; else -> return 0 }") {
 		t.Fatalf("expected lowered ordered when in MIR dump, got:\n%s", text)
 	}
@@ -1895,16 +1873,11 @@ fn main() -> String {
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OCT_MIR_DUMP", "1")
-	result, err := Compile(mainPath)
+	module, _, err := inspectProgram(mainPath)
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		t.Fatalf("inspect: %v", err)
 	}
-	data, err := os.ReadFile(result.MIRDumpPath)
-	if err != nil {
-		t.Fatalf("read MIR dump: %v", err)
-	}
-	text := string(data)
+	text := dumpMIR(module)
 	if !strings.Contains(text, "remember") {
 		t.Fatalf("expected remember in MIR dump, got:\n%s", text)
 	}
@@ -2089,7 +2062,7 @@ fn main() -> Int {
 			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, err := Compile(mainPath)
+			_, _, err := inspectProgram(mainPath)
 			if err == nil {
 				t.Fatalf("expected compile failure")
 			}
@@ -2353,7 +2326,7 @@ fn Main() -> Matrix<Int> {
 			if err := os.WriteFile(mainPath, []byte(tc.source), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, err := Compile(mainPath)
+			_, _, err := inspectProgram(mainPath)
 			if err == nil {
 				t.Fatal("expected compile failure")
 			}

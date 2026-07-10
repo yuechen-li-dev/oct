@@ -118,6 +118,23 @@ go run ./cmd/oct test Language/Testing --all-packages
 
 By default, `oct test <path>` executes tests only from the selected entry package/root. Transitive imports are still loaded for typechecking and symbol resolution, but imported-package tests are not executed unless `--all-packages` is passed.
 
+Compiled Octest batching has two explicit boundaries:
+
+```oct
+[Suite("Numerics")]
+[Fact]
+fn Adds() -> Void {
+    Assert.Equal(4, 2 + 2, "addition")
+}
+```
+
+All selected cases with the same package-qualified Suite name share one native
+harness, including cases in multiple `.octest` files. A file whose cases have
+no `[Suite]` gets one harness for that file. Theory rows are data/case entries
+inside the same harness and do not trigger additional compilation. Cases retain
+stable IDs and are replayed through `--case <stable-id>` so assertion failures,
+fatal exits, and per-case timeouts keep exact attribution.
+
 ## Semantic Contracts
 
 These contracts live under `Language/` and are the canonical source for language behavior.

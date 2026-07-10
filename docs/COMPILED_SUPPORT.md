@@ -4,6 +4,15 @@ _Last updated: 2026-06-12._
 
 This file is the **source of truth** for compiled support posture.
 
+## Native artifact naming
+
+Compiled programs are native operating-system executables. On Windows,
+`oct build Main.oct` produces `Main.oct.exe`, a PE executable (header `MZ`), not an
+`.octbin` file. Native shared and static/import libraries use `.dll` and
+`.lib`; Linux uses `.so`/`.a`; macOS uses `.dylib`/`.a`. The `.octbin`
+extension is reserved for a future portable, Oct-owned artifact format; this
+repository does not currently emit such a format.
+
 
 ## F4 scalar `String.From<T>` compiled parity
 

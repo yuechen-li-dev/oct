@@ -102,7 +102,7 @@ func TestScientificNotationMalformedScientificNotationRejected(t *testing.T) {
 			if !strings.Contains(stderr, "invalid float literal") {
 				t.Fatalf("expected invalid float literal in stderr, got %q", stderr)
 			}
-			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 			}
 		})

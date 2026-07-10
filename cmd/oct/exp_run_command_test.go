@@ -16,7 +16,7 @@ import (
 func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
-	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
+
 	baseDep := sharedExperimentBaseDependency(t)
 
 	source := createExperimentGitRepo(t, experimentRepoSpec{
@@ -26,7 +26,7 @@ func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 		},
 	})
 
-	stdout, stderr, err := executeCLIArgs("exp", "run", source)
+	stdout, stderr, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("expected exp run success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
@@ -46,7 +46,7 @@ func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 
 func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	requireGit(t)
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
 	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("CacheExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
@@ -55,7 +55,7 @@ func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 		},
 	})
 
-	stdout1, stderr1, err := executeCLIArgs("exp", "run", source)
+	stdout1, stderr1, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("first exp run failed: err=%v stderr=%q stdout=%q", err, stderr1, stdout1)
 	}
@@ -71,7 +71,7 @@ func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat cache path: %v", err)
 	}
-	stdout2, stderr2, err := executeCLIArgs("exp", "run", source)
+	stdout2, stderr2, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("second exp run failed: err=%v stderr=%q stdout=%q", err, stderr2, stdout2)
 	}
@@ -90,7 +90,6 @@ func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 func TestExpRunExpRunSyncsDirectDependencies(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
-	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
 
 	depSource := createGitRepoWithManifest(t, manifestWithDeps("Signal", "1.0.0", nil))
 	source := createExperimentGitRepo(t, experimentRepoSpec{
@@ -100,7 +99,7 @@ func TestExpRunExpRunSyncsDirectDependencies(t *testing.T) {
 		Milestones: map[string]string{"M0": milestoneFactSource("DepsRun")},
 	})
 
-	stdout, stderr, err := executeCLIArgs("exp", "run", source)
+	stdout, stderr, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("expected exp run success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
@@ -118,7 +117,7 @@ func TestExpRunExpRunSyncsDirectDependencies(t *testing.T) {
 
 func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 	requireGit(t)
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
 	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("BadExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
@@ -128,7 +127,7 @@ func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 		},
 	})
 
-	stdout, stderr, err := executeCLIArgs("exp", "run", source)
+	stdout, stderr, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err == nil {
 		t.Fatalf("expected failure, stdout=%q stderr=%q", stdout, stderr)
 	}
@@ -139,7 +138,7 @@ func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 
 func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 	requireGit(t)
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
 	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("EntryExperiment", "0.1.0", "experiment", "M1", depLiterals(baseDep)),
@@ -149,7 +148,7 @@ func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 		},
 	})
 
-	stdout, stderr, err := executeCLIArgs("exp", "run", source)
+	stdout, stderr, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("expected exp run success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
@@ -169,14 +168,14 @@ func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 
 func TestExpRunExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 	requireGit(t)
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
 	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest:   experimentManifestWithDeps("EntryMissing", "0.1.0", "experiment", "M7", depLiterals(baseDep)),
 		Milestones: map[string]string{"M0": milestoneFactSource("M0Runs")},
 	})
 
-	stdout, stderr, err := executeCLIArgs("exp", "run", source)
+	stdout, stderr, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err == nil {
 		t.Fatalf("expected failure, stdout=%q stderr=%q", stdout, stderr)
 	}
@@ -187,7 +186,7 @@ func TestExpRunExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 
 func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 	requireGit(t)
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
 	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("FallbackExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
@@ -197,7 +196,7 @@ func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 		},
 	})
 
-	stdout, stderr, err := executeCLIArgs("exp", "run", source)
+	stdout, stderr, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("expected success, err=%v stderr=%q stdout=%q", err, stderr, stdout)
 	}
@@ -211,18 +210,18 @@ func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 
 func TestExpRunExpRunDeterministicForRepeatedRuns(t *testing.T) {
 	requireGit(t)
-	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
+	cacheDir := t.TempDir()
 	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest:   experimentManifestWithDeps("DeterministicExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{"M0": milestoneFactSource("DeterministicRuns")},
 	})
 
-	stdout1, stderr1, err := executeCLIArgs("exp", "run", source)
+	stdout1, stderr1, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("first run failed: err=%v stderr=%q stdout=%q", err, stderr1, stdout1)
 	}
-	stdout2, stderr2, err := executeCLIArgs("exp", "run", source)
+	stdout2, stderr2, err := executeCLIWithCache(cacheDir, "exp", "run", source)
 	if err != nil {
 		t.Fatalf("second run failed: err=%v stderr=%q stdout=%q", err, stderr2, stdout2)
 	}

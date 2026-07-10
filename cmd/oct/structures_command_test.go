@@ -50,7 +50,7 @@ func TestStructuresPackageIntegrationRunAndBuild(t *testing.T) {
 	if buildStderr != "" {
 		t.Fatalf("expected empty build stderr, got %q", buildStderr)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); statErr != nil {
+	if _, statErr := os.Stat(nativeArtifactPath(entry)); statErr != nil {
 		t.Fatalf("expected build artifact to exist, stat err = %v", statErr)
 	}
 }
@@ -81,7 +81,7 @@ func TestStructuresBuildFailureDoesNotEmitArtifact(t *testing.T) {
 	if !strings.Contains(stderr, "expects Float<m>, got Int<s>") {
 		t.Fatalf("unexpected stderr %q", stderr)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(nativeArtifactPath(entry)); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact, stat err = %v", statErr)
 	}
 }

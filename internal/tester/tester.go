@@ -32,6 +32,24 @@ type testCase struct {
 	suites      []string
 }
 
+type compiledHarnessGroup struct {
+	id       string
+	pkg      string
+	files    []string
+	testCase []testCase
+}
+
+type testMetrics struct {
+	harnessGroups       int
+	suiteGroups         int
+	fileGroups          int
+	nativeCompilations  int
+	processLaunches     int
+	singleCaseReruns    int
+	artifactScopesMade  int
+	artifactScopesClean int
+}
+
 var defaultTestCycleTime = 30 * time.Second
 
 type TestOptions struct {
@@ -163,12 +181,17 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 	total := 0
 	compiledCount := 0
 	interpretedFallbackCount := 0
+	compiled := map[string]error{}
+	metrics := testMetrics{}
+	if executionMode != "interpreted" {
+		compiled, metrics = executeCompiledHarnessGroups(program, tests, stdout)
+	}
 	for _, testCase := range tests {
 		total++
 		qualified := fmt.Sprintf("%s.%s", testCase.pkg, testCase.displayName)
 		ranCompiled := false
 		if executionMode != "interpreted" {
-			err := executeCompiledTestCase(program, testCase, stdout)
+			err := compiled[testCaseID(testCase)]
 			if err == nil {
 				compiledCount++
 				ranCompiled = true
@@ -240,6 +263,10 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 
 	passed := total - failed - skipped
 	_, _ = fmt.Fprintf(stdout, "Execution summary: compiled: %d interpreted fallback: %d\n", compiledCount, interpretedFallbackCount)
+	if os.Getenv("OCT_TEST_METRICS") == "1" {
+		_, _ = fmt.Fprintf(stdout, "Test metrics: cases=%d suite_groups=%d file_groups=%d harness_groups=%d native_compilations=%d process_launches=%d single_case_reruns=%d artifact_scopes_created=%d artifact_scopes_cleaned=%d\n",
+			total, metrics.suiteGroups, metrics.fileGroups, metrics.harnessGroups, metrics.nativeCompilations, metrics.processLaunches, metrics.singleCaseReruns, metrics.artifactScopesMade, metrics.artifactScopesClean)
+	}
 	_, _ = fmt.Fprintf(stdout, "Result: %d passed, %d failed, %d skipped\n", passed, failed, skipped)
 	if failed > 0 {
 		return fmt.Errorf("%d test(s) failed", failed)
@@ -247,40 +274,144 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 	return nil
 }
 
-func executeCompiledTestCase(program project.Program, testCase testCase, diagnostic io.Writer) (retErr error) {
-	pkg, ok := program.Packages[testCase.pkg]
+func executeCompiledTestCase(program project.Program, tc testCase, diagnostic io.Writer) error {
+	results, _ := executeCompiledHarnessGroups(program, []testCase{tc}, diagnostic)
+	return results[testCaseID(tc)]
+}
+
+func executeCompiledHarnessGroups(program project.Program, tests []testCase, diagnostic io.Writer) (map[string]error, testMetrics) {
+	results := make(map[string]error, len(tests))
+	metrics := testMetrics{}
+	groups := groupCompiledTestCases(tests)
+	metrics.harnessGroups = len(groups)
+	for _, group := range groups {
+		if strings.HasPrefix(group.id, "suite:") {
+			metrics.suiteGroups++
+		} else {
+			metrics.fileGroups++
+		}
+		groupResults, groupMetrics := executeCompiledHarnessGroup(program, group, diagnostic)
+		metrics.nativeCompilations += groupMetrics.nativeCompilations
+		metrics.processLaunches += groupMetrics.processLaunches
+		metrics.artifactScopesMade += groupMetrics.artifactScopesMade
+		metrics.artifactScopesClean += groupMetrics.artifactScopesClean
+		for id, err := range groupResults {
+			results[id] = err
+		}
+	}
+	return results, metrics
+}
+
+func groupCompiledTestCases(tests []testCase) []compiledHarnessGroup {
+	byID := map[string]*compiledHarnessGroup{}
+	for _, tc := range tests {
+		id := "file:" + tc.pkg + ":" + filepath.Clean(tc.filePath)
+		if len(tc.suites) > 0 {
+			suites := append([]string{}, tc.suites...)
+			sort.Strings(suites)
+			id = "suite:" + tc.pkg + ":" + strings.Join(suites, "|")
+		}
+		group := byID[id]
+		if group == nil {
+			group = &compiledHarnessGroup{id: id, pkg: tc.pkg}
+			byID[id] = group
+		}
+		group.testCase = append(group.testCase, tc)
+		if !containsPath(group.files, tc.filePath) {
+			group.files = append(group.files, tc.filePath)
+		}
+	}
+	groups := make([]compiledHarnessGroup, 0, len(byID))
+	for _, group := range byID {
+		sort.Strings(group.files)
+		sort.Slice(group.testCase, func(i, j int) bool { return testCaseID(group.testCase[i]) < testCaseID(group.testCase[j]) })
+		groups = append(groups, *group)
+	}
+	sort.Slice(groups, func(i, j int) bool { return groups[i].id < groups[j].id })
+	return groups
+}
+
+func containsPath(paths []string, path string) bool {
+	for _, item := range paths {
+		if item == path {
+			return true
+		}
+	}
+	return false
+}
+
+func testCaseID(tc testCase) string {
+	return tc.pkg + "|" + filepath.Clean(tc.filePath) + "|" + tc.displayName
+}
+
+func executeCompiledHarnessGroup(program project.Program, group compiledHarnessGroup, diagnostic io.Writer) (results map[string]error, metrics testMetrics) {
+	results = make(map[string]error, len(group.testCase))
+	pkg, ok := program.Packages[group.pkg]
 	if !ok {
-		return fmt.Errorf("unknown package %q", testCase.pkg)
+		for _, tc := range group.testCase {
+			results[testCaseID(tc)] = fmt.Errorf("unknown package %q", group.pkg)
+		}
+		return results, metrics
 	}
 	scope, err := newArtifactScope("octest-run", diagnostic)
 	if err != nil {
-		return err
-	}
-	defer closeArtifactScope(scope, &retErr)
-	runnerPath, err := writeCompiledTestRunner(scope.path("runner.octest"), testCase.pkg, testCase)
-	if err != nil {
-		return err
-	}
-	result, err := build.CompileForTestWithSelectedFilesInPackage(runnerPath, pkg.Directory, []string{runnerPath, testCase.filePath})
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), testCase.cycleTime)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, result.ArtifactPath)
-	cmd.Env = append(os.Environ(), "OCT_ENFORCE_ASSERTIONS=1")
-	output, runErr := cmd.CombinedOutput()
-	if runErr != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return context.DeadlineExceeded
+		for _, tc := range group.testCase {
+			results[testCaseID(tc)] = err
 		}
-		msg := strings.TrimSpace(string(output))
-		if msg == "" {
-			return fmt.Errorf("compiled test run failed: %w", runErr)
-		}
-		return fmt.Errorf("compiled test run failed: %w: %s", runErr, msg)
+		return results, metrics
 	}
-	return nil
+	metrics.artifactScopesMade++
+	var closeErr error
+	defer func() {
+		closeArtifactScope(scope, &closeErr)
+		if closeErr == nil && !scope.keep {
+			metrics.artifactScopesClean++
+		}
+		if closeErr != nil {
+			for _, tc := range group.testCase {
+				if results[testCaseID(tc)] == nil {
+					results[testCaseID(tc)] = closeErr
+				}
+			}
+		}
+	}()
+	runnerPath, cases, err := writeCompiledTestHarness(scope.path(sanitizeHarnessName(group)+".octest"), group.pkg, group.testCase)
+	if err != nil {
+		for _, tc := range group.testCase {
+			results[testCaseID(tc)] = err
+		}
+		return results, metrics
+	}
+	selected := append([]string{runnerPath}, group.files...)
+	metrics.nativeCompilations++
+	result, err := build.CompileTestHarnessWithSelectedFilesInPackage(runnerPath, pkg.Directory, selected, cases)
+	if err != nil {
+		for _, tc := range group.testCase {
+			results[testCaseID(tc)] = err
+		}
+		return results, metrics
+	}
+	for _, tc := range group.testCase {
+		ctx, cancel := context.WithTimeout(context.Background(), tc.cycleTime)
+		cmd := exec.CommandContext(ctx, result.ArtifactPath, "--case", testCaseID(tc))
+		metrics.processLaunches++
+		cmd.Env = append(os.Environ(), "OCT_ENFORCE_ASSERTIONS=1")
+		output, runErr := cmd.CombinedOutput()
+		cancel()
+		if runErr != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				results[testCaseID(tc)] = context.DeadlineExceeded
+				continue
+			}
+			msg := strings.TrimSpace(string(output))
+			if msg == "" {
+				results[testCaseID(tc)] = fmt.Errorf("compiled test run failed: %w", runErr)
+			} else {
+				results[testCaseID(tc)] = fmt.Errorf("compiled test run failed: %w: %s", runErr, msg)
+			}
+		}
+	}
+	return results, metrics
 }
 
 func writeCompiledTestRunner(runnerPath string, pkgName string, testCase testCase) (string, error) {
@@ -310,6 +441,54 @@ func writeCompiledTestRunner(runnerPath string, pkgName string, testCase testCas
 		fmt.Fprintf(os.Stderr, "compiled runner debug: testCase.name=%q displayName=%q isFallible=%t arguments=%d runner=%s\n%s\n", testCase.name, testCase.displayName, testCase.isFallible, len(testCase.arguments), runnerPath, source)
 	}
 	return runnerPath, nil
+}
+
+func writeCompiledTestHarness(runnerPath string, pkgName string, tests []testCase) (string, []build.TestHarnessCase, error) {
+	lines := []string{"package " + pkgName}
+	cases := make([]build.TestHarnessCase, 0, len(tests))
+	for i, tc := range tests {
+		helper := fmt.Sprintf("OctestCase%d", i)
+		call := "    " + tc.name + "()"
+		if len(tc.arguments) > 0 {
+			parts := make([]string, 0, len(tc.arguments))
+			for _, arg := range tc.arguments {
+				parts = append(parts, inlineValueToSource(arg))
+			}
+			call = fmt.Sprintf("    %s(%s)", tc.name, strings.Join(parts, ", "))
+		}
+		if tc.isFallible {
+			call += "!"
+		}
+		lines = append(lines, "fn "+helper+"() -> Void {", call, "}")
+		cases = append(cases, build.TestHarnessCase{ID: testCaseID(tc), Function: helper})
+	}
+	lines = append(lines, "fn main() -> Int {")
+	for _, tc := range cases {
+		lines = append(lines, "    "+tc.Function+"()")
+	}
+	lines = append(lines, "    return 0", "}")
+	if err := os.WriteFile(runnerPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		return "", nil, err
+	}
+	return runnerPath, cases, nil
+}
+
+func sanitizeHarnessName(group compiledHarnessGroup) string {
+	name := group.id
+	if strings.HasPrefix(name, "suite:") {
+		name = "octest-suite-" + strings.TrimPrefix(name, "suite:")
+	} else {
+		name = "octest-file-" + strings.TrimPrefix(name, "file:")
+	}
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 func inlineValueToSource(value interpret.Value) string {

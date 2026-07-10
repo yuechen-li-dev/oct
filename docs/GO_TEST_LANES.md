@@ -67,6 +67,7 @@ Run all non-hardware coverage explicitly:
 go test -count=1 ./...
 go test -count=1 -tags=integration ./...
 go test -count=1 -tags=toolchain ./...
+go test -count=1 -tags='integration toolchain' ./...
 ```
 
 `tools/Run-GoIntegrationTests.ps1 -IncludeToolchain` runs the latter two tagged lanes. CI runs the fast lane first and attributes integration and toolchain failures separately.
@@ -77,6 +78,26 @@ compile/runtime failure, and timeout. Set `OCT_TEST_TEMP_ROOT` to choose the
 parent directory. Set `OCT_KEEP_TEST_ARTIFACTS=1` only while debugging; Oct then
 prints each retained directory instead of scattering runner files into the
 working tree. This policy does not affect persistent `oct build` outputs.
+
+Compiled Octest facts and theory rows are batched at an explicit boundary. A
+`[Suite("Numerics")]` declaration produces one package-qualified native
+harness for all selected `Numerics` cases in that package; files with no
+`[Suite]` produce one harness per `.octest` file. The harness supports stable
+`--case <stable-id>` replay. It keeps per-case process isolation for timeouts
+and fatal exits, so failures remain attributed to the fact or theory row that
+ran even though compilation is shared.
+
+Set `OCT_TEST_METRICS=1` to append one process-local metrics record containing
+case, Suite-group, file-group, harness, native-compilation, process-launch,
+single-case replay, and artifact-scope lifecycle counts. Metrics do not create
+a persistent cache. Theory rows count as cases and process launches, but do not
+increase the native-compilation count for their Suite/file group.
+
+Native output names follow the target platform: Windows executables are `.exe`,
+shared libraries `.dll`, and static/import libraries `.lib`; Linux uses no
+executable suffix, `.so`, and `.a`; macOS uses no executable suffix, `.dylib`,
+and `.a`. `.octbin` is reserved for a future Oct-owned portable artifact and
+is not emitted by native `oct build` or compiled Octest runs.
 
 To inspect or remove legacy leaked runners safely:
 
@@ -115,4 +136,9 @@ go test -count=1 -json ./cmd/oct > out/test-artifacts/cmd.json
   -OutputMarkdown out/test-artifacts/cmd-summary.md
 ```
 
-Tests using `executeCLIInDir` remain serial because package discovery currently depends on the process working directory. Sidecar tests also remain bounded by their shared executable/build setup. Do not add `t.Parallel()` to either family without first removing that shared state.
+In-process CLI tests use `cli.ExecutionContext` for an explicit working
+directory, cache root, and streams; they no longer change the process working
+directory through the shared command helper. Tests that still mutate other
+process-wide environment variables, committed generated files, or shared
+sidecar/native resources remain serial. Sidecar tests remain bounded by their
+shared executable/build setup.

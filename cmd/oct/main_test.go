@@ -692,7 +692,7 @@ func TestBuildCommandHandlesBuiltins(t *testing.T) {
 		if stderr != "" {
 			t.Fatalf("expected empty stderr, got %q", stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
 			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
@@ -710,7 +710,7 @@ func TestBuildCommandHandlesBuiltins(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
@@ -729,7 +729,7 @@ func TestBuildCommandHandlesPrintAndWhile(t *testing.T) {
 		if stderr != "" {
 			t.Fatalf("expected empty stderr, got %q", stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
 			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
@@ -747,7 +747,7 @@ func TestBuildCommandHandlesPrintAndWhile(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		artifactPath := sourcePath + ".octbin"
+		artifactPath := nativeArtifactPath(sourcePath)
 		if _, statErr := os.Stat(artifactPath); !os.IsNotExist(statErr) {
 			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
@@ -850,7 +850,7 @@ func TestBuildCommandHandlesPlotBuiltins(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
@@ -868,7 +868,7 @@ func TestBuildCommandHandlesPlotBuiltins(t *testing.T) {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("expected stderr to contain %q, got %q", want, stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
@@ -882,7 +882,7 @@ func TestBuildCommandSucceedsAfterTypeCheck(t *testing.T) {
 		t.Fatalf("build command failed: %v\nstdout:%s\nstderr:%s", err, stdout, stderr)
 	}
 
-	artifactPath := sourcePath + ".octbin"
+	artifactPath := nativeArtifactPath(sourcePath)
 	info, err := os.Stat(artifactPath)
 	if err != nil {
 		t.Fatalf("expected artifact at %s: %v", artifactPath, err)
@@ -927,7 +927,7 @@ func TestTypeErrorsFailBeforeExecution(t *testing.T) {
 				t.Fatalf("expected no stdout on type error, got %q", stdout)
 			}
 			if command == "build" {
-				if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+				if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 					t.Fatalf("expected no artifact on type error, stat err = %v", statErr)
 				}
 			}
@@ -1178,7 +1178,7 @@ func TestRecordsEnumsAndExprStmtRules(t *testing.T) {
 			if !strings.Contains(buildStderr, test.wantMessage) {
 				t.Fatalf("expected build stderr to contain %q, got %q", test.wantMessage, buildStderr)
 			}
-			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 			}
 		})
@@ -1300,7 +1300,7 @@ fn Main() -> Int {
 	if buildStderr != "" {
 		t.Fatalf("expected empty build stderr, got %q", buildStderr)
 	}
-	if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+	if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
 		t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 	}
 }
@@ -1362,7 +1362,7 @@ func TestComparisonsRunAndBuild(t *testing.T) {
 		if buildStderr != "" {
 			t.Fatalf("expected empty build stderr, got %q", buildStderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); statErr != nil {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); statErr != nil {
 			t.Fatalf("expected artifact on build success, stat err = %v", statErr)
 		}
 	})
@@ -1379,7 +1379,7 @@ func TestComparisonsRunAndBuild(t *testing.T) {
 		if !strings.Contains(stderr, `operator "==" not defined for Int[] and Int[]`) {
 			t.Fatalf("expected stderr to contain comparison error, got %q", stderr)
 		}
-		if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+		if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 			t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 		}
 	})
@@ -1441,7 +1441,7 @@ func TestVectorsMatricesRunAndBuild(t *testing.T) {
 			if !strings.Contains(stderr, test.wantMessage) {
 				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
 			}
-			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 			}
 		})
@@ -1590,7 +1590,7 @@ func TestMutableLocalsAndReassignment(t *testing.T) {
 			if !strings.Contains(stderr, test.wantMessage) {
 				t.Fatalf("expected stderr to contain %q, got %q", test.wantMessage, stderr)
 			}
-			if _, statErr := os.Stat(sourcePath + ".octbin"); !os.IsNotExist(statErr) {
+			if _, statErr := os.Stat(nativeArtifactPath(sourcePath)); !os.IsNotExist(statErr) {
 				t.Fatalf("expected no artifact on build failure, stat err = %v", statErr)
 			}
 		})

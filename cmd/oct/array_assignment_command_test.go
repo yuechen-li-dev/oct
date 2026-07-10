@@ -178,7 +178,7 @@ func TestArrayAssignmentBuildArtifactBehavior(t *testing.T) {
 	if !strings.Contains(buildStdout, "build succeeded") {
 		t.Fatalf("expected build success output, got %q", buildStdout)
 	}
-	if _, statErr := os.Stat(entry + ".octbin"); statErr != nil {
+	if _, statErr := os.Stat(nativeArtifactPath(entry)); statErr != nil {
 		t.Fatalf("expected build artifact, stat err=%v", statErr)
 	}
 
@@ -196,7 +196,7 @@ func TestArrayAssignmentBuildArtifactBehavior(t *testing.T) {
 	if invalidErr == nil {
 		t.Fatal("expected invalid build to fail")
 	}
-	if _, statErr := os.Stat(invalidEntry + ".octbin"); !os.IsNotExist(statErr) {
+	if _, statErr := os.Stat(nativeArtifactPath(invalidEntry)); !os.IsNotExist(statErr) {
 		t.Fatalf("expected no artifact for invalid build, stat err=%v", statErr)
 	}
 }
