@@ -3215,6 +3215,66 @@ FACT(PrometheusSgemmPx16M28FeedPath)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "M28 runtime destroy should succeed");
 }
 
+FACT(PrometheusSgemmPx16M29SubmissionRing)
+{
+    const ShapeCase shape{"m29_512x512x512", 512u, 512u, 512u, false};
+    const PreparedCaseData data = prepare_case_data(shape);
+    std::vector<float> c(static_cast<std::size_t>(shape.m) * static_cast<std::size_t>(shape.n), 0.0f);
+    const std::vector<std::uint32_t> depths = {1u, 2u, 4u};
+    std::ostringstream json;
+    std::ostringstream markdown;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "M29 runtime create should succeed");
+    if (handle == nullptr) return;
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "M29 runtime probe should succeed");
+    if (caps.available == 0u) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "M29 runtime destroy should succeed");
+        SKIP("Vulkan runtime unavailable; M29 submission ring cannot execute");
+    }
+    json << "{\n  \"milestone\": \"PX16_M29\",\n  \"mode\": \"single_queue_physical_submission_ring\",\n  \"rows\": [\n";
+    markdown << "# Prometheus Px16 M29 submission ring\n\n"
+             << "Each dispatch is a distinct queue submission with a distinct command buffer, fence, descriptor set, and query pair.\n\n"
+             << "| ring depth | submissions | max outstanding | polls | forced waits | query harvests | wall ns | correctness |\n|---:|---:|---:|---:|---:|---:|---:|---|\n";
+    for (std::size_t index = 0u; index < depths.size(); ++index) {
+        PrometheusSgemmResidentBenchmarkRequest request{};
+        request.struct_size = sizeof(request); request.a = data.a.data(); request.b = data.b.data(); request.c = c.data();
+        request.m = shape.m; request.n = shape.n; request.k = shape.k;
+        request.mode = PROM_SGEMM_RESIDENT_MODE_EXPLICIT_VARIANT;
+        request.requested_variant = PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32;
+        request.warmup_iterations = 2u; request.iterations = 32u; request.diagnostic_batch_depth = depths[index];
+        request.flags = PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK | PROM_SGEMM_RESIDENT_FLAG_M29_SUBMISSION_RING;
+        PrometheusSgemmResidentBenchmarkResult result{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_resident_benchmark(handle, &request, &result), "M29 ring should execute");
+        TimingDecomposition ignored_timing;
+        const CorrectnessResult correctness = validate_case_output(shape, data, c, ignored_timing);
+        ASSERT_EQUAL(std::string("pass"), correctness.status, "M29 ring output should validate after drain");
+        ASSERT_EQUAL(depths[index], result.configured_ring_depth, "M29 configured depth should be reported");
+        ASSERT_TRUE(result.max_in_flight_depth >= 1u, "M29 should submit work");
+        if (depths[index] > 1u) ASSERT_TRUE(result.max_in_flight_depth > 1u, "M29 must prove distinct submissions in flight");
+        json << "    {\"depth\":" << depths[index] << ",\"submits\":" << result.queue_submissions
+             << ",\"physical_slots\":" << result.physical_slot_count << ",\"max_outstanding\":" << result.max_in_flight_depth << ",\"polls\":" << result.ring_poll_count
+             << ",\"forced_waits\":" << result.ring_forced_wait_count << ",\"query_harvests\":" << result.ring_query_harvest_count
+             << ",\"ring_full\":" << result.ring_full_count << ",\"recycles\":" << result.ring_slot_recycle_count
+             << ",\"failures\":" << result.ring_failure_count << ",\"wall_ns\":" << result.total_loop_wall_ns
+             << ",\"wall_ns_per_dispatch\":" << (result.total_loop_wall_ns / result.iterations) << ",\"gpu_ns_per_dispatch\":" << result.kernel_median_ns
+             << ",\"final_slot_states\":[" << result.ring_final_slot_state[0] << "," << result.ring_final_slot_state[1] << ","
+             << result.ring_final_slot_state[2] << "," << result.ring_final_slot_state[3] << "],\"correctness\":\"" << correctness.status << "\"}" << (index + 1u == depths.size() ? "\n" : ",\n");
+        markdown << "| " << depths[index] << " | " << result.queue_submissions << " | " << result.max_in_flight_depth << " | "
+                 << result.ring_poll_count << " | " << result.ring_forced_wait_count << " | " << result.ring_query_harvest_count
+                 << " | " << result.total_loop_wall_ns << " | " << correctness.status << " |\n"
+                 << "  - physical slots: " << result.physical_slot_count << "; ring full: " << result.ring_full_count
+                 << "; recycles: " << result.ring_slot_recycle_count << "; failures: " << result.ring_failure_count
+                 << "; final states: [" << result.ring_final_slot_state[0] << ", " << result.ring_final_slot_state[1] << ", "
+                 << result.ring_final_slot_state[2] << ", " << result.ring_final_slot_state[3] << "]; wall/dispatch ns: "
+                 << (result.total_loop_wall_ns / result.iterations) << "; GPU median ns: " << result.kernel_median_ns << "\n";
+    }
+    json << "  ]\n}\n";
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_m29_submission_ring.json"), json.str()), "M29 JSON artifact should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_sgemm_px16_m29_submission_ring.md"), markdown.str()), "M29 Markdown artifact should be written");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "M29 runtime destroy should succeed");
+}
+
 FACT(PrometheusSgemmPx16ResidentExplicitFailureMatrix)
 {
     RuntimeHandleScope probe_runtime;

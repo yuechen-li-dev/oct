@@ -594,6 +594,8 @@ enum {
 
 enum {
   PROM_SGEMM_RESIDENT_FLAG_VALIDATE_READBACK = 1u << 0,
+  /* Internal PX16 M29 diagnostic: submit one dispatch per persistent physical slot. */
+  PROM_SGEMM_RESIDENT_FLAG_M29_SUBMISSION_RING = 1u << 1,
 };
 
 typedef struct PrometheusCaps {
@@ -668,6 +670,17 @@ typedef struct PrometheusSgemmResidentBenchmarkResult {
   uint32_t command_buffer_resets;
   uint32_t descriptor_updates;
   uint64_t query_result_wall_ns_median;
+  /* PX16 M29 resident-ring diagnostics; zero unless the ring flag is selected. */
+  uint32_t configured_ring_depth;
+  uint32_t physical_slot_count;
+  uint32_t max_in_flight_depth;
+  uint64_t ring_poll_count;
+  uint64_t ring_forced_wait_count;
+  uint64_t ring_query_harvest_count;
+  uint64_t ring_full_count;
+  uint64_t ring_slot_recycle_count;
+  uint64_t ring_failure_count;
+  uint32_t ring_final_slot_state[4];
 } PrometheusSgemmResidentBenchmarkResult;
 
 typedef struct PrometheusSgemmPolicyDiagnostics {

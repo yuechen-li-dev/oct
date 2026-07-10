@@ -53,6 +53,55 @@
 #define PROM_VK_LOCAL_SIZE_X 8u
 #define PROM_VK_LOCAL_SIZE_Y 8u
 #define PROM_VK_TILE_K 8u
+#define PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH 4u
+#define PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH 2u
+
+typedef enum prom_sgemm_submission_slot_state {
+  PROM_SGEMM_SUBMISSION_SLOT_EMPTY = 0u,
+  PROM_SGEMM_SUBMISSION_SLOT_PREPARING = 1u,
+  PROM_SGEMM_SUBMISSION_SLOT_RECORDED = 2u,
+  PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED = 3u,
+  PROM_SGEMM_SUBMISSION_SLOT_COMPLETE = 4u,
+  PROM_SGEMM_SUBMISSION_SLOT_READY = 5u,
+  PROM_SGEMM_SUBMISSION_SLOT_FAILED = 6u,
+} prom_sgemm_submission_slot_state;
+
+typedef struct prom_sgemm_submission_slot {
+  uint32_t slot_id;
+  uint32_t generation;
+  uint32_t state;
+  uint64_t submission_sequence;
+  VkCommandBuffer command_buffer;
+  VkFence fence;
+  VkDescriptorSet descriptor_set;
+  uint32_t query_base;
+  uint32_t m;
+  uint32_t n;
+  uint32_t compute_k;
+  uint32_t compute_mode;
+  uint32_t variant;
+  uint32_t timing_valid;
+  uint64_t gpu_duration_ns;
+  uint32_t failure_stage;
+  int32_t failure_detail;
+} prom_sgemm_submission_slot;
+
+typedef struct prom_sgemm_submission_ring_diag {
+  uint32_t configured_depth;
+  uint32_t outstanding;
+  uint32_t max_outstanding;
+  uint32_t acquire_cursor;
+  uint64_t next_sequence;
+  uint64_t total_submits;
+  uint64_t total_polls;
+  uint64_t total_forced_waits;
+  uint64_t total_query_harvests;
+  uint64_t ring_full_count;
+  uint64_t slot_recycle_count;
+  uint64_t slot_failure_count;
+  uint64_t total_gpu_duration_ns;
+  uint64_t gpu_timing_sample_count;
+} prom_sgemm_submission_ring_diag;
 
 static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_metadata_for_variant(uint32_t variant) {
   static prom_sgemm_kernel_dispatch_metadata scalar_plus_metadata;
@@ -667,6 +716,10 @@ typedef struct prometheus_runtime {
   VkDescriptorSetLayout descriptor_set_layout;
   VkDescriptorPool descriptor_pool;
   VkDescriptorSet descriptor_set;
+  /* M29 owns distinct resources per physical submission; legacy handles stay
+     dedicated to synchronous/async compatibility paths. */
+  prom_sgemm_submission_slot submission_ring[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
+  prom_sgemm_submission_ring_diag submission_ring_diag;
   VkCommandBuffer command_buffer;
   VkCommandBuffer transfer_command_buffer;
   VkFence submit_fence;
@@ -4233,6 +4286,17 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyFence(rt->device, rt->submit_fence, NULL);
     rt->submit_fence = VK_NULL_HANDLE;
   }
+  {
+    uint32_t ring_index;
+    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
+      if (rt->submission_ring[ring_index].fence != VK_NULL_HANDLE) {
+        vkDestroyFence(rt->device, rt->submission_ring[ring_index].fence, NULL);
+        rt->submission_ring[ring_index].fence = VK_NULL_HANDLE;
+      }
+      rt->submission_ring[ring_index].command_buffer = VK_NULL_HANDLE;
+      rt->submission_ring[ring_index].descriptor_set = VK_NULL_HANDLE;
+    }
+  }
   if (rt->transfer_submit_fence != VK_NULL_HANDLE) {
     vkDestroyFence(rt->device, rt->transfer_submit_fence, NULL);
     rt->transfer_submit_fence = VK_NULL_HANDLE;
@@ -4477,7 +4541,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     memset(&query_pool_info, 0, sizeof(query_pool_info));
     query_pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
     query_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-    query_pool_info.queryCount = 2u;
+    /* Legacy async/synchronous timing owns 0/1; M29 slots own 2..9. */
+    query_pool_info.queryCount = 2u + (2u * PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH);
     result = vkCreateQueryPool(rt->device, &query_pool_info, NULL, &rt->sgemm_timestamp_query_pool);
     if (result == VK_SUCCESS) {
       rt->timestamp_query_supported = 1u;
@@ -4553,12 +4618,12 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
 
   pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  pool_size.descriptorCount = 3u;
+  pool_size.descriptorCount = 3u * (1u + PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH);
   memset(&descriptor_pool_info, 0, sizeof(descriptor_pool_info));
   descriptor_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
   descriptor_pool_info.poolSizeCount = 1u;
   descriptor_pool_info.pPoolSizes = &pool_size;
-  descriptor_pool_info.maxSets = 1u;
+  descriptor_pool_info.maxSets = 1u + PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
   result = vkCreateDescriptorPool(rt->device, &descriptor_pool_info, NULL, &rt->descriptor_pool);
   if (result != VK_SUCCESS) {
     return result;
@@ -4572,6 +4637,26 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, &rt->descriptor_set);
   if (result != VK_SUCCESS) {
     return result;
+  }
+  {
+    VkDescriptorSetLayout ring_layouts[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
+    VkDescriptorSet ring_sets[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
+    uint32_t ring_index;
+    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
+      ring_layouts[ring_index] = rt->descriptor_set_layout;
+    }
+    set_alloc_info.descriptorSetCount = PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
+    set_alloc_info.pSetLayouts = ring_layouts;
+    result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, ring_sets);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
+      rt->submission_ring[ring_index].slot_id = ring_index;
+      rt->submission_ring[ring_index].state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+      rt->submission_ring[ring_index].descriptor_set = ring_sets[ring_index];
+      rt->submission_ring[ring_index].query_base = 2u + ring_index * 2u;
+    }
   }
 
   memset(&push_range, 0, sizeof(push_range));
@@ -4948,6 +5033,19 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   if (result != VK_SUCCESS) {
     return result;
   }
+  cmd_alloc_info.commandBufferCount = PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
+  {
+    VkCommandBuffer ring_command_buffers[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
+    uint32_t ring_index;
+    result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, ring_command_buffers);
+    if (result != VK_SUCCESS) {
+      return result;
+    }
+    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
+      rt->submission_ring[ring_index].command_buffer = ring_command_buffers[ring_index];
+    }
+  }
+  cmd_alloc_info.commandBufferCount = 1u;
   if (rt->transfer_queue_enabled != 0u) {
     cmd_alloc_info.commandPool = rt->transfer_command_pool;
     result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, &rt->transfer_command_buffer);
@@ -4961,6 +5059,15 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   result = vkCreateFence(rt->device, &fence_info, NULL, &rt->submit_fence);
   if (result != VK_SUCCESS) {
     return result;
+  }
+  {
+    uint32_t ring_index;
+    for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
+      result = vkCreateFence(rt->device, &fence_info, NULL, &rt->submission_ring[ring_index].fence);
+      if (result != VK_SUCCESS) {
+        return result;
+      }
+    }
   }
   if (rt->transfer_queue_enabled != 0u) {
     VkSemaphoreCreateInfo semaphore_info;
@@ -7187,6 +7294,172 @@ static VkPipeline prom_sgemm_pipeline_for_resident_dispatch(prometheus_runtime* 
   return rt->pipeline;
 }
 
+/* M29's ring is deliberately private to the resident diagnostic.  The shared
+   A/B/C buffers are safe here because each ordered dispatch overwrites C; this
+   is not the output-ownership model required by public multi-token async. */
+static prom_sgemm_submission_slot* prom_sgemm_ring_acquire_empty(prometheus_runtime* rt) {
+  uint32_t offset;
+  if (rt == NULL) return NULL;
+  for (offset = 0u; offset < rt->submission_ring_diag.configured_depth; ++offset) {
+    uint32_t index = (rt->submission_ring_diag.acquire_cursor + offset) % rt->submission_ring_diag.configured_depth;
+    prom_sgemm_submission_slot* slot = &rt->submission_ring[index];
+    if (slot->state == PROM_SGEMM_SUBMISSION_SLOT_READY) {
+      slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+      rt->submission_ring_diag.slot_recycle_count += 1u;
+    }
+    if (slot->state == PROM_SGEMM_SUBMISSION_SLOT_EMPTY) {
+      slot->state = PROM_SGEMM_SUBMISSION_SLOT_PREPARING;
+      slot->generation += 1u;
+      slot->submission_sequence = rt->submission_ring_diag.next_sequence++;
+      slot->failure_stage = PROM_STAGE_NONE;
+      slot->failure_detail = 0;
+      slot->timing_valid = 0u;
+      rt->submission_ring_diag.acquire_cursor = (index + 1u) % rt->submission_ring_diag.configured_depth;
+      return slot;
+    }
+  }
+  rt->submission_ring_diag.ring_full_count += 1u;
+  return NULL;
+}
+
+static int prom_sgemm_ring_harvest_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot) {
+  VkResult result;
+  uint64_t timestamps[2];
+  if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED) return PROM_ERROR;
+  slot->state = PROM_SGEMM_SUBMISSION_SLOT_COMPLETE;
+  if (rt->timestamp_query_supported != 0u) {
+    result = vkGetQueryPoolResults(rt->device, rt->sgemm_timestamp_query_pool, slot->query_base, 2u,
+                                   sizeof(timestamps), timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
+    rt->submission_ring_diag.total_query_harvests += 1u;
+    if (result == VK_SUCCESS && rt->timestamp_period_ns > 0.0f && timestamps[1] > timestamps[0]) {
+      slot->gpu_duration_ns = (uint64_t)(((double)(timestamps[1] - timestamps[0]) * (double)rt->timestamp_period_ns));
+      slot->timing_valid = slot->gpu_duration_ns > 0u ? 1u : 0u;
+      if (slot->timing_valid != 0u) {
+        rt->submission_ring_diag.total_gpu_duration_ns += slot->gpu_duration_ns;
+        rt->submission_ring_diag.gpu_timing_sample_count += 1u;
+      }
+    } else if (result != VK_SUCCESS) {
+      slot->failure_stage = PROM_STAGE_SUBMIT;
+      slot->failure_detail = (int)result;
+      slot->state = PROM_SGEMM_SUBMISSION_SLOT_FAILED;
+      rt->submission_ring_diag.slot_failure_count += 1u;
+      return PROM_ERROR;
+    }
+  }
+  slot->state = PROM_SGEMM_SUBMISSION_SLOT_READY;
+  rt->submission_ring_diag.outstanding -= 1u;
+  return PROM_OK;
+}
+
+static int prom_sgemm_ring_poll_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot) {
+  VkResult result;
+  if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED) return PROM_OK;
+  rt->submission_ring_diag.total_polls += 1u;
+  result = vkGetFenceStatus(rt->device, slot->fence);
+  if (result == VK_NOT_READY) return PROM_OK;
+  if (result != VK_SUCCESS) {
+    slot->state = PROM_SGEMM_SUBMISSION_SLOT_FAILED;
+    slot->failure_stage = PROM_STAGE_SUBMIT;
+    slot->failure_detail = (int)result;
+    rt->submission_ring_diag.slot_failure_count += 1u;
+    return PROM_ERROR;
+  }
+  return prom_sgemm_ring_harvest_slot(rt, slot);
+}
+
+static int prom_sgemm_ring_wait_oldest(prometheus_runtime* rt) {
+  prom_sgemm_submission_slot* oldest = NULL;
+  uint32_t index;
+  VkResult result;
+  if (rt == NULL) return PROM_ERROR;
+  for (index = 0u; index < rt->submission_ring_diag.configured_depth; ++index) {
+    prom_sgemm_submission_slot* candidate = &rt->submission_ring[index];
+    if (candidate->state == PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED &&
+        (oldest == NULL || candidate->submission_sequence < oldest->submission_sequence)) oldest = candidate;
+  }
+  if (oldest == NULL) return PROM_OK;
+  rt->submission_ring_diag.total_forced_waits += 1u;
+  result = vkWaitForFences(rt->device, 1u, &oldest->fence, VK_TRUE, UINT64_MAX);
+  if (result != VK_SUCCESS) return PROM_ERROR;
+  return prom_sgemm_ring_harvest_slot(rt, oldest);
+}
+
+static int prom_sgemm_record_resident_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot,
+                                           uint32_t m, uint32_t n, uint32_t compute_k, uint32_t compute_mode,
+                                           uint32_t variant) {
+  VkWriteDescriptorSet writes[3]; VkDescriptorBufferInfo infos[3]; VkCommandBufferBeginInfo begin; VkBufferMemoryBarrier barrier;
+  prom_vk_push push; VkPipeline pipeline; VkResult result; prom_sgemm_dispatch_geometry geometry;
+  if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_PREPARING) return PROM_ERROR;
+  pipeline = prom_sgemm_pipeline_for_resident_dispatch(rt, compute_mode, variant);
+  if (pipeline == VK_NULL_HANDLE) return PROM_ERROR;
+  memset(infos, 0, sizeof(infos));
+  infos[0].buffer = rt->staged_device_a.buffer; infos[0].range = rt->staged_device_a.size;
+  infos[1].buffer = rt->staged_device_b.buffer; infos[1].range = rt->staged_device_b.size;
+  infos[2].buffer = rt->staged_device_c.buffer; infos[2].range = rt->staged_device_c.size;
+  memset(writes, 0, sizeof(writes));
+  for (uint32_t i = 0u; i < 3u; ++i) { writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = slot->descriptor_set; writes[i].dstBinding = i; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].descriptorCount = 1u; writes[i].pBufferInfo = &infos[i]; }
+  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  result = vkResetCommandBuffer(slot->command_buffer, 0u); if (result != VK_SUCCESS) goto failed;
+  memset(&begin, 0, sizeof(begin)); begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  result = vkBeginCommandBuffer(slot->command_buffer, &begin); if (result != VK_SUCCESS) goto failed;
+  memset(&barrier, 0, sizeof(barrier)); barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER; barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT; barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT; barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barrier.buffer = rt->staged_device_c.buffer; barrier.size = rt->staged_device_c.size;
+  vkCmdPipelineBarrier(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, NULL, 1u, &barrier, 0, NULL);
+  vkCmdBindPipeline(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+  vkCmdBindDescriptorSets(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout, 0u, 1u, &slot->descriptor_set, 0u, NULL);
+  push.m=m; push.n=n; push.k=compute_k; vkCmdPushConstants(slot->command_buffer, rt->pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, PROM_VK_SHADER_PUSH_BYTES, &push);
+  if (rt->timestamp_query_supported != 0u) { vkCmdResetQueryPool(slot->command_buffer, rt->sgemm_timestamp_query_pool, slot->query_base, 2u); vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, slot->query_base); }
+  geometry = prom_sgemm_dispatch_geometry_for_variant(variant, m, n); vkCmdDispatch(slot->command_buffer, geometry.groups_x, geometry.groups_y, geometry.groups_z);
+  if (rt->timestamp_query_supported != 0u) vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, slot->query_base + 1u);
+  result = vkEndCommandBuffer(slot->command_buffer); if (result != VK_SUCCESS) goto failed;
+  slot->m=m; slot->n=n; slot->compute_k=compute_k; slot->compute_mode=compute_mode; slot->variant=variant; slot->state=PROM_SGEMM_SUBMISSION_SLOT_RECORDED; return PROM_OK;
+failed:
+  slot->state=PROM_SGEMM_SUBMISSION_SLOT_FAILED; slot->failure_stage=PROM_STAGE_SUBMIT; slot->failure_detail=(int)result; rt->submission_ring_diag.slot_failure_count += 1u; return PROM_ERROR;
+}
+
+static int prom_sgemm_ring_submit_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot) {
+  VkSubmitInfo info; VkResult result;
+  if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_RECORDED) return PROM_ERROR;
+  result = vkResetFences(rt->device, 1u, &slot->fence); if (result != VK_SUCCESS) goto failed;
+  memset(&info, 0, sizeof(info)); info.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; info.commandBufferCount=1u; info.pCommandBuffers=&slot->command_buffer;
+  result = vkQueueSubmit(rt->compute_queue, 1u, &info, slot->fence); if (result != VK_SUCCESS) goto failed;
+  slot->state=PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED; rt->submission_ring_diag.total_submits += 1u; rt->submission_ring_diag.outstanding += 1u;
+  if (rt->submission_ring_diag.outstanding > rt->submission_ring_diag.max_outstanding) rt->submission_ring_diag.max_outstanding=rt->submission_ring_diag.outstanding;
+  return PROM_OK;
+failed:
+  slot->state=PROM_SGEMM_SUBMISSION_SLOT_FAILED; slot->failure_stage=PROM_STAGE_SUBMIT; slot->failure_detail=(int)result; rt->submission_ring_diag.slot_failure_count += 1u; return PROM_ERROR;
+}
+
+static int prom_sgemm_resident_ring_dispatches(prometheus_runtime* rt, uint32_t count, uint32_t m, uint32_t n,
+                                               uint32_t compute_k, uint32_t compute_mode, uint32_t variant) {
+  uint32_t submitted = 0u;
+  uint32_t index;
+  if (rt == NULL) return PROM_ERROR;
+  while (submitted < count) {
+    prom_sgemm_submission_slot* slot;
+    for (index = 0u; index < rt->submission_ring_diag.configured_depth; ++index) {
+      if (prom_sgemm_ring_poll_slot(rt, &rt->submission_ring[index]) != PROM_OK) return PROM_ERROR;
+    }
+    slot = prom_sgemm_ring_acquire_empty(rt);
+    if (slot == NULL) {
+      if (prom_sgemm_ring_wait_oldest(rt) != PROM_OK) return PROM_ERROR;
+      continue;
+    }
+    if (prom_sgemm_record_resident_slot(rt, slot, m, n, compute_k, compute_mode, variant) != PROM_OK ||
+        prom_sgemm_ring_submit_slot(rt, slot) != PROM_OK) return PROM_ERROR;
+    submitted += 1u;
+  }
+  while (rt->submission_ring_diag.outstanding != 0u) {
+    if (prom_sgemm_ring_wait_oldest(rt) != PROM_OK) return PROM_ERROR;
+  }
+  if (rt->submission_ring_diag.gpu_timing_sample_count != 0u) {
+    rt->last_gpu_timing_valid = 1u;
+    rt->last_gpu_duration_ns = rt->submission_ring_diag.total_gpu_duration_ns /
+                               rt->submission_ring_diag.gpu_timing_sample_count;
+    rt->last_gpu_timing_failure_reason = PROM_SGEMM_GPU_TIMING_FAILURE_NONE;
+  }
+  return PROM_OK;
+}
+
 static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
                                              uint32_t m,
                                              uint32_t n,
@@ -7641,6 +7914,54 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                   ? prom_round_up4_u32(request->k)
                   : request->k;
 
+  if ((request->flags & PROM_SGEMM_RESIDENT_FLAG_M29_SUBMISSION_RING) != 0u) {
+    uint32_t requested_depth = request->diagnostic_batch_depth == 0u
+                                   ? PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH
+                                   : diagnostic_batch_depth;
+    if (requested_depth < 1u || requested_depth > PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH) {
+      out_result->final_stage = PROM_STAGE_SUBMIT;
+      out_result->final_detail_code = PROM_ERROR;
+      free(scratch_c); free(kernel_samples); free(submit_samples); free(wait_samples); free(query_samples);
+      return PROM_ERROR;
+    }
+    memset(&rt->submission_ring_diag, 0, sizeof(rt->submission_ring_diag));
+    rt->submission_ring_diag.configured_depth = requested_depth;
+    if (warmup_iterations != 0u &&
+        prom_sgemm_resident_ring_dispatches(rt, warmup_iterations, request->m, request->n, compute_k, compute_mode, executed_variant) != PROM_OK) {
+      out_result->final_stage = PROM_STAGE_SUBMIT; out_result->final_detail_code = PROM_ERROR;
+      free(scratch_c); free(kernel_samples); free(submit_samples); free(wait_samples); free(query_samples); return PROM_ERROR;
+    }
+    loop_begin_ns = prom_wall_clock_now_ns();
+    status = prom_sgemm_resident_ring_dispatches(rt, iterations, request->m, request->n, compute_k, compute_mode, executed_variant);
+    loop_end_ns = prom_wall_clock_now_ns();
+    if (status != PROM_OK) {
+      out_result->final_stage = PROM_STAGE_SUBMIT; out_result->final_detail_code = PROM_ERROR;
+      free(scratch_c); free(kernel_samples); free(submit_samples); free(wait_samples); free(query_samples); return status;
+    }
+    for (i = 0u; i < iterations; ++i) kernel_samples[i] = rt->last_gpu_duration_ns;
+    out_result->iterations = iterations;
+    out_result->total_loop_wall_ns = prom_wall_clock_elapsed_ns(loop_begin_ns, loop_end_ns);
+    out_result->diagnostic_batch_depth = requested_depth;
+    out_result->queue_submissions = (uint32_t)rt->submission_ring_diag.total_submits;
+    out_result->fence_waits = (uint32_t)rt->submission_ring_diag.total_forced_waits;
+    out_result->command_buffer_recordings = (uint32_t)rt->submission_ring_diag.total_submits;
+    out_result->command_buffer_resets = (uint32_t)rt->submission_ring_diag.total_submits;
+    out_result->descriptor_updates = (uint32_t)rt->submission_ring_diag.total_submits;
+    out_result->configured_ring_depth = requested_depth;
+    out_result->physical_slot_count = PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
+    out_result->max_in_flight_depth = rt->submission_ring_diag.max_outstanding;
+    out_result->ring_poll_count = rt->submission_ring_diag.total_polls;
+    out_result->ring_forced_wait_count = rt->submission_ring_diag.total_forced_waits;
+    out_result->ring_query_harvest_count = rt->submission_ring_diag.total_query_harvests;
+    out_result->ring_full_count = rt->submission_ring_diag.ring_full_count;
+    out_result->ring_slot_recycle_count = rt->submission_ring_diag.slot_recycle_count;
+    out_result->ring_failure_count = rt->submission_ring_diag.slot_failure_count;
+    for (i = 0u; i < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++i) {
+      out_result->ring_final_slot_state[i] = rt->submission_ring[i].state;
+    }
+    goto resident_timing_complete;
+  }
+
   for (i = 0u; i < warmup_iterations; ++i) {
     status = prom_sgemm_resident_dispatch_once(rt,
                                                request->m,
@@ -7704,6 +8025,9 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
   out_result->command_buffer_recordings = iterations;
   out_result->command_buffer_resets = iterations;
   out_result->descriptor_updates = iterations;
+  out_result->gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
+  out_result->gpu_timestamp_valid = 1u;
+resident_timing_complete:
   out_result->gpu_timing_failure_reason = rt->last_gpu_timing_failure_reason;
   out_result->gpu_timestamp_valid = 1u;
   for (i = 0u; i < iterations; ++i) {
