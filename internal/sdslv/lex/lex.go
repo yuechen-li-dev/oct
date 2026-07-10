@@ -25,10 +25,11 @@ func Analyze(file source.File) (Result, error) {
 }
 
 type lexer struct {
-	source string
-	offset int
-	line   int
-	column int
+	source        string
+	offset        int
+	line          int
+	column        int
+	foreignHeader bool
 }
 
 func (l *lexer) lexAll() ([]token.Token, error) {
@@ -75,7 +76,11 @@ func (l *lexer) nextToken() (token.Token, error) {
 	r, _ := l.peekRune()
 	if isIdentifierStart(r) {
 		lexeme := l.scanIdentifier()
-		return token.Token{Kind: token.LookupKeyword(lexeme), Lexeme: lexeme, Line: line, Column: column}, nil
+		kind := token.LookupKeyword(lexeme)
+		if kind == token.KeywordHLSL {
+			l.foreignHeader = true
+		}
+		return token.Token{Kind: kind, Lexeme: lexeme, Line: line, Column: column}, nil
 	}
 	if unicode.IsDigit(r) {
 		kind, lexeme, err := l.scanNumber()
@@ -95,6 +100,12 @@ func (l *lexer) nextToken() (token.Token, error) {
 		l.advanceRune()
 		return token.Token{Kind: token.RightParen, Lexeme: ")", Line: line, Column: column}, nil
 	case '{':
+		if l.foreignHeader {
+			l.advanceRune()
+			raw, err := l.scanForeignBlock(line, column)
+			l.foreignHeader = false
+			return token.Token{Kind: token.RawForeignSource, Lexeme: raw, Line: line, Column: column}, err
+		}
 		l.advanceRune()
 		return token.Token{Kind: token.LeftBrace, Lexeme: "{", Line: line, Column: column}, nil
 	case '}':
@@ -178,6 +189,63 @@ func (l *lexer) nextToken() (token.Token, error) {
 		return token.Token{Kind: token.Bang, Lexeme: "!", Line: line, Column: column}, nil
 	}
 	return token.Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
+}
+
+// scanForeignBlock owns raw target text. It recognizes HLSL strings and both comment
+// styles so braces in them never affect the SDSL-V boundary.
+func (l *lexer) scanForeignBlock(line, column int) (string, error) {
+	start, depth := l.offset, 1
+	for !l.atEnd() {
+		if l.matchString("//") {
+			for !l.atEnd() {
+				r, _ := l.peekRune()
+				if r == '\n' {
+					break
+				}
+				l.advanceRune()
+			}
+			continue
+		}
+		if l.matchString("/*") {
+			for !l.atEnd() && !l.matchString("*/") {
+				l.advanceRune()
+			}
+			continue
+		}
+		r, _ := l.peekRune()
+		if r == '"' {
+			l.advanceRune()
+			for !l.atEnd() {
+				q, _ := l.peekRune()
+				l.advanceRune()
+				if q == '\\' && !l.atEnd() {
+					l.advanceRune()
+					continue
+				}
+				if q == '"' {
+					break
+				}
+			}
+			continue
+		}
+		if r == '{' {
+			depth++
+			l.advanceRune()
+			continue
+		}
+		if r == '}' {
+			depth--
+			if depth == 0 {
+				raw := l.source[start:l.offset]
+				l.advanceRune()
+				return raw, nil
+			}
+			l.advanceRune()
+			continue
+		}
+		l.advanceRune()
+	}
+	return "", fmt.Errorf("unterminated inline HLSL block at %d:%d", line, column)
 }
 
 func (l *lexer) scanIdentifier() string {

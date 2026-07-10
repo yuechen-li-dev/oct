@@ -205,6 +205,8 @@ func (e *emitter) emitBlock(block vdmir.Block) {
 
 func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 	switch s := stmt.(type) {
+	case vdmir.ForeignShaderStmt:
+		e.emitForeignSource(s.Provenance.Path, s.SourceLine, s.RawSource)
 	case vdmir.LetStmt:
 		if s.Value == nil {
 			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
@@ -246,8 +248,17 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitGuardedReadLet(s, guardedRead)
 			return
 		}
+		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
+			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
+			e.emitForeignExpressionAssignment(hlslIdentifier(s.Name), foreign)
+			return
+		}
 		e.line(fmt.Sprintf("%s = %s;", typeRef(s.Type, s.Name), e.expr(s.Value)))
 	case vdmir.AssignStmt:
+		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
+			e.emitForeignExpressionAssignment(e.expr(s.Target), foreign)
+			return
+		}
 		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
 			e.emitReductionAssign(e.expr(s.Target), reduction)
 			return
@@ -313,8 +324,19 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitGuardedReadReturn(guardedRead)
 			return
 		}
+		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
+			temp := e.nextTempWithPrefix("inline_hlsl")
+			e.line(fmt.Sprintf("%s;", typeRef(foreign.Type(), temp)))
+			e.emitForeignExpressionAssignment(temp, foreign)
+			e.line("return " + temp + ";")
+			return
+		}
 		e.line("return " + e.expr(s.Value) + ";")
 	case vdmir.ExprStmt:
+		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
+			e.emitForeignExprStatement(foreign)
+			return
+		}
 		e.line(e.expr(s.Value) + ";")
 	case vdmir.BlockStmt:
 		e.emitBlock(s.Body)
@@ -564,6 +586,8 @@ func (e *emitter) emitDeriveResultAssignments(target string, derive vdmir.Derive
 
 func (e *emitter) expr(expr vdmir.Expr) string {
 	switch x := expr.(type) {
+	case vdmir.ForeignShaderExpr:
+		return "/* inline HLSL expressions require a statement-valued context */"
 	case vdmir.LiteralExpr:
 		return x.Value
 	case vdmir.VarRefExpr:
@@ -617,6 +641,31 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 	default:
 		return "/* unsupported */"
 	}
+}
+
+func (e *emitter) emitForeignSource(path string, line int, raw string) {
+	e.line(fmt.Sprintf("// BEGIN INLINE HLSL %s:%d", path, line))
+	for _, sourceLine := range strings.Split(raw, "\n") {
+		e.line(sourceLine)
+	}
+	e.line("// END INLINE HLSL")
+}
+
+func (e *emitter) emitForeignExprStatement(expr vdmir.ForeignShaderExpr) {
+	temp := e.nextTempWithPrefix("inline_hlsl")
+	e.line(fmt.Sprintf("%s;", typeRef(expr.Type(), temp)))
+	e.emitForeignExpressionAssignment(temp, expr)
+}
+
+func (e *emitter) emitForeignExpressionAssignment(target string, expr vdmir.ForeignShaderExpr) {
+	// HLSL has no portable immediate lambda expression. Keeping the source as a
+	// local block makes it valid for DXC and preserves the declared result boundary.
+	body := strings.Replace(expr.RawSource, "return", target+" =", 1)
+	e.line("{")
+	e.indent++
+	e.emitForeignSource(expr.Provenance.Path, expr.SourceLine, body)
+	e.indent--
+	e.line("}")
 }
 
 func reductionIdentityLiteral(expr vdmir.ReductionExpr) string {

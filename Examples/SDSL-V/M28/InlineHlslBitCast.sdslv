@@ -1,0 +1,8 @@
+// M28 proof fixture: asuint bit-cast has no first-class SDSL-V intrinsic yet.
+shader InlineHlslBitCast {
+stage compute [numthreads(32, 1, 1)] fn CS() -> void {
+let lane: u32 = HLSL<u32> { return asuint(1.0); };
+HLSL { GroupMemoryBarrierWithGroupSync(); }
+return;
+}
+}

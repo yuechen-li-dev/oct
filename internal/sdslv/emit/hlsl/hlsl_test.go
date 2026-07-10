@@ -40,6 +40,19 @@ return;
 	}
 }
 
+func TestSdslvInlineHlslEmitsSourceMarkers(t *testing.T) {
+	out := emitSource(t, `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+HLSL { GroupMemoryBarrierWithGroupSync(); }
+let lane: u32 = HLSL<u32> { return WaveGetLaneIndex(); };
+return;
+} }`)
+	for _, want := range []string{"BEGIN INLINE HLSL test.sdslv:", "GroupMemoryBarrierWithGroupSync();", "WaveGetLaneIndex()", "END INLINE HLSL"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestEmitBoardValuesAsHLSLStructs(t *testing.T) {
 	out := emitSource(t, `board LoadCoord {
 linear: u32;

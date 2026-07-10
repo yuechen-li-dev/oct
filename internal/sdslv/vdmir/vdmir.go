@@ -3,17 +3,20 @@ package vdmir
 import "github.com/yuechen-li-dev/oct/internal/source"
 
 type Module struct {
-	Provenance  Provenance
-	Namespace   string
-	TypeAliases []TypeAlias
-	Records     []Record
-	Boards      []Board
-	Streams     []Stream
-	Enums       []Enum
-	Resources   []Resource
-	Workgroups  []WorkgroupMemoryDecl
-	Functions   []Function
-	EntryPoints []ComputeEntryPoint
+	Provenance Provenance
+	// ForeignTargets is the explicit portability requirement collected during
+	// lowering. A backend must reject a module that names a target it cannot own.
+	ForeignTargets []string
+	Namespace      string
+	TypeAliases    []TypeAlias
+	Records        []Record
+	Boards         []Board
+	Streams        []Stream
+	Enums          []Enum
+	Resources      []Resource
+	Workgroups     []WorkgroupMemoryDecl
+	Functions      []Function
+	EntryPoints    []ComputeEntryPoint
 }
 
 type Provenance struct {
@@ -249,6 +252,15 @@ type ExprStmt struct {
 
 func (ExprStmt) stmtNode() {}
 
+type ForeignShaderStmt struct {
+	Provenance                Provenance
+	TargetLanguage, RawSource string
+	Captures                  []string
+	SourceLine                int
+}
+
+func (ForeignShaderStmt) stmtNode() {}
+
 type BlockStmt struct {
 	Provenance Provenance
 	Body       Block
@@ -306,6 +318,17 @@ type VarRefExpr struct {
 
 func (VarRefExpr) exprNode()    {}
 func (e VarRefExpr) Type() Type { return e.ExprType }
+
+type ForeignShaderExpr struct {
+	Provenance                Provenance
+	ExprType                  Type
+	TargetLanguage, RawSource string
+	Captures                  []string
+	SourceLine                int
+}
+
+func (ForeignShaderExpr) exprNode()    {}
+func (e ForeignShaderExpr) Type() Type { return e.ExprType }
 
 type VarKind string
 

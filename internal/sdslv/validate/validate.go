@@ -78,13 +78,13 @@ type conceptFieldSpec struct {
 type varOrigin string
 
 const (
-	varLocal     varOrigin = "local"
-	varParam     varOrigin = "param"
-	varResource  varOrigin = "resource"
-	varWorkgroup varOrigin = "workgroup"
-	varBuiltin   varOrigin = "builtin"
-	varComptime  varOrigin = "comptime"
-	varFlowBoard varOrigin = "flow_board"
+	varLocal       varOrigin = "local"
+	varParam       varOrigin = "param"
+	varResource    varOrigin = "resource"
+	varWorkgroup   varOrigin = "workgroup"
+	varBuiltin     varOrigin = "builtin"
+	varComptime    varOrigin = "comptime"
+	varFlowBoard   varOrigin = "flow_board"
 	varDeriveSelf  varOrigin = "derive_self"
 	varDeriveLater varOrigin = "derive_later"
 )
@@ -107,6 +107,51 @@ type validator struct {
 	shaderDecls    map[string]ast.ShaderDecl
 	compileAliases map[string]struct{}
 	resources      map[string]ast.ResourceDecl
+}
+
+// Inline source is deliberately not a security boundary. These checks reject the
+// interface-shaping constructs that would undermine SDSL-V ownership; DXC owns the
+// remaining HLSL grammar and semantics.
+func (v *validator) validateForeignBlock(target, raw string, captures []string, scope map[string]varInfo, result ast.TypeRef, expression bool) {
+	if target != "HLSL" {
+		v.errorf("unsupported foreign shader target %s", target)
+		return
+	}
+	for _, forbidden := range []string{"#", "register(", "cbuffer", "Texture", "Sampler", "RWBuffer", "Buffer<", "[numthreads", "struct ", "namespace "} {
+		if strings.Contains(raw, forbidden) {
+			v.errorf("inline HLSL contains forbidden interface construct %q", forbidden)
+		}
+	}
+	if expression && !strings.Contains(raw, "return") {
+		v.errorf("typed inline HLSL block must contain return")
+	}
+	seen := map[string]struct{}{}
+	for _, name := range captures {
+		if _, ok := seen[name]; ok {
+			v.errorf("duplicate inline HLSL capture %s", name)
+			continue
+		}
+		seen[name] = struct{}{}
+		value, ok := scope[name]
+		if !ok {
+			v.errorf("inline HLSL capture %s is not in scope", name)
+			continue
+		}
+		if !foreignValueType(v.resolveAlias(value.typ)) {
+			v.errorf("inline HLSL cannot capture %s; extract a supported scalar or vector value before the foreign block", typeName(value.typ))
+		}
+	}
+	if expression && !foreignValueType(v.resolveAlias(result)) {
+		v.errorf("inline HLSL result type %s is not a supported scalar or vector value", typeName(result))
+	}
+}
+
+func foreignValueType(t ast.TypeRef) bool {
+	switch t.Name {
+	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+		return true
+	}
+	return false
 }
 
 func (v *validator) seedBuiltins() {
@@ -686,6 +731,8 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 
 func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam, insideFlowState bool) {
 	switch s := stmt.(type) {
+	case ast.ForeignShaderStmt:
+		v.validateForeignBlock(s.TargetLanguage, s.RawSource, s.Captures, scope, ast.TypeRef{}, false)
 	case ast.LetStmt:
 		v.validateType(s.Type)
 		if s.Type.Name == "tile" {
@@ -1247,6 +1294,9 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 
 func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, expected *ast.TypeRef, currentDeriveField string) ast.TypeRef {
 	switch e := expr.(type) {
+	case ast.ForeignShaderExpr:
+		v.validateForeignBlock(e.TargetLanguage, e.RawSource, e.Captures, scope, e.ResultType, true)
+		return v.resolveAlias(e.ResultType)
 	case ast.IntegerLiteral:
 		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
 			return ast.TypeRef{Name: "u32"}

@@ -713,6 +713,8 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		return p.parseFlowStmt()
 	case token.KeywordFor:
 		return p.parseFor(nil)
+	case token.KeywordHLSL:
+		return p.parseForeignStmt()
 	default:
 		if p.current().Kind == token.Identifier {
 			switch p.current().Lexeme {
@@ -743,6 +745,43 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		}
 		return ast.ExprStmt{Value: left}, nil
 	}
+}
+
+func (p *parser) parseForeignStmt() (ast.Stmt, error) {
+	t := p.current()
+	p.advance()
+	captures, err := p.parseForeignCaptures()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := p.expect(token.RawForeignSource, "expected '{' to start inline HLSL block")
+	if err != nil {
+		return nil, err
+	}
+	if p.match(token.Semicolon) { /* optional terminator */
+	}
+	return ast.ForeignShaderStmt{TargetLanguage: "HLSL", Captures: captures, RawSource: raw.Lexeme, Line: t.Line, Column: t.Column}, nil
+}
+
+func (p *parser) parseForeignCaptures() ([]string, error) {
+	if !p.match(token.LeftParen) {
+		return nil, nil
+	}
+	var out []string
+	if p.current().Kind != token.RightParen {
+		for {
+			n, err := p.expect(token.Identifier, "expected capture name")
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, n.Lexeme)
+			if !p.match(token.Comma) {
+				break
+			}
+		}
+	}
+	_, err := p.expect(token.RightParen, "expected ')' after inline HLSL captures")
+	return out, err
 }
 
 func (p *parser) parseFlowStmt() (ast.FlowStmt, error) {
@@ -1412,6 +1451,8 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return p.parseMatchExpr()
 	case token.KeywordDerive:
 		return p.parseDeriveExpr()
+	case token.KeywordHLSL:
+		return p.parseForeignExpr()
 	case token.LeftParen:
 		p.advance()
 		inner, err := p.parseExpression()
@@ -1427,6 +1468,30 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseForeignExpr() (ast.Expr, error) {
+	t := p.current()
+	p.advance()
+	if _, err := p.expect(token.LeftAngle, "typed inline HLSL requires '<ResultType>'"); err != nil {
+		return nil, err
+	}
+	typ, err := p.parseTypeRef(false)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = p.expect(token.RightAngle, "expected '>' after inline HLSL result type"); err != nil {
+		return nil, err
+	}
+	captures, err := p.parseForeignCaptures()
+	if err != nil {
+		return nil, err
+	}
+	raw, err := p.expect(token.RawForeignSource, "expected '{' to start inline HLSL block")
+	if err != nil {
+		return nil, err
+	}
+	return ast.ForeignShaderExpr{TargetLanguage: "HLSL", ResultType: typ, Captures: captures, RawSource: raw.Lexeme, Line: t.Line, Column: t.Column}, nil
 }
 
 func (p *parser) parseDeriveExpr() (ast.DeriveExpr, error) {

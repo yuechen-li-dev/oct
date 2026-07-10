@@ -5,10 +5,11 @@ type Kind string
 const (
 	EOF Kind = "EOF"
 
-	Identifier    Kind = "Identifier"
-	IntLiteral    Kind = "IntLiteral"
-	FloatLiteral  Kind = "FloatLiteral"
-	StringLiteral Kind = "StringLiteral"
+	Identifier       Kind = "Identifier"
+	IntLiteral       Kind = "IntLiteral"
+	FloatLiteral     Kind = "FloatLiteral"
+	StringLiteral    Kind = "StringLiteral"
+	RawForeignSource Kind = "RawForeignSource"
 
 	KeywordNamespace Kind = "KeywordNamespace"
 	KeywordUse       Kind = "KeywordUse"
@@ -62,6 +63,7 @@ const (
 	KeywordAnd       Kind = "KeywordAnd"
 	KeywordOr        Kind = "KeywordOr"
 	KeywordNot       Kind = "KeywordNot"
+	KeywordHLSL      Kind = "KeywordHLSL"
 
 	LeftParen    Kind = "LeftParen"
 	RightParen   Kind = "RightParen"
@@ -205,6 +207,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordOr
 	case "not":
 		return KeywordNot
+	case "HLSL":
+		return KeywordHLSL
 	default:
 		return Identifier
 	}

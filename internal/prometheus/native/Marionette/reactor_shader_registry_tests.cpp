@@ -28,7 +28,7 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(14), prom_shader_registry_shader_asset_count(), "all current SPIR-V assets must be present");
+  ASSERT_EQUAL(static_cast<std::size_t>(15), prom_shader_registry_shader_asset_count(), "all current SPIR-V assets must be present");
 }
 FACT(PrometheusShaderRegistryReferencesAreValid) {
   for (std::size_t i = 0; i < prom_shader_registry_compute_implementation_count(); ++i) {
@@ -63,12 +63,17 @@ FACT(PrometheusComputeImplementationLookupIsDeterministic) {
 FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
   const auto root = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT);
   const std::string manifest = read_file(root / "internal/prometheus/native/shaders/manifest.json");
-  ASSERT_TRUE(manifest.find("prometheus.shader-registry.v1") != std::string::npos, "manifest must declare registry schema");
+  ASSERT_TRUE(manifest.find("prometheus.shader-registry.v2") != std::string::npos, "manifest must declare registry schema");
   for (std::size_t i = 0; i < prom_shader_registry_shader_asset_count(); ++i) {
     const auto* asset = prom_shader_registry_shader_asset_at(i);
     ASSERT_TRUE(manifest.find(asset->name) != std::string::npos, "every runtime asset must appear in manifest");
     if (asset->generated != 0u) ASSERT_TRUE(std::filesystem::exists(root / "internal/prometheus/native" / asset->generated_header_path), "generated header must exist");
   }
+  const auto* proof = prom_shader_registry_find_shader(15u);
+  ASSERT_TRUE(proof != nullptr, "M28 proof asset must be registered");
+  ASSERT_EQUAL(1u, proof->contains_inline_hlsl, "proof provenance must record inline HLSL");
+  ASSERT_EQUAL(2u, proof->inline_hlsl_block_count, "proof block count must agree with source");
+  ASSERT_TRUE(std::string(proof->foreign_targets) == "HLSL", "proof target provenance must be HLSL");
 }
 FACT(PrometheusComputePipelineInstancesMatchDescriptors) {
   std::array<VkPipeline, PROM_COMPUTE_PIPELINE_COUNT> pipelines{};

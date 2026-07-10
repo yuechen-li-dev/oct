@@ -121,7 +121,90 @@ func Module(module ast.Module) (vdmir.Module, error) {
 			return vdmir.Module{}, fmt.Errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 		}
 	}
+	out.ForeignTargets = collectForeignTargets(module)
 	return out, nil
+}
+
+// ModuleForTarget is the target gate for present and future backends. HLSL is
+// the only registered foreign target in M28; callers for another target get a
+// clear rejection instead of accidental raw-source emission.
+func ModuleForTarget(module ast.Module, target string) (vdmir.Module, error) {
+	out, err := Module(module)
+	if err != nil {
+		return vdmir.Module{}, err
+	}
+	for _, foreign := range out.ForeignTargets {
+		if foreign != target {
+			return vdmir.Module{}, fmt.Errorf("this shader contains inline %s and cannot be lowered to target %s", foreign, target)
+		}
+	}
+	return out, nil
+}
+
+func collectForeignTargets(module ast.Module) []string {
+	seen := map[string]struct{}{}
+	var walkExpr func(ast.Expr)
+	var walkBlock func(ast.Block)
+	add := func(target string) { seen[target] = struct{}{} }
+	walkExpr = func(expr ast.Expr) {
+		switch e := expr.(type) {
+		case ast.ForeignShaderExpr:
+			add(e.TargetLanguage)
+		case ast.BinaryExpr:
+			walkExpr(e.Left)
+			walkExpr(e.Right)
+		case ast.UnaryExpr:
+			walkExpr(e.Operand)
+		case ast.ParenExpr:
+			walkExpr(e.Inner)
+		case ast.CallExpr:
+			walkExpr(e.Callee)
+			for _, a := range e.Arguments {
+				walkExpr(a)
+			}
+		}
+	}
+	walkBlock = func(block ast.Block) {
+		for _, stmt := range block.Statements {
+			switch s := stmt.(type) {
+			case ast.ForeignShaderStmt:
+				add(s.TargetLanguage)
+			case ast.LetStmt:
+				walkExpr(s.Value)
+			case ast.AssignStmt:
+				walkExpr(s.Target)
+				walkExpr(s.Value)
+			case ast.ReturnStmt:
+				walkExpr(s.Value)
+			case ast.ExprStmt:
+				walkExpr(s.Value)
+			case ast.IfStmt:
+				walkExpr(s.Condition)
+				walkBlock(s.ThenBody)
+				if s.ElseBody != nil {
+					walkBlock(*s.ElseBody)
+				}
+			case ast.ForStmt:
+				walkBlock(s.Body)
+			}
+		}
+	}
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.FunctionDecl:
+			walkBlock(d.Body)
+		case ast.ShaderDecl:
+			for _, method := range d.Methods {
+				walkBlock(method.Body)
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for target := range seen {
+		out = append(out, target)
+	}
+	slices.Sort(out)
+	return out
 }
 
 type specializeValue struct {
@@ -1837,6 +1920,8 @@ func (l *lowering) lowerBlock(block ast.Block, scope map[string]binding, locals 
 
 func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
 	switch s := stmt.(type) {
+	case ast.ForeignShaderStmt:
+		return vdmir.ForeignShaderStmt{Provenance: l.provenance, TargetLanguage: s.TargetLanguage, RawSource: s.RawSource, Captures: s.Captures, SourceLine: s.Line}, nil
 	case ast.LetStmt:
 		loweredType := l.lowerTypeRef(s.Type)
 		var value vdmir.Expr
@@ -2017,6 +2102,8 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 
 func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding, shaderName string, expected *ast.TypeRef) (vdmir.Expr, error) {
 	switch e := expr.(type) {
+	case ast.ForeignShaderExpr:
+		return vdmir.ForeignShaderExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(e.ResultType)), TargetLanguage: e.TargetLanguage, RawSource: e.RawSource, Captures: e.Captures, SourceLine: e.Line}, nil
 	case ast.IntegerLiteral:
 		typ := vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
 		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {

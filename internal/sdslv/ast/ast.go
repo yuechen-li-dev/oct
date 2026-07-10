@@ -262,6 +262,16 @@ type ExprStmt struct {
 
 func (ExprStmt) stmtNode() {}
 
+// ForeignShaderStmt/Expr are target-generic on purpose; HLSL is merely the first
+// registered target-language boundary.
+type ForeignShaderStmt struct {
+	TargetLanguage, RawSource string
+	Captures                  []string
+	Line, Column              int
+}
+
+func (ForeignShaderStmt) stmtNode() {}
+
 type IfStmt struct {
 	Condition Expr
 	ThenBody  Block
@@ -398,6 +408,16 @@ func (StringLiteral) exprNode() {}
 type IdentifierExpr struct{ Name string }
 
 func (IdentifierExpr) exprNode() {}
+
+type ForeignShaderExpr struct {
+	TargetLanguage string
+	ResultType     TypeRef
+	RawSource      string
+	Captures       []string
+	Line, Column   int
+}
+
+func (ForeignShaderExpr) exprNode() {}
 
 type FieldAccessExpr struct {
 	Target Expr

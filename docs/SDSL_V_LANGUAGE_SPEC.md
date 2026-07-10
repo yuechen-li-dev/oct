@@ -942,7 +942,23 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 
 ## Reserved keywords
 
-The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `derive`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`, `and`, `or`, `not`.
+The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `derive`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`, `and`, `or`, `not`, `HLSL`.
+
+## Foreign target-language blocks (M28)
+
+`HLSL` is a narrow, visible escape hatch for a target operation that SDSL-V cannot yet express. It is not core SDSL-V semantics and must not be used to embed a complete shader or claim its resources, entry points, bindings, or dispatch metadata.
+
+```sdslv
+HLSL { GroupMemoryBarrierWithGroupSync(); }
+let bits: u32 = HLSL<u32> { return asuint(1.0); };
+let fused: f32 = HLSL<f32>(a, b, c) { return mad(a, b, c); };
+```
+
+The statement form has no value. The expression form requires an authoritative SDSL-V result type and an HLSL `return`. A capture list is explicit: only listed in-scope scalar/vector values cross the boundary; raw source does not implicitly capture ordinary SDSL-V locals. Duplicate or unknown captures are errors. M28 accepts `bool`, `i32`, `u32`, `f32`/`float`, and supported fixed vectors; boards, records, flow state, enums, arrays, resources, views, and opaque values must first be reduced to a supported value.
+
+The lexer preserves raw text with nested braces, strings, and line/block comments. DXC validates HLSL syntax; generated HLSL surrounds every block with source-file/line markers for diagnostics. M28 conservatively rejects interface-shaping source such as preprocessor directives, resource/cbuffer/register declarations, entry attributes, helpers/structs, and namespaces. This is a correctness boundary, not a security sandbox.
+
+An HLSL-containing module records `HLSL` as a foreign-target requirement. HLSL lowering supports it; a future MSL/GLSL/WGSL backend must reject it until it explicitly provides an alternate foreign mechanism. Foreign blocks are intentionally non-portable and should be small. Repeated patterns are evidence for a first-class SDSL-V feature, not a reason to expand raw HLSL usage.
 
 ---
 

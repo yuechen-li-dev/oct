@@ -74,6 +74,9 @@ typedef struct prom_shader_asset {
   const char* source_path;
   const char* generated_header_path;
   uint32_t generated;
+  uint32_t contains_inline_hlsl;
+  uint32_t inline_hlsl_block_count;
+  const char* foreign_targets;
 } prom_shader_asset;
 
 typedef struct prom_compute_implementation {

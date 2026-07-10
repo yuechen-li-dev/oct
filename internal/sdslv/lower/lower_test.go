@@ -11,6 +11,24 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
+func TestSdslvInlineHlslRejectsUnsupportedLoweringTarget(t *testing.T) {
+	result, err := lex.Analyze(source.File{Path: "inline.sdslv", Text: `fn F() -> void { HLSL { GroupMemoryBarrierWithGroupSync(); } return; }`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ModuleForTarget(module, "MSL")
+	if err == nil || !strings.Contains(err.Error(), "contains inline HLSL and cannot be lowered to target MSL") {
+		t.Fatalf("want target constraint diagnostic, got %v", err)
+	}
+}
+
 func TestModuleLowersVectorAddToVDMIR(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 record VectorParams { Count: u32; }

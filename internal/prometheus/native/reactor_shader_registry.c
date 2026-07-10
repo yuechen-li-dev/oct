@@ -13,6 +13,7 @@
 #include "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
+#include "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -25,10 +26,10 @@ static const prom_sgemm_kernel_dispatch_metadata k_meta_16x16 = PROM_META(16u, 1
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x2 = PROM_META(8u, 8u, 2u, 2u, 16u, 16u, 16u, 1u);
 
 #define ASSET(id, label, words, language, source, header, generated) \
-  { id, label, PROM_SHADER_STAGE_COMPUTE, words, sizeof(words), "main", 0u, language, source, header, generated }
+  { id, label, PROM_SHADER_STAGE_COMPUTE, words, sizeof(words), "main", 0u, language, source, header, generated, 0u, 0u, NULL }
 
 static const prom_shader_asset k_shader_assets[] = {
-  { 1u, "sgemm-baseline-scalar", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_spirv, 2668u, "main", 0u, PROM_SHADER_SOURCE_SPIRV, "reactor_vulkan_sgemm.c", "embedded", 0u },
+  { 1u, "sgemm-baseline-scalar", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_spirv, 2668u, "main", 0u, PROM_SHADER_SOURCE_SPIRV, "reactor_vulkan_sgemm.c", "embedded", 0u, 0u, 0u, NULL },
   ASSET(2u, "sgemm-tiled", k_prom_sgemm_tiled_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_tiled_spirv.h", 1u),
   ASSET(3u, "sgemm-memory-conservative", k_prom_sgemm_memory_conservative_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_memory_conservative_spirv.h", 1u),
   ASSET(4u, "sgemm-sdsl-scalar-plus", k_prom_sgemm_scalar_plus_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv", "reactor_vulkan_sgemm_scalar_plus_spirv.h", 1u),
@@ -42,6 +43,7 @@ static const prom_shader_asset k_shader_assets[] = {
   ASSET(12u, "sgemm-a2x4", k_prom_sgemm_a2x4_row_biased_accum8_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_a2x4_row_biased_accum8_spirv.h", 1u),
   ASSET(13u, "sgemm-packed4", k_prom_sgemm_packed4_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_packed4_spirv.h", 1u),
   ASSET(14u, "sgemm-fp16-storage-fp32-accum", k_prom_sgemm_fp16_storage_fp32accum_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_fp16_spirv.h", 1u),
+  { 15u, "sdslv-inline-hlsl-bitcast-proof", PROM_SHADER_STAGE_COMPUTE, k_prom_inline_hlsl_bitcast_proof_spirv, sizeof(k_prom_inline_hlsl_bitcast_proof_spirv), "InlineHlslBitCastProof_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/inline_hlsl_bitcast_proof.sdslv", "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h", 1u, 1u, 2u, "HLSL" },
 };
 
 #define IMPL(id, label, shader, meta, slot) { id, PROM_SHADER_OPERATION_SGEMM, label, shader, meta, 0u, 1u, 1u, 1u, slot }
@@ -71,7 +73,7 @@ uint32_t prom_shader_registry_is_selector_eligible(uint32_t id) { const prom_com
 uint32_t prom_shader_registry_validate_tables(const prom_shader_asset* assets, size_t asset_count,
                                               const prom_compute_implementation* implementations, size_t implementation_count) {
   if (assets == NULL || implementations == NULL || asset_count == 0u || implementation_count == 0u) return 0u;
-  for (size_t i=0u;i<asset_count;++i) { const prom_shader_asset* a=&assets[i]; if(a->shader_id==0u||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->entry_point==NULL||a->entry_point[0]=='\0'||a->spirv_words==NULL||a->spirv_size_bytes==0u||(a->spirv_size_bytes%sizeof(uint32_t))!=0u) return 0u; for(size_t j=i+1u;j<asset_count;++j) if(a->shader_id==assets[j].shader_id) return 0u; }
+  for (size_t i=0u;i<asset_count;++i) { const prom_shader_asset* a=&assets[i]; if(a->shader_id==0u||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->entry_point==NULL||a->entry_point[0]=='\0'||a->spirv_words==NULL||a->spirv_size_bytes==0u||(a->spirv_size_bytes%sizeof(uint32_t))!=0u||(a->contains_inline_hlsl==0u&&a->inline_hlsl_block_count!=0u)||(a->contains_inline_hlsl!=0u&&(a->inline_hlsl_block_count==0u||a->foreign_targets==NULL||a->foreign_targets[0]=='\0'))) return 0u; for(size_t j=i+1u;j<asset_count;++j) if(a->shader_id==assets[j].shader_id) return 0u; }
   for (size_t i=0u;i<implementation_count;++i) { const prom_compute_implementation* c=&implementations[i]; const prom_shader_asset* a=NULL; for(size_t k=0u;k<asset_count;++k) if(assets[k].shader_id==c->shader_id) { a=&assets[k]; break; } if(c->implementation_id==0u||c->operation_id!=PROM_SHADER_OPERATION_SGEMM||c->dispatch==NULL||a==NULL||a->stage!=PROM_SHADER_STAGE_COMPUTE||(c->selector_eligible!=0u&&c->dispatchable==0u)||(c->benchmark_enabled!=0u&&c->dispatchable==0u)||c->pipeline_slot>=PROM_COMPUTE_PIPELINE_COUNT) return 0u; for(size_t j=i+1u;j<implementation_count;++j) if(c->implementation_id==implementations[j].implementation_id) return 0u; } return 1u;
 }
 uint32_t prom_shader_registry_validate(void) { return prom_shader_registry_validate_tables(k_shader_assets, prom_shader_registry_shader_asset_count(), k_compute_implementations, prom_shader_registry_compute_implementation_count()); }

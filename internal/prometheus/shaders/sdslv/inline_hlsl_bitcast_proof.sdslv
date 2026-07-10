@@ -1,0 +1,9 @@
+// M28 benchmark/test-only proof. `asuint` is deliberately foreign: SDSL-V has
+// no first-class typed bit-cast surface yet.
+shader InlineHlslBitCastProof {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let bits: u32 = HLSL<u32> { return asuint(1.0); };
+HLSL { GroupMemoryBarrierWithGroupSync(); }
+return;
+}
+}
