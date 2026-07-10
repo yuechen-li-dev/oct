@@ -137,3 +137,7 @@ when policy requires persistent policy state; SDSL-V M19 does not support it yet
 - `examples/SDSL-V/M19/GuardWhenBasic.sdslv`
 - `examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
 - `examples/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`
+
+## Prometheus M20 Usage
+
+`internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv` uses runtime guard `when` to split exact-tile SGEMM loads/stores from tail-safe guarded memory access. The generated HLSL keeps direct exact-path A/B loads outside the guarded-read fallback temp blocks while preserving guarded fallback behavior in the tail path.

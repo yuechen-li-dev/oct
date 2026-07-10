@@ -277,6 +277,14 @@ Not recommended as the first M19 step:
 - production selector retuning
 - dispatch policy changes
 
+## Follow-up: M20 ExactTail
+
+M20 followed the second M18 option by using M19 runtime guard `when` for a shader-level exact/tail split:
+
+- `internal/prometheus/DevelopmentReport/SDSL_V_M20_EXACTTAIL_SGEMM.md`
+
+The result confirms that the exact path can remove guarded-read branch noise in generated HLSL, but the performance result is mixed and does not justify production promotion or selector retuning.
+
 ## Honest Conclusion
 
 M17 did move performance forward, but only in a bounded way.

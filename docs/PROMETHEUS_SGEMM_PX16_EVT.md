@@ -275,6 +275,39 @@ Architecture status remains unchanged:
 - the M17/M18 reg2x2 kernel is still explicit benchmark-only
 - dispatch authority and runtime policy stay unchanged
 
+## SDSL-V M20
+
+SDSL-V M20 adds `SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32`, an explicit benchmark-only variant derived from the M17 reg2x2 kernel.
+
+M20 uses the M19 runtime guard `when` statement to split the common exact-tile path from the tail path:
+
+- exact K/output tiles use direct A/B loads into shared tiles and direct C stores
+- tail tiles keep guarded `read ... when ... else 0.0` and guarded `write ... when ...`
+- generated dispatch metadata remains `numthreads = 8,8,1`, `tile = 16,16,16`, and `outputs_per_invocation = 2,2`
+
+Fresh artifacts:
+
+- `out/test-artifacts/prometheus_sgemm_sdslv_m20_exacttail.json`
+- `out/test-artifacts/prometheus_sgemm_sdslv_m20_exacttail.md`
+- `internal/prometheus/DevelopmentReport/SDSL_V_M20_EXACTTAIL_SGEMM.md`
+
+Generated HLSL sanity:
+
+- `if (fullTile)` wraps the direct cooperative loads
+- guarded-read fallback temp blocks appear only in the tail `else` path
+- output stores are also split by `fullOutputTile`
+
+Fresh focused correctness passed exact, small, odd-tail, skinny/wide, low-K, and medium shapes.
+
+Performance is mixed. The exact path removes guarded-load branch noise, but resident kernel time is mostly neutral/slower versus M17 in the focused artifact. EVT rows show small M20 wins on a few shapes such as `small_64x64x64`, `wide_64x1024x1024`, and `lowk_1024x1024x64`, but not a universal improvement.
+
+Architecture status remains unchanged:
+
+- production selector behavior is unchanged
+- M20 is explicit benchmark-only
+- dispatch authority and runtime policy stay unchanged
+- no selector retune is justified by this milestone
+
 ## Px16 M10a Note
 
 M10a adds reduction loop attributes to SDSL-V so tile-style shader math can express `[unroll] sum` and `[loop] product` without dropping the backend hint.

@@ -4,6 +4,7 @@
 #include "../reactor_judgment_engine.h"
 #include "../reactor_policy_memory.h"
 #include "../reactor_vulkan.h"
+#include "../reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h"
 #include "../reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h"
 #include "../reactor_vulkan_sgemm_scalar_plus_spirv.h"
 #include "../reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
@@ -438,6 +439,8 @@ namespace
                 return "SDSL_SCALAR_PLUS";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32:
                 return "SDSL_REG2X2_TILE16X16_FP32";
+            case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32:
+                return "SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32:
                 return "SDSL_TILE16X16_SHARED_FP32";
             case PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE:
@@ -657,6 +660,7 @@ namespace
             PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
             PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
             PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32,
+            PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32,
             PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32,
             PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE,
             PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4,
@@ -764,6 +768,20 @@ namespace
             };
             return prom_sgemm_dispatch_geometry_for_metadata(m, n, &metadata);
         }
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32) {
+            const prom_sgemm_kernel_dispatch_metadata metadata{
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_x,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_y,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_z,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_m,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_n,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_m,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_n,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_k,
+                k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_unroll_k
+            };
+            return prom_sgemm_dispatch_geometry_for_metadata(m, n, &metadata);
+        }
         if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
             const prom_sgemm_kernel_dispatch_metadata metadata{
                 k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x,
@@ -813,6 +831,19 @@ namespace
             row.metadata_tile_n = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_n;
             row.metadata_tile_k = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_k;
             row.metadata_unroll_k = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_unroll_k;
+            row.shader_module_present = true;
+            return;
+        }
+        if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32) {
+            row.metadata_numthreads_x = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_x;
+            row.metadata_numthreads_y = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_y;
+            row.metadata_numthreads_z = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_z;
+            row.metadata_outputs_per_invocation_m = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_m;
+            row.metadata_outputs_per_invocation_n = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_n;
+            row.metadata_tile_m = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_m;
+            row.metadata_tile_n = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_n;
+            row.metadata_tile_k = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_k;
+            row.metadata_unroll_k = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_unroll_k;
             row.shader_module_present = true;
             return;
         }
@@ -1577,6 +1608,7 @@ namespace
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32 ||
+            variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32 ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32 ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
             variant == PROM_OCCUPANCY_KERNEL_VARIANT_BALANCED_2X2_ACCUM4 ||
@@ -3045,6 +3077,7 @@ FACT(PrometheusSgemmPx16ResidentExplicitFailureMatrix)
         PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32,
     };
 
@@ -3117,6 +3150,7 @@ FACT(PrometheusSgemmPx16M15aSdslScalarPlusLowKRepro)
         PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS,
         PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32,
+        PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32,
     };
 
     std::vector<ResidentFailureMatrixRow> rows;
@@ -3241,6 +3275,128 @@ FACT(PrometheusSgemmM17SdslReg2x2)
     for (const ResidentBenchmarkRow& row : resident_rows) {
         ASSERT_EQUAL(PROM_OK, row.runtime_status, "M17 resident explicit variant should run");
         ASSERT_EQUAL(std::string("pass"), row.correctness, "M17 resident explicit variant should validate");
+    }
+}
+
+FACT(PrometheusSgemmM20SdslReg2x2ExactTail)
+{
+    RuntimeHandleScope probe_runtime;
+    PrometheusCaps caps{};
+    std::string failure_reason;
+    if (!create_runtime(probe_runtime, caps, failure_reason)) {
+        SKIP("Vulkan runtime unavailable; M20 explicit exacttail lane cannot execute");
+    }
+
+    const std::vector<ShapeCase> shapes = {
+        {"exact_16x16x16", 16u, 16u, 16u, false},
+        {"exact_32x32x32", 32u, 32u, 32u, false},
+        {"small_8x8x8", 8u, 8u, 8u, false},
+        {"odd_17x17x17", 17u, 17u, 17u, false},
+        {"odd_31x29x23", 31u, 29u, 23u, false},
+        {"skinny_64x16x64", 64u, 16u, 64u, false},
+        {"wide_16x64x64", 16u, 64u, 64u, false},
+        {"lowk_64x64x8", 64u, 64u, 8u, false},
+        {"medium_128x128x128", 128u, 128u, 128u, false},
+    };
+
+    std::vector<VariantComparisonRow> m17_staged_rows;
+    std::vector<VariantComparisonRow> m20_staged_rows;
+    std::vector<ResidentBenchmarkRow> m17_resident_rows;
+    std::vector<ResidentBenchmarkRow> m20_resident_rows;
+    m17_staged_rows.reserve(shapes.size());
+    m20_staged_rows.reserve(shapes.size());
+    m17_resident_rows.reserve(shapes.size());
+    m20_resident_rows.reserve(shapes.size());
+    for (const ShapeCase& shape : shapes) {
+        m17_staged_rows.push_back(run_explicit_variant_case_fresh(shape, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32, true));
+        m20_staged_rows.push_back(run_explicit_variant_case_fresh(shape, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32, true));
+        m17_resident_rows.push_back(run_resident_case_fresh(shape, true, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32, true));
+        m20_resident_rows.push_back(run_resident_case_fresh(shape, true, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32, true));
+    }
+
+    std::ostringstream json;
+    json << "{\n";
+    json << "  \"schema\": \"prometheus.sgemm.sdslv.m20.exacttail.v1\",\n";
+    json << "  \"baseline_variant\": \"SDSL_REG2X2_TILE16X16_FP32\",\n";
+    json << "  \"candidate_variant\": \"SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32\",\n";
+    json << "  \"metadata\": {\"numthreads_x\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_x
+         << ", \"numthreads_y\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_y
+         << ", \"numthreads_z\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_z
+         << ", \"outputs_per_invocation_m\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_m
+         << ", \"outputs_per_invocation_n\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_n
+         << ", \"tile_m\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_m
+         << ", \"tile_n\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_n
+         << ", \"tile_k\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_k
+         << ", \"unroll_k\": " << k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_unroll_k << "},\n";
+    json << "  \"rows\": [\n";
+    for (std::size_t index = 0u; index < shapes.size(); ++index) {
+        const VariantComparisonRow& m17_staged = m17_staged_rows[index];
+        const VariantComparisonRow& m20_staged = m20_staged_rows[index];
+        const ResidentBenchmarkRow& m17_resident = m17_resident_rows[index];
+        const ResidentBenchmarkRow& m20_resident = m20_resident_rows[index];
+        json << "    {\"shape\": \"" << json_escape(m20_staged.shape)
+             << "\", \"m\": " << m20_staged.m
+             << ", \"n\": " << m20_staged.n
+             << ", \"k\": " << m20_staged.k
+             << ", \"m17_correctness\": \"" << json_escape(m17_staged.correctness)
+             << "\", \"m20_correctness\": \"" << json_escape(m20_staged.correctness)
+             << "\", \"m17_staged_wall_ms\": " << m17_staged.median_total_ms
+             << ", \"m20_staged_wall_ms\": " << m20_staged.median_total_ms
+             << ", \"m17_resident_kernel_ms\": " << m17_resident.kernel_median_ms
+             << ", \"m20_resident_kernel_ms\": " << m20_resident.kernel_median_ms
+             << ", \"m17_resident_gflops\": " << m17_resident.kernel_only_gflops
+             << ", \"m20_resident_gflops\": " << m20_resident.kernel_only_gflops
+             << ", \"m17_executed_variant\": \"" << json_escape(m17_resident.executed_variant)
+             << "\", \"m20_executed_variant\": \"" << json_escape(m20_resident.executed_variant) << "\"}";
+        if (index + 1u < shapes.size()) {
+            json << ",";
+        }
+        json << "\n";
+    }
+    json << "  ]\n";
+    json << "}\n";
+
+    std::ostringstream markdown;
+    markdown << "# Prometheus SDSL-V M20 ExactTail SGEMM\n\n";
+    markdown << "| shape | M17 correctness | M20 correctness | M17 staged wall ms | M20 staged wall ms | M17 resident kernel ms | M20 resident kernel ms | M17 GFLOP/s | M20 GFLOP/s | M20 executed variant |\n";
+    markdown << "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |\n";
+    for (std::size_t index = 0u; index < shapes.size(); ++index) {
+        const VariantComparisonRow& m17_staged = m17_staged_rows[index];
+        const VariantComparisonRow& m20_staged = m20_staged_rows[index];
+        const ResidentBenchmarkRow& m17_resident = m17_resident_rows[index];
+        const ResidentBenchmarkRow& m20_resident = m20_resident_rows[index];
+        markdown << "| " << m20_staged.shape
+                 << " | " << m17_staged.correctness
+                 << " | " << m20_staged.correctness
+                 << " | " << m17_staged.median_total_ms
+                 << " | " << m20_staged.median_total_ms
+                 << " | " << m17_resident.kernel_median_ms
+                 << " | " << m20_resident.kernel_median_ms
+                 << " | " << m17_resident.kernel_only_gflops
+                 << " | " << m20_resident.kernel_only_gflops
+                 << " | " << m20_resident.executed_variant << " |\n";
+    }
+
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_sdslv_m20_exacttail.json"),
+                    json.str()),
+                "M20 exacttail JSON artifact should be written");
+    ASSERT_TRUE(context.WriteArtifactFile(
+                    std::filesystem::path("prometheus_sgemm_sdslv_m20_exacttail.md"),
+                    markdown.str()),
+                "M20 exacttail markdown artifact should be written");
+
+    for (const VariantComparisonRow& row : m20_staged_rows) {
+        ASSERT_EQUAL(PROM_OK, row.runtime_status, "M20 staged explicit variant should run");
+        ASSERT_EQUAL(std::string("pass"), row.correctness, "M20 staged explicit variant should validate");
+        ASSERT_EQUAL(std::string("SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32"), row.executed_variant,
+                     "M20 staged explicit variant should report exacttail execution");
+    }
+    for (const ResidentBenchmarkRow& row : m20_resident_rows) {
+        ASSERT_EQUAL(PROM_OK, row.runtime_status, "M20 resident explicit variant should run");
+        ASSERT_EQUAL(std::string("pass"), row.correctness, "M20 resident explicit variant should validate");
+        ASSERT_EQUAL(std::string("SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32"), row.executed_variant,
+                     "M20 resident explicit variant should report exacttail execution");
     }
 }
 
