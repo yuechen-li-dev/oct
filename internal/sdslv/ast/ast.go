@@ -19,9 +19,10 @@ type TemplateParam struct {
 type AttributePlacement string
 
 const (
-	AttributePlacementField AttributePlacement = "field"
-	AttributePlacementStmt  AttributePlacement = "stmt"
-	AttributePlacementExpr  AttributePlacement = "expr"
+	AttributePlacementField    AttributePlacement = "field"
+	AttributePlacementStmt     AttributePlacement = "stmt"
+	AttributePlacementExpr     AttributePlacement = "expr"
+	AttributePlacementFunction AttributePlacement = "function"
 )
 
 type Attribute struct {
@@ -142,6 +143,9 @@ type CompileDecl struct {
 func (CompileDecl) declNode() {}
 
 type FunctionDecl struct {
+	Attributes []Attribute
+	Line       int
+	Column     int
 	Name       string
 	Stage      string
 	NumThreads *NumThreads

@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
@@ -14,6 +18,160 @@ import (
 )
 
 func Execute(path string, out io.Writer) error {
+	return ExecuteWithOptions(path, out, Options{})
+}
+
+// Options deliberately exposes replay selection only.  It is not a generic
+// compute API; the native host is responsible for eventual GPU execution.
+type Options struct {
+	List   bool
+	CaseID string
+}
+
+func ExecuteWithOptions(path string, out io.Writer, options Options) error {
+	paths, err := suitePaths(path)
+	if err != nil {
+		return err
+	}
+	for _, suite := range paths {
+		manifest, err := Discover(suite)
+		if err != nil {
+			return err
+		}
+		selected := make([]Case, 0, len(manifest.Cases))
+		for _, c := range manifest.Cases {
+			if options.CaseID == "" || options.CaseID == c.StableID {
+				selected = append(selected, c)
+			}
+		}
+		if options.CaseID != "" && len(selected) == 0 {
+			return fmt.Errorf("no .sdslvtest case with stable id %q", options.CaseID)
+		}
+		if options.List {
+			for _, c := range selected {
+				_, _ = fmt.Fprintf(out, "%s %s\n", c.StableID, c.DisplayName)
+			}
+			continue
+		}
+		// M0's evaluator remains only as a compile-free compatibility seam for
+		// the original scalar fixture.  M29 discovery explicitly rejects malformed
+		// tests before this path; a case that needs GPU lowering fails truthfully.
+		if usesM29Syntax(suite) {
+			if err := executeGPU(manifest, selected, out); err != nil {
+				return err
+			}
+			continue
+		}
+		if len(manifest.Cases) != len(selected) || hasTheory(selected) {
+			return fmt.Errorf("SDSL-V GPU test execution requires sdslv_test_host; discovered %d selected case(s) in %s", len(selected), suite)
+		}
+		if err := executeLegacyFacts(suite, out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func usesM29Syntax(path string) bool {
+	text, err := os.ReadFile(path)
+	return err == nil && strings.Contains(string(text), "HLSL<")
+}
+func executeGPU(manifest Manifest, selected []Case, out io.Writer) error {
+	root := filepath.Join("out", "sdslvtest", strings.ReplaceAll(strings.TrimSuffix(filepath.Base(manifest.Source), filepath.Ext(manifest.Source)), " ", "_"))
+	groups, err := Compile(manifest, root)
+	if err != nil {
+		return fmt.Errorf("COMPILE_FAILED: %w", err)
+	}
+	if err := WriteManifest(filepath.Join(root, "manifest.json"), manifest); err != nil {
+		return err
+	}
+	host := os.Getenv("SDSLV_TEST_HOST")
+	if host == "" {
+		host = filepath.Join("out", "prometheus", "native", "sdslv_test_host.exe")
+	}
+	if _, err := os.Stat(host); err != nil {
+		return fmt.Errorf("HOST_FAILURE: sdslv_test_host unavailable at %s", host)
+	}
+	for _, c := range selected {
+		var group Group
+		var index int
+		found := false
+		for _, g := range groups {
+			for i, id := range g.Cases {
+				if id == c.StableID {
+					group, index = g, i
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("HOST_FAILURE: compiled group missing %s", c.StableID)
+		}
+		args := []string{"--manifest", filepath.Join(root, "manifest.json"), "--spv", group.SPIRVPath, "--case", c.StableID, "--case-index", fmt.Sprint(index), "--row-index", fmt.Sprint(rowNumber(c)), "--groups", fmt.Sprint(c.Launch.DispatchGroups[0]), fmt.Sprint(c.Launch.DispatchGroups[1]), fmt.Sprint(c.Launch.DispatchGroups[2]), "--workgroup", fmt.Sprint(c.Launch.WorkgroupSize[0]), fmt.Sprint(c.Launch.WorkgroupSize[1]), fmt.Sprint(c.Launch.WorkgroupSize[2])}
+		data, e := exec.Command(host, args...).CombinedOutput()
+		_, _ = out.Write(data)
+		if e != nil {
+			return fmt.Errorf("HOST_FAILURE %s: %w", c.DisplayName, e)
+		}
+		if strings.Contains(string(data), "\"status\":\"PASS\"") {
+			continue
+		}
+		return fmt.Errorf("GPU test failure: %s", c.DisplayName)
+	}
+	return nil
+}
+func rowNumber(c Case) int {
+	if c.TheoryRow == nil {
+		return 0
+	}
+	return *c.TheoryRow
+}
+
+func suitePaths(path string) ([]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		if filepath.Ext(path) != ".sdslvtest" {
+			return nil, fmt.Errorf("sdslv test expects a .sdslvtest file or directory")
+		}
+		return []string{path}, nil
+	}
+	var paths []string
+	err = filepath.Walk(path, func(p string, info os.FileInfo, e error) error {
+		if e != nil {
+			return e
+		}
+		if !info.IsDir() && filepath.Ext(p) == ".sdslvtest" {
+			paths = append(paths, p)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(paths) == 0 {
+		return nil, fmt.Errorf("no .sdslvtest files found in %s", path)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func hasTheory(cases []Case) bool {
+	for _, c := range cases {
+		if c.Kind == "Theory" {
+			return true
+		}
+	}
+	return false
+}
+
+func executeLegacyFacts(path string, out io.Writer) error {
 	file, err := source.Load(path)
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -19,6 +20,7 @@ func Module(module ast.Module) error {
 		shaderDecls:    map[string]ast.ShaderDecl{},
 		compileAliases: map[string]struct{}{},
 	}
+	v.testSource = filepath.Ext(module.Source.Path) == ".sdslvtest"
 	v.seedBuiltins()
 	v.collect(module)
 	if len(v.errors) == 0 {
@@ -107,6 +109,7 @@ type validator struct {
 	shaderDecls    map[string]ast.ShaderDecl
 	compileAliases map[string]struct{}
 	resources      map[string]ast.ResourceDecl
+	testSource     bool
 }
 
 // Inline source is deliberately not a security boundary. These checks reject the
@@ -697,6 +700,7 @@ func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.Resource
 }
 
 func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, stage string, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl, templateParam *ast.TemplateParam) {
+	v.validateTestAttributes(fn)
 	v.validateType(fn.ReturnType)
 	scope := map[string]varInfo{
 		"DispatchThreadID": {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
@@ -1647,6 +1651,13 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 }
 
 func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if name := testAssertName(call.Callee); name != "" {
+		if !v.testSource {
+			v.errorf("%s is only valid in .sdslvtest functions", name)
+			return ast.TypeRef{Name: "<error>"}
+		}
+		return v.testAssertType(name, call, scope, shaderName, templateParam)
+	}
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
 		if id.Name == "reg_tile_zero" {
 			if len(call.Arguments) != 0 {
@@ -1705,6 +1716,112 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 	}
 	v.errorf("unsupported or unknown function call")
 	return ast.TypeRef{Name: "<error>"}
+}
+
+func testAssertName(expr ast.Expr) string {
+	f, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
+		return ""
+	}
+	root, ok := f.Target.(ast.IdentifierExpr)
+	if !ok || root.Name != "Assert" {
+		return ""
+	}
+	switch f.Field {
+	case "True", "False", "Equal", "Near", "NotEqual":
+		return "Assert." + f.Field
+	}
+	return ""
+}
+func (v *validator) testAssertType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	want := 2
+	if name == "Assert.True" || name == "Assert.False" {
+		want = 1
+	}
+	if name == "Assert.Near" {
+		want = 3
+	}
+	if len(call.Arguments) != want {
+		v.errorf("%s expects %d arguments, got %d", name, want, len(call.Arguments))
+		return ast.TypeRef{Name: "void"}
+	}
+	types := make([]ast.TypeRef, len(call.Arguments))
+	for i, arg := range call.Arguments {
+		types[i] = v.exprType(arg, scope, shaderName, templateParam)
+	}
+	if want == 1 && types[0].Name != "bool" {
+		v.errorf("%s expects a bool", name)
+	}
+	if (name == "Assert.Equal" || name == "Assert.NotEqual") && !v.compatible(types[0], types[1]) {
+		v.errorf("%s requires matching operand types", name)
+	}
+	if name == "Assert.Near" {
+		if !isFloat(types[0]) || !isFloat(types[1]) || !isFloat(types[2]) {
+			v.errorf("Assert.Near requires Float operands")
+		}
+	}
+	return ast.TypeRef{Name: "void"}
+}
+
+func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
+	if len(fn.Attributes) == 0 {
+		return
+	}
+	fact, theory := 0, 0
+	inline := 0
+	wg, dispatch := 0, 0
+	for _, a := range fn.Attributes {
+		switch a.Name {
+		case "Fact":
+			fact++
+		case "Theory":
+			theory++
+		case "InlineData":
+			inline++
+		case "WorkgroupSize":
+			wg++
+		case "DispatchGroups":
+			dispatch++
+		default:
+			v.errorf("unsupported function attribute [%s]", a.Name)
+		}
+	}
+	if !v.testSource {
+		for _, a := range fn.Attributes {
+			v.errorf("test attribute [%s] is only valid in .sdslvtest source", a.Name)
+		}
+		return
+	}
+	if fact > 1 {
+		v.errorf("duplicate [Fact]")
+	}
+	if theory > 1 {
+		v.errorf("duplicate [Theory]")
+	}
+	if fact > 0 && theory > 0 {
+		v.errorf("[Fact] and [Theory] cannot both apply")
+	}
+	if wg > 1 {
+		v.errorf("duplicate [WorkgroupSize]")
+	}
+	if dispatch > 1 {
+		v.errorf("duplicate [DispatchGroups]")
+	}
+	if inline > 0 && theory == 0 {
+		v.errorf("[InlineData] requires [Theory]")
+	}
+	if fact > 0 && len(fn.Parameters) != 0 {
+		v.errorf("[Fact] must not declare parameters")
+	}
+	if theory > 0 && len(fn.Parameters) == 0 {
+		v.errorf("[Theory] must declare parameters")
+	}
+	if theory > 0 && inline == 0 {
+		v.errorf("[Theory] requires [InlineData]")
+	}
+	if (fact > 0 || theory > 0) && fn.ReturnType.Name != "void" {
+		v.errorf("test functions must return void")
+	}
 }
 
 func (v *validator) compatible(left, right ast.TypeRef) bool {

@@ -33,6 +33,7 @@
     "normal": "Marionette/test_main.cpp",
     "benchmarks": "Marionette/test_main_benchmarks.cpp"
   },
+  "sdslv_test_host_source": "sdslv_test_host.c",
   "generated_headers": [
     "reactor_vulkan_fp16_spirv.h", "reactor_vulkan_packed4_spirv.h",
     "reactor_vulkan_b2x2_row_major_biased_spirv.h", "reactor_vulkan_a2x4_row_biased_accum8_spirv.h",

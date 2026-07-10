@@ -57,6 +57,16 @@ func (p *parser) parseModule() (ast.Module, error) {
 }
 
 func (p *parser) parseDecl() (ast.Decl, error) {
+	if p.current().Kind == token.LeftBracket {
+		attributes, err := p.parseAttributes(ast.AttributePlacementFunction)
+		if err != nil {
+			return nil, err
+		}
+		if p.current().Kind != token.KeywordFn {
+			return nil, p.errorAtCurrent("function attributes must precede fn declarations")
+		}
+		return p.parseFunctionWithAttributes("", attributes)
+	}
 	switch p.current().Kind {
 	case token.KeywordType:
 		return p.parseTypeAlias()
@@ -596,6 +606,10 @@ func (p *parser) parseStageFunction() (ast.FunctionDecl, error) {
 }
 
 func (p *parser) parseFunction(stage string) (ast.FunctionDecl, error) {
+	return p.parseFunctionWithAttributes(stage, nil)
+}
+
+func (p *parser) parseFunctionWithAttributes(stage string, attributes []ast.Attribute) (ast.FunctionDecl, error) {
 	if _, err := p.expect(token.KeywordFn, "expected fn"); err != nil {
 		return ast.FunctionDecl{}, err
 	}
@@ -618,7 +632,7 @@ func (p *parser) parseFunction(stage string) (ast.FunctionDecl, error) {
 	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
-	return ast.FunctionDecl{Name: name.Lexeme, Stage: stage, Parameters: params, ReturnType: ret, Body: body}, nil
+	return ast.FunctionDecl{Attributes: attributes, Line: name.Line, Column: name.Column, Name: name.Lexeme, Stage: stage, Parameters: params, ReturnType: ret, Body: body}, nil
 }
 
 func (p *parser) parseParameters() ([]ast.Parameter, error) {

@@ -16,6 +16,7 @@ set "MARIONETTE_SLOW_EXE=%OUT_DIR%\marionette_slow_tests.exe"
 set "MARIONETTE_SLOW_PDB=%OUT_DIR%\marionette_slow_tests.pdb"
 set "MARIONETTE_BENCH_EXE=%OUT_DIR%\marionette_benchmarks.exe"
 set "MARIONETTE_BENCH_PDB=%OUT_DIR%\marionette_benchmarks.pdb"
+set "SDSLV_TEST_HOST=%OUT_DIR%\sdslv_test_host.exe"
 set "VSDEVCMD_BAT=C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat"
 
 where cl >nul 2>nul
@@ -56,6 +57,9 @@ if errorlevel 1 goto :fail
 link /nologo /DLL %PROMETHEUS_COMMON_OBJS% /OUT:"%REACTOR_DLL%" /IMPLIB:"%REACTOR_LIB%" /PDB:"%REACTOR_PDB%" %VULKAN_LIBPATH% vulkan-1.lib
 if errorlevel 1 goto :fail
 
+cl /nologo /TC /std:c11 /O2 /W4 %VULKAN_INCLUDE% "%PROMETHEUS_SDSLV_TEST_HOST%" /link /OUT:"%SDSLV_TEST_HOST%" %VULKAN_LIBPATH% vulkan-1.lib
+if errorlevel 1 goto :fail
+
 copy /Y "%REACTOR_DLL%" "%REACTOR_DIR%\prometheus_reactor.dll" >nul
 if errorlevel 1 goto :fail
 
@@ -76,6 +80,7 @@ echo Built reactor library: %REACTOR_DLL%
 echo Copied for bridge discovery: %REACTOR_DIR%\prometheus_reactor.dll
 echo Built Marionette tests: %MARIONETTE_EXE%
 echo Built Marionette benchmarks: %MARIONETTE_BENCH_EXE%
+echo Built SDSL-V test host: %SDSLV_TEST_HOST%
 exit /b 0
 
 :build_marionette

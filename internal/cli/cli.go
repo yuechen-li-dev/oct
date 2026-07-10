@@ -287,10 +287,14 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 		_, err = fmt.Fprint(stdout, text)
 		return err
 	case "test":
-		if isHelpArg(args[1:]) || len(args) != 2 {
-			return reportCommandError(stderr, "sdslv test", fmt.Errorf("usage: oct sdslv test <file.sdslvtest>"))
+		if isHelpArg(args[1:]) {
+			return writeSDSLvHelp(stdout)
 		}
-		if err := sdslvtest.Execute(args[1], stdout); err != nil {
+		path, options, err := parseSDSLvTestArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "sdslv test", err)
+		}
+		if err := sdslvtest.ExecuteWithOptions(path, stdout, options); err != nil {
 			return reportCommandError(stderr, "sdslv test", err)
 		}
 		return nil
@@ -351,6 +355,32 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 	default:
 		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test> ..."))
 	}
+}
+
+func parseSDSLvTestArgs(args []string) (string, sdslvtest.Options, error) {
+	if len(args) < 1 {
+		return "", sdslvtest.Options{}, fmt.Errorf("usage: oct sdslv test <file.sdslvtest|directory> [--list] [--case <stable-id>]")
+	}
+	path := args[0]
+	var options sdslvtest.Options
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "--list":
+			options.List = true
+		case "--case":
+			if i+1 >= len(args) {
+				return "", options, fmt.Errorf("--case requires a stable case id")
+			}
+			i++
+			options.CaseID = args[i]
+		default:
+			return "", options, fmt.Errorf("unknown sdslv test option %q", args[i])
+		}
+	}
+	if options.List && options.CaseID != "" {
+		return "", options, fmt.Errorf("--list and --case cannot be combined")
+	}
+	return path, options, nil
 }
 
 func parseSDSLvEmitArgs(args []string) (string, string, error) {
@@ -1201,7 +1231,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test> ...\n\ncommands:\n  check <file.sdslv>                                                     Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                   Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]        Emit HLSL, invoke DXC with -spirv, and write SPIR-V\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]     Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest>                                                  Run M0 [Fact] shader-helper tests")
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test> ...\n\ncommands:\n  check <file.sdslv>                                                     Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                   Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]        Emit HLSL, invoke DXC with -spirv, and write SPIR-V\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]     Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]          Discover deterministic GPU test cases (execution host pending)")
 	return err
 }
 func writeTestHelp(out io.Writer) error {

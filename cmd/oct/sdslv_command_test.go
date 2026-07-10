@@ -43,6 +43,22 @@ func TestSDSLvHelpMentionsSPIRVCommands(t *testing.T) {
 	}
 }
 
+func TestSDSLvTestListsStableTheoryCases(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "suite.sdslvtest")
+	source := "[Fact]\nfn FactCase() -> void {}\n[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\nfn TheoryCase(value: u32) -> void {}\n"
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := cli.Execute([]string{"sdslv", "test", path, "--list"}, &stdout, &stderr); err != nil {
+		t.Fatalf("sdslv test --list: %v stderr=%s", err, stderr.String())
+	}
+	if got := stdout.String(); !strings.Contains(got, "FactCase") || !strings.Contains(got, "TheoryCase[0]") || !strings.Contains(got, "sdslv-") {
+		t.Fatalf("unexpected list output: %s", got)
+	}
+}
+
 func TestSDSLvGenerateHeaderCommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

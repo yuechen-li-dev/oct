@@ -820,7 +820,10 @@ HLSL emission of fallible modules is not supported in M58 — any module contain
 
 ## Testing language (`.sdslvtest`)
 
-SDSL-V includes a test file format for unit-testing shader logic without a GPU. Test files use the `.sdslvtest` extension and are parsed by a separate parser.
+SDSL-V uses `.sdslvtest` for test-only compute suites. M29 discovery is
+separate from production `.sdslv` compilation and produces deterministic
+per-case manifests. GPU execution requires the fixed native test host; it must
+never fall back to the Prometheus SGEMM A/B/C interface or a CPU simulation.
 
 ```sdslvtest
 namespace WyrmCoil.Tests;
@@ -828,9 +831,9 @@ namespace WyrmCoil.Tests;
 [Fact]
 fn BasicArithmetic() {
     let value: f32 = 1.0 + 1.0;
-    Assert.True(value > 0.0, "value should be positive");
-    Assert.Equals(value, 2.0, "value should equal two");
-    Assert.Near(value, 2.001, 0.01, "value should be near two");
+    Assert.True(value > 0.0)
+    Assert.Equal(2.0, value)
+    Assert.Near(2.0, value, 0.01)
 }
 
 [Theory]
@@ -838,7 +841,7 @@ fn BasicArithmetic() {
 [InlineData(0.5, 0.5)]
 [InlineData(1.5, 1.0)]
 fn SaturateClampsToUnit(input: f32, expected: f32) {
-    Assert.Near(saturate(input), expected, 0.0001, "saturate should clamp into [0, 1]");
+    Assert.Near(expected, saturate(input), 0.0001)
 }
 ```
 
@@ -847,6 +850,8 @@ fn SaturateClampsToUnit(input: f32, expected: f32) {
 - `[Fact]` — parameterless test. Accepts no arguments. Function must have no parameters.
 - `[Theory]` — parameterized test. Must have at least one `[InlineData(...)]` attribute. Function parameters must match InlineData arity and types.
 - `[InlineData(values...)]` — row of inputs for a theory. Each row must match the test function's parameter count and types exactly.
+- `[WorkgroupSize(x, y, z)]` — positive explicit workgroup dimensions; default is `(1, 1, 1)`.
+- `[DispatchGroups(x, y, z)]` — positive explicit dispatch-group dimensions; default is `(1, 1, 1)`.
 
 A function cannot have both `[Fact]` and `[Theory]`. `[InlineData]` on a `[Fact]` is a validation error.
 
@@ -855,10 +860,23 @@ A function cannot have both `[Fact]` and `[Theory]`. `[InlineData]` on a `[Fact]
 | Method | Signature | Description |
 |---|---|---|
 | `Assert.True` | `(value: bool, message: string)` | Asserts value is true |
-| `Assert.Equals` | `(actual: T, expected: T, message: string)` | Asserts exact equality |
-| `Assert.Near` | `(actual: f32, expected: f32, tolerance: f32, message: string)` | Asserts within tolerance |
+| `Assert.False` | `(value: bool)` | Asserts value is false |
+| `Assert.Equal` | `(expected: T, actual: T)` | Asserts exact equality |
+| `Assert.NotEqual` | `(expected: T, actual: T)` | Asserts inequality |
+| `Assert.Near` | `(expected: f32, actual: f32, tolerance: f32)` | Asserts within tolerance |
 
-Non-assert expression statements are a validation error. Unsupported `Assert` methods (e.g. `Assert.Approximately`) are a validation error. The test runner evaluates tests in a CPU-side interpreter that supports: local variable declaration, arithmetic, comparison, function calls to known builtins (`saturate`, `clamp`), and all assert forms. Unrecognized function calls fail with an "unsupported function call" diagnostic. `[Theory]` tests produce one result per `[InlineData]` row, named `FunctionName[index]`. Failures accumulate — all tests in a file run even if earlier ones fail.
+Facts yield one case; theories yield one case for each row. IDs derive from
+canonical source identity, function, kind, and row identity, and are listed by
+`oct sdslv test path --list`; `--case <id>` replays one discovered case.
+Current implementation supports discovery and manifest validation only. The
+future compiler-owned GPU interface is set `0`, binding `0`, a fixed versioned
+result record per invocation. Assertions must preserve evaluation order, record
+only the first local failure, continue shader execution, and write in the
+generated epilogue. The host owns preflight, timeout/device-loss isolation,
+readback, and formatting. Hardware-required mode uses
+`PROMETHEUS_REQUIRE_VULKAN_HARDWARE=1`; GPU-less CI may validate compilation
+and manifests while explicitly skipping execution. Resources, textures,
+samplers, arbitrary descriptor schemas, and graphics tests are not supported.
 
 ---
 

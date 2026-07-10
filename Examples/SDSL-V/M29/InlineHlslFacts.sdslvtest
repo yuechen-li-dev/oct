@@ -1,0 +1,25 @@
+[Fact]
+fn InlineHlslAsUint() -> void {
+    let value: f32 = 1.0;
+    let bits: u32 = HLSL<u32>(value) {
+        return asuint(value);
+    };
+    Assert.Equal(1065353216u, bits);
+}
+
+[Theory]
+[InlineData(0.0, 0u)]
+[InlineData(1.0, 1065353216u)]
+fn FloatBitPattern(value: f32, expected: u32) -> void {
+    let actual: u32 = HLSL<u32>(value) {
+        return asuint(value);
+    };
+    Assert.Equal(expected, actual);
+}
+
+[WorkgroupSize(32, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn ExplicitLaunchMetadata() -> void {
+    Assert.True(true);
+}

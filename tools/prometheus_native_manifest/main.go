@@ -23,6 +23,7 @@ type manifest struct {
 		Slow       string `json:"slow"`
 		Benchmarks string `json:"benchmarks"`
 	} `json:"test_mains"`
+	TestHost string `json:"sdslv_test_host_source"`
 }
 
 func load(root string) (manifest, error) {
@@ -54,6 +55,7 @@ func validate(root string, m manifest) error {
 	for _, p := range all {
 		if _, err := os.Stat(filepath.Join(root, "internal", "prometheus", "native", filepath.FromSlash(p))); err != nil { return fmt.Errorf("manifest entry missing: %s", p) }
 	}
+	if m.TestHost != "" { if _, err := os.Stat(filepath.Join(root, "internal", "prometheus", "native", filepath.FromSlash(m.TestHost))); err != nil { return fmt.Errorf("manifest test-host source missing: %s", m.TestHost) } }
 	for _, slow := range m.Slow {
 		for _, normal := range m.Tests { if slow == normal { return fmt.Errorf("slow test is also normal: %s", slow) } }
 	}
@@ -80,6 +82,7 @@ func windows(m manifest) []byte {
 	fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_MAIN=%s\"\r\n", qWin(m.Mains.Normal))
 	if m.Mains.Slow == "" { b.WriteString("set \"PROMETHEUS_MARIONETTE_SLOW_MAIN=\"\r\n") } else { fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_SLOW_MAIN=%s\"\r\n", qWin(m.Mains.Slow)) }
 	fmt.Fprintf(&b, "set \"PROMETHEUS_MARIONETTE_BENCH_MAIN=%s\"\r\n", qWin(m.Mains.Benchmarks))
+	fmt.Fprintf(&b, "set \"PROMETHEUS_SDSLV_TEST_HOST=%s\"\r\n", qWin(m.TestHost))
 	return []byte(b.String())
 }
 
@@ -97,6 +100,7 @@ func shell(m manifest) []byte {
 	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_MAIN=%s\n", qSh(m.Mains.Normal))
 	if m.Mains.Slow == "" { b.WriteString("PROMETHEUS_MARIONETTE_SLOW_MAIN=\n") } else { fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_SLOW_MAIN=%s\n", qSh(m.Mains.Slow)) }
 	fmt.Fprintf(&b, "PROMETHEUS_MARIONETTE_BENCH_MAIN=%s\n", qSh(m.Mains.Benchmarks))
+	fmt.Fprintf(&b, "PROMETHEUS_SDSLV_TEST_HOST=%s\n", qSh(m.TestHost))
 	return []byte(b.String())
 }
 

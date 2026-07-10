@@ -56,6 +56,8 @@ echo "Copied for bridge discovery: $REACTOR_DIR/$LIB_NAME"
 # Step 3: Use the canonical native test list.
 echo "[3/5] Loaded ${#PROMETHEUS_MARIONETTE_CPP[@]} Marionette source files from native_manifest.json."
 
+cc -std=c11 -O2 "${PROMETHEUS_SDSLV_TEST_HOST}" -lvulkan -o "$OUT_DIR/sdslv_test_host"
+
 # Step 4: Build the three test binaries
 echo "[4/5] Building Marionette test binaries..."
 

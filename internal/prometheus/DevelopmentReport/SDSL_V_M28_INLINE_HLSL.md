@@ -43,3 +43,12 @@ Hardware execution is explicitly out of scope. The current Prometheus runtime di
 ### Future runtime follow-up
 
 A future, separately scoped milestone may provide a generic **registered compute-shader dispatch/readback harness**. It must be reusable rather than M28-specific: the same contract should serve SDSL-V feature proofs, FFT, reductions, subgroup operations, and other non-SGEMM compute shaders. It must own explicit binding schemas, pipeline creation, dispatch geometry, readback, and device evidence without changing selector policy. That work is not started by M28.
+
+### M29 handoff update
+
+M29 now owns the test-specific alternative to that broad generic-runtime idea:
+`.sdslvtest` discovery, stable case identity, and a fixed assertion result ABI.
+Its fixed native host now executes the `InlineHlslAsUint` test artifact through
+DXC/SPIR-V/Vulkan result readback on the RTX-capable Windows environment. This
+closes M28's runtime-proof handoff for the bounded `asuint` foreign block only;
+it does not expand M28 into a generic compute runtime.
