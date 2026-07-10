@@ -174,9 +174,7 @@ func TestSyncRegistryDependencyCopiesAndWritesMetadata(t *testing.T) {
 }
 
 func TestSyncRegistryDependencyGitTagWritesMetadataAndSkipsGit(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git unavailable: %v", err)
-	}
+	requireGitForPkgMgr(t)
 	project := t.TempDir()
 	repo := writePackageSource(t, "SignalTools", "0.1.0", "")
 	runGitTestCommand(t, repo, "init")
@@ -212,9 +210,7 @@ func TestSyncRegistryDependencyGitTagWritesMetadataAndSkipsGit(t *testing.T) {
 }
 
 func TestSyncRegistryDependencyGitSubpath(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git unavailable: %v", err)
-	}
+	requireGitForPkgMgr(t)
 	project := t.TempDir()
 	repo := t.TempDir()
 	pkg := writePackageSource(t, "SignalTools", "0.1.0", "")
@@ -245,9 +241,7 @@ func TestSyncRegistryDependencyGitSubpath(t *testing.T) {
 }
 
 func TestSyncRegistryDependencyGitCheckoutIgnoresHostAutoCRLF(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git unavailable: %v", err)
-	}
+	requireGitForPkgMgr(t)
 	project := t.TempDir()
 	repo, commit := writeGitPackageRepoWithLineEndingFixture(t, "SignalTools", "0.1.0")
 	enableHostGitAutoCRLF(t)
@@ -264,9 +258,7 @@ func TestSyncRegistryDependencyGitCheckoutIgnoresHostAutoCRLF(t *testing.T) {
 }
 
 func TestSyncLockedGitCheckoutIgnoresHostAutoCRLF(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git unavailable: %v", err)
-	}
+	requireGitForPkgMgr(t)
 	project := writePackageSourceWithDeps(t, "Consumer", "0.1.0", "", []DependencyMetadata{{Name: "SignalTools", VersionRequirement: "0.1.0"}})
 	repo, commit := writeGitPackageRepoWithLineEndingFixture(t, "SignalTools", "0.1.0")
 	lock := PackageLock{
@@ -306,9 +298,7 @@ func TestSyncLockedGitCheckoutIgnoresHostAutoCRLF(t *testing.T) {
 }
 
 func TestManagerGetGitCloneIgnoresHostAutoCRLF(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git unavailable: %v", err)
-	}
+	requireGitForPkgMgr(t)
 	repo, _ := writeGitPackageRepoWithLineEndingFixture(t, "SignalTools", "0.1.0")
 	t.Setenv(envCacheDir, t.TempDir())
 	enableHostGitAutoCRLF(t)
@@ -325,9 +315,7 @@ func TestManagerGetGitCloneIgnoresHostAutoCRLF(t *testing.T) {
 }
 
 func TestSyncRegistryDependencyGitCheckoutFailureIncludesRef(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git unavailable: %v", err)
-	}
+	requireGitForPkgMgr(t)
 	project := t.TempDir()
 	repo := writePackageSource(t, "SignalTools", "0.1.0", "")
 	runGitTestCommand(t, repo, "init")

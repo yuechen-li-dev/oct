@@ -115,7 +115,7 @@ func executeBenchmarksSingleRoot(path string, stdout io.Writer, options Benchmar
 	for _, benchmark := range benchmarks {
 		qualified := fmt.Sprintf("%s.%s", benchmark.pkg, benchmark.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, benchmark.filePath))
-		benchmarkOutput, duration, err := executeBenchmarkCompiled(program, benchmark)
+		benchmarkOutput, duration, err := executeBenchmarkCompiled(program, benchmark, stdout)
 		metadata := benchmarkMetadataFromOutput(benchmarkOutput)
 		run.Cases = append(run.Cases, BenchmarkCaseResult{
 			Name:             qualified,
@@ -237,44 +237,44 @@ func benchmarkMetadataFromOutput(output string) benchmarkMetadata {
 	return metadata
 }
 
-func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase) (string, time.Duration, error) {
+func executeBenchmarkCompiled(program project.Program, benchmark benchmarkCase, diagnostic io.Writer) (output string, duration time.Duration, retErr error) {
 	pkg, ok := program.Packages[benchmark.pkg]
 	if !ok {
 		return "", 0, fmt.Errorf("unknown benchmark package %q", benchmark.pkg)
 	}
-	runnerPath, cleanupRunner, err := writeBenchmarkRunner(pkg.Directory, benchmark.pkg, benchmark.name)
+	scope, err := newArtifactScope("oct-benchmark-run", diagnostic)
 	if err != nil {
 		return "", 0, err
 	}
-	defer cleanupRunner()
+	defer closeArtifactScope(scope, &retErr)
+	runnerPath, err := writeBenchmarkRunner(scope.path("runner.oct"), benchmark.pkg, benchmark.name)
+	if err != nil {
+		return "", 0, err
+	}
 
-	result, err := build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, benchmark.filePath})
+	result, err := build.CompileForTestWithSelectedFilesInPackage(runnerPath, pkg.Directory, []string{runnerPath, benchmark.filePath})
 	if err != nil {
-		cleanupArtifact(runnerPath + ".octbin")
 		return "", 0, err
 	}
-	defer cleanupArtifact(result.ArtifactPath)
 
 	cmd := exec.Command(result.ArtifactPath)
 	if prefix := interpret.CurrentOutputPathPrefix(); prefix != "" {
 		cmd.Env = append(os.Environ(), "OCT_OUTPUT_PATH_PREFIX="+prefix)
 	}
 	start := time.Now()
-	output, err := cmd.CombinedOutput()
-	duration := time.Since(start)
+	outputBytes, err := cmd.CombinedOutput()
+	duration = time.Since(start)
 	if err != nil {
-		msg := strings.TrimSpace(string(output))
+		msg := strings.TrimSpace(string(outputBytes))
 		if msg == "" {
 			return "", duration, fmt.Errorf("run compiled benchmark binary: %w", err)
 		}
 		return "", duration, fmt.Errorf("run compiled benchmark binary: %w: %s", err, msg)
 	}
-	return string(output), duration, nil
+	return string(outputBytes), duration, nil
 }
 
-func writeBenchmarkRunner(pkgDir string, pkgName string, benchmarkName string) (string, func(), error) {
-	fileName := fmt.Sprintf("zz_oct_bench_runner_%d_%d.oct", os.Getpid(), time.Now().UnixNano())
-	runnerPath := filepath.Join(pkgDir, fileName)
+func writeBenchmarkRunner(runnerPath string, pkgName string, benchmarkName string) (string, error) {
 	source := strings.Join([]string{
 		"package " + pkgName,
 		"fn main() -> Int {",
@@ -284,17 +284,9 @@ func writeBenchmarkRunner(pkgDir string, pkgName string, benchmarkName string) (
 		"",
 	}, "\n")
 	if err := os.WriteFile(runnerPath, []byte(source), 0o644); err != nil {
-		return "", nil, err
+		return "", err
 	}
-	cleanup := func() {
-		_ = os.Remove(runnerPath)
-	}
-	return runnerPath, cleanup, nil
-}
-
-func cleanupArtifact(path string) {
-	_ = os.Remove(path)
-	_ = os.Remove(path + ".mir")
+	return runnerPath, nil
 }
 
 func DefaultCPUProfilePath(path string) string {

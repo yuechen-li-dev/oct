@@ -63,7 +63,7 @@ Recommended `Make.octest` use: `[Benchmark]` is not important for MAKE3. It may 
 
 ### Selected-file compiled tests
 
-Fact/theory compiled execution writes a temporary `zz_oct_test_runner_*.octest` in the package directory and calls `build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, testCase.filePath})`. The project loader keeps all `.oct` source files while filtering `.octest` files to the selected runner and selected test file. Artifact and benchmark compiled paths use the same selected-file idea with their own generated runners.
+Fact/theory compiled execution now writes `runner.octest` and its compiled binary inside an owned `octest-run-*` temporary scope, then calls `build.CompileForTestWithSelectedFilesInPackage` so package resolution still uses the source package directory without writing generated files there. The project loader keeps all `.oct` source files while filtering `.octest` files to the selected external runner and selected test file. Artifact and benchmark compiled paths use the same lifecycle-scoped selected-file model. `OCT_KEEP_TEST_ARTIFACTS=1` is the explicit debug-retention escape hatch; ordinary `oct build` artifacts remain persistent.
 
 Implication for `Make.octest`: selected-file compiled execution should see sibling `Make.oct` code and the selected `Make.octest`, but it should not compile unrelated `.octest` files in the directory. This is exactly the desired behavior for focused plan/config tests.
 

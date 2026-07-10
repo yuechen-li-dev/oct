@@ -4,7 +4,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,7 +17,7 @@ func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 	requireGit(t)
 	cacheDir := t.TempDir()
 	t.Setenv("OCT_PKG_CACHE_DIR", cacheDir)
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("DemoExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
@@ -45,7 +47,7 @@ func TestExpRunExpRunFetchesAndExecutesExperiment(t *testing.T) {
 func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("CacheExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{
@@ -117,7 +119,7 @@ func TestExpRunExpRunSyncsDirectDependencies(t *testing.T) {
 func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("BadExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		NoReport: true,
@@ -138,7 +140,7 @@ func TestExpRunExpRunRejectsInvalidExperimentShape(t *testing.T) {
 func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("EntryExperiment", "0.1.0", "experiment", "M1", depLiterals(baseDep)),
 		Milestones: map[string]string{
@@ -168,7 +170,7 @@ func TestExpRunExpRunRespectsExplicitEntryMilestone(t *testing.T) {
 func TestExpRunExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest:   experimentManifestWithDeps("EntryMissing", "0.1.0", "experiment", "M7", depLiterals(baseDep)),
 		Milestones: map[string]string{"M0": milestoneFactSource("M0Runs")},
@@ -186,7 +188,7 @@ func TestExpRunExpRunFailsWhenExplicitEntryMissing(t *testing.T) {
 func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest: experimentManifestWithDeps("FallbackExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{
@@ -210,7 +212,7 @@ func TestExpRunExpRunFallsBackToCanonicalMilestonesOnly(t *testing.T) {
 func TestExpRunExpRunDeterministicForRepeatedRuns(t *testing.T) {
 	requireGit(t)
 	t.Setenv("OCT_PKG_CACHE_DIR", t.TempDir())
-	baseDep := createGitRepoWithManifest(t, manifestWithDeps("Base", "1.0.0", nil))
+	baseDep := sharedExperimentBaseDependency(t)
 	source := createExperimentGitRepo(t, experimentRepoSpec{
 		Manifest:   experimentManifestWithDeps("DeterministicExperiment", "0.1.0", "experiment", "", depLiterals(baseDep)),
 		Milestones: map[string]string{"M0": milestoneFactSource("DeterministicRuns")},
@@ -267,6 +269,62 @@ func createExperimentGitRepo(t *testing.T, spec experimentRepoSpec) string {
 	runCmd(t, repoDir, "git", "add", ".")
 	runCmd(t, repoDir, "git", "commit", "-m", "init")
 	return localRepoSourceURL(t, repoDir)
+}
+
+func sharedExperimentBaseDependency(t *testing.T) string {
+	t.Helper()
+	sharedExpBaseOnce.Do(func() {
+		sharedExpBaseDir, sharedExpBaseErr = os.MkdirTemp("", "oct-exp-base-*")
+		if sharedExpBaseErr != nil {
+			return
+		}
+		repoDir := filepath.Join(sharedExpBaseDir, "remote")
+		if err := os.MkdirAll(repoDir, 0o755); err != nil {
+			sharedExpBaseErr = err
+			return
+		}
+		for _, command := range [][]string{
+			{"git", "init"},
+			{"git", "config", "user.name", "oct-test"},
+			{"git", "config", "user.email", "oct-test@example.com"},
+		} {
+			if err := runSharedExperimentSetupCommand(repoDir, command[0], command[1:]...); err != nil {
+				sharedExpBaseErr = err
+				return
+			}
+		}
+		if err := os.WriteFile(filepath.Join(repoDir, "manifest.oct"), []byte(manifestWithDeps("Base", "1.0.0", nil)), 0o644); err != nil {
+			sharedExpBaseErr = err
+			return
+		}
+		if err := os.WriteFile(filepath.Join(repoDir, "main.oct"), []byte("package Demo\n"), 0o644); err != nil {
+			sharedExpBaseErr = err
+			return
+		}
+		if err := runSharedExperimentSetupCommand(repoDir, "git", "add", "."); err != nil {
+			sharedExpBaseErr = err
+			return
+		}
+		if err := runSharedExperimentSetupCommand(repoDir, "git", "commit", "-m", "init"); err != nil {
+			sharedExpBaseErr = err
+			return
+		}
+		sharedExpBaseURL = localRepoSourceURL(t, repoDir)
+	})
+	if sharedExpBaseErr != nil {
+		t.Fatalf("create shared experiment base dependency: %v", sharedExpBaseErr)
+	}
+	return sharedExpBaseURL
+}
+
+func runSharedExperimentSetupCommand(dir string, name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s %v: %w: %s", name, args, err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func milestoneFactSource(factName string) string {

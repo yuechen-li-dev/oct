@@ -8,6 +8,8 @@ jobs:
   build-test-artifact:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    env:
+      OCT_TEST_TEMP_ROOT: ${{ runner.temp }}/oct-test-artifacts
     strategy:
       fail-fast: false
       matrix:
@@ -65,6 +67,23 @@ jobs:
           OCT_WRAPPER_PATH: ${{ github.workspace }}/dist/sidecars
           OCT_SLOW_TESTS: "1"
         run: go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+
+      - name: Upload retained compiled-test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oct-test-artifacts-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ runner.temp }}/oct-test-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Clean compiled-test temp root
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath $env:OCT_TEST_TEMP_ROOT) {
+            Remove-Item -LiteralPath $env:OCT_TEST_TEMP_ROOT -Recurse -Force
+          }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

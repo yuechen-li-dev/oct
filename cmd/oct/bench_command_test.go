@@ -33,7 +33,7 @@ func TestOctBenchRunsDiscoveredBenchmarks(t *testing.T) {
 }
 
 func TestOctBenchUsesDeterministicOrdering(t *testing.T) {
-	t.Parallel()
+	parallelBoundaryTest(t)
 	skipUnlessSlow(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")

@@ -19,15 +19,33 @@ foreach ($file in $testFiles) {
     }
 }
 
+$runs = @()
 $events = foreach ($path in $JsonPath) {
+    $lane = if ($path -match 'integration') { 'integration' } elseif ($path -match 'toolchain') { 'toolchain' } else { 'default' }
+    $wallPath = Join-Path (Split-Path -Parent $path) (([IO.Path]::GetFileNameWithoutExtension($path)) + '_wall.json')
+    if (Test-Path -LiteralPath $wallPath) {
+        $wall = Get-Content -LiteralPath $wallPath -Raw | ConvertFrom-Json
+        $runs += [pscustomobject]@{
+            lane = $lane
+            input = $path
+            wall_seconds = [double]$wall.wall_seconds
+            exit_code = [int]$wall.exit_code
+            owned_temp_entries = $wall.owned_temp_entries
+            legacy_leaks = $wall.legacy_leaks
+        }
+    }
     Get-Content $path | ForEach-Object {
-        try { $_ | ConvertFrom-Json } catch { }
+        try {
+            $event = $_ | ConvertFrom-Json
+            $event | Add-Member -NotePropertyName _lane -NotePropertyValue $lane
+            $event
+        } catch { }
     }
 }
 
 $packages = @($events |
     Where-Object { $_.Action -eq 'pass' -and -not $_.Test -and $null -ne $_.Elapsed } |
-    ForEach-Object { [pscustomobject]@{ package = $_.Package; seconds = [double]$_.Elapsed } } |
+    ForEach-Object { [pscustomobject]@{ lane = $_._lane; package = $_.Package; seconds = [double]$_.Elapsed } } |
     Sort-Object seconds -Descending)
 
 $tests = @($events |
@@ -35,6 +53,7 @@ $tests = @($events |
     ForEach-Object {
         $top = ($_.Test -split '/')[0]
         [pscustomobject]@{
+            lane = $_._lane
             package = $_.Package
             test = $_.Test
             file = $testToFile[$top]
@@ -83,10 +102,11 @@ $summary = [ordered]@{
     label = $Label
     generated_at = (Get-Date).ToString('o')
     inputs = $JsonPath
+    runs = $runs
     packages = $packages
     slowest_tests = @($tests | Select-Object -First 50)
     families = @($families | Select-Object -First 30)
-    static_audit = $static
+    static_source_audit_at_summary_time = $static
 }
 
 $jsonDir = Split-Path -Parent $OutputJson
@@ -95,12 +115,14 @@ if ($jsonDir) { New-Item -ItemType Directory -Force $jsonDir | Out-Null }
 if ($mdDir) { New-Item -ItemType Directory -Force $mdDir | Out-Null }
 $summary | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 $OutputJson
 
-$lines = @("# $Label", "", "Generated from Go's `-json` event stream.", "", "## Package durations", "", "| Package | Seconds |", "|---|---:|")
-foreach ($row in $packages) { $lines += "| $($row.package) | $($row.seconds.ToString('0.000')) |" }
-$lines += @("", "## Slowest tests", "", "| Test | File | Seconds |", "|---|---|---:|")
-foreach ($row in ($tests | Select-Object -First 30)) { $lines += "| $($row.test) | $($row.file) | $($row.seconds.ToString('0.000')) |" }
+$lines = @("# $Label", "", "Generated from Go's `-json` event stream.", "", "## Lane wall time", "", "| Lane | Wall seconds | Exit | Owned temp entries | Legacy leaks |", "|---|---:|---:|---:|---:|")
+foreach ($run in $runs) { $lines += "| $($run.lane) | $($run.wall_seconds.ToString('0.000')) | $($run.exit_code) | $($run.owned_temp_entries) | $($run.legacy_leaks) |" }
+$lines += @("", "## Package durations", "", "| Lane | Package | Seconds |", "|---|---|---:|")
+foreach ($row in $packages) { $lines += "| $($row.lane) | $($row.package) | $($row.seconds.ToString('0.000')) |" }
+$lines += @("", "## Slowest tests", "", "| Lane | Test | File | Seconds |", "|---|---|---|---:|")
+foreach ($row in ($tests | Select-Object -First 30)) { $lines += "| $($row.lane) | $($row.test) | $($row.file) | $($row.seconds.ToString('0.000')) |" }
 $lines += @("", "## Highest aggregate top-level families", "", "| Family | Tests | Seconds |", "|---|---:|---:|")
 foreach ($row in ($families | Select-Object -First 20)) { $lines += "| $($row.family) | $($row.count) | $($row.seconds.ToString('0.000')) |" }
-$lines += @("", "## Static heavyweight-pattern audit", "", "| Pattern | Sites |", "|---|---:|")
+$lines += @("", "## Static heavyweight-pattern audit at summary time", "", "This source scan reflects the checkout when the summary is generated; raw Go JSON inputs remain the timing authority.", "", "| Pattern | Sites |", "|---|---:|")
 foreach ($entry in $static.GetEnumerator()) { $lines += "| $($entry.Key) | $($entry.Value.count) |" }
 $lines | Set-Content -Encoding utf8 $OutputMarkdown

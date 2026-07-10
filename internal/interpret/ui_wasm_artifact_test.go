@@ -13,9 +13,7 @@ import (
 )
 
 func TestEmitMachinaUIWasmArtifactAndExecuteBoundary(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is required for real wasm execution harness")
-	}
+	requireNodeTool(t)
 
 	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
 	if err := EmitMachinaUIWasmArtifact(artifactPath); err != nil {
@@ -240,9 +238,7 @@ func TestEmitMachinaUIWasmArtifactIsNotFixtureBytes(t *testing.T) {
 }
 
 func TestEmitMachinaUIWasmArtifactDoesNotRequireClangInPATH(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is required for wasm artifact execution check")
-	}
+	requireNodeTool(t)
 	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
 	originalPath := os.Getenv("PATH")
 	t.Setenv("PATH", "")

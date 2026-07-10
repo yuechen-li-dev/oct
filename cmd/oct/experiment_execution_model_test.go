@@ -10,7 +10,7 @@ import (
 )
 
 func TestExperimentExecutionModelExperimentRootTestCommandUsesCanonicalMilestones(t *testing.T) {
-	t.Parallel()
+	parallelBoundaryTest(t)
 	root := createExperimentRoot(t)
 	writeMilestoneFile(t, root, "M0", "suite.oct", "package Main\nfn Stable() -> Int { return 1 }\n")
 	writeMilestoneFile(t, root, "M0", "suite.octest", "package Main\n[Fact]\nfn CanonicalZeroPasses() -> Void { Assert.Equal(1, 1, \"canonical milestone executes\") }\n")

@@ -10,6 +10,7 @@ import (
 )
 
 func TestAxialStiffnessMatrix(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := setupM22eFixture(t)
 	stdout, stderr, err := executeCLIArgs("test", root, "--all-packages")
 	if err != nil {
@@ -24,6 +25,7 @@ func TestAxialStiffnessMatrix(t *testing.T) {
 }
 
 func TestStructuresPackageIntegrationRunAndBuild(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := setupM22eFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 
@@ -54,6 +56,7 @@ func TestStructuresPackageIntegrationRunAndBuild(t *testing.T) {
 }
 
 func TestStructuresBuildFailureDoesNotEmitArtifact(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := setupM22eStructuresFixture(t)
 	entry := filepath.Join(root, "Main", "main.oct")
 	writePkgFile(t, root, "Main", "main.oct", strings.Join([]string{

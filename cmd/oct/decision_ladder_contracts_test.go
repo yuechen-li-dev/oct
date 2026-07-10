@@ -10,7 +10,7 @@ import (
 )
 
 func TestDecisionLadderDecisionLadderContractsRunAsNativeOctTests(t *testing.T) {
-	t.Parallel()
+	parallelBoundaryTest(t)
 	validRoot := filepath.Join("..", "..", "Language", "ControlFlow", "DecisionLadder", "valid")
 	validStdout, validStderr, err := executeCLI("test", validRoot)
 	if err != nil {

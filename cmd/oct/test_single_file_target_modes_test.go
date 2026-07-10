@@ -9,6 +9,7 @@ import (
 )
 
 func TestSingleFileTargetExplicitSingleFileTargetIgnoresInvalidSiblingAndManifestInAllModes(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", manifestSource("WrongName", "intentionally invalid for directory target strictness"))
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn One() -> Int { return 1 }\n")
@@ -31,6 +32,7 @@ func TestSingleFileTargetExplicitSingleFileTargetIgnoresInvalidSiblingAndManifes
 }
 
 func TestSingleFileTargetManifestStubFailsDirectoryButSelectedFileRetainsAssertInCompiledMode(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "manifest.oct", "package Main\n")
 	writeOctPkgFile(t, root, "Main", "selected.octest", "package Main\n[Fact]\nfn SelectedPasses() -> Void { Assert.Equal(1, 1, \"assert available for selected file\") }\n")

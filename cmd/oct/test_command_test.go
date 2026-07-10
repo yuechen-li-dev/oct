@@ -13,6 +13,7 @@ import (
 )
 
 func TestOctTestRunsFactFilesAndReportsPassFail(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Math", "math.oct", "package Math\nfn FortyTwo() -> Int { return 42 }\n")
@@ -47,6 +48,7 @@ func TestOctTestRunsFactFilesAndReportsPassFail(t *testing.T) {
 }
 
 func TestOctTestDeterministicOrderingAndVoidReturns(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "order.octest", strings.Join([]string{
@@ -70,6 +72,7 @@ func TestOctTestDeterministicOrderingAndVoidReturns(t *testing.T) {
 }
 
 func TestOctTestRejectsInvalidFactShapesAndVoidRules(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "bad.octest", "package Main\n[Fact]\nfn Bad(x: Int) -> Void { return }\n")
@@ -92,6 +95,7 @@ func TestOctTestRejectsInvalidFactShapesAndVoidRules(t *testing.T) {
 }
 
 func TestOctTestRunsTheoryInlineDataCasesAndReportsPerCase(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeOctPkgFile(t, root, "Main", "theory.octest", strings.Join([]string{
@@ -120,6 +124,7 @@ func TestOctTestRunsTheoryInlineDataCasesAndReportsPerCase(t *testing.T) {
 }
 
 func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
+	parallelBoundaryTest(t)
 	type testCase struct {
 		name    string
 		content string
@@ -180,6 +185,7 @@ func TestOctTestRejectsInvalidTheoryAndInlineDataShapes(t *testing.T) {
 }
 
 func TestOctTestSuiteSelection(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Main", "main.oct", "package Main\nimport Lib\nfn Main() -> Int { return Lib.One() }\n")
 	writeOctPkgFile(t, root, "Main", "suite.octest", "package Main\nimport Lib\n[Suite(\"A\")]\n[Fact]\nfn InA() -> Void { Assert.Equal(1, Lib.One(), \"a\") }\n[Suite(\"B\")]\n[Fact]\nfn InB() -> Void { Assert.True(false, \"b fail\") }\n[Fact]\nfn Unsuited() -> Void { Assert.True(false, \"unsuited fail\") }\n[Suite(\"Slow\")]\n[Theory]\n[CycleTime(45.0s)]\n[InlineData(1)]\nfn SlowTheory(x: Int) -> Void { Assert.Equal(1, x, \"ok\") }\n")

@@ -9541,6 +9541,18 @@ func CompileForTestWithSelectedFiles(path string, selectedFiles []string) (Resul
 	return compileProgram(program, compileOptions{selectedReachableOnly: true})
 }
 
+// CompileForTestWithSelectedFilesInPackage compiles an externally stored test
+// runner against the package rooted at packageDir. The output follows the
+// runner into its owned temporary directory; ordinary Compile outputs are
+// unchanged and remain persistent.
+func CompileForTestWithSelectedFilesInPackage(path string, packageDir string, selectedFiles []string) (Result, error) {
+	program, err := project.LoadForTestWithSelectedFilesInPackage(path, packageDir, selectedFiles)
+	if err != nil {
+		return Result{}, err
+	}
+	return compileProgram(program, compileOptions{selectedReachableOnly: true})
+}
+
 const __octOctxiliaryHelpers = `
 var __octOctxiliaryOnce sync.Once
 var __octOctxiliaryCmd *exec.Cmd

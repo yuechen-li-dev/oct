@@ -11,9 +11,7 @@ import (
 )
 
 func TestMachinaUIHostRendererRendersWasmAndRoundTripsEvents(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is required for host renderer harness")
-	}
+	requireNodeTool(t)
 
 	artifactPath := filepath.Join(t.TempDir(), machinaUIWasmArtifactName)
 	if err := EmitMachinaUIWasmArtifact(artifactPath); err != nil {

@@ -12,6 +12,7 @@ import (
 )
 
 func TestSelectionIsolationExplicitFileDoesNotRunImportedPackageTests(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Lib", "lib.oct", "package Lib\nfn FortyTwo() -> Int { return 42 }\n")
 	writeOctPkgFile(t, root, "Lib", "lib_with_tests.octest", "package Lib\n[Fact]\nfn DeliberateFailure() -> Void { Assert.Equal(1, 2, \"must fail when selected\") }\n")
@@ -39,6 +40,7 @@ func TestSelectionIsolationExplicitFileDoesNotRunImportedPackageTests(t *testing
 }
 
 func TestSelectionIsolationDirectlySelectedLibraryTestStillRuns(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Lib", "lib.oct", "package Lib\nfn FortyTwo() -> Int { return 42 }\n")
 	writeOctPkgFile(t, root, "Lib", "lib_with_tests.octest", "package Lib\n[Fact]\nfn DeliberateFailure() -> Void { Assert.Equal(1, 2, \"must fail when selected\") }\n")
@@ -55,6 +57,7 @@ func TestSelectionIsolationDirectlySelectedLibraryTestStillRuns(t *testing.T) {
 }
 
 func TestSelectionIsolationMultipleExplicitFilesRunOnlySelectedFiles(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	writeOctPkgFile(t, root, "Deps", "dep.oct", "package Deps\nfn Marker() -> Int { return 7 }\n")
 	writeOctPkgFile(t, root, "Deps", "dep_fail.octest", "package Deps\n[Fact]\nfn DependencyFailure() -> Void { Assert.Equal(1, 2, \"must not run unless selected\") }\n")
@@ -77,6 +80,7 @@ func TestSelectionIsolationMultipleExplicitFilesRunOnlySelectedFiles(t *testing.
 }
 
 func TestSelectionIsolationDirectoryModeDiscoversWithinDirectoryOnly(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := t.TempDir()
 	inside := filepath.Join(root, "Inside")
 	outside := filepath.Join(root, "Outside")

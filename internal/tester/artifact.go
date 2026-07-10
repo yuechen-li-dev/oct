@@ -7,10 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/build"
 	"github.com/yuechen-li-dev/oct/internal/interpret"
@@ -112,21 +110,24 @@ func executeArtifactCase(program project.Program, artifact artifactCase, stdout 
 	})
 }
 
-func executeCompiledArtifactCase(program project.Program, artifact artifactCase, stdout io.Writer) error {
+func executeCompiledArtifactCase(program project.Program, artifact artifactCase, stdout io.Writer) (retErr error) {
 	pkg, ok := program.Packages[artifact.pkg]
 	if !ok {
 		return fmt.Errorf("unknown package %q", artifact.pkg)
 	}
-	runnerPath, cleanupRunner, err := writeCompiledArtifactRunner(pkg.Directory, artifact.pkg, artifact.name)
+	scope, err := newArtifactScope("oct-artifact-run", stdout)
 	if err != nil {
 		return err
 	}
-	defer cleanupRunner()
-	result, err := build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, artifact.filePath})
+	defer closeArtifactScope(scope, &retErr)
+	runnerPath, err := writeCompiledArtifactRunner(scope.path("runner.octest"), artifact.pkg, artifact.name)
 	if err != nil {
 		return err
 	}
-	defer cleanupArtifact(result.ArtifactPath)
+	result, err := build.CompileForTestWithSelectedFilesInPackage(runnerPath, pkg.Directory, []string{runnerPath, artifact.filePath})
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTestCycleTime)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, result.ArtifactPath)
@@ -147,9 +148,7 @@ func executeCompiledArtifactCase(program project.Program, artifact artifactCase,
 	return nil
 }
 
-func writeCompiledArtifactRunner(pkgDir string, pkgName string, fnName string) (string, func(), error) {
-	fileName := fmt.Sprintf("zz_oct_artifact_runner_%d_%d.octest", os.Getpid(), time.Now().UnixNano())
-	runnerPath := filepath.Join(pkgDir, fileName)
+func writeCompiledArtifactRunner(runnerPath string, pkgName string, fnName string) (string, error) {
 	source := strings.Join([]string{
 		"package " + pkgName,
 		"fn main() -> Int {",
@@ -159,7 +158,7 @@ func writeCompiledArtifactRunner(pkgDir string, pkgName string, fnName string) (
 		"",
 	}, "\n")
 	if err := os.WriteFile(runnerPath, []byte(source), 0o644); err != nil {
-		return "", nil, err
+		return "", err
 	}
-	return runnerPath, func() { _ = os.Remove(runnerPath) }, nil
+	return runnerPath, nil
 }

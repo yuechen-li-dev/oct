@@ -168,7 +168,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 		qualified := fmt.Sprintf("%s.%s", testCase.pkg, testCase.displayName)
 		ranCompiled := false
 		if executionMode != "interpreted" {
-			err := executeCompiledTestCase(program, testCase)
+			err := executeCompiledTestCase(program, testCase, stdout)
 			if err == nil {
 				compiledCount++
 				ranCompiled = true
@@ -247,21 +247,24 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 	return nil
 }
 
-func executeCompiledTestCase(program project.Program, testCase testCase) error {
+func executeCompiledTestCase(program project.Program, testCase testCase, diagnostic io.Writer) (retErr error) {
 	pkg, ok := program.Packages[testCase.pkg]
 	if !ok {
 		return fmt.Errorf("unknown package %q", testCase.pkg)
 	}
-	runnerPath, cleanupRunner, err := writeCompiledTestRunner(pkg.Directory, testCase.pkg, testCase)
+	scope, err := newArtifactScope("octest-run", diagnostic)
 	if err != nil {
 		return err
 	}
-	defer cleanupRunner()
-	result, err := build.CompileForTestWithSelectedFiles(runnerPath, []string{runnerPath, testCase.filePath})
+	defer closeArtifactScope(scope, &retErr)
+	runnerPath, err := writeCompiledTestRunner(scope.path("runner.octest"), testCase.pkg, testCase)
 	if err != nil {
 		return err
 	}
-	defer cleanupArtifact(result.ArtifactPath)
+	result, err := build.CompileForTestWithSelectedFilesInPackage(runnerPath, pkg.Directory, []string{runnerPath, testCase.filePath})
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), testCase.cycleTime)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, result.ArtifactPath)
@@ -280,9 +283,7 @@ func executeCompiledTestCase(program project.Program, testCase testCase) error {
 	return nil
 }
 
-func writeCompiledTestRunner(pkgDir string, pkgName string, testCase testCase) (string, func(), error) {
-	fileName := fmt.Sprintf("zz_oct_test_runner_%d_%d.octest", os.Getpid(), time.Now().UnixNano())
-	runnerPath := filepath.Join(pkgDir, fileName)
+func writeCompiledTestRunner(runnerPath string, pkgName string, testCase testCase) (string, error) {
 	call := fmt.Sprintf("    %s()", testCase.name)
 	if len(testCase.arguments) > 0 {
 		parts := make([]string, 0, len(testCase.arguments))
@@ -303,12 +304,12 @@ func writeCompiledTestRunner(pkgDir string, pkgName string, testCase testCase) (
 		"",
 	}, "\n")
 	if err := os.WriteFile(runnerPath, []byte(source), 0o644); err != nil {
-		return "", nil, err
+		return "", err
 	}
 	if os.Getenv("OCT_DEBUG_COMPILED_RUNNER") != "" {
 		fmt.Fprintf(os.Stderr, "compiled runner debug: testCase.name=%q displayName=%q isFallible=%t arguments=%d runner=%s\n%s\n", testCase.name, testCase.displayName, testCase.isFallible, len(testCase.arguments), runnerPath, source)
 	}
-	return runnerPath, func() { _ = os.Remove(runnerPath) }, nil
+	return runnerPath, nil
 }
 
 func inlineValueToSource(value interpret.Value) string {

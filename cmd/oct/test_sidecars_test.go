@@ -24,6 +24,10 @@ var (
 	testOctBinDir      string
 	testOctBinPath     string
 	testOctBinErr      error
+	sharedExpBaseOnce  sync.Once
+	sharedExpBaseDir   string
+	sharedExpBaseURL   string
+	sharedExpBaseErr   error
 )
 
 func TestMain(m *testing.M) {
@@ -33,6 +37,9 @@ func TestMain(m *testing.M) {
 	}
 	if testOctBinDir != "" {
 		_ = os.RemoveAll(testOctBinDir)
+	}
+	if sharedExpBaseDir != "" {
+		_ = os.RemoveAll(sharedExpBaseDir)
 	}
 	os.Exit(code)
 }

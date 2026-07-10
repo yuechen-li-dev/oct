@@ -9,6 +9,7 @@ import (
 )
 
 func TestGeneratedGoHardeningM23BuildsRepresentativeShapes(t *testing.T) {
+	parallelBoundaryTest(t)
 	tests := []struct {
 		name   string
 		source string

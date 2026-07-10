@@ -11,6 +11,17 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
+var boundaryTestSlots = make(chan struct{}, 4)
+
+// parallelBoundaryTest caps compiler/external-process concurrency while still
+// allowing isolated integration and toolchain cases to overlap.
+func parallelBoundaryTest(t *testing.T) {
+	t.Helper()
+	t.Parallel()
+	boundaryTestSlots <- struct{}{}
+	t.Cleanup(func() { <-boundaryTestSlots })
+}
+
 func octStringLiteralPath(path string) string {
 	return strconv.Quote(strings.ReplaceAll(filepath.ToSlash(path), `\`, "/"))
 }

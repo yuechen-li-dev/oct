@@ -9,6 +9,7 @@ import (
 )
 
 func TestNativeIfExpressionIfExpressionContractsRunAsNativeOctTests(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "valid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {
@@ -23,6 +24,7 @@ func TestNativeIfExpressionIfExpressionContractsRunAsNativeOctTests(t *testing.T
 }
 
 func TestNativeIfExpressionIfExpressionInvalidFixtureRunsAsNativeOctFail(t *testing.T) {
+	parallelBoundaryTest(t)
 	root := filepath.Join("..", "..", "Language", "ControlFlow", "IfExpression", "invalid")
 	stdout, stderr, err := executeCLI("test", root)
 	if err != nil {

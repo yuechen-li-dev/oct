@@ -10,7 +10,7 @@ import (
 )
 
 func TestStringErgonomics(t *testing.T) {
-	t.Parallel()
+	parallelBoundaryTest(t)
 	tests := []struct {
 		name         string
 		source       string

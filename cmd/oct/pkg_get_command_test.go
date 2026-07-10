@@ -8,8 +8,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+)
+
+var (
+	gitToolDiscoveryOnce sync.Once
+	gitToolDiscoveryErr  error
 )
 
 func TestPkgGetPkgGetFetchesIntoSharedCache(t *testing.T) {
@@ -158,8 +164,11 @@ func TestPkgGetPkgGetRejectsMalformedManifestShape(t *testing.T) {
 
 func requireGit(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git not available: %v", err)
+	gitToolDiscoveryOnce.Do(func() {
+		_, gitToolDiscoveryErr = exec.LookPath("git")
+	})
+	if gitToolDiscoveryErr != nil {
+		t.Skipf("git not available: %v", gitToolDiscoveryErr)
 	}
 }
 

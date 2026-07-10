@@ -9,6 +9,7 @@ import (
 )
 
 func TestSelectedFileCompiledRunnerSelectedFileCompiledRunnerLinkage(t *testing.T) {
+	parallelBoundaryTest(t)
 	target, err := filepath.Abs(filepath.Join("..", "..", "Language", "Testing", "SelectedFileCompiled", "selected_pass.octest"))
 	if err != nil {
 		t.Fatalf("resolve selected fixture path: %v", err)
@@ -40,6 +41,7 @@ func TestSelectedFileCompiledRunnerSelectedFileCompiledRunnerLinkage(t *testing.
 }
 
 func TestSelectedFileCompiledRunnerDirectoryTargetIncludesInvalidSiblingFixture(t *testing.T) {
+	parallelBoundaryTest(t)
 	targetDir, err := filepath.Abs(filepath.Join("..", "..", "Language", "Testing", "SelectedFileCompiled"))
 	if err != nil {
 		t.Fatalf("resolve fixture dir path: %v", err)

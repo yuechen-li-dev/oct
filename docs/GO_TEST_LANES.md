@@ -71,6 +71,27 @@ go test -count=1 -tags=toolchain ./...
 
 `tools/Run-GoIntegrationTests.ps1 -IncludeToolchain` runs the latter two tagged lanes. CI runs the fast lane first and attributes integration and toolchain failures separately.
 
+Compiled `.octest`, artifact, and benchmark runners are lifecycle-scoped under
+an owned temporary directory. Normal runs remove the entire scope on success,
+compile/runtime failure, and timeout. Set `OCT_TEST_TEMP_ROOT` to choose the
+parent directory. Set `OCT_KEEP_TEST_ARTIFACTS=1` only while debugging; Oct then
+prints each retained directory instead of scattering runner files into the
+working tree. This policy does not affect persistent `oct build` outputs.
+
+To inspect or remove legacy leaked runners safely:
+
+```powershell
+# Dry-run is the default; only zz_oct_test_runner_*.octest.octbin is matched.
+./tools/Clean-OctTestArtifacts.ps1 -Root . -OlderThan ([TimeSpan]::FromDays(1))
+
+# Explicit deletion after reviewing the list.
+./tools/Clean-OctTestArtifacts.ps1 -Root . -OlderThan ([TimeSpan]::FromDays(1)) -Delete
+```
+
+Use `-IncludeTempDirectories` only when the selected root contains abandoned
+owned scopes named `octest-run-*`, `oct-artifact-run-*`, or
+`oct-benchmark-run-*`. Arbitrary `.octbin` files are never matched.
+
 ## Native hardware lane
 
 Windows cgo tests that load the Prometheus reactor are tagged `native` and require an actual reactor and compatible Vulkan hardware:

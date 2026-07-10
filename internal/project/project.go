@@ -47,6 +47,14 @@ func LoadForTestWithSelectedFiles(path string, selectedFiles []string) (Program,
 	return loadWithSelectedFiles(path, true, selectedFiles)
 }
 
+// LoadForTestWithSelectedFilesInPackage loads a generated test entry point from
+// outside the source tree while resolving its package from packageDir. This is
+// used by lifecycle-scoped compiled test runners so generated sources and
+// binaries never need to be written beside user-authored Oct files.
+func LoadForTestWithSelectedFilesInPackage(path string, packageDir string, selectedFiles []string) (Program, error) {
+	return loadFromFileInPackage(path, packageDir, true, selectedFiles)
+}
+
 func load(path string, includeTests bool) (Program, error) {
 	return loadWithSelectedFiles(path, includeTests, nil)
 }
@@ -67,7 +75,10 @@ func loadWithSelectedFiles(path string, includeTests bool, selectedFiles []strin
 }
 
 func loadFromFile(path string, includeTests bool, explicitSelected []string) (Program, error) {
-	packageDir := filepath.Dir(path)
+	return loadFromFileInPackage(path, filepath.Dir(path), includeTests, explicitSelected)
+}
+
+func loadFromFileInPackage(path string, packageDir string, includeTests bool, explicitSelected []string) (Program, error) {
 	entryFile, err := parseFile(path)
 	if err != nil {
 		return Program{}, err
@@ -359,6 +370,25 @@ func loadPackageFiles(directory string, includeTests bool, selected map[string]s
 			}
 		}
 		files = filtered
+		seen := make(map[string]struct{}, len(files))
+		for _, candidate := range files {
+			absCandidate, err := filepath.Abs(candidate)
+			if err != nil {
+				return nil, err
+			}
+			seen[filepath.Clean(absCandidate)] = struct{}{}
+		}
+		for selectedPath := range selected {
+			if _, ok := seen[selectedPath]; ok {
+				continue
+			}
+			ext := filepath.Ext(selectedPath)
+			if ext != ".oct" && (!includeTests || ext != ".octest") {
+				continue
+			}
+			files = append(files, selectedPath)
+		}
+		sort.Strings(files)
 	}
 	result := make([]ast.File, 0, len(files))
 	for _, path := range files {

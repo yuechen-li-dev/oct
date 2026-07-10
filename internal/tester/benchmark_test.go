@@ -55,6 +55,8 @@ func TestBenchmarkMetadataFromOutputCapturesPrometheusTruth(t *testing.T) {
 
 func TestBenchmarkRunnerCleanupAfterCompileFailure(t *testing.T) {
 	root := t.TempDir()
+	artifactRoot := t.TempDir()
+	t.Setenv(testArtifactRootEnv, artifactRoot)
 	benchPath := filepath.Join(root, "bench.octest")
 	if err := os.WriteFile(benchPath, []byte("package Main\n[Benchmark]\nfn Bad() -> Void { Missing() }\n"), 0o644); err != nil {
 		t.Fatalf("write benchmark fixture: %v", err)
@@ -63,22 +65,15 @@ func TestBenchmarkRunnerCleanupAfterCompileFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load benchmark fixture: %v", err)
 	}
-	_, _, err = executeBenchmarkCompiled(program, benchmarkCase{pkg: "Main", filePath: benchPath, name: "Bad"})
+	_, _, err = executeBenchmarkCompiled(program, benchmarkCase{pkg: "Main", filePath: benchPath, name: "Bad"}, nil)
 	if err == nil {
 		t.Fatalf("expected benchmark compile failure")
 	}
-	runners, globErr := filepath.Glob(filepath.Join(root, "zz_oct_bench_runner_*.oct"))
-	if globErr != nil {
-		t.Fatalf("glob runner files: %v", globErr)
+	entries, readErr := os.ReadDir(artifactRoot)
+	if readErr != nil {
+		t.Fatalf("read artifact root: %v", readErr)
 	}
-	if len(runners) != 0 {
-		t.Fatalf("expected generated runner .oct files to be cleaned up, found %v", runners)
-	}
-	artifacts, globErr := filepath.Glob(filepath.Join(root, "zz_oct_bench_runner_*.oct.octbin"))
-	if globErr != nil {
-		t.Fatalf("glob runner artifacts: %v", globErr)
-	}
-	if len(artifacts) != 0 {
-		t.Fatalf("expected generated runner .octbin files to be cleaned up, found %v", artifacts)
+	if len(entries) != 0 {
+		t.Fatalf("expected owned benchmark scope cleanup after compile failure, found %v", entries)
 	}
 }

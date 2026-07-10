@@ -9,7 +9,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+)
+
+var (
+	pkgMgrGitDiscoveryOnce sync.Once
+	pkgMgrGitDiscoveryErr  error
 )
 
 func TestBuildWrapperPlanForManifestPurePackageHasNoSidecars(t *testing.T) {
@@ -246,8 +252,11 @@ func TestBuildWrapperPlanForProjectIncludesSyncedDependencies(t *testing.T) {
 
 func requireGitForPkgMgr(t *testing.T) {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skipf("git not available: %v", err)
+	pkgMgrGitDiscoveryOnce.Do(func() {
+		_, pkgMgrGitDiscoveryErr = exec.LookPath("git")
+	})
+	if pkgMgrGitDiscoveryErr != nil {
+		t.Skipf("git not available: %v", pkgMgrGitDiscoveryErr)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 )
 
 func TestCompiledMarkdownHelpersNoSidecar(t *testing.T) {
+	parallelBoundaryTest(t)
 	workDir := t.TempDir()
 	target := repoPath(t, "Libraries", "Markdown")
 	cmd := exec.Command(sharedTestOctBinary(t), "test", target, "--execution", "compiled")
