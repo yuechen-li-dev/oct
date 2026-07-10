@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (
@@ -51,12 +53,14 @@ func TestPkgSyncPkgSyncCacheHitReuse(t *testing.T) {
 	if cachePath == "" {
 		t.Fatalf("expected cache path in output: %q", stdout1)
 	}
+	fixedModTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(cachePath, fixedModTime, fixedModTime); err != nil {
+		t.Fatalf("set deterministic cache modtime: %v", err)
+	}
 	before, err := os.Stat(cachePath)
 	if err != nil {
 		t.Fatalf("stat cache path: %v", err)
 	}
-	time.Sleep(20 * time.Millisecond)
-
 	stdout2, stderr2, err := executeCLIInDir(projectDir, "pkg", "sync")
 	if err != nil {
 		t.Fatalf("second sync failed: err=%v stderr=%q stdout=%q", err, stderr2, stdout2)
@@ -157,18 +161,6 @@ func TestPkgSyncPkgSyncDeterministicOutput(t *testing.T) {
 	if parseOutputField(stdout1, "dependencies") != parseOutputField(stdout2, "dependencies") {
 		t.Fatalf("expected stable dependency count output: first=%q second=%q", stdout1, stdout2)
 	}
-}
-
-func executeCLIInDir(dir string, args ...string) (string, string, error) {
-	oldWD, err := os.Getwd()
-	if err != nil {
-		return "", "", err
-	}
-	if err := os.Chdir(dir); err != nil {
-		return "", "", err
-	}
-	defer func() { _ = os.Chdir(oldWD) }()
-	return executeCLIArgs(args...)
 }
 
 func createProjectWithManifest(t *testing.T, manifest string) string {

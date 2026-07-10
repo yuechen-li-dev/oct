@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (
@@ -255,12 +257,15 @@ fn Build() -> Void ! Error { let _w = Make.WriteText("%s", "made")? }
 		t.Fatalf("dry trace missing evidence:\n%s", body)
 	}
 
-	time.Sleep(1100 * time.Millisecond)
 	writeFile(t, makeFile, fmt.Sprintf(`package Main
 import Make
 fn Plan() -> Make.Plan { return Make.Plan { Default: "Build" Config: Make.Config { Profile: "Fail" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Always } CommandTargets: [] FunctionTargets: [Make.FunctionTarget { Name: "Build" Inputs: [] Outputs: ["%s"] Deps: [] Function: "Build" }] FlowTargets: [] PhonyTargets: [] } }
 fn Build() -> Int ! Error { return error("boom") }
 `, outPath))
+	forcedModTime := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(makeFile, forcedModTime, forcedModTime); err != nil {
+		t.Fatalf("set deterministic makefile modtime: %v", err)
+	}
 	_, stderr, err := executeCLIArgs("make", "--file", makeFile)
 	if err == nil {
 		t.Fatalf("expected function failure stderr=%q", stderr)

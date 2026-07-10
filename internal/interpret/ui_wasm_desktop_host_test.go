@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package interpret
 
 import (
@@ -190,13 +192,13 @@ run(process.argv[1]).catch((err) => {
 	}
 
 	var summary struct {
-		ABI                             string   `json:"abi"`
-		BootShowsHome                   bool     `json:"bootShowsHome"`
-		StatsRouteVisible               bool     `json:"statsRouteVisible"`
-		HomeAfterRouteBack              bool     `json:"homeAfterRouteBack"`
-		CountPersistsAcrossRoute        bool     `json:"countPersistsAcrossRoute"`
-		CapturedCanonicalEvents         []string `json:"capturedCanonicalEvents"`
-		DeterministicParityWithBrowser  bool     `json:"deterministicParityWithBrowserHost"`
+		ABI                            string   `json:"abi"`
+		BootShowsHome                  bool     `json:"bootShowsHome"`
+		StatsRouteVisible              bool     `json:"statsRouteVisible"`
+		HomeAfterRouteBack             bool     `json:"homeAfterRouteBack"`
+		CountPersistsAcrossRoute       bool     `json:"countPersistsAcrossRoute"`
+		CapturedCanonicalEvents        []string `json:"capturedCanonicalEvents"`
+		DeterministicParityWithBrowser bool     `json:"deterministicParityWithBrowserHost"`
 	}
 	if err := json.Unmarshal(out, &summary); err != nil {
 		t.Fatalf("decode desktop harness summary: %v\noutput=%q", err, string(out))

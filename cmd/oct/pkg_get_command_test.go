@@ -1,7 +1,8 @@
+//go:build toolchain
+
 package main
 
 import (
-	"bytes"
 	"net/url"
 	"os"
 	"os/exec"
@@ -9,8 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestPkgGetPkgGetFetchesIntoSharedCache(t *testing.T) {
@@ -51,11 +50,14 @@ func TestPkgGetPkgGetUsesCacheHitOnRepeatedFetch(t *testing.T) {
 	if cachePath == "" {
 		t.Fatalf("expected cache path in first output: %q", stdout1)
 	}
+	fixedModTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(cachePath, fixedModTime, fixedModTime); err != nil {
+		t.Fatalf("set deterministic cache modtime: %v", err)
+	}
 	infoBefore, err := os.Stat(cachePath)
 	if err != nil {
 		t.Fatalf("expected cached repo path %s: %v", cachePath, err)
 	}
-	time.Sleep(20 * time.Millisecond)
 	stdout2, stderr2, err2 := executeCLIArgs("pkg", "get", source)
 	if err2 != nil {
 		t.Fatalf("second get failed: err=%v stderr=%q stdout=%q", err2, stderr2, stdout2)
@@ -152,13 +154,6 @@ func TestPkgGetPkgGetRejectsMalformedManifestShape(t *testing.T) {
 	if !strings.Contains(stderr, "manifest dependency at index 0") {
 		t.Fatalf("expected malformed dependency error, got %q", stderr)
 	}
-}
-
-func executeCLIArgs(args ...string) (string, string, error) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := cli.Execute(args, &stdout, &stderr)
-	return stdout.String(), stderr.String(), err
 }
 
 func requireGit(t *testing.T) {

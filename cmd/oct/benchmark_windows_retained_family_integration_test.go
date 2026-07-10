@@ -1,4 +1,4 @@
-//go:build windows && cgo
+//go:build windows && cgo && native
 
 package main
 

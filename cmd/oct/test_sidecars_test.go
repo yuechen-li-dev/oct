@@ -90,8 +90,8 @@ func executeCLIWithSidecars(t *testing.T, command string, sourcePath string, nam
 	t.Helper()
 	repo := filepath.Join("..", "..")
 	target := repoRelativeTestPath(t, repo, sourcePath)
-	args := []string{"run", "./cmd/oct", command, target}
-	cmd := exec.Command("go", args...)
+	args := []string{command, target}
+	cmd := exec.Command(sharedTestOctBinary(t), args...)
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+sharedTestSidecarDir(t, names...))
 	var stdout bytes.Buffer

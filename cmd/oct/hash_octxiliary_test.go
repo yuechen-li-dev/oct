@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (

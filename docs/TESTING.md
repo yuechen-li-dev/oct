@@ -2,7 +2,8 @@
 
 ## Default unit workflow
 
-Use the default unit-test command for local iteration and normal CI:
+Use the default unit-test command for local iteration and normal CI. See
+`docs/GO_TEST_LANES.md` for the complete lane matrix:
 
 ```bash
 go test -count=1 -parallel 8 ./...
@@ -28,17 +29,17 @@ Sidecar-heavy compiled/auto wrapper tests are not part of the default fast lane.
 
 ## Slow test workflow
 
-General slow integration/science style tests are gated by:
+Compiler/corpus integration tests use the `integration` build tag:
 
 ```bash
-OCT_RUN_SLOW_TESTS=1 go test ./...
+go test -tags=integration ./...
 ```
 
 The explicit Octxiliary wrapper lane is:
 
 ```bash
 go run ./tools/build_sidecars --out dist/sidecars
-OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
 ```
 
 PowerShell equivalent:
@@ -47,7 +48,7 @@ PowerShell equivalent:
 go run ./tools/build_sidecars --out dist/sidecars
 $env:OCT_SLOW_TESTS = "1"
 $env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
-go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
 ```
 
 Use slow modes before releases, when wrapper/octxiliary code changes, or when specifically validating broader compiled/runtime paths.

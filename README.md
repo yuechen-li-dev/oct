@@ -211,8 +211,9 @@ go test ./internal/pkgmgr ./internal/project
 go test ./cmd/oct -run 'Version|Help|Pkg|Registry|Lock|New|Init|Wrappers|BuildWrappers'
 go test ./internal/... ./cmd/oct
 go test -count=1 -parallel 8 ./...
+go test -count=1 -parallel 8 -tags=integration ./...
 go run ./tools/build_sidecars --out dist/sidecars
-OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+OCT_SLOW_TESTS=1 OCT_WRAPPER_PATH="$PWD/dist/sidecars" go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
 go run ./cmd/oct --help
 go run ./cmd/oct pkg --help
 go run ./cmd/oct version
@@ -226,7 +227,7 @@ On PowerShell, use the same sidecar build command and set the wrapper path with:
 go run ./tools/build_sidecars --out dist/sidecars
 $env:OCT_SLOW_TESTS = "1"
 $env:OCT_WRAPPER_PATH = "$PWD\dist\sidecars"
-go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
 ```
 
 For more details, start with:

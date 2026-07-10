@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (
@@ -59,12 +61,14 @@ func TestExpRunExpRunUsesCacheHitOnRepeatedRuns(t *testing.T) {
 	if cachePath == "" {
 		t.Fatalf("expected experiment cache path output, got %q", stdout1)
 	}
+	fixedModTime := time.Unix(1_700_000_000, 0)
+	if err := os.Chtimes(cachePath, fixedModTime, fixedModTime); err != nil {
+		t.Fatalf("set deterministic cache modtime: %v", err)
+	}
 	before, err := os.Stat(cachePath)
 	if err != nil {
 		t.Fatalf("stat cache path: %v", err)
 	}
-	time.Sleep(20 * time.Millisecond)
-
 	stdout2, stderr2, err := executeCLIArgs("exp", "run", source)
 	if err != nil {
 		t.Fatalf("second exp run failed: err=%v stderr=%q stdout=%q", err, stderr2, stdout2)

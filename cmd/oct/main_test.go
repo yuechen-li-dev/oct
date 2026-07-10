@@ -1,7 +1,8 @@
+//go:build integration
+
 package main
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/yuechen-li-dev/oct/internal/cli"
 )
 
 func TestRunCommandExecutesMainPrograms(t *testing.T) {
@@ -1184,27 +1183,6 @@ func TestRecordsEnumsAndExprStmtRules(t *testing.T) {
 			}
 		})
 	}
-}
-
-func writeSourceFile(t *testing.T, name string, source string) string {
-	t.Helper()
-	tempDir := t.TempDir()
-	sourcePath := filepath.Join(tempDir, name)
-	trimmed := strings.TrimSpace(source)
-	if strings.HasSuffix(name, ".oct") && !strings.HasPrefix(trimmed, "package ") {
-		source = "package Main\n" + source
-	}
-	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
-		t.Fatalf("write source: %v", err)
-	}
-	return sourcePath
-}
-
-func executeCLI(command string, sourcePath string) (string, string, error) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	err := cli.Execute([]string{command, sourcePath}, &stdout, &stderr)
-	return stdout.String(), stderr.String(), err
 }
 
 func TestRunCommandRejectsInvalidDimensions(t *testing.T) {

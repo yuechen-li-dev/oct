@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (
@@ -13,7 +15,7 @@ func TestCompiledTextOctxiliaryWrapper(t *testing.T) {
 	repo := filepath.Join("..", "..")
 	binDir := sharedTestSidecarDir(t, "octxiliary-text")
 
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", "Libraries/Text", "--execution", "compiled")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", "Libraries/Text", "--execution", "compiled")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+binDir)
 	out, err := cmd.CombinedOutput()
@@ -34,7 +36,7 @@ func TestCompiledTextOctxiliaryMissingSidecarMessage(t *testing.T) {
 	requireSlowOctxiliary(t)
 	repo := filepath.Join("..", "..")
 	target := filepath.Join("Libraries", "Text", "Text.CompiledSmoke.octest")
-	cmd := exec.Command("go", "run", "./cmd/oct", "test", target, "--execution", "compiled")
+	cmd := exec.Command(sharedTestOctBinary(t), "test", target, "--execution", "compiled")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "OCT_WRAPPER_PATH="+t.TempDir())
 	out, err := cmd.CombinedOutput()

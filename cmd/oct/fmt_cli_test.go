@@ -22,6 +22,7 @@ func writeSourceFileAtPath(t *testing.T, path string, content string) string {
 }
 
 func TestFmtHelpShowsCanonicalModes(t *testing.T) {
+	t.Parallel()
 	var out, errOut bytes.Buffer
 	if err := cli.Execute([]string{"fmt", "--help"}, &out, &errOut); err != nil {
 		t.Fatalf("help failed: %v", err)
@@ -36,6 +37,7 @@ func TestFmtHelpShowsCanonicalModes(t *testing.T) {
 }
 
 func TestFmtModeVariantsAndAliases(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	path := writeSourceFileAtPath(t, filepath.Join(root, "sample.oct"), "package Main\nfn main()->Int{return 1}\n")
 	for _, mode := range []string{"en-llm", "en-llm-compact", "readable", "compact"} {
@@ -56,7 +58,8 @@ func TestFmtModeVariantsAndAliases(t *testing.T) {
 }
 
 func TestFmtInvalidModeDiagnostic(t *testing.T) {
-	path := writeSourceFile(t, "fmt_invalid_mode.oct", "package Main\nfn main()->Int{return 1}\n")
+	t.Parallel()
+	path := writeSourceFileAtPath(t, filepath.Join(t.TempDir(), "fmt_invalid_mode.oct"), "package Main\nfn main()->Int{return 1}\n")
 	var out, errOut bytes.Buffer
 	err := cli.Execute([]string{"fmt", path, "--mode", "invalid"}, &out, &errOut)
 	if err == nil {

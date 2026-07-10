@@ -8,6 +8,7 @@ import (
 )
 
 func TestTopLevelHelpFlag(t *testing.T) {
+	t.Parallel()
 	var out, errOut bytes.Buffer
 	if err := cli.Execute([]string{"--help"}, &out, &errOut); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -21,6 +22,7 @@ func TestTopLevelHelpFlag(t *testing.T) {
 }
 
 func TestTopLevelHelpCommand(t *testing.T) {
+	t.Parallel()
 	var out, errOut bytes.Buffer
 	if err := cli.Execute([]string{"help"}, &out, &errOut); err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -31,6 +33,7 @@ func TestTopLevelHelpCommand(t *testing.T) {
 }
 
 func TestUnknownCommandSuggestsHelp(t *testing.T) {
+	t.Parallel()
 	var out, errOut bytes.Buffer
 	err := cli.Execute([]string{"tesst"}, &out, &errOut)
 	if err == nil {
@@ -42,6 +45,7 @@ func TestUnknownCommandSuggestsHelp(t *testing.T) {
 }
 
 func TestCommandHelp(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		args []string
 		want []string

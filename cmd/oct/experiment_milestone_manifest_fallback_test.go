@@ -1,9 +1,10 @@
+//go:build integration
+
 package main
 
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -82,8 +83,4 @@ func TestManifestDetectionIgnoresChildMilestoneManifest(t *testing.T) {
 	if strings.Contains(stderr, "package manifest missing") {
 		t.Fatalf("expected child manifest not to activate root manifest mode, got %q", stderr)
 	}
-}
-
-func octStringLiteralPath(path string) string {
-	return strconv.Quote(strings.ReplaceAll(filepath.ToSlash(path), `\`, "/"))
 }

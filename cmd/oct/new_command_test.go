@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (
@@ -219,20 +221,6 @@ func assertNewFilesExist(t *testing.T, root string, rels ...string) {
 		info, err := os.Stat(path)
 		if err != nil || info.IsDir() {
 			t.Fatalf("expected file %s, info=%v err=%v", path, info, err)
-		}
-	}
-}
-
-func assertFileContains(t *testing.T, path string, snippets ...string) {
-	t.Helper()
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
-	}
-	content := string(bytes)
-	for _, snippet := range snippets {
-		if !strings.Contains(content, snippet) {
-			t.Fatalf("expected %s to contain %q, got:\n%s", path, snippet, content)
 		}
 	}
 }

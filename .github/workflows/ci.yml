@@ -51,6 +51,12 @@ jobs:
       - name: Run fast tests
         run: go test -count=1 -parallel 8 ./...
 
+      - name: Run compiler and CLI integration tests
+        run: go test -count=1 -parallel 8 -tags=integration ./...
+
+      - name: Run external-tool tests
+        run: go test -count=1 -parallel 8 -tags=toolchain ./...
+
       - name: Build octxiliary sidecars
         run: go run ./tools/build_sidecars --out dist/sidecars
 
@@ -58,7 +64,7 @@ jobs:
         env:
           OCT_WRAPPER_PATH: ${{ github.workspace }}/dist/sidecars
           OCT_SLOW_TESTS: "1"
-        run: go test -count=1 -parallel 8 ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
+        run: go test -count=1 -parallel 8 -tags=toolchain ./cmd/oct -run 'Wrapper|Octxiliary|IO|Csv|Json|Xlsx|Pdf|Image|Plot|Compiled'
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

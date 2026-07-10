@@ -1,3 +1,5 @@
+//go:build toolchain
+
 package main
 
 import (
@@ -120,15 +122,6 @@ func TestPkgWrappersConflictFailsClearly(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "duplicate Wrapper.SidecarCommand") {
 		t.Fatalf("expected duplicate Wrapper.SidecarCommand error, got %q", stderr)
-	}
-}
-
-func assertOutputContains(t *testing.T, output string, snippets ...string) {
-	t.Helper()
-	for _, snippet := range snippets {
-		if !strings.Contains(output, snippet) {
-			t.Fatalf("expected output to contain %q, got:\n%s", snippet, output)
-		}
 	}
 }
 
