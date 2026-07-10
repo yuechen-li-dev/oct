@@ -100,3 +100,5 @@ M24 is the first real Prometheus SGEMM kernel to rely on M23 flow-bound mutable 
 - no board state escapes the current invocation.
 
 The detailed outcome is documented in `internal/prometheus/DevelopmentReport/SDSL_V_M24_FLOW_BOARD_SGEMM.md`.
+
+M25 keeps this distinction explicit: `derive` constructs immutable values and is rejected for flow-owned mutable board initialization. Flow scratch state still uses explicit board initializers plus field mutation inside states.

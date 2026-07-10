@@ -85,6 +85,8 @@ const (
 	varBuiltin   varOrigin = "builtin"
 	varComptime  varOrigin = "comptime"
 	varFlowBoard varOrigin = "flow_board"
+	varDeriveSelf  varOrigin = "derive_self"
+	varDeriveLater varOrigin = "derive_later"
 )
 
 type varInfo struct {
@@ -714,7 +716,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			if s.Type.Name == "reg_tile" && isRegTileZeroCall(s.Value) {
 				valueType = s.Type
 			} else {
-				valueType = v.exprType(s.Value, scope, shaderName, templateParam)
+				valueType = v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, &s.Type, "")
 			}
 			if !v.compatible(s.Type, valueType) {
 				v.errorf("cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
@@ -739,6 +741,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if v.typeKind(s.Type) == "board" {
 			v.errorf("comptime let %s cannot use board type %s in SDSL-V M21; structured consteval boards are not supported", s.Name, typeName(s.Type))
 		}
+		if containsDeriveExpr(s.Value) {
+			v.errorf("derive is not a compile-time expression in SDSL-V M25")
+		}
 		v.validateWithPlacement(s.Value, false)
 		v.validateGuardedReadPlacement(s.Value, true)
 		v.validateMatchPlacement(s.Value, false)
@@ -746,7 +751,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if containsGuardedReadExpr(s.Value) {
 			v.errorf("guarded read is not a compile-time expression in SDSL-V M16a")
 		}
-		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		valueType := v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, nil, "")
 		if !v.compatible(s.Type, valueType) {
 			v.errorf("cannot assign %s to comptime local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
 		}
@@ -770,7 +775,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateBarrierUsage(s.Target, false, shaderName, stage)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		targetType := v.exprType(s.Target, scope, shaderName, templateParam)
-		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		valueType := v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, &targetType, "")
 		if !isAssignableTarget(s.Target) {
 			v.errorf("assignment target is not assignable")
 		}
@@ -811,7 +816,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("cannot guarded-write to readonly matrix view")
 		}
 		targetType := v.exprType(s.Target, scope, shaderName, templateParam)
-		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		valueType := v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, &targetType, "")
 		guardType := v.exprType(s.Condition, scope, shaderName, templateParam)
 		if guardType.Name != "bool" {
 			v.errorf("guarded write condition must be bool")
@@ -831,7 +836,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateMatchPlacement(s.Value, true)
 		v.validateReductionPlacement(s.Value, true)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
-		valueType := v.exprType(s.Value, scope, shaderName, templateParam)
+		valueType := v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, &returnType, "")
 		if valueType.Name == "reg_tile" || returnType.Name == "reg_tile" {
 			v.errorf("reg_tile return values are not supported in SDSL-V M15")
 		}
@@ -1057,7 +1062,10 @@ func (v *validator) validateFlowStmt(stmt ast.FlowStmt, returnType ast.TypeRef, 
 		v.validateMatchPlacement(board.Initializer, true)
 		v.validateReductionPlacement(board.Initializer, true)
 		v.validateBarrierUsage(board.Initializer, false, shaderName, stage)
-		initType := v.exprType(board.Initializer, flowScope, shaderName, templateParam)
+		if _, ok := board.Initializer.(ast.DeriveExpr); ok {
+			v.errorf("derive constructs immutable values; flow-owned mutable boards require an explicit board initializer")
+		}
+		initType := v.exprTypeWithExpected(board.Initializer, flowScope, shaderName, templateParam, &board.Type, "")
 		if !v.compatible(board.Type, initType) {
 			v.errorf("flow %s board %s initializer expects %s, got %s", stmt.Name, board.Name, typeName(board.Type), typeName(initType))
 		}
@@ -1139,7 +1147,105 @@ func (v *validator) validateType(ref ast.TypeRef) {
 	}
 }
 
+func (v *validator) checkStructuredLiteralExpr(expr ast.BoardLiteralExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, currentDeriveField string) ast.TypeRef {
+	info, ok := v.types[expr.TypeName]
+	if !ok || (info.kind != "board" && info.kind != "record" && info.kind != "stream") {
+		v.errorf("unknown structured type %s", expr.TypeName)
+		return ast.TypeRef{Name: "<error>"}
+	}
+	label := info.kind + " literal"
+	seen := map[string]struct{}{}
+	for _, field := range expr.Fields {
+		if _, exists := seen[field.Name]; exists {
+			v.errorf("duplicate %s field %s on %s", label, field.Name, expr.TypeName)
+			continue
+		}
+		seen[field.Name] = struct{}{}
+		decl, ok := info.fields[field.Name]
+		if !ok {
+			v.errorf("unknown %s field %s on %s", label, field.Name, expr.TypeName)
+			continue
+		}
+		valueType := v.exprTypeWithExpected(field.Value, scope, shaderName, templateParam, &decl.typ, currentDeriveField)
+		if !v.compatible(decl.typ, valueType) {
+			v.errorf("%s field %s on %s expects %s, got %s", label, field.Name, expr.TypeName, typeName(decl.typ), typeName(valueType))
+		}
+	}
+	fieldNames := make([]string, 0, len(info.fields))
+	for fieldName := range info.fields {
+		fieldNames = append(fieldNames, fieldName)
+	}
+	sortStrings(fieldNames)
+	for _, fieldName := range fieldNames {
+		if _, exists := seen[fieldName]; !exists {
+			v.errorf("missing %s field %s on %s", label, fieldName, expr.TypeName)
+		}
+	}
+	return ast.TypeRef{Name: expr.TypeName}
+}
+
+func (v *validator) checkDeriveExpr(expr ast.DeriveExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, expected *ast.TypeRef) ast.TypeRef {
+	if expected == nil {
+		v.errorf("derive requires an explicit record or board target type")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	target := v.resolveAlias(*expected)
+	info, ok := v.types[target.Name]
+	if !ok || (info.kind != "record" && info.kind != "board") {
+		v.errorf("derive requires an explicit record or board target type")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	fieldNames := make([]string, 0, len(info.fields))
+	for name := range info.fields {
+		fieldNames = append(fieldNames, name)
+	}
+	sortStrings(fieldNames)
+	seen := map[string]struct{}{}
+	deriveScope := cloneScope(scope)
+	for _, field := range expr.Fields {
+		if _, exists := deriveScope[field.Name]; exists {
+			v.errorf("duplicate local name %s", field.Name)
+		}
+	}
+	for i, field := range expr.Fields {
+		if _, exists := seen[field.Name]; exists {
+			v.errorf("duplicate derive field `%s`", field.Name)
+			continue
+		}
+		seen[field.Name] = struct{}{}
+		decl, ok := info.fields[field.Name]
+		if !ok {
+			v.errorf("unknown derive field `%s` for `%s`", field.Name, target.Name)
+			continue
+		}
+		fieldScope := cloneScope(deriveScope)
+		fieldScope[field.Name] = varInfo{typ: decl.typ, origin: varDeriveSelf}
+		for j := i + 1; j < len(expr.Fields); j++ {
+			later := expr.Fields[j]
+			if _, exists := info.fields[later.Name]; !exists {
+				continue
+			}
+			fieldScope[later.Name] = varInfo{typ: info.fields[later.Name].typ, origin: varDeriveLater}
+		}
+		valueType := v.exprTypeWithExpected(field.Value, fieldScope, shaderName, templateParam, &decl.typ, field.Name)
+		if !v.compatible(decl.typ, valueType) {
+			v.errorf("derive field `%s` requires %s, got %s", field.Name, typeName(decl.typ), typeName(valueType))
+		}
+		deriveScope[field.Name] = varInfo{typ: decl.typ, origin: varLocal}
+	}
+	for _, fieldName := range fieldNames {
+		if _, exists := seen[fieldName]; !exists {
+			v.errorf("missing derive field `%s`", fieldName)
+		}
+	}
+	return target
+}
+
 func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	return v.exprTypeWithExpected(expr, scope, shaderName, templateParam, nil, "")
+}
+
+func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, expected *ast.TypeRef, currentDeriveField string) ast.TypeRef {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
 		if strings.HasSuffix(e.Value, "u") || strings.HasSuffix(e.Value, "U") {
@@ -1154,6 +1260,12 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		return ast.TypeRef{Name: "string"}
 	case ast.IdentifierExpr:
 		if t, ok := scope[e.Name]; ok {
+			switch t.origin {
+			case varDeriveSelf:
+				v.errorf("derive field `%s` cannot reference itself", currentDeriveField)
+			case varDeriveLater:
+				v.errorf("derive field `%s` references later field `%s`", currentDeriveField, e.Name)
+			}
 			return v.resolveAlias(t.typ)
 		}
 		v.errorf("unknown identifier %s", e.Name)
@@ -1187,7 +1299,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 				return ast.TypeRef{Name: "<error>"}
 			}
 		}
-		target := v.exprType(e.Target, scope, shaderName, templateParam)
+		target := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
 		if info, ok := v.types[target.Name]; ok && info.fields != nil {
 			if fieldType, ok := info.fields[e.Field]; ok {
 				return v.resolveAlias(fieldType.typ)
@@ -1196,13 +1308,13 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		v.errorf("unknown field %s on %s", e.Field, typeName(target))
 		return ast.TypeRef{Name: "<error>"}
 	case ast.IndexExpr:
-		target := v.exprType(e.Target, scope, shaderName, templateParam)
-		index := v.exprType(e.Index, scope, shaderName, templateParam)
+		target := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
+		index := v.exprTypeWithExpected(e.Index, scope, shaderName, templateParam, nil, currentDeriveField)
 		if !isInteger(index) {
 			v.errorf("array index must be integer")
 		}
 		if e.HasSecond {
-			index2 := v.exprType(e.Index2, scope, shaderName, templateParam)
+			index2 := v.exprTypeWithExpected(e.Index2, scope, shaderName, templateParam, nil, currentDeriveField)
 			if !isInteger(index2) {
 				v.errorf("2D index second operand must be integer")
 			}
@@ -1244,9 +1356,9 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		if !isGuardedMemoryReadTarget(e.Target) {
 			v.errorf("guarded read target must be an indexed memory expression")
 		}
-		targetType := v.exprType(e.Target, scope, shaderName, templateParam)
-		guardType := v.exprType(e.Condition, scope, shaderName, templateParam)
-		fallbackType := v.exprType(e.Fallback, scope, shaderName, templateParam)
+		targetType := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
+		guardType := v.exprTypeWithExpected(e.Condition, scope, shaderName, templateParam, nil, currentDeriveField)
+		fallbackType := v.exprTypeWithExpected(e.Fallback, scope, shaderName, templateParam, nil, currentDeriveField)
 		if guardType.Name != "bool" {
 			v.errorf("guarded read condition must be bool")
 		}
@@ -1257,8 +1369,8 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 	case ast.CallExpr:
 		return v.callType(e, scope, shaderName, templateParam)
 	case ast.BinaryExpr:
-		left := v.exprType(e.Left, scope, shaderName, templateParam)
-		right := v.exprType(e.Right, scope, shaderName, templateParam)
+		left := v.exprTypeWithExpected(e.Left, scope, shaderName, templateParam, nil, currentDeriveField)
+		right := v.exprTypeWithExpected(e.Right, scope, shaderName, templateParam, nil, currentDeriveField)
 		switch e.Operator {
 		case "and", "or":
 			if left.Name != "bool" || right.Name != "bool" {
@@ -1284,7 +1396,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 			return ast.TypeRef{Name: "i32"}
 		}
 	case ast.UnaryExpr:
-		operand := v.exprType(e.Operand, scope, shaderName, templateParam)
+		operand := v.exprTypeWithExpected(e.Operand, scope, shaderName, templateParam, nil, currentDeriveField)
 		switch e.Operator {
 		case "not":
 			if operand.Name != "bool" {
@@ -1298,7 +1410,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 		return operand
 	case ast.ParenExpr:
-		return v.exprType(e.Inner, scope, shaderName, templateParam)
+		return v.exprTypeWithExpected(e.Inner, scope, shaderName, templateParam, nil, currentDeriveField)
 	case ast.EnumConstructExpr:
 		enumInfo, ok := v.types[e.EnumName]
 		if !ok || enumInfo.kind != "enum" {
@@ -1328,7 +1440,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 				v.errorf("unknown payload field %s on %s.%s", field.Name, e.EnumName, e.VariantName)
 				continue
 			}
-			valueType := v.exprType(field.Value, scope, shaderName, templateParam)
+			valueType := v.exprTypeWithExpected(field.Value, scope, shaderName, templateParam, nil, currentDeriveField)
 			if !v.compatible(decl.typ, valueType) {
 				v.errorf("payload field %s on %s.%s expects %s, got %s", field.Name, e.EnumName, e.VariantName, typeName(decl.typ), typeName(valueType))
 			}
@@ -1340,36 +1452,11 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 		return ast.TypeRef{Name: e.EnumName}
 	case ast.BoardLiteralExpr:
-		info, ok := v.types[e.TypeName]
-		if !ok || info.kind != "board" {
-			v.errorf("unknown board type %s", e.TypeName)
-			return ast.TypeRef{Name: "<error>"}
-		}
-		seen := map[string]struct{}{}
-		for _, field := range e.Fields {
-			if _, exists := seen[field.Name]; exists {
-				v.errorf("duplicate board literal field %s on %s", field.Name, e.TypeName)
-				continue
-			}
-			seen[field.Name] = struct{}{}
-			decl, ok := info.fields[field.Name]
-			if !ok {
-				v.errorf("unknown board literal field %s on %s", field.Name, e.TypeName)
-				continue
-			}
-			valueType := v.exprType(field.Value, scope, shaderName, templateParam)
-			if !v.compatible(decl.typ, valueType) {
-				v.errorf("board literal field %s on %s expects %s, got %s", field.Name, e.TypeName, typeName(decl.typ), typeName(valueType))
-			}
-		}
-		for fieldName := range info.fields {
-			if _, exists := seen[fieldName]; !exists {
-				v.errorf("missing board literal field %s on %s", fieldName, e.TypeName)
-			}
-		}
-		return ast.TypeRef{Name: e.TypeName}
+		return v.checkStructuredLiteralExpr(e, scope, shaderName, templateParam, currentDeriveField)
+	case ast.DeriveExpr:
+		return v.checkDeriveExpr(e, scope, shaderName, templateParam, expected)
 	case ast.MatchExpr:
-		subjectType := v.resolveAlias(v.exprType(e.Subject, scope, shaderName, templateParam))
+		subjectType := v.resolveAlias(v.exprTypeWithExpected(e.Subject, scope, shaderName, templateParam, nil, currentDeriveField))
 		if v.typeKind(subjectType) != "enum" {
 			v.errorf("match subject must be enum, got %s", typeName(subjectType))
 			return ast.TypeRef{Name: "<error>"}
@@ -1400,7 +1487,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 			} else if arm.BindingName != "" {
 				v.errorf("simple variant %s.%s must not bind payload", arm.EnumName, arm.VariantName)
 			}
-			valueType := v.exprType(arm.Value, armScope, shaderName, templateParam)
+			valueType := v.exprTypeWithExpected(arm.Value, armScope, shaderName, templateParam, nil, currentDeriveField)
 			if i == 0 {
 				result = valueType
 			} else if !v.compatible(result, valueType) {
@@ -1419,9 +1506,9 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 	case ast.WhenUtilityExpr:
 		var result ast.TypeRef
 		for i, c := range e.Cases {
-			value := v.exprType(c.Value, scope, shaderName, templateParam)
-			cond := v.exprType(c.Condition, scope, shaderName, templateParam)
-			score := v.exprType(c.Score, scope, shaderName, templateParam)
+			value := v.exprTypeWithExpected(c.Value, scope, shaderName, templateParam, nil, currentDeriveField)
+			cond := v.exprTypeWithExpected(c.Condition, scope, shaderName, templateParam, nil, currentDeriveField)
+			score := v.exprTypeWithExpected(c.Score, scope, shaderName, templateParam, nil, currentDeriveField)
 			if cond.Name != "bool" {
 				v.errorf("when utility guard must be bool")
 			}
@@ -1434,7 +1521,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 				v.errorf("when utility case values must share a type")
 			}
 		}
-		elseType := v.exprType(e.Else, scope, shaderName, templateParam)
+		elseType := v.exprTypeWithExpected(e.Else, scope, shaderName, templateParam, nil, currentDeriveField)
 		if result.Name == "" {
 			result = elseType
 		}
@@ -1443,7 +1530,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 		return result
 	case ast.WithExpr:
-		baseType := v.exprType(e.Base, scope, shaderName, templateParam)
+		baseType := v.exprTypeWithExpected(e.Base, scope, shaderName, templateParam, nil, currentDeriveField)
 		kind := v.typeKind(baseType)
 		if kind == "board" {
 			v.errorf("board values are immutable in SDSL-V M21; use a new board literal instead of with-update")
@@ -1466,7 +1553,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 				v.errorf("unknown with field %s on %s", update.Name, typeName(baseType))
 				continue
 			}
-			valueType := v.exprType(update.Value, scope, shaderName, templateParam)
+			valueType := v.exprTypeWithExpected(update.Value, scope, shaderName, templateParam, nil, currentDeriveField)
 			if !v.compatible(field.typ, valueType) {
 				v.errorf("with field %s expects %s, got %s", update.Name, typeName(field.typ), typeName(valueType))
 			}
@@ -1474,8 +1561,8 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		return baseType
 	case ast.ReductionExpr:
 		v.validateReductionAttributes(e.Attributes)
-		startType := v.exprType(e.Start, scope, shaderName, templateParam)
-		endType := v.exprType(e.End, scope, shaderName, templateParam)
+		startType := v.exprTypeWithExpected(e.Start, scope, shaderName, templateParam, nil, currentDeriveField)
+		endType := v.exprTypeWithExpected(e.End, scope, shaderName, templateParam, nil, currentDeriveField)
 		if !isInteger(startType) || !isInteger(endType) {
 			v.errorf("%s reduction bounds must be integer", e.Op)
 		}
@@ -1484,7 +1571,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 		}
 		bodyScope := cloneScope(scope)
 		bodyScope[e.Name] = varInfo{typ: startType, origin: varLocal}
-		bodyType := v.exprType(e.Body, bodyScope, shaderName, templateParam)
+		bodyType := v.exprTypeWithExpected(e.Body, bodyScope, shaderName, templateParam, nil, currentDeriveField)
 		switch e.Op {
 		case ast.ReductionSum, ast.ReductionProduct:
 			if !isNumeric(bodyType) {
@@ -1557,7 +1644,7 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 					return info.returnType
 				}
 				for i, arg := range call.Arguments {
-					argType := v.exprType(arg, scope, shaderName, templateParam)
+					argType := v.exprTypeWithExpected(arg, scope, shaderName, templateParam, &info.params[i].Type, "")
 					if !v.compatible(info.params[i].Type, argType) {
 						v.errorf("function %s argument %d expects %s, got %s", id.Name, i+1, typeName(info.params[i].Type), typeName(argType))
 					}
@@ -1702,6 +1789,10 @@ func (v *validator) validateWithPlacement(expr ast.Expr, topLevelAllowed bool) {
 		for _, field := range e.Fields {
 			v.validateWithPlacement(field.Value, false)
 		}
+	case ast.DeriveExpr:
+		for _, field := range e.Fields {
+			v.validateWithPlacement(field.Value, false)
+		}
 	case ast.WithExpr:
 		if !topLevelAllowed {
 			v.errorf("with expression is only supported as a direct let initializer, assignment RHS, or return value in GoOct SDSL-V M3")
@@ -1771,6 +1862,10 @@ func (v *validator) validateMatchPlacement(expr ast.Expr, topLevelAllowed bool) 
 		for _, field := range e.Fields {
 			v.validateMatchPlacement(field.Value, false)
 		}
+	case ast.DeriveExpr:
+		for _, field := range e.Fields {
+			v.validateMatchPlacement(field.Value, false)
+		}
 	case ast.FieldAccessExpr:
 		v.validateMatchPlacement(e.Target, false)
 	case ast.IndexExpr:
@@ -1828,6 +1923,10 @@ func (v *validator) validateReductionPlacement(expr ast.Expr, topLevelAllowed bo
 			v.validateReductionPlacement(field.Value, false)
 		}
 	case ast.BoardLiteralExpr:
+		for _, field := range e.Fields {
+			v.validateReductionPlacement(field.Value, false)
+		}
+	case ast.DeriveExpr:
 		for _, field := range e.Fields {
 			v.validateReductionPlacement(field.Value, false)
 		}
@@ -1892,6 +1991,10 @@ func (v *validator) validateGuardedReadPlacement(expr ast.Expr, topLevelAllowed 
 			v.validateGuardedReadPlacement(field.Value, false)
 		}
 	case ast.BoardLiteralExpr:
+		for _, field := range e.Fields {
+			v.validateGuardedReadPlacement(field.Value, false)
+		}
+	case ast.DeriveExpr:
 		for _, field := range e.Fields {
 			v.validateGuardedReadPlacement(field.Value, false)
 		}
@@ -2088,6 +2191,10 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 			v.validateBarrierUsage(field.Value, false, shaderName, stage)
 		}
 	case ast.BoardLiteralExpr:
+		for _, field := range e.Fields {
+			v.validateBarrierUsage(field.Value, false, shaderName, stage)
+		}
+	case ast.DeriveExpr:
 		for _, field := range e.Fields {
 			v.validateBarrierUsage(field.Value, false, shaderName, stage)
 		}
@@ -2475,6 +2582,12 @@ func containsGuardedReadExpr(expr ast.Expr) bool {
 				return true
 			}
 		}
+	case ast.DeriveExpr:
+		for _, field := range e.Fields {
+			if containsGuardedReadExpr(field.Value) {
+				return true
+			}
+		}
 	case ast.MatchExpr:
 		if containsGuardedReadExpr(e.Subject) {
 			return true
@@ -2486,6 +2599,76 @@ func containsGuardedReadExpr(expr ast.Expr) bool {
 		}
 	case ast.ReductionExpr:
 		return containsGuardedReadExpr(e.Start) || containsGuardedReadExpr(e.End) || containsGuardedReadExpr(e.Step) || containsGuardedReadExpr(e.Body)
+	}
+	return false
+}
+
+func containsDeriveExpr(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case ast.DeriveExpr:
+		return true
+	case ast.FieldAccessExpr:
+		return containsDeriveExpr(e.Target)
+	case ast.IndexExpr:
+		return containsDeriveExpr(e.Target) || containsDeriveExpr(e.Index) || (e.HasSecond && containsDeriveExpr(e.Index2))
+	case ast.GuardedReadExpr:
+		return containsDeriveExpr(e.Target) || containsDeriveExpr(e.Condition) || containsDeriveExpr(e.Fallback)
+	case ast.CallExpr:
+		if containsDeriveExpr(e.Callee) {
+			return true
+		}
+		for _, arg := range e.Arguments {
+			if containsDeriveExpr(arg) {
+				return true
+			}
+		}
+	case ast.BinaryExpr:
+		return containsDeriveExpr(e.Left) || containsDeriveExpr(e.Right)
+	case ast.UnaryExpr:
+		return containsDeriveExpr(e.Operand)
+	case ast.ParenExpr:
+		return containsDeriveExpr(e.Inner)
+	case ast.WhenUtilityExpr:
+		if containsDeriveExpr(e.Else) {
+			return true
+		}
+		for _, c := range e.Cases {
+			if containsDeriveExpr(c.Value) || containsDeriveExpr(c.Condition) || containsDeriveExpr(c.Score) {
+				return true
+			}
+		}
+	case ast.WithExpr:
+		if containsDeriveExpr(e.Base) {
+			return true
+		}
+		for _, update := range e.Updates {
+			if containsDeriveExpr(update.Value) {
+				return true
+			}
+		}
+	case ast.EnumConstructExpr:
+		for _, field := range e.Fields {
+			if containsDeriveExpr(field.Value) {
+				return true
+			}
+		}
+	case ast.BoardLiteralExpr:
+		for _, field := range e.Fields {
+			if containsDeriveExpr(field.Value) {
+				return true
+			}
+		}
+	case ast.MatchExpr:
+		if containsDeriveExpr(e.Subject) {
+			return true
+		}
+		for _, arm := range e.Arms {
+			if containsDeriveExpr(arm.Value) {
+				return true
+			}
+		}
+	case ast.ReductionExpr:
+		return containsDeriveExpr(e.Start) || containsDeriveExpr(e.End) || containsDeriveExpr(e.Step) || containsDeriveExpr(e.Body)
 	}
 	return false
 }

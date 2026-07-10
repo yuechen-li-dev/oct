@@ -144,3 +144,5 @@ M24 uses the bounded sequential execution model in a real Prometheus SGEMM kerne
 - one `flow StoreOutput` for the final writeback phase.
 
 This confirms the M22 execution model is viable for real GPU phase grouping without adding a scheduler illusion. Generated HLSL contains ordinary structured statements only; source-level `flow` / `state` spelling does not survive emission.
+
+M25 does not change this execution model. `derive` is intentionally separate: it reduces immutable coordinate/fact ceremony, while `flow` / `state` remains the phase-grouping surface.

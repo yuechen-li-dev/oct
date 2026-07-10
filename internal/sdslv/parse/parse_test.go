@@ -363,6 +363,34 @@ return;
 	}
 }
 
+func TestBuildModuleParsesDeriveExpr(t *testing.T) {
+	module := parseTestModule(t, `record LoadFacts {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn F(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadFacts {
+let load: LoadFacts = derive {
+linear = localThreadLinear * 4u + lane;
+row = linear / tileK;
+col = linear % tileK;
+};
+return load;
+}`)
+	fn := module.Decls[1].(ast.FunctionDecl)
+	letLoad := fn.Body.Statements[0].(ast.LetStmt)
+	derive, ok := letLoad.Value.(ast.DeriveExpr)
+	if !ok {
+		t.Fatalf("let value = %T, want DeriveExpr", letLoad.Value)
+	}
+	if len(derive.Fields) != 3 {
+		t.Fatalf("len(derive.Fields) = %d, want 3", len(derive.Fields))
+	}
+	if derive.Fields[1].Name != "row" || derive.Fields[2].Name != "col" {
+		t.Fatalf("derive fields = %#v", derive.Fields)
+	}
+}
+
 func TestBuildModuleRejectsWorkgroupOutsideShader(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `workgroup Tile: array<f32, 16>;`})
 	if err != nil {

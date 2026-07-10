@@ -1,0 +1,37 @@
+record SgemmParams {
+    M: u32;
+    K: u32;
+}
+
+board LoadCoord {
+    linear: u32;
+    row: u32;
+    col: u32;
+    valid: bool;
+}
+
+shader DeriveBoardLoadCoord {
+    resources {
+        A: readonly array<f32>;
+    }
+
+    workgroup TileA: tile<f32, 4u, 4u>;
+
+    stage compute [numthreads(4, 1, 1)] fn CS(params: SgemmParams) -> void {
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+
+        let load: LoadCoord = derive {
+            linear = GroupThreadID.x;
+            row = linear / 4u;
+            col = linear % 4u;
+            valid = row < params.M and col < params.K;
+        };
+
+        TileA[load.row, load.col] =
+            read AView[load.row, load.col]
+                when load.valid
+                else 0.0;
+
+        return;
+    }
+}

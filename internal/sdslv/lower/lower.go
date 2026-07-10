@@ -1022,6 +1022,12 @@ func renameRuntimeLocalsInExpr(expr ast.Expr, names map[string]string) ast.Expr 
 			fields = append(fields, ast.FieldInit{Name: field.Name, Value: renameRuntimeLocalsInExpr(field.Value, names)})
 		}
 		return ast.BoardLiteralExpr{TypeName: e.TypeName, Fields: fields}
+	case ast.DeriveExpr:
+		fields := make([]ast.DeriveField, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.DeriveField{Name: field.Name, Value: renameRuntimeLocalsInExpr(field.Value, names)})
+		}
+		return ast.DeriveExpr{Fields: fields}
 	case ast.MatchExpr:
 		arms := make([]ast.MatchArm, 0, len(e.Arms))
 		for _, arm := range e.Arms {
@@ -1160,7 +1166,7 @@ func rejectRuntimeComptimeRefs(expr ast.Expr, runtime map[string]runtimeBinding)
 		return rejectRuntimeComptimeRefs(e.Operand, runtime)
 	case ast.ParenExpr:
 		return rejectRuntimeComptimeRefs(e.Inner, runtime)
-	case ast.ReductionExpr, ast.MatchExpr, ast.WithExpr, ast.EnumConstructExpr, ast.BoardLiteralExpr:
+	case ast.ReductionExpr, ast.MatchExpr, ast.WithExpr, ast.EnumConstructExpr, ast.BoardLiteralExpr, ast.DeriveExpr:
 		return fmt.Errorf("comptime expression cannot use runtime expression forms in SDSL-V M13")
 	}
 	return nil
@@ -1223,6 +1229,12 @@ func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast
 			fields = append(fields, ast.FieldInit{Name: field.Name, Value: replaceComptimeExpr(field.Value, comptime)})
 		}
 		return ast.BoardLiteralExpr{TypeName: e.TypeName, Fields: fields}
+	case ast.DeriveExpr:
+		fields := make([]ast.DeriveField, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.DeriveField{Name: field.Name, Value: replaceComptimeExpr(field.Value, comptime)})
+		}
+		return ast.DeriveExpr{Fields: fields}
 	case ast.MatchExpr:
 		arms := make([]ast.MatchArm, 0, len(e.Arms))
 		for _, arm := range e.Arms {
@@ -1519,6 +1531,12 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 			fields = append(fields, ast.FieldInit{Name: field.Name, Value: specializeExpr(field.Value, env)})
 		}
 		return ast.BoardLiteralExpr{TypeName: e.TypeName, Fields: fields}
+	case ast.DeriveExpr:
+		fields := make([]ast.DeriveField, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			fields = append(fields, ast.DeriveField{Name: field.Name, Value: specializeExpr(field.Value, env)})
+		}
+		return ast.DeriveExpr{Fields: fields}
 	case ast.MatchExpr:
 		arms := make([]ast.MatchArm, 0, len(e.Arms))
 		for _, arm := range e.Arms {
@@ -1613,6 +1631,7 @@ type lowering struct {
 	provenance vdmir.Provenance
 	types      map[string]typeInfo
 	functions  map[string]functionInfo
+	deriveTemp int
 }
 
 func (l *lowering) seedBuiltins() {
@@ -1795,7 +1814,7 @@ func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resourc
 	}
 
 	locals := map[string]vdmir.Type{}
-	body, err := l.lowerBlock(fn.Body, scope, locals, shaderName)
+	body, err := l.lowerBlock(fn.Body, scope, locals, shaderName, fn.ReturnType)
 	if err != nil {
 		return vdmir.Function{}, err
 	}
@@ -1804,10 +1823,10 @@ func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resourc
 	return out, nil
 }
 
-func (l *lowering) lowerBlock(block ast.Block, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Block, error) {
+func (l *lowering) lowerBlock(block ast.Block, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Block, error) {
 	out := vdmir.Block{}
 	for _, stmt := range block.Statements {
-		lowered, err := l.lowerStmt(stmt, scope, locals, shaderName)
+		lowered, err := l.lowerStmt(stmt, scope, locals, shaderName, returnType)
 		if err != nil {
 			return vdmir.Block{}, err
 		}
@@ -1816,7 +1835,7 @@ func (l *lowering) lowerBlock(block ast.Block, scope map[string]binding, locals 
 	return out, nil
 }
 
-func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
+func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
 	switch s := stmt.(type) {
 	case ast.LetStmt:
 		loweredType := l.lowerTypeRef(s.Type)
@@ -1825,7 +1844,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		if isRegTileZeroCall(s.Value) {
 			value = vdmir.RegTileZeroExpr{Provenance: l.provenance, ExprType: loweredType}
 		} else if s.Value != nil {
-			value, err = l.lowerExpr(s.Value, scope, shaderName)
+			value, err = l.lowerExprWithExpected(s.Value, scope, shaderName, &s.Type)
 			if err != nil {
 				return nil, err
 			}
@@ -1843,7 +1862,8 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		if err != nil {
 			return nil, err
 		}
-		value, err := l.lowerExpr(s.Value, scope, shaderName)
+		expected := astTypeFromVDMIR(target.Type())
+		value, err := l.lowerExprWithExpected(s.Value, scope, shaderName, &expected)
 		if err != nil {
 			return nil, err
 		}
@@ -1866,7 +1886,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		if s.Value == nil {
 			return vdmir.ReturnStmt{Provenance: l.provenance}, nil
 		}
-		value, err := l.lowerExpr(s.Value, scope, shaderName)
+		value, err := l.lowerExprWithExpected(s.Value, scope, shaderName, &returnType)
 		if err != nil {
 			return nil, err
 		}
@@ -1878,19 +1898,19 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		}
 		return vdmir.ExprStmt{Provenance: l.provenance, Value: value}, nil
 	case ast.FlowStmt:
-		return l.lowerFlowStmt(s, scope, locals, shaderName)
+		return l.lowerFlowStmt(s, scope, locals, shaderName, returnType)
 	case ast.IfStmt:
 		cond, err := l.lowerExpr(s.Condition, scope, shaderName)
 		if err != nil {
 			return nil, err
 		}
-		thenBody, err := l.lowerBlock(s.ThenBody, cloneScope(scope), locals, shaderName)
+		thenBody, err := l.lowerBlock(s.ThenBody, cloneScope(scope), locals, shaderName, returnType)
 		if err != nil {
 			return nil, err
 		}
 		var elseBody *vdmir.Block
 		if s.ElseBody != nil {
-			body, err := l.lowerBlock(*s.ElseBody, cloneScope(scope), locals, shaderName)
+			body, err := l.lowerBlock(*s.ElseBody, cloneScope(scope), locals, shaderName, returnType)
 			if err != nil {
 				return nil, err
 			}
@@ -1898,7 +1918,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		}
 		return vdmir.IfStmt{Provenance: l.provenance, Condition: cond, ThenBody: thenBody, ElseBody: elseBody}, nil
 	case ast.GuardWhenStmt:
-		return l.lowerGuardWhenStmt(s, scope, locals, shaderName)
+		return l.lowerGuardWhenStmt(s, scope, locals, shaderName, returnType)
 	case ast.ForStmt:
 		start, err := l.lowerExpr(s.Start, scope, shaderName)
 		if err != nil {
@@ -1916,7 +1936,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		loopScope := cloneScope(scope)
 		loopScope[s.Name] = binding{name: s.Name, kind: vdmir.VarLocal, typ: astTypeFromVDMIR(loopType)}
 		locals[s.Name] = loopType
-		body, err := l.lowerBlock(s.Body, loopScope, locals, shaderName)
+		body, err := l.lowerBlock(s.Body, loopScope, locals, shaderName, returnType)
 		if err != nil {
 			return nil, err
 		}
@@ -1935,11 +1955,11 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 	}
 }
 
-func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
+func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
 	block := vdmir.Block{}
 	flowScope := cloneScope(scope)
 	for _, board := range stmt.Boards {
-		value, err := l.lowerExpr(board.Initializer, flowScope, shaderName)
+		value, err := l.lowerExprWithExpected(board.Initializer, flowScope, shaderName, &board.Type)
 		if err != nil {
 			return nil, err
 		}
@@ -1954,7 +1974,7 @@ func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, lo
 		})
 	}
 	for _, state := range stmt.States {
-		lowered, err := l.lowerBlock(state.Body, cloneScope(flowScope), locals, shaderName)
+		lowered, err := l.lowerBlock(state.Body, cloneScope(flowScope), locals, shaderName, returnType)
 		if err != nil {
 			return nil, err
 		}
@@ -1963,10 +1983,10 @@ func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, lo
 	return vdmir.BlockStmt{Provenance: l.provenance, Body: block}, nil
 }
 
-func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
+func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
 	var currentElse *vdmir.Block
 	if stmt.ElseBody != nil {
-		body, err := l.lowerBlock(*stmt.ElseBody, cloneBindings(scope), locals, shaderName)
+		body, err := l.lowerBlock(*stmt.ElseBody, cloneBindings(scope), locals, shaderName, returnType)
 		if err != nil {
 			return nil, err
 		}
@@ -1978,7 +1998,7 @@ func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]b
 		if err != nil {
 			return nil, err
 		}
-		body, err := l.lowerBlock(c.Body, cloneBindings(scope), locals, shaderName)
+		body, err := l.lowerBlock(c.Body, cloneBindings(scope), locals, shaderName, returnType)
 		if err != nil {
 			return nil, err
 		}
@@ -1992,6 +2012,10 @@ func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]b
 }
 
 func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName string) (vdmir.Expr, error) {
+	return l.lowerExprWithExpected(expr, scope, shaderName, nil)
+}
+
+func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding, shaderName string, expected *ast.TypeRef) (vdmir.Expr, error) {
 	switch e := expr.(type) {
 	case ast.IntegerLiteral:
 		typ := vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
@@ -2011,7 +2035,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "string"}, Kind: vdmir.LiteralString, Value: fmt.Sprintf("%q", e.Value)}, nil
 	case ast.IdentifierExpr:
 		if b, ok := scope[e.Name]; ok {
-			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(b.typ)), Name: e.Name, Kind: b.kind}, nil
+			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(b.typ)), Name: b.name, Kind: b.kind}, nil
 		}
 		if fn, ok := l.lookupFunction(shaderName, e.Name); ok {
 			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(fn.returnType), Name: fn.emittedName, Kind: vdmir.VarFunction}, nil
@@ -2028,7 +2052,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 				}, nil
 			}
 		}
-		target, err := l.lowerExpr(e.Target, scope, shaderName)
+		target, err := l.lowerExprWithExpected(e.Target, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2039,16 +2063,16 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Field:      e.Field,
 		}, nil
 	case ast.IndexExpr:
-		target, err := l.lowerExpr(e.Target, scope, shaderName)
+		target, err := l.lowerExprWithExpected(e.Target, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
-		index, err := l.lowerExpr(e.Index, scope, shaderName)
+		index, err := l.lowerExprWithExpected(e.Index, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
 		if e.HasSecond {
-			index2, err := l.lowerExpr(e.Index2, scope, shaderName)
+			index2, err := l.lowerExprWithExpected(e.Index2, scope, shaderName, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2068,15 +2092,15 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Index:      index,
 		}, nil
 	case ast.GuardedReadExpr:
-		target, err := l.lowerExpr(e.Target, scope, shaderName)
+		target, err := l.lowerExprWithExpected(e.Target, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
-		condition, err := l.lowerExpr(e.Condition, scope, shaderName)
+		condition, err := l.lowerExprWithExpected(e.Condition, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
-		fallback, err := l.lowerExpr(e.Fallback, scope, shaderName)
+		fallback, err := l.lowerExprWithExpected(e.Fallback, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2094,7 +2118,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "row_major" {
 			args := make([]vdmir.Expr, 0, len(e.Arguments))
 			for _, arg := range e.Arguments {
-				lowered, err := l.lowerExpr(arg, scope, shaderName)
+				lowered, err := l.lowerExprWithExpected(arg, scope, shaderName, nil)
 				if err != nil {
 					return nil, err
 				}
@@ -2120,7 +2144,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && isBarrierBuiltin(id.Name) {
 			args := make([]vdmir.Expr, 0, len(e.Arguments))
 			for _, arg := range e.Arguments {
-				lowered, err := l.lowerExpr(arg, scope, shaderName)
+				lowered, err := l.lowerExprWithExpected(arg, scope, shaderName, nil)
 				if err != nil {
 					return nil, err
 				}
@@ -2133,13 +2157,13 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 				Arguments:  args,
 			}, nil
 		}
-		callee, err := l.lowerExpr(e.Callee, scope, shaderName)
+		callee, err := l.lowerExprWithExpected(e.Callee, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
 		args := make([]vdmir.Expr, 0, len(e.Arguments))
 		for _, arg := range e.Arguments {
-			lowered, err := l.lowerExpr(arg, scope, shaderName)
+			lowered, err := l.lowerExprWithExpected(arg, scope, shaderName, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2152,11 +2176,11 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Arguments:  args,
 		}, nil
 	case ast.BinaryExpr:
-		left, err := l.lowerExpr(e.Left, scope, shaderName)
+		left, err := l.lowerExprWithExpected(e.Left, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
-		right, err := l.lowerExpr(e.Right, scope, shaderName)
+		right, err := l.lowerExprWithExpected(e.Right, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2168,7 +2192,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Right:      right,
 		}, nil
 	case ast.UnaryExpr:
-		operand, err := l.lowerExpr(e.Operand, scope, shaderName)
+		operand, err := l.lowerExprWithExpected(e.Operand, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2179,11 +2203,11 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			Operand:    operand,
 		}, nil
 	case ast.ParenExpr:
-		return l.lowerExpr(e.Inner, scope, shaderName)
+		return l.lowerExprWithExpected(e.Inner, scope, shaderName, nil)
 	case ast.EnumConstructExpr:
 		fields := make([]vdmir.FieldInit, 0, len(e.Fields))
 		for _, field := range e.Fields {
-			value, err := l.lowerExpr(field.Value, scope, shaderName)
+			value, err := l.lowerExprWithExpected(field.Value, scope, shaderName, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2199,7 +2223,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 	case ast.BoardLiteralExpr:
 		fields := make([]vdmir.FieldInit, 0, len(e.Fields))
 		for _, field := range e.Fields {
-			value, err := l.lowerExpr(field.Value, scope, shaderName)
+			value, err := l.lowerExprWithExpected(field.Value, scope, shaderName, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2211,8 +2235,36 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 			TypeName:   e.TypeName,
 			Fields:     fields,
 		}, nil
+	case ast.DeriveExpr:
+		if expected == nil {
+			return nil, fmt.Errorf("derive requires an explicit record or board target type")
+		}
+		target := l.resolveAlias(*expected)
+		info, ok := l.types[target.Name]
+		if !ok || (info.kind != "record" && info.kind != "board") {
+			return nil, fmt.Errorf("derive requires an explicit record or board target type")
+		}
+		deriveScope := cloneBindings(scope)
+		fields := make([]vdmir.DeriveField, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			tempName := l.nextDeriveTemp(field.Name)
+			value, err := l.lowerExprWithExpected(field.Value, deriveScope, shaderName, nil)
+			if err != nil {
+				return nil, err
+			}
+			fields = append(fields, vdmir.DeriveField{Name: field.Name, TempName: tempName, Value: value})
+			if decl, ok := info.fields[field.Name]; ok {
+				deriveScope[field.Name] = binding{name: tempName, kind: vdmir.VarLocal, typ: decl.typ}
+			}
+		}
+		return vdmir.DeriveExpr{
+			Provenance: l.provenance,
+			ExprType:   l.lowerTypeRef(target),
+			TypeName:   target.Name,
+			Fields:     fields,
+		}, nil
 	case ast.MatchExpr:
-		subject, err := l.lowerExpr(e.Subject, scope, shaderName)
+		subject, err := l.lowerExprWithExpected(e.Subject, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -2227,7 +2279,7 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 				bindingType = l.lowerTypeRef(ast.TypeRef{Name: variant.payloadType})
 				armScope[arm.BindingName] = binding{name: arm.BindingName, kind: vdmir.VarLocal, typ: ast.TypeRef{Name: variant.payloadType}}
 			}
-			value, err := l.lowerExpr(arm.Value, armScope, shaderName)
+			value, err := l.lowerExprWithExpected(arm.Value, armScope, shaderName, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -2341,6 +2393,12 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 	default:
 		return nil, fmt.Errorf("unsupported expression in GoOct SDSL-V M3")
 	}
+}
+
+func (l *lowering) nextDeriveTemp(fieldName string) string {
+	name := fmt.Sprintf("__sdslv_derive_%s_%d", sanitizeName(fieldName), l.deriveTemp)
+	l.deriveTemp++
+	return name
 }
 
 func (l *lowering) lowerComputeEntryPoint(shader ast.ShaderDecl, fn ast.FunctionDecl, resources []ast.ResourceDecl) vdmir.ComputeEntryPoint {
@@ -2695,6 +2753,10 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 			walkExpr(field.Value, builtins)
 		}
 	case ast.BoardLiteralExpr:
+		for _, field := range e.Fields {
+			walkExpr(field.Value, builtins)
+		}
+	case ast.DeriveExpr:
 		for _, field := range e.Fields {
 			walkExpr(field.Value, builtins)
 		}
@@ -3097,4 +3159,16 @@ func lowerIntrinsic(name string) vdmir.Intrinsic {
 	default:
 		return vdmir.IntrinsicWorkgroupMemoryBarrierWithSync
 	}
+}
+
+func sanitizeName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }

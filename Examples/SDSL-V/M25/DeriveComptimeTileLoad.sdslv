@@ -1,0 +1,53 @@
+record SgemmParams {
+    M: u32;
+    K: u32;
+}
+
+board LoadCoord {
+    linear: u32;
+    tileRow: u32;
+    tileCol: u32;
+    aRow: u32;
+    aCol: u32;
+    validA: bool;
+}
+
+shader DeriveComptimeTileLoad {
+    resources {
+        A: readonly array<f32>;
+    }
+
+    workgroup TileA: tile<f32, 4u, 4u>;
+
+    stage compute [numthreads(1, 1, 1)] fn CS(params: SgemmParams) -> void {
+        let groupBaseRow: u32 = GroupID.y * 4u;
+        let tileBaseK: u32 = GroupID.x * 4u;
+        let localThreadLinear: u32 = GroupThreadID.x;
+        let AView: matrix_view<f32> = row_major(A, params.M, params.K);
+
+        comptime for lane in 0u..4u {
+            let load: LoadCoord = derive {
+                linear = localThreadLinear * 4u + lane;
+                tileRow = linear / 4u;
+                tileCol = linear % 4u;
+                aRow = groupBaseRow + tileRow;
+                aCol = tileBaseK + tileCol;
+                validA = aRow < params.M and aCol < params.K;
+            };
+
+            when {
+                case load.validA -> {
+                    TileA[load.tileRow, load.tileCol] = AView[load.aRow, load.aCol];
+                }
+                else -> {
+                    TileA[load.tileRow, load.tileCol] =
+                        read AView[load.aRow, load.aCol]
+                            when load.validA
+                            else 0.0;
+                }
+            }
+        }
+
+        return;
+    }
+}

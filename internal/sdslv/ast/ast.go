@@ -469,6 +469,17 @@ type WithExpr struct {
 
 func (WithExpr) exprNode() {}
 
+type DeriveExpr struct {
+	Fields []DeriveField
+}
+
+func (DeriveExpr) exprNode() {}
+
+type DeriveField struct {
+	Name  string
+	Value Expr
+}
+
 type ReductionExpr struct {
 	Attributes []Attribute
 	Op         ReductionOp

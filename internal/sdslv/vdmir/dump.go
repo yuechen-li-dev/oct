@@ -222,6 +222,12 @@ func FormatExpr(expr Expr) string {
 			parts = append(parts, fmt.Sprintf("%s: %s", field.Name, FormatExpr(field.Value)))
 		}
 		return e.TypeName + " { " + strings.Join(parts, ", ") + " }"
+	case DeriveExpr:
+		parts := make([]string, 0, len(e.Fields))
+		for _, field := range e.Fields {
+			parts = append(parts, fmt.Sprintf("%s = %s", field.Name, FormatExpr(field.Value)))
+		}
+		return "derive " + e.TypeName + " { " + strings.Join(parts, "; ") + " }"
 	case MatchExpr:
 		parts := make([]string, 0, len(e.Arms))
 		for _, arm := range e.Arms {

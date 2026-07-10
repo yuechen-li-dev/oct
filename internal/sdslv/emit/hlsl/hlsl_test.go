@@ -82,6 +82,34 @@ return;
 	}
 }
 
+func TestEmitDeriveAsOrderedTemps(t *testing.T) {
+	out := emitSource(t, `record LoadFacts {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn Make(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadFacts {
+return derive {
+linear = localThreadLinear * 4u + lane;
+row = linear / tileK;
+col = linear % tileK;
+};
+}`)
+	for _, want := range []string{
+		"uint __sdslv_derive_linear_0 = ((localThreadLinear * 4u) + lane);",
+		"uint __sdslv_derive_row_1 = (__sdslv_derive_linear_0 / tileK);",
+		"uint __sdslv_derive_col_2 = (__sdslv_derive_linear_0 % tileK);",
+		"LoadFacts __sdslv_derive_result_0;",
+		"__sdslv_derive_result_0.linear_ = __sdslv_derive_linear_0;",
+		"__sdslv_derive_result_0.row = __sdslv_derive_row_1;",
+		"return __sdslv_derive_result_0;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestEmitTileAndMatrixView2DIndexing(t *testing.T) {
 	hlsl := emitSource(t, `shader S {
 resources { A: readonly array<f32>; C: readwrite array<f32>; }

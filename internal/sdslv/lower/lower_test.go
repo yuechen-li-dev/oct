@@ -127,6 +127,44 @@ return;
 	}
 }
 
+func TestModuleLowersDeriveToOrderedVDMIR(t *testing.T) {
+	mir := lowerSource(t, `record LoadFacts {
+linear: u32;
+row: u32;
+col: u32;
+}
+fn Make(localThreadLinear: u32, lane: u32, tileK: u32) -> LoadFacts {
+return derive {
+linear = localThreadLinear * 4u + lane;
+row = linear / tileK;
+col = linear % tileK;
+};
+}`)
+	fn := findFunction(t, mir, "Make")
+	ret, ok := fn.Body.Statements[0].(vdmir.ReturnStmt)
+	if !ok {
+		t.Fatalf("stmt[0] = %T, want ReturnStmt", fn.Body.Statements[0])
+	}
+	derive, ok := ret.Value.(vdmir.DeriveExpr)
+	if !ok {
+		t.Fatalf("return value = %T, want DeriveExpr", ret.Value)
+	}
+	if len(derive.Fields) != 3 {
+		t.Fatalf("len(derive.Fields) = %d, want 3", len(derive.Fields))
+	}
+	if derive.Fields[0].TempName == derive.Fields[1].TempName || derive.Fields[1].TempName == derive.Fields[2].TempName {
+		t.Fatalf("derive temp names must be unique: %#v", derive.Fields)
+	}
+	rowExpr, ok := derive.Fields[1].Value.(vdmir.BinaryExpr)
+	if !ok {
+		t.Fatalf("row value = %T, want BinaryExpr", derive.Fields[1].Value)
+	}
+	ref, ok := rowExpr.Left.(vdmir.VarRefExpr)
+	if !ok || ref.Name != derive.Fields[0].TempName {
+		t.Fatalf("row should reference first derive temp, got %#v", rowExpr.Left)
+	}
+}
+
 func TestModuleLowersComputeThreadResourceBundleAndWith(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 stream ComputeThread {

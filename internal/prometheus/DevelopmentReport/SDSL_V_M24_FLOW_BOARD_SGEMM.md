@@ -196,3 +196,8 @@ M24 succeeds as a real-kernel validation of M21-M23:
 - explicit EVT and focused artifacts now include the flow-board kernel.
 
 M24 should remain explicit benchmark-only for now. The abstraction proved useful for authoring, but the performance signal is mixed and does not justify selector retuning or production promotion.
+
+M25 follow-up note:
+
+- the repeated coordinate algebra identified here is the direct motivation for ordered immutable `derive`;
+- M25 should reduce the one-off helper / mutable-flow-board ceremony for purely derived facts without changing this kernel's production wiring or execution semantics.

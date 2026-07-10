@@ -45,6 +45,7 @@ const (
 	KeywordCase      Kind = "KeywordCase"
 	KeywordScore     Kind = "KeywordScore"
 	KeywordWith      Kind = "KeywordWith"
+	KeywordDerive    Kind = "KeywordDerive"
 	KeywordInterface Kind = "KeywordInterface"
 	KeywordStream    Kind = "KeywordStream"
 	KeywordFlow      Kind = "KeywordFlow"
@@ -170,6 +171,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordScore
 	case "with":
 		return KeywordWith
+	case "derive":
+		return KeywordDerive
 	case "interface":
 		return KeywordInterface
 	case "stream":

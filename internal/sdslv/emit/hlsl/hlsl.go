@@ -238,6 +238,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitBoardConstructLet(s, board)
 			return
 		}
+		if derive, ok := s.Value.(vdmir.DeriveExpr); ok {
+			e.emitDeriveLet(s, derive)
+			return
+		}
 		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
 			e.emitGuardedReadLet(s, guardedRead)
 			return
@@ -262,6 +266,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		}
 		if board, ok := s.Value.(vdmir.BoardConstructExpr); ok {
 			e.emitBoardConstructAssign(e.expr(s.Target), board)
+			return
+		}
+		if derive, ok := s.Value.(vdmir.DeriveExpr); ok {
+			e.emitDeriveAssign(e.expr(s.Target), derive)
 			return
 		}
 		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
@@ -295,6 +303,10 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		}
 		if board, ok := s.Value.(vdmir.BoardConstructExpr); ok {
 			e.emitBoardConstructReturn(board)
+			return
+		}
+		if derive, ok := s.Value.(vdmir.DeriveExpr); ok {
+			e.emitDeriveReturn(derive)
 			return
 		}
 		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
@@ -511,6 +523,37 @@ func (e *emitter) emitBoardFieldAssignments(target string, board vdmir.BoardCons
 	}
 }
 
+func (e *emitter) emitDeriveLet(stmt vdmir.LetStmt, derive vdmir.DeriveExpr) {
+	e.emitDeriveTemps(derive)
+	e.line(fmt.Sprintf("%s;", typeRef(stmt.Type, stmt.Name)))
+	e.emitDeriveResultAssignments(hlslIdentifier(stmt.Name), derive)
+}
+
+func (e *emitter) emitDeriveAssign(target string, derive vdmir.DeriveExpr) {
+	e.emitDeriveTemps(derive)
+	e.emitDeriveResultAssignments(target, derive)
+}
+
+func (e *emitter) emitDeriveReturn(derive vdmir.DeriveExpr) {
+	e.emitDeriveTemps(derive)
+	tempName := e.nextTempWithPrefix("derive_result")
+	e.line(fmt.Sprintf("%s;", typeRef(derive.Type(), tempName)))
+	e.emitDeriveResultAssignments(tempName, derive)
+	e.line("return " + tempName + ";")
+}
+
+func (e *emitter) emitDeriveTemps(derive vdmir.DeriveExpr) {
+	for _, field := range derive.Fields {
+		e.line(fmt.Sprintf("%s = %s;", typeRef(field.Value.Type(), field.TempName), e.expr(field.Value)))
+	}
+}
+
+func (e *emitter) emitDeriveResultAssignments(target string, derive vdmir.DeriveExpr) {
+	for _, field := range derive.Fields {
+		e.line(fmt.Sprintf("%s.%s = %s;", target, hlslIdentifier(field.Name), hlslIdentifier(field.TempName)))
+	}
+}
+
 func (e *emitter) expr(expr vdmir.Expr) string {
 	switch x := expr.(type) {
 	case vdmir.LiteralExpr:
@@ -559,6 +602,8 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return enumConstructorName(x.EnumName, x.VariantName) + "(" + strings.Join(args, ", ") + ")"
 	case vdmir.BoardConstructExpr:
 		return "/* unsupported board construct expr position */"
+	case vdmir.DeriveExpr:
+		return "/* unsupported derive expr position */"
 	case vdmir.MatchExpr:
 		return "/* unsupported match expr position */"
 	default:

@@ -189,6 +189,30 @@ Current M22/M23 flow rules:
 - ordinary board values remain immutable;
 - no persistent Octomata state exists.
 
+### Ordered derive values (GoOct M25)
+
+M25 adds ordered immutable structured construction:
+
+```sdslv
+let load: LoadCoord = derive {
+    linear = localThreadLinear * 4u + lane;
+    row = linear / tileK;
+    col = linear % tileK;
+};
+```
+
+Current M25 rules:
+
+- `derive` is an expression;
+- M25 requires an explicit record or immutable-board target type from context;
+- fields are evaluated in source order;
+- later fields may reference earlier derive fields;
+- self-reference and forward-reference are rejected;
+- result values remain immutable after construction;
+- `derive` is valid for `record` and immutable local `board` targets only;
+- flow-owned mutable board initialization still requires an explicit board literal initializer;
+- `derive` does not add structured compile-time evaluation.
+
 ### Type aliases and coordinate spaces
 
 ```sdslv
@@ -560,6 +584,7 @@ Nested `if/else { if/else }` ladders are not permitted — use `switch { case ..
 | `match subject { Enum.Variant => value ... }` | Exhaustive enum match |
 | `match expr { ok(binding) => value err(binding) => value }` | Fallible match |
 | `when utility { case value when guard score expr ... else value }` | Utility-scored selection |
+| `derive { field = expr; ... }` | Ordered immutable structured construction |
 | `expr?` | Fallible propagation (try) |
 | `expr!` | Fallible unwrap |
 | `error("msg")` | Error constructor (fallible return position only) |
@@ -623,6 +648,23 @@ Current M10 rules:
 - the index name is scoped only inside the reduction body;
 - reductions are currently bounded to direct `let` initializer, assignment RHS, and `return` positions;
 - `sum` and `product` use identity initialization and lower to deterministic HLSL loops through `VD-MIR`.
+
+### `derive` expression
+
+`derive` constructs a record or immutable board value by evaluating field initializers in source order:
+
+```sdslv
+let load: LoadFacts = derive {
+    linear = localThreadLinear * 4u + lane;
+    row = linear / tileK;
+    col = linear % tileK;
+    valid = row < params.M and col < params.K;
+};
+```
+
+Earlier derive fields act as immutable bindings for later field initializers.
+They are scoped only to the derive block and do not leak outside it.
+`derive` is intended for ceremony reduction around dependent coordinate and fact calculations; it is not a mutation surface and not a flow-state feature.
 
 ### `switch` expression
 
@@ -884,6 +926,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 | `?` context | Only valid inside a fallible function |
 | `error(...)` | Only valid as `return error(...)` in a fallible function |
 | Immutability | Stream and record parameters are immutable; use `with` for modified copies |
+| Derive | Requires explicit record/immutable-board target type; fields initialize exactly once in source order; self/forward references rejected |
 | Array parameters | Immutable; element assignment rejected |
 | Semantic boolean source style | Use `and`, `or`, `not`; keep `!=` for inequality; reject logical `&&`, `||`, and unary logical `!` |
 | Vector constructors | Exact arity; numeric scalar arguments only |
@@ -897,7 +940,7 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 
 ## Reserved keywords
 
-The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`, `and`, `or`, `not`.
+The following identifiers cannot be used as variable names, parameter names, or flow parameter names: `flow`, `board`, `state`, `when`, `step`, `sum`, `product`, `max`, `min`, `utility`, `policy`, `case`, `score`, `hysteresis`, `min_commit`, `goto`, `compile`, `interface`, `shader`, `stream`, `record`, `enum`, `match`, `derive`, `ok`, `err`, `namespace`, `use`, `type`, `stage`, `implements`, `where`, `override`, `fn`, `let`, `return`, `with`, `if`, `else`, `switch`, `for`, `in`, `while`, `and`, `or`, `not`.
 
 ---
 

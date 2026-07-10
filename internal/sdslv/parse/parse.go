@@ -1410,6 +1410,8 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		return p.parseGuardedRead()
 	case token.KeywordMatch:
 		return p.parseMatchExpr()
+	case token.KeywordDerive:
+		return p.parseDeriveExpr()
 	case token.LeftParen:
 		p.advance()
 		inner, err := p.parseExpression()
@@ -1425,6 +1427,33 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseDeriveExpr() (ast.DeriveExpr, error) {
+	p.advance()
+	if _, err := p.expect(token.LeftBrace, "expected '{' after derive"); err != nil {
+		return ast.DeriveExpr{}, err
+	}
+	fields := make([]ast.DeriveField, 0)
+	for p.current().Kind != token.RightBrace {
+		name, err := p.expect(token.Identifier, "expected derive field name")
+		if err != nil {
+			return ast.DeriveExpr{}, err
+		}
+		if _, err := p.expect(token.Assign, "expected '=' after derive field name"); err != nil {
+			return ast.DeriveExpr{}, err
+		}
+		value, err := p.parseExpression()
+		if err != nil {
+			return ast.DeriveExpr{}, err
+		}
+		if _, err := p.expect(token.Semicolon, "expected ';' after derive field"); err != nil {
+			return ast.DeriveExpr{}, err
+		}
+		fields = append(fields, ast.DeriveField{Name: name.Lexeme, Value: value})
+	}
+	p.advance()
+	return ast.DeriveExpr{Fields: fields}, nil
 }
 
 func (p *parser) parseGuardedRead() (ast.GuardedReadExpr, error) {

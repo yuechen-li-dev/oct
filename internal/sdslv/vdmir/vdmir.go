@@ -490,9 +490,25 @@ type BoardConstructExpr struct {
 func (BoardConstructExpr) exprNode()    {}
 func (e BoardConstructExpr) Type() Type { return e.ExprType }
 
+type DeriveExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	TypeName   string
+	Fields     []DeriveField
+}
+
+func (DeriveExpr) exprNode()    {}
+func (e DeriveExpr) Type() Type { return e.ExprType }
+
 type FieldInit struct {
 	Name  string
 	Value Expr
+}
+
+type DeriveField struct {
+	Name     string
+	TempName string
+	Value    Expr
 }
 
 type MatchExpr struct {

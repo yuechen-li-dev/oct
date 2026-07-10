@@ -58,6 +58,176 @@ return;
 	}
 }
 
+func TestModuleValidatesOrderedDerive(t *testing.T) {
+	err := validateSource(`record LoadFacts {
+linear: u32;
+row: u32;
+col: u32;
+valid: bool;
+}
+board LoadCoord {
+linear: u32;
+row: u32;
+col: u32;
+}
+shader S {
+resources { A: readonly array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(limit: u32, tileK: u32) -> void {
+let facts: LoadFacts = derive {
+linear = GroupThreadID.x;
+row = linear / tileK;
+col = linear % tileK;
+valid = row < limit and col < tileK;
+};
+let coord: LoadCoord = derive {
+linear = facts.linear;
+row = facts.row;
+col = facts.col;
+};
+when {
+case facts.valid -> {
+Tile[coord.row, coord.col] = A[(coord.row * tileK) + coord.col];
+}
+else -> {
+return;
+}
+}
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("validateSource() error = %v", err)
+	}
+}
+
+func TestModuleRejectsInvalidDerive(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "missing expected type",
+			src: `fn F() -> void {
+derive {
+linear = 1u;
+};
+return;
+}`,
+			want: "derive requires an explicit record or board target type",
+		},
+		{
+			name: "scalar target",
+			src: `fn F() -> void {
+let value: u32 = derive {
+linear = 1u;
+};
+return;
+}`,
+			want: "derive requires an explicit record or board target type",
+		},
+		{
+			name: "missing field",
+			src: `record LoadFacts { linear: u32; row: u32; }
+fn F() -> LoadFacts {
+return derive {
+linear = 1u;
+};
+}`,
+			want: "missing derive field `row`",
+		},
+		{
+			name: "unknown field",
+			src: `board LoadCoord { row: u32; }
+fn F() -> LoadCoord {
+return derive {
+row = 1u;
+stride = 2u;
+};
+}`,
+			want: "unknown derive field `stride`",
+		},
+		{
+			name: "duplicate field",
+			src: `board LoadCoord { row: u32; }
+fn F() -> LoadCoord {
+return derive {
+row = 1u;
+row = 2u;
+};
+}`,
+			want: "duplicate derive field `row`",
+		},
+		{
+			name: "forward reference",
+			src: `record LoadFacts { row: u32; linear: u32; }
+fn F() -> LoadFacts {
+return derive {
+row = linear;
+linear = 1u;
+};
+}`,
+			want: "derive field `row` references later field `linear`",
+		},
+		{
+			name: "self reference",
+			src: `record LoadFacts { row: u32; }
+fn F() -> LoadFacts {
+return derive {
+row = row + 1u;
+};
+}`,
+			want: "derive field `row` cannot reference itself",
+		},
+		{
+			name: "type mismatch",
+			src: `record LoadFacts { valid: bool; }
+fn F() -> LoadFacts {
+return derive {
+valid = 1u;
+};
+}`,
+			want: "derive field `valid` requires bool, got u32",
+		},
+		{
+			name: "comptime rejected",
+			src: `record LoadFacts { row: u32; }
+fn F() -> void {
+comptime let load: LoadFacts = derive {
+row = 1u;
+};
+return;
+}`,
+			want: "derive is not a compile-time expression in SDSL-V M25",
+		},
+		{
+			name: "flow board rejected",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+board Load: LoadCoord = derive {
+row = 0u;
+};
+state Compute { return; }
+}
+return;
+}
+}`,
+			want: "derive constructs immutable values; flow-owned mutable boards require an explicit board initializer",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsInvalidBoardValues(t *testing.T) {
 	cases := []struct {
 		name string
