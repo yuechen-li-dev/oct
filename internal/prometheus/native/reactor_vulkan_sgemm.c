@@ -42,6 +42,7 @@
 #include "reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h"
 #include "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h"
 #include "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h"
+#include "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h"
 #include "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
 #include "reactor_vulkan_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
@@ -58,11 +59,13 @@ static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_
   static prom_sgemm_kernel_dispatch_metadata reg2x2_metadata;
   static prom_sgemm_kernel_dispatch_metadata reg2x2_exacttail_metadata;
   static prom_sgemm_kernel_dispatch_metadata reg2x2_flowboard_metadata;
+  static prom_sgemm_kernel_dispatch_metadata reg2x2_derive_metadata;
   static prom_sgemm_kernel_dispatch_metadata tile16_metadata;
   static uint32_t scalar_plus_metadata_initialized = 0u;
   static uint32_t reg2x2_metadata_initialized = 0u;
   static uint32_t reg2x2_exacttail_metadata_initialized = 0u;
   static uint32_t reg2x2_flowboard_metadata_initialized = 0u;
+  static uint32_t reg2x2_derive_metadata_initialized = 0u;
   static uint32_t tile16_metadata_initialized = 0u;
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
     if (scalar_plus_metadata_initialized == 0u) {
@@ -127,6 +130,23 @@ static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_
       reg2x2_flowboard_metadata_initialized = 1u;
     }
     return &reg2x2_flowboard_metadata;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) {
+    if (reg2x2_derive_metadata_initialized == 0u) {
+      reg2x2_derive_metadata.threads_x = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_numthreads_x;
+      reg2x2_derive_metadata.threads_y = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_numthreads_y;
+      reg2x2_derive_metadata.threads_z = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_numthreads_z;
+      reg2x2_derive_metadata.outputs_per_invocation_m =
+          k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_outputs_per_invocation_m;
+      reg2x2_derive_metadata.outputs_per_invocation_n =
+          k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_outputs_per_invocation_n;
+      reg2x2_derive_metadata.tile_m = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_tile_m;
+      reg2x2_derive_metadata.tile_n = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_tile_n;
+      reg2x2_derive_metadata.tile_k = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_tile_k;
+      reg2x2_derive_metadata.unroll_k = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_unroll_k;
+      reg2x2_derive_metadata_initialized = 1u;
+    }
+    return &reg2x2_derive_metadata;
   }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
     if (tile16_metadata_initialized == 0u) {
@@ -666,6 +686,8 @@ typedef struct prometheus_runtime {
   VkPipeline sdsl_reg2x2_tile16x16_exacttail_fp32_pipeline;
   VkShaderModule sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module;
   VkPipeline sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline;
+  VkShaderModule sdsl_reg2x2_tile16x16_derive_fp32_shader_module;
+  VkPipeline sdsl_reg2x2_tile16x16_derive_fp32_pipeline;
   VkShaderModule sdsl_tile16x16_shared_fp32_shader_module;
   VkPipeline sdsl_tile16x16_shared_fp32_pipeline;
   VkPipeline srt_2accum_k_pipeline;
@@ -4150,6 +4172,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     vkDestroyPipeline(rt->device, rt->sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline, NULL);
     rt->sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline = VK_NULL_HANDLE;
   }
+  if (rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline != VK_NULL_HANDLE) {
+    vkDestroyPipeline(rt->device, rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline, NULL);
+    rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline = VK_NULL_HANDLE;
+  }
   if (rt->fp16_pipeline != VK_NULL_HANDLE) {
     vkDestroyPipeline(rt->device, rt->fp16_pipeline, NULL);
     rt->fp16_pipeline = VK_NULL_HANDLE;
@@ -4177,6 +4203,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   if (rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module != VK_NULL_HANDLE) {
     vkDestroyShaderModule(rt->device, rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module, NULL);
     rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module = VK_NULL_HANDLE;
+  }
+  if (rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module != VK_NULL_HANDLE) {
+    vkDestroyShaderModule(rt->device, rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module, NULL);
+    rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_tile16x16_shared_fp32_shader_module != VK_NULL_HANDLE) {
     vkDestroyShaderModule(rt->device, rt->sdsl_tile16x16_shared_fp32_shader_module, NULL);
@@ -4713,6 +4743,34 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   memset(&shader_info, 0, sizeof(shader_info));
   shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = sizeof(k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv);
+  shader_info.pCode = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module;
+  stage_info.pName = "SgemmReg2x2Tile16x16DeriveFp32Kernel_CS";
+
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device,
+                                    VK_NULL_HANDLE,
+                                    1u,
+                                    &pipeline_info,
+                                    NULL,
+                                    &rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   shader_info.codeSize = sizeof(k_prom_sgemm_srt_2accum_k_spirv);
   shader_info.pCode = k_prom_sgemm_srt_2accum_k_spirv;
   result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
@@ -5119,7 +5177,7 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
 
 static uint32_t prom_occ_variant_registered(uint32_t variant) {
   return (variant >= PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR &&
-          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32) ? 1u : 0u;
+          variant <= PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) ? 1u : 0u;
 }
 
 static uint32_t prom_occ_variant_is_wired_evt_dispatchable(uint32_t variant) {
@@ -5128,6 +5186,7 @@ static uint32_t prom_occ_variant_is_wired_evt_dispatchable(uint32_t variant) {
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32 ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32 ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32 ||
+          variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32 ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32 ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE ||
           variant == PROM_OCCUPANCY_KERNEL_VARIANT_SMALL_REGISTER_TILE ||
@@ -5176,6 +5235,9 @@ static uint32_t prom_occ_variant_path_id(uint32_t variant) {
   }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32;
+  }
+  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) {
+    return PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_REG2X2_TILE16X16_DERIVE_FP32;
   }
   if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
     return PROM_OCCUPANCY_VARIANT_PATH_ID_MEMORY_CONSERVATIVE;
@@ -6342,6 +6404,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       selected_pipeline = rt->sdsl_reg2x2_tile16x16_exacttail_fp32_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32) {
       selected_pipeline = rt->sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline;
+    } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) {
+      selected_pipeline = rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
       selected_pipeline = rt->sdsl_tile16x16_shared_fp32_pipeline;
     } else if (requested_variant == PROM_OCCUPANCY_KERNEL_VARIANT_MEMORY_CONSERVATIVE) {
@@ -7092,6 +7156,9 @@ static VkPipeline prom_sgemm_pipeline_for_resident_dispatch(prometheus_runtime* 
     }
     if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32) {
       return rt->sdsl_reg2x2_tile16x16_flowboard_fp32_pipeline;
+    }
+    if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) {
+      return rt->sdsl_reg2x2_tile16x16_derive_fp32_pipeline;
     }
     if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
       return rt->sdsl_tile16x16_shared_fp32_pipeline;

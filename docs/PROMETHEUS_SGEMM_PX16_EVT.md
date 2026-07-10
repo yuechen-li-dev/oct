@@ -239,6 +239,33 @@ Focused M24 artifacts:
 
 Detailed analysis lives in `internal/prometheus/DevelopmentReport/SDSL_V_M24_FLOW_BOARD_SGEMM.md`.
 
+## SDSL-V M26 Derive
+
+Px16 EVT explicit-variant comparison now also includes the explicit benchmark-only variant:
+
+- `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32`
+
+Rules:
+
+- production selection remains unchanged
+- explicit EVT comparison and focused correctness facts can request M26 directly
+- generated dispatch metadata matches the M20/M24 8x8x1 / 16x16x16 / 2x2 geometry
+- correctness validation remains separate from timing
+
+Focused M26 artifacts:
+
+- `out/test-artifacts/prometheus_sgemm_sdslv_m26_derive.json`
+- `out/test-artifacts/prometheus_sgemm_sdslv_m26_derive.md`
+
+Current honest status:
+
+- source clarity is materially better than M20 and less ceremonial than M24
+- generated backend output remains sane
+- performance is mixed and shape-dependent rather than uniformly neutral
+- M26 remains explicit benchmark-only
+
+Detailed analysis lives in `internal/prometheus/DevelopmentReport/SDSL_V_M26_DERIVE_SGEMM_COMPARISON.md`.
+
 ## SDSL-V M17
 
 Px16 explicit SGEMM comparison now includes `SDSL_REG2X2_TILE16X16_FP32`, the first source-backed SDSL-V register-blocked 2x2 benchmark variant.

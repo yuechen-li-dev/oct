@@ -89,3 +89,22 @@ HLSL emission preserves this source-ordered evaluation with deterministic tempor
 `comptime for` expands first.
 After expansion, `derive` remains runtime ordered construction.
 This makes per-lane coordinate derivation readable without introducing mutable flow state.
+
+## M26 Follow-Up
+
+M26 validates `derive` on a real Prometheus SGEMM kernel:
+
+- source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv`
+- report: `internal/prometheus/DevelopmentReport/SDSL_V_M26_DERIVE_SGEMM_COMPARISON.md`
+
+The key outcome is:
+
+- `derive` is a strong fit for immutable coordinate/fact bundles in otherwise linear GPU kernels
+- it removes most of the repeated M20 coordinate algebra without requiring the M24 flow/state/board ceremony
+- backend lowering stays deterministic and sane
+
+Important limitation carried forward from M24:
+
+- guarded `read ... when ... else 0.0` feeding a shared-tile assignment still needs inspection in generated HLSL
+- the final M26 shader uses derive-based coordinates plus explicit fallback-zero temporaries before writing `TileA` / `TileB`
+- that is a source-level correctness discipline under current lowering, not a new language feature

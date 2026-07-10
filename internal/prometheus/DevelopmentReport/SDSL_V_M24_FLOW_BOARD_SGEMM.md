@@ -201,3 +201,9 @@ M25 follow-up note:
 
 - the repeated coordinate algebra identified here is the direct motivation for ordered immutable `derive`;
 - M25 should reduce the one-off helper / mutable-flow-board ceremony for purely derived facts without changing this kernel's production wiring or execution semantics.
+
+M26 follow-up note:
+
+- M26 directly tests that hypothesis with `SDSL_REG2X2_TILE16X16_DERIVE_FP32`
+- the result is that derive-based source is indeed less ceremonial than M24 for this linear kernel family
+- however, the performance signal is mixed enough that M24 still has a valid role when phase grouping or mutable phase-local scratch is the clearer model

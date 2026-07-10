@@ -48,6 +48,14 @@ try {
             Symbol = "k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv"
             NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.hlsl"
             NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.spv"
+        },
+        @{
+            Shader = "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv"
+            Stem = "sgemm_reg2x2_tile16x16_derive_fp32"
+            Header = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h"
+            Symbol = "k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv"
+            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.hlsl"
+            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.spv"
         }
     )
 

@@ -1,0 +1,188 @@
+namespace Prometheus.Kernels;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+concept RegBlockedSgemmConfig {
+    Threads: {
+        X: u32;
+        Y: u32;
+    };
+
+    OutputsPerInvocation: {
+        M: u32;
+        N: u32;
+    };
+
+    Tile: {
+        M: u32 = Threads.X * OutputsPerInvocation.M;
+        N: u32 = Threads.Y * OutputsPerInvocation.N;
+        K: u32;
+    };
+
+    Unroll: {
+        K: u32 = Tile.K;
+    };
+
+    require Threads.X * Threads.Y <= 1024u;
+    require Tile.M == Threads.X * OutputsPerInvocation.M;
+    require Tile.N == Threads.Y * OutputsPerInvocation.N;
+    require Unroll.K == Tile.K;
+}
+
+config Reg2x2Tile16x16DeriveFp32: RegBlockedSgemmConfig {
+    Threads.X => 8u;
+    Threads.Y => 8u;
+    OutputsPerInvocation.M => 2u;
+    OutputsPerInvocation.N => 2u;
+    Tile.K => 16u;
+}
+
+record LoadCoord {
+    linear: u32;
+    tileRow: u32;
+    tileCol: u32;
+    aRow: u32;
+    aCol: u32;
+    bRow: u32;
+    bCol: u32;
+    validA: bool;
+    validB: bool;
+}
+
+record StoreCoord {
+    row: u32;
+    col: u32;
+    valid: bool;
+}
+
+template<C: RegBlockedSgemmConfig>
+shader SgemmReg2x2Tile16x16DeriveFp32 {
+    resources SgemmIO;
+
+    static assert C.Threads.X * C.Threads.Y <= 1024u;
+    static assert C.Tile.M == C.Threads.X * C.OutputsPerInvocation.M;
+    static assert C.Tile.N == C.Threads.Y * C.OutputsPerInvocation.N;
+    static assert C.Unroll.K == C.Tile.K;
+
+    workgroup TileA: tile<f32, C.Tile.M, C.Tile.K>;
+    workgroup TileB: tile<f32, C.Tile.K, C.Tile.N>;
+
+    stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: SgemmParams) -> void {
+        let localRow: u32 = thread.GroupThreadId.x;
+        let localCol: u32 = thread.GroupThreadId.y;
+        let localThreadLinear: u32 = localRow * C.Threads.Y + localCol;
+        let groupBaseRow: u32 = thread.GroupId.x * C.Tile.M;
+        let groupBaseCol: u32 = thread.GroupId.y * C.Tile.N;
+        let baseRow: u32 = groupBaseRow + localRow * C.OutputsPerInvocation.M;
+        let baseCol: u32 = groupBaseCol + localCol * C.OutputsPerInvocation.N;
+        let localRow2: u32 = localRow * C.OutputsPerInvocation.M;
+        let localCol2: u32 = localCol * C.OutputsPerInvocation.N;
+        let Acc: reg_tile<f32, C.OutputsPerInvocation.M, C.OutputsPerInvocation.N> = reg_tile_zero();
+        let AView: matrix_view<f32> = row_major(A, params.m, params.k);
+        let BView: matrix_view<f32> = row_major(B, params.k, params.n);
+        let CView: matrix_view<f32> = row_major(C, params.m, params.n);
+        let tileCount: u32 = (params.k + C.Tile.K - 1u) / C.Tile.K;
+        let fullOutputTile: bool =
+            groupBaseRow + C.Tile.M <= params.m and
+            groupBaseCol + C.Tile.N <= params.n;
+
+        [loop]
+        for tile in 0u..tileCount {
+            let tileBaseK: u32 = tile * C.Tile.K;
+            let fullTile: bool =
+                fullOutputTile and
+                tileBaseK + C.Tile.K <= params.k;
+
+            comptime for lane in 0u..4u {
+                let load: LoadCoord = derive {
+                    linear = localThreadLinear * 4u + lane;
+                    tileRow = linear / C.Tile.K;
+                    tileCol = linear % C.Tile.K;
+                    aRow = groupBaseRow + tileRow;
+                    aCol = tileBaseK + tileCol;
+                    bRow = tileBaseK + tileRow;
+                    bCol = groupBaseCol + tileCol;
+                    validA = aRow < params.m and aCol < params.k;
+                    validB = bRow < params.k and bCol < params.n;
+                };
+
+                when {
+                    case fullTile -> {
+                        TileA[load.tileRow, load.tileCol] =
+                            AView[load.aRow, load.aCol];
+                        TileB[load.tileRow, load.tileCol] =
+                            BView[load.bRow, load.bCol];
+                    }
+                    else -> {
+                        let aValue: f32 =
+                            read AView[load.aRow, load.aCol]
+                                when load.validA
+                                else 0.0;
+                        let bValue: f32 =
+                            read BView[load.bRow, load.bCol]
+                                when load.validB
+                                else 0.0;
+                        TileA[load.tileRow, load.tileCol] = aValue;
+                        TileB[load.tileRow, load.tileCol] = bValue;
+                    }
+                }
+            }
+
+            WorkgroupMemoryBarrierWithSync();
+
+            comptime for oi in 0u..C.OutputsPerInvocation.M {
+                comptime for oj in 0u..C.OutputsPerInvocation.N {
+                    [unroll]
+                    for kk in 0u..C.Tile.K {
+                        Acc[oi, oj] =
+                            Acc[oi, oj] +
+                            TileA[localRow2 + oi, kk] *
+                            TileB[kk, localCol2 + oj];
+                    }
+                }
+            }
+
+            WorkgroupMemoryBarrierWithSync();
+        }
+
+        comptime for oi in 0u..C.OutputsPerInvocation.M {
+            comptime for oj in 0u..C.OutputsPerInvocation.N {
+                let store: StoreCoord = derive {
+                    row = baseRow + oi;
+                    col = baseCol + oj;
+                    valid = row < params.m and col < params.n;
+                };
+
+                when {
+                    case fullOutputTile -> {
+                        CView[store.row, store.col] = Acc[oi, oj];
+                    }
+                    else -> {
+                        write CView[store.row, store.col] = Acc[oi, oj]
+                            when store.valid;
+                    }
+                }
+            }
+        }
+        return;
+    }
+}
+
+compile SgemmReg2x2Tile16x16DeriveFp32<Reg2x2Tile16x16DeriveFp32> as SgemmReg2x2Tile16x16DeriveFp32Kernel;
