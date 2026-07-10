@@ -325,8 +325,10 @@ FACT(PrometheusReactor_BufferReuseSafety_FP16ThenBaselineSameShape)
     constexpr std::uint32_t m = 3u;
     constexpr std::uint32_t n = 3u;
     constexpr std::uint32_t k = 3u;
-    const std::vector<float> a_fp16 = deterministic_matrix(m, k);
-    const std::vector<float> b_fp16 = deterministic_matrix(k, n);
+    std::vector<float> a_fp16(m * k, 0.0f);
+    std::vector<float> b_fp16(k * n, 0.0f);
+    for (std::size_t i = 0u; i < a_fp16.size(); ++i) a_fp16[i] = static_cast<float>(static_cast<int>(i % 5u) - 2);
+    for (std::size_t i = 0u; i < b_fp16.size(); ++i) b_fp16[i] = static_cast<float>(static_cast<int>(i % 7u) - 3);
     std::vector<float> c_fp16(m * n, 0.0f);
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = 0;
@@ -432,8 +434,10 @@ FACT(PrometheusReactor_BufferReuseSafety_FP16ThenPacked4SameShape)
     constexpr std::uint32_t m = 8u;
     constexpr std::uint32_t n = 8u;
     constexpr std::uint32_t k = 8u;
-    const std::vector<float> a_fp16 = deterministic_matrix(m, k);
-    const std::vector<float> b_fp16 = deterministic_matrix(k, n);
+    std::vector<float> a_fp16(m * k, 0.0f);
+    std::vector<float> b_fp16(k * n, 0.0f);
+    for (std::size_t i = 0u; i < a_fp16.size(); ++i) a_fp16[i] = static_cast<float>(static_cast<int>(i % 5u) - 2);
+    for (std::size_t i = 0u; i < b_fp16.size(); ++i) b_fp16[i] = static_cast<float>(static_cast<int>(i % 7u) - 3);
     std::vector<float> c_fp16(m * n, 0.0f);
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = 0;

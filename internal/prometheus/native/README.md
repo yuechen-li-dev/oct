@@ -29,7 +29,8 @@ Supported native build helpers:
 
 - Linux: `bash internal/prometheus/native/build_linux.sh`
 - Compatibility: `build_stub.sh` prints a deprecation warning and forwards to `build_linux.sh`.
-- Windows: `internal\prometheus\native\build_windows.cmd`
+- Windows: `internal\prometheus\native\build_windows_launcher.cmd` (authoritative launcher; locates Visual Studio, initializes x64 MSVC, and writes `out\test-artifacts\prometheus_native_windows_build.log`).
+- Low-level Windows build body: `internal\prometheus\native\build_windows.cmd` (called by the launcher; do not duplicate its source lists or build logic).
 
 Expected Windows outputs:
 

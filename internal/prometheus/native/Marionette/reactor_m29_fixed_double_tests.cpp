@@ -436,8 +436,10 @@ FACT(PrometheusReactor_M14_BufferArtifacts_PrecisionTransitionAndCapacitySafety)
     const std::uint32_t m = 8u;
     const std::uint32_t n = 8u;
     const std::uint32_t k = 8u;
-    std::vector<float> a = deterministic_matrix(m, k);
-    std::vector<float> b = deterministic_matrix(k, n);
+    std::vector<float> a(m * k, 0.0f);
+    std::vector<float> b(k * n, 0.0f);
+    for (std::size_t i = 0u; i < a.size(); ++i) a[i] = static_cast<float>(static_cast<int>(i % 5u) - 2);
+    for (std::size_t i = 0u; i < b.size(); ++i) b[i] = static_cast<float>(static_cast<int>(i % 7u) - 3);
     std::vector<float> c(m * n, 0.0f);
     std::uint32_t stage = PROM_STAGE_NONE;
     int detail = 0;
@@ -1324,4 +1326,191 @@ FACT(PrometheusSgemmBatchRefillRing)
     json << "{\"test\":\"PrometheusSgemmBatchRefillRing\",\"hardware_proof\":true,\"real_multi_submit_proof\":true,\"atomic_success_commit\":true,\"atomic_failure_no_commit\":true,\"acceptance_evidence_complete\":true,\"device\":{\"name\":\"" << device.device_name << "\",\"vendor_id\":" << device.vendor_id << ",\"device_id\":" << device.device_id << ",\"device_type\":" << device.device_type << ",\"driver_version\":" << device.driver_version << ",\"api_version\":" << device.api_version << ",\"software_vulkan\":false,\"compute_queue_family\":" << device.compute_queue_family << ",\"transfer_queue_family\":" << device.transfer_queue_family << "},\"depths\":" << depth_json.str() << "],\"failure\":{\"first_failure_entry\":2,\"output_committed\":false,\"drained\":true}}\n";
     markdown << "# Prometheus batch refill ring\n\nFocused test: `PrometheusSgemmBatchRefillRing`. RTX 3070 hardware proof; public batch API; one compute queue.\n\n" << depth_markdown.str() << "\nSuccess: atomic entry-ID commit and CPU-oracle correctness pass. Failure: post-submit admission stop, drain, and sentinel-preserving no-commit pass.\n";
     ASSERT_TRUE(json.good() && markdown.good(), "batch refill artifacts should be written");
+}
+
+FACT(PrometheusSgemmBatchFirstFailureDeterministic)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.batch_ring_depth = 4u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 8u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO, &stage, &detail), "dual candidate seam should fail");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
+    ASSERT_EQUAL(0u, diag.failed_entry_id, "reducer must select lowest caller entry id, not discovery order");
+    ASSERT_EQUAL(PROM_STAGE_SUBMIT, diag.failure_stage, "primary stage must remain submit");
+    ASSERT_EQUAL(0u, diag.output_committed, "failure must remain atomic");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchStopsAdmissionAfterFailure)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 4u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 10u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    const std::uint32_t flags = (2u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), flags, &stage, &detail), "post-submit failure");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
+    ASSERT_EQUAL(2u, diag.failed_entry_id, "failure identity");
+    ASSERT_EQUAL(3u, static_cast<std::uint32_t>(diag.total_submits), "admission must stop at selected failure");
+    for (std::uint32_t i = 3u; i < static_cast<std::uint32_t>(entries.size()); ++i) ASSERT_EQUAL(0u, diag.m31_submission_sequence[i], "skipped tail has no physical submit evidence");
+    ASSERT_EQUAL(0u, diag.current_in_flight, "drain must resolve admitted ownership");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchFailureIsAtomic)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 2u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 6u);
+    for (auto& output : c) std::fill(output.begin(), output.end(), -7331.0f);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), (1u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT, &stage, &detail), "failure after real submit");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
+    ASSERT_EQUAL(0u, diag.output_committed, "no partial output publish");
+    for (const auto& output : c) for (float value : output) ASSERT_EQUAL(-7331.0f, value, "caller output must remain byte-equivalent sentinel values");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchRuntimeReusableAfterNonfatalFailure)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 2u;
+    config.test_flags = PROM_TESTCFG_FAIL_ASYNC_POLL;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 4u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "injected observation failure");
+    PrometheusSgemmBatchDiagnostics failed{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &failed), "failure diagnostics");
+    ASSERT_EQUAL(0u, failed.output_committed, "failed batch stays atomic");
+    std::vector<std::vector<float>> a2, b2, c2;
+    const auto replacement = make_plan_entries(a2, b2, c2, 3u);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, replacement.data(), static_cast<std::uint32_t>(replacement.size()), 0u, &stage, &detail), "reaped runtime must accept replacement batch");
+    PrometheusSgemmBatchDiagnostics recovered{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &recovered), "replacement diagnostics");
+    ASSERT_EQUAL(1u, recovered.output_committed, "replacement commits after nonfatal failure");
+    ASSERT_EQUAL(0u, recovered.current_in_flight, "replacement leaves no ownership");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchFatalFailureMarksRuntimeUnsafe)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 2u;
+    config.async_test_flags = PROM_ASYNC_TESTCFG_DEVICE_LOST_AFTER_SUBMIT;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 4u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "post-submit device-loss seam must fail");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), 1u, 0u, &stage, &detail), "unsafe runtime must reject later batch submit");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "fatal teardown remains safe");
+}
+
+FACT(PrometheusSgemmBatchFeedbackMatchesValidCompletions)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 4u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 6u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "success batch");
+    PrometheusSgemmBatchDiagnostics success{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &success), "success diagnostics");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(entries.size()), success.feedback_committed_count, "each valid completion contributes feedback once");
+    ASSERT_EQUAL(0u, static_cast<std::uint32_t>(success.feedback_skipped_count), "success skips no feedback");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchDrainsSubmittedEntriesSafely)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 4u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 8u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), (2u + 1u) << PROM_BATCH_FLAG_TEST_FAIL_ENTRY_SHIFT, &stage, &detail), "failure while ring contains multiple submitted entries");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
+    ASSERT_TRUE(diag.max_in_flight >= 2u, "test must have multiple real submissions in flight");
+    ASSERT_EQUAL(0u, diag.current_in_flight, "every admitted nonfatal entry must be drained or reaped");
+    ASSERT_EQUAL(0u, diag.output_committed, "drain cannot publish partial output");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchCommitsInEntryOrder)
+{
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config)); config.batch_ring_depth = 4u;
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create");
+    if (!runtime_available(handle)) { ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup"); SKIP("M31 authority requires Vulkan"); }
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 8u);
+    std::uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch(handle, entries.data(), static_cast<std::uint32_t>(entries.size()), 0u, &stage, &detail), "success batch");
+    PrometheusSgemmBatchDiagnostics diag{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_batch_diagnostics(handle, &diag), "diagnostics");
+    for (std::uint32_t i = 0u; i < static_cast<std::uint32_t>(entries.size()); ++i) ASSERT_EQUAL(i, diag.m31_commit_order[i], "commit must use immutable entry order");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(entries.size()), diag.m31_commit_count, "all staged entries commit once");
+    std::filesystem::create_directories("out/test-artifacts");
+    std::ofstream json("out/test-artifacts/prometheus_r2c_batch_semantics.json");
+    std::ofstream markdown("out/test-artifacts/prometheus_r2c_batch_semantics.md");
+    json << "{\"test\":\"PrometheusSgemmBatchCommitsInEntryOrder\",\"plan_generation\":" << diag.plan_generation
+         << ",\"logical_width\":" << diag.effective_workers << ",\"ring_depth\":" << diag.physical_ring_depth_effective
+         << ",\"max_in_flight\":" << diag.max_in_flight << ",\"completion_order\":[";
+    for (std::uint32_t i = 0u; i < static_cast<std::uint32_t>(entries.size()); ++i) json << (i == 0u ? "" : ",") << diag.m31_completion_order[i];
+    json << "],\"commit_order\":[";
+    for (std::uint32_t i = 0u; i < static_cast<std::uint32_t>(entries.size()); ++i) json << (i == 0u ? "" : ",") << diag.m31_commit_order[i];
+    json << "],\"submitted_sequences\":[";
+    for (std::uint32_t i = 0u; i < static_cast<std::uint32_t>(entries.size()); ++i) json << (i == 0u ? "" : ",") << diag.m31_submission_sequence[i];
+    json << "],\"output_committed\":true,\"feedback_committed\":" << diag.feedback_committed_count << ",\"feedback_skipped\":" << diag.feedback_skipped_count << "}\n";
+    markdown << "# Prometheus R2c M31 batch semantics\n\n"
+             << "RTX authority lane: shared M29 ring, immutable plan generation " << diag.plan_generation
+             << ", max in-flight " << diag.max_in_flight << ".\n\n"
+             << "- Commit order: ascending entry IDs\n- Output committed: true\n- Feedback committed/skipped: "
+             << diag.feedback_committed_count << "/" << diag.feedback_skipped_count << "\n";
+    ASSERT_TRUE(json.good() && markdown.good(), "R2c authority evidence artifacts should be written");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "cleanup");
+}
+
+FACT(PrometheusSgemmBatchLogicalLanesAreMetadataOnly)
+{
+    std::vector<std::vector<float>> a, b, c;
+    const auto entries = make_plan_entries(a, b, c, 8u);
+    prom_sgemm_batch_plan plan{};
+    ASSERT_EQUAL(PROM_OK, prom_sgemm_batch_plan_build(entries.data(), static_cast<std::uint32_t>(entries.size()), 3u, &plan, nullptr), "plan build");
+    for (std::uint32_t i = 0u; i < plan.entry_count; ++i) ASSERT_EQUAL(i % 3u, plan.entries[i].logical_lane, "logical lane map is deterministic metadata");
+    prom_sgemm_batch_plan_destroy(&plan);
+    /* Nonzero width flags deliberately remain on P11 until R2d.  This R2c
+       test therefore proves only the real immutable metadata contract and
+       does not pretend a lane selects an M31 queue or slot. */
 }

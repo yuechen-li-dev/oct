@@ -1,7 +1,9 @@
 #include "../bridge.h"
 #include "test_harness.h"
 
+#include <chrono>
 #include <cstdint>
+#include <thread>
 #include <vector>
 
 namespace
@@ -18,13 +20,15 @@ std::vector<float> matrix(std::uint32_t rows, std::uint32_t cols)
 bool wait_until_async_ready(void* handle, int task_id)
 {
     PrometheusAsyncStatus status{};
-    for (int attempts = 0; attempts < 2000; ++attempts) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
         if (prometheus_reactor_runtime_sgemm_query_async(handle, task_id, &status) != PROM_OK) {
             return false;
         }
         if (status.lifecycle_state == PROM_ASYNC_STATE_READY) {
             return true;
         }
+        std::this_thread::yield();
     }
     return false;
 }

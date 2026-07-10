@@ -2837,6 +2837,13 @@ static void prom_fp16_prepare_production_tolerance_facts(const float* a,
                                                          prom_sgemm_controller_state* state,
                                                          uint32_t* has_special_values,
                                                          int* utility_score) {
+  uint64_t index;
+  float max_a = 0.0f;
+  float max_b = 0.0f;
+  float max_a_error = 0.0f;
+  float max_b_error = 0.0f;
+  double conservative_error;
+  const float output_absolute_tolerance = 1.0e-4f;
   if (state == NULL || has_special_values == NULL || utility_score == NULL) {
     return;
   }
@@ -2846,13 +2853,36 @@ static void prom_fp16_prepare_production_tolerance_facts(const float* a,
       prom_fp16_scan_special_values(b, (uint64_t)k * (uint64_t)n) != 0u
           ? 1u
           : 0u;
+  for (index = 0u; index < (uint64_t)m * (uint64_t)k; ++index) {
+    const float packed = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(a[index]));
+    const float magnitude = fabsf(a[index]);
+    const float error = fabsf(a[index] - packed);
+    if (magnitude > max_a) max_a = magnitude;
+    if (error > max_a_error) max_a_error = error;
+  }
+  for (index = 0u; index < (uint64_t)k * (uint64_t)n; ++index) {
+    const float packed = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(b[index]));
+    const float magnitude = fabsf(b[index]);
+    const float error = fabsf(b[index] - packed);
+    if (magnitude > max_b) max_b = magnitude;
+    if (error > max_b_error) max_b_error = error;
+  }
+  /* This upper bound compares the original FP32 products to products formed
+     from the exact FP16 payload that will be dispatched.  It is deliberately
+     conservative: selecting FP16 with a false "zero error" claim is worse
+     than selecting the established FP32/packed fallback. */
+  conservative_error = (double)k * ((double)max_a_error * (double)max_b +
+                                    (double)max_a * (double)max_b_error +
+                                    (double)max_a_error * (double)max_b_error);
   state->fp16_tolerance_known = 1u;
-  state->fp16_tolerance_pass = 1u;
-  state->fp16_max_absolute_error = 0.0f;
-  state->fp16_max_relative_error = 0.0f;
-  state->fp16_aggregate_error = 0.0f;
+  state->fp16_tolerance_pass = conservative_error <= (double)output_absolute_tolerance ? 1u : 0u;
+  state->fp16_max_absolute_error = (float)conservative_error;
+  state->fp16_max_relative_error = max_a > 0.0f && max_b > 0.0f
+                                      ? (float)(conservative_error / ((double)k * (double)max_a * (double)max_b))
+                                      : 0.0f;
+  state->fp16_aggregate_error = (float)conservative_error;
   state->fp16_worst_case_element_index = 0u;
-  state->fp16_k_error_growth = 0.0f;
+  state->fp16_k_error_growth = (float)k;
   state->fp16_cancellation_risk = 0.0f;
   *utility_score = 900;
 }
@@ -9836,6 +9866,11 @@ static int prom_async_reap_quarantined_slots(prometheus_runtime* rt, uint32_t al
         task->active = 0u;
       }
     }
+    /* Quarantine was entered from a submitted slot whose normal poll path did
+       not retire the ring counter.  Reap is its one authoritative retirement
+       transition; without this decrement a later reusable batch reports
+       phantom in-flight work. */
+    if (rt->submission_ring_diag.outstanding != 0u) rt->submission_ring_diag.outstanding -= 1u;
     slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
     rt->async_reap_success_count += 1u;
   }
@@ -10294,6 +10329,54 @@ void prom_sgemm_batch_plan_destroy(prom_sgemm_batch_plan* plan) {
 // M31 physical batch execution
 // ============================================================================
 
+/* This rank is permanent for the M31 reducer.  It is intentionally about the
+   real path's phases, not P11 worker machinery. */
+enum {
+  PROM_BATCH_FAILURE_PHASE_STAGING_ALLOCATION = 1u,
+  PROM_BATCH_FAILURE_PHASE_TASK_ALLOCATION = 2u,
+  PROM_BATCH_FAILURE_PHASE_COMMAND_RECORD = 3u,
+  PROM_BATCH_FAILURE_PHASE_SUBMIT = 4u,
+  PROM_BATCH_FAILURE_PHASE_COMPLETION_OBSERVATION = 5u,
+  PROM_BATCH_FAILURE_PHASE_RESULT_COPY_TO_STAGING = 6u,
+  PROM_BATCH_FAILURE_PHASE_COMMIT = 7u,
+};
+
+typedef struct prom_batch_failure_reducer {
+  uint32_t selected;
+  uint32_t entry_id;
+  uint32_t phase;
+  int detail;
+  uint64_t observation_sequence;
+} prom_batch_failure_reducer;
+
+static int prom_batch_failure_precedes(const prom_batch_failure_reducer* current,
+                                       uint32_t entry_id,
+                                       uint32_t phase,
+                                       uint64_t observation_sequence) {
+  if (current->selected == 0u) return 1;
+  if (entry_id != current->entry_id) return entry_id < current->entry_id;
+  if (phase != current->phase) return phase < current->phase;
+  return observation_sequence < current->observation_sequence;
+}
+
+static void prom_batch_failure_offer(prom_batch_failure_reducer* reducer,
+                                     prom_sgemm_batch_entry_runtime* runtime,
+                                     uint32_t phase,
+                                     int detail,
+                                     uint64_t observation_sequence) {
+  runtime->failure_phase = phase;
+  runtime->failure_detail = detail;
+  runtime->observation_sequence = observation_sequence;
+  runtime->state = PROM_BATCH_ENTRY_FAILED;
+  if (prom_batch_failure_precedes(reducer, runtime->entry_id, phase, observation_sequence)) {
+    reducer->selected = 1u;
+    reducer->entry_id = runtime->entry_id;
+    reducer->phase = phase;
+    reducer->detail = detail;
+    reducer->observation_sequence = observation_sequence;
+  }
+}
+
 /* M31 deliberately uses the M30 task-owned buffer and M29 physical-slot
    lifecycle. The immutable plan below owns only logical facts; a logical lane
    is never welded to a physical slot, queue, command resource, or CPU thread. */
@@ -10306,6 +10389,8 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
   prom_sgemm_batch_plan plan;
   prom_sgemm_async_task** jobs = NULL;
   float** staged = NULL;
+  prom_sgemm_batch_entry_runtime* runtime_entries = NULL;
+  prom_batch_failure_reducer primary_failure;
   uint32_t next = 0u, completed = 0u, completion_count = 0u, failed_entry = UINT32_MAX;
   uint32_t failed_worker = UINT32_MAX, failure_stage = PROM_STAGE_NONE;
   int failure_detail = 0;
@@ -10313,9 +10398,15 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
   const uint32_t injected_failure_entry = batch_test_failure_entry_from_flags(flags, entry_count);
   uint64_t submits0, polls0, waits0, full0, harvest0, quarantine0, reap0, feedback0, skipped0;
   int failed = 0;
+  uint64_t observation_sequence = 0u;
 
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_NONE, 0);
   memset(&plan, 0, sizeof(plan));
+  memset(&primary_failure, 0, sizeof(primary_failure));
+  if (rt->async_runtime_unsafe_to_reuse != 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_FAILED);
+    return PROM_ERROR;
+  }
   if (entries == NULL || entry_count == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
     return PROM_ERROR;
@@ -10354,7 +10445,8 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
   }
   jobs = (prom_sgemm_async_task**)calloc(entry_count, sizeof(*jobs));
   staged = (float**)calloc(entry_count, sizeof(*staged));
-  if (jobs == NULL || staged == NULL) goto oom;
+  runtime_entries = (prom_sgemm_batch_entry_runtime*)calloc(entry_count, sizeof(*runtime_entries));
+  if (jobs == NULL || staged == NULL || runtime_entries == NULL) goto oom;
   memset(&rt->batch_diag, 0, sizeof(rt->batch_diag));
   rt->batch_diag.last_batch_entry_count = entry_count;
   /* These v1 fields are plan-derived logical facts, not physical workers. */
@@ -10378,6 +10470,14 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
      state, but every allocation succeeds before first Vulkan admission. */
   for (i = 0u; i < entry_count; ++i) {
     const prom_sgemm_batch_entry_plan* plan_entry = &plan.entries[i];
+    runtime_entries[i].entry_id = plan_entry->entry_id;
+    runtime_entries[i].plan_generation = plan_entry->plan_generation;
+    runtime_entries[i].logical_lane = plan_entry->logical_lane;
+    runtime_entries[i].state = PROM_BATCH_ENTRY_PLANNED;
+    runtime_entries[i].physical_slot_id = UINT32_MAX;
+  }
+  for (i = 0u; i < entry_count; ++i) {
+    const prom_sgemm_batch_entry_plan* plan_entry = &plan.entries[i];
     staged[i] = (float*)calloc(plan_entry->c_element_count, sizeof(float));
     if (staged[i] == NULL) {
       failed = 1;
@@ -10385,6 +10485,9 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
       failed_worker = plan_entry->logical_lane;
       failure_stage = PROM_STAGE_TRANSFER_OUT;
       failure_detail = PROM_ERROR;
+      prom_batch_failure_offer(&primary_failure, &runtime_entries[i],
+                               PROM_BATCH_FAILURE_PHASE_STAGING_ALLOCATION,
+                               failure_detail, ++observation_sequence);
       break;
     }
     if (plan_entry->logical_lane < 8u) {
@@ -10403,7 +10506,8 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
       for (i = 0u; i < effective_depth; ++i) if (rt->submission_ring[i].state == PROM_SGEMM_SUBMISSION_SLOT_EMPTY) { slot = &rt->submission_ring[i]; break; }
       if (slot == NULL) { rt->submission_ring_diag.ring_full_count += 1u; break; }
       task = prom_async_task_allocate(rt);
-      if (task == NULL) { failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_ASYNC_QUEUE_FULL; break; }
+      if (task == NULL) { failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_ASYNC_QUEUE_FULL; prom_batch_failure_offer(&primary_failure, &runtime_entries[next], PROM_BATCH_FAILURE_PHASE_TASK_ALLOCATION, failure_detail, ++observation_sequence); break; }
+      runtime_entries[next].state = PROM_BATCH_ENTRY_ADMITTED;
       slot->state = PROM_SGEMM_SUBMISSION_SLOT_PREPARING; slot->generation += 1u;
       slot->submission_sequence = rt->submission_ring_diag.next_sequence++; slot->physical_completion_confirmed = 0u;
       task->m = plan_entry->m; task->n = plan_entry->n; task->k = plan_entry->k; task->compute_k = plan_entry->k;
@@ -10414,16 +10518,31 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
       result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)plan_entry->a_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->a);
       if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)plan_entry->b_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->b);
       if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)plan_entry->c_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->c);
-      if (result != VK_SUCCESS) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_TRANSFER_IN; failure_detail = (int)result; break; }
+      if (result != VK_SUCCESS) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_TRANSFER_IN; failure_detail = (int)result; prom_batch_failure_offer(&primary_failure, &runtime_entries[next], PROM_BATCH_FAILURE_PHASE_COMMAND_RECORD, failure_detail, ++observation_sequence); break; }
       memcpy(task->a.mapped, plan_entry->a, plan_entry->a_byte_count); memcpy(task->b.mapped, plan_entry->b, plan_entry->b_byte_count); memset(task->c.mapped, 0, plan_entry->c_byte_count);
-      if (prom_async_record_slot(rt, slot, task) != PROM_OK || prom_sgemm_ring_submit_slot(rt, slot) != PROM_OK) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED; break; }
+      if (prom_async_record_slot(rt, slot, task) != PROM_OK || prom_sgemm_ring_submit_slot(rt, slot) != PROM_OK) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED; prom_batch_failure_offer(&primary_failure, &runtime_entries[next], PROM_BATCH_FAILURE_PHASE_SUBMIT, failure_detail, ++observation_sequence); break; }
       task->lifecycle_state = PROM_ASYNC_STATE_SUBMITTED; jobs[next] = task;
+      runtime_entries[next].state = PROM_BATCH_ENTRY_SUBMITTED;
+      runtime_entries[next].submission_sequence = task->submission_sequence;
+      runtime_entries[next].physical_slot_id = slot->slot_id;
+      runtime_entries[next].physical_slot_generation = slot->generation;
       if (next < 64u) { rt->batch_diag.m31_submission_sequence[next] = task->submission_sequence; rt->batch_diag.m31_physical_slot_id[next] = slot->slot_id; }
       if (plan_entry->logical_lane < 8u) { rt->batch_diag.worker_submit_count[plan_entry->logical_lane] += 1u; rt->batch_diag.worker_event_count[plan_entry->logical_lane] += 2u; }
       rt->batch_diag.refill_count += (next >= effective_depth) ? 1u : 0u;
       ++next; made_progress = 1u;
-      if ((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && next == 1u) { failed = 1; failed_entry = 0u; failed_worker = plan.entries[0].logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; }
-      if (!failed && next - 1u == injected_failure_entry) { failed = 1; failed_entry = injected_failure_entry; failed_worker = plan.entries[injected_failure_entry].logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; }
+      if ((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && next == 1u) { failed = 1; failed_entry = 0u; failed_worker = plan.entries[0].logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; prom_batch_failure_offer(&primary_failure, &runtime_entries[0], PROM_BATCH_FAILURE_PHASE_SUBMIT, failure_detail, ++observation_sequence); }
+      if (!failed && next - 1u == injected_failure_entry) { failed = 1; failed_entry = injected_failure_entry; failed_worker = plan.entries[injected_failure_entry].logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; prom_batch_failure_offer(&primary_failure, &runtime_entries[injected_failure_entry], PROM_BATCH_FAILURE_PHASE_SUBMIT, failure_detail, ++observation_sequence); }
+      if (!failed && (flags & PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO) != 0u && next == 2u) {
+        /* Test-only simultaneous candidate seam.  Both candidates exist before
+           the stop flag is set, so the reducer—not discovery order—selects
+           entry zero as the stable primary cause. */
+        prom_batch_failure_offer(&primary_failure, &runtime_entries[1], PROM_BATCH_FAILURE_PHASE_SUBMIT,
+                                 PROM_DETAIL_BATCH_EXECUTION_FAILED, ++observation_sequence);
+        prom_batch_failure_offer(&primary_failure, &runtime_entries[0], PROM_BATCH_FAILURE_PHASE_SUBMIT,
+                                 PROM_DETAIL_BATCH_EXECUTION_FAILED, ++observation_sequence);
+        failed = 1; failed_entry = primary_failure.entry_id; failed_worker = runtime_entries[failed_entry].logical_lane;
+        failure_stage = PROM_STAGE_SUBMIT; failure_detail = primary_failure.detail;
+      }
     }
     for (i = 0u; i < next; ++i) {
       prom_sgemm_async_task* task = jobs[i];
@@ -10431,13 +10550,15 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
       if (task->batch_entry_id != plan.entries[i].entry_id ||
           task->batch_plan_generation != plan.entries[i].plan_generation) {
         failed = 1; failed_entry = plan.entries[i].entry_id; failed_worker = plan.entries[i].logical_lane;
-        failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; continue;
+        failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED;
+        prom_batch_failure_offer(&primary_failure, &runtime_entries[i], PROM_BATCH_FAILURE_PHASE_COMPLETION_OBSERVATION, failure_detail, ++observation_sequence); continue;
       }
-      if (prom_async_poll_task(rt, task) != PROM_OK || task->lifecycle_state == PROM_ASYNC_STATE_FAILED) { if (!failed) { failed = 1; failed_entry = plan.entries[i].entry_id; failed_worker = plan.entries[i].logical_lane; failure_stage = task->final_stage; failure_detail = task->final_detail; } continue; }
+      if (prom_async_poll_task(rt, task) != PROM_OK || task->lifecycle_state == PROM_ASYNC_STATE_FAILED) { if (!failed) { failed = 1; failed_entry = plan.entries[i].entry_id; failed_worker = plan.entries[i].logical_lane; failure_stage = task->final_stage; failure_detail = task->final_detail; prom_batch_failure_offer(&primary_failure, &runtime_entries[i], PROM_BATCH_FAILURE_PHASE_COMPLETION_OBSERVATION, failure_detail, ++observation_sequence); } continue; }
       if (task->lifecycle_state == PROM_ASYNC_STATE_READY) {
         memcpy(staged[i], task->c.mapped, plan.entries[i].c_byte_count);
         rt->submission_ring[task->physical_slot_id].state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
         task->lifecycle_state = PROM_ASYNC_STATE_CONSUMED;
+        runtime_entries[i].state = PROM_BATCH_ENTRY_COMPLETED;
         if (i < 64u) { rt->batch_diag.m31_completion_status[i] = 1u; rt->batch_diag.m31_gpu_duration_ns[i] = task->gpu_duration_ns; rt->batch_diag.m31_completion_order[completion_count] = i; }
         ++completion_count; ++completed; made_progress = 1u;
         if (plan.entries[i].logical_lane < 8u) { rt->batch_diag.worker_completed_count[plan.entries[i].logical_lane] += 1u; rt->batch_diag.worker_event_count[plan.entries[i].logical_lane] += 1u; }
@@ -10448,6 +10569,10 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
        feedback.  Clear the batch's pointer at the same transition so a later
        refill cannot be mistaken for the earlier entry on a recycled record. */
     for (i = 0u; i < next; ++i) {
+      if (jobs[i] != NULL && jobs[i]->feedback_pending == 0u && jobs[i]->feedback_committed != 0u) {
+        if (jobs[i]->lifecycle_state == PROM_ASYNC_STATE_FAILED) runtime_entries[i].feedback_skipped = 1u;
+        else runtime_entries[i].feedback_committed = 1u;
+      }
       if (jobs[i] != NULL && jobs[i]->lifecycle_state == PROM_ASYNC_STATE_CONSUMED && jobs[i]->feedback_pending == 0u) {
         prom_async_task_release(rt, jobs[i]);
         jobs[i] = NULL;
@@ -10455,6 +10580,20 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
     }
     if (!failed && completed < entry_count && !made_progress && rt->submission_ring_diag.outstanding != 0u) {
       if (prom_sgemm_ring_wait_oldest(rt) != PROM_OK) { failed = 1; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_FENCE_WAIT_FAILED; }
+    }
+  }
+  /* The reducer freezes at this admission-stop boundary.  Anything discovered
+     while draining is lifecycle evidence, never a replacement batch cause. */
+  if (primary_failure.selected != 0u) {
+    failed_entry = primary_failure.entry_id;
+    failed_worker = runtime_entries[failed_entry].logical_lane;
+    failure_detail = primary_failure.detail;
+  }
+  if (failed) {
+    for (i = next; i < entry_count; ++i) {
+      if (runtime_entries[i].state == PROM_BATCH_ENTRY_PLANNED) {
+        runtime_entries[i].state = PROM_BATCH_ENTRY_SKIPPED;
+      }
     }
   }
   /* Batch failure stops admission, then resolves every owned submission before
@@ -10471,7 +10610,11 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
     }
     prom_async_process_completion_feedback(rt);
     if (task->slot_quarantined != 0u) (void)prom_async_reap_quarantined_slots(rt, 1u);
-    if (task->physical_slot_id < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH && task->slot_quarantined == 0u) rt->submission_ring[task->physical_slot_id].state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+    if (task->physical_slot_id < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH &&
+        task->slot_quarantined == 0u && rt->async_runtime_unsafe_to_reuse == 0u) {
+      rt->submission_ring[task->physical_slot_id].state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY;
+    }
+    if (runtime_entries[i].state != PROM_BATCH_ENTRY_FAILED) runtime_entries[i].state = PROM_BATCH_ENTRY_DRAINED;
     prom_async_task_release(rt, task);
   }
   rt->batch_diag.physical_ring_depth_configured = rt->submission_ring_diag.configured_depth;
@@ -10484,7 +10627,7 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
   rt->batch_diag.reap_count = rt->async_reap_success_count - reap0; rt->batch_diag.feedback_committed_count = rt->async_feedback_committed_count - feedback0; rt->batch_diag.feedback_skipped_count = rt->async_feedback_skipped_count - skipped0;
   rt->batch_diag.m31_completion_count = completion_count;
   if (!failed && completed == entry_count) {
-    for (i = 0u; i < entry_count; ++i) { memcpy(plan.entries[i].c, staged[i], plan.entries[i].c_byte_count); if (i < 64u) rt->batch_diag.m31_commit_order[i] = i; }
+    for (i = 0u; i < entry_count; ++i) { memcpy(plan.entries[i].c, staged[i], plan.entries[i].c_byte_count); runtime_entries[i].state = PROM_BATCH_ENTRY_COMMITTED; if (i < 64u) rt->batch_diag.m31_commit_order[i] = i; }
     rt->batch_diag.m31_commit_count = entry_count; rt->batch_diag.output_committed = 1u; rt->batch_diag.batch_state = PROM_BATCH_STATE_SUCCEEDED;
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, 0);
   } else {
@@ -10492,12 +10635,12 @@ static int prom_sgemm_batch_refill_ring(prometheus_runtime* rt,
     rt->batch_diag.failure_stage = failure_stage; rt->batch_diag.failure_detail = failure_detail; rt->batch_diag.failure_count = 1u; rt->batch_diag.first_failure_stable = 1u;
     prom_vk_set_status(out_stage, out_detail_code, failure_stage == PROM_STAGE_NONE ? PROM_STAGE_SUBMIT : failure_stage, failure_detail == 0 ? PROM_ERROR : failure_detail);
   }
-  for (i = 0u; i < entry_count; ++i) free(staged[i]); free(staged); free(jobs);
+  for (i = 0u; i < entry_count; ++i) free(staged[i]); free(staged); free(jobs); free(runtime_entries);
   prom_sgemm_batch_plan_destroy(&plan);
   return failed || completed != entry_count ? PROM_ERROR : PROM_OK;
 oom:
   for (i = 0u; i < entry_count; ++i) if (staged != NULL) free(staged[i]);
-  free(staged); free(jobs);
+  free(staged); free(jobs); free(runtime_entries);
   prom_sgemm_batch_plan_destroy(&plan);
   prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_ERROR);
   return PROM_ERROR;
