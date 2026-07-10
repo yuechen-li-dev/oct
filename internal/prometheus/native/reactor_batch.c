@@ -1,9 +1,54 @@
 #include "reactor_vulkan_sgemm_internal.h"
-#include "reactor_sgemm_batch_m31.h"
+#include "reactor_batch.h"
 
-// ============================================================================
-// Immutable SGEMM batch planning
-// ============================================================================
+/*
+ * PROMETHEUS BATCH EXECUTION ATLAS
+ *
+ * PURPOSE
+ *   This is the authoritative public SGEMM batch contract. It executes a
+ *   validated caller-order batch without changing public ABI or diagnostics.
+ *
+ * AUTHORITY
+ *   public batch API -> immutable batch plan -> centralized admission/refill
+ *   -> M30 task lifecycle -> M29 shared physical ring
+ *   -> physical completion evidence -> staged outputs -> atomic ordered commit
+ *
+ * THIS MODULE OWNS
+ *   Immutable per-entry planning; logical-width and partition metadata;
+ *   per-entry runtime state; deterministic failure reduction; stop admission
+ *   and skipped-tail semantics; refill coordination; staging, publication,
+ *   ordered commit, and batch diagnostics preparation.
+ *
+ * THIS MODULE DOES NOT OWN
+ *   Vulkan device or queue creation; physical submission slots; public async
+ *   token lifecycle; quarantine/reap implementation; shader or pipeline
+ *   creation; implementation selection policy; P14/P15 algorithms; sync
+ *   execution; or FFT.
+ *
+ * CRITICAL INVARIANTS
+ *   1. A logical lane is not a CPU thread, Vulkan queue, or physical ring slot.
+ *   2. Immutable entry identity survives task and slot reuse.
+ *   3. No failure publishes partial caller output; stop admission never
+ *      abandons physical ownership.
+ *   4. Physical ownership resolves through completion, drain, reap, or
+ *      quarantine. Diagnostics report observed execution or explicit planning
+ *      facts, never decorative execution.
+ *   5. CPU reference SGEMM is not native production batch authority. Supported
+ *      public batch options execute the real engine or fail explicitly.
+ *
+ * INDEX
+ *   ATLAS 1 planning; 2 logical partitioning; 3 runtime/failure state;
+ *   4 admission/refill; 5 drain/ownership resolution; 6 staging/publication;
+ *   7 ordered commit; 8 diagnostics; 9 test-only seams.
+ *
+ * HISTORY
+ *   This replaces the removed P11 worker-local/CPU-authority architecture.
+ *   See ../DevelopmentReport/PROMETHEUS_P11_ARCHITECTURE_RETROSPECTIVE.md.
+ *   Future concurrency is design-only: see
+ *   ../DevelopmentReport/PROMETHEUS_CONCURRENCY_FUTURE_DIRECTIONS.md.
+ */
+
+// ATLAS 1 — Immutable planning
 
 enum {
   PROM_SGEMM_BATCH_PLAN_GENERATION = 1u,
@@ -15,6 +60,7 @@ static uint32_t prom_sgemm_batch_requested_logical_width(uint32_t flags) {
   return requested == 0u ? 1u : requested;
 }
 
+// ATLAS 2 — Logical partitioning
 static uint32_t prom_sgemm_batch_logical_lane(uint32_t entry_id,
                                               uint32_t entry_count,
                                               uint32_t logical_width,
@@ -141,11 +187,9 @@ void prom_sgemm_batch_plan_destroy(prom_sgemm_batch_plan* plan) {
   memset(plan, 0, sizeof(*plan));
 }
 
-// ============================================================================
-// M31 physical batch execution
-// ============================================================================
+// ATLAS 3 — Per-entry runtime state and deterministic failure reduction
 
-/* This rank is permanent for the M31 reducer and is defined only by real
+/* This rank is permanent for the batch reducer and is defined only by real
    execution phases. */
 enum {
   PROM_BATCH_FAILURE_PHASE_STAGING_ALLOCATION = 1u,
@@ -193,10 +237,10 @@ static void prom_batch_failure_offer(prom_batch_failure_reducer* reducer,
   }
 }
 
-/* M31 deliberately uses the M30 task-owned buffer and M29 physical-slot
+/* The batch engine deliberately uses the M30 task-owned buffer and M29 physical-slot
    lifecycle. The immutable plan below owns only logical facts; a logical lane
    is never welded to a physical slot, queue, or command resource. */
-int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
+int prom_sgemm_batch_execute(prometheus_runtime* rt,
                                         const PrometheusSgemmBatchEntry* entries,
                                         uint32_t entry_count,
                                         uint32_t flags,
@@ -285,6 +329,7 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
   harvest0 = rt->submission_ring_diag.total_query_harvests; quarantine0 = rt->async_quarantine_event_count;
   reap0 = rt->async_reap_success_count; feedback0 = rt->async_feedback_committed_count; skipped0 = rt->async_feedback_skipped_count;
 
+  // ATLAS 6 — Staging and atomic publication
   /* The plan owns all validated logical facts. Staging remains physical batch
      state, but every allocation succeeds before first Vulkan admission. */
   for (i = 0u; i < entry_count; ++i) {
@@ -313,6 +358,7 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
       rt->batch_diag.worker_assigned_count[plan_entry->logical_lane] += 1u;
     }
   }
+  // ATLAS 4 — Admission and centralized refill
   while (!failed && completed < entry_count) {
     uint32_t made_progress = 0u;
     /* Stable entry-ID admission is the central schedule. */
@@ -351,6 +397,7 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
       ++next; made_progress = 1u;
       if ((flags & PROM_BATCH_FLAG_FAIL_AFTER_FIRST_SUBMIT) != 0u && next == 1u) { failed = 1; failed_entry = 0u; failed_worker = plan.entries[0].logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; prom_batch_failure_offer(&primary_failure, &runtime_entries[0], PROM_BATCH_FAILURE_PHASE_SUBMIT, failure_detail, ++observation_sequence); }
       if (!failed && next - 1u == injected_failure_entry) { failed = 1; failed_entry = injected_failure_entry; failed_worker = plan.entries[injected_failure_entry].logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_EXECUTION_FAILED; prom_batch_failure_offer(&primary_failure, &runtime_entries[injected_failure_entry], PROM_BATCH_FAILURE_PHASE_SUBMIT, failure_detail, ++observation_sequence); }
+      // ATLAS 9 — Test-only seams (flag decoding only; no test-only route)
       if (!failed && (flags & PROM_BATCH_FLAG_TEST_DUAL_FAIL_FIRST_TWO) != 0u && next == 2u) {
         /* Test-only simultaneous candidate seam.  Both candidates exist before
            the stop flag is set, so the reducer—not discovery order—selects
@@ -401,6 +448,7 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
       if (prom_sgemm_ring_wait_oldest(rt) != PROM_OK) { failed = 1; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_FENCE_WAIT_FAILED; }
     }
   }
+  // ATLAS 5 — Drain and physical ownership resolution
   /* The reducer freezes at this admission-stop boundary.  Anything discovered
      while draining is lifecycle evidence, never a replacement batch cause. */
   if (primary_failure.selected != 0u) {
@@ -436,6 +484,7 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
     if (runtime_entries[i].state != PROM_BATCH_ENTRY_FAILED) runtime_entries[i].state = PROM_BATCH_ENTRY_DRAINED;
     prom_async_task_release(rt, task);
   }
+  // ATLAS 8 — Diagnostics preparation
   rt->batch_diag.physical_ring_depth_configured = rt->submission_ring_diag.configured_depth;
   rt->batch_diag.physical_ring_depth_effective = effective_depth;
   rt->batch_diag.current_in_flight = rt->submission_ring_diag.outstanding;
@@ -445,6 +494,7 @@ int prom_sgemm_batch_m31_execute(prometheus_runtime* rt,
   rt->batch_diag.query_harvest_count = rt->submission_ring_diag.total_query_harvests - harvest0; rt->batch_diag.quarantine_count = rt->async_quarantine_event_count - quarantine0;
   rt->batch_diag.reap_count = rt->async_reap_success_count - reap0; rt->batch_diag.feedback_committed_count = rt->async_feedback_committed_count - feedback0; rt->batch_diag.feedback_skipped_count = rt->async_feedback_skipped_count - skipped0;
   rt->batch_diag.m31_completion_count = completion_count;
+  // ATLAS 7 — Ordered commit
   if (!failed && completed == entry_count) {
     for (i = 0u; i < entry_count; ++i) { memcpy(plan.entries[i].c, staged[i], plan.entries[i].c_byte_count); runtime_entries[i].state = PROM_BATCH_ENTRY_COMMITTED; if (i < 64u) rt->batch_diag.m31_commit_order[i] = i; }
     rt->batch_diag.m31_commit_count = entry_count; rt->batch_diag.output_committed = 1u; rt->batch_diag.batch_state = PROM_BATCH_STATE_SUCCEEDED;

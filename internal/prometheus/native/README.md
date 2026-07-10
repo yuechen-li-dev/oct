@@ -8,10 +8,12 @@ Current Vulkan reactor file topology (P12 M5 baseline):
   - shared Vulkan plumbing helpers used by reactor families.
 - `reactor_vulkan_sgemm.c`
   - synchronous/async SGEMM runtime support and shared M29/M30 lifecycle helpers.
-- `reactor_sgemm_batch_m31.c`
+- `reactor_batch.c`
   - the sole production batch engine: immutable logical plans, centralized
     shared-ring refill, deterministic failure reduction, staged atomic commit,
-    and truthful M31 evidence.
+    and truthful batch evidence. It delegates task lifecycle and physical ring
+    ownership to M30/M30a and M29; it does not own async tokens, queues, or
+    future executors.
 - `reactor_vulkan_fft.c`
   - inert future FFT reactor family stub; no capability/API/runtime behavior claims.
 - `reactor_vulkan_fused_reduction.c`
@@ -36,6 +38,10 @@ logical-plan aggregates; M31 ring, submission, completion, commit, feedback,
 and quarantine evidence is authoritative. Historical P11 reports are retained
 under `internal/prometheus/DevelopmentReport/`; see
 `PROMETHEUS_P11_ARCHITECTURE_RETROSPECTIVE.md` for the deleted design.
+R2e2 deletion evidence is in `PROMETHEUS_R2E_P11_REMOVAL.md`; design-only
+future concurrency directions are in
+`PROMETHEUS_CONCURRENCY_FUTURE_DIRECTIONS.md`. Neither documents an
+implemented concurrency expansion.
 
 Scope guardrails for this topology:
 

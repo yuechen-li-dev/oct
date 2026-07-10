@@ -1,5 +1,5 @@
-#ifndef OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_SGEMM_BATCH_M31_H
-#define OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_SGEMM_BATCH_M31_H
+#ifndef OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_BATCH_H
+#define OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_BATCH_H
 
 #include "reactor_api.h"
 
@@ -11,8 +11,11 @@ extern "C" {
 
 typedef struct prometheus_runtime prometheus_runtime;
 
-/* Immutable caller-order facts. These records own neither Vulkan resources
- * nor task records; physical state remains separately represented below. */
+/* Private native planning and runtime records. They are exposed only to the
+ * native reactor implementation, own neither Vulkan resources nor M30 tasks,
+ * and remain valid only for the duration of one batch execution. Callers must
+ * not retain them, infer physical ownership from them, or treat a logical lane
+ * as a worker, queue, or ring slot. */
 typedef struct prom_sgemm_batch_entry_plan {
   uint32_t entry_id;
   uint32_t logical_lane;
@@ -78,15 +81,18 @@ int prom_sgemm_batch_plan_build(const PrometheusSgemmBatchEntry* entries,
                                 uint32_t* out_failed_entry_id);
 void prom_sgemm_batch_plan_destroy(prom_sgemm_batch_plan* plan);
 
-/* The authoritative M31 batch engine.  Its caller supplies the existing
- * private runtime aggregate; this header intentionally exposes neither its
- * state transitions nor M29/M30 lifecycle internals. */
-int prom_sgemm_batch_m31_execute(prometheus_runtime* runtime,
-                                 const PrometheusSgemmBatchEntry* entries,
-                                 uint32_t entry_count,
-                                 uint32_t flags,
-                                 uint32_t* out_stage,
-                                 int* out_detail_code);
+/* Narrow private production entrypoint for the public SGEMM batch route.
+ * The supplied runtime owns the shared M29 ring and M30/M30a lifecycle state;
+ * this function coordinates them but does not expose their mutable internals.
+ * Callers may assume that success atomically commits caller-order outputs and
+ * failure leaves caller outputs unpublished. They must not assume a thread,
+ * queue, slot, token, or plan record survives this call. */
+int prom_sgemm_batch_execute(prometheus_runtime* runtime,
+                             const PrometheusSgemmBatchEntry* entries,
+                             uint32_t entry_count,
+                             uint32_t flags,
+                             uint32_t* out_stage,
+                             int* out_detail_code);
 
 #ifdef __cplusplus
 }

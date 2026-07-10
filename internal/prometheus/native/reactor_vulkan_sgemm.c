@@ -1,5 +1,5 @@
 #include "reactor_vulkan_sgemm_internal.h"
-#include "reactor_sgemm_batch_m31.h"
+#include "reactor_batch.h"
 
 typedef struct prom_vk_push {
   uint32_t m;
@@ -6529,7 +6529,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
     return PROM_ERROR;
   }
-  return prom_sgemm_batch_m31_execute(rt, entries, entry_count, flags, out_stage, out_detail_code);
+  return prom_sgemm_batch_execute(rt, entries, entry_count, flags, out_stage, out_detail_code);
 }
 
 int prom_reactor_runtime_sgemm_batch_m31_test_impl(void* handle,
@@ -6542,7 +6542,7 @@ int prom_reactor_runtime_sgemm_batch_m31_test_impl(void* handle,
   if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
   rt = (prometheus_runtime*)handle;
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC) return PROM_INVALID_HANDLE;
-  return prom_sgemm_batch_m31_execute(rt, entries, entry_count, flags, out_stage, out_detail_code);
+  return prom_sgemm_batch_execute(rt, entries, entry_count, flags, out_stage, out_detail_code);
 }
 
 // ============================================================================

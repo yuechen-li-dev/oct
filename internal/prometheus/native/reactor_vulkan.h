@@ -2,7 +2,7 @@
 #define OCT_INTERNAL_PROMETHEUS_NATIVE_REACTOR_VULKAN_H
 
 #include "reactor_api.h"
-#include "reactor_sgemm_batch_m31.h"
+#include "reactor_batch.h"
 #include <vulkan/vulkan.h>
 
 #ifdef __cplusplus
