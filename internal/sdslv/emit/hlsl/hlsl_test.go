@@ -202,6 +202,56 @@ return;
 	}
 }
 
+func TestEmitFlowStateBlocksAsOrdinaryStructuredHLSL(t *testing.T) {
+	hlsl := emitSource(t, `board LoadCoord {
+row: u32;
+col: u32;
+}
+fn Make(row: u32, col: u32) -> LoadCoord {
+return LoadCoord { row: row; col: col; };
+}
+shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+flow TileLoad {
+state Load {
+comptime for lane in 0u..1u {
+let p: LoadCoord = Make(lane, lane);
+when {
+case fullTile -> {
+Tile[p.row, p.col] = AView[p.row, p.col];
+}
+else -> {
+write CView[p.row, p.col] = read AView[p.row, p.col] when true else 0.0 when true;
+}
+}
+}
+}
+state Sync {
+WorkgroupMemoryBarrierWithSync();
+}
+}
+return;
+}
+}`)
+	for _, want := range []string{
+		"if (fullTile)",
+		"GroupMemoryBarrierWithGroupSync();",
+	} {
+		if !strings.Contains(hlsl, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, hlsl)
+		}
+	}
+	for _, banned := range []string{"flow TileLoad", "state Load", "state Sync"} {
+		if strings.Contains(hlsl, banned) {
+			t.Fatalf("HLSL should not contain %q:\n%s", banned, hlsl)
+		}
+	}
+}
+
 func TestEmitComptimeSelectedBranchOnly(t *testing.T) {
 	hlsl := emitSource(t, `shader Demo {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {

@@ -1,0 +1,23 @@
+shader FlowStateBasic {
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let x: u32 = 0u;
+
+        flow TileLoad {
+            state Exact {
+                let y: u32 = x + 1u;
+                if y == 1u {
+                    let z: u32 = y + 1u;
+                    if z == 2u {
+                        return;
+                    }
+                }
+            }
+
+            state Tail {
+                return;
+            }
+        }
+
+        return;
+    }
+}

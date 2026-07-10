@@ -335,6 +335,55 @@ func TestSDSLvM16ComptimeForEmitCommands(t *testing.T) {
 	}
 }
 
+func TestSDSLvM22FlowStateEmitCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	path := repoPath(t, "examples", "SDSL-V", "M22", "FlowStateGuardWhenTileLoad.sdslv")
+	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{
+		"let p__ct0: board LoadCoord = MakeLoadCoord(localThreadLinear, 0u, 16u)",
+		"expr WorkgroupMemoryBarrierWithSync()",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("emit-vdmir output missing %q:\n%s", want, out)
+		}
+	}
+	for _, banned := range []string{"flow ", "state "} {
+		if strings.Contains(out, banned) {
+			t.Fatalf("emit-vdmir output should not retain %q:\n%s", banned, out)
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	tmp := t.TempDir()
+	hlslPath := filepath.Join(tmp, "m22_flow_state_guard_when_tile_load.hlsl")
+	if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+		t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+	}
+	text, err := os.ReadFile(hlslPath)
+	if err != nil {
+		t.Fatalf("read hlsl output: %v", err)
+	}
+	body := string(text)
+	for _, want := range []string{
+		"if (fullTile)",
+		"GroupMemoryBarrierWithGroupSync();",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("emit-hlsl output missing %q:\n%s", want, body)
+		}
+	}
+	for _, banned := range []string{"flow TileLoad", "state Load", "state Sync"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("emit-hlsl output should not retain %q:\n%s", banned, body)
+		}
+	}
+}
+
 func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 	path := repoPath(t, "internal", "prometheus", "native", "reactor_vulkan_sgemm_scalar_plus_spirv.h")
 	text, err := os.ReadFile(path)

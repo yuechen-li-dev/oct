@@ -129,6 +129,9 @@ func dumpBlock(b *strings.Builder, indent int, block Block) {
 			}
 		case ExprStmt:
 			line(indent, "expr "+FormatExpr(s.Value))
+		case BlockStmt:
+			line(indent, "block")
+			dumpBlock(b, indent+1, s.Body)
 		case IfStmt:
 			line(indent, "if "+FormatExpr(s.Condition))
 			dumpBlock(b, indent+1, s.ThenBody)

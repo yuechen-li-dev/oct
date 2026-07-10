@@ -8,7 +8,7 @@
 
 ## Overview
 
-SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its GoOct subset uses VD-MIR as the compiler boundary and follows Oct syntax where Oct already has a matching construct. M19 adds bounded Oct guard `when` for shader-safe runtime control flow; full Octomata `flow`/`state` controllers and persistent policy state remain future work in this subset. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
+SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its GoOct subset uses VD-MIR as the compiler boundary and follows Oct syntax where Oct already has a matching construct. M19 adds bounded Oct guard `when` for shader-safe runtime control flow, M21 adds immutable shader-local board values, and M22 adds bounded shader-local `flow` / `state` phase blocks. Full Octomata persistent transitions, mutable board state, and persistent policy state remain future work in this subset. A when utility is a utility-scored branch expression — a ranked selection that lowers to an if/else-if chain.
 
 The broad design pipeline is: `source → lex → parse → validate → template/config monomorphization → comptime expansion → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
@@ -47,7 +47,7 @@ Current GoOct SDSL-V accepts these top-level declaration kinds:
 | `interface` | `interface Name { fn signatures }` | Abstract method contract |
 | `template` + `shader` | `template<C: Concept> shader Name { ... }` | Compile-time specialized shader template |
 | `shader` | `shader Name { ... }` | Concrete shader program |
-| `flow` | `flow Name(params) -> ReturnType { board? states }` | Reserved for future Octomata-style controller support in the GoOct SDSL-V subset |
+| `flow` | `flow Name { state ... }` | M22 bounded shader-local phase grouping inside function bodies; top-level Octomata flow declarations remain reserved |
 | `compile` | `compile TemplateShader<Config> as Alias;` | Monomorphize a template shader |
 | `enum` | `enum Name { Variant; Variant { Field: Type; } }` | Tagged value enum with optional payload |
 
@@ -155,6 +155,35 @@ Board declarations are type declarations only. They do not allocate memory, do n
 Board literals must provide every field exactly once. Field access (`p.row`) works in arithmetic, `tile`/`reg_tile`/`matrix_view` indices, guarded memory access, and runtime guard `when` bodies. Board helper functions may return board values.
 
 Board values are immutable in M21. Whole-board reassignment and `p.field = value` are rejected; mutable board state is reserved for future flow-bound semantics, matching Oct's convention that mutable board memory belongs inside flow/state control.
+
+### Bounded flow/state blocks (GoOct M22)
+
+M22 adds a bounded shader-local subset of Oct `flow` / `state` as a statement form inside ordinary function and stage bodies:
+
+```sdslv
+flow TileLoad {
+    state Load {
+        ...
+    }
+
+    state Sync {
+        ...
+    }
+}
+```
+
+Current M22 rules:
+
+- `flow` is a function-local statement, not a top-level declaration;
+- a flow must declare at least one `state`;
+- state names must be unique within the flow;
+- flow names must be unique within one lexical block;
+- states execute once in source order;
+- lowering desugars `flow` / `state` to ordinary structured statements before HLSL emission;
+- immutable board values, runtime guard `when`, guarded read/write, and supported comptime forms are valid inside state bodies;
+- nested `flow` blocks are rejected;
+- `goto`, `remember`, `resume`, `suspend`, and `when policy` remain rejected;
+- mutable board state remains reserved for M23.
 
 ### Type aliases and coordinate spaces
 
@@ -362,6 +391,14 @@ Current M19 additions:
 - guard conditions must be `bool`;
 - lowering through VD-MIR `IfStmt` chains to HLSL `if / else if / else`;
 - clear rejection of `goto`, `remember`, `resume`, `suspend`, full `flow`/`state`, and `when policy` in shader code.
+
+Current M22 additions:
+
+- bounded shader-local `flow` / `state` blocks inside ordinary function bodies;
+- sequential source-order state execution;
+- state bodies reuse ordinary bounded SDSL-V statements;
+- desugaring through VD-MIR to ordinary statement blocks;
+- explicit rejection of transition/persistent Octomata actions in shader flow.
 
 M13/M14/M14a `comptime` is constrained shader staging, not arbitrary compile-time execution. HLSL emission remains VD-MIR-based and does not understand `comptime`.
 
@@ -675,82 +712,33 @@ M19 does not implement full Octomata controllers in shaders. `goto`, `remember`,
 
 ---
 
-## Flow declarations
+## Flow blocks
 
-The following describes the broader SDSL-V/Octomata design surface. In the current GoOct SDSL-V subset, full `flow`/`state` controllers, board persistence, and `when policy` are reserved for future work and are rejected rather than partially lowered. M19 implements only bounded runtime guard `when` inside ordinary shader/function bodies.
+M22 implements only bounded shader-local flow blocks, not full Octomata declarations.
 
-A `flow` is a value-returning finite state machine. It lowers to a regular HLSL helper function.
+`flow` is a statement form inside a function body:
 
 ```sdslv
-flow PickMode(useSoft: bool, quality: i32) -> i32 {
-    board {
-        SelectedMode: i32;
+flow TileLoad {
+    state Load {
+        ...
     }
 
-    state Select {
-        when {
-            case useSoft -> goto Soft
-            case quality > 2 -> goto Soft
-            else -> goto Hard
-        }
-    }
-
-    state Soft {
-        board.SelectedMode = 2;
-        return board.SelectedMode;
-    }
-
-    state Hard {
-        board.SelectedMode = 1;
-        return board.SelectedMode;
+    state Sync {
+        ...
     }
 }
 ```
 
-### `board` block
+Rules:
 
-The optional `board` block declares local state variables that persist across state transitions within a single invocation. Board fields are zero-initialized in the emitted HLSL function. Board fields may be read (`board.FieldName`) and written (`board.FieldName = expr`) within state bodies.
-
-Valid board field types are the builtin scalar and vector types: `bool`, `i32`, `u32`, `f32`, `float`, `float2`, `float3`, `float4`, `float4x4`. User-defined types are not valid as board field types.
-
-A board block must declare at least one field. Empty boards are a validation error. Duplicate field names are a validation error. At most one board block per flow. The board block must appear before all state declarations.
-
-`board` is a reserved parameter name — a flow parameter named `board` is a parse error.
-
-### States
-
-Each state is a named list of statements. States may contain:
-
-- `board.Field = expr;` — board field assignment
-- `when { case cond -> action ... else -> action }` — conditional dispatch
-- `goto StateName;` — unconditional state transition
-- `return expr;` — return a value and exit the flow
-
-Ordinary `let`, `if`, and other statement forms are not valid in state bodies. Their presence is a parse error.
-
-State names must be unique within a flow. States may reference each other via `goto` but the resulting execution graph must be acyclic — the emitter performs a cycle check and rejects cyclic flows. Every state must have at least one statement. Every execution path through all reachable states must eventually reach a `return` — non-returning paths are an emission error.
-
-The first declared state is the entry state.
-
-### `when` in flow states
-
-```sdslv
-when {
-    case cond -> goto StateName
-    case cond -> return expr
-    else -> goto StateName
-}
-```
-
-`->` and `=>` are both accepted as case separators. Each case condition is a boolean expression. Guard conditions must resolve to `bool`. `when` must include an `else` arm — omitting it is a validation error.
-
-Actions are either `goto StateName` or `return expr`.
-
-### Flow lowering
-
-A flow emits as an HLSL helper function. The emitter inlines state transitions by substituting `goto` targets inline (depth-first, cycle-checked). Board fields become local variable declarations at the top of the function, zero-initialized. `when` blocks lower to `if / else if / else` chains. The return type maps via the standard type mapping.
-
-Flow functions are not emitted as DXC entry points. They appear in the HLSL output as regular callable functions. Entry point extraction skips them.
+- states execute once in source order;
+- no transition machinery exists in M22;
+- no `goto`, `remember`, `resume`, or `suspend`;
+- no persistent board block exists inside M22 flow;
+- state bodies allow ordinary bounded SDSL-V statements;
+- lowering desugars the flow to ordinary nested statement blocks through VD-MIR;
+- generated HLSL must not contain source-level `flow` / `state` spelling.
 
 ---
 
@@ -875,11 +863,9 @@ DXC is invoked with `-spirv` for SPIR-V output. Extra args (e.g. `-O3`) are conf
 | Stage | Only `vertex` and `pixel` are supported |
 | Interface contract | `override` required for fulfilled methods; signature must match exactly; `override` on non-interface method is an error |
 | Compile | Target shader must be generic; type argument count must match |
-| Flow states | Must be unique; graph must be acyclic; all paths must return |
-| Flow `when` | Must include `else`; guards must be `bool` |
-| Board | At least one field; no initializers; must precede states |
-| Board reads | Must reference declared field on a flow with a board |
-| Board assignments | Type of value must match field type |
+| Flow blocks | Function-local only; at least one state; state names unique within flow; flow names unique within one lexical block |
+| Flow states | Execute once in source order; nested flow rejected |
+| Flow `goto`/persistent actions | Rejected in M22 |
 | For loops | Bounds must be integer; step must be positive integer literal |
 | `if` condition | Must be `bool` |
 | Runtime guard `when` | M19 statement-only; at least one case; guards must be `bool`; first true case executes; optional else |
@@ -914,13 +900,12 @@ The following identifiers cannot be used as variable names, parameter names, or 
 ```
 module       ::= ('namespace' path ';')? use* decl*
 use          ::= 'use' path ';'
-decl         ::= type-alias | record | stream | interface | shader | flow | compile | enum
+decl         ::= type-alias | record | stream | interface | shader | compile | enum
 type-alias   ::= 'type' IDENT '=' type-ref ('@space' '(' path ')')? ';'
 record       ::= 'record' IDENT '{' field* '}'
 stream       ::= 'stream' IDENT '{' field* '}'
 interface    ::= 'interface' IDENT '{' fn-sig* '}'
 shader       ::= 'shader' IDENT generic-params? implements? where-clause? '{' material? method* stage-method* '}'
-flow         ::= 'flow' IDENT '(' params ')' '->' type-ref '{' board? state+ '}'
 compile      ::= 'compile' path '<' type-args '>' 'as' IDENT ';'
 enum         ::= 'enum' IDENT '{' enum-variant+ '}'
 enum-variant ::= IDENT ';' | IDENT '{' field+ '}'
@@ -931,20 +916,15 @@ type-ref     ::= path | 'array' '<' type-ref ',' INT '>'
              | 'tile' '<' type-ref ',' const-expr ',' const-expr '>'
              | 'matrix_view' '<' type-ref '>'
 
-board        ::= 'board' '{' (IDENT ':' type-ref ';')+ '}'
-state        ::= 'state' IDENT '{' flow-stmt+ '}'
-flow-stmt    ::= board-assign | when-flow | goto | return
-board-assign ::= 'board' '.' IDENT '=' expr ';'
-when-flow    ::= 'when' '{' case+ ('else' '->' flow-action) '}'
-case         ::= 'case' expr ('->') flow-action
-flow-action  ::= 'goto' path | 'return' expr
+flow-block   ::= 'flow' IDENT '{' state+ '}'
+state        ::= 'state' IDENT '{' stmt* '}'
 
 method       ::= 'override'? 'fn' IDENT '(' params ')' '->' type-ref ('!' type-ref)? body?
 stage-method ::= 'stage' STAGE 'fn' IDENT '(' params ')' '->' type-ref body
 STAGE        ::= 'vertex' | 'pixel'
 
 body         ::= '{' stmt* '}'
-stmt         ::= let | comptime-let | comptime-if | comptime-match | comptime-when-utility | static-assert | assign | return | if | guard-when | for | expr-stmt
+stmt         ::= let | comptime-let | comptime-if | comptime-match | comptime-when-utility | static-assert | assign | return | if | guard-when | flow-block | for | expr-stmt
 let          ::= 'let' IDENT ':' type-ref ('=' expr)? ';'
 comptime-let ::= 'comptime' 'let' IDENT ':' type-ref '=' expr ';'
 comptime-if  ::= 'comptime' 'if' expr '{' stmt* '}' ('else' '{' stmt* '}')?

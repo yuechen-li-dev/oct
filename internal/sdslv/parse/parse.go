@@ -85,6 +85,9 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 		p.skipUnsupportedTopLevel()
 		return ast.UnsupportedDecl{Kind: kind}, nil
 	default:
+		if p.current().Kind == token.Identifier && p.current().Lexeme == "state" {
+			return nil, p.errorAtCurrent("state blocks are only valid inside flow blocks in SDSL-V M22")
+		}
 		return nil, p.errorAtCurrent("expected SDSL-V top-level declaration")
 	}
 }
@@ -706,17 +709,19 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 			return nil, err
 		}
 		return ast.ExprStmt{Value: left}, nil
+	case token.KeywordFlow:
+		return p.parseFlowStmt()
 	case token.KeywordFor:
 		return p.parseFor(nil)
 	default:
 		if p.current().Kind == token.Identifier {
 			switch p.current().Lexeme {
 			case "goto":
-				return nil, p.errorAtCurrent("SDSL-V M19 does not support `goto` in shader flow")
+				return nil, p.errorAtCurrent("SDSL-V M22 does not support goto in shader flow; mutable/transition flow is planned for M23+")
 			case "remember", "resume", "suspend":
-				return nil, p.errorAtCurrent("SDSL-V M19 supports bounded guard `when` bodies only")
-			case "flow", "state":
-				return nil, p.errorAtCurrent("SDSL-V flow/state controllers are planned but not supported in M21")
+				return nil, p.errorAtCurrent("SDSL-V M22 does not support remember/resume/suspend; persistent flow state is deferred")
+			case "state":
+				return nil, p.errorAtCurrent("state blocks are only valid inside flow blocks in SDSL-V M22")
 			}
 		}
 		left, err := p.parseExpression()
@@ -738,6 +743,46 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		}
 		return ast.ExprStmt{Value: left}, nil
 	}
+}
+
+func (p *parser) parseFlowStmt() (ast.FlowStmt, error) {
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected flow name")
+	if err != nil {
+		return ast.FlowStmt{}, err
+	}
+	if _, err := p.expect(token.LeftBrace, "expected '{' after flow name"); err != nil {
+		return ast.FlowStmt{}, err
+	}
+	states := make([]ast.StateBlock, 0, 2)
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.FlowStmt{}, p.errorAtCurrent("expected '}' to close flow")
+		}
+		state, err := p.parseStateBlock()
+		if err != nil {
+			return ast.FlowStmt{}, err
+		}
+		states = append(states, state)
+	}
+	p.advance()
+	return ast.FlowStmt{Name: name.Lexeme, States: states}, nil
+}
+
+func (p *parser) parseStateBlock() (ast.StateBlock, error) {
+	if p.current().Kind != token.Identifier || p.current().Lexeme != "state" {
+		return ast.StateBlock{}, p.errorAtCurrent("expected state declaration inside flow")
+	}
+	p.advance()
+	name, err := p.expect(token.Identifier, "expected state name")
+	if err != nil {
+		return ast.StateBlock{}, err
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return ast.StateBlock{}, err
+	}
+	return ast.StateBlock{Name: name.Lexeme, Body: body}, nil
 }
 
 func (p *parser) parseComptimeStmt() (ast.Stmt, error) {

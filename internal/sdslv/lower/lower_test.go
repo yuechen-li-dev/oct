@@ -404,6 +404,63 @@ return;
 	}
 }
 
+func TestModuleLowersFlowStateBlocksSequentially(t *testing.T) {
+	mir := lowerSource(t, `board LoadCoord {
+row: u32;
+col: u32;
+}
+fn Make(row: u32, col: u32) -> LoadCoord {
+return LoadCoord { row: row; col: col; };
+}
+shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+flow TileLoad {
+state Load {
+comptime for lane in 0u..1u {
+let p: LoadCoord = Make(lane, lane);
+when {
+case fullTile -> {
+Tile[p.row, p.col] = AView[p.row, p.col];
+}
+else -> {
+write CView[p.row, p.col] = read AView[p.row, p.col] when true else 0.0 when true;
+}
+}
+}
+}
+state Sync {
+WorkgroupMemoryBarrierWithSync();
+}
+}
+return;
+}
+}`)
+	cs := findFunction(t, mir, "S_CS")
+	flowBlock, ok := cs.Body.Statements[2].(vdmir.BlockStmt)
+	if !ok {
+		t.Fatalf("stmt[2] = %T, want BlockStmt", cs.Body.Statements[2])
+	}
+	if got := len(flowBlock.Body.Statements); got != 3 {
+		t.Fatalf("len(flow block statements) = %d, want 3", got)
+	}
+	if _, ok := flowBlock.Body.Statements[0].(vdmir.LetStmt); !ok {
+		t.Fatalf("flow stmt[0] = %T, want first expanded state let", flowBlock.Body.Statements[0])
+	}
+	if _, ok := flowBlock.Body.Statements[2].(vdmir.ExprStmt); !ok {
+		t.Fatalf("flow stmt[2] = %T, want barrier expr stmt from second state", flowBlock.Body.Statements[2])
+	}
+	dump := vdmir.Dump(mir)
+	for _, banned := range []string{"flow ", "state "} {
+		if strings.Contains(dump, banned) {
+			t.Fatalf("VDMIR should not retain source-level %q:\n%s", banned, dump)
+		}
+	}
+}
+
 func TestModuleMonomorphizesTemplateShaderToConcreteVDMIR(t *testing.T) {
 	mir := lowerSource(t, `stream ComputeThread {
 DispatchId: uint3;

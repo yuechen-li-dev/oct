@@ -304,6 +304,8 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		e.line("return " + e.expr(s.Value) + ";")
 	case vdmir.ExprStmt:
 		e.line(e.expr(s.Value) + ";")
+	case vdmir.BlockStmt:
+		e.emitBlock(s.Body)
 	case vdmir.IfStmt:
 		e.emitIfStmt(s)
 	case vdmir.ForRangeStmt:

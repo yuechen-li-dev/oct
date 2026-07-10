@@ -318,6 +318,129 @@ return;
 	}
 }
 
+func TestModuleValidatesFlowStateBlocks(t *testing.T) {
+	err := validateSource(`board LoadCoord {
+row: u32;
+col: u32;
+}
+fn Make(row: u32, col: u32) -> LoadCoord {
+return LoadCoord { row: row; col: col; };
+}
+shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+flow TileLoad {
+state Load {
+comptime for lane in 0u..1u {
+let p: LoadCoord = Make(lane, lane);
+when {
+case fullTile -> {
+Tile[p.row, p.col] = AView[p.row, p.col];
+}
+else -> {
+write CView[p.row, p.col] = read AView[p.row, p.col] when true else 0.0 when true;
+}
+}
+}
+}
+state Sync {
+WorkgroupMemoryBarrierWithSync();
+}
+}
+return;
+}
+}`)
+	if err != nil {
+		t.Fatalf("error = %v, want nil", err)
+	}
+}
+
+func TestModuleRejectsInvalidFlowStateBlocks(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "duplicate state",
+			src: `shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad {
+state Load { return; }
+state Load { return; }
+}
+return;
+}
+}`,
+			want: "flow TileLoad: duplicate state Load",
+		},
+		{
+			name: "empty flow",
+			src: `shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow Empty {}
+return;
+}
+}`,
+			want: "flow Empty must declare at least one state",
+		},
+		{
+			name: "nested flow",
+			src: `shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow Outer {
+state A {
+flow Inner {
+state B { return; }
+}
+}
+}
+return;
+}
+}`,
+			want: "nested flow blocks are not supported in SDSL-V M22",
+		},
+		{
+			name: "duplicate flow name same scope",
+			src: `shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow TileLoad { state A { return; } }
+flow TileLoad { state B { return; } }
+return;
+}
+}`,
+			want: "duplicate flow block name TileLoad",
+		},
+		{
+			name: "board field assignment in state",
+			src: `board LoadCoord { row: u32; }
+shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+let p: LoadCoord = LoadCoord { row: 1u; };
+flow TileLoad {
+state Load {
+p.row = 2u;
+}
+}
+return;
+}
+}`,
+			want: "board field assignment is not supported in M22",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsInvalidGuardWhen(t *testing.T) {
 	cases := []struct {
 		name string

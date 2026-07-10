@@ -152,7 +152,7 @@ func (v *validator) collect(module ast.Module) {
 			}
 		case ast.UnsupportedDecl:
 			if d.Kind == "flow" {
-				v.errorf("SDSL-V flow/state controllers are planned but not supported in M21")
+				v.errorf("top-level Octomata flow declarations are not supported in SDSL-V M22; use function-local flow blocks")
 			} else {
 				v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 			}
@@ -678,12 +678,10 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 		}
 		scope[param.Name] = varInfo{typ: param.Type, origin: varParam}
 	}
-	for _, stmt := range fn.Body.Statements {
-		v.validateStmt(stmt, fn.ReturnType, scope, shaderName, stage, templateParam)
-	}
+	v.validateBlock(fn.Body, fn.ReturnType, scope, shaderName, stage, templateParam, false)
 }
 
-func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam) {
+func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam, insideFlowState bool) {
 	switch s := stmt.(type) {
 	case ast.LetStmt:
 		v.validateType(s.Type)
@@ -780,7 +778,11 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("whole reg_tile assignment is not supported in SDSL-V M15")
 		}
 		if v.typeKind(targetType) == "board" || v.assignmentTouchesBoardField(s.Target, scope) {
-			v.errorf("board values are immutable in SDSL-V M21; board field assignment is reserved for flow-bound mutable board state")
+			if insideFlowState {
+				v.errorf("board field assignment is not supported in M22; mutable board state is reserved for flow-bound board mutation in M23")
+			} else {
+				v.errorf("board values are immutable in SDSL-V M21; board field assignment is reserved for flow-bound mutable board state")
+			}
 		}
 		if !v.compatible(targetType, valueType) {
 			v.errorf("assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
@@ -852,9 +854,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if cond.Name != "bool" {
 			v.errorf("if condition must be bool, got %s", typeName(cond))
 		}
-		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		if s.ElseBody != nil {
-			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
 	case ast.GuardWhenStmt:
 		for _, c := range s.Cases {
@@ -867,11 +869,13 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			if guardType.Name != "bool" && guardType.Name != "<error>" {
 				v.errorf("guard when case condition must be bool")
 			}
-			v.validateBlock(c.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(c.Body, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
 		if s.ElseBody != nil {
-			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
+	case ast.FlowStmt:
+		v.validateFlowStmt(s, returnType, scope, shaderName, stage, templateParam, insideFlowState)
 	case ast.ComptimeIfStmt:
 		v.validateWithPlacement(s.Condition, false)
 		v.validateGuardedReadPlacement(s.Condition, false)
@@ -881,9 +885,9 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if cond.Name != "bool" {
 			v.errorf("comptime if condition must be compile-time bool")
 		}
-		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		if s.ElseBody != nil {
-			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
 	case ast.ComptimeMatchStmt:
 		v.validateWithPlacement(s.Subject, false)
@@ -912,7 +916,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 					v.errorf("comptime match arm pattern type %s does not match scrutinee type %s", typeName(patternType), typeName(subjectType))
 				}
 			}
-			v.validateBlock(arm.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(arm.Body, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
 	case ast.ComptimeWhenUtilityStmt:
 		seenLabels := map[string]struct{}{}
@@ -939,10 +943,10 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			if !isNumeric(scoreType) && scoreType.Name != "<error>" {
 				v.errorf("comptime when score must be compile-time numeric")
 			}
-			v.validateBlock(c.Body, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(c.Body, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
 		if s.ElseBody != nil {
-			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam)
+			v.validateBlock(*s.ElseBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		}
 	case ast.ComptimeForStmt:
 		v.validateWithPlacement(s.Start, false)
@@ -980,7 +984,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			origin: varComptime,
 			value:  &configValue{typ: ast.TypeRef{Name: "u32"}, int32: 0},
 		}
-		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam)
+		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam, insideFlowState)
 	case ast.ForStmt:
 		v.validateLoopAttributes(s.Attributes)
 		v.validateWithPlacement(s.Start, false)
@@ -1008,7 +1012,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 		loopScope := cloneScope(scope)
 		loopScope[s.Name] = varInfo{typ: startType, origin: varLocal}
-		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam)
+		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam, insideFlowState)
 	case ast.StaticAssertStmt:
 		v.validateGuardedReadPlacement(s.Expr, false)
 		typ := v.exprType(s.Expr, scope, shaderName, templateParam)
@@ -1018,9 +1022,36 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 	}
 }
 
-func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam) {
+func (v *validator) validateFlowStmt(stmt ast.FlowStmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam, insideFlowState bool) {
+	if insideFlowState {
+		v.errorf("nested flow blocks are not supported in SDSL-V M22")
+		return
+	}
+	if len(stmt.States) == 0 {
+		v.errorf("flow %s must declare at least one state in SDSL-V M22", stmt.Name)
+		return
+	}
+	seenStates := map[string]struct{}{}
+	for _, state := range stmt.States {
+		if _, exists := seenStates[state.Name]; exists {
+			v.errorf("flow %s: duplicate state %s", stmt.Name, state.Name)
+			continue
+		}
+		seenStates[state.Name] = struct{}{}
+		v.validateBlock(state.Body, returnType, cloneScope(scope), shaderName, stage, templateParam, true)
+	}
+}
+
+func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam, insideFlowState bool) {
+	flowNames := map[string]struct{}{}
 	for _, stmt := range block.Statements {
-		v.validateStmt(stmt, returnType, scope, shaderName, stage, templateParam)
+		if flow, ok := stmt.(ast.FlowStmt); ok {
+			if _, exists := flowNames[flow.Name]; exists {
+				v.errorf("duplicate flow block name %s", flow.Name)
+			}
+			flowNames[flow.Name] = struct{}{}
+		}
+		v.validateStmt(stmt, returnType, scope, shaderName, stage, templateParam, insideFlowState)
 	}
 }
 

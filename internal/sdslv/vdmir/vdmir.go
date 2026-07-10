@@ -249,6 +249,13 @@ type ExprStmt struct {
 
 func (ExprStmt) stmtNode() {}
 
+type BlockStmt struct {
+	Provenance Provenance
+	Body       Block
+}
+
+func (BlockStmt) stmtNode() {}
+
 type Expr interface {
 	exprNode()
 	Type() Type

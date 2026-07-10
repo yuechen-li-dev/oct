@@ -282,6 +282,18 @@ type GuardWhenCase struct {
 	Body      Block
 }
 
+type FlowStmt struct {
+	Name   string
+	States []StateBlock
+}
+
+func (FlowStmt) stmtNode() {}
+
+type StateBlock struct {
+	Name string
+	Body Block
+}
+
 type ComptimeIfStmt struct {
 	Condition Expr
 	ThenBody  Block

@@ -2,7 +2,7 @@
 
 M21 adds shader-local immutable `board` values. This gives shader code a structured way to name derived per-phase facts such as load coordinates, output coordinates, tile coordinates, and policy facts.
 
-This intentionally respects Oct's convention that mutable board state belongs inside flow/state control. SDSL-V does not yet implement mutable board state or persistent Octomata flow.
+This intentionally respects Oct's convention that mutable board state belongs inside flow/state control. SDSL-V M22 now adds bounded shader-local `flow` / `state` blocks, but mutable board state and persistent Octomata flow remain deferred.
 
 ## Board Declarations
 
@@ -56,7 +56,7 @@ TileA[p.row, p.col] =
 
 ## Immutability
 
-Board values are immutable in M21. Local board values and helper returns are supported, but whole-board reassignment and field assignment are rejected. The diagnostic for field assignment reserves the feature for future flow-bound mutable board state.
+Board values are immutable in M21. Local board values and helper returns are supported, but whole-board reassignment and field assignment are rejected. M22 does not change this: board field assignment remains reserved for future flow-bound mutable board state.
 
 ## Lowering
 
@@ -75,5 +75,5 @@ Board literals may appear inside `comptime for` bodies after expansion. Board fi
 Mutable board state, persistent board memory, `flow`/`state`, `goto`, `remember`, `resume`, `suspend`, and `when policy` remain deferred. The intended ladder is:
 
 1. M21: immutable shader-local board values.
-2. M22: bounded flow/state blocks.
+2. M22: bounded shader-local flow/state blocks.
 3. M23: mutable board inside flow/state only.

@@ -115,6 +115,9 @@ func Module(module ast.Module) (vdmir.Module, error) {
 		case ast.ConceptDecl, ast.ConfigDecl, ast.CompileDecl:
 			continue
 		case ast.UnsupportedDecl:
+			if d.Kind == "flow" {
+				return vdmir.Module{}, fmt.Errorf("top-level Octomata flow declarations are not supported in SDSL-V M22; use function-local flow blocks")
+			}
 			return vdmir.Module{}, fmt.Errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 		}
 	}
@@ -332,6 +335,16 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			elseBody = &body
 		}
 		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}, nil
+	case ast.FlowStmt:
+		states := make([]ast.StateBlock, 0, len(s.States))
+		for _, state := range s.States {
+			body, err := specializeBlock(state.Body, env)
+			if err != nil {
+				return nil, err
+			}
+			states = append(states, ast.StateBlock{Name: state.Name, Body: body})
+		}
+		return ast.FlowStmt{Name: s.Name, States: states}, nil
 	case ast.ComptimeIfStmt:
 		thenBody, err := specializeBlock(s.ThenBody, env)
 		if err != nil {
@@ -617,6 +630,16 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 			elseBody = &body
 		}
 		return []ast.Stmt{ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}}, nil
+	case ast.FlowStmt:
+		states := make([]ast.StateBlock, 0, len(s.States))
+		for _, state := range s.States {
+			body, err := expandRuntimeNestedBlock(state.Body, comptime, runtime)
+			if err != nil {
+				return nil, err
+			}
+			states = append(states, ast.StateBlock{Name: state.Name, Body: body})
+		}
+		return []ast.Stmt{ast.FlowStmt{Name: s.Name, States: states}}, nil
 	case ast.ForStmt:
 		body, err := expandRuntimeNestedBlock(s.Body, comptime, runtime)
 		if err != nil {
@@ -835,6 +858,10 @@ func collectLocalLetNames(block ast.Block, names map[string]string, suffix strin
 			if s.ElseBody != nil {
 				collectLocalLetNames(*s.ElseBody, names, suffix)
 			}
+		case ast.FlowStmt:
+			for _, state := range s.States {
+				collectLocalLetNames(state.Body, names, suffix)
+			}
 		case ast.ForStmt:
 			collectLocalLetNames(s.Body, names, suffix)
 		}
@@ -894,6 +921,12 @@ func renameRuntimeLocalsInStmt(stmt ast.Stmt, names map[string]string) ast.Stmt 
 			elseBody = &body
 		}
 		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}
+	case ast.FlowStmt:
+		states := make([]ast.StateBlock, 0, len(s.States))
+		for _, state := range s.States {
+			states = append(states, ast.StateBlock{Name: state.Name, Body: renameRuntimeLocalsInBlock(state.Body, names)})
+		}
+		return ast.FlowStmt{Name: s.Name, States: states}
 	case ast.ForStmt:
 		return ast.ForStmt{
 			Attributes: append([]ast.Attribute(nil), s.Attributes...),
@@ -1177,6 +1210,76 @@ func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast
 	default:
 		return expr
 	}
+}
+
+func replaceComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding) ast.Stmt {
+	switch s := stmt.(type) {
+	case ast.LetStmt:
+		out := s
+		out.Type = replaceComptimeTypeRef(s.Type, comptime)
+		if s.Value != nil {
+			out.Value = replaceComptimeExpr(s.Value, comptime)
+		}
+		return out
+	case ast.AssignStmt:
+		return ast.AssignStmt{Target: replaceComptimeExpr(s.Target, comptime), Value: replaceComptimeExpr(s.Value, comptime)}
+	case ast.GuardedWriteStmt:
+		return ast.GuardedWriteStmt{
+			Target:    replaceComptimeExpr(s.Target, comptime),
+			Value:     replaceComptimeExpr(s.Value, comptime),
+			Condition: replaceComptimeExpr(s.Condition, comptime),
+		}
+	case ast.ReturnStmt:
+		if s.Value == nil {
+			return s
+		}
+		return ast.ReturnStmt{Value: replaceComptimeExpr(s.Value, comptime)}
+	case ast.ExprStmt:
+		return ast.ExprStmt{Value: replaceComptimeExpr(s.Value, comptime)}
+	case ast.IfStmt:
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body := replaceComptimeBlock(*s.ElseBody, comptime)
+			elseBody = &body
+		}
+		return ast.IfStmt{Condition: replaceComptimeExpr(s.Condition, comptime), ThenBody: replaceComptimeBlock(s.ThenBody, comptime), ElseBody: elseBody}
+	case ast.GuardWhenStmt:
+		cases := make([]ast.GuardWhenCase, 0, len(s.Cases))
+		for _, c := range s.Cases {
+			cases = append(cases, ast.GuardWhenCase{Condition: replaceComptimeExpr(c.Condition, comptime), Body: replaceComptimeBlock(c.Body, comptime)})
+		}
+		var elseBody *ast.Block
+		if s.ElseBody != nil {
+			body := replaceComptimeBlock(*s.ElseBody, comptime)
+			elseBody = &body
+		}
+		return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}
+	case ast.FlowStmt:
+		states := make([]ast.StateBlock, 0, len(s.States))
+		for _, state := range s.States {
+			states = append(states, ast.StateBlock{Name: state.Name, Body: replaceComptimeBlock(state.Body, comptime)})
+		}
+		return ast.FlowStmt{Name: s.Name, States: states}
+	case ast.ForStmt:
+		return ast.ForStmt{
+			Attributes: append([]ast.Attribute(nil), s.Attributes...),
+			Name:       s.Name,
+			Start:      replaceComptimeExpr(s.Start, comptime),
+			End:        replaceComptimeExpr(s.End, comptime),
+			Step:       replaceComptimeExpr(s.Step, comptime),
+			Body:       replaceComptimeBlock(s.Body, comptime),
+		}
+	default:
+		return stmt
+	}
+}
+
+func replaceComptimeBlock(block ast.Block, comptime map[string]comptimeBinding) ast.Block {
+	out := ast.Block{Statements: make([]ast.Stmt, 0, len(block.Statements))}
+	for _, stmt := range block.Statements {
+		out.Statements = append(out.Statements, replaceComptimeStmt(stmt, comptime))
+	}
+	return out
 }
 
 func cloneComptimeBindings(in map[string]comptimeBinding) map[string]comptimeBinding {
@@ -1742,6 +1845,8 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 			return nil, err
 		}
 		return vdmir.ExprStmt{Provenance: l.provenance, Value: value}, nil
+	case ast.FlowStmt:
+		return l.lowerFlowStmt(s, scope, locals, shaderName)
 	case ast.IfStmt:
 		cond, err := l.lowerExpr(s.Condition, scope, shaderName)
 		if err != nil {
@@ -1796,6 +1901,18 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 	default:
 		return nil, fmt.Errorf("unsupported statement in GoOct SDSL-V M3")
 	}
+}
+
+func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
+	block := vdmir.Block{}
+	for _, state := range stmt.States {
+		lowered, err := l.lowerBlock(state.Body, cloneScope(scope), locals, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		block.Statements = append(block.Statements, lowered.Statements...)
+	}
+	return vdmir.BlockStmt{Provenance: l.provenance, Body: block}, nil
 }
 
 func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string) (vdmir.Stmt, error) {
@@ -2472,6 +2589,12 @@ func walkStmt(stmt ast.Stmt, builtins map[string]bool) {
 		}
 		if s.ElseBody != nil {
 			for _, nested := range s.ElseBody.Statements {
+				walkStmt(nested, builtins)
+			}
+		}
+	case ast.FlowStmt:
+		for _, state := range s.States {
+			for _, nested := range state.Body.Statements {
 				walkStmt(nested, builtins)
 			}
 		}

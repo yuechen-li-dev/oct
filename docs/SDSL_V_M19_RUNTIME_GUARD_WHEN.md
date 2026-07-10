@@ -2,7 +2,7 @@
 
 M19 adds the shader-safe subset of Oct guard `when` for bounded runtime control flow.
 
-SDSL-V follows Oct guard `when` syntax for bounded shader flow. This is not a new dialect. Full Octomata-style flow/state support is future work and must not be faked.
+SDSL-V follows Oct guard `when` syntax for bounded shader flow. This is not a new dialect. Full Octomata-style persistent flow/state support is future work and must not be faked. SDSL-V M22 later adds bounded shader-local `flow` / `state` phase blocks without persistent transitions.
 
 Reference files used:
 
@@ -112,7 +112,7 @@ Representative diagnostics:
 ```text
 SDSL-V M19 does not support `goto` in shader flow
 SDSL-V M19 supports bounded guard `when` bodies only
-SDSL-V flow/state controllers are planned but not supported in M21
+state blocks are only valid inside flow blocks in SDSL-V M22
 ```
 
 ## `when policy`
@@ -140,6 +140,7 @@ when policy requires persistent policy state; SDSL-V M19 does not support it yet
 - `examples/SDSL-V/M19/GuardWhenTilePath.sdslv`
 - `examples/SDSL-V/M19/GuardWhenWithComptimeFor.sdslv`
 - `examples/SDSL-V/M21/BoardGuardWhenTileLoad.sdslv`
+- `examples/SDSL-V/M22/FlowStateGuardWhenTileLoad.sdslv`
 
 ## Prometheus M20 Usage
 

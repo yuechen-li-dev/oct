@@ -219,12 +219,12 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 		{
 			name: "goto",
 			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS(flag: bool) -> void { when { case flag -> { goto Done } } return; } }`,
-			want: "SDSL-V M19 does not support `goto` in shader flow",
+			want: "SDSL-V M22 does not support goto in shader flow",
 		},
 		{
-			name: "flow state",
+			name: "state outside flow",
 			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { state Start { return; } return; } }`,
-			want: "SDSL-V flow/state controllers are planned but not supported in M21",
+			want: "state blocks are only valid inside flow blocks in SDSL-V M22",
 		},
 		{
 			name: "when policy",
@@ -243,6 +243,57 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestBuildModuleParsesFlowStateBlocks(t *testing.T) {
+	module := parseTestModule(t, `board LoadCoord {
+row: u32;
+col: u32;
+}
+fn Make(row: u32, col: u32) -> LoadCoord {
+return LoadCoord { row: row; col: col; };
+}
+shader S {
+resources { A: readonly array<f32>; C: readwrite array<f32>; }
+workgroup Tile: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS(fullTile: bool) -> void {
+let AView: matrix_view<f32> = row_major(A, 4u, 4u);
+let CView: matrix_view<f32> = row_major(C, 4u, 4u);
+flow TileLoad {
+state Load {
+comptime for lane in 0u..1u {
+let p: LoadCoord = Make(lane, lane);
+when {
+case fullTile -> {
+Tile[p.row, p.col] = AView[p.row, p.col];
+}
+else -> {
+write CView[p.row, p.col] = read AView[p.row, p.col] when true else 0.0 when true;
+}
+}
+}
+}
+state Sync {
+WorkgroupMemoryBarrierWithSync();
+}
+}
+return;
+}
+}`)
+	body := module.Decls[2].(ast.ShaderDecl).Methods[0].Body.Statements
+	flowStmt, ok := body[2].(ast.FlowStmt)
+	if !ok {
+		t.Fatalf("stmt[2] = %T, want FlowStmt", body[2])
+	}
+	if flowStmt.Name != "TileLoad" || len(flowStmt.States) != 2 {
+		t.Fatalf("flow = %#v", flowStmt)
+	}
+	if flowStmt.States[0].Name != "Load" || flowStmt.States[1].Name != "Sync" {
+		t.Fatalf("states = %#v", flowStmt.States)
+	}
+	if _, ok := flowStmt.States[0].Body.Statements[0].(ast.ComptimeForStmt); !ok {
+		t.Fatalf("state body stmt = %T, want ComptimeForStmt", flowStmt.States[0].Body.Statements[0])
 	}
 }
 
