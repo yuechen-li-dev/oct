@@ -1,0 +1,5 @@
+[Fact]
+[TestInputUInt(1u)]
+fn TestInputKindMismatch() -> void {
+    let value: f32 = TestInput.Float[0u];
+}

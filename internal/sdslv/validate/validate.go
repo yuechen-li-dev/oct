@@ -24,7 +24,10 @@ func Diagnostics(module ast.Module) []diagnostic.Diagnostic {
 		shaderDecls:    map[string]ast.ShaderDecl{},
 		compileAliases: map[string]struct{}{},
 	}
-	v.testSource = filepath.Ext(module.Source.Path) == ".sdslvtest"
+	switch filepath.Ext(module.Source.Path) {
+	case ".sdslvtest", ".sdslvvalid", ".sdslvinvalid":
+		v.testSource = true
+	}
 	v.seedBuiltins()
 	v.collect(module)
 	if len(v.diagnostics) == 0 {
@@ -928,7 +931,13 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 	case ast.ExprStmt:
 		v.validateWithPlacement(s.Value, false)
-		v.validateGuardedReadPlacement(s.Value, false)
+		if call, ok := s.Value.(ast.CallExpr); ok && testAssertName(call.Callee) != "" {
+			for _, arg := range call.Arguments {
+				v.validateGuardedReadPlacement(arg, true)
+			}
+		} else {
+			v.validateGuardedReadPlacement(s.Value, false)
+		}
 		v.validateMatchPlacement(s.Value, false)
 		v.validateReductionPlacement(s.Value, false)
 		v.validateBarrierUsage(s.Value, true, shaderName, stage)

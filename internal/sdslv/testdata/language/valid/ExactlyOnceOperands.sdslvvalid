@@ -1,0 +1,105 @@
+[Fact]
+[TestInputUInt(10u, 20u, 30u)]
+fn AssertOperandsEvaluateExactlyOnce() -> void {
+    let counter: u32 = 0u;
+    Assert.True(HLSL<bool>(counter) {
+        counter = counter + 1u;
+        return counter == 1u;
+    });
+    Assert.False(HLSL<bool>(counter) {
+        counter = counter + 1u;
+        return counter != 2u;
+    });
+    Assert.Equal(HLSL<u32>(counter) {
+        counter = counter + 1u;
+        return 7u;
+    }, HLSL<u32>(counter) {
+        counter = counter + 1u;
+        return 7u;
+    });
+    Assert.NotEqual(HLSL<u32>(counter) {
+        counter = counter + 1u;
+        return 7u;
+    }, HLSL<u32>(counter) {
+        counter = counter + 1u;
+        return 8u;
+    });
+    Assert.Near(HLSL<f32>(counter) {
+        counter = counter + 1u;
+        return 1.0;
+    }, HLSL<f32>(counter) {
+        counter = counter + 1u;
+        return 1.01;
+    }, HLSL<f32>(counter) {
+        counter = counter + 1u;
+        return 0.1;
+    });
+    Assert.Equal(9u, counter);
+}
+
+[Fact]
+[TestInputUInt(10u, 20u, 30u)]
+fn AssertOperandsEvaluateLeftToRight() -> void {
+    let order: u32 = 0u;
+    Assert.Equal(HLSL<u32>(order) {
+        order = order * 10u + 1u;
+        return 7u;
+    }, HLSL<u32>(order) {
+        order = order * 10u + 2u;
+        return 7u;
+    });
+    Assert.NotEqual(HLSL<u32>(order) {
+        order = order * 10u + 3u;
+        return 7u;
+    }, HLSL<u32>(order) {
+        order = order * 10u + 4u;
+        return 8u;
+    });
+    Assert.Near(HLSL<f32>(order) {
+        order = order * 10u + 5u;
+        return 1.0;
+    }, HLSL<f32>(order) {
+        order = order * 10u + 6u;
+        return 1.01;
+    }, HLSL<f32>(order) {
+        order = order * 10u + 7u;
+        return 0.1;
+    });
+    Assert.Equal(1234567u, order);
+}
+
+[Theory]
+[InlineData(0u, 10u)]
+[InlineData(1u, 20u)]
+[InlineData(2u, 30u)]
+[TestInputUInt(10u, 20u, 30u)]
+fn TheoryAndResourceOperandsEvaluateOnce(index: u32, expected: u32) -> void {
+    let counter: u32 = 0u;
+    Assert.Equal(expected, TestInput.UInt[index]);
+    Assert.Equal(expected, read TestInput.UInt[index] when index < TestInput.Length else 999u);
+    Assert.Near(HLSL<f32>(counter) {
+        counter = counter + 1u;
+        return 2.0;
+    }, HLSL<f32>(counter) {
+        counter = counter + 1u;
+        return 2.0;
+    }, HLSL<f32>(counter) {
+        counter = counter + 1u;
+        return 0.0;
+    });
+    Assert.Equal(3u, counter);
+}
+
+[Fact]
+fn FirstFailureDoesNotSuppressLaterOperandEvaluation() -> void {
+    let counter: u32 = 0u;
+    Assert.Equal(1u, 2u);
+    Assert.Equal(HLSL<u32>(counter) {
+        counter = counter + 1u;
+        return 7u;
+    }, HLSL<u32>(counter) {
+        counter = counter + 1u;
+        return 7u;
+    });
+    Assert.Equal(2u, counter);
+}

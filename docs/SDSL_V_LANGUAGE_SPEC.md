@@ -825,6 +825,21 @@ separate from production `.sdslv` compilation and produces deterministic
 per-case manifests. GPU execution requires the fixed native test host; it must
 never fall back to the Prometheus SGEMM A/B/C interface or a CPU simulation.
 
+The extension contract is deliberately unambiguous:
+
+- `.sdslvtest` is a normal user-style executable GPU test suite and is the
+  only extension discovered by `oct sdslv test <path>`;
+- `.sdslvvalid` is an internal compiler/integration fixture which must parse
+  and validate, but may intentionally produce `ASSERTION_FAILED` at runtime;
+- `.sdslvinvalid` is an internal negative fixture with an expected lex, parse,
+  validate, lower, or emit failure and an expected diagnostic location.
+
+The fixture extensions are consumed only by focused repository corpus helpers.
+Directory discovery never executes them, and they do not participate in the
+public stable-case identity contract. `.sdslvfail` is intentionally unused
+because it cannot identify which compiler, shader, host, or Vulkan boundary
+failed.
+
 ```sdslvtest
 namespace WyrmCoil.Tests;
 
@@ -882,7 +897,7 @@ indexed, and the accessed member must match the declared payload kind.
 
 | Method | Signature | Description |
 |---|---|---|
-| `Assert.True` | `(value: bool, message: string)` | Asserts value is true |
+| `Assert.True` | `(value: bool)` | Asserts value is true |
 | `Assert.False` | `(value: bool)` | Asserts value is false |
 | `Assert.Equal` | `(expected: T, actual: T)` | Asserts exact equality |
 | `Assert.NotEqual` | `(expected: T, actual: T)` | Asserts inequality |
@@ -897,16 +912,36 @@ with a fixed versioned result record per invocation. M30 adds a second hidden
 binding at set `0`, binding `1`, for the compiler-owned read-only test input
 buffer. Tests without payload still bind a one-word dummy buffer while
 `TestInput.Length` remains `0`. Assertion operands are
-evaluated once in left-to-right order; only the first local failure is
-recorded, execution does not abort or return because of an assertion, and the
-generated epilogue writes one record. `Equal` is exact for Bool/Int/UInt/Float;
-`Near` is Float-only and compares absolute error to tolerance. Theory rows
-materialize typed arguments in the dispatcher and share one lowered body, so
-row replay does not recompile the module. The host owns preflight, timeout/device-loss isolation,
+evaluated exactly once in left-to-right order: `expected` then `actual`, and
+for `Assert.Near`, `expected`, `actual`, then `tolerance`. Inline HLSL
+expression operands, ordinary function-call operands, indexed `TestInput`
+reads, and supported guarded-read operands are materialized into compiler
+generated locals before the comparison predicate is formed. Only the first
+local failure is recorded; execution does not abort or return because of an
+assertion, later ordinary code still executes, and the generated epilogue
+writes one record. `Equal` is exact for Bool/Int/UInt/Float; `Near` is
+Float-only and compares absolute error to tolerance. Theory rows materialize
+typed arguments in the dispatcher and share one lowered body, so row replay
+does not recompile the module or duplicate operand evaluation. A negative or
+NaN tolerance fails; a NaN expected or actual value fails; infinities pass only
+when exactly equal.
+The compute wrapper supplies `DispatchThreadID` to the shared lowered body.
+Results use the canonical linear order `x + y * width + z * width * height`,
+where width and height are total dispatched invocation dimensions. The host
+scans in that order, so the lowest linear failing invocation is reported
+deterministically. The host owns preflight, timeout/device-loss isolation,
 readback, and formatting. Hardware-required mode uses
 `PROMETHEUS_REQUIRE_VULKAN_HARDWARE=1`; GPU-less CI may validate compilation
 and manifests while explicitly skipping execution. Resources, textures,
 samplers, arbitrary descriptor schemas, and graphics tests are not supported.
+
+ABI-v1 result records are deterministic 32-bit words. Passing records report
+`abi_version = 1`, `failed = 0`, assertion/source sentinels of zero, exact
+invocation coordinates, `value_kind = 0`, `component_count = 1`, and zeroed
+expected/actual/tolerance lanes. Failing records report `failed = 1`, exact
+assertion ID, source line/column, invocation coordinates, scalar value kind
+(`1` Bool, `2` Int, `3` UInt, `4` Float), component count, and exact
+expected/actual/tolerance bit words; unused words are zero.
 
 ---
 

@@ -1,0 +1,8 @@
+[WorkgroupSize(2, 3, 2)]
+[DispatchGroups(2, 2, 2)]
+[Fact]
+fn CombinedXYZGeometry() -> void {
+    Assert.True(DispatchThreadID.x < 4u);
+    Assert.True(DispatchThreadID.y < 6u);
+    Assert.True(DispatchThreadID.z < 4u);
+}

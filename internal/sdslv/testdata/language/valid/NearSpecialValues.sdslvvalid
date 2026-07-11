@@ -1,0 +1,39 @@
+[Fact]
+fn FiniteWithinTolerance() -> void { Assert.Near(1.0, 1.0001, 0.01); }
+
+[Fact]
+fn FiniteOutsideTolerance() -> void { Assert.Near(1.0, 1.5, 0.1); }
+
+[Fact]
+fn EqualInfinities() -> void {
+    let infinity: f32 = HLSL<f32>() { return asfloat(0x7f800000u); };
+    Assert.Near(infinity, infinity, 0.0);
+}
+
+[Fact]
+fn OppositeInfinities() -> void {
+    let positive: f32 = HLSL<f32>() { return asfloat(0x7f800000u); };
+    let negative: f32 = HLSL<f32>() { return asfloat(0xff800000u); };
+    Assert.Near(positive, negative, 1.0);
+}
+
+[Fact]
+fn NaNExpected() -> void {
+    let nan: f32 = HLSL<f32>() { return asfloat(0x7fc00001u); };
+    Assert.Near(nan, 1.0, 0.1);
+}
+
+[Fact]
+fn NaNActual() -> void {
+    let nan: f32 = HLSL<f32>() { return asfloat(0x7fc00001u); };
+    Assert.Near(1.0, nan, 0.1);
+}
+
+[Fact]
+fn ZeroToleranceEqual() -> void { Assert.Near(1.0, 1.0, 0.0); }
+
+[Fact]
+fn NegativeRuntimeTolerance() -> void {
+    let tolerance: f32 = -0.1;
+    Assert.Near(1.0, 1.0, tolerance);
+}

@@ -190,7 +190,7 @@ func TestSdslvTestBodiesUseNormalVDMIRAndNoFixtureEmitter(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(hlsl)
-	for _, want := range []string{"uint plus = (v + 1u);", "Rows(1u, failure);", "Rows(2u, failure);", "__sdslv_sdslv_once_0", "if(!failure.failed"} {
+	for _, want := range []string{"uint plus = (v + 1u);", "Rows(1u, dispatch_id, failure);", "Rows(2u, dispatch_id, failure);", "__sdslv_sdslv_once_0", "if(!failure.failed"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("real VD-MIR HLSL missing %q:\n%s", want, text)
 		}
@@ -216,6 +216,56 @@ func TestSdslvHlslAssertionEmissionConsumesDedicatedVDMIR(t *testing.T) {
 	for _, forbidden := range []string{"emitStmt", "emitAssert", "func (e *testEmitter) value"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("test orchestration retains ordinary emitter %q", forbidden)
+		}
+	}
+}
+
+func TestSdslvAssertOperandEmissionMaterializesOnceInOrder(t *testing.T) {
+	root := repoRoot(t)
+	suite, err := Prepare(filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "ExactlyOnceOperands.sdslvvalid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hlsl, err := os.ReadFile(groups[0].HLSLPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(hlsl)
+	for _, forbidden := range []string{
+		"inline HLSL expressions require a statement-valued context",
+		"unsupported guarded read expr position",
+		"return;",
+		"discard",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("assert operand emission retained forbidden path %q:\n%s", forbidden, text)
+		}
+	}
+	expectedBeforeActual := strings.Index(text, "uint __sdslv_sdslv_once_2;")
+	actualAfterExpected := strings.Index(text, "uint __sdslv_sdslv_once_3;")
+	nearExpected := strings.Index(text, "float __sdslv_sdslv_once_6;")
+	nearActual := strings.Index(text, "float __sdslv_sdslv_once_7;")
+	nearTolerance := strings.Index(text, "float __sdslv_sdslv_once_8;")
+	if expectedBeforeActual < 0 || actualAfterExpected < 0 || nearExpected < 0 || nearActual < 0 || nearTolerance < 0 {
+		t.Fatalf("missing assert operand temps:\n%s", text)
+	}
+	if !(expectedBeforeActual < actualAfterExpected && nearExpected < nearActual && nearActual < nearTolerance) {
+		t.Fatalf("assert operand temp order changed")
+	}
+	for _, want := range []string{
+		"uint __sdslv_guarded_read_",
+		"__sdslv_guarded_read_",
+		"= __sdslv_guarded_read_",
+		"__sdslv_test_input[index]",
+		"AssertOperandsEvaluateExactlyOnce(dispatch_id, failure);",
+		"TheoryAndResourceOperandsEvaluateOnce(0u, 10u, dispatch_id, failure);",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("generated HLSL missing %q:\n%s", want, text)
 		}
 	}
 }

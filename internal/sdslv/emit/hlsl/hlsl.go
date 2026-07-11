@@ -53,11 +53,12 @@ func Emit(module vdmir.Module) (string, error) {
 }
 
 type emitter struct {
-	builder     strings.Builder
-	indent      int
-	tempCounter int
-	viewAliases map[string]vdmir.RowMajorViewExpr
-	testMode    bool
+	builder       strings.Builder
+	indent        int
+	tempCounter   int
+	viewAliases   map[string]vdmir.RowMajorViewExpr
+	testMode      bool
+	testFunctions map[string]bool
 }
 
 func (e *emitter) emitStruct(name string, fields []vdmir.Field) {
@@ -150,7 +151,12 @@ func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint)
 		for _, param := range fn.Params {
 			params = append(params, typeRef(param.Type, param.Name))
 		}
-		if e.testMode {
+		if e.testMode && e.testFunctions[fn.Name] {
+			// Test bodies are ordinary lowered functions, but the generated test
+			// wrapper is their compute entry point. Thread the one builtin that
+			// test bodies may observe through that wrapper rather than inventing
+			// test-only invocation semantics.
+			params = append(params, "uint3 DispatchThreadID")
 			params = append(params, "inout SdslvTestFailure failure")
 		}
 	} else {

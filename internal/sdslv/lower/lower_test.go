@@ -73,6 +73,60 @@ fn Assertions() -> void {
 	}
 }
 
+func TestSdslvAssertOperandsRemainSingleVDMIRExpressionsInSourceOrder(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "once.sdslvtest", Text: `[Fact]
+[TestInputUInt(10u, 20u)]
+fn Once() -> void {
+  let counter: u32 = 0u;
+  Assert.Equal(HLSL<u32>(counter) { counter = counter + 1u; return 7u; }, HLSL<u32>(counter) { counter = counter + 1u; return 7u; });
+  Assert.Near(HLSL<f32>(counter) { counter = counter + 1u; return 1.0; }, HLSL<f32>(counter) { counter = counter + 1u; return 1.0; }, HLSL<f32>(counter) { counter = counter + 1u; return 0.0; });
+  Assert.Equal(20u, read TestInput.UInt[1u] when 1u < TestInput.Length else 99u);
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests, diagnostics := validate.ValidatedTests(module)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+	mir, err := ModuleForTests(module, tests, "HLSL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := findFunction(t, mir, "Once")
+	if got := len(fn.Body.Statements); got != 4 {
+		t.Fatalf("statements=%#v", fn.Body.Statements)
+	}
+	equal := fn.Body.Statements[1].(vdmir.AssertStmt)
+	if _, ok := equal.Expected.(vdmir.ForeignShaderExpr); !ok {
+		t.Fatalf("Equal expected = %T, want ForeignShaderExpr", equal.Expected)
+	}
+	if _, ok := equal.Actual.(vdmir.ForeignShaderExpr); !ok {
+		t.Fatalf("Equal actual = %T, want ForeignShaderExpr", equal.Actual)
+	}
+	near := fn.Body.Statements[2].(vdmir.AssertStmt)
+	if _, ok := near.Expected.(vdmir.ForeignShaderExpr); !ok {
+		t.Fatalf("Near expected = %T, want ForeignShaderExpr", near.Expected)
+	}
+	if _, ok := near.Actual.(vdmir.ForeignShaderExpr); !ok {
+		t.Fatalf("Near actual = %T, want ForeignShaderExpr", near.Actual)
+	}
+	if _, ok := near.Tolerance.(vdmir.ForeignShaderExpr); !ok {
+		t.Fatalf("Near tolerance = %T, want ForeignShaderExpr", near.Tolerance)
+	}
+	guarded := fn.Body.Statements[3].(vdmir.AssertStmt)
+	if _, ok := guarded.Actual.(vdmir.GuardedReadExpr); !ok {
+		t.Fatalf("guarded actual = %T, want GuardedReadExpr", guarded.Actual)
+	}
+	if equal.LexicalIndex != 0 || near.LexicalIndex != 1 || guarded.LexicalIndex != 2 {
+		t.Fatalf("lexical order changed: %d %d %d", equal.LexicalIndex, near.LexicalIndex, guarded.LexicalIndex)
+	}
+}
+
 func TestModuleForTestsLowersTestInputToHiddenIndexedResource(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "input.sdslvtest", Text: `[Fact]
 [TestInputInt(-7, 9)]

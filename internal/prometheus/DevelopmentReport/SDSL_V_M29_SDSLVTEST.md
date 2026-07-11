@@ -308,9 +308,7 @@ materialize each selected typed row as function arguments, so rows do not
 cause recompilation. This implementation preserves the fixed native host
 contract and leaves barrier behavior unchanged: assertions add no early-return
 or discard and cannot make an otherwise invalid divergent-barrier program
-valid. Hardware evidence recorded above predates this real-lowering change;
-M29b RTX execution is still required before the milestone can be marked
-complete.
+valid. Fresh M29b RTX execution evidence is recorded below.
 
 ### Dedicated assertion operations
 
@@ -346,3 +344,158 @@ host all preserve the M29 ownership rule: compiler layers define semantics,
 the manifest serializes them, and the host only uploads and binds the payload.
 M30 must not reopen fixture-specific emitters, host-owned semantic validation,
 or arbitrary descriptor/resource declaration design.
+
+## M29b XYZ execution hardening (2026-07-10)
+
+The generated compute wrapper now threads its ordinary
+`SV_DispatchThreadID` value into every lowered `.sdslvtest` body. This closes a
+real shared-path gap: validator and VD-MIR builtin references previously
+survived lowering, but the test wrapper emitted the lowered function as a
+helper without supplying the builtin. No test-only coordinate operation or
+second ordinary emitter was added.
+
+The original XYZ hardening pass used one suite with a `[2,3,2]` workgroup and
+`[2,2,2]` dispatch (48 invocations). On the RTX 3070 native host:
+
+- `sdslv-41ce8cd46dad8ba707888b6f` passed while checking all three dispatched
+  coordinate bounds in the ordinary body;
+- `sdslv-c4848b19d591e0f9060513d3` deterministically reported the sole failing
+  invocation `[3,4,2]`;
+- `sdslv-7ec9b74a55e73b1c28ee22a0` had failures at two coordinates and
+  deterministically reported `[1,1,0]`, the lower record under
+  `x + y * width + z * width * height` scan order.
+
+The passing case remains in `XYZInvocationIndexing.sdslvtest`. The two
+intentional failures subsequently moved to
+`testdata/language/valid/XYZAssertionFailures.sdslvvalid`; their historical
+IDs above document the pre-migration run and are not public replay identity.
+
+Each failure was replayed twice with byte-identical ABI-v1 JSON. Permanent
+native integration tests distinguish a normally completed Vulkan process
+returning `ASSERTION_FAILED` from host/process failure, verify structured
+stable ID, coordinates, assertion/source identity, and deterministic zero
+unused lanes. `FirstFailureWins` is now also a first-class expected-failure
+integration contract with exact UInt expected/actual words.
+
+This slice does not declare the full M29b matrix complete. Remaining closure
+still includes the full Near special-value executable matrix, stronger
+exactly-once side-effect proofs, broader ordinary control-flow/type coverage,
+and consolidated fresh hardware evidence for every required case.
+
+## M29b fixture corpus and native launcher hardening
+
+M29b now uses three extensions with separate ownership. `.sdslvtest` remains
+the only normal user-runner input. `.sdslvvalid` is a focused valid-language
+fixture whose runtime expectation may be PASS or `ASSERTION_FAILED`, while
+`.sdslvinvalid` carries Go-table-owned expected phase, diagnostic code, and
+source location. Normal directory discovery is permanently tested to ignore
+both fixture extensions. Intentional assertion and XYZ failures moved under
+`internal/sdslv/testdata/language/valid`; malformed Assert, Theory, and
+TestInput examples live under the corresponding `invalid` corpus. Existing
+public M29 `.sdslvtest` stable IDs remain unchanged.
+
+The canonical Windows build body now captures every required command's status
+before control transfer, names the failed stage, exits with the original code,
+and verifies the reactor, host, and required Marionette executables exist. A
+Windows Go regression injects a deterministic compiler command returning 17
+and proves the build reports `compile common native sources` and exits 17.
+The authoritative launcher then completed from a normal PowerShell session via
+VS 2026 x64 tools in 101.455 seconds and freshly built
+`sdslv_test_host.exe`, `prometheus_reactor.dll`, and the required Marionette
+executables.
+
+The valid fixture corpus includes the complete scalar `Assert.Near`
+special-value contract. Fresh RTX 3070 execution passed finite-within,
+equal-infinity, and zero-tolerance cases and returned exact ABI-v1 bit words
+for finite-outside, opposite infinities, NaN expected, NaN actual, and a
+runtime negative tolerance. NaN payload `0x7fc00001` was preserved exactly.
+
+`OrdinaryBodyCoverage.sdslvtest` adds real shared-emitter hardware coverage for
+helper calls, runtime loops, assignments, nested if/else, records, payload
+enums and match, foreign HLSL statements, and multiple assertions. The test
+emitter now emits ordinary module type/helper declarations while attaching
+the test invocation/failure parameters only to actual test functions; no
+duplicate ordinary statement or expression emitter was introduced.
+
+## M29b final assertion/ABI closure (2026-07-11)
+
+The final closeout pass made assertion operand materialization explicit in the
+shared HLSL backend. Every `vdmir.AssertStmt` operand now passes through one
+backend-owned materialization point. Ordinary expressions emit one local
+initializer; inline HLSL expression operands declare one local and assign it
+inside the preserved foreign block; supported guarded-read operands declare
+one local, use the normal guarded-read lowering once, then compare the local.
+The validator was widened only for top-level Assert operands, so general
+guarded-read placement remains bounded.
+
+Permanent compiler evidence now covers VD-MIR source-order ownership for
+Assert.True, Assert.False, Equal, NotEqual, and Near operands, including inline
+HLSL and guarded-read operands. Emitted HLSL contains `sdslv_once`
+temporaries in expected-then-actual order, and Near
+expected-then-actual-then-tolerance order. Artifact tests also guard against
+inline-HLSL or guarded-read fallback placeholders, assertion-introduced
+`return`/`discard`, and epilogue bypass. Theory rows continue to dispatch
+through one lowered body and materialize row arguments without recompilation.
+
+`ExactlyOnceOperands.sdslvvalid` is the executable proof fixture. Its passing
+cases use inline HLSL expression operands that mutate local counters; any
+duplicated evaluation or reversed operand order changes the counter/order word
+and fails on hardware. The Theory case combines row arguments with
+`TestInput.UInt[index]`, a guarded read from the same fixed input buffer, and a
+Near tolerance operand with observable counter mutation. The first-failure
+case records an earlier UInt failure, then contains later inline-HLSL operand
+evaluation and a final counter assertion in ordinary control flow; emitted
+HLSL proves those later operands remain after the first failure and the native
+result proves the first failure record is not overwritten.
+
+The native host now serializes all ABI-v1 fields for both passing and failing
+records: `abi_version`, `failed`, invocation coordinates, assertion/source
+identity, value kind, component count, and expected/actual/tolerance words.
+Passing records report ABI version 1, `failed = 0`, assertion/source zero
+sentinels, exact invocation coordinates, value kind 0, component count 1, and
+zeroed value lanes. Failing records report ABI version 1, `failed = 1`, exact
+assertion ID/source location/invocation, value kind (`1` Bool, `2` Int, `3`
+UInt, `4` Float), component count 1, exact bit words, and zeroed unused lanes.
+Repeated pass and failure runs compare byte-identical JSON.
+
+Fresh hardware execution ran on NVIDIA GeForce RTX 3070, NVIDIA driver
+596.36, Vulkan loader/instance version 1.4.350, and Vulkan device API version
+1.4.329. The result ABI was v1 throughout.
+
+Fresh RTX 3070 evidence:
+
+- normal M29 `.sdslvtest` discovery executed only user suites and passed
+  `InlineHlslFacts`, `OrdinaryBodyCoverage`, `RealAssertions`, and
+  `XYZInvocationIndexing`;
+- M30 fixed input execution passed all seven existing stable cases, preserving
+  binding 0 result and binding 1 fixed `TestInput`;
+- the Assert matrix verified True/False, Bool/Int/UInt/Float Equal,
+  NotEqual, finite Near pass/fail, zero tolerance, NaN expected, NaN actual,
+  equal infinities, opposite infinities, and runtime negative tolerance with
+  exact ABI words;
+- `ExactlyOnceOperands.sdslvvalid` passed the exactly-once,
+  left-to-right, Theory/materialization, indexed-resource, and guarded-read
+  cases, and returned the expected first-failure record for the non-aborting
+  continuation case;
+- XYZ execution retained the `[2,3,2]` workgroup, `[2,2,2]` dispatch, 48
+  invocation geometry, deterministic sole-failure coordinate `[3,4,2]`, and
+  deterministic multi-failure lowest coordinate `[1,1,0]`;
+- expected-failure integration continues to treat a normally completed Vulkan
+  dispatch returning `ASSERTION_FAILED` as a successful integration contract;
+- stable replay with M30 `GuardedReadUsesSource` preserved exact selected-case
+  behavior.
+
+Final validation for this closure included `go test ./internal/source`,
+`go test ./internal/diagnostic`, `go test ./internal/sdslv/...`,
+`go test ./cmd/oct`, focused valid and invalid language fixture corpus tests,
+focused expected-failure/XYZ/Near/exactly-once/first-failure/ABI/stable replay
+native host tests, `go run ./cmd/oct sdslv test examples/SDSL-V/M29`,
+`go run ./cmd/oct sdslv test examples/SDSL-V/M30`, and the canonical Windows
+native build through `internal\prometheus\native\build_windows_launcher.cmd`,
+which rebuilt `sdslv_test_host.exe`, `prometheus_reactor.dll`, and the
+Marionette executables with verified outputs.
+
+At this point M29b has closed its motivating contract: `.sdslvtest` executes
+normal GPU-native SDSL-V bodies through VD-MIR and the shared HLSL emitter,
+with source-mapped, typed, deterministic, replayable assertion records. M31
+has not begun.

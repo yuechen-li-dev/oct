@@ -1,0 +1,4 @@
+[Fact]
+fn AssertWrongArity() -> void {
+    Assert.Equal(1u);
+}

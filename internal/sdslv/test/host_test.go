@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,6 +24,21 @@ type compiledHostSuite struct {
 	groups       []Group
 	manifestPath string
 	byFunction   map[string]hostInvocation
+}
+
+type nativeResult struct {
+	Status        string    `json:"status"`
+	StableCaseID  string    `json:"stable_case_id"`
+	Invocation    [3]uint32 `json:"invocation"`
+	AssertionID   uint32    `json:"assertion_id"`
+	Source        [2]uint32 `json:"source"`
+	ABIVersion    uint32    `json:"abi_version"`
+	Failed        uint32    `json:"failed"`
+	ValueKind     uint32    `json:"value_kind"`
+	Component     uint32    `json:"component_count"`
+	ExpectedBits  [4]uint32 `json:"expected_bits"`
+	ActualBits    [4]uint32 `json:"actual_bits"`
+	ToleranceBits [4]uint32 `json:"tolerance_bits"`
 }
 
 func repoRoot(t *testing.T) string {
@@ -102,8 +118,26 @@ func runNativeHost(t *testing.T, host string, inv hostInvocation, manifestPath s
 	return string(data), err
 }
 
+func runNativeHostJSON(t *testing.T, host string, inv hostInvocation, manifestPath string) (string, nativeResult, error) {
+	t.Helper()
+	out, err := runNativeHost(t, host, inv, manifestPath)
+	var result nativeResult
+	if decodeErr := json.Unmarshal([]byte(out), &result); decodeErr != nil {
+		t.Fatalf("invalid native result JSON: %v: %s", decodeErr, out)
+	}
+	return out, result, err
+}
+
 func (inv hostInvocation) casestringIndex() string { return uintString(uint32(inv.caseIndex)) }
 func (inv hostInvocation) rowstringIndex() string  { return uintString(uint32(inv.rowIndex)) }
+
+func assertSource(inv hostInvocation, assertionID uint32) [2]uint32 {
+	if int(assertionID) >= len(inv.c.Assertions) {
+		return [2]uint32{}
+	}
+	span := inv.c.Assertions[assertionID].CallSpan
+	return [2]uint32{uint32(span.Start.Line), uint32(span.Start.Column)}
+}
 
 func uintString(v uint32) string {
 	return strconv.FormatUint(uint64(v), 10)
@@ -262,6 +296,222 @@ func TestSdslvNativeHostNoInputReplayIsDeterministic(t *testing.T) {
 	}
 	if !strings.Contains(first, `"status":"PASS"`) {
 		t.Fatalf("no-input replay did not pass: %s", first)
+	}
+}
+
+func TestSdslvNativeHostXYZAndDeterministicFailingInvocation(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	passingFixture := compileHostSuiteFromFile(t, filepath.Join(root, "examples", "SDSL-V", "M29", "XYZInvocationIndexing.sdslvtest"))
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "XYZAssertionFailures.sdslvvalid"))
+
+	passing := passingFixture.byFunction["CombinedXYZGeometry"]
+	out, err := runNativeHost(t, host, passing, passingFixture.manifestPath)
+	if err != nil || !strings.Contains(out, `"status":"PASS"`) {
+		t.Fatalf("combined XYZ geometry failed: %v: %s", err, out)
+	}
+
+	checks := []struct {
+		function string
+		want     [3]uint32
+	}{
+		{"OneFailingInvocation", [3]uint32{3, 4, 2}},
+		{"TwoFailingInvocationsUseLinearScanOrder", [3]uint32{1, 1, 0}},
+	}
+	for _, check := range checks {
+		t.Run(check.function, func(t *testing.T) {
+			inv := fixture.byFunction[check.function]
+			first, firstErr := runNativeHost(t, host, inv, fixture.manifestPath)
+			second, secondErr := runNativeHost(t, host, inv, fixture.manifestPath)
+			if firstErr != nil || secondErr != nil {
+				t.Fatalf("host process did not complete normally: first=%v second=%v", firstErr, secondErr)
+			}
+			if first != second {
+				t.Fatalf("failure replay changed:\n%s\n!=\n%s", first, second)
+			}
+			var result nativeResult
+			if err := json.Unmarshal([]byte(first), &result); err != nil {
+				t.Fatalf("invalid result JSON: %v: %s", err, first)
+			}
+			if result.Status != "ASSERTION_FAILED" || result.StableCaseID != inv.c.StableID || result.Invocation != check.want || result.AssertionID != 0 || result.Source == [2]uint32{} {
+				t.Fatalf("unexpected failure result: %#v", result)
+			}
+			if result.ExpectedBits != [4]uint32{} || result.ActualBits != [4]uint32{} || result.ToleranceBits != [4]uint32{} {
+				t.Fatalf("Assert.False unused ABI lanes are not zero: %#v", result)
+			}
+		})
+	}
+}
+
+func TestSdslvExpectedAssertionFailureIsAHostSuccessContract(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "AssertionFailures.sdslvvalid"))
+	inv := fixture.byFunction["FirstFailureWins"]
+	out, err := runNativeHost(t, host, inv, fixture.manifestPath)
+	if err != nil {
+		t.Fatalf("host process did not complete normally: %v: %s", err, out)
+	}
+	var result nativeResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid assertion result JSON: %v: %s", err, out)
+	}
+	if result.Status != "ASSERTION_FAILED" || result.StableCaseID != inv.c.StableID || result.Invocation != [3]uint32{} || result.AssertionID != 0 || result.ExpectedBits != [4]uint32{1, 0, 0, 0} || result.ActualBits != [4]uint32{2, 0, 0, 0} || result.ToleranceBits != [4]uint32{} {
+		t.Fatalf("first failure contract mismatch: %#v", result)
+	}
+}
+
+func TestSdslvExpectedAssertionFailureKeepsUserFacingRunnerFailure(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	t.Chdir(root)
+	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "AssertionFailures.sdslvvalid")
+	suite, err := Prepare(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := ProjectManifest(suite, nil)
+	var selected Case
+	for _, c := range manifest.Cases {
+		if c.Function == "FirstFailureWins" {
+			selected = c
+			break
+		}
+	}
+	if selected.StableID == "" {
+		t.Fatal("FirstFailureWins case missing")
+	}
+	var out bytes.Buffer
+	err = executeGPU(suite, manifest, []Case{selected}, &out)
+	if err == nil || !strings.Contains(err.Error(), "GPU test failure: FirstFailureWins") {
+		t.Fatalf("expected user-facing GPU test failure, got err=%v out=%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), `"status":"ASSERTION_FAILED"`) || !strings.Contains(out.String(), `"stable_case_id":"`+selected.StableID+`"`) {
+		t.Fatalf("expected structured assertion failure JSON, got %s", out.String())
+	}
+}
+
+func TestSdslvNativeHostAssertAndABIMatrix(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	passing := compileHostSuiteFromFile(t, filepath.Join(root, "examples", "SDSL-V", "M29", "RealAssertions.sdslvtest"))
+	passInv := passing.byFunction["ScalarAssertions"]
+	first, passResult, err := runNativeHostJSON(t, host, passInv, passing.manifestPath)
+	if err != nil {
+		t.Fatalf("passing matrix case failed: %v: %s", err, first)
+	}
+	second, _, err := runNativeHostJSON(t, host, passInv, passing.manifestPath)
+	if err != nil {
+		t.Fatalf("passing matrix rerun failed: %v: %s", err, second)
+	}
+	if first != second {
+		t.Fatalf("passing ABI JSON changed:\n%s\n!=\n%s", first, second)
+	}
+	if passResult.Status != "PASS" || passResult.StableCaseID != passInv.c.StableID || passResult.ABIVersion != 1 || passResult.Failed != 0 || passResult.AssertionID != 0 || passResult.Source != [2]uint32{} || passResult.Invocation != [3]uint32{} || passResult.ValueKind != 0 || passResult.Component != 1 || passResult.ExpectedBits != [4]uint32{} || passResult.ActualBits != [4]uint32{} || passResult.ToleranceBits != [4]uint32{} {
+		t.Fatalf("passing ABI record mismatch: %#v", passResult)
+	}
+
+	failures := compileHostSuiteFromFile(t, filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "AssertionFailures.sdslvvalid"))
+	cases := []struct {
+		function                    string
+		valueKind                   uint32
+		expected, actual, tolerance [4]uint32
+	}{
+		{"TrueFailure", 1, [4]uint32{1}, [4]uint32{}, [4]uint32{}},
+		{"FalseFailure", 1, [4]uint32{}, [4]uint32{}, [4]uint32{}},
+		{"EqualBoolFailure", 1, [4]uint32{1}, [4]uint32{}, [4]uint32{}},
+		{"EqualIntFailure", 2, [4]uint32{0xfffffff9}, [4]uint32{7}, [4]uint32{}},
+		{"EqualUIntFailure", 3, [4]uint32{7}, [4]uint32{8}, [4]uint32{}},
+		{"EqualFloatFailure", 4, [4]uint32{math.Float32bits(1.0)}, [4]uint32{math.Float32bits(1.5)}, [4]uint32{}},
+		{"NotEqualFailure", 3, [4]uint32{7}, [4]uint32{7}, [4]uint32{}},
+		{"NearFailure", 4, [4]uint32{math.Float32bits(1.0)}, [4]uint32{math.Float32bits(1.5)}, [4]uint32{math.Float32bits(0.1)}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.function, func(t *testing.T) {
+			inv := failures.byFunction[tc.function]
+			out, result, err := runNativeHostJSON(t, host, inv, failures.manifestPath)
+			if err != nil {
+				t.Fatalf("host process did not complete normally: %v: %s", err, out)
+			}
+			if result.Status != "ASSERTION_FAILED" || result.StableCaseID != inv.c.StableID || result.Invocation != [3]uint32{} || result.AssertionID != 0 || result.Source != assertSource(inv, 0) || result.ABIVersion != 1 || result.Failed != 1 || result.ValueKind != tc.valueKind || result.Component != 1 || result.ExpectedBits != tc.expected || result.ActualBits != tc.actual || result.ToleranceBits != tc.tolerance {
+				t.Fatalf("assert ABI matrix mismatch: %#v", result)
+			}
+		})
+	}
+}
+
+func TestSdslvNativeHostExactlyOnceOrderAndFirstFailureContinuation(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "ExactlyOnceOperands.sdslvvalid"))
+	for _, function := range []string{"AssertOperandsEvaluateExactlyOnce", "AssertOperandsEvaluateLeftToRight", "TheoryAndResourceOperandsEvaluateOnce"} {
+		t.Run(function, func(t *testing.T) {
+			inv := fixture.byFunction[function]
+			first, result, err := runNativeHostJSON(t, host, inv, fixture.manifestPath)
+			if err != nil {
+				t.Fatalf("%s failed: %v: %s", function, err, first)
+			}
+			second, _, err := runNativeHostJSON(t, host, inv, fixture.manifestPath)
+			if err != nil {
+				t.Fatalf("%s rerun failed: %v: %s", function, err, second)
+			}
+			if first != second {
+				t.Fatalf("%s JSON changed:\n%s\n!=\n%s", function, first, second)
+			}
+			if result.Status != "PASS" || result.ABIVersion != 1 || result.Failed != 0 || result.ValueKind != 0 || result.Component != 1 || result.ExpectedBits != [4]uint32{} || result.ActualBits != [4]uint32{} || result.ToleranceBits != [4]uint32{} {
+				t.Fatalf("%s pass ABI mismatch: %#v", function, result)
+			}
+		})
+	}
+
+	inv := fixture.byFunction["FirstFailureDoesNotSuppressLaterOperandEvaluation"]
+	out, result, err := runNativeHostJSON(t, host, inv, fixture.manifestPath)
+	if err != nil {
+		t.Fatalf("first-failure continuation fixture did not complete normally: %v: %s", err, out)
+	}
+	if result.Status != "ASSERTION_FAILED" || result.StableCaseID != inv.c.StableID || result.AssertionID != 0 || result.Source != assertSource(inv, 0) || result.ABIVersion != 1 || result.Failed != 1 || result.ValueKind != 3 || result.Component != 1 || result.ExpectedBits != [4]uint32{1} || result.ActualBits != [4]uint32{2} || result.ToleranceBits != [4]uint32{} {
+		t.Fatalf("first-failure continuation ABI mismatch: %#v", result)
+	}
+}
+
+func TestSdslvNativeHostNearSpecialValueMatrix(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "internal", "sdslv", "testdata", "language", "valid", "NearSpecialValues.sdslvvalid"))
+	for _, function := range []string{"FiniteWithinTolerance", "EqualInfinities", "ZeroToleranceEqual"} {
+		out, result, err := runNativeHostJSON(t, host, fixture.byFunction[function], fixture.manifestPath)
+		if err != nil || result.Status != "PASS" || result.ABIVersion != 1 || result.Failed != 0 || result.ValueKind != 0 || result.Component != 1 {
+			t.Fatalf("%s failed: %v: %s", function, err, out)
+		}
+	}
+	checks := []struct {
+		function                    string
+		expected, actual, tolerance uint32
+	}{
+		{"FiniteOutsideTolerance", math.Float32bits(1.0), math.Float32bits(1.5), math.Float32bits(0.1)},
+		{"OppositeInfinities", 0x7f800000, 0xff800000, math.Float32bits(1.0)},
+		{"NaNExpected", 0x7fc00001, math.Float32bits(1.0), math.Float32bits(0.1)},
+		{"NaNActual", math.Float32bits(1.0), 0x7fc00001, math.Float32bits(0.1)},
+		{"NegativeRuntimeTolerance", math.Float32bits(1.0), math.Float32bits(1.0), math.Float32bits(-0.1)},
+	}
+	for _, check := range checks {
+		t.Run(check.function, func(t *testing.T) {
+			inv := fixture.byFunction[check.function]
+			out, err := runNativeHost(t, host, inv, fixture.manifestPath)
+			if err != nil {
+				t.Fatalf("host process failed: %v: %s", err, out)
+			}
+			var result nativeResult
+			if err := json.Unmarshal([]byte(out), &result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Status != "ASSERTION_FAILED" || result.AssertionID != 0 || result.Source != assertSource(inv, 0) || result.ABIVersion != 1 || result.Failed != 1 || result.ValueKind != 4 || result.Component != 1 || result.ExpectedBits != [4]uint32{check.expected} || result.ActualBits != [4]uint32{check.actual} || result.ToleranceBits != [4]uint32{check.tolerance} {
+				t.Fatalf("Near ABI mismatch: %#v", result)
+			}
+		})
 	}
 }
 

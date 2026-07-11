@@ -68,13 +68,16 @@ static void json(const char *status, const char *detail, const char *id,
          status, detail, id ? id : "");
   if (r != NULL) {
     printf(",\"invocation\":[%u,%u,%u],\"assertion_id\":%u,\"source\":[%u,%u],"
+           "\"abi_version\":%u,\"failed\":%u,\"value_kind\":%u,"
+           "\"component_count\":%u,"
            "\"expected_bits\":[%u,%u,%u,%u],\"actual_bits\":[%u,%u,%u,%u],"
            "\"tolerance_bits\":[%u,%u,%u,%u]",
            r->invocation_x, r->invocation_y, r->invocation_z, r->assertion_id,
-           r->source_line, r->source_column, r->expected[0], r->expected[1],
-           r->expected[2], r->expected[3], r->actual[0], r->actual[1],
-           r->actual[2], r->actual[3], r->tolerance[0], r->tolerance[1],
-           r->tolerance[2], r->tolerance[3]);
+           r->source_line, r->source_column, r->abi_version, r->failed,
+           r->value_kind, r->component_count, r->expected[0],
+           r->expected[1], r->expected[2], r->expected[3], r->actual[0],
+           r->actual[1], r->actual[2], r->actual[3], r->tolerance[0],
+           r->tolerance[1], r->tolerance[2], r->tolerance[3]);
   }
   puts("}");
 }
@@ -947,7 +950,7 @@ int main(int argc, char **argv) {
   if (failure != NULL) {
     json("ASSERTION_FAILED", "assertion", stable_id, failure);
   } else {
-    json("PASS", "", stable_id, NULL);
+    json("PASS", "", stable_id, &records[0]);
   }
 
 done:

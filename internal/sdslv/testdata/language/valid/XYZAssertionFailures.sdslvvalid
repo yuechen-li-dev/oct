@@ -1,0 +1,16 @@
+[WorkgroupSize(2, 3, 2)]
+[DispatchGroups(2, 2, 2)]
+[Fact]
+fn OneFailingInvocation() -> void {
+    let selected: bool = DispatchThreadID.x == 3u and DispatchThreadID.y == 4u and DispatchThreadID.z == 2u;
+    Assert.False(selected);
+}
+
+[WorkgroupSize(2, 3, 2)]
+[DispatchGroups(2, 2, 2)]
+[Fact]
+fn TwoFailingInvocationsUseLinearScanOrder() -> void {
+    let later: bool = DispatchThreadID.x == 3u and DispatchThreadID.y == 4u and DispatchThreadID.z == 2u;
+    let earlier: bool = DispatchThreadID.x == 1u and DispatchThreadID.y == 1u and DispatchThreadID.z == 0u;
+    Assert.False(later or earlier);
+}

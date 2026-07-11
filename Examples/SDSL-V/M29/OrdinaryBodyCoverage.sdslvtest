@@ -1,0 +1,61 @@
+record Pair {
+    Left: u32;
+    Right: u32;
+}
+
+enum Choice {
+    Zero;
+    Value { X: u32; }
+}
+
+fn Add(left: u32, right: u32) -> u32 {
+    return left + right;
+}
+
+fn MakePair(left: u32, right: u32) -> Pair {
+    return Pair { Left: left; Right: right; };
+}
+
+fn ResolveChoice(value: Choice) -> u32 {
+    return match value {
+        Choice.Zero => 0u
+        Choice.Value(payload) => payload.X
+    };
+}
+
+[Fact]
+fn ArithmeticAssignmentNestedControlFlowAndCalls() -> void {
+    let total: u32 = 0u;
+    for i in 0u..4u {
+        total = Add(total, i);
+    }
+    if total == 6u {
+        if total > 5u {
+            total = total + 1u;
+        } else {
+            total = 0u;
+        }
+    } else {
+        total = 1u;
+    }
+    let pair: Pair = MakePair(total, 7u);
+    Assert.Equal(7u, pair.Left);
+    Assert.Equal(pair.Left, pair.Right);
+}
+
+[Fact]
+fn RecordsEnumsAndBuiltins() -> void {
+    let choice: Choice = Choice.Value { X: 9u; };
+    let value: u32 = ResolveChoice(choice);
+    Assert.Equal(9u, value);
+}
+
+[Fact]
+fn ForeignStatementAndMultipleAssertions() -> void {
+    let value: u32 = 1u;
+    HLSL(value) {
+        value += 1u;
+    }
+    Assert.Equal(2u, value);
+    Assert.True(value > 1u);
+}
