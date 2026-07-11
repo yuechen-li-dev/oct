@@ -24,6 +24,7 @@ type parser struct {
 	tokens         []token.Token
 	position       int
 	flowStateDepth int
+	tensorDepth    int
 }
 
 func (p *parser) parseModule() (ast.Module, error) {
@@ -760,6 +761,8 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		return p.parseFlowBare("finish")
 	case token.KeywordWrite:
 		return p.parseGuardedWrite()
+	case token.KeywordTensor:
+		return p.parseTensorAssign()
 	case token.KeywordIf:
 		return p.parseIf()
 	case token.KeywordWhen:
@@ -811,6 +814,48 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		}
 		return ast.ExprStmt{Span: spanFrom(ast.ExprSpan(left).Start, p.lastSpan().End), Value: left}, nil
 	}
+}
+
+func (p *parser) parseTensorAssign() (ast.Stmt, error) {
+	start := p.position
+	keyword := p.current()
+	p.advance()
+	destination, err := p.parsePostfix()
+	if err != nil {
+		return nil, err
+	}
+	indexed, ok := destination.(ast.IndexExpr)
+	if !ok {
+		return nil, p.errorAtCurrent("tensor destination must be an indexed value")
+	}
+	indices := ast.IndexExpressions(indexed)
+	bindings := make([]ast.TensorIndexBinding, 0, len(indices))
+	for _, index := range indices {
+		id, ok := index.(ast.IdentifierExpr)
+		if !ok {
+			return nil, p.errorAtCurrent("tensor destination indices must be bare identifiers")
+		}
+		bindings = append(bindings, ast.TensorIndexBinding{Name: id.Name, Span: id.Span})
+	}
+	operator := p.current()
+	kind := ast.TensorAssignSet
+	if p.match(token.Assign) {
+		kind = ast.TensorAssignSet
+	} else if p.match(token.PlusAssign) {
+		kind = ast.TensorAssignAdd
+	} else {
+		return nil, p.errorAtCurrent("expected '=' or '+=' after tensor destination")
+	}
+	p.tensorDepth++
+	value, err := p.parseExpression()
+	p.tensorDepth--
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after tensor assignment"); err != nil {
+		return nil, err
+	}
+	return ast.TensorAssignStmt{Span: p.spanSince(start), KeywordSpan: keyword.Span, DestinationSpan: ast.ExprSpan(destination), IndicesSpan: spanFrom(ast.ExprSpan(indices[0]).Start, ast.ExprSpan(indices[len(indices)-1]).End), OperatorSpan: operator.Span, Destination: destination, AssignmentKind: kind, FreeIndices: bindings, Value: value}, nil
 }
 
 func (p *parser) parseFlowTarget(kind string) (ast.Stmt, error) {
@@ -1476,27 +1521,27 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 			expr = ast.FieldAccessExpr{Span: spanFrom(ast.ExprSpan(expr).Start, field.Span.End), Target: expr, Field: field.Lexeme}
 		case token.LeftBracket:
 			p.advance()
-			index, err := p.parseExpression()
-			if err != nil {
-				return nil, err
-			}
-			var index2 ast.Expr
-			hasSecond := false
-			if p.match(token.Comma) {
-				hasSecond = true
-				index2, err = p.parseExpression()
+			var indices []ast.Expr
+			for {
+				index, err := p.parseExpression()
 				if err != nil {
 					return nil, err
 				}
-				if p.match(token.Comma) {
-					return nil, p.errorAtCurrent("SDSL-V M12 supports at most two indices")
+				indices = append(indices, index)
+				if !p.match(token.Comma) {
+					break
 				}
 			}
 			close, err := p.expect(token.RightBracket, "expected ']' after index")
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.IndexExpr{Span: spanFrom(ast.ExprSpan(expr).Start, close.Span.End), Target: expr, Index: index, Index2: index2, HasSecond: hasSecond}
+			out := ast.IndexExpr{Span: spanFrom(ast.ExprSpan(expr).Start, close.Span.End), Target: expr, Indices: indices, Index: indices[0]}
+			if len(indices) == 2 {
+				out.HasSecond = true
+				out.Index2 = indices[1]
+			}
+			expr = out
 		case token.LeftParen:
 			p.advance()
 			var args []ast.Expr
@@ -1553,9 +1598,15 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		p.advance()
 		return ast.BoolLiteral{Span: t.Span, Value: false}, nil
 	case token.Identifier:
+		if t.Lexeme == "Sum" && p.tensorDepth > 0 && p.peek(1).Kind == token.LeftBracket {
+			return p.parseTensorReductionExpr()
+		}
 		p.advance()
 		return ast.IdentifierExpr{Span: t.Span, Name: t.Lexeme}, nil
 	case token.KeywordSum, token.KeywordProduct, token.KeywordMax, token.KeywordMin:
+		if t.Kind == token.KeywordSum && p.peek(1).Kind == token.LeftBracket {
+			return p.parseTensorReductionExpr()
+		}
 		if p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.KeywordIn {
 			return p.parseReductionExpr(nil)
 		}
@@ -1593,6 +1644,42 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseTensorReductionExpr() (ast.Expr, error) {
+	sum := p.current()
+	p.advance()
+	open, err := p.expect(token.LeftBracket, "expected '[' after Sum")
+	if err != nil {
+		return nil, err
+	}
+	var indices []ast.TensorReductionBinding
+	for {
+		name, err := p.expect(token.Identifier, "expected reduction index")
+		if err != nil {
+			return nil, err
+		}
+		indices = append(indices, ast.TensorReductionBinding{Name: name.Lexeme, Span: name.Span})
+		if !p.match(token.Comma) {
+			break
+		}
+	}
+	close, err := p.expect(token.RightBracket, "expected ']' after Sum indices")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(token.LeftParen, "expected '(' after Sum indices"); err != nil {
+		return nil, err
+	}
+	value, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	bodyClose, err := p.expect(token.RightParen, "expected ')' after Sum body")
+	if err != nil {
+		return nil, err
+	}
+	return ast.TensorReductionExpr{Span: spanFrom(sum.Span.Start, bodyClose.Span.End), SumSpan: sum.Span, IndicesSpan: spanFrom(open.Span.Start, close.Span.End), BodySpan: ast.ExprSpan(value), Kind: "Sum", Indices: indices, Value: value}, nil
 }
 
 func (p *parser) parseForeignExpr() (ast.Expr, error) {

@@ -110,6 +110,57 @@ func TestSdslvM31aValidFlowFixtureCorpusValidates(t *testing.T) {
 	}
 }
 
+func TestSdslvM32aTensorFixtureCorpusValidates(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m32a-valid", "*.sdslvvalid"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("M32a tensor fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			file, err := source.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tokens, err := lex.Analyze(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diagnostics := validate.Diagnostics(module); len(diagnostics) != 0 {
+				t.Fatalf("unexpected validate failure: %v", diagnostic.Error(diagnostics))
+			}
+			metadata, diagnostics := validate.ValidatedTensorAssignments(module)
+			if len(diagnostics) != 0 || len(metadata) != 1 || len(metadata[0].FreeIndices) == 0 {
+				t.Fatalf("tensor metadata = %#v diagnostics = %v", metadata, diagnostic.Error(diagnostics))
+			}
+		})
+	}
+}
+
+func TestSdslvM32aTensorInvalidFixtureCorpus(t *testing.T) {
+	expectations := []invalidFixtureExpectation{
+		{"DuplicateFreeIndex.sdslvinvalid", "validate", "SDSL-V3202", 3, 17},
+		{"DuplicateReductionIndex.sdslvinvalid", "validate", "SDSL-V3208", 5, 26},
+		{"FreeIndexScalarUse.sdslvinvalid", "validate", "SDSL-V3218", 3, 19},
+		{"ReductionEscapesScope.sdslvinvalid", "validate", "SDSL-V3220", 5, 37},
+		{"UnsafeTranspose.sdslvinvalid", "validate", "SDSL-V3216", 3, 22},
+		{"OffsetSelfAlias.sdslvinvalid", "validate", "SDSL-V3216", 3, 22},
+		{"BoolSum.sdslvinvalid", "validate", "SDSL-V3213", 5, 12},
+		{"ImmutableDestination.sdslvinvalid", "validate", "SDSL-V3222", 4, 12},
+		{"ConflictingReductionExtent.sdslvinvalid", "validate", "SDSL-V3210", 6, 41},
+		{"UnsupportedAffineReductionIndex.sdslvinvalid", "validate", "SDSL-V3221", 5, 31},
+	}
+	for _, expectation := range expectations {
+		t.Run(expectation.file, func(t *testing.T) {
+			path := filepath.Join(languageFixtureRoot(t), "m32a-invalid", expectation.file)
+			assertInvalidFixtureExpectation(t, path, expectation)
+		})
+	}
+}
+
 func TestSdslvM31bValidFlowFixtureCorpusCompiles(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m31b-valid", "*.sdslvvalid"))
 	if err != nil || len(paths) == 0 {

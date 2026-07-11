@@ -60,6 +60,7 @@ const (
 	KeywordStatic    Kind = "KeywordStatic"
 	KeywordAssert    Kind = "KeywordAssert"
 	KeywordComptime  Kind = "KeywordComptime"
+	KeywordTensor    Kind = "KeywordTensor"
 	KeywordVertex    Kind = "KeywordVertex"
 	KeywordPixel     Kind = "KeywordPixel"
 	KeywordAnd       Kind = "KeywordAnd"
@@ -85,6 +86,7 @@ const (
 	Colon        Kind = "Colon"
 	Semicolon    Kind = "Semicolon"
 	Assign       Kind = "Assign"
+	PlusAssign   Kind = "PlusAssign"
 	Arrow        Kind = "Arrow"
 	Plus         Kind = "Plus"
 	Minus        Kind = "Minus"
@@ -212,6 +214,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordAssert
 	case "comptime":
 		return KeywordComptime
+	case "tensor":
+		return KeywordTensor
 	case "vertex":
 		return KeywordVertex
 	case "pixel":

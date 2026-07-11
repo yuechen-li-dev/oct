@@ -1,0 +1,6 @@
+fn ImmutableDestination(
+    A: array<f32, 2u>
+) -> void {
+    tensor A[i] = A[i];
+    return;
+}

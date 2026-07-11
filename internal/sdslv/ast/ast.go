@@ -273,6 +273,30 @@ type AssignStmt struct {
 
 func (AssignStmt) stmtNode() {}
 
+// TensorAssignStmt keeps indexed tensor notation distinct from ordinary indexed
+// assignment. Its index names are compiler control variables, not values.
+type TensorAssignStmt struct {
+	Span, KeywordSpan, DestinationSpan, IndicesSpan, OperatorSpan source.Span
+	Destination                                                   Expr
+	AssignmentKind                                                TensorAssignmentKind
+	FreeIndices                                                   []TensorIndexBinding
+	Value                                                         Expr
+}
+
+func (TensorAssignStmt) stmtNode() {}
+
+type TensorAssignmentKind string
+
+const (
+	TensorAssignSet TensorAssignmentKind = "="
+	TensorAssignAdd TensorAssignmentKind = "+="
+)
+
+type TensorIndexBinding struct {
+	Name string
+	Span source.Span
+}
+
 type GuardedWriteStmt struct {
 	Span      source.Span
 	Target    Expr
@@ -495,6 +519,8 @@ func ExprSpan(e Expr) source.Span {
 		return x.Span
 	case ReductionExpr:
 		return x.Span
+	case TensorReductionExpr:
+		return x.Span
 	case EnumConstructExpr:
 		return x.Span
 	case BoardLiteralExpr:
@@ -512,6 +538,8 @@ func StmtSpan(s Stmt) source.Span {
 	case ComptimeLetStmt:
 		return x.Span
 	case AssignStmt:
+		return x.Span
+	case TensorAssignStmt:
 		return x.Span
 	case GuardedWriteStmt:
 		return x.Span
@@ -615,14 +643,28 @@ type FieldAccessExpr struct {
 func (FieldAccessExpr) exprNode() {}
 
 type IndexExpr struct {
-	Span      source.Span
-	Target    Expr
+	Span   source.Span
+	Target Expr
+	// Indices is the canonical ordered index list. Index/Index2/HasSecond are
+	// retained only as compatibility adapters for pre-M32a consumers.
+	Indices   []Expr
 	Index     Expr
 	Index2    Expr
 	HasSecond bool
 }
 
 func (IndexExpr) exprNode() {}
+
+func IndexExpressions(e IndexExpr) []Expr {
+	if len(e.Indices) != 0 {
+		return e.Indices
+	}
+	indices := []Expr{e.Index}
+	if e.HasSecond {
+		indices = append(indices, e.Index2)
+	}
+	return indices
+}
 
 type GuardedReadExpr struct {
 	Span      source.Span
@@ -713,6 +755,21 @@ type ReductionExpr struct {
 }
 
 func (ReductionExpr) exprNode() {}
+
+// TensorReductionExpr is the explicit indexed contraction form: Sum[k](body).
+type TensorReductionExpr struct {
+	Span, SumSpan, IndicesSpan, BodySpan source.Span
+	Kind                                 string
+	Indices                              []TensorReductionBinding
+	Value                                Expr
+}
+
+func (TensorReductionExpr) exprNode() {}
+
+type TensorReductionBinding struct {
+	Name string
+	Span source.Span
+}
 
 type FieldUpdate struct {
 	Span  source.Span

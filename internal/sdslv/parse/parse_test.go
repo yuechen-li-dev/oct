@@ -908,6 +908,64 @@ return max k in 0u..4u { values[k] };
 	}
 }
 
+func TestSdslvTensorParsesCompoundAssignmentAndSum(t *testing.T) {
+	module := parseTestModule(t, `shader S {
+workgroup A: tile<f32, 4u, 4u>;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+tensor Acc[i, j] += Sum[k](A[i, k] * A[k, j]);
+return;
+}
+}`)
+	stmt, ok := module.Decls[0].(ast.ShaderDecl).Methods[0].Body.Statements[1].(ast.TensorAssignStmt)
+	if !ok {
+		t.Fatalf("statement = %T, want TensorAssignStmt", module.Decls[0].(ast.ShaderDecl).Methods[0].Body.Statements[1])
+	}
+	if stmt.AssignmentKind != ast.TensorAssignAdd || len(stmt.FreeIndices) != 2 {
+		t.Fatalf("tensor assignment = %#v", stmt)
+	}
+	reduction, ok := stmt.Value.(ast.TensorReductionExpr)
+	if !ok || reduction.Kind != "Sum" || len(reduction.Indices) != 1 {
+		t.Fatalf("reduction = %#v", stmt.Value)
+	}
+	if !stmt.KeywordSpan.Known() || !stmt.OperatorSpan.Known() || !reduction.SumSpan.Known() {
+		t.Fatalf("tensor spans were not preserved: %#v", stmt)
+	}
+}
+
+func TestSdslvTensorParsesMultipleReductionIndices(t *testing.T) {
+	module := parseTestModule(t, `fn F(A: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>) -> void {
+let C: array<array<f32, 2u>, 2u>;
+tensor C[i, j] = Sum[kx, ky](A[i, j, kx, ky]);
+return;
+}`)
+	stmt := module.Decls[0].(ast.FunctionDecl).Body.Statements[1].(ast.TensorAssignStmt)
+	reduction, ok := stmt.Value.(ast.TensorReductionExpr)
+	if !ok {
+		t.Fatalf("reduction = %T, want TensorReductionExpr", stmt.Value)
+	}
+	if reduction.Kind != "Sum" || len(reduction.Indices) != 2 {
+		t.Fatalf("reduction = %#v", reduction)
+	}
+	if !reduction.IndicesSpan.Known() || !reduction.BodySpan.Known() {
+		t.Fatalf("reduction spans were not preserved: %#v", reduction)
+	}
+}
+
+func TestSdslvParsesOrderedIndexLists(t *testing.T) {
+	module := parseTestModule(t, `fn F(A: array<array<array<f32, 2u>, 2u>, 2u>) -> void {
+A[0u, 1u, 1u];
+return;
+}`)
+	indexed := module.Decls[0].(ast.FunctionDecl).Body.Statements[0].(ast.ExprStmt).Value.(ast.IndexExpr)
+	if got := len(ast.IndexExpressions(indexed)); got != 3 {
+		t.Fatalf("index count = %d, want 3", got)
+	}
+	if indexed.Index != ast.IndexExpressions(indexed)[0] {
+		t.Fatal("legacy first-index adapter was not retained")
+	}
+}
+
 func TestBuildModuleParsesReductionAttributes(t *testing.T) {
 	module := parseTestModule(t, `fn Reduce(values: array<f32>) -> f32 {
 let total: f32 = [unroll] sum i in 0u..4u { values[i] };

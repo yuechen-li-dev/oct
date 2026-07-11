@@ -1,0 +1,5 @@
+fn UnsafeTranspose() -> void {
+    let A: array<array<f32, 2u>, 2u>;
+    tensor A[i, j] = A[j, i];
+    return;
+}

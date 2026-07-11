@@ -1220,7 +1220,10 @@ func renameRuntimeLocalsInExpr(expr ast.Expr, names map[string]string) ast.Expr 
 	case ast.FieldAccessExpr:
 		return ast.FieldAccessExpr{Target: renameRuntimeLocalsInExpr(e.Target, names), Field: e.Field}
 	case ast.IndexExpr:
-		out := ast.IndexExpr{Target: renameRuntimeLocalsInExpr(e.Target, names), Index: renameRuntimeLocalsInExpr(e.Index, names), HasSecond: e.HasSecond}
+		out := ast.IndexExpr{Span: e.Span, Target: renameRuntimeLocalsInExpr(e.Target, names), Index: renameRuntimeLocalsInExpr(e.Index, names), HasSecond: e.HasSecond}
+		for _, index := range ast.IndexExpressions(e) {
+			out.Indices = append(out.Indices, renameRuntimeLocalsInExpr(index, names))
+		}
 		if e.HasSecond {
 			out.Index2 = renameRuntimeLocalsInExpr(e.Index2, names)
 		}
@@ -1427,7 +1430,10 @@ func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast
 	case ast.FieldAccessExpr:
 		return ast.FieldAccessExpr{Target: replaceComptimeExpr(e.Target, comptime), Field: e.Field}
 	case ast.IndexExpr:
-		out := ast.IndexExpr{Target: replaceComptimeExpr(e.Target, comptime), Index: replaceComptimeExpr(e.Index, comptime), HasSecond: e.HasSecond}
+		out := ast.IndexExpr{Span: e.Span, Target: replaceComptimeExpr(e.Target, comptime), Index: replaceComptimeExpr(e.Index, comptime), HasSecond: e.HasSecond}
+		for _, index := range ast.IndexExpressions(e) {
+			out.Indices = append(out.Indices, replaceComptimeExpr(index, comptime))
+		}
 		if e.HasSecond {
 			out.Index2 = replaceComptimeExpr(e.Index2, comptime)
 		}
@@ -1729,7 +1735,10 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 		}
 		return ast.FieldAccessExpr{Target: specializeExpr(e.Target, env), Field: e.Field}
 	case ast.IndexExpr:
-		out := ast.IndexExpr{Target: specializeExpr(e.Target, env), Index: specializeExpr(e.Index, env), HasSecond: e.HasSecond}
+		out := ast.IndexExpr{Span: e.Span, Target: specializeExpr(e.Target, env), Index: specializeExpr(e.Index, env), HasSecond: e.HasSecond}
+		for _, index := range ast.IndexExpressions(e) {
+			out.Indices = append(out.Indices, specializeExpr(index, env))
+		}
 		if e.HasSecond {
 			out.Index2 = specializeExpr(e.Index2, env)
 		}
@@ -2138,6 +2147,8 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 			return nil, err
 		}
 		return vdmir.AssignStmt{Provenance: l.provenance, Target: target, Value: value}, nil
+	case ast.TensorAssignStmt:
+		return nil, fmt.Errorf("SDSL-V M32b lowering is required for tensor statements")
 	case ast.GuardedWriteStmt:
 		target, err := l.lowerExpr(s.Target, scope, shaderName)
 		if err != nil {
@@ -2421,6 +2432,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			Field:      e.Field,
 		}, nil
 	case ast.IndexExpr:
+		if len(ast.IndexExpressions(e)) > 2 {
+			return nil, fmt.Errorf("SDSL-V M32b lowering is required for rank-%d indexed access", len(ast.IndexExpressions(e)))
+		}
 		if field, ok := e.Target.(ast.FieldAccessExpr); ok {
 			if root, ok := field.Target.(ast.IdentifierExpr); ok && root.Name == "TestInput" {
 				return l.lowerTestInputIndex(field, e, scope, shaderName)

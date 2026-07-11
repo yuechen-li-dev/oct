@@ -4,7 +4,7 @@
 
 Vectors and matrices are fixed-shape mathematical structures with dedicated literal, indexing, and arithmetic forms.
 Vectors are rank-1 mathematical tensor values, and matrices are rank-2 mathematical tensor values.
-Tensor notation is an index-aware expression surface over vectors, matrices, and tensor-like values; the current implemented source-level indexed surface is matrix-backed and rank-2.
+Tensor notation is an index-aware expression surface over vectors, matrices, and tensor-like values; the current SDSL-V source-level indexed tensor statement supports ordered rank-general indexing over statically shaped arrays, while physical tile, register-tile, and matrix-view categories remain explicitly rank-limited.
 
 Arrays and tensors are related but separate concepts.
 Arrays are general ordered collection/storage values, while vectors and matrices are mathematical value categories.
@@ -315,3 +315,22 @@ fn Main() -> Matrix<Int> {
     return [[1, 2], [3, 4]]
 }
 ```
+# Indexed tensor statements (SDSL-V M32a)
+
+SDSL-V accepts explicit indexed tensor statements for fixed-shape GPU values:
+
+```sdslv
+tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
+tensor Output[i, j] += Input[i, j] * scale;
+```
+
+The destination binds the ordered free indices and supplies their static
+extents. Indexed expressions carry an ordered index list, so fixed nested
+arrays may be addressed at rank three and above (`A[b, i, k]`) while existing
+one- and two-axis indexing remains source-compatible. `Sum[...]` explicitly
+binds reduction indices and infers each extent from a fixed-shape source axis.
+Tensor indices are scoped to their statement or reduction body and are compiler
+control indices, not ordinary scalar values.
+There is no implicit contraction, broadcasting, rank promotion, or dynamic
+shape support. Only `=` and `+=` are available; tensor lowering is deferred to
+M32b after M32a validation has produced canonical metadata.

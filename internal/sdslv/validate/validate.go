@@ -102,6 +102,8 @@ const (
 	varFlowBoard   varOrigin = "flow_board"
 	varDeriveSelf  varOrigin = "derive_self"
 	varDeriveLater varOrigin = "derive_later"
+	varTensorFree  varOrigin = "tensor_free_index"
+	varTensorRed   varOrigin = "tensor_reduction_index"
 )
 
 type varInfo struct {
@@ -127,6 +129,7 @@ type validator struct {
 	resources        map[string]ast.ResourceDecl
 	testSource       bool
 	currentTestInput *ValidatedTestInput
+	tensorAssigns    []ValidatedTensorAssign
 }
 
 // Inline source is deliberately not a security boundary. These checks reject the
@@ -879,6 +882,8 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if !v.compatible(targetType, valueType) {
 			v.errorAt(ast.ExprSpan(s.Value), "SDSL-V1503", "assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
 		}
+	case ast.TensorAssignStmt:
+		v.validateTensorAssign(s, scope, shaderName, templateParam)
 	case ast.GuardedWriteStmt:
 		v.validateWithPlacement(s.Target, false)
 		v.validateWithPlacement(s.Value, true)
@@ -1428,15 +1433,25 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			}
 		}
 		target := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
-		index := v.exprTypeWithExpected(e.Index, scope, shaderName, templateParam, nil, currentDeriveField)
-		if !isInteger(index) {
-			v.errorAt(ast.ExprSpan(e.Index), "SDSL-V1507", "array index must be integer")
-		}
-		if e.HasSecond {
-			index2 := v.exprTypeWithExpected(e.Index2, scope, shaderName, templateParam, nil, currentDeriveField)
-			if !isInteger(index2) {
-				v.errorAt(ast.ExprSpan(e.Index2), "SDSL-V1507", "2D index second operand must be integer")
+		indices := ast.IndexExpressions(e)
+		for _, axis := range indices {
+			index := v.exprTypeWithExpected(axis, scope, shaderName, templateParam, nil, currentDeriveField)
+			if !isInteger(index) {
+				v.errorAt(ast.ExprSpan(axis), "SDSL-V1507", "array index must be integer")
 			}
+		}
+		if target.Name == "array" {
+			current := target
+			for axis, index := range indices {
+				if current.Name != "array" || len(current.Args) != 1 {
+					v.errorAt(ast.ExprSpan(index), "SDSL-V3217", "index count %d exceeds rank %d of %s", len(indices), axis, typeName(target))
+					return ast.TypeRef{Name: "<error>"}
+				}
+				current = v.resolveAlias(current.Args[0])
+			}
+			return current
+		}
+		if len(indices) == 2 {
 			switch target.Name {
 			case "tile":
 				if len(target.Args) == 1 {
@@ -1454,6 +1469,10 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			v.errorf("2D indexing is only valid on tile<T,R,C>, reg_tile<T,R,C>, or matrix_view<T>, got %s", typeName(target))
 			return ast.TypeRef{Name: "<error>"}
 		}
+		if len(indices) > 2 {
+			v.errorAt(ast.ExprSpan(indices[2]), "SDSL-V3217", "index count %d is unsupported for %s; this value category supports at most rank 2", len(indices), typeName(target))
+			return ast.TypeRef{Name: "<error>"}
+		}
 		if target.Name == "tile" {
 			v.errorf("tile values require explicit 2D indexing")
 			return ast.TypeRef{Name: "<error>"}
@@ -1465,9 +1484,6 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		if target.Name == "matrix_view" {
 			v.errorf("matrix_view values require explicit 2D indexing")
 			return ast.TypeRef{Name: "<error>"}
-		}
-		if target.Name == "array" && len(target.Args) == 1 {
-			return v.resolveAlias(target.Args[0])
 		}
 		v.errorf("cannot index non-array type %s", typeName(target))
 		return ast.TypeRef{Name: "<error>"}
@@ -1709,6 +1725,9 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			v.errorf("unknown reduction operator %s", e.Op)
 			return ast.TypeRef{Name: "<error>"}
 		}
+	case ast.TensorReductionExpr:
+		v.errorAt(e.Span, "SDSL-V3201", "Sum[...] is only valid in a tensor statement")
+		return ast.TypeRef{Name: "<error>"}
 	default:
 		v.errorf("unsupported expression in GoOct SDSL-V M3")
 		return ast.TypeRef{Name: "<error>"}

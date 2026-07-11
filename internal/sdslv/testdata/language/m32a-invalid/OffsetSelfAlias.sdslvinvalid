@@ -1,0 +1,5 @@
+fn OffsetSelfAlias() -> void {
+    let A: array<array<f32, 2u>, 2u>;
+    tensor A[i, j] = A[i + 1u, j];
+    return;
+}

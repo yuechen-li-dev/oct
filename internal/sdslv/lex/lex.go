@@ -164,6 +164,9 @@ func (l *lexer) nextToken() (token.Token, error) {
 		return token.Token{Kind: token.Assign, Lexeme: "=", Line: line, Column: column}, nil
 	case '+':
 		l.advanceRune()
+		if l.matchString("=") {
+			return token.Token{Kind: token.PlusAssign, Lexeme: "+=", Line: line, Column: column}, nil
+		}
 		return token.Token{Kind: token.Plus, Lexeme: "+", Line: line, Column: column}, nil
 	case '-':
 		l.advanceRune()

@@ -1,0 +1,8 @@
+fn ElementwiseMapRank1(
+    Input: array<f32, 4u>,
+    scale: f32
+) -> void {
+    let Output: array<f32, 4u>;
+    tensor Output[i] = Input[i] * scale;
+    return;
+}

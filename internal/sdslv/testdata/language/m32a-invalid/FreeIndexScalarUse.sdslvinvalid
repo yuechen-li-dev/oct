@@ -1,0 +1,5 @@
+fn FreeIndexScalarUse() -> void {
+    let A: array<f32, 2u>;
+    tensor A[i] = i;
+    return;
+}

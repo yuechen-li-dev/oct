@@ -1,0 +1,9 @@
+fn Rank4Contraction(
+    Input: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>
+) -> void {
+    let Output: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>;
+    tensor Output[a, b, c, d] = Sum[kx, ky](
+        Input[a, b, kx, ky]
+    );
+    return;
+}
