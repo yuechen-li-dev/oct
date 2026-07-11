@@ -23,6 +23,53 @@ func TestModuleRejectsUnknownTypes(t *testing.T) {
 	}
 }
 
+func TestSdslvNdarrayTypeIdentityUsesOrderedShapeAndKind(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "shape order differs",
+			src: `fn F() -> void {
+let a: ndarray<u32, [2u, 3u]>;
+let b: ndarray<u32, [3u, 2u]> = a;
+return;
+}`,
+			want: "cannot assign ndarray<u32, [2u, 3u]> to local b of type ndarray<u32, [3u, 2u]>",
+		},
+		{
+			name: "nested arrays remain distinct",
+			src: `fn F() -> void {
+let a: ndarray<u32, [2u, 3u]>;
+let b: array<array<u32, 3u>, 2u> = a;
+return;
+}`,
+			want: "cannot assign ndarray<u32, [2u, 3u]> to local b of type array<array<u32,N>,N>",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestSdslvNdarrayWholeValueAssignmentUsesExactTypeSemantics(t *testing.T) {
+	err := validateSource(`fn F() -> void {
+let a: ndarray<u32, [2u, 2u]>;
+let b: ndarray<u32, [2u, 2u]> = a;
+b = a;
+return;
+}`)
+	if err != nil {
+		t.Fatalf("validateSource() error = %v", err)
+	}
+}
+
 func TestModuleValidatesShaderLocalBoardValues(t *testing.T) {
 	err := validateSource(`board LoadCoord {
 linear: u32;

@@ -1,0 +1,4 @@
+fn Rank2Declaration() -> void {
+    let values: ndarray<f32, [4u, 4u]>;
+    return;
+}

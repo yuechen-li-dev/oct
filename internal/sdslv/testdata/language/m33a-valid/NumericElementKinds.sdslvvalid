@@ -1,0 +1,6 @@
+fn NumericElementKinds() -> void {
+    let floats: ndarray<f32, [2u]> = [1.0, 2.0];
+    let ints: ndarray<i32, [2u]> = [1, -2];
+    let uints: ndarray<u32, [2u]> = [1u, 2u];
+    return;
+}

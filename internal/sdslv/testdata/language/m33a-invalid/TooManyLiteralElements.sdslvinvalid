@@ -1,0 +1,4 @@
+fn TooManyLiteralElements() -> void {
+    let x: ndarray<u32, [2u, 2u]> = [1u, 2u, 3u, 4u, 5u];
+    return;
+}

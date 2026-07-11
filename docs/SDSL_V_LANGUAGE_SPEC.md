@@ -12,6 +12,26 @@ SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its
 
 The broad design pipeline is: `source → lex → parse → validate → template/config monomorphization → comptime expansion → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
+## Fixed-shape ndarrays (M33a)
+
+`ndarray<ElementType, [Extent0, Extent1, ...]>` is a first-class fixed-shape,
+row-major tensor value type. Its rank is the number of positive compile-time
+integer extents. For example: `ndarray<u32, [8u]>`,
+`ndarray<f32, [4u, 4u]>`, and `ndarray<u32, [2u, 2u, 2u, 3u]>`.
+
+Dense literals are flat and use row-major source order, with exactly the shape
+product number of values:
+
+```sdslv
+let input: ndarray<u32, [2u, 2u]> = [1u, 2u, 3u, 4u];
+```
+
+Rank-general indexing (`x[i]`, `x[i, j]`, and higher rank forms) and `tensor`
+notation consume ndarray shape metadata directly. Nested fixed arrays remain a
+different compatible legacy type; there is no implicit conversion. Dynamic
+shape, nested literals, slicing, reshape, broadcasting, alternate layouts,
+storage classes, and templates are not part of M33a.
+
 Current GoOct M2 supports an opt-in DXC/SPIR-V/header generation lane for the compute-focused subset. Prometheus runtime wiring remains deferred.
 
 ---

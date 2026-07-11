@@ -1,0 +1,4 @@
+fn ImmutableMutation(x: ndarray<u32, [2u]>) -> void {
+    x[0u] = 1u;
+    return;
+}

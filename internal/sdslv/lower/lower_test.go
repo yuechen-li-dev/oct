@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -129,6 +130,49 @@ func TestSdslvFixedArrayIndexCarriesCompilerOwnedRowMajorShape(t *testing.T) {
 	rhs, ok := assign.Value.(vdmir.IndexNExpr)
 	if !ok || rhs.Layout != vdmir.IndexLayoutRowMajorLinear || !slices.Equal(rhs.Extents, want) {
 		t.Fatalf("RHS = %#v, want row-major rank-4 IndexNExpr", assign.Value)
+	}
+}
+
+func TestSdslvNdarrayLowersToDistinctTypeAndSourceOrderedLiteral(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "ndarray.sdslv", Text: `fn F() -> void {
+  let A: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
+  let B: ndarray<u32, [2u, 3u]>;
+  tensor B[i, j] = A[i, j];
+  return;
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatal(err)
+	}
+	mir, err := Module(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	localA := mir.Functions[0].Locals[0]
+	if localA.Type.Kind != vdmir.TypeNDArray || !slices.Equal(localA.Type.Shape, []uint32{2, 3}) || localA.Type.ArraySize != 6 {
+		t.Fatalf("local A type = %#v", localA.Type)
+	}
+	letA := mir.Functions[0].Body.Statements[0].(vdmir.LetStmt)
+	literal, ok := letA.Value.(vdmir.NDArrayLiteral)
+	if !ok || len(literal.Elements) != 6 {
+		t.Fatalf("literal = %#v", letA.Value)
+	}
+	for i, want := range []uint32{1, 2, 3, 4, 5, 6} {
+		value, ok := literal.Elements[i].(vdmir.LiteralExpr)
+		if !ok || value.Value != fmt.Sprintf("%du", want) {
+			t.Fatalf("element[%d] = %#v, want %d", i, literal.Elements[i], want)
+		}
+	}
+	assign := mir.Functions[0].Body.Statements[2].(vdmir.TensorAssign)
+	destination := assign.Destination.(vdmir.IndexNExpr)
+	if destination.Layout != vdmir.IndexLayoutRowMajorLinear || !slices.Equal(destination.Extents, []uint32{2, 3}) {
+		t.Fatalf("destination = %#v", destination)
 	}
 }
 

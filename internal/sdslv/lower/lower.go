@@ -2622,6 +2622,19 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 
 func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding, shaderName string, expected *ast.TypeRef) (vdmir.Expr, error) {
 	switch e := expr.(type) {
+	case ast.ArrayLiteral:
+		if expected == nil || expected.Name != "ndarray" {
+			return nil, fmt.Errorf("ndarray literal requires ndarray target type")
+		}
+		elements := make([]vdmir.Expr, 0, len(e.Elements))
+		for _, element := range e.Elements {
+			value, err := l.lowerExprWithExpected(element, scope, shaderName, &expected.Args[0])
+			if err != nil {
+				return nil, err
+			}
+			elements = append(elements, value)
+		}
+		return vdmir.NDArrayLiteral{Provenance: l.provenance, ExprType: l.lowerTypeRef(*expected), Elements: elements}, nil
 	case ast.ForeignShaderExpr:
 		return vdmir.ForeignShaderExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(e.ResultType)), TargetLanguage: e.TargetLanguage, RawSource: e.RawSource, Captures: e.Captures, SourceLine: e.Line}, nil
 	case ast.IntegerLiteral:
@@ -2694,7 +2707,7 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			return nil, err
 		}
 		all := ast.IndexExpressions(e)
-		if target.Type().Kind == vdmir.TypeArray {
+		if target.Type().Kind == vdmir.TypeArray || target.Type().Kind == vdmir.TypeNDArray {
 			indices := make([]vdmir.Expr, 0, len(all))
 			for _, axis := range all {
 				lowered, err := l.lowerExprWithExpected(axis, scope, shaderName, nil)
@@ -2705,12 +2718,22 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			}
 			typ := target.Type()
 			extents := make([]uint32, 0, len(all))
-			for range indices {
-				if typ.Kind != vdmir.TypeArray || !typ.HasArraySize || typ.ArraySize <= 0 {
-					return nil, fmt.Errorf("SDSL-V M32b.1 compiler-boundary error: invalid fixed-array linearization metadata")
+			if typ.Kind == vdmir.TypeNDArray {
+				// ndarray already owns a flat physical extent; tensor metadata
+				// supplies rank validation while lowering only needs total storage.
+				if len(indices) != len(typ.Shape) {
+					return nil, fmt.Errorf("ndarray rank metadata does not match index count")
 				}
-				extents = append(extents, uint32(typ.ArraySize))
+				extents = append(extents, typ.Shape...)
 				typ = elementType(typ)
+			} else {
+				for range indices {
+					if typ.Kind != vdmir.TypeArray || !typ.HasArraySize || typ.ArraySize <= 0 {
+						return nil, fmt.Errorf("SDSL-V M32b.1 compiler-boundary error: invalid fixed-array linearization metadata")
+					}
+					extents = append(extents, uint32(typ.ArraySize))
+					typ = elementType(typ)
+				}
 			}
 			if typ.Name == "" {
 				return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: invalid rank-general indexing metadata")
@@ -3192,6 +3215,16 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: mustConcreteInt(resolved.ArraySize), HasArraySize: true}
 		}
 		return vdmir.Type{Kind: vdmir.TypeRuntimeArray, Name: "array", Element: &elem}
+	case "ndarray":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		count := 1
+		shape := make([]uint32, 0, len(resolved.NDArrayShape))
+		for _, extent := range resolved.NDArrayShape {
+			n := mustConcreteInt(extent)
+			count *= n
+			shape = append(shape, uint32(n))
+		}
+		return vdmir.Type{Kind: vdmir.TypeNDArray, Name: "ndarray", Element: &elem, ArraySize: count, HasArraySize: true, Shape: shape}
 	case "tile":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		rows := mustConcreteInt(resolved.TileRows)

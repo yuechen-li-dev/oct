@@ -1,0 +1,4 @@
+fn NonintegerExtent() -> void {
+    let x: ndarray<u32, [true]>;
+    return;
+}

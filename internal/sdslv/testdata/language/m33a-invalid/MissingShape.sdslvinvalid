@@ -1,0 +1,4 @@
+fn MissingShape() -> void {
+    let x: ndarray<u32>;
+    return;
+}

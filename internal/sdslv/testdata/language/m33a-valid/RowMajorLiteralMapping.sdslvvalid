@@ -1,0 +1,6 @@
+fn RowMajorLiteralMapping() -> void {
+    let values: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
+    let mapped: u32 = values[1u, 0u];
+    let tail: u32 = values[1u, 2u];
+    return;
+}

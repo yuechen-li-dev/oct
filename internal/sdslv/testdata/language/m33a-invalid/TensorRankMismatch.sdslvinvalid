@@ -1,0 +1,6 @@
+fn TensorRankMismatch() -> void {
+    let x: ndarray<u32, [2u, 2u]>;
+    let y: ndarray<u32, [2u]>;
+    tensor y[i, j] = x[i, j];
+    return;
+}

@@ -952,6 +952,51 @@ return;
 	}
 }
 
+func TestSdslvParsesNdarrayTypeAndDenseLiteral(t *testing.T) {
+	module := parseTestModule(t, `fn F() -> void {
+let input: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
+return;
+}`)
+	letStmt := module.Decls[0].(ast.FunctionDecl).Body.Statements[0].(ast.LetStmt)
+	if letStmt.Type.Name != "ndarray" || len(letStmt.Type.Args) != 1 || len(letStmt.Type.NDArrayShape) != 2 {
+		t.Fatalf("type = %#v, want rank-2 ndarray", letStmt.Type)
+	}
+	if lit, ok := letStmt.Value.(ast.ArrayLiteral); !ok || len(lit.Elements) != 6 {
+		t.Fatalf("literal = %#v, want 6-element ArrayLiteral", letStmt.Value)
+	}
+}
+
+func TestSdslvPreservesNdarrayExtentSpans(t *testing.T) {
+	const text = `fn F() -> void {
+let input: ndarray<u32, [2u, 3u, 4u]> = [1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 12u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 20u, 21u, 22u, 23u, 24u];
+return;
+}`
+	module := parseTestModule(t, text)
+	letStmt := module.Decls[0].(ast.FunctionDecl).Body.Statements[0].(ast.LetStmt)
+	ref := letStmt.Type
+	if got := text[ref.NameSpan.Start.Offset:ref.NameSpan.End.Offset]; got != "ndarray" {
+		t.Fatalf("name span = %q, want ndarray", got)
+	}
+	if got := text[ref.Args[0].Span.Start.Offset:ref.Args[0].Span.End.Offset]; got != "u32" {
+		t.Fatalf("element span = %q, want u32", got)
+	}
+	if got := text[ref.NDArrayShapeOpen.Start.Offset:ref.NDArrayShapeOpen.End.Offset]; got != "[" {
+		t.Fatalf("shape open span = %q, want [", got)
+	}
+	if got := text[ref.NDArrayShapeClose.Start.Offset:ref.NDArrayShapeClose.End.Offset]; got != "]" {
+		t.Fatalf("shape close span = %q, want ]", got)
+	}
+	if got := text[ref.NDArrayShapeSpan.Start.Offset:ref.NDArrayShapeSpan.End.Offset]; got != "[2u, 3u, 4u]" {
+		t.Fatalf("shape span = %q", got)
+	}
+	for i, want := range []string{"2u", "3u", "4u"} {
+		span := ast.ExprSpan(ref.NDArrayShape[i])
+		if got := text[span.Start.Offset:span.End.Offset]; got != want {
+			t.Fatalf("extent[%d] span = %q, want %q", i, got, want)
+		}
+	}
+}
+
 func TestSdslvParsesOrderedIndexLists(t *testing.T) {
 	module := parseTestModule(t, `fn F(A: array<array<array<f32, 2u>, 2u>, 2u>) -> void {
 A[0u, 1u, 1u];

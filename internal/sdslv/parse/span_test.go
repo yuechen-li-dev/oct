@@ -38,6 +38,35 @@ func TestSdslvAstRepresentativeSourceSpans(t *testing.T) {
 	auditKnownSpans(t, reflect.ValueOf(module), len(text))
 }
 
+func TestSdslvNdarraySourceSpansAndSlices(t *testing.T) {
+	const text = "fn F() -> void {\n  let input: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];\n  let value: u32 = input[1u, 2u];\n}\n"
+	result, err := lex.Analyze(source.File{Path: "ndarray.sdslv", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := BuildModule(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := module.Decls[0].(ast.FunctionDecl)
+	letInput := fn.Body.Statements[0].(ast.LetStmt)
+	ref := letInput.Type
+	assertSlice(t, text, ref.NameSpan, "ndarray")
+	assertSlice(t, text, ref.Args[0].Span, "u32")
+	assertSlice(t, text, ref.NDArrayShapeOpen, "[")
+	assertSlice(t, text, ref.NDArrayShapeClose, "]")
+	assertSlice(t, text, ref.NDArrayShapeSpan, "[2u, 3u]")
+	assertSlice(t, text, ref.Span, "ndarray<u32, [2u, 3u]>")
+	lit := letInput.Value.(ast.ArrayLiteral)
+	assertSlice(t, text, lit.Span, "[1u, 2u, 3u, 4u, 5u, 6u]")
+	for i, want := range []string{"1u", "2u", "3u", "4u", "5u", "6u"} {
+		assertSlice(t, text, ast.ExprSpan(lit.Elements[i]), want)
+	}
+	indexed := fn.Body.Statements[1].(ast.LetStmt).Value.(ast.IndexExpr)
+	assertSlice(t, text, indexed.Span, "input[1u, 2u]")
+	auditKnownSpans(t, reflect.ValueOf(module), len(text))
+}
+
 func TestSdslvAstExampleCorpusHasKnownSpans(t *testing.T) {
 	_, here, _, ok := runtime.Caller(0)
 	if !ok {

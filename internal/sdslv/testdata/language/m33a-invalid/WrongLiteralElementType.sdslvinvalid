@@ -1,0 +1,4 @@
+fn WrongLiteralElementType() -> void {
+    let x: ndarray<u32, [2u]> = [1u, 2];
+    return;
+}

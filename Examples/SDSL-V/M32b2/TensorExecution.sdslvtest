@@ -103,20 +103,9 @@ fn Rank2Matmul() -> void {
 
 [Fact]
 fn Rank3BatchedMatmul() -> void {
-    let a: array<array<array<u32, 2u>, 2u>, 2u>;
-    let b: array<array<array<u32, 2u>, 2u>, 2u>;
-
-    a[0u, 0u, 0u] = 1u; a[0u, 0u, 1u] = 2u;
-    a[0u, 1u, 0u] = 3u; a[0u, 1u, 1u] = 4u;
-    a[1u, 0u, 0u] = 5u; a[1u, 0u, 1u] = 6u;
-    a[1u, 1u, 0u] = 7u; a[1u, 1u, 1u] = 8u;
-
-    b[0u, 0u, 0u] = 9u;  b[0u, 0u, 1u] = 10u;
-    b[0u, 1u, 0u] = 11u; b[0u, 1u, 1u] = 12u;
-    b[1u, 0u, 0u] = 1u;  b[1u, 0u, 1u] = 2u;
-    b[1u, 1u, 0u] = 3u;  b[1u, 1u, 1u] = 4u;
-
-    let c: array<array<array<u32, 2u>, 2u>, 2u>;
+    let a: ndarray<u32, [2u, 2u, 2u]> = [1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u];
+    let b: ndarray<u32, [2u, 2u, 2u]> = [9u, 10u, 11u, 12u, 1u, 2u, 3u, 4u];
+    let c: ndarray<u32, [2u, 2u, 2u]>;
     tensor c[b0, i, j] = Sum[k](a[b0, i, k] * b[b0, k, j]);
 
     Assert.Equal(31u, c[0u, 0u, 0u]);
@@ -131,33 +120,14 @@ fn Rank3BatchedMatmul() -> void {
 
 [Fact]
 fn Rank4RowMajorLayout() -> void {
-    let input: array<array<array<array<u32, 3u>, 2u>, 2u>, 2u>;
-    input[0u, 0u, 0u, 0u] = 0u;
-    input[0u, 0u, 0u, 1u] = 1u;
-    input[0u, 0u, 0u, 2u] = 2u;
-    input[0u, 0u, 1u, 0u] = 10u;
-    input[0u, 0u, 1u, 1u] = 11u;
-    input[0u, 0u, 1u, 2u] = 12u;
-    input[0u, 1u, 0u, 0u] = 100u;
-    input[0u, 1u, 0u, 1u] = 101u;
-    input[0u, 1u, 0u, 2u] = 102u;
-    input[0u, 1u, 1u, 0u] = 110u;
-    input[0u, 1u, 1u, 1u] = 111u;
-    input[0u, 1u, 1u, 2u] = 112u;
-    input[1u, 0u, 0u, 0u] = 1000u;
-    input[1u, 0u, 0u, 1u] = 1001u;
-    input[1u, 0u, 0u, 2u] = 1002u;
-    input[1u, 0u, 1u, 0u] = 1010u;
-    input[1u, 0u, 1u, 1u] = 1011u;
-    input[1u, 0u, 1u, 2u] = 1012u;
-    input[1u, 1u, 0u, 0u] = 1100u;
-    input[1u, 1u, 0u, 1u] = 1101u;
-    input[1u, 1u, 0u, 2u] = 1102u;
-    input[1u, 1u, 1u, 0u] = 1110u;
-    input[1u, 1u, 1u, 1u] = 1111u;
-    input[1u, 1u, 1u, 2u] = 1112u;
+    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = [
+        0u, 1u, 2u, 10u, 11u, 12u,
+        100u, 101u, 102u, 110u, 111u, 112u,
+        1000u, 1001u, 1002u, 1010u, 1011u, 1012u,
+        1100u, 1101u, 1102u, 1110u, 1111u, 1112u
+    ];
 
-    let output: array<array<array<array<u32, 3u>, 2u>, 2u>, 2u>;
+    let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
     tensor output[b, h, i, j] = input[b, h, i, j];
 
     Assert.Equal(0u, output[0u, 0u, 0u, 0u]);

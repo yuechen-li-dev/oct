@@ -1226,6 +1226,54 @@ func (v *validator) validateType(ref ast.TypeRef) {
 		}
 		return
 	}
+	if ref.Name == "ndarray" {
+		if len(ref.Args) != 1 {
+			v.errorAt(ref.Span, "SDSL-V3309", "ndarray type requires ndarray<T, [Extent, ...]>")
+			return
+		}
+		if !ref.NDArrayShapeSpan.Known() {
+			v.errorAt(ref.NameSpan, "SDSL-V3309", "ndarray type requires a shape list")
+			return
+		}
+		if len(ref.NDArrayShape) == 0 {
+			v.errorAt(ref.NDArrayShapeSpan, "SDSL-V3310", "ndarray shape must contain at least one extent")
+			return
+		}
+		v.validateType(ref.Args[0])
+		if !isAllowedNDArrayElementType(v.resolveAlias(ref.Args[0])) {
+			v.errorAt(ref.Args[0].Span, "SDSL-V3311", "ndarray element type %s is not supported in SDSL-V M33a", typeName(ref.Args[0]))
+		}
+		product := uint64(1)
+		for _, extent := range ref.NDArrayShape {
+			value, err := v.evalConstExpr(extent, nil)
+			if err != nil {
+				if _, ok := extent.(ast.IntegerLiteral); ok {
+					v.errorAt(ast.ExprSpan(extent), "SDSL-V3303", "ndarray extent overflows u32")
+					continue
+				}
+				v.errorAt(ast.ExprSpan(extent), "SDSL-V3301", "ndarray extent must be an integer constant expression")
+				continue
+			}
+			if !isInteger(value.typ) {
+				v.errorAt(ast.ExprSpan(extent), "SDSL-V3301", "ndarray extent must be an integer constant expression")
+				continue
+			}
+			if value.int32 <= 0 {
+				v.errorAt(ast.ExprSpan(extent), "SDSL-V3302", "ndarray extent must be positive")
+				continue
+			}
+			if value.int32 > int64(^uint32(0)) {
+				v.errorAt(ast.ExprSpan(extent), "SDSL-V3303", "ndarray extent overflows u32")
+				continue
+			}
+			if product > uint64(^uint32(0))/uint64(value.int32) {
+				v.errorAt(ast.ExprSpan(extent), "SDSL-V3308", "ndarray total element count overflows u32")
+				continue
+			}
+			product *= uint64(value.int32)
+		}
+		return
+	}
 	if ref.Name == "tile" {
 		if len(ref.Args) != 1 || !ref.HasTileShape {
 			v.errorf("tile type requires tile<T, Rows, Cols>")
@@ -1356,6 +1404,34 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, expected *ast.TypeRef, currentDeriveField string) ast.TypeRef {
 	defer v.scoped(ast.ExprSpan(expr))()
 	switch e := expr.(type) {
+	case ast.ArrayLiteral:
+		if expected == nil {
+			v.errorAt(e.Span, "SDSL-V3304", "array literals require an ndarray target type in M33a")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		target := v.resolveAlias(*expected)
+		if target.Name != "ndarray" {
+			v.errorAt(e.Span, "SDSL-V3312", "nested ndarray literals are not supported in SDSL-V M33a; use one flat row-major literal")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		count := uint64(1)
+		for _, extent := range target.NDArrayShape {
+			value, err := v.evalConstExpr(extent, nil)
+			if err != nil || value.int32 <= 0 {
+				return ast.TypeRef{Name: "<error>"}
+			}
+			count *= uint64(value.int32)
+		}
+		if uint64(len(e.Elements)) != count {
+			v.errorAt(e.Span, "SDSL-V3305", "ndarray literal element count mismatch: expected %d for shape %s, got %d", count, typeName(target), len(e.Elements))
+		}
+		for _, element := range e.Elements {
+			typ := v.exprTypeWithExpected(element, scope, shaderName, templateParam, &target.Args[0], currentDeriveField)
+			if !v.compatible(target.Args[0], typ) {
+				v.errorAt(ast.ExprSpan(element), "SDSL-V3306", "ndarray literal element expects %s, got %s", typeName(target.Args[0]), typeName(typ))
+			}
+		}
+		return target
 	case ast.ForeignShaderExpr:
 		v.validateForeignBlock(e.TargetLanguage, e.RawSource, e.Captures, scope, e.ResultType, true)
 		return v.resolveAlias(e.ResultType)
@@ -1450,6 +1526,16 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 				current = v.resolveAlias(current.Args[0])
 			}
 			return current
+		}
+		if target.Name == "ndarray" {
+			if len(indices) != len(target.NDArrayShape) {
+				v.errorAt(e.Span, "SDSL-V3217", "index count %d does not match ndarray rank %d", len(indices), len(target.NDArrayShape))
+				return ast.TypeRef{Name: "<error>"}
+			}
+			if len(target.Args) != 1 {
+				return ast.TypeRef{Name: "<error>"}
+			}
+			return v.resolveAlias(target.Args[0])
 		}
 		if len(indices) == 2 {
 			switch target.Name {
@@ -2134,10 +2220,25 @@ func (v *validator) compatible(left, right ast.TypeRef) bool {
 		if left.Name == "matrix_view" || left.Name == "tile" || left.Name == "reg_tile" {
 			return len(left.Args) == len(right.Args) && (len(left.Args) == 0 || v.compatible(left.Args[0], right.Args[0]))
 		}
-		if left.Name != "array" {
+		if left.Name != "array" && left.Name != "ndarray" {
 			return true
 		}
-		return len(left.Args) == len(right.Args) && (len(left.Args) == 0 || v.compatible(left.Args[0], right.Args[0]))
+		if len(left.Args) != len(right.Args) || (len(left.Args) != 0 && !v.compatible(left.Args[0], right.Args[0])) {
+			return false
+		}
+		if left.Name == "ndarray" {
+			if len(left.NDArrayShape) != len(right.NDArrayShape) {
+				return false
+			}
+			for i := range left.NDArrayShape {
+				a, ea := v.evalConstExpr(left.NDArrayShape[i], nil)
+				b, eb := v.evalConstExpr(right.NDArrayShape[i], nil)
+				if ea != nil || eb != nil || a.int32 != b.int32 {
+					return false
+				}
+			}
+		}
+		return true
 	}
 	return isFloat(left) && isFloat(right)
 }
@@ -2156,6 +2257,9 @@ func (v *validator) typeKind(ref ast.TypeRef) string {
 	if !ok {
 		if resolved.Name == "array" {
 			return "array"
+		}
+		if resolved.Name == "ndarray" {
+			return "ndarray"
 		}
 		if resolved.Name == "tile" {
 			return "tile"
@@ -2200,9 +2304,9 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 			if !isDirectIdentifier(expr) {
 				v.errorf("board values are immutable in SDSL-V M21; board field assignment is reserved for flow-bound mutable board state")
 			}
-		case kind == "array":
+		case kind == "array" || kind == "ndarray":
 			if !isDirectIdentifier(expr) {
-				v.errorf("cannot assign through immutable array parameter %s", root)
+				v.errorf("cannot assign through immutable %s parameter %s", kind, root)
 			}
 		}
 	case varFlowBoard:
@@ -2760,6 +2864,13 @@ func (v *validator) errorRelated(span source.Span, code, message string, related
 }
 
 func typeName(ref ast.TypeRef) string {
+	if ref.Name == "ndarray" && len(ref.Args) == 1 {
+		shape := make([]string, 0, len(ref.NDArrayShape))
+		for _, extent := range ref.NDArrayShape {
+			shape = append(shape, exprString(extent))
+		}
+		return fmt.Sprintf("ndarray<%s, [%s]>", typeName(ref.Args[0]), strings.Join(shape, ", "))
+	}
 	if ref.Name == "matrix_view" && len(ref.Args) == 1 {
 		if ref.Access != "" {
 			return ref.Access + " matrix_view<" + typeName(ref.Args[0]) + ">"
@@ -2779,6 +2890,31 @@ func typeName(ref ast.TypeRef) string {
 		return fmt.Sprintf("array<%s,N>", typeName(ref.Args[0]))
 	}
 	return fmt.Sprintf("array<%s>", typeName(ref.Args[0]))
+}
+
+func exprString(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case ast.IntegerLiteral:
+		return e.Value
+	case ast.FloatLiteral:
+		return e.Value
+	case ast.BoolLiteral:
+		return strconv.FormatBool(e.Value)
+	case ast.StringLiteral:
+		return strconv.Quote(e.Value)
+	case ast.IdentifierExpr:
+		return e.Name
+	case ast.FieldAccessExpr:
+		return exprString(e.Target) + "." + e.Field
+	case ast.BinaryExpr:
+		return exprString(e.Left) + " " + e.Operator + " " + exprString(e.Right)
+	case ast.UnaryExpr:
+		return e.Operator + " " + exprString(e.Operand)
+	case ast.ParenExpr:
+		return "(" + exprString(e.Inner) + ")"
+	default:
+		return "<expr>"
+	}
 }
 
 func isRegTileZeroCall(expr ast.Expr) bool {
@@ -3285,6 +3421,15 @@ func builtinUintVectorType(dim int) typeInfo {
 }
 
 func isWorkgroupElementType(ref ast.TypeRef) bool {
+	switch ref.Name {
+	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedNDArrayElementType(ref ast.TypeRef) bool {
 	switch ref.Name {
 	case "bool", "i32", "u32", "f32", "float", "float2", "float3", "float4", "uint2", "uint3", "uint4":
 		return true

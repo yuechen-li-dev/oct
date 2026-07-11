@@ -1,0 +1,4 @@
+fn Rank3Declaration() -> void {
+    let values: ndarray<u32, [2u, 3u, 4u]>;
+    return;
+}

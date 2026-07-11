@@ -1,0 +1,8 @@
+fn DistinctFromNestedArrays(
+    nested: array<array<u32, 3u>, 2u>,
+    dense: ndarray<u32, [2u, 3u]>
+) -> void {
+    let nestedElem: u32 = nested[1u, 2u];
+    let denseElem: u32 = dense[1u, 2u];
+    return;
+}

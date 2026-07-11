@@ -217,6 +217,10 @@ func (v *validator) validateTensorAssign(s ast.TensorAssignStmt, scope map[strin
 func (v *validator) tensorShape(t ast.TypeRef, rank int, scope map[string]varInfo, template *ast.TemplateParam) ([]tensorShapeAxis, bool) {
 	t = v.resolveAlias(t)
 	var dims []ast.Expr
+	if t.Name == "ndarray" && len(t.Args) == 1 {
+		dims = append(dims, t.NDArrayShape...)
+		t = v.resolveAlias(t.Args[0])
+	}
 	for t.Name == "array" && len(t.Args) == 1 {
 		if !t.HasArraySize {
 			return nil, false

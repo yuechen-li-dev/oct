@@ -1,0 +1,10 @@
+// M33a proof: first-class rank-4 tensor storage, dense source-order payload,
+// rank-general indexing, and tensor notation all share the fixed-shape path.
+fn CopyRankFour() -> void {
+    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = [
+        1u, 2u, 4u, 5u, 2u, 3u, 4u, 5u, 7u, 8u, 5u, 6u,
+        4u, 5u, 7u, 8u, 5u, 6u, 8u, 9u, 11u, 12u, 9u, 10u
+    ];
+    let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
+    tensor output[b, h, i, j] = input[b, h, i, j];
+}

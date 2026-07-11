@@ -96,6 +96,35 @@ func TestSdslvFixedArraysUseRankGeneralRowMajorLinearStorage(t *testing.T) {
 	}
 }
 
+func TestSdslvNdarrayUsesSharedFixedShapeEmitterAndSourceOrder(t *testing.T) {
+	out := emitSource(t, `fn Copy() -> void {
+  let input: ndarray<u32, [2u, 2u, 2u, 3u]> = [
+    1u, 2u, 4u, 5u, 2u, 3u,
+    4u, 5u, 7u, 8u, 5u, 6u,
+    4u, 5u, 7u, 8u, 5u, 6u,
+    8u, 9u, 11u, 12u, 9u, 10u
+  ];
+  let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
+  tensor output[b, h, i, j] = input[b, h, i, j];
+  return;
+}`)
+	for _, want := range []string{
+		"uint input[24];",
+		"input[0] = 1u;",
+		"input[1] = 2u;",
+		"input[23] = 10u;",
+		"input[((((((__sdslv_tensor_free_0 * 2u) + __sdslv_tensor_free_1) * 2u) + __sdslv_tensor_free_2) * 3u) + __sdslv_tensor_free_3)]",
+		"uint output[24];",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("ndarray HLSL missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "uint input[2][2][2][3]") || strings.Contains(out, "][") {
+		t.Fatalf("ndarray emitter fell back to nested HLSL array semantics:\n%s", out)
+	}
+}
+
 func TestSdslvTensorCompoundAssignmentMaterializesDestinationOnce(t *testing.T) {
 	out := emitSource(t, `fn Add(B: array<f32, 2u>) -> void {
   let A: array<f32, 2u>;

@@ -161,6 +161,66 @@ func TestSdslvM32aTensorInvalidFixtureCorpus(t *testing.T) {
 	}
 }
 
+func TestSdslvM33aNDArrayValidFixtureCorpusLowers(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m33a-valid", "*.sdslvvalid"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("M33a ndarray valid fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			file, err := source.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tokens, err := lex.Analyze(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diagnostics := validate.Diagnostics(module); len(diagnostics) != 0 {
+				t.Fatalf("unexpected validate failure: %v", diagnostic.Error(diagnostics))
+			}
+			if _, err := sdslv.EmitHLSLFile(path); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestSdslvM33aNDArrayInvalidFixtureCorpus(t *testing.T) {
+	expectations := []invalidFixtureExpectation{
+		{"MissingShape.sdslvinvalid", "validate", "SDSL-V3309", 2, 12},
+		{"EmptyShape.sdslvinvalid", "validate", "SDSL-V3310", 2, 25},
+		{"NonconstantExtent.sdslvinvalid", "validate", "SDSL-V3301", 2, 26},
+		{"NonintegerExtent.sdslvinvalid", "validate", "SDSL-V3301", 2, 26},
+		{"ZeroExtent.sdslvinvalid", "validate", "SDSL-V3302", 2, 26},
+		{"NegativeExtent.sdslvinvalid", "validate", "SDSL-V3302", 2, 26},
+		{"ExtentOverflow.sdslvinvalid", "validate", "SDSL-V3303", 2, 26},
+		{"TotalSizeOverflow.sdslvinvalid", "validate", "SDSL-V3308", 2, 34},
+		{"UnsupportedElementType.sdslvinvalid", "validate", "SDSL-V3311", 2, 20},
+		{"WrongIndexCount.sdslvinvalid", "validate", "SDSL-V3217", 3, 5},
+		{"WrongIndexType.sdslvinvalid", "validate", "SDSL-V1507", 3, 7},
+		{"TooFewLiteralElements.sdslvinvalid", "validate", "SDSL-V3305", 2, 37},
+		{"TooManyLiteralElements.sdslvinvalid", "validate", "SDSL-V3305", 2, 37},
+		{"WrongLiteralElementType.sdslvinvalid", "validate", "SDSL-V3306", 2, 38},
+		{"NestedArrayToNDArrayImplicitConversion.sdslvinvalid", "validate", "SDSL-V1503", 3, 41},
+		{"NDArrayToNestedArrayImplicitConversion.sdslvinvalid", "validate", "SDSL-V1503", 3, 45},
+		{"ShapeMismatchAssignment.sdslvinvalid", "validate", "SDSL-V1503", 4, 9},
+		{"ImmutableMutation.sdslvinvalid", "validate", "SDSL-V1000", 2, 5},
+		{"TensorRankMismatch.sdslvinvalid", "validate", "SDSL-V3206", 4, 12},
+		{"UnsupportedNestedLiteral.sdslvinvalid", "validate", "SDSL-V3312", 2, 38},
+	}
+	for _, expectation := range expectations {
+		t.Run(expectation.file, func(t *testing.T) {
+			path := filepath.Join(languageFixtureRoot(t), "m33a-invalid", expectation.file)
+			assertInvalidFixtureExpectation(t, path, expectation)
+		})
+	}
+}
+
 func TestSdslvM31bValidFlowFixtureCorpusCompiles(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m31b-valid", "*.sdslvvalid"))
 	if err != nil || len(paths) == 0 {

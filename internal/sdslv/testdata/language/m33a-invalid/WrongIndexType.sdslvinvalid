@@ -1,0 +1,5 @@
+fn WrongIndexType() -> void {
+    let x: ndarray<u32, [2u, 2u]>;
+    x[true, 0u];
+    return;
+}

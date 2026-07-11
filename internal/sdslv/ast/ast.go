@@ -216,6 +216,7 @@ type Parameter struct {
 
 type TypeRef struct {
 	Span         source.Span
+	NameSpan     source.Span
 	Name         string
 	Args         []TypeRef
 	ArraySize    Expr
@@ -223,11 +224,20 @@ type TypeRef struct {
 	TileRows     Expr
 	TileCols     Expr
 	HasTileShape bool
-	Access       string
-	ZeroAllowed  bool
+	// NDArrayShape is separate from ArraySize: ndarray is a first-class
+	// fixed-shape value type rather than recursive array syntax.
+	NDArrayShape      []Expr
+	NDArrayShapeSpan  source.Span
+	NDArrayShapeOpen  source.Span
+	NDArrayShapeClose source.Span
+	Access            string
+	ZeroAllowed       bool
 }
 
 func (t TypeRef) String() string {
+	if t.Name == "ndarray" {
+		return "ndarray<" + t.Args[0].String() + ", [Shape...]>"
+	}
 	if t.Name != "array" {
 		return t.Name
 	}
@@ -493,6 +503,8 @@ func ExprSpan(e Expr) source.Span {
 		return x.Span
 	case StringLiteral:
 		return x.Span
+	case ArrayLiteral:
+		return x.Span
 	case IdentifierExpr:
 		return x.Span
 	case ForeignShaderExpr:
@@ -615,6 +627,14 @@ type StringLiteral struct {
 }
 
 func (StringLiteral) exprNode() {}
+
+// ArrayLiteral is target-typed; M33a uses it for dense flat ndarray payloads.
+type ArrayLiteral struct {
+	Span     source.Span
+	Elements []Expr
+}
+
+func (ArrayLiteral) exprNode() {}
 
 type IdentifierExpr struct {
 	Span source.Span

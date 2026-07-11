@@ -1,0 +1,4 @@
+fn NegativeExtent() -> void {
+    let x: ndarray<u32, [-1]>;
+    return;
+}

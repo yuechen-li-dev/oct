@@ -149,3 +149,61 @@ func TestSdslvM29DiagnosticCodesAndSpans(t *testing.T) {
 		})
 	}
 }
+
+func TestSdslvNdarrayDiagnosticsUsePreciseSpans(t *testing.T) {
+	cases := []struct {
+		name, text, code, slice string
+	}{
+		{
+			name:  "missing shape",
+			text:  "fn F() -> void { let x: ndarray<u32>; }\n",
+			code:  "SDSL-V3309",
+			slice: "ndarray",
+		},
+		{
+			name:  "empty shape",
+			text:  "fn F() -> void { let x: ndarray<u32, []>; }\n",
+			code:  "SDSL-V3310",
+			slice: "[]",
+		},
+		{
+			name:  "unsupported element type",
+			text:  "fn F() -> void { let x: ndarray<array<u32, 2u>, [2u]>; }\n",
+			code:  "SDSL-V3311",
+			slice: "array<u32, 2u>",
+		},
+		{
+			name:  "nested literal deferred",
+			text:  "fn F() -> void { let x: ndarray<u32, [2u, 2u]> = [[1u, 2u], [3u, 4u]]; }\n",
+			code:  "SDSL-V3312",
+			slice: "[1u, 2u]",
+		},
+		{
+			name:  "literal count mismatch uses concrete shape",
+			text:  "fn F() -> void { let x: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u]; }\n",
+			code:  "SDSL-V3305",
+			slice: "[1u, 2u, 3u]",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.text})
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range Diagnostics(module) {
+				if d.Code == tc.code {
+					if got := tc.text[d.Span.Start.Offset:d.Span.End.Offset]; got != tc.slice {
+						t.Fatalf("%s span = %q, want %q", tc.code, got, tc.slice)
+					}
+					return
+				}
+			}
+			t.Fatalf("missing %s in %#v", tc.code, Diagnostics(module))
+		})
+	}
+}

@@ -1640,7 +1640,29 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		}
 		return ast.ParenExpr{Span: spanFrom(t.Span.Start, close.Span.End), Inner: inner}, nil
 	case token.LeftBracket:
-		return nil, p.errorAtCurrent("reduction attributes are only supported before direct reduction expressions in let initializers, assignment RHS, or return values")
+		if p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.RightBracket {
+			return nil, p.errorAtCurrent("reduction attributes are only supported before direct reduction expressions in let initializers, assignment RHS, or return values")
+		}
+		start := t.Span.Start
+		p.advance()
+		var elements []ast.Expr
+		if p.current().Kind != token.RightBracket {
+			for {
+				element, err := p.parseExpression()
+				if err != nil {
+					return nil, err
+				}
+				elements = append(elements, element)
+				if !p.match(token.Comma) {
+					break
+				}
+			}
+		}
+		close, err := p.expect(token.RightBracket, "expected ']' after array literal")
+		if err != nil {
+			return nil, err
+		}
+		return ast.ArrayLiteral{Span: spanFrom(start, close.Span.End), Elements: elements}, nil
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
@@ -1779,7 +1801,7 @@ func (p *parser) spanSince(start int) source.Span {
 }
 
 func (p *parser) parseReductionValueOrExpression() (ast.Expr, error) {
-	if p.current().Kind == token.LeftBracket {
+	if p.current().Kind == token.LeftBracket && p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.RightBracket {
 		attributes, err := p.parseAttributes(ast.AttributePlacementExpr)
 		if err != nil {
 			return nil, err
@@ -1979,7 +2001,7 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 	if err != nil {
 		return ast.TypeRef{}, err
 	}
-	ref := ast.TypeRef{Name: name.Lexeme}
+	ref := ast.TypeRef{Name: name.Lexeme, NameSpan: name.Span}
 	if p.match(token.Bang) {
 		if !allowZeroBang {
 			return ast.TypeRef{}, p.errorAtCurrent("u32! is only valid for concept/config fields in SDSL-V M11")
@@ -1989,13 +2011,40 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 		}
 		ref.ZeroAllowed = true
 	}
-	if (ref.Name == "array" || ref.Name == "matrix_view" || ref.Name == "tile" || ref.Name == "reg_tile") && p.match(token.LeftAngle) {
+	if (ref.Name == "array" || ref.Name == "ndarray" || ref.Name == "matrix_view" || ref.Name == "tile" || ref.Name == "reg_tile") && p.match(token.LeftAngle) {
 		elem, err := p.parseTypeRef(false)
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
 		ref.Args = append(ref.Args, elem)
-		if ref.Name == "tile" || ref.Name == "reg_tile" {
+		if ref.Name == "ndarray" {
+			if p.match(token.Comma) {
+				open, err := p.expect(token.LeftBracket, "expected '[' before ndarray shape")
+				if err != nil {
+					return ast.TypeRef{}, err
+				}
+				ref.NDArrayShapeOpen = open.Span
+				shapeStart := open.Span.Start
+				if p.current().Kind != token.RightBracket {
+					for {
+						extent, err := p.parseExpression()
+						if err != nil {
+							return ast.TypeRef{}, err
+						}
+						ref.NDArrayShape = append(ref.NDArrayShape, extent)
+						if !p.match(token.Comma) {
+							break
+						}
+					}
+				}
+				close, err := p.expect(token.RightBracket, "expected ']' after ndarray shape")
+				if err != nil {
+					return ast.TypeRef{}, err
+				}
+				ref.NDArrayShapeClose = close.Span
+				ref.NDArrayShapeSpan = spanFrom(shapeStart, close.Span.End)
+			}
+		} else if ref.Name == "tile" || ref.Name == "reg_tile" {
 			if _, err := p.expect(token.Comma, "expected ',' after tile element type"); err != nil {
 				return ast.TypeRef{}, err
 			}

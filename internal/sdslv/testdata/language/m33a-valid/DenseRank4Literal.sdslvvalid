@@ -1,0 +1,9 @@
+fn DenseRank4Literal() -> void {
+    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = [
+        1u, 2u, 4u, 5u, 2u, 3u,
+        4u, 5u, 7u, 8u, 5u, 6u,
+        4u, 5u, 7u, 8u, 5u, 6u,
+        8u, 9u, 11u, 12u, 9u, 10u
+    ];
+    return;
+}

@@ -239,6 +239,13 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
 			return
 		}
+		if literal, ok := s.Value.(vdmir.NDArrayLiteral); ok {
+			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
+			for i, value := range literal.Elements {
+				e.line(fmt.Sprintf("%s[%d] = %s;", hlslIdentifier(s.Name), i, e.materializeExpr(value)))
+			}
+			return
+		}
 		if zero, ok := s.Value.(vdmir.RegTileZeroExpr); ok {
 			e.emitRegTileZeroLet(s.Name, zero.Type())
 			return
@@ -1308,7 +1315,7 @@ func typeRef(ref vdmir.Type, name string) string {
 		if name == "" {
 			return elem
 		}
-		if ref.Kind == vdmir.TypeArray {
+		if ref.Kind == vdmir.TypeArray || ref.Kind == vdmir.TypeNDArray {
 			return fmt.Sprintf("%s %s[%d]", elem, hlslIdentifier(name), count)
 		}
 		return fmt.Sprintf("%s %s[]", elem, hlslIdentifier(name))

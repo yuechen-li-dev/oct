@@ -1,0 +1,110 @@
+[Fact]
+fn Rank1DenseLiteralIndexing() -> void {
+    let input: ndarray<f32, [4u]> = [1.0, -2.0, 3.5, 0.25];
+    let output: ndarray<f32, [4u]>;
+    let scale: f32 = 2.0;
+    let bias: f32 = -1.0;
+    tensor output[i] = input[i] * scale + bias;
+
+    Assert.Equal(1.0, output[0u]);
+    Assert.Equal(-5.0, output[1u]);
+    Assert.Equal(6.0, output[2u]);
+    Assert.Equal(-0.5, output[3u]);
+}
+
+[Fact]
+fn Rank2RowMajorLayout() -> void {
+    let input: ndarray<u32, [2u, 3u]> = [1u, 10u, 100u, 2u, 20u, 200u];
+    let output: ndarray<u32, [2u, 3u]>;
+    tensor output[i, j] = input[i, j];
+
+    Assert.Equal(1u, output[0u, 0u]);
+    Assert.Equal(10u, output[0u, 1u]);
+    Assert.Equal(100u, output[0u, 2u]);
+    Assert.Equal(2u, output[1u, 0u]);
+    Assert.Equal(20u, output[1u, 1u]);
+    Assert.Equal(200u, output[1u, 2u]);
+}
+
+[Fact]
+fn Rank3TensorUse() -> void {
+    let a: ndarray<u32, [2u, 2u, 2u]> = [1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u];
+    let b: ndarray<u32, [2u, 2u, 2u]> = [9u, 10u, 11u, 12u, 1u, 2u, 3u, 4u];
+    let c: ndarray<u32, [2u, 2u, 2u]>;
+    tensor c[b0, i, j] = Sum[k](a[b0, i, k] * b[b0, k, j]);
+
+    Assert.Equal(31u, c[0u, 0u, 0u]);
+    Assert.Equal(34u, c[0u, 0u, 1u]);
+    Assert.Equal(71u, c[0u, 1u, 0u]);
+    Assert.Equal(78u, c[0u, 1u, 1u]);
+    Assert.Equal(23u, c[1u, 0u, 0u]);
+    Assert.Equal(34u, c[1u, 0u, 1u]);
+    Assert.Equal(31u, c[1u, 1u, 0u]);
+    Assert.Equal(46u, c[1u, 1u, 1u]);
+}
+
+[Fact]
+fn Rank4TensorCopy() -> void {
+    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = [
+        0u, 1u, 2u, 10u, 11u, 12u,
+        100u, 101u, 102u, 110u, 111u, 112u,
+        1000u, 1001u, 1002u, 1010u, 1011u, 1012u,
+        1100u, 1101u, 1102u, 1110u, 1111u, 1112u
+    ];
+    let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
+    tensor output[b, h, i, j] = input[b, h, i, j];
+
+    Assert.Equal(0u, output[0u, 0u, 0u, 0u]);
+    Assert.Equal(12u, output[0u, 0u, 1u, 2u]);
+    Assert.Equal(102u, output[0u, 1u, 0u, 2u]);
+    Assert.Equal(111u, output[0u, 1u, 1u, 1u]);
+    Assert.Equal(1000u, output[1u, 0u, 0u, 0u]);
+    Assert.Equal(1012u, output[1u, 0u, 1u, 2u]);
+    Assert.Equal(1101u, output[1u, 1u, 0u, 1u]);
+    Assert.Equal(1112u, output[1u, 1u, 1u, 2u]);
+}
+
+[Fact]
+fn Rank2Matmul() -> void {
+    let a: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
+    let b: ndarray<u32, [3u, 4u]> = [1u, 0u, 2u, 1u, 3u, 1u, 0u, 2u, 1u, 4u, 5u, 0u];
+    let c: ndarray<u32, [2u, 4u]>;
+    tensor c[i, j] = Sum[k](a[i, k] * b[k, j]);
+
+    Assert.Equal(10u, c[0u, 0u]);
+    Assert.Equal(14u, c[0u, 1u]);
+    Assert.Equal(17u, c[0u, 2u]);
+    Assert.Equal(5u, c[0u, 3u]);
+    Assert.Equal(25u, c[1u, 0u]);
+    Assert.Equal(29u, c[1u, 1u]);
+    Assert.Equal(38u, c[1u, 2u]);
+    Assert.Equal(14u, c[1u, 3u]);
+}
+
+[Fact]
+fn ElementAssignment() -> void {
+    let values: ndarray<u32, [2u, 2u]> = [1u, 2u, 3u, 4u];
+    values[1u, 0u] = 9u;
+
+    Assert.Equal(1u, values[0u, 0u]);
+    Assert.Equal(2u, values[0u, 1u]);
+    Assert.Equal(9u, values[1u, 0u]);
+    Assert.Equal(4u, values[1u, 1u]);
+}
+
+[Fact]
+fn DenseLiteralSourceOrder() -> void {
+    let values: ndarray<u32, [2u, 2u, 2u, 3u]> = [
+        1u, 2u, 4u, 5u, 2u, 3u,
+        4u, 5u, 7u, 8u, 5u, 6u,
+        4u, 5u, 7u, 8u, 5u, 6u,
+        8u, 9u, 11u, 12u, 9u, 10u
+    ];
+
+    Assert.Equal(1u, values[0u, 0u, 0u, 0u]);
+    Assert.Equal(2u, values[0u, 0u, 0u, 1u]);
+    Assert.Equal(4u, values[0u, 0u, 0u, 2u]);
+    Assert.Equal(5u, values[0u, 0u, 1u, 0u]);
+    Assert.Equal(4u, values[1u, 0u, 0u, 0u]);
+    Assert.Equal(10u, values[1u, 1u, 1u, 2u]);
+}

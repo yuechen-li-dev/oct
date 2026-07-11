@@ -1,0 +1,4 @@
+fn UnsupportedElementType() -> void {
+    let x: ndarray<array<u32, 2u>, [2u]>;
+    return;
+}

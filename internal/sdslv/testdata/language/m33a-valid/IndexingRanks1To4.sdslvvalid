@@ -1,0 +1,12 @@
+fn IndexingRanks1To4(
+    a: ndarray<u32, [2u]>,
+    b: ndarray<u32, [2u, 2u]>,
+    c: ndarray<u32, [2u, 2u, 2u]>,
+    d: ndarray<u32, [2u, 2u, 2u, 2u]>
+) -> void {
+    let v1: u32 = a[0u];
+    let v2: u32 = b[0u, 1u];
+    let v3: u32 = c[0u, 1u, 1u];
+    let v4: u32 = d[0u, 1u, 1u, 0u];
+    return;
+}

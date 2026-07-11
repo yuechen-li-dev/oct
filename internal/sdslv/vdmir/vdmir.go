@@ -515,6 +515,16 @@ const (
 	LiteralString  LiteralKind = "string"
 )
 
+// NDArrayLiteral retains source-order dense values after target-type validation.
+type NDArrayLiteral struct {
+	Provenance Provenance
+	ExprType   Type
+	Elements   []Expr
+}
+
+func (NDArrayLiteral) exprNode()    {}
+func (e NDArrayLiteral) Type() Type { return e.ExprType }
+
 type VarRefExpr struct {
 	Provenance Provenance
 	ExprType   Type
@@ -788,9 +798,11 @@ type Type struct {
 	Element      *Type
 	ArraySize    int
 	HasArraySize bool
-	Rows         int
-	Cols         int
-	Access       ResourceAccess
+	// Shape belongs to TypeNDArray and is ordered outermost-to-innermost.
+	Shape  []uint32
+	Rows   int
+	Cols   int
+	Access ResourceAccess
 }
 
 type TypeKind string
@@ -809,6 +821,7 @@ const (
 	TypeFloat4       TypeKind = "float4"
 	TypeRuntimeArray TypeKind = "runtime_array"
 	TypeArray        TypeKind = "array"
+	TypeNDArray      TypeKind = "ndarray"
 	TypeTile         TypeKind = "tile"
 	TypeRegTile      TypeKind = "reg_tile"
 	TypeMatrixView   TypeKind = "matrix_view"
@@ -821,5 +834,5 @@ const (
 )
 
 func (t Type) IsArray() bool {
-	return t.Kind == TypeArray || t.Kind == TypeRuntimeArray
+	return t.Kind == TypeArray || t.Kind == TypeNDArray || t.Kind == TypeRuntimeArray
 }

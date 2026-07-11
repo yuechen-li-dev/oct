@@ -1,0 +1,4 @@
+fn EmptyShape() -> void {
+    let x: ndarray<u32, []>;
+    return;
+}
