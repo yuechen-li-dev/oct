@@ -57,6 +57,7 @@ type emitter struct {
 	indent      int
 	tempCounter int
 	viewAliases map[string]vdmir.RowMajorViewExpr
+	testMode    bool
 }
 
 func (e *emitter) emitStruct(name string, fields []vdmir.Field) {
@@ -148,6 +149,9 @@ func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint)
 	if entry.EmittedName == "" {
 		for _, param := range fn.Params {
 			params = append(params, typeRef(param.Type, param.Name))
+		}
+		if e.testMode {
+			params = append(params, "inout SdslvTestFailure failure")
 		}
 	} else {
 		for _, builtin := range entry.Builtins {
@@ -338,6 +342,8 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			return
 		}
 		e.line(e.expr(s.Value) + ";")
+	case vdmir.AssertStmt:
+		e.emitTestAssert(s)
 	case vdmir.BlockStmt:
 		e.emitBlock(s.Body)
 	case vdmir.IfStmt:

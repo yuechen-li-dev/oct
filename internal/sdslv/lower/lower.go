@@ -8,7 +8,9 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/consteval"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func Module(module ast.Module) (vdmir.Module, error) {
@@ -139,6 +141,138 @@ func ModuleForTarget(module ast.Module, target string) (vdmir.Module, error) {
 		}
 	}
 	return out, nil
+}
+
+// ModuleForTests uses the ordinary target lowering and then converts the
+// validator-owned Assert call plan into dedicated VD-MIR operations.  Keeping
+// this at the lowering boundary prevents the test emitter from inspecting AST
+// calls or manifest metadata.
+func ModuleForTests(module ast.Module, tests []validate.ValidatedTestDecl, target string) (vdmir.Module, error) {
+	out, err := ModuleForTarget(module, target)
+	if err != nil {
+		return vdmir.Module{}, err
+	}
+	plans := make(map[string][]validate.ValidatedAssertCall, len(tests))
+	for _, test := range tests {
+		plans[test.Function.Name] = test.AssertCalls
+	}
+	for i := range out.Functions {
+		plan, ok := plans[out.Functions[i].Name]
+		if !ok {
+			continue
+		}
+		index := 0
+		body, err := lowerTestAssertBlock(out.Functions[i].Body, plan, &index)
+		if err != nil {
+			return vdmir.Module{}, fmt.Errorf("SDSL-V test %s: %w", out.Functions[i].Name, err)
+		}
+		if index != len(plan) {
+			return vdmir.Module{}, fmt.Errorf("SDSL-V2902 malformed canonical assertion projection: lowered %d of %d assertions", index, len(plan))
+		}
+		out.Functions[i].Body = body
+	}
+	return out, nil
+}
+
+func lowerTestAssertBlock(block vdmir.Block, plan []validate.ValidatedAssertCall, index *int) (vdmir.Block, error) {
+	out := vdmir.Block{Statements: make([]vdmir.Stmt, 0, len(block.Statements))}
+	for _, stmt := range block.Statements {
+		switch s := stmt.(type) {
+		case vdmir.ExprStmt:
+			if call, ok := s.Value.(vdmir.CallExpr); ok && vdmirAssertCall(call) {
+				if *index >= len(plan) {
+					return vdmir.Block{}, fmt.Errorf("SDSL-V2902 assertion has no validated metadata")
+				}
+				meta := plan[*index]
+				*index++
+				op, err := makeVDMIRAssert(call, meta)
+				if err != nil {
+					return vdmir.Block{}, err
+				}
+				out.Statements = append(out.Statements, op)
+				continue
+			}
+		case vdmir.IfStmt:
+			thenBody, err := lowerTestAssertBlock(s.ThenBody, plan, index)
+			if err != nil {
+				return vdmir.Block{}, err
+			}
+			s.ThenBody = thenBody
+			if s.ElseBody != nil {
+				elseBody, err := lowerTestAssertBlock(*s.ElseBody, plan, index)
+				if err != nil {
+					return vdmir.Block{}, err
+				}
+				s.ElseBody = &elseBody
+			}
+			out.Statements = append(out.Statements, s)
+			continue
+		case vdmir.ForRangeStmt:
+			body, err := lowerTestAssertBlock(s.Body, plan, index)
+			if err != nil {
+				return vdmir.Block{}, err
+			}
+			s.Body = body
+			out.Statements = append(out.Statements, s)
+			continue
+		case vdmir.BlockStmt:
+			body, err := lowerTestAssertBlock(s.Body, plan, index)
+			if err != nil {
+				return vdmir.Block{}, err
+			}
+			s.Body = body
+			out.Statements = append(out.Statements, s)
+			continue
+		}
+		out.Statements = append(out.Statements, stmt)
+	}
+	return out, nil
+}
+
+func vdmirAssertCall(call vdmir.CallExpr) bool {
+	member, ok := call.Callee.(vdmir.FieldAccessExpr)
+	if !ok {
+		return false
+	}
+	root, ok := member.Target.(vdmir.VarRefExpr)
+	return ok && root.Name == "Assert"
+}
+
+func makeVDMIRAssert(call vdmir.CallExpr, meta validate.ValidatedAssertCall) (vdmir.AssertStmt, error) {
+	op := vdmir.AssertStmt{Provenance: call.Provenance, Kind: vdmir.AssertKind(meta.Kind), CallSpan: meta.CallSpan, OperandSpans: append([]source.Span(nil), meta.OperandSpans...), LexicalIndex: meta.LexicalIndex, ComponentCount: 1}
+	if len(call.Arguments) == 0 {
+		return op, fmt.Errorf("SDSL-V2902 assertion without operands")
+	}
+	switch op.Kind {
+	case vdmir.AssertTrue, vdmir.AssertFalse:
+		op.Actual = call.Arguments[0]
+	case vdmir.AssertEqual, vdmir.AssertNotEqual:
+		if len(call.Arguments) != 2 {
+			return op, fmt.Errorf("SDSL-V2902 assertion arity mismatch")
+		}
+		op.Expected, op.Actual = call.Arguments[0], call.Arguments[1]
+	case vdmir.AssertNear:
+		if len(call.Arguments) != 3 {
+			return op, fmt.Errorf("SDSL-V2902 assertion arity mismatch")
+		}
+		op.Expected, op.Actual, op.Tolerance = call.Arguments[0], call.Arguments[1], call.Arguments[2]
+	default:
+		return op, fmt.Errorf("SDSL-V2901 unsupported assertion kind %q", meta.Kind)
+	}
+	value := op.Actual.Type()
+	switch value.Kind {
+	case vdmir.TypeBool:
+		op.ValueKind = vdmir.AssertValueBool
+	case vdmir.TypeI32:
+		op.ValueKind = vdmir.AssertValueInt
+	case vdmir.TypeU32:
+		op.ValueKind = vdmir.AssertValueUInt
+	case vdmir.TypeF32:
+		op.ValueKind = vdmir.AssertValueFloat
+	default:
+		return op, fmt.Errorf("SDSL-V2901 unsupported assertion operand type %s", value.Name)
+	}
+	return op, nil
 }
 
 func collectForeignTargets(module ast.Module) []string {
@@ -2129,6 +2263,14 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		}
 		return nil, fmt.Errorf("unknown identifier %s", e.Name)
 	case ast.FieldAccessExpr:
+		// Assert is a validator-recognized test intrinsic namespace.  Preserve it
+		// as a first-class call shape in VD-MIR; the test backend gives it its
+		// compiler-owned failure-state semantics rather than treating it as a user
+		// function or requiring a second parse of the test source.
+		if id, ok := e.Target.(ast.IdentifierExpr); ok && id.Name == "Assert" {
+			root := vdmir.VarRefExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}, Name: "Assert", Kind: vdmir.VarFunction}
+			return vdmir.FieldAccessExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}, Target: root, Field: e.Field}, nil
+		}
 		if id, ok := e.Target.(ast.IdentifierExpr); ok {
 			if enumInfo, exists := l.types[id.Name]; exists && enumInfo.kind == "enum" {
 				return vdmir.EnumConstructExpr{

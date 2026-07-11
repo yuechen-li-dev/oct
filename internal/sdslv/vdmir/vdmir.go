@@ -19,6 +19,41 @@ type Module struct {
 	EntryPoints    []ComputeEntryPoint
 }
 
+// TestProgram is the backend-neutral executable projection for an .sdslvtest
+// compilation group. It intentionally contains shader semantics only; host
+// display names, artifact paths, process policy, and manifest DTOs stay in
+// test orchestration.
+type TestProgram struct {
+	Module Module
+	ABI    TestResultContract
+	Groups []TestCompilationGroup
+}
+
+type TestResultContract struct {
+	ABIVersion  uint32
+	LinearIndex TestInvocationLinearIndex
+}
+
+type TestInvocationLinearIndex struct{ UsesXYZ bool }
+
+type TestCompilationGroup struct {
+	ID            string
+	WorkgroupSize [3]uint32
+	Entries       []TestEntry
+}
+
+type TestEntry struct {
+	Selector       uint32
+	FunctionName   string
+	TheoryRow      *TestTheoryRow
+	DispatchGroups [3]uint32
+}
+
+type TestTheoryRow struct {
+	Index  uint32
+	Values []LiteralExpr
+}
+
 type Provenance struct {
 	Path string
 }
@@ -251,6 +286,46 @@ type ExprStmt struct {
 }
 
 func (ExprStmt) stmtNode() {}
+
+// AssertStmt is the test-only, compiler-owned assertion operation.  Its
+// operands are already ordinary lowered VD-MIR expressions; HLSL emission
+// receives no AST call syntax, manifest assertion metadata, or source text.
+// Expected/Actual/Tolerance are evaluated into fresh locals by the backend in
+// source order before the comparison is made.
+type AssertStmt struct {
+	Provenance     Provenance
+	Kind           AssertKind
+	Expected       Expr
+	Actual         Expr
+	Tolerance      Expr
+	CallSpan       source.Span
+	OperandSpans   []source.Span
+	LexicalIndex   int
+	ValueKind      AssertValueKind
+	ComponentCount uint32
+}
+
+func (AssertStmt) stmtNode() {}
+
+type AssertKind string
+
+const (
+	AssertTrue     AssertKind = "Assert.True"
+	AssertFalse    AssertKind = "Assert.False"
+	AssertEqual    AssertKind = "Assert.Equal"
+	AssertNotEqual AssertKind = "Assert.NotEqual"
+	AssertNear     AssertKind = "Assert.Near"
+)
+
+type AssertValueKind uint32
+
+const (
+	AssertValueUnknown AssertValueKind = iota
+	AssertValueBool
+	AssertValueInt
+	AssertValueUInt
+	AssertValueFloat
+)
 
 type ForeignShaderStmt struct {
 	Provenance                Provenance

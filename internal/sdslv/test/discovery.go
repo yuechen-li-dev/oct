@@ -13,6 +13,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/source"
@@ -101,6 +102,10 @@ func Prepare(path string) (Suite, error) {
 	if len(diagnostics) != 0 {
 		return Suite{}, diagnostic.Error(diagnostics)
 	}
+	mir, err := lower.ModuleForTests(module, validated, "HLSL")
+	if err != nil {
+		return Suite{}, fmt.Errorf("SDSL-V test body lowering: %w", err)
+	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return Suite{}, err
@@ -114,7 +119,7 @@ func Prepare(path string) (Suite, error) {
 		return Suite{}, fmt.Errorf("no [Fact] or [Theory] tests found in %s", path)
 	}
 	sort.SliceStable(cases, func(i, j int) bool { return cases[i].Test.StableID < cases[j].Test.StableID })
-	return Suite{Source: identity, Cases: cases, Groups: GroupValidatedCases(cases)}, nil
+	return Suite{Source: identity, Cases: cases, Groups: GroupValidatedCases(cases), MIR: mir}, nil
 }
 
 // ProjectManifest is a one-way host serialization projection from canonical

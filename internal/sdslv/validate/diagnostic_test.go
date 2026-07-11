@@ -104,6 +104,7 @@ func TestSdslvM29DiagnosticCodesAndSpans(t *testing.T) {
 		{"workgroup argument", "[Fact]\n[WorkgroupSize(0u, 1u, 1u)]\nfn T() -> void {}\n", "SDSL-V1304", "0u"},
 		{"assert arity", "[Fact]\nfn T() -> void { Assert.Equal(1u); }\n", "SDSL-V1401", "Assert.Equal(1u)"},
 		{"assert member", "[Fact]\nfn T() -> void { Assert.Missing(1u); }\n", "SDSL-V1405", "Assert.Missing(1u)"},
+		{"negative near tolerance", "[Fact]\nfn T() -> void { Assert.Near(1.0, 1.0, -0.1); }\n", "SDSL-V1404", "-0.1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

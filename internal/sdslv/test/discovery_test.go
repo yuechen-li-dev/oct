@@ -164,3 +164,74 @@ func TestSdslvTestCompilesOneModulePerWorkgroupSize(t *testing.T) {
 		t.Fatalf("SPIR-V missing: %v", err)
 	}
 }
+
+func TestSdslvTestBodiesUseNormalVDMIRAndNoFixtureEmitter(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "real.sdslvtest")
+	src := "[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\nfn Rows(v: u32) -> void { let plus: u32 = v + 1u; Assert.Equal(plus, v + 1u); Assert.NotEqual(v, 0u); }\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	suite, err := Prepare(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(suite.MIR.Functions) != 1 {
+		t.Fatalf("normal lowering did not retain test function: %#v", suite.MIR.Functions)
+	}
+	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hlsl, err := os.ReadFile(groups[0].HLSLPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(hlsl)
+	for _, want := range []string{"uint plus = (v + 1u);", "Rows(1u, failure);", "Rows(2u, failure);", "__sdslv_sdslv_once_0", "if(!failure.failed"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("real VD-MIR HLSL missing %q:\n%s", want, text)
+		}
+	}
+	for _, forbidden := range []string{"InlineHlslAsUint", "FloatBitPattern", "ExplicitLaunchMetadata", "strings.Contains(c.Decl.Function.Name"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("generated HLSL retains fixture behavior %q", forbidden)
+		}
+	}
+}
+
+func TestSdslvHlslAssertionEmissionConsumesDedicatedVDMIR(t *testing.T) {
+	data, err := os.ReadFile("compile.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, forbidden := range []string{"assertCall(", "ValidatedAssertCall", "Assert.*"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("test emitter retains assertion rediscovery %q", forbidden)
+		}
+	}
+	for _, forbidden := range []string{"emitStmt", "emitAssert", "func (e *testEmitter) value"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("test orchestration retains ordinary emitter %q", forbidden)
+		}
+	}
+}
+
+func TestSdslvBuildTestProgramKeepsBackendNeutralExecutionData(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rows.sdslvtest")
+	if err := os.WriteFile(path, []byte("[Theory]\n[InlineData(true, 7u, 1.5)]\nfn Rows(a: bool, b: u32, c: f32) -> void { Assert.True(a); }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	suite, err := Prepare(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := BuildTestProgram(suite)
+	if p.ABI.ABIVersion != 1 || !p.ABI.LinearIndex.UsesXYZ || len(p.Groups) != 1 || len(p.Groups[0].Entries) != 1 {
+		t.Fatalf("program=%#v", p)
+	}
+	row := p.Groups[0].Entries[0].TheoryRow
+	if row == nil || len(row.Values) != 3 || row.Values[0].Type().Kind != "bool" || row.Values[1].Type().Kind != "u32" || row.Values[2].Type().Kind != "f32" {
+		t.Fatalf("row=%#v", row)
+	}
+}

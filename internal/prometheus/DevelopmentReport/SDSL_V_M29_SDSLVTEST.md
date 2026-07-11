@@ -283,3 +283,55 @@ still return their established Go errors in this milestone: this is an explicit
 deferred compiler-wide migration, not a competing validator model. M29a.1c may
 adopt the existing `internal/diagnostic` schema at those boundaries. M29b
 assertion lowering, GPU behavior, and Vulkan-host work have not begun.
+
+## M29b VD-MIR lowering seam
+
+M29b removes the bootstrap fixture-body emitter. `test.Prepare` now sends the
+normal parsed module through `lower.ModuleForTarget(..., "HLSL")`; the suite
+retains that compiler-owned VD-MIR result and `test.Compile` consumes it when
+emitting a compatible compilation group. The test backend owns only generated
+test functions, the case/row dispatcher, hidden ABI-v1 result buffer, local
+failure state, and the single epilogue write. It neither reparses source nor
+uses test names, source filenames, or hard-coded expected values to decide
+generated behavior.
+
+Assert calls are retained as a VD-MIR intrinsic call shape and lowered in
+lexical order. Each operand is first assigned to a fresh local, left-to-right,
+then compared once. A failed assertion records local first-failure state and
+does not return; ordinary control flow continues and the generated epilogue
+writes exactly one ABI-v1 record. Float and integer values use `asuint`, Bool
+uses 0/1, and unused lanes remain initialized to zero. The linear result index
+is `x + y * width + z * width * height`, matching host allocation order.
+
+Theory functions are emitted once per function in a group. Dispatcher cases
+materialize each selected typed row as function arguments, so rows do not
+cause recompilation. This implementation preserves the fixed native host
+contract and leaves barrier behavior unchanged: assertions add no early-return
+or discard and cannot make an otherwise invalid divergent-barrier program
+valid. Hardware evidence recorded above predates this real-lowering change;
+M29b RTX execution is still required before the milestone can be marked
+complete.
+
+### Dedicated assertion operations
+
+The transitional call shape is now consumed at the lowering boundary and is
+replaced by `vdmir.AssertStmt`. It contains the validated assertion kind,
+lowered expected/actual/tolerance operands, call and operand spans, lexical
+index, scalar value kind, and component count. Consequently the HLSL test
+emitter does not receive `ValidatedAssertCall`, inspect `Assert.*` AST syntax,
+or infer assertion behavior from any manifest field. `Assert.Near` rejects a
+negative literal tolerance (`SDSL-V1404`); at runtime negative tolerances and
+NaNs fail deterministically, while infinities pass only when exactly equal.
+
+### Fresh real-lowering execution evidence
+
+On 2026-07-10, the native Vulkan host executed the new source-derived
+`RealAssertions.sdslvtest` suite: `ScalarAssertions` exercised True, False,
+exact Bool/Int/UInt/Float Equal, NotEqual, and Near; two Theory arithmetic
+rows (`[1u,2u]` and `[4u,5u]`) both passed through one lowered body. The
+existing `InlineHlslFacts.sdslvtest` stable IDs also remained green. A focused
+run of intentionally failing `FirstFailureWins` returned
+`ASSERTION_FAILED`, `assertion_id: 0`, source `[28,33]`, expected bits
+`[1,0,0,0]`, and actual bits `[2,0,0,0]`, proving ABI-v1 readback and local
+first-failure ownership for a real lowered body. The same RTX 3070 host and
+ABI-v1 transport described above were used.

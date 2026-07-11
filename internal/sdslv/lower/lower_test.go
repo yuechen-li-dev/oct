@@ -29,6 +29,50 @@ func TestSdslvInlineHlslRejectsUnsupportedLoweringTarget(t *testing.T) {
 	}
 }
 
+func TestSdslvAssertCallsLowerToDedicatedVDMIRStatements(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "asserts.sdslvtest", Text: `[Fact]
+fn Assertions() -> void {
+  Assert.True(true);
+  Assert.False(false);
+  Assert.Equal(1u, 1u);
+  Assert.NotEqual(1, 2);
+  Assert.Near(1.0, 1.0, 0.1);
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests, diagnostics := validate.ValidatedTests(module)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+	mir, err := ModuleForTests(module, tests, "HLSL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := findFunction(t, mir, "Assertions")
+	if len(fn.Body.Statements) != 5 {
+		t.Fatalf("statements=%#v", fn.Body.Statements)
+	}
+	want := []vdmir.AssertKind{vdmir.AssertTrue, vdmir.AssertFalse, vdmir.AssertEqual, vdmir.AssertNotEqual, vdmir.AssertNear}
+	for i, kind := range want {
+		op, ok := fn.Body.Statements[i].(vdmir.AssertStmt)
+		if !ok || op.Kind != kind || op.LexicalIndex != i || !op.CallSpan.Known() {
+			t.Fatalf("assert[%d]=%#v", i, fn.Body.Statements[i])
+		}
+	}
+	near := fn.Body.Statements[4].(vdmir.AssertStmt)
+	if near.Expected == nil || near.Actual == nil || near.Tolerance == nil || near.ValueKind != vdmir.AssertValueFloat {
+		t.Fatalf("near=%#v", near)
+	}
+	if dump := vdmir.Dump(mir); !strings.Contains(dump, "assert Assert.Near lexical=4") {
+		t.Fatalf("VD-MIR dump omits dedicated assert operation:\n%s", dump)
+	}
+}
+
 func TestModuleLowersVectorAddToVDMIR(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 record VectorParams { Count: u32; }

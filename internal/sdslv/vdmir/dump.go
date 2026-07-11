@@ -129,6 +129,18 @@ func dumpBlock(b *strings.Builder, indent int, block Block) {
 			}
 		case ExprStmt:
 			line(indent, "expr "+FormatExpr(s.Value))
+		case AssertStmt:
+			parts := []string{string(s.Kind), fmt.Sprintf("lexical=%d", s.LexicalIndex)}
+			if s.Expected != nil {
+				parts = append(parts, "expected="+FormatExpr(s.Expected))
+			}
+			if s.Actual != nil {
+				parts = append(parts, "actual="+FormatExpr(s.Actual))
+			}
+			if s.Tolerance != nil {
+				parts = append(parts, "tolerance="+FormatExpr(s.Tolerance))
+			}
+			line(indent, "assert "+strings.Join(parts, " "))
 		case BlockStmt:
 			line(indent, "block")
 			dumpBlock(b, indent+1, s.Body)

@@ -1801,8 +1801,20 @@ func (v *validator) testAssertType(name string, call ast.CallExpr, scope map[str
 				}
 			}
 		}
+		if isNegativeFloatConstant(call.Arguments[2]) {
+			v.errorAt(ast.ExprSpan(call.Arguments[2]), "SDSL-V1404", "Assert.Near tolerance must be nonnegative")
+		}
 	}
 	return ast.TypeRef{Name: "void"}
+}
+
+func isNegativeFloatConstant(expr ast.Expr) bool {
+	u, ok := expr.(ast.UnaryExpr)
+	if !ok || u.Operator != "-" {
+		return false
+	}
+	_, ok = u.Operand.(ast.FloatLiteral)
+	return ok
 }
 
 func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {

@@ -868,11 +868,15 @@ A function cannot have both `[Fact]` and `[Theory]`. `[InlineData]` on a `[Fact]
 Facts yield one case; theories yield one case for each row. IDs derive from
 canonical source identity, function, kind, and row identity, and are listed by
 `oct sdslv test path --list`; `--case <id>` replays one discovered case.
-Current implementation supports discovery and manifest validation only. The
-future compiler-owned GPU interface is set `0`, binding `0`, a fixed versioned
-result record per invocation. Assertions must preserve evaluation order, record
-only the first local failure, continue shader execution, and write in the
-generated epilogue. The host owns preflight, timeout/device-loss isolation,
+The compiler lowers test bodies through normal SDSL-V VD-MIR and generates a
+compiler-owned GPU dispatcher. The hidden interface is set `0`, binding `0`,
+with a fixed versioned result record per invocation. Assertion operands are
+evaluated once in left-to-right order; only the first local failure is
+recorded, execution does not abort or return because of an assertion, and the
+generated epilogue writes one record. `Equal` is exact for Bool/Int/UInt/Float;
+`Near` is Float-only and compares absolute error to tolerance. Theory rows
+materialize typed arguments in the dispatcher and share one lowered body, so
+row replay does not recompile the module. The host owns preflight, timeout/device-loss isolation,
 readback, and formatting. Hardware-required mode uses
 `PROMETHEUS_REQUIRE_VULKAN_HARDWARE=1`; GPU-less CI may validate compilation
 and manifests while explicitly skipping execution. Resources, textures,

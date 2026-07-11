@@ -54,19 +54,10 @@ func ExecuteWithOptions(path string, out io.Writer, options Options) error {
 			}
 			continue
 		}
-		// M0's evaluator remains only as a compile-free compatibility seam for
-		// the original scalar fixture.  M29 discovery explicitly rejects malformed
-		// tests before this path; a case that needs GPU lowering fails truthfully.
-		if requiresGPU(manifest) {
-			if err := executeGPU(canonical, manifest, selected, out); err != nil {
-				return err
-			}
-			continue
-		}
-		if len(manifest.Cases) != len(selected) || hasTheory(selected) {
-			return fmt.Errorf("SDSL-V GPU test execution requires sdslv_test_host; discovered %d selected case(s) in %s", len(selected), suite)
-		}
-		if err := executeLegacyFacts(suite, manifest, out); err != nil {
+		// M29 test execution is GPU-only.  The old M0 evaluator is retained below
+		// solely as isolated legacy code and is not an execution authority for
+		// validated .sdslvtest declarations.
+		if err := executeGPU(canonical, manifest, selected, out); err != nil {
 			return err
 		}
 	}
