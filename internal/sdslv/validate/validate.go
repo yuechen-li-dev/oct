@@ -111,18 +111,19 @@ type varInfo struct {
 const maxRegTileElements = 64
 
 type validator struct {
-	path           string
-	moduleSpan     source.Span
-	currentSpan    source.Span
-	diagnostics    []diagnostic.Diagnostic
-	types          map[string]typeInfo
-	funcs          map[string]functionInfo
-	configs        map[string]configInfo
-	concepts       map[string]ast.ConceptDecl
-	shaderDecls    map[string]ast.ShaderDecl
-	compileAliases map[string]struct{}
-	resources      map[string]ast.ResourceDecl
-	testSource     bool
+	path             string
+	moduleSpan       source.Span
+	currentSpan      source.Span
+	diagnostics      []diagnostic.Diagnostic
+	types            map[string]typeInfo
+	funcs            map[string]functionInfo
+	configs          map[string]configInfo
+	concepts         map[string]ast.ConceptDecl
+	shaderDecls      map[string]ast.ShaderDecl
+	compileAliases   map[string]struct{}
+	resources        map[string]ast.ResourceDecl
+	testSource       bool
+	currentTestInput *ValidatedTestInput
 }
 
 // Inline source is deliberately not a security boundary. These checks reject the
@@ -725,6 +726,13 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 	defer v.scoped(fn.Span)()
 	v.validateTestAttributes(fn)
 	v.validateType(fn.ReturnType)
+	previousTestInput := v.currentTestInput
+	if input, ok := testInputForFunction(fn); ok {
+		v.currentTestInput = &input
+	} else {
+		v.currentTestInput = nil
+	}
+	defer func() { v.currentTestInput = previousTestInput }()
 	scope := map[string]varInfo{
 		"DispatchThreadID": {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
 		"GroupThreadID":    {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
@@ -1339,6 +1347,10 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 	case ast.StringLiteral:
 		return ast.TypeRef{Name: "string"}
 	case ast.IdentifierExpr:
+		if e.Name == "TestInput" {
+			v.errorAt(e.Span, "SDSL-V1215", "TestInput is not a first-class value; use TestInput.Length or TestInput.<Kind>[index]")
+			return ast.TypeRef{Name: "<error>"}
+		}
 		if t, ok := scope[e.Name]; ok {
 			switch t.origin {
 			case varDeriveSelf:
@@ -1351,6 +1363,9 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		v.errorAt(e.Span, "SDSL-V1501", "unknown identifier %s", e.Name)
 		return ast.TypeRef{Name: "<error>"}
 	case ast.FieldAccessExpr:
+		if root, ok := e.Target.(ast.IdentifierExpr); ok && root.Name == "TestInput" {
+			return v.testInputFieldType(e)
+		}
 		if id, ok := e.Target.(ast.IdentifierExpr); ok {
 			if enumInfo, exists := v.types[id.Name]; exists && enumInfo.kind == "enum" {
 				variant, ok := enumInfo.enumVariants[e.Field]
@@ -1388,6 +1403,11 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		v.errorAt(e.Span, "SDSL-V1506", "unknown field %s on %s", e.Field, typeName(target))
 		return ast.TypeRef{Name: "<error>"}
 	case ast.IndexExpr:
+		if member, ok := e.Target.(ast.FieldAccessExpr); ok {
+			if root, ok := member.Target.(ast.IdentifierExpr); ok && root.Name == "TestInput" {
+				return v.testInputIndexType(member, e, scope, shaderName, templateParam, currentDeriveField)
+			}
+		}
 		target := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
 		index := v.exprTypeWithExpected(e.Index, scope, shaderName, templateParam, nil, currentDeriveField)
 		if !isInteger(index) {
@@ -1824,6 +1844,7 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 	fact, theory := []ast.Attribute{}, []ast.Attribute{}
 	inline := []ast.Attribute{}
 	wg, dispatch := []ast.Attribute{}, []ast.Attribute{}
+	testInput := []ast.Attribute{}
 	for _, a := range fn.Attributes {
 		switch a.Name {
 		case "Fact":
@@ -1836,6 +1857,8 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 			wg = append(wg, a)
 		case "DispatchGroups":
 			dispatch = append(dispatch, a)
+		case "TestInputBool", "TestInputInt", "TestInputUInt", "TestInputFloat":
+			testInput = append(testInput, a)
 		default:
 			v.errorAt(a.Span, "SDSL-V1101", "unsupported function attribute [%s]", a.Name)
 		}
@@ -1861,12 +1884,25 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 	if len(dispatch) > 1 {
 		v.errorRelated(dispatch[1].Span, "SDSL-V1301", "duplicate [DispatchGroups]", dispatch[0].Span, "first [DispatchGroups] is here")
 	}
+	if len(testInput) > 1 {
+		v.errorRelated(testInput[1].Span, "SDSL-V1210", "duplicate TestInput attribute", testInput[0].Span, "first TestInput attribute is here")
+		if first, firstOK := testInputAttributeKind(testInput[0].Name); firstOK {
+			for _, attr := range testInput[1:] {
+				if next, ok := testInputAttributeKind(attr.Name); ok && next != first {
+					v.errorRelated(attr.Span, "SDSL-V1211", "conflicting TestInput kinds on one function", testInput[0].Span, "first TestInput attribute is here")
+				}
+			}
+		}
+	}
 	if len(inline) > 0 && len(theory) == 0 {
 		if len(fact) > 0 {
 			v.errorAt(inline[0].Span, "SDSL-V1109", "[InlineData] is not allowed on [Fact]")
 		} else {
 			v.errorAt(inline[0].Span, "SDSL-V1201", "[InlineData] requires [Theory]")
 		}
+	}
+	if len(testInput) > 0 && len(fact) == 0 && len(theory) == 0 {
+		v.errorAt(testInput[0].Span, "SDSL-V1212", "TestInput requires [Fact] or [Theory]")
 	}
 	if len(fact) > 0 && len(fn.Parameters) != 0 {
 		v.errorAt(fn.Parameters[0].Span, "SDSL-V1105", "[Fact] must not declare parameters")
@@ -1896,6 +1932,22 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 	for _, a := range dispatch {
 		v.validateLaunchAttribute(a)
 	}
+	for _, a := range testInput {
+		v.validateTestInputAttribute(a)
+	}
+}
+
+func testInputForFunction(fn ast.FunctionDecl) (ValidatedTestInput, bool) {
+	for _, attr := range fn.Attributes {
+		if _, ok := testInputAttributeKind(attr.Name); ok {
+			input, err := validatedTestInputFromAttribute(attr)
+			if err == nil {
+				return input, true
+			}
+			return NoTestInput(), false
+		}
+	}
+	return NoTestInput(), false
 }
 
 func testParameterType(typ ast.TypeRef) bool {
@@ -1948,6 +2000,95 @@ func (v *validator) validateLaunchAttribute(attr ast.Attribute) {
 	}
 }
 
+func (v *validator) validateTestInputAttribute(attr ast.Attribute) {
+	kind, ok := testInputAttributeKind(attr.Name)
+	if !ok {
+		return
+	}
+	for _, arg := range attr.Arguments {
+		word, err := encodeTestInputWord(kind, arg)
+		_ = word
+		if err == nil {
+			continue
+		}
+		switch err.Error() {
+		case "bool":
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V1213", "TestInputBool values must be constant bool values")
+		case "int":
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V1214", "TestInputInt values must be constant i32 values")
+		case "uint":
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V1214", "TestInputUInt values must be constant u32 values")
+		case "float":
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V1214", "TestInputFloat values must be constant f32 values")
+		default:
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V1214", "unsupported TestInput value")
+		}
+	}
+}
+
+func (v *validator) testInputFieldType(expr ast.FieldAccessExpr) ast.TypeRef {
+	if expr.Field == "Length" {
+		if v.currentTestInput == nil || v.currentTestInput.Kind == TestInputKindNone {
+			v.errorAt(expr.Span, "SDSL-V1216", "TestInput access requires a declared TestInput attribute on the function")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		return ast.TypeRef{Name: "u32"}
+	}
+	targetType := v.testInputMemberArrayType(expr)
+	if targetType.Name != "<error>" {
+		v.errorAt(expr.Span, "SDSL-V1220", "TestInput.%s may only be used with [index]", expr.Field)
+	}
+	return targetType
+}
+
+func (v *validator) testInputMemberArrayType(expr ast.FieldAccessExpr) ast.TypeRef {
+	if v.currentTestInput == nil || v.currentTestInput.Kind == TestInputKindNone {
+		v.errorAt(expr.Span, "SDSL-V1216", "TestInput access requires a declared TestInput attribute on the function")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	kind, ok := testInputMemberKind(expr.Field)
+	if !ok {
+		v.errorAt(expr.Span, "SDSL-V1217", "unsupported TestInput member %s", expr.Field)
+		return ast.TypeRef{Name: "<error>"}
+	}
+	if v.currentTestInput.Kind != kind {
+		v.errorAt(expr.Span, "SDSL-V1218", "TestInput.%s does not match declared %s payload", expr.Field, v.currentTestInput.Kind)
+		return ast.TypeRef{Name: "<error>"}
+	}
+	return ast.TypeRef{Name: "array", Args: []ast.TypeRef{{Name: scalarTypeNameForTestInputKind(kind)}}}
+}
+
+func (v *validator) testInputIndexType(member ast.FieldAccessExpr, indexExpr ast.IndexExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, currentDeriveField string) ast.TypeRef {
+	targetType := v.testInputMemberArrayType(member)
+	index := v.exprTypeWithExpected(indexExpr.Index, scope, shaderName, templateParam, nil, currentDeriveField)
+	if !isInteger(index) {
+		v.errorAt(ast.ExprSpan(indexExpr.Index), "SDSL-V1507", "array index must be integer")
+	}
+	if indexExpr.HasSecond {
+		v.errorAt(indexExpr.Span, "SDSL-V1219", "TestInput members support only one index")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	if targetType.Name == "array" && len(targetType.Args) == 1 {
+		return targetType.Args[0]
+	}
+	return ast.TypeRef{Name: "<error>"}
+}
+
+func scalarTypeNameForTestInputKind(kind TestInputValueKind) string {
+	switch kind {
+	case TestInputKindBool:
+		return "bool"
+	case TestInputKindInt:
+		return "i32"
+	case TestInputKindUInt:
+		return "u32"
+	case TestInputKindFloat:
+		return "f32"
+	default:
+		return "<error>"
+	}
+}
+
 func (v *validator) compatible(left, right ast.TypeRef) bool {
 	left = v.resolveAlias(left)
 	right = v.resolveAlias(right)
@@ -1995,6 +2136,10 @@ func (v *validator) typeKind(ref ast.TypeRef) string {
 func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[string]varInfo) {
 	root, ok := rootIdentifier(expr)
 	if !ok {
+		return
+	}
+	if root == "TestInput" {
+		v.errorf("TestInput is read-only")
 		return
 	}
 	info, ok := scope[root]

@@ -25,7 +25,12 @@ func BuildTestProgram(suite Suite) vdmir.TestProgram {
 	for _, group := range suite.Groups {
 		g := vdmir.TestCompilationGroup{ID: group.ID, WorkgroupSize: group.WorkgroupSize}
 		for i, c := range group.Cases {
-			e := vdmir.TestEntry{Selector: uint32(i), FunctionName: c.Test.Decl.Function.Name, DispatchGroups: c.Test.Decl.Launch.DispatchGroups}
+			e := vdmir.TestEntry{
+				Selector:       uint32(i),
+				FunctionName:   c.Test.Decl.Function.Name,
+				DispatchGroups: c.Test.Decl.Launch.DispatchGroups,
+				Input:          testInputContract(c.Test.Decl.TestInput),
+			}
 			if c.Test.Row != nil {
 				row := &vdmir.TestTheoryRow{Index: uint32(c.Test.Row.Index)}
 				for _, value := range c.Test.Row.Values {
@@ -38,6 +43,27 @@ func BuildTestProgram(suite Suite) vdmir.TestProgram {
 		p.Groups = append(p.Groups, g)
 	}
 	return p
+}
+
+func testInputContract(input validate.ValidatedTestInput) vdmir.TestInputContract {
+	kind := vdmir.TestInputValueNone
+	switch input.Kind {
+	case validate.TestInputKindBool:
+		kind = vdmir.TestInputValueBool
+	case validate.TestInputKindInt:
+		kind = vdmir.TestInputValueInt
+	case validate.TestInputKindUInt:
+		kind = vdmir.TestInputValueUInt
+	case validate.TestInputKindFloat:
+		kind = vdmir.TestInputValueFloat
+	}
+	return vdmir.TestInputContract{
+		ABIVersion:   input.ABIVersion,
+		Binding:      vdmir.Binding{Set: 0, Binding: 1, Explicit: true},
+		ValueKind:    kind,
+		ElementCount: input.ElementCount,
+		PayloadWords: append([]uint32(nil), input.PayloadWords...),
+	}
 }
 
 func testLiteral(value validate.ConstValue) vdmir.LiteralExpr {

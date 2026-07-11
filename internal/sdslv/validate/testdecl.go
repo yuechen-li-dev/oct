@@ -45,6 +45,7 @@ type ValidatedTestDecl struct {
 	Function       ast.FunctionDecl
 	Kind           TestKind
 	StableIdentity TestStableIdentity
+	TestInput      ValidatedTestInput
 	InlineRows     []ValidatedTheoryRow
 	Launch         ValidatedLaunchMetadata
 	AssertCalls    []ValidatedAssertCall
@@ -100,7 +101,7 @@ func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, []diagnostic.Diagno
 		if !ok {
 			continue
 		}
-		d := ValidatedTestDecl{Function: fn, Kind: kind, StableIdentity: TestStableIdentity{Source: module.Source.Path, Function: fn.Name, Kind: kind}, FunctionSpan: fn.Span, AttributeSpans: spans, Launch: ValidatedLaunchMetadata{WorkgroupSize: [3]uint32{1, 1, 1}, DispatchGroups: [3]uint32{1, 1, 1}}}
+		d := ValidatedTestDecl{Function: fn, Kind: kind, StableIdentity: TestStableIdentity{Source: module.Source.Path, Function: fn.Name, Kind: kind}, TestInput: NoTestInput(), FunctionSpan: fn.Span, AttributeSpans: spans, Launch: ValidatedLaunchMetadata{WorkgroupSize: [3]uint32{1, 1, 1}, DispatchGroups: [3]uint32{1, 1, 1}}}
 		for i := range fn.Attributes {
 			a := fn.Attributes[i]
 			switch a.Name {
@@ -122,6 +123,13 @@ func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, []diagnostic.Diagno
 				d.Launch.DispatchGroups = launchValues(a.Arguments)
 				d.Launch.DispatchSpan = a.Span
 				d.Launch.DispatchArgSpans = argumentSpans(a.Arguments)
+			default:
+				if _, ok := testInputAttributeKind(a.Name); ok {
+					input, err := validatedTestInputFromAttribute(a)
+					if err == nil {
+						d.TestInput = input
+					}
+				}
 			}
 		}
 		d.AssertCalls = assertionCalls(fn.Body)

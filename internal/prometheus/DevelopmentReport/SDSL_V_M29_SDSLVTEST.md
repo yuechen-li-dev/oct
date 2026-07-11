@@ -335,3 +335,14 @@ run of intentionally failing `FirstFailureWins` returned
 `[1,0,0,0]`, and actual bits `[2,0,0,0]`, proving ABI-v1 readback and local
 first-failure ownership for a real lowered body. The same RTX 3070 host and
 ABI-v1 transport described above were used.
+
+## M30 handoff
+
+M29's fixed ABI-v1 result path and native host ownership remain intact in M30.
+The new milestone extends that boundary with exactly one compiler-owned
+read-only test input resource at set `0`, binding `1`. Parser, validator,
+validated metadata, VD-MIR, shared HLSL, manifest projection, and the native
+host all preserve the M29 ownership rule: compiler layers define semantics,
+the manifest serializes them, and the host only uploads and binds the payload.
+M30 must not reopen fixture-specific emitters, host-owned semantic validation,
+or arbitrary descriptor/resource declaration design.

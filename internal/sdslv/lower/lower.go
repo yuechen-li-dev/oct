@@ -14,6 +14,10 @@ import (
 )
 
 func Module(module ast.Module) (vdmir.Module, error) {
+	return moduleWithTests(module, nil)
+}
+
+func moduleWithTests(module ast.Module, testInputs map[string]validate.ValidatedTestInput) (vdmir.Module, error) {
 	specialized, err := specializeModule(module)
 	if err != nil {
 		return vdmir.Module{}, err
@@ -27,6 +31,7 @@ func Module(module ast.Module) (vdmir.Module, error) {
 		provenance: vdmir.ProvenanceFromFile(module.Source),
 		types:      map[string]typeInfo{},
 		functions:  map[string]functionInfo{},
+		testInputs: testInputs,
 	}
 	l.seedBuiltins()
 	l.collect(module)
@@ -148,13 +153,31 @@ func ModuleForTarget(module ast.Module, target string) (vdmir.Module, error) {
 // this at the lowering boundary prevents the test emitter from inspecting AST
 // calls or manifest metadata.
 func ModuleForTests(module ast.Module, tests []validate.ValidatedTestDecl, target string) (vdmir.Module, error) {
-	out, err := ModuleForTarget(module, target)
+	testInputs := make(map[string]validate.ValidatedTestInput, len(tests))
+	for _, test := range tests {
+		testInputs[test.Function.Name] = test.TestInput
+	}
+	out, err := moduleWithTests(module, testInputs)
 	if err != nil {
 		return vdmir.Module{}, err
 	}
 	plans := make(map[string][]validate.ValidatedAssertCall, len(tests))
 	for _, test := range tests {
 		plans[test.Function.Name] = test.AssertCalls
+	}
+	for _, foreign := range out.ForeignTargets {
+		if foreign != target {
+			return vdmir.Module{}, fmt.Errorf("this shader contains inline %s and cannot be lowered to target %s", foreign, target)
+		}
+	}
+	if len(testInputs) != 0 {
+		out.Resources = append(out.Resources, vdmir.Resource{
+			Provenance:  out.Provenance,
+			Name:        vdmir.TestInputResourceName,
+			ElementType: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"},
+			Access:      vdmir.ResourceReadOnly,
+			Binding:     vdmir.Binding{Set: 0, Binding: 1, Explicit: true},
+		})
 	}
 	for i := range out.Functions {
 		plan, ok := plans[out.Functions[i].Name]
@@ -1845,10 +1868,12 @@ func cloneBindings(in map[string]binding) map[string]binding {
 }
 
 type lowering struct {
-	provenance vdmir.Provenance
-	types      map[string]typeInfo
-	functions  map[string]functionInfo
-	deriveTemp int
+	provenance       vdmir.Provenance
+	types            map[string]typeInfo
+	functions        map[string]functionInfo
+	deriveTemp       int
+	testInputs       map[string]validate.ValidatedTestInput
+	currentTestInput *validate.ValidatedTestInput
 }
 
 func (l *lowering) seedBuiltins() {
@@ -2001,6 +2026,16 @@ func (l *lowering) resolveShaderResources(shader ast.ShaderDecl) ([]ast.Resource
 }
 
 func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl) (vdmir.Function, error) {
+	previousTestInput := l.currentTestInput
+	if shaderName == "" && l.testInputs != nil {
+		if input, ok := l.testInputs[fn.Name]; ok {
+			copy := input
+			l.currentTestInput = &copy
+		} else {
+			l.currentTestInput = nil
+		}
+	}
+	defer func() { l.currentTestInput = previousTestInput }()
 	out := vdmir.Function{
 		Provenance: l.provenance,
 		Name:       fn.Name,
@@ -2255,6 +2290,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 	case ast.StringLiteral:
 		return vdmir.LiteralExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeBuiltin, Name: "string"}, Kind: vdmir.LiteralString, Value: fmt.Sprintf("%q", e.Value)}, nil
 	case ast.IdentifierExpr:
+		if e.Name == "TestInput" {
+			return nil, fmt.Errorf("TestInput is not a first-class value")
+		}
 		if b, ok := scope[e.Name]; ok {
 			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(b.typ)), Name: b.name, Kind: b.kind}, nil
 		}
@@ -2263,6 +2301,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		}
 		return nil, fmt.Errorf("unknown identifier %s", e.Name)
 	case ast.FieldAccessExpr:
+		if root, ok := e.Target.(ast.IdentifierExpr); ok && root.Name == "TestInput" {
+			return l.lowerTestInputFieldAccess(e)
+		}
 		// Assert is a validator-recognized test intrinsic namespace.  Preserve it
 		// as a first-class call shape in VD-MIR; the test backend gives it its
 		// compiler-owned failure-state semantics rather than treating it as a user
@@ -2292,6 +2333,11 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			Field:      e.Field,
 		}, nil
 	case ast.IndexExpr:
+		if field, ok := e.Target.(ast.FieldAccessExpr); ok {
+			if root, ok := field.Target.(ast.IdentifierExpr); ok && root.Name == "TestInput" {
+				return l.lowerTestInputIndex(field, e, scope, shaderName)
+			}
+		}
 		target, err := l.lowerExprWithExpected(e.Target, scope, shaderName, nil)
 		if err != nil {
 			return nil, err
@@ -2856,6 +2902,55 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 		}
 	}
 	return vdmir.Type{}
+}
+
+func (l *lowering) lowerTestInputFieldAccess(expr ast.FieldAccessExpr) (vdmir.Expr, error) {
+	if expr.Field == "Length" {
+		if l.currentTestInput == nil {
+			return nil, fmt.Errorf("TestInput.Length requires declared test input")
+		}
+		return vdmir.LiteralExpr{
+			Provenance: l.provenance,
+			ExprType:   vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"},
+			Kind:       vdmir.LiteralInteger,
+			Value:      fmt.Sprintf("%du", l.currentTestInput.ElementCount),
+		}, nil
+	}
+	return nil, fmt.Errorf("TestInput.%s must be indexed", expr.Field)
+}
+
+func (l *lowering) lowerTestInputIndex(field ast.FieldAccessExpr, expr ast.IndexExpr, scope map[string]binding, shaderName string) (vdmir.Expr, error) {
+	if l.currentTestInput == nil {
+		return nil, fmt.Errorf("TestInput access requires declared test input")
+	}
+	index, err := l.lowerExprWithExpected(expr.Index, scope, shaderName, nil)
+	if err != nil {
+		return nil, err
+	}
+	elementType := vdmir.Type{}
+	switch l.currentTestInput.Kind {
+	case validate.TestInputKindBool:
+		elementType = vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
+	case validate.TestInputKindInt:
+		elementType = vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
+	case validate.TestInputKindUInt:
+		elementType = vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+	case validate.TestInputKindFloat:
+		elementType = vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+	default:
+		return nil, fmt.Errorf("TestInput access requires declared test input")
+	}
+	return vdmir.IndexExpr{
+		Provenance: l.provenance,
+		ExprType:   elementType,
+		Target: vdmir.VarRefExpr{
+			Provenance: l.provenance,
+			ExprType:   vdmir.Type{Kind: vdmir.TypeRuntimeArray, Name: "array", Element: &vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}},
+			Name:       vdmir.TestInputResourceName,
+			Kind:       vdmir.VarResource,
+		},
+		Index: index,
+	}, nil
 }
 
 func addBuiltinBindings(scope map[string]binding) {

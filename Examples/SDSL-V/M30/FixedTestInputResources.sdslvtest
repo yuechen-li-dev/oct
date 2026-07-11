@@ -1,0 +1,59 @@
+[Fact]
+[TestInputUInt(7u, 11u)]
+fn GuardedReadUsesSource() -> void {
+    let index: u32 = 1u;
+    let valid: bool = index < TestInput.Length;
+    let value: u32 = read TestInput.UInt[index] when valid else 99u;
+    Assert.Equal(11u, value);
+}
+
+[Fact]
+[TestInputUInt(7u, 11u)]
+fn GuardedReadUsesFallback() -> void {
+    let index: u32 = 99u;
+    let valid: bool = index < TestInput.Length;
+    let value: u32 = read TestInput.UInt[index] when valid else 99u;
+    Assert.Equal(99u, value);
+}
+
+[Fact]
+[TestInputUInt(5u, 7u, 11u)]
+fn GuardedReadBoundaryCases() -> void {
+    let first: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 99u;
+    let lastIndex: u32 = TestInput.Length - 1u;
+    let last: u32 = read TestInput.UInt[lastIndex] when lastIndex < TestInput.Length else 99u;
+    let equalLength: u32 = TestInput.Length;
+    let fallback: u32 = read TestInput.UInt[equalLength] when equalLength < TestInput.Length else 99u;
+    Assert.Equal(5u, first);
+    Assert.Equal(11u, last);
+    Assert.Equal(99u, fallback);
+}
+
+[Fact]
+[TestInputBool(true, false)]
+fn BoolInputReads() -> void {
+    let value: bool = read TestInput.Bool[0u] when 0u < TestInput.Length else false;
+    Assert.True(value);
+}
+
+[Fact]
+[TestInputInt(-7, 9)]
+fn IntInputReads() -> void {
+    let value: i32 = read TestInput.Int[0u] when 0u < TestInput.Length else 0;
+    Assert.Equal(-7, value);
+}
+
+[Fact]
+[TestInputFloat(-0.0, 1.5)]
+fn FloatInputReads() -> void {
+    let value: f32 = read TestInput.Float[0u] when 0u < TestInput.Length else 1.0;
+    let bits: u32 = HLSL<u32>(value) {
+        return asuint(value);
+    };
+    Assert.Equal(2147483648u, bits);
+}
+
+[Fact]
+fn NoInputCompatibility() -> void {
+    Assert.Equal(0u, 0u);
+}

@@ -73,6 +73,49 @@ fn Assertions() -> void {
 	}
 }
 
+func TestModuleForTestsLowersTestInputToHiddenIndexedResource(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "input.sdslvtest", Text: `[Fact]
+[TestInputInt(-7, 9)]
+fn ReadInput() -> void {
+  let index: u32 = 1u;
+  let valid: bool = index < TestInput.Length;
+  let value: i32 = read TestInput.Int[index] when valid else 0;
+  Assert.Equal(9, value);
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests, diagnostics := validate.ValidatedTests(module)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+	mir, err := ModuleForTests(module, tests, "HLSL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := findFunction(t, mir, "ReadInput")
+	letValue := fn.Body.Statements[2].(vdmir.LetStmt)
+	guarded, ok := letValue.Value.(vdmir.GuardedReadExpr)
+	if !ok {
+		t.Fatalf("value = %T, want GuardedReadExpr", letValue.Value)
+	}
+	target, ok := guarded.Target.(vdmir.IndexExpr)
+	if !ok {
+		t.Fatalf("guarded target = %T, want IndexExpr", guarded.Target)
+	}
+	resource, ok := target.Target.(vdmir.VarRefExpr)
+	if !ok || resource.Name != vdmir.TestInputResourceName || target.Type().Kind != vdmir.TypeI32 {
+		t.Fatalf("target = %#v", target)
+	}
+	if dump := vdmir.Dump(mir); !strings.Contains(dump, "resource readonly __sdslv_test_input: array<u32>") || !strings.Contains(dump, "let valid: bool = (index < 2u)") {
+		t.Fatalf("dump missing hidden test input path:\n%s", dump)
+	}
+}
+
 func TestModuleLowersVectorAddToVDMIR(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 record VectorParams { Count: u32; }

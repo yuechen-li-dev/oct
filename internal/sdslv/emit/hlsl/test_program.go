@@ -16,6 +16,7 @@ func EmitTestGroup(program vdmir.TestProgram, group vdmir.TestCompilationGroup) 
 	e.line("struct SdslvTestFailure { bool failed; uint assertion_id; uint source_line; uint source_column; uint value_kind; uint expected_bits[4]; uint actual_bits[4]; uint tolerance_bits[4]; };")
 	e.line("struct SdslvTestPush { uint test_case_id; uint theory_row_id; uint invocation_width; uint invocation_height; };")
 	e.line("RWStructuredBuffer<SdslvTestInvocationResult> __sdslv_test_results : register(u0, space0);")
+	e.line("[[vk::binding(1, 0)]] StructuredBuffer<uint> __sdslv_test_input;")
 	e.line("[[vk::push_constant]] SdslvTestPush __sdslv_push;")
 	want := map[string]bool{}
 	for _, x := range group.Entries {

@@ -29,6 +29,26 @@ type TestProgram struct {
 	Groups []TestCompilationGroup
 }
 
+const TestInputResourceName = "__sdslv_test_input"
+
+type TestInputContract struct {
+	ABIVersion   uint32
+	Binding      Binding
+	ValueKind    TestInputValueKind
+	ElementCount uint32
+	PayloadWords []uint32
+}
+
+type TestInputValueKind string
+
+const (
+	TestInputValueNone  TestInputValueKind = "none"
+	TestInputValueBool  TestInputValueKind = "bool"
+	TestInputValueInt   TestInputValueKind = "int"
+	TestInputValueUInt  TestInputValueKind = "uint"
+	TestInputValueFloat TestInputValueKind = "float"
+)
+
 type TestResultContract struct {
 	ABIVersion  uint32
 	LinearIndex TestInvocationLinearIndex
@@ -47,6 +67,7 @@ type TestEntry struct {
 	FunctionName   string
 	TheoryRow      *TestTheoryRow
 	DispatchGroups [3]uint32
+	Input          TestInputContract
 }
 
 type TestTheoryRow struct {

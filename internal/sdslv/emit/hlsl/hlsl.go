@@ -601,6 +601,9 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 	case vdmir.FieldAccessExpr:
 		return e.expr(x.Target) + "." + hlslIdentifier(x.Field)
 	case vdmir.IndexExpr:
+		if text, ok := e.testInputIndex(x); ok {
+			return text
+		}
 		return e.expr(x.Target) + "[" + e.expr(x.Index) + "]"
 	case vdmir.Index2DExpr:
 		return e.index2D(x)
@@ -646,6 +649,24 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return "/* unsupported match expr position */"
 	default:
 		return "/* unsupported */"
+	}
+}
+
+func (e *emitter) testInputIndex(expr vdmir.IndexExpr) (string, bool) {
+	target, ok := expr.Target.(vdmir.VarRefExpr)
+	if !ok || target.Name != vdmir.TestInputResourceName {
+		return "", false
+	}
+	base := e.expr(expr.Target) + "[" + e.expr(expr.Index) + "]"
+	switch expr.Type().Kind {
+	case vdmir.TypeBool:
+		return "(" + base + " != 0u)", true
+	case vdmir.TypeI32:
+		return "asint(" + base + ")", true
+	case vdmir.TypeF32:
+		return "asfloat(" + base + ")", true
+	default:
+		return base, true
 	}
 }
 

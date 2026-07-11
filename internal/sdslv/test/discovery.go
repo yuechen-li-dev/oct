@@ -36,28 +36,30 @@ type Launch struct {
 	DispatchGroups [3]uint32 `json:"dispatch_groups"`
 }
 type Case struct {
-	StableID       string                           `json:"stable_id"`
-	DisplayName    string                           `json:"display_name"`
-	Source         string                           `json:"source"`
-	Function       string                           `json:"function"`
-	Kind           string                           `json:"kind"`
-	TheoryRow      *int                             `json:"theory_row,omitempty"`
-	InlineData     []string                         `json:"inline_data,omitempty"`
-	Launch         Launch                           `json:"launch"`
-	RequiresGPU    bool                             `json:"requires_gpu"`
-	ForeignTargets []string                         `json:"foreign_targets"`
-	Capabilities   []string                         `json:"capabilities"`
-	FunctionSpan   source.Span                      `json:"function_span"`
-	AttributeSpans validate.TestAttributeSpans      `json:"attribute_spans"`
-	RowSpan        *source.Span                     `json:"row_span,omitempty"`
-	ValueSpans     []source.Span                    `json:"value_spans,omitempty"`
-	TypedValues    []validate.ConstValue            `json:"typed_values,omitempty"`
-	LaunchMetadata validate.ValidatedLaunchMetadata `json:"launch_metadata"`
-	Assertions     []validate.ValidatedAssertCall   `json:"assertions"`
-	StableIdentity validate.TestStableIdentity      `json:"stable_identity"`
-	GroupID        string                           `json:"group_id"`
-	HLSLPath       string                           `json:"hlsl_path,omitempty"`
-	SPIRVPath      string                           `json:"spirv_path,omitempty"`
+	StableID         string                           `json:"stable_id"`
+	DisplayName      string                           `json:"display_name"`
+	Source           string                           `json:"source"`
+	Function         string                           `json:"function"`
+	Kind             string                           `json:"kind"`
+	TheoryRow        *int                             `json:"theory_row,omitempty"`
+	InlineData       []string                         `json:"inline_data,omitempty"`
+	Launch           Launch                           `json:"launch"`
+	RequiresGPU      bool                             `json:"requires_gpu"`
+	ForeignTargets   []string                         `json:"foreign_targets"`
+	Capabilities     []string                         `json:"capabilities"`
+	FunctionSpan     source.Span                      `json:"function_span"`
+	AttributeSpans   validate.TestAttributeSpans      `json:"attribute_spans"`
+	RowSpan          *source.Span                     `json:"row_span,omitempty"`
+	ValueSpans       []source.Span                    `json:"value_spans,omitempty"`
+	TypedValues      []validate.ConstValue            `json:"typed_values,omitempty"`
+	LaunchMetadata   validate.ValidatedLaunchMetadata `json:"launch_metadata"`
+	Assertions       []validate.ValidatedAssertCall   `json:"assertions"`
+	StableIdentity   validate.TestStableIdentity      `json:"stable_identity"`
+	TestInputBinding uint32                           `json:"test_input_binding"`
+	TestInput        validate.ValidatedTestInput      `json:"test_input"`
+	GroupID          string                           `json:"group_id"`
+	HLSLPath         string                           `json:"hlsl_path,omitempty"`
+	SPIRVPath        string                           `json:"spirv_path,omitempty"`
 }
 type Manifest struct {
 	SchemaVersion    int    `json:"schema_version"`
@@ -125,7 +127,7 @@ func Prepare(path string) (Suite, error) {
 // ProjectManifest is a one-way host serialization projection from canonical
 // suite/group data. It contains no validation, defaults, or identity logic.
 func ProjectManifest(suite Suite, artifacts []Group) Manifest {
-	m := Manifest{SchemaVersion: 2, ResultABIVersion: ResultABIVersion, Source: suite.Source}
+	m := Manifest{SchemaVersion: 3, ResultABIVersion: ResultABIVersion, Source: suite.Source}
 	m.Interface.DescriptorSet = 0
 	m.Interface.Binding = 0
 	m.Interface.Resource = "compiler-owned assertion result buffer"
@@ -144,7 +146,7 @@ func ProjectManifest(suite Suite, artifacts []Group) Manifest {
 	for _, canonical := range suite.Cases {
 		test := canonical.Test
 		d := test.Decl
-		c := Case{StableID: test.StableID, DisplayName: test.DisplayName, Source: suite.Source, Function: d.Function.Name, Kind: string(d.Kind), Launch: Launch{WorkgroupSize: d.Launch.WorkgroupSize, DispatchGroups: d.Launch.DispatchGroups}, RequiresGPU: d.RequiresGPU, ForeignTargets: d.ForeignTargets, Capabilities: d.Capabilities, FunctionSpan: d.FunctionSpan, AttributeSpans: d.AttributeSpans, LaunchMetadata: d.Launch, Assertions: d.AssertCalls, StableIdentity: d.StableIdentity, GroupID: groupID[test.StableID]}
+		c := Case{StableID: test.StableID, DisplayName: test.DisplayName, Source: suite.Source, Function: d.Function.Name, Kind: string(d.Kind), Launch: Launch{WorkgroupSize: d.Launch.WorkgroupSize, DispatchGroups: d.Launch.DispatchGroups}, RequiresGPU: d.RequiresGPU, ForeignTargets: d.ForeignTargets, Capabilities: d.Capabilities, FunctionSpan: d.FunctionSpan, AttributeSpans: d.AttributeSpans, LaunchMetadata: d.Launch, Assertions: d.AssertCalls, StableIdentity: d.StableIdentity, TestInputBinding: 1, TestInput: d.TestInput, GroupID: groupID[test.StableID]}
 		if g, ok := groupByCase[test.StableID]; ok {
 			c.HLSLPath = g.HLSLPath
 			c.SPIRVPath = g.SPIRVPath

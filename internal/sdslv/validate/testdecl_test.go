@@ -10,7 +10,7 @@ import (
 
 func validatedTestFixture(t *testing.T) []ValidatedTestDecl {
 	t.Helper()
-	text := "[Fact]\nfn FactCase() -> void { Assert.True(true); }\n[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\n[WorkgroupSize(32, 1, 1)]\n[DispatchGroups(2, 1, 1)]\nfn Rows(v: u32) -> void { Assert.Equal(v, v); }\n"
+	text := "[Fact]\n[TestInputUInt(7u, 11u)]\nfn FactCase() -> void { Assert.True(true); }\n[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\n[WorkgroupSize(32, 1, 1)]\n[DispatchGroups(2, 1, 1)]\nfn Rows(v: u32) -> void { Assert.Equal(v, v); }\n"
 	tokens, err := lex.Analyze(source.File{Path: "fixture.sdslvtest", Text: text})
 	if err != nil {
 		t.Fatal(err)
@@ -30,6 +30,13 @@ func TestSdslvValidatedTestDeclContainsFactKind(t *testing.T) {
 	tests := validatedTestFixture(t)
 	if len(tests) != 2 || tests[0].Kind != TestKindFact || tests[0].Function.Name != "FactCase" {
 		t.Fatalf("validated tests: %#v", tests)
+	}
+}
+
+func TestSdslvValidatedTestDeclContainsCanonicalTestInput(t *testing.T) {
+	d := validatedTestFixture(t)[0]
+	if d.TestInput.Kind != TestInputKindUInt || d.TestInput.ElementCount != 2 || len(d.TestInput.PayloadWords) != 2 || d.TestInput.PayloadWords[1] != 11 {
+		t.Fatalf("test input = %#v", d.TestInput)
 	}
 }
 func TestSdslvValidatedTestDeclContainsTheoryRows(t *testing.T) {

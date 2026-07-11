@@ -855,6 +855,29 @@ fn SaturateClampsToUnit(input: f32, expected: f32) {
 
 A function cannot have both `[Fact]` and `[Theory]`. `[InlineData]` on a `[Fact]` is a validation error.
 
+M30 adds one test-only fixed input attribute family:
+
+- `[TestInputBool(values...)]`
+- `[TestInputInt(values...)]`
+- `[TestInputUInt(values...)]`
+- `[TestInputFloat(values...)]`
+
+These attributes exist only in `.sdslvtest`. A test function may declare at
+most one `TestInput*` attribute. The attribute fixes the payload element kind
+for that function, and all Theory rows for that function share the same input
+payload. The compiler exposes a corresponding hidden namespace in the test
+body:
+
+- `TestInput.Bool[index]`
+- `TestInput.Int[index]`
+- `TestInput.UInt[index]`
+- `TestInput.Float[index]`
+- `TestInput.Length`
+
+`TestInput` is compiler-owned and read-only. It is not first-class: code
+cannot pass it, return it, store it, or mutate it. Typed members may only be
+indexed, and the accessed member must match the declared payload kind.
+
 ### Assert methods
 
 | Method | Signature | Description |
@@ -870,7 +893,10 @@ canonical source identity, function, kind, and row identity, and are listed by
 `oct sdslv test path --list`; `--case <id>` replays one discovered case.
 The compiler lowers test bodies through normal SDSL-V VD-MIR and generates a
 compiler-owned GPU dispatcher. The hidden interface is set `0`, binding `0`,
-with a fixed versioned result record per invocation. Assertion operands are
+with a fixed versioned result record per invocation. M30 adds a second hidden
+binding at set `0`, binding `1`, for the compiler-owned read-only test input
+buffer. Tests without payload still bind a one-word dummy buffer while
+`TestInput.Length` remains `0`. Assertion operands are
 evaluated once in left-to-right order; only the first local failure is
 recorded, execution does not abort or return because of an assertion, and the
 generated epilogue writes one record. `Equal` is exact for Bool/Int/UInt/Float;

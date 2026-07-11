@@ -97,18 +97,39 @@ func TestSdslvLegacyErrorAdapterUsesStructuredDiagnostic(t *testing.T) {
 }
 
 func TestSdslvM29DiagnosticCodesAndSpans(t *testing.T) {
-	cases := []struct{ name, text, code, slice string }{
-		{"theory rows", "[Theory]\nfn T(x: u32) -> void {}\n", "SDSL-V1107", "[Theory]"},
-		{"inline arity", "[Theory]\n[InlineData(1u, 2u)]\nfn T(x: u32) -> void {}\n", "SDSL-V1202", "[InlineData(1u, 2u)]"},
-		{"inline constant", "[Theory]\n[InlineData(x)]\nfn T(x: u32) -> void {}\n", "SDSL-V1204", "x"},
-		{"workgroup argument", "[Fact]\n[WorkgroupSize(0u, 1u, 1u)]\nfn T() -> void {}\n", "SDSL-V1304", "0u"},
-		{"assert arity", "[Fact]\nfn T() -> void { Assert.Equal(1u); }\n", "SDSL-V1401", "Assert.Equal(1u)"},
-		{"assert member", "[Fact]\nfn T() -> void { Assert.Missing(1u); }\n", "SDSL-V1405", "Assert.Missing(1u)"},
-		{"negative near tolerance", "[Fact]\nfn T() -> void { Assert.Near(1.0, 1.0, -0.1); }\n", "SDSL-V1404", "-0.1"},
+	cases := []struct {
+		name, path, text, code, slice string
+	}{
+		{"theory rows", "", "[Theory]\nfn T(x: u32) -> void {}\n", "SDSL-V1107", "[Theory]"},
+		{"inline arity", "", "[Theory]\n[InlineData(1u, 2u)]\nfn T(x: u32) -> void {}\n", "SDSL-V1202", "[InlineData(1u, 2u)]"},
+		{"inline constant", "", "[Theory]\n[InlineData(x)]\nfn T(x: u32) -> void {}\n", "SDSL-V1204", "x"},
+		{"test input outside sdslvtest", "test.sdslv", "[TestInputUInt(1u)]\nfn T() -> void {}\n", "SDSL-V1102", "[TestInputUInt(1u)]"},
+		{"test input requires test function", "", "[TestInputUInt(1u)]\nfn T() -> void {}\n", "SDSL-V1212", "[TestInputUInt(1u)]"},
+		{"duplicate test input", "", "[Fact]\n[TestInputUInt(1u)]\n[TestInputUInt(2u)]\nfn T() -> void {}\n", "SDSL-V1210", "[TestInputUInt(2u)]"},
+		{"conflicting test input kinds", "", "[Fact]\n[TestInputUInt(1u)]\n[TestInputFloat(1.0)]\nfn T() -> void {}\n", "SDSL-V1211", "[TestInputFloat(1.0)]"},
+		{"test input wrong type", "", "[Fact]\n[TestInputUInt(1)]\nfn T() -> void {}\n", "SDSL-V1214", "1"},
+		{"test input nonconstant", "", "[Fact]\n[TestInputUInt(1u + 2u)]\nfn T() -> void {}\n", "SDSL-V1214", "1u + 2u"},
+		{"test input unsupported payload type", "", "[Fact]\n[TestInputUInt(true)]\nfn T() -> void {}\n", "SDSL-V1214", "true"},
+		{"test input bare member", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> void { let xs: array<u32> = TestInput.UInt; }\n", "SDSL-V1220", "TestInput.UInt"},
+		{"test input no payload access", "", "[Fact]\nfn T() -> void { let n: u32 = TestInput.Length; }\n", "SDSL-V1216", "TestInput.Length"},
+		{"test input mismatch", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> void { let x: f32 = TestInput.Float[0u]; }\n", "SDSL-V1218", "TestInput.Float"},
+		{"test input unsupported member", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> void { let x: u32 = TestInput.Bytes[0u]; }\n", "SDSL-V1217", "TestInput.Bytes"},
+		{"test input invalid index type", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> void { let x: u32 = TestInput.UInt[true]; }\n", "SDSL-V1507", "true"},
+		{"test input first class argument", "", "[Fact]\n[TestInputUInt(1u)]\nfn Pass(x: u32) -> void {}\nfn T() -> void { Pass(TestInput); }\n", "SDSL-V1215", "TestInput"},
+		{"test input return value", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> u32 { return TestInput; }\n", "SDSL-V1215", "TestInput"},
+		{"test input mutation", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> void { TestInput.UInt[0u] = 2u; }\n", "SDSL-V1000", "TestInput.UInt[0u] = 2u;"},
+		{"workgroup argument", "", "[Fact]\n[WorkgroupSize(0u, 1u, 1u)]\nfn T() -> void {}\n", "SDSL-V1304", "0u"},
+		{"assert arity", "", "[Fact]\nfn T() -> void { Assert.Equal(1u); }\n", "SDSL-V1401", "Assert.Equal(1u)"},
+		{"assert member", "", "[Fact]\nfn T() -> void { Assert.Missing(1u); }\n", "SDSL-V1405", "Assert.Missing(1u)"},
+		{"negative near tolerance", "", "[Fact]\nfn T() -> void { Assert.Near(1.0, 1.0, -0.1); }\n", "SDSL-V1404", "-0.1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			tokens, err := lex.Analyze(source.File{Path: "test.sdslvtest", Text: tc.text})
+			path := tc.path
+			if path == "" {
+				path = "test.sdslvtest"
+			}
+			tokens, err := lex.Analyze(source.File{Path: path, Text: tc.text})
 			if err != nil {
 				t.Fatal(err)
 			}

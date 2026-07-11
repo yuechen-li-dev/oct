@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 )
 
 func TestSdslvTestParsesFactTheoryAndLaunchMetadata(t *testing.T) {
@@ -233,5 +236,93 @@ func TestSdslvBuildTestProgramKeepsBackendNeutralExecutionData(t *testing.T) {
 	row := p.Groups[0].Entries[0].TheoryRow
 	if row == nil || len(row.Values) != 3 || row.Values[0].Type().Kind != "bool" || row.Values[1].Type().Kind != "u32" || row.Values[2].Type().Kind != "f32" {
 		t.Fatalf("row=%#v", row)
+	}
+}
+
+func TestSdslvTestInputManifestAndStableIDs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "suite.sdslvtest")
+	src := "[Fact]\n[TestInputUInt(7u, 11u)]\nfn Guarded() -> void { let index: u32 = 1u; let valid: bool = index < TestInput.Length; let value: u32 = read TestInput.UInt[index] when valid else 99u; Assert.Equal(11u, value); }\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := Discover(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Cases) != 1 || manifest.Cases[0].TestInput.Kind != validate.TestInputKindUInt || manifest.Cases[0].TestInputBinding != 1 || manifest.Cases[0].TestInput.PayloadWords[1] != 11 {
+		t.Fatalf("manifest case = %#v", manifest.Cases)
+	}
+	original := manifest.Cases[0].StableID
+	changed := strings.Replace(src, "11u", "13u", 1)
+	if err := os.WriteFile(path, []byte(changed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest2, err := Discover(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest2.Cases[0].StableID != original {
+		t.Fatalf("stable id changed with payload edit: %s vs %s", original, manifest2.Cases[0].StableID)
+	}
+}
+
+func TestSdslvTestInputManifestSerializationUsesCanonicalFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "suite.sdslvtest")
+	src := "[Fact]\n[TestInputBool(true, false)]\nfn Reads() -> void { let value: bool = read TestInput.Bool[0u] when 0u < TestInput.Length else false; Assert.True(value); }\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := Discover(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, want := range []string{`"test_input_binding":1`, `"abi_version":1`, `"kind":"bool"`, `"element_count":2`, `"payload_words":[1,0]`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("manifest json missing %q:\n%s", want, text)
+		}
+	}
+	for _, forbidden := range []string{`"AttributeSpan"`, `"ValueSpans"`} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("manifest json leaked validator span metadata %q:\n%s", forbidden, text)
+		}
+	}
+}
+
+func TestSdslvTestInputCompilesThroughSharedHLSLResource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "input.sdslvtest")
+	src := "[Fact]\n[TestInputFloat(-0.0, 1.5)]\nfn ReadInput() -> void { let x: f32 = read TestInput.Float[1u] when 1u < TestInput.Length else 0.0; Assert.Near(1.5, x, 0.0); }\n"
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	suite, err := Prepare(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := BuildTestProgram(suite)
+	if len(p.Groups) != 1 || len(p.Groups[0].Entries) != 1 || p.Groups[0].Entries[0].Input.ValueKind != vdmir.TestInputValueFloat || p.Groups[0].Entries[0].Input.ElementCount != 2 {
+		t.Fatalf("program = %#v", p)
+	}
+	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hlsl, err := os.ReadFile(groups[0].HLSLPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(hlsl)
+	for _, want := range []string{
+		"[[vk::binding(1, 0)]] StructuredBuffer<uint> __sdslv_test_input;",
+		"asfloat(__sdslv_test_input[1u])",
+		"(1u < 2u)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("generated HLSL missing %q:\n%s", want, text)
+		}
 	}
 }
