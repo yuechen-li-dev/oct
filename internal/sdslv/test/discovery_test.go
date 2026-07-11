@@ -245,11 +245,11 @@ func TestSdslvAssertOperandEmissionMaterializesOnceInOrder(t *testing.T) {
 			t.Fatalf("assert operand emission retained forbidden path %q:\n%s", forbidden, text)
 		}
 	}
-	expectedBeforeActual := strings.Index(text, "uint __sdslv_sdslv_once_2;")
-	actualAfterExpected := strings.Index(text, "uint __sdslv_sdslv_once_3;")
-	nearExpected := strings.Index(text, "float __sdslv_sdslv_once_6;")
-	nearActual := strings.Index(text, "float __sdslv_sdslv_once_7;")
-	nearTolerance := strings.Index(text, "float __sdslv_sdslv_once_8;")
+	expectedBeforeActual := strings.Index(text, "ExactlyOnceOperands.sdslvvalid:13")
+	actualAfterExpected := strings.Index(text, "ExactlyOnceOperands.sdslvvalid:16")
+	nearExpected := strings.Index(text, "ExactlyOnceOperands.sdslvvalid:27")
+	nearActual := strings.Index(text, "ExactlyOnceOperands.sdslvvalid:30")
+	nearTolerance := strings.Index(text, "ExactlyOnceOperands.sdslvvalid:33")
 	if expectedBeforeActual < 0 || actualAfterExpected < 0 || nearExpected < 0 || nearActual < 0 || nearTolerance < 0 {
 		t.Fatalf("missing assert operand temps:\n%s", text)
 	}

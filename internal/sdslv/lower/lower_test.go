@@ -1,6 +1,7 @@
 package lower
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -26,6 +27,108 @@ func TestSdslvInlineHlslRejectsUnsupportedLoweringTarget(t *testing.T) {
 	_, err = ModuleForTarget(module, "MSL")
 	if err == nil || !strings.Contains(err.Error(), "contains inline HLSL and cannot be lowered to target MSL") {
 		t.Fatalf("want target constraint diagnostic, got %v", err)
+	}
+}
+
+func TestSdslvTensorAssignLowersToVDMIRWithCanonicalOrder(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "tensor.sdslv", Text: `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
+  let C: array<f32, 2u>;
+  tensor C[i] = Sum[k](A[i, k] * B[k]);
+  return;
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatal(err)
+	}
+	mir, err := Module(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assign, ok := mir.Functions[0].Body.Statements[1].(vdmir.TensorAssign)
+	if !ok {
+		t.Fatalf("statement = %T, want TensorAssign", mir.Functions[0].Body.Statements[1])
+	}
+	if len(assign.FreeIndices) != 1 || assign.FreeIndices[0].Name != "i" || assign.FreeIndices[0].Extent != 2 {
+		t.Fatalf("free indices = %#v", assign.FreeIndices)
+	}
+	if !assign.SourceSpan.Known() || !assign.FreeIndices[0].Span.Known() {
+		t.Fatalf("tensor source spans were not preserved: %#v", assign)
+	}
+	reduction, ok := assign.Value.(vdmir.TensorReductionExpr)
+	if !ok || len(reduction.Indices) != 1 || reduction.Indices[0].Name != "k" || reduction.Indices[0].Extent != 3 {
+		t.Fatalf("reduction = %#v", assign.Value)
+	}
+	if !reduction.Span.Known() || !reduction.Indices[0].Span.Known() {
+		t.Fatalf("reduction source spans were not preserved: %#v", reduction)
+	}
+}
+
+func TestSdslvTensorCompoundAssignmentRetainsSingularUpdate(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "tensor_add.sdslv", Text: `shader S {
+workgroup A: tile<f32, 2u, 2u>;
+workgroup B: tile<f32, 2u, 2u>;
+stage compute [numthreads(1, 1, 1)] fn Add() -> void {
+  tensor A[i, j] += B[i, j];
+  return;
+}}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatal(err)
+	}
+	mir, err := Module(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assign, ok := mir.Functions[0].Body.Statements[0].(vdmir.TensorAssign)
+	if !ok || assign.AssignmentKind != vdmir.TensorAssignAdd || assign.AliasPolicy != vdmir.TensorAliasNoDestinationRead {
+		t.Fatalf("assign = %#v", assign)
+	}
+}
+
+func TestSdslvFixedArrayIndexCarriesCompilerOwnedRowMajorShape(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "rank4.sdslv", Text: `fn Rank4(A: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>) -> void {
+  let B: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>;
+  tensor B[i, j, k, l] = A[i, j, k, l];
+  return;
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatal(err)
+	}
+	mir, err := Module(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assign := mir.Functions[0].Body.Statements[1].(vdmir.TensorAssign)
+	destination, ok := assign.Destination.(vdmir.IndexNExpr)
+	if !ok {
+		t.Fatalf("destination = %T, want IndexNExpr", assign.Destination)
+	}
+	want := []uint32{2, 3, 4, 5}
+	if destination.Layout != vdmir.IndexLayoutRowMajorLinear || !slices.Equal(destination.Extents, want) {
+		t.Fatalf("destination layout = %q %#v, want row-major %#v", destination.Layout, destination.Extents, want)
+	}
+	rhs, ok := assign.Value.(vdmir.IndexNExpr)
+	if !ok || rhs.Layout != vdmir.IndexLayoutRowMajorLinear || !slices.Equal(rhs.Extents, want) {
+		t.Fatalf("RHS = %#v, want row-major rank-4 IndexNExpr", assign.Value)
 	}
 }
 

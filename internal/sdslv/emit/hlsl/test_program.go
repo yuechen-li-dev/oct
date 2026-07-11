@@ -110,17 +110,8 @@ func (e *emitter) emitTestAssert(a vdmir.AssertStmt) {
 }
 
 func (e *emitter) emitTestAssertOperand(name string, expr vdmir.Expr) {
-	switch x := expr.(type) {
-	case vdmir.ForeignShaderExpr:
-		e.line(fmt.Sprintf("%s %s;", typeRef(expr.Type(), ""), name))
-		e.emitForeignExpressionAssignment(name, x)
-	case vdmir.GuardedReadExpr:
-		e.line(fmt.Sprintf("%s %s;", typeRef(expr.Type(), ""), name))
-		guarded := e.emitGuardedReadValue(x)
-		e.line(fmt.Sprintf("%s = %s;", name, guarded))
-	default:
-		e.line(fmt.Sprintf("%s %s = %s;", typeRef(expr.Type(), ""), name, e.expr(expr)))
-	}
+	value := e.materializeExpr(expr)
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(expr.Type(), ""), name, value))
 }
 
 func testBits(x string, t vdmir.Type) string {

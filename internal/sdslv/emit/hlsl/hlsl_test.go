@@ -22,7 +22,6 @@ let index: u32 = DispatchThreadID.x;
 if index < params.Count { C[index] = A[index]; }
 return;
 }
-
 }`
 	first := emitSource(t, text)
 	second := emitSource(t, text)
@@ -40,6 +39,136 @@ return;
 		if !strings.Contains(first, want) {
 			t.Fatalf("HLSL missing %q:\n%s", want, first)
 		}
+	}
+}
+
+func TestSdslvTensorUsesSharedEmitterLoopsAndAccumulator(t *testing.T) {
+	text := `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
+  let C: array<f32, 2u>;
+  tensor C[i] = Sum[k](A[i, k] * B[k]);
+  return;
+}`
+	output := emitSource(t, text)
+	for _, want := range []string{
+		"for (uint __sdslv_tensor_free_0 = 0u; __sdslv_tensor_free_0 < 2u;",
+		"float A[6]",
+		"float __sdslv_tensor_accumulator_3 = 0.0;",
+		"for (uint __sdslv_tensor_reduce_0 = 0u; __sdslv_tensor_reduce_0 < 3u;",
+		"A[((__sdslv_tensor_free_0 * 3u) + __sdslv_tensor_reduce_0)]",
+		"C[__sdslv_tensor_offset_1] = __sdslv_tensor_rhs_2;",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, output)
+		}
+	}
+}
+
+func TestSdslvFixedArraysUseRankGeneralRowMajorLinearStorage(t *testing.T) {
+	out := emitSource(t, `fn Layout(
+  A1: array<f32, 2u>,
+  A2: array<array<f32, 3u>, 2u>,
+  A3: array<array<array<f32, 4u>, 3u>, 2u>,
+  A4: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>
+) -> void {
+  let B1: array<f32, 2u>;
+  let B2: array<array<f32, 3u>, 2u>;
+  let B3: array<array<array<f32, 4u>, 3u>, 2u>;
+  let B4: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>;
+  tensor B1[i] = A1[i];
+  tensor B2[i, j] = A2[i, j];
+  tensor B3[i, j, k] = A3[i, j, k];
+  tensor B4[i, j, k, l] = A4[i, j, k, l];
+  return;
+}`)
+	for _, want := range []string{
+		"float A1[2]", "float A2[6]", "float A3[24]", "float A4[120]",
+		"A1[__sdslv_tensor_free_0]",
+		"A2[((__sdslv_tensor_free_0 * 3u) + __sdslv_tensor_free_1)]",
+		"A3[((((__sdslv_tensor_free_0 * 3u) + __sdslv_tensor_free_1) * 4u) + __sdslv_tensor_free_2)]",
+		"A4[((((((__sdslv_tensor_free_0 * 3u) + __sdslv_tensor_free_1) * 4u) + __sdslv_tensor_free_2) * 5u) + __sdslv_tensor_free_3)]",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("row-major HLSL missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "][") {
+		t.Fatalf("fixed tensor indexing depends on nested HLSL brackets:\n%s", out)
+	}
+}
+
+func TestSdslvTensorCompoundAssignmentMaterializesDestinationOnce(t *testing.T) {
+	out := emitSource(t, `fn Add(B: array<f32, 2u>) -> void {
+  let A: array<f32, 2u>;
+  tensor A[i] += B[i];
+  return;
+}`)
+	if strings.Count(out, "uint __sdslv_tensor_offset_1 =") != 1 {
+		t.Fatalf("destination offset was not materialized exactly once:\n%s", out)
+	}
+	if strings.Count(out, "A[__sdslv_tensor_offset_1]") != 2 {
+		t.Fatalf("materialized destination was not reused for one read/one write:\n%s", out)
+	}
+	old := strings.Index(out, "tensor_old")
+	rhs := strings.Index(out, "tensor_rhs")
+	write := strings.LastIndex(out, "A[__sdslv_tensor_offset_1] =")
+	if old < 0 || rhs < old || write < rhs {
+		t.Fatalf("compound tensor prelude order is not old/read, RHS, write:\n%s", out)
+	}
+}
+
+func TestSdslvTensorBodiesUseSharedExpressionMaterialization(t *testing.T) {
+	guarded := emitSource(t, `fn Guarded(A: array<array<f32, 2u>, 2u>, M: u32) -> void {
+  let B: array<f32, 2u>;
+  tensor B[i] = Sum[k](read A[i, k] when i < M else 0.0);
+  return;
+}`)
+	if strings.Count(guarded, "float __sdslv_guarded_read_") != 1 || strings.Contains(guarded, "unsupported guarded read") {
+		t.Fatalf("guarded tensor body did not use shared materialization:\n%s", guarded)
+	}
+	inline := emitSource(t, `fn Inline(A: array<f32, 2u>) -> void {
+  let B: array<f32, 2u>;
+  tensor B[i] = A[i] + HLSL<f32> { return 2.0; };
+  return;
+}`)
+	if strings.Count(inline, "BEGIN INLINE HLSL") != 1 || strings.Contains(inline, "inline HLSL expressions require") {
+		t.Fatalf("inline HLSL tensor body did not use shared materialization:\n%s", inline)
+	}
+	if strings.Contains(guarded+inline, "requires statement context") {
+		t.Fatalf("supported tensor expression emitted a placeholder:\n%s\n%s", guarded, inline)
+	}
+}
+
+func TestSdslvTensorAffineBaseCallMaterializesOnce(t *testing.T) {
+	out := emitSource(t, `fn Base() -> u32 { return 0u; }
+fn Affine(A: array<f32, 2u>) -> void {
+  let B: array<f32, 2u>;
+  tensor B[i] = A[Base() + i];
+  return;
+}`)
+	if strings.Count(out, "= Base();") != 1 {
+		t.Fatalf("affine base call was not evaluated once per tensor body:\n%s", out)
+	}
+}
+
+func TestSdslvSharedMaterializationPreservesLeftToRightOrderAndHygiene(t *testing.T) {
+	out := emitSource(t, `fn Ordered() -> f32 {
+  return HLSL<f32> { return 1.0; } + HLSL<f32> { return 2.0; };
+}`)
+	left := strings.Index(out, "__sdslv_inline_hlsl_0 = 1.0")
+	right := strings.Index(out, "__sdslv_inline_hlsl_1 = 2.0")
+	if left < 0 || right <= left {
+		t.Fatalf("shared preludes are not hygienic and left-to-right:\n%s", out)
+	}
+	if strings.Count(out, "BEGIN INLINE HLSL") != 2 || strings.Contains(out, "inline HLSL expressions require") {
+		t.Fatalf("foreign operands were duplicated or emitted as placeholders:\n%s", out)
+	}
+	calls := emitSource(t, `fn Left() -> u32 { return 1u; }
+fn Right() -> u32 { return 2u; }
+fn OrderedCalls() -> u32 { return Left() + Right(); }`)
+	leftCall := strings.Index(calls, "uint __sdslv_operand_0 = Left();")
+	rightCall := strings.Index(calls, "uint __sdslv_operand_1 = Right();")
+	if leftCall < 0 || rightCall <= leftCall {
+		t.Fatalf("call operands were not materialized left-to-right:\n%s", calls)
 	}
 }
 

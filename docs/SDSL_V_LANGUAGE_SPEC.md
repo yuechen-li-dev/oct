@@ -1153,3 +1153,29 @@ epilogue. Generated HLSL includes compiler comments for the dispatcher, stack
 contract, state entry, transition kind, and stack operations; state and
 terminator comments retain original flow spans. M31b does not add dynamic
 allocation, state-name lookup, recursion, or flow optimization.
+
+## M32b tensor lowering
+
+Validated `tensor` statements lower through backend-neutral tensor VD-MIR.
+Destination free indices become bounded nested loops in their canonical source
+order. `Sum[...]` becomes a typed zero-initialized accumulator and bounded
+nested loops in explicit reduction-index order. `=` performs one final write;
+`+=` performs one destination read and one final write per free-index tuple.
+The emitter does not reorder loops.
+
+Rank-general nested fixed `array` values use compiler-owned flattened linear
+storage. Their ordered logical index tuple is addressed as
+`(((i0 * D1 + i1) * D2 + i2) ...)` using validated static extents. Rank one is
+the identity offset; rank two remains row-major-equivalent. Tiles, register
+tiles, matrix views, runtime resource arrays, and test-input resources retain
+their established category-specific representations and physical limits.
+
+The shared HLSL expression-materialization path evaluates required preludes
+left-to-right and yields a stable value. It owns guarded reads, inline HLSL,
+calls, indexed reads, and reductions in both ordinary and tensor expression
+positions. A guarded source is materialized only in its true branch. Tensor
+destinations materialize their indexed address once; `+=` reuses it for one
+old-value read and one final write, while `=` performs only its final write.
+Generated temporaries are deterministic and hygienic, and source markers use
+preserved VD-MIR spans. Tensor lowering consumes M32a alias policy and static
+extent metadata rather than repeating source validation or analysis.

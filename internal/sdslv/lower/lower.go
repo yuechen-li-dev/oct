@@ -17,7 +17,69 @@ func Module(module ast.Module) (vdmir.Module, error) {
 	return moduleWithTests(module, nil)
 }
 
+func moduleHasTensorAssign(module ast.Module) bool {
+	var blockHas func(ast.Block) bool
+	blockHas = func(block ast.Block) bool {
+		for _, stmt := range block.Statements {
+			switch s := stmt.(type) {
+			case ast.TensorAssignStmt:
+				return true
+			case ast.IfStmt:
+				if blockHas(s.ThenBody) || (s.ElseBody != nil && blockHas(*s.ElseBody)) {
+					return true
+				}
+			case ast.GuardWhenStmt:
+				for _, c := range s.Cases {
+					if blockHas(c.Body) {
+						return true
+					}
+				}
+				if s.ElseBody != nil && blockHas(*s.ElseBody) {
+					return true
+				}
+			case ast.ForStmt:
+				if blockHas(s.Body) {
+					return true
+				}
+			case ast.FlowStmt:
+				for _, state := range s.States {
+					if blockHas(state.Body) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.FunctionDecl:
+			if blockHas(d.Body) {
+				return true
+			}
+		case ast.ShaderDecl:
+			for _, method := range d.Methods {
+				if blockHas(method.Body) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func moduleWithTests(module ast.Module, testInputs map[string]validate.ValidatedTestInput) (vdmir.Module, error) {
+	// Tensor metadata is produced from the validated source module before
+	// specialization rewrites declaration names. Spans survive those rewrites
+	// and are the one-way handoff key into lowering.
+	validatedTensors := []validate.ValidatedTensorAssign(nil)
+	if moduleHasTensorAssign(module) {
+		validated, issues := validate.ValidatedTensorAssignments(module)
+		if len(issues) != 0 {
+			return vdmir.Module{}, fmt.Errorf("SDSL-V M32b requires valid tensor metadata: %s", issues[0].Message)
+		}
+		validatedTensors = validated
+	}
 	specialized, err := specializeModule(module)
 	if err != nil {
 		return vdmir.Module{}, err
@@ -28,10 +90,18 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 	}
 	module = expanded
 	l := lowering{
-		provenance: vdmir.ProvenanceFromFile(module.Source),
-		types:      map[string]typeInfo{},
-		functions:  map[string]functionInfo{},
-		testInputs: testInputs,
+		provenance:       vdmir.ProvenanceFromFile(module.Source),
+		types:            map[string]typeInfo{},
+		functions:        map[string]functionInfo{},
+		testInputs:       testInputs,
+		tensorAssigns:    map[source.Span]validate.ValidatedTensorAssign{},
+		tensorReductions: map[source.Span]validate.ValidatedTensorReduction{},
+	}
+	for _, tensor := range validatedTensors {
+		l.tensorAssigns[tensor.Span] = tensor
+		for _, reduction := range tensor.Reductions {
+			l.tensorReductions[reduction.Span] = reduction
+		}
 	}
 	l.seedBuiltins()
 	l.collect(module)
@@ -1891,6 +1961,8 @@ type lowering struct {
 	currentFunction  string
 	currentShader    string
 	flows            []vdmir.Flow
+	tensorAssigns    map[source.Span]validate.ValidatedTensorAssign
+	tensorReductions map[source.Span]validate.ValidatedTensorReduction
 }
 
 func (l *lowering) seedBuiltins() {
@@ -2148,7 +2220,7 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 		}
 		return vdmir.AssignStmt{Provenance: l.provenance, Target: target, Value: value}, nil
 	case ast.TensorAssignStmt:
-		return nil, fmt.Errorf("SDSL-V M32b lowering is required for tensor statements")
+		return l.lowerTensorAssign(s, scope, shaderName)
 	case ast.GuardedWriteStmt:
 		target, err := l.lowerExpr(s.Target, scope, shaderName)
 		if err != nil {
@@ -2234,6 +2306,97 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 	default:
 		return nil, fmt.Errorf("unsupported statement in GoOct SDSL-V M3")
 	}
+}
+
+func (l *lowering) lowerTensorAssign(stmt ast.TensorAssignStmt, scope map[string]binding, shaderName string) (vdmir.Stmt, error) {
+	meta, ok := l.tensorAssigns[stmt.Span]
+	if !ok {
+		return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: missing validated tensor metadata")
+	}
+	if len(meta.FreeIndices) == 0 || len(meta.FreeIndices) != len(stmt.FreeIndices) {
+		return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: malformed free-index metadata")
+	}
+	loopScope := cloneScope(scope)
+	indices := make([]vdmir.TensorIndex, 0, len(meta.FreeIndices))
+	for i, index := range meta.FreeIndices {
+		if index.Extent <= 0 {
+			return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: missing free-index extent for %s", index.Name)
+		}
+		id := fmt.Sprintf("__sdslv_tensor_free_%d", i)
+		loopScope[index.Name] = binding{name: id, kind: vdmir.VarLocal, typ: ast.TypeRef{Name: "u32"}}
+		indices = append(indices, vdmir.TensorIndex{ID: id, Name: index.Name, Extent: uint32(index.Extent), Span: index.Span})
+	}
+	destination, err := l.lowerExpr(stmt.Destination, loopScope, shaderName)
+	if err != nil {
+		return nil, err
+	}
+	value, err := l.lowerTensorExpr(meta.Value, loopScope, shaderName)
+	if err != nil {
+		return nil, err
+	}
+	kind := vdmir.TensorAssignSet
+	if meta.AssignmentKind == ast.TensorAssignAdd {
+		kind = vdmir.TensorAssignAdd
+	}
+	alias := vdmir.TensorAliasNoDestinationRead
+	if meta.AliasPolicy == "identical-index-read" {
+		alias = vdmir.TensorAliasIdenticalRead
+	} else if meta.AliasPolicy != "no-destination-read" {
+		return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: malformed alias policy %q", meta.AliasPolicy)
+	}
+	return vdmir.TensorAssign{Provenance: l.provenance, Destination: destination, Value: value, ElementType: l.lowerTypeRef(meta.DestinationElementType), AssignmentKind: kind, FreeIndices: indices, AliasPolicy: alias, SourceSpan: meta.Span, LoopOrder: append([]string(nil), meta.LoopOrder...)}, nil
+}
+
+func (l *lowering) lowerTensorExpr(expr ast.Expr, scope map[string]binding, shaderName string) (vdmir.Expr, error) {
+	if reduction, ok := expr.(ast.TensorReductionExpr); ok {
+		meta, exists := l.tensorReductions[reduction.Span]
+		if !exists || meta.Kind != "Sum" || len(meta.Indices) == 0 {
+			return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: malformed reduction metadata")
+		}
+		reductionScope := cloneScope(scope)
+		indices := make([]vdmir.TensorIndex, 0, len(meta.Indices))
+		for i, index := range meta.Indices {
+			if index.Extent <= 0 {
+				return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: missing reduction extent for %s", index.Name)
+			}
+			id := fmt.Sprintf("__sdslv_tensor_reduce_%d", i)
+			reductionScope[index.Name] = binding{name: id, kind: vdmir.VarLocal, typ: ast.TypeRef{Name: "u32"}}
+			indices = append(indices, vdmir.TensorIndex{ID: id, Name: index.Name, Extent: uint32(index.Extent), Span: index.Span})
+		}
+		body, err := l.lowerTensorExpr(meta.Value, reductionScope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		typ := l.lowerTypeRef(meta.ResultType)
+		return vdmir.TensorReductionExpr{Provenance: l.provenance, ExprType: typ, Kind: meta.Kind, Indices: indices, Body: body, Identity: tensorZero(typ), Span: meta.Span}, nil
+	}
+	switch e := expr.(type) {
+	case ast.BinaryExpr:
+		left, err := l.lowerTensorExpr(e.Left, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		right, err := l.lowerTensorExpr(e.Right, scope, shaderName)
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.BinaryExpr{Provenance: l.provenance, ExprType: binaryResultType(left.Type(), lowerBinaryOperator(e.Operator), right.Type()), Left: left, Operator: lowerBinaryOperator(e.Operator), Right: right}, nil
+	case ast.ParenExpr:
+		return l.lowerTensorExpr(e.Inner, scope, shaderName)
+	default:
+		return l.lowerExpr(expr, scope, shaderName)
+	}
+}
+
+func tensorZero(typ vdmir.Type) vdmir.Expr {
+	value := "0"
+	if typ.Kind == vdmir.TypeF32 {
+		value = "0.0"
+	}
+	if typ.Kind == vdmir.TypeU32 {
+		value = "0u"
+	}
+	return vdmir.LiteralExpr{ExprType: typ, Kind: vdmir.LiteralInteger, Value: value}
 }
 
 func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
@@ -2432,9 +2595,6 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			Field:      e.Field,
 		}, nil
 	case ast.IndexExpr:
-		if len(ast.IndexExpressions(e)) > 2 {
-			return nil, fmt.Errorf("SDSL-V M32b lowering is required for rank-%d indexed access", len(ast.IndexExpressions(e)))
-		}
 		if field, ok := e.Target.(ast.FieldAccessExpr); ok {
 			if root, ok := field.Target.(ast.IdentifierExpr); ok && root.Name == "TestInput" {
 				return l.lowerTestInputIndex(field, e, scope, shaderName)
@@ -2444,12 +2604,39 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		if err != nil {
 			return nil, err
 		}
-		index, err := l.lowerExprWithExpected(e.Index, scope, shaderName, nil)
+		all := ast.IndexExpressions(e)
+		if target.Type().Kind == vdmir.TypeArray {
+			indices := make([]vdmir.Expr, 0, len(all))
+			for _, axis := range all {
+				lowered, err := l.lowerExprWithExpected(axis, scope, shaderName, nil)
+				if err != nil {
+					return nil, err
+				}
+				indices = append(indices, lowered)
+			}
+			typ := target.Type()
+			extents := make([]uint32, 0, len(all))
+			for range indices {
+				if typ.Kind != vdmir.TypeArray || !typ.HasArraySize || typ.ArraySize <= 0 {
+					return nil, fmt.Errorf("SDSL-V M32b.1 compiler-boundary error: invalid fixed-array linearization metadata")
+				}
+				extents = append(extents, uint32(typ.ArraySize))
+				typ = elementType(typ)
+			}
+			if typ.Name == "" {
+				return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: invalid rank-general indexing metadata")
+			}
+			return vdmir.IndexNExpr{Provenance: l.provenance, ExprType: typ, Target: target, Indices: indices, Extents: extents, Layout: vdmir.IndexLayoutRowMajorLinear}, nil
+		}
+		if len(all) == 0 {
+			return nil, fmt.Errorf("SDSL-V M32b compiler-boundary error: empty index tuple")
+		}
+		index, err := l.lowerExprWithExpected(all[0], scope, shaderName, nil)
 		if err != nil {
 			return nil, err
 		}
-		if e.HasSecond {
-			index2, err := l.lowerExprWithExpected(e.Index2, scope, shaderName, nil)
+		if len(all) == 2 {
+			index2, err := l.lowerExprWithExpected(all[1], scope, shaderName, nil)
 			if err != nil {
 				return nil, err
 			}

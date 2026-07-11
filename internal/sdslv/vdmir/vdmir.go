@@ -310,6 +310,60 @@ type AssignStmt struct {
 
 func (AssignStmt) stmtNode() {}
 
+// TensorAssign is the validated, backend-neutral expansion boundary for an
+// indexed tensor statement.  Its expressions are ordinary VD-MIR expressions;
+// only iteration and singular destination-update semantics are structured here.
+type TensorAssign struct {
+	Provenance     Provenance
+	Destination    Expr
+	Value          Expr
+	ElementType    Type
+	AssignmentKind TensorAssignmentKind
+	FreeIndices    []TensorIndex
+	AliasPolicy    TensorAliasPolicy
+	SourceSpan     source.Span
+	LoopOrder      []string
+}
+
+func (TensorAssign) stmtNode() {}
+
+type TensorAssignmentKind string
+
+const (
+	TensorAssignSet TensorAssignmentKind = "set"
+	TensorAssignAdd TensorAssignmentKind = "add"
+)
+
+type TensorAliasPolicy string
+
+const (
+	TensorAliasNoDestinationRead TensorAliasPolicy = "no-destination-read"
+	TensorAliasIdenticalRead     TensorAliasPolicy = "identical-index-read"
+)
+
+type TensorIndex struct {
+	ID     string
+	Name   string
+	Extent uint32
+	Span   source.Span
+}
+
+// TensorReductionExpr is an explicit Sum with ordered static iteration
+// domains.  It is never source syntax and can be consumed without re-inferring
+// shapes or resolving index names.
+type TensorReductionExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Kind       string
+	Indices    []TensorIndex
+	Body       Expr
+	Identity   Expr
+	Span       source.Span
+}
+
+func (TensorReductionExpr) exprNode()    {}
+func (e TensorReductionExpr) Type() Type { return e.ExprType }
+
 type GuardedWriteStmt struct {
 	Provenance Provenance
 	Target     Expr
@@ -523,6 +577,29 @@ type Index2DExpr struct {
 
 func (Index2DExpr) exprNode()    {}
 func (e Index2DExpr) Type() Type { return e.ExprType }
+
+// IndexNExpr retains rank-general semantic indexing.  Categories with an
+// existing physical layout may still use Index2DExpr; fixed arrays use this
+// node and the backend applies deterministic row-major linearization.
+type IndexNExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Target     Expr
+	Indices    []Expr
+	// Extents is the ordered, compiler-known physical shape. Fixed arrays use
+	// RowMajorLinear layout; rank-limited categories retain their own nodes.
+	Extents []uint32
+	Layout  IndexLayout
+}
+
+func (IndexNExpr) exprNode()    {}
+func (e IndexNExpr) Type() Type { return e.ExprType }
+
+type IndexLayout string
+
+const (
+	IndexLayoutRowMajorLinear IndexLayout = "row-major-linear"
+)
 
 type GuardedReadExpr struct {
 	Provenance Provenance

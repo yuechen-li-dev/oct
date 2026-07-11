@@ -119,6 +119,12 @@ func dumpBlock(b *strings.Builder, indent int, block Block) {
 			}
 		case AssignStmt:
 			line(indent, fmt.Sprintf("assign %s = %s", FormatExpr(s.Target), FormatExpr(s.Value)))
+		case TensorAssign:
+			parts := make([]string, 0, len(s.FreeIndices))
+			for _, index := range s.FreeIndices {
+				parts = append(parts, fmt.Sprintf("%s:%d", index.Name, index.Extent))
+			}
+			line(indent, fmt.Sprintf("tensor %s [%s] %s = %s", FormatExpr(s.Destination), strings.Join(parts, ", "), s.AssignmentKind, FormatExpr(s.Value)))
 		case GuardedWriteStmt:
 			line(indent, fmt.Sprintf("guarded_write %s = %s when %s", FormatExpr(s.Target), FormatExpr(s.Value), FormatExpr(s.Condition)))
 		case ReturnStmt:
@@ -174,6 +180,18 @@ func FormatExpr(expr Expr) string {
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Index) + "]"
 	case Index2DExpr:
 		return FormatExpr(e.Target) + "[" + FormatExpr(e.Row) + ", " + FormatExpr(e.Col) + "]"
+	case IndexNExpr:
+		parts := make([]string, 0, len(e.Indices))
+		for _, index := range e.Indices {
+			parts = append(parts, FormatExpr(index))
+		}
+		return FormatExpr(e.Target) + "[" + strings.Join(parts, ", ") + "]"
+	case TensorReductionExpr:
+		parts := make([]string, 0, len(e.Indices))
+		for _, index := range e.Indices {
+			parts = append(parts, fmt.Sprintf("%s:%d", index.Name, index.Extent))
+		}
+		return e.Kind + "[" + strings.Join(parts, ", ") + "](" + FormatExpr(e.Body) + ")"
 	case GuardedReadExpr:
 		return "guarded_read(" + FormatExpr(e.Target) + " when " + FormatExpr(e.Condition) + " else " + FormatExpr(e.Fallback) + ")"
 	case RegTileZeroExpr:

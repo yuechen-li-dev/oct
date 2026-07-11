@@ -1,0 +1,16 @@
+shader TensorBackendMaterialization {
+    resources {
+        Output: readwrite array<f32>;
+    }
+
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+        let Input: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>;
+        let Materialized: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>;
+
+        tensor Materialized[a, b, c, d] =
+            Input[a, b, c, d] + HLSL<f32> { return 1.0; };
+
+        Output[0u] = Materialized[1u, 1u, 1u, 1u];
+        return;
+    }
+}

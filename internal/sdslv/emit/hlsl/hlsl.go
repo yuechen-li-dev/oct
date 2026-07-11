@@ -66,6 +66,18 @@ type emitter struct {
 	err           error
 }
 
+// materializedLValue is the shared-backend address boundary. Address
+// components are evaluated once in source order, and Text can then be reused
+// for both a load and a store without repeating those expressions.
+type materializedLValue struct {
+	Base              string
+	AddressComponents []string
+	LinearOffset      string
+	Text              string
+	ValueType         vdmir.Type
+	SourceSpan        source.Span
+}
+
 func (e *emitter) emitStruct(name string, fields []vdmir.Field) {
 	e.line("struct " + name)
 	e.line("{")
@@ -259,21 +271,9 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitDeriveLet(s, derive)
 			return
 		}
-		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
-			e.emitGuardedReadLet(s, guardedRead)
-			return
-		}
-		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
-			e.line(fmt.Sprintf("%s;", typeRef(s.Type, s.Name)))
-			e.emitForeignExpressionAssignment(hlslIdentifier(s.Name), foreign)
-			return
-		}
-		e.line(fmt.Sprintf("%s = %s;", typeRef(s.Type, s.Name), e.expr(s.Value)))
+		value := e.materializeExpr(s.Value)
+		e.line(fmt.Sprintf("%s = %s;", typeRef(s.Type, s.Name), value))
 	case vdmir.AssignStmt:
-		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
-			e.emitForeignExpressionAssignment(e.expr(s.Target), foreign)
-			return
-		}
 		if reduction, ok := s.Value.(vdmir.ReductionExpr); ok {
 			e.emitReductionAssign(e.expr(s.Target), reduction)
 			return
@@ -298,16 +298,17 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitDeriveAssign(e.expr(s.Target), derive)
 			return
 		}
-		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
-			e.emitGuardedReadAssign(e.expr(s.Target), guardedRead)
-			return
-		}
-		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), e.expr(s.Value)))
+		value := e.materializeExpr(s.Value)
+		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), value))
+	case vdmir.TensorAssign:
+		e.emitTensorAssign(s, 0)
 	case vdmir.GuardedWriteStmt:
-		e.line("if (" + e.expr(s.Condition) + ")")
+		condition := e.materializeExpr(s.Condition)
+		e.line("if (" + condition + ")")
 		e.line("{")
 		e.indent++
-		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), e.expr(s.Value)))
+		value := e.materializeExpr(s.Value)
+		e.line(fmt.Sprintf("%s = %s;", e.expr(s.Target), value))
 		e.indent--
 		e.line("}")
 	case vdmir.ReturnStmt:
@@ -335,24 +336,12 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.emitDeriveReturn(derive)
 			return
 		}
-		if guardedRead, ok := s.Value.(vdmir.GuardedReadExpr); ok {
-			e.emitGuardedReadReturn(guardedRead)
-			return
-		}
-		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
-			temp := e.nextTempWithPrefix("inline_hlsl")
-			e.line(fmt.Sprintf("%s;", typeRef(foreign.Type(), temp)))
-			e.emitForeignExpressionAssignment(temp, foreign)
-			e.line("return " + temp + ";")
-			return
-		}
-		e.line("return " + e.expr(s.Value) + ";")
+		e.line("return " + e.materializeExpr(s.Value) + ";")
 	case vdmir.ExprStmt:
-		if foreign, ok := s.Value.(vdmir.ForeignShaderExpr); ok {
-			e.emitForeignExprStatement(foreign)
-			return
+		value := e.materializeExpr(s.Value)
+		if value != "" {
+			e.line(value + ";")
 		}
-		e.line(e.expr(s.Value) + ";")
 	case vdmir.AssertStmt:
 		e.emitTestAssert(s)
 	case vdmir.BlockStmt:
@@ -369,20 +358,79 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 			e.line("[loop]")
 		}
 		loopType := typeRef(s.Type, "")
-		e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, s.Name, e.expr(s.Start), s.Name, e.expr(s.End), s.Name, e.expr(s.Step)))
+		start := e.materializeExpr(s.Start)
+		end := e.materializeExpr(s.End)
+		step := e.materializeExpr(s.Step)
+		e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, s.Name, start, s.Name, end, s.Name, step))
 		e.emitBlock(s.Body)
 	}
 }
 
+func (e *emitter) emitTensorAssign(stmt vdmir.TensorAssign, depth int) {
+	if depth < len(stmt.FreeIndices) {
+		index := stmt.FreeIndices[depth]
+		e.flowMarker("tensor free-index loop", "", index.Span, index.Name)
+		e.line(fmt.Sprintf("for (uint %s = 0u; %s < %du; %s += 1u)", index.ID, index.ID, index.Extent, index.ID))
+		e.line("{")
+		e.indent++
+		e.emitTensorAssign(stmt, depth+1)
+		e.indent--
+		e.line("}")
+		return
+	}
+	e.flowMarker("tensor statement", "", stmt.SourceSpan, string(stmt.AssignmentKind))
+	destination := e.materializeIndexedLValue(stmt.Destination, stmt.SourceSpan)
+	if e.err != nil {
+		return
+	}
+	if stmt.AssignmentKind == vdmir.TensorAssignAdd {
+		old := e.nextTempWithPrefix("tensor_old")
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(stmt.ElementType, ""), old, destination.Text))
+		rhs := e.nextTempWithPrefix("tensor_rhs")
+		e.emitTensorValue(rhs, stmt.ElementType, stmt.Value)
+		e.flowMarker("tensor final destination write", "", stmt.SourceSpan, "+=")
+		e.line(fmt.Sprintf("%s = %s + %s;", destination.Text, old, rhs))
+		return
+	}
+	rhs := e.nextTempWithPrefix("tensor_rhs")
+	e.emitTensorValue(rhs, stmt.ElementType, stmt.Value)
+	e.flowMarker("tensor final destination write", "", stmt.SourceSpan, "=")
+	e.line(fmt.Sprintf("%s = %s;", destination.Text, rhs))
+}
+
+func (e *emitter) emitTensorValue(name string, typ vdmir.Type, value vdmir.Expr) {
+	result := e.materializeExpr(value)
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(typ, ""), name, result))
+}
+
+func (e *emitter) emitTensorReduction(target string, reduction vdmir.TensorReductionExpr, depth int) {
+	if depth < len(reduction.Indices) {
+		index := reduction.Indices[depth]
+		e.flowMarker("tensor reduction loop", "", index.Span, index.Name)
+		e.line(fmt.Sprintf("for (uint %s = 0u; %s < %du; %s += 1u)", index.ID, index.ID, index.Extent, index.ID))
+		e.line("{")
+		e.indent++
+		e.emitTensorReduction(target, reduction, depth+1)
+		e.indent--
+		e.line("}")
+		return
+	}
+	e.flowMarker("tensor reduction body", "", reduction.Span, reduction.Kind)
+	body := e.materializeExpr(reduction.Body)
+	e.line(fmt.Sprintf("%s = %s + (%s);", target, target, body))
+}
+
 func (e *emitter) emitIfStmt(stmt vdmir.IfStmt) {
-	e.line("if (" + e.expr(stmt.Condition) + ")")
+	condition := e.materializeExpr(stmt.Condition)
+	e.line("if (" + condition + ")")
 	e.emitBlock(stmt.ThenBody)
 	if stmt.ElseBody == nil {
 		return
 	}
 	if len(stmt.ElseBody.Statements) == 1 {
 		if nested, ok := stmt.ElseBody.Statements[0].(vdmir.IfStmt); ok {
-			e.line("else " + "if (" + e.expr(nested.Condition) + ")")
+			nestedCondition := e.materializeExpr(nested.Condition)
+			e.line("else " + "if (" + nestedCondition + ")")
 			e.emitBlock(nested.ThenBody)
 			if nested.ElseBody != nil {
 				e.emitElseTail(*nested.ElseBody)
@@ -397,7 +445,8 @@ func (e *emitter) emitIfStmt(stmt vdmir.IfStmt) {
 func (e *emitter) emitElseTail(block vdmir.Block) {
 	if len(block.Statements) == 1 {
 		if nested, ok := block.Statements[0].(vdmir.IfStmt); ok {
-			e.line("else " + "if (" + e.expr(nested.Condition) + ")")
+			nestedCondition := e.materializeExpr(nested.Condition)
+			e.line("else " + "if (" + nestedCondition + ")")
 			e.emitBlock(nested.ThenBody)
 			if nested.ElseBody != nil {
 				e.emitElseTail(*nested.ElseBody)
@@ -549,7 +598,8 @@ func validateFlow(flow vdmir.Flow) error {
 }
 
 func (e *emitter) emitWhenUtilityLet(stmt vdmir.LetStmt, utility vdmir.WhenUtilityExpr) {
-	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), e.expr(utility.Else)))
+	otherwise := e.materializeExpr(utility.Else)
+	e.line(fmt.Sprintf("%s = %s;", typeRef(stmt.Type, stmt.Name), otherwise))
 	e.emitWhenUtilityAssign(hlslIdentifier(stmt.Name), utility)
 }
 
@@ -573,31 +623,21 @@ func (e *emitter) emitReductionReturn(reduction vdmir.ReductionExpr) {
 }
 
 func (e *emitter) emitReductionLoop(target string, reduction vdmir.ReductionExpr) {
-	switch reduction.LoopHint {
-	case vdmir.LoopHintUnroll:
-		e.line("[unroll]")
-	case vdmir.LoopHintLoop:
-		e.line("[loop]")
-	}
-	loopType := typeRef(reduction.IndexType, "")
-	e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", loopType, reduction.Name, e.expr(reduction.Start), reduction.Name, e.expr(reduction.End), reduction.Name, e.expr(reduction.Step)))
-	e.line("{")
-	e.indent++
-	e.line(fmt.Sprintf("%s = %s %s (%s);", target, target, reductionCombineOperator(reduction.Op), e.expr(reduction.Body)))
-	e.indent--
-	e.line("}")
+	e.emitReductionLoopMaterialized(target, reduction)
 }
 
 func (e *emitter) emitWhenUtilityAssign(target string, utility vdmir.WhenUtilityExpr) {
 	scoreName := "__sdslv_" + sanitizeName(target) + "_score"
 	e.line(fmt.Sprintf("float %s = -3.402823466e+38F;", scoreName))
 	for _, c := range utility.Cases {
-		score := e.expr(c.Score)
-		e.line(fmt.Sprintf("if (%s && (%s > %s))", e.expr(c.Guard), score, scoreName))
+		guard := e.materializeExpr(c.Guard)
+		score := e.materializeExpr(c.Score)
+		e.line(fmt.Sprintf("if (%s && (%s > %s))", guard, score, scoreName))
 		e.line("{")
 		e.indent++
 		e.line(fmt.Sprintf("%s = %s;", scoreName, score))
-		e.line(fmt.Sprintf("%s = %s;", target, e.expr(c.Value)))
+		value := e.materializeExpr(c.Value)
+		e.line(fmt.Sprintf("%s = %s;", target, value))
 		e.indent--
 		e.line("}")
 	}
@@ -622,9 +662,11 @@ func (e *emitter) emitWithReturn(withExpr vdmir.WithExpr) {
 }
 
 func (e *emitter) emitWithCopy(tempName string, withExpr vdmir.WithExpr) {
-	e.line(fmt.Sprintf("%s %s = %s;", typeRef(withExpr.Type(), ""), tempName, e.expr(withExpr.Base)))
+	base := e.materializeExpr(withExpr.Base)
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(withExpr.Type(), ""), tempName, base))
 	for _, update := range withExpr.Updates {
-		e.line(fmt.Sprintf("%s.%s = %s;", tempName, hlslIdentifier(update.Name), e.expr(update.Value)))
+		value := e.materializeExpr(update.Value)
+		e.line(fmt.Sprintf("%s.%s = %s;", tempName, hlslIdentifier(update.Name), value))
 	}
 }
 
@@ -635,7 +677,8 @@ func (e *emitter) emitMatchLet(stmt vdmir.LetStmt, matchExpr vdmir.MatchExpr) {
 
 func (e *emitter) emitMatchAssign(target string, matchExpr vdmir.MatchExpr) {
 	subjectName := e.nextTempWithPrefix("match_subject")
-	e.line(fmt.Sprintf("%s %s = %s;", typeRef(matchExpr.Subject.Type(), ""), subjectName, e.expr(matchExpr.Subject)))
+	subject := e.materializeExpr(matchExpr.Subject)
+	e.line(fmt.Sprintf("%s %s = %s;", typeRef(matchExpr.Subject.Type(), ""), subjectName, subject))
 	for i, arm := range matchExpr.Arms {
 		keyword := "if"
 		if i > 0 {
@@ -647,7 +690,8 @@ func (e *emitter) emitMatchAssign(target string, matchExpr vdmir.MatchExpr) {
 		if arm.BindingName != "" {
 			e.line(fmt.Sprintf("%s %s = %s.%s;", typeRef(arm.BindingType, ""), hlslIdentifier(arm.BindingName), subjectName, hlslIdentifier(arm.VariantName)))
 		}
-		e.line(fmt.Sprintf("%s = %s;", target, e.expr(arm.Value)))
+		value := e.materializeExpr(arm.Value)
+		e.line(fmt.Sprintf("%s = %s;", target, value))
 		e.indent--
 		e.line("}")
 	}
@@ -707,7 +751,8 @@ func (e *emitter) emitBoardConstructReturn(board vdmir.BoardConstructExpr) {
 
 func (e *emitter) emitBoardFieldAssignments(target string, board vdmir.BoardConstructExpr) {
 	for _, field := range board.Fields {
-		e.line(fmt.Sprintf("%s.%s = %s;", target, hlslIdentifier(field.Name), e.expr(field.Value)))
+		value := e.materializeExpr(field.Value)
+		e.line(fmt.Sprintf("%s.%s = %s;", target, hlslIdentifier(field.Name), value))
 	}
 }
 
@@ -732,7 +777,8 @@ func (e *emitter) emitDeriveReturn(derive vdmir.DeriveExpr) {
 
 func (e *emitter) emitDeriveTemps(derive vdmir.DeriveExpr) {
 	for _, field := range derive.Fields {
-		e.line(fmt.Sprintf("%s = %s;", typeRef(field.Value.Type(), field.TempName), e.expr(field.Value)))
+		value := e.materializeExpr(field.Value)
+		e.line(fmt.Sprintf("%s = %s;", typeRef(field.Value.Type(), field.TempName), value))
 	}
 }
 
@@ -742,10 +788,263 @@ func (e *emitter) emitDeriveResultAssignments(target string, derive vdmir.Derive
 	}
 }
 
+// materializeExpr emits any required prelude and returns a stable HLSL value.
+// Recursive operands are visited in source order. Structured expressions that
+// cannot be represented safely as an inline HLSL expression always receive a
+// deterministic compiler-owned temporary.
+func (e *emitter) materializeExpr(expr vdmir.Expr) string {
+	if expr == nil {
+		e.err = fmt.Errorf("cannot materialize nil VD-MIR expression")
+		return "0"
+	}
+	switch x := expr.(type) {
+	case vdmir.ForeignShaderExpr:
+		name := e.nextTempWithPrefix("inline_hlsl")
+		e.line(fmt.Sprintf("%s;", typeRef(x.Type(), name)))
+		e.emitForeignExpressionAssignment(name, x)
+		return name
+	case vdmir.GuardedReadExpr:
+		name := e.nextTempWithPrefix("guarded_read")
+		fallback := e.materializeExpr(x.Fallback)
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(x.Type(), ""), name, fallback))
+		condition := e.materializeExpr(x.Condition)
+		e.line("if (" + condition + ")")
+		e.line("{")
+		e.indent++
+		target := e.materializeExpr(x.Target)
+		e.line(fmt.Sprintf("%s = %s;", name, target))
+		e.indent--
+		e.line("}")
+		return name
+	case vdmir.TensorReductionExpr:
+		name := e.nextTempWithPrefix("tensor_accumulator")
+		e.flowMarker("tensor accumulator initialization", x.Provenance.Path, x.Span, x.Kind)
+		identity := e.materializeExpr(x.Identity)
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(x.Type(), ""), name, identity))
+		e.emitTensorReduction(name, x, 0)
+		return name
+	case vdmir.ReductionExpr:
+		name := e.nextTempWithPrefix("reduce")
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(x.Type(), ""), name, reductionIdentityLiteral(x)))
+		e.emitReductionLoopMaterialized(name, x)
+		return name
+	case vdmir.IndexExpr, vdmir.Index2DExpr, vdmir.IndexNExpr:
+		if !exprNeedsPrelude(expr) {
+			return e.expr(expr)
+		}
+		lvalue := e.materializeIndexedLValue(x, source.Span{})
+		name := e.nextTempWithPrefix("indexed_value")
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(expr.Type(), ""), name, lvalue.Text))
+		return name
+	case vdmir.BinaryExpr:
+		left := e.materializeOperand(x.Left)
+		right := e.materializeOperand(x.Right)
+		return "(" + left + " " + x.Operator + " " + right + ")"
+	case vdmir.UnaryExpr:
+		operand := e.materializeOperand(x.Operand)
+		return x.Operator + operand
+	case vdmir.CallExpr:
+		callee := e.materializeExpr(x.Callee)
+		args := make([]string, 0, len(x.Arguments))
+		for _, arg := range x.Arguments {
+			args = append(args, e.materializeOperand(arg))
+		}
+		call := callee + "(" + strings.Join(args, ", ") + ")"
+		if x.Type().Kind == vdmir.TypeVoid {
+			e.line(call + ";")
+			return ""
+		}
+		return call
+	case vdmir.IntrinsicCallExpr:
+		args := make([]string, 0, len(x.Arguments))
+		for _, arg := range x.Arguments {
+			args = append(args, e.materializeExpr(arg))
+		}
+		return hlslIntrinsic(x.Intrinsic) + "(" + strings.Join(args, ", ") + ")"
+	case vdmir.FieldAccessExpr:
+		target := e.materializeExpr(x.Target)
+		return target + "." + hlslIdentifier(x.Field)
+	case vdmir.WhenUtilityExpr:
+		name := e.nextTempWithPrefix("utility")
+		otherwise := e.materializeExpr(x.Else)
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(x.Type(), ""), name, otherwise))
+		e.emitWhenUtilityAssign(name, x)
+		return name
+	case vdmir.WithExpr:
+		name := e.nextTempWithPrefix("with")
+		e.emitWithCopy(name, x)
+		return name
+	case vdmir.MatchExpr:
+		name := e.nextTempWithPrefix("match_result")
+		e.line(fmt.Sprintf("%s %s;", typeRef(x.Type(), ""), name))
+		e.emitMatchAssign(name, x)
+		return name
+	case vdmir.BoardConstructExpr:
+		name := e.nextTempWithPrefix("board")
+		e.line(fmt.Sprintf("%s %s;", typeRef(x.Type(), ""), name))
+		e.emitBoardFieldAssignments(name, x)
+		return name
+	case vdmir.DeriveExpr:
+		e.emitDeriveTemps(x)
+		name := e.nextTempWithPrefix("derive_result")
+		e.line(fmt.Sprintf("%s %s;", typeRef(x.Type(), ""), name))
+		e.emitDeriveResultAssignments(name, x)
+		return name
+	case vdmir.EnumConstructExpr:
+		args := make([]string, 0, len(x.Fields))
+		for _, field := range x.Fields {
+			args = append(args, e.materializeOperand(field.Value))
+		}
+		return enumConstructorName(x.EnumName, x.VariantName) + "(" + strings.Join(args, ", ") + ")"
+	default:
+		return e.expr(expr)
+	}
+}
+
+func (e *emitter) materializeOperand(expr vdmir.Expr) string {
+	value := e.materializeExpr(expr)
+	switch expr.(type) {
+	case vdmir.CallExpr:
+		if expr.Type().Kind == vdmir.TypeVoid {
+			return value
+		}
+		name := e.nextTempWithPrefix("operand")
+		e.line(fmt.Sprintf("%s %s = %s;", typeRef(expr.Type(), ""), name, value))
+		return name
+	default:
+		return value
+	}
+}
+
+func exprNeedsPrelude(expr vdmir.Expr) bool {
+	switch x := expr.(type) {
+	case vdmir.ForeignShaderExpr, vdmir.GuardedReadExpr, vdmir.TensorReductionExpr, vdmir.ReductionExpr:
+		return true
+	case vdmir.IndexExpr:
+		return exprNeedsPrelude(x.Index) || exprNeedsPrelude(x.Target)
+	case vdmir.Index2DExpr:
+		return exprNeedsPrelude(x.Row) || exprNeedsPrelude(x.Col) || (x.Stride != nil && exprNeedsPrelude(x.Stride)) || exprNeedsPrelude(x.Target)
+	case vdmir.IndexNExpr:
+		if exprNeedsPrelude(x.Target) {
+			return true
+		}
+		for _, index := range x.Indices {
+			if exprNeedsPrelude(index) {
+				return true
+			}
+		}
+	case vdmir.CallExpr:
+		return true
+	case vdmir.FieldAccessExpr:
+		return exprNeedsPrelude(x.Target)
+	case vdmir.WhenUtilityExpr, vdmir.WithExpr, vdmir.MatchExpr, vdmir.BoardConstructExpr, vdmir.DeriveExpr:
+		return true
+	case vdmir.BinaryExpr:
+		return exprNeedsPrelude(x.Left) || exprNeedsPrelude(x.Right)
+	case vdmir.UnaryExpr:
+		return exprNeedsPrelude(x.Operand)
+	}
+	return false
+}
+
+func (e *emitter) emitReductionLoopMaterialized(target string, reduction vdmir.ReductionExpr) {
+	switch reduction.LoopHint {
+	case vdmir.LoopHintUnroll:
+		e.line("[unroll]")
+	case vdmir.LoopHintLoop:
+		e.line("[loop]")
+	}
+	start := e.materializeExpr(reduction.Start)
+	end := e.materializeExpr(reduction.End)
+	step := e.materializeExpr(reduction.Step)
+	loopName := hlslIdentifier(reduction.Name)
+	e.line(fmt.Sprintf("for (%s %s = %s; %s < %s; %s += %s)", typeRef(reduction.IndexType, ""), loopName, start, loopName, end, loopName, step))
+	e.line("{")
+	e.indent++
+	body := e.materializeExpr(reduction.Body)
+	e.line(fmt.Sprintf("%s = %s %s (%s);", target, target, reductionCombineOperator(reduction.Op), body))
+	e.indent--
+	e.line("}")
+}
+
+func (e *emitter) materializeIndexedLValue(expr vdmir.Expr, span source.Span) materializedLValue {
+	result := materializedLValue{ValueType: expr.Type(), SourceSpan: span}
+	component := func(value vdmir.Expr) string {
+		text := e.materializeExpr(value)
+		name := e.nextTempWithPrefix("tensor_index")
+		e.line(fmt.Sprintf("uint %s = %s;", name, text))
+		result.AddressComponents = append(result.AddressComponents, name)
+		return name
+	}
+	switch x := expr.(type) {
+	case vdmir.IndexNExpr:
+		if x.Layout != vdmir.IndexLayoutRowMajorLinear || len(x.Indices) == 0 || len(x.Indices) != len(x.Extents) {
+			e.err = fmt.Errorf("invalid rank-general fixed-array linearization metadata")
+			return result
+		}
+		result.Base = e.expr(x.Target)
+		parts := make([]string, 0, len(x.Indices))
+		for _, index := range x.Indices {
+			parts = append(parts, component(index))
+		}
+		offset := parts[0]
+		for axis := 1; axis < len(parts); axis++ {
+			if x.Extents[axis] == 0 {
+				e.err = fmt.Errorf("invalid zero extent in rank-general fixed-array linearization")
+				return result
+			}
+			offset = fmt.Sprintf("((%s * %du) + %s)", offset, x.Extents[axis], parts[axis])
+		}
+		result.LinearOffset = e.nextTempWithPrefix("tensor_offset")
+		e.line(fmt.Sprintf("uint %s = %s;", result.LinearOffset, offset))
+		result.Text = result.Base + "[" + result.LinearOffset + "]"
+	case vdmir.Index2DExpr:
+		result.Base = e.expr(x.Target)
+		row := component(x.Row)
+		col := component(x.Col)
+		strideExpr := x.Stride
+		if strideExpr == nil {
+			if ref, ok := x.Target.(vdmir.VarRefExpr); ok {
+				if alias, exists := e.viewAliases[ref.Name]; exists {
+					result.Base = e.expr(alias.Buffer)
+					strideExpr = alias.Cols
+				}
+			}
+		}
+		if strideExpr == nil {
+			e.err = fmt.Errorf("missing stride for materialized 2D lvalue")
+			return result
+		}
+		stride := component(strideExpr)
+		result.LinearOffset = e.nextTempWithPrefix("tensor_offset")
+		e.line(fmt.Sprintf("uint %s = ((%s * %s) + %s);", result.LinearOffset, row, stride, col))
+		result.Text = result.Base + "[" + result.LinearOffset + "]"
+	case vdmir.IndexExpr:
+		result.Base = e.expr(x.Target)
+		index := component(x.Index)
+		result.LinearOffset = index
+		result.Text = result.Base + "[" + index + "]"
+		if target, ok := x.Target.(vdmir.VarRefExpr); ok && target.Name == vdmir.TestInputResourceName {
+			switch x.Type().Kind {
+			case vdmir.TypeBool:
+				result.Text = "(" + result.Text + " != 0u)"
+			case vdmir.TypeI32:
+				result.Text = "asint(" + result.Text + ")"
+			case vdmir.TypeF32:
+				result.Text = "asfloat(" + result.Text + ")"
+			}
+		}
+	default:
+		e.err = fmt.Errorf("tensor destination is not an indexed lvalue: %T", expr)
+	}
+	return result
+}
+
 func (e *emitter) expr(expr vdmir.Expr) string {
 	switch x := expr.(type) {
 	case vdmir.ForeignShaderExpr:
-		return "/* inline HLSL expressions require a statement-valued context */"
+		e.err = fmt.Errorf("inline HLSL expression bypassed shared materialization")
+		return "0"
 	case vdmir.LiteralExpr:
 		return x.Value
 	case vdmir.VarRefExpr:
@@ -759,8 +1058,14 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return e.expr(x.Target) + "[" + e.expr(x.Index) + "]"
 	case vdmir.Index2DExpr:
 		return e.index2D(x)
+	case vdmir.IndexNExpr:
+		return e.indexN(x)
+	case vdmir.TensorReductionExpr:
+		e.err = fmt.Errorf("tensor reduction bypassed shared materialization")
+		return "0"
 	case vdmir.GuardedReadExpr:
-		return "/* unsupported guarded read expr position */"
+		e.err = fmt.Errorf("guarded read bypassed shared materialization")
+		return "0"
 	case vdmir.RegTileZeroExpr:
 		return "/* reg_tile_zero */"
 	case vdmir.RowMajorViewExpr:
@@ -784,9 +1089,11 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 	case vdmir.WhenUtilityExpr:
 		return e.whenUtility(x)
 	case vdmir.WithExpr:
-		return "/* unsupported with expr position */"
+		e.err = fmt.Errorf("with expression bypassed shared materialization")
+		return "0"
 	case vdmir.ReductionExpr:
-		return "/* unsupported reduction expr position */"
+		e.err = fmt.Errorf("reduction expression bypassed shared materialization")
+		return "0"
 	case vdmir.EnumConstructExpr:
 		args := make([]string, 0, len(x.Fields))
 		for _, field := range x.Fields {
@@ -794,11 +1101,14 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		}
 		return enumConstructorName(x.EnumName, x.VariantName) + "(" + strings.Join(args, ", ") + ")"
 	case vdmir.BoardConstructExpr:
-		return "/* unsupported board construct expr position */"
+		e.err = fmt.Errorf("board construction bypassed shared materialization")
+		return "0"
 	case vdmir.DeriveExpr:
-		return "/* unsupported derive expr position */"
+		e.err = fmt.Errorf("derive expression bypassed shared materialization")
+		return "0"
 	case vdmir.MatchExpr:
-		return "/* unsupported match expr position */"
+		e.err = fmt.Errorf("match expression bypassed shared materialization")
+		return "0"
 	default:
 		return "/* unsupported */"
 	}
@@ -925,6 +1235,18 @@ func (e *emitter) index2D(expr vdmir.Index2DExpr) string {
 	return target + "[((" + e.expr(expr.Row) + ") * (" + strideText + ")) + (" + e.expr(expr.Col) + ")]"
 }
 
+func (e *emitter) indexN(expr vdmir.IndexNExpr) string {
+	if expr.Layout != vdmir.IndexLayoutRowMajorLinear || len(expr.Indices) == 0 || len(expr.Indices) != len(expr.Extents) {
+		e.err = fmt.Errorf("invalid rank-general fixed-array linearization metadata")
+		return "0"
+	}
+	offset := e.expr(expr.Indices[0])
+	for axis := 1; axis < len(expr.Indices); axis++ {
+		offset = fmt.Sprintf("((%s * %du) + %s)", offset, expr.Extents[axis], e.expr(expr.Indices[axis]))
+	}
+	return e.expr(expr.Target) + "[" + offset + "]"
+}
+
 func (e *emitter) emitRegTileZeroLet(name string, typ vdmir.Type) {
 	e.line(fmt.Sprintf("%s;", typeRef(typ, name)))
 	elemType := elementTypeForArrayish(typ)
@@ -977,12 +1299,17 @@ func typeRef(ref vdmir.Type, name string) string {
 		mapped = "void"
 	}
 	if ref.IsArray() && ref.Element != nil {
-		elem := typeRef(*ref.Element, "")
+		elemType := *ref.Element
+		count := ref.ArraySize
+		if ref.Kind == vdmir.TypeArray {
+			elemType, count = fixedArrayStorage(ref)
+		}
+		elem := typeRef(elemType, "")
 		if name == "" {
 			return elem
 		}
 		if ref.Kind == vdmir.TypeArray {
-			return fmt.Sprintf("%s %s[%d]", elem, hlslIdentifier(name), ref.ArraySize)
+			return fmt.Sprintf("%s %s[%d]", elem, hlslIdentifier(name), count)
 		}
 		return fmt.Sprintf("%s %s[]", elem, hlslIdentifier(name))
 	}
@@ -1006,6 +1333,19 @@ func typeRef(ref vdmir.Type, name string) string {
 		return mapped
 	}
 	return mapped + " " + hlslIdentifier(name)
+}
+
+// fixedArrayStorage maps nested fixed arrays to their compiler-owned linear
+// HLSL storage. Tiles, register tiles, matrix views, and runtime arrays retain
+// their existing category-specific representations.
+func fixedArrayStorage(ref vdmir.Type) (vdmir.Type, int) {
+	count := 1
+	current := ref
+	for current.Kind == vdmir.TypeArray && current.Element != nil {
+		count *= current.ArraySize
+		current = *current.Element
+	}
+	return current, count
 }
 
 func hlslIdentifier(name string) string {
