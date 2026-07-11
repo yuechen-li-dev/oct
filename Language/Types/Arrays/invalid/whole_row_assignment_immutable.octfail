@@ -1,0 +1,9 @@
+expect error: "cannot assign to immutable binding 'rows'"
+
+package MainInvalid
+
+fn Main() -> Int[][] {
+    let rows = [[1, 2], [3, 4]]
+    rows[0] = rows[1]
+    return rows
+}

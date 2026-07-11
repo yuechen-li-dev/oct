@@ -1,0 +1,9 @@
+expect error: "index assignment indices must be Int"
+
+package MainInvalid
+
+fn Main() -> Int[][] {
+    var rows = [[1, 2], [3, 4]]
+    rows[true] = rows[1]
+    return rows
+}

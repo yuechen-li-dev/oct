@@ -1173,6 +1173,7 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 	}
 
 	var elementType Type
+	wholeRowAssignment := false
 	switch {
 	case targetType.IsArray:
 		elementType = targetType
@@ -1182,6 +1183,7 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 			}
 			elementType = peelArrayType(elementType)
 		}
+		wholeRowAssignment = len(indices) == 1 && elementType.IsArray
 	case targetType.IsMatrix:
 		if len(indices) != 2 {
 			return fmt.Errorf("function %s: matrix index assignment (`x[i, j] = ...`) requires exactly 2 indices, got %d", ctx.name, len(indices))
@@ -1199,6 +1201,12 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 		return fmt.Errorf("function %s: %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, label)
 	}
 	if !isAssignable(valueType.ValueType, elementType) {
+		if wholeRowAssignment {
+			if !valueType.ValueType.IsArray {
+				return fmt.Errorf("function %s: row assignment requires an array row value", ctx.name)
+			}
+			return fmt.Errorf("function %s: row element type mismatch: expected %s, got %s", ctx.name, elementType, valueType.ValueType)
+		}
 		return fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
 	}
 	return nil

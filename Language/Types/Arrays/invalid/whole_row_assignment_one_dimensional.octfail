@@ -1,0 +1,9 @@
+expect error: "assigned value type does not match indexed element type"
+
+package MainInvalid
+
+fn Main() -> Int[] {
+    var values = [1, 2]
+    values[0] = [3, 4]
+    return values
+}

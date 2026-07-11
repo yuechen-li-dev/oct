@@ -1267,7 +1267,11 @@ func assignNestedArrayIndex(target Value, indices []int64, value Value) (Value, 
 	}
 	updated := cloneValue(target)
 	if len(indices) == 1 {
-		updated.Array[index] = value
+		destination := updated.Array[index]
+		if destination.Kind == ValueArray && value.Kind == ValueArray && len(destination.Array) != len(value.Array) {
+			return Value{}, fmt.Errorf("runtime error: row length mismatch: expected %d, got %d", len(destination.Array), len(value.Array))
+		}
+		updated.Array[index] = cloneValue(value)
 		return updated, nil
 	}
 	child, err := assignNestedArrayIndex(updated.Array[index], indices[1:], value)

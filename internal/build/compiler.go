@@ -308,6 +308,17 @@ type MIRAssign struct {
 
 func (MIRAssign) mirStmt() {}
 
+// MIRRowAssign is a whole-row write to a two-dimensional array.  It remains
+// distinct from MIRAssign so emission can retain Oct's value-copy semantics
+// and its row-specific runtime checks.
+type MIRRowAssign struct {
+	Target string
+	Index  string
+	Value  string
+}
+
+func (MIRRowAssign) mirStmt() {}
+
 type MIRCall struct {
 	Target        string
 	Callee        string
@@ -1219,6 +1230,15 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return fmt.Errorf("index assignment to unknown local '%s'", s.Target)
 			}
 			switch {
+			case isTwoDimensionalArrayType(targetType):
+				switch len(indexExprs) {
+				case 1:
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRRowAssign{Target: c.goLocalName(s.Target), Index: indexExprs[0], Value: val})
+				case 2:
+					c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: fmt.Sprintf("%s[%s][%s]", c.goLocalName(s.Target), indexExprs[0], indexExprs[1]), Value: val})
+				default:
+					return fmt.Errorf("nested array index assignment requires one row index or two element indices, got %d", len(indexExprs))
+				}
 			case strings.HasSuffix(targetType, "[]") && !strings.HasSuffix(targetType, "[][]"):
 				if len(indexExprs) != 1 {
 					return fmt.Errorf("array index assignment requires exactly 1 index, got %d", len(indexExprs))
@@ -5605,6 +5625,8 @@ func dumpMIR(m MIRModule) string {
 				switch st := s.(type) {
 				case MIRAssign:
 					fmt.Fprintf(&b, "    %s = %s\n", st.Target, st.Value)
+				case MIRRowAssign:
+					fmt.Fprintf(&b, "    row_assign %s[%s] = %s\n", st.Target, st.Index, st.Value)
 				case MIRCall:
 					fmt.Fprintf(&b, "    %s = call %s(%s)\n", st.Target, st.Callee, strings.Join(st.Args, ", "))
 				case MIRConstructArray:
@@ -5891,6 +5913,7 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
 	b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")
+	b.WriteString("func __octAssignRow[T any](matrix [][]T, row int, rhs []T) {\n\tif row < 0 || row >= len(matrix) { panic(fmt.Sprintf(\"runtime error: row index %d out of bounds for array with %d rows\", row, len(matrix))) }\n\tif len(rhs) != len(matrix[row]) { panic(fmt.Sprintf(\"runtime error: row length mismatch: expected %d, got %d\", len(matrix[row]), len(rhs))) }\n\tmatrix[row] = __octClone(rhs)\n}\n\n")
 	if usedBuiltins["ArrayCrossSection"] || usedBuiltins["Array.CrossSection"] {
 		b.WriteString("func __octArrayCrossSection[T any](values []T, r __octRange) []T {\n\tstart := 0\n\tif r.HasStart { start = r.Start }\n\tend := len(values)\n\tif r.HasEnd { end = r.End }\n\tstep := 1\n\tif r.HasStep { step = r.Step }\n\tif step <= 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range step must be positive, got %d\", step)) }\n\tif start < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start must be >= 0, got %d\", start)) }\n\tif end < 0 { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end must be >= 0, got %d\", end)) }\n\tif start > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d exceeds array length %d\", start, len(values))) }\n\tif end > len(values) { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range end %d exceeds array length %d\", end, len(values))) }\n\tif start > end { panic(fmt.Sprintf(\"runtime error: Array.CrossSection range start %d must be <= end %d\", start, end)) }\n\tcount := 0\n\tif start < end { count = ((end - start - 1) / step) + 1 }\n\tout := make([]T, 0, count)\n\tfor i := start; i < end; i += step { out = append(out, values[i]) }\n\treturn out\n}\n\n")
 	}
@@ -8776,6 +8799,8 @@ func goStmt(s MIRStmt) (string, error) {
 	switch st := s.(type) {
 	case MIRAssign:
 		return fmt.Sprintf("%s = %s", st.Target, st.Value), nil
+	case MIRRowAssign:
+		return fmt.Sprintf("__octAssignRow(%s, %s, %s)", st.Target, st.Index, st.Value), nil
 	case MIRConstructArray:
 		return fmt.Sprintf("%s = []%s{%s}", st.Target, goType(st.ElemType), strings.Join(st.Values, ", ")), nil
 	case MIRConstructRecord:
@@ -9421,6 +9446,13 @@ func goType(t string) string {
 		return strings.ReplaceAll(t, ".", "_")
 	}
 	return t
+}
+
+func isTwoDimensionalArrayType(t string) bool {
+	if !strings.HasSuffix(t, "[][]") {
+		return false
+	}
+	return !strings.HasSuffix(strings.TrimSuffix(t, "[][]"), "[]")
 }
 
 func cloneCompiledValueExpr(expr string, typeName string) string {

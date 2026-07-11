@@ -1,0 +1,9 @@
+expect error: "nested array index assignment has too many indices"
+
+package MainInvalid
+
+fn Main() -> Int[][] {
+    var rows = [[1, 2], [3, 4]]
+    rows[0, 0, 0] = 7
+    return rows
+}

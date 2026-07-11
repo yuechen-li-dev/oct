@@ -1,0 +1,9 @@
+expect error: "row element type mismatch: expected Int[], got Float[]"
+
+package MainInvalid
+
+fn Main() -> Int[][] {
+    var rows = [[1, 2], [3, 4]]
+    rows[0] = [1.0, 2.0]
+    return rows
+}

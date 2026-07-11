@@ -1,0 +1,9 @@
+expect error: "row assignment requires an array row value"
+
+package MainInvalid
+
+fn Main() -> Int[][] {
+    var rows = [[1, 2], [3, 4]]
+    rows[0] = 7
+    return rows
+}

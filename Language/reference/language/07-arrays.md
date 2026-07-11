@@ -16,6 +16,11 @@ Type matching is exact, including dimensions and nominal names.
 - Index expressions must have type `Int`.
 - Indexed assignment requires a mutable array binding (`var`).
 - Indexed assignment values must match the element type exactly.
+- `array[i] = value` replaces one element of a 1D array.
+- For a nested two-dimensional array, `rows[i, j] = value` replaces one scalar element and `rows[i] = row` replaces a whole row.
+- Whole-row assignment requires an exact row element type and the same runtime length as the destination row. It copies the RHS row value; it does not create mutable aliasing between rows.
+- Whole-row assignment checks the row index before writing. Negative and out-of-range indices fail with the normal array bounds error; a length mismatch fails distinctly as `row length mismatch`.
+- Nested arrays may still be jagged. A whole-row replacement must match the selected destination row's existing length; it does not resize or regularize the outer array.
 - `Append(xs, value)` requires `xs` to be an array.
 - `Append` values must match the array element type exactly.
 - `Array.CrossSection(xs, range)` requires a 1D array and a `Range`, and returns a new `T[]` copy.
@@ -42,6 +47,7 @@ Type matching is exact, including dimensions and nominal names.
 - `Array.CrossSection` and `Array.Where` are for 1D arrays only. Vectors, matrices, and tensors have separate rank-aware APIs and are not accepted as direct values.
 - `Array.Where` is a compiler-owned polymorphic array operation, not a general user-defined generic function; do not write or expose `Array.Where<T>`.
 - `Array.Where` does not add NumPy-style broadcasting, scalar masks, or matrix/vector/tensor mask indexing syntax.
+- Whole-row assignment does not add slices, column assignment, submatrix assignment, broadcasting, shape coercion, or implicit resizing.
 - Negative indices, reverse ranges, lazy views, `Array.TryCrossSection`, `Array.Copy`, `Array.Take`, `Array.Drop`, and `Array.Window` are deferred/not part of M0.
 
 ## Examples
@@ -54,6 +60,17 @@ package Main
 fn Main() -> Int {
     let grid = [[1, 2], [3, 4]]
     return grid[1][0]
+}
+```
+
+```oct
+package Main
+
+fn Main() -> Int[][] {
+    var rows = [[1, 2], [3, 4]]
+    rows[0] = rows[1]
+    rows[1, 0] = 9
+    return rows
 }
 ```
 

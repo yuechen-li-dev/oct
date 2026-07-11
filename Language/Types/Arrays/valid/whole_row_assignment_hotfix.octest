@@ -1,0 +1,38 @@
+package MainValid
+
+fn ReplacementRow() -> Int[] {
+    return [7, 8]
+}
+
+[Fact]
+fn WholeRowAssignmentCopiesValues() -> Void {
+    var rows = [[1, 2], [3, 4]]
+    rows[0] = rows[1]
+    rows[0][0] = 9
+
+    Assert.Equal(9, rows[0][0], "replacement row receives later mutation")
+    Assert.Equal(3, rows[1][0], "whole-row assignment does not alias source row")
+}
+
+[Fact]
+fn WholeRowAssignmentSwapAndSelfAssignment() -> Void {
+    var rows = [[1, 2], [3, 4], [5, 6]]
+    let temp = rows[0]
+    rows[0] = rows[2]
+    rows[2] = temp
+    rows[1] = rows[1]
+
+    Assert.Equal(5, rows[0][0], "Gaussian-elimination style swap first row")
+    Assert.Equal(1, rows[2][0], "Gaussian-elimination style swap final row")
+    Assert.Equal(3, rows[1][0], "self assignment preserves row")
+}
+
+[Fact]
+fn WholeRowAssignmentSupportsDynamicIndexAndHelperRhs() -> Void {
+    var rows = [[1, 2], [3, 4]]
+    let finalRow = Len(rows) - 1
+    rows[finalRow] = ReplacementRow()
+
+    Assert.Equal(7, rows[1][0], "dynamic final-row replacement")
+    Assert.Equal(8, rows[1][1], "helper-produced replacement row")
+}
