@@ -78,3 +78,20 @@ execution.
 The complete M32b hardware matrix, `.sdslvtest` tensor suite, and SGEMM parity
 proof intentionally remain M32b.2 work. M32b.1 establishes the backend
 prerequisite and does not claim those hardware results.
+
+## M32b.2 closeout
+
+M32b.2 is now complete and is documented in
+`internal/prometheus/DevelopmentReport/SDSL_V_M32B2_TENSOR_GPU_PROOF.md`.
+
+That follow-up keeps the M32b.1 lowering architecture intact and adds the
+missing execution proof:
+
+- a dedicated green `.sdslvtest` tensor suite at
+  `examples/SDSL-V/M32b2/TensorExecution.sdslvtest`;
+- real Vulkan execution on RTX 3070 hardware for rank-1 through rank-4 tensor
+  cases, reductions, guarded reads, inline HLSL, Theory rows, and
+  multi-invocation determinism;
+- SGEMM-style tensor contraction parity against an explicit-loop equivalent;
+- focused regressions for `.sdslvtest` tensor validation/lowering, loop order,
+  and hidden `TestInput` composition.

@@ -1179,3 +1179,26 @@ old-value read and one final write, while `=` performs only its final write.
 Generated temporaries are deterministic and hygienic, and source markers use
 preserved VD-MIR spans. Tensor lowering consumes M32a alias policy and static
 extent metadata rather than repeating source validation or analysis.
+
+M32b.2 adds native execution proof for that contract through the normal
+`.sdslvtest` Vulkan path. The maintained proof suite covers:
+
+- rank-1, rank-2, rank-3, and rank-4 fixed-array tensor execution;
+- exact row-major fixed-array layout with compiler-owned linearization;
+- typed `Sum[...]` identities for `f32`, `i32`, and `u32`;
+- compound tensor `+=` with one destination read and one final write;
+- guarded-read composition, including real M30 `TestInput` resources;
+- inline-HLSL tensor bodies through the shared materialization path;
+- Theory-row reuse of one lowered tensor body;
+- deterministic multi-invocation execution;
+- SGEMM-style register-tile tensor contraction parity against an explicit loop.
+
+The row-major fixed-array address formula remains:
+
+```text
+offset = (((i0 * D1 + i1) * D2 + i2) ...)
+```
+
+Free-index loop order is the declared destination binder order and
+reduction-index loop order is the explicit `Sum[...]` binder order. Backends
+must not re-infer tensor extents or reorder those loops.

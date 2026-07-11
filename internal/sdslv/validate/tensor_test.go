@@ -104,6 +104,30 @@ func TestSdslvValidatedTensorAssignIsLoweringReady(t *testing.T) {
 	}
 }
 
+func TestSdslvTensorValidationHonorsSdslvTestSourceAndTestInput(t *testing.T) {
+	module := mustTensorModule(t, `[Fact]
+[TestInputUInt(5u, 7u, 11u)]
+fn GuardedTensor() -> void {
+    let indices: array<u32, 4u>;
+    indices[0u] = 1u;
+    indices[1u] = 2u;
+    indices[2u] = 3u;
+    indices[3u] = 0u;
+
+    let output: array<u32, 4u>;
+    tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
+    Assert.Equal(7u, output[0u]);
+}`)
+	module.Source.Path = "guarded_tensor.sdslvtest"
+	assigns, diags := ValidatedTensorAssignments(module)
+	if len(diags) != 0 {
+		t.Fatalf("ValidatedTensorAssignments() diagnostics = %v", diags)
+	}
+	if len(assigns) != 1 || len(assigns[0].FreeIndices) != 1 || assigns[0].FreeIndices[0].Extent != 4 {
+		t.Fatalf("assigns = %#v", assigns)
+	}
+}
+
 func mustTensorModule(t *testing.T, text string) ast.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "tensor_test.sdslv", Text: text})

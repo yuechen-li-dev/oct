@@ -518,6 +518,39 @@ func TestSdslvNativeHostNearSpecialValueMatrix(t *testing.T) {
 	}
 }
 
+func TestSdslvNativeHostExecutesTensorExecutionSuite(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "examples", "SDSL-V", "M32b2", "TensorExecution.sdslvtest"))
+	if got := len(fixture.groups); got != 2 {
+		t.Fatalf("groups=%d, want 2 workgroup groups", got)
+	}
+	for _, function := range []string{
+		"Rank1ElementwiseMap",
+		"Rank3BatchedMatmul",
+		"TensorGuardedReadsUseTestInput",
+		"SgemmStyleTensorParity",
+		"TensorInlineHlslExpression",
+	} {
+		out, result, err := runNativeHostJSON(t, host, fixture.byFunction[function], fixture.manifestPath)
+		if err != nil || result.Status != "PASS" {
+			t.Fatalf("%s failed: %v: %s", function, err, out)
+		}
+	}
+	multi := fixture.byFunction["MultipleInvocationsKeepTensorStatePrivate"]
+	first, result, err := runNativeHostJSON(t, host, multi, fixture.manifestPath)
+	if err != nil || result.Status != "PASS" {
+		t.Fatalf("multiple invocation case failed: %v: %s", err, first)
+	}
+	second, result2, err := runNativeHostJSON(t, host, multi, fixture.manifestPath)
+	if err != nil || result2.Status != "PASS" {
+		t.Fatalf("multiple invocation replay failed: %v: %s", err, second)
+	}
+	if first != second {
+		t.Fatalf("multiple invocation replay changed:\n%s\n!=\n%s", first, second)
+	}
+}
+
 func TestSdslvStableCaseReplayWithTestInput(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)

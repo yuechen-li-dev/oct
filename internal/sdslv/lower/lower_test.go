@@ -273,6 +273,49 @@ fn ReadInput() -> void {
 	}
 }
 
+func TestModuleForTestsLowersTensorBodiesInsideSdslvTests(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "tensor_suite.sdslvtest", Text: `[Fact]
+[TestInputUInt(5u, 7u, 11u)]
+fn GuardedTensor() -> void {
+  let indices: array<u32, 4u>;
+  indices[0u] = 1u;
+  indices[1u] = 2u;
+  indices[2u] = 3u;
+  indices[3u] = 0u;
+  let output: array<u32, 4u>;
+  tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
+  Assert.Equal(7u, output[0u]);
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests, diagnostics := validate.ValidatedTests(module)
+	if len(diagnostics) != 0 {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+	mir, err := ModuleForTests(module, tests, "HLSL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := findFunction(t, mir, "GuardedTensor")
+	if got := len(fn.Body.Statements); got != 8 {
+		t.Fatalf("statements=%#v", fn.Body.Statements)
+	}
+	if _, ok := fn.Body.Statements[6].(vdmir.TensorAssign); !ok {
+		t.Fatalf("statement[6]=%T, want TensorAssign", fn.Body.Statements[6])
+	}
+	if _, ok := fn.Body.Statements[7].(vdmir.AssertStmt); !ok {
+		t.Fatalf("statement[7]=%T, want AssertStmt", fn.Body.Statements[7])
+	}
+	if !slices.ContainsFunc(mir.Resources, func(r vdmir.Resource) bool { return r.Name == vdmir.TestInputResourceName }) {
+		t.Fatalf("hidden TestInput resource missing: %#v", mir.Resources)
+	}
+}
+
 func TestModuleLowersVectorAddToVDMIR(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 record VectorParams { Count: u32; }

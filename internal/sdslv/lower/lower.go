@@ -74,7 +74,11 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 	// and are the one-way handoff key into lowering.
 	validatedTensors := []validate.ValidatedTensorAssign(nil)
 	if moduleHasTensorAssign(module) {
-		validated, issues := validate.ValidatedTensorAssignments(module)
+		validationModule := module
+		if len(testInputs) != 0 {
+			validationModule = stripTestFunctionAttributes(module)
+		}
+		validated, issues := validate.ValidatedTensorAssignments(validationModule)
 		if len(issues) != 0 {
 			return vdmir.Module{}, fmt.Errorf("SDSL-V M32b requires valid tensor metadata: %s", issues[0].Message)
 		}
@@ -266,6 +270,91 @@ func ModuleForTests(module ast.Module, tests []validate.ValidatedTestDecl, targe
 		out.Functions[i].Body = body
 	}
 	return out, nil
+}
+
+func stripTestFunctionAttributes(module ast.Module) ast.Module {
+	out := module
+	out.Decls = make([]ast.Decl, 0, len(module.Decls))
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.FunctionDecl:
+			d.Attributes = preservedTensorValidationAttrs(d.Attributes)
+			d.Body = stripTestOnlyStatements(d.Body)
+			out.Decls = append(out.Decls, d)
+		case ast.ShaderDecl:
+			d.Methods = append([]ast.FunctionDecl(nil), d.Methods...)
+			for i := range d.Methods {
+				d.Methods[i].Attributes = preservedTensorValidationAttrs(d.Methods[i].Attributes)
+				d.Methods[i].Body = stripTestOnlyStatements(d.Methods[i].Body)
+			}
+			out.Decls = append(out.Decls, d)
+		default:
+			out.Decls = append(out.Decls, decl)
+		}
+	}
+	return out
+}
+
+func preservedTensorValidationAttrs(attrs []ast.Attribute) []ast.Attribute {
+	return append([]ast.Attribute(nil), attrs...)
+}
+
+func stripTestOnlyStatements(block ast.Block) ast.Block {
+	out := block
+	out.Statements = make([]ast.Stmt, 0, len(block.Statements))
+	for _, stmt := range block.Statements {
+		if isTestAssertStmt(stmt) {
+			continue
+		}
+		switch s := stmt.(type) {
+		case ast.IfStmt:
+			s.ThenBody = stripTestOnlyStatements(s.ThenBody)
+			if s.ElseBody != nil {
+				body := stripTestOnlyStatements(*s.ElseBody)
+				s.ElseBody = &body
+			}
+			out.Statements = append(out.Statements, s)
+		case ast.ForStmt:
+			s.Body = stripTestOnlyStatements(s.Body)
+			out.Statements = append(out.Statements, s)
+		case ast.GuardWhenStmt:
+			s.Cases = append([]ast.GuardWhenCase(nil), s.Cases...)
+			for i := range s.Cases {
+				s.Cases[i].Body = stripTestOnlyStatements(s.Cases[i].Body)
+			}
+			if s.ElseBody != nil {
+				body := stripTestOnlyStatements(*s.ElseBody)
+				s.ElseBody = &body
+			}
+			out.Statements = append(out.Statements, s)
+		case ast.FlowStmt:
+			s.States = append([]ast.StateBlock(nil), s.States...)
+			for i := range s.States {
+				s.States[i].Body = stripTestOnlyStatements(s.States[i].Body)
+			}
+			out.Statements = append(out.Statements, s)
+		default:
+			out.Statements = append(out.Statements, stmt)
+		}
+	}
+	return out
+}
+
+func isTestAssertStmt(stmt ast.Stmt) bool {
+	expr, ok := stmt.(ast.ExprStmt)
+	if !ok {
+		return false
+	}
+	call, ok := expr.Value.(ast.CallExpr)
+	if !ok {
+		return false
+	}
+	field, ok := call.Callee.(ast.FieldAccessExpr)
+	if !ok {
+		return false
+	}
+	target, ok := field.Target.(ast.IdentifierExpr)
+	return ok && target.Name == "Assert"
 }
 
 func lowerTestAssertBlock(block vdmir.Block, plan []validate.ValidatedAssertCall, index *int) (vdmir.Block, error) {

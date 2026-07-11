@@ -2,6 +2,7 @@ package validate
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
@@ -79,6 +80,10 @@ type tensorReductionValidation struct {
 // from VD-MIR. It intentionally does not initiate lowering.
 func ValidatedTensorAssignments(module ast.Module) ([]ValidatedTensorAssign, []diagnostic.Diagnostic) {
 	v := validator{path: module.Source.Path, moduleSpan: module.Span, types: map[string]typeInfo{}, funcs: map[string]functionInfo{}, configs: map[string]configInfo{}, concepts: map[string]ast.ConceptDecl{}, shaderDecls: map[string]ast.ShaderDecl{}, compileAliases: map[string]struct{}{}}
+	switch filepath.Ext(module.Source.Path) {
+	case ".sdslvtest", ".sdslvvalid", ".sdslvinvalid":
+		v.testSource = true
+	}
 	v.seedBuiltins()
 	v.collect(module)
 	if len(v.diagnostics) == 0 {

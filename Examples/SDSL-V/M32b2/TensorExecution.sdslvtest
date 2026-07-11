@@ -1,0 +1,334 @@
+[Fact]
+fn Rank1ElementwiseMap() -> void {
+    let input: array<f32, 4u>;
+    input[0u] = 1.0;
+    input[1u] = -2.0;
+    input[2u] = 3.5;
+    input[3u] = 0.25;
+
+    let output: array<f32, 4u>;
+    let scale: f32 = 2.0;
+    let bias: f32 = -1.0;
+    tensor output[i] = input[i] * scale + bias;
+
+    Assert.Equal(1.0, output[0u]);
+    Assert.Equal(-5.0, output[1u]);
+    Assert.Equal(6.0, output[2u]);
+    Assert.Equal(-0.5, output[3u]);
+}
+
+[Fact]
+fn Rank2ElementwiseRowMajorLayout() -> void {
+    let a: array<array<u32, 3u>, 2u>;
+    let b: array<array<u32, 3u>, 2u>;
+
+    a[0u, 0u] = 1u;  a[0u, 1u] = 10u; a[0u, 2u] = 100u;
+    a[1u, 0u] = 2u;  a[1u, 1u] = 20u; a[1u, 2u] = 200u;
+    b[0u, 0u] = 7u;  b[0u, 1u] = 70u; b[0u, 2u] = 700u;
+    b[1u, 0u] = 8u;  b[1u, 1u] = 80u; b[1u, 2u] = 800u;
+
+    let output: array<array<u32, 3u>, 2u>;
+    tensor output[i, j] = a[i, j] + b[i, j];
+
+    Assert.Equal(8u, output[0u, 0u]);
+    Assert.Equal(80u, output[0u, 1u]);
+    Assert.Equal(800u, output[0u, 2u]);
+    Assert.Equal(10u, output[1u, 0u]);
+    Assert.Equal(100u, output[1u, 1u]);
+    Assert.Equal(1000u, output[1u, 2u]);
+}
+
+[Fact]
+fn DotProductAndTypedZeroFloat() -> void {
+    let a: array<array<f32, 3u>, 2u>;
+    let b: array<f32, 3u>;
+    a[0u, 0u] = 1.0; a[0u, 1u] = 2.0;  a[0u, 2u] = 3.0;
+    a[1u, 0u] = 4.0; a[1u, 1u] = -1.0; a[1u, 2u] = 0.5;
+    b[0u] = 2.0;
+    b[1u] = -3.0;
+    b[2u] = 5.0;
+
+    let output: array<f32, 2u>;
+    tensor output[i] = Sum[k](a[i, k] * b[k]);
+
+    Assert.Equal(11.0, output[0u]);
+    Assert.Equal(13.5, output[1u]);
+}
+
+[Fact]
+fn TypedZeroIntAndUInt() -> void {
+    let intInput: array<array<i32, 2u>, 2u>;
+    intInput[0u, 0u] = 1;
+    intInput[0u, 1u] = -2;
+    intInput[1u, 0u] = 9;
+    intInput[1u, 1u] = -4;
+    let intOut: array<i32, 2u>;
+    tensor intOut[i] = Sum[k](intInput[i, k]);
+    Assert.Equal(-1, intOut[0u]);
+    Assert.Equal(5, intOut[1u]);
+
+    let uintInput: array<array<u32, 3u>, 2u>;
+    uintInput[0u, 0u] = 1u; uintInput[0u, 1u] = 2u; uintInput[0u, 2u] = 3u;
+    uintInput[1u, 0u] = 4u; uintInput[1u, 1u] = 5u; uintInput[1u, 2u] = 6u;
+    let uintOut: array<u32, 2u>;
+    tensor uintOut[i] = Sum[k](uintInput[i, k]);
+    Assert.Equal(6u, uintOut[0u]);
+    Assert.Equal(15u, uintOut[1u]);
+}
+
+[Fact]
+fn Rank2Matmul() -> void {
+    let a: array<array<u32, 3u>, 2u>;
+    let b: array<array<u32, 4u>, 3u>;
+
+    a[0u, 0u] = 1u; a[0u, 1u] = 2u; a[0u, 2u] = 3u;
+    a[1u, 0u] = 4u; a[1u, 1u] = 5u; a[1u, 2u] = 6u;
+
+    b[0u, 0u] = 1u; b[0u, 1u] = 0u; b[0u, 2u] = 2u; b[0u, 3u] = 1u;
+    b[1u, 0u] = 3u; b[1u, 1u] = 1u; b[1u, 2u] = 0u; b[1u, 3u] = 2u;
+    b[2u, 0u] = 1u; b[2u, 1u] = 4u; b[2u, 2u] = 5u; b[2u, 3u] = 0u;
+
+    let c: array<array<u32, 4u>, 2u>;
+    tensor c[i, j] = Sum[k](a[i, k] * b[k, j]);
+
+    Assert.Equal(10u, c[0u, 0u]);
+    Assert.Equal(14u, c[0u, 1u]);
+    Assert.Equal(17u, c[0u, 2u]);
+    Assert.Equal(5u, c[0u, 3u]);
+    Assert.Equal(25u, c[1u, 0u]);
+    Assert.Equal(29u, c[1u, 1u]);
+    Assert.Equal(38u, c[1u, 2u]);
+    Assert.Equal(14u, c[1u, 3u]);
+}
+
+[Fact]
+fn Rank3BatchedMatmul() -> void {
+    let a: array<array<array<u32, 2u>, 2u>, 2u>;
+    let b: array<array<array<u32, 2u>, 2u>, 2u>;
+
+    a[0u, 0u, 0u] = 1u; a[0u, 0u, 1u] = 2u;
+    a[0u, 1u, 0u] = 3u; a[0u, 1u, 1u] = 4u;
+    a[1u, 0u, 0u] = 5u; a[1u, 0u, 1u] = 6u;
+    a[1u, 1u, 0u] = 7u; a[1u, 1u, 1u] = 8u;
+
+    b[0u, 0u, 0u] = 9u;  b[0u, 0u, 1u] = 10u;
+    b[0u, 1u, 0u] = 11u; b[0u, 1u, 1u] = 12u;
+    b[1u, 0u, 0u] = 1u;  b[1u, 0u, 1u] = 2u;
+    b[1u, 1u, 0u] = 3u;  b[1u, 1u, 1u] = 4u;
+
+    let c: array<array<array<u32, 2u>, 2u>, 2u>;
+    tensor c[b0, i, j] = Sum[k](a[b0, i, k] * b[b0, k, j]);
+
+    Assert.Equal(31u, c[0u, 0u, 0u]);
+    Assert.Equal(34u, c[0u, 0u, 1u]);
+    Assert.Equal(71u, c[0u, 1u, 0u]);
+    Assert.Equal(78u, c[0u, 1u, 1u]);
+    Assert.Equal(23u, c[1u, 0u, 0u]);
+    Assert.Equal(34u, c[1u, 0u, 1u]);
+    Assert.Equal(31u, c[1u, 1u, 0u]);
+    Assert.Equal(46u, c[1u, 1u, 1u]);
+}
+
+[Fact]
+fn Rank4RowMajorLayout() -> void {
+    let input: array<array<array<array<u32, 3u>, 2u>, 2u>, 2u>;
+    input[0u, 0u, 0u, 0u] = 0u;
+    input[0u, 0u, 0u, 1u] = 1u;
+    input[0u, 0u, 0u, 2u] = 2u;
+    input[0u, 0u, 1u, 0u] = 10u;
+    input[0u, 0u, 1u, 1u] = 11u;
+    input[0u, 0u, 1u, 2u] = 12u;
+    input[0u, 1u, 0u, 0u] = 100u;
+    input[0u, 1u, 0u, 1u] = 101u;
+    input[0u, 1u, 0u, 2u] = 102u;
+    input[0u, 1u, 1u, 0u] = 110u;
+    input[0u, 1u, 1u, 1u] = 111u;
+    input[0u, 1u, 1u, 2u] = 112u;
+    input[1u, 0u, 0u, 0u] = 1000u;
+    input[1u, 0u, 0u, 1u] = 1001u;
+    input[1u, 0u, 0u, 2u] = 1002u;
+    input[1u, 0u, 1u, 0u] = 1010u;
+    input[1u, 0u, 1u, 1u] = 1011u;
+    input[1u, 0u, 1u, 2u] = 1012u;
+    input[1u, 1u, 0u, 0u] = 1100u;
+    input[1u, 1u, 0u, 1u] = 1101u;
+    input[1u, 1u, 0u, 2u] = 1102u;
+    input[1u, 1u, 1u, 0u] = 1110u;
+    input[1u, 1u, 1u, 1u] = 1111u;
+    input[1u, 1u, 1u, 2u] = 1112u;
+
+    let output: array<array<array<array<u32, 3u>, 2u>, 2u>, 2u>;
+    tensor output[b, h, i, j] = input[b, h, i, j];
+
+    Assert.Equal(0u, output[0u, 0u, 0u, 0u]);
+    Assert.Equal(12u, output[0u, 0u, 1u, 2u]);
+    Assert.Equal(102u, output[0u, 1u, 0u, 2u]);
+    Assert.Equal(111u, output[0u, 1u, 1u, 1u]);
+    Assert.Equal(1000u, output[1u, 0u, 0u, 0u]);
+    Assert.Equal(1012u, output[1u, 0u, 1u, 2u]);
+    Assert.Equal(1101u, output[1u, 1u, 0u, 1u]);
+    Assert.Equal(1112u, output[1u, 1u, 1u, 2u]);
+}
+
+[Fact]
+fn MultipleReductionIndicesConvolution() -> void {
+    let kernel: array<array<u32, 2u>, 2u>;
+    let input: array<array<array<array<u32, 2u>, 2u>, 2u>, 2u>;
+
+    kernel[0u, 0u] = 1u; kernel[0u, 1u] = 2u;
+    kernel[1u, 0u] = 3u; kernel[1u, 1u] = 4u;
+
+    input[0u, 0u, 0u, 0u] = 1u;
+    input[0u, 0u, 0u, 1u] = 2u;
+    input[0u, 0u, 1u, 0u] = 4u;
+    input[0u, 0u, 1u, 1u] = 5u;
+    input[0u, 1u, 0u, 0u] = 2u;
+    input[0u, 1u, 0u, 1u] = 3u;
+    input[0u, 1u, 1u, 0u] = 5u;
+    input[0u, 1u, 1u, 1u] = 6u;
+    input[1u, 0u, 0u, 0u] = 4u;
+    input[1u, 0u, 0u, 1u] = 5u;
+    input[1u, 0u, 1u, 0u] = 7u;
+    input[1u, 0u, 1u, 1u] = 8u;
+    input[1u, 1u, 0u, 0u] = 5u;
+    input[1u, 1u, 0u, 1u] = 6u;
+    input[1u, 1u, 1u, 0u] = 8u;
+    input[1u, 1u, 1u, 1u] = 9u;
+
+    let output: array<array<u32, 2u>, 2u>;
+    tensor output[y, x] = Sum[ky, kx](
+        kernel[ky, kx] * input[y, x, ky, kx]
+    );
+
+    Assert.Equal(37u, output[0u, 0u]);
+    Assert.Equal(47u, output[0u, 1u]);
+    Assert.Equal(67u, output[1u, 0u]);
+    Assert.Equal(77u, output[1u, 1u]);
+}
+
+[Fact]
+fn CompoundAddTensorAssignment() -> void {
+    let left: array<array<u32, 2u>, 2u>;
+    let right: array<array<u32, 2u>, 2u>;
+    let acc: array<array<u32, 2u>, 2u>;
+
+    left[0u, 0u] = 1u; left[0u, 1u] = 2u;
+    left[1u, 0u] = 3u; left[1u, 1u] = 4u;
+    right[0u, 0u] = 5u; right[0u, 1u] = 6u;
+    right[1u, 0u] = 7u; right[1u, 1u] = 8u;
+    acc[0u, 0u] = 10u; acc[0u, 1u] = 20u;
+    acc[1u, 0u] = 30u; acc[1u, 1u] = 40u;
+
+    tensor acc[i, j] += Sum[k](left[i, k] * right[k, j]);
+
+    Assert.Equal(29u, acc[0u, 0u]);
+    Assert.Equal(42u, acc[0u, 1u]);
+    Assert.Equal(73u, acc[1u, 0u]);
+    Assert.Equal(90u, acc[1u, 1u]);
+}
+
+[Fact]
+[TestInputUInt(5u, 7u, 11u)]
+fn TensorGuardedReadsUseTestInput() -> void {
+    let indices: array<u32, 4u>;
+    indices[0u] = 1u;
+    indices[1u] = 2u;
+    indices[2u] = 3u;
+    indices[3u] = 0u;
+
+    let output: array<u32, 4u>;
+    tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
+
+    Assert.Equal(7u, output[0u]);
+    Assert.Equal(11u, output[1u]);
+    Assert.Equal(99u, output[2u]);
+    Assert.Equal(5u, output[3u]);
+}
+
+[Fact]
+fn TensorInlineHlslExpression() -> void {
+    let output: array<u32, 2u>;
+    tensor output[i] = HLSL<u32>() {
+        return 0x1234u;
+    };
+
+    Assert.Equal(4660u, output[0u]);
+    Assert.Equal(4660u, output[1u]);
+}
+
+[Theory]
+[InlineData(2.0, 1.0, 1.0, 3.0, 5.0)]
+[InlineData(3.0, 1.0, 2.0, 7.0, 10.0)]
+fn TheoryRowsReuseTensorBody(scale: f32, bias: f32, start: f32, expected0: f32, expected1: f32) -> void {
+    let input: array<f32, 2u>;
+    input[0u] = start;
+    input[1u] = start + 1.0;
+
+    let output: array<f32, 2u>;
+    tensor output[i] = input[i] * scale + bias;
+
+    Assert.Equal(expected0, output[0u]);
+    Assert.Equal(expected1, output[1u]);
+}
+
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(2, 1, 1)]
+[Fact]
+fn MultipleInvocationsKeepTensorStatePrivate() -> void {
+    let input: array<u32, 2u>;
+    input[0u] = DispatchThreadID.x;
+    input[1u] = DispatchThreadID.x + 1u;
+
+    let output: array<u32, 2u>;
+    tensor output[i] = input[i] + 10u;
+
+    Assert.Equal(DispatchThreadID.x + 10u, output[0u]);
+    Assert.Equal(DispatchThreadID.x + 11u, output[1u]);
+}
+
+[Fact]
+fn SgemmStyleTensorParity() -> void {
+    let tileA: array<array<f32, 4u>, 2u>;
+    let tileB: array<array<f32, 2u>, 4u>;
+    tileA[0u, 0u] = 1.0; tileA[0u, 1u] = 2.0; tileA[0u, 2u] = 3.0; tileA[0u, 3u] = 4.0;
+    tileA[1u, 0u] = 5.0; tileA[1u, 1u] = 6.0; tileA[1u, 2u] = 7.0; tileA[1u, 3u] = 8.0;
+    tileB[0u, 0u] = 9.0;  tileB[0u, 1u] = 10.0;
+    tileB[1u, 0u] = 11.0; tileB[1u, 1u] = 12.0;
+    tileB[2u, 0u] = 13.0; tileB[2u, 1u] = 14.0;
+    tileB[3u, 0u] = 15.0; tileB[3u, 1u] = 16.0;
+
+    let localRow: u32 = 0u;
+    let localCol: u32 = 0u;
+
+    let tensorAcc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+    tensorAcc[0u, 0u] = 1.0;
+    tensorAcc[0u, 1u] = 2.0;
+    tensorAcc[1u, 0u] = 3.0;
+    tensorAcc[1u, 1u] = 4.0;
+
+    let loopAcc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+    loopAcc[0u, 0u] = 1.0;
+    loopAcc[0u, 1u] = 2.0;
+    loopAcc[1u, 0u] = 3.0;
+    loopAcc[1u, 1u] = 4.0;
+
+    tensor tensorAcc[oi, oj] += Sum[kk](
+        tileA[localRow + oi, kk] * tileB[kk, localCol + oj]
+    );
+
+    for kk in 0u..4u {
+        loopAcc[0u, 0u] = loopAcc[0u, 0u] + tileA[localRow + 0u, kk] * tileB[kk, localCol + 0u];
+        loopAcc[0u, 1u] = loopAcc[0u, 1u] + tileA[localRow + 0u, kk] * tileB[kk, localCol + 1u];
+        loopAcc[1u, 0u] = loopAcc[1u, 0u] + tileA[localRow + 1u, kk] * tileB[kk, localCol + 0u];
+        loopAcc[1u, 1u] = loopAcc[1u, 1u] + tileA[localRow + 1u, kk] * tileB[kk, localCol + 1u];
+    }
+
+    Assert.Equal(loopAcc[0u, 0u], tensorAcc[0u, 0u]);
+    Assert.Equal(loopAcc[0u, 1u], tensorAcc[0u, 1u]);
+    Assert.Equal(loopAcc[1u, 0u], tensorAcc[1u, 0u]);
+    Assert.Equal(loopAcc[1u, 1u], tensorAcc[1u, 1u]);
+    Assert.Equal(131.0, tensorAcc[0u, 0u]);
+    Assert.Equal(142.0, tensorAcc[0u, 1u]);
+    Assert.Equal(325.0, tensorAcc[1u, 0u]);
+    Assert.Equal(352.0, tensorAcc[1u, 1u]);
+}

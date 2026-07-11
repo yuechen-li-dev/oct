@@ -150,6 +150,23 @@ fn Affine(A: array<f32, 2u>) -> void {
 	}
 }
 
+func TestSdslvTensorLoopOrderFollowsSourceOrder(t *testing.T) {
+	out := emitSource(t, `fn Ordered(
+  Input: array<array<array<array<u32, 2u>, 2u>, 2u>, 2u>
+) -> void {
+  let Output: array<array<u32, 2u>, 2u>;
+  tensor Output[y, x] = Sum[ky, kx](Input[y, x, ky, kx]);
+  return;
+}`)
+	freeY := strings.Index(out, "for (uint __sdslv_tensor_free_0 = 0u; __sdslv_tensor_free_0 < 2u;")
+	freeX := strings.Index(out, "for (uint __sdslv_tensor_free_1 = 0u; __sdslv_tensor_free_1 < 2u;")
+	reduceKY := strings.Index(out, "for (uint __sdslv_tensor_reduce_0 = 0u; __sdslv_tensor_reduce_0 < 2u;")
+	reduceKX := strings.Index(out, "for (uint __sdslv_tensor_reduce_1 = 0u; __sdslv_tensor_reduce_1 < 2u;")
+	if freeY < 0 || freeX <= freeY || reduceKY <= freeX || reduceKX <= reduceKY {
+		t.Fatalf("tensor loop order is not free y/x then reduction ky/kx:\n%s", out)
+	}
+}
+
 func TestSdslvSharedMaterializationPreservesLeftToRightOrderAndHygiene(t *testing.T) {
 	out := emitSource(t, `fn Ordered() -> f32 {
   return HLSL<f32> { return 1.0; } + HLSL<f32> { return 2.0; };
