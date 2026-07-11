@@ -1,0 +1,10 @@
+fn F() -> void {
+flow Caller {
+state A {
+        push B;
+}
+}
+flow Callee {
+state B {}
+}
+}

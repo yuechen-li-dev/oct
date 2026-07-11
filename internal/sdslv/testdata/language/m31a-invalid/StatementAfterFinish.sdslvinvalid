@@ -1,0 +1,8 @@
+fn F() -> void {
+flow F {
+state A {
+        finish;
+        let x: u32 = 1u;
+}
+}
+}

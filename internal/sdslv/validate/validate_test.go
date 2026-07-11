@@ -545,7 +545,7 @@ state Load { return; }
 return;
 }
 }`,
-			want: "flow TileLoad: duplicate state Load",
+			want: "flow TileLoad: duplicate state name Load",
 		},
 		{
 			name: "empty flow",

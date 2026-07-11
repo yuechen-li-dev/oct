@@ -339,6 +339,32 @@ type FlowStmt struct {
 
 func (FlowStmt) stmtNode() {}
 
+// Flow transitions are source-level control operations. They are deliberately
+// not calls: validation resolves them to state IDs for the M31b handoff.
+type GotoFlowStateStmt struct {
+	Span       source.Span
+	Target     string
+	TargetSpan source.Span
+}
+
+func (GotoFlowStateStmt) stmtNode() {}
+
+type PushFlowStateStmt struct {
+	Span       source.Span
+	Target     string
+	TargetSpan source.Span
+}
+
+func (PushFlowStateStmt) stmtNode() {}
+
+type PopFlowStateStmt struct{ Span source.Span }
+
+func (PopFlowStateStmt) stmtNode() {}
+
+type FinishFlowStmt struct{ Span source.Span }
+
+func (FinishFlowStmt) stmtNode() {}
+
 type FlowBoardDecl struct {
 	Span        source.Span
 	Name        string
@@ -347,9 +373,10 @@ type FlowBoardDecl struct {
 }
 
 type StateBlock struct {
-	Span source.Span
-	Name string
-	Body Block
+	Span     source.Span
+	Name     string
+	NameSpan source.Span
+	Body     Block
 }
 
 type ComptimeIfStmt struct {
@@ -499,6 +526,14 @@ func StmtSpan(s Stmt) source.Span {
 	case GuardWhenStmt:
 		return x.Span
 	case FlowStmt:
+		return x.Span
+	case GotoFlowStateStmt:
+		return x.Span
+	case PushFlowStateStmt:
+		return x.Span
+	case PopFlowStateStmt:
+		return x.Span
+	case FinishFlowStmt:
 		return x.Span
 	case ComptimeIfStmt:
 		return x.Span

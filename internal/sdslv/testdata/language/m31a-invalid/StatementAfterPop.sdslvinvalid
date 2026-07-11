@@ -1,0 +1,11 @@
+fn F() -> void {
+flow F {
+state A {
+        push B;
+}
+state B {
+        pop;
+        let x: u32 = 1u;
+}
+}
+}

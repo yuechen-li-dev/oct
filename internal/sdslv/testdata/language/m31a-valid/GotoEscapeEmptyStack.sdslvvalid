@@ -1,0 +1,6 @@
+fn F() -> void {
+flow F {
+state A { goto Done; }
+state Done { finish; }
+}
+}

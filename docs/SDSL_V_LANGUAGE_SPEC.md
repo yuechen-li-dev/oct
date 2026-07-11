@@ -182,11 +182,11 @@ Current M22/M23 flow rules:
 - state names must be unique within the flow;
 - flow-owned board instance names must be unique within the flow and must not collide with state names;
 - flow names must be unique within one lexical block;
-- states execute once in source order;
-- lowering desugars `flow` / `state` to ordinary structured statements before HLSL emission;
+- before M31a transitions, states execute once in source order;
+- source without M31a transitions still lowers by desugaring `flow` / `state` to ordinary structured statements before HLSL emission;
 - immutable board values, flow-owned mutable board fields, runtime guard `when`, guarded read/write, and supported comptime forms are valid inside state bodies;
 - nested `flow` blocks are rejected;
-- `goto`, `remember`, `resume`, `suspend`, and `when policy` remain rejected;
+- `remember`, `resume`, `suspend`, and `when policy` remain rejected;
 - flow-owned board mutation is limited to `BoardName.field = expr;`;
 - ordinary board values remain immutable;
 - no persistent Octomata state exists.
@@ -1067,7 +1067,8 @@ type-ref     ::= path | 'array' '<' type-ref ',' INT '>'
              | 'matrix_view' '<' type-ref '>'
 
 flow-block   ::= 'flow' IDENT '{' state+ '}'
-state        ::= 'state' IDENT '{' stmt* '}'
+state        ::= 'state' IDENT '{' stmt* flow-transition? '}'
+flow-transition ::= 'push' IDENT ';' | 'pop' ';' | 'goto' IDENT ';' | 'finish' ';'
 
 method       ::= 'override'? 'fn' IDENT '(' params ')' '->' type-ref ('!' type-ref)? body?
 stage-method ::= 'stage' STAGE 'fn' IDENT '(' params ')' '->' type-ref body
@@ -1098,3 +1099,40 @@ when-utility ::= 'when' 'utility' ('{' utility-opts '}')? '{' utility-case+ 'els
 reduction    ::= reduction-attrs? ('sum' | 'product' | 'max' | 'min') IDENT 'in' expr '..' expr ('step' expr)? '{' expr '}'
 reduction-attrs ::= ('[' 'unroll' ']' | '[' 'loop' ']')+
 ```
+
+## M31a flow transitions
+
+Pre-M31 SDSL-V `flow` blocks were ordered, function-local phase blocks. They
+flattened into structured VD-MIR/HLSL in declaration order and had no SDSL-V
+`goto` or flow graph representation.
+
+Within a `flow` state, M31a accepts final top-level `push StateName;`, `pop;`,
+`goto StateName;`, and `finish;` transitions. Unspecified transitions fall
+through in state declaration order; final-state fallthrough completes the flow.
+Every validated state has exactly one explicit terminator in compiler metadata.
+
+`push` saves the ordinary successor of the pushing state and enters its
+same-flow target. If the pushing state is final, the saved successor is
+`FlowComplete`. `pop` resumes the most recent saved successor and is valid only
+when every static path to it has a stack frame. `goto` transfers to a same-flow
+target without saving a return frame. `finish` terminates the whole flow, even
+with a nonempty stack.
+
+M31a rejects unknown targets, duplicate state names, recursive push cycles,
+mixed-depth state reachability, pop underflow, unreachable statements after a
+transition, unreachable states, nested transitions, `goto` at nonzero stack
+depth, and pushed fallthrough to `FlowComplete` without `pop` or `finish`.
+Shared pop-bearing subflows are allowed when all reaching paths have the same
+stack depth; return successors remain caller-specific.
+
+Barrier-bearing states are identified with the existing workgroup barrier
+builtins. Top-level unconditional transitions are structurally uniform, nested
+transitions are forbidden, and barrier states reached through ambiguous exact
+stack shapes are rejected. Divergent data operations inside a state remain
+valid; M31a does not attempt full divergence analysis.
+
+The compiler records a deterministic maximum stack depth plus resolved
+lowering-ready flow metadata: entry ID, declaration-ordered state IDs,
+terminators, target IDs, push return successors, `FlowComplete`, `HasPushPop`,
+`HasGoto`, reachability, barrier flags, and spans. M31a records this control
+contract only; it does not emit an HLSL dispatcher or physical stack (M31b).

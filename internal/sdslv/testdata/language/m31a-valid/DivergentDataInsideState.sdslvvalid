@@ -1,0 +1,16 @@
+shader S {
+stage compute [numthreads(1, 1, 1)] fn CS(flag: bool) -> void {
+let x: u32 = 0u;
+flow F {
+state A {
+if flag {
+let y: u32 = x;
+}
+}
+state Barrier {
+WorkgroupMemoryBarrierWithSync();
+}
+}
+return;
+}
+}

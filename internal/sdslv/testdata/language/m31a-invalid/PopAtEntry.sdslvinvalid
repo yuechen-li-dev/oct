@@ -1,0 +1,7 @@
+fn F() -> void {
+flow F {
+state A {
+        pop;
+}
+}
+}

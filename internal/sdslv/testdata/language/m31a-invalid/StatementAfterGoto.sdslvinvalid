@@ -1,0 +1,9 @@
+fn F() -> void {
+flow F {
+state A {
+        goto B;
+        let x: u32 = 1u;
+}
+state B { finish; }
+}
+}

@@ -219,7 +219,7 @@ func TestBuildModuleRejectsStatefulShaderFlowActions(t *testing.T) {
 		{
 			name: "goto",
 			src:  `shader S { stage compute [numthreads(1,1,1)] fn CS(flag: bool) -> void { when { case flag -> { goto Done } } return; } }`,
-			want: "SDSL-V M23 does not support goto transitions",
+			want: "goto is only valid inside a flow state",
 		},
 		{
 			name: "state outside flow",
@@ -294,6 +294,38 @@ return;
 	}
 	if _, ok := flowStmt.States[0].Body.Statements[0].(ast.ComptimeForStmt); !ok {
 		t.Fatalf("state body stmt = %T, want ComptimeForStmt", flowStmt.States[0].Body.Statements[0])
+	}
+}
+
+func TestSdslvFlowParsesPushPopGotoFinishAndPreservesOrder(t *testing.T) {
+	module := parseTestModule(t, `fn F() -> void {
+flow Example {
+state A { push Shared; }
+state B { goto Done; }
+state Shared { pop; }
+state Done { finish; }
+}
+}`)
+	fn := module.Decls[0].(ast.FunctionDecl)
+	flowStmt := fn.Body.Statements[0].(ast.FlowStmt)
+	if got := []string{flowStmt.States[0].Name, flowStmt.States[1].Name, flowStmt.States[2].Name, flowStmt.States[3].Name}; strings.Join(got, ",") != "A,B,Shared,Done" {
+		t.Fatalf("state order = %#v", got)
+	}
+	if !flowStmt.States[0].NameSpan.Known() {
+		t.Fatalf("state name span missing: %#v", flowStmt.States[0])
+	}
+	push := flowStmt.States[0].Body.Statements[0].(ast.PushFlowStateStmt)
+	if push.Target != "Shared" || !push.Span.Known() || !push.TargetSpan.Known() {
+		t.Fatalf("push = %#v", push)
+	}
+	if got := flowStmt.States[1].Body.Statements[0].(ast.GotoFlowStateStmt).Target; got != "Done" {
+		t.Fatalf("goto target = %q", got)
+	}
+	if _, ok := flowStmt.States[2].Body.Statements[0].(ast.PopFlowStateStmt); !ok {
+		t.Fatalf("shared stmt = %T, want PopFlowStateStmt", flowStmt.States[2].Body.Statements[0])
+	}
+	if _, ok := flowStmt.States[3].Body.Statements[0].(ast.FinishFlowStmt); !ok {
+		t.Fatalf("done stmt = %T, want FinishFlowStmt", flowStmt.States[3].Body.Statements[0])
 	}
 }
 

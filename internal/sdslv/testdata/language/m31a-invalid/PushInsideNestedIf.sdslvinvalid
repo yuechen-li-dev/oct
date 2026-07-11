@@ -1,0 +1,8 @@
+fn F() -> void {
+flow F {
+state A {
+        if true { push B; }
+}
+state B { pop; }
+}
+}

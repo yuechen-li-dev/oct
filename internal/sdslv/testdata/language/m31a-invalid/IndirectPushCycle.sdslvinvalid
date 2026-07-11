@@ -1,0 +1,10 @@
+fn F() -> void {
+flow F {
+state A {
+        push B;
+}
+state B {
+        push A;
+}
+}
+}

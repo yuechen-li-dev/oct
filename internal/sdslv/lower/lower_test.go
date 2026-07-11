@@ -650,11 +650,43 @@ return;
 	if _, ok := flowBlock.Body.Statements[2].(vdmir.ExprStmt); !ok {
 		t.Fatalf("flow stmt[2] = %T, want barrier expr stmt from second state", flowBlock.Body.Statements[2])
 	}
+	if len(mir.Flows) != 1 {
+		t.Fatalf("len(mir.Flows) = %d, want 1", len(mir.Flows))
+	}
+	flow := mir.Flows[0]
+	if flow.Name != "TileLoad" || flow.Entry != 0 || flow.MaxStackDepth != 0 || flow.HasPushPop || flow.HasGoto {
+		t.Fatalf("legacy flow metadata = %#v", flow)
+	}
+	if len(flow.States) != 2 || flow.States[0].Terminator.Kind != vdmir.FlowTerminatorFallthrough || flow.States[0].Terminator.Target != 1 {
+		t.Fatalf("flow states = %#v", flow.States)
+	}
+	if !flow.States[1].HasWorkgroupBarrier {
+		t.Fatalf("barrier metadata missing: %#v", flow.States[1])
+	}
 	dump := vdmir.Dump(mir)
 	for _, banned := range []string{"flow ", "state "} {
 		if strings.Contains(dump, banned) {
 			t.Fatalf("VDMIR should not retain source-level %q:\n%s", banned, dump)
 		}
+	}
+}
+
+func TestModuleRejectsM31aTransitionsAtLoweringBoundary(t *testing.T) {
+	text := `fn F() -> void { flow F { state A { push Shared; } state B { finish; } state Shared { pop; } } }`
+	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatalf("BuildModule() error = %v", err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatalf("validate.Module() error = %v", err)
+	}
+	_, err = Module(module)
+	if err == nil || !strings.Contains(err.Error(), "M31b runtime/HLSL dispatcher lowering is not implemented") {
+		t.Fatalf("Module() error = %v", err)
 	}
 }
 

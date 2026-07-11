@@ -1170,11 +1170,21 @@ func (v *validator) validateFlowStmt(stmt ast.FlowStmt, returnType ast.TypeRef, 
 			continue
 		}
 		if _, exists := seenStates[state.Name]; exists {
-			v.errorf("flow %s: duplicate state %s", stmt.Name, state.Name)
 			continue
 		}
 		seenStates[state.Name] = struct{}{}
 		v.validateBlock(state.Body, returnType, cloneScope(flowScope), shaderName, stage, templateParam, true)
+	}
+	_, issues := ValidateFlow(stmt)
+	for _, issue := range issues {
+		v.diagnostics = append(v.diagnostics, diagnostic.Diagnostic{
+			Path:     v.path,
+			Code:     issue.Code,
+			Severity: issue.Severity,
+			Message:  issue.Message,
+			Span:     issue.Span,
+			Related:  issue.Related,
+		})
 	}
 }
 

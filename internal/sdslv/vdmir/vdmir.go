@@ -17,6 +17,50 @@ type Module struct {
 	Workgroups     []WorkgroupMemoryDecl
 	Functions      []Function
 	EntryPoints    []ComputeEntryPoint
+	Flows          []Flow
+}
+
+type FlowTerminatorKind string
+
+const (
+	FlowTerminatorFallthrough FlowTerminatorKind = "fallthrough"
+	FlowTerminatorPush        FlowTerminatorKind = "push"
+	FlowTerminatorPop         FlowTerminatorKind = "pop"
+	FlowTerminatorGoto        FlowTerminatorKind = "goto"
+	FlowTerminatorFinish      FlowTerminatorKind = "finish"
+)
+
+const FlowCompleteStateID = -1
+
+type Flow struct {
+	Provenance    Provenance
+	Name          string
+	FunctionName  string
+	ShaderName    string
+	Entry         int
+	States        []FlowState
+	MaxStackDepth uint32
+	HasPushPop    bool
+	HasGoto       bool
+	SourceSpan    source.Span
+}
+
+type FlowState struct {
+	ID                  int
+	Name                string
+	Terminator          FlowTerminator
+	HasWorkgroupBarrier bool
+	Reachable           bool
+	ReachableDepths     []uint32
+	SourceSpan          source.Span
+	NameSpan            source.Span
+}
+
+type FlowTerminator struct {
+	Kind     FlowTerminatorKind
+	Target   int
+	ReturnTo int
+	Span     source.Span
 }
 
 // TestProgram is the backend-neutral executable projection for an .sdslvtest

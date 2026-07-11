@@ -21,8 +21,9 @@ func BuildModule(result lex.Result) (ast.Module, error) {
 }
 
 type parser struct {
-	tokens   []token.Token
-	position int
+	tokens         []token.Token
+	position       int
+	flowStateDepth int
 }
 
 func (p *parser) parseModule() (ast.Module, error) {
@@ -737,6 +738,26 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		return p.parseLet()
 	case token.KeywordReturn:
 		return p.parseReturn()
+	case token.KeywordGoto:
+		if p.flowStateDepth == 0 {
+			return nil, p.errorAtCurrent("goto is only valid inside a flow state")
+		}
+		return p.parseFlowTarget("goto")
+	case token.KeywordPush:
+		if p.flowStateDepth == 0 {
+			return nil, p.errorAtCurrent("push is only valid inside a flow state")
+		}
+		return p.parseFlowTarget("push")
+	case token.KeywordPop:
+		if p.flowStateDepth == 0 {
+			return nil, p.errorAtCurrent("pop is only valid inside a flow state")
+		}
+		return p.parseFlowBare("pop")
+	case token.KeywordFinish:
+		if p.flowStateDepth == 0 {
+			return nil, p.errorAtCurrent("finish is only valid inside a flow state")
+		}
+		return p.parseFlowBare("finish")
 	case token.KeywordWrite:
 		return p.parseGuardedWrite()
 	case token.KeywordIf:
@@ -765,8 +786,6 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 	default:
 		if p.current().Kind == token.Identifier {
 			switch p.current().Lexeme {
-			case "goto":
-				return nil, p.errorAtCurrent("SDSL-V M23 does not support goto transitions")
 			case "remember", "resume", "suspend":
 				return nil, p.errorAtCurrent("SDSL-V M23 does not support remember/resume/suspend")
 			case "state":
@@ -792,6 +811,35 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		}
 		return ast.ExprStmt{Span: spanFrom(ast.ExprSpan(left).Start, p.lastSpan().End), Value: left}, nil
 	}
+}
+
+func (p *parser) parseFlowTarget(kind string) (ast.Stmt, error) {
+	start := p.position
+	p.advance()
+	target, err := p.expect(token.Identifier, "expected state name after "+kind)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after "+kind+" transition"); err != nil {
+		return nil, err
+	}
+	span := p.spanSince(start)
+	if kind == "push" {
+		return ast.PushFlowStateStmt{Span: span, Target: target.Lexeme, TargetSpan: target.Span}, nil
+	}
+	return ast.GotoFlowStateStmt{Span: span, Target: target.Lexeme, TargetSpan: target.Span}, nil
+}
+
+func (p *parser) parseFlowBare(kind string) (ast.Stmt, error) {
+	start := p.position
+	p.advance()
+	if _, err := p.expect(token.Semicolon, "expected ';' after "+kind); err != nil {
+		return nil, err
+	}
+	if kind == "pop" {
+		return ast.PopFlowStateStmt{Span: p.spanSince(start)}, nil
+	}
+	return ast.FinishFlowStmt{Span: p.spanSince(start)}, nil
 }
 
 func (p *parser) parseForeignStmt() (ast.Stmt, error) {
@@ -910,11 +958,13 @@ func (p *parser) parseStateBlock() (ast.StateBlock, error) {
 	if err != nil {
 		return ast.StateBlock{}, err
 	}
+	p.flowStateDepth++
 	body, err := p.parseBlock()
+	p.flowStateDepth--
 	if err != nil {
 		return ast.StateBlock{}, err
 	}
-	return ast.StateBlock{Span: p.spanSince(start), Name: name.Lexeme, Body: body}, nil
+	return ast.StateBlock{Span: p.spanSince(start), Name: name.Lexeme, NameSpan: name.Span, Body: body}, nil
 }
 
 func (p *parser) parseComptimeStmt() (ast.Stmt, error) {

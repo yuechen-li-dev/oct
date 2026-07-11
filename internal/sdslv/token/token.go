@@ -66,6 +66,10 @@ const (
 	KeywordOr        Kind = "KeywordOr"
 	KeywordNot       Kind = "KeywordNot"
 	KeywordHLSL      Kind = "KeywordHLSL"
+	KeywordGoto      Kind = "KeywordGoto"
+	KeywordPush      Kind = "KeywordPush"
+	KeywordPop       Kind = "KeywordPop"
+	KeywordFinish    Kind = "KeywordFinish"
 
 	LeftParen    Kind = "LeftParen"
 	RightParen   Kind = "RightParen"
@@ -178,6 +182,14 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordWith
 	case "derive":
 		return KeywordDerive
+	case "goto":
+		return KeywordGoto
+	case "push":
+		return KeywordPush
+	case "pop":
+		return KeywordPop
+	case "finish":
+		return KeywordFinish
 	case "interface":
 		return KeywordInterface
 	case "stream":

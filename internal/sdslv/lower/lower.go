@@ -129,6 +129,7 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 		}
 	}
 	out.ForeignTargets = collectForeignTargets(module)
+	out.Flows = l.flows
 	return out, nil
 }
 
@@ -590,7 +591,7 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 			if err != nil {
 				return nil, err
 			}
-			states = append(states, ast.StateBlock{Name: state.Name, Body: body})
+			states = append(states, ast.StateBlock{Span: state.Span, Name: state.Name, NameSpan: state.NameSpan, Body: body})
 		}
 		return ast.FlowStmt{Name: s.Name, Boards: boards, States: states}, nil
 	case ast.ComptimeIfStmt:
@@ -846,6 +847,10 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 		return []ast.Stmt{ast.ReturnStmt{Value: replaceComptimeExpr(s.Value, comptime)}}, nil
 	case ast.ExprStmt:
 		return []ast.Stmt{ast.ExprStmt{Value: replaceComptimeExpr(s.Value, comptime)}}, nil
+	case ast.PushFlowStateStmt, ast.PopFlowStateStmt, ast.GotoFlowStateStmt, ast.FinishFlowStmt:
+		// M31a owns static validation. Preserve the node until lowerFlowStmt can
+		// explicitly decline runtime emission rather than silently dropping it.
+		return []ast.Stmt{s}, nil
 	case ast.IfStmt:
 		thenBody, err := expandRuntimeNestedBlock(s.ThenBody, comptime, runtime)
 		if err != nil {
@@ -893,7 +898,7 @@ func expandComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding, runt
 			if err != nil {
 				return nil, err
 			}
-			states = append(states, ast.StateBlock{Name: state.Name, Body: body})
+			states = append(states, ast.StateBlock{Span: state.Span, Name: state.Name, NameSpan: state.NameSpan, Body: body})
 		}
 		return []ast.Stmt{ast.FlowStmt{Name: s.Name, Boards: boards, States: states}}, nil
 	case ast.ForStmt:
@@ -1188,7 +1193,7 @@ func renameRuntimeLocalsInStmt(stmt ast.Stmt, names map[string]string) ast.Stmt 
 		}
 		states := make([]ast.StateBlock, 0, len(s.States))
 		for _, state := range s.States {
-			states = append(states, ast.StateBlock{Name: state.Name, Body: renameRuntimeLocalsInBlock(state.Body, names)})
+			states = append(states, ast.StateBlock{Span: state.Span, Name: state.Name, NameSpan: state.NameSpan, Body: renameRuntimeLocalsInBlock(state.Body, names)})
 		}
 		return ast.FlowStmt{Name: s.Name, Boards: boards, States: states}
 	case ast.ForStmt:
@@ -1541,7 +1546,7 @@ func replaceComptimeStmt(stmt ast.Stmt, comptime map[string]comptimeBinding) ast
 		}
 		states := make([]ast.StateBlock, 0, len(s.States))
 		for _, state := range s.States {
-			states = append(states, ast.StateBlock{Name: state.Name, Body: replaceComptimeBlock(state.Body, comptime)})
+			states = append(states, ast.StateBlock{Span: state.Span, Name: state.Name, NameSpan: state.NameSpan, Body: replaceComptimeBlock(state.Body, comptime)})
 		}
 		return ast.FlowStmt{Name: s.Name, Boards: boards, States: states}
 	case ast.ForStmt:
@@ -1874,6 +1879,9 @@ type lowering struct {
 	deriveTemp       int
 	testInputs       map[string]validate.ValidatedTestInput
 	currentTestInput *validate.ValidatedTestInput
+	currentFunction  string
+	currentShader    string
+	flows            []vdmir.Flow
 }
 
 func (l *lowering) seedBuiltins() {
@@ -2027,6 +2035,10 @@ func (l *lowering) resolveShaderResources(shader ast.ShaderDecl) ([]ast.Resource
 
 func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl) (vdmir.Function, error) {
 	previousTestInput := l.currentTestInput
+	previousFunction := l.currentFunction
+	previousShader := l.currentShader
+	l.currentFunction = fn.Name
+	l.currentShader = shaderName
 	if shaderName == "" && l.testInputs != nil {
 		if input, ok := l.testInputs[fn.Name]; ok {
 			copy := input
@@ -2035,7 +2047,11 @@ func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resourc
 			l.currentTestInput = nil
 		}
 	}
-	defer func() { l.currentTestInput = previousTestInput }()
+	defer func() {
+		l.currentTestInput = previousTestInput
+		l.currentFunction = previousFunction
+		l.currentShader = previousShader
+	}()
 	out := vdmir.Function{
 		Provenance: l.provenance,
 		Name:       fn.Name,
@@ -2210,6 +2226,19 @@ func (l *lowering) lowerStmt(stmt ast.Stmt, scope map[string]binding, locals map
 }
 
 func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
+	flow, issues := validate.ValidateFlow(stmt)
+	if len(issues) != 0 {
+		return nil, fmt.Errorf("flow %s has invalid M31a metadata", stmt.Name)
+	}
+	l.flows = append(l.flows, l.lowerValidatedFlow(stmt, flow))
+	for _, state := range stmt.States {
+		for _, flowStmt := range state.Body.Statements {
+			switch flowStmt.(type) {
+			case ast.PushFlowStateStmt, ast.PopFlowStateStmt, ast.GotoFlowStateStmt, ast.FinishFlowStmt:
+				return nil, fmt.Errorf("flow %s uses M31a transitions; M31b runtime/HLSL dispatcher lowering is not implemented", stmt.Name)
+			}
+		}
+	}
 	block := vdmir.Block{}
 	flowScope := cloneScope(scope)
 	for _, board := range stmt.Boards {
@@ -2235,6 +2264,43 @@ func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, lo
 		block.Statements = append(block.Statements, lowered.Statements...)
 	}
 	return vdmir.BlockStmt{Provenance: l.provenance, Body: block}, nil
+}
+
+func (l *lowering) lowerValidatedFlow(stmt ast.FlowStmt, flow validate.ValidatedFlow) vdmir.Flow {
+	out := vdmir.Flow{
+		Provenance:    l.provenance,
+		Name:          flow.Name,
+		FunctionName:  l.currentFunction,
+		ShaderName:    l.currentShader,
+		Entry:         flow.Entry,
+		MaxStackDepth: flow.MaxStackDepth,
+		HasPushPop:    flow.HasPushPop,
+		HasGoto:       flow.HasGoto,
+		SourceSpan:    stmt.Span,
+	}
+	out.States = make([]vdmir.FlowState, 0, len(flow.States))
+	for _, state := range flow.States {
+		out.States = append(out.States, vdmir.FlowState{
+			ID:                  state.ID,
+			Name:                state.Name,
+			Terminator:          lowerFlowTerminator(state.Terminator),
+			HasWorkgroupBarrier: state.HasWorkgroupBarrier,
+			Reachable:           state.Reachable,
+			ReachableDepths:     append([]uint32(nil), state.ReachableDepths...),
+			SourceSpan:          state.SourceSpan,
+			NameSpan:            state.NameSpan,
+		})
+	}
+	return out
+}
+
+func lowerFlowTerminator(term validate.ValidatedFlowTerminator) vdmir.FlowTerminator {
+	return vdmir.FlowTerminator{
+		Kind:     vdmir.FlowTerminatorKind(term.Kind),
+		Target:   term.Target,
+		ReturnTo: term.ReturnTo,
+		Span:     term.Span,
+	}
 }
 
 func (l *lowering) lowerGuardWhenStmt(stmt ast.GuardWhenStmt, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Stmt, error) {
