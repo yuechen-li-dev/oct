@@ -176,6 +176,22 @@ func TestSdslvNdarrayLowersToDistinctTypeAndSourceOrderedLiteral(t *testing.T) {
 	}
 }
 
+func TestSdslvLowersFixedShapeConstruction(t *testing.T) {
+	tokens, err := lex.Analyze(source.File{Path: "construct.sdslv", Text: `fn F() -> void {
+  let A: ndarray<u32, [2u]> = Fill(9u);
+  let B: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 3u + j);
+  return;
+}`})
+	if err != nil { t.Fatal(err) }
+	module, err := parse.BuildModule(tokens); if err != nil { t.Fatal(err) }
+	if err := validate.Module(module); err != nil { t.Fatal(err) }
+	mir, err := Module(module); if err != nil { t.Fatal(err) }
+	stmts := mir.Functions[0].Body.Statements
+	if _, ok := stmts[0].(vdmir.LetStmt).Value.(vdmir.FillConstruct); !ok { t.Fatalf("Fill MIR = %#v", stmts[0]) }
+	generated, ok := stmts[1].(vdmir.LetStmt).Value.(vdmir.GenerateConstruct)
+	if !ok || !slices.Equal(generated.Binders, []string{"i", "j"}) { t.Fatalf("Generate MIR = %#v", stmts[1]) }
+}
+
 func TestSdslvAssertCallsLowerToDedicatedVDMIRStatements(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "asserts.sdslvtest", Text: `[Fact]
 fn Assertions() -> void {

@@ -120,12 +120,7 @@ fn Rank3BatchedMatmul() -> void {
 
 [Fact]
 fn Rank4RowMajorLayout() -> void {
-    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = [
-        0u, 1u, 2u, 10u, 11u, 12u,
-        100u, 101u, 102u, 110u, 111u, 112u,
-        1000u, 1001u, 1002u, 1010u, 1011u, 1012u,
-        1100u, 1101u, 1102u, 1110u, 1111u, 1112u
-    ];
+    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = Generate[b, h, i, j](b * 1000u + h * 100u + i * 10u + j);
 
     let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
     tensor output[b, h, i, j] = input[b, h, i, j];

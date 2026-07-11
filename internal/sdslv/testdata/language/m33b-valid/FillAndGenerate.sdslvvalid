@@ -1,0 +1,6 @@
+fn FillAndGenerate(seed: u32) -> void {
+    let filled: ndarray<u32, [2u, 2u]> = Fill(seed);
+    let generated: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 3u + j);
+    let diagonal: ndarray<u32, [2u, 2u]> = Generate[i, j](i * 10u + j);
+    return;
+}

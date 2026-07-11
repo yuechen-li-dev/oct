@@ -93,17 +93,18 @@ type conceptFieldSpec struct {
 type varOrigin string
 
 const (
-	varLocal       varOrigin = "local"
-	varParam       varOrigin = "param"
-	varResource    varOrigin = "resource"
-	varWorkgroup   varOrigin = "workgroup"
-	varBuiltin     varOrigin = "builtin"
-	varComptime    varOrigin = "comptime"
-	varFlowBoard   varOrigin = "flow_board"
-	varDeriveSelf  varOrigin = "derive_self"
-	varDeriveLater varOrigin = "derive_later"
-	varTensorFree  varOrigin = "tensor_free_index"
-	varTensorRed   varOrigin = "tensor_reduction_index"
+	varLocal         varOrigin = "local"
+	varParam         varOrigin = "param"
+	varResource      varOrigin = "resource"
+	varWorkgroup     varOrigin = "workgroup"
+	varBuiltin       varOrigin = "builtin"
+	varComptime      varOrigin = "comptime"
+	varFlowBoard     varOrigin = "flow_board"
+	varDeriveSelf    varOrigin = "derive_self"
+	varDeriveLater   varOrigin = "derive_later"
+	varTensorFree    varOrigin = "tensor_free_index"
+	varTensorRed     varOrigin = "tensor_reduction_index"
+	varGenerateIndex varOrigin = "generate_index"
 )
 
 type varInfo struct {
@@ -864,6 +865,12 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateBarrierUsage(s.Target, false, shaderName, stage)
 		v.validateBarrierUsage(s.Value, false, shaderName, stage)
 		targetType := v.exprType(s.Target, scope, shaderName, templateParam)
+		if _, fill := s.Value.(ast.FillExpr); fill {
+			v.errorAt(ast.ExprSpan(s.Value), "SDSL-V3323", "Fill is supported only in fixed-shape declaration initialization")
+		}
+		if _, generate := s.Value.(ast.GenerateExpr); generate {
+			v.errorAt(ast.ExprSpan(s.Value), "SDSL-V3323", "Generate is supported only in fixed-shape declaration initialization")
+		}
 		valueType := v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, &targetType, "")
 		if !isAssignableTarget(s.Target) {
 			v.errorf("assignment target is not assignable")
@@ -1430,6 +1437,58 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			if !v.compatible(target.Args[0], typ) {
 				v.errorAt(ast.ExprSpan(element), "SDSL-V3306", "ndarray literal element expects %s, got %s", typeName(target.Args[0]), typeName(typ))
 			}
+		}
+		return target
+	case ast.FillExpr:
+		if expected == nil {
+			v.errorAt(e.KeywordSpan, "SDSL-V3313", "Fill requires a fixed-shape target type")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		target := v.resolveAlias(*expected)
+		if target.Name != "ndarray" || len(target.Args) != 1 {
+			v.errorAt(e.KeywordSpan, "SDSL-V3314", "Fill target must be an ndarray fixed-shape value")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if len(e.Arguments) != 1 {
+			v.errorAt(e.Span, "SDSL-V3315", "Fill requires exactly one argument")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		value := v.exprTypeWithExpected(e.Arguments[0], scope, shaderName, templateParam, &target.Args[0], currentDeriveField)
+		if !v.compatible(target.Args[0], value) {
+			v.errorAt(ast.ExprSpan(e.Arguments[0]), "SDSL-V3316", "Fill argument expects %s, got %s", typeName(target.Args[0]), typeName(value))
+		}
+		return target
+	case ast.GenerateExpr:
+		if expected == nil {
+			v.errorAt(e.KeywordSpan, "SDSL-V3317", "Generate requires a fixed-shape target type")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		target := v.resolveAlias(*expected)
+		if target.Name != "ndarray" || len(target.Args) != 1 {
+			v.errorAt(e.KeywordSpan, "SDSL-V3318", "Generate target must be an ndarray fixed-shape value")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if len(e.Binders) != len(target.NDArrayShape) {
+			v.errorAt(e.OpenBracketSpan, "SDSL-V3319", "Generate binder count mismatch: target rank is %d, but %d binders were provided", len(target.NDArrayShape), len(e.Binders))
+		}
+		bodyScope := make(map[string]varInfo, len(scope)+len(e.Binders))
+		for k, value := range scope {
+			bodyScope[k] = value
+		}
+		seen := map[string]bool{}
+		for _, binder := range e.Binders {
+			if seen[binder.Name] {
+				v.errorAt(binder.Span, "SDSL-V3320", "duplicate Generate binder %s", binder.Name)
+			}
+			seen[binder.Name] = true
+			if _, exists := bodyScope[binder.Name]; exists {
+				v.errorAt(binder.Span, "SDSL-V3321", "Generate binder %s conflicts with an existing binding", binder.Name)
+			}
+			bodyScope[binder.Name] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varGenerateIndex}
+		}
+		body := v.exprTypeWithExpected(e.Body, bodyScope, shaderName, templateParam, &target.Args[0], currentDeriveField)
+		if !v.compatible(target.Args[0], body) {
+			v.errorAt(ast.ExprSpan(e.Body), "SDSL-V3322", "Generate body expects %s, got %s", typeName(target.Args[0]), typeName(body))
 		}
 		return target
 	case ast.ForeignShaderExpr:
@@ -2293,6 +2352,8 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 		v.errorf("cannot assign to compute builtin %s", root)
 	case varComptime:
 		v.errorf("cannot assign to comptime binding %s", root)
+	case varGenerateIndex:
+		v.errorf("cannot assign to Generate binder %s", root)
 	case varParam:
 		kind := v.typeKind(info.typ)
 		switch {

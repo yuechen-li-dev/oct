@@ -1601,6 +1601,12 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		if t.Lexeme == "Sum" && p.tensorDepth > 0 && p.peek(1).Kind == token.LeftBracket {
 			return p.parseTensorReductionExpr()
 		}
+		if t.Lexeme == "Fill" && p.peek(1).Kind == token.LeftParen {
+			return p.parseFillExpr()
+		}
+		if t.Lexeme == "Generate" && p.peek(1).Kind == token.LeftBracket {
+			return p.parseGenerateExpr()
+		}
 		p.advance()
 		return ast.IdentifierExpr{Span: t.Span, Name: t.Lexeme}, nil
 	case token.KeywordSum, token.KeywordProduct, token.KeywordMax, token.KeywordMin:
@@ -1666,6 +1672,77 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	default:
 		return nil, p.errorAtCurrent("expected expression")
 	}
+}
+
+func (p *parser) parseFillExpr() (ast.Expr, error) {
+	keyword := p.current()
+	p.advance()
+	open, err := p.expect(token.LeftParen, "expected '(' after Fill")
+	if err != nil {
+		return nil, err
+	}
+	var arguments []ast.Expr
+	if p.current().Kind != token.RightParen {
+		for {
+			value, parseErr := p.parseExpression()
+			if parseErr != nil {
+				return nil, parseErr
+			}
+			arguments = append(arguments, value)
+			if !p.match(token.Comma) {
+				break
+			}
+		}
+	}
+	close, err := p.expect(token.RightParen, "expected ')' after Fill value")
+	if err != nil {
+		return nil, err
+	}
+	var value ast.Expr
+	if len(arguments) != 0 {
+		value = arguments[0]
+	}
+	return ast.FillExpr{Span: spanFrom(keyword.Span.Start, close.Span.End), KeywordSpan: keyword.Span, OpenParenSpan: open.Span, CloseParenSpan: close.Span, Value: value, Arguments: arguments}, nil
+}
+
+func (p *parser) parseGenerateExpr() (ast.Expr, error) {
+	keyword := p.current()
+	p.advance()
+	openBracket, err := p.expect(token.LeftBracket, "expected '[' after Generate")
+	if err != nil {
+		return nil, err
+	}
+	var binders []ast.IdentifierExpr
+	if p.current().Kind == token.RightBracket {
+		return nil, p.errorAtCurrent("Generate requires at least one binder")
+	}
+	for {
+		name, err := p.expect(token.Identifier, "expected Generate binder")
+		if err != nil {
+			return nil, err
+		}
+		binders = append(binders, ast.IdentifierExpr{Span: name.Span, Name: name.Lexeme})
+		if !p.match(token.Comma) {
+			break
+		}
+	}
+	closeBracket, err := p.expect(token.RightBracket, "expected ']' after Generate binders")
+	if err != nil {
+		return nil, err
+	}
+	openParen, err := p.expect(token.LeftParen, "expected '(' after Generate binders")
+	if err != nil {
+		return nil, err
+	}
+	body, err := p.parseExpression()
+	if err != nil {
+		return nil, err
+	}
+	closeParen, err := p.expect(token.RightParen, "expected ')' after Generate body")
+	if err != nil {
+		return nil, err
+	}
+	return ast.GenerateExpr{Span: spanFrom(keyword.Span.Start, closeParen.Span.End), KeywordSpan: keyword.Span, OpenBracketSpan: openBracket.Span, CloseBracketSpan: closeBracket.Span, OpenParenSpan: openParen.Span, CloseParenSpan: closeParen.Span, Binders: binders, Body: body}, nil
 }
 
 func (p *parser) parseTensorReductionExpr() (ast.Expr, error) {

@@ -2635,6 +2635,30 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			elements = append(elements, value)
 		}
 		return vdmir.NDArrayLiteral{Provenance: l.provenance, ExprType: l.lowerTypeRef(*expected), Elements: elements}, nil
+	case ast.FillExpr:
+		if expected == nil || expected.Name != "ndarray" || len(e.Arguments) != 1 {
+			return nil, fmt.Errorf("Fill requires ndarray target type and one value")
+		}
+		value, err := l.lowerExprWithExpected(e.Arguments[0], scope, shaderName, &expected.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.FillConstruct{Provenance: l.provenance, ExprType: l.lowerTypeRef(*expected), Value: value}, nil
+	case ast.GenerateExpr:
+		if expected == nil || expected.Name != "ndarray" {
+			return nil, fmt.Errorf("Generate requires ndarray target type")
+		}
+		bodyScope := cloneBindings(scope)
+		binders := make([]string, 0, len(e.Binders))
+		for _, binder := range e.Binders {
+			bodyScope[binder.Name] = binding{name: binder.Name, kind: vdmir.VarLocal, typ: ast.TypeRef{Name: "u32"}}
+			binders = append(binders, binder.Name)
+		}
+		body, err := l.lowerExprWithExpected(e.Body, bodyScope, shaderName, &expected.Args[0])
+		if err != nil {
+			return nil, err
+		}
+		return vdmir.GenerateConstruct{Provenance: l.provenance, ExprType: l.lowerTypeRef(*expected), Binders: binders, Body: body}, nil
 	case ast.ForeignShaderExpr:
 		return vdmir.ForeignShaderExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(e.ResultType)), TargetLanguage: e.TargetLanguage, RawSource: e.RawSource, Captures: e.Captures, SourceLine: e.Line}, nil
 	case ast.IntegerLiteral:

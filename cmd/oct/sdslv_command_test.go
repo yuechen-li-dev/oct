@@ -107,6 +107,52 @@ func TestSDSLvGenerateHeaderCommand(t *testing.T) {
 	}
 }
 
+func TestSDSLvM33bRepresentativeCompileSPVCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	tmp := t.TempDir()
+	input := repoPath(t, "examples", "SDSL-V", "M33b", "TensorConstructionProofs.sdslv")
+	cases := []struct {
+		entry string
+		name  string
+	}{
+		{"FillProof_CS", "fill"},
+		{"GenerateRank2Proof_CS", "generate_rank2"},
+		{"GenerateRank4Proof_CS", "generate_rank4"},
+		{"GeneratedMatmulProof_CS", "generated_matmul"},
+	}
+	for _, tc := range cases {
+		stdout.Reset()
+		stderr.Reset()
+		output := filepath.Join(tmp, tc.name+".spv")
+		args := []string{
+			"sdslv", "compile-spv", input,
+			"-o", output,
+			"--entry", tc.entry,
+		}
+		if err := cli.Execute(args, &stdout, &stderr); err != nil {
+			if !strings.Contains(err.Error(), "dxc was not found") && !strings.Contains(stderr.String(), "dxc was not found") {
+				t.Fatalf("compile-spv %s failed unexpectedly: %v stderr=%q stdout=%q", tc.entry, err, stderr.String(), stdout.String())
+			}
+			return
+		}
+		if info, err := os.Stat(output); err != nil || info.Size() == 0 {
+			t.Fatalf("expected non-empty SPIR-V output for %s at %s: stat=%v info=%v", tc.entry, output, err, info)
+		}
+		hlslPath := strings.TrimSuffix(output, ".spv") + ".hlsl"
+		text, err := os.ReadFile(hlslPath)
+		if err != nil {
+			t.Fatalf("read HLSL output for %s: %v", tc.entry, err)
+		}
+		body := string(text)
+		for _, banned := range []string{"inline HLSL expressions require", "unsupported guarded read", "malformed fixed-shape"} {
+			if strings.Contains(body, banned) {
+				t.Fatalf("HLSL output for %s contains placeholder %q:\n%s", tc.entry, banned, body)
+			}
+		}
+	}
+}
+
 func TestSDSLvM4EmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

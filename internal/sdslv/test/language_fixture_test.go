@@ -221,6 +221,21 @@ func TestSdslvM33aNDArrayInvalidFixtureCorpus(t *testing.T) {
 	}
 }
 
+func TestSdslvM33bTensorConstructionFixtureCorpus(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m33b-valid", "*.sdslvvalid"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("M33b valid fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			if _, err := sdslv.EmitHLSLFile(path); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	assertInvalidFixtureExpectation(t, filepath.Join(languageFixtureRoot(t), "m33b-invalid", "GenerateRankMismatch.sdslvinvalid"), invalidFixtureExpectation{"GenerateRankMismatch.sdslvinvalid", "validate", "SDSL-V3319", 2, 50})
+}
+
 func TestSdslvM31bValidFlowFixtureCorpusCompiles(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m31b-valid", "*.sdslvvalid"))
 	if err != nil || len(paths) == 0 {

@@ -125,6 +125,100 @@ func TestSdslvNdarrayUsesSharedFixedShapeEmitterAndSourceOrder(t *testing.T) {
 	}
 }
 
+func TestSdslvFixedShapeConstructionUsesFlatRowMajorStorage(t *testing.T) {
+	out := emitSource(t, `fn F(seed: u32) -> void {
+  let A: ndarray<u32, [2u, 2u]> = Fill(seed);
+  let B: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 3u + j);
+  return;
+}`)
+	for _, want := range []string{
+		"uint A[4];", "uint __sdslv_fill_0 = seed;", "A[0] = __sdslv_fill_0;", "A[3] = __sdslv_fill_0;",
+		"uint B[6];", "for (uint i = 0u; i < 2u; ++i)", "for (uint j = 0u; j < 3u; ++j)",
+		"uint __sdslv_tensor_index_", "uint __sdslv_tensor_offset_", "B[__sdslv_tensor_offset_",
+	} { if !strings.Contains(out, want) { t.Fatalf("construction HLSL missing %q:\n%s", want, out) } }
+}
+
+func TestSdslvFillMaterializesGuardedReadOnceAndReusesResult(t *testing.T) {
+	out := emitSource(t, `fn F(index: u32) -> void {
+  let input: ndarray<u32, [3u]> = [5u, 7u, 11u];
+  let values: ndarray<u32, [2u, 2u]> = Fill(read input[index] when index < 3u else 99u);
+  return;
+}`)
+	if strings.Count(out, "uint __sdslv_guarded_read_") != 1 {
+		t.Fatalf("Fill should materialize one guarded-read temporary:\n%s", out)
+	}
+	if strings.Count(out, "uint __sdslv_fill_") != 1 {
+		t.Fatalf("Fill should materialize one fill temporary:\n%s", out)
+	}
+	if strings.Count(out, "values[") != 5 || strings.Count(out, "__sdslv_fill_") != 5 {
+		t.Fatalf("Fill temporary should be declared once and reused by four stores:\n%s", out)
+	}
+}
+
+func TestSdslvGenerateMaterializesDestinationOncePerCoordinate(t *testing.T) {
+	out := emitSource(t, `fn F(seed: u32) -> void {
+  let values: ndarray<u32, [2u, 3u]> = Generate[i, j](seed + i * 10u + j);
+  return;
+}`)
+	if strings.Count(out, "uint __sdslv_tensor_offset_") != 1 {
+		t.Fatalf("Generate should materialize one destination offset per element site:\n%s", out)
+	}
+	if strings.Count(out, "values[__sdslv_tensor_offset_") != 1 {
+		t.Fatalf("Generate should reuse the materialized destination address:\n%s", out)
+	}
+}
+
+func TestSdslvGenerateMaterializesInlineHLSLAndCallsWithoutDuplication(t *testing.T) {
+	out := emitSource(t, `fn AddBias(value: u32, bias: u32) -> u32 { return value + bias; }
+fn F(bias: u32) -> void {
+  let values: ndarray<u32, [2u, 2u]> = Generate[i, j](AddBias(HLSL<u32>(i, j) { return i * 10u + j; }, bias));
+  return;
+}`)
+	if strings.Count(out, "BEGIN INLINE HLSL") != 1 {
+		t.Fatalf("Generate body duplicated inline HLSL:\n%s", out)
+	}
+	if strings.Count(out, "= AddBias(") != 1 {
+		t.Fatalf("Generate body duplicated ordinary call lowering:\n%s", out)
+	}
+}
+
+func TestSdslvFixedShapeConstructionRejectsMalformedMetadata(t *testing.T) {
+	u32Type := vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+	badShape := vdmir.Type{Kind: vdmir.TypeNDArray, Name: "ndarray", Element: &u32Type, Shape: []uint32{2, 0}, ArraySize: 0}
+	_, err := Emit(vdmir.Module{
+		Functions: []vdmir.Function{{
+			Name:       "F",
+			EmittedName: "F",
+			ReturnType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
+			Body: vdmir.Block{Statements: []vdmir.Stmt{
+				vdmir.LetStmt{Name: "values", Type: badShape, Value: vdmir.FillConstruct{ExprType: badShape, Value: vdmir.LiteralExpr{ExprType: u32Type, Kind: vdmir.LiteralInteger, Value: "7u"}}},
+			}},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "malformed fixed-shape Fill metadata") {
+		t.Fatalf("Emit() err = %v, want malformed Fill metadata rejection", err)
+	}
+
+	goodShape := vdmir.Type{Kind: vdmir.TypeNDArray, Name: "ndarray", Element: &u32Type, Shape: []uint32{2, 2}, ArraySize: 4}
+	_, err = Emit(vdmir.Module{
+		Functions: []vdmir.Function{{
+			Name:       "G",
+			EmittedName: "G",
+			ReturnType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
+			Body: vdmir.Block{Statements: []vdmir.Stmt{
+				vdmir.LetStmt{Name: "values", Type: goodShape, Value: vdmir.GenerateConstruct{
+					ExprType: goodShape,
+					Binders:  []string{"i"},
+					Body:     vdmir.LiteralExpr{ExprType: u32Type, Kind: vdmir.LiteralInteger, Value: "1u"},
+				}},
+			}},
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "malformed fixed-shape Generate metadata") {
+		t.Fatalf("Emit() err = %v, want malformed Generate metadata rejection", err)
+	}
+}
+
 func TestSdslvTensorCompoundAssignmentMaterializesDestinationOnce(t *testing.T) {
 	out := emitSource(t, `fn Add(B: array<f32, 2u>) -> void {
   let A: array<f32, 2u>;

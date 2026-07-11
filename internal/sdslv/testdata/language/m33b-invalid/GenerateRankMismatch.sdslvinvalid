@@ -1,0 +1,4 @@
+fn GenerateRankMismatch() -> void {
+    let values: ndarray<u32, [2u, 2u]> = Generate[i](i);
+    return;
+}

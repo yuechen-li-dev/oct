@@ -505,6 +505,10 @@ func ExprSpan(e Expr) source.Span {
 		return x.Span
 	case ArrayLiteral:
 		return x.Span
+	case FillExpr:
+		return x.Span
+	case GenerateExpr:
+		return x.Span
 	case IdentifierExpr:
 		return x.Span
 	case ForeignShaderExpr:
@@ -635,6 +639,25 @@ type ArrayLiteral struct {
 }
 
 func (ArrayLiteral) exprNode() {}
+
+// FillExpr constructs every element of a contextually supplied fixed shape.
+type FillExpr struct {
+	Span, KeywordSpan, OpenParenSpan, CloseParenSpan source.Span
+	Value                                            Expr // first argument retained for concise consumers
+	Arguments                                        []Expr
+}
+
+func (FillExpr) exprNode() {}
+
+// GenerateExpr constructs a contextually supplied fixed shape from ordered
+// immutable coordinate binders.
+type GenerateExpr struct {
+	Span, KeywordSpan, OpenBracketSpan, CloseBracketSpan, OpenParenSpan, CloseParenSpan source.Span
+	Binders                                                                             []IdentifierExpr
+	Body                                                                                Expr
+}
+
+func (GenerateExpr) exprNode() {}
 
 type IdentifierExpr struct {
 	Span source.Span

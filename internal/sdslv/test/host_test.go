@@ -551,6 +551,77 @@ func TestSdslvNativeHostExecutesTensorExecutionSuite(t *testing.T) {
 	}
 }
 
+func TestSdslvNativeHostExecutesM33bTensorConstructionSuite(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "examples", "SDSL-V", "M33b", "TensorConstruction.sdslvtest"))
+	for _, function := range []string{
+		"Rank1Fill",
+		"Rank4Fill",
+		"Rank1Generate",
+		"Rank4CoordinateEncoding",
+		"IdentityMatrixGeneration",
+		"FillExactlyOnceSemantics",
+		"GenerateExactlyOncePerCoordinate",
+		"GuardedReadGenerateBody",
+		"InlineHlslGenerateBody",
+		"OuterCaptureOrdinaryCallAndConditionalBody",
+		"DenseLiteralParity",
+		"TensorOperationConsumingGeneratedNDArray",
+		"MatrixMultiplicationUsingGeneratedOperands",
+	} {
+		out, result, err := runNativeHostJSON(t, host, fixture.byFunction[function], fixture.manifestPath)
+		if err != nil || result.Status != "PASS" {
+			t.Fatalf("%s failed: %v: %s", function, err, out)
+		}
+	}
+
+	multi := fixture.byFunction["MultipleInvocationsRemainStable"]
+	first, firstResult, err := runNativeHostJSON(t, host, multi, fixture.manifestPath)
+	if err != nil || firstResult.Status != "PASS" {
+		t.Fatalf("multiple invocation case failed: %v: %s", err, first)
+	}
+	second, secondResult, err := runNativeHostJSON(t, host, multi, fixture.manifestPath)
+	if err != nil || secondResult.Status != "PASS" {
+		t.Fatalf("multiple invocation replay failed: %v: %s", err, second)
+	}
+	if first != second {
+		t.Fatalf("M33b multiple invocation replay changed:\n%s\n!=\n%s", first, second)
+	}
+}
+
+func TestSdslvM33bCompiledArtifactsContainConstructionProofMarkers(t *testing.T) {
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "examples", "SDSL-V", "M33b", "TensorConstruction.sdslvtest"))
+	if got := len(fixture.groups); got != 2 {
+		t.Fatalf("groups=%d, want 2 workgroup groups", got)
+	}
+	hlsl, err := os.ReadFile(fixture.groups[0].HLSLPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(hlsl)
+	for _, want := range []string{
+		"uint __sdslv_fill_",
+		"uint __sdslv_tensor_offset_",
+		"TensorConstruction.sdslvtest:",
+		"RWStructuredBuffer<SdslvTestInvocationResult> __sdslv_test_results",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("compiled M33b HLSL missing %q:\n%s", want, body)
+		}
+	}
+	for _, banned := range []string{
+		"inline HLSL expressions require",
+		"unsupported guarded read",
+		"malformed fixed-shape",
+	} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("compiled M33b HLSL contains placeholder %q:\n%s", banned, body)
+		}
+	}
+}
+
 func TestSdslvStableCaseReplayWithTestInput(t *testing.T) {
 	host := nativeHostExecutable(t)
 	root := repoRoot(t)
@@ -580,6 +651,38 @@ func TestSdslvStableCaseReplayWithTestInput(t *testing.T) {
 	text := out.String()
 	if strings.Count(text, caseID) != 1 || strings.Contains(text, `"stable_case_id":"sdslv-b71c5378d98c97d63a061800"`) {
 		t.Fatalf("stable-case replay output = %q", text)
+	}
+}
+
+func TestSdslvM33bStableCaseReplay(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	t.Chdir(root)
+	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "examples", "SDSL-V", "M33b", "TensorConstruction.sdslvtest")
+	manifest, err := Discover(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID := ""
+	for _, c := range manifest.Cases {
+		if c.Function == "MultipleInvocationsRemainStable" {
+			caseID = c.StableID
+			break
+		}
+	}
+	if caseID == "" {
+		t.Fatal("MultipleInvocationsRemainStable case missing")
+	}
+	var out bytes.Buffer
+	if err := ExecuteWithOptions(path, &out, Options{CaseID: caseID}); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if strings.Count(text, caseID) != 1 || strings.Count(text, `"status":"PASS"`) != 1 {
+		t.Fatalf("M33b stable-case replay output = %q", text)
 	}
 }
 

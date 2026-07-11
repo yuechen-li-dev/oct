@@ -12,7 +12,7 @@ SDSL-V is a shader language that compiles to HLSL via DXC, targeting SPIR-V. Its
 
 The broad design pipeline is: `source → lex → parse → validate → template/config monomorphization → comptime expansion → lower to VD-MIR → emit HLSL → DXC → SPIR-V`.
 
-## Fixed-shape ndarrays (M33a)
+## Fixed-shape ndarrays and construction (M33a/M33b)
 
 `ndarray<ElementType, [Extent0, Extent1, ...]>` is a first-class fixed-shape,
 row-major tensor value type. Its rank is the number of positive compile-time
@@ -33,6 +33,47 @@ shape, nested literals, slicing, reshape, broadcasting, alternate layouts,
 storage classes, and templates are not part of M33a.
 
 Current GoOct M2 supports an opt-in DXC/SPIR-V/header generation lane for the compute-focused subset. Prometheus runtime wiring remains deferred.
+
+An `ndarray` is fixed-shape dense storage; `Fill` and `Generate` construct
+values of that storage type; `tensor` statements perform indexed computation
+over it. Construction is target-typed and currently supported in explicitly
+typed ndarray declarations only:
+
+```sdslv
+let zeros: ndarray<f32, [4u, 4u]> = Fill(0.0);
+let input: ndarray<u32, [2u, 3u]> = Generate[row, col](row * 3u + col);
+```
+
+`Fill(value)` has exactly one argument. The argument is evaluated once and its
+materialized result is stored into every element. `Generate[i, j, ...](body)`
+has one or more unique immutable `u32` index binders; binder count equals
+rank. Binders map positionally to axes, with axis zero outermost and the final
+axis innermost, producing canonical row-major traversal. The generator body is
+evaluated once per coordinate tuple and must produce the ndarray element type.
+Supported body composition is the ordinary validated SDSL-V expression subset,
+including outer scalar captures, ordinary helper calls, conditional control in
+helpers, guarded reads, inline HLSL expressions, and tensor-consuming uses of
+the generated result. `Fill` and `Generate` are parity construction forms:
+where a dense literal can express the same fixed value, hardware-visible
+results must agree element-for-element.
+
+Lowering preserves the same exact-once contracts used elsewhere in the shared
+expression materialization path. `Fill` emits one materialized temporary for
+its argument and all flat stores reuse that value. `Generate` emits
+binder-ordered nested loops, one materialized row-major destination offset per
+generated element, and one materialized body value per coordinate tuple. The
+same rank-general row-major linearization formula is reused for construction,
+indexing, tensor notation, test wrappers, and hardware execution.
+
+DXC/SPIR-V lowering remains flat and compiler-owned: no runtime shape object,
+no nested HLSL arrays for ndarray storage, no placeholder comments, and no
+shape-dependent descriptor protocol are introduced. Generated ndarrays compose
+directly with `tensor` notation, including reductions such as matrix
+multiplication over generated operands.
+
+No shape inference, dynamic shape, broadcasting, runtime generation,
+whole-value reassignment construction, alternate layouts, or M33c storage-class
+features are provided in this milestone.
 
 ---
 

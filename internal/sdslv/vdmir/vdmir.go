@@ -525,6 +525,27 @@ type NDArrayLiteral struct {
 func (NDArrayLiteral) exprNode()    {}
 func (e NDArrayLiteral) Type() Type { return e.ExprType }
 
+// Fixed-shape construction remains backend-neutral. Shape is compiler-owned
+// and ordered outermost-to-innermost; HLSL never infers it from source.
+type FillConstruct struct {
+	Provenance Provenance
+	ExprType   Type
+	Value      Expr
+}
+
+func (FillConstruct) exprNode()    {}
+func (e FillConstruct) Type() Type { return e.ExprType }
+
+type GenerateConstruct struct {
+	Provenance Provenance
+	ExprType   Type
+	Binders    []string
+	Body       Expr
+}
+
+func (GenerateConstruct) exprNode()    {}
+func (e GenerateConstruct) Type() Type { return e.ExprType }
+
 type VarRefExpr struct {
 	Provenance Provenance
 	ExprType   Type

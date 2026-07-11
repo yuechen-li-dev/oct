@@ -1,0 +1,53 @@
+fn Encode4(a: u32, b: u32, c: u32, d: u32) -> u32 {
+    return a * 1000u + b * 100u + c * 10u + d;
+}
+
+fn MatmulB(k: u32, j: u32) -> u32 {
+    if k == 0u {
+        if j == 0u { return 1u; }
+        if j == 1u { return 0u; }
+        if j == 2u { return 2u; }
+        return 1u;
+    }
+    if k == 1u {
+        if j == 0u { return 3u; }
+        if j == 1u { return 1u; }
+        if j == 2u { return 0u; }
+        return 2u;
+    }
+    if j == 0u { return 1u; }
+    if j == 1u { return 4u; }
+    if j == 2u { return 5u; }
+    return 0u;
+}
+
+shader FillProof {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+    let values: ndarray<u32, [2u, 2u]> = Fill(7u);
+    return;
+}
+}
+
+shader GenerateRank2Proof {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+    let values: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 10u + j);
+    return;
+}
+}
+
+shader GenerateRank4Proof {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+    let values: ndarray<u32, [2u, 2u, 2u, 3u]> = Generate[a, b, c, d](Encode4(a, b, c, d));
+    return;
+}
+}
+
+shader GeneratedMatmulProof {
+stage compute [numthreads(1, 1, 1)] fn CS() -> void {
+    let A: ndarray<u32, [2u, 3u]> = Generate[i, k](i * 3u + k + 1u);
+    let B: ndarray<u32, [3u, 4u]> = Generate[k, j](MatmulB(k, j));
+    let C: ndarray<u32, [2u, 4u]>;
+    tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
+    return;
+}
+}

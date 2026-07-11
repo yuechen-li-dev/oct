@@ -966,6 +966,19 @@ return;
 	}
 }
 
+func TestSdslvParsesFillAndGenerateExpressions(t *testing.T) {
+	module := parseTestModule(t, `fn F() -> void {
+let a: ndarray<u32, [4u]> = Fill(7u);
+let b: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 3u + j);
+return;
+}`)
+	stmts := module.Decls[0].(ast.FunctionDecl).Body.Statements
+	fill, ok := stmts[0].(ast.LetStmt).Value.(ast.FillExpr)
+	if !ok || len(fill.Arguments) != 1 || !fill.KeywordSpan.Known() { t.Fatalf("Fill = %#v", stmts[0]) }
+	generate, ok := stmts[1].(ast.LetStmt).Value.(ast.GenerateExpr)
+	if !ok || len(generate.Binders) != 2 || generate.Binders[0].Name != "i" || generate.Binders[1].Name != "j" || !generate.OpenBracketSpan.Known() { t.Fatalf("Generate = %#v", stmts[1]) }
+}
+
 func TestSdslvPreservesNdarrayExtentSpans(t *testing.T) {
 	const text = `fn F() -> void {
 let input: ndarray<u32, [2u, 3u, 4u]> = [1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u, 9u, 10u, 11u, 12u, 13u, 14u, 15u, 16u, 17u, 18u, 19u, 20u, 21u, 22u, 23u, 24u];
