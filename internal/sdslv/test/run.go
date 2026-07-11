@@ -7,13 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
@@ -34,10 +34,11 @@ func ExecuteWithOptions(path string, out io.Writer, options Options) error {
 		return err
 	}
 	for _, suite := range paths {
-		manifest, err := Discover(suite)
+		canonical, err := Prepare(suite)
 		if err != nil {
 			return err
 		}
+		manifest := ProjectManifest(canonical, nil)
 		selected := make([]Case, 0, len(manifest.Cases))
 		for _, c := range manifest.Cases {
 			if options.CaseID == "" || options.CaseID == c.StableID {
@@ -56,8 +57,8 @@ func ExecuteWithOptions(path string, out io.Writer, options Options) error {
 		// M0's evaluator remains only as a compile-free compatibility seam for
 		// the original scalar fixture.  M29 discovery explicitly rejects malformed
 		// tests before this path; a case that needs GPU lowering fails truthfully.
-		if usesM29Syntax(suite) {
-			if err := executeGPU(manifest, selected, out); err != nil {
+		if requiresGPU(manifest) {
+			if err := executeGPU(canonical, manifest, selected, out); err != nil {
 				return err
 			}
 			continue
@@ -65,23 +66,28 @@ func ExecuteWithOptions(path string, out io.Writer, options Options) error {
 		if len(manifest.Cases) != len(selected) || hasTheory(selected) {
 			return fmt.Errorf("SDSL-V GPU test execution requires sdslv_test_host; discovered %d selected case(s) in %s", len(selected), suite)
 		}
-		if err := executeLegacyFacts(suite, out); err != nil {
+		if err := executeLegacyFacts(suite, manifest, out); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func usesM29Syntax(path string) bool {
-	text, err := os.ReadFile(path)
-	return err == nil && strings.Contains(string(text), "HLSL<")
+func requiresGPU(manifest Manifest) bool {
+	for _, c := range manifest.Cases {
+		if c.RequiresGPU {
+			return true
+		}
+	}
+	return false
 }
-func executeGPU(manifest Manifest, selected []Case, out io.Writer) error {
+func executeGPU(canonical Suite, manifest Manifest, selected []Case, out io.Writer) error {
 	root := filepath.Join("out", "sdslvtest", strings.ReplaceAll(strings.TrimSuffix(filepath.Base(manifest.Source), filepath.Ext(manifest.Source)), " ", "_"))
-	groups, err := Compile(manifest, root)
+	groups, err := Compile(canonical, root)
 	if err != nil {
 		return fmt.Errorf("COMPILE_FAILED: %w", err)
 	}
+	manifest = ProjectManifest(canonical, groups)
 	if err := WriteManifest(filepath.Join(root, "manifest.json"), manifest); err != nil {
 		return err
 	}
@@ -171,17 +177,21 @@ func hasTheory(cases []Case) bool {
 	return false
 }
 
-func executeLegacyFacts(path string, out io.Writer) error {
+func executeLegacyFacts(path string, manifest Manifest, out io.Writer) error {
 	file, err := source.Load(path)
 	if err != nil {
 		return err
 	}
-	names := factNames(file.Text)
+	names := make([]string, 0, len(manifest.Cases))
+	for _, c := range manifest.Cases {
+		if c.Kind == string(validate.TestKindFact) {
+			names = append(names, c.Function)
+		}
+	}
 	if len(names) == 0 {
 		return fmt.Errorf("no [Fact] tests found; [Theory] is deferred in GoOct SDSL-V M0")
 	}
-	moduleText := stripFactAttributes(file.Text)
-	tokens, err := lex.Analyze(source.File{Path: file.Path, Text: moduleText})
+	tokens, err := lex.Analyze(file)
 	if err != nil {
 		return err
 	}
@@ -220,31 +230,6 @@ func executeLegacyFacts(path string, out io.Writer) error {
 	}
 	_, _ = fmt.Fprintf(out, "sdslvtest ok: %d fact(s)\n", len(names))
 	return nil
-}
-
-func factNames(text string) []string {
-	re := regexp.MustCompile(`(?m)^\s*\[Fact\]\s*\r?\n\s*fn\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	matches := re.FindAllStringSubmatch(text, -1)
-	names := make([]string, 0, len(matches))
-	for _, match := range matches {
-		names = append(names, match[1])
-	}
-	return names
-}
-
-func stripFactAttributes(text string) string {
-	lines := strings.Split(text, "\n")
-	kept := make([]string, 0, len(lines))
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "[Fact]" {
-			continue
-		}
-		if strings.HasPrefix(strings.TrimSpace(line), "[Theory]") || strings.HasPrefix(strings.TrimSpace(line), "[InlineData") {
-			continue
-		}
-		kept = append(kept, line)
-	}
-	return strings.Join(kept, "\n")
 }
 
 type value struct {

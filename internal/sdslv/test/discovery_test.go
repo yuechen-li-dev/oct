@@ -1,8 +1,11 @@
 package test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -25,6 +28,87 @@ func TestSdslvTestParsesFactTheoryAndLaunchMetadata(t *testing.T) {
 	for _, c := range m.Cases {
 		if c.Function == "Rows" && c.Launch.WorkgroupSize[0] != 32 {
 			t.Fatalf("launch=%v", c.Launch)
+		}
+	}
+}
+
+func TestSdslvStableIdsRemainUnchangedForM29Fixtures(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	m, err := Discover(filepath.Join("examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range m.Cases {
+		got = append(got, c.StableID)
+	}
+	want := []string{"sdslv-11e3deb3d1ad94f0071f3d8d", "sdslv-5664efcb0ab3deb7eb8c871b", "sdslv-a20bf18c1aa6672e75d2b267", "sdslv-ea0387cf37037ceec9e4083d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("stable IDs changed: got %v, want %v", got, want)
+	}
+}
+
+func TestSdslvExecutionPathHasNoSourceScannerOrRegexDiscovery(t *testing.T) {
+	data, err := os.ReadFile("run.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, forbidden := range []string{"regexp.", "factNames(", "stripFactAttributes(", "usesM29Syntax("} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("execution path retains source discovery helper %q", forbidden)
+		}
+	}
+}
+
+func TestSdslvGroupingAndManifestAreCanonicalProjections(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+	suite, err := Prepare(filepath.Join("examples", "SDSL-V", "M29", "InlineHlslFacts.sdslvtest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(suite.Groups) != 2 || len(suite.Groups[0].Cases) == 0 {
+		t.Fatalf("groups=%#v", suite.Groups)
+	}
+	// Theory rows remain separate replay cases but share their workgroup group.
+	if suite.Groups[0].Cases[0].Test.Decl.Launch.WorkgroupSize != suite.Groups[0].Cases[1].Test.Decl.Launch.WorkgroupSize {
+		t.Fatal("group did not consume canonical launch metadata")
+	}
+	m := ProjectManifest(suite, nil)
+	var theory *Case
+	for i := range m.Cases {
+		if m.Cases[i].Function == "FloatBitPattern" {
+			theory = &m.Cases[i]
+			break
+		}
+	}
+	if theory == nil || theory.RowSpan == nil || len(theory.TypedValues) != 2 || len(theory.ValueSpans) != 2 || len(theory.Assertions) != 1 || theory.GroupID == "" || !theory.FunctionSpan.Known() {
+		t.Fatalf("manifest lost canonical metadata: %#v", theory)
+	}
+	a, _ := json.Marshal(m)
+	b, _ := json.Marshal(ProjectManifest(suite, nil))
+	if string(a) != string(b) {
+		t.Fatal("manifest projection is not deterministic")
+	}
+}
+
+func TestSdslvBootstrapCompilerDoesNotConsumeManifest(t *testing.T) {
+	data, err := os.ReadFile("compile.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, forbidden := range []string{"Compile(manifest", "Manifest"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("bootstrap compiler retains manifest DTO coupling %q", forbidden)
 		}
 	}
 }
@@ -65,11 +149,11 @@ func TestSdslvTestCompilesOneModulePerWorkgroupSize(t *testing.T) {
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m, err := Discover(path)
+	suite, err := Prepare(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	groups, err := Compile(m, filepath.Join(t.TempDir(), "artifacts"))
+	groups, err := Compile(suite, filepath.Join(t.TempDir(), "artifacts"))
 	if err != nil {
 		t.Fatal(err)
 	}

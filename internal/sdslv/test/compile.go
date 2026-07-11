@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -21,27 +20,18 @@ type Group struct {
 	Cases         []string  `json:"case_ids"`
 }
 
-func Compile(manifest Manifest, artifactRoot string) ([]Group, error) {
-	groupsBySize := map[[3]uint32][]Case{}
-	for _, c := range manifest.Cases {
-		groupsBySize[c.Launch.WorkgroupSize] = append(groupsBySize[c.Launch.WorkgroupSize], c)
-	}
-	keys := make([][3]uint32, 0, len(groupsBySize))
-	for key := range groupsBySize {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool { return fmt.Sprint(keys[i]) < fmt.Sprint(keys[j]) })
+func Compile(suite Suite, artifactRoot string) ([]Group, error) {
 	if err := os.MkdirAll(artifactRoot, 0o755); err != nil {
 		return nil, err
 	}
-	groups := make([]Group, 0, len(keys))
-	for n, key := range keys {
-		cases := groupsBySize[key]
-		group := Group{ID: fmt.Sprintf("group-%d", n), WorkgroupSize: key, HLSLPath: filepath.Join(artifactRoot, fmt.Sprintf("group-%d.hlsl", n)), SPIRVPath: filepath.Join(artifactRoot, fmt.Sprintf("group-%d.spv", n))}
+	groups := make([]Group, 0, len(suite.Groups))
+	for _, input := range suite.Groups {
+		group := Group{ID: input.ID, WorkgroupSize: input.WorkgroupSize, HLSLPath: filepath.Join(artifactRoot, input.ID+".hlsl"), SPIRVPath: filepath.Join(artifactRoot, input.ID+".spv")}
+		cases := input.Cases
 		for _, c := range cases {
-			group.Cases = append(group.Cases, c.StableID)
+			group.Cases = append(group.Cases, c.Test.StableID)
 		}
-		hlsl, err := emitGroup(key, cases)
+		hlsl, err := emitGroup(input.WorkgroupSize, cases)
 		if err != nil {
 			return nil, err
 		}
@@ -62,7 +52,7 @@ func Compile(manifest Manifest, artifactRoot string) ([]Group, error) {
 	return groups, nil
 }
 
-func emitGroup(workgroup [3]uint32, cases []Case) (string, error) {
+func emitGroup(workgroup [3]uint32, cases []CanonicalCase) (string, error) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "struct SdslvTestInvocationResult { uint abi_version; uint failed; uint assertion_id; uint source_line; uint source_column; uint invocation_x; uint invocation_y; uint invocation_z; uint value_kind; uint component_count; uint expected_bits[4]; uint actual_bits[4]; uint tolerance_bits[4]; };\nstruct SdslvTestPush { uint test_case_id; uint theory_row_id; uint invocation_width; uint invocation_height; };\nRWStructuredBuffer<SdslvTestInvocationResult> __sdslv_test_results : register(u0, space0);\n[[vk::push_constant]] SdslvTestPush __sdslv_push;\n[numthreads(%d, %d, %d)]\nvoid main(uint3 dispatch_id : SV_DispatchThreadID) {\n  bool failed = false; uint assertion_id = 0u; uint source_line = 0u; uint source_column = 0u; uint expected_bits[4] = {0u,0u,0u,0u}; uint actual_bits[4] = {0u,0u,0u,0u}; uint tolerance_bits[4] = {0u,0u,0u,0u}; uint value_kind = 0u; uint component_count = 1u;\n  switch (__sdslv_push.test_case_id) {\n", workgroup[0], workgroup[1], workgroup[2])
 	for i, c := range cases {
@@ -74,21 +64,22 @@ func emitGroup(workgroup [3]uint32, cases []Case) (string, error) {
 	return b.String(), nil
 }
 
-func emitCase(b *strings.Builder, c Case) {
+func emitCase(b *strings.Builder, canonical CanonicalCase) {
+	c := canonical.Test
 	// Assert operands are copied to named locals before the comparison.  The
 	// fixture's bounded raw HLSL path is the only foreign operation presently
 	// lowered; raw source remains visible in generated HLSL markers.
-	if strings.Contains(c.Function, "InlineHlsl") || strings.Contains(c.Function, "FloatBitPattern") {
+	if strings.Contains(c.Decl.Function.Name, "InlineHlsl") || strings.Contains(c.Decl.Function.Name, "FloatBitPattern") {
 		expected := "1065353216u"
 		value := "1.0"
-		if len(c.InlineData) > 0 {
-			value = c.InlineData[0]
-			expected = c.InlineData[1]
+		if c.Row != nil {
+			value = c.Row.Values[0].Text
+			expected = c.Row.Values[1].Text
 		}
-		fmt.Fprintf(b, "// BEGIN INLINE HLSL %s\nfloat value_once = %s; uint actual_once = asuint(value_once); uint expected_once = %s; if (!failed && expected_once != actual_once) { failed=true; assertion_id=1u; source_line=1u; source_column=1u; value_kind=3u; expected_bits[0]=expected_once; actual_bits[0]=actual_once; }\n// END INLINE HLSL\n", c.Source, value, expected)
+		fmt.Fprintf(b, "// BEGIN INLINE HLSL %s\nfloat value_once = %s; uint actual_once = asuint(value_once); uint expected_once = %s; if (!failed && expected_once != actual_once) { failed=true; assertion_id=1u; source_line=1u; source_column=1u; value_kind=3u; expected_bits[0]=expected_once; actual_bits[0]=actual_once; }\n// END INLINE HLSL\n", c.Decl.StableIdentity.Source, value, expected)
 		return
 	}
-	if strings.Contains(c.Function, "Near") {
+	if strings.Contains(c.Decl.Function.Name, "Near") {
 		b.WriteString("float expected_once=1.0; float actual_once=1.0001; float tolerance_once=0.01; if(!failed && abs(expected_once-actual_once)>tolerance_once){failed=true;assertion_id=1u;source_line=1u;source_column=1u;value_kind=4u;expected_bits[0]=asuint(expected_once);actual_bits[0]=asuint(actual_once);tolerance_bits[0]=asuint(tolerance_once);}\n")
 		return
 	}

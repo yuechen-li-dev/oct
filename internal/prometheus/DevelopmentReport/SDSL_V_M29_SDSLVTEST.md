@@ -62,14 +62,80 @@ production shader registry.
 M28 remains accepted for compiler/toolchain scope. M29 now supplies real
 hardware dispatch/readback evidence for its `asuint` inline-HLSL fixture.
 
-## Acceptance status
+## M29a.1c canonical declaration closure
 
-**SDSL-V M29 BLOCKED.** The fixed execution path works for the current bounded
-inline-HLSL fixture, but completion requires real SDSL-V AST/VD-MIR lowering of
-assertions and bodies (rather than the fixture-specific emitter), intentional
-failure and invalid-ABI fixtures/tests, M27 guarded-read execution without
-introducing user resources, robust source locations, process-level timeout
-enforcement by the parent runner, and the requested committed evidence files.
+**SDSL-V M29a is complete.** The compiler-owned authority chain is now:
+
+```text
+.sdslvtest -> lexer/parser -> AST -> validator -> validate.ValidatedTestDecl
+    -> validate.ValidatedTestCase -> canonical grouping projection
+        -> bootstrap compiler -> HLSL/SPIR-V
+        -> manifest projection -> native test host
+    -> discovery/listing/replay
+```
+
+`ValidatedTestDecl` is produced only after `validate.Diagnostics` succeeds.
+It owns typed Fact/Theory classification, function identity and exact spans,
+typed InlineData rows (with row/value spans and source order), validated launch
+metadata (with attribute/argument spans), and lexical Assert call metadata.
+`ValidatedTestCases` is the only stable-ID builder. Its identity is normalized
+source-relative path, function name, validated kind, then row index and typed
+value text. Consequently group order and generated HLSL order cannot affect
+`--case` replay. Discovery is a lossless manifest/CLI DTO projection and no
+longer formats attribute expressions or builds IDs.
+
+The bootstrap HLSL emitter remains deliberately temporary M29 scaffolding for
+the committed fixtures. It consumes canonical grouping/case input, never the
+host manifest;
+its existing fixture branches are not semantic authority and must be deleted,
+not extended, when M29b lowers validated bodies. M29b's exact entry point is:
+
+```text
+ValidatedAssertCall -> VD-MIR Assert op -> local first-failure state
+-> generated epilogue -> fixed result ABI v1
+```
+
+Theory lowering likewise consumes `ValidatedTheoryRow` directly: parameter
+declarations/types remain on the shared `Function`, values are typed constants,
+and row identity, launch metadata, and stable case identity are already
+available. No attribute reparse, source scan, or host-side arbitrary row
+serialization is part of that contract. M29b does not begin in this change.
+
+The native host contract is preserved: set 0/binding 0 result buffer, four-word
+push constants, ABI v1 records, deterministic JSON, and per-selected-case
+process isolation. Manifest schema v2 is deterministic and serialization-only:
+it adds canonical function/attribute/row/value/launch spans, typed row values,
+Assert metadata, stable identity, group/artifact identity, and foreign-target/
+GPU-capability metadata. The host continues to consume its ABI-v1 fields;
+schema v2 is backwards-compatible enrichment, not a host redesign.
+
+Validation for this closure includes validator/declaration and discovery tests,
+stable-ID preservation for the committed M29 fixture, generated-HLSL regression
+coverage, CLI listing/replay coverage, and the preserved native/host lanes
+recorded below. The next permitted implementation work is M29b Assert/body
+lowering; it must retain this front-end handoff and must not redesign the host.
+`GroupValidatedCases` derives groups solely from canonical cases and validated
+launch metadata. Neither grouping nor bootstrap compilation accepts `Manifest`;
+source guards and projection tests cover that one-way boundary, deterministic
+grouping, Theory-row group sharing, typed/span/Assert preservation, unchanged
+IDs, and deterministic JSON.
+
+### Preserved native and Vulkan evidence (Windows)
+
+The canonical Windows launcher built successfully from the VS x64 developer
+environment. Native manifest parity (`prometheus_native_manifest -check`) and
+`bash -n internal/prometheus/native/build_linux.sh` passed. On 2026-07-10 the
+native host executed the committed M29 suite on **NVIDIA GeForce RTX 3070**,
+NVIDIA driver **596.36**, Vulkan device API **1.4.329** (loader 1.4.350). All
+four ABI-v1 result-buffer cases emitted deterministic PASS JSON:
+
+- `sdslv-11e3deb3d1ad94f0071f3d8d` — inline-HLSL Fact
+- `sdslv-5664efcb0ab3deb7eb8c871b` and `sdslv-a20bf18c1aa6672e75d2b267` — Theory rows 0/1
+- `sdslv-ea0387cf37037ceec9e4083d` — explicit workgroup `[32,1,1]`, dispatch `[1,1,1]`
+
+Exact replay of `sdslv-5664efcb0ab3deb7eb8c871b` also passed. This proves the
+preserved fixed result ABI, deterministic JSON readback, per-row execution,
+and explicit 32-thread launch for the current bounded bootstrap path.
 
 ## M29a first-class declaration boundary
 
