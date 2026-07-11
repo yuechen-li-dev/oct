@@ -1,0 +1,7 @@
+fn F() -> void {
+flow F {
+state Entry { goto Final; }
+state Cleanup { pop; }
+state Final { push Cleanup; }
+}
+}

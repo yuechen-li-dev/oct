@@ -1,6 +1,7 @@
 package hlsl
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lower"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
@@ -20,6 +22,7 @@ let index: u32 = DispatchThreadID.x;
 if index < params.Count { C[index] = A[index]; }
 return;
 }
+
 }`
 	first := emitSource(t, text)
 	second := emitSource(t, text)
@@ -37,6 +40,176 @@ return;
 		if !strings.Contains(first, want) {
 			t.Fatalf("HLSL missing %q:\n%s", want, first)
 		}
+	}
+}
+
+func TestSdslvFlowDispatcherShapes(t *testing.T) {
+	legacy := emitSource(t, `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { flow F { state A { let x: u32 = 1u; } state B { } } } }`)
+	if strings.Contains(legacy, "flow dispatcher") || strings.Contains(legacy, "return_stack") {
+		t.Fatalf("legacy flow gained runtime machinery:\n%s", legacy)
+	}
+	goTo := emitSource(t, `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { flow F { state A { goto Done; } state Done { finish; } } } }`)
+	for _, want := range []string{"flow dispatcher test.sdslv:", "switch (__flow_F_0_state)", "__flow_F_0_state = 1u;"} {
+		if !strings.Contains(goTo, want) {
+			t.Fatalf("goto flow missing %q:\n%s", want, goTo)
+		}
+	}
+	if strings.Contains(goTo, "return_stack") || strings.Contains(goTo, "stack_top") {
+		t.Fatalf("goto-only flow emitted stack:\n%s", goTo)
+	}
+	push := emitSource(t, `shader S { stage compute [numthreads(1,1,1)] fn CS() -> void { flow F { state A { push Shared; } state Done { finish; } state Shared { pop; } } } }`)
+	for _, want := range []string{"uint __flow_F_0_return_stack[1];", "__flow_F_0_return_stack[__flow_F_0_stack_top] = 1u;", "__flow_F_0_stack_top -= 1u;"} {
+		if !strings.Contains(push, want) {
+			t.Fatalf("push/pop flow missing %q:\n%s", want, push)
+		}
+	}
+}
+
+func TestSdslvFlowDispatcherEmitsSourceMarkers(t *testing.T) {
+	text := `shader S {
+stage compute [numthreads(1,1,1)] fn CS() -> void {
+flow F {
+state A { push Shared; }
+state Resume { goto Done; }
+state Done { finish; }
+state Shared { pop; }
+}
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"// flow dispatcher test.sdslv:",
+		"// flow stack test.sdslv:",
+		"// flow state test.sdslv:4:7 A",
+		"// flow terminator 4:11 push target=3u return=1u",
+		"// flow stack push 4:11",
+		"// flow state test.sdslv:5:7 Resume",
+		"// flow terminator 5:16 goto",
+		"// flow state test.sdslv:6:7 Done",
+		"// flow terminator 6:14 finish",
+		"// flow state test.sdslv:7:7 Shared",
+		"// flow terminator 7:16 pop",
+		"// flow stack pop 7:16",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("flow marker missing %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSdslvFlowDispatcherRejectsMalformedMetadata(t *testing.T) {
+	makeModule := func(flow vdmir.Flow) vdmir.Module {
+		return vdmir.Module{
+			Functions: []vdmir.Function{{
+				Name: "CS",
+				Body: vdmir.Block{Statements: []vdmir.Stmt{vdmir.FlowStmt{Flow: flow}}},
+			}},
+			EntryPoints: []vdmir.ComputeEntryPoint{{
+				ShaderName:   "S",
+				FunctionName: "CS",
+				EmittedName:  "S_CS",
+				NumThreadsX:  1,
+				NumThreadsY:  1,
+				NumThreadsZ:  1,
+			}},
+		}
+	}
+	baseState := func(id int, kind vdmir.FlowTerminatorKind) vdmir.FlowState {
+		return vdmir.FlowState{
+			ID:   id,
+			Name: fmt.Sprintf("S%d", id),
+			Body: vdmir.Block{},
+			Terminator: vdmir.FlowTerminator{
+				Kind: kind,
+			},
+		}
+	}
+	cases := []struct {
+		name string
+		flow vdmir.Flow
+		want string
+	}{
+		{
+			name: "duplicate state id",
+			flow: vdmir.Flow{
+				Name:       "Dup",
+				Entry:      0,
+				States:     []vdmir.FlowState{baseState(0, vdmir.FlowTerminatorFinish), baseState(0, vdmir.FlowTerminatorFinish)},
+				SourceSpan: source.Span{Start: source.Position{Line: 1, Column: 1}},
+			},
+			want: "duplicate or invalid state ID 0",
+		},
+		{
+			name: "invalid target id",
+			flow: vdmir.Flow{
+				Name:  "BadTarget",
+				Entry: 0,
+				States: []vdmir.FlowState{{
+					ID:   0,
+					Name: "A",
+					Body: vdmir.Block{},
+					Terminator: vdmir.FlowTerminator{
+						Kind:   vdmir.FlowTerminatorGoto,
+						Target: 7,
+					},
+				}},
+			},
+			want: "invalid target state ID 7",
+		},
+		{
+			name: "missing push return",
+			flow: vdmir.Flow{
+				Name:          "MissingReturn",
+				Entry:         0,
+				HasPushPop:    true,
+				MaxStackDepth: 1,
+				States: []vdmir.FlowState{{
+					ID:   0,
+					Name: "A",
+					Body: vdmir.Block{},
+					Terminator: vdmir.FlowTerminator{
+						Kind:     vdmir.FlowTerminatorPush,
+						Target:   1,
+						ReturnTo: 9,
+					},
+				}, baseState(1, vdmir.FlowTerminatorFinish)},
+			},
+			want: "invalid push terminator",
+		},
+		{
+			name: "pop with zero stack contract",
+			flow: vdmir.Flow{
+				Name:  "PopZero",
+				Entry: 0,
+				States: []vdmir.FlowState{{
+					ID:   0,
+					Name: "A",
+					Body: vdmir.Block{},
+					Terminator: vdmir.FlowTerminator{
+						Kind: vdmir.FlowTerminatorPop,
+					},
+				}},
+			},
+			want: "pop without return-stack contract",
+		},
+		{
+			name: "inconsistent max stack depth",
+			flow: vdmir.Flow{
+				Name:       "DepthZero",
+				Entry:      0,
+				HasPushPop: true,
+				States:     []vdmir.FlowState{baseState(0, vdmir.FlowTerminatorFinish)},
+			},
+			want: "push/pop requires positive MaxStackDepth",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Emit(makeModule(tc.flow))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Emit() err = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 

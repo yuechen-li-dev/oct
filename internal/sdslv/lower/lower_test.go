@@ -671,7 +671,7 @@ return;
 	}
 }
 
-func TestModuleRejectsM31aTransitionsAtLoweringBoundary(t *testing.T) {
+func TestModuleLowersM31aTransitionsToFlowProgram(t *testing.T) {
 	text := `fn F() -> void { flow F { state A { push Shared; } state B { finish; } state Shared { pop; } } }`
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})
 	if err != nil {
@@ -684,9 +684,21 @@ func TestModuleRejectsM31aTransitionsAtLoweringBoundary(t *testing.T) {
 	if err := validate.Module(module); err != nil {
 		t.Fatalf("validate.Module() error = %v", err)
 	}
-	_, err = Module(module)
-	if err == nil || !strings.Contains(err.Error(), "M31b runtime/HLSL dispatcher lowering is not implemented") {
+	mir, err := Module(module)
+	if err != nil {
 		t.Fatalf("Module() error = %v", err)
+	}
+	fn := findFunction(t, mir, "F")
+	flowBlock, ok := fn.Body.Statements[0].(vdmir.BlockStmt)
+	if !ok || len(flowBlock.Body.Statements) != 1 {
+		t.Fatalf("flow body = %#v", fn.Body.Statements)
+	}
+	flowStmt, ok := flowBlock.Body.Statements[0].(vdmir.FlowStmt)
+	if !ok {
+		t.Fatalf("flow statement = %T, want FlowStmt", flowBlock.Body.Statements[0])
+	}
+	if !flowStmt.Flow.HasPushPop || flowStmt.Flow.MaxStackDepth != 1 || flowStmt.Flow.States[0].Terminator.ReturnTo != 1 {
+		t.Fatalf("flow program = %#v", flowStmt.Flow)
 	}
 }
 

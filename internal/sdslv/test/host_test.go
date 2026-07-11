@@ -24,6 +24,7 @@ type compiledHostSuite struct {
 	groups       []Group
 	manifestPath string
 	byFunction   map[string]hostInvocation
+	byDisplay    map[string]hostInvocation
 }
 
 type nativeResult struct {
@@ -79,6 +80,7 @@ func compileHostSuiteFromFile(t *testing.T, suitePath string) compiledHostSuite 
 		t.Fatal(err)
 	}
 	byFunction := make(map[string]hostInvocation, len(manifest.Cases))
+	byDisplay := make(map[string]hostInvocation, len(manifest.Cases))
 	for _, c := range manifest.Cases {
 		inv := hostInvocation{c: c, rowIndex: rowNumber(c)}
 		found := false
@@ -99,8 +101,9 @@ func compileHostSuiteFromFile(t *testing.T, suitePath string) compiledHostSuite 
 			t.Fatalf("compiled group missing %s", c.StableID)
 		}
 		byFunction[c.Function] = inv
+		byDisplay[c.DisplayName] = inv
 	}
-	return compiledHostSuite{manifest: manifest, groups: groups, manifestPath: manifestPath, byFunction: byFunction}
+	return compiledHostSuite{manifest: manifest, groups: groups, manifestPath: manifestPath, byFunction: byFunction, byDisplay: byDisplay}
 }
 
 func runNativeHost(t *testing.T, host string, inv hostInvocation, manifestPath string) (string, error) {
@@ -570,5 +573,99 @@ func TestSdslvNativeHostFixedInputContractSourceGuards(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("native host lost fixed-input contract evidence %q", want)
 		}
+	}
+}
+
+func TestSdslvM31bFlowStackSuitePassesOnNativeHost(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	t.Chdir(root)
+	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "examples", "SDSL-V", "M31b", "FlowStacks.sdslvtest")
+	var out bytes.Buffer
+	if err := Execute(path, &out); err != nil {
+		t.Fatalf("M31b flow stack suite failed: %v\n%s", err, out.String())
+	}
+	if strings.Count(out.String(), `"status":"PASS"`) != 13 {
+		t.Fatalf("expected 13 passing M31b cases, got output:\n%s", out.String())
+	}
+}
+
+func TestSdslvM31bFlowStackNativeHostCasesAreDeterministic(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	fixture := compileHostSuiteFromFile(t, filepath.Join(root, "examples", "SDSL-V", "M31b", "FlowStacks.sdslvtest"))
+	for _, name := range []string{
+		"LinearFallthroughLegacy",
+		"GotoOnlyTransfer",
+		"FinishOnlyFlowPreservesEpilogue",
+		"OnePushPop",
+		"NestedPushPopLifo",
+		"SharedSubflowCallerSpecificReturn",
+		"FinalStatePushReturnsToCompletion",
+		"FinishWithNonemptyStack",
+		"FlowFollowedByAssert",
+		"MultipleInvocationsRemainDeterministic",
+		"TheoryRowFlow[0]",
+		"TheoryRowFlow[1]",
+		"BarrierSubflowRemainsUniform",
+	} {
+		t.Run(name, func(t *testing.T) {
+			inv, ok := fixture.byFunction[name]
+			if !ok {
+				inv, ok = fixture.byDisplay[name]
+			}
+			if !ok {
+				t.Fatalf("missing M31b case %s", name)
+			}
+			first, firstResult, err := runNativeHostJSON(t, host, inv, fixture.manifestPath)
+			if err != nil {
+				t.Fatalf("first run failed: %v: %s", err, first)
+			}
+			second, secondResult, err := runNativeHostJSON(t, host, inv, fixture.manifestPath)
+			if err != nil {
+				t.Fatalf("second run failed: %v: %s", err, second)
+			}
+			if first != second {
+				t.Fatalf("deterministic replay changed:\n%s\n!=\n%s", first, second)
+			}
+			if firstResult.Status != "PASS" || secondResult.Status != "PASS" || firstResult.StableCaseID != inv.c.StableID || firstResult.ABIVersion != 1 || firstResult.Failed != 0 || firstResult.Source != [2]uint32{} {
+				t.Fatalf("unexpected pass contract: %#v", firstResult)
+			}
+		})
+	}
+}
+
+func TestSdslvM31bStableCaseReplay(t *testing.T) {
+	host := nativeHostExecutable(t)
+	root := repoRoot(t)
+	t.Chdir(root)
+	if err := os.Setenv("SDSLV_TEST_HOST", host); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "examples", "SDSL-V", "M31b", "FlowStacks.sdslvtest")
+	manifest, err := Discover(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caseID := ""
+	for _, c := range manifest.Cases {
+		if c.DisplayName == "NestedPushPopLifo" {
+			caseID = c.StableID
+			break
+		}
+	}
+	if caseID == "" {
+		t.Fatal("NestedPushPopLifo case missing")
+	}
+	var out bytes.Buffer
+	if err := ExecuteWithOptions(path, &out, Options{CaseID: caseID}); err != nil {
+		t.Fatal(err)
+	}
+	text := out.String()
+	if strings.Count(text, caseID) != 1 || strings.Count(text, `"status":"PASS"`) != 1 {
+		t.Fatalf("stable-case replay output = %q", text)
 	}
 }

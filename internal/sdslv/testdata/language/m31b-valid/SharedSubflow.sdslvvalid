@@ -1,0 +1,8 @@
+fn F() -> void {
+flow F {
+state A { push Shared; }
+state AfterA { push Shared; }
+state Done { finish; }
+state Shared { pop; }
+}
+}

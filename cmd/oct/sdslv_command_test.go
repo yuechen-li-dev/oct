@@ -238,6 +238,38 @@ func TestSDSLvPrometheusSgemmTile16x16SharedSourceEmits(t *testing.T) {
 	}
 }
 
+func TestSDSLvPrometheusSgemmShadersDoNotGainFlowDispatcherOverhead(t *testing.T) {
+	shaders := []string{
+		"sgemm_scalar_baseline_plus.sdslv",
+		"sgemm_tile16x16_shared_fp32.sdslv",
+		"sgemm_reg2x2_tile16x16_fp32.sdslv",
+		"sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv",
+		"sgemm_reg2x2_tile16x16_derive_fp32.sdslv",
+		"sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv",
+	}
+	for _, name := range shaders {
+		t.Run(name, func(t *testing.T) {
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", name)
+			hlslPath := filepath.Join(t.TempDir(), strings.TrimSuffix(name, ".sdslv")+".hlsl")
+			if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
+				t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
+			}
+			text, err := os.ReadFile(hlslPath)
+			if err != nil {
+				t.Fatalf("read hlsl output: %v", err)
+			}
+			body := string(text)
+			for _, forbidden := range []string{"flow dispatcher", "__flow_", "return_stack", "stack_top"} {
+				if strings.Contains(body, forbidden) {
+					t.Fatalf("%s gained flow runtime machinery %q:\n%s", name, forbidden, body)
+				}
+			}
+		})
+	}
+}
+
 func TestSDSLvM15RegTileEmitCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

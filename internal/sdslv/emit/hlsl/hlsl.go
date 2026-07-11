@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/vdmir"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func Emit(module vdmir.Module) (string, error) {
@@ -49,6 +50,9 @@ func Emit(module vdmir.Module) (string, error) {
 	for _, fn := range module.Functions {
 		e.emitFunction(fn, entrySet[fn.EmittedName])
 	}
+	if e.err != nil {
+		return "", e.err
+	}
 	return e.builder.String(), nil
 }
 
@@ -59,6 +63,7 @@ type emitter struct {
 	viewAliases   map[string]vdmir.RowMajorViewExpr
 	testMode      bool
 	testFunctions map[string]bool
+	err           error
 }
 
 func (e *emitter) emitStruct(name string, fields []vdmir.Field) {
@@ -352,6 +357,8 @@ func (e *emitter) emitStmt(stmt vdmir.Stmt) {
 		e.emitTestAssert(s)
 	case vdmir.BlockStmt:
 		e.emitBlock(s.Body)
+	case vdmir.FlowStmt:
+		e.emitFlow(s.Flow)
 	case vdmir.IfStmt:
 		e.emitIfStmt(s)
 	case vdmir.ForRangeStmt:
@@ -400,6 +407,145 @@ func (e *emitter) emitElseTail(block vdmir.Block) {
 	}
 	e.line("else")
 	e.emitBlock(block)
+}
+
+// emitFlow is the shared backend execution model for M31b flows.  State IDs
+// are declaration-order IDs from validated VD-MIR; 0xffffffff is FlowComplete.
+func (e *emitter) emitFlow(flow vdmir.Flow) {
+	if err := validateFlow(flow); err != nil {
+		e.err = err
+		return
+	}
+	name := "__flow_" + sanitizeName(flow.Name) + "_" + fmt.Sprintf("%d", e.tempCounter)
+	e.tempCounter++
+	state, complete := name+"_state", "4294967295u"
+	dispatcherSpan := flow.SourceSpan
+	if !dispatcherSpan.Known() && len(flow.States) != 0 {
+		dispatcherSpan = flow.States[flow.Entry].NameSpan
+	}
+	e.flowMarker("flow dispatcher", flow.Provenance.Path, dispatcherSpan, flow.Name)
+	e.line(fmt.Sprintf("uint %s = %du;", state, flow.Entry))
+	top, stack := name+"_stack_top", name+"_return_stack"
+	if flow.HasPushPop {
+		e.flowMarker("flow stack", flow.Provenance.Path, dispatcherSpan, fmt.Sprintf("MaxStackDepth=%d", flow.MaxStackDepth))
+		e.line(fmt.Sprintf("uint %s = 0u;", top))
+		e.line(fmt.Sprintf("uint %s[%d];", stack, flow.MaxStackDepth))
+	}
+	e.line(fmt.Sprintf("while (%s != %s)", state, complete))
+	e.line("{")
+	e.indent++
+	e.line(fmt.Sprintf("switch (%s)", state))
+	e.line("{")
+	e.indent++
+	for _, s := range flow.States {
+		e.flowMarker("flow state", flow.Provenance.Path, s.NameSpan, s.Name)
+		e.line(fmt.Sprintf("case %du:", s.ID))
+		e.line("{")
+		e.indent++
+		for _, stmt := range s.Body.Statements {
+			e.emitStmt(stmt)
+		}
+		e.emitFlowTerminator(s.Terminator, state, top, stack, complete)
+		e.line("break;")
+		e.indent--
+		e.line("}")
+	}
+	e.line("default:")
+	e.line("{")
+	e.indent++
+	e.line(state + " = " + complete + ";")
+	e.line("break;")
+	e.indent--
+	e.line("}")
+	e.indent--
+	e.line("}")
+	e.indent--
+	e.line("}")
+}
+
+func (e *emitter) emitFlowTerminator(t vdmir.FlowTerminator, state, top, stack, complete string) {
+	value := func(id int) string {
+		if id == vdmir.FlowCompleteStateID {
+			return complete
+		}
+		return fmt.Sprintf("%du", id)
+	}
+	switch t.Kind {
+	case vdmir.FlowTerminatorFallthrough, vdmir.FlowTerminatorGoto:
+		e.flowMarker("flow terminator", "", t.Span, string(t.Kind))
+		e.line(state + " = " + value(t.Target) + ";")
+	case vdmir.FlowTerminatorFinish:
+		e.flowMarker("flow terminator", "", t.Span, string(t.Kind))
+		e.line(state + " = " + complete + ";")
+	case vdmir.FlowTerminatorPush:
+		e.flowMarker("flow terminator", "", t.Span, fmt.Sprintf("%s target=%s return=%s", t.Kind, value(t.Target), value(t.ReturnTo)))
+		e.flowMarker("flow stack push", "", t.Span, "")
+		e.line(fmt.Sprintf("%s[%s] = %s;", stack, top, value(t.ReturnTo)))
+		e.line(top + " += 1u;")
+		e.line(state + " = " + value(t.Target) + ";")
+	case vdmir.FlowTerminatorPop:
+		e.flowMarker("flow terminator", "", t.Span, string(t.Kind))
+		e.flowMarker("flow stack pop", "", t.Span, "")
+		e.line(top + " -= 1u;")
+		e.line(state + " = " + stack + "[" + top + "];")
+	}
+}
+
+func (e *emitter) flowMarker(kind, path string, span source.Span, detail string) {
+	if !span.Known() {
+		if detail != "" {
+			e.line("// " + kind + ": " + detail)
+			return
+		}
+		e.line("// " + kind)
+		return
+	}
+	location := fmt.Sprintf("%d:%d", span.Start.Line, span.Start.Column)
+	if path != "" {
+		location = path + ":" + location
+	}
+	if detail != "" {
+		e.line(fmt.Sprintf("// %s %s %s", kind, location, detail))
+		return
+	}
+	e.line(fmt.Sprintf("// %s %s", kind, location))
+}
+
+func validateFlow(flow vdmir.Flow) error {
+	if flow.Entry < 0 || flow.Entry >= len(flow.States) {
+		return fmt.Errorf("malformed FlowProgram %s: invalid entry state ID %d", flow.Name, flow.Entry)
+	}
+	if flow.HasPushPop && flow.MaxStackDepth == 0 {
+		return fmt.Errorf("malformed FlowProgram %s: push/pop requires positive MaxStackDepth", flow.Name)
+	}
+	seen := map[int]bool{}
+	for _, s := range flow.States {
+		if s.ID < 0 || seen[s.ID] {
+			return fmt.Errorf("malformed FlowProgram %s: duplicate or invalid state ID %d", flow.Name, s.ID)
+		}
+		seen[s.ID] = true
+	}
+	valid := func(id int) bool { return id == vdmir.FlowCompleteStateID || seen[id] }
+	for _, s := range flow.States {
+		switch t := s.Terminator; t.Kind {
+		case vdmir.FlowTerminatorFallthrough, vdmir.FlowTerminatorGoto:
+			if !valid(t.Target) {
+				return fmt.Errorf("malformed FlowProgram %s: invalid target state ID %d", flow.Name, t.Target)
+			}
+		case vdmir.FlowTerminatorPush:
+			if !flow.HasPushPop || !valid(t.Target) || !valid(t.ReturnTo) {
+				return fmt.Errorf("malformed FlowProgram %s: invalid push terminator", flow.Name)
+			}
+		case vdmir.FlowTerminatorPop:
+			if !flow.HasPushPop {
+				return fmt.Errorf("malformed FlowProgram %s: pop without return-stack contract", flow.Name)
+			}
+		case vdmir.FlowTerminatorFinish:
+		default:
+			return fmt.Errorf("malformed FlowProgram %s: unsupported terminator %q", flow.Name, t.Kind)
+		}
+	}
+	return nil
 }
 
 func (e *emitter) emitWhenUtilityLet(stmt vdmir.LetStmt, utility vdmir.WhenUtilityExpr) {

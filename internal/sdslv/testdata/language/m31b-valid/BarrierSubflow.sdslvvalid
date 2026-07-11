@@ -1,0 +1,9 @@
+shader S {
+stage compute [numthreads(4, 1, 1)] fn CS() -> void {
+flow F {
+state A { push Barrier; }
+state Done { finish; }
+state Barrier { WorkgroupMemoryBarrierWithSync(); pop; }
+}
+}
+}

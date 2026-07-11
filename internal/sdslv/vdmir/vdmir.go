@@ -46,8 +46,11 @@ type Flow struct {
 }
 
 type FlowState struct {
-	ID                  int
-	Name                string
+	ID   int
+	Name string
+	// Body is ordinary backend-neutral lowering; the transition is retained in
+	// Terminator so backends never need to inspect source syntax.
+	Body                Block
 	Terminator          FlowTerminator
 	HasWorkgroupBarrier bool
 	Reachable           bool
@@ -407,6 +410,15 @@ type BlockStmt struct {
 }
 
 func (BlockStmt) stmtNode() {}
+
+// FlowStmt is emitted only for transition-bearing flows. Legacy flows retain
+// their direct BlockStmt lowering and therefore pay no dispatcher overhead.
+type FlowStmt struct {
+	Provenance Provenance
+	Flow       Flow
+}
+
+func (FlowStmt) stmtNode() {}
 
 type Expr interface {
 	exprNode()

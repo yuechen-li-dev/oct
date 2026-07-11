@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
+	"github.com/yuechen-li-dev/oct/internal/sdslv"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
@@ -104,6 +105,20 @@ func TestSdslvM31aValidFlowFixtureCorpusValidates(t *testing.T) {
 			}
 			if diagnostics := validate.Diagnostics(module); len(diagnostics) != 0 {
 				t.Fatalf("unexpected validate failure: %v", diagnostic.Error(diagnostics))
+			}
+		})
+	}
+}
+
+func TestSdslvM31bValidFlowFixtureCorpusCompiles(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m31b-valid", "*.sdslvvalid"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("M31b valid fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			if _, err := sdslv.EmitHLSLFile(path); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

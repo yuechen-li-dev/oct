@@ -1,0 +1,153 @@
+fn AppendTrace(trace: u32, digit: u32) -> u32 {
+    return trace * 10u + digit;
+}
+
+[Fact]
+fn LinearFallthroughLegacy() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); }
+    state B { trace = AppendTrace(trace, 2u); }
+    state C { trace = AppendTrace(trace, 3u); }
+    }
+    Assert.Equal(123u, trace);
+}
+
+[Fact]
+fn GotoOnlyTransfer() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); goto C; }
+    state B { trace = AppendTrace(trace, 2u); finish; }
+    state C { trace = AppendTrace(trace, 3u); goto B; }
+    }
+    Assert.Equal(132u, trace);
+}
+
+[Fact]
+fn FinishOnlyFlowPreservesEpilogue() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); finish; }
+    }
+    trace = AppendTrace(trace, 2u);
+    Assert.Equal(12u, trace);
+}
+
+[Fact]
+fn OnePushPop() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push Shared; }
+    state Resume { trace = AppendTrace(trace, 3u); finish; }
+    state Shared { trace = AppendTrace(trace, 2u); pop; }
+    }
+    Assert.Equal(123u, trace);
+}
+
+[Fact]
+fn NestedPushPopLifo() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push B; }
+    state AReturn { trace = AppendTrace(trace, 5u); finish; }
+    state B { trace = AppendTrace(trace, 2u); push C; }
+    state BReturn { trace = AppendTrace(trace, 4u); pop; }
+    state C { trace = AppendTrace(trace, 3u); pop; }
+    }
+    Assert.Equal(12345u, trace);
+}
+
+[Fact]
+fn SharedSubflowCallerSpecificReturn() -> void {
+    let trace: u32 = 0u;
+    let digit: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); digit = 2u; push Shared; }
+    state AfterA { trace = AppendTrace(trace, 3u); digit = 4u; push Shared; }
+    state AfterB { trace = AppendTrace(trace, 5u); finish; }
+    state Shared { trace = AppendTrace(trace, digit); pop; }
+    }
+    Assert.Equal(12345u, trace);
+}
+
+[Fact]
+fn FinalStatePushReturnsToCompletion() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state Entry { trace = AppendTrace(trace, 1u); goto Final; }
+    state Cleanup { trace = AppendTrace(trace, 3u); pop; }
+    state Final { trace = AppendTrace(trace, 2u); push Cleanup; }
+    }
+    Assert.Equal(123u, trace);
+}
+
+[Fact]
+fn FinishWithNonemptyStack() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push Shared; }
+    state Shared { trace = AppendTrace(trace, 2u); finish; }
+    }
+    trace = AppendTrace(trace, 3u);
+    Assert.Equal(123u, trace);
+}
+
+[Fact]
+fn FlowFollowedByAssert() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push Shared; }
+    state Resume { trace = AppendTrace(trace, 3u); finish; }
+    state Shared { trace = AppendTrace(trace, 2u); pop; }
+    }
+    Assert.Equal(123u, trace);
+    Assert.True(trace > 100u);
+}
+
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(2, 1, 1)]
+[Fact]
+fn MultipleInvocationsRemainDeterministic() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push Shared; }
+    state Resume { trace = AppendTrace(trace, 3u); finish; }
+    state Shared { trace = AppendTrace(trace, 2u); pop; }
+    }
+    Assert.Equal(123u, trace);
+}
+
+[Theory]
+[InlineData(1u, 1231u)]
+[InlineData(7u, 1237u)]
+fn TheoryRowFlow(seed: u32, expected: u32) -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push Shared; }
+    state Resume { trace = AppendTrace(trace, 3u); finish; }
+    state Shared { trace = AppendTrace(trace, 2u); pop; }
+    }
+    trace = AppendTrace(trace, seed);
+    Assert.Equal(expected, trace);
+}
+
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn BarrierSubflowRemainsUniform() -> void {
+    let trace: u32 = 0u;
+    flow F {
+    state A { trace = AppendTrace(trace, 1u); push Barrier; }
+    state Resume { trace = AppendTrace(trace, 3u); finish; }
+    state Barrier {
+        trace = AppendTrace(trace, 2u);
+        HLSL {
+            GroupMemoryBarrierWithGroupSync();
+        }
+        pop;
+    }
+    }
+    trace = AppendTrace(trace, 4u);
+    Assert.Equal(1234u, trace);
+}

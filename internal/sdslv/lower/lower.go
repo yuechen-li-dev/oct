@@ -2230,15 +2230,6 @@ func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, lo
 	if len(issues) != 0 {
 		return nil, fmt.Errorf("flow %s has invalid M31a metadata", stmt.Name)
 	}
-	l.flows = append(l.flows, l.lowerValidatedFlow(stmt, flow))
-	for _, state := range stmt.States {
-		for _, flowStmt := range state.Body.Statements {
-			switch flowStmt.(type) {
-			case ast.PushFlowStateStmt, ast.PopFlowStateStmt, ast.GotoFlowStateStmt, ast.FinishFlowStmt:
-				return nil, fmt.Errorf("flow %s uses M31a transitions; M31b runtime/HLSL dispatcher lowering is not implemented", stmt.Name)
-			}
-		}
-	}
 	block := vdmir.Block{}
 	flowScope := cloneScope(scope)
 	for _, board := range stmt.Boards {
@@ -2256,6 +2247,16 @@ func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, lo
 			Value:      value,
 		})
 	}
+	if flow.HasPushPop || flow.HasGoto || hasFlowFinish(flow) {
+		lowered, err := l.lowerValidatedFlow(stmt, flow, flowScope, locals, shaderName, returnType)
+		if err != nil {
+			return nil, err
+		}
+		l.flows = append(l.flows, lowered)
+		block.Statements = append(block.Statements, vdmir.FlowStmt{Provenance: l.provenance, Flow: lowered})
+		return vdmir.BlockStmt{Provenance: l.provenance, Body: block}, nil
+	}
+	l.flows = append(l.flows, l.lowerValidatedFlowMetadata(stmt, flow))
 	for _, state := range stmt.States {
 		lowered, err := l.lowerBlock(state.Body, cloneScope(flowScope), locals, shaderName, returnType)
 		if err != nil {
@@ -2266,7 +2267,16 @@ func (l *lowering) lowerFlowStmt(stmt ast.FlowStmt, scope map[string]binding, lo
 	return vdmir.BlockStmt{Provenance: l.provenance, Body: block}, nil
 }
 
-func (l *lowering) lowerValidatedFlow(stmt ast.FlowStmt, flow validate.ValidatedFlow) vdmir.Flow {
+func hasFlowFinish(flow validate.ValidatedFlow) bool {
+	for _, state := range flow.States {
+		if state.Terminator.Kind == validate.FlowFinish {
+			return true
+		}
+	}
+	return false
+}
+
+func (l *lowering) lowerValidatedFlowMetadata(stmt ast.FlowStmt, flow validate.ValidatedFlow) vdmir.Flow {
 	out := vdmir.Flow{
 		Provenance:    l.provenance,
 		Name:          flow.Name,
@@ -2292,6 +2302,18 @@ func (l *lowering) lowerValidatedFlow(stmt ast.FlowStmt, flow validate.Validated
 		})
 	}
 	return out
+}
+
+func (l *lowering) lowerValidatedFlow(stmt ast.FlowStmt, flow validate.ValidatedFlow, scope map[string]binding, locals map[string]vdmir.Type, shaderName string, returnType ast.TypeRef) (vdmir.Flow, error) {
+	out := l.lowerValidatedFlowMetadata(stmt, flow)
+	for i, state := range flow.States {
+		body, err := l.lowerBlock(ast.Block{Statements: state.Statements}, cloneScope(scope), locals, shaderName, returnType)
+		if err != nil {
+			return vdmir.Flow{}, err
+		}
+		out.States[i].Body = body
+	}
+	return out, nil
 }
 
 func lowerFlowTerminator(term validate.ValidatedFlowTerminator) vdmir.FlowTerminator {

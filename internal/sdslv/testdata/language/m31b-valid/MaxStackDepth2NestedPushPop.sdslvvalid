@@ -1,0 +1,9 @@
+fn F() -> void {
+flow F {
+state A { push B; }
+state AReturn { finish; }
+state B { push C; }
+state BReturn { pop; }
+state C { pop; }
+}
+}

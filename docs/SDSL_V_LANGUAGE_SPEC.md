@@ -1100,7 +1100,7 @@ reduction    ::= reduction-attrs? ('sum' | 'product' | 'max' | 'min') IDENT 'in'
 reduction-attrs ::= ('[' 'unroll' ']' | '[' 'loop' ']')+
 ```
 
-## M31a flow transitions
+## M31 flow transitions
 
 Pre-M31 SDSL-V `flow` blocks were ordered, function-local phase blocks. They
 flattened into structured VD-MIR/HLSL in declaration order and had no SDSL-V
@@ -1135,4 +1135,21 @@ The compiler records a deterministic maximum stack depth plus resolved
 lowering-ready flow metadata: entry ID, declaration-ordered state IDs,
 terminators, target IDs, push return successors, `FlowComplete`, `HasPushPop`,
 `HasGoto`, reachability, barrier flags, and spans. M31a records this control
-contract only; it does not emit an HLSL dispatcher or physical stack (M31b).
+contract; M31b lowers it into backend-neutral VD-MIR state bodies and explicit
+terminators without reparsing source or resolving names in the backend.
+
+| Flow shape | HLSL lowering |
+| --- | --- |
+| no transitions | direct structured statements (legacy path) |
+| goto/finish only | state dispatcher, no return stack |
+| push/pop present | state dispatcher plus fixed `MaxStackDepth` return stack |
+
+Declaration-order state IDs are emitted as `u32`; private `FlowComplete` is
+`0xffffffffu` and cannot collide with a real state. Every dispatcher transition
+is explicit: push stores the resolved return successor, pop resumes it LIFO,
+goto leaves the stack alone, and finish completes only the flow. Completion is
+not a shader return, so enclosing SDSL-V test wrappers still execute their ABI
+epilogue. Generated HLSL includes compiler comments for the dispatcher, stack
+contract, state entry, transition kind, and stack operations; state and
+terminator comments retain original flow spans. M31b does not add dynamic
+allocation, state-name lookup, recursion, or flow optimization.
