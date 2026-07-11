@@ -1,8 +1,10 @@
 package validate
 
 import (
-	"fmt"
+	"strconv"
+	"strings"
 
+	"github.com/yuechen-li-dev/oct/internal/diagnostic"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
@@ -39,9 +41,9 @@ type ValidatedAssertCall struct {
 
 // ValidatedTests converts the already parsed, validated test declarations into
 // the sole downstream test metadata contract.
-func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, error) {
-	if err := Module(module); err != nil {
-		return nil, err
+func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, []diagnostic.Diagnostic) {
+	if diagnostics := Diagnostics(module); len(diagnostics) != 0 {
+		return nil, diagnostics
 	}
 	var out []ValidatedTestDecl
 	for _, decl := range module.Decls {
@@ -60,14 +62,10 @@ func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, error) {
 			case "InlineData":
 				d.Rows = append(d.Rows, ValidatedTheoryRow{Attribute: *a, Values: a.Arguments, Span: a.Span})
 			case "WorkgroupSize":
-				if err := launch(&d.Launch.WorkgroupSize, a.Arguments); err != nil {
-					return nil, fmt.Errorf("%d:%d: %w", a.Span.Start.Line, a.Span.Start.Column, err)
-				}
+				launch(&d.Launch.WorkgroupSize, a.Arguments)
 				d.Launch.WorkgroupAttribute = a
 			case "DispatchGroups":
-				if err := launch(&d.Launch.DispatchGroups, a.Arguments); err != nil {
-					return nil, fmt.Errorf("%d:%d: %w", a.Span.Start.Line, a.Span.Start.Column, err)
-				}
+				launch(&d.Launch.DispatchGroups, a.Arguments)
 				d.Launch.DispatchAttribute = a
 			}
 		}
@@ -79,27 +77,14 @@ func ValidatedTests(module ast.Module) ([]ValidatedTestDecl, error) {
 	return out, nil
 }
 
-func launch(dst *[3]uint32, args []ast.Expr) error {
-	if len(args) != 3 {
-		return fmt.Errorf("launch attribute requires three positive integer constants")
-	}
+// launch only consumes declarations that Diagnostics has accepted. Keeping it
+// total prevents manifest preparation from becoming a second semantic checker.
+func launch(dst *[3]uint32, args []ast.Expr) {
 	for i, e := range args {
-		x, ok := e.(ast.IntegerLiteral)
-		if !ok {
-			return fmt.Errorf("launch attribute arguments must be integer constants")
-		}
-		var n uint64
-		if _, err := fmt.Sscanf(x.Value, "%du", &n); err != nil {
-			if _, err := fmt.Sscanf(x.Value, "%d", &n); err != nil {
-				return fmt.Errorf("launch attribute arguments must be positive integer constants")
-			}
-		}
-		if n == 0 || n > 0xffffffff {
-			return fmt.Errorf("launch attribute arguments must be positive integer constants")
-		}
+		x := e.(ast.IntegerLiteral)
+		n, _ := strconv.ParseUint(strings.TrimRight(x.Value, "uU"), 10, 32)
 		dst[i] = uint32(n)
 	}
-	return nil
 }
 
 func assertionCalls(b ast.Block) []ValidatedAssertCall {

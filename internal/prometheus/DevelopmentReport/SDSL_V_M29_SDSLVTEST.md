@@ -164,3 +164,56 @@ these validated call sites into local failure state and the fixed result ABI.
 metadata, validator-owned launch/InlineData constant diagnostics, a single
 exported validated-declaration handoff model, and the requested dedicated
 coverage remain incomplete.
+
+### M29a.1b structured validator diagnostics
+
+M29a.1b introduces `internal/diagnostic.Diagnostic` as the compiler-wide
+diagnostic schema. A diagnostic has a stable code (`SDSL-Vxxxx` for this
+validator), severity, source path, complete `source.Span`, human message, and
+ordered related locations. The validator's authoritative API is now
+`validate.Diagnostics(ast.Module) []diagnostic.Diagnostic`; its older
+`validate.Module` API is deliberately only a one-way renderer adapter for
+lowering and toolchain callers that still accept `error`.
+
+Diagnostics sort by path, byte offset, severity, code, and stable insertion
+order. The CLI-compatible renderer prints `path:line:column: error CODE:
+message`, followed by structured related notes. Unknown spans render as
+`<unknown>` and are limited to genuinely source-independent failures.
+
+M29 test-front-end rules now use exact AST-owned locations: duplicate and
+conflicting test/launch attributes carry primary plus related spans; Fact and
+Theory contracts identify the offending attribute/parameter/type; InlineData
+identifies its row or value; launch validation identifies the precise argument;
+and Assert arity/type failures identify the call or operand. Core body
+validation likewise supplies precise spans for unknown identifiers, calls,
+argument and assignment mismatches, operators, indexes, fields, returns, and
+conditions. Legacy validator sites use the same structured collector and
+module span while their individual minimum-span tightening is continued; they
+are not a second string-error system. Parser and lexer failures remain on
+their existing error paths for this milestone, but the direction is one
+compiler diagnostic model.
+
+The validator now establishes a scoped compiler-owned AST span through its
+declaration, function, statement, type, and expression validation paths. This
+means retained `errorf` call sites write structured diagnostics at the active
+smallest enclosing node rather than using module-start fallbacks. Exact
+subexpression spans are used where a distinct offending operand, call,
+attribute, value, or condition exists. Duplicate declarations and fields use
+the later declaration as primary and retain the first as a structured related
+location. A module span is reserved for malformed synthetic recovery input for
+which no source node exists.
+
+`.sdslvtest` discovery now calls `validate.ValidatedTests` and converts its
+validated AST declarations into manifest cases. The legacy regex scanner and
+all independent parsed-discovery validation of test attributes, rows, launch
+metadata, and parameter types have been removed. Consequently the validator
+is the sole semantic authority before manifest preparation.
+
+Permanent coverage exercises structured data and rendering (including unknown
+and multiline spans), ordering, related locations, precise M29/core spans,
+the legacy adapter, discovery authority, and CLI nonzero error rendering.
+Generated HLSL and stable test IDs remain regression-covered. Parser and lexer
+still return their established Go errors in this milestone: this is an explicit
+deferred compiler-wide migration, not a competing validator model. M29a.1c may
+adopt the existing `internal/diagnostic` schema at those boundaries. M29b
+assertion lowering, GPU behavior, and Vulkan-host work have not begun.

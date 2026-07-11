@@ -59,6 +59,25 @@ func TestSDSLvTestListsStableTheoryCases(t *testing.T) {
 	}
 }
 
+func TestSDSLvCheckRendersStructuredDiagnostic(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "bad.sdslv")
+	if err := os.WriteFile(path, []byte("fn Bad() -> void { let x: u32 = missing; }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	err := cli.Execute([]string{"sdslv", "check", path}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("sdslv check accepted invalid source")
+	}
+	got := stderr.String()
+	for _, want := range []string{path + ":1:33: error SDSL-V1501: unknown identifier missing", "sdslv check failed:"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("diagnostic output = %q, want %q", got, want)
+		}
+	}
+}
+
 func TestSDSLvGenerateHeaderCommand(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

@@ -1,18 +1,22 @@
 package validate
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/yuechen-li-dev/oct/internal/diagnostic"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/consteval"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
-func Module(module ast.Module) error {
+// Diagnostics is the authoritative validator API. Every ordinary user-source
+// failure is a structured compiler diagnostic; Module below is legacy glue.
+func Diagnostics(module ast.Module) []diagnostic.Diagnostic {
 	v := validator{
+		path: module.Source.Path, moduleSpan: module.Span,
 		types:          map[string]typeInfo{},
 		funcs:          map[string]functionInfo{},
 		configs:        map[string]configInfo{},
@@ -23,19 +27,23 @@ func Module(module ast.Module) error {
 	v.testSource = filepath.Ext(module.Source.Path) == ".sdslvtest"
 	v.seedBuiltins()
 	v.collect(module)
-	if len(v.errors) == 0 {
+	if len(v.diagnostics) == 0 {
 		v.validateDecls(module.Decls)
 	}
-	if len(v.errors) > 0 {
-		return errors.New(strings.Join(v.errors, "\n"))
-	}
-	return nil
+	diagnostic.Sort(v.diagnostics)
+	return v.diagnostics
+}
+
+// Module is a compatibility adapter for older compiler boundaries.
+func Module(module ast.Module) error {
+	return diagnostic.Error(Diagnostics(module))
 }
 
 type fieldInfo struct {
 	access     string
 	typ        ast.TypeRef
 	attributes []ast.Attribute
+	span       source.Span
 }
 
 type enumVariantInfo struct {
@@ -52,11 +60,13 @@ type typeInfo struct {
 	fields       map[string]fieldInfo
 	enumVariants map[string]enumVariantInfo
 	target       ast.TypeRef
+	span         source.Span
 }
 
 type functionInfo struct {
 	returnType ast.TypeRef
 	params     []ast.Parameter
+	span       source.Span
 }
 
 type configValue struct {
@@ -101,7 +111,10 @@ type varInfo struct {
 const maxRegTileElements = 64
 
 type validator struct {
-	errors         []string
+	path           string
+	moduleSpan     source.Span
+	currentSpan    source.Span
+	diagnostics    []diagnostic.Diagnostic
 	types          map[string]typeInfo
 	funcs          map[string]functionInfo
 	configs        map[string]configInfo
@@ -168,6 +181,8 @@ func (v *validator) seedBuiltins() {
 
 func (v *validator) collect(module ast.Module) {
 	for _, decl := range module.Decls {
+		previous := v.currentSpan
+		v.currentSpan = declSpan(decl)
 		switch d := decl.(type) {
 		case ast.TypeAliasDecl:
 			v.addType(d.Name, typeInfo{name: d.Name, kind: "alias", target: d.Type})
@@ -208,6 +223,7 @@ func (v *validator) collect(module ast.Module) {
 				v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
 			}
 		}
+		v.currentSpan = previous
 	}
 }
 
@@ -215,9 +231,9 @@ func (v *validator) addFieldType(name, kind string, fields []ast.Field, label st
 	collected := map[string]fieldInfo{}
 	for _, field := range fields {
 		if _, exists := collected[field.Name]; exists {
-			v.errorf("duplicate %s field %s.%s", label, name, field.Name)
+			v.errorRelated(field.Span, "SDSL-V1509", fmt.Sprintf("duplicate %s field %s.%s", label, name, field.Name), collected[field.Name].span, "first field is here")
 		}
-		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type, attributes: field.Attributes}
+		collected[field.Name] = fieldInfo{access: field.Access, typ: field.Type, attributes: field.Attributes, span: field.Span}
 	}
 	v.addType(name, typeInfo{name: name, kind: kind, fields: collected})
 }
@@ -302,8 +318,11 @@ func (v *validator) addEnumType(enum ast.EnumDecl) {
 }
 
 func (v *validator) addType(name string, info typeInfo) {
+	if !info.span.Known() {
+		info.span = v.currentSpan
+	}
 	if _, exists := v.types[name]; exists {
-		v.errorf("duplicate top-level name %s", name)
+		v.errorRelated(info.span, "SDSL-V1509", fmt.Sprintf("duplicate top-level name %s", name), v.types[name].span, "first declaration is here")
 		return
 	}
 	v.types[name] = info
@@ -311,14 +330,16 @@ func (v *validator) addType(name string, info typeInfo) {
 
 func (v *validator) addFunc(name string, fn ast.FunctionDecl) {
 	if _, exists := v.funcs[name]; exists {
-		v.errorf("duplicate function %s", name)
+		v.errorRelated(fn.Span, "SDSL-V1509", fmt.Sprintf("duplicate function %s", name), v.funcs[name].span, "first declaration is here")
 		return
 	}
-	v.funcs[name] = functionInfo{returnType: fn.ReturnType, params: fn.Parameters}
+	v.funcs[name] = functionInfo{returnType: fn.ReturnType, params: fn.Parameters, span: fn.Span}
 }
 
 func (v *validator) validateDecls(decls []ast.Decl) {
 	for _, decl := range decls {
+		previous := v.currentSpan
+		v.currentSpan = declSpan(decl)
 		switch d := decl.(type) {
 		case ast.TypeAliasDecl:
 			v.validateType(d.Type)
@@ -343,6 +364,7 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		case ast.FunctionDecl:
 			v.validateFunction(d, "", "", nil, nil, nil)
 		}
+		v.currentSpan = previous
 	}
 }
 
@@ -700,6 +722,7 @@ func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.Resource
 }
 
 func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, stage string, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl, templateParam *ast.TemplateParam) {
+	defer v.scoped(fn.Span)()
 	v.validateTestAttributes(fn)
 	v.validateType(fn.ReturnType)
 	scope := map[string]varInfo{
@@ -734,6 +757,7 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 }
 
 func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope map[string]varInfo, shaderName string, stage string, templateParam *ast.TemplateParam, insideFlowState bool) {
+	defer v.scoped(ast.StmtSpan(stmt))()
 	switch s := stmt.(type) {
 	case ast.ForeignShaderStmt:
 		v.validateForeignBlock(s.TargetLanguage, s.RawSource, s.Captures, scope, ast.TypeRef{}, false)
@@ -770,11 +794,11 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 				valueType = v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, &s.Type, "")
 			}
 			if !v.compatible(s.Type, valueType) {
-				v.errorf("cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
+				v.errorAt(ast.ExprSpan(s.Value), "SDSL-V1503", "cannot assign %s to local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
 			}
 		}
 		if _, exists := scope[s.Name]; exists {
-			v.errorf("duplicate local name %s", s.Name)
+			v.errorAt(s.Span, "SDSL-V1509", "duplicate local name %s", s.Name)
 		}
 		access := s.Type.Access
 		if s.Value != nil && valueType.Name == "matrix_view" {
@@ -804,10 +828,10 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 		valueType := v.exprTypeWithExpected(s.Value, scope, shaderName, templateParam, nil, "")
 		if !v.compatible(s.Type, valueType) {
-			v.errorf("cannot assign %s to comptime local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
+			v.errorAt(ast.ExprSpan(s.Value), "SDSL-V1503", "cannot assign %s to comptime local %s of type %s", typeName(valueType), s.Name, typeName(s.Type))
 		}
 		if _, exists := scope[s.Name]; exists {
-			v.errorf("duplicate local name %s", s.Name)
+			v.errorAt(s.Span, "SDSL-V1509", "duplicate local name %s", s.Name)
 		}
 		value, err := v.evalConstExpr(s.Value, v.constEnv(scope, templateParam))
 		if err != nil {
@@ -842,7 +866,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			}
 		}
 		if !v.compatible(targetType, valueType) {
-			v.errorf("assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
+			v.errorAt(ast.ExprSpan(s.Value), "SDSL-V1503", "assignment type mismatch: %s = %s", typeName(targetType), typeName(valueType))
 		}
 	case ast.GuardedWriteStmt:
 		v.validateWithPlacement(s.Target, false)
@@ -892,7 +916,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("reg_tile return values are not supported in SDSL-V M15")
 		}
 		if !v.compatible(returnType, valueType) {
-			v.errorf("return type mismatch: expected %s, got %s", typeName(returnType), typeName(valueType))
+			v.errorAt(ast.ExprSpan(s.Value), "SDSL-V1504", "return type mismatch: expected %s, got %s", typeName(returnType), typeName(valueType))
 		}
 	case ast.ExprStmt:
 		v.validateWithPlacement(s.Value, false)
@@ -909,7 +933,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateBarrierUsage(s.Condition, false, shaderName, stage)
 		cond := v.exprType(s.Condition, scope, shaderName, templateParam)
 		if cond.Name != "bool" {
-			v.errorf("if condition must be bool, got %s", typeName(cond))
+			v.errorAt(ast.ExprSpan(s.Condition), "SDSL-V1505", "if condition must be bool, got %s", typeName(cond))
 		}
 		v.validateBlock(s.ThenBody, returnType, cloneScope(scope), shaderName, stage, templateParam, insideFlowState)
 		if s.ElseBody != nil {
@@ -1151,6 +1175,7 @@ func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope
 }
 
 func (v *validator) validateType(ref ast.TypeRef) {
+	defer v.scoped(ref.Span)()
 	if ref.ZeroAllowed {
 		v.errorf("u32! is only valid for concept/config fields in SDSL-V M11")
 		return
@@ -1297,6 +1322,7 @@ func (v *validator) exprType(expr ast.Expr, scope map[string]varInfo, shaderName
 }
 
 func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam, expected *ast.TypeRef, currentDeriveField string) ast.TypeRef {
+	defer v.scoped(ast.ExprSpan(expr))()
 	switch e := expr.(type) {
 	case ast.ForeignShaderExpr:
 		v.validateForeignBlock(e.TargetLanguage, e.RawSource, e.Captures, scope, e.ResultType, true)
@@ -1322,7 +1348,7 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			}
 			return v.resolveAlias(t.typ)
 		}
-		v.errorf("unknown identifier %s", e.Name)
+		v.errorAt(e.Span, "SDSL-V1501", "unknown identifier %s", e.Name)
 		return ast.TypeRef{Name: "<error>"}
 	case ast.FieldAccessExpr:
 		if id, ok := e.Target.(ast.IdentifierExpr); ok {
@@ -1359,18 +1385,18 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 				return v.resolveAlias(fieldType.typ)
 			}
 		}
-		v.errorf("unknown field %s on %s", e.Field, typeName(target))
+		v.errorAt(e.Span, "SDSL-V1506", "unknown field %s on %s", e.Field, typeName(target))
 		return ast.TypeRef{Name: "<error>"}
 	case ast.IndexExpr:
 		target := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
 		index := v.exprTypeWithExpected(e.Index, scope, shaderName, templateParam, nil, currentDeriveField)
 		if !isInteger(index) {
-			v.errorf("array index must be integer")
+			v.errorAt(ast.ExprSpan(e.Index), "SDSL-V1507", "array index must be integer")
 		}
 		if e.HasSecond {
 			index2 := v.exprTypeWithExpected(e.Index2, scope, shaderName, templateParam, nil, currentDeriveField)
 			if !isInteger(index2) {
-				v.errorf("2D index second operand must be integer")
+				v.errorAt(ast.ExprSpan(e.Index2), "SDSL-V1507", "2D index second operand must be integer")
 			}
 			switch target.Name {
 			case "tile":
@@ -1428,17 +1454,17 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		switch e.Operator {
 		case "and", "or":
 			if left.Name != "bool" || right.Name != "bool" {
-				v.errorf("operator `%s` requires bool operands", e.Operator)
+				v.errorAt(ast.ExprSpan(e.Right), "SDSL-V1502", "operator `%s` requires bool operands", e.Operator)
 			}
 			return ast.TypeRef{Name: "bool"}
 		case "==", "!=", "<", "<=", ">", ">=":
 			if !v.compatible(left, right) && !(isNumeric(left) && isNumeric(right)) {
-				v.errorf("comparison type mismatch: %s %s %s", typeName(left), e.Operator, typeName(right))
+				v.errorAt(ast.ExprSpan(e.Right), "SDSL-V1502", "comparison type mismatch: %s %s %s", typeName(left), e.Operator, typeName(right))
 			}
 			return ast.TypeRef{Name: "bool"}
 		default:
 			if !isNumeric(left) || !isNumeric(right) {
-				v.errorf("arithmetic operands must be numeric")
+				v.errorAt(ast.ExprSpan(e.Right), "SDSL-V1502", "arithmetic operands must be numeric")
 				return ast.TypeRef{Name: "<error>"}
 			}
 			if isFloat(left) || isFloat(right) {
@@ -1454,12 +1480,12 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		switch e.Operator {
 		case "not":
 			if operand.Name != "bool" {
-				v.errorf("operator `not` requires bool operand")
+				v.errorAt(ast.ExprSpan(e.Operand), "SDSL-V1502", "operator `not` requires bool operand")
 			}
 			return ast.TypeRef{Name: "bool"}
 		default:
 			if !isNumeric(operand) {
-				v.errorf("unary %s requires numeric operand", e.Operator)
+				v.errorAt(ast.ExprSpan(e.Operand), "SDSL-V1502", "unary %s requires numeric operand", e.Operator)
 			}
 		}
 		return operand
@@ -1651,9 +1677,13 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 }
 
 func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if _, isAssert := assertCallee(call.Callee); isAssert && testAssertName(call.Callee) == "" {
+		v.errorAt(call.Span, "SDSL-V1405", "unknown Assert member")
+		return ast.TypeRef{Name: "<error>"}
+	}
 	if name := testAssertName(call.Callee); name != "" {
 		if !v.testSource {
-			v.errorf("%s is only valid in .sdslvtest functions", name)
+			v.errorAt(call.Span, "SDSL-V1404", "%s is only valid in .sdslvtest functions", name)
 			return ast.TypeRef{Name: "<error>"}
 		}
 		return v.testAssertType(name, call, scope, shaderName, templateParam)
@@ -1701,37 +1731,45 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 		for _, name := range names {
 			if info, ok := v.funcs[name]; ok {
 				if len(info.params) != len(call.Arguments) {
-					v.errorf("function %s expects %d arguments, got %d", id.Name, len(info.params), len(call.Arguments))
+					v.errorAt(call.Span, "SDSL-V1508", "function %s expects %d arguments, got %d", id.Name, len(info.params), len(call.Arguments))
 					return info.returnType
 				}
 				for i, arg := range call.Arguments {
 					argType := v.exprTypeWithExpected(arg, scope, shaderName, templateParam, &info.params[i].Type, "")
 					if !v.compatible(info.params[i].Type, argType) {
-						v.errorf("function %s argument %d expects %s, got %s", id.Name, i+1, typeName(info.params[i].Type), typeName(argType))
+						v.errorAt(ast.ExprSpan(arg), "SDSL-V1503", "function %s argument %d expects %s, got %s", id.Name, i+1, typeName(info.params[i].Type), typeName(argType))
 					}
 				}
 				return info.returnType
 			}
 		}
 	}
-	v.errorf("unsupported or unknown function call")
+	v.errorAt(call.Span, "SDSL-V1508", "unsupported or unknown function call")
 	return ast.TypeRef{Name: "<error>"}
 }
 
 func testAssertName(expr ast.Expr) string {
-	f, ok := expr.(ast.FieldAccessExpr)
+	member, ok := assertCallee(expr)
 	if !ok {
 		return ""
 	}
-	root, ok := f.Target.(ast.IdentifierExpr)
-	if !ok || root.Name != "Assert" {
-		return ""
-	}
-	switch f.Field {
+	switch member {
 	case "True", "False", "Equal", "Near", "NotEqual":
-		return "Assert." + f.Field
+		return "Assert." + member
 	}
 	return ""
+}
+
+func assertCallee(expr ast.Expr) (string, bool) {
+	f, ok := expr.(ast.FieldAccessExpr)
+	if !ok {
+		return "", false
+	}
+	root, ok := f.Target.(ast.IdentifierExpr)
+	if !ok || root.Name != "Assert" {
+		return "", false
+	}
+	return f.Field, true
 }
 func (v *validator) testAssertType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
 	want := 2
@@ -1742,7 +1780,7 @@ func (v *validator) testAssertType(name string, call ast.CallExpr, scope map[str
 		want = 3
 	}
 	if len(call.Arguments) != want {
-		v.errorf("%s expects %d arguments, got %d", name, want, len(call.Arguments))
+		v.errorAt(call.Span, "SDSL-V1401", "%s expects %d arguments, got %d", name, want, len(call.Arguments))
 		return ast.TypeRef{Name: "void"}
 	}
 	types := make([]ast.TypeRef, len(call.Arguments))
@@ -1750,14 +1788,18 @@ func (v *validator) testAssertType(name string, call ast.CallExpr, scope map[str
 		types[i] = v.exprType(arg, scope, shaderName, templateParam)
 	}
 	if want == 1 && types[0].Name != "bool" {
-		v.errorf("%s expects a bool", name)
+		v.errorAt(ast.ExprSpan(call.Arguments[0]), "SDSL-V1402", "%s expects a bool", name)
 	}
 	if (name == "Assert.Equal" || name == "Assert.NotEqual") && !v.compatible(types[0], types[1]) {
-		v.errorf("%s requires matching operand types", name)
+		v.errorAt(ast.ExprSpan(call.Arguments[1]), "SDSL-V1402", "%s requires matching operand types", name)
 	}
 	if name == "Assert.Near" {
 		if !isFloat(types[0]) || !isFloat(types[1]) || !isFloat(types[2]) {
-			v.errorf("Assert.Near requires Float operands")
+			for i, typ := range types {
+				if !isFloat(typ) {
+					v.errorAt(ast.ExprSpan(call.Arguments[i]), "SDSL-V1403", "Assert.Near requires Float operands")
+				}
+			}
 		}
 	}
 	return ast.TypeRef{Name: "void"}
@@ -1767,60 +1809,130 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 	if len(fn.Attributes) == 0 {
 		return
 	}
-	fact, theory := 0, 0
-	inline := 0
-	wg, dispatch := 0, 0
+	fact, theory := []ast.Attribute{}, []ast.Attribute{}
+	inline := []ast.Attribute{}
+	wg, dispatch := []ast.Attribute{}, []ast.Attribute{}
 	for _, a := range fn.Attributes {
 		switch a.Name {
 		case "Fact":
-			fact++
+			fact = append(fact, a)
 		case "Theory":
-			theory++
+			theory = append(theory, a)
 		case "InlineData":
-			inline++
+			inline = append(inline, a)
 		case "WorkgroupSize":
-			wg++
+			wg = append(wg, a)
 		case "DispatchGroups":
-			dispatch++
+			dispatch = append(dispatch, a)
 		default:
-			v.errorf("unsupported function attribute [%s]", a.Name)
+			v.errorAt(a.Span, "SDSL-V1101", "unsupported function attribute [%s]", a.Name)
 		}
 	}
 	if !v.testSource {
 		for _, a := range fn.Attributes {
-			v.errorf("test attribute [%s] is only valid in .sdslvtest source", a.Name)
+			v.errorAt(a.Span, "SDSL-V1102", "test attribute [%s] is only valid in .sdslvtest source", a.Name)
 		}
 		return
 	}
-	if fact > 1 {
-		v.errorf("duplicate [Fact]")
+	if len(fact) > 1 {
+		v.errorRelated(fact[1].Span, "SDSL-V1103", "duplicate [Fact]", fact[0].Span, "first [Fact] is here")
 	}
-	if theory > 1 {
-		v.errorf("duplicate [Theory]")
+	if len(theory) > 1 {
+		v.errorRelated(theory[1].Span, "SDSL-V1103", "duplicate [Theory]", theory[0].Span, "first [Theory] is here")
 	}
-	if fact > 0 && theory > 0 {
-		v.errorf("[Fact] and [Theory] cannot both apply")
+	if len(fact) > 0 && len(theory) > 0 {
+		v.errorRelated(theory[0].Span, "SDSL-V1104", "[Fact] and [Theory] cannot both apply", fact[0].Span, "[Fact] is here")
 	}
-	if wg > 1 {
-		v.errorf("duplicate [WorkgroupSize]")
+	if len(wg) > 1 {
+		v.errorRelated(wg[1].Span, "SDSL-V1301", "duplicate [WorkgroupSize]", wg[0].Span, "first [WorkgroupSize] is here")
 	}
-	if dispatch > 1 {
-		v.errorf("duplicate [DispatchGroups]")
+	if len(dispatch) > 1 {
+		v.errorRelated(dispatch[1].Span, "SDSL-V1301", "duplicate [DispatchGroups]", dispatch[0].Span, "first [DispatchGroups] is here")
 	}
-	if inline > 0 && theory == 0 {
-		v.errorf("[InlineData] requires [Theory]")
+	if len(inline) > 0 && len(theory) == 0 {
+		if len(fact) > 0 {
+			v.errorAt(inline[0].Span, "SDSL-V1109", "[InlineData] is not allowed on [Fact]")
+		} else {
+			v.errorAt(inline[0].Span, "SDSL-V1201", "[InlineData] requires [Theory]")
+		}
 	}
-	if fact > 0 && len(fn.Parameters) != 0 {
-		v.errorf("[Fact] must not declare parameters")
+	if len(fact) > 0 && len(fn.Parameters) != 0 {
+		v.errorAt(fn.Parameters[0].Span, "SDSL-V1105", "[Fact] must not declare parameters")
 	}
-	if theory > 0 && len(fn.Parameters) == 0 {
-		v.errorf("[Theory] must declare parameters")
+	if len(theory) > 0 && len(fn.Parameters) == 0 {
+		v.errorAt(theory[0].Span, "SDSL-V1106", "[Theory] must declare parameters")
 	}
-	if theory > 0 && inline == 0 {
-		v.errorf("[Theory] requires [InlineData]")
+	if len(theory) > 0 {
+		for _, parameter := range fn.Parameters {
+			if !testParameterType(v.resolveAlias(parameter.Type)) {
+				v.errorAt(parameter.Type.Span, "SDSL-V1205", "[Theory] parameter %s has unsupported type %s", parameter.Name, typeName(parameter.Type))
+			}
+		}
 	}
-	if (fact > 0 || theory > 0) && fn.ReturnType.Name != "void" {
-		v.errorf("test functions must return void")
+	if len(theory) > 0 && len(inline) == 0 {
+		v.errorAt(theory[0].Span, "SDSL-V1107", "[Theory] requires [InlineData]")
+	}
+	if (len(fact) > 0 || len(theory) > 0) && fn.ReturnType.Name != "void" {
+		v.errorAt(fn.ReturnType.Span, "SDSL-V1108", "test functions must return void")
+	}
+	if len(theory) > 0 {
+		v.validateInlineData(fn, inline)
+	}
+	for _, a := range wg {
+		v.validateLaunchAttribute(a)
+	}
+	for _, a := range dispatch {
+		v.validateLaunchAttribute(a)
+	}
+}
+
+func testParameterType(typ ast.TypeRef) bool {
+	switch typ.Name {
+	case "bool", "i32", "u32", "f32", "float":
+		return true
+	default:
+		return false
+	}
+}
+
+func (v *validator) validateInlineData(fn ast.FunctionDecl, rows []ast.Attribute) {
+	for _, row := range rows {
+		if len(row.Arguments) != len(fn.Parameters) {
+			v.errorAt(row.Span, "SDSL-V1202", "[InlineData] arity mismatch")
+			continue
+		}
+		for i, value := range row.Arguments {
+			if _, ok := value.(ast.IntegerLiteral); !ok {
+				if _, ok := value.(ast.FloatLiteral); !ok {
+					if _, ok := value.(ast.BoolLiteral); !ok {
+						v.errorAt(ast.ExprSpan(value), "SDSL-V1204", "[InlineData] values must be literal constants")
+						continue
+					}
+				}
+			}
+			got := v.exprType(value, nil, "", nil)
+			if !v.compatible(fn.Parameters[i].Type, got) {
+				v.errorAt(ast.ExprSpan(value), "SDSL-V1203", "[InlineData] does not match parameter %s", fn.Parameters[i].Name)
+			}
+		}
+	}
+}
+
+func (v *validator) validateLaunchAttribute(attr ast.Attribute) {
+	if len(attr.Arguments) != 3 {
+		v.errorAt(attr.Span, "SDSL-V1302", "launch attribute requires three positive integer constants")
+		return
+	}
+	for _, arg := range attr.Arguments {
+		lit, ok := arg.(ast.IntegerLiteral)
+		if !ok {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V1303", "launch attribute arguments must be integer constants")
+			continue
+		}
+		n, err := strconv.ParseUint(strings.TrimRight(lit.Value, "uU"), 10, 32)
+		if err != nil || n == 0 {
+			v.errorAt(lit.Span, "SDSL-V1304", "launch attribute arguments must be positive uint32 values")
+		}
 	}
 }
 
@@ -2393,7 +2505,63 @@ func (v *validator) validateBarrierUsage(expr ast.Expr, topLevelExprStmt bool, s
 }
 
 func (v *validator) errorf(format string, args ...any) {
-	v.errors = append(v.errors, fmt.Sprintf(format, args...))
+	span := v.currentSpan
+	if !span.Known() {
+		// This is reachable only before a source node is entered (for example a
+		// malformed synthetic recovery declaration); ordinary validation always
+		// establishes currentSpan from compiler-owned AST data.
+		span = v.moduleSpan
+	}
+	v.errorAt(span, "SDSL-V1000", format, args...)
+}
+
+func (v *validator) scoped(span source.Span) func() {
+	previous := v.currentSpan
+	if span.Known() {
+		v.currentSpan = span
+	}
+	return func() { v.currentSpan = previous }
+}
+
+func declSpan(decl ast.Decl) source.Span {
+	switch d := decl.(type) {
+	case ast.TypeAliasDecl:
+		return d.Span
+	case ast.RecordDecl:
+		return d.Span
+	case ast.BoardDecl:
+		return d.Span
+	case ast.StreamDecl:
+		return d.Span
+	case ast.ConceptDecl:
+		return d.Span
+	case ast.ConfigDecl:
+		return d.Span
+	case ast.EnumDecl:
+		return d.Span
+	case ast.ShaderDecl:
+		return d.Span
+	case ast.CompileDecl:
+		return d.Span
+	case ast.FunctionDecl:
+		return d.Span
+	default:
+		return source.Span{}
+	}
+}
+
+func (v *validator) errorAt(span source.Span, code, format string, args ...any) {
+	v.diagnostics = append(v.diagnostics, diagnostic.Diagnostic{
+		Path: v.path, Code: code, Severity: diagnostic.SeverityError,
+		Message: fmt.Sprintf(format, args...), Span: span,
+	})
+}
+
+func (v *validator) errorRelated(span source.Span, code, message string, related source.Span, relatedMessage string) {
+	v.diagnostics = append(v.diagnostics, diagnostic.Diagnostic{
+		Path: v.path, Code: code, Severity: diagnostic.SeverityError, Message: message, Span: span,
+		Related: []diagnostic.Related{{Message: relatedMessage, Span: related}},
+	})
 }
 
 func typeName(ref ast.TypeRef) string {
