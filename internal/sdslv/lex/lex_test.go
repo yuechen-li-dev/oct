@@ -38,3 +38,29 @@ func TestAnalyzeReductionKeywords(t *testing.T) {
 		}
 	}
 }
+
+func TestSdslvTokenSpanCoversIdentifier(t *testing.T) {
+	const text = "\u03b1bc"
+	result, err := Analyze(source.File{Path: "test.sdslv", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := result.Tokens[0]
+	if got := text[tok.Span.Start.Offset:tok.Span.End.Offset]; got != text {
+		t.Fatalf("token slice = %q, want %q", got, text)
+	}
+	if tok.Span.Start.Line != 1 || tok.Span.Start.Column != 1 || tok.Span.End.Column != 4 {
+		t.Fatalf("span = %#v, want rune columns 1..4", tok.Span)
+	}
+}
+
+func TestSdslvTokenSpanTracksEndOfFile(t *testing.T) {
+	result, err := Analyze(source.File{Path: "test.sdslv", Text: "x\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eof := result.Tokens[len(result.Tokens)-1]
+	if eof.Kind != token.EOF || eof.Span.Start != eof.Span.End || eof.Span.Start.Offset != 2 || eof.Span.Start.Line != 2 || eof.Span.Start.Column != 1 {
+		t.Fatalf("EOF = %#v", eof)
+	}
+}

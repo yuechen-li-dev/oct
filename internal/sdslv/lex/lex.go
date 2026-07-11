@@ -37,13 +37,18 @@ func (l *lexer) lexAll() ([]token.Token, error) {
 	for {
 		l.skipWhitespaceAndComments()
 		if l.atEnd() {
-			tokens = append(tokens, token.Token{Kind: token.EOF, Line: l.line, Column: l.column})
+			pos := l.position()
+			tokens = append(tokens, token.Token{Kind: token.EOF, Line: l.line, Column: l.column, Span: source.Span{Start: pos, End: pos}})
 			return tokens, nil
 		}
+		start := l.position()
 		t, err := l.nextToken()
 		if err != nil {
 			return nil, err
 		}
+		// All token constructors share this finalization path, including raw
+		// foreign blocks and punctuation.
+		t.Span = source.Span{Start: start, End: l.position()}
 		tokens = append(tokens, t)
 	}
 }
@@ -73,6 +78,10 @@ func (l *lexer) skipWhitespaceAndComments() {
 
 func (l *lexer) nextToken() (token.Token, error) {
 	line, column := l.line, l.column
+	start := l.position()
+	finish := func(kind token.Kind, lexeme string) token.Token {
+		return token.Token{Kind: kind, Lexeme: lexeme, Line: line, Column: column, Span: source.Span{Start: start, End: l.position()}}
+	}
 	r, _ := l.peekRune()
 	if isIdentifierStart(r) {
 		lexeme := l.scanIdentifier()
@@ -80,19 +89,19 @@ func (l *lexer) nextToken() (token.Token, error) {
 		if kind == token.KeywordHLSL {
 			l.foreignHeader = true
 		}
-		return token.Token{Kind: kind, Lexeme: lexeme, Line: line, Column: column}, nil
+		return finish(kind, lexeme), nil
 	}
 	if unicode.IsDigit(r) {
 		kind, lexeme, err := l.scanNumber()
 		if err != nil {
 			return token.Token{}, err
 		}
-		return token.Token{Kind: kind, Lexeme: lexeme, Line: line, Column: column}, nil
+		return finish(kind, lexeme), nil
 	}
 	switch r {
 	case '"':
 		lexeme, err := l.scanString()
-		return token.Token{Kind: token.StringLiteral, Lexeme: lexeme, Line: line, Column: column}, err
+		return finish(token.StringLiteral, lexeme), err
 	case '(':
 		l.advanceRune()
 		return token.Token{Kind: token.LeftParen, Lexeme: "(", Line: line, Column: column}, nil
@@ -312,6 +321,10 @@ func (l *lexer) scanString() (string, error) {
 }
 
 func (l *lexer) atEnd() bool { return l.offset >= len(l.source) }
+
+func (l *lexer) position() source.Position {
+	return source.Position{Offset: uint32(l.offset), Line: uint32(l.line), Column: uint32(l.column)}
+}
 
 func (l *lexer) peekRune() (rune, bool) {
 	if l.atEnd() {

@@ -7,6 +7,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/token"
+	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
 func BuildModule(result lex.Result) (ast.Module, error) {
@@ -25,6 +26,7 @@ type parser struct {
 }
 
 func (p *parser) parseModule() (ast.Module, error) {
+	start := p.position
 	var module ast.Module
 	if p.match(token.KeywordNamespace) {
 		path, err := p.parsePath()
@@ -53,6 +55,7 @@ func (p *parser) parseModule() (ast.Module, error) {
 		}
 		module.Decls = append(module.Decls, decl)
 	}
+	module.Span = p.spanSince(start)
 	return module, nil
 }
 
@@ -103,6 +106,7 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 }
 
 func (p *parser) parseTypeAlias() (ast.TypeAliasDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected type alias name")
 	if err != nil {
@@ -118,10 +122,11 @@ func (p *parser) parseTypeAlias() (ast.TypeAliasDecl, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after type alias"); err != nil {
 		return ast.TypeAliasDecl{}, err
 	}
-	return ast.TypeAliasDecl{Name: name.Lexeme, Type: ref}, nil
+	return ast.TypeAliasDecl{Span: p.spanSince(start), Name: name.Lexeme, Type: ref}, nil
 }
 
 func (p *parser) parseRecord() (ast.RecordDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected record name")
 	if err != nil {
@@ -142,10 +147,11 @@ func (p *parser) parseRecord() (ast.RecordDecl, error) {
 		fields = append(fields, field)
 	}
 	p.advance()
-	return ast.RecordDecl{Name: name.Lexeme, Fields: fields}, nil
+	return ast.RecordDecl{Span: p.spanSince(start), Name: name.Lexeme, Fields: fields}, nil
 }
 
 func (p *parser) parseBoard() (ast.BoardDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected board name")
 	if err != nil {
@@ -166,10 +172,11 @@ func (p *parser) parseBoard() (ast.BoardDecl, error) {
 		fields = append(fields, field)
 	}
 	p.advance()
-	return ast.BoardDecl{Name: name.Lexeme, Fields: fields}, nil
+	return ast.BoardDecl{Span: p.spanSince(start), Name: name.Lexeme, Fields: fields}, nil
 }
 
 func (p *parser) parseStream() (ast.StreamDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected stream name")
 	if err != nil {
@@ -190,10 +197,11 @@ func (p *parser) parseStream() (ast.StreamDecl, error) {
 		fields = append(fields, field)
 	}
 	p.advance()
-	return ast.StreamDecl{Name: name.Lexeme, Fields: fields}, nil
+	return ast.StreamDecl{Span: p.spanSince(start), Name: name.Lexeme, Fields: fields}, nil
 }
 
 func (p *parser) parseConcept() (ast.ConceptDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected concept name")
 	if err != nil {
@@ -223,10 +231,11 @@ func (p *parser) parseConcept() (ast.ConceptDecl, error) {
 		members = append(members, member)
 	}
 	p.advance()
-	return ast.ConceptDecl{Name: name.Lexeme, Members: members, Requirements: requirements}, nil
+	return ast.ConceptDecl{Span: p.spanSince(start), Name: name.Lexeme, Members: members, Requirements: requirements}, nil
 }
 
 func (p *parser) parseConfig() (ast.ConfigDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected config name")
 	if err != nil {
@@ -285,13 +294,14 @@ func (p *parser) parseConfig() (ast.ConfigDecl, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after config field"); err != nil {
 			return ast.ConfigDecl{}, err
 		}
-		fields = append(fields, ast.ConfigField{Path: fieldPath, Value: value, Style: assignmentStyle})
+		fields = append(fields, ast.ConfigField{Span: valueSpan(value), Path: fieldPath, Value: value, Style: assignmentStyle})
 	}
 	p.advance()
-	return ast.ConfigDecl{Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields, Requirements: requirements}, nil
+	return ast.ConfigDecl{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept.Lexeme, Fields: fields, Requirements: requirements}, nil
 }
 
 func (p *parser) parseEnum() (ast.EnumDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected enum name")
 	if err != nil {
@@ -327,7 +337,7 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 				if _, err := p.expect(token.Semicolon, "expected ';' after payload field"); err != nil {
 					return ast.EnumDecl{}, err
 				}
-				entry.Fields = append(entry.Fields, ast.Field{Name: fieldName.Lexeme, Type: ref})
+				entry.Fields = append(entry.Fields, ast.Field{Span: spanFrom(fieldName.Span.Start, p.lastSpan().End), Name: fieldName.Lexeme, Type: ref})
 			}
 			p.advance()
 		} else {
@@ -335,10 +345,11 @@ func (p *parser) parseEnum() (ast.EnumDecl, error) {
 				return ast.EnumDecl{}, err
 			}
 		}
+		entry.Span = spanFrom(variant.Span.Start, p.lastSpan().End)
 		variants = append(variants, entry)
 	}
 	p.advance()
-	return ast.EnumDecl{Name: name.Lexeme, Variants: variants}, nil
+	return ast.EnumDecl{Span: p.spanSince(start), Name: name.Lexeme, Variants: variants}, nil
 }
 
 func (p *parser) parseTemplateShader() (ast.ShaderDecl, error) {
@@ -353,6 +364,7 @@ func (p *parser) parseTemplateShader() (ast.ShaderDecl, error) {
 }
 
 func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
+	start := p.position
 	p.advance()
 	if _, err := p.expect(token.LeftAngle, "expected '<' after template"); err != nil {
 		return ast.TemplateParam{}, err
@@ -374,10 +386,11 @@ func (p *parser) parseTemplateParam() (ast.TemplateParam, error) {
 	if _, err := p.expect(token.RightAngle, "expected '>' after template parameter"); err != nil {
 		return ast.TemplateParam{}, err
 	}
-	return ast.TemplateParam{Name: name.Lexeme, ConceptName: concept.Lexeme}, nil
+	return ast.TemplateParam{Span: p.spanSince(start), Name: name.Lexeme, ConceptName: concept.Lexeme}, nil
 }
 
 func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected shader name")
 	if err != nil {
@@ -431,10 +444,15 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 		}
 	}
 	p.advance()
+	shader.Span = p.spanSince(start)
+	if templateParam != nil {
+		shader.Span.Start = templateParam.Span.Start
+	}
 	return shader, nil
 }
 
 func (p *parser) parseCompileDecl() (ast.CompileDecl, error) {
+	start := p.position
 	p.advance()
 	shaderName, err := p.expect(token.Identifier, "expected template shader name after compile")
 	if err != nil {
@@ -467,10 +485,11 @@ func (p *parser) parseCompileDecl() (ast.CompileDecl, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after compile declaration"); err != nil {
 		return ast.CompileDecl{}, err
 	}
-	return ast.CompileDecl{ShaderName: shaderName.Lexeme, ConfigName: configName.Lexeme, AliasName: alias.Lexeme}, nil
+	return ast.CompileDecl{Span: p.spanSince(start), ShaderName: shaderName.Lexeme, ConfigName: configName.Lexeme, AliasName: alias.Lexeme}, nil
 }
 
 func (p *parser) parseWorkgroup() (ast.WorkgroupDecl, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected workgroup name")
 	if err != nil {
@@ -489,10 +508,11 @@ func (p *parser) parseWorkgroup() (ast.WorkgroupDecl, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after workgroup declaration"); err != nil {
 		return ast.WorkgroupDecl{}, err
 	}
-	return ast.WorkgroupDecl{Name: name.Lexeme, Type: ref}, nil
+	return ast.WorkgroupDecl{Span: p.spanSince(start), Name: name.Lexeme, Type: ref}, nil
 }
 
 func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
+	start := p.position
 	p.advance()
 	if p.current().Kind == token.Identifier {
 		name, err := p.expect(token.Identifier, "expected resource bundle name")
@@ -502,7 +522,7 @@ func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after resource bundle name"); err != nil {
 			return nil, err
 		}
-		return []ast.ResourceDecl{{Name: name.Lexeme}}, nil
+		return []ast.ResourceDecl{{Span: p.spanSince(start), Name: name.Lexeme}}, nil
 	}
 	if _, err := p.expect(token.LeftBrace, "expected '{' after resources"); err != nil {
 		return nil, err
@@ -536,13 +556,18 @@ func (p *parser) parseResources() ([]ast.ResourceDecl, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after resource"); err != nil {
 			return nil, err
 		}
-		resources = append(resources, ast.ResourceDecl{Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes})
+		first := name.Span.Start
+		if len(attributes) != 0 {
+			first = attributes[0].Span.Start
+		}
+		resources = append(resources, ast.ResourceDecl{Span: spanFrom(first, p.lastSpan().End), Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes})
 	}
 	p.advance()
 	return resources, nil
 }
 
 func (p *parser) parseStageFunction() (ast.FunctionDecl, error) {
+	start := p.position
 	p.advance()
 	stageToken := p.current()
 	stage := ""
@@ -595,13 +620,14 @@ func (p *parser) parseStageFunction() (ast.FunctionDecl, error) {
 		if _, err := p.expect(token.RightBracket, "expected ']' after numthreads"); err != nil {
 			return ast.FunctionDecl{}, err
 		}
-		threads = &ast.NumThreads{X: x, Y: y, Z: z}
+		threads = &ast.NumThreads{Span: spanFrom(p.tokens[start].Span.Start, p.lastSpan().End), X: x, Y: y, Z: z}
 	}
 	fn, err := p.parseFunction(stage)
 	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
 	fn.NumThreads = threads
+	fn.Span.Start = p.tokens[start].Span.Start
 	return fn, nil
 }
 
@@ -610,7 +636,8 @@ func (p *parser) parseFunction(stage string) (ast.FunctionDecl, error) {
 }
 
 func (p *parser) parseFunctionWithAttributes(stage string, attributes []ast.Attribute) (ast.FunctionDecl, error) {
-	if _, err := p.expect(token.KeywordFn, "expected fn"); err != nil {
+	fnToken, err := p.expect(token.KeywordFn, "expected fn")
+	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
 	name, err := p.expect(token.Identifier, "expected function name")
@@ -632,7 +659,11 @@ func (p *parser) parseFunctionWithAttributes(stage string, attributes []ast.Attr
 	if err != nil {
 		return ast.FunctionDecl{}, err
 	}
-	return ast.FunctionDecl{Attributes: attributes, Line: name.Line, Column: name.Column, Name: name.Lexeme, Stage: stage, Parameters: params, ReturnType: ret, Body: body}, nil
+	start := fnToken.Span.Start
+	if len(attributes) != 0 {
+		start = attributes[0].Span.Start
+	}
+	return ast.FunctionDecl{Span: spanFrom(start, body.Span.End), Attributes: attributes, Line: name.Line, Column: name.Column, Name: name.Lexeme, Stage: stage, Parameters: params, ReturnType: ret, Body: body}, nil
 }
 
 func (p *parser) parseParameters() ([]ast.Parameter, error) {
@@ -653,7 +684,7 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 			if err != nil {
 				return nil, err
 			}
-			params = append(params, ast.Parameter{Name: name.Lexeme, Type: ref})
+			params = append(params, ast.Parameter{Span: spanFrom(name.Span.Start, ref.Span.End), Name: name.Lexeme, Type: ref})
 			if !p.match(token.Comma) {
 				break
 			}
@@ -666,7 +697,8 @@ func (p *parser) parseParameters() ([]ast.Parameter, error) {
 }
 
 func (p *parser) parseBlock() (ast.Block, error) {
-	if _, err := p.expect(token.LeftBrace, "expected '{' to start block"); err != nil {
+	open, err := p.expect(token.LeftBrace, "expected '{' to start block")
+	if err != nil {
 		return ast.Block{}, err
 	}
 	var stmts []ast.Stmt
@@ -680,8 +712,9 @@ func (p *parser) parseBlock() (ast.Block, error) {
 		}
 		stmts = append(stmts, stmt)
 	}
+	close := p.current()
 	p.advance()
-	return ast.Block{Statements: stmts}, nil
+	return ast.Block{Span: spanFrom(open.Span.Start, close.Span.End), Statements: stmts}, nil
 }
 
 func (p *parser) parseStmt() (ast.Stmt, error) {
@@ -722,7 +755,7 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after expression statement"); err != nil {
 			return nil, err
 		}
-		return ast.ExprStmt{Value: left}, nil
+		return ast.ExprStmt{Span: spanFrom(ast.ExprSpan(left).Start, p.lastSpan().End), Value: left}, nil
 	case token.KeywordFlow:
 		return p.parseFlowStmt()
 	case token.KeywordFor:
@@ -752,16 +785,17 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 			if _, err := p.expect(token.Semicolon, "expected ';' after assignment"); err != nil {
 				return nil, err
 			}
-			return ast.AssignStmt{Target: left, Value: value}, nil
+			return ast.AssignStmt{Span: spanFrom(ast.ExprSpan(left).Start, p.lastSpan().End), Target: left, Value: value}, nil
 		}
 		if _, err := p.expect(token.Semicolon, "expected ';' after expression statement"); err != nil {
 			return nil, err
 		}
-		return ast.ExprStmt{Value: left}, nil
+		return ast.ExprStmt{Span: spanFrom(ast.ExprSpan(left).Start, p.lastSpan().End), Value: left}, nil
 	}
 }
 
 func (p *parser) parseForeignStmt() (ast.Stmt, error) {
+	start := p.position
 	t := p.current()
 	p.advance()
 	captures, err := p.parseForeignCaptures()
@@ -774,7 +808,7 @@ func (p *parser) parseForeignStmt() (ast.Stmt, error) {
 	}
 	if p.match(token.Semicolon) { /* optional terminator */
 	}
-	return ast.ForeignShaderStmt{TargetLanguage: "HLSL", Captures: captures, RawSource: raw.Lexeme, Line: t.Line, Column: t.Column}, nil
+	return ast.ForeignShaderStmt{Span: p.spanSince(start), TargetLanguage: "HLSL", Captures: captures, RawSource: raw.Lexeme, Line: t.Line, Column: t.Column}, nil
 }
 
 func (p *parser) parseForeignCaptures() ([]string, error) {
@@ -799,6 +833,7 @@ func (p *parser) parseForeignCaptures() ([]string, error) {
 }
 
 func (p *parser) parseFlowStmt() (ast.FlowStmt, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected flow name")
 	if err != nil {
@@ -833,10 +868,11 @@ func (p *parser) parseFlowStmt() (ast.FlowStmt, error) {
 		states = append(states, state)
 	}
 	p.advance()
-	return ast.FlowStmt{Name: name.Lexeme, Boards: boards, States: states}, nil
+	return ast.FlowStmt{Span: p.spanSince(start), Name: name.Lexeme, Boards: boards, States: states}, nil
 }
 
 func (p *parser) parseFlowBoardDecl() (ast.FlowBoardDecl, error) {
+	start := p.position
 	if _, err := p.expect(token.KeywordBoard, "expected board"); err != nil {
 		return ast.FlowBoardDecl{}, err
 	}
@@ -861,10 +897,11 @@ func (p *parser) parseFlowBoardDecl() (ast.FlowBoardDecl, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after flow board declaration"); err != nil {
 		return ast.FlowBoardDecl{}, err
 	}
-	return ast.FlowBoardDecl{Name: name.Lexeme, Type: ref, Initializer: value}, nil
+	return ast.FlowBoardDecl{Span: p.spanSince(start), Name: name.Lexeme, Type: ref, Initializer: value}, nil
 }
 
 func (p *parser) parseStateBlock() (ast.StateBlock, error) {
+	start := p.position
 	if p.current().Kind != token.Identifier || p.current().Lexeme != "state" {
 		return ast.StateBlock{}, p.errorAtCurrent("expected state declaration inside flow")
 	}
@@ -877,7 +914,7 @@ func (p *parser) parseStateBlock() (ast.StateBlock, error) {
 	if err != nil {
 		return ast.StateBlock{}, err
 	}
-	return ast.StateBlock{Name: name.Lexeme, Body: body}, nil
+	return ast.StateBlock{Span: p.spanSince(start), Name: name.Lexeme, Body: body}, nil
 }
 
 func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
@@ -899,6 +936,7 @@ func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
 }
 
 func (p *parser) parseComptimeLet() (ast.ComptimeLetStmt, error) {
+	start := p.position - 1 // include already consumed comptime
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected comptime local name")
 	if err != nil {
@@ -921,10 +959,11 @@ func (p *parser) parseComptimeLet() (ast.ComptimeLetStmt, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after comptime let"); err != nil {
 		return ast.ComptimeLetStmt{}, err
 	}
-	return ast.ComptimeLetStmt{Name: name.Lexeme, Type: ref, Value: value}, nil
+	return ast.ComptimeLetStmt{Span: p.spanSince(start), Name: name.Lexeme, Type: ref, Value: value}, nil
 }
 
 func (p *parser) parseComptimeIf() (ast.ComptimeIfStmt, error) {
+	start := p.position - 1
 	p.advance()
 	condition, err := p.parseExpression()
 	if err != nil {
@@ -942,10 +981,11 @@ func (p *parser) parseComptimeIf() (ast.ComptimeIfStmt, error) {
 		}
 		elseBody = &body
 	}
-	return ast.ComptimeIfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
+	return ast.ComptimeIfStmt{Span: p.spanSince(start), Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseComptimeMatch() (ast.ComptimeMatchStmt, error) {
+	start := p.position - 1
 	p.advance()
 	subject, err := p.parseExpression()
 	if err != nil {
@@ -977,13 +1017,15 @@ func (p *parser) parseComptimeMatch() (ast.ComptimeMatchStmt, error) {
 			return ast.ComptimeMatchStmt{}, err
 		}
 		arm.Body = body
+		arm.Span = p.spanSince(start)
 		arms = append(arms, arm)
 	}
 	p.advance()
-	return ast.ComptimeMatchStmt{Subject: subject, Arms: arms}, nil
+	return ast.ComptimeMatchStmt{Span: p.spanSince(start), Subject: subject, Arms: arms}, nil
 }
 
 func (p *parser) parseComptimeWhenUtility() (ast.ComptimeWhenUtilityStmt, error) {
+	start := p.position - 1
 	p.advance()
 	if _, err := p.expect(token.KeywordUtility, "expected 'utility' after comptime when"); err != nil {
 		return ast.ComptimeWhenUtilityStmt{}, err
@@ -999,6 +1041,7 @@ func (p *parser) parseComptimeWhenUtility() (ast.ComptimeWhenUtilityStmt, error)
 		}
 		switch p.current().Kind {
 		case token.KeywordCase:
+			caseStart := p.position
 			p.advance()
 			label, err := p.parseDottedName("expected comptime when utility case label")
 			if err != nil {
@@ -1022,7 +1065,7 @@ func (p *parser) parseComptimeWhenUtility() (ast.ComptimeWhenUtilityStmt, error)
 			if err != nil {
 				return ast.ComptimeWhenUtilityStmt{}, err
 			}
-			cases = append(cases, ast.ComptimeWhenUtilityCase{Label: label, Condition: condition, Score: score, Body: body})
+			cases = append(cases, ast.ComptimeWhenUtilityCase{Span: p.spanSince(caseStart), Label: label, Condition: condition, Score: score, Body: body})
 		case token.KeywordElse:
 			p.advance()
 			if elseBody != nil {
@@ -1038,10 +1081,11 @@ func (p *parser) parseComptimeWhenUtility() (ast.ComptimeWhenUtilityStmt, error)
 		}
 	}
 	p.advance()
-	return ast.ComptimeWhenUtilityStmt{Cases: cases, ElseBody: elseBody}, nil
+	return ast.ComptimeWhenUtilityStmt{Span: p.spanSince(start), Cases: cases, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseComptimeFor() (ast.ComptimeForStmt, error) {
+	startPos := p.position - 1
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected comptime for loop variable")
 	if err != nil {
@@ -1065,10 +1109,11 @@ func (p *parser) parseComptimeFor() (ast.ComptimeForStmt, error) {
 	if err != nil {
 		return ast.ComptimeForStmt{}, err
 	}
-	return ast.ComptimeForStmt{Name: name.Lexeme, Start: start, End: end, Body: body}, nil
+	return ast.ComptimeForStmt{Span: p.spanSince(startPos), Name: name.Lexeme, Start: start, End: end, Body: body}, nil
 }
 
 func (p *parser) parseLet() (ast.LetStmt, error) {
+	start := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected local name")
 	if err != nil {
@@ -1091,13 +1136,14 @@ func (p *parser) parseLet() (ast.LetStmt, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after let"); err != nil {
 		return ast.LetStmt{}, err
 	}
-	return ast.LetStmt{Name: name.Lexeme, Type: ref, Value: value}, nil
+	return ast.LetStmt{Span: p.spanSince(start), Name: name.Lexeme, Type: ref, Value: value}, nil
 }
 
 func (p *parser) parseReturn() (ast.ReturnStmt, error) {
+	start := p.position
 	p.advance()
 	if p.match(token.Semicolon) {
-		return ast.ReturnStmt{}, nil
+		return ast.ReturnStmt{Span: p.spanSince(start)}, nil
 	}
 	value, err := p.parseReductionValueOrExpression()
 	if err != nil {
@@ -1106,10 +1152,11 @@ func (p *parser) parseReturn() (ast.ReturnStmt, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after return"); err != nil {
 		return ast.ReturnStmt{}, err
 	}
-	return ast.ReturnStmt{Value: value}, nil
+	return ast.ReturnStmt{Span: p.spanSince(start), Value: value}, nil
 }
 
 func (p *parser) parseGuardedWrite() (ast.GuardedWriteStmt, error) {
+	start := p.position
 	p.advance()
 	target, err := p.parseExpression()
 	if err != nil {
@@ -1132,10 +1179,11 @@ func (p *parser) parseGuardedWrite() (ast.GuardedWriteStmt, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after guarded write"); err != nil {
 		return ast.GuardedWriteStmt{}, err
 	}
-	return ast.GuardedWriteStmt{Target: target, Value: value, Condition: condition}, nil
+	return ast.GuardedWriteStmt{Span: p.spanSince(start), Target: target, Value: value, Condition: condition}, nil
 }
 
 func (p *parser) parseIf() (ast.IfStmt, error) {
+	start := p.position
 	p.advance()
 	condition, err := p.parseExpression()
 	if err != nil {
@@ -1153,10 +1201,11 @@ func (p *parser) parseIf() (ast.IfStmt, error) {
 		}
 		elseBody = &body
 	}
-	return ast.IfStmt{Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
+	return ast.IfStmt{Span: p.spanSince(start), Condition: condition, ThenBody: thenBody, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseGuardWhen() (ast.GuardWhenStmt, error) {
+	start := p.position
 	p.advance()
 	if _, err := p.expect(token.LeftBrace, "expected '{' after guard when"); err != nil {
 		return ast.GuardWhenStmt{}, err
@@ -1184,7 +1233,7 @@ func (p *parser) parseGuardWhen() (ast.GuardWhenStmt, error) {
 			if err != nil {
 				return ast.GuardWhenStmt{}, err
 			}
-			cases = append(cases, ast.GuardWhenCase{Condition: condition, Body: body})
+			cases = append(cases, ast.GuardWhenCase{Span: spanFrom(conditionSpan(condition).Start, body.Span.End), Condition: condition, Body: body})
 		case token.KeywordElse:
 			if elseBody != nil {
 				return ast.GuardWhenStmt{}, p.errorAtCurrent("duplicate guard when else arm")
@@ -1206,7 +1255,7 @@ func (p *parser) parseGuardWhen() (ast.GuardWhenStmt, error) {
 	if len(cases) == 0 {
 		return ast.GuardWhenStmt{}, p.errorAtCurrent("guard when requires at least one case")
 	}
-	return ast.GuardWhenStmt{Cases: cases, ElseBody: elseBody}, nil
+	return ast.GuardWhenStmt{Span: p.spanSince(start), Cases: cases, ElseBody: elseBody}, nil
 }
 
 func (p *parser) parseWhenArmBody() (ast.Block, error) {
@@ -1217,10 +1266,11 @@ func (p *parser) parseWhenArmBody() (ast.Block, error) {
 	if err != nil {
 		return ast.Block{}, err
 	}
-	return ast.Block{Statements: []ast.Stmt{stmt}}, nil
+	return ast.Block{Span: stmtSpan(stmt), Statements: []ast.Stmt{stmt}}, nil
 }
 
 func (p *parser) parseFor(attributes []ast.Attribute) (ast.ForStmt, error) {
+	startPos := p.position
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected for loop variable")
 	if err != nil {
@@ -1251,7 +1301,11 @@ func (p *parser) parseFor(attributes []ast.Attribute) (ast.ForStmt, error) {
 	if err != nil {
 		return ast.ForStmt{}, err
 	}
-	return ast.ForStmt{Attributes: attributes, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
+	spanStart := p.tokens[startPos].Span.Start
+	if len(attributes) != 0 {
+		spanStart = attributes[0].Span.Start
+	}
+	return ast.ForStmt{Span: spanFrom(spanStart, body.Span.End), Attributes: attributes, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
 }
 
 func (p *parser) parseExpression() (ast.Expr, error) {
@@ -1271,6 +1325,7 @@ func (p *parser) parseExpressionUntilCommaOrRightAngle() (ast.Expr, error) {
 }
 
 func (p *parser) parseWithInternal(stopAtRightAngle bool) (ast.Expr, error) {
+	start := p.position
 	base, err := p.parseBinary(0, stopAtRightAngle)
 	if err != nil {
 		return nil, err
@@ -1294,7 +1349,7 @@ func (p *parser) parseWithInternal(stopAtRightAngle bool) (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		updates = append(updates, ast.FieldUpdate{Name: name.Lexeme, Value: value})
+		updates = append(updates, ast.FieldUpdate{Span: spanFrom(name.Span.Start, ast.ExprSpan(value).End), Name: name.Lexeme, Value: value})
 		if !p.match(token.Comma) {
 			break
 		}
@@ -1305,7 +1360,7 @@ func (p *parser) parseWithInternal(stopAtRightAngle bool) (ast.Expr, error) {
 	if _, err := p.expect(token.RightBrace, "expected '}' after with update"); err != nil {
 		return nil, err
 	}
-	return ast.WithExpr{Base: base, Updates: updates}, nil
+	return ast.WithExpr{Span: p.spanSince(start), Base: base, Updates: updates}, nil
 }
 
 func (p *parser) parseBinary(minPrec int, stopAtRightAngle bool) (ast.Expr, error) {
@@ -1324,7 +1379,7 @@ func (p *parser) parseBinary(minPrec int, stopAtRightAngle bool) (ast.Expr, erro
 		if err != nil {
 			return nil, err
 		}
-		left = ast.BinaryExpr{Left: left, Operator: op, Right: right}
+		left = ast.BinaryExpr{Span: spanFrom(ast.ExprSpan(left).Start, ast.ExprSpan(right).End), Left: left, Operator: op, Right: right}
 	}
 	return left, nil
 }
@@ -1334,13 +1389,14 @@ func (p *parser) parseUnary() (ast.Expr, error) {
 		return nil, p.errorAtCurrent("use `not` instead of `!` for logical negation")
 	}
 	if p.current().Kind == token.Minus || p.current().Kind == token.KeywordNot {
-		op := p.current().Lexeme
+		t := p.current()
+		op := t.Lexeme
 		p.advance()
 		operand, err := p.parseUnary()
 		if err != nil {
 			return nil, err
 		}
-		return ast.UnaryExpr{Operator: op, Operand: operand}, nil
+		return ast.UnaryExpr{Span: spanFrom(t.Span.Start, ast.ExprSpan(operand).End), Operator: op, Operand: operand}, nil
 	}
 	return p.parsePostfix()
 }
@@ -1359,14 +1415,15 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 				return nil, err
 			}
 			if enumName, ok := identifierName(expr); ok && p.payloadInitializerStarts() {
+				start := ast.ExprSpan(expr).Start
 				fields, err := p.parseFieldInitializers()
 				if err != nil {
 					return nil, err
 				}
-				expr = ast.EnumConstructExpr{EnumName: enumName, VariantName: field.Lexeme, Fields: fields}
+				expr = ast.EnumConstructExpr{Span: spanFrom(start, p.lastSpan().End), EnumName: enumName, VariantName: field.Lexeme, Fields: fields}
 				continue
 			}
-			expr = ast.FieldAccessExpr{Target: expr, Field: field.Lexeme}
+			expr = ast.FieldAccessExpr{Span: spanFrom(ast.ExprSpan(expr).Start, field.Span.End), Target: expr, Field: field.Lexeme}
 		case token.LeftBracket:
 			p.advance()
 			index, err := p.parseExpression()
@@ -1385,10 +1442,11 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 					return nil, p.errorAtCurrent("SDSL-V M12 supports at most two indices")
 				}
 			}
-			if _, err := p.expect(token.RightBracket, "expected ']' after index"); err != nil {
+			close, err := p.expect(token.RightBracket, "expected ']' after index")
+			if err != nil {
 				return nil, err
 			}
-			expr = ast.IndexExpr{Target: expr, Index: index, Index2: index2, HasSecond: hasSecond}
+			expr = ast.IndexExpr{Span: spanFrom(ast.ExprSpan(expr).Start, close.Span.End), Target: expr, Index: index, Index2: index2, HasSecond: hasSecond}
 		case token.LeftParen:
 			p.advance()
 			var args []ast.Expr
@@ -1404,20 +1462,22 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 					}
 				}
 			}
-			if _, err := p.expect(token.RightParen, "expected ')' after call arguments"); err != nil {
+			close, err := p.expect(token.RightParen, "expected ')' after call arguments")
+			if err != nil {
 				return nil, err
 			}
-			expr = ast.CallExpr{Callee: expr, Arguments: args}
+			expr = ast.CallExpr{Span: spanFrom(ast.ExprSpan(expr).Start, close.Span.End), Callee: expr, Arguments: args}
 		case token.LeftBrace:
 			typeName, ok := identifierName(expr)
 			if !ok || !p.payloadInitializerStarts() {
 				return expr, nil
 			}
+			start := ast.ExprSpan(expr).Start
 			fields, err := p.parseFieldInitializers()
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.BoardLiteralExpr{TypeName: typeName, Fields: fields}
+			expr = ast.BoardLiteralExpr{Span: spanFrom(start, p.lastSpan().End), TypeName: typeName, Fields: fields}
 		default:
 			return expr, nil
 		}
@@ -1429,28 +1489,28 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 	switch t.Kind {
 	case token.IntLiteral:
 		p.advance()
-		return ast.IntegerLiteral{Value: t.Lexeme}, nil
+		return ast.IntegerLiteral{Span: t.Span, Value: t.Lexeme}, nil
 	case token.FloatLiteral:
 		p.advance()
-		return ast.FloatLiteral{Value: t.Lexeme}, nil
+		return ast.FloatLiteral{Span: t.Span, Value: t.Lexeme}, nil
 	case token.StringLiteral:
 		p.advance()
-		return ast.StringLiteral{Value: t.Lexeme}, nil
+		return ast.StringLiteral{Span: t.Span, Value: t.Lexeme}, nil
 	case token.KeywordTrue:
 		p.advance()
-		return ast.BoolLiteral{Value: true}, nil
+		return ast.BoolLiteral{Span: t.Span, Value: true}, nil
 	case token.KeywordFalse:
 		p.advance()
-		return ast.BoolLiteral{Value: false}, nil
+		return ast.BoolLiteral{Span: t.Span, Value: false}, nil
 	case token.Identifier:
 		p.advance()
-		return ast.IdentifierExpr{Name: t.Lexeme}, nil
+		return ast.IdentifierExpr{Span: t.Span, Name: t.Lexeme}, nil
 	case token.KeywordSum, token.KeywordProduct, token.KeywordMax, token.KeywordMin:
 		if p.peek(1).Kind == token.Identifier && p.peek(2).Kind == token.KeywordIn {
 			return p.parseReductionExpr(nil)
 		}
 		p.advance()
-		return ast.IdentifierExpr{Name: t.Lexeme}, nil
+		return ast.IdentifierExpr{Span: t.Span, Name: t.Lexeme}, nil
 	case token.KeywordWhen:
 		if p.peek(1).Kind == token.LeftBrace {
 			return nil, p.errorAtCurrent("runtime guard when is a statement-only form in SDSL-V M19")
@@ -1473,10 +1533,11 @@ func (p *parser) parsePrimary() (ast.Expr, error) {
 		if err != nil {
 			return nil, err
 		}
-		if _, err := p.expect(token.RightParen, "expected ')' after expression"); err != nil {
+		close, err := p.expect(token.RightParen, "expected ')' after expression")
+		if err != nil {
 			return nil, err
 		}
-		return ast.ParenExpr{Inner: inner}, nil
+		return ast.ParenExpr{Span: spanFrom(t.Span.Start, close.Span.End), Inner: inner}, nil
 	case token.LeftBracket:
 		return nil, p.errorAtCurrent("reduction attributes are only supported before direct reduction expressions in let initializers, assignment RHS, or return values")
 	default:
@@ -1505,10 +1566,11 @@ func (p *parser) parseForeignExpr() (ast.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ast.ForeignShaderExpr{TargetLanguage: "HLSL", ResultType: typ, Captures: captures, RawSource: raw.Lexeme, Line: t.Line, Column: t.Column}, nil
+	return ast.ForeignShaderExpr{Span: spanFrom(t.Span.Start, raw.Span.End), TargetLanguage: "HLSL", ResultType: typ, Captures: captures, RawSource: raw.Lexeme, Line: t.Line, Column: t.Column}, nil
 }
 
 func (p *parser) parseDeriveExpr() (ast.DeriveExpr, error) {
+	start := p.position
 	p.advance()
 	if _, err := p.expect(token.LeftBrace, "expected '{' after derive"); err != nil {
 		return ast.DeriveExpr{}, err
@@ -1529,13 +1591,14 @@ func (p *parser) parseDeriveExpr() (ast.DeriveExpr, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after derive field"); err != nil {
 			return ast.DeriveExpr{}, err
 		}
-		fields = append(fields, ast.DeriveField{Name: name.Lexeme, Value: value})
+		fields = append(fields, ast.DeriveField{Span: spanFrom(name.Span.Start, p.lastSpan().End), Name: name.Lexeme, Value: value})
 	}
 	p.advance()
-	return ast.DeriveExpr{Fields: fields}, nil
+	return ast.DeriveExpr{Span: p.spanSince(start), Fields: fields}, nil
 }
 
 func (p *parser) parseGuardedRead() (ast.GuardedReadExpr, error) {
+	start := p.current().Span.Start
 	p.advance()
 	target, err := p.parsePostfix()
 	if err != nil {
@@ -1555,7 +1618,27 @@ func (p *parser) parseGuardedRead() (ast.GuardedReadExpr, error) {
 	if err != nil {
 		return ast.GuardedReadExpr{}, err
 	}
-	return ast.GuardedReadExpr{Target: target, Condition: condition, Fallback: fallback}, nil
+	return ast.GuardedReadExpr{Span: spanFrom(start, ast.ExprSpan(fallback).End), Target: target, Condition: condition, Fallback: fallback}, nil
+}
+
+func spanFrom(start, end source.Position) source.Span { return source.Span{Start: start, End: end} }
+
+func valueSpan(e ast.Expr) source.Span     { return ast.ExprSpan(e) }
+func conditionSpan(e ast.Expr) source.Span { return ast.ExprSpan(e) }
+func stmtSpan(s ast.Stmt) source.Span      { return ast.StmtSpan(s) }
+
+func (p *parser) lastSpan() source.Span {
+	if p.position == 0 {
+		return source.Span{}
+	}
+	return p.tokens[p.position-1].Span
+}
+
+func (p *parser) spanSince(start int) source.Span {
+	if start < 0 || start >= len(p.tokens) || p.position <= start {
+		return source.Span{}
+	}
+	return spanFrom(p.tokens[start].Span.Start, p.lastSpan().End)
 }
 
 func (p *parser) parseReductionValueOrExpression() (ast.Expr, error) {
@@ -1573,6 +1656,7 @@ func (p *parser) parseReductionValueOrExpression() (ast.Expr, error) {
 }
 
 func (p *parser) parseReductionExpr(attributes []ast.Attribute) (ast.ReductionExpr, error) {
+	startPos := p.position
 	op, err := reductionOpFromToken(p.current())
 	if err != nil {
 		return ast.ReductionExpr{}, err
@@ -1613,10 +1697,15 @@ func (p *parser) parseReductionExpr(attributes []ast.Attribute) (ast.ReductionEx
 	if _, err := p.expect(token.RightBrace, "expected '}' after reduction body"); err != nil {
 		return ast.ReductionExpr{}, err
 	}
-	return ast.ReductionExpr{Attributes: append([]ast.Attribute(nil), attributes...), Op: op, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
+	first := p.tokens[startPos].Span.Start
+	if len(attributes) != 0 {
+		first = attributes[0].Span.Start
+	}
+	return ast.ReductionExpr{Span: spanFrom(first, p.lastSpan().End), Attributes: append([]ast.Attribute(nil), attributes...), Op: op, Name: name.Lexeme, Start: start, End: end, Step: step, Body: body}, nil
 }
 
 func (p *parser) parseMatchExpr() (ast.MatchExpr, error) {
+	start := p.position
 	p.advance()
 	subject, err := p.parseExpression()
 	if err != nil {
@@ -1657,10 +1746,11 @@ func (p *parser) parseMatchExpr() (ast.MatchExpr, error) {
 			return ast.MatchExpr{}, err
 		}
 		arm.Value = value
+		arm.Span = spanFrom(enumName.Span.Start, ast.ExprSpan(value).End)
 		arms = append(arms, arm)
 	}
 	p.advance()
-	return ast.MatchExpr{Subject: subject, Arms: arms}, nil
+	return ast.MatchExpr{Span: p.spanSince(start), Subject: subject, Arms: arms}, nil
 }
 
 func (p *parser) parseFieldInitializers() ([]ast.FieldInit, error) {
@@ -1680,7 +1770,7 @@ func (p *parser) parseFieldInitializers() ([]ast.FieldInit, error) {
 		if err != nil {
 			return nil, err
 		}
-		fields = append(fields, ast.FieldInit{Name: name.Lexeme, Value: value})
+		fields = append(fields, ast.FieldInit{Span: spanFrom(name.Span.Start, ast.ExprSpan(value).End), Name: name.Lexeme, Value: value})
 		if p.match(token.Semicolon) {
 			continue
 		}
@@ -1698,6 +1788,7 @@ func (p *parser) parseFieldInitializers() ([]ast.FieldInit, error) {
 }
 
 func (p *parser) parseWhenUtility() (ast.WhenUtilityExpr, error) {
+	start := p.position
 	p.advance()
 	if _, err := p.expect(token.KeywordUtility, "expected 'utility' after when"); err != nil {
 		return ast.WhenUtilityExpr{}, err
@@ -1729,7 +1820,7 @@ func (p *parser) parseWhenUtility() (ast.WhenUtilityExpr, error) {
 			if err != nil {
 				return ast.WhenUtilityExpr{}, err
 			}
-			cases = append(cases, ast.UtilityCase{Value: value, Condition: condition, Score: score})
+			cases = append(cases, ast.UtilityCase{Span: spanFrom(ast.ExprSpan(value).Start, ast.ExprSpan(score).End), Value: value, Condition: condition, Score: score})
 		case token.KeywordElse:
 			p.advance()
 			value, err := p.parseExpression()
@@ -1742,10 +1833,11 @@ func (p *parser) parseWhenUtility() (ast.WhenUtilityExpr, error) {
 		}
 	}
 	p.advance()
-	return ast.WhenUtilityExpr{Cases: cases, Else: elseValue}, nil
+	return ast.WhenUtilityExpr{Span: p.spanSince(start), Cases: cases, Else: elseValue}, nil
 }
 
 func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
+	start := p.position
 	name, err := p.expect(token.Identifier, "expected type name")
 	if err != nil {
 		return ast.TypeRef{}, err
@@ -1796,10 +1888,12 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 			return ast.TypeRef{}, err
 		}
 	}
+	ref.Span = p.spanSince(start)
 	return ref, nil
 }
 
 func (p *parser) parseField() (ast.Field, error) {
+	start := p.position
 	attributes, err := p.parseAttributes(ast.AttributePlacementField)
 	if err != nil {
 		return ast.Field{}, err
@@ -1824,10 +1918,11 @@ func (p *parser) parseField() (ast.Field, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after field"); err != nil {
 		return ast.Field{}, err
 	}
-	return ast.Field{Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes}, nil
+	return ast.Field{Span: p.spanSince(start), Name: name.Lexeme, Access: access, Type: ref, Attributes: attributes}, nil
 }
 
 func (p *parser) parseConceptMember() (ast.ConceptMember, error) {
+	start := p.position
 	name, err := p.expect(token.Identifier, "expected concept field or group name")
 	if err != nil {
 		return nil, err
@@ -1851,7 +1946,7 @@ func (p *parser) parseConceptMember() (ast.ConceptMember, error) {
 		if _, err := p.expect(token.Semicolon, "expected ';' after concept group"); err != nil {
 			return nil, err
 		}
-		return ast.ConceptGroup{Name: name.Lexeme, Members: members}, nil
+		return ast.ConceptGroup{Span: p.spanSince(start), Name: name.Lexeme, Members: members}, nil
 	}
 	ref, err := p.parseTypeRef(true)
 	if err != nil {
@@ -1867,7 +1962,7 @@ func (p *parser) parseConceptMember() (ast.ConceptMember, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after concept field"); err != nil {
 		return nil, err
 	}
-	return ast.ConceptField{Name: name.Lexeme, Type: ref, DefaultValue: defaultValue}, nil
+	return ast.ConceptField{Span: p.spanSince(start), Name: name.Lexeme, Type: ref, DefaultValue: defaultValue}, nil
 }
 
 func (p *parser) parseDottedName(message string) (string, error) {
@@ -1889,6 +1984,7 @@ func (p *parser) parseDottedName(message string) (string, error) {
 }
 
 func (p *parser) parseRequireStmt() (ast.RequireStmt, error) {
+	startPos := p.position
 	if _, err := p.expect(token.KeywordRequire, "expected require"); err != nil {
 		return ast.RequireStmt{}, err
 	}
@@ -1901,10 +1997,11 @@ func (p *parser) parseRequireStmt() (ast.RequireStmt, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after require"); err != nil {
 		return ast.RequireStmt{}, err
 	}
-	return ast.RequireStmt{Expr: expr, Text: text}, nil
+	return ast.RequireStmt{Span: p.spanSince(startPos), Expr: expr, Text: text}, nil
 }
 
 func (p *parser) parseStaticAssertStmt() (ast.StaticAssertStmt, error) {
+	startPos := p.position
 	if _, err := p.expect(token.KeywordStatic, "expected static"); err != nil {
 		return ast.StaticAssertStmt{}, err
 	}
@@ -1920,7 +2017,7 @@ func (p *parser) parseStaticAssertStmt() (ast.StaticAssertStmt, error) {
 	if _, err := p.expect(token.Semicolon, "expected ';' after static assert"); err != nil {
 		return ast.StaticAssertStmt{}, err
 	}
-	return ast.StaticAssertStmt{Expr: expr, Text: text}, nil
+	return ast.StaticAssertStmt{Span: p.spanSince(startPos), Expr: expr, Text: text}, nil
 }
 
 func (p *parser) parseAttributes(placement ast.AttributePlacement) ([]ast.Attribute, error) {
@@ -1950,9 +2047,11 @@ func (p *parser) parseAttributes(placement ast.AttributePlacement) ([]ast.Attrib
 				return nil, err
 			}
 		}
-		if _, err := p.expect(token.RightBracket, "expected ']' after attribute"); err != nil {
+		right, err := p.expect(token.RightBracket, "expected ']' after attribute")
+		if err != nil {
 			return nil, err
 		}
+		attr.Span = spanFrom(left.Span.Start, right.Span.End)
 		attributes = append(attributes, attr)
 	}
 	return attributes, nil

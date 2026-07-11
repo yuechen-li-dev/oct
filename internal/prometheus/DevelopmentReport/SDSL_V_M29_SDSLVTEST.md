@@ -73,6 +73,63 @@ enforcement by the parent runner, and the requested committed evidence files.
 
 ## M29a first-class declaration boundary
 
+### M29a.1 span retrofit status
+
+M29a.1 requires normal compiler-owned source positions because diagnostics for
+an InlineData value or a single Assert operand cannot be derived safely from a
+test package without introducing a second scanner. The canonical representation
+is `source.Position` (zero-based UTF-8 byte offset, one-based Unicode-code-point
+line and column) and `source.Span`, a half-open `[Start, End)` interval. The
+zero span is unknown. Lexer tokens now receive complete cursor-derived spans,
+including raw HLSL and EOF, and the parser propagates those spans through the
+ordinary literal, unary, binary, call, field/index, guarded-read, paren, and
+foreign-expression forms. The validator also exposes a compiler-owned
+`ValidatedTestDecl` handoff whose rows, launch arguments, Assert calls, and
+Assert operands refer to normal AST expressions and spans.
+
+This is intentionally only infrastructure progress: the full compiler-wide
+declaration/statement/expression retrofit and removal of the retained legacy
+regex migration helper are still required before M29a.1 can be accepted. M29b
+lowering has not begun.
+
+M29a.1a now has parser-owned token/child span composition across the major
+declaration, statement, type, and expression paths, plus a permanent AST
+struct inventory test and representative recursive parsed-tree span audit.
+The audit is deliberately compiler-side and performs no SDSL-V source
+reconstruction. Exhaustive family fixtures and the full containment matrix
+remain the next mechanical closeout before this slice is complete.
+
+The audit is now promoted over the parseable shipped SDSL-V example corpus.
+It checks every reached span-bearing AST node for a known in-bounds interval
+and verifies containment through structural nesting. Omitted loop/reduction
+step literals are explicit compiler-synthesized `1` values and are the sole
+documented unknown-span exemption. Exact slicing coverage includes attributes,
+functions, compound types, guarded reads/indexing, foreign HLSL, and Assert
+calls. The remaining M29a.1 work begins structured diagnostics and test-model
+consolidation; no M29b lowering has begun.
+
+#### AST inventory and span policy
+
+The source-originating concrete AST inventory is: Module; TemplateParam;
+Attribute; TypeAliasDecl; RecordDecl; BoardDecl; StreamDecl; ConceptDecl;
+ConceptField/ConceptGroup; ConfigField/ConfigDecl; EnumDecl/EnumVariant;
+ShaderDecl; CompileDecl; FunctionDecl; NumThreads; ResourceDecl;
+WorkgroupDecl; Field; Parameter; TypeRef; Block; LetStmt; ComptimeLetStmt;
+AssignStmt; GuardedWriteStmt; ReturnStmt; ExprStmt; ForeignShaderStmt;
+IfStmt; GuardWhenStmt/GuardWhenCase; FlowStmt/FlowBoardDecl/StateBlock;
+ComptimeIfStmt; ComptimeMatchStmt/ComptimeMatchArm;
+ComptimeWhenUtilityStmt/ComptimeWhenUtilityCase; ComptimeForStmt; ForStmt;
+RequireStmt; StaticAssertStmt; IntegerLiteral; FloatLiteral; BoolLiteral;
+StringLiteral; IdentifierExpr; ForeignShaderExpr; FieldAccessExpr; IndexExpr;
+GuardedReadExpr; CallExpr; BinaryExpr; UnaryExpr; ParenExpr;
+WhenUtilityExpr/UtilityCase; WithExpr; DeriveExpr/DeriveField; ReductionExpr;
+FieldUpdate; EnumConstructExpr; BoardLiteralExpr; FieldInit; and
+MatchExpr/MatchArm. Decl, Stmt, Expr, and ConceptMember are abstract storage
+interfaces and therefore have no span field. UnsupportedDecl is a parser
+recovery/synthetic node and may be unknown. Every other listed concrete node
+must ultimately carry an exact source span; parents must contain their parsed
+children. `Span.Contains` and `Span.Merge` make the unknown policy explicit.
+
 Regex extraction is no longer discovery authority. The ordinary SDSL-V lexer
 and parser now parse function-level attributes into `ast.FunctionDecl.Attributes`
 using the existing typed `ast.Attribute` expression arguments. `.sdslvtest`

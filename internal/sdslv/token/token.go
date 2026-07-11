@@ -1,5 +1,7 @@
 package token
 
+import "github.com/yuechen-li-dev/oct/internal/source"
+
 type Kind string
 
 const (
@@ -99,6 +101,7 @@ type Token struct {
 	Lexeme string
 	Line   int
 	Column int
+	Span   source.Span
 }
 
 func LookupKeyword(lexeme string) Kind {

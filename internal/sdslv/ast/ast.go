@@ -4,6 +4,7 @@ import "github.com/yuechen-li-dev/oct/internal/source"
 
 type Module struct {
 	Source    source.File
+	Span      source.Span
 	Namespace string
 	Uses      []string
 	Decls     []Decl
@@ -12,6 +13,7 @@ type Module struct {
 type Decl interface{ declNode() }
 
 type TemplateParam struct {
+	Span        source.Span
 	Name        string
 	ConceptName string
 }
@@ -26,6 +28,7 @@ const (
 )
 
 type Attribute struct {
+	Span      source.Span
 	Name      string
 	Arguments []Expr
 	Placement AttributePlacement
@@ -34,6 +37,7 @@ type Attribute struct {
 }
 
 type TypeAliasDecl struct {
+	Span source.Span
 	Name string
 	Type TypeRef
 }
@@ -41,6 +45,7 @@ type TypeAliasDecl struct {
 func (TypeAliasDecl) declNode() {}
 
 type RecordDecl struct {
+	Span   source.Span
 	Name   string
 	Fields []Field
 }
@@ -48,6 +53,7 @@ type RecordDecl struct {
 func (RecordDecl) declNode() {}
 
 type BoardDecl struct {
+	Span   source.Span
 	Name   string
 	Fields []Field
 }
@@ -55,6 +61,7 @@ type BoardDecl struct {
 func (BoardDecl) declNode() {}
 
 type StreamDecl struct {
+	Span   source.Span
 	Name   string
 	Fields []Field
 }
@@ -62,6 +69,7 @@ type StreamDecl struct {
 func (StreamDecl) declNode() {}
 
 type ConceptDecl struct {
+	Span         source.Span
 	Name         string
 	Members      []ConceptMember
 	Requirements []RequireStmt
@@ -72,6 +80,7 @@ func (ConceptDecl) declNode() {}
 type ConceptMember interface{ conceptMemberNode() }
 
 type ConceptField struct {
+	Span         source.Span
 	Name         string
 	Type         TypeRef
 	DefaultValue Expr
@@ -80,6 +89,7 @@ type ConceptField struct {
 func (ConceptField) conceptMemberNode() {}
 
 type ConceptGroup struct {
+	Span    source.Span
 	Name    string
 	Members []ConceptMember
 }
@@ -94,12 +104,14 @@ const (
 )
 
 type ConfigField struct {
+	Span  source.Span
 	Path  string
 	Value Expr
 	Style ConfigAssignmentStyle
 }
 
 type ConfigDecl struct {
+	Span         source.Span
 	Name         string
 	ConceptName  string
 	Fields       []ConfigField
@@ -109,6 +121,7 @@ type ConfigDecl struct {
 func (ConfigDecl) declNode() {}
 
 type EnumDecl struct {
+	Span     source.Span
 	Name     string
 	Variants []EnumVariant
 }
@@ -116,12 +129,14 @@ type EnumDecl struct {
 func (EnumDecl) declNode() {}
 
 type EnumVariant struct {
+	Span    source.Span
 	Name    string
 	Fields  []Field
 	Payload bool
 }
 
 type ShaderDecl struct {
+	Span               source.Span
 	Name               string
 	Template           *TemplateParam
 	ResourceBundleName string
@@ -135,6 +150,7 @@ type ShaderDecl struct {
 func (ShaderDecl) declNode() {}
 
 type CompileDecl struct {
+	Span       source.Span
 	ShaderName string
 	ConfigName string
 	AliasName  string
@@ -143,6 +159,7 @@ type CompileDecl struct {
 func (CompileDecl) declNode() {}
 
 type FunctionDecl struct {
+	Span       source.Span
 	Attributes []Attribute
 	Line       int
 	Column     int
@@ -163,12 +180,14 @@ type UnsupportedDecl struct {
 func (UnsupportedDecl) declNode() {}
 
 type NumThreads struct {
-	X Expr
-	Y Expr
-	Z Expr
+	Span source.Span
+	X    Expr
+	Y    Expr
+	Z    Expr
 }
 
 type ResourceDecl struct {
+	Span       source.Span
 	Name       string
 	Access     string
 	Type       TypeRef
@@ -176,11 +195,13 @@ type ResourceDecl struct {
 }
 
 type WorkgroupDecl struct {
+	Span source.Span
 	Name string
 	Type TypeRef
 }
 
 type Field struct {
+	Span       source.Span
 	Name       string
 	Access     string
 	Type       TypeRef
@@ -188,11 +209,13 @@ type Field struct {
 }
 
 type Parameter struct {
+	Span source.Span
 	Name string
 	Type TypeRef
 }
 
 type TypeRef struct {
+	Span         source.Span
 	Name         string
 	Args         []TypeRef
 	ArraySize    Expr
@@ -218,12 +241,14 @@ func (t TypeRef) String() string {
 }
 
 type Block struct {
+	Span       source.Span
 	Statements []Stmt
 }
 
 type Stmt interface{ stmtNode() }
 
 type LetStmt struct {
+	Span  source.Span
 	Name  string
 	Type  TypeRef
 	Value Expr
@@ -232,6 +257,7 @@ type LetStmt struct {
 func (LetStmt) stmtNode() {}
 
 type ComptimeLetStmt struct {
+	Span  source.Span
 	Name  string
 	Type  TypeRef
 	Value Expr
@@ -240,6 +266,7 @@ type ComptimeLetStmt struct {
 func (ComptimeLetStmt) stmtNode() {}
 
 type AssignStmt struct {
+	Span   source.Span
 	Target Expr
 	Value  Expr
 }
@@ -247,6 +274,7 @@ type AssignStmt struct {
 func (AssignStmt) stmtNode() {}
 
 type GuardedWriteStmt struct {
+	Span      source.Span
 	Target    Expr
 	Value     Expr
 	Condition Expr
@@ -255,12 +283,14 @@ type GuardedWriteStmt struct {
 func (GuardedWriteStmt) stmtNode() {}
 
 type ReturnStmt struct {
+	Span  source.Span
 	Value Expr
 }
 
 func (ReturnStmt) stmtNode() {}
 
 type ExprStmt struct {
+	Span  source.Span
 	Value Expr
 }
 
@@ -269,6 +299,7 @@ func (ExprStmt) stmtNode() {}
 // ForeignShaderStmt/Expr are target-generic on purpose; HLSL is merely the first
 // registered target-language boundary.
 type ForeignShaderStmt struct {
+	Span                      source.Span
 	TargetLanguage, RawSource string
 	Captures                  []string
 	Line, Column              int
@@ -277,6 +308,7 @@ type ForeignShaderStmt struct {
 func (ForeignShaderStmt) stmtNode() {}
 
 type IfStmt struct {
+	Span      source.Span
 	Condition Expr
 	ThenBody  Block
 	ElseBody  *Block
@@ -285,6 +317,7 @@ type IfStmt struct {
 func (IfStmt) stmtNode() {}
 
 type GuardWhenStmt struct {
+	Span     source.Span
 	Cases    []GuardWhenCase
 	ElseBody *Block
 }
@@ -292,11 +325,13 @@ type GuardWhenStmt struct {
 func (GuardWhenStmt) stmtNode() {}
 
 type GuardWhenCase struct {
+	Span      source.Span
 	Condition Expr
 	Body      Block
 }
 
 type FlowStmt struct {
+	Span   source.Span
 	Name   string
 	Boards []FlowBoardDecl
 	States []StateBlock
@@ -305,17 +340,20 @@ type FlowStmt struct {
 func (FlowStmt) stmtNode() {}
 
 type FlowBoardDecl struct {
+	Span        source.Span
 	Name        string
 	Type        TypeRef
 	Initializer Expr
 }
 
 type StateBlock struct {
+	Span source.Span
 	Name string
 	Body Block
 }
 
 type ComptimeIfStmt struct {
+	Span      source.Span
 	Condition Expr
 	ThenBody  Block
 	ElseBody  *Block
@@ -324,6 +362,7 @@ type ComptimeIfStmt struct {
 func (ComptimeIfStmt) stmtNode() {}
 
 type ComptimeMatchStmt struct {
+	Span    source.Span
 	Subject Expr
 	Arms    []ComptimeMatchArm
 }
@@ -331,12 +370,14 @@ type ComptimeMatchStmt struct {
 func (ComptimeMatchStmt) stmtNode() {}
 
 type ComptimeMatchArm struct {
+	Span    source.Span
 	Pattern Expr
 	IsElse  bool
 	Body    Block
 }
 
 type ComptimeWhenUtilityStmt struct {
+	Span     source.Span
 	Cases    []ComptimeWhenUtilityCase
 	ElseBody *Block
 }
@@ -344,6 +385,7 @@ type ComptimeWhenUtilityStmt struct {
 func (ComptimeWhenUtilityStmt) stmtNode() {}
 
 type ComptimeWhenUtilityCase struct {
+	Span      source.Span
 	Label     string
 	Condition Expr
 	Score     Expr
@@ -351,6 +393,7 @@ type ComptimeWhenUtilityCase struct {
 }
 
 type ComptimeForStmt struct {
+	Span  source.Span
 	Name  string
 	Start Expr
 	End   Expr
@@ -360,6 +403,7 @@ type ComptimeForStmt struct {
 func (ComptimeForStmt) stmtNode() {}
 
 type ForStmt struct {
+	Span       source.Span
 	Attributes []Attribute
 	Name       string
 	Start      Expr
@@ -371,11 +415,13 @@ type ForStmt struct {
 func (ForStmt) stmtNode() {}
 
 type RequireStmt struct {
+	Span source.Span
 	Expr Expr
 	Text string
 }
 
 type StaticAssertStmt struct {
+	Span source.Span
 	Expr Expr
 	Text string
 }
@@ -383,6 +429,92 @@ type StaticAssertStmt struct {
 func (StaticAssertStmt) stmtNode() {}
 
 type Expr interface{ exprNode() }
+
+// ExprSpan returns the compiler-owned span of an ordinary expression. Unknown
+// is returned only for legacy expression forms not yet supplied by a parser.
+func ExprSpan(e Expr) source.Span {
+	switch x := e.(type) {
+	case IntegerLiteral:
+		return x.Span
+	case FloatLiteral:
+		return x.Span
+	case BoolLiteral:
+		return x.Span
+	case StringLiteral:
+		return x.Span
+	case IdentifierExpr:
+		return x.Span
+	case ForeignShaderExpr:
+		return x.Span
+	case FieldAccessExpr:
+		return x.Span
+	case IndexExpr:
+		return x.Span
+	case GuardedReadExpr:
+		return x.Span
+	case CallExpr:
+		return x.Span
+	case BinaryExpr:
+		return x.Span
+	case UnaryExpr:
+		return x.Span
+	case ParenExpr:
+		return x.Span
+	case WhenUtilityExpr:
+		return x.Span
+	case WithExpr:
+		return x.Span
+	case DeriveExpr:
+		return x.Span
+	case ReductionExpr:
+		return x.Span
+	case EnumConstructExpr:
+		return x.Span
+	case BoardLiteralExpr:
+		return x.Span
+	case MatchExpr:
+		return x.Span
+	}
+	return source.Span{}
+}
+
+func StmtSpan(s Stmt) source.Span {
+	switch x := s.(type) {
+	case LetStmt:
+		return x.Span
+	case ComptimeLetStmt:
+		return x.Span
+	case AssignStmt:
+		return x.Span
+	case GuardedWriteStmt:
+		return x.Span
+	case ReturnStmt:
+		return x.Span
+	case ExprStmt:
+		return x.Span
+	case ForeignShaderStmt:
+		return x.Span
+	case IfStmt:
+		return x.Span
+	case GuardWhenStmt:
+		return x.Span
+	case FlowStmt:
+		return x.Span
+	case ComptimeIfStmt:
+		return x.Span
+	case ComptimeMatchStmt:
+		return x.Span
+	case ComptimeWhenUtilityStmt:
+		return x.Span
+	case ComptimeForStmt:
+		return x.Span
+	case ForStmt:
+		return x.Span
+	case StaticAssertStmt:
+		return x.Span
+	}
+	return source.Span{}
+}
 
 type ReductionOp string
 
@@ -393,27 +525,43 @@ const (
 	ReductionMin     ReductionOp = "min"
 )
 
-type IntegerLiteral struct{ Value string }
+type IntegerLiteral struct {
+	Span  source.Span
+	Value string
+}
 
 func (IntegerLiteral) exprNode() {}
 
-type FloatLiteral struct{ Value string }
+type FloatLiteral struct {
+	Span  source.Span
+	Value string
+}
 
 func (FloatLiteral) exprNode() {}
 
-type BoolLiteral struct{ Value bool }
+type BoolLiteral struct {
+	Span  source.Span
+	Value bool
+}
 
 func (BoolLiteral) exprNode() {}
 
-type StringLiteral struct{ Value string }
+type StringLiteral struct {
+	Span  source.Span
+	Value string
+}
 
 func (StringLiteral) exprNode() {}
 
-type IdentifierExpr struct{ Name string }
+type IdentifierExpr struct {
+	Span source.Span
+	Name string
+}
 
 func (IdentifierExpr) exprNode() {}
 
 type ForeignShaderExpr struct {
+	Span           source.Span
 	TargetLanguage string
 	ResultType     TypeRef
 	RawSource      string
@@ -424,6 +572,7 @@ type ForeignShaderExpr struct {
 func (ForeignShaderExpr) exprNode() {}
 
 type FieldAccessExpr struct {
+	Span   source.Span
 	Target Expr
 	Field  string
 }
@@ -431,6 +580,7 @@ type FieldAccessExpr struct {
 func (FieldAccessExpr) exprNode() {}
 
 type IndexExpr struct {
+	Span      source.Span
 	Target    Expr
 	Index     Expr
 	Index2    Expr
@@ -440,6 +590,7 @@ type IndexExpr struct {
 func (IndexExpr) exprNode() {}
 
 type GuardedReadExpr struct {
+	Span      source.Span
 	Target    Expr
 	Condition Expr
 	Fallback  Expr
@@ -448,6 +599,7 @@ type GuardedReadExpr struct {
 func (GuardedReadExpr) exprNode() {}
 
 type CallExpr struct {
+	Span      source.Span
 	Callee    Expr
 	Arguments []Expr
 }
@@ -455,6 +607,7 @@ type CallExpr struct {
 func (CallExpr) exprNode() {}
 
 type BinaryExpr struct {
+	Span     source.Span
 	Left     Expr
 	Operator string
 	Right    Expr
@@ -463,17 +616,22 @@ type BinaryExpr struct {
 func (BinaryExpr) exprNode() {}
 
 type UnaryExpr struct {
+	Span     source.Span
 	Operator string
 	Operand  Expr
 }
 
 func (UnaryExpr) exprNode() {}
 
-type ParenExpr struct{ Inner Expr }
+type ParenExpr struct {
+	Span  source.Span
+	Inner Expr
+}
 
 func (ParenExpr) exprNode() {}
 
 type WhenUtilityExpr struct {
+	Span  source.Span
 	Cases []UtilityCase
 	Else  Expr
 }
@@ -481,12 +639,14 @@ type WhenUtilityExpr struct {
 func (WhenUtilityExpr) exprNode() {}
 
 type UtilityCase struct {
+	Span      source.Span
 	Value     Expr
 	Condition Expr
 	Score     Expr
 }
 
 type WithExpr struct {
+	Span    source.Span
 	Base    Expr
 	Updates []FieldUpdate
 }
@@ -494,17 +654,20 @@ type WithExpr struct {
 func (WithExpr) exprNode() {}
 
 type DeriveExpr struct {
+	Span   source.Span
 	Fields []DeriveField
 }
 
 func (DeriveExpr) exprNode() {}
 
 type DeriveField struct {
+	Span  source.Span
 	Name  string
 	Value Expr
 }
 
 type ReductionExpr struct {
+	Span       source.Span
 	Attributes []Attribute
 	Op         ReductionOp
 	Name       string
@@ -517,11 +680,13 @@ type ReductionExpr struct {
 func (ReductionExpr) exprNode() {}
 
 type FieldUpdate struct {
+	Span  source.Span
 	Name  string
 	Value Expr
 }
 
 type EnumConstructExpr struct {
+	Span        source.Span
 	EnumName    string
 	VariantName string
 	Fields      []FieldInit
@@ -530,6 +695,7 @@ type EnumConstructExpr struct {
 func (EnumConstructExpr) exprNode() {}
 
 type BoardLiteralExpr struct {
+	Span     source.Span
 	TypeName string
 	Fields   []FieldInit
 }
@@ -537,11 +703,13 @@ type BoardLiteralExpr struct {
 func (BoardLiteralExpr) exprNode() {}
 
 type FieldInit struct {
+	Span  source.Span
 	Name  string
 	Value Expr
 }
 
 type MatchExpr struct {
+	Span    source.Span
 	Subject Expr
 	Arms    []MatchArm
 }
@@ -549,6 +717,7 @@ type MatchExpr struct {
 func (MatchExpr) exprNode() {}
 
 type MatchArm struct {
+	Span        source.Span
 	EnumName    string
 	VariantName string
 	BindingName string
