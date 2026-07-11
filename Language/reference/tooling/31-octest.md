@@ -129,7 +129,7 @@ In `auto`, the runner first tries compiled execution for each `.octest` case and
 In `compiled`, a test case must run through the compiled test path or it fails.
 In `interpreted`, tests run through source interpretation.
 
-Compiled test execution may build and run generated compiled artifacts internally, but users should treat this as a test execution mode rather than a stable artifact layout.
+Compiled test execution may build and run generated compiled artifacts internally, but users should treat this as a test execution mode rather than a stable artifact layout. When `OCT_KEEP_TEST_ARTIFACTS=1` is used for diagnostics, each owned runner scope retains distinct `<case>.generated.go` source and `<case>.octbin[.exe]` executable paths; the Windows executable suffix is `.octbin.exe`.
 Some packages still use language/library features that are not compiled-supported, and missing wrapper sidecars can affect compiled wrapper tests.
 Interpreted and compiled parity is tracked by package and test coverage, so do not assume every test package compiles until it has been run in compiled mode.
 `.octfail` remains a compile-time rejection check; it is not a compiled runtime test case.

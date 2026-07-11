@@ -1,0 +1,33 @@
+package Main
+
+[Fact]
+fn LocalProgramCounterDoesNotCaptureCompilerState() -> Void {
+    let pc = 7
+    if pc == 7 {
+        Assert.Equal(7, pc, "local pc survives state-machine branches")
+    }
+}
+
+[Theory]
+[InlineData(7)]
+fn InternalLookingNamesRemainOrdinarySourceBindings(pc: Int) -> Void {
+    let state = pc + 1
+    let nextState = state + 1
+    let result = nextState + 1
+    let tmp = result + 1
+    let err = tmp + 1
+    let dispatch = err + 1
+    Assert.Equal(13, dispatch, "ordinary names do not collide with compiler internals")
+}
+
+[Theory]
+[InlineData(1)]
+fn ParameterNamedPcRunsThroughLoopAndBranches(pc: Int) -> Void {
+    var result: Int = pc
+    for state in 0..3 {
+        if state > 0 {
+            result = result + state
+        }
+    }
+    Assert.Equal(4, result, "parameter pc remains distinct from dispatch state")
+}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -96,9 +97,27 @@ fn TimesOut() -> Void {
 		if globErr != nil || len(retained) != 1 {
 			t.Fatalf("expected one retained scope, got %v (err=%v)", retained, globErr)
 		}
-		matches, globErr := filepath.Glob(filepath.Join(retained[0], "*.exe"))
-		if globErr != nil || len(matches) != 1 {
-			t.Fatalf("retained native harness missing: %v (err=%v)", matches, globErr)
+		generated, globErr := filepath.Glob(filepath.Join(retained[0], "*.generated.go"))
+		if globErr != nil || len(generated) != 1 {
+			t.Fatalf("retained generated source missing: %v (err=%v)", generated, globErr)
+		}
+		binaryPattern := "*.octbin"
+		if runtime.GOOS == "windows" {
+			binaryPattern = "*.octbin.exe"
+		}
+		binary, globErr := filepath.Glob(filepath.Join(retained[0], binaryPattern))
+		if globErr != nil || len(binary) != 1 {
+			t.Fatalf("retained native harness missing: %v (err=%v)", binary, globErr)
+		}
+		if filepath.Clean(generated[0]) == filepath.Clean(binary[0]) {
+			t.Fatal("retained generated source collides with binary")
+		}
+		generatedGo, readErr := os.ReadFile(generated[0])
+		if readErr != nil {
+			t.Fatalf("read retained generated source: %v", readErr)
+		}
+		if !strings.Contains(string(generatedGo), "__oct_internal_pc") {
+			t.Fatalf("generated state machine did not use centralized internal pc name:\n%s", generatedGo)
 		}
 		if removeErr := os.RemoveAll(retained[0]); removeErr != nil {
 			t.Fatalf("remove retained test scope: %v", removeErr)

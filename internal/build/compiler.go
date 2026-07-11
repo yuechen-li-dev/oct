@@ -17,8 +17,9 @@ import (
 )
 
 type Result struct {
-	ArtifactPath string
-	MIRDumpPath  string
+	ArtifactPath        string
+	GeneratedSourcePath string
+	MIRDumpPath         string
 }
 
 type MIRModule struct {
@@ -416,12 +417,13 @@ func CompileForTest(path string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return compileProgram(program, compileOptions{selectedReachableOnly: true})
+	return compileProgram(program, compileOptions{selectedReachableOnly: true, testArtifactLayout: true})
 }
 
 type compileOptions struct {
 	selectedReachableOnly bool
 	testHarnessCases      []TestHarnessCase
+	testArtifactLayout    bool
 }
 
 // TestHarnessCase is one already-lowered, zero-argument Oct helper function.
@@ -458,18 +460,39 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 		artifactKind = ArtifactTestExecutable
 	}
 	artifactPath := OutputPath(filepath.Join(filepath.Dir(program.EntrySource), filepath.Base(program.EntrySource)), artifactKind, HostTarget())
-	genDir, err := generatedBuildDir()
-	if err != nil {
-		return Result{}, err
+	genPath := ""
+	if options.testArtifactLayout {
+		paths, err := DeriveTestArtifactPaths(program.EntrySource, HostTarget())
+		if err != nil {
+			return Result{}, err
+		}
+		artifactPath, genPath = paths.Binary, paths.GeneratedSource
+		if err := os.MkdirAll(filepath.Dir(genPath), 0o755); err != nil {
+			return Result{}, fmt.Errorf("create compiled test artifact directory %s: %w", filepath.Dir(genPath), err)
+		}
+	} else {
+		genDir, err := generatedBuildDir()
+		if err != nil {
+			return Result{}, err
+		}
+		if os.Getenv("OCT_KEEP_GEN") == "" {
+			defer os.RemoveAll(genDir)
+		}
+		genPath = filepath.Join(genDir, filepath.Base(artifactPath)+".gen.go")
 	}
-	if os.Getenv("OCT_KEEP_GEN") == "" {
-		defer os.RemoveAll(genDir)
+	if filepath.Clean(genPath) == filepath.Clean(artifactPath) {
+		return Result{}, fmt.Errorf("generated source path collides with binary output path: %s", artifactPath)
 	}
-	genPath := filepath.Join(genDir, filepath.Base(artifactPath)+".gen.go")
 	if err := os.WriteFile(genPath, []byte(goSrc), 0o644); err != nil {
 		return Result{}, fmt.Errorf("write generated go %s: %w", genPath, err)
 	}
 
+	if options.testArtifactLayout {
+		// A failed rebuild must not be able to execute a previous owned binary.
+		if err := os.Remove(artifactPath); err != nil && !os.IsNotExist(err) {
+			return Result{}, fmt.Errorf("remove stale compiled test binary %s: %w", artifactPath, err)
+		}
+	}
 	cmd := exec.Command("go", "build", "-o", artifactPath, genPath)
 	moduleRoot, err := compilerModuleRoot()
 	if err != nil {
@@ -482,7 +505,13 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 		return Result{}, fmt.Errorf("go build generated program: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
-	res := Result{ArtifactPath: artifactPath}
+	if info, err := os.Stat(artifactPath); err != nil || info.IsDir() {
+		if err != nil {
+			return Result{}, fmt.Errorf("compiled output missing after successful go build: %s: %w", artifactPath, err)
+		}
+		return Result{}, fmt.Errorf("compiled output missing after successful go build: %s is a directory", artifactPath)
+	}
+	res := Result{ArtifactPath: artifactPath, GeneratedSourcePath: genPath}
 	if os.Getenv("OCT_MIR_DUMP") != "" {
 		dumpPath := artifactPath + ".mir"
 		if err := os.WriteFile(dumpPath, []byte(dumpMIR(module)), 0o644); err != nil {
@@ -532,6 +561,7 @@ type lowerCtx struct {
 	blocks            []MIRBlock
 	cur               int
 	tempID            int
+	userID            int
 	batchID           int
 	retType           string
 	fn                ast.FunctionDecl
@@ -1074,9 +1104,10 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	mirFn := MIRFunction{Package: pkg.Name, Name: fn.Name, Return: ctx.retType, IsFallible: fn.IsFallible, ErrorType: typeRefStringForPackage(pkg.Name, fn.ErrorType)}
 	for _, p := range fn.Parameters {
 		t := typeRefStringForPackage(pkg.Name, p.Type)
-		mirFn.Params = append(mirFn.Params, MIRField{Name: goIdent(p.Name), Type: t})
+		goName := ctx.sourceName(p.Name)
+		mirFn.Params = append(mirFn.Params, MIRField{Name: goName, Type: t})
 		ctx.locals[p.Name] = t
-		ctx.goNames[p.Name] = goIdent(p.Name)
+		ctx.goNames[p.Name] = goName
 	}
 	ctx.blocks = append(ctx.blocks, MIRBlock{Label: "entry"})
 	ctx.cur = 0
@@ -1099,7 +1130,7 @@ func lowerFunction(program project.Program, pkg project.Package, fn ast.Function
 	for n, t := range ctx.locals {
 		isParam := false
 		for _, p := range mirFn.Params {
-			if p.Name == goIdent(n) {
+			if p.Name == ctx.goLocalName(n) {
 				isParam = true
 				break
 			}
@@ -1678,7 +1709,7 @@ func (c *lowerCtx) lowerForStmt(s ast.ForStmt) error {
 
 	previousType, hadPrevious := c.locals[s.Name]
 	previousGoName := c.goLocalName(s.Name)
-	loopGoName := goIdent(s.Name)
+	loopGoName := c.sourceName(s.Name)
 	bindLoopName := s.Name != "_"
 	if !bindLoopName || hadPrevious {
 		loopGoName = c.temp("Int")
@@ -1841,13 +1872,43 @@ func (c *lowerCtx) lowerUnwrapExpr(e ast.UnwrapExpr) (string, string, bool, erro
 }
 
 func (c *lowerCtx) temp(t string) string {
-	name := fmt.Sprintf("_t%d", c.tempID)
+	name := internalName(internalTemporary, c.tempID)
 	c.tempID++
 	c.locals[name] = t
 	if c.goNames != nil {
 		c.goNames[name] = name
 	}
 	return name
+}
+
+type internalSymbolKind string
+
+const (
+	internalProgramCounter internalSymbolKind = "pc"
+	internalTemporary      internalSymbolKind = "tmp"
+	internalBatchItem      internalSymbolKind = "batch_item"
+	internalBatchWorker    internalSymbolKind = "batch_worker"
+)
+
+// internalName is the sole emitted namespace for compiler-owned locals. Source
+// bindings are separately mangled by sourceName, so valid Oct spelling cannot
+// collide with these Go implementation details.
+func internalName(kind internalSymbolKind, id int) string {
+	if id < 0 {
+		return "__oct_internal_" + string(kind)
+	}
+	return fmt.Sprintf("__oct_internal_%s_%d", kind, id)
+}
+
+func (c *lowerCtx) sourceName(name string) string {
+	if c.goNames != nil {
+		if existing, ok := c.goNames[name]; ok {
+			return existing
+		}
+	}
+	generated := fmt.Sprintf("__oct_user_%d", c.userID)
+	c.userID++
+	return generated
 }
 
 func (c *lowerCtx) goLocalName(name string) string {
@@ -1875,7 +1936,7 @@ func (c *lowerCtx) declareLocal(name, typ string) {
 	if hadPrevious && previousType == typ {
 		return
 	}
-	base := goIdent(name)
+	base := c.sourceName(name)
 	candidate := base
 	used := map[string]struct{}{}
 	for _, goName := range c.goNames {
@@ -3152,7 +3213,7 @@ func (c *lowerCtx) lowerBatchExpr(e ast.BatchExpr) (string, string, bool, error)
 }
 
 func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFunction, string, []string, error) {
-	name := fmt.Sprintf("__batch_%s_%d", c.fn.Name, c.batchID)
+	name := c.internalBatchWorkerName()
 	c.batchID++
 	const retPlaceholder = "__oct_batch_ret__"
 	workerDecl := ast.FunctionDecl{Name: name, IsFallible: true, ErrorType: ast.TypeRef{Name: "Error"}}
@@ -3170,10 +3231,12 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 	workerLocals := make(map[string]string, len(captureNames)+1)
 	workerGoNames := make(map[string]string, len(captureNames)+1)
 	workerLocals[e.ItemName] = itemType
-	workerGoNames[e.ItemName] = goIdent(e.ItemName)
+	workerGoNames[e.ItemName] = internalName(internalBatchItem, c.batchID)
+	captureGoNames := make([]string, 0, len(captureNames))
 	for _, captureName := range captureNames {
 		workerLocals[captureName] = c.locals[captureName]
 		workerGoNames[captureName] = c.goLocalName(captureName)
+		captureGoNames = append(captureGoNames, c.goLocalName(captureName))
 	}
 	wctx := &lowerCtx{
 		pkg:      c.pkg,
@@ -3195,7 +3258,7 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 	if wctx.lastRet == "" {
 		return MIRFunction{}, "", nil, fmt.Errorf("batch body return type could not be inferred")
 	}
-	params := []MIRField{{Name: goIdent(e.ItemName), Type: itemType}}
+	params := []MIRField{{Name: workerGoNames[e.ItemName], Type: itemType}}
 	for _, captureName := range captureNames {
 		params = append(params, MIRField{Name: c.goLocalName(captureName), Type: c.locals[captureName]})
 	}
@@ -3219,7 +3282,31 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 		worker.Locals = append(worker.Locals, MIRField{Name: wctx.goLocalName(n), Type: t})
 	}
 	sort.Slice(worker.Locals, func(i, j int) bool { return worker.Locals[i].Name < worker.Locals[j].Name })
-	return worker, wctx.lastRet, captureNames, nil
+	return worker, wctx.lastRet, captureGoNames, nil
+}
+
+func (c *lowerCtx) internalBatchWorkerName() string {
+	for id := c.batchID; ; id++ {
+		candidate := internalName(internalBatchWorker, id)
+		conflicts := false
+		for _, fn := range c.pkg.Functions {
+			if fn.Name == candidate {
+				conflicts = true
+				break
+			}
+		}
+		if !conflicts {
+			for _, fn := range c.extra {
+				if fn.Name == candidate {
+					conflicts = true
+					break
+				}
+			}
+		}
+		if !conflicts {
+			return candidate
+		}
+	}
 }
 
 func patchBatchReturnType(blocks []MIRBlock, from, to string) []MIRBlock {
@@ -6115,7 +6202,8 @@ func emitGo(m MIRModule) (string, error) {
 		for i, bb := range fn.Blocks {
 			labelToIdx[bb.Label] = i
 		}
-		b.WriteString("\tpc := 0\n\tfor {\n\t\tswitch pc {\n")
+		pcName := internalName(internalProgramCounter, -1)
+		fmt.Fprintf(&b, "\t%s := 0\n\tfor {\n\t\tswitch %s {\n", pcName, pcName)
 		for i, bb := range fn.Blocks {
 			fmt.Fprintf(&b, "\t\tcase %d:\n", i)
 			for _, s := range bb.Statements {
@@ -6132,7 +6220,7 @@ func emitGo(m MIRModule) (string, error) {
 				}
 				terminator = MIRJump{Target: fn.Blocks[i+1].Label}
 			}
-			term, err := goTerminator(terminator, labelToIdx)
+			term, err := goTerminator(terminator, labelToIdx, pcName)
 			if err != nil {
 				return "", err
 			}
@@ -9366,7 +9454,7 @@ func goStmt(s MIRStmt) (string, error) {
 	}
 }
 
-func goTerminator(t MIRTerminator, labels map[string]int) (string, error) {
+func goTerminator(t MIRTerminator, labels map[string]int, pcName string) (string, error) {
 	switch term := t.(type) {
 	case MIRReturn:
 		if term.Value == "" {
@@ -9374,9 +9462,9 @@ func goTerminator(t MIRTerminator, labels map[string]int) (string, error) {
 		}
 		return "return " + goReturnExpr(term.Value), nil
 	case MIRJump:
-		return fmt.Sprintf("pc = %d; continue", labels[term.Target]), nil
+		return fmt.Sprintf("%s = %d; continue", pcName, labels[term.Target]), nil
 	case MIRBranch:
-		return fmt.Sprintf("if %s { pc = %d } else { pc = %d }; continue", term.Cond, labels[term.TrueTarget], labels[term.FalseTarget]), nil
+		return fmt.Sprintf("if %s { %s = %d } else { %s = %d }; continue", term.Cond, pcName, labels[term.TrueTarget], pcName, labels[term.FalseTarget]), nil
 	case MIRFail:
 		return "panic(" + term.Value + ")", nil
 	default:
@@ -9549,7 +9637,7 @@ func CompileForTestWithSelectedFiles(path string, selectedFiles []string) (Resul
 	if err != nil {
 		return Result{}, err
 	}
-	return compileProgram(program, compileOptions{selectedReachableOnly: true})
+	return compileProgram(program, compileOptions{selectedReachableOnly: true, testArtifactLayout: true})
 }
 
 // CompileForTestWithSelectedFilesInPackage compiles an externally stored test
@@ -9561,7 +9649,7 @@ func CompileForTestWithSelectedFilesInPackage(path string, packageDir string, se
 	if err != nil {
 		return Result{}, err
 	}
-	return compileProgram(program, compileOptions{selectedReachableOnly: true})
+	return compileProgram(program, compileOptions{selectedReachableOnly: true, testArtifactLayout: true})
 }
 
 // CompileTestHarnessWithSelectedFilesInPackage emits one native executable
@@ -9571,7 +9659,7 @@ func CompileTestHarnessWithSelectedFilesInPackage(path string, packageDir string
 	if err != nil {
 		return Result{}, err
 	}
-	return compileProgram(program, compileOptions{selectedReachableOnly: true, testHarnessCases: cases})
+	return compileProgram(program, compileOptions{selectedReachableOnly: true, testHarnessCases: cases, testArtifactLayout: true})
 }
 
 func injectTestHarnessMain(src, pkg string, cases []TestHarnessCase) (string, error) {

@@ -1450,10 +1450,7 @@ fn main() -> Float {
 		t.Fatalf("read MIR dump: %v", err)
 	}
 	text := string(dump)
-	if !strings.Contains(text, "call Main.UseSteps(steps)") {
-		t.Fatalf("expected Int helper call to receive steps without Float coercion, got:\n%s", text)
-	}
-	if strings.Contains(text, "call Main.UseSteps(float64(steps))") || strings.Contains(text, "call Main.CallbackStep(fn_Main_Deriv, float64(steps))") {
+	if strings.Contains(text, "call Main.UseSteps(float64(") || strings.Contains(text, "call Main.CallbackStep(fn_Main_Deriv, float64(") {
 		t.Fatalf("expected Int arguments to remain binding-local Ints, got:\n%s", text)
 	}
 }

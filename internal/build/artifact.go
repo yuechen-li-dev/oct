@@ -1,6 +1,7 @@
 package build
 
 import (
+	"fmt"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -59,4 +60,29 @@ func artifactExtension(kind ArtifactKind, goos string) string {
 		}
 	}
 	return ""
+}
+
+// TestArtifactPaths is the owned, per-run layout for compiled test helpers.
+// The generated Go source and native executable intentionally use different
+// names so retaining diagnostics can never make go build overwrite its input.
+type TestArtifactPaths struct {
+	GeneratedSource string
+	Binary          string
+}
+
+func DeriveTestArtifactPaths(runnerPath string, target Target) (TestArtifactPaths, error) {
+	clean := filepath.Clean(runnerPath)
+	dir := filepath.Dir(clean)
+	name := strings.TrimSuffix(filepath.Base(clean), filepath.Ext(clean))
+	if name == "" || name == "." {
+		return TestArtifactPaths{}, fmt.Errorf("invalid compiled test runner path %q", runnerPath)
+	}
+	paths := TestArtifactPaths{
+		GeneratedSource: filepath.Join(dir, name+".generated.go"),
+		Binary:          OutputPath(filepath.Join(dir, name+".octbin"), ArtifactTestExecutable, target),
+	}
+	if filepath.Clean(paths.GeneratedSource) == filepath.Clean(paths.Binary) {
+		return TestArtifactPaths{}, fmt.Errorf("generated source path collides with binary output path: %s", paths.Binary)
+	}
+	return paths, nil
 }
