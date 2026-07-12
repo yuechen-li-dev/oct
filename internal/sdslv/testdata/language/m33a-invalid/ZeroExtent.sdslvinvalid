@@ -1,4 +1,4 @@
 fn ZeroExtent() -> void {
-    let x: ndarray<u32, [0u]>;
+    let x: ndarray<u32, [0u]> = Fill(0u);
     return;
 }

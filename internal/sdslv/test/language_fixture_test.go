@@ -154,6 +154,64 @@ func TestSdslvM31aValidFlowFixtureCorpusValidates(t *testing.T) {
 	}
 }
 
+func TestSdslvM37aMutabilityFixtures(t *testing.T) {
+	valid, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m37a-valid", "*.sdslvvalid"))
+	if err != nil || len(valid) == 0 {
+		t.Fatalf("M37a valid fixtures: paths=%v err=%v", valid, err)
+	}
+	for _, path := range valid {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			file, err := source.Load(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(mustLexFixture(t, file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diagnostics := validate.Diagnostics(module); len(diagnostics) != 0 {
+				t.Fatal(diagnostic.Error(diagnostics))
+			}
+		})
+	}
+	invalid, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m37a-invalid", "*.sdslvinvalid"))
+	if err != nil || len(invalid) == 0 {
+		t.Fatalf("M37a invalid fixtures: paths=%v err=%v", invalid, err)
+	}
+	for _, path := range invalid {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, program, err := tester.ParseOctFailFixture(string(data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			file := source.File{Path: path, Text: program}
+			module, err := parse.BuildModule(mustLexFixture(t, file))
+			if err != nil {
+				if !strings.Contains(err.Error(), expected) {
+					t.Fatal(err)
+				}
+				return
+			}
+			if actual := diagnostic.Error(validate.Diagnostics(module)).Error(); !strings.Contains(actual, expected) {
+				t.Fatalf("expected %q, got %s", expected, actual)
+			}
+		})
+	}
+}
+
+func mustLexFixture(t *testing.T, file source.File) lex.Result {
+	t.Helper()
+	tokens, err := lex.Analyze(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tokens
+}
+
 func TestSdslvM32aTensorFixtureCorpusValidates(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m32a-valid", "*.sdslvvalid"))
 	if err != nil || len(paths) == 0 {

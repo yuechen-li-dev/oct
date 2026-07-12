@@ -1,4 +1,4 @@
 fn TotalSizeOverflow() -> void {
-    let x: ndarray<u32, [65536u, 65536u]>;
+    let x: ndarray<u32, [65536u, 65536u]> = Fill(0u);
     return;
 }

@@ -25,7 +25,6 @@ shader MatrixViewRowMajor {
         let col: u32 = thread.DispatchId.y;
         let AView: matrix_view<f32> = row_major(A, params.Rows, params.Cols);
         let CView: matrix_view<f32> = row_major(C, params.Rows, params.Cols);
-
         if row < params.Rows and col < params.Cols {
             CView[row, col] = AView[row, col];
         }

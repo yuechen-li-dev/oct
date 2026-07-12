@@ -27,27 +27,19 @@ void main()
         }
     }
     float result[4];
-    // tensor free-index loop 79:23 i
-    for (uint __sdslv_tensor_free_0 = 0u; __sdslv_tensor_free_0 < 2u; __sdslv_tensor_free_0 += 1u)
+    for (uint i = 0u; i < 2u; ++i)
     {
-        // tensor free-index loop 79:26 j
-        for (uint __sdslv_tensor_free_1 = 0u; __sdslv_tensor_free_1 < 2u; __sdslv_tensor_free_1 += 1u)
+        for (uint j = 0u; j < 2u; ++j)
         {
-            // tensor statement 79:9 set
-            uint __sdslv_tensor_index_6 = __sdslv_tensor_free_0;
-            uint __sdslv_tensor_index_7 = __sdslv_tensor_free_1;
+            uint __sdslv_tensor_index_6 = i;
+            uint __sdslv_tensor_index_7 = j;
             uint __sdslv_tensor_offset_8 = ((__sdslv_tensor_index_6 * 2u) + __sdslv_tensor_index_7);
-            // tensor accumulator initialization examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench:79:31 Sum
-            float __sdslv_tensor_accumulator_10 = 0.0;
-            // tensor reduction loop 79:35 k
-            for (uint __sdslv_tensor_reduce_0 = 0u; __sdslv_tensor_reduce_0 < 2u; __sdslv_tensor_reduce_0 += 1u)
+            float __sdslv_reduce_9 = 0.0;
+            for (uint k = 0u; k < 2u; k += 1)
             {
-                // tensor reduction body 79:31 Sum
-                __sdslv_tensor_accumulator_10 = __sdslv_tensor_accumulator_10 + ((left[((__sdslv_tensor_free_0 * 2u) + __sdslv_tensor_reduce_0)] * right[((__sdslv_tensor_reduce_0 * 2u) + __sdslv_tensor_free_1)]));
+                __sdslv_reduce_9 = __sdslv_reduce_9 + ((left[((i * 2u) + k)] * right[((k * 2u) + j)]));
             }
-            float __sdslv_tensor_rhs_9 = __sdslv_tensor_accumulator_10;
-            // tensor final destination write 79:9 =
-            result[__sdslv_tensor_offset_8] = __sdslv_tensor_rhs_9;
+            result[__sdslv_tensor_offset_8] = __sdslv_reduce_9;
         }
     }
     Output[0u] = result[((0u * 2u) + 0u)];

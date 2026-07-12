@@ -67,7 +67,7 @@ func TestKaijuBenchCanonicalNDArrayHardware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(report.Benchmarks) != 1 || report.Benchmarks[0].SPIRVHash != "bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083" {
+	if len(report.Benchmarks) != 1 || report.Benchmarks[0].SPIRVHash != "7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a" {
 		t.Fatalf("unexpected report: %#v", report)
 	}
 }

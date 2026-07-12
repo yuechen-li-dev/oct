@@ -257,11 +257,21 @@ type Block struct {
 
 type Stmt interface{ stmtNode() }
 
+// BindingMutability is source-level local-binding ownership. It is deliberately
+// explicit so validation never has to infer mutability from later assignments.
+type BindingMutability string
+
+const (
+	BindingMutabilityImmutable BindingMutability = "immutable"
+	BindingMutabilityMutable   BindingMutability = "mutable"
+)
+
 type LetStmt struct {
-	Span  source.Span
-	Name  string
-	Type  TypeRef
-	Value Expr
+	Span, KeywordSpan, NameSpan source.Span
+	Name                        string
+	Type                        TypeRef
+	Value                       Expr
+	Mutability                  BindingMutability
 }
 
 func (LetStmt) stmtNode() {}

@@ -45,8 +45,7 @@ shader M14ComptimeMatchTileConfig {
 
     stage compute [numthreads(C.Threads.X, C.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
         let index: u32 = thread.DispatchId.x;
-        let value: f32 = 0.0;
-
+        var value: f32 = 0.0;
         comptime match C.Tile.K {
             8u => {
                 static assert false;

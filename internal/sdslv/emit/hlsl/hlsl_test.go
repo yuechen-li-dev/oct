@@ -43,8 +43,8 @@ return;
 }
 
 func TestSdslvTensorUsesSharedEmitterLoopsAndAccumulator(t *testing.T) {
-	text := `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
-  let C: array<f32, 2u>;
+text := `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
+  var C: array<f32, 2u> = Fill(0.0);
   tensor C[i] = Sum[k](A[i, k] * B[k]);
   return;
 }`
@@ -52,10 +52,10 @@ func TestSdslvTensorUsesSharedEmitterLoopsAndAccumulator(t *testing.T) {
 	for _, want := range []string{
 		"for (uint __sdslv_tensor_free_0 = 0u; __sdslv_tensor_free_0 < 2u;",
 		"float A[6]",
-		"float __sdslv_tensor_accumulator_3 = 0.0;",
+		"float __sdslv_tensor_accumulator_4 = 0.0;",
 		"for (uint __sdslv_tensor_reduce_0 = 0u; __sdslv_tensor_reduce_0 < 3u;",
 		"A[((__sdslv_tensor_free_0 * 3u) + __sdslv_tensor_reduce_0)]",
-		"C[__sdslv_tensor_offset_1] = __sdslv_tensor_rhs_2;",
+		"C[__sdslv_tensor_offset_2] = __sdslv_tensor_rhs_3;",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("HLSL missing %q:\n%s", want, output)
@@ -70,10 +70,10 @@ func TestSdslvFixedArraysUseRankGeneralRowMajorLinearStorage(t *testing.T) {
   A3: array<array<array<f32, 4u>, 3u>, 2u>,
   A4: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>
 ) -> void {
-  let B1: array<f32, 2u>;
-  let B2: array<array<f32, 3u>, 2u>;
-  let B3: array<array<array<f32, 4u>, 3u>, 2u>;
-  let B4: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>;
+  var B1: array<f32, 2u> = Fill(0.0);
+  var B2: array<array<f32, 3u>, 2u> = Fill(0.0);
+  var B3: array<array<array<f32, 4u>, 3u>, 2u> = Fill(0.0);
+  var B4: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u> = Fill(0.0);
   tensor B1[i] = A1[i];
   tensor B2[i, j] = A2[i, j];
   tensor B3[i, j, k] = A3[i, j, k];
@@ -104,7 +104,7 @@ func TestSdslvNdarrayUsesSharedFixedShapeEmitterAndSourceOrder(t *testing.T) {
     4u, 5u, 7u, 8u, 5u, 6u,
     8u, 9u, 11u, 12u, 9u, 10u
   ];
-  let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
+  var output: ndarray<u32, [2u, 2u, 2u, 3u]> = Fill(0u);
   tensor output[b, h, i, j] = input[b, h, i, j];
   return;
 }`)
@@ -188,7 +188,7 @@ fn F(bias: u32) -> void {
 
 func TestSdslvFixedShapeConstructionRejectsMalformedMetadata(t *testing.T) {
 	u32Type := vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
-	badShape := vdmir.Type{Kind: vdmir.TypeNDArray, Name: "ndarray", Element: &u32Type, Shape: []uint32{2, 0}, ArraySize: 0}
+	badShape := vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &u32Type}
 	_, err := Emit(vdmir.Module{
 		Functions: []vdmir.Function{{
 			Name:        "F",
@@ -225,19 +225,19 @@ func TestSdslvFixedShapeConstructionRejectsMalformedMetadata(t *testing.T) {
 
 func TestSdslvTensorCompoundAssignmentMaterializesDestinationOnce(t *testing.T) {
 	out := emitSource(t, `fn Add(B: array<f32, 2u>) -> void {
-  let A: array<f32, 2u>;
+  var A: array<f32, 2u> = Fill(0.0);
   tensor A[i] += B[i];
   return;
 }`)
-	if strings.Count(out, "uint __sdslv_tensor_offset_1 =") != 1 {
+	if strings.Count(out, "uint __sdslv_tensor_offset_2 =") != 1 {
 		t.Fatalf("destination offset was not materialized exactly once:\n%s", out)
 	}
-	if strings.Count(out, "A[__sdslv_tensor_offset_1]") != 2 {
+	if strings.Count(out, "A[__sdslv_tensor_offset_2]") != 2 {
 		t.Fatalf("materialized destination was not reused for one read/one write:\n%s", out)
 	}
 	old := strings.Index(out, "tensor_old")
 	rhs := strings.Index(out, "tensor_rhs")
-	write := strings.LastIndex(out, "A[__sdslv_tensor_offset_1] =")
+	write := strings.LastIndex(out, "A[__sdslv_tensor_offset_2] =")
 	if old < 0 || rhs < old || write < rhs {
 		t.Fatalf("compound tensor prelude order is not old/read, RHS, write:\n%s", out)
 	}
@@ -245,7 +245,7 @@ func TestSdslvTensorCompoundAssignmentMaterializesDestinationOnce(t *testing.T) 
 
 func TestSdslvTensorBodiesUseSharedExpressionMaterialization(t *testing.T) {
 	guarded := emitSource(t, `fn Guarded(A: array<array<f32, 2u>, 2u>, M: u32) -> void {
-  let B: array<f32, 2u>;
+  var B: array<f32, 2u> = Fill(0.0);
   tensor B[i] = Sum[k](read A[i, k] when i < M else 0.0);
   return;
 }`)
@@ -253,7 +253,7 @@ func TestSdslvTensorBodiesUseSharedExpressionMaterialization(t *testing.T) {
 		t.Fatalf("guarded tensor body did not use shared materialization:\n%s", guarded)
 	}
 	inline := emitSource(t, `fn Inline(A: array<f32, 2u>) -> void {
-  let B: array<f32, 2u>;
+  var B: array<f32, 2u> = Fill(0.0);
   tensor B[i] = A[i] + HLSL<f32> { return 2.0; };
   return;
 }`)
@@ -268,7 +268,7 @@ func TestSdslvTensorBodiesUseSharedExpressionMaterialization(t *testing.T) {
 func TestSdslvTensorAffineBaseCallMaterializesOnce(t *testing.T) {
 	out := emitSource(t, `fn Base() -> u32 { return 0u; }
 fn Affine(A: array<f32, 2u>) -> void {
-  let B: array<f32, 2u>;
+  var B: array<f32, 2u> = Fill(0.0);
   tensor B[i] = A[Base() + i];
   return;
 }`)
@@ -281,7 +281,7 @@ func TestSdslvTensorLoopOrderFollowsSourceOrder(t *testing.T) {
 	out := emitSource(t, `fn Ordered(
   Input: array<array<array<array<u32, 2u>, 2u>, 2u>, 2u>
 ) -> void {
-  let Output: array<array<u32, 2u>, 2u>;
+  var Output: array<array<u32, 2u>, 2u> = Fill(0u);
   tensor Output[y, x] = Sum[ky, kx](Input[y, x, ky, kx]);
   return;
 }`)
@@ -599,7 +599,7 @@ func TestEmitRegTileToLocalArrayHLSL(t *testing.T) {
 	hlsl := emitSource(t, `shader RegTileBasic {
 resources { C: readwrite array<f32>; }
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
-let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+var Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
 let CView: matrix_view<f32> = row_major(C, 2u, 2u);
 Acc[0u, 0u] = Acc[0u, 0u] + 1.0;
 Acc[1u, 1u] = Acc[1u, 1u] + 4.0;
@@ -853,7 +853,7 @@ template<C: MicroConfig>
 shader Demo {
 resources { C: readwrite array<f32>; }
 stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32) -> void {
-let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+var Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
 let CView: matrix_view<f32> = row_major(C, 4u, 4u);
 comptime for i in 0u..C.Outputs.M {
 comptime for j in 0u..C.Outputs.N {
@@ -941,8 +941,7 @@ record Tile { Acc0: f32; }
 shader VectorAdd {
 resources VectorAddIO;
 stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: Params) -> Tile {
-let tile: Tile;
-tile.Acc0 = 0.0;
+let tile: Tile = Tile { Acc0: 0.0; };
 return tile with { Acc0: A[thread.DispatchId.x] };
 }
 }`
@@ -1183,7 +1182,7 @@ return product i in 0u..4u { values[i] };
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
 let total: f32 = sum i in 0u..4u { A[i] };
 let productValue: f32 = product j in 0u..4u { A[j] };
-let sink: f32 = 0.0;
+var sink: f32 = 0.0;
 sink = sum k in 0u..4u { A[k] };
 C[0u] = total + productValue + sink + Reduce(A);
 return;

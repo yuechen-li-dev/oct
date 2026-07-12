@@ -12,8 +12,8 @@ shader SgemmA2x4 {
     resources SgemmIO;
     stage compute [numthreads(8, 8, 1)] fn CS(params: SgemmParams) -> void {
         let r0: u32 = DispatchThreadID.x * 2u; let r1: u32 = r0 + 1u; let c0: u32 = DispatchThreadID.y * 4u;
-        let x00:f32=0.0; let x01:f32=0.0; let x02:f32=0.0; let x03:f32=0.0;
-        let x10:f32=0.0; let x11:f32=0.0; let x12:f32=0.0; let x13:f32=0.0;
+        var x00:f32=0.0; var x01:f32=0.0; var x02:f32=0.0; var x03:f32=0.0;
+        var x10:f32=0.0; var x11:f32=0.0; var x12:f32=0.0; var x13:f32=0.0;
         for kk in 0u..params.k {
             let av0:f32=read A[r0*params.k+kk] when r0<params.m else 0.0; let av1:f32=read A[r1*params.k+kk] when r1<params.m else 0.0;
             let b0:f32=read B[kk*params.n+c0] when c0<params.n else 0.0; let b1:f32=read B[kk*params.n+c0+1u] when c0+1u<params.n else 0.0;

@@ -6,7 +6,7 @@ resources SgemmIO;
 stage compute [numthreads(8, 8, 1)] fn CS(params: SgemmParams) -> void {
 let r0: u32 = DispatchThreadID.x * 2u; let r1: u32 = r0 + 1u;
 let c0: u32 = DispatchThreadID.y * 2u; let c1: u32 = c0 + 1u;
-let a00: f32 = 0.0; let a01: f32 = 0.0; let a10: f32 = 0.0; let a11: f32 = 0.0;
+var a00: f32 = 0.0; var a01: f32 = 0.0; var a10: f32 = 0.0; var a11: f32 = 0.0;
 for kk in 0u..params.k {
 let av0: f32 = read A[r0 * params.k + kk] when r0 < params.m else 0.0;
 let av1: f32 = read A[r1 * params.k + kk] when r1 < params.m else 0.0;

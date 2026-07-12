@@ -21,8 +21,8 @@ shader ComptimeForRegTile {
     }
 
     stage compute [numthreads(1, 1, 1)] fn CS(params: StoreParams) -> void {
-        let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
-        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+        var Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+        var CView: matrix_view<f32> = row_major(C, params.M, params.N);
 
         comptime for i in 0u..C.Outputs.M {
             comptime for j in 0u..C.Outputs.N {

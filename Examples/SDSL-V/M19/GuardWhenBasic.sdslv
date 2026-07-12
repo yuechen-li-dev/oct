@@ -21,8 +21,7 @@ shader GuardWhenBasic {
 
     stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
         let index: u32 = thread.DispatchId.x;
-        let value: f32 = 0.0;
-
+        var value: f32 = 0.0;
         when {
             case index < params.Count -> {
                 value = A[index];

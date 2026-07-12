@@ -690,7 +690,15 @@ func specializeStmt(stmt ast.Stmt, env map[string]specializeValue) (ast.Stmt, er
 		if s.Value != nil {
 			value = specializeExpr(s.Value, env)
 		}
-		return ast.LetStmt{Name: s.Name, Type: ref, Value: value}, nil
+		return ast.LetStmt{
+			Span:        s.Span,
+			KeywordSpan: s.KeywordSpan,
+			NameSpan:    s.NameSpan,
+			Name:        s.Name,
+			Type:        ref,
+			Value:       value,
+			Mutability:  s.Mutability,
+		}, nil
 	case ast.ComptimeLetStmt:
 		ref, err := specializeLocalTypeRef(s.Type, env)
 		if err != nil {
@@ -1316,7 +1324,15 @@ func renameRuntimeLocalsInStmt(stmt ast.Stmt, names map[string]string) ast.Stmt 
 		if s.Value != nil {
 			value = renameRuntimeLocalsInExpr(s.Value, names)
 		}
-		return ast.LetStmt{Name: name, Type: s.Type, Value: value}
+		return ast.LetStmt{
+			Span:        s.Span,
+			KeywordSpan: s.KeywordSpan,
+			NameSpan:    s.NameSpan,
+			Name:        name,
+			Type:        s.Type,
+			Value:       value,
+			Mutability:  s.Mutability,
+		}
 	case ast.AssignStmt:
 		return ast.AssignStmt{Target: renameRuntimeLocalsInExpr(s.Target, names), Value: renameRuntimeLocalsInExpr(s.Value, names)}
 	case ast.GuardedWriteStmt:
@@ -2632,12 +2648,19 @@ func (l *lowering) lowerExpr(expr ast.Expr, scope map[string]binding, shaderName
 func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding, shaderName string, expected *ast.TypeRef) (vdmir.Expr, error) {
 	switch e := expr.(type) {
 	case ast.ArrayLiteral:
-		if expected == nil || expected.Name != "ndarray" {
-			return nil, fmt.Errorf("ndarray literal requires ndarray target type")
+		if expected == nil {
+			return nil, fmt.Errorf("fixed-shape literal requires target type")
+		}
+		elem, shape, ok := constructibleFixedShapeType(*expected)
+		if !ok {
+			return nil, fmt.Errorf("fixed-shape literal requires constructible target type")
+		}
+		if expected.Name == "array" && len(shape) != 1 {
+			return nil, fmt.Errorf("nested fixed-array literals are not supported")
 		}
 		elements := make([]vdmir.Expr, 0, len(e.Elements))
 		for _, element := range e.Elements {
-			value, err := l.lowerExprWithExpected(element, scope, shaderName, &expected.Args[0])
+			value, err := l.lowerExprWithExpected(element, scope, shaderName, &elem)
 			if err != nil {
 				return nil, err
 			}
@@ -2645,25 +2668,36 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		}
 		return vdmir.NDArrayLiteral{Provenance: l.provenance, ExprType: l.lowerTypeRef(*expected), Elements: elements}, nil
 	case ast.FillExpr:
-		if expected == nil || expected.Name != "ndarray" || len(e.Arguments) != 1 {
-			return nil, fmt.Errorf("Fill requires ndarray target type and one value")
+		if expected == nil || len(e.Arguments) != 1 {
+			return nil, fmt.Errorf("Fill requires constructible target type and one value")
 		}
-		value, err := l.lowerExprWithExpected(e.Arguments[0], scope, shaderName, &expected.Args[0])
+		elem, _, ok := constructibleFixedShapeType(*expected)
+		if !ok {
+			return nil, fmt.Errorf("Fill requires constructible target type and one value")
+		}
+		value, err := l.lowerExprWithExpected(e.Arguments[0], scope, shaderName, &elem)
 		if err != nil {
 			return nil, err
 		}
 		return vdmir.FillConstruct{Provenance: l.provenance, ExprType: l.lowerTypeRef(*expected), Value: value}, nil
 	case ast.GenerateExpr:
-		if expected == nil || expected.Name != "ndarray" {
-			return nil, fmt.Errorf("Generate requires ndarray target type")
+		if expected == nil {
+			return nil, fmt.Errorf("Generate requires constructible target type")
+		}
+		elem, shape, ok := constructibleFixedShapeType(*expected)
+		if !ok {
+			return nil, fmt.Errorf("Generate requires constructible target type")
 		}
 		bodyScope := cloneBindings(scope)
 		binders := make([]string, 0, len(e.Binders))
+		if len(e.Binders) != len(shape) {
+			return nil, fmt.Errorf("Generate binder count mismatch")
+		}
 		for _, binder := range e.Binders {
 			bodyScope[binder.Name] = binding{name: binder.Name, kind: vdmir.VarLocal, typ: ast.TypeRef{Name: "u32"}}
 			binders = append(binders, binder.Name)
 		}
-		body, err := l.lowerExprWithExpected(e.Body, bodyScope, shaderName, &expected.Args[0])
+		body, err := l.lowerExprWithExpected(e.Body, bodyScope, shaderName, &elem)
 		if err != nil {
 			return nil, err
 		}
@@ -3260,7 +3294,12 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 	case "array":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		if resolved.HasArraySize {
-			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: mustConcreteInt(resolved.ArraySize), HasArraySize: true}
+			size := mustConcreteInt(resolved.ArraySize)
+			shape := []uint32{uint32(size)}
+			if elem.Kind == vdmir.TypeArray || elem.Kind == vdmir.TypeNDArray {
+				shape = append(shape, elem.Shape...)
+			}
+			return vdmir.Type{Kind: vdmir.TypeArray, Name: "array", Element: &elem, ArraySize: size, HasArraySize: true, Shape: shape}
 		}
 		return vdmir.Type{Kind: vdmir.TypeRuntimeArray, Name: "array", Element: &elem}
 	case "ndarray":
@@ -3592,6 +3631,36 @@ func lowerResourceAccess(access string) vdmir.ResourceAccess {
 		return vdmir.ResourceReadWrite
 	}
 	return vdmir.ResourceReadOnly
+}
+
+func constructibleFixedShapeType(ref ast.TypeRef) (ast.TypeRef, []uint32, bool) {
+	switch ref.Name {
+	case "ndarray":
+		if len(ref.Args) != 1 || len(ref.NDArrayShape) == 0 {
+			return ast.TypeRef{}, nil, false
+		}
+		shape := make([]uint32, 0, len(ref.NDArrayShape))
+		for _, extent := range ref.NDArrayShape {
+			shape = append(shape, uint32(mustConcreteInt(extent)))
+		}
+		return ref.Args[0], shape, true
+	case "array":
+		if len(ref.Args) != 1 || !ref.HasArraySize || ref.ArraySize == nil {
+			return ast.TypeRef{}, nil, false
+		}
+		size := uint32(mustConcreteInt(ref.ArraySize))
+		elem := ref.Args[0]
+		if elem.Name == "array" {
+			leaf, inner, ok := constructibleFixedShapeType(elem)
+			if !ok {
+				return ast.TypeRef{}, nil, false
+			}
+			return leaf, append([]uint32{size}, inner...), true
+		}
+		return elem, []uint32{size}, true
+	default:
+		return ast.TypeRef{}, nil, false
+	}
 }
 
 func elementType(t vdmir.Type) vdmir.Type {

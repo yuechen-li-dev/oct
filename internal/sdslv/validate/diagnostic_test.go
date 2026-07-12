@@ -156,19 +156,19 @@ func TestSdslvNdarrayDiagnosticsUsePreciseSpans(t *testing.T) {
 	}{
 		{
 			name:  "missing shape",
-			text:  "fn F() -> void { let x: ndarray<u32>; }\n",
+			text:  "fn F() -> void { let x: ndarray<u32> = Fill(0u); }\n",
 			code:  "SDSL-V3309",
 			slice: "ndarray",
 		},
 		{
 			name:  "empty shape",
-			text:  "fn F() -> void { let x: ndarray<u32, []>; }\n",
+			text:  "fn F() -> void { let x: ndarray<u32, []> = Fill(0u); }\n",
 			code:  "SDSL-V3310",
 			slice: "[]",
 		},
 		{
 			name:  "unsupported element type",
-			text:  "fn F() -> void { let x: ndarray<array<u32, 2u>, [2u]>; }\n",
+			text:  "fn F() -> void { let x: ndarray<array<u32, 2u>, [2u]> = Fill(0u); }\n",
 			code:  "SDSL-V3311",
 			slice: "array<u32, 2u>",
 		},

@@ -24,8 +24,8 @@ shader RegTileSgemmMicroKernel {
         comptime let RM: u32 = C.Outputs.M;
         comptime let RN: u32 = C.Outputs.N;
 
-        let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
-        let CView: matrix_view<f32> = row_major(C, params.M, params.N);
+        var Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
+        var CView: matrix_view<f32> = row_major(C, params.M, params.N);
 
         Acc[0u, 0u] = Acc[0u, 0u] + 1.0;
         Acc[0u, 1u] = Acc[0u, 1u] + 2.0;

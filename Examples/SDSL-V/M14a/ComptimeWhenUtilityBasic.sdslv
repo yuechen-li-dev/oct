@@ -34,8 +34,7 @@ shader M14aComptimeWhenUtilityBasic {
 
     stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
         let index: u32 = thread.DispatchId.x;
-        let value: f32 = 0.0;
-
+        var value: f32 = 0.0;
         comptime when utility {
             case Vector4 when Cfg.UseVectorizedLoad and Cfg.Tile.K == 16u score 100 {
                 static assert Cfg.Tile.K == 16u;

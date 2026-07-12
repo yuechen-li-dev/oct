@@ -1,7 +1,7 @@
 fn BoolSum(
     A: array<array<bool, 2u>, 2u>
 ) -> void {
-    let C: array<bool, 2u>;
+    var C: array<bool, 2u> = Fill(false);
     tensor C[i] = Sum[k](A[i, k]);
     return;
 }

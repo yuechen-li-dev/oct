@@ -1,7 +1,7 @@
 [Fact]
 [TestInputUInt(10u, 20u, 30u)]
 fn AssertOperandsEvaluateExactlyOnce() -> void {
-    let counter: u32 = 0u;
+    var counter: u32 = 0u;
     Assert.True(HLSL<bool>(counter) {
         counter = counter + 1u;
         return counter == 1u;
@@ -40,7 +40,7 @@ fn AssertOperandsEvaluateExactlyOnce() -> void {
 [Fact]
 [TestInputUInt(10u, 20u, 30u)]
 fn AssertOperandsEvaluateLeftToRight() -> void {
-    let order: u32 = 0u;
+    var order: u32 = 0u;
     Assert.Equal(HLSL<u32>(order) {
         order = order * 10u + 1u;
         return 7u;
@@ -74,7 +74,7 @@ fn AssertOperandsEvaluateLeftToRight() -> void {
 [InlineData(2u, 30u)]
 [TestInputUInt(10u, 20u, 30u)]
 fn TheoryAndResourceOperandsEvaluateOnce(index: u32, expected: u32) -> void {
-    let counter: u32 = 0u;
+    var counter: u32 = 0u;
     Assert.Equal(expected, TestInput.UInt[index], "TheoryAndResourceOperandsEvaluateOnce must preserve its declared invariant");
     Assert.Equal(expected, read TestInput.UInt[index] when index < TestInput.Length else 999u, "TheoryAndResourceOperandsEvaluateOnce must preserve its declared invariant");
     Assert.Near(HLSL<f32>(counter) {
@@ -92,7 +92,7 @@ fn TheoryAndResourceOperandsEvaluateOnce(index: u32, expected: u32) -> void {
 
 [Fact]
 fn FirstFailureDoesNotSuppressLaterOperandEvaluation() -> void {
-    let counter: u32 = 0u;
+    var counter: u32 = 0u;
     Assert.Equal(1u, 2u, "FirstFailureDoesNotSuppressLaterOperandEvaluation must preserve its declared invariant");
     Assert.Equal(HLSL<u32>(counter) {
         counter = counter + 1u;

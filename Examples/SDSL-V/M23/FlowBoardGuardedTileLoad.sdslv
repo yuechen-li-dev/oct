@@ -27,7 +27,6 @@ shader FlowBoardGuardedTileLoad {
         let tileBaseK: u32 = GroupID.x * 16u;
         let AView: matrix_view<f32> = row_major(A, params.M, params.K);
         let CView: matrix_view<f32> = row_major(C, params.M, params.N);
-
         flow TileLoad {
             board Load: LoadCoord = LoadCoord {
                 linear: 0u;

@@ -30,10 +30,10 @@ shader SgemmTileShapeViews {
         let localCol: u32 = thread.GroupThreadId.y;
         let row: u32 = thread.GroupId.x * 16u + localRow;
         let col: u32 = thread.GroupId.y * 16u + localCol;
-        let acc: f32 = 0.0;
+        var acc: f32 = 0.0;
         let AView: matrix_view<f32> = row_major(A, params.m, params.k);
         let BView: matrix_view<f32> = row_major(B, params.k, params.n);
-        let CView: matrix_view<f32> = row_major(C, params.m, params.n);
+        var CView: matrix_view<f32> = row_major(C, params.m, params.n);
         let tileCount: u32 = (params.k + 15u) / 16u;
 
         [loop]
@@ -41,8 +41,8 @@ shader SgemmTileShapeViews {
             let tileBaseK: u32 = tile * 16u;
             let aCol: u32 = tileBaseK + localCol;
             let bRow: u32 = tileBaseK + localRow;
-            let aValue: f32 = 0.0;
-            let bValue: f32 = 0.0;
+            var aValue: f32 = 0.0;
+            var bValue: f32 = 0.0;
 
             if row < params.m and aCol < params.k {
                 aValue = AView[row, aCol];

@@ -1348,29 +1348,24 @@ func (e *emitter) emitRegTileZeroLet(name string, typ vdmir.Type) {
 }
 
 func validFixedShape(ref vdmir.Type) bool {
-	if ref.Kind != vdmir.TypeNDArray || ref.Element == nil || len(ref.Shape) == 0 {
-		return false
-	}
-	for _, extent := range ref.Shape {
-		if extent == 0 {
-			return false
-		}
-	}
-	return true
+	_, _, ok := fixedShapeMetadata(ref)
+	return ok
 }
 
 // emitFillConstructLet evaluates Value once, then reuses the materialized
 // scalar for all compiler-owned flat row-major stores.
 func (e *emitter) emitFillConstructLet(stmt vdmir.LetStmt, fill vdmir.FillConstruct) {
-	if !validFixedShape(stmt.Type) || !validFixedShape(fill.Type()) {
+	elemType, shape, ok := fixedShapeMetadata(stmt.Type)
+	_, _, fillOK := fixedShapeMetadata(fill.Type())
+	if !ok || !fillOK {
 		e.err = fmt.Errorf("malformed fixed-shape Fill metadata")
 		return
 	}
 	e.line(fmt.Sprintf("%s;", typeRef(stmt.Type, stmt.Name)))
 	temp := e.nextTempWithPrefix("fill")
-	e.line(fmt.Sprintf("%s = %s;", typeRef(*stmt.Type.Element, temp), e.materializeExpr(fill.Value)))
+	e.line(fmt.Sprintf("%s = %s;", typeRef(elemType, temp), e.materializeExpr(fill.Value)))
 	count := 1
-	for _, extent := range stmt.Type.Shape {
+	for _, extent := range shape {
 		count *= int(extent)
 	}
 	for i := 0; i < count; i++ {
@@ -1381,7 +1376,9 @@ func (e *emitter) emitFillConstructLet(stmt vdmir.LetStmt, fill vdmir.FillConstr
 // emitGenerateConstructLet uses source binder order as loop nesting order;
 // indexN owns the one row-major linearization formula used by ndarray access.
 func (e *emitter) emitGenerateConstructLet(stmt vdmir.LetStmt, generate vdmir.GenerateConstruct) {
-	if !validFixedShape(stmt.Type) || !validFixedShape(generate.Type()) || len(generate.Binders) != len(stmt.Type.Shape) {
+	_, shape, ok := fixedShapeMetadata(stmt.Type)
+	_, _, generateOK := fixedShapeMetadata(generate.Type())
+	if !ok || !generateOK || len(generate.Binders) != len(shape) {
 		e.err = fmt.Errorf("malformed fixed-shape Generate metadata")
 		return
 	}
@@ -1396,7 +1393,7 @@ func (e *emitter) emitGenerateConstructLet(stmt vdmir.LetStmt, generate vdmir.Ge
 			destination := e.materializeIndexedLValue(vdmir.IndexNExpr{
 				Target:  vdmir.VarRefExpr{ExprType: stmt.Type, Name: stmt.Name, Kind: vdmir.VarLocal},
 				Indices: indices,
-				Extents: stmt.Type.Shape,
+				Extents: shape,
 				Layout:  vdmir.IndexLayoutRowMajorLinear,
 			}, source.Span{})
 			if e.err != nil {
@@ -1407,7 +1404,7 @@ func (e *emitter) emitGenerateConstructLet(stmt vdmir.LetStmt, generate vdmir.Ge
 			return
 		}
 		name := hlslIdentifier(generate.Binders[axis])
-		e.line(fmt.Sprintf("for (uint %s = 0u; %s < %du; ++%s)", name, name, stmt.Type.Shape[axis], name))
+		e.line(fmt.Sprintf("for (uint %s = 0u; %s < %du; ++%s)", name, name, shape[axis], name))
 		e.line("{")
 		e.indent++
 		emitAxis(axis + 1)
@@ -1415,6 +1412,24 @@ func (e *emitter) emitGenerateConstructLet(stmt vdmir.LetStmt, generate vdmir.Ge
 		e.line("}")
 	}
 	emitAxis(0)
+}
+
+func fixedShapeMetadata(ref vdmir.Type) (vdmir.Type, []uint32, bool) {
+	switch ref.Kind {
+	case vdmir.TypeNDArray:
+		if ref.Element == nil || len(ref.Shape) == 0 {
+			return vdmir.Type{}, nil, false
+		}
+		return *ref.Element, append([]uint32(nil), ref.Shape...), true
+	case vdmir.TypeArray:
+		if len(ref.Shape) == 0 {
+			return vdmir.Type{}, nil, false
+		}
+		elem, _ := fixedArrayStorage(ref)
+		return elem, append([]uint32(nil), ref.Shape...), true
+	default:
+		return vdmir.Type{}, nil, false
+	}
 }
 
 func elementTypeForArrayish(ref vdmir.Type) vdmir.Type {

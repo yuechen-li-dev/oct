@@ -12,15 +12,11 @@ void main()
         values[__sdslv_tensor_offset_1] = ((Input[i] * 2.0) + 1.0);
     }
     float copied[4];
-    // tensor free-index loop 53:23 i
-    for (uint __sdslv_tensor_free_0 = 0u; __sdslv_tensor_free_0 < 4u; __sdslv_tensor_free_0 += 1u)
+    for (uint i = 0u; i < 4u; ++i)
     {
-        // tensor statement 53:9 set
-        uint __sdslv_tensor_index_2 = __sdslv_tensor_free_0;
+        uint __sdslv_tensor_index_2 = i;
         uint __sdslv_tensor_offset_3 = __sdslv_tensor_index_2;
-        float __sdslv_tensor_rhs_4 = values[__sdslv_tensor_free_0];
-        // tensor final destination write 53:9 =
-        copied[__sdslv_tensor_offset_3] = __sdslv_tensor_rhs_4;
+        copied[__sdslv_tensor_offset_3] = values[i];
     }
     Output[0u] = copied[0u];
     Output[1u] = copied[1u];

@@ -1,7 +1,7 @@
 fn MatrixMultiply() -> void {
     let a: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
     let b: ndarray<u32, [3u, 2u]> = [7u, 8u, 9u, 10u, 11u, 12u];
-    let c: ndarray<u32, [2u, 2u]>;
+    var c: ndarray<u32, [2u, 2u]> = Fill(0u);
     tensor c[i, j] = Sum[k](a[i, k] * b[k, j]);
     return;
 }

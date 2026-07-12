@@ -1,5 +1,5 @@
 fn DuplicateFreeIndex() -> void {
-    let A: array<array<f32, 2u>, 2u>;
+    var A: array<array<f32, 2u>, 2u> = Fill(0.0);
     tensor A[i, i] = A[i, i];
     return;
 }

@@ -19,7 +19,7 @@ shader ReductionBasic {
     stage compute [numthreads(1, 1, 1)] fn CS() -> void {
         let total: f32 = sum i in 0u..4u { A[i] };
         let productValue: f32 = product i in 0u..4u { A[i] };
-        let sink: f32 = 0.0;
+        var sink: f32 = 0.0;
         sink = sum i in 0u..4u { A[i] };
         C[0u] = total + productValue + sink + Sum4() + Product4();
         return;

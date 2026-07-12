@@ -1,7 +1,7 @@
 shader NDArrayComputeProof {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
     let input: ndarray<u32, [2u, 2u, 2u, 3u]> = Generate[b, h, i, j](b * 1000u + h * 100u + i * 10u + j);
-    let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
+    var output: ndarray<u32, [2u, 2u, 2u, 3u]> = Fill(0u);
     tensor output[b, h, i, j] = input[b, h, i, j];
     return;
 }

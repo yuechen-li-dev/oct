@@ -113,7 +113,7 @@ func (v *validator) validateTensorAssign(s ast.TensorAssignStmt, scope map[strin
 			v.errorAt(binding.Span, "SDSL-V3203", "free index `%s` shadows an enclosing symbol", binding.Name)
 		}
 		freeBindings[binding.Name] = tensorBoundIndex{name: binding.Name, kind: "FreeStaticIndex", span: binding.Span}
-		tensorScope[binding.Name] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varTensorFree}
+		tensorScope[binding.Name] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varTensorFree, declarationSpan: binding.Span}
 	}
 
 	indices := ast.IndexExpressions(dest)
@@ -267,7 +267,7 @@ func (v *validator) tensorExprType(expr ast.Expr, scope map[string]varInfo, shad
 			}
 			reductionSeen[b.Name] = b.Span
 			reductionBindings[b.Name] = tensorBoundIndex{name: b.Name, kind: "ReductionStaticIndex", span: b.Span}
-			bodyScope[b.Name] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varTensorRed}
+			bodyScope[b.Name] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varTensorRed, declarationSpan: b.Span}
 			state.allNames[b.Name] = b.Span
 		}
 
@@ -673,6 +673,10 @@ func (v *validator) tensorDestinationMutable(expr ast.Expr, scope map[string]var
 	switch info.origin {
 	case varBuiltin, varComptime, varParam:
 		return false
+	case varLocal:
+		if info.typ.Name != "matrix_view" && !info.mutable {
+			return false
+		}
 	}
 	if info.typ.Name == "matrix_view" && info.access != "readwrite" {
 		return false

@@ -32,7 +32,7 @@ func TestSdslvNdarrayTypeIdentityUsesOrderedShapeAndKind(t *testing.T) {
 		{
 			name: "shape order differs",
 			src: `fn F() -> void {
-let a: ndarray<u32, [2u, 3u]>;
+let a: ndarray<u32, [2u, 3u]> = Fill(0u);
 let b: ndarray<u32, [3u, 2u]> = a;
 return;
 }`,
@@ -41,7 +41,7 @@ return;
 		{
 			name: "nested arrays remain distinct",
 			src: `fn F() -> void {
-let a: ndarray<u32, [2u, 3u]>;
+let a: ndarray<u32, [2u, 3u]> = Fill(0u);
 let b: array<array<u32, 3u>, 2u> = a;
 return;
 }`,
@@ -60,8 +60,8 @@ return;
 
 func TestSdslvNdarrayWholeValueAssignmentUsesExactTypeSemantics(t *testing.T) {
 	err := validateSource(`fn F() -> void {
-let a: ndarray<u32, [2u, 2u]>;
-let b: ndarray<u32, [2u, 2u]> = a;
+let a: ndarray<u32, [2u, 2u]> = Fill(0u);
+var b: ndarray<u32, [2u, 2u]> = a;
 b = a;
 return;
 }`)
@@ -464,7 +464,7 @@ func TestModuleRejectsInvalidTileAndMatrixViewUse(t *testing.T) {
 		},
 		{
 			name: "row major local array",
-			src:  `fn F() -> void { let values: array<f32, 4>; let V: matrix_view<f32> = row_major(values, 2u, 2u); return; }`,
+			src:  `fn F() -> void { let values: array<f32, 4> = Fill(0.0); let V: matrix_view<f32> = row_major(values, 2u, 2u); return; }`,
 			want: "row_major first argument must be a resource array",
 		},
 		{
@@ -507,7 +507,7 @@ resources { C: readwrite array<f32>; }
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
 comptime let RM: u32 = C.Outputs.M;
 comptime let RN: u32 = C.Outputs.N;
-let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
+var Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
 let CView: matrix_view<f32> = row_major(C, 2u, 2u);
 Acc[0u, 1u] = Acc[0u, 1u] + 1.0;
 CView[0u, 1u] = Acc[0u, 1u];
@@ -558,7 +558,7 @@ func TestModuleRejectsInvalidRegTileUse(t *testing.T) {
 		},
 		{
 			name: "wrong initializer",
-			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let Acc: reg_tile<f32, 2u, 2u>; return; } }`,
+			src:  `shader S { stage compute [numthreads(1, 1, 1)] fn CS() -> void { let Acc: reg_tile<f32, 2u, 2u> = Fill(0.0); return; } }`,
 			want: "reg_tile locals must be initialized with reg_tile_zero()",
 		},
 		{
@@ -1155,7 +1155,7 @@ fn Bad(t: ComputeThread) -> u32 { t.DispatchId.x = 1u; return 0u; }`)
 func TestModuleAllowsLocalRecordFieldAssignment(t *testing.T) {
 	err := validateSource(`record Surface { Roughness: f32; }
 fn Good(s: Surface) -> Surface {
-let local: Surface = s;
+var local: Surface = s;
 local.Roughness = 0.5;
 return local;
 }`)
@@ -1351,7 +1351,7 @@ config Micro2x2: MicroConfig {}
 template<C: MicroConfig>
 shader TileCopy {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
-let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+var Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
 comptime for i in 0u..C.Outputs.M {
 comptime for j in 0u..C.Outputs.N {
 static assert i < C.Outputs.M and j < C.Outputs.N;

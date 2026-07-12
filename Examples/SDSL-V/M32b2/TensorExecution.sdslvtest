@@ -1,12 +1,12 @@
 [Fact]
 fn Rank1ElementwiseMap() -> void {
-    let input: array<f32, 4u>;
+    var input: array<f32, 4u> = Fill(0.0);
     input[0u] = 1.0;
     input[1u] = -2.0;
     input[2u] = 3.5;
     input[3u] = 0.25;
 
-    let output: array<f32, 4u>;
+    var output: array<f32, 4u> = Fill(0.0);
     let scale: f32 = 2.0;
     let bias: f32 = -1.0;
     tensor output[i] = input[i] * scale + bias;
@@ -19,15 +19,14 @@ fn Rank1ElementwiseMap() -> void {
 
 [Fact]
 fn Rank2ElementwiseRowMajorLayout() -> void {
-    let a: array<array<u32, 3u>, 2u>;
-    let b: array<array<u32, 3u>, 2u>;
-
+    var a: array<array<u32, 3u>, 2u> = Fill(0u);
+    var b: array<array<u32, 3u>, 2u> = Fill(0u);
     a[0u, 0u] = 1u;  a[0u, 1u] = 10u; a[0u, 2u] = 100u;
     a[1u, 0u] = 2u;  a[1u, 1u] = 20u; a[1u, 2u] = 200u;
     b[0u, 0u] = 7u;  b[0u, 1u] = 70u; b[0u, 2u] = 700u;
     b[1u, 0u] = 8u;  b[1u, 1u] = 80u; b[1u, 2u] = 800u;
 
-    let output: array<array<u32, 3u>, 2u>;
+    var output: array<array<u32, 3u>, 2u> = Fill(0u);
     tensor output[i, j] = a[i, j] + b[i, j];
 
     Assert.Equal(8u, output[0u, 0u], "Rank2ElementwiseRowMajorLayout must preserve its declared invariant");
@@ -40,15 +39,15 @@ fn Rank2ElementwiseRowMajorLayout() -> void {
 
 [Fact]
 fn DotProductAndTypedZeroFloat() -> void {
-    let a: array<array<f32, 3u>, 2u>;
-    let b: array<f32, 3u>;
+    var a: array<array<f32, 3u>, 2u> = Fill(0.0);
+    var b: array<f32, 3u> = Fill(0.0);
     a[0u, 0u] = 1.0; a[0u, 1u] = 2.0;  a[0u, 2u] = 3.0;
     a[1u, 0u] = 4.0; a[1u, 1u] = -1.0; a[1u, 2u] = 0.5;
     b[0u] = 2.0;
     b[1u] = -3.0;
     b[2u] = 5.0;
 
-    let output: array<f32, 2u>;
+    var output: array<f32, 2u> = Fill(0.0);
     tensor output[i] = Sum[k](a[i, k] * b[k]);
 
     Assert.Equal(11.0, output[0u], "DotProductAndTypedZeroFloat must preserve its declared invariant");
@@ -57,20 +56,20 @@ fn DotProductAndTypedZeroFloat() -> void {
 
 [Fact]
 fn TypedZeroIntAndUInt() -> void {
-    let intInput: array<array<i32, 2u>, 2u>;
+    var intInput: array<array<i32, 2u>, 2u> = Fill(0);
     intInput[0u, 0u] = 1;
     intInput[0u, 1u] = -2;
     intInput[1u, 0u] = 9;
     intInput[1u, 1u] = -4;
-    let intOut: array<i32, 2u>;
+    var intOut: array<i32, 2u> = Fill(0);
     tensor intOut[i] = Sum[k](intInput[i, k]);
     Assert.Equal(-1, intOut[0u], "TypedZeroIntAndUInt must preserve its declared invariant");
     Assert.Equal(5, intOut[1u], "TypedZeroIntAndUInt must preserve its declared invariant");
 
-    let uintInput: array<array<u32, 3u>, 2u>;
+    var uintInput: array<array<u32, 3u>, 2u> = Fill(0u);
     uintInput[0u, 0u] = 1u; uintInput[0u, 1u] = 2u; uintInput[0u, 2u] = 3u;
     uintInput[1u, 0u] = 4u; uintInput[1u, 1u] = 5u; uintInput[1u, 2u] = 6u;
-    let uintOut: array<u32, 2u>;
+    var uintOut: array<u32, 2u> = Fill(0u);
     tensor uintOut[i] = Sum[k](uintInput[i, k]);
     Assert.Equal(6u, uintOut[0u], "TypedZeroIntAndUInt must preserve its declared invariant");
     Assert.Equal(15u, uintOut[1u], "TypedZeroIntAndUInt must preserve its declared invariant");
@@ -78,9 +77,8 @@ fn TypedZeroIntAndUInt() -> void {
 
 [Fact]
 fn Rank2Matmul() -> void {
-    let a: array<array<u32, 3u>, 2u>;
-    let b: array<array<u32, 4u>, 3u>;
-
+    var a: array<array<u32, 3u>, 2u> = Fill(0u);
+    var b: array<array<u32, 4u>, 3u> = Fill(0u);
     a[0u, 0u] = 1u; a[0u, 1u] = 2u; a[0u, 2u] = 3u;
     a[1u, 0u] = 4u; a[1u, 1u] = 5u; a[1u, 2u] = 6u;
 
@@ -88,7 +86,7 @@ fn Rank2Matmul() -> void {
     b[1u, 0u] = 3u; b[1u, 1u] = 1u; b[1u, 2u] = 0u; b[1u, 3u] = 2u;
     b[2u, 0u] = 1u; b[2u, 1u] = 4u; b[2u, 2u] = 5u; b[2u, 3u] = 0u;
 
-    let c: array<array<u32, 4u>, 2u>;
+    var c: array<array<u32, 4u>, 2u> = Fill(0u);
     tensor c[i, j] = Sum[k](a[i, k] * b[k, j]);
 
     Assert.Equal(10u, c[0u, 0u], "Rank2Matmul must preserve its declared invariant");
@@ -103,9 +101,9 @@ fn Rank2Matmul() -> void {
 
 [Fact]
 fn Rank3BatchedMatmul() -> void {
-    let a: ndarray<u32, [2u, 2u, 2u]> = [1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u];
-    let b: ndarray<u32, [2u, 2u, 2u]> = [9u, 10u, 11u, 12u, 1u, 2u, 3u, 4u];
-    let c: ndarray<u32, [2u, 2u, 2u]>;
+    var a: ndarray<u32, [2u, 2u, 2u]> = [1u, 2u, 3u, 4u, 5u, 6u, 7u, 8u];
+    var b: ndarray<u32, [2u, 2u, 2u]> = [9u, 10u, 11u, 12u, 1u, 2u, 3u, 4u];
+    var c: ndarray<u32, [2u, 2u, 2u]> = Fill(0u);
     tensor c[b0, i, j] = Sum[k](a[b0, i, k] * b[b0, k, j]);
 
     Assert.Equal(31u, c[0u, 0u, 0u], "Rank3BatchedMatmul must preserve its declared invariant");
@@ -120,9 +118,9 @@ fn Rank3BatchedMatmul() -> void {
 
 [Fact]
 fn Rank4RowMajorLayout() -> void {
-    let input: ndarray<u32, [2u, 2u, 2u, 3u]> = Generate[b, h, i, j](b * 1000u + h * 100u + i * 10u + j);
+    var input: ndarray<u32, [2u, 2u, 2u, 3u]> = Generate[b, h, i, j](b * 1000u + h * 100u + i * 10u + j);
 
-    let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
+    var output: ndarray<u32, [2u, 2u, 2u, 3u]> = Fill(0u);
     tensor output[b, h, i, j] = input[b, h, i, j];
 
     Assert.Equal(0u, output[0u, 0u, 0u, 0u], "Rank4RowMajorLayout must preserve its declared invariant");
@@ -137,9 +135,8 @@ fn Rank4RowMajorLayout() -> void {
 
 [Fact]
 fn MultipleReductionIndicesConvolution() -> void {
-    let kernel: array<array<u32, 2u>, 2u>;
-    let input: array<array<array<array<u32, 2u>, 2u>, 2u>, 2u>;
-
+    var kernel: array<array<u32, 2u>, 2u> = Fill(0u);
+    var input: array<array<array<array<u32, 2u>, 2u>, 2u>, 2u> = Fill(0u);
     kernel[0u, 0u] = 1u; kernel[0u, 1u] = 2u;
     kernel[1u, 0u] = 3u; kernel[1u, 1u] = 4u;
 
@@ -160,7 +157,7 @@ fn MultipleReductionIndicesConvolution() -> void {
     input[1u, 1u, 1u, 0u] = 8u;
     input[1u, 1u, 1u, 1u] = 9u;
 
-    let output: array<array<u32, 2u>, 2u>;
+    var output: array<array<u32, 2u>, 2u> = Fill(0u);
     tensor output[y, x] = Sum[ky, kx](
         kernel[ky, kx] * input[y, x, ky, kx]
     );
@@ -173,10 +170,9 @@ fn MultipleReductionIndicesConvolution() -> void {
 
 [Fact]
 fn CompoundAddTensorAssignment() -> void {
-    let left: array<array<u32, 2u>, 2u>;
-    let right: array<array<u32, 2u>, 2u>;
-    let acc: array<array<u32, 2u>, 2u>;
-
+    var left: array<array<u32, 2u>, 2u> = Fill(0u);
+    var right: array<array<u32, 2u>, 2u> = Fill(0u);
+    var acc: array<array<u32, 2u>, 2u> = Fill(0u);
     left[0u, 0u] = 1u; left[0u, 1u] = 2u;
     left[1u, 0u] = 3u; left[1u, 1u] = 4u;
     right[0u, 0u] = 5u; right[0u, 1u] = 6u;
@@ -195,13 +191,13 @@ fn CompoundAddTensorAssignment() -> void {
 [Fact]
 [TestInputUInt(5u, 7u, 11u)]
 fn TensorGuardedReadsUseTestInput() -> void {
-    let indices: array<u32, 4u>;
+    var indices: array<u32, 4u> = Fill(0u);
     indices[0u] = 1u;
     indices[1u] = 2u;
     indices[2u] = 3u;
     indices[3u] = 0u;
 
-    let output: array<u32, 4u>;
+    var output: array<u32, 4u> = Fill(0u);
     tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
 
     Assert.Equal(7u, output[0u], "TensorGuardedReadsUseTestInput must preserve its declared invariant");
@@ -212,7 +208,7 @@ fn TensorGuardedReadsUseTestInput() -> void {
 
 [Fact]
 fn TensorInlineHlslExpression() -> void {
-    let output: array<u32, 2u>;
+    var output: array<u32, 2u> = Fill(0u);
     tensor output[i] = HLSL<u32>() {
         return 0x1234u;
     };
@@ -225,11 +221,11 @@ fn TensorInlineHlslExpression() -> void {
 [InlineData(2.0, 1.0, 1.0, 3.0, 5.0)]
 [InlineData(3.0, 1.0, 2.0, 7.0, 10.0)]
 fn TheoryRowsReuseTensorBody(scale: f32, bias: f32, start: f32, expected0: f32, expected1: f32) -> void {
-    let input: array<f32, 2u>;
+    var input: array<f32, 2u> = Fill(0.0);
     input[0u] = start;
     input[1u] = start + 1.0;
 
-    let output: array<f32, 2u>;
+    var output: array<f32, 2u> = Fill(0.0);
     tensor output[i] = input[i] * scale + bias;
 
     Assert.Equal(expected0, output[0u], "TheoryRowsReuseTensorBody must preserve its declared invariant");
@@ -240,11 +236,11 @@ fn TheoryRowsReuseTensorBody(scale: f32, bias: f32, start: f32, expected0: f32, 
 [DispatchGroups(2, 1, 1)]
 [Fact]
 fn MultipleInvocationsKeepTensorStatePrivate() -> void {
-    let input: array<u32, 2u>;
+    var input: array<u32, 2u> = Fill(0u);
     input[0u] = DispatchThreadID.x;
     input[1u] = DispatchThreadID.x + 1u;
 
-    let output: array<u32, 2u>;
+    var output: array<u32, 2u> = Fill(0u);
     tensor output[i] = input[i] + 10u;
 
     Assert.Equal(DispatchThreadID.x + 10u, output[0u], "MultipleInvocationsKeepTensorStatePrivate must preserve its declared invariant");
@@ -253,8 +249,8 @@ fn MultipleInvocationsKeepTensorStatePrivate() -> void {
 
 [Fact]
 fn SgemmStyleTensorParity() -> void {
-    let tileA: array<array<f32, 4u>, 2u>;
-    let tileB: array<array<f32, 2u>, 4u>;
+    var tileA: array<array<f32, 4u>, 2u> = Fill(0.0);
+    var tileB: array<array<f32, 2u>, 4u> = Fill(0.0);
     tileA[0u, 0u] = 1.0; tileA[0u, 1u] = 2.0; tileA[0u, 2u] = 3.0; tileA[0u, 3u] = 4.0;
     tileA[1u, 0u] = 5.0; tileA[1u, 1u] = 6.0; tileA[1u, 2u] = 7.0; tileA[1u, 3u] = 8.0;
     tileB[0u, 0u] = 9.0;  tileB[0u, 1u] = 10.0;
@@ -265,13 +261,13 @@ fn SgemmStyleTensorParity() -> void {
     let localRow: u32 = 0u;
     let localCol: u32 = 0u;
 
-    let tensorAcc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+    var tensorAcc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
     tensorAcc[0u, 0u] = 1.0;
     tensorAcc[0u, 1u] = 2.0;
     tensorAcc[1u, 0u] = 3.0;
     tensorAcc[1u, 1u] = 4.0;
 
-    let loopAcc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+    var loopAcc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
     loopAcc[0u, 0u] = 1.0;
     loopAcc[0u, 1u] = 2.0;
     loopAcc[1u, 0u] = 3.0;

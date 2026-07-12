@@ -15,7 +15,7 @@ func TestSdslvTensorInfersReductionExtentFromSourcesWithProvenance(t *testing.T)
     A: array<array<f32, 4u>, 2u>,
     B: array<array<f32, 3u>, 4u>
 ) -> void {
-    let C: array<array<f32, 3u>, 2u>;
+    var C: array<array<f32, 3u>, 2u> = Fill(0.0);
     tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
     return;
 }`)
@@ -49,8 +49,8 @@ func TestSdslvTensorInfersReductionExtentFromSourcesWithProvenance(t *testing.T)
 }
 
 func TestSdslvTensorRejectsInPlaceTranspose(t *testing.T) {
-	err := validateSource(`fn F() -> void {
-    let A: array<array<f32, 2u>, 2u>;
+err := validateSource(`fn F() -> void {
+    var A: array<array<f32, 2u>, 2u> = Fill(0.0);
     tensor A[i, j] = A[j, i];
     return;
 }`)
@@ -60,8 +60,8 @@ func TestSdslvTensorRejectsInPlaceTranspose(t *testing.T) {
 }
 
 func TestSdslvTensorRejectsFreeIndexScalarUse(t *testing.T) {
-	err := validateSource(`fn F() -> void {
-    let A: array<f32, 4u>;
+err := validateSource(`fn F() -> void {
+    var A: array<f32, 4u> = Fill(0.0);
     tensor A[i] = i;
     return;
 }`)
@@ -76,7 +76,7 @@ func TestSdslvValidatedTensorAssignIsLoweringReady(t *testing.T) {
     workgroup TileB: tile<f32, 4u, 2u>;
 
     stage compute [numthreads(1, 1, 1)] fn CS() -> void {
-        let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+        var Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
         let localRow: u32 = 0u;
         let localCol: u32 = 0u;
         tensor Acc[oi, oj] += Sum[kk](
@@ -108,13 +108,13 @@ func TestSdslvTensorValidationHonorsSdslvTestSourceAndTestInput(t *testing.T) {
 	module := mustTensorModule(t, `[Fact]
 [TestInputUInt(5u, 7u, 11u)]
 fn GuardedTensor() -> void {
-    let indices: array<u32, 4u>;
+    var indices: array<u32, 4u> = Fill(0u);
     indices[0u] = 1u;
     indices[1u] = 2u;
     indices[2u] = 3u;
     indices[3u] = 0u;
 
-    let output: array<u32, 4u>;
+    var output: array<u32, 4u> = Fill(0u);
     tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
     Assert.Equal(7u, output[0u], "embedded SDSL-V fixture must preserve its asserted invariant");
 }`)

@@ -2,7 +2,7 @@ fn ElementwiseMapRank2SelfRead(
     Input: array<array<f32, 2u>, 2u>,
     scale: f32
 ) -> void {
-    let Output: array<array<f32, 2u>, 2u>;
+    var Output: array<array<f32, 2u>, 2u> = Fill(0.0);
     tensor Output[i, j] = Input[i, j] + Output[i, j] * scale;
     return;
 }

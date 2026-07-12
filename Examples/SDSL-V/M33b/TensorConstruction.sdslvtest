@@ -130,7 +130,7 @@ fn IdentityMatrixGeneration() -> void {
 [Fact]
 [TestInputUInt(5u, 7u, 11u)]
 fn FillExactlyOnceSemantics() -> void {
-    let counter: u32 = 0u;
+    var counter: u32 = 0u;
     let index: u32 = 1u;
     let values: ndarray<u32, [2u, 2u]> = Fill(
         read TestInput.UInt[HLSL<u32>(counter, index) {
@@ -150,7 +150,7 @@ fn FillExactlyOnceSemantics() -> void {
 
 [Fact]
 fn GenerateExactlyOncePerCoordinate() -> void {
-    let counter: u32 = 0u;
+    var counter: u32 = 0u;
     let values: ndarray<u32, [2u, 3u]> = Generate[i, j](
         HLSL<u32>(counter, i, j) {
             counter = counter + 1u;
@@ -170,7 +170,7 @@ fn GenerateExactlyOncePerCoordinate() -> void {
 [Fact]
 [TestInputUInt(5u, 7u, 11u)]
 fn GuardedReadGenerateBody() -> void {
-    let counter: u32 = 0u;
+    var counter: u32 = 0u;
     let values: ndarray<u32, [4u]> = Generate[i](
         read TestInput.UInt[HLSL<u32>(counter, i) {
             counter = counter + 1u;
@@ -235,7 +235,7 @@ fn DenseLiteralParity() -> void {
 [Fact]
 fn TensorOperationConsumingGeneratedNDArray() -> void {
     let input: ndarray<u32, [2u, 3u]> = Generate[i, j](Encode2(i, j));
-    let output: ndarray<u32, [2u, 3u]>;
+    var output: ndarray<u32, [2u, 3u]> = Fill(0u);
     tensor output[i, j] = input[i, j] * 2u + 1u;
 
     Assert.Equal(1u, output[0u, 0u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
@@ -250,7 +250,7 @@ fn TensorOperationConsumingGeneratedNDArray() -> void {
 fn MatrixMultiplicationUsingGeneratedOperands() -> void {
     let A: ndarray<u32, [2u, 3u]> = Generate[i, k](i * 3u + k + 1u);
     let B: ndarray<u32, [3u, 4u]> = Generate[k, j](MatmulB(k, j));
-    let C: ndarray<u32, [2u, 4u]>;
+    var C: ndarray<u32, [2u, 4u]> = Fill(0u);
     tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
 
     Assert.Equal(10u, C[0u, 0u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");

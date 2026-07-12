@@ -1,0 +1,6 @@
+expect error: "cannot assign to immutable binding `x`"
+fn ImmutableReassignment() -> void {
+    let x: u32 = 1u;
+    x = 2u;
+    return;
+}

@@ -7,6 +7,6 @@ record SgemmParams { m: u32; n: u32; k: u32; }
 shader SgemmPacked4 { resources PackedIO;
 stage compute [numthreads(8,8,1)] fn CS(params:SgemmParams)->void {
 let row:u32=DispatchThreadID.x; let col:u32=DispatchThreadID.y; if row>=params.m{return;} if col>=params.n{return;}
-let packs:u32=(params.k+3u)/4u; let acc:f32=0.0;
+let packs:u32=(params.k+3u)/4u; var acc:f32=0.0;
 for p in 0u..packs { let av:float4=A[row*packs+p]; let bv:float4=B[col*packs+p]; acc=acc+Dot(av, bv); }
 C[row*params.n+col]=acc; return; }}

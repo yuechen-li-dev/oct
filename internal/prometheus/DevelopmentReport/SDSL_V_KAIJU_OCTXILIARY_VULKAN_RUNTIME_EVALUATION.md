@@ -232,7 +232,7 @@ The temporary binaries described above were not recoverable authorities. M36b
 instead generated and checked in new canonical M36a benchmark artifacts from
 the current benchmark source, isolated per benchmark with DXC Vulkan 1.0 and
 `spirv-val`. The canonical ndarray artifact is
-`bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083`
+`7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a`
 (1,560 bytes); the canonical tensor artifact is
 `9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7`
 (2,820 bytes). Their stable IDs, exact source/toolchain provenance and resource

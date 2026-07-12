@@ -53,7 +53,9 @@ compute-oriented resource and execution model, and an explicitly unimplemented
 graphics surface. Its fixed-shape data concepts are distinct:
 
 - `ndarray<T, [shape...]>` is shaped, row-major value storage.
-- `Fill` and `Generate` construct ndarray values.
+- `array<T, N>` is a distinct fixed-size array type and may nest.
+- `Fill` and `Generate` construct compiler-owned fixed-shape values when a
+  target `array` or `ndarray` type is known.
 - `tensor` and `Sum` describe indexed computation and reduction.
 
 ## Implementation status legend
@@ -112,10 +114,12 @@ module system.
 `board`, `stream`, `enum`, `concept`, `config`, `shader`, `compile`, and
 ordinary `fn` declarations. `concept`/`config`/template shaders are a
 compile-time specialization facility, not runtime polymorphism. Function and
-shader method parameters are immutable; local `let` variables are mutable in
-the current language despite the name. Assignment is permitted only to a
-validated mutable local, writable resource element, board field, or supported
-tile/ndarray element.
+shader method parameters are immutable. `let` creates an immutable local
+binding and `var` creates a mutable local binding; both require an initializer.
+Mutation through an aggregate requires its root local binding to be `var`.
+Writable shader resources remain governed by their resource access declaration,
+not the spelling of an index local. There is no `let mut`, uninitialized local,
+or mutable parameter syntax.
 
 ```sdslv
 namespace Demo;
@@ -145,7 +149,9 @@ validator-owned; no implicit cross-kind numeric conversion should be assumed.
 `[IMPLEMENTED]` Fixed arrays use `array<T, N>` and can nest, for example
 `array<array<f32, 4u>, 4u>`. Arrays require compile-time positive extents. They
 remain a supported compatibility and resource representation; nested arrays
-are not silently interchangeable with `ndarray`.
+are not silently interchangeable with `ndarray`. `array` and `ndarray` keep
+distinct public type identity even when they participate in the same
+compiler-owned fixed-shape construction path.
 
 `[IMPLEMENTED]` `ndarray<T, [D0, D1, ...]>` is a first-class fixed-shape value
 type with rank at least one, positive integer constant extents, supported
@@ -155,20 +161,26 @@ equal rank; each index is an integer. Its logical layout is row-major, with the
 last axis varying fastest.
 
 ```sdslv
-let weights: ndarray<f32, [2u, 3u]> = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+var weights: ndarray<f32, [2u, 3u]> = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
 weights[1u, 2u] = 9.0;
 ```
 
 `[IMPLEMENTED]` `Fill(value)` constructs every element of a contextually typed
-ndarray. Its argument is evaluated exactly once, then used for every element.
-`Generate[i, j](body)` constructs every element of a contextually typed ndarray
-with one immutable `u32` binder per axis. Binders are ordered outermost to
-innermost and the conceptual traversal is row-major. Binder count must equal
-rank and the body must produce the element type.
+fixed-shape local value. In current source that means `ndarray<...>` and
+fixed-size `array<...>` targets such as `array<f32, 16u>` or
+`array<array<f32, 4u>, 4u>`. Its argument is evaluated exactly once, then used
+for every element. `Generate[i, j](body)` constructs every element of a
+contextually typed fixed-shape value with one immutable `u32` binder per axis.
+Binders are ordered outermost to innermost and the conceptual traversal is
+row-major. Binder count must equal rank and the body must produce the element
+type. Dense literals are target-typed, require exact element count, preserve
+source order, and do not add implicit `array`/`ndarray` conversion.
 
 ```sdslv
 let zero: ndarray<f32, [16u, 16u]> = Fill(0.0);
 let grid: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 10u + j);
+var values: array<f32, 16u> = Fill(0.0);
+let lanes: array<u32, 4u> = [1u, 2u, 3u, 4u];
 ```
 
 ## Ordinary and compile-time control flow

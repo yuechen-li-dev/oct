@@ -1,4 +1,4 @@
 fn ExtentOverflow() -> void {
-    let x: ndarray<u32, [5000000000u]>;
+    let x: ndarray<u32, [5000000000u]> = Fill(0u);
     return;
 }

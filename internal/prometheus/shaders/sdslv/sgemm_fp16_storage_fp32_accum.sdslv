@@ -6,7 +6,7 @@ record SgemmParams { m:u32; n:u32; k:u32; }
 
 shader SgemmFp16StorageFp32Accum { resources HalfIO;
 stage compute [numthreads(8,8,1)] fn CS(params:SgemmParams)->void {
-let row:u32=DispatchThreadID.x; let col:u32=DispatchThreadID.y; if row>=params.m{return;} if col>=params.n{return;} let acc:f32=0.0;
+let row:u32=DispatchThreadID.x; let col:u32=DispatchThreadID.y; if row>=params.m{return;} if col>=params.n{return;} var acc:f32=0.0;
 for kk in 0u..params.k { let ai:u32=row*params.k+kk; let bi:u32=kk*params.n+col; let aw:u32=A[ai/2u]; let bw:u32=B[bi/2u]; let av:float2=Unpack<F16x2>(aw); let bv:float2=Unpack<F16x2>(bw);
-let a:f32=0.0; let b:f32=0.0; if (ai%2u)==0u { a=av.x; } else { a=av.y; } if (bi%2u)==0u { b=bv.x; } else { b=bv.y; } acc=acc+a*b; }
+var a:f32=0.0; var b:f32=0.0; if (ai%2u)==0u { a=av.x; } else { a=av.y; } if (bi%2u)==0u { b=bv.x; } else { b=bv.y; } acc=acc+a*b; }
 C[row*params.n+col]=acc; return; }}

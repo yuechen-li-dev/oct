@@ -1,4 +1,4 @@
 fn NegativeExtent() -> void {
-    let x: ndarray<u32, [-1]>;
+    let x: ndarray<u32, [-1]> = Fill(0u);
     return;
 }

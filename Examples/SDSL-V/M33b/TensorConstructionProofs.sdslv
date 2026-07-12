@@ -46,7 +46,7 @@ shader GeneratedMatmulProof {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
     let A: ndarray<u32, [2u, 3u]> = Generate[i, k](i * 3u + k + 1u);
     let B: ndarray<u32, [3u, 4u]> = Generate[k, j](MatmulB(k, j));
-    let C: ndarray<u32, [2u, 4u]>;
+    var C: ndarray<u32, [2u, 4u]> = Fill(0u);
     tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
     return;
 }

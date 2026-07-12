@@ -25,8 +25,7 @@ shader Tile2DIndexing {
         let localRow: u32 = thread.GroupThreadId.x;
         let localCol: u32 = thread.GroupThreadId.y;
         let index: u32 = thread.GroupIndex;
-        let value: f32 = 0.0;
-
+        var value: f32 = 0.0;
         if index < params.Count {
             value = Input[index];
         }

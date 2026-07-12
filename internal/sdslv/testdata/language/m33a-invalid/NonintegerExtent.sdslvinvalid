@@ -1,4 +1,4 @@
 fn NonintegerExtent() -> void {
-    let x: ndarray<u32, [true]>;
+    let x: ndarray<u32, [true]> = Fill(0u);
     return;
 }

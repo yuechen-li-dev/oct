@@ -1,0 +1,10 @@
+fn MutableLocals() -> void {
+    let limit: u32 = 4u;
+    var acc: u32 = 0u;
+    var values: ndarray<u32, [4u]> = Fill(0u);
+    for i in 0u..limit {
+        acc = acc + i;
+    }
+    values[0u] = acc;
+    return;
+}

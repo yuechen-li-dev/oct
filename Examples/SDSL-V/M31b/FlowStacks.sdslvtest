@@ -4,7 +4,7 @@ fn AppendTrace(trace: u32, digit: u32) -> u32 {
 
 [Fact]
 fn LinearFallthroughLegacy() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); }
     state B { trace = AppendTrace(trace, 2u); }
@@ -15,7 +15,7 @@ fn LinearFallthroughLegacy() -> void {
 
 [Fact]
 fn GotoOnlyTransfer() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); goto C; }
     state B { trace = AppendTrace(trace, 2u); finish; }
@@ -26,7 +26,7 @@ fn GotoOnlyTransfer() -> void {
 
 [Fact]
 fn FinishOnlyFlowPreservesEpilogue() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); finish; }
     }
@@ -36,7 +36,7 @@ fn FinishOnlyFlowPreservesEpilogue() -> void {
 
 [Fact]
 fn OnePushPop() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push Shared; }
     state Resume { trace = AppendTrace(trace, 3u); finish; }
@@ -47,7 +47,7 @@ fn OnePushPop() -> void {
 
 [Fact]
 fn NestedPushPopLifo() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push B; }
     state AReturn { trace = AppendTrace(trace, 5u); finish; }
@@ -60,8 +60,8 @@ fn NestedPushPopLifo() -> void {
 
 [Fact]
 fn SharedSubflowCallerSpecificReturn() -> void {
-    let trace: u32 = 0u;
-    let digit: u32 = 0u;
+    var trace: u32 = 0u;
+    var digit: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); digit = 2u; push Shared; }
     state AfterA { trace = AppendTrace(trace, 3u); digit = 4u; push Shared; }
@@ -73,7 +73,7 @@ fn SharedSubflowCallerSpecificReturn() -> void {
 
 [Fact]
 fn FinalStatePushReturnsToCompletion() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state Entry { trace = AppendTrace(trace, 1u); goto Final; }
     state Cleanup { trace = AppendTrace(trace, 3u); pop; }
@@ -84,7 +84,7 @@ fn FinalStatePushReturnsToCompletion() -> void {
 
 [Fact]
 fn FinishWithNonemptyStack() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push Shared; }
     state Shared { trace = AppendTrace(trace, 2u); finish; }
@@ -95,7 +95,7 @@ fn FinishWithNonemptyStack() -> void {
 
 [Fact]
 fn FlowFollowedByAssert() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push Shared; }
     state Resume { trace = AppendTrace(trace, 3u); finish; }
@@ -109,7 +109,7 @@ fn FlowFollowedByAssert() -> void {
 [DispatchGroups(2, 1, 1)]
 [Fact]
 fn MultipleInvocationsRemainDeterministic() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push Shared; }
     state Resume { trace = AppendTrace(trace, 3u); finish; }
@@ -122,7 +122,7 @@ fn MultipleInvocationsRemainDeterministic() -> void {
 [InlineData(1u, 1231u)]
 [InlineData(7u, 1237u)]
 fn TheoryRowFlow(seed: u32, expected: u32) -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push Shared; }
     state Resume { trace = AppendTrace(trace, 3u); finish; }
@@ -136,7 +136,7 @@ fn TheoryRowFlow(seed: u32, expected: u32) -> void {
 [DispatchGroups(1, 1, 1)]
 [Fact]
 fn BarrierSubflowRemainsUniform() -> void {
-    let trace: u32 = 0u;
+    var trace: u32 = 0u;
     flow F {
     state A { trace = AppendTrace(trace, 1u); push Barrier; }
     state Resume { trace = AppendTrace(trace, 3u); finish; }

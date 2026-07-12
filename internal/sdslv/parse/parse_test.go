@@ -118,7 +118,7 @@ return;
 func TestBuildModuleParsesRegTileAndZeroInitializer(t *testing.T) {
 	module := parseTestModule(t, `shader RegTileBasic {
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
-let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+var Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
 Acc[0u, 1u] = Acc[0u, 1u] + 1.0;
 return;
 }
@@ -135,6 +135,25 @@ return;
 	callee, ok := call.Callee.(ast.IdentifierExpr)
 	if !ok || callee.Name != "reg_tile_zero" {
 		t.Fatalf("callee = %#v, want reg_tile_zero", call.Callee)
+	}
+}
+
+func TestSdslvParsesVarDeclarationAndPreservesKeywordSpan(t *testing.T) {
+	module := parseTestModule(t, "fn F() -> void { var value: u32 = 1u; return; }")
+	stmt := module.Decls[0].(ast.FunctionDecl).Body.Statements[0].(ast.LetStmt)
+	if stmt.Mutability != ast.BindingMutabilityMutable {
+		t.Fatalf("mutability = %q, want mutable", stmt.Mutability)
+	}
+	if stmt.KeywordSpan.Start.Column != 18 || stmt.KeywordSpan.End.Column != 21 {
+		t.Fatalf("var keyword span = %#v", stmt.KeywordSpan)
+	}
+}
+
+func TestSdslvDistinguishesLetAndVar(t *testing.T) {
+	module := parseTestModule(t, "fn F() -> void { let a: u32 = 1u; var b: u32 = 2u; return; }")
+	stmts := module.Decls[0].(ast.FunctionDecl).Body.Statements
+	if stmts[0].(ast.LetStmt).Mutability != ast.BindingMutabilityImmutable || stmts[1].(ast.LetStmt).Mutability != ast.BindingMutabilityMutable {
+		t.Fatalf("local mutability was not preserved")
 	}
 }
 
@@ -912,7 +931,7 @@ func TestSdslvTensorParsesCompoundAssignmentAndSum(t *testing.T) {
 	module := parseTestModule(t, `shader S {
 workgroup A: tile<f32, 4u, 4u>;
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
-let Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+var Acc: reg_tile<f32, 2u, 2u> = reg_tile_zero();
 tensor Acc[i, j] += Sum[k](A[i, k] * A[k, j]);
 return;
 }
@@ -934,8 +953,8 @@ return;
 }
 
 func TestSdslvTensorParsesMultipleReductionIndices(t *testing.T) {
-	module := parseTestModule(t, `fn F(A: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>) -> void {
-let C: array<array<f32, 2u>, 2u>;
+module := parseTestModule(t, `fn F(A: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>) -> void {
+var C: array<array<f32, 2u>, 2u> = Fill(0.0);
 tensor C[i, j] = Sum[kx, ky](A[i, j, kx, ky]);
 return;
 }`)

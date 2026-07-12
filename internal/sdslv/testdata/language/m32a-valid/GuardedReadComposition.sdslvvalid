@@ -3,7 +3,7 @@ fn GuardedReadComposition(
     M: u32,
     K: u32
 ) -> void {
-    let Output: array<array<f32, 4u>, 4u>;
+    var Output: array<array<f32, 4u>, 4u> = Fill(0.0);
     tensor Output[i, j] = Sum[k](
         read Input[i, k] when i < M and k < K else 0.0
     );

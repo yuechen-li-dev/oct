@@ -6,7 +6,7 @@
       "name": "NDArrayMaterializeStorage",
       "benchmarkId": "sdslvbench-8b1f66233dd54390f518e9c7",
       "source": "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
-      "sourceSha256": "a1ebadf8bcaa336945469308eb3fda543a9f17aaca0e9d6535df35a87ac4917e",
+      "sourceSha256": "26c1457d50e2cfb2a9c5b806d8dc1152437542c699bd5146047c9aa122a922ae",
       "compiler": "github.com/yuechen-li-dev/oct@(devel)",
       "dxcPath": "C:/VulkanSDK/1.4.341.1/Bin/dxc.exe",
       "dxcVersion": "dxcompiler.dll: 1.10(5180-e3554182)(1.9.0.5180) - 1.9.0.5180 (e35541826)",
@@ -56,14 +56,14 @@
       "pushConstantsBytes": 0,
       "spirvPath": "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
       "spirvBytes": 1560,
-      "spirvSha256": "bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083"
+      "spirvSha256": "7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a"
     },
     {
       "schemaVersion": 1,
       "name": "TensorContractionStorage",
       "benchmarkId": "sdslvbench-a2b7fd8383074dd673a365d5",
       "source": "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
-      "sourceSha256": "a1ebadf8bcaa336945469308eb3fda543a9f17aaca0e9d6535df35a87ac4917e",
+      "sourceSha256": "26c1457d50e2cfb2a9c5b806d8dc1152437542c699bd5146047c9aa122a922ae",
       "compiler": "github.com/yuechen-li-dev/oct@(devel)",
       "dxcPath": "C:/VulkanSDK/1.4.341.1/Bin/dxc.exe",
       "dxcVersion": "dxcompiler.dll: 1.10(5180-e3554182)(1.9.0.5180) - 1.9.0.5180 (e35541826)",

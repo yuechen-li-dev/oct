@@ -1,4 +1,4 @@
 fn Rank1Declaration() -> void {
-    let values: ndarray<u32, [8u]>;
+    let values: ndarray<u32, [8u]> = Fill(0u);
     return;
 }

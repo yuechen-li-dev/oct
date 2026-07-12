@@ -73,10 +73,10 @@ shader SgemmTileSharedFp32 {
         let localCol: u32 = thread.GroupThreadId.y;
         let row: u32 = thread.GroupId.x * C.Tile.M + localRow;
         let col: u32 = thread.GroupId.y * C.Tile.N + localCol;
-        let acc: f32 = 0.0;
+        var acc: f32 = 0.0;
         let AView: matrix_view<f32> = row_major(A, params.m, params.k);
         let BView: matrix_view<f32> = row_major(B, params.k, params.n);
-        let CView: matrix_view<f32> = row_major(C, params.m, params.n);
+        var CView: matrix_view<f32> = row_major(C, params.m, params.n);
         let tileCount: u32 = (params.k + C.Tile.K - 1u) / C.Tile.K;
 
         [loop]
@@ -84,8 +84,8 @@ shader SgemmTileSharedFp32 {
             let tileBaseK: u32 = tile * C.Tile.K;
             let aCol: u32 = tileBaseK + localCol;
             let bRow: u32 = tileBaseK + localRow;
-            let aValue: f32 = 0.0;
-            let bValue: f32 = 0.0;
+            var aValue: f32 = 0.0;
+            var bValue: f32 = 0.0;
 
             if row < params.m and aCol < params.k {
                 aValue = AView[row, aCol];

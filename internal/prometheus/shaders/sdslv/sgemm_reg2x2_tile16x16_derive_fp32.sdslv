@@ -94,10 +94,10 @@ shader SgemmReg2x2Tile16x16DeriveFp32 {
         let baseCol: u32 = groupBaseCol + localCol * C.OutputsPerInvocation.N;
         let localRow2: u32 = localRow * C.OutputsPerInvocation.M;
         let localCol2: u32 = localCol * C.OutputsPerInvocation.N;
-        let Acc: reg_tile<f32, C.OutputsPerInvocation.M, C.OutputsPerInvocation.N> = reg_tile_zero();
+        var Acc: reg_tile<f32, C.OutputsPerInvocation.M, C.OutputsPerInvocation.N> = reg_tile_zero();
         let AView: matrix_view<f32> = row_major(A, params.m, params.k);
         let BView: matrix_view<f32> = row_major(B, params.k, params.n);
-        let CView: matrix_view<f32> = row_major(C, params.m, params.n);
+        var CView: matrix_view<f32> = row_major(C, params.m, params.n);
         let tileCount: u32 = (params.k + C.Tile.K - 1u) / C.Tile.K;
         let fullOutputTile: bool =
             groupBaseRow + C.Tile.M <= params.m and

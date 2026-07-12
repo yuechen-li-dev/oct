@@ -27,14 +27,14 @@ shader VectorAddStream {
     resources VectorAddIO;
 
     fn DescribeThread(thread: ComputeThread) -> DispatchInfo {
-        let info: DispatchInfo;
-        info.Index = thread.DispatchId.x;
-        info.Group = thread.GroupIndex;
-        return info;
+        return DispatchInfo {
+            Index: thread.DispatchId.x;
+            Group: thread.GroupIndex;
+        };
     }
 
     stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: VectorParams) -> void {
-        let info: DispatchInfo = DescribeThread(thread);
+        var info: DispatchInfo = DescribeThread(thread);
         if info.Index < params.Count {
             C[info.Index] = A[info.Index] + B[info.Index] + params.Bias;
         }

@@ -1,4 +1,4 @@
 fn NonconstantExtent(n: u32) -> void {
-    let x: ndarray<u32, [n]>;
+    let x: ndarray<u32, [n]> = Fill(0u);
     return;
 }

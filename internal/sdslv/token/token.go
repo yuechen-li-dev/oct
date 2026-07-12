@@ -28,6 +28,7 @@ const (
 	KeywordCompute   Kind = "KeywordCompute"
 	KeywordFn        Kind = "KeywordFn"
 	KeywordLet       Kind = "KeywordLet"
+	KeywordVar       Kind = "KeywordVar"
 	KeywordReturn    Kind = "KeywordReturn"
 	KeywordRead      Kind = "KeywordRead"
 	KeywordWrite     Kind = "KeywordWrite"
@@ -142,6 +143,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordFn
 	case "let":
 		return KeywordLet
+	case "var":
+		return KeywordVar
 	case "return":
 		return KeywordReturn
 	case "read":

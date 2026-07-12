@@ -2,7 +2,7 @@ fn ElementwiseMapRank1(
     Input: array<f32, 4u>,
     scale: f32
 ) -> void {
-    let Output: array<f32, 4u>;
+    var Output: array<f32, 4u> = Fill(0.0);
     tensor Output[i] = Input[i] * scale;
     return;
 }

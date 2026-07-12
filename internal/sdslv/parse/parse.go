@@ -751,7 +751,9 @@ func (p *parser) parseStmt() (ast.Stmt, error) {
 	case token.KeywordStatic:
 		return p.parseStaticAssertStmt()
 	case token.KeywordLet:
-		return p.parseLet()
+		return p.parseLocal()
+	case token.KeywordVar:
+		return p.parseLocal()
 	case token.KeywordReturn:
 		return p.parseReturn()
 	case token.KeywordGoto:
@@ -1032,6 +1034,8 @@ func (p *parser) parseComptimeStmt() (ast.Stmt, error) {
 	switch p.current().Kind {
 	case token.KeywordLet:
 		return p.parseComptimeLet()
+	case token.KeywordVar:
+		return ast.ComptimeLetStmt{}, p.errorAtCurrent("comptime var is not supported; use comptime let")
 	case token.KeywordIf:
 		return p.parseComptimeIf()
 	case token.KeywordMatch:
@@ -1222,8 +1226,13 @@ func (p *parser) parseComptimeFor() (ast.ComptimeForStmt, error) {
 	return ast.ComptimeForStmt{Span: p.spanSince(startPos), Name: name.Lexeme, Start: start, End: end, Body: body}, nil
 }
 
-func (p *parser) parseLet() (ast.LetStmt, error) {
+func (p *parser) parseLocal() (ast.LetStmt, error) {
 	start := p.position
+	keyword := p.current()
+	mutability := ast.BindingMutabilityImmutable
+	if keyword.Kind == token.KeywordVar {
+		mutability = ast.BindingMutabilityMutable
+	}
 	p.advance()
 	name, err := p.expect(token.Identifier, "expected local name")
 	if err != nil {
@@ -1236,17 +1245,17 @@ func (p *parser) parseLet() (ast.LetStmt, error) {
 	if err != nil {
 		return ast.LetStmt{}, err
 	}
-	var value ast.Expr
-	if p.match(token.Assign) {
-		value, err = p.parseReductionValueOrExpression()
-		if err != nil {
-			return ast.LetStmt{}, err
-		}
-	}
-	if _, err := p.expect(token.Semicolon, "expected ';' after let"); err != nil {
+	if _, err := p.expect(token.Assign, "local declarations must be initialized"); err != nil {
 		return ast.LetStmt{}, err
 	}
-	return ast.LetStmt{Span: p.spanSince(start), Name: name.Lexeme, Type: ref, Value: value}, nil
+	value, err := p.parseReductionValueOrExpression()
+	if err != nil {
+		return ast.LetStmt{}, err
+	}
+	if _, err := p.expect(token.Semicolon, "expected ';' after local declaration"); err != nil {
+		return ast.LetStmt{}, err
+	}
+	return ast.LetStmt{Span: p.spanSince(start), KeywordSpan: keyword.Span, NameSpan: name.Span, Name: name.Lexeme, Type: ref, Value: value, Mutability: mutability}, nil
 }
 
 func (p *parser) parseReturn() (ast.ReturnStmt, error) {

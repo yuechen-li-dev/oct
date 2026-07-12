@@ -25,7 +25,7 @@ fn ResolveChoice(value: Choice) -> u32 {
 
 [Fact]
 fn ArithmeticAssignmentNestedControlFlowAndCalls() -> void {
-    let total: u32 = 0u;
+    var total: u32 = 0u;
     for i in 0u..4u {
         total = Add(total, i);
     }
@@ -46,13 +46,13 @@ fn ArithmeticAssignmentNestedControlFlowAndCalls() -> void {
 [Fact]
 fn RecordsEnumsAndBuiltins() -> void {
     let choice: Choice = Choice.Value { X: 9u; };
-    let value: u32 = ResolveChoice(choice);
+    var value: u32 = ResolveChoice(choice);
     Assert.Equal(9u, value, "RecordsEnumsAndBuiltins must preserve its declared invariant");
 }
 
 [Fact]
 fn ForeignStatementAndMultipleAssertions() -> void {
-    let value: u32 = 1u;
+    var value: u32 = 1u;
     HLSL(value) {
         value += 1u;
     }

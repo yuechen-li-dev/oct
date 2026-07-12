@@ -14,7 +14,7 @@ checked-in source, isolated compilation and recorded toolchain identity:
 
 | Case | Stable ID | SPIR-V | Bytes | SHA-256 |
 |---|---|---|---:|---|
-| NDArrayMaterializeStorage | `sdslvbench-8b1f66233dd54390f518e9c7` | `examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv` | 1560 | `bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083` |
+| NDArrayMaterializeStorage | `sdslvbench-8b1f66233dd54390f518e9c7` | `examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv` | 1560 | `7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a` |
 | TensorContractionStorage | `sdslvbench-a2b7fd8383074dd673a365d5` | `examples/SDSL-V/M36a/artifacts/tensorcontraction.spv` | 2820 | `9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7` |
 
 Generate with `go run ./tools/generate_m36b_canonical`. The manifest records
@@ -34,7 +34,7 @@ typed sidecar now reproduces that path through OCTWRAP/Octagon framing:
 | DefaultCounts | `oct sdslv bench --backend kaiju` | `61189616e925769a76cdc44901f1cb1d65ef0c8afd44358e610bbde19063d9e5` | pipeline, dispatch, cleanup | Vulkan query pool |
 | ScalarArithmetic | `oct sdslv bench --backend kaiju` | `1582e565d23f6217cdc5de56af97f4ab55aca7218584bd0f9d246840fca4346e` | pipeline, dispatch, cleanup | Vulkan query pool |
 | VectorDotStorage | `oct sdslv bench --backend kaiju` | `6f8fb736086ae9437ba8107b8b86cb888f4ea60b3334af10da44c5c3ffc3927e` | pipeline, dispatch, readback | Vulkan query pool |
-| NDArrayMaterializeStorage | `oct sdslv bench --backend kaiju` | `bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083` | pipeline, dispatch, readback | Vulkan query pool |
+| NDArrayMaterializeStorage | `oct sdslv bench --backend kaiju` | `7ee4a36be544f4742c30aa13d159ce8312d31a527403c00d7b67ab0d377a397a` | pipeline, dispatch, readback | Vulkan query pool |
 | TensorContractionStorage | `oct sdslv bench --backend kaiju` | `9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7` | pipeline, dispatch, readback | Vulkan query pool |
 
 Representative measured samples from the production sidecar:

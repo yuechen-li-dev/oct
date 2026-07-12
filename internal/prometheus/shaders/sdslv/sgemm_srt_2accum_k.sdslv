@@ -15,8 +15,8 @@ shader SgemmSrt2AccumK {
         let col: u32 = DispatchThreadID.y;
         if row >= params.m { return; }
         if col >= params.n { return; }
-        let even: f32 = 0.0;
-        let odd: f32 = 0.0;
+        var even: f32 = 0.0;
+        var odd: f32 = 0.0;
         let base: u32 = row * params.k;
         for kk in 0u..params.k step 2u {
             even = even + A[base + kk] * B[kk * params.n + col];

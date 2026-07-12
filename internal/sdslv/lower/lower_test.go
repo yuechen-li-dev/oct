@@ -32,8 +32,8 @@ func TestSdslvInlineHlslRejectsUnsupportedLoweringTarget(t *testing.T) {
 }
 
 func TestSdslvTensorAssignLowersToVDMIRWithCanonicalOrder(t *testing.T) {
-	tokens, err := lex.Analyze(source.File{Path: "tensor.sdslv", Text: `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
-  let C: array<f32, 2u>;
+tokens, err := lex.Analyze(source.File{Path: "tensor.sdslv", Text: `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
+  var C: array<f32, 2u> = Fill(0.0);
   tensor C[i] = Sum[k](A[i, k] * B[k]);
   return;
 }`})
@@ -99,8 +99,8 @@ stage compute [numthreads(1, 1, 1)] fn Add() -> void {
 }
 
 func TestSdslvFixedArrayIndexCarriesCompilerOwnedRowMajorShape(t *testing.T) {
-	tokens, err := lex.Analyze(source.File{Path: "rank4.sdslv", Text: `fn Rank4(A: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>) -> void {
-  let B: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>;
+tokens, err := lex.Analyze(source.File{Path: "rank4.sdslv", Text: `fn Rank4(A: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>) -> void {
+  var B: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u> = Fill(0.0);
   tensor B[i, j, k, l] = A[i, j, k, l];
   return;
 }`})
@@ -134,9 +134,9 @@ func TestSdslvFixedArrayIndexCarriesCompilerOwnedRowMajorShape(t *testing.T) {
 }
 
 func TestSdslvNdarrayLowersToDistinctTypeAndSourceOrderedLiteral(t *testing.T) {
-	tokens, err := lex.Analyze(source.File{Path: "ndarray.sdslv", Text: `fn F() -> void {
+tokens, err := lex.Analyze(source.File{Path: "ndarray.sdslv", Text: `fn F() -> void {
   let A: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
-  let B: ndarray<u32, [2u, 3u]>;
+  var B: ndarray<u32, [2u, 3u]> = Fill(0u);
   tensor B[i, j] = A[i, j];
   return;
 }`})
@@ -351,12 +351,12 @@ func TestModuleForTestsLowersTensorBodiesInsideSdslvTests(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "tensor_suite.sdslvtest", Text: `[Fact]
 [TestInputUInt(5u, 7u, 11u)]
 fn GuardedTensor() -> void {
-  let indices: array<u32, 4u>;
+  var indices: array<u32, 4u> = Fill(0u);
   indices[0u] = 1u;
   indices[1u] = 2u;
   indices[2u] = 3u;
   indices[3u] = 0u;
-  let output: array<u32, 4u>;
+  var output: array<u32, 4u> = Fill(0u);
   tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
   Assert.Equal(7u, output[0u], "embedded SDSL-V fixture must preserve its asserted invariant");
 }`})
@@ -608,9 +608,7 @@ stage compute [numthreads(16, 1, 1)] fn CS(thread: ComputeThread, params: Params
     return tile with { Acc0: A[thread.DispatchId.x] };
 }
 fn TileZero() -> Tile {
-    let tile: Tile;
-    tile.Acc0 = 0.0;
-    return tile;
+    return Tile { Acc0: 0.0; };
 }
 }`)
 	if got := len(mir.Streams); got != 2 {
@@ -757,7 +755,7 @@ resources { C: readwrite array<f32>; }
 stage compute [numthreads(1, 1, 1)] fn CS() -> void {
 comptime let RM: u32 = C.Outputs.M;
 comptime let RN: u32 = C.Outputs.N;
-let Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
+var Acc: reg_tile<f32, RM, RN> = reg_tile_zero();
 let CView: matrix_view<f32> = row_major(C, 2u, 2u);
 Acc[1u, 0u] = Acc[1u, 0u] + 3.0;
 CView[1u, 0u] = Acc[1u, 0u];
@@ -1949,7 +1947,7 @@ template<C: MicroConfig>
 shader Demo {
 resources { C: readwrite array<f32>; }
 stage compute [numthreads(1, 1, 1)] fn CS(row: u32, col: u32) -> void {
-let Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
+var Acc: reg_tile<f32, C.Outputs.M, C.Outputs.N> = reg_tile_zero();
 let CView: matrix_view<f32> = row_major(C, 4u, 4u);
 comptime for i in 0u..C.Outputs.M {
 comptime for j in 0u..C.Outputs.N {

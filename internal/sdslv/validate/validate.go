@@ -104,16 +104,20 @@ const (
 	varFlowBoard     varOrigin = "flow_board"
 	varDeriveSelf    varOrigin = "derive_self"
 	varDeriveLater   varOrigin = "derive_later"
+	varLoopIndex     varOrigin = "loop_index"
 	varTensorFree    varOrigin = "tensor_free_index"
 	varTensorRed     varOrigin = "tensor_reduction_index"
 	varGenerateIndex varOrigin = "generate_index"
+	varMatchPayload  varOrigin = "match_payload"
 )
 
 type varInfo struct {
-	typ    ast.TypeRef
-	origin varOrigin
-	access string
-	value  *configValue
+	typ             ast.TypeRef
+	origin          varOrigin
+	access          string
+	value           *configValue
+	mutable         bool
+	declarationSpan source.Span
 }
 
 const maxRegTileElements = 64
@@ -769,7 +773,7 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 		if param.Type.Name == "reg_tile" {
 			v.errorf("reg_tile parameters are not supported in SDSL-V M15")
 		}
-		scope[param.Name] = varInfo{typ: param.Type, origin: varParam}
+		scope[param.Name] = varInfo{typ: param.Type, origin: varParam, declarationSpan: param.Span}
 	}
 	v.validateBlock(fn.Body, fn.ReturnType, scope, shaderName, stage, templateParam, false)
 }
@@ -828,7 +832,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		if s.Type.Name == "reg_tile" {
 			localValue = nil
 		}
-		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access, value: localValue}
+		scope[s.Name] = varInfo{typ: localType, origin: varLocal, access: access, value: localValue, mutable: s.Mutability == ast.BindingMutabilityMutable, declarationSpan: s.NameSpan}
 	case ast.ComptimeLetStmt:
 		v.validateType(s.Type)
 		if v.typeKind(s.Type) == "board" {
@@ -1093,9 +1097,10 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		}
 		loopScope := cloneScope(scope)
 		loopScope[s.Name] = varInfo{
-			typ:    ast.TypeRef{Name: "u32"},
-			origin: varComptime,
-			value:  &configValue{typ: ast.TypeRef{Name: "u32"}, int32: 0},
+			typ:             ast.TypeRef{Name: "u32"},
+			origin:          varComptime,
+			value:           &configValue{typ: ast.TypeRef{Name: "u32"}, int32: 0},
+			declarationSpan: s.Span,
 		}
 		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam, insideFlowState)
 	case ast.ForStmt:
@@ -1124,7 +1129,7 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 			v.errorf("for step must be a positive integer literal")
 		}
 		loopScope := cloneScope(scope)
-		loopScope[s.Name] = varInfo{typ: startType, origin: varLocal}
+		loopScope[s.Name] = varInfo{typ: startType, origin: varLoopIndex, declarationSpan: s.Span}
 		v.validateBlock(s.Body, returnType, loopScope, shaderName, stage, templateParam, insideFlowState)
 	case ast.StaticAssertStmt:
 		v.validateGuardedReadPlacement(s.Expr, false)
@@ -1416,29 +1421,36 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 	switch e := expr.(type) {
 	case ast.ArrayLiteral:
 		if expected == nil {
-			v.errorAt(e.Span, "SDSL-V3304", "array literals require an ndarray target type in M33a")
+			v.errorAt(e.Span, "SDSL-V3304", "array literals require a constructible fixed-shape target type")
 			return ast.TypeRef{Name: "<error>"}
 		}
 		target := v.resolveAlias(*expected)
-		if target.Name != "ndarray" {
-			v.errorAt(e.Span, "SDSL-V3312", "nested ndarray literals are not supported in SDSL-V M33a; use one flat row-major literal")
+		elem, shape, ok := v.constructibleFixedShape(target)
+		if !ok {
+			v.errorAt(e.Span, "SDSL-V3304", "array literals require a constructible fixed-shape target type")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		for _, element := range e.Elements {
+			if _, nested := element.(ast.ArrayLiteral); nested {
+				v.errorAt(ast.ExprSpan(element), "SDSL-V3312", "nested fixed-shape literals are not supported in SDSL-V M37a; use one flat row-major literal")
+				return ast.TypeRef{Name: "<error>"}
+			}
+		}
+		if target.Name == "array" && len(shape) != 1 {
+			v.errorAt(e.Span, "SDSL-V3312", "nested fixed-array literals are not supported in SDSL-V M37a; use Fill(...) for multi-rank arrays")
 			return ast.TypeRef{Name: "<error>"}
 		}
 		count := uint64(1)
-		for _, extent := range target.NDArrayShape {
-			value, err := v.evalConstExpr(extent, nil)
-			if err != nil || value.int32 <= 0 {
-				return ast.TypeRef{Name: "<error>"}
-			}
-			count *= uint64(value.int32)
+		for _, extent := range shape {
+			count *= uint64(extent)
 		}
 		if uint64(len(e.Elements)) != count {
-			v.errorAt(e.Span, "SDSL-V3305", "ndarray literal element count mismatch: expected %d for shape %s, got %d", count, typeName(target), len(e.Elements))
+			v.errorAt(e.Span, "SDSL-V3305", "fixed-shape literal element count mismatch: expected %d for shape %s, got %d", count, typeName(target), len(e.Elements))
 		}
 		for _, element := range e.Elements {
-			typ := v.exprTypeWithExpected(element, scope, shaderName, templateParam, &target.Args[0], currentDeriveField)
-			if !v.compatible(target.Args[0], typ) {
-				v.errorAt(ast.ExprSpan(element), "SDSL-V3306", "ndarray literal element expects %s, got %s", typeName(target.Args[0]), typeName(typ))
+			typ := v.exprTypeWithExpected(element, scope, shaderName, templateParam, &elem, currentDeriveField)
+			if !v.compatible(elem, typ) {
+				v.errorAt(ast.ExprSpan(element), "SDSL-V3306", "fixed-shape literal element expects %s, got %s", typeName(elem), typeName(typ))
 			}
 		}
 		return target
@@ -1448,17 +1460,18 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			return ast.TypeRef{Name: "<error>"}
 		}
 		target := v.resolveAlias(*expected)
-		if target.Name != "ndarray" || len(target.Args) != 1 {
-			v.errorAt(e.KeywordSpan, "SDSL-V3314", "Fill target must be an ndarray fixed-shape value")
+		elem, _, ok := v.constructibleFixedShape(target)
+		if !ok {
+			v.errorAt(e.KeywordSpan, "SDSL-V3314", "Fill target must be a fixed-shape array or ndarray value")
 			return ast.TypeRef{Name: "<error>"}
 		}
 		if len(e.Arguments) != 1 {
 			v.errorAt(e.Span, "SDSL-V3315", "Fill requires exactly one argument")
 			return ast.TypeRef{Name: "<error>"}
 		}
-		value := v.exprTypeWithExpected(e.Arguments[0], scope, shaderName, templateParam, &target.Args[0], currentDeriveField)
-		if !v.compatible(target.Args[0], value) {
-			v.errorAt(ast.ExprSpan(e.Arguments[0]), "SDSL-V3316", "Fill argument expects %s, got %s", typeName(target.Args[0]), typeName(value))
+		value := v.exprTypeWithExpected(e.Arguments[0], scope, shaderName, templateParam, &elem, currentDeriveField)
+		if !v.compatible(elem, value) {
+			v.errorAt(ast.ExprSpan(e.Arguments[0]), "SDSL-V3316", "Fill argument expects %s, got %s", typeName(elem), typeName(value))
 		}
 		return target
 	case ast.GenerateExpr:
@@ -1467,12 +1480,13 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			return ast.TypeRef{Name: "<error>"}
 		}
 		target := v.resolveAlias(*expected)
-		if target.Name != "ndarray" || len(target.Args) != 1 {
-			v.errorAt(e.KeywordSpan, "SDSL-V3318", "Generate target must be an ndarray fixed-shape value")
+		elem, shape, ok := v.constructibleFixedShape(target)
+		if !ok {
+			v.errorAt(e.KeywordSpan, "SDSL-V3318", "Generate target must be a fixed-shape array or ndarray value")
 			return ast.TypeRef{Name: "<error>"}
 		}
-		if len(e.Binders) != len(target.NDArrayShape) {
-			v.errorAt(e.OpenBracketSpan, "SDSL-V3319", "Generate binder count mismatch: target rank is %d, but %d binders were provided", len(target.NDArrayShape), len(e.Binders))
+		if len(e.Binders) != len(shape) {
+			v.errorAt(e.OpenBracketSpan, "SDSL-V3319", "Generate binder count mismatch: target rank is %d, but %d binders were provided", len(shape), len(e.Binders))
 		}
 		bodyScope := make(map[string]varInfo, len(scope)+len(e.Binders))
 		for k, value := range scope {
@@ -1489,9 +1503,9 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			}
 			bodyScope[binder.Name] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varGenerateIndex}
 		}
-		body := v.exprTypeWithExpected(e.Body, bodyScope, shaderName, templateParam, &target.Args[0], currentDeriveField)
-		if !v.compatible(target.Args[0], body) {
-			v.errorAt(ast.ExprSpan(e.Body), "SDSL-V3322", "Generate body expects %s, got %s", typeName(target.Args[0]), typeName(body))
+		body := v.exprTypeWithExpected(e.Body, bodyScope, shaderName, templateParam, &elem, currentDeriveField)
+		if !v.compatible(elem, body) {
+			v.errorAt(ast.ExprSpan(e.Body), "SDSL-V3322", "Generate body expects %s, got %s", typeName(elem), typeName(body))
 		}
 		return target
 	case ast.ForeignShaderExpr:
@@ -1784,7 +1798,7 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 				if arm.BindingName == "" {
 					v.errorf("payload variant %s.%s must bind payload in match", arm.EnumName, arm.VariantName)
 				} else {
-					armScope[arm.BindingName] = varInfo{typ: ast.TypeRef{Name: variant.payloadType}, origin: varLocal}
+					armScope[arm.BindingName] = varInfo{typ: ast.TypeRef{Name: variant.payloadType}, origin: varMatchPayload, declarationSpan: arm.Span}
 				}
 			} else if arm.BindingName != "" {
 				v.errorf("simple variant %s.%s must not bind payload", arm.EnumName, arm.VariantName)
@@ -2567,13 +2581,30 @@ func (v *validator) validateImmutableAssignmentTarget(expr ast.Expr, scope map[s
 		return
 	}
 	switch info.origin {
+	case varLocal:
+		// matrix_view is an access-qualified handle to an external resource;
+		// its write capability comes from that resource, not local binding syntax.
+		if !info.mutable && info.typ.Name != "matrix_view" {
+			v.errorRelated(ast.ExprSpan(expr), "SDSL-V3701", fmt.Sprintf("cannot assign to immutable binding `%s`", root), info.declarationSpan, fmt.Sprintf("`%s` was declared with let here", root))
+		}
 	case varBuiltin:
 		v.errorf("cannot assign to compute builtin %s", root)
 	case varComptime:
 		v.errorf("cannot assign to comptime binding %s", root)
+	case varLoopIndex:
+		v.errorf("cannot assign to loop binder %s", root)
+	case varTensorFree:
+		v.errorf("cannot assign to tensor free index %s", root)
+	case varTensorRed:
+		v.errorf("cannot assign to tensor reduction index %s", root)
 	case varGenerateIndex:
 		v.errorf("cannot assign to Generate binder %s", root)
+	case varMatchPayload:
+		v.errorf("cannot assign to match payload binding %s", root)
 	case varParam:
+		if isDirectIdentifier(expr) {
+			v.errorRelated(ast.ExprSpan(expr), "SDSL-V3702", fmt.Sprintf("cannot assign to immutable parameter `%s`", root), info.declarationSpan, fmt.Sprintf("`%s` was declared here", root))
+		}
 		kind := v.typeKind(info.typ)
 		switch {
 		case kind == "record" || kind == "stream":
@@ -3170,6 +3201,44 @@ func typeName(ref ast.TypeRef) string {
 		return fmt.Sprintf("array<%s,N>", typeName(ref.Args[0]))
 	}
 	return fmt.Sprintf("array<%s>", typeName(ref.Args[0]))
+}
+
+func (v *validator) constructibleFixedShape(ref ast.TypeRef) (ast.TypeRef, []uint32, bool) {
+	ref = v.resolveAlias(ref)
+	switch ref.Name {
+	case "ndarray":
+		if len(ref.Args) != 1 || len(ref.NDArrayShape) == 0 {
+			return ast.TypeRef{}, nil, false
+		}
+		shape := make([]uint32, 0, len(ref.NDArrayShape))
+		for _, extent := range ref.NDArrayShape {
+			value, err := v.evalConstExpr(extent, nil)
+			if err != nil || value.int32 <= 0 {
+				return ast.TypeRef{}, nil, false
+			}
+			shape = append(shape, uint32(value.int32))
+		}
+		return v.resolveAlias(ref.Args[0]), shape, true
+	case "array":
+		if len(ref.Args) != 1 || !ref.HasArraySize || ref.ArraySize == nil {
+			return ast.TypeRef{}, nil, false
+		}
+		value, err := v.evalConstExpr(ref.ArraySize, nil)
+		if err != nil || value.int32 <= 0 {
+			return ast.TypeRef{}, nil, false
+		}
+		elem := v.resolveAlias(ref.Args[0])
+		if elem.Name == "array" {
+			leaf, inner, ok := v.constructibleFixedShape(elem)
+			if !ok {
+				return ast.TypeRef{}, nil, false
+			}
+			return leaf, append([]uint32{uint32(value.int32)}, inner...), true
+		}
+		return elem, []uint32{uint32(value.int32)}, true
+	default:
+		return ast.TypeRef{}, nil, false
+	}
 }
 
 func exprString(expr ast.Expr) string {

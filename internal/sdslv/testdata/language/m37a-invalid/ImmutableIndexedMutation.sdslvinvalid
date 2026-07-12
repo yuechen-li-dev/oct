@@ -1,0 +1,6 @@
+expect error: "cannot assign to immutable binding `values`"
+fn ImmutableIndexedMutation() -> void {
+    let values: ndarray<u32, [4u]> = Fill(0u);
+    values[0u] = 1u;
+    return;
+}

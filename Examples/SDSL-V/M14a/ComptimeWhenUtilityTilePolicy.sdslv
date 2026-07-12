@@ -47,8 +47,7 @@ shader M14aComptimeWhenUtilityTilePolicy {
     stage compute [numthreads(Cfg.Threads.X, Cfg.Threads.Y, 1u)] fn CS(thread: ComputeThread, params: Params) -> void {
         let index: u32 = thread.DispatchId.x;
         let AView: matrix_view<f32> = row_major(A, params.M, params.K);
-        let value: f32 = 0.0;
-
+        var value: f32 = 0.0;
         comptime let K: u32 = Cfg.Tile.K;
         comptime when utility {
             case ExactNoTail when K % Cfg.Unroll.K == 0u score 100 {

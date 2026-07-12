@@ -1,6 +1,6 @@
 fn ShapeMismatchAssignment() -> void {
-    let a: ndarray<u32, [2u, 3u]>;
-    let b: ndarray<u32, [3u, 2u]>;
+    let a: ndarray<u32, [2u, 3u]> = Fill(0u);
+    var b: ndarray<u32, [3u, 2u]> = Fill(0u);
     b = a;
     return;
 }

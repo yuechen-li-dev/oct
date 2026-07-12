@@ -1,6 +1,6 @@
 fn TensorCopy() -> void {
     let input: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
-    let output: ndarray<u32, [2u, 3u]>;
+    var output: ndarray<u32, [2u, 3u]> = Fill(0u);
     tensor output[i, j] = input[i, j];
     return;
 }

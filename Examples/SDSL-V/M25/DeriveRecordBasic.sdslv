@@ -19,7 +19,6 @@ shader DeriveRecordBasic {
     stage compute [numthreads(1, 1, 1)] fn CS(params: DeriveRecordParams) -> void {
         let AView: matrix_view<f32> = row_major(A, params.Limit, params.TileK);
         let CView: matrix_view<f32> = row_major(C, params.Limit, params.TileK);
-
         let load: LoadFacts = derive {
             linear = GroupThreadID.x;
             row = linear / params.TileK;

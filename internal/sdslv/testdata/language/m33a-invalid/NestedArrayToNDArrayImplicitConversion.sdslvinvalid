@@ -1,5 +1,5 @@
 fn NestedArrayToNDArrayImplicitConversion() -> void {
-    let nested: array<array<u32, 3u>, 2u>;
+    let nested: array<array<u32, 3u>, 2u> = Fill(0u);
     let dense: ndarray<u32, [2u, 3u]> = nested;
     return;
 }

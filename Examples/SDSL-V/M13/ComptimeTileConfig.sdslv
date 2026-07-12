@@ -48,8 +48,7 @@ shader M13TileConfigDemo {
         comptime let TileK: u32 = C.Tile.K;
 
         let index: u32 = thread.DispatchId.x;
-        let value: f32 = 0.0;
-
+        var value: f32 = 0.0;
         comptime if C.UseFastPath {
             static assert TileElements == 256u;
             static assert TileK == 16u;
