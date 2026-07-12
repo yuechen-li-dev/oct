@@ -76,15 +76,19 @@ type RunReport struct {
 		Warnings []string `json:"warnings"`
 		Errors   []string `json:"errors"`
 	} `json:"validation"`
-	Benchmarks []Result `json:"benchmarks"`
+	Benchmarks          []Result `json:"benchmarks"`
+	BackendCapabilities struct {
+		ResourceFree            bool   `json:"resourceFree"`
+		ScalarStorageBuffers    bool   `json:"scalarStorageBuffers"`
+		VectorStorageBuffers    bool   `json:"vectorStorageBuffers"`
+		NdarrayGeneratedModules bool   `json:"ndarrayGeneratedModules"`
+		TensorGeneratedModules  bool   `json:"tensorGeneratedModules"`
+		TimingSource            string `json:"timingSource"`
+	} `json:"backendCapabilities"`
 }
 
 func run(path string, manifest Manifest, selected []Case) (RunReport, error) {
 	module, err := loadBenchmarkModule(path)
-	if err != nil {
-		return RunReport{}, err
-	}
-	mir, err := lower.Module(module)
 	if err != nil {
 		return RunReport{}, err
 	}
@@ -95,7 +99,15 @@ func run(path string, manifest Manifest, selected []Case) (RunReport, error) {
 	defer os.RemoveAll(root)
 	report := RunReport{SchemaVersion: SchemaVersion, Source: manifest.Source}
 	report.Validation.Backend = "godot"
+	report.BackendCapabilities.ResourceFree = true
+	report.BackendCapabilities.ScalarStorageBuffers = true
+	report.BackendCapabilities.VectorStorageBuffers = true
+	report.BackendCapabilities.TimingSource = "synchronized_host_elapsed"
 	for _, c := range selected {
+		mir, err := lower.Module(isolatedModule(module, c))
+		if err != nil {
+			return RunReport{}, err
+		}
 		hlslText, err := hlsl.EmitBenchmark(mir, c.EntryPoint, c.WorkgroupSize)
 		if err != nil {
 			return RunReport{}, err
@@ -141,6 +153,32 @@ func run(path string, manifest Manifest, selected []Case) (RunReport, error) {
 	}
 	return report, nil
 }
+
+// isolatedModule is the M36a compilation boundary: independently declared
+// benchmark shaders never share resource declarations or descriptor bindings.
+func isolatedModule(module ast.Module, c Case) ast.Module {
+	out := module
+	out.Decls = make([]ast.Decl, 0, len(module.Decls))
+	for _, decl := range module.Decls {
+		switch d := decl.(type) {
+		case ast.ShaderDecl:
+			if c.Shader != "" && d.Name == c.Shader {
+				out.Decls = append(out.Decls, d)
+			}
+		case ast.FunctionDecl:
+			if c.Shader == "" {
+				if d.Name == c.EntryPoint {
+					out.Decls = append(out.Decls, d)
+				}
+			} else {
+				out.Decls = append(out.Decls, d)
+			}
+		default:
+			out.Decls = append(out.Decls, decl)
+		}
+	}
+	return out
+}
 func loadBenchmarkModule(path string) (ast.Module, error) {
 	file, err := source.Load(path)
 	if err != nil {
@@ -164,7 +202,11 @@ func compileSPIRV(hlslPath, spvPath string) error {
 	if err != nil {
 		return fmt.Errorf("DXC not found: %w", err)
 	}
-	out, err := exec.Command(dxc, "-T", "cs_6_0", "-E", "main", "-spirv", "-fspv-target-env=vulkan1.0", "-Fo", spvPath, hlslPath).CombinedOutput()
+	env := os.Getenv("SDSLV_BENCH_DXC_ENV")
+	if env == "" {
+		env = "vulkan1.0"
+	}
+	out, err := exec.Command(dxc, "-T", "cs_6_0", "-E", "main", "-spirv", "-fspv-target-env="+env, "-Fo", spvPath, hlslPath).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("DXC compile benchmark: %w: %s", err, out)
 	}

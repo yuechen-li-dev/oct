@@ -31,3 +31,11 @@ RTX 3070 proof: `ScalarArithmetic` (`sdslvbench-91c86b9349e1ce473ec6640d`),
 SPIR-V `1582e565d23f6217cdc5de56af97f4ab55aca7218584bd0f9d246840fca4346e`,
 10 warmups and 100 iterations, reported min/median/max 39,100 / 42,300 /
 377,400 ns with replay ID `sdslvbench-replay-5b0e91124ba84d74d6ad0d79`.
+
+Each case now compiles as an isolated module, preventing independently declared
+shader resource bindings from colliding. The supported Godot 4.7 M36a corpus is
+resource-free plus ordinary scalar/vector storage buffers. Ndarray-generated
+and tensor-generated modules remain valid SDSL-V/SPIR-V but are deferred after
+Godot 4.7 Mono access-violated in `ComputePipelineCreate`; native Vulkan paths
+remain the evidence for those language forms. Default benchmark DXC target is
+still Vulkan 1.0.

@@ -25,3 +25,10 @@ dispatch, queue submission, and GPU synchronization. It is not labeled GPU
 timestamp timing. The host uses `RenderingServer.CreateLocalRenderingDevice`,
 `ShaderCreateFromSpirV`, a compute pipeline/list/dispatch, `Submit`, and
 `Sync`, then frees all created RIDs and the device.
+
+M36a executes isolated modules, one Godot process per benchmark. Proven
+capabilities are resource-free and ordinary scalar/vector storage-buffer
+modules. Current ndarray-generated and tensor-generated SPIR-V is valid SDSL-V
+and passes SPIR-V validation, but Godot 4.7 Mono terminates during pipeline
+creation for those forms; they are deferred backend compatibility work, not a
+language restriction. The default DXC target remains Vulkan 1.0.
