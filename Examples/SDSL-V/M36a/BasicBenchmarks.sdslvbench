@@ -11,8 +11,52 @@ fn ScalarArithmetic() -> void {
     return;
 }
 
+shader GenerateBench {
+    resources { [binding(2)] OutputGenerate: readwrite array<u32>; }
+    [Benchmark]
+    [DispatchGroups(2, 1, 1)]
+    stage compute [numthreads(8, 1, 1)]
+    fn GenerateStorage() -> void {
+        let generated: ndarray<u32, [2u, 2u]> = Generate[i, j](i * 2u + j);
+        OutputGenerate[DispatchThreadID.x] = generated[0u, 0u];
+        return;
+    }
+}
+
+shader TensorBench {
+    resources { [binding(3)] OutputTensor: readwrite array<u32>; }
+    [Benchmark]
+    [DispatchGroups(2, 1, 1)]
+    stage compute [numthreads(8, 1, 1)]
+    fn TensorStorage() -> void {
+        let a: ndarray<u32, [2u, 2u]> = [1u, 2u, 3u, 4u];
+        let b: ndarray<u32, [2u, 2u]> = [5u, 6u, 7u, 8u];
+        let c: ndarray<u32, [2u, 2u]>;
+        tensor c[i, j] = Sum[k](a[i, k] * b[k, j]);
+        OutputTensor[DispatchThreadID.x] = c[0u, 0u];
+        return;
+    }
+}
+
 [Benchmark]
 [DispatchGroups(64, 2, 1)]
 fn DefaultCounts() -> void {
     return;
+}
+
+shader StorageBench {
+    resources {
+        [binding(0)] Input: readonly array<f32>;
+        [binding(1)] Output: readwrite array<f32>;
+    }
+
+    [Benchmark]
+    [DispatchGroups(4, 1, 1)]
+    stage compute [numthreads(16, 1, 1)]
+    fn VectorDotStorage() -> void {
+        let index: u32 = DispatchThreadID.x;
+        let value: f32 = Input[index];
+        Output[index] = value * value;
+        return;
+    }
 }

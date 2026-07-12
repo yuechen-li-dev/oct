@@ -4,6 +4,7 @@ package bench
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -11,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/ast"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/lex"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
@@ -32,6 +35,18 @@ type Case struct {
 	Iterations     uint32      `json:"iterations"`
 	SourceSpan     source.Span `json:"sourceSpan"`
 	ReplayID       string      `json:"replayId"`
+	Resources      []Resource  `json:"resources"`
+	Shader         string      `json:"shader,omitempty"`
+}
+type Resource struct {
+	Set            uint32 `json:"set"`
+	Binding        uint32 `json:"binding"`
+	Access         string `json:"access"`
+	ElementType    string `json:"elementType"`
+	ByteLength     uint32 `json:"byteLength"`
+	PayloadBase64  string `json:"payloadBase64"`
+	Readback       bool   `json:"readback"`
+	SentinelBase64 string `json:"sentinelBase64,omitempty"`
 }
 type Manifest struct {
 	SchemaVersion int    `json:"schemaVersion"`
@@ -71,13 +86,47 @@ func Discover(path string) (Manifest, error) {
 	}
 	m := Manifest{SchemaVersion: SchemaVersion, Source: identity}
 	for _, v := range values {
-		c := Case{ID: v.StableID, Name: v.Name, EntryPoint: v.Name, WorkgroupSize: v.Launch.WorkgroupSize, DispatchGroups: v.Launch.DispatchGroups, Warmup: v.WarmupCount, Iterations: v.IterationCount, SourceSpan: v.SourceSpan}
+		c := Case{ID: v.StableID, Name: v.Name, Shader: v.Shader, EntryPoint: v.Name, WorkgroupSize: v.Launch.WorkgroupSize, DispatchGroups: v.Launch.DispatchGroups, Warmup: v.WarmupCount, Iterations: v.IterationCount, SourceSpan: v.SourceSpan, Resources: projectResources(v.Resources, v.Launch.WorkgroupSize, v.Launch.DispatchGroups)}
 		sum := sha256.Sum256([]byte(c.ID + "\x00" + c.EntryPoint))
 		c.ReplayID = "sdslvbench-replay-" + hex.EncodeToString(sum[:12])
 		m.Benchmarks = append(m.Benchmarks, c)
 	}
 	sort.Slice(m.Benchmarks, func(i, j int) bool { return m.Benchmarks[i].ID < m.Benchmarks[j].ID })
 	return m, nil
+}
+func projectResources(values []ast.ResourceDecl, workgroup, groups [3]uint32) []Resource {
+	out := make([]Resource, 0, len(values))
+	n := uint64(workgroup[0]) * uint64(workgroup[1]) * uint64(workgroup[2]) * uint64(groups[0]) * uint64(groups[1]) * uint64(groups[2])
+	for i, r := range values {
+		if r.Type.Name != "array" || len(r.Type.Args) != 1 {
+			continue
+		}
+		kind := r.Type.Args[0].Name
+		width := uint64(4)
+		if kind == "float2" {
+			width = 8
+		}
+		if kind == "float4" {
+			width = 16
+		}
+		size := n * width
+		if size == 0 || size > 1<<24 {
+			continue
+		}
+		payload := make([]byte, size)
+		out = append(out, Resource{Set: 0, Binding: resourceBinding(r, uint32(i)), Access: r.Access, ElementType: kind, ByteLength: uint32(size), PayloadBase64: base64.StdEncoding.EncodeToString(payload), Readback: r.Access == "readwrite"})
+	}
+	return out
+}
+func resourceBinding(r ast.ResourceDecl, fallback uint32) uint32 {
+	for _, a := range r.Attributes {
+		if a.Name == "binding" && len(a.Arguments) == 1 {
+			if n, err := strconv.ParseUint(strings.TrimRight(a.Arguments[0].(ast.IntegerLiteral).Value, "uU"), 10, 32); err == nil {
+				return uint32(n)
+			}
+		}
+	}
+	return fallback
 }
 func Execute(path string, out io.Writer, o Options) error {
 	m, err := Discover(path)

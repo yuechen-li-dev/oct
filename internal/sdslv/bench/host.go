@@ -25,16 +25,17 @@ import (
 const hostSchemaVersion = 1
 
 type hostRequest struct {
-	SchemaVersion  int       `json:"schemaVersion"`
-	SpirvPath      string    `json:"spirvPath"`
-	SpirvHash      string    `json:"spirvHash"`
-	EntryPoint     string    `json:"entryPoint"`
-	BenchmarkID    string    `json:"benchmarkId"`
-	ReplayID       string    `json:"replayId"`
-	WorkgroupSize  [3]uint32 `json:"workgroupSize"`
-	DispatchGroups [3]uint32 `json:"dispatchGroups"`
-	Warmup         uint32    `json:"warmup"`
-	Iterations     uint32    `json:"iterations"`
+	SchemaVersion  int        `json:"schemaVersion"`
+	SpirvPath      string     `json:"spirvPath"`
+	SpirvHash      string     `json:"spirvHash"`
+	EntryPoint     string     `json:"entryPoint"`
+	BenchmarkID    string     `json:"benchmarkId"`
+	ReplayID       string     `json:"replayId"`
+	WorkgroupSize  [3]uint32  `json:"workgroupSize"`
+	DispatchGroups [3]uint32  `json:"dispatchGroups"`
+	Warmup         uint32     `json:"warmup"`
+	Iterations     uint32     `json:"iterations"`
+	Resources      []Resource `json:"resources"`
 }
 type hostDevice struct {
 	Name         string `json:"Name"`
@@ -114,7 +115,7 @@ func run(path string, manifest Manifest, selected []Case) (RunReport, error) {
 		}
 		sum := sha256.Sum256(bytes)
 		hash := hex.EncodeToString(sum[:])
-		req := hostRequest{hostSchemaVersion, spvPath, hash, "main", c.ID, c.ReplayID, c.WorkgroupSize, c.DispatchGroups, c.Warmup, c.Iterations}
+		req := hostRequest{SchemaVersion: hostSchemaVersion, SpirvPath: spvPath, SpirvHash: hash, EntryPoint: "main", BenchmarkID: c.ID, ReplayID: c.ReplayID, WorkgroupSize: c.WorkgroupSize, DispatchGroups: c.DispatchGroups, Warmup: c.Warmup, Iterations: c.Iterations, Resources: c.Resources}
 		reqPath := base + ".request.json"
 		responsePath := base + ".response.json"
 		data, _ := json.Marshal(req)

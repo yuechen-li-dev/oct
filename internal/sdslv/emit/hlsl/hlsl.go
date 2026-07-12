@@ -71,16 +71,41 @@ func EmitBenchmark(module vdmir.Module, function string, workgroup [3]uint32) (s
 	for _, resource := range module.Resources {
 		e.emitResource(resource)
 	}
+	var selected *vdmir.ComputeEntryPoint
+	for i := range module.EntryPoints {
+		if module.EntryPoints[i].FunctionName == function {
+			selected = &module.EntryPoints[i]
+			break
+		}
+	}
+	if selected != nil {
+		for _, fn := range module.Functions {
+			if fn.Name == function {
+				copy := fn
+				copy.EmittedName = "main"
+				e.emitFunction(copy, *selected)
+				if e.err != nil {
+					return "", e.err
+				}
+				return e.builder.String(), nil
+			}
+		}
+		return "", fmt.Errorf("benchmark entry %s is missing", function)
+	}
+	emitted := function
 	for _, fn := range module.Functions {
+		if fn.Name == function {
+			emitted = fn.EmittedName
+		}
 		e.emitFunction(fn, vdmir.ComputeEntryPoint{})
 	}
 	if e.err != nil {
 		return "", e.err
 	}
 	e.line(fmt.Sprintf("[numthreads(%d, %d, %d)]", workgroup[0], workgroup[1], workgroup[2]))
-	e.line("void main() {")
+	e.line("void main(uint3 DispatchThreadID : SV_DispatchThreadID) {")
 	e.indent++
-	e.line(function + "();")
+	e.line(emitted + "();")
 	e.indent--
 	e.line("}")
 	return e.builder.String(), nil

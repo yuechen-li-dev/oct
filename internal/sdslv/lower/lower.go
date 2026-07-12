@@ -75,7 +75,7 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 	validatedTensors := []validate.ValidatedTensorAssign(nil)
 	if moduleHasTensorAssign(module) {
 		validationModule := module
-		if len(testInputs) != 0 {
+		if len(testInputs) != 0 || strings.HasSuffix(module.Source.Path, ".sdslvbench") {
 			validationModule = stripTestFunctionAttributes(module)
 		}
 		validated, issues := validate.ValidatedTensorAssignments(validationModule)
@@ -296,7 +296,16 @@ func stripTestFunctionAttributes(module ast.Module) ast.Module {
 }
 
 func preservedTensorValidationAttrs(attrs []ast.Attribute) []ast.Attribute {
-	return append([]ast.Attribute(nil), attrs...)
+	out := make([]ast.Attribute, 0, len(attrs))
+	for _, attr := range attrs {
+		switch attr.Name {
+		case "Benchmark", "Warmup", "Iterations", "DispatchGroups", "WorkgroupSize":
+			continue
+		default:
+			out = append(out, attr)
+		}
+	}
+	return out
 }
 
 func stripTestOnlyStatements(block ast.Block) ast.Block {

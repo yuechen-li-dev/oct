@@ -435,6 +435,21 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 				return ast.ShaderDecl{}, err
 			}
 			shader.Methods = append(shader.Methods, method)
+		case token.LeftBracket:
+			attributes, err := p.parseAttributes(ast.AttributePlacementFunction)
+			if err != nil {
+				return ast.ShaderDecl{}, err
+			}
+			if p.current().Kind != token.KeywordStage {
+				return ast.ShaderDecl{}, p.errorAtCurrent("shader method attributes require a stage function")
+			}
+			method, err := p.parseStageFunction()
+			if err != nil {
+				return ast.ShaderDecl{}, err
+			}
+			method.Attributes = attributes
+			method.Span.Start = attributes[0].Span.Start
+			shader.Methods = append(shader.Methods, method)
 		case token.KeywordFn:
 			method, err := p.parseFunction("")
 			if err != nil {

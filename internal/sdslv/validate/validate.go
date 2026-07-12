@@ -2285,6 +2285,12 @@ func (v *validator) validateBenchmarkAttributes(fn ast.FunctionDecl) {
 		v.errorAt(fn.Span, "SDSL-V3601", ".sdslvbench functions require [Benchmark]")
 		return
 	}
+	if fn.Stage != "" && fn.Stage != "compute" {
+		v.errorAt(benchmarks[0].Span, "SDSL-V3610", "[Benchmark] is only valid on compute-stage methods")
+	}
+	if fn.Stage == "compute" && fn.NumThreads == nil {
+		v.errorAt(benchmarks[0].Span, "SDSL-V3611", "[Benchmark] compute method requires [numthreads]")
+	}
 	if len(benchmarks) > 1 {
 		v.errorRelated(benchmarks[1].Span, "SDSL-V3604", "duplicate [Benchmark]", benchmarks[0].Span, "first [Benchmark] is here")
 	}
