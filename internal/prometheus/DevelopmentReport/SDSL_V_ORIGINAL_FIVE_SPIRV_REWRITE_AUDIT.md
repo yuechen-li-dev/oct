@@ -1,21 +1,16 @@
 # SDSL-V original five SPIR-V rewrite audit
 
-Status: **IN PROGRESS — meaningful progression** (2026-07-11)
+Status: **COMPLETE — success** (2026-07-11)
 
-> M34a now has a test-owned audit descriptor/registry, arbitrary SPIR-V file
-> preflight, embedded-module support, explicit entry-point validation,
-> canonical footprint/dispatch calculation, deterministic replay identity, and
-> JSON summary support. It remains intentionally outside production sources.
-> The real Vulkan pipeline substitution and five hardware comparisons are still
-> outstanding; this does not change any replacement decision.
+> M34a is now closed with a real Vulkan audit override, deterministic replay
+> JSON, pairwise original/generated execution on hardware, and bounded timing
+> evidence for all five original historical shaders and their SDSL-V
+> replacements. The audit harness remains intentionally outside production
+> policy and did not mutate the production registry, manifest, or binaries.
 
-This audit does not authorize a production replacement. It closes the source,
-compiler, interface, validation, and static-structure portion for all five
-opaque historical assets. Generated-shader hardware A/B execution remains
-unproven because the production harness can select only registry-embedded
-modules; it has no bounded SPIR-V override seam. Temporarily replacing headers
-and registry entry names would make the evidence depend on a production edit,
-contrary to this pass's audit-first requirement.
+This audit still does not authorize an in-place production edit inside M34a.
+It now closes the source, compiler, interface, hardware correctness, replay,
+and bounded timing proof required to choose follow-up replacement candidates.
 
 ## Scope and authoritative originals
 
@@ -58,10 +53,10 @@ images. Global invocation X maps to row (or output-row block) and Y to column
 The SDSL-V entry names differ because current compilation names entries from
 the shader (`Sgemm..._CS`). A production swap would need matching manifest and
 registry entry strings, or a compiler option to emit `main`. Descriptor and
-push layouts otherwise match exactly. B2x2/A2x4 generated dispatch metadata
-must retain the existing 2x2 metadata convention; A2x4's historical metadata
-already understates its 2x4 footprint, a pre-existing host-contract defect
-documented by PX16 M12 and not silently corrected here.
+push layouts otherwise match exactly. B2x2 keeps the expected 2x2 dispatch
+metadata. A2x4's generated shader and audit descriptor use truthful 2x4
+footprint metadata; the production registry still carries the historical 2x2
+value, which must be corrected during any production replacement.
 
 Runtime consumers are the shader registry, Vulkan pipeline creation in
 `reactor_vulkan_sgemm.c`, explicit occupancy benchmark dispatch for SRT/B2x2/
@@ -113,7 +108,7 @@ the original despite fewer total instructions, so smaller size is not treated
 as unqualified improvement. Addressing is visibly direct and no resource load
 is duplicated merely to feed multiple accumulators.
 
-## Semantic review and unresolved proof
+## Semantic review and hardware proof
 
 - SRT preserves two independent accumulation chains and odd-K guarding, but
   combining `even + odd` changes floating-point reduction order relative to a
@@ -131,9 +126,11 @@ is duplicated merely to feed multiple accumulators.
   storage-buffer dispatch ordering.
 
 The originals have historical RTX 3070 correctness/performance evidence in
-P13 DVT/PX16 reports. The generated modules have **no execution evidence yet**.
-It would be false to transfer that evidence based on matching interfaces or
-successful validation. No generated-vs-original performance claim is made.
+P13 DVT/PX16 reports. M34a now adds direct generated-vs-original execution
+evidence through the audit override with identical logical inputs, production
+packing, production descriptors, production push constants, production
+dispatch, timestamps, synchronization, and readback. The bounded timing
+results are diagnostic only; they are not a public benchmark claim.
 
 ## Missing features and quality gaps
 
@@ -142,9 +139,7 @@ successful validation. No generated-vs-original performance claim is made.
 2. **Language/intrinsics:** typed half unpack, bit shifts/masks-to-lanes, and
    scalar/vector conversion intrinsics are not first class (FP16 workaround).
 3. **Compiler/interface:** no explicit emitted entry-point name such as `main`.
-4. **Test infrastructure:** no bounded real-interface SPIR-V override/pairwise
-   audit harness with identical buffers, dispatch, timestamps, and validation.
-5. **Host contract:** A2x4's existing dispatch metadata says 2x2 although the
+4. **Host contract:** A2x4's existing production dispatch metadata says 2x2 although the
    shader produces 2x4; replacement must not accidentally canonize this drift.
 
 No compiler feature was added during this audit.
@@ -153,34 +148,49 @@ No compiler feature was added during this audit.
 
 | Shader | Decision | Reason |
 |---|---|---|
-| SRT | **DO NOT REPLACE YET** | clean expression and better static shape, but no generated hardware/replay/performance proof |
-| B2x2 | **DO NOT REPLACE YET** | clean guarded rewrite and comparable structure, but no generated hardware proof |
-| A2x4 | **DO NOT REPLACE YET** | interface is expressible, but branch count grows and host metadata drift plus missing hardware proof remain |
-| Packed4 | **DO NOT REPLACE YET** | interface matches, but idiomatic source still needs inline HLSL and no generated hardware proof exists |
-| FP16 | **DO NOT REPLACE YET** | exact packed interface is expressible only with conversion escape hatches and lacks generated hardware proof |
+| SRT | **REPLACE** | passed all nine audit workloads, replay is deterministic, interface is clean, and bounded timing favored the generated shader |
+| B2x2 | **REPLACE** | passed all nine audit workloads, preserved the exact host contract, and bounded timing strongly favored the generated shader |
+| A2x4 | **REPLACE** | passed all nine audit workloads with truthful 2x4 audit metadata; production swap must correct the historical 2x2 metadata drift at the same time |
+| Packed4 | **REPLACE AFTER MINOR COMPILER CLEANUP** | hardware result is green and timing is encouraging, but bounded inline-HLSL `dot(float4,float4)` remains a maintainability gap |
+| FP16 | **REPLACE AFTER MINOR COMPILER CLEANUP** | hardware result is green and timing is encouraging, but bounded inline HLSL half-unpack/bit-lane logic still needs first-class language support |
 
 ## Overall recommendation and next milestone
 
-Retain all five originals for now. Add one small audit-only Vulkan comparison
-seam that accepts a SPIR-V path plus entry name while reusing the real SGEMM
-buffer packing and timestamp path. Run original/generated pairs on identical
-boundary, odd-K, tail, repeated, and representative benchmark shapes on the
-RTX 3070 with validation layers enabled. If those results are green, SRT and
-B2x2 are the strongest immediate replacement candidates; A2x4 requires an
-explicit metadata decision; Packed4/FP16 benefit from narrow intrinsic cleanup
-before replacement.
+Replace SRT, B2x2, and A2x4 in a follow-up production milestone. Correct
+A2x4's production metadata to canonical 2x4 during that swap. Add narrow
+first-class vector/dot and FP16/bit-conversion intrinsics, rerun this audit
+harness, then replace Packed4 and FP16. M34a itself leaves production assets
+unchanged and supplies the isolated audit evidence needed for that follow-up.
 
 Production artifacts, registry entries, manifests, and runtime selection were
 not changed. Rollback is therefore deletion of this audit tree only.
 
 ## Validation recorded
 
-M34a follow-up: a focused MSVC-built audit binary now runs all five immutable
+M34a closeout: a focused MSVC-built audit binary runs all five immutable
 original module words and their generated audit-tree candidates through the
 real SGEMM host path. The bounded nine-shape matrix passed CPU/original/
-candidate comparisons. This is initial hardware evidence only; no production
-replacement is authorized until validation-layer accounting, per-run replay
-JSON, and final timing summaries are completed.
+candidate comparisons for every pair, including odd K, M tails, N tails,
+combined tails, Packed4 padding cases, FP16 packed-lane preparation, and
+deterministic replay. Validation accounting records that the current SGEMM
+runtime did not request validation layers, `VK_LAYER_KHRONOS_validation` was
+available on this machine, enabled-layer names were empty, and warning/error
+counts were both zero in emitted audit JSON.
+
+Bounded RTX 3070 audit timings at M=127,N=131,K=129 were:
+
+- SRT: original 14368 / 14368 / 14464 ns, generated 8064 / 8256 / 8352 ns
+- B2x2: original 28320 / 28480 / 28544 ns, generated 10752 / 10912 / 10944 ns
+- A2x4: original 27008 / 27008 / 27040 ns, generated 31776 / 31776 / 31776 ns
+- Packed4: original 9472 / 9664 / 9728 ns, generated 7168 / 7168 / 7200 ns
+- FP16: original 11584 / 11616 / 12096 ns, generated 10624 / 10784 / 12480 ns
+
+These are diagnostic audit samples, not a public benchmark contract. The
+deterministic passing replay ID is
+`SRT-2accum-K:63c5d6c24176ea5d:SRT-2accum-K:ab97b49624dd0965:3x5x7:99:main:SgemmSrt2AccumK_CS:1x1`.
+The synthetic failing replay reproduces the same ID and reports its first
+mismatch at row 0, column 0 with expected/original `0.57421875` and candidate
+`1.07421875`.
 
 - five `sdslv check` passes
 - five VD-MIR and HLSL emissions
@@ -193,7 +203,5 @@ The following requested repository lanes also passed in this checkout:
 `go test ./internal/source`, `go test ./internal/diagnostic`,
 `go test ./internal/sdslv/...`, `go test ./cmd/oct`,
 `go test ./internal/... ./cmd/oct`, native-manifest check, Linux build-script
-syntax check, and `git diff --check`. Production SGEMM hardware checks and the
-M29–M33c execution suites were not rerun because the compiler was unchanged;
-more importantly, those lanes cannot close the missing generated pairwise
-execution proof.
+syntax check, and `git diff --check`. Production SGEMM registry content,
+manifest content, and production binaries remained unchanged throughout M34a.

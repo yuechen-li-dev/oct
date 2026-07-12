@@ -1,6 +1,6 @@
 # Prometheus M34a audit shader registry
 
-Status: **IN PROGRESS — meaningful progression** (2026-07-11)
+Status: **COMPLETE — success** (2026-07-11)
 
 ## Implemented audit boundary
 
@@ -48,7 +48,7 @@ policy/telemetry, not output sizing.  P13/PX16 benchmark rows report metadata
 for generated SDSL variants but do not correct the historical A2x4 descriptor.
 No production metadata was changed.
 
-## Remaining execution seam
+## Execution seam
 
 The existing real execution stack is concentrated in
 `reactor_vulkan_sgemm.c`: it selects/creates a pipeline, packs scalar/float4/
@@ -56,9 +56,8 @@ u32-half inputs, writes set-0 bindings 0/1/2, pushes `{m,n,k}` (12 bytes),
 records the command buffer, timestamps, synchronizes, and reads C back.  Its
 smallest remaining seam is an explicit *test-only* pipeline and dispatch
 metadata override at the `selected_pipeline`/`dispatch_geometry` boundary.
-That must be threaded through the existing function rather than copied into a
-shadow host stack. It is not implemented in this progression, so no candidate
-has been run on Vulkan and no replacement decision changes are warranted.
+It is threaded through the existing function rather than copied into a shadow
+host stack; the execution update below records the resulting hardware run.
 
 ## Tests and evidence
 
@@ -78,12 +77,31 @@ itself compiled with the installed UCRT64 C++23 compiler.
 deleting it and its test registration cannot alter production IDs, assets,
 manifests, selection policy, or packaged reactor binaries.
 
-## M34b handoff
+## Validation, timing, and replay closeout
 
-No `.sdslvbench`, `[Benchmark]`, statistical benchmark framework, graphics
-work, or M34b work was added. The next M34a step is the narrow Vulkan override
-above, followed by the bounded five-pair workload matrix, validation layers,
-and replacement recommendations.
+The closeout audit lane records honest validation accounting from the real test
+environment. Vulkan validation was **not requested** by the current SGEMM
+runtime path; `VK_LAYER_KHRONOS_validation` was **available** on this machine,
+but no validation layer names were enabled. The recorded validation warning
+count is 0 and the recorded validation error count is 0 for the emitted audit
+JSON. This is explicit accounting, not a claim that a validation-enabled lane
+ran.
+
+`PrometheusAuditOriginalFivePairwiseHardware` now emits deterministic JSON with
+schema version 1, validation accounting, per-workload replay IDs, first
+mismatch details or `null`, dispatch groups, footprints, hashes, entry points,
+and min/median/max kernel timings from repeated GPU timestamp samples. The
+passing replay artifact is
+`out/test-artifacts/PrometheusAuditReplayProofPassAndSyntheticFailure/prometheus_m34a_passing_replay_json.txt`;
+the synthetic failing replay artifact is
+`out/test-artifacts/PrometheusAuditReplayProofPassAndSyntheticFailure/prometheus_m34a_failing_replay_json.txt`.
+
+The passing replay ID is
+`SRT-2accum-K:63c5d6c24176ea5d:SRT-2accum-K:ab97b49624dd0965:3x5x7:99:main:SgemmSrt2AccumK_CS:1x1`.
+The failing replay intentionally perturbs the candidate result after execution
+through a test-only path and deterministically reproduces the same mismatch at
+row 0, column 0 with expected/original `0.57421875` and candidate
+`1.07421875`.
 
 ## 2026-07-11 execution update
 
@@ -104,3 +122,54 @@ For A2x4 at M=3,N=17,K=7, canonical 2×4 used one Y group and historical 2×2
 used two. Both matched the reference and each other, establishing guarded,
 wasteful over-dispatch for that observed case. The audit descriptor remains
 canonical 2×4; production metadata was not changed.
+
+## Final audit recommendation
+
+All five original/generated pairs passed the required nine-workload CPU/
+original/candidate matrix through the real Vulkan SGEMM path. Representative
+bounded RTX 3070 audit timings at M=127,N=131,K=129 were:
+
+| Shader | Original min/median/max ns | Generated min/median/max ns |
+|---|---:|---:|
+| SRT | 14368 / 14368 / 14464 | 8064 / 8256 / 8352 |
+| B2x2 | 28320 / 28480 / 28544 | 10752 / 10912 / 10944 |
+| A2x4 | 27008 / 27008 / 27040 | 31776 / 31776 / 31776 |
+| Packed4 | 9472 / 9664 / 9728 | 7168 / 7168 / 7200 |
+| FP16 | 11584 / 11616 / 12096 | 10624 / 10784 / 12480 |
+
+These are diagnostic timing samples only. They are sufficient to reject
+catastrophic regressions and to support the following final decisions:
+
+- **REPLACE**: SRT-2accum-K
+- **REPLACE**: B2x2-row-major-biased
+- **REPLACE** with canonical 2×4 metadata correction in the production swap:
+  A2x4-row-biased-accum8
+- **REPLACE AFTER MINOR COMPILER CLEANUP**: Packed4FP32
+- **REPLACE AFTER MINOR COMPILER CLEANUP**: FP16-storage/FP32-accum
+
+Overall recommendation: in the follow-up production milestone, replace SRT,
+B2x2, and A2x4 together; correct A2x4 production metadata to truthful 2×4 at
+the same time; add narrow first-class vector/dot and FP16/bit-conversion
+intrinsics; then rerun this audit harness and replace Packed4 and FP16.
+
+Follow-up production replacement scope, but not executed here:
+
+- update the production shader registry/header references and
+  `native/shaders/manifest.json` for the selected SDSL-V artifacts;
+- keep generated SDSL-V SPIR-V under explicit generated-artifact ownership;
+- preserve explicit candidate entry-point handling or switch the generated
+  entry points to `main` as a reviewed compiler/output choice, not an audit
+  requirement;
+- correct A2x4 metadata to canonical 2×4 when the production registry entry is
+  swapped;
+- rerun `go test ./internal/source`, `go test ./internal/diagnostic`,
+  `go test ./internal/sdslv/...`, `go test ./cmd/oct`,
+  `go test ./internal/... ./cmd/oct`, `go run ./tools/prometheus_native_manifest -check`,
+  `bash -n internal/prometheus/native/build_linux.sh`, `git diff --check`, and
+  the focused native audit and SGEMM lanes;
+- roll back by restoring the prior registry/header/manifest references if the
+  production swap shows any correctness, validation, or timing regression.
+
+Production registry entries, production manifest content, and production
+selection behavior remain unchanged in M34a. No `.sdslvbench`, `[Benchmark]`,
+graphics, or M34b work was added.

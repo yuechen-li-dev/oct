@@ -9,16 +9,86 @@
 #include "../reactor_vulkan_fp16_spirv.h"
 #include "../reactor_judgment_engine.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <cstring>
 #include <array>
+#include <cmath>
 #include <fstream>
+#include <iomanip>
+#include <limits>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
 
 namespace
 {
+constexpr std::uint64_t kAuditSeed = 99u;
+constexpr std::uint32_t kTimingWarmupIterations = 1u;
+constexpr std::uint32_t kTimingMeasuredIterations = 5u;
+
+struct ValidationAccounting {
+    bool requested = false;
+    bool available = false;
+    std::vector<std::string> enabled_layers;
+    std::uint32_t warning_count = 0u;
+    std::uint32_t error_count = 0u;
+};
+
+struct TimingStats {
+    std::vector<std::uint64_t> samples;
+    std::uint64_t minimum_ns = 0u;
+    std::uint64_t median_ns = 0u;
+    std::uint64_t maximum_ns = 0u;
+};
+
+struct MismatchDetail {
+    bool has_mismatch = false;
+    std::uint32_t row = 0u;
+    std::uint32_t column = 0u;
+    float expected = 0.0f;
+    float original = 0.0f;
+    float candidate = 0.0f;
+    float absolute_error = 0.0f;
+    float relative_error = 0.0f;
+};
+
+struct PairwiseRunRecord {
+    std::string pair_name;
+    std::string original_name;
+    std::string candidate_name;
+    std::string original_entry;
+    std::string candidate_entry;
+    std::uint64_t original_hash = 0u;
+    std::uint64_t candidate_hash = 0u;
+    std::uint32_t m = 0u;
+    std::uint32_t n = 0u;
+    std::uint32_t k = 0u;
+    prom_sgemm_dispatch_geometry original_dispatch{};
+    prom_sgemm_dispatch_geometry candidate_dispatch{};
+    prom_sgemm_kernel_dispatch_metadata original_footprint{};
+    prom_sgemm_kernel_dispatch_metadata candidate_footprint{};
+    std::uint32_t compute_mode = 0u;
+    float tolerance = 0.0f;
+    bool original_vs_cpu = false;
+    bool candidate_vs_cpu = false;
+    bool original_vs_candidate = false;
+    MismatchDetail first_mismatch{};
+    TimingStats original_timing{};
+    TimingStats candidate_timing{};
+    std::string replay_id;
+};
+
+struct PairTimingSummary {
+    std::string pair_name;
+    std::uint32_t m = 0u;
+    std::uint32_t n = 0u;
+    std::uint32_t k = 0u;
+    TimingStats original{};
+    TimingStats candidate{};
+};
+
 std::vector<std::uint32_t> MinimalComputeModule(const char* entry, std::uint32_t x, std::uint32_t y, std::uint32_t z)
 {
     std::vector<std::uint32_t> words = {0x07230203u, 0x00010000u, 0u, 2u, 0u};
@@ -84,6 +154,195 @@ bool RunAuditModule(void* runtime, const prom_sgemm_audit_execution_descriptor& 
 {
     output->assign(static_cast<std::size_t>(m) * n, 0.0f);
     return prom_reactor_runtime_sgemm_audit_impl(runtime, a.data(), b.data(), output->data(), m, n, k, &descriptor, result) == PROM_OK;
+}
+
+void AppendJsonString(std::ostringstream& output, const std::string& value)
+{
+    output << '"';
+    for (char ch : value) {
+        if (ch == '"' || ch == '\\') output << '\\';
+        output << ch;
+    }
+    output << '"';
+}
+
+std::string ComputeModeName(std::uint32_t compute_mode)
+{
+    switch (compute_mode) {
+    case PROM_VK_COMPUTE_PACKED4_FP32: return "packed4_fp32";
+    case PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM: return "fp16_storage_fp32_accum";
+    default: return "scalar_row_major_fp32";
+    }
+}
+
+ValidationAccounting CollectValidationAccounting()
+{
+    ValidationAccounting accounting;
+    std::uint32_t layer_count = 0u;
+    if (vkEnumerateInstanceLayerProperties(&layer_count, nullptr) != VK_SUCCESS || layer_count == 0u) {
+        return accounting;
+    }
+    std::vector<VkLayerProperties> layers(layer_count);
+    if (vkEnumerateInstanceLayerProperties(&layer_count, layers.data()) != VK_SUCCESS) {
+        return accounting;
+    }
+    for (const VkLayerProperties& layer : layers) {
+        if (std::strcmp(layer.layerName, "VK_LAYER_KHRONOS_validation") == 0) {
+            accounting.available = true;
+            break;
+        }
+    }
+    return accounting;
+}
+
+TimingStats ComputeTimingStats(const std::vector<std::uint64_t>& samples)
+{
+    TimingStats stats;
+    stats.samples = samples;
+    if (samples.empty()) return stats;
+    std::vector<std::uint64_t> sorted = samples;
+    std::sort(sorted.begin(), sorted.end());
+    stats.minimum_ns = sorted.front();
+    stats.maximum_ns = sorted.back();
+    stats.median_ns = sorted[sorted.size() / 2u];
+    return stats;
+}
+
+TimingStats MeasureTiming(void* runtime, const prom_sgemm_audit_execution_descriptor& descriptor,
+                          const std::vector<float>& a, const std::vector<float>& b,
+                          std::uint32_t m, std::uint32_t n, std::uint32_t k)
+{
+    std::vector<float> output;
+    prom_sgemm_audit_execution_result result{};
+    for (std::uint32_t index = 0; index < kTimingWarmupIterations; ++index) {
+        if (!RunAuditModule(runtime, descriptor, a, b, &output, m, n, k, &result)) {
+            return {};
+        }
+    }
+    std::vector<std::uint64_t> samples;
+    for (std::uint32_t index = 0; index < kTimingMeasuredIterations; ++index) {
+        if (!RunAuditModule(runtime, descriptor, a, b, &output, m, n, k, &result) || result.gpu_timing_valid == 0u) {
+            return {};
+        }
+        samples.push_back(result.gpu_duration_ns);
+    }
+    return ComputeTimingStats(samples);
+}
+
+MismatchDetail FindFirstMismatch(const std::vector<float>& expected,
+                                 const std::vector<float>& original,
+                                 const std::vector<float>& candidate,
+                                 std::uint32_t n,
+                                 float tolerance)
+{
+    for (std::size_t index = 0; index < expected.size(); ++index) {
+        const float diff_original = std::fabs(expected[index] - original[index]);
+        const float diff_candidate = std::fabs(expected[index] - candidate[index]);
+        const float diff_pair = std::fabs(original[index] - candidate[index]);
+        if (diff_original > tolerance || diff_candidate > tolerance || diff_pair > tolerance) {
+            MismatchDetail mismatch;
+            mismatch.has_mismatch = true;
+            mismatch.row = static_cast<std::uint32_t>(index / n);
+            mismatch.column = static_cast<std::uint32_t>(index % n);
+            mismatch.expected = expected[index];
+            mismatch.original = original[index];
+            mismatch.candidate = candidate[index];
+            mismatch.absolute_error = std::max(diff_original, diff_candidate);
+            const float denominator = std::max(std::fabs(expected[index]), 1.0e-6f);
+            mismatch.relative_error = mismatch.absolute_error / denominator;
+            return mismatch;
+        }
+    }
+    return {};
+}
+
+std::string RenderTimingJson(const TimingStats& stats)
+{
+    std::ostringstream output;
+    output << "{\"min_ns\":" << stats.minimum_ns
+           << ",\"median_ns\":" << stats.median_ns
+           << ",\"max_ns\":" << stats.maximum_ns
+           << '}';
+    return output.str();
+}
+
+std::string RenderValidationJson(const ValidationAccounting& validation)
+{
+    std::ostringstream output;
+    output << "{\"requested\":" << (validation.requested ? "true" : "false")
+           << ",\"available\":" << (validation.available ? "true" : "false")
+           << ",\"enabled_layers\":[";
+    for (std::size_t index = 0; index < validation.enabled_layers.size(); ++index) {
+        if (index != 0u) output << ',';
+        AppendJsonString(output, validation.enabled_layers[index]);
+    }
+    output << "],\"warning_count\":" << validation.warning_count
+           << ",\"error_count\":" << validation.error_count
+           << '}';
+    return output.str();
+}
+
+std::string RenderMismatchJson(const MismatchDetail& mismatch)
+{
+    if (!mismatch.has_mismatch) return "null";
+    std::ostringstream output;
+    output << "{\"row\":" << mismatch.row
+           << ",\"column\":" << mismatch.column
+           << ",\"expected\":" << std::setprecision(9) << mismatch.expected
+           << ",\"original\":" << mismatch.original
+           << ",\"candidate\":" << mismatch.candidate
+           << ",\"absolute_error\":" << mismatch.absolute_error
+           << ",\"relative_error\":" << mismatch.relative_error
+           << '}';
+    return output.str();
+}
+
+std::string RenderRunJson(const PairwiseRunRecord& run, const ValidationAccounting& validation)
+{
+    std::ostringstream output;
+    output << "{\"schemaVersion\":1"
+           << ",\"pair\":{\"name\":";
+    AppendJsonString(output, run.pair_name);
+    output << ",\"original\":{\"name\":";
+    AppendJsonString(output, run.original_name);
+    output << ",\"hash\":\"" << std::hex << run.original_hash << std::dec << "\",\"entryPoint\":";
+    AppendJsonString(output, run.original_entry);
+    output << "},\"candidate\":{\"name\":";
+    AppendJsonString(output, run.candidate_name);
+    output << ",\"hash\":\"" << std::hex << run.candidate_hash << std::dec << "\",\"entryPoint\":";
+    AppendJsonString(output, run.candidate_entry);
+    output << "}}"
+           << ",\"workload\":{\"m\":" << run.m << ",\"n\":" << run.n << ",\"k\":" << run.k << ",\"seed\":" << kAuditSeed << '}'
+           << ",\"dispatch\":{\"original\":{\"groups\":[" << run.original_dispatch.groups_x << ',' << run.original_dispatch.groups_y << ',' << run.original_dispatch.groups_z
+           << "],\"footprint\":[" << run.original_footprint.outputs_per_invocation_m << ',' << run.original_footprint.outputs_per_invocation_n << "]}"
+           << ",\"candidate\":{\"groups\":[" << run.candidate_dispatch.groups_x << ',' << run.candidate_dispatch.groups_y << ',' << run.candidate_dispatch.groups_z
+           << "],\"footprint\":[" << run.candidate_footprint.outputs_per_invocation_m << ',' << run.candidate_footprint.outputs_per_invocation_n << "]}}"
+           << ",\"mode\":";
+    AppendJsonString(output, ComputeModeName(run.compute_mode));
+    output << ",\"tolerance\":" << std::setprecision(6) << run.tolerance
+           << ",\"correctness\":{\"originalVsCpu\":" << (run.original_vs_cpu ? "true" : "false")
+           << ",\"candidateVsCpu\":" << (run.candidate_vs_cpu ? "true" : "false")
+           << ",\"originalVsCandidate\":" << (run.original_vs_candidate ? "true" : "false")
+           << ",\"firstMismatch\":" << RenderMismatchJson(run.first_mismatch) << '}'
+           << ",\"timing\":{\"original\":" << RenderTimingJson(run.original_timing)
+           << ",\"candidate\":" << RenderTimingJson(run.candidate_timing) << '}'
+           << ",\"validation\":" << RenderValidationJson(validation)
+           << ",\"replayId\":";
+    AppendJsonString(output, run.replay_id);
+    output << '}';
+    return output.str();
+}
+
+std::string RenderPairTimingSummaryJson(const PairTimingSummary& summary)
+{
+    std::ostringstream output;
+    output << "{\"pair\":";
+    AppendJsonString(output, summary.pair_name);
+    output << ",\"workload\":{\"m\":" << summary.m << ",\"n\":" << summary.n << ",\"k\":" << summary.k << '}'
+           << ",\"original\":" << RenderTimingJson(summary.original)
+           << ",\"candidate\":" << RenderTimingJson(summary.candidate)
+           << '}';
+    return output.str();
 }
 }
 
@@ -213,9 +472,9 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
         SKIP("real Vulkan backend unavailable");
     }
     const std::filesystem::path generated = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "SDSL_V_ORIGINAL_SPIRV_REWRITE" / "generated";
-    std::ostringstream report;
-    report << "{\"pairs\":[";
-    bool firstReport = true;
+    const ValidationAccounting validation = CollectValidationAccounting();
+    std::vector<PairwiseRunRecord> runs;
+    std::vector<PairTimingSummary> pair_timings;
     for (const AuditPairDefinition& pair : pairs) {
         const std::string candidatePath = (generated / pair.candidate_file).string();
         PrometheusAuditShaderDescriptor fileDescriptor{};
@@ -228,6 +487,18 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
         std::string error;
         ASSERT_TRUE(registry.RegisterFile(fileDescriptor, &error), error);
         const PrometheusAuditShaderDescriptor* candidate = registry.Find(pair.name);
+        ASSERT_TRUE(candidate != nullptr, "candidate registration succeeds");
+        PrometheusAuditShaderDescriptor originalDescriptor{};
+        originalDescriptor.name = pair.name;
+        originalDescriptor.spirv_words = pair.original_words;
+        originalDescriptor.spirv_size_bytes = pair.original_size;
+        originalDescriptor.entry_point = "main";
+        originalDescriptor.dispatch = pair.dispatch;
+        originalDescriptor.k_packing_factor = fileDescriptor.k_packing_factor;
+        const PrometheusAuditValidation originalValidation = prometheus_audit_validate_shader(originalDescriptor);
+        const PrometheusAuditValidation candidateValidation = prometheus_audit_validate_shader(*candidate);
+        ASSERT_TRUE(originalValidation.valid, originalValidation.error);
+        ASSERT_TRUE(candidateValidation.valid, candidateValidation.error);
         prom_sgemm_audit_execution_descriptor original{};
         original.spirv_words = pair.original_words;
         original.spirv_size_bytes = pair.original_size;
@@ -238,8 +509,6 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
         generatedDescriptor.spirv_words = candidate->spirv_words;
         generatedDescriptor.spirv_size_bytes = candidate->spirv_size_bytes;
         generatedDescriptor.entry_point = candidate->entry_point;
-        std::uint64_t originalTime = 0u;
-        std::uint64_t candidateTime = 0u;
         for (const auto& shape : shapes) {
             std::vector<float> a;
             std::vector<float> b;
@@ -252,18 +521,72 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
             prom_sgemm_audit_execution_result candidateResult{};
             ASSERT_TRUE(RunAuditModule(runtime, original, a, b, &originalOutput, shape[0], shape[1], shape[2], &originalResult), "original audit module executes");
             ASSERT_TRUE(RunAuditModule(runtime, generatedDescriptor, a, b, &candidateOutput, shape[0], shape[1], shape[2], &candidateResult), "generated audit module executes");
-            originalTime += originalResult.gpu_duration_ns;
-            candidateTime += candidateResult.gpu_duration_ns;
+            bool originalVsCpu = true;
+            bool candidateVsCpu = true;
+            bool originalVsCandidate = true;
             for (std::size_t index = 0; index < expected.size(); ++index) {
-                ASSERT_NEAR(expected[index], originalOutput[index], pair.tolerance, "original matches CPU reference");
-                ASSERT_NEAR(expected[index], candidateOutput[index], pair.tolerance, "candidate matches CPU reference");
-                ASSERT_NEAR(originalOutput[index], candidateOutput[index], pair.tolerance, "original and candidate match");
+                if (std::fabs(expected[index] - originalOutput[index]) > pair.tolerance) originalVsCpu = false;
+                if (std::fabs(expected[index] - candidateOutput[index]) > pair.tolerance) candidateVsCpu = false;
+                if (std::fabs(originalOutput[index] - candidateOutput[index]) > pair.tolerance) originalVsCandidate = false;
             }
+            const MismatchDetail mismatch = FindFirstMismatch(expected, originalOutput, candidateOutput, shape[1], pair.tolerance);
+            ASSERT_TRUE(!mismatch.has_mismatch, "pairwise run remains correct");
+            const TimingStats originalTiming = MeasureTiming(runtime, original, a, b, shape[0], shape[1], shape[2]);
+            const TimingStats candidateTiming = MeasureTiming(runtime, generatedDescriptor, a, b, shape[0], shape[1], shape[2]);
+            ASSERT_TRUE(!originalTiming.samples.empty(), "original timing samples are captured");
+            ASSERT_TRUE(!candidateTiming.samples.empty(), "candidate timing samples are captured");
+            PairwiseRunRecord run{};
+            run.pair_name = pair.name;
+            run.original_name = pair.name;
+            run.candidate_name = pair.name;
+            run.original_entry = original.entry_point;
+            run.candidate_entry = generatedDescriptor.entry_point;
+            run.original_hash = originalValidation.spirv_hash;
+            run.candidate_hash = candidateValidation.spirv_hash;
+            run.m = shape[0];
+            run.n = shape[1];
+            run.k = shape[2];
+            run.original_dispatch = originalResult.dispatch_geometry;
+            run.candidate_dispatch = candidateResult.dispatch_geometry;
+            run.original_footprint = pair.dispatch;
+            run.candidate_footprint = candidate->dispatch;
+            run.compute_mode = pair.compute_mode;
+            run.tolerance = pair.tolerance;
+            run.original_vs_cpu = originalVsCpu;
+            run.candidate_vs_cpu = candidateVsCpu;
+            run.original_vs_candidate = originalVsCandidate;
+            run.first_mismatch = mismatch;
+            run.original_timing = originalTiming;
+            run.candidate_timing = candidateTiming;
+            run.replay_id = prometheus_audit_replay_identity(originalDescriptor, *candidate, shape[0], shape[1], shape[2], kAuditSeed);
+            runs.push_back(run);
         }
-        if (!firstReport) report << ',';
-        firstReport = false;
-        report << "{\"name\":\"" << pair.name << "\",\"original_gpu_ns_sum\":" << originalTime
-               << ",\"candidate_gpu_ns_sum\":" << candidateTime << ",\"cases\":" << shapes.size() << '}';
+        std::vector<float> timingA;
+        std::vector<float> timingB;
+        FillInputs(&timingA, &timingB, 127u, 131u, 129u);
+        PairTimingSummary summary{};
+        summary.pair_name = pair.name;
+        summary.m = 127u;
+        summary.n = 131u;
+        summary.k = 129u;
+        summary.original = MeasureTiming(runtime, original, timingA, timingB, summary.m, summary.n, summary.k);
+        summary.candidate = MeasureTiming(runtime, generatedDescriptor, timingA, timingB, summary.m, summary.n, summary.k);
+        ASSERT_TRUE(!summary.original.samples.empty(), "pair timing original samples are captured");
+        ASSERT_TRUE(!summary.candidate.samples.empty(), "pair timing candidate samples are captured");
+        pair_timings.push_back(summary);
+    }
+    std::ostringstream report;
+    report << "{\"schemaVersion\":1"
+           << ",\"validation\":" << RenderValidationJson(validation)
+           << ",\"pairTimingSummaries\":[";
+    for (std::size_t index = 0; index < pair_timings.size(); ++index) {
+        if (index != 0u) report << ',';
+        report << RenderPairTimingSummaryJson(pair_timings[index]);
+    }
+    report << "],\"runs\":[";
+    for (std::size_t index = 0; index < runs.size(); ++index) {
+        if (index != 0u) report << ',';
+        report << RenderRunJson(runs[index], validation);
     }
     report << "]}";
     prom_reactor_runtime_destroy_impl(runtime);
@@ -310,4 +633,133 @@ FACT(PrometheusAuditA2x4HistoricalFootprintExperiment)
         ASSERT_NEAR(expected[index], historicalOutput[index], 0.002f, "historical A2x4 remains guarded");
         ASSERT_NEAR(canonicalOutput[index], historicalOutput[index], 0.002f, "extra historical invocations do not corrupt output");
     }
+}
+
+FACT(PrometheusAuditReplayProofPassAndSyntheticFailure)
+{
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "runtime creation succeeds");
+    if (runtime == nullptr) SKIP("Vulkan runtime unavailable");
+    PrometheusCaps caps{};
+    if (prom_reactor_runtime_probe_impl(runtime, &caps) != PROM_OK || caps.available == 0u || caps.backend_type == PROM_BACKEND_STUB) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("real Vulkan backend unavailable");
+    }
+    constexpr std::uint32_t m = 3u;
+    constexpr std::uint32_t n = 5u;
+    constexpr std::uint32_t k = 7u;
+    std::vector<float> a;
+    std::vector<float> b;
+    std::vector<float> expected;
+    std::vector<float> originalOutput;
+    std::vector<float> candidateOutput;
+    FillInputs(&a, &b, m, n, k);
+    ReferenceSgemm(a, b, &expected, m, n, k);
+
+    PrometheusAuditShaderDescriptor originalDescriptor{};
+    originalDescriptor.name = "SRT-2accum-K";
+    originalDescriptor.spirv_words = k_prom_sgemm_srt_2accum_k_spirv;
+    originalDescriptor.spirv_size_bytes = sizeof(k_prom_sgemm_srt_2accum_k_spirv);
+    originalDescriptor.entry_point = "main";
+    originalDescriptor.dispatch = {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u};
+    originalDescriptor.k_packing_factor = 1u;
+
+    const std::filesystem::path generated = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "SDSL_V_ORIGINAL_SPIRV_REWRITE" / "generated" / "sgemm_srt_2accum_k.spv";
+    PrometheusAuditShaderDescriptor candidateFile{};
+    candidateFile.name = "SRT-2accum-K";
+    const std::string candidatePath = generated.string();
+    candidateFile.file_path = candidatePath.c_str();
+    candidateFile.entry_point = "SgemmSrt2AccumK_CS";
+    candidateFile.dispatch = originalDescriptor.dispatch;
+    candidateFile.k_packing_factor = 1u;
+    PrometheusAuditShaderRegistry registry;
+    std::string error;
+    ASSERT_TRUE(registry.RegisterFile(candidateFile, &error), error);
+    const PrometheusAuditShaderDescriptor* candidateDescriptor = registry.Find("SRT-2accum-K");
+    ASSERT_TRUE(candidateDescriptor != nullptr, "candidate descriptor resolves");
+
+    prom_sgemm_audit_execution_descriptor original{};
+    original.spirv_words = originalDescriptor.spirv_words;
+    original.spirv_size_bytes = originalDescriptor.spirv_size_bytes;
+    original.entry_point = originalDescriptor.entry_point;
+    original.dispatch = originalDescriptor.dispatch;
+    original.compute_mode = static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED);
+    prom_sgemm_audit_execution_descriptor candidate = original;
+    candidate.spirv_words = candidateDescriptor->spirv_words;
+    candidate.spirv_size_bytes = candidateDescriptor->spirv_size_bytes;
+    candidate.entry_point = candidateDescriptor->entry_point;
+
+    prom_sgemm_audit_execution_result originalResult{};
+    prom_sgemm_audit_execution_result candidateResult{};
+    ASSERT_TRUE(RunAuditModule(runtime, original, a, b, &originalOutput, m, n, k, &originalResult), "passing replay original executes");
+    ASSERT_TRUE(RunAuditModule(runtime, candidate, a, b, &candidateOutput, m, n, k, &candidateResult), "passing replay candidate executes");
+    const std::string replayId = prometheus_audit_replay_identity(originalDescriptor, *candidateDescriptor, m, n, k, kAuditSeed);
+    const std::string replayIdAgain = prometheus_audit_replay_identity(originalDescriptor, *candidateDescriptor, m, n, k, kAuditSeed);
+    ASSERT_EQUAL(replayId, replayIdAgain, "passing replay identity is stable");
+    ASSERT_TRUE(!FindFirstMismatch(expected, originalOutput, candidateOutput, n, 0.002f).has_mismatch, "passing replay remains correct");
+
+    std::vector<float> failedCandidate = candidateOutput;
+    failedCandidate[0] += 0.5f;
+    const MismatchDetail firstFailure = FindFirstMismatch(expected, originalOutput, failedCandidate, n, 0.002f);
+    ASSERT_TRUE(firstFailure.has_mismatch, "synthetic failure produces a mismatch");
+    ASSERT_EQUAL(0u, firstFailure.row, "synthetic failure mismatch row is stable");
+    ASSERT_EQUAL(0u, firstFailure.column, "synthetic failure mismatch column is stable");
+    ASSERT_NEAR(expected[0], firstFailure.expected, 0.000001f, "synthetic failure records expected value");
+    ASSERT_NEAR(originalOutput[0], firstFailure.original, 0.000001f, "synthetic failure records original value");
+    ASSERT_NEAR(failedCandidate[0], firstFailure.candidate, 0.000001f, "synthetic failure records candidate value");
+
+    std::vector<float> originalOutputAgain;
+    std::vector<float> candidateOutputAgain;
+    ASSERT_TRUE(RunAuditModule(runtime, original, a, b, &originalOutputAgain, m, n, k, &originalResult), "failing replay original executes");
+    ASSERT_TRUE(RunAuditModule(runtime, candidate, a, b, &candidateOutputAgain, m, n, k, &candidateResult), "failing replay candidate executes");
+    candidateOutputAgain[0] += 0.5f;
+    const MismatchDetail secondFailure = FindFirstMismatch(expected, originalOutputAgain, candidateOutputAgain, n, 0.002f);
+    ASSERT_TRUE(secondFailure.has_mismatch, "replayed synthetic failure still mismatches");
+    ASSERT_EQUAL(firstFailure.row, secondFailure.row, "failing replay row is stable");
+    ASSERT_EQUAL(firstFailure.column, secondFailure.column, "failing replay column is stable");
+    ASSERT_NEAR(firstFailure.expected, secondFailure.expected, 0.000001f, "failing replay expected value is stable");
+    ASSERT_NEAR(firstFailure.original, secondFailure.original, 0.000001f, "failing replay original value is stable");
+    ASSERT_NEAR(firstFailure.candidate, secondFailure.candidate, 0.000001f, "failing replay candidate value is stable");
+
+    const ValidationAccounting validation = CollectValidationAccounting();
+    const TimingStats passOriginalTiming = MeasureTiming(runtime, original, a, b, m, n, k);
+    const TimingStats passCandidateTiming = MeasureTiming(runtime, candidate, a, b, m, n, k);
+    ASSERT_TRUE(!passOriginalTiming.samples.empty(), "passing replay original timing samples are captured");
+    ASSERT_TRUE(!passCandidateTiming.samples.empty(), "passing replay candidate timing samples are captured");
+    PairwiseRunRecord passing{};
+    passing.pair_name = "SRT-2accum-K";
+    passing.original_name = "SRT-2accum-K";
+    passing.candidate_name = "SRT-2accum-K";
+    passing.original_entry = original.entry_point;
+    passing.candidate_entry = candidate.entry_point;
+    passing.original_hash = prometheus_audit_validate_shader(originalDescriptor).spirv_hash;
+    passing.candidate_hash = prometheus_audit_validate_shader(*candidateDescriptor).spirv_hash;
+    passing.m = m;
+    passing.n = n;
+    passing.k = k;
+    passing.original_dispatch = originalResult.dispatch_geometry;
+    passing.candidate_dispatch = candidateResult.dispatch_geometry;
+    passing.original_footprint = originalDescriptor.dispatch;
+    passing.candidate_footprint = candidateDescriptor->dispatch;
+    passing.compute_mode = static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED);
+    passing.tolerance = 0.002f;
+    passing.original_vs_cpu = true;
+    passing.candidate_vs_cpu = true;
+    passing.original_vs_candidate = true;
+    passing.original_timing = passOriginalTiming;
+    passing.candidate_timing = passCandidateTiming;
+    passing.replay_id = replayId;
+
+    PairwiseRunRecord failing = passing;
+    failing.first_mismatch = firstFailure;
+    failing.original_vs_candidate = false;
+    failing.candidate_vs_cpu = false;
+
+    const std::string passingJson = RenderRunJson(passing, validation);
+    const std::string failingJson = RenderRunJson(failing, validation);
+    ASSERT_EQUAL(passingJson, RenderRunJson(passing, validation), "passing replay JSON is deterministic");
+    ASSERT_EQUAL(failingJson, RenderRunJson(failing, validation), "failing replay JSON is deterministic");
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m34a_passing_replay.json", passingJson), "passing replay JSON is written");
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m34a_failing_replay.json", failingJson), "failing replay JSON is written");
+    prom_reactor_runtime_destroy_impl(runtime);
 }
