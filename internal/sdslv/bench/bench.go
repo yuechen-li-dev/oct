@@ -57,6 +57,7 @@ type Options struct {
 	List   bool
 	CaseID string
 	JSON   bool
+	Backend string
 }
 
 func Discover(path string) (Manifest, error) {
@@ -148,7 +149,7 @@ func Execute(path string, out io.Writer, o Options) error {
 		}
 		return nil
 	}
-	report, err := run(path, m, selected)
+	report, err := run(path, m, selected, o)
 	if err != nil {
 		return err
 	}
@@ -158,16 +159,48 @@ func Execute(path string, out io.Writer, o Options) error {
 		return err
 	}
 	for _, r := range report.Benchmarks {
-		fmt.Fprintf(out, "%s\nID: %s\nGPU: %s\nDispatch: %dx%dx%d groups\nWarmup: %d\nSamples: %d\nMin: %d ns\nMedian: %d ns\nMax: %d ns\nTiming: %s\nReplay: %s\n", r.Name, r.ID, report.Device.Name, r.DispatchGroups[0], r.DispatchGroups[1], r.DispatchGroups[2], r.Warmup, r.Samples.Count, r.Samples.Min, r.Samples.Median, r.Samples.Max, r.TimingSource, r.ReplayID)
+		fmt.Fprintf(out, "%s\nID: %s\nGPU: %s\nDispatch: %dx%dx%d groups\nWarmup: %d\nSamples: %d\nMin: %d ns\nMedian: %d ns\nMax: %d ns\nTiming: %s\nReplay: %s\nBackend: %s\n", r.Name, r.ID, report.Device.Name, r.DispatchGroups[0], r.DispatchGroups[1], r.DispatchGroups[2], r.Warmup, r.Samples.Count, r.Samples.Min, r.Samples.Median, r.Samples.Max, r.TimingSource, r.ReplayID, report.Validation.Backend)
 	}
 	return nil
 }
 func sourceIdentity(abs string) string {
+	abs = canonicalPath(abs)
 	wd, err := os.Getwd()
 	if err == nil {
+		wd = canonicalPath(wd)
 		if rel, e := filepath.Rel(wd, abs); e == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return filepath.ToSlash(rel)
 		}
 	}
 	return filepath.ToSlash(abs)
+}
+
+func canonicalPath(path string) string {
+	volume := filepath.VolumeName(path)
+	rest := strings.TrimPrefix(path, volume)
+	parts := strings.Split(rest, string(filepath.Separator))
+	current := volume
+	if strings.HasPrefix(rest, string(filepath.Separator)) {
+		current += string(filepath.Separator)
+	}
+	for _, part := range parts {
+		if part == "" || part == "." {
+			continue
+		}
+		next := part
+		dir := current
+		if dir == "" {
+			dir = "."
+		}
+		if entries, err := os.ReadDir(dir); err == nil {
+			for _, entry := range entries {
+				if strings.EqualFold(entry.Name(), part) {
+					next = entry.Name()
+					break
+				}
+			}
+		}
+		current = filepath.Join(current, next)
+	}
+	return current
 }

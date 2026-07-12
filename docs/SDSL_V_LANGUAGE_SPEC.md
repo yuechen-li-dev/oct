@@ -513,7 +513,10 @@ attributes and `Assert.*` are invalid in benchmark files.
 
 `oct sdslv bench file.sdslvbench --list` reads and validates declarations
 without Vulkan execution. `--case <stable-id>` selects one stable declaration,
-and `--json` emits schema-versioned deterministic manifest data. Stable IDs
-derive from normalized source identity, declaration name, and dispatch
+`--json` emits schema-versioned deterministic manifest data, and `--backend
+<auto|godot|kaiju>` selects the execution witness. `auto` prefers the optional
+typed Kaiju Octxiliary Vulkan sidecar when installed and capability-compatible,
+then falls back to the Godot benchmark host when Kaiju is unavailable. Stable
+IDs derive from normalized source identity, declaration name, and dispatch
 metadata, not device or timing values. Benchmark results are performance
 observations, never correctness proofs; correctness remains in `.sdslvtest`.

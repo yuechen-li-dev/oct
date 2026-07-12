@@ -226,6 +226,29 @@ is strong backend evidence, but it is not a claim that the unavailable M36a
 binary hashes were reproduced. A productionization spike should preserve those
 exact M36a per-case artifacts and rerun them before enabling a backend flag.
 
+## M36b canonical-artifact update (2026-07-12)
+
+The temporary binaries described above were not recoverable authorities. M36b
+instead generated and checked in new canonical M36a benchmark artifacts from
+the current benchmark source, isolated per benchmark with DXC Vulkan 1.0 and
+`spirv-val`. The canonical ndarray artifact is
+`bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083`
+(1,560 bytes); the canonical tensor artifact is
+`9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7`
+(2,820 bytes). Their stable IDs, exact source/toolchain provenance and resource
+contracts are in `examples/SDSL-V/M36a/artifacts/manifest.json`.
+
+The existing Kaiju JSON proof executable ran these exact bytes successfully on
+the RTX 3070, with explicit `main`, set-0 bindings 0/1, readback and eight real
+query-pool samples each. This is evidence only for the retired spike envelope;
+the production M36b binary still must replace it with typed OCTWRAP/Octagon.
+
+That replacement is now implemented as `octxiliary-kaiju-vulkan`: a typed
+OCTWRAP sidecar with `compute.capabilities`, `compute.dispatch`, and
+`compute.benchmark`. `oct sdslv bench ... --backend kaiju` now runs the exact
+canonical ndarray/tensor artifacts through that sidecar on the RTX 3070 and
+returns real query-pool GPU timestamp samples.
+
 SPIR-V observations:
 
 | Module class | SPIR-V | Capabilities/extensions | Interface representation | Entry/local size | Accepted |

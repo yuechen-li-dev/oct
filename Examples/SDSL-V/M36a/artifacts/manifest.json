@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "schemaVersion": 1,
+      "name": "NDArrayMaterializeStorage",
+      "benchmarkId": "sdslvbench-8b1f66233dd54390f518e9c7",
+      "source": "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
+      "sourceSha256": "a1ebadf8bcaa336945469308eb3fda543a9f17aaca0e9d6535df35a87ac4917e",
+      "compiler": "github.com/yuechen-li-dev/oct@(devel)",
+      "dxcPath": "C:/VulkanSDK/1.4.341.1/Bin/dxc.exe",
+      "dxcVersion": "dxcompiler.dll: 1.10(5180-e3554182)(1.9.0.5180) - 1.9.0.5180 (e35541826)",
+      "dxcArgs": [
+        "-T",
+        "cs_6_0",
+        "-E",
+        "main",
+        "-spirv",
+        "-fspv-target-env=vulkan1.0",
+        "-Fo",
+        "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
+        "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.hlsl"
+      ],
+      "vulkanTarget": "vulkan1.0",
+      "entryPoint": "main",
+      "workgroupSize": [
+        1,
+        1,
+        1
+      ],
+      "dispatchGroups": [
+        4,
+        1,
+        1
+      ],
+      "resources": [
+        {
+          "set": 0,
+          "binding": 0,
+          "access": "readonly",
+          "elementType": "f32",
+          "byteLength": 16,
+          "payloadBase64": "AAAAAAAAAAAAAAAAAAAAAA==",
+          "readback": false
+        },
+        {
+          "set": 0,
+          "binding": 1,
+          "access": "readwrite",
+          "elementType": "f32",
+          "byteLength": 16,
+          "payloadBase64": "AAAAAAAAAAAAAAAAAAAAAA==",
+          "readback": true
+        }
+      ],
+      "pushConstantsBytes": 0,
+      "spirvPath": "examples/SDSL-V/M36a/artifacts/ndarraymaterialize.spv",
+      "spirvBytes": 1560,
+      "spirvSha256": "bd3ea90711adaad03e98923d7397d5b3e259497e437918bd444c46a0c46dc083"
+    },
+    {
+      "schemaVersion": 1,
+      "name": "TensorContractionStorage",
+      "benchmarkId": "sdslvbench-a2b7fd8383074dd673a365d5",
+      "source": "examples/SDSL-V/M36a/BasicBenchmarks.sdslvbench",
+      "sourceSha256": "a1ebadf8bcaa336945469308eb3fda543a9f17aaca0e9d6535df35a87ac4917e",
+      "compiler": "github.com/yuechen-li-dev/oct@(devel)",
+      "dxcPath": "C:/VulkanSDK/1.4.341.1/Bin/dxc.exe",
+      "dxcVersion": "dxcompiler.dll: 1.10(5180-e3554182)(1.9.0.5180) - 1.9.0.5180 (e35541826)",
+      "dxcArgs": [
+        "-T",
+        "cs_6_0",
+        "-E",
+        "main",
+        "-spirv",
+        "-fspv-target-env=vulkan1.0",
+        "-Fo",
+        "examples/SDSL-V/M36a/artifacts/tensorcontraction.spv",
+        "examples/SDSL-V/M36a/artifacts/tensorcontraction.hlsl"
+      ],
+      "vulkanTarget": "vulkan1.0",
+      "entryPoint": "main",
+      "workgroupSize": [
+        1,
+        1,
+        1
+      ],
+      "dispatchGroups": [
+        4,
+        1,
+        1
+      ],
+      "resources": [
+        {
+          "set": 0,
+          "binding": 0,
+          "access": "readonly",
+          "elementType": "f32",
+          "byteLength": 16,
+          "payloadBase64": "AAAAAAAAAAAAAAAAAAAAAA==",
+          "readback": false
+        },
+        {
+          "set": 0,
+          "binding": 1,
+          "access": "readwrite",
+          "elementType": "f32",
+          "byteLength": 16,
+          "payloadBase64": "AAAAAAAAAAAAAAAAAAAAAA==",
+          "readback": true
+        }
+      ],
+      "pushConstantsBytes": 0,
+      "spirvPath": "examples/SDSL-V/M36a/artifacts/tensorcontraction.spv",
+      "spirvBytes": 2820,
+      "spirvSha256": "9c14708fb37490d3f0f776a2cd4b156dbf00936fb8a4d6f5db159718f393a3a7"
+    }
+  ]
+}

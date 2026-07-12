@@ -33,3 +33,54 @@ shader StorageBench {
         return;
     }
 }
+
+// M36b canonical artifact authority: resource-backed fixed-shape ndarray
+// materialization and tensor indexing in an isolated benchmark shader.
+shader CanonicalNDArrayBench {
+    resources {
+        [binding(0)] Input: readonly array<f32>;
+        [binding(1)] Output: readwrite array<f32>;
+    }
+
+    [Benchmark]
+    [Warmup(2)]
+    [Iterations(8)]
+    [DispatchGroups(4, 1, 1)]
+    stage compute [numthreads(1, 1, 1)]
+    fn NDArrayMaterializeStorage() -> void {
+        let values: ndarray<f32, [4u]> = Generate[i](Input[i] * 2.0 + 1.0);
+        let copied: ndarray<f32, [4u]>;
+        tensor copied[i] = values[i];
+        Output[0u] = copied[0u];
+        Output[1u] = copied[1u];
+        Output[2u] = copied[2u];
+        Output[3u] = copied[3u];
+        return;
+    }
+}
+
+// M36b canonical artifact authority: rank-two tensor contraction, with
+// compiler-owned storage resources and an explicit deterministic output ABI.
+shader CanonicalTensorBench {
+    resources {
+        [binding(0)] Input: readonly array<f32>;
+        [binding(1)] Output: readwrite array<f32>;
+    }
+
+    [Benchmark]
+    [Warmup(2)]
+    [Iterations(8)]
+    [DispatchGroups(4, 1, 1)]
+    stage compute [numthreads(1, 1, 1)]
+    fn TensorContractionStorage() -> void {
+        let left: ndarray<f32, [2u, 2u]> = Generate[i, k](Input[0u] + i + k);
+        let right: ndarray<f32, [2u, 2u]> = Generate[k, j](Input[0u] + k + j + 1.0);
+        let result: ndarray<f32, [2u, 2u]>;
+        tensor result[i, j] = Sum[k](left[i, k] * right[k, j]);
+        Output[0u] = result[0u, 0u];
+        Output[1u] = result[0u, 1u];
+        Output[2u] = result[1u, 0u];
+        Output[3u] = result[1u, 1u];
+        return;
+    }
+}

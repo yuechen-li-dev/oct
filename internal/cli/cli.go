@@ -372,7 +372,7 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 
 func parseSDSLvBenchArgs(args []string) (string, bench.Options, error) {
 	if len(args) < 1 {
-		return "", bench.Options{}, fmt.Errorf("usage: oct sdslv bench <file.sdslvbench> [--list] [--case <stable-id>] [--json]")
+		return "", bench.Options{}, fmt.Errorf("usage: oct sdslv bench <file.sdslvbench> [--list] [--case <stable-id>] [--json] [--backend <auto|godot|kaiju>]")
 	}
 	path := args[0]
 	var o bench.Options
@@ -388,6 +388,12 @@ func parseSDSLvBenchArgs(args []string) (string, bench.Options, error) {
 			}
 			i++
 			o.CaseID = args[i]
+		case "--backend":
+			if i+1 >= len(args) {
+				return "", o, fmt.Errorf("--backend requires a value")
+			}
+			i++
+			o.Backend = args[i]
 		default:
 			return "", o, fmt.Errorf("unknown sdslv bench option %q", args[i])
 		}
@@ -1272,7 +1278,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test|bench> ...\n\ncommands:\n  check <file.sdslv>                                                     Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                   Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]        Emit HLSL, compile SPIR-V, and write SPIR-V\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]     Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]          Discover deterministic GPU test cases\n  bench <file.sdslvbench> [--list] [--case <stable-id>] [--json]         Inspect or run GPU benchmark declarations")
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test|bench> ...\n\ncommands:\n  check <file.sdslv>                                                                  Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                                Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                             Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]                     Emit HLSL, compile SPIR-V, and write SPIR-V\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]                  Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]                       Discover deterministic GPU test cases\n  bench <file.sdslvbench> [--list] [--case <stable-id>] [--json] [--backend <auto|godot|kaiju>]  Inspect or run GPU benchmark declarations")
 	return err
 }
 func writeTestHelp(out io.Writer) error {

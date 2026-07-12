@@ -87,7 +87,7 @@ type RunReport struct {
 	} `json:"backendCapabilities"`
 }
 
-func run(path string, manifest Manifest, selected []Case) (RunReport, error) {
+func runGodot(path string, manifest Manifest, selected []Case) (RunReport, error) {
 	module, err := loadBenchmarkModule(path)
 	if err != nil {
 		return RunReport{}, err
