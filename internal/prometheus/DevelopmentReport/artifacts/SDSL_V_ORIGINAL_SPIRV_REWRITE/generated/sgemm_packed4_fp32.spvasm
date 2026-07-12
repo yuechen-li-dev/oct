@@ -1,0 +1,129 @@
+; SPIR-V
+; Version: 1.0
+; Generator: Google spiregg; 0
+; Bound: 75
+; Schema: 0
+               OpCapability Shader
+               OpMemoryModel Logical GLSL450
+               OpEntryPoint GLCompute %SgemmPacked4_CS "SgemmPacked4_CS" %gl_GlobalInvocationID
+               OpExecutionMode %SgemmPacked4_CS LocalSize 8 8 1
+               OpSource HLSL 600
+               OpName %type_StructuredBuffer_v4float "type.StructuredBuffer.v4float"
+               OpName %A "A"
+               OpName %B "B"
+               OpName %type_RWStructuredBuffer_float "type.RWStructuredBuffer.float"
+               OpName %C "C"
+               OpName %type_ConstantBuffer_SgemmParams "type.ConstantBuffer.SgemmParams"
+               OpMemberName %type_ConstantBuffer_SgemmParams 0 "m"
+               OpMemberName %type_ConstantBuffer_SgemmParams 1 "n"
+               OpMemberName %type_ConstantBuffer_SgemmParams 2 "k"
+               OpName %params "params"
+               OpName %SgemmPacked4_CS "SgemmPacked4_CS"
+               OpDecorate %gl_GlobalInvocationID BuiltIn GlobalInvocationId
+               OpDecorate %A DescriptorSet 0
+               OpDecorate %A Binding 0
+               OpDecorate %B DescriptorSet 0
+               OpDecorate %B Binding 1
+               OpDecorate %C DescriptorSet 0
+               OpDecorate %C Binding 2
+               OpDecorate %_runtimearr_v4float ArrayStride 16
+               OpMemberDecorate %type_StructuredBuffer_v4float 0 Offset 0
+               OpMemberDecorate %type_StructuredBuffer_v4float 0 NonWritable
+               OpDecorate %type_StructuredBuffer_v4float BufferBlock
+               OpDecorate %_runtimearr_float ArrayStride 4
+               OpMemberDecorate %type_RWStructuredBuffer_float 0 Offset 0
+               OpDecorate %type_RWStructuredBuffer_float BufferBlock
+               OpMemberDecorate %type_ConstantBuffer_SgemmParams 0 Offset 0
+               OpMemberDecorate %type_ConstantBuffer_SgemmParams 1 Offset 4
+               OpMemberDecorate %type_ConstantBuffer_SgemmParams 2 Offset 8
+               OpDecorate %type_ConstantBuffer_SgemmParams Block
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+      %int_1 = OpConstant %int 1
+      %int_2 = OpConstant %int 2
+       %uint = OpTypeInt 32 0
+     %uint_3 = OpConstant %uint 3
+     %uint_4 = OpConstant %uint 4
+      %float = OpTypeFloat 32
+    %float_0 = OpConstant %float 0
+     %uint_0 = OpConstant %uint 0
+     %uint_1 = OpConstant %uint 1
+    %v4float = OpTypeVector %float 4
+%_runtimearr_v4float = OpTypeRuntimeArray %v4float
+%type_StructuredBuffer_v4float = OpTypeStruct %_runtimearr_v4float
+%_ptr_Uniform_type_StructuredBuffer_v4float = OpTypePointer Uniform %type_StructuredBuffer_v4float
+%_runtimearr_float = OpTypeRuntimeArray %float
+%type_RWStructuredBuffer_float = OpTypeStruct %_runtimearr_float
+%_ptr_Uniform_type_RWStructuredBuffer_float = OpTypePointer Uniform %type_RWStructuredBuffer_float
+%type_ConstantBuffer_SgemmParams = OpTypeStruct %uint %uint %uint
+%_ptr_PushConstant_type_ConstantBuffer_SgemmParams = OpTypePointer PushConstant %type_ConstantBuffer_SgemmParams
+     %v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+       %void = OpTypeVoid
+         %30 = OpTypeFunction %void
+%_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
+       %bool = OpTypeBool
+%_ptr_Uniform_v4float = OpTypePointer Uniform %v4float
+%_ptr_Uniform_float = OpTypePointer Uniform %float
+          %A = OpVariable %_ptr_Uniform_type_StructuredBuffer_v4float Uniform
+          %B = OpVariable %_ptr_Uniform_type_StructuredBuffer_v4float Uniform
+          %C = OpVariable %_ptr_Uniform_type_RWStructuredBuffer_float Uniform
+     %params = OpVariable %_ptr_PushConstant_type_ConstantBuffer_SgemmParams PushConstant
+%gl_GlobalInvocationID = OpVariable %_ptr_Input_v3uint Input
+%SgemmPacked4_CS = OpFunction %void None %30
+         %35 = OpLabel
+         %36 = OpLoad %v3uint %gl_GlobalInvocationID
+               OpSelectionMerge %37 None
+               OpSwitch %uint_0 %38
+         %38 = OpLabel
+         %39 = OpCompositeExtract %uint %36 0
+         %40 = OpCompositeExtract %uint %36 1
+         %41 = OpAccessChain %_ptr_PushConstant_uint %params %int_0
+         %42 = OpLoad %uint %41
+         %43 = OpUGreaterThanEqual %bool %39 %42
+               OpSelectionMerge %44 None
+               OpBranchConditional %43 %45 %44
+         %45 = OpLabel
+               OpBranch %37
+         %44 = OpLabel
+         %46 = OpAccessChain %_ptr_PushConstant_uint %params %int_1
+         %47 = OpLoad %uint %46
+         %48 = OpUGreaterThanEqual %bool %40 %47
+               OpSelectionMerge %49 None
+               OpBranchConditional %48 %50 %49
+         %50 = OpLabel
+               OpBranch %37
+         %49 = OpLabel
+         %51 = OpAccessChain %_ptr_PushConstant_uint %params %int_2
+         %52 = OpLoad %uint %51
+         %53 = OpIAdd %uint %52 %uint_3
+         %54 = OpUDiv %uint %53 %uint_4
+               OpBranch %55
+         %55 = OpLabel
+         %56 = OpPhi %float %float_0 %49 %57 %58
+         %59 = OpPhi %uint %uint_0 %49 %60 %58
+         %61 = OpULessThan %bool %59 %54
+               OpLoopMerge %62 %58 None
+               OpBranchConditional %61 %58 %62
+         %58 = OpLabel
+         %63 = OpIMul %uint %39 %54
+         %64 = OpIAdd %uint %63 %59
+         %65 = OpAccessChain %_ptr_Uniform_v4float %A %int_0 %64
+         %66 = OpLoad %v4float %65
+         %67 = OpIMul %uint %40 %54
+         %68 = OpIAdd %uint %67 %59
+         %69 = OpAccessChain %_ptr_Uniform_v4float %B %int_0 %68
+         %70 = OpLoad %v4float %69
+         %71 = OpDot %float %66 %70
+         %57 = OpFAdd %float %56 %71
+         %60 = OpIAdd %uint %59 %uint_1
+               OpBranch %55
+         %62 = OpLabel
+         %72 = OpIMul %uint %39 %47
+         %73 = OpIAdd %uint %72 %40
+         %74 = OpAccessChain %_ptr_Uniform_float %C %int_0 %73
+               OpStore %74 %56
+               OpBranch %37
+         %37 = OpLabel
+               OpReturn
+               OpFunctionEnd

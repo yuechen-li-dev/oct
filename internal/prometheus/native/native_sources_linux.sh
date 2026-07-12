@@ -28,6 +28,8 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/reactor_stub_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_judgment_engine_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_shader_registry_tests.cpp"
+  "$NATIVE_DIR/reactor_prometheus_audit.cpp"
+  "$NATIVE_DIR/Marionette/reactor_prometheus_audit_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_dominatus_blackboard_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_dominatus_filter_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_dominatus_filter_policy_tests.cpp"

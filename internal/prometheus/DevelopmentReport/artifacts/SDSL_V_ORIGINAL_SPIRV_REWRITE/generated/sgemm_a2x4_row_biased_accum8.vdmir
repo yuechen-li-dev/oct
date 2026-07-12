@@ -1,0 +1,71 @@
+vdmir module Prometheus.Audit
+record SgemmParams
+  field m: u32
+  field n: u32
+  field k: u32
+stream SgemmIO
+resource readonly A: array<f32> bundle SgemmIO binding(0,0)
+resource readonly B: array<f32> bundle SgemmIO binding(1,0)
+resource readwrite C: array<f32> bundle SgemmIO binding(2,0)
+function CS -> void emitted SgemmA2x4_CS
+  param params: record SgemmParams
+  local av0: f32
+  local av1: f32
+  local b0: f32
+  local b1: f32
+  local b2: f32
+  local b3: f32
+  local c0: u32
+  local kk: u32
+  local r0: u32
+  local r1: u32
+  local x00: f32
+  local x01: f32
+  local x02: f32
+  local x03: f32
+  local x10: f32
+  local x11: f32
+  local x12: f32
+  local x13: f32
+  let r0: u32 = (DispatchThreadID.x * 2u)
+  let r1: u32 = (r0 + 1u)
+  let c0: u32 = (DispatchThreadID.y * 4u)
+  let x00: f32 = 0.0
+  let x01: f32 = 0.0
+  let x02: f32 = 0.0
+  let x03: f32 = 0.0
+  let x10: f32 = 0.0
+  let x11: f32 = 0.0
+  let x12: f32 = 0.0
+  let x13: f32 = 0.0
+  for kk: u32 in 0u..params.k step 1
+    let av0: f32 = guarded_read(A[((r0 * params.k) + kk)] when (r0 < params.m) else 0.0)
+    let av1: f32 = guarded_read(A[((r1 * params.k) + kk)] when (r1 < params.m) else 0.0)
+    let b0: f32 = guarded_read(B[((kk * params.n) + c0)] when (c0 < params.n) else 0.0)
+    let b1: f32 = guarded_read(B[(((kk * params.n) + c0) + 1u)] when ((c0 + 1u) < params.n) else 0.0)
+    let b2: f32 = guarded_read(B[(((kk * params.n) + c0) + 2u)] when ((c0 + 2u) < params.n) else 0.0)
+    let b3: f32 = guarded_read(B[(((kk * params.n) + c0) + 3u)] when ((c0 + 3u) < params.n) else 0.0)
+    assign x00 = (x00 + (av0 * b0))
+    assign x01 = (x01 + (av0 * b1))
+    assign x02 = (x02 + (av0 * b2))
+    assign x03 = (x03 + (av0 * b3))
+    assign x10 = (x10 + (av1 * b0))
+    assign x11 = (x11 + (av1 * b1))
+    assign x12 = (x12 + (av1 * b2))
+    assign x13 = (x13 + (av1 * b3))
+  guarded_write C[((r0 * params.n) + c0)] = x00 when ((r0 < params.m) && (c0 < params.n))
+  guarded_write C[(((r0 * params.n) + c0) + 1u)] = x01 when ((r0 < params.m) && ((c0 + 1u) < params.n))
+  guarded_write C[(((r0 * params.n) + c0) + 2u)] = x02 when ((r0 < params.m) && ((c0 + 2u) < params.n))
+  guarded_write C[(((r0 * params.n) + c0) + 3u)] = x03 when ((r0 < params.m) && ((c0 + 3u) < params.n))
+  guarded_write C[((r1 * params.n) + c0)] = x10 when ((r1 < params.m) && (c0 < params.n))
+  guarded_write C[(((r1 * params.n) + c0) + 1u)] = x11 when ((r1 < params.m) && ((c0 + 1u) < params.n))
+  guarded_write C[(((r1 * params.n) + c0) + 2u)] = x12 when ((r1 < params.m) && ((c0 + 2u) < params.n))
+  guarded_write C[(((r1 * params.n) + c0) + 3u)] = x13 when ((r1 < params.m) && ((c0 + 3u) < params.n))
+  return
+entry compute SgemmA2x4_CS numthreads(8,8,1)
+  function CS
+  param params: record SgemmParams
+  builtin DispatchThreadID: uint3 semantic SV_DispatchThreadID referenced=true
+  builtin GroupThreadID: uint3 semantic SV_GroupThreadID referenced=false
+  builtin GroupID: uint3 semantic SV_GroupID referenced=false
+  builtin GroupIndex: u32 semantic SV_GroupIndex referenced=false

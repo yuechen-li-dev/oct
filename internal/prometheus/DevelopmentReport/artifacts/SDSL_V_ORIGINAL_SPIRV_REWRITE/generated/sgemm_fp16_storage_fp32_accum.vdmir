@@ -1,0 +1,49 @@
+vdmir module Prometheus.Audit
+record SgemmParams
+  field m: u32
+  field n: u32
+  field k: u32
+stream HalfIO
+resource readonly A: array<u32> bundle HalfIO binding(0,0)
+resource readonly B: array<u32> bundle HalfIO binding(1,0)
+resource readwrite C: array<f32> bundle HalfIO binding(2,0)
+function CS -> void emitted SgemmFp16StorageFp32Accum_CS
+  param params: record SgemmParams
+  local a: f32
+  local acc: f32
+  local ai: u32
+  local av: float2
+  local aw: u32
+  local b: f32
+  local bi: u32
+  local bv: float2
+  local bw: u32
+  local col: u32
+  local kk: u32
+  local row: u32
+  let row: u32 = DispatchThreadID.x
+  let col: u32 = DispatchThreadID.y
+  if (row >= params.m)
+    return
+  if (col >= params.n)
+    return
+  let acc: f32 = 0.0
+  for kk: u32 in 0u..params.k step 1
+    let ai: u32 = ((row * params.k) + kk)
+    let bi: u32 = ((kk * params.n) + col)
+    let aw: u32 = A[(ai / 2u)]
+    let bw: u32 = B[(bi / 2u)]
+    let av: float2 = <expr>
+    let bv: float2 = <expr>
+    let a: f32 = <expr>
+    let b: f32 = <expr>
+    assign acc = (acc + (a * b))
+  assign C[((row * params.n) + col)] = acc
+  return
+entry compute SgemmFp16StorageFp32Accum_CS numthreads(8,8,1)
+  function CS
+  param params: record SgemmParams
+  builtin DispatchThreadID: uint3 semantic SV_DispatchThreadID referenced=true
+  builtin GroupThreadID: uint3 semantic SV_GroupThreadID referenced=false
+  builtin GroupID: uint3 semantic SV_GroupID referenced=false
+  builtin GroupIndex: u32 semantic SV_GroupIndex referenced=false

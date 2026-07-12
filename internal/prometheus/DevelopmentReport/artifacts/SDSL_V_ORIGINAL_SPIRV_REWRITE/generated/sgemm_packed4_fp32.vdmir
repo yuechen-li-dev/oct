@@ -1,0 +1,41 @@
+vdmir module Prometheus.Audit
+record SgemmParams
+  field m: u32
+  field n: u32
+  field k: u32
+stream PackedIO
+resource readonly A: array<float4> bundle PackedIO binding(0,0)
+resource readonly B: array<float4> bundle PackedIO binding(1,0)
+resource readwrite C: array<f32> bundle PackedIO binding(2,0)
+function CS -> void emitted SgemmPacked4_CS
+  param params: record SgemmParams
+  local acc: f32
+  local av: float4
+  local bv: float4
+  local col: u32
+  local dotValue: f32
+  local p: u32
+  local packs: u32
+  local row: u32
+  let row: u32 = DispatchThreadID.x
+  let col: u32 = DispatchThreadID.y
+  if (row >= params.m)
+    return
+  if (col >= params.n)
+    return
+  let packs: u32 = ((params.k + 3u) / 4u)
+  let acc: f32 = 0.0
+  for p: u32 in 0u..packs step 1
+    let av: float4 = A[((row * packs) + p)]
+    let bv: float4 = B[((col * packs) + p)]
+    let dotValue: f32 = <expr>
+    assign acc = (acc + dotValue)
+  assign C[((row * params.n) + col)] = acc
+  return
+entry compute SgemmPacked4_CS numthreads(8,8,1)
+  function CS
+  param params: record SgemmParams
+  builtin DispatchThreadID: uint3 semantic SV_DispatchThreadID referenced=true
+  builtin GroupThreadID: uint3 semantic SV_GroupThreadID referenced=false
+  builtin GroupID: uint3 semantic SV_GroupID referenced=false
+  builtin GroupIndex: u32 semantic SV_GroupIndex referenced=false

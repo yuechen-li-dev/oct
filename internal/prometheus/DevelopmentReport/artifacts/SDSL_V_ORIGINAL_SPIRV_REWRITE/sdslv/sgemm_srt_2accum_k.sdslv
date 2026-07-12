@@ -1,0 +1,29 @@
+namespace Prometheus.Audit;
+
+stream SgemmIO {
+    [binding(0)] A: readonly array<f32>;
+    [binding(1)] B: readonly array<f32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record SgemmParams { m: u32; n: u32; k: u32; }
+
+shader SgemmSrt2AccumK {
+    resources SgemmIO;
+    stage compute [numthreads(8, 8, 1)] fn CS(params: SgemmParams) -> void {
+        let row: u32 = DispatchThreadID.x;
+        let col: u32 = DispatchThreadID.y;
+        if row >= params.m { return; }
+        if col >= params.n { return; }
+        let even: f32 = 0.0;
+        let odd: f32 = 0.0;
+        let base: u32 = row * params.k;
+        for kk in 0u..params.k step 2u {
+            even = even + A[base + kk] * B[kk * params.n + col];
+            let next: u32 = kk + 1u;
+            if next < params.k { odd = odd + A[base + next] * B[next * params.n + col]; }
+        }
+        C[row * params.n + col] = even + odd;
+        return;
+    }
+}

@@ -1,0 +1,20 @@
+namespace Prometheus.Audit;
+stream SgemmIO { [binding(0)] A: readonly array<f32>; [binding(1)] B: readonly array<f32>; [binding(2)] C: readwrite array<f32>; }
+record SgemmParams { m: u32; n: u32; k: u32; }
+shader SgemmA2x4 {
+resources SgemmIO;
+stage compute [numthreads(8, 8, 1)] fn CS(params: SgemmParams) -> void {
+let r0: u32 = DispatchThreadID.x * 2u; let r1: u32 = r0 + 1u; let c0: u32 = DispatchThreadID.y * 4u;
+let x00:f32=0.0; let x01:f32=0.0; let x02:f32=0.0; let x03:f32=0.0;
+let x10:f32=0.0; let x11:f32=0.0; let x12:f32=0.0; let x13:f32=0.0;
+for kk in 0u..params.k {
+let av0:f32=read A[r0*params.k+kk] when r0<params.m else 0.0; let av1:f32=read A[r1*params.k+kk] when r1<params.m else 0.0;
+let b0:f32=read B[kk*params.n+c0] when c0<params.n else 0.0; let b1:f32=read B[kk*params.n+c0+1u] when c0+1u<params.n else 0.0;
+let b2:f32=read B[kk*params.n+c0+2u] when c0+2u<params.n else 0.0; let b3:f32=read B[kk*params.n+c0+3u] when c0+3u<params.n else 0.0;
+x00=x00+av0*b0; x01=x01+av0*b1; x02=x02+av0*b2; x03=x03+av0*b3; x10=x10+av1*b0; x11=x11+av1*b1; x12=x12+av1*b2; x13=x13+av1*b3;
+}
+write C[r0*params.n+c0]=x00 when r0<params.m and c0<params.n; write C[r0*params.n+c0+1u]=x01 when r0<params.m and c0+1u<params.n;
+write C[r0*params.n+c0+2u]=x02 when r0<params.m and c0+2u<params.n; write C[r0*params.n+c0+3u]=x03 when r0<params.m and c0+3u<params.n;
+write C[r1*params.n+c0]=x10 when r1<params.m and c0<params.n; write C[r1*params.n+c0+1u]=x11 when r1<params.m and c0+1u<params.n;
+write C[r1*params.n+c0+2u]=x12 when r1<params.m and c0+2u<params.n; write C[r1*params.n+c0+3u]=x13 when r1<params.m and c0+3u<params.n; return;
+}}

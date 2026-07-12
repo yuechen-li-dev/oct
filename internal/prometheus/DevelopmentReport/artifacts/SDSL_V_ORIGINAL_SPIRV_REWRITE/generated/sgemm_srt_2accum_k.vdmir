@@ -1,0 +1,41 @@
+vdmir module Prometheus.Audit
+record SgemmParams
+  field m: u32
+  field n: u32
+  field k: u32
+stream SgemmIO
+resource readonly A: array<f32> bundle SgemmIO binding(0,0)
+resource readonly B: array<f32> bundle SgemmIO binding(1,0)
+resource readwrite C: array<f32> bundle SgemmIO binding(2,0)
+function CS -> void emitted SgemmSrt2AccumK_CS
+  param params: record SgemmParams
+  local base: u32
+  local col: u32
+  local even: f32
+  local kk: u32
+  local next: u32
+  local odd: f32
+  local row: u32
+  let row: u32 = DispatchThreadID.x
+  let col: u32 = DispatchThreadID.y
+  if (row >= params.m)
+    return
+  if (col >= params.n)
+    return
+  let even: f32 = 0.0
+  let odd: f32 = 0.0
+  let base: u32 = (row * params.k)
+  for kk: u32 in 0u..params.k step 2u
+    assign even = (even + (A[(base + kk)] * B[((kk * params.n) + col)]))
+    let next: u32 = (kk + 1u)
+    if (next < params.k)
+      assign odd = (odd + (A[(base + next)] * B[((next * params.n) + col)]))
+  assign C[((row * params.n) + col)] = (even + odd)
+  return
+entry compute SgemmSrt2AccumK_CS numthreads(8,8,1)
+  function CS
+  param params: record SgemmParams
+  builtin DispatchThreadID: uint3 semantic SV_DispatchThreadID referenced=true
+  builtin GroupThreadID: uint3 semantic SV_GroupThreadID referenced=false
+  builtin GroupID: uint3 semantic SV_GroupID referenced=false
+  builtin GroupIndex: u32 semantic SV_GroupIndex referenced=false
