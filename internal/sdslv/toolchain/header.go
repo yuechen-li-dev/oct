@@ -70,7 +70,10 @@ func HeaderFromWords(words []uint32, opts HeaderOptions) (string, error) {
 		}
 		fmt.Fprintf(&b, "0x%08xu", word)
 		if i+1 < len(words) {
-			b.WriteString(", ")
+			b.WriteString(",")
+			if i%4 != 3 {
+				b.WriteString(" ")
+			}
 		}
 		if i%4 == 3 || i+1 == len(words) {
 			b.WriteString("\n")

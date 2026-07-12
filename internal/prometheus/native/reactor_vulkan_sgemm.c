@@ -7,6 +7,27 @@ typedef struct prom_vk_push {
   uint32_t k;
 } prom_vk_push;
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL prom_validation_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT type,
+    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+    void* user_data) {
+  prometheus_runtime* rt = (prometheus_runtime*)user_data;
+  if (rt == NULL) return VK_FALSE;
+  rt->validation_message_count += 1u;
+  rt->validation_last_severity = severity;
+  rt->validation_last_type = type;
+  if (callback_data != NULL) {
+    strncpy(rt->validation_last_message_id, callback_data->pMessageIdName == NULL ? "" : callback_data->pMessageIdName, sizeof(rt->validation_last_message_id) - 1u);
+    rt->validation_last_message_id[sizeof(rt->validation_last_message_id) - 1u] = '\0';
+    strncpy(rt->validation_last_message, callback_data->pMessage == NULL ? "" : callback_data->pMessage, sizeof(rt->validation_last_message) - 1u);
+    rt->validation_last_message[sizeof(rt->validation_last_message) - 1u] = '\0';
+  }
+  if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0u) rt->validation_warning_count += 1u;
+  if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0u) rt->validation_error_count += 1u;
+  return VK_FALSE;
+}
+
 enum {
   PROM_VK_PUSH_FIELD_OFFSET_M = 0,
   PROM_VK_PUSH_FIELD_OFFSET_N = 4,
@@ -2660,6 +2681,12 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     rt->device = VK_NULL_HANDLE;
   }
   if (rt->instance != VK_NULL_HANDLE) {
+    if (rt->validation_debug_messenger != VK_NULL_HANDLE) {
+      PFN_vkDestroyDebugUtilsMessengerEXT destroy_debug_messenger =
+          (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(rt->instance, "vkDestroyDebugUtilsMessengerEXT");
+      if (destroy_debug_messenger != NULL) destroy_debug_messenger(rt->instance, rt->validation_debug_messenger, NULL);
+      rt->validation_debug_messenger = VK_NULL_HANDLE;
+    }
     vkDestroyInstance(rt->instance, NULL);
     rt->instance = VK_NULL_HANDLE;
   }
@@ -2692,9 +2719,28 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkCommandBufferAllocateInfo cmd_alloc_info;
   VkFenceCreateInfo fence_info;
   VkQueryPoolCreateInfo query_pool_info;
+  const char* validation_layer = "VK_LAYER_KHRONOS_validation";
+  const char* debug_extension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+  uint32_t layer_count = 0u;
+  VkLayerProperties layers[64];
+  VkDebugUtilsMessengerCreateInfoEXT debug_info;
 
   memset(&instance_info, 0, sizeof(instance_info));
   instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  rt->validation_requested = getenv("PROMETHEUS_VK_VALIDATION") != NULL && strcmp(getenv("PROMETHEUS_VK_VALIDATION"), "1") == 0 ? 1u : 0u;
+  if (rt->validation_requested != 0u) {
+    result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
+    if (result != VK_SUCCESS) return result;
+    if (layer_count > 64u) layer_count = 64u;
+    result = vkEnumerateInstanceLayerProperties(&layer_count, layers);
+    if (result != VK_SUCCESS) return result;
+    for (i = 0u; i < layer_count; ++i) if (strcmp(layers[i].layerName, validation_layer) == 0) rt->validation_available = 1u;
+    if (rt->validation_available == 0u) return VK_ERROR_LAYER_NOT_PRESENT;
+    instance_info.enabledLayerCount = 1u;
+    instance_info.ppEnabledLayerNames = &validation_layer;
+    instance_info.enabledExtensionCount = 1u;
+    instance_info.ppEnabledExtensionNames = &debug_extension;
+  }
   result = vkCreateInstance(&instance_info, NULL, &rt->instance);
   if (result != VK_SUCCESS) {
     return result;
@@ -2959,6 +3005,21 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, &rt->descriptor_set);
   if (result != VK_SUCCESS) {
     return result;
+  }
+  if (rt->validation_requested != 0u) {
+    PFN_vkCreateDebugUtilsMessengerEXT create_debug_messenger =
+        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(rt->instance, "vkCreateDebugUtilsMessengerEXT");
+    if (create_debug_messenger == NULL) return VK_ERROR_EXTENSION_NOT_PRESENT;
+    memset(&debug_info, 0, sizeof(debug_info));
+    debug_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    debug_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    debug_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    debug_info.pfnUserCallback = prom_validation_callback;
+    debug_info.pUserData = rt;
+    result = create_debug_messenger(rt->instance, &debug_info, NULL, &rt->validation_debug_messenger);
+    if (result != VK_SUCCESS) return result;
+    rt->validation_enabled = 1u;
+    rt->validation_debug_utils_active = 1u;
   }
   {
     VkDescriptorSetLayout ring_layouts[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];

@@ -163,7 +163,8 @@ harness, then replace Packed4 and FP16. M34a itself leaves production assets
 unchanged and supplies the isolated audit evidence needed for that follow-up.
 
 Production artifacts, registry entries, manifests, and runtime selection were
-not changed. Rollback is therefore deletion of this audit tree only.
+not changed during M34a. M34b subsequently promotes only SRT, B2x2, and A2x4;
+this audit tree retains the historical headers as comparison fixtures.
 
 ## Validation recorded
 

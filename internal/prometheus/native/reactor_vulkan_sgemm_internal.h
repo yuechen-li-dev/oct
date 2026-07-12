@@ -651,6 +651,18 @@ typedef struct prometheus_runtime {
   uint32_t async_test_flags;
 
   VkInstance instance;
+  VkDebugUtilsMessengerEXT validation_debug_messenger;
+  uint32_t validation_requested;
+  uint32_t validation_available;
+  uint32_t validation_enabled;
+  uint32_t validation_debug_utils_active;
+  uint32_t validation_message_count;
+  uint32_t validation_warning_count;
+  uint32_t validation_error_count;
+  VkDebugUtilsMessageSeverityFlagBitsEXT validation_last_severity;
+  VkDebugUtilsMessageTypeFlagsEXT validation_last_type;
+  char validation_last_message_id[128];
+  char validation_last_message[512];
   VkPhysicalDevice physical_device;
   VkDevice device;
   uint32_t queue_family_index;

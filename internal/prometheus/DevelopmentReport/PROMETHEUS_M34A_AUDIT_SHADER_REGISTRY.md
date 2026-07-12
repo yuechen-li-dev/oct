@@ -173,3 +173,6 @@ Follow-up production replacement scope, but not executed here:
 Production registry entries, production manifest content, and production
 selection behavior remain unchanged in M34a. No `.sdslvbench`, `[Benchmark]`,
 graphics, or M34b work was added.
+
+M34b consumes this registry only as audit/reference evidence: its historical
+headers remain test-owned while production uses the promoted SDSL-V headers.

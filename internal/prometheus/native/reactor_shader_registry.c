@@ -2,8 +2,8 @@
 
 #include "reactor_vulkan_fp16_spirv.h"
 #include "reactor_vulkan_packed4_spirv.h"
-#include "reactor_vulkan_b2x2_row_major_biased_spirv.h"
-#include "reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
+#include "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h"
+#include "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h"
 #include "reactor_vulkan_memory_conservative_spirv.h"
 #include "reactor_vulkan_sgemm_scalar_plus_spirv.h"
 #include "reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h"
@@ -11,7 +11,7 @@
 #include "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h"
 #include "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h"
 #include "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
-#include "reactor_vulkan_srt_2accum_k_spirv.h"
+#include "reactor_vulkan_sgemm_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 #include "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h"
 
@@ -24,6 +24,7 @@ enum { PROM_SHADER_OPERATION_SGEMM = 1u };
 static const prom_sgemm_kernel_dispatch_metadata k_meta_8x8 = PROM_META(8u, 8u, 1u, 1u, 8u, 8u, 8u, 1u);
 static const prom_sgemm_kernel_dispatch_metadata k_meta_16x16 = PROM_META(16u, 16u, 1u, 1u, 16u, 16u, 16u, 1u);
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x2 = PROM_META(8u, 8u, 2u, 2u, 16u, 16u, 16u, 1u);
+static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x4 = PROM_META(8u, 8u, 2u, 4u, 16u, 32u, 16u, 1u);
 
 #define ASSET(id, label, words, language, source, header, generated) \
   { id, label, PROM_SHADER_STAGE_COMPUTE, words, sizeof(words), "main", 0u, language, source, header, generated, 0u, 0u, NULL }
@@ -38,9 +39,9 @@ static const prom_shader_asset k_shader_assets[] = {
   ASSET(7u, "sgemm-sdsl-exacttail", k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv", "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h", 1u),
   ASSET(8u, "sgemm-sdsl-flowboard", k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv", "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h", 1u),
   ASSET(9u, "sgemm-sdsl-derive", k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv", "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h", 1u),
-  ASSET(10u, "sgemm-srt-2accum", k_prom_sgemm_srt_2accum_k_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_srt_2accum_k_spirv.h", 1u),
-  ASSET(11u, "sgemm-b2x2", k_prom_sgemm_b2x2_row_major_biased_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_b2x2_row_major_biased_spirv.h", 1u),
-  ASSET(12u, "sgemm-a2x4", k_prom_sgemm_a2x4_row_biased_accum8_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_a2x4_row_biased_accum8_spirv.h", 1u),
+  { 10u, "sgemm-srt-2accum", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_srt_2accum_k_spirv, sizeof(k_prom_sgemm_srt_2accum_k_spirv), "SgemmSrt2AccumK_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_srt_2accum_k.sdslv", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h", 1u, 0u, 0u, NULL },
+  { 11u, "sgemm-b2x2", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_b2x2_row_major_biased_spirv, sizeof(k_prom_sgemm_b2x2_row_major_biased_spirv), "SgemmB2x2_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_b2x2_row_major_biased.sdslv", "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h", 1u, 0u, 0u, NULL },
+  { 12u, "sgemm-a2x4", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_a2x4_row_biased_accum8_spirv, sizeof(k_prom_sgemm_a2x4_row_biased_accum8_spirv), "SgemmA2x4_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/sgemm_a2x4_row_biased_accum8.sdslv", "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h", 1u, 0u, 0u, NULL },
   ASSET(13u, "sgemm-packed4", k_prom_sgemm_packed4_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_packed4_spirv.h", 1u),
   ASSET(14u, "sgemm-fp16-storage-fp32-accum", k_prom_sgemm_fp16_storage_fp32accum_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_fp16_spirv.h", 1u),
   { 15u, "sdslv-inline-hlsl-bitcast-proof", PROM_SHADER_STAGE_COMPUTE, k_prom_inline_hlsl_bitcast_proof_spirv, sizeof(k_prom_inline_hlsl_bitcast_proof_spirv), "InlineHlslBitCastProof_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/inline_hlsl_bitcast_proof.sdslv", "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h", 1u, 1u, 2u, "HLSL" },
@@ -52,7 +53,7 @@ static const prom_compute_implementation k_compute_implementations[] = {
   IMPL(2u, "memory-conservative", 3u, &k_meta_8x8, PROM_COMPUTE_PIPELINE_MEMORY_CONSERVATIVE),
   IMPL(3u, "small-register-tile", 10u, &k_meta_8x8, PROM_COMPUTE_PIPELINE_SRT),
   IMPL(4u, "balanced-2x2-accum4", 11u, &k_meta_reg2x2, PROM_COMPUTE_PIPELINE_B2X2),
-  IMPL(5u, "aggressive-4x4-accum8", 12u, &k_meta_reg2x2, PROM_COMPUTE_PIPELINE_A2X4),
+  IMPL(5u, "aggressive-4x4-accum8", 12u, &k_meta_reg2x4, PROM_COMPUTE_PIPELINE_A2X4),
   IMPL(6u, "sdsl-scalar-plus", 4u, &k_meta_8x8, PROM_COMPUTE_PIPELINE_SDSL_SCALAR_PLUS),
   IMPL(7u, "sdsl-tile16x16-shared-fp32", 5u, &k_meta_16x16, PROM_COMPUTE_PIPELINE_SDSL_TILE16),
   IMPL(8u, "sdsl-reg2x2-tile16x16-fp32", 6u, &k_meta_reg2x2, PROM_COMPUTE_PIPELINE_SDSL_REG2X2),

@@ -114,6 +114,74 @@ FACT(PrometheusShaderRegistryRejectsStaleGeneratedOutput) {
   ASSERT_TRUE(manifest.find("reactor_vulkan_sgemm_scalar_plus_spirv.h") != std::string::npos, "manifest must retain generated-header ownership for drift checks");
   ASSERT_FALSE(std::filesystem::exists(root / "internal/prometheus/native/reactor_vulkan_stale_registry_output.h"), "a stale generated output must be detectable as absent from current inventory");
 }
+FACT(PrometheusM34bPromotedShadersUseProductionSdslvAssets) {
+  const auto root = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT);
+  const std::string manifest = read_file(root / "internal/prometheus/native/shaders/manifest.json");
+  struct expected_asset { uint32_t id; const char* entry; const char* source; const char* header; };
+  const std::array<expected_asset, 3> expected{{
+      {10u, "SgemmSrt2AccumK_CS", "sgemm_srt_2accum_k.sdslv", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h"},
+      {11u, "SgemmB2x2_CS", "sgemm_b2x2_row_major_biased.sdslv", "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h"},
+      {12u, "SgemmA2x4_CS", "sgemm_a2x4_row_biased_accum8.sdslv", "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h"},
+  }};
+  for (const auto& item : expected) {
+    const auto* asset = prom_shader_registry_find_shader(item.id);
+    ASSERT_TRUE(asset != nullptr, "promoted shader ID must remain registered");
+    ASSERT_EQUAL(PROM_SHADER_SOURCE_SDSLV, asset->source_language, "promoted shader provenance must be SDSL-V");
+    ASSERT_TRUE(std::string(asset->entry_point) == item.entry, "registry must use the generated entry point");
+    ASSERT_TRUE(std::string(asset->source_path).find(item.source) != std::string::npos, "registry source must be production-owned");
+    ASSERT_TRUE(std::string(asset->generated_header_path) == item.header, "registry must not reference an historical header");
+    ASSERT_TRUE(manifest.find(item.header) != std::string::npos, "manifest must own the generated header");
+  }
+  ASSERT_TRUE(manifest.find("\"id\":13,\"name\":\"sgemm-packed4\",\"stage\":\"compute\",\"source_language\":\"spirv\"") != std::string::npos, "Packed4 must remain unchanged");
+  ASSERT_TRUE(manifest.find("\"id\":14,\"name\":\"sgemm-fp16-storage-fp32-accum\",\"stage\":\"compute\",\"source_language\":\"spirv\"") != std::string::npos, "FP16 must remain unchanged");
+}
+FACT(PrometheusM34bA2x4UsesCanonicalDispatchFootprint) {
+  const auto* implementation = prom_shader_registry_find_compute_implementation(5u);
+  const auto* metadata = prom_shader_registry_dispatch_metadata(5u);
+  ASSERT_TRUE(implementation != nullptr && metadata != nullptr, "A2x4 implementation must remain registered");
+  ASSERT_TRUE(std::string(implementation->name) == "aggressive-4x4-accum8", "policy-visible A2x4 identity must remain unchanged");
+  ASSERT_EQUAL(8u, metadata->threads_x, "A2x4 workgroup X must remain 8");
+  ASSERT_EQUAL(8u, metadata->threads_y, "A2x4 workgroup Y must remain 8");
+  ASSERT_EQUAL(1u, metadata->threads_z, "A2x4 workgroup Z must remain 1");
+  ASSERT_EQUAL(2u, metadata->outputs_per_invocation_m, "A2x4 must produce two rows per invocation");
+  ASSERT_EQUAL(4u, metadata->outputs_per_invocation_n, "A2x4 must produce four columns per invocation");
+  const prom_sgemm_dispatch_geometry geometry = prom_sgemm_dispatch_geometry_for_metadata(3u, 17u, metadata);
+  ASSERT_EQUAL(1u, geometry.groups_x, "M=3 must fit in one A2x4 X group");
+  ASSERT_EQUAL(1u, geometry.groups_y, "N=17 must fit in one canonical A2x4 Y group");
+  ASSERT_EQUAL(16u, geometry.logical_m_per_group, "A2x4 group coverage M must be canonical");
+  ASSERT_EQUAL(32u, geometry.logical_n_per_group, "A2x4 group coverage N must be canonical");
+}
+FACT(PrometheusM34bValidationEnabledProductionVariants) {
+#ifdef _WIN32
+  ASSERT_EQUAL(0, _putenv_s("PROMETHEUS_VK_VALIDATION", "1"), "validation environment must be set");
+#endif
+  void* handle = nullptr;
+  const int create_status = prom_reactor_runtime_create_impl(nullptr, &handle);
+#ifdef _WIN32
+  _putenv_s("PROMETHEUS_VK_VALIDATION", "");
+#endif
+  ASSERT_EQUAL(PROM_OK, create_status, "validation-enabled runtime creation must succeed");
+  ASSERT_TRUE(handle != nullptr, "validation-enabled runtime must be returned");
+  auto* runtime = static_cast<prometheus_runtime*>(handle);
+  ASSERT_EQUAL(1u, runtime->validation_requested, "validation must be explicitly requested");
+  ASSERT_EQUAL(1u, runtime->validation_available, "validation layer must be available");
+  ASSERT_EQUAL(1u, runtime->validation_enabled, "validation layer must be enabled");
+  ASSERT_EQUAL(1u, runtime->validation_debug_utils_active, "debug-utils capture must be active");
+  constexpr uint32_t m = 3u, n = 17u, k = 7u;
+  std::vector<float> a(m * k), b(k * n), expected(m * n, 0.0f), output(m * n, 0.0f);
+  for (std::size_t i = 0; i < a.size(); ++i) a[i] = static_cast<float>((i % 7u) + 1u) / 8.0f;
+  for (std::size_t i = 0; i < b.size(); ++i) b[i] = static_cast<float>((i % 11u) + 1u) / 12.0f;
+  for (uint32_t row = 0; row < m; ++row) for (uint32_t col = 0; col < n; ++col) for (uint32_t kk = 0; kk < k; ++kk) expected[row * n + col] += a[row * k + kk] * b[kk * n + col];
+  for (uint32_t variant : {3u, 4u, 5u}) {
+    std::fill(output.begin(), output.end(), 0.0f);
+    uint32_t stage = PROM_STAGE_NONE; int detail = 0;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_sgemm_benchmark_variant_impl(handle, a.data(), b.data(), output.data(), m, n, k, variant, &stage, &detail), "production registry variant must execute");
+    for (std::size_t i = 0; i < output.size(); ++i) ASSERT_NEAR(expected[i], output[i], 0.002f, "production variant must match CPU oracle");
+  }
+  ASSERT_EQUAL(0u, runtime->validation_warning_count, "validation warnings must be zero");
+  ASSERT_EQUAL(0u, runtime->validation_error_count, "validation errors must be zero");
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle), "validation runtime must be destroyed");
+}
 FACT(PrometheusVulkanRuntimePreflight) {
   void* handle = nullptr;
   const int create_result = prometheus_reactor_runtime_create(nullptr, &handle);

@@ -36,11 +36,11 @@
   "sdslv_test_host_source": "sdslv_test_host.c",
   "generated_headers": [
     "reactor_vulkan_fp16_spirv.h", "reactor_vulkan_packed4_spirv.h",
-    "reactor_vulkan_b2x2_row_major_biased_spirv.h", "reactor_vulkan_a2x4_row_biased_accum8_spirv.h",
+    "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h", "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h",
     "reactor_vulkan_memory_conservative_spirv.h", "reactor_vulkan_sgemm_scalar_plus_spirv.h",
     "reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h", "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h",
     "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h", "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h",
-    "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h", "reactor_vulkan_srt_2accum_k_spirv.h",
+    "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h",
     "reactor_vulkan_tiled_spirv.h"
   ],
   "platform_exceptions": {"windows": [], "linux": []}

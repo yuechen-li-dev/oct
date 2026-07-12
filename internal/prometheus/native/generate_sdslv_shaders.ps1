@@ -63,8 +63,10 @@ try {
     )
     $jobs = @($manifest.shader_assets | Where-Object { $_.source_language -eq "sdslv" } | Sort-Object id | ForEach-Object {
         $stem = [IO.Path]::GetFileNameWithoutExtension($_.source)
-        @{ Shader = $_.source; Stem = $stem; Header = "internal/prometheus/native/" + $_.header; Symbol = $_.symbol;
-           NativeTempHlsl = "internal/prometheus/native/" + $_.header + ".hlsl"; NativeTempSpv = "internal/prometheus/native/" + $_.header + ".spv" }
+        $header = "internal/prometheus/native/" + $_.header
+        $nativeBase = $header -replace '\.h$', ''
+        @{ Shader = $_.source; Stem = $stem; Header = $header; Symbol = $_.symbol;
+           NativeTempHlsl = $nativeBase + ".hlsl"; NativeTempSpv = $nativeBase + ".spv" }
     })
 
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
