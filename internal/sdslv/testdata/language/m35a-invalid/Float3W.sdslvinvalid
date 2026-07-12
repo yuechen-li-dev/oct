@@ -1,0 +1,5 @@
+expect error: "component .w is not valid on float3"
+
+fn F(value: float3) -> void {
+let lane: f32 = value.w;
+}

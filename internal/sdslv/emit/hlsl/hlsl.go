@@ -871,11 +871,17 @@ func (e *emitter) materializeExpr(expr vdmir.Expr) string {
 		}
 		return call
 	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicPackF16x2 {
+			a := e.materializeOperand(x.Arguments[0])
+			return "(f32tof16(" + a + ").x | (f32tof16(" + a + ").y << 16u))"
+		}
 		args := make([]string, 0, len(x.Arguments))
 		for _, arg := range x.Arguments {
 			args = append(args, e.materializeExpr(arg))
 		}
-		return hlslIntrinsic(x.Intrinsic) + "(" + strings.Join(args, ", ") + ")"
+		return e.m35Intrinsic(x, args)
+	case vdmir.VectorExtractExpr:
+		return e.materializeExpr(x.Target) + "." + x.Component
 	case vdmir.FieldAccessExpr:
 		target := e.materializeExpr(x.Target)
 		return target + "." + hlslIdentifier(x.Field)
@@ -950,6 +956,16 @@ func exprNeedsPrelude(expr vdmir.Expr) bool {
 		}
 	case vdmir.CallExpr:
 		return true
+	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicPackF16x2 {
+			return true
+		}
+		for _, arg := range x.Arguments {
+			if exprNeedsPrelude(arg) {
+				return true
+			}
+		}
+		return false
 	case vdmir.FieldAccessExpr:
 		return exprNeedsPrelude(x.Target)
 	case vdmir.WhenUtilityExpr, vdmir.WithExpr, vdmir.MatchExpr, vdmir.BoardConstructExpr, vdmir.DeriveExpr:
@@ -1066,6 +1082,8 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		return hlslIdentifier(x.Name)
 	case vdmir.FieldAccessExpr:
 		return e.expr(x.Target) + "." + hlslIdentifier(x.Field)
+	case vdmir.VectorExtractExpr:
+		return e.expr(x.Target) + "." + x.Component
 	case vdmir.IndexExpr:
 		if text, ok := e.testInputIndex(x); ok {
 			return text
@@ -1092,11 +1110,15 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		}
 		return e.expr(x.Callee) + "(" + strings.Join(args, ", ") + ")"
 	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicPackF16x2 {
+			a := e.materializeOperand(x.Arguments[0])
+			return "(f32tof16(" + a + ").x | (f32tof16(" + a + ").y << 16u))"
+		}
 		args := make([]string, 0, len(x.Arguments))
 		for _, arg := range x.Arguments {
 			args = append(args, e.expr(arg))
 		}
-		return hlslIntrinsic(x.Intrinsic) + "(" + strings.Join(args, ", ") + ")"
+		return e.m35Intrinsic(x, args)
 	case vdmir.BinaryExpr:
 		return "(" + e.expr(x.Left) + " " + x.Operator + " " + e.expr(x.Right) + ")"
 	case vdmir.UnaryExpr:
@@ -1468,8 +1490,39 @@ func hlslIntrinsic(intrinsic vdmir.Intrinsic) string {
 		return "GroupMemoryBarrierWithGroupSync"
 	case vdmir.IntrinsicWorkgroupMemoryBarrier:
 		return "GroupMemoryBarrier"
+	case vdmir.IntrinsicDot:
+		return "dot"
+	case vdmir.IntrinsicUnpackF16x2:
+		return "f16tof32"
+	case vdmir.IntrinsicBitcast:
+		return "asuint" // overridden below by result-aware emission where needed
+	case vdmir.IntrinsicConvert:
+		return "float"
 	default:
 		return "GroupMemoryBarrierWithGroupSync"
+	}
+}
+
+func (e *emitter) m35Intrinsic(x vdmir.IntrinsicCallExpr, args []string) string {
+	if len(args) == 0 {
+		return hlslIntrinsic(x.Intrinsic) + "()"
+	}
+	switch x.Intrinsic {
+	case vdmir.IntrinsicUnpackF16x2:
+		return "f16tof32(uint2((" + args[0] + " & 65535u), (" + args[0] + " >> 16u)))"
+	case vdmir.IntrinsicBitcast:
+		switch x.Type().Kind {
+		case vdmir.TypeF32:
+			return "asfloat(" + args[0] + ")"
+		case vdmir.TypeI32:
+			return "asint(" + args[0] + ")"
+		default:
+			return "asuint(" + args[0] + ")"
+		}
+	case vdmir.IntrinsicConvert:
+		return typeRef(x.Type(), "") + "(" + args[0] + ")"
+	default:
+		return hlslIntrinsic(x.Intrinsic) + "(" + strings.Join(args, ", ") + ")"
 	}
 }
 

@@ -34,34 +34,26 @@ void SgemmFp16StorageFp32Accum_CS(uint3 DispatchThreadID : SV_DispatchThreadID)
         uint bi = ((kk * params.n) + col);
         uint aw = A[(ai / 2u)];
         uint bw = B[(bi / 2u)];
-        float2 __sdslv_inline_hlsl_0;
+        float2 av = f16tof32(uint2((aw & 65535u), (aw >> 16u)));
+        float2 bv = f16tof32(uint2((bw & 65535u), (bw >> 16u)));
+        float a = 0.0;
+        float b = 0.0;
+        if (((ai % 2u) == 0u))
         {
-            // BEGIN INLINE HLSL internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/sdslv/sgemm_fp16_storage_fp32_accum.sdslv:8
-             __sdslv_inline_hlsl_0 = f16tof32(uint2(aw & 65535u, aw >> 16u)); 
-            // END INLINE HLSL
+            a = av.x;
         }
-        float2 av = __sdslv_inline_hlsl_0;
-        float2 __sdslv_inline_hlsl_1;
+        else
         {
-            // BEGIN INLINE HLSL internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/sdslv/sgemm_fp16_storage_fp32_accum.sdslv:9
-             __sdslv_inline_hlsl_1 = f16tof32(uint2(bw & 65535u, bw >> 16u)); 
-            // END INLINE HLSL
+            a = av.y;
         }
-        float2 bv = __sdslv_inline_hlsl_1;
-        float __sdslv_inline_hlsl_2;
+        if (((bi % 2u) == 0u))
         {
-            // BEGIN INLINE HLSL internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/sdslv/sgemm_fp16_storage_fp32_accum.sdslv:10
-             __sdslv_inline_hlsl_2 = (ai & 1u) == 0u ? av.x : av.y; 
-            // END INLINE HLSL
+            b = bv.x;
         }
-        float a = __sdslv_inline_hlsl_2;
-        float __sdslv_inline_hlsl_3;
+        else
         {
-            // BEGIN INLINE HLSL internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/sdslv/sgemm_fp16_storage_fp32_accum.sdslv:10
-             __sdslv_inline_hlsl_3 = (bi & 1u) == 0u ? bv.x : bv.y; 
-            // END INLINE HLSL
+            b = bv.y;
         }
-        float b = __sdslv_inline_hlsl_3;
         acc = (acc + (a * b));
     }
     C[((row * params.n) + col)] = acc;

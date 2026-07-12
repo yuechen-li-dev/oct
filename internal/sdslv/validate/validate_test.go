@@ -172,6 +172,64 @@ return;
 	}
 }
 
+func TestSdslvM35aVectorAndIntrinsicValidationMatrix(t *testing.T) {
+	valid := `fn F(bits: u32, raw: u32, value: f32, signed: i32, fv2: float2, fv3: float3, fv4: float4, uv4: uint4) -> void {
+let a: f32 = fv2.x;
+let b: f32 = fv3.z;
+let c: f32 = fv4.w;
+let d: u32 = uv4.y;
+let dot2: f32 = Dot(fv2, fv2);
+let dot3: f32 = Dot(fv3, fv3);
+let dot4: f32 = Dot(fv4, fv4);
+let unpacked: float2 = Unpack<F16x2>(bits);
+let repacked: u32 = Pack<F16x2>(unpacked);
+let bitsAgain: u32 = Bitcast<u32>(value);
+let floatAgain: f32 = Bitcast<f32>(bitsAgain);
+let intAgain: i32 = Bitcast<i32>(raw);
+let uintAgain: u32 = Bitcast<u32>(signed);
+let fromUInt: f32 = Convert<f32>(raw);
+let fromInt: f32 = Convert<f32>(signed);
+let toUInt: u32 = Convert<u32>(value);
+let toInt: i32 = Convert<i32>(value);
+let intToUInt: u32 = Convert<u32>(signed);
+let uintToInt: i32 = Convert<i32>(raw);
+let nested: f32 = Dot(Unpack<F16x2>(repacked), Unpack<F16x2>(bits));
+return;
+}`
+	if err := validateSource(valid); err != nil {
+		t.Fatalf("validateSource() error = %v", err)
+	}
+
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"scalar component", `fn F(x: f32) -> void { let y: f32 = x.x; }`, "SDSL-V3501"},
+		{"float2 z", `fn F(v: float2) -> void { let z: f32 = v.z; }`, "SDSL-V3501"},
+		{"float3 w", `fn F(v: float3) -> void { let w: f32 = v.w; }`, "SDSL-V3501"},
+		{"unknown component", `record R { value: f32; } fn F(r: R) -> void { let x: f32 = r.q; }`, "SDSL-V1506"},
+		{"dot arity", `fn F(v: float2) -> void { let x: f32 = Dot(v); }`, "SDSL-V3509"},
+		{"dot scalar", `fn F(x: f32) -> void { let y: f32 = Dot(x, x); }`, "SDSL-V3510"},
+		{"dot mixed width", `fn F(a: float2, b: float3) -> void { let y: f32 = Dot(a, b); }`, "SDSL-V3510"},
+		{"dot mixed type", `fn F(a: float2, b: uint2) -> void { let y: f32 = Dot(a, b); }`, "SDSL-V3510"},
+		{"unknown format", `fn F(bits: u32) -> void { let x: float2 = Unpack<UNorm8x4>(bits); }`, "SDSL-V3504"},
+		{"pack wrong source", `fn F(bits: u32) -> void { let x: u32 = Pack<F16x2>(bits); }`, "SDSL-V3505"},
+		{"unpack wrong source", `fn F(pair: float2) -> void { let x: float2 = Unpack<F16x2>(pair); }`, "SDSL-V3506"},
+		{"bitcast unsupported", `fn F(value: f32) -> void { let x: float2 = Bitcast<float2>(value); }`, "SDSL-V3507"},
+		{"convert unsupported", `fn F(pair: float2) -> void { let x: u32 = Convert<u32>(pair); }`, "SDSL-V3508"},
+		{"ordinary user generic", `fn Helper(x: u32) -> u32 { return x; } fn F(bits: u32) -> void { let x: u32 = Helper<F16x2>(bits); }`, "SDSL-V3502"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsInvalidDerive(t *testing.T) {
 	cases := []struct {
 		name string

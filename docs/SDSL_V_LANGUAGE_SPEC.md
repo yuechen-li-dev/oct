@@ -1,5 +1,35 @@
 # SDSL-V Language Specification
 
+## M35a compiler-owned packed/vector intrinsics
+
+SDSL-V supports a closed set of compiler-defined generic intrinsics:
+`Pack<Format>`, `Unpack<Format>`, `Bitcast<T>`, and `Convert<T>`. These are not
+user-defined generics; concepts, configs, and template shaders remain the user
+specialization mechanism. `F16x2` maps low/high binary16 lanes of `u32` to
+`.x/.y` of `float2`. First-class component reads support `.x` through `.w` as
+permitted by `float2`–`float4` and `uint2`–`uint4`; `Dot` accepts matching
+float vectors and returns `f32`.
+
+Closed validator-owned matrix:
+
+- component reads:
+  - `.x` on width `2..4`
+  - `.y` on width `2..4`
+  - `.z` on width `3..4`
+  - `.w` on width `4`
+  - base types: `float2|float3|float4|uint2|uint3|uint4`
+- `Dot(float2|float3|float4, same) -> f32`
+- `Unpack<F16x2>(u32) -> float2`
+- `Pack<F16x2>(float2) -> u32`
+- `Bitcast<u32>(f32|i32)`, `Bitcast<f32>(u32)`, `Bitcast<i32>(u32)`
+- `Convert<f32>(u32|i32)`, `Convert<u32>(f32|i32)`,
+  `Convert<i32>(f32|u32)`
+
+`F16x2` is valid only as a compiler-known packed-format descriptor inside
+`Pack` and `Unpack`. User functions do not accept generic call syntax, and
+ordinary user code cannot define new intrinsic families, new packed formats, or
+arbitrary conversion hooks.
+
 ## Status and authority
 
 This is the current-state specification for the in-repository SDSL-V shader

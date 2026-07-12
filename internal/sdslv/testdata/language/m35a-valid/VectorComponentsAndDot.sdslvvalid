@@ -1,0 +1,11 @@
+fn F(v2: float2, v3: float3, v4: float4, u4: uint4) -> void {
+let a: f32 = v2.x;
+let b: f32 = v2.y;
+let c: f32 = v3.z;
+let d: f32 = v4.w;
+let e: u32 = u4.z;
+let dot2: f32 = Dot(v2, v2);
+let dot3: f32 = Dot(v3, v3);
+let dot4: f32 = Dot(v4, v4);
+return;
+}

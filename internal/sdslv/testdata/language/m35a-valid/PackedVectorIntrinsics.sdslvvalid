@@ -1,0 +1,8 @@
+namespace M35a;
+stream IO { [binding(0)] A: readonly array<u32>; [binding(1)] C: readwrite array<f32>; }
+record Params { n:u32; }
+shader Intrinsics { resources IO;
+stage compute [numthreads(1,1,1)] fn CS(params:Params)->void {
+let pair:float2=Unpack<F16x2>(A[0u]); let bits:u32=Pack<F16x2>(pair); let x:f32=pair.x;
+let d:f32=Dot(pair, pair); let raw:u32=Bitcast<u32>(d); let again:f32=Bitcast<f32>(raw); let converted:f32=Convert<f32>(bits);
+C[0u]=x+d+again+converted; return; }}

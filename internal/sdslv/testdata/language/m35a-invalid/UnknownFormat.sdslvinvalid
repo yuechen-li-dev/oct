@@ -1,0 +1,5 @@
+expect error: "Unpack only supports format F16x2"
+
+fn F(bits: u32) -> void {
+let pair: float2 = Unpack<UNorm8x4>(bits);
+}

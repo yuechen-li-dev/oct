@@ -719,9 +719,14 @@ type GuardedReadExpr struct {
 func (GuardedReadExpr) exprNode() {}
 
 type CallExpr struct {
-	Span      source.Span
-	Callee    Expr
-	Arguments []Expr
+	Span   source.Span
+	Callee Expr
+	// TypeArgument is deliberately available only to compiler-owned intrinsic
+	// families. The parser records its spans; validation rejects generic syntax
+	// on ordinary functions before lowering.
+	TypeArgument                  *TypeRef
+	OpenAngleSpan, CloseAngleSpan source.Span
+	Arguments                     []Expr
 }
 
 func (CallExpr) exprNode() {}

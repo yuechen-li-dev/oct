@@ -1562,6 +1562,49 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.CallExpr{Span: spanFrom(ast.ExprSpan(expr).Start, close.Span.End), Callee: expr, Arguments: args}
+		case token.LeftAngle:
+			// Generic-looking call syntax is parsed only as a postfix on an
+			// identifier. Validation owns the closed intrinsic family and rejects
+			// ordinary/user calls, so this does not create user generics.
+			id, ok := expr.(ast.IdentifierExpr)
+			// Keep relational expressions intact. The intentionally tiny grammar
+			// only recognizes the closed one-token format/type argument followed
+			// immediately by a call delimiter.
+			if !ok || p.position+3 >= len(p.tokens) || p.tokens[p.position+1].Kind != token.Identifier || p.tokens[p.position+2].Kind != token.RightAngle || p.tokens[p.position+3].Kind != token.LeftParen {
+				return expr, nil
+			}
+			open := p.current()
+			p.advance()
+			arg, err := p.parseTypeRef(false)
+			if err != nil {
+				return nil, err
+			}
+			close, err := p.expect(token.RightAngle, "expected '>' after intrinsic type argument")
+			if err != nil {
+				return nil, err
+			}
+			if p.current().Kind != token.LeftParen {
+				return nil, p.errorAtCurrent("expected '(' after intrinsic type argument")
+			}
+			p.advance()
+			var args []ast.Expr
+			if p.current().Kind != token.RightParen {
+				for {
+					a, err := p.parseExpression()
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, a)
+					if !p.match(token.Comma) {
+						break
+					}
+				}
+			}
+			end, err := p.expect(token.RightParen, "expected ')' after intrinsic arguments")
+			if err != nil {
+				return nil, err
+			}
+			expr = ast.CallExpr{Span: spanFrom(id.Span.Start, end.Span.End), Callee: id, TypeArgument: &arg, OpenAngleSpan: open.Span, CloseAngleSpan: close.Span, Arguments: args}
 		case token.LeftBrace:
 			typeName, ok := identifierName(expr)
 			if !ok || !p.payloadInitializerStarts() {

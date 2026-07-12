@@ -8,6 +8,7 @@
 #include "../reactor_vulkan_packed4_spirv.h"
 #include "../reactor_vulkan_fp16_spirv.h"
 #include "../reactor_judgment_engine.h"
+#include "../reactor_vulkan_sgemm_internal.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -31,6 +32,9 @@ constexpr std::uint32_t kTimingMeasuredIterations = 5u;
 struct ValidationAccounting {
     bool requested = false;
     bool available = false;
+    bool enabled = false;
+    bool debug_utils_active = false;
+    bool device_loss = false;
     std::vector<std::string> enabled_layers;
     std::uint32_t warning_count = 0u;
     std::uint32_t error_count = 0u;
@@ -195,6 +199,20 @@ ValidationAccounting CollectValidationAccounting()
     return accounting;
 }
 
+void CaptureRuntimeValidationAccounting(const prometheus_runtime* runtime, ValidationAccounting* accounting)
+{
+    if (runtime == nullptr || accounting == nullptr) return;
+    accounting->requested = runtime->validation_requested != 0u;
+    accounting->available = runtime->validation_available != 0u;
+    accounting->enabled = runtime->validation_enabled != 0u;
+    accounting->debug_utils_active = runtime->validation_debug_utils_active != 0u;
+    accounting->warning_count = runtime->validation_warning_count;
+    accounting->error_count = runtime->validation_error_count;
+    if (accounting->enabled && accounting->enabled_layers.empty()) {
+        accounting->enabled_layers.push_back("VK_LAYER_KHRONOS_validation");
+    }
+}
+
 TimingStats ComputeTimingStats(const std::vector<std::uint64_t>& samples)
 {
     TimingStats stats;
@@ -271,6 +289,8 @@ std::string RenderValidationJson(const ValidationAccounting& validation)
     std::ostringstream output;
     output << "{\"requested\":" << (validation.requested ? "true" : "false")
            << ",\"available\":" << (validation.available ? "true" : "false")
+           << ",\"enabled\":" << (validation.enabled ? "true" : "false")
+           << ",\"debug_utils_active\":" << (validation.debug_utils_active ? "true" : "false")
            << ",\"enabled_layers\":[";
     for (std::size_t index = 0; index < validation.enabled_layers.size(); ++index) {
         if (index != 0u) output << ',';
@@ -278,6 +298,7 @@ std::string RenderValidationJson(const ValidationAccounting& validation)
     }
     output << "],\"warning_count\":" << validation.warning_count
            << ",\"error_count\":" << validation.error_count
+           << ",\"device_loss\":" << (validation.device_loss ? "true" : "false")
            << '}';
     return output.str();
 }
@@ -472,7 +493,8 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
         SKIP("real Vulkan backend unavailable");
     }
     const std::filesystem::path generated = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "SDSL_V_ORIGINAL_SPIRV_REWRITE" / "generated";
-    const ValidationAccounting validation = CollectValidationAccounting();
+    ValidationAccounting validation = CollectValidationAccounting();
+    CaptureRuntimeValidationAccounting(static_cast<const prometheus_runtime*>(runtime), &validation);
     std::vector<PairwiseRunRecord> runs;
     std::vector<PairTimingSummary> pair_timings;
     for (const AuditPairDefinition& pair : pairs) {

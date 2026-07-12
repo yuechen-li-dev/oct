@@ -390,6 +390,46 @@ fn GuardedTensor() -> void {
 	}
 }
 
+func TestModuleLowersM35aVectorComponentsAndIntrinsics(t *testing.T) {
+	mir := lowerSource(t, `fn F(bits: u32, raw: u32, value: f32, fv4: float4) -> void {
+let lane: f32 = fv4.z;
+let unpacked: float2 = Unpack<F16x2>(bits);
+let repacked: u32 = Pack<F16x2>(unpacked);
+let dotValue: f32 = Dot(unpacked, Unpack<F16x2>(repacked));
+let bitPattern: u32 = Bitcast<u32>(value);
+let asFloat: f32 = Bitcast<f32>(bitPattern);
+let converted: f32 = Convert<f32>(raw);
+return;
+}`)
+	fn := findFunction(t, mir, "F")
+	stmts := fn.Body.Statements
+	lane := stmts[0].(vdmir.LetStmt)
+	extract, ok := lane.Value.(vdmir.VectorExtractExpr)
+	if !ok || extract.Component != "z" || extract.Type().Kind != vdmir.TypeF32 {
+		t.Fatalf("lane extract = %#v", lane.Value)
+	}
+	unpack := stmts[1].(vdmir.LetStmt).Value.(vdmir.IntrinsicCallExpr)
+	if unpack.Intrinsic != vdmir.IntrinsicUnpackF16x2 || unpack.Type().Kind != vdmir.TypeFloat2 || unpack.TypeArgument.Name != "F16x2" {
+		t.Fatalf("unpack = %#v", unpack)
+	}
+	pack := stmts[2].(vdmir.LetStmt).Value.(vdmir.IntrinsicCallExpr)
+	if pack.Intrinsic != vdmir.IntrinsicPackF16x2 || pack.Type().Kind != vdmir.TypeU32 || pack.TypeArgument.Name != "F16x2" {
+		t.Fatalf("pack = %#v", pack)
+	}
+	dotValue := stmts[3].(vdmir.LetStmt).Value.(vdmir.IntrinsicCallExpr)
+	if dotValue.Intrinsic != vdmir.IntrinsicDot || dotValue.Type().Kind != vdmir.TypeF32 || len(dotValue.Arguments) != 2 {
+		t.Fatalf("dot = %#v", dotValue)
+	}
+	bitcast := stmts[4].(vdmir.LetStmt).Value.(vdmir.IntrinsicCallExpr)
+	if bitcast.Intrinsic != vdmir.IntrinsicBitcast || bitcast.Type().Kind != vdmir.TypeU32 || bitcast.TypeArgument.Name != "u32" {
+		t.Fatalf("bitcast = %#v", bitcast)
+	}
+	convert := stmts[6].(vdmir.LetStmt).Value.(vdmir.IntrinsicCallExpr)
+	if convert.Intrinsic != vdmir.IntrinsicConvert || convert.Type().Kind != vdmir.TypeF32 || convert.TypeArgument.Name != "f32" {
+		t.Fatalf("convert = %#v", convert)
+	}
+}
+
 func TestModuleLowersVectorAddToVDMIR(t *testing.T) {
 	mir := lowerSource(t, `namespace Prometheus.Kernels;
 record VectorParams { Count: u32; }
@@ -438,12 +478,12 @@ stage compute [numthreads(16, 16, 1)] fn CS(params: VectorParams) -> void {
 	if !ok {
 		t.Fatalf("first statement = %T, want LetStmt", cs.Body.Statements[0])
 	}
-	field, ok := letIndex.Value.(vdmir.FieldAccessExpr)
+	field, ok := letIndex.Value.(vdmir.VectorExtractExpr)
 	if !ok {
-		t.Fatalf("index init = %T, want FieldAccessExpr", letIndex.Value)
+		t.Fatalf("index init = %T, want VectorExtractExpr", letIndex.Value)
 	}
 	target, ok := field.Target.(vdmir.VarRefExpr)
-	if !ok || target.Kind != vdmir.VarBuiltin || target.Name != "DispatchThreadID" || field.Field != "x" {
+	if !ok || target.Kind != vdmir.VarBuiltin || target.Name != "DispatchThreadID" || field.Component != "x" {
 		t.Fatalf("builtin field access = %#v / %#v", target, field)
 	}
 	pick := findFunction(t, mir, "VectorAdd_PickScale")

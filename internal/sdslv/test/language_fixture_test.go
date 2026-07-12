@@ -280,6 +280,70 @@ func TestSdslvM33bTensorConstructionFixtureCorpus(t *testing.T) {
 	assertInvalidFixtureExpectation(t, filepath.Join(languageFixtureRoot(t), "m33b-invalid", "GenerateRankMismatch.sdslvinvalid"), invalidFixtureExpectation{"GenerateRankMismatch.sdslvinvalid", "validate", "SDSL-V3319", 2, 50})
 }
 
+func TestSdslvM35aValidFixtureCorpusCompiles(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m35a-valid", "*.sdslvvalid"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("M35a valid fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			if _, err := sdslv.EmitHLSLFile(path); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestSdslvM35aInvalidFixtureCorpusUsesOctFailExpectations(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m35a-invalid", "*.sdslvinvalid"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("M35a invalid fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, program, err := tester.ParseOctFailFixture(string(data))
+			if err != nil {
+				t.Fatalf("invalid expect header: %v", err)
+			}
+			file := source.File{Path: path, Text: program}
+			tokens, err := lex.Analyze(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatal(err)
+			}
+			diagnostics := validate.Diagnostics(module)
+			if len(diagnostics) == 0 {
+				t.Fatal("expected validation diagnostic")
+			}
+			actual := diagnostic.Error(diagnostics).Error()
+			if !strings.Contains(actual, expected) {
+				t.Fatalf("expectation mismatch: expected diagnostic containing %q, got %s", expected, actual)
+			}
+			foundM35a := false
+			for _, d := range diagnostics {
+				if strings.Contains(d.Message, expected) || strings.Contains(diagnostic.Error([]diagnostic.Diagnostic{d}).Error(), expected) {
+					if strings.HasPrefix(d.Code, "SDSL-V35") || d.Code == "SDSL-V1506" || d.Code == "SDSL-V1508" {
+						foundM35a = true
+					}
+					if !d.Span.Known() {
+						t.Fatal("M35a diagnostic lost source span")
+					}
+				}
+			}
+			if !foundM35a {
+				t.Fatalf("expected an M35a diagnostic code in %#v", diagnostics)
+			}
+		})
+	}
+}
+
 func TestSdslvM31bValidFlowFixtureCorpusCompiles(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m31b-valid", "*.sdslvvalid"))
 	if err != nil || len(paths) == 0 {

@@ -207,3 +207,61 @@ func TestSdslvNdarrayDiagnosticsUsePreciseSpans(t *testing.T) {
 		})
 	}
 }
+
+func TestSdslvM35aDiagnosticsUsePreciseSpans(t *testing.T) {
+	cases := []struct {
+		name, text, code, slice string
+	}{
+		{
+			name:  "invalid vector lane",
+			text:  "fn F(v: float2) -> void { let z: f32 = v.z; }\n",
+			code:  "SDSL-V3501",
+			slice: "v.z",
+		},
+		{
+			name:  "dot wrong arity",
+			text:  "fn F(v: float2) -> void { let x: f32 = Dot(v); }\n",
+			code:  "SDSL-V3509",
+			slice: "Dot(v)",
+		},
+		{
+			name:  "dot mixed widths",
+			text:  "fn F(a: float2, b: float3) -> void { let x: f32 = Dot(a, b); }\n",
+			code:  "SDSL-V3510",
+			slice: "Dot(a, b)",
+		},
+		{
+			name:  "unknown packed format",
+			text:  "fn F(bits: u32) -> void { let pair: float2 = Unpack<UNorm8x4>(bits); }\n",
+			code:  "SDSL-V3504",
+			slice: "UNorm8x4",
+		},
+		{
+			name:  "ordinary generic call",
+			text:  "fn Helper(x: u32) -> u32 { return x; }\nfn F(bits: u32) -> void { let x: u32 = Helper<F16x2>(bits); }\n",
+			code:  "SDSL-V3502",
+			slice: "Helper<F16x2>(bits)",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.text})
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, d := range Diagnostics(module) {
+				if d.Code == tc.code {
+					if got := tc.text[d.Span.Start.Offset:d.Span.End.Offset]; got != tc.slice {
+						t.Fatalf("%s span = %q, want %q", tc.code, got, tc.slice)
+					}
+					return
+				}
+			}
+			t.Fatalf("missing %s in %#v", tc.code, Diagnostics(module))
+		})
+	}
+}

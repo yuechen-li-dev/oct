@@ -1,0 +1,8 @@
+expect error: "Helper is not a compiler-defined generic intrinsic"
+
+fn Helper(bits: u32) -> u32 {
+return bits;
+}
+fn F(bits: u32) -> void {
+let result: u32 = Helper<F16x2>(bits);
+}

@@ -1,0 +1,5 @@
+expect error: "Dot expects 2 arguments, got 1"
+
+fn F(value: float2) -> void {
+let lane: f32 = Dot(value);
+}

@@ -1,0 +1,5 @@
+expect error: "component .x is not valid on f32"
+
+fn F(value: f32) -> void {
+let lane: f32 = value.x;
+}

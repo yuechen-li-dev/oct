@@ -1,0 +1,5 @@
+expect error: "Pack<F16x2> expects float2, got u32"
+
+fn F(bits: u32) -> void {
+let packed: u32 = Pack<F16x2>(bits);
+}

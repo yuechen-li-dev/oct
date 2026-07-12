@@ -1233,6 +1233,52 @@ return;
 	}
 }
 
+func TestSdslvM35aIntrinsicsEmitNativeHLSL(t *testing.T) {
+	out := emitSource(t, `fn F(bits: u32, raw: u32, value: f32, fv4: float4) -> void {
+  let lane: f32 = fv4.z;
+  let unpacked: float2 = Unpack<F16x2>(bits);
+  let repacked: u32 = Pack<F16x2>(unpacked);
+  let dotValue: f32 = Dot(unpacked, Unpack<F16x2>(repacked));
+  let bitPattern: u32 = Bitcast<u32>(value);
+  let asFloat: f32 = Bitcast<f32>(bitPattern);
+  let converted: f32 = Convert<f32>(raw);
+  return;
+}`)
+	for _, want := range []string{
+		"float lane = fv4.z;",
+		"float2 unpacked = f16tof32(uint2((bits & 65535u), (bits >> 16u)));",
+		"uint repacked = (f32tof16(unpacked).x | (f32tof16(unpacked).y << 16u));",
+		"float dotValue = dot(unpacked, f16tof32(uint2((repacked & 65535u), (repacked >> 16u))));",
+		"uint bitPattern = asuint(value);",
+		"float asFloat = asfloat(bitPattern);",
+		"float converted = float(raw);",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "BEGIN INLINE HLSL") {
+		t.Fatalf("M35a intrinsic lowering fell back to inline HLSL:\n%s", out)
+	}
+}
+
+func TestSdslvPackF16x2MaterializesOperandExactlyOnce(t *testing.T) {
+	out := emitSource(t, `fn MakePair(seed: f32) -> float2 {
+  return HLSL<float2>(seed) {
+    return float2(seed, seed + 1.0);
+  };
+}
+fn F(seed: f32) -> u32 {
+  return Pack<F16x2>(MakePair(seed));
+}`)
+	if strings.Count(out, "MakePair(seed)") != 1 {
+		t.Fatalf("Pack<F16x2> duplicated its operand:\n%s", out)
+	}
+	if strings.Count(out, "f32tof16(__sdslv_operand_") != 2 {
+		t.Fatalf("Pack<F16x2> did not reuse a single materialized operand:\n%s", out)
+	}
+}
+
 func emitSource(t *testing.T, text string) string {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

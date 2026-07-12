@@ -1,5 +1,13 @@
 # SDSL-V original five SPIR-V rewrite audit
 
+## M35a follow-up status (2026-07-12)
+
+The audit-only Packed4 and FP16 candidate sources now use first-class SDSL-V
+vector/intrinsic syntax instead of bounded inline HLSL. M35a completed the
+language/compiler work, reran the pairwise hardware audit, and reran the same
+lane with Vulkan validation enabled. Historical assets and production ownership
+remain unchanged.
+
 Status: **COMPLETE — success** (2026-07-11)
 
 > M34a is now closed with a real Vulkan audit override, deterministic replay
@@ -73,12 +81,11 @@ Sources are under
 VD-MIR, HLSL, SPIR-V, and disassembly are under `generated/`; extracted original
 SPIR-V and disassembly are under `original/`.
 
-The rewrites use ordinary loops and guarded reads/writes. Packed4 uses one
-bounded inline-HLSL `dot(float4,float4)` because SDSL-V validation does not
-currently expose float4 component access/dot. FP16 uses bounded inline HLSL for
-half expansion and lane choice because conversion/bit-extraction intrinsics are
-not first class. Tensor notation would obscure rather than improve these
-explicit storage/layout contracts.
+The rewrites use ordinary loops and guarded reads/writes. Packed4 now uses
+first-class vector loads, component reads, and `Dot`. FP16 now uses
+`Unpack<F16x2>`, component reads, and closed conversion intrinsics. Tensor
+notation would obscure rather than improve these explicit storage/layout
+contracts.
 
 Compilation used DXC from Vulkan SDK 1.4.341.1 with `-spirv -T cs_6_0`, target
 `vulkan1.0`, `-O3`, and no debug option. Both sides validate with
@@ -120,8 +127,7 @@ is duplicated merely to feed multiple accumulators.
 - Packed4 preserves padded float4 storage and dot accumulation. Its host packing
   contract, not source array syntax, determines compatibility.
 - FP16 preserves packed-u32 resources, binary16 expansion, scalar K order, and
-  FP32 accumulation. The inline HLSL is valid SPIR-V but is a portability and
-  maintainability compromise.
+  FP32 accumulation.
 - No shader requires barriers or explicit memory visibility beyond ordinary
   storage-buffer dispatch ordering.
 
@@ -134,15 +140,12 @@ results are diagnostic only; they are not a public benchmark claim.
 
 ## Missing features and quality gaps
 
-1. **Language syntax/validator:** first-class vector component access or dot is
-   missing for resource-loaded float4 values (Packed4 workaround).
-2. **Language/intrinsics:** typed half unpack, bit shifts/masks-to-lanes, and
-   scalar/vector conversion intrinsics are not first class (FP16 workaround).
-3. **Compiler/interface:** no explicit emitted entry-point name such as `main`.
-4. **Host contract:** A2x4's existing production dispatch metadata says 2x2 although the
+1. **Compiler/interface:** no explicit emitted entry-point name such as `main`.
+2. **Host contract:** A2x4's existing production dispatch metadata says 2x2 although the
    shader produces 2x4; replacement must not accidentally canonize this drift.
 
-No compiler feature was added during this audit.
+M35a added the previously missing vector, dot, packed-format, bitcast, and
+convert support; Packed4 and FP16 are no longer blocked on inline HLSL.
 
 ## Per-shader decisions
 
@@ -151,16 +154,14 @@ No compiler feature was added during this audit.
 | SRT | **REPLACE** | passed all nine audit workloads, replay is deterministic, interface is clean, and bounded timing favored the generated shader |
 | B2x2 | **REPLACE** | passed all nine audit workloads, preserved the exact host contract, and bounded timing strongly favored the generated shader |
 | A2x4 | **REPLACE** | passed all nine audit workloads with truthful 2x4 audit metadata; production swap must correct the historical 2x2 metadata drift at the same time |
-| Packed4 | **REPLACE AFTER MINOR COMPILER CLEANUP** | hardware result is green and timing is encouraging, but bounded inline-HLSL `dot(float4,float4)` remains a maintainability gap |
-| FP16 | **REPLACE AFTER MINOR COMPILER CLEANUP** | hardware result is green and timing is encouraging, but bounded inline HLSL half-unpack/bit-lane logic still needs first-class language support |
+| Packed4 | **READY FOR M35b PRODUCTION REPLACEMENT** | M35a removed the inline-HLSL dependency, preserved exact SPIR-V size parity with the prior audit candidate, and reran the full hardware matrix cleanly |
+| FP16 | **READY FOR M35b PRODUCTION REPLACEMENT** | M35a removed the inline-HLSL dependency, preserved exact SPIR-V size parity with the prior audit candidate, and reran the full hardware matrix cleanly |
 
 ## Overall recommendation and next milestone
 
-Replace SRT, B2x2, and A2x4 in a follow-up production milestone. Correct
-A2x4's production metadata to canonical 2x4 during that swap. Add narrow
-first-class vector/dot and FP16/bit-conversion intrinsics, rerun this audit
-harness, then replace Packed4 and FP16. M34a itself leaves production assets
-unchanged and supplies the isolated audit evidence needed for that follow-up.
+M34b already replaces SRT, B2x2, and A2x4. M35a now closes the remaining
+language/compiler gap for Packed4 and FP16 without mutating production assets.
+M35b can use this evidence to perform the bounded production replacement work.
 
 Production artifacts, registry entries, manifests, and runtime selection were
 not changed during M34a. M34b subsequently promotes only SRT, B2x2, and A2x4;
@@ -168,30 +169,29 @@ this audit tree retains the historical headers as comparison fixtures.
 
 ## Validation recorded
 
-M34a closeout: a focused MSVC-built audit binary runs all five immutable
-original module words and their generated audit-tree candidates through the
-real SGEMM host path. The bounded nine-shape matrix passed CPU/original/
-candidate comparisons for every pair, including odd K, M tails, N tails,
-combined tails, Packed4 padding cases, FP16 packed-lane preparation, and
-deterministic replay. Validation accounting records that the current SGEMM
-runtime did not request validation layers, `VK_LAYER_KHRONOS_validation` was
-available on this machine, enabled-layer names were empty, and warning/error
-counts were both zero in emitted audit JSON.
+M35a closeout reran the focused MSVC-built audit binary through the real SGEMM
+host path. The bounded nine-shape matrix again passed CPU/original/candidate
+comparisons for every pair, including the new inline-HLSL-free Packed4 and
+FP16 candidates. A validation-enabled rerun recorded requested=`true`,
+available=`true`, enabled=`true`, debug-utils-active=`true`,
+`VK_LAYER_KHRONOS_validation`, warning count `0`, error count `0`, and device
+loss `false`.
 
 Bounded RTX 3070 audit timings at M=127,N=131,K=129 were:
 
 - SRT: original 14368 / 14368 / 14464 ns, generated 8064 / 8256 / 8352 ns
 - B2x2: original 28320 / 28480 / 28544 ns, generated 10752 / 10912 / 10944 ns
 - A2x4: original 27008 / 27008 / 27040 ns, generated 31776 / 31776 / 31776 ns
-- Packed4: original 9472 / 9664 / 9728 ns, generated 7168 / 7168 / 7200 ns
-- FP16: original 11584 / 11616 / 12096 ns, generated 10624 / 10784 / 12480 ns
+- Packed4: original 9344 / 9376 / 9504 ns, generated 7072 / 7072 / 7072 ns
+- FP16: original 11456 / 11488 / 11680 ns, generated 10432 / 10592 / 10752 ns
 
-These are diagnostic audit samples, not a public benchmark contract. The
-deterministic passing replay ID is
-`SRT-2accum-K:63c5d6c24176ea5d:SRT-2accum-K:ab97b49624dd0965:3x5x7:99:main:SgemmSrt2AccumK_CS:1x1`.
-The synthetic failing replay reproduces the same ID and reports its first
-mismatch at row 0, column 0 with expected/original `0.57421875` and candidate
-`1.07421875`.
+These are diagnostic audit samples, not a public benchmark contract.
+Representative deterministic replay IDs now also include:
+
+- Packed4:
+  `Packed4FP32:6e05b9cfcc098acd:Packed4FP32:9e3e5735b0449db:3x5x7:99:main:SgemmPacked4_CS:1x1`
+- FP16:
+  `FP16-storage/FP32-accum:850db288b9c711c6:FP16-storage/FP32-accum:221182d05316b72b:3x5x7:99:main:SgemmFp16StorageFp32Accum_CS:1x1`
 
 - five `sdslv check` passes
 - five VD-MIR and HLSL emissions

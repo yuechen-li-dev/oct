@@ -33,13 +33,7 @@ void SgemmPacked4_CS(uint3 DispatchThreadID : SV_DispatchThreadID)
     {
         float4 av = A[((row * packs) + p)];
         float4 bv = B[((col * packs) + p)];
-        float __sdslv_inline_hlsl_0;
-        {
-            // BEGIN INLINE HLSL internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/sdslv/sgemm_packed4_fp32.sdslv:8
-             __sdslv_inline_hlsl_0 = dot(av, bv); 
-            // END INLINE HLSL
-        }
-        float dotValue = __sdslv_inline_hlsl_0;
+        float dotValue = dot(av, bv);
         acc = (acc + dotValue);
     }
     C[((row * params.n) + col)] = acc;

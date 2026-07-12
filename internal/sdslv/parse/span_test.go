@@ -67,6 +67,54 @@ func TestSdslvNdarraySourceSpansAndSlices(t *testing.T) {
 	auditKnownSpans(t, reflect.ValueOf(module), len(text))
 }
 
+func TestSdslvIntrinsicGenericCallSourceSpansAndSlices(t *testing.T) {
+	const text = "fn F(bits: u32, raw: u32) -> void {\n  let pair: float2 = Unpack<F16x2>(bits);\n  let totalValue: f32 = Dot(Unpack<F16x2>(bits), Unpack<F16x2>(raw));\n}\n"
+	result, err := lex.Analyze(source.File{Path: "intrinsics.sdslv", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := BuildModule(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := module.Decls[0].(ast.FunctionDecl)
+	pair := fn.Body.Statements[0].(ast.LetStmt).Value.(ast.CallExpr)
+	assertSlice(t, text, pair.Span, "Unpack<F16x2>(bits)")
+	assertSlice(t, text, pair.OpenAngleSpan, "<")
+	assertSlice(t, text, pair.CloseAngleSpan, ">")
+	assertSlice(t, text, pair.TypeArgument.Span, "F16x2")
+	score := fn.Body.Statements[1].(ast.LetStmt).Value.(ast.CallExpr)
+	assertSlice(t, text, score.Span, "Dot(Unpack<F16x2>(bits), Unpack<F16x2>(raw))")
+	left := score.Arguments[0].(ast.CallExpr)
+	right := score.Arguments[1].(ast.CallExpr)
+	assertSlice(t, text, left.Span, "Unpack<F16x2>(bits)")
+	assertSlice(t, text, right.Span, "Unpack<F16x2>(raw)")
+	auditKnownSpans(t, reflect.ValueOf(module), len(text))
+}
+
+func TestSdslvVectorComponentSourceSpansAndSlices(t *testing.T) {
+	const text = "fn F(v2: float2, v4: float4, u3: uint3) -> void {\n  let a: f32 = v2.x;\n  let b: f32 = v4.w;\n  let c: u32 = u3.y;\n}\n"
+	result, err := lex.Analyze(source.File{Path: "vector_components.sdslv", Text: text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := BuildModule(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn := module.Decls[0].(ast.FunctionDecl)
+	for i, want := range []string{"v2.x", "v4.w", "u3.y"} {
+		expr := fn.Body.Statements[i].(ast.LetStmt).Value.(ast.FieldAccessExpr)
+		assertSlice(t, text, expr.Span, want)
+		start := expr.Target.(ast.IdentifierExpr).Span.End.Offset
+		end := expr.Span.End.Offset - uint32(len(expr.Field))
+		if dot := text[start:end]; dot != "." {
+			t.Fatalf("component access separator = %q, want .", dot)
+		}
+	}
+	auditKnownSpans(t, reflect.ValueOf(module), len(text))
+}
+
 func TestSdslvAstExampleCorpusHasKnownSpans(t *testing.T) {
 	_, here, _, ok := runtime.Caller(0)
 	if !ok {

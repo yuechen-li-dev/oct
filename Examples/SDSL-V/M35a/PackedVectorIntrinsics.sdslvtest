@@ -1,0 +1,162 @@
+[WorkgroupSize(1, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn Float2ComponentAccessUsesUnpackLaneOrder() -> void {
+    let pair: float2 = Unpack<F16x2>(1073757184u);
+    Assert.Equal(1.0, pair.x, "Float2 component x must read the low binary16 lane");
+    Assert.Equal(2.0, pair.y, "Float2 component y must read the high binary16 lane");
+}
+
+[WorkgroupSize(2, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn Float3ComponentAccessReadsEachLane() -> void {
+    let value: float3 = HLSL<float3> {
+        return float3(1.0, 2.0, 4.0);
+    };
+    Assert.Equal(1.0, value.x, "Float3 x access must preserve the first lane");
+    Assert.Equal(2.0, value.y, "Float3 y access must preserve the second lane");
+    Assert.Equal(4.0, value.z, "Float3 z access must preserve the third lane");
+}
+
+[WorkgroupSize(3, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn Float4ComponentAccessReadsEachLane() -> void {
+    let value: float4 = HLSL<float4> {
+        return float4(1.0, 2.0, 4.0, 8.0);
+    };
+    Assert.Equal(1.0, value.x, "Float4 x access must preserve the first lane");
+    Assert.Equal(2.0, value.y, "Float4 y access must preserve the second lane");
+    Assert.Equal(4.0, value.z, "Float4 z access must preserve the third lane");
+    Assert.Equal(8.0, value.w, "Float4 w access must preserve the fourth lane");
+}
+
+[WorkgroupSize(5, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn DotFloat2UsesCompilerIntrinsic() -> void {
+    let left: float2 = Unpack<F16x2>(1073757184u);
+    let right: float2 = Unpack<F16x2>(1207976960u);
+    let value: f32 = Dot(left, right);
+    Assert.Equal(20.0, value, "Dot(float2,float2) must accumulate matching lanes");
+}
+
+[WorkgroupSize(6, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn DotFloat3UsesCompilerIntrinsic() -> void {
+    let left: float3 = HLSL<float3> {
+        return float3(1.0, 2.0, 3.0);
+    };
+    let right: float3 = HLSL<float3> {
+        return float3(4.0, 5.0, 6.0);
+    };
+    let value: f32 = Dot(left, right);
+    Assert.Equal(32.0, value, "Dot(float3,float3) must sum three lane products");
+}
+
+[WorkgroupSize(7, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn DotFloat4UsesCompilerIntrinsic() -> void {
+    let left: float4 = HLSL<float4> {
+        return float4(1.0, 2.0, 3.0, 4.0);
+    };
+    let right: float4 = HLSL<float4> {
+        return float4(5.0, 6.0, 7.0, 8.0);
+    };
+    let value: f32 = Dot(left, right);
+    Assert.Equal(70.0, value, "Dot(float4,float4) must sum four lane products");
+}
+
+[WorkgroupSize(8, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn PackAndUnpackRoundTripExactRepresentablePairs() -> void {
+    let original: u32 = 3221240832u;
+    let pair: float2 = Unpack<F16x2>(original);
+    let repacked: u32 = Pack<F16x2>(pair);
+    Assert.Equal(original, repacked, "Pack and Unpack must round-trip exact binary16 values");
+}
+
+[WorkgroupSize(9, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+[TestInputUInt(32768u)]
+fn SignedZeroPreservesExpectedBits() -> void {
+    let bits: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let signedZero: float2 = Unpack<F16x2>(bits);
+    Assert.Equal(2147483648u, Bitcast<u32>(signedZero.x), "Signed zero must preserve its sign bit through unpack");
+    Assert.Equal(0u, Bitcast<u32>(signedZero.y), "Positive zero must preserve a cleared sign bit through unpack");
+}
+
+[WorkgroupSize(12, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+[TestInputUInt(4227890176u)]
+fn InfinityPreservesExpectedBits() -> void {
+    let bits: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let infinityPair: float2 = Unpack<F16x2>(bits);
+    Assert.Equal(2139095040u, Bitcast<u32>(infinityPair.x), "Positive infinity must widen to the IEEE f32 infinity bit pattern");
+    Assert.Equal(4286578688u, Bitcast<u32>(infinityPair.y), "Negative infinity must widen to the IEEE f32 negative infinity bit pattern");
+}
+
+[WorkgroupSize(13, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+[TestInputUInt(32256u)]
+fn NaNRemainsUnorderedWhenStable() -> void {
+    let bits: u32 = read TestInput.UInt[0u] when 0u < TestInput.Length else 0u;
+    let nanValue: f32 = Unpack<F16x2>(bits).x;
+    Assert.Equal(2147483647u, Bitcast<u32>(nanValue), "NaN widening must match the currently observed backend bit pattern");
+}
+
+[WorkgroupSize(10, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn BitcastRoundTripPreservesBits() -> void {
+    let negative: f32 = Bitcast<f32>(3212836864u);
+    let negativeBits: u32 = Bitcast<u32>(negative);
+    let integerBits: u32 = Bitcast<u32>(Bitcast<i32>(4294967295u));
+    Assert.Equal(-1.0, negative, "Bitcast<f32> must reinterpret the incoming IEEE bits");
+    Assert.Equal(3212836864u, negativeBits, "Bitcast<u32> must preserve float bits on round-trip");
+    Assert.Equal(4294967295u, integerBits, "Bitcast between i32 and u32 must preserve all bits");
+}
+
+[WorkgroupSize(11, 1, 1)]
+[DispatchGroups(1, 1, 1)]
+[Fact]
+fn ConvertUsesNumericSemantics() -> void {
+    let fromUInt: f32 = Convert<f32>(7u);
+    let fromInt: f32 = Convert<f32>(-3);
+    let toUInt: u32 = Convert<u32>(3.75);
+    let toInt: i32 = Convert<i32>(-3.75);
+    let uintToInt: i32 = Convert<i32>(9u);
+    let intToUInt: u32 = Convert<u32>(11);
+    Assert.Equal(7.0, fromUInt, "Convert<f32>(u32) must widen numerically");
+    Assert.Equal(-3.0, fromInt, "Convert<f32>(i32) must preserve signed integer magnitude");
+    Assert.Equal(3u, toUInt, "Convert<u32>(f32) must truncate toward zero for positive values");
+    Assert.Equal(-3, toInt, "Convert<i32>(f32) must truncate toward zero for negative values");
+    Assert.Equal(9, uintToInt, "Convert<i32>(u32) must preserve small exact integers");
+    Assert.Equal(11u, intToUInt, "Convert<u32>(i32) must preserve small non-negative integers");
+}
+
+[WorkgroupSize(4, 1, 1)]
+[DispatchGroups(2, 1, 1)]
+[Fact]
+fn MultipleInvocationsAndStableReplayUsePerInvocationState() -> void {
+    let laneIndex: u32 = DispatchThreadID.x;
+    let packed: u32 = Pack<F16x2>(HLSL<float2>(laneIndex) {
+        return float2(float(laneIndex), float(laneIndex + 1u));
+    });
+    let pair: float2 = Unpack<F16x2>(packed);
+    let dotValue: f32 = Dot(pair, pair);
+    Assert.Equal(Convert<f32>(DispatchThreadID.x), pair.x, "Each invocation must unpack its own first lane");
+    Assert.Equal(Convert<f32>(DispatchThreadID.x + 1u), pair.y, "Each invocation must unpack its own second lane");
+    Assert.Equal(
+        Convert<f32>((DispatchThreadID.x * DispatchThreadID.x) + ((DispatchThreadID.x + 1u) * (DispatchThreadID.x + 1u))),
+        dotValue,
+        "Stable replay must preserve deterministic per-invocation dot results"
+    );
+}

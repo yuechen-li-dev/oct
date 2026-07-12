@@ -1506,6 +1506,14 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 	case ast.StringLiteral:
 		return ast.TypeRef{Name: "string"}
 	case ast.IdentifierExpr:
+		// Compiler-owned generic intrinsic names are only meaningful as the
+		// callee of their validated call form. Treating the spelling as a
+		// placeholder here prevents generic expression walkers from reporting a
+		// misleading unknown-identifier diagnostic before callType owns it.
+		switch e.Name {
+		case "Pack", "Unpack", "Bitcast", "Convert", "Dot":
+			return ast.TypeRef{Name: "<intrinsic>"}
+		}
 		if e.Name == "TestInput" {
 			v.errorAt(e.Span, "SDSL-V1215", "TestInput is not a first-class value; use TestInput.Length or TestInput.<Kind>[index]")
 			return ast.TypeRef{Name: "<error>"}
@@ -1554,6 +1562,17 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 			}
 		}
 		target := v.exprTypeWithExpected(e.Target, scope, shaderName, templateParam, nil, currentDeriveField)
+		if componentType, ok := vectorComponentType(target, e.Field); ok {
+			return componentType
+		}
+		if isVectorType(target) {
+			v.errorAt(e.Span, "SDSL-V3501", "component .%s is not valid on %s", e.Field, typeName(target))
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if len(e.Field) == 1 && strings.Contains("xyzw", e.Field) {
+			v.errorAt(e.Span, "SDSL-V3501", "component .%s is not valid on %s", e.Field, typeName(target))
+			return ast.TypeRef{Name: "<error>"}
+		}
 		if info, ok := v.types[target.Name]; ok && info.fields != nil {
 			if fieldType, ok := info.fields[e.Field]; ok {
 				return v.resolveAlias(fieldType.typ)
@@ -1880,6 +1899,9 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 }
 
 func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if call.TypeArgument != nil {
+		return v.compilerIntrinsicType(call, scope, shaderName, templateParam)
+	}
 	if _, isAssert := assertCallee(call.Callee); isAssert && testAssertName(call.Callee) == "" {
 		v.errorAt(call.Span, "SDSL-V1405", "unknown Assert member")
 		return ast.TypeRef{Name: "<error>"}
@@ -1892,6 +1914,9 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 		return v.testAssertType(name, call, scope, shaderName, templateParam)
 	}
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
+		if id.Name == "Dot" {
+			return v.dotType(call, scope, shaderName, templateParam)
+		}
 		if id.Name == "reg_tile_zero" {
 			if len(call.Arguments) != 0 {
 				v.errorf("reg_tile_zero expects 0 arguments, got %d", len(call.Arguments))
@@ -1949,6 +1974,106 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 	}
 	v.errorAt(call.Span, "SDSL-V1508", "unsupported or unknown function call")
 	return ast.TypeRef{Name: "<error>"}
+}
+
+// compilerIntrinsicType is the single validator-owned closed matrix for M35a.
+func (v *validator) compilerIntrinsicType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	id, ok := call.Callee.(ast.IdentifierExpr)
+	if !ok {
+		v.errorAt(call.Span, "SDSL-V3502", "generic syntax is only valid on compiler intrinsics")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	argType := func() ast.TypeRef {
+		if len(call.Arguments) != 1 {
+			v.errorAt(call.Span, "SDSL-V3503", "%s expects 1 argument, got %d", id.Name, len(call.Arguments))
+			return ast.TypeRef{Name: "<error>"}
+		}
+		return v.exprType(call.Arguments[0], scope, shaderName, templateParam)
+	}
+	target := v.resolveAlias(*call.TypeArgument)
+	switch id.Name {
+	case "Pack":
+		if target.Name != "F16x2" {
+			v.errorAt(target.Span, "SDSL-V3504", "Pack only supports format F16x2")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		src := argType()
+		if src.Name != "float2" {
+			v.errorAt(call.Span, "SDSL-V3505", "Pack<F16x2> expects float2, got %s", typeName(src))
+		}
+		return ast.TypeRef{Name: "u32"}
+	case "Unpack":
+		if target.Name != "F16x2" {
+			v.errorAt(target.Span, "SDSL-V3504", "Unpack only supports format F16x2")
+			return ast.TypeRef{Name: "<error>"}
+		}
+		src := argType()
+		if src.Name != "u32" {
+			v.errorAt(call.Span, "SDSL-V3506", "Unpack<F16x2> expects u32, got %s", typeName(src))
+		}
+		return ast.TypeRef{Name: "float2"}
+	case "Bitcast":
+		src := argType()
+		if !bitcastAllowed(target, src) {
+			v.errorAt(call.Span, "SDSL-V3507", "Bitcast<%s> does not support %s", typeName(target), typeName(src))
+		}
+		return target
+	case "Convert":
+		src := argType()
+		if !convertAllowed(target, src) {
+			v.errorAt(call.Span, "SDSL-V3508", "Convert<%s> does not support %s", typeName(target), typeName(src))
+		}
+		return target
+	default:
+		v.errorAt(call.Span, "SDSL-V3502", "%s is not a compiler-defined generic intrinsic", id.Name)
+		return ast.TypeRef{Name: "<error>"}
+	}
+}
+
+func (v *validator) dotType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 2 {
+		v.errorAt(call.Span, "SDSL-V3509", "Dot expects 2 arguments, got %d", len(call.Arguments))
+		return ast.TypeRef{Name: "<error>"}
+	}
+	a := v.exprType(call.Arguments[0], scope, shaderName, templateParam)
+	b := v.exprType(call.Arguments[1], scope, shaderName, templateParam)
+	if a.Name != b.Name || (a.Name != "float2" && a.Name != "float3" && a.Name != "float4") {
+		v.errorAt(call.Span, "SDSL-V3510", "Dot expects matching float2, float3, or float4 arguments")
+	}
+	return ast.TypeRef{Name: "f32"}
+}
+
+func isVectorType(t ast.TypeRef) bool {
+	switch t.Name {
+	case "float2", "float3", "float4", "uint2", "uint3", "uint4":
+		return true
+	}
+	return false
+}
+func vectorComponentType(t ast.TypeRef, c string) (ast.TypeRef, bool) {
+	widths := map[string]int{"float2": 2, "float3": 3, "float4": 4, "uint2": 2, "uint3": 3, "uint4": 4}
+	w, ok := widths[t.Name]
+	if !ok {
+		return ast.TypeRef{}, false
+	}
+	i := strings.Index("xyzw", c)
+	if len(c) != 1 || i < 0 || i >= w {
+		return ast.TypeRef{}, false
+	}
+	if strings.HasPrefix(t.Name, "float") {
+		return ast.TypeRef{Name: "f32"}, true
+	}
+	return ast.TypeRef{Name: "u32"}, true
+}
+func bitcastAllowed(dst, src ast.TypeRef) bool {
+	return (dst.Name == "u32" && (src.Name == "f32" || src.Name == "i32")) || (dst.Name == "f32" && src.Name == "u32") || (dst.Name == "i32" && src.Name == "u32")
+}
+func convertAllowed(dst, src ast.TypeRef) bool {
+	if dst.Name == src.Name {
+		return false
+	}
+	scalar := func(t ast.TypeRef) bool { return t.Name == "u32" || t.Name == "i32" || t.Name == "f32" }
+	return scalar(dst) && scalar(src)
 }
 
 func testAssertName(expr ast.Expr) string {

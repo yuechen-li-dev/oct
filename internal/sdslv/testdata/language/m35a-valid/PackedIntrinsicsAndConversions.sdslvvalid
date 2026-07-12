@@ -1,0 +1,17 @@
+fn F(bits: u32, raw: u32, signed: i32, value: f32, pair: float2) -> void {
+let unpacked: float2 = Unpack<F16x2>(bits);
+let repacked: u32 = Pack<F16x2>(unpacked);
+let nested: f32 = Dot(unpacked, Unpack<F16x2>(repacked));
+let asBits: u32 = Bitcast<u32>(value);
+let asFloat: f32 = Bitcast<f32>(raw);
+let asInt: i32 = Bitcast<i32>(raw);
+let asUInt: u32 = Bitcast<u32>(signed);
+let fromUInt: f32 = Convert<f32>(raw);
+let fromInt: f32 = Convert<f32>(signed);
+let toUInt: u32 = Convert<u32>(value);
+let toInt: i32 = Convert<i32>(value);
+let signedToUInt: u32 = Convert<u32>(signed);
+let uintToInt: i32 = Convert<i32>(raw);
+let repackedPair: u32 = Pack<F16x2>(pair);
+return;
+}

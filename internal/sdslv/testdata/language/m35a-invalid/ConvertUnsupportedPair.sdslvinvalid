@@ -1,0 +1,5 @@
+expect error: "Convert<u32> does not support float2"
+
+fn F(value: float2) -> void {
+let bits: u32 = Convert<u32>(value);
+}

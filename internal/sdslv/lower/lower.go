@@ -1398,7 +1398,7 @@ func renameRuntimeLocalsInExpr(expr ast.Expr, names map[string]string) ast.Expr 
 		for _, arg := range e.Arguments {
 			args = append(args, renameRuntimeLocalsInExpr(arg, names))
 		}
-		return ast.CallExpr{Callee: renameRuntimeLocalsInExpr(e.Callee, names), Arguments: args}
+		return ast.CallExpr{Span: e.Span, Callee: renameRuntimeLocalsInExpr(e.Callee, names), TypeArgument: e.TypeArgument, OpenAngleSpan: e.OpenAngleSpan, CloseAngleSpan: e.CloseAngleSpan, Arguments: args}
 	case ast.BinaryExpr:
 		return ast.BinaryExpr{Left: renameRuntimeLocalsInExpr(e.Left, names), Operator: e.Operator, Right: renameRuntimeLocalsInExpr(e.Right, names)}
 	case ast.UnaryExpr:
@@ -1608,7 +1608,7 @@ func replaceComptimeExpr(expr ast.Expr, comptime map[string]comptimeBinding) ast
 		for _, arg := range e.Arguments {
 			args = append(args, replaceComptimeExpr(arg, comptime))
 		}
-		return ast.CallExpr{Callee: replaceComptimeExpr(e.Callee, comptime), Arguments: args}
+		return ast.CallExpr{Span: e.Span, Callee: replaceComptimeExpr(e.Callee, comptime), TypeArgument: e.TypeArgument, OpenAngleSpan: e.OpenAngleSpan, CloseAngleSpan: e.CloseAngleSpan, Arguments: args}
 	case ast.BinaryExpr:
 		return ast.BinaryExpr{Left: replaceComptimeExpr(e.Left, comptime), Operator: e.Operator, Right: replaceComptimeExpr(e.Right, comptime)}
 	case ast.UnaryExpr:
@@ -1913,7 +1913,7 @@ func specializeExpr(expr ast.Expr, env map[string]specializeValue) ast.Expr {
 		for _, arg := range e.Arguments {
 			args = append(args, specializeExpr(arg, env))
 		}
-		return ast.CallExpr{Callee: specializeExpr(e.Callee, env), Arguments: args}
+		return ast.CallExpr{Span: e.Span, Callee: specializeExpr(e.Callee, env), TypeArgument: e.TypeArgument, OpenAngleSpan: e.OpenAngleSpan, CloseAngleSpan: e.CloseAngleSpan, Arguments: args}
 	case ast.BinaryExpr:
 		return ast.BinaryExpr{Left: specializeExpr(e.Left, env), Operator: e.Operator, Right: specializeExpr(e.Right, env)}
 	case ast.UnaryExpr:
@@ -2714,6 +2714,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		if err != nil {
 			return nil, err
 		}
+		if _, ok := vectorComponentIndex(target.Type(), e.Field); ok {
+			return vdmir.VectorExtractExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.fieldType(target.Type(), e.Field)), Target: target, Component: e.Field}, nil
+		}
 		return vdmir.FieldAccessExpr{
 			Provenance: l.provenance,
 			ExprType:   l.lowerTypeRef(l.fieldType(target.Type(), e.Field)),
@@ -2812,6 +2815,18 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			Fallback:   fallback,
 		}, nil
 	case ast.CallExpr:
+		if id, ok := e.Callee.(ast.IdentifierExpr); ok && (id.Name == "Dot" || e.TypeArgument != nil) {
+			args := make([]vdmir.Expr, 0, len(e.Arguments))
+			for _, arg := range e.Arguments {
+				lowered, err := l.lowerExprWithExpected(arg, scope, shaderName, nil)
+				if err != nil {
+					return nil, err
+				}
+				args = append(args, lowered)
+			}
+			intrinsic, target := lowerM35aIntrinsic(id.Name, e.TypeArgument)
+			return vdmir.IntrinsicCallExpr{Provenance: l.provenance, ExprType: l.callResultType(e, scope, shaderName), Intrinsic: intrinsic, TypeArgument: target, Arguments: args}, nil
+		}
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "reg_tile_zero" {
 			return nil, fmt.Errorf("reg_tile_zero() is only supported as a direct reg_tile local initializer")
 		}
@@ -3295,6 +3310,9 @@ func (l *lowering) resolveAlias(ref ast.TypeRef) ast.TypeRef {
 }
 
 func (l *lowering) fieldType(target vdmir.Type, field string) ast.TypeRef {
+	if target.Name == "float2" || target.Name == "float3" || target.Name == "float4" {
+		return ast.TypeRef{Name: "f32"}
+	}
 	if target.Name == "uint2" || target.Name == "uint3" || target.Name == "uint4" {
 		return ast.TypeRef{Name: "u32"}
 	}
@@ -3320,6 +3338,20 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 		switch id.Name {
 		case "float2", "float3", "float4", "uint2", "uint3", "uint4":
 			return l.lowerTypeRef(ast.TypeRef{Name: id.Name})
+		case "Dot":
+			return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+		case "Pack":
+			if call.TypeArgument != nil && call.TypeArgument.Name == "F16x2" {
+				return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+			}
+		case "Unpack":
+			if call.TypeArgument != nil && call.TypeArgument.Name == "F16x2" {
+				return vdmir.Type{Kind: vdmir.TypeFloat2, Name: "float2"}
+			}
+		case "Bitcast", "Convert":
+			if call.TypeArgument != nil {
+				return lowerIntrinsicType(*call.TypeArgument)
+			}
 		case "WorkgroupBarrier", "WorkgroupMemoryBarrier", "WorkgroupMemoryBarrierWithSync":
 			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
 		case "row_major":
@@ -3918,6 +3950,48 @@ func lowerIntrinsic(name string) vdmir.Intrinsic {
 	default:
 		return vdmir.IntrinsicWorkgroupMemoryBarrierWithSync
 	}
+}
+
+func lowerM35aIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdmir.Type) {
+	if arg != nil {
+		switch name {
+		case "Pack":
+			return vdmir.IntrinsicPackF16x2, vdmir.Type{Name: "F16x2"}
+		case "Unpack":
+			return vdmir.IntrinsicUnpackF16x2, vdmir.Type{Name: "F16x2"}
+		case "Bitcast":
+			return vdmir.IntrinsicBitcast, lowerIntrinsicType(*arg)
+		case "Convert":
+			return vdmir.IntrinsicConvert, lowerIntrinsicType(*arg)
+		}
+	}
+	return vdmir.IntrinsicDot, vdmir.Type{}
+}
+
+func lowerIntrinsicType(ref ast.TypeRef) vdmir.Type {
+	switch ref.Name {
+	case "u32":
+		return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
+	case "i32":
+		return vdmir.Type{Kind: vdmir.TypeI32, Name: "i32"}
+	case "f32":
+		return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+	}
+	return vdmir.Type{Name: ref.Name}
+}
+
+func vectorComponentIndex(t vdmir.Type, field string) (int, bool) {
+	width := 0
+	switch t.Kind {
+	case vdmir.TypeFloat2, vdmir.TypeUint2:
+		width = 2
+	case vdmir.TypeFloat3, vdmir.TypeUint3:
+		width = 3
+	case vdmir.TypeFloat4, vdmir.TypeUint4:
+		width = 4
+	}
+	i := strings.Index("xyzw", field)
+	return i, width > i && i >= 0
 }
 
 func sanitizeName(name string) string {

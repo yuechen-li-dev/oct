@@ -1,0 +1,5 @@
+expect error: "Bitcast<float2> does not support f32"
+
+fn F(value: f32) -> void {
+let pair: float2 = Bitcast<float2>(value);
+}

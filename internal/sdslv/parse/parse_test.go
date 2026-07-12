@@ -1076,6 +1076,106 @@ func TestBuildModuleAllowsMaxKeywordAsCallCalleeWhenNotReduction(t *testing.T) {
 	}
 }
 
+func TestSdslvParsesVectorComponentAccess(t *testing.T) {
+	module := parseTestModule(t, `fn F(v2: float2, v3: float3, v4: float4, u4: uint4) -> void {
+let a: f32 = v2.x;
+let b: f32 = v2.y;
+let c: f32 = v3.z;
+let d: f32 = v4.w;
+let e: u32 = u4.z;
+return;
+}`)
+	stmts := module.Decls[0].(ast.FunctionDecl).Body.Statements
+	check := func(index int, target, field string) {
+		t.Helper()
+		access, ok := stmts[index].(ast.LetStmt).Value.(ast.FieldAccessExpr)
+		if !ok {
+			t.Fatalf("stmt[%d] = %T, want FieldAccessExpr", index, stmts[index].(ast.LetStmt).Value)
+		}
+		id, ok := access.Target.(ast.IdentifierExpr)
+		if !ok || id.Name != target || access.Field != field {
+			t.Fatalf("stmt[%d] access = %#v, want %s.%s", index, access, target, field)
+		}
+	}
+	check(0, "v2", "x")
+	check(1, "v2", "y")
+	check(2, "v3", "z")
+	check(3, "v4", "w")
+	check(4, "u4", "z")
+}
+
+func TestSdslvParsesCompilerDefinedGenericIntrinsics(t *testing.T) {
+	module := parseTestModule(t, `fn F(bits: u32, raw: u32, value: f32) -> void {
+let pair: float2 = Unpack<F16x2>(bits);
+let repacked: u32 = Pack<F16x2>(pair);
+let floatBits: u32 = Bitcast<u32>(value);
+let converted: f32 = Convert<f32>(raw);
+let totalValue: f32 = Dot(Unpack<F16x2>(bits), Unpack<F16x2>(repacked));
+return;
+}`)
+	stmts := module.Decls[0].(ast.FunctionDecl).Body.Statements
+	pair := stmts[0].(ast.LetStmt).Value.(ast.CallExpr)
+	if id := pair.Callee.(ast.IdentifierExpr).Name; id != "Unpack" || pair.TypeArgument == nil || pair.TypeArgument.Name != "F16x2" {
+		t.Fatalf("Unpack call = %#v", pair)
+	}
+	repacked := stmts[1].(ast.LetStmt).Value.(ast.CallExpr)
+	if id := repacked.Callee.(ast.IdentifierExpr).Name; id != "Pack" || repacked.TypeArgument == nil || repacked.TypeArgument.Name != "F16x2" {
+		t.Fatalf("Pack call = %#v", repacked)
+	}
+	floatBits := stmts[2].(ast.LetStmt).Value.(ast.CallExpr)
+	if id := floatBits.Callee.(ast.IdentifierExpr).Name; id != "Bitcast" || floatBits.TypeArgument == nil || floatBits.TypeArgument.Name != "u32" {
+		t.Fatalf("Bitcast call = %#v", floatBits)
+	}
+	converted := stmts[3].(ast.LetStmt).Value.(ast.CallExpr)
+	if id := converted.Callee.(ast.IdentifierExpr).Name; id != "Convert" || converted.TypeArgument == nil || converted.TypeArgument.Name != "f32" {
+		t.Fatalf("Convert call = %#v", converted)
+	}
+	score := stmts[4].(ast.LetStmt).Value.(ast.CallExpr)
+	if id := score.Callee.(ast.IdentifierExpr).Name; id != "Dot" || score.TypeArgument != nil || len(score.Arguments) != 2 {
+		t.Fatalf("Dot call = %#v", score)
+	}
+	left, ok := score.Arguments[0].(ast.CallExpr)
+	if !ok || left.TypeArgument == nil || left.TypeArgument.Name != "F16x2" {
+		t.Fatalf("nested intrinsic = %#v", score.Arguments[0])
+	}
+}
+
+func TestSdslvRejectsMalformedCompilerIntrinsicGenericSyntax(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "missing type argument",
+			src:  `fn F(bits: u32) -> void { let pair: float2 = Unpack<>(bits); }`,
+			want: "expected expression",
+		},
+		{
+			name: "missing greater than",
+			src:  `fn F(bits: u32) -> void { let pair: float2 = Unpack<F16x2(bits)>; }`,
+			want: "expected expression",
+		},
+		{
+			name: "missing call parens after generic",
+			src:  `fn F(bits: u32) -> void { let pair: float2 = Unpack<F16x2>; }`,
+			want: "expected expression",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: tc.src})
+			if err != nil {
+				t.Fatalf("Analyze() error = %v", err)
+			}
+			_, err = BuildModule(tokens)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("BuildModule() error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func parseTestModule(t *testing.T, text string) ast.Module {
 	t.Helper()
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslv", Text: text})

@@ -496,6 +496,11 @@ const (
 	IntrinsicWorkgroupBarrier               Intrinsic = "WorkgroupBarrier"
 	IntrinsicWorkgroupMemoryBarrier         Intrinsic = "WorkgroupMemoryBarrier"
 	IntrinsicWorkgroupMemoryBarrierWithSync Intrinsic = "WorkgroupMemoryBarrierWithSync"
+	IntrinsicDot                            Intrinsic = "Dot"
+	IntrinsicPackF16x2                      Intrinsic = "PackF16x2"
+	IntrinsicUnpackF16x2                    Intrinsic = "UnpackF16x2"
+	IntrinsicBitcast                        Intrinsic = "Bitcast"
+	IntrinsicConvert                        Intrinsic = "Convert"
 )
 
 type LiteralExpr struct {
@@ -589,6 +594,18 @@ type FieldAccessExpr struct {
 func (FieldAccessExpr) exprNode()    {}
 func (e FieldAccessExpr) Type() Type { return e.ExprType }
 
+// VectorExtractExpr is distinct from records: validation has already resolved
+// the component and scalar result, so backends never guess vector semantics.
+type VectorExtractExpr struct {
+	Provenance Provenance
+	ExprType   Type
+	Target     Expr
+	Component  string
+}
+
+func (VectorExtractExpr) exprNode()    {}
+func (e VectorExtractExpr) Type() Type { return e.ExprType }
+
 type IndexExpr struct {
 	Provenance Provenance
 	ExprType   Type
@@ -679,7 +696,10 @@ type IntrinsicCallExpr struct {
 	Provenance Provenance
 	ExprType   Type
 	Intrinsic  Intrinsic
-	Arguments  []Expr
+	// TypeArgument is compiler-validated destination type or packed-format
+	// descriptor. It is never inferred by a backend.
+	TypeArgument Type
+	Arguments    []Expr
 }
 
 func (IntrinsicCallExpr) exprNode()    {}

@@ -1,0 +1,6 @@
+expect error: "unknown field q on Pair"
+
+record Pair { value: f32; }
+fn F(pair: Pair) -> void {
+let lane: f32 = pair.q;
+}

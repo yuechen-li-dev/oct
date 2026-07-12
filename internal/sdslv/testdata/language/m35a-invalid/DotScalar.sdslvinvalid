@@ -1,0 +1,13 @@
+expect error: "Dot expects matching float2, float3, or float4 arguments"
+
+namespace M35a;
+stream IO { [binding(0)] C: readwrite array<f32>; }
+record Params { n: u32; }
+shader Bad {
+resources IO;
+stage compute [numthreads(1, 1, 1)] fn CS(params: Params) -> void {
+let x: f32 = Dot(1.0, 2.0);
+C[0u] = x;
+return;
+}
+}
