@@ -27,6 +27,8 @@ func Diagnostics(module ast.Module) []diagnostic.Diagnostic {
 	switch filepath.Ext(module.Source.Path) {
 	case ".sdslvtest", ".sdslvvalid", ".sdslvinvalid":
 		v.testSource = true
+	case ".sdslvbench":
+		v.benchmarkSource = true
 	}
 	v.seedBuiltins()
 	v.collect(module)
@@ -129,6 +131,7 @@ type validator struct {
 	compileAliases   map[string]struct{}
 	resources        map[string]ast.ResourceDecl
 	testSource       bool
+	benchmarkSource  bool
 	currentTestInput *ValidatedTestInput
 	tensorAssigns    []ValidatedTensorAssign
 }
@@ -2158,6 +2161,10 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 	if len(fn.Attributes) == 0 {
 		return
 	}
+	if v.benchmarkSource {
+		v.validateBenchmarkAttributes(fn)
+		return
+	}
 	fact, theory := []ast.Attribute{}, []ast.Attribute{}
 	inline := []ast.Attribute{}
 	wg, dispatch := []ast.Attribute{}, []ast.Attribute{}
@@ -2251,6 +2258,78 @@ func (v *validator) validateTestAttributes(fn ast.FunctionDecl) {
 	}
 	for _, a := range testInput {
 		v.validateTestInputAttribute(a)
+	}
+}
+
+func (v *validator) validateBenchmarkAttributes(fn ast.FunctionDecl) {
+	var benchmarks, warmups, iterations, workgroups, dispatches []ast.Attribute
+	for _, a := range fn.Attributes {
+		switch a.Name {
+		case "Benchmark":
+			benchmarks = append(benchmarks, a)
+		case "Warmup":
+			warmups = append(warmups, a)
+		case "Iterations":
+			iterations = append(iterations, a)
+		case "WorkgroupSize":
+			workgroups = append(workgroups, a)
+		case "DispatchGroups":
+			dispatches = append(dispatches, a)
+		case "Fact", "Theory", "InlineData", "TestInputBool", "TestInputInt", "TestInputUInt", "TestInputFloat":
+			v.errorAt(a.Span, "SDSL-V3602", "test attribute [%s] is not valid in .sdslvbench source", a.Name)
+		default:
+			v.errorAt(a.Span, "SDSL-V3603", "unsupported benchmark attribute [%s]", a.Name)
+		}
+	}
+	if len(benchmarks) == 0 {
+		v.errorAt(fn.Span, "SDSL-V3601", ".sdslvbench functions require [Benchmark]")
+		return
+	}
+	if len(benchmarks) > 1 {
+		v.errorRelated(benchmarks[1].Span, "SDSL-V3604", "duplicate [Benchmark]", benchmarks[0].Span, "first [Benchmark] is here")
+	}
+	for _, pair := range []struct {
+		name  string
+		attrs []ast.Attribute
+	}{{"Warmup", warmups}, {"Iterations", iterations}, {"WorkgroupSize", workgroups}, {"DispatchGroups", dispatches}} {
+		if len(pair.attrs) > 1 {
+			v.errorRelated(pair.attrs[1].Span, "SDSL-V3604", "duplicate ["+pair.name+"]", pair.attrs[0].Span, "first attribute is here")
+		}
+	}
+	if len(fn.Parameters) != 0 {
+		v.errorAt(fn.Parameters[0].Span, "SDSL-V3605", "[Benchmark] must not declare parameters")
+	}
+	if fn.ReturnType.Name != "void" {
+		v.errorAt(fn.ReturnType.Span, "SDSL-V3606", "[Benchmark] functions must return void")
+	}
+	for _, a := range workgroups {
+		v.validateLaunchAttribute(a)
+	}
+	if len(dispatches) == 0 {
+		v.errorAt(benchmarks[0].Span, "SDSL-V3607", "[Benchmark] requires [DispatchGroups]")
+	}
+	for _, a := range dispatches {
+		v.validateLaunchAttribute(a)
+	}
+	for _, pair := range []struct {
+		name  string
+		attrs []ast.Attribute
+	}{{"Warmup", warmups}, {"Iterations", iterations}} {
+		for _, a := range pair.attrs {
+			if len(a.Arguments) != 1 {
+				v.errorAt(a.Span, "SDSL-V3609", "%s", "["+pair.name+"] requires one positive uint32 constant")
+				continue
+			}
+			lit, ok := a.Arguments[0].(ast.IntegerLiteral)
+			if !ok {
+				v.errorAt(ast.ExprSpan(a.Arguments[0]), "SDSL-V3609", "%s", "["+pair.name+"] requires one positive uint32 constant")
+				continue
+			}
+			n, err := strconv.ParseUint(strings.TrimRight(lit.Value, "uU"), 10, 32)
+			if err != nil || n == 0 {
+				v.errorAt(lit.Span, "SDSL-V3609", "%s", "["+pair.name+"] requires one positive uint32 constant")
+			}
+		}
 	}
 }
 

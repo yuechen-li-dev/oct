@@ -1,0 +1,18 @@
+namespace Prometheus.SDSLv.Benchmarks;
+
+[Benchmark]
+[Warmup(10)]
+[Iterations(100)]
+[WorkgroupSize(32, 1, 1)]
+[DispatchGroups(128, 1, 1)]
+fn ScalarArithmetic() -> void {
+    let x: f32 = 1.0 + 2.0;
+    let y: f32 = x * 3.0;
+    return;
+}
+
+[Benchmark]
+[DispatchGroups(64, 2, 1)]
+fn DefaultCounts() -> void {
+    return;
+}

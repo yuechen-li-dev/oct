@@ -501,3 +501,19 @@ construction. Consult the individual `docs/SDSL_V_M*.md` and
 `internal/prometheus/DevelopmentReport/SDSL_V_M*.md` reports for historical
 acceptance evidence. Their milestone wording must not override this
 implementation inventory.
+
+# M36a benchmark declarations
+
+`.sdslvbench` is a tooling-only source type for repeatable GPU performance
+experiments. A benchmark is a top-level function with `[Benchmark]`, required
+`[DispatchGroups(X, Y, Z)]`, and optional `[Warmup(N)]`, `[Iterations(N)]`, and
+`[WorkgroupSize(X, Y, Z)]`. Warmup defaults to 10 and iterations to 100.
+Benchmark functions currently take no parameters and return `void`; test
+attributes and `Assert.*` are invalid in benchmark files.
+
+`oct sdslv bench file.sdslvbench --list` reads and validates declarations
+without Vulkan execution. `--case <stable-id>` selects one stable declaration,
+and `--json` emits schema-versioned deterministic manifest data. Stable IDs
+derive from normalized source identity, declaration name, and dispatch
+metadata, not device or timing values. Benchmark results are performance
+observations, never correctness proofs; correctness remains in `.sdslvtest`.
