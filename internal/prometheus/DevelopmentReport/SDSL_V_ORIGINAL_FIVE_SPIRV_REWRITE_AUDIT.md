@@ -206,3 +206,10 @@ The following requested repository lanes also passed in this checkout:
 `go test ./internal/... ./cmd/oct`, native-manifest check, Linux build-script
 syntax check, and `git diff --check`. Production SGEMM registry content,
 manifest content, and production binaries remained unchanged throughout M34a.
+
+## M35b production closeout
+
+M35b promoted the audited Packed4 and FP16 sources into the canonical
+production SDSL-V tree, updated IDs 13/14 to generated entry-point ownership,
+and retained the originals in this audit-only artifact tree. All five original
+historical Prometheus kernels are now production SDSL-V-owned.

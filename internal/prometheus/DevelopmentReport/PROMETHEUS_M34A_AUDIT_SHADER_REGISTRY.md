@@ -176,3 +176,9 @@ graphics, or M34b work was added.
 
 M34b consumes this registry only as audit/reference evidence: its historical
 headers remain test-owned while production uses the promoted SDSL-V headers.
+
+## M35b closeout
+
+M35b completed the remaining Packed4 and FP16 production replacements. Their
+historical originals are retained under the audit artifact directory, and this
+audit harness loads those files rather than production headers.

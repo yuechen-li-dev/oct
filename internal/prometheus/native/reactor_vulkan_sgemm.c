@@ -3371,7 +3371,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = "SgemmPacked4_CS";
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3395,7 +3395,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = "SgemmFp16StorageFp32Accum_CS";
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;

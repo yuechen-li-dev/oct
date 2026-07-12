@@ -114,14 +114,16 @@ FACT(PrometheusShaderRegistryRejectsStaleGeneratedOutput) {
   ASSERT_TRUE(manifest.find("reactor_vulkan_sgemm_scalar_plus_spirv.h") != std::string::npos, "manifest must retain generated-header ownership for drift checks");
   ASSERT_FALSE(std::filesystem::exists(root / "internal/prometheus/native/reactor_vulkan_stale_registry_output.h"), "a stale generated output must be detectable as absent from current inventory");
 }
-FACT(PrometheusM34bPromotedShadersUseProductionSdslvAssets) {
+FACT(PrometheusM35bPromotedShadersUseProductionSdslvAssets) {
   const auto root = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT);
   const std::string manifest = read_file(root / "internal/prometheus/native/shaders/manifest.json");
   struct expected_asset { uint32_t id; const char* entry; const char* source; const char* header; };
-  const std::array<expected_asset, 3> expected{{
+  const std::array<expected_asset, 5> expected{{
       {10u, "SgemmSrt2AccumK_CS", "sgemm_srt_2accum_k.sdslv", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h"},
       {11u, "SgemmB2x2_CS", "sgemm_b2x2_row_major_biased.sdslv", "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h"},
       {12u, "SgemmA2x4_CS", "sgemm_a2x4_row_biased_accum8.sdslv", "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h"},
+      {13u, "SgemmPacked4_CS", "sgemm_packed4_fp32.sdslv", "reactor_vulkan_packed4_spirv.h"},
+      {14u, "SgemmFp16StorageFp32Accum_CS", "sgemm_fp16_storage_fp32_accum.sdslv", "reactor_vulkan_fp16_spirv.h"},
   }};
   for (const auto& item : expected) {
     const auto* asset = prom_shader_registry_find_shader(item.id);
@@ -132,8 +134,8 @@ FACT(PrometheusM34bPromotedShadersUseProductionSdslvAssets) {
     ASSERT_TRUE(std::string(asset->generated_header_path) == item.header, "registry must not reference an historical header");
     ASSERT_TRUE(manifest.find(item.header) != std::string::npos, "manifest must own the generated header");
   }
-  ASSERT_TRUE(manifest.find("\"id\":13,\"name\":\"sgemm-packed4\",\"stage\":\"compute\",\"source_language\":\"spirv\"") != std::string::npos, "Packed4 must remain unchanged");
-  ASSERT_TRUE(manifest.find("\"id\":14,\"name\":\"sgemm-fp16-storage-fp32-accum\",\"stage\":\"compute\",\"source_language\":\"spirv\"") != std::string::npos, "FP16 must remain unchanged");
+  ASSERT_TRUE(manifest.find("\"id\":13,\"name\":\"sgemm-packed4\",\"stage\":\"compute\",\"source_language\":\"sdslv\"") != std::string::npos, "Packed4 must be SDSL-V-owned");
+  ASSERT_TRUE(manifest.find("\"id\":14,\"name\":\"sgemm-fp16-storage-fp32-accum\",\"stage\":\"compute\",\"source_language\":\"sdslv\"") != std::string::npos, "FP16 must be SDSL-V-owned");
 }
 FACT(PrometheusM34bA2x4UsesCanonicalDispatchFootprint) {
   const auto* implementation = prom_shader_registry_find_compute_implementation(5u);

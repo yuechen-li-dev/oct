@@ -223,3 +223,10 @@ M35a intentionally stops at language/compiler proof plus audit-only shader
 evidence. Production Packed4/FP16 assets remain unchanged. M35b can now focus
 on bounded production replacement work using already-proven first-class SDSL-V
 vector and packed-format intrinsics rather than inline HLSL.
+
+## M35b completion
+
+M35b promoted both candidates into the production SDSL-V tree with identical
+bytes: Packed4 is 2016 bytes and FP16 is 2468 bytes. See
+`PROMETHEUS_M35B_FINAL_HISTORICAL_SHADER_REPLACEMENT.md` for production,
+validation, archive, and rollback evidence.

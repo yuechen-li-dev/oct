@@ -5,8 +5,6 @@
 #include "../reactor_vulkan_srt_2accum_k_spirv.h"
 #include "../reactor_vulkan_b2x2_row_major_biased_spirv.h"
 #include "../reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
-#include "../reactor_vulkan_packed4_spirv.h"
-#include "../reactor_vulkan_fp16_spirv.h"
 #include "../reactor_judgment_engine.h"
 #include "../reactor_vulkan_sgemm_internal.h"
 
@@ -143,8 +141,7 @@ void ReferenceSgemm(const std::vector<float>& a, const std::vector<float>& b, st
 
 struct AuditPairDefinition {
     const char* name;
-    const std::uint32_t* original_words;
-    std::size_t original_size;
+    const char* original_file;
     const char* candidate_file;
     const char* candidate_entry;
     prom_sgemm_kernel_dispatch_metadata dispatch;
@@ -477,11 +474,11 @@ FACT(PrometheusAuditPipelineOverrideUsesRealSgemmPath)
 FACT(PrometheusAuditOriginalFivePairwiseHardware)
 {
     const std::array<AuditPairDefinition, 5> pairs = {{
-        {"SRT-2accum-K", k_prom_sgemm_srt_2accum_k_spirv, sizeof(k_prom_sgemm_srt_2accum_k_spirv), "sgemm_srt_2accum_k.spv", "SgemmSrt2AccumK_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
-        {"B2x2-row-major-biased", k_prom_sgemm_b2x2_row_major_biased_spirv, sizeof(k_prom_sgemm_b2x2_row_major_biased_spirv), "sgemm_b2x2_row_major_biased.spv", "SgemmB2x2_CS", {8u, 8u, 1u, 2u, 2u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
-        {"A2x4-row-biased-accum8", k_prom_sgemm_a2x4_row_biased_accum8_spirv, sizeof(k_prom_sgemm_a2x4_row_biased_accum8_spirv), "sgemm_a2x4_row_biased_accum8.spv", "SgemmA2x4_CS", {8u, 8u, 1u, 2u, 4u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
-        {"Packed4FP32", k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "sgemm_packed4_fp32.spv", "SgemmPacked4_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_PACKED4_FP32), 0.002f},
-        {"FP16-storage/FP32-accum", k_prom_sgemm_fp16_storage_fp32accum_spirv, sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv), "sgemm_fp16_storage_fp32_accum.spv", "SgemmFp16StorageFp32Accum_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM), 0.03f},
+        {"SRT-2accum-K", "sgemm_srt_2accum_k.spv", "sgemm_srt_2accum_k.spv", "SgemmSrt2AccumK_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"B2x2-row-major-biased", "sgemm_b2x2_row_major_biased.spv", "sgemm_b2x2_row_major_biased.spv", "SgemmB2x2_CS", {8u, 8u, 1u, 2u, 2u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"A2x4-row-biased-accum8", "sgemm_a2x4_row_biased_accum8.spv", "sgemm_a2x4_row_biased_accum8.spv", "SgemmA2x4_CS", {8u, 8u, 1u, 2u, 4u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"Packed4FP32", "sgemm_packed4_fp32.spv", "sgemm_packed4_fp32.spv", "SgemmPacked4_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_PACKED4_FP32), 0.002f},
+        {"FP16-storage/FP32-accum", "sgemm_fp16_storage_fp32_accum.spv", "sgemm_fp16_storage_fp32_accum.spv", "SgemmFp16StorageFp32Accum_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<std::uint32_t>(PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM), 0.03f},
     }};
     const std::array<std::array<std::uint32_t, 3>, 9> shapes = {{{2u, 2u, 2u}, {8u, 8u, 8u}, {5u, 7u, 9u}, {3u, 5u, 7u}, {5u, 8u, 8u}, {8u, 5u, 8u}, {5u, 7u, 11u}, {1u, 9u, 3u}, {3u, 5u, 7u}}};
     void* runtime = nullptr;
@@ -492,7 +489,9 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
         prom_reactor_runtime_destroy_impl(runtime);
         SKIP("real Vulkan backend unavailable");
     }
-    const std::filesystem::path generated = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "SDSL_V_ORIGINAL_SPIRV_REWRITE" / "generated";
+    const std::filesystem::path artifactRoot = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "SDSL_V_ORIGINAL_SPIRV_REWRITE";
+    const std::filesystem::path generated = artifactRoot / "generated";
+    const std::filesystem::path originals = artifactRoot / "original";
     ValidationAccounting validation = CollectValidationAccounting();
     CaptureRuntimeValidationAccounting(static_cast<const prometheus_runtime*>(runtime), &validation);
     std::vector<PairwiseRunRecord> runs;
@@ -510,20 +509,25 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
         ASSERT_TRUE(registry.RegisterFile(fileDescriptor, &error), error);
         const PrometheusAuditShaderDescriptor* candidate = registry.Find(pair.name);
         ASSERT_TRUE(candidate != nullptr, "candidate registration succeeds");
-        PrometheusAuditShaderDescriptor originalDescriptor{};
-        originalDescriptor.name = pair.name;
-        originalDescriptor.spirv_words = pair.original_words;
-        originalDescriptor.spirv_size_bytes = pair.original_size;
-        originalDescriptor.entry_point = "main";
-        originalDescriptor.dispatch = pair.dispatch;
-        originalDescriptor.k_packing_factor = fileDescriptor.k_packing_factor;
+        const std::string originalPath = (originals / pair.original_file).string();
+        PrometheusAuditShaderDescriptor originalFile{};
+        originalFile.name = pair.name;
+        originalFile.file_path = originalPath.c_str();
+        originalFile.entry_point = "main";
+        originalFile.dispatch = pair.dispatch;
+        originalFile.k_packing_factor = fileDescriptor.k_packing_factor;
+        PrometheusAuditShaderRegistry originalsRegistry;
+        ASSERT_TRUE(originalsRegistry.RegisterFile(originalFile, &error), error);
+        const PrometheusAuditShaderDescriptor* archived = originalsRegistry.Find(pair.name);
+        ASSERT_TRUE(archived != nullptr, "archived original registration succeeds");
+        PrometheusAuditShaderDescriptor originalDescriptor = *archived;
         const PrometheusAuditValidation originalValidation = prometheus_audit_validate_shader(originalDescriptor);
         const PrometheusAuditValidation candidateValidation = prometheus_audit_validate_shader(*candidate);
         ASSERT_TRUE(originalValidation.valid, originalValidation.error);
         ASSERT_TRUE(candidateValidation.valid, candidateValidation.error);
         prom_sgemm_audit_execution_descriptor original{};
-        original.spirv_words = pair.original_words;
-        original.spirv_size_bytes = pair.original_size;
+        original.spirv_words = originalDescriptor.spirv_words;
+        original.spirv_size_bytes = originalDescriptor.spirv_size_bytes;
         original.entry_point = "main";
         original.dispatch = pair.dispatch;
         original.compute_mode = pair.compute_mode;
