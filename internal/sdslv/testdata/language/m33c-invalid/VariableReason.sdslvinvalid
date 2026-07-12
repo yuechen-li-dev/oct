@@ -1,0 +1,7 @@
+expect error: "assertion reason must be a nonempty string literal"
+
+[Fact]
+fn VariableReason() -> void {
+    let reason: u32 = 1u;
+    Assert.True(true, reason);
+}

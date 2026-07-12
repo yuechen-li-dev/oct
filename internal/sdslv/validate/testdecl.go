@@ -74,6 +74,8 @@ type ValidatedAssertCall struct {
 	Kind         AssertKind
 	Call         ast.CallExpr
 	Operands     []ast.Expr
+	Reason       string
+	ReasonSpan   source.Span
 	CallSpan     source.Span
 	OperandSpans []source.Span
 	LexicalIndex int
@@ -328,7 +330,11 @@ func assertionCalls(b ast.Block) []ValidatedAssertCall {
 				for i, a := range x.Arguments {
 					spans[i] = ast.ExprSpan(a)
 				}
-				out = append(out, ValidatedAssertCall{Kind: AssertKind(name), Call: x, Operands: x.Arguments, CallSpan: x.Span, OperandSpans: spans, LexicalIndex: len(out)})
+				// Validation has already established that the final argument is a
+				// nonempty string literal. Keep it as metadata, never as a shader
+				// operand.
+				reason := x.Arguments[len(x.Arguments)-1].(ast.StringLiteral)
+				out = append(out, ValidatedAssertCall{Kind: AssertKind(name), Call: x, Operands: x.Arguments[:len(x.Arguments)-1], Reason: reason.Value, ReasonSpan: reason.Span, CallSpan: x.Span, OperandSpans: spans[:len(spans)-1], LexicalIndex: len(out)})
 			}
 			walkExpr(x.Callee)
 			for _, a := range x.Arguments {

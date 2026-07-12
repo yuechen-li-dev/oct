@@ -76,7 +76,9 @@ let a: ndarray<u32, [4u]> = Fill(seed);
 let b: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 3u + j);
 return;
 }`
-	if err := validateSource(valid); err != nil { t.Fatalf("valid construction: %v", err) }
+	if err := validateSource(valid); err != nil {
+		t.Fatalf("valid construction: %v", err)
+	}
 	for _, tc := range []struct{ src, want string }{
 		{`fn F() -> void { Fill(0u); }`, "SDSL-V3313"},
 		{`fn F() -> void { let a: ndarray<u32, [2u]> = Fill(); }`, "SDSL-V3315"},
@@ -86,7 +88,9 @@ return;
 		{`fn F() -> void { let a: ndarray<u32, [2u]> = Generate[i](i = 1u); }`, "expected ')'"},
 	} {
 		err := validateSource(tc.src)
-		if err == nil || !strings.Contains(err.Error(), tc.want) { t.Fatalf("error = %v, want %q", err, tc.want) }
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("error = %v, want %q", err, tc.want)
+		}
 	}
 }
 

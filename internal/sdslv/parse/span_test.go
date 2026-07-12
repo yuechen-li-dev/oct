@@ -14,7 +14,7 @@ import (
 // This is deliberately source slicing only as a parser contract test. Parser
 // production code always composes spans from consumed tokens and child nodes.
 func TestSdslvAstRepresentativeSourceSpans(t *testing.T) {
-	const text = "[Fact]\nfn F(x: array<u32, 4u>) -> void {\n  let y: u32 = read x[1u] when true else 0u;\n  HLSL(x) { uint z = 1; };\n  Assert.Equal(y, 1u);\n}\n"
+	const text = "[Fact]\nfn F(x: array<u32, 4u>) -> void {\n  let y: u32 = read x[1u] when true else 0u;\n  HLSL(x) { uint z = 1; };\n  Assert.Equal(y, 1u, \"embedded SDSL-V fixture must preserve its asserted invariant\");\n}\n"
 	result, err := lex.Analyze(source.File{Path: "span.sdslvtest", Text: text})
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestSdslvAstRepresentativeSourceSpans(t *testing.T) {
 	foreign := fn.Body.Statements[1].(ast.ForeignShaderStmt)
 	assertSlice(t, text, foreign.Span, "HLSL(x) { uint z = 1; };")
 	call := fn.Body.Statements[2].(ast.ExprStmt).Value.(ast.CallExpr)
-	assertSlice(t, text, call.Span, "Assert.Equal(y, 1u)")
+	assertSlice(t, text, call.Span, "Assert.Equal(y, 1u, \"embedded SDSL-V fixture must preserve its asserted invariant\")")
 	auditKnownSpans(t, reflect.ValueOf(module), len(text))
 }
 

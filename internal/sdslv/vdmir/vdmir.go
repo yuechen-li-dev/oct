@@ -420,6 +420,8 @@ type AssertStmt struct {
 	Expected       Expr
 	Actual         Expr
 	Tolerance      Expr
+	Reason         string
+	ReasonSpan     source.Span
 	CallSpan       source.Span
 	OperandSpans   []source.Span
 	LexicalIndex   int

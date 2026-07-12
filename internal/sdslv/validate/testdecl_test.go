@@ -10,7 +10,7 @@ import (
 
 func validatedTestFixture(t *testing.T) []ValidatedTestDecl {
 	t.Helper()
-	text := "[Fact]\n[TestInputUInt(7u, 11u)]\nfn FactCase() -> void { Assert.True(true); }\n[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\n[WorkgroupSize(32, 1, 1)]\n[DispatchGroups(2, 1, 1)]\nfn Rows(v: u32) -> void { Assert.Equal(v, v); }\n"
+	text := "[Fact]\n[TestInputUInt(7u, 11u)]\nfn FactCase() -> void { Assert.True(true, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\n[WorkgroupSize(32, 1, 1)]\n[DispatchGroups(2, 1, 1)]\nfn Rows(v: u32) -> void { Assert.Equal(v, v, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"
 	tokens, err := lex.Analyze(source.File{Path: "fixture.sdslvtest", Text: text})
 	if err != nil {
 		t.Fatal(err)

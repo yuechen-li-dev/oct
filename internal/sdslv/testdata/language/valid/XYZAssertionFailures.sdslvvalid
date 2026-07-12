@@ -3,7 +3,7 @@
 [Fact]
 fn OneFailingInvocation() -> void {
     let selected: bool = DispatchThreadID.x == 3u and DispatchThreadID.y == 4u and DispatchThreadID.z == 2u;
-    Assert.False(selected);
+    Assert.False(selected, "OneFailingInvocation must preserve its declared invariant");
 }
 
 [WorkgroupSize(2, 3, 2)]
@@ -12,5 +12,5 @@ fn OneFailingInvocation() -> void {
 fn TwoFailingInvocationsUseLinearScanOrder() -> void {
     let later: bool = DispatchThreadID.x == 3u and DispatchThreadID.y == 4u and DispatchThreadID.z == 2u;
     let earlier: bool = DispatchThreadID.x == 1u and DispatchThreadID.y == 1u and DispatchThreadID.z == 0u;
-    Assert.False(later or earlier);
+    Assert.False(later or earlier, "TwoFailingInvocationsUseLinearScanOrder must preserve its declared invariant");
 }

@@ -6,10 +6,10 @@ fn Rank1DenseLiteralIndexing() -> void {
     let bias: f32 = -1.0;
     tensor output[i] = input[i] * scale + bias;
 
-    Assert.Equal(1.0, output[0u]);
-    Assert.Equal(-5.0, output[1u]);
-    Assert.Equal(6.0, output[2u]);
-    Assert.Equal(-0.5, output[3u]);
+    Assert.Equal(1.0, output[0u], "Rank1DenseLiteralIndexing must preserve its declared invariant");
+    Assert.Equal(-5.0, output[1u], "Rank1DenseLiteralIndexing must preserve its declared invariant");
+    Assert.Equal(6.0, output[2u], "Rank1DenseLiteralIndexing must preserve its declared invariant");
+    Assert.Equal(-0.5, output[3u], "Rank1DenseLiteralIndexing must preserve its declared invariant");
 }
 
 [Fact]
@@ -18,12 +18,12 @@ fn Rank2RowMajorLayout() -> void {
     let output: ndarray<u32, [2u, 3u]>;
     tensor output[i, j] = input[i, j];
 
-    Assert.Equal(1u, output[0u, 0u]);
-    Assert.Equal(10u, output[0u, 1u]);
-    Assert.Equal(100u, output[0u, 2u]);
-    Assert.Equal(2u, output[1u, 0u]);
-    Assert.Equal(20u, output[1u, 1u]);
-    Assert.Equal(200u, output[1u, 2u]);
+    Assert.Equal(1u, output[0u, 0u], "Rank2RowMajorLayout must preserve its declared invariant");
+    Assert.Equal(10u, output[0u, 1u], "Rank2RowMajorLayout must preserve its declared invariant");
+    Assert.Equal(100u, output[0u, 2u], "Rank2RowMajorLayout must preserve its declared invariant");
+    Assert.Equal(2u, output[1u, 0u], "Rank2RowMajorLayout must preserve its declared invariant");
+    Assert.Equal(20u, output[1u, 1u], "Rank2RowMajorLayout must preserve its declared invariant");
+    Assert.Equal(200u, output[1u, 2u], "Rank2RowMajorLayout must preserve its declared invariant");
 }
 
 [Fact]
@@ -33,14 +33,14 @@ fn Rank3TensorUse() -> void {
     let c: ndarray<u32, [2u, 2u, 2u]>;
     tensor c[b0, i, j] = Sum[k](a[b0, i, k] * b[b0, k, j]);
 
-    Assert.Equal(31u, c[0u, 0u, 0u]);
-    Assert.Equal(34u, c[0u, 0u, 1u]);
-    Assert.Equal(71u, c[0u, 1u, 0u]);
-    Assert.Equal(78u, c[0u, 1u, 1u]);
-    Assert.Equal(23u, c[1u, 0u, 0u]);
-    Assert.Equal(34u, c[1u, 0u, 1u]);
-    Assert.Equal(31u, c[1u, 1u, 0u]);
-    Assert.Equal(46u, c[1u, 1u, 1u]);
+    Assert.Equal(31u, c[0u, 0u, 0u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(34u, c[0u, 0u, 1u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(71u, c[0u, 1u, 0u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(78u, c[0u, 1u, 1u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(23u, c[1u, 0u, 0u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(34u, c[1u, 0u, 1u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(31u, c[1u, 1u, 0u], "Rank3TensorUse must preserve its declared invariant");
+    Assert.Equal(46u, c[1u, 1u, 1u], "Rank3TensorUse must preserve its declared invariant");
 }
 
 [Fact]
@@ -54,14 +54,14 @@ fn Rank4TensorCopy() -> void {
     let output: ndarray<u32, [2u, 2u, 2u, 3u]>;
     tensor output[b, h, i, j] = input[b, h, i, j];
 
-    Assert.Equal(0u, output[0u, 0u, 0u, 0u]);
-    Assert.Equal(12u, output[0u, 0u, 1u, 2u]);
-    Assert.Equal(102u, output[0u, 1u, 0u, 2u]);
-    Assert.Equal(111u, output[0u, 1u, 1u, 1u]);
-    Assert.Equal(1000u, output[1u, 0u, 0u, 0u]);
-    Assert.Equal(1012u, output[1u, 0u, 1u, 2u]);
-    Assert.Equal(1101u, output[1u, 1u, 0u, 1u]);
-    Assert.Equal(1112u, output[1u, 1u, 1u, 2u]);
+    Assert.Equal(0u, output[0u, 0u, 0u, 0u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(12u, output[0u, 0u, 1u, 2u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(102u, output[0u, 1u, 0u, 2u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(111u, output[0u, 1u, 1u, 1u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(1000u, output[1u, 0u, 0u, 0u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(1012u, output[1u, 0u, 1u, 2u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(1101u, output[1u, 1u, 0u, 1u], "Rank4TensorCopy must preserve its declared invariant");
+    Assert.Equal(1112u, output[1u, 1u, 1u, 2u], "Rank4TensorCopy must preserve its declared invariant");
 }
 
 [Fact]
@@ -71,14 +71,14 @@ fn Rank2Matmul() -> void {
     let c: ndarray<u32, [2u, 4u]>;
     tensor c[i, j] = Sum[k](a[i, k] * b[k, j]);
 
-    Assert.Equal(10u, c[0u, 0u]);
-    Assert.Equal(14u, c[0u, 1u]);
-    Assert.Equal(17u, c[0u, 2u]);
-    Assert.Equal(5u, c[0u, 3u]);
-    Assert.Equal(25u, c[1u, 0u]);
-    Assert.Equal(29u, c[1u, 1u]);
-    Assert.Equal(38u, c[1u, 2u]);
-    Assert.Equal(14u, c[1u, 3u]);
+    Assert.Equal(10u, c[0u, 0u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(14u, c[0u, 1u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(17u, c[0u, 2u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(5u, c[0u, 3u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(25u, c[1u, 0u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(29u, c[1u, 1u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(38u, c[1u, 2u], "Rank2Matmul must preserve its declared invariant");
+    Assert.Equal(14u, c[1u, 3u], "Rank2Matmul must preserve its declared invariant");
 }
 
 [Fact]
@@ -86,10 +86,10 @@ fn ElementAssignment() -> void {
     let values: ndarray<u32, [2u, 2u]> = [1u, 2u, 3u, 4u];
     values[1u, 0u] = 9u;
 
-    Assert.Equal(1u, values[0u, 0u]);
-    Assert.Equal(2u, values[0u, 1u]);
-    Assert.Equal(9u, values[1u, 0u]);
-    Assert.Equal(4u, values[1u, 1u]);
+    Assert.Equal(1u, values[0u, 0u], "ElementAssignment must preserve its declared invariant");
+    Assert.Equal(2u, values[0u, 1u], "ElementAssignment must preserve its declared invariant");
+    Assert.Equal(9u, values[1u, 0u], "ElementAssignment must preserve its declared invariant");
+    Assert.Equal(4u, values[1u, 1u], "ElementAssignment must preserve its declared invariant");
 }
 
 [Fact]
@@ -101,10 +101,10 @@ fn DenseLiteralSourceOrder() -> void {
         8u, 9u, 11u, 12u, 9u, 10u
     ];
 
-    Assert.Equal(1u, values[0u, 0u, 0u, 0u]);
-    Assert.Equal(2u, values[0u, 0u, 0u, 1u]);
-    Assert.Equal(4u, values[0u, 0u, 0u, 2u]);
-    Assert.Equal(5u, values[0u, 0u, 1u, 0u]);
-    Assert.Equal(4u, values[1u, 0u, 0u, 0u]);
-    Assert.Equal(10u, values[1u, 1u, 1u, 2u]);
+    Assert.Equal(1u, values[0u, 0u, 0u, 0u], "DenseLiteralSourceOrder must preserve its declared invariant");
+    Assert.Equal(2u, values[0u, 0u, 0u, 1u], "DenseLiteralSourceOrder must preserve its declared invariant");
+    Assert.Equal(4u, values[0u, 0u, 0u, 2u], "DenseLiteralSourceOrder must preserve its declared invariant");
+    Assert.Equal(5u, values[0u, 0u, 1u, 0u], "DenseLiteralSourceOrder must preserve its declared invariant");
+    Assert.Equal(4u, values[1u, 0u, 0u, 0u], "DenseLiteralSourceOrder must preserve its declared invariant");
+    Assert.Equal(10u, values[1u, 1u, 1u, 2u], "DenseLiteralSourceOrder must preserve its declared invariant");
 }

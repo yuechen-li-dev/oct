@@ -974,9 +974,13 @@ return;
 }`)
 	stmts := module.Decls[0].(ast.FunctionDecl).Body.Statements
 	fill, ok := stmts[0].(ast.LetStmt).Value.(ast.FillExpr)
-	if !ok || len(fill.Arguments) != 1 || !fill.KeywordSpan.Known() { t.Fatalf("Fill = %#v", stmts[0]) }
+	if !ok || len(fill.Arguments) != 1 || !fill.KeywordSpan.Known() {
+		t.Fatalf("Fill = %#v", stmts[0])
+	}
 	generate, ok := stmts[1].(ast.LetStmt).Value.(ast.GenerateExpr)
-	if !ok || len(generate.Binders) != 2 || generate.Binders[0].Name != "i" || generate.Binders[1].Name != "j" || !generate.OpenBracketSpan.Known() { t.Fatalf("Generate = %#v", stmts[1]) }
+	if !ok || len(generate.Binders) != 2 || generate.Binders[0].Name != "i" || generate.Binders[1].Name != "j" || !generate.OpenBracketSpan.Known() {
+		t.Fatalf("Generate = %#v", stmts[1])
+	}
 }
 
 func TestSdslvPreservesNdarrayExtentSpans(t *testing.T) {

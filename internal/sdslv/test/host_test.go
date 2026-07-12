@@ -40,6 +40,7 @@ type nativeResult struct {
 	ExpectedBits  [4]uint32 `json:"expected_bits"`
 	ActualBits    [4]uint32 `json:"actual_bits"`
 	ToleranceBits [4]uint32 `json:"tolerance_bits"`
+	Reason        string    `json:"reason"`
 }
 
 func repoRoot(t *testing.T) string {
@@ -359,7 +360,7 @@ func TestSdslvExpectedAssertionFailureIsAHostSuccessContract(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("invalid assertion result JSON: %v: %s", err, out)
 	}
-	if result.Status != "ASSERTION_FAILED" || result.StableCaseID != inv.c.StableID || result.Invocation != [3]uint32{} || result.AssertionID != 0 || result.ExpectedBits != [4]uint32{1, 0, 0, 0} || result.ActualBits != [4]uint32{2, 0, 0, 0} || result.ToleranceBits != [4]uint32{} {
+	if result.Status != "ASSERTION_FAILED" || result.StableCaseID != inv.c.StableID || result.Invocation != [3]uint32{} || result.AssertionID != 0 || result.ExpectedBits != [4]uint32{1, 0, 0, 0} || result.ActualBits != [4]uint32{2, 0, 0, 0} || result.ToleranceBits != [4]uint32{} || result.Reason != "FirstFailureWins must preserve its declared invariant" {
 		t.Fatalf("first failure contract mismatch: %#v", result)
 	}
 }

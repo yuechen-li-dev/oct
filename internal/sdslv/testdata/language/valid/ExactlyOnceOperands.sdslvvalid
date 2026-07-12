@@ -5,25 +5,25 @@ fn AssertOperandsEvaluateExactlyOnce() -> void {
     Assert.True(HLSL<bool>(counter) {
         counter = counter + 1u;
         return counter == 1u;
-    });
+    }, "AssertOperandsEvaluateExactlyOnce must preserve its declared invariant");
     Assert.False(HLSL<bool>(counter) {
         counter = counter + 1u;
         return counter != 2u;
-    });
+    }, "AssertOperandsEvaluateExactlyOnce must preserve its declared invariant");
     Assert.Equal(HLSL<u32>(counter) {
         counter = counter + 1u;
         return 7u;
     }, HLSL<u32>(counter) {
         counter = counter + 1u;
         return 7u;
-    });
+    }, "AssertOperandsEvaluateExactlyOnce must preserve its declared invariant");
     Assert.NotEqual(HLSL<u32>(counter) {
         counter = counter + 1u;
         return 7u;
     }, HLSL<u32>(counter) {
         counter = counter + 1u;
         return 8u;
-    });
+    }, "AssertOperandsEvaluateExactlyOnce must preserve its declared invariant");
     Assert.Near(HLSL<f32>(counter) {
         counter = counter + 1u;
         return 1.0;
@@ -33,8 +33,8 @@ fn AssertOperandsEvaluateExactlyOnce() -> void {
     }, HLSL<f32>(counter) {
         counter = counter + 1u;
         return 0.1;
-    });
-    Assert.Equal(9u, counter);
+    }, "AssertOperandsEvaluateExactlyOnce must preserve its declared invariant");
+    Assert.Equal(9u, counter, "AssertOperandsEvaluateExactlyOnce must preserve its declared invariant");
 }
 
 [Fact]
@@ -47,14 +47,14 @@ fn AssertOperandsEvaluateLeftToRight() -> void {
     }, HLSL<u32>(order) {
         order = order * 10u + 2u;
         return 7u;
-    });
+    }, "AssertOperandsEvaluateLeftToRight must preserve its declared invariant");
     Assert.NotEqual(HLSL<u32>(order) {
         order = order * 10u + 3u;
         return 7u;
     }, HLSL<u32>(order) {
         order = order * 10u + 4u;
         return 8u;
-    });
+    }, "AssertOperandsEvaluateLeftToRight must preserve its declared invariant");
     Assert.Near(HLSL<f32>(order) {
         order = order * 10u + 5u;
         return 1.0;
@@ -64,8 +64,8 @@ fn AssertOperandsEvaluateLeftToRight() -> void {
     }, HLSL<f32>(order) {
         order = order * 10u + 7u;
         return 0.1;
-    });
-    Assert.Equal(1234567u, order);
+    }, "AssertOperandsEvaluateLeftToRight must preserve its declared invariant");
+    Assert.Equal(1234567u, order, "AssertOperandsEvaluateLeftToRight must preserve its declared invariant");
 }
 
 [Theory]
@@ -75,8 +75,8 @@ fn AssertOperandsEvaluateLeftToRight() -> void {
 [TestInputUInt(10u, 20u, 30u)]
 fn TheoryAndResourceOperandsEvaluateOnce(index: u32, expected: u32) -> void {
     let counter: u32 = 0u;
-    Assert.Equal(expected, TestInput.UInt[index]);
-    Assert.Equal(expected, read TestInput.UInt[index] when index < TestInput.Length else 999u);
+    Assert.Equal(expected, TestInput.UInt[index], "TheoryAndResourceOperandsEvaluateOnce must preserve its declared invariant");
+    Assert.Equal(expected, read TestInput.UInt[index] when index < TestInput.Length else 999u, "TheoryAndResourceOperandsEvaluateOnce must preserve its declared invariant");
     Assert.Near(HLSL<f32>(counter) {
         counter = counter + 1u;
         return 2.0;
@@ -86,20 +86,20 @@ fn TheoryAndResourceOperandsEvaluateOnce(index: u32, expected: u32) -> void {
     }, HLSL<f32>(counter) {
         counter = counter + 1u;
         return 0.0;
-    });
-    Assert.Equal(3u, counter);
+    }, "TheoryAndResourceOperandsEvaluateOnce must preserve its declared invariant");
+    Assert.Equal(3u, counter, "TheoryAndResourceOperandsEvaluateOnce must preserve its declared invariant");
 }
 
 [Fact]
 fn FirstFailureDoesNotSuppressLaterOperandEvaluation() -> void {
     let counter: u32 = 0u;
-    Assert.Equal(1u, 2u);
+    Assert.Equal(1u, 2u, "FirstFailureDoesNotSuppressLaterOperandEvaluation must preserve its declared invariant");
     Assert.Equal(HLSL<u32>(counter) {
         counter = counter + 1u;
         return 7u;
     }, HLSL<u32>(counter) {
         counter = counter + 1u;
         return 7u;
-    });
-    Assert.Equal(2u, counter);
+    }, "FirstFailureDoesNotSuppressLaterOperandEvaluation must preserve its declared invariant");
+    Assert.Equal(2u, counter, "FirstFailureDoesNotSuppressLaterOperandEvaluation must preserve its declared invariant");
 }

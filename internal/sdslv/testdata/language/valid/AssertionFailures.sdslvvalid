@@ -1,31 +1,31 @@
 [Fact]
-fn TrueFailure() -> void { Assert.True(false); }
+fn TrueFailure() -> void { Assert.True(false, "TrueFailure must preserve its declared invariant"); }
 
 [Fact]
-fn FalseFailure() -> void { Assert.False(true); }
+fn FalseFailure() -> void { Assert.False(true, "FalseFailure must preserve its declared invariant"); }
 
 [Fact]
-fn EqualBoolFailure() -> void { Assert.Equal(true, false); }
+fn EqualBoolFailure() -> void { Assert.Equal(true, false, "EqualBoolFailure must preserve its declared invariant"); }
 
 [Fact]
-fn EqualIntFailure() -> void { Assert.Equal(-7, 7); }
+fn EqualIntFailure() -> void { Assert.Equal(-7, 7, "EqualIntFailure must preserve its declared invariant"); }
 
 [Fact]
-fn EqualUIntFailure() -> void { Assert.Equal(7u, 8u); }
+fn EqualUIntFailure() -> void { Assert.Equal(7u, 8u, "EqualUIntFailure must preserve its declared invariant"); }
 
 [Fact]
-fn EqualFloatFailure() -> void { Assert.Equal(1.0, 1.5); }
+fn EqualFloatFailure() -> void { Assert.Equal(1.0, 1.5, "EqualFloatFailure must preserve its declared invariant"); }
 
 [Fact]
-fn NotEqualFailure() -> void { Assert.NotEqual(7u, 7u); }
+fn NotEqualFailure() -> void { Assert.NotEqual(7u, 7u, "NotEqualFailure must preserve its declared invariant"); }
 
 [Fact]
-fn NearFailure() -> void { Assert.Near(1.0, 1.5, 0.1); }
+fn NearFailure() -> void { Assert.Near(1.0, 1.5, 0.1, "NearFailure must preserve its declared invariant"); }
 
 [Fact]
-fn FirstFailureWins() -> void { Assert.Equal(1u, 2u); Assert.Equal(3u, 4u); }
+fn FirstFailureWins() -> void { Assert.Equal(1u, 2u, "FirstFailureWins must preserve its declared invariant"); Assert.Equal(3u, 4u, "FirstFailureWins must preserve its declared invariant"); }
 
 [Theory]
 [InlineData(1u)]
 [InlineData(2u)]
-fn RowSpecificFailure(value: u32) -> void { Assert.Equal(1u, value); }
+fn RowSpecificFailure(value: u32) -> void { Assert.Equal(1u, value, "RowSpecificFailure must preserve its declared invariant"); }

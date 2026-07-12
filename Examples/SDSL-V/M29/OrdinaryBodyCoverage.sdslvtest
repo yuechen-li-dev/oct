@@ -39,15 +39,15 @@ fn ArithmeticAssignmentNestedControlFlowAndCalls() -> void {
         total = 1u;
     }
     let pair: Pair = MakePair(total, 7u);
-    Assert.Equal(7u, pair.Left);
-    Assert.Equal(pair.Left, pair.Right);
+    Assert.Equal(7u, pair.Left, "ArithmeticAssignmentNestedControlFlowAndCalls must preserve its declared invariant");
+    Assert.Equal(pair.Left, pair.Right, "ArithmeticAssignmentNestedControlFlowAndCalls must preserve its declared invariant");
 }
 
 [Fact]
 fn RecordsEnumsAndBuiltins() -> void {
     let choice: Choice = Choice.Value { X: 9u; };
     let value: u32 = ResolveChoice(choice);
-    Assert.Equal(9u, value);
+    Assert.Equal(9u, value, "RecordsEnumsAndBuiltins must preserve its declared invariant");
 }
 
 [Fact]
@@ -56,6 +56,6 @@ fn ForeignStatementAndMultipleAssertions() -> void {
     HLSL(value) {
         value += 1u;
     }
-    Assert.Equal(2u, value);
-    Assert.True(value > 1u);
+    Assert.Equal(2u, value, "ForeignStatementAndMultipleAssertions must preserve its declared invariant");
+    Assert.True(value > 1u, "ForeignStatementAndMultipleAssertions must preserve its declared invariant");
 }

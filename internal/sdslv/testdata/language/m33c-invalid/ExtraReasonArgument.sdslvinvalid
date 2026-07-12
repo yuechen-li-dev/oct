@@ -1,0 +1,6 @@
+expect error: "Assert.Equal expects 3 arguments, got 4"
+
+[Fact]
+fn ExtraReasonArgument() -> void {
+    Assert.Equal(1u, 1u, "values must match", "extra");
+}

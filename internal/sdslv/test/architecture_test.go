@@ -92,7 +92,7 @@ func TestSdslvTestInputArchitectureGuards(t *testing.T) {
 
 func TestSdslvTestInputUsesHiddenResourceNotLocalArraySubstitution(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "input.sdslvtest")
-	src := "[Fact]\n[TestInputFloat(-0.0, 1.5)]\nfn ReadInput() -> void { let x: f32 = read TestInput.Float[0u] when 0u < TestInput.Length else 1.0; let bits: u32 = HLSL<u32>(x) { return asuint(x); }; Assert.Equal(2147483648u, bits); }\n"
+	src := "[Fact]\n[TestInputFloat(-0.0, 1.5)]\nfn ReadInput() -> void { let x: f32 = read TestInput.Float[0u] when 0u < TestInput.Length else 1.0; let bits: u32 = HLSL<u32>(x) { return asuint(x); }; Assert.Equal(2147483648u, bits, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,6 @@
+expect error: "Assert.NotEqual requires a final nonempty string-literal reason"
+
+[Fact]
+fn ReasonlessNotEqual() -> void {
+    Assert.NotEqual(1u, 2u);
+}

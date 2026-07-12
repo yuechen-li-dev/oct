@@ -4,7 +4,7 @@ fn GuardedReadUsesSource() -> void {
     let index: u32 = 1u;
     let valid: bool = index < TestInput.Length;
     let value: u32 = read TestInput.UInt[index] when valid else 99u;
-    Assert.Equal(11u, value);
+    Assert.Equal(11u, value, "GuardedReadUsesSource must preserve its declared invariant");
 }
 
 [Fact]
@@ -13,7 +13,7 @@ fn GuardedReadUsesFallback() -> void {
     let index: u32 = 99u;
     let valid: bool = index < TestInput.Length;
     let value: u32 = read TestInput.UInt[index] when valid else 99u;
-    Assert.Equal(99u, value);
+    Assert.Equal(99u, value, "GuardedReadUsesFallback must preserve its declared invariant");
 }
 
 [Fact]
@@ -24,23 +24,23 @@ fn GuardedReadBoundaryCases() -> void {
     let last: u32 = read TestInput.UInt[lastIndex] when lastIndex < TestInput.Length else 99u;
     let equalLength: u32 = TestInput.Length;
     let fallback: u32 = read TestInput.UInt[equalLength] when equalLength < TestInput.Length else 99u;
-    Assert.Equal(5u, first);
-    Assert.Equal(11u, last);
-    Assert.Equal(99u, fallback);
+    Assert.Equal(5u, first, "GuardedReadBoundaryCases must preserve its declared invariant");
+    Assert.Equal(11u, last, "GuardedReadBoundaryCases must preserve its declared invariant");
+    Assert.Equal(99u, fallback, "GuardedReadBoundaryCases must preserve its declared invariant");
 }
 
 [Fact]
 [TestInputBool(true, false)]
 fn BoolInputReads() -> void {
     let value: bool = read TestInput.Bool[0u] when 0u < TestInput.Length else false;
-    Assert.True(value);
+    Assert.True(value, "BoolInputReads must preserve its declared invariant");
 }
 
 [Fact]
 [TestInputInt(-7, 9)]
 fn IntInputReads() -> void {
     let value: i32 = read TestInput.Int[0u] when 0u < TestInput.Length else 0;
-    Assert.Equal(-7, value);
+    Assert.Equal(-7, value, "IntInputReads must preserve its declared invariant");
 }
 
 [Fact]
@@ -50,10 +50,10 @@ fn FloatInputReads() -> void {
     let bits: u32 = HLSL<u32>(value) {
         return asuint(value);
     };
-    Assert.Equal(2147483648u, bits);
+    Assert.Equal(2147483648u, bits, "FloatInputReads must preserve its declared invariant");
 }
 
 [Fact]
 fn NoInputCompatibility() -> void {
-    Assert.Equal(0u, 0u);
+    Assert.Equal(0u, 0u, "NoInputCompatibility must preserve its declared invariant");
 }

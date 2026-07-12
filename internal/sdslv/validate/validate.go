@@ -1975,22 +1975,31 @@ func assertCallee(expr ast.Expr) (string, bool) {
 	return f.Field, true
 }
 func (v *validator) testAssertType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
-	want := 2
+	want := 3
 	if name == "Assert.True" || name == "Assert.False" {
-		want = 1
+		want = 2
 	}
 	if name == "Assert.Near" {
-		want = 3
+		want = 4
 	}
 	if len(call.Arguments) != want {
+		if len(call.Arguments) == want-1 {
+			v.errorAt(call.Span, "SDSL-V1401", "%s requires a final nonempty string-literal reason", name)
+			return ast.TypeRef{Name: "void"}
+		}
 		v.errorAt(call.Span, "SDSL-V1401", "%s expects %d arguments, got %d", name, want, len(call.Arguments))
 		return ast.TypeRef{Name: "void"}
 	}
-	types := make([]ast.TypeRef, len(call.Arguments))
-	for i, arg := range call.Arguments {
+	operandCount := want - 1
+	types := make([]ast.TypeRef, operandCount)
+	for i, arg := range call.Arguments[:operandCount] {
 		types[i] = v.exprType(arg, scope, shaderName, templateParam)
 	}
-	if want == 1 && types[0].Name != "bool" {
+	reason, ok := call.Arguments[want-1].(ast.StringLiteral)
+	if !ok || strings.Trim(reason.Value, " \t\n\r\v\f") == "" {
+		v.errorAt(ast.ExprSpan(call.Arguments[want-1]), "SDSL-V1406", "assertion reason must be a nonempty string literal")
+	}
+	if operandCount == 1 && types[0].Name != "bool" {
 		v.errorAt(ast.ExprSpan(call.Arguments[0]), "SDSL-V1402", "%s expects a bool", name)
 	}
 	if (name == "Assert.Equal" || name == "Assert.NotEqual") && !v.compatible(types[0], types[1]) {

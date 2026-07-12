@@ -1,13 +1,13 @@
 [Fact]
 fn ScalarAssertions() -> void {
-    Assert.True(true);
-    Assert.False(false);
-    Assert.Equal(true, true);
-    Assert.Equal(7, 7);
-    Assert.Equal(7u, 7u);
-    Assert.Equal(1.0, 1.0);
-    Assert.NotEqual(7u, 8u);
-    Assert.Near(1.0, 1.0001, 0.01);
+    Assert.True(true, "ScalarAssertions must preserve its declared invariant");
+    Assert.False(false, "ScalarAssertions must preserve its declared invariant");
+    Assert.Equal(true, true, "ScalarAssertions must preserve its declared invariant");
+    Assert.Equal(7, 7, "ScalarAssertions must preserve its declared invariant");
+    Assert.Equal(7u, 7u, "ScalarAssertions must preserve its declared invariant");
+    Assert.Equal(1.0, 1.0, "ScalarAssertions must preserve its declared invariant");
+    Assert.NotEqual(7u, 8u, "ScalarAssertions must preserve its declared invariant");
+    Assert.Near(1.0, 1.0001, 0.01, "ScalarAssertions must preserve its declared invariant");
 }
 
 [Theory]
@@ -15,5 +15,5 @@ fn ScalarAssertions() -> void {
 [InlineData(4u, 5u)]
 fn TheoryArithmetic(value: u32, expected: u32) -> void {
     let result: u32 = value + 1u;
-    Assert.Equal(expected, result);
+    Assert.Equal(expected, result, "TheoryArithmetic must preserve its declared invariant");
 }

@@ -2,7 +2,7 @@
 [DispatchGroups(2, 2, 2)]
 [Fact]
 fn CombinedXYZGeometry() -> void {
-    Assert.True(DispatchThreadID.x < 4u);
-    Assert.True(DispatchThreadID.y < 6u);
-    Assert.True(DispatchThreadID.z < 4u);
+    Assert.True(DispatchThreadID.x < 4u, "CombinedXYZGeometry must preserve its declared invariant");
+    Assert.True(DispatchThreadID.y < 6u, "CombinedXYZGeometry must preserve its declared invariant");
+    Assert.True(DispatchThreadID.z < 4u, "CombinedXYZGeometry must preserve its declared invariant");
 }

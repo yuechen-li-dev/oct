@@ -1,0 +1,6 @@
+expect error: "Assert.False requires a final nonempty string-literal reason"
+
+[Fact]
+fn ReasonlessFalse() -> void {
+    Assert.False(false);
+}

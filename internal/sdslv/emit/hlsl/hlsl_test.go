@@ -135,7 +135,11 @@ func TestSdslvFixedShapeConstructionUsesFlatRowMajorStorage(t *testing.T) {
 		"uint A[4];", "uint __sdslv_fill_0 = seed;", "A[0] = __sdslv_fill_0;", "A[3] = __sdslv_fill_0;",
 		"uint B[6];", "for (uint i = 0u; i < 2u; ++i)", "for (uint j = 0u; j < 3u; ++j)",
 		"uint __sdslv_tensor_index_", "uint __sdslv_tensor_offset_", "B[__sdslv_tensor_offset_",
-	} { if !strings.Contains(out, want) { t.Fatalf("construction HLSL missing %q:\n%s", want, out) } }
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("construction HLSL missing %q:\n%s", want, out)
+		}
+	}
 }
 
 func TestSdslvFillMaterializesGuardedReadOnceAndReusesResult(t *testing.T) {
@@ -187,9 +191,9 @@ func TestSdslvFixedShapeConstructionRejectsMalformedMetadata(t *testing.T) {
 	badShape := vdmir.Type{Kind: vdmir.TypeNDArray, Name: "ndarray", Element: &u32Type, Shape: []uint32{2, 0}, ArraySize: 0}
 	_, err := Emit(vdmir.Module{
 		Functions: []vdmir.Function{{
-			Name:       "F",
+			Name:        "F",
 			EmittedName: "F",
-			ReturnType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
+			ReturnType:  vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
 			Body: vdmir.Block{Statements: []vdmir.Stmt{
 				vdmir.LetStmt{Name: "values", Type: badShape, Value: vdmir.FillConstruct{ExprType: badShape, Value: vdmir.LiteralExpr{ExprType: u32Type, Kind: vdmir.LiteralInteger, Value: "7u"}}},
 			}},
@@ -202,9 +206,9 @@ func TestSdslvFixedShapeConstructionRejectsMalformedMetadata(t *testing.T) {
 	goodShape := vdmir.Type{Kind: vdmir.TypeNDArray, Name: "ndarray", Element: &u32Type, Shape: []uint32{2, 2}, ArraySize: 4}
 	_, err = Emit(vdmir.Module{
 		Functions: []vdmir.Function{{
-			Name:       "G",
+			Name:        "G",
 			EmittedName: "G",
-			ReturnType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
+			ReturnType:  vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"},
 			Body: vdmir.Block{Statements: []vdmir.Stmt{
 				vdmir.LetStmt{Name: "values", Type: goodShape, Value: vdmir.GenerateConstruct{
 					ExprType: goodShape,

@@ -44,87 +44,87 @@ fn MatmulB(k: u32, j: u32) -> u32 {
 fn Rank1Fill() -> void {
     let values: ndarray<u32, [4u]> = Fill(9u);
 
-    Assert.Equal(9u, values[0u]);
-    Assert.Equal(9u, values[1u]);
-    Assert.Equal(9u, values[2u]);
-    Assert.Equal(9u, values[3u]);
+    Assert.Equal(9u, values[0u], "Rank1Fill must preserve its declared invariant");
+    Assert.Equal(9u, values[1u], "Rank1Fill must preserve its declared invariant");
+    Assert.Equal(9u, values[2u], "Rank1Fill must preserve its declared invariant");
+    Assert.Equal(9u, values[3u], "Rank1Fill must preserve its declared invariant");
 }
 
 [Fact]
 fn Rank2Fill() -> void {
     let values: ndarray<u32, [2u, 3u]> = Fill(7u);
 
-    Assert.Equal(7u, values[0u, 0u]);
-    Assert.Equal(7u, values[0u, 2u]);
-    Assert.Equal(7u, values[1u, 0u]);
-    Assert.Equal(7u, values[1u, 2u]);
+    Assert.Equal(7u, values[0u, 0u], "Rank2Fill must preserve its declared invariant");
+    Assert.Equal(7u, values[0u, 2u], "Rank2Fill must preserve its declared invariant");
+    Assert.Equal(7u, values[1u, 0u], "Rank2Fill must preserve its declared invariant");
+    Assert.Equal(7u, values[1u, 2u], "Rank2Fill must preserve its declared invariant");
 }
 
 [Fact]
 fn Rank4Fill() -> void {
     let values: ndarray<u32, [2u, 2u, 2u, 3u]> = Fill(3u);
 
-    Assert.Equal(3u, values[0u, 0u, 0u, 0u]);
-    Assert.Equal(3u, values[0u, 1u, 1u, 2u]);
-    Assert.Equal(3u, values[1u, 0u, 1u, 1u]);
-    Assert.Equal(3u, values[1u, 1u, 1u, 2u]);
+    Assert.Equal(3u, values[0u, 0u, 0u, 0u], "Rank4Fill must preserve its declared invariant");
+    Assert.Equal(3u, values[0u, 1u, 1u, 2u], "Rank4Fill must preserve its declared invariant");
+    Assert.Equal(3u, values[1u, 0u, 1u, 1u], "Rank4Fill must preserve its declared invariant");
+    Assert.Equal(3u, values[1u, 1u, 1u, 2u], "Rank4Fill must preserve its declared invariant");
 }
 
 [Fact]
 fn Rank1Generate() -> void {
     let values: ndarray<u32, [4u]> = Generate[i](i * 2u + 1u);
 
-    Assert.Equal(1u, values[0u]);
-    Assert.Equal(3u, values[1u]);
-    Assert.Equal(5u, values[2u]);
-    Assert.Equal(7u, values[3u]);
+    Assert.Equal(1u, values[0u], "Rank1Generate must preserve its declared invariant");
+    Assert.Equal(3u, values[1u], "Rank1Generate must preserve its declared invariant");
+    Assert.Equal(5u, values[2u], "Rank1Generate must preserve its declared invariant");
+    Assert.Equal(7u, values[3u], "Rank1Generate must preserve its declared invariant");
 }
 
 [Fact]
 fn Rank2CoordinateGeneration() -> void {
     let values: ndarray<u32, [2u, 3u]> = Generate[i, j](Encode2(i, j));
 
-    Assert.Equal(0u, values[0u, 0u]);
-    Assert.Equal(1u, values[0u, 1u]);
-    Assert.Equal(2u, values[0u, 2u]);
-    Assert.Equal(10u, values[1u, 0u]);
-    Assert.Equal(11u, values[1u, 1u]);
-    Assert.Equal(12u, values[1u, 2u]);
+    Assert.Equal(0u, values[0u, 0u], "Rank2CoordinateGeneration must preserve its declared invariant");
+    Assert.Equal(1u, values[0u, 1u], "Rank2CoordinateGeneration must preserve its declared invariant");
+    Assert.Equal(2u, values[0u, 2u], "Rank2CoordinateGeneration must preserve its declared invariant");
+    Assert.Equal(10u, values[1u, 0u], "Rank2CoordinateGeneration must preserve its declared invariant");
+    Assert.Equal(11u, values[1u, 1u], "Rank2CoordinateGeneration must preserve its declared invariant");
+    Assert.Equal(12u, values[1u, 2u], "Rank2CoordinateGeneration must preserve its declared invariant");
 }
 
 [Fact]
 fn Rank3Generation() -> void {
     let values: ndarray<u32, [2u, 2u, 3u]> = Generate[i, j, k](Encode3(i, j, k));
 
-    Assert.Equal(0u, values[0u, 0u, 0u]);
-    Assert.Equal(12u, values[0u, 1u, 2u]);
-    Assert.Equal(101u, values[1u, 0u, 1u]);
-    Assert.Equal(112u, values[1u, 1u, 2u]);
+    Assert.Equal(0u, values[0u, 0u, 0u], "Rank3Generation must preserve its declared invariant");
+    Assert.Equal(12u, values[0u, 1u, 2u], "Rank3Generation must preserve its declared invariant");
+    Assert.Equal(101u, values[1u, 0u, 1u], "Rank3Generation must preserve its declared invariant");
+    Assert.Equal(112u, values[1u, 1u, 2u], "Rank3Generation must preserve its declared invariant");
 }
 
 [Fact]
 fn Rank4CoordinateEncoding() -> void {
     let values: ndarray<u32, [2u, 2u, 2u, 3u]> = Generate[a, b, c, d](Encode4(a, b, c, d));
 
-    Assert.Equal(0u, values[0u, 0u, 0u, 0u]);
-    Assert.Equal(1u, values[0u, 0u, 0u, 1u]);
-    Assert.Equal(2u, values[0u, 0u, 0u, 2u]);
-    Assert.Equal(1112u, values[1u, 1u, 1u, 2u]);
+    Assert.Equal(0u, values[0u, 0u, 0u, 0u], "Rank4CoordinateEncoding must preserve its declared invariant");
+    Assert.Equal(1u, values[0u, 0u, 0u, 1u], "Rank4CoordinateEncoding must preserve its declared invariant");
+    Assert.Equal(2u, values[0u, 0u, 0u, 2u], "Rank4CoordinateEncoding must preserve its declared invariant");
+    Assert.Equal(1112u, values[1u, 1u, 1u, 2u], "Rank4CoordinateEncoding must preserve its declared invariant");
 }
 
 [Fact]
 fn IdentityMatrixGeneration() -> void {
     let values: ndarray<u32, [3u, 3u]> = Generate[i, j](SelectUInt(i == j, 1u, 0u));
 
-    Assert.Equal(1u, values[0u, 0u]);
-    Assert.Equal(0u, values[0u, 1u]);
-    Assert.Equal(0u, values[0u, 2u]);
-    Assert.Equal(0u, values[1u, 0u]);
-    Assert.Equal(1u, values[1u, 1u]);
-    Assert.Equal(0u, values[1u, 2u]);
-    Assert.Equal(0u, values[2u, 0u]);
-    Assert.Equal(0u, values[2u, 1u]);
-    Assert.Equal(1u, values[2u, 2u]);
+    Assert.Equal(1u, values[0u, 0u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(0u, values[0u, 1u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(0u, values[0u, 2u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(0u, values[1u, 0u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(1u, values[1u, 1u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(0u, values[1u, 2u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(0u, values[2u, 0u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(0u, values[2u, 1u], "IdentityMatrixGeneration must preserve its declared invariant");
+    Assert.Equal(1u, values[2u, 2u], "IdentityMatrixGeneration must preserve its declared invariant");
 }
 
 [Fact]
@@ -141,11 +141,11 @@ fn FillExactlyOnceSemantics() -> void {
             else 99u
     );
 
-    Assert.Equal(1u, counter);
-    Assert.Equal(7u, values[0u, 0u]);
-    Assert.Equal(7u, values[0u, 1u]);
-    Assert.Equal(7u, values[1u, 0u]);
-    Assert.Equal(7u, values[1u, 1u]);
+    Assert.Equal(1u, counter, "FillExactlyOnceSemantics must preserve its declared invariant");
+    Assert.Equal(7u, values[0u, 0u], "FillExactlyOnceSemantics must preserve its declared invariant");
+    Assert.Equal(7u, values[0u, 1u], "FillExactlyOnceSemantics must preserve its declared invariant");
+    Assert.Equal(7u, values[1u, 0u], "FillExactlyOnceSemantics must preserve its declared invariant");
+    Assert.Equal(7u, values[1u, 1u], "FillExactlyOnceSemantics must preserve its declared invariant");
 }
 
 [Fact]
@@ -158,13 +158,13 @@ fn GenerateExactlyOncePerCoordinate() -> void {
         }
     );
 
-    Assert.Equal(6u, counter);
-    Assert.Equal(100u, values[0u, 0u]);
-    Assert.Equal(201u, values[0u, 1u]);
-    Assert.Equal(302u, values[0u, 2u]);
-    Assert.Equal(410u, values[1u, 0u]);
-    Assert.Equal(511u, values[1u, 1u]);
-    Assert.Equal(612u, values[1u, 2u]);
+    Assert.Equal(6u, counter, "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
+    Assert.Equal(100u, values[0u, 0u], "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
+    Assert.Equal(201u, values[0u, 1u], "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
+    Assert.Equal(302u, values[0u, 2u], "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
+    Assert.Equal(410u, values[1u, 0u], "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
+    Assert.Equal(511u, values[1u, 1u], "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
+    Assert.Equal(612u, values[1u, 2u], "GenerateExactlyOncePerCoordinate must preserve its declared invariant");
 }
 
 [Fact]
@@ -180,11 +180,11 @@ fn GuardedReadGenerateBody() -> void {
             else 99u
     );
 
-    Assert.Equal(3u, counter);
-    Assert.Equal(5u, values[0u]);
-    Assert.Equal(7u, values[1u]);
-    Assert.Equal(11u, values[2u]);
-    Assert.Equal(99u, values[3u]);
+    Assert.Equal(3u, counter, "GuardedReadGenerateBody must preserve its declared invariant");
+    Assert.Equal(5u, values[0u], "GuardedReadGenerateBody must preserve its declared invariant");
+    Assert.Equal(7u, values[1u], "GuardedReadGenerateBody must preserve its declared invariant");
+    Assert.Equal(11u, values[2u], "GuardedReadGenerateBody must preserve its declared invariant");
+    Assert.Equal(99u, values[3u], "GuardedReadGenerateBody must preserve its declared invariant");
 }
 
 [Fact]
@@ -196,10 +196,10 @@ fn InlineHlslGenerateBody() -> void {
         }
     );
 
-    Assert.Equal(768u, values[0u, 0u]);
-    Assert.Equal(769u, values[0u, 1u]);
-    Assert.Equal(784u, values[1u, 0u]);
-    Assert.Equal(785u, values[1u, 1u]);
+    Assert.Equal(768u, values[0u, 0u], "InlineHlslGenerateBody must preserve its declared invariant");
+    Assert.Equal(769u, values[0u, 1u], "InlineHlslGenerateBody must preserve its declared invariant");
+    Assert.Equal(784u, values[1u, 0u], "InlineHlslGenerateBody must preserve its declared invariant");
+    Assert.Equal(785u, values[1u, 1u], "InlineHlslGenerateBody must preserve its declared invariant");
 }
 
 [Fact]
@@ -209,10 +209,10 @@ fn OuterCaptureOrdinaryCallAndConditionalBody() -> void {
         AddBias(SelectUInt(i == j, Encode2(i, j), 7u), bias)
     );
 
-    Assert.Equal(40u, values[0u, 0u]);
-    Assert.Equal(47u, values[0u, 1u]);
-    Assert.Equal(47u, values[1u, 0u]);
-    Assert.Equal(51u, values[1u, 1u]);
+    Assert.Equal(40u, values[0u, 0u], "OuterCaptureOrdinaryCallAndConditionalBody must preserve its declared invariant");
+    Assert.Equal(47u, values[0u, 1u], "OuterCaptureOrdinaryCallAndConditionalBody must preserve its declared invariant");
+    Assert.Equal(47u, values[1u, 0u], "OuterCaptureOrdinaryCallAndConditionalBody must preserve its declared invariant");
+    Assert.Equal(51u, values[1u, 1u], "OuterCaptureOrdinaryCallAndConditionalBody must preserve its declared invariant");
 }
 
 [Fact]
@@ -222,14 +222,14 @@ fn DenseLiteralParity() -> void {
     let denseGenerate: ndarray<u32, [2u, 2u]> = [0u, 1u, 10u, 11u];
     let generated: ndarray<u32, [2u, 2u]> = Generate[i, j](Encode2(i, j));
 
-    Assert.Equal(denseFill[0u, 0u], filled[0u, 0u]);
-    Assert.Equal(denseFill[0u, 1u], filled[0u, 1u]);
-    Assert.Equal(denseFill[1u, 0u], filled[1u, 0u]);
-    Assert.Equal(denseFill[1u, 1u], filled[1u, 1u]);
-    Assert.Equal(denseGenerate[0u, 0u], generated[0u, 0u]);
-    Assert.Equal(denseGenerate[0u, 1u], generated[0u, 1u]);
-    Assert.Equal(denseGenerate[1u, 0u], generated[1u, 0u]);
-    Assert.Equal(denseGenerate[1u, 1u], generated[1u, 1u]);
+    Assert.Equal(denseFill[0u, 0u], filled[0u, 0u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseFill[0u, 1u], filled[0u, 1u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseFill[1u, 0u], filled[1u, 0u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseFill[1u, 1u], filled[1u, 1u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseGenerate[0u, 0u], generated[0u, 0u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseGenerate[0u, 1u], generated[0u, 1u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseGenerate[1u, 0u], generated[1u, 0u], "DenseLiteralParity must preserve its declared invariant");
+    Assert.Equal(denseGenerate[1u, 1u], generated[1u, 1u], "DenseLiteralParity must preserve its declared invariant");
 }
 
 [Fact]
@@ -238,12 +238,12 @@ fn TensorOperationConsumingGeneratedNDArray() -> void {
     let output: ndarray<u32, [2u, 3u]>;
     tensor output[i, j] = input[i, j] * 2u + 1u;
 
-    Assert.Equal(1u, output[0u, 0u]);
-    Assert.Equal(3u, output[0u, 1u]);
-    Assert.Equal(5u, output[0u, 2u]);
-    Assert.Equal(21u, output[1u, 0u]);
-    Assert.Equal(23u, output[1u, 1u]);
-    Assert.Equal(25u, output[1u, 2u]);
+    Assert.Equal(1u, output[0u, 0u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
+    Assert.Equal(3u, output[0u, 1u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
+    Assert.Equal(5u, output[0u, 2u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
+    Assert.Equal(21u, output[1u, 0u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
+    Assert.Equal(23u, output[1u, 1u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
+    Assert.Equal(25u, output[1u, 2u], "TensorOperationConsumingGeneratedNDArray must preserve its declared invariant");
 }
 
 [Fact]
@@ -253,14 +253,14 @@ fn MatrixMultiplicationUsingGeneratedOperands() -> void {
     let C: ndarray<u32, [2u, 4u]>;
     tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
 
-    Assert.Equal(10u, C[0u, 0u]);
-    Assert.Equal(14u, C[0u, 1u]);
-    Assert.Equal(17u, C[0u, 2u]);
-    Assert.Equal(5u, C[0u, 3u]);
-    Assert.Equal(25u, C[1u, 0u]);
-    Assert.Equal(29u, C[1u, 1u]);
-    Assert.Equal(38u, C[1u, 2u]);
-    Assert.Equal(14u, C[1u, 3u]);
+    Assert.Equal(10u, C[0u, 0u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(14u, C[0u, 1u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(17u, C[0u, 2u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(5u, C[0u, 3u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(25u, C[1u, 0u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(29u, C[1u, 1u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(38u, C[1u, 2u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
+    Assert.Equal(14u, C[1u, 3u], "MatrixMultiplicationUsingGeneratedOperands must preserve its declared invariant");
 }
 
 [WorkgroupSize(4, 1, 1)]
@@ -270,6 +270,6 @@ fn MultipleInvocationsRemainStable() -> void {
     let base: u32 = DispatchThreadID.x * 10u;
     let values: ndarray<u32, [2u]> = Generate[i](base + i);
 
-    Assert.Equal(DispatchThreadID.x * 10u, values[0u]);
-    Assert.Equal(DispatchThreadID.x * 10u + 1u, values[1u]);
+    Assert.Equal(DispatchThreadID.x * 10u, values[0u], "MultipleInvocationsRemainStable must preserve its declared invariant");
+    Assert.Equal(DispatchThreadID.x * 10u + 1u, values[1u], "MultipleInvocationsRemainStable must preserve its declared invariant");
 }

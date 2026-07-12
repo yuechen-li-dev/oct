@@ -127,7 +127,7 @@ func Prepare(path string) (Suite, error) {
 // ProjectManifest is a one-way host serialization projection from canonical
 // suite/group data. It contains no validation, defaults, or identity logic.
 func ProjectManifest(suite Suite, artifacts []Group) Manifest {
-	m := Manifest{SchemaVersion: 3, ResultABIVersion: ResultABIVersion, Source: suite.Source}
+	m := Manifest{SchemaVersion: 4, ResultABIVersion: ResultABIVersion, Source: suite.Source}
 	m.Interface.DescriptorSet = 0
 	m.Interface.Binding = 0
 	m.Interface.Resource = "compiler-owned assertion result buffer"

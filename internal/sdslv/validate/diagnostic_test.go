@@ -12,7 +12,7 @@ import (
 )
 
 func TestSdslvStructuredDiagnosticsUsePreciseSpans(t *testing.T) {
-	text := "[Fact][Fact]\nfn T(x: u32) -> void { let y: u32 = missing; Assert.True(1u); return; }\n"
+	text := "[Fact][Fact]\nfn T(x: u32) -> void { let y: u32 = missing; Assert.True(1u, \"embedded SDSL-V fixture must preserve its asserted invariant\"); return; }\n"
 	tokens, err := lex.Analyze(source.File{Path: "test.sdslvtest", Text: text})
 	if err != nil {
 		t.Fatal(err)
@@ -119,9 +119,9 @@ func TestSdslvM29DiagnosticCodesAndSpans(t *testing.T) {
 		{"test input return value", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> u32 { return TestInput; }\n", "SDSL-V1215", "TestInput"},
 		{"test input mutation", "", "[Fact]\n[TestInputUInt(1u)]\nfn T() -> void { TestInput.UInt[0u] = 2u; }\n", "SDSL-V1000", "TestInput.UInt[0u] = 2u;"},
 		{"workgroup argument", "", "[Fact]\n[WorkgroupSize(0u, 1u, 1u)]\nfn T() -> void {}\n", "SDSL-V1304", "0u"},
-		{"assert arity", "", "[Fact]\nfn T() -> void { Assert.Equal(1u); }\n", "SDSL-V1401", "Assert.Equal(1u)"},
+		{"assert arity", "", "[Fact]\nfn T() -> void { Assert.Equal(1u, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n", "SDSL-V1401", "Assert.Equal(1u, \"embedded SDSL-V fixture must preserve its asserted invariant\")"},
 		{"assert member", "", "[Fact]\nfn T() -> void { Assert.Missing(1u); }\n", "SDSL-V1405", "Assert.Missing(1u)"},
-		{"negative near tolerance", "", "[Fact]\nfn T() -> void { Assert.Near(1.0, 1.0, -0.1); }\n", "SDSL-V1404", "-0.1"},
+		{"negative near tolerance", "", "[Fact]\nfn T() -> void { Assert.Near(1.0, 1.0, -0.1, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n", "SDSL-V1404", "-0.1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

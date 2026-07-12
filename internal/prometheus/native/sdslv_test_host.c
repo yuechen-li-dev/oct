@@ -62,8 +62,26 @@ static void pause_ms(void) {
 #endif
 }
 
-static void json(const char *status, const char *detail, const char *id,
-                 const result_record *r) {
+static void json_string(const char *value) {
+  const unsigned char *p = (const unsigned char *)(value ? value : "");
+  putchar('"');
+  while (*p != '\0') {
+    if (*p == '"' || *p == '\\') {
+      putchar('\\');
+      putchar(*p);
+    } else if (*p < 0x20u) {
+      printf("\\u%04x", (unsigned int)*p);
+    } else {
+      putchar(*p);
+    }
+    p++;
+  }
+  putchar('"');
+}
+
+static void json_with_reason(const char *status, const char *detail,
+                             const char *id, const char *reason,
+                             const result_record *r) {
   printf("{\"status\":\"%s\",\"detail\":\"%s\",\"stable_case_id\":\"%s\"",
          status, detail, id ? id : "");
   if (r != NULL) {
@@ -78,9 +96,16 @@ static void json(const char *status, const char *detail, const char *id,
            r->expected[1], r->expected[2], r->expected[3], r->actual[0],
            r->actual[1], r->actual[2], r->actual[3], r->tolerance[0],
            r->tolerance[1], r->tolerance[2], r->tolerance[3]);
+    if (reason != NULL) {
+      printf(",\"reason\":");
+      json_string(reason);
+    }
   }
   puts("}");
 }
+
+#define json(status, detail, id, result) \
+  json_with_reason(status, detail, id, NULL, result)
 
 static uint32_t memory_type(VkPhysicalDevice physical, uint32_t bits,
                             VkMemoryPropertyFlags flags) {
@@ -494,6 +519,52 @@ static int parse_manifest_input(const char *manifest, const char *stable_id,
   return 1;
 }
 
+static int parse_manifest_assertion_reason(const char *manifest,
+                                           const char *stable_id,
+                                           uint32_t assertion_id, char *out,
+                                           size_t out_cap) {
+  const char *case_start;
+  const char *assertions;
+  const char *assertions_end;
+  const char *p;
+  uint32_t index = 0u;
+  if (!find_case_object(manifest, stable_id, &case_start) ||
+      !object_member_range(case_start, "assertions", &assertions,
+                           &assertions_end)) {
+    return 0;
+  }
+  p = skip_ws(assertions);
+  if (*p != '[') {
+    return 0;
+  }
+  p++;
+  while (1) {
+    const char *end;
+    p = skip_ws(p);
+    if (*p == ']') {
+      return 0;
+    }
+    if (*p != '{') {
+      return 0;
+    }
+    end = skip_json_compound(p, '{', '}');
+    if (end == NULL) {
+      return 0;
+    }
+    if (index == assertion_id) {
+      return object_string_field(p, "reason", out, out_cap) ||
+             object_string_field(p, "Reason", out, out_cap);
+    }
+    index++;
+    p = skip_ws(end);
+    if (*p == ',') {
+      p++;
+      continue;
+    }
+    return *p == ']';
+  }
+}
+
 static int allocate_host_visible_buffer(VkPhysicalDevice physical, VkDevice device,
                                         VkDeviceSize size, buffer_allocation *out) {
   VkBufferCreateInfo buffer_info = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -587,6 +658,7 @@ int main(int argc, char **argv) {
   VkFence fence = VK_NULL_HANDLE;
   result_record *records = NULL;
   result_record *failure = NULL;
+  char assertion_reason[1024];
   memset(&input_metadata, 0, sizeof(input_metadata));
   memset(&result_buffer, 0, sizeof(result_buffer));
   memset(&input_buffer, 0, sizeof(input_buffer));
@@ -948,7 +1020,16 @@ int main(int argc, char **argv) {
     }
   }
   if (failure != NULL) {
-    json("ASSERTION_FAILED", "assertion", stable_id, failure);
+    if (!parse_manifest_assertion_reason((const char *)manifest_bytes,
+                                         stable_id, failure->assertion_id,
+                                         assertion_reason,
+                                         sizeof(assertion_reason))) {
+      json("HOST_FAILURE", "malformed assertion reason metadata", stable_id,
+           NULL);
+      goto done;
+    }
+    json_with_reason("ASSERTION_FAILED", "assertion", stable_id,
+                     assertion_reason, failure);
   } else {
     json("PASS", "", stable_id, &records[0]);
   }

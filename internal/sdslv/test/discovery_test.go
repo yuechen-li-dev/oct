@@ -170,7 +170,7 @@ func TestSdslvTestCompilesOneModulePerWorkgroupSize(t *testing.T) {
 
 func TestSdslvTestBodiesUseNormalVDMIRAndNoFixtureEmitter(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "real.sdslvtest")
-	src := "[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\nfn Rows(v: u32) -> void { let plus: u32 = v + 1u; Assert.Equal(plus, v + 1u); Assert.NotEqual(v, 0u); }\n"
+	src := "[Theory]\n[InlineData(1u)]\n[InlineData(2u)]\nfn Rows(v: u32) -> void { let plus: u32 = v + 1u; Assert.Equal(plus, v + 1u, \"embedded SDSL-V fixture must preserve its asserted invariant\"); Assert.NotEqual(v, 0u, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestSdslvAssertOperandEmissionMaterializesOnceInOrder(t *testing.T) {
 
 func TestSdslvBuildTestProgramKeepsBackendNeutralExecutionData(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "rows.sdslvtest")
-	if err := os.WriteFile(path, []byte("[Theory]\n[InlineData(true, 7u, 1.5)]\nfn Rows(a: bool, b: u32, c: f32) -> void { Assert.True(a); }\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("[Theory]\n[InlineData(true, 7u, 1.5)]\nfn Rows(a: bool, b: u32, c: f32) -> void { Assert.True(a, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	suite, err := Prepare(path)
@@ -291,7 +291,7 @@ func TestSdslvBuildTestProgramKeepsBackendNeutralExecutionData(t *testing.T) {
 
 func TestSdslvTestInputManifestAndStableIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "suite.sdslvtest")
-	src := "[Fact]\n[TestInputUInt(7u, 11u)]\nfn Guarded() -> void { let index: u32 = 1u; let valid: bool = index < TestInput.Length; let value: u32 = read TestInput.UInt[index] when valid else 99u; Assert.Equal(11u, value); }\n"
+	src := "[Fact]\n[TestInputUInt(7u, 11u)]\nfn Guarded() -> void { let index: u32 = 1u; let valid: bool = index < TestInput.Length; let value: u32 = read TestInput.UInt[index] when valid else 99u; Assert.Equal(11u, value, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestSdslvTestInputManifestAndStableIDs(t *testing.T) {
 
 func TestSdslvTestInputManifestSerializationUsesCanonicalFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "suite.sdslvtest")
-	src := "[Fact]\n[TestInputBool(true, false)]\nfn Reads() -> void { let value: bool = read TestInput.Bool[0u] when 0u < TestInput.Length else false; Assert.True(value); }\n"
+	src := "[Fact]\n[TestInputBool(true, false)]\nfn Reads() -> void { let value: bool = read TestInput.Bool[0u] when 0u < TestInput.Length else false; Assert.True(value, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestSdslvTestInputManifestSerializationUsesCanonicalFields(t *testing.T) {
 
 func TestSdslvTestInputCompilesThroughSharedHLSLResource(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "input.sdslvtest")
-	src := "[Fact]\n[TestInputFloat(-0.0, 1.5)]\nfn ReadInput() -> void { let x: f32 = read TestInput.Float[1u] when 1u < TestInput.Length else 0.0; Assert.Near(1.5, x, 0.0); }\n"
+	src := "[Fact]\n[TestInputFloat(-0.0, 1.5)]\nfn ReadInput() -> void { let x: f32 = read TestInput.Float[1u] when 1u < TestInput.Length else 0.0; Assert.Near(1.5, x, 0.0, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}

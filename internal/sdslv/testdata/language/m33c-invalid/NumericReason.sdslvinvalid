@@ -1,0 +1,6 @@
+expect error: "assertion reason must be a nonempty string literal"
+
+[Fact]
+fn NumericReason() -> void {
+    Assert.True(true, 1u);
+}

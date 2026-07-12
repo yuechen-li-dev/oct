@@ -98,6 +98,13 @@ func parseOctFailFixture(content string) (string, string, error) {
 	return expected, source, nil
 }
 
+// ParseOctFailFixture exposes the established fixture header grammar to
+// language-specific invalid corpora. Callers retain ownership of compilation
+// and diagnostic-code checks; this helper owns only expectation parsing.
+func ParseOctFailFixture(content string) (string, string, error) {
+	return parseOctFailFixture(content)
+}
+
 func runOctFailCase(testCase octFailCase) (string, error) {
 	tempDir, err := os.MkdirTemp("", "octfail-*")
 	if err != nil {

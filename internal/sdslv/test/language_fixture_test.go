@@ -3,6 +3,7 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/yuechen-li-dev/oct/internal/diagnostic"
@@ -11,6 +12,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/sdslv/parse"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/validate"
 	"github.com/yuechen-li-dev/oct/internal/source"
+	"github.com/yuechen-li-dev/oct/internal/tester"
 )
 
 type invalidFixtureExpectation struct {
@@ -80,6 +82,48 @@ func TestSdslvInvalidLanguageFixtureCorpus(t *testing.T) {
 				}
 			}
 			t.Fatalf("missing expected diagnostic %s", expectation.code)
+		})
+	}
+}
+
+func TestSdslvM33cInvalidReasonFixtureCorpusUsesOctFailExpectations(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join(languageFixtureRoot(t), "m33c-invalid", "*.sdslvinvalid"))
+	if err != nil || len(paths) != 10 {
+		t.Fatalf("M33c invalid fixture corpus: paths=%v err=%v", paths, err)
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected, program, err := tester.ParseOctFailFixture(string(data))
+			if err != nil {
+				t.Fatalf("invalid expect header: %v", err)
+			}
+			file := source.File{Path: path, Text: program}
+			tokens, err := lex.Analyze(file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := parse.BuildModule(tokens)
+			if err != nil {
+				t.Fatal(err)
+			}
+			diagnostics := validate.Diagnostics(module)
+			if len(diagnostics) == 0 {
+				t.Fatal("expected validation diagnostic")
+			}
+			actual := diagnostic.Error(diagnostics).Error()
+			if !strings.Contains(actual, expected) {
+				t.Fatalf("expectation mismatch: expected diagnostic containing %q, got %s", expected, actual)
+			}
+			if diagnostics[0].Code != "SDSL-V1401" && diagnostics[0].Code != "SDSL-V1406" {
+				t.Fatalf("unexpected M33c diagnostic code %s", diagnostics[0].Code)
+			}
+			if !diagnostics[0].Span.Known() {
+				t.Fatal("M33c diagnostic lost source span")
+			}
 		})
 	}
 }
@@ -318,8 +362,8 @@ func assertInvalidFixtureExpectation(t *testing.T, path string, expectation inva
 func TestSdslvNormalDirectoryDiscoveryExcludesLanguageFixtures(t *testing.T) {
 	dir := t.TempDir()
 	for name, contents := range map[string]string{
-		"normal.sdslvtest":     "[Fact]\nfn Normal() -> void { Assert.True(true); }\n",
-		"valid.sdslvvalid":     "[Fact]\nfn Intentional() -> void { Assert.True(false); }\n",
+		"normal.sdslvtest":     "[Fact]\nfn Normal() -> void { Assert.True(true, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n",
+		"valid.sdslvvalid":     "[Fact]\nfn Intentional() -> void { Assert.True(false, \"embedded SDSL-V fixture must preserve its asserted invariant\"); }\n",
 		"invalid.sdslvinvalid": "[Theory]\nfn Invalid(x: u32) -> void {}\n",
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o644); err != nil {

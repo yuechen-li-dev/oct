@@ -4,7 +4,7 @@ fn InlineHlslAsUint() -> void {
     let bits: u32 = HLSL<u32>(value) {
         return asuint(value);
     };
-    Assert.Equal(1065353216u, bits);
+    Assert.Equal(1065353216u, bits, "InlineHlslAsUint must preserve its declared invariant");
 }
 
 [Theory]
@@ -14,12 +14,12 @@ fn FloatBitPattern(value: f32, expected: u32) -> void {
     let actual: u32 = HLSL<u32>(value) {
         return asuint(value);
     };
-    Assert.Equal(expected, actual);
+    Assert.Equal(expected, actual, "FloatBitPattern must preserve its declared invariant");
 }
 
 [WorkgroupSize(32, 1, 1)]
 [DispatchGroups(1, 1, 1)]
 [Fact]
 fn ExplicitLaunchMetadata() -> void {
-    Assert.True(true);
+    Assert.True(true, "ExplicitLaunchMetadata must preserve its declared invariant");
 }

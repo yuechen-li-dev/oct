@@ -422,20 +422,20 @@ func vdmirAssertCall(call vdmir.CallExpr) bool {
 }
 
 func makeVDMIRAssert(call vdmir.CallExpr, meta validate.ValidatedAssertCall) (vdmir.AssertStmt, error) {
-	op := vdmir.AssertStmt{Provenance: call.Provenance, Kind: vdmir.AssertKind(meta.Kind), CallSpan: meta.CallSpan, OperandSpans: append([]source.Span(nil), meta.OperandSpans...), LexicalIndex: meta.LexicalIndex, ComponentCount: 1}
-	if len(call.Arguments) == 0 {
+	op := vdmir.AssertStmt{Provenance: call.Provenance, Kind: vdmir.AssertKind(meta.Kind), Reason: meta.Reason, ReasonSpan: meta.ReasonSpan, CallSpan: meta.CallSpan, OperandSpans: append([]source.Span(nil), meta.OperandSpans...), LexicalIndex: meta.LexicalIndex, ComponentCount: 1}
+	if len(meta.Operands) == 0 {
 		return op, fmt.Errorf("SDSL-V2902 assertion without operands")
 	}
 	switch op.Kind {
 	case vdmir.AssertTrue, vdmir.AssertFalse:
 		op.Actual = call.Arguments[0]
 	case vdmir.AssertEqual, vdmir.AssertNotEqual:
-		if len(call.Arguments) != 2 {
+		if len(meta.Operands) != 2 {
 			return op, fmt.Errorf("SDSL-V2902 assertion arity mismatch")
 		}
 		op.Expected, op.Actual = call.Arguments[0], call.Arguments[1]
 	case vdmir.AssertNear:
-		if len(call.Arguments) != 3 {
+		if len(meta.Operands) != 3 {
 			return op, fmt.Errorf("SDSL-V2902 assertion arity mismatch")
 		}
 		op.Expected, op.Actual, op.Tolerance = call.Arguments[0], call.Arguments[1], call.Arguments[2]

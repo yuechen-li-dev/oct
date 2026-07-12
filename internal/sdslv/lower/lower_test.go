@@ -182,24 +182,38 @@ func TestSdslvLowersFixedShapeConstruction(t *testing.T) {
   let B: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 3u + j);
   return;
 }`})
-	if err != nil { t.Fatal(err) }
-	module, err := parse.BuildModule(tokens); if err != nil { t.Fatal(err) }
-	if err := validate.Module(module); err != nil { t.Fatal(err) }
-	mir, err := Module(module); if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := parse.BuildModule(tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validate.Module(module); err != nil {
+		t.Fatal(err)
+	}
+	mir, err := Module(module)
+	if err != nil {
+		t.Fatal(err)
+	}
 	stmts := mir.Functions[0].Body.Statements
-	if _, ok := stmts[0].(vdmir.LetStmt).Value.(vdmir.FillConstruct); !ok { t.Fatalf("Fill MIR = %#v", stmts[0]) }
+	if _, ok := stmts[0].(vdmir.LetStmt).Value.(vdmir.FillConstruct); !ok {
+		t.Fatalf("Fill MIR = %#v", stmts[0])
+	}
 	generated, ok := stmts[1].(vdmir.LetStmt).Value.(vdmir.GenerateConstruct)
-	if !ok || !slices.Equal(generated.Binders, []string{"i", "j"}) { t.Fatalf("Generate MIR = %#v", stmts[1]) }
+	if !ok || !slices.Equal(generated.Binders, []string{"i", "j"}) {
+		t.Fatalf("Generate MIR = %#v", stmts[1])
+	}
 }
 
 func TestSdslvAssertCallsLowerToDedicatedVDMIRStatements(t *testing.T) {
 	tokens, err := lex.Analyze(source.File{Path: "asserts.sdslvtest", Text: `[Fact]
 fn Assertions() -> void {
-  Assert.True(true);
-  Assert.False(false);
-  Assert.Equal(1u, 1u);
-  Assert.NotEqual(1, 2);
-  Assert.Near(1.0, 1.0, 0.1);
+  Assert.True(true, "embedded SDSL-V fixture must preserve its asserted invariant");
+  Assert.False(false, "embedded SDSL-V fixture must preserve its asserted invariant");
+  Assert.Equal(1u, 1u, "embedded SDSL-V fixture must preserve its asserted invariant");
+  Assert.NotEqual(1, 2, "embedded SDSL-V fixture must preserve its asserted invariant");
+  Assert.Near(1.0, 1.0, 0.1, "embedded SDSL-V fixture must preserve its asserted invariant");
 }`})
 	if err != nil {
 		t.Fatal(err)
@@ -241,9 +255,9 @@ func TestSdslvAssertOperandsRemainSingleVDMIRExpressionsInSourceOrder(t *testing
 [TestInputUInt(10u, 20u)]
 fn Once() -> void {
   let counter: u32 = 0u;
-  Assert.Equal(HLSL<u32>(counter) { counter = counter + 1u; return 7u; }, HLSL<u32>(counter) { counter = counter + 1u; return 7u; });
-  Assert.Near(HLSL<f32>(counter) { counter = counter + 1u; return 1.0; }, HLSL<f32>(counter) { counter = counter + 1u; return 1.0; }, HLSL<f32>(counter) { counter = counter + 1u; return 0.0; });
-  Assert.Equal(20u, read TestInput.UInt[1u] when 1u < TestInput.Length else 99u);
+  Assert.Equal(HLSL<u32>(counter) { counter = counter + 1u; return 7u; }, HLSL<u32>(counter) { counter = counter + 1u; return 7u; }, "embedded SDSL-V fixture must preserve its asserted invariant");
+  Assert.Near(HLSL<f32>(counter) { counter = counter + 1u; return 1.0; }, HLSL<f32>(counter) { counter = counter + 1u; return 1.0; }, HLSL<f32>(counter) { counter = counter + 1u; return 0.0; }, "embedded SDSL-V fixture must preserve its asserted invariant");
+  Assert.Equal(20u, read TestInput.UInt[1u] when 1u < TestInput.Length else 99u, "embedded SDSL-V fixture must preserve its asserted invariant");
 }`})
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +311,7 @@ fn ReadInput() -> void {
   let index: u32 = 1u;
   let valid: bool = index < TestInput.Length;
   let value: i32 = read TestInput.Int[index] when valid else 0;
-  Assert.Equal(9, value);
+  Assert.Equal(9, value, "embedded SDSL-V fixture must preserve its asserted invariant");
 }`})
 	if err != nil {
 		t.Fatal(err)
@@ -344,7 +358,7 @@ fn GuardedTensor() -> void {
   indices[3u] = 0u;
   let output: array<u32, 4u>;
   tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
-  Assert.Equal(7u, output[0u]);
+  Assert.Equal(7u, output[0u], "embedded SDSL-V fixture must preserve its asserted invariant");
 }`})
 	if err != nil {
 		t.Fatal(err)

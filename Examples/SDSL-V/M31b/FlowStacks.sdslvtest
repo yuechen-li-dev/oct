@@ -10,7 +10,7 @@ fn LinearFallthroughLegacy() -> void {
     state B { trace = AppendTrace(trace, 2u); }
     state C { trace = AppendTrace(trace, 3u); }
     }
-    Assert.Equal(123u, trace);
+    Assert.Equal(123u, trace, "LinearFallthroughLegacy must preserve its declared invariant");
 }
 
 [Fact]
@@ -21,7 +21,7 @@ fn GotoOnlyTransfer() -> void {
     state B { trace = AppendTrace(trace, 2u); finish; }
     state C { trace = AppendTrace(trace, 3u); goto B; }
     }
-    Assert.Equal(132u, trace);
+    Assert.Equal(132u, trace, "GotoOnlyTransfer must preserve its declared invariant");
 }
 
 [Fact]
@@ -31,7 +31,7 @@ fn FinishOnlyFlowPreservesEpilogue() -> void {
     state A { trace = AppendTrace(trace, 1u); finish; }
     }
     trace = AppendTrace(trace, 2u);
-    Assert.Equal(12u, trace);
+    Assert.Equal(12u, trace, "FinishOnlyFlowPreservesEpilogue must preserve its declared invariant");
 }
 
 [Fact]
@@ -42,7 +42,7 @@ fn OnePushPop() -> void {
     state Resume { trace = AppendTrace(trace, 3u); finish; }
     state Shared { trace = AppendTrace(trace, 2u); pop; }
     }
-    Assert.Equal(123u, trace);
+    Assert.Equal(123u, trace, "OnePushPop must preserve its declared invariant");
 }
 
 [Fact]
@@ -55,7 +55,7 @@ fn NestedPushPopLifo() -> void {
     state BReturn { trace = AppendTrace(trace, 4u); pop; }
     state C { trace = AppendTrace(trace, 3u); pop; }
     }
-    Assert.Equal(12345u, trace);
+    Assert.Equal(12345u, trace, "NestedPushPopLifo must preserve its declared invariant");
 }
 
 [Fact]
@@ -68,7 +68,7 @@ fn SharedSubflowCallerSpecificReturn() -> void {
     state AfterB { trace = AppendTrace(trace, 5u); finish; }
     state Shared { trace = AppendTrace(trace, digit); pop; }
     }
-    Assert.Equal(12345u, trace);
+    Assert.Equal(12345u, trace, "SharedSubflowCallerSpecificReturn must preserve its declared invariant");
 }
 
 [Fact]
@@ -79,7 +79,7 @@ fn FinalStatePushReturnsToCompletion() -> void {
     state Cleanup { trace = AppendTrace(trace, 3u); pop; }
     state Final { trace = AppendTrace(trace, 2u); push Cleanup; }
     }
-    Assert.Equal(123u, trace);
+    Assert.Equal(123u, trace, "FinalStatePushReturnsToCompletion must preserve its declared invariant");
 }
 
 [Fact]
@@ -90,7 +90,7 @@ fn FinishWithNonemptyStack() -> void {
     state Shared { trace = AppendTrace(trace, 2u); finish; }
     }
     trace = AppendTrace(trace, 3u);
-    Assert.Equal(123u, trace);
+    Assert.Equal(123u, trace, "FinishWithNonemptyStack must preserve its declared invariant");
 }
 
 [Fact]
@@ -101,8 +101,8 @@ fn FlowFollowedByAssert() -> void {
     state Resume { trace = AppendTrace(trace, 3u); finish; }
     state Shared { trace = AppendTrace(trace, 2u); pop; }
     }
-    Assert.Equal(123u, trace);
-    Assert.True(trace > 100u);
+    Assert.Equal(123u, trace, "FlowFollowedByAssert must preserve its declared invariant");
+    Assert.True(trace > 100u, "FlowFollowedByAssert must preserve its declared invariant");
 }
 
 [WorkgroupSize(4, 1, 1)]
@@ -115,7 +115,7 @@ fn MultipleInvocationsRemainDeterministic() -> void {
     state Resume { trace = AppendTrace(trace, 3u); finish; }
     state Shared { trace = AppendTrace(trace, 2u); pop; }
     }
-    Assert.Equal(123u, trace);
+    Assert.Equal(123u, trace, "MultipleInvocationsRemainDeterministic must preserve its declared invariant");
 }
 
 [Theory]
@@ -129,7 +129,7 @@ fn TheoryRowFlow(seed: u32, expected: u32) -> void {
     state Shared { trace = AppendTrace(trace, 2u); pop; }
     }
     trace = AppendTrace(trace, seed);
-    Assert.Equal(expected, trace);
+    Assert.Equal(expected, trace, "TheoryRowFlow must preserve its declared invariant");
 }
 
 [WorkgroupSize(4, 1, 1)]
@@ -149,5 +149,5 @@ fn BarrierSubflowRemainsUniform() -> void {
     }
     }
     trace = AppendTrace(trace, 4u);
-    Assert.Equal(1234u, trace);
+    Assert.Equal(1234u, trace, "BarrierSubflowRemainsUniform must preserve its declared invariant");
 }

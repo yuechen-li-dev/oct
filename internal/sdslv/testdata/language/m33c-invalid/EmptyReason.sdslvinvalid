@@ -1,0 +1,6 @@
+expect error: "assertion reason must be a nonempty string literal"
+
+[Fact]
+fn EmptyReason() -> void {
+    Assert.Equal(1u, 1u, "");
+}

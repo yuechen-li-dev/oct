@@ -1,0 +1,6 @@
+expect error: "Assert.Near requires a final nonempty string-literal reason"
+
+[Fact]
+fn ReasonlessNear() -> void {
+    Assert.Near(1.0, 1.0, 0.0);
+}

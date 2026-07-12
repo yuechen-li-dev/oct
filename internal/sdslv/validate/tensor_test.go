@@ -116,7 +116,7 @@ fn GuardedTensor() -> void {
 
     let output: array<u32, 4u>;
     tensor output[i] = read TestInput.UInt[indices[i]] when indices[i] < TestInput.Length else 99u;
-    Assert.Equal(7u, output[0u]);
+    Assert.Equal(7u, output[0u], "embedded SDSL-V fixture must preserve its asserted invariant");
 }`)
 	module.Source.Path = "guarded_tensor.sdslvtest"
 	assigns, diags := ValidatedTensorAssignments(module)

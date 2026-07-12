@@ -215,6 +215,12 @@ implemented scalar/vector payload kinds. The test harness has real Vulkan proof
 for the committed inline-HLSL route, while arbitrary source-body lowering and
 arbitrary user descriptors remain deliberately bounded/deferred.
 
+Every assertion requires a final nonempty string-literal reason. The reason
+describes the invariant under test, is retained as compiler-owned manifest
+metadata, and is reported by the host on failure. It is not a shader runtime
+string and does not change the GPU result ABI. Empty and ASCII-whitespace-only
+literals, variables, and other expressions are rejected.
+
 # Part II — Compute language
 
 | Feature | Status | Parser | Validator | Backend | Hardware proof |
