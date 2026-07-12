@@ -175,6 +175,13 @@ not changed. Rollback is therefore deletion of this audit tree only.
 
 ## Validation recorded
 
+M34a follow-up: a focused MSVC-built audit binary now runs all five immutable
+original module words and their generated audit-tree candidates through the
+real SGEMM host path. The bounded nine-shape matrix passed CPU/original/
+candidate comparisons. This is initial hardware evidence only; no production
+replacement is authorized until validation-layer accounting, per-run replay
+JSON, and final timing summaries are completed.
+
 - five `sdslv check` passes
 - five VD-MIR and HLSL emissions
 - five DXC Vulkan 1.0 `-O3` compilations

@@ -3852,6 +3852,11 @@ static void prom_sgemm_publish_final_dispatch_diagnostics(prometheus_runtime* rt
  * DVT/PVT lifecycle fields remain telemetry only and do not gate a wired variant.
  */
 
+typedef struct prom_sgemm_audit_execution_override {
+  const prom_sgemm_audit_execution_descriptor* descriptor;
+  VkPipeline pipeline;
+} prom_sgemm_audit_execution_override;
+
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                         const float* a,
                                                         const float* b,
@@ -3861,6 +3866,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                                         uint32_t k,
                                                         uint32_t requested_variant,
                                                         uint32_t selector_controls_dispatch_variant,
+                                                        const prom_sgemm_audit_execution_override* audit_override,
                                                         uint32_t* out_stage,
                                                         int* out_detail_code);
 
@@ -3876,6 +3882,7 @@ int prom_reactor_runtime_sgemm_impl(void* handle,
   return prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k,
                                                       PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR,
                                                       1u,
+                                                      NULL,
                                                       out_stage, out_detail_code);
 }
 
@@ -3891,7 +3898,87 @@ int prom_reactor_runtime_sgemm_benchmark_variant_impl(void* handle,
                                                       int* out_detail_code) {
   return prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k, requested_variant,
                                                       0u,
+                                                      NULL,
                                                       out_stage, out_detail_code);
+}
+
+int prom_reactor_runtime_sgemm_audit_impl(void* handle,
+                                          const float* a,
+                                          const float* b,
+                                          float* c,
+                                          uint32_t m,
+                                          uint32_t n,
+                                          uint32_t k,
+                                          const prom_sgemm_audit_execution_descriptor* descriptor,
+                                          prom_sgemm_audit_execution_result* out_result) {
+  prometheus_runtime* rt;
+  VkShaderModule module = VK_NULL_HANDLE;
+  VkPipeline pipeline = VK_NULL_HANDLE;
+  VkShaderModuleCreateInfo shader_info;
+  VkPipelineShaderStageCreateInfo stage_info;
+  VkComputePipelineCreateInfo pipeline_info;
+  VkResult result;
+  uint32_t stage = PROM_STAGE_NONE;
+  int detail = 0;
+  int execution_result;
+
+  if (out_result != NULL) memset(out_result, 0, sizeof(*out_result));
+  if (handle == NULL || descriptor == NULL || descriptor->spirv_words == NULL || descriptor->spirv_size_bytes == 0u ||
+      (descriptor->spirv_size_bytes % sizeof(uint32_t)) != 0u || descriptor->spirv_words[0] != 0x07230203u ||
+      descriptor->entry_point == NULL || descriptor->entry_point[0] == '\0' || descriptor->dispatch.threads_x == 0u ||
+      descriptor->dispatch.threads_y == 0u || descriptor->dispatch.threads_z == 0u ||
+      descriptor->dispatch.outputs_per_invocation_m == 0u || descriptor->dispatch.outputs_per_invocation_n == 0u) {
+    if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = PROM_ERROR; }
+    return PROM_ERROR;
+  }
+  if (!registry_contains(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->available == 0u) return PROM_ERROR;
+  if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u) return PROM_ERROR;
+  if (descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_BASELINE &&
+      descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_TILED &&
+      descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 &&
+      descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) return PROM_ERROR;
+
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = descriptor->spirv_size_bytes;
+  shader_info.pCode = descriptor->spirv_words;
+  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &module);
+  if (result != VK_SUCCESS) { if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = (int)result; } return PROM_ERROR; }
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = module;
+  stage_info.pName = descriptor->entry_point;
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = rt->pipeline_layout;
+  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &pipeline);
+  if (result != VK_SUCCESS) {
+    vkDestroyShaderModule(rt->device, module, NULL);
+    if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = (int)result; }
+    return PROM_ERROR;
+  }
+  {
+    prom_sgemm_audit_execution_override execution;
+    execution.descriptor = descriptor;
+    execution.pipeline = pipeline;
+    execution_result = prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k,
+                                                                      PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR, 0u,
+                                                                      &execution, &stage, &detail);
+  }
+  vkDestroyPipeline(rt->device, pipeline, NULL);
+  vkDestroyShaderModule(rt->device, module, NULL);
+  if (out_result != NULL) {
+    out_result->stage = stage;
+    out_result->detail_code = detail;
+    out_result->dispatch_geometry = prom_sgemm_dispatch_geometry_for_metadata(m, n, &descriptor->dispatch);
+    out_result->gpu_timing_valid = rt->last_gpu_timing_valid;
+    out_result->gpu_duration_ns = rt->last_gpu_duration_ns;
+  }
+  return execution_result;
 }
 
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
@@ -3903,6 +3990,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                      uint32_t k,
                                      uint32_t requested_variant,
                                      uint32_t selector_controls_dispatch_variant,
+                                     const prom_sgemm_audit_execution_override* audit_override,
                                      uint32_t* out_stage,
                                      int* out_detail_code) {
   prometheus_runtime* rt;
@@ -4452,6 +4540,11 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   selected_path = judgment_decision.selected_path;
   compute_mode = judgment_decision.compute_mode;
   final_detail = judgment_decision.final_detail;
+  if (audit_override != NULL && audit_override->descriptor != NULL) {
+    /* Audit-only mode selection changes packing after production policy has
+       completed. It never feeds a candidate back into policy or registry state. */
+    compute_mode = (prom_vk_compute_mode)audit_override->descriptor->compute_mode;
+  }
   memset(&transfer_queue_decision, 0, sizeof(transfer_queue_decision));
   rt->transfer_selector_cache.last_dirty_dependency_mask = transfer_queue_projection.dependent_dirty_key_mask_last_commit;
   rt->transfer_selector_cache.dependency_mask = transfer_queue_projection.dependent_dirty_key_mask_last_commit;
@@ -4877,6 +4970,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   } else {
     selected_pipeline = rt->pipeline;
   }
+  if (audit_override != NULL && audit_override->pipeline != VK_NULL_HANDLE) {
+    selected_pipeline = audit_override->pipeline;
+  }
   prom_sgemm_publish_final_dispatch_diagnostics(rt, requested_variant, (uint32_t)policy_mode, &path_compute_snapshot);
 
   memset(buffer_infos, 0, sizeof(buffer_infos));
@@ -5177,7 +5273,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
 
   /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
-  dispatch_geometry = prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
+  dispatch_geometry = audit_override != NULL && audit_override->descriptor != NULL
+                          ? prom_sgemm_dispatch_geometry_for_metadata(m, n, &audit_override->descriptor->dispatch)
+                          : prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
   vkCmdDispatch(rt->command_buffer,
                 dispatch_geometry.groups_x,
                 dispatch_geometry.groups_y,

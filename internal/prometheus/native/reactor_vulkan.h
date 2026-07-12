@@ -3,6 +3,7 @@
 
 #include "reactor_api.h"
 #include "reactor_batch.h"
+#include "reactor_sgemm_dispatch_metadata.h"
 #include <vulkan/vulkan.h>
 
 #ifdef __cplusplus
@@ -27,6 +28,27 @@ typedef struct prom_vk_runtime_services {
   uint32_t backend_reason_code;
   uint32_t test_flags;
 } prom_vk_runtime_services;
+
+/* Test/audit-only request. This is never accepted by policy or the production
+   shader registry; it supplies one temporary pipeline to the existing SGEMM
+   host path. */
+typedef struct prom_sgemm_audit_execution_descriptor {
+  const uint32_t* spirv_words;
+  size_t spirv_size_bytes;
+  const char* entry_point;
+  prom_sgemm_kernel_dispatch_metadata dispatch;
+  uint32_t compute_mode;
+  const char* provenance;
+  uint64_t spirv_hash;
+} prom_sgemm_audit_execution_descriptor;
+
+typedef struct prom_sgemm_audit_execution_result {
+  uint32_t stage;
+  int detail_code;
+  prom_sgemm_dispatch_geometry dispatch_geometry;
+  uint32_t gpu_timing_valid;
+  uint64_t gpu_duration_ns;
+} prom_sgemm_audit_execution_result;
 
 void prom_vk_set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail);
 int prom_vk_checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value);
@@ -83,6 +105,15 @@ int prom_reactor_runtime_sgemm_benchmark_variant_impl(void* handle,
                                                       uint32_t requested_variant,
                                                       uint32_t* out_stage,
                                                       int* out_detail_code);
+int prom_reactor_runtime_sgemm_audit_impl(void* handle,
+                                          const float* a,
+                                          const float* b,
+                                          float* c,
+                                          uint32_t m,
+                                          uint32_t n,
+                                          uint32_t k,
+                                          const prom_sgemm_audit_execution_descriptor* descriptor,
+                                          prom_sgemm_audit_execution_result* out_result);
 int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                                        const PrometheusSgemmResidentBenchmarkRequest* request,
                                                        PrometheusSgemmResidentBenchmarkResult* out_result);

@@ -84,3 +84,23 @@ No `.sdslvbench`, `[Benchmark]`, statistical benchmark framework, graphics
 work, or M34b work was added. The next M34a step is the narrow Vulkan override
 above, followed by the bounded five-pair workload matrix, validation layers,
 and replacement recommendations.
+
+## 2026-07-11 execution update
+
+The narrow override is now implemented in `reactor_vulkan_sgemm.c` as the
+explicit `prom_reactor_runtime_sgemm_audit_impl` API. It creates a temporary
+pipeline from an audit descriptor, then reuses the existing SGEMM execution
+function, replacing only selected pipeline, compute packing mode, and dispatch
+metadata. No production registry or selector reads audit data.
+
+A focused MSVC rebuild compiled the changed SGEMM object and linked
+`out/prometheus/native/prometheus_audit_tests.exe`. Its five-pair, nine-shape
+matrix passed original/reference, candidate/reference, and original/candidate
+comparisons. Timestamp sums in ns (original/generated) were SRT 55936/35264,
+B2x2 71232/43840, A2x4 71040/65792, Packed4 43904/35456, and FP16 47008/39424.
+They are diagnostic timing evidence only.
+
+For A2x4 at M=3,N=17,K=7, canonical 2×4 used one Y group and historical 2×2
+used two. Both matched the reference and each other, establishing guarded,
+wasteful over-dispatch for that observed case. The audit descriptor remains
+canonical 2×4; production metadata was not changed.
