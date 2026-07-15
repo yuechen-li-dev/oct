@@ -50,6 +50,7 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
   VkBufferCreateInfo buffer_info;
   VkMemoryRequirements requirements;
   VkMemoryAllocateInfo alloc_info;
+  VkPhysicalDeviceMemoryProperties physical_memory_properties;
   uint32_t memory_type_index;
 
   if (device == VK_NULL_HANDLE || out_buffer == NULL) {
@@ -62,6 +63,9 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
 
   memset(out_buffer, 0, sizeof(*out_buffer));
   out_buffer->size = size;
+  out_buffer->usage_flags = usage;
+  out_buffer->sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
+  out_buffer->memory_offset = 0u;
 
   memset(&buffer_info, 0, sizeof(buffer_info));
   buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -75,6 +79,7 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
   }
 
   vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
+  out_buffer->memory_alignment = requirements.alignment;
   memory_type_index = prom_vk_find_memory_type(physical_device, requirements.memoryTypeBits, memory_properties);
   if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
       (((test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
@@ -84,6 +89,9 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
   if (memory_type_index == UINT32_MAX) {
     return VK_ERROR_FEATURE_NOT_PRESENT;
   }
+  vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_memory_properties);
+  out_buffer->memory_type_index = memory_type_index;
+  out_buffer->memory_property_flags = physical_memory_properties.memoryTypes[memory_type_index].propertyFlags;
 
   memset(&alloc_info, 0, sizeof(alloc_info));
   alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;

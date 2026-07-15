@@ -49,16 +49,22 @@ const (
 	ElementTypeFloat2 = "float2"
 	ElementTypeFloat4 = "float4"
 
-	TimingSourceNone                    = "none"
-	TimingSourceVulkanQueryPoolGPU      = "vulkan_query_pool_gpu_timestamp"
-	TimingStageBoundsComputeDispatch    = "top_of_pipe_to_bottom_of_pipe"
-	DiagnosticSeverityInfo              = "info"
-	DiagnosticSeverityWarning           = "warning"
-	DiagnosticSeverityError             = "error"
-	DiagnosticTypeValidation            = "validation"
-	DiagnosticTypeRuntime               = "runtime"
-	DiagnosticTypeCapability            = "capability"
-	DiagnosticTypeInput                 = "input"
+	TimingSourceNone                 = "none"
+	TimingSourceVulkanQueryPoolGPU   = "vulkan_query_pool_gpu_timestamp"
+	TimingStageBoundsComputeDispatch = "top_of_pipe_to_bottom_of_pipe"
+	TimingStageTopOfPipe             = "VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT"
+	TimingStageBottomOfPipe          = "VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT"
+	TimingCommandBindPipeline        = "vkCmdBindPipeline"
+	TimingCommandBindDescriptorSets  = "vkCmdBindDescriptorSets"
+	TimingCommandPushConstants       = "vkCmdPushConstants"
+	TimingCommandDispatch            = "vkCmdDispatch"
+	DiagnosticSeverityInfo           = "info"
+	DiagnosticSeverityWarning        = "warning"
+	DiagnosticSeverityError          = "error"
+	DiagnosticTypeValidation         = "validation"
+	DiagnosticTypeRuntime            = "runtime"
+	DiagnosticTypeCapability         = "capability"
+	DiagnosticTypeInput              = "input"
 )
 
 type UInt3 struct {
@@ -103,32 +109,47 @@ type Readback struct {
 }
 
 type DeviceInfo struct {
-	RuntimeName         string
-	RuntimeVersion      string
-	KaijuUpstreamCommit string
-	KaijuForkCommit     string
-	DeviceName          string
-	VendorID            uint32
-	DeviceID            uint32
-	DriverVersion       uint32
-	VulkanAPIVersion    string
-	TimestampPeriodNS   float64
-	TimestampValidBits  uint32
-	Headless            bool
+	RuntimeName               string
+	RuntimeVersion            string
+	KaijuUpstreamCommit       string
+	KaijuForkCommit           string
+	DeviceName                string
+	VendorID                  uint32
+	DeviceID                  uint32
+	DriverVersion             uint32
+	VulkanAPIVersion          string
+	TimestampPeriodNS         float64
+	TimestampValidBits        uint32
+	QueueFamilyIndex          uint32
+	QueueFlags                uint32
+	BufferMemoryTypeIndex     uint32
+	BufferMemoryPropertyFlags uint32
+	BufferUsageFlags          uint32
+	BufferSharingMode         string
+	BufferMemoryAlignment     uint32
+	BufferMemoryOffset        uint32
+	Headless                  bool
 }
 
 type Timing struct {
-	Source    string
-	StageSpan string
-	SamplesNS []uint64
+	Source                  string
+	StageSpan               string
+	TimestampStartStage     string
+	TimestampEndStage       string
+	IntervalCommands        []string
+	DispatchesPerSample     uint32
+	QueryResetLocation      string
+	FenceWaitLocation       string
+	ResultRetrievalLocation string
+	SamplesNS               []uint64
 }
 
 type ValidationStatus struct {
-	Requested bool
-	Available bool
-	Enabled   bool
-	Warnings  int
-	Errors    int
+	Requested  bool
+	Available  bool
+	Enabled    bool
+	Warnings   int
+	Errors     int
 	DeviceLost bool
 }
 
@@ -140,17 +161,17 @@ type Diagnostic struct {
 }
 
 type Limits struct {
-	MaxSPIRVBytes            uint32
-	MaxResources             uint32
-	MaxBytesPerResource      uint32
-	MaxAggregatePayloadBytes uint32
+	MaxSPIRVBytes             uint32
+	MaxResources              uint32
+	MaxBytesPerResource       uint32
+	MaxAggregatePayloadBytes  uint32
 	MaxAggregateReadbackBytes uint32
-	MaxPushConstantBytes     uint32
-	MaxWarmup                uint32
-	MaxIterations            uint32
-	MaxDispatchDimension     uint32
-	MaxResponseBytes         uint32
-	TimeoutMS                uint32
+	MaxPushConstantBytes      uint32
+	MaxWarmup                 uint32
+	MaxIterations             uint32
+	MaxDispatchDimension      uint32
+	MaxResponseBytes          uint32
+	TimeoutMS                 uint32
 }
 
 type Capabilities struct {
@@ -179,17 +200,17 @@ type Capabilities struct {
 }
 
 type DispatchResponse struct {
-	Success    bool
-	ErrorCode  string
+	Success     bool
+	ErrorCode   string
 	BenchmarkID string
-	ReplayID   string
+	ReplayID    string
 	SpirvSHA256 string
-	Device     DeviceInfo
-	Timing     Timing
-	Validation ValidationStatus
-	Readbacks  []Readback
-	Warnings   []Diagnostic
-	Errors     []Diagnostic
+	Device      DeviceInfo
+	Timing      Timing
+	Validation  ValidationStatus
+	Readbacks   []Readback
+	Warnings    []Diagnostic
+	Errors      []Diagnostic
 }
 
 func DispatchRequestValue(v DispatchRequest) octxiliary.Value {
@@ -371,17 +392,17 @@ func ParseDispatchResponseValue(value octxiliary.Value) (DispatchResponse, error
 		return DispatchResponse{}, err
 	}
 	return DispatchResponse{
-		Success: boolFieldMust(indexed, "Success"),
-		ErrorCode: stringFieldMust(indexed, "ErrorCode"),
+		Success:     boolFieldMust(indexed, "Success"),
+		ErrorCode:   stringFieldMust(indexed, "ErrorCode"),
 		BenchmarkID: stringFieldMust(indexed, "BenchmarkID"),
-		ReplayID: stringFieldMust(indexed, "ReplayID"),
+		ReplayID:    stringFieldMust(indexed, "ReplayID"),
 		SpirvSHA256: stringFieldMust(indexed, "SpirvSHA256"),
-		Device: device,
-		Timing: timing,
-		Validation: validation,
-		Readbacks: readbacks,
-		Warnings: warnings,
-		Errors: errorsList,
+		Device:      device,
+		Timing:      timing,
+		Validation:  validation,
+		Readbacks:   readbacks,
+		Warnings:    warnings,
+		Errors:      errorsList,
 	}, nil
 }
 
@@ -429,15 +450,15 @@ func parseDispatchRequest(fields []octxiliary.FieldValue) (DispatchRequest, erro
 		return DispatchRequest{}, err
 	}
 	return DispatchRequest{
-		BenchmarkID: stringFieldMust(indexed, "BenchmarkID"),
-		ReplayID: stringFieldMust(indexed, "ReplayID"),
-		Spirv: spirv,
-		SpirvSHA256: stringFieldMust(indexed, "SpirvSHA256"),
-		EntryPoint: stringFieldMust(indexed, "EntryPoint"),
-		WorkgroupSize: workgroup,
+		BenchmarkID:    stringFieldMust(indexed, "BenchmarkID"),
+		ReplayID:       stringFieldMust(indexed, "ReplayID"),
+		Spirv:          spirv,
+		SpirvSHA256:    stringFieldMust(indexed, "SpirvSHA256"),
+		EntryPoint:     stringFieldMust(indexed, "EntryPoint"),
+		WorkgroupSize:  workgroup,
 		DispatchGroups: dispatchGroups,
-		PushConstants: push,
-		Resources: resources,
+		PushConstants:  push,
+		Resources:      resources,
 	}, nil
 }
 
@@ -604,6 +625,14 @@ func deviceInfoValue(v DeviceInfo) octxiliary.Value {
 		field("VulkanAPIVersion", octxiliary.StringValue(v.VulkanAPIVersion)),
 		field("TimestampPeriodNS", octxiliary.FloatValue(v.TimestampPeriodNS)),
 		field("TimestampValidBits", octxiliary.IntValue(int(v.TimestampValidBits))),
+		field("QueueFamilyIndex", octxiliary.IntValue(int(v.QueueFamilyIndex))),
+		field("QueueFlags", octxiliary.IntValue(int(v.QueueFlags))),
+		field("BufferMemoryTypeIndex", octxiliary.IntValue(int(v.BufferMemoryTypeIndex))),
+		field("BufferMemoryPropertyFlags", octxiliary.IntValue(int(v.BufferMemoryPropertyFlags))),
+		field("BufferUsageFlags", octxiliary.IntValue(int(v.BufferUsageFlags))),
+		field("BufferSharingMode", octxiliary.StringValue(v.BufferSharingMode)),
+		field("BufferMemoryAlignment", octxiliary.IntValue(int(v.BufferMemoryAlignment))),
+		field("BufferMemoryOffset", octxiliary.IntValue(int(v.BufferMemoryOffset))),
 		field("Headless", octxiliary.BoolValue(v.Headless)),
 	})
 }
@@ -626,6 +655,34 @@ func parseDeviceInfo(fields []octxiliary.FieldValue) (DeviceInfo, error) {
 	if err != nil {
 		return DeviceInfo{}, err
 	}
+	queueFamilyIndex, err := uint32Field(indexed, "QueueFamilyIndex")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	queueFlags, err := uint32Field(indexed, "QueueFlags")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	memoryTypeIndex, err := uint32Field(indexed, "BufferMemoryTypeIndex")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	memoryFlags, err := uint32Field(indexed, "BufferMemoryPropertyFlags")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	usageFlags, err := uint32Field(indexed, "BufferUsageFlags")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	memoryAlignment, err := uint32Field(indexed, "BufferMemoryAlignment")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
+	memoryOffset, err := uint32Field(indexed, "BufferMemoryOffset")
+	if err != nil {
+		return DeviceInfo{}, err
+	}
 	headless, err := boolField(indexed, "Headless")
 	if err != nil {
 		return DeviceInfo{}, err
@@ -635,18 +692,26 @@ func parseDeviceInfo(fields []octxiliary.FieldValue) (DeviceInfo, error) {
 		return DeviceInfo{}, err
 	}
 	return DeviceInfo{
-		RuntimeName: stringFieldMust(indexed, "RuntimeName"),
-		RuntimeVersion: stringFieldMust(indexed, "RuntimeVersion"),
-		KaijuUpstreamCommit: stringFieldMust(indexed, "KaijuUpstreamCommit"),
-		KaijuForkCommit: stringFieldMust(indexed, "KaijuForkCommit"),
-		DeviceName: stringFieldMust(indexed, "DeviceName"),
-		VendorID: vendor,
-		DeviceID: deviceID,
-		DriverVersion: driver,
-		VulkanAPIVersion: stringFieldMust(indexed, "VulkanAPIVersion"),
-		TimestampPeriodNS: period,
-		TimestampValidBits: validBits,
-		Headless: headless,
+		RuntimeName:               stringFieldMust(indexed, "RuntimeName"),
+		RuntimeVersion:            stringFieldMust(indexed, "RuntimeVersion"),
+		KaijuUpstreamCommit:       stringFieldMust(indexed, "KaijuUpstreamCommit"),
+		KaijuForkCommit:           stringFieldMust(indexed, "KaijuForkCommit"),
+		DeviceName:                stringFieldMust(indexed, "DeviceName"),
+		VendorID:                  vendor,
+		DeviceID:                  deviceID,
+		DriverVersion:             driver,
+		VulkanAPIVersion:          stringFieldMust(indexed, "VulkanAPIVersion"),
+		TimestampPeriodNS:         period,
+		TimestampValidBits:        validBits,
+		QueueFamilyIndex:          queueFamilyIndex,
+		QueueFlags:                queueFlags,
+		BufferMemoryTypeIndex:     memoryTypeIndex,
+		BufferMemoryPropertyFlags: memoryFlags,
+		BufferUsageFlags:          usageFlags,
+		BufferSharingMode:         stringFieldMust(indexed, "BufferSharingMode"),
+		BufferMemoryAlignment:     memoryAlignment,
+		BufferMemoryOffset:        memoryOffset,
+		Headless:                  headless,
 	}, nil
 }
 
@@ -658,6 +723,13 @@ func timingValue(v Timing) octxiliary.Value {
 	return octxiliary.RecordValue(recordTiming, []octxiliary.FieldValue{
 		field("Source", octxiliary.StringValue(v.Source)),
 		field("StageSpan", octxiliary.StringValue(v.StageSpan)),
+		field("TimestampStartStage", octxiliary.StringValue(v.TimestampStartStage)),
+		field("TimestampEndStage", octxiliary.StringValue(v.TimestampEndStage)),
+		field("IntervalCommands", stringListValue(v.IntervalCommands)),
+		field("DispatchesPerSample", octxiliary.IntValue(int(v.DispatchesPerSample))),
+		field("QueryResetLocation", octxiliary.StringValue(v.QueryResetLocation)),
+		field("FenceWaitLocation", octxiliary.StringValue(v.FenceWaitLocation)),
+		field("ResultRetrievalLocation", octxiliary.StringValue(v.ResultRetrievalLocation)),
 		field("SamplesNS", intListValue(samples)),
 	})
 }
@@ -665,6 +737,14 @@ func timingValue(v Timing) octxiliary.Value {
 func parseTiming(fields []octxiliary.FieldValue) (Timing, error) {
 	indexed := fieldsByName(fields)
 	samples, err := parseIntListValue(indexed["SamplesNS"])
+	if err != nil {
+		return Timing{}, err
+	}
+	commands, err := parseStringListValue(indexed["IntervalCommands"])
+	if err != nil {
+		return Timing{}, err
+	}
+	dispatches, err := uint32Field(indexed, "DispatchesPerSample")
 	if err != nil {
 		return Timing{}, err
 	}
@@ -676,9 +756,16 @@ func parseTiming(fields []octxiliary.FieldValue) (Timing, error) {
 		out = append(out, uint64(sample))
 	}
 	return Timing{
-		Source: stringFieldMust(indexed, "Source"),
-		StageSpan: stringFieldMust(indexed, "StageSpan"),
-		SamplesNS: out,
+		Source:                  stringFieldMust(indexed, "Source"),
+		StageSpan:               stringFieldMust(indexed, "StageSpan"),
+		TimestampStartStage:     stringFieldMust(indexed, "TimestampStartStage"),
+		TimestampEndStage:       stringFieldMust(indexed, "TimestampEndStage"),
+		IntervalCommands:        commands,
+		DispatchesPerSample:     dispatches,
+		QueryResetLocation:      stringFieldMust(indexed, "QueryResetLocation"),
+		FenceWaitLocation:       stringFieldMust(indexed, "FenceWaitLocation"),
+		ResultRetrievalLocation: stringFieldMust(indexed, "ResultRetrievalLocation"),
+		SamplesNS:               out,
 	}, nil
 }
 
@@ -752,10 +839,10 @@ func parseDiagnosticListValue(value octxiliary.Value) ([]Diagnostic, error) {
 		}
 		fields := fieldsByName(item.Fields)
 		out = append(out, Diagnostic{
-			Severity: stringFieldMust(fields, "Severity"),
-			Type: stringFieldMust(fields, "Type"),
+			Severity:  stringFieldMust(fields, "Severity"),
+			Type:      stringFieldMust(fields, "Type"),
 			MessageID: stringFieldMust(fields, "MessageID"),
-			Message: stringFieldMust(fields, "Message"),
+			Message:   stringFieldMust(fields, "Message"),
 		})
 	}
 	return out, nil

@@ -3972,6 +3972,24 @@ int prom_reactor_runtime_sgemm_audit_impl(void* handle,
                                           uint32_t k,
                                           const prom_sgemm_audit_execution_descriptor* descriptor,
                                           prom_sgemm_audit_execution_result* out_result) {
+  uint64_t sample = 0u;
+  return prom_reactor_runtime_sgemm_audit_benchmark_impl(handle, a, b, c, m, n, k, descriptor,
+                                                         0u, 1u, &sample, 1u, out_result);
+}
+
+int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
+                                                    const float* a,
+                                                    const float* b,
+                                                    float* c,
+                                                    uint32_t m,
+                                                    uint32_t n,
+                                                    uint32_t k,
+                                                    const prom_sgemm_audit_execution_descriptor* descriptor,
+                                                    uint32_t warmup,
+                                                    uint32_t iterations,
+                                                    uint64_t* out_samples_ns,
+                                                    uint32_t sample_capacity,
+                                                    prom_sgemm_audit_execution_result* out_result) {
   prometheus_runtime* rt;
   VkShaderModule module = VK_NULL_HANDLE;
   VkPipeline pipeline = VK_NULL_HANDLE;
@@ -3981,14 +3999,18 @@ int prom_reactor_runtime_sgemm_audit_impl(void* handle,
   VkResult result;
   uint32_t stage = PROM_STAGE_NONE;
   int detail = 0;
-  int execution_result;
+  int execution_result = PROM_ERROR;
+  uint32_t dispatch_index;
+  uint32_t completed_warmup = 0u;
+  uint32_t completed_measured = 0u;
 
   if (out_result != NULL) memset(out_result, 0, sizeof(*out_result));
   if (handle == NULL || descriptor == NULL || descriptor->spirv_words == NULL || descriptor->spirv_size_bytes == 0u ||
       (descriptor->spirv_size_bytes % sizeof(uint32_t)) != 0u || descriptor->spirv_words[0] != 0x07230203u ||
       descriptor->entry_point == NULL || descriptor->entry_point[0] == '\0' || descriptor->dispatch.threads_x == 0u ||
       descriptor->dispatch.threads_y == 0u || descriptor->dispatch.threads_z == 0u ||
-      descriptor->dispatch.outputs_per_invocation_m == 0u || descriptor->dispatch.outputs_per_invocation_n == 0u) {
+      descriptor->dispatch.outputs_per_invocation_m == 0u || descriptor->dispatch.outputs_per_invocation_n == 0u ||
+      iterations == 0u || out_samples_ns == NULL || sample_capacity < iterations || warmup > UINT32_MAX - iterations) {
     if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = PROM_ERROR; }
     return PROM_ERROR;
   }
@@ -4026,20 +4048,78 @@ int prom_reactor_runtime_sgemm_audit_impl(void* handle,
     prom_sgemm_audit_execution_override execution;
     execution.descriptor = descriptor;
     execution.pipeline = pipeline;
+    for (dispatch_index = 0u; dispatch_index < warmup + iterations; ++dispatch_index) {
     execution_result = prom_reactor_runtime_sgemm_impl_with_variant(handle, a, b, c, m, n, k,
                                                                       PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR, 0u,
                                                                       &execution, &stage, &detail);
+      if (execution_result != PROM_OK) break;
+      if (dispatch_index < warmup) {
+        completed_warmup += 1u;
+      } else {
+        if (rt->last_gpu_timing_valid == 0u) {
+          execution_result = PROM_ERROR;
+          stage = PROM_STAGE_SUBMIT;
+          detail = PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE;
+          break;
+        }
+        out_samples_ns[completed_measured] = rt->last_gpu_duration_ns;
+        completed_measured += 1u;
+      }
+    }
   }
   vkDestroyPipeline(rt->device, pipeline, NULL);
   vkDestroyShaderModule(rt->device, module, NULL);
   if (out_result != NULL) {
+    const prom_vk_buffer* result_a;
+    const prom_vk_buffer* result_b;
+    const prom_vk_buffer* result_c;
     out_result->stage = stage;
     out_result->detail_code = detail;
     out_result->dispatch_geometry = prom_sgemm_dispatch_geometry_for_metadata(m, n, &descriptor->dispatch);
     out_result->gpu_timing_valid = rt->last_gpu_timing_valid;
     out_result->gpu_duration_ns = rt->last_gpu_duration_ns;
+    out_result->pipeline_create_count = 1u;
+    out_result->warmup_dispatch_count = completed_warmup;
+    out_result->measured_dispatch_count = completed_measured;
+    out_result->dispatches_per_sample = 1u;
+    out_result->timestamp_interval_command_mask = PROM_SGEMM_AUDIT_TIMESTAMP_DISPATCH;
+    out_result->query_reset_before_start_timestamp = 1u;
+    out_result->fence_wait_before_query_results = 1u;
+    out_result->selected_path = rt->slot_diag.px16_m6_selected_path;
+    out_result->compute_mode = descriptor->compute_mode;
+    out_result->compute_queue_family_index = rt->queue_family_index;
+    out_result->push_constant_m = m;
+    out_result->push_constant_n = n;
+    out_result->push_constant_k = descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
+    if (out_result->selected_path == (uint32_t)PROM_VK_PATH_DIRECT) {
+      result_a = &rt->direct_a;
+      result_b = &rt->direct_b;
+      result_c = &rt->direct_c;
+    } else {
+      result_a = &rt->staged_device_a;
+      result_b = &rt->staged_device_b;
+      result_c = &rt->staged_device_c;
+    }
+    out_result->a_memory_type_index = result_a->memory_type_index;
+    out_result->b_memory_type_index = result_b->memory_type_index;
+    out_result->c_memory_type_index = result_c->memory_type_index;
+    out_result->a_memory_property_flags = (uint32_t)result_a->memory_property_flags;
+    out_result->b_memory_property_flags = (uint32_t)result_b->memory_property_flags;
+    out_result->c_memory_property_flags = (uint32_t)result_c->memory_property_flags;
+    out_result->a_usage_flags = (uint32_t)result_a->usage_flags;
+    out_result->b_usage_flags = (uint32_t)result_b->usage_flags;
+    out_result->c_usage_flags = (uint32_t)result_c->usage_flags;
+    out_result->a_buffer_bytes = (uint64_t)result_a->size;
+    out_result->b_buffer_bytes = (uint64_t)result_b->size;
+    out_result->c_buffer_bytes = (uint64_t)result_c->size;
+    out_result->a_memory_alignment = (uint64_t)result_a->memory_alignment;
+    out_result->b_memory_alignment = (uint64_t)result_b->memory_alignment;
+    out_result->c_memory_alignment = (uint64_t)result_c->memory_alignment;
+    out_result->a_memory_offset = (uint64_t)result_a->memory_offset;
+    out_result->b_memory_offset = (uint64_t)result_b->memory_offset;
+    out_result->c_memory_offset = (uint64_t)result_c->memory_offset;
   }
-  return execution_result;
+  return execution_result == PROM_OK && completed_warmup == warmup && completed_measured == iterations ? PROM_OK : PROM_ERROR;
 }
 
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,

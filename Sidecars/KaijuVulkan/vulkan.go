@@ -41,6 +41,10 @@ const (
 	errorTimestampFailure      = "timestamp_failure"
 	errorReadbackFailure       = "readback_failure"
 	errorDeviceLoss            = "device_loss"
+	auditMemoryPlacementEnv    = "OCT_KAIJU_VULKAN_M38A_MEMORY"
+	auditMemoryHostVisible     = "host-visible-coherent"
+	auditMemoryHostDeviceLocal = "host-visible-device-local"
+	auditReuploadInputsEnv     = "OCT_KAIJU_VULKAN_M38A_REUPLOAD_INPUTS"
 )
 
 type validatedExecutionRequest struct {
@@ -69,83 +73,89 @@ type runtimeInfo struct {
 }
 
 type buffer struct {
-	request kaijuvulkan.Resource
-	handle  vk.Buffer
-	memory  vk.DeviceMemory
-	data    unsafe.Pointer
+	request             kaijuvulkan.Resource
+	handle              vk.Buffer
+	memory              vk.DeviceMemory
+	data                unsafe.Pointer
+	memoryTypeIndex     uint32
+	memoryPropertyFlags vk.MemoryPropertyFlags
+	usageFlags          vk.BufferUsageFlags
+	sharingMode         uint32
+	memoryAlignment     uint32
+	memoryOffset        uint32
 }
 
 type context struct {
-	instance        vk.Instance
-	physical        vk.PhysicalDevice
-	device          vk.Device
-	queue           vk.Queue
-	queueFamily     uint32
-	properties      vk.PhysicalDeviceProperties
-	memoryProps     vk.PhysicalDeviceMemoryProperties
-	descriptorSet   vk.DescriptorSet
-	descriptorPool  vk.DescriptorPool
-	setLayout       vk.DescriptorSetLayout
-	pipelineLayout  vk.PipelineLayout
-	shader          vk.ShaderModule
-	pipeline        vk.Pipeline
-	commandPool     vk.CommandPool
-	commandBuffer   vk.CommandBuffer
-	fence           vk.Fence
-	queryPool       vk.QueryPool
-	buffers         []buffer
-	validation      validationLayerInfo
-	diagnostics     []kaijuvulkan.Diagnostic
-	deviceLost      bool
+	instance       vk.Instance
+	physical       vk.PhysicalDevice
+	device         vk.Device
+	queue          vk.Queue
+	queueFamily    uint32
+	properties     vk.PhysicalDeviceProperties
+	memoryProps    vk.PhysicalDeviceMemoryProperties
+	descriptorSet  vk.DescriptorSet
+	descriptorPool vk.DescriptorPool
+	setLayout      vk.DescriptorSetLayout
+	pipelineLayout vk.PipelineLayout
+	shader         vk.ShaderModule
+	pipeline       vk.Pipeline
+	commandPool    vk.CommandPool
+	commandBuffer  vk.CommandBuffer
+	fence          vk.Fence
+	queryPool      vk.QueryPool
+	buffers        []buffer
+	validation     validationLayerInfo
+	diagnostics    []kaijuvulkan.Diagnostic
+	deviceLost     bool
 }
 
 func sidecarLimits() kaijuvulkan.Limits {
 	return kaijuvulkan.Limits{
-		MaxSPIRVBytes: 8 << 20,
-		MaxResources: 16,
-		MaxBytesPerResource: 8 << 20,
-		MaxAggregatePayloadBytes: 32 << 20,
+		MaxSPIRVBytes:             8 << 20,
+		MaxResources:              16,
+		MaxBytesPerResource:       8 << 20,
+		MaxAggregatePayloadBytes:  32 << 20,
 		MaxAggregateReadbackBytes: 32 << 20,
-		MaxPushConstantBytes: 256,
-		MaxWarmup: 256,
-		MaxIterations: 512,
-		MaxDispatchDimension: 1 << 20,
-		MaxResponseBytes: 40 << 20,
-		TimeoutMS: 30000,
+		MaxPushConstantBytes:      256,
+		MaxWarmup:                 256,
+		MaxIterations:             512,
+		MaxDispatchDimension:      1 << 20,
+		MaxResponseBytes:          40 << 20,
+		TimeoutMS:                 30000,
 	}
 }
 
 func protocolFailure(code, replayID, message string) kaijuvulkan.DispatchResponse {
 	return kaijuvulkan.DispatchResponse{
-		Success: false,
-		ErrorCode: code,
-		ReplayID: replayID,
-		Device: deviceRecord(),
-		Timing: kaijuvulkan.Timing{Source: kaijuvulkan.TimingSourceNone, SamplesNS: nil},
+		Success:    false,
+		ErrorCode:  code,
+		ReplayID:   replayID,
+		Device:     deviceRecord(),
+		Timing:     kaijuvulkan.Timing{Source: kaijuvulkan.TimingSourceNone, SamplesNS: nil},
 		Validation: kaijuvulkan.ValidationStatus{},
 		Errors: []kaijuvulkan.Diagnostic{{
-			Severity: kaijuvulkan.DiagnosticSeverityError,
-			Type: kaijuvulkan.DiagnosticTypeInput,
+			Severity:  kaijuvulkan.DiagnosticSeverityError,
+			Type:      kaijuvulkan.DiagnosticTypeInput,
 			MessageID: code,
-			Message: message,
+			Message:   message,
 		}},
 	}
 }
 
 func validateDispatchRequest(request kaijuvulkan.DispatchRequest) (validatedExecutionRequest, *kaijuvulkan.DispatchResponse) {
 	validated, code, message := validateCommon(validatedExecutionRequest{
-		benchmarkID: request.BenchmarkID,
-		replayID: request.ReplayID,
-		spirvSHA256: strings.ToLower(request.SpirvSHA256),
-		entryPoint: request.EntryPoint,
-		spv: append([]byte(nil), request.Spirv...),
-		workgroupSize: request.WorkgroupSize,
+		benchmarkID:    request.BenchmarkID,
+		replayID:       request.ReplayID,
+		spirvSHA256:    strings.ToLower(request.SpirvSHA256),
+		entryPoint:     request.EntryPoint,
+		spv:            append([]byte(nil), request.Spirv...),
+		workgroupSize:  request.WorkgroupSize,
 		dispatchGroups: request.DispatchGroups,
-		pushConstants: append([]byte(nil), request.PushConstants...),
-		resources: cloneResources(request.Resources),
-		warmup: 0,
-		iterations: 1,
-		measureTiming: false,
+		pushConstants:  append([]byte(nil), request.PushConstants...),
+		resources:      cloneResources(request.Resources),
+		warmup:         0,
+		iterations:     1,
+		measureTiming:  false,
 	})
 	if code != "" {
 		response := protocolFailure(code, request.ReplayID, message)
@@ -158,18 +168,18 @@ func validateDispatchRequest(request kaijuvulkan.DispatchRequest) (validatedExec
 
 func validateBenchmarkRequest(request kaijuvulkan.BenchmarkRequest) (validatedExecutionRequest, *kaijuvulkan.DispatchResponse) {
 	validated, code, message := validateCommon(validatedExecutionRequest{
-		benchmarkID: request.BenchmarkID,
-		replayID: request.ReplayID,
-		spirvSHA256: strings.ToLower(request.SpirvSHA256),
-		entryPoint: request.EntryPoint,
-		spv: append([]byte(nil), request.Spirv...),
-		workgroupSize: request.WorkgroupSize,
+		benchmarkID:    request.BenchmarkID,
+		replayID:       request.ReplayID,
+		spirvSHA256:    strings.ToLower(request.SpirvSHA256),
+		entryPoint:     request.EntryPoint,
+		spv:            append([]byte(nil), request.Spirv...),
+		workgroupSize:  request.WorkgroupSize,
 		dispatchGroups: request.DispatchGroups,
-		pushConstants: append([]byte(nil), request.PushConstants...),
-		resources: cloneResources(request.Resources),
-		warmup: request.Warmup,
-		iterations: request.Iterations,
-		measureTiming: true,
+		pushConstants:  append([]byte(nil), request.PushConstants...),
+		resources:      cloneResources(request.Resources),
+		warmup:         request.Warmup,
+		iterations:     request.Iterations,
+		measureTiming:  true,
 	})
 	if code != "" {
 		response := protocolFailure(code, request.ReplayID, message)
@@ -277,14 +287,14 @@ func validateCommon(request validatedExecutionRequest) (validatedExecutionReques
 
 func execute(request validatedExecutionRequest) kaijuvulkan.DispatchResponse {
 	response := kaijuvulkan.DispatchResponse{
-		Success: false,
-		ErrorCode: "",
+		Success:     false,
+		ErrorCode:   "",
 		BenchmarkID: request.benchmarkID,
-		ReplayID: request.replayID,
+		ReplayID:    request.replayID,
 		SpirvSHA256: request.spirvSHA256,
-		Device: deviceRecord(),
-		Timing: kaijuvulkan.Timing{Source: kaijuvulkan.TimingSourceNone, SamplesNS: nil},
-		Validation: kaijuvulkan.ValidationStatus{},
+		Device:      deviceRecord(),
+		Timing:      kaijuvulkan.Timing{Source: kaijuvulkan.TimingSourceNone, SamplesNS: nil},
+		Validation:  kaijuvulkan.ValidationStatus{},
 	}
 	ctx := &context{}
 	if err := ctx.initialize(request); err != nil {
@@ -332,7 +342,19 @@ func execute(request validatedExecutionRequest) kaijuvulkan.DispatchResponse {
 			}
 			return ""
 		}(),
-		SamplesNS: samples,
+		TimestampStartStage: kaijuvulkan.TimingStageTopOfPipe,
+		TimestampEndStage:   kaijuvulkan.TimingStageBottomOfPipe,
+		IntervalCommands: []string{
+			kaijuvulkan.TimingCommandBindPipeline,
+			kaijuvulkan.TimingCommandBindDescriptorSets,
+			kaijuvulkan.TimingCommandPushConstants,
+			kaijuvulkan.TimingCommandDispatch,
+		},
+		DispatchesPerSample:     1,
+		QueryResetLocation:      "command_buffer_before_start_timestamp",
+		FenceWaitLocation:       "host_after_queue_submit",
+		ResultRetrievalLocation: "host_after_fence_wait",
+		SamplesNS:               samples,
 	}
 	response.Readbacks = readbacks
 	response.Validation = ctx.validationStatus()
@@ -369,15 +391,15 @@ func (c *context) initialize(request validatedExecutionRequest) error {
 	}
 	priority := float32(1)
 	queueInfo := vk.DeviceQueueCreateInfo{
-		SType: vc.StructureTypeDeviceQueueCreateInfo,
+		SType:            vc.StructureTypeDeviceQueueCreateInfo,
 		QueueFamilyIndex: c.queueFamily,
-		QueueCount: 1,
+		QueueCount:       1,
 		PQueuePriorities: &priority,
 	}
 	deviceCreate := vk.DeviceCreateInfo{
-		SType: vc.StructureTypeDeviceCreateInfo,
+		SType:                vc.StructureTypeDeviceCreateInfo,
 		QueueCreateInfoCount: 1,
-		PQueueCreateInfos: &queueInfo,
+		PQueueCreateInfos:    &queueInfo,
 	}
 	if err := check("vkCreateDevice", vk.CreateDevice(c.physical, &deviceCreate, nil, &c.device)); err != nil {
 		return err
@@ -410,10 +432,10 @@ func (c *context) initializeLoaderAndInstance() error {
 	validationInfo, err := queryValidationLayer()
 	if err != nil {
 		c.diagnostics = append(c.diagnostics, kaijuvulkan.Diagnostic{
-			Severity: kaijuvulkan.DiagnosticSeverityWarning,
-			Type: kaijuvulkan.DiagnosticTypeCapability,
+			Severity:  kaijuvulkan.DiagnosticSeverityWarning,
+			Type:      kaijuvulkan.DiagnosticTypeCapability,
 			MessageID: "validation_probe_failed",
-			Message: err.Error(),
+			Message:   err.Error(),
 		})
 	}
 	c.validation.available = validationInfo.available
@@ -421,12 +443,12 @@ func (c *context) initializeLoaderAndInstance() error {
 	appName := append([]byte(sidecarName), 0)
 	engineName := append([]byte("kaiju-raw-vulkan"), 0)
 	app := vk.ApplicationInfo{
-		SType: vc.StructureTypeApplicationInfo,
-		PApplicationName: (*vk.Char)(unsafe.Pointer(&appName[0])),
+		SType:              vc.StructureTypeApplicationInfo,
+		PApplicationName:   (*vk.Char)(unsafe.Pointer(&appName[0])),
 		ApplicationVersion: vk.MakeVersion(0, 1, 0),
-		PEngineName: (*vk.Char)(unsafe.Pointer(&engineName[0])),
-		EngineVersion: 1,
-		ApiVersion: vk.MakeVersion(1, 0, 0),
+		PEngineName:        (*vk.Char)(unsafe.Pointer(&engineName[0])),
+		EngineVersion:      1,
+		ApiVersion:         vk.MakeVersion(1, 0, 0),
 	}
 	createInfo := vk.InstanceCreateInfo{SType: vc.StructureTypeInstanceCreateInfo, PApplicationInfo: &app}
 	if c.validation.requested {
@@ -531,24 +553,32 @@ func (c *context) selectDevice() error {
 
 func (c *context) createBuffer(resource kaijuvulkan.Resource) error {
 	createInfo := vk.BufferCreateInfo{
-		SType: vc.StructureTypeBufferCreateInfo,
-		Size: vk.DeviceSize(resource.ByteLength),
-		Usage: vk.BufferUsageFlags(vc.BufferUsageStorageBufferBit),
+		SType:       vc.StructureTypeBufferCreateInfo,
+		Size:        vk.DeviceSize(resource.ByteLength),
+		Usage:       vk.BufferUsageFlags(vc.BufferUsageStorageBufferBit),
 		SharingMode: vc.SharingModeExclusive,
 	}
-	item := buffer{request: resource}
+	item := buffer{request: resource, usageFlags: createInfo.Usage, sharingMode: uint32(createInfo.SharingMode)}
 	if err := check("vkCreateBuffer", vk.CreateBuffer(c.device, &createInfo, nil, &item.handle)); err != nil {
 		return err
 	}
 	var memoryRequirements vk.MemoryRequirements
 	vk.GetBufferMemoryRequirements(c.device, item.handle, &memoryRequirements)
-	index, ok := c.memoryType(memoryRequirements.MemoryTypeBits, vk.MemoryPropertyFlags(vc.MemoryPropertyHostVisibleBit|vc.MemoryPropertyHostCoherentBit))
-	if !ok {
-		return fmt.Errorf("binding %d: no host-visible coherent memory type", resource.Binding)
+	flags := make([]vk.MemoryPropertyFlags, c.memoryProps.MemoryTypeCount)
+	for i := range flags {
+		flags[i] = c.memoryProps.MemoryTypes[i].PropertyFlags
 	}
+	index, ok := selectBufferMemoryType(memoryRequirements.MemoryTypeBits, flags, os.Getenv(auditMemoryPlacementEnv))
+	if !ok {
+		return fmt.Errorf("binding %d: no compatible host-visible coherent memory type", resource.Binding)
+	}
+	item.memoryTypeIndex = index
+	item.memoryPropertyFlags = c.memoryProps.MemoryTypes[index].PropertyFlags
+	item.memoryAlignment = uint32(memoryRequirements.Alignment)
+	item.memoryOffset = 0
 	allocateInfo := vk.MemoryAllocateInfo{
-		SType: vc.StructureTypeMemoryAllocateInfo,
-		AllocationSize: memoryRequirements.Size,
+		SType:           vc.StructureTypeMemoryAllocateInfo,
+		AllocationSize:  memoryRequirements.Size,
 		MemoryTypeIndex: index,
 	}
 	if err := check("vkAllocateMemory", vk.AllocateMemory(c.device, &allocateInfo, nil, &item.memory)); err != nil {
@@ -574,6 +604,29 @@ func (c *context) memoryType(bits uint32, flags vk.MemoryPropertyFlags) (uint32,
 	return 0, false
 }
 
+func selectBufferMemoryType(bits uint32, available []vk.MemoryPropertyFlags, override string) (uint32, bool) {
+	hostMemory := vk.MemoryPropertyFlags(vc.MemoryPropertyHostVisibleBit | vc.MemoryPropertyHostCoherentBit)
+	deviceLocalHostMemory := hostMemory | vk.MemoryPropertyFlags(vc.MemoryPropertyDeviceLocalBit)
+	find := func(required vk.MemoryPropertyFlags) (uint32, bool) {
+		for i, flags := range available {
+			if bits&(1<<uint32(i)) != 0 && flags&required == required {
+				return uint32(i), true
+			}
+		}
+		return 0, false
+	}
+	if override == auditMemoryHostVisible {
+		return find(hostMemory)
+	}
+	if index, ok := find(deviceLocalHostMemory); ok {
+		return index, true
+	}
+	if override == auditMemoryHostDeviceLocal {
+		return 0, false
+	}
+	return find(hostMemory)
+}
+
 func (c *context) createDescriptors() error {
 	if len(c.buffers) == 0 {
 		return nil
@@ -582,35 +635,35 @@ func (c *context) createDescriptors() error {
 	bindings := make([]vk.DescriptorSetLayoutBinding, len(c.buffers))
 	for i, item := range c.buffers {
 		bindings[i] = vk.DescriptorSetLayoutBinding{
-			Binding: item.request.Binding,
-			DescriptorType: vc.DescriptorTypeStorageBuffer,
+			Binding:         item.request.Binding,
+			DescriptorType:  vc.DescriptorTypeStorageBuffer,
 			DescriptorCount: 1,
-			StageFlags: vk.ShaderStageFlags(vc.ShaderStageComputeBit),
+			StageFlags:      vk.ShaderStageFlags(vc.ShaderStageComputeBit),
 		}
 	}
 	layoutCreateInfo := vk.DescriptorSetLayoutCreateInfo{
-		SType: vc.StructureTypeDescriptorSetLayoutCreateInfo,
+		SType:        vc.StructureTypeDescriptorSetLayoutCreateInfo,
 		BindingCount: uint32(len(bindings)),
-		PBindings: &bindings[0],
+		PBindings:    &bindings[0],
 	}
 	if err := check("vkCreateDescriptorSetLayout", vk.CreateDescriptorSetLayout(c.device, &layoutCreateInfo, nil, &c.setLayout)); err != nil {
 		return err
 	}
 	poolSize := vk.DescriptorPoolSize{Type: vc.DescriptorTypeStorageBuffer, DescriptorCount: uint32(len(bindings))}
 	poolCreateInfo := vk.DescriptorPoolCreateInfo{
-		SType: vc.StructureTypeDescriptorPoolCreateInfo,
-		MaxSets: 1,
+		SType:         vc.StructureTypeDescriptorPoolCreateInfo,
+		MaxSets:       1,
 		PoolSizeCount: 1,
-		PPoolSizes: &poolSize,
+		PPoolSizes:    &poolSize,
 	}
 	if err := check("vkCreateDescriptorPool", vk.CreateDescriptorPool(c.device, &poolCreateInfo, nil, &c.descriptorPool)); err != nil {
 		return err
 	}
 	allocateInfo := vk.DescriptorSetAllocateInfo{
-		SType: vc.StructureTypeDescriptorSetAllocateInfo,
-		DescriptorPool: c.descriptorPool,
+		SType:              vc.StructureTypeDescriptorSetAllocateInfo,
+		DescriptorPool:     c.descriptorPool,
 		DescriptorSetCount: 1,
-		PSetLayouts: &c.setLayout,
+		PSetLayouts:        &c.setLayout,
 	}
 	if err := check("vkAllocateDescriptorSets", vk.AllocateDescriptorSets(c.device, &allocateInfo, &c.descriptorSet)); err != nil {
 		return err
@@ -620,12 +673,12 @@ func (c *context) createDescriptors() error {
 	for i, item := range c.buffers {
 		bufferInfos[i] = vk.DescriptorBufferInfo{Buffer: item.handle, Range: vk.DeviceSize(item.request.ByteLength)}
 		writes[i] = vk.WriteDescriptorSet{
-			SType: vc.StructureTypeWriteDescriptorSet,
-			DstSet: c.descriptorSet,
-			DstBinding: item.request.Binding,
+			SType:           vc.StructureTypeWriteDescriptorSet,
+			DstSet:          c.descriptorSet,
+			DstBinding:      item.request.Binding,
 			DescriptorCount: 1,
-			DescriptorType: vc.DescriptorTypeStorageBuffer,
-			PBufferInfo: &bufferInfos[i],
+			DescriptorType:  vc.DescriptorTypeStorageBuffer,
+			PBufferInfo:     &bufferInfos[i],
 		}
 	}
 	var pinner runtime.Pinner
@@ -643,9 +696,9 @@ func (c *context) createPipeline(entry string, spv []byte, pushBytes int) error 
 		words[i] = binary.LittleEndian.Uint32(spv[i*4:])
 	}
 	shaderCreateInfo := vk.ShaderModuleCreateInfo{
-		SType: vc.StructureTypeShaderModuleCreateInfo,
+		SType:    vc.StructureTypeShaderModuleCreateInfo,
 		CodeSize: uint(len(spv)),
-		PCode: &words[0],
+		PCode:    &words[0],
 	}
 	if err := check("vkCreateShaderModule", vk.CreateShaderModule(c.device, &shaderCreateInfo, nil, &c.shader)); err != nil {
 		return err
@@ -659,7 +712,7 @@ func (c *context) createPipeline(entry string, spv []byte, pushBytes int) error 
 	if pushBytes > 0 {
 		pushRange = vk.PushConstantRange{
 			StageFlags: vk.ShaderStageFlags(vc.ShaderStageComputeBit),
-			Size: uint32(pushBytes),
+			Size:       uint32(pushBytes),
 		}
 		layoutCreateInfo.PushConstantRangeCount = 1
 		layoutCreateInfo.PPushConstantRanges = &pushRange
@@ -669,15 +722,15 @@ func (c *context) createPipeline(entry string, spv []byte, pushBytes int) error 
 	}
 	name := append([]byte(entry), 0)
 	stage := vk.PipelineShaderStageCreateInfo{
-		SType: vc.StructureTypePipelineShaderStageCreateInfo,
-		Stage: vc.ShaderStageComputeBit,
+		SType:  vc.StructureTypePipelineShaderStageCreateInfo,
+		Stage:  vc.ShaderStageComputeBit,
 		Module: c.shader,
-		PName: (*vk.Char)(unsafe.Pointer(&name[0])),
+		PName:  (*vk.Char)(unsafe.Pointer(&name[0])),
 	}
 	createInfo := vk.ComputePipelineCreateInfo{
-		SType: vc.StructureTypeComputePipelineCreateInfo,
-		Stage: stage,
-		Layout: c.pipelineLayout,
+		SType:             vc.StructureTypeComputePipelineCreateInfo,
+		Stage:             stage,
+		Layout:            c.pipelineLayout,
 		BasePipelineIndex: -1,
 	}
 	return check("vkCreateComputePipelines", vk.CreateComputePipelines(c.device, nil, 1, &createInfo, nil, &c.pipeline))
@@ -685,17 +738,17 @@ func (c *context) createPipeline(entry string, spv []byte, pushBytes int) error 
 
 func (c *context) createCommands(enableTiming bool) error {
 	commandPoolCreate := vk.CommandPoolCreateInfo{
-		SType: vc.StructureTypeCommandPoolCreateInfo,
-		Flags: vk.CommandPoolCreateFlags(vc.CommandPoolCreateResetCommandBufferBit),
+		SType:            vc.StructureTypeCommandPoolCreateInfo,
+		Flags:            vk.CommandPoolCreateFlags(vc.CommandPoolCreateResetCommandBufferBit),
 		QueueFamilyIndex: c.queueFamily,
 	}
 	if err := check("vkCreateCommandPool", vk.CreateCommandPool(c.device, &commandPoolCreate, nil, &c.commandPool)); err != nil {
 		return err
 	}
 	commandAllocate := vk.CommandBufferAllocateInfo{
-		SType: vc.StructureTypeCommandBufferAllocateInfo,
-		CommandPool: c.commandPool,
-		Level: vc.CommandBufferLevelPrimary,
+		SType:              vc.StructureTypeCommandBufferAllocateInfo,
+		CommandPool:        c.commandPool,
+		Level:              vc.CommandBufferLevelPrimary,
 		CommandBufferCount: 1,
 	}
 	if err := check("vkAllocateCommandBuffers", vk.AllocateCommandBuffers(c.device, &commandAllocate, &c.commandBuffer)); err != nil {
@@ -707,8 +760,8 @@ func (c *context) createCommands(enableTiming bool) error {
 	}
 	if enableTiming {
 		queryCreate := vk.QueryPoolCreateInfo{
-			SType: vc.StructureTypeQueryPoolCreateInfo,
-			QueryType: vc.QueryTypeTimestamp,
+			SType:      vc.StructureTypeQueryPoolCreateInfo,
+			QueryType:  vc.QueryTypeTimestamp,
 			QueryCount: 2,
 		}
 		if err := check("vkCreateQueryPool", vk.CreateQueryPool(c.device, &queryCreate, nil, &c.queryPool)); err != nil {
@@ -719,6 +772,13 @@ func (c *context) createCommands(enableTiming bool) error {
 }
 
 func (c *context) runOnce(request validatedExecutionRequest) (uint64, error) {
+	if os.Getenv(auditReuploadInputsEnv) == "1" {
+		for _, item := range c.buffers {
+			if item.request.Access == kaijuvulkan.ResourceAccessReadonly {
+				copy(unsafe.Slice((*byte)(item.data), item.request.ByteLength), item.request.Payload)
+			}
+		}
+	}
 	if err := check("vkResetFences", vk.ResetFences(c.device, 1, &c.fence)); err != nil {
 		return 0, err
 	}
@@ -751,9 +811,9 @@ func (c *context) runOnce(request validatedExecutionRequest) (uint64, error) {
 		return 0, err
 	}
 	submitInfo := vk.SubmitInfo{
-		SType: vc.StructureTypeSubmitInfo,
+		SType:              vc.StructureTypeSubmitInfo,
 		CommandBufferCount: 1,
-		PCommandBuffers: &c.commandBuffer,
+		PCommandBuffers:    &c.commandBuffer,
 	}
 	if result := vk.QueueSubmit(c.queue, 1, &submitInfo, c.fence); result != vc.Success {
 		if result == vc.ErrorDeviceLost {
@@ -812,7 +872,7 @@ func (c *context) readbacks() ([]kaijuvulkan.Readback, error) {
 		}
 		payload := append([]byte(nil), unsafe.Slice((*byte)(item.data), item.request.ByteLength)...)
 		readbacks = append(readbacks, kaijuvulkan.Readback{
-			Set: item.request.Set,
+			Set:     item.request.Set,
 			Binding: item.request.Binding,
 			Payload: payload,
 		})
@@ -832,11 +892,11 @@ func (c *context) validationStatus() kaijuvulkan.ValidationStatus {
 		}
 	}
 	return kaijuvulkan.ValidationStatus{
-		Requested: c.validation.requested,
-		Available: c.validation.available,
-		Enabled: c.validation.enabled,
-		Warnings: warnings,
-		Errors: errorsCount,
+		Requested:  c.validation.requested,
+		Available:  c.validation.available,
+		Enabled:    c.validation.enabled,
+		Warnings:   warnings,
+		Errors:     errorsCount,
 		DeviceLost: c.deviceLost,
 	}
 }
@@ -860,10 +920,10 @@ func (c *context) diagnosticFor(code, message string) kaijuvulkan.Diagnostic {
 		kind = kaijuvulkan.DiagnosticTypeInput
 	}
 	return kaijuvulkan.Diagnostic{
-		Severity: kaijuvulkan.DiagnosticSeverityError,
-		Type: kind,
+		Severity:  kaijuvulkan.DiagnosticSeverityError,
+		Type:      kind,
 		MessageID: code,
-		Message: message,
+		Message:   message,
 	}
 }
 
@@ -926,16 +986,34 @@ func (c *context) deviceInfo() kaijuvulkan.DeviceInfo {
 	info.VulkanAPIVersion = vk.Version(c.properties.ApiVersion).String()
 	info.TimestampPeriodNS = float64(c.properties.Limits.TimestampPeriod)
 	info.TimestampValidBits = c.queueTimestampValidBits()
+	info.QueueFamilyIndex = c.queueFamily
+	var queueCount uint32
+	vk.GetPhysicalDeviceQueueFamilyProperties(c.physical, &queueCount, nil)
+	if queueCount > 0 {
+		queues := make([]vk.QueueFamilyProperties, queueCount)
+		vk.GetPhysicalDeviceQueueFamilyProperties(c.physical, &queueCount, &queues[0])
+		if int(c.queueFamily) < len(queues) {
+			info.QueueFlags = uint32(queues[c.queueFamily].QueueFlags)
+		}
+	}
+	if len(c.buffers) > 0 {
+		info.BufferMemoryTypeIndex = c.buffers[0].memoryTypeIndex
+		info.BufferMemoryPropertyFlags = uint32(c.buffers[0].memoryPropertyFlags)
+		info.BufferUsageFlags = uint32(c.buffers[0].usageFlags)
+		info.BufferSharingMode = "VK_SHARING_MODE_EXCLUSIVE"
+		info.BufferMemoryAlignment = c.buffers[0].memoryAlignment
+		info.BufferMemoryOffset = c.buffers[0].memoryOffset
+	}
 	return info
 }
 
 func deviceRecord() kaijuvulkan.DeviceInfo {
 	return kaijuvulkan.DeviceInfo{
-		RuntimeName: sidecarName,
-		RuntimeVersion: sidecarVersion + "+" + runtime.Version(),
+		RuntimeName:         sidecarName,
+		RuntimeVersion:      sidecarVersion + "+" + runtime.Version(),
 		KaijuUpstreamCommit: upstreamCommit,
-		KaijuForkCommit: forkCommit,
-		Headless: true,
+		KaijuForkCommit:     forkCommit,
+		Headless:            true,
 	}
 }
 

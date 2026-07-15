@@ -15,6 +15,12 @@ typedef struct prom_vk_buffer {
   VkDeviceMemory memory;
   void* mapped;
   VkDeviceSize size;
+  uint32_t memory_type_index;
+  VkMemoryPropertyFlags memory_property_flags;
+  VkBufferUsageFlags usage_flags;
+  VkSharingMode sharing_mode;
+  VkDeviceSize memory_offset;
+  VkDeviceSize memory_alignment;
 } prom_vk_buffer;
 
 typedef struct prom_vk_runtime_services {
@@ -48,7 +54,45 @@ typedef struct prom_sgemm_audit_execution_result {
   prom_sgemm_dispatch_geometry dispatch_geometry;
   uint32_t gpu_timing_valid;
   uint64_t gpu_duration_ns;
+  uint32_t pipeline_create_count;
+  uint32_t warmup_dispatch_count;
+  uint32_t measured_dispatch_count;
+  uint32_t dispatches_per_sample;
+  uint32_t timestamp_interval_command_mask;
+  uint32_t query_reset_before_start_timestamp;
+  uint32_t fence_wait_before_query_results;
+  uint32_t selected_path;
+  uint32_t compute_mode;
+  uint32_t compute_queue_family_index;
+  uint32_t push_constant_m;
+  uint32_t push_constant_n;
+  uint32_t push_constant_k;
+  uint32_t a_memory_type_index;
+  uint32_t b_memory_type_index;
+  uint32_t c_memory_type_index;
+  uint32_t a_memory_property_flags;
+  uint32_t b_memory_property_flags;
+  uint32_t c_memory_property_flags;
+  uint32_t a_usage_flags;
+  uint32_t b_usage_flags;
+  uint32_t c_usage_flags;
+  uint64_t a_buffer_bytes;
+  uint64_t b_buffer_bytes;
+  uint64_t c_buffer_bytes;
+  uint64_t a_memory_alignment;
+  uint64_t b_memory_alignment;
+  uint64_t c_memory_alignment;
+  uint64_t a_memory_offset;
+  uint64_t b_memory_offset;
+  uint64_t c_memory_offset;
 } prom_sgemm_audit_execution_result;
+
+enum {
+  PROM_SGEMM_AUDIT_TIMESTAMP_RESET_QUERY = 1u << 0u,
+  PROM_SGEMM_AUDIT_TIMESTAMP_START = 1u << 1u,
+  PROM_SGEMM_AUDIT_TIMESTAMP_DISPATCH = 1u << 2u,
+  PROM_SGEMM_AUDIT_TIMESTAMP_END = 1u << 3u,
+};
 
 void prom_vk_set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail);
 int prom_vk_checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value);
@@ -114,6 +158,19 @@ int prom_reactor_runtime_sgemm_audit_impl(void* handle,
                                           uint32_t k,
                                           const prom_sgemm_audit_execution_descriptor* descriptor,
                                           prom_sgemm_audit_execution_result* out_result);
+int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
+                                                    const float* a,
+                                                    const float* b,
+                                                    float* c,
+                                                    uint32_t m,
+                                                    uint32_t n,
+                                                    uint32_t k,
+                                                    const prom_sgemm_audit_execution_descriptor* descriptor,
+                                                    uint32_t warmup,
+                                                    uint32_t iterations,
+                                                    uint64_t* out_samples_ns,
+                                                    uint32_t sample_capacity,
+                                                    prom_sgemm_audit_execution_result* out_result);
 int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                                        const PrometheusSgemmResidentBenchmarkRequest* request,
                                                        PrometheusSgemmResidentBenchmarkResult* out_result);

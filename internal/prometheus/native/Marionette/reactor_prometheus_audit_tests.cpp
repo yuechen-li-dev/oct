@@ -5,6 +5,21 @@
 #include "../reactor_vulkan_srt_2accum_k_spirv.h"
 #include "../reactor_vulkan_b2x2_row_major_biased_spirv.h"
 #include "../reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
+#include "../reactor_vulkan_tiled_spirv.h"
+#include "../reactor_vulkan_memory_conservative_spirv.h"
+#include "../reactor_vulkan_sgemm_scalar_plus_spirv.h"
+#include "../reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
+#include "../reactor_vulkan_packed4_spirv.h"
+#include "../reactor_vulkan_fp16_spirv.h"
+#define k_prom_sgemm_srt_2accum_k_spirv k_prom_m37b_srt_2accum_k_spirv
+#include "../reactor_vulkan_sgemm_srt_2accum_k_spirv.h"
+#undef k_prom_sgemm_srt_2accum_k_spirv
+#define k_prom_sgemm_b2x2_row_major_biased_spirv k_prom_m37b_b2x2_spirv
+#include "../reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h"
+#undef k_prom_sgemm_b2x2_row_major_biased_spirv
+#define k_prom_sgemm_a2x4_row_biased_accum8_spirv k_prom_m37b_a2x4_spirv
+#include "../reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h"
+#undef k_prom_sgemm_a2x4_row_biased_accum8_spirv
 #include "../reactor_judgment_engine.h"
 #include "../reactor_vulkan_sgemm_internal.h"
 
@@ -20,6 +35,11 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+extern "C" {
+extern const uint32_t k_prom_sgemm_spirv[];
+extern const size_t k_prom_sgemm_spirv_size_bytes;
+}
 
 namespace
 {
@@ -227,20 +247,16 @@ TimingStats MeasureTiming(void* runtime, const prom_sgemm_audit_execution_descri
                           const std::vector<float>& a, const std::vector<float>& b,
                           std::uint32_t m, std::uint32_t n, std::uint32_t k)
 {
-    std::vector<float> output;
+    std::vector<float> output(static_cast<std::size_t>(m) * n, 0.0f);
     prom_sgemm_audit_execution_result result{};
-    for (std::uint32_t index = 0; index < kTimingWarmupIterations; ++index) {
-        if (!RunAuditModule(runtime, descriptor, a, b, &output, m, n, k, &result)) {
-            return {};
-        }
-    }
-    std::vector<std::uint64_t> samples;
-    for (std::uint32_t index = 0; index < kTimingMeasuredIterations; ++index) {
-        if (!RunAuditModule(runtime, descriptor, a, b, &output, m, n, k, &result) || result.gpu_timing_valid == 0u) {
-            return {};
-        }
-        samples.push_back(result.gpu_duration_ns);
-    }
+    std::vector<std::uint64_t> samples(kTimingMeasuredIterations, 0u);
+    if (prom_reactor_runtime_sgemm_audit_benchmark_impl(runtime, a.data(), b.data(), output.data(), m, n, k, &descriptor,
+                                                         kTimingWarmupIterations, kTimingMeasuredIterations,
+                                                         samples.data(), static_cast<std::uint32_t>(samples.size()), &result) != PROM_OK ||
+        result.gpu_timing_valid == 0u || result.pipeline_create_count != 1u ||
+        result.warmup_dispatch_count != kTimingWarmupIterations || result.measured_dispatch_count != kTimingMeasuredIterations ||
+        result.dispatches_per_sample != 1u || result.timestamp_interval_command_mask != PROM_SGEMM_AUDIT_TIMESTAMP_DISPATCH ||
+        result.query_reset_before_start_timestamp != 1u || result.fence_wait_before_query_results != 1u) return {};
     return ComputeTimingStats(samples);
 }
 
@@ -617,6 +633,173 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
     report << "]}";
     prom_reactor_runtime_destroy_impl(runtime);
     ASSERT_TRUE(context.WriteTextArtifact("prometheus_m34a_pairwise_summary.json", report.str()), "pairwise audit JSON is written");
+}
+
+// M37b is intentionally a narrow, test-only adapter: production assets are
+// passed to the established audit seam without changing selector ownership.
+FACT(PrometheusM37bProductionTimingRows)
+{
+    struct M37bKernel {
+        const char* name;
+        const uint32_t* words;
+        size_t bytes;
+        const char* entry;
+        prom_sgemm_kernel_dispatch_metadata dispatch;
+        uint32_t mode;
+        float tolerance;
+    };
+    const std::array<M37bKernel, 10> kernels = {{
+        {"scalar", k_prom_sgemm_spirv, k_prom_sgemm_spirv_size_bytes, "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_BASELINE), 0.002f},
+        {"tiled", k_prom_sgemm_tiled_spirv, sizeof(k_prom_sgemm_tiled_spirv), "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"memory-conservative", k_prom_sgemm_memory_conservative_spirv, sizeof(k_prom_sgemm_memory_conservative_spirv), "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"scalar-plus", k_prom_sgemm_scalar_plus_spirv, sizeof(k_prom_sgemm_scalar_plus_spirv), "SgemmScalarBaselinePlus8x8_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"tile16", k_prom_sgemm_tile16x16_shared_fp32_spirv, sizeof(k_prom_sgemm_tile16x16_shared_fp32_spirv), "SgemmTile16x16SharedFp32_CS", {16u, 16u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"SRT", k_prom_m37b_srt_2accum_k_spirv, sizeof(k_prom_m37b_srt_2accum_k_spirv), "SgemmSrt2AccumK_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"B2x2", k_prom_m37b_b2x2_spirv, sizeof(k_prom_m37b_b2x2_spirv), "SgemmB2x2_CS", {8u, 8u, 1u, 2u, 2u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"A2x4", k_prom_m37b_a2x4_spirv, sizeof(k_prom_m37b_a2x4_spirv), "SgemmA2x4_CS", {8u, 8u, 1u, 2u, 4u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
+        {"Packed4", k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "SgemmPacked4_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_PACKED4_FP32), 0.002f},
+        {"FP16", k_prom_sgemm_fp16_storage_fp32accum_spirv, sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv), "SgemmFp16StorageFp32Accum_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM), 0.03f},
+    }};
+    const std::array<std::array<uint32_t, 3>, 2> workloads = {{{512u, 512u, 512u}, {127u, 131u, 129u}}};
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "M37b runtime creation succeeds");
+    if (runtime == nullptr) {
+        SKIP("Vulkan runtime unavailable");
+    }
+    PrometheusCaps caps{};
+    if (prom_reactor_runtime_probe_impl(runtime, &caps) != PROM_OK || caps.available == 0u || caps.backend_type == PROM_BACKEND_STUB) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("real Vulkan backend unavailable");
+    }
+    std::ostringstream report;
+    report << "{\"backend\":\"prometheus\",\"warmup\":" << kTimingWarmupIterations << ",\"iterations\":" << kTimingMeasuredIterations << ",\"rows\":[";
+    bool first = true;
+    for (const M37bKernel& kernel : kernels) {
+        for (const auto& shape : workloads) {
+            std::vector<float> a;
+            std::vector<float> b;
+            std::vector<float> expected;
+            std::vector<float> output;
+            FillInputs(&a, &b, shape[0], shape[1], shape[2]);
+            ReferenceSgemm(a, b, &expected, shape[0], shape[1], shape[2]);
+            prom_sgemm_audit_execution_descriptor descriptor{};
+            descriptor.spirv_words = kernel.words;
+            descriptor.spirv_size_bytes = kernel.bytes;
+            descriptor.entry_point = kernel.entry;
+            descriptor.dispatch = kernel.dispatch;
+            descriptor.compute_mode = kernel.mode;
+            descriptor.provenance = "M37b exact production asset";
+            prom_sgemm_audit_execution_result execution{};
+            const bool ran = RunAuditModule(runtime, descriptor, a, b, &output, shape[0], shape[1], shape[2], &execution);
+            bool correct = ran;
+            if (correct) {
+                for (size_t index = 0; index < expected.size(); ++index) {
+                    if (std::fabs(expected[index] - output[index]) > kernel.tolerance) {
+                        correct = false;
+                        break;
+                    }
+                }
+            }
+            const TimingStats timing = ran ? MeasureTiming(runtime, descriptor, a, b, shape[0], shape[1], shape[2]) : TimingStats{};
+            ASSERT_TRUE(ran && correct && !timing.samples.empty(), "M37b production artifact must execute, match CPU, and timestamp");
+            if (!first) {
+                report << ',';
+            }
+            first = false;
+            report << "{\"kernel\":";
+            AppendJsonString(report, kernel.name);
+            report << ",\"m\":" << shape[0]
+                   << ",\"n\":" << shape[1]
+                   << ",\"k\":" << shape[2]
+                   << ",\"spirv_bytes\":" << kernel.bytes
+                   << ",\"entry_point\":";
+            AppendJsonString(report, kernel.entry);
+            report << ",\"local_size\":[" << kernel.dispatch.threads_x << ',' << kernel.dispatch.threads_y << ',' << kernel.dispatch.threads_z << ']'
+                   << ",\"footprint\":[" << kernel.dispatch.outputs_per_invocation_m << ',' << kernel.dispatch.outputs_per_invocation_n << ']'
+                   << ",\"groups\":[" << execution.dispatch_geometry.groups_x << ',' << execution.dispatch_geometry.groups_y << ',' << execution.dispatch_geometry.groups_z << ']'
+                   << ",\"push_constants\":[" << execution.push_constant_m << ',' << execution.push_constant_n << ',' << execution.push_constant_k << ']'
+                   << ",\"buffer_bytes\":[" << execution.a_buffer_bytes << ',' << execution.b_buffer_bytes << ',' << execution.c_buffer_bytes << ']'
+                   << ",\"memory_type_indices\":[" << execution.a_memory_type_index << ',' << execution.b_memory_type_index << ',' << execution.c_memory_type_index << ']'
+                   << ",\"memory_property_flags\":[" << execution.a_memory_property_flags << ',' << execution.b_memory_property_flags << ',' << execution.c_memory_property_flags << ']'
+                   << ",\"buffer_usage_flags\":[" << execution.a_usage_flags << ',' << execution.b_usage_flags << ',' << execution.c_usage_flags << ']'
+                   << ",\"memory_alignments\":[" << execution.a_memory_alignment << ',' << execution.b_memory_alignment << ',' << execution.c_memory_alignment << ']'
+                   << ",\"memory_offsets\":[" << execution.a_memory_offset << ',' << execution.b_memory_offset << ',' << execution.c_memory_offset << ']'
+                   << ",\"compute_queue_family_index\":" << execution.compute_queue_family_index
+                   << ",\"selected_path\":" << execution.selected_path
+                   << ",\"dispatches_per_sample\":1"
+                   << ",\"timestamp_interval_command_mask\":" << PROM_SGEMM_AUDIT_TIMESTAMP_DISPATCH
+                   << ",\"correct\":" << (correct ? "true" : "false")
+                   << ",\"min\":" << timing.minimum_ns
+                   << ",\"median\":" << timing.median_ns
+                   << ",\"max\":" << timing.maximum_ns << '}';
+        }
+    }
+    report << "]}";
+    prom_reactor_runtime_destroy_impl(runtime);
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m37b_rows.json", report.str()), "M37b Prometheus rows are written");
+}
+
+FACT(PrometheusM38aDirectMemoryDiagnostic)
+{
+    struct Kernel {
+        const char* name;
+        const std::uint32_t* words;
+        std::size_t bytes;
+        const char* entry;
+        std::uint32_t mode;
+        std::uint32_t footprint_m;
+        std::uint32_t footprint_n;
+    };
+    const std::array<Kernel, 4> kernels = {{
+        {"B2x2", k_prom_m37b_b2x2_spirv, sizeof(k_prom_m37b_b2x2_spirv), "SgemmB2x2_CS", static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 2u, 2u},
+        {"A2x4", k_prom_m37b_a2x4_spirv, sizeof(k_prom_m37b_a2x4_spirv), "SgemmA2x4_CS", static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED), 2u, 4u},
+        {"Packed4", k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "SgemmPacked4_CS", static_cast<std::uint32_t>(PROM_VK_COMPUTE_PACKED4_FP32), 1u, 1u},
+        {"FP16", k_prom_sgemm_fp16_storage_fp32accum_spirv, sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv), "SgemmFp16StorageFp32Accum_CS", static_cast<std::uint32_t>(PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM), 1u, 1u},
+    }};
+    PrometheusReactorConfig config{};
+    config.struct_size = sizeof(config);
+    config.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH;
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&config, &runtime), "M38a direct diagnostic runtime creation succeeds");
+    PrometheusCaps caps{};
+    if (runtime == nullptr || prom_reactor_runtime_probe_impl(runtime, &caps) != PROM_OK || caps.available == 0u || caps.backend_type == PROM_BACKEND_STUB) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("real Vulkan runtime unavailable");
+    }
+    std::ostringstream report;
+    report << "{\"rows\":[";
+    bool first = true;
+    for (const Kernel& kernel : kernels) {
+        for (const auto& shape : std::array<std::array<std::uint32_t, 3>, 2>{{{{512u, 512u, 512u}}, {{127u, 131u, 129u}}}}) {
+            std::vector<float> a;
+            std::vector<float> b;
+            std::vector<float> output;
+            FillInputs(&a, &b, shape[0], shape[1], shape[2]);
+            prom_sgemm_audit_execution_descriptor descriptor{};
+            descriptor.spirv_words = kernel.words;
+            descriptor.spirv_size_bytes = kernel.bytes;
+            descriptor.entry_point = kernel.entry;
+            descriptor.dispatch = {8u, 8u, 1u, kernel.footprint_m, kernel.footprint_n, 0u, 0u, 0u, 0u};
+            descriptor.compute_mode = kernel.mode;
+            descriptor.provenance = "M38a direct-memory diagnostic";
+            prom_sgemm_audit_execution_result execution{};
+            ASSERT_TRUE(RunAuditModule(runtime, descriptor, a, b, &output, shape[0], shape[1], shape[2], &execution), "direct diagnostic dispatch succeeds");
+            const TimingStats timing = MeasureTiming(runtime, descriptor, a, b, shape[0], shape[1], shape[2]);
+            ASSERT_FALSE(timing.samples.empty(), "direct diagnostic timestamp samples exist");
+            if (!first) report << ',';
+            first = false;
+            report << "{\"kernel\":";
+            AppendJsonString(report, kernel.name);
+            report << ",\"m\":" << shape[0] << ",\"n\":" << shape[1] << ",\"k\":" << shape[2]
+                   << ",\"median_ns\":" << timing.median_ns
+                   << ",\"selected_path\":" << execution.selected_path
+                   << ",\"memory_type_indices\":[" << execution.a_memory_type_index << ',' << execution.b_memory_type_index << ',' << execution.c_memory_type_index << ']'
+                   << ",\"memory_property_flags\":[" << execution.a_memory_property_flags << ',' << execution.b_memory_property_flags << ',' << execution.c_memory_property_flags << "]}";
+        }
+    }
+    report << "]}";
+    prom_reactor_runtime_destroy_impl(runtime);
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m38a_direct_memory.json", report.str()), "M38a direct-memory artifact is written");
 }
 
 FACT(PrometheusAuditA2x4HistoricalFootprintExperiment)
