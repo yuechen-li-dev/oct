@@ -4122,6 +4122,425 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
   return execution_result == PROM_OK && completed_warmup == warmup && completed_measured == iterations ? PROM_OK : PROM_ERROR;
 }
 
+typedef struct prom_sgemm_placement_role_buffer {
+  prom_vk_buffer storage;
+  prom_vk_buffer transfer;
+  uint32_t placement;
+  uint32_t is_input;
+} prom_sgemm_placement_role_buffer;
+
+static void prom_sgemm_placement_destroy_role(VkDevice device, prom_sgemm_placement_role_buffer* role) {
+  if (role == NULL) return;
+  prom_vk_destroy_buffer(device, &role->transfer);
+  prom_vk_destroy_buffer(device, &role->storage);
+  memset(role, 0, sizeof(*role));
+}
+
+static VkResult prom_sgemm_placement_create_role(prometheus_runtime* rt,
+                                                 VkDeviceSize size,
+                                                 uint32_t placement,
+                                                 uint32_t is_input,
+                                                 prom_sgemm_placement_role_buffer* role) {
+  VkBufferUsageFlags usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+  VkResult result;
+  if (rt == NULL || role == NULL || placement < PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL ||
+      placement > PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  memset(role, 0, sizeof(*role));
+  role->placement = placement;
+  role->is_input = is_input;
+  if (placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
+    usage |= is_input != 0u ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  }
+  result = prom_vk_create_buffer_for_placement(rt->physical_device, rt->device, rt->test_flags, size, usage,
+                                                placement, placement != PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL,
+                                                &role->storage);
+  if (result != VK_SUCCESS) return result;
+  if (placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
+    const VkBufferUsageFlags transfer_usage = is_input != 0u ? VK_BUFFER_USAGE_TRANSFER_SRC_BIT : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    result = prom_vk_create_buffer_for_placement(rt->physical_device, rt->device, rt->test_flags, size, transfer_usage,
+                                                  PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_SYSTEM, 1,
+                                                  &role->transfer);
+    if (result != VK_SUCCESS) {
+      prom_sgemm_placement_destroy_role(rt->device, role);
+    }
+  }
+  return result;
+}
+
+static void prom_sgemm_placement_capture_role(const prometheus_runtime* rt,
+                                              const prom_sgemm_placement_role_buffer* role,
+                                              uint32_t* out_type,
+                                              uint32_t* out_flags,
+                                              uint32_t* out_heap) {
+  VkPhysicalDeviceMemoryProperties properties;
+  if (rt == NULL || role == NULL || out_type == NULL || out_flags == NULL || out_heap == NULL) return;
+  vkGetPhysicalDeviceMemoryProperties(rt->physical_device, &properties);
+  *out_type = role->storage.memory_type_index;
+  *out_flags = (uint32_t)role->storage.memory_property_flags;
+  *out_heap = role->storage.memory_type_index < properties.memoryTypeCount
+                  ? properties.memoryTypes[role->storage.memory_type_index].heapIndex
+                  : UINT32_MAX;
+}
+
+static VkResult prom_sgemm_placement_allocate_roles(prometheus_runtime* rt,
+                                                    VkDeviceSize a_size,
+                                                    VkDeviceSize b_size,
+                                                    VkDeviceSize c_size,
+                                                    const prom_sgemm_placement_benchmark_options* options,
+                                                    prom_sgemm_placement_role_buffer* a_role,
+                                                    prom_sgemm_placement_role_buffer* b_role,
+                                                    prom_sgemm_placement_role_buffer* c_role) {
+  VkResult result = prom_sgemm_placement_create_role(rt, a_size, options->a_placement, 1u, a_role);
+  if (result == VK_SUCCESS) result = prom_sgemm_placement_create_role(rt, b_size, options->b_placement, 1u, b_role);
+  if (result == VK_SUCCESS) result = prom_sgemm_placement_create_role(rt, c_size, options->c_placement, 0u, c_role);
+  if (result != VK_SUCCESS) {
+    prom_sgemm_placement_destroy_role(rt->device, c_role);
+    prom_sgemm_placement_destroy_role(rt->device, b_role);
+    prom_sgemm_placement_destroy_role(rt->device, a_role);
+  }
+  return result;
+}
+
+static void prom_sgemm_placement_update_descriptors(prometheus_runtime* rt,
+                                                    const prom_sgemm_placement_role_buffer* a_role,
+                                                    const prom_sgemm_placement_role_buffer* b_role,
+                                                    const prom_sgemm_placement_role_buffer* c_role) {
+  VkDescriptorBufferInfo infos[3];
+  VkWriteDescriptorSet writes[3];
+  uint32_t i;
+  memset(infos, 0, sizeof(infos));
+  infos[0].buffer = a_role->storage.buffer; infos[0].range = a_role->storage.size;
+  infos[1].buffer = b_role->storage.buffer; infos[1].range = b_role->storage.size;
+  infos[2].buffer = c_role->storage.buffer; infos[2].range = c_role->storage.size;
+  memset(writes, 0, sizeof(writes));
+  for (i = 0u; i < 3u; ++i) {
+    writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[i].dstSet = rt->descriptor_set;
+    writes[i].dstBinding = i;
+    writes[i].descriptorCount = 1u;
+    writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[i].pBufferInfo = &infos[i];
+  }
+  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+}
+
+static void prom_sgemm_placement_write_payload(prom_sgemm_placement_role_buffer* role,
+                                               const void* payload,
+                                               size_t size) {
+  void* destination;
+  if (role == NULL || payload == NULL) return;
+  destination = role->placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL
+                    ? role->transfer.mapped
+                    : role->storage.mapped;
+  if (destination != NULL) memcpy(destination, payload, size);
+}
+
+int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
+                                                        const float* a,
+                                                        const float* b,
+                                                        float* c,
+                                                        uint32_t m,
+                                                        uint32_t n,
+                                                        uint32_t k,
+                                                        const prom_sgemm_audit_execution_descriptor* descriptor,
+                                                        const prom_sgemm_placement_benchmark_options* options,
+                                                        uint64_t* out_gpu_samples_ns,
+                                                        uint64_t* out_preparation_samples_ns,
+                                                        uint64_t* out_end_to_end_samples_ns,
+                                                        uint32_t sample_capacity,
+                                                        prom_sgemm_placement_benchmark_result* out_result) {
+  prometheus_runtime* rt;
+  prom_sgemm_placement_role_buffer a_role;
+  prom_sgemm_placement_role_buffer b_role;
+  prom_sgemm_placement_role_buffer c_role;
+  prom_vk_buffer perturbation;
+  VkShaderModule module = VK_NULL_HANDLE;
+  VkPipeline pipeline = VK_NULL_HANDLE;
+  VkQueryPool timing_query_pool = VK_NULL_HANDLE;
+  VkShaderModuleCreateInfo shader_info;
+  VkPipelineShaderStageCreateInfo shader_stage;
+  VkComputePipelineCreateInfo pipeline_info;
+  VkQueryPoolCreateInfo query_pool_info;
+  VkDeviceSize a_size = 0u, b_size = 0u, c_size = 0u;
+  size_t a_copy_size = 0u, b_copy_size = 0u, c_copy_size = 0u;
+  void* packed_a = NULL;
+  void* packed_b = NULL;
+  const void* a_payload = a;
+  const void* b_payload = b;
+  uint32_t compute_k;
+  uint32_t dispatch_index;
+  uint32_t completed = 0u;
+  uint32_t persistent_allocated = 0u;
+  uint32_t total_dispatches;
+  uint64_t initial_begin;
+  VkResult vk_result = VK_SUCCESS;
+  int status = PROM_ERROR;
+  if (out_result != NULL) memset(out_result, 0, sizeof(*out_result));
+  memset(&a_role, 0, sizeof(a_role)); memset(&b_role, 0, sizeof(b_role)); memset(&c_role, 0, sizeof(c_role));
+  memset(&perturbation, 0, sizeof(perturbation));
+  if (handle == NULL || !registry_contains(handle) || a == NULL || b == NULL || c == NULL || descriptor == NULL ||
+      options == NULL || out_gpu_samples_ns == NULL || out_preparation_samples_ns == NULL ||
+      out_end_to_end_samples_ns == NULL || options->iterations == 0u || sample_capacity < options->iterations ||
+      options->warmup > UINT32_MAX - options->iterations || options->reuse_mode < PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION ||
+      options->reuse_mode > PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER) {
+    if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = PROM_ERROR; }
+    return PROM_ERROR;
+  }
+  rt = (prometheus_runtime*)handle;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->available == 0u || rt->timestamp_query_supported == 0u) return PROM_ERROR;
+  compute_k = descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
+  if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+    if (!checked_packed_fp16_buffer_size(m, compute_k, &a_size, &a_copy_size) ||
+        !checked_packed_fp16_buffer_size(compute_k, n, &b_size, &b_copy_size)) goto cleanup;
+  } else {
+    if (!checked_float_buffer_size(m, compute_k, &a_size, &a_copy_size) ||
+        !checked_float_buffer_size(descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ? n : compute_k,
+                                   descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ? compute_k : n,
+                                   &b_size, &b_copy_size)) goto cleanup;
+  }
+  if (!checked_float_buffer_size(m, n, &c_size, &c_copy_size)) goto cleanup;
+  if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ||
+      descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+    packed_a = malloc(a_copy_size); packed_b = malloc(b_copy_size);
+    if (packed_a == NULL || packed_b == NULL) goto cleanup;
+    a_payload = packed_a; b_payload = packed_b;
+  }
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = descriptor->spirv_size_bytes;
+  shader_info.pCode = descriptor->spirv_words;
+  vk_result = vkCreateShaderModule(rt->device, &shader_info, NULL, &module);
+  if (vk_result != VK_SUCCESS) goto cleanup;
+  memset(&shader_stage, 0, sizeof(shader_stage));
+  shader_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  shader_stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  shader_stage.module = module;
+  shader_stage.pName = descriptor->entry_point;
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = shader_stage;
+  pipeline_info.layout = rt->pipeline_layout;
+  vk_result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &pipeline);
+  if (vk_result != VK_SUCCESS) goto cleanup;
+  memset(&query_pool_info, 0, sizeof(query_pool_info));
+  query_pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+  query_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
+  query_pool_info.queryCount = 4u;
+  vk_result = vkCreateQueryPool(rt->device, &query_pool_info, NULL, &timing_query_pool);
+  if (vk_result != VK_SUCCESS) goto cleanup;
+  initial_begin = prom_wall_clock_now_ns();
+  if (options->reuse_mode != PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
+    vk_result = prom_sgemm_placement_allocate_roles(rt, a_size, b_size, c_size, options, &a_role, &b_role, &c_role);
+    if (vk_result != VK_SUCCESS) goto unsupported;
+    persistent_allocated = 1u;
+    prom_sgemm_placement_update_descriptors(rt, &a_role, &b_role, &c_role);
+    if (out_result != NULL) { out_result->allocation_count += 3u; out_result->descriptor_update_count += 1u; }
+  }
+  if (options->perturb_cache != 0u && options->cache_perturbation_bytes >= 4u) {
+    vk_result = prom_vk_create_buffer_for_placement(rt->physical_device, rt->device, rt->test_flags,
+                                                     (VkDeviceSize)(options->cache_perturbation_bytes & ~3ull),
+                                                     VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                                     PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL, 0, &perturbation);
+    if (vk_result != VK_SUCCESS) goto unsupported;
+  }
+  if (out_result != NULL) out_result->initial_preparation_ns = prom_wall_clock_elapsed_ns(initial_begin, prom_wall_clock_now_ns());
+  total_dispatches = options->warmup + options->iterations;
+  for (dispatch_index = 0u; dispatch_index < total_dispatches; ++dispatch_index) {
+    VkCommandBufferBeginInfo begin_info;
+    VkSubmitInfo submit_info;
+    VkBufferMemoryBarrier barriers[8];
+    VkBufferCopy copies[3];
+    prom_vk_push push;
+    prom_sgemm_dispatch_geometry geometry;
+    uint64_t timestamps[4];
+    uint64_t e2e_begin = prom_wall_clock_now_ns();
+    uint64_t prep_begin = e2e_begin;
+    uint64_t prep_end;
+    uint64_t readback_begin;
+    uint64_t readback_end;
+    uint32_t barrier_count = 0u;
+    uint32_t write_inputs = options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD ||
+                            options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION || dispatch_index == 0u;
+    if (options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
+      vk_result = prom_sgemm_placement_allocate_roles(rt, a_size, b_size, c_size, options, &a_role, &b_role, &c_role);
+      if (vk_result != VK_SUCCESS) goto unsupported;
+      prom_sgemm_placement_update_descriptors(rt, &a_role, &b_role, &c_role);
+      if (out_result != NULL) { out_result->allocation_count += 3u; out_result->descriptor_update_count += 1u; }
+    }
+    if (out_result != NULL && out_result->a_buffer_bytes == 0u) {
+      out_result->a_buffer_bytes = (uint64_t)a_size; out_result->b_buffer_bytes = (uint64_t)b_size; out_result->c_buffer_bytes = (uint64_t)c_size;
+      prom_sgemm_placement_capture_role(rt, &a_role, &out_result->a_memory_type_index, &out_result->a_memory_property_flags, &out_result->a_heap_index);
+      prom_sgemm_placement_capture_role(rt, &b_role, &out_result->b_memory_type_index, &out_result->b_memory_property_flags, &out_result->b_heap_index);
+      prom_sgemm_placement_capture_role(rt, &c_role, &out_result->c_memory_type_index, &out_result->c_memory_property_flags, &out_result->c_heap_index);
+    }
+    if (write_inputs != 0u) {
+      if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32) {
+        prom_pack_a_packed4_rowmajor(a, (float*)packed_a, m, k, compute_k);
+        prom_pack_b_packed4_colmajor(b, (float*)packed_b, n, k, compute_k);
+      } else if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
+        prom_pack_fp16_pairs(a, m * compute_k, (uint32_t*)packed_a);
+        prom_pack_fp16_pairs(b, compute_k * n, (uint32_t*)packed_b);
+      }
+      prom_sgemm_placement_write_payload(&a_role, a_payload, a_copy_size);
+      prom_sgemm_placement_write_payload(&b_role, b_payload, b_copy_size);
+    }
+    prep_end = prom_wall_clock_now_ns();
+    vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
+    if (vk_result != VK_SUCCESS) goto cleanup;
+    memset(&begin_info, 0, sizeof(begin_info)); begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    vk_result = vkBeginCommandBuffer(rt->command_buffer, &begin_info);
+    if (vk_result != VK_SUCCESS) goto cleanup;
+    vkCmdResetQueryPool(rt->command_buffer, timing_query_pool, 0u, 4u);
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing_query_pool, 0u);
+    memset(barriers, 0, sizeof(barriers)); memset(copies, 0, sizeof(copies));
+    if (write_inputs != 0u) {
+      prom_sgemm_placement_role_buffer* roles[2] = {&a_role, &b_role};
+      uint32_t role_index;
+      for (role_index = 0u; role_index < 2u; ++role_index) {
+        prom_sgemm_placement_role_buffer* role = roles[role_index];
+        if (role->placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
+          VkBufferMemoryBarrier host_barrier;
+          VkBufferCopy copy;
+          memset(&host_barrier, 0, sizeof(host_barrier));
+          host_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+          host_barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT; host_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+          host_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; host_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+          host_barrier.buffer = role->transfer.buffer; host_barrier.size = role->transfer.size;
+          vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               0u, 0u, NULL, 1u, &host_barrier, 0u, NULL);
+          memset(&copy, 0, sizeof(copy)); copy.size = role->storage.size;
+          vkCmdCopyBuffer(rt->command_buffer, role->transfer.buffer, role->storage.buffer, 1u, &copy);
+          barriers[barrier_count] = host_barrier;
+          barriers[barrier_count].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+          barriers[barrier_count].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          barriers[barrier_count].buffer = role->storage.buffer;
+          barrier_count += 1u;
+        } else {
+          barriers[barrier_count].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+          barriers[barrier_count].srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+          barriers[barrier_count].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          barriers[barrier_count].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+          barriers[barrier_count].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+          barriers[barrier_count].buffer = role->storage.buffer;
+          barriers[barrier_count].size = role->storage.size;
+          barrier_count += 1u;
+        }
+      }
+    }
+    if (perturbation.buffer != VK_NULL_HANDLE) {
+      VkBufferMemoryBarrier perturb_barrier;
+      vkCmdFillBuffer(rt->command_buffer, perturbation.buffer, 0u, VK_WHOLE_SIZE, dispatch_index * 2654435761u);
+      memset(&perturb_barrier, 0, sizeof(perturb_barrier));
+      perturb_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+      perturb_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; perturb_barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+      perturb_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; perturb_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      perturb_barrier.buffer = perturbation.buffer; perturb_barrier.size = perturbation.size;
+      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           0u, 0u, NULL, 1u, &perturb_barrier, 0u, NULL);
+    }
+    if (barrier_count != 0u) {
+      vkCmdPipelineBarrier(rt->command_buffer,
+                           VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                           0u, 0u, NULL, barrier_count, barriers, 0u, NULL);
+    }
+    vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+    vkCmdBindDescriptorSets(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, rt->pipeline_layout,
+                            0u, 1u, &rt->descriptor_set, 0u, NULL);
+    push.m = m; push.n = n; push.k = compute_k;
+    vkCmdPushConstants(rt->command_buffer, rt->pipeline_layout, VK_SHADER_STAGE_COMPUTE_BIT, 0u, PROM_VK_SHADER_PUSH_BYTES, &push);
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timing_query_pool, 1u);
+    geometry = prom_sgemm_dispatch_geometry_for_metadata(m, n, &descriptor->dispatch);
+    vkCmdDispatch(rt->command_buffer, geometry.groups_x, geometry.groups_y, geometry.groups_z);
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, timing_query_pool, 2u);
+    memset(&barriers[0], 0, sizeof(barriers[0]));
+    barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; barriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barriers[0].buffer = c_role.storage.buffer; barriers[0].size = c_role.storage.size;
+    if (c_role.placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
+      barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           0u, 0u, NULL, 1u, barriers, 0u, NULL);
+      copies[2].size = c_role.storage.size;
+      vkCmdCopyBuffer(rt->command_buffer, c_role.storage.buffer, c_role.transfer.buffer, 1u, &copies[2]);
+      barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT; barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+      barriers[0].buffer = c_role.transfer.buffer; barriers[0].size = c_role.transfer.size;
+      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                           0u, 0u, NULL, 1u, barriers, 0u, NULL);
+    } else {
+      barriers[0].dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+      vkCmdPipelineBarrier(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                           0u, 0u, NULL, 1u, barriers, 0u, NULL);
+    }
+    vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_query_pool, 3u);
+    vk_result = vkEndCommandBuffer(rt->command_buffer);
+    if (vk_result != VK_SUCCESS) goto cleanup;
+    vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+    if (vk_result != VK_SUCCESS) goto cleanup;
+    memset(&submit_info, 0, sizeof(submit_info)); submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit_info.commandBufferCount = 1u; submit_info.pCommandBuffers = &rt->command_buffer;
+    vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+    if (vk_result != VK_SUCCESS) goto cleanup;
+    vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    if (vk_result != VK_SUCCESS) goto cleanup;
+    vk_result = vkGetQueryPoolResults(rt->device, timing_query_pool, 0u, 4u, sizeof(timestamps),
+                                      timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+    if (vk_result != VK_SUCCESS || timestamps[1] < timestamps[0] || timestamps[2] <= timestamps[1] ||
+        timestamps[3] < timestamps[2]) goto cleanup;
+    readback_begin = prom_wall_clock_now_ns();
+    memcpy(c, c_role.placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL
+                  ? c_role.transfer.mapped : c_role.storage.mapped, c_copy_size);
+    readback_end = prom_wall_clock_now_ns();
+    if (dispatch_index >= options->warmup) {
+      const uint32_t sample_index = dispatch_index - options->warmup;
+      const uint64_t gpu_transfer_ticks = (timestamps[1] - timestamps[0]) + (timestamps[3] - timestamps[2]);
+      out_gpu_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[2] - timestamps[1])) * rt->timestamp_period_ns);
+      out_preparation_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(prep_begin, prep_end) +
+          (uint64_t)(((double)gpu_transfer_ticks) * rt->timestamp_period_ns) +
+          prom_wall_clock_elapsed_ns(readback_begin, readback_end);
+      out_end_to_end_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(e2e_begin, prom_wall_clock_now_ns());
+      completed += 1u;
+      if (out_result != NULL) out_result->correctness_readback_count += 1u;
+    }
+    if (out_result != NULL) out_result->dispatch_count += 1u;
+    if (options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
+      prom_sgemm_placement_destroy_role(rt->device, &c_role);
+      prom_sgemm_placement_destroy_role(rt->device, &b_role);
+      prom_sgemm_placement_destroy_role(rt->device, &a_role);
+    }
+  }
+  status = PROM_OK;
+  if (out_result != NULL) {
+    out_result->supported = 1u;
+    out_result->completed_iterations = completed;
+  }
+  goto cleanup;
+
+unsupported:
+  if (out_result != NULL) { out_result->supported = 0u; out_result->detail_code = (int)vk_result; out_result->stage = PROM_STAGE_TRANSFER_IN; }
+cleanup:
+  if (out_result != NULL && status != PROM_OK && out_result->detail_code == 0) {
+    out_result->detail_code = (int)(vk_result == VK_SUCCESS ? VK_ERROR_UNKNOWN : vk_result);
+    out_result->stage = PROM_STAGE_SUBMIT;
+  }
+  prom_vk_destroy_buffer(rt != NULL ? rt->device : VK_NULL_HANDLE, &perturbation);
+  if (rt != NULL) {
+    if (persistent_allocated != 0u || options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
+      prom_sgemm_placement_destroy_role(rt->device, &c_role);
+      prom_sgemm_placement_destroy_role(rt->device, &b_role);
+      prom_sgemm_placement_destroy_role(rt->device, &a_role);
+    }
+    if (pipeline != VK_NULL_HANDLE) vkDestroyPipeline(rt->device, pipeline, NULL);
+    if (timing_query_pool != VK_NULL_HANDLE) vkDestroyQueryPool(rt->device, timing_query_pool, NULL);
+    if (module != VK_NULL_HANDLE) vkDestroyShaderModule(rt->device, module, NULL);
+  }
+  free(packed_b); free(packed_a);
+  return status;
+}
+
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                      const float* a,
                                      const float* b,

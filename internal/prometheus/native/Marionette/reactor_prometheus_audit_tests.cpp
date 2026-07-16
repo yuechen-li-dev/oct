@@ -63,6 +63,9 @@ struct TimingStats {
     std::uint64_t minimum_ns = 0u;
     std::uint64_t median_ns = 0u;
     std::uint64_t maximum_ns = 0u;
+    std::uint64_t p10_ns = 0u;
+    std::uint64_t p90_ns = 0u;
+    double coefficient_of_variation = 0.0;
 };
 
 struct MismatchDetail {
@@ -240,6 +243,15 @@ TimingStats ComputeTimingStats(const std::vector<std::uint64_t>& samples)
     stats.minimum_ns = sorted.front();
     stats.maximum_ns = sorted.back();
     stats.median_ns = sorted[sorted.size() / 2u];
+    stats.p10_ns = sorted[(sorted.size() - 1u) / 10u];
+    stats.p90_ns = sorted[((sorted.size() - 1u) * 9u) / 10u];
+    const double mean = std::accumulate(sorted.begin(), sorted.end(), 0.0) / static_cast<double>(sorted.size());
+    double sumSquared = 0.0;
+    for (const std::uint64_t sample : sorted) {
+        const double delta = static_cast<double>(sample) - mean;
+        sumSquared += delta * delta;
+    }
+    stats.coefficient_of_variation = mean > 0.0 ? std::sqrt(sumSquared / static_cast<double>(sorted.size())) / mean : 0.0;
     return stats;
 }
 
@@ -293,6 +305,9 @@ std::string RenderTimingJson(const TimingStats& stats)
     output << "{\"min_ns\":" << stats.minimum_ns
            << ",\"median_ns\":" << stats.median_ns
            << ",\"max_ns\":" << stats.maximum_ns
+           << ",\"p10_ns\":" << stats.p10_ns
+           << ",\"p90_ns\":" << stats.p90_ns
+           << ",\"coefficient_of_variation\":" << std::setprecision(8) << stats.coefficient_of_variation
            << '}';
     return output.str();
 }
@@ -971,4 +986,477 @@ FACT(PrometheusAuditReplayProofPassAndSyntheticFailure)
     ASSERT_TRUE(context.WriteTextArtifact("prometheus_m34a_passing_replay.json", passingJson), "passing replay JSON is written");
     ASSERT_TRUE(context.WriteTextArtifact("prometheus_m34a_failing_replay.json", failingJson), "failing replay JSON is written");
     prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM38bMemorySelectionAndProfilePolicy)
+{
+    VkPhysicalDeviceMemoryProperties properties{};
+    properties.memoryHeapCount = 2u;
+    properties.memoryHeaps[0].size = 8ull * 1024ull * 1024ull * 1024ull;
+    properties.memoryHeaps[0].flags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+    properties.memoryHeaps[1].size = 16ull * 1024ull * 1024ull * 1024ull;
+    properties.memoryTypeCount = 4u;
+    properties.memoryTypes[0] = {VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0u};
+    properties.memoryTypes[1] = {VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1u};
+    properties.memoryTypes[2] = {VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 0u};
+    properties.memoryTypes[3] = {VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+                                 VK_MEMORY_PROPERTY_HOST_CACHED_BIT, 1u};
+    constexpr std::uint32_t allTypes = 0x0fu;
+    ASSERT_EQUAL(0u, prom_vk_find_memory_type_for_placement(&properties, allTypes,
+                                                             PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL),
+                 "pure device-local selection excludes host-visible types");
+    ASSERT_EQUAL(1u, prom_vk_find_memory_type_for_placement(&properties, allTypes,
+                                                             PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_SYSTEM),
+                 "coherent system selection excludes device-local types");
+    ASSERT_EQUAL(2u, prom_vk_find_memory_type_for_placement(&properties, allTypes,
+                                                             PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL),
+                 "mapped device-local selection requires all three property flags");
+    ASSERT_EQUAL(std::numeric_limits<std::uint32_t>::max(),
+                 prom_vk_find_memory_type_for_placement(&properties, 0x03u,
+                     PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL),
+                 "mapped device-local absence is explicit");
+    ASSERT_EQUAL(2u, prom_vk_find_memory_type_for_placement(&properties, allTypes,
+                                                             PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL),
+                 "mixed placement A may select mapped device-local");
+    ASSERT_EQUAL(0u, prom_vk_find_memory_type_for_placement(&properties, allTypes,
+                                                             PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL),
+                 "mixed placement B may independently remain pure local");
+    ASSERT_EQUAL(0u, prom_vk_find_memory_type_for_placement(&properties, allTypes,
+                                                             PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL),
+                 "mixed placement C may independently remain pure local");
+
+    prom_sgemm_memory_profile profile{};
+    profile.enabled = 1u;
+    profile.kernel_compute_mode = PROM_VK_COMPUTE_PACKED4_FP32;
+    profile.vendor_id = 0x10deu;
+    profile.device_id = 0x2488u;
+    profile.driver_version_min = 100u;
+    profile.driver_version_max = 200u;
+    profile.input_placement = PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL;
+    profile.output_placement = PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL;
+    profile.minimum_m = 64u; profile.minimum_n = 64u; profile.minimum_k = 64u;
+    profile.maximum_total_bytes = 4ull * 1024ull * 1024ull;
+    profile.minimum_budget_headroom_bytes = 128ull * 1024ull * 1024ull;
+    prom_sgemm_memory_profile_facts facts{};
+    facts.experiment_enabled = 1u;
+    facts.kernel_compute_mode = PROM_VK_COMPUTE_PACKED4_FP32;
+    facts.vendor_id = 0x10deu; facts.device_id = 0x2488u; facts.driver_version = 150u;
+    facts.mapped_device_local_type_exists = 1u;
+    facts.m = 512u; facts.n = 512u; facts.k = 512u;
+    facts.total_bytes = 3ull * 1024ull * 1024ull;
+    facts.heap_budget_bytes = 7ull * 1024ull * 1024ull * 1024ull;
+    facts.heap_usage_bytes = 1ull * 1024ull * 1024ull * 1024ull;
+    prom_sgemm_memory_profile_decision decision{};
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(1u, decision.matched, "known enabled profile matches inside the proven envelope");
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL, decision.fallback_placement,
+                 "fallback remains pure device-local");
+    profile.kernel_compute_mode = PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM;
+    facts.kernel_compute_mode = PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(1u, decision.matched, "FP16 is the other explicitly eligible profile kernel");
+    profile.kernel_compute_mode = PROM_VK_COMPUTE_BASELINE;
+    facts.kernel_compute_mode = PROM_VK_COMPUTE_BASELINE;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_KERNEL, decision.reason,
+                 "unapproved kernels cannot opt into alternate placement");
+    profile.kernel_compute_mode = PROM_VK_COMPUTE_PACKED4_FP32;
+    facts.kernel_compute_mode = PROM_VK_COMPUTE_PACKED4_FP32;
+    facts.driver_version = profile.driver_version_min - 1u;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_DRIVER, decision.reason, "unknown driver rejects the profile");
+    facts.driver_version = 150u;
+    facts.m = profile.minimum_m - 1u;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_SHAPE, decision.reason, "out-of-envelope shape rejects the profile");
+    facts.m = 512u;
+    facts.device_id = 0x9999u;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_DEVICE, decision.reason, "unknown device rejects the profile");
+    facts.device_id = profile.device_id; facts.mapped_device_local_type_exists = 0u;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_MEMORY_TYPE, decision.reason, "missing mapped type falls back");
+    facts.mapped_device_local_type_exists = 1u; facts.heap_budget_bytes = facts.heap_usage_bytes + facts.total_bytes;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_BUDGET, decision.reason, "budget headroom rejects the preference");
+    facts.heap_budget_bytes = 8ull * 1024ull * 1024ull * 1024ull; facts.total_bytes = profile.maximum_total_bytes + 1u;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_CAPACITY, decision.reason, "profile maximum bytes are bounded");
+    facts.total_bytes = 3ull * 1024ull * 1024ull; facts.experiment_enabled = 0u;
+    prom_sgemm_memory_profile_select(&profile, &facts, &decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_DISABLED, decision.reason, "disabled experiment cannot change placement");
+    prom_sgemm_memory_profile_allocation_failed(&decision);
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PROFILE_REASON_ALLOCATION_FAILURE, decision.reason,
+                 "allocation failure is recorded explicitly");
+    ASSERT_EQUAL(PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL, decision.fallback_placement,
+                 "allocation failure preserves deterministic pure-local fallback");
+}
+
+FACT(PrometheusM38bPackedSizingFiniteComparatorAndAggregation)
+{
+    const auto packed4Bytes = [](std::uint32_t rows, std::uint32_t k) {
+        const std::uint64_t paddedK = (static_cast<std::uint64_t>(k) + 3u) & ~3ull;
+        return static_cast<std::uint64_t>(rows) * paddedK * sizeof(float);
+    };
+    const auto fp16Bytes = [](std::uint32_t rows, std::uint32_t columns) {
+        const std::uint64_t elements = static_cast<std::uint64_t>(rows) * columns;
+        return ((elements + 1u) / 2u) * sizeof(std::uint32_t);
+    };
+    ASSERT_EQUAL(67'056ull, packed4Bytes(127u, 129u), "Packed4 pads hostile K to four lanes");
+    ASSERT_EQUAL(32'768ull, fp16Bytes(127u, 129u), "FP16 flat-half layout packs the odd final lane");
+    const auto finiteEqual = [](float expected, float actual, float tolerance) {
+        return std::isfinite(expected) && std::isfinite(actual) && std::fabs(expected - actual) <= tolerance;
+    };
+    ASSERT_TRUE(finiteEqual(1.0f, 1.001f, 0.002f), "finite comparator accepts in-tolerance values");
+    ASSERT_FALSE(finiteEqual(1.0f, std::numeric_limits<float>::infinity(), 1.0f), "finite comparator rejects infinity");
+    ASSERT_FALSE(finiteEqual(std::numeric_limits<float>::quiet_NaN(), 0.0f, 1.0f), "finite comparator rejects NaN");
+    const TimingStats first = ComputeTimingStats({50u, 10u, 40u, 20u, 30u});
+    const TimingStats second = ComputeTimingStats({50u, 10u, 40u, 20u, 30u});
+    ASSERT_EQUAL(first.minimum_ns, second.minimum_ns, "aggregation minimum is deterministic");
+    ASSERT_EQUAL(first.median_ns, second.median_ns, "aggregation median is deterministic");
+    ASSERT_EQUAL(first.p90_ns, second.p90_ns, "aggregation percentile is deterministic");
+    ASSERT_TRUE(first.coefficient_of_variation > 0.0, "aggregation reports variability");
+}
+
+namespace
+{
+struct M38bKernel {
+    const char* name;
+    const std::uint32_t* words;
+    std::size_t bytes;
+    const char* entry;
+    prom_sgemm_kernel_dispatch_metadata dispatch;
+    std::uint32_t mode;
+    float tolerance;
+};
+
+struct M38bPlacementRun {
+    bool ran = false;
+    bool correct = false;
+    TimingStats gpu;
+    TimingStats preparation;
+    TimingStats end_to_end;
+    prom_sgemm_placement_benchmark_result execution{};
+};
+
+M38bPlacementRun RunM38bPlacement(void* runtime,
+                                  const M38bKernel& kernel,
+                                  const std::vector<float>& a,
+                                  const std::vector<float>& b,
+                                  const std::vector<float>& expected,
+                                  std::uint32_t m,
+                                  std::uint32_t n,
+                                  std::uint32_t k,
+                                  const prom_sgemm_placement_benchmark_options& options)
+{
+    M38bPlacementRun run;
+    std::vector<float> output(static_cast<std::size_t>(m) * n, 0.0f);
+    std::vector<std::uint64_t> gpu(options.iterations, 0u);
+    std::vector<std::uint64_t> preparation(options.iterations, 0u);
+    std::vector<std::uint64_t> endToEnd(options.iterations, 0u);
+    prom_sgemm_audit_execution_descriptor descriptor{};
+    descriptor.spirv_words = kernel.words;
+    descriptor.spirv_size_bytes = kernel.bytes;
+    descriptor.entry_point = kernel.entry;
+    descriptor.dispatch = kernel.dispatch;
+    descriptor.compute_mode = kernel.mode;
+    descriptor.provenance = "M38b exact production asset";
+    run.ran = prom_reactor_runtime_sgemm_placement_benchmark_impl(
+                  runtime, a.data(), b.data(), output.data(), m, n, k, &descriptor, &options,
+                  gpu.data(), preparation.data(), endToEnd.data(), options.iterations, &run.execution) == PROM_OK;
+    run.correct = run.ran && output.size() == expected.size();
+    if (run.correct) {
+        for (std::size_t index = 0u; index < output.size(); ++index) {
+            if (!std::isfinite(output[index]) || !std::isfinite(expected[index]) ||
+                std::fabs(output[index] - expected[index]) > kernel.tolerance) {
+                run.correct = false;
+                break;
+            }
+        }
+    }
+    if (run.ran) {
+        run.gpu = ComputeTimingStats(gpu);
+        run.preparation = ComputeTimingStats(preparation);
+        run.end_to_end = ComputeTimingStats(endToEnd);
+    }
+    return run;
+}
+
+void AppendM38bPlacementRun(std::ostringstream& report,
+                            const char* section,
+                            const char* kernel,
+                            const char* configuration,
+                            std::uint32_t m,
+                            std::uint32_t n,
+                            std::uint32_t k,
+                            std::uint32_t reuseMode,
+                            const M38bPlacementRun& run,
+                            bool* first)
+{
+    if (!*first) report << ',';
+    *first = false;
+    report << "{\"section\":"; AppendJsonString(report, section);
+    report << ",\"kernel\":"; AppendJsonString(report, kernel);
+    report << ",\"configuration\":"; AppendJsonString(report, configuration);
+    report << ",\"m\":" << m << ",\"n\":" << n << ",\"k\":" << k
+           << ",\"reuse_mode\":" << reuseMode
+           << ",\"ran\":" << (run.ran ? "true" : "false")
+           << ",\"correct\":" << (run.correct ? "true" : "false")
+           << ",\"supported\":" << run.execution.supported
+           << ",\"placements\":[" << run.execution.a_memory_property_flags << ','
+           << run.execution.b_memory_property_flags << ',' << run.execution.c_memory_property_flags << ']'
+           << ",\"memory_type_indices\":[" << run.execution.a_memory_type_index << ','
+           << run.execution.b_memory_type_index << ',' << run.execution.c_memory_type_index << ']'
+           << ",\"heap_indices\":[" << run.execution.a_heap_index << ','
+           << run.execution.b_heap_index << ',' << run.execution.c_heap_index << ']'
+           << ",\"buffer_bytes\":[" << run.execution.a_buffer_bytes << ','
+           << run.execution.b_buffer_bytes << ',' << run.execution.c_buffer_bytes << ']'
+           << ",\"initial_preparation_ns\":" << run.execution.initial_preparation_ns
+           << ",\"gpu\":" << RenderTimingJson(run.gpu)
+           << ",\"preparation\":" << RenderTimingJson(run.preparation)
+           << ",\"end_to_end\":" << RenderTimingJson(run.end_to_end) << '}';
+}
+}
+
+FACT(PrometheusM38bPackedMemoryPlacementExperiment)
+{
+    const std::array<M38bKernel, 2> packedKernels = {{
+        {"Packed4", k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "SgemmPacked4_CS",
+         {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_PACKED4_FP32, 0.002f},
+        {"FP16", k_prom_sgemm_fp16_storage_fp32accum_spirv, sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv),
+         "SgemmFp16StorageFp32Accum_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u},
+         PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM, 0.03f},
+    }};
+    const std::array<M38bKernel, 5> competitors = {{
+        {"scalar", k_prom_sgemm_spirv, k_prom_sgemm_spirv_size_bytes, "main",
+         {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_BASELINE, 0.002f},
+        {"tiled", k_prom_sgemm_tiled_spirv, sizeof(k_prom_sgemm_tiled_spirv), "main",
+         {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_TILED, 0.002f},
+        {"memory-conservative", k_prom_sgemm_memory_conservative_spirv, sizeof(k_prom_sgemm_memory_conservative_spirv), "main",
+         {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_TILED, 0.002f},
+        {"B2x2", k_prom_m37b_b2x2_spirv, sizeof(k_prom_m37b_b2x2_spirv), "SgemmB2x2_CS",
+         {8u, 8u, 1u, 2u, 2u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_TILED, 0.002f},
+        {"A2x4", k_prom_m37b_a2x4_spirv, sizeof(k_prom_m37b_a2x4_spirv), "SgemmA2x4_CS",
+         {8u, 8u, 1u, 2u, 4u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_TILED, 0.002f},
+    }};
+    struct PlacementCase { const char* name; std::uint32_t a; std::uint32_t b; std::uint32_t c; };
+    constexpr std::uint32_t local = PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL;
+    constexpr std::uint32_t mapped = PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL;
+    constexpr std::uint32_t system = PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_SYSTEM;
+    const std::array<PlacementCase, 8> placementMatrix = {{
+        {"all-pure-device-local", local, local, local},
+        {"all-mapped-device-local", mapped, mapped, mapped},
+        {"inputs-mapped-output-local", mapped, mapped, local},
+        {"inputs-local-output-mapped", local, local, mapped},
+        {"A-mapped-only", mapped, local, local},
+        {"B-mapped-only", local, mapped, local},
+        {"C-mapped-only", local, local, mapped},
+        {"all-coherent-system-control", system, system, system},
+    }};
+    const std::array<std::array<std::uint32_t, 3>, 7> workloads = {{
+        {{64u, 64u, 64u}}, {{256u, 256u, 256u}}, {{512u, 512u, 512u}},
+        {{1024u, 256u, 512u}}, {{256u, 1024u, 512u}}, {{127u, 131u, 129u}}, {{511u, 509u, 513u}},
+    }};
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "M38b runtime creation succeeds");
+    PrometheusCaps caps{};
+    if (runtime == nullptr || prom_reactor_runtime_probe_impl(runtime, &caps) != PROM_OK ||
+        caps.available == 0u || caps.backend_type == PROM_BACKEND_STUB) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("real Vulkan runtime unavailable");
+    }
+    std::ostringstream report;
+    report << "{\"schema_version\":1,\"rows\":[";
+    bool first = true;
+
+    std::vector<float> representativeA, representativeB, representativeExpected;
+    FillInputs(&representativeA, &representativeB, 512u, 512u, 512u);
+    ReferenceSgemm(representativeA, representativeB, &representativeExpected, 512u, 512u, 512u);
+    for (const M38bKernel& kernel : packedKernels) {
+        for (const PlacementCase& placement : placementMatrix) {
+            prom_sgemm_placement_benchmark_options options{};
+            options.a_placement = placement.a; options.b_placement = placement.b; options.c_placement = placement.c;
+            options.reuse_mode = PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD;
+            options.warmup = 1u; options.iterations = 9u;
+            const M38bPlacementRun run = RunM38bPlacement(runtime, kernel, representativeA, representativeB,
+                                                           representativeExpected, 512u, 512u, 512u, options);
+            ASSERT_TRUE(run.ran && run.correct, "M38b full placement matrix row executes correctly");
+            AppendM38bPlacementRun(report, "placement-matrix", kernel.name, placement.name,
+                                   512u, 512u, 512u, options.reuse_mode, run, &first);
+        }
+    }
+
+    const std::array<PlacementCase, 3> workloadPlacements = {{
+        {"all-pure-device-local", local, local, local},
+        {"all-mapped-device-local", mapped, mapped, mapped},
+        {"inputs-mapped-output-local", mapped, mapped, local},
+    }};
+    for (const auto& shape : workloads) {
+        std::vector<float> a, b, expected;
+        FillInputs(&a, &b, shape[0], shape[1], shape[2]);
+        ReferenceSgemm(a, b, &expected, shape[0], shape[1], shape[2]);
+        for (const M38bKernel& kernel : packedKernels) {
+            for (const PlacementCase& placement : workloadPlacements) {
+                prom_sgemm_placement_benchmark_options options{};
+                options.a_placement = placement.a; options.b_placement = placement.b; options.c_placement = placement.c;
+                options.reuse_mode = PROM_SGEMM_PLACEMENT_REUSE_WARM;
+                options.warmup = 1u; options.iterations = 7u;
+                const M38bPlacementRun run = RunM38bPlacement(runtime, kernel, a, b, expected,
+                                                               shape[0], shape[1], shape[2], options);
+                ASSERT_TRUE(run.ran && run.correct, "M38b workload placement row executes correctly");
+                AppendM38bPlacementRun(report, "workload-matrix", kernel.name, placement.name,
+                                       shape[0], shape[1], shape[2], options.reuse_mode, run, &first);
+            }
+        }
+        for (const M38bKernel& kernel : competitors) {
+            prom_sgemm_audit_execution_descriptor descriptor{};
+            descriptor.spirv_words = kernel.words; descriptor.spirv_size_bytes = kernel.bytes;
+            descriptor.entry_point = kernel.entry; descriptor.dispatch = kernel.dispatch;
+            descriptor.compute_mode = kernel.mode; descriptor.provenance = "M38b production competitor";
+            std::vector<float> output;
+            prom_sgemm_audit_execution_result execution{};
+            const bool ran = RunAuditModule(runtime, descriptor, a, b, &output, shape[0], shape[1], shape[2], &execution);
+            bool correct = ran;
+            for (std::size_t index = 0u; correct && index < output.size(); ++index) {
+                correct = std::isfinite(output[index]) && std::fabs(output[index] - expected[index]) <= kernel.tolerance;
+            }
+            const TimingStats timing = ran ? MeasureTiming(runtime, descriptor, a, b, shape[0], shape[1], shape[2]) : TimingStats{};
+            ASSERT_TRUE(ran && correct && !timing.samples.empty(), "M38b production competitor executes correctly");
+            if (!first) report << ','; first = false;
+            report << "{\"section\":\"competitor\",\"kernel\":"; AppendJsonString(report, kernel.name);
+            report << ",\"configuration\":\"production-pure-device-local\",\"m\":" << shape[0]
+                   << ",\"n\":" << shape[1] << ",\"k\":" << shape[2]
+                   << ",\"ran\":" << (ran ? "true" : "false") << ",\"correct\":" << (correct ? "true" : "false")
+                   << ",\"gpu\":" << RenderTimingJson(timing) << '}';
+        }
+        {
+            std::vector<float> output(static_cast<std::size_t>(shape[0]) * shape[1], 0.0f);
+            std::vector<std::uint64_t> samples;
+            std::uint32_t stage = 0u;
+            int detail = 0;
+            bool correct = true;
+            std::uint32_t executedVariant = 0u;
+            for (std::uint32_t iteration = 0u; iteration < 6u; ++iteration) {
+                const bool ran = prom_reactor_runtime_sgemm_impl(runtime, a.data(), b.data(), output.data(),
+                                                                  shape[0], shape[1], shape[2], &stage, &detail) == PROM_OK;
+                if (!ran) { correct = false; break; }
+                if (iteration != 0u) samples.push_back(static_cast<prometheus_runtime*>(runtime)->last_gpu_duration_ns);
+                executedVariant = static_cast<prometheus_runtime*>(runtime)->slot_diag.px16_m6_executed_dispatch_variant;
+            }
+            for (std::size_t index = 0u; correct && index < output.size(); ++index) {
+                correct = std::isfinite(output[index]) && std::fabs(output[index] - expected[index]) <= 0.03f;
+            }
+            const TimingStats timing = ComputeTimingStats(samples);
+            ASSERT_TRUE(correct && !timing.samples.empty(), "M38b production-selected path executes correctly");
+            if (!first) report << ','; first = false;
+            report << "{\"section\":\"production-selected\",\"kernel\":\"production-selected\""
+                   << ",\"configuration\":\"unchanged-policy\",\"m\":" << shape[0]
+                   << ",\"n\":" << shape[1] << ",\"k\":" << shape[2]
+                   << ",\"executed_variant\":" << executedVariant
+                   << ",\"ran\":true,\"correct\":" << (correct ? "true" : "false")
+                   << ",\"gpu\":" << RenderTimingJson(timing) << '}';
+        }
+    }
+
+    for (const M38bKernel& kernel : packedKernels) {
+        for (const std::uint32_t reuseMode : std::array<std::uint32_t, 4>{{
+                 PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION, PROM_SGEMM_PLACEMENT_REUSE_WARM,
+                 PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD, PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER}}) {
+            prom_sgemm_placement_benchmark_options options{};
+            options.a_placement = mapped; options.b_placement = mapped; options.c_placement = mapped;
+            options.reuse_mode = reuseMode; options.warmup = 0u; options.iterations = 7u;
+            const M38bPlacementRun run = RunM38bPlacement(runtime, kernel, representativeA, representativeB,
+                                                           representativeExpected, 512u, 512u, 512u, options);
+            ASSERT_TRUE(run.ran && run.correct, "M38b reuse mode executes correctly");
+            AppendM38bPlacementRun(report, "reuse-mode", kernel.name, "all-mapped-device-local",
+                                   512u, 512u, 512u, reuseMode, run, &first);
+        }
+        for (const std::uint32_t dispatches : std::array<std::uint32_t, 3>{{1u, 10u, 100u}}) {
+            prom_sgemm_placement_benchmark_options options{};
+            options.a_placement = mapped; options.b_placement = mapped; options.c_placement = mapped;
+            options.reuse_mode = PROM_SGEMM_PLACEMENT_REUSE_WARM; options.iterations = dispatches;
+            const M38bPlacementRun run = RunM38bPlacement(runtime, kernel, representativeA, representativeB,
+                                                           representativeExpected, 512u, 512u, 512u, options);
+            ASSERT_TRUE(run.ran && run.correct, "M38b amortized warm run executes correctly");
+            std::string name = "warm-amortized-" + std::to_string(dispatches);
+            AppendM38bPlacementRun(report, "amortized", kernel.name, name.c_str(),
+                                   512u, 512u, 512u, options.reuse_mode, run, &first);
+        }
+    }
+
+    for (std::uint32_t round = 0u; round < 5u; ++round) {
+        std::vector<float> rotatedA = representativeA;
+        std::vector<float> rotatedExpected = representativeExpected;
+        const float scale = 1.0f + static_cast<float>(round) * 0.03125f;
+        for (float& value : rotatedA) value *= scale;
+        for (float& value : rotatedExpected) value *= scale;
+        for (const M38bKernel& kernel : packedKernels) {
+            const std::array<PlacementCase, 2> order = round % 2u == 0u
+                ? std::array<PlacementCase, 2>{{{"all-pure-device-local", local, local, local}, {"all-mapped-device-local", mapped, mapped, mapped}}}
+                : std::array<PlacementCase, 2>{{{"all-mapped-device-local", mapped, mapped, mapped}, {"all-pure-device-local", local, local, local}}};
+            for (const PlacementCase& placement : order) {
+                prom_sgemm_placement_benchmark_options options{};
+                options.a_placement = placement.a; options.b_placement = placement.b; options.c_placement = placement.c;
+                options.reuse_mode = PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD; options.warmup = 1u; options.iterations = 9u;
+                options.perturb_cache = 1u; options.cache_perturbation_bytes = 32ull * 1024ull * 1024ull;
+                const M38bPlacementRun run = RunM38bPlacement(runtime, kernel, rotatedA, representativeB,
+                                                               rotatedExpected, 512u, 512u, 512u, options);
+                ASSERT_TRUE(run.ran && run.correct, "M38b repeatability/cache perturbation row executes correctly");
+                std::string name = std::string(placement.name) + "-round-" + std::to_string(round);
+                AppendM38bPlacementRun(report, "repeatability", kernel.name, name.c_str(),
+                                       512u, 512u, 512u, options.reuse_mode, run, &first);
+            }
+        }
+    }
+
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services), "M38b obtains Vulkan services for capacity audit");
+    VkPhysicalDeviceMemoryProperties2 memoryProperties2{};
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{};
+    memoryProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2;
+    budget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
+    bool budgetAvailable = false;
+    std::uint32_t extensionCount = 0u;
+    if (vkEnumerateDeviceExtensionProperties(services.physical_device, nullptr, &extensionCount, nullptr) == VK_SUCCESS) {
+        std::vector<VkExtensionProperties> extensions(extensionCount);
+        if (vkEnumerateDeviceExtensionProperties(services.physical_device, nullptr, &extensionCount, extensions.data()) == VK_SUCCESS) {
+            budgetAvailable = std::any_of(extensions.begin(), extensions.end(), [](const VkExtensionProperties& extension) {
+                return std::strcmp(extension.extensionName, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME) == 0;
+            });
+        }
+    }
+    if (budgetAvailable) memoryProperties2.pNext = &budget;
+    vkGetPhysicalDeviceMemoryProperties2(services.physical_device, &memoryProperties2);
+    VkPhysicalDeviceProperties deviceProperties{};
+    vkGetPhysicalDeviceProperties(services.physical_device, &deviceProperties);
+    PrometheusVulkanDeviceDiagnostics device{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_vulkan_device_diagnostics_impl(runtime, &device), "M38b device identity is available");
+    report << "],\"capacity\":{\"device_name\":"; AppendJsonString(report, device.device_name);
+    report << ",\"vendor_id\":" << device.vendor_id << ",\"device_id\":" << device.device_id
+           << ",\"driver_version\":" << device.driver_version << ",\"budget_available\":" << (budgetAvailable ? "true" : "false")
+           << ",\"max_memory_allocation_count\":" << deviceProperties.limits.maxMemoryAllocationCount
+           << ",\"max_storage_buffer_range\":" << deviceProperties.limits.maxStorageBufferRange
+           << ",\"memory_types\":[";
+    for (std::uint32_t index = 0u; index < memoryProperties2.memoryProperties.memoryTypeCount; ++index) {
+        if (index != 0u) report << ',';
+        const VkMemoryType& type = memoryProperties2.memoryProperties.memoryTypes[index];
+        report << "{\"index\":" << index << ",\"flags\":" << type.propertyFlags << ",\"heap\":" << type.heapIndex << '}';
+    }
+    report << "],\"heaps\":[";
+    for (std::uint32_t index = 0u; index < memoryProperties2.memoryProperties.memoryHeapCount; ++index) {
+        if (index != 0u) report << ',';
+        report << "{\"index\":" << index << ",\"size\":" << memoryProperties2.memoryProperties.memoryHeaps[index].size
+               << ",\"flags\":" << memoryProperties2.memoryProperties.memoryHeaps[index].flags
+               << ",\"budget\":" << (budgetAvailable ? budget.heapBudget[index] : 0u)
+               << ",\"usage\":" << (budgetAvailable ? budget.heapUsage[index] : 0u) << '}';
+    }
+    ValidationAccounting validation = CollectValidationAccounting();
+    CaptureRuntimeValidationAccounting(static_cast<const prometheus_runtime*>(runtime), &validation);
+    report << "],\"validation\":" << RenderValidationJson(validation) << "}}";
+    ASSERT_EQUAL(0u, validation.warning_count, "M38b validation warning count remains zero");
+    ASSERT_EQUAL(0u, validation.error_count, "M38b validation error count remains zero");
+    prom_reactor_runtime_destroy_impl(runtime);
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m38b_memory_placement.json", report.str()),
+                "M38b machine-readable experiment artifact is written");
 }

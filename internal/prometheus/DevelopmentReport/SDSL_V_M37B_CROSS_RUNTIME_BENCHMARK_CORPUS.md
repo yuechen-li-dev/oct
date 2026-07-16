@@ -81,3 +81,9 @@ M38a also proved that the large timing disparities track buffer memory type. Kai
 | A2x4 | 186,880 | 64,160 | yes |
 | Packed4 | 47,040 | 13,472 | yes |
 | FP16 | 65,920 | 19,968 | yes |
+
+## M38b production disposition
+
+M38b tested the packed-kernel placement effect across exact A/B/C classes, seven shapes, cold/warm/re-upload/output-turnover modes, cache perturbation, production competitors, and end-to-end result availability. The historical M37b/M38a timing gaps did not become a repeatable production rule: current exact-class representative rows were approximately 1.10 ms regardless of pure versus mapped device-local placement, while independent rounds showed large shared drift and no stable ordering. Mapping output `C` caused a decisive end-to-end regression.
+
+Use `PROMETHEUS_M38B_PACKED_MEMORY_PLACEMENT_EXPERIMENT.md` for the production decision. Packed4 and FP16 receive research-only placement classifications; no memory profile is activated and the default selector/staged path remains unchanged.

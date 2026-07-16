@@ -48,6 +48,108 @@ typedef struct prom_sgemm_audit_execution_descriptor {
   uint64_t spirv_hash;
 } prom_sgemm_audit_execution_descriptor;
 
+typedef enum prom_sgemm_memory_placement {
+  PROM_SGEMM_MEMORY_PLACEMENT_DEFAULT = 0u,
+  PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL = 1u,
+  PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_SYSTEM = 2u,
+  PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_DEVICE_LOCAL = 3u,
+} prom_sgemm_memory_placement;
+
+typedef enum prom_sgemm_placement_reuse_mode {
+  PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION = 1u,
+  PROM_SGEMM_PLACEMENT_REUSE_WARM = 2u,
+  PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD = 3u,
+  PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER = 4u,
+} prom_sgemm_placement_reuse_mode;
+
+typedef struct prom_sgemm_placement_benchmark_options {
+  uint32_t a_placement;
+  uint32_t b_placement;
+  uint32_t c_placement;
+  uint32_t reuse_mode;
+  uint32_t warmup;
+  uint32_t iterations;
+  uint32_t perturb_cache;
+  uint64_t cache_perturbation_bytes;
+} prom_sgemm_placement_benchmark_options;
+
+typedef struct prom_sgemm_placement_benchmark_result {
+  uint32_t stage;
+  int detail_code;
+  uint32_t supported;
+  uint32_t completed_iterations;
+  uint32_t correctness_readback_count;
+  uint32_t allocation_count;
+  uint32_t descriptor_update_count;
+  uint32_t dispatch_count;
+  uint32_t fallback_used;
+  uint32_t a_memory_type_index;
+  uint32_t b_memory_type_index;
+  uint32_t c_memory_type_index;
+  uint32_t a_memory_property_flags;
+  uint32_t b_memory_property_flags;
+  uint32_t c_memory_property_flags;
+  uint32_t a_heap_index;
+  uint32_t b_heap_index;
+  uint32_t c_heap_index;
+  uint64_t a_buffer_bytes;
+  uint64_t b_buffer_bytes;
+  uint64_t c_buffer_bytes;
+  uint64_t initial_preparation_ns;
+} prom_sgemm_placement_benchmark_result;
+
+typedef struct prom_sgemm_memory_profile {
+  uint32_t enabled;
+  uint32_t kernel_compute_mode;
+  uint32_t vendor_id;
+  uint32_t device_id;
+  uint32_t driver_version_min;
+  uint32_t driver_version_max;
+  uint32_t input_placement;
+  uint32_t output_placement;
+  uint32_t minimum_m;
+  uint32_t minimum_n;
+  uint32_t minimum_k;
+  uint64_t maximum_total_bytes;
+  uint64_t minimum_budget_headroom_bytes;
+} prom_sgemm_memory_profile;
+
+typedef struct prom_sgemm_memory_profile_facts {
+  uint32_t experiment_enabled;
+  uint32_t kernel_compute_mode;
+  uint32_t vendor_id;
+  uint32_t device_id;
+  uint32_t driver_version;
+  uint32_t mapped_device_local_type_exists;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint64_t total_bytes;
+  uint64_t heap_budget_bytes;
+  uint64_t heap_usage_bytes;
+} prom_sgemm_memory_profile_facts;
+
+typedef struct prom_sgemm_memory_profile_decision {
+  uint32_t matched;
+  uint32_t input_placement;
+  uint32_t output_placement;
+  uint32_t fallback_placement;
+  uint32_t reason;
+} prom_sgemm_memory_profile_decision;
+
+enum {
+  PROM_SGEMM_MEMORY_PROFILE_REASON_MATCHED = 0u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_DISABLED = 1u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_KERNEL = 2u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_DEVICE = 3u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_DRIVER = 4u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_MEMORY_TYPE = 5u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_SHAPE = 6u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_CAPACITY = 7u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_BUDGET = 8u,
+  PROM_SGEMM_MEMORY_PROFILE_REASON_ALLOCATION_FAILURE = 9u,
+};
+
 typedef struct prom_sgemm_audit_execution_result {
   uint32_t stage;
   int detail_code;
@@ -97,6 +199,13 @@ enum {
 void prom_vk_set_status(uint32_t* out_stage, int* out_detail_code, uint32_t stage, int detail);
 int prom_vk_checked_mul_u32(uint32_t left, uint32_t right, uint32_t* out_value);
 uint32_t prom_vk_find_memory_type(VkPhysicalDevice physical_device, uint32_t type_filter, VkMemoryPropertyFlags properties);
+uint32_t prom_vk_find_memory_type_for_placement(const VkPhysicalDeviceMemoryProperties* memory_properties,
+                                                uint32_t type_filter,
+                                                uint32_t placement);
+void prom_sgemm_memory_profile_select(const prom_sgemm_memory_profile* profile,
+                                      const prom_sgemm_memory_profile_facts* facts,
+                                      prom_sgemm_memory_profile_decision* out_decision);
+void prom_sgemm_memory_profile_allocation_failed(prom_sgemm_memory_profile_decision* decision);
 VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
                                VkDevice device,
                                uint32_t test_flags,
@@ -105,6 +214,14 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
                                VkMemoryPropertyFlags memory_properties,
                                int map_memory,
                                prom_vk_buffer* out_buffer);
+VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
+                                             VkDevice device,
+                                             uint32_t test_flags,
+                                             VkDeviceSize size,
+                                             VkBufferUsageFlags usage,
+                                             uint32_t placement,
+                                             int map_memory,
+                                             prom_vk_buffer* out_buffer);
 void prom_vk_destroy_buffer(VkDevice device, prom_vk_buffer* buffer);
 
 int prom_reactor_runtime_create_impl(void* config, void** out_handle);
@@ -171,6 +288,20 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
                                                     uint64_t* out_samples_ns,
                                                     uint32_t sample_capacity,
                                                     prom_sgemm_audit_execution_result* out_result);
+int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
+                                                        const float* a,
+                                                        const float* b,
+                                                        float* c,
+                                                        uint32_t m,
+                                                        uint32_t n,
+                                                        uint32_t k,
+                                                        const prom_sgemm_audit_execution_descriptor* descriptor,
+                                                        const prom_sgemm_placement_benchmark_options* options,
+                                                        uint64_t* out_gpu_samples_ns,
+                                                        uint64_t* out_preparation_samples_ns,
+                                                        uint64_t* out_end_to_end_samples_ns,
+                                                        uint32_t sample_capacity,
+                                                        prom_sgemm_placement_benchmark_result* out_result);
 int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                                        const PrometheusSgemmResidentBenchmarkRequest* request,
                                                        PrometheusSgemmResidentBenchmarkResult* out_result);

@@ -159,3 +159,9 @@ The next optimization target should be **Packed4/FP16 memory access on Prometheu
 Convergence outcome: **SUCCESS**
 
 Milestone state: **COMPLETE**
+
+## M38b production disposition
+
+M38b preserved this root-cause result as historical controlled evidence, then tested whether it could support a production placement preference. It could not. On the same RTX 3070/596.36 system, the exact A/B/C matrix and seven-shape workload matrix did not retain a stable mapped-device-local kernel advantage; representative Packed4 and FP16 rows were approximately 1.10 ms in both pure and mapped device-local memory. Cache-perturbed independent rounds drifted substantially without a durable class ordering, and mapped `C` was 4x or more worse end to end.
+
+Therefore M38a's recommendation to investigate placement is closed by `PROMETHEUS_M38B_PACKED_MEMORY_PLACEMENT_EXPERIMENT.md`: no production profile is approved, production policy remains unchanged, and no undocumented NVIDIA explanation is claimed.
