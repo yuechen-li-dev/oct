@@ -1,0 +1,60 @@
+namespace Prometheus.Experimental.Transformer;
+
+// M47's FP32 gated activation. Mode 1 writes SiLU(Gate), mode 2 multiplies
+// the separate activation by Up, and mode 3 performs the fused operation.
+// Padded rows and columns are deterministically zeroed.
+stream SiluGateIO {
+    [binding(0)] Gate: readonly array<f32>;
+    [binding(1)] Up: readonly array<f32>;
+    [binding(2)] ActivatedGate: readwrite array<f32>;
+    [binding(3)] Hidden: readwrite array<f32>;
+}
+
+record SiluGateParams {
+    LogicalRows: u32;
+    LogicalColumns: u32;
+    InputRowStride: u32;
+    OutputRows: u32;
+    OutputColumns: u32;
+    Mode: u32;
+    ElementCount: u32;
+    Reserved: u32;
+}
+
+fn Silu(value: f32) -> f32 {
+    if value >= 0.0 {
+        let exponential: f32 = HLSL<f32>(value) { return exp(-value); };
+        return value / (1.0 + exponential);
+    }
+    let exponential: f32 = HLSL<f32>(value) { return exp(value); };
+    return value * exponential / (1.0 + exponential);
+}
+
+shader SiluGate {
+    resources SiluGateIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: SiluGateParams) -> void {
+        let index: u32 = DispatchThreadID.x;
+        if index >= params.ElementCount { return; }
+        let row: u32 = index / params.OutputColumns;
+        let column: u32 = index - row * params.OutputColumns;
+        let active: bool = row < params.LogicalRows and column < params.LogicalColumns;
+        var gateValue: f32 = 0.0;
+        var upValue: f32 = 0.0;
+        if active {
+            let source: u32 = row * params.InputRowStride + column;
+            gateValue = Gate[source];
+            upValue = Up[source];
+        }
+        if params.Mode == 1u {
+            ActivatedGate[index] = Silu(gateValue);
+            return;
+        }
+        if params.Mode == 2u {
+            Hidden[index] = ActivatedGate[index] * upValue;
+            return;
+        }
+        Hidden[index] = Silu(gateValue) * upValue;
+        return;
+    }
+}

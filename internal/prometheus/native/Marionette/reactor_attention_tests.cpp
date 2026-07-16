@@ -6,12 +6,14 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <iomanip>
 #include <limits>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -588,6 +590,16 @@ std::uint64_t MedianM46Metric(const std::vector<prom_m46_composed_result>& resul
     std::vector<std::uint64_t> values;
     values.reserve(results.size());
     for (const prom_m46_composed_result& result : results) values.push_back(result.*member);
+    std::sort(values.begin(), values.end());
+    return values.empty() ? 0u : values[values.size() / 2u];
+}
+
+std::uint64_t MedianM47Metric(const std::vector<prom_m47_composed_result>& results,
+                              std::uint64_t prom_m47_composed_result::*member)
+{
+    std::vector<std::uint64_t> values;
+    values.reserve(results.size());
+    for (const prom_m47_composed_result& result : results) values.push_back(result.*member);
     std::sort(values.begin(), values.end());
     return values.empty() ? 0u : values[values.size() / 2u];
 }
@@ -2075,6 +2087,184 @@ FACT(PrometheusM46RmsNormValidationOracleAndMismatch)
                 "non-finite Weight rejects");
 }
 
+FACT(PrometheusM47GatedFfnPlanningOwnershipAndMemory)
+{
+    const VkDevice device = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(71u));
+    prom_m47_plan_request request{};
+    request.tokens = 127u;
+    request.model_width = 1001u;
+    request.ffn_width = 3001u;
+    request.projection_path = PROM_M47_PROJECTION_COOPERATIVE;
+    request.gating_strategy = PROM_M47_GATING_FUSED_DIRECT_PACKED;
+    request.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_DOWN;
+    request.submit_policy = PROM_M47_SUBMIT_TWO_BOUNDED;
+    request.final_readback = 1u;
+    request.expected_n_generation = 91u;
+    request.m46_replay_id = 92u;
+    request.n_view.buffer = reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(401u));
+    request.n_view.byte_length = static_cast<VkDeviceSize>(127u * 1024u * sizeof(float));
+    request.n_view.element_type = PROM_DEVICE_ELEMENT_F32;
+    request.n_view.logical_rows = 127u;
+    request.n_view.logical_columns = 1001u;
+    request.n_view.row_stride_elements = 1024u;
+    request.n_view.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+    request.n_view.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+    request.n_view.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+    request.n_view.owning_device = device;
+    request.n_view.owning_lifetime_id = 91u;
+    request.n_view.owning_slot_id = 1u;
+    request.n_view.owning_slot_generation = 12u;
+    for (std::uint32_t weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight) {
+        request.weight_generation[weight] = 101u + weight;
+        request.weight_hash[weight] = 201u + weight;
+    }
+    prom_m47_gated_ffn_plan direct{};
+    ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_plan_build(&request, &direct),
+                 "awkward direct-packed gated FFN planning succeeds");
+    ASSERT_EQUAL(1u, direct.eligibility_eligible, "the retained M46 N view is eligible");
+    ASSERT_EQUAL(128u, direct.padded_tokens, "awkward tokens pad exactly");
+    ASSERT_EQUAL(1008u, direct.padded_model_width, "awkward model width pads exactly");
+    ASSERT_EQUAL(3008u, direct.padded_ffn_width, "awkward FFN width pads exactly");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_HIDDEN_PACKED_F16),
+                 direct.hidden_storage, "direct fusion exposes an explicit packed boundary");
+    ASSERT_EQUAL(0u, direct.memory.hidden_f32_bytes,
+                 "direct-packed fusion never retains redundant FP32 Hidden");
+    ASSERT_EQUAL(0u, direct.memory.separate_output_bytes,
+                 "in-place Down allocates no second output tensor");
+    ASSERT_EQUAL(0u, direct.intermediate_host_copy_count,
+                 "the complete FFN plan has no intermediate readback");
+    ASSERT_EQUAL(1u, direct.final_readback_count, "one final output readback is explicit");
+    ASSERT_EQUAL(2u, direct.submit_count, "the bounded split has exactly two submits");
+    ASSERT_TRUE(direct.output_generation != direct.down_generation,
+                "in-place Down receives a distinct BlockOutput content generation");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT),
+                 direct.barriers[direct.barrier_count - 3u].destination_access_mask,
+                 "Down becomes residual read/write only after Wdown completes");
+
+    prom_m47_gated_ffn_plan replay{};
+    ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_plan_build(&request, &replay),
+                 "identical M47 planning repeats");
+    ASSERT_EQUAL(direct.replay_id, replay.replay_id, "M47 replay identity is deterministic");
+
+    request.gating_strategy = PROM_M47_GATING_SEPARATE;
+    request.residual_strategy = PROM_M47_RESIDUAL_SEPARATE_OUTPUT;
+    prom_m47_gated_ffn_plan separate{};
+    ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_plan_build(&request, &separate),
+                 "separate activation/multiply and output planning succeeds");
+    ASSERT_TRUE(separate.memory.activated_gate_bytes > 0u,
+                "the separate baseline owns one explicit ActivatedGate tensor");
+    ASSERT_TRUE(separate.memory.hidden_f32_bytes > 0u && separate.memory.hidden_packed_bytes > 0u,
+                "separate reduced execution exposes both required Hidden representations");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(127u * 1001u * sizeof(float)),
+                 separate.memory.separate_output_bytes, "separate BlockOutput is compact and exact");
+    ASSERT_TRUE(separate.dispatch_count > direct.dispatch_count,
+                "separate gating adds the activation, multiply, and pack passes");
+
+    request.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_N_AUDIT;
+    prom_m47_gated_ffn_plan rejected{};
+    ASSERT_TRUE(prom_m47_gated_ffn_plan_build(&request, &rejected) != PROM_OK,
+                "in-place N is mechanically rejected");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_INELIGIBLE_EXCLUSIVITY),
+                 rejected.eligibility_reason, "the rejected N mutation has an exact reason");
+}
+
+FACT(PrometheusM47GatedFfnOracleSiluPrecisionAndMismatch)
+{
+    constexpr std::uint32_t tokens = 2u;
+    constexpr std::uint32_t modelWidth = 3u;
+    constexpr std::uint32_t ffnWidth = 4u;
+    constexpr std::uint32_t nStride = 5u;
+    constexpr std::uint32_t outputStride = 6u;
+    std::vector<float> n(tokens * nStride, 77.0f);
+    n[0] = -2.0f; n[1] = 0.5f; n[2] = 1.0f;
+    n[nStride] = 3.0f; n[nStride + 1u] = -1.0f; n[nStride + 2u] = 0.25f;
+    std::vector<float> wgate(modelWidth * ffnWidth);
+    std::vector<float> wup(modelWidth * ffnWidth);
+    std::vector<float> wdown(ffnWidth * modelWidth);
+    for (std::size_t index = 0u; index < wgate.size(); ++index) {
+        wgate[index] = static_cast<float>(static_cast<int>(index % 7u) - 3) / 8.0f;
+        wup[index] = static_cast<float>(static_cast<int>((index * 3u) % 11u) - 5) / 16.0f;
+    }
+    for (std::size_t index = 0u; index < wdown.size(); ++index) {
+        wdown[index] = static_cast<float>(static_cast<int>((index * 5u) % 13u) - 6) / 16.0f;
+    }
+    std::vector<float> gate(tokens * ffnWidth);
+    std::vector<float> up(tokens * ffnWidth);
+    std::vector<float> hidden(tokens * ffnWidth);
+    std::vector<float> down(tokens * modelWidth);
+    std::vector<float> output(tokens * outputStride, 55.0f);
+    prom_m47_reference_request reference{};
+    reference.n = n.data();
+    reference.wgate = wgate.data();
+    reference.wup = wup.data();
+    reference.wdown = wdown.data();
+    reference.gate = gate.data();
+    reference.up = up.data();
+    reference.hidden = hidden.data();
+    reference.down = down.data();
+    reference.output = output.data();
+    reference.n_element_count = n.size();
+    reference.wgate_element_count = wgate.size();
+    reference.wup_element_count = wup.size();
+    reference.wdown_element_count = wdown.size();
+    reference.output_element_count = output.size();
+    reference.tokens = tokens;
+    reference.model_width = modelWidth;
+    reference.ffn_width = ffnWidth;
+    reference.n_row_stride = nStride;
+    reference.output_row_stride = outputStride;
+    reference.projection_path = PROM_M47_PROJECTION_A2X4_FP32;
+    ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_cpu_reference(&reference),
+                 "exact FP32 gated FFN oracle succeeds with independent strides");
+    for (float value : gate) ASSERT_TRUE(std::isfinite(value), "Gate remains finite");
+    for (float value : up) ASSERT_TRUE(std::isfinite(value), "Up remains finite");
+    for (float value : hidden) ASSERT_TRUE(std::isfinite(value), "SiLU-gated Hidden remains finite");
+    for (std::uint32_t token = 0u; token < tokens; ++token) {
+        ASSERT_NEAR(55.0f, output[token * outputStride + modelWidth], 0.0f,
+                    "the oracle leaves output padding untouched");
+    }
+    std::vector<float> roundedOutput(tokens * outputStride, 55.0f);
+    reference.output = roundedOutput.data();
+    reference.projection_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+    ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_cpu_reference(&reference),
+                 "the reduced-precision oracle applies exact F16 boundaries");
+    ASSERT_TRUE(output[0] != roundedOutput[0],
+                "the explicit rounded route is observably distinct from exact FP32");
+
+    prom_m47_gated_ffn_plan plan{};
+    plan.ffn_width = ffnWidth;
+    plan.gating_strategy = PROM_M47_GATING_FUSED_FP32;
+    plan.n_generation = 301u;
+    plan.weight_generation[0] = 302u;
+    plan.weight_generation[1] = 303u;
+    plan.weight_generation[2] = 304u;
+    plan.output_generation = 305u;
+    plan.m46_replay_id = 306u;
+    plan.replay_id = 307u;
+    prom_m47_mismatch mismatch{};
+    ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_compare(roundedOutput.data(), roundedOutput.data(),
+                                                     tokens, modelWidth, outputStride, outputStride,
+                                                     0.0f, 0.0f, &plan, gate.data(), up.data(),
+                                                     hidden.data(), down.data(), &mismatch),
+                 "identical complete block output compares");
+    std::vector<float> actual = roundedOutput;
+    actual[outputStride + 2u] += 1.0f;
+    ASSERT_TRUE(prom_m47_gated_ffn_compare(roundedOutput.data(), actual.data(), tokens, modelWidth,
+                                           outputStride, outputStride, 0.0f, 0.0f, &plan,
+                                           gate.data(), up.data(), hidden.data(), down.data(),
+                                           &mismatch) != PROM_OK,
+                "the first M47 mismatch is localized");
+    ASSERT_EQUAL(1u, mismatch.token, "mismatch token is explicit");
+    ASSERT_EQUAL(2u, mismatch.column, "mismatch column is explicit");
+    ASSERT_EQUAL(301u, mismatch.n_generation, "mismatch carries N generation");
+    ASSERT_EQUAL(306u, mismatch.m46_replay_id, "mismatch carries M46 replay identity");
+    ASSERT_EQUAL(307u, mismatch.m47_replay_id, "mismatch carries M47 replay identity");
+
+    wgate[0] = std::numeric_limits<float>::quiet_NaN();
+    ASSERT_TRUE(prom_m47_gated_ffn_cpu_reference(&reference) != PROM_OK,
+                "non-finite FFN weights reject");
+}
+
 FACT(PrometheusM44ComposedHardwareProof)
 {
     EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
@@ -2656,6 +2846,405 @@ FACT(PrometheusM46ComposedRmsNormHardwareProof)
                  "M46 validation services remain available");
     ASSERT_EQUAL(0u, services.validation_warning_count, "M46 produces no validation warnings");
     ASSERT_EQUAL(0u, services.validation_error_count, "M46 produces no validation errors");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM47CompleteTransformerBlockHardwareProof)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) {
+        SKIP("Vulkan runtime unavailable");
+    }
+    prom_vk_runtime_services services{};
+    if (prom_reactor_runtime_get_vk_services(runtime, &services) != PROM_OK) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan services unavailable");
+    }
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t headDim = 16u;
+    constexpr std::uint32_t ffnWidth = 256u;
+    constexpr std::uint64_t xGeneration = 470u;
+    constexpr std::uint64_t woGeneration = 471u;
+    constexpr std::uint64_t normGeneration = 472u;
+    std::array<std::uint64_t, PROM_M47_WEIGHT_COUNT> ffnGeneration{473u, 474u, 475u};
+    std::vector<float> x;
+    GroupWeights attentionWeights;
+    FillGroupInputs(&x, &attentionWeights, tokens, modelWidth, headDim);
+    ASSERT_TRUE(PrepareGroupWeights(runtime, attentionWeights, modelWidth, headDim),
+                "M47 prepares all grouped attention weights");
+    prom_m43_resident_x_prepare_request prepareX{};
+    prepareX.x = x.data();
+    prepareX.element_count = x.size();
+    prepareX.tokens = tokens;
+    prepareX.model_width = modelWidth;
+    prepareX.generation = xGeneration;
+    prom_m43_resident_x_prepare_result preparedX{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &preparedX),
+                 "M47 prepares the immutable resident X");
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth, woGeneration),
+                "M47 prepares persistent Wo");
+    std::vector<float> normWeight(modelWidth);
+    for (std::uint32_t column = 0u; column < modelWidth; ++column)
+        normWeight[column] = 0.75f + static_cast<float>(column % 11u) / 32.0f;
+    prom_m46_weight_prepare_request prepareNorm{};
+    prepareNorm.values = normWeight.data();
+    prepareNorm.element_count = normWeight.size();
+    prepareNorm.model_width = modelWidth;
+    prepareNorm.generation = normGeneration;
+    prom_m46_weight_prepare_result preparedNorm{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m46_prepare_weight(runtime, &prepareNorm, &preparedNorm),
+                 "M47 prepares the persistent RMSNorm scale");
+
+    std::array<std::vector<float>, PROM_M47_WEIGHT_COUNT> ffnWeights;
+    ffnWeights[PROM_M47_WEIGHT_GATE].resize(static_cast<std::size_t>(modelWidth) * ffnWidth);
+    ffnWeights[PROM_M47_WEIGHT_UP].resize(static_cast<std::size_t>(modelWidth) * ffnWidth);
+    ffnWeights[PROM_M47_WEIGHT_DOWN].resize(static_cast<std::size_t>(ffnWidth) * modelWidth);
+    for (std::size_t index = 0u; index < ffnWeights[PROM_M47_WEIGHT_GATE].size(); ++index) {
+        ffnWeights[PROM_M47_WEIGHT_GATE][index] =
+            static_cast<float>(static_cast<int>((index * 7u + 3u) % 29u) - 14) / 512.0f;
+        ffnWeights[PROM_M47_WEIGHT_UP][index] =
+            static_cast<float>(static_cast<int>((index * 11u + 5u) % 31u) - 15) / 512.0f;
+    }
+    for (std::size_t index = 0u; index < ffnWeights[PROM_M47_WEIGHT_DOWN].size(); ++index) {
+        ffnWeights[PROM_M47_WEIGHT_DOWN][index] =
+            static_cast<float>(static_cast<int>((index * 13u + 7u) % 37u) - 18) / 512.0f;
+    }
+    for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind) {
+        prom_m47_weight_prepare_request prepare{};
+        prepare.values = ffnWeights[kind].data();
+        prepare.element_count = ffnWeights[kind].size();
+        prepare.kind = kind;
+        prepare.model_width = modelWidth;
+        prepare.ffn_width = ffnWidth;
+        prepare.generation = ffnGeneration[kind];
+        prom_m47_weight_prepare_result prepared{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_prepare_weight(runtime, &prepare, &prepared),
+                     "each independent FFN weight generation prepares once");
+        ASSERT_EQUAL(ffnGeneration[kind], prepared.generation,
+                     "the independent FFN weight generation is exact");
+        ASSERT_TRUE(prepared.hash != 0u && prepared.retained_f32_bytes > 0u &&
+                    prepared.retained_packed_bytes > 0u,
+                    "each FFN weight retains FP32 and packed representations");
+    }
+
+    std::vector<float> heads;
+    ASSERT_EQUAL(1u, GroupReference(x, attentionWeights, tokens, modelWidth, headDim, &heads).all_finite,
+                 "M47 grouped attention oracle succeeds");
+    std::vector<float> y;
+    ASSERT_EQUAL(1u, OutputProjectionReference(heads, wo, tokens, headDim, modelWidth,
+                                               PROM_M42_PRECISION_F16_ROUNDED, &y).all_finite,
+                 "M47 output projection oracle succeeds");
+    std::vector<float> z(y.size());
+    for (std::size_t index = 0u; index < z.size(); ++index) z[index] = x[index] + y[index];
+    std::vector<float> n(z.size());
+    std::vector<float> invRms(tokens);
+    prom_m46_reference_request normReference{};
+    normReference.z = z.data();
+    normReference.weight = normWeight.data();
+    normReference.n = n.data();
+    normReference.inv_rms = invRms.data();
+    normReference.z_element_count = z.size();
+    normReference.weight_element_count = normWeight.size();
+    normReference.n_element_count = n.size();
+    normReference.tokens = tokens;
+    normReference.model_width = modelWidth;
+    normReference.z_row_stride = modelWidth;
+    normReference.n_row_stride = modelWidth;
+    normReference.epsilon = 1.0e-5f;
+    ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_cpu_reference(&normReference),
+                 "M47 retained N oracle succeeds");
+
+    struct Case { std::uint32_t path; std::uint32_t gating; std::uint32_t residual; std::uint32_t submit; };
+    const std::array<Case, 5u> cases{{
+        {PROM_M47_PROJECTION_A2X4_FP32, PROM_M47_GATING_SEPARATE,
+         PROM_M47_RESIDUAL_SEPARATE_OUTPUT, PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {PROM_M47_PROJECTION_A2X4_FP32, PROM_M47_GATING_FUSED_FP32,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_TWO_BOUNDED},
+        {PROM_M47_PROJECTION_CONVENTIONAL_FP16, PROM_M47_GATING_FUSED_FP32,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {PROM_M47_PROJECTION_CONVENTIONAL_FP16, PROM_M47_GATING_FUSED_DIRECT_PACKED,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_TWO_BOUNDED},
+        {PROM_M47_PROJECTION_COOPERATIVE, PROM_M47_GATING_FUSED_DIRECT_PACKED,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+    }};
+    for (const Case& testCase : cases) {
+        if (testCase.path == PROM_M47_PROJECTION_COOPERATIVE &&
+            services.cooperative_matrix_feature_enabled == 0u) continue;
+        std::vector<float> gate(static_cast<std::size_t>(tokens) * ffnWidth);
+        std::vector<float> up(gate.size());
+        std::vector<float> hidden(gate.size());
+        std::vector<float> down(static_cast<std::size_t>(tokens) * modelWidth);
+        std::vector<float> expected(down.size());
+        prom_m47_reference_request reference{};
+        reference.n = n.data();
+        reference.wgate = ffnWeights[PROM_M47_WEIGHT_GATE].data();
+        reference.wup = ffnWeights[PROM_M47_WEIGHT_UP].data();
+        reference.wdown = ffnWeights[PROM_M47_WEIGHT_DOWN].data();
+        reference.gate = gate.data();
+        reference.up = up.data();
+        reference.hidden = hidden.data();
+        reference.down = down.data();
+        reference.output = expected.data();
+        reference.n_element_count = n.size();
+        reference.wgate_element_count = ffnWeights[PROM_M47_WEIGHT_GATE].size();
+        reference.wup_element_count = ffnWeights[PROM_M47_WEIGHT_UP].size();
+        reference.wdown_element_count = ffnWeights[PROM_M47_WEIGHT_DOWN].size();
+        reference.output_element_count = expected.size();
+        reference.tokens = tokens;
+        reference.model_width = modelWidth;
+        reference.ffn_width = ffnWidth;
+        reference.n_row_stride = modelWidth;
+        reference.output_row_stride = modelWidth;
+        reference.projection_path = testCase.path;
+        ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_cpu_reference(&reference),
+                     "precision-matched complete block oracle succeeds");
+
+        std::vector<float> output(expected.size());
+        prom_m47_composed_request composed{};
+        FillM45ComposedRequest(&composed.upstream.upstream, nullptr, tokens, modelWidth, headDim,
+                               PROM_M45_STRATEGY_IN_PLACE_Y,
+                               PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                               xGeneration, woGeneration);
+        composed.upstream.epsilon = 1.0e-5f;
+        composed.upstream.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
+        composed.upstream.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+        composed.upstream.required_weight_generation = normGeneration;
+        composed.output = output.data();
+        composed.output_element_count = output.size();
+        composed.ffn_width = ffnWidth;
+        composed.projection_path = testCase.path;
+        composed.gating_strategy = testCase.gating;
+        composed.residual_strategy = testCase.residual;
+        composed.submit_policy = testCase.submit;
+        for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind)
+            composed.required_weight_generation[kind] = ffnGeneration[kind];
+        prom_m47_composed_result result{};
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m47_execute_composed(runtime, &composed, &result),
+                     "real retained M46 N executes through the complete device FFN tail");
+        prom_m47_mismatch mismatch{};
+        const int compareStatus = prom_m47_gated_ffn_compare(
+            expected.data(), output.data(), tokens, modelWidth, modelWidth, modelWidth,
+            2.0e-3f, 3.0e-2f, &result.ffn_plan, gate.data(), up.data(), hidden.data(),
+            down.data(), &mismatch);
+        if (compareStatus != PROM_OK) {
+            std::fprintf(stderr,
+                         "M47 mismatch path=%u gating=%u residual=%u submit=%u token=%u column=%u expected=%g actual=%g abs=%g rel=%g\n",
+                         testCase.path, testCase.gating, testCase.residual, testCase.submit,
+                         mismatch.token, mismatch.column, mismatch.expected, mismatch.actual,
+                         mismatch.absolute_error, mismatch.relative_error);
+        }
+        ASSERT_EQUAL(PROM_OK, compareStatus,
+                     "complete BlockOutput matches the precision-matched oracle");
+        ASSERT_EQUAL(testCase.submit == PROM_M47_SUBMIT_TWO_BOUNDED ? 2u : 1u,
+                     result.submit_count, "M47 reports the exact complete-block submit topology");
+        ASSERT_EQUAL(1u, result.final_readback_count, "only final BlockOutput is read back");
+        ASSERT_EQUAL(1u, result.no_intermediate_host_copy,
+                     "N, Gate, Up, Hidden, and Down remain device-resident");
+        ASSERT_TRUE(result.gate_projection_gpu_ns > 0u && result.up_projection_gpu_ns > 0u &&
+                    result.down_projection_gpu_ns > 0u && result.residual_gpu_ns > 0u &&
+                    result.m47_gpu_ns > result.residual_gpu_ns,
+                    "all M47 GPU stages have exact nonzero timing");
+        ASSERT_EQUAL(result.upstream.upstream.physical_slot_generation,
+                     result.output_view.owning_slot_generation,
+                     "the complete block retains one physical slot generation");
+        if (testCase.residual == PROM_M47_RESIDUAL_IN_PLACE_DOWN) {
+            ASSERT_EQUAL(result.ffn_plan.down_row_stride, result.output_view.row_stride_elements,
+                         "in-place Down retains the projection output stride");
+            ASSERT_EQUAL(0u, result.ffn_plan.memory.separate_output_bytes,
+                         "in-place Down allocates no separate BlockOutput");
+        }
+    }
+
+    std::vector<float> lifecycleOutput(static_cast<std::size_t>(tokens) * modelWidth);
+    prom_m47_composed_request lifecycle{};
+    FillM45ComposedRequest(&lifecycle.upstream.upstream, nullptr, tokens, modelWidth, headDim,
+                           PROM_M45_STRATEGY_IN_PLACE_Y,
+                           PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                           xGeneration, woGeneration);
+    lifecycle.upstream.epsilon = 1.0e-5f;
+    lifecycle.upstream.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
+    lifecycle.upstream.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+    lifecycle.upstream.required_weight_generation = normGeneration;
+    lifecycle.output = lifecycleOutput.data();
+    lifecycle.output_element_count = lifecycleOutput.size();
+    lifecycle.ffn_width = ffnWidth;
+    lifecycle.projection_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+    lifecycle.gating_strategy = PROM_M47_GATING_FUSED_DIRECT_PACKED;
+    lifecycle.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_DOWN;
+    lifecycle.submit_policy = PROM_M47_SUBMIT_TWO_BOUNDED;
+    for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind)
+        lifecycle.required_weight_generation[kind] = ffnGeneration[kind];
+    for (std::uint32_t fault = PROM_M47_FAULT_BEFORE_GATE;
+         fault <= PROM_M47_FAULT_BEFORE_FINAL_READBACK; ++fault) {
+        lifecycle.fault_point = fault;
+        lifecycle.gating_strategy = fault == PROM_M47_FAULT_DURING_ACTIVATION
+                                        ? PROM_M47_GATING_SEPARATE
+                                        : PROM_M47_GATING_FUSED_DIRECT_PACKED;
+        prom_m47_composed_result failed{};
+        ASSERT_TRUE(prom_reactor_runtime_m47_execute_composed(runtime, &lifecycle, &failed) != PROM_OK,
+                    "known-completion M47 faults report logical failure");
+        ASSERT_EQUAL(PROM_M47_DETAIL_FAULT_INJECTED, failed.detail_code,
+                     "known-completion M47 fault detail is exact");
+        ASSERT_EQUAL(1u, failed.physical_slot_recyclable,
+                     "known completion returns the complete slot exactly once");
+    }
+    lifecycle.gating_strategy = PROM_M47_GATING_FUSED_DIRECT_PACKED;
+    lifecycle.fault_point = PROM_M47_FAULT_UNCERTAIN_COMPLETION;
+    prom_m47_composed_result uncertain{};
+    ASSERT_TRUE(prom_reactor_runtime_m47_execute_composed(runtime, &lifecycle, &uncertain) != PROM_OK,
+                "uncertain M47 completion reports failure");
+    ASSERT_EQUAL(PROM_M47_DETAIL_COMPLETION_UNCERTAIN, uncertain.detail_code,
+                 "uncertain M47 completion is distinct from a logical fault");
+    ASSERT_EQUAL(0u, uncertain.physical_slot_recyclable,
+                 "uncertain completion quarantines the complete M43-M47 slot");
+
+    for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind) {
+        ffnGeneration[kind] += 100u;
+        prom_m47_weight_prepare_request replace{};
+        replace.values = ffnWeights[kind].data();
+        replace.element_count = ffnWeights[kind].size();
+        replace.kind = kind;
+        replace.model_width = modelWidth;
+        replace.ffn_width = ffnWidth;
+        replace.generation = ffnGeneration[kind];
+        prom_m47_weight_prepare_result replaced{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_prepare_weight(runtime, &replace, &replaced),
+                     "independent FFN weight replacement waits and reaps all users");
+        ASSERT_EQUAL(1u, replaced.replaced, "each FFN weight replacement is explicit");
+        ASSERT_EQUAL(ffnGeneration[kind], replaced.generation,
+                     "only the selected FFN weight publishes its next generation");
+        lifecycle.required_weight_generation[kind] = ffnGeneration[kind];
+    }
+    lifecycle.fault_point = PROM_M47_FAULT_NONE;
+    prom_m47_composed_request stale = lifecycle;
+    stale.required_weight_generation[PROM_M47_WEIGHT_GATE] -= 1u;
+    prom_m47_composed_result staleResult{};
+    ASSERT_TRUE(prom_reactor_runtime_m47_execute_composed(runtime, &stale, &staleResult) != PROM_OK,
+                "a stale independent FFN generation rejects before slot acquisition");
+    ASSERT_EQUAL(PROM_M47_DETAIL_STALE_WEIGHT_GENERATION, staleResult.detail_code,
+                 "stale FFN weight rejection is exact");
+    prom_m47_composed_result warmFirst{};
+    prom_m47_composed_result warmSecond{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &lifecycle, &warmFirst),
+                 "M47 recovers after quarantine reap and independent replacements");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &lifecycle, &warmSecond),
+                 "a second warmed complete block execution succeeds");
+    ASSERT_EQUAL(warmFirst.buffer_allocation_count, warmSecond.buffer_allocation_count,
+                 "warm repeated M47 execution performs no Vulkan buffer allocation");
+    ASSERT_EQUAL(warmFirst.pipeline_create_count, warmSecond.pipeline_create_count,
+                 "warm repeated M47 execution creates no pipeline");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                 "M47 validation services remain available");
+    ASSERT_EQUAL(0u, services.validation_warning_count, "M47 produces no validation warnings");
+    ASSERT_EQUAL(0u, services.validation_error_count, "M47 produces no validation errors");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM47ExtensionAbsentUsesDeviceResidentConventionalFallback)
+{
+    EnvironmentValue disabled("PROMETHEUS_VK_DISABLE_COOPERATIVE_MATRIX", "1");
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr)
+        SKIP("Vulkan runtime unavailable");
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t headDim = 16u;
+    constexpr std::uint32_t ffnWidth = 256u;
+    std::vector<float> x;
+    GroupWeights attentionWeights;
+    FillGroupInputs(&x, &attentionWeights, tokens, modelWidth, headDim);
+    ASSERT_TRUE(PrepareGroupWeights(runtime, attentionWeights, modelWidth, headDim),
+                "M47 fallback prepares grouped weights");
+    prom_m43_resident_x_prepare_request prepareX{};
+    prepareX.x = x.data();
+    prepareX.element_count = x.size();
+    prepareX.tokens = tokens;
+    prepareX.model_width = modelWidth;
+    prepareX.generation = 570u;
+    prom_m43_resident_x_prepare_result preparedX{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &preparedX),
+                 "M47 fallback prepares resident X");
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth, 571u),
+                "M47 fallback prepares Wo");
+    std::vector<float> normWeight(modelWidth, 1.0f);
+    prom_m46_weight_prepare_request prepareNorm{};
+    prepareNorm.values = normWeight.data();
+    prepareNorm.element_count = normWeight.size();
+    prepareNorm.model_width = modelWidth;
+    prepareNorm.generation = 572u;
+    prom_m46_weight_prepare_result preparedNorm{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m46_prepare_weight(runtime, &prepareNorm, &preparedNorm),
+                 "M47 fallback prepares RMSNorm scale");
+    std::array<std::vector<float>, PROM_M47_WEIGHT_COUNT> weights;
+    weights[0].resize(static_cast<std::size_t>(modelWidth) * ffnWidth);
+    weights[1].resize(weights[0].size());
+    weights[2].resize(static_cast<std::size_t>(ffnWidth) * modelWidth);
+    for (std::size_t index = 0u; index < weights[0].size(); ++index) {
+        weights[0][index] = static_cast<float>(static_cast<int>(index % 13u) - 6) / 512.0f;
+        weights[1][index] = static_cast<float>(static_cast<int>((index * 3u) % 17u) - 8) / 512.0f;
+    }
+    for (std::size_t index = 0u; index < weights[2].size(); ++index)
+        weights[2][index] = static_cast<float>(static_cast<int>((index * 5u) % 19u) - 9) / 512.0f;
+    for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind) {
+        prom_m47_weight_prepare_request prepare{};
+        prepare.values = weights[kind].data();
+        prepare.element_count = weights[kind].size();
+        prepare.kind = kind;
+        prepare.model_width = modelWidth;
+        prepare.ffn_width = ffnWidth;
+        prepare.generation = 573u + kind;
+        prom_m47_weight_prepare_result prepared{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_prepare_weight(runtime, &prepare, &prepared),
+                     "M47 fallback prepares all FFN representations");
+    }
+    std::vector<float> output(static_cast<std::size_t>(tokens) * modelWidth);
+    prom_m47_composed_request request{};
+    FillM45ComposedRequest(&request.upstream.upstream, nullptr, tokens, modelWidth, headDim,
+                           PROM_M45_STRATEGY_IN_PLACE_Y, PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                           570u, 571u);
+    request.upstream.epsilon = 1.0e-5f;
+    request.upstream.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
+    request.upstream.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+    request.upstream.required_weight_generation = 572u;
+    request.output = output.data();
+    request.output_element_count = output.size();
+    request.ffn_width = ffnWidth;
+    request.projection_path = PROM_M47_PROJECTION_COOPERATIVE;
+    request.gating_strategy = PROM_M47_GATING_FUSED_DIRECT_PACKED;
+    request.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_DOWN;
+    request.submit_policy = PROM_M47_SUBMIT_ONE_COMMAND_BUFFER;
+    for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind)
+        request.required_weight_generation[kind] = 573u + kind;
+    prom_m47_composed_result result{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &result),
+                 "the complete block remains device-resident without cooperative capability");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_CONVENTIONAL_FP16),
+                 result.ffn_plan.projection_path,
+                 "M47 records the conventional FP16 fallback");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_PROJECTION_CONVENTIONAL_FP16),
+                 result.upstream.upstream.projection_plan.projection_path,
+                 "M44 records the same-precision conventional fallback");
+    for (std::uint32_t head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M42_PATH_CONVENTIONAL_FP16),
+                     result.upstream.upstream.attention.plan.selected_path[head],
+                     "every M43 head records conventional fallback");
+    }
+    for (float value : output) ASSERT_TRUE(std::isfinite(value), "fallback BlockOutput is finite");
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                 "fallback validation services remain available");
+    ASSERT_EQUAL(0u, services.validation_warning_count, "fallback has no validation warnings");
+    ASSERT_EQUAL(0u, services.validation_error_count, "fallback has no validation errors");
     prom_reactor_runtime_destroy_impl(runtime);
 }
 
@@ -4714,4 +5303,390 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM46DeviceResidentRmsNormCorpus, 1u
     json << "\n  ]\n}\n";
     ASSERT_TRUE(context.WriteTextArtifact("prometheus_m46_device_resident_rmsnorm.json", json.str()),
                 "M46 benchmark artifact is written");
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM47GatedFfnCompleteBlockCorpus, 1u)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    struct Workload {
+        const char* name;
+        std::uint32_t tokens;
+        std::uint32_t modelWidth;
+        std::uint32_t headDim;
+        std::uint32_t ffnWidth;
+    };
+    const std::array<Workload, 7u> workloads{{
+        {"tiny", 16u, 128u, 16u, 256u},
+        {"primary", 128u, 1024u, 128u, 4096u},
+        {"more_tokens", 256u, 1024u, 128u, 4096u},
+        {"smaller_expansion", 128u, 1024u, 128u, 2048u},
+        {"wider_model", 128u, 2048u, 256u, 4096u},
+        {"awkward", 127u, 1001u, 127u, 3001u},
+        {"token_boundary", 1024u, 256u, 32u, 512u},
+    }};
+    struct Strategy {
+        const char* name;
+        std::uint32_t path;
+        std::uint32_t gating;
+        std::uint32_t residual;
+        std::uint32_t submit;
+    };
+    const std::array<Strategy, 7u> strategies{{
+        {"separate_cooperative", PROM_M47_PROJECTION_COOPERATIVE, PROM_M47_GATING_SEPARATE,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {"fused_fp32_cooperative", PROM_M47_PROJECTION_COOPERATIVE, PROM_M47_GATING_FUSED_FP32,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {"direct_packed_cooperative", PROM_M47_PROJECTION_COOPERATIVE,
+         PROM_M47_GATING_FUSED_DIRECT_PACKED, PROM_M47_RESIDUAL_IN_PLACE_DOWN,
+         PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {"direct_packed_cooperative_split", PROM_M47_PROJECTION_COOPERATIVE,
+         PROM_M47_GATING_FUSED_DIRECT_PACKED, PROM_M47_RESIDUAL_IN_PLACE_DOWN,
+         PROM_M47_SUBMIT_TWO_BOUNDED},
+        {"direct_packed_conventional", PROM_M47_PROJECTION_CONVENTIONAL_FP16,
+         PROM_M47_GATING_FUSED_DIRECT_PACKED, PROM_M47_RESIDUAL_IN_PLACE_DOWN,
+         PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {"fused_fp32_a2x4", PROM_M47_PROJECTION_A2X4_FP32, PROM_M47_GATING_FUSED_FP32,
+         PROM_M47_RESIDUAL_IN_PLACE_DOWN, PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+        {"direct_packed_separate_output", PROM_M47_PROJECTION_COOPERATIVE,
+         PROM_M47_GATING_FUSED_DIRECT_PACKED, PROM_M47_RESIDUAL_SEPARATE_OUTPUT,
+         PROM_M47_SUBMIT_ONE_COMMAND_BUFFER},
+    }};
+    struct Record {
+        std::string workload;
+        std::string strategy;
+        std::uint32_t path = 0u;
+        std::uint32_t gating = 0u;
+        std::uint32_t residual = 0u;
+        std::uint32_t submit = 0u;
+        std::uint32_t tokens = 0u;
+        std::uint32_t modelWidth = 0u;
+        std::uint32_t ffnWidth = 0u;
+        std::uint64_t replay = 0u;
+        std::uint64_t outputGeneration = 0u;
+        std::uint64_t nPack = 0u;
+        std::uint64_t gate = 0u;
+        std::uint64_t up = 0u;
+        std::uint64_t activation = 0u;
+        std::uint64_t multiply = 0u;
+        std::uint64_t fused = 0u;
+        std::uint64_t hiddenPack = 0u;
+        std::uint64_t down = 0u;
+        std::uint64_t residualGpu = 0u;
+        std::uint64_t m47 = 0u;
+        std::uint64_t complete = 0u;
+        std::uint64_t recording = 0u;
+        std::uint64_t submission = 0u;
+        std::uint64_t readback = 0u;
+        std::uint64_t endToEnd = 0u;
+        std::uint64_t retained = 0u;
+        std::uint64_t exact = 0u;
+        std::uint64_t allocationCount = 0u;
+        std::uint64_t preparation = 0u;
+        std::uint64_t preparationGpu = 0u;
+        std::uint64_t hostCpu = 0u;
+        std::uint64_t hostEndToEnd = 0u;
+        bool correct = false;
+    };
+    std::vector<Record> records;
+    std::uint64_t validationWarnings = 0u;
+    std::uint64_t validationErrors = 0u;
+    std::uint64_t warm10M47 = 0u;
+    std::uint64_t warm10Complete = 0u;
+    std::uint64_t warm10EndToEnd = 0u;
+    std::uint64_t warm100M47 = 0u;
+    std::uint64_t warm100Complete = 0u;
+    std::uint64_t warm100EndToEnd = 0u;
+    for (const Workload& workload : workloads) {
+        void* runtime = nullptr;
+        if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr)
+            SKIP("Vulkan runtime unavailable");
+        prom_vk_runtime_services services{};
+        if (prom_reactor_runtime_get_vk_services(runtime, &services) != PROM_OK ||
+            services.cooperative_matrix_feature_enabled == 0u) {
+            prom_reactor_runtime_destroy_impl(runtime);
+            SKIP("M47 corpus requires the proven cooperative tuple");
+        }
+        std::vector<float> x;
+        GroupWeights attentionWeights;
+        FillGroupInputs(&x, &attentionWeights, workload.tokens, workload.modelWidth, workload.headDim);
+        ASSERT_TRUE(PrepareGroupWeights(runtime, attentionWeights, workload.modelWidth, workload.headDim),
+                    "M47 corpus prepares grouped weights");
+        prom_m43_resident_x_prepare_request prepareX{};
+        prepareX.x = x.data();
+        prepareX.element_count = x.size();
+        prepareX.tokens = workload.tokens;
+        prepareX.model_width = workload.modelWidth;
+        prepareX.generation = 4700u;
+        prom_m43_resident_x_prepare_result preparedX{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &preparedX),
+                     "M47 corpus prepares resident X");
+        std::vector<float> wo;
+        FillOutputProjectionWeight(&wo, workload.headDim, workload.modelWidth);
+        ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, workload.headDim,
+                                                  workload.modelWidth, 4701u),
+                    "M47 corpus prepares Wo");
+        std::vector<float> normWeight(workload.modelWidth);
+        for (std::uint32_t column = 0u; column < workload.modelWidth; ++column)
+            normWeight[column] = 0.75f + static_cast<float>(column % 17u) / 64.0f;
+        prom_m46_weight_prepare_request prepareNorm{};
+        prepareNorm.values = normWeight.data();
+        prepareNorm.element_count = normWeight.size();
+        prepareNorm.model_width = workload.modelWidth;
+        prepareNorm.generation = 4702u;
+        prom_m46_weight_prepare_result preparedNorm{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m46_prepare_weight(runtime, &prepareNorm, &preparedNorm),
+                     "M47 corpus prepares RMSNorm scale");
+        std::array<std::vector<float>, PROM_M47_WEIGHT_COUNT> ffnWeights;
+        ffnWeights[0].resize(static_cast<std::size_t>(workload.modelWidth) * workload.ffnWidth);
+        ffnWeights[1].resize(ffnWeights[0].size());
+        ffnWeights[2].resize(static_cast<std::size_t>(workload.ffnWidth) * workload.modelWidth);
+        for (std::size_t index = 0u; index < ffnWeights[0].size(); ++index) {
+            ffnWeights[0][index] = static_cast<float>(static_cast<int>((index * 7u + 3u) % 29u) - 14) / 1024.0f;
+            ffnWeights[1][index] = static_cast<float>(static_cast<int>((index * 11u + 5u) % 31u) - 15) / 1024.0f;
+        }
+        for (std::size_t index = 0u; index < ffnWeights[2].size(); ++index)
+            ffnWeights[2][index] = static_cast<float>(static_cast<int>((index * 13u + 7u) % 37u) - 18) / 1024.0f;
+        std::uint64_t preparation = 0u;
+        std::uint64_t preparationGpu = 0u;
+        for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind) {
+            prom_m47_weight_prepare_request prepare{};
+            prepare.values = ffnWeights[kind].data();
+            prepare.element_count = ffnWeights[kind].size();
+            prepare.kind = kind;
+            prepare.model_width = workload.modelWidth;
+            prepare.ffn_width = workload.ffnWidth;
+            prepare.generation = 4800u + kind;
+            prom_m47_weight_prepare_result prepared{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_prepare_weight(runtime, &prepare, &prepared),
+                         "M47 corpus prepares each FFN weight");
+            preparation += prepared.preparation_ns;
+            preparationGpu += prepared.gpu_upload_and_pack_ns;
+        }
+
+        std::vector<float> residentN(static_cast<std::size_t>(workload.tokens) * workload.modelWidth);
+        prom_m46_composed_request nRequest{};
+        FillM45ComposedRequest(&nRequest.upstream, nullptr, workload.tokens, workload.modelWidth,
+                               workload.headDim, PROM_M45_STRATEGY_IN_PLACE_Y,
+                               PROM_M45_SUBMIT_ONE_COMMAND_BUFFER, 4700u, 4701u);
+        nRequest.output = residentN.data();
+        nRequest.output_element_count = residentN.size();
+        nRequest.epsilon = 1.0e-5f;
+        nRequest.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
+        nRequest.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+        nRequest.required_weight_generation = 4702u;
+        prom_m46_composed_result nResult{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m46_execute_composed(runtime, &nRequest, &nResult),
+                     "M47 corpus captures one audit N outside the timed product path");
+        std::array<std::vector<float>, 2u> expected;
+        std::array<std::uint64_t, 2u> hostCpu{};
+        for (std::uint32_t precisionIndex = 0u; precisionIndex < 2u; ++precisionIndex) {
+            std::vector<float> gate(static_cast<std::size_t>(workload.tokens) * workload.ffnWidth);
+            std::vector<float> up(gate.size());
+            std::vector<float> hidden(gate.size());
+            std::vector<float> down(static_cast<std::size_t>(workload.tokens) * workload.modelWidth);
+            expected[precisionIndex].resize(down.size());
+            prom_m47_reference_request reference{};
+            reference.n = residentN.data();
+            reference.wgate = ffnWeights[0].data();
+            reference.wup = ffnWeights[1].data();
+            reference.wdown = ffnWeights[2].data();
+            reference.gate = gate.data();
+            reference.up = up.data();
+            reference.hidden = hidden.data();
+            reference.down = down.data();
+            reference.output = expected[precisionIndex].data();
+            reference.n_element_count = residentN.size();
+            reference.wgate_element_count = ffnWeights[0].size();
+            reference.wup_element_count = ffnWeights[1].size();
+            reference.wdown_element_count = ffnWeights[2].size();
+            reference.output_element_count = expected[precisionIndex].size();
+            reference.tokens = workload.tokens;
+            reference.model_width = workload.modelWidth;
+            reference.ffn_width = workload.ffnWidth;
+            reference.n_row_stride = workload.modelWidth;
+            reference.output_row_stride = workload.modelWidth;
+            reference.projection_path = precisionIndex == 0u
+                                          ? PROM_M47_PROJECTION_A2X4_FP32
+                                          : PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+            const auto cpuBegin = std::chrono::steady_clock::now();
+            ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_cpu_reference(&reference),
+                         "M47 corpus CPU oracle succeeds");
+            const auto cpuEnd = std::chrono::steady_clock::now();
+            hostCpu[precisionIndex] = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(cpuEnd - cpuBegin).count());
+        }
+        for (const Strategy& strategy : strategies) {
+            std::vector<float> output(expected[0].size());
+            prom_m47_composed_request request{};
+            FillM45ComposedRequest(&request.upstream.upstream, nullptr, workload.tokens,
+                                   workload.modelWidth, workload.headDim,
+                                   PROM_M45_STRATEGY_IN_PLACE_Y,
+                                   PROM_M45_SUBMIT_ONE_COMMAND_BUFFER, 4700u, 4701u);
+            request.upstream.epsilon = 1.0e-5f;
+            request.upstream.strategy = strategy.path == PROM_M47_PROJECTION_A2X4_FP32
+                                          ? PROM_M46_STRATEGY_SEPARATE_OUTPUT
+                                          : PROM_M46_STRATEGY_IN_PLACE_Z;
+            request.upstream.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+            request.upstream.required_weight_generation = 4702u;
+            request.output = output.data();
+            request.output_element_count = output.size();
+            request.ffn_width = workload.ffnWidth;
+            request.projection_path = strategy.path;
+            request.gating_strategy = strategy.gating;
+            request.residual_strategy = strategy.residual;
+            request.submit_policy = strategy.submit;
+            for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind)
+                request.required_weight_generation[kind] = 4800u + kind;
+            prom_m47_composed_result prime0{};
+            prom_m47_composed_result prime1{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &prime0),
+                         "M47 corpus primes the first slot");
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &prime1),
+                         "M47 corpus primes the second slot");
+            for (std::uint32_t warm = 0u; warm < 4u; ++warm) {
+                prom_m47_composed_result ignored{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &ignored),
+                             "M47 corpus warm execution succeeds");
+            }
+            std::vector<prom_m47_composed_result> measured;
+            for (std::uint32_t sample = 0u; sample < 5u; ++sample) {
+                prom_m47_composed_result value{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &value),
+                             "M47 corpus measured execution succeeds");
+                measured.push_back(value);
+            }
+            const prom_m47_composed_result& last = measured.back();
+            prom_m47_mismatch mismatch{};
+            const std::uint32_t precisionIndex = strategy.path == PROM_M47_PROJECTION_A2X4_FP32 ? 0u : 1u;
+            const bool correct = prom_m47_gated_ffn_compare(
+                expected[precisionIndex].data(), output.data(), workload.tokens, workload.modelWidth,
+                workload.modelWidth, workload.modelWidth, 3.0e-3f, 4.0e-2f,
+                &last.ffn_plan, nullptr, nullptr, nullptr, nullptr, &mismatch) == PROM_OK;
+            ASSERT_TRUE(correct, "M47 corpus BlockOutput matches the precision oracle");
+            ASSERT_EQUAL(prime1.buffer_allocation_count, last.buffer_allocation_count,
+                         "M47 corpus performs no warm allocation");
+            Record record{};
+            record.workload = workload.name;
+            record.strategy = strategy.name;
+            record.path = strategy.path;
+            record.gating = strategy.gating;
+            record.residual = strategy.residual;
+            record.submit = strategy.submit;
+            record.tokens = workload.tokens;
+            record.modelWidth = workload.modelWidth;
+            record.ffnWidth = workload.ffnWidth;
+            record.replay = last.ffn_plan.replay_id;
+            record.outputGeneration = last.output_generation;
+            record.nPack = MedianM47Metric(measured, &prom_m47_composed_result::n_pack_gpu_ns);
+            record.gate = MedianM47Metric(measured, &prom_m47_composed_result::gate_projection_gpu_ns);
+            record.up = MedianM47Metric(measured, &prom_m47_composed_result::up_projection_gpu_ns);
+            record.activation = MedianM47Metric(measured, &prom_m47_composed_result::activation_gpu_ns);
+            record.multiply = MedianM47Metric(measured, &prom_m47_composed_result::gating_multiply_gpu_ns);
+            record.fused = MedianM47Metric(measured, &prom_m47_composed_result::fused_gating_gpu_ns);
+            record.hiddenPack = MedianM47Metric(measured, &prom_m47_composed_result::hidden_pack_gpu_ns);
+            record.down = MedianM47Metric(measured, &prom_m47_composed_result::down_projection_gpu_ns);
+            record.residualGpu = MedianM47Metric(measured, &prom_m47_composed_result::residual_gpu_ns);
+            record.m47 = MedianM47Metric(measured, &prom_m47_composed_result::m47_gpu_ns);
+            record.complete = MedianM47Metric(measured,
+                &prom_m47_composed_result::total_m43_m44_m45_m46_m47_gpu_ns);
+            record.recording = MedianM47Metric(measured, &prom_m47_composed_result::cpu_recording_ns);
+            record.submission = MedianM47Metric(measured, &prom_m47_composed_result::cpu_submission_ns);
+            record.readback = MedianM47Metric(measured, &prom_m47_composed_result::final_readback_ns);
+            record.endToEnd = MedianM47Metric(measured, &prom_m47_composed_result::end_to_end_ns);
+            record.retained = last.retained_bytes;
+            record.exact = last.exact_request_bytes;
+            record.allocationCount = last.buffer_allocation_count;
+            record.preparation = preparation;
+            record.preparationGpu = preparationGpu;
+            record.hostCpu = hostCpu[precisionIndex];
+            record.hostEndToEnd = nResult.end_to_end_ns + hostCpu[precisionIndex];
+            record.correct = correct;
+            records.push_back(record);
+            if (std::string_view(workload.name) == "primary" &&
+                std::string_view(strategy.name) == "direct_packed_cooperative_split") {
+                std::vector<prom_m47_composed_result> repeated10;
+                std::vector<prom_m47_composed_result> repeated100;
+                for (std::uint32_t repeat = 0u; repeat < 10u; ++repeat) {
+                    prom_m47_composed_result value{};
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &value),
+                                 "M47 primary 10-repeat succeeds");
+                    repeated10.push_back(value);
+                }
+                for (std::uint32_t repeat = 0u; repeat < 100u; ++repeat) {
+                    prom_m47_composed_result value{};
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m47_execute_composed(runtime, &request, &value),
+                                 "M47 primary 100-repeat succeeds");
+                    repeated100.push_back(value);
+                }
+                warm10M47 = MedianM47Metric(repeated10, &prom_m47_composed_result::m47_gpu_ns);
+                warm10Complete = MedianM47Metric(
+                    repeated10, &prom_m47_composed_result::total_m43_m44_m45_m46_m47_gpu_ns);
+                warm10EndToEnd = MedianM47Metric(repeated10, &prom_m47_composed_result::end_to_end_ns);
+                warm100M47 = MedianM47Metric(repeated100, &prom_m47_composed_result::m47_gpu_ns);
+                warm100Complete = MedianM47Metric(
+                    repeated100, &prom_m47_composed_result::total_m43_m44_m45_m46_m47_gpu_ns);
+                warm100EndToEnd = MedianM47Metric(repeated100, &prom_m47_composed_result::end_to_end_ns);
+            }
+        }
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                     "M47 corpus validation services remain available");
+        validationWarnings += services.validation_warning_count;
+        validationErrors += services.validation_error_count;
+        prom_reactor_runtime_destroy_impl(runtime);
+    }
+    ASSERT_EQUAL(0u, validationWarnings, "M47 corpus has zero validation warnings");
+    ASSERT_EQUAL(0u, validationErrors, "M47 corpus has zero validation errors");
+    std::ostringstream json;
+    json << "{\n  \"schema\": \"prometheus.m47.gated-ffn-complete-block.v1\",\n"
+         << "  \"validation\": {\"warnings\": " << validationWarnings
+         << ", \"errors\": " << validationErrors << "},\n"
+         << "  \"warmups_per_plan\": 4,\n  \"measurements_per_plan\": 5,\n"
+         << "  \"primary_repeats\": {\"warm_10_m47_gpu_ns\": " << warm10M47
+         << ", \"warm_10_complete_gpu_ns\": " << warm10Complete
+         << ", \"warm_10_end_to_end_ns\": " << warm10EndToEnd
+         << ", \"warm_100_m47_gpu_ns\": " << warm100M47
+         << ", \"warm_100_complete_gpu_ns\": " << warm100Complete
+         << ", \"warm_100_end_to_end_ns\": " << warm100EndToEnd << "},\n"
+         << "  \"records\": [\n";
+    for (std::size_t index = 0u; index < records.size(); ++index) {
+        const Record& record = records[index];
+        if (index != 0u) json << ",\n";
+        json << "    {\"workload\":\"" << record.workload
+             << "\",\"strategy\":\"" << record.strategy
+             << "\",\"tokens\":" << record.tokens
+             << ",\"model_width\":" << record.modelWidth
+             << ",\"ffn_width\":" << record.ffnWidth
+             << ",\"projection_path\":" << record.path
+             << ",\"gating_strategy\":" << record.gating
+             << ",\"residual_strategy\":" << record.residual
+             << ",\"submit_policy\":" << record.submit
+             << ",\"correct\":" << (record.correct ? "true" : "false")
+             << ",\"replay_id\":" << record.replay
+             << ",\"output_generation\":" << record.outputGeneration
+             << ",\"n_pack_gpu_ns\":" << record.nPack
+             << ",\"gate_projection_gpu_ns\":" << record.gate
+             << ",\"up_projection_gpu_ns\":" << record.up
+             << ",\"activation_gpu_ns\":" << record.activation
+             << ",\"gating_multiply_gpu_ns\":" << record.multiply
+             << ",\"fused_gating_gpu_ns\":" << record.fused
+             << ",\"hidden_pack_gpu_ns\":" << record.hiddenPack
+             << ",\"down_projection_gpu_ns\":" << record.down
+             << ",\"residual_gpu_ns\":" << record.residualGpu
+             << ",\"m47_gpu_ns\":" << record.m47
+             << ",\"complete_gpu_ns\":" << record.complete
+             << ",\"cpu_recording_ns\":" << record.recording
+             << ",\"cpu_submission_ns\":" << record.submission
+             << ",\"final_readback_ns\":" << record.readback
+             << ",\"end_to_end_ns\":" << record.endToEnd
+             << ",\"weight_preparation_ns\":" << record.preparation
+             << ",\"weight_preparation_gpu_ns\":" << record.preparationGpu
+             << ",\"host_cpu_ffn_ns\":" << record.hostCpu
+             << ",\"host_bounce_lower_bound_ns\":" << record.hostEndToEnd
+             << ",\"retained_bytes\":" << record.retained
+             << ",\"exact_request_bytes\":" << record.exact
+             << ",\"allocation_count\":" << record.allocationCount << "}";
+    }
+    json << "\n  ]\n}\n";
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m47_gated_ffn_complete_block.json", json.str()),
+                "M47 benchmark artifact is written");
 }

@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M47",
+  "identity": "m47-silu-gate-fp32-separate-fused-v1",
+  "entry_point": "SiluGate_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 1, 2, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "4ef651b948505b08e91489a32960884e085e3ee422e31b92c91881e7b93a738e",
+  "hlsl_sha256": "388ed6248037ed0169211f0e40c75f0854caf2d1883e360bbdd6770944570f6a",
+  "spirv_sha256": "4224253f52d36e3268f4ded56cc58b0a50419b6b6b33b9a279a233c730b8a092",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "FP32 separate SiLU then multiply or fused SiLU(Gate) * Up with explicit strides and deterministic zero padding"
+}

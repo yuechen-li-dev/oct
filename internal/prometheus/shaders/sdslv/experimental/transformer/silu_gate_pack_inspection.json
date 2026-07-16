@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M47",
+  "identity": "m47-silu-gate-direct-pack-f16-rne-v1",
+  "entry_point": "SiluGatePack_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 1, 2, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "fccf5c74f4aabbdef9075ffd174222659c249e7508eae5f6eba6b54831971ac4",
+  "hlsl_sha256": "b8382d6ef2fa0124d0a39f00d09ac51f933a8c3ada0050740f729fcdac45a75a",
+  "spirv_sha256": "6de00e90fd1f3249e51d034dd12f4304a1c8a0d3e08110367503ad7c714bcb84",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "fused SiLU(Gate) * Up or existing FP32 Hidden to packed F16x2 with RNE and zero padded rows and columns"
+}

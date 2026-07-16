@@ -6,7 +6,8 @@
     "reactor_dominatus_prestage.c", "reactor_dominatus_sgemm_adapter.c",
     "reactor_dominatus_slot_adapter.c", "reactor_policy_memory.c", "reactor_slot_hfsm.c",
     "reactor_vulkan_common.c", "reactor_shader_registry.c", "reactor_vulkan_sgemm.c", "reactor_batch.c", "reactor_vulkan_fft.c",
-    "reactor_vulkan_fused_reduction.c"
+    "reactor_vulkan_fused_reduction.c",
+    "reactor_vulkan_transformer.c"
   ],
   "native_test_sources": [
     "Marionette/test_harness.cpp", "Marionette/test_doom.cpp", "Marionette/smoke_tests.cpp",

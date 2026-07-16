@@ -1912,6 +1912,337 @@ typedef struct prom_m46_mismatch {
   uint64_t m46_replay_id;
 } prom_m46_mismatch;
 
+/* M47 consumes the retained M46 N view and completes one bounded gated-FFN
+   transformer block tail. It is not a general graph or model runtime. */
+#define PROM_M47_WEIGHT_COUNT 3u
+#define PROM_M47_MAX_STAGES 11u
+#define PROM_M47_MAX_BARRIERS 16u
+
+typedef enum prom_m47_weight_kind {
+  PROM_M47_WEIGHT_GATE = 0u,
+  PROM_M47_WEIGHT_UP = 1u,
+  PROM_M47_WEIGHT_DOWN = 2u,
+} prom_m47_weight_kind;
+
+typedef enum prom_m47_projection_path {
+  PROM_M47_PROJECTION_COOPERATIVE = PROM_M42_PATH_COOPERATIVE,
+  PROM_M47_PROJECTION_A2X4_FP32 = PROM_M42_PATH_A2X4,
+  PROM_M47_PROJECTION_CONVENTIONAL_FP16 = PROM_M42_PATH_CONVENTIONAL_FP16,
+} prom_m47_projection_path;
+
+typedef enum prom_m47_gating_strategy {
+  PROM_M47_GATING_SEPARATE = 1u,
+  PROM_M47_GATING_FUSED_FP32 = 2u,
+  PROM_M47_GATING_FUSED_DIRECT_PACKED = 3u,
+} prom_m47_gating_strategy;
+
+typedef enum prom_m47_hidden_storage {
+  PROM_M47_HIDDEN_FP32 = 1u,
+  PROM_M47_HIDDEN_PACKED_F16 = 2u,
+} prom_m47_hidden_storage;
+
+typedef enum prom_m47_residual_strategy {
+  PROM_M47_RESIDUAL_SEPARATE_OUTPUT = 1u,
+  PROM_M47_RESIDUAL_IN_PLACE_DOWN = 2u,
+  PROM_M47_RESIDUAL_IN_PLACE_N_AUDIT = 3u,
+} prom_m47_residual_strategy;
+
+typedef enum prom_m47_submit_policy {
+  PROM_M47_SUBMIT_ONE_COMMAND_BUFFER = 1u,
+  PROM_M47_SUBMIT_TWO_BOUNDED = 2u,
+} prom_m47_submit_policy;
+
+typedef enum prom_m47_buffer_identity {
+  PROM_M47_BUFFER_N = 1u,
+  PROM_M47_BUFFER_N_PACKED = 2u,
+  PROM_M47_BUFFER_WGATE = 3u,
+  PROM_M47_BUFFER_WUP = 4u,
+  PROM_M47_BUFFER_WDOWN = 5u,
+  PROM_M47_BUFFER_GATE = 6u,
+  PROM_M47_BUFFER_UP = 7u,
+  PROM_M47_BUFFER_ACTIVATED_GATE = 8u,
+  PROM_M47_BUFFER_HIDDEN = 9u,
+  PROM_M47_BUFFER_HIDDEN_PACKED = 10u,
+  PROM_M47_BUFFER_DOWN = 11u,
+  PROM_M47_BUFFER_OUTPUT = 12u,
+  PROM_M47_BUFFER_READBACK = 13u,
+} prom_m47_buffer_identity;
+
+typedef enum prom_m47_stage_operation {
+  PROM_M47_STAGE_N_READY = 1u,
+  PROM_M47_STAGE_PACK_N = 2u,
+  PROM_M47_STAGE_GATE_PROJECTION = 3u,
+  PROM_M47_STAGE_UP_PROJECTION = 4u,
+  PROM_M47_STAGE_SILU = 5u,
+  PROM_M47_STAGE_GATE_MULTIPLY = 6u,
+  PROM_M47_STAGE_FUSED_GATE = 7u,
+  PROM_M47_STAGE_PACK_HIDDEN = 8u,
+  PROM_M47_STAGE_DOWN_PROJECTION = 9u,
+  PROM_M47_STAGE_SECOND_RESIDUAL = 10u,
+  PROM_M47_STAGE_FINAL_READBACK = 11u,
+} prom_m47_stage_operation;
+
+typedef enum prom_m47_fault_point {
+  PROM_M47_FAULT_NONE = 0u,
+  PROM_M47_FAULT_BEFORE_GATE = 1u,
+  PROM_M47_FAULT_BETWEEN_GATE_UP = 2u,
+  PROM_M47_FAULT_BEFORE_GATING = 3u,
+  PROM_M47_FAULT_DURING_ACTIVATION = 4u,
+  PROM_M47_FAULT_DURING_FUSED_GATING = 5u,
+  PROM_M47_FAULT_AFTER_HIDDEN = 6u,
+  PROM_M47_FAULT_DURING_DOWN = 7u,
+  PROM_M47_FAULT_BEFORE_RESIDUAL = 8u,
+  PROM_M47_FAULT_AFTER_RESIDUAL_SUBMISSION = 9u,
+  PROM_M47_FAULT_BEFORE_FINAL_READBACK = 10u,
+  PROM_M47_FAULT_UNCERTAIN_COMPLETION = 11u,
+} prom_m47_fault_point;
+
+typedef enum prom_m47_eligibility_reason {
+  PROM_M47_ELIGIBLE = 0u,
+  PROM_M47_INELIGIBLE_VIEW = 1u,
+  PROM_M47_INELIGIBLE_SHAPE = 2u,
+  PROM_M47_INELIGIBLE_STRIDE = 3u,
+  PROM_M47_INELIGIBLE_GENERATION = 4u,
+  PROM_M47_INELIGIBLE_WEIGHT = 5u,
+  PROM_M47_INELIGIBLE_PRECISION = 6u,
+  PROM_M47_INELIGIBLE_GATING = 7u,
+  PROM_M47_INELIGIBLE_RESIDUAL = 8u,
+  PROM_M47_INELIGIBLE_EXCLUSIVITY = 9u,
+  PROM_M47_INELIGIBLE_CAPACITY = 10u,
+} prom_m47_eligibility_reason;
+
+typedef struct prom_m47_barrier_trace {
+  uint32_t sequence;
+  uint32_t buffer_identity;
+  uint64_t byte_offset;
+  uint64_t byte_length;
+  uint32_t source_stage_mask;
+  uint32_t destination_stage_mask;
+  uint32_t source_access_mask;
+  uint32_t destination_access_mask;
+  uint32_t source_queue_family;
+  uint32_t destination_queue_family;
+} prom_m47_barrier_trace;
+
+typedef struct prom_m47_stage_plan {
+  uint32_t sequence;
+  uint32_t operation;
+  uint32_t dispatch_count;
+  uint32_t barrier_begin;
+  uint32_t barrier_count;
+  uint32_t copy_region_count;
+  uint32_t timestamp_begin;
+  uint32_t timestamp_end;
+} prom_m47_stage_plan;
+
+typedef struct prom_m47_memory_plan {
+  uint64_t n_view_bytes;
+  uint64_t n_packed_bytes;
+  uint64_t weight_upload_bytes[PROM_M47_WEIGHT_COUNT];
+  uint64_t weight_f32_bytes[PROM_M47_WEIGHT_COUNT];
+  uint64_t weight_packed_bytes[PROM_M47_WEIGHT_COUNT];
+  uint64_t gate_bytes;
+  uint64_t up_bytes;
+  uint64_t activated_gate_bytes;
+  uint64_t hidden_f32_bytes;
+  uint64_t hidden_packed_bytes;
+  uint64_t down_bytes;
+  uint64_t separate_output_bytes;
+  uint64_t final_readback_bytes;
+  uint64_t exact_request_bytes;
+  uint64_t fused_gating_saved_bytes;
+  uint64_t in_place_down_saved_bytes;
+  uint64_t capacity_limit_bytes;
+  uint32_t reusable_descriptor_set_count;
+  uint32_t descriptor_binding_count;
+} prom_m47_memory_plan;
+
+typedef struct prom_m47_plan_request {
+  prom_device_buffer_view n_view;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t ffn_width;
+  uint32_t projection_path;
+  uint32_t gating_strategy;
+  uint32_t residual_strategy;
+  uint32_t submit_policy;
+  uint32_t n_exclusive;
+  uint32_t remaining_n_consumer_count;
+  uint32_t final_readback;
+  uint64_t expected_n_generation;
+  uint64_t weight_generation[PROM_M47_WEIGHT_COUNT];
+  uint64_t weight_hash[PROM_M47_WEIGHT_COUNT];
+  uint64_t m46_replay_id;
+} prom_m47_plan_request;
+
+typedef struct prom_m47_gated_ffn_plan {
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t ffn_width;
+  uint32_t padded_tokens;
+  uint32_t padded_model_width;
+  uint32_t padded_ffn_width;
+  uint32_t n_row_stride;
+  uint32_t gate_row_stride;
+  uint32_t up_row_stride;
+  uint32_t hidden_row_stride;
+  uint32_t down_row_stride;
+  uint32_t output_row_stride;
+  uint32_t projection_path;
+  uint32_t gating_strategy;
+  uint32_t hidden_storage;
+  uint32_t residual_strategy;
+  uint32_t submit_policy;
+  uint32_t stage_count;
+  uint32_t barrier_count;
+  uint32_t dispatch_count;
+  uint32_t copy_region_count;
+  uint32_t submit_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t final_readback_count;
+  uint64_t n_generation;
+  uint64_t weight_generation[PROM_M47_WEIGHT_COUNT];
+  uint64_t weight_hash[PROM_M47_WEIGHT_COUNT];
+  uint64_t gate_generation;
+  uint64_t up_generation;
+  uint64_t hidden_generation;
+  uint64_t down_generation;
+  uint64_t output_generation;
+  uint64_t gate_shader_hash;
+  uint64_t gate_pack_shader_hash;
+  uint64_t m46_replay_id;
+  uint64_t command_plan_replay_id;
+  uint64_t replay_id;
+  uint32_t eligibility_eligible;
+  uint32_t eligibility_reason;
+  uint64_t eligibility_replay_id;
+  prom_m47_memory_plan memory;
+  prom_m47_stage_plan stages[PROM_M47_MAX_STAGES];
+  prom_m47_barrier_trace barriers[PROM_M47_MAX_BARRIERS];
+} prom_m47_gated_ffn_plan;
+
+typedef struct prom_m47_weight_prepare_request {
+  const float* values;
+  uint64_t element_count;
+  uint32_t kind;
+  uint32_t model_width;
+  uint32_t ffn_width;
+  uint64_t generation;
+} prom_m47_weight_prepare_request;
+
+typedef struct prom_m47_weight_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t kind;
+  uint64_t generation;
+  uint64_t hash;
+  uint64_t validation_hash_ns;
+  uint64_t gpu_upload_and_pack_ns;
+  uint64_t preparation_ns;
+  uint64_t retained_upload_bytes;
+  uint64_t retained_f32_bytes;
+  uint64_t retained_packed_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+} prom_m47_weight_prepare_result;
+
+typedef struct prom_m47_composed_request {
+  prom_m46_composed_request upstream;
+  float* output;
+  uint64_t output_element_count;
+  uint32_t ffn_width;
+  uint32_t projection_path;
+  uint32_t gating_strategy;
+  uint32_t residual_strategy;
+  uint32_t submit_policy;
+  uint32_t fault_point;
+  uint64_t required_weight_generation[PROM_M47_WEIGHT_COUNT];
+} prom_m47_composed_request;
+
+typedef struct prom_m47_composed_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t no_intermediate_host_copy;
+  uint64_t n_pack_gpu_ns;
+  uint64_t gate_projection_gpu_ns;
+  uint64_t up_projection_gpu_ns;
+  uint64_t activation_gpu_ns;
+  uint64_t gating_multiply_gpu_ns;
+  uint64_t fused_gating_gpu_ns;
+  uint64_t hidden_pack_gpu_ns;
+  uint64_t down_projection_gpu_ns;
+  uint64_t residual_gpu_ns;
+  uint64_t m47_gpu_ns;
+  uint64_t total_m43_m44_m45_m46_m47_gpu_ns;
+  uint64_t cpu_recording_ns;
+  uint64_t cpu_submission_ns;
+  uint64_t final_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t exact_request_bytes;
+  uint64_t retained_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint64_t n_generation;
+  uint64_t weight_generation[PROM_M47_WEIGHT_COUNT];
+  uint64_t output_generation;
+  prom_m46_composed_result upstream;
+  prom_m47_gated_ffn_plan ffn_plan;
+  prom_device_buffer_view output_view;
+} prom_m47_composed_result;
+
+typedef struct prom_m47_reference_request {
+  const float* n;
+  const float* wgate;
+  const float* wup;
+  const float* wdown;
+  float* gate;
+  float* up;
+  float* hidden;
+  float* down;
+  float* output;
+  uint64_t n_element_count;
+  uint64_t wgate_element_count;
+  uint64_t wup_element_count;
+  uint64_t wdown_element_count;
+  uint64_t output_element_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t ffn_width;
+  uint32_t n_row_stride;
+  uint32_t output_row_stride;
+  uint32_t projection_path;
+} prom_m47_reference_request;
+
+typedef struct prom_m47_mismatch {
+  uint32_t matched;
+  uint32_t stage;
+  uint32_t strategy;
+  uint32_t token;
+  uint32_t column;
+  float expected;
+  float actual;
+  float absolute_error;
+  float relative_error;
+  float gate;
+  float up;
+  float hidden;
+  float down;
+  uint64_t n_generation;
+  uint64_t weight_generation[PROM_M47_WEIGHT_COUNT];
+  uint64_t output_generation;
+  uint64_t m46_replay_id;
+  uint64_t m47_replay_id;
+} prom_m47_mismatch;
+
 enum {
   PROM_M40B_DETAIL_INVALID_REQUEST = -6901,
   PROM_M40B_DETAIL_SIZE_OVERFLOW = -6902,
@@ -2026,6 +2357,31 @@ enum {
   PROM_M46_DETAIL_FAULT_INJECTED = -7417,
   PROM_M46_DETAIL_NONFINITE_INPUT = -7418,
   PROM_M46_DETAIL_MISMATCH = -7419,
+};
+
+enum {
+  PROM_M47_DETAIL_INVALID_REQUEST = -7501,
+  PROM_M47_DETAIL_INVALID_VIEW = -7502,
+  PROM_M47_DETAIL_SHAPE = -7503,
+  PROM_M47_DETAIL_STRIDE = -7504,
+  PROM_M47_DETAIL_STALE_N_GENERATION = -7505,
+  PROM_M47_DETAIL_STALE_WEIGHT_GENERATION = -7506,
+  PROM_M47_DETAIL_PRECISION = -7507,
+  PROM_M47_DETAIL_GATING = -7508,
+  PROM_M47_DETAIL_RESIDUAL = -7509,
+  PROM_M47_DETAIL_EXCLUSIVITY = -7510,
+  PROM_M47_DETAIL_SIZE_OVERFLOW = -7511,
+  PROM_M47_DETAIL_CAPACITY = -7512,
+  PROM_M47_DETAIL_RESOURCE = -7513,
+  PROM_M47_DETAIL_COMMAND = -7514,
+  PROM_M47_DETAIL_SUBMIT = -7515,
+  PROM_M47_DETAIL_COMPLETION_UNCERTAIN = -7516,
+  PROM_M47_DETAIL_QUERY = -7517,
+  PROM_M47_DETAIL_READBACK = -7518,
+  PROM_M47_DETAIL_FAULT_INJECTED = -7519,
+  PROM_M47_DETAIL_NONFINITE_INPUT = -7520,
+  PROM_M47_DETAIL_MISMATCH = -7521,
+  PROM_M47_DETAIL_IN_PLACE_N_REJECTED = -7522,
 };
 
 enum {
@@ -2253,6 +2609,29 @@ int prom_reactor_runtime_m46_prepare_weight(void* handle,
 int prom_reactor_runtime_m46_execute_composed(void* handle,
                                               const prom_m46_composed_request* request,
                                               prom_m46_composed_result* out_result);
+int prom_m47_gated_ffn_plan_build(const prom_m47_plan_request* request,
+                                  prom_m47_gated_ffn_plan* out_plan);
+int prom_m47_gated_ffn_cpu_reference(const prom_m47_reference_request* request);
+int prom_m47_gated_ffn_compare(const float* expected,
+                               const float* actual,
+                               uint32_t tokens,
+                               uint32_t model_width,
+                               uint32_t expected_row_stride,
+                               uint32_t actual_row_stride,
+                               float absolute_tolerance,
+                               float relative_tolerance,
+                               const prom_m47_gated_ffn_plan* plan,
+                               const float* gate,
+                               const float* up,
+                               const float* hidden,
+                               const float* down,
+                               prom_m47_mismatch* out_mismatch);
+int prom_reactor_runtime_m47_prepare_weight(void* handle,
+                                            const prom_m47_weight_prepare_request* request,
+                                            prom_m47_weight_prepare_result* out_result);
+int prom_reactor_runtime_m47_execute_composed(void* handle,
+                                              const prom_m47_composed_request* request,
+                                              prom_m47_composed_result* out_result);
 uint16_t prom_sgemm_float32_to_fp16_bits(float value);
 float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);

@@ -18,6 +18,7 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_batch.c"
   "$NATIVE_DIR/reactor_vulkan_fft.c"
   "$NATIVE_DIR/reactor_vulkan_fused_reduction.c"
+  "$NATIVE_DIR/reactor_vulkan_transformer.c"
 )
 PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/test_harness.cpp"

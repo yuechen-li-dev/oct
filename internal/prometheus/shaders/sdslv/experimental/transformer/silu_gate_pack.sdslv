@@ -1,0 +1,65 @@
+namespace Prometheus.Experimental.Transformer;
+
+// M47's exact F16-RNE consumer boundary. Mode 1 fuses SiLU(Gate) * Up and
+// packs directly. Mode 2 packs an existing FP32 Hidden tensor. Padded rows
+// and columns are written as zero without an out-of-range source read.
+stream SiluGatePackIO {
+    [binding(0)] Gate: readonly array<f32>;
+    [binding(1)] Up: readonly array<f32>;
+    [binding(2)] Hidden: readonly array<f32>;
+    [binding(3)] PackedHidden: readwrite array<u32>;
+}
+
+record SiluGatePackParams {
+    LogicalRows: u32;
+    LogicalColumns: u32;
+    InputRowStride: u32;
+    OutputRows: u32;
+    OutputColumns: u32;
+    Mode: u32;
+    PackedWordCount: u32;
+    Reserved: u32;
+}
+
+fn Silu(value: f32) -> f32 {
+    if value >= 0.0 {
+        let exponential: f32 = HLSL<f32>(value) { return exp(-value); };
+        return value / (1.0 + exponential);
+    }
+    let exponential: f32 = HLSL<f32>(value) { return exp(value); };
+    return value * exponential / (1.0 + exponential);
+}
+
+fn HiddenValue(gate: f32, up: f32, hidden: f32, mode: u32) -> f32 {
+    if mode == 1u { return Silu(gate) * up; }
+    return hidden;
+}
+
+shader SiluGatePack {
+    resources SiluGatePackIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: SiluGatePackParams) -> void {
+        let word: u32 = DispatchThreadID.x;
+        if word >= params.PackedWordCount { return; }
+        let lowIndex: u32 = word * 2u;
+        let highIndex: u32 = lowIndex + 1u;
+        let lowRow: u32 = lowIndex / params.OutputColumns;
+        let lowColumn: u32 = lowIndex - lowRow * params.OutputColumns;
+        var low: f32 = 0.0;
+        if lowRow < params.LogicalRows and lowColumn < params.LogicalColumns {
+            let source: u32 = lowRow * params.InputRowStride + lowColumn;
+            low = HiddenValue(Gate[source], Up[source], Hidden[source], params.Mode);
+        }
+        var high: f32 = 0.0;
+        if highIndex < params.OutputRows * params.OutputColumns {
+            let highRow: u32 = highIndex / params.OutputColumns;
+            let highColumn: u32 = highIndex - highRow * params.OutputColumns;
+            if highRow < params.LogicalRows and highColumn < params.LogicalColumns {
+                let source: u32 = highRow * params.InputRowStride + highColumn;
+                high = HiddenValue(Gate[source], Up[source], Hidden[source], params.Mode);
+            }
+        }
+        PackedHidden[word] = Pack<F16x2>(float2(low, high));
+        return;
+    }
+}

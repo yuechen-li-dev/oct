@@ -341,3 +341,16 @@ readback: none before the gated FFN
 The next milestone may implement one bounded gated feed-forward operator over
 this retained N. M46 does not preselect FFN hidden width, activation, second
 projection, second residual, or graph scheduling.
+
+## M47 first-consumer status
+
+M47 now consumes this exact retained unread N view in the real composed owner.
+It performs persistent Gate/Up projections, exact FP32 SiLU gating, a persistent
+Down projection, and the second residual without an N readback. The preferred
+route writes packed Hidden directly and aliases exclusive Down as the retained
+FP32 BlockOutput; N remains immutable. One-submit records M43 through M47 in one
+command buffer, while the bounded split signals after M46 and records M47 in the
+existing same-queue consumer command buffer. M46 APIs, shader identities,
+replay behavior, selector behavior, and experimental classification are
+unchanged. Full correctness, lifecycle, fault, memory, and RTX 3070 timing
+evidence is in the M47 report.
