@@ -13,6 +13,10 @@ typedef struct prom_sgemm_kernel_dispatch_metadata {
   uint32_t tile_n;
   uint32_t tile_k;
   uint32_t unroll_k;
+  /* Optional whole-workgroup output footprint. Cooperative subgroup kernels
+     use this because an invocation-level footprint is not meaningful. */
+  uint32_t workgroup_output_m;
+  uint32_t workgroup_output_n;
 } prom_sgemm_kernel_dispatch_metadata;
 
 typedef struct prom_sgemm_dispatch_geometry {
@@ -42,8 +46,12 @@ static inline prom_sgemm_dispatch_geometry prom_sgemm_dispatch_geometry_for_meta
     geometry.logical_n_per_group = 0u;
     return geometry;
   }
-  logical_m_per_group = metadata->threads_x * metadata->outputs_per_invocation_m;
-  logical_n_per_group = metadata->threads_y * metadata->outputs_per_invocation_n;
+  logical_m_per_group = metadata->workgroup_output_m != 0u
+                            ? metadata->workgroup_output_m
+                            : metadata->threads_x * metadata->outputs_per_invocation_m;
+  logical_n_per_group = metadata->workgroup_output_n != 0u
+                            ? metadata->workgroup_output_n
+                            : metadata->threads_y * metadata->outputs_per_invocation_n;
   geometry.groups_x = prom_sgemm_ceil_div_u32(m, logical_m_per_group);
   geometry.groups_y = prom_sgemm_ceil_div_u32(n, logical_n_per_group);
   geometry.groups_z = 1u;

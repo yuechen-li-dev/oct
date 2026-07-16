@@ -1,0 +1,30 @@
+{
+  "schema": "prometheus.m40a.spirv-inspection.v1",
+  "source": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16.sdslv",
+  "output": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16.spv",
+  "shader_sha256": "247e410eb526f25c2276d127a732bb4def0c7949bca0ad0fdc5434ea95d17fea",
+  "target_environment": "vulkan1.3",
+  "spirv_version": "1.6",
+  "validation": {"tool":"SPIRV-Tools v2026.2","target":"vulkan1.3","passed":true},
+  "entry_point": "CooperativeSgemmF16F32M16N16K16_CS",
+  "local_size": [32,1,1],
+  "descriptor_bindings": [
+    {"set":0,"binding":0,"name":"A","storage":"u32","access":"readonly"},
+    {"set":0,"binding":1,"name":"B","storage":"u32","access":"readonly"},
+    {"set":0,"binding":2,"name":"C","storage":"f32","access":"readwrite"}
+  ],
+  "push_constants": [{"name":"m","offset":0},{"name":"n","offset":4},{"name":"k","offset":8}],
+  "capabilities": ["VulkanMemoryModel","CooperativeMatrixKHR","Shader","Float16"],
+  "extensions": ["SPV_KHR_cooperative_matrix"],
+  "cooperative_types": [
+    {"component":"float16","scope":"subgroup","rows":16,"columns":16,"use":"MatrixA"},
+    {"component":"float16","scope":"subgroup","rows":16,"columns":16,"use":"MatrixB"},
+    {"component":"float32","scope":"subgroup","rows":16,"columns":16,"use":"MatrixAccumulator"}
+  ],
+  "instructions": {
+    "OpCooperativeMatrixLoadKHR": 2,
+    "OpCooperativeMatrixMulAddKHR": 1,
+    "OpCooperativeMatrixStoreKHR": 1,
+    "ordinary_scalar_multiply_in_accumulation_loop": false
+  }
+}

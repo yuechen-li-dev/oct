@@ -7,6 +7,22 @@ public batch API -> supported-mask validation -> reactor_batch.c
   -> M30 task ownership -> M29 shared physical ring -> Vulkan SGEMM
 ```
 
+## Optional cooperative-matrix negotiation
+
+M40a adds an optional device-creation branch, not a production SGEMM route.
+The instance requests at most Vulkan 1.3 (bounded by loader support). After the
+ordinary compute device is selected, the runtime enumerates
+`VK_KHR_cooperative_matrix`, queries KHR tuples, and selects only the audited
+subgroup 16x16x16 FP16-input/FP32-accumulator tuple. The device chain enables
+`cooperativeMatrix`, `shaderFloat16`, and `vulkanMemoryModel` only when the
+extension, tuple, all features, Vulkan 1.3, and a 32-lane subgroup are present.
+
+`PROMETHEUS_VK_DISABLE_COOPERATIVE_MATRIX=1` is a test-only absence
+simulation. Unsupported devices retain the ordinary device-create chain and
+all production pipelines. The cooperative module is reachable only through
+the audit descriptor, requires full subgroups, rejects non-16-aligned M/N/K,
+and never enters the production selector or registry.
+
 ## Fused reduction family
 
 M39b adds an independent row-wise reduction family through the same Vulkan

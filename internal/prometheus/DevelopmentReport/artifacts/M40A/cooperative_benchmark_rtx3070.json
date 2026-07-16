@@ -1,0 +1,760 @@
+{
+  "schema": "prometheus.m40a.cooperative-benchmark.v1",
+  "warmup": 1,
+  "iterations": 5,
+  "rows": [
+    {
+      "kernel": "tiled",
+      "precision": "fp32",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "55a14c3c6a9d75f5",
+      "replay_identity": "m40a-identity-workload-v1:tiled:256x256x256:kernel-only:55a14c3c6a9d75f5",
+      "timing": {
+        "min_ns": 113376,
+        "median_ns": 114304,
+        "max_ns": 114496
+      },
+      "effective_gflops": 293.5543113
+    },
+    {
+      "kernel": "memory-conservative",
+      "precision": "fp32",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "91cb2e5d9bf72a8a",
+      "replay_identity": "m40a-identity-workload-v1:memory-conservative:256x256x256:kernel-only:91cb2e5d9bf72a8a",
+      "timing": {
+        "min_ns": 148576,
+        "median_ns": 149120,
+        "max_ns": 150528
+      },
+      "effective_gflops": 225.016309
+    },
+    {
+      "kernel": "B2x2",
+      "precision": "fp32",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "7e95287c7a0b4286",
+      "replay_identity": "m40a-identity-workload-v1:B2x2:256x256x256:kernel-only:7e95287c7a0b4286",
+      "timing": {
+        "min_ns": 78720,
+        "median_ns": 79616,
+        "max_ns": 80128
+      },
+      "effective_gflops": 421.4533762
+    },
+    {
+      "kernel": "A2x4",
+      "precision": "fp32",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "feb11b13c56f20a9",
+      "replay_identity": "m40a-identity-workload-v1:A2x4:256x256x256:kernel-only:feb11b13c56f20a9",
+      "timing": {
+        "min_ns": 116928,
+        "median_ns": 117792,
+        "max_ns": 118304
+      },
+      "effective_gflops": 284.8617224
+    },
+    {
+      "kernel": "Packed4",
+      "precision": "fp32",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "24145d04aabde169",
+      "replay_identity": "m40a-identity-workload-v1:Packed4:256x256x256:kernel-only:24145d04aabde169",
+      "timing": {
+        "min_ns": 147776,
+        "median_ns": 148416,
+        "max_ns": 148896
+      },
+      "effective_gflops": 226.0836567
+    },
+    {
+      "kernel": "FP16-storage",
+      "precision": "fp16-input-fp32-accum",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "2bd88cd06f9029b1",
+      "replay_identity": "m40a-identity-workload-v1:FP16-storage:256x256x256:kernel-only:2bd88cd06f9029b1",
+      "timing": {
+        "min_ns": 154688,
+        "median_ns": 155488,
+        "max_ns": 156512
+      },
+      "effective_gflops": 215.8007821
+    },
+    {
+      "kernel": "cooperative",
+      "precision": "fp16-input-fp32-accum",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "shader_hash": "b4d54fafc456757c",
+      "replay_identity": "m40a-identity-workload-v1:cooperative:256x256x256:kernel-only:b4d54fafc456757c",
+      "timing": {
+        "min_ns": 33568,
+        "median_ns": 33728,
+        "max_ns": 33888
+      },
+      "effective_gflops": 994.8538899
+    },
+    {
+      "kernel": "production-selected",
+      "precision": "fp32-policy-result",
+      "m": 256,
+      "n": 256,
+      "k": 256,
+      "correct": true,
+      "selected_variant": 3,
+      "executed_variant": 3,
+      "replay_identity": "m40a-identity-workload-v1:production-selected:256x256x256:kernel-only:3",
+      "timing": {
+        "min_ns": 153216,
+        "median_ns": 155392,
+        "p95_ns": 157888
+      }
+    },
+    {
+      "kernel": "tiled",
+      "precision": "fp32",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "55a14c3c6a9d75f5",
+      "replay_identity": "m40a-identity-workload-v1:tiled:512x512x512:kernel-only:55a14c3c6a9d75f5",
+      "timing": {
+        "min_ns": 805024,
+        "median_ns": 805408,
+        "max_ns": 805696
+      },
+      "effective_gflops": 333.291271
+    },
+    {
+      "kernel": "memory-conservative",
+      "precision": "fp32",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "91cb2e5d9bf72a8a",
+      "replay_identity": "m40a-identity-workload-v1:memory-conservative:512x512x512:kernel-only:91cb2e5d9bf72a8a",
+      "timing": {
+        "min_ns": 1076896,
+        "median_ns": 1078176,
+        "max_ns": 1078976
+      },
+      "effective_gflops": 248.9718339
+    },
+    {
+      "kernel": "B2x2",
+      "precision": "fp32",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "7e95287c7a0b4286",
+      "replay_identity": "m40a-identity-workload-v1:B2x2:512x512x512:kernel-only:7e95287c7a0b4286",
+      "timing": {
+        "min_ns": 583584,
+        "median_ns": 585280,
+        "max_ns": 585920
+      },
+      "effective_gflops": 458.6445052
+    },
+    {
+      "kernel": "A2x4",
+      "precision": "fp32",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "feb11b13c56f20a9",
+      "replay_identity": "m40a-identity-workload-v1:A2x4:512x512x512:kernel-only:feb11b13c56f20a9",
+      "timing": {
+        "min_ns": 368320,
+        "median_ns": 368640,
+        "max_ns": 369824
+      },
+      "effective_gflops": 728.1777778
+    },
+    {
+      "kernel": "Packed4",
+      "precision": "fp32",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "24145d04aabde169",
+      "replay_identity": "m40a-identity-workload-v1:Packed4:512x512x512:kernel-only:24145d04aabde169",
+      "timing": {
+        "min_ns": 1096672,
+        "median_ns": 1098720,
+        "max_ns": 1110560
+      },
+      "effective_gflops": 244.3165283
+    },
+    {
+      "kernel": "FP16-storage",
+      "precision": "fp16-input-fp32-accum",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "2bd88cd06f9029b1",
+      "replay_identity": "m40a-identity-workload-v1:FP16-storage:512x512x512:kernel-only:2bd88cd06f9029b1",
+      "timing": {
+        "min_ns": 1099008,
+        "median_ns": 1101600,
+        "max_ns": 1103616
+      },
+      "effective_gflops": 243.6777923
+    },
+    {
+      "kernel": "cooperative",
+      "precision": "fp16-input-fp32-accum",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "shader_hash": "b4d54fafc456757c",
+      "replay_identity": "m40a-identity-workload-v1:cooperative:512x512x512:kernel-only:b4d54fafc456757c",
+      "timing": {
+        "min_ns": 125440,
+        "median_ns": 125664,
+        "max_ns": 130752
+      },
+      "effective_gflops": 2136.136491
+    },
+    {
+      "kernel": "production-selected",
+      "precision": "fp32-policy-result",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "correct": true,
+      "selected_variant": 3,
+      "executed_variant": 3,
+      "replay_identity": "m40a-identity-workload-v1:production-selected:512x512x512:kernel-only:3",
+      "timing": {
+        "min_ns": 1111168,
+        "median_ns": 1116960,
+        "p95_ns": 1139424
+      }
+    },
+    {
+      "kernel": "tiled",
+      "precision": "fp32",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "55a14c3c6a9d75f5",
+      "replay_identity": "m40a-identity-workload-v1:tiled:1024x1024x1024:kernel-only:55a14c3c6a9d75f5",
+      "timing": {
+        "min_ns": 6308288,
+        "median_ns": 6314688,
+        "max_ns": 6317760
+      },
+      "effective_gflops": 340.0775538
+    },
+    {
+      "kernel": "memory-conservative",
+      "precision": "fp32",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "91cb2e5d9bf72a8a",
+      "replay_identity": "m40a-identity-workload-v1:memory-conservative:1024x1024x1024:kernel-only:91cb2e5d9bf72a8a",
+      "timing": {
+        "min_ns": 8495392,
+        "median_ns": 8496352,
+        "max_ns": 8499200
+      },
+      "effective_gflops": 252.753611
+    },
+    {
+      "kernel": "B2x2",
+      "precision": "fp32",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "7e95287c7a0b4286",
+      "replay_identity": "m40a-identity-workload-v1:B2x2:1024x1024x1024:kernel-only:7e95287c7a0b4286",
+      "timing": {
+        "min_ns": 4295360,
+        "median_ns": 4296128,
+        "max_ns": 4297120
+      },
+      "effective_gflops": 499.8649128
+    },
+    {
+      "kernel": "A2x4",
+      "precision": "fp32",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "feb11b13c56f20a9",
+      "replay_identity": "m40a-identity-workload-v1:A2x4:1024x1024x1024:kernel-only:feb11b13c56f20a9",
+      "timing": {
+        "min_ns": 2558848,
+        "median_ns": 2561568,
+        "max_ns": 2636448
+      },
+      "effective_gflops": 838.3473123
+    },
+    {
+      "kernel": "Packed4",
+      "precision": "fp32",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "24145d04aabde169",
+      "replay_identity": "m40a-identity-workload-v1:Packed4:1024x1024x1024:kernel-only:24145d04aabde169",
+      "timing": {
+        "min_ns": 8504064,
+        "median_ns": 8528672,
+        "max_ns": 8552192
+      },
+      "effective_gflops": 251.7957834
+    },
+    {
+      "kernel": "FP16-storage",
+      "precision": "fp16-input-fp32-accum",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "2bd88cd06f9029b1",
+      "replay_identity": "m40a-identity-workload-v1:FP16-storage:1024x1024x1024:kernel-only:2bd88cd06f9029b1",
+      "timing": {
+        "min_ns": 8601376,
+        "median_ns": 8603424,
+        "max_ns": 8605376
+      },
+      "effective_gflops": 249.6080221
+    },
+    {
+      "kernel": "cooperative",
+      "precision": "fp16-input-fp32-accum",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "shader_hash": "b4d54fafc456757c",
+      "replay_identity": "m40a-identity-workload-v1:cooperative:1024x1024x1024:kernel-only:b4d54fafc456757c",
+      "timing": {
+        "min_ns": 1010912,
+        "median_ns": 1013728,
+        "max_ns": 1017472
+      },
+      "effective_gflops": 2118.402222
+    },
+    {
+      "kernel": "production-selected",
+      "precision": "fp32-policy-result",
+      "m": 1024,
+      "n": 1024,
+      "k": 1024,
+      "correct": true,
+      "selected_variant": 4,
+      "executed_variant": 4,
+      "replay_identity": "m40a-identity-workload-v1:production-selected:1024x1024x1024:kernel-only:4",
+      "timing": {
+        "min_ns": 4422400,
+        "median_ns": 4427040,
+        "p95_ns": 4521792
+      }
+    }
+  ],
+  "preparation_modes": [
+    {
+      "kernel": "A2x4",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "reupload-every-iteration",
+      "replay_identity": "m40a-identity-workload-v1:A2x4:512x512x512:reupload-every-iteration:feb11b13c56f20a9",
+      "kernel_timing": {
+        "min_ns": 368128,
+        "median_ns": 368704,
+        "max_ns": 370240
+      },
+      "conversion_pack": {
+        "min_ns": 84000,
+        "median_ns": 88200,
+        "max_ns": 92600
+      },
+      "upload_staging": {
+        "min_ns": 86336,
+        "median_ns": 86464,
+        "max_ns": 86560
+      },
+      "readback": {
+        "min_ns": 3618420,
+        "median_ns": 3659944,
+        "max_ns": 3742076
+      },
+      "preparation_total": {
+        "min_ns": 3793084,
+        "median_ns": 3834344,
+        "max_ns": 3918612
+      },
+      "end_to_end": {
+        "min_ns": 4623500,
+        "median_ns": 4684600,
+        "max_ns": 4750100
+      }
+    },
+    {
+      "kernel": "A2x4",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "persistent-packed-weight",
+      "replay_identity": "m40a-identity-workload-v1:A2x4:512x512x512:persistent-packed-weight:feb11b13c56f20a9",
+      "kernel_timing": {
+        "min_ns": 371392,
+        "median_ns": 373440,
+        "max_ns": 373568
+      },
+      "conversion_pack": {
+        "min_ns": 40600,
+        "median_ns": 41900,
+        "max_ns": 44900
+      },
+      "upload_staging": {
+        "min_ns": 45120,
+        "median_ns": 45568,
+        "max_ns": 45824
+      },
+      "readback": {
+        "min_ns": 3608784,
+        "median_ns": 3696924,
+        "max_ns": 3761944
+      },
+      "preparation_total": {
+        "min_ns": 3695804,
+        "median_ns": 3787392,
+        "max_ns": 3848176
+      },
+      "end_to_end": {
+        "min_ns": 4523900,
+        "median_ns": 4658000,
+        "max_ns": 4690800
+      }
+    },
+    {
+      "kernel": "A2x4",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "persistent-input",
+      "replay_identity": "m40a-identity-workload-v1:A2x4:512x512x512:persistent-input:feb11b13c56f20a9",
+      "kernel_timing": {
+        "min_ns": 364096,
+        "median_ns": 367200,
+        "max_ns": 370656
+      },
+      "conversion_pack": {
+        "min_ns": 100,
+        "median_ns": 100,
+        "max_ns": 200
+      },
+      "upload_staging": {
+        "min_ns": 128,
+        "median_ns": 128,
+        "max_ns": 160
+      },
+      "readback": {
+        "min_ns": 3558780,
+        "median_ns": 3863884,
+        "max_ns": 4117996
+      },
+      "preparation_total": {
+        "min_ns": 3559040,
+        "median_ns": 3864212,
+        "max_ns": 4118324
+      },
+      "end_to_end": {
+        "min_ns": 4361300,
+        "median_ns": 4689500,
+        "max_ns": 5006300
+      }
+    },
+    {
+      "kernel": "FP16-storage",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "reupload-every-iteration",
+      "replay_identity": "m40a-identity-workload-v1:FP16-storage:512x512x512:reupload-every-iteration:2bd88cd06f9029b1",
+      "kernel_timing": {
+        "min_ns": 1097728,
+        "median_ns": 1098752,
+        "max_ns": 1099616
+      },
+      "conversion_pack": {
+        "min_ns": 858400,
+        "median_ns": 869800,
+        "max_ns": 996300
+      },
+      "upload_staging": {
+        "min_ns": 47104,
+        "median_ns": 47264,
+        "max_ns": 47520
+      },
+      "readback": {
+        "min_ns": 3358740,
+        "median_ns": 3570524,
+        "max_ns": 3625780
+      },
+      "preparation_total": {
+        "min_ns": 4270028,
+        "median_ns": 4476028,
+        "max_ns": 4652080
+      },
+      "end_to_end": {
+        "min_ns": 5810000,
+        "median_ns": 6019900,
+        "max_ns": 6248300
+      }
+    },
+    {
+      "kernel": "FP16-storage",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "persistent-packed-weight",
+      "replay_identity": "m40a-identity-workload-v1:FP16-storage:512x512x512:persistent-packed-weight:2bd88cd06f9029b1",
+      "kernel_timing": {
+        "min_ns": 1093632,
+        "median_ns": 1096704,
+        "max_ns": 1100800
+      },
+      "conversion_pack": {
+        "min_ns": 498700,
+        "median_ns": 509200,
+        "max_ns": 632000
+      },
+      "upload_staging": {
+        "min_ns": 25408,
+        "median_ns": 26336,
+        "max_ns": 26528
+      },
+      "readback": {
+        "min_ns": 3444452,
+        "median_ns": 3677704,
+        "max_ns": 3807576
+      },
+      "preparation_total": {
+        "min_ns": 3968688,
+        "median_ns": 4208212,
+        "max_ns": 4343112
+      },
+      "end_to_end": {
+        "min_ns": 5562400,
+        "median_ns": 5795400,
+        "max_ns": 5880400
+      }
+    },
+    {
+      "kernel": "FP16-storage",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "persistent-input",
+      "replay_identity": "m40a-identity-workload-v1:FP16-storage:512x512x512:persistent-input:2bd88cd06f9029b1",
+      "kernel_timing": {
+        "min_ns": 1099520,
+        "median_ns": 1101984,
+        "max_ns": 1678592
+      },
+      "conversion_pack": {
+        "min_ns": 0,
+        "median_ns": 100,
+        "max_ns": 200
+      },
+      "upload_staging": {
+        "min_ns": 160,
+        "median_ns": 160,
+        "max_ns": 160
+      },
+      "readback": {
+        "min_ns": 3373624,
+        "median_ns": 3489508,
+        "max_ns": 3744272
+      },
+      "preparation_total": {
+        "min_ns": 3373884,
+        "median_ns": 3489868,
+        "max_ns": 3744532
+      },
+      "end_to_end": {
+        "min_ns": 4909500,
+        "median_ns": 5263100,
+        "max_ns": 5906300
+      }
+    },
+    {
+      "kernel": "cooperative",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "reupload-every-iteration",
+      "replay_identity": "m40a-identity-workload-v1:cooperative:512x512x512:reupload-every-iteration:b4d54fafc456757c",
+      "kernel_timing": {
+        "min_ns": 184640,
+        "median_ns": 184928,
+        "max_ns": 186496
+      },
+      "conversion_pack": {
+        "min_ns": 847800,
+        "median_ns": 856700,
+        "max_ns": 860900
+      },
+      "upload_staging": {
+        "min_ns": 165632,
+        "median_ns": 165760,
+        "max_ns": 166304
+      },
+      "readback": {
+        "min_ns": 3275652,
+        "median_ns": 3428400,
+        "max_ns": 3477276
+      },
+      "preparation_total": {
+        "min_ns": 4302472,
+        "median_ns": 4450192,
+        "max_ns": 4491380
+      },
+      "end_to_end": {
+        "min_ns": 5131600,
+        "median_ns": 5185000,
+        "max_ns": 7066900
+      }
+    },
+    {
+      "kernel": "cooperative",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "persistent-packed-weight",
+      "replay_identity": "m40a-identity-workload-v1:cooperative:512x512x512:persistent-packed-weight:b4d54fafc456757c",
+      "kernel_timing": {
+        "min_ns": 412672,
+        "median_ns": 425984,
+        "max_ns": 436224
+      },
+      "conversion_pack": {
+        "min_ns": 486100,
+        "median_ns": 487100,
+        "max_ns": 515400
+      },
+      "upload_staging": {
+        "min_ns": 85824,
+        "median_ns": 86336,
+        "max_ns": 86496
+      },
+      "readback": {
+        "min_ns": 3254572,
+        "median_ns": 3294504,
+        "max_ns": 3513040
+      },
+      "preparation_total": {
+        "min_ns": 3830812,
+        "median_ns": 3866928,
+        "max_ns": 4114904
+      },
+      "end_to_end": {
+        "min_ns": 4869300,
+        "median_ns": 4976400,
+        "max_ns": 5038900
+      }
+    },
+    {
+      "kernel": "cooperative",
+      "m": 512,
+      "n": 512,
+      "k": 512,
+      "mode": "persistent-input",
+      "replay_identity": "m40a-identity-workload-v1:cooperative:512x512x512:persistent-input:b4d54fafc456757c",
+      "kernel_timing": {
+        "min_ns": 386880,
+        "median_ns": 417600,
+        "max_ns": 422368
+      },
+      "conversion_pack": {
+        "min_ns": 0,
+        "median_ns": 0,
+        "max_ns": 0
+      },
+      "upload_staging": {
+        "min_ns": 160,
+        "median_ns": 160,
+        "max_ns": 192
+      },
+      "readback": {
+        "min_ns": 3376444,
+        "median_ns": 3513716,
+        "max_ns": 3615308
+      },
+      "preparation_total": {
+        "min_ns": 3376604,
+        "median_ns": 3513876,
+        "max_ns": 3615500
+      },
+      "end_to_end": {
+        "min_ns": 4246100,
+        "median_ns": 4574800,
+        "max_ns": 4690400
+      }
+    }
+  ],
+  "preparation_warmup": 1,
+  "preparation_iterations": 5,
+  "tail": {
+    "strategy": "reject",
+    "m": 257,
+    "n": 257,
+    "k": 257,
+    "pipeline_create_count": 0,
+    "host_rejection_timing": {
+      "min_ns": 0,
+      "median_ns": 0,
+      "max_ns": 500
+    }
+  },
+  "capability": {
+    "extension": "VK_KHR_cooperative_matrix",
+    "spec_version": 2,
+    "subgroup_size": 32,
+    "tuple": "subgroup-m16-n16-k16-f16-f16-f32-f32"
+  },
+  "validation": {
+    "enabled": true,
+    "warnings": 0,
+    "errors": 0
+  }
+}

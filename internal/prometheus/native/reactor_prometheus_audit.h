@@ -38,6 +38,7 @@ struct PrometheusAuditShaderDescriptor {
     std::uint32_t k_packing_factor = 1u;
     const char* provenance = nullptr;
     const char* comparison_group = nullptr;
+    bool require_full_subgroups = false;
 };
 
 struct PrometheusAuditValidation {

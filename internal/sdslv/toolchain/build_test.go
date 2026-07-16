@@ -59,6 +59,23 @@ func TestBuildDXCArgs(t *testing.T) {
 	}
 }
 
+func TestCooperativeMatrixTargetContract(t *testing.T) {
+	requirement := vdmir.CapabilityRequirement{Kind: vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup}
+	target := targetContract(vdmir.Module{Requirements: []vdmir.CapabilityRequirement{requirement}})
+	args := buildDXCArgsForTarget("main", "out.spv", "in.hlsl", nil, target)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"-T cs_6_9", "-fspv-target-env=vulkan1.3", "-fspv-use-vulkan-memory-model", "-enable-16bit-types"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("args %q missing %q", joined, want)
+		}
+	}
+	if strings.Join(target.vulkanExtensions, ",") != "VK_KHR_cooperative_matrix" ||
+		strings.Join(target.spirvExtensions, ",") != "SPV_KHR_cooperative_matrix" ||
+		!strings.Contains(strings.Join(target.spirvCapabilities, ","), "CooperativeMatrixKHR") {
+		t.Fatalf("target capability manifest = %#v", target)
+	}
+}
+
 func TestCompileToSPIRVSmokeIfDXCAvailable(t *testing.T) {
 	dxcPath, err := resolveDXCPath(defaultHost(), "")
 	if err != nil {

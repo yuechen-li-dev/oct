@@ -61,6 +61,7 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/reactor_fft_benchmarks.cpp"
   "$NATIVE_DIR/Marionette/reactor_reduction_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_reduction_benchmarks.cpp"
+  "$NATIVE_DIR/Marionette/reactor_cooperative_matrix_tests.cpp"
 )
 PROMETHEUS_MARIONETTE_SLOW_ONLY=(
 )

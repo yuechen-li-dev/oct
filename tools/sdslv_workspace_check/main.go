@@ -43,10 +43,25 @@ type computeImplementation struct {
 	SelectorEligible bool   `json:"selector_eligible"`
 }
 
+type experimentalShaderAsset struct {
+	ID                  string `json:"id"`
+	Authority           string `json:"authority"`
+	ProductionAuthority string `json:"production_authority"`
+	SelectorEligible    bool   `json:"selector_eligible"`
+	SourceLanguage      string `json:"source_language"`
+	Source              string `json:"source"`
+	Output              string `json:"output"`
+	GeneratedHLSL       string `json:"generated_hlsl"`
+	GeneratedHeader     string `json:"generated_header"`
+	Inspection          string `json:"inspection"`
+	ShaderSHA256        string `json:"shader_sha256"`
+}
+
 type shaderManifest struct {
-	Workspace              workspace               `json:"workspace"`
-	ShaderAssets           []shaderAsset           `json:"shader_assets"`
-	ComputeImplementations []computeImplementation `json:"compute_implementations"`
+	Workspace                workspace                 `json:"workspace"`
+	ShaderAssets             []shaderAsset             `json:"shader_assets"`
+	ExperimentalShaderAssets []experimentalShaderAsset `json:"experimental_shader_assets"`
+	ComputeImplementations   []computeImplementation   `json:"compute_implementations"`
 }
 
 type canonicalArtifact struct {
@@ -167,6 +182,30 @@ func check(root string, inventory bool) error {
 		}
 		if inventory {
 			lines = append(lines, fmt.Sprintf("id=%d name=%s authority=%s source_sha256=%s module_sha256=%s source=%s header=%s", asset.ID, asset.Name, authority, fileHash(filepath.Join(root, filepath.FromSlash(asset.Source))), moduleHash, asset.Source, asset.Header))
+		}
+	}
+	seenExperimental := map[string]bool{}
+	for _, asset := range m.ExperimentalShaderAssets {
+		if asset.ID == "" || seenExperimental[asset.ID] {
+			return fmt.Errorf("experimental shader asset has empty or duplicate id %q", asset.ID)
+		}
+		seenExperimental[asset.ID] = true
+		if asset.Authority != "experimental" || asset.ProductionAuthority != "experimental" || asset.SelectorEligible {
+			return fmt.Errorf("experimental shader asset %s must remain experimental and selector-ineligible", asset.ID)
+		}
+		if asset.SourceLanguage != "sdslv" || !strings.HasPrefix(asset.Source, m.Workspace.ExperimentalSourceRoot+"/") {
+			return fmt.Errorf("experimental shader asset %s has invalid source ownership: %s", asset.ID, asset.Source)
+		}
+		for _, path := range []string{asset.Source, asset.Output, asset.GeneratedHLSL, asset.GeneratedHeader, asset.Inspection} {
+			if err := mustExist(root, path); err != nil {
+				return fmt.Errorf("experimental shader asset %s: %w", asset.ID, err)
+			}
+		}
+		if got := fileHash(filepath.Join(root, filepath.FromSlash(asset.Output))); got != strings.ToLower(asset.ShaderSHA256) {
+			return fmt.Errorf("experimental shader asset %s hash mismatch: manifest=%s file=%s", asset.ID, asset.ShaderSHA256, got)
+		}
+		if strings.Contains(string(registry), asset.Source) {
+			return fmt.Errorf("experimental shader asset %s leaked into the production runtime registry", asset.ID)
 		}
 	}
 	seenImplementationIDs := map[uint32]string{}

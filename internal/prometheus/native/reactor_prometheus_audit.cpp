@@ -140,8 +140,12 @@ PrometheusAuditDispatch prometheus_audit_dispatch_for(const PrometheusAuditShade
                                                        std::uint32_t n)
 {
     PrometheusAuditDispatch result;
-    const std::uint64_t rows = static_cast<std::uint64_t>(descriptor.dispatch.threads_x) * descriptor.dispatch.outputs_per_invocation_m;
-    const std::uint64_t columns = static_cast<std::uint64_t>(descriptor.dispatch.threads_y) * descriptor.dispatch.outputs_per_invocation_n;
+    const std::uint64_t rows = descriptor.dispatch.workgroup_output_m != 0u
+                                   ? descriptor.dispatch.workgroup_output_m
+                                   : static_cast<std::uint64_t>(descriptor.dispatch.threads_x) * descriptor.dispatch.outputs_per_invocation_m;
+    const std::uint64_t columns = descriptor.dispatch.workgroup_output_n != 0u
+                                      ? descriptor.dispatch.workgroup_output_n
+                                      : static_cast<std::uint64_t>(descriptor.dispatch.threads_y) * descriptor.dispatch.outputs_per_invocation_n;
     if (rows == 0u || columns == 0u || rows > std::numeric_limits<std::uint32_t>::max() ||
         columns > std::numeric_limits<std::uint32_t>::max()) {
         result.error = "invalid output footprint";

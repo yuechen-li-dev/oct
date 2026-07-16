@@ -13,6 +13,38 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
+func TestCooperativeMatrixEmitterOwnsExactHLSLIsland(t *testing.T) {
+	first := emitSource(t, cooperativeMatrixEmitterTestSource)
+	second := emitSource(t, cooperativeMatrixEmitterTestSource)
+	if first != second {
+		t.Fatal("cooperative HLSL emission is not deterministic")
+	}
+	for _, want := range []string{
+		`vk::ext_extension("SPV_KHR_cooperative_matrix")`,
+		"OpTypeCooperativeMatrix", // deliberately absent: HLSL owns typed declarations, not textual SPIR-V
+		"[[vk::ext_instruction(4457)]]",
+		"[[vk::ext_instruction(4459)]]",
+		"[[vk::ext_instruction(4458)]]",
+		"groupshared float16_t __sdslv_cooperative_tile_a[256]",
+		"[numthreads(32, 1, 1)]",
+	} {
+		present := strings.Contains(first, want)
+		if want == "OpTypeCooperativeMatrix" {
+			if present {
+				t.Fatalf("emitter leaked direct SPIR-V text:\n%s", first)
+			}
+		} else if !present {
+			t.Fatalf("HLSL missing %q:\n%s", want, first)
+		}
+	}
+}
+
+const cooperativeMatrixEmitterTestSource = `stream ComputeThread { DispatchId:uint3; GroupId:uint3; GroupThreadId:uint3; GroupIndex:u32; }
+stream IO { [binding(0)] A:readonly array<u32>; [binding(1)] B:readonly array<u32>; [binding(2)] C:readwrite array<f32>; }
+record P { m:u32; n:u32; k:u32; }
+shader S { resources IO; stage compute [numthreads(32,1,1)] fn CS(thread:ComputeThread,p:P)->void {
+CooperativeMatMul<F16F32M16N16K16Subgroup>(A,B,C,thread.GroupId,thread.GroupIndex,p.m,p.n,p.k); return; } }`
+
 func TestEmitComputeShaderHLSLFromVDMIR(t *testing.T) {
 	text := `record Params { Count: u32; }
 shader VectorAdd {
@@ -43,7 +75,7 @@ return;
 }
 
 func TestSdslvTensorUsesSharedEmitterLoopsAndAccumulator(t *testing.T) {
-text := `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
+	text := `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
   var C: array<f32, 2u> = Fill(0.0);
   tensor C[i] = Sum[k](A[i, k] * B[k]);
   return;

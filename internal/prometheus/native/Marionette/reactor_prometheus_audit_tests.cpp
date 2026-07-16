@@ -1360,9 +1360,10 @@ FACT(PrometheusM38bPackedMemoryPlacementExperiment)
     }
 
     for (const M38bKernel& kernel : packedKernels) {
-        for (const std::uint32_t reuseMode : std::array<std::uint32_t, 4>{{
+        for (const std::uint32_t reuseMode : std::array<std::uint32_t, 5>{{
                  PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION, PROM_SGEMM_PLACEMENT_REUSE_WARM,
-                 PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD, PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER}}) {
+                 PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD, PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER,
+			 PROM_SGEMM_PLACEMENT_REUSE_PERSISTENT_B_REUPLOAD_A}}) {
             prom_sgemm_placement_benchmark_options options{};
             options.a_placement = mapped; options.b_placement = mapped; options.c_placement = mapped;
             options.reuse_mode = reuseMode; options.warmup = 0u; options.iterations = 7u;

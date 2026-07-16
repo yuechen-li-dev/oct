@@ -29,6 +29,34 @@
     {"id":19,"name":"reduction-softmax-normalize","authority":"production","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/production/reduction/softmax_normalize.sdslv","header":"reactor_vulkan_reduction_softmax_normalize_spirv.h","symbol":"k_prom_reduction_softmax_normalize_spirv","entry_point":"SoftmaxNormalize_CS","workgroup":[256,1,1],"descriptor_bindings":4,"push_constant_bytes":32,"stage_role":"softmax-broadcast-finalization","row_width_envelope":[1,1048576],"contains_inline_hlsl":true,"inline_hlsl_block_count":1,"foreign_targets":["HLSL"]},
     {"id":20,"name":"reduction-softmax-fused","authority":"production","stage":"compute","source_language":"sdslv","source":"internal/prometheus/shaders/sdslv/production/reduction/softmax_fused.sdslv","header":"reactor_vulkan_reduction_softmax_fused_spirv.h","symbol":"k_prom_reduction_softmax_fused_spirv","entry_point":"SoftmaxFused_CS","workgroup":[256,1,1],"descriptor_bindings":4,"push_constant_bytes":32,"stage_role":"softmax-fused-single-workgroup","row_width_envelope":[1,1024],"contains_inline_hlsl":true,"inline_hlsl_block_count":1,"foreign_targets":["HLSL"]}
   ],
+  "experimental_shader_assets": [
+    {
+      "id": "m40a-cooperative-sgemm-f16-f32-m16n16k16",
+      "authority": "experimental",
+      "production_authority": "experimental",
+      "selector_eligible": false,
+      "source_language": "sdslv",
+      "source": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16.sdslv",
+      "output": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16.spv",
+      "generated_hlsl": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16.hlsl",
+      "generated_header": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16_spirv.h",
+      "inspection": "internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/artifact_inspection.json",
+      "shader_sha256": "247e410eb526f25c2276d127a732bb4def0c7949bca0ad0fdc5434ea95d17fea",
+      "compiler": "Vulkan SDK DXC 1.9.0.5347 (1.10.5347-fe261573)",
+      "target_environment": "vulkan1.3",
+      "required_vulkan_extensions": ["VK_KHR_cooperative_matrix"],
+      "required_vulkan_features": ["cooperativeMatrix", "shaderFloat16", "vulkanMemoryModel"],
+      "required_spirv_extensions": ["SPV_KHR_cooperative_matrix"],
+      "required_spirv_capabilities": ["CooperativeMatrixKHR", "Float16", "VulkanMemoryModel"],
+      "cooperative_tuple": {"scope":"subgroup","m":16,"n":16,"k":16,"a_type":"float16","b_type":"float16","c_type":"float32","result_type":"float32","saturating_accumulation":false},
+      "layout": "row-major",
+      "input_storage": "F16x2 packed into u32, low lane first",
+      "entry_point": "CooperativeSgemmF16F32M16N16K16_CS",
+      "local_size": [32,1,1],
+      "implementation_identity": "m40a-khr-subgroup-m16n16k16-f16-f16-f32-f32-aligned-v1",
+      "tail_policy": "reject unless M,N,K are multiples of 16"
+    }
+  ],
   "compute_implementations": [
     {"id":1,"name":"baseline-scalar","shader_id":1,"dispatch":"8x8","benchmark_enabled":true,"selector_eligible":true,"dispatchable":true},
     {"id":2,"name":"memory-conservative","shader_id":3,"dispatch":"8x8","benchmark_enabled":true,"selector_eligible":true,"dispatchable":true},

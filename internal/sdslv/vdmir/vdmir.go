@@ -7,18 +7,38 @@ type Module struct {
 	// ForeignTargets is the explicit portability requirement collected during
 	// lowering. A backend must reject a module that names a target it cannot own.
 	ForeignTargets []string
-	Namespace      string
-	TypeAliases    []TypeAlias
-	Records        []Record
-	Boards         []Board
-	Streams        []Stream
-	Enums          []Enum
-	Resources      []Resource
-	Workgroups     []WorkgroupMemoryDecl
-	Functions      []Function
-	EntryPoints    []ComputeEntryPoint
-	Flows          []Flow
+	// Requirements are closed compiler-owned execution contracts discovered
+	// during lowering. They are semantic requirements, not user-defined target
+	// strings; backends decide whether and how they can satisfy each contract.
+	Requirements []CapabilityRequirement
+	Namespace    string
+	TypeAliases  []TypeAlias
+	Records      []Record
+	Boards       []Board
+	Streams      []Stream
+	Enums        []Enum
+	Resources    []Resource
+	Workgroups   []WorkgroupMemoryDecl
+	Functions    []Function
+	EntryPoints  []ComputeEntryPoint
+	Flows        []Flow
 }
+
+type CapabilityRequirement struct {
+	Kind          string
+	Scope         string
+	M             uint32
+	N             uint32
+	K             uint32
+	AComponent    string
+	BComponent    string
+	CComponent    string
+	Result        string
+	InputPacking  string
+	LogicalLayout string
+}
+
+const CapabilityCooperativeMatrixF16F32M16N16K16Subgroup = "cooperative-matrix-f16-f32-m16-n16-k16-subgroup"
 
 type FlowTerminatorKind string
 
@@ -493,14 +513,15 @@ const (
 type Intrinsic string
 
 const (
-	IntrinsicWorkgroupBarrier               Intrinsic = "WorkgroupBarrier"
-	IntrinsicWorkgroupMemoryBarrier         Intrinsic = "WorkgroupMemoryBarrier"
-	IntrinsicWorkgroupMemoryBarrierWithSync Intrinsic = "WorkgroupMemoryBarrierWithSync"
-	IntrinsicDot                            Intrinsic = "Dot"
-	IntrinsicPackF16x2                      Intrinsic = "PackF16x2"
-	IntrinsicUnpackF16x2                    Intrinsic = "UnpackF16x2"
-	IntrinsicBitcast                        Intrinsic = "Bitcast"
-	IntrinsicConvert                        Intrinsic = "Convert"
+	IntrinsicWorkgroupBarrier                         Intrinsic = "WorkgroupBarrier"
+	IntrinsicWorkgroupMemoryBarrier                   Intrinsic = "WorkgroupMemoryBarrier"
+	IntrinsicWorkgroupMemoryBarrierWithSync           Intrinsic = "WorkgroupMemoryBarrierWithSync"
+	IntrinsicDot                                      Intrinsic = "Dot"
+	IntrinsicPackF16x2                                Intrinsic = "PackF16x2"
+	IntrinsicUnpackF16x2                              Intrinsic = "UnpackF16x2"
+	IntrinsicBitcast                                  Intrinsic = "Bitcast"
+	IntrinsicConvert                                  Intrinsic = "Convert"
+	IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup Intrinsic = "CooperativeMatMulF16F32M16N16K16Subgroup"
 )
 
 type LiteralExpr struct {

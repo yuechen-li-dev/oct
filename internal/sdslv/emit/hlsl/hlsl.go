@@ -15,6 +15,9 @@ func Emit(module vdmir.Module) (string, error) {
 		e.line("// namespace " + module.Namespace)
 	}
 	e.line("")
+	if moduleRequiresCooperativeMatrix(module) {
+		e.emitCooperativeMatrixPreamble()
+	}
 	for _, alias := range module.TypeAliases {
 		e.line(fmt.Sprintf("// type %s = %s", alias.Name, typeRef(alias.Target, "")))
 		e.line("")
@@ -926,6 +929,14 @@ func (e *emitter) materializeExpr(expr vdmir.Expr) string {
 		}
 		return call
 	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
+			args := make([]string, 0, len(x.Arguments))
+			for _, arg := range x.Arguments {
+				args = append(args, e.materializeExpr(arg))
+			}
+			e.emitCooperativeMatMul(args)
+			return ""
+		}
 		if x.Intrinsic == vdmir.IntrinsicPackF16x2 {
 			a := e.materializeOperand(x.Arguments[0])
 			return "(f32tof16(" + a + ").x | (f32tof16(" + a + ").y << 16u))"
@@ -1012,6 +1023,9 @@ func exprNeedsPrelude(expr vdmir.Expr) bool {
 	case vdmir.CallExpr:
 		return true
 	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
+			return true
+		}
 		if x.Intrinsic == vdmir.IntrinsicPackF16x2 {
 			return true
 		}
@@ -1165,6 +1179,10 @@ func (e *emitter) expr(expr vdmir.Expr) string {
 		}
 		return e.expr(x.Callee) + "(" + strings.Join(args, ", ") + ")"
 	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
+			e.err = fmt.Errorf("cooperative matrix intrinsic bypassed statement materialization")
+			return ""
+		}
 		if x.Intrinsic == vdmir.IntrinsicPackF16x2 {
 			a := e.materializeOperand(x.Arguments[0])
 			return "(f32tof16(" + a + ").x | (f32tof16(" + a + ").y << 16u))"
@@ -1595,6 +1613,125 @@ func (e *emitter) m35Intrinsic(x vdmir.IntrinsicCallExpr, args []string) string 
 		return hlslIntrinsic(x.Intrinsic) + "(" + strings.Join(args, ", ") + ")"
 	}
 }
+
+func moduleRequiresCooperativeMatrix(module vdmir.Module) bool {
+	for _, requirement := range module.Requirements {
+		if requirement.Kind == vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *emitter) emitCooperativeMatrixPreamble() {
+	for _, line := range strings.Split(cooperativeMatrixPreamble, "\n") {
+		e.line(line)
+	}
+	e.line("")
+}
+
+func (e *emitter) emitCooperativeMatMul(args []string) {
+	if len(args) != 8 {
+		e.err = fmt.Errorf("cooperative matrix intrinsic requires 8 lowered arguments, got %d", len(args))
+		return
+	}
+	a, b, c := args[0], args[1], args[2]
+	groupID, lane, m, n, k := args[3], args[4], args[5], args[6], args[7]
+	_ = m // The aligned proof validates M on the host; row addressing uses group ID.
+	e.line("{")
+	e.indent++
+	e.line("uint __sdslv_row = (" + groupID + ").x * 16u;")
+	e.line("uint __sdslv_column = (" + groupID + ").y * 16u;")
+	e.line("__sdslv_cooperative::MatrixC __sdslv_accumulator;")
+	e.line("__sdslv_accumulator.value = __sdslv_cooperative::Splat<__sdslv_cooperative::MatrixCType>(0.0f);")
+	e.line("[loop]")
+	e.line("for (uint __sdslv_inner = 0u; __sdslv_inner < " + k + "; __sdslv_inner += 16u)")
+	e.line("{")
+	e.indent++
+	e.line("[unroll]")
+	e.line("for (uint __sdslv_element = " + lane + "; __sdslv_element < 256u; __sdslv_element += 32u)")
+	e.line("{")
+	e.indent++
+	e.line("uint __sdslv_tile_row = __sdslv_element / 16u;")
+	e.line("uint __sdslv_tile_column = __sdslv_element % 16u;")
+	e.line("uint __sdslv_a_element = (__sdslv_row + __sdslv_tile_row) * " + k + " + __sdslv_inner + __sdslv_tile_column;")
+	e.line("uint __sdslv_b_element = (__sdslv_inner + __sdslv_tile_row) * " + n + " + __sdslv_column + __sdslv_tile_column;")
+	e.line("uint __sdslv_a_packed = " + a + "[__sdslv_a_element / 2u];")
+	e.line("uint __sdslv_b_packed = " + b + "[__sdslv_b_element / 2u];")
+	e.line("__sdslv_cooperative_tile_a[__sdslv_element] = (float16_t)f16tof32((__sdslv_a_element % 2u) == 0u ? (__sdslv_a_packed & 65535u) : (__sdslv_a_packed >> 16u));")
+	e.line("__sdslv_cooperative_tile_b[__sdslv_element] = (float16_t)f16tof32((__sdslv_b_element % 2u) == 0u ? (__sdslv_b_packed & 65535u) : (__sdslv_b_packed >> 16u));")
+	e.indent--
+	e.line("}")
+	e.line("GroupMemoryBarrierWithGroupSync();")
+	e.line("__sdslv_cooperative::MatrixA __sdslv_tile_a;")
+	e.line("__sdslv_tile_a.value = __sdslv_cooperative::Load<__sdslv_cooperative::MatrixAType>(__sdslv_cooperative::GetGroupSharedAddress(__sdslv_cooperative_tile_a[0]), __sdslv_cooperative::RowMajor, 16u, 48, __sdslv_cooperative::ScopeWorkgroup);")
+	e.line("__sdslv_cooperative::MatrixB __sdslv_tile_b;")
+	e.line("__sdslv_tile_b.value = __sdslv_cooperative::Load<__sdslv_cooperative::MatrixBType>(__sdslv_cooperative::GetGroupSharedAddress(__sdslv_cooperative_tile_b[0]), __sdslv_cooperative::RowMajor, 16u, 48, __sdslv_cooperative::ScopeWorkgroup);")
+	e.line("__sdslv_accumulator.value = __sdslv_cooperative::MultiplyAdd<__sdslv_cooperative::MatrixCType>(__sdslv_tile_a.value, __sdslv_tile_b.value, __sdslv_accumulator.value, 0);")
+	e.line("GroupMemoryBarrierWithGroupSync();")
+	e.indent--
+	e.line("}")
+	e.line("__sdslv_cooperative::Store(" + c + "[__sdslv_row * " + n + " + __sdslv_column], __sdslv_accumulator.value, __sdslv_cooperative::RowMajor, " + n + ", 0);")
+	e.indent--
+	e.line("}")
+}
+
+const cooperativeMatrixPreamble = `namespace __sdslv_cooperative {
+enum Scope { ScopeWorkgroup = 2, ScopeSubgroup = 3 };
+enum Layout { RowMajor = 0, ColumnMajor = 1 };
+
+using MatrixAType = vk::SpirvOpaqueType<
+    4456, float16_t, vk::integral_constant<uint, ScopeSubgroup>,
+    vk::integral_constant<uint, 16>, vk::integral_constant<uint, 16>,
+    vk::integral_constant<uint, 0> >;
+using MatrixBType = vk::SpirvOpaqueType<
+    4456, float16_t, vk::integral_constant<uint, ScopeSubgroup>,
+    vk::integral_constant<uint, 16>, vk::integral_constant<uint, 16>,
+    vk::integral_constant<uint, 1> >;
+using MatrixCType = vk::SpirvOpaqueType<
+    4456, float, vk::integral_constant<uint, ScopeSubgroup>,
+    vk::integral_constant<uint, 16>, vk::integral_constant<uint, 16>,
+    vk::integral_constant<uint, 2> >;
+
+struct MatrixA {
+  [[vk::ext_extension("SPV_KHR_cooperative_matrix")]]
+  [[vk::ext_capability(6022)]]
+  [[vk::ext_capability(5345)]]
+  MatrixAType value;
+};
+struct MatrixB { MatrixBType value; };
+struct MatrixC { MatrixCType value; };
+
+template <typename PointeeType>
+using WorkgroupPointer = const vk::SpirvOpaqueType<
+    32, vk::Literal<vk::integral_constant<uint, ScopeWorkgroup> >, PointeeType>;
+
+template <typename T>
+[[vk::ext_instruction(83)]] WorkgroupPointer<T>
+GetGroupSharedAddress([[vk::ext_reference]] T value);
+
+template <typename ResultType, typename ComponentType>
+[[vk::ext_instruction(80)]] ResultType Splat(ComponentType value);
+
+template <typename ResultType, typename PointerType>
+[[vk::ext_instruction(4457)]] ResultType Load(
+    WorkgroupPointer<PointerType> pointer, Layout layout, uint stride,
+    [[vk::ext_literal]] uint memoryOperands, Scope scope);
+
+template <typename ResultType, typename MatrixTypeA, typename MatrixTypeB,
+          typename MatrixTypeC>
+[[vk::ext_instruction(4459)]] ResultType MultiplyAdd(
+    MatrixTypeA a, MatrixTypeB b, MatrixTypeC c,
+    [[vk::ext_literal]] uint operands);
+
+template <typename ObjectType, typename PointerType>
+[[vk::ext_instruction(4458)]] void Store(
+    [[vk::ext_reference]] PointerType pointer, ObjectType object, Layout layout,
+    uint stride, [[vk::ext_literal]] uint memoryOperands);
+}
+
+groupshared float16_t __sdslv_cooperative_tile_a[256];
+groupshared float16_t __sdslv_cooperative_tile_b[256];`
 
 func enumPayloadTypeName(enumName, variantName string) string {
 	return enumName + "_" + variantName + "Payload"

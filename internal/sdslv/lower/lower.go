@@ -100,6 +100,7 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 		testInputs:       testInputs,
 		tensorAssigns:    map[source.Span]validate.ValidatedTensorAssign{},
 		tensorReductions: map[source.Span]validate.ValidatedTensorReduction{},
+		requirements:     map[string]vdmir.CapabilityRequirement{},
 	}
 	for _, tensor := range validatedTensors {
 		l.tensorAssigns[tensor.Span] = tensor
@@ -203,6 +204,7 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 		}
 	}
 	out.ForeignTargets = collectForeignTargets(module)
+	out.Requirements = l.sortedRequirements()
 	out.Flows = l.flows
 	return out, nil
 }
@@ -2077,6 +2079,29 @@ type lowering struct {
 	flows            []vdmir.Flow
 	tensorAssigns    map[source.Span]validate.ValidatedTensorAssign
 	tensorReductions map[source.Span]validate.ValidatedTensorReduction
+	requirements     map[string]vdmir.CapabilityRequirement
+}
+
+func (l *lowering) requireCooperativeMatrix() {
+	const kind = vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup
+	l.requirements[kind] = vdmir.CapabilityRequirement{
+		Kind: kind, Scope: "subgroup", M: 16, N: 16, K: 16,
+		AComponent: "f16", BComponent: "f16", CComponent: "f32", Result: "f32",
+		InputPacking: "f16x2-u32-row-major", LogicalLayout: "row-major",
+	}
+}
+
+func (l *lowering) sortedRequirements() []vdmir.CapabilityRequirement {
+	keys := make([]string, 0, len(l.requirements))
+	for key := range l.requirements {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	out := make([]vdmir.CapabilityRequirement, 0, len(keys))
+	for _, key := range keys {
+		out = append(out, l.requirements[key])
+	}
+	return out
 }
 
 func (l *lowering) seedBuiltins() {
@@ -2872,7 +2897,10 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 				}
 				args = append(args, lowered)
 			}
-			intrinsic, target := lowerM35aIntrinsic(id.Name, e.TypeArgument)
+			intrinsic, target := lowerCompilerIntrinsic(id.Name, e.TypeArgument)
+			if intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
+				l.requireCooperativeMatrix()
+			}
 			return vdmir.IntrinsicCallExpr{Provenance: l.provenance, ExprType: l.callResultType(e, scope, shaderName), Intrinsic: intrinsic, TypeArgument: target, Arguments: args}, nil
 		}
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "reg_tile_zero" {
@@ -3405,6 +3433,8 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 			if call.TypeArgument != nil {
 				return lowerIntrinsicType(*call.TypeArgument)
 			}
+		case "CooperativeMatMul":
+			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
 		case "WorkgroupBarrier", "WorkgroupMemoryBarrier", "WorkgroupMemoryBarrierWithSync":
 			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
 		case "row_major":
@@ -4035,7 +4065,7 @@ func lowerIntrinsic(name string) vdmir.Intrinsic {
 	}
 }
 
-func lowerM35aIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdmir.Type) {
+func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdmir.Type) {
 	if arg != nil {
 		switch name {
 		case "Pack":
@@ -4046,6 +4076,9 @@ func lowerM35aIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdmir.T
 			return vdmir.IntrinsicBitcast, lowerIntrinsicType(*arg)
 		case "Convert":
 			return vdmir.IntrinsicConvert, lowerIntrinsicType(*arg)
+		case "CooperativeMatMul":
+			return vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup,
+				vdmir.Type{Name: "F16F32M16N16K16Subgroup"}
 		}
 	}
 	return vdmir.IntrinsicDot, vdmir.Type{}

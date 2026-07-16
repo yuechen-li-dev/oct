@@ -662,6 +662,16 @@ typedef struct prometheus_runtime {
   uint32_t validation_message_count;
   uint32_t validation_warning_count;
   uint32_t validation_error_count;
+	uint32_t cooperative_matrix_state;
+	uint32_t cooperative_matrix_extension_spec_version;
+	uint32_t cooperative_matrix_feature_enabled;
+	uint32_t cooperative_matrix_shader_float16_enabled;
+	uint32_t cooperative_matrix_vulkan_memory_model_enabled;
+	uint32_t cooperative_matrix_tuple_count;
+	uint32_t cooperative_matrix_selected_m;
+	uint32_t cooperative_matrix_selected_n;
+	uint32_t cooperative_matrix_selected_k;
+	uint32_t subgroup_size;
   VkDebugUtilsMessageSeverityFlagBitsEXT validation_last_severity;
   VkDebugUtilsMessageTypeFlagsEXT validation_last_type;
   char validation_last_message_id[128];

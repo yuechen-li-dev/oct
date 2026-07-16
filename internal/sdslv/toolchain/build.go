@@ -31,16 +31,21 @@ type CompileOptions struct {
 }
 
 type CompileResult struct {
-	InputPath           string
-	HLSLPath            string
-	SPIRVPath           string
-	DXCPath             string
-	SPIRVValidatorPath  string
-	EntryPoint          string
-	DXCArgs             []string
-	SPIRVValidatorArgs  []string
-	ValidationAttempted bool
-	ValidationSucceeded bool
+	InputPath                 string
+	HLSLPath                  string
+	SPIRVPath                 string
+	DXCPath                   string
+	SPIRVValidatorPath        string
+	EntryPoint                string
+	DXCArgs                   []string
+	SPIRVValidatorArgs        []string
+	ValidationAttempted       bool
+	ValidationSucceeded       bool
+	Requirements              []vdmir.CapabilityRequirement
+	TargetEnvironment         string
+	RequiredVulkanExtensions  []string
+	RequiredSPIRVExtensions   []string
+	RequiredSPIRVCapabilities []string
 }
 
 type GenerateHeaderOptions struct {
@@ -188,7 +193,8 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 	if err != nil {
 		return CompileResult{}, err
 	}
-	dxcArgs := buildDXCArgs(entry.EmittedName, outputPath, hlslPath, opts.ExtraDXCArgs)
+	target := targetContract(mir)
+	dxcArgs := buildDXCArgsForTarget(entry.EmittedName, outputPath, hlslPath, opts.ExtraDXCArgs, target)
 	result, runErr := host.runner(Command{
 		Program: dxcPath,
 		Args:    dxcArgs,
@@ -198,12 +204,17 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 		return CompileResult{}, fmt.Errorf("dxc failed (exit code %d)\ncommand: %s %s\nstdout:\n%s\nstderr:\n%s", result.ExitCode, filepath.ToSlash(dxcPath), strings.Join(dxcArgs, " "), strings.TrimSpace(result.Stdout), strings.TrimSpace(result.Stderr))
 	}
 	compileResult := CompileResult{
-		InputPath:  opts.InputPath,
-		HLSLPath:   hlslPath,
-		SPIRVPath:  outputPath,
-		DXCPath:    dxcPath,
-		EntryPoint: entry.EmittedName,
-		DXCArgs:    append([]string(nil), dxcArgs...),
+		InputPath:                 opts.InputPath,
+		HLSLPath:                  hlslPath,
+		SPIRVPath:                 outputPath,
+		DXCPath:                   dxcPath,
+		EntryPoint:                entry.EmittedName,
+		DXCArgs:                   append([]string(nil), dxcArgs...),
+		Requirements:              append([]vdmir.CapabilityRequirement(nil), mir.Requirements...),
+		TargetEnvironment:         target.environment,
+		RequiredVulkanExtensions:  append([]string(nil), target.vulkanExtensions...),
+		RequiredSPIRVExtensions:   append([]string(nil), target.spirvExtensions...),
+		RequiredSPIRVCapabilities: append([]string(nil), target.spirvCapabilities...),
 	}
 	if opts.Validate || opts.RequireSPIRVVal {
 		compileResult.ValidationAttempted = true
@@ -217,8 +228,10 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 			}
 			return compileResult, nil
 		}
-		args := []string{opts.OutputPath}
-		args[0] = outputPath
+		args := []string{outputPath}
+		if target.environment != "vulkan1.0" {
+			args = []string{"--target-env", target.environment, outputPath}
+		}
 		validationResult, validationErr := host.runner(Command{
 			Program: validatorPath,
 			Args:    args,
@@ -311,14 +324,46 @@ func validateEntryParams(module ast.Module, entry vdmir.ComputeEntryPoint) error
 }
 
 func buildDXCArgs(entry, outputPath, inputPath string, extra []string) []string {
+	return buildDXCArgsForTarget(entry, outputPath, inputPath, extra, shaderTargetContract{
+		profile: "cs_6_0", environment: "vulkan1.0",
+	})
+}
+
+type shaderTargetContract struct {
+	profile           string
+	environment       string
+	extraArgs         []string
+	vulkanExtensions  []string
+	spirvExtensions   []string
+	spirvCapabilities []string
+}
+
+func targetContract(module vdmir.Module) shaderTargetContract {
+	result := shaderTargetContract{profile: "cs_6_0", environment: "vulkan1.0"}
+	for _, requirement := range module.Requirements {
+		if requirement.Kind != vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup {
+			continue
+		}
+		result.profile = "cs_6_9"
+		result.environment = "vulkan1.3"
+		result.extraArgs = []string{"-fspv-use-vulkan-memory-model", "-enable-16bit-types"}
+		result.vulkanExtensions = []string{"VK_KHR_cooperative_matrix"}
+		result.spirvExtensions = []string{"SPV_KHR_cooperative_matrix"}
+		result.spirvCapabilities = []string{"CooperativeMatrixKHR", "Float16", "VulkanMemoryModel"}
+	}
+	return result
+}
+
+func buildDXCArgsForTarget(entry, outputPath, inputPath string, extra []string, target shaderTargetContract) []string {
 	args := []string{
 		"-spirv",
-		"-T", "cs_6_0",
+		"-T", target.profile,
 		"-E", entry,
 		"-Fo", outputPath,
-		"-fspv-target-env=vulkan1.0",
+		"-fspv-target-env=" + target.environment,
 		"-O3",
 	}
+	args = append(args, target.extraArgs...)
 	args = append(args, extra...)
 	args = append(args, inputPath)
 	return args

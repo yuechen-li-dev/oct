@@ -1,0 +1,48 @@
+namespace Prometheus.Experimental;
+
+// M40a proof contract:
+// - subgroup-scope 16x16x16 cooperative multiply-accumulate;
+// - row-major logical A[M,K], B[K,N], and C[M,N];
+// - A/B storage is trusted F16x2 packed into u32, low lane first;
+// - accumulation and output are f32;
+// - one 32-lane subgroup owns one 16x16 output tile;
+// - M, N, and K must all be multiples of 16 (tails are rejected by the host).
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream CooperativeSgemmIO {
+    [binding(0)] A: readonly array<u32>;
+    [binding(1)] B: readonly array<u32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record CooperativeSgemmParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+shader CooperativeSgemmF16F32M16N16K16 {
+    resources CooperativeSgemmIO;
+
+    stage compute [numthreads(32, 1, 1)] fn CS(
+        thread: ComputeThread,
+        params: CooperativeSgemmParams
+    ) -> void {
+        CooperativeMatMul<F16F32M16N16K16Subgroup>(
+            A,
+            B,
+            C,
+            thread.GroupId,
+            thread.GroupIndex,
+            params.m,
+            params.n,
+            params.k
+        );
+        return;
+    }
+}

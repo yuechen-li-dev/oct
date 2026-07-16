@@ -13,7 +13,7 @@ This is the repository ownership guide. Language truth remains in
 | `examples/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
 | `internal/prometheus/shaders/sdslv/production/` | sole Prometheus SDSL-V source authority | yes |
 | `internal/prometheus/shaders/sdslv/production/reduction/` | M39b row-wise sum/max/softmax source authority | yes |
-| `internal/prometheus/shaders/sdslv/experimental/` | future candidates; policy only today | no |
+| `internal/prometheus/shaders/sdslv/experimental/` | bounded candidates, including M40a cooperative SGEMM | no |
 | `internal/prometheus/shaders/sdslv/historical/` | policy pointer to audit evidence | no |
 | `internal/prometheus/native/` | registry, headers, runtime, tests, generator | yes |
 | `internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/` | M34/M35 audit-only evidence | no |
@@ -23,10 +23,17 @@ This is the repository ownership guide. Language truth remains in
 | `out/`, `dist/`, `.oct/`, `internal/sdslv/test/out/` | transient local/test output | never |
 
 Production means registry-consumed and stable. Experimental sources may be
-compiled, tested, and benchmarked but must not occur in the native manifest,
-registry, or native build inputs. Historical evidence is audit-only. There are
-no standalone experimental Prometheus SDSL-V kernels today; M34/M35 originals
-remain beside their reports, avoiding a duplicate authority.
+compiled, tested, and benchmarked but must not occur in production registry
+tables or production native build inputs. The manifest's
+`experimental_shader_assets` inventory records provenance and capability
+contracts without assigning a production numeric shader/implementation ID.
+Historical evidence is audit-only.
+
+The M40a proof lives at
+`internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/`. Its
+generated HLSL, SPIR-V, header, and inspection result stay beside the readable
+source. The header is consumed only by Marionette audit coverage; the
+production library and selector do not import it.
 
 The tiled and memory-conservative registry entries retain `historical generated`
 provenance but remain production build inputs because the registry consumes them.
@@ -101,7 +108,9 @@ and replay identity derives from source identity, so M36/M37 paths stay put.
 
 Add a candidate at `experimental/<family>/`; use the existing language corpus
 and examples for contracts and only add a permanent benchmark when the identity
-is intended to persist. Do not edit the production manifest or registry.
+is intended to persist. A durable generated proof may add a selector-ineligible
+record to `experimental_shader_assets`; do not add it to production
+`shader_assets`, `compute_implementations`, or runtime registry tables.
 
 Promotion moves the one source authority to `production/<family>/`, then adds
 stable ID, generated header metadata, and entry point to the manifest; updates

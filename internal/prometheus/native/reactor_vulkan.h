@@ -10,6 +10,15 @@
 extern "C" {
 #endif
 
+typedef enum prom_vk_cooperative_matrix_state {
+  PROM_VK_COOPERATIVE_MATRIX_UNAVAILABLE = 0u,
+  PROM_VK_COOPERATIVE_MATRIX_EXTENSION_NO_USEFUL_TUPLE = 1u,
+  PROM_VK_COOPERATIVE_MATRIX_USEFUL_TUPLE_AVAILABLE = 2u,
+  PROM_VK_COOPERATIVE_MATRIX_COMPILER_ROUTE_UNAVAILABLE = 3u,
+  PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED = 4u,
+  PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE = 5u,
+} prom_vk_cooperative_matrix_state;
+
 typedef struct prom_vk_buffer {
   VkBuffer buffer;
   VkDeviceMemory memory;
@@ -41,6 +50,16 @@ typedef struct prom_vk_runtime_services {
   uint32_t validation_enabled;
   uint32_t validation_warning_count;
   uint32_t validation_error_count;
+  uint32_t cooperative_matrix_state;
+  uint32_t cooperative_matrix_extension_spec_version;
+  uint32_t cooperative_matrix_feature_enabled;
+  uint32_t cooperative_matrix_shader_float16_enabled;
+  uint32_t cooperative_matrix_vulkan_memory_model_enabled;
+  uint32_t cooperative_matrix_tuple_count;
+  uint32_t cooperative_matrix_selected_m;
+  uint32_t cooperative_matrix_selected_n;
+  uint32_t cooperative_matrix_selected_k;
+  uint32_t subgroup_size;
 } prom_vk_runtime_services;
 
 /* Test/audit-only request. This is never accepted by policy or the production
@@ -54,6 +73,7 @@ typedef struct prom_sgemm_audit_execution_descriptor {
   uint32_t compute_mode;
   const char* provenance;
   uint64_t spirv_hash;
+  uint32_t require_full_subgroups;
 } prom_sgemm_audit_execution_descriptor;
 
 typedef enum prom_sgemm_memory_placement {
@@ -68,6 +88,7 @@ typedef enum prom_sgemm_placement_reuse_mode {
   PROM_SGEMM_PLACEMENT_REUSE_WARM = 2u,
   PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD = 3u,
   PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER = 4u,
+  PROM_SGEMM_PLACEMENT_REUSE_PERSISTENT_B_REUPLOAD_A = 5u,
 } prom_sgemm_placement_reuse_mode;
 
 typedef struct prom_sgemm_placement_benchmark_options {
@@ -334,6 +355,15 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
                                                         uint64_t* out_end_to_end_samples_ns,
                                                         uint32_t sample_capacity,
                                                         prom_sgemm_placement_benchmark_result* out_result);
+int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(
+    void* handle, const float* a, const float* b, float* c,
+    uint32_t m, uint32_t n, uint32_t k,
+    const prom_sgemm_audit_execution_descriptor* descriptor,
+    const prom_sgemm_placement_benchmark_options* options,
+    uint64_t* out_kernel_samples_ns, uint64_t* out_preparation_samples_ns,
+    uint64_t* out_end_to_end_samples_ns, uint64_t* out_conversion_samples_ns,
+    uint64_t* out_upload_samples_ns, uint64_t* out_readback_samples_ns,
+    uint32_t sample_capacity, prom_sgemm_placement_benchmark_result* out_result);
 int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                                        const PrometheusSgemmResidentBenchmarkRequest* request,
                                                        PrometheusSgemmResidentBenchmarkResult* out_result);

@@ -13,6 +13,28 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
+func TestCooperativeMatrixLowersToClosedVDMIRRequirement(t *testing.T) {
+	mir := lowerSource(t, cooperativeMatrixLowerTestSource)
+	if len(mir.Requirements) != 1 || mir.Requirements[0].Kind != vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup {
+		t.Fatalf("requirements = %#v", mir.Requirements)
+	}
+	requirement := mir.Requirements[0]
+	if requirement.Scope != "subgroup" || requirement.M != 16 || requirement.N != 16 || requirement.K != 16 ||
+		requirement.AComponent != "f16" || requirement.CComponent != "f32" || requirement.InputPacking != "f16x2-u32-row-major" {
+		t.Fatalf("unexpected requirement: %#v", requirement)
+	}
+	call := mir.Functions[0].Body.Statements[0].(vdmir.ExprStmt).Value.(vdmir.IntrinsicCallExpr)
+	if call.Intrinsic != vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup || call.Type().Kind != vdmir.TypeVoid {
+		t.Fatalf("unexpected intrinsic: %#v", call)
+	}
+}
+
+const cooperativeMatrixLowerTestSource = `stream ComputeThread { DispatchId:uint3; GroupId:uint3; GroupThreadId:uint3; GroupIndex:u32; }
+stream IO { [binding(0)] A:readonly array<u32>; [binding(1)] B:readonly array<u32>; [binding(2)] C:readwrite array<f32>; }
+record P { m:u32; n:u32; k:u32; }
+shader S { resources IO; stage compute [numthreads(32,1,1)] fn CS(thread:ComputeThread,p:P)->void {
+CooperativeMatMul<F16F32M16N16K16Subgroup>(A,B,C,thread.GroupId,thread.GroupIndex,p.m,p.n,p.k); return; } }`
+
 func TestSdslvInlineHlslRejectsUnsupportedLoweringTarget(t *testing.T) {
 	result, err := lex.Analyze(source.File{Path: "inline.sdslv", Text: `fn F() -> void { HLSL { GroupMemoryBarrierWithGroupSync(); } return; }`})
 	if err != nil {

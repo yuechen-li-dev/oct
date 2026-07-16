@@ -123,21 +123,23 @@ type varInfo struct {
 const maxRegTileElements = 64
 
 type validator struct {
-	path             string
-	moduleSpan       source.Span
-	currentSpan      source.Span
-	diagnostics      []diagnostic.Diagnostic
-	types            map[string]typeInfo
-	funcs            map[string]functionInfo
-	configs          map[string]configInfo
-	concepts         map[string]ast.ConceptDecl
-	shaderDecls      map[string]ast.ShaderDecl
-	compileAliases   map[string]struct{}
-	resources        map[string]ast.ResourceDecl
-	testSource       bool
-	benchmarkSource  bool
-	currentTestInput *ValidatedTestInput
-	tensorAssigns    []ValidatedTensorAssign
+	path              string
+	moduleSpan        source.Span
+	currentSpan       source.Span
+	diagnostics       []diagnostic.Diagnostic
+	types             map[string]typeInfo
+	funcs             map[string]functionInfo
+	configs           map[string]configInfo
+	concepts          map[string]ast.ConceptDecl
+	shaderDecls       map[string]ast.ShaderDecl
+	compileAliases    map[string]struct{}
+	resources         map[string]ast.ResourceDecl
+	testSource        bool
+	benchmarkSource   bool
+	currentTestInput  *ValidatedTestInput
+	tensorAssigns     []ValidatedTensorAssign
+	currentStage      string
+	currentNumThreads *ast.NumThreads
 }
 
 // Inline source is deliberately not a security boundary. These checks reject the
@@ -738,6 +740,9 @@ func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.Resource
 
 func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, stage string, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl, templateParam *ast.TemplateParam) {
 	defer v.scoped(fn.Span)()
+	previousStage, previousNumThreads := v.currentStage, v.currentNumThreads
+	v.currentStage, v.currentNumThreads = stage, fn.NumThreads
+	defer func() { v.currentStage, v.currentNumThreads = previousStage, previousNumThreads }()
 	v.validateTestAttributes(fn)
 	v.validateType(fn.ReturnType)
 	previousTestInput := v.currentTestInput
@@ -2041,10 +2046,59 @@ func (v *validator) compilerIntrinsicType(call ast.CallExpr, scope map[string]va
 			v.errorAt(call.Span, "SDSL-V3508", "Convert<%s> does not support %s", typeName(target), typeName(src))
 		}
 		return target
+	case "CooperativeMatMul":
+		const contract = "F16F32M16N16K16Subgroup"
+		if target.Name != contract {
+			v.errorAt(target.Span, "SDSL-V4001", "CooperativeMatMul only supports contract %s", contract)
+			return ast.TypeRef{Name: "<error>"}
+		}
+		if len(call.Arguments) != 8 {
+			v.errorAt(call.Span, "SDSL-V4002", "CooperativeMatMul<%s> expects 8 arguments, got %d", contract, len(call.Arguments))
+			return ast.TypeRef{Name: "void"}
+		}
+		v.validateCooperativeResource(call.Arguments[0], scope, "A", "u32", "readonly")
+		v.validateCooperativeResource(call.Arguments[1], scope, "B", "u32", "readonly")
+		v.validateCooperativeResource(call.Arguments[2], scope, "C", "f32", "readwrite")
+		for i, expected := range []string{"uint3", "u32", "u32", "u32", "u32"} {
+			got := v.resolveAlias(v.exprType(call.Arguments[i+3], scope, shaderName, templateParam))
+			if got.Name != expected {
+				v.errorAt(ast.ExprSpan(call.Arguments[i+3]), "SDSL-V4004", "CooperativeMatMul argument %d expects %s, got %s", i+4, expected, typeName(got))
+			}
+		}
+		if v.currentStage != "compute" || !v.cooperativeNumThreadsValid() {
+			v.errorAt(call.Span, "SDSL-V4005", "CooperativeMatMul<%s> requires a compute entry with numthreads(32, 1, 1)", contract)
+		}
+		return ast.TypeRef{Name: "void"}
 	default:
 		v.errorAt(call.Span, "SDSL-V3502", "%s is not a compiler-defined generic intrinsic", id.Name)
 		return ast.TypeRef{Name: "<error>"}
 	}
+}
+
+func (v *validator) validateCooperativeResource(expr ast.Expr, scope map[string]varInfo, role, element, access string) {
+	id, ok := expr.(ast.IdentifierExpr)
+	if !ok {
+		v.errorAt(ast.ExprSpan(expr), "SDSL-V4003", "CooperativeMatMul %s argument must be a %s resource array<%s>", role, access, element)
+		return
+	}
+	info, ok := scope[id.Name]
+	if !ok || info.origin != varResource || info.access != access || info.typ.Name != "array" || len(info.typ.Args) != 1 || v.resolveAlias(info.typ.Args[0]).Name != element {
+		v.errorAt(ast.ExprSpan(expr), "SDSL-V4003", "CooperativeMatMul %s argument must be a %s resource array<%s>", role, access, element)
+	}
+}
+
+func (v *validator) cooperativeNumThreadsValid() bool {
+	if v.currentNumThreads == nil {
+		return false
+	}
+	want := []int64{32, 1, 1}
+	for i, expr := range []ast.Expr{v.currentNumThreads.X, v.currentNumThreads.Y, v.currentNumThreads.Z} {
+		value, err := v.evalConstExpr(expr, nil)
+		if err != nil || value.int32 != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func (v *validator) dotType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {

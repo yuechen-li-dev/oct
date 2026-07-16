@@ -1485,6 +1485,16 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->validation_enabled = rt->validation_enabled;
   out_services->validation_warning_count = rt->validation_warning_count;
   out_services->validation_error_count = rt->validation_error_count;
+  out_services->cooperative_matrix_state = rt->cooperative_matrix_state;
+  out_services->cooperative_matrix_extension_spec_version = rt->cooperative_matrix_extension_spec_version;
+  out_services->cooperative_matrix_feature_enabled = rt->cooperative_matrix_feature_enabled;
+  out_services->cooperative_matrix_shader_float16_enabled = rt->cooperative_matrix_shader_float16_enabled;
+  out_services->cooperative_matrix_vulkan_memory_model_enabled = rt->cooperative_matrix_vulkan_memory_model_enabled;
+  out_services->cooperative_matrix_tuple_count = rt->cooperative_matrix_tuple_count;
+  out_services->cooperative_matrix_selected_m = rt->cooperative_matrix_selected_m;
+  out_services->cooperative_matrix_selected_n = rt->cooperative_matrix_selected_n;
+  out_services->cooperative_matrix_selected_k = rt->cooperative_matrix_selected_k;
+  out_services->subgroup_size = rt->subgroup_size;
 
   if (rt->available == 0u) return PROM_ERROR;
   if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
@@ -2710,7 +2720,9 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
 
 static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkResult result;
+  VkApplicationInfo application_info;
   VkInstanceCreateInfo instance_info;
+  uint32_t loader_api_version = VK_API_VERSION_1_0;
   uint32_t device_count = 0u;
   VkPhysicalDevice devices[16];
   uint32_t i;
@@ -2740,9 +2752,35 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   uint32_t layer_count = 0u;
   VkLayerProperties layers[64];
   VkDebugUtilsMessengerCreateInfoEXT debug_info;
+#ifdef VK_KHR_cooperative_matrix
+  VkPhysicalDeviceFeatures2 cooperative_features2;
+  VkPhysicalDeviceShaderFloat16Int8Features shader_float16_features;
+  VkPhysicalDeviceVulkanMemoryModelFeatures vulkan_memory_model_features;
+  VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_features;
+  VkPhysicalDeviceShaderFloat16Int8Features shader_float16_enable;
+  VkPhysicalDeviceVulkanMemoryModelFeatures vulkan_memory_model_enable;
+  VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_enable;
+  const char* cooperative_device_extensions[1];
+  uint32_t cooperative_device_extension_count = 0u;
+#endif
 
+  memset(&application_info, 0, sizeof(application_info));
+  application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+  application_info.pApplicationName = "Prometheus";
+  application_info.applicationVersion = 1u;
+  application_info.pEngineName = "Prometheus";
+  application_info.engineVersion = 1u;
+#ifdef VK_VERSION_1_1
+  {
+    PFN_vkEnumerateInstanceVersion enumerate_instance_version =
+      (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
+    if (enumerate_instance_version != NULL) (void)enumerate_instance_version(&loader_api_version);
+  }
+#endif
+  application_info.apiVersion = loader_api_version < VK_API_VERSION_1_3 ? loader_api_version : VK_API_VERSION_1_3;
   memset(&instance_info, 0, sizeof(instance_info));
   instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+  instance_info.pApplicationInfo = &application_info;
   rt->validation_requested = getenv("PROMETHEUS_VK_VALIDATION") != NULL && strcmp(getenv("PROMETHEUS_VK_VALIDATION"), "1") == 0 ? 1u : 0u;
   if (rt->validation_requested != 0u) {
     result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
@@ -2904,6 +2942,101 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     }
   }
   rt->capability_fp16_storage = ((rt->test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) == 0u) ? 1u : 0u;
+  rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_UNAVAILABLE;
+  rt->cooperative_matrix_extension_spec_version = 0u;
+  rt->cooperative_matrix_feature_enabled = 0u;
+  rt->cooperative_matrix_shader_float16_enabled = 0u;
+  rt->cooperative_matrix_vulkan_memory_model_enabled = 0u;
+  rt->cooperative_matrix_tuple_count = 0u;
+  rt->cooperative_matrix_selected_m = 0u;
+  rt->cooperative_matrix_selected_n = 0u;
+  rt->cooperative_matrix_selected_k = 0u;
+  rt->subgroup_size = 0u;
+
+#ifdef VK_KHR_cooperative_matrix
+  {
+  if (application_info.apiVersion >= VK_API_VERSION_1_1) {
+    uint32_t extension_count = 0u;
+    VkExtensionProperties* extensions = NULL;
+    uint32_t extension_index;
+    VkPhysicalDeviceProperties physical_properties;
+    VkPhysicalDeviceSubgroupProperties subgroup_properties;
+    VkPhysicalDeviceProperties2 properties2;
+    PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR get_properties = NULL;
+    uint32_t tuple_count = 0u;
+    VkCooperativeMatrixPropertiesKHR tuples[64];
+    const char* disabled = getenv("PROMETHEUS_VK_DISABLE_COOPERATIVE_MATRIX");
+    vkGetPhysicalDeviceProperties(rt->physical_device, &physical_properties);
+    memset(&subgroup_properties, 0, sizeof(subgroup_properties));
+    subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    memset(&properties2, 0, sizeof(properties2));
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &subgroup_properties;
+    vkGetPhysicalDeviceProperties2(rt->physical_device, &properties2);
+    rt->subgroup_size = subgroup_properties.subgroupSize;
+    if (disabled == NULL || strcmp(disabled, "1") != 0) {
+      result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, NULL);
+      if (result == VK_SUCCESS && extension_count != 0u) {
+        extensions = (VkExtensionProperties*)calloc(extension_count, sizeof(*extensions));
+        if (extensions == NULL) return VK_ERROR_OUT_OF_HOST_MEMORY;
+        result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, extensions);
+      }
+      if (result == VK_SUCCESS) {
+        for (extension_index = 0u; extension_index < extension_count; ++extension_index) {
+          if (strcmp(extensions[extension_index].extensionName, VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME) == 0) {
+            rt->cooperative_matrix_extension_spec_version = extensions[extension_index].specVersion;
+            break;
+          }
+        }
+      }
+      free(extensions);
+    }
+    memset(&cooperative_features2, 0, sizeof(cooperative_features2));
+    memset(&shader_float16_features, 0, sizeof(shader_float16_features));
+    memset(&vulkan_memory_model_features, 0, sizeof(vulkan_memory_model_features));
+    memset(&cooperative_features, 0, sizeof(cooperative_features));
+    cooperative_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    shader_float16_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+    vulkan_memory_model_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
+    cooperative_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR;
+    cooperative_features2.pNext = &shader_float16_features;
+    shader_float16_features.pNext = &vulkan_memory_model_features;
+    vulkan_memory_model_features.pNext = &cooperative_features;
+    if (rt->cooperative_matrix_extension_spec_version != 0u) {
+      rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXTENSION_NO_USEFUL_TUPLE;
+      vkGetPhysicalDeviceFeatures2(rt->physical_device, &cooperative_features2);
+      get_properties = (PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR)
+        vkGetInstanceProcAddr(rt->instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR");
+      if (get_properties != NULL && get_properties(rt->physical_device, &tuple_count, NULL) == VK_SUCCESS) {
+        if (tuple_count > 64u) tuple_count = 64u;
+        memset(tuples, 0, sizeof(tuples));
+        for (i = 0u; i < tuple_count; ++i) tuples[i].sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR;
+        if (get_properties(rt->physical_device, &tuple_count, tuples) != VK_SUCCESS) tuple_count = 0u;
+      }
+      rt->cooperative_matrix_tuple_count = tuple_count;
+      for (i = 0u; i < tuple_count; ++i) {
+        if (tuples[i].scope == VK_SCOPE_SUBGROUP_KHR && tuples[i].MSize == 16u && tuples[i].NSize == 16u &&
+          tuples[i].KSize == 16u && tuples[i].AType == VK_COMPONENT_TYPE_FLOAT16_KHR &&
+          tuples[i].BType == VK_COMPONENT_TYPE_FLOAT16_KHR && tuples[i].CType == VK_COMPONENT_TYPE_FLOAT32_KHR &&
+          tuples[i].ResultType == VK_COMPONENT_TYPE_FLOAT32_KHR) {
+          rt->cooperative_matrix_selected_m = 16u;
+          rt->cooperative_matrix_selected_n = 16u;
+          rt->cooperative_matrix_selected_k = 16u;
+          rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_USEFUL_TUPLE_AVAILABLE;
+          break;
+        }
+      }
+      if (rt->cooperative_matrix_state == PROM_VK_COOPERATIVE_MATRIX_USEFUL_TUPLE_AVAILABLE &&
+        cooperative_features.cooperativeMatrix == VK_TRUE && shader_float16_features.shaderFloat16 == VK_TRUE &&
+        vulkan_memory_model_features.vulkanMemoryModel == VK_TRUE &&
+        physical_properties.apiVersion >= VK_API_VERSION_1_3) {
+        cooperative_device_extensions[0] = VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME;
+        cooperative_device_extension_count = 1u;
+      }
+    }
+  }
+  }
+#endif
 
   memset(queue_infos, 0, sizeof(queue_infos));
   queue_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -2922,6 +3055,24 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   device_info.queueCreateInfoCount =
       (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 2u : 1u;
   device_info.pQueueCreateInfos = queue_infos;
+#ifdef VK_KHR_cooperative_matrix
+  if (cooperative_device_extension_count != 0u) {
+    memset(&shader_float16_enable, 0, sizeof(shader_float16_enable));
+    memset(&vulkan_memory_model_enable, 0, sizeof(vulkan_memory_model_enable));
+    memset(&cooperative_enable, 0, sizeof(cooperative_enable));
+    shader_float16_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
+    shader_float16_enable.shaderFloat16 = VK_TRUE;
+    vulkan_memory_model_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
+    vulkan_memory_model_enable.vulkanMemoryModel = VK_TRUE;
+    cooperative_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR;
+    cooperative_enable.cooperativeMatrix = VK_TRUE;
+    shader_float16_enable.pNext = &vulkan_memory_model_enable;
+    vulkan_memory_model_enable.pNext = &cooperative_enable;
+    device_info.pNext = &shader_float16_enable;
+    device_info.enabledExtensionCount = cooperative_device_extension_count;
+    device_info.ppEnabledExtensionNames = cooperative_device_extensions;
+  }
+#endif
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DEVICE_CREATE) != 0u) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -3022,6 +3173,14 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   if (result != VK_SUCCESS) {
     return result;
   }
+#ifdef VK_KHR_cooperative_matrix
+  if (cooperative_device_extension_count != 0u) {
+    rt->cooperative_matrix_feature_enabled = 1u;
+    rt->cooperative_matrix_shader_float16_enabled = 1u;
+    rt->cooperative_matrix_vulkan_memory_model_enabled = 1u;
+    rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED;
+  }
+#endif
   if (rt->validation_requested != 0u) {
     PFN_vkCreateDebugUtilsMessengerEXT create_debug_messenger =
         (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(rt->instance, "vkCreateDebugUtilsMessengerEXT");
@@ -4064,6 +4223,19 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
       descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_TILED &&
       descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 &&
       descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) return PROM_ERROR;
+  if ((descriptor->dispatch.workgroup_output_m == 0u) != (descriptor->dispatch.workgroup_output_n == 0u) ||
+    (descriptor->dispatch.workgroup_output_m != 0u &&
+    ((m % descriptor->dispatch.workgroup_output_m) != 0u ||
+     (n % descriptor->dispatch.workgroup_output_n) != 0u ||
+     (descriptor->dispatch.tile_k != 0u && (k % descriptor->dispatch.tile_k) != 0u)))) {
+    if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = VK_ERROR_FEATURE_NOT_PRESENT; }
+    return PROM_ERROR;
+  }
+  if (descriptor->require_full_subgroups != 0u &&
+    (rt->cooperative_matrix_feature_enabled == 0u || rt->subgroup_size != descriptor->dispatch.threads_x)) {
+    if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = VK_ERROR_FEATURE_NOT_PRESENT; }
+    return PROM_ERROR;
+  }
 
   memset(&shader_info, 0, sizeof(shader_info));
   shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -4076,6 +4248,11 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = module;
   stage_info.pName = descriptor->entry_point;
+#ifdef VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT
+  if (descriptor->require_full_subgroups != 0u) {
+    stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT;
+  }
+#endif
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
@@ -4160,6 +4337,9 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
     out_result->a_memory_offset = (uint64_t)result_a->memory_offset;
     out_result->b_memory_offset = (uint64_t)result_b->memory_offset;
     out_result->c_memory_offset = (uint64_t)result_c->memory_offset;
+  }
+  if (execution_result == PROM_OK && descriptor->require_full_subgroups != 0u) {
+    rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
   }
   return execution_result == PROM_OK && completed_warmup == warmup && completed_measured == iterations ? PROM_OK : PROM_ERROR;
 }
@@ -4279,7 +4459,7 @@ static void prom_sgemm_placement_write_payload(prom_sgemm_placement_role_buffer*
   if (destination != NULL) memcpy(destination, payload, size);
 }
 
-int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
+int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
                                                         const float* a,
                                                         const float* b,
                                                         float* c,
@@ -4291,6 +4471,9 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
                                                         uint64_t* out_gpu_samples_ns,
                                                         uint64_t* out_preparation_samples_ns,
                                                         uint64_t* out_end_to_end_samples_ns,
+                                                        uint64_t* out_conversion_samples_ns,
+                                                        uint64_t* out_upload_samples_ns,
+                                                        uint64_t* out_readback_samples_ns,
                                                         uint32_t sample_capacity,
                                                         prom_sgemm_placement_benchmark_result* out_result) {
   prometheus_runtime* rt;
@@ -4326,12 +4509,22 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
       options == NULL || out_gpu_samples_ns == NULL || out_preparation_samples_ns == NULL ||
       out_end_to_end_samples_ns == NULL || options->iterations == 0u || sample_capacity < options->iterations ||
       options->warmup > UINT32_MAX - options->iterations || options->reuse_mode < PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION ||
-      options->reuse_mode > PROM_SGEMM_PLACEMENT_REUSE_OUTPUT_TURNOVER) {
+      options->reuse_mode > PROM_SGEMM_PLACEMENT_REUSE_PERSISTENT_B_REUPLOAD_A) {
     if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = PROM_ERROR; }
     return PROM_ERROR;
   }
   rt = (prometheus_runtime*)handle;
   if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->available == 0u || rt->timestamp_query_supported == 0u) return PROM_ERROR;
+  if ((descriptor->dispatch.workgroup_output_m == 0u) != (descriptor->dispatch.workgroup_output_n == 0u) ||
+    (descriptor->dispatch.workgroup_output_m != 0u &&
+     ((m % descriptor->dispatch.workgroup_output_m) != 0u ||
+      (n % descriptor->dispatch.workgroup_output_n) != 0u ||
+      (descriptor->dispatch.tile_k != 0u && (k % descriptor->dispatch.tile_k) != 0u))) ||
+    (descriptor->require_full_subgroups != 0u &&
+     (rt->cooperative_matrix_feature_enabled == 0u || rt->subgroup_size != descriptor->dispatch.threads_x))) {
+    if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = VK_ERROR_FEATURE_NOT_PRESENT; }
+    return PROM_ERROR;
+  }
   compute_k = descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
   if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
     if (!checked_packed_fp16_buffer_size(m, compute_k, &a_size, &a_copy_size) ||
@@ -4360,6 +4553,11 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
   shader_stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   shader_stage.module = module;
   shader_stage.pName = descriptor->entry_point;
+#ifdef VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT
+  if (descriptor->require_full_subgroups != 0u) {
+    shader_stage.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT;
+  }
+#endif
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = shader_stage;
@@ -4403,8 +4601,11 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
     uint64_t readback_begin;
     uint64_t readback_end;
     uint32_t barrier_count = 0u;
-    uint32_t write_inputs = options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD ||
-                            options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION || dispatch_index == 0u;
+    uint32_t write_a = options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD ||
+                       options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_PERSISTENT_B_REUPLOAD_A ||
+                       options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION || dispatch_index == 0u;
+    uint32_t write_b = options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_REUPLOAD ||
+                       options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION || dispatch_index == 0u;
     if (options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
       vk_result = prom_sgemm_placement_allocate_roles(rt, a_size, b_size, c_size, options, &a_role, &b_role, &c_role);
       if (vk_result != VK_SUCCESS) goto unsupported;
@@ -4417,16 +4618,16 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
       prom_sgemm_placement_capture_role(rt, &b_role, &out_result->b_memory_type_index, &out_result->b_memory_property_flags, &out_result->b_heap_index);
       prom_sgemm_placement_capture_role(rt, &c_role, &out_result->c_memory_type_index, &out_result->c_memory_property_flags, &out_result->c_heap_index);
     }
-    if (write_inputs != 0u) {
+    if (write_a != 0u || write_b != 0u) {
       if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32) {
-        prom_pack_a_packed4_rowmajor(a, (float*)packed_a, m, k, compute_k);
-        prom_pack_b_packed4_colmajor(b, (float*)packed_b, n, k, compute_k);
+        if (write_a != 0u) prom_pack_a_packed4_rowmajor(a, (float*)packed_a, m, k, compute_k);
+        if (write_b != 0u) prom_pack_b_packed4_colmajor(b, (float*)packed_b, n, k, compute_k);
       } else if (descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM) {
-        prom_pack_fp16_pairs(a, m * compute_k, (uint32_t*)packed_a);
-        prom_pack_fp16_pairs(b, compute_k * n, (uint32_t*)packed_b);
+        if (write_a != 0u) prom_pack_fp16_pairs(a, m * compute_k, (uint32_t*)packed_a);
+        if (write_b != 0u) prom_pack_fp16_pairs(b, compute_k * n, (uint32_t*)packed_b);
       }
-      prom_sgemm_placement_write_payload(&a_role, a_payload, a_copy_size);
-      prom_sgemm_placement_write_payload(&b_role, b_payload, b_copy_size);
+      if (write_a != 0u) prom_sgemm_placement_write_payload(&a_role, a_payload, a_copy_size);
+      if (write_b != 0u) prom_sgemm_placement_write_payload(&b_role, b_payload, b_copy_size);
     }
     prep_end = prom_wall_clock_now_ns();
     vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
@@ -4437,11 +4638,13 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
     vkCmdResetQueryPool(rt->command_buffer, timing_query_pool, 0u, 4u);
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing_query_pool, 0u);
     memset(barriers, 0, sizeof(barriers)); memset(copies, 0, sizeof(copies));
-    if (write_inputs != 0u) {
+    if (write_a != 0u || write_b != 0u) {
       prom_sgemm_placement_role_buffer* roles[2] = {&a_role, &b_role};
+    uint32_t writes[2] = {write_a, write_b};
       uint32_t role_index;
       for (role_index = 0u; role_index < 2u; ++role_index) {
         prom_sgemm_placement_role_buffer* role = roles[role_index];
+    if (writes[role_index] == 0u) continue;
         if (role->placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
           VkBufferMemoryBarrier host_barrier;
           VkBufferCopy copy;
@@ -4540,6 +4743,17 @@ int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
       const uint32_t sample_index = dispatch_index - options->warmup;
       const uint64_t gpu_transfer_ticks = (timestamps[1] - timestamps[0]) + (timestamps[3] - timestamps[2]);
       out_gpu_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[2] - timestamps[1])) * rt->timestamp_period_ns);
+    if (out_conversion_samples_ns != NULL) {
+      out_conversion_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(prep_begin, prep_end);
+    }
+    if (out_upload_samples_ns != NULL) {
+      out_upload_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[1] - timestamps[0])) * rt->timestamp_period_ns);
+    }
+    if (out_readback_samples_ns != NULL) {
+      out_readback_samples_ns[sample_index] =
+        (uint64_t)(((double)(timestamps[3] - timestamps[2])) * rt->timestamp_period_ns) +
+        prom_wall_clock_elapsed_ns(readback_begin, readback_end);
+    }
       out_preparation_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(prep_begin, prep_end) +
           (uint64_t)(((double)gpu_transfer_ticks) * rt->timestamp_period_ns) +
           prom_wall_clock_elapsed_ns(readback_begin, readback_end);
@@ -4581,6 +4795,26 @@ cleanup:
   }
   free(packed_b); free(packed_a);
   return status;
+}
+
+int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
+                                                        const float* a,
+                                                        const float* b,
+                                                        float* c,
+                                                        uint32_t m,
+                                                        uint32_t n,
+                                                        uint32_t k,
+                                                        const prom_sgemm_audit_execution_descriptor* descriptor,
+                                                        const prom_sgemm_placement_benchmark_options* options,
+                                                        uint64_t* out_gpu_samples_ns,
+                                                        uint64_t* out_preparation_samples_ns,
+                                                        uint64_t* out_end_to_end_samples_ns,
+                                                        uint32_t sample_capacity,
+                                                        prom_sgemm_placement_benchmark_result* out_result) {
+  return prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(
+    handle, a, b, c, m, n, k, descriptor, options,
+    out_gpu_samples_ns, out_preparation_samples_ns, out_end_to_end_samples_ns,
+    NULL, NULL, NULL, sample_capacity, out_result);
 }
 
 static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,

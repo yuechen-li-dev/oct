@@ -9,6 +9,31 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/source"
 )
 
+const cooperativeMatrixTestSource = `stream ComputeThread { DispatchId:uint3; GroupId:uint3; GroupThreadId:uint3; GroupIndex:u32; }
+stream IO { [binding(0)] A:readonly array<u32>; [binding(1)] B:readonly array<u32>; [binding(2)] C:readwrite array<f32>; }
+record P { m:u32; n:u32; k:u32; }
+shader S { resources IO; stage compute [numthreads(32,1,1)] fn CS(thread:ComputeThread,p:P)->void {
+CooperativeMatMul<F16F32M16N16K16Subgroup>(A,B,C,thread.GroupId,thread.GroupIndex,p.m,p.n,p.k); return; } }`
+
+func TestCooperativeMatrixIntrinsicClosedContract(t *testing.T) {
+	if err := validateSource(cooperativeMatrixTestSource); err != nil {
+		t.Fatalf("valid cooperative contract: %v", err)
+	}
+	for _, tc := range []struct{ name, old, replacement, want string }{
+		{"tuple", "F16F32M16N16K16Subgroup", "F16F32M8N8K16Subgroup", "SDSL-V4001"},
+		{"workgroup", "numthreads(32,1,1)", "numthreads(16,2,1)", "SDSL-V4005"},
+		{"storage", "A:readonly array<u32>", "A:readonly array<f32>", "SDSL-V4003"},
+		{"access", "C:readwrite array<f32>", "C:readonly array<f32>", "SDSL-V4003"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(strings.Replace(cooperativeMatrixTestSource, tc.old, tc.replacement, 1))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %s", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestModuleRejectsDuplicateRecordFields(t *testing.T) {
 	err := validateSource(`record Params { M: u32; M: u32; }`)
 	if err == nil || !strings.Contains(err.Error(), "duplicate record field") {

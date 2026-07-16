@@ -20,6 +20,12 @@ func Dump(module Module) string {
 	} else {
 		line(0, "vdmir module <anonymous>")
 	}
+	for _, requirement := range module.Requirements {
+		line(0, fmt.Sprintf("require %s scope=%s tuple=%dx%dx%d components=%s,%s,%s,%s packing=%s layout=%s",
+			requirement.Kind, requirement.Scope, requirement.M, requirement.N, requirement.K,
+			requirement.AComponent, requirement.BComponent, requirement.CComponent, requirement.Result,
+			requirement.InputPacking, requirement.LogicalLayout))
+	}
 	for _, alias := range module.TypeAliases {
 		line(0, fmt.Sprintf("typealias %s = %s", alias.Name, FormatType(alias.Target)))
 	}
