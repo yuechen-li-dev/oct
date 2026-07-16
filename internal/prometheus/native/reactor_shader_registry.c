@@ -1,4 +1,5 @@
 #include "reactor_shader_registry.h"
+#include "reactor_api.h"
 
 #include "reactor_vulkan_fp16_spirv.h"
 #include "reactor_vulkan_packed4_spirv.h"
@@ -14,11 +15,15 @@
 #include "reactor_vulkan_sgemm_srt_2accum_k_spirv.h"
 #include "reactor_vulkan_tiled_spirv.h"
 #include "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h"
+#include "reactor_vulkan_reduction_row_sum_spirv.h"
+#include "reactor_vulkan_reduction_row_max_spirv.h"
+#include "reactor_vulkan_reduction_softmax_exp_sum_spirv.h"
+#include "reactor_vulkan_reduction_softmax_normalize_spirv.h"
+#include "reactor_vulkan_reduction_softmax_fused_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
 
-enum { PROM_SHADER_OPERATION_SGEMM = 1u };
 #define PROM_META(tx, ty, om, on, tm, tn, tk, uk) { tx, ty, 1u, om, on, tm, tn, tk, uk }
 
 static const prom_sgemm_kernel_dispatch_metadata k_meta_8x8 = PROM_META(8u, 8u, 1u, 1u, 8u, 8u, 8u, 1u);
@@ -26,11 +31,12 @@ static const prom_sgemm_kernel_dispatch_metadata k_meta_16x16 = PROM_META(16u, 1
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x2 = PROM_META(8u, 8u, 2u, 2u, 16u, 16u, 16u, 1u);
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x4 = PROM_META(8u, 8u, 2u, 4u, 16u, 32u, 16u, 1u);
 
+#define PRODUCTION_ASSET_TAIL PROM_SHADER_AUTHORITY_PRODUCTION, 0u, 0u, 0u, 0u, 0u
 #define ASSET(id, label, words, language, source, header, generated) \
-  { id, label, PROM_SHADER_STAGE_COMPUTE, words, sizeof(words), "main", 0u, language, source, header, generated, 0u, 0u, NULL }
+  { id, label, PROM_SHADER_STAGE_COMPUTE, words, sizeof(words), "main", 0u, language, source, header, generated, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL }
 
 static const prom_shader_asset k_shader_assets[] = {
-  { 1u, "sgemm-baseline-scalar", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_spirv, 2668u, "main", 0u, PROM_SHADER_SOURCE_SPIRV, "reactor_vulkan_sgemm.c", "embedded", 0u, 0u, 0u, NULL },
+  { 1u, "sgemm-baseline-scalar", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_spirv, 2668u, "main", 0u, PROM_SHADER_SOURCE_SPIRV, "reactor_vulkan_sgemm.c", "embedded", 0u, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL },
   ASSET(2u, "sgemm-tiled", k_prom_sgemm_tiled_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_tiled_spirv.h", 1u),
   ASSET(3u, "sgemm-memory-conservative", k_prom_sgemm_memory_conservative_spirv, PROM_SHADER_SOURCE_SPIRV, "historical generated", "reactor_vulkan_memory_conservative_spirv.h", 1u),
   ASSET(4u, "sgemm-sdsl-scalar-plus", k_prom_sgemm_scalar_plus_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv", "reactor_vulkan_sgemm_scalar_plus_spirv.h", 1u),
@@ -39,15 +45,48 @@ static const prom_shader_asset k_shader_assets[] = {
   ASSET(7u, "sgemm-sdsl-exacttail", k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv", "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h", 1u),
   ASSET(8u, "sgemm-sdsl-flowboard", k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv", "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h", 1u),
   ASSET(9u, "sgemm-sdsl-derive", k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_derive_fp32.sdslv", "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h", 1u),
-  { 10u, "sgemm-srt-2accum", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_srt_2accum_k_spirv, sizeof(k_prom_sgemm_srt_2accum_k_spirv), "SgemmSrt2AccumK_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_srt_2accum_k.sdslv", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h", 1u, 0u, 0u, NULL },
-  { 11u, "sgemm-b2x2", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_b2x2_row_major_biased_spirv, sizeof(k_prom_sgemm_b2x2_row_major_biased_spirv), "SgemmB2x2_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_b2x2_row_major_biased.sdslv", "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h", 1u, 0u, 0u, NULL },
-  { 12u, "sgemm-a2x4", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_a2x4_row_biased_accum8_spirv, sizeof(k_prom_sgemm_a2x4_row_biased_accum8_spirv), "SgemmA2x4_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_a2x4_row_biased_accum8.sdslv", "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h", 1u, 0u, 0u, NULL },
-  { 13u, "sgemm-packed4", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "SgemmPacked4_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_packed4_fp32.sdslv", "reactor_vulkan_packed4_spirv.h", 1u, 0u, 0u, NULL },
-  { 14u, "sgemm-fp16-storage-fp32-accum", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_fp16_storage_fp32accum_spirv, sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv), "SgemmFp16StorageFp32Accum_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_fp16_storage_fp32_accum.sdslv", "reactor_vulkan_fp16_spirv.h", 1u, 0u, 0u, NULL },
-  { 15u, "sdslv-inline-hlsl-bitcast-proof", PROM_SHADER_STAGE_COMPUTE, k_prom_inline_hlsl_bitcast_proof_spirv, sizeof(k_prom_inline_hlsl_bitcast_proof_spirv), "InlineHlslBitCastProof_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/inline_hlsl_bitcast_proof.sdslv", "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h", 1u, 1u, 2u, "HLSL" },
+  { 10u, "sgemm-srt-2accum", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_srt_2accum_k_spirv, sizeof(k_prom_sgemm_srt_2accum_k_spirv), "SgemmSrt2AccumK_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_srt_2accum_k.sdslv", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h", 1u, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL },
+  { 11u, "sgemm-b2x2", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_b2x2_row_major_biased_spirv, sizeof(k_prom_sgemm_b2x2_row_major_biased_spirv), "SgemmB2x2_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_b2x2_row_major_biased.sdslv", "reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h", 1u, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL },
+  { 12u, "sgemm-a2x4", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_a2x4_row_biased_accum8_spirv, sizeof(k_prom_sgemm_a2x4_row_biased_accum8_spirv), "SgemmA2x4_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_a2x4_row_biased_accum8.sdslv", "reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h", 1u, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL },
+  { 13u, "sgemm-packed4", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "SgemmPacked4_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_packed4_fp32.sdslv", "reactor_vulkan_packed4_spirv.h", 1u, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL },
+  { 14u, "sgemm-fp16-storage-fp32-accum", PROM_SHADER_STAGE_COMPUTE, k_prom_sgemm_fp16_storage_fp32accum_spirv, sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv), "SgemmFp16StorageFp32Accum_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/sgemm_fp16_storage_fp32_accum.sdslv", "reactor_vulkan_fp16_spirv.h", 1u, 0u, 0u, NULL, PRODUCTION_ASSET_TAIL },
+  { 15u, "sdslv-inline-hlsl-bitcast-proof", PROM_SHADER_STAGE_COMPUTE, k_prom_inline_hlsl_bitcast_proof_spirv, sizeof(k_prom_inline_hlsl_bitcast_proof_spirv), "InlineHlslBitCastProof_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/inline_hlsl_bitcast_proof.sdslv", "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h", 1u, 1u, 2u, "HLSL", PRODUCTION_ASSET_TAIL },
 };
 
-#define IMPL(id, label, shader, meta, slot) { id, PROM_SHADER_OPERATION_SGEMM, label, shader, meta, 0u, 1u, 1u, 1u, slot }
+#define REDUCTION_ASSET(id, label, words, entry, source, header, inline_count, role, max_width) \
+  { id, label, PROM_SHADER_STAGE_COMPUTE, words, sizeof(words), entry, 0u, PROM_SHADER_SOURCE_SDSLV, source, header, 1u, \
+    (inline_count) != 0u, inline_count, (inline_count) != 0u ? "HLSL" : NULL, PROM_SHADER_AUTHORITY_PRODUCTION, \
+    4u, 32u, role, 1u, max_width }
+
+static const prom_shader_asset k_reduction_shader_assets[] = {
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_ROW_SUM, "reduction-row-sum-stage", k_prom_reduction_row_sum_spirv,
+                  "RowSumStage_CS", "internal/prometheus/shaders/sdslv/production/reduction/row_sum_stage.sdslv",
+                  "reactor_vulkan_reduction_row_sum_spirv.h", 0u, PROM_REDUCTION_STAGE_ROW_SUM,
+                  PROM_REDUCTION_MAX_ELEMENTS_PER_ROW),
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_ROW_MAX, "reduction-row-max-stage", k_prom_reduction_row_max_spirv,
+                  "RowMaxStage_CS", "internal/prometheus/shaders/sdslv/production/reduction/row_max_stage.sdslv",
+                  "reactor_vulkan_reduction_row_max_spirv.h", 0u, PROM_REDUCTION_STAGE_ROW_MAX,
+                  PROM_REDUCTION_MAX_ELEMENTS_PER_ROW),
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_SOFTMAX_EXP_SUM, "reduction-softmax-exp-sum-stage",
+                  k_prom_reduction_softmax_exp_sum_spirv, "SoftmaxExpSumStage_CS",
+                  "internal/prometheus/shaders/sdslv/production/reduction/softmax_exp_sum_stage.sdslv",
+                  "reactor_vulkan_reduction_softmax_exp_sum_spirv.h", 1u, PROM_REDUCTION_STAGE_SOFTMAX_EXP_SUM,
+                  PROM_REDUCTION_MAX_ELEMENTS_PER_ROW),
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_SOFTMAX_NORMALIZE, "reduction-softmax-normalize",
+                  k_prom_reduction_softmax_normalize_spirv, "SoftmaxNormalize_CS",
+                  "internal/prometheus/shaders/sdslv/production/reduction/softmax_normalize.sdslv",
+                  "reactor_vulkan_reduction_softmax_normalize_spirv.h", 1u, PROM_REDUCTION_STAGE_SOFTMAX_NORMALIZE,
+                  PROM_REDUCTION_MAX_ELEMENTS_PER_ROW),
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_SOFTMAX_FUSED, "reduction-softmax-fused",
+                  k_prom_reduction_softmax_fused_spirv, "SoftmaxFused_CS",
+                  "internal/prometheus/shaders/sdslv/production/reduction/softmax_fused.sdslv",
+                  "reactor_vulkan_reduction_softmax_fused_spirv.h", 1u, PROM_REDUCTION_STAGE_SOFTMAX_FUSED,
+                  PROM_REDUCTION_SINGLE_STAGE_THRESHOLD),
+};
+
+#define IMPL(id, label, shader, meta, slot) \
+  { id, PROM_SHADER_OPERATION_SGEMM, label, shader, meta, 0u, 1u, 1u, 1u, slot, NULL, \
+    PROM_SHADER_AUTHORITY_PRODUCTION, PROM_COMPUTE_PIPELINE_FAMILY_SGEMM, slot }
 static const prom_compute_implementation k_compute_implementations[] = {
   IMPL(1u, "baseline-scalar", 1u, &k_meta_8x8, PROM_COMPUTE_PIPELINE_BASELINE),
   IMPL(2u, "memory-conservative", 3u, &k_meta_8x8, PROM_COMPUTE_PIPELINE_MEMORY_CONSERVATIVE),
@@ -62,12 +101,51 @@ static const prom_compute_implementation k_compute_implementations[] = {
   IMPL(11u, "sdsl-reg2x2-tile16x16-derive-fp32", 9u, &k_meta_reg2x2, PROM_COMPUTE_PIPELINE_SDSL_DERIVE),
 };
 
-const prom_shader_asset* prom_shader_registry_find_shader(uint32_t id) { for (size_t i=0u;i<sizeof(k_shader_assets)/sizeof(k_shader_assets[0]);++i) if(k_shader_assets[i].shader_id==id) return &k_shader_assets[i]; return NULL; }
+#define REDUCTION_META(role, max_width) \
+  { PROM_REDUCTION_LOCAL_SIZE, 1u, 1u, 4u, PROM_REDUCTION_ELEMENTS_PER_PARTIAL, 4u, 32u, role, 1u, max_width }
+static const prom_reduction_kernel_dispatch_metadata k_reduction_sum_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_ROW_SUM, PROM_REDUCTION_MAX_ELEMENTS_PER_ROW);
+static const prom_reduction_kernel_dispatch_metadata k_reduction_max_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_ROW_MAX, PROM_REDUCTION_MAX_ELEMENTS_PER_ROW);
+static const prom_reduction_kernel_dispatch_metadata k_softmax_exp_sum_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_SOFTMAX_EXP_SUM, PROM_REDUCTION_MAX_ELEMENTS_PER_ROW);
+static const prom_reduction_kernel_dispatch_metadata k_softmax_normalize_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_SOFTMAX_NORMALIZE, PROM_REDUCTION_MAX_ELEMENTS_PER_ROW);
+static const prom_reduction_kernel_dispatch_metadata k_softmax_fused_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_SOFTMAX_FUSED, PROM_REDUCTION_SINGLE_STAGE_THRESHOLD);
+
+#define REDUCTION_IMPL(id, operation, label, shader, metadata, index) \
+  { id, operation, label, shader, NULL, 0u, 1u, 0u, 1u, PROM_COMPUTE_PIPELINE_COUNT, metadata, \
+    PROM_SHADER_AUTHORITY_PRODUCTION, PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION, index }
+static const prom_compute_implementation k_reduction_compute_implementations[] = {
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_ROW_SUM, PROM_SHADER_OPERATION_REDUCTION_SUM,
+                 "reduction-row-sum-stage", PROM_REDUCTION_SHADER_ROW_SUM, &k_reduction_sum_meta, 0u),
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_ROW_MAX, PROM_SHADER_OPERATION_REDUCTION_MAX,
+                 "reduction-row-max-stage", PROM_REDUCTION_SHADER_ROW_MAX, &k_reduction_max_meta, 1u),
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_EXP_SUM, PROM_SHADER_OPERATION_SOFTMAX,
+                 "reduction-softmax-exp-sum-stage", PROM_REDUCTION_SHADER_SOFTMAX_EXP_SUM,
+                 &k_softmax_exp_sum_meta, 2u),
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_NORMALIZE, PROM_SHADER_OPERATION_SOFTMAX,
+                 "reduction-softmax-normalize", PROM_REDUCTION_SHADER_SOFTMAX_NORMALIZE,
+                 &k_softmax_normalize_meta, 3u),
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED, PROM_SHADER_OPERATION_SOFTMAX,
+                 "reduction-softmax-fused", PROM_REDUCTION_SHADER_SOFTMAX_FUSED, &k_softmax_fused_meta, 4u),
+};
+
+const prom_shader_asset* prom_shader_registry_find_shader(uint32_t id) { for (size_t i=0u;i<sizeof(k_shader_assets)/sizeof(k_shader_assets[0]);++i) if(k_shader_assets[i].shader_id==id) return &k_shader_assets[i]; for (size_t i=0u;i<sizeof(k_reduction_shader_assets)/sizeof(k_reduction_shader_assets[0]);++i) if(k_reduction_shader_assets[i].shader_id==id) return &k_reduction_shader_assets[i]; return NULL; }
 size_t prom_shader_registry_shader_asset_count(void) { return sizeof(k_shader_assets)/sizeof(k_shader_assets[0]); }
 const prom_shader_asset* prom_shader_registry_shader_asset_at(size_t index) { return index < prom_shader_registry_shader_asset_count() ? &k_shader_assets[index] : NULL; }
-const prom_compute_implementation* prom_shader_registry_find_compute_implementation(uint32_t id) { for (size_t i=0u;i<sizeof(k_compute_implementations)/sizeof(k_compute_implementations[0]);++i) if(k_compute_implementations[i].implementation_id==id) return &k_compute_implementations[i]; return NULL; }
+size_t prom_shader_registry_reduction_shader_asset_count(void) { return sizeof(k_reduction_shader_assets)/sizeof(k_reduction_shader_assets[0]); }
+const prom_shader_asset* prom_shader_registry_reduction_shader_asset_at(size_t index) { return index < prom_shader_registry_reduction_shader_asset_count() ? &k_reduction_shader_assets[index] : NULL; }
+size_t prom_shader_registry_experimental_shader_asset_count(void) { return 0u; }
+const prom_shader_asset* prom_shader_registry_experimental_shader_asset_at(size_t index) { (void)index; return NULL; }
+const prom_compute_implementation* prom_shader_registry_find_compute_implementation(uint32_t id) { for (size_t i=0u;i<sizeof(k_compute_implementations)/sizeof(k_compute_implementations[0]);++i) if(k_compute_implementations[i].implementation_id==id) return &k_compute_implementations[i]; for (size_t i=0u;i<sizeof(k_reduction_compute_implementations)/sizeof(k_reduction_compute_implementations[0]);++i) if(k_reduction_compute_implementations[i].implementation_id==id) return &k_reduction_compute_implementations[i]; return NULL; }
 size_t prom_shader_registry_compute_implementation_count(void) { return sizeof(k_compute_implementations)/sizeof(k_compute_implementations[0]); }
 const prom_compute_implementation* prom_shader_registry_compute_implementation_at(size_t index) { return index < prom_shader_registry_compute_implementation_count() ? &k_compute_implementations[index] : NULL; }
+size_t prom_shader_registry_reduction_compute_implementation_count(void) { return sizeof(k_reduction_compute_implementations)/sizeof(k_reduction_compute_implementations[0]); }
+const prom_compute_implementation* prom_shader_registry_reduction_compute_implementation_at(size_t index) { return index < prom_shader_registry_reduction_compute_implementation_count() ? &k_reduction_compute_implementations[index] : NULL; }
+size_t prom_shader_registry_experimental_compute_implementation_count(void) { return 0u; }
+const prom_compute_implementation* prom_shader_registry_experimental_compute_implementation_at(size_t index) { (void)index; return NULL; }
 const prom_sgemm_kernel_dispatch_metadata* prom_shader_registry_dispatch_metadata(uint32_t id) { const prom_compute_implementation* impl=prom_shader_registry_find_compute_implementation(id); return impl == NULL ? NULL : impl->dispatch; }
 uint32_t prom_shader_registry_is_dispatchable(uint32_t id) { const prom_compute_implementation* impl=prom_shader_registry_find_compute_implementation(id); return impl != NULL && impl->dispatchable != 0u; }
 uint32_t prom_shader_registry_is_selector_eligible(uint32_t id) { const prom_compute_implementation* impl=prom_shader_registry_find_compute_implementation(id); return impl != NULL && impl->selector_eligible != 0u; }
@@ -75,8 +153,8 @@ uint32_t prom_shader_registry_validate_tables(const prom_shader_asset* assets, s
                                               const prom_compute_implementation* implementations, size_t implementation_count) {
   if (assets == NULL || implementations == NULL || asset_count == 0u || implementation_count == 0u) return 0u;
   for (size_t i=0u;i<asset_count;++i) { const prom_shader_asset* a=&assets[i]; if(a->shader_id==0u||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->entry_point==NULL||a->entry_point[0]=='\0'||a->spirv_words==NULL||a->spirv_size_bytes==0u||(a->spirv_size_bytes%sizeof(uint32_t))!=0u||(a->contains_inline_hlsl==0u&&a->inline_hlsl_block_count!=0u)||(a->contains_inline_hlsl!=0u&&(a->inline_hlsl_block_count==0u||a->foreign_targets==NULL||a->foreign_targets[0]=='\0'))) return 0u; for(size_t j=i+1u;j<asset_count;++j) if(a->shader_id==assets[j].shader_id) return 0u; }
-  for (size_t i=0u;i<implementation_count;++i) { const prom_compute_implementation* c=&implementations[i]; const prom_shader_asset* a=NULL; for(size_t k=0u;k<asset_count;++k) if(assets[k].shader_id==c->shader_id) { a=&assets[k]; break; } if(c->implementation_id==0u||c->operation_id!=PROM_SHADER_OPERATION_SGEMM||c->dispatch==NULL||a==NULL||a->stage!=PROM_SHADER_STAGE_COMPUTE||(c->selector_eligible!=0u&&c->dispatchable==0u)||(c->benchmark_enabled!=0u&&c->dispatchable==0u)||c->pipeline_slot>=PROM_COMPUTE_PIPELINE_COUNT) return 0u; for(size_t j=i+1u;j<implementation_count;++j) if(c->implementation_id==implementations[j].implementation_id) return 0u; } return 1u;
+  for (size_t i=0u;i<implementation_count;++i) { const prom_compute_implementation* c=&implementations[i]; const prom_shader_asset* a=NULL; for(size_t k=0u;k<asset_count;++k) if(assets[k].shader_id==c->shader_id) { a=&assets[k]; break; } if(c->implementation_id==0u||a==NULL||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->authority!=c->authority||(c->selector_eligible!=0u&&c->dispatchable==0u)||(c->benchmark_enabled!=0u&&c->dispatchable==0u)) return 0u; if(c->operation_id==PROM_SHADER_OPERATION_SGEMM){if(c->dispatch==NULL||c->pipeline_slot>=PROM_COMPUTE_PIPELINE_COUNT||c->pipeline_family!=PROM_COMPUTE_PIPELINE_FAMILY_SGEMM)return 0u;}else if(c->operation_id==PROM_SHADER_OPERATION_REDUCTION_SUM||c->operation_id==PROM_SHADER_OPERATION_REDUCTION_MAX||c->operation_id==PROM_SHADER_OPERATION_SOFTMAX){if(c->reduction_dispatch==NULL||c->pipeline_family!=PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION||c->selector_eligible!=0u)return 0u;}else{return 0u;} for(size_t j=i+1u;j<implementation_count;++j) if(c->implementation_id==implementations[j].implementation_id) return 0u; } return 1u;
 }
-uint32_t prom_shader_registry_validate(void) { return prom_shader_registry_validate_tables(k_shader_assets, prom_shader_registry_shader_asset_count(), k_compute_implementations, prom_shader_registry_compute_implementation_count()); }
+uint32_t prom_shader_registry_validate(void) { if(!prom_shader_registry_validate_tables(k_shader_assets, prom_shader_registry_shader_asset_count(), k_compute_implementations, prom_shader_registry_compute_implementation_count()))return 0u; if(!prom_shader_registry_validate_tables(k_reduction_shader_assets, prom_shader_registry_reduction_shader_asset_count(), k_reduction_compute_implementations, prom_shader_registry_reduction_compute_implementation_count()))return 0u; for(size_t i=0u;i<prom_shader_registry_shader_asset_count();++i)for(size_t j=0u;j<prom_shader_registry_reduction_shader_asset_count();++j)if(k_shader_assets[i].shader_id==k_reduction_shader_assets[j].shader_id)return 0u; for(size_t i=0u;i<prom_shader_registry_compute_implementation_count();++i)for(size_t j=0u;j<prom_shader_registry_reduction_compute_implementation_count();++j)if(k_compute_implementations[i].implementation_id==k_reduction_compute_implementations[j].implementation_id)return 0u; return 1u; }
 void prom_shader_registry_initialize_pipeline_instances(prom_compute_pipeline_instance* instances,size_t count,const VkPipeline* pipelines,size_t pipeline_count) { for(size_t i=0u;i<count;++i){ instances[i].implementation=prom_shader_registry_compute_implementation_at(i); instances[i].pipeline=VK_NULL_HANDLE; instances[i].status=PROM_PIPELINE_UNAVAILABLE; instances[i].failure_detail=0; if(instances[i].implementation!=NULL&&instances[i].implementation->pipeline_slot<pipeline_count){instances[i].pipeline=pipelines[instances[i].implementation->pipeline_slot];instances[i].status=instances[i].pipeline!=VK_NULL_HANDLE?PROM_PIPELINE_READY:PROM_PIPELINE_FAILED;} } }
 VkPipeline prom_shader_registry_pipeline_for_variant(const prom_compute_pipeline_instance* instances,size_t count,uint32_t id) { for(size_t i=0u;i<count;++i) if(instances[i].implementation!=NULL&&instances[i].implementation->implementation_id==id&&instances[i].status==PROM_PIPELINE_READY) return instances[i].pipeline; return VK_NULL_HANDLE; }

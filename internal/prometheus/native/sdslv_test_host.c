@@ -1,6 +1,10 @@
 /* Fixed M30 test host. It remains a process executable, not a public
  * Prometheus runtime API: one SPIR-V module, one fixed result buffer, one
  * compiler-owned test input buffer, one selected case. */
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <ctype.h>
 #include <limits.h>
 #include <stdint.h>
@@ -12,7 +16,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <unistd.h>
+#include <time.h>
 #endif
 
 typedef struct result_record {
@@ -58,7 +62,8 @@ static void pause_ms(void) {
 #ifdef _WIN32
   Sleep(10);
 #else
-  usleep(10000);
+  const struct timespec delay = {0, 10000000L};
+  (void)nanosleep(&delay, NULL);
 #endif
 }
 

@@ -1,3 +1,7 @@
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "reactor_vulkan_sgemm_internal.h"
 #include "reactor_batch.h"
 
@@ -1473,6 +1477,14 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->backend_available = rt->available;
   out_services->backend_reason_code = rt->reason_code;
   out_services->test_flags = rt->test_flags;
+  out_services->reduction_test_flags = rt->reduction_test_flags;
+  out_services->reduction_ring_depth = rt->reduction_ring_depth;
+  out_services->timestamp_query_supported = rt->timestamp_query_supported;
+  out_services->timestamp_valid_bits = rt->timestamp_valid_bits;
+  out_services->timestamp_period_ns = rt->timestamp_period_ns;
+  out_services->validation_enabled = rt->validation_enabled;
+  out_services->validation_warning_count = rt->validation_warning_count;
+  out_services->validation_error_count = rt->validation_error_count;
 
   if (rt->available == 0u) return PROM_ERROR;
   if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
@@ -2574,6 +2586,10 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     (void)prom_async_reap_quarantined_slots(rt, 1u);
     vkDeviceWaitIdle(rt->device);
   }
+  if (rt->reduction_state != NULL) {
+    prom_reactor_runtime_reduction_cleanup_state(rt->reduction_state, rt->device);
+    rt->reduction_state = NULL;
+  }
   for (uint32_t async_index = 0u; async_index < PROM_SGEMM_ASYNC_MAX_TASKS; ++async_index) {
     prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].c);
     prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].b);
@@ -3536,6 +3552,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->async_next_feedback_sequence = 1u;
   runtime->async_next_submission_sequence = 1u;
   runtime->submission_ring_diag.configured_depth = PROM_SGEMM_SUBMISSION_RING_DEFAULT_DEPTH;
+  runtime->reduction_ring_depth = 2u;
   commit_slot_runtime_diag_snapshot(runtime, 0);
   stage_commit_async_snapshot(runtime, PROM_DOM_EVENT_NONE, 0);
 
@@ -3545,12 +3562,23 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
         cfg->batch_ring_depth >= 1u && cfg->batch_ring_depth <= PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH) {
       runtime->submission_ring_diag.configured_depth = cfg->batch_ring_depth;
     }
-    if (cfg->struct_size >= sizeof(PrometheusReactorConfig)) {
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, test_flags) + sizeof(cfg->test_flags)) {
       runtime->test_flags = cfg->test_flags;
+    }
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, async_test_flags) + sizeof(cfg->async_test_flags)) {
       runtime->async_test_flags = cfg->async_test_flags;
+    }
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, p15_shadow_canary_enabled) + sizeof(cfg->p15_shadow_canary_enabled)) {
       runtime->p15_shadow_canary_params.enabled = cfg->p15_shadow_canary_enabled != 0u ? 1u : 0u;
       runtime->p15_shadow_canary_state.enabled = runtime->p15_shadow_canary_params.enabled;
       runtime->p15_shadow_authority_gate.authority_enabled = runtime->p15_shadow_canary_params.enabled;
+    }
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, reduction_test_flags) + sizeof(cfg->reduction_test_flags)) {
+      runtime->reduction_test_flags = cfg->reduction_test_flags;
+    }
+    if (cfg->struct_size >= offsetof(PrometheusReactorConfig, reduction_ring_depth) + sizeof(cfg->reduction_ring_depth) &&
+        cfg->reduction_ring_depth >= 1u && cfg->reduction_ring_depth <= 4u) {
+      runtime->reduction_ring_depth = cfg->reduction_ring_depth;
     }
   }
   runtime->arena_budget_limit_bytes = PROM_ARENA_DEFAULT_BUDGET_BYTES;
@@ -3711,6 +3739,20 @@ int prom_reactor_runtime_vulkan_device_diagnostics_impl(void* handle, Prometheus
   out_diag->software_vulkan = rt->software_vulkan;
   out_diag->compute_queue_family = rt->queue_family_index;
   out_diag->transfer_queue_family = rt->transfer_queue_family_index;
+  return PROM_OK;
+}
+
+void* prom_reactor_runtime_reduction_state(void* handle) {
+  if (!prom_reactor_runtime_validate_handle(handle)) return NULL;
+  return ((prometheus_runtime*)handle)->reduction_state;
+}
+
+int prom_reactor_runtime_set_reduction_state(void* handle, void* state) {
+  prometheus_runtime* rt;
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->reduction_state != NULL && state != NULL && rt->reduction_state != state) return PROM_ERROR;
+  rt->reduction_state = state;
   return PROM_OK;
 }
 

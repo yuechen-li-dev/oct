@@ -3,6 +3,7 @@
 #include "test_harness.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -1462,6 +1463,7 @@ FACT(PrometheusReactor_AsyncDeferredCompletionIsExplicitlyObservable)
         if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) {
             break;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY), status.lifecycle_state, "async status should eventually reach ready");
     ASSERT_EQUAL(1u, status.ready, "ready state should be explicit");
@@ -1508,6 +1510,7 @@ FACT(PrometheusReactor_AsyncUseBeforeCompleteAndDoubleConsumeAreRejected)
         if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) {
             break;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_consume_async(handle, task_id, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "first consume after ready should succeed");
     ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_sgemm_consume_async(handle, task_id, out.data(), static_cast<std::uint32_t>(out.size()), &stage, &detail), "second consume should fail");
@@ -1548,12 +1551,14 @@ FACT(PrometheusReactor_AsyncInFlightOwnershipAndAbandonmentAreSafe)
         if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) {
             break;
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, first_task), "abandon after ready should be structurally safe");
 
     for (int attempts = 0; attempts < 2000; ++attempts) {
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_query_async(handle, second_task, &status), "second task query should succeed");
         if (status.lifecycle_state == static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_ASYNC_STATE_READY), status.lifecycle_state, "second independent task should become ready");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm_abandon_async(handle, second_task), "second ready task should abandon safely");

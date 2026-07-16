@@ -1,0 +1,89 @@
+fn ExpF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+[Fact]
+fn SmallOddWidthSum() -> void {
+    let values: ndarray<f32, [3u]> = [1.5, -2.0, 4.25];
+    let total: f32 = sum i in 0u..3u { values[i] };
+    Assert.Near(3.75, total, 0.00001, "odd-width FP32 sum must include every element");
+}
+
+[Fact]
+fn OneElementReductions() -> void {
+    let values: ndarray<f32, [1u]> = [-7.5];
+    let total: f32 = sum i in 0u..1u { values[i] };
+    var maximum: f32 = values[0u];
+    Assert.Near(-7.5, total, 0.00001, "one-element sum must preserve the only value");
+    Assert.Near(-7.5, maximum, 0.00001, "one-element max must preserve the only value");
+}
+
+[Fact]
+fn NegativeOnlyMaximum() -> void {
+    let values: ndarray<f32, [5u]> = [-9.0, -4.0, -12.0, -4.5, -20.0];
+    var maximum: f32 = values[0u];
+    for i in 1u..5u step 1u {
+        if values[i] > maximum { maximum = values[i]; }
+    }
+    Assert.Near(-4.0, maximum, 0.00001, "negative-only max must not use zero as its identity");
+}
+
+[Fact]
+fn StableSoftmaxLargePositive() -> void {
+    let values: ndarray<f32, [4u]> = [10000.0, 10001.0, 9999.0, 10000.0];
+    var maximum: f32 = values[0u];
+    for i in 1u..4u step 1u {
+        if values[i] > maximum { maximum = values[i]; }
+    }
+    var denominator: f32 = 0.0;
+    for i in 0u..4u step 1u {
+        denominator = denominator + ExpF32(values[i] - maximum);
+    }
+    let y0: f32 = ExpF32(values[0u] - maximum) / denominator;
+    let y1: f32 = ExpF32(values[1u] - maximum) / denominator;
+    let y2: f32 = ExpF32(values[2u] - maximum) / denominator;
+    let y3: f32 = ExpF32(values[3u] - maximum) / denominator;
+    Assert.Near(1.0, y0 + y1 + y2 + y3, 0.0001, "large-positive stable softmax outputs must sum to one");
+    Assert.True(y1 > y0, "largest large-positive input must receive the largest probability");
+    Assert.True(y0 > y2, "stable subtraction must preserve large-positive ordering");
+}
+
+[Fact]
+fn StableSoftmaxLargeNegative() -> void {
+    let values: ndarray<f32, [4u]> = [-10000.0, -9999.0, -10001.0, -10000.0];
+    var maximum: f32 = values[0u];
+    for i in 1u..4u step 1u {
+        if values[i] > maximum { maximum = values[i]; }
+    }
+    var denominator: f32 = 0.0;
+    for i in 0u..4u step 1u {
+        denominator = denominator + ExpF32(values[i] - maximum);
+    }
+    let y0: f32 = ExpF32(values[0u] - maximum) / denominator;
+    let y1: f32 = ExpF32(values[1u] - maximum) / denominator;
+    let y2: f32 = ExpF32(values[2u] - maximum) / denominator;
+    let y3: f32 = ExpF32(values[3u] - maximum) / denominator;
+    Assert.Near(1.0, y0 + y1 + y2 + y3, 0.0001, "large-negative stable softmax outputs must sum to one");
+    Assert.True(y1 > y0, "largest large-negative input must receive the largest probability");
+    Assert.True(y2 >= 0.0, "stable softmax probabilities must be nonnegative");
+}
+
+[Fact]
+fn EqualAndDominantSoftmax() -> void {
+    let equalValues: ndarray<f32, [4u]> = [7.0, 7.0, 7.0, 7.0];
+    var equalDenominator: f32 = 0.0;
+    for i in 0u..4u step 1u {
+        equalDenominator = equalDenominator + ExpF32(equalValues[i] - 7.0);
+    }
+    let equalProbability: f32 = ExpF32(equalValues[0u] - 7.0) / equalDenominator;
+    Assert.Near(0.25, equalProbability, 0.00001, "equal inputs must produce equal softmax probabilities");
+
+    let dominantValues: ndarray<f32, [4u]> = [80.0, -80.0, -80.0, -80.0];
+    var dominantDenominator: f32 = 0.0;
+    for i in 0u..4u step 1u {
+        dominantDenominator = dominantDenominator + ExpF32(dominantValues[i] - 80.0);
+    }
+    let dominantProbability: f32 = ExpF32(dominantValues[0u] - 80.0) / dominantDenominator;
+    Assert.Near(1.0, dominantProbability, 0.00001, "one dominant input must receive approximately all probability");
+}

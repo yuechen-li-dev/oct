@@ -2223,7 +2223,12 @@ func (l *lowering) resolveShaderResources(shader ast.ShaderDecl) ([]ast.Resource
 		if field.access == "" {
 			continue
 		}
-		resources = append(resources, ast.ResourceDecl{Name: name, Access: field.access, Type: field.typ})
+		resources = append(resources, ast.ResourceDecl{
+			Name:       name,
+			Access:     field.access,
+			Type:       field.typ,
+			Attributes: append([]ast.Attribute(nil), field.attributes...),
+		})
 	}
 	return resources, shader.ResourceBundleName, nil
 }

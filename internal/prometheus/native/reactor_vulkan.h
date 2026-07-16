@@ -33,6 +33,14 @@ typedef struct prom_vk_runtime_services {
   uint32_t backend_available;
   uint32_t backend_reason_code;
   uint32_t test_flags;
+  uint32_t reduction_test_flags;
+  uint32_t reduction_ring_depth;
+  uint32_t timestamp_query_supported;
+  uint32_t timestamp_valid_bits;
+  float timestamp_period_ns;
+  uint32_t validation_enabled;
+  uint32_t validation_warning_count;
+  uint32_t validation_error_count;
 } prom_vk_runtime_services;
 
 /* Test/audit-only request. This is never accepted by policy or the production
@@ -243,6 +251,30 @@ int prom_reactor_runtime_fft_diagnostics_sized_impl(void* handle,
                                                     PrometheusFftDiagnostics* out_diag,
                                                     uint32_t out_size);
 void prom_fft_diag_forget_handle(void* handle);
+
+int prom_reactor_reduction_plan_impl(const PrometheusReductionRequest* request,
+                                     PrometheusReductionPlan* out_plan);
+int prom_reactor_runtime_reduction_impl(void* handle,
+                                        const PrometheusReductionRequest* request,
+                                        PrometheusReductionExecutionResult* out_result);
+int prom_reactor_runtime_reduction_diagnostics_impl(void* handle,
+                                                    PrometheusReductionDiagnostics* out_diag);
+int prom_reactor_runtime_reduction_benchmark_impl(void* handle,
+                                                  const PrometheusReductionBenchmarkRequest* request,
+                                                  PrometheusReductionBenchmarkResult* out_result);
+int prom_reduction_validate_plan_for_test(const PrometheusReductionPlan* plan,
+                                          uint64_t available_temporary_bytes,
+                                          int32_t* out_detail);
+int prom_reduction_cpu_reference(const PrometheusReductionRequest* request,
+                                 float* output,
+                                 int32_t* out_detail);
+int prom_reduction_compare(const PrometheusReductionRequest* request,
+                           const float* expected,
+                           const float* actual,
+                           PrometheusReductionBenchmarkResult* out_result);
+void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);
+void* prom_reactor_runtime_reduction_state(void* handle);
+int prom_reactor_runtime_set_reduction_state(void* handle, void* state);
 
 int prom_reactor_runtime_destroy_impl(void* handle);
 int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps);

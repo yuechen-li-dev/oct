@@ -7,6 +7,22 @@ public batch API -> supported-mask validation -> reactor_batch.c
   -> M30 task ownership -> M29 shared physical ring -> Vulkan SGEMM
 ```
 
+## Fused reduction family
+
+M39b adds an independent row-wise reduction family through the same Vulkan
+runtime/device/compute-queue ownership. It has a dedicated persistent physical
+ring because its fixed multi-dispatch plans and temporary buffers are not SGEMM
+batch entries. One logical request records all reduction stages into one
+slot-owned command buffer and submit; compute barriers connect stages and one
+timestamp query pair measures the GPU interval.
+
+The public contract supports FP32 sum, max, and stable softmax only. Widths up
+to 1024 use one reduction group per row (and fused softmax); larger widths use
+1024-element partials followed by a bounded final stage. Ring buffers and five
+pipelines persist and grow/reuse by slot. Logical failure, quarantine, reap, and
+physical recyclability are separately diagnosed. This family does not alter
+the SGEMM shared ring, async tokens, batch engine, or selector.
+
 `reactor_batch.c` is the production batch authority. It owns immutable
 caller-order plans, logical-lane metadata, per-entry runtime facts,
 deterministic failure selection, admission stop/refill, staging, diagnostics

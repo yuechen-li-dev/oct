@@ -649,6 +649,9 @@ typedef struct prometheus_runtime {
   int init_detail_code;
   uint32_t test_flags;
   uint32_t async_test_flags;
+  uint32_t reduction_test_flags;
+  uint32_t reduction_ring_depth;
+  void* reduction_state;
 
   VkInstance instance;
   VkDebugUtilsMessengerEXT validation_debug_messenger;

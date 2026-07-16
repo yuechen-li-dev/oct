@@ -1,0 +1,37 @@
+namespace Prometheus.Production.Reduction;
+
+stream ReductionIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] RowMax: readwrite array<f32>;
+    [binding(2)] RowSum: readwrite array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record ReductionParams {
+    RowCount: u32;
+    ElementsPerRow: u32;
+    PartialsPerRow: u32;
+    InputRowStride: u32;
+    ChunkElements: u32;
+    TotalElements: u32;
+    StageRole: u32;
+    Reserved: u32;
+}
+
+// SDSL-V does not yet expose Exp as a compiler intrinsic.
+fn ExpF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+shader SoftmaxNormalize {
+    resources ReductionIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: ReductionParams) -> void {
+        let element: u32 = DispatchThreadID.x;
+        if element >= params.TotalElements { return; }
+        let row: u32 = element / params.ElementsPerRow;
+        Output[element] = ExpF32(Input[element] - RowMax[row]) / RowSum[row];
+        return;
+    }
+}

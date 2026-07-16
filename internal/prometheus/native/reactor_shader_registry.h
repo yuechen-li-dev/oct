@@ -19,6 +19,7 @@
 #include <vulkan/vulkan.h>
 
 #include "reactor_judgment_engine.h"
+#include "reactor_reduction_dispatch_metadata.h"
 #include "reactor_sgemm_dispatch_metadata.h"
 
 #ifdef __cplusplus
@@ -43,6 +44,23 @@ typedef enum prom_shader_source_language {
   PROM_SHADER_SOURCE_GLSL = 3u,
   PROM_SHADER_SOURCE_SPIRV = 4u,
 } prom_shader_source_language;
+
+typedef enum prom_shader_authority {
+  PROM_SHADER_AUTHORITY_PRODUCTION = 1u,
+  PROM_SHADER_AUTHORITY_EXPERIMENTAL = 2u,
+} prom_shader_authority;
+
+typedef enum prom_shader_operation {
+  PROM_SHADER_OPERATION_SGEMM = 1u,
+  PROM_SHADER_OPERATION_REDUCTION_SUM = 2u,
+  PROM_SHADER_OPERATION_REDUCTION_MAX = 3u,
+  PROM_SHADER_OPERATION_SOFTMAX = 4u,
+} prom_shader_operation;
+
+typedef enum prom_compute_pipeline_family {
+  PROM_COMPUTE_PIPELINE_FAMILY_SGEMM = 1u,
+  PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION = 2u,
+} prom_compute_pipeline_family;
 
 typedef enum prom_compute_pipeline_slot {
   PROM_COMPUTE_PIPELINE_BASELINE = 0u,
@@ -77,6 +95,12 @@ typedef struct prom_shader_asset {
   uint32_t contains_inline_hlsl;
   uint32_t inline_hlsl_block_count;
   const char* foreign_targets;
+  prom_shader_authority authority;
+  uint32_t descriptor_binding_count;
+  uint32_t push_constant_bytes;
+  uint32_t stage_role;
+  uint32_t minimum_row_width;
+  uint32_t maximum_row_width;
 } prom_shader_asset;
 
 typedef struct prom_compute_implementation {
@@ -90,6 +114,10 @@ typedef struct prom_compute_implementation {
   uint32_t selector_eligible;
   uint32_t dispatchable;
   prom_compute_pipeline_slot pipeline_slot;
+  const prom_reduction_kernel_dispatch_metadata* reduction_dispatch;
+  prom_shader_authority authority;
+  prom_compute_pipeline_family pipeline_family;
+  uint32_t family_pipeline_index;
 } prom_compute_implementation;
 
 typedef enum prom_pipeline_init_status {
@@ -109,9 +137,17 @@ typedef struct prom_compute_pipeline_instance {
 const prom_shader_asset* prom_shader_registry_find_shader(uint32_t shader_id);
 size_t prom_shader_registry_shader_asset_count(void);
 const prom_shader_asset* prom_shader_registry_shader_asset_at(size_t index);
+size_t prom_shader_registry_reduction_shader_asset_count(void);
+const prom_shader_asset* prom_shader_registry_reduction_shader_asset_at(size_t index);
+size_t prom_shader_registry_experimental_shader_asset_count(void);
+const prom_shader_asset* prom_shader_registry_experimental_shader_asset_at(size_t index);
 const prom_compute_implementation* prom_shader_registry_find_compute_implementation(uint32_t implementation_id);
 size_t prom_shader_registry_compute_implementation_count(void);
 const prom_compute_implementation* prom_shader_registry_compute_implementation_at(size_t index);
+size_t prom_shader_registry_reduction_compute_implementation_count(void);
+const prom_compute_implementation* prom_shader_registry_reduction_compute_implementation_at(size_t index);
+size_t prom_shader_registry_experimental_compute_implementation_count(void);
+const prom_compute_implementation* prom_shader_registry_experimental_compute_implementation_at(size_t index);
 const prom_sgemm_kernel_dispatch_metadata* prom_shader_registry_dispatch_metadata(uint32_t implementation_id);
 uint32_t prom_shader_registry_is_dispatchable(uint32_t implementation_id);
 uint32_t prom_shader_registry_is_selector_eligible(uint32_t implementation_id);

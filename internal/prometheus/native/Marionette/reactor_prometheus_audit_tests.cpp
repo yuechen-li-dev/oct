@@ -1103,8 +1103,8 @@ FACT(PrometheusM38bPackedSizingFiniteComparatorAndAggregation)
         const std::uint64_t elements = static_cast<std::uint64_t>(rows) * columns;
         return ((elements + 1u) / 2u) * sizeof(std::uint32_t);
     };
-    ASSERT_EQUAL(67'056ull, packed4Bytes(127u, 129u), "Packed4 pads hostile K to four lanes");
-    ASSERT_EQUAL(32'768ull, fp16Bytes(127u, 129u), "FP16 flat-half layout packs the odd final lane");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(67'056u), packed4Bytes(127u, 129u), "Packed4 pads hostile K to four lanes");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(32'768u), fp16Bytes(127u, 129u), "FP16 flat-half layout packs the odd final lane");
     const auto finiteEqual = [](float expected, float actual, float tolerance) {
         return std::isfinite(expected) && std::isfinite(actual) && std::fabs(expected - actual) <= tolerance;
     };

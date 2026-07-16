@@ -26,7 +26,8 @@
     "Marionette/reactor_p15_m9_shadow_calibration_tests.cpp", "Marionette/reactor_p15_m10_shadow_authority_gate_tests.cpp",
     "Marionette/reactor_p15_m11_shadow_would_act_tests.cpp", "Marionette/reactor_p15_m12_shadow_canary_tests.cpp",
     "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp",
-    "Marionette/reactor_fft_benchmarks.cpp"
+    "Marionette/reactor_fft_benchmarks.cpp", "Marionette/reactor_reduction_tests.cpp",
+    "Marionette/reactor_reduction_benchmarks.cpp"
   ],
   "slow_only_test_sources": [],
   "test_mains": {
@@ -41,7 +42,9 @@
     "reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h", "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h",
     "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h", "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h",
     "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h",
-    "reactor_vulkan_tiled_spirv.h"
+    "reactor_vulkan_tiled_spirv.h", "reactor_vulkan_reduction_row_sum_spirv.h",
+    "reactor_vulkan_reduction_row_max_spirv.h", "reactor_vulkan_reduction_softmax_exp_sum_spirv.h",
+    "reactor_vulkan_reduction_softmax_normalize_spirv.h", "reactor_vulkan_reduction_softmax_fused_spirv.h"
   ],
   "platform_exceptions": {"windows": [], "linux": []}
 }

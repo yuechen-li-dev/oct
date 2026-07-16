@@ -162,6 +162,14 @@ enum {
 };
 
 enum {
+  PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD = 1u << 0,
+  PROM_REDUCTION_TESTCFG_FAIL_QUEUE_SUBMIT = 1u << 1,
+  PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION = 1u << 2,
+  PROM_REDUCTION_TESTCFG_TEMPORARY_UNDERSIZED = 1u << 3,
+  PROM_REDUCTION_TESTCFG_MALFORMED_STAGE_METADATA = 1u << 4,
+};
+
+enum {
   PROM_OCCUPANCY_VARIANT_FALLBACK_NONE = 0,
   PROM_OCCUPANCY_VARIANT_FALLBACK_PATH_NOT_WIRED = 1,
   PROM_OCCUPANCY_VARIANT_FALLBACK_MC_BASELINE_STRICT_ALIAS = 2,
@@ -329,6 +337,222 @@ enum {
   PROM_FFT_DETAIL_ZERO_BATCH_COUNT = -6710,
   PROM_FFT_DETAIL_INVERSE_NORMALIZE_REQUIRES_INVERSE = -6711,
 };
+
+/* M39b is deliberately row-wise.  Arbitrary axes, dynamic shapes, and
+   non-FP32 storage are not part of this ABI. */
+enum {
+  PROM_REDUCTION_OPERATION_SUM = 1u,
+  PROM_REDUCTION_OPERATION_MAX = 2u,
+  PROM_REDUCTION_OPERATION_SOFTMAX = 3u,
+};
+
+enum {
+  PROM_REDUCTION_FINALIZATION_NONE = 0u,
+  PROM_REDUCTION_FINALIZATION_STABLE_SOFTMAX = 1u,
+};
+
+enum {
+  PROM_REDUCTION_STRATEGY_AUTO = 0u,
+  PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP = 1u,
+  PROM_REDUCTION_STRATEGY_COMPOSED = 2u,
+};
+
+enum {
+  PROM_REDUCTION_STAGE_ROW_SUM = 1u,
+  PROM_REDUCTION_STAGE_ROW_MAX = 2u,
+  PROM_REDUCTION_STAGE_SOFTMAX_EXP_SUM = 3u,
+  PROM_REDUCTION_STAGE_SOFTMAX_NORMALIZE = 4u,
+  PROM_REDUCTION_STAGE_SOFTMAX_FUSED = 5u,
+};
+
+enum {
+  PROM_REDUCTION_TEMPORARY_NONE = 0u,
+  PROM_REDUCTION_TEMPORARY_PARTIALS = 1u,
+  PROM_REDUCTION_TEMPORARY_ROW_MAX = 2u,
+  PROM_REDUCTION_TEMPORARY_ROW_SUM = 3u,
+};
+
+enum {
+  PROM_REDUCTION_FLAG_FORCE_FUSED = 1u << 0u,
+  PROM_REDUCTION_FLAG_FORCE_COMPOSED = 1u << 1u,
+};
+
+enum {
+  PROM_REDUCTION_DETAIL_INVALID_REQUEST = -6801,
+  PROM_REDUCTION_DETAIL_NULL_INPUT = -6802,
+  PROM_REDUCTION_DETAIL_NULL_OUTPUT = -6803,
+  PROM_REDUCTION_DETAIL_ZERO_ROW_COUNT = -6804,
+  PROM_REDUCTION_DETAIL_ZERO_ROW_WIDTH = -6805,
+  PROM_REDUCTION_DETAIL_UNSUPPORTED_OPERATION = -6806,
+  PROM_REDUCTION_DETAIL_INVALID_FINALIZATION = -6807,
+  PROM_REDUCTION_DETAIL_SIZE_OVERFLOW = -6808,
+  PROM_REDUCTION_DETAIL_INPUT_SIZE_MISMATCH = -6809,
+  PROM_REDUCTION_DETAIL_OUTPUT_SIZE_MISMATCH = -6810,
+  PROM_REDUCTION_DETAIL_ROW_LIMIT = -6811,
+  PROM_REDUCTION_DETAIL_WIDTH_LIMIT = -6812,
+  PROM_REDUCTION_DETAIL_ELEMENT_LIMIT = -6813,
+  PROM_REDUCTION_DETAIL_NONFINITE_INPUT = -6814,
+  PROM_REDUCTION_DETAIL_UNSUPPORTED_STRATEGY = -6815,
+  PROM_REDUCTION_DETAIL_MALFORMED_PLAN = -6816,
+  PROM_REDUCTION_DETAIL_TEMPORARY_UNDERSIZED = -6817,
+  PROM_REDUCTION_DETAIL_RESOURCE_CREATE_FAILED = -6818,
+  PROM_REDUCTION_DETAIL_PIPELINE_CREATE_FAILED = -6819,
+  PROM_REDUCTION_DETAIL_COMMAND_RECORD_FAILED = -6820,
+  PROM_REDUCTION_DETAIL_QUEUE_SUBMIT_FAILED = -6821,
+  PROM_REDUCTION_DETAIL_COMPLETION_UNCERTAIN = -6822,
+  PROM_REDUCTION_DETAIL_QUERY_FAILED = -6823,
+  PROM_REDUCTION_DETAIL_READBACK_FAILED = -6824,
+  PROM_REDUCTION_DETAIL_RUNTIME_UNAVAILABLE = -6825,
+};
+
+enum {
+  PROM_REDUCTION_SHADER_ROW_SUM = 16u,
+  PROM_REDUCTION_SHADER_ROW_MAX = 17u,
+  PROM_REDUCTION_SHADER_SOFTMAX_EXP_SUM = 18u,
+  PROM_REDUCTION_SHADER_SOFTMAX_NORMALIZE = 19u,
+  PROM_REDUCTION_SHADER_SOFTMAX_FUSED = 20u,
+};
+
+enum {
+  PROM_REDUCTION_IMPLEMENTATION_ROW_SUM = 1001u,
+  PROM_REDUCTION_IMPLEMENTATION_ROW_MAX = 1002u,
+  PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_EXP_SUM = 1003u,
+  PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_NORMALIZE = 1004u,
+  PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED = 1005u,
+};
+
+#define PROM_REDUCTION_MAX_STAGES 8u
+#define PROM_REDUCTION_MAX_ROWS 1024u
+#define PROM_REDUCTION_MAX_ELEMENTS_PER_ROW 1048576u
+#define PROM_REDUCTION_MAX_TOTAL_ELEMENTS 16777216u
+#define PROM_REDUCTION_LOCAL_SIZE 256u
+#define PROM_REDUCTION_ELEMENTS_PER_PARTIAL 1024u
+#define PROM_REDUCTION_SINGLE_STAGE_THRESHOLD 1024u
+
+typedef struct PrometheusReductionRequest {
+  uint32_t struct_size;
+  const float* input;
+  float* output;
+  uint32_t row_count;
+  uint32_t elements_per_row;
+  uint64_t input_element_count;
+  uint64_t output_element_count;
+  uint32_t operation;
+  uint32_t finalization;
+  uint32_t flags;
+} PrometheusReductionRequest;
+
+typedef struct PrometheusReductionStageDispatch {
+  uint32_t stage_role;
+  uint32_t shader_id;
+  uint32_t implementation_id;
+  uint32_t groups_x;
+  uint32_t groups_y;
+  uint32_t groups_z;
+  uint32_t input_elements_per_row;
+  uint32_t output_partials_per_row;
+  uint32_t temporary_role;
+  uint64_t temporary_bytes_written;
+} PrometheusReductionStageDispatch;
+
+typedef struct PrometheusReductionPlan {
+  uint32_t struct_size;
+  uint32_t operation;
+  uint32_t row_count;
+  uint32_t elements_per_row;
+  uint32_t strategy;
+  uint32_t local_size;
+  uint32_t elements_per_partial;
+  uint32_t partial_count;
+  uint32_t stage_count;
+  uint32_t temporary_alignment_bytes;
+  uint64_t temporary_bytes;
+  uint64_t replay_id;
+  PrometheusReductionStageDispatch stages[PROM_REDUCTION_MAX_STAGES];
+} PrometheusReductionPlan;
+
+typedef struct PrometheusReductionExecutionResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t gpu_timestamp_valid;
+  uint64_t gpu_duration_ns;
+  uint64_t end_to_end_ns;
+  uint64_t first_nonfinite_index;
+  uint32_t validation_error_count_before;
+  uint32_t validation_error_count_after;
+  PrometheusReductionPlan plan;
+} PrometheusReductionExecutionResult;
+
+typedef struct PrometheusReductionDiagnostics {
+  uint32_t struct_size;
+  uint32_t initialized;
+  uint32_t production_enabled;
+  uint32_t experimental_enabled;
+  uint32_t configured_ring_depth;
+  uint32_t physical_slot_count;
+  uint32_t acquire_cursor;
+  uint32_t outstanding_slots;
+  uint32_t quarantined_slots;
+  uint64_t next_logical_request_id;
+  uint64_t total_requests;
+  uint64_t successful_requests;
+  uint64_t logical_failure_count;
+  uint64_t physical_recycle_count;
+  uint64_t quarantine_count;
+  uint64_t reap_count;
+  uint64_t pipeline_create_count;
+  uint64_t descriptor_update_count;
+  uint64_t command_record_count;
+  uint64_t queue_submit_count;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t temporary_capacity_bytes;
+  uint64_t last_replay_id;
+  uint64_t last_gpu_duration_ns;
+  uint64_t last_end_to_end_ns;
+  uint32_t last_stage_count;
+  uint32_t last_physical_slot_id;
+  uint32_t last_physical_slot_generation;
+  int32_t last_detail_code;
+  uint32_t validation_enabled;
+  uint32_t validation_error_count;
+} PrometheusReductionDiagnostics;
+
+typedef struct PrometheusReductionBenchmarkRequest {
+  uint32_t struct_size;
+  PrometheusReductionRequest reduction;
+  uint32_t warmup_iterations;
+  uint32_t measured_iterations;
+} PrometheusReductionBenchmarkRequest;
+
+typedef struct PrometheusReductionBenchmarkResult {
+  uint32_t struct_size;
+  uint32_t completed_iterations;
+  uint32_t correctness_passed;
+  uint32_t validation_passed;
+  uint32_t device_lost;
+  uint32_t stage_count;
+  uint64_t temporary_bytes;
+  uint64_t replay_id;
+  uint64_t gpu_min_ns;
+  uint64_t gpu_median_ns;
+  uint64_t gpu_max_ns;
+  uint64_t end_to_end_min_ns;
+  uint64_t end_to_end_median_ns;
+  uint64_t end_to_end_max_ns;
+  uint32_t first_mismatch_row;
+  uint32_t first_mismatch_column;
+  float first_expected;
+  float first_actual;
+  float first_absolute_error;
+  float first_relative_error;
+  int32_t detail_code;
+} PrometheusReductionBenchmarkResult;
 
 typedef struct PrometheusFftRequest {
   uint32_t struct_size;
@@ -694,6 +918,11 @@ typedef struct PrometheusReactorConfig {
   uint32_t async_test_flags;
   /* Test-only M31 override. Zero preserves the production default depth two. */
   uint32_t batch_ring_depth;
+  /* M39b keeps reduction fault injection separate from the saturated SGEMM
+     test flag word.  Zero is the production behavior. */
+  uint32_t reduction_test_flags;
+  /* Zero preserves the reduction production default depth two. */
+  uint32_t reduction_ring_depth;
 } PrometheusReactorConfig;
 
 typedef struct PrometheusAsyncStatus {
@@ -1365,6 +1594,18 @@ PROM_REACTOR_API int prometheus_reactor_runtime_fft_diagnostics(void* handle,
 PROM_REACTOR_API int prometheus_reactor_runtime_fft_diagnostics_sized(void* handle,
                                                                       PrometheusFftDiagnostics* out_diag,
                                                                       uint32_t out_size);
+
+PROM_REACTOR_API int prometheus_reactor_reduction_plan(const PrometheusReductionRequest* request,
+                                                        PrometheusReductionPlan* out_plan);
+PROM_REACTOR_API int prometheus_reactor_runtime_reduction(void* handle,
+                                                          const PrometheusReductionRequest* request,
+                                                          PrometheusReductionExecutionResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_reduction_diagnostics(void* handle,
+                                                                      PrometheusReductionDiagnostics* out_diag);
+PROM_REACTOR_API int prometheus_reactor_runtime_reduction_benchmark(
+    void* handle,
+    const PrometheusReductionBenchmarkRequest* request,
+    PrometheusReductionBenchmarkResult* out_result);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);

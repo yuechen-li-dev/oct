@@ -28,7 +28,27 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(15), prom_shader_registry_shader_asset_count(), "all current SPIR-V assets must be present");
+  ASSERT_EQUAL(static_cast<std::size_t>(15), prom_shader_registry_shader_asset_count(), "SGEMM production assets must remain stable");
+  ASSERT_EQUAL(static_cast<std::size_t>(5), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets must be present");
+  ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
+}
+FACT(PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated) {
+  ASSERT_EQUAL(static_cast<std::size_t>(5), prom_shader_registry_reduction_compute_implementation_count(), "M39b must register five fixed reduction implementations");
+  ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_compute_implementation_count(), "promoted reduction implementations must not remain experimental");
+  for (std::size_t i = 0; i < prom_shader_registry_reduction_shader_asset_count(); ++i) {
+    const auto* asset = prom_shader_registry_reduction_shader_asset_at(i);
+    const auto* implementation = prom_shader_registry_reduction_compute_implementation_at(i);
+    ASSERT_TRUE(asset != nullptr && implementation != nullptr, "reduction registry rows must be complete");
+    ASSERT_EQUAL(static_cast<uint32_t>(PROM_REDUCTION_SHADER_ROW_SUM + i), asset->shader_id, "reduction shader IDs must remain stable");
+    ASSERT_EQUAL(static_cast<uint32_t>(PROM_REDUCTION_IMPLEMENTATION_ROW_SUM + i), implementation->implementation_id, "reduction implementation IDs must remain stable");
+    ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, asset->authority, "reduction source authority must be production");
+    ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, implementation->authority, "reduction implementation authority must be production");
+    ASSERT_EQUAL(PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION, implementation->pipeline_family, "reduction implementation must not enter the SGEMM pipeline family");
+    ASSERT_EQUAL(0u, implementation->selector_eligible, "fixed reduction plans must not enter the SGEMM selector");
+    ASSERT_EQUAL(1u, implementation->dispatchable, "promoted reduction implementation must remain dispatchable");
+    ASSERT_TRUE(implementation->reduction_dispatch != nullptr, "reduction implementation needs typed dispatch metadata");
+    ASSERT_TRUE(std::string(asset->source_path).find("/production/reduction/") != std::string::npos, "promoted reduction source must be confined to its production root");
+  }
 }
 FACT(PrometheusShaderRegistryReferencesAreValid) {
   for (std::size_t i = 0; i < prom_shader_registry_compute_implementation_count(); ++i) {
@@ -51,6 +71,9 @@ FACT(PrometheusComputeImplementationsPreserveEligibility) {
     ASSERT_EQUAL(1u, implementation->benchmark_enabled, "current explicit implementations remain benchmark-enabled");
     ASSERT_EQUAL(1u, implementation->selector_eligible, "current selector eligibility remains unchanged");
     ASSERT_EQUAL(1u, implementation->dispatchable, "current implementations remain dispatchable");
+    ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, implementation->authority, "SGEMM implementation authority must remain explicit production");
+    ASSERT_EQUAL(PROM_COMPUTE_PIPELINE_FAMILY_SGEMM, implementation->pipeline_family, "SGEMM implementations must remain in the SGEMM family");
+    ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, prom_shader_registry_find_shader(implementation->shader_id)->authority, "SGEMM shader authority must remain explicit production");
   }
 }
 FACT(PrometheusComputeImplementationsHaveDispatchMetadata) {
@@ -68,6 +91,11 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
     const auto* asset = prom_shader_registry_shader_asset_at(i);
     ASSERT_TRUE(manifest.find(asset->name) != std::string::npos, "every runtime asset must appear in manifest");
     if (asset->generated != 0u) ASSERT_TRUE(std::filesystem::exists(root / "internal/prometheus/native" / asset->generated_header_path), "generated header must exist");
+  }
+  for (std::size_t i = 0; i < prom_shader_registry_reduction_shader_asset_count(); ++i) {
+    const auto* asset = prom_shader_registry_reduction_shader_asset_at(i);
+    ASSERT_TRUE(manifest.find(asset->name) != std::string::npos, "every production reduction asset must appear in manifest");
+    ASSERT_TRUE(std::filesystem::exists(root / "internal/prometheus/native" / asset->generated_header_path), "generated reduction header must exist");
   }
   const auto* proof = prom_shader_registry_find_shader(15u);
   ASSERT_TRUE(proof != nullptr, "M28 proof asset must be registered");
@@ -106,6 +134,8 @@ FACT(PrometheusShaderRegistryNegativeValidationCoverage) {
   a[0].stage = PROM_SHADER_STAGE_VERTEX; ASSERT_FALSE(valid(a, i), "wrong shader stage must fail"); a = assets();
   a[0].spirv_size_bytes = 3u; ASSERT_FALSE(valid(a, i), "invalid SPIR-V byte size must fail"); a = assets();
   i[0].dispatchable = 0u; ASSERT_FALSE(valid(a, i), "selector-eligible nondispatchable implementation must fail"); i = implementations();
+  i[0].authority = PROM_SHADER_AUTHORITY_EXPERIMENTAL; ASSERT_FALSE(valid(a, i), "implementation and shader authority mismatch must fail"); i = implementations();
+  i[0].pipeline_family = PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION; ASSERT_FALSE(valid(a, i), "SGEMM implementation in reduction family must fail"); i = implementations();
   i[0].dispatch = nullptr; ASSERT_FALSE(valid(a, i), "missing dispatch metadata must fail");
 }
 FACT(PrometheusShaderRegistryRejectsStaleGeneratedOutput) {

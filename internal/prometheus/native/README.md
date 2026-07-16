@@ -21,7 +21,9 @@ Current Vulkan reactor file topology (P12 M5 baseline):
 - `reactor_vulkan_fft.c`
   - inert future FFT reactor family stub; no capability/API/runtime behavior claims.
 - `reactor_vulkan_fused_reduction.c`
-  - inert future fused-reduction reactor family stub; no capability/API/runtime behavior claims.
+  - production M39b row-wise FP32 sum/max/stable-softmax family: deterministic
+    plans, one-workgroup and staged dispatch, persistent family ring,
+    device-local reusable temporaries, timestamps, validation, and CPU oracle.
 
 Topology rule:
 
@@ -51,7 +53,9 @@ Scope guardrails for this topology:
 
 - `reactor_vulkan_common.c` is for genuinely shared Vulkan plumbing only.
 - SGEMM policy/runtime behavior stays localized in `reactor_vulkan_sgemm.c` for auditability.
-- FFT/fused-reduction files remain inert until implementation milestones explicitly add behavior.
+- FFT remains inert until an implementation milestone explicitly adds behavior.
+- Fused reduction is row-wise and bounded; it does not own arbitrary tensor
+  axes, a graph executor, normalization policy, or SGEMM selection.
 
 ## Native build entrypoints
 

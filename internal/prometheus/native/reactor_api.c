@@ -155,6 +155,28 @@ int prometheus_reactor_runtime_fft_diagnostics_sized(void* handle, PrometheusFft
   return prom_reactor_runtime_fft_diagnostics_sized_impl(handle, out_diag, out_size);
 }
 
+int prometheus_reactor_reduction_plan(const PrometheusReductionRequest* request,
+                                      PrometheusReductionPlan* out_plan) {
+  return prom_reactor_reduction_plan_impl(request, out_plan);
+}
+
+int prometheus_reactor_runtime_reduction(void* handle,
+                                         const PrometheusReductionRequest* request,
+                                         PrometheusReductionExecutionResult* out_result) {
+  return prom_reactor_runtime_reduction_impl(handle, request, out_result);
+}
+
+int prometheus_reactor_runtime_reduction_diagnostics(void* handle,
+                                                     PrometheusReductionDiagnostics* out_diag) {
+  return prom_reactor_runtime_reduction_diagnostics_impl(handle, out_diag);
+}
+
+int prometheus_reactor_runtime_reduction_benchmark(void* handle,
+                                                   const PrometheusReductionBenchmarkRequest* request,
+                                                   PrometheusReductionBenchmarkResult* out_result) {
+  return prom_reactor_runtime_reduction_benchmark_impl(handle, request, out_result);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

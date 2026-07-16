@@ -12,6 +12,7 @@ This is the repository ownership guide. Language truth remains in
 | `examples/SDSL-V/` | examples, `.sdslvtest`, permanent benchmarks | no |
 | `examples/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
 | `internal/prometheus/shaders/sdslv/production/` | sole Prometheus SDSL-V source authority | yes |
+| `internal/prometheus/shaders/sdslv/production/reduction/` | M39b row-wise sum/max/softmax source authority | yes |
 | `internal/prometheus/shaders/sdslv/experimental/` | future candidates; policy only today | no |
 | `internal/prometheus/shaders/sdslv/historical/` | policy pointer to audit evidence | no |
 | `internal/prometheus/native/` | registry, headers, runtime, tests, generator | yes |
@@ -56,6 +57,20 @@ unchanged; registry membership is not universal selection.
 ID 15 is the generated inline-HLSL proof asset; it is non-dispatchable and
 non-selector-eligible.
 
+## Production reduction portfolio
+
+M39b promotes five row-wise FP32 reduction shaders under
+`internal/prometheus/shaders/sdslv/production/reduction/`. Shader IDs 16–20 and
+implementation IDs 1001–1005 are owned by the native manifest and the dedicated
+production reduction registry table. They are dispatchable by the fixed
+reduction planner but are not eligible for the SGEMM selector.
+
+Permanent semantic GPU coverage is in
+`examples/SDSL-V/M39b/FusedReductionSemantics.sdslvtest`; native lifecycle,
+planning, fault, validation, and hardware correctness coverage is in
+`internal/prometheus/native/Marionette/reactor_reduction_tests.cpp`; the bounded
+RTX corpus is in `reactor_reduction_benchmarks.cpp`.
+
 ## Artifact and validation workflow
 
 Generated headers name their source, entry point, generator command, compiler
@@ -93,14 +108,14 @@ stable ID, generated header metadata, and entry point to the manifest; updates
 the registry; regenerates; extends correctness coverage; and runs all checks.
 Retirement is allowed only after production unlinking and must preserve ID policy.
 
-The next fused-reduction work begins at:
+New reduction candidates begin at:
 
 ```text
 internal/prometheus/shaders/sdslv/experimental/reduction/
 ```
 
-Eventual production source is `production/reduction/`; metadata belongs in the
-native manifest, generated headers in `internal/prometheus/native/`, runtime
-in the reserved `reactor_vulkan_fused_reduction.c`, benchmarks/tests in the
-existing permanent homes, and history in `DevelopmentReport/`. No reduction
-implementation is introduced by this layout milestone.
+Approved M39b production source is `production/reduction/`; metadata belongs in
+the native manifest, generated headers in `internal/prometheus/native/`, runtime
+in `reactor_vulkan_fused_reduction.c`, benchmarks/tests in the existing
+permanent homes, and history in `DevelopmentReport/`. Experimental sources may
+not be selected or imported by production registry tables.

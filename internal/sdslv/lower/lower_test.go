@@ -32,7 +32,7 @@ func TestSdslvInlineHlslRejectsUnsupportedLoweringTarget(t *testing.T) {
 }
 
 func TestSdslvTensorAssignLowersToVDMIRWithCanonicalOrder(t *testing.T) {
-tokens, err := lex.Analyze(source.File{Path: "tensor.sdslv", Text: `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
+	tokens, err := lex.Analyze(source.File{Path: "tensor.sdslv", Text: `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
   var C: array<f32, 2u> = Fill(0.0);
   tensor C[i] = Sum[k](A[i, k] * B[k]);
   return;
@@ -99,7 +99,7 @@ stage compute [numthreads(1, 1, 1)] fn Add() -> void {
 }
 
 func TestSdslvFixedArrayIndexCarriesCompilerOwnedRowMajorShape(t *testing.T) {
-tokens, err := lex.Analyze(source.File{Path: "rank4.sdslv", Text: `fn Rank4(A: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>) -> void {
+	tokens, err := lex.Analyze(source.File{Path: "rank4.sdslv", Text: `fn Rank4(A: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u>) -> void {
   var B: array<array<array<array<f32, 5u>, 4u>, 3u>, 2u> = Fill(0.0);
   tensor B[i, j, k, l] = A[i, j, k, l];
   return;
@@ -134,7 +134,7 @@ tokens, err := lex.Analyze(source.File{Path: "rank4.sdslv", Text: `fn Rank4(A: a
 }
 
 func TestSdslvNdarrayLowersToDistinctTypeAndSourceOrderedLiteral(t *testing.T) {
-tokens, err := lex.Analyze(source.File{Path: "ndarray.sdslv", Text: `fn F() -> void {
+	tokens, err := lex.Analyze(source.File{Path: "ndarray.sdslv", Text: `fn F() -> void {
   let A: ndarray<u32, [2u, 3u]> = [1u, 2u, 3u, 4u, 5u, 6u];
   var B: ndarray<u32, [2u, 3u]> = Fill(0u);
   tensor B[i, j] = A[i, j];
@@ -1252,6 +1252,26 @@ return;
 	}
 	if loop.LoopHint != vdmir.LoopHintUnroll {
 		t.Fatalf("loop hint = %q, want unroll", loop.LoopHint)
+	}
+}
+
+func TestModulePreservesExplicitBindingsFromStreamResourceBundle(t *testing.T) {
+	mir := lowerSource(t, `stream IO {
+[binding(3)] AlphaOutput: readwrite array<f32>;
+[binding(0)] ZetaInput: readonly array<f32>;
+}
+shader S {
+resources IO;
+stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}`)
+	if len(mir.Resources) != 2 {
+		t.Fatalf("len(Resources) = %d, want 2", len(mir.Resources))
+	}
+	if got := mir.Resources[0]; got.Name != "AlphaOutput" || got.Binding.Binding != 3 || !got.Binding.Explicit {
+		t.Fatalf("resource[0] = %#v, want AlphaOutput at explicit binding 3", got)
+	}
+	if got := mir.Resources[1]; got.Name != "ZetaInput" || got.Binding.Binding != 0 || !got.Binding.Explicit {
+		t.Fatalf("resource[1] = %#v, want ZetaInput at explicit binding 0", got)
 	}
 }
 

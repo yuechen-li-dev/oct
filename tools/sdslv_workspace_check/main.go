@@ -28,14 +28,25 @@ type workspace struct {
 type shaderAsset struct {
 	ID             uint32 `json:"id"`
 	Name           string `json:"name"`
+	Authority      string `json:"authority"`
 	SourceLanguage string `json:"source_language"`
 	Source         string `json:"source"`
 	Header         string `json:"header"`
 }
 
+type computeImplementation struct {
+	ID               uint32 `json:"id"`
+	Name             string `json:"name"`
+	Authority        string `json:"authority"`
+	Operation        string `json:"operation"`
+	ShaderID         uint32 `json:"shader_id"`
+	SelectorEligible bool   `json:"selector_eligible"`
+}
+
 type shaderManifest struct {
-	Workspace    workspace     `json:"workspace"`
-	ShaderAssets []shaderAsset `json:"shader_assets"`
+	Workspace              workspace               `json:"workspace"`
+	ShaderAssets           []shaderAsset           `json:"shader_assets"`
+	ComputeImplementations []computeImplementation `json:"compute_implementations"`
 }
 
 type canonicalArtifact struct {
@@ -96,23 +107,41 @@ func check(root string, inventory bool) error {
 	}
 	seenIDs := map[uint32]string{}
 	seenSources := map[string]string{}
+	assetsByID := map[uint32]shaderAsset{}
 	lines := make([]string, 0)
-	for _, asset := range m.ShaderAssets {
+	for index, asset := range m.ShaderAssets {
 		if prior, ok := seenIDs[asset.ID]; ok {
-			return fmt.Errorf("duplicate production shader id %d: %s and %s", asset.ID, prior, asset.Name)
+			return fmt.Errorf("duplicate shader id %d: %s and %s", asset.ID, prior, asset.Name)
+		}
+		if index != 0 && asset.ID <= m.ShaderAssets[index-1].ID {
+			return fmt.Errorf("shader assets are not in deterministic ascending id order at %d", asset.ID)
 		}
 		seenIDs[asset.ID] = asset.Name
+		assetsByID[asset.ID] = asset
 		if asset.SourceLanguage != "sdslv" {
 			continue
 		}
-		if !strings.HasPrefix(asset.Source, m.Workspace.ProductionSourceRoot+"/") {
-			return fmt.Errorf("production registry asset %d (%s) points outside production source root: %s", asset.ID, asset.Name, asset.Source)
+		authority := asset.Authority
+		if authority == "" {
+			authority = "production"
 		}
-		if strings.Contains(asset.Source, "/experimental/") || strings.Contains(asset.Source, "/historical/") {
-			return fmt.Errorf("production registry asset %d points at non-production source: %s", asset.ID, asset.Source)
+		switch authority {
+		case "production":
+			if !strings.HasPrefix(asset.Source, m.Workspace.ProductionSourceRoot+"/") {
+				return fmt.Errorf("production registry asset %d (%s) points outside production source root: %s", asset.ID, asset.Name, asset.Source)
+			}
+			if strings.Contains(asset.Source, "/experimental/") || strings.Contains(asset.Source, "/historical/") {
+				return fmt.Errorf("production registry asset %d points at non-production source: %s", asset.ID, asset.Source)
+			}
+		case "experimental":
+			if !strings.HasPrefix(asset.Source, m.Workspace.ExperimentalSourceRoot+"/") {
+				return fmt.Errorf("experimental registry asset %d (%s) points outside experimental source root: %s", asset.ID, asset.Name, asset.Source)
+			}
+		default:
+			return fmt.Errorf("shader asset %d (%s) has unknown authority %q", asset.ID, asset.Name, authority)
 		}
 		if prior, ok := seenSources[asset.Source]; ok {
-			return fmt.Errorf("duplicate SDSL-V production source authority %s: %s and %s", asset.Source, prior, asset.Name)
+			return fmt.Errorf("duplicate SDSL-V source authority %s: %s and %s", asset.Source, prior, asset.Name)
 		}
 		seenSources[asset.Source] = asset.Name
 		if err := mustExist(root, asset.Source); err != nil {
@@ -137,7 +166,46 @@ func check(root string, inventory bool) error {
 			return fmt.Errorf("generated header %s: %w", asset.Header, err)
 		}
 		if inventory {
-			lines = append(lines, fmt.Sprintf("id=%d name=%s source_sha256=%s module_sha256=%s source=%s header=%s", asset.ID, asset.Name, fileHash(filepath.Join(root, filepath.FromSlash(asset.Source))), moduleHash, asset.Source, asset.Header))
+			lines = append(lines, fmt.Sprintf("id=%d name=%s authority=%s source_sha256=%s module_sha256=%s source=%s header=%s", asset.ID, asset.Name, authority, fileHash(filepath.Join(root, filepath.FromSlash(asset.Source))), moduleHash, asset.Source, asset.Header))
+		}
+	}
+	seenImplementationIDs := map[uint32]string{}
+	for index, implementation := range m.ComputeImplementations {
+		if prior, ok := seenImplementationIDs[implementation.ID]; ok {
+			return fmt.Errorf("duplicate compute implementation id %d: %s and %s", implementation.ID, prior, implementation.Name)
+		}
+		if index != 0 && implementation.ID <= m.ComputeImplementations[index-1].ID {
+			return fmt.Errorf("compute implementations are not in deterministic ascending id order at %d", implementation.ID)
+		}
+		seenImplementationIDs[implementation.ID] = implementation.Name
+		asset, ok := assetsByID[implementation.ShaderID]
+		if !ok {
+			return fmt.Errorf("compute implementation %d (%s) references unknown shader %d", implementation.ID, implementation.Name, implementation.ShaderID)
+		}
+		implementationAuthority := implementation.Authority
+		if implementationAuthority == "" {
+			implementationAuthority = "production"
+		}
+		assetAuthority := asset.Authority
+		if assetAuthority == "" {
+			assetAuthority = "production"
+		}
+		if implementationAuthority != assetAuthority {
+			return fmt.Errorf("compute implementation %d authority %q disagrees with shader %d authority %q", implementation.ID, implementationAuthority, asset.ID, assetAuthority)
+		}
+		if implementationAuthority == "experimental" && implementation.SelectorEligible {
+			return fmt.Errorf("experimental compute implementation %d (%s) must not be selector eligible", implementation.ID, implementation.Name)
+		}
+		isReduction := implementation.Operation == "row-sum" || implementation.Operation == "row-max" || implementation.Operation == "softmax"
+		if isReduction {
+			root := m.Workspace.ProductionSourceRoot
+			if implementationAuthority == "experimental" {
+				root = m.Workspace.ExperimentalSourceRoot
+			}
+			expectedPrefix := root + "/reduction/"
+			if !strings.HasPrefix(asset.Source, expectedPrefix) {
+				return fmt.Errorf("%s reduction implementation %d source must be confined to %s: %s", implementationAuthority, implementation.ID, expectedPrefix, asset.Source)
+			}
 		}
 	}
 	if err := checkCanonicalArtifacts(root); err != nil {
