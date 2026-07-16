@@ -350,3 +350,14 @@ readback: none before normalization
 That milestone must choose and measure its own normalization contract. M45
 does not preselect RMSNorm versus LayerNorm, add scale/bias state, fuse the
 residual, or introduce a transformer graph.
+
+## M46 first-consumer status
+
+M46 now consumes the exact retained unread Z buffer in real bounded one-submit
+and same-queue semaphore split-submit paths. It performs FP32 RMSNorm with a persistent generation-safe
+scale vector, explicit `InvRms`, fused or staged sum-of-squares reduction, and
+separate or exclusive in-place Z-to-N ownership. No Z readback occurs and only
+optional final N crosses the host boundary. M45's API, shader identity, replay
+behavior, selector behavior, and experimental classification are unchanged.
+The full validation-clean M46 corpus and FFN-facing handoff are documented in
+the M46 report.

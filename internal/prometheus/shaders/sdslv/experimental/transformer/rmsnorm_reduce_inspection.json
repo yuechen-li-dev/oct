@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M46",
+  "identity": "m46-rmsnorm-sumsq-fp32-fused-staged-v1",
+  "entry_point": "RmsNormReduce_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "937cdc8e4adc6d79d5b629a71bf9d3825f34297685849f9a2dd80d6d2e6909f3",
+  "hlsl_sha256": "fc37afe0690519c4811ca7a8392392b9a12e780b7a2236d22bdf3bb850752cd2",
+  "spirv_sha256": "a9af5205bcd60571ec11384ff2499c2bb8f548ce87514d038504d7f596ecb3fa",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "FP32 row-wise logical-width sum of squares, bounded 1024-element partials, and reciprocal square root with exact positive epsilon"
+}

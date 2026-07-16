@@ -321,6 +321,58 @@ type m45Artifact struct {
 	Records []m45ArtifactRecord `json:"records"`
 }
 
+type m46ArtifactRecord struct {
+	Workload          string `json:"workload"`
+	Strategy          string `json:"strategy"`
+	SubmitPolicy      string `json:"submit_policy"`
+	ReductionPlan     string `json:"reduction_plan"`
+	Tokens            uint32 `json:"tokens"`
+	ModelWidth        uint32 `json:"model_width"`
+	HeadDim           uint32 `json:"head_dim"`
+	Correct           bool   `json:"correct"`
+	SubmitCount       uint32 `json:"submit_count"`
+	DispatchCount     uint32 `json:"dispatch_count"`
+	BarrierCount      uint32 `json:"barrier_count"`
+	ReplayID          uint64 `json:"replay_id"`
+	M45ReplayID       uint64 `json:"m45_replay_id"`
+	NGeneration       uint64 `json:"n_generation"`
+	ReductionGPUNS    uint64 `json:"reduction_gpu_ns"`
+	FinalReductionNS  uint64 `json:"final_reduction_gpu_ns"`
+	InvRmsGPUNS       uint64 `json:"inv_rms_gpu_ns"`
+	ApplyGPUNS        uint64 `json:"apply_gpu_ns"`
+	M46GPUNS          uint64 `json:"m46_gpu_ns"`
+	ResidualGPUNS     uint64 `json:"residual_gpu_ns"`
+	CompleteGPUNS     uint64 `json:"complete_gpu_ns"`
+	FinalReadbackNS   uint64 `json:"final_readback_ns"`
+	HostCPUNormNS     uint64 `json:"host_cpu_norm_ns"`
+	EndToEndNS        uint64 `json:"end_to_end_ns"`
+	RetainedBytes     uint64 `json:"retained_bytes"`
+	ExactRequestBytes uint64 `json:"exact_request_bytes"`
+	PartialBytes      uint64 `json:"partial_bytes"`
+	InvRmsBytes       uint64 `json:"inv_rms_bytes"`
+	InPlaceSavedBytes uint64 `json:"in_place_saved_bytes"`
+}
+
+type m46Artifact struct {
+	Schema              string  `json:"schema"`
+	Epsilon             float32 `json:"epsilon"`
+	WarmupsPerPlan      uint32  `json:"warmups_per_plan"`
+	MeasurementsPerPlan uint32  `json:"measurements_per_plan"`
+	Validation          struct {
+		Warnings uint32 `json:"warnings"`
+		Errors   uint32 `json:"errors"`
+	} `json:"validation"`
+	PrimaryRepeats struct {
+		Warm10M46GPUNS       uint64 `json:"warm_10_m46_gpu_ns"`
+		Warm10CompleteGPUNS  uint64 `json:"warm_10_complete_gpu_ns"`
+		Warm10EndToEndNS     uint64 `json:"warm_10_end_to_end_ns"`
+		Warm100M46GPUNS      uint64 `json:"warm_100_m46_gpu_ns"`
+		Warm100CompleteGPUNS uint64 `json:"warm_100_complete_gpu_ns"`
+		Warm100EndToEndNS    uint64 `json:"warm_100_end_to_end_ns"`
+	} `json:"primary_repeats"`
+	Records []m46ArtifactRecord `json:"records"`
+}
+
 var wordRE = regexp.MustCompile(`0x([0-9a-fA-F]{8})u`)
 
 func main() {
@@ -517,10 +569,117 @@ func check(root string, inventory bool) error {
 	if err := checkM45Artifact(root); err != nil {
 		return err
 	}
+	if err := checkM46Artifact(root); err != nil {
+		return err
+	}
 	if inventory {
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Println(line)
+		}
+	}
+	return nil
+}
+
+func checkM46Artifact(root string) error {
+	var artifact m46Artifact
+	path := filepath.Join(root, "internal", "prometheus", "DevelopmentReport", "artifacts", "M46", "device_resident_rmsnorm_rtx3070.json")
+	if err := readJSON(path, &artifact); err != nil {
+		return fmt.Errorf("M46 RMSNorm artifact: %w", err)
+	}
+	if artifact.Schema != "prometheus.m46.device-resident-rmsnorm.v1" || artifact.Epsilon != 1.0e-5 ||
+		artifact.WarmupsPerPlan != 16 || artifact.MeasurementsPerPlan != 5 ||
+		artifact.PrimaryRepeats.Warm10M46GPUNS == 0 ||
+		artifact.PrimaryRepeats.Warm10CompleteGPUNS == 0 ||
+		artifact.PrimaryRepeats.Warm10EndToEndNS == 0 ||
+		artifact.PrimaryRepeats.Warm100M46GPUNS == 0 ||
+		artifact.PrimaryRepeats.Warm100CompleteGPUNS == 0 ||
+		artifact.PrimaryRepeats.Warm100EndToEndNS == 0 {
+		return fmt.Errorf("M46 RMSNorm artifact lacks identity or deterministic warm evidence")
+	}
+	if artifact.Validation.Warnings != 0 || artifact.Validation.Errors != 0 {
+		return fmt.Errorf("M46 RMSNorm artifact is not validation-clean: warnings=%d errors=%d",
+			artifact.Validation.Warnings, artifact.Validation.Errors)
+	}
+	workloads := map[string][3]uint32{
+		"tiny": {16, 128, 16}, "primary": {128, 1024, 128},
+		"more_tokens": {256, 1024, 128}, "wider": {128, 2048, 256},
+		"awkward": {127, 1001, 127}, "staged_4096": {128, 4096, 512},
+		"token_boundary": {1024, 1024, 128},
+	}
+	plans := [][2]string{
+		{"separate_output", "one"}, {"separate_output", "two"},
+		{"in_place_z", "one"}, {"in_place_z", "two"},
+		{"m43_m44_m45_no_normalization", "one"},
+		{"cpu_host_bounce", "final_z_readback_cpu_rmsnorm_no_reupload"},
+	}
+	want := make(map[string]bool, len(workloads)*len(plans))
+	for workload := range workloads {
+		for _, plan := range plans {
+			want[workload+"/"+plan[0]+"/"+plan[1]] = false
+		}
+	}
+	want["primary/in_place_z/one_forced_staged"] = false
+	if len(artifact.Records) != len(want) {
+		return fmt.Errorf("M46 RMSNorm artifact record count: got %d want %d", len(artifact.Records), len(want))
+	}
+	for _, record := range artifact.Records {
+		key := record.Workload + "/" + record.Strategy + "/" + record.SubmitPolicy
+		seen, known := want[key]
+		if !known || seen {
+			return fmt.Errorf("M46 RMSNorm artifact has unexpected or duplicate record %s", key)
+		}
+		want[key] = true
+		shape := workloads[record.Workload]
+		if record.Tokens != shape[0] || record.ModelWidth != shape[1] || record.HeadDim != shape[2] ||
+			!record.Correct || record.ResidualGPUNS == 0 || record.CompleteGPUNS == 0 ||
+			record.FinalReadbackNS == 0 || record.EndToEndNS == 0 {
+			return fmt.Errorf("M46 RMSNorm artifact record %s lacks shape, timing, or correctness evidence", key)
+		}
+		saved := uint64(record.Tokens) * uint64(record.ModelWidth) * 4
+		switch record.Strategy {
+		case "separate_output", "in_place_z":
+			wantSubmits := uint32(1)
+			if record.SubmitPolicy == "two" {
+				wantSubmits = 2
+			}
+			wantReduction := "fused"
+			wantDispatches := uint32(2)
+			wantBarriers := uint32(5)
+			wantPartials := uint64(0)
+			if record.ModelWidth > 1024 || record.SubmitPolicy == "one_forced_staged" {
+				wantReduction = "staged"
+				wantDispatches = 3
+				wantBarriers = 6
+				partials := (record.ModelWidth + 1023) / 1024
+				wantPartials = uint64(record.Tokens) * uint64(partials) * 4
+			}
+			if record.SubmitCount != wantSubmits || record.ReductionPlan != wantReduction ||
+				record.DispatchCount != wantDispatches || record.BarrierCount != wantBarriers ||
+				record.ReplayID == 0 || record.M45ReplayID == 0 || record.NGeneration == 0 ||
+				record.ReductionGPUNS == 0 || record.InvRmsGPUNS == 0 ||
+				record.ApplyGPUNS == 0 || record.M46GPUNS == 0 ||
+				record.RetainedBytes == 0 || record.ExactRequestBytes == 0 ||
+				record.PartialBytes != wantPartials || record.InvRmsBytes != uint64(record.Tokens)*4 ||
+				record.InPlaceSavedBytes != saved {
+				return fmt.Errorf("M46 device record %s lacks plan, identity, timing, or memory evidence", key)
+			}
+			if wantReduction == "staged" && record.FinalReductionNS == 0 {
+				return fmt.Errorf("M46 staged record %s lacks final reduction timing", key)
+			}
+		case "m43_m44_m45_no_normalization":
+			if record.M46GPUNS != 0 || record.HostCPUNormNS != 0 || record.ReductionPlan != "none" {
+				return fmt.Errorf("M46 no-normalization record %s contains normalization work", key)
+			}
+		case "cpu_host_bounce":
+			if record.M46GPUNS != 0 || record.HostCPUNormNS == 0 || record.ReductionPlan != "none" {
+				return fmt.Errorf("M46 host-bounce record %s lacks CPU normalization evidence", key)
+			}
+		}
+	}
+	for key, present := range want {
+		if !present {
+			return fmt.Errorf("M46 RMSNorm artifact lacks required record %s", key)
 		}
 	}
 	return nil

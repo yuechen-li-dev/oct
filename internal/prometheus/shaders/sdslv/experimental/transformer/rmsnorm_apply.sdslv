@@ -1,0 +1,36 @@
+namespace Prometheus.Experimental.Transformer;
+
+// M46 applies one persistent FP32 scale vector to a strided retained Z view.
+// Output may be disjoint or the exact Z buffer after reduction has completed.
+stream RmsNormApplyIO {
+    [binding(0)] Z: readonly array<f32>;
+    [binding(1)] Weight: readonly array<f32>;
+    [binding(2)] InvRms: readonly array<f32>;
+    [binding(3)] N: readwrite array<f32>;
+}
+
+record RmsNormApplyParams {
+    Tokens: u32;
+    ModelWidth: u32;
+    ZRowStride: u32;
+    NRowStride: u32;
+    LogicalElementCount: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+    Reserved2: u32;
+}
+
+shader RmsNormApply {
+    resources RmsNormApplyIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: RmsNormApplyParams) -> void {
+        let logicalIndex: u32 = DispatchThreadID.x;
+        if logicalIndex >= params.LogicalElementCount { return; }
+        let token: u32 = logicalIndex / params.ModelWidth;
+        let column: u32 = logicalIndex - token * params.ModelWidth;
+        let zIndex: u32 = token * params.ZRowStride + column;
+        let nIndex: u32 = token * params.NRowStride + column;
+        N[nIndex] = Z[zIndex] * InvRms[token] * Weight[column];
+        return;
+    }
+}

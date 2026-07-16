@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M46",
+  "identity": "m46-rmsnorm-apply-scale-fp32-strided-v1",
+  "entry_point": "RmsNormApply_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 1, 2, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "360f69373898bdd38d6d36f1be424a260f7d32e4d29b8008a2f9e80303c9b672",
+  "hlsl_sha256": "6fa77a1d12341a42e58192bbb30ced9a8c4d0e79d499731f66624ad83c8cfce2",
+  "spirv_sha256": "78750b592ac5470ebd5ee0e91dad25ce6f33d1e2c9c519c8ea1dde204b0caaa1",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "FP32 N[token,column] = Z[token,column] * InvRms[token] * Weight[column] with explicit Z/N strides and exact optional Z/N alias"
+}
