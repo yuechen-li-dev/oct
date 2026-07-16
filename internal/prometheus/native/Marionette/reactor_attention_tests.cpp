@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iomanip>
 #include <limits>
 #include <sstream>
@@ -602,6 +603,56 @@ std::uint64_t MedianM47Metric(const std::vector<prom_m47_composed_result>& resul
     for (const prom_m47_composed_result& result : results) values.push_back(result.*member);
     std::sort(values.begin(), values.end());
     return values.empty() ? 0u : values[values.size() / 2u];
+}
+
+prom_m48_plan_request M48ResidentPlanRequest(std::uint32_t layerCount = PROM_M48_LAYER_COUNT,
+                                             std::uint32_t auditMode = 0u)
+{
+    prom_m48_plan_request request{};
+    request.initial_activation_mode = PROM_M48_INITIAL_RESIDENT;
+    request.initial_activation_exclusive = 1u;
+    request.layer_count = layerCount;
+    request.audit_mode = auditMode;
+    request.tokens = 128u;
+    request.model_width = 1024u;
+    request.head_count = PROM_M43_HEAD_COUNT;
+    request.head_dim = 128u;
+    request.ffn_width = 4096u;
+    request.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
+    request.projection_path = PROM_M47_PROJECTION_COOPERATIVE;
+    request.attention_strategy = PROM_M43_STRATEGY_PROJECTION_GROUPED;
+    request.output_projection_strategy = PROM_M44_AGGREGATION_INTERLEAVE;
+    request.rmsnorm_strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
+    request.gating_strategy = PROM_M47_GATING_FUSED_DIRECT_PACKED;
+    request.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_DOWN;
+    request.activation_strategy = PROM_M48_ACTIVATION_PING_PONG;
+    request.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
+    request.optional_final_readback = 1u;
+    request.expected_initial_generation = 48001u;
+    request.initial_content_hash = 48002u;
+    request.resident_initial_activation.buffer =
+        reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(48003u));
+    request.resident_initial_activation.byte_length =
+        static_cast<VkDeviceSize>(request.tokens) * request.model_width * sizeof(float);
+    request.resident_initial_activation.element_type = PROM_DEVICE_ELEMENT_F32;
+    request.resident_initial_activation.logical_rows = request.tokens;
+    request.resident_initial_activation.logical_columns = request.model_width;
+    request.resident_initial_activation.row_stride_elements = request.model_width;
+    request.resident_initial_activation.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+    request.resident_initial_activation.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+    request.resident_initial_activation.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+    request.resident_initial_activation.owning_device =
+        reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(48004u));
+    request.resident_initial_activation.owning_lifetime_id = request.expected_initial_generation;
+    request.resident_initial_activation.owning_slot_id = 0u;
+    request.resident_initial_activation.owning_slot_generation = 1u;
+    for (std::uint32_t layer = 0u; layer < layerCount; ++layer) {
+        for (std::uint32_t resource = 0u; resource < PROM_M48_RESOURCE_COUNT; ++resource) {
+            request.layer[layer].generation[resource] = 50000u + layer * 100u + resource;
+            request.layer[layer].content_hash[resource] = 60000u + layer * 100u + resource;
+        }
+    }
+    return request;
 }
 }
 
@@ -2263,6 +2314,751 @@ FACT(PrometheusM47GatedFfnOracleSiluPrecisionAndMismatch)
     wgate[0] = std::numeric_limits<float>::quiet_NaN();
     ASSERT_TRUE(prom_m47_gated_ffn_cpu_reference(&reference) != PROM_OK,
                 "non-finite FFN weights reject");
+}
+
+FACT(PrometheusM48FixedStackTopologyOwnershipAndMemory)
+{
+    prom_m48_plan_request request = M48ResidentPlanRequest();
+    prom_m48_transformer_stack_plan plan{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&request, &plan),
+                 "the primary fixed four-layer stack plan is eligible");
+    ASSERT_EQUAL(1u, plan.eligibility_eligible, "M48 eligibility is explicit");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, plan.layer_count, "the product stack has exactly four layers");
+    ASSERT_EQUAL(PROM_M48_TOTAL_RESOURCE_COUNT, plan.persistent_resource_count,
+                 "four layers own exactly 116 independently identified resources");
+    ASSERT_EQUAL(PROM_M48_MAX_BOUNDARIES, plan.boundary_count,
+                 "four layers expose exactly three handoff boundaries");
+    ASSERT_EQUAL(0u, plan.intermediate_host_copy_count,
+                 "the fixed stack has no intermediate host copy");
+    ASSERT_EQUAL(0u, plan.intermediate_readback_count,
+                 "the fixed stack has no intermediate readback");
+    ASSERT_EQUAL(1u, plan.final_readback_count, "only one optional final readback exists");
+    ASSERT_EQUAL(1u, plan.submit_count, "the one-stack topology submits once");
+    ASSERT_EQUAL(0u, plan.semaphore_count, "one submit needs no inter-submit semaphore");
+    ASSERT_EQUAL(1u, plan.fence_count, "one final fence owns stack completion");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT * 134u, plan.memory.descriptor_set_count,
+                 "each layer has a distinct bounded descriptor recording set");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT * PROM_M48_QUERY_COUNT_PER_LAYER,
+                 plan.memory.timestamp_query_count, "timestamp ranges are disjoint and bounded");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(167780352u),
+                 plan.memory.persistent_weight_bytes_per_layer,
+                 "primary retained parameter bytes per layer are exact");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(671121408u),
+                 plan.memory.persistent_weight_bytes,
+                 "all four primary parameter layers are retained independently");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(10486272u),
+                 plan.memory.one_block_working_set_bytes,
+                 "one serial block working set is exact and not multiplied by four");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1048576u), plan.memory.activation_bytes,
+                 "ping-pong owns two padded output roles in addition to immutable A0");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1048576u), plan.memory.ping_pong_saved_bytes,
+                 "ping-pong saves two primary activation outputs versus per-layer retention");
+    ASSERT_TRUE(plan.memory.exact_retained_bytes < PROM_M48_CAPACITY_LIMIT_BYTES,
+                "the primary stack plus one quarantine reserve fits the explicit cap");
+
+    for (std::uint32_t boundary = 0u; boundary < plan.boundary_count; ++boundary) {
+        ASSERT_EQUAL(boundary, plan.boundary[boundary].producer_layer,
+                     "each boundary names its producer layer");
+        ASSERT_EQUAL(boundary + 1u, plan.boundary[boundary].consumer_layer,
+                     "each boundary names its next consumer layer");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_WRITE_BIT),
+                     plan.boundary[boundary].source_access_mask,
+                     "layer output begins as a compute write");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_READ_BIT),
+                     plan.boundary[boundary].destination_access_mask,
+                     "the next layer consumes it as a compute read");
+        ASSERT_EQUAL(plan.layer[boundary].output_generation,
+                     plan.boundary[boundary].content_generation,
+                     "the exact handoff content generation is traced");
+        ASSERT_EQUAL(plan.layer[boundary].output_generation,
+                     plan.layer[boundary + 1u].input_generation,
+                     "the output generation feeds the next layer directly");
+    }
+    ASSERT_EQUAL(plan.layer[3].output_generation, plan.final_output_generation,
+                 "the retained final view is exactly layer four output");
+    ASSERT_TRUE(plan.layer[0].output_activation_role != plan.layer[1].output_activation_role &&
+                plan.layer[0].output_activation_role == plan.layer[2].output_activation_role,
+                "the two physical activation roles alternate without content-generation reuse");
+}
+
+FACT(PrometheusM48ReplayIdentityReplacementAndLayerOrder)
+{
+    const prom_m48_plan_request originalRequest = M48ResidentPlanRequest();
+    prom_m48_transformer_stack_plan original{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&originalRequest, &original),
+                 "baseline M48 identity plan succeeds");
+    prom_m48_transformer_stack_plan repeated{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&originalRequest, &repeated),
+                 "identical stack planning repeats");
+    ASSERT_EQUAL(original.replay_id, repeated.replay_id,
+                 "aggregate stack replay identity is deterministic");
+    ASSERT_EQUAL(original.final_output_generation, repeated.final_output_generation,
+                 "semantic output identity is deterministic across physical-slot reuse");
+
+    const std::array<std::pair<std::uint32_t, std::uint32_t>, 4u> replacements{{
+        {2u, prom_m48_attention_resource_index(5u, PROM_M43_WEIGHT_K)},
+        {1u, PROM_M48_RESOURCE_WO},
+        {3u, PROM_M48_RESOURCE_WDOWN},
+        {0u, PROM_M48_RESOURCE_RMSNORM},
+    }};
+    for (const auto& replacement : replacements) {
+        prom_m48_plan_request changedRequest = originalRequest;
+        changedRequest.layer[replacement.first].generation[replacement.second] += 1000u;
+        changedRequest.layer[replacement.first].content_hash[replacement.second] += 1000u;
+        prom_m48_transformer_stack_plan changed{};
+        ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&changedRequest, &changed),
+                     "one independently replaced resource replans the stack");
+        for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
+            if (layer == replacement.first) {
+                ASSERT_TRUE(changed.layer[layer].replay_id != original.layer[layer].replay_id,
+                            "only the owning layer intrinsic replay identity changes");
+            } else {
+                ASSERT_EQUAL(original.layer[layer].replay_id, changed.layer[layer].replay_id,
+                             "unrelated layer resource identities remain stable");
+            }
+        }
+        for (std::uint32_t layer = 0u; layer < replacement.first; ++layer) {
+            ASSERT_EQUAL(original.layer[layer].output_generation, changed.layer[layer].output_generation,
+                         "outputs before a replacement remain unchanged");
+        }
+        for (std::uint32_t layer = replacement.first; layer < PROM_M48_LAYER_COUNT; ++layer) {
+            ASSERT_TRUE(original.layer[layer].output_generation != changed.layer[layer].output_generation,
+                        "the replacement changes its output and every downstream content identity");
+        }
+        ASSERT_TRUE(original.replay_id != changed.replay_id,
+                    "one resource replacement changes aggregate stack identity");
+    }
+
+    prom_m48_plan_request swappedRequest = originalRequest;
+    std::swap(swappedRequest.layer[1], swappedRequest.layer[2]);
+    prom_m48_transformer_stack_plan swapped{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&swappedRequest, &swapped),
+                 "the same resources in a different order still form a legal plan");
+    ASSERT_TRUE(original.replay_id != swapped.replay_id,
+                "swapping layers one and two changes ordered aggregate identity");
+    ASSERT_TRUE(original.final_output_generation != swapped.final_output_generation,
+                "layer order changes the semantic activation chain");
+}
+
+FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
+{
+    prom_m48_plan_request request = M48ResidentPlanRequest();
+    prom_m48_transformer_stack_plan oneSubmit{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&request, &oneSubmit),
+                 "one-submit product plan succeeds");
+    request.submit_topology = PROM_M48_SUBMIT_PER_LAYER;
+    prom_m48_transformer_stack_plan perLayer{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&request, &perLayer),
+                 "same-queue per-layer submit plan succeeds");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, perLayer.submit_count,
+                 "per-layer topology has four exact submits");
+    ASSERT_EQUAL(PROM_M48_MAX_BOUNDARIES, perLayer.semaphore_count,
+                 "three same-queue semaphore dependencies join four submits");
+    ASSERT_EQUAL(1u, perLayer.fence_count, "only final stack completion owns a fence");
+    ASSERT_TRUE(oneSubmit.command_plan_replay_id != perLayer.command_plan_replay_id,
+                "submit topology participates in command identity");
+
+    for (const std::uint32_t layers : {1u, 2u, 4u}) {
+        prom_m48_plan_request audit = M48ResidentPlanRequest(layers, 1u);
+        prom_m48_transformer_stack_plan auditPlan{};
+        ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&audit, &auditPlan),
+                     "bounded one/two/four layer audit planning succeeds");
+        ASSERT_EQUAL(layers, auditPlan.layer_count, "audit layer count remains exact");
+    }
+    prom_m48_plan_request invalid = M48ResidentPlanRequest(2u, 0u);
+    prom_m48_transformer_stack_plan rejected{};
+    ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
+                "two layers cannot masquerade as the product contract");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M48_INELIGIBLE_LAYER_COUNT),
+                 rejected.eligibility_reason, "product layer-count rejection is exact");
+
+    invalid = M48ResidentPlanRequest();
+    invalid.layer[2].generation[PROM_M48_RESOURCE_WUP] = 0u;
+    ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
+                "a missing generation in the complete matrix rejects");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M48_INELIGIBLE_WEIGHT),
+                 rejected.eligibility_reason, "missing weight identity has an exact reason");
+    invalid = M48ResidentPlanRequest();
+    invalid.resident_initial_activation.owning_lifetime_id -= 1u;
+    ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
+                "a stale initial activation rejects before execution");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M48_INELIGIBLE_INITIAL_ACTIVATION),
+                 rejected.eligibility_reason, "stale A0 has an exact reason");
+    invalid = M48ResidentPlanRequest();
+    invalid.capacity_limit_bytes = 1u;
+    ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
+                "capacity rejection happens before submission");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M48_INELIGIBLE_CAPACITY),
+                 rejected.eligibility_reason, "capacity rejection is deterministic");
+    invalid = M48ResidentPlanRequest();
+    invalid.optional_final_readback = 0u;
+    prom_m48_transformer_stack_plan noReadback{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&invalid, &noReadback),
+                 "pure resident benchmarking omits even the final readback");
+    ASSERT_EQUAL(0u, noReadback.final_readback_count, "zero-readback product mode is explicit");
+    ASSERT_EQUAL(0u, noReadback.memory.final_readback_bytes,
+                 "zero-readback capacity excludes compact host storage");
+}
+
+FACT(PrometheusM48FourLayerCpuOracleUsesDistinctOrderedWeights)
+{
+    constexpr std::uint32_t tokens = 2u;
+    constexpr std::uint32_t modelWidth = 8u;
+    constexpr std::uint32_t headDim = 1u;
+    constexpr std::uint32_t ffnWidth = 16u;
+    const std::size_t modelElements = static_cast<std::size_t>(tokens) * modelWidth;
+    std::vector<float> initial(modelElements);
+    std::vector<float> output(modelElements, 0.0f);
+    for (std::size_t index = 0u; index < initial.size(); ++index)
+        initial[index] = static_cast<float>(static_cast<int>(index) - 7) / 32.0f;
+    const std::vector<float> originalInitial = initial;
+    std::array<GroupWeights, PROM_M48_LAYER_COUNT> attentionWeights;
+    std::array<std::vector<float>, PROM_M48_LAYER_COUNT> wo;
+    std::array<std::vector<float>, PROM_M48_LAYER_COUNT> norm;
+    std::array<std::array<std::vector<float>, PROM_M47_WEIGHT_COUNT>,
+               PROM_M48_LAYER_COUNT> ffn;
+    prom_m48_reference_request request{};
+    request.initial_activation = initial.data();
+    request.output = output.data();
+    request.initial_element_count = initial.size();
+    request.output_element_count = output.size();
+    request.layer_count = PROM_M48_LAYER_COUNT;
+    request.tokens = tokens;
+    request.model_width = modelWidth;
+    request.head_count = PROM_M43_HEAD_COUNT;
+    request.head_dim = headDim;
+    request.ffn_width = ffnWidth;
+    request.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
+    request.projection_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+    request.epsilon = 1.0e-5f;
+    for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
+        for (std::uint32_t head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+            for (std::uint32_t kind = 0u; kind < PROM_M43_WEIGHT_KIND_COUNT; ++kind) {
+                std::vector<float>& weight = attentionWeights[layer][head][kind];
+                weight.resize(modelWidth * headDim);
+                for (std::size_t index = 0u; index < weight.size(); ++index) {
+                    const int value = static_cast<int>((index + head * 3u + kind * 5u + layer * 7u) % 11u) - 5;
+                    weight[index] = static_cast<float>(value) / 128.0f;
+                }
+                request.layer[layer].attention_weight[head][kind] = weight.data();
+            }
+        }
+        wo[layer].resize(modelWidth * modelWidth);
+        for (std::size_t index = 0u; index < wo[layer].size(); ++index) {
+            const int value = static_cast<int>((index * 3u + layer * 11u) % 17u) - 8;
+            wo[layer][index] = static_cast<float>(value) / 128.0f;
+        }
+        norm[layer].resize(modelWidth);
+        for (std::size_t index = 0u; index < norm[layer].size(); ++index)
+            norm[layer][index] = 0.75f + static_cast<float>(layer + index) / 64.0f;
+        ffn[layer][PROM_M47_WEIGHT_GATE].resize(modelWidth * ffnWidth);
+        ffn[layer][PROM_M47_WEIGHT_UP].resize(modelWidth * ffnWidth);
+        ffn[layer][PROM_M47_WEIGHT_DOWN].resize(ffnWidth * modelWidth);
+        for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind) {
+            for (std::size_t index = 0u; index < ffn[layer][kind].size(); ++index) {
+                const int value = static_cast<int>((index * (kind + 3u) + layer * 13u) % 19u) - 9;
+                ffn[layer][kind][index] = static_cast<float>(value) / 256.0f;
+            }
+        }
+        request.layer[layer].wo = wo[layer].data();
+        request.layer[layer].rmsnorm_weight = norm[layer].data();
+        request.layer[layer].wgate = ffn[layer][PROM_M47_WEIGHT_GATE].data();
+        request.layer[layer].wup = ffn[layer][PROM_M47_WEIGHT_UP].data();
+        request.layer[layer].wdown = ffn[layer][PROM_M47_WEIGHT_DOWN].data();
+    }
+    prom_m48_reference_result result{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_cpu_reference(&request, &result),
+                 "the exact reduced-precision four-layer CPU oracle succeeds");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, result.completed_layer_count,
+                 "the oracle executes all four complete M43-M47 blocks");
+    ASSERT_EQUAL(1u, result.all_finite, "the final activation is finite");
+    ASSERT_TRUE(initial == originalInitial, "the immutable initial authority is not overwritten");
+    ASSERT_TRUE(output != initial, "four distinct layers materially transform the activation");
+
+    std::vector<float> firstOutput = output;
+    std::swap(request.layer[1], request.layer[2]);
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_cpu_reference(&request, &result),
+                 "the same distinct layer resources execute in swapped order");
+    ASSERT_TRUE(output != firstOutput, "ordered layer identity has observable semantic effect");
+    std::swap(request.layer[1], request.layer[2]);
+
+    ffn[2u][PROM_M47_WEIGHT_DOWN][3u] = std::numeric_limits<float>::quiet_NaN();
+    ASSERT_TRUE(prom_m48_transformer_stack_cpu_reference(&request, &result) != PROM_OK,
+                "a nonfinite layer-two parameter fails the bounded oracle");
+    ASSERT_EQUAL(2u, result.failed_layer, "the first failing layer is localized");
+    ASSERT_EQUAL(47u, result.failed_stage, "the failing gated-FFN stage is localized");
+    ASSERT_EQUAL(2u, result.completed_layer_count, "only completed prior layers are reported");
+}
+
+FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr)
+        SKIP("Vulkan runtime unavailable");
+    prom_vk_runtime_services availability{};
+    if (prom_reactor_runtime_get_vk_services(runtime, &availability) != PROM_OK ||
+        availability.backend_available == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime services unavailable");
+    }
+
+    const char* corpusShape = std::getenv("PROMETHEUS_M48_CORPUS_SHAPE");
+    const bool printCorpus = std::getenv("PROMETHEUS_M48_PRINT") != nullptr;
+    const bool primaryPrecisionAudit = std::getenv("PROMETHEUS_M48_PRIMARY_PRECISION_AUDIT") != nullptr;
+    const char* requestedPath = std::getenv("PROMETHEUS_M48_CORPUS_PATH");
+    const std::string_view pathName = requestedPath == nullptr ? "conventional" : requestedPath;
+    const std::uint32_t projectionPath = pathName == "cooperative"
+                                             ? PROM_M47_PROJECTION_COOPERATIVE
+                                             : pathName == "a2x4"
+                                                   ? PROM_M47_PROJECTION_A2X4_FP32
+                                                   : PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+    const std::uint32_t precisionPolicy = projectionPath == PROM_M47_PROJECTION_A2X4_FP32
+                                              ? PROM_M42_PRECISION_FP32
+                                              : PROM_M42_PRECISION_F16_ROUNDED;
+    const std::uint32_t gatingStrategy = projectionPath == PROM_M47_PROJECTION_A2X4_FP32
+                                             ? PROM_M47_GATING_FUSED_FP32
+                                             : PROM_M47_GATING_FUSED_DIRECT_PACKED;
+    const std::string_view shape = corpusShape == nullptr ? "tiny" : corpusShape;
+    const bool fullOracle = shape == "tiny";
+    const bool selectedOracleAudit = primaryPrecisionAudit && shape == "primary";
+    const std::uint32_t tokens = shape == "more_tokens" ? 256u
+                               : shape == "token_boundary" ? 1024u
+                               : shape == "tiny" ? 16u : 128u;
+    const std::uint32_t modelWidth = shape == "awkward" ? 1000u
+                                   : shape == "token_boundary" ? 128u
+                                   : shape == "tiny" ? 128u : 1024u;
+    const std::uint32_t headDim = modelWidth / PROM_M43_HEAD_COUNT;
+    const std::uint32_t ffnWidth = shape == "smaller_expansion" ? 2048u
+                                 : shape == "awkward" ? 3008u
+                                 : shape == "token_boundary" ? 512u
+                                 : shape == "tiny" ? 256u : 4096u;
+    constexpr std::uint64_t initialGeneration = 480000u;
+    const std::size_t activationElements = static_cast<std::size_t>(tokens) * modelWidth;
+    std::vector<float> initial(activationElements);
+    std::vector<float> oneSubmitOutput(activationElements, 0.0f);
+    std::vector<float> fourSubmitOutput(activationElements, 0.0f);
+    std::vector<float> referenceOutput(activationElements, 0.0f);
+    std::array<std::array<std::vector<float>, PROM_M48_RESOURCE_COUNT>,
+               PROM_M48_LAYER_COUNT> weights;
+    std::array<std::array<std::uint64_t, PROM_M48_RESOURCE_COUNT>,
+               PROM_M48_LAYER_COUNT> generations{};
+    for (std::size_t index = 0u; index < initial.size(); ++index)
+        initial[index] = static_cast<float>(static_cast<int>(index) - 7) / 64.0f;
+
+    prom_m48_reference_request reference{};
+    reference.initial_activation = initial.data();
+    reference.output = referenceOutput.data();
+    reference.initial_element_count = initial.size();
+    reference.output_element_count = referenceOutput.size();
+    reference.layer_count = PROM_M48_LAYER_COUNT;
+    reference.tokens = tokens;
+    reference.model_width = modelWidth;
+    reference.head_count = PROM_M43_HEAD_COUNT;
+    reference.head_dim = headDim;
+    reference.ffn_width = ffnWidth;
+    reference.precision_policy = precisionPolicy;
+    reference.projection_path = projectionPath;
+    reference.epsilon = 1.0e-5f;
+
+    for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
+        for (std::uint32_t resource = 0u; resource < PROM_M48_RESOURCE_COUNT; ++resource) {
+            std::size_t count = modelWidth * headDim;
+            if (resource == PROM_M48_RESOURCE_WO) count = modelWidth * modelWidth;
+            else if (resource == PROM_M48_RESOURCE_RMSNORM) count = modelWidth;
+            else if (resource >= PROM_M48_RESOURCE_WGATE) count = modelWidth * ffnWidth;
+            weights[layer][resource].resize(count);
+            for (std::size_t index = 0u; index < count; ++index) {
+                const int value = static_cast<int>((index * 3u + resource * 5u + layer * 7u) % 17u) - 8;
+                weights[layer][resource][index] = resource == PROM_M48_RESOURCE_RMSNORM
+                    ? 0.75f + static_cast<float>((index + layer) % 7u) / 32.0f
+                    : static_cast<float>(value) / 256.0f;
+            }
+            generations[layer][resource] = 481000u + layer * 100u + resource;
+            prom_m48_layer_weight_prepare_request prepare{};
+            prepare.values = weights[layer][resource].data();
+            prepare.element_count = weights[layer][resource].size();
+            prepare.layer_index = layer;
+            prepare.resource_index = resource;
+            prepare.model_width = modelWidth;
+            prepare.head_dim = headDim;
+            prepare.ffn_width = ffnWidth;
+            prepare.generation = generations[layer][resource];
+            prom_m48_layer_weight_prepare_result prepared{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_m48_prepare_layer_weight(runtime, &prepare, &prepared),
+                         "each ordered M48 layer parameter prepares independently");
+        }
+        for (std::uint32_t head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+            for (std::uint32_t kind = 0u; kind < PROM_M43_WEIGHT_KIND_COUNT; ++kind) {
+                reference.layer[layer].attention_weight[head][kind] =
+                    weights[layer][prom_m48_attention_resource_index(head, kind)].data();
+            }
+        }
+        reference.layer[layer].wo = weights[layer][PROM_M48_RESOURCE_WO].data();
+        reference.layer[layer].rmsnorm_weight = weights[layer][PROM_M48_RESOURCE_RMSNORM].data();
+        reference.layer[layer].wgate = weights[layer][PROM_M48_RESOURCE_WGATE].data();
+        reference.layer[layer].wup = weights[layer][PROM_M48_RESOURCE_WUP].data();
+        reference.layer[layer].wdown = weights[layer][PROM_M48_RESOURCE_WDOWN].data();
+    }
+    prom_m48_reference_result referenceResult{};
+    if (fullOracle || selectedOracleAudit) {
+        ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_cpu_reference(&reference, &referenceResult),
+                     "the selected stack audit has an independent four-block CPU oracle");
+    }
+
+    prom_m48_stack_request request{};
+    request.host_initial_activation = initial.data();
+    request.host_initial_element_count = initial.size();
+    request.output = oneSubmitOutput.data();
+    request.output_element_count = oneSubmitOutput.size();
+    request.initial_activation_mode = PROM_M48_INITIAL_HOST;
+    request.layer_count = PROM_M48_LAYER_COUNT;
+    request.tokens = tokens;
+    request.model_width = modelWidth;
+    request.head_count = PROM_M43_HEAD_COUNT;
+    request.head_dim = headDim;
+    request.ffn_width = ffnWidth;
+    request.precision_policy = precisionPolicy;
+    request.projection_path = projectionPath;
+    request.attention_strategy = PROM_M43_STRATEGY_PROJECTION_GROUPED;
+    request.output_projection_strategy = PROM_M44_AGGREGATION_INTERLEAVE;
+    request.rmsnorm_strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
+    request.gating_strategy = gatingStrategy;
+    request.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_DOWN;
+    request.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
+    request.allow_fallback = 1u;
+    request.epsilon = reference.epsilon;
+    request.expected_initial_generation = initialGeneration;
+    for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer)
+        for (std::uint32_t resource = 0u; resource < PROM_M48_RESOURCE_COUNT; ++resource)
+            request.required_generation[layer][resource] = generations[layer][resource];
+
+    prom_vk_runtime_services before{};
+    prom_vk_runtime_services after{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &before),
+                 "validation baseline is readable");
+    prom_m48_stack_result oneSubmit{};
+    const int oneSubmitStatus = prom_reactor_runtime_m48_execute_stack(runtime, &request, &oneSubmit);
+    ASSERT_EQUAL(0, oneSubmit.detail_code, "one-submit failure detail remains clear on success");
+    ASSERT_EQUAL(PROM_OK, oneSubmitStatus,
+                 "one caller-owned command buffer executes four real transformer blocks");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, oneSubmit.completed_layer_count,
+                 "all four layers complete in one fixed stack lifecycle");
+    ASSERT_EQUAL(1u, oneSubmit.submit_count, "one-stack topology performs one queue submit");
+    ASSERT_EQUAL(0u, oneSubmit.semaphore_count, "one-stack topology needs no semaphore");
+    ASSERT_EQUAL(0u, oneSubmit.intermediate_readback_count,
+                 "the product path performs no intermediate readback");
+    const std::uint32_t expectedProjectionPath =
+        projectionPath == PROM_M47_PROJECTION_COOPERATIVE &&
+                (before.cooperative_matrix_feature_enabled == 0u || before.subgroup_size != 32u)
+            ? PROM_M47_PROJECTION_CONVENTIONAL_FP16
+            : projectionPath;
+    ASSERT_EQUAL(expectedProjectionPath, oneSubmit.selected_projection_path,
+                 "the selected stack path records deterministic cooperative fallback");
+    for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer)
+        ASSERT_TRUE(oneSubmit.layer[layer].total_gpu_ns > 0u,
+                    "each recorded transformer layer has a nonzero timestamp interval");
+    if (fullOracle) {
+        for (std::size_t index = 0u; index < activationElements; ++index)
+            ASSERT_TRUE(std::abs(oneSubmitOutput[index] - referenceOutput[index]) <= 8.0e-2f,
+                        "live one-submit output agrees with the reduced-precision CPU oracle");
+    } else if (selectedOracleAudit) {
+        const std::array<std::pair<std::uint32_t, std::uint32_t>, 12u> coordinates{{
+            {0u, 0u}, {0u, modelWidth - 1u}, {tokens / 2u, modelWidth / 2u},
+            {tokens - 1u, 0u}, {tokens - 1u, modelWidth - 1u}, {1u, 17u},
+            {7u, 257u}, {31u, 511u}, {47u, 701u}, {63u, 127u},
+            {95u, 769u}, {111u, 997u},
+        }};
+        for (const auto& coordinate : coordinates) {
+            const std::size_t index = static_cast<std::size_t>(coordinate.first) * modelWidth +
+                                      coordinate.second;
+            const float expected = referenceOutput[index];
+            const float actual = oneSubmitOutput[index];
+            const float absoluteError = std::abs(actual - expected);
+            const float relativeError = absoluteError / std::max(std::abs(expected), 1.0e-20f);
+            if (!std::isfinite(actual) || absoluteError > 8.0e-2f) {
+                std::fprintf(stderr,
+                             "M48 primary audit mismatch layer=3 stage=final token=%u column=%u expected=%g actual=%g abs=%g rel=%g input_generation=%llu layer_replay=%llu stack_replay=%llu path=%u\n",
+                             coordinate.first, coordinate.second, expected, actual,
+                             absoluteError, relativeError,
+                             static_cast<unsigned long long>(oneSubmit.initial_generation),
+                             static_cast<unsigned long long>(oneSubmit.layer[3].replay_id),
+                             static_cast<unsigned long long>(oneSubmit.replay_id),
+                             oneSubmit.selected_projection_path);
+            }
+            ASSERT_TRUE(std::isfinite(actual) && absoluteError <= 8.0e-2f,
+                        "deterministic primary final-output coordinate agrees with the CPU reference");
+        }
+    } else {
+        for (const float value : oneSubmitOutput)
+            ASSERT_TRUE(std::isfinite(value), "bounded corpus output remains finite");
+    }
+
+    request.output = fourSubmitOutput.data();
+    request.submit_topology = PROM_M48_SUBMIT_PER_LAYER;
+    prom_m48_stack_result fourSubmit{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m48_execute_stack(runtime, &request, &fourSubmit),
+                 "four submits execute as one same-queue semaphore chain without host waits");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, fourSubmit.submit_count,
+                 "bounded per-layer topology has exactly four submits");
+    ASSERT_EQUAL(PROM_M48_MAX_BOUNDARIES, fourSubmit.semaphore_count,
+                 "three semaphore dependencies connect the four submits");
+    for (std::size_t index = 0u; index < activationElements; ++index)
+        ASSERT_TRUE(std::abs(oneSubmitOutput[index] - fourSubmitOutput[index]) <= 2.0e-3f,
+                    "one-submit and semaphore-chain results agree");
+
+    prom_m48_stack_result warm{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m48_execute_stack(runtime, &request, &warm),
+                 "a warm stack repeats after slot recycling");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0u), warm.buffer_allocation_count,
+                 "warm fixed-stack execution performs zero Vulkan buffer allocation");
+
+    for (const std::uint32_t fault : {
+             PROM_M48_FAULT_BEFORE_LAYER_0,
+             PROM_M48_FAULT_DURING_LAYER_0_ATTENTION,
+             PROM_M48_FAULT_AFTER_LAYER_0_OUTPUT,
+             PROM_M48_FAULT_DURING_LAYER_1_RMSNORM,
+             PROM_M48_FAULT_DURING_LAYER_1_FFN,
+             PROM_M48_FAULT_AFTER_LAYER_2_OUTPUT,
+             PROM_M48_FAULT_DURING_LAYER_3_ATTENTION,
+             PROM_M48_FAULT_DURING_LAYER_3_FFN,
+             PROM_M48_FAULT_AFTER_FINAL_OUTPUT,
+             PROM_M48_FAULT_BEFORE_FINAL_READBACK,
+         }) {
+        request.fault_point = fault;
+        prom_m48_stack_result knownFault{};
+        ASSERT_TRUE(prom_reactor_runtime_m48_execute_stack(runtime, &request, &knownFault) != PROM_OK,
+                    "each known stack fault aborts at its logical location");
+        ASSERT_EQUAL(static_cast<std::int32_t>(PROM_M48_DETAIL_FAULT_INJECTED),
+                     knownFault.detail_code, "known fault remains explicit");
+        ASSERT_EQUAL(1u, knownFault.physical_slot_recyclable,
+                     "known fault recycles without quarantine");
+        request.fault_point = PROM_M48_FAULT_NONE;
+        prom_m48_stack_result afterKnownFault{};
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m48_execute_stack(runtime, &request, &afterKnownFault),
+                     "a complete stack succeeds after each known-fault recycle");
+    }
+
+    request.fault_point = PROM_M48_FAULT_UNCERTAIN_COMPLETION;
+    prom_m48_stack_result uncertainFault{};
+    ASSERT_TRUE(prom_reactor_runtime_m48_execute_stack(runtime, &request, &uncertainFault) != PROM_OK,
+                "uncertain submitted completion quarantines the whole stack slot");
+    ASSERT_EQUAL(static_cast<std::int32_t>(PROM_M48_DETAIL_COMPLETION_UNCERTAIN),
+                 uncertainFault.detail_code, "uncertain completion has its own detail code");
+    ASSERT_EQUAL(0u, uncertainFault.physical_slot_recyclable,
+                 "uncertain completion is not prematurely recyclable");
+    request.fault_point = PROM_M48_FAULT_NONE;
+    prom_m48_stack_result afterUncertainFault{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m48_execute_stack(runtime, &request, &afterUncertainFault),
+                 "fence reaping permits a successful stack after quarantine");
+
+    prom_m48_initial_activation_prepare_request prepareInitial{};
+    prepareInitial.values = initial.data();
+    prepareInitial.element_count = initial.size();
+    prepareInitial.tokens = tokens;
+    prepareInitial.model_width = modelWidth;
+    prepareInitial.generation = initialGeneration + 1u;
+    prom_m48_initial_activation_prepare_result preparedInitial{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m48_prepare_initial_activation(runtime, &prepareInitial,
+                                                                       &preparedInitial),
+                 "A0 may be prepared as a family-resident immutable activation");
+    request.initial_activation_mode = PROM_M48_INITIAL_RESIDENT;
+    request.host_initial_activation = nullptr;
+    request.host_initial_element_count = 0u;
+    request.expected_initial_generation = prepareInitial.generation;
+    prom_m48_stack_result residentInitial{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m48_execute_stack(runtime, &request, &residentInitial),
+                 "resident A0 feeds layer zero without host authority or bounce");
+
+    request.audit_mode = 1u;
+    std::array<std::uint64_t, 2u> auditGpu{};
+    std::uint32_t auditIndex = 0u;
+    for (const std::uint32_t auditLayers : {1u, 2u}) {
+        request.layer_count = auditLayers;
+        prom_m48_stack_result audit{};
+        const int auditStatus = prom_reactor_runtime_m48_execute_stack(runtime, &request, &audit);
+        ASSERT_EQUAL(0, audit.detail_code, "bounded audit detail remains clear on success");
+        ASSERT_EQUAL(PROM_OK, auditStatus,
+                     "bounded live one/two-layer audit depth executes through the same recorder");
+        ASSERT_EQUAL(auditLayers, audit.completed_layer_count,
+                     "audit executes exactly the requested bounded layer prefix");
+        auditGpu[auditIndex++] = audit.total_stack_gpu_ns;
+    }
+    request.layer_count = PROM_M48_LAYER_COUNT;
+    request.audit_mode = 0u;
+
+    request.submit_topology = PROM_M48_SUBMIT_HOST_WAIT_PER_LAYER_AUDIT;
+    request.audit_mode = 1u;
+    prom_m48_stack_result hostWait{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m48_execute_stack(runtime, &request, &hostWait),
+                 "audit host-wait topology retains every activation on the device");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, hostWait.submit_count,
+                 "host-wait audit submits one complete block per layer");
+    ASSERT_EQUAL(0u, hostWait.semaphore_count,
+                 "host-wait audit isolates host synchronization rather than semaphores");
+    ASSERT_EQUAL(0u, hostWait.intermediate_readback_count,
+                 "host-wait audit does not add host activation movement");
+    ASSERT_TRUE(hostWait.cpu_wait_ns > 0u,
+                "host-wait audit reports the accumulated host fence wait interval");
+
+    request.initial_activation_mode = PROM_M48_INITIAL_HOST;
+    request.host_initial_activation = initial.data();
+    request.host_initial_element_count = initial.size();
+    request.expected_initial_generation = initialGeneration;
+    request.submit_topology = PROM_M48_SUBMIT_HOST_BOUNCE_PER_LAYER_AUDIT;
+    prom_m48_stack_result hostBounce{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m48_execute_stack(runtime, &request, &hostBounce),
+                 "audit host-bounce topology completes all four layers");
+    ASSERT_EQUAL(PROM_M48_LAYER_COUNT, hostBounce.submit_count,
+                 "host-bounce audit submits each complete block separately");
+    ASSERT_EQUAL(0u, hostBounce.semaphore_count,
+                 "host-bounce audit does not disguise host movement as a semaphore chain");
+    ASSERT_EQUAL(PROM_M48_MAX_BOUNDARIES, hostBounce.intermediate_readback_count,
+                 "host-bounce audit reads every inter-layer activation");
+    ASSERT_EQUAL(PROM_M48_MAX_BOUNDARIES, hostBounce.intermediate_host_copy_count,
+                 "host-bounce audit reuploads every retained host activation");
+    ASSERT_TRUE(hostBounce.cpu_wait_ns > 0u,
+                "host-bounce audit reports synchronization cost");
+    for (std::size_t index = 0u; index < activationElements; ++index)
+        ASSERT_TRUE(std::abs(oneSubmitOutput[index] - fourSubmitOutput[index]) <= 2.0e-3f,
+                    "host-bounce preserves the same complete-block arithmetic result");
+
+    request.initial_activation_mode = PROM_M48_INITIAL_RESIDENT;
+    request.host_initial_activation = nullptr;
+    request.host_initial_element_count = 0u;
+    request.expected_initial_generation = prepareInitial.generation;
+    request.submit_topology = PROM_M48_SUBMIT_PER_LAYER;
+    request.audit_mode = 0u;
+
+    std::uint64_t warm10Median = 0u;
+    std::uint64_t warm10P10 = 0u;
+    std::uint64_t warm10P90 = 0u;
+    std::uint64_t warm100Median = 0u;
+    std::uint64_t warm100P10 = 0u;
+    std::uint64_t warm100P90 = 0u;
+    if (printCorpus) {
+        auto measureWarm = [&](std::uint32_t count, std::uint64_t* median,
+                               std::uint64_t* p10, std::uint64_t* p90) {
+            std::vector<std::uint64_t> samples;
+            samples.reserve(count);
+            request.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
+            for (std::uint32_t sample = 0u; sample < count; ++sample) {
+                prom_m48_stack_result value{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m48_execute_stack(runtime, &request, &value),
+                             "warm corpus stack completes");
+                ASSERT_EQUAL(static_cast<std::uint64_t>(0u), value.buffer_allocation_count,
+                             "primed warm corpus stack allocates no Vulkan buffer");
+                samples.push_back(value.total_stack_gpu_ns);
+            }
+            std::sort(samples.begin(), samples.end());
+            *median = samples[samples.size() / 2u];
+            *p10 = samples[(samples.size() - 1u) / 10u];
+            *p90 = samples[((samples.size() - 1u) * 9u) / 10u];
+        };
+        measureWarm(10u, &warm10Median, &warm10P10, &warm10P90);
+        measureWarm(100u, &warm100Median, &warm100P10, &warm100P90);
+    }
+
+    const std::array<std::pair<std::uint32_t, std::uint32_t>, 4u> liveReplacements{{
+        {2u, prom_m48_attention_resource_index(5u, PROM_M43_WEIGHT_K)},
+        {1u, PROM_M48_RESOURCE_WO},
+        {3u, PROM_M48_RESOURCE_WDOWN},
+        {0u, PROM_M48_RESOURCE_RMSNORM},
+    }};
+    std::uint64_t precedingReplay = residentInitial.replay_id;
+    for (const auto& replacement : liveReplacements) {
+        std::vector<float>& values = weights[replacement.first][replacement.second];
+        values[0] += 1.0f / 512.0f;
+        generations[replacement.first][replacement.second] += 10000u;
+        prom_m48_layer_weight_prepare_request replace{};
+        replace.values = values.data();
+        replace.element_count = values.size();
+        replace.layer_index = replacement.first;
+        replace.resource_index = replacement.second;
+        replace.model_width = modelWidth;
+        replace.head_dim = headDim;
+        replace.ffn_width = ffnWidth;
+        replace.generation = generations[replacement.first][replacement.second];
+        prom_m48_layer_weight_prepare_result replaced{};
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m48_prepare_layer_weight(runtime, &replace, &replaced),
+                     "one exact layer parameter replaces without rebuilding other bundles");
+        request.required_generation[replacement.first][replacement.second] = replace.generation;
+        prom_m48_stack_result afterReplacement{};
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m48_execute_stack(runtime, &request, &afterReplacement),
+                     "the next complete stack consumes one coherent replacement generation");
+        ASSERT_TRUE(precedingReplay != afterReplacement.replay_id,
+                    "each exact live replacement changes aggregate replay identity");
+        precedingReplay = afterReplacement.replay_id;
+    }
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &after),
+                 "validation result is readable");
+    ASSERT_EQUAL(before.validation_error_count, after.validation_error_count,
+                 "validation-enabled one/four-submit stack execution adds no errors");
+    if (!fullOracle || printCorpus) {
+        std::fprintf(stderr,
+                     "M48 corpus shape=%.*s path=%.*s one=%llu two=%llu four_one_submit=%llu four_submit=%llu layer0=%llu layer1=%llu layer2=%llu layer3=%llu host_wait_gpu=%llu host_wait_e2e=%llu host_wait_cpu_wait=%llu host_bounce_gpu=%llu host_bounce_e2e=%llu host_bounce_cpu_wait=%llu host_bounce_copy=%llu resident_e2e=%llu host_e2e=%llu warm=%llu warm10_med=%llu warm10_p10=%llu warm10_p90=%llu warm100_med=%llu warm100_p10=%llu warm100_p90=%llu\n",
+                     static_cast<int>(shape.size()), shape.data(),
+                     static_cast<int>(pathName.size()), pathName.data(),
+                     static_cast<unsigned long long>(auditGpu[0]),
+                     static_cast<unsigned long long>(auditGpu[1]),
+                     static_cast<unsigned long long>(oneSubmit.total_stack_gpu_ns),
+                     static_cast<unsigned long long>(fourSubmit.total_stack_gpu_ns),
+                     static_cast<unsigned long long>(oneSubmit.layer[0].total_gpu_ns),
+                     static_cast<unsigned long long>(oneSubmit.layer[1].total_gpu_ns),
+                     static_cast<unsigned long long>(oneSubmit.layer[2].total_gpu_ns),
+                     static_cast<unsigned long long>(oneSubmit.layer[3].total_gpu_ns),
+                     static_cast<unsigned long long>(hostWait.total_stack_gpu_ns),
+                     static_cast<unsigned long long>(hostWait.end_to_end_ns),
+                     static_cast<unsigned long long>(hostWait.cpu_wait_ns),
+                     static_cast<unsigned long long>(hostBounce.total_stack_gpu_ns),
+                     static_cast<unsigned long long>(hostBounce.end_to_end_ns),
+                     static_cast<unsigned long long>(hostBounce.cpu_wait_ns),
+                     static_cast<unsigned long long>(hostBounce.host_bounce_copy_ns),
+                     static_cast<unsigned long long>(residentInitial.end_to_end_ns),
+                     static_cast<unsigned long long>(oneSubmit.end_to_end_ns),
+                     static_cast<unsigned long long>(warm.total_stack_gpu_ns),
+                     static_cast<unsigned long long>(warm10Median),
+                     static_cast<unsigned long long>(warm10P10),
+                     static_cast<unsigned long long>(warm10P90),
+                     static_cast<unsigned long long>(warm100Median),
+                     static_cast<unsigned long long>(warm100P10),
+                     static_cast<unsigned long long>(warm100P90));
+    }
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM48EvtArtifactSchemaIsTruthful)
+{
+    const std::string path = std::string(MARIONETTE_TEST_REPO_ROOT) +
+        "/internal/prometheus/DevelopmentReport/artifacts/M48/"
+        "multi_block_golden_path_evt_closeout.json";
+    std::ifstream input(path, std::ios::binary);
+    ASSERT_TRUE(input.good(), "the committed M48 status artifact is readable");
+    const std::string artifact((std::istreambuf_iterator<char>(input)),
+                               std::istreambuf_iterator<char>());
+    ASSERT_TRUE(artifact.find("prometheus.m48.multi-block-golden-path.v1") != std::string::npos,
+                "the M48 artifact schema is explicit");
+    ASSERT_TRUE(artifact.find("\"evt_state\": \"in_progress\"") != std::string::npos,
+                "the artifact keeps EVT open until the complete hardware corpus exists");
+    ASSERT_TRUE(artifact.find("\"total\": 116") != std::string::npos,
+                "the complete persistent resource matrix is recorded");
+    ASSERT_TRUE(artifact.find("\"exact_retained_bytes\": 695763968") != std::string::npos,
+                "the primary capacity result is deterministic");
+    ASSERT_TRUE(artifact.find("\"executed\": true") != std::string::npos,
+                "live fixed-stack execution is machine readable");
+    ASSERT_TRUE(artifact.find("\"primary_conventional\"") != std::string::npos &&
+                    artifact.find("\"four_one_submit_gpu_ns\": 37364288") != std::string::npos,
+                "the artifact records measured final-authority primary timing");
+    ASSERT_TRUE(artifact.find("\"warm_100_median_gpu_ns\":") != std::string::npos,
+                "the artifact retains a real 100-stack distribution rather than one sample");
+    ASSERT_TRUE(artifact.find("\"standalone_m47_thin_wrapper_migration\": true") != std::string::npos,
+                "the artifact keeps the remaining compatibility authority debt explicit");
 }
 
 FACT(PrometheusM44ComposedHardwareProof)

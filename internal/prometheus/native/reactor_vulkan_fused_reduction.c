@@ -38,7 +38,7 @@
 #define PROM_REDUCTION_RING_MAX_DEPTH 4u
 #define PROM_REDUCTION_PIPELINE_COUNT 5u
 #define PROM_REDUCTION_MIN_BINDING_BYTES ((VkDeviceSize)sizeof(float))
-#define PROM_REDUCTION_QUERY_STRIDE 256u
+#define PROM_REDUCTION_QUERY_STRIDE 1024u
 #define PROM_M40B_QUERY_COUNT 8u
 #define PROM_M40B_SGEMM_PIPELINE_COUNT 3u
 #define PROM_M40B_COOPERATIVE_SHADER_HASH 0x247e410eb526f25cull
@@ -122,6 +122,21 @@
 #define PROM_M47_QUERY_READBACK_BEGIN 234u
 #define PROM_M47_QUERY_READBACK_END 235u
 #define PROM_M47_QUERY_COUNT 18u
+#define PROM_M48_STANDARD_DESCRIPTOR_SET_COUNT \
+  (PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT + 3u + \
+   PROM_M47_DESCRIPTOR_SET_COUNT)
+#define PROM_M48_COMMAND_BUFFER_COUNT PROM_M48_LAYER_COUNT
+#define PROM_M48_SEMAPHORE_COUNT (PROM_M48_LAYER_COUNT - 1u)
+#define PROM_STANDARD_DESCRIPTOR_SETS_PER_SLOT \
+  (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT + \
+   PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT + \
+   PROM_M47_DESCRIPTOR_SET_COUNT)
+#define PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT \
+  (PROM_STANDARD_DESCRIPTOR_SETS_PER_SLOT + \
+   PROM_M48_LAYER_COUNT * PROM_M48_STANDARD_DESCRIPTOR_SET_COUNT)
+#define PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT (1u + PROM_M48_LAYER_COUNT)
+
+#include "reactor_vulkan_transformer_internal.h"
 
 typedef struct prom_m40b_sgemm_push_constants {
   uint32_t m;
@@ -275,10 +290,14 @@ typedef struct prom_reduction_slot {
   uint32_t generation;
   uint32_t state;
   uint64_t logical_request_id;
+  uint32_t active_query_base;
   VkCommandBuffer command_buffer;
   VkCommandBuffer consumer_command_buffer;
   VkFence fence;
   VkSemaphore producer_complete;
+  VkCommandBuffer m48_command_buffers[PROM_M48_COMMAND_BUFFER_COUNT];
+  VkSemaphore m48_semaphores[PROM_M48_SEMAPHORE_COUNT];
+  prom_transformer_descriptor_bank m48_descriptors[PROM_M48_LAYER_COUNT];
   VkDescriptorSet descriptor_sets[PROM_REDUCTION_MAX_STAGES];
   prom_vk_buffer input;
   prom_vk_buffer output;
@@ -336,6 +355,10 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m47_down;
   prom_vk_buffer m47_output;
   prom_vk_buffer m47_readback;
+  prom_vk_buffer m48_host_initial_upload;
+  prom_vk_buffer m48_host_initial;
+  prom_vk_buffer m48_activation[2u];
+  prom_vk_buffer m48_readback;
   uint64_t composed_command_reuse_count;
   uint64_t m42_command_reuse_count;
   uint64_t m43_command_reuse_count;
@@ -343,6 +366,7 @@ typedef struct prom_reduction_slot {
   uint64_t m45_command_reuse_count;
   uint64_t m46_command_reuse_count;
   uint64_t m47_command_reuse_count;
+  uint64_t m48_command_reuse_count;
 } prom_reduction_slot;
 
 typedef struct prom_reduction_runtime_state {
@@ -456,6 +480,16 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m47_buffer_reuse_count;
   uint64_t m47_descriptor_update_count;
   uint64_t m47_pipeline_create_count;
+  prom_transformer_layer_resources m48_layer[PROM_M48_LAYER_COUNT];
+  prom_vk_buffer m48_initial_upload;
+  prom_vk_buffer m48_initial_f32;
+  uint64_t m48_initial_generation;
+  uint64_t m48_initial_hash;
+  uint32_t m48_initial_tokens;
+  uint32_t m48_initial_model_width;
+  uint64_t m48_buffer_grow_count;
+  uint64_t m48_buffer_reuse_count;
+  uint64_t m48_descriptor_update_count;
   prom_reduction_slot slots[PROM_REDUCTION_RING_MAX_DEPTH];
   PrometheusReductionDiagnostics diagnostics;
 } prom_reduction_runtime_state;
@@ -3164,11 +3198,35 @@ static void prom_reduction_destroy_pipeline(VkDevice device, prom_reduction_pipe
   memset(pipeline, 0, sizeof(*pipeline));
 }
 
+static void prom_transformer_destroy_parameter(VkDevice device,
+                                               prom_transformer_parameter_resource* resource) {
+  prom_vk_destroy_buffer(device, &resource->f16);
+  prom_vk_destroy_buffer(device, &resource->f32);
+  prom_vk_destroy_buffer(device, &resource->upload);
+  memset(resource, 0, sizeof(*resource));
+}
+
+static void prom_transformer_destroy_layer(VkDevice device,
+                                           prom_transformer_layer_resources* layer) {
+  uint32_t head;
+  uint32_t weight;
+  for (head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+    for (weight = 0u; weight < PROM_M43_WEIGHT_KIND_COUNT; ++weight)
+      prom_transformer_destroy_parameter(device, &layer->attention[head][weight]);
+  }
+  prom_transformer_destroy_parameter(device, &layer->wo);
+  prom_transformer_destroy_parameter(device, &layer->rmsnorm);
+  for (weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight)
+    prom_transformer_destroy_parameter(device, &layer->ffn[weight]);
+  memset(layer, 0, sizeof(*layer));
+}
+
 void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice device) {
   prom_reduction_runtime_state* state = (prom_reduction_runtime_state*)opaque_state;
   uint32_t slot_index;
   uint32_t pipeline_index;
-  VkCommandBuffer command_buffers[PROM_REDUCTION_RING_MAX_DEPTH * 2u];
+  VkCommandBuffer command_buffers[PROM_REDUCTION_RING_MAX_DEPTH *
+                                  (2u + PROM_M48_COMMAND_BUFFER_COUNT)];
   uint32_t command_count = 0u;
   if (state == NULL) return;
   if (device == VK_NULL_HANDLE) device = state->device;
@@ -3237,10 +3295,23 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
     prom_vk_destroy_buffer(device, &slot->m44_concat_f16);
     prom_vk_destroy_buffer(device, &slot->m44_concat_f32);
     prom_vk_destroy_buffer(device, &slot->m44_concat_upload);
+    prom_vk_destroy_buffer(device, &slot->m48_readback);
+    prom_vk_destroy_buffer(device, &slot->m48_activation[1u]);
+    prom_vk_destroy_buffer(device, &slot->m48_activation[0u]);
+    prom_vk_destroy_buffer(device, &slot->m48_host_initial);
+    prom_vk_destroy_buffer(device, &slot->m48_host_initial_upload);
     if (slot->producer_complete != VK_NULL_HANDLE) vkDestroySemaphore(device, slot->producer_complete, NULL);
+    for (m43_head_index = 0u; m43_head_index < PROM_M48_SEMAPHORE_COUNT; ++m43_head_index) {
+      if (slot->m48_semaphores[m43_head_index] != VK_NULL_HANDLE)
+        vkDestroySemaphore(device, slot->m48_semaphores[m43_head_index], NULL);
+    }
     if (slot->fence != VK_NULL_HANDLE) vkDestroyFence(device, slot->fence, NULL);
     if (slot->command_buffer != VK_NULL_HANDLE) command_buffers[command_count++] = slot->command_buffer;
     if (slot->consumer_command_buffer != VK_NULL_HANDLE) command_buffers[command_count++] = slot->consumer_command_buffer;
+    for (m43_head_index = 0u; m43_head_index < PROM_M48_COMMAND_BUFFER_COUNT; ++m43_head_index) {
+      if (slot->m48_command_buffers[m43_head_index] != VK_NULL_HANDLE)
+        command_buffers[command_count++] = slot->m48_command_buffers[m43_head_index];
+    }
   }
   if (command_count > 0u && state->command_pool != VK_NULL_HANDLE) {
     vkFreeCommandBuffers(device, state->command_pool, command_count, command_buffers);
@@ -3294,6 +3365,10 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   prom_vk_destroy_buffer(device, &state->m44_wo_f16);
   prom_vk_destroy_buffer(device, &state->m44_wo_f32);
   prom_vk_destroy_buffer(device, &state->m44_wo_upload);
+  for (slot_index = 0u; slot_index < PROM_M48_LAYER_COUNT; ++slot_index)
+    prom_transformer_destroy_layer(device, &state->m48_layer[slot_index]);
+  prom_vk_destroy_buffer(device, &state->m48_initial_f32);
+  prom_vk_destroy_buffer(device, &state->m48_initial_upload);
   prom_vk_destroy_buffer(device, &state->resident_a);
   prom_vk_destroy_buffer(device, &state->resident_a_upload);
   prom_vk_destroy_buffer(device, &state->persistent_b);
@@ -3371,17 +3446,16 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
   VkPushConstantRange push_range;
   VkPipelineLayoutCreateInfo pipeline_layout_info;
   VkDescriptorSetLayout layouts[PROM_REDUCTION_RING_MAX_DEPTH *
-                                (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                 PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                 PROM_M47_DESCRIPTOR_SET_COUNT)];
+                                PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT];
   VkDescriptorSet descriptor_sets[PROM_REDUCTION_RING_MAX_DEPTH *
-                                  (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                   PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                   PROM_M47_DESCRIPTOR_SET_COUNT)];
-  VkDescriptorSetLayout m44_layouts[PROM_REDUCTION_RING_MAX_DEPTH];
-  VkDescriptorSet m44_descriptor_sets[PROM_REDUCTION_RING_MAX_DEPTH];
+                                  PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT];
+  VkDescriptorSetLayout m44_layouts[PROM_REDUCTION_RING_MAX_DEPTH *
+                                    PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT];
+  VkDescriptorSet m44_descriptor_sets[PROM_REDUCTION_RING_MAX_DEPTH *
+                                      PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT];
   VkDescriptorSetAllocateInfo descriptor_allocate_info;
-  VkCommandBuffer command_buffers[PROM_REDUCTION_RING_MAX_DEPTH * 2u];
+  VkCommandBuffer command_buffers[PROM_REDUCTION_RING_MAX_DEPTH *
+                                  (2u + PROM_M48_COMMAND_BUFFER_COUNT)];
   VkCommandBufferAllocateInfo command_allocate_info;
   VkFenceCreateInfo fence_info;
   VkSemaphoreCreateInfo semaphore_info;
@@ -3411,6 +3485,8 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
   state->diagnostics.next_logical_request_id = 1u;
   state->diagnostics.validation_enabled = services->validation_enabled;
   state->diagnostics.validation_error_count = services->validation_error_count;
+  for (slot_index = 0u; slot_index < PROM_M48_LAYER_COUNT; ++slot_index)
+    state->m48_layer[slot_index].layer_index = slot_index;
 
   memset(bindings, 0, sizeof(bindings));
   for (descriptor_index = 0u; descriptor_index < 4u; ++descriptor_index) {
@@ -3440,32 +3516,24 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
 
   pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   pool_size.descriptorCount = 4u * state->ring_depth *
-                              (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                               PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                               PROM_M47_DESCRIPTOR_SET_COUNT);
+                              PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT;
   memset(&pool_info, 0, sizeof(pool_info));
   pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  pool_info.maxSets = state->ring_depth * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                           PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                           PROM_M47_DESCRIPTOR_SET_COUNT);
+  pool_info.maxSets = state->ring_depth * PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT;
   pool_info.poolSizeCount = 1u;
   pool_info.pPoolSizes = &pool_size;
   result = vkCreateDescriptorPool(state->device, &pool_info, NULL, &state->descriptor_pool);
   if (result != VK_SUCCESS) goto fail;
   for (descriptor_index = 0u;
-       descriptor_index < state->ring_depth * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                                PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                                PROM_M47_DESCRIPTOR_SET_COUNT);
+       descriptor_index < state->ring_depth * PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT;
        ++descriptor_index) {
     layouts[descriptor_index] = state->descriptor_set_layout;
   }
   memset(&descriptor_allocate_info, 0, sizeof(descriptor_allocate_info));
   descriptor_allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   descriptor_allocate_info.descriptorPool = state->descriptor_pool;
-  descriptor_allocate_info.descriptorSetCount = state->ring_depth *
-                                                (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                                 PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                                 PROM_M47_DESCRIPTOR_SET_COUNT);
+  descriptor_allocate_info.descriptorSetCount =
+      state->ring_depth * PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT;
   descriptor_allocate_info.pSetLayouts = layouts;
   result = vkAllocateDescriptorSets(state->device, &descriptor_allocate_info, descriptor_sets);
   if (result != VK_SUCCESS) goto fail;
@@ -3495,20 +3563,24 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
                                   &state->m44_pipeline_layout);
   if (result != VK_SUCCESS) goto fail;
   m44_pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-  m44_pool_size.descriptorCount = PROM_M44_WIDE_DESCRIPTOR_BINDING_COUNT * state->ring_depth;
+  m44_pool_size.descriptorCount = PROM_M44_WIDE_DESCRIPTOR_BINDING_COUNT * state->ring_depth *
+                                  PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT;
   memset(&m44_pool_info, 0, sizeof(m44_pool_info));
   m44_pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  m44_pool_info.maxSets = state->ring_depth;
+  m44_pool_info.maxSets = state->ring_depth * PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT;
   m44_pool_info.poolSizeCount = 1u;
   m44_pool_info.pPoolSizes = &m44_pool_size;
   result = vkCreateDescriptorPool(state->device, &m44_pool_info, NULL, &state->m44_descriptor_pool);
   if (result != VK_SUCCESS) goto fail;
-  for (descriptor_index = 0u; descriptor_index < state->ring_depth; ++descriptor_index)
+  for (descriptor_index = 0u;
+       descriptor_index < state->ring_depth * PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT;
+       ++descriptor_index)
     m44_layouts[descriptor_index] = state->m44_descriptor_set_layout;
   memset(&descriptor_allocate_info, 0, sizeof(descriptor_allocate_info));
   descriptor_allocate_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   descriptor_allocate_info.descriptorPool = state->m44_descriptor_pool;
-  descriptor_allocate_info.descriptorSetCount = state->ring_depth;
+  descriptor_allocate_info.descriptorSetCount =
+      state->ring_depth * PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT;
   descriptor_allocate_info.pSetLayouts = m44_layouts;
   result = vkAllocateDescriptorSets(state->device, &descriptor_allocate_info, m44_descriptor_sets);
   if (result != VK_SUCCESS) goto fail;
@@ -3517,7 +3589,8 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
   command_allocate_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
   command_allocate_info.commandPool = state->command_pool;
   command_allocate_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-  command_allocate_info.commandBufferCount = state->ring_depth * 2u;
+  command_allocate_info.commandBufferCount =
+      state->ring_depth * (2u + PROM_M48_COMMAND_BUFFER_COUNT);
   result = vkAllocateCommandBuffers(state->device, &command_allocate_info, command_buffers);
   if (result != VK_SUCCESS) goto fail;
   memset(&fence_info, 0, sizeof(fence_info));
@@ -3526,57 +3599,72 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
   semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
   for (slot_index = 0u; slot_index < state->ring_depth; ++slot_index) {
     uint32_t stage_index;
+    uint32_t layer_index;
+    const uint32_t standard_base = slot_index * PROM_ALL_STANDARD_DESCRIPTOR_SETS_PER_SLOT;
+    const uint32_t command_base = slot_index * (2u + PROM_M48_COMMAND_BUFFER_COUNT);
+    const uint32_t wide_base = slot_index * PROM_ALL_WIDE_DESCRIPTOR_SETS_PER_SLOT;
     prom_reduction_slot* slot = &state->slots[slot_index];
     slot->slot_id = slot_index;
+    slot->active_query_base = slot_index * PROM_REDUCTION_QUERY_STRIDE;
     slot->state = PROM_ASYNC_PHYSICAL_EMPTY;
-    slot->command_buffer = command_buffers[slot_index * 2u];
-    slot->consumer_command_buffer = command_buffers[slot_index * 2u + 1u];
-    slot->m44_descriptor_set = m44_descriptor_sets[slot_index];
+    slot->command_buffer = command_buffers[command_base];
+    slot->consumer_command_buffer = command_buffers[command_base + 1u];
+    slot->m44_descriptor_set = m44_descriptor_sets[wide_base];
+    for (layer_index = 0u; layer_index < PROM_M48_COMMAND_BUFFER_COUNT; ++layer_index)
+      slot->m48_command_buffers[layer_index] = command_buffers[command_base + 2u + layer_index];
     for (stage_index = 0u; stage_index < PROM_REDUCTION_MAX_STAGES; ++stage_index) {
       slot->descriptor_sets[stage_index] =
-          descriptor_sets[slot_index * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                        PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                        PROM_M47_DESCRIPTOR_SET_COUNT) + stage_index];
+          descriptor_sets[standard_base + stage_index];
     }
     for (stage_index = 0u; stage_index < PROM_M42_DESCRIPTOR_SET_COUNT; ++stage_index) {
       slot->m42_descriptor_sets[stage_index] =
-          descriptor_sets[slot_index * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                        PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                        PROM_M47_DESCRIPTOR_SET_COUNT) +
+          descriptor_sets[standard_base +
                           PROM_REDUCTION_MAX_STAGES + stage_index];
     }
     for (stage_index = 0u; stage_index < PROM_M43_DESCRIPTOR_SET_COUNT; ++stage_index) {
       slot->m43_descriptor_sets[stage_index] =
-          descriptor_sets[slot_index * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                        PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                        PROM_M47_DESCRIPTOR_SET_COUNT) +
+          descriptor_sets[standard_base +
                           PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT + stage_index];
     }
     slot->m44_sgemm_descriptor_set =
-        descriptor_sets[slot_index * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                      PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                      PROM_M47_DESCRIPTOR_SET_COUNT) +
+        descriptor_sets[standard_base +
                         PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
                         PROM_M43_DESCRIPTOR_SET_COUNT];
     slot->m45_descriptor_set =
-        descriptor_sets[slot_index * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                      PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                      PROM_M47_DESCRIPTOR_SET_COUNT) +
+        descriptor_sets[standard_base +
                         PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
                         PROM_M43_DESCRIPTOR_SET_COUNT + 1u];
     for (stage_index = 0u; stage_index < PROM_M47_DESCRIPTOR_SET_COUNT; ++stage_index) {
       slot->m47_descriptor_sets[stage_index] =
-          descriptor_sets[slot_index * (PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
-                                        PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
-                                        PROM_M47_DESCRIPTOR_SET_COUNT) +
+          descriptor_sets[standard_base +
                           PROM_REDUCTION_MAX_STAGES + PROM_M42_DESCRIPTOR_SET_COUNT +
                           PROM_M43_DESCRIPTOR_SET_COUNT + PROM_M44_COMMON_DESCRIPTOR_SET_COUNT +
                           stage_index];
+    }
+    {
+      uint32_t next = standard_base + PROM_STANDARD_DESCRIPTOR_SETS_PER_SLOT;
+      for (layer_index = 0u; layer_index < PROM_M48_LAYER_COUNT; ++layer_index) {
+        prom_transformer_descriptor_bank* bank = &slot->m48_descriptors[layer_index];
+        for (stage_index = 0u; stage_index < PROM_M43_DESCRIPTOR_SET_COUNT; ++stage_index)
+          bank->m43[stage_index] = descriptor_sets[next++];
+        bank->m44_sgemm = descriptor_sets[next++];
+        bank->m45 = descriptor_sets[next++];
+        for (stage_index = 0u; stage_index < 3u; ++stage_index)
+          bank->m46[stage_index] = descriptor_sets[next++];
+        for (stage_index = 0u; stage_index < PROM_M47_DESCRIPTOR_SET_COUNT; ++stage_index)
+          bank->m47[stage_index] = descriptor_sets[next++];
+        bank->m44_wide = m44_descriptor_sets[wide_base + 1u + layer_index];
+      }
     }
     result = vkCreateFence(state->device, &fence_info, NULL, &slot->fence);
     if (result != VK_SUCCESS) goto fail;
     result = vkCreateSemaphore(state->device, &semaphore_info, NULL, &slot->producer_complete);
     if (result != VK_SUCCESS) goto fail;
+    for (layer_index = 0u; layer_index < PROM_M48_SEMAPHORE_COUNT; ++layer_index) {
+      result = vkCreateSemaphore(state->device, &semaphore_info, NULL,
+                                 &slot->m48_semaphores[layer_index]);
+      if (result != VK_SUCCESS) goto fail;
+    }
   }
   if (state->timestamp_supported != 0u && state->timestamp_period_ns > 0.0f) {
     memset(&query_info, 0, sizeof(query_info));
@@ -3713,6 +3801,7 @@ static prom_reduction_slot* prom_reduction_acquire_slot(prom_reduction_runtime_s
     if (slot->state == PROM_ASYNC_PHYSICAL_EMPTY) {
       slot->generation += 1u;
       slot->logical_request_id = logical_request_id;
+      slot->active_query_base = slot->slot_id * PROM_REDUCTION_QUERY_STRIDE;
       slot->state = PROM_ASYNC_PHYSICAL_PREPARING;
       state->acquire_cursor = (index + 1u) % state->ring_depth;
       state->diagnostics.acquire_cursor = state->acquire_cursor;
@@ -3726,6 +3815,7 @@ static prom_reduction_slot* prom_reduction_acquire_slot(prom_reduction_runtime_s
       slot->state = PROM_ASYNC_PHYSICAL_PREPARING;
       slot->generation += 1u;
       slot->logical_request_id = logical_request_id;
+      slot->active_query_base = slot->slot_id * PROM_REDUCTION_QUERY_STRIDE;
       state->diagnostics.physical_recycle_count += 1u;
       state->acquire_cursor = (offset + 1u) % state->ring_depth;
       state->diagnostics.acquire_cursor = state->acquire_cursor;
@@ -5674,7 +5764,7 @@ static void prom_m42_write_timestamp(const prom_reduction_runtime_state* state,
                                      uint32_t query_offset) {
   if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE) {
     vkCmdWriteTimestamp(command_buffer, stage, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + query_offset);
+                        slot->active_query_base + query_offset);
   }
 }
 
@@ -7136,6 +7226,343 @@ m47_weight_submit_fail:
   return PROM_ERROR;
 }
 
+static int prom_m48_ensure_buffer(prom_reduction_runtime_state* state,
+                                  prom_vk_buffer* buffer,
+                                  VkDeviceSize size,
+                                  VkBufferUsageFlags usage,
+                                  VkMemoryPropertyFlags properties,
+                                  int map_memory,
+                                  uint32_t* out_reused) {
+  const uint64_t allocations_before = state->diagnostics.buffer_allocation_count;
+  if (!prom_reduction_ensure_buffer(state, buffer, size, usage, properties, map_memory)) return 0;
+  if (state->diagnostics.buffer_allocation_count == allocations_before) {
+    state->m48_buffer_reuse_count += 1u;
+    if (out_reused != NULL) *out_reused = 1u;
+  } else {
+    state->m48_buffer_grow_count += 1u;
+    if (out_reused != NULL) *out_reused = 0u;
+  }
+  return 1;
+}
+
+static int prom_m48_upload_f32_parameter(prom_reduction_runtime_state* state,
+                                         prom_reduction_slot* slot,
+                                         prom_transformer_parameter_resource* resource,
+                                         VkDeviceSize bytes,
+                                         uint64_t* out_gpu_ns) {
+  VkCommandBufferBeginInfo begin_info;
+  VkBufferCopy copy;
+  VkSubmitInfo submit;
+  uint64_t timestamps[2] = {0u, 0u};
+  VkResult result;
+  if (vkResetCommandBuffer(slot->command_buffer, 0u) != VK_SUCCESS) return 0;
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  if (vkBeginCommandBuffer(slot->command_buffer, &begin_info) != VK_SUCCESS) return 0;
+  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE) {
+    vkCmdResetQueryPool(slot->command_buffer, state->query_pool,
+                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE, 2u);
+    vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        state->query_pool, slot->slot_id * PROM_REDUCTION_QUERY_STRIDE);
+  }
+  prom_m42_buffer_barrier(slot->command_buffer, &resource->upload,
+                          VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  memset(&copy, 0, sizeof(copy));
+  copy.size = bytes;
+  vkCmdCopyBuffer(slot->command_buffer, resource->upload.buffer,
+                  resource->f32.buffer, 1u, &copy);
+  prom_m42_buffer_barrier(slot->command_buffer, &resource->f32,
+                          VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                          VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE)
+    vkCmdWriteTimestamp(slot->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        state->query_pool, slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + 1u);
+  if (vkEndCommandBuffer(slot->command_buffer) != VK_SUCCESS ||
+      vkResetFences(state->device, 1u, &slot->fence) != VK_SUCCESS) return 0;
+  memset(&submit, 0, sizeof(submit));
+  submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit.commandBufferCount = 1u;
+  submit.pCommandBuffers = &slot->command_buffer;
+  result = vkQueueSubmit(state->queue, 1u, &submit, slot->fence);
+  if (result != VK_SUCCESS) return 0;
+  slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
+  result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+  if (result != VK_SUCCESS) {
+    slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
+    state->diagnostics.quarantine_count += 1u;
+    return 0;
+  }
+  if (out_gpu_ns != NULL && state->timestamp_supported != 0u &&
+      state->query_pool != VK_NULL_HANDLE &&
+      vkGetQueryPoolResults(state->device, state->query_pool,
+                            slot->slot_id * PROM_REDUCTION_QUERY_STRIDE, 2u,
+                            sizeof(timestamps), timestamps, sizeof(uint64_t),
+                            VK_QUERY_RESULT_64_BIT) == VK_SUCCESS &&
+      timestamps[1] >= timestamps[0]) {
+    *out_gpu_ns = (uint64_t)((double)(timestamps[1] - timestamps[0]) *
+                             state->timestamp_period_ns);
+  }
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  return 1;
+}
+
+int prom_reactor_runtime_m48_prepare_layer_weight(
+    void* handle,
+    const prom_m48_layer_weight_prepare_request* request,
+    prom_m48_layer_weight_prepare_result* out_result) {
+  prom_reduction_runtime_state* state;
+  prom_reduction_slot* slot;
+  prom_transformer_layer_resources* layer;
+  prom_transformer_parameter_resource* resource = NULL;
+  uint64_t elements;
+  uint64_t begin_ns;
+  uint64_t upload_wall_ns = 0u;
+  VkDeviceSize f32_bytes;
+  VkDeviceSize f16_bytes = 0u;
+  uint32_t logical_rows;
+  uint32_t logical_columns;
+  uint32_t padded_rows;
+  uint32_t padded_columns;
+  uint32_t finite = 0u;
+  uint32_t reused_upload = 0u;
+  uint32_t reused_f32 = 0u;
+  uint32_t reused_f16 = 0u;
+  uint32_t packed = 1u;
+  int32_t detail = 0;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  if (request == NULL || request->values == NULL ||
+      request->layer_index >= PROM_M48_LAYER_COUNT ||
+      request->resource_index >= PROM_M48_RESOURCE_COUNT ||
+      request->generation == 0u || request->model_width == 0u ||
+      request->head_dim == 0u || request->ffn_width == 0u) {
+    out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  layer = NULL;
+  logical_rows = request->model_width;
+  logical_columns = request->head_dim;
+  if (request->resource_index < PROM_M48_ATTENTION_RESOURCE_COUNT) {
+    const uint32_t head = request->resource_index / PROM_M43_WEIGHT_KIND_COUNT;
+    const uint32_t kind = request->resource_index % PROM_M43_WEIGHT_KIND_COUNT;
+    if (!prom_m40b_checked_product_u64(request->model_width, request->head_dim, &elements)) {
+      out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+      return PROM_ERROR;
+    }
+    state = prom_reduction_ensure_state(handle, &detail);
+    if (state != NULL) resource = &state->m48_layer[request->layer_index].attention[head][kind];
+  } else if (request->resource_index == PROM_M48_RESOURCE_WO) {
+    logical_columns = request->model_width;
+    if (!prom_m40b_checked_product_u64(request->model_width, request->model_width, &elements)) {
+      out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+      return PROM_ERROR;
+    }
+    state = prom_reduction_ensure_state(handle, &detail);
+    if (state != NULL) resource = &state->m48_layer[request->layer_index].wo;
+  } else if (request->resource_index == PROM_M48_RESOURCE_RMSNORM) {
+    logical_rows = 1u;
+    logical_columns = request->model_width;
+    elements = request->model_width;
+    packed = 0u;
+    state = prom_reduction_ensure_state(handle, &detail);
+    if (state != NULL) resource = &state->m48_layer[request->layer_index].rmsnorm;
+  } else {
+    const uint32_t kind = request->resource_index - PROM_M48_RESOURCE_WGATE;
+    logical_rows = kind == PROM_M47_WEIGHT_DOWN ? request->ffn_width : request->model_width;
+    logical_columns = kind == PROM_M47_WEIGHT_DOWN ? request->model_width : request->ffn_width;
+    if (!prom_m40b_checked_product_u64(logical_rows, logical_columns, &elements)) {
+      out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+      return PROM_ERROR;
+    }
+    state = prom_reduction_ensure_state(handle, &detail);
+    if (state != NULL) resource = &state->m48_layer[request->layer_index].ffn[kind];
+  }
+  if (state == NULL || resource == NULL) {
+    out_result->detail_code = state == NULL ? detail : PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  out_result->layer_index = request->layer_index;
+  out_result->resource_index = request->resource_index;
+  if (request->element_count != elements || elements > SIZE_MAX / sizeof(float) ||
+      !prom_m42_round_up_16(logical_rows, &padded_rows) ||
+      !prom_m42_round_up_16(logical_columns, &padded_columns)) {
+    out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  begin_ns = prom_reduction_now_ns();
+  out_result->hash = prom_m42_hash_finite_matrix(request->values, elements, &finite);
+  if (finite == 0u) {
+    out_result->detail_code = PROM_M48_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  if (request->generation <= resource->generation) {
+    out_result->detail_code = PROM_M48_DETAIL_STALE_WEIGHT_GENERATION;
+    return PROM_ERROR;
+  }
+  if (!prom_m40b_wait_all_slots(state) || !prom_m42_ensure_pipelines(state) ||
+      !prom_m46_ensure_pipelines(state) || !prom_m47_ensure_pipelines(state) ||
+      !prom_m44_ensure_pipelines(state) || !prom_m45_ensure_pipeline(state)) {
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  slot = prom_reduction_acquire_slot(state, state->next_logical_request_id++);
+  state->diagnostics.next_logical_request_id = state->next_logical_request_id;
+  if (slot == NULL) {
+    out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
+    return PROM_ERROR;
+  }
+  f32_bytes = (VkDeviceSize)(elements * sizeof(float));
+  if (packed != 0u)
+    f16_bytes = (VkDeviceSize)((((uint64_t)padded_rows * padded_columns + 1u) / 2u) *
+                               sizeof(uint32_t));
+  if (!prom_m48_ensure_buffer(state, &resource->upload, f32_bytes,
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                              1, &reused_upload) ||
+      !prom_m48_ensure_buffer(state, &resource->f32, f32_bytes,
+                              VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &reused_f32) ||
+      (packed != 0u &&
+       !prom_m48_ensure_buffer(state, &resource->f16, f16_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &reused_f16))) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  memcpy(resource->upload.mapped, request->values, (size_t)f32_bytes);
+  if (packed != 0u) {
+    prom_m43_update_descriptor(state, slot->m43_descriptor_sets[0],
+                               &resource->f32, NULL, &resource->f16);
+    if (!prom_m43_record_upload_and_pack(state, slot, &resource->upload,
+                                         &resource->f32, &resource->f16,
+                                         logical_rows, logical_columns,
+                                         padded_rows, padded_columns, f32_bytes,
+                                         &out_result->gpu_upload_and_pack_ns,
+                                         &upload_wall_ns)) {
+      if (slot->state != PROM_ASYNC_PHYSICAL_QUARANTINED)
+        slot->state = PROM_ASYNC_PHYSICAL_READY;
+      out_result->detail_code = slot->state == PROM_ASYNC_PHYSICAL_QUARANTINED
+                                    ? PROM_M48_DETAIL_COMPLETION_UNCERTAIN
+                                    : PROM_M48_DETAIL_COMMAND;
+      return PROM_ERROR;
+    }
+  } else if (!prom_m48_upload_f32_parameter(state, slot, resource, f32_bytes,
+                                             &out_result->gpu_upload_and_pack_ns)) {
+    if (slot->state != PROM_ASYNC_PHYSICAL_QUARANTINED)
+      slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = slot->state == PROM_ASYNC_PHYSICAL_QUARANTINED
+                                  ? PROM_M48_DETAIL_COMPLETION_UNCERTAIN
+                                  : PROM_M48_DETAIL_COMMAND;
+    return PROM_ERROR;
+  }
+  out_result->replaced = resource->generation != 0u;
+  resource->generation = request->generation;
+  resource->hash = out_result->hash;
+  resource->rows = logical_rows;
+  resource->columns = logical_columns;
+  layer = &state->m48_layer[request->layer_index];
+  layer->model_width = request->model_width;
+  layer->head_dim = request->head_dim;
+  layer->ffn_width = request->ffn_width;
+  out_result->generation = request->generation;
+  out_result->retained_upload_bytes = resource->upload.size;
+  out_result->retained_f32_bytes = resource->f32.size;
+  out_result->retained_packed_bytes = resource->f16.size;
+  out_result->buffer_reused = reused_upload != 0u && reused_f32 != 0u &&
+                              (packed == 0u || reused_f16 != 0u);
+  out_result->preparation_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_m48_prepare_initial_activation(
+    void* handle,
+    const prom_m48_initial_activation_prepare_request* request,
+    prom_m48_initial_activation_prepare_result* out_result) {
+  prom_reduction_runtime_state* state;
+  prom_reduction_slot* slot;
+  prom_transformer_parameter_resource resource;
+  uint64_t elements;
+  uint64_t begin_ns;
+  VkDeviceSize bytes;
+  uint32_t finite = 0u;
+  uint32_t reused_upload = 0u;
+  uint32_t reused_f32 = 0u;
+  int32_t detail = 0;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  if (request == NULL || request->values == NULL || request->tokens == 0u ||
+      request->model_width == 0u || request->generation == 0u ||
+      !prom_m40b_checked_product_u64(request->tokens, request->model_width, &elements) ||
+      request->element_count != elements || elements > SIZE_MAX / sizeof(float)) {
+    out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  begin_ns = prom_reduction_now_ns();
+  out_result->hash = prom_m42_hash_finite_matrix(request->values, elements, &finite);
+  if (finite == 0u) {
+    out_result->detail_code = PROM_M48_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL) {
+    out_result->detail_code = detail;
+    return PROM_ERROR;
+  }
+  if (request->generation <= state->m48_initial_generation) {
+    out_result->detail_code = PROM_M48_DETAIL_STALE_INITIAL_GENERATION;
+    return PROM_ERROR;
+  }
+  if (!prom_m40b_wait_all_slots(state)) {
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  slot = prom_reduction_acquire_slot(state, state->next_logical_request_id++);
+  state->diagnostics.next_logical_request_id = state->next_logical_request_id;
+  if (slot == NULL) {
+    out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
+    return PROM_ERROR;
+  }
+  bytes = (VkDeviceSize)(elements * sizeof(float));
+  if (!prom_m48_ensure_buffer(state, &state->m48_initial_upload, bytes,
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                              1, &reused_upload) ||
+      !prom_m48_ensure_buffer(state, &state->m48_initial_f32, bytes,
+                              VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, &reused_f32)) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  memcpy(state->m48_initial_upload.mapped, request->values, (size_t)bytes);
+  memset(&resource, 0, sizeof(resource));
+  resource.upload = state->m48_initial_upload;
+  resource.f32 = state->m48_initial_f32;
+  if (!prom_m48_upload_f32_parameter(state, slot, &resource, bytes,
+                                     &out_result->gpu_upload_ns)) {
+    if (slot->state != PROM_ASYNC_PHYSICAL_QUARANTINED)
+      slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = slot->state == PROM_ASYNC_PHYSICAL_QUARANTINED
+                                  ? PROM_M48_DETAIL_COMPLETION_UNCERTAIN
+                                  : PROM_M48_DETAIL_COMMAND;
+    return PROM_ERROR;
+  }
+  out_result->replaced = state->m48_initial_generation != 0u;
+  state->m48_initial_generation = request->generation;
+  state->m48_initial_hash = out_result->hash;
+  state->m48_initial_tokens = request->tokens;
+  state->m48_initial_model_width = request->model_width;
+  out_result->generation = request->generation;
+  out_result->retained_upload_bytes = state->m48_initial_upload.size;
+  out_result->retained_device_bytes = state->m48_initial_f32.size;
+  out_result->buffer_reused = reused_upload != 0u && reused_f32 != 0u;
+  out_result->preparation_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  return PROM_OK;
+}
+
 static int prom_m43_prepare_execution_buffers(prom_reduction_runtime_state* state,
                                               prom_reduction_slot* slot,
                                               const prom_m43_attention_group_request* request,
@@ -7556,8 +7983,13 @@ static int prom_m43_record_grouped_internal(prom_reduction_runtime_state* state,
                                             uint32_t* out_partial_fault,
                                             uint32_t* out_uncertain_fault,
                                             uint32_t final_readback,
-                                            uint32_t leave_open) {
-  VkCommandBuffer command_buffer = slot->command_buffer;
+                                            uint32_t leave_open,
+                                            VkCommandBuffer caller_command_buffer,
+                                            const VkDescriptorSet* caller_descriptors,
+                                            uint32_t already_open,
+                                            uint32_t input_already_prepared) {
+  VkCommandBuffer command_buffer = caller_command_buffer != VK_NULL_HANDLE
+                                       ? caller_command_buffer : slot->command_buffer;
   VkCommandBufferBeginInfo begin_info;
   VkBufferCopy copy;
   uint32_t head;
@@ -7566,17 +7998,24 @@ static int prom_m43_record_grouped_internal(prom_reduction_runtime_state* state,
   const VkDeviceSize output_row_bytes = (VkDeviceSize)((uint64_t)request->head_dim * sizeof(float));
   if (out_partial_fault != NULL) *out_partial_fault = 0u;
   if (out_uncertain_fault != NULL) *out_uncertain_fault = 0u;
-  if (vkResetCommandBuffer(command_buffer, 0u) != VK_SUCCESS) return 0;
-  memset(&begin_info, 0, sizeof(begin_info));
-  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-  if (vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) return 0;
-  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE) {
-    vkCmdResetQueryPool(command_buffer, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE, PROM_M43_QUERY_COUNT);
+  if (caller_descriptors != NULL)
+    memcpy(slot->m43_descriptor_sets, caller_descriptors,
+           sizeof(slot->m43_descriptor_sets));
+  if (already_open == 0u) {
+    if (vkResetCommandBuffer(command_buffer, 0u) != VK_SUCCESS) return 0;
+    memset(&begin_info, 0, sizeof(begin_info));
+    begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (vkBeginCommandBuffer(command_buffer, &begin_info) != VK_SUCCESS) return 0;
   }
-  prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u);
-  if (request->input_mode == PROM_M42_INPUT_HOST_X) {
+  if (input_already_prepared == 0u && state->timestamp_supported != 0u &&
+      state->query_pool != VK_NULL_HANDLE) {
+    vkCmdResetQueryPool(command_buffer, state->query_pool,
+                        slot->active_query_base, PROM_M43_QUERY_COUNT);
+  }
+  if (input_already_prepared == 0u)
+    prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, 0u);
+  if (input_already_prepared == 0u && request->input_mode == PROM_M42_INPUT_HOST_X) {
     if (!prom_m43_one_buffer_barrier(command_buffer, &slot->m43_x_upload, x_f32_bytes,
                                      VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
                                      VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT)) return 0;
@@ -7603,7 +8042,7 @@ static int prom_m43_record_grouped_internal(prom_reduction_runtime_state* state,
       *out_partial_fault = PROM_M43_FAULT_SHARED_X_UPLOAD;
       return vkEndCommandBuffer(command_buffer) == VK_SUCCESS ? 2 : 0;
     }
-  } else {
+  } else if (input_already_prepared == 0u) {
     prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1u);
     prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 2u);
   }
@@ -7711,7 +8150,8 @@ static int prom_m43_record_grouped(prom_reduction_runtime_state* state,
                                    uint32_t* out_partial_fault,
                                    uint32_t* out_uncertain_fault) {
   return prom_m43_record_grouped_internal(state, slot, request, plan, reduction_plan,
-                                          out_partial_fault, out_uncertain_fault, 1u, 0u);
+                                          out_partial_fault, out_uncertain_fault, 1u, 0u,
+                                          VK_NULL_HANDLE, NULL, 0u, 0u);
 }
 
 static int prom_m43_execute_sequential_baseline(prom_reduction_runtime_state* state,
@@ -8324,7 +8764,7 @@ static int prom_m44_record_projection_tail(prom_reduction_runtime_state* state,
   }
   if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE)
     vkCmdResetQueryPool(command_buffer, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + PROM_M44_QUERY_BASE,
+                        slot->active_query_base + PROM_M44_QUERY_BASE,
                         PROM_M44_QUERY_COUNT);
   for (head = 0u; head < PROM_M44_HEAD_COUNT; ++head) {
     head_buffers[head] = &slot->m43_head[head].output;
@@ -8484,7 +8924,7 @@ static int prom_m45_record_residual_tail(prom_reduction_runtime_state* state,
   }
   if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE)
     vkCmdResetQueryPool(command_buffer, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + PROM_M45_QUERY_BASE,
+                        slot->active_query_base + PROM_M45_QUERY_BASE,
                         PROM_M45_QUERY_COUNT);
   if (request->fault_point == PROM_M45_FAULT_BEFORE_RESIDUAL_BARRIERS) {
     if (out_partial_fault != NULL) *out_partial_fault = request->fault_point;
@@ -8595,7 +9035,7 @@ static int prom_m46_record_tail(prom_reduction_runtime_state* state,
   }
   if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE)
     vkCmdResetQueryPool(command_buffer, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + PROM_M46_QUERY_BASE,
+                        slot->active_query_base + PROM_M46_QUERY_BASE,
                         PROM_M46_QUERY_COUNT);
   if (request->fault_point == PROM_M46_FAULT_BEFORE_REDUCTION)
     partial_fault = request->fault_point;
@@ -9043,6 +9483,8 @@ static int prom_m47_record_tail(prom_reduction_runtime_state* state,
   const uint32_t gate_k = reduced != 0u ? plan->padded_model_width : plan->model_width;
   const uint32_t down_n = reduced != 0u ? plan->padded_model_width : plan->model_width;
   const uint32_t down_k = reduced != 0u ? plan->padded_ffn_width : plan->ffn_width;
+  prom_vk_buffer* down = plan->residual_strategy == PROM_M47_RESIDUAL_IN_PLACE_DOWN
+                             ? output : &slot->m47_down;
   uint32_t partial_fault = 0u;
   uint32_t row;
   if (out_partial_fault != NULL) *out_partial_fault = 0u;
@@ -9055,7 +9497,7 @@ static int prom_m47_record_tail(prom_reduction_runtime_state* state,
   }
   if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE)
     vkCmdResetQueryPool(command_buffer, state->query_pool,
-                        slot->slot_id * PROM_REDUCTION_QUERY_STRIDE + PROM_M47_QUERY_BASE,
+                        slot->active_query_base + PROM_M47_QUERY_BASE,
                         PROM_M47_QUERY_COUNT);
   if (!prom_m43_one_buffer_barrier(command_buffer, n,
                                    (VkDeviceSize)plan->memory.n_view_bytes,
@@ -9236,7 +9678,7 @@ static int prom_m47_record_tail(prom_reduction_runtime_state* state,
   }
   if (partial_fault == 0u) {
     prom_m45_residual_push_constants push;
-    prom_m42_buffer_barrier(command_buffer, &slot->m47_down,
+    prom_m42_buffer_barrier(command_buffer, down,
                             VK_ACCESS_SHADER_WRITE_BIT,
                             plan->residual_strategy == PROM_M47_RESIDUAL_IN_PLACE_DOWN
                               ? VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT
@@ -9813,7 +10255,8 @@ int prom_reactor_runtime_m44_execute_composed(void* handle,
   m43_record_status = prom_m43_record_grouped_internal(
       state, slot, &effective_request.attention, &out_result->attention.plan, &reduction_plan,
       &m43_partial_fault, &m43_uncertain_fault, 0u,
-      effective_request.submit_plan == PROM_M44_SUBMIT_ONE_COMMAND_BUFFER);
+      effective_request.submit_plan == PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+      VK_NULL_HANDLE, NULL, 0u, 0u);
   if (m43_record_status != 1 || m43_partial_fault != 0u || m43_uncertain_fault != 0u) {
     if (m43_record_status == 1) (void)vkEndCommandBuffer(slot->command_buffer);
     slot->state = PROM_ASYNC_PHYSICAL_READY;
@@ -9992,6 +10435,1300 @@ int prom_reactor_runtime_m44_execute_composed(void* handle,
   out_result->stage = 0u;
   out_result->detail_code = 0;
   return PROM_OK;
+}
+
+typedef struct prom_transformer_recorded_block {
+  prom_m43_attention_group_request attention_request;
+  prom_m43_attention_plan attention_plan;
+  prom_device_buffer_view head_view[PROM_M43_HEAD_COUNT];
+  PrometheusReductionPlan reduction_plan;
+  prom_m44_composed_request projection_request;
+  prom_m44_output_projection_plan projection_plan;
+  prom_m45_composed_request residual_request;
+  prom_m45_residual_plan residual_plan;
+  prom_m46_composed_request norm_request;
+  prom_m46_rmsnorm_plan norm_plan;
+  prom_m47_composed_request ffn_request;
+  prom_m47_gated_ffn_plan ffn_plan;
+  prom_device_buffer_view input_view;
+  prom_device_buffer_view y_view;
+  prom_device_buffer_view z_view;
+  prom_device_buffer_view n_view;
+  prom_device_buffer_view output_view;
+  const prom_vk_buffer* input;
+  prom_vk_buffer* z;
+  prom_vk_buffer* n;
+  prom_vk_buffer* output;
+  uint64_t y_generation;
+} prom_transformer_recorded_block;
+
+static void prom_transformer_fill_view(prom_device_buffer_view* view,
+                                       const prom_reduction_runtime_state* state,
+                                       const prom_reduction_slot* slot,
+                                       const prom_vk_buffer* buffer,
+                                       uint32_t rows,
+                                       uint32_t columns,
+                                       uint32_t row_stride,
+                                       uint64_t generation) {
+  memset(view, 0, sizeof(*view));
+  view->buffer = buffer->buffer;
+  view->byte_length = buffer->size;
+  view->element_type = PROM_DEVICE_ELEMENT_F32;
+  view->logical_rows = rows;
+  view->logical_columns = columns;
+  view->row_stride_elements = row_stride;
+  view->layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+  view->producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+  view->required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+  view->owning_device = state->device;
+  view->owning_lifetime_id = generation;
+  view->owning_slot_id = slot->slot_id;
+  view->owning_slot_generation = slot->generation;
+}
+
+static void prom_transformer_select_descriptor_bank(
+    prom_reduction_slot* slot,
+    const prom_transformer_descriptor_bank* bank) {
+  memcpy(slot->m43_descriptor_sets, bank->m43, sizeof(slot->m43_descriptor_sets));
+  slot->m44_sgemm_descriptor_set = bank->m44_sgemm;
+  slot->m44_descriptor_set = bank->m44_wide;
+  slot->m45_descriptor_set = bank->m45;
+  memcpy(slot->descriptor_sets, bank->m46, sizeof(bank->m46));
+  memcpy(slot->m47_descriptor_sets, bank->m47, sizeof(slot->m47_descriptor_sets));
+}
+
+static int prom_transformer_setup_attention_descriptors(
+    prom_reduction_runtime_state* state,
+    prom_reduction_slot* slot,
+    const prom_transformer_layer_resources* layer,
+    const prom_m43_attention_group_request* request,
+    prom_transformer_descriptor_bank* bank,
+    const prom_vk_buffer* x_f32,
+    const prom_vk_buffer* x_f16,
+    prom_transformer_recorded_block* block) {
+  uint32_t head;
+  for (head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+    const uint32_t base = head * PROM_M42_DESCRIPTOR_SET_COUNT;
+    const uint32_t reduced = block->attention_plan.selected_path[head] != PROM_M42_PATH_A2X4;
+    const prom_vk_buffer* x = reduced != 0u ? x_f16 : x_f32;
+    const prom_transformer_parameter_resource* wq =
+        &layer->attention[head][PROM_M43_WEIGHT_Q];
+    const prom_transformer_parameter_resource* wk =
+        &layer->attention[head][PROM_M43_WEIGHT_K];
+    const prom_transformer_parameter_resource* wv =
+        &layer->attention[head][PROM_M43_WEIGHT_V];
+    prom_m43_head_slot* head_slot = &slot->m43_head[head];
+    prom_m43_update_descriptor(state, bank->m43[base], x,
+                               reduced != 0u ? &wq->f16 : &wq->f32, &head_slot->q);
+    prom_m43_update_descriptor(state, bank->m43[base + 1u], x,
+                               reduced != 0u ? &wk->f16 : &wk->f32, &head_slot->k);
+    prom_m43_update_descriptor(state, bank->m43[base + 2u], x,
+                               reduced != 0u ? &wv->f16 : &wv->f32, &head_slot->v);
+    prom_m43_update_descriptor(state, bank->m43[base + 4u], &head_slot->k, NULL,
+                               &head_slot->k_transposed);
+    prom_m43_update_descriptor(state, bank->m43[base + 7u], &head_slot->scores, NULL,
+                               &head_slot->scores);
+    if (reduced != 0u) {
+      prom_m43_update_descriptor(state, bank->m43[base + 3u], &head_slot->q, NULL,
+                                 &head_slot->q_packed);
+      prom_m43_update_descriptor(state, bank->m43[base + 5u], &head_slot->v, NULL,
+                                 &head_slot->v_packed);
+      prom_m43_update_descriptor(state, bank->m43[base + 6u], &head_slot->q_packed,
+                                 &head_slot->k_transposed, &head_slot->scores);
+      prom_m43_update_descriptor(state, bank->m43[base + 13u],
+                                 &head_slot->probabilities, NULL, &head_slot->p_packed);
+      prom_m43_update_descriptor(state, bank->m43[base + 14u], &head_slot->p_packed,
+                                 &head_slot->v_packed, &head_slot->output);
+    } else {
+      prom_m43_update_descriptor(state, bank->m43[base + 6u], &head_slot->q,
+                                 &head_slot->k_transposed, &head_slot->scores);
+      prom_m43_update_descriptor(state, bank->m43[base + 14u],
+                                 &head_slot->probabilities, &head_slot->v,
+                                 &head_slot->output);
+    }
+    prom_transformer_fill_view(&block->head_view[head],
+                               state, slot, &head_slot->output,
+                               request->tokens, request->head_dim,
+                               reduced != 0u ? block->attention_plan.padded_head_dim
+                                             : request->head_dim,
+                               block->attention_plan.head_replay_id[head]);
+  }
+  prom_m43_update_descriptor(state,
+                             bank->m43[PROM_M43_DESCRIPTOR_SET_COUNT - 1u],
+                             x_f32, NULL, x_f16);
+  return 1;
+}
+
+static int prom_transformer_setup_projection_descriptors(
+    prom_reduction_runtime_state* state,
+    prom_reduction_slot* slot,
+    const prom_transformer_layer_resources* layer,
+    const prom_m44_output_projection_plan* plan,
+    prom_transformer_descriptor_bank* bank) {
+  const prom_vk_buffer* buffers[PROM_M44_WIDE_DESCRIPTOR_BINDING_COUNT];
+  const prom_vk_buffer* concatenated;
+  uint32_t head;
+  for (head = 0u; head < PROM_M44_HEAD_COUNT; ++head)
+    buffers[head] = &slot->m43_head[head].output;
+  if (plan->aggregation_strategy == PROM_M44_AGGREGATION_INTERLEAVE) {
+    concatenated = plan->projection_path == PROM_M44_PROJECTION_A2X4_FP32
+                       ? &slot->m44_concat_f32 : &slot->m44_concat_f16;
+    buffers[8] = concatenated;
+    buffers[9] = concatenated;
+    prom_m44_update_wide_descriptor(state, bank->m44_wide, buffers);
+    prom_m44_update_sgemm_descriptor(
+        state, bank->m44_sgemm, concatenated,
+        plan->projection_path == PROM_M44_PROJECTION_A2X4_FP32
+            ? &layer->wo.f32 : &layer->wo.f16,
+        &slot->m44_output);
+  } else {
+    buffers[8] = &layer->wo.f16;
+    buffers[9] = &slot->m44_output;
+    prom_m44_update_wide_descriptor(state, bank->m44_wide, buffers);
+  }
+  return 1;
+}
+
+static void prom_transformer_update_residual_descriptor(
+    prom_reduction_runtime_state* state,
+    VkDescriptorSet set,
+    const prom_vk_buffer* x,
+    const prom_vk_buffer* y,
+    const prom_vk_buffer* z) {
+  prom_reduction_buffer_bindings bindings;
+  bindings.input = x;
+  bindings.auxiliary0 = y;
+  bindings.auxiliary1 = z;
+  bindings.output = z;
+  prom_reduction_update_descriptor_set(state, set, &bindings);
+  state->m48_descriptor_update_count += 1u;
+}
+
+static int prom_transformer_validate_layer_resources(
+    const prom_transformer_layer_resources* layer,
+    const prom_m48_stack_request* request,
+    uint32_t layer_index) {
+  uint32_t head;
+  uint32_t weight;
+  if (layer->layer_index != layer_index || layer->model_width != request->model_width ||
+      layer->head_dim != request->head_dim || layer->ffn_width != request->ffn_width)
+    return 0;
+  for (head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+    for (weight = 0u; weight < PROM_M43_WEIGHT_KIND_COUNT; ++weight) {
+      const uint32_t resource_index = head * PROM_M43_WEIGHT_KIND_COUNT + weight;
+      const prom_transformer_parameter_resource* resource = &layer->attention[head][weight];
+      if (resource->generation == 0u || resource->hash == 0u ||
+          resource->generation != request->required_generation[layer_index][resource_index] ||
+          resource->rows != request->model_width || resource->columns != request->head_dim)
+        return 0;
+    }
+  }
+  if (layer->wo.generation != request->required_generation[layer_index][PROM_M48_RESOURCE_WO] ||
+      layer->wo.hash == 0u || layer->wo.rows != request->model_width ||
+      layer->wo.columns != request->model_width ||
+      layer->rmsnorm.generation !=
+          request->required_generation[layer_index][PROM_M48_RESOURCE_RMSNORM] ||
+      layer->rmsnorm.hash == 0u || layer->rmsnorm.columns != request->model_width)
+    return 0;
+  for (weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight) {
+    const prom_transformer_parameter_resource* resource = &layer->ffn[weight];
+    const uint32_t resource_index = PROM_M48_RESOURCE_WGATE + weight;
+    const uint32_t rows = weight == PROM_M47_WEIGHT_DOWN
+                              ? request->ffn_width : request->model_width;
+    const uint32_t columns = weight == PROM_M47_WEIGHT_DOWN
+                                 ? request->model_width : request->ffn_width;
+    if (resource->generation == 0u || resource->hash == 0u ||
+        resource->generation != request->required_generation[layer_index][resource_index] ||
+        resource->rows != rows || resource->columns != columns)
+      return 0;
+  }
+  return 1;
+}
+
+static int prom_transformer_prepare_block(
+    prom_reduction_runtime_state* state,
+    prom_reduction_slot* slot,
+    const prom_vk_runtime_services* services,
+    const prom_m48_stack_request* request,
+    uint32_t layer_index,
+    const prom_vk_buffer* input,
+    uint32_t input_row_stride,
+    uint64_t input_generation,
+    prom_vk_buffer* output,
+    prom_transformer_recorded_block* block) {
+  const prom_transformer_layer_resources* layer = &state->m48_layer[layer_index];
+  prom_transformer_descriptor_bank* bank = &slot->m48_descriptors[layer_index];
+  prom_m43_plan_request attention_plan_request;
+  prom_m44_plan_request projection_plan_request;
+  prom_m45_plan_request residual_plan_request;
+  prom_m46_plan_request norm_plan_request;
+  prom_m47_plan_request ffn_plan_request;
+  PrometheusReductionRequest reduction_request;
+  uint64_t head_output_elements;
+  uint64_t activation_elements;
+  uint64_t input_hash;
+  VkDeviceSize packed_x_bytes;
+  uint32_t selected_path = request->projection_path;
+  uint32_t head;
+  uint32_t weight;
+  if (!prom_transformer_validate_layer_resources(layer, request, layer_index)) return 0;
+  memset(block, 0, sizeof(*block));
+  block->input = input;
+  if (selected_path == PROM_M47_PROJECTION_COOPERATIVE &&
+      (services->cooperative_matrix_feature_enabled == 0u || services->subgroup_size != 32u)) {
+    if (request->allow_fallback == 0u) return 0;
+    selected_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+  }
+  if (!prom_m40b_checked_product_u64(request->tokens, request->model_width,
+                                     &activation_elements) ||
+      !prom_m40b_checked_product_u64(request->tokens, request->head_dim,
+                                     &head_output_elements) ||
+      !prom_m43_checked_scale_u64(head_output_elements, PROM_M43_HEAD_COUNT,
+                                  &head_output_elements)) return 0;
+  input_hash = prom_m40b_hash_u64(1469598103934665603ull, input_generation);
+  input_hash = prom_reduction_hash_u32(input_hash, layer_index);
+  memset(&block->attention_request, 0, sizeof(block->attention_request));
+  block->attention_request.head_count = PROM_M43_HEAD_COUNT;
+  block->attention_request.tokens = request->tokens;
+  block->attention_request.model_width = request->model_width;
+  block->attention_request.head_dim = request->head_dim;
+  block->attention_request.precision_policy = request->precision_policy;
+  block->attention_request.allow_fallback = request->allow_fallback;
+  block->attention_request.input_mode = PROM_M42_INPUT_RESIDENT_X;
+  block->attention_request.execution_strategy = request->attention_strategy;
+  block->attention_request.shared_x_generation = input_generation;
+  block->attention_request.output_element_count = head_output_elements;
+  if ((request->fault_point == PROM_M48_FAULT_DURING_LAYER_0_ATTENTION && layer_index == 0u) ||
+      (request->fault_point == PROM_M48_FAULT_DURING_LAYER_3_ATTENTION && layer_index == 3u)) {
+    block->attention_request.fault_point = PROM_M43_FAULT_MID_PROJECTIONS;
+    block->attention_request.fault_head = 3u;
+  }
+  memset(&attention_plan_request, 0, sizeof(attention_plan_request));
+  attention_plan_request.head_count = PROM_M43_HEAD_COUNT;
+  attention_plan_request.tokens = request->tokens;
+  attention_plan_request.model_width = request->model_width;
+  attention_plan_request.head_dim = request->head_dim;
+  attention_plan_request.precision_policy = request->precision_policy;
+  attention_plan_request.allow_fallback = request->allow_fallback;
+  attention_plan_request.input_mode = PROM_M42_INPUT_RESIDENT_X;
+  attention_plan_request.execution_strategy = request->attention_strategy;
+  attention_plan_request.cooperative_capability_state = services->cooperative_matrix_state;
+  attention_plan_request.shared_x_generation = input_generation;
+  attention_plan_request.shared_x_hash = input_hash;
+  for (head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+    block->attention_request.preferred_path[head] = selected_path;
+    attention_plan_request.preferred_path[head] = selected_path;
+    for (weight = 0u; weight < PROM_M43_WEIGHT_KIND_COUNT; ++weight) {
+      const prom_transformer_parameter_resource* resource = &layer->attention[head][weight];
+      block->attention_request.required_weight_generation[head][weight] = resource->generation;
+      attention_plan_request.weight_generation[head][weight] = resource->generation;
+      attention_plan_request.weight_hash[head][weight] = resource->hash;
+    }
+  }
+  if (prom_m43_attention_plan_build(&attention_plan_request, &block->attention_plan) != PROM_OK ||
+      !prom_m44_strip_m43_final_readback(&block->attention_plan)) return 0;
+  memset(&reduction_request, 0, sizeof(reduction_request));
+  reduction_request.struct_size = sizeof(reduction_request);
+  reduction_request.row_count = request->tokens;
+  reduction_request.elements_per_row = request->tokens;
+  reduction_request.input_element_count = (uint64_t)request->tokens * request->tokens;
+  reduction_request.output_element_count = reduction_request.input_element_count;
+  reduction_request.operation = PROM_REDUCTION_OPERATION_SOFTMAX;
+  reduction_request.finalization = PROM_REDUCTION_FINALIZATION_STABLE_SOFTMAX;
+  if (prom_reactor_reduction_plan_impl(&reduction_request, &block->reduction_plan) != PROM_OK ||
+      !prom_m43_prepare_execution_buffers(state, slot, &block->attention_request,
+                                           &block->attention_plan, 0u)) return 0;
+  packed_x_bytes = (VkDeviceSize)((((uint64_t)block->attention_plan.padded_tokens *
+                                    block->attention_plan.padded_model_width + 1u) / 2u) *
+                                  sizeof(uint32_t));
+  if (!prom_m48_ensure_buffer(state, &slot->m43_x_f16, packed_x_bytes,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL) ||
+      !prom_transformer_setup_attention_descriptors(
+          state, slot, layer, &block->attention_request, bank, input,
+          &slot->m43_x_f16, block)) return 0;
+
+  memset(&projection_plan_request, 0, sizeof(projection_plan_request));
+  memcpy(projection_plan_request.head_views, block->head_view,
+         sizeof(projection_plan_request.head_views));
+  for (head = 0u; head < PROM_M44_HEAD_COUNT; ++head)
+    projection_plan_request.head_views[head].required_consumer_access =
+        PROM_DEVICE_ACCESS_COMPUTE_READ;
+  projection_plan_request.head_count = PROM_M44_HEAD_COUNT;
+  projection_plan_request.tokens = request->tokens;
+  projection_plan_request.head_dim = request->head_dim;
+  projection_plan_request.model_width = request->model_width;
+  projection_plan_request.precision_policy = selected_path == PROM_M47_PROJECTION_A2X4_FP32
+                                                  ? PROM_M42_PRECISION_FP32
+                                                  : PROM_M42_PRECISION_F16_ROUNDED;
+  projection_plan_request.aggregation_strategy = request->output_projection_strategy;
+  projection_plan_request.projection_path = selected_path;
+  projection_plan_request.submit_plan = PROM_M44_SUBMIT_ONE_COMMAND_BUFFER;
+  projection_plan_request.cooperative_capability_state = services->cooperative_matrix_state;
+  projection_plan_request.wo_generation = layer->wo.generation;
+  projection_plan_request.wo_hash = layer->wo.hash;
+  projection_plan_request.m43_aggregate_replay_id = block->attention_plan.aggregate_replay_id;
+  if (prom_m44_output_projection_plan_build(&projection_plan_request,
+                                             &block->projection_plan) != PROM_OK ||
+      block->projection_plan.eligibility.eligible == 0u ||
+      !prom_m44_prepare_execution_buffers(state, slot, &block->projection_plan, 0u, 0u) ||
+      !prom_transformer_setup_projection_descriptors(state, slot, layer,
+                                                       &block->projection_plan, bank) ||
+      !prom_m45_strip_m44_final_readback(&block->projection_plan)) return 0;
+  block->y_generation = prom_m40b_hash_u64(block->projection_plan.replay_id,
+                                            input_generation);
+  block->y_generation = prom_reduction_hash_u32(block->y_generation, layer_index);
+  if (block->y_generation == 0u) block->y_generation = 1u;
+  prom_transformer_fill_view(&block->input_view, state, slot, input,
+                             request->tokens, request->model_width,
+                             input_row_stride, input_generation);
+  prom_transformer_fill_view(&block->y_view, state, slot, &slot->m44_output,
+                             request->tokens, request->model_width,
+                             block->projection_plan.output_row_stride,
+                             block->y_generation);
+  memset(&residual_plan_request, 0, sizeof(residual_plan_request));
+  residual_plan_request.x_view = block->input_view;
+  residual_plan_request.y_view = block->y_view;
+  residual_plan_request.tokens = request->tokens;
+  residual_plan_request.model_width = request->model_width;
+  residual_plan_request.strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
+  residual_plan_request.submit_policy = PROM_M45_SUBMIT_ONE_COMMAND_BUFFER;
+  residual_plan_request.precision_policy = PROM_M45_PRECISION_FP32;
+  residual_plan_request.y_exclusive = 1u;
+  residual_plan_request.expected_x_generation = input_generation;
+  residual_plan_request.expected_y_generation = block->y_generation;
+  residual_plan_request.m44_replay_id = block->projection_plan.replay_id;
+  if (prom_m45_residual_plan_build(&residual_plan_request, &block->residual_plan) != PROM_OK ||
+      block->residual_plan.eligibility.eligible == 0u) return 0;
+  block->z = &slot->m44_output;
+  prom_transformer_update_residual_descriptor(state, bank->m45, input,
+                                               &slot->m44_output, block->z);
+  prom_transformer_fill_view(&block->z_view, state, slot, block->z,
+                             request->tokens, request->model_width,
+                             block->residual_plan.z_row_stride,
+                             block->residual_plan.z_generation);
+
+  memset(&norm_plan_request, 0, sizeof(norm_plan_request));
+  norm_plan_request.z_view = block->z_view;
+  norm_plan_request.tokens = request->tokens;
+  norm_plan_request.model_width = request->model_width;
+  norm_plan_request.epsilon = request->epsilon;
+  norm_plan_request.strategy = request->rmsnorm_strategy;
+  norm_plan_request.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+  norm_plan_request.z_exclusive = 1u;
+  norm_plan_request.expected_z_generation = block->residual_plan.z_generation;
+  norm_plan_request.weight_generation = layer->rmsnorm.generation;
+  norm_plan_request.weight_hash = layer->rmsnorm.hash;
+  norm_plan_request.m45_replay_id = block->residual_plan.replay_id;
+  if (prom_m46_rmsnorm_plan_build(&norm_plan_request, &block->norm_plan) != PROM_OK ||
+      block->norm_plan.eligibility_eligible == 0u ||
+      !prom_m46_ensure_buffer(state, &slot->m46_partials,
+                              (VkDeviceSize)(block->norm_plan.memory.partial_sum_bytes != 0u
+                                                  ? block->norm_plan.memory.partial_sum_bytes
+                                                  : sizeof(float)),
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_m46_ensure_buffer(state, &slot->m46_inv_rms,
+                              (VkDeviceSize)block->norm_plan.memory.inv_rms_bytes,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      (request->rmsnorm_strategy == PROM_M46_STRATEGY_SEPARATE_OUTPUT &&
+       !prom_m46_ensure_buffer(state, &slot->m46_output,
+                               (VkDeviceSize)block->norm_plan.memory.n_device_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0))) return 0;
+  block->n = request->rmsnorm_strategy == PROM_M46_STRATEGY_IN_PLACE_Z
+                 ? block->z : &slot->m46_output;
+  prom_m46_update_descriptor(state, bank->m46[0], block->z, &slot->m46_inv_rms,
+                             &slot->m46_inv_rms,
+                             block->norm_plan.reduction_plan == PROM_M46_REDUCTION_STAGED
+                                 ? &slot->m46_partials : &slot->m46_inv_rms);
+  if (block->norm_plan.reduction_plan == PROM_M46_REDUCTION_STAGED)
+    prom_m46_update_descriptor(state, bank->m46[1], &slot->m46_partials,
+                               &slot->m46_inv_rms, &slot->m46_inv_rms,
+                               &slot->m46_inv_rms);
+  prom_m46_update_descriptor(state, bank->m46[2], block->z, &layer->rmsnorm.f32,
+                             &slot->m46_inv_rms, block->n);
+  prom_transformer_fill_view(&block->n_view, state, slot, block->n,
+                             request->tokens, request->model_width,
+                             block->norm_plan.n_row_stride,
+                             block->norm_plan.n_generation);
+
+  memset(&ffn_plan_request, 0, sizeof(ffn_plan_request));
+  ffn_plan_request.n_view = block->n_view;
+  ffn_plan_request.tokens = request->tokens;
+  ffn_plan_request.model_width = request->model_width;
+  ffn_plan_request.ffn_width = request->ffn_width;
+  ffn_plan_request.projection_path = selected_path;
+  ffn_plan_request.gating_strategy = request->gating_strategy;
+  ffn_plan_request.residual_strategy = request->residual_strategy;
+  ffn_plan_request.submit_policy = PROM_M47_SUBMIT_ONE_COMMAND_BUFFER;
+  ffn_plan_request.remaining_n_consumer_count = 1u;
+  ffn_plan_request.expected_n_generation = block->norm_plan.n_generation;
+  ffn_plan_request.m46_replay_id = block->norm_plan.replay_id;
+  for (weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight) {
+    ffn_plan_request.weight_generation[weight] = layer->ffn[weight].generation;
+    ffn_plan_request.weight_hash[weight] = layer->ffn[weight].hash;
+  }
+  if (prom_m47_gated_ffn_plan_build(&ffn_plan_request, &block->ffn_plan) != PROM_OK ||
+      block->ffn_plan.eligibility_eligible == 0u ||
+      !prom_m47_ensure_buffer(state, &slot->m47_gate,
+                              (VkDeviceSize)block->ffn_plan.memory.gate_bytes,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_m47_ensure_buffer(state, &slot->m47_up,
+                              (VkDeviceSize)block->ffn_plan.memory.up_bytes,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      (selected_path != PROM_M47_PROJECTION_A2X4_FP32 &&
+       !prom_m47_ensure_buffer(state, &slot->m47_n_packed,
+                               (VkDeviceSize)block->ffn_plan.memory.n_packed_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
+      (request->gating_strategy == PROM_M47_GATING_SEPARATE &&
+       !prom_m47_ensure_buffer(state, &slot->m47_activated_gate,
+                               (VkDeviceSize)block->ffn_plan.memory.activated_gate_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
+      (request->gating_strategy != PROM_M47_GATING_FUSED_DIRECT_PACKED &&
+       !prom_m47_ensure_buffer(state, &slot->m47_hidden,
+                               (VkDeviceSize)block->ffn_plan.memory.hidden_f32_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
+      (selected_path != PROM_M47_PROJECTION_A2X4_FP32 &&
+       !prom_m47_ensure_buffer(state, &slot->m47_hidden_packed,
+                               (VkDeviceSize)block->ffn_plan.memory.hidden_packed_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
+      (request->residual_strategy == PROM_M47_RESIDUAL_SEPARATE_OUTPUT &&
+       !prom_m47_ensure_buffer(state, &slot->m47_down,
+                               (VkDeviceSize)block->ffn_plan.memory.down_bytes,
+                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
+      !prom_m48_ensure_buffer(state, output,
+                              (VkDeviceSize)block->ffn_plan.memory.down_bytes,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL)) return 0;
+  block->output = output;
+  prom_transformer_fill_view(&block->output_view, state, slot, output,
+                             request->tokens, request->model_width,
+                             block->ffn_plan.output_row_stride,
+                             block->ffn_plan.output_generation);
+  {
+    const uint32_t reduced = selected_path != PROM_M47_PROJECTION_A2X4_FP32;
+    const prom_vk_buffer* projection_input = reduced != 0u
+                                                 ? &slot->m47_n_packed : block->n;
+    prom_vk_buffer* activated = request->gating_strategy == PROM_M47_GATING_SEPARATE
+                                    ? &slot->m47_activated_gate : &slot->m47_gate;
+    prom_vk_buffer* hidden = request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
+                                 ? &slot->m47_gate : &slot->m47_hidden;
+    const prom_vk_buffer* hidden_input = reduced != 0u
+                                             ? &slot->m47_hidden_packed : &slot->m47_hidden;
+    prom_vk_buffer* down = request->residual_strategy == PROM_M47_RESIDUAL_IN_PLACE_DOWN
+                               ? output : &slot->m47_down;
+    prom_m47_update_descriptor(state, bank->m47[0], block->n, block->n, block->n,
+                               reduced != 0u ? &slot->m47_n_packed : block->n);
+    prom_m47_update_descriptor(state, bank->m47[1], projection_input,
+                               reduced != 0u ? &layer->ffn[PROM_M47_WEIGHT_GATE].f16
+                                             : &layer->ffn[PROM_M47_WEIGHT_GATE].f32,
+                               &slot->m47_gate, &slot->m47_gate);
+    prom_m47_update_descriptor(state, bank->m47[2], projection_input,
+                               reduced != 0u ? &layer->ffn[PROM_M47_WEIGHT_UP].f16
+                                             : &layer->ffn[PROM_M47_WEIGHT_UP].f32,
+                               &slot->m47_up, &slot->m47_up);
+    prom_m47_update_descriptor(state, bank->m47[3], &slot->m47_gate,
+                               &slot->m47_up, activated, hidden);
+    prom_m47_update_descriptor(state, bank->m47[4],
+                               request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
+                                   ? &slot->m47_gate : hidden,
+                               &slot->m47_up, hidden,
+                               reduced != 0u ? &slot->m47_hidden_packed : hidden);
+    prom_m47_update_descriptor(state, bank->m47[5], hidden_input,
+                               reduced != 0u ? &layer->ffn[PROM_M47_WEIGHT_DOWN].f16
+                                             : &layer->ffn[PROM_M47_WEIGHT_DOWN].f32,
+                               down, down);
+    prom_m47_update_descriptor(state, bank->m47[6], block->n, down, output, output);
+  }
+  prom_transformer_select_descriptor_bank(slot, bank);
+  memset(&block->projection_request, 0, sizeof(block->projection_request));
+  block->projection_request.attention = block->attention_request;
+  block->projection_request.aggregation_strategy = request->output_projection_strategy;
+  block->projection_request.projection_path = selected_path;
+  block->projection_request.submit_plan = PROM_M44_SUBMIT_ONE_COMMAND_BUFFER;
+  block->projection_request.required_wo_generation = layer->wo.generation;
+  memset(&block->residual_request, 0, sizeof(block->residual_request));
+  block->residual_request.attention = block->attention_request;
+  block->residual_request.aggregation_strategy = request->output_projection_strategy;
+  block->residual_request.projection_path = selected_path;
+  block->residual_request.residual_strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
+  block->residual_request.submit_policy = PROM_M45_SUBMIT_ONE_COMMAND_BUFFER;
+  block->residual_request.required_wo_generation = layer->wo.generation;
+  memset(&block->norm_request, 0, sizeof(block->norm_request));
+  block->norm_request.epsilon = request->epsilon;
+  block->norm_request.strategy = request->rmsnorm_strategy;
+  block->norm_request.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+  block->norm_request.required_weight_generation = layer->rmsnorm.generation;
+  if (request->fault_point == PROM_M48_FAULT_DURING_LAYER_1_RMSNORM && layer_index == 1u)
+    block->norm_request.fault_point = PROM_M46_FAULT_DURING_APPLY;
+  memset(&block->ffn_request, 0, sizeof(block->ffn_request));
+  block->ffn_request.ffn_width = request->ffn_width;
+  block->ffn_request.projection_path = selected_path;
+  block->ffn_request.gating_strategy = request->gating_strategy;
+  block->ffn_request.residual_strategy = request->residual_strategy;
+  block->ffn_request.submit_policy = PROM_M47_SUBMIT_ONE_COMMAND_BUFFER;
+  for (weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight)
+    block->ffn_request.required_weight_generation[weight] = layer->ffn[weight].generation;
+  if ((request->fault_point == PROM_M48_FAULT_DURING_LAYER_1_FFN && layer_index == 1u) ||
+      (request->fault_point == PROM_M48_FAULT_DURING_LAYER_3_FFN && layer_index == 3u))
+    block->ffn_request.fault_point = PROM_M47_FAULT_DURING_DOWN;
+  return 1;
+}
+
+/* The bounded M47 compatibility split uses this exact prefix, followed by the
+   shared suffix below. Neither helper owns command-buffer lifetime. */
+static int prom_transformer_record_block_prefix(
+    prom_reduction_runtime_state* state,
+    prom_reduction_slot* slot,
+    prom_transformer_record_context* context,
+    prom_transformer_recorded_block* block,
+    uint32_t* out_fault_stage) {
+  uint32_t m43_partial = 0u;
+  uint32_t m43_uncertain = 0u;
+  uint32_t m44_partial = 0u;
+  uint32_t m45_partial = 0u;
+  uint32_t m46_partial = 0u;
+  const uint32_t reduced = block->ffn_plan.projection_path != PROM_M47_PROJECTION_A2X4_FP32;
+  if (out_fault_stage != NULL) *out_fault_stage = 0u;
+  slot->active_query_base = context->query_base;
+  prom_transformer_select_descriptor_bank(slot, context->descriptors);
+  if (state->timestamp_supported != 0u && state->query_pool != VK_NULL_HANDLE)
+    vkCmdResetQueryPool(context->command_buffer, state->query_pool,
+                        context->query_base, context->query_count);
+  prom_m42_write_timestamp(state, slot, context->command_buffer,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u);
+  prom_m42_write_timestamp(state, slot, context->command_buffer,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 1u);
+  if (reduced != 0u) {
+    prom_m42_record_pack(state, context->command_buffer,
+                         context->descriptors->m43[PROM_M43_DESCRIPTOR_SET_COUNT - 1u],
+                         block->attention_plan.tokens,
+                         block->attention_plan.model_width,
+                         block->input_view.row_stride_elements,
+                         block->attention_plan.padded_tokens,
+                         block->attention_plan.padded_model_width, 0u);
+    if (!prom_m43_one_buffer_barrier(
+            context->command_buffer, &slot->m43_x_f16,
+            (VkDeviceSize)((((uint64_t)block->attention_plan.padded_tokens *
+                             block->attention_plan.padded_model_width + 1u) / 2u) *
+                           sizeof(uint32_t)),
+            VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) return 0;
+  }
+  prom_m42_write_timestamp(state, slot, context->command_buffer,
+                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 2u);
+  if (prom_m43_record_grouped_internal(
+          state, slot, &block->attention_request, &block->attention_plan,
+          &block->reduction_plan, &m43_partial, &m43_uncertain, 0u, 1u,
+          context->command_buffer, context->descriptors->m43, 1u, 1u) != 1 ||
+      m43_partial != 0u || m43_uncertain != 0u) {
+    if (out_fault_stage != NULL) *out_fault_stage = 43u;
+    return 0;
+  }
+  if (prom_m44_record_projection_tail(state, slot, &block->projection_request,
+                                       &block->projection_plan,
+                                       context->command_buffer, 1u, 0u,
+                                       &m44_partial) != 1 || m44_partial != 0u) {
+    if (out_fault_stage != NULL) *out_fault_stage = 44u;
+    return 0;
+  }
+  if (prom_m45_record_residual_tail(state, slot, &block->residual_request,
+                                     &block->residual_plan,
+                                     block->input,
+                                     block->z, context->command_buffer, 1u,
+                                     &m45_partial) != 1 || m45_partial != 0u) {
+    if (out_fault_stage != NULL) *out_fault_stage = 45u;
+    return 0;
+  }
+  if (prom_m46_record_tail(state, slot, &block->norm_request, &block->norm_plan,
+                           block->z, block->n, context->command_buffer, 1u,
+                           &m46_partial) != 1 || m46_partial != 0u) {
+    if (out_fault_stage != NULL) *out_fault_stage = 46u;
+    return 0;
+  }
+  return 1;
+}
+
+static int prom_transformer_record_block_suffix(
+    prom_reduction_runtime_state* state,
+    prom_reduction_slot* slot,
+    prom_transformer_record_context* context,
+    prom_transformer_recorded_block* block,
+    uint32_t* out_fault_stage) {
+  uint32_t m47_partial = 0u;
+  prom_transformer_select_descriptor_bank(slot, context->descriptors);
+  if (prom_m47_record_tail(state, slot, &block->ffn_request, &block->ffn_plan,
+                           block->n, block->output, context->command_buffer, 1u,
+                           &m47_partial) != 1 || m47_partial != 0u) {
+    if (out_fault_stage != NULL) *out_fault_stage = 47u;
+    return 0;
+  }
+  return 1;
+}
+
+static int prom_transformer_record_block(
+    prom_reduction_runtime_state* state,
+    prom_reduction_slot* slot,
+    prom_transformer_record_context* context,
+    prom_transformer_recorded_block* block,
+    uint32_t* out_fault_stage) {
+  if (!prom_transformer_record_block_prefix(state, slot, context, block, out_fault_stage))
+    return 0;
+  return prom_transformer_record_block_suffix(state, slot, context, block,
+                                               out_fault_stage);
+}
+
+static uint64_t prom_m48_duration_ns(const prom_reduction_runtime_state* state,
+                                     const uint64_t* timestamps,
+                                     uint32_t begin,
+                                     uint32_t end) {
+  if (timestamps[end] < timestamps[begin]) return 0u;
+  return (uint64_t)((double)(timestamps[end] - timestamps[begin]) *
+                    state->timestamp_period_ns);
+}
+
+static void prom_m48_fill_layer_timings(const prom_reduction_runtime_state* state,
+                                        const uint64_t* timestamps,
+                                        const prom_transformer_recorded_block* block,
+                                        const prom_m48_layer_plan* plan,
+                                        prom_m48_layer_execution_result* result) {
+  memset(result, 0, sizeof(*result));
+  result->layer_index = plan->layer;
+  result->selected_projection_path = block->ffn_plan.projection_path;
+  result->attention_strategy = block->attention_plan.execution_strategy;
+  result->output_projection_strategy = block->projection_plan.aggregation_strategy;
+  result->rmsnorm_strategy = block->norm_plan.strategy;
+  result->gating_strategy = block->ffn_plan.gating_strategy;
+  result->residual_strategy = block->ffn_plan.residual_strategy;
+  result->attention_gpu_ns = prom_m48_duration_ns(state, timestamps, 3u,
+                                                   PROM_M43_QUERY_GROUP_END);
+  result->output_projection_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M44_QUERY_AGGREGATION_BEGIN,
+      PROM_M44_QUERY_PROJECTION_END);
+  result->first_residual_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M45_QUERY_RESIDUAL_BEGIN, PROM_M45_QUERY_RESIDUAL_END);
+  result->rmsnorm_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M46_QUERY_REDUCTION_BEGIN, PROM_M46_QUERY_APPLY_END);
+  result->gate_projection_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M47_QUERY_GATE_BEGIN, PROM_M47_QUERY_GATE_END);
+  result->up_projection_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M47_QUERY_UP_BEGIN, PROM_M47_QUERY_UP_END);
+  result->gating_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M47_QUERY_ACTIVATION_BEGIN, PROM_M47_QUERY_MULTIPLY_END);
+  result->down_projection_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M47_QUERY_DOWN_BEGIN, PROM_M47_QUERY_DOWN_END);
+  result->second_residual_gpu_ns = prom_m48_duration_ns(
+      state, timestamps, PROM_M47_QUERY_RESIDUAL_BEGIN, PROM_M47_QUERY_RESIDUAL_END);
+  result->total_gpu_ns = prom_m48_duration_ns(state, timestamps, 3u,
+                                               PROM_M47_QUERY_RESIDUAL_END);
+  result->replay_id = plan->replay_id;
+  result->input_generation = plan->input_generation;
+  result->output_generation = plan->output_generation;
+}
+
+int prom_reactor_runtime_m48_execute_stack(void* handle,
+                                           const prom_m48_stack_request* request,
+                                           prom_m48_stack_result* out_result) {
+  prom_reduction_runtime_state* state;
+  prom_reduction_slot* slot = NULL;
+  prom_vk_runtime_services services;
+  prom_m48_plan_request plan_request;
+  prom_transformer_recorded_block block[PROM_M48_LAYER_COUNT];
+  prom_transformer_descriptor_bank standalone_bank;
+  VkCommandBufferBeginInfo begin_info;
+  VkSubmitInfo submits[PROM_M48_LAYER_COUNT];
+  VkPipelineStageFlags wait_stages[PROM_M48_LAYER_COUNT];
+  uint64_t timestamps[PROM_M48_LAYER_COUNT][PROM_M48_QUERY_COUNT_PER_LAYER];
+  const prom_vk_buffer* initial;
+  const prom_vk_buffer* input;
+  prom_vk_buffer* output;
+  uint64_t initial_generation;
+  uint64_t initial_hash;
+  uint64_t elements;
+  uint64_t begin_ns;
+  uint64_t recording_begin;
+  uint64_t submission_begin;
+  uint64_t allocations_before;
+  uint64_t reuses_before;
+  uint64_t descriptors_before;
+  uint64_t pipelines_before;
+  VkDeviceSize logical_bytes;
+  uint32_t initial_stride;
+  uint32_t finite = 0u;
+  uint32_t layer;
+  uint32_t resource;
+  uint32_t fault_stage = 0u;
+  uint32_t command_count;
+  uint32_t optional_readback;
+  uint32_t pipeline_path;
+  uint32_t host_wait_audit;
+  uint32_t host_bounce_audit;
+  int32_t detail = 0;
+  VkResult vk_result;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  begin_ns = prom_reduction_now_ns();
+  if (request == NULL || request->layer_count == 0u ||
+      request->layer_count > PROM_M48_LAYER_COUNT ||
+      (request->audit_mode == 0u && request->layer_count != PROM_M48_LAYER_COUNT) ||
+      request->head_count != PROM_M43_HEAD_COUNT || request->tokens == 0u ||
+      request->model_width == 0u || request->head_dim == 0u ||
+      request->ffn_width == 0u || request->expected_initial_generation == 0u ||
+      !isfinite(request->epsilon) || request->epsilon <= 0.0f ||
+      !prom_m40b_checked_product_u64(request->tokens, request->model_width, &elements) ||
+      elements > SIZE_MAX / sizeof(float) ||
+      (request->output != NULL && request->output_element_count != elements)) {
+    out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  logical_bytes = (VkDeviceSize)(elements * sizeof(float));
+  optional_readback = request->output != NULL ? 1u : 0u;
+  host_wait_audit = request->submit_topology == PROM_M48_SUBMIT_HOST_WAIT_PER_LAYER_AUDIT;
+  host_bounce_audit = request->submit_topology == PROM_M48_SUBMIT_HOST_BOUNCE_PER_LAYER_AUDIT;
+  if (host_bounce_audit != 0u &&
+      (request->initial_activation_mode != PROM_M48_INITIAL_HOST || optional_readback == 0u)) {
+    out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL || prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) {
+    out_result->detail_code = state == NULL ? detail : PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  pipeline_path = request->projection_path;
+  if (pipeline_path == PROM_M47_PROJECTION_COOPERATIVE &&
+      (services.cooperative_matrix_feature_enabled == 0u || services.subgroup_size != 32u))
+    pipeline_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+  memset(&plan_request, 0, sizeof(plan_request));
+  plan_request.host_initial_activation = request->host_initial_activation;
+  plan_request.host_initial_element_count = request->host_initial_element_count;
+  plan_request.initial_activation_mode = request->initial_activation_mode;
+  plan_request.initial_activation_exclusive = 1u;
+  plan_request.layer_count = request->layer_count;
+  plan_request.audit_mode = request->audit_mode;
+  plan_request.tokens = request->tokens;
+  plan_request.model_width = request->model_width;
+  plan_request.head_count = request->head_count;
+  plan_request.head_dim = request->head_dim;
+  plan_request.ffn_width = request->ffn_width;
+  plan_request.precision_policy = request->precision_policy;
+  plan_request.projection_path = request->projection_path;
+  plan_request.attention_strategy = request->attention_strategy;
+  plan_request.output_projection_strategy = request->output_projection_strategy;
+  plan_request.rmsnorm_strategy = request->rmsnorm_strategy;
+  plan_request.gating_strategy = request->gating_strategy;
+  plan_request.residual_strategy = request->residual_strategy;
+  plan_request.activation_strategy = PROM_M48_ACTIVATION_PING_PONG;
+  plan_request.submit_topology = request->submit_topology;
+  plan_request.optional_final_readback = optional_readback;
+  plan_request.expected_initial_generation = request->expected_initial_generation;
+  if (request->initial_activation_mode == PROM_M48_INITIAL_HOST) {
+    if (request->host_initial_activation == NULL ||
+        request->host_initial_element_count != elements) {
+      out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+      return PROM_ERROR;
+    }
+    initial_hash = prom_m42_hash_finite_matrix(request->host_initial_activation,
+                                               elements, &finite);
+    if (finite == 0u) {
+      out_result->detail_code = PROM_M48_DETAIL_NONFINITE_INPUT;
+      return PROM_ERROR;
+    }
+  } else if (request->initial_activation_mode == PROM_M48_INITIAL_RESIDENT) {
+    if (state->m48_initial_generation != request->expected_initial_generation ||
+        state->m48_initial_hash == 0u || state->m48_initial_tokens != request->tokens ||
+        state->m48_initial_model_width != request->model_width) {
+      out_result->detail_code = PROM_M48_DETAIL_STALE_INITIAL_GENERATION;
+      return PROM_ERROR;
+    }
+    initial_hash = state->m48_initial_hash;
+  } else {
+    out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  plan_request.initial_content_hash = initial_hash;
+  initial_generation = request->expected_initial_generation;
+  for (layer = 0u; layer < request->layer_count; ++layer) {
+    if (!prom_transformer_validate_layer_resources(&state->m48_layer[layer], request, layer)) {
+      out_result->detail_code = PROM_M48_DETAIL_STALE_WEIGHT_GENERATION;
+      return PROM_ERROR;
+    }
+    for (resource = 0u; resource < PROM_M48_RESOURCE_COUNT; ++resource) {
+      plan_request.layer[layer].generation[resource] =
+          request->required_generation[layer][resource];
+      if (resource < PROM_M48_ATTENTION_RESOURCE_COUNT) {
+        plan_request.layer[layer].content_hash[resource] =
+            state->m48_layer[layer]
+                .attention[resource / PROM_M43_WEIGHT_KIND_COUNT]
+                          [resource % PROM_M43_WEIGHT_KIND_COUNT].hash;
+      } else if (resource == PROM_M48_RESOURCE_WO) {
+        plan_request.layer[layer].content_hash[resource] = state->m48_layer[layer].wo.hash;
+      } else if (resource == PROM_M48_RESOURCE_RMSNORM) {
+        plan_request.layer[layer].content_hash[resource] = state->m48_layer[layer].rmsnorm.hash;
+      } else {
+        plan_request.layer[layer].content_hash[resource] =
+            state->m48_layer[layer].ffn[resource - PROM_M48_RESOURCE_WGATE].hash;
+      }
+    }
+  }
+  if (request->initial_activation_mode == PROM_M48_INITIAL_RESIDENT) {
+    memset(&plan_request.resident_initial_activation, 0,
+           sizeof(plan_request.resident_initial_activation));
+    plan_request.resident_initial_activation.buffer = state->m48_initial_f32.buffer;
+    plan_request.resident_initial_activation.byte_length = state->m48_initial_f32.size;
+    plan_request.resident_initial_activation.element_type = PROM_DEVICE_ELEMENT_F32;
+    plan_request.resident_initial_activation.logical_rows = request->tokens;
+    plan_request.resident_initial_activation.logical_columns = request->model_width;
+    plan_request.resident_initial_activation.row_stride_elements = request->model_width;
+    plan_request.resident_initial_activation.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+    plan_request.resident_initial_activation.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+    plan_request.resident_initial_activation.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+    plan_request.resident_initial_activation.owning_device = state->device;
+    plan_request.resident_initial_activation.owning_lifetime_id = initial_generation;
+    plan_request.resident_initial_activation.owning_slot_generation = 1u;
+  }
+  if (prom_m48_transformer_stack_plan_build(&plan_request, &out_result->plan) != PROM_OK) {
+    out_result->detail_code = out_result->plan.eligibility_reason == PROM_M48_INELIGIBLE_CAPACITY
+                                  ? PROM_M48_DETAIL_CAPACITY
+                                  : PROM_M48_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  if (!prom_m42_ensure_pipelines(state) || !prom_m44_ensure_pipelines(state) ||
+      !prom_m45_ensure_pipeline(state) || !prom_m46_ensure_pipelines(state) ||
+      !prom_m47_ensure_pipelines(state) ||
+      !prom_m40b_ensure_sgemm_pipeline(state, pipeline_path)) {
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  slot = prom_reduction_acquire_slot(state, state->next_logical_request_id++);
+  if (slot == NULL) {
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  out_result->logical_stack_id = slot->logical_request_id;
+  out_result->physical_slot_id = slot->slot_id;
+  out_result->physical_slot_generation = slot->generation;
+  memcpy(standalone_bank.m43, slot->m43_descriptor_sets, sizeof(standalone_bank.m43));
+  standalone_bank.m44_sgemm = slot->m44_sgemm_descriptor_set;
+  standalone_bank.m44_wide = slot->m44_descriptor_set;
+  standalone_bank.m45 = slot->m45_descriptor_set;
+  memcpy(standalone_bank.m46, slot->descriptor_sets, sizeof(standalone_bank.m46));
+  memcpy(standalone_bank.m47, slot->m47_descriptor_sets, sizeof(standalone_bank.m47));
+  allocations_before = state->diagnostics.buffer_allocation_count;
+  reuses_before = state->m48_buffer_reuse_count;
+  descriptors_before = state->m48_descriptor_update_count;
+  pipelines_before = state->diagnostics.pipeline_create_count;
+  if (!prom_m48_ensure_buffer(state, &slot->m48_activation[0],
+                              (VkDeviceSize)(out_result->plan.memory.activation_bytes / 2u),
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL) ||
+      !prom_m48_ensure_buffer(state, &slot->m48_activation[1],
+                              (VkDeviceSize)(out_result->plan.memory.activation_bytes / 2u),
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL) ||
+      (optional_readback != 0u &&
+       !prom_m48_ensure_buffer(state, &slot->m48_readback, logical_bytes,
+                               VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                               1, NULL))) {
+    out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+    goto known_fail;
+  }
+  if (request->initial_activation_mode == PROM_M48_INITIAL_HOST) {
+    if (!prom_m48_ensure_buffer(state, &slot->m48_host_initial_upload, logical_bytes,
+                                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                1, NULL) ||
+        !prom_m48_ensure_buffer(state, &slot->m48_host_initial, logical_bytes,
+                                VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL)) {
+      out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+      goto known_fail;
+    }
+    memcpy(slot->m48_host_initial_upload.mapped, request->host_initial_activation,
+           (size_t)logical_bytes);
+    initial = &slot->m48_host_initial;
+    initial_stride = request->model_width;
+  } else {
+    initial = &state->m48_initial_f32;
+    initial_stride = request->model_width;
+  }
+  input = initial;
+  for (layer = 0u; layer < request->layer_count; ++layer) {
+    if (host_bounce_audit != 0u && layer != 0u) input = &slot->m48_host_initial;
+    output = &slot->m48_activation[(layer + 1u) & 1u];
+    if (!prom_transformer_prepare_block(state, slot, &services, request, layer,
+                                        input,
+                                        layer == 0u ? initial_stride
+                                                    : block[layer - 1u].ffn_plan.output_row_stride,
+                                        out_result->plan.layer[layer].input_generation,
+                                        output, &block[layer])) {
+      out_result->stage = layer;
+      out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+      goto known_fail;
+    }
+    block[layer].output_view.owning_lifetime_id =
+        out_result->plan.layer[layer].output_generation;
+    input = output;
+  }
+  if (request->fault_point == PROM_M48_FAULT_BEFORE_LAYER_0) {
+    out_result->detail_code = PROM_M48_DETAIL_FAULT_INJECTED;
+    goto known_fail;
+  }
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  command_count = request->submit_topology == PROM_M48_SUBMIT_ONE_STACK
+                      ? 1u : request->layer_count;
+  recording_begin = prom_reduction_now_ns();
+  for (layer = 0u; layer < command_count; ++layer) {
+    if (vkResetCommandBuffer(slot->m48_command_buffers[layer], 0u) != VK_SUCCESS ||
+        vkBeginCommandBuffer(slot->m48_command_buffers[layer], &begin_info) != VK_SUCCESS) {
+      out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+      goto known_fail;
+    }
+    slot->m48_command_reuse_count += 1u;
+  }
+  if (request->initial_activation_mode == PROM_M48_INITIAL_HOST) {
+    const uint32_t upload_command_count = host_bounce_audit != 0u ? command_count : 1u;
+    for (layer = 0u; layer < upload_command_count; ++layer) {
+      VkBufferMemoryBarrier barrier;
+      VkBufferCopy copy;
+      VkCommandBuffer command_buffer = slot->m48_command_buffers[layer];
+      memset(&barrier, 0, sizeof(barrier));
+      barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+      barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
+      barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+      barrier.buffer = slot->m48_host_initial_upload.buffer;
+      barrier.size = logical_bytes;
+      vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_HOST_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u,
+                           &barrier, 0u, NULL);
+      memset(&copy, 0, sizeof(copy));
+      copy.size = logical_bytes;
+      vkCmdCopyBuffer(command_buffer, slot->m48_host_initial_upload.buffer,
+                      slot->m48_host_initial.buffer, 1u, &copy);
+      if (!prom_m43_one_buffer_barrier(command_buffer, &slot->m48_host_initial,
+                                       logical_bytes, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                       VK_ACCESS_SHADER_READ_BIT,
+                                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) {
+        out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+        goto known_fail;
+      }
+    }
+  }
+  for (layer = 0u; layer < request->layer_count; ++layer) {
+    prom_transformer_record_context context;
+    const uint32_t command_index = request->submit_topology == PROM_M48_SUBMIT_ONE_STACK
+                                       ? 0u : layer;
+    context.command_buffer = slot->m48_command_buffers[command_index];
+    context.query_base = slot->slot_id * PROM_REDUCTION_QUERY_STRIDE +
+                         layer * PROM_M48_QUERY_COUNT_PER_LAYER;
+    context.query_count = PROM_M48_QUERY_COUNT_PER_LAYER;
+    context.layer_index = layer;
+    context.descriptors = &slot->m48_descriptors[layer];
+    if (!prom_transformer_record_block(state, slot, &context, &block[layer],
+                                       &fault_stage)) {
+      out_result->stage = layer;
+      out_result->detail_code = request->fault_point != PROM_M48_FAULT_NONE
+                                    ? PROM_M48_DETAIL_FAULT_INJECTED
+                                    : PROM_M48_DETAIL_COMMAND;
+      goto known_fail;
+    }
+    if (host_bounce_audit != 0u && layer + 1u < request->layer_count) {
+      VkBufferCopy copy;
+      uint32_t row;
+      if (!prom_m43_one_buffer_barrier(context.command_buffer, block[layer].output,
+                                       block[layer].output->size,
+                                       VK_ACCESS_SHADER_WRITE_BIT,
+                                       VK_ACCESS_TRANSFER_READ_BIT,
+                                       VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                       VK_PIPELINE_STAGE_TRANSFER_BIT)) {
+        out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+        goto known_fail;
+      }
+      for (row = 0u; row < request->tokens; ++row) {
+        memset(&copy, 0, sizeof(copy));
+        copy.srcOffset = (VkDeviceSize)((uint64_t)row *
+            block[layer].ffn_plan.output_row_stride * sizeof(float));
+        copy.dstOffset = (VkDeviceSize)((uint64_t)row * request->model_width * sizeof(float));
+        copy.size = (VkDeviceSize)((uint64_t)request->model_width * sizeof(float));
+        vkCmdCopyBuffer(context.command_buffer, block[layer].output->buffer,
+                        slot->m48_readback.buffer, 1u, &copy);
+      }
+      if (!prom_m43_one_buffer_barrier(context.command_buffer, &slot->m48_readback,
+                                       logical_bytes, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                       VK_ACCESS_HOST_READ_BIT,
+                                       VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                       VK_PIPELINE_STAGE_HOST_BIT)) {
+        out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+        goto known_fail;
+      }
+    }
+    out_result->completed_layer_count = layer + 1u;
+    if ((request->fault_point == PROM_M48_FAULT_AFTER_LAYER_0_OUTPUT && layer == 0u) ||
+        (request->fault_point == PROM_M48_FAULT_AFTER_LAYER_2_OUTPUT && layer == 2u)) {
+      out_result->stage = layer;
+      out_result->detail_code = PROM_M48_DETAIL_FAULT_INJECTED;
+      goto known_fail;
+    }
+  }
+  if (request->fault_point == PROM_M48_FAULT_AFTER_FINAL_OUTPUT ||
+      request->fault_point == PROM_M48_FAULT_BEFORE_FINAL_READBACK) {
+    out_result->stage = request->layer_count - 1u;
+    out_result->detail_code = PROM_M48_DETAIL_FAULT_INJECTED;
+    goto known_fail;
+  }
+  if (optional_readback != 0u) {
+    VkCommandBuffer command_buffer = slot->m48_command_buffers[command_count - 1u];
+    uint32_t row;
+    prom_m42_write_timestamp(state, slot, command_buffer,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             PROM_M47_QUERY_READBACK_BEGIN);
+    if (!prom_m43_one_buffer_barrier(command_buffer, block[request->layer_count - 1u].output,
+                                     block[request->layer_count - 1u].output->size,
+                                     VK_ACCESS_SHADER_WRITE_BIT,
+                                     VK_ACCESS_TRANSFER_READ_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT)) {
+      out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+      goto known_fail;
+    }
+    for (row = 0u; row < request->tokens; ++row) {
+      VkBufferCopy copy;
+      memset(&copy, 0, sizeof(copy));
+      copy.srcOffset = (VkDeviceSize)((uint64_t)row *
+          block[request->layer_count - 1u].ffn_plan.output_row_stride * sizeof(float));
+      copy.dstOffset = (VkDeviceSize)((uint64_t)row * request->model_width * sizeof(float));
+      copy.size = (VkDeviceSize)((uint64_t)request->model_width * sizeof(float));
+      vkCmdCopyBuffer(command_buffer, block[request->layer_count - 1u].output->buffer,
+                      slot->m48_readback.buffer, 1u, &copy);
+    }
+    prom_m42_write_timestamp(state, slot, command_buffer,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             PROM_M47_QUERY_READBACK_END);
+    if (!prom_m43_one_buffer_barrier(command_buffer, &slot->m48_readback,
+                                     logical_bytes, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                     VK_ACCESS_HOST_READ_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_HOST_BIT)) {
+      out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+      goto known_fail;
+    }
+  }
+  for (layer = 0u; layer < command_count; ++layer) {
+    if (vkEndCommandBuffer(slot->m48_command_buffers[layer]) != VK_SUCCESS) {
+      out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+      goto known_fail;
+    }
+  }
+  out_result->cpu_recording_ns = prom_reduction_elapsed_ns(recording_begin,
+                                                            prom_reduction_now_ns());
+  if (vkResetFences(state->device, 1u, &slot->fence) != VK_SUCCESS) {
+    out_result->detail_code = PROM_M48_DETAIL_SUBMIT;
+    goto known_fail;
+  }
+  memset(submits, 0, sizeof(submits));
+  memset(wait_stages, 0, sizeof(wait_stages));
+  for (layer = 0u; layer < command_count; ++layer) {
+    wait_stages[layer] = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    submits[layer].sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submits[layer].commandBufferCount = 1u;
+    submits[layer].pCommandBuffers = &slot->m48_command_buffers[layer];
+    if (layer != 0u && host_wait_audit == 0u && host_bounce_audit == 0u) {
+      submits[layer].waitSemaphoreCount = 1u;
+      submits[layer].pWaitSemaphores = &slot->m48_semaphores[layer - 1u];
+      submits[layer].pWaitDstStageMask = &wait_stages[layer];
+    }
+    if (layer + 1u < command_count && host_wait_audit == 0u && host_bounce_audit == 0u) {
+      submits[layer].signalSemaphoreCount = 1u;
+      submits[layer].pSignalSemaphores = &slot->m48_semaphores[layer];
+    }
+  }
+  submission_begin = prom_reduction_now_ns();
+  if (host_wait_audit != 0u || host_bounce_audit != 0u) {
+    for (layer = 0u; layer < command_count; ++layer) {
+      uint64_t wait_begin;
+      if (layer != 0u && vkResetFences(state->device, 1u, &slot->fence) != VK_SUCCESS) {
+        out_result->detail_code = PROM_M48_DETAIL_SUBMIT;
+        goto known_fail;
+      }
+      vk_result = vkQueueSubmit(state->queue, 1u, &submits[layer], slot->fence);
+      if (vk_result != VK_SUCCESS) {
+        out_result->detail_code = PROM_M48_DETAIL_SUBMIT;
+        goto known_fail;
+      }
+      state->diagnostics.queue_submit_count += 1u;
+      slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
+      wait_begin = prom_reduction_now_ns();
+      vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+      out_result->cpu_wait_ns += prom_reduction_elapsed_ns(wait_begin,
+                                                            prom_reduction_now_ns());
+      if (vk_result != VK_SUCCESS) {
+        slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
+        state->diagnostics.quarantine_count += 1u;
+        out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
+        prom_transformer_select_descriptor_bank(slot, &standalone_bank);
+        return PROM_ERROR;
+      }
+      if (host_bounce_audit != 0u && layer + 1u < command_count) {
+        uint64_t bounce_copy_begin = prom_reduction_now_ns();
+        memcpy(slot->m48_host_initial_upload.mapped, slot->m48_readback.mapped,
+               (size_t)logical_bytes);
+        out_result->host_bounce_copy_ns +=
+            prom_reduction_elapsed_ns(bounce_copy_begin, prom_reduction_now_ns());
+      }
+    }
+  } else {
+    vk_result = vkQueueSubmit(state->queue, command_count, submits, slot->fence);
+    if (vk_result != VK_SUCCESS) {
+      out_result->detail_code = PROM_M48_DETAIL_SUBMIT;
+      goto known_fail;
+    }
+    slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
+    state->diagnostics.queue_submit_count += command_count;
+  }
+  out_result->cpu_submission_ns = prom_reduction_elapsed_ns(submission_begin,
+                                                             prom_reduction_now_ns());
+  if (request->fault_point == PROM_M48_FAULT_UNCERTAIN_COMPLETION) {
+    slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
+    state->diagnostics.quarantine_count += 1u;
+    out_result->stage = request->layer_count - 1u;
+    out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
+    prom_transformer_select_descriptor_bank(slot, &standalone_bank);
+    return PROM_ERROR;
+  }
+  if (host_wait_audit == 0u && host_bounce_audit == 0u) {
+    uint64_t wait_begin = prom_reduction_now_ns();
+    vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+    out_result->cpu_wait_ns = prom_reduction_elapsed_ns(wait_begin,
+                                                         prom_reduction_now_ns());
+    if (vk_result != VK_SUCCESS) {
+      slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
+      state->diagnostics.quarantine_count += 1u;
+      out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
+      prom_transformer_select_descriptor_bank(slot, &standalone_bank);
+      return PROM_ERROR;
+    }
+  }
+  memset(timestamps, 0, sizeof(timestamps));
+  if (state->timestamp_supported == 0u || state->query_pool == VK_NULL_HANDLE) {
+    out_result->detail_code = PROM_M48_DETAIL_QUERY;
+    goto completed_fail;
+  }
+  for (layer = 0u; layer < request->layer_count; ++layer) {
+    const uint32_t query_base = slot->slot_id * PROM_REDUCTION_QUERY_STRIDE +
+                                layer * PROM_M48_QUERY_COUNT_PER_LAYER;
+    if (vkGetQueryPoolResults(state->device, state->query_pool, query_base,
+                              PROM_M43_QUERY_GROUP_END + 1u,
+                              sizeof(uint64_t) * (PROM_M43_QUERY_GROUP_END + 1u),
+                              timestamps[layer], sizeof(uint64_t),
+                              VK_QUERY_RESULT_64_BIT) != VK_SUCCESS ||
+        vkGetQueryPoolResults(state->device, state->query_pool,
+                              query_base + PROM_M44_QUERY_BASE, 4u,
+                              sizeof(uint64_t) * 4u,
+                              timestamps[layer] + PROM_M44_QUERY_BASE,
+                              sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) != VK_SUCCESS ||
+        vkGetQueryPoolResults(state->device, state->query_pool,
+                              query_base + PROM_M45_QUERY_BASE, 2u,
+                              sizeof(uint64_t) * 2u,
+                              timestamps[layer] + PROM_M45_QUERY_BASE,
+                              sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) != VK_SUCCESS ||
+        vkGetQueryPoolResults(state->device, state->query_pool,
+                              query_base + PROM_M46_QUERY_BASE, 5u,
+                              sizeof(uint64_t) * 5u,
+                              timestamps[layer] + PROM_M46_QUERY_BASE,
+                              sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) != VK_SUCCESS ||
+        vkGetQueryPoolResults(state->device, state->query_pool,
+                              query_base + PROM_M47_QUERY_BASE,
+                              (optional_readback != 0u && layer + 1u == request->layer_count)
+                                  ? PROM_M47_QUERY_COUNT : 16u,
+                              sizeof(uint64_t) *
+                                  ((optional_readback != 0u && layer + 1u == request->layer_count)
+                                       ? PROM_M47_QUERY_COUNT : 16u),
+                              timestamps[layer] + PROM_M47_QUERY_BASE,
+                              sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) != VK_SUCCESS) {
+      out_result->stage = layer;
+      out_result->detail_code = PROM_M48_DETAIL_QUERY;
+      goto completed_fail;
+    }
+    prom_m48_fill_layer_timings(state, timestamps[layer], &block[layer],
+                                &out_result->plan.layer[layer],
+                                &out_result->layer[layer]);
+    out_result->total_stack_gpu_ns += out_result->layer[layer].total_gpu_ns;
+  }
+  if (optional_readback != 0u) {
+    uint64_t readback_begin = prom_reduction_now_ns();
+    memcpy(request->output, slot->m48_readback.mapped, (size_t)logical_bytes);
+    out_result->final_readback_ns = prom_reduction_elapsed_ns(readback_begin,
+                                                               prom_reduction_now_ns());
+    if (!prom_m42_finite_matrix(request->output, elements)) {
+      out_result->detail_code = PROM_M48_DETAIL_MISMATCH;
+      goto completed_fail;
+    }
+  }
+  out_result->submit_count = command_count;
+  out_result->semaphore_count = (host_wait_audit != 0u || host_bounce_audit != 0u)
+                                    ? 0u : command_count - 1u;
+  out_result->fence_count = 1u;
+  out_result->final_readback_count = optional_readback;
+  out_result->intermediate_host_copy_count = host_bounce_audit != 0u
+                                                  ? request->layer_count - 1u : 0u;
+  out_result->intermediate_readback_count = host_bounce_audit != 0u
+                                                ? request->layer_count - 1u : 0u;
+  out_result->selected_projection_path = block[0].ffn_plan.projection_path;
+  out_result->retained_bytes = out_result->plan.memory.exact_retained_bytes;
+  out_result->persistent_weight_bytes = out_result->plan.memory.persistent_weight_bytes;
+  out_result->block_working_set_bytes = out_result->plan.memory.one_block_working_set_bytes;
+  out_result->activation_bytes = out_result->plan.memory.activation_bytes;
+  out_result->buffer_allocation_count = state->diagnostics.buffer_allocation_count - allocations_before;
+  out_result->buffer_reuse_count = state->m48_buffer_reuse_count - reuses_before;
+  out_result->descriptor_update_count = state->m48_descriptor_update_count - descriptors_before;
+  out_result->pipeline_create_count = state->diagnostics.pipeline_create_count - pipelines_before;
+  out_result->command_buffer_reuse_count = slot->m48_command_reuse_count;
+  out_result->initial_generation = initial_generation;
+  out_result->final_output_generation = out_result->plan.final_output_generation;
+  out_result->replay_id = out_result->plan.replay_id;
+  out_result->output_view = block[request->layer_count - 1u].output_view;
+  out_result->output_view.owning_lifetime_id = out_result->plan.final_output_generation;
+  out_result->end_to_end_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  out_result->physical_slot_recyclable = 1u;
+  out_result->stage = 0u;
+  out_result->detail_code = 0;
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  prom_transformer_select_descriptor_bank(slot, &standalone_bank);
+  return PROM_OK;
+
+completed_fail:
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  out_result->physical_slot_recyclable = 1u;
+  prom_transformer_select_descriptor_bank(slot, &standalone_bank);
+  return PROM_ERROR;
+
+known_fail:
+  if (slot != NULL) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->physical_slot_recyclable = 1u;
+    prom_transformer_select_descriptor_bank(slot, &standalone_bank);
+  }
+  out_result->end_to_end_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  return PROM_ERROR;
 }
 
 static int prom_m45_execute_composed_core(void* handle,
@@ -10385,7 +12122,8 @@ static int prom_m45_execute_composed_core(void* handle,
   recording_begin = prom_reduction_now_ns();
   m43_record_status = prom_m43_record_grouped_internal(
       state, slot, &effective_request.attention, &out_result->attention.plan, &reduction_plan,
-      &m43_partial_fault, &m43_uncertain_fault, 0u, 1u);
+      &m43_partial_fault, &m43_uncertain_fault, 0u, 1u,
+      VK_NULL_HANDLE, NULL, 0u, 0u);
   if (m43_record_status != 1 || m43_partial_fault != 0u || m43_uncertain_fault != 0u) {
     if (m43_record_status == 1) (void)vkEndCommandBuffer(slot->command_buffer);
     slot->state = PROM_ASYNC_PHYSICAL_READY;

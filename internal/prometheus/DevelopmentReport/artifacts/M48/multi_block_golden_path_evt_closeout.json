@@ -1,0 +1,105 @@
+{
+  "schema": "prometheus.m48.multi-block-golden-path.v1",
+  "convergence_outcome": "meaningful_progression",
+  "milestone_state": "in_progress",
+  "evt_state": "in_progress",
+  "evidence_phase": "hardware_corpus_boundary",
+  "provenance": {
+    "host_os": "Windows",
+    "device": "NVIDIA GeForce RTX 3070",
+    "device_memory_mib": 8192,
+    "compiler": "MSVC",
+    "validation_enabled": true,
+    "validation_errors": 0
+  },
+  "shape": {
+    "primary": {"layers": 4, "tokens": 128, "model_width": 1024, "heads": 8, "head_dim": 128, "ffn_width": 4096},
+    "tiny": {"layers": 4, "tokens": 16, "model_width": 128, "heads": 8, "head_dim": 16, "ffn_width": 256},
+    "more_tokens": {"layers": 4, "tokens": 256, "model_width": 1024, "heads": 8, "head_dim": 128, "ffn_width": 4096},
+    "smaller_expansion": {"layers": 4, "tokens": 128, "model_width": 1024, "heads": 8, "head_dim": 128, "ffn_width": 2048},
+    "awkward": {"layers": 4, "tokens": 128, "model_width": 1000, "heads": 8, "head_dim": 125, "ffn_width": 3008},
+    "token_boundary": {"layers": 4, "tokens": 1024, "model_width": 128, "heads": 8, "head_dim": 16, "ffn_width": 512}
+  },
+  "resources": {
+    "per_layer": 29,
+    "total": 116,
+    "persistent_weight_bytes_per_layer": 167780352,
+    "persistent_weight_bytes": 671121408,
+    "layer_bundles_live": true,
+    "replacement_granularities_proven": ["layer2_head5_wk", "layer1_wo", "layer3_wdown", "layer0_rmsnorm"]
+  },
+  "memory": {
+    "initial_activation_bytes": 524288,
+    "activation_bytes": 1048576,
+    "one_block_working_set_bytes": 10486272,
+    "final_readback_bytes": 524288,
+    "quarantine_reserve_bytes": 12059136,
+    "exact_retained_bytes": 695763968,
+    "ping_pong_saved_bytes": 1048576,
+    "capacity_limit_bytes": 2147483648,
+    "descriptor_set_count": 536,
+    "timestamp_query_count": 944
+  },
+  "plan": {
+    "intermediate_host_copy_count": 0,
+    "intermediate_readback_count": 0,
+    "final_readback_count": 1,
+    "one_submit_count": 1,
+    "per_layer_submit_count": 4,
+    "per_layer_semaphore_count": 3,
+    "fence_count": 1,
+    "boundary_count": 3,
+    "query_ranges_nonoverlapping": true,
+    "warm_buffer_allocations": 0
+  },
+  "hardware_corpus": {
+    "executed": true,
+    "tiny_conventional": {"one_layer_gpu_ns": 466944, "two_layer_gpu_ns": 914432, "four_one_submit_gpu_ns": 2113536, "four_submit_gpu_ns": 1989344, "resident_e2e_ns": 5736100, "host_fed_e2e_ns": 14182600, "warm_10_median_gpu_ns": 1849856, "warm_10_p10_gpu_ns": 1827840, "warm_10_p90_gpu_ns": 1952480, "warm_100_median_gpu_ns": 1845184, "warm_100_p10_gpu_ns": 1827840, "warm_100_p90_gpu_ns": 1928192},
+    "primary_conventional": {"one_layer_gpu_ns": 8522464, "two_layer_gpu_ns": 17056768, "four_one_submit_gpu_ns": 37364288, "four_submit_gpu_ns": 37319520, "per_layer_gpu_ns": [9232288, 9235104, 9273344, 9623552], "resident_e2e_ns": 40648000, "host_fed_e2e_ns": 51795900, "warm_10_median_gpu_ns": 34121728, "warm_10_p10_gpu_ns": 34086432, "warm_10_p90_gpu_ns": 34395008, "warm_100_median_gpu_ns": 32971552, "warm_100_p10_gpu_ns": 32715040, "warm_100_p90_gpu_ns": 33412000, "host_wait": {"gpu_ns": 34119040, "end_to_end_ns": 41118600, "cpu_wait_ns": 34595400, "submit_count": 4, "intermediate_readbacks": 0}, "host_bounce": {"gpu_ns": 34115104, "end_to_end_ns": 51927400, "cpu_wait_ns": 34890900, "host_copy_ns": 9825600, "submit_count": 4, "intermediate_readbacks": 3, "intermediate_reuploads": 3}},
+    "primary_cooperative": {"four_one_submit_gpu_ns": 15270784, "four_submit_gpu_ns": 15268320, "resident_e2e_ns": 23904200, "host_fed_e2e_ns": 33455200, "warm_100_median_gpu_ns": 14015008},
+    "primary_a2x4": {"four_one_submit_gpu_ns": 53285152, "four_submit_gpu_ns": 52650848, "resident_e2e_ns": 54131500, "host_fed_e2e_ns": 66980500, "warm_100_median_gpu_ns": 48433888},
+    "primary_cooperative_extension_disabled": {"selected_path": "conventional_fp16", "four_one_submit_gpu_ns": 36927488, "four_submit_gpu_ns": 36955936, "resident_e2e_ns": 40693000},
+    "more_tokens_conventional": {"four_one_submit_gpu_ns": 67857888, "four_submit_gpu_ns": 66758656, "resident_e2e_ns": 67566100, "host_fed_e2e_ns": 88613200, "warm_100_median_gpu_ns": 58396928},
+    "smaller_expansion_conventional": {"four_one_submit_gpu_ns": 22722016, "four_submit_gpu_ns": 23068800, "resident_e2e_ns": 30396000, "host_fed_e2e_ns": 38048000, "warm_100_median_gpu_ns": 22711296},
+    "awkward_conventional": {"four_one_submit_gpu_ns": 24552448, "four_submit_gpu_ns": 24602720, "resident_e2e_ns": 31676100, "host_fed_e2e_ns": 41428300, "warm_100_median_gpu_ns": 23868416},
+    "token_boundary_conventional": {"four_one_submit_gpu_ns": 12639232, "four_submit_gpu_ns": 12373408, "resident_e2e_ns": 21522100, "host_fed_e2e_ns": 30019000, "warm_100_median_gpu_ns": 11771904}
+  },
+  "correctness_and_lifecycle": {
+    "tiny_full_cpu_oracle": true,
+    "bounded_outputs_finite": true,
+    "one_and_four_submit_agree": true,
+    "resident_a0": true,
+    "host_fed_a0": true,
+    "known_fault_points_exercised": 10,
+    "uncertain_fault_quarantine_and_reap": true,
+    "replacement_cases": 4,
+    "warm_zero_vulkan_buffer_allocation": true,
+    "extension_disabled_fallback": true
+  },
+  "primary_precision_audit": {
+    "executed": true,
+    "path": "conventional_fp16",
+    "coordinate_count": 12,
+    "passed": false,
+    "failure": {
+      "layer": 3,
+      "stage": "final",
+      "token": 31,
+      "column": 511,
+      "expected": -106.834,
+      "actual": -113.538,
+      "absolute_error": 6.70318,
+      "relative_error": 0.0627436,
+      "input_generation": 480000,
+      "layer_replay_id": 18276622376753282516,
+      "stack_replay_id": 9856943563942416748
+    }
+  },
+  "missing_evidence": {
+    "standalone_m47_thin_wrapper_migration": true,
+    "replacement_while_stack_is_in_flight": true,
+    "primary_precision_oracle_audit": "executed_failed_numerical_contradiction",
+    "linux_live_stack_run": false
+  },
+  "open_blocker": "The deterministic primary conventional-FP16 audit diverges from the existing CPU four-block reference at multiple fixed coordinates. Standalone M47 also still owns the legacy composed terminal recorder, and active-stack replacement is not yet proven. EVT must remain open until the numerical authority is reconciled and the remaining consolidation proofs pass."
+}

@@ -2243,6 +2243,371 @@ typedef struct prom_m47_mismatch {
   uint64_t m47_replay_id;
 } prom_m47_mismatch;
 
+/* M48 repeats the exact M43-M47 block as one fixed, bounded model-shaped
+   owner.  The product contract is exactly four homogeneous layers; one- and
+   two-layer plans are available only when audit_mode is explicit. */
+#define PROM_M48_LAYER_COUNT 4u
+#define PROM_M48_RESOURCE_COUNT 29u
+#define PROM_M48_ATTENTION_RESOURCE_COUNT 24u
+#define PROM_M48_TOTAL_RESOURCE_COUNT (PROM_M48_LAYER_COUNT * PROM_M48_RESOURCE_COUNT)
+#define PROM_M48_MAX_BOUNDARIES (PROM_M48_LAYER_COUNT - 1u)
+#define PROM_M48_QUERY_COUNT_PER_LAYER 236u
+#define PROM_M48_CAPACITY_LIMIT_BYTES (2ull * 1024ull * 1024ull * 1024ull)
+
+typedef enum prom_m48_resource_kind {
+  PROM_M48_RESOURCE_WO = 24u,
+  PROM_M48_RESOURCE_RMSNORM = 25u,
+  PROM_M48_RESOURCE_WGATE = 26u,
+  PROM_M48_RESOURCE_WUP = 27u,
+  PROM_M48_RESOURCE_WDOWN = 28u,
+} prom_m48_resource_kind;
+
+typedef enum prom_m48_initial_activation_mode {
+  PROM_M48_INITIAL_HOST = 1u,
+  PROM_M48_INITIAL_RESIDENT = 2u,
+} prom_m48_initial_activation_mode;
+
+typedef enum prom_m48_activation_strategy {
+  PROM_M48_ACTIVATION_PING_PONG = 1u,
+  PROM_M48_ACTIVATION_PER_LAYER = 2u,
+} prom_m48_activation_strategy;
+
+typedef enum prom_m48_submit_topology {
+  PROM_M48_SUBMIT_ONE_STACK = 1u,
+  PROM_M48_SUBMIT_PER_LAYER = 2u,
+  /* Audit-only: retains device activations but waits on the host after each
+     layer. It is intentionally excluded from product topology selection. */
+  PROM_M48_SUBMIT_HOST_WAIT_PER_LAYER_AUDIT = 3u,
+  /* Audit-only: copies each intermediate activation through host memory before
+     feeding the next layer. It quantifies the cost avoided by residency. */
+  PROM_M48_SUBMIT_HOST_BOUNCE_PER_LAYER_AUDIT = 4u,
+} prom_m48_submit_topology;
+
+typedef enum prom_m48_eligibility_reason {
+  PROM_M48_ELIGIBLE = 0u,
+  PROM_M48_INELIGIBLE_LAYER_COUNT = 1u,
+  PROM_M48_INELIGIBLE_SHAPE = 2u,
+  PROM_M48_INELIGIBLE_INITIAL_ACTIVATION = 3u,
+  PROM_M48_INELIGIBLE_STRIDE = 4u,
+  PROM_M48_INELIGIBLE_GENERATION = 5u,
+  PROM_M48_INELIGIBLE_WEIGHT = 6u,
+  PROM_M48_INELIGIBLE_PRECISION = 7u,
+  PROM_M48_INELIGIBLE_STRATEGY = 8u,
+  PROM_M48_INELIGIBLE_CAPACITY = 9u,
+  PROM_M48_INELIGIBLE_OVERFLOW = 10u,
+} prom_m48_eligibility_reason;
+
+typedef struct prom_m48_layer_resources {
+  uint64_t generation[PROM_M48_RESOURCE_COUNT];
+  uint64_t content_hash[PROM_M48_RESOURCE_COUNT];
+} prom_m48_layer_resources;
+
+typedef struct prom_m48_plan_request {
+  const float* host_initial_activation;
+  uint64_t host_initial_element_count;
+  prom_device_buffer_view resident_initial_activation;
+  uint32_t initial_activation_mode;
+  uint32_t initial_activation_exclusive;
+  uint32_t layer_count;
+  uint32_t audit_mode;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_count;
+  uint32_t head_dim;
+  uint32_t ffn_width;
+  uint32_t precision_policy;
+  uint32_t projection_path;
+  uint32_t attention_strategy;
+  uint32_t output_projection_strategy;
+  uint32_t rmsnorm_strategy;
+  uint32_t gating_strategy;
+  uint32_t residual_strategy;
+  uint32_t activation_strategy;
+  uint32_t submit_topology;
+  uint32_t optional_final_readback;
+  uint64_t expected_initial_generation;
+  uint64_t initial_content_hash;
+  uint64_t capacity_limit_bytes;
+  prom_m48_layer_resources layer[PROM_M48_LAYER_COUNT];
+} prom_m48_plan_request;
+
+typedef struct prom_m48_boundary_trace {
+  uint32_t boundary;
+  uint32_t producer_layer;
+  uint32_t consumer_layer;
+  uint32_t physical_activation_role;
+  uint64_t byte_offset;
+  uint64_t byte_length;
+  uint32_t source_stage_mask;
+  uint32_t destination_stage_mask;
+  uint32_t source_access_mask;
+  uint32_t destination_access_mask;
+  uint32_t source_queue_family;
+  uint32_t destination_queue_family;
+  uint64_t content_generation;
+} prom_m48_boundary_trace;
+
+typedef struct prom_m48_layer_plan {
+  uint32_t layer;
+  uint32_t submit_index;
+  uint32_t query_begin;
+  uint32_t query_count;
+  uint32_t input_activation_role;
+  uint32_t output_activation_role;
+  uint32_t persistent_resource_count;
+  uint32_t intermediate_readback_count;
+  uint64_t input_generation;
+  uint64_t output_generation;
+  uint64_t replay_id;
+} prom_m48_layer_plan;
+
+typedef struct prom_m48_memory_plan {
+  uint64_t initial_activation_bytes;
+  uint64_t host_initial_upload_bytes;
+  uint64_t activation_bytes;
+  uint64_t per_layer_output_activation_bytes;
+  uint64_t attention_working_bytes;
+  uint64_t output_projection_working_bytes;
+  uint64_t normalization_working_bytes;
+  uint64_t ffn_working_bytes;
+  uint64_t one_block_working_set_bytes;
+  uint64_t persistent_weight_bytes_per_layer;
+  uint64_t persistent_weight_bytes;
+  uint64_t final_readback_bytes;
+  uint64_t descriptor_device_buffer_bytes;
+  uint64_t timestamp_query_device_buffer_bytes;
+  uint64_t quarantine_reserve_bytes;
+  uint64_t exact_stack_slot_bytes;
+  uint64_t exact_retained_bytes;
+  uint64_t comparison_per_layer_retained_bytes;
+  uint64_t ping_pong_saved_bytes;
+  uint64_t capacity_limit_bytes;
+  uint32_t descriptor_set_count;
+  uint32_t timestamp_query_count;
+} prom_m48_memory_plan;
+
+typedef struct prom_m48_transformer_stack_plan {
+  uint32_t layer_count;
+  uint32_t audit_mode;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_count;
+  uint32_t head_dim;
+  uint32_t ffn_width;
+  uint32_t precision_policy;
+  uint32_t projection_path;
+  uint32_t activation_strategy;
+  uint32_t submit_topology;
+  uint32_t submit_count;
+  uint32_t semaphore_count;
+  uint32_t fence_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t intermediate_readback_count;
+  uint32_t final_readback_count;
+  uint32_t warm_allocation_count;
+  uint32_t persistent_resource_count;
+  uint32_t boundary_count;
+  uint32_t eligibility_eligible;
+  uint32_t eligibility_reason;
+  uint64_t initial_generation;
+  uint64_t initial_content_hash;
+  uint64_t final_output_generation;
+  uint64_t command_plan_replay_id;
+  uint64_t replay_id;
+  uint64_t eligibility_replay_id;
+  prom_m48_layer_resources layer_resources[PROM_M48_LAYER_COUNT];
+  prom_m48_layer_plan layer[PROM_M48_LAYER_COUNT];
+  prom_m48_boundary_trace boundary[PROM_M48_MAX_BOUNDARIES];
+  prom_m48_memory_plan memory;
+} prom_m48_transformer_stack_plan;
+
+typedef struct prom_m48_reference_layer {
+  const float* attention_weight[PROM_M43_HEAD_COUNT][PROM_M43_WEIGHT_KIND_COUNT];
+  const float* wo;
+  const float* rmsnorm_weight;
+  const float* wgate;
+  const float* wup;
+  const float* wdown;
+} prom_m48_reference_layer;
+
+typedef struct prom_m48_reference_request {
+  const float* initial_activation;
+  float* output;
+  uint64_t initial_element_count;
+  uint64_t output_element_count;
+  uint32_t layer_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_count;
+  uint32_t head_dim;
+  uint32_t ffn_width;
+  uint32_t precision_policy;
+  uint32_t projection_path;
+  float epsilon;
+  prom_m48_reference_layer layer[PROM_M48_LAYER_COUNT];
+} prom_m48_reference_request;
+
+typedef struct prom_m48_reference_result {
+  uint32_t completed_layer_count;
+  uint32_t failed_layer;
+  uint32_t failed_stage;
+  uint32_t all_finite;
+} prom_m48_reference_result;
+
+typedef enum prom_m48_fault_point {
+  PROM_M48_FAULT_NONE = 0u,
+  PROM_M48_FAULT_BEFORE_LAYER_0 = 1u,
+  PROM_M48_FAULT_DURING_LAYER_0_ATTENTION = 2u,
+  PROM_M48_FAULT_AFTER_LAYER_0_OUTPUT = 3u,
+  PROM_M48_FAULT_DURING_LAYER_1_RMSNORM = 4u,
+  PROM_M48_FAULT_DURING_LAYER_1_FFN = 5u,
+  PROM_M48_FAULT_AFTER_LAYER_2_OUTPUT = 6u,
+  PROM_M48_FAULT_DURING_LAYER_3_ATTENTION = 7u,
+  PROM_M48_FAULT_DURING_LAYER_3_FFN = 8u,
+  PROM_M48_FAULT_AFTER_FINAL_OUTPUT = 9u,
+  PROM_M48_FAULT_BEFORE_FINAL_READBACK = 10u,
+  PROM_M48_FAULT_UNCERTAIN_COMPLETION = 11u,
+} prom_m48_fault_point;
+
+typedef struct prom_m48_layer_weight_prepare_request {
+  const float* values;
+  uint64_t element_count;
+  uint32_t layer_index;
+  uint32_t resource_index;
+  uint32_t model_width;
+  uint32_t head_dim;
+  uint32_t ffn_width;
+  uint64_t generation;
+} prom_m48_layer_weight_prepare_request;
+
+typedef struct prom_m48_layer_weight_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t layer_index;
+  uint32_t resource_index;
+  uint64_t generation;
+  uint64_t hash;
+  uint64_t preparation_ns;
+  uint64_t gpu_upload_and_pack_ns;
+  uint64_t retained_upload_bytes;
+  uint64_t retained_f32_bytes;
+  uint64_t retained_packed_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+} prom_m48_layer_weight_prepare_result;
+
+typedef struct prom_m48_initial_activation_prepare_request {
+  const float* values;
+  uint64_t element_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint64_t generation;
+} prom_m48_initial_activation_prepare_request;
+
+typedef struct prom_m48_initial_activation_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t generation;
+  uint64_t hash;
+  uint64_t preparation_ns;
+  uint64_t gpu_upload_ns;
+  uint64_t retained_upload_bytes;
+  uint64_t retained_device_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+} prom_m48_initial_activation_prepare_result;
+
+typedef struct prom_m48_stack_request {
+  const float* host_initial_activation;
+  uint64_t host_initial_element_count;
+  float* output;
+  uint64_t output_element_count;
+  uint32_t initial_activation_mode;
+  uint32_t layer_count;
+  uint32_t audit_mode;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_count;
+  uint32_t head_dim;
+  uint32_t ffn_width;
+  uint32_t precision_policy;
+  uint32_t projection_path;
+  uint32_t attention_strategy;
+  uint32_t output_projection_strategy;
+  uint32_t rmsnorm_strategy;
+  uint32_t gating_strategy;
+  uint32_t residual_strategy;
+  uint32_t submit_topology;
+  uint32_t allow_fallback;
+  uint32_t fault_point;
+  float epsilon;
+  uint64_t expected_initial_generation;
+  uint64_t required_generation[PROM_M48_LAYER_COUNT][PROM_M48_RESOURCE_COUNT];
+} prom_m48_stack_request;
+
+typedef struct prom_m48_layer_execution_result {
+  uint32_t layer_index;
+  uint32_t selected_projection_path;
+  uint32_t attention_strategy;
+  uint32_t output_projection_strategy;
+  uint32_t rmsnorm_strategy;
+  uint32_t gating_strategy;
+  uint32_t residual_strategy;
+  uint64_t attention_gpu_ns;
+  uint64_t output_projection_gpu_ns;
+  uint64_t first_residual_gpu_ns;
+  uint64_t rmsnorm_gpu_ns;
+  uint64_t gate_projection_gpu_ns;
+  uint64_t up_projection_gpu_ns;
+  uint64_t gating_gpu_ns;
+  uint64_t down_projection_gpu_ns;
+  uint64_t second_residual_gpu_ns;
+  uint64_t total_gpu_ns;
+  uint64_t replay_id;
+  uint64_t input_generation;
+  uint64_t output_generation;
+} prom_m48_layer_execution_result;
+
+typedef struct prom_m48_stack_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_stack_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t completed_layer_count;
+  uint32_t submit_count;
+  uint32_t semaphore_count;
+  uint32_t fence_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t intermediate_readback_count;
+  uint32_t final_readback_count;
+  uint32_t selected_projection_path;
+  uint64_t total_stack_gpu_ns;
+  uint64_t cpu_recording_ns;
+  uint64_t cpu_submission_ns;
+  uint64_t cpu_wait_ns;
+  uint64_t host_bounce_copy_ns;
+  uint64_t host_initial_upload_ns;
+  uint64_t final_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t retained_bytes;
+  uint64_t persistent_weight_bytes;
+  uint64_t block_working_set_bytes;
+  uint64_t activation_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint64_t initial_generation;
+  uint64_t final_output_generation;
+  uint64_t replay_id;
+  prom_m48_layer_execution_result layer[PROM_M48_LAYER_COUNT];
+  prom_m48_transformer_stack_plan plan;
+  prom_device_buffer_view output_view;
+} prom_m48_stack_result;
+
 enum {
   PROM_M40B_DETAIL_INVALID_REQUEST = -6901,
   PROM_M40B_DETAIL_SIZE_OVERFLOW = -6902,
@@ -2382,6 +2747,22 @@ enum {
   PROM_M47_DETAIL_NONFINITE_INPUT = -7520,
   PROM_M47_DETAIL_MISMATCH = -7521,
   PROM_M47_DETAIL_IN_PLACE_N_REJECTED = -7522,
+};
+
+enum {
+  PROM_M48_DETAIL_INVALID_REQUEST = -7601,
+  PROM_M48_DETAIL_NONFINITE_INPUT = -7602,
+  PROM_M48_DETAIL_STALE_INITIAL_GENERATION = -7603,
+  PROM_M48_DETAIL_STALE_WEIGHT_GENERATION = -7604,
+  PROM_M48_DETAIL_CAPACITY = -7605,
+  PROM_M48_DETAIL_RESOURCE = -7606,
+  PROM_M48_DETAIL_COMMAND = -7607,
+  PROM_M48_DETAIL_SUBMIT = -7608,
+  PROM_M48_DETAIL_COMPLETION_UNCERTAIN = -7609,
+  PROM_M48_DETAIL_QUERY = -7610,
+  PROM_M48_DETAIL_READBACK = -7611,
+  PROM_M48_DETAIL_FAULT_INJECTED = -7612,
+  PROM_M48_DETAIL_MISMATCH = -7613,
 };
 
 enum {
@@ -2632,6 +3013,22 @@ int prom_reactor_runtime_m47_prepare_weight(void* handle,
 int prom_reactor_runtime_m47_execute_composed(void* handle,
                                               const prom_m47_composed_request* request,
                                               prom_m47_composed_result* out_result);
+uint32_t prom_m48_attention_resource_index(uint32_t head, uint32_t weight_kind);
+int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
+                                          prom_m48_transformer_stack_plan* out_plan);
+int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* request,
+                                              prom_m48_reference_result* out_result);
+int prom_reactor_runtime_m48_prepare_layer_weight(
+    void* handle,
+    const prom_m48_layer_weight_prepare_request* request,
+    prom_m48_layer_weight_prepare_result* out_result);
+int prom_reactor_runtime_m48_prepare_initial_activation(
+    void* handle,
+    const prom_m48_initial_activation_prepare_request* request,
+    prom_m48_initial_activation_prepare_result* out_result);
+int prom_reactor_runtime_m48_execute_stack(void* handle,
+                                           const prom_m48_stack_request* request,
+                                           prom_m48_stack_result* out_result);
 uint16_t prom_sgemm_float32_to_fp16_bits(float value);
 float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);
