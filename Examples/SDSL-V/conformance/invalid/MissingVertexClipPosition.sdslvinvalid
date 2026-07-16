@@ -1,0 +1,4 @@
+// expect-diagnostic: SDSL-V4106 4:50
+stream Input { [location(0)] Value: float2; }
+stream Output { [location(0)] Value: float2; }
+shader Bad { stage vertex fn VS(input: Input) -> Output { return Output { Value: input.Value; }; } }

@@ -141,6 +141,7 @@ type ShaderDecl struct {
 	Template           *TemplateParam
 	ResourceBundleName string
 	Resources          []ResourceDecl
+	Material           *MaterialDecl
 	Workgroups         []WorkgroupDecl
 	StaticAsserts      []StaticAssertStmt
 	Methods            []FunctionDecl
@@ -148,6 +149,14 @@ type ShaderDecl struct {
 }
 
 func (ShaderDecl) declNode() {}
+
+// MaterialDecl is graphics authoring sugar. Validation and lowering project it
+// into one immutable uniform resource and a deterministic layout; it is not a
+// second resource or reflection system.
+type MaterialDecl struct {
+	Span   source.Span
+	Fields []Field
+}
 
 type CompileDecl struct {
 	Span       source.Span
@@ -175,6 +184,7 @@ func (FunctionDecl) declNode() {}
 
 type UnsupportedDecl struct {
 	Kind string
+	Span source.Span
 }
 
 func (UnsupportedDecl) declNode() {}
@@ -232,6 +242,11 @@ type TypeRef struct {
 	NDArrayShapeClose source.Span
 	Access            string
 	ZeroAllowed       bool
+	// Space is the canonical dotted coordinate-space identity written with
+	// @space(...). It is retained through semantic typing and erased physically.
+	Space          string
+	SpaceSpan      source.Span
+	AnnotationSpan source.Span
 }
 
 func (t TypeRef) String() string {

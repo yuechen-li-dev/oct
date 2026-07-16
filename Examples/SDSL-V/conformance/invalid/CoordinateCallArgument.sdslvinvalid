@@ -1,0 +1,5 @@
+// expected SDSL-V1504 at call argument
+type WorldNormal3 = float3 @space(world.normal);
+type WorldVector3 = float3 @space(world.vector);
+fn UseNormal(value: WorldNormal3) -> f32 { return value.x; }
+fn BadCall(value: WorldVector3) -> f32 { return UseNormal(value); }

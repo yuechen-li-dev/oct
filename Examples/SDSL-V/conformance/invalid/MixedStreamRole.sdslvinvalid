@@ -1,0 +1,5 @@
+// expect-diagnostic: SDSL-V4102 2:1
+stream Mixed {
+    [location(0)] Value: float2;
+    [binding(0)] Data: readonly array<f32>;
+}

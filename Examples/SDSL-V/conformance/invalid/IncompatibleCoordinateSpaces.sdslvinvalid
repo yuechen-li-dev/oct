@@ -1,0 +1,4 @@
+// expect-diagnostic: SDSL-V1504 4:57
+type WorldPosition3 = float3 @space(world.position);
+type ViewPosition3 = float3 @space(view.position);
+fn Bad(value: WorldPosition3) -> ViewPosition3 { return value; }

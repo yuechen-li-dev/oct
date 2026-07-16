@@ -338,6 +338,20 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 			}
 		}
 		return nil
+	case "compile-graphics":
+		if isHelpArg(args[1:]) {
+			return writeSDSLvHelp(stdout)
+		}
+		opts, err := parseSDSLvGraphicsBundleArgs(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, "sdslv compile-graphics", err)
+		}
+		result, err := sdslv.CompileGraphicsBundle(opts)
+		if err != nil {
+			return reportCommandError(stderr, "sdslv compile-graphics", err)
+		}
+		_, err = fmt.Fprintf(stdout, "sdslv wrote graphics bundle: %s\nprogram: %s\nreplay identity: %s\nvertex: %s %s\npixel: %s %s\n", result.ManifestPath, result.Program, result.ReplayIdentity, result.Vertex.EntryPoint, result.Vertex.SPIRVSHA256, result.Pixel.EntryPoint, result.Pixel.SPIRVSHA256)
+		return err
 	case "generate-header":
 		if isHelpArg(args[1:]) {
 			return writeSDSLvHelp(stdout)
@@ -366,8 +380,51 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 		}
 		return nil
 	default:
-		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test|bench> ..."))
+		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|compile-graphics|generate-header|test|bench> ..."))
 	}
+}
+
+func parseSDSLvGraphicsBundleArgs(args []string) (toolchain.GraphicsBundleOptions, error) {
+	if len(args) == 0 {
+		return toolchain.GraphicsBundleOptions{}, fmt.Errorf("usage: oct sdslv compile-graphics <file.sdslv> -o directory [--program Name] [--dxc path] [--require-spirv-val]")
+	}
+	opts := toolchain.GraphicsBundleOptions{InputPath: args[0]}
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "-o", "--out":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing graphics bundle output directory")
+			}
+			opts.OutputDirectory = args[i]
+		case "--program":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing graphics program name")
+			}
+			opts.Program = args[i]
+		case "--dxc":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing dxc path")
+			}
+			opts.DXCPath = args[i]
+		case "--extra-dxc-arg":
+			i++
+			if i >= len(args) {
+				return opts, fmt.Errorf("missing extra dxc argument")
+			}
+			opts.ExtraDXCArgs = append(opts.ExtraDXCArgs, args[i])
+		case "--require-spirv-val":
+			opts.RequireSPIRVVal = true
+		default:
+			return opts, fmt.Errorf("unknown sdslv compile-graphics option %q", args[i])
+		}
+	}
+	if opts.OutputDirectory == "" {
+		return opts, fmt.Errorf("usage: oct sdslv compile-graphics <file.sdslv> -o directory [--program Name] [--dxc path] [--require-spirv-val]")
+	}
+	return opts, nil
 }
 
 func parseSDSLvBenchArgs(args []string) (string, bench.Options, error) {
@@ -1278,7 +1335,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|generate-header|test|bench> ...\n\ncommands:\n  check <file.sdslv>                                                                  Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                                Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                             Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]                     Emit HLSL, compile SPIR-V, and write SPIR-V\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]                  Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]                       Discover deterministic GPU test cases\n  bench <file.sdslvbench> [--list] [--case <stable-id>] [--json] [--backend <auto|godot|kaiju>]  Inspect or run GPU benchmark declarations")
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|compile-graphics|generate-header|test|bench> ...\n\ncommands:\n  check <file.sdslv>                                                                  Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                                Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                             Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]                     Emit HLSL, compile SPIR-V, and write SPIR-V\n  compile-graphics <file.sdslv> -o directory [--program Name]                         Compile a deterministic paired vertex/pixel bundle\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]                  Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]                       Discover deterministic GPU test cases\n  bench <file.sdslvbench> [--list] [--case <stable-id>] [--json] [--backend <auto|godot|kaiju>]  Inspect or run GPU benchmark declarations")
 	return err
 }
 func writeTestHelp(out io.Writer) error {

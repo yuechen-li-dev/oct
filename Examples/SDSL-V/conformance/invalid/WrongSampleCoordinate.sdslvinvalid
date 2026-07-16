@@ -1,0 +1,12 @@
+// expect-diagnostic: SDSL-V4119 10:62
+stream PI { [location(0)] UV: float3; }
+stream R {
+    [binding(0)] Image: readonly texture2d<float4>;
+    [binding(1)] Linear: readonly sampler;
+}
+shader Bad {
+    resources R;
+    stage pixel fn PS(input: PI, resourceSet: R) -> float4 {
+        return Sample(resourceSet.Image, resourceSet.Linear, input.UV);
+    }
+}

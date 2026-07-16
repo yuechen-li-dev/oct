@@ -101,6 +101,8 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 		tensorAssigns:    map[source.Span]validate.ValidatedTensorAssign{},
 		tensorReductions: map[source.Span]validate.ValidatedTensorReduction{},
 		requirements:     map[string]vdmir.CapabilityRequirement{},
+		streams:          map[string]ast.StreamDecl{},
+		streamUses:       map[string]streamUse{},
 	}
 	for _, tensor := range validatedTensors {
 		l.tensorAssigns[tensor.Span] = tensor
@@ -146,14 +148,12 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 			}
 			for i, resource := range resources {
 				binding := resolveResourceBinding(resources, i)
-				out.Resources = append(out.Resources, vdmir.Resource{
-					Provenance:  l.provenance,
-					BundleName:  bundleName,
-					Name:        resource.Name,
-					ElementType: l.lowerResourceElementType(resource.Type),
-					Access:      lowerResourceAccess(resource.Access),
-					Binding:     binding,
-				})
+				out.Resources = append(out.Resources, l.lowerResource(resource, bundleName, binding))
+			}
+			if d.Material != nil {
+				material := l.lowerMaterial(d, resources)
+				out.Materials = append(out.Materials, material)
+				out.Records = append(out.Records, l.lowerRecord(material.TypeName, d.Material.Fields))
 			}
 			for _, workgroup := range d.Workgroups {
 				typ := l.lowerTypeRef(workgroup.Type)
@@ -192,8 +192,11 @@ func moduleWithTests(module ast.Module, testInputs map[string]validate.Validated
 				out.Functions = append(out.Functions, fn)
 				if method.Stage == "compute" {
 					out.EntryPoints = append(out.EntryPoints, l.lowerComputeEntryPoint(d, method, resources))
+				} else if method.Stage == "vertex" || method.Stage == "pixel" {
+					out.GraphicsEntryPoints = append(out.GraphicsEntryPoints, l.lowerGraphicsEntryPoint(d, method))
 				}
 			}
+			out.GraphicsPrograms = append(out.GraphicsPrograms, l.lowerGraphicsProgram(d)...)
 		case ast.ConceptDecl, ast.ConfigDecl, ast.CompileDecl:
 			continue
 		case ast.UnsupportedDecl:
@@ -2053,10 +2056,11 @@ type functionInfo struct {
 }
 
 type binding struct {
-	name   string
-	kind   vdmir.VarKind
-	typ    ast.TypeRef
-	access string
+	name           string
+	kind           vdmir.VarKind
+	typ            ast.TypeRef
+	access         string
+	resourceBundle bool
 }
 
 func cloneBindings(in map[string]binding) map[string]binding {
@@ -2080,6 +2084,8 @@ type lowering struct {
 	tensorAssigns    map[source.Span]validate.ValidatedTensorAssign
 	tensorReductions map[source.Span]validate.ValidatedTensorReduction
 	requirements     map[string]vdmir.CapabilityRequirement
+	streams          map[string]ast.StreamDecl
+	streamUses       map[string]streamUse
 }
 
 func (l *lowering) requireCooperativeMatrix() {
@@ -2124,6 +2130,7 @@ func (l *lowering) collect(module ast.Module) {
 			l.types[d.Name] = typeInfo{kind: "board", fields: collectFields(d.Fields)}
 		case ast.StreamDecl:
 			l.types[d.Name] = typeInfo{kind: "stream", fields: collectFields(d.Fields)}
+			l.streams[d.Name] = d
 		case ast.ConceptDecl:
 			l.types[d.Name] = typeInfo{kind: "concept", fields: collectConceptFields(d)}
 		case ast.EnumDecl:
@@ -2134,6 +2141,9 @@ func (l *lowering) collect(module ast.Module) {
 			if d.Template != nil {
 				continue
 			}
+			if d.Material != nil {
+				l.types[materialTypeName(d.Name)] = typeInfo{kind: "record", fields: collectFields(d.Material.Fields)}
+			}
 			for _, method := range d.Methods {
 				key := d.Name + "_" + method.Name
 				l.functions[key] = functionInfo{
@@ -2143,6 +2153,7 @@ func (l *lowering) collect(module ast.Module) {
 					params:      method.Parameters,
 					shaderName:  d.Name,
 				}
+				l.collectStreamUse(method)
 			}
 		case ast.ConfigDecl, ast.CompileDecl:
 			continue
@@ -2215,16 +2226,32 @@ func (l *lowering) lowerBoard(name string, fields []ast.Field) vdmir.Board {
 }
 
 func (l *lowering) lowerStream(name string, fields []ast.Field) vdmir.Stream {
-	stream := vdmir.Stream{Provenance: l.provenance, Name: name}
+	role := l.streamRole(name)
+	stream := vdmir.Stream{Provenance: l.provenance, Name: name, Role: role}
+	locations, targets := l.streamAssignments(name, fields)
 	for _, field := range fields {
-		if field.Access != "" {
+		if role == vdmir.StreamRoleResource {
 			continue
 		}
-		stream.Fields = append(stream.Fields, vdmir.Field{
+		entry := vdmir.Field{
 			Provenance: l.provenance,
 			Name:       field.Name,
 			Type:       l.lowerTypeRef(field.Type),
-		})
+		}
+		entry.Builtin, entry.Semantic = lowerBuiltinAttribute(field)
+		if l.resolveAlias(field.Type).Space == "clip.position" {
+			entry.Builtin, entry.Semantic = "position", "SV_Position"
+		}
+		if location, ok := locations[field.Name]; ok {
+			entry.Location, entry.HasLocation = location, true
+			entry.Semantic = fmt.Sprintf("TEXCOORD%d", location)
+			entry.Interpolation = lowerInterpolation(field, l.resolveAlias(field.Type))
+		}
+		if target, ok := targets[field.Name]; ok {
+			entry.Target, entry.HasTarget = target, true
+			entry.Semantic = fmt.Sprintf("SV_Target%d", target)
+		}
+		stream.Fields = append(stream.Fields, entry)
 	}
 	return stream
 }
@@ -2237,13 +2264,10 @@ func (l *lowering) resolveShaderResources(shader ast.ShaderDecl) ([]ast.Resource
 	if !ok || info.kind != "stream" {
 		return nil, "", fmt.Errorf("unknown stream resource bundle %s", shader.ResourceBundleName)
 	}
-	names := make([]string, 0, len(info.fields))
-	for name := range info.fields {
-		names = append(names, name)
-	}
-	sortStrings(names)
-	resources := make([]ast.ResourceDecl, 0, len(names))
-	for _, name := range names {
+	stream := l.streams[shader.ResourceBundleName]
+	resources := make([]ast.ResourceDecl, 0, len(stream.Fields))
+	for _, sourceField := range stream.Fields {
+		name := sourceField.Name
 		field := info.fields[name]
 		if field.access == "" {
 			continue
@@ -2297,8 +2321,18 @@ func (l *lowering) lowerFunction(shaderName string, fn ast.FunctionDecl, resourc
 	for _, workgroup := range workgroups {
 		scope[workgroup.Name] = binding{name: workgroup.Name, kind: vdmir.VarLocal, typ: workgroup.Type}
 	}
+	if shaderName != "" {
+		if _, ok := l.types[materialTypeName(shaderName)]; ok {
+			scope["Material"] = binding{name: "Material", kind: vdmir.VarResource, typ: ast.TypeRef{Name: materialTypeName(shaderName)}, access: "readonly"}
+		}
+	}
 	for _, param := range fn.Parameters {
-		scope[param.Name] = binding{name: param.Name, kind: vdmir.VarParam, typ: param.Type}
+		role := l.streamRole(param.Type.Name)
+		resourceBundle := (fn.Stage == "vertex" || fn.Stage == "pixel") && role == vdmir.StreamRoleResource
+		scope[param.Name] = binding{name: param.Name, kind: vdmir.VarParam, typ: param.Type, resourceBundle: resourceBundle}
+		if resourceBundle {
+			continue
+		}
 		out.Params = append(out.Params, vdmir.Parameter{
 			Provenance: l.provenance,
 			Name:       param.Name,
@@ -2757,6 +2791,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 		if b, ok := scope[e.Name]; ok {
 			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(l.resolveAlias(b.typ)), Name: b.name, Kind: b.kind}, nil
 		}
+		if isVectorConstructorName(e.Name) {
+			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(ast.TypeRef{Name: e.Name}), Name: e.Name, Kind: vdmir.VarFunction}, nil
+		}
 		if fn, ok := l.lookupFunction(shaderName, e.Name); ok {
 			return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(fn.returnType), Name: fn.emittedName, Kind: vdmir.VarFunction}, nil
 		}
@@ -2774,6 +2811,14 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			return vdmir.FieldAccessExpr{Provenance: l.provenance, ExprType: vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}, Target: root, Field: e.Field}, nil
 		}
 		if id, ok := e.Target.(ast.IdentifierExpr); ok {
+			if bundle, exists := scope[id.Name]; exists && bundle.resourceBundle {
+				info := l.types[bundle.typ.Name]
+				field, ok := info.fields[e.Field]
+				if !ok {
+					return nil, fmt.Errorf("unknown resource stream field %s.%s", bundle.typ.Name, e.Field)
+				}
+				return vdmir.VarRefExpr{Provenance: l.provenance, ExprType: l.lowerTypeRef(field.typ), Name: e.Field, Kind: vdmir.VarResource}, nil
+			}
 			if enumInfo, exists := l.types[id.Name]; exists && enumInfo.kind == "enum" {
 				return vdmir.EnumConstructExpr{
 					Provenance:  l.provenance,
@@ -2888,7 +2933,7 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			Fallback:   fallback,
 		}, nil
 	case ast.CallExpr:
-		if id, ok := e.Callee.(ast.IdentifierExpr); ok && (id.Name == "Dot" || e.TypeArgument != nil) {
+		if id, ok := e.Callee.(ast.IdentifierExpr); ok && (isCompilerIntrinsicCall(id.Name) || e.TypeArgument != nil) {
 			args := make([]vdmir.Expr, 0, len(e.Arguments))
 			for _, arg := range e.Arguments {
 				lowered, err := l.lowerExprWithExpected(arg, scope, shaderName, nil)
@@ -2901,7 +2946,11 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			if intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
 				l.requireCooperativeMatrix()
 			}
-			return vdmir.IntrinsicCallExpr{Provenance: l.provenance, ExprType: l.callResultType(e, scope, shaderName), Intrinsic: intrinsic, TypeArgument: target, Arguments: args}, nil
+			resultType := l.callResultType(e, scope, shaderName)
+			if id.Name == "Sample" && len(args) != 0 && args[0].Type().Element != nil {
+				resultType = *args[0].Type().Element
+			}
+			return vdmir.IntrinsicCallExpr{Provenance: l.provenance, ExprType: resultType, Intrinsic: intrinsic, TypeArgument: target, Arguments: args}, nil
 		}
 		if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == "reg_tile_zero" {
 			return nil, fmt.Errorf("reg_tile_zero() is only supported as a direct reg_tile local initializer")
@@ -3319,11 +3368,11 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 	case "uint4":
 		return vdmir.Type{Kind: vdmir.TypeUint4, Name: "uint4"}
 	case "float2":
-		return vdmir.Type{Kind: vdmir.TypeFloat2, Name: "float2"}
+		return vdmir.Type{Kind: vdmir.TypeFloat2, Name: "float2", Space: resolved.Space}
 	case "float3":
-		return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3"}
+		return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3", Space: resolved.Space}
 	case "float4":
-		return vdmir.Type{Kind: vdmir.TypeFloat4, Name: "float4"}
+		return vdmir.Type{Kind: vdmir.TypeFloat4, Name: "float4", Space: resolved.Space}
 	case "array":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		if resolved.HasArraySize {
@@ -3358,6 +3407,14 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 	case "matrix_view":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		return vdmir.Type{Kind: vdmir.TypeMatrixView, Name: "matrix_view", Element: &elem, Access: lowerResourceAccess(resolved.Access)}
+	case "texture2d":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		return vdmir.Type{Kind: vdmir.TypeTexture2D, Name: "texture2d", Element: &elem}
+	case "sampler":
+		return vdmir.Type{Kind: vdmir.TypeSampler, Name: "sampler"}
+	case "uniform":
+		elem := l.lowerTypeRef(resolved.Args[0])
+		return vdmir.Type{Kind: vdmir.TypeUniform, Name: "uniform", Element: &elem}
 	default:
 		if info, ok := l.types[resolved.Name]; ok {
 			switch info.kind {
@@ -3371,7 +3428,7 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 				return vdmir.Type{Kind: vdmir.TypeEnum, Name: resolved.Name}
 			}
 		}
-		return vdmir.Type{Kind: vdmir.TypeBuiltin, Name: resolved.Name}
+		return vdmir.Type{Kind: vdmir.TypeBuiltin, Name: resolved.Name, Space: resolved.Space}
 	}
 }
 
@@ -3421,6 +3478,26 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 			return l.lowerTypeRef(ast.TypeRef{Name: id.Name})
 		case "Dot":
 			return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+		case "Cross":
+			return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3"}
+		case "Normalize", "Saturate", "Reflect":
+			if len(call.Arguments) != 0 {
+				if lowered, err := l.lowerExpr(call.Arguments[0], scope, shaderName); err == nil {
+					return lowered.Type()
+				}
+			}
+		case "Lerp":
+			if len(call.Arguments) != 0 {
+				if lowered, err := l.lowerExpr(call.Arguments[0], scope, shaderName); err == nil {
+					return lowered.Type()
+				}
+			}
+		case "Sample":
+			if len(call.Arguments) != 0 {
+				if lowered, err := l.lowerExpr(call.Arguments[0], scope, shaderName); err == nil && lowered.Type().Element != nil {
+					return *lowered.Type().Element
+				}
+			}
 		case "Pack":
 			if call.TypeArgument != nil && call.TypeArgument.Name == "F16x2" {
 				return vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}
@@ -4081,7 +4158,35 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 				vdmir.Type{Name: "F16F32M16N16K16Subgroup"}
 		}
 	}
-	return vdmir.IntrinsicDot, vdmir.Type{}
+	switch name {
+	case "Cross":
+		return vdmir.IntrinsicCross, vdmir.Type{}
+	case "Normalize":
+		return vdmir.IntrinsicNormalize, vdmir.Type{}
+	case "Saturate":
+		return vdmir.IntrinsicSaturate, vdmir.Type{}
+	case "Lerp":
+		return vdmir.IntrinsicLerp, vdmir.Type{}
+	case "Reflect":
+		return vdmir.IntrinsicReflect, vdmir.Type{}
+	case "Sample":
+		return vdmir.IntrinsicSampleTexture2D, vdmir.Type{}
+	default:
+		return vdmir.IntrinsicDot, vdmir.Type{}
+	}
+}
+
+func isCompilerIntrinsicCall(name string) bool {
+	switch name {
+	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample":
+		return true
+	default:
+		return false
+	}
+}
+
+func isVectorConstructorName(name string) bool {
+	return name == "float2" || name == "float3" || name == "float4" || name == "uint2" || name == "uint3" || name == "uint4"
 }
 
 func lowerIntrinsicType(ref ast.TypeRef) vdmir.Type {

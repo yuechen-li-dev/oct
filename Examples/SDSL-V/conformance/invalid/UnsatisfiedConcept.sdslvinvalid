@@ -1,0 +1,13 @@
+// expect-diagnostic: SDSL-V4113 13:1
+type ClipPosition4 = float4 @space(clip.position);
+stream VI { [location(0)] P: float3; }
+stream VO { Position: ClipPosition4; }
+concept Needed { ENABLED: bool; }
+concept Other { ENABLED: bool; }
+config Wrong: Other { ENABLED: true; }
+template<C: Needed>
+shader Generic {
+    stage vertex fn VS(input: VI) -> VO { return VO { Position: float4(input.P.x, input.P.y, input.P.z, 1.0); }; }
+    stage pixel fn PS(input: VO) -> float4 { return float4(input.Position.x, 0.0, 0.0, 1.0); }
+}
+compile Generic<Wrong> as Bad;

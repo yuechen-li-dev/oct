@@ -37,6 +37,8 @@ type CompileResult struct {
 	DXCPath                   string
 	SPIRVValidatorPath        string
 	EntryPoint                string
+	Stage                     vdmir.ShaderStage
+	Profile                   string
 	DXCArgs                   []string
 	SPIRVValidatorArgs        []string
 	ValidationAttempted       bool
@@ -170,12 +172,14 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 	if err != nil {
 		return CompileResult{}, err
 	}
-	entry, err := resolveEntryPoint(mir, opts.EntryPoint)
+	entry, err := resolveShaderEntry(mir, opts.EntryPoint)
 	if err != nil {
 		return CompileResult{}, err
 	}
-	if err := validateEntryParams(module, entry); err != nil {
-		return CompileResult{}, err
+	if entry.Compute != nil {
+		if err := validateEntryParams(module, *entry.Compute); err != nil {
+			return CompileResult{}, err
+		}
 	}
 	hlslPath := choosePath(opts.HLSLPath, replaceExt(opts.OutputPath, ".hlsl"))
 	hlslPath = mustAbs(hlslPath)
@@ -193,8 +197,8 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 	if err != nil {
 		return CompileResult{}, err
 	}
-	target := targetContract(mir)
-	dxcArgs := buildDXCArgsForTarget(entry.EmittedName, outputPath, hlslPath, opts.ExtraDXCArgs, target)
+	target := targetContractForStage(mir, entry.Stage)
+	dxcArgs := buildDXCArgsForTarget(entry.Name, outputPath, hlslPath, opts.ExtraDXCArgs, target)
 	result, runErr := host.runner(Command{
 		Program: dxcPath,
 		Args:    dxcArgs,
@@ -208,7 +212,9 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 		HLSLPath:                  hlslPath,
 		SPIRVPath:                 outputPath,
 		DXCPath:                   dxcPath,
-		EntryPoint:                entry.EmittedName,
+		EntryPoint:                entry.Name,
+		Stage:                     entry.Stage,
+		Profile:                   target.profile,
 		DXCArgs:                   append([]string(nil), dxcArgs...),
 		Requirements:              append([]vdmir.CapabilityRequirement(nil), mir.Requirements...),
 		TargetEnvironment:         target.environment,
@@ -300,6 +306,48 @@ func resolveEntryPoint(module vdmir.Module, requested string) (vdmir.ComputeEntr
 	return module.EntryPoints[0], nil
 }
 
+type resolvedShaderEntry struct {
+	Name    string
+	Stage   vdmir.ShaderStage
+	Compute *vdmir.ComputeEntryPoint
+	Graphic *vdmir.GraphicsEntryPoint
+}
+
+func resolveShaderEntry(module vdmir.Module, requested string) (resolvedShaderEntry, error) {
+	entries := make([]resolvedShaderEntry, 0, len(module.EntryPoints)+len(module.GraphicsEntryPoints))
+	for i := range module.EntryPoints {
+		entry := &module.EntryPoints[i]
+		entries = append(entries, resolvedShaderEntry{Name: entry.EmittedName, Stage: vdmir.StageCompute, Compute: entry})
+	}
+	for i := range module.GraphicsEntryPoints {
+		entry := &module.GraphicsEntryPoints[i]
+		entries = append(entries, resolvedShaderEntry{Name: entry.EmittedName, Stage: entry.Stage, Graphic: entry})
+	}
+	if len(entries) == 0 {
+		return resolvedShaderEntry{}, fmt.Errorf("module does not contain a shader entry point")
+	}
+	if requested != "" {
+		for _, entry := range entries {
+			if entry.Name == requested {
+				return entry, nil
+			}
+		}
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name)
+		}
+		return resolvedShaderEntry{}, fmt.Errorf("shader entry point %q was not found; available entries: %s", requested, strings.Join(names, ", "))
+	}
+	if len(entries) != 1 {
+		names := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			names = append(names, entry.Name)
+		}
+		return resolvedShaderEntry{}, fmt.Errorf("module contains multiple shader entry points; pass --entry to choose one: %s", strings.Join(names, ", "))
+	}
+	return entries[0], nil
+}
+
 func validateEntryParams(module ast.Module, entry vdmir.ComputeEntryPoint) error {
 	if len(entry.Params) == 0 {
 		return nil
@@ -352,6 +400,17 @@ func targetContract(module vdmir.Module) shaderTargetContract {
 		result.spirvCapabilities = []string{"CooperativeMatrixKHR", "Float16", "VulkanMemoryModel"}
 	}
 	return result
+}
+
+func targetContractForStage(module vdmir.Module, stage vdmir.ShaderStage) shaderTargetContract {
+	switch stage {
+	case vdmir.StageVertex:
+		return shaderTargetContract{profile: "vs_6_0", environment: "vulkan1.0"}
+	case vdmir.StagePixel:
+		return shaderTargetContract{profile: "ps_6_0", environment: "vulkan1.0"}
+	default:
+		return targetContract(module)
+	}
 }
 
 func buildDXCArgsForTarget(entry, outputPath, inputPath string, extra []string, target shaderTargetContract) []string {

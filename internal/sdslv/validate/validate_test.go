@@ -1010,9 +1010,9 @@ func TestModuleRejectsBadReturnType(t *testing.T) {
 }
 
 func TestModuleRejectsUnsupportedStage(t *testing.T) {
-	err := validateSource(`shader S { stage vertex fn VS() -> void { return; } }`)
-	if err == nil || !strings.Contains(err.Error(), "not implemented in GoOct SDSL-V M0") {
-		t.Fatalf("error = %v, want M0 diagnostic", err)
+	err := validateSource(`shader S { stage geometry fn GS() -> void { return; } }`)
+	if err == nil || !strings.Contains(err.Error(), "canonical SDSL-V supports compute, vertex, and pixel") {
+		t.Fatalf("error = %v, want bounded-stage diagnostic", err)
 	}
 }
 

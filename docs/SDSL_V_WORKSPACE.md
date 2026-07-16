@@ -10,6 +10,7 @@ This is the repository ownership guide. Language truth remains in
 | `internal/sdslv/` | compiler, toolchain, fixtures, benchmark execution | compiler/tooling only |
 | `internal/sdslv/testdata/language/` | `.sdslvvalid` / `.sdslvinvalid` contracts | test tooling only |
 | `examples/SDSL-V/` | examples, `.sdslvtest`, permanent benchmarks | no |
+| `examples/SDSL-V/conformance/` | canonical shared/compute/graphics acceptance, diagnostics, manifests, and golden artifacts | no |
 | `examples/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
 | `internal/prometheus/shaders/sdslv/production/` | sole Prometheus SDSL-V source authority | yes |
 | `internal/prometheus/shaders/sdslv/production/reduction/` | M39b row-wise sum/max/softmax source authority | yes |
@@ -111,6 +112,23 @@ is disabled by default; this evidence does not assign a production shader ID.
 `.sdslvvalid` accepts language behavior; `.sdslvinvalid` asserts diagnostics;
 `.sdslvtest` is GPU correctness; `.sdslvbench` is performance only. Benchmark
 and replay identity derives from source identity, so M36/M37 paths stay put.
+
+M41 makes `docs/SDSL_V_LANGUAGE_SPEC.md` plus
+`examples/SDSL-V/conformance/manifest.json` the canonical language authority;
+GoOct is the reference implementation. The conformance corpus owns portable
+source acceptance, exact diagnostic spans, semantic interface facts, and the
+explicit graphics/compute golden artifacts. The existing workspace checker
+validates this manifest and bundle alongside production ownership checks:
+
+```powershell
+go test ./internal/sdslv/conformance
+go run ./tools/sdslv_workspace_check
+go run ./cmd/oct sdslv compile-graphics examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid --program ForwardTextured --out out/m41/graphics
+```
+
+The graphics command requires DXC and `spirv-val` and emits paired vertex/pixel
+HLSL, validated SPIR-V, structural interface facts, provenance hashes, and a
+deterministic replay identity. It does not create or own runtime pipeline state.
 
 ## Contribution path
 

@@ -1,0 +1,5 @@
+// expect-diagnostic: SDSL-V4105 4:5
+stream Collision {
+    [location(0)] A: float2;
+    [location(0)] B: float2;
+}

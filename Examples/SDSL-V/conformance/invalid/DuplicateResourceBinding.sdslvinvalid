@@ -1,0 +1,8 @@
+// expect-diagnostic: SDSL-V4112 5:9
+shader Bad {
+    resources {
+        [binding(0)] A: readonly array<f32>;
+        [binding(0)] B: readonly array<f32>;
+    }
+    stage compute [numthreads(1, 1, 1)] fn CS() -> void { return; }
+}

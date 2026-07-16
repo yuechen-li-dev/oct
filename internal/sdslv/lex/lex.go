@@ -199,6 +199,11 @@ func (l *lexer) nextToken() (token.Token, error) {
 			return token.Token{Kind: token.BangEqual, Lexeme: "!=", Line: line, Column: column}, nil
 		}
 		return token.Token{Kind: token.Bang, Lexeme: "!", Line: line, Column: column}, nil
+	case '@':
+		l.advanceRune()
+		return token.Token{Kind: token.At, Lexeme: "@", Line: line, Column: column}, nil
+	case '?':
+		return token.Token{}, fmt.Errorf("SDSL-V4100: fallible postfix '?' was removed from canonical SDSL-V at %d:%d; use an explicit payload enum and exhaustive match", line, column)
 	}
 	return token.Token{}, fmt.Errorf("invalid token at %d:%d: %q", line, column, string(r))
 }

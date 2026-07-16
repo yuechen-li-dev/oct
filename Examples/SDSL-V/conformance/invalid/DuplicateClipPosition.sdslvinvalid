@@ -1,0 +1,4 @@
+// expect-diagnostic: SDSL-V4107 4:38
+type ClipPosition4 = float4 @space(clip.position);
+stream Output { A: ClipPosition4; B: ClipPosition4; }
+shader Bad { stage vertex fn VS() -> Output { return Output { A: float4(0.0, 0.0, 0.0, 1.0); B: float4(0.0, 0.0, 0.0, 1.0); }; } }

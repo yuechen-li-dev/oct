@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/sdslv/bench"
+	"github.com/yuechen-li-dev/oct/internal/sdslv/conformance"
 )
 
 type workspace struct {
@@ -174,6 +175,9 @@ func main() {
 }
 
 func check(root string, inventory bool) error {
+	if err := conformance.Verify(root); err != nil {
+		return fmt.Errorf("SDSL-V conformance: %w", err)
+	}
 	var m shaderManifest
 	manifestPath := filepath.Join(root, "internal", "prometheus", "native", "shaders", "manifest.json")
 	if err := readJSON(manifestPath, &m); err != nil {
@@ -187,7 +191,12 @@ func check(root string, inventory bool) error {
 		m.Workspace.ExperimentalSourceRoot,
 		m.Workspace.HistoricalAuditRoot,
 		m.Workspace.CanonicalBenchmarkRoot,
+		"docs/SDSL_V_LANGUAGE_SPEC.md",
+		"docs/SDSL_V_GRAPHICS_RECONCILIATION.md",
+		"docs/SDSL_V_GRAPHICS_RECONCILIATION.json",
 		"docs/SDSL_V_WORKSPACE.md",
+		"examples/SDSL-V/conformance/manifest.json",
+		"internal/prometheus/DevelopmentReport/SDSL_V_M41_CANONICAL_FULL_LANGUAGE_IMPLEMENTATION.md",
 		"internal/prometheus/DevelopmentReport/SDSL_V_M39A_WORKSPACE_PRODUCTIZATION.md",
 		"internal/prometheus/native/Marionette/reactor_shader_registry_tests.cpp",
 	} {

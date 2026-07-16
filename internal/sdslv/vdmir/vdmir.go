@@ -10,18 +10,21 @@ type Module struct {
 	// Requirements are closed compiler-owned execution contracts discovered
 	// during lowering. They are semantic requirements, not user-defined target
 	// strings; backends decide whether and how they can satisfy each contract.
-	Requirements []CapabilityRequirement
-	Namespace    string
-	TypeAliases  []TypeAlias
-	Records      []Record
-	Boards       []Board
-	Streams      []Stream
-	Enums        []Enum
-	Resources    []Resource
-	Workgroups   []WorkgroupMemoryDecl
-	Functions    []Function
-	EntryPoints  []ComputeEntryPoint
-	Flows        []Flow
+	Requirements        []CapabilityRequirement
+	Namespace           string
+	TypeAliases         []TypeAlias
+	Records             []Record
+	Boards              []Board
+	Streams             []Stream
+	Enums               []Enum
+	Resources           []Resource
+	Materials           []Material
+	Workgroups          []WorkgroupMemoryDecl
+	Functions           []Function
+	EntryPoints         []ComputeEntryPoint
+	GraphicsEntryPoints []GraphicsEntryPoint
+	GraphicsPrograms    []GraphicsProgram
+	Flows               []Flow
 }
 
 type CapabilityRequirement struct {
@@ -39,6 +42,12 @@ type CapabilityRequirement struct {
 }
 
 const CapabilityCooperativeMatrixF16F32M16N16K16Subgroup = "cooperative-matrix-f16-f32-m16-n16-k16-subgroup"
+
+const (
+	CapabilityGraphicsVertexPixel = "graphics-vertex-pixel"
+	CapabilitySampledTexture2D    = "sampled-texture2d"
+	CapabilityUniformMaterial     = "uniform-material"
+)
 
 type FlowTerminatorKind string
 
@@ -171,8 +180,17 @@ type Board struct {
 type Stream struct {
 	Provenance Provenance
 	Name       string
+	Role       StreamRole
 	Fields     []Field
 }
+
+type StreamRole string
+
+const (
+	StreamRoleStageValue StreamRole = "stage-value"
+	StreamRoleResource   StreamRole = "resource"
+	StreamRoleBuiltin    StreamRole = "builtin"
+)
 
 type Enum struct {
 	Provenance Provenance
@@ -187,18 +205,53 @@ type EnumVariant struct {
 }
 
 type Field struct {
-	Provenance Provenance
-	Name       string
-	Type       Type
+	Provenance    Provenance
+	Name          string
+	Type          Type
+	Location      int
+	HasLocation   bool
+	Target        int
+	HasTarget     bool
+	Builtin       string
+	Interpolation string
+	Semantic      string
 }
 
 type Resource struct {
 	Provenance  Provenance
 	BundleName  string
 	Name        string
+	Kind        ResourceKind
+	Type        Type
 	ElementType Type
 	Access      ResourceAccess
 	Binding     Binding
+}
+
+type ResourceKind string
+
+const (
+	ResourceStorageBuffer ResourceKind = "storage-buffer"
+	ResourceUniform       ResourceKind = "uniform"
+	ResourceTexture2D     ResourceKind = "texture2d"
+	ResourceSampler       ResourceKind = "sampler"
+)
+
+type Material struct {
+	Provenance Provenance
+	ShaderName string
+	TypeName   string
+	Binding    Binding
+	Size       uint32
+	Fields     []MaterialField
+}
+
+type MaterialField struct {
+	Name      string
+	Type      Type
+	Offset    uint32
+	Size      uint32
+	Alignment uint32
 }
 
 type WorkgroupMemoryDecl struct {
@@ -256,6 +309,65 @@ type ComputeEntryPoint struct {
 	Params       []Parameter
 	ThreadParams []ComputeThreadBinding
 	Builtins     []BuiltinParam
+}
+
+type ShaderStage string
+
+const (
+	StageCompute ShaderStage = "compute"
+	StageVertex  ShaderStage = "vertex"
+	StagePixel   ShaderStage = "pixel"
+)
+
+type GraphicsEntryPoint struct {
+	Provenance   Provenance
+	ProgramName  string
+	FunctionName string
+	EmittedName  string
+	Stage        ShaderStage
+	Params       []GraphicsParameter
+	ReturnType   Type
+	Inputs       []InterfaceField
+	Outputs      []InterfaceField
+	Builtins     []BuiltinUse
+	Targets      []PixelTarget
+}
+
+type GraphicsParameter struct {
+	Name    string
+	Type    Type
+	Role    StreamRole
+	Emitted bool
+}
+
+type InterfaceField struct {
+	Stream        string
+	Name          string
+	Type          Type
+	Location      int
+	HasLocation   bool
+	Builtin       string
+	Interpolation string
+}
+
+type BuiltinUse struct {
+	Name     string
+	Builtin  string
+	Type     Type
+	Semantic string
+}
+
+type PixelTarget struct {
+	Name   string
+	Target int
+	Type   Type
+}
+
+type GraphicsProgram struct {
+	Provenance Provenance
+	Name       string
+	Vertex     string
+	Pixel      string
 }
 
 type MetadataField struct {
@@ -517,6 +629,12 @@ const (
 	IntrinsicWorkgroupMemoryBarrier                   Intrinsic = "WorkgroupMemoryBarrier"
 	IntrinsicWorkgroupMemoryBarrierWithSync           Intrinsic = "WorkgroupMemoryBarrierWithSync"
 	IntrinsicDot                                      Intrinsic = "Dot"
+	IntrinsicCross                                    Intrinsic = "Cross"
+	IntrinsicNormalize                                Intrinsic = "Normalize"
+	IntrinsicSaturate                                 Intrinsic = "Saturate"
+	IntrinsicLerp                                     Intrinsic = "Lerp"
+	IntrinsicReflect                                  Intrinsic = "Reflect"
+	IntrinsicSampleTexture2D                          Intrinsic = "SampleTexture2D"
 	IntrinsicPackF16x2                                Intrinsic = "PackF16x2"
 	IntrinsicUnpackF16x2                              Intrinsic = "UnpackF16x2"
 	IntrinsicBitcast                                  Intrinsic = "Bitcast"
@@ -867,6 +985,7 @@ type Type struct {
 	Rows   int
 	Cols   int
 	Access ResourceAccess
+	Space  string
 }
 
 type TypeKind string
@@ -895,6 +1014,9 @@ const (
 	TypeEnum         TypeKind = "enum"
 	TypeAliasKind    TypeKind = "alias"
 	TypeBuiltin      TypeKind = "builtin"
+	TypeTexture2D    TypeKind = "texture2d"
+	TypeSampler      TypeKind = "sampler"
+	TypeUniform      TypeKind = "uniform"
 )
 
 func (t Type) IsArray() bool {

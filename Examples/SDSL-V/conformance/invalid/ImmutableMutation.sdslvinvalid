@@ -1,0 +1,6 @@
+// expect-diagnostic: SDSL-V3701 4:5
+fn Bad() -> void {
+    let value: f32 = 1.0;
+    value = 2.0;
+    return;
+}

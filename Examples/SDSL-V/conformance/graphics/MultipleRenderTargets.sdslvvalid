@@ -1,0 +1,10 @@
+stream GBufferInput { [location(0)] Value: float4; }
+stream GBufferOutput {
+    [target(0)] Color: float4;
+    [target(1)] Normal: float4;
+}
+shader GBufferProgram {
+    stage pixel fn PS(input: GBufferInput) -> GBufferOutput {
+        return GBufferOutput { Color: input.Value; Normal: float4(0.0, 0.0, 1.0, 0.0); };
+    }
+}

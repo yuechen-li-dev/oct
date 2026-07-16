@@ -62,6 +62,10 @@ func CompileSPIRV(opts toolchain.CompileOptions) (toolchain.CompileResult, error
 	return toolchain.CompileToSPIRV(opts)
 }
 
+func CompileGraphicsBundle(opts toolchain.GraphicsBundleOptions) (toolchain.GraphicsBundle, error) {
+	return toolchain.CompileGraphicsBundle(opts)
+}
+
 func GenerateHeader(opts toolchain.GenerateHeaderOptions) (toolchain.GenerateHeaderResult, error) {
 	return toolchain.GenerateHeader(opts)
 }

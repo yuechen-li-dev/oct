@@ -1,0 +1,10 @@
+// expected SDSL-V4111 at pixel field with related vertex field
+type WorldNormal3 = float3 @space(world.normal);
+type WorldVector3 = float3 @space(world.vector);
+type ClipPosition4 = float4 @space(clip.position);
+stream VOut { Position: ClipPosition4; [location(0)] Direction: WorldVector3; }
+stream PIn { Position: ClipPosition4; [location(0)] Direction: WorldNormal3; }
+shader SpaceLink {
+    stage vertex fn VS() -> VOut { return VOut { Position: float4(0.0, 0.0, 0.0, 1.0); Direction: float3(0.0, 0.0, 1.0); }; }
+    stage pixel fn PS(input: PIn) -> float4 { return float4(input.Direction.x, 0.0, 0.0, 1.0); }
+}

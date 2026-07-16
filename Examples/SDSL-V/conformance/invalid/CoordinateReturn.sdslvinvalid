@@ -1,0 +1,4 @@
+// expected SDSL-V1504 at return value
+type WorldNormal3 = float3 @space(world.normal);
+type WorldVector3 = float3 @space(world.vector);
+fn BadReturn(value: WorldVector3) -> WorldNormal3 { return value; }

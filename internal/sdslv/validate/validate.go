@@ -22,6 +22,7 @@ func Diagnostics(module ast.Module) []diagnostic.Diagnostic {
 		configs:        map[string]configInfo{},
 		concepts:       map[string]ast.ConceptDecl{},
 		shaderDecls:    map[string]ast.ShaderDecl{},
+		streams:        map[string]ast.StreamDecl{},
 		compileAliases: map[string]struct{}{},
 	}
 	switch filepath.Ext(module.Source.Path) {
@@ -132,6 +133,7 @@ type validator struct {
 	configs           map[string]configInfo
 	concepts          map[string]ast.ConceptDecl
 	shaderDecls       map[string]ast.ShaderDecl
+	streams           map[string]ast.StreamDecl
 	compileAliases    map[string]struct{}
 	resources         map[string]ast.ResourceDecl
 	testSource        bool
@@ -209,6 +211,7 @@ func (v *validator) collect(module ast.Module) {
 			v.addFieldType(d.Name, "board", d.Fields, "board")
 		case ast.StreamDecl:
 			v.addFieldType(d.Name, "stream", d.Fields, "stream")
+			v.streams[d.Name] = d
 		case ast.ConceptDecl:
 			v.addType(d.Name, typeInfo{name: d.Name, kind: "concept", fields: v.collectConceptFieldMap(d)})
 			v.concepts[d.Name] = d
@@ -224,6 +227,9 @@ func (v *validator) collect(module ast.Module) {
 			v.addFunc(d.Name, d)
 		case ast.ShaderDecl:
 			v.addType(d.Name, typeInfo{name: d.Name, kind: "shader"})
+			if d.Material != nil {
+				v.addFieldType(materialTypeName(d.Name), "record", d.Material.Fields, "material")
+			}
 			v.shaderDecls[d.Name] = d
 			seenMethods := map[string]struct{}{}
 			for _, method := range d.Methods {
@@ -236,8 +242,10 @@ func (v *validator) collect(module ast.Module) {
 		case ast.UnsupportedDecl:
 			if d.Kind == "flow" {
 				v.errorf("top-level Octomata flow declarations are not supported in SDSL-V M22; use function-local flow blocks")
+			} else if d.Kind == "interface" {
+				v.errorAt(v.currentSpan, "SDSL-V4101", "historical interface syntax was removed from canonical SDSL-V; use concept/config/template declarations")
 			} else {
-				v.errorf("%s is not implemented in GoOct SDSL-V M0", d.Kind)
+				v.errorf("%s is not implemented in GoOct SDSL-V", d.Kind)
 			}
 		}
 		v.currentSpan = previous
@@ -360,6 +368,7 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		switch d := decl.(type) {
 		case ast.TypeAliasDecl:
 			v.validateType(d.Type)
+			v.validateCoordinateAlias(d)
 		case ast.RecordDecl:
 			v.validateFields(d.Name, "record", d.Fields, false)
 		case ast.BoardDecl:
@@ -383,6 +392,7 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		}
 		v.currentSpan = previous
 	}
+	v.validateGraphicsPrograms(decls)
 }
 
 func (v *validator) validateFields(owner, kind string, fields []ast.Field, allowAccess bool) {
@@ -390,13 +400,19 @@ func (v *validator) validateFields(owner, kind string, fields []ast.Field, allow
 		if field.Access != "" && !allowAccess {
 			v.errorf("%s field %s.%s must not declare resource access", kind, owner, field.Name)
 		}
-		if len(field.Attributes) > 0 && (kind != "stream" || field.Access == "") {
-			v.errorf("%s field %s.%s does not support attributes in SDSL-V M6", kind, owner, field.Name)
+		if len(field.Attributes) > 0 && kind != "stream" {
+			v.errorf("%s field %s.%s does not support attributes", kind, owner, field.Name)
+		}
+		if field.Type.Space != "" {
+			v.errorAt(field.Type.AnnotationSpan, "SDSL-V4120", "@space(...) is valid only on a named type alias")
 		}
 		v.validateType(field.Type)
 		if field.Type.Name == "reg_tile" {
 			v.errorf("%s field %s.%s cannot use reg_tile<T, Rows, Cols> in SDSL-V M15", kind, owner, field.Name)
 		}
+	}
+	if kind == "stream" {
+		v.validateStreamRole(owner, fields)
 	}
 }
 
@@ -598,7 +614,7 @@ func (v *validator) validateCompileDecl(decl ast.CompileDecl) {
 		return
 	}
 	if config.conceptName != shader.Template.ConceptName {
-		v.errorf("compile config %s does not satisfy concept %s", decl.ConfigName, shader.Template.ConceptName)
+		v.errorAt(decl.Span, "SDSL-V4113", "compile config %s does not satisfy concept %s", decl.ConfigName, shader.Template.ConceptName)
 		return
 	}
 	env := map[string]configValue{}
@@ -640,16 +656,36 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 		if resource.Access != "readonly" && resource.Access != "readwrite" {
 			v.errorf("resource %s.%s must be readonly or readwrite", shader.Name, resource.Name)
 		}
-		if resource.Type.Name != "array" || len(resource.Type.Args) != 1 {
-			v.errorf("resource %s.%s must use array<T> in GoOct SDSL-V M3", shader.Name, resource.Name)
-		} else if v.typeKind(resource.Type.Args[0]) == "board" {
-			v.errorf("resource %s.%s cannot use board element type %s; SDSL-V M21 boards are shader-local values and do not affect resource bindings", shader.Name, resource.Name, typeName(resource.Type.Args[0]))
+		switch resource.Type.Name {
+		case "array":
+			if len(resource.Type.Args) != 1 {
+				v.errorAt(resource.Type.Span, "SDSL-V4115", "resource %s.%s must use array<T>", shader.Name, resource.Name)
+			} else if v.typeKind(resource.Type.Args[0]) == "board" {
+				v.errorf("resource %s.%s cannot use board element type %s; SDSL-V M21 boards are shader-local values and do not affect resource bindings", shader.Name, resource.Name, typeName(resource.Type.Args[0]))
+			}
+		case "texture2d":
+			if resource.Access != "readonly" || len(resource.Type.Args) != 1 || !isTextureComponentType(v.resolveAlias(resource.Type.Args[0])) {
+				v.errorAt(resource.Type.Span, "SDSL-V4115", "texture resource %s.%s must be readonly texture2d<f32|float2|float3|float4>", shader.Name, resource.Name)
+			}
+		case "sampler":
+			if resource.Access != "readonly" {
+				v.errorAt(resource.Type.Span, "SDSL-V4115", "sampler resource %s.%s must be readonly sampler", shader.Name, resource.Name)
+			}
+		case "uniform":
+			if resource.Access != "readonly" || len(resource.Type.Args) != 1 || (v.typeKind(resource.Type.Args[0]) != "record" && !isMaterialFieldType(v.resolveAlias(resource.Type.Args[0]))) {
+				v.errorAt(resource.Type.Span, "SDSL-V4115", "uniform resource %s.%s must be readonly uniform<RecordOrScalarVector>", shader.Name, resource.Name)
+			}
+		default:
+			v.errorAt(resource.Type.Span, "SDSL-V4115", "resource %s.%s uses unsupported resource type %s", shader.Name, resource.Name, typeName(resource.Type))
 		}
 		v.validateResourceAttributes(shader.Name, resource)
 		v.validateType(resource.Type)
 		v.resources[resource.Name] = resource
 	}
 	v.validateResourceBindings(shader.Name, resources)
+	if shader.Material != nil {
+		v.validateMaterial(shader)
+	}
 	workgroups := map[string]ast.WorkgroupDecl{}
 	for _, workgroup := range shader.Workgroups {
 		if _, exists := workgroups[workgroup.Name]; exists {
@@ -668,8 +704,8 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 			v.errorf("shader %s name %s collides with %s", shader.Name, method.Name, prior)
 		}
 		seenShaderNames[method.Name] = "method"
-		if method.Stage != "" && method.Stage != "compute" {
-			v.errorf("stage %s is not implemented in GoOct SDSL-V M0; only compute is supported", method.Stage)
+		if method.Stage != "" && method.Stage != "compute" && method.Stage != "vertex" && method.Stage != "pixel" {
+			v.errorAt(method.Span, "SDSL-V4104", "unsupported shader stage %s; canonical SDSL-V supports compute, vertex, and pixel", method.Stage)
 		}
 		if method.Stage == "compute" {
 			if method.NumThreads == nil {
@@ -677,6 +713,11 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 			} else {
 				v.validateNumThreads(shader.Name, method, shader.Template)
 			}
+		} else if method.Stage == "vertex" || method.Stage == "pixel" {
+			if method.NumThreads != nil {
+				v.errorAt(method.NumThreads.Span, "SDSL-V4104", "%s stage %s.%s must not declare numthreads", method.Stage, shader.Name, method.Name)
+			}
+			v.validateGraphicsSignature(shader, method)
 		}
 		v.validateFunction(method, shader.Name, method.Stage, resources, shader.Workgroups, shader.Template)
 	}
@@ -718,20 +759,14 @@ func (v *validator) resolveShaderResources(shader ast.ShaderDecl) []ast.Resource
 		v.errorf("resource bundle %s on shader %s must be a stream", shader.ResourceBundleName, shader.Name)
 		return nil
 	}
-	names := make([]string, 0, len(info.fields))
-	for name := range info.fields {
-		names = append(names, name)
-	}
-	sortStrings(names)
-	resources := make([]ast.ResourceDecl, 0, len(names))
-	for _, name := range names {
+	stream := v.streams[shader.ResourceBundleName]
+	resources := make([]ast.ResourceDecl, 0, len(stream.Fields))
+	for _, sourceField := range stream.Fields {
+		name := sourceField.Name
 		field := info.fields[name]
 		if field.access == "" {
 			v.errorf("resource bundle %s field %s must declare readonly or readwrite access", shader.ResourceBundleName, name)
 			continue
-		}
-		if field.typ.Name != "array" || len(field.typ.Args) != 1 {
-			v.errorf("resource bundle %s field %s must use %s array<T>", shader.ResourceBundleName, name, field.access)
 		}
 		resources = append(resources, ast.ResourceDecl{Name: name, Access: field.access, Type: field.typ, Attributes: field.attributes})
 	}
@@ -752,17 +787,23 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 		v.currentTestInput = nil
 	}
 	defer func() { v.currentTestInput = previousTestInput }()
-	scope := map[string]varInfo{
-		"DispatchThreadID": {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
-		"GroupThreadID":    {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
-		"GroupID":          {typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin},
-		"GroupIndex":       {typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin},
+	scope := map[string]varInfo{}
+	if stage == "" || stage == "compute" {
+		scope["DispatchThreadID"] = varInfo{typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin}
+		scope["GroupThreadID"] = varInfo{typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin}
+		scope["GroupID"] = varInfo{typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin}
+		scope["GroupIndex"] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin}
 	}
 	for _, resource := range resources {
 		scope[resource.Name] = varInfo{typ: resource.Type, origin: varResource, access: resource.Access}
 	}
 	for _, workgroup := range workgroups {
 		scope[workgroup.Name] = varInfo{typ: workgroup.Type, origin: varWorkgroup}
+	}
+	if shaderName != "" {
+		if shader, ok := v.shaderDecls[shaderName]; ok && shader.Material != nil {
+			scope["Material"] = varInfo{typ: ast.TypeRef{Name: materialTypeName(shaderName)}, origin: varResource, access: "readonly"}
+		}
 	}
 	for _, param := range fn.Parameters {
 		if _, exists := scope[param.Name]; exists {
@@ -790,6 +831,13 @@ func (v *validator) validateStmt(stmt ast.Stmt, returnType ast.TypeRef, scope ma
 		v.validateForeignBlock(s.TargetLanguage, s.RawSource, s.Captures, scope, ast.TypeRef{}, false)
 	case ast.LetStmt:
 		v.validateType(s.Type)
+		if s.Value == nil {
+			keyword := "let"
+			if s.Mutability == ast.BindingMutabilityMutable {
+				keyword = "var"
+			}
+			v.errorAt(s.KeywordSpan, "SDSL-V3703", "%s binding %s requires an initializer", keyword, s.Name)
+		}
 		if s.Type.Name == "tile" {
 			v.errorf("tile<T,R,C> is only valid for workgroup declarations in SDSL-V M12")
 		}
@@ -1318,6 +1366,20 @@ func (v *validator) validateType(ref ast.TypeRef) {
 		v.validateType(ref.Args[0])
 		return
 	}
+	if ref.Name == "texture2d" || ref.Name == "uniform" {
+		if len(ref.Args) != 1 {
+			v.errorAt(ref.Span, "SDSL-V4115", "%s type requires exactly one type argument", ref.Name)
+			return
+		}
+		v.validateType(ref.Args[0])
+		return
+	}
+	if ref.Name == "sampler" {
+		if len(ref.Args) != 0 {
+			v.errorAt(ref.Span, "SDSL-V4115", "sampler does not accept type arguments")
+		}
+		return
+	}
 	if _, ok := v.types[ref.Name]; !ok {
 		v.errorf("unknown type %s", ref.Name)
 	}
@@ -1688,7 +1750,18 @@ func (v *validator) exprTypeWithExpected(expr ast.Expr, scope map[string]varInfo
 		}
 		return targetType
 	case ast.CallExpr:
-		return v.callType(e, scope, shaderName, templateParam)
+		got := v.callType(e, scope, shaderName, templateParam)
+		if expected != nil {
+			want := v.resolveAlias(*expected)
+			if want.Space != "" {
+				if id, ok := e.Callee.(ast.IdentifierExpr); ok && id.Name == want.Name && got.Name == want.Name && got.Space == "" {
+					// A target-typed primitive constructor is the explicit boundary
+					// that establishes a coordinate-space value.
+					return want
+				}
+			}
+		}
+		return got
 	case ast.BinaryExpr:
 		left := v.exprTypeWithExpected(e.Left, scope, shaderName, templateParam, nil, currentDeriveField)
 		right := v.exprTypeWithExpected(e.Right, scope, shaderName, templateParam, nil, currentDeriveField)
@@ -1936,8 +2009,19 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 		return v.testAssertType(name, call, scope, shaderName, templateParam)
 	}
 	if id, ok := call.Callee.(ast.IdentifierExpr); ok {
-		if id.Name == "Dot" {
+		switch id.Name {
+		case "Dot":
 			return v.dotType(call, scope, shaderName, templateParam)
+		case "Cross":
+			return v.crossType(call, scope, shaderName, templateParam)
+		case "Normalize", "Saturate":
+			return v.unaryGraphicsIntrinsicType(id.Name, call, scope, shaderName, templateParam)
+		case "Reflect":
+			return v.reflectType(call, scope, shaderName, templateParam)
+		case "Lerp":
+			return v.lerpType(call, scope, shaderName, templateParam)
+		case "Sample":
+			return v.sampleType(call, scope, shaderName, templateParam)
 		}
 		if id.Name == "reg_tile_zero" {
 			if len(call.Arguments) != 0 {
@@ -1969,7 +2053,7 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 			return ast.TypeRef{Name: "matrix_view", Args: []ast.TypeRef{v.resolveAlias(info.typ.Args[0])}, Access: info.access}
 		}
 		if isVectorConstructor(id.Name) {
-			return ast.TypeRef{Name: id.Name}
+			return v.vectorConstructorType(id.Name, call, scope, shaderName, templateParam)
 		}
 		if isBarrierBuiltin(id.Name) {
 			return ast.TypeRef{Name: "void"}
@@ -1996,6 +2080,103 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 	}
 	v.errorAt(call.Span, "SDSL-V1508", "unsupported or unknown function call")
 	return ast.TypeRef{Name: "<error>"}
+}
+
+func (v *validator) vectorConstructorType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	want := int(name[len(name)-1] - '0')
+	if len(call.Arguments) != want {
+		v.errorAt(call.Span, "SDSL-V4121", "%s constructor expects %d scalar arguments, got %d", name, want, len(call.Arguments))
+	}
+	for _, arg := range call.Arguments {
+		got := v.resolveAlias(v.exprType(arg, scope, shaderName, templateParam))
+		if got.Space != "" || !isNumeric(got) {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4121", "%s constructor arguments must be plain numeric scalars", name)
+		}
+	}
+	return ast.TypeRef{Name: name}
+}
+
+func (v *validator) crossType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 2 {
+		v.errorAt(call.Span, "SDSL-V4122", "Cross expects 2 arguments, got %d", len(call.Arguments))
+		return ast.TypeRef{Name: "<error>"}
+	}
+	a := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	b := v.resolveAlias(v.exprType(call.Arguments[1], scope, shaderName, templateParam))
+	if a.Name != "float3" || b.Name != "float3" || a.Space != "" || b.Space != "" {
+		v.errorAt(call.Span, "SDSL-V4122", "Cross expects two plain float3 arguments")
+	}
+	return ast.TypeRef{Name: "float3"}
+}
+
+func (v *validator) unaryGraphicsIntrinsicType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 1 {
+		v.errorAt(call.Span, "SDSL-V4122", "%s expects 1 argument, got %d", name, len(call.Arguments))
+		return ast.TypeRef{Name: "<error>"}
+	}
+	arg := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	ok := false
+	switch name {
+	case "Normalize":
+		ok = arg.Space == "" && (arg.Name == "float2" || arg.Name == "float3" || arg.Name == "float4")
+	case "Saturate":
+		ok = arg.Space == "" && (isFloat(arg) || arg.Name == "float2" || arg.Name == "float3" || arg.Name == "float4")
+	}
+	if !ok {
+		v.errorAt(call.Span, "SDSL-V4122", "%s does not support %s", name, typeName(arg))
+	}
+	return arg
+}
+
+func (v *validator) reflectType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 2 {
+		v.errorAt(call.Span, "SDSL-V4122", "Reflect expects 2 arguments, got %d", len(call.Arguments))
+		return ast.TypeRef{Name: "<error>"}
+	}
+	a := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	b := v.resolveAlias(v.exprType(call.Arguments[1], scope, shaderName, templateParam))
+	if a.Space != "" || b.Space != "" || a.Name != b.Name || !oneOf(a.Name, "float2", "float3", "float4") {
+		v.errorAt(call.Span, "SDSL-V4122", "Reflect expects matching plain float vectors")
+	}
+	return a
+}
+
+func (v *validator) lerpType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 3 {
+		v.errorAt(call.Span, "SDSL-V4122", "Lerp expects 3 arguments, got %d", len(call.Arguments))
+		return ast.TypeRef{Name: "<error>"}
+	}
+	a := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	b := v.resolveAlias(v.exprType(call.Arguments[1], scope, shaderName, templateParam))
+	t := v.resolveAlias(v.exprType(call.Arguments[2], scope, shaderName, templateParam))
+	if a.Space != "" || b.Space != "" || !v.compatible(a, b) || !(isFloat(a) || a.Name == "float2" || a.Name == "float3" || a.Name == "float4") || !(isFloat(t) || t.Name == a.Name) {
+		v.errorAt(call.Span, "SDSL-V4122", "Lerp expects matching plain float scalar/vector values and a compatible interpolation value")
+	}
+	return a
+}
+
+func (v *validator) sampleType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 3 {
+		v.errorAt(call.Span, "SDSL-V4118", "Sample expects texture, sampler, and float2 coordinates")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	texture := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	sampler := v.resolveAlias(v.exprType(call.Arguments[1], scope, shaderName, templateParam))
+	coords := v.resolveAlias(v.exprType(call.Arguments[2], scope, shaderName, templateParam))
+	if texture.Name != "texture2d" || len(texture.Args) != 1 {
+		v.errorAt(ast.ExprSpan(call.Arguments[0]), "SDSL-V4118", "Sample first argument must be texture2d<T>")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	if sampler.Name != "sampler" {
+		v.errorAt(ast.ExprSpan(call.Arguments[1]), "SDSL-V4118", "Sample second argument must be sampler")
+	}
+	if coords.Name != "float2" || coords.Space != "" {
+		v.errorAt(ast.ExprSpan(call.Arguments[2]), "SDSL-V4119", "Sample coordinates must be plain float2")
+	}
+	if v.currentStage != "vertex" && v.currentStage != "pixel" {
+		v.errorAt(call.Span, "SDSL-V4118", "Sample is supported only in vertex and pixel stages")
+	}
+	return v.resolveAlias(texture.Args[0])
 }
 
 // compilerIntrinsicType is the single validator-owned closed matrix for M35a.
@@ -2562,8 +2743,14 @@ func scalarTypeNameForTestInputKind(kind TestInputValueKind) string {
 func (v *validator) compatible(left, right ast.TypeRef) bool {
 	left = v.resolveAlias(left)
 	right = v.resolveAlias(right)
+	if left.Space != "" || right.Space != "" {
+		if left.Space == "" || right.Space == "" || left.Space != right.Space {
+			return false
+		}
+		left.Space, right.Space = "", ""
+	}
 	if left.Name == right.Name {
-		if left.Name == "matrix_view" || left.Name == "tile" || left.Name == "reg_tile" {
+		if left.Name == "matrix_view" || left.Name == "tile" || left.Name == "reg_tile" || left.Name == "texture2d" || left.Name == "uniform" {
 			return len(left.Args) == len(right.Args) && (len(left.Args) == 0 || v.compatible(left.Args[0], right.Args[0]))
 		}
 		if left.Name != "array" && left.Name != "ndarray" {
@@ -2615,6 +2802,9 @@ func (v *validator) typeKind(ref ast.TypeRef) string {
 		}
 		if resolved.Name == "matrix_view" {
 			return "matrix_view"
+		}
+		if resolved.Name == "texture2d" || resolved.Name == "sampler" || resolved.Name == "uniform" {
+			return "resource"
 		}
 		return ""
 	}
@@ -3209,6 +3399,8 @@ func declSpan(decl ast.Decl) source.Span {
 		return d.Span
 	case ast.FunctionDecl:
 		return d.Span
+	case ast.UnsupportedDecl:
+		return d.Span
 	default:
 		return source.Span{}
 	}
@@ -3466,17 +3658,17 @@ func (v *validator) validateResourceAttributes(shaderName string, resource ast.R
 }
 
 func (v *validator) validateResourceBindings(shaderName string, resources []ast.ResourceDecl) {
-	seen := map[int]string{}
+	seen := map[int]ast.ResourceDecl{}
 	for _, resource := range resources {
 		binding, ok := explicitBinding(resource.Attributes)
 		if !ok {
 			continue
 		}
 		if prior, exists := seen[binding]; exists {
-			v.errorf("shader %s duplicate explicit binding %d on resources %s and %s", shaderName, binding, prior, resource.Name)
+			v.errorRelated(resource.Span, "SDSL-V4112", fmt.Sprintf("shader %s duplicate explicit binding %d on resources %s and %s", shaderName, binding, prior.Name, resource.Name), prior.Span, "first binding is here")
 			continue
 		}
-		seen[binding] = resource.Name
+		seen[binding] = resource
 	}
 }
 

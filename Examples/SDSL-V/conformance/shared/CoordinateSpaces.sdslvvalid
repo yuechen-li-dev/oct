@@ -1,0 +1,45 @@
+namespace Sdslv.Conformance.Shared;
+
+type ObjectPosition3 = float3 @space(object.position);
+type WorldPosition3 = float3 @space(world.position);
+type ViewPosition3 = float3 @space(view.position);
+type ClipPosition4 = float4 @space(clip.position);
+type WorldNormal3 = float3 @space(world.normal);
+type WorldVector3 = float3 @space(world.vector);
+
+stream SpaceValues {
+    [location(0)] ObjectPosition: ObjectPosition3;
+    [location(1)] WorldNormal: WorldNormal3;
+    [location(2)] PlainVector: float3;
+}
+
+fn ToWorld(value: ObjectPosition3) -> WorldPosition3 {
+    return float3(value.x, value.y, value.z);
+}
+
+fn ToView(value: WorldPosition3) -> ViewPosition3 {
+    return float3(value.x, value.y, value.z);
+}
+
+fn ToClip(value: ViewPosition3) -> ClipPosition4 {
+    return float4(value.x, value.y, value.z, 1.0);
+}
+
+fn KeepNormal(value: WorldNormal3) -> WorldNormal3 {
+    return value;
+}
+
+fn EstablishVector(value: float3) -> WorldVector3 {
+    return float3(value.x, value.y, value.z);
+}
+
+fn ExerciseSpaces(input: SpaceValues) -> ClipPosition4 {
+    let world: WorldPosition3 = ToWorld(input.ObjectPosition);
+    let view: ViewPosition3 = ToView(world);
+    let normal: WorldNormal3 = KeepNormal(input.WorldNormal);
+    let vector: WorldVector3 = EstablishVector(input.PlainVector);
+    let proof: f32 = Dot(float3(normal.x, normal.y, normal.z), float3(vector.x, vector.y, vector.z));
+    let clip: ClipPosition4 = ToClip(view);
+    let preserved: f32 = proof * 0.0;
+    return clip;
+}

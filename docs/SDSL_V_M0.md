@@ -1,10 +1,17 @@
 # SDSL-V M0
 
+> Historical milestone note. The canonical language authority is now
+> `docs/SDSL_V_LANGUAGE_SPEC.md` plus `examples/SDSL-V/conformance/`; GoOct is
+> the reference implementation. Statements below describe the M0 subset at the
+> time and do not define current SDSL-V.
+
 SDSL-V M0 adds a GoOct-native compiler scaffold for shader authoring experiments before Prometheus receives new SGEMM kernels. It is intentionally a runway milestone: parse, validate, test, and emit deterministic HLSL for a compute-focused subset, without changing Prometheus runtime dispatch or replacing existing SPIR-V headers.
 
 ## Status after M2
 
-M0 still defines the language subset, but the compiler pipeline now includes `VD-MIR`, optional DXC/SPIR-V generation, and deterministic header generation:
+M0 defined the historical language subset, and the compiler pipeline then
+included `VD-MIR`, optional DXC/SPIR-V generation, and deterministic header
+generation:
 
 ```text
 source -> lex -> parse -> validate -> lower to VD-MIR -> emit HLSL -> optional DXC/SPIR-V -> optional generated C header
@@ -15,7 +22,8 @@ source -> lex -> parse -> validate -> lower to VD-MIR -> emit HLSL -> optional D
 
 ## Compute extension
 
-The supplied SDSL-V spec documents only `vertex` and `pixel` stages. GoOct SDSL-V M0 adds an explicit Prometheus compute extension:
+The historical supplied graphics spec documented only `vertex` and `pixel`
+stages. GoOct SDSL-V M0 added an explicit Prometheus compute extension:
 
 ```sdslv
 shader VectorAdd {

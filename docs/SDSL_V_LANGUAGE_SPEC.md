@@ -1,537 +1,315 @@
-# SDSL-V Language Specification
+# SDSL-V language specification
 
-## M35a compiler-owned packed/vector intrinsics
+## 1. Language status and authority
 
-SDSL-V supports a closed set of compiler-defined generic intrinsics:
-`Pack<Format>`, `Unpack<Format>`, `Bitcast<T>`, and `Convert<T>`. These are not
-user-defined generics; concepts, configs, and template shaders remain the user
-specialization mechanism. `F16x2` maps low/high binary16 lanes of `u32` to
-`.x/.y` of `float2`. First-class component reads support `.x` through `.w` as
-permitted by `float2`–`float4` and `uint2`–`uint4`; `Dot` accepts matching
-float vectors and returns `f32`.
+This document and the canonical corpus at `examples/SDSL-V/conformance/` define
+SDSL-V. GoOct is the reference implementation. Behavior that conflicts with
+this specification is a compiler defect; no particular parser, validator, or
+emitter is independently authoritative.
 
-Closed validator-owned matrix:
+SDSL-V is one statically typed shader language with a shared core and exactly
+three execution profiles: compute, vertex, and pixel. Every feature described
+as canonical below is implemented, validated, lowered to VD-MIR and HLSL, and
+artifact-proven by the corpus. “Artifact-proven” means DXC emitted SPIR-V and
+`spirv-val` accepted the module. File forms used only for host-side tests or
+benchmarks are explicitly identified.
 
-- component reads:
-  - `.x` on width `2..4`
-  - `.y` on width `2..4`
-  - `.z` on width `3..4`
-  - `.w` on width `4`
-  - base types: `float2|float3|float4|uint2|uint3|uint4`
-- `Dot(float2|float3|float4, same) -> f32`
-- `Unpack<F16x2>(u32) -> float2`
-- `Pack<F16x2>(float2) -> u32`
-- `Bitcast<u32>(f32|i32)`, `Bitcast<f32>(u32)`, `Bitcast<i32>(u32)`
-- `Convert<f32>(u32|i32)`, `Convert<u32>(f32|i32)`,
-  `Convert<i32>(f32|u32)`
+The canonical implementation pipeline is source → tokens → AST → validation →
+VD-MIR → deterministic HLSL → DXC SPIR-V. Backend-neutral meaning ends at
+VD-MIR. HLSL spellings and `SV_*` semantics are backend details.
 
-`F16x2` is valid only as a compiler-known packed-format descriptor inside
-`Pack` and `Unpack`. User functions do not accept generic call syntax, and
-ordinary user code cannot define new intrinsic families, new packed formats, or
-arbitrary conversion hooks.
+## 2. Shared core
 
-## Status and authority
+### 2.1 Files, declarations, and names
 
-This is the current-state specification for the in-repository SDSL-V shader
-language. The authoritative implementation is the Go front end and lowering in
-`internal/sdslv/`; its fixtures and executable test corpus are the behavioral
-contracts. This document is an inventory of that implementation, not a roadmap
-or a milestone changelog. The authoritative Oct language reference remains
-`Language/reference/`; it is not a specification for SDSL-V unless the SDSL-V
-implementation and its tests also support the construct.
+A module may declare `namespace`, `use`, type aliases, records, streams, enums,
+concepts, configs, templates, shaders, flows, compile materializations, tests,
+and benchmarks as permitted by its file profile. Names are statically resolved.
+Imports do not redefine language semantics.
 
-Repository ownership, production shader paths, generated artifacts, and
-benchmark locations are documented separately in `docs/SDSL_V_WORKSPACE.md`.
+Canonical declarations have complete parser-to-artifact support:
 
-SDSL-V currently has a compute compiler path: SDSL-V source is parsed,
-validated, lowered to VD-MIR, emitted as HLSL, compiled by DXC to SPIR-V, and
-used by bounded Vulkan compute/test routes. Graphics syntax tokens exist, but
-there is no graphics-stage lowering, graphics pipeline, or graphics runtime
-proof. A parsed spelling is not, by itself, implementation support.
-
-## Language overview
-
-SDSL-V has a small shared expression and declaration language, a deliberately
-compute-oriented resource and execution model, and an explicitly unimplemented
-graphics surface. Its fixed-shape data concepts are distinct:
-
-- `ndarray<T, [shape...]>` is shaped, row-major value storage.
-- `array<T, N>` is a distinct fixed-size array type and may nest.
-- `Fill` and `Generate` construct compiler-owned fixed-shape values when a
-  target `array` or `ndarray` type is known.
-- `tensor` and `Sum` describe indexed computation and reduction.
-
-## Implementation status legend
-
-| Label | Meaning |
+| Surface | Status and meaning |
 |---|---|
-| `[IMPLEMENTED]` | End-to-end for its stated scope, with implementation and tests. |
-| `[PARTIAL]` | Some layers or restricted forms exist; the intended scope is not complete. |
-| `[PLANNED]` | Repository-backed intent exists, but no authoritative implementation exists. |
-| `[LEGACY]` | Supported for compatibility or older fixtures; not the preferred modern form. |
-| `[DEFERRED]` | Intentionally postponed beyond the current scope. |
-| `[OUT OF SCOPE]` | Explicitly not part of SDSL-V's intended design. |
+| `namespace`, `use` | implemented/validated/lowered/artifact-proven module identity and imports |
+| `type` | implemented/validated/lowered/artifact-proven alias, including coordinate spaces |
+| `record`, `with` | implemented/validated/lowered/artifact-proven immutable aggregate value operations |
+| `stream` | implemented/validated/lowered/artifact-proven compiler-owned typed boundary |
+| `enum`, payload cases, `match` | implemented/validated/lowered/artifact-proven tagged values and exhaustive matching |
+| `concept`, `config`, `template`, `derive`, `compile` | implemented/validated/lowered/artifact-proven closed static abstraction and materialization |
+| `flow`, board/state forms | implemented/validated/lowered/artifact-proven bounded control planning |
+| `shader`, `stage` | implemented/validated/lowered/artifact-proven compute, vertex, and pixel entry declarations |
+| `material` | implemented/validated/lowered/artifact-proven graphics uniform sugar |
+| `.sdslvtest`, `.sdslvbench` | implemented host profiles; they do not add shader runtime types |
 
-“Backend” below means the current VD-MIR → HLSL emitter. “Hardware proof” means
-the repository contains DXC/SPIR-V and Vulkan execution evidence for the stated
-scope; it never means every syntactically accepted program has been executed on
-hardware.
+Historical `interface`, `implements`, and `override` declarations are not part
+of SDSL-V. Source using them is rejected with migration diagnostic
+`SDSL-V4101`; use concepts, templates, and compile materialization.
 
-# Part I — Shared language
+### 2.2 Types and values
 
-| Feature | Status | Parser | Validator | Backend | Hardware proof |
-|---|---|---:|---:|---:|---:|
-| Declarations, records, enums, functions | IMPLEMENTED | Yes | Yes | Yes | Compute fixtures |
-| Scalars, literals, operators, calls | IMPLEMENTED | Yes | Yes | Yes | Compute fixtures |
-| Arrays and indexing | IMPLEMENTED | Yes | Yes | Yes | Compute fixtures |
-| `ndarray` value types | IMPLEMENTED | Yes | Yes | Yes | M33a Vulkan proof |
-| `Fill` / `Generate` | IMPLEMENTED | Yes | Yes | Yes | M33b fixtures |
-| `if`, runtime `for`, comptime control | IMPLEMENTED | Yes | Yes | Yes | Compute fixtures |
-| Enum `match` | IMPLEMENTED | Yes | Yes | Yes | HLSL regression coverage |
-| General `switch` | PLANNED | No | No | No | No |
-| Imports/modules across files | DEFERRED | `use` parses | No linking | No | No |
-| Inline HLSL scalar/vector escape | IMPLEMENTED | Yes | Yes | Yes | M29 Vulkan proof |
+Runtime scalar types are `bool`, `i32`, `u32`, `f16`, `f32`, and their accepted
+aliases. Closed vector and matrix families, fixed arrays, records, payload
+enums, resource handles, `ndarray`, and `tensor` retain their validated GoOct
+contracts. Array/tensor dimensions and storage layout are static. Tensor and
+ndarray meaning is coordinate-independent; graphics coordinate spaces do not
+alter tensor semantics.
 
-## Lexical structure and source mapping
+`string` is host/static data for tests, diagnostics, assertion reasons, and
+compile-time metadata. It is not ordinary GPU storage. Runtime allocation,
+dynamic reflection, and open object graphs are absent.
 
-`[IMPLEMENTED]` SDSL-V has identifiers, integer, floating-point, boolean and
-string literals; punctuation and operators are tokenized by
-`internal/sdslv/lex` and `internal/sdslv/token`. Line and block comments are
-accepted by the lexer. Compiler-owned source spans are retained from tokens
-through AST, validation diagnostics, VD-MIR provenance, and inline-HLSL source
-markers. Diagnostics therefore identify SDSL-V source rather than generated
-HLSL whenever the relevant layer owns the error.
+`let name: T = value;` creates an initialized immutable binding.
+`var name: T = value;` creates an initialized mutable binding. Both require an
+initializer. Mutation through `let` is rejected; mutation through `var` is
+validated against its type. A `with` expression returns an updated record value
+without mutating its operand.
 
-Strings parse as expressions, but they are not a general shader-data type or
-HLSL value type. Their current useful scope is diagnostic/test metadata and
-attribute-related validation, not arbitrary GPU computation.
+Fallibility is deliberately absent. There is no shader `Error` type, fallible
+return, postfix propagation `?`, postfix unwrap `!`, `ok`/`err` fallible match,
+or runtime `error(...)`. Historical syntax receives `SDSL-V4100`. Logical
+negation remains canonical. Programs represent recoverable GPU state with an
+explicit payload enum or status/resource value.
 
-## Modules and declarations
+### 2.3 Coordinate-space aliases
 
-`[PARTIAL]` A file may begin with `namespace Name;` and may contain `use path;`.
-The AST records both. The current compiler does not implement imported-module
-resolution or cross-file linking, so `use` must not be presented as an available
-module system.
-
-`[IMPLEMENTED]` Supported top-level declarations are type aliases, `record`,
-`board`, `stream`, `enum`, `concept`, `config`, `shader`, `compile`, and
-ordinary `fn` declarations. `concept`/`config`/template shaders are a
-compile-time specialization facility, not runtime polymorphism. Function and
-shader method parameters are immutable. `let` creates an immutable local
-binding and `var` creates a mutable local binding; both require an initializer.
-Mutation through an aggregate requires its root local binding to be `var`.
-Writable shader resources remain governed by their resource access declaration,
-not the spelling of an index local. There is no `let mut`, uninitialized local,
-or mutable parameter syntax.
+A type alias may attach a canonical coordinate identity:
 
 ```sdslv
-namespace Demo;
-
-record Params { Count: u32; }
-enum Mode { Fast; Safe; }
-
-fn Scale(x: f32) -> f32 { return x * 2.0; }
+type ClipPosition4 = float4 @space(clip.position);
+type WorldPosition3 = float3 @space(world.position);
+type WorldNormal3 = float3 @space(world.normal);
 ```
 
-`[IMPLEMENTED]` Records have named fields. `stream` is a record-like type whose
-fields may carry resource access annotations; `ComputeThread` is the built-in
-compute stream convention. `board` is a restricted scalar/vector record for
-compute flow-local state. `with` copies a record/stream value and replaces
-named fields; `derive { Field: value ... }` constructs an ordered immutable
-coordinate/value record. Both require declared fields, no duplicates, and
-matching field types.
+The pair `(base type, space name)` is the semantic type. Aliases with compatible
+base types and the same explicit space are compatible. Different spaces,
+including `world.position` versus `world.normal`, are incompatible. A spaced
+value does not implicitly convert to or from its unspaced primitive. A
+constructor or function establishes a space only when its declared target or
+return type supplies that space. This is a static rule with no runtime cost.
+The compiler preserves useful alias comments in HLSL.
 
-## Types, literals, and expressions
+`clip.position` on a vertex output is the graphics position builtin. The
+compiler performs no automatic object/world/view/clip matrix transformation.
 
-`[IMPLEMENTED]` Built-in scalar types are `bool`, `i32`, `u32`, `f32`/`float`,
-with supported HLSL vector aliases `float2`, `float3`, `float4`, `uint2`,
-`uint3`, and `uint4`. Numeric operators, comparisons, `and`/`or`/`not`, and
-ordinary calls type-check and lower. Exact accepted operand combinations are
-validator-owned; no implicit cross-kind numeric conversion should be assumed.
+### 2.4 Streams
 
-`[IMPLEMENTED]` Fixed arrays use `array<T, N>` and can nest, for example
-`array<array<f32, 4u>, 4u>`. Arrays require compile-time positive extents. They
-remain a supported compatibility and resource representation; nested arrays
-are not silently interchangeable with `ndarray`. `array` and `ndarray` keep
-distinct public type identity even when they participate in the same
-compiler-owned fixed-shape construction path.
+A stream is a typed compiler-owned shader boundary. Validation assigns exactly
+one role and VD-MIR records it explicitly:
 
-`[IMPLEMENTED]` `ndarray<T, [D0, D1, ...]>` is a first-class fixed-shape value
-type with rank at least one, positive integer constant extents, supported
-numeric element kinds, exact shape equality, and no implicit conversion to or
-from nested arrays. Dense literals are flat and target-typed. Index count must
-equal rank; each index is an integer. Its logical layout is row-major, with the
-last axis varying fastest.
+1. `stage-value`: vertex inputs/outputs, pixel inputs/outputs, and varyings;
+2. `resource`: storage arrays, uniforms, textures, samplers, and read/write
+   resources;
+3. `builtin`: compiler-provided invocation or stage values.
 
-```sdslv
-var weights: ndarray<f32, [2u, 3u]> = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
-weights[1u, 2u] = 9.0;
-```
+Resource attributes or resource field types establish the resource role;
+`builtin` establishes the builtin role; graphics location/target use establishes
+the stage-value role. Stage signatures provide remaining unambiguous context.
+Mixed roles, ambiguous use, resource fields in varyings, stage attributes on
+resources, and incompatible cross-profile reuse are rejected.
 
-`[IMPLEMENTED]` `Fill(value)` constructs every element of a contextually typed
-fixed-shape local value. In current source that means `ndarray<...>` and
-fixed-size `array<...>` targets such as `array<f32, 16u>` or
-`array<array<f32, 4u>, 4u>`. Its argument is evaluated exactly once, then used
-for every element. `Generate[i, j](body)` constructs every element of a
-contextually typed fixed-shape value with one immutable `u32` binder per axis.
-Binders are ordered outermost to innermost and the conceptual traversal is
-row-major. Binder count must equal rank and the body must produce the element
-type. Dense literals are target-typed, require exact element count, preserve
-source order, and do not add implicit `array`/`ndarray` conversion.
+Supported bounded field attributes are `binding`, `builtin`, `location`,
+`target`, and `interpolation`. They are not an open-ended attribute system.
+Explicit binding values and source order are semantic authority and must survive
+lowering unchanged.
 
-```sdslv
-let zero: ndarray<f32, [16u, 16u]> = Fill(0.0);
-let grid: ndarray<u32, [2u, 3u]> = Generate[i, j](i * 10u + j);
-var values: array<f32, 16u> = Fill(0.0);
-let lanes: array<u32, 4u> = [1u, 2u, 3u, 4u];
-```
+### 2.5 Static abstraction and comptime
 
-## Ordinary and compile-time control flow
+Concepts describe required static facts; configs satisfy those facts; templates
+reuse shader structure; `compile Template<Config> as Name;` creates a concrete
+program. `derive` retains its existing closed derivation behavior. Constraints
+are checked before lowering. Generic templates never emit entry points unless
+materialized. Concrete names deterministically prefix stage entries, such as
+`ForwardTextured_VS` and `ForwardTextured_PS`.
 
-`[IMPLEMENTED]` `if condition { ... } else { ... }` is ordinary conditional
-control. Conditions must be boolean. `for i in start..end step n { ... }` is
-the ordinary bounded loop form; loop bounds, step, and index typing are
-validated before lowering. The backend emits ordinary HLSL control flow.
+`comptime` is bounded static planning and specialization for immutable facts:
+sizes, layouts, closed variants, unroll counts, resource counts, specialization
+choices, and artifact structure. It provides no arbitrary I/O, mutable global
+compile-time state, open-ended interpreter, runtime allocation, or reflection
+subsystem.
 
-`[IMPLEMENTED]` `comptime let`, `comptime if`, `comptime match`, `comptime when
-utility`, and `comptime for` run during specialization/lowering. They may use
-literals, resolved configuration fields, and earlier compile-time values; they
-may not inspect runtime parameters, resources, builtins, local runtime values,
-tile/ndarray reads, reductions, or runtime function results. Only the selected
-compile-time arm reaches VD-MIR. `comptime match` accepts integer/bool literal
-patterns; integer selection requires `else`, while bool selection requires
-both boolean cases or `else`.
+### 2.6 Shared control and intrinsics
 
-`[IMPLEMENTED]` `when utility` is a deterministic scored selection expression,
-not `switch`: each case has a value, boolean `when` condition, and score. Its
-validator enforces the bounded form and uniform result type. `when { case cond
-=> { ... } else => { ... } }` is instead a compute guard statement; see Part II.
+Functions, records, payload enums and exhaustive `match`, `switch`, bounded
+loops, flows/boards/states, and ordinary expression materialization have the
+same meaning in all stages. Graphics does not duplicate these systems.
 
-## `match` and the explicit `switch` audit
+The closed graphics math additions are `Cross`, `Normalize`, `Saturate`, `Lerp`,
+and `Reflect`; existing shared intrinsics such as `Dot` remain available with
+their validated scalar/vector contracts. Intrinsic names lower deterministically
+to backend operations.
 
-`[IMPLEMENTED]` Runtime `match` is enum decomposition. It requires an enum
-subject, covers every variant exactly once, rejects variants from other enums,
-and requires uniform arm result types. Payload variants bind exactly one payload
-name; non-payload variants cannot bind one. It is currently valid only as a
-direct `let` initializer, assignment right-hand side, or return value; nesting
-inside a compound expression is rejected. VD-MIR materializes it and HLSL
-emits tag tests and branches.
+## 3. Compute profile
+
+Compute stages retain the established syntax and semantics:
 
 ```sdslv
-let cost: f32 = match mode {
-    Mode.Fast => 1.0
-    Mode.Safe => 2.0
-};
-```
-
-`[PARTIAL]` The historical specification claimed fallible `ok(...)`/`err(...)`
-match syntax. The current SDSL-V lexer/parser/AST match form contains only
-qualified enum variant arms. No current SDSL-V fallible-match parser path or
-fixture establishes that spelling. Treat fallible matching as absent from this
-SDSL-V inventory until implemented and tested.
-
-`[PLANNED]` General `switch` is not implemented. There is no `switch` token,
-no parser case, no AST node, no validation rule, no lowering, no VD-MIR node,
-no emitted source-level switch lowering, and no SDSL-V fixture for any of:
-
-- condition switch: `switch { case condition => value else => value }`;
-- subject switch: `switch value { case literal => value else => value }`;
-- statement-style or enum switch.
-
-The HLSL emitter's internal `switch` for flow dispatch and generated test
-dispatch are backend implementation details, not SDSL-V `switch` syntax.
-`match` is the implemented closed enum-decomposition construct. A future
-general `switch`, if adopted, would be for general value/condition selection;
-this document does not define its syntax or semantics.
-
-## Attributes and test surface
-
-`[IMPLEMENTED]` Attribute parsing and placement validation support function,
-statement, expression, field, resource, and test declarations where the
-specific feature permits them. Known shader/test attributes include loop hints,
-test launch metadata, `Fact`, `Theory`, and `InlineData`. Unsupported placement
-or arguments are diagnostics, not ignored metadata.
-
-`[PARTIAL]` `.sdslvtest` is a bounded compute test language. `Fact` and
-`Theory` tests, typed `InlineData`, `Assert.True`, `False`, `Equal`,
-`NotEqual`, and `Near` are validated. The compiler owns a set 0/binding 0
-result buffer and a fixed ABI; test input resources are restricted to the
-implemented scalar/vector payload kinds. The test harness has real Vulkan proof
-for the committed inline-HLSL route, while arbitrary source-body lowering and
-arbitrary user descriptors remain deliberately bounded/deferred.
-
-Every assertion requires a final nonempty string-literal reason. The reason
-describes the invariant under test, is retained as compiler-owned manifest
-metadata, and is reported by the host on failure. It is not a shader runtime
-string and does not change the GPU result ABI. Empty and ASCII-whitespace-only
-literals, variables, and other expressions are rejected.
-
-# Part II — Compute language
-
-| Feature | Status | Parser | Validator | Backend | Hardware proof |
-|---|---|---:|---:|---:|---:|
-| Compute entry points and dispatch builtins | IMPLEMENTED | Yes | Yes | Yes | Yes |
-| Structured-buffer resources and bindings | IMPLEMENTED | Yes | Yes | Yes | Yes |
-| Workgroup arrays/tiles and barriers | IMPLEMENTED | Yes | Yes | Yes | SGEMM/examples |
-| Guarded reads/writes | IMPLEMENTED | Yes | Yes | Yes | Compute fixtures |
-| Matrix views and register tiles | IMPLEMENTED | Yes | Yes | Yes | SGEMM evidence |
-| Flow states and stack transitions | IMPLEMENTED | Yes | Yes | Yes | `.sdslvtest` / HLSL coverage |
-| Indexed `tensor` / `Sum` | IMPLEMENTED | Yes | Yes | Yes | M32b Vulkan proof |
-| Subgroup/wave operations | DEFERRED | No | No | No | No |
-| Persistent reactors/rings | OUT OF SCOPE | No | No | No | Host runtime only |
-
-## Entry points, dispatch, and resources
-
-`[IMPLEMENTED]` A compute entry is a shader method of this form:
-
-```sdslv
-shader VectorAdd {
-    resources {
-        A: readonly array<f32>;
-        B: readonly array<f32>;
-        C: readwrite array<f32>;
-    }
-    stage compute [numthreads(16, 16, 1)] fn CS(params: Params) -> void {
-        let i: u32 = DispatchThreadID.x;
-        if i < params.Count { C[i] = A[i] + B[i]; }
-        return;
-    }
+shader Example {
+    resources ComputeIO;
+    stage compute [numthreads(8, 8, 1)]
+    fn CS(thread: ComputeThread) { /* ... */ }
 }
 ```
 
-`numthreads` dimensions are positive compile-time integers (or specialized
-template constants). `DispatchThreadID`, `GroupThreadID`, `GroupID`, and
-`GroupIndex` are the established compute builtins, including through the
-`ComputeThread` stream convention. The current resource surface is readonly or
-readwrite runtime `array<T>` structured-buffer storage. Binding ownership is
-compiler/backend controlled and emitted using Vulkan HLSL binding attributes;
-the user does not write raw register declarations.
+Existing readonly/readwrite storage arrays, bindings, compute builtin streams,
+workgroup memory, barriers, ndarray/tensor lowering, concepts/config/templates,
+flows, payload enums, tests, benchmarks, and cooperative-matrix intrinsic island
+are unchanged. Canonical compute builtins remain dispatch thread ID, group
+thread ID, group ID, and group index with their existing types and HLSL mapping.
+Compute uses DXC compute profiles under the existing Vulkan target policy.
 
-`[PARTIAL]` Runtime arrays are resource-oriented storage, not general shaped
-values. Arbitrary descriptor schemas, storage-qualified ndarrays, textures,
-samplers, and images are not supported by this surface.
+The conformance compute source and all production sources are regression
+authorities. Graphics additions do not reassign bindings, entry names, shader
+IDs, or production ownership.
 
-## Workgroup storage, barriers, and guarded access
+## 4. Graphics profile
 
-`[IMPLEMENTED]` `workgroup` declarations accept fixed `array<T, N>` storage or
-`tile<T, Rows, Cols>` storage with supported scalar/vector elements and positive
-compile-time dimensions. Tiles and `matrix_view` provide row-major 2-D views
-over compatible backing storage. `reg_tile<T, Rows, Cols>` is per-invocation
-local storage, not workgroup storage; current supported local use is bounded to
-the validated f32-oriented SGEMM form.
+### 4.1 Programs and stages
 
-`[IMPLEMENTED]` Compute barriers are recognized only in permitted compute
-contexts and flow analysis records barrier-bearing states. Uniformity and flow
-stack constraints are validated; an ambiguous stack path across a barrier is
-rejected. The emitted barrier is current HLSL backend behavior, not a promise
-of cross-stage synchronization.
+Graphics supports exactly `stage vertex` and `stage pixel`, either in a concrete
+shader or a concept-constrained materialized template. Helper functions are not
+entry points. A graphics program may contain a paired vertex/pixel stage or a
+single stage for bounded compilation and conformance.
 
-`[IMPLEMENTED]` A guarded read has `read target when condition else fallback`;
-the condition guards the load and the fallback has exactly the target element
-type. A guarded write has `write target = value when condition`; it evaluates
-the validated address/value according to the lowering's once-only materialized
-address boundary and performs the store only when true. These forms protect
-tail accesses without making unchecked indexing safe.
+Stage parameters may be stage-value, builtin, or resource streams. Ordinary
+record/helper parameters are legal where statically representable. Stage-value
+records and streams are lowered to HLSL interface structs. Resource-stream
+parameters are compiler boundary syntax and lower to global resources, not HLSL
+entry parameters.
 
-## Flows and state transitions
+### 4.2 Vertex and pixel interfaces
 
-`[IMPLEMENTED]` `flow` is compute-local phase/state control, not a general
-shared-language branch construct. A flow contains named states and optional
-scalar/vector `board` locals. State bodies may finish, fall through, `goto`,
-`push`, or `pop`. Transitions are not function calls. The validator resolves
-targets, rejects duplicate/cross-flow targets, prevents illegal statements
-after terminal transitions, checks reachability and stack depth, prohibits
-unsafe nested use, and preserves barrier safety. `push`/`pop` uses bounded LIFO
-return state; `finish` terminates the flow even with a nonempty stack.
+Vertex input fields use `[location(n)]`; locations must be unique. Varying
+locations are explicit when supplied and otherwise assigned deterministically.
+A vertex output has exactly one `float4 @space(clip.position)` field, lowered to
+`SV_Position` and the SPIR-V Position builtin.
 
-Older linear state fallthrough remains supported in fixtures but is
-`[LEGACY]`; explicit transitions are the preferred form. Flow lowering uses an
-internal state dispatcher in VD-MIR/HLSL. That generated HLSL `switch` is not
-SDSL-V source syntax.
+Paired vertex output and pixel input contracts are validated before DXC.
+Locations, types (including coordinate spaces), and interpolation must agree.
+Missing, extra, duplicate, or mismatched fields are diagnostics, not reflection
+discoveries.
 
-## Shaped construction and indexed tensor computation
+A pixel stage may return a scalar/vector shorthand for target zero or an output
+stream whose fields use `[target(n)]`. Multiple render targets are supported.
+Targets must be unique and deterministic. Pixel depth output is not canonical;
+attempts are rejected as unsupported.
 
-`[IMPLEMENTED]` `ndarray`, `Fill`, and `Generate` retain the shared semantics
-in Part I when used in compute code. Current lowering materializes row-major
-flat storage and static binder-ordered loops. They are values; they do not
-declare storage class or resource placement.
+### 4.3 Graphics builtins
 
-`[IMPLEMENTED]` Tensor statements are separate indexed computation syntax:
+Canonical source uses backend-neutral names:
+
+- vertex: `vertex_id: u32`, `instance_id: u32`;
+- pixel: `position` with the canonical position type, `front_face: bool`.
+
+The validator enforces stage legality, exact type, and uniqueness. HLSL maps
+these to `SV_VertexID`, `SV_InstanceID`, `SV_Position`, and `SV_IsFrontFace`;
+SPIR-V structural facts record the corresponding builtins. Raw `SV_*` names are
+not source syntax.
+
+### 4.4 Resources, material, texture, and sampling
+
+Graphics preserves compute storage arrays and adds `uniform<T>`,
+`texture2d<T>`, and `sampler`. Resources require readonly/readwrite access where
+appropriate and explicit `[binding(n)]`; descriptor set/space is deterministically
+set zero in the current bounded profile. Duplicate bindings are rejected and
+source order is preserved through VD-MIR, HLSL, bundle metadata, and SPIR-V.
 
 ```sdslv
-tensor C[i, j] = Sum[k](A[i, k] * B[k, j]);
+stream ForwardResources {
+    [binding(0)] Albedo: readonly texture2d<float4>;
+    [binding(1)] LinearSampler: readonly sampler;
+}
 ```
 
-Free indices on the destination identify the output iteration space; `Sum[k]`
-introduces reduction indices scoped to the expression. Validator rules require
-compatible extents, unique free/reduction indices, valid indexing, a mutable
-destination, and safe source/destination aliasing. Current `Sum` is the
-implemented tensor reduction; additional reduction operators, affine index
-forms, and broad alias transformations are not implied. VD-MIR lowers the
-statement into explicit materialized loops, and the HLSL emitter emits those
-loops. M32b test execution supplies bounded DXC/SPIR-V/Vulkan proof.
+`Sample(texture, sampler, coordinates)` is the canonical sampled lookup. The
+first argument must be `texture2d<T>`, the second a sampler, and coordinates a
+compatible `float2`; its result is `T`. It is supported in pixel and vertex
+stages under DXC/Vulkan shader semantics. Raw HLSL object methods are not source
+syntax. Derivatives, comparison samplers, texture arrays, storage textures, and
+implicit LOD policy extensions are unsupported.
 
-## Inline HLSL
+A shader-local material block is sugar for an immutable generated parameter
+record and readonly constant-buffer resource:
 
-`[IMPLEMENTED]` `HLSL { ... }` is a statement escape hatch and
-`HLSL<T> { return ...; }` is an expression escape hatch. Raw contents are not
-SDSL-V-tokenized. Captures must be explicitly named when required and must be
-supported scalar/vector values; expression result types have the same bound.
-The validator rejects interface-shaping HLSL such as preprocessor directives,
-resource declarations, `register`, `cbuffer`, texture/sampler/buffer
-declarations, `[numthreads]`, structs, and namespaces. This is a portability
-boundary, not a general foreign-language embedding system.
+```sdslv
+material {
+    Tint: float4;
+    Roughness: f32;
+}
+```
 
-The backend inserts scoped source markers and materializes an expression result
-through a compiler-owned local. The established M29 Vulkan proof covers the
-bounded inline-HLSL test path, not arbitrary injected HLSL or graphics use.
+The generated resource follows explicit HLSL-compatible 16-byte register
+packing: scalars/vectors occupy their natural 4-byte component width when they
+fit the current register; a value that would cross a 16-byte boundary begins at
+the next boundary; aggregates are aligned conservatively; final size is rounded
+to 16 bytes. The bundle records every field offset, size, alignment, total size,
+and binding. Material values are immutable. Textures and samplers remain
+explicit stream resources.
 
-## Production evidence and non-language runtime systems
+### 4.5 Graphics program bundle
 
-`[IMPLEMENTED]` The Prometheus production shader directory contains compiled
-SDSL-V SGEMM variants using resources, guarded tail accesses, workgroup tiles,
-register tiles, flows/boards, derives, and inline HLSL. These are production or
-benchmark evidence for those *existing restricted forms*, not a claim of a
-general tensor optimizer or automatic tiler.
+`oct sdslv compile-graphics` emits schema
+`sdslv.graphics-program-bundle.v1`. A bundle includes concrete program and
+entry identities, source/compiler provenance and hashes, DXC profiles/flags,
+HLSL and SPIR-V paths/hashes, validation evidence, normalized structural SPIR-V
+facts, vertex layout, varyings, builtins, pixel targets, resource bindings,
+material layout, capabilities, and a deterministic replay identity.
 
-`[OUT OF SCOPE]` Prometheus reactors, submission rings, task lifecycle,
-dispatch selection, asynchronous readback, and persistent host state are host
-runtime systems. They consume shader artifacts but are not SDSL-V syntax or
-semantic constructs.
+The bundle deliberately excludes topology, viewport/scissor, render target
+formats, blend/rasterizer/depth state, and other future runtime pipeline state.
 
-# Part III — Graphics language
+Vertex compilation uses `vs_6_0`, pixel uses `ps_6_0`, and compute retains its
+existing `cs_6_0` policy. All use the repository’s established Vulkan SPIR-V
+target. `spirv-val` acceptance and structural inspection are required evidence.
 
-| Feature | Status | Parser | Validator/lowering | Backend/runtime | Evidence |
-|---|---|---:|---:|---:|---|
-| `stage vertex` / `stage pixel` tokens | PARTIAL | Yes | No end-to-end path | No | Parser and rejection tests |
-| Vertex/fragment interfaces and varyings | PLANNED | No | No | No | Graphics-boundary report |
-| Mesh/task/geometry/tessellation stages | PLANNED | No | No | No | No implementation |
-| Textures, samplers, image load/store | DEFERRED | No | No | No | Explicit test/HLSL boundary |
-| Render targets, blend, depth/stencil | PLANNED | No | No | No | Graphics-boundary report |
-| Graphics pipeline linkage/draw | PLANNED | No | No | No | Graphics-boundary report |
+## 5. Testing and benchmark profiles
 
-SDSL-V is not presently a graphics shading language implementation. The lexer
-reserves `vertex` and `pixel`, and the parser can record them after `stage`, but
-VD-MIR models only `ComputeEntryPoint`; HLSL emission writes compute
-`[numthreads]` entry points; and no graphics pipeline or Vulkan draw path is
-implemented. The validator test that parses a vertex spelling is evidence of a
-front-end boundary, not support for a vertex shader.
+`.sdslvvalid` and `.sdslvinvalid` define source and diagnostic contracts.
+`.sdslvtest` defines GPU correctness cases with the established result ABI.
+`.sdslvbench` defines performance cases and stable benchmark identities; it
+does not define correctness. Host strings/assertion reasons in these profiles
+do not become shader runtime storage.
 
-`[PLANNED]` Repository design notes require a future graphics implementation to
-keep graphics artifacts distinct from compute dispatch facts. It must define
-stage interfaces, vertex layout, varying/interpolant rules, render targets,
-rasterization, depth/stencil, blend state, compatible shader-stage linkage,
-and mutable graphics pipeline instances. None of those is exposed by SDSL-V
-today. Machina/Prometheus consumers do not supply an alternate SDSL-V graphics
-language surface.
+Tests and benchmarks share the same parser, type system, VD-MIR, and backend as
+ordinary shaders. Stable identities derive from their canonical source and
+manifest inputs.
 
-`[DEFERRED]` Texture, sampler, and image declarations are deliberately outside
-the current inline-HLSL and `.sdslvtest` ABI boundaries. The inline-HLSL
-validator rejects those interface declarations; that rejection must not be
-misread as native SDSL-V texture support.
+## 6. Compilation artifacts and manifests
 
-# Part IV — Backend and compilation model
+Compute artifacts retain existing manifests, production shader IDs, registry
+ownership, source hashes, SPIR-V hashes, and replay identities. The graphics
+bundle is the portable paired-stage artifact. Its normalized interface/resource
+facts, rather than universal byte identity, are the cross-compiler contract.
 
-`[IMPLEMENTED]` The supported compilation chain is:
+The conformance schema is `sdslv.conformance.v1`. Valid records name source,
+profile, entries, stages, stream roles, spaces, bindings, locations, builtins,
+capabilities, reference hashes, and an optional bundle. Invalid records name a
+stable diagnostic code, exact primary span, optional related span, and category.
+
+Conformance tiers are: (1) acceptance/rejection, (2) semantic manifest,
+(3) diagnostic code/span, (4) structural SPIR-V, (5) runtime behavior, and
+(6) exact bytes only for explicitly canonical golden artifacts. Independent
+compilers need not reproduce GoOct AST or VD-MIR.
+
+## 7. Diagnostics and conformance
+
+Diagnostics have stable `SDSL-Vnnnn` codes and source spans. Related spans are
+provided for conflicts such as duplicate binding and immutable mutation. The
+workspace checker verifies the portable manifest, valid and invalid fixture
+paths, unique entry identities, expected diagnostics, reference hashes, and
+bundle integrity. The canonical source of conformance truth is:
 
 ```text
-SDSL-V source → lexer/parser → AST → validator → lowering/specialization
-             → VD-MIR → HLSL emitter → DXC → SPIR-V → bounded Vulkan compute
+examples/SDSL-V/conformance/manifest.json
 ```
 
-VD-MIR owns backend-neutral scalar/data/control representations, resources,
-workgroup memory, compute entry points, flows, and source provenance. The HLSL
-emitter owns HLSL spelling, generated helpers, Vulkan binding attributes,
-row-major address materialization, compute entry semantics, and source markers.
-No language rule is defined solely by emitted HLSL; validator rules and corpus
-fixtures define SDSL-V's accepted scope.
+## 8. Explicitly unsupported features
 
-`[PARTIAL]` DXC/SPIR-V is the current target path and Vulkan evidence exists
-for representative compute shaders, tensors, and bounded tests. There is no
-claim of a portable graphics backend, a second code generator, or a proof that
-every accepted feature combination has hardware coverage.
-
-Resource and test ABI boundaries are compiler-owned. `.sdslvtest` fixes the
-test result buffer at descriptor set 0/binding 0 and uses compiler-generated
-push constants and manifest identity. User code cannot redefine that ABI.
-
-# Part V — Known limitations and planned work
-
-Only items supported by repository reports, comments, or current explicit
-boundaries appear here.
-
-## Shared
-
-- `[PLANNED]` General condition/value `switch`; no syntax is specified here.
-- `[DEFERRED]` Imported-module resolution and cross-file SDSL-V linking.
-- `[PLANNED]` Broader nested-expression placement for `match` and richer
-  whole-value operations, subject to an implementation/design pass.
-- `[DEFERRED]` A broader fallible-value surface and fallible `match` in SDSL-V;
-  the old spec's spelling is not current implementation evidence.
-
-## Compute
-
-- `[PLANNED]` Storage-qualified ndarray categories (register/workgroup/resource)
-  rather than treating ndarray values as an implicit storage abstraction.
-- `[PLANNED]` Tensor optimization, cooperative matrices, automatic tiling, and
-  additional reductions beyond the validated current `Sum` form.
-- `[DEFERRED]` A reusable arbitrary compute-dispatch/readback harness; current
-  `.sdslvtest` remains test-owned and deliberately restricted.
-- `[PLANNED]` Production SGEMM migration only where a measured, validated
-  replacement improves its existing explicit variants.
-- `[OUT OF SCOPE]` Encoding Prometheus host reactors/rings as shader language.
-
-## Graphics
-
-- `[PLANNED]` A real stage model, stage I/O records, builtin semantics, and
-  shader interface validation.
-- `[PLANNED]` Vertex inputs, interpolants, render-target/depth outputs, and
-  graphics pipeline linkage.
-- `[DEFERRED]` Textures/samplers/images until resource and pipeline ownership is
-  designed; current rejection is intentional.
-
-# Appendix A — Legacy syntax and compatibility
-
-| Item | Status | Preferred form / note |
-|---|---|---|
-| Nested fixed arrays as rank-N tensor proxies | LEGACY | Use `ndarray<T, [shape...]>` for shaped fixed values; no implicit conversion. |
-| Array `Index`/`Index2` AST adapters | LEGACY implementation adapter | Source indexing is the ordered `Indices` form; this is not user syntax. |
-| Linear flow-state fallthrough | LEGACY | Use explicit `goto`, `push`, `pop`, or `finish` for phase transitions. |
-| Older M12/M15 tile spellings/examples | LEGACY where accepted | Preserve current validated `tile`, `matrix_view`, and `reg_tile` restrictions. |
-| Historical runtime `switch` prose | Removed stale documentation | No supported replacement; use `if`, `when utility`, or enum `match` according to intent. |
-
-Supported compatibility syntax remains implemented. This appendix does not
-deprecate it by itself, and production sources must not be changed merely to
-modernize documentation.
-
-# Appendix B — Milestone history
-
-Historical milestones are evidence, not current status labels. In broad order:
-M0–M9 introduced compute resources, workgroup memory, concepts/configs,
-records/streams, and enums/match; M10–M16 added reductions, views, register
-tiles, compile-time staging, and guarded access; M19–M28 added guards,
-board/flow forms, derive, and inline HLSL; M29–M31 added bounded GPU test
-contracts and flow stack lowering; M32–M33 added tensor lowering, ndarray, and
-construction. Consult the individual `docs/SDSL_V_M*.md` and
-`internal/prometheus/DevelopmentReport/SDSL_V_M*.md` reports for historical
-acceptance evidence. Their milestone wording must not override this
-implementation inventory.
-
-# M36a benchmark declarations
-
-`.sdslvbench` is a tooling-only source type for repeatable GPU performance
-experiments. A benchmark is a top-level function with `[Benchmark]`, required
-`[DispatchGroups(X, Y, Z)]`, and optional `[Warmup(N)]`, `[Iterations(N)]`, and
-`[WorkgroupSize(X, Y, Z)]`. Warmup defaults to 10 and iterations to 100.
-Benchmark functions currently take no parameters and return `void`; test
-attributes and `Assert.*` are invalid in benchmark files.
-
-`oct sdslv bench file.sdslvbench --list` reads and validates declarations
-without Vulkan execution. `--case <stable-id>` selects one stable declaration,
-`--json` emits schema-versioned deterministic manifest data, and `--backend
-<auto|godot|kaiju>` selects the execution witness. `auto` prefers the optional
-typed Kaiju Octxiliary Vulkan sidecar when installed and capability-compatible,
-then falls back to the Godot benchmark host when Kaiju is unavailable. Stable
-IDs derive from normalized source identity, declaration name, and dispatch
-metadata, not device or timing values. Benchmark results are performance
-observations, never correctness proofs; correctness remains in `.sdslvtest`.
+SDSL-V does not include shader fallibility; interfaces/implements/override;
+uninitialized bindings; implicit coordinate conversion or automatic coordinate
+transforms; geometry, hull, domain, mesh, task, amplification, ray-generation,
+or hit stages; pixel depth output; derivatives; texture arrays; comparison
+samplers; read/write textures; arbitrary attributes; runtime reflection or
+allocation; arbitrary comptime I/O/state; a pipeline-state DSL; a Vulkan
+graphics runtime; HLSL `SV_*` source names; GLSL, Slang, or direct SPIR-V
+emission. Unsupported surface is rejected and is not validated-but-unlowered.

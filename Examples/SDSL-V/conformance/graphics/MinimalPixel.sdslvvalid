@@ -1,0 +1,6 @@
+stream MinimalPixelInput { [location(0)] UV: float2; }
+shader MinimalPixelProgram {
+    stage pixel fn PS(input: MinimalPixelInput) -> float4 {
+        return float4(input.UV.x, input.UV.y, 0.0, 1.0);
+    }
+}

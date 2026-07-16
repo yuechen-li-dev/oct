@@ -1,0 +1,244 @@
+{
+  "schema": "sdslv.graphics-program-bundle.v1",
+  "program": "ForwardTextured",
+  "replay_identity": "2913f2c0639468909ef18971d0e522b18d9b8d04a14d52e04e2cf66429a6eab2",
+  "source": {
+    "path": "examples/SDSL-V/conformance/graphics/CanonicalGraphicsProgram.sdslvvalid",
+    "sha256": "5fe7528dcc37c99132ac6841e221c8cb99bba2359f907303f57a6a4312f1640f"
+  },
+  "compiler": {
+    "name": "dxc.exe",
+    "sha256": "2f94ff0e55750801ee09a573be2c0fa90e632d12ec11c004fa0dbb5a8a9341d2"
+  },
+  "vertex": {
+    "stage": "vertex",
+    "entry_point": "ForwardTextured_VS",
+    "profile": "vs_6_0",
+    "target_environment": "vulkan1.0",
+    "hlsl_path": "ForwardTextured.vertex.hlsl",
+    "hlsl_sha256": "adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76",
+    "spirv_path": "ForwardTextured.vertex.spv",
+    "spirv_sha256": "b5da74f59d6985fed9cfa4d34430dc86b7e3dc66bdcdc9351457cf26db43faa2",
+    "dxc_args": [
+      "-spirv",
+      "-T",
+      "vs_6_0",
+      "-E",
+      "ForwardTextured_VS",
+      "-Fo",
+      "ForwardTextured.vertex.spv",
+      "-fspv-target-env=vulkan1.0",
+      "-O3",
+      "ForwardTextured.vertex.hlsl"
+    ],
+    "spirv_validated": true,
+    "structural_spirv_facts": {
+      "execution_model": "Vertex",
+      "entry_point": "ForwardTextured_VS",
+      "locations": [
+        0,
+        1
+      ],
+      "builtins": [
+        "InstanceIndex",
+        "Position",
+        "VertexIndex"
+      ],
+      "bindings": null
+    }
+  },
+  "pixel": {
+    "stage": "pixel",
+    "entry_point": "ForwardTextured_PS",
+    "profile": "ps_6_0",
+    "target_environment": "vulkan1.0",
+    "hlsl_path": "ForwardTextured.pixel.hlsl",
+    "hlsl_sha256": "adbec3af8425d50b51bba7b17d3bd5d7620e3f76d0551b618856bac92fd08a76",
+    "spirv_path": "ForwardTextured.pixel.spv",
+    "spirv_sha256": "7ada711827920e644d5a33167fae348e5ace42d421994da23b766160d060afe7",
+    "dxc_args": [
+      "-spirv",
+      "-T",
+      "ps_6_0",
+      "-E",
+      "ForwardTextured_PS",
+      "-Fo",
+      "ForwardTextured.pixel.spv",
+      "-fspv-target-env=vulkan1.0",
+      "-O3",
+      "ForwardTextured.pixel.hlsl"
+    ],
+    "spirv_validated": true,
+    "structural_spirv_facts": {
+      "execution_model": "Fragment",
+      "entry_point": "ForwardTextured_PS",
+      "locations": [
+        0,
+        1
+      ],
+      "builtins": [
+        "FragCoord",
+        "FrontFacing"
+      ],
+      "bindings": [
+        {
+          "set": 0,
+          "binding": 0
+        },
+        {
+          "set": 0,
+          "binding": 1
+        },
+        {
+          "set": 0,
+          "binding": 2
+        }
+      ]
+    }
+  },
+  "interface": {
+    "vertex_inputs": [
+      {
+        "stream": "VertexInput",
+        "name": "Position",
+        "type": "float3@space(object.position)",
+        "location": 0,
+        "interpolation": "linear"
+      },
+      {
+        "stream": "VertexInput",
+        "name": "UV",
+        "type": "float2",
+        "location": 1,
+        "interpolation": "linear"
+      }
+    ],
+    "varyings": [
+      {
+        "stream": "ForwardVaryings",
+        "name": "UV",
+        "type": "float2",
+        "location": 0,
+        "interpolation": "linear"
+      },
+      {
+        "stream": "ForwardVaryings",
+        "name": "WorldPosition",
+        "type": "float3@space(world.position)",
+        "location": 1,
+        "interpolation": "linear"
+      }
+    ],
+    "pixel_inputs": [
+      {
+        "stream": "ForwardVaryings",
+        "name": "UV",
+        "type": "float2",
+        "location": 0,
+        "interpolation": "linear"
+      },
+      {
+        "stream": "ForwardVaryings",
+        "name": "WorldPosition",
+        "type": "float3@space(world.position)",
+        "location": 1,
+        "interpolation": "linear"
+      }
+    ],
+    "builtins": [
+      {
+        "stage": "vertex",
+        "name": "VertexId",
+        "builtin": "vertex_id",
+        "type": "u32",
+        "semantic": "SV_VertexID"
+      },
+      {
+        "stage": "vertex",
+        "name": "InstanceId",
+        "builtin": "instance_id",
+        "type": "u32",
+        "semantic": "SV_InstanceID"
+      },
+      {
+        "stage": "vertex",
+        "name": "Position",
+        "builtin": "position",
+        "type": "float4@space(clip.position)",
+        "semantic": "SV_Position"
+      },
+      {
+        "stage": "pixel",
+        "name": "Position",
+        "builtin": "position",
+        "type": "float4@space(clip.position)",
+        "semantic": "SV_Position"
+      },
+      {
+        "stage": "pixel",
+        "name": "FrontFace",
+        "builtin": "front_face",
+        "type": "bool",
+        "semantic": "SV_IsFrontFace"
+      }
+    ],
+    "pixel_targets": [
+      {
+        "name": "Color",
+        "target": 0,
+        "type": "float4"
+      }
+    ]
+  },
+  "resources": [
+    {
+      "name": "Albedo",
+      "kind": "texture2d",
+      "type": "texture2d\u003cfloat4\u003e",
+      "access": "readonly",
+      "binding": {
+        "set": 0,
+        "binding": 0
+      }
+    },
+    {
+      "name": "LinearSampler",
+      "kind": "sampler",
+      "type": "sampler",
+      "access": "readonly",
+      "binding": {
+        "set": 0,
+        "binding": 1
+      }
+    }
+  ],
+  "material": {
+    "type_name": "ForwardTextured_Material",
+    "binding": {
+      "set": 0,
+      "binding": 2
+    },
+    "size": 32,
+    "fields": [
+      {
+        "name": "Tint",
+        "type": "float4",
+        "offset": 0,
+        "size": 16,
+        "alignment": 16
+      },
+      {
+        "name": "Roughness",
+        "type": "f32",
+        "offset": 16,
+        "size": 4,
+        "alignment": 4
+      }
+    ]
+  },
+  "required_capabilities": [
+    "graphics-vertex-pixel",
+    "sampled-texture2d",
+    "uniform-material"
+  ]
+}

@@ -1,0 +1,122 @@
+namespace Sdslv.Conformance.Graphics;
+
+type ObjectPosition3 = float3 @space(object.position);
+type WorldPosition3 = float3 @space(world.position);
+type WorldNormal3 = float3 @space(world.normal);
+type ClipPosition4 = float4 @space(clip.position);
+
+record Surface {
+    Color: float4;
+    Roughness: f32;
+}
+
+enum ShadeMode {
+    Textured;
+    Tinted { Amount: f32; }
+}
+
+stream VertexInput {
+    [location(0)] Position: ObjectPosition3;
+    [location(1)] UV: float2;
+}
+
+stream VertexBuiltins {
+    [builtin(vertex_id)] VertexId: u32;
+    [builtin(instance_id)] InstanceId: u32;
+}
+
+stream ForwardVaryings {
+    Position: ClipPosition4;
+    [location(0)] UV: float2;
+    [location(1)] WorldPosition: WorldPosition3;
+}
+
+stream PixelBuiltins {
+    [builtin(front_face)] FrontFace: bool;
+}
+
+stream ForwardOutput {
+    [target(0)] Color: float4;
+}
+
+stream ForwardResources {
+    [binding(0)] Albedo: readonly texture2d<float4>;
+    [binding(1)] LinearSampler: readonly sampler;
+}
+
+concept ForwardConfig {
+    USE_TEXTURE: bool;
+}
+
+config TexturedForward: ForwardConfig {
+    USE_TEXTURE: true;
+}
+
+fn EstablishWorld(value: ObjectPosition3) -> WorldPosition3 {
+    return float3(value.x, value.y, value.z);
+}
+
+fn EstablishClip(value: ObjectPosition3) -> ClipPosition4 {
+    return float4(value.x, value.y, value.z, 1.0);
+}
+
+fn GraphicsMath(normal: float3, incident: float3) -> f32 {
+    let unitNormal: float3 = Normalize(normal);
+    let tangent: float3 = Cross(unitNormal, incident);
+    let reflected: float3 = Reflect(incident, unitNormal);
+    let blended: float3 = Lerp(tangent, reflected, 0.5);
+    return Saturate(Dot(blended, unitNormal));
+}
+
+template<C: ForwardConfig>
+shader ForwardPass {
+    resources ForwardResources;
+
+    material {
+        Tint: float4;
+        Roughness: f32;
+    }
+
+    stage vertex fn VS(input: VertexInput, thread: VertexBuiltins) -> ForwardVaryings {
+        let world: WorldPosition3 = EstablishWorld(input.Position);
+        let vertexBias: f32 = Convert<f32>(thread.VertexId + thread.InstanceId) * 0.000001;
+        return ForwardVaryings {
+            Position: EstablishClip(input.Position);
+            UV: float2(input.UV.x + vertexBias, input.UV.y);
+            WorldPosition: world;
+        };
+    }
+
+    stage pixel fn PS(input: ForwardVaryings, resourceSet: ForwardResources, fragment: PixelBuiltins) -> ForwardOutput {
+        let sampled: float4 = Sample(resourceSet.Albedo, resourceSet.LinearSampler, input.UV);
+        let mode: ShadeMode = ShadeMode.Tinted { Amount: 0.25 };
+        let weight: f32 = match mode {
+            ShadeMode.Textured => 0.0
+            ShadeMode.Tinted(payload) => payload.Amount
+        };
+        let geometry: f32 = GraphicsMath(
+            float3(input.WorldPosition.x, input.WorldPosition.y, input.WorldPosition.z),
+            float3(0.0, 0.0, -1.0)
+        );
+        let screenFactor: f32 = Saturate(input.Position.x * 0.0001);
+        let surface: Surface = Surface { Color: sampled; Roughness: Material.Roughness; };
+        let tuned: Surface = surface with {
+            Color: Lerp(surface.Color, Material.Tint, Saturate(weight + geometry * 0.01 + screenFactor * 0.01))
+        };
+        var shaded: float4 = tuned.Color;
+        flow ColorFlow {
+            state ApplyFrontFace {
+                if fragment.FrontFace {
+                    shaded = Saturate(shaded);
+                }
+            }
+        }
+        comptime if C.USE_TEXTURE {
+            return ForwardOutput { Color: shaded; };
+        } else {
+            return ForwardOutput { Color: Material.Tint; };
+        }
+    }
+}
+
+compile ForwardPass<TexturedForward> as ForwardTextured;

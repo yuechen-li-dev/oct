@@ -1,0 +1,6 @@
+// expected SDSL-V1504 at assignment
+type WorldPosition3 = float3 @space(world.position);
+fn BadAssignment(value: float3) -> WorldPosition3 {
+    let world: WorldPosition3 = value;
+    return world;
+}

@@ -1,0 +1,4 @@
+// expect-diagnostic: SDSL-V4101 2:1
+interface OldMaterial {
+    fn Color() -> float4;
+}

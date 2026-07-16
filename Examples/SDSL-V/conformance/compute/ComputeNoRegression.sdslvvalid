@@ -1,0 +1,20 @@
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream ComputeIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Output: readwrite array<f32>;
+}
+
+shader ComputeNoRegression {
+    resources ComputeIO;
+    stage compute [numthreads(8, 1, 1)] fn CS(thread: ComputeThread) -> void {
+        let index: u32 = thread.DispatchId.x;
+        Output[index] = Input[index];
+        return;
+    }
+}

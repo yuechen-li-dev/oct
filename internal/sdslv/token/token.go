@@ -20,6 +20,7 @@ const (
 	KeywordBoard     Kind = "KeywordBoard"
 	KeywordEnum      Kind = "KeywordEnum"
 	KeywordShader    Kind = "KeywordShader"
+	KeywordMaterial  Kind = "KeywordMaterial"
 	KeywordResources Kind = "KeywordResources"
 	KeywordWorkgroup Kind = "KeywordWorkgroup"
 	KeywordReadonly  Kind = "KeywordReadonly"
@@ -101,6 +102,7 @@ const (
 	EqualEqual   Kind = "EqualEqual"
 	LeftEqual    Kind = "LeftEqual"
 	RightEqual   Kind = "RightEqual"
+	At           Kind = "At"
 )
 
 type Token struct {
@@ -127,6 +129,8 @@ func LookupKeyword(lexeme string) Kind {
 		return KeywordEnum
 	case "shader":
 		return KeywordShader
+	case "material":
+		return KeywordMaterial
 	case "resources":
 		return KeywordResources
 	case "workgroup":

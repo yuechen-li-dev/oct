@@ -1,0 +1,2 @@
+// expect-diagnostic: SDSL-V4100 2:29
+fn Parse(value: i32) -> i32 ! Error { return value; }

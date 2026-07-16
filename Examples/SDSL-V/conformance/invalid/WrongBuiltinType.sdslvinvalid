@@ -1,0 +1,5 @@
+// expect-diagnostic: SDSL-V4110 2:47
+stream Wrong { [builtin(vertex_id)] VertexId: f32; }
+type ClipPosition4 = float4 @space(clip.position);
+stream Out { Position: ClipPosition4; }
+shader Bad { stage vertex fn VS(value: Wrong) -> Out { return Out { Position: float4(0.0, 0.0, 0.0, 1.0); }; } }

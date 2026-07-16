@@ -96,9 +96,10 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 	case token.KeywordFn:
 		return p.parseFunction("")
 	case token.KeywordInterface, token.KeywordFlow:
+		start := p.position
 		kind := p.current().Lexeme
 		p.skipUnsupportedTopLevel()
-		return ast.UnsupportedDecl{Kind: kind}, nil
+		return ast.UnsupportedDecl{Kind: kind, Span: p.spanSince(start)}, nil
 	default:
 		if p.current().Kind == token.Identifier && p.current().Lexeme == "state" {
 			return nil, p.errorAtCurrent("state blocks are only valid inside flow blocks in SDSL-V M22")
@@ -398,6 +399,9 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 	if err != nil {
 		return ast.ShaderDecl{}, err
 	}
+	if p.current().Kind == token.Identifier && (p.current().Lexeme == "implements" || p.current().Lexeme == "where") {
+		return ast.ShaderDecl{}, p.errorAtCurrent("SDSL-V4101: historical implements/where-interface syntax was removed from canonical SDSL-V; use concept, config, template<C: Concept>, and compile")
+	}
 	if _, err := p.expect(token.LeftBrace, "expected '{' after shader name"); err != nil {
 		return ast.ShaderDecl{}, err
 	}
@@ -423,6 +427,15 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 			} else {
 				shader.Resources = append(shader.Resources, resources...)
 			}
+		case token.KeywordMaterial:
+			if shader.Material != nil {
+				return ast.ShaderDecl{}, p.errorAtCurrent("shader may declare at most one material block")
+			}
+			material, err := p.parseMaterial()
+			if err != nil {
+				return ast.ShaderDecl{}, err
+			}
+			shader.Material = &material
 		case token.KeywordWorkgroup:
 			workgroup, err := p.parseWorkgroup()
 			if err != nil {
@@ -457,6 +470,9 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 			}
 			shader.Methods = append(shader.Methods, method)
 		default:
+			if p.current().Kind == token.Identifier && p.current().Lexeme == "override" {
+				return ast.ShaderDecl{}, p.errorAtCurrent("SDSL-V4101: historical override syntax was removed from canonical SDSL-V; concept satisfaction is structural and requires no override keyword")
+			}
 			return ast.ShaderDecl{}, p.errorAtCurrent("expected resources block, workgroup declaration, or shader function")
 		}
 	}
@@ -466,6 +482,27 @@ func (p *parser) parseShader(templateParam *ast.TemplateParam) (ast.ShaderDecl, 
 		shader.Span.Start = templateParam.Span.Start
 	}
 	return shader, nil
+}
+
+func (p *parser) parseMaterial() (ast.MaterialDecl, error) {
+	start := p.position
+	p.advance()
+	if _, err := p.expect(token.LeftBrace, "expected '{' after material"); err != nil {
+		return ast.MaterialDecl{}, err
+	}
+	var fields []ast.Field
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.MaterialDecl{}, p.errorAtCurrent("expected '}' to close material")
+		}
+		field, err := p.parseField()
+		if err != nil {
+			return ast.MaterialDecl{}, err
+		}
+		fields = append(fields, field)
+	}
+	p.advance()
+	return ast.MaterialDecl{Span: p.spanSince(start), Fields: fields}, nil
 }
 
 func (p *parser) parseCompileDecl() (ast.CompileDecl, error) {
@@ -671,6 +708,9 @@ func (p *parser) parseFunctionWithAttributes(stage string, attributes []ast.Attr
 	ret, err := p.parseTypeRef(false)
 	if err != nil {
 		return ast.FunctionDecl{}, err
+	}
+	if p.current().Kind == token.Bang {
+		return ast.FunctionDecl{}, p.errorAtCurrent("SDSL-V4100: fallible function returns were removed from canonical SDSL-V; use an explicit payload enum and exhaustive match")
 	}
 	body, err := p.parseBlock()
 	if err != nil {
@@ -1245,9 +1285,10 @@ func (p *parser) parseLocal() (ast.LetStmt, error) {
 	if err != nil {
 		return ast.LetStmt{}, err
 	}
-	if _, err := p.expect(token.Assign, "local declarations must be initialized"); err != nil {
-		return ast.LetStmt{}, err
+	if p.current().Kind != token.Assign {
+		return ast.LetStmt{}, p.errorAtToken(keyword, fmt.Sprintf("SDSL-V3703: %s binding %s requires an initializer", keyword.Lexeme, name.Lexeme))
 	}
+	p.advance()
 	value, err := p.parseReductionValueOrExpression()
 	if err != nil {
 		return ast.LetStmt{}, err
@@ -1640,6 +1681,8 @@ func (p *parser) parsePostfix() (ast.Expr, error) {
 				return nil, err
 			}
 			expr = ast.BoardLiteralExpr{Span: spanFrom(start, p.lastSpan().End), TypeName: typeName, Fields: fields}
+		case token.Bang:
+			return nil, p.errorAtCurrent("SDSL-V4100: postfix fallible unwrap '!' was removed from canonical SDSL-V; use an explicit payload enum and exhaustive match")
 		default:
 			return expr, nil
 		}
@@ -2146,16 +2189,18 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 		return ast.TypeRef{}, err
 	}
 	ref := ast.TypeRef{Name: name.Lexeme, NameSpan: name.Span}
-	if p.match(token.Bang) {
+	if p.current().Kind == token.Bang {
+		bang := p.current()
+		p.advance()
 		if !allowZeroBang {
-			return ast.TypeRef{}, p.errorAtCurrent("u32! is only valid for concept/config fields in SDSL-V M11")
+			return ast.TypeRef{}, p.errorAtToken(bang, "SDSL-V4100: u32! is only valid for concept/config fields; fallible return/unwrap syntax was removed from canonical SDSL-V")
 		}
 		if ref.Name != "u32" {
-			return ast.TypeRef{}, p.errorAtCurrent("only u32! is supported as a zero-permitted concept/config field type in SDSL-V M11")
+			return ast.TypeRef{}, p.errorAtToken(bang, "only u32! is supported as a zero-permitted concept/config field type in SDSL-V M11")
 		}
 		ref.ZeroAllowed = true
 	}
-	if (ref.Name == "array" || ref.Name == "ndarray" || ref.Name == "matrix_view" || ref.Name == "tile" || ref.Name == "reg_tile") && p.match(token.LeftAngle) {
+	if (ref.Name == "array" || ref.Name == "ndarray" || ref.Name == "matrix_view" || ref.Name == "tile" || ref.Name == "reg_tile" || ref.Name == "texture2d" || ref.Name == "uniform") && p.match(token.LeftAngle) {
 		elem, err := p.parseTypeRef(false)
 		if err != nil {
 			return ast.TypeRef{}, err
@@ -2217,6 +2262,31 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 		if _, err := p.expect(token.RightAngle, "expected '>' after type arguments"); err != nil {
 			return ast.TypeRef{}, err
 		}
+	}
+	if p.match(token.At) {
+		annotationStart := p.tokens[p.position-1].Span.Start
+		space, err := p.expect(token.Identifier, "expected space after '@'")
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		if space.Lexeme != "space" {
+			return ast.TypeRef{}, p.errorAtToken(space, "only @space(...) type annotations are supported")
+		}
+		if _, err := p.expect(token.LeftParen, "expected '(' after @space"); err != nil {
+			return ast.TypeRef{}, err
+		}
+		spaceStart := p.current().Span.Start
+		path, err := p.parsePath()
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		close, err := p.expect(token.RightParen, "expected ')' after coordinate space")
+		if err != nil {
+			return ast.TypeRef{}, err
+		}
+		ref.Space = path
+		ref.SpaceSpan = spanFrom(spaceStart, close.Span.Start)
+		ref.AnnotationSpan = spanFrom(annotationStart, close.Span.End)
 	}
 	ref.Span = p.spanSince(start)
 	return ref, nil

@@ -1,0 +1,8 @@
+type ClipPosition4 = float4 @space(clip.position);
+stream MinimalVertexInput { [location(0)] Position: float3; }
+stream MinimalVertexOutput { Position: ClipPosition4; }
+shader MinimalVertexProgram {
+    stage vertex fn VS(input: MinimalVertexInput) -> MinimalVertexOutput {
+        return MinimalVertexOutput { Position: float4(input.Position.x, input.Position.y, input.Position.z, 1.0); };
+    }
+}
