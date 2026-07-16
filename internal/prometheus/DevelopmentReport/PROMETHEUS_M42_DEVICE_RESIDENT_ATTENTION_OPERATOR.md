@@ -334,3 +334,21 @@ and distinct persistent Wq/Wk/Wv generations**, measured as a bounded fixed
 head group without adding arbitrary batching or a graph runtime. That tests
 real multi-head weight ownership and output concatenation pressure while
 retaining M42's one-head operator as the execution primitive.
+
+## M43 grouped consumer status
+
+M43 completed that exact fixed eight-head workload. It retains 24 independent
+weight generations, one shared host-fed or resident X, eight complete
+device-resident attention tails, one group fence, and one bounded head-major
+output aggregate. The preferred projection-grouped plan uses one submit and
+reuses M42's shaders and precision semantics without changing this one-head API
+or any production selector.
+
+On the primary RTX 3070 resident workload, grouped cooperative execution
+measured 4.652 ms GPU / 8.263 ms end-to-end versus 4.541 ms / 10.831 ms for the
+eight-sequential M42 baseline. Submission grouping improved primary end-to-end
+time but not its central GPU interval; tiny, primary, and 1024-token GPU rows
+and several host-X rows remain rollback boundaries. M43 is therefore an
+experimental grouped operator candidate rather than a production promotion.
+Full layout, lifecycle, memory, fault, replay, and benchmark evidence is in
+`PROMETHEUS_M43_BOUNDED_GROUPED_MULTIHEAD_ATTENTION.md`.
