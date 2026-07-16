@@ -77,6 +77,85 @@ type canonicalManifest struct {
 	Artifacts []canonicalArtifact `json:"artifacts"`
 }
 
+type m40bTiming struct {
+	MedianNS uint64 `json:"median_ns"`
+}
+
+type m40bTimingSet struct {
+	SGEMM    m40bTiming `json:"sgemm"`
+	Softmax  m40bTiming `json:"softmax"`
+	Combined m40bTiming `json:"combined"`
+	Readback m40bTiming `json:"readback"`
+	EndToEnd m40bTiming `json:"end_to_end"`
+}
+
+type m40bDeviceTimingSet struct {
+	Combined m40bTiming `json:"combined"`
+	EndToEnd m40bTiming `json:"end_to_end"`
+}
+
+type m40bTraceEntry struct {
+	Operation              uint32 `json:"operation"`
+	SubmitIndex            uint32 `json:"submit_index"`
+	SourceStageMask        uint32 `json:"source_stage_mask"`
+	DestinationStageMask   uint32 `json:"destination_stage_mask"`
+	SourceAccessMask       uint32 `json:"source_access_mask"`
+	DestinationAccessMask  uint32 `json:"destination_access_mask"`
+	SourceQueueFamily      uint32 `json:"source_queue_family"`
+	DestinationQueueFamily uint32 `json:"destination_queue_family"`
+}
+
+type m40bTrace struct {
+	EntryCount                uint32           `json:"entry_count"`
+	SubmitCount               uint32           `json:"submit_count"`
+	IntermediateBufferCount   uint32           `json:"intermediate_buffer_count"`
+	IntermediateHostCopyCount uint32           `json:"intermediate_host_copy_count"`
+	FinalReadbackCopyCount    uint32           `json:"final_readback_copy_count"`
+	ReplayID                  uint64           `json:"replay_id"`
+	Entries                   []m40bTraceEntry `json:"entries"`
+}
+
+type m40bArtifactRow struct {
+	Kernel                    string              `json:"kernel"`
+	Precision                 string              `json:"precision"`
+	Group                     string              `json:"group"`
+	M                         uint32              `json:"m"`
+	N                         uint32              `json:"n"`
+	K                         uint32              `json:"k"`
+	PaddedM                   uint32              `json:"padded_m"`
+	PaddedN                   uint32              `json:"padded_n"`
+	PaddedK                   uint32              `json:"padded_k"`
+	Correct                   bool                `json:"correct"`
+	PersistentBNewA           m40bTimingSet       `json:"persistent_b_new_a"`
+	DeviceAB                  m40bDeviceTimingSet `json:"device_a_b"`
+	CommandPlanReplayID       uint64              `json:"command_plan_replay_id"`
+	ReductionReplayID         uint64              `json:"reduction_replay_id"`
+	ShaderHash                uint64              `json:"shader_hash"`
+	Repeat10MedianEndToEndNS  uint64              `json:"repeat_10_median_end_to_end_ns"`
+	Repeat100MedianEndToEndNS uint64              `json:"repeat_100_median_end_to_end_ns"`
+	CommandTraces             struct {
+		HostOne     m40bTrace `json:"host_one"`
+		ResidentOne m40bTrace `json:"resident_one"`
+		ResidentTwo m40bTrace `json:"resident_two"`
+	} `json:"command_traces"`
+}
+
+type m40bArtifact struct {
+	Schema          string            `json:"schema"`
+	Notation        string            `json:"notation"`
+	WarmRepetitions uint32            `json:"warm_repetitions"`
+	Rows            []m40bArtifactRow `json:"rows"`
+	Capability      struct {
+		State        uint32 `json:"state"`
+		Tuple        string `json:"tuple"`
+		SubgroupSize uint32 `json:"subgroup_size"`
+	} `json:"capability"`
+	Validation struct {
+		Warnings uint32 `json:"warnings"`
+		Errors   uint32 `json:"errors"`
+	} `json:"validation"`
+}
+
 var wordRE = regexp.MustCompile(`0x([0-9a-fA-F]{8})u`)
 
 func main() {
@@ -253,11 +332,135 @@ func check(root string, inventory bool) error {
 	if err := checkBenchmarkIdentities(root); err != nil {
 		return err
 	}
+	if err := checkM40bArtifact(root); err != nil {
+		return err
+	}
 	if inventory {
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Println(line)
 		}
+	}
+	return nil
+}
+
+func checkM40bArtifact(root string) error {
+	var artifact m40bArtifact
+	path := filepath.Join(root, "internal", "prometheus", "DevelopmentReport", "artifacts", "M40B", "device_resident_inference_rtx3070.json")
+	if err := readJSON(path, &artifact); err != nil {
+		return fmt.Errorf("M40b composed artifact: %w", err)
+	}
+	if artifact.Schema != "prometheus.m40b.device-resident-inference.v1" || artifact.Notation != "M x N x K" {
+		return fmt.Errorf("M40b composed artifact has unexpected identity: schema=%q notation=%q", artifact.Schema, artifact.Notation)
+	}
+	if artifact.WarmRepetitions == 0 || artifact.Capability.State != 5 || artifact.Capability.Tuple != "subgroup-m16-n16-k16-f16-f16-f32-f32" || artifact.Capability.SubgroupSize != 32 {
+		return fmt.Errorf("M40b composed artifact has incomplete capability or repetition evidence: warm=%d state=%d tuple=%q subgroup=%d", artifact.WarmRepetitions, artifact.Capability.State, artifact.Capability.Tuple, artifact.Capability.SubgroupSize)
+	}
+	if artifact.Validation.Warnings != 0 || artifact.Validation.Errors != 0 {
+		return fmt.Errorf("M40b composed artifact is not validation-clean: warnings=%d errors=%d", artifact.Validation.Warnings, artifact.Validation.Errors)
+	}
+
+	shapes := [][3]uint32{
+		{128, 1024, 1024}, {256, 1024, 1024}, {512, 1024, 1024}, {1024, 1024, 1024},
+		{256, 4096, 1024}, {1024, 4096, 1024},
+		{128, 320, 1024}, {128, 640, 1024}, {128, 768, 1024}, {128, 1280, 1024}, {128, 2048, 1024},
+		{127, 1001, 1023}, {257, 769, 1025}, {511, 1281, 2049},
+	}
+	kernels := []string{"cooperative", "A2x4", "conventional-fp16"}
+	want := make(map[string]bool, len(shapes)*len(kernels))
+	for _, shape := range shapes {
+		for _, kernel := range kernels {
+			want[fmt.Sprintf("%dx%dx%d/%s", shape[0], shape[1], shape[2], kernel)] = false
+		}
+	}
+	if len(artifact.Rows) != len(want) {
+		return fmt.Errorf("M40b composed artifact row count: got %d want %d", len(artifact.Rows), len(want))
+	}
+	for _, row := range artifact.Rows {
+		key := fmt.Sprintf("%dx%dx%d/%s", row.M, row.N, row.K, row.Kernel)
+		seen, known := want[key]
+		if !known {
+			return fmt.Errorf("M40b composed artifact has unexpected workload %s", key)
+		}
+		if seen {
+			return fmt.Errorf("M40b composed artifact has duplicate workload %s", key)
+		}
+		want[key] = true
+		if !row.Correct || row.M == 0 || row.N == 0 || row.K == 0 {
+			return fmt.Errorf("M40b composed artifact workload %s is incorrect or zero-sized", key)
+		}
+		if row.PaddedM < row.M || row.PaddedN < row.N || row.PaddedK < row.K || row.PaddedM%16 != 0 || row.PaddedN%16 != 0 || row.PaddedK%16 != 0 {
+			return fmt.Errorf("M40b composed artifact workload %s has invalid padding %dx%dx%d", key, row.PaddedM, row.PaddedN, row.PaddedK)
+		}
+		if row.CommandPlanReplayID == 0 || row.ReductionReplayID == 0 {
+			return fmt.Errorf("M40b composed artifact workload %s lacks replay identity", key)
+		}
+		if err := checkM40bTrace(key+" host-one", row.CommandTraces.HostOne, 1, false); err != nil {
+			return err
+		}
+		if err := checkM40bTrace(key+" resident-one", row.CommandTraces.ResidentOne, 1, true); err != nil {
+			return err
+		}
+		if err := checkM40bTrace(key+" resident-two", row.CommandTraces.ResidentTwo, 2, true); err != nil {
+			return err
+		}
+		if row.PersistentBNewA.SGEMM.MedianNS == 0 || row.PersistentBNewA.Softmax.MedianNS == 0 || row.PersistentBNewA.Combined.MedianNS == 0 || row.PersistentBNewA.Readback.MedianNS == 0 || row.PersistentBNewA.EndToEnd.MedianNS == 0 || row.DeviceAB.Combined.MedianNS == 0 || row.DeviceAB.EndToEnd.MedianNS == 0 {
+			return fmt.Errorf("M40b composed artifact workload %s lacks separated timing evidence", key)
+		}
+		switch row.Kernel {
+		case "cooperative":
+			if row.Precision != "f16-rounded-input-f32-accum-output" || row.ShaderHash == 0 {
+				return fmt.Errorf("M40b cooperative workload %s has invalid precision or shader identity", key)
+			}
+		case "A2x4":
+			if row.Precision != "fp32-input-accum-output" || row.ShaderHash != 0 {
+				return fmt.Errorf("M40b A2x4 workload %s has invalid precision or authority", key)
+			}
+		case "conventional-fp16":
+			if row.Precision != "f16-rounded-input-f32-accum-output" || row.ShaderHash != 0 {
+				return fmt.Errorf("M40b conventional FP16 workload %s has invalid precision or authority", key)
+			}
+		}
+	}
+	for key, present := range want {
+		if !present {
+			return fmt.Errorf("M40b composed artifact lacks required workload %s", key)
+		}
+	}
+	repeatKey := "128x1024x1024/cooperative"
+	for _, row := range artifact.Rows {
+		if fmt.Sprintf("%dx%dx%d/%s", row.M, row.N, row.K, row.Kernel) == repeatKey && (row.Repeat10MedianEndToEndNS == 0 || row.Repeat100MedianEndToEndNS == 0) {
+			return fmt.Errorf("M40b composed artifact lacks 10/100-operation amortization for %s", repeatKey)
+		}
+	}
+	return nil
+}
+
+func checkM40bTrace(label string, trace m40bTrace, submitCount uint32, resident bool) error {
+	if trace.EntryCount == 0 || trace.EntryCount != uint32(len(trace.Entries)) || trace.SubmitCount != submitCount ||
+		trace.IntermediateBufferCount != 1 || trace.IntermediateHostCopyCount != 0 || trace.FinalReadbackCopyCount != 1 || trace.ReplayID == 0 {
+		return fmt.Errorf("M40b command trace %s has invalid ownership or identity", label)
+	}
+	seen := map[uint32]bool{}
+	for _, entry := range trace.Entries {
+		seen[entry.Operation] = true
+		if entry.SourceQueueFamily != 0xffffffff || entry.DestinationQueueFamily != 0xffffffff {
+			return fmt.Errorf("M40b command trace %s contains an accidental queue-family transfer", label)
+		}
+	}
+	for _, operation := range []uint32{2, 3, 4, 6, 9, 12, 13, 14, 15, 18, 19} {
+		if !seen[operation] {
+			return fmt.Errorf("M40b command trace %s lacks operation %d", label, operation)
+		}
+	}
+	if resident && seen[1] {
+		return fmt.Errorf("M40b command trace %s unexpectedly uploads host A", label)
+	}
+	if !resident && !seen[1] {
+		return fmt.Errorf("M40b command trace %s lacks host-A upload", label)
+	}
+	if submitCount == 2 && !seen[10] {
+		return fmt.Errorf("M40b command trace %s lacks its explicit submit dependency", label)
 	}
 	return nil
 }

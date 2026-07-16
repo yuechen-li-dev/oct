@@ -31,7 +31,9 @@ shader SoftmaxNormalize {
         let element: u32 = DispatchThreadID.x;
         if element >= params.TotalElements { return; }
         let row: u32 = element / params.ElementsPerRow;
-        Output[element] = ExpF32(Input[element] - RowMax[row]) / RowSum[row];
+        let column: u32 = element - row * params.ElementsPerRow;
+        let inputElement: u32 = row * params.InputRowStride + column;
+        Output[element] = ExpF32(Input[inputElement] - RowMax[row]) / RowSum[row];
         return;
     }
 }

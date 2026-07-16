@@ -54,10 +54,11 @@ shader SoftmaxFused {
 
     stage compute [numthreads(256u, 1u, 1u)] fn CS(thread: ComputeThread, params: ReductionParams) -> void {
         let row: u32 = thread.GroupId.x;
-        let rowBase: u32 = row * params.ElementsPerRow;
+        let inputRowBase: u32 = row * params.InputRowStride;
+        let outputRowBase: u32 = row * params.ElementsPerRow;
         var maximum: f32 = Bitcast<f32>(4286578688u);
         for column in thread.GroupIndex..params.ElementsPerRow step 256u {
-            maximum = MaximumFinite(maximum, Input[rowBase + column]);
+            maximum = MaximumFinite(maximum, Input[inputRowBase + column]);
         }
         Shared[thread.GroupIndex] = maximum;
         WorkgroupMemoryBarrierWithSync();
@@ -79,7 +80,7 @@ shader SoftmaxFused {
         maximum = Shared[0u];
         var denominator: f32 = 0.0;
         for column in thread.GroupIndex..params.ElementsPerRow step 256u {
-            denominator = denominator + ExpF32(Input[rowBase + column] - maximum);
+            denominator = denominator + ExpF32(Input[inputRowBase + column] - maximum);
         }
         Shared[thread.GroupIndex] = denominator;
         WorkgroupMemoryBarrierWithSync();
@@ -100,7 +101,7 @@ shader SoftmaxFused {
 
         denominator = Shared[0u];
         for column in thread.GroupIndex..params.ElementsPerRow step 256u {
-            Output[rowBase + column] = ExpF32(Input[rowBase + column] - maximum) / denominator;
+            Output[outputRowBase + column] = ExpF32(Input[inputRowBase + column] - maximum) / denominator;
         }
         return;
     }

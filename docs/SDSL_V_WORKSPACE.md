@@ -13,7 +13,7 @@ This is the repository ownership guide. Language truth remains in
 | `examples/SDSL-V/M36a/` | permanent benchmark corpus and canonical artifacts | benchmark/audit tooling only |
 | `internal/prometheus/shaders/sdslv/production/` | sole Prometheus SDSL-V source authority | yes |
 | `internal/prometheus/shaders/sdslv/production/reduction/` | M39b row-wise sum/max/softmax source authority | yes |
-| `internal/prometheus/shaders/sdslv/experimental/` | bounded candidates, including M40a cooperative SGEMM | no |
+| `internal/prometheus/shaders/sdslv/experimental/` | bounded candidates, including the M40a/M40b cooperative SGEMM | bounded experimental runtime only |
 | `internal/prometheus/shaders/sdslv/historical/` | policy pointer to audit evidence | no |
 | `internal/prometheus/native/` | registry, headers, runtime, tests, generator | yes |
 | `internal/prometheus/DevelopmentReport/artifacts/SDSL_V_ORIGINAL_SPIRV_REWRITE/` | M34/M35 audit-only evidence | no |
@@ -32,8 +32,10 @@ Historical evidence is audit-only.
 The M40a proof lives at
 `internal/prometheus/shaders/sdslv/experimental/sgemm/cooperative/`. Its
 generated HLSL, SPIR-V, header, and inspection result stay beside the readable
-source. The header is consumed only by Marionette audit coverage; the
-production library and selector do not import it.
+source. M40b's bounded internal composition path imports that experimental
+header directly for device-resident SGEMM-to-softmax execution. It remains
+outside the production shader registry and the default selector; no public Oct
+API exposes the Vulkan handle or device-buffer view.
 
 The tiled and memory-conservative registry entries retain `historical generated`
 provenance but remain production build inputs because the registry consumes them.
@@ -99,6 +101,12 @@ entry point, resources, and benchmark IDs:
 go run ./tools/generate_m36b_canonical
 go run ./tools/sdslv_workspace_check
 ```
+
+The workspace checker also validates the committed M40b RTX 3070 composed
+artifact: the bounded 14-shape/three-kernel corpus, cooperative capability
+tuple, replay identities, padding, precision labels, separated timing fields,
+and zero validation messages. M40b is an experimental selector candidate and
+is disabled by default; this evidence does not assign a production shader ID.
 
 `.sdslvvalid` accepts language behavior; `.sdslvinvalid` asserts diagnostics;
 `.sdslvtest` is GPU correctness; `.sdslvbench` is performance only. Benchmark

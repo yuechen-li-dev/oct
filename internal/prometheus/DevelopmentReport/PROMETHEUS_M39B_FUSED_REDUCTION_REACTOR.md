@@ -186,8 +186,8 @@ All five sources are production-owned under
 | 16 | 1001 | `row_sum_stage.sdslv` | row sum / partial / final | `99709a55cc1a061384468dc3d7e8cedaec0e9543c82227cb5d672fc0d1c769d0` |
 | 17 | 1002 | `row_max_stage.sdslv` | row max / partial / final | `8f65e2143b30dc174a6f063e70ca6e1fe46cb28284bdbee4aa3da3a3f4bff4c2` |
 | 18 | 1003 | `softmax_exp_sum_stage.sdslv` | shifted-exp sum partial | `0586fa39a0f51a60654e42f27848b0ec752ce100cf6917027f97d571faadf02b` |
-| 19 | 1004 | `softmax_normalize.sdslv` | broadcast/finalization | `9ee311b4a2c079a518e2233794ff1080475f4c15f0e9045548a296739aa1376b` |
-| 20 | 1005 | `softmax_fused.sdslv` | one-workgroup stable softmax | `33c0ac7020d5a0217c9a8327d018448d2741cc634ca431af4a99af50994b67a3` |
+| 19 | 1004 | `softmax_normalize.sdslv` | strided input, packed broadcast/finalization | `f02c36221658b6f88a129d33c0248d582d55f67672deb9f7bd5dd73c512aaee7` |
+| 20 | 1005 | `softmax_fused.sdslv` | strided input, packed one-workgroup stable softmax | `4c57993dfb3e66caddc251109f8570edef49f38ff9bc0ab411c0a6bfa91891dc` |
 
 The native manifest owns source, generated header, symbol, entry point, local
 size, four descriptor bindings, 32-byte push constants, stage role, and width
@@ -262,3 +262,20 @@ The exact next recommended workload is a real attention-score row softmax with
 That will test cross-reactor device-buffer handoff before adding LayerNorm or
 RMSNorm. Those normalization operations fit the map/reduce/finalize plan shape,
 but remain explicitly outside M39b.
+
+## M40b device-input extension
+
+M40b completed that exact next workload without changing the public reduction
+API or the fused/staged threshold. The bounded composition owner binds an
+internal device-buffer view as reduction input. `InputRowStride` now controls
+fused and normalize reads, while `ElementsPerRow` remains the logical softmax
+width and packed output stride. Ordinary M39b calls retain identical behavior
+because their input stride equals their logical width.
+
+The SGEMM output stays owned by the shared persistent slot until softmax and
+the optional final readback complete. The producer-to-consumer barrier is
+compute shader write to compute shader read on the exact C buffer. Completion
+uncertainty quarantines the whole slot, and persistent-B replacement waits for
+physical reap. Full ownership, command traces, RTX 3070 evidence, and the
+experimental classification are recorded in
+`PROMETHEUS_M40B_DEVICE_RESIDENT_COOPERATIVE_INFERENCE_PATH.md`.

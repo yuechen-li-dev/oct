@@ -395,3 +395,20 @@ A production M40b should reopen only when persistent-weight end-to-end median
 beats the best conventional FP32 path materially across the target corpus and
 tail handling remains correct and bounded. Until then, the experimental asset
 and optional runtime capability facts are the appropriate permanent result.
+
+## M40b follow-through
+
+M40b addressed the isolated-proof limitations with a bounded shared execution
+slot, persistent packed B, optional resident packed A, device-local FP32 C,
+direct M39b softmax consumption, an exact compute-write/compute-read barrier,
+one final readback, and zero-padding tails with logical-width normalization.
+The 14-shape RTX 3070 corpus passed aligned and awkward correctness with zero
+validation messages.
+
+The final repeat corpus beat A2x4 on 13 of 14 combined-GPU rows (the
+1024x4096x1024 repeat was 0.98x) and beat conventional FP16 on all rows.
+Persistent-B/new-host-A also has three A2x4 losses. The result is therefore an
+experimental selector candidate, disabled by default, rather than a production
+promotion. The source remains here under experimental authority. See
+`PROMETHEUS_M40B_DEVICE_RESIDENT_COOPERATIVE_INFERENCE_PATH.md` and the
+committed M40b JSON artifact for the complete evidence.

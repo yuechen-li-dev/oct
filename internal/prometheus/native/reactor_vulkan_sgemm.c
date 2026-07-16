@@ -982,7 +982,7 @@ static int prom_buffering_reason_to_detail(prom_buffering_reason_code reason) {
 // SGEMM Layout Precision: Packed4 / FP16
 // ============================================================================
 
-static uint16_t prom_float32_to_fp16_bits(float value) {
+uint16_t prom_sgemm_float32_to_fp16_bits(float value) {
   union { float f; uint32_t u; } in;
   uint32_t sign;
   uint32_t exponent;
@@ -1019,7 +1019,7 @@ static uint16_t prom_float32_to_fp16_bits(float value) {
   return (uint16_t)(sign | (exponent << 10u) | (mantissa >> 13u));
 }
 
-static float prom_fp16_bits_to_float32(uint16_t value) {
+float prom_sgemm_fp16_bits_to_float32(uint16_t value) {
   uint32_t sign = ((uint32_t)value & 0x8000u) << 16u;
   uint32_t exponent = ((uint32_t)value >> 10u) & 0x1fu;
   uint32_t mantissa = (uint32_t)value & 0x3ffu;
@@ -1050,8 +1050,8 @@ static float prom_fp16_bits_to_float32(uint16_t value) {
 static void prom_pack_fp16_pairs(const float* src, uint32_t element_count, uint32_t* dst_words) {
   uint32_t i;
   for (i = 0u; i < element_count; i += 2u) {
-    uint16_t lo = prom_float32_to_fp16_bits(src[i]);
-    uint16_t hi = (i + 1u < element_count) ? prom_float32_to_fp16_bits(src[i + 1u]) : (uint16_t)0u;
+    uint16_t lo = prom_sgemm_float32_to_fp16_bits(src[i]);
+    uint16_t hi = (i + 1u < element_count) ? prom_sgemm_float32_to_fp16_bits(src[i + 1u]) : (uint16_t)0u;
     dst_words[i / 2u] = (uint32_t)lo | ((uint32_t)hi << 16u);
   }
 }
@@ -1161,14 +1161,14 @@ static void prom_fp16_prepare_production_tolerance_facts(const float* a,
           ? 1u
           : 0u;
   for (index = 0u; index < (uint64_t)m * (uint64_t)k; ++index) {
-    const float packed = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(a[index]));
+    const float packed = prom_sgemm_fp16_bits_to_float32(prom_sgemm_float32_to_fp16_bits(a[index]));
     const float magnitude = fabsf(a[index]);
     const float error = fabsf(a[index] - packed);
     if (magnitude > max_a) max_a = magnitude;
     if (error > max_a_error) max_a_error = error;
   }
   for (index = 0u; index < (uint64_t)k * (uint64_t)n; ++index) {
-    const float packed = prom_fp16_bits_to_float32(prom_float32_to_fp16_bits(b[index]));
+    const float packed = prom_sgemm_fp16_bits_to_float32(prom_sgemm_float32_to_fp16_bits(b[index]));
     const float magnitude = fabsf(b[index]);
     const float error = fabsf(b[index] - packed);
     if (magnitude > max_b) max_b = magnitude;
@@ -2524,6 +2524,16 @@ static void note_last_execution_shape(prometheus_runtime* rt, uint32_t m, uint32
   rt->last_execution_m = m;
   rt->last_execution_n = n;
   rt->last_execution_k = k;
+}
+
+int prom_reactor_runtime_mark_cooperative_matrix_executable(void* handle) {
+  prometheus_runtime* rt;
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  rt = (prometheus_runtime*)handle;
+  if (rt->cooperative_matrix_feature_enabled == 0u ||
+      rt->cooperative_matrix_state < PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED) return PROM_ERROR;
+  rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
+  return PROM_OK;
 }
 
 static uint64_t prom_wall_clock_now_ns(void) {

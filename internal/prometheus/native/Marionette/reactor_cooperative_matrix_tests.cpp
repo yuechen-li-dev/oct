@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -173,6 +174,32 @@ std::string TimingJson(const TimingStats& stats)
     return out.str();
 }
 
+std::string CommandTraceJson(const prom_m40b_command_trace& trace)
+{
+    std::ostringstream out;
+    out << "{\"entry_count\":" << trace.entry_count
+        << ",\"submit_count\":" << trace.submit_count
+        << ",\"intermediate_buffer_count\":" << trace.intermediate_buffer_count
+        << ",\"intermediate_host_copy_count\":" << trace.intermediate_host_copy_count
+        << ",\"final_readback_copy_count\":" << trace.final_readback_copy_count
+        << ",\"replay_id\":" << trace.replay_id << ",\"entries\":[";
+    for (std::uint32_t index = 0u; index < trace.entry_count; ++index) {
+        const prom_m40b_command_trace_entry& entry = trace.entries[index];
+        if (index != 0u) out << ',';
+        out << "{\"operation\":" << entry.operation
+            << ",\"submit_index\":" << entry.submit_index
+            << ",\"reduction_stage_index\":" << entry.reduction_stage_index
+            << ",\"source_stage_mask\":" << entry.source_stage_mask
+            << ",\"destination_stage_mask\":" << entry.destination_stage_mask
+            << ",\"source_access_mask\":" << entry.source_access_mask
+            << ",\"destination_access_mask\":" << entry.destination_access_mask
+            << ",\"source_queue_family\":" << entry.source_queue_family
+            << ",\"destination_queue_family\":" << entry.destination_queue_family << '}';
+    }
+    out << "]}";
+    return out.str();
+}
+
 std::string ReplayIdentity(const char* kernel, std::uint32_t size, std::uint64_t shaderHash,
                            const char* mode = "kernel-only")
 {
@@ -181,7 +208,177 @@ std::string ReplayIdentity(const char* kernel, std::uint32_t size, std::uint64_t
         << ':' << mode << ':' << std::hex << shaderHash;
     return out.str();
 }
+
+void FillComposedIdentityWorkload(std::vector<float>* a, std::vector<float>* b,
+                                  std::uint32_t m, std::uint32_t n, std::uint32_t k)
+{
+    a->resize(static_cast<std::size_t>(m) * k);
+    b->assign(static_cast<std::size_t>(k) * n, 0.0f);
+    for (std::uint32_t row = 0u; row < m; ++row) {
+        for (std::uint32_t column = 0u; column < k; ++column) {
+            const int value = static_cast<int>((row * 11u + column * 7u) % 29u) - 14;
+            (*a)[static_cast<std::size_t>(row) * k + column] = static_cast<float>(value) / 32.0f;
+        }
+    }
+    for (std::uint32_t diagonal = 0u; diagonal < std::min(n, k); ++diagonal) {
+        (*b)[static_cast<std::size_t>(diagonal) * n + diagonal] = 1.0f;
+    }
+}
+
+std::vector<float> ComposedSoftmaxOracle(const std::vector<float>& a,
+                                         std::uint32_t m, std::uint32_t n, std::uint32_t k,
+                                         bool rounded)
+{
+    std::vector<float> output(static_cast<std::size_t>(m) * n);
+    for (std::uint32_t row = 0u; row < m; ++row) {
+        float maximum = -std::numeric_limits<float>::infinity();
+        for (std::uint32_t column = 0u; column < n; ++column) {
+            float value = column < k ? a[static_cast<std::size_t>(row) * k + column] : 0.0f;
+            if (rounded) value = prom_sgemm_fp16_bits_to_float32(prom_sgemm_float32_to_fp16_bits(value));
+            maximum = std::max(maximum, value);
+        }
+        double denominator = 0.0;
+        for (std::uint32_t column = 0u; column < n; ++column) {
+            float value = column < k ? a[static_cast<std::size_t>(row) * k + column] : 0.0f;
+            if (rounded) value = prom_sgemm_fp16_bits_to_float32(prom_sgemm_float32_to_fp16_bits(value));
+            denominator += std::exp(static_cast<double>(value - maximum));
+        }
+        for (std::uint32_t column = 0u; column < n; ++column) {
+            float value = column < k ? a[static_cast<std::size_t>(row) * k + column] : 0.0f;
+            if (rounded) value = prom_sgemm_fp16_bits_to_float32(prom_sgemm_float32_to_fp16_bits(value));
+            output[static_cast<std::size_t>(row) * n + column] =
+                static_cast<float>(std::exp(static_cast<double>(value - maximum)) / denominator);
+        }
+    }
+    return output;
+}
+
+std::string SoftmaxMismatch(const std::vector<float>& expected, const std::vector<float>& actual,
+                            std::uint32_t m, std::uint32_t n,
+                            const prom_m40b_padding_plan& padding,
+                            std::uint64_t shaderHash, std::uint64_t reductionReplayID)
+{
+    if (expected.size() != actual.size()) return "softmax result size mismatch";
+    for (std::uint32_t row = 0u; row < m; ++row) {
+        double rowSum = 0.0;
+        for (std::uint32_t column = 0u; column < n; ++column) {
+            const std::size_t index = static_cast<std::size_t>(row) * n + column;
+            const float absolute = std::fabs(expected[index] - actual[index]);
+            const float relative = absolute / std::max(std::fabs(expected[index]), 1.0e-20f);
+            rowSum += actual[index];
+            if (!std::isfinite(actual[index]) || actual[index] < -2.0e-7f ||
+                (absolute > 2.0e-5f && relative > 2.0e-4f)) {
+                std::ostringstream message;
+                message << "softmax mismatch row=" << row << " column=" << column
+                        << " expected=" << expected[index] << " actual=" << actual[index]
+                        << " absolute_error=" << absolute << " relative_error=" << relative
+                        << " logical=" << m << 'x' << n
+                        << " padded=" << padding.padded_m << 'x' << padding.padded_n << 'x' << padding.padded_k
+                        << " cooperative_shader_hash64=0x" << std::hex << shaderHash
+                        << " reduction_replay_id=0x" << reductionReplayID;
+                return message.str();
+            }
+        }
+        if (!std::isfinite(rowSum) || std::fabs(rowSum - 1.0) > 2.0e-4) {
+            std::ostringstream message;
+            message << "softmax row-sum mismatch row=" << row << " expected=1 actual=" << rowSum
+                    << " logical=" << m << 'x' << n
+                    << " padded=" << padding.padded_m << 'x' << padding.padded_n << 'x' << padding.padded_k
+                    << " cooperative_shader_hash64=0x" << std::hex << shaderHash
+                    << " reduction_replay_id=0x" << reductionReplayID;
+            return message.str();
+        }
+    }
+    return {};
+}
 } // namespace
+
+FACT(PrometheusM40bBoundedContracts)
+{
+    prom_m40b_padding_plan aligned{};
+    prom_m40b_padding_plan awkward{};
+    ASSERT_EQUAL(PROM_OK, prom_m40b_calculate_padding_plan(128u, 1024u, 1024u, &aligned), "aligned padding plan is valid");
+    ASSERT_EQUAL(128u, aligned.padded_m, "aligned M is unchanged");
+    ASSERT_EQUAL(1024u, aligned.padded_n, "aligned N is unchanged");
+    ASSERT_EQUAL(PROM_OK, prom_m40b_calculate_padding_plan(127u, 1001u, 1023u, &awkward), "awkward padding plan is valid");
+    ASSERT_EQUAL(128u, awkward.padded_m, "awkward M pads to 16");
+    ASSERT_EQUAL(1008u, awkward.padded_n, "awkward N pads to 16");
+    ASSERT_EQUAL(1024u, awkward.padded_k, "awkward K pads to 16");
+    ASSERT_TRUE(awkward.replay_id != aligned.replay_id, "padding identity includes logical and padded shape");
+    ASSERT_TRUE(prom_m40b_calculate_padding_plan(0u, 1u, 1u, &awkward) != PROM_OK, "zero logical regions reject");
+    ASSERT_TRUE(prom_m40b_calculate_padding_plan(UINT32_MAX, 1u, 1u, &awkward) != PROM_OK, "overflowing round-up rejects");
+
+    prom_device_buffer_view view{};
+    view.buffer = reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(1u));
+    view.byte_length = aligned.intermediate_c_bytes;
+    view.element_type = PROM_DEVICE_ELEMENT_F32;
+    view.logical_rows = 128u; view.logical_columns = 1024u; view.row_stride_elements = 1024u;
+    view.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+    view.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+    view.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+    view.owning_device = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(2u));
+    view.owning_lifetime_id = 7u; view.owning_slot_generation = 3u;
+    int32_t detail = 0;
+    ASSERT_EQUAL(PROM_OK, prom_m40b_validate_device_buffer_view(&view, view.owning_device,
+                 PROM_DEVICE_ELEMENT_F32, 128u, 1024u, PROM_DEVICE_ACCESS_COMPUTE_READ, &detail),
+                 "device C view validates without a host pointer");
+    ASSERT_TRUE(prom_m40b_validate_device_buffer_view(&view,
+                reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(3u)), PROM_DEVICE_ELEMENT_F32,
+                128u, 1024u, PROM_DEVICE_ACCESS_COMPUTE_READ, &detail) != PROM_OK,
+                "cross-device handoff rejects");
+    ASSERT_EQUAL(PROM_M40B_DETAIL_CROSS_DEVICE, detail, "cross-device rejection is explicit");
+
+    prom_m40b_command_trace one{};
+    prom_m40b_command_trace two{};
+    prom_m40b_plan_command_trace(PROM_M40B_INPUT_HOST_A_PERSISTENT_B,
+                                 PROM_M40B_SUBMIT_ONE_COMMAND_BUFFER, 1u, &one);
+    prom_m40b_plan_command_trace(PROM_M40B_INPUT_DEVICE_A_PERSISTENT_B,
+                                 PROM_M40B_SUBMIT_TWO_BOUNDED, 5u, &two);
+    ASSERT_EQUAL(1u, one.submit_count, "one-command plan has one submit");
+    ASSERT_EQUAL(2u, two.submit_count, "bounded split plan has two submits");
+    ASSERT_EQUAL(1u, one.intermediate_buffer_count, "exactly one logical C intermediate exists");
+    ASSERT_EQUAL(0u, one.intermediate_host_copy_count, "no host copy occurs between reactors");
+    ASSERT_EQUAL(1u, one.final_readback_copy_count, "only final softmax readback is planned");
+    const auto barrier = std::find_if(one.entries, one.entries + one.entry_count, [](const auto& entry) {
+        return entry.operation == PROM_M40B_TRACE_COMPUTE_WRITE_TO_READ_BARRIER;
+    });
+    ASSERT_TRUE(barrier != one.entries + one.entry_count, "handoff barrier is explicit");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT), barrier->source_stage_mask,
+                 "handoff source stage is compute");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_WRITE_BIT), barrier->source_access_mask,
+                 "handoff source access is shader write");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_READ_BIT), barrier->destination_access_mask,
+                 "handoff destination access is shader read");
+    ASSERT_EQUAL(UINT32_MAX, barrier->source_queue_family, "no queue ownership transfer is planned");
+    ASSERT_TRUE(one.replay_id != two.replay_id, "submit and stage topology participate in replay identity");
+}
+
+FACT(PrometheusM40bExperimentalSelectorPredicate)
+{
+    prom_m40b_selector_facts facts{};
+    facts.capability_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
+    facts.tuple_m = facts.tuple_n = facts.tuple_k = 16u;
+    facts.shader_float16 = facts.vulkan_memory_model = 1u;
+    facts.precision_allows_f16_rounded = 1u;
+    facts.m = 128u; facts.n = 1024u; facts.k = 1024u;
+    facts.padding_supported = facts.persistent_b_available = facts.device_resident_composition = 1u;
+    prom_m40b_selector_decision decision{};
+    prom_m40b_selector_evaluate(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M40B_SELECTOR_DISABLED), decision.reason,
+                 "experimental candidate remains disabled by default");
+    facts.experimental_enabled = 1u;
+    prom_m40b_selector_evaluate(&facts, &decision);
+    ASSERT_EQUAL(1u, decision.eligible, "proven bounded facts are eligible experimentally");
+    ASSERT_EQUAL(0u, decision.selected, "eligibility does not change production selection authority");
+    facts.precision_allows_f16_rounded = 0u;
+    prom_m40b_selector_evaluate(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M40B_SELECTOR_PRECISION), decision.reason,
+                 "precision policy rejection is explicit");
+    facts.precision_allows_f16_rounded = 1u; facts.capability_state = PROM_VK_COOPERATIVE_MATRIX_UNAVAILABLE;
+    prom_m40b_selector_evaluate(&facts, &decision);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M40B_SELECTOR_CAPABILITY), decision.reason,
+                 "extension absence falls back explicitly");
+}
 
 FACT(PrometheusM40aCooperativeMatrixStaticContract)
 {
@@ -256,6 +453,337 @@ FACT(PrometheusM40aCooperativeMatrixHardwareProof)
                  "successful dispatch promotes the audit state to executable");
     ASSERT_EQUAL(0u, services.validation_error_count, "hardware proof is validation clean");
     prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM40bDeviceResidentComposedHardwareProof)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "Vulkan runtime creation succeeds");
+    if (runtime == nullptr) { SKIP("Vulkan runtime unavailable"); }
+    prom_vk_runtime_services services{};
+    prom_reactor_runtime_get_vk_services(runtime, &services);
+    if (services.cooperative_matrix_feature_enabled == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("useful KHR cooperative tuple unavailable");
+    }
+    std::uint64_t generation = 1u;
+    for (const auto shape : {std::array<std::uint32_t, 3>{128u, 1024u, 1024u},
+                             std::array<std::uint32_t, 3>{127u, 1001u, 1023u}}) {
+        const std::uint32_t m = shape[0];
+        const std::uint32_t n = shape[1];
+        const std::uint32_t k = shape[2];
+        std::vector<float> a, b;
+        FillComposedIdentityWorkload(&a, &b, m, n, k);
+        const std::vector<float> expected = ComposedSoftmaxOracle(a, m, n, k, true);
+        std::vector<float> output(static_cast<std::size_t>(m) * n);
+        prom_m40b_prepare_request prepareB{};
+        prepareB.values = b.data(); prepareB.m = m; prepareB.n = n; prepareB.k = k;
+        prepareB.kernel = PROM_M40B_KERNEL_COOPERATIVE; prepareB.generation = generation;
+        prom_m40b_prepare_result preparedB{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_prepare_persistent_b(runtime, &prepareB, &preparedB),
+                     "persistent packed B converts and uploads once");
+        ASSERT_EQUAL(generation, preparedB.generation, "persistent B generation is visible");
+
+        prom_m40b_execution_request hostRequest{};
+        hostRequest.host_a = a.data(); hostRequest.output = output.data();
+        hostRequest.m = m; hostRequest.n = n; hostRequest.k = k;
+        hostRequest.kernel = PROM_M40B_KERNEL_COOPERATIVE;
+        hostRequest.input_mode = PROM_M40B_INPUT_HOST_A_PERSISTENT_B;
+        hostRequest.submit_plan = PROM_M40B_SUBMIT_ONE_COMMAND_BUFFER;
+        hostRequest.required_b_generation = generation;
+        prom_m40b_execution_result hostResult{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &hostRequest, &hostResult),
+                     "host A plus persistent B composes cooperative SGEMM and softmax");
+        const std::string hostMismatch = SoftmaxMismatch(expected, output, m, n, hostResult.padding,
+                                                         hostResult.cooperative_shader_hash,
+                                                         hostResult.reduction_replay_id);
+        ASSERT_TRUE(hostMismatch.empty(), hostMismatch.empty() ?
+                    "one final readback matches stable f16-rounded CPU SGEMM-softmax oracle" : hostMismatch.c_str());
+        ASSERT_EQUAL(1u, hostResult.no_intermediate_host_copy, "C stays device resident through softmax");
+        ASSERT_EQUAL(1u, hostResult.command_trace.intermediate_buffer_count, "one logical C exists");
+        ASSERT_EQUAL(n, hostResult.intermediate_c.logical_columns, "device view carries logical shape explicitly");
+        ASSERT_EQUAL(((n + 15u) & ~15u), hostResult.intermediate_c.row_stride_elements,
+                     "padded C stride remains separate from logical softmax width");
+        ASSERT_TRUE(hostResult.sgemm_gpu_ns > 0u && hostResult.softmax_gpu_ns > 0u && hostResult.combined_gpu_ns > 0u,
+                    "dispatch, softmax, and combined GPU intervals are separate");
+
+        prom_m40b_prepare_request prepareA{};
+        prepareA.values = a.data(); prepareA.m = m; prepareA.n = n; prepareA.k = k;
+        prepareA.kernel = PROM_M40B_KERNEL_COOPERATIVE; prepareA.generation = generation;
+        prom_m40b_prepare_result preparedA{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_prepare_resident_a(runtime, &prepareA, &preparedA),
+                     "packed A residency experiment uploads once");
+        std::fill(output.begin(), output.end(), 0.0f);
+        prom_m40b_execution_request deviceRequest = hostRequest;
+        deviceRequest.host_a = nullptr;
+        deviceRequest.input_mode = PROM_M40B_INPUT_DEVICE_A_PERSISTENT_B;
+        deviceRequest.submit_plan = PROM_M40B_SUBMIT_TWO_BOUNDED;
+        deviceRequest.required_a_generation = generation;
+        prom_m40b_execution_result deviceResult{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &deviceRequest, &deviceResult),
+                     "resident A+B use explicit bounded two-submit dependency");
+        const std::string deviceMismatch = SoftmaxMismatch(expected, output, m, n, deviceResult.padding,
+                                                           deviceResult.cooperative_shader_hash,
+                                                           deviceResult.reduction_replay_id);
+        ASSERT_TRUE(deviceMismatch.empty(), deviceMismatch.empty() ?
+                    "resident A+B result matches oracle" : deviceMismatch.c_str());
+        ASSERT_EQUAL(0u, deviceResult.a_conversion_ns, "resident A skips per-operation conversion");
+        ASSERT_EQUAL(2u, deviceResult.submit_count, "two-submit plan is observed");
+        ASSERT_TRUE(deviceResult.buffer_reuse_count > 0u, "steady execution reuses ring buffers");
+
+        prom_m40b_execution_request stale = deviceRequest;
+        stale.required_b_generation = generation - 1u;
+        ASSERT_TRUE(prom_reactor_runtime_m40b_execute(runtime, &stale, &deviceResult) != PROM_OK,
+                    "stale persistent B generation rejects before dispatch");
+        ASSERT_EQUAL(PROM_M40B_DETAIL_STALE_GENERATION, deviceResult.detail_code, "stale use is diagnosed");
+        generation += 1u;
+    }
+    prom_reactor_runtime_get_vk_services(runtime, &services);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE),
+                 services.cooperative_matrix_state,
+                 "successful composed cooperative execution promotes executable capability state");
+    ASSERT_EQUAL(0u, services.validation_warning_count, "composed proof has zero validation warnings");
+    ASSERT_EQUAL(0u, services.validation_error_count, "composed proof has zero validation errors");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM40bQuarantineReapProtectsPersistentReplacement)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.reduction_ring_depth = 2u;
+    config.reduction_test_flags = PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION;
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&config, &runtime), "fault-injection runtime creation succeeds");
+    if (runtime == nullptr) { SKIP("Vulkan runtime unavailable"); }
+    prom_vk_runtime_services services{};
+    prom_reactor_runtime_get_vk_services(runtime, &services);
+    if (services.cooperative_matrix_feature_enabled == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("useful KHR cooperative tuple unavailable");
+    }
+
+    constexpr std::uint32_t m = 128u;
+    constexpr std::uint32_t n = 320u;
+    constexpr std::uint32_t k = 1024u;
+    std::vector<float> a, b;
+    FillComposedIdentityWorkload(&a, &b, m, n, k);
+    const std::vector<float> expected = ComposedSoftmaxOracle(a, m, n, k, true);
+    std::vector<float> output(static_cast<std::size_t>(m) * n);
+    prom_m40b_prepare_request prepareB{};
+    prepareB.values = b.data(); prepareB.m = m; prepareB.n = n; prepareB.k = k;
+    prepareB.kernel = PROM_M40B_KERNEL_COOPERATIVE; prepareB.generation = 1u;
+    prom_m40b_prepare_result preparedB{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_prepare_persistent_b(runtime, &prepareB, &preparedB),
+                 "initial persistent B preparation succeeds");
+    prom_m40b_execution_request request{};
+    request.host_a = a.data(); request.output = output.data();
+    request.m = m; request.n = n; request.k = k;
+    request.kernel = PROM_M40B_KERNEL_COOPERATIVE;
+    request.input_mode = PROM_M40B_INPUT_HOST_A_PERSISTENT_B;
+    request.submit_plan = PROM_M40B_SUBMIT_ONE_COMMAND_BUFFER;
+    request.required_b_generation = 1u;
+    prom_m40b_execution_result failed{};
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_m40b_execute(runtime, &request, &failed),
+                 "injected post-submit completion uncertainty is surfaced");
+    ASSERT_EQUAL(PROM_M40B_DETAIL_COMPLETION_UNCERTAIN, failed.detail_code,
+                 "uncertain completion has a distinct logical failure");
+    ASSERT_EQUAL(0u, failed.physical_slot_recyclable,
+                 "submitted producer-owned C remains quarantined until physical completion");
+
+    prepareB.generation = 2u;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_prepare_persistent_b(runtime, &prepareB, &preparedB),
+                 "replacement B waits for and reaps all consumers before replacing storage");
+    ASSERT_EQUAL(1u, preparedB.replaced, "persistent B replacement is explicit");
+    request.required_b_generation = 2u;
+    prom_m40b_execution_result recovered{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &recovered),
+                 "ring recovers after the one-shot uncertain completion");
+    const std::string recoveryMismatch = SoftmaxMismatch(expected, output, m, n, recovered.padding,
+                                                         recovered.cooperative_shader_hash,
+                                                         recovered.reduction_replay_id);
+    ASSERT_TRUE(recoveryMismatch.empty(), recoveryMismatch.empty() ?
+                "recovery uses the fresh B generation without stale data" : recoveryMismatch.c_str());
+    PrometheusReductionDiagnostics diagnostics{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction_diagnostics(runtime, &diagnostics),
+                 "composed lifecycle diagnostics are available");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1u), diagnostics.quarantine_count,
+                 "only uncertain submitted work enters quarantine");
+    ASSERT_TRUE(diagnostics.reap_count >= 1u, "persistent replacement physically reaps the quarantined slot");
+    ASSERT_EQUAL(0u, diagnostics.quarantined_slots, "replacement and recovery leave no slot quarantined");
+    prom_reactor_runtime_get_vk_services(runtime, &services);
+    ASSERT_EQUAL(0u, services.validation_warning_count, "lifecycle injection remains validation-warning clean");
+    ASSERT_EQUAL(0u, services.validation_error_count, "lifecycle injection remains validation-error clean");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM40bDeviceResidentInferenceCorpus, 1u)
+{
+    struct Workload { std::uint32_t m; std::uint32_t n; std::uint32_t k; const char* group; };
+    struct ComposedKernel { const char* name; std::uint32_t id; bool rounded; };
+    const std::array<Workload, 14> workloads = {{
+        {128u,1024u,1024u,"aligned"}, {256u,1024u,1024u,"aligned"},
+        {512u,1024u,1024u,"aligned"}, {1024u,1024u,1024u,"aligned"},
+        {256u,4096u,1024u,"aligned"}, {1024u,4096u,1024u,"aligned"},
+        {128u,320u,1024u,"diffusion-width"}, {128u,640u,1024u,"diffusion-width"},
+        {128u,768u,1024u,"diffusion-width"}, {128u,1280u,1024u,"diffusion-width"},
+        {128u,2048u,1024u,"diffusion-width"},
+        {127u,1001u,1023u,"awkward"}, {257u,769u,1025u,"awkward"},
+        {511u,1281u,2049u,"awkward"},
+    }};
+    const std::array<ComposedKernel, 3> kernels = {{
+        {"cooperative", PROM_M40B_KERNEL_COOPERATIVE, true},
+        {"A2x4", PROM_M40B_KERNEL_A2X4, false},
+        {"conventional-fp16", PROM_M40B_KERNEL_CONVENTIONAL_FP16, true},
+    }};
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) { SKIP("Vulkan runtime unavailable"); }
+    prom_vk_runtime_services services{};
+    prom_reactor_runtime_get_vk_services(runtime, &services);
+    if (services.cooperative_matrix_feature_enabled == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("useful KHR cooperative tuple unavailable");
+    }
+    std::uint64_t bGeneration = 1u;
+    std::uint64_t aGeneration = 1u;
+    std::ostringstream json;
+    json << "{\"schema\":\"prometheus.m40b.device-resident-inference.v1\",\"notation\":\"M x N x K\","
+         << "\"warm_repetitions\":5,\"rows\":[";
+    bool firstRow = true;
+    for (const Workload& workload : workloads) {
+        std::vector<float> a, b;
+        FillComposedIdentityWorkload(&a, &b, workload.m, workload.n, workload.k);
+        for (const ComposedKernel& kernel : kernels) {
+            std::vector<float> output(static_cast<std::size_t>(workload.m) * workload.n);
+            const std::vector<float> expected = ComposedSoftmaxOracle(a, workload.m, workload.n, workload.k, kernel.rounded);
+            prom_m40b_prepare_request prepareB{};
+            prepareB.values = b.data(); prepareB.m = workload.m; prepareB.n = workload.n; prepareB.k = workload.k;
+            prepareB.kernel = kernel.id; prepareB.generation = bGeneration++;
+            prom_m40b_prepare_result preparedB{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_prepare_persistent_b(runtime, &prepareB, &preparedB),
+                         "benchmark persistent B preparation succeeds");
+            prom_m40b_execution_request request{};
+            request.host_a = a.data(); request.output = output.data();
+            request.m = workload.m; request.n = workload.n; request.k = workload.k;
+            request.kernel = kernel.id; request.input_mode = PROM_M40B_INPUT_HOST_A_PERSISTENT_B;
+            request.submit_plan = PROM_M40B_SUBMIT_ONE_COMMAND_BUFFER;
+            request.required_b_generation = preparedB.generation;
+            prom_m40b_execution_result first{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &first),
+                         "first persistent-B/new-A invocation succeeds");
+            const std::string firstMismatch = SoftmaxMismatch(expected, output, workload.m, workload.n,
+                                                              first.padding, first.cooperative_shader_hash,
+                                                              first.reduction_replay_id);
+            ASSERT_TRUE(firstMismatch.empty(), firstMismatch.empty() ?
+                        "first composed invocation is correct" : firstMismatch.c_str());
+            const prom_m40b_command_trace hostOneTrace = first.command_trace;
+            std::vector<std::uint64_t> hostSgemm, hostSoftmax, hostCombined, hostReadback, hostEndToEnd;
+            for (std::uint32_t repetition = 0u; repetition < 5u; ++repetition) {
+                prom_m40b_execution_result measured{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &measured),
+                             "warm persistent-B/new-A invocation succeeds");
+                hostSgemm.push_back(measured.sgemm_gpu_ns); hostSoftmax.push_back(measured.softmax_gpu_ns);
+                hostCombined.push_back(measured.combined_gpu_ns); hostReadback.push_back(measured.final_readback_ns);
+                hostEndToEnd.push_back(measured.end_to_end_ns);
+            }
+            prom_m40b_prepare_request prepareA{};
+            prepareA.values = a.data(); prepareA.m = workload.m; prepareA.n = workload.n; prepareA.k = workload.k;
+            prepareA.kernel = kernel.id; prepareA.generation = aGeneration++;
+            prom_m40b_prepare_result preparedA{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_prepare_resident_a(runtime, &prepareA, &preparedA),
+                         "benchmark resident A preparation succeeds");
+            request.host_a = nullptr; request.input_mode = PROM_M40B_INPUT_DEVICE_A_PERSISTENT_B;
+            request.required_a_generation = preparedA.generation;
+            std::vector<std::uint64_t> deviceCombined, deviceEndToEnd, oneSubmitCpu, twoSubmitCombined, twoSubmitCpu;
+            prom_m40b_execution_result last{};
+            for (std::uint32_t repetition = 0u; repetition < 5u; ++repetition) {
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &last),
+                             "resident A+B invocation succeeds");
+                deviceCombined.push_back(last.combined_gpu_ns); deviceEndToEnd.push_back(last.end_to_end_ns);
+                oneSubmitCpu.push_back(last.cpu_submission_ns);
+            }
+            const std::string residentMismatch = SoftmaxMismatch(expected, output, workload.m, workload.n,
+                                                                 last.padding, last.cooperative_shader_hash,
+                                                                 last.reduction_replay_id);
+            ASSERT_TRUE(residentMismatch.empty(), residentMismatch.empty() ?
+                        "resident A+B composed output is correct" : residentMismatch.c_str());
+            const prom_m40b_command_trace residentOneTrace = last.command_trace;
+            request.submit_plan = PROM_M40B_SUBMIT_TWO_BOUNDED;
+            for (std::uint32_t repetition = 0u; repetition < 3u; ++repetition) {
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &last),
+                             "bounded two-submit comparison succeeds");
+                twoSubmitCombined.push_back(last.combined_gpu_ns); twoSubmitCpu.push_back(last.cpu_submission_ns);
+            }
+            const prom_m40b_command_trace residentTwoTrace = last.command_trace;
+            std::uint64_t repeat10Median = 0u;
+            std::uint64_t repeat100Median = 0u;
+            if (kernel.id == PROM_M40B_KERNEL_COOPERATIVE && workload.m == 128u && workload.n == 1024u && workload.k == 1024u) {
+                std::vector<std::uint64_t> repeat10;
+                std::vector<std::uint64_t> repeat100;
+                request.submit_plan = PROM_M40B_SUBMIT_ONE_COMMAND_BUFFER;
+                for (std::uint32_t repetition = 0u; repetition < 10u; ++repetition) {
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &last), "10-operation replay succeeds");
+                    repeat10.push_back(last.end_to_end_ns);
+                }
+                for (std::uint32_t repetition = 0u; repetition < 100u; ++repetition) {
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m40b_execute(runtime, &request, &last), "100-operation replay succeeds");
+                    repeat100.push_back(last.end_to_end_ns);
+                }
+                repeat10Median = Stats(repeat10).median;
+                repeat100Median = Stats(repeat100).median;
+            }
+            if (!firstRow) json << ',';
+            firstRow = false;
+            json << "{\"kernel\":\"" << kernel.name << "\",\"precision\":\""
+                 << (kernel.rounded ? "f16-rounded-input-f32-accum-output" : "fp32-input-accum-output")
+                 << "\",\"group\":\"" << workload.group << "\",\"m\":" << workload.m
+                 << ",\"n\":" << workload.n << ",\"k\":" << workload.k
+                 << ",\"padded_m\":" << first.padding.padded_m << ",\"padded_n\":" << first.padding.padded_n
+                 << ",\"padded_k\":" << first.padding.padded_k << ",\"correct\":true"
+                 << ",\"b_prepare\":{\"conversion_ns\":" << preparedB.conversion_ns
+                 << ",\"upload_ns\":" << preparedB.upload_ns << ",\"generation\":" << preparedB.generation << '}'
+                 << ",\"a_resident_prepare\":{\"conversion_ns\":" << preparedA.conversion_ns
+                 << ",\"upload_ns\":" << preparedA.upload_ns << ",\"generation\":" << preparedA.generation << '}'
+                 << ",\"first\":{\"sgemm_gpu_ns\":" << first.sgemm_gpu_ns
+                 << ",\"softmax_gpu_ns\":" << first.softmax_gpu_ns << ",\"combined_gpu_ns\":" << first.combined_gpu_ns
+                 << ",\"readback_ns\":" << first.final_readback_ns << ",\"end_to_end_ns\":" << first.end_to_end_ns << '}'
+                 << ",\"persistent_b_new_a\":{\"sgemm\":" << TimingJson(Stats(hostSgemm))
+                 << ",\"softmax\":" << TimingJson(Stats(hostSoftmax)) << ",\"combined\":" << TimingJson(Stats(hostCombined))
+                 << ",\"readback\":" << TimingJson(Stats(hostReadback)) << ",\"end_to_end\":" << TimingJson(Stats(hostEndToEnd)) << '}'
+                 << ",\"device_a_b\":{\"combined\":" << TimingJson(Stats(deviceCombined))
+                 << ",\"end_to_end\":" << TimingJson(Stats(deviceEndToEnd)) << '}'
+                 << ",\"submit_comparison\":{\"one_cpu\":" << TimingJson(Stats(oneSubmitCpu))
+                 << ",\"two_cpu\":" << TimingJson(Stats(twoSubmitCpu))
+                 << ",\"two_combined\":" << TimingJson(Stats(twoSubmitCombined)) << '}'
+                 << ",\"repeat_10_median_end_to_end_ns\":" << repeat10Median
+                 << ",\"repeat_100_median_end_to_end_ns\":" << repeat100Median
+                 << ",\"command_plan_replay_id\":" << last.command_plan_replay_id
+                 << ",\"command_traces\":{\"host_one\":" << CommandTraceJson(hostOneTrace)
+                 << ",\"resident_one\":" << CommandTraceJson(residentOneTrace)
+                 << ",\"resident_two\":" << CommandTraceJson(residentTwoTrace) << '}'
+                 << ",\"reduction_replay_id\":" << last.reduction_replay_id
+                 << ",\"shader_hash\":" << last.cooperative_shader_hash
+                 << ",\"retained_bytes\":" << last.retained_bytes
+                 << ",\"buffer_grows\":" << last.buffer_allocation_count
+                 << ",\"buffer_reuses\":" << last.buffer_reuse_count
+                 << ",\"descriptor_updates\":" << last.descriptor_update_count
+                 << ",\"pipeline_count\":" << last.pipeline_create_count
+                 << ",\"command_buffer_reuses\":" << last.command_buffer_reuse_count << '}';
+        }
+    }
+    prom_reactor_runtime_get_vk_services(runtime, &services);
+    json << "],\"capability\":{\"state\":" << services.cooperative_matrix_state
+         << ",\"tuple\":\"subgroup-m16-n16-k16-f16-f16-f32-f32\",\"subgroup_size\":" << services.subgroup_size
+         << "},\"validation\":{\"warnings\":" << services.validation_warning_count
+         << ",\"errors\":" << services.validation_error_count << "}}";
+    ASSERT_EQUAL(0u, services.validation_warning_count, "corpus has zero validation warnings");
+    ASSERT_EQUAL(0u, services.validation_error_count, "corpus has zero validation errors");
+    prom_reactor_runtime_destroy_impl(runtime);
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m40b_device_resident_inference.json", json.str()),
+                "M40b benchmark artifact is written");
 }
 
 VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM40aCooperativeMatrixComparison, 1u)

@@ -218,6 +218,243 @@ typedef struct prom_sgemm_audit_execution_result {
   uint64_t c_memory_offset;
 } prom_sgemm_audit_execution_result;
 
+/* M40b's internal, bounded reactor handoff.  This is intentionally Vulkan-
+   facing and is not part of the public Oct ABI. */
+typedef enum prom_device_element_type {
+  PROM_DEVICE_ELEMENT_F16_PACKED_X2 = 1u,
+  PROM_DEVICE_ELEMENT_F32 = 2u,
+} prom_device_element_type;
+
+typedef enum prom_device_buffer_layout {
+  PROM_DEVICE_LAYOUT_ROW_MAJOR = 1u,
+} prom_device_buffer_layout;
+
+typedef enum prom_device_access_state {
+  PROM_DEVICE_ACCESS_TRANSFER_WRITE = 1u,
+  PROM_DEVICE_ACCESS_COMPUTE_READ = 2u,
+  PROM_DEVICE_ACCESS_COMPUTE_WRITE = 3u,
+  PROM_DEVICE_ACCESS_HOST_READ = 4u,
+} prom_device_access_state;
+
+typedef struct prom_device_buffer_view {
+  VkBuffer buffer;
+  VkDeviceSize offset;
+  VkDeviceSize byte_length;
+  uint32_t element_type;
+  uint32_t logical_rows;
+  uint32_t logical_columns;
+  uint32_t row_stride_elements;
+  uint32_t layout;
+  uint32_t producer_access;
+  uint32_t required_consumer_access;
+  VkDevice owning_device;
+  uint64_t owning_lifetime_id;
+  uint32_t owning_slot_id;
+  uint32_t owning_slot_generation;
+} prom_device_buffer_view;
+
+typedef struct prom_m40b_padding_plan {
+  uint32_t logical_m;
+  uint32_t logical_n;
+  uint32_t logical_k;
+  uint32_t padded_m;
+  uint32_t padded_n;
+  uint32_t padded_k;
+  uint64_t packed_a_bytes;
+  uint64_t packed_b_bytes;
+  uint64_t intermediate_c_bytes;
+  uint64_t logical_output_bytes;
+  uint64_t replay_id;
+} prom_m40b_padding_plan;
+
+typedef enum prom_m40b_kernel {
+  PROM_M40B_KERNEL_COOPERATIVE = 1u,
+  PROM_M40B_KERNEL_A2X4 = 2u,
+  PROM_M40B_KERNEL_CONVENTIONAL_FP16 = 3u,
+} prom_m40b_kernel;
+
+typedef enum prom_m40b_input_mode {
+  PROM_M40B_INPUT_HOST_A_PERSISTENT_B = 1u,
+  PROM_M40B_INPUT_DEVICE_A_PERSISTENT_B = 2u,
+} prom_m40b_input_mode;
+
+typedef enum prom_m40b_submit_plan {
+  PROM_M40B_SUBMIT_ONE_COMMAND_BUFFER = 1u,
+  PROM_M40B_SUBMIT_TWO_BOUNDED = 2u,
+} prom_m40b_submit_plan;
+
+typedef enum prom_m40b_trace_operation {
+  PROM_M40B_TRACE_UPLOAD_A = 1u,
+  PROM_M40B_TRACE_BIND_SGEMM_PIPELINE = 2u,
+  PROM_M40B_TRACE_BIND_SGEMM_DESCRIPTORS = 3u,
+  PROM_M40B_TRACE_PUSH_SGEMM_CONSTANTS = 4u,
+  PROM_M40B_TRACE_TIMESTAMP_SGEMM_BEGIN = 5u,
+  PROM_M40B_TRACE_DISPATCH_SGEMM = 6u,
+  PROM_M40B_TRACE_TIMESTAMP_SGEMM_END = 7u,
+  PROM_M40B_TRACE_EXPOSE_DEVICE_C = 8u,
+  PROM_M40B_TRACE_COMPUTE_WRITE_TO_READ_BARRIER = 9u,
+  PROM_M40B_TRACE_SUBMIT_DEPENDENCY = 10u,
+  PROM_M40B_TRACE_TIMESTAMP_SOFTMAX_BEGIN = 11u,
+  PROM_M40B_TRACE_BIND_SOFTMAX_PIPELINE = 12u,
+  PROM_M40B_TRACE_BIND_SOFTMAX_DESCRIPTORS = 13u,
+  PROM_M40B_TRACE_PUSH_SOFTMAX_CONSTANTS = 14u,
+  PROM_M40B_TRACE_DISPATCH_SOFTMAX = 15u,
+  PROM_M40B_TRACE_SOFTMAX_STAGE_BARRIER = 16u,
+  PROM_M40B_TRACE_TIMESTAMP_SOFTMAX_END = 17u,
+  PROM_M40B_TRACE_COMPUTE_WRITE_TO_TRANSFER_READ_BARRIER = 18u,
+  PROM_M40B_TRACE_COPY_FINAL_READBACK = 19u,
+  PROM_M40B_TRACE_TIMESTAMP_READBACK_END = 20u,
+} prom_m40b_trace_operation;
+
+#define PROM_M40B_MAX_COMMAND_TRACE_ENTRIES 40u
+
+typedef struct prom_m40b_command_trace_entry {
+  uint32_t operation;
+  uint32_t submit_index;
+  uint32_t reduction_stage_index;
+  uint32_t source_stage_mask;
+  uint32_t destination_stage_mask;
+  uint32_t source_access_mask;
+  uint32_t destination_access_mask;
+  uint32_t source_queue_family;
+  uint32_t destination_queue_family;
+} prom_m40b_command_trace_entry;
+
+typedef struct prom_m40b_command_trace {
+  uint32_t entry_count;
+  uint32_t submit_count;
+  uint32_t intermediate_buffer_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t final_readback_copy_count;
+  uint64_t replay_id;
+  prom_m40b_command_trace_entry entries[PROM_M40B_MAX_COMMAND_TRACE_ENTRIES];
+} prom_m40b_command_trace;
+
+typedef struct prom_m40b_prepare_request {
+  const float* values;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t kernel;
+  uint64_t generation;
+} prom_m40b_prepare_request;
+
+typedef struct prom_m40b_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t generation;
+  uint64_t conversion_ns;
+  uint64_t upload_ns;
+  uint64_t retained_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+  prom_m40b_padding_plan padding;
+} prom_m40b_prepare_result;
+
+typedef struct prom_m40b_execution_request {
+  const float* host_a;
+  float* output;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t kernel;
+  uint32_t input_mode;
+  uint32_t submit_plan;
+  uint64_t required_b_generation;
+  uint64_t required_a_generation;
+} prom_m40b_execution_request;
+
+typedef struct prom_m40b_execution_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t validation_error_count_before;
+  uint32_t validation_error_count_after;
+  uint64_t a_conversion_ns;
+  uint64_t a_upload_ns;
+  uint64_t sgemm_gpu_ns;
+  uint64_t handoff_gpu_ns;
+  uint64_t softmax_gpu_ns;
+  uint64_t combined_gpu_ns;
+  uint64_t final_readback_ns;
+  uint64_t cpu_submission_ns;
+  uint64_t end_to_end_ns;
+  uint64_t command_plan_replay_id;
+  uint64_t reduction_replay_id;
+  uint64_t cooperative_shader_hash;
+  uint64_t persistent_b_generation;
+  uint64_t resident_a_generation;
+  uint64_t retained_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint32_t reduction_stage_count;
+  uint32_t submit_count;
+  uint32_t correctness_readback_count;
+  uint32_t no_intermediate_host_copy;
+  prom_m40b_padding_plan padding;
+  prom_device_buffer_view intermediate_c;
+  prom_m40b_command_trace command_trace;
+} prom_m40b_execution_result;
+
+typedef enum prom_m40b_selector_reason {
+  PROM_M40B_SELECTOR_ELIGIBLE = 0u,
+  PROM_M40B_SELECTOR_DISABLED = 1u,
+  PROM_M40B_SELECTOR_CAPABILITY = 2u,
+  PROM_M40B_SELECTOR_TUPLE = 3u,
+  PROM_M40B_SELECTOR_PRECISION = 4u,
+  PROM_M40B_SELECTOR_SHAPE = 5u,
+  PROM_M40B_SELECTOR_PADDING = 6u,
+  PROM_M40B_SELECTOR_PERSISTENT_B = 7u,
+  PROM_M40B_SELECTOR_RESIDENCY = 8u,
+  PROM_M40B_SELECTOR_ROLLBACK = 9u,
+} prom_m40b_selector_reason;
+
+typedef struct prom_m40b_selector_facts {
+  uint32_t experimental_enabled;
+  uint32_t capability_state;
+  uint32_t tuple_m;
+  uint32_t tuple_n;
+  uint32_t tuple_k;
+  uint32_t shader_float16;
+  uint32_t vulkan_memory_model;
+  uint32_t precision_allows_f16_rounded;
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t padding_supported;
+  uint32_t persistent_b_available;
+  uint32_t device_resident_composition;
+  uint32_t rollback_active;
+} prom_m40b_selector_facts;
+
+typedef struct prom_m40b_selector_decision {
+  uint32_t eligible;
+  uint32_t selected;
+  uint32_t reason;
+  uint64_t replay_id;
+} prom_m40b_selector_decision;
+
+enum {
+  PROM_M40B_DETAIL_INVALID_REQUEST = -6901,
+  PROM_M40B_DETAIL_SIZE_OVERFLOW = -6902,
+  PROM_M40B_DETAIL_INVALID_VIEW = -6903,
+  PROM_M40B_DETAIL_CROSS_DEVICE = -6904,
+  PROM_M40B_DETAIL_STALE_GENERATION = -6905,
+  PROM_M40B_DETAIL_CAPABILITY = -6906,
+  PROM_M40B_DETAIL_RESOURCE = -6907,
+  PROM_M40B_DETAIL_COMMAND = -6908,
+  PROM_M40B_DETAIL_SUBMIT = -6909,
+  PROM_M40B_DETAIL_COMPLETION_UNCERTAIN = -6910,
+  PROM_M40B_DETAIL_QUERY = -6911,
+  PROM_M40B_DETAIL_READBACK = -6912,
+};
+
 enum {
   PROM_SGEMM_AUDIT_TIMESTAMP_RESET_QUERY = 1u << 0u,
   PROM_SGEMM_AUDIT_TIMESTAMP_START = 1u << 1u,
@@ -257,6 +494,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle);
 
 int prom_reactor_runtime_validate_handle(void* handle);
 int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services* out_services);
+int prom_reactor_runtime_mark_cooperative_matrix_executable(void* handle);
 
 int prom_reactor_runtime_fft_impl(void* handle,
                                   const PrometheusFftRequest* request,
@@ -293,6 +531,32 @@ int prom_reduction_compare(const PrometheusReductionRequest* request,
                            const float* expected,
                            const float* actual,
                            PrometheusReductionBenchmarkResult* out_result);
+int prom_m40b_calculate_padding_plan(uint32_t m, uint32_t n, uint32_t k,
+                                    prom_m40b_padding_plan* out_plan);
+int prom_m40b_validate_device_buffer_view(const prom_device_buffer_view* view,
+                                          VkDevice expected_device,
+                                          uint32_t expected_element_type,
+                                          uint32_t expected_rows,
+                                          uint32_t expected_columns,
+                                          uint32_t expected_consumer_access,
+                                          int32_t* out_detail);
+void prom_m40b_plan_command_trace(uint32_t input_mode,
+                                  uint32_t submit_plan,
+                                  uint32_t reduction_stage_count,
+                                  prom_m40b_command_trace* out_trace);
+void prom_m40b_selector_evaluate(const prom_m40b_selector_facts* facts,
+                                 prom_m40b_selector_decision* out_decision);
+int prom_reactor_runtime_m40b_prepare_persistent_b(void* handle,
+                                                   const prom_m40b_prepare_request* request,
+                                                   prom_m40b_prepare_result* out_result);
+int prom_reactor_runtime_m40b_prepare_resident_a(void* handle,
+                                                 const prom_m40b_prepare_request* request,
+                                                 prom_m40b_prepare_result* out_result);
+int prom_reactor_runtime_m40b_execute(void* handle,
+                                      const prom_m40b_execution_request* request,
+                                      prom_m40b_execution_result* out_result);
+uint16_t prom_sgemm_float32_to_fp16_bits(float value);
+float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);
 void* prom_reactor_runtime_reduction_state(void* handle);
 int prom_reactor_runtime_set_reduction_state(void* handle, void* state);

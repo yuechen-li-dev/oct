@@ -54,7 +54,10 @@
       "entry_point": "CooperativeSgemmF16F32M16N16K16_CS",
       "local_size": [32,1,1],
       "implementation_identity": "m40a-khr-subgroup-m16n16k16-f16-f16-f32-f32-aligned-v1",
-      "tail_policy": "reject unless M,N,K are multiples of 16"
+      "tail_policy": "isolated M40a audit rejects tails; bounded M40b composition zero-pads M,N,K to 16 and preserves logical softmax width",
+      "m40b_composed_identity": "m40b-device-resident-sgemm-softmax-padding-v1",
+      "experimental_selector_candidate": true,
+      "experimental_selector_enabled_by_default": false
     }
   ],
   "compute_implementations": [
