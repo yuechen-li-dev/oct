@@ -399,6 +399,152 @@ std::uint64_t MedianGroupHeadMetric(const std::vector<prom_m43_attention_group_r
     std::sort(values.begin(), values.end());
     return values.empty() ? 0u : values[values.size() / 2u];
 }
+
+void FillOutputProjectionWeight(std::vector<float>* wo,
+                                std::uint32_t headDim,
+                                std::uint32_t modelWidth)
+{
+    wo->resize(static_cast<std::size_t>(PROM_M44_HEAD_COUNT) * headDim * modelWidth);
+    for (std::size_t index = 0u; index < wo->size(); ++index) {
+        const int value = static_cast<int>((index * 23u + 11u) % 37u) - 18;
+        (*wo)[index] = static_cast<float>(value) / 256.0f;
+    }
+}
+
+bool PrepareOutputProjectionWeight(void* runtime,
+                                   const std::vector<float>& wo,
+                                   std::uint32_t headDim,
+                                   std::uint32_t modelWidth,
+                                   std::uint64_t generation,
+                                   prom_m44_wo_prepare_result* outResult = nullptr)
+{
+    prom_m44_wo_prepare_request request{};
+    request.values = wo.data();
+    request.element_count = static_cast<std::uint64_t>(PROM_M44_HEAD_COUNT) * headDim * modelWidth;
+    request.head_count = PROM_M44_HEAD_COUNT;
+    request.head_dim = headDim;
+    request.model_width = modelWidth;
+    request.generation = generation;
+    prom_m44_wo_prepare_result result{};
+    const bool ok = prom_reactor_runtime_m44_prepare_wo(runtime, &request, &result) == PROM_OK &&
+                    result.generation == generation && result.hash != 0u;
+    if (outResult != nullptr) *outResult = result;
+    return ok;
+}
+
+prom_m44_reference_result OutputProjectionReference(const std::vector<float>& headMajor,
+                                                    const std::vector<float>& wo,
+                                                    std::uint32_t tokens,
+                                                    std::uint32_t headDim,
+                                                    std::uint32_t modelWidth,
+                                                    std::uint32_t precision,
+                                                    std::vector<float>* output,
+                                                    std::vector<float>* concatenated = nullptr)
+{
+    output->assign(static_cast<std::size_t>(tokens) * modelWidth, 0.0f);
+    if (concatenated != nullptr) {
+        concatenated->assign(static_cast<std::size_t>(tokens) * PROM_M44_HEAD_COUNT * headDim, 0.0f);
+    }
+    prom_m44_reference_request request{};
+    request.head_major = headMajor.data();
+    request.wo = wo.data();
+    request.concatenated = concatenated == nullptr ? nullptr : concatenated->data();
+    request.output = output->data();
+    request.head_major_element_count = headMajor.size();
+    request.wo_element_count = wo.size();
+    request.output_element_count = output->size();
+    request.head_count = PROM_M44_HEAD_COUNT;
+    request.tokens = tokens;
+    request.head_dim = headDim;
+    request.model_width = modelWidth;
+    request.precision_policy = precision;
+    prom_m44_reference_result result{};
+    if (prom_m44_output_projection_cpu_reference(&request, &result) != PROM_OK) result.all_finite = 0u;
+    return result;
+}
+
+void FillM44ComposedRequest(prom_m44_composed_request* request,
+                            const float* hostX,
+                            float* output,
+                            std::uint32_t tokens,
+                            std::uint32_t modelWidth,
+                            std::uint32_t headDim,
+                            std::uint32_t aggregation,
+                            std::uint32_t projection,
+                            std::uint32_t submitPlan,
+                            std::uint32_t inputMode,
+                            std::uint64_t xGeneration,
+                            std::uint64_t woGeneration)
+{
+    *request = {};
+    FillGroupExecutionRequest(&request->attention, hostX, nullptr, tokens, modelWidth, headDim,
+                              PROM_M43_STRATEGY_PROJECTION_GROUPED, inputMode, xGeneration);
+    request->output = output;
+    request->output_element_count = static_cast<std::uint64_t>(tokens) * modelWidth;
+    request->aggregation_strategy = aggregation;
+    request->projection_path = projection;
+    request->submit_plan = submitPlan;
+    request->required_wo_generation = woGeneration;
+}
+
+struct M44BenchmarkRecord
+{
+    std::string workload;
+    std::string strategy;
+    std::string path;
+    std::string submitPlan;
+    std::uint32_t tokens = 0u;
+    std::uint32_t headDim = 0u;
+    std::uint32_t modelWidth = 0u;
+    std::uint64_t replayId = 0u;
+    std::uint64_t m43ReplayId = 0u;
+    std::uint64_t woPreparationNs = 0u;
+    std::uint64_t woPreparationGpuNs = 0u;
+    std::uint64_t m43GpuNs = 0u;
+    std::uint64_t aggregationGpuNs = 0u;
+    std::uint64_t projectionGpuNs = 0u;
+    std::uint64_t accumulationGpuNs = 0u;
+    std::uint64_t m44GpuNs = 0u;
+    std::uint64_t totalGpuNs = 0u;
+    std::uint64_t cpuRecordingNs = 0u;
+    std::uint64_t cpuSubmissionNs = 0u;
+    std::uint64_t finalReadbackNs = 0u;
+    std::uint64_t endToEndNs = 0u;
+    std::uint64_t cpuConcatenateNs = 0u;
+    std::uint64_t cpuPackNs = 0u;
+    std::uint64_t temporaryBytes = 0u;
+    std::uint64_t retainedBytes = 0u;
+    std::uint64_t exactBytes = 0u;
+    std::uint64_t sourceHeadBytes = 0u;
+    std::uint64_t contiguousF32Bytes = 0u;
+    std::uint64_t contiguousPackedBytes = 0u;
+    std::uint64_t partialOutputBytes = 0u;
+    std::uint64_t accumulationBytes = 0u;
+    std::uint64_t woUploadBytes = 0u;
+    std::uint64_t woF32Bytes = 0u;
+    std::uint64_t woPackedBytes = 0u;
+    std::uint64_t finalYBytes = 0u;
+    std::uint64_t finalReadbackBytes = 0u;
+    std::uint32_t reusableDescriptorSets = 0u;
+    std::uint32_t descriptorBindings = 0u;
+    std::uint32_t submitCount = 0u;
+    std::uint32_t dispatchCount = 0u;
+    std::uint32_t barrierCalls = 0u;
+    std::uint32_t barrierBuffers = 0u;
+    std::uint32_t copyRegions = 0u;
+    std::uint32_t intermediateHostCopies = 0u;
+    bool correct = false;
+};
+
+std::uint64_t MedianM44Metric(const std::vector<prom_m44_composed_result>& results,
+                              std::uint64_t prom_m44_composed_result::*member)
+{
+    std::vector<std::uint64_t> values;
+    values.reserve(results.size());
+    for (const prom_m44_composed_result& result : results) values.push_back(result.*member);
+    std::sort(values.begin(), values.end());
+    return values.empty() ? 0u : values[values.size() / 2u];
+}
 }
 
 FACT(PrometheusM42BoundedAttentionPlanContracts)
@@ -1283,6 +1429,532 @@ FACT(PrometheusM43GroupedCpuOracleAndMismatchLocalization)
                  "mismatch evidence carries the aggregate replay identity");
 }
 
+FACT(PrometheusM44OutputProjectionContracts)
+{
+    prom_m44_plan_request request{};
+    request.head_count = PROM_M44_HEAD_COUNT;
+    request.tokens = 128u;
+    request.head_dim = 128u;
+    request.model_width = 1024u;
+    request.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
+    request.aggregation_strategy = PROM_M44_AGGREGATION_INTERLEAVE;
+    request.projection_path = PROM_M44_PROJECTION_COOPERATIVE;
+    request.submit_plan = PROM_M44_SUBMIT_ONE_COMMAND_BUFFER;
+    request.cooperative_capability_state = PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED;
+    request.wo_generation = 700u;
+    request.wo_hash = 701u;
+    request.m43_aggregate_replay_id = 702u;
+    const VkDevice device = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(101u));
+    for (std::uint32_t head = 0u; head < PROM_M44_HEAD_COUNT; ++head) {
+        prom_device_buffer_view& view = request.head_views[head];
+        view.buffer = reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(head + 1u));
+        view.byte_length = static_cast<VkDeviceSize>(128u * 128u * sizeof(float));
+        view.element_type = PROM_DEVICE_ELEMENT_F32;
+        view.logical_rows = 128u;
+        view.logical_columns = 128u;
+        view.row_stride_elements = 128u;
+        view.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+        view.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+        view.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+        view.owning_device = device;
+        view.owning_lifetime_id = 900u;
+        view.owning_slot_id = 1u;
+        view.owning_slot_generation = 4u;
+    }
+    prom_m44_output_projection_plan interleave{};
+    ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &interleave),
+                 "the primary eight-view interleave plan builds");
+    ASSERT_EQUAL(1024u, interleave.concatenated_width,
+                 "eight HeadDim=128 views concatenate to logical width 1024");
+    ASSERT_EQUAL(1024u, interleave.output_row_stride,
+                 "the aligned cooperative Y stride is explicit");
+    ASSERT_EQUAL(1u, interleave.eligibility.eligible,
+                 "the complete primary cooperative plan is eligible");
+    ASSERT_EQUAL(0u, interleave.intermediate_host_copy_count,
+                 "the device interleave has no host concatenate");
+    ASSERT_EQUAL(1u, interleave.final_readback_count,
+                 "the device plan has one final Y readback");
+    ASSERT_TRUE(interleave.memory.contiguous_packed_bytes > 0u &&
+                interleave.memory.contiguous_f32_bytes == 0u,
+                "packed interleave retains only the selected concatenation representation");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_STAGE_HEADS_READY),
+                 interleave.stages[0].operation,
+                 "all eight producer views become visible before aggregation");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_STAGE_FINAL_READBACK),
+                 interleave.stages[interleave.stage_count - 1u].operation,
+                 "final readback remains last");
+    ASSERT_EQUAL(PROM_M44_HEAD_COUNT, interleave.stages[0].barrier_buffer_count,
+                 "the producer barrier names all eight head ranges");
+    for (std::uint32_t stage = 0u; stage < interleave.stage_count; ++stage) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(VK_QUEUE_FAMILY_IGNORED),
+                     interleave.stages[stage].source_queue_family,
+                     "M44 never transfers queue ownership");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(VK_QUEUE_FAMILY_IGNORED),
+                     interleave.stages[stage].destination_queue_family,
+                     "M44 retains the shared compute queue");
+    }
+    prom_m44_output_projection_plan replay{};
+    ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &replay),
+                 "the identical plan rebuilds");
+    ASSERT_EQUAL(interleave.replay_id, replay.replay_id,
+                 "M44 replay identity is deterministic");
+    request.wo_generation += 1u;
+    ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &replay),
+                 "a newer Wo generation replans");
+    ASSERT_TRUE(interleave.replay_id != replay.replay_id,
+                "Wo generation participates in replay identity");
+    request.wo_generation -= 1u;
+
+    request.aggregation_strategy = PROM_M44_AGGREGATION_DIRECT_SEGMENTED;
+    request.projection_path = PROM_M44_PROJECTION_DIRECT_SEGMENTED_FP16;
+    prom_m44_output_projection_plan direct{};
+    ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &direct),
+                 "the bounded direct segmented plan builds");
+    ASSERT_EQUAL(0u, direct.memory.contiguous_packed_bytes,
+                 "direct projection materializes no full concatenate buffer");
+    ASSERT_EQUAL(0u, direct.memory.partial_output_bytes,
+                 "the selected direct route needs no eight-output partial tensor");
+    ASSERT_EQUAL(1u, direct.dispatch_count,
+                 "direct aggregation and projection are one bounded dispatch");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_STAGE_DIRECT_PROJECTION),
+                 direct.stages[1].operation,
+                 "the direct stage is explicit in the command trace");
+
+    request.head_views[1].buffer = request.head_views[0].buffer;
+    prom_m44_output_projection_plan overlap{};
+    ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &overlap),
+                 "overlap is represented as a deterministic eligibility result");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_INELIGIBLE_VIEW_OVERLAP),
+                 overlap.eligibility.reason, "overlapping head ranges reject exactly");
+    request.head_views[1].buffer =
+        reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(2u));
+    request.head_views[2].owning_slot_generation = 0u;
+    ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &overlap),
+                 "a stale view remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_INELIGIBLE_VIEW_GENERATION),
+                 overlap.eligibility.reason, "stale physical identity has an exact generation reason");
+    request.head_views[2].owning_slot_generation = 4u;
+    request.head_count = 7u;
+    ASSERT_TRUE(prom_m44_output_projection_plan_build(&request, &overlap) != PROM_OK,
+                "M44 never generalizes beyond exactly eight heads");
+}
+
+FACT(PrometheusM44ConcatenationAndCpuOracle)
+{
+    constexpr std::uint32_t tokens = 3u;
+    constexpr std::uint32_t headDim = 2u;
+    constexpr std::uint32_t modelWidth = 5u;
+    std::vector<float> heads(static_cast<std::size_t>(PROM_M44_HEAD_COUNT) * tokens * headDim);
+    for (std::size_t index = 0u; index < heads.size(); ++index) {
+        heads[index] = static_cast<float>(static_cast<int>(index) - 17) / 17.0f;
+    }
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    std::vector<float> roundedOutput;
+    std::vector<float> concatenated;
+    const prom_m44_reference_result rounded =
+        OutputProjectionReference(heads, wo, tokens, headDim, modelWidth,
+                                  PROM_M42_PRECISION_F16_ROUNDED,
+                                  &roundedOutput, &concatenated);
+    ASSERT_EQUAL(1u, rounded.all_finite, "the rounded M44 oracle remains finite");
+    for (std::uint32_t token = 0u; token < tokens; ++token) {
+        for (std::uint32_t head = 0u; head < PROM_M44_HEAD_COUNT; ++head) {
+            for (std::uint32_t column = 0u; column < headDim; ++column) {
+                const std::uint64_t source =
+                    (static_cast<std::uint64_t>(head) * tokens + token) * headDim + column;
+                const std::uint64_t destination =
+                    prom_m44_concat_index(token, head, column, tokens, headDim);
+                const float expected = prom_sgemm_fp16_bits_to_float32(
+                    prom_sgemm_float32_to_fp16_bits(heads[source]));
+                ASSERT_NEAR(expected, concatenated[destination], 0.0f,
+                            "token-major C[token,head*HeadDim+column] is exact after rounding");
+            }
+        }
+    }
+    ASSERT_EQUAL(UINT64_MAX, prom_m44_concat_index(tokens, 0u, 0u, tokens, headDim),
+                 "out-of-range concatenation coordinates reject");
+    std::vector<float> exactOutput;
+    const prom_m44_reference_result exact =
+        OutputProjectionReference(heads, wo, tokens, headDim, modelWidth,
+                                  PROM_M42_PRECISION_FP32, &exactOutput);
+    ASSERT_EQUAL(1u, exact.all_finite, "the FP32 comparison oracle remains finite");
+    ASSERT_TRUE(roundedOutput != exactOutput,
+                "the reduced and exact precision contracts are not silently conflated");
+    prom_m44_mismatch mismatch{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(roundedOutput.data(), roundedOutput.data(),
+                                                     tokens, modelWidth, 1.0e-6f, 1.0e-6f,
+                                                     PROM_M44_AGGREGATION_INTERLEAVE,
+                                                     7u, 11u, 13u, &mismatch),
+                 "identical projected outputs compare");
+    std::vector<float> actual = roundedOutput;
+    actual[static_cast<std::size_t>(2u) * modelWidth + 3u] += 1.0f;
+    ASSERT_TRUE(prom_m44_output_projection_compare(roundedOutput.data(), actual.data(),
+                                                   tokens, modelWidth, 1.0e-6f, 1.0e-6f,
+                                                   PROM_M44_AGGREGATION_DIRECT_SEGMENTED,
+                                                   7u, 11u, 13u, &mismatch) != PROM_OK,
+                "the first M44 mismatch is surfaced");
+    ASSERT_EQUAL(2u, mismatch.token, "mismatch token is explicit");
+    ASSERT_EQUAL(3u, mismatch.output_column, "mismatch output column is explicit");
+    ASSERT_EQUAL(7u, mismatch.wo_generation, "mismatch carries the Wo generation");
+    ASSERT_EQUAL(11u, mismatch.m43_aggregate_replay_id,
+                 "mismatch carries the M43 aggregate replay identity");
+    ASSERT_EQUAL(13u, mismatch.m44_replay_id,
+                 "mismatch carries the M44 replay identity");
+}
+
+FACT(PrometheusM44ComposedHardwareProof)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) {
+        SKIP("Vulkan runtime unavailable");
+    }
+    prom_vk_runtime_services services{};
+    if (prom_reactor_runtime_get_vk_services(runtime, &services) != PROM_OK ||
+        services.cooperative_matrix_feature_enabled == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("M44 hardware proof requires the proven cooperative tuple");
+    }
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t headDim = 16u;
+    constexpr std::uint64_t woGeneration = 500u;
+    std::vector<float> x;
+    GroupWeights weights;
+    FillGroupInputs(&x, &weights, tokens, modelWidth, headDim);
+    ASSERT_TRUE(PrepareGroupWeights(runtime, weights, modelWidth, headDim),
+                "M44 proof prepares the 24 M43 weights");
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    prom_m44_wo_prepare_result preparedWo{};
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth,
+                                              woGeneration, &preparedWo),
+                "persistent Wo prepares once in FP32 and packed forms");
+    ASSERT_TRUE(preparedWo.gpu_upload_and_pack_ns > 0u && preparedWo.retained_bytes > 0u,
+                "one-time Wo preparation and retention are measured");
+    std::vector<float> headReference;
+    const prom_m43_reference_result groupedReference =
+        GroupReference(x, weights, tokens, modelWidth, headDim, &headReference);
+    ASSERT_EQUAL(1u, groupedReference.all_finite, "the M43 source oracle succeeds");
+    std::vector<float> roundedExpected;
+    const prom_m44_reference_result roundedReference =
+        OutputProjectionReference(headReference, wo, tokens, headDim, modelWidth,
+                                  PROM_M42_PRECISION_F16_ROUNDED, &roundedExpected);
+    ASSERT_EQUAL(1u, roundedReference.all_finite, "the rounded M44 oracle succeeds");
+    std::vector<float> output(roundedExpected.size(), 0.0f);
+    prom_m44_composed_request request{};
+    FillM44ComposedRequest(&request, x.data(), output.data(), tokens, modelWidth, headDim,
+                           PROM_M44_AGGREGATION_INTERLEAVE,
+                           PROM_M44_PROJECTION_COOPERATIVE,
+                           PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+                           PROM_M42_INPUT_HOST_X, 1u, woGeneration);
+    prom_m44_composed_result interleave{};
+    const int interleaveStatus = prom_reactor_runtime_m44_execute_composed(runtime, &request, &interleave);
+    ASSERT_EQUAL(0, interleave.detail_code, "successful M44 detail remains zero");
+    ASSERT_EQUAL(0u, interleave.stage, "successful M44 stage remains zero");
+    ASSERT_EQUAL(PROM_OK, interleaveStatus,
+                 "M43 and packed interleave cooperative projection execute in one submit");
+    ASSERT_EQUAL(1u, interleave.submit_count, "the preferred path uses one command buffer/submit");
+    ASSERT_EQUAL(1u, interleave.final_readback_count, "only final Y is read back");
+    ASSERT_EQUAL(1u, interleave.no_intermediate_host_copy,
+                 "the composed device plan never reads back the eight heads");
+    ASSERT_EQUAL(0u, interleave.attention.final_readback_count,
+                 "M43's terminal benchmark readback is removed in composition");
+    ASSERT_TRUE(interleave.aggregation_gpu_ns > 0u && interleave.projection_gpu_ns > 0u &&
+                interleave.m44_gpu_ns > 0u && interleave.total_m43_m44_gpu_ns > interleave.m44_gpu_ns,
+                "aggregation, projection, M44, and product intervals are distinct");
+    ASSERT_EQUAL(tokens, interleave.output_view.logical_rows,
+                 "Y view retains its logical token count");
+    ASSERT_EQUAL(modelWidth, interleave.output_view.logical_columns,
+                 "Y view retains its logical model width");
+    ASSERT_EQUAL(modelWidth, interleave.output_view.row_stride_elements,
+                 "aligned Y is contiguous row-major");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_DEVICE_ACCESS_COMPUTE_READ),
+                 interleave.output_view.required_consumer_access,
+                 "Y is ready for a future bounded device consumer");
+    for (std::uint32_t head = 0u; head < PROM_M44_HEAD_COUNT; ++head) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_DEVICE_ACCESS_COMPUTE_READ),
+                     interleave.attention.head_output_view[head].required_consumer_access,
+                     "every M43 head view names its M44 consumer access");
+        ASSERT_EQUAL(interleave.logical_request_id,
+                     interleave.attention.head_output_view[head].owning_lifetime_id,
+                     "all heads remain under the composed logical lifetime");
+    }
+    prom_m44_mismatch mismatch{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(roundedExpected.data(), output.data(),
+                                                     tokens, modelWidth, 8.0e-3f, 3.0e-2f,
+                                                     interleave.plan.aggregation_strategy,
+                                                     woGeneration,
+                                                     interleave.plan.m43_aggregate_replay_id,
+                                                     interleave.plan.replay_id, &mismatch),
+                 "packed interleave cooperative Y matches the exact rounded oracle");
+
+    std::fill(output.begin(), output.end(), 0.0f);
+    request.aggregation_strategy = PROM_M44_AGGREGATION_DIRECT_SEGMENTED;
+    request.projection_path = PROM_M44_PROJECTION_DIRECT_SEGMENTED_FP16;
+    prom_m44_composed_result direct{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &direct),
+                 "the direct eight-segment projection executes without a concatenate buffer");
+    ASSERT_EQUAL(0u, direct.plan.memory.contiguous_packed_bytes,
+                 "direct execution materializes no hidden C");
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(roundedExpected.data(), output.data(),
+                                                     tokens, modelWidth, 3.0e-3f, 2.0e-2f,
+                                                     direct.plan.aggregation_strategy,
+                                                     woGeneration,
+                                                     direct.plan.m43_aggregate_replay_id,
+                                                     direct.plan.replay_id, &mismatch),
+                 "direct segmented Y matches the same rounded oracle");
+
+    std::fill(output.begin(), output.end(), 0.0f);
+    request.aggregation_strategy = PROM_M44_AGGREGATION_INTERLEAVE;
+    request.projection_path = PROM_M44_PROJECTION_CONVENTIONAL_FP16;
+    prom_m44_composed_result conventional{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &conventional),
+                 "the same-precision conventional FP16 fallback executes");
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(roundedExpected.data(), output.data(),
+                                                     tokens, modelWidth, 8.0e-3f, 3.0e-2f,
+                                                     conventional.plan.aggregation_strategy,
+                                                     woGeneration,
+                                                     conventional.plan.m43_aggregate_replay_id,
+                                                     conventional.plan.replay_id, &mismatch),
+                 "conventional FP16 consumes the identical rounded input contract");
+
+    std::vector<float> exactExpected;
+    const prom_m44_reference_result exactReference =
+        OutputProjectionReference(headReference, wo, tokens, headDim, modelWidth,
+                                  PROM_M42_PRECISION_FP32, &exactExpected);
+    ASSERT_EQUAL(1u, exactReference.all_finite, "the FP32 product oracle succeeds");
+    std::fill(output.begin(), output.end(), 0.0f);
+    request.projection_path = PROM_M44_PROJECTION_A2X4_FP32;
+    prom_m44_composed_result a2x4{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &a2x4),
+                 "device interleave plus A2x4 FP32 executes as a labeled baseline");
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(exactExpected.data(), output.data(),
+                                                     tokens, modelWidth, 3.0e-3f, 2.0e-2f,
+                                                     a2x4.plan.aggregation_strategy,
+                                                     woGeneration,
+                                                     a2x4.plan.m43_aggregate_replay_id,
+                                                     a2x4.plan.replay_id, &mismatch),
+                 "A2x4 Y matches the separately labeled FP32 oracle");
+
+    std::fill(output.begin(), output.end(), 0.0f);
+    request.projection_path = PROM_M44_PROJECTION_COOPERATIVE;
+    request.submit_plan = PROM_M44_SUBMIT_TWO_BOUNDED;
+    prom_m44_composed_result twoSubmit{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &twoSubmit),
+                 "the semaphore-linked bounded second-submit comparison executes");
+    ASSERT_EQUAL(2u, twoSubmit.submit_count, "the comparison reports two submissions");
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(roundedExpected.data(), output.data(),
+                                                     tokens, modelWidth, 8.0e-3f, 3.0e-2f,
+                                                     twoSubmit.plan.aggregation_strategy,
+                                                     woGeneration,
+                                                     twoSubmit.plan.m43_aggregate_replay_id,
+                                                     twoSubmit.plan.replay_id, &mismatch),
+                 "two-submit composition preserves Y");
+    prom_m44_composed_result twoSubmitWarm{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &twoSubmitWarm),
+                 "the second physical ring slot reaches warm capacity");
+    prom_m44_composed_result twoSubmitWarmAgain{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &twoSubmitWarmAgain),
+                 "the warmed composed path repeats");
+    ASSERT_EQUAL(twoSubmitWarm.buffer_allocation_count, twoSubmitWarmAgain.buffer_allocation_count,
+                 "warm M43+M44 execution performs no Vulkan buffer allocation");
+
+    std::vector<float> actualHeads(headReference.size(), 0.0f);
+    prom_m43_attention_group_request groupedRequest{};
+    FillGroupExecutionRequest(&groupedRequest, x.data(), actualHeads.data(), tokens, modelWidth, headDim,
+                              PROM_M43_STRATEGY_PROJECTION_GROUPED, PROM_M42_INPUT_HOST_X, 1u);
+    prom_m43_attention_group_result grouped{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m43_execute(runtime, &groupedRequest, &grouped),
+                 "the audit-only bad baseline first copies M43 heads to host");
+    prom_m44_host_bounce_request hostRequest{};
+    hostRequest.head_major = actualHeads.data();
+    hostRequest.head_major_element_count = actualHeads.size();
+    hostRequest.output = output.data();
+    hostRequest.output_element_count = output.size();
+    hostRequest.head_count = PROM_M44_HEAD_COUNT;
+    hostRequest.tokens = tokens;
+    hostRequest.head_dim = headDim;
+    hostRequest.model_width = modelWidth;
+    hostRequest.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
+    hostRequest.projection_path = PROM_M44_PROJECTION_COOPERATIVE;
+    hostRequest.required_wo_generation = woGeneration;
+    hostRequest.m43_aggregate_replay_id = grouped.plan.aggregate_replay_id;
+    prom_m44_host_bounce_result hostBounce{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_host_bounce(runtime, &hostRequest, &hostBounce),
+                 "CPU concatenate/reupload/output-projection baseline executes");
+    ASSERT_EQUAL(1u, hostBounce.intermediate_host_copy_count,
+                 "the audit baseline labels its device-residency violation");
+    ASSERT_TRUE(hostBounce.cpu_concatenate_ns > 0u && hostBounce.projection_gpu_ns > 0u &&
+                hostBounce.end_to_end_ns > 0u,
+                "host bounce records concatenate, projection, and end-to-end cost");
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(roundedExpected.data(), output.data(),
+                                                     tokens, modelWidth, 8.0e-3f, 3.0e-2f,
+                                                     PROM_M44_AGGREGATION_INTERLEAVE,
+                                                     woGeneration,
+                                                     grouped.plan.aggregate_replay_id,
+                                                     hostBounce.replay_id, &mismatch),
+                 "host-bounce Y matches the rounded oracle");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                 "M44 services remain available");
+    ASSERT_EQUAL(0u, services.validation_warning_count,
+                 "M44 hardware proof is validation-warning clean");
+    ASSERT_EQUAL(0u, services.validation_error_count,
+                 "M44 hardware proof is validation-error clean");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM44LifecycleFaultsAndWoReplacement)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) {
+        SKIP("Vulkan runtime unavailable");
+    }
+    prom_vk_runtime_services services{};
+    if (prom_reactor_runtime_get_vk_services(runtime, &services) != PROM_OK ||
+        services.cooperative_matrix_feature_enabled == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("M44 lifecycle proof requires the proven cooperative tuple");
+    }
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t headDim = 16u;
+    std::vector<float> x;
+    GroupWeights weights;
+    FillGroupInputs(&x, &weights, tokens, modelWidth, headDim);
+    ASSERT_TRUE(PrepareGroupWeights(runtime, weights, modelWidth, headDim),
+                "fault proof prepares M43 weights");
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth, 800u),
+                "fault proof prepares Wo generation 800");
+    std::vector<float> output(static_cast<std::size_t>(tokens) * modelWidth);
+    prom_m44_composed_request request{};
+    FillM44ComposedRequest(&request, x.data(), output.data(), tokens, modelWidth, headDim,
+                           PROM_M44_AGGREGATION_INTERLEAVE,
+                           PROM_M44_PROJECTION_COOPERATIVE,
+                           PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+                           PROM_M42_INPUT_HOST_X, 1u, 800u);
+    for (const std::uint32_t fault : {PROM_M44_FAULT_BEFORE_AGGREGATION,
+                                      PROM_M44_FAULT_DURING_INTERLEAVE,
+                                      PROM_M44_FAULT_AFTER_INTERLEAVE,
+                                      PROM_M44_FAULT_BEFORE_FINAL_READBACK,
+                                      PROM_M44_FAULT_AFTER_PROJECTION_SUBMIT}) {
+        request.fault_point = fault;
+        prom_m44_composed_result failed{};
+        ASSERT_TRUE(prom_reactor_runtime_m44_execute_composed(runtime, &request, &failed) != PROM_OK,
+                    "a bounded M44 logical fault is surfaced");
+        ASSERT_EQUAL(PROM_M44_DETAIL_FAULT_INJECTED, failed.detail_code,
+                     "known-complete M44 fault remains a logical failure");
+        ASSERT_EQUAL(1u, failed.physical_slot_recyclable,
+                     "known fence completion keeps the composed slot recyclable");
+    }
+    request.aggregation_strategy = PROM_M44_AGGREGATION_DIRECT_SEGMENTED;
+    request.projection_path = PROM_M44_PROJECTION_DIRECT_SEGMENTED_FP16;
+    request.fault_point = PROM_M44_FAULT_MID_DIRECT_PROJECTION;
+    prom_m44_composed_result failedDirect{};
+    ASSERT_TRUE(prom_reactor_runtime_m44_execute_composed(runtime, &request, &failedDirect) != PROM_OK,
+                "mid-direct fault is surfaced");
+    ASSERT_EQUAL(1u, failedDirect.physical_slot_recyclable,
+                 "known-complete direct work remains recyclable");
+    request.aggregation_strategy = PROM_M44_AGGREGATION_INTERLEAVE;
+    request.projection_path = PROM_M44_PROJECTION_COOPERATIVE;
+    request.fault_point = PROM_M44_FAULT_UNCERTAIN_COMPLETION;
+    prom_m44_composed_result uncertain{};
+    ASSERT_TRUE(prom_reactor_runtime_m44_execute_composed(runtime, &request, &uncertain) != PROM_OK,
+                "uncertain projection completion is surfaced");
+    ASSERT_EQUAL(PROM_M44_DETAIL_COMPLETION_UNCERTAIN, uncertain.detail_code,
+                 "uncertain completion remains distinct from logical failure");
+    ASSERT_EQUAL(0u, uncertain.physical_slot_recyclable,
+                 "uncertain M44 completion quarantines the complete M43+M44 slot");
+    prom_m44_wo_prepare_result replaced{};
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth, 801u, &replaced),
+                "Wo replacement waits for and reaps the in-flight composed group");
+    ASSERT_EQUAL(1u, replaced.replaced, "Wo replacement is explicit");
+    request.fault_point = PROM_M44_FAULT_NONE;
+    prom_m44_composed_result stale{};
+    ASSERT_TRUE(prom_reactor_runtime_m44_execute_composed(runtime, &request, &stale) != PROM_OK,
+                "the stale Wo generation rejects");
+    ASSERT_EQUAL(PROM_M44_DETAIL_STALE_WO_GENERATION, stale.detail_code,
+                 "stale Wo rejection is exact");
+    request.required_wo_generation = 801u;
+    prom_m44_composed_result recovered{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &recovered),
+                 "the fresh Wo generation recovers after reap");
+    PrometheusReductionDiagnostics diagnostics{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction_diagnostics(runtime, &diagnostics),
+                 "M44 lifecycle diagnostics remain available");
+    ASSERT_TRUE(diagnostics.quarantine_count >= 1u,
+                "uncertain M44 work entered quarantine");
+    ASSERT_TRUE(diagnostics.reap_count >= 1u,
+                "Wo replacement physically reaped the owning slot");
+    ASSERT_EQUAL(0u, diagnostics.quarantined_slots,
+                 "recovery leaves no M44 slot quarantined");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM44ExtensionAbsentUsesConventionalFallback)
+{
+    EnvironmentValue disabled("PROMETHEUS_VK_DISABLE_COOPERATIVE_MATRIX", "1");
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) {
+        SKIP("Vulkan runtime unavailable");
+    }
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t headDim = 16u;
+    std::vector<float> x;
+    GroupWeights weights;
+    FillGroupInputs(&x, &weights, tokens, modelWidth, headDim);
+    ASSERT_TRUE(PrepareGroupWeights(runtime, weights, modelWidth, headDim),
+                "M43 weights prepare without cooperative capability");
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth, 900u),
+                "Wo prepares without cooperative capability");
+    std::vector<float> headReference;
+    GroupReference(x, weights, tokens, modelWidth, headDim, &headReference);
+    std::vector<float> expected;
+    OutputProjectionReference(headReference, wo, tokens, headDim, modelWidth,
+                              PROM_M42_PRECISION_F16_ROUNDED, &expected);
+    std::vector<float> output(expected.size());
+    prom_m44_composed_request request{};
+    FillM44ComposedRequest(&request, x.data(), output.data(), tokens, modelWidth, headDim,
+                           PROM_M44_AGGREGATION_INTERLEAVE,
+                           PROM_M44_PROJECTION_COOPERATIVE,
+                           PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+                           PROM_M42_INPUT_HOST_X, 1u, 900u);
+    prom_m44_composed_result result{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &result),
+                 "complete attention through Y remains available without the extension");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_PROJECTION_CONVENTIONAL_FP16),
+                 result.plan.projection_path,
+                 "M44 records the same-precision conventional fallback");
+    for (std::uint32_t head = 0u; head < PROM_M44_HEAD_COUNT; ++head) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M42_PATH_CONVENTIONAL_FP16),
+                     result.attention.plan.selected_path[head],
+                     "M43 also records each per-head conventional fallback");
+    }
+    prom_m44_mismatch mismatch{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_m44_output_projection_compare(expected.data(), output.data(),
+                                                     tokens, modelWidth, 8.0e-3f, 3.0e-2f,
+                                                     result.plan.aggregation_strategy,
+                                                     900u, result.plan.m43_aggregate_replay_id,
+                                                     result.plan.replay_id, &mismatch),
+                 "extension-disabled Y matches the rounded oracle");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
 FACT(PrometheusM43GroupedAttentionHardwareProof)
 {
     EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
@@ -1860,4 +2532,462 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM43AttentionCorpus, 1u)
     ASSERT_TRUE(context.WriteTextArtifact("prometheus_m43_bounded_grouped_attention.json", json.str()),
                 "M43 benchmark artifact is written");
     prom_reactor_runtime_destroy_impl(runtime);
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM44AttentionOutputProjectionCorpus, 1u)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    struct Workload
+    {
+        const char* name;
+        std::uint32_t tokens;
+        std::uint32_t headDim;
+        std::uint32_t modelWidth;
+        bool primary;
+    };
+    const std::array<Workload, 6> workloads = {{
+        {"tiny", 16u, 16u, 128u, false},
+        {"primary", 128u, 128u, 1024u, true},
+        {"more_tokens", 256u, 128u, 1024u, false},
+        {"larger_head", 128u, 256u, 1024u, false},
+        {"awkward", 127u, 127u, 1001u, false},
+        {"softmax_boundary", 1024u, 64u, 128u, false},
+    }};
+    struct Strategy
+    {
+        const char* name;
+        const char* path;
+        const char* submit;
+        std::uint32_t aggregation;
+        std::uint32_t projection;
+        std::uint32_t submitPlan;
+        std::uint32_t precision;
+    };
+    const std::array<Strategy, 5> strategies = {{
+        {"interleave", "cooperative", "one", PROM_M44_AGGREGATION_INTERLEAVE,
+         PROM_M44_PROJECTION_COOPERATIVE, PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+         PROM_M42_PRECISION_F16_ROUNDED},
+        {"interleave", "a2x4_fp32", "one", PROM_M44_AGGREGATION_INTERLEAVE,
+         PROM_M44_PROJECTION_A2X4_FP32, PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+         PROM_M42_PRECISION_FP32},
+        {"interleave", "conventional_fp16", "one", PROM_M44_AGGREGATION_INTERLEAVE,
+         PROM_M44_PROJECTION_CONVENTIONAL_FP16, PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+         PROM_M42_PRECISION_F16_ROUNDED},
+        {"direct_segmented", "direct_fp16", "one", PROM_M44_AGGREGATION_DIRECT_SEGMENTED,
+         PROM_M44_PROJECTION_DIRECT_SEGMENTED_FP16, PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+         PROM_M42_PRECISION_F16_ROUNDED},
+        {"interleave", "cooperative", "two", PROM_M44_AGGREGATION_INTERLEAVE,
+         PROM_M44_PROJECTION_COOPERATIVE, PROM_M44_SUBMIT_TWO_BOUNDED,
+         PROM_M42_PRECISION_F16_ROUNDED},
+    }};
+    std::vector<M44BenchmarkRecord> records;
+    std::uint64_t warm10Gpu = 0u;
+    std::uint64_t warm10EndToEnd = 0u;
+    std::uint64_t warm100Gpu = 0u;
+    std::uint64_t warm100EndToEnd = 0u;
+    std::uint32_t totalWarnings = 0u;
+    std::uint32_t totalErrors = 0u;
+    for (const Workload& workload : workloads) {
+        void* runtime = nullptr;
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime),
+                     "M44 corpus runtime creates");
+        prom_vk_runtime_services services{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                     "M44 corpus services are available");
+        if (services.cooperative_matrix_feature_enabled == 0u) {
+            prom_reactor_runtime_destroy_impl(runtime);
+            SKIP("M44 corpus requires the proven cooperative tuple");
+        }
+        std::vector<float> x;
+        GroupWeights weights;
+        FillGroupInputs(&x, &weights, workload.tokens, workload.modelWidth, workload.headDim);
+        ASSERT_TRUE(PrepareGroupWeights(runtime, weights, workload.modelWidth, workload.headDim),
+                    "M44 corpus prepares 24 M43 weights");
+        prom_m43_resident_x_prepare_request prepareX{};
+        prepareX.x = x.data();
+        prepareX.element_count = x.size();
+        prepareX.tokens = workload.tokens;
+        prepareX.model_width = workload.modelWidth;
+        prepareX.generation = 77u;
+        prom_m43_resident_x_prepare_result preparedX{};
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &preparedX),
+                     "M44 corpus prepares resident shared X");
+        std::vector<float> wo;
+        FillOutputProjectionWeight(&wo, workload.headDim, workload.modelWidth);
+        prom_m44_wo_prepare_result preparedWo{};
+        ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, workload.headDim,
+                                                  workload.modelWidth, 500u, &preparedWo),
+                    "M44 corpus prepares persistent Wo");
+        std::vector<float> headExpected;
+        const prom_m43_reference_result headReference =
+            GroupReference(x, weights, workload.tokens, workload.modelWidth,
+                           workload.headDim, &headExpected);
+        ASSERT_EQUAL(1u, headReference.all_finite, "M43 corpus source oracle succeeds");
+        std::vector<float> roundedExpected;
+        std::vector<float> exactExpected;
+        ASSERT_EQUAL(1u,
+                     OutputProjectionReference(headExpected, wo, workload.tokens, workload.headDim,
+                                               workload.modelWidth, PROM_M42_PRECISION_F16_ROUNDED,
+                                               &roundedExpected).all_finite,
+                     "rounded M44 corpus oracle succeeds");
+        ASSERT_EQUAL(1u,
+                     OutputProjectionReference(headExpected, wo, workload.tokens, workload.headDim,
+                                               workload.modelWidth, PROM_M42_PRECISION_FP32,
+                                               &exactExpected).all_finite,
+                     "FP32 M44 corpus oracle succeeds");
+        for (const Strategy& strategy : strategies) {
+            std::vector<float> primedOutput(
+                static_cast<std::size_t>(workload.tokens) * workload.modelWidth);
+            prom_m44_composed_request primeRequest{};
+            FillM44ComposedRequest(&primeRequest, nullptr, primedOutput.data(), workload.tokens,
+                                   workload.modelWidth, workload.headDim,
+                                   strategy.aggregation, strategy.projection, strategy.submitPlan,
+                                   PROM_M42_INPUT_RESIDENT_X, 77u, 500u);
+            for (std::uint32_t slot = 0u; slot < 2u; ++slot) {
+                prom_m44_composed_result primed{};
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_m44_execute_composed(runtime, &primeRequest, &primed),
+                             "M44 corpus primes both grow-only slots for every plan");
+            }
+        }
+        for (const Strategy& strategy : strategies) {
+            std::vector<float> output(static_cast<std::size_t>(workload.tokens) * workload.modelWidth);
+            prom_m44_composed_request request{};
+            FillM44ComposedRequest(&request, nullptr, output.data(), workload.tokens,
+                                   workload.modelWidth, workload.headDim,
+                                   strategy.aggregation, strategy.projection, strategy.submitPlan,
+                                   PROM_M42_INPUT_RESIDENT_X, 77u, 500u);
+            // A conservative 32 executions keeps fresh-runtime GPU power-state
+            // ramp outside the sample window for every corpus shape. With only
+            // two, the first strategy could carry a repeatable ~10x penalty.
+            for (std::uint32_t warmup = 0u; warmup < 32u; ++warmup) {
+                prom_m44_composed_result warm{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &warm),
+                             "M44 corpus warmup succeeds");
+            }
+            std::vector<prom_m44_composed_result> measurements;
+            for (std::uint32_t iteration = 0u; iteration < 5u; ++iteration) {
+                prom_m44_composed_result measured{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &measured),
+                             "M44 corpus measurement succeeds");
+                measurements.push_back(measured);
+            }
+            const std::vector<float>& expected =
+                strategy.precision == PROM_M42_PRECISION_FP32 ? exactExpected : roundedExpected;
+            prom_m44_mismatch mismatch{};
+            const bool correct =
+                prom_m44_output_projection_compare(expected.data(), output.data(),
+                                                    workload.tokens, workload.modelWidth,
+                                                    1.0e-2f, 4.0e-2f,
+                                                    strategy.aggregation, 500u,
+                                                    measurements.back().plan.m43_aggregate_replay_id,
+                                                    measurements.back().plan.replay_id,
+                                                    &mismatch) == PROM_OK;
+            ASSERT_TRUE(correct, "M44 corpus Y matches its precision-specific oracle");
+            const prom_m44_composed_result& last = measurements.back();
+            M44BenchmarkRecord record{};
+            record.workload = workload.name;
+            record.strategy = strategy.name;
+            record.path = strategy.path;
+            record.submitPlan = strategy.submit;
+            record.tokens = workload.tokens;
+            record.headDim = workload.headDim;
+            record.modelWidth = workload.modelWidth;
+            record.replayId = last.plan.replay_id;
+            record.m43ReplayId = last.plan.m43_aggregate_replay_id;
+            record.woPreparationNs = preparedWo.upload_and_pack_ns + preparedWo.validation_hash_ns;
+            record.woPreparationGpuNs = preparedWo.gpu_upload_and_pack_ns;
+            {
+                std::vector<std::uint64_t> values;
+                for (const prom_m44_composed_result& value : measurements)
+                    values.push_back(value.attention.grouped_attention_gpu_ns);
+                std::sort(values.begin(), values.end());
+                record.m43GpuNs = values[values.size() / 2u];
+            }
+            record.aggregationGpuNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::aggregation_gpu_ns);
+            record.projectionGpuNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::projection_gpu_ns);
+            record.accumulationGpuNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::accumulation_gpu_ns);
+            record.m44GpuNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::m44_gpu_ns);
+            record.totalGpuNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::total_m43_m44_gpu_ns);
+            record.cpuRecordingNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::cpu_recording_ns);
+            record.cpuSubmissionNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::cpu_submission_ns);
+            record.finalReadbackNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::final_readback_ns);
+            record.endToEndNs = MedianM44Metric(measurements,
+                &prom_m44_composed_result::end_to_end_ns);
+            record.temporaryBytes = last.plan.memory.contiguous_f32_bytes +
+                                    last.plan.memory.contiguous_packed_bytes +
+                                    last.plan.memory.partial_output_bytes +
+                                    last.plan.memory.accumulation_bytes;
+            record.retainedBytes = last.retained_bytes;
+            record.exactBytes = last.exact_request_bytes;
+            record.sourceHeadBytes = last.plan.memory.source_head_bytes;
+            record.contiguousF32Bytes = last.plan.memory.contiguous_f32_bytes;
+            record.contiguousPackedBytes = last.plan.memory.contiguous_packed_bytes;
+            record.partialOutputBytes = last.plan.memory.partial_output_bytes;
+            record.accumulationBytes = last.plan.memory.accumulation_bytes;
+            record.woUploadBytes = last.plan.memory.wo_upload_bytes;
+            record.woF32Bytes = last.plan.memory.wo_f32_bytes;
+            record.woPackedBytes = last.plan.memory.wo_packed_bytes;
+            record.finalYBytes = last.plan.memory.final_y_bytes;
+            record.finalReadbackBytes = last.plan.memory.final_readback_bytes;
+            record.reusableDescriptorSets = last.plan.memory.reusable_descriptor_set_count;
+            record.descriptorBindings = last.plan.memory.descriptor_binding_count;
+            record.submitCount = last.submit_count;
+            record.dispatchCount = last.attention.plan.dispatch_count + last.plan.dispatch_count;
+            record.barrierCalls = last.attention.plan.barrier_call_count + last.plan.barrier_call_count;
+            record.barrierBuffers = last.attention.plan.barrier_buffer_count + last.plan.barrier_buffer_count;
+            record.copyRegions = last.plan.copy_region_count;
+            record.intermediateHostCopies = 0u;
+            record.correct = correct;
+            records.push_back(record);
+            if (workload.primary && strategy.aggregation == PROM_M44_AGGREGATION_INTERLEAVE &&
+                strategy.projection == PROM_M44_PROJECTION_COOPERATIVE &&
+                strategy.submitPlan == PROM_M44_SUBMIT_ONE_COMMAND_BUFFER) {
+                std::vector<prom_m44_composed_result> repeated10;
+                std::vector<prom_m44_composed_result> repeated100;
+                for (std::uint32_t repeat = 0u; repeat < 10u; ++repeat) {
+                    prom_m44_composed_result value{};
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &value),
+                                 "M44 primary 10-repeat succeeds");
+                    repeated10.push_back(value);
+                }
+                for (std::uint32_t repeat = 0u; repeat < 100u; ++repeat) {
+                    prom_m44_composed_result value{};
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &request, &value),
+                                 "M44 primary 100-repeat succeeds");
+                    repeated100.push_back(value);
+                }
+                warm10Gpu = MedianM44Metric(repeated10, &prom_m44_composed_result::total_m43_m44_gpu_ns);
+                warm10EndToEnd = MedianM44Metric(repeated10, &prom_m44_composed_result::end_to_end_ns);
+                warm100Gpu = MedianM44Metric(repeated100, &prom_m44_composed_result::total_m43_m44_gpu_ns);
+                warm100EndToEnd = MedianM44Metric(repeated100, &prom_m44_composed_result::end_to_end_ns);
+            }
+        }
+
+        std::vector<float> actualHeads(headExpected.size());
+        prom_m43_attention_group_request groupedRequest{};
+        FillGroupExecutionRequest(&groupedRequest, nullptr, actualHeads.data(), workload.tokens,
+                                  workload.modelWidth, workload.headDim,
+                                  PROM_M43_STRATEGY_PROJECTION_GROUPED,
+                                  PROM_M42_INPUT_RESIDENT_X, 77u);
+        std::vector<prom_m43_attention_group_result> m43Measurements;
+        std::vector<prom_m44_host_bounce_result> hostMeasurements;
+        std::vector<std::uint64_t> hostProductGpu;
+        std::vector<std::uint64_t> hostProductEndToEnd;
+        for (std::uint32_t iteration = 0u; iteration < 3u; ++iteration) {
+            prom_m43_attention_group_result grouped{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m43_execute(runtime, &groupedRequest, &grouped),
+                         "host-bounce baseline reads the M43 heads");
+            prom_m44_host_bounce_request hostRequest{};
+            hostRequest.head_major = actualHeads.data();
+            hostRequest.head_major_element_count = actualHeads.size();
+            std::vector<float> output(roundedExpected.size());
+            hostRequest.output = output.data();
+            hostRequest.output_element_count = output.size();
+            hostRequest.head_count = PROM_M44_HEAD_COUNT;
+            hostRequest.tokens = workload.tokens;
+            hostRequest.head_dim = workload.headDim;
+            hostRequest.model_width = workload.modelWidth;
+            hostRequest.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
+            hostRequest.projection_path = PROM_M44_PROJECTION_COOPERATIVE;
+            hostRequest.required_wo_generation = 500u;
+            hostRequest.m43_aggregate_replay_id = grouped.plan.aggregate_replay_id;
+            prom_m44_host_bounce_result host{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_host_bounce(runtime, &hostRequest, &host),
+                         "host-bounce output projection executes");
+            prom_m44_mismatch mismatch{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_m44_output_projection_compare(roundedExpected.data(), output.data(),
+                                                             workload.tokens, workload.modelWidth,
+                                                             1.0e-2f, 4.0e-2f,
+                                                             PROM_M44_AGGREGATION_INTERLEAVE,
+                                                             500u, grouped.plan.aggregate_replay_id,
+                                                             host.replay_id, &mismatch),
+                         "host-bounce Y remains correct");
+            m43Measurements.push_back(grouped);
+            hostMeasurements.push_back(host);
+            hostProductGpu.push_back(grouped.grouped_attention_gpu_ns + host.upload_gpu_ns +
+                                     host.projection_gpu_ns);
+            hostProductEndToEnd.push_back(grouped.end_to_end_ns + host.end_to_end_ns);
+        }
+        std::sort(hostProductGpu.begin(), hostProductGpu.end());
+        std::sort(hostProductEndToEnd.begin(), hostProductEndToEnd.end());
+        M44BenchmarkRecord hostRecord{};
+        hostRecord.workload = workload.name;
+        hostRecord.strategy = "host_bounce";
+        hostRecord.path = "cooperative";
+        hostRecord.submitPlan = "two_cpu_separated";
+        hostRecord.tokens = workload.tokens;
+        hostRecord.headDim = workload.headDim;
+        hostRecord.modelWidth = workload.modelWidth;
+        hostRecord.replayId = hostMeasurements.back().replay_id;
+        hostRecord.m43ReplayId = m43Measurements.back().plan.aggregate_replay_id;
+        hostRecord.woPreparationNs = preparedWo.upload_and_pack_ns + preparedWo.validation_hash_ns;
+        hostRecord.woPreparationGpuNs = preparedWo.gpu_upload_and_pack_ns;
+        hostRecord.m43GpuNs = MedianGroupMetric(m43Measurements,
+            &prom_m43_attention_group_result::grouped_attention_gpu_ns);
+        {
+            std::vector<std::uint64_t> values;
+            for (const prom_m44_host_bounce_result& value : hostMeasurements)
+                values.push_back(value.upload_gpu_ns);
+            std::sort(values.begin(), values.end());
+            hostRecord.aggregationGpuNs = values[values.size() / 2u];
+            values.clear();
+            for (const prom_m44_host_bounce_result& value : hostMeasurements)
+                values.push_back(value.projection_gpu_ns);
+            std::sort(values.begin(), values.end());
+            hostRecord.projectionGpuNs = values[values.size() / 2u];
+            values.clear();
+            for (const prom_m44_host_bounce_result& value : hostMeasurements)
+                values.push_back(value.final_readback_ns);
+            std::sort(values.begin(), values.end());
+            hostRecord.finalReadbackNs = values[values.size() / 2u] +
+                                         MedianGroupMetric(m43Measurements,
+                                           &prom_m43_attention_group_result::final_readback_ns);
+            values.clear();
+            for (const prom_m44_host_bounce_result& value : hostMeasurements)
+                values.push_back(value.cpu_concatenate_ns);
+            std::sort(values.begin(), values.end());
+            hostRecord.cpuConcatenateNs = values[values.size() / 2u];
+            values.clear();
+            for (const prom_m44_host_bounce_result& value : hostMeasurements)
+                values.push_back(value.cpu_pack_ns);
+            std::sort(values.begin(), values.end());
+            hostRecord.cpuPackNs = values[values.size() / 2u];
+        }
+        hostRecord.m44GpuNs = hostRecord.aggregationGpuNs + hostRecord.projectionGpuNs;
+        hostRecord.totalGpuNs = hostProductGpu[hostProductGpu.size() / 2u];
+        hostRecord.endToEndNs = hostProductEndToEnd[hostProductEndToEnd.size() / 2u];
+        hostRecord.retainedBytes = m43Measurements.back().retained_bytes +
+                                   hostMeasurements.back().retained_bytes;
+        hostRecord.exactBytes = m43Measurements.back().exact_request_bytes;
+        hostRecord.submitCount = 2u;
+        hostRecord.intermediateHostCopies = 1u;
+        hostRecord.correct = true;
+        records.push_back(hostRecord);
+
+        M44BenchmarkRecord noProjection{};
+        noProjection.workload = workload.name;
+        noProjection.strategy = "no_output_projection";
+        noProjection.path = "m43_only";
+        noProjection.submitPlan = "one";
+        noProjection.tokens = workload.tokens;
+        noProjection.headDim = workload.headDim;
+        noProjection.modelWidth = workload.modelWidth;
+        noProjection.replayId = m43Measurements.back().plan.aggregate_replay_id;
+        noProjection.m43ReplayId = noProjection.replayId;
+        noProjection.m43GpuNs = MedianGroupMetric(m43Measurements,
+            &prom_m43_attention_group_result::grouped_attention_gpu_ns);
+        noProjection.totalGpuNs = noProjection.m43GpuNs;
+        noProjection.endToEndNs = MedianGroupMetric(m43Measurements,
+            &prom_m43_attention_group_result::end_to_end_ns);
+        noProjection.finalReadbackNs = MedianGroupMetric(m43Measurements,
+            &prom_m43_attention_group_result::final_readback_ns);
+        noProjection.retainedBytes = m43Measurements.back().retained_bytes;
+        noProjection.exactBytes = m43Measurements.back().exact_request_bytes;
+        noProjection.submitCount = 1u;
+        noProjection.dispatchCount = m43Measurements.back().plan.dispatch_count;
+        noProjection.barrierCalls = m43Measurements.back().plan.barrier_call_count;
+        noProjection.barrierBuffers = m43Measurements.back().plan.barrier_buffer_count;
+        noProjection.correct = true;
+        records.push_back(noProjection);
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                     "M44 workload services remain available");
+        totalWarnings += services.validation_warning_count;
+        totalErrors += services.validation_error_count;
+        prom_reactor_runtime_destroy_impl(runtime);
+    }
+    ASSERT_EQUAL(0u, totalWarnings, "M44 corpus is validation-warning clean");
+    ASSERT_EQUAL(0u, totalErrors, "M44 corpus is validation-error clean");
+    std::ostringstream json;
+    json << "{\n  \"schema\": \"prometheus.m44.multihead-output-projection.v1\",\n"
+         << "  \"head_count\": " << PROM_M44_HEAD_COUNT << ",\n"
+         << "  \"source_layout\": \"head_major_views\",\n"
+         << "  \"logical_concatenation\": \"C[token,head*HeadDim+column]\",\n"
+         << "  \"output_layout\": \"row_major_tokens_model_width\",\n"
+         << "  \"precision\": {\"cooperative_input\": \"f16_rne\", "
+            "\"cooperative_weight\": \"f16_rne\", \"accumulation\": \"fp32\", "
+            "\"output\": \"fp32\"},\n"
+         << "  \"shader_artifacts\": {\n"
+         << "    \"dxc\": \"1.9.0.5347-fe2615732\",\n"
+         << "    \"interleave\": {\"source_sha256\": "
+            "\"67de5fac9fc51ee483b07e2c38d48d077f89e5942b8d08ca3307b3896695ad43\", "
+            "\"hlsl_sha256\": \"4278f12da1b5c7368415660058dea1cbbaa6c1f75b0f651c49cdb2d2186c6033\", "
+            "\"spv_sha256\": \"ef5bd1d4aac8cce92c0548f92e63f9c8be508217bc62e1c4d14c40d07ace041e\"},\n"
+         << "    \"direct_segmented\": {\"source_sha256\": "
+            "\"08a4106010c596ac9ac45743087e683804fb8891152f09a0080e19b009244b79\", "
+            "\"hlsl_sha256\": \"a60501488878d38deb2f7fe8a03531b3399fcf818b3172b6a8fbdab18786677f\", "
+            "\"spv_sha256\": \"1f2c7914051d28c23605731f95125d4d048327c1c8e0af769f38b16693032365\"}\n"
+         << "  },\n"
+         << "  \"warmup_operations_per_plan\": 32,\n"
+         << "  \"measurement_operations_per_plan\": 5,\n"
+         << "  \"capacity_prime_operations_per_plan\": 2,\n"
+         << "  \"validation\": {\"warnings\": " << totalWarnings
+         << ", \"errors\": " << totalErrors << "},\n"
+         << "  \"primary_repeats\": {\"warm_10_gpu_ns\": " << warm10Gpu
+         << ", \"warm_10_end_to_end_ns\": " << warm10EndToEnd
+         << ", \"warm_100_gpu_ns\": " << warm100Gpu
+         << ", \"warm_100_end_to_end_ns\": " << warm100EndToEnd << "},\n"
+         << "  \"records\": [\n";
+    for (std::size_t index = 0u; index < records.size(); ++index) {
+        const M44BenchmarkRecord& record = records[index];
+        if (index != 0u) json << ",\n";
+        json << "    {\"workload\":\"" << record.workload
+             << "\",\"strategy\":\"" << record.strategy
+             << "\",\"path\":\"" << record.path
+             << "\",\"submit_plan\":\"" << record.submitPlan
+             << "\",\"tokens\":" << record.tokens
+             << ",\"head_dim\":" << record.headDim
+             << ",\"model_width\":" << record.modelWidth
+             << ",\"replay_id\":" << record.replayId
+             << ",\"m43_replay_id\":" << record.m43ReplayId
+             << ",\"correct\":" << (record.correct ? "true" : "false")
+             << ",\"wo_preparation_ns\":" << record.woPreparationNs
+             << ",\"wo_preparation_gpu_ns\":" << record.woPreparationGpuNs
+             << ",\"m43_gpu_ns\":" << record.m43GpuNs
+             << ",\"aggregation_gpu_ns\":" << record.aggregationGpuNs
+             << ",\"projection_gpu_ns\":" << record.projectionGpuNs
+             << ",\"accumulation_gpu_ns\":" << record.accumulationGpuNs
+             << ",\"m44_gpu_ns\":" << record.m44GpuNs
+             << ",\"total_m43_m44_gpu_ns\":" << record.totalGpuNs
+             << ",\"cpu_recording_ns\":" << record.cpuRecordingNs
+             << ",\"cpu_submission_ns\":" << record.cpuSubmissionNs
+             << ",\"final_readback_ns\":" << record.finalReadbackNs
+             << ",\"end_to_end_ns\":" << record.endToEndNs
+             << ",\"cpu_concatenate_ns\":" << record.cpuConcatenateNs
+             << ",\"cpu_pack_ns\":" << record.cpuPackNs
+             << ",\"temporary_bytes\":" << record.temporaryBytes
+             << ",\"retained_bytes\":" << record.retainedBytes
+             << ",\"exact_request_bytes\":" << record.exactBytes
+             << ",\"source_head_bytes\":" << record.sourceHeadBytes
+             << ",\"contiguous_f32_bytes\":" << record.contiguousF32Bytes
+             << ",\"contiguous_packed_bytes\":" << record.contiguousPackedBytes
+             << ",\"partial_output_bytes\":" << record.partialOutputBytes
+             << ",\"accumulation_bytes\":" << record.accumulationBytes
+             << ",\"wo_upload_bytes\":" << record.woUploadBytes
+             << ",\"wo_f32_bytes\":" << record.woF32Bytes
+             << ",\"wo_packed_bytes\":" << record.woPackedBytes
+             << ",\"final_y_bytes\":" << record.finalYBytes
+             << ",\"final_readback_bytes\":" << record.finalReadbackBytes
+             << ",\"reusable_descriptor_sets\":" << record.reusableDescriptorSets
+             << ",\"descriptor_bindings\":" << record.descriptorBindings
+             << ",\"submit_count\":" << record.submitCount
+             << ",\"dispatch_count\":" << record.dispatchCount
+             << ",\"barrier_calls\":" << record.barrierCalls
+             << ",\"barrier_buffers\":" << record.barrierBuffers
+             << ",\"copy_regions\":" << record.copyRegions
+             << ",\"intermediate_host_copies\":" << record.intermediateHostCopies
+             << "}";
+    }
+    json << "\n  ]\n}\n";
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m44_multihead_output_projection.json", json.str()),
+                "M44 benchmark artifact is written");
 }

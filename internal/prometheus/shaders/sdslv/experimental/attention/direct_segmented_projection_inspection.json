@@ -1,0 +1,16 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M44",
+  "identity": "m44-direct-segmented-eight-head-output-projection-v1",
+  "entry_point": "AttentionDirectSegmentedProjection_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "push_constant_bytes": 32,
+  "source_sha256": "08a4106010c596ac9ac45743087e683804fb8891152f09a0080e19b009244b79",
+  "hlsl_sha256": "a60501488878d38deb2f7fe8a03531b3399fcf818b3172b6a8fbdab18786677f",
+  "spirv_sha256": "1f2c7914051d28c23605731f95125d4d048327c1c8e0af769f38b16693032365",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "one FP32 Y[token,out] accumulation over eight statically bound FP32 head views, with FP16-RNE source rounding and persistent packed-F16 Wo loads",
+  "sdslv_structure": "payload enum selects exact head value and Wo row; flow board separates coordinates, fixed-eight accumulation, and store; optimized SPIR-V contains no function calls or dynamic head-resource selection"
+}

@@ -234,6 +234,7 @@ typedef enum prom_device_access_state {
   PROM_DEVICE_ACCESS_COMPUTE_READ = 2u,
   PROM_DEVICE_ACCESS_COMPUTE_WRITE = 3u,
   PROM_DEVICE_ACCESS_HOST_READ = 4u,
+  PROM_DEVICE_ACCESS_TRANSFER_READ = 5u,
 } prom_device_access_state;
 
 typedef struct prom_device_buffer_view {
@@ -1096,6 +1097,313 @@ typedef struct prom_m43_mismatch {
   uint64_t aggregate_replay_id;
 } prom_m43_mismatch;
 
+/* M44 is one bounded consumer of the fixed M43 head aggregate. It makes the
+   token-major concatenation boundary explicit and owns one persistent output
+   projection weight. These Vulkan-facing contracts remain internal. */
+#define PROM_M44_HEAD_COUNT PROM_M43_HEAD_COUNT
+#define PROM_M44_MAX_STAGES 6u
+
+typedef enum prom_m44_aggregation_strategy {
+  PROM_M44_AGGREGATION_INTERLEAVE = 1u,
+  PROM_M44_AGGREGATION_DIRECT_SEGMENTED = 2u,
+} prom_m44_aggregation_strategy;
+
+typedef enum prom_m44_projection_path {
+  PROM_M44_PROJECTION_COOPERATIVE = PROM_M42_PATH_COOPERATIVE,
+  PROM_M44_PROJECTION_A2X4_FP32 = PROM_M42_PATH_A2X4,
+  PROM_M44_PROJECTION_CONVENTIONAL_FP16 = PROM_M42_PATH_CONVENTIONAL_FP16,
+  PROM_M44_PROJECTION_DIRECT_SEGMENTED_FP16 = 4u,
+} prom_m44_projection_path;
+
+typedef enum prom_m44_submit_plan {
+  PROM_M44_SUBMIT_ONE_COMMAND_BUFFER = 1u,
+  PROM_M44_SUBMIT_TWO_BOUNDED = 2u,
+} prom_m44_submit_plan;
+
+typedef enum prom_m44_stage_operation {
+  PROM_M44_STAGE_HEADS_READY = 1u,
+  PROM_M44_STAGE_INTERLEAVE = 2u,
+  PROM_M44_STAGE_DIRECT_PROJECTION = 3u,
+  PROM_M44_STAGE_OUTPUT_PROJECTION = 4u,
+  PROM_M44_STAGE_FINAL_READBACK = 5u,
+} prom_m44_stage_operation;
+
+typedef enum prom_m44_fault_point {
+  PROM_M44_FAULT_NONE = 0u,
+  PROM_M44_FAULT_BEFORE_AGGREGATION = 1u,
+  PROM_M44_FAULT_DURING_INTERLEAVE = 2u,
+  PROM_M44_FAULT_AFTER_INTERLEAVE = 3u,
+  PROM_M44_FAULT_MID_DIRECT_PROJECTION = 4u,
+  PROM_M44_FAULT_AFTER_PROJECTION_SUBMIT = 5u,
+  PROM_M44_FAULT_BEFORE_FINAL_READBACK = 6u,
+  PROM_M44_FAULT_UNCERTAIN_COMPLETION = 7u,
+} prom_m44_fault_point;
+
+typedef enum prom_m44_eligibility_reason {
+  PROM_M44_ELIGIBLE = 0u,
+  PROM_M44_INELIGIBLE_HEAD_COUNT = 1u,
+  PROM_M44_INELIGIBLE_VIEW = 2u,
+  PROM_M44_INELIGIBLE_VIEW_SHAPE = 3u,
+  PROM_M44_INELIGIBLE_VIEW_GENERATION = 4u,
+  PROM_M44_INELIGIBLE_VIEW_OVERLAP = 5u,
+  PROM_M44_INELIGIBLE_WO = 6u,
+  PROM_M44_INELIGIBLE_SHAPE = 7u,
+  PROM_M44_INELIGIBLE_PRECISION = 8u,
+  PROM_M44_INELIGIBLE_CAPABILITY = 9u,
+  PROM_M44_INELIGIBLE_PADDING = 10u,
+  PROM_M44_INELIGIBLE_CAPACITY = 11u,
+  PROM_M44_INELIGIBLE_STRATEGY = 12u,
+  PROM_M44_INELIGIBLE_ROLLBACK = 13u,
+} prom_m44_eligibility_reason;
+
+typedef struct prom_m44_eligibility_facts {
+  uint32_t head_count;
+  uint32_t views_valid;
+  uint32_t shapes_match;
+  uint32_t generations_valid;
+  uint32_t non_overlapping;
+  uint32_t wo_valid;
+  uint32_t shape_valid;
+  uint32_t precision_valid;
+  uint32_t cooperative_capability_state;
+  uint32_t padding_supported;
+  uint32_t strategy_supported;
+  uint32_t rollback_active;
+  uint64_t required_capacity_bytes;
+  uint64_t available_capacity_bytes;
+} prom_m44_eligibility_facts;
+
+typedef struct prom_m44_eligibility_decision {
+  uint32_t eligible;
+  uint32_t reason;
+  uint64_t replay_id;
+} prom_m44_eligibility_decision;
+
+typedef struct prom_m44_stage_plan {
+  uint32_t sequence;
+  uint32_t operation;
+  uint32_t dispatch_count;
+  uint32_t barrier_call_count;
+  uint32_t barrier_buffer_count;
+  uint32_t copy_region_count;
+  uint32_t timestamp_begin;
+  uint32_t timestamp_end;
+  uint32_t source_stage_mask;
+  uint32_t destination_stage_mask;
+  uint32_t source_access_mask;
+  uint32_t destination_access_mask;
+  uint32_t source_queue_family;
+  uint32_t destination_queue_family;
+} prom_m44_stage_plan;
+
+typedef struct prom_m44_memory_plan {
+  uint64_t source_head_bytes;
+  uint64_t contiguous_f32_bytes;
+  uint64_t contiguous_packed_bytes;
+  uint64_t partial_output_bytes;
+  uint64_t accumulation_bytes;
+  uint64_t wo_upload_bytes;
+  uint64_t wo_f32_bytes;
+  uint64_t wo_packed_bytes;
+  uint64_t final_y_bytes;
+  uint64_t final_readback_bytes;
+  uint64_t exact_request_bytes;
+  uint64_t capacity_limit_bytes;
+  uint32_t reusable_descriptor_set_count;
+  uint32_t descriptor_binding_count;
+} prom_m44_memory_plan;
+
+typedef struct prom_m44_plan_request {
+  prom_device_buffer_view head_views[PROM_M44_HEAD_COUNT];
+  uint32_t head_count;
+  uint32_t tokens;
+  uint32_t head_dim;
+  uint32_t model_width;
+  uint32_t precision_policy;
+  uint32_t aggregation_strategy;
+  uint32_t projection_path;
+  uint32_t submit_plan;
+  uint32_t cooperative_capability_state;
+  uint32_t rollback_active;
+  uint64_t wo_generation;
+  uint64_t wo_hash;
+  uint64_t m43_aggregate_replay_id;
+} prom_m44_plan_request;
+
+typedef struct prom_m44_output_projection_plan {
+  uint32_t head_count;
+  uint32_t tokens;
+  uint32_t head_dim;
+  uint32_t concatenated_width;
+  uint32_t model_width;
+  uint32_t padded_tokens;
+  uint32_t padded_concatenated_width;
+  uint32_t padded_model_width;
+  uint32_t head_row_stride;
+  uint32_t output_row_stride;
+  uint32_t precision_policy;
+  uint32_t aggregation_strategy;
+  uint32_t projection_path;
+  uint32_t submit_plan;
+  uint32_t stage_count;
+  uint32_t dispatch_count;
+  uint32_t barrier_call_count;
+  uint32_t barrier_buffer_count;
+  uint32_t copy_region_count;
+  uint32_t submit_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t final_readback_count;
+  uint32_t output_element_type;
+  uint64_t wo_generation;
+  uint64_t wo_hash;
+  uint64_t m43_aggregate_replay_id;
+  uint64_t command_plan_replay_id;
+  uint64_t replay_id;
+  prom_m44_eligibility_decision eligibility;
+  prom_m44_memory_plan memory;
+  prom_m44_stage_plan stages[PROM_M44_MAX_STAGES];
+} prom_m44_output_projection_plan;
+
+typedef struct prom_m44_wo_prepare_request {
+  const float* values;
+  uint64_t element_count;
+  uint32_t head_count;
+  uint32_t head_dim;
+  uint32_t model_width;
+  uint64_t generation;
+} prom_m44_wo_prepare_request;
+
+typedef struct prom_m44_wo_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t generation;
+  uint64_t hash;
+  uint64_t validation_hash_ns;
+  uint64_t upload_and_pack_ns;
+  uint64_t gpu_upload_and_pack_ns;
+  uint64_t retained_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+} prom_m44_wo_prepare_result;
+
+typedef struct prom_m44_composed_request {
+  prom_m43_attention_group_request attention;
+  float* output;
+  uint64_t output_element_count;
+  uint32_t aggregation_strategy;
+  uint32_t projection_path;
+  uint32_t submit_plan;
+  uint32_t rollback_active;
+  uint32_t fault_point;
+  uint64_t required_wo_generation;
+} prom_m44_composed_request;
+
+typedef struct prom_m44_composed_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t no_intermediate_host_copy;
+  uint32_t validation_error_count_before;
+  uint32_t validation_error_count_after;
+  uint64_t aggregation_gpu_ns;
+  uint64_t projection_gpu_ns;
+  uint64_t accumulation_gpu_ns;
+  uint64_t m44_gpu_ns;
+  uint64_t total_m43_m44_gpu_ns;
+  uint64_t cpu_recording_ns;
+  uint64_t cpu_submission_ns;
+  uint64_t final_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t exact_request_bytes;
+  uint64_t retained_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint64_t wo_generation;
+  prom_m43_attention_group_result attention;
+  prom_m44_output_projection_plan plan;
+  prom_device_buffer_view output_view;
+} prom_m44_composed_result;
+
+typedef struct prom_m44_host_bounce_request {
+  const float* head_major;
+  uint64_t head_major_element_count;
+  float* output;
+  uint64_t output_element_count;
+  uint32_t head_count;
+  uint32_t tokens;
+  uint32_t head_dim;
+  uint32_t model_width;
+  uint32_t precision_policy;
+  uint32_t projection_path;
+  uint64_t required_wo_generation;
+  uint64_t m43_aggregate_replay_id;
+} prom_m44_host_bounce_request;
+
+typedef struct prom_m44_host_bounce_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint64_t cpu_concatenate_ns;
+  uint64_t cpu_pack_ns;
+  uint64_t upload_gpu_ns;
+  uint64_t projection_gpu_ns;
+  uint64_t final_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t retained_bytes;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t intermediate_host_copy_count;
+  uint64_t replay_id;
+} prom_m44_host_bounce_result;
+
+typedef struct prom_m44_reference_request {
+  const float* head_major;
+  const float* wo;
+  float* concatenated;
+  float* output;
+  uint64_t head_major_element_count;
+  uint64_t wo_element_count;
+  uint64_t output_element_count;
+  uint32_t head_count;
+  uint32_t tokens;
+  uint32_t head_dim;
+  uint32_t model_width;
+  uint32_t precision_policy;
+} prom_m44_reference_request;
+
+typedef struct prom_m44_reference_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t all_finite;
+} prom_m44_reference_result;
+
+typedef struct prom_m44_mismatch {
+  uint32_t matched;
+  uint32_t strategy;
+  uint32_t token;
+  uint32_t output_column;
+  uint32_t source_head;
+  uint32_t source_column;
+  float expected;
+  float actual;
+  float absolute_error;
+  float relative_error;
+  uint64_t wo_generation;
+  uint64_t m43_aggregate_replay_id;
+  uint64_t m44_replay_id;
+} prom_m44_mismatch;
+
 enum {
   PROM_M40B_DETAIL_INVALID_REQUEST = -6901,
   PROM_M40B_DETAIL_SIZE_OVERFLOW = -6902,
@@ -1145,6 +1453,25 @@ enum {
   PROM_M43_DETAIL_READBACK = -7114,
   PROM_M43_DETAIL_FAULT_INJECTED = -7115,
   PROM_M43_DETAIL_MISMATCH = -7116,
+};
+
+enum {
+  PROM_M44_DETAIL_INVALID_REQUEST = -7201,
+  PROM_M44_DETAIL_HEAD_COUNT = -7202,
+  PROM_M44_DETAIL_INVALID_VIEW = -7203,
+  PROM_M44_DETAIL_SIZE_OVERFLOW = -7204,
+  PROM_M44_DETAIL_NONFINITE_INPUT = -7205,
+  PROM_M44_DETAIL_STALE_WO_GENERATION = -7206,
+  PROM_M44_DETAIL_CAPABILITY = -7207,
+  PROM_M44_DETAIL_CAPACITY = -7208,
+  PROM_M44_DETAIL_RESOURCE = -7209,
+  PROM_M44_DETAIL_COMMAND = -7210,
+  PROM_M44_DETAIL_SUBMIT = -7211,
+  PROM_M44_DETAIL_COMPLETION_UNCERTAIN = -7212,
+  PROM_M44_DETAIL_QUERY = -7213,
+  PROM_M44_DETAIL_READBACK = -7214,
+  PROM_M44_DETAIL_FAULT_INJECTED = -7215,
+  PROM_M44_DETAIL_MISMATCH = -7216,
 };
 
 enum {
@@ -1305,6 +1632,37 @@ int prom_reactor_runtime_m43_prepare_resident_x(void* handle,
 int prom_reactor_runtime_m43_execute(void* handle,
                                      const prom_m43_attention_group_request* request,
                                      prom_m43_attention_group_result* out_result);
+void prom_m44_eligibility_evaluate(const prom_m44_eligibility_facts* facts,
+                                   prom_m44_eligibility_decision* out_decision);
+int prom_m44_output_projection_plan_build(const prom_m44_plan_request* request,
+                                          prom_m44_output_projection_plan* out_plan);
+uint64_t prom_m44_concat_index(uint32_t token,
+                               uint32_t head,
+                               uint32_t column,
+                               uint32_t tokens,
+                               uint32_t head_dim);
+int prom_m44_output_projection_cpu_reference(const prom_m44_reference_request* request,
+                                             prom_m44_reference_result* out_result);
+int prom_m44_output_projection_compare(const float* expected,
+                                       const float* actual,
+                                       uint32_t tokens,
+                                       uint32_t model_width,
+                                       float absolute_tolerance,
+                                       float relative_tolerance,
+                                       uint32_t strategy,
+                                       uint64_t wo_generation,
+                                       uint64_t m43_aggregate_replay_id,
+                                       uint64_t m44_replay_id,
+                                       prom_m44_mismatch* out_mismatch);
+int prom_reactor_runtime_m44_prepare_wo(void* handle,
+                                       const prom_m44_wo_prepare_request* request,
+                                       prom_m44_wo_prepare_result* out_result);
+int prom_reactor_runtime_m44_execute_composed(void* handle,
+                                              const prom_m44_composed_request* request,
+                                              prom_m44_composed_result* out_result);
+int prom_reactor_runtime_m44_execute_host_bounce(void* handle,
+                                                 const prom_m44_host_bounce_request* request,
+                                                 prom_m44_host_bounce_result* out_result);
 uint16_t prom_sgemm_float32_to_fp16_bits(float value);
 float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);

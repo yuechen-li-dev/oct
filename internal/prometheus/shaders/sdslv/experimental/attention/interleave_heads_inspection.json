@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M44",
+  "identity": "m44-interleave-eight-heads-f32-or-packed-f16-v1",
+  "entry_point": "AttentionInterleaveHeads_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  "push_constant_bytes": 32,
+  "source_sha256": "67de5fac9fc51ee483b07e2c38d48d077f89e5942b8d08ca3307b3896695ad43",
+  "hlsl_sha256": "4278f12da1b5c7368415660058dea1cbbaa6c1f75b0f651c49cdb2d2186c6033",
+  "spirv_sha256": "ef5bd1d4aac8cce92c0548f92e63f9c8be508217bc62e1c4d14c40d07ace041e",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "eight O[h][Tokens,HeadDim] FP32 views to token-major C[token,h*HeadDim+column], either contiguous FP32 or directly rounded and packed F16x2"
+}

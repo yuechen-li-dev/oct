@@ -1,0 +1,86 @@
+namespace Prometheus.Experimental.Attention;
+
+// M44's fixed eight-head layout boundary. One invocation owns two adjacent
+// destination elements. It either writes contiguous FP32 or rounds and packs
+// the same token-major concatenation as F16x2. Padded rows and columns are
+// written as zero; no source element outside the eight logical head views is
+// read.
+stream AttentionInterleaveIO {
+    [binding(0)] Head0: readonly array<f32>;
+    [binding(1)] Head1: readonly array<f32>;
+    [binding(2)] Head2: readonly array<f32>;
+    [binding(3)] Head3: readonly array<f32>;
+    [binding(4)] Head4: readonly array<f32>;
+    [binding(5)] Head5: readonly array<f32>;
+    [binding(6)] Head6: readonly array<f32>;
+    [binding(7)] Head7: readonly array<f32>;
+    [binding(8)] OutputF32: readwrite array<f32>;
+    [binding(9)] OutputPacked: readwrite array<u32>;
+}
+
+record AttentionInterleaveParams {
+    Tokens: u32;
+    HeadDim: u32;
+    HeadRowStride: u32;
+    OutputRows: u32;
+    OutputColumns: u32;
+    PackedOutput: u32;
+    WorkItemCount: u32;
+    Reserved: u32;
+}
+
+shader AttentionInterleaveHeads {
+    resources AttentionInterleaveIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionInterleaveParams) -> void {
+        let word: u32 = DispatchThreadID.x;
+        if word >= params.WorkItemCount { return; }
+
+        let lowIndex: u32 = word * 2u;
+        let highIndex: u32 = lowIndex + 1u;
+        let lowRow: u32 = lowIndex / params.OutputColumns;
+        let lowColumn: u32 = lowIndex - lowRow * params.OutputColumns;
+        let highRow: u32 = highIndex / params.OutputColumns;
+        let highColumn: u32 = highIndex - highRow * params.OutputColumns;
+        let concatenatedColumns: u32 = params.HeadDim * 8u;
+        var low: f32 = 0.0;
+        var high: f32 = 0.0;
+
+        if lowRow < params.Tokens and lowColumn < concatenatedColumns {
+            let head: u32 = lowColumn / params.HeadDim;
+            let column: u32 = lowColumn - head * params.HeadDim;
+            let source: u32 = lowRow * params.HeadRowStride + column;
+            if head == 0u { low = Head0[source]; }
+            if head == 1u { low = Head1[source]; }
+            if head == 2u { low = Head2[source]; }
+            if head == 3u { low = Head3[source]; }
+            if head == 4u { low = Head4[source]; }
+            if head == 5u { low = Head5[source]; }
+            if head == 6u { low = Head6[source]; }
+            if head == 7u { low = Head7[source]; }
+        }
+        if highRow < params.Tokens and highColumn < concatenatedColumns {
+            let head: u32 = highColumn / params.HeadDim;
+            let column: u32 = highColumn - head * params.HeadDim;
+            let source: u32 = highRow * params.HeadRowStride + column;
+            if head == 0u { high = Head0[source]; }
+            if head == 1u { high = Head1[source]; }
+            if head == 2u { high = Head2[source]; }
+            if head == 3u { high = Head3[source]; }
+            if head == 4u { high = Head4[source]; }
+            if head == 5u { high = Head5[source]; }
+            if head == 6u { high = Head6[source]; }
+            if head == 7u { high = Head7[source]; }
+        }
+
+        if params.PackedOutput != 0u {
+            OutputPacked[word] = Pack<F16x2>(float2(low, high));
+        } else {
+            OutputF32[lowIndex] = low;
+            if highIndex < params.OutputRows * params.OutputColumns {
+                OutputF32[highIndex] = high;
+            }
+        }
+        return;
+    }
+}

@@ -200,6 +200,80 @@ type m42Artifact struct {
 	} `json:"device"`
 }
 
+type m44ArtifactRecord struct {
+	Workload               string `json:"workload"`
+	Strategy               string `json:"strategy"`
+	Path                   string `json:"path"`
+	SubmitPlan             string `json:"submit_plan"`
+	Tokens                 uint32 `json:"tokens"`
+	HeadDim                uint32 `json:"head_dim"`
+	ModelWidth             uint32 `json:"model_width"`
+	ReplayID               uint64 `json:"replay_id"`
+	M43ReplayID            uint64 `json:"m43_replay_id"`
+	Correct                bool   `json:"correct"`
+	M44GPUNS               uint64 `json:"m44_gpu_ns"`
+	TotalGPUNS             uint64 `json:"total_m43_m44_gpu_ns"`
+	FinalReadbackNS        uint64 `json:"final_readback_ns"`
+	EndToEndNS             uint64 `json:"end_to_end_ns"`
+	CPUConcatenateNS       uint64 `json:"cpu_concatenate_ns"`
+	CPUPackNS              uint64 `json:"cpu_pack_ns"`
+	TemporaryBytes         uint64 `json:"temporary_bytes"`
+	RetainedBytes          uint64 `json:"retained_bytes"`
+	SourceHeadBytes        uint64 `json:"source_head_bytes"`
+	ContiguousF32Bytes     uint64 `json:"contiguous_f32_bytes"`
+	ContiguousPackedBytes  uint64 `json:"contiguous_packed_bytes"`
+	PartialOutputBytes     uint64 `json:"partial_output_bytes"`
+	AccumulationBytes      uint64 `json:"accumulation_bytes"`
+	WoUploadBytes          uint64 `json:"wo_upload_bytes"`
+	WoF32Bytes             uint64 `json:"wo_f32_bytes"`
+	WoPackedBytes          uint64 `json:"wo_packed_bytes"`
+	FinalYBytes            uint64 `json:"final_y_bytes"`
+	FinalReadbackBytes     uint64 `json:"final_readback_bytes"`
+	ReusableDescriptorSets uint32 `json:"reusable_descriptor_sets"`
+	DescriptorBindings     uint32 `json:"descriptor_bindings"`
+	SubmitCount            uint32 `json:"submit_count"`
+	IntermediateHostCopies uint32 `json:"intermediate_host_copies"`
+}
+
+type m44ShaderArtifact struct {
+	SourceSHA256 string `json:"source_sha256"`
+	HLSLSHA256   string `json:"hlsl_sha256"`
+	SPVSHA256    string `json:"spv_sha256"`
+}
+
+type m44Artifact struct {
+	Schema                string `json:"schema"`
+	HeadCount             uint32 `json:"head_count"`
+	SourceLayout          string `json:"source_layout"`
+	LogicalConcatenation  string `json:"logical_concatenation"`
+	OutputLayout          string `json:"output_layout"`
+	WarmupOperations      uint32 `json:"warmup_operations_per_plan"`
+	MeasurementOperations uint32 `json:"measurement_operations_per_plan"`
+	CapacityPrime         uint32 `json:"capacity_prime_operations_per_plan"`
+	Precision             struct {
+		CooperativeInput  string `json:"cooperative_input"`
+		CooperativeWeight string `json:"cooperative_weight"`
+		Accumulation      string `json:"accumulation"`
+		Output            string `json:"output"`
+	} `json:"precision"`
+	ShaderArtifacts struct {
+		DXC             string            `json:"dxc"`
+		Interleave      m44ShaderArtifact `json:"interleave"`
+		DirectSegmented m44ShaderArtifact `json:"direct_segmented"`
+	} `json:"shader_artifacts"`
+	PrimaryRepeats struct {
+		Warm10GPUNS       uint64 `json:"warm_10_gpu_ns"`
+		Warm10EndToEndNS  uint64 `json:"warm_10_end_to_end_ns"`
+		Warm100GPUNS      uint64 `json:"warm_100_gpu_ns"`
+		Warm100EndToEndNS uint64 `json:"warm_100_end_to_end_ns"`
+	} `json:"primary_repeats"`
+	Validation struct {
+		Warnings uint32 `json:"warnings"`
+		Errors   uint32 `json:"errors"`
+	} `json:"validation"`
+	Records []m44ArtifactRecord `json:"records"`
+}
+
 var wordRE = regexp.MustCompile(`0x([0-9a-fA-F]{8})u`)
 
 func main() {
@@ -390,10 +464,142 @@ func check(root string, inventory bool) error {
 	if err := checkM42Artifact(root); err != nil {
 		return err
 	}
+	if err := checkM44Artifact(root); err != nil {
+		return err
+	}
 	if inventory {
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Println(line)
+		}
+	}
+	return nil
+}
+
+func checkM44Artifact(root string) error {
+	var artifact m44Artifact
+	path := filepath.Join(root, "internal", "prometheus", "DevelopmentReport", "artifacts", "M44", "multihead_aggregation_output_projection_rtx3070.json")
+	if err := readJSON(path, &artifact); err != nil {
+		return fmt.Errorf("M44 output projection artifact: %w", err)
+	}
+	if artifact.Schema != "prometheus.m44.multihead-output-projection.v1" || artifact.HeadCount != 8 ||
+		artifact.SourceLayout != "head_major_views" ||
+		artifact.LogicalConcatenation != "C[token,head*HeadDim+column]" ||
+		artifact.OutputLayout != "row_major_tokens_model_width" {
+		return fmt.Errorf("M44 output projection artifact has incomplete tensor identity")
+	}
+	if artifact.WarmupOperations != 32 || artifact.MeasurementOperations != 5 || artifact.CapacityPrime != 2 ||
+		artifact.PrimaryRepeats.Warm10GPUNS == 0 || artifact.PrimaryRepeats.Warm10EndToEndNS == 0 ||
+		artifact.PrimaryRepeats.Warm100GPUNS == 0 || artifact.PrimaryRepeats.Warm100EndToEndNS == 0 {
+		return fmt.Errorf("M44 output projection artifact lacks deterministic warm evidence")
+	}
+	if artifact.Precision.CooperativeInput != "f16_rne" || artifact.Precision.CooperativeWeight != "f16_rne" ||
+		artifact.Precision.Accumulation != "fp32" || artifact.Precision.Output != "fp32" {
+		return fmt.Errorf("M44 output projection artifact has invalid precision identity")
+	}
+	if artifact.Validation.Warnings != 0 || artifact.Validation.Errors != 0 {
+		return fmt.Errorf("M44 output projection artifact is not validation-clean: warnings=%d errors=%d",
+			artifact.Validation.Warnings, artifact.Validation.Errors)
+	}
+	shaderPaths := map[string]struct {
+		artifact m44ShaderArtifact
+		paths    [3]string
+	}{
+		"interleave": {artifact: artifact.ShaderArtifacts.Interleave, paths: [3]string{
+			"internal/prometheus/shaders/sdslv/experimental/attention/interleave_heads.sdslv",
+			"internal/prometheus/shaders/sdslv/experimental/attention/interleave_heads.hlsl",
+			"internal/prometheus/shaders/sdslv/experimental/attention/interleave_heads.spv",
+		}},
+		"direct_segmented": {artifact: artifact.ShaderArtifacts.DirectSegmented, paths: [3]string{
+			"internal/prometheus/shaders/sdslv/experimental/attention/direct_segmented_projection.sdslv",
+			"internal/prometheus/shaders/sdslv/experimental/attention/direct_segmented_projection.hlsl",
+			"internal/prometheus/shaders/sdslv/experimental/attention/direct_segmented_projection.spv",
+		}},
+	}
+	if artifact.ShaderArtifacts.DXC == "" {
+		return fmt.Errorf("M44 output projection artifact lacks DXC identity")
+	}
+	for identity, shader := range shaderPaths {
+		if shader.artifact.SourceSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(shader.paths[0]))) ||
+			shader.artifact.HLSLSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(shader.paths[1]))) ||
+			shader.artifact.SPVSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(shader.paths[2]))) {
+			return fmt.Errorf("M44 output projection artifact shader provenance mismatch for %s", identity)
+		}
+	}
+	workloads := map[string][3]uint32{
+		"tiny": {16, 16, 128}, "primary": {128, 128, 1024},
+		"more_tokens": {256, 128, 1024}, "larger_head": {128, 256, 1024},
+		"awkward": {127, 127, 1001}, "softmax_boundary": {1024, 64, 128},
+	}
+	plans := [][3]string{
+		{"interleave", "cooperative", "one"},
+		{"interleave", "a2x4_fp32", "one"},
+		{"interleave", "conventional_fp16", "one"},
+		{"direct_segmented", "direct_fp16", "one"},
+		{"interleave", "cooperative", "two"},
+		{"host_bounce", "cooperative", "two_cpu_separated"},
+		{"no_output_projection", "m43_only", "one"},
+	}
+	want := make(map[string]bool, len(workloads)*len(plans))
+	for workload := range workloads {
+		for _, plan := range plans {
+			want[workload+"/"+strings.Join(plan[:], "/")] = false
+		}
+	}
+	retainedByWorkload := make(map[string]uint64, len(workloads))
+	if len(artifact.Records) != len(want) {
+		return fmt.Errorf("M44 output projection artifact record count: got %d want %d", len(artifact.Records), len(want))
+	}
+	for _, record := range artifact.Records {
+		key := record.Workload + "/" + record.Strategy + "/" + record.Path + "/" + record.SubmitPlan
+		seen, known := want[key]
+		if !known || seen {
+			return fmt.Errorf("M44 output projection artifact has unexpected or duplicate record %s", key)
+		}
+		want[key] = true
+		shape := workloads[record.Workload]
+		if record.Tokens != shape[0] || record.HeadDim != shape[1] || record.ModelWidth != shape[2] ||
+			!record.Correct || record.ReplayID == 0 || record.M43ReplayID == 0 ||
+			record.TotalGPUNS == 0 || record.FinalReadbackNS == 0 || record.EndToEndNS == 0 || record.RetainedBytes == 0 {
+			return fmt.Errorf("M44 output projection artifact record %s lacks shape, timing, identity, or correctness evidence", key)
+		}
+		switch record.Strategy {
+		case "host_bounce":
+			if record.IntermediateHostCopies != 1 || record.SubmitCount != 2 ||
+				record.CPUConcatenateNS == 0 || record.CPUPackNS == 0 || record.M44GPUNS == 0 {
+				return fmt.Errorf("M44 host-bounce record %s lacks its explicit residency violation", key)
+			}
+		case "no_output_projection":
+			if record.M44GPUNS != 0 || record.IntermediateHostCopies != 0 {
+				return fmt.Errorf("M44 no-projection record %s contains M44 work", key)
+			}
+		default:
+			if record.IntermediateHostCopies != 0 || record.M44GPUNS == 0 || record.SubmitCount == 0 ||
+				record.SourceHeadBytes == 0 || record.WoUploadBytes == 0 || record.WoF32Bytes == 0 ||
+				record.WoPackedBytes == 0 || record.FinalYBytes == 0 || record.FinalReadbackBytes == 0 ||
+				record.ReusableDescriptorSets != 2 || record.DescriptorBindings != 14 ||
+				record.PartialOutputBytes != 0 || record.AccumulationBytes != 0 {
+				return fmt.Errorf("M44 device record %s lacks memory or residency evidence", key)
+			}
+			if prior, ok := retainedByWorkload[record.Workload]; ok && prior != record.RetainedBytes {
+				return fmt.Errorf("M44 device record %s uses mismatched retained capacity", key)
+			}
+			retainedByWorkload[record.Workload] = record.RetainedBytes
+			if record.Path == "a2x4_fp32" && (record.ContiguousF32Bytes == 0 || record.ContiguousPackedBytes != 0) {
+				return fmt.Errorf("M44 A2x4 record %s has invalid interleave storage", key)
+			}
+			if (record.Path == "cooperative" || record.Path == "conventional_fp16") &&
+				(record.ContiguousPackedBytes == 0 || record.ContiguousF32Bytes != 0) {
+				return fmt.Errorf("M44 rounded record %s has invalid packed interleave storage", key)
+			}
+			if record.Path == "direct_fp16" && (record.TemporaryBytes != 0 || record.ContiguousF32Bytes != 0 || record.ContiguousPackedBytes != 0) {
+				return fmt.Errorf("M44 direct record %s unexpectedly materializes concatenation", key)
+			}
+		}
+	}
+	for key, present := range want {
+		if !present {
+			return fmt.Errorf("M44 output projection artifact lacks required record %s", key)
 		}
 	}
 	return nil

@@ -461,3 +461,10 @@ That follow-up should decide, with measurements, whether one narrow interleave
 kernel or a strided eight-view projection is the correct consumer. It should
 retain M43's one-submit lifecycle and must not add residuals, normalization,
 rotary embeddings, a transformer block, or a graph scheduler.
+
+M44 now implements that first real consumer. It retains all eight M43 output
+views through their final device-side use, compares explicit packed interleave
+with direct segmented projection, applies one persistent generation-checked
+Wo, and reads back only final Y. The measured primary interleave cost is 4.640
+us, so M43's head-major physical contract remains acceptable; the earlier
+unconsumed-layout classification concern is resolved without redesigning M43.

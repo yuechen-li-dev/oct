@@ -1,0 +1,112 @@
+namespace Prometheus.Experimental.Attention;
+
+// M44's bounded direct strategy. The head count is intentionally fixed at
+// eight. Head outputs are rounded to F16 at their consumer boundary; Wo is the
+// persistent padded F16x2 representation. Accumulation and Y remain FP32.
+stream AttentionDirectProjectionIO {
+    [binding(0)] Head0: readonly array<f32>;
+    [binding(1)] Head1: readonly array<f32>;
+    [binding(2)] Head2: readonly array<f32>;
+    [binding(3)] Head3: readonly array<f32>;
+    [binding(4)] Head4: readonly array<f32>;
+    [binding(5)] Head5: readonly array<f32>;
+    [binding(6)] Head6: readonly array<f32>;
+    [binding(7)] Head7: readonly array<f32>;
+    [binding(8)] WoPacked: readonly array<u32>;
+    [binding(9)] Output: readwrite array<f32>;
+}
+
+record AttentionDirectProjectionParams {
+    Tokens: u32;
+    HeadDim: u32;
+    ModelWidth: u32;
+    HeadRowStride: u32;
+    PaddedModelWidth: u32;
+    TotalOutputElements: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+}
+
+enum HeadSample {
+    Invalid;
+    Value { X: f32; WeightRow: u32; }
+}
+
+board DirectProjectionLane {
+    Element: u32;
+    Token: u32;
+    OutputColumn: u32;
+    Accumulator: f32;
+}
+
+shader AttentionDirectSegmentedProjection {
+    resources AttentionDirectProjectionIO;
+
+    fn SelectHeadSample(head: u32, sourceIndex: u32, column: u32, headDim: u32) -> HeadSample {
+        if head == 0u { return HeadSample.Value { X: Head0[sourceIndex], WeightRow: column }; }
+        if head == 1u { return HeadSample.Value { X: Head1[sourceIndex], WeightRow: headDim + column }; }
+        if head == 2u { return HeadSample.Value { X: Head2[sourceIndex], WeightRow: headDim * 2u + column }; }
+        if head == 3u { return HeadSample.Value { X: Head3[sourceIndex], WeightRow: headDim * 3u + column }; }
+        if head == 4u { return HeadSample.Value { X: Head4[sourceIndex], WeightRow: headDim * 4u + column }; }
+        if head == 5u { return HeadSample.Value { X: Head5[sourceIndex], WeightRow: headDim * 5u + column }; }
+        if head == 6u { return HeadSample.Value { X: Head6[sourceIndex], WeightRow: headDim * 6u + column }; }
+        if head == 7u { return HeadSample.Value { X: Head7[sourceIndex], WeightRow: headDim * 7u + column }; }
+        return HeadSample.Invalid;
+    }
+
+    fn RoundHeadValue(value: f32) -> f32 {
+        let pair: float2 = Unpack<F16x2>(Pack<F16x2>(float2(value, 0.0)));
+        return pair.x;
+    }
+
+    fn LoadWeight(weightIndex: u32) -> f32 {
+        let pair: float2 = Unpack<F16x2>(WoPacked[weightIndex / 2u]);
+        if (weightIndex % 2u) != 0u { return pair.y; }
+        return pair.x;
+    }
+
+    fn ResolveContribution(sample: HeadSample, outputColumn: u32, paddedModelWidth: u32) -> f32 {
+        return match sample {
+            HeadSample.Invalid => 0.0
+            HeadSample.Value(payload) =>
+                RoundHeadValue(payload.X) *
+                LoadWeight(payload.WeightRow * paddedModelWidth + outputColumn)
+        };
+    }
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionDirectProjectionParams) -> void {
+        let element: u32 = DispatchThreadID.x;
+        if element >= params.TotalOutputElements { return; }
+
+        flow ProjectOutput {
+            board Lane: DirectProjectionLane = DirectProjectionLane {
+                Element: element;
+                Token: 0u;
+                OutputColumn: 0u;
+                Accumulator: 0.0;
+            };
+
+            state ResolveCoordinates {
+                Lane.Token = Lane.Element / params.ModelWidth;
+                Lane.OutputColumn = Lane.Element - Lane.Token * params.ModelWidth;
+            }
+
+            state AccumulateHeads {
+                comptime for head in 0u..8u {
+                    for column in 0u..params.HeadDim {
+                        let sourceIndex: u32 = Lane.Token * params.HeadRowStride + column;
+                        let sample: HeadSample =
+                            SelectHeadSample(head, sourceIndex, column, params.HeadDim);
+                        Lane.Accumulator = Lane.Accumulator +
+                            ResolveContribution(sample, Lane.OutputColumn, params.PaddedModelWidth);
+                    }
+                }
+            }
+
+            state StoreOutput {
+                Output[Lane.Element] = Lane.Accumulator;
+            }
+        }
+        return;
+    }
+}
