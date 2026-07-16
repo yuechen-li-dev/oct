@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M45",
+  "identity": "m45-residual-add-fp32-strided-v1",
+  "entry_point": "ResidualAdd_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 1, 2],
+  "push_constant_bytes": 32,
+  "source_sha256": "e83b60a31f82d9af785710d54a2055814917e1d0e9ecb988ab8eaf489313777d",
+  "hlsl_sha256": "7fedb0c77e12e2b975ae6529e1c50d5e98490a0dcc4f31ff1bfab8808e5b18e6",
+  "spirv_sha256": "c6e177b9fb86f1e5b01e05c544091577629fb4f51d4e08b9c6b624d85b6d0acc",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "FP32 Z[token,column] = X[token,column] + Y[token,column] with explicit independent row strides; Z may exactly alias Y"
+}

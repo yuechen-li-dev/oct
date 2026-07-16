@@ -448,3 +448,14 @@ in-place versus separate-output ownership, and preserve one final optional
 readback. Normalization should remain a separate later milestone so residual
 ownership and precision are measured without introducing a transformer graph
 or a fused residual-normalization abstraction.
+
+## M45 first-consumer status
+
+M45 now consumes this real Y before the M43/M44 slot can recycle. It combines
+the immutable resident X with Y under either a disjoint Z allocation or an
+exclusive in-place-Y ownership transition, assigns a distinct post-residual
+content generation, and exposes one retained FP32 Z view. M44's APIs, shader
+identities, selector behavior, replay identities, and experimental
+classification remain unchanged; the composed M45 replay wraps a
+readback-stripped internal M44 identity because only final Z may cross the
+host boundary.

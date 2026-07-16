@@ -1404,6 +1404,256 @@ typedef struct prom_m44_mismatch {
   uint64_t m44_replay_id;
 } prom_m44_mismatch;
 
+/* M45 is one bounded ownership transition from the immutable resident X and
+   the slot-owned M44 Y to one retained FP32 Z view.  It remains internal to
+   the Vulkan reactor and deliberately does not define a graph abstraction. */
+#define PROM_M45_MAX_STAGES 4u
+#define PROM_M45_MAX_BARRIERS 4u
+
+typedef enum prom_m45_residual_strategy {
+  PROM_M45_STRATEGY_SEPARATE_OUTPUT = 1u,
+  PROM_M45_STRATEGY_IN_PLACE_Y = 2u,
+  PROM_M45_STRATEGY_IN_PLACE_X_AUDIT = 3u,
+} prom_m45_residual_strategy;
+
+typedef enum prom_m45_submit_policy {
+  PROM_M45_SUBMIT_ONE_COMMAND_BUFFER = 1u,
+  PROM_M45_SUBMIT_TWO_BOUNDED = 2u,
+} prom_m45_submit_policy;
+
+typedef enum prom_m45_precision_policy {
+  PROM_M45_PRECISION_FP32 = 1u,
+} prom_m45_precision_policy;
+
+typedef enum prom_m45_buffer_identity {
+  PROM_M45_BUFFER_X = 1u,
+  PROM_M45_BUFFER_Y = 2u,
+  PROM_M45_BUFFER_Z = 3u,
+  PROM_M45_BUFFER_READBACK = 4u,
+} prom_m45_buffer_identity;
+
+typedef enum prom_m45_stage_operation {
+  PROM_M45_STAGE_X_READY = 1u,
+  PROM_M45_STAGE_Y_READY = 2u,
+  PROM_M45_STAGE_RESIDUAL_ADD = 3u,
+  PROM_M45_STAGE_FINAL_READBACK = 4u,
+} prom_m45_stage_operation;
+
+typedef enum prom_m45_fault_point {
+  PROM_M45_FAULT_NONE = 0u,
+  PROM_M45_FAULT_BEFORE_RESIDUAL_BARRIERS = 1u,
+  PROM_M45_FAULT_AFTER_X_BARRIER = 2u,
+  PROM_M45_FAULT_AFTER_Y_BARRIER = 3u,
+  PROM_M45_FAULT_DURING_RESIDUAL_DISPATCH = 4u,
+  PROM_M45_FAULT_AFTER_RESIDUAL_SUBMISSION = 5u,
+  PROM_M45_FAULT_BEFORE_FINAL_READBACK = 6u,
+  PROM_M45_FAULT_UNCERTAIN_COMPLETION = 7u,
+} prom_m45_fault_point;
+
+typedef enum prom_m45_eligibility_reason {
+  PROM_M45_ELIGIBLE = 0u,
+  PROM_M45_INELIGIBLE_VIEW = 1u,
+  PROM_M45_INELIGIBLE_SHAPE = 2u,
+  PROM_M45_INELIGIBLE_STRIDE = 3u,
+  PROM_M45_INELIGIBLE_GENERATION = 4u,
+  PROM_M45_INELIGIBLE_DEVICE = 5u,
+  PROM_M45_INELIGIBLE_ALIAS = 6u,
+  PROM_M45_INELIGIBLE_EXCLUSIVITY = 7u,
+  PROM_M45_INELIGIBLE_PRECISION = 8u,
+  PROM_M45_INELIGIBLE_CAPACITY = 9u,
+  PROM_M45_INELIGIBLE_STRATEGY = 10u,
+  PROM_M45_INELIGIBLE_IN_PLACE_X = 11u,
+} prom_m45_eligibility_reason;
+
+typedef struct prom_m45_barrier_trace {
+  uint32_t sequence;
+  uint32_t buffer_identity;
+  uint64_t byte_offset;
+  uint64_t byte_length;
+  uint32_t source_stage_mask;
+  uint32_t destination_stage_mask;
+  uint32_t source_access_mask;
+  uint32_t destination_access_mask;
+  uint32_t source_queue_family;
+  uint32_t destination_queue_family;
+} prom_m45_barrier_trace;
+
+typedef struct prom_m45_stage_plan {
+  uint32_t sequence;
+  uint32_t operation;
+  uint32_t dispatch_count;
+  uint32_t barrier_begin;
+  uint32_t barrier_count;
+  uint32_t copy_region_count;
+  uint32_t timestamp_begin;
+  uint32_t timestamp_end;
+} prom_m45_stage_plan;
+
+typedef struct prom_m45_memory_plan {
+  uint64_t x_view_bytes;
+  uint64_t y_view_bytes;
+  uint64_t z_device_bytes;
+  uint64_t z_readback_bytes;
+  uint64_t exact_request_bytes;
+  uint64_t in_place_y_saved_bytes;
+  uint64_t capacity_limit_bytes;
+  uint32_t reusable_descriptor_set_count;
+  uint32_t descriptor_binding_count;
+} prom_m45_memory_plan;
+
+typedef struct prom_m45_eligibility_decision {
+  uint32_t eligible;
+  uint32_t reason;
+  uint64_t replay_id;
+} prom_m45_eligibility_decision;
+
+typedef struct prom_m45_plan_request {
+  prom_device_buffer_view x_view;
+  prom_device_buffer_view y_view;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t strategy;
+  uint32_t submit_policy;
+  uint32_t precision_policy;
+  uint32_t y_exclusive;
+  uint32_t pre_residual_y_consumer_count;
+  uint32_t final_readback;
+  uint64_t expected_x_generation;
+  uint64_t expected_y_generation;
+  uint64_t m44_replay_id;
+} prom_m45_plan_request;
+
+typedef struct prom_m45_residual_plan {
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t x_row_stride;
+  uint32_t y_row_stride;
+  uint32_t z_row_stride;
+  uint32_t strategy;
+  uint32_t submit_policy;
+  uint32_t precision_policy;
+  uint32_t physical_alias_plan;
+  uint32_t stage_count;
+  uint32_t barrier_count;
+  uint32_t dispatch_count;
+  uint32_t copy_region_count;
+  uint32_t submit_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t final_readback_count;
+  uint64_t x_generation;
+  uint64_t y_generation;
+  uint64_t z_generation;
+  uint64_t shader_hash;
+  uint64_t m44_replay_id;
+  uint64_t command_plan_replay_id;
+  uint64_t replay_id;
+  prom_m45_eligibility_decision eligibility;
+  prom_m45_memory_plan memory;
+  prom_m45_stage_plan stages[PROM_M45_MAX_STAGES];
+  prom_m45_barrier_trace barriers[PROM_M45_MAX_BARRIERS];
+} prom_m45_residual_plan;
+
+typedef struct prom_m45_composed_request {
+  prom_m43_attention_group_request attention;
+  float* output;
+  uint64_t output_element_count;
+  uint32_t aggregation_strategy;
+  uint32_t projection_path;
+  uint32_t residual_strategy;
+  uint32_t submit_policy;
+  uint32_t rollback_active;
+  uint32_t fault_point;
+  uint64_t required_wo_generation;
+} prom_m45_composed_request;
+
+typedef struct prom_m45_composed_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t no_intermediate_host_copy;
+  uint32_t validation_error_count_before;
+  uint32_t validation_error_count_after;
+  uint64_t aggregation_gpu_ns;
+  uint64_t projection_gpu_ns;
+  uint64_t m44_gpu_ns;
+  uint64_t residual_gpu_ns;
+  uint64_t total_m43_m44_m45_gpu_ns;
+  uint64_t cpu_recording_ns;
+  uint64_t cpu_submission_ns;
+  uint64_t final_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t exact_request_bytes;
+  uint64_t retained_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint64_t x_generation;
+  uint64_t y_generation;
+  uint64_t z_generation;
+  prom_m43_attention_group_result attention;
+  prom_m44_output_projection_plan projection_plan;
+  prom_m45_residual_plan residual_plan;
+  prom_device_buffer_view x_view;
+  prom_device_buffer_view y_view;
+  prom_device_buffer_view z_view;
+} prom_m45_composed_result;
+
+typedef struct prom_m45_reference_request {
+  const float* x;
+  const float* y;
+  float* z;
+  uint64_t x_element_count;
+  uint64_t y_element_count;
+  uint64_t z_element_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t x_row_stride;
+  uint32_t y_row_stride;
+  uint32_t z_row_stride;
+} prom_m45_reference_request;
+
+typedef struct prom_m45_mismatch {
+  uint32_t matched;
+  uint32_t strategy;
+  uint32_t token;
+  uint32_t column;
+  float expected;
+  float actual;
+  float absolute_error;
+  float relative_error;
+  uint64_t x_generation;
+  uint64_t y_generation;
+  uint64_t z_generation;
+  uint64_t m44_replay_id;
+  uint64_t m45_replay_id;
+} prom_m45_mismatch;
+
+typedef struct prom_m45_resident_x_readback_request {
+  float* output;
+  uint64_t output_element_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint64_t expected_x_generation;
+} prom_m45_resident_x_readback_request;
+
+typedef struct prom_m45_resident_x_readback_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t gpu_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t x_generation;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+} prom_m45_resident_x_readback_result;
+
 enum {
   PROM_M40B_DETAIL_INVALID_REQUEST = -6901,
   PROM_M40B_DETAIL_SIZE_OVERFLOW = -6902,
@@ -1472,6 +1722,30 @@ enum {
   PROM_M44_DETAIL_READBACK = -7214,
   PROM_M44_DETAIL_FAULT_INJECTED = -7215,
   PROM_M44_DETAIL_MISMATCH = -7216,
+};
+
+enum {
+  PROM_M45_DETAIL_INVALID_REQUEST = -7301,
+  PROM_M45_DETAIL_INVALID_VIEW = -7302,
+  PROM_M45_DETAIL_SHAPE = -7303,
+  PROM_M45_DETAIL_STRIDE = -7304,
+  PROM_M45_DETAIL_STALE_X_GENERATION = -7305,
+  PROM_M45_DETAIL_STALE_Y_GENERATION = -7306,
+  PROM_M45_DETAIL_CROSS_DEVICE = -7307,
+  PROM_M45_DETAIL_ALIAS = -7308,
+  PROM_M45_DETAIL_EXCLUSIVITY = -7309,
+  PROM_M45_DETAIL_SIZE_OVERFLOW = -7310,
+  PROM_M45_DETAIL_CAPACITY = -7311,
+  PROM_M45_DETAIL_RESOURCE = -7312,
+  PROM_M45_DETAIL_COMMAND = -7313,
+  PROM_M45_DETAIL_SUBMIT = -7314,
+  PROM_M45_DETAIL_COMPLETION_UNCERTAIN = -7315,
+  PROM_M45_DETAIL_QUERY = -7316,
+  PROM_M45_DETAIL_READBACK = -7317,
+  PROM_M45_DETAIL_FAULT_INJECTED = -7318,
+  PROM_M45_DETAIL_NONFINITE_INPUT = -7319,
+  PROM_M45_DETAIL_MISMATCH = -7320,
+  PROM_M45_DETAIL_IN_PLACE_X_REJECTED = -7321,
 };
 
 enum {
@@ -1663,6 +1937,23 @@ int prom_reactor_runtime_m44_execute_composed(void* handle,
 int prom_reactor_runtime_m44_execute_host_bounce(void* handle,
                                                  const prom_m44_host_bounce_request* request,
                                                  prom_m44_host_bounce_result* out_result);
+int prom_m45_residual_plan_build(const prom_m45_plan_request* request,
+                                 prom_m45_residual_plan* out_plan);
+int prom_m45_residual_cpu_reference(const prom_m45_reference_request* request);
+int prom_m45_residual_compare(const float* expected,
+                              const float* actual,
+                              uint32_t tokens,
+                              uint32_t model_width,
+                              float absolute_tolerance,
+                              float relative_tolerance,
+                              const prom_m45_residual_plan* plan,
+                              prom_m45_mismatch* out_mismatch);
+int prom_reactor_runtime_m45_execute_composed(void* handle,
+                                              const prom_m45_composed_request* request,
+                                              prom_m45_composed_result* out_result);
+int prom_reactor_runtime_m45_read_resident_x(void* handle,
+                                             const prom_m45_resident_x_readback_request* request,
+                                             prom_m45_resident_x_readback_result* out_result);
 uint16_t prom_sgemm_float32_to_fp16_bits(float value);
 float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);

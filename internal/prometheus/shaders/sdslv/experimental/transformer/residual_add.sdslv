@@ -1,0 +1,38 @@
+namespace Prometheus.Experimental.Transformer;
+
+// M45's bounded FP32 residual operation. X and Y have independent physical
+// row strides. Output may be a disjoint Z buffer or the exact Y buffer; each
+// invocation owns one logical element and padding is intentionally untouched.
+stream ResidualAddIO {
+    [binding(0)] X: readonly array<f32>;
+    [binding(1)] Y: readonly array<f32>;
+    [binding(2)] Z: readwrite array<f32>;
+}
+
+record ResidualAddParams {
+    Tokens: u32;
+    ModelWidth: u32;
+    XRowStride: u32;
+    YRowStride: u32;
+    ZRowStride: u32;
+    LogicalElementCount: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+}
+
+shader ResidualAdd {
+    resources ResidualAddIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: ResidualAddParams) -> void {
+        let logicalIndex: u32 = DispatchThreadID.x;
+        if logicalIndex >= params.LogicalElementCount { return; }
+
+        let token: u32 = logicalIndex / params.ModelWidth;
+        let column: u32 = logicalIndex - token * params.ModelWidth;
+        let xIndex: u32 = token * params.XRowStride + column;
+        let yIndex: u32 = token * params.YRowStride + column;
+        let zIndex: u32 = token * params.ZRowStride + column;
+        Z[zIndex] = X[xIndex] + Y[yIndex];
+        return;
+    }
+}

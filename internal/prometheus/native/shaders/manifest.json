@@ -173,6 +173,30 @@
       "weight_storage": "persistent F16x2 packed into u32, low lane first",
       "output_storage": "FP32",
       "tail_policy": "logical output and head extents only"
+    },
+    {
+      "id": "m45-transformer-residual-add-fp32",
+      "authority": "experimental",
+      "production_authority": "experimental",
+      "selector_eligible": false,
+      "source_language": "sdslv",
+      "source": "internal/prometheus/shaders/sdslv/experimental/transformer/residual_add.sdslv",
+      "output": "internal/prometheus/shaders/sdslv/experimental/transformer/residual_add.spv",
+      "generated_hlsl": "internal/prometheus/shaders/sdslv/experimental/transformer/residual_add.hlsl",
+      "generated_header": "internal/prometheus/shaders/sdslv/experimental/transformer/residual_add_spirv.h",
+      "inspection": "internal/prometheus/shaders/sdslv/experimental/transformer/residual_add_inspection.json",
+      "shader_sha256": "c6e177b9fb86f1e5b01e05c544091577629fb4f51d4e08b9c6b624d85b6d0acc",
+      "compiler": "Vulkan SDK DXC 1.9.0.5347 (1.10.5347-fe261573)",
+      "target_environment": "vulkan1.0",
+      "entry_point": "ResidualAdd_CS",
+      "local_size": [256,1,1],
+      "descriptor_bindings": 3,
+      "push_constant_bytes": 32,
+      "implementation_identity": "m45-residual-add-fp32-strided-v1",
+      "layout": "row-major X/Y/Z with independent explicit physical row strides",
+      "input_storage": "FP32",
+      "output_storage": "FP32 separate output or exact in-place Y alias",
+      "tail_policy": "logical Tokens by ModelWidth elements only; padding remains unchanged"
     }
   ],
   "compute_implementations": [

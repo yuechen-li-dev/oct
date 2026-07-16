@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -487,6 +488,31 @@ void FillM44ComposedRequest(prom_m44_composed_request* request,
     request->required_wo_generation = woGeneration;
 }
 
+void FillM45ComposedRequest(prom_m45_composed_request* request,
+                            float* output,
+                            std::uint32_t tokens,
+                            std::uint32_t modelWidth,
+                            std::uint32_t headDim,
+                            std::uint32_t strategy,
+                            std::uint32_t submitPolicy,
+                            std::uint64_t xGeneration,
+                            std::uint64_t woGeneration)
+{
+    *request = {};
+    FillGroupExecutionRequest(&request->attention, nullptr, nullptr, tokens, modelWidth, headDim,
+                              PROM_M43_STRATEGY_PROJECTION_GROUPED,
+                              PROM_M42_INPUT_RESIDENT_X, xGeneration);
+    request->output = output;
+    request->output_element_count = output == nullptr
+                                        ? 0u
+                                        : static_cast<std::uint64_t>(tokens) * modelWidth;
+    request->aggregation_strategy = PROM_M44_AGGREGATION_INTERLEAVE;
+    request->projection_path = PROM_M44_PROJECTION_COOPERATIVE;
+    request->residual_strategy = strategy;
+    request->submit_policy = submitPolicy;
+    request->required_wo_generation = woGeneration;
+}
+
 struct M44BenchmarkRecord
 {
     std::string workload;
@@ -542,6 +568,16 @@ std::uint64_t MedianM44Metric(const std::vector<prom_m44_composed_result>& resul
     std::vector<std::uint64_t> values;
     values.reserve(results.size());
     for (const prom_m44_composed_result& result : results) values.push_back(result.*member);
+    std::sort(values.begin(), values.end());
+    return values.empty() ? 0u : values[values.size() / 2u];
+}
+
+std::uint64_t MedianM45Metric(const std::vector<prom_m45_composed_result>& results,
+                              std::uint64_t prom_m45_composed_result::*member)
+{
+    std::vector<std::uint64_t> values;
+    values.reserve(results.size());
+    for (const prom_m45_composed_result& result : results) values.push_back(result.*member);
     std::sort(values.begin(), values.end());
     return values.empty() ? 0u : values[values.size() / 2u];
 }
@@ -1603,6 +1639,251 @@ FACT(PrometheusM44ConcatenationAndCpuOracle)
                  "mismatch carries the M44 replay identity");
 }
 
+FACT(PrometheusM45ResidualOwnershipContracts)
+{
+    const VkDevice device = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(45u));
+    prom_m45_plan_request request{};
+    request.tokens = 127u;
+    request.model_width = 1001u;
+    request.strategy = PROM_M45_STRATEGY_SEPARATE_OUTPUT;
+    request.submit_policy = PROM_M45_SUBMIT_ONE_COMMAND_BUFFER;
+    request.precision_policy = PROM_M45_PRECISION_FP32;
+    request.y_exclusive = 1u;
+    request.final_readback = 1u;
+    request.expected_x_generation = 71u;
+    request.expected_y_generation = 72u;
+    request.m44_replay_id = 73u;
+    request.x_view.buffer = reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(101u));
+    request.x_view.byte_length = static_cast<VkDeviceSize>(127u * 1024u * sizeof(float));
+    request.x_view.element_type = PROM_DEVICE_ELEMENT_F32;
+    request.x_view.logical_rows = 127u;
+    request.x_view.logical_columns = 1001u;
+    request.x_view.row_stride_elements = 1024u;
+    request.x_view.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+    request.x_view.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+    request.x_view.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+    request.x_view.owning_device = device;
+    request.x_view.owning_lifetime_id = 71u;
+    request.x_view.owning_slot_id = UINT32_MAX;
+    request.x_view.owning_slot_generation = 9u;
+    request.y_view = request.x_view;
+    request.y_view.buffer = reinterpret_cast<VkBuffer>(static_cast<std::uintptr_t>(102u));
+    request.y_view.byte_length = static_cast<VkDeviceSize>(127u * 1008u * sizeof(float));
+    request.y_view.row_stride_elements = 1008u;
+    request.y_view.owning_lifetime_id = 72u;
+    request.y_view.owning_slot_id = 1u;
+    request.y_view.owning_slot_generation = 10u;
+    prom_m45_residual_plan separate{};
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &separate),
+                 "the awkward-stride separate residual plan builds");
+    ASSERT_EQUAL(1u, separate.eligibility.eligible,
+                 "matching logical shapes may use different physical strides");
+    ASSERT_EQUAL(1001u, separate.z_row_stride,
+                 "separate Z uses one compact explicit stride");
+    ASSERT_EQUAL(1u, separate.dispatch_count, "residual addition is one dispatch");
+    ASSERT_EQUAL(0u, separate.intermediate_host_copy_count,
+                 "the residual plan has no intermediate host copy");
+    ASSERT_EQUAL(1u, separate.final_readback_count, "one optional final Z readback is explicit");
+    ASSERT_EQUAL(4u, separate.barrier_count,
+                 "X, Y, Z, and readback each have one normalized exact barrier");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_READ_BIT),
+                 separate.barriers[1].destination_access_mask,
+                 "separate Y is read-only at the residual boundary");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_QUEUE_FAMILY_IGNORED),
+                 separate.barriers[2].source_queue_family,
+                 "residual barriers never transfer queue ownership");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(127u * 1024u * sizeof(float)),
+                 separate.barriers[0].byte_length, "X's padded physical range is exact");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(127u * 1008u * sizeof(float)),
+                 separate.barriers[1].byte_length, "Y's independent physical range is exact");
+
+    request.strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
+    request.submit_policy = PROM_M45_SUBMIT_TWO_BOUNDED;
+    prom_m45_residual_plan inPlace{};
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &inPlace),
+                 "the exclusive in-place-Y residual plan builds");
+    ASSERT_EQUAL(1u, inPlace.eligibility.eligible, "exclusive Y ownership is mechanically accepted");
+    ASSERT_EQUAL(1008u, inPlace.z_row_stride, "Y's physical stride becomes Z's stride");
+    ASSERT_EQUAL(0u, inPlace.memory.z_device_bytes, "in-place Y allocates no separate Z");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(127u * 1001u * sizeof(float)),
+                 inPlace.memory.in_place_y_saved_bytes, "saved separate-Z bytes are exact");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT),
+                 inPlace.barriers[1].destination_access_mask,
+                 "in-place Y has a read/write destination access mask");
+    ASSERT_EQUAL(2u, inPlace.submit_count, "the bounded split has exactly two submits");
+    ASSERT_TRUE(inPlace.z_generation != inPlace.y_generation,
+                "unchanged physical storage receives a distinct post-residual content generation");
+    ASSERT_TRUE(inPlace.replay_id != separate.replay_id,
+                "strategy, aliasing, and submit topology participate in replay identity");
+    prom_m45_residual_plan replay{};
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &replay),
+                 "the identical in-place plan rebuilds");
+    ASSERT_EQUAL(inPlace.replay_id, replay.replay_id, "M45 replay identity is deterministic");
+
+    request.final_readback = 0u;
+    prom_m45_residual_plan retainedOnly{};
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &retainedOnly),
+                 "a retained-only Z plan builds");
+    ASSERT_EQUAL(0u, retainedOnly.final_readback_count, "final Z readback is optional");
+    ASSERT_EQUAL(3u, retainedOnly.barrier_count,
+                 "retained-only Z ends in an exact compute-consumer barrier");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(VK_ACCESS_SHADER_READ_BIT),
+                 retainedOnly.barriers[2].destination_access_mask,
+                 "retained Z is ready for the next compute consumer");
+}
+
+FACT(PrometheusM45ResidualValidationAndAliasing)
+{
+    const VkDevice device = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(51u));
+    prom_m45_plan_request request{};
+    request.tokens = 4u;
+    request.model_width = 5u;
+    request.strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
+    request.submit_policy = PROM_M45_SUBMIT_ONE_COMMAND_BUFFER;
+    request.precision_policy = PROM_M45_PRECISION_FP32;
+    request.y_exclusive = 1u;
+    request.expected_x_generation = 11u;
+    request.expected_y_generation = 12u;
+    request.m44_replay_id = 13u;
+    auto fillView = [device](prom_device_buffer_view* view, std::uintptr_t handle,
+                             std::uint32_t stride, std::uint64_t generation) {
+        *view = {};
+        view->buffer = reinterpret_cast<VkBuffer>(handle);
+        view->byte_length = static_cast<VkDeviceSize>(4u * stride * sizeof(float));
+        view->element_type = PROM_DEVICE_ELEMENT_F32;
+        view->logical_rows = 4u;
+        view->logical_columns = 5u;
+        view->row_stride_elements = stride;
+        view->layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+        view->producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+        view->required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+        view->owning_device = device;
+        view->owning_lifetime_id = generation;
+        view->owning_slot_id = 1u;
+        view->owning_slot_generation = 2u;
+    };
+    fillView(&request.x_view, 201u, 7u, 11u);
+    fillView(&request.y_view, 202u, 8u, 12u);
+    prom_m45_residual_plan plan{};
+    request.y_exclusive = 0u;
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "missing exclusivity remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_EXCLUSIVITY),
+                 plan.eligibility.reason, "in-place Y rejects without exclusive ownership");
+    request.y_exclusive = 1u;
+    request.pre_residual_y_consumer_count = 1u;
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "a live pre-residual Y consumer remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_EXCLUSIVITY),
+                 plan.eligibility.reason, "in-place Y rejects another pre-residual consumer");
+    request.pre_residual_y_consumer_count = 0u;
+    request.x_view.buffer = request.y_view.buffer;
+    request.x_view.offset = sizeof(float);
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "partial overlap remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_ALIAS),
+                 plan.eligibility.reason, "partial X/Y overlap rejects exactly");
+    fillView(&request.x_view, 201u, 7u, 11u);
+    request.y_view.owning_lifetime_id = 99u;
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "a stale Y generation remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_GENERATION),
+                 plan.eligibility.reason, "stale Y rejects before submission");
+    request.y_view.owning_lifetime_id = 12u;
+    request.y_view.owning_device = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(52u));
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "a cross-device view remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_DEVICE),
+                 plan.eligibility.reason, "cross-device residual views reject exactly");
+    request.y_view.owning_device = device;
+    request.y_view.row_stride_elements = 4u;
+    request.y_view.byte_length = 4u * 4u * sizeof(float);
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "an insufficient physical stride remains inspectable");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_STRIDE),
+                 plan.eligibility.reason, "stride smaller than logical width rejects exactly");
+    fillView(&request.y_view, 202u, 8u, 12u);
+    request.strategy = PROM_M45_STRATEGY_IN_PLACE_X_AUDIT;
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
+                 "the bounded in-place-X audit produces a decision");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M45_INELIGIBLE_IN_PLACE_X),
+                 plan.eligibility.reason,
+                 "in-place X is rejected because resident X remains shared and immutable");
+    request.tokens = 1025u;
+    ASSERT_TRUE(prom_m45_residual_plan_build(&request, &plan) != PROM_OK,
+                "out-of-envelope sizing rejects before capacity or resource work");
+}
+
+FACT(PrometheusM45ResidualCpuOracleAndMismatch)
+{
+    constexpr std::uint32_t tokens = 3u;
+    constexpr std::uint32_t width = 5u;
+    constexpr std::uint32_t xStride = 7u;
+    constexpr std::uint32_t yStride = 8u;
+    constexpr std::uint32_t zStride = 6u;
+    std::vector<float> x(tokens * xStride, -99.0f);
+    std::vector<float> y(tokens * yStride, -88.0f);
+    std::vector<float> z(tokens * zStride, 77.0f);
+    for (std::uint32_t token = 0u; token < tokens; ++token) {
+        for (std::uint32_t column = 0u; column < width; ++column) {
+            x[token * xStride + column] = static_cast<float>(token * 10u + column) / 8.0f;
+            y[token * yStride + column] = -static_cast<float>(token * 3u + column) / 16.0f;
+        }
+    }
+    prom_m45_reference_request reference{};
+    reference.x = x.data();
+    reference.y = y.data();
+    reference.z = z.data();
+    reference.x_element_count = x.size();
+    reference.y_element_count = y.size();
+    reference.z_element_count = z.size();
+    reference.tokens = tokens;
+    reference.model_width = width;
+    reference.x_row_stride = xStride;
+    reference.y_row_stride = yStride;
+    reference.z_row_stride = zStride;
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_cpu_reference(&reference),
+                 "the FP32 residual oracle supports independent strides");
+    for (std::uint32_t token = 0u; token < tokens; ++token) {
+        for (std::uint32_t column = 0u; column < width; ++column) {
+            ASSERT_NEAR(x[token * xStride + column] + y[token * yStride + column],
+                        z[token * zStride + column], 0.0f,
+                        "the logical residual element is exact FP32 addition");
+        }
+        ASSERT_NEAR(77.0f, z[token * zStride + width], 0.0f,
+                    "the CPU oracle leaves padding deterministic and untouched");
+    }
+    std::vector<float> compact(tokens * width);
+    for (std::uint32_t token = 0u; token < tokens; ++token) {
+        for (std::uint32_t column = 0u; column < width; ++column) {
+            compact[token * width + column] = z[token * zStride + column];
+        }
+    }
+    prom_m45_residual_plan plan{};
+    plan.strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
+    plan.x_generation = 11u;
+    plan.y_generation = 12u;
+    plan.z_generation = 13u;
+    plan.m44_replay_id = 14u;
+    plan.replay_id = 15u;
+    prom_m45_mismatch mismatch{};
+    ASSERT_EQUAL(PROM_OK, prom_m45_residual_compare(compact.data(), compact.data(), tokens, width,
+                                                    0.0f, 0.0f, &plan, &mismatch),
+                 "identical residual output compares");
+    std::vector<float> actual = compact;
+    actual[2u * width + 3u] += 1.0f;
+    ASSERT_TRUE(prom_m45_residual_compare(compact.data(), actual.data(), tokens, width,
+                                          0.0f, 0.0f, &plan, &mismatch) != PROM_OK,
+                "the first residual mismatch is surfaced");
+    ASSERT_EQUAL(2u, mismatch.token, "mismatch token is explicit");
+    ASSERT_EQUAL(3u, mismatch.column, "mismatch column is explicit");
+    ASSERT_EQUAL(11u, mismatch.x_generation, "mismatch carries X generation");
+    ASSERT_EQUAL(12u, mismatch.y_generation, "mismatch carries Y generation");
+    ASSERT_EQUAL(13u, mismatch.z_generation, "mismatch carries Z generation");
+    ASSERT_EQUAL(14u, mismatch.m44_replay_id, "mismatch carries M44 replay identity");
+    ASSERT_EQUAL(15u, mismatch.m45_replay_id, "mismatch carries M45 replay identity");
+}
+
 FACT(PrometheusM44ComposedHardwareProof)
 {
     EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
@@ -1808,6 +2089,184 @@ FACT(PrometheusM44ComposedHardwareProof)
                  "M44 hardware proof is validation-warning clean");
     ASSERT_EQUAL(0u, services.validation_error_count,
                  "M44 hardware proof is validation-error clean");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
+FACT(PrometheusM45ComposedOwnershipAndLifecycleHardwareProof)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) {
+        SKIP("Vulkan runtime unavailable");
+    }
+    prom_vk_runtime_services services{};
+    if (prom_reactor_runtime_get_vk_services(runtime, &services) != PROM_OK ||
+        services.cooperative_matrix_feature_enabled == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("M45 hardware proof requires the proven cooperative tuple");
+    }
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t headDim = 16u;
+    constexpr std::uint64_t xGeneration = 45u;
+    constexpr std::uint64_t woGeneration = 545u;
+    std::vector<float> x;
+    GroupWeights weights;
+    FillGroupInputs(&x, &weights, tokens, modelWidth, headDim);
+    const std::vector<float> originalX = x;
+    ASSERT_TRUE(PrepareGroupWeights(runtime, weights, modelWidth, headDim),
+                "M45 prepares all M43 weights");
+    prom_m43_resident_x_prepare_request prepareX{};
+    prepareX.x = x.data();
+    prepareX.element_count = x.size();
+    prepareX.tokens = tokens;
+    prepareX.model_width = modelWidth;
+    prepareX.generation = xGeneration;
+    prom_m43_resident_x_prepare_result preparedX{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &preparedX),
+                 "M45 prepares one immutable resident X generation");
+    std::vector<float> wo;
+    FillOutputProjectionWeight(&wo, headDim, modelWidth);
+    ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, headDim, modelWidth, woGeneration),
+                "M45 prepares persistent Wo");
+    std::vector<float> heads;
+    const prom_m43_reference_result headReference =
+        GroupReference(x, weights, tokens, modelWidth, headDim, &heads);
+    ASSERT_EQUAL(1u, headReference.all_finite, "the grouped attention oracle succeeds");
+    std::vector<float> y;
+    const prom_m44_reference_result yReference =
+        OutputProjectionReference(heads, wo, tokens, headDim, modelWidth,
+                                  PROM_M42_PRECISION_F16_ROUNDED, &y);
+    ASSERT_EQUAL(1u, yReference.all_finite, "the pre-residual Y oracle succeeds");
+    std::vector<float> expected(y.size());
+    for (std::size_t index = 0u; index < expected.size(); ++index) expected[index] = x[index] + y[index];
+
+    std::uint64_t primedAllocations = 0u;
+    for (const std::uint32_t strategy : {PROM_M45_STRATEGY_SEPARATE_OUTPUT,
+                                        PROM_M45_STRATEGY_IN_PLACE_Y}) {
+        for (const std::uint32_t submit : {PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                                          PROM_M45_SUBMIT_TWO_BOUNDED}) {
+            std::vector<float> output(expected.size(), 0.0f);
+            prom_m45_composed_request composed{};
+            FillM45ComposedRequest(&composed, output.data(), tokens, modelWidth, headDim,
+                                   strategy, submit, xGeneration, woGeneration);
+            prom_m45_composed_result result{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_m45_execute_composed(runtime, &composed, &result),
+                         "real resident X plus real M44 Y executes through M45");
+            prom_m45_mismatch mismatch{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_m45_residual_compare(expected.data(), output.data(), tokens,
+                                                   modelWidth, 1.0e-2f, 4.0e-2f,
+                                                   &result.residual_plan, &mismatch),
+                         "M45 final Z matches X plus the precision-specific M44 Y oracle");
+            ASSERT_EQUAL(submit == PROM_M45_SUBMIT_TWO_BOUNDED ? 2u : 1u,
+                         result.submit_count, "M45 reports the exact bounded submit count");
+            ASSERT_EQUAL(1u, result.final_readback_count, "only final Z is read back");
+            ASSERT_EQUAL(1u, result.no_intermediate_host_copy,
+                         "M43/M44/M45 composition has no intermediate host copy");
+            ASSERT_EQUAL(1u, result.physical_slot_recyclable,
+                         "known completion makes the complete composed slot recyclable");
+            ASSERT_EQUAL(xGeneration, result.x_generation, "the resident X generation is retained");
+            ASSERT_TRUE(result.y_generation != 0u && result.z_generation != 0u &&
+                        result.y_generation != result.z_generation,
+                        "pre- and post-residual logical generations are distinct");
+            ASSERT_TRUE(result.residual_gpu_ns > 0u && result.total_m43_m44_m45_gpu_ns > 0u,
+                        "residual and complete-product GPU intervals are measured");
+            if (strategy == PROM_M45_STRATEGY_IN_PLACE_Y) {
+                ASSERT_EQUAL(result.y_view.buffer, result.z_view.buffer,
+                             "in-place Y reuses the exact physical buffer as logical Z");
+                ASSERT_EQUAL(result.y_view.owning_slot_generation,
+                             result.z_view.owning_slot_generation,
+                             "physical slot generation stays stable across the content transition");
+                ASSERT_EQUAL(0u, result.residual_plan.memory.z_device_bytes,
+                             "in-place Y retains no separate Z allocation");
+            } else {
+                ASSERT_TRUE(result.y_view.buffer != result.z_view.buffer,
+                            "separate output keeps X, Y, and Z disjoint");
+                ASSERT_TRUE(result.residual_plan.memory.z_device_bytes > 0u,
+                            "separate output owns one grow-only Z allocation");
+            }
+            primedAllocations = result.buffer_allocation_count;
+        }
+    }
+    ASSERT_TRUE(x == originalX, "resident X remains immutable across every residual strategy");
+
+    prom_m45_composed_request retainedRequest{};
+    FillM45ComposedRequest(&retainedRequest, nullptr, tokens, modelWidth, headDim,
+                           PROM_M45_STRATEGY_IN_PLACE_Y, PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                           xGeneration, woGeneration);
+    prom_m45_composed_result retained{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &retainedRequest, &retained),
+                 "M45 may retain Z without any readback");
+    ASSERT_EQUAL(0u, retained.final_readback_count, "retained-only execution performs no readback");
+    ASSERT_TRUE(retained.z_view.buffer != VK_NULL_HANDLE,
+                "retained-only execution exposes one clean FP32 Z device view");
+    ASSERT_EQUAL(primedAllocations, retained.buffer_allocation_count,
+                 "warm in-place execution performs no Vulkan buffer allocation");
+
+    prom_m45_composed_request staleRequest = retainedRequest;
+    staleRequest.attention.shared_x_generation = xGeneration - 1u;
+    prom_m45_composed_result stale{};
+    ASSERT_TRUE(prom_reactor_runtime_m45_execute_composed(runtime, &staleRequest, &stale) != PROM_OK,
+                "stale resident X rejects before slot acquisition");
+    ASSERT_EQUAL(PROM_M45_DETAIL_STALE_X_GENERATION, stale.detail_code,
+                 "stale X has an exact M45 diagnostic");
+    staleRequest = retainedRequest;
+    staleRequest.residual_strategy = PROM_M45_STRATEGY_IN_PLACE_X_AUDIT;
+    ASSERT_TRUE(prom_reactor_runtime_m45_execute_composed(runtime, &staleRequest, &stale) != PROM_OK,
+                "runtime in-place X remains rejected");
+    ASSERT_EQUAL(PROM_M45_DETAIL_IN_PLACE_X_REJECTED, stale.detail_code,
+                 "in-place X audit rejection is explicit");
+
+    std::vector<float> faultOutput(expected.size(), 0.0f);
+    prom_m45_composed_request faultRequest{};
+    FillM45ComposedRequest(&faultRequest, faultOutput.data(), tokens, modelWidth, headDim,
+                           PROM_M45_STRATEGY_IN_PLACE_Y, PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                           xGeneration, woGeneration);
+    for (std::uint32_t fault = PROM_M45_FAULT_BEFORE_RESIDUAL_BARRIERS;
+         fault <= PROM_M45_FAULT_BEFORE_FINAL_READBACK; ++fault) {
+        faultRequest.fault_point = fault;
+        prom_m45_composed_result failed{};
+        ASSERT_TRUE(prom_reactor_runtime_m45_execute_composed(runtime, &faultRequest, &failed) != PROM_OK,
+                    "known-completion M45 fault reports logical failure");
+        ASSERT_EQUAL(PROM_M45_DETAIL_FAULT_INJECTED, failed.detail_code,
+                     "known-completion fault has the exact detail");
+        ASSERT_EQUAL(1u, failed.physical_slot_recyclable,
+                     "known-completion fault returns the aliased slot exactly once");
+    }
+    faultRequest.fault_point = PROM_M45_FAULT_AFTER_RESIDUAL_SUBMISSION;
+    prom_m45_composed_result afterSubmit{};
+    ASSERT_TRUE(prom_reactor_runtime_m45_execute_composed(runtime, &faultRequest, &afterSubmit) != PROM_OK,
+                "post-submit logical fault remains recyclable after known completion");
+    ASSERT_EQUAL(1u, afterSubmit.physical_slot_recyclable,
+                 "post-submit known completion preserves recyclability");
+    faultRequest.fault_point = PROM_M45_FAULT_UNCERTAIN_COMPLETION;
+    prom_m45_composed_result uncertain{};
+    ASSERT_TRUE(prom_reactor_runtime_m45_execute_composed(runtime, &faultRequest, &uncertain) != PROM_OK,
+                "uncertain M45 completion reports failure");
+    ASSERT_EQUAL(PROM_M45_DETAIL_COMPLETION_UNCERTAIN, uncertain.detail_code,
+                 "uncertain completion is distinct from logical failure");
+    ASSERT_EQUAL(0u, uncertain.physical_slot_recyclable,
+                 "uncertain completion quarantines the entire composed slot");
+
+    prepareX.generation = xGeneration + 1u;
+    prom_m43_resident_x_prepare_result replacedX{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &replacedX),
+                 "resident-X replacement waits and reaps the quarantined M45 slot");
+    ASSERT_EQUAL(1u, replacedX.replaced, "resident X replacement is explicit");
+    faultRequest.fault_point = PROM_M45_FAULT_NONE;
+    faultRequest.attention.shared_x_generation = xGeneration + 1u;
+    prom_m45_composed_result recovered{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m45_execute_composed(runtime, &faultRequest, &recovered),
+                 "M45 recovers after quarantine reap with the newer X generation");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                 "M45 validation services remain available");
+    ASSERT_EQUAL(0u, services.validation_warning_count, "M45 produces no validation warnings");
+    ASSERT_EQUAL(0u, services.validation_error_count, "M45 produces no validation errors");
     prom_reactor_runtime_destroy_impl(runtime);
 }
 
@@ -2990,4 +3449,330 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM44AttentionOutputProjectionCorpus
     json << "\n  ]\n}\n";
     ASSERT_TRUE(context.WriteTextArtifact("prometheus_m44_multihead_output_projection.json", json.str()),
                 "M44 benchmark artifact is written");
+}
+
+VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM45ResidualOwnershipCorpus, 1u)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    struct Workload
+    {
+        const char* name;
+        std::uint32_t tokens;
+        std::uint32_t modelWidth;
+        std::uint32_t headDim;
+        bool primary;
+    };
+    const std::array<Workload, 6u> workloads{{
+        {"tiny", 16u, 128u, 16u, false},
+        {"primary", 128u, 1024u, 128u, true},
+        {"more_tokens", 256u, 1024u, 128u, false},
+        {"wider", 128u, 2048u, 256u, false},
+        {"awkward", 127u, 1001u, 127u, false},
+        {"boundary", 1024u, 1024u, 64u, false},
+    }};
+    struct Record
+    {
+        std::string workload;
+        std::string strategy;
+        std::string submit;
+        std::uint32_t tokens = 0u;
+        std::uint32_t modelWidth = 0u;
+        std::uint32_t headDim = 0u;
+        std::uint64_t replay = 0u;
+        std::uint64_t m44Replay = 0u;
+        std::uint64_t zGeneration = 0u;
+        std::uint64_t m43Gpu = 0u;
+        std::uint64_t aggregationGpu = 0u;
+        std::uint64_t projectionGpu = 0u;
+        std::uint64_t m44Gpu = 0u;
+        std::uint64_t residualGpu = 0u;
+        std::uint64_t totalGpu = 0u;
+        std::uint64_t cpuRecording = 0u;
+        std::uint64_t cpuSubmission = 0u;
+        std::uint64_t finalReadback = 0u;
+        std::uint64_t endToEnd = 0u;
+        std::uint64_t retained = 0u;
+        std::uint64_t exact = 0u;
+        std::uint64_t saved = 0u;
+        std::uint64_t allocations = 0u;
+        std::uint64_t cpuAdd = 0u;
+        std::uint64_t xReadback = 0u;
+        std::uint32_t submitCount = 0u;
+        bool correct = false;
+    };
+    std::vector<Record> records;
+    std::uint64_t validationWarnings = 0u;
+    std::uint64_t validationErrors = 0u;
+    std::uint64_t warm10Gpu = 0u;
+    std::uint64_t warm100Gpu = 0u;
+    std::uint64_t warm10EndToEnd = 0u;
+    std::uint64_t warm100EndToEnd = 0u;
+    for (const Workload& workload : workloads) {
+        void* runtime = nullptr;
+        if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr) {
+            SKIP("Vulkan runtime unavailable");
+        }
+        prom_vk_runtime_services services{};
+        if (prom_reactor_runtime_get_vk_services(runtime, &services) != PROM_OK ||
+            services.cooperative_matrix_feature_enabled == 0u) {
+            prom_reactor_runtime_destroy_impl(runtime);
+            SKIP("M45 corpus requires the proven cooperative tuple");
+        }
+        std::vector<float> x;
+        GroupWeights weights;
+        FillGroupInputs(&x, &weights, workload.tokens, workload.modelWidth, workload.headDim);
+        ASSERT_TRUE(PrepareGroupWeights(runtime, weights, workload.modelWidth, workload.headDim),
+                    "M45 corpus prepares grouped weights");
+        prom_m43_resident_x_prepare_request prepareX{};
+        prepareX.x = x.data();
+        prepareX.element_count = x.size();
+        prepareX.tokens = workload.tokens;
+        prepareX.model_width = workload.modelWidth;
+        prepareX.generation = 77u;
+        prom_m43_resident_x_prepare_result preparedX{};
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m43_prepare_resident_x(runtime, &prepareX, &preparedX),
+                     "M45 corpus prepares resident X");
+        std::vector<float> wo;
+        FillOutputProjectionWeight(&wo, workload.headDim, workload.modelWidth);
+        ASSERT_TRUE(PrepareOutputProjectionWeight(runtime, wo, workload.headDim,
+                                                  workload.modelWidth, 500u),
+                    "M45 corpus prepares Wo");
+        std::vector<float> heads;
+        ASSERT_EQUAL(1u, GroupReference(x, weights, workload.tokens, workload.modelWidth,
+                                        workload.headDim, &heads).all_finite,
+                     "M45 corpus grouped oracle succeeds");
+        std::vector<float> y;
+        ASSERT_EQUAL(1u, OutputProjectionReference(heads, wo, workload.tokens,
+                                                   workload.headDim, workload.modelWidth,
+                                                   PROM_M42_PRECISION_F16_ROUNDED, &y).all_finite,
+                     "M45 corpus projection oracle succeeds");
+        std::vector<float> expected(y.size());
+        for (std::size_t index = 0u; index < expected.size(); ++index) expected[index] = x[index] + y[index];
+        for (const std::uint32_t strategy : {PROM_M45_STRATEGY_SEPARATE_OUTPUT,
+                                            PROM_M45_STRATEGY_IN_PLACE_Y}) {
+            for (const std::uint32_t submit : {PROM_M45_SUBMIT_ONE_COMMAND_BUFFER,
+                                              PROM_M45_SUBMIT_TWO_BOUNDED}) {
+                std::vector<float> output(expected.size());
+                prom_m45_composed_request request{};
+                FillM45ComposedRequest(&request, output.data(), workload.tokens,
+                                       workload.modelWidth, workload.headDim,
+                                       strategy, submit, 77u, 500u);
+                prom_m45_composed_result prime0{};
+                prom_m45_composed_result prime1{};
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &request, &prime0),
+                             "M45 primes the first ring slot");
+                ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &request, &prime1),
+                             "M45 primes the second ring slot");
+                for (std::uint32_t warm = 0u; warm < 32u; ++warm) {
+                    prom_m45_composed_result ignored{};
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &request, &ignored),
+                                 "M45 warm execution succeeds");
+                }
+                std::vector<prom_m45_composed_result> measured;
+                for (std::uint32_t iteration = 0u; iteration < 5u; ++iteration) {
+                    prom_m45_composed_result value{};
+                    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &request, &value),
+                                 "M45 measured execution succeeds");
+                    measured.push_back(value);
+                }
+                const prom_m45_composed_result& last = measured.back();
+                prom_m45_mismatch mismatch{};
+                const bool correct = prom_m45_residual_compare(expected.data(), output.data(),
+                    workload.tokens, workload.modelWidth, 1.0e-2f, 4.0e-2f,
+                    &last.residual_plan, &mismatch) == PROM_OK;
+                ASSERT_TRUE(correct, "M45 corpus Z is correct");
+                ASSERT_EQUAL(prime1.buffer_allocation_count, last.buffer_allocation_count,
+                             "M45 performs no allocation after both slots reach warm capacity");
+                Record record{};
+                record.workload = workload.name;
+                record.strategy = strategy == PROM_M45_STRATEGY_IN_PLACE_Y ? "in_place_y" : "separate_output";
+                record.submit = submit == PROM_M45_SUBMIT_TWO_BOUNDED ? "two" : "one";
+                record.tokens = workload.tokens;
+                record.modelWidth = workload.modelWidth;
+                record.headDim = workload.headDim;
+                record.replay = last.residual_plan.replay_id;
+                record.m44Replay = last.projection_plan.replay_id;
+                record.zGeneration = last.z_generation;
+                record.m43Gpu = MedianGroupMetric(
+                    [&measured]() {
+                        std::vector<prom_m43_attention_group_result> values;
+                        for (const auto& item : measured) values.push_back(item.attention);
+                        return values;
+                    }(), &prom_m43_attention_group_result::grouped_attention_gpu_ns);
+                record.aggregationGpu = MedianM45Metric(measured, &prom_m45_composed_result::aggregation_gpu_ns);
+                record.projectionGpu = MedianM45Metric(measured, &prom_m45_composed_result::projection_gpu_ns);
+                record.m44Gpu = MedianM45Metric(measured, &prom_m45_composed_result::m44_gpu_ns);
+                record.residualGpu = MedianM45Metric(measured, &prom_m45_composed_result::residual_gpu_ns);
+                record.totalGpu = MedianM45Metric(measured, &prom_m45_composed_result::total_m43_m44_m45_gpu_ns);
+                record.cpuRecording = MedianM45Metric(measured, &prom_m45_composed_result::cpu_recording_ns);
+                record.cpuSubmission = MedianM45Metric(measured, &prom_m45_composed_result::cpu_submission_ns);
+                record.finalReadback = MedianM45Metric(measured, &prom_m45_composed_result::final_readback_ns);
+                record.endToEnd = MedianM45Metric(measured, &prom_m45_composed_result::end_to_end_ns);
+                record.retained = last.retained_bytes;
+                record.exact = last.exact_request_bytes;
+                record.saved = last.residual_plan.memory.in_place_y_saved_bytes;
+                record.allocations = last.buffer_allocation_count;
+                record.submitCount = last.submit_count;
+                record.correct = correct;
+                records.push_back(record);
+                if (workload.primary && strategy == PROM_M45_STRATEGY_IN_PLACE_Y &&
+                    submit == PROM_M45_SUBMIT_ONE_COMMAND_BUFFER) {
+                    std::vector<prom_m45_composed_result> repeated10;
+                    std::vector<prom_m45_composed_result> repeated100;
+                    for (std::uint32_t repeat = 0u; repeat < 10u; ++repeat) {
+                        prom_m45_composed_result value{};
+                        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &request, &value),
+                                     "M45 primary 10-repeat succeeds");
+                        repeated10.push_back(value);
+                    }
+                    for (std::uint32_t repeat = 0u; repeat < 100u; ++repeat) {
+                        prom_m45_composed_result value{};
+                        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_execute_composed(runtime, &request, &value),
+                                     "M45 primary 100-repeat succeeds");
+                        repeated100.push_back(value);
+                    }
+                    warm10Gpu = MedianM45Metric(repeated10, &prom_m45_composed_result::total_m43_m44_m45_gpu_ns);
+                    warm10EndToEnd = MedianM45Metric(repeated10, &prom_m45_composed_result::end_to_end_ns);
+                    warm100Gpu = MedianM45Metric(repeated100, &prom_m45_composed_result::total_m43_m44_m45_gpu_ns);
+                    warm100EndToEnd = MedianM45Metric(repeated100, &prom_m45_composed_result::end_to_end_ns);
+                }
+            }
+        }
+        std::vector<float> yReadback(y.size());
+        prom_m44_composed_request m44Request{};
+        FillM44ComposedRequest(&m44Request, nullptr, yReadback.data(), workload.tokens,
+                               workload.modelWidth, workload.headDim,
+                               PROM_M44_AGGREGATION_INTERLEAVE,
+                               PROM_M44_PROJECTION_COOPERATIVE,
+                               PROM_M44_SUBMIT_ONE_COMMAND_BUFFER,
+                               PROM_M42_INPUT_RESIDENT_X, 77u, 500u);
+        std::vector<prom_m44_composed_result> m44Measured;
+        std::vector<std::uint64_t> hostEndToEnd;
+        std::vector<std::uint64_t> cpuAdd;
+        std::vector<std::uint64_t> xReadbackTimes;
+        for (std::uint32_t iteration = 0u; iteration < 5u; ++iteration) {
+            prom_m44_composed_result m44{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m44_execute_composed(runtime, &m44Request, &m44),
+                         "M43+M44 no-residual baseline executes");
+            std::vector<float> xReadback(x.size());
+            prom_m45_resident_x_readback_request xRequest{};
+            xRequest.output = xReadback.data();
+            xRequest.output_element_count = xReadback.size();
+            xRequest.tokens = workload.tokens;
+            xRequest.model_width = workload.modelWidth;
+            xRequest.expected_x_generation = 77u;
+            prom_m45_resident_x_readback_result xResult{};
+            ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m45_read_resident_x(runtime, &xRequest, &xResult),
+                         "host-bounce baseline reads the real resident X buffer");
+            const auto begin = std::chrono::steady_clock::now();
+            std::vector<float> hostZ(yReadback.size());
+            for (std::size_t index = 0u; index < hostZ.size(); ++index)
+                hostZ[index] = xReadback[index] + yReadback[index];
+            const auto end = std::chrono::steady_clock::now();
+            const auto addNs = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin).count());
+            prom_m44_mismatch mismatch{};
+            ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_compare(
+                expected.data(), hostZ.data(), workload.tokens, workload.modelWidth,
+                1.0e-2f, 4.0e-2f, PROM_M44_AGGREGATION_INTERLEAVE,
+                500u, m44.plan.m43_aggregate_replay_id, m44.plan.replay_id, &mismatch),
+                "CPU host-bounce residual remains correct");
+            m44Measured.push_back(m44);
+            cpuAdd.push_back(addNs);
+            xReadbackTimes.push_back(xResult.end_to_end_ns);
+            hostEndToEnd.push_back(m44.end_to_end_ns + xResult.end_to_end_ns + addNs);
+        }
+        std::sort(cpuAdd.begin(), cpuAdd.end());
+        std::sort(xReadbackTimes.begin(), xReadbackTimes.end());
+        std::sort(hostEndToEnd.begin(), hostEndToEnd.end());
+        Record noResidual{};
+        noResidual.workload = workload.name;
+        noResidual.strategy = "m43_m44_no_residual";
+        noResidual.submit = "one";
+        noResidual.tokens = workload.tokens;
+        noResidual.modelWidth = workload.modelWidth;
+        noResidual.headDim = workload.headDim;
+        noResidual.replay = m44Measured.back().plan.replay_id;
+        noResidual.m44Replay = noResidual.replay;
+        noResidual.m43Gpu = MedianGroupMetric(
+            [&m44Measured]() {
+                std::vector<prom_m43_attention_group_result> values;
+                for (const auto& item : m44Measured) values.push_back(item.attention);
+                return values;
+            }(), &prom_m43_attention_group_result::grouped_attention_gpu_ns);
+        noResidual.aggregationGpu = MedianM44Metric(m44Measured, &prom_m44_composed_result::aggregation_gpu_ns);
+        noResidual.projectionGpu = MedianM44Metric(m44Measured, &prom_m44_composed_result::projection_gpu_ns);
+        noResidual.m44Gpu = MedianM44Metric(m44Measured, &prom_m44_composed_result::m44_gpu_ns);
+        noResidual.totalGpu = MedianM44Metric(m44Measured, &prom_m44_composed_result::total_m43_m44_gpu_ns);
+        noResidual.finalReadback = MedianM44Metric(m44Measured, &prom_m44_composed_result::final_readback_ns);
+        noResidual.endToEnd = MedianM44Metric(m44Measured, &prom_m44_composed_result::end_to_end_ns);
+        noResidual.retained = m44Measured.back().retained_bytes;
+        noResidual.exact = m44Measured.back().exact_request_bytes;
+        noResidual.submitCount = 1u;
+        noResidual.correct = true;
+        records.push_back(noResidual);
+        Record host = noResidual;
+        host.strategy = "cpu_host_bounce";
+        host.submit = "x_y_readback_cpu_add_no_reupload";
+        host.cpuAdd = cpuAdd[cpuAdd.size() / 2u];
+        host.xReadback = xReadbackTimes[xReadbackTimes.size() / 2u];
+        host.endToEnd = hostEndToEnd[hostEndToEnd.size() / 2u];
+        host.submitCount = 2u;
+        records.push_back(host);
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                     "M45 workload validation services remain available");
+        validationWarnings += services.validation_warning_count;
+        validationErrors += services.validation_error_count;
+        prom_reactor_runtime_destroy_impl(runtime);
+    }
+    ASSERT_EQUAL(0u, validationWarnings, "M45 corpus has zero validation warnings");
+    ASSERT_EQUAL(0u, validationErrors, "M45 corpus has zero validation errors");
+    std::ostringstream json;
+    json << "{\n  \"schema\": \"prometheus.m45.device-resident-residual.v1\",\n"
+         << "  \"shader\": {\"source_sha256\": \"e83b60a31f82d9af785710d54a2055814917e1d0e9ecb988ab8eaf489313777d\", "
+            "\"hlsl_sha256\": \"7fedb0c77e12e2b975ae6529e1c50d5e98490a0dcc4f31ff1bfab8808e5b18e6\", "
+            "\"spirv_sha256\": \"c6e177b9fb86f1e5b01e05c544091577629fb4f51d4e08b9c6b624d85b6d0acc\"},\n"
+         << "  \"validation\": {\"warnings\": " << validationWarnings
+         << ", \"errors\": " << validationErrors << "},\n"
+         << "  \"warmups_per_plan\": 32,\n  \"measurements_per_plan\": 5,\n"
+         << "  \"primary_repeats\": {\"warm_10_gpu_ns\": " << warm10Gpu
+         << ", \"warm_10_end_to_end_ns\": " << warm10EndToEnd
+         << ", \"warm_100_gpu_ns\": " << warm100Gpu
+         << ", \"warm_100_end_to_end_ns\": " << warm100EndToEnd << "},\n"
+         << "  \"records\": [\n";
+    for (std::size_t index = 0u; index < records.size(); ++index) {
+        const Record& record = records[index];
+        if (index != 0u) json << ",\n";
+        json << "    {\"workload\":\"" << record.workload
+             << "\",\"strategy\":\"" << record.strategy
+             << "\",\"submit_policy\":\"" << record.submit
+             << "\",\"tokens\":" << record.tokens
+             << ",\"model_width\":" << record.modelWidth
+             << ",\"head_dim\":" << record.headDim
+             << ",\"correct\":" << (record.correct ? "true" : "false")
+             << ",\"replay_id\":" << record.replay
+             << ",\"m44_replay_id\":" << record.m44Replay
+             << ",\"z_generation\":" << record.zGeneration
+             << ",\"m43_gpu_ns\":" << record.m43Gpu
+             << ",\"aggregation_gpu_ns\":" << record.aggregationGpu
+             << ",\"projection_gpu_ns\":" << record.projectionGpu
+             << ",\"m44_gpu_ns\":" << record.m44Gpu
+             << ",\"residual_gpu_ns\":" << record.residualGpu
+             << ",\"total_m43_m44_m45_gpu_ns\":" << record.totalGpu
+             << ",\"cpu_recording_ns\":" << record.cpuRecording
+             << ",\"cpu_submission_ns\":" << record.cpuSubmission
+             << ",\"final_readback_ns\":" << record.finalReadback
+             << ",\"end_to_end_ns\":" << record.endToEnd
+             << ",\"cpu_add_ns\":" << record.cpuAdd
+             << ",\"x_readback_ns\":" << record.xReadback
+             << ",\"retained_bytes\":" << record.retained
+             << ",\"exact_request_bytes\":" << record.exact
+             << ",\"in_place_saved_bytes\":" << record.saved
+             << ",\"allocation_count\":" << record.allocations
+             << ",\"submit_count\":" << record.submitCount << "}";
+    }
+    json << "\n  ]\n}\n";
+    ASSERT_TRUE(context.WriteTextArtifact("prometheus_m45_device_resident_residual.json", json.str()),
+                "M45 benchmark artifact is written");
 }

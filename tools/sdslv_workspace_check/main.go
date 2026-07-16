@@ -274,6 +274,53 @@ type m44Artifact struct {
 	Records []m44ArtifactRecord `json:"records"`
 }
 
+type m45ArtifactRecord struct {
+	Workload          string `json:"workload"`
+	Strategy          string `json:"strategy"`
+	SubmitPolicy      string `json:"submit_policy"`
+	Tokens            uint32 `json:"tokens"`
+	ModelWidth        uint32 `json:"model_width"`
+	HeadDim           uint32 `json:"head_dim"`
+	Correct           bool   `json:"correct"`
+	ReplayID          uint64 `json:"replay_id"`
+	M44ReplayID       uint64 `json:"m44_replay_id"`
+	ZGeneration       uint64 `json:"z_generation"`
+	M43GPUNS          uint64 `json:"m43_gpu_ns"`
+	M44GPUNS          uint64 `json:"m44_gpu_ns"`
+	ResidualGPUNS     uint64 `json:"residual_gpu_ns"`
+	TotalGPUNS        uint64 `json:"total_m43_m44_m45_gpu_ns"`
+	FinalReadbackNS   uint64 `json:"final_readback_ns"`
+	EndToEndNS        uint64 `json:"end_to_end_ns"`
+	CPUAddNS          uint64 `json:"cpu_add_ns"`
+	XReadbackNS       uint64 `json:"x_readback_ns"`
+	RetainedBytes     uint64 `json:"retained_bytes"`
+	ExactRequestBytes uint64 `json:"exact_request_bytes"`
+	InPlaceSavedBytes uint64 `json:"in_place_saved_bytes"`
+	SubmitCount       uint32 `json:"submit_count"`
+}
+
+type m45Artifact struct {
+	Schema string `json:"schema"`
+	Shader struct {
+		SourceSHA256 string `json:"source_sha256"`
+		HLSLSHA256   string `json:"hlsl_sha256"`
+		SPVSHA256    string `json:"spirv_sha256"`
+	} `json:"shader"`
+	Validation struct {
+		Warnings uint32 `json:"warnings"`
+		Errors   uint32 `json:"errors"`
+	} `json:"validation"`
+	WarmupsPerPlan      uint32 `json:"warmups_per_plan"`
+	MeasurementsPerPlan uint32 `json:"measurements_per_plan"`
+	PrimaryRepeats      struct {
+		Warm10GPUNS       uint64 `json:"warm_10_gpu_ns"`
+		Warm10EndToEndNS  uint64 `json:"warm_10_end_to_end_ns"`
+		Warm100GPUNS      uint64 `json:"warm_100_gpu_ns"`
+		Warm100EndToEndNS uint64 `json:"warm_100_end_to_end_ns"`
+	} `json:"primary_repeats"`
+	Records []m45ArtifactRecord `json:"records"`
+}
+
 var wordRE = regexp.MustCompile(`0x([0-9a-fA-F]{8})u`)
 
 func main() {
@@ -467,10 +514,103 @@ func check(root string, inventory bool) error {
 	if err := checkM44Artifact(root); err != nil {
 		return err
 	}
+	if err := checkM45Artifact(root); err != nil {
+		return err
+	}
 	if inventory {
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Println(line)
+		}
+	}
+	return nil
+}
+
+func checkM45Artifact(root string) error {
+	var artifact m45Artifact
+	path := filepath.Join(root, "internal", "prometheus", "DevelopmentReport", "artifacts", "M45", "device_resident_residual_rtx3070.json")
+	if err := readJSON(path, &artifact); err != nil {
+		return fmt.Errorf("M45 residual artifact: %w", err)
+	}
+	if artifact.Schema != "prometheus.m45.device-resident-residual.v1" ||
+		artifact.WarmupsPerPlan != 32 || artifact.MeasurementsPerPlan != 5 ||
+		artifact.PrimaryRepeats.Warm10GPUNS == 0 || artifact.PrimaryRepeats.Warm10EndToEndNS == 0 ||
+		artifact.PrimaryRepeats.Warm100GPUNS == 0 || artifact.PrimaryRepeats.Warm100EndToEndNS == 0 {
+		return fmt.Errorf("M45 residual artifact lacks identity or deterministic warm evidence")
+	}
+	if artifact.Validation.Warnings != 0 || artifact.Validation.Errors != 0 {
+		return fmt.Errorf("M45 residual artifact is not validation-clean: warnings=%d errors=%d",
+			artifact.Validation.Warnings, artifact.Validation.Errors)
+	}
+	shaderPaths := [3]string{
+		"internal/prometheus/shaders/sdslv/experimental/transformer/residual_add.sdslv",
+		"internal/prometheus/shaders/sdslv/experimental/transformer/residual_add.hlsl",
+		"internal/prometheus/shaders/sdslv/experimental/transformer/residual_add.spv",
+	}
+	if artifact.Shader.SourceSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(shaderPaths[0]))) ||
+		artifact.Shader.HLSLSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(shaderPaths[1]))) ||
+		artifact.Shader.SPVSHA256 != fileHash(filepath.Join(root, filepath.FromSlash(shaderPaths[2]))) {
+		return fmt.Errorf("M45 residual artifact shader provenance mismatch")
+	}
+	workloads := map[string][3]uint32{
+		"tiny": {16, 128, 16}, "primary": {128, 1024, 128},
+		"more_tokens": {256, 1024, 128}, "wider": {128, 2048, 256},
+		"awkward": {127, 1001, 127}, "boundary": {1024, 1024, 64},
+	}
+	plans := [][2]string{
+		{"separate_output", "one"}, {"separate_output", "two"},
+		{"in_place_y", "one"}, {"in_place_y", "two"},
+		{"m43_m44_no_residual", "one"},
+		{"cpu_host_bounce", "x_y_readback_cpu_add_no_reupload"},
+	}
+	want := make(map[string]bool, len(workloads)*len(plans))
+	for workload := range workloads {
+		for _, plan := range plans {
+			want[workload+"/"+plan[0]+"/"+plan[1]] = false
+		}
+	}
+	if len(artifact.Records) != len(want) {
+		return fmt.Errorf("M45 residual artifact record count: got %d want %d", len(artifact.Records), len(want))
+	}
+	for _, record := range artifact.Records {
+		key := record.Workload + "/" + record.Strategy + "/" + record.SubmitPolicy
+		seen, known := want[key]
+		if !known || seen {
+			return fmt.Errorf("M45 residual artifact has unexpected or duplicate record %s", key)
+		}
+		want[key] = true
+		shape := workloads[record.Workload]
+		if record.Tokens != shape[0] || record.ModelWidth != shape[1] || record.HeadDim != shape[2] ||
+			!record.Correct || record.ReplayID == 0 || record.M44ReplayID == 0 ||
+			record.M43GPUNS == 0 || record.M44GPUNS == 0 || record.TotalGPUNS == 0 ||
+			record.FinalReadbackNS == 0 || record.EndToEndNS == 0 || record.RetainedBytes == 0 {
+			return fmt.Errorf("M45 residual artifact record %s lacks shape, identity, timing, or correctness evidence", key)
+		}
+		saved := uint64(record.Tokens) * uint64(record.ModelWidth) * 4
+		switch record.Strategy {
+		case "separate_output", "in_place_y":
+			wantSubmits := uint32(1)
+			if record.SubmitPolicy == "two" {
+				wantSubmits = 2
+			}
+			if record.ZGeneration == 0 || record.ResidualGPUNS == 0 ||
+				record.InPlaceSavedBytes != saved || record.SubmitCount != wantSubmits {
+				return fmt.Errorf("M45 device record %s lacks residual ownership evidence", key)
+			}
+		case "m43_m44_no_residual":
+			if record.ZGeneration != 0 || record.ResidualGPUNS != 0 || record.CPUAddNS != 0 {
+				return fmt.Errorf("M45 no-residual record %s contains residual work", key)
+			}
+		case "cpu_host_bounce":
+			if record.ZGeneration != 0 || record.ResidualGPUNS != 0 || record.CPUAddNS == 0 ||
+				record.XReadbackNS == 0 || record.SubmitCount != 2 {
+				return fmt.Errorf("M45 host-bounce lower-bound record %s lacks CPU add evidence", key)
+			}
+		}
+	}
+	for key, present := range want {
+		if !present {
+			return fmt.Errorf("M45 residual artifact lacks required record %s", key)
 		}
 	}
 	return nil
