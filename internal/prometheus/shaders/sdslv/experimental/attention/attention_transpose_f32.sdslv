@@ -1,0 +1,33 @@
+namespace Prometheus.Experimental.Attention;
+
+// M42's FP32 baseline owns exactly one layout transform:
+// K[Tokens, HeadDim] -> KTranspose[HeadDim, Tokens].
+stream AttentionTransposeIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record AttentionTransposeParams {
+    InputRows: u32;
+    InputColumns: u32;
+    InputRowStride: u32;
+    OutputRowStride: u32;
+    OutputElementCount: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+    Reserved2: u32;
+}
+
+shader AttentionTransposeF32 {
+    resources AttentionTransposeIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionTransposeParams) -> void {
+        let outputIndex: u32 = DispatchThreadID.x;
+        if outputIndex >= params.OutputElementCount { return; }
+        let outputRow: u32 = outputIndex / params.OutputRowStride;
+        let outputColumn: u32 = outputIndex - outputRow * params.OutputRowStride;
+        if outputRow >= params.InputColumns or outputColumn >= params.InputRows { return; }
+        Output[outputIndex] = Input[outputColumn * params.InputRowStride + outputRow];
+        return;
+    }
+}

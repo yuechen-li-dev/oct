@@ -440,6 +440,331 @@ typedef struct prom_m40b_selector_decision {
   uint64_t replay_id;
 } prom_m40b_selector_decision;
 
+/* M42 is one bounded, one-head forward attention operator.  These types stay
+   internal to the Vulkan reactor and expose no raw handles to Oct callers. */
+#define PROM_M42_MAX_STAGES 16u
+#define PROM_M42_MAX_BUFFERS 16u
+
+typedef enum prom_m42_attention_path {
+  PROM_M42_PATH_COOPERATIVE = 1u,
+  PROM_M42_PATH_A2X4 = 2u,
+  PROM_M42_PATH_CONVENTIONAL_FP16 = 3u,
+} prom_m42_attention_path;
+
+typedef enum prom_m42_precision_policy {
+  PROM_M42_PRECISION_F16_ROUNDED = 1u,
+  PROM_M42_PRECISION_FP32 = 2u,
+} prom_m42_precision_policy;
+
+typedef enum prom_m42_input_mode {
+  PROM_M42_INPUT_HOST_X = 1u,
+  PROM_M42_INPUT_RESIDENT_X = 2u,
+} prom_m42_input_mode;
+
+typedef enum prom_m42_k_layout_strategy {
+  PROM_M42_K_LAYOUT_PACK_TRANSPOSE_F16 = 1u,
+  PROM_M42_K_LAYOUT_TRANSPOSE_F32 = 2u,
+} prom_m42_k_layout_strategy;
+
+typedef enum prom_m42_probability_strategy {
+  PROM_M42_PROBABILITY_PACK_F16 = 1u,
+  PROM_M42_PROBABILITY_F32_DIRECT = 2u,
+} prom_m42_probability_strategy;
+
+typedef enum prom_m42_stage_operation {
+  PROM_M42_STAGE_UPLOAD_X = 1u,
+  PROM_M42_STAGE_PROJECT_Q = 2u,
+  PROM_M42_STAGE_PROJECT_K = 3u,
+  PROM_M42_STAGE_PROJECT_V = 4u,
+  PROM_M42_STAGE_PACK_Q = 5u,
+  PROM_M42_STAGE_LAYOUT_K = 6u,
+  PROM_M42_STAGE_PACK_V = 7u,
+  PROM_M42_STAGE_QK_TRANSPOSE = 8u,
+  PROM_M42_STAGE_SCALE = 9u,
+  PROM_M42_STAGE_SOFTMAX = 10u,
+  PROM_M42_STAGE_PACK_P = 11u,
+  PROM_M42_STAGE_PV = 12u,
+  PROM_M42_STAGE_FINAL_READBACK = 13u,
+} prom_m42_stage_operation;
+
+typedef enum prom_m42_buffer_identity {
+  PROM_M42_BUFFER_X = 1u,
+  PROM_M42_BUFFER_Q = 2u,
+  PROM_M42_BUFFER_K = 3u,
+  PROM_M42_BUFFER_V = 4u,
+  PROM_M42_BUFFER_Q_PACKED = 5u,
+  PROM_M42_BUFFER_K_TRANSPOSED = 6u,
+  PROM_M42_BUFFER_V_PACKED = 7u,
+  PROM_M42_BUFFER_SCORES = 8u,
+  PROM_M42_BUFFER_PROBABILITIES = 9u,
+  PROM_M42_BUFFER_P_PACKED = 10u,
+  PROM_M42_BUFFER_OUTPUT = 11u,
+} prom_m42_buffer_identity;
+
+typedef enum prom_m42_selector_reason {
+  PROM_M42_SELECTOR_REQUESTED = 0u,
+  PROM_M42_SELECTOR_CAPABILITY_FALLBACK = 1u,
+  PROM_M42_SELECTOR_PRECISION_FALLBACK = 2u,
+  PROM_M42_SELECTOR_ROLLBACK_FALLBACK = 3u,
+  PROM_M42_SELECTOR_EXPLICIT_CONVENTIONAL = 4u,
+  PROM_M42_SELECTOR_REJECTED = 5u,
+} prom_m42_selector_reason;
+
+typedef enum prom_m42_fault_point {
+  PROM_M42_FAULT_NONE = 0u,
+  PROM_M42_FAULT_AFTER_Q_PROJECTION = 1u,
+  PROM_M42_FAULT_AFTER_QK = 2u,
+  PROM_M42_FAULT_AFTER_SOFTMAX = 3u,
+  PROM_M42_FAULT_AFTER_PV_SUBMIT = 4u,
+} prom_m42_fault_point;
+
+typedef struct prom_m42_stage_plan {
+  uint32_t operation;
+  uint32_t path;
+  uint32_t input_buffer;
+  uint32_t auxiliary_buffer;
+  uint32_t output_buffer;
+  uint32_t dispatch_count;
+  uint32_t barrier_before;
+  uint32_t barrier_after;
+  uint32_t source_stage_mask;
+  uint32_t destination_stage_mask;
+  uint32_t source_access_mask;
+  uint32_t destination_access_mask;
+  uint32_t source_queue_family;
+  uint32_t destination_queue_family;
+} prom_m42_stage_plan;
+
+typedef struct prom_m42_buffer_plan {
+  uint32_t identity;
+  uint32_t element_type;
+  uint32_t logical_rows;
+  uint32_t logical_columns;
+  uint32_t row_stride_elements;
+  uint32_t first_producer_stage;
+  uint32_t last_consumer_stage;
+  uint64_t retained_bytes;
+} prom_m42_buffer_plan;
+
+typedef struct prom_m42_plan_request {
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_dim;
+  uint32_t value_dim;
+  float scale;
+  uint32_t scale_explicit;
+  uint32_t precision_policy;
+  uint32_t preferred_path;
+  uint32_t allow_fallback;
+  uint32_t input_mode;
+  uint32_t cooperative_capability_state;
+  uint32_t rollback_active;
+  uint64_t wq_generation;
+  uint64_t wk_generation;
+  uint64_t wv_generation;
+  uint64_t wq_hash;
+  uint64_t wk_hash;
+  uint64_t wv_hash;
+} prom_m42_plan_request;
+
+typedef struct prom_m42_attention_plan {
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_dim;
+  uint32_t value_dim;
+  uint32_t padded_tokens;
+  uint32_t padded_model_width;
+  uint32_t padded_head_dim;
+  float scale;
+  uint32_t precision_policy;
+  uint32_t preferred_path;
+  uint32_t selected_path;
+  uint32_t fallback_used;
+  uint32_t selector_reason;
+  uint32_t k_layout_strategy;
+  uint32_t probability_strategy;
+  uint32_t reduction_stage_count;
+  uint32_t stage_count;
+  uint32_t buffer_count;
+  uint32_t submit_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t final_readback_copy_count;
+  uint64_t reduction_replay_id;
+  uint64_t command_plan_replay_id;
+  uint64_t replay_id;
+  prom_m42_stage_plan stages[PROM_M42_MAX_STAGES];
+  prom_m42_buffer_plan buffers[PROM_M42_MAX_BUFFERS];
+} prom_m42_attention_plan;
+
+typedef struct prom_m42_weight_prepare_request {
+  const float* wq;
+  const float* wk;
+  const float* wv;
+  uint32_t model_width;
+  uint32_t head_dim;
+  uint32_t value_dim;
+  uint64_t generation;
+} prom_m42_weight_prepare_request;
+
+typedef struct prom_m42_weight_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t wq_generation;
+  uint64_t wk_generation;
+  uint64_t wv_generation;
+  uint64_t wq_hash;
+  uint64_t wk_hash;
+  uint64_t wv_hash;
+  uint64_t validation_hash_ns;
+  uint64_t upload_and_pack_ns;
+  uint64_t gpu_upload_and_pack_ns;
+  uint64_t retained_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+} prom_m42_weight_prepare_result;
+
+typedef struct prom_m42_resident_x_prepare_request {
+  const float* x;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint64_t generation;
+} prom_m42_resident_x_prepare_request;
+
+typedef struct prom_m42_resident_x_prepare_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t generation;
+  uint64_t hash;
+  uint64_t validation_hash_ns;
+  uint64_t upload_and_pack_ns;
+  uint64_t gpu_upload_and_pack_ns;
+  uint64_t retained_bytes;
+  uint32_t replaced;
+  uint32_t buffer_reused;
+} prom_m42_resident_x_prepare_result;
+
+typedef struct prom_m42_attention_request {
+  const float* host_x;
+  float* output;
+  float* audit_q;
+  float* audit_k;
+  float* audit_v;
+  float* audit_scores;
+  float* audit_probabilities;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_dim;
+  uint32_t value_dim;
+  float scale;
+  uint32_t scale_explicit;
+  uint32_t precision_policy;
+  uint32_t preferred_path;
+  uint32_t allow_fallback;
+  uint32_t input_mode;
+  uint32_t rollback_active;
+  uint32_t fault_point;
+  uint32_t audit_intermediates;
+  uint64_t required_wq_generation;
+  uint64_t required_wk_generation;
+  uint64_t required_wv_generation;
+  uint64_t required_x_generation;
+} prom_m42_attention_request;
+
+typedef struct prom_m42_attention_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint64_t logical_request_id;
+  uint32_t physical_slot_id;
+  uint32_t physical_slot_generation;
+  uint32_t physical_slot_recyclable;
+  uint32_t selected_path;
+  uint32_t fallback_used;
+  uint32_t selector_reason;
+  uint32_t qkv_gpu_producer_dispatch_count;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t audit_readback_count;
+  uint32_t no_intermediate_host_copy;
+  uint32_t validation_error_count_before;
+  uint32_t validation_error_count_after;
+  uint64_t x_conversion_ns;
+  uint64_t x_upload_ns;
+  uint64_t q_projection_gpu_ns;
+  uint64_t k_projection_gpu_ns;
+  uint64_t v_projection_gpu_ns;
+  uint64_t q_pack_gpu_ns;
+  uint64_t k_layout_gpu_ns;
+  uint64_t v_pack_gpu_ns;
+  uint64_t qk_gpu_ns;
+  uint64_t scale_gpu_ns;
+  uint64_t softmax_gpu_ns;
+  uint64_t p_pack_gpu_ns;
+  uint64_t pv_gpu_ns;
+  uint64_t total_attention_gpu_ns;
+  uint64_t cpu_submission_ns;
+  uint64_t final_readback_ns;
+  uint64_t audit_readback_ns;
+  uint64_t end_to_end_ns;
+  uint64_t retained_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint64_t wq_generation;
+  uint64_t wk_generation;
+  uint64_t wv_generation;
+  uint64_t x_generation;
+  prom_m42_attention_plan plan;
+  prom_device_buffer_view output_view;
+} prom_m42_attention_result;
+
+typedef struct prom_m42_reference_request {
+  const float* x;
+  const float* wq;
+  const float* wk;
+  const float* wv;
+  float* output;
+  float* q;
+  float* k;
+  float* v;
+  float* scores;
+  float* probabilities;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t head_dim;
+  uint32_t value_dim;
+  float scale;
+  uint32_t scale_explicit;
+  uint32_t precision_policy;
+} prom_m42_reference_request;
+
+typedef struct prom_m42_reference_result {
+  uint32_t stage;
+  int32_t detail_code;
+  float resolved_scale;
+  float minimum_probability_row_sum;
+  float maximum_probability_row_sum;
+  uint32_t all_finite;
+} prom_m42_reference_result;
+
+typedef struct prom_m42_mismatch {
+  uint32_t matched;
+  uint32_t stage;
+  uint32_t row;
+  uint32_t column;
+  float expected;
+  float actual;
+  float absolute_error;
+  float relative_error;
+  uint32_t logical_rows;
+  uint32_t logical_columns;
+  uint32_t padded_rows;
+  uint32_t padded_columns;
+  uint64_t operator_replay_id;
+  uint64_t reduction_replay_id;
+} prom_m42_mismatch;
+
 enum {
   PROM_M40B_DETAIL_INVALID_REQUEST = -6901,
   PROM_M40B_DETAIL_SIZE_OVERFLOW = -6902,
@@ -453,6 +778,23 @@ enum {
   PROM_M40B_DETAIL_COMPLETION_UNCERTAIN = -6910,
   PROM_M40B_DETAIL_QUERY = -6911,
   PROM_M40B_DETAIL_READBACK = -6912,
+};
+
+enum {
+  PROM_M42_DETAIL_INVALID_REQUEST = -7001,
+  PROM_M42_DETAIL_SIZE_OVERFLOW = -7002,
+  PROM_M42_DETAIL_NONFINITE_INPUT = -7003,
+  PROM_M42_DETAIL_STALE_WEIGHT_GENERATION = -7004,
+  PROM_M42_DETAIL_STALE_X_GENERATION = -7005,
+  PROM_M42_DETAIL_CAPABILITY = -7006,
+  PROM_M42_DETAIL_RESOURCE = -7007,
+  PROM_M42_DETAIL_COMMAND = -7008,
+  PROM_M42_DETAIL_SUBMIT = -7009,
+  PROM_M42_DETAIL_COMPLETION_UNCERTAIN = -7010,
+  PROM_M42_DETAIL_QUERY = -7011,
+  PROM_M42_DETAIL_READBACK = -7012,
+  PROM_M42_DETAIL_FAULT_INJECTED = -7013,
+  PROM_M42_DETAIL_MISMATCH = -7014,
 };
 
 enum {
@@ -555,6 +897,35 @@ int prom_reactor_runtime_m40b_prepare_resident_a(void* handle,
 int prom_reactor_runtime_m40b_execute(void* handle,
                                       const prom_m40b_execution_request* request,
                                       prom_m40b_execution_result* out_result);
+int prom_m42_attention_plan_build(const prom_m42_plan_request* request,
+                                  prom_m42_attention_plan* out_plan);
+int prom_m42_attention_cpu_reference(const prom_m42_reference_request* request,
+                                     prom_m42_reference_result* out_result);
+int prom_m42_attention_compare(uint32_t stage,
+                               const float* expected,
+                               const float* actual,
+                               uint32_t rows,
+                               uint32_t columns,
+                               uint32_t padded_rows,
+                               uint32_t padded_columns,
+                               float absolute_tolerance,
+                               float relative_tolerance,
+                               uint64_t operator_replay_id,
+                               uint64_t reduction_replay_id,
+                               prom_m42_mismatch* out_mismatch);
+uint64_t prom_m42_k_transpose_index(uint32_t token,
+                                    uint32_t head_column,
+                                    uint32_t tokens,
+                                    uint32_t padded_tokens);
+int prom_reactor_runtime_m42_prepare_weights(void* handle,
+                                             const prom_m42_weight_prepare_request* request,
+                                             prom_m42_weight_prepare_result* out_result);
+int prom_reactor_runtime_m42_prepare_resident_x(void* handle,
+                                                const prom_m42_resident_x_prepare_request* request,
+                                                prom_m42_resident_x_prepare_result* out_result);
+int prom_reactor_runtime_m42_execute(void* handle,
+                                     const prom_m42_attention_request* request,
+                                     prom_m42_attention_result* out_result);
 uint16_t prom_sgemm_float32_to_fp16_bits(float value);
 float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);

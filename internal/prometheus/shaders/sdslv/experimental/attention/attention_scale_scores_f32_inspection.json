@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M42",
+  "identity": "m42-attention-scale-scores-f32-v1",
+  "entry_point": "AttentionScaleScoresF32_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "e824e58c97048c1c96965d4fbfbe8739e19d5946d73c00e79aeb026ffc37e5ae",
+  "hlsl_sha256": "0f0ed1d9c198e4ddd4bbd2835f1f28897c613ea4d8fa54b880e45a10633dcb26",
+  "spirv_sha256": "083d00ecc944435ff57d85a1ed003a6cb25a6f1f31b74c52ff8d1feb509b3578",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "in-place logical score scaling over a row-major FP32 buffer with explicit physical stride"
+}

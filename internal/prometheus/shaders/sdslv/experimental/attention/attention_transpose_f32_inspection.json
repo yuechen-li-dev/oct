@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M42",
+  "identity": "m42-attention-k-transpose-f32-v1",
+  "entry_point": "AttentionTransposeF32_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "c6fa67d5dc6f41c37e31a522f8118a616c8011bed6ac6b4857f5c719ac5f3119",
+  "hlsl_sha256": "959b077785249380ab8ae4e3fc289388772e2fa14605450f3fcefe29bf7f13cc",
+  "spirv_sha256": "fb812063431bc816e2b7471a908492b4631f2aa7899f6cdd0f43cc6747d47ca3",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "K[Tokens,HeadDim] row-major to KTranspose[HeadDim,Tokens] row-major FP32"
+}

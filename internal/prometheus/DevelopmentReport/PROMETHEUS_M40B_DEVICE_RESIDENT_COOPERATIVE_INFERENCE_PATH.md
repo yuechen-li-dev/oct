@@ -251,10 +251,16 @@ selector promotion occurs.
 
 ## Exact next workload
 
-The next recommended workload is the exact 128x1024x1024 attention-score case
-with packed f16 A produced by a real upstream Vulkan operator, persistent packed
-B, cooperative SGEMM, and row-wise softmax, with no synthetic A residency and
-no intermediate or final readback in the timed application path. That isolates
-the remaining product question: whether a real producer preserves the measured
-128x1024x1024 3.57x combined-GPU advantage without the host-preparation and
-large-shape rollback signals.
+M42 completed the real-producer workload as a full one-head forward attention
+operator rather than another synthetic SGEMM-softmax proof. Three Vulkan SGEMMs
+produce Q/K/V, an explicit GPU layout stage creates K-transpose, cooperative
+QK-transpose feeds M39b softmax, and GPU-packed P and V feed cooperative P-by-V.
+The normal path has no intermediate readback and excludes its one final Output
+readback from the central GPU interval.
+
+On the 128/1024/128 attention convention, cooperative full attention measured
+418.0 us versus 1.478 ms for A2x4 and 586.4 us for conventional FP16. The
+six-shape corpus beat A2x4 on all rows, but tiny attention was 0.98x versus
+conventional FP16. M40b's global SGEMM selector and experimental authority are
+unchanged. Complete ownership, precision, lifecycle, and performance evidence
+is in `PROMETHEUS_M42_DEVICE_RESIDENT_ATTENTION_OPERATOR.md`.

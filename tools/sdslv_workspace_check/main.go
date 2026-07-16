@@ -157,6 +157,49 @@ type m40bArtifact struct {
 	} `json:"validation"`
 }
 
+type m42ArtifactRecord struct {
+	Workload            string `json:"workload"`
+	Path                string `json:"path"`
+	Tokens              uint32 `json:"tokens"`
+	ModelWidth          uint32 `json:"model_width"`
+	HeadDim             uint32 `json:"head_dim"`
+	SelectedPath        uint32 `json:"selected_path"`
+	ReplayID            uint64 `json:"replay_id"`
+	ReductionReplayID   uint64 `json:"reduction_replay_id"`
+	Correct             bool   `json:"correct"`
+	QProjectionGPUNS    uint64 `json:"q_projection_gpu_ns"`
+	KProjectionGPUNS    uint64 `json:"k_projection_gpu_ns"`
+	VProjectionGPUNS    uint64 `json:"v_projection_gpu_ns"`
+	KLayoutGPUNS        uint64 `json:"k_layout_gpu_ns"`
+	QKGPUNS             uint64 `json:"qk_gpu_ns"`
+	ScaleGPUNS          uint64 `json:"scale_gpu_ns"`
+	SoftmaxGPUNS        uint64 `json:"softmax_gpu_ns"`
+	PVGPUNS             uint64 `json:"pv_gpu_ns"`
+	TotalAttentionGPUNS uint64 `json:"total_attention_gpu_ns"`
+	HostFedEndToEndNS   uint64 `json:"host_fed_end_to_end_ns"`
+	ResidentXEndToEndNS uint64 `json:"resident_x_end_to_end_ns"`
+	FinalReadbackNS     uint64 `json:"final_readback_ns"`
+	RetainedBytes       uint64 `json:"retained_bytes"`
+}
+
+type m42Artifact struct {
+	Schema                 string              `json:"schema"`
+	TensorConvention       string              `json:"tensor_convention"`
+	PrecisionContract      string              `json:"precision_contract"`
+	WarmRepetitions        uint32              `json:"warm_repetitions"`
+	PrimaryWarm10MedianNS  uint64              `json:"primary_warm_10_median_end_to_end_ns"`
+	PrimaryWarm100MedianNS uint64              `json:"primary_warm_100_median_end_to_end_ns"`
+	Records                []m42ArtifactRecord `json:"records"`
+	Validation             struct {
+		Warnings uint32 `json:"warnings"`
+		Errors   uint32 `json:"errors"`
+	} `json:"validation"`
+	Device struct {
+		CooperativeState uint32 `json:"cooperative_state"`
+		SubgroupSize     uint32 `json:"subgroup_size"`
+	} `json:"device"`
+}
+
 var wordRE = regexp.MustCompile(`0x([0-9a-fA-F]{8})u`)
 
 func main() {
@@ -344,10 +387,83 @@ func check(root string, inventory bool) error {
 	if err := checkM40bArtifact(root); err != nil {
 		return err
 	}
+	if err := checkM42Artifact(root); err != nil {
+		return err
+	}
 	if inventory {
 		sort.Strings(lines)
 		for _, line := range lines {
 			fmt.Println(line)
+		}
+	}
+	return nil
+}
+
+func checkM42Artifact(root string) error {
+	var artifact m42Artifact
+	path := filepath.Join(root, "internal", "prometheus", "DevelopmentReport", "artifacts", "M42", "device_resident_attention_rtx3070.json")
+	if err := readJSON(path, &artifact); err != nil {
+		return fmt.Errorf("M42 attention artifact: %w", err)
+	}
+	if artifact.Schema != "prometheus.m42.device-resident-attention.v1" ||
+		artifact.TensorConvention == "" || artifact.PrecisionContract == "" {
+		return fmt.Errorf("M42 attention artifact has incomplete identity")
+	}
+	if artifact.WarmRepetitions != 3 || artifact.PrimaryWarm10MedianNS == 0 ||
+		artifact.PrimaryWarm100MedianNS == 0 || artifact.Device.CooperativeState != 5 ||
+		artifact.Device.SubgroupSize != 32 {
+		return fmt.Errorf("M42 attention artifact lacks warm/capability evidence")
+	}
+	if artifact.Validation.Warnings != 0 || artifact.Validation.Errors != 0 {
+		return fmt.Errorf("M42 attention artifact is not validation-clean: warnings=%d errors=%d",
+			artifact.Validation.Warnings, artifact.Validation.Errors)
+	}
+	workloads := map[string][3]uint32{
+		"tiny":             {16, 64, 16},
+		"primary":          {128, 1024, 128},
+		"larger-head":      {128, 1024, 256},
+		"more-tokens":      {256, 1024, 128},
+		"awkward-padded":   {127, 1001, 127},
+		"softmax-boundary": {1024, 128, 64},
+	}
+	paths := map[string]uint32{
+		"cooperative-f16":   1,
+		"a2x4-fp32":         2,
+		"conventional-fp16": 3,
+	}
+	want := make(map[string]bool, len(workloads)*len(paths))
+	for workload := range workloads {
+		for path := range paths {
+			want[workload+"/"+path] = false
+		}
+	}
+	if len(artifact.Records) != len(want) {
+		return fmt.Errorf("M42 attention artifact record count: got %d want %d", len(artifact.Records), len(want))
+	}
+	for _, record := range artifact.Records {
+		key := record.Workload + "/" + record.Path
+		seen, known := want[key]
+		if !known || seen {
+			return fmt.Errorf("M42 attention artifact has unexpected or duplicate record %s", key)
+		}
+		want[key] = true
+		shape := workloads[record.Workload]
+		if record.Tokens != shape[0] || record.ModelWidth != shape[1] || record.HeadDim != shape[2] ||
+			record.SelectedPath != paths[record.Path] || !record.Correct {
+			return fmt.Errorf("M42 attention artifact record %s has incorrect shape, path, or result", key)
+		}
+		if record.ReplayID == 0 || record.ReductionReplayID == 0 ||
+			record.QProjectionGPUNS == 0 || record.KProjectionGPUNS == 0 || record.VProjectionGPUNS == 0 ||
+			record.KLayoutGPUNS == 0 || record.QKGPUNS == 0 || record.ScaleGPUNS == 0 ||
+			record.SoftmaxGPUNS == 0 || record.PVGPUNS == 0 || record.TotalAttentionGPUNS == 0 ||
+			record.HostFedEndToEndNS == 0 || record.ResidentXEndToEndNS == 0 ||
+			record.FinalReadbackNS == 0 || record.RetainedBytes == 0 {
+			return fmt.Errorf("M42 attention artifact record %s lacks timing, identity, or ownership evidence", key)
+		}
+	}
+	for key, present := range want {
+		if !present {
+			return fmt.Errorf("M42 attention artifact lacks required record %s", key)
 		}
 	}
 	return nil

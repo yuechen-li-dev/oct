@@ -1,0 +1,66 @@
+namespace Prometheus.Experimental.Attention;
+
+// M42 bounded layout/precision boundary. One invocation writes one packed
+// F16x2 word. The destination is zero-filled through the padded extent, and
+// Transpose selects only the canonical K[Tokens, HeadDim] ->
+// KTranspose[HeadDim, Tokens] mapping used by attention.
+stream AttentionPackIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(3)] Output: readwrite array<u32>;
+}
+
+record AttentionPackParams {
+    LogicalRows: u32;
+    LogicalColumns: u32;
+    InputRowStride: u32;
+    OutputRows: u32;
+    OutputColumns: u32;
+    Transpose: u32;
+    PackedWordCount: u32;
+    Reserved: u32;
+}
+
+shader AttentionPackF32ToF16 {
+    resources AttentionPackIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionPackParams) -> void {
+        let word: u32 = DispatchThreadID.x;
+        if word >= params.PackedWordCount { return; }
+
+        var low: f32 = 0.0;
+        var high: f32 = 0.0;
+        let lowIndex: u32 = word * 2u;
+        let highIndex: u32 = lowIndex + 1u;
+
+        let lowRow: u32 = lowIndex / params.OutputColumns;
+        let lowColumn: u32 = lowIndex - lowRow * params.OutputColumns;
+        if lowRow < params.OutputRows {
+            if params.Transpose == 0u {
+                if lowRow < params.LogicalRows and lowColumn < params.LogicalColumns {
+                    low = Input[lowRow * params.InputRowStride + lowColumn];
+                }
+            } else {
+                if lowRow < params.LogicalColumns and lowColumn < params.LogicalRows {
+                    low = Input[lowColumn * params.InputRowStride + lowRow];
+                }
+            }
+        }
+
+        let highRow: u32 = highIndex / params.OutputColumns;
+        let highColumn: u32 = highIndex - highRow * params.OutputColumns;
+        if highRow < params.OutputRows {
+            if params.Transpose == 0u {
+                if highRow < params.LogicalRows and highColumn < params.LogicalColumns {
+                    high = Input[highRow * params.InputRowStride + highColumn];
+                }
+            } else {
+                if highRow < params.LogicalColumns and highColumn < params.LogicalRows {
+                    high = Input[highColumn * params.InputRowStride + highRow];
+                }
+            }
+        }
+
+        Output[word] = Pack<F16x2>(float2(low, high));
+        return;
+    }
+}

@@ -1,0 +1,33 @@
+namespace Prometheus.Experimental.Attention;
+
+// M42 keeps score scaling on the device without changing the production M39b
+// softmax modules or the experimental M40a cooperative shader identity.
+stream AttentionScaleIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record AttentionScaleParams {
+    Rows: u32;
+    Columns: u32;
+    RowStride: u32;
+    TotalElements: u32;
+    Scale: f32;
+    Reserved0: u32;
+    Reserved1: u32;
+    Reserved2: u32;
+}
+
+shader AttentionScaleScoresF32 {
+    resources AttentionScaleIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionScaleParams) -> void {
+        let element: u32 = DispatchThreadID.x;
+        if element >= params.TotalElements { return; }
+        let row: u32 = element / params.Columns;
+        let column: u32 = element - row * params.Columns;
+        let storageIndex: u32 = row * params.RowStride + column;
+        Output[storageIndex] = Input[storageIndex] * params.Scale;
+        return;
+    }
+}

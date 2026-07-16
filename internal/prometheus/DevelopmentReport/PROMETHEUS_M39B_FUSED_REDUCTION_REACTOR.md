@@ -279,3 +279,19 @@ uncertainty quarantines the whole slot, and persistent-B replacement waits for
 physical reap. Full ownership, command traces, RTX 3070 evidence, and the
 experimental classification are recorded in
 `PROMETHEUS_M40B_DEVICE_RESIDENT_COOPERATIVE_INFERENCE_PATH.md`.
+
+## M42 attention consumer
+
+M42 reuses the same production softmax pipelines and logical-width/physical-
+stride contract inside a complete one-head forward attention plan. Its score
+buffer is produced by Q x K-transpose, scaled in place by an attention-specific
+GPU stage, and passed directly to M39b with rows=Tokens, logical width=Tokens,
+and physical stride=padded Tokens. P remains device-resident for P x V.
+
+M39b shader IDs, module hashes, fused/staged threshold, public API, and
+production selector are unchanged. M42's shared slot retains Scores, P, and
+reduction temporaries until P x V and final Output readback complete; uncertain
+P x V completion quarantines the whole slot. The six-shape RTX 3070 corpus was
+validation-clean, and primary softmax measured 8.2 us inside 418.0 us of total
+cooperative attention GPU time. Full evidence is in
+`PROMETHEUS_M42_DEVICE_RESIDENT_ATTENTION_OPERATOR.md`.

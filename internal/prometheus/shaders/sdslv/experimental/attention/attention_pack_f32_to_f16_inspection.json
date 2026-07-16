@@ -1,0 +1,15 @@
+{
+  "schema": "prometheus.experimental-shader-inspection.v1",
+  "milestone": "M42",
+  "identity": "m42-attention-pack-f32-to-f16-v1",
+  "entry_point": "AttentionPackF32ToF16_CS",
+  "execution_model": "GLCompute",
+  "local_size": [256, 1, 1],
+  "descriptor_bindings": [0, 3],
+  "push_constant_bytes": 32,
+  "source_sha256": "e2bcfe005f12ac0039fcfeb45255d1580cb05d9dda0e83e456f56b66abfe3650",
+  "hlsl_sha256": "8379a042216215ac25bb65e39abf702c65e0420d1a0fbfea59312c8c4c6e2601",
+  "spirv_sha256": "d5c3fd6a2af8965f95bb01775be42e859f9d79af34451596b54ae9d77d930a35",
+  "spirv_val": "accepted for vulkan1.0",
+  "contract": "row-major FP32 to padded F16x2, with only the canonical attention K transpose mode"
+}
