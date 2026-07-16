@@ -26,7 +26,7 @@ Inline HLSL is target-constrained. The current pipeline supports HLSL only; a no
 
 ## Proof and roadmap
 
-`examples/SDSL-V/M28/InlineHlslBitCast.sdslv` and the manifest-owned `internal/prometheus/shaders/sdslv/inline_hlsl_bitcast_proof.sdslv` demonstrate `asuint`, a precise target bit-cast with no current SDSL-V equivalent, and a barrier statement. Registry asset ID 15 records SDSL-V as its primary language, two inline blocks, and foreign target `HLSL`; existing asset and implementation IDs are unchanged. It has no compute implementation and is non-dispatchable, non-benchmark, and selector-ineligible.
+`examples/SDSL-V/M28/InlineHlslBitCast.sdslv` and the manifest-owned `internal/prometheus/shaders/sdslv/production/sgemm/inline_hlsl_bitcast_proof.sdslv` demonstrate `asuint`, a precise target bit-cast with no current SDSL-V equivalent, and a barrier statement. Registry asset ID 15 records SDSL-V as its primary language, two inline blocks, and foreign target `HLSL`; existing asset and implementation IDs are unchanged. It has no compute implementation and is non-dispatchable, non-benchmark, and selector-ineligible.
 
 ## Validation and limitations
 

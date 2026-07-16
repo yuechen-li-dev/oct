@@ -1,5 +1,9 @@
 # Prometheus Native Vulkan Reactor Topology
 
+SDSL-V production-source, generated-artifact, benchmark, and audit ownership
+is documented in `docs/SDSL_V_WORKSPACE.md`. The native shader manifest remains
+the production registry's declarative asset inventory.
+
 Current Vulkan reactor file topology (P12 M5 baseline):
 
 - `reactor_vulkan.h`

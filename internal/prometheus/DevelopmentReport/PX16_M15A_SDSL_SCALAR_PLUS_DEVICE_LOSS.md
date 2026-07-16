@@ -205,9 +205,9 @@ go test ./internal/sdslv/... ./cmd/oct
 go test ./internal/prometheus/... ./cmd/oct
 go test ./internal/... ./cmd/oct
 
-go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv
-go run ./cmd/oct sdslv emit-hlsl internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv -o out/sdslv/sgemm_scalar_baseline_plus.hlsl
-go run ./cmd/oct sdslv compile-spv internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv -o out/sdslv/sgemm_scalar_baseline_plus.spv
+go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv
+go run ./cmd/oct sdslv emit-hlsl internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv -o out/sdslv/sgemm_scalar_baseline_plus.hlsl
+go run ./cmd/oct sdslv compile-spv internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv -o out/sdslv/sgemm_scalar_baseline_plus.spv
 
 powershell -ExecutionPolicy Bypass -File internal/prometheus/native/generate_sdslv_shaders.ps1
 

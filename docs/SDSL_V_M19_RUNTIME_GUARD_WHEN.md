@@ -144,4 +144,4 @@ SDSL-V M23 does not support when policy; hysteresis/min_commit require persisten
 
 ## Prometheus M20 Usage
 
-`internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv` uses runtime guard `when` to split exact-tile SGEMM loads/stores from tail-safe guarded memory access. The generated HLSL keeps direct exact-path A/B loads outside the guarded-read fallback temp blocks while preserving guarded fallback behavior in the tail path.
+`internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv` uses runtime guard `when` to split exact-tile SGEMM loads/stores from tail-safe guarded memory access. The generated HLSL keeps direct exact-path A/B loads outside the guarded-read fallback temp blocks while preserving guarded fallback behavior in the tail path.

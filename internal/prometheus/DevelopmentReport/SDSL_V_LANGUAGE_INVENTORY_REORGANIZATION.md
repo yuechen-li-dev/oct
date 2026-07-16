@@ -33,7 +33,7 @@ means accepted compatibility behavior, not removal.
 | Lowering and IR | `internal/sdslv/lower/lower.go`, `internal/sdslv/vdmir/*.go` and tests |
 | Backend/toolchain | `internal/sdslv/emit/hlsl/*.go`, `internal/sdslv/toolchain/*.go` |
 | Corpus | `internal/sdslv/testdata/language/**/*.sdslvvalid`, `.sdslvinvalid`, `.sdslvtest` |
-| Examples/production | `examples/SDSL-V/**`, `internal/prometheus/shaders/sdslv/**` |
+| Examples/production | `examples/SDSL-V/**`, `internal/prometheus/shaders/sdslv/production/**` |
 | Runtime/reports | `internal/prometheus/DevelopmentReport/SDSL_V_M*.md`, `PROMETHEUS_SHADER_REGISTRY_GRAPHICS_BOUNDARY.md`, `docs/SDSL_V_M*.md` |
 | Prior specification | former `docs/SDSL_V_LANGUAGE_SPEC.md` |
 

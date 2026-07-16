@@ -11,56 +11,6 @@ try {
     # The registry manifest is the declarative source of SDSL-V asset wiring.
     # Stable shader and implementation IDs remain reviewed manifest facts.
     $manifest = Get-Content -Raw "internal/prometheus/native/shaders/manifest.json" | ConvertFrom-Json
-    $jobs = @(
-        @{
-            Shader = "internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv"
-            Stem = "sgemm_scalar_baseline_plus"
-            Header = "internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.h"
-            Symbol = "k_prom_sgemm_scalar_plus_spirv"
-            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.hlsl"
-            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.spv"
-        },
-        @{
-            Shader = "internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv"
-            Stem = "sgemm_tile16x16_shared_fp32"
-            Header = "internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
-            Symbol = "k_prom_sgemm_tile16x16_shared_fp32_spirv"
-            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.hlsl"
-            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.spv"
-        },
-        @{
-            Shader = "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_fp32.sdslv"
-            Stem = "sgemm_reg2x2_tile16x16_fp32"
-            Header = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h"
-            Symbol = "k_prom_sgemm_reg2x2_tile16x16_fp32_spirv"
-            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.hlsl"
-            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.spv"
-        },
-        @{
-            Shader = "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv"
-            Stem = "sgemm_reg2x2_tile16x16_exacttail_fp32"
-            Header = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h"
-            Symbol = "k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv"
-            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.hlsl"
-            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.spv"
-        },
-        @{
-            Shader = "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv"
-            Stem = "sgemm_reg2x2_tile16x16_flowboard_fp32"
-            Header = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h"
-            Symbol = "k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv"
-            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.hlsl"
-            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.spv"
-        },
-        @{
-            Shader = "internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv"
-            Stem = "sgemm_reg2x2_tile16x16_derive_fp32"
-            Header = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h"
-            Symbol = "k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv"
-            NativeTempHlsl = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.hlsl"
-            NativeTempSpv = "internal/prometheus/native/reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.spv"
-        }
-    )
     $jobs = @($manifest.shader_assets | Where-Object { $_.source_language -eq "sdslv" } | Sort-Object id | ForEach-Object {
         $stem = [IO.Path]::GetFileNameWithoutExtension($_.source)
         $header = "internal/prometheus/native/" + $_.header

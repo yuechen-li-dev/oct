@@ -5,7 +5,7 @@ Status: benchmark-only explicit variant wiring. Production selector scoring and 
 ## What landed
 
 - First Prometheus SGEMM kernel authored in SDSL-V:
-  - `internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv`
+  - `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv`
 - First checked-in Prometheus SGEMM SPIR-V header generated through the SDSL-V toolchain:
   - `internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.h`
 - Opt-in regeneration script:
@@ -96,7 +96,7 @@ Prometheus native dispatch now reads those generated constants for the SDSL expl
 M14 builds on this lane with the first source-backed shared-memory tiled SGEMM kernel:
 
 - report: `internal/prometheus/DevelopmentReport/PX16_M14_SDSL_TILE16X16_SHARED_FP32.md`
-- source: `internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv`
+- source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv`
 - generated header: `internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h`
 
 That follow-on milestone keeps the same benchmark-only explicit-variant posture and the same generated-metadata dispatch authority rule, but upgrades the SDSL-V kernel structure from scalar-plus to a real `16x16x16` shared-memory tile with barriers and cooperative loads.

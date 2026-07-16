@@ -6,9 +6,9 @@ Status: **COMPLETE — success** (2026-07-11)
 
 | ID | shader | source | entry point | header | footprint |
 |---:|---|---|---|---|---|
-| 10 | SRT-2accum-K | `internal/prometheus/shaders/sdslv/sgemm_srt_2accum_k.sdslv` | `SgemmSrt2AccumK_CS` | `reactor_vulkan_sgemm_srt_2accum_k_spirv.h` | 1x1 |
-| 11 | B2x2-row-major-biased | `internal/prometheus/shaders/sdslv/sgemm_b2x2_row_major_biased.sdslv` | `SgemmB2x2_CS` | `reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h` | 2x2 |
-| 12 | A2x4-row-biased-accum8 | `internal/prometheus/shaders/sdslv/sgemm_a2x4_row_biased_accum8.sdslv` | `SgemmA2x4_CS` | `reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h` | 2x4 |
+| 10 | SRT-2accum-K | `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_srt_2accum_k.sdslv` | `SgemmSrt2AccumK_CS` | `reactor_vulkan_sgemm_srt_2accum_k_spirv.h` | 1x1 |
+| 11 | B2x2-row-major-biased | `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_b2x2_row_major_biased.sdslv` | `SgemmB2x2_CS` | `reactor_vulkan_sgemm_b2x2_row_major_biased_spirv.h` | 2x2 |
+| 12 | A2x4-row-biased-accum8 | `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_a2x4_row_biased_accum8.sdslv` | `SgemmA2x4_CS` | `reactor_vulkan_sgemm_a2x4_row_biased_accum8_spirv.h` | 2x4 |
 
 The generated names are the deliberate entry-point policy. Registry IDs,
 implementation IDs, policy-visible names, bindings 0/1/2, push constants

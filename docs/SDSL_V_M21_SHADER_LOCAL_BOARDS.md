@@ -82,7 +82,7 @@ Mutable board state, persistent board memory, `flow`/`state`, `goto`, `remember`
 
 M24 validates the board noun in a real Prometheus SGEMM kernel:
 
-- source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv`
+- source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv`
 - report: `internal/prometheus/DevelopmentReport/SDSL_V_M24_FLOW_BOARD_SGEMM.md`
 
 The key result is that immutable board type declarations from M21 remain the authoring surface for derived execution facts even when M23 later adds mutable flow-owned board instances. The real kernel uses board fields to name load/store coordinates while keeping resources, `matrix_view`, `tile`, and `reg_tile` outside the board surface.

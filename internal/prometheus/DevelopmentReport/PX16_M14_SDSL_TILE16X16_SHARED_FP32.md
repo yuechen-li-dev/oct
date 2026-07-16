@@ -5,7 +5,7 @@ Status: benchmark-only explicit variant wiring. Production selector scoring and 
 ## What landed
 
 - First Prometheus SGEMM shared-memory tiled kernel authored in SDSL-V:
-  - `internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv`
+  - `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv`
 - Checked-in generated SPIR-V header for the tiled kernel:
   - `internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h`
 - Regeneration script updated to emit both current Prometheus SDSL-V SGEMM headers:
@@ -79,10 +79,10 @@ That script requires a working `dxc` resolution path for regeneration, but ordin
 The shader lane was exercised with:
 
 ```powershell
-go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv
-go run ./cmd/oct sdslv emit-vdmir internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv
-go run ./cmd/oct sdslv emit-hlsl internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv -o out/sdslv/sgemm_tile16x16_shared_fp32.hlsl
-go run ./cmd/oct sdslv compile-spv internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv -o out/sdslv/sgemm_tile16x16_shared_fp32.spv
+go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv
+go run ./cmd/oct sdslv emit-vdmir internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv
+go run ./cmd/oct sdslv emit-hlsl internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv -o out/sdslv/sgemm_tile16x16_shared_fp32.hlsl
+go run ./cmd/oct sdslv compile-spv internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv -o out/sdslv/sgemm_tile16x16_shared_fp32.spv
 ```
 
 Native verification used:

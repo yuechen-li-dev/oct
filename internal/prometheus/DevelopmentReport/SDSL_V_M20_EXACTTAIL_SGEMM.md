@@ -6,7 +6,7 @@ The goal is narrow: use the M19 runtime guard `when` statement to express the fu
 
 ## Kernel Design
 
-- Source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv`
+- Source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv`
 - Variant: `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32`
 - Workgroup tile: 16x16 output tile
 - Workgroup shape: `numthreads(8, 8, 1)`

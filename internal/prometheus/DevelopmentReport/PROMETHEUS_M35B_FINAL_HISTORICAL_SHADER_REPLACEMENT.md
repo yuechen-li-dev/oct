@@ -6,8 +6,8 @@ M35b promotes the final two original Prometheus SPIR-V kernels to ordinary produ
 
 | Asset | Production source | Entry | Bytes | SHA-256 |
 |---|---|---|---:|---|
-| Packed4FP32 | `internal/prometheus/shaders/sdslv/sgemm_packed4_fp32.sdslv` | `SgemmPacked4_CS` | 2016 | `91b080bac53b744295bffdbc096669f225d3e611eff3a8b10fc0a33aafcf89e1` |
-| FP16-storage/FP32-accum | `internal/prometheus/shaders/sdslv/sgemm_fp16_storage_fp32_accum.sdslv` | `SgemmFp16StorageFp32Accum_CS` | 2468 | `a4c175c49c339fdc01e667db9eee0d3b7d186d7d4a6b36ff658ce8eaa3a8eb6d` |
+| Packed4FP32 | `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_packed4_fp32.sdslv` | `SgemmPacked4_CS` | 2016 | `91b080bac53b744295bffdbc096669f225d3e611eff3a8b10fc0a33aafcf89e1` |
+| FP16-storage/FP32-accum | `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_fp16_storage_fp32_accum.sdslv` | `SgemmFp16StorageFp32Accum_CS` | 2468 | `a4c175c49c339fdc01e667db9eee0d3b7d186d7d4a6b36ff658ce8eaa3a8eb6d` |
 
 The M34b entry-point policy is retained: registry and Vulkan pipeline creation use generated SDSL-V entry names, not historical `main`. Packed4 retains row-packed A / column-packed B `float4` buffers and `Dot`. FP16 retains packed `u32` storage, low-bit `.x` / high-bit `.y` ordering, and FP32 accumulation via `Unpack<F16x2>`. Neither source contains inline HLSL.
 

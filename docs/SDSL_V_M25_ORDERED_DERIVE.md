@@ -94,7 +94,7 @@ This makes per-lane coordinate derivation readable without introducing mutable f
 
 M26 validates `derive` on a real Prometheus SGEMM kernel:
 
-- source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv`
+- source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_derive_fp32.sdslv`
 - report: `internal/prometheus/DevelopmentReport/SDSL_V_M26_DERIVE_SGEMM_COMPARISON.md`
 
 The key outcome is:

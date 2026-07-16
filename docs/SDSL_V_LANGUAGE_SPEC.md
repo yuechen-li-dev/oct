@@ -40,6 +40,9 @@ or a milestone changelog. The authoritative Oct language reference remains
 `Language/reference/`; it is not a specification for SDSL-V unless the SDSL-V
 implementation and its tests also support the construct.
 
+Repository ownership, production shader paths, generated artifacts, and
+benchmark locations are documented separately in `docs/SDSL_V_WORKSPACE.md`.
+
 SDSL-V currently has a compute compiler path: SDSL-V source is parsed,
 validated, lowered to VD-MIR, emitted as HLSL, compiled by DXC to SPIR-V, and
 used by bounded Vulkan compute/test routes. Graphics syntax tokens exist, but

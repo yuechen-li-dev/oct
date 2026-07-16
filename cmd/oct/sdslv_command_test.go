@@ -195,7 +195,7 @@ func TestSDSLvM4EmitCommands(t *testing.T) {
 func TestSDSLvPrometheusSgemmScalarPlusSourceEmits(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "sgemm_scalar_baseline_plus.sdslv")
+	path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "production", "sgemm", "sgemm_scalar_baseline_plus.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -239,7 +239,7 @@ func TestSDSLvPrometheusSgemmScalarPlusSourceEmits(t *testing.T) {
 func TestSDSLvPrometheusSgemmTile16x16SharedSourceEmits(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "sgemm_tile16x16_shared_fp32.sdslv")
+	path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "production", "sgemm", "sgemm_tile16x16_shared_fp32.sdslv")
 	if err := cli.Execute([]string{"sdslv", "emit-vdmir", path}, &stdout, &stderr); err != nil {
 		t.Fatalf("emit-vdmir failed: %v stderr=%q", err, stderr.String())
 	}
@@ -297,7 +297,7 @@ func TestSDSLvPrometheusSgemmShadersDoNotGainFlowDispatcherOverhead(t *testing.T
 		t.Run(name, func(t *testing.T) {
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
-			path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", name)
+			path := repoPath(t, "internal", "prometheus", "shaders", "sdslv", "production", "sgemm", name)
 			hlslPath := filepath.Join(t.TempDir(), strings.TrimSuffix(name, ".sdslv")+".hlsl")
 			if err := cli.Execute([]string{"sdslv", "emit-hlsl", path, "-o", hlslPath}, &stdout, &stderr); err != nil {
 				t.Fatalf("emit-hlsl failed: %v stderr=%q", err, stderr.String())
@@ -505,7 +505,7 @@ func TestPrometheusSgemmScalarPlusHeaderCheckedIn(t *testing.T) {
 	}
 	body := string(text)
 	for _, want := range []string{
-		"// Source: internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv",
+		"// Source: internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv",
 		"// Entry point: SgemmScalarBaselinePlus8x8_CS",
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv[] = {",
 		"static const uint32_t k_prom_sgemm_scalar_plus_spirv_word_count = ",
@@ -527,7 +527,7 @@ func TestPrometheusSgemmTile16x16SharedHeaderCheckedIn(t *testing.T) {
 	}
 	body := string(text)
 	for _, want := range []string{
-		"// Source: internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv",
+		"// Source: internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv",
 		"// Entry point: SgemmTile16x16SharedFp32_CS",
 		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv[] = {",
 		"static const uint32_t k_prom_sgemm_tile16x16_shared_fp32_spirv_word_count = ",

@@ -4,9 +4,9 @@ M24 adds `SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32`, an explicit benchmark-only Prom
 
 ## Kernel
 
-- Source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv`
+- Source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv`
 - Variant: `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32`
-- Baseline behavior source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv`
+- Baseline behavior source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv`
 - Explicit-only wiring: production selector remains unchanged
 
 Preserved from M20:

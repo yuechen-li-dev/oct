@@ -4,11 +4,11 @@ M26 adds `SDSL_REG2X2_TILE16X16_DERIVE_FP32`, an explicit benchmark-only Prometh
 
 ## Kernel
 
-- Source: `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv`
+- Source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_derive_fp32.sdslv`
 - Variant: `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32`
 - Baselines:
-  - `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv`
-  - `internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv`
+  - `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv`
+  - `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv`
 - Explicit-only wiring: production selector remains unchanged
 
 Preserved from M20/M24:

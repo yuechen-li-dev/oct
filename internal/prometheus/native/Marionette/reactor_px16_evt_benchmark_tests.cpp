@@ -3793,9 +3793,9 @@ FACT(PrometheusSgemmM26SdslReg2x2Derive)
         m26_resident_rows.push_back(run_resident_case_fresh(shape, true, PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32, true));
     }
 
-    const std::filesystem::path m20_source = std::filesystem::path("internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv");
-    const std::filesystem::path m24_source = std::filesystem::path("internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv");
-    const std::filesystem::path m26_source = std::filesystem::path("internal/prometheus/shaders/sdslv/sgemm_reg2x2_tile16x16_derive_fp32.sdslv");
+    const std::filesystem::path m20_source = std::filesystem::path("internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_exacttail_fp32.sdslv");
+    const std::filesystem::path m24_source = std::filesystem::path("internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_flowboard_fp32.sdslv");
+    const std::filesystem::path m26_source = std::filesystem::path("internal/prometheus/shaders/sdslv/production/sgemm/sgemm_reg2x2_tile16x16_derive_fp32.sdslv");
     const std::string m20_text = read_text_file(m20_source);
     const std::string m24_text = read_text_file(m24_source);
     const std::string m26_text = read_text_file(m26_source);

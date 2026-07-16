@@ -468,7 +468,7 @@ The architecture rule for this milestone is:
 
 - Occupancy variant: `PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32`
 - Path identity: `PROM_OCCUPANCY_VARIANT_PATH_ID_SDSL_TILE16X16_SHARED_FP32`
-- SDSL-V source: `internal/prometheus/shaders/sdslv/sgemm_tile16x16_shared_fp32.sdslv`
+- SDSL-V source: `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_tile16x16_shared_fp32.sdslv`
 - Generated header: `internal/prometheus/native/reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h`
 
 ### Dispatch convention
@@ -734,7 +734,7 @@ The architecture rule for this milestone is:
 ### Source-backed kernel artifacts
 
 - SDSL-V source:
-  - `internal/prometheus/shaders/sdslv/sgemm_scalar_baseline_plus.sdslv`
+  - `internal/prometheus/shaders/sdslv/production/sgemm/sgemm_scalar_baseline_plus.sdslv`
 - Checked-in generated header:
   - `internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.h`
 - Opt-in regeneration script:
