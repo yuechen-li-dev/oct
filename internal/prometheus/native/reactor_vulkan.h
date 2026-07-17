@@ -2433,6 +2433,9 @@ typedef struct prom_m48_reference_layer {
 typedef struct prom_m48_reference_request {
   const float* initial_activation;
   float* output;
+  /* Optional untimed copies of each completed layer output for deterministic
+     audit only. The caller supplies model-sized destinations. */
+  float* audit_layer_output[PROM_M48_LAYER_COUNT];
   uint64_t initial_element_count;
   uint64_t output_element_count;
   uint32_t layer_count;

@@ -999,24 +999,37 @@ uint16_t prom_sgemm_float32_to_fp16_bits(float value) {
   }
   if (exponent < 113u) {
     uint32_t shifted;
+    uint32_t remainder;
     if (exponent < 103u) {
       return (uint16_t)sign;
     }
     mantissa |= 0x800000u;
-    shifted = 125u - exponent;
-    mantissa = (mantissa + (1u << (shifted - 1u))) >> shifted;
+    shifted = 126u - exponent;
+    remainder = mantissa & ((1u << shifted) - 1u);
+    mantissa >>= shifted;
+    if (remainder > (1u << (shifted - 1u)) ||
+        (remainder == (1u << (shifted - 1u)) && (mantissa & 1u) != 0u)) {
+      mantissa += 1u;
+    }
     return (uint16_t)(sign | mantissa);
   }
   exponent = exponent - 112u;
-  mantissa = mantissa + 0x1000u;
-  if ((mantissa & 0x00800000u) != 0u) {
+  {
+    const uint32_t remainder = mantissa & 0x1fffu;
+    mantissa >>= 13u;
+    if (remainder > 0x1000u ||
+        (remainder == 0x1000u && (mantissa & 1u) != 0u)) {
+      mantissa += 1u;
+    }
+  }
+  if (mantissa == 0x400u) {
     mantissa = 0u;
     exponent += 1u;
   }
   if (exponent >= 31u) {
     return (uint16_t)(sign | 0x7c00u);
   }
-  return (uint16_t)(sign | (exponent << 10u) | (mantissa >> 13u));
+  return (uint16_t)(sign | (exponent << 10u) | mantissa);
 }
 
 float prom_sgemm_fp16_bits_to_float32(uint16_t value) {

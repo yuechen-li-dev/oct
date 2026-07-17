@@ -383,68 +383,8 @@ int prom_m47_gated_ffn_plan_build(const prom_m47_plan_request* request,
   return PROM_OK;
 }
 
-static uint16_t prom_m47_float_to_half(float value) {
-  uint32_t bits;
-  uint32_t sign;
-  uint32_t exponent;
-  uint32_t mantissa;
-  uint32_t half_exponent;
-  uint32_t half_mantissa;
-  memcpy(&bits, &value, sizeof(bits));
-  sign = (bits >> 16u) & 0x8000u;
-  exponent = (bits >> 23u) & 0xffu;
-  mantissa = bits & 0x7fffffu;
-  if (exponent == 0xffu) return (uint16_t)(sign | (mantissa != 0u ? 0x7e00u : 0x7c00u));
-  if (exponent > 142u) return (uint16_t)(sign | 0x7c00u);
-  if (exponent < 113u) {
-    uint32_t shift;
-    uint32_t rounded;
-    if (exponent < 103u) return (uint16_t)sign;
-    mantissa |= 0x800000u;
-    shift = 126u - exponent;
-    rounded = mantissa >> shift;
-    if (((mantissa >> (shift - 1u)) & 1u) != 0u &&
-        ((mantissa & ((1u << (shift - 1u)) - 1u)) != 0u || (rounded & 1u) != 0u)) rounded += 1u;
-    return (uint16_t)(sign | rounded);
-  }
-  half_exponent = exponent - 112u;
-  half_mantissa = mantissa >> 13u;
-  if ((mantissa & 0x1000u) != 0u &&
-      ((mantissa & 0xfffu) != 0x1000u || (half_mantissa & 1u) != 0u)) {
-    half_mantissa += 1u;
-    if (half_mantissa == 0x400u) {
-      half_mantissa = 0u;
-      half_exponent += 1u;
-      if (half_exponent >= 31u) return (uint16_t)(sign | 0x7c00u);
-    }
-  }
-  return (uint16_t)(sign | (half_exponent << 10u) | half_mantissa);
-}
-
-static float prom_m47_half_to_float(uint16_t value) {
-  uint32_t sign = ((uint32_t)value & 0x8000u) << 16u;
-  uint32_t exponent = ((uint32_t)value >> 10u) & 0x1fu;
-  uint32_t mantissa = (uint32_t)value & 0x3ffu;
-  uint32_t bits;
-  float result;
-  if (exponent == 0u) {
-    if (mantissa == 0u) bits = sign;
-    else {
-      exponent = 113u;
-      while ((mantissa & 0x400u) == 0u) { mantissa <<= 1u; exponent -= 1u; }
-      bits = sign | (exponent << 23u) | ((mantissa & 0x3ffu) << 13u);
-    }
-  } else if (exponent == 31u) {
-    bits = sign | 0x7f800000u | (mantissa << 13u);
-  } else {
-    bits = sign | ((exponent + 112u) << 23u) | (mantissa << 13u);
-  }
-  memcpy(&result, &bits, sizeof(result));
-  return result;
-}
-
 static float prom_m47_round_f16(float value) {
-  return prom_m47_half_to_float(prom_m47_float_to_half(value));
+  return prom_sgemm_fp16_bits_to_float32(prom_sgemm_float32_to_fp16_bits(value));
 }
 
 static float prom_m47_silu(float value) {
@@ -764,9 +704,8 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   memset(out_plan, 0, sizeof(*out_plan));
   out_plan->eligibility_reason = PROM_M48_INELIGIBLE_LAYER_COUNT;
   if (request == NULL || request->layer_count == 0u ||
-      (request->audit_mode == 0u && request->layer_count != PROM_M48_LAYER_COUNT) ||
-      (request->audit_mode != 0u && request->layer_count != 1u &&
-       request->layer_count != 2u && request->layer_count != PROM_M48_LAYER_COUNT)) return PROM_ERROR;
+      request->layer_count > PROM_M48_LAYER_COUNT ||
+      (request->audit_mode == 0u && request->layer_count != PROM_M48_LAYER_COUNT)) return PROM_ERROR;
   out_plan->eligibility_reason = PROM_M48_INELIGIBLE_SHAPE;
   if (request->tokens == 0u || request->tokens > 1024u ||
       request->model_width == 0u || request->model_width > 4096u ||
@@ -1138,6 +1077,9 @@ int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* r
     ffn.projection_path = request->projection_path;
     out_result->failed_stage = 47u;
     if (prom_m47_gated_ffn_cpu_reference(&ffn) != PROM_OK) goto cleanup;
+    if (request->audit_layer_output[layer] != NULL)
+      memcpy(request->audit_layer_output[layer], next,
+             (size_t)(model_elements * sizeof(float)));
     current = next;
     out_result->completed_layer_count = layer + 1u;
   }

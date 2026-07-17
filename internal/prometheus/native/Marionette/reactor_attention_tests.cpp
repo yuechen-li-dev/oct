@@ -2316,6 +2316,24 @@ FACT(PrometheusM47GatedFfnOracleSiluPrecisionAndMismatch)
                 "non-finite FFN weights reject");
 }
 
+FACT(PrometheusFp16ConversionUsesRoundToNearestEven)
+{
+    struct ConversionCase {
+        float value;
+        std::uint16_t expected;
+    };
+    const std::array<ConversionCase, 10u> cases{{
+        {0.0f, 0x0000u}, {-0.0f, 0x8000u},
+        {1.00048828125f, 0x3c00u}, {1.00146484375f, 0x3c02u},
+        {-1.00048828125f, 0xbc00u}, {-1.00146484375f, 0xbc02u},
+        {0x1.0p-25f, 0x0000u}, {0x1.8p-24f, 0x0002u},
+        {65504.0f, 0x7bffu}, {std::numeric_limits<float>::infinity(), 0x7c00u},
+    }};
+    for (const ConversionCase& testCase : cases)
+        ASSERT_EQUAL(testCase.expected, prom_sgemm_float32_to_fp16_bits(testCase.value),
+                     "the shared CPU packing authority uses IEEE binary16 RNE");
+}
+
 FACT(PrometheusM48FixedStackTopologyOwnershipAndMemory)
 {
     prom_m48_plan_request request = M48ResidentPlanRequest();
@@ -2639,6 +2657,7 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
     std::vector<float> oneSubmitOutput(activationElements, 0.0f);
     std::vector<float> fourSubmitOutput(activationElements, 0.0f);
     std::vector<float> referenceOutput(activationElements, 0.0f);
+    std::array<std::vector<float>, PROM_M48_LAYER_COUNT> referenceLayerOutputs;
     std::array<std::array<std::vector<float>, PROM_M48_RESOURCE_COUNT>,
                PROM_M48_LAYER_COUNT> weights;
     std::array<std::array<std::uint64_t, PROM_M48_RESOURCE_COUNT>,
@@ -2660,6 +2679,12 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
     reference.precision_policy = precisionPolicy;
     reference.projection_path = projectionPath;
     reference.epsilon = 1.0e-5f;
+    if (selectedOracleAudit) {
+        for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
+            referenceLayerOutputs[layer].assign(activationElements, 0.0f);
+            reference.audit_layer_output[layer] = referenceLayerOutputs[layer].data();
+        }
+    }
 
     for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
         for (std::uint32_t resource = 0u; resource < PROM_M48_RESOURCE_COUNT; ++resource) {
@@ -2770,25 +2795,37 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
             {7u, 257u}, {31u, 511u}, {47u, 701u}, {63u, 127u},
             {95u, 769u}, {111u, 997u},
         }};
-        for (const auto& coordinate : coordinates) {
-            const std::size_t index = static_cast<std::size_t>(coordinate.first) * modelWidth +
-                                      coordinate.second;
-            const float expected = referenceOutput[index];
-            const float actual = oneSubmitOutput[index];
-            const float absoluteError = std::abs(actual - expected);
-            const float relativeError = absoluteError / std::max(std::abs(expected), 1.0e-20f);
-            if (!std::isfinite(actual) || absoluteError > 8.0e-2f) {
-                std::fprintf(stderr,
-                             "M48 primary audit mismatch layer=3 stage=final token=%u column=%u expected=%g actual=%g abs=%g rel=%g input_generation=%llu layer_replay=%llu stack_replay=%llu path=%u\n",
-                             coordinate.first, coordinate.second, expected, actual,
-                             absoluteError, relativeError,
-                             static_cast<unsigned long long>(oneSubmit.initial_generation),
-                             static_cast<unsigned long long>(oneSubmit.layer[3].replay_id),
-                             static_cast<unsigned long long>(oneSubmit.replay_id),
-                             oneSubmit.selected_projection_path);
+        for (std::uint32_t auditLayer = 0u; auditLayer < PROM_M48_LAYER_COUNT; ++auditLayer) {
+            std::vector<float> layerOutput(activationElements, 0.0f);
+            prom_m48_stack_request layerRequest = request;
+            prom_m48_stack_result layerResult{};
+            layerRequest.layer_count = auditLayer + 1u;
+            layerRequest.audit_mode = 1u;
+            layerRequest.output = layerOutput.data();
+            layerRequest.output_element_count = layerOutput.size();
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_m48_execute_stack(runtime, &layerRequest, &layerResult),
+                         "primary audit executes each ordered layer prefix through the live recorder");
+            for (const auto& coordinate : coordinates) {
+                const std::size_t index = static_cast<std::size_t>(coordinate.first) * modelWidth +
+                                          coordinate.second;
+                const float expected = referenceLayerOutputs[auditLayer][index];
+                const float actual = layerOutput[index];
+                const float absoluteError = std::abs(actual - expected);
+                const float relativeError = absoluteError / std::max(std::abs(expected), 1.0e-20f);
+                if (!std::isfinite(actual) || absoluteError > 8.0e-2f) {
+                    std::fprintf(stderr,
+                                 "M48 primary audit mismatch layer=%u stage=final token=%u column=%u expected=%g actual=%g abs=%g rel=%g input_generation=%llu layer_replay=%llu stack_replay=%llu path=%u\n",
+                                 auditLayer, coordinate.first, coordinate.second, expected, actual,
+                                 absoluteError, relativeError,
+                                 static_cast<unsigned long long>(layerResult.initial_generation),
+                                 static_cast<unsigned long long>(layerResult.layer[auditLayer].replay_id),
+                                 static_cast<unsigned long long>(layerResult.replay_id),
+                                 layerResult.selected_projection_path);
+                }
+                ASSERT_TRUE(std::isfinite(actual) && absoluteError <= 8.0e-2f,
+                            "deterministic primary layer coordinate agrees with the CPU reference");
             }
-            ASSERT_TRUE(std::isfinite(actual) && absoluteError <= 8.0e-2f,
-                        "deterministic primary final-output coordinate agrees with the CPU reference");
         }
     } else {
         for (const float value : oneSubmitOutput)
