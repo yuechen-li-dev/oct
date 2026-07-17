@@ -41,6 +41,8 @@ typedef struct prom_transformer_record_context {
   uint32_t query_base;
   uint32_t query_count;
   uint32_t layer_index;
+  uint32_t audit_stage;
+  prom_vk_buffer* audit_readback;
   prom_transformer_descriptor_bank* descriptors;
 } prom_transformer_record_context;
 

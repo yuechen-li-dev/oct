@@ -2658,6 +2658,8 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
     std::vector<float> fourSubmitOutput(activationElements, 0.0f);
     std::vector<float> referenceOutput(activationElements, 0.0f);
     std::array<std::vector<float>, PROM_M48_LAYER_COUNT> referenceLayerOutputs;
+    std::array<std::array<std::vector<float>, PROM_M48_AUDIT_STAGE_COUNT>,
+               PROM_M48_LAYER_COUNT> referenceStageOutputs;
     std::array<std::array<std::vector<float>, PROM_M48_RESOURCE_COUNT>,
                PROM_M48_LAYER_COUNT> weights;
     std::array<std::array<std::uint64_t, PROM_M48_RESOURCE_COUNT>,
@@ -2683,6 +2685,11 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
         for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
             referenceLayerOutputs[layer].assign(activationElements, 0.0f);
             reference.audit_layer_output[layer] = referenceLayerOutputs[layer].data();
+            for (std::uint32_t stage = 0u; stage < PROM_M48_AUDIT_STAGE_COUNT; ++stage) {
+                referenceStageOutputs[layer][stage].assign(activationElements, 0.0f);
+                reference.audit_stage_output[layer][stage] =
+                    referenceStageOutputs[layer][stage].data();
+            }
         }
     }
 
@@ -2789,42 +2796,134 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
             ASSERT_TRUE(std::abs(oneSubmitOutput[index] - referenceOutput[index]) <= 8.0e-2f,
                         "live one-submit output agrees with the reduced-precision CPU oracle");
     } else if (selectedOracleAudit) {
-        const std::array<std::pair<std::uint32_t, std::uint32_t>, 12u> coordinates{{
-            {0u, 0u}, {0u, modelWidth - 1u}, {tokens / 2u, modelWidth / 2u},
-            {tokens - 1u, 0u}, {tokens - 1u, modelWidth - 1u}, {1u, 17u},
-            {7u, 257u}, {31u, 511u}, {47u, 701u}, {63u, 127u},
-            {95u, 769u}, {111u, 997u},
+        const std::array<const char*, PROM_M48_AUDIT_STAGE_COUNT> stageNames{{
+            "attention", "output_projection", "first_residual", "rmsnorm", "ffn",
         }};
+        const std::array<float, PROM_M48_AUDIT_STAGE_COUNT> absoluteTolerances{{
+            1.0e-2f, 8.0e-3f, 1.0e-2f, 2.0e-3f, 3.0e-3f,
+        }};
+        const std::array<float, PROM_M48_AUDIT_STAGE_COUNT> relativeTolerances{{
+            5.0e-2f, 3.0e-2f, 4.0e-2f, 2.0e-2f, 4.0e-2f,
+        }};
+        std::array<std::vector<float>, PROM_M48_LAYER_COUNT> capturedLayerOutputs;
         for (std::uint32_t auditLayer = 0u; auditLayer < PROM_M48_LAYER_COUNT; ++auditLayer) {
-            std::vector<float> layerOutput(activationElements, 0.0f);
-            prom_m48_stack_request layerRequest = request;
-            prom_m48_stack_result layerResult{};
-            layerRequest.layer_count = auditLayer + 1u;
-            layerRequest.audit_mode = 1u;
-            layerRequest.output = layerOutput.data();
-            layerRequest.output_element_count = layerOutput.size();
-            ASSERT_EQUAL(PROM_OK,
-                         prom_reactor_runtime_m48_execute_stack(runtime, &layerRequest, &layerResult),
-                         "primary audit executes each ordered layer prefix through the live recorder");
-            for (const auto& coordinate : coordinates) {
-                const std::size_t index = static_cast<std::size_t>(coordinate.first) * modelWidth +
-                                          coordinate.second;
-                const float expected = referenceLayerOutputs[auditLayer][index];
-                const float actual = layerOutput[index];
-                const float absoluteError = std::abs(actual - expected);
-                const float relativeError = absoluteError / std::max(std::abs(expected), 1.0e-20f);
-                if (!std::isfinite(actual) || absoluteError > 8.0e-2f) {
-                    std::fprintf(stderr,
-                                 "M48 primary audit mismatch layer=%u stage=final token=%u column=%u expected=%g actual=%g abs=%g rel=%g input_generation=%llu layer_replay=%llu stack_replay=%llu path=%u\n",
-                                 auditLayer, coordinate.first, coordinate.second, expected, actual,
-                                 absoluteError, relativeError,
-                                 static_cast<unsigned long long>(layerResult.initial_generation),
-                                 static_cast<unsigned long long>(layerResult.layer[auditLayer].replay_id),
-                                 static_cast<unsigned long long>(layerResult.replay_id),
-                                 layerResult.selected_projection_path);
+            for (std::uint32_t auditStage = 0u;
+                 auditStage < PROM_M48_AUDIT_STAGE_COUNT; ++auditStage) {
+                std::vector<float> stageOutput(activationElements, 0.0f);
+                prom_m48_stack_request layerRequest = request;
+                prom_m48_stack_result layerResult{};
+                float maximumAbsoluteError = 0.0f;
+                float maximumRelativeError = 0.0f;
+                std::uint32_t mismatchCount = 0u;
+                layerRequest.layer_count = auditLayer + 1u;
+                layerRequest.audit_mode = 1u;
+                layerRequest.output = nullptr;
+                layerRequest.output_element_count = 0u;
+                layerRequest.audit_stage_output = stageOutput.data();
+                layerRequest.audit_stage_output_element_count = stageOutput.size();
+                layerRequest.audit_stage = auditStage + 1u;
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_m48_execute_stack(runtime, &layerRequest,
+                                                                    &layerResult),
+                             "primary audit captures one real stage from each ordered layer prefix");
+                for (std::size_t index = 0u; index < activationElements; ++index) {
+                    const std::uint32_t head = auditStage == 0u
+                        ? static_cast<std::uint32_t>(index / (tokens * headDim)) : 0u;
+                    const std::size_t headIndex = auditStage == 0u
+                        ? index - static_cast<std::size_t>(head) * tokens * headDim : index;
+                    const std::uint32_t token = auditStage == 0u
+                        ? static_cast<std::uint32_t>(headIndex / headDim)
+                        : static_cast<std::uint32_t>(index / modelWidth);
+                    const std::uint32_t column = auditStage == 0u
+                        ? head * headDim + static_cast<std::uint32_t>(headIndex % headDim)
+                        : static_cast<std::uint32_t>(index % modelWidth);
+                    const float expected = referenceStageOutputs[auditLayer][auditStage][index];
+                    const float actual = stageOutput[index];
+                    const float absoluteError = std::abs(actual - expected);
+                    const float relativeError = absoluteError /
+                        std::max(std::abs(expected), 1.0e-20f);
+                    maximumAbsoluteError = std::max(maximumAbsoluteError, absoluteError);
+                    maximumRelativeError = std::max(maximumRelativeError, relativeError);
+                    if (!std::isfinite(actual) ||
+                        (absoluteError > absoluteTolerances[auditStage] &&
+                         relativeError > relativeTolerances[auditStage])) {
+                        ++mismatchCount;
+                        if (mismatchCount <= 3u) {
+                            std::fprintf(stderr,
+                                         "M48 stage audit mismatch layer=%u stage=%s token=%u column=%u expected=%g actual=%g abs=%g rel=%g abs_tol=%g rel_tol=%g layer_replay=%llu stack_replay=%llu path=%u\n",
+                                         auditLayer, stageNames[auditStage], token, column,
+                                         expected, actual, absoluteError, relativeError,
+                                         absoluteTolerances[auditStage],
+                                         relativeTolerances[auditStage],
+                                         static_cast<unsigned long long>(
+                                             layerResult.layer[auditLayer].replay_id),
+                                         static_cast<unsigned long long>(layerResult.replay_id),
+                                         layerResult.selected_projection_path);
+                        }
+                    }
                 }
-                ASSERT_TRUE(std::isfinite(actual) && absoluteError <= 8.0e-2f,
-                            "deterministic primary layer coordinate agrees with the CPU reference");
+                std::fprintf(stderr,
+                             "M48 stage audit summary layer=%u stage=%s max_abs=%g max_rel=%g mismatches=%u elements=%zu\n",
+                             auditLayer, stageNames[auditStage], maximumAbsoluteError,
+                             maximumRelativeError, mismatchCount, activationElements);
+                ASSERT_EQUAL(0u, mismatchCount,
+                             "stage boundary agrees with its established precision tolerance");
+                if (auditStage == PROM_M48_AUDIT_STAGE_ATTENTION - 1u) {
+                    std::vector<float> matchedInputAttention(activationElements, 0.0f);
+                    const std::vector<float>& matchedInput = auditLayer == 0u
+                        ? initial : capturedLayerOutputs[auditLayer - 1u];
+                    prom_m43_reference_request matchedRequest{};
+                    prom_m43_reference_result matchedResult{};
+                    std::uint32_t matchedMismatchCount = 0u;
+                    float matchedMaximumAbsoluteError = 0.0f;
+                    float matchedMaximumRelativeError = 0.0f;
+                    matchedRequest.x = matchedInput.data();
+                    matchedRequest.output = matchedInputAttention.data();
+                    matchedRequest.x_element_count = activationElements;
+                    matchedRequest.weight_element_count =
+                        static_cast<std::uint64_t>(modelWidth) * headDim;
+                    matchedRequest.output_element_count = activationElements;
+                    matchedRequest.head_count = PROM_M43_HEAD_COUNT;
+                    matchedRequest.tokens = tokens;
+                    matchedRequest.model_width = modelWidth;
+                    matchedRequest.head_dim = headDim;
+                    matchedRequest.precision_policy = precisionPolicy;
+                    for (std::uint32_t head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+                        for (std::uint32_t kind = 0u; kind < PROM_M43_WEIGHT_KIND_COUNT; ++kind) {
+                            matchedRequest.weight[head][kind] =
+                                reference.layer[auditLayer].attention_weight[head][kind];
+                        }
+                    }
+                    ASSERT_EQUAL(PROM_OK,
+                                 prom_m43_attention_cpu_reference(&matchedRequest, &matchedResult),
+                                 "matched-input attention oracle succeeds");
+                    for (std::size_t index = 0u; index < activationElements; ++index) {
+                        const float expected = matchedInputAttention[index];
+                        const float actual = stageOutput[index];
+                        const float absoluteError = std::abs(actual - expected);
+                        const float relativeError = absoluteError /
+                            std::max(std::abs(expected), 1.0e-20f);
+                        matchedMaximumAbsoluteError =
+                            std::max(matchedMaximumAbsoluteError, absoluteError);
+                        matchedMaximumRelativeError =
+                            std::max(matchedMaximumRelativeError, relativeError);
+                        if (!std::isfinite(actual) ||
+                            (absoluteError > absoluteTolerances[auditStage] &&
+                             relativeError > relativeTolerances[auditStage])) {
+                            ++matchedMismatchCount;
+                        }
+                    }
+                    std::fprintf(stderr,
+                                 "M48 matched-input attention summary layer=%u max_abs=%g max_rel=%g mismatches=%u elements=%zu\n",
+                                 auditLayer, matchedMaximumAbsoluteError,
+                                 matchedMaximumRelativeError, matchedMismatchCount,
+                                 activationElements);
+                    ASSERT_EQUAL(0u, matchedMismatchCount,
+                                 "attention agrees when CPU and GPU consume the same activation");
+                }
+                if (auditStage == PROM_M48_AUDIT_STAGE_FFN - 1u) {
+                    capturedLayerOutputs[auditLayer] = stageOutput;
+                }
             }
         }
     } else {

@@ -2283,6 +2283,17 @@ typedef enum prom_m48_submit_topology {
   PROM_M48_SUBMIT_HOST_BOUNCE_PER_LAYER_AUDIT = 4u,
 } prom_m48_submit_topology;
 
+#define PROM_M48_AUDIT_STAGE_COUNT 5u
+
+typedef enum prom_m48_audit_stage {
+  PROM_M48_AUDIT_STAGE_NONE = 0u,
+  PROM_M48_AUDIT_STAGE_ATTENTION = 1u,
+  PROM_M48_AUDIT_STAGE_OUTPUT_PROJECTION = 2u,
+  PROM_M48_AUDIT_STAGE_FIRST_RESIDUAL = 3u,
+  PROM_M48_AUDIT_STAGE_RMSNORM = 4u,
+  PROM_M48_AUDIT_STAGE_FFN = 5u,
+} prom_m48_audit_stage;
+
 typedef enum prom_m48_eligibility_reason {
   PROM_M48_ELIGIBLE = 0u,
   PROM_M48_INELIGIBLE_LAYER_COUNT = 1u,
@@ -2325,6 +2336,7 @@ typedef struct prom_m48_plan_request {
   uint32_t activation_strategy;
   uint32_t submit_topology;
   uint32_t optional_final_readback;
+  uint32_t audit_stage;
   uint64_t expected_initial_generation;
   uint64_t initial_content_hash;
   uint64_t capacity_limit_bytes;
@@ -2374,6 +2386,7 @@ typedef struct prom_m48_memory_plan {
   uint64_t persistent_weight_bytes_per_layer;
   uint64_t persistent_weight_bytes;
   uint64_t final_readback_bytes;
+  uint64_t audit_readback_bytes;
   uint64_t descriptor_device_buffer_bytes;
   uint64_t timestamp_query_device_buffer_bytes;
   uint64_t quarantine_reserve_bytes;
@@ -2436,6 +2449,9 @@ typedef struct prom_m48_reference_request {
   /* Optional untimed copies of each completed layer output for deterministic
      audit only. The caller supplies model-sized destinations. */
   float* audit_layer_output[PROM_M48_LAYER_COUNT];
+  /* Optional untimed stage-boundary copies. Attention is compact head-major;
+     every later stage is compact token-major. */
+  float* audit_stage_output[PROM_M48_LAYER_COUNT][PROM_M48_AUDIT_STAGE_COUNT];
   uint64_t initial_element_count;
   uint64_t output_element_count;
   uint32_t layer_count;
@@ -2525,6 +2541,9 @@ typedef struct prom_m48_stack_request {
   uint64_t host_initial_element_count;
   float* output;
   uint64_t output_element_count;
+  float* audit_stage_output;
+  uint64_t audit_stage_output_element_count;
+  uint32_t audit_stage;
   uint32_t initial_activation_mode;
   uint32_t layer_count;
   uint32_t audit_mode;

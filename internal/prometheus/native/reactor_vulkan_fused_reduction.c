@@ -10986,6 +10986,108 @@ static int prom_transformer_prepare_block(
 
 /* The bounded M47 compatibility split uses this exact prefix, followed by the
    shared suffix below. Neither helper owns command-buffer lifetime. */
+static int prom_transformer_record_audit_destination_begin(
+    VkCommandBuffer command_buffer,
+    prom_vk_buffer* destination) {
+  return prom_m43_one_buffer_barrier(command_buffer, destination, destination->size,
+                                     VK_ACCESS_HOST_READ_BIT,
+                                     VK_ACCESS_TRANSFER_WRITE_BIT,
+                                     VK_PIPELINE_STAGE_HOST_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT);
+}
+
+static int prom_transformer_record_audit_source(
+    VkCommandBuffer command_buffer,
+    prom_vk_buffer* source,
+    uint32_t rows,
+    uint32_t columns,
+    uint32_t row_stride,
+    uint32_t destination_row_offset,
+    prom_vk_buffer* destination,
+    VkAccessFlags restore_access) {
+  VkBufferCopy copy;
+  uint32_t row;
+  if (!prom_m43_one_buffer_barrier(command_buffer, source, source->size,
+                                   VK_ACCESS_SHADER_WRITE_BIT,
+                                   VK_ACCESS_TRANSFER_READ_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT)) return 0;
+  for (row = 0u; row < rows; ++row) {
+    memset(&copy, 0, sizeof(copy));
+    copy.srcOffset = (VkDeviceSize)((uint64_t)row * row_stride * sizeof(float));
+    copy.dstOffset = (VkDeviceSize)((uint64_t)(destination_row_offset + row) *
+                                    columns * sizeof(float));
+    copy.size = (VkDeviceSize)((uint64_t)columns * sizeof(float));
+    vkCmdCopyBuffer(command_buffer, source->buffer, destination->buffer, 1u, &copy);
+  }
+  if (restore_access != 0u &&
+      !prom_m43_one_buffer_barrier(command_buffer, source, source->size,
+                                   VK_ACCESS_TRANSFER_READ_BIT, restore_access,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) return 0;
+  return 1;
+}
+
+static int prom_transformer_record_audit_destination_end(
+    VkCommandBuffer command_buffer,
+    prom_vk_buffer* destination) {
+  return prom_m43_one_buffer_barrier(command_buffer, destination, destination->size,
+                                     VK_ACCESS_TRANSFER_WRITE_BIT,
+                                     VK_ACCESS_HOST_READ_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_HOST_BIT);
+}
+
+static int prom_transformer_record_stage_audit(
+    prom_reduction_slot* slot,
+    prom_transformer_record_context* context,
+    prom_transformer_recorded_block* block,
+    uint32_t stage) {
+  prom_vk_buffer* destination = context->audit_readback;
+  uint32_t head;
+  if (context->audit_stage != stage) return 1;
+  if (destination == NULL ||
+      !prom_transformer_record_audit_destination_begin(context->command_buffer,
+                                                        destination)) return 0;
+  if (stage == PROM_M48_AUDIT_STAGE_ATTENTION) {
+    for (head = 0u; head < PROM_M43_HEAD_COUNT; ++head) {
+      if (!prom_transformer_record_audit_source(
+              context->command_buffer, &slot->m43_head[head].output,
+              block->attention_plan.tokens, block->attention_plan.head_dim,
+              block->head_view[head].row_stride_elements,
+              head * block->attention_plan.tokens, destination,
+              VK_ACCESS_SHADER_READ_BIT)) return 0;
+    }
+  } else if (stage == PROM_M48_AUDIT_STAGE_OUTPUT_PROJECTION) {
+    if (!prom_transformer_record_audit_source(
+            context->command_buffer, &slot->m44_output,
+            block->projection_plan.tokens, block->projection_plan.model_width,
+            block->projection_plan.output_row_stride, 0u, destination,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT)) return 0;
+  } else if (stage == PROM_M48_AUDIT_STAGE_FIRST_RESIDUAL) {
+    if (!prom_transformer_record_audit_source(
+            context->command_buffer, block->z,
+            block->residual_plan.tokens, block->residual_plan.model_width,
+            block->residual_plan.z_row_stride, 0u, destination,
+            VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT)) return 0;
+  } else if (stage == PROM_M48_AUDIT_STAGE_RMSNORM) {
+    if (!prom_transformer_record_audit_source(
+            context->command_buffer, block->n,
+            block->norm_plan.tokens, block->norm_plan.model_width,
+            block->norm_plan.n_row_stride, 0u, destination,
+            VK_ACCESS_SHADER_READ_BIT)) return 0;
+  } else if (stage == PROM_M48_AUDIT_STAGE_FFN) {
+    if (!prom_transformer_record_audit_source(
+            context->command_buffer, block->output,
+            block->ffn_plan.tokens, block->ffn_plan.model_width,
+            block->ffn_plan.output_row_stride, 0u, destination, 0u)) return 0;
+  } else {
+    return 0;
+  }
+  return prom_transformer_record_audit_destination_end(context->command_buffer,
+                                                        destination);
+}
+
 static int prom_transformer_record_block_prefix(
     prom_reduction_runtime_state* state,
     prom_reduction_slot* slot,
@@ -11035,6 +11137,8 @@ static int prom_transformer_record_block_prefix(
     if (out_fault_stage != NULL) *out_fault_stage = 43u;
     return 0;
   }
+  if (!prom_transformer_record_stage_audit(slot, context, block,
+                                           PROM_M48_AUDIT_STAGE_ATTENTION)) return 0;
   if (prom_m44_record_projection_tail(state, slot, &block->projection_request,
                                        &block->projection_plan,
                                        context->command_buffer, 1u, 0u,
@@ -11042,6 +11146,8 @@ static int prom_transformer_record_block_prefix(
     if (out_fault_stage != NULL) *out_fault_stage = 44u;
     return 0;
   }
+  if (!prom_transformer_record_stage_audit(
+          slot, context, block, PROM_M48_AUDIT_STAGE_OUTPUT_PROJECTION)) return 0;
   if (prom_m45_record_residual_tail(state, slot, &block->residual_request,
                                      &block->residual_plan,
                                      block->input,
@@ -11050,12 +11156,16 @@ static int prom_transformer_record_block_prefix(
     if (out_fault_stage != NULL) *out_fault_stage = 45u;
     return 0;
   }
+  if (!prom_transformer_record_stage_audit(
+          slot, context, block, PROM_M48_AUDIT_STAGE_FIRST_RESIDUAL)) return 0;
   if (prom_m46_record_tail(state, slot, &block->norm_request, &block->norm_plan,
                            block->z, block->n, context->command_buffer, 1u,
                            &m46_partial) != 1 || m46_partial != 0u) {
     if (out_fault_stage != NULL) *out_fault_stage = 46u;
     return 0;
   }
+  if (!prom_transformer_record_stage_audit(slot, context, block,
+                                           PROM_M48_AUDIT_STAGE_RMSNORM)) return 0;
   return 1;
 }
 
@@ -11073,6 +11183,8 @@ static int prom_transformer_record_block_suffix(
     if (out_fault_stage != NULL) *out_fault_stage = 47u;
     return 0;
   }
+  if (!prom_transformer_record_stage_audit(slot, context, block,
+                                           PROM_M48_AUDIT_STAGE_FFN)) return 0;
   return 1;
 }
 
@@ -11170,6 +11282,7 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   uint32_t fault_stage = 0u;
   uint32_t command_count;
   uint32_t optional_readback;
+  uint32_t stage_audit;
   uint32_t pipeline_path;
   uint32_t host_wait_audit;
   uint32_t host_bounce_audit;
@@ -11187,12 +11300,22 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
       !isfinite(request->epsilon) || request->epsilon <= 0.0f ||
       !prom_m40b_checked_product_u64(request->tokens, request->model_width, &elements) ||
       elements > SIZE_MAX / sizeof(float) ||
-      (request->output != NULL && request->output_element_count != elements)) {
+      (request->output != NULL && request->output_element_count != elements) ||
+      (request->output == NULL && request->output_element_count != 0u) ||
+      (request->audit_stage_output != NULL &&
+       (request->audit_mode == 0u || request->output != NULL ||
+        request->audit_stage_output_element_count != elements ||
+        request->audit_stage < PROM_M48_AUDIT_STAGE_ATTENTION ||
+        request->audit_stage > PROM_M48_AUDIT_STAGE_FFN)) ||
+      (request->audit_stage_output == NULL &&
+       (request->audit_stage_output_element_count != 0u ||
+        request->audit_stage != PROM_M48_AUDIT_STAGE_NONE))) {
     out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
     return PROM_ERROR;
   }
   logical_bytes = (VkDeviceSize)(elements * sizeof(float));
   optional_readback = request->output != NULL ? 1u : 0u;
+  stage_audit = request->audit_stage_output != NULL ? 1u : 0u;
   host_wait_audit = request->submit_topology == PROM_M48_SUBMIT_HOST_WAIT_PER_LAYER_AUDIT;
   host_bounce_audit = request->submit_topology == PROM_M48_SUBMIT_HOST_BOUNCE_PER_LAYER_AUDIT;
   if (host_bounce_audit != 0u &&
@@ -11231,6 +11354,7 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   plan_request.activation_strategy = PROM_M48_ACTIVATION_PING_PONG;
   plan_request.submit_topology = request->submit_topology;
   plan_request.optional_final_readback = optional_readback;
+  plan_request.audit_stage = request->audit_stage;
   plan_request.expected_initial_generation = request->expected_initial_generation;
   if (request->initial_activation_mode == PROM_M48_INITIAL_HOST) {
     if (request->host_initial_activation == NULL ||
@@ -11336,7 +11460,7 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
                               (VkDeviceSize)(out_result->plan.memory.activation_bytes / 2u),
                               VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL) ||
-      (optional_readback != 0u &&
+      ((optional_readback != 0u || stage_audit != 0u) &&
        !prom_m48_ensure_buffer(state, &slot->m48_readback, logical_bytes,
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -11442,6 +11566,10 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
                          layer * PROM_M48_QUERY_COUNT_PER_LAYER;
     context.query_count = PROM_M48_QUERY_COUNT_PER_LAYER;
     context.layer_index = layer;
+    context.audit_stage = stage_audit != 0u && layer + 1u == request->layer_count
+                              ? request->audit_stage : PROM_M48_AUDIT_STAGE_NONE;
+    context.audit_readback = context.audit_stage != PROM_M48_AUDIT_STAGE_NONE
+                                 ? &slot->m48_readback : NULL;
     context.descriptors = &slot->m48_descriptors[layer];
     if (!prom_transformer_record_block(state, slot, &context, &block[layer],
                                        &fault_stage)) {
@@ -11683,15 +11811,23 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
       goto completed_fail;
     }
   }
+  if (stage_audit != 0u) {
+    memcpy(request->audit_stage_output, slot->m48_readback.mapped,
+           (size_t)logical_bytes);
+    if (!prom_m42_finite_matrix(request->audit_stage_output, elements)) {
+      out_result->detail_code = PROM_M48_DETAIL_MISMATCH;
+      goto completed_fail;
+    }
+  }
   out_result->submit_count = command_count;
   out_result->semaphore_count = (host_wait_audit != 0u || host_bounce_audit != 0u)
                                     ? 0u : command_count - 1u;
   out_result->fence_count = 1u;
   out_result->final_readback_count = optional_readback;
-  out_result->intermediate_host_copy_count = host_bounce_audit != 0u
-                                                  ? request->layer_count - 1u : 0u;
-  out_result->intermediate_readback_count = host_bounce_audit != 0u
-                                                ? request->layer_count - 1u : 0u;
+  out_result->intermediate_host_copy_count =
+      (host_bounce_audit != 0u ? request->layer_count - 1u : 0u) + stage_audit;
+  out_result->intermediate_readback_count =
+      (host_bounce_audit != 0u ? request->layer_count - 1u : 0u) + stage_audit;
   out_result->selected_projection_path = block[0].ffn_plan.projection_path;
   out_result->retained_bytes = out_result->plan.memory.exact_retained_bytes;
   out_result->persistent_weight_bytes = out_result->plan.memory.persistent_weight_bytes;

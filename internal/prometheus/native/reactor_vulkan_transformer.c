@@ -745,6 +745,8 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
       (request->submit_topology >= PROM_M48_SUBMIT_HOST_WAIT_PER_LAYER_AUDIT &&
        request->audit_mode == 0u) ||
       request->optional_final_readback > 1u ||
+      request->audit_stage > PROM_M48_AUDIT_STAGE_FFN ||
+      (request->audit_stage != PROM_M48_AUDIT_STAGE_NONE && request->audit_mode == 0u) ||
       (request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED &&
        request->projection_path == PROM_M47_PROJECTION_A2X4_FP32) ||
       (request->activation_strategy == PROM_M48_ACTIVATION_PING_PONG &&
@@ -763,10 +765,12 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   out_plan->eligibility_reason = PROM_M48_INELIGIBLE_OVERFLOW;
   if (!prom_m48_add_persistent_weights(request, &out_plan->memory) ||
       !prom_m48_add_working_set(request, padded_tokens, padded_model_width,
-                               padded_head_dim, padded_ffn_width, &out_plan->memory) ||
+                                padded_head_dim, padded_ffn_width, &out_plan->memory) ||
       !prom_m48_scaled_bytes(logical_elements, sizeof(float),
-                            &out_plan->memory.final_readback_bytes)) return PROM_ERROR;
+                             &out_plan->memory.final_readback_bytes)) return PROM_ERROR;
   if (request->optional_final_readback == 0u) out_plan->memory.final_readback_bytes = 0u;
+  out_plan->memory.audit_readback_bytes = request->audit_stage != PROM_M48_AUDIT_STAGE_NONE
+                                                ? logical_elements * sizeof(float) : 0u;
   out_plan->memory.descriptor_set_count = request->layer_count * 134u;
   out_plan->memory.timestamp_query_count = request->layer_count * PROM_M48_QUERY_COUNT_PER_LAYER;
   /* Descriptor sets and query pools are opaque Vulkan objects, not device-buffer
@@ -776,7 +780,8 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   out_plan->memory.timestamp_query_device_buffer_bytes = 0u;
   if (!prom_m48_accumulate(&slot_bytes, out_plan->memory.activation_bytes) ||
       !prom_m48_accumulate(&slot_bytes, out_plan->memory.one_block_working_set_bytes) ||
-      !prom_m48_accumulate(&slot_bytes, out_plan->memory.final_readback_bytes)) return PROM_ERROR;
+      !prom_m48_accumulate(&slot_bytes, out_plan->memory.final_readback_bytes) ||
+      !prom_m48_accumulate(&slot_bytes, out_plan->memory.audit_readback_bytes)) return PROM_ERROR;
   out_plan->memory.exact_stack_slot_bytes = slot_bytes;
   out_plan->memory.quarantine_reserve_bytes = slot_bytes;
   if (!prom_m48_accumulate(&total, out_plan->memory.persistent_weight_bytes) ||
@@ -808,8 +813,10 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   out_plan->semaphore_count = request->submit_topology == PROM_M48_SUBMIT_PER_LAYER
                                   ? request->layer_count - 1u : 0u;
   out_plan->fence_count = 1u;
-  out_plan->intermediate_host_copy_count = 0u;
-  out_plan->intermediate_readback_count = 0u;
+  out_plan->intermediate_host_copy_count =
+      request->audit_stage != PROM_M48_AUDIT_STAGE_NONE ? 1u : 0u;
+  out_plan->intermediate_readback_count =
+      request->audit_stage != PROM_M48_AUDIT_STAGE_NONE ? 1u : 0u;
   out_plan->final_readback_count = request->optional_final_readback;
   out_plan->warm_allocation_count = 0u;
   out_plan->persistent_resource_count = request->layer_count * PROM_M48_RESOURCE_COUNT;
@@ -827,6 +834,7 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   hash = prom_m47_hash_u32(hash, request->activation_strategy);
   hash = prom_m47_hash_u32(hash, request->submit_topology);
   hash = prom_m47_hash_u32(hash, request->optional_final_readback);
+  hash = prom_m47_hash_u32(hash, request->audit_stage);
   hash = prom_m47_hash_u64(hash, request->expected_initial_generation);
   hash = prom_m47_hash_u64(hash, request->initial_content_hash);
   activation_range_bytes = (uint64_t)padded_tokens * padded_model_width * sizeof(float);
@@ -861,7 +869,9 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
     out_plan->layer[layer].input_activation_role = input_role;
     out_plan->layer[layer].output_activation_role = output_role;
     out_plan->layer[layer].persistent_resource_count = PROM_M48_RESOURCE_COUNT;
-    out_plan->layer[layer].intermediate_readback_count = 0u;
+    out_plan->layer[layer].intermediate_readback_count =
+        request->audit_stage != PROM_M48_AUDIT_STAGE_NONE && layer + 1u == request->layer_count
+            ? 1u : 0u;
     out_plan->layer[layer].input_generation = layer == 0u
                                                   ? request->expected_initial_generation
                                                   : out_plan->layer[layer - 1u].output_generation;
@@ -1010,6 +1020,9 @@ int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* r
     out_result->failed_stage = 43u;
     if (prom_m43_attention_cpu_reference(&attention, &attention_result) != PROM_OK ||
         attention_result.all_finite == 0u) goto cleanup;
+    if (request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_ATTENTION - 1u] != NULL)
+      memcpy(request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_ATTENTION - 1u],
+             head_output, (size_t)(model_elements * sizeof(float)));
     memset(&projection, 0, sizeof(projection));
     projection.head_major = head_output;
     projection.wo = request->layer[layer].wo;
@@ -1025,6 +1038,9 @@ int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* r
     out_result->failed_stage = 44u;
     if (prom_m44_output_projection_cpu_reference(&projection, &projection_result) != PROM_OK ||
         projection_result.all_finite == 0u) goto cleanup;
+    if (request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_OUTPUT_PROJECTION - 1u] != NULL)
+      memcpy(request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_OUTPUT_PROJECTION - 1u],
+             projected, (size_t)(model_elements * sizeof(float)));
     memset(&residual_request, 0, sizeof(residual_request));
     residual_request.x = current;
     residual_request.y = projected;
@@ -1039,6 +1055,9 @@ int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* r
     residual_request.z_row_stride = request->model_width;
     out_result->failed_stage = 45u;
     if (prom_m45_residual_cpu_reference(&residual_request) != PROM_OK) goto cleanup;
+    if (request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_FIRST_RESIDUAL - 1u] != NULL)
+      memcpy(request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_FIRST_RESIDUAL - 1u],
+             residual, (size_t)(model_elements * sizeof(float)));
     memset(&norm, 0, sizeof(norm));
     norm.z = residual;
     norm.weight = request->layer[layer].rmsnorm_weight;
@@ -1054,6 +1073,9 @@ int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* r
     norm.epsilon = request->epsilon;
     out_result->failed_stage = 46u;
     if (prom_m46_rmsnorm_cpu_reference(&norm) != PROM_OK) goto cleanup;
+    if (request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_RMSNORM - 1u] != NULL)
+      memcpy(request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_RMSNORM - 1u],
+             normalized, (size_t)(model_elements * sizeof(float)));
     memset(&ffn, 0, sizeof(ffn));
     ffn.n = normalized;
     ffn.wgate = request->layer[layer].wgate;
@@ -1077,6 +1099,9 @@ int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* r
     ffn.projection_path = request->projection_path;
     out_result->failed_stage = 47u;
     if (prom_m47_gated_ffn_cpu_reference(&ffn) != PROM_OK) goto cleanup;
+    if (request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_FFN - 1u] != NULL)
+      memcpy(request->audit_stage_output[layer][PROM_M48_AUDIT_STAGE_FFN - 1u],
+             next, (size_t)(model_elements * sizeof(float)));
     if (request->audit_layer_output[layer] != NULL)
       memcpy(request->audit_layer_output[layer], next,
              (size_t)(model_elements * sizeof(float)));
