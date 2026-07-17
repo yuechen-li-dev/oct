@@ -60,9 +60,13 @@ record M1EnvelopeEvaluation {
 
 record M1LearnedPolicyReport {
     Model: Statistics.LinearUtilityModel
+    IdentificationEvaluation: Statistics.UtilityFitMetrics
     SelectedPath: String
     AuthoredSelectedPath: String
     UniformSelectedPath: String
+    SelectedScoreBreakdown: Statistics.UtilityScoreBreakdown
+    FittedVsAuthored: Statistics.UtilityModelComparison
+    FittedVsUniform: Statistics.UtilityModelComparison
     HeldOutBaselineComparisonAvailable: Bool
     ShadowOnly: Bool
     ProductAuthorityChanged: Bool
@@ -103,6 +107,7 @@ fn M1UtilityEvidence(evidence: M1NativeEvidence) -> Statistics.UtilityObservatio
 
 fn M1FitLearnedPolicy(evidence: M1NativeEvidence) -> Statistics.LinearUtilityModel {
     let options = Statistics.UtilityFitDefaults(["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]) with {
+        FeatureSigns: [Statistics.UtilityFeatureSign.Nonpositive, Statistics.UtilityFeatureSign.Nonpositive, Statistics.UtilityFeatureSign.Nonpositive]
         L2Regularization: 0.000001
         MaximumLeaveOneOutWeightDelta: 1.0
         IdentificationEvidenceHash: evidence.SourceJsonSha256 + ":identification"
@@ -126,10 +131,14 @@ fn M1SelectShadowPath(evidence: M1NativeEvidence, model: Statistics.LinearUtilit
     let a2x4 = evidence.Records[4]
     let conventional = evidence.Records[5]
     let retained = evidence.Records[6]
+    let cooperative = evidence.Records[7]
+    let fp32Wdown = evidence.Records[8]
     return when utility {
         case a2x4.Path when a2x4.ValidationClean score M1PathScore(a2x4, model)
         case conventional.Path when conventional.ValidationClean score M1PathScore(conventional, model)
         case retained.Path when retained.ValidationClean score M1PathScore(retained, model)
+        case cooperative.Path when cooperative.ValidationClean score M1PathScore(cooperative, model)
+        case fp32Wdown.Path when fp32Wdown.ValidationClean score M1PathScore(fp32Wdown, model)
         else "audit-only-no-eligible-path"
     }
 }
@@ -139,11 +148,16 @@ fn M1BuildLearnedPolicyReport(evidence: M1NativeEvidence) -> M1LearnedPolicyRepo
     let authored = model with { Weights: [0.0 - 0.60, 0.0 - 0.30, 0.0 - 0.10] Bias: 0.0 }
     let uniform = model with { Weights: [0.0 - 1.0, 0.0 - 1.0, 0.0 - 1.0] Bias: 0.0 }
     let comparison = Statistics.CompareLinearUtilityModels(M1UtilityEvidence(evidence), model, authored)!
+    let uniformComparison = Statistics.CompareLinearUtilityModels(M1UtilityEvidence(evidence), model, uniform)!
     return M1LearnedPolicyReport {
         Model: model
+        IdentificationEvaluation: Statistics.EvaluateLinearUtilityEvidence(M1UtilityEvidence(evidence), model, false)!
         SelectedPath: M1SelectShadowPath(evidence, model)
         AuthoredSelectedPath: M1SelectShadowPath(evidence, authored)
         UniformSelectedPath: M1SelectShadowPath(evidence, uniform)
+        SelectedScoreBreakdown: Statistics.BreakdownLinearUtilityScore(M1PathFeatures(evidence.Records[5]), model)!
+        FittedVsAuthored: comparison
+        FittedVsUniform: uniformComparison
         HeldOutBaselineComparisonAvailable: comparison.HeldOutComparisonAvailable
         ShadowOnly: true
         ProductAuthorityChanged: false

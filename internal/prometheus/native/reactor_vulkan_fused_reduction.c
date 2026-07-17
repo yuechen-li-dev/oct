@@ -347,6 +347,7 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m46_inv_rms;
   prom_vk_buffer m46_output;
   prom_vk_buffer m46_readback;
+  prom_vk_buffer m49a_m46_z;
   prom_vk_buffer m47_n_packed;
   prom_vk_buffer m47_gate;
   prom_vk_buffer m47_up;
@@ -3286,6 +3287,7 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
     prom_vk_destroy_buffer(device, &slot->m47_gate);
     prom_vk_destroy_buffer(device, &slot->m47_n_packed);
     prom_vk_destroy_buffer(device, &slot->m46_readback);
+    prom_vk_destroy_buffer(device, &slot->m49a_m46_z);
     prom_vk_destroy_buffer(device, &slot->m46_output);
     prom_vk_destroy_buffer(device, &slot->m46_inv_rms);
     prom_vk_destroy_buffer(device, &slot->m46_partials);
@@ -9021,6 +9023,7 @@ static int prom_m46_record_tail(prom_reduction_runtime_state* state,
                                 prom_vk_buffer* n,
                                 VkCommandBuffer command_buffer,
                                 uint32_t already_open,
+                                uint32_t z_already_shader_readable,
                                 uint32_t* out_partial_fault) {
   VkCommandBufferBeginInfo begin_info;
   VkBufferCopy copy;
@@ -9044,7 +9047,9 @@ static int prom_m46_record_tail(prom_reduction_runtime_state* state,
     prom_m46_reduce_push_constants push;
     if (!prom_m43_one_buffer_barrier(command_buffer, z,
                                      (VkDeviceSize)plan->memory.z_view_bytes,
-                                     VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                     z_already_shader_readable != 0u
+                                         ? VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_SHADER_WRITE_BIT,
+                                     VK_ACCESS_SHADER_READ_BIT,
                                      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                      VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT)) return 0;
     prom_m42_write_timestamp(state, slot, command_buffer,
@@ -9185,7 +9190,9 @@ static int prom_m46_prepare_continuation(prom_reduction_runtime_state* state,
   prom_m46_composed_result* result = continuation->result;
   const prom_m46_composed_request* request = continuation->request;
   prom_vk_buffer* z = upstream->z_view.buffer == slot->m44_output.buffer
-                        ? &slot->m44_output : &slot->m45_output;
+                        ? &slot->m44_output
+                        : upstream->z_view.buffer == slot->m49a_m46_z.buffer
+                            ? &slot->m49a_m46_z : &slot->m45_output;
   prom_vk_buffer* n;
   memset(&plan_request, 0, sizeof(plan_request));
   plan_request.z_view = upstream->z_view;
@@ -9212,7 +9219,8 @@ static int prom_m46_prepare_continuation(prom_reduction_runtime_state* state,
                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
       !prom_m46_ensure_buffer(state, &slot->m46_inv_rms,
                               (VkDeviceSize)result->rmsnorm_plan.memory.inv_rms_bytes,
-                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
       (request->strategy == PROM_M46_STRATEGY_SEPARATE_OUTPUT &&
        !prom_m46_ensure_buffer(state, &slot->m46_output,
@@ -9476,18 +9484,20 @@ static int prom_m47_record_tail(prom_reduction_runtime_state* state,
                                 const prom_m47_gated_ffn_plan* plan,
                                 prom_vk_buffer* n,
                                 prom_vk_buffer* output,
-                                 VkCommandBuffer command_buffer,
-                                 uint32_t already_open,
-                                 uint32_t n_already_shader_readable,
-                                 uint32_t* out_partial_fault) {
+                                VkCommandBuffer command_buffer,
+                                uint32_t already_open,
+                                uint32_t n_already_shader_readable,
+                                uint32_t down_projection_path_override,
+                                uint32_t* out_partial_fault) {
   VkCommandBufferBeginInfo begin_info;
   VkBufferCopy copy;
   const uint32_t reduced = plan->projection_path != PROM_M47_PROJECTION_A2X4_FP32;
   const uint32_t projection_m = reduced != 0u ? plan->padded_tokens : plan->tokens;
   const uint32_t gate_n = reduced != 0u ? plan->padded_ffn_width : plan->ffn_width;
   const uint32_t gate_k = reduced != 0u ? plan->padded_model_width : plan->model_width;
-  const uint32_t down_n = reduced != 0u ? plan->padded_model_width : plan->model_width;
-  const uint32_t down_k = reduced != 0u ? plan->padded_ffn_width : plan->ffn_width;
+  const uint32_t down_path = down_projection_path_override != 0u
+                                 ? down_projection_path_override : plan->projection_path;
+  const uint32_t down_reduced = down_path != PROM_M47_PROJECTION_A2X4_FP32;
   prom_vk_buffer* down = plan->residual_strategy == PROM_M47_RESIDUAL_IN_PLACE_DOWN
                              ? output : &slot->m47_down;
   uint32_t partial_fault = 0u;
@@ -9644,7 +9654,7 @@ static int prom_m47_record_tail(prom_reduction_runtime_state* state,
                                PROM_M47_QUERY_HIDDEN_PACK_BEGIN);
       prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                PROM_M47_QUERY_HIDDEN_PACK_END);
-    } else if (reduced != 0u) {
+    } else if (down_reduced != 0u) {
       prom_m42_buffer_barrier(command_buffer, &slot->m47_hidden,
                               VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
                               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
@@ -9676,7 +9686,10 @@ static int prom_m47_record_tail(prom_reduction_runtime_state* state,
     prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              PROM_M47_QUERY_DOWN_BEGIN);
     prom_m42_record_sgemm(state, command_buffer, slot->m47_descriptor_sets[5],
-                          plan->projection_path, projection_m, down_n, down_k);
+                          down_path,
+                          down_reduced != 0u ? plan->padded_tokens : plan->tokens,
+                          down_reduced != 0u ? plan->padded_model_width : plan->model_width,
+                          down_reduced != 0u ? plan->padded_ffn_width : plan->ffn_width);
     prom_m42_write_timestamp(state, slot, command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                              PROM_M47_QUERY_DOWN_END);
     if (request->fault_point == PROM_M47_FAULT_DURING_DOWN ||
@@ -11173,7 +11186,7 @@ static int prom_transformer_record_block_prefix(
           slot, context, block, PROM_M48_AUDIT_STAGE_FIRST_RESIDUAL)) return 0;
   if (prom_m46_record_tail(state, slot, &block->norm_request, &block->norm_plan,
                            block->z, block->n, context->command_buffer, 1u,
-                           &m46_partial) != 1 || m46_partial != 0u) {
+                           0u, &m46_partial) != 1 || m46_partial != 0u) {
     if (out_fault_stage != NULL) *out_fault_stage = 46u;
     return 0;
   }
@@ -11192,7 +11205,7 @@ static int prom_transformer_record_block_suffix(
   prom_transformer_select_descriptor_bank(slot, context->descriptors);
   if (prom_m47_record_tail(state, slot, &block->ffn_request, &block->ffn_plan,
                             block->n, block->output, context->command_buffer, 1u,
-                            0u, &m47_partial) != 1 || m47_partial != 0u) {
+                            0u, 0u, &m47_partial) != 1 || m47_partial != 0u) {
     if (out_fault_stage != NULL) *out_fault_stage = 47u;
     return 0;
   }
@@ -12302,7 +12315,7 @@ static int prom_m45_execute_composed_core(void* handle,
       m46_record_status = prom_m46_record_tail(
           state, slot, continuation->request, &continuation->result->rmsnorm_plan,
           continuation->z, continuation->n, slot->command_buffer, 1u,
-          &m46_partial_fault);
+          0u, &m46_partial_fault);
       if (m46_record_status == 1 &&
           continuation->m47->request->submit_policy == PROM_M47_SUBMIT_TWO_BOUNDED) {
         if (vkEndCommandBuffer(slot->command_buffer) != VK_SUCCESS) {
@@ -12312,14 +12325,14 @@ static int prom_m45_execute_composed_core(void* handle,
               state, slot, continuation->m47->request,
               &continuation->m47->result->ffn_plan, continuation->m47->n,
               continuation->m47->output, slot->consumer_command_buffer, 0u,
-              0u, &m47_partial_fault);
+              0u, 0u, &m47_partial_fault);
         }
       } else if (m46_record_status == 1) {
         m47_record_status = prom_m47_record_tail(
             state, slot, continuation->m47->request,
             &continuation->m47->result->ffn_plan, continuation->m47->n,
             continuation->m47->output, slot->command_buffer, 1u,
-            0u, &m47_partial_fault);
+            0u, 0u, &m47_partial_fault);
       }
     } else if (continuation->request->submit_policy == PROM_M46_SUBMIT_TWO_BOUNDED) {
       if (vkEndCommandBuffer(slot->command_buffer) != VK_SUCCESS) {
@@ -12328,13 +12341,13 @@ static int prom_m45_execute_composed_core(void* handle,
         m46_record_status = prom_m46_record_tail(
             state, slot, continuation->request, &continuation->result->rmsnorm_plan,
             continuation->z, continuation->n, slot->consumer_command_buffer, 0u,
-            &m46_partial_fault);
+            0u, &m46_partial_fault);
       }
     } else {
       m46_record_status = prom_m46_record_tail(
           state, slot, continuation->request, &continuation->result->rmsnorm_plan,
           continuation->z, continuation->n, slot->command_buffer, 1u,
-          &m46_partial_fault);
+          0u, &m46_partial_fault);
     }
   }
   if (continuation == NULL && effective_request.submit_policy == PROM_M45_SUBMIT_TWO_BOUNDED &&
@@ -12966,8 +12979,11 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
   prom_m47_composed_request ffn_request;
   prom_m47_continuation continuation;
   prom_vk_buffer* capture_source = NULL;
+  float* dense_input = NULL;
+  const float* logical_input;
   const uint64_t begin_ns = prom_reduction_now_ns();
   uint64_t input_elements;
+  uint64_t storage_elements;
   uint64_t capture_elements;
   uint64_t input_bytes;
   uint64_t capture_bytes;
@@ -12992,10 +13008,15 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
   out_result->no_product_intermediate_readback_change = 1u;
   if (request == NULL || request->matched_n == NULL || request->capture_output == NULL ||
       request->tokens == 0u || request->model_width == 0u || request->ffn_width == 0u ||
+      request->matched_n_row_stride < request->model_width ||
       request->capture_stage < PROM_M49A_CAPTURE_GATE ||
       request->capture_stage > PROM_M49A_CAPTURE_FFN_SUFFIX ||
       request->projection_path < PROM_M47_PROJECTION_COOPERATIVE ||
       request->projection_path > PROM_M47_PROJECTION_CONVENTIONAL_FP16 ||
+      (request->down_projection_path != 0u &&
+       request->down_projection_path != PROM_M47_PROJECTION_A2X4_FP32) ||
+      (request->down_projection_path == PROM_M47_PROJECTION_A2X4_FP32 &&
+       request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED) ||
       request->gating_strategy < PROM_M47_GATING_SEPARATE ||
       request->gating_strategy > PROM_M47_GATING_FUSED_DIRECT_PACKED ||
       request->residual_strategy < PROM_M47_RESIDUAL_SEPARATE_OUTPUT ||
@@ -13004,7 +13025,9 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
       request->exact_source_hash == 0u ||
       !prom_m40b_checked_product_u64(request->tokens, request->model_width,
                                      &input_elements) ||
-      request->matched_n_element_count != input_elements) {
+      !prom_m40b_checked_product_u64(request->tokens, request->matched_n_row_stride,
+                                     &storage_elements) ||
+      request->matched_n_element_count != storage_elements) {
     out_result->detail_code = PROM_M47_DETAIL_INVALID_REQUEST;
     return PROM_ERROR;
   }
@@ -13021,8 +13044,8 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
     out_result->detail_code = PROM_M47_DETAIL_INVALID_REQUEST;
     return PROM_ERROR;
   }
-  (void)prom_m42_hash_finite_matrix(request->matched_n, input_elements, &finite);
-  input_hash = prom_num_hash_float_bits(request->matched_n, input_elements);
+  (void)prom_m42_hash_finite_matrix(request->matched_n, storage_elements, &finite);
+  input_hash = prom_num_hash_float_bits(request->matched_n, storage_elements);
   out_result->input_hash = input_hash;
   if (finite == 0u || input_hash == 0u || input_hash != request->reference_input_hash) {
     out_result->detail_code = PROM_M47_DETAIL_NONFINITE_INPUT;
@@ -13031,13 +13054,18 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
   out_result->matched_input = 1u;
   state = prom_reduction_ensure_state(handle, &detail);
   if (state == NULL || !prom_m42_ensure_pipelines(state) ||
-      !prom_m45_ensure_pipeline(state) || !prom_m47_ensure_pipelines(state)) {
+      !prom_m45_ensure_pipeline(state) || !prom_m47_ensure_pipelines(state) ||
+      !prom_m40b_ensure_sgemm_pipeline(state, request->projection_path) ||
+      (request->down_projection_path != 0u &&
+       !prom_m40b_ensure_sgemm_pipeline(state, request->down_projection_path))) {
     out_result->detail_code = state == NULL ? detail : PROM_M47_DETAIL_RESOURCE;
     return PROM_ERROR;
   }
   for (weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight) {
     if (request->required_weight_generation[weight] == 0u ||
+        request->required_weight_hash[weight] == 0u ||
         state->m47_weight_generation[weight] != request->required_weight_generation[weight] ||
+        state->m47_weight_hash[weight] != request->required_weight_hash[weight] ||
         state->m47_weight_model_width[weight] != request->model_width ||
         state->m47_weight_ffn_width[weight] != request->ffn_width) {
       out_result->detail_code = PROM_M47_DETAIL_STALE_WEIGHT_GENERATION;
@@ -13075,7 +13103,23 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
     out_result->detail_code = PROM_M47_DETAIL_RESOURCE;
     return PROM_ERROR;
   }
-  memcpy(slot->m48_host_initial_upload.mapped, request->matched_n, (size_t)input_bytes);
+  logical_input = request->matched_n;
+  if (request->matched_n_row_stride != request->model_width) {
+    dense_input = (float*)malloc((size_t)input_bytes);
+    if (dense_input == NULL) {
+      slot->state = PROM_ASYNC_PHYSICAL_READY;
+      out_result->detail_code = PROM_M47_DETAIL_RESOURCE;
+      return PROM_ERROR;
+    }
+    for (row = 0u; row < request->tokens; ++row) {
+      memcpy(dense_input + (uint64_t)row * request->model_width,
+             request->matched_n + (uint64_t)row * request->matched_n_row_stride,
+             (size_t)((uint64_t)request->model_width * sizeof(float)));
+    }
+    logical_input = dense_input;
+  }
+  memcpy(slot->m48_host_initial_upload.mapped, logical_input, (size_t)input_bytes);
+  free(dense_input);
   memset(&upstream_result, 0, sizeof(upstream_result));
   upstream_result.rmsnorm_plan.tokens = request->tokens;
   upstream_result.rmsnorm_plan.model_width = request->model_width;
@@ -13101,6 +13145,12 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
     slot->state = PROM_ASYNC_PHYSICAL_READY;
     out_result->detail_code = PROM_M47_DETAIL_RESOURCE;
     return PROM_ERROR;
+  }
+  if (request->down_projection_path == PROM_M47_PROJECTION_A2X4_FP32) {
+    prom_m47_update_descriptor(state, slot->m47_descriptor_sets[5],
+                               &slot->m47_hidden,
+                               &state->m47_weight_f32[PROM_M47_WEIGHT_DOWN],
+                               &slot->m47_down, &slot->m47_down);
   }
   if (request->capture_stage == PROM_M49A_CAPTURE_GATE) {
     capture_source = &slot->m47_gate;
@@ -13143,7 +13193,8 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
                                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) ||
       prom_m47_record_tail(state, slot, &ffn_request, &out_result->ffn.ffn_plan,
                            &slot->m48_host_initial, continuation.output,
-                           slot->command_buffer, 1u, 1u, &partial_fault) != 1 ||
+                           slot->command_buffer, 1u, 1u,
+                           request->down_projection_path, &partial_fault) != 1 ||
       partial_fault != 0u ||
       !prom_m43_one_buffer_barrier(slot->command_buffer, capture_source,
                                    capture_source->size,
@@ -13219,6 +13270,9 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
     return PROM_ERROR;
   }
   out_result->capture_stage = request->capture_stage;
+  out_result->down_projection_path = request->down_projection_path != 0u
+                                         ? request->down_projection_path
+                                         : request->projection_path;
   out_result->submit_count = 1u;
   out_result->final_readback_count = 1u;
   out_result->intermediate_host_copy_count = 1u;
@@ -13230,6 +13284,9 @@ int prom_reactor_runtime_m49a_execute_ffn_suffix(
       prom_m40b_hash_u64(out_result->ffn.ffn_plan.replay_id, input_hash);
   out_result->replay_identity =
       prom_m40b_hash_u64(out_result->replay_identity, request->capture_stage);
+  out_result->replay_identity =
+      prom_m40b_hash_u64(out_result->replay_identity,
+                         out_result->down_projection_path);
   out_result->replay_identity =
       prom_m40b_hash_u64(out_result->replay_identity, request->exact_source_hash);
   out_result->end_to_end_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
@@ -13243,6 +13300,253 @@ m49a_ffn_command_fail:
 m49a_ffn_submit_fail:
   slot->state = PROM_ASYNC_PHYSICAL_READY;
   out_result->detail_code = PROM_M47_DETAIL_SUBMIT;
+  return PROM_ERROR;
+}
+
+int prom_reactor_runtime_m49a_execute_m46(
+    void* handle, const prom_m49a_m46_request* request,
+    prom_m49a_m46_result* out_result) {
+  prom_reduction_runtime_state* state;
+  prom_reduction_slot* slot;
+  prom_m45_composed_result upstream;
+  prom_m46_composed_request rms_request;
+  prom_m46_continuation continuation;
+  const uint64_t begin_ns = prom_reduction_now_ns();
+  uint64_t storage_elements;
+  uint64_t logical_elements;
+  uint64_t input_bytes;
+  uint64_t output_bytes;
+  uint64_t inv_rms_bytes;
+  uint64_t input_hash;
+  uint64_t timestamps[PROM_M46_QUERY_BASE + PROM_M46_QUERY_COUNT];
+  uint32_t finite = 0u;
+  uint32_t partial_fault = 0u;
+  int32_t detail = 0;
+  VkCommandBufferBeginInfo begin_info;
+  VkBufferCopy copy;
+  VkSubmitInfo submit;
+  VkResult vk_result;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->audit_only = 1u;
+  out_result->no_product_intermediate_readback_change = 1u;
+  if (request == NULL || request->matched_z == NULL || request->output == NULL ||
+      request->inv_rms_output == NULL || request->tokens == 0u ||
+      request->model_width == 0u || request->z_row_stride < request->model_width ||
+      request->strategy < PROM_M46_STRATEGY_SEPARATE_OUTPUT ||
+      request->strategy > PROM_M46_STRATEGY_IN_PLACE_Z ||
+      request->requested_reduction_plan > PROM_M46_REDUCTION_FORCE_STAGED ||
+      !isfinite(request->epsilon) || request->epsilon <= 0.0f ||
+      request->input_generation == 0u || request->reference_input_hash == 0u ||
+      request->required_weight_generation == 0u || request->required_weight_hash == 0u ||
+      request->exact_source_hash == 0u ||
+      !prom_m40b_checked_product_u64(request->tokens, request->z_row_stride,
+                                     &storage_elements) ||
+      !prom_m40b_checked_product_u64(request->tokens, request->model_width,
+                                     &logical_elements) ||
+      request->matched_storage_element_count != storage_elements ||
+      request->output_element_count != logical_elements ||
+      request->inv_rms_output_element_count != request->tokens ||
+      storage_elements > SIZE_MAX / sizeof(float) || logical_elements > SIZE_MAX / sizeof(float)) {
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  (void)prom_m42_hash_finite_matrix(request->matched_z, storage_elements, &finite);
+  input_hash = prom_num_hash_float_bits(request->matched_z, storage_elements);
+  out_result->input_hash = input_hash;
+  if (finite == 0u || input_hash == 0u || input_hash != request->reference_input_hash) {
+    out_result->detail_code = PROM_M46_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL || !prom_m46_ensure_pipelines(state)) {
+    out_result->detail_code = state == NULL ? detail : PROM_M46_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  if (state->m46_weight_generation != request->required_weight_generation ||
+      state->m46_weight_hash != request->required_weight_hash ||
+      state->m46_weight_model_width != request->model_width) {
+    out_result->detail_code = PROM_M46_DETAIL_STALE_WEIGHT_GENERATION;
+    return PROM_ERROR;
+  }
+  slot = prom_reduction_acquire_slot(state, state->next_logical_request_id++);
+  if (slot == NULL) {
+    out_result->detail_code = PROM_M46_DETAIL_COMPLETION_UNCERTAIN;
+    return PROM_ERROR;
+  }
+  slot->active_query_base = slot->slot_id * PROM_REDUCTION_QUERY_STRIDE;
+  input_bytes = storage_elements * sizeof(float);
+  output_bytes = logical_elements * sizeof(float);
+  inv_rms_bytes = (uint64_t)request->tokens * sizeof(float);
+  if (!prom_m48_ensure_buffer(state, &slot->m48_host_initial_upload,
+                              (VkDeviceSize)input_bytes,
+                              VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                              1, NULL) ||
+      !prom_m48_ensure_buffer(state, &slot->m49a_m46_z,
+                              (VkDeviceSize)input_bytes,
+                              VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                                  VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+                                  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL) ||
+      !prom_m48_ensure_buffer(state, &slot->m48_readback,
+                              (VkDeviceSize)inv_rms_bytes,
+                              VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                              VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                              1, NULL)) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M46_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  memcpy(slot->m48_host_initial_upload.mapped, request->matched_z, (size_t)input_bytes);
+  memset(&upstream, 0, sizeof(upstream));
+  upstream.logical_request_id = state->next_logical_request_id - 1u;
+  upstream.residual_plan.tokens = request->tokens;
+  upstream.residual_plan.model_width = request->model_width;
+  upstream.residual_plan.z_row_stride = request->z_row_stride;
+  upstream.residual_plan.z_generation = request->input_generation;
+  upstream.residual_plan.replay_id =
+      prom_m40b_hash_u64(request->exact_source_hash, input_hash);
+  upstream.z_view.buffer = slot->m49a_m46_z.buffer;
+  upstream.z_view.byte_length = slot->m49a_m46_z.size;
+  upstream.z_view.element_type = PROM_DEVICE_ELEMENT_F32;
+  upstream.z_view.logical_rows = request->tokens;
+  upstream.z_view.logical_columns = request->model_width;
+  upstream.z_view.row_stride_elements = request->z_row_stride;
+  upstream.z_view.layout = PROM_DEVICE_LAYOUT_ROW_MAJOR;
+  upstream.z_view.producer_access = PROM_DEVICE_ACCESS_COMPUTE_WRITE;
+  upstream.z_view.required_consumer_access = PROM_DEVICE_ACCESS_COMPUTE_READ;
+  upstream.z_view.owning_device = state->device;
+  upstream.z_view.owning_lifetime_id = request->input_generation;
+  upstream.z_view.owning_slot_id = slot->slot_id;
+  upstream.z_view.owning_slot_generation = slot->generation;
+  memset(&rms_request, 0, sizeof(rms_request));
+  rms_request.upstream.attention.tokens = request->tokens;
+  rms_request.upstream.attention.model_width = request->model_width;
+  rms_request.output = request->output;
+  rms_request.output_element_count = logical_elements;
+  rms_request.strategy = request->strategy;
+  rms_request.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
+  rms_request.requested_reduction_plan = request->requested_reduction_plan;
+  rms_request.required_weight_generation = request->required_weight_generation;
+  rms_request.epsilon = request->epsilon;
+  memset(&continuation, 0, sizeof(continuation));
+  continuation.request = &rms_request;
+  continuation.result = &out_result->rmsnorm;
+  if (!prom_m46_prepare_continuation(state, slot, &upstream, &continuation)) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M46_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  if (vkResetCommandBuffer(slot->command_buffer, 0u) != VK_SUCCESS ||
+      vkBeginCommandBuffer(slot->command_buffer, &begin_info) != VK_SUCCESS)
+    goto m49a_m46_command_fail;
+  prom_m42_buffer_barrier(slot->command_buffer, &slot->m48_host_initial_upload,
+                          VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  memset(&copy, 0, sizeof(copy));
+  copy.size = (VkDeviceSize)input_bytes;
+  vkCmdCopyBuffer(slot->command_buffer, slot->m48_host_initial_upload.buffer,
+                  slot->m49a_m46_z.buffer, 1u, &copy);
+  if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m49a_m46_z,
+                                   (VkDeviceSize)input_bytes,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) ||
+      prom_m46_record_tail(state, slot, &rms_request,
+                           &out_result->rmsnorm.rmsnorm_plan,
+                           continuation.z, continuation.n,
+                           slot->command_buffer, 1u, 1u, &partial_fault) != 1 ||
+      partial_fault != 0u ||
+      !prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m46_inv_rms,
+                                   (VkDeviceSize)inv_rms_bytes,
+                                   VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT) ||
+      !prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m48_readback,
+                                   (VkDeviceSize)inv_rms_bytes,
+                                   VK_ACCESS_HOST_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                   VK_PIPELINE_STAGE_HOST_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT))
+    goto m49a_m46_command_fail;
+  memset(&copy, 0, sizeof(copy));
+  copy.size = (VkDeviceSize)inv_rms_bytes;
+  vkCmdCopyBuffer(slot->command_buffer, slot->m46_inv_rms.buffer,
+                  slot->m48_readback.buffer, 1u, &copy);
+  if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m48_readback,
+                                   (VkDeviceSize)inv_rms_bytes,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_HOST_BIT) ||
+      vkEndCommandBuffer(slot->command_buffer) != VK_SUCCESS ||
+      vkResetFences(state->device, 1u, &slot->fence) != VK_SUCCESS)
+    goto m49a_m46_command_fail;
+  memset(&submit, 0, sizeof(submit));
+  submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit.commandBufferCount = 1u;
+  submit.pCommandBuffers = &slot->command_buffer;
+  vk_result = vkQueueSubmit(state->queue, 1u, &submit, slot->fence);
+  if (vk_result != VK_SUCCESS) goto m49a_m46_submit_fail;
+  slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
+  vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+  if (vk_result != VK_SUCCESS) {
+    slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
+    out_result->detail_code = PROM_M46_DETAIL_COMPLETION_UNCERTAIN;
+    return PROM_ERROR;
+  }
+  memset(timestamps, 0, sizeof(timestamps));
+  if (state->timestamp_supported == 0u || state->query_pool == VK_NULL_HANDLE ||
+      vkGetQueryPoolResults(state->device, state->query_pool,
+                            slot->active_query_base + PROM_M46_QUERY_BASE,
+                            PROM_M46_QUERY_COUNT,
+                            PROM_M46_QUERY_COUNT * sizeof(uint64_t),
+                            &timestamps[PROM_M46_QUERY_BASE], sizeof(uint64_t),
+                            VK_QUERY_RESULT_64_BIT) != VK_SUCCESS ||
+      !prom_m46_complete_continuation(state, slot, &upstream, &continuation,
+                                      timestamps, begin_ns)) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M46_DETAIL_QUERY;
+    return PROM_ERROR;
+  }
+  memcpy(request->inv_rms_output, slot->m48_readback.mapped, (size_t)inv_rms_bytes);
+  (void)prom_m42_hash_finite_matrix(request->output, logical_elements, &finite);
+  out_result->output_hash = prom_num_hash_float_bits(request->output, logical_elements);
+  if (finite == 0u || out_result->output_hash == 0u) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M46_DETAIL_READBACK;
+    return PROM_ERROR;
+  }
+  (void)prom_m42_hash_finite_matrix(request->inv_rms_output, request->tokens, &finite);
+  out_result->inv_rms_hash =
+      prom_num_hash_float_bits(request->inv_rms_output, request->tokens);
+  if (finite == 0u || out_result->inv_rms_hash == 0u) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->detail_code = PROM_M46_DETAIL_READBACK;
+    return PROM_ERROR;
+  }
+  out_result->matched_input = 1u;
+  out_result->input_generation = request->input_generation;
+  out_result->weight_generation = request->required_weight_generation;
+  out_result->weight_hash = request->required_weight_hash;
+  out_result->replay_identity =
+      prom_m40b_hash_u64(out_result->rmsnorm.rmsnorm_plan.replay_id, input_hash);
+  out_result->replay_identity =
+      prom_m40b_hash_u64(out_result->replay_identity, request->exact_source_hash);
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  return PROM_OK;
+
+m49a_m46_command_fail:
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  out_result->detail_code = PROM_M46_DETAIL_COMMAND;
+  return PROM_ERROR;
+m49a_m46_submit_fail:
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  out_result->detail_code = PROM_M46_DETAIL_SUBMIT;
   return PROM_ERROR;
 }
 
@@ -13557,6 +13861,120 @@ m44_host_submit_fail:
   out_result->stage = PROM_STAGE_SUBMIT;
   out_result->detail_code = PROM_M44_DETAIL_SUBMIT;
   return PROM_ERROR;
+}
+
+int prom_reactor_runtime_m49a_execute_m44(
+    void* handle, const prom_m49a_m44_request* request,
+    prom_m49a_m44_result* out_result) {
+  prom_reduction_runtime_state* state;
+  prom_m44_host_bounce_request projection;
+  float* dense = NULL;
+  const float* logical_input;
+  uint64_t storage_elements;
+  uint64_t logical_elements;
+  uint64_t output_elements;
+  uint64_t input_hash;
+  uint32_t finite = 0u;
+  uint32_t head;
+  uint32_t row;
+  int32_t detail = 0;
+  int status;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->audit_only = 1u;
+  out_result->no_product_intermediate_readback_change = 1u;
+  if (request == NULL || request->matched_head_major == NULL || request->output == NULL ||
+      request->head_count != PROM_M44_HEAD_COUNT || request->tokens == 0u ||
+      request->head_dim == 0u || request->head_row_stride < request->head_dim ||
+      request->model_width == 0u || request->input_generation == 0u ||
+      request->reference_input_hash == 0u || request->required_wo_generation == 0u ||
+      request->required_wo_hash == 0u || request->exact_source_hash == 0u ||
+      request->projection_path < PROM_M44_PROJECTION_COOPERATIVE ||
+      request->projection_path > PROM_M44_PROJECTION_CONVENTIONAL_FP16 ||
+      !prom_m40b_checked_product_u64(request->head_count, request->tokens,
+                                     &storage_elements) ||
+      !prom_m40b_checked_product_u64(storage_elements, request->head_row_stride,
+                                     &storage_elements) ||
+      !prom_m40b_checked_product_u64(request->head_count, request->tokens,
+                                     &logical_elements) ||
+      !prom_m40b_checked_product_u64(logical_elements, request->head_dim,
+                                     &logical_elements) ||
+      !prom_m40b_checked_product_u64(request->tokens, request->model_width,
+                                     &output_elements) ||
+      request->matched_storage_element_count != storage_elements ||
+      request->output_element_count != output_elements || logical_elements > SIZE_MAX / sizeof(float)) {
+    out_result->detail_code = PROM_M44_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  (void)prom_m42_hash_finite_matrix(request->matched_head_major, storage_elements, &finite);
+  input_hash = prom_num_hash_float_bits(request->matched_head_major, storage_elements);
+  out_result->input_hash = input_hash;
+  if (finite == 0u || input_hash == 0u || input_hash != request->reference_input_hash) {
+    out_result->detail_code = PROM_M44_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL || state->m44_wo_generation != request->required_wo_generation ||
+      state->m44_wo_hash != request->required_wo_hash) {
+    out_result->detail_code = state == NULL ? detail : PROM_M44_DETAIL_STALE_WO_GENERATION;
+    return PROM_ERROR;
+  }
+  logical_input = request->matched_head_major;
+  if (request->head_row_stride != request->head_dim) {
+    dense = (float*)malloc((size_t)(logical_elements * sizeof(float)));
+    if (dense == NULL) {
+      out_result->detail_code = PROM_M44_DETAIL_RESOURCE;
+      return PROM_ERROR;
+    }
+    for (head = 0u; head < request->head_count; ++head) {
+      for (row = 0u; row < request->tokens; ++row) {
+        memcpy(dense + ((uint64_t)head * request->tokens + row) * request->head_dim,
+               request->matched_head_major +
+                   ((uint64_t)head * request->tokens + row) * request->head_row_stride,
+               (size_t)((uint64_t)request->head_dim * sizeof(float)));
+      }
+    }
+    logical_input = dense;
+  }
+  memset(&projection, 0, sizeof(projection));
+  projection.head_major = logical_input;
+  projection.head_major_element_count = logical_elements;
+  projection.output = request->output;
+  projection.output_element_count = output_elements;
+  projection.head_count = request->head_count;
+  projection.tokens = request->tokens;
+  projection.head_dim = request->head_dim;
+  projection.model_width = request->model_width;
+  projection.precision_policy = request->precision_policy;
+  projection.projection_path = request->projection_path;
+  projection.required_wo_generation = request->required_wo_generation;
+  projection.m43_aggregate_replay_id =
+      prom_m40b_hash_u64(request->exact_source_hash, input_hash);
+  status = prom_reactor_runtime_m44_execute_host_bounce(handle, &projection,
+                                                        &out_result->projection);
+  free(dense);
+  if (status != PROM_OK) {
+    out_result->stage = out_result->projection.stage;
+    out_result->detail_code = out_result->projection.detail_code;
+    return PROM_ERROR;
+  }
+  (void)prom_m42_hash_finite_matrix(request->output, output_elements, &finite);
+  out_result->output_hash = prom_num_hash_float_bits(request->output, output_elements);
+  if (finite == 0u || out_result->output_hash == 0u) {
+    out_result->detail_code = PROM_M44_DETAIL_READBACK;
+    return PROM_ERROR;
+  }
+  out_result->matched_input = 1u;
+  out_result->input_generation = request->input_generation;
+  out_result->wo_generation = request->required_wo_generation;
+  out_result->wo_hash = request->required_wo_hash;
+  out_result->replay_identity =
+      prom_m40b_hash_u64(out_result->projection.replay_id, request->input_generation);
+  out_result->replay_identity =
+      prom_m40b_hash_u64(out_result->replay_identity, input_hash);
+  out_result->replay_identity =
+      prom_m40b_hash_u64(out_result->replay_identity, request->exact_source_hash);
+  return PROM_OK;
 }
 
 static void prom_reduction_result_failure(PrometheusReductionExecutionResult* result,

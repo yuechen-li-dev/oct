@@ -6,7 +6,7 @@
   "normal_product_execution_changed": false,
   "product_automatic_precision_switching_enabled": false,
   "post_hoc_output_correction_enabled": false,
-  "evidence_cutoff_utc": "2026-07-17T00:19:00Z",
+  "evidence_cutoff_utc": "2026-07-17T23:30:00Z",
   "hardware_semantic_identity": {
     "backend": "Vulkan",
     "device_name": "NVIDIA GeForce RTX 3070",
@@ -17,16 +17,16 @@
     "cooperative_matrix_feature_enabled": true,
     "shader_identity_policy": "unchanged canonical M42-M47 generated SPIR-V",
     "fp16_rounding_authority": "canonical binary16 round-to-nearest-even",
-    "dispatch_identity": "M49a audit-only host-fed M47 suffix; one command buffer; one final audit readback",
+    "dispatch_identity": "M49a audit-only host-fed M44, M46, and M47 suffix owners; dedicated working storage and explicit final audit readback",
     "identity_warning": "This record is keyed by backend, precision/storage policy, subgroup/cooperative capability, shader policy, dispatch topology, compiler, and source hashes; device name alone is not an envelope key."
   },
   "identification_held_out_split": {
     "machine_rule": "stable identity, one of five buckets held out",
-    "identification_records_completed": 7,
+    "identification_records_completed": 14,
     "held_out_records_completed": 0,
     "isolation_test": "passed",
     "status": "incomplete",
-    "required_shapes_not_run": ["primary", "smaller_expansion", "more_token", "awkward", "token_boundary"],
+    "required_shapes_not_run": ["primary", "smaller_expansion", "more_token", "token_boundary"],
     "required_input_families_not_run_on_hardware": ["low_amplitude", "wide_dynamic_range", "alternating_cancellation", "sparse_outliers", "near_zero", "channel_local_outliers"],
     "required_weight_families_not_run_on_hardware": ["structured_diagonal_block", "cancellation_heavy", "mixed_magnitude", "near_fp16_midpoint", "held_out_seeded"]
   },
@@ -37,7 +37,14 @@
     {"case":"tiny-near-midpoint-a2x4-wdown","stage":"M47 Wdown projection","path":"gpu_a2x4_fp32","split":"identification","matched_input":true,"d":{"l1":0.00000147593,"l2":0.0000000408901,"linfinity":0.00000000279397,"mae":0.000000000720668,"rms":0.000000000903551,"bias":0.0000000000015361,"p95_abs":0.00000000173168,"p99_abs":0.00000000209548,"cosine":1.0},"validation_clean":true},
     {"case":"tiny-near-midpoint-a2x4-ffn","stage":"complete M47 FFN suffix","path":"gpu_a2x4_fp32","split":"identification","matched_input":true,"d":{"l2":0.000000315398,"linfinity":0.000000119209,"bias":0.0000000000582077},"gpu_ns":122752,"capture_hash":14730771303791708064,"replay_identity":9520345530593958099,"validation_clean":true},
     {"case":"tiny-near-midpoint-conventional-direct-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"gpu_ns":37888,"capture_hash":13362539222640396682,"replay_identity":9839534929598941364,"validation_clean":true},
-    {"case":"tiny-near-midpoint-conventional-retain-hidden-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_retain_fp32_hidden","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"gpu_ns":39936,"capture_hash":13362539222640396682,"replay_identity":9854391268658871336,"validation_clean":true}
+    {"case":"tiny-near-midpoint-conventional-retain-hidden-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_retain_fp32_hidden","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"gpu_ns":39936,"capture_hash":13362539222640396682,"replay_identity":7716127624188948075,"validation_clean":true},
+    {"case":"tiny-near-midpoint-cooperative-hidden","stage":"M47 SiLU-gating Hidden","path":"gpu_cooperative_fp16","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.00000000802676,"linfinity":0.00000000139698,"bias":0.00000000000183564},"validation_clean":true},
+    {"case":"tiny-near-midpoint-cooperative-ffn","stage":"complete M47 FFN suffix","path":"gpu_cooperative_fp16","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"common_reference":"FP64-computed complete FFN rounded once to float output","common_reference_d":{"l2":0.000114947,"linfinity":0.00000870228},"gpu_ns":41984,"validation_clean":true},
+    {"case":"tiny-near-midpoint-conventional-direct-common","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","split":"identification","common_reference":"FP64-computed complete FFN rounded once to float output","common_reference_d":{"l2":0.000114947,"linfinity":0.00000870228},"gpu_ns":37888,"validation_clean":true},
+    {"case":"tiny-near-midpoint-fp32-hidden-fp32-wdown","stage":"M47 Wdown projection","path":"gpu_conventional_fp16_hidden_fp32_wdown","split":"identification","reference":"CPU mixed-precision semantic reference","matched_input":true,"d":{"l1":0.000000368309,"l2":0.0000000107151,"linfinity":0.00000000116415,"mae":0.000000000179838,"rms":0.000000000236774,"bias":0.0000000000167119,"p95_abs":0.000000000465661,"p99_abs":0.000000000698492,"cosine":1.0},"validation_clean":true},
+    {"case":"tiny-near-midpoint-fp32-hidden-fp32-wdown-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_hidden_fp32_wdown","split":"identification","reference":"CPU mixed-precision semantic reference","matched_input":true,"d":{"l2":0.000000103238,"linfinity":0.0000000596046,"bias":0.0000000000873115},"common_reference":"FP64-computed complete FFN rounded once to float output","common_reference_d":{"l2":0.000113820,"linfinity":0.00000894070},"gpu_ns":78848,"replay_identity":2183994305131789814,"validation_clean":true},
+    {"case":"m44-strided-dyadic","stage":"M44 output projection","path":"gpu_a2x4_fp32","split":"identification","reference":"CPU FP32 semantic reference","logical_shape":[17,128],"physical_row_stride":19,"input_hash":16685024365929763963,"matched_input":true,"d":{"l1":0.0,"l2":0.0,"linfinity":0.0,"mae":0.0,"rms":0.0,"bias":0.0,"p95_abs":0.0,"p99_abs":0.0},"gpu_ns":30560,"output_hash":3744978912364234700,"validation_clean":true,"discriminative":false},
+    {"case":"m46-strided-wide-cancellation","stage":"M46 RMSNorm","path":"gpu_fp32","split":"identification","reference":"CPU FP32 semantic reference","logical_shape":[9,128],"physical_row_stride":133,"input_hash":7866621792319710547,"matched_input":true,"d":{"l1":0.00000370821,"l2":0.00000121645,"linfinity":0.000000476837,"mae":0.00000000321893,"rms":0.0000000358399,"bias":-0.0000000000148298,"p95_abs":0.00000000372529,"p99_abs":0.00000000745058},"max_inv_rms_error":0.0000000149012,"gpu_ns":7488,"output_hash":8532361380227445050,"inv_rms_hash":7703651786078937415,"replay_identity":8068577254615941522,"validation_clean":true}
   ],
   "controlled_perturbations": {
     "permanent_generator_families": ["one_coordinate_impulse", "one_token_impulse", "one_channel", "seeded_alternating_sign", "seeded_dense_signed", "observed_residual_aligned", "approximately_decorrelated", "fp16_bin_boundary", "sparse_outlier", "scaled_natural_layer_discrepancy"],
@@ -54,13 +61,15 @@
       {"family":"sparse_outlier","seed":4919,"requested_l2":0.0625,"realized_l2":0.0625,"identity":103853379014901113},
       {"family":"scaled_natural_layer_discrepancy","seed":4920,"requested_l2":0.02,"realized_l2":0.02,"identity":8550236660990516432}
     ],
-    "hardware_paths_completed": ["gpu_a2x4_fp32", "gpu_conventional_fp16_direct", "gpu_conventional_fp16_retain_fp32_hidden"],
+    "hardware_paths_completed": ["gpu_a2x4_fp32", "gpu_cooperative_fp16", "gpu_conventional_fp16_direct", "gpu_conventional_fp16_retain_fp32_hidden", "gpu_conventional_fp16_hidden_fp32_wdown"],
     "remaining_hardware_families": 0
   },
   "gain_records": [
     {"stage":"complete M47 FFN suffix","path":"gpu_a2x4_fp32","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00037,"l2":1.00064,"linfinity":1.07216},"classification":"near-neutral L1/L2 with direction-local Linf amplification","validation_clean":true},
     {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"near-neutral L1/L2 with direction-local Linf amplification","validation_clean":true},
-    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_retain_fp32_hidden","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"identical to direct-packed final boundary on this case","validation_clean":true}
+    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_retain_fp32_hidden","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"identical to direct-packed final boundary on this case","validation_clean":true},
+    {"stage":"complete M47 FFN suffix","path":"gpu_cooperative_fp16","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"same reduced realization as conventional for this tiny case","validation_clean":true},
+    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_hidden_fp32_wdown","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05576},"classification":"near-neutral global gain; no material gain reduction on this case","validation_clean":true}
   ],
   "raw_gain_records": [
     {"path":"gpu_a2x4_fp32","family":1,"identity":1649487435440850673,"g_l1":1.2619,"g_l2":1.00713,"g_linf":1.00595,"max_token":1.00713,"max_channel":1.00595},
@@ -83,7 +92,9 @@
     {"path":"gpu_conventional_fp16_direct","family":8,"identity":3777039896584886940,"g_l1":1.0,"g_l2":1.0,"g_linf":1.0,"max_token":1.0,"max_channel":1.0},
     {"path":"gpu_conventional_fp16_direct","family":9,"identity":103853379014901113,"g_l1":1.05976,"g_l2":1.0002,"g_linf":1.01013,"max_token":1.00224,"max_channel":1.01026},
     {"path":"gpu_conventional_fp16_direct","family":10,"identity":8550236660990516432,"g_l1":1.00061,"g_l2":1.00027,"g_linf":1.01552,"max_token":1.00137,"max_channel":1.00962},
-    {"path":"gpu_conventional_fp16_retain_fp32_hidden","equal_to":"gpu_conventional_fp16_direct","families":[1,2,3,4,5,6,7,8,9,10],"bitwise_equal_final_outputs":true}
+    {"path":"gpu_conventional_fp16_retain_fp32_hidden","equal_to":"gpu_conventional_fp16_direct","families":[1,2,3,4,5,6,7,8,9,10],"bitwise_equal_final_outputs":true},
+    {"path":"gpu_cooperative_fp16","equal_to":"gpu_conventional_fp16_direct","families":[1,2,3,4,5,6,7,8,9,10],"bitwise_equal_final_outputs":true},
+    {"path":"gpu_conventional_fp16_hidden_fp32_wdown","family":5,"identity":18002998470195364513,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05576,"max_token":1.00549,"max_channel":1.01048}
   ],
   "fp64_witness_records": [
     {"operation":"selected cancellation-heavy dot","operand_count":6,"cpu_fp32_accumulation":0.9999,"cpu_fp64_accumulation":1.9999,"absolute_accumulation_difference":1.0,"interpretation":"scalar FP32 order loses one unit in this selected witness"},
@@ -93,7 +104,8 @@
   "mitigation_ab": [
     {"mitigation":"baseline_conventional_direct","identification_error_reduction":0.0,"held_out_error_reduction":null,"latency_cost_us":0.0,"memory_cost_bytes":0,"generalizes":false,"status":"identification baseline only"},
     {"mitigation":"retain_fp32_hidden","identification_error_reduction":0.0,"held_out_error_reduction":null,"latency_cost_us":2.048,"memory_cost_bytes":16384,"generalizes":false,"status":"Hidden bits change, but immediate FP16 Wdown packing erases the final-output difference on the tiny case"},
-    {"mitigation":"stage_selective_a2x4_fp32_ffn","identification_error_reduction":null,"held_out_error_reduction":null,"latency_cost_us":84.864,"memory_cost_bytes":0,"generalizes":false,"status":"real A2x4 FFN path measured, but reference authorities differ and no held-out A/B is complete"},
+    {"mitigation":"fp32_hidden_fp32_wdown","comparison_authority":"FP64-computed complete FFN rounded once to float output","identification_l2_error_reduction":0.009804,"identification_linf_error_reduction":-0.027397,"held_out_error_reduction":null,"latency_cost_us":40.960,"memory_cost_bytes":16384,"generalizes":false,"eligible":false,"status":"genuine FP32 Hidden consumption measured; tiny L2 improves about 0.98%, Linf regresses about 2.74%, and cost roughly doubles"},
+    {"mitigation":"stage_selective_a2x4_fp32_ffn","comparison_authority":"FP64-computed complete FFN rounded once to float output","identification_l2_error_reduction":0.997160,"held_out_error_reduction":null,"latency_cost_us":85.376,"memory_cost_bytes":0,"generalizes":false,"eligible":false,"status":"complete FFN upper-bound witness only; narrower Gate/Up and Wdown-only held-out comparisons remain pending"},
     {"mitigation":"periodic_fp32_checkpoint","identification_error_reduction":null,"held_out_error_reduction":null,"latency_cost_us":null,"memory_cost_bytes":null,"generalizes":false,"status":"not complete; unsafe mixed-path fixed-stack prototype was withdrawn rather than retained"},
     {"mitigation":"full_a2x4_fp32","identification_error_reduction":null,"held_out_error_reduction":null,"latency_cost_us":84.864,"memory_cost_bytes":null,"generalizes":false,"status":"tiny FFN witness only; M49 primary four-layer A2x4 accuracy witness remains the inherited comparison"}
   ],
@@ -102,6 +114,8 @@
     "a2x4_fp32_ffn_gpu_ns": [122752, 165440, 122816, 122496],
     "conventional_direct_ffn_gpu_ns": [37888, 63488, 38912, 38912],
     "conventional_retain_hidden_ffn_gpu_ns": [39936, 64512, 38912, 39936],
+    "cooperative_fp16_ffn_gpu_ns_latest": 41984,
+    "fp32_hidden_fp32_wdown_ffn_gpu_ns_latest": 78848,
     "retain_hidden_latency_delta_us": [2.048, 1.024, 0.0, 1.024],
     "a2x4_latency_delta_us": [84.864, 101.952, 83.904, 83.584],
     "timing_state_controlled": false,
@@ -116,7 +130,8 @@
     "conventional_ffn_max_abs_by_layer":[0.000115156,0.0354118,1.36608,2.17557],
     "cooperative_ffn_max_abs_by_layer":[0.000115156,0.0355415,1.20667,1.66956],
     "a2x4_fp32_ffn_max_abs_by_layer":[0.00000393391,0.00053215,0.0125732,0.0393524],
-    "m49a_checkpoint_result":"not available"
+    "m49a_checkpoint_result":"not available",
+    "fp32_hidden_fp32_wdown_trajectory":"not available; this progression measured local Wdown and one FFN only"
   },
   "envelopes": [
     {"stage":"complete M47 FFN suffix","path":"gpu_a2x4_fp32","shape_regime":"tiny-16x128-ffn256","input_weight_corpus":"near_fp16_midpoint plus deterministic modular weights","perturbation_families":["seeded_dense_signed"],"d_bound_l2":0.000000315398,"g_bound_l2":1.00064,"bias_bound":0.0000000000582077,"identification_support":1,"held_out_support":0,"held_out_pass":false,"certified":false,"extrapolation_policy":"reject","mitigation_state":"none","hardware_semantic_identity":"see top-level hardware_semantic_identity"},
@@ -146,18 +161,43 @@
     "raw_source":"internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json",
     "silent_fallback":false,
     "json_parser_gap":"Oct standard library exposes JSON construction but no typed JSON parse API; M1 uses a checked Octagon projection bound to this JSON by SHA-256",
-    "held_out_reported_separately":true
+    "held_out_reported_separately":true,
+    "utility_fit": {
+      "algorithm":"ridge-normal-equations-lu-v1",
+      "identification_rows":10,
+      "held_out_rows":0,
+      "feature_names":["DisturbanceL2Micro","DisturbanceLInfinityTenNano","GpuHundredMicroseconds"],
+      "feature_sign_constraints":["nonpositive","nonpositive","nonpositive"],
+      "weights":[0.15161060135735172,0.06076569517705053,-0.3622479648609334],
+      "bias":-0.529778,
+      "training_mse":0.0651465839129063,
+      "coefficient_signs_valid":false,
+      "leave_one_out_max_weight_delta":2.631069138115916,
+      "stable":false,
+      "certified":false,
+      "fitted_selected_path":"gpu_conventional_fp16",
+      "authored_selected_path":"gpu_conventional_fp16",
+      "uniform_selected_path":"gpu_conventional_fp16",
+      "held_out_baseline_comparison_available":false,
+      "selected_score_contributions":[-0.1170012173516959,-0.035338969144094255,-0.05594737521300778],
+      "selected_score_bias":-0.529778,
+      "selected_score":-0.7380655617087979,
+      "score_quantization_scale":1000000.0,
+      "product_authority_changed":false
+    }
   },
   "raw_observations": {
-    "hardware_fact":"PrometheusM49aMatchedInputFfnSuffixAndControlledGainHardwareProof",
+    "hardware_facts":["PrometheusM49aMatchedInputFfnSuffixAndControlledGainHardwareProof","PrometheusM49aMatchedInputM44HardwareProof","PrometheusM49aMatchedInputM46HardwareProof"],
     "hardware_fact_result":"pass",
     "repeated_capture_hashes_stable":true,
     "validation_warning_count":0,
     "validation_error_count":0,
-    "source_buffer_usage_fix":"audit-captured Gate, Up, and Hidden working buffers declare TRANSFER_SRC; product records no copy or readback"
+    "source_buffer_usage_fix":"audit-captured Gate, Up, Hidden, and M46 InvRms working buffers declare TRANSFER_SRC; product records no copy or readback",
+    "cooperative_owner":"dedicated audit execution ensures the selected cooperative pipeline before recording and does not reuse the withdrawn validation-dirty prototype",
+    "m46_owner":"dedicated per-slot audit input storage prevents stale usage inheritance and preserves normal M46 recording behavior"
   },
   "unsupported_claims": [
-    "No matched-input M44, M46, cooperative M47, full block, primary-shape, or held-out suffix matrix is claimed.",
+    "Matched-input M44, M46, and cooperative M47 tiny witnesses exist; no complete full-block, primary-shape, or held-out suffix matrix is claimed.",
     "The tiny FFN has a ten-direction/magnitude gain surface; no cross-stage, cross-shape, or held-out gain surface is claimed.",
     "No selected Gate/Up/Wdown/M44 GPU-to-FP64 dot comparison is claimed yet.",
     "No periodic FP32 checkpoint hardware result is claimed.",
@@ -169,9 +209,9 @@
   "exact_source_hashes": {
     "reactor_numerical_research.c":"ea15ce3e2e4c2ca370a70a9d6ac68644498a80331f1be8fbbbc633d091405eac",
     "reactor_numerical_research.h":"ec07af331d60da5c6004398c1050fd42f1dbd591a45be28a8620ecc428b8a33b",
-    "reactor_vulkan.h":"103b3ba03c8719b93ac5d3a25d9bc0d0a1542ef76a10167e046c472e282fd2cb",
-    "reactor_vulkan_fused_reduction.c":"81b4a1294ad1f290f3d40d92c128d88170c8f509effc7afddac40baf4f82901f",
-    "reactor_attention_tests.cpp":"a78d6ceac224dfb90e5ce3639d3d235c5d6d0c20106b73a3ce9e5d21e982ce74",
+    "reactor_vulkan.h":"c052501efbb3b25b7480c6c1ffad11d12ca4ddc2ad6acaa6f125528a0a0ead69",
+    "reactor_vulkan_fused_reduction.c":"3501bd0e47ac8bd8928bd5be37af3f3f50669e56057dd0473311da917a8eacde",
+    "reactor_attention_tests.cpp":"2491e2a6265ff5fa3703c3c4895f5bb9ee895f9797d6a43dcbd35f17fdb09998",
     "reactor_m49_numerical_research_tests.cpp":"c65ff195711f70b64f6825b3e90804eaa95d611fa77f70c1f6204ea889b068d3"
   }
 }

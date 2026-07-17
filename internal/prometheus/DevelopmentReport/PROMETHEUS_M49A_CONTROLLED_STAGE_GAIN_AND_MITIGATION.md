@@ -9,9 +9,9 @@ M48 EVT state: **POSTPONED**
 
 ## Outcome
 
-M49a now has a real, audit-only matched-input M47 FFN suffix and the numerical contracts needed for controlled identification. The suffix accepts an exact host activation, verifies its bit hash and generation, reuses the canonical M47 weights, executes Gate/Up, SiLU-gating, Wdown, and second residual without changing product selection, and performs one explicit final audit readback. It can capture Gate, Up, FP32 Hidden, Wdown, second residual, or the full FFN result. Warm audit execution allocates no Vulkan buffers, repeated hashes are bitwise stable, and the validation-enabled identification fact is clean.
+M49a now has audit-only matched-input owners for M44 output projection, M46 RMSNorm, and the M47 FFN suffix. Each verifies logical shape, physical stride, content hash, nonzero generation, weight identities, precision realization, strategy, and deterministic source identity before submission. The M47 owner now runs A2x4 FP32, conventional FP16, and cooperative FP16 through safe explicit working storage. It also has a research-only mixed path in which retained FP32 Hidden is genuinely consumed by A2x4 FP32 Wdown. Warm audit execution allocates no Vulkan buffers, repeated hashes are stable, and all three focused validation-enabled facts are clean.
 
-This is not M49a completion. The completed hardware corpus is one tiny identification case, one dense perturbation direction, A2x4 FP32 and conventional FP16. Cooperative matched-input suffix execution, M44/M46/full-block entry points, remaining perturbation directions and magnitudes, held-out shapes/families, the complete FP64 GPU comparison, checkpoint mitigation, native canary calibration, and the required mitigation matrix remain open. No mitigation or envelope is certified.
+This is not M49a completion. Cooperative suffix execution and two upstream stage owners remove a real execution boundary, and all ten perturbation families now run across the suffix paths, but the hardware corpus is still identification-only and tiny. Complete M43–M47 matched-input execution, primary and held-out shapes/families, cross-stage magnitude sweeps, selected coordinate GPU-to-FP64 comparisons, narrow Gate/Up and Wdown promotion, checkpoint stacks, canary calibration, and the certification matrix remain open. No mitigation or envelope is certified.
 
 ## M49 handoff
 
@@ -23,7 +23,9 @@ M49 established deterministic, depth-correlated divergence on the primary four-l
 
 The executor reuses M47 planning, descriptor, shader, canonical FP16 packing, and timestamp authorities. Gate, Up, and Hidden working buffers declare transfer-source capability so the audit can copy them; product command recording still issues no transfer or intermediate readback. A missing transfer-source declaration was caught by validation and fixed before accepting evidence.
 
-The attempted cooperative suffix and mixed-path fixed-stack checkpoint exposed a bounded architectural blocker: direct audit capture across the cooperative working set and heterogeneous path selection inside the fixed-stack shared working set are not yet safe. Both prototypes were withdrawn rather than retained as brittle or validation-dirty paths.
+The cooperative suffix now uses a dedicated audit owner that explicitly ensures the selected SGEMM pipeline before recording. This fixes the missing-pipeline lifecycle fault without reusing the withdrawn validation-dirty prototype. M44 deterministically densifies an exact strided input before delegating the existing safe output-projection audit. M46 uses dedicated per-slot input storage and an explicit transfer-to-shader barrier, avoiding stale working-set contents. Normal product selectors and command recording remain unchanged.
+
+The heterogeneous fixed-stack checkpoint remains incomplete. Its earlier prototype was withdrawn; no generic scheduler was introduced.
 
 ## Reference authorities
 
@@ -48,8 +50,14 @@ Shape: Tokens 16, ModelWidth 128, FfnWidth 256. Input: deterministic near-FP16-m
 | A2x4 FP32 | full FFN | 3.15398e-7 | 1.19209e-7 | 5.82077e-11 | not emitted | not emitted |
 | conventional FP16 direct | full FFN | 0 | 0 | 0 | 0 | 0 |
 | conventional FP16 retained Hidden | full FFN | 0 | 0 | 0 | 0 | 0 |
+| cooperative FP16 | Hidden | 8.02676e-9 | 1.39698e-9 | 1.83564e-12 | 2.32831e-10 | 4.65661e-10 |
+| cooperative FP16 | full FFN | 0 | 0 | 0 | 0 | 0 |
+| FP32 Hidden + FP32 Wdown | Wdown | 1.07151e-8 | 1.16415e-9 | 1.67119e-11 | 4.65661e-10 | 6.98492e-10 |
+| FP32 Hidden + FP32 Wdown | full FFN | 1.03238e-7 | 5.96046e-8 | 8.73115e-11 | not emitted | not emitted |
+| M46 FP32 | RMSNorm | 1.21645e-6 | 4.76837e-7 | -1.48298e-11 | 3.72529e-9 | 7.45058e-9 |
+| M44 A2x4 FP32 | output projection | 0 | 0 | 0 | 0 | 0 |
 
-For the A2x4 scalar-reference comparison, Up has the largest L2 fresh discrepancy in this case. This does not answer the milestone-wide “highest injection stage” question because M44, M46, cooperative M47, primary, and held-out cases are absent.
+The M44 witness uses dyadic operands and is therefore lifecycle evidence, not a discriminating numerical case. M46's wide/cancellation input has the largest recorded L-infinity D, while Up retains the largest recorded L2 D. These rows use named local authorities and must not be ranked as mitigation error reduction across unequal references. Primary and held-out cases are absent, so the milestone-wide highest-injection question remains open.
 
 ## Controlled inherited-error gain
 
@@ -60,6 +68,8 @@ The permanent generator covers all ten requested deterministic families, hashes 
 | A2x4 FP32 FFN | 1.00037 | 1.00064 | 1.07216 | nearly neutral globally, local maximum amplification |
 | conventional FP16 direct FFN | 1.00018 | 1.00032 | 1.05662 | nearly neutral globally, local maximum amplification |
 | conventional FP16 retained Hidden FFN | 1.00018 | 1.00032 | 1.05662 | same final boundary behavior as direct on this case |
+| cooperative FP16 FFN | 1.00018 | 1.00032 | 1.05662 | bitwise same reduced realization on this case |
+| FP32 Hidden + FP32 Wdown FFN | 1.00018 | 1.00032 | 1.05576 | no material global-gain reduction |
 
 The gain is direction dependent and multimodal. A2x4 L2 ranges from 0.999505 to 1.00713 and L-infinity peaks at 1.07216 for the dense pattern. Conventional L2 ranges from 0.99499 (one-token contraction) to 1.00128, while L-infinity peaks at 1.08909 for the near-ULP one-token impulse. The conventional FP16-bin-boundary pattern is exactly neutral in all three norms in this case, a visible threshold effect. Retained-Hidden final outputs and all ten gains are bitwise identical to direct packing. Saturation and sign asymmetry still need explicit sweeps, and no cross-stage “highest gain stage” conclusion is supported.
 
@@ -75,13 +85,16 @@ These are CPU local witnesses. Selected hardware Gate, Up, Wdown, M44, and RMS r
 |---|---:|---:|---:|---:|---|
 | conventional direct baseline | baseline | not run | 37.888–63.488 us | 0 | no |
 | retain FP32 Hidden | 0% at final FFN | not run | 38.912–64.512 us (0–2.048 us delta) | 16 KiB FP32 Hidden working storage | no |
-| A2x4 FP32 FFN path | not comparable across unequal references | not run | 122.752–165.440 us (+83.904–101.952 us) | not isolated | no |
+| FP32 Hidden + FP32 Wdown consumer | 0.98% L2; -2.74% L-infinity | not run | 78.848 us (+40.960 us) | 16 KiB retained Hidden | no |
+| complete A2x4 FP32 FFN upper bound | 99.716% L2 against common FP64 authority | not run | 122.752–165.440 us (+83.904–101.952 us) | not isolated | no |
 | periodic FP32 checkpoint | not complete | not run | not available | not available | no |
 | full A2x4 FP32 | inherited M49 witness only | not run | not comparable here | not isolated | no |
 
 Retaining FP32 Hidden changes tiny Hidden bits (`L2 8.02676e-9` versus its reduced CPU oracle) but the immediate canonical FP16 pack before Wdown maps both policies to the same effective Wdown input. The final capture hash is identical. The policy therefore changes storage without improving this case. Three diagnostic timing pairs put its measured delta between 0 and 2.048 us; this uncontrolled range is not a stable cost claim. A future useful variant would need an empirically selected Wdown path that consumes the retained value without immediately recreating the same FP16 boundary.
 
-Stage-selective FP32 is a real measured M47 path, but this run cannot report error reduction because A2x4 and conventional rows use different precision-matched CPU reference authorities. A common FP64 selected-dot comparison and held-out block trajectories are required before ranking error reduction per microsecond.
+The suffix test now also evaluates every policy against one precisely defined common authority: the full FFN is computed in FP64 and rounded once to float at the final output. Conventional and cooperative FP16 both have L2 `1.14947e-4` and L-infinity `8.70228e-6`; full A2x4 FP32 has L2 `3.26468e-7` and L-infinity `1.19209e-7`. Genuine FP32 Hidden plus FP32 Wdown has L2 `1.13820e-4` but L-infinity `8.94070e-6`. Thus it improves L2 by only 0.98%, worsens L-infinity by 2.74%, and takes 78.848 us versus 37.888 us for the direct conventional path. It is ineligible even before considering its zero held-out support.
+
+Complete-FFN A2x4 is an upper-bound witness, not a selective policy. Gate/Up-only and Wdown-only block policies are still required before any error-reduction-per-cost ranking.
 
 The periodic checkpoint attempt did not converge. Heterogeneous per-layer projection inside the current fixed-stack owner conflicts with its shared path-specific working-set assumptions. Expanding that into a generic scheduler would violate M49a scope. The prototype was removed; a future bounded solution should use an explicit audit-only checkpoint suffix owner or a verified homogeneous block boundary.
 
@@ -101,6 +114,8 @@ Canary calibration code reports Pearson correlation, confusion counts, false-pos
 
 M1 of `PrometheusNumericalHeterogeneityLab` introduces a native mode separate from M0 synthetic mode. It loads a typed Octagon projection of the RTX JSON evidence, binds provenance to the JSON SHA-256, fits only identification records, reports held-out support independently, refuses certification with zero held-out records, and emits Octagon, CSV, JSON, Markdown, and a PNG chart. Loading is fallible; there is no synthetic fallback.
 
+The expanded fit has 10 identification rows and zero held-out rows. Fitted, authored, and uniform models all select conventional FP16 in shadow mode, so no held-out ranking improvement exists. The fitted model is additionally rejected on two independent robustness gates: its domain-constrained disturbance coefficients have the wrong signs (`CoefficientSignsValid=false`) and leave-one-row-out maximum weight delta is `2.63107` against a `1.0` limit. For the selected conventional row, the fitted contribution breakdown is `[-0.117001, -0.0353390, -0.0559474]` for L2 disturbance, L-infinity disturbance, and time, plus bias `-0.529778`, total score `-0.738066` before explicit `1e6` Int quantization. `EvaluateLinearUtilityEvidence`, both fitted-versus-baseline comparisons, and the score breakdown are persisted in the Octagon artifact. The model remains shadow-only and `ProductAuthorityChanged: false`.
+
 Oct friction: the standard library has JSON construction but no typed JSON parsing API, so native JSON cannot be consumed directly. M1 uses an explicit typed Octagon projection and hash binding. This is a general standard-library gap, not an experiment-specific workaround hidden from the report. No language defect was changed.
 
 ## Validation
@@ -108,31 +123,36 @@ Oct friction: the standard library has JSON construction but no typed JSON parsi
 Completed in this progression:
 
 - Windows MSVC native rebuild;
-- eight M49a calculation/identity facts plus one validation-enabled RTX suffix fact;
+- full validation-enabled native lane: 427 facts, 395 passed, 32 intentional skips, zero failures;
+- validation-clean M44, M46, and M47 suffix hardware facts plus adjacent M47/M48 product regressions;
 - exact matched-input enforcement and repeat hashes;
 - zero warm audit allocation;
 - Vulkan validation clean after transfer-source usage was made explicit;
 - existing M47 product cooperative regression and M48 cooperative fixed-stack regression preserved in focused runs;
-- `git diff --check` clean at the recorded checkpoint.
+- standard targeted and aggregate Go test matrices, native manifest, and SDSL-V workspace checks;
+- Linux GCC produced an ELF reactor and Marionette harness; the explicit Linux smoke passed. The complete helper exceeded the 120-second host limit while compiling auxiliary binaries, so this is not recorded as a full helper pass;
+- `bash -n` and `git diff --check` clean at the recorded checkpoint.
 
-The full Go, Linux GCC, manifest/workspace, Oct compiled artifact, primary/held-out hardware, canary, consistency, and complete M42–M49 matrix requested by M49a are not yet complete. No shader changed, so regeneration, `spirv-val`, and disassembly assertions are not applicable in this slice.
+Primary/held-out hardware, canary calibration, the checkpoint stack, and the requested exhaustive slow wrapper/hardware corpus remain incomplete. No shader changed, so regeneration, `spirv-val`, and disassembly assertions are not applicable in this slice.
 
 ## Recommendation gate
 
-1. **Which stage injects most?** Up has the largest matched-input A2x4 L2 D in the tiny completed case. No milestone-wide answer is supported.
+1. **Which stage injects most?** Up has the largest recorded L2 D; M46 RMSNorm has the largest recorded L-infinity D. Authorities and cases differ, so no milestone-wide answer is supported.
 2. **Which stage has largest inherited gain?** Only the complete FFN was measured across directions on hardware; its maximum observed L-infinity gain is 1.08909, but cross-stage ranking is unavailable.
 3. **Are they the same stage?** Unknown.
-4. **Does FP32 Hidden help?** No final-output benefit on the tiny identification case; the immediate FP16 Wdown boundary erases it.
+4. **Does FP32 Hidden help?** Storage alone does not. When Wdown genuinely consumes FP32 Hidden, tiny-case L2 improves only 0.98%, L-infinity regresses 2.74%, and latency roughly doubles; this is not a useful mitigation result.
 5. **Best selective FP32 policy per cost?** Not rankable without common-reference and held-out error reduction.
 6. **Does a periodic checkpoint contract error?** Unknown; the checkpoint path is not complete.
-7. **Can an empirical envelope predict held-out growth?** Framework yes, evidence no; held-out support is zero.
-8. **Do current canaries detect dangerous regimes?** Unknown; native calibration is pending.
-9. **Enough evidence for M49b calibration?** No. The evidence contract exists, but calibration data does not.
-10. **Any mitigation mature enough for M48 EVT?** No.
+7. **Which mitigation generalizes?** None has held-out support; no generalization claim is allowed.
+8. **Can an empirical envelope predict held-out growth?** Framework yes, evidence no; held-out support is zero.
+9. **Do current canaries detect dangerous regimes with acceptable false rates?** Unknown; native calibration is pending.
+10. **Does the fitted utility model beat authored and uniform ranking on held-out data?** No comparison is available. All three choose conventional FP16 on identification data; the fitted model also violates sign and leave-one-out stability gates.
+11. **Is M49b controller calibration justified?** No. The evidence contract exists, but calibration and held-out data do not.
+12. **Is M48 ready to resume?** No. There is neither a held-out mixed policy nor a certified envelope.
 
 ## Recommendation
 
-M49b should not begin controller-threshold calibration. The next bounded phase should finish cooperative and M44/M46/full-block matched-input suffixes, run multiple directions and magnitudes on primary plus machine-separated held-out shapes/families, add selected GPU-to-FP64 oracles, and implement a checkpoint through a dedicated audit owner rather than heterogeneous mutation of the fixed-stack working set.
+M49b should not begin controller-threshold calibration. The next coherent boundary is complete-block/depth mitigation identification and held-out calibration: finish M43/full-block exact entry, run primary plus machine-separated held-out shapes and families, add selected GPU-to-FP64 coordinate oracles, compare narrow promotions, and implement checkpoints through a dedicated audit stack owner.
 
 M48 EVT remains **POSTPONED**. No policy has survived held-out hardware validation, so neither broad resumption nor a narrower certified envelope is justified.
 
@@ -141,3 +161,5 @@ M48 EVT remains **POSTPONED**. No policy has survived held-out hardware validati
 - `internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json`
 - `Experiments/PrometheusNumericalHeterogeneityLab/M1/M1.native_rtx3070.octagon`
 - generated M1 Octagon/CSV/JSON/Markdown/PNG outputs
+
+The native JSON SHA-256 is `e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406`. Two consecutive final artifact generations were byte-identical: Octagon `7a937c9ff53078e53d1d1344c67f86c1776c772125069436c80d32c6d1e69452`, CSV `60f73abb749326e1600e2442c0b399f15878df6e0f54feb16809fe1f71f54252`, JSON `c8a5d469f403ba55661e014e2cbb57746a0226f16d2e953f8923bc919ab216a0`, and PNG `22f0b05438b395b8e4136c1cb2cd5fab9811566bd086db46009b11f67d7dc3bd`.

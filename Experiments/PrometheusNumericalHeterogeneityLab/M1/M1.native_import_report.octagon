@@ -3,10 +3,10 @@ M1ImportReport {
     EvidenceAuthority: "native-rtx3070-vulkan"
     SyntheticAuthority: "prometheus.m49.synthetic-design-lab-only"
     SourceJsonPath: "internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json"
-    SourceJsonSha256: "668a8768fbcb42ef1c386ad73e89b85c079f8d227965408bf157d3b3347cc5f7"
-    NativeRecordCount: (7)
+    SourceJsonSha256: "e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406"
+    NativeRecordCount: (10)
     Envelope: M1EnvelopeEvaluation {
-        IdentificationSupport: (7)
+        IdentificationSupport: (10)
         HeldOutSupport: (0)
         HeldOutFailures: (0)
         DisturbanceBound: (1.48932e-06)
@@ -18,24 +18,24 @@ M1ImportReport {
     LearnedPolicy: M1LearnedPolicyReport {
         Model: LinearUtilityModel {
             Algorithm: "ridge-normal-equations-lu-v1"
-            Identity: "ridge-normal-equations-lu-v1|features=DisturbanceL2Micro,DisturbanceLInfinityTenNano,GpuHundredMicroseconds|signs=any,any,any|weights=-0.594188368835852,0.9090206936478299,-1.0825108532121401|bias=-0.45505714285714277|means=0.4553161571428571,0.3801787142857143,0.28630857142857147|scales=0.5976437177688055,0.4442234743935613,0.41950658239101296|includeBias=true|normalize=true|l2=1e-06|looThreshold=1|identification=668a8768fbcb42ef1c386ad73e89b85c079f8d227965408bf157d3b3347cc5f7:identification|heldOut=none-zero-held-out-native-rows"
+            Identity: "ridge-normal-equations-lu-v1|features=DisturbanceL2Micro,DisturbanceLInfinityTenNano,GpuHundredMicroseconds|signs=nonpositive,nonpositive,nonpositive|weights=0.15161060135735172,0.06076569517705053,-0.3622479648609334|bias=-0.529778|means=0.45069011000000003,0.8025667000000001,0.32873600000000003|scales=0.5840058774561168,1.3800211107629725,0.3909742150884122|includeBias=true|normalize=true|l2=1e-06|looThreshold=1|identification=e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406:identification|heldOut=none-zero-held-out-native-rows"
             FeatureNames: ["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]
-            Weights: [-0.594188368835852, 0.9090206936478299, -1.0825108532121401]
-            Bias: (-0.45505714285714277)
+            Weights: [0.15161060135735172, 0.06076569517705053, -0.3622479648609334]
+            Bias: (-0.529778)
             Normalization: UtilityNormalization {
-                Means: [0.4553161571428571, 0.3801787142857143, 0.28630857142857147]
-                Scales: [0.5976437177688055, 0.4442234743935613, 0.41950658239101296]
+                Means: [0.45069011000000003, 0.8025667000000001, 0.32873600000000003]
+                Scales: [0.5840058774561168, 1.3800211107629725, 0.3909742150884122]
             }
             IncludeBias: true
             L2Regularization: (1e-06)
-            IdentificationEvidenceHash: "668a8768fbcb42ef1c386ad73e89b85c079f8d227965408bf157d3b3347cc5f7:identification"
+            IdentificationEvidenceHash: "e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406:identification"
             HeldOutEvidenceHash: "none-zero-held-out-native-rows"
             Training: UtilityFitMetrics {
-                Rows: (7)
-                MeanSquaredError: (0.002247484797368486)
-                MeanAbsoluteError: (0.03495483111553675)
-                MaximumAbsoluteError: (0.09035289690613124)
-                RSquared: (0.9918606452070374)
+                Rows: (10)
+                MeanSquaredError: (0.0651465839129063)
+                MeanAbsoluteError: (0.2100629028207485)
+                MaximumAbsoluteError: (0.36569006580828595)
+                RSquared: (0.7679011456911878)
                 RSquaredDefined: true
             }
             HeldOut: UtilityFitMetrics {
@@ -46,15 +46,69 @@ M1ImportReport {
                 RSquared: (0)
                 RSquaredDefined: false
             }
-            CoefficientSignsValid: true
-            LeaveOneOutMaxWeightDelta: (0.9090183148228655)
-            Stable: true
-            ConditioningOrStabilityWarning: false
+            CoefficientSignsValid: false
+            LeaveOneOutMaxWeightDelta: (2.631069138115916)
+            Stable: false
+            ConditioningOrStabilityWarning: true
             Certified: false
+        }
+        IdentificationEvaluation: UtilityFitMetrics {
+            Rows: (10)
+            MeanSquaredError: (0.0651465839129063)
+            MeanAbsoluteError: (0.2100629028207485)
+            MaximumAbsoluteError: (0.36569006580828595)
+            RSquared: (0.7679011456911878)
+            RSquaredDefined: true
         }
         SelectedPath: "gpu_conventional_fp16"
         AuthoredSelectedPath: "gpu_conventional_fp16"
         UniformSelectedPath: "gpu_conventional_fp16"
+        SelectedScoreBreakdown: UtilityScoreBreakdown {
+            FeatureNames: ["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]
+            Contributions: [-0.1170012173516959, -0.035338969144094255, -0.05594737521300778]
+            Bias: (-0.529778)
+            Score: (-0.7380655617087979)
+        }
+        FittedVsAuthored: UtilityModelComparison {
+            Fitted: UtilityFitMetrics {
+                Rows: (0)
+                MeanSquaredError: (0)
+                MeanAbsoluteError: (0)
+                MaximumAbsoluteError: (0)
+                RSquared: (0)
+                RSquaredDefined: false
+            }
+            Baseline: UtilityFitMetrics {
+                Rows: (0)
+                MeanSquaredError: (0)
+                MeanAbsoluteError: (0)
+                MaximumAbsoluteError: (0)
+                RSquared: (0)
+                RSquaredDefined: false
+            }
+            HeldOutMeanSquaredErrorImprovement: (0)
+            HeldOutComparisonAvailable: false
+        }
+        FittedVsUniform: UtilityModelComparison {
+            Fitted: UtilityFitMetrics {
+                Rows: (0)
+                MeanSquaredError: (0)
+                MeanAbsoluteError: (0)
+                MaximumAbsoluteError: (0)
+                RSquared: (0)
+                RSquaredDefined: false
+            }
+            Baseline: UtilityFitMetrics {
+                Rows: (0)
+                MeanSquaredError: (0)
+                MeanAbsoluteError: (0)
+                MaximumAbsoluteError: (0)
+                RSquared: (0)
+                RSquaredDefined: false
+            }
+            HeldOutMeanSquaredErrorImprovement: (0)
+            HeldOutComparisonAvailable: false
+        }
         HeldOutBaselineComparisonAvailable: false
         ShadowOnly: true
         ProductAuthorityChanged: false
@@ -67,6 +121,14 @@ M1ImportReport {
         MemoryCostBytes: (16384)
         Generalizes: false
         Status: "tiny identification only; Wdown FP16 pack erased Hidden difference"
+    }, M1MitigationRecord {
+        Name: "fp32_hidden_fp32_wdown"
+        IdentificationErrorReduction: (0.009804)
+        HeldOutErrorReduction: (0)
+        LatencyCostUs: (40.96)
+        MemoryCostBytes: (16384)
+        Generalizes: false
+        Status: "genuine FP32 consumer; tiny L2 improves 0.98 percent, Linf regresses 2.74 percent, no held-out support"
     }, M1MitigationRecord {
         Name: "stage_selective_fp32_ffn"
         IdentificationErrorReduction: (0)

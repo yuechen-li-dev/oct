@@ -2262,13 +2262,18 @@ typedef struct prom_m49a_ffn_suffix_request {
   uint32_t capture_stage;
   uint32_t tokens;
   uint32_t model_width;
+  uint32_t matched_n_row_stride;
   uint32_t ffn_width;
   uint32_t projection_path;
+  /* Audit-only Wdown override. Zero inherits projection_path. Product M47 has
+     no corresponding selector or authority. */
+  uint32_t down_projection_path;
   uint32_t gating_strategy;
   uint32_t residual_strategy;
   uint64_t input_generation;
   uint64_t reference_input_hash;
   uint64_t required_weight_generation[PROM_M47_WEIGHT_COUNT];
+  uint64_t required_weight_hash[PROM_M47_WEIGHT_COUNT];
   uint64_t exact_source_hash;
 } prom_m49a_ffn_suffix_request;
 
@@ -2283,6 +2288,7 @@ typedef struct prom_m49a_ffn_suffix_result {
   uint32_t final_readback_count;
   uint32_t intermediate_host_copy_count;
   uint32_t no_product_intermediate_readback_change;
+  uint32_t down_projection_path;
   uint64_t input_hash;
   uint64_t capture_hash;
   uint64_t replay_identity;
@@ -2293,6 +2299,80 @@ typedef struct prom_m49a_ffn_suffix_result {
   uint64_t buffer_reuse_count;
   prom_m47_composed_result ffn;
 } prom_m49a_ffn_suffix_result;
+
+/* M49a-only identity wrapper around the established M44 host-bounce audit
+   owner. Physical padding is verified but never supplied to the projection. */
+typedef struct prom_m49a_m44_request {
+  const float* matched_head_major;
+  uint64_t matched_storage_element_count;
+  float* output;
+  uint64_t output_element_count;
+  uint32_t head_count;
+  uint32_t tokens;
+  uint32_t head_dim;
+  uint32_t head_row_stride;
+  uint32_t model_width;
+  uint32_t precision_policy;
+  uint32_t projection_path;
+  uint64_t input_generation;
+  uint64_t reference_input_hash;
+  uint64_t required_wo_generation;
+  uint64_t required_wo_hash;
+  uint64_t exact_source_hash;
+} prom_m49a_m44_request;
+
+typedef struct prom_m49a_m44_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t matched_input;
+  uint32_t audit_only;
+  uint32_t product_authority_changed;
+  uint32_t no_product_intermediate_readback_change;
+  uint64_t input_hash;
+  uint64_t output_hash;
+  uint64_t replay_identity;
+  uint64_t input_generation;
+  uint64_t wo_generation;
+  uint64_t wo_hash;
+  prom_m44_host_bounce_result projection;
+} prom_m49a_m44_result;
+
+typedef struct prom_m49a_m46_request {
+  const float* matched_z;
+  uint64_t matched_storage_element_count;
+  float* output;
+  uint64_t output_element_count;
+  float* inv_rms_output;
+  uint64_t inv_rms_output_element_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t z_row_stride;
+  uint32_t strategy;
+  uint32_t requested_reduction_plan;
+  float epsilon;
+  uint64_t input_generation;
+  uint64_t reference_input_hash;
+  uint64_t required_weight_generation;
+  uint64_t required_weight_hash;
+  uint64_t exact_source_hash;
+} prom_m49a_m46_request;
+
+typedef struct prom_m49a_m46_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t matched_input;
+  uint32_t audit_only;
+  uint32_t product_authority_changed;
+  uint32_t no_product_intermediate_readback_change;
+  uint64_t input_hash;
+  uint64_t output_hash;
+  uint64_t inv_rms_hash;
+  uint64_t replay_identity;
+  uint64_t input_generation;
+  uint64_t weight_generation;
+  uint64_t weight_hash;
+  prom_m46_composed_result rmsnorm;
+} prom_m49a_m46_result;
 
 /* M48 repeats the exact M43-M47 block as one fixed, bounded model-shaped
    owner.  The product contract is exactly four homogeneous layers; one- and
@@ -3089,6 +3169,12 @@ int prom_reactor_runtime_m47_execute_composed(void* handle,
 int prom_reactor_runtime_m49a_execute_ffn_suffix(
     void* handle, const prom_m49a_ffn_suffix_request* request,
     prom_m49a_ffn_suffix_result* out_result);
+int prom_reactor_runtime_m49a_execute_m44(
+    void* handle, const prom_m49a_m44_request* request,
+    prom_m49a_m44_result* out_result);
+int prom_reactor_runtime_m49a_execute_m46(
+    void* handle, const prom_m49a_m46_request* request,
+    prom_m49a_m46_result* out_result);
 uint32_t prom_m48_attention_resource_index(uint32_t head, uint32_t weight_kind);
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
                                           prom_m48_transformer_stack_plan* out_plan);
