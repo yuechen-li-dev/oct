@@ -687,6 +687,13 @@ static int prom_m48_add_working_set(const prom_m48_plan_request* request,
   return 1;
 }
 
+static uint32_t prom_m48_layer_projection_path(const prom_m48_plan_request* request,
+                                               uint32_t layer) {
+  return request->audit_layer_projection_path[layer] != 0u
+             ? request->audit_layer_projection_path[layer]
+             : request->projection_path;
+}
+
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
                                           prom_m48_transformer_stack_plan* out_plan) {
   uint64_t logical_elements;
@@ -727,6 +734,13 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
        request->projection_path != PROM_M47_PROJECTION_A2X4_FP32) ||
       (request->precision_policy == PROM_M42_PRECISION_F16_ROUNDED &&
        request->projection_path == PROM_M47_PROJECTION_A2X4_FP32)) return PROM_ERROR;
+  for (layer = 0u; layer < request->layer_count; ++layer) {
+    const uint32_t path = request->audit_layer_projection_path[layer];
+    if ((request->audit_mode == 0u && path != 0u) ||
+        (path != 0u &&
+         (path < PROM_M47_PROJECTION_COOPERATIVE ||
+          path > PROM_M47_PROJECTION_CONVENTIONAL_FP16))) return PROM_ERROR;
+  }
   out_plan->eligibility_reason = PROM_M48_INELIGIBLE_STRATEGY;
   if (request->attention_strategy < PROM_M43_STRATEGY_COMPLETE_HEADS ||
       request->attention_strategy > PROM_M43_STRATEGY_EIGHT_SEQUENTIAL_M42 ||
@@ -840,6 +854,8 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   activation_range_bytes = (uint64_t)padded_tokens * padded_model_width * sizeof(float);
   for (layer = 0u; layer < request->layer_count; ++layer) {
     uint64_t layer_hash = 1469598103934665603ull;
+    const uint32_t selected_projection_path =
+        prom_m48_layer_projection_path(request, layer);
     const uint32_t input_role = request->activation_strategy == PROM_M48_ACTIVATION_PING_PONG
                                     ? layer % 2u : layer;
     const uint32_t output_role = request->activation_strategy == PROM_M48_ACTIVATION_PING_PONG
@@ -851,7 +867,7 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
     layer_hash = prom_m47_hash_u32(layer_hash, request->model_width);
     layer_hash = prom_m47_hash_u32(layer_hash, request->head_dim);
     layer_hash = prom_m47_hash_u32(layer_hash, request->ffn_width);
-    layer_hash = prom_m47_hash_u32(layer_hash, request->projection_path);
+    layer_hash = prom_m47_hash_u32(layer_hash, selected_projection_path);
     layer_hash = prom_m47_hash_u32(layer_hash, request->attention_strategy);
     layer_hash = prom_m47_hash_u32(layer_hash, request->output_projection_strategy);
     layer_hash = prom_m47_hash_u32(layer_hash, request->rmsnorm_strategy);
@@ -862,6 +878,7 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
       layer_hash = prom_m47_hash_u64(layer_hash, request->layer[layer].content_hash[resource]);
     }
     out_plan->layer[layer].layer = layer;
+    out_plan->layer[layer].selected_projection_path = selected_projection_path;
     out_plan->layer[layer].submit_index = request->submit_topology == PROM_M48_SUBMIT_ONE_STACK
                                              ? 0u : layer;
     out_plan->layer[layer].query_begin = layer * PROM_M48_QUERY_COUNT_PER_LAYER;

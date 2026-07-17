@@ -2484,6 +2484,23 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
                      "bounded one/two/four layer audit planning succeeds");
         ASSERT_EQUAL(layers, auditPlan.layer_count, "audit layer count remains exact");
     }
+    prom_m48_plan_request mixed = M48ResidentPlanRequest(PROM_M48_LAYER_COUNT, 1u);
+    mixed.audit_layer_projection_path[1u] = PROM_M47_PROJECTION_A2X4_FP32;
+    mixed.audit_layer_projection_path[3u] = PROM_M47_PROJECTION_A2X4_FP32;
+    prom_m48_transformer_stack_plan mixedPlan{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&mixed, &mixedPlan),
+                 "audit planning accepts one fixed interval-two checkpoint pattern");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
+                 mixedPlan.layer[1u].selected_projection_path,
+                 "the first checkpoint block is explicit in the replay plan");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
+                 mixedPlan.layer[3u].selected_projection_path,
+                 "the second checkpoint block is explicit in the replay plan");
+    ASSERT_TRUE(mixedPlan.replay_id != oneSubmit.replay_id,
+                "the mixed checkpoint pattern changes aggregate replay identity");
+    mixed.audit_mode = 0u;
+    ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&mixed, &mixedPlan) != PROM_OK,
+                "product planning rejects every per-layer precision override");
     prom_m48_plan_request invalid = M48ResidentPlanRequest(2u, 0u);
     prom_m48_transformer_stack_plan rejected{};
     ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
@@ -2624,6 +2641,7 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
 
     const char* corpusShape = std::getenv("PROMETHEUS_M48_CORPUS_SHAPE");
     const bool printCorpus = std::getenv("PROMETHEUS_M48_PRINT") != nullptr;
+    const bool m49aControlMatrix = std::getenv("PROMETHEUS_M49A_CONTROL_MATRIX") != nullptr;
     const bool primaryPrecisionAudit = std::getenv("PROMETHEUS_M48_PRIMARY_PRECISION_AUDIT") != nullptr;
     const char* requestedPath = std::getenv("PROMETHEUS_M48_CORPUS_PATH");
     const std::string_view pathName = requestedPath == nullptr ? "conventional" : requestedPath;
@@ -2792,6 +2810,161 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
     for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer)
         ASSERT_TRUE(oneSubmit.layer[layer].total_gpu_ns > 0u,
                     "each recorded transformer layer has a nonzero timestamp interval");
+    if (m49aControlMatrix) {
+        struct PolicyDefinition {
+            const char* name;
+            std::uint32_t basePath;
+            std::array<std::uint32_t, PROM_M48_LAYER_COUNT> layerPath;
+        };
+        struct PolicyRecord {
+            const char* name = nullptr;
+            std::array<std::vector<float>, PROM_M48_LAYER_COUNT> layerOutput;
+            std::uint64_t medianGpuNs = 0u;
+            std::uint64_t medianE2eNs = 0u;
+            std::uint64_t outputHash = 0u;
+            std::uint64_t outputHashChanges = 0u;
+            prom_m48_stack_result warmResult{};
+        };
+        const std::array<PolicyDefinition, 5u> definitions{{
+            {"cooperative_fp16", PROM_M47_PROJECTION_COOPERATIVE, {0u, 0u, 0u, 0u}},
+            {"conventional_fp16", PROM_M47_PROJECTION_CONVENTIONAL_FP16, {0u, 0u, 0u, 0u}},
+            {"a2x4_fp32", PROM_M47_PROJECTION_A2X4_FP32, {0u, 0u, 0u, 0u}},
+            {"checkpoint_interval_2", PROM_M47_PROJECTION_COOPERATIVE,
+             {0u, PROM_M47_PROJECTION_A2X4_FP32, 0u, PROM_M47_PROJECTION_A2X4_FP32}},
+            {"checkpoint_interval_4", PROM_M47_PROJECTION_COOPERATIVE,
+             {0u, 0u, 0u, PROM_M47_PROJECTION_A2X4_FP32}},
+        }};
+        std::array<PolicyRecord, definitions.size()> records;
+        auto median = [](std::vector<std::uint64_t> values) {
+            std::sort(values.begin(), values.end());
+            return values[values.size() / 2u];
+        };
+        for (std::size_t policyIndex = 0u; policyIndex < definitions.size(); ++policyIndex) {
+            const PolicyDefinition& definition = definitions[policyIndex];
+            PolicyRecord& record = records[policyIndex];
+            prom_m48_stack_request policyRequest = request;
+            std::vector<std::uint64_t> gpuSamples;
+            std::vector<std::uint64_t> e2eSamples;
+            record.name = definition.name;
+            policyRequest.audit_mode = 1u;
+            policyRequest.projection_path = definition.basePath;
+            policyRequest.precision_policy = definition.basePath == PROM_M47_PROJECTION_A2X4_FP32
+                                                  ? PROM_M42_PRECISION_FP32
+                                                  : PROM_M42_PRECISION_F16_ROUNDED;
+            policyRequest.gating_strategy = definition.basePath == PROM_M47_PROJECTION_A2X4_FP32
+                                                ? PROM_M47_GATING_FUSED_FP32
+                                                : PROM_M47_GATING_FUSED_DIRECT_PACKED;
+            policyRequest.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
+            policyRequest.allow_fallback = 0u;
+            std::copy(definition.layerPath.begin(), definition.layerPath.end(),
+                      policyRequest.audit_layer_projection_path);
+            for (std::uint32_t depth = 1u; depth <= PROM_M48_LAYER_COUNT; ++depth) {
+                prom_m48_stack_result depthResult{};
+                record.layerOutput[depth - 1u].assign(activationElements, 0.0f);
+                policyRequest.layer_count = depth;
+                policyRequest.output = record.layerOutput[depth - 1u].data();
+                policyRequest.output_element_count = activationElements;
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_m48_execute_stack(runtime, &policyRequest,
+                                                                    &depthResult),
+                             "each M49a fixed-path prefix executes through the M48 owner");
+                if (depth == PROM_M48_LAYER_COUNT) {
+                    record.warmResult = depthResult;
+                    gpuSamples.push_back(depthResult.total_stack_gpu_ns);
+                    e2eSamples.push_back(depthResult.end_to_end_ns);
+                    record.outputHash = prom_num_hash_float_bits(
+                        record.layerOutput[depth - 1u].data(), activationElements);
+                }
+            }
+            policyRequest.layer_count = PROM_M48_LAYER_COUNT;
+            for (std::uint32_t repeat = 1u; repeat < 5u; ++repeat) {
+                std::vector<float> repeatOutput(activationElements, 0.0f);
+                prom_m48_stack_result repeatResult{};
+                policyRequest.output = repeatOutput.data();
+                policyRequest.output_element_count = activationElements;
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_m48_execute_stack(runtime, &policyRequest,
+                                                                    &repeatResult),
+                             "each M49a fixed policy repeats");
+                gpuSamples.push_back(repeatResult.total_stack_gpu_ns);
+                e2eSamples.push_back(repeatResult.end_to_end_ns);
+                if (prom_num_hash_float_bits(repeatOutput.data(), activationElements) !=
+                    record.outputHash) {
+                    ++record.outputHashChanges;
+                }
+                record.warmResult = repeatResult;
+            }
+            record.medianGpuNs = median(gpuSamples);
+            record.medianE2eNs = median(e2eSamples);
+        }
+
+        const PolicyRecord& witness = records[2u];
+        std::vector<double> canaryScores;
+        std::vector<double> fullErrors;
+        std::uint64_t canaryCpuNs = 0u;
+        for (const PolicyRecord& record : records) {
+            for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
+                std::vector<double> scratch(activationElements, 0.0);
+                std::vector<float> difference(activationElements, 0.0f);
+                prom_num_error_summary error{};
+                prom_num_canary_summary canary{};
+                ASSERT_TRUE(prom_num_summarize_error(
+                                witness.layerOutput[layer].data(),
+                                record.layerOutput[layer].data(), tokens, modelWidth,
+                                1.0e-12, 0.0, 0.0, scratch.data(), scratch.size(), &error) != 0,
+                            "M49a policy error uses the full A2x4 witness");
+                for (std::size_t index = 0u; index < activationElements; ++index) {
+                    difference[index] = record.layerOutput[layer][index] -
+                                        witness.layerOutput[layer][index];
+                }
+                const auto canaryBegin = std::chrono::steady_clock::now();
+                ASSERT_TRUE(prom_num_canary_measure(difference.data(), tokens, modelWidth,
+                                                    0x4d343961u + layer, &canary) != 0,
+                            "M49a seeded canary summarizes one audited block discrepancy");
+                const auto canaryEnd = std::chrono::steady_clock::now();
+                canaryCpuNs += static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        canaryEnd - canaryBegin).count());
+                const double normalizedProjection =
+                    (std::abs(canary.signed_projection_a) +
+                     std::abs(canary.signed_projection_b) +
+                     canary.absolute_projection / 4.0) /
+                    static_cast<double>(activationElements);
+                canaryScores.push_back(normalizedProjection);
+                fullErrors.push_back(error.l2_norm);
+                std::fprintf(stderr,
+                             "M49a control shape=%.*s policy=%s layer=%u l2=%g linf=%g signed_a=%g signed_b=%g absolute_projection=%g hash=%llu\n",
+                             static_cast<int>(shape.size()), shape.data(), record.name, layer,
+                             error.l2_norm, error.linfinity_norm,
+                             canary.signed_projection_a, canary.signed_projection_b,
+                             canary.absolute_projection,
+                             static_cast<unsigned long long>(canary.bit_hash));
+            }
+            std::fprintf(stderr,
+                         "M49a performance shape=%.*s policy=%s gpu_median_ns=%llu e2e_median_ns=%llu retained_bytes=%llu dispatches=%u submits=%u warm_allocations=%llu output_hash=%llu hash_changes=%llu\n",
+                         static_cast<int>(shape.size()), shape.data(), record.name,
+                         static_cast<unsigned long long>(record.medianGpuNs),
+                         static_cast<unsigned long long>(record.medianE2eNs),
+                         static_cast<unsigned long long>(record.warmResult.retained_bytes),
+                         record.warmResult.dispatch_count, record.warmResult.submit_count,
+                         static_cast<unsigned long long>(record.warmResult.buffer_allocation_count),
+                         static_cast<unsigned long long>(record.outputHash),
+                         static_cast<unsigned long long>(record.outputHashChanges));
+        }
+        prom_num_canary_calibration calibration{};
+        ASSERT_TRUE(prom_num_canary_calibrate(canaryScores.data(), fullErrors.data(),
+                                              canaryScores.size(), 1.0e-6, 1.0e-6,
+                                              &calibration) != 0,
+                    "M49a canary correlation evaluates against complete audits");
+        std::fprintf(stderr,
+                     "M49a canary shape=%.*s samples=%llu pearson=%g false_positive_rate=%g false_negative_rate=%g full_tensor_host_calibration_ns_per_sample=%g\n",
+                     static_cast<int>(shape.size()), shape.data(),
+                     static_cast<unsigned long long>(calibration.sample_count),
+                     calibration.pearson_correlation, calibration.false_positive_rate,
+                     calibration.false_negative_rate,
+                     static_cast<double>(canaryCpuNs) /
+                         static_cast<double>(canaryScores.size()));
+    }
     if (fullOracle) {
         for (std::size_t index = 0u; index < activationElements; ++index)
             ASSERT_TRUE(std::abs(oneSubmitOutput[index] - referenceOutput[index]) <= 8.0e-2f,

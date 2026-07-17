@@ -3,7 +3,7 @@ M1ImportReport {
     EvidenceAuthority: "native-rtx3070-vulkan"
     SyntheticAuthority: "prometheus.m49.synthetic-design-lab-only"
     SourceJsonPath: "internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json"
-    SourceJsonSha256: "e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406"
+    SourceJsonSha256: "ac8b7c0b8cb46985331c7db772e4b7413e8b64557d04c50de247c3b4b97662ad"
     NativeRecordCount: (10)
     Envelope: M1EnvelopeEvaluation {
         IdentificationSupport: (10)
@@ -18,7 +18,7 @@ M1ImportReport {
     LearnedPolicy: M1LearnedPolicyReport {
         Model: LinearUtilityModel {
             Algorithm: "ridge-normal-equations-lu-v1"
-            Identity: "ridge-normal-equations-lu-v1|features=DisturbanceL2Micro,DisturbanceLInfinityTenNano,GpuHundredMicroseconds|signs=nonpositive,nonpositive,nonpositive|weights=0.15161060135735172,0.06076569517705053,-0.3622479648609334|bias=-0.529778|means=0.45069011000000003,0.8025667000000001,0.32873600000000003|scales=0.5840058774561168,1.3800211107629725,0.3909742150884122|includeBias=true|normalize=true|l2=1e-06|looThreshold=1|identification=e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406:identification|heldOut=none-zero-held-out-native-rows"
+            Identity: "ridge-normal-equations-lu-v1|features=DisturbanceL2Micro,DisturbanceLInfinityTenNano,GpuHundredMicroseconds|signs=nonpositive,nonpositive,nonpositive|weights=0.15161060135735172,0.06076569517705053,-0.3622479648609334|bias=-0.529778|means=0.45069011000000003,0.8025667000000001,0.32873600000000003|scales=0.5840058774561168,1.3800211107629725,0.3909742150884122|includeBias=true|normalize=true|l2=1e-06|looThreshold=1|identification=ac8b7c0b8cb46985331c7db772e4b7413e8b64557d04c50de247c3b4b97662ad:identification|heldOut=none-zero-held-out-native-rows"
             FeatureNames: ["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]
             Weights: [0.15161060135735172, 0.06076569517705053, -0.3622479648609334]
             Bias: (-0.529778)
@@ -28,7 +28,7 @@ M1ImportReport {
             }
             IncludeBias: true
             L2Regularization: (1e-06)
-            IdentificationEvidenceHash: "e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406:identification"
+            IdentificationEvidenceHash: "ac8b7c0b8cb46985331c7db772e4b7413e8b64557d04c50de247c3b4b97662ad:identification"
             HeldOutEvidenceHash: "none-zero-held-out-native-rows"
             Training: UtilityFitMetrics {
                 Rows: (10)
@@ -130,21 +130,21 @@ M1ImportReport {
         Generalizes: false
         Status: "genuine FP32 consumer; tiny L2 improves 0.98 percent, Linf regresses 2.74 percent, no held-out support"
     }, M1MitigationRecord {
-        Name: "stage_selective_fp32_ffn"
-        IdentificationErrorReduction: (0)
-        HeldOutErrorReduction: (0)
-        LatencyCostUs: (83.68)
+        Name: "checkpoint_interval_2_complete_block"
+        IdentificationErrorReduction: (0.553386)
+        HeldOutErrorReduction: (0.10861)
+        LatencyCostUs: (15856.384)
         MemoryCostBytes: (0)
-        Generalizes: false
-        Status: "path measured, but no held-out mitigation comparison"
+        Generalizes: true
+        Status: "selected experimental MVP; improves both norms on one bounded held-out shape"
     }, M1MitigationRecord {
-        Name: "periodic_fp32_checkpoint"
-        IdentificationErrorReduction: (0)
-        HeldOutErrorReduction: (0)
-        LatencyCostUs: (0)
+        Name: "full_a2x4_fp32"
+        IdentificationErrorReduction: (1)
+        HeldOutErrorReduction: (1)
+        LatencyCostUs: (33532.512)
         MemoryCostBytes: (0)
-        Generalizes: false
-        Status: "not implemented; mixed-path fixed-stack attempt was withdrawn after validation failure"
+        Generalizes: true
+        Status: "selected safe fallback and accuracy witness, not nominal path"
     }]
     ProductAuthorityChanged: false
     Interpretation: "native identification imported; no envelope or mitigation is certified without held-out hardware support"

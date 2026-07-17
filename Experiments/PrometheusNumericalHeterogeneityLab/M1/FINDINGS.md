@@ -7,7 +7,7 @@
 | native evidence | native-rtx3070-vulkan |
 | synthetic evidence | prometheus.m49.synthetic-design-lab-only |
 | source JSON | internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json |
-| source SHA-256 | e1cebf242a99d1a06cd761ba1541fc20fe87efd2eb8dd94c81b199718d1d1406 |
+| source SHA-256 | ac8b7c0b8cb46985331c7db772e4b7413e8b64557d04c50de247c3b4b97662ad |
 | product authority changed | false |
 
 ## Envelope evaluation

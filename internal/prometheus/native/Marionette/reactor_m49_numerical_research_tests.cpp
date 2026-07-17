@@ -560,7 +560,7 @@ FACT(PrometheusM49aArtifactSchemaSeparatesCompletedAndUnsupportedEvidence)
     const std::string artifact((std::istreambuf_iterator<char>(input)),
                                std::istreambuf_iterator<char>());
     for (const std::string& required : {
-             "prometheus.m49a.controlled-stage-gain-and-mitigation.v1",
+             "prometheus.m49a.controlled-stage-gain-and-mitigation.v2",
              "matched_input_disturbance_records",
              "controlled_perturbations",
              "gain_records",
@@ -569,6 +569,10 @@ FACT(PrometheusM49aArtifactSchemaSeparatesCompletedAndUnsupportedEvidence)
              "mitigation_ab",
              "envelopes",
              "canary_calibration",
+             "numerical_control_parameters",
+             "shadow_hsfm",
+             "rollout_stages",
+             "m49b_one_shot",
              "oct_import_provenance",
              "unsupported_claims",
              "exact_source_hashes",
@@ -579,10 +583,14 @@ FACT(PrometheusM49aArtifactSchemaSeparatesCompletedAndUnsupportedEvidence)
     ASSERT_TRUE(artifact.find("\"normal_product_execution_changed\": false") !=
                     std::string::npos,
                 "M49a artifact records unchanged normal product execution");
-    ASSERT_TRUE(artifact.find("\"milestone_state\": \"in_progress\"") !=
+    ASSERT_TRUE(artifact.find("\"milestone_state\": \"complete\"") !=
                     std::string::npos,
-                "M49a artifact cannot overclaim incomplete held-out work");
-    ASSERT_TRUE(artifact.find("\"held_out_records_completed\": 0") !=
+                "M49a artifact records the bounded architecture decision");
+    ASSERT_TRUE(artifact.find("\"held_out_records_completed\": 5") !=
                     std::string::npos,
-                "M49a artifact exposes absent held-out hardware evidence");
+                "M49a artifact exposes the bounded held-out hardware matrix");
+    ASSERT_TRUE(artifact.find("\"primary_mitigation\": \"a2x4_fp32_complete_block_checkpoint_interval_2\"") !=
+                    std::string::npos &&
+                    artifact.find("\"product_authority\": false") != std::string::npos,
+                "the selected mitigation remains experimental and outside product authority");
 }

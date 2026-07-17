@@ -2459,6 +2459,9 @@ typedef struct prom_m48_plan_request {
   uint32_t ffn_width;
   uint32_t precision_policy;
   uint32_t projection_path;
+  /* Audit-only fixed four-layer precision pattern. Zero inherits
+     projection_path. Product planning requires every entry to remain zero. */
+  uint32_t audit_layer_projection_path[PROM_M48_LAYER_COUNT];
   uint32_t attention_strategy;
   uint32_t output_projection_strategy;
   uint32_t rmsnorm_strategy;
@@ -2492,6 +2495,7 @@ typedef struct prom_m48_boundary_trace {
 
 typedef struct prom_m48_layer_plan {
   uint32_t layer;
+  uint32_t selected_projection_path;
   uint32_t submit_index;
   uint32_t query_begin;
   uint32_t query_count;
@@ -2685,6 +2689,9 @@ typedef struct prom_m48_stack_request {
   uint32_t ffn_width;
   uint32_t precision_policy;
   uint32_t projection_path;
+  /* Audit-only fixed four-layer precision pattern. Zero inherits
+     projection_path. It is deliberately not a generic scheduler. */
+  uint32_t audit_layer_projection_path[PROM_M48_LAYER_COUNT];
   uint32_t attention_strategy;
   uint32_t output_projection_strategy;
   uint32_t rmsnorm_strategy;
@@ -2701,6 +2708,7 @@ typedef struct prom_m48_stack_request {
 typedef struct prom_m48_layer_execution_result {
   uint32_t layer_index;
   uint32_t selected_projection_path;
+  uint32_t dispatch_count;
   uint32_t attention_strategy;
   uint32_t output_projection_strategy;
   uint32_t rmsnorm_strategy;
@@ -2736,6 +2744,7 @@ typedef struct prom_m48_stack_result {
   uint32_t intermediate_readback_count;
   uint32_t final_readback_count;
   uint32_t selected_projection_path;
+  uint32_t dispatch_count;
   uint64_t total_stack_gpu_ns;
   uint64_t cpu_recording_ns;
   uint64_t cpu_submission_ns;

@@ -10688,8 +10688,11 @@ static int prom_transformer_prepare_block(
   uint64_t activation_elements;
   uint64_t input_hash;
   VkDeviceSize packed_x_bytes;
-  uint32_t selected_path = request->projection_path;
+  uint32_t selected_path = request->audit_layer_projection_path[layer_index] != 0u
+                               ? request->audit_layer_projection_path[layer_index]
+                               : request->projection_path;
   uint32_t selected_precision;
+  uint32_t selected_gating_strategy;
   uint32_t head;
   uint32_t weight;
   if (!prom_transformer_validate_layer_resources(layer, request, layer_index)) return 0;
@@ -10702,6 +10705,10 @@ static int prom_transformer_prepare_block(
   }
   selected_precision = selected_path == PROM_M47_PROJECTION_A2X4_FP32
                            ? PROM_M42_PRECISION_FP32 : PROM_M42_PRECISION_F16_ROUNDED;
+  selected_gating_strategy =
+      selected_path == PROM_M47_PROJECTION_A2X4_FP32 &&
+              request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
+          ? PROM_M47_GATING_FUSED_FP32 : request->gating_strategy;
   if (!prom_m40b_checked_product_u64(request->tokens, request->model_width,
                                      &activation_elements) ||
       !prom_m40b_checked_product_u64(request->tokens, request->head_dim,
@@ -10883,7 +10890,7 @@ static int prom_transformer_prepare_block(
   ffn_plan_request.model_width = request->model_width;
   ffn_plan_request.ffn_width = request->ffn_width;
   ffn_plan_request.projection_path = selected_path;
-  ffn_plan_request.gating_strategy = request->gating_strategy;
+  ffn_plan_request.gating_strategy = selected_gating_strategy;
   ffn_plan_request.residual_strategy = request->residual_strategy;
   ffn_plan_request.submit_policy = PROM_M47_SUBMIT_ONE_COMMAND_BUFFER;
   ffn_plan_request.remaining_n_consumer_count = 1u;
@@ -10910,12 +10917,12 @@ static int prom_transformer_prepare_block(
                                (VkDeviceSize)block->ffn_plan.memory.n_packed_bytes,
                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
-      (request->gating_strategy == PROM_M47_GATING_SEPARATE &&
+      (selected_gating_strategy == PROM_M47_GATING_SEPARATE &&
        !prom_m47_ensure_buffer(state, &slot->m47_activated_gate,
                                (VkDeviceSize)block->ffn_plan.memory.activated_gate_bytes,
                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) ||
-      (request->gating_strategy != PROM_M47_GATING_FUSED_DIRECT_PACKED &&
+      (selected_gating_strategy != PROM_M47_GATING_FUSED_DIRECT_PACKED &&
        !prom_m47_ensure_buffer(state, &slot->m47_hidden,
                                (VkDeviceSize)block->ffn_plan.memory.hidden_f32_bytes,
                                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
@@ -10944,9 +10951,9 @@ static int prom_transformer_prepare_block(
     const uint32_t reduced = selected_path != PROM_M47_PROJECTION_A2X4_FP32;
     const prom_vk_buffer* projection_input = reduced != 0u
                                                  ? &slot->m47_n_packed : block->n;
-    prom_vk_buffer* activated = request->gating_strategy == PROM_M47_GATING_SEPARATE
+    prom_vk_buffer* activated = selected_gating_strategy == PROM_M47_GATING_SEPARATE
                                     ? &slot->m47_activated_gate : &slot->m47_gate;
-    prom_vk_buffer* hidden = request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
+    prom_vk_buffer* hidden = selected_gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
                                  ? &slot->m47_gate : &slot->m47_hidden;
     const prom_vk_buffer* hidden_input = reduced != 0u
                                              ? &slot->m47_hidden_packed : &slot->m47_hidden;
@@ -10965,7 +10972,7 @@ static int prom_transformer_prepare_block(
     prom_m47_update_descriptor(state, bank->m47[3], &slot->m47_gate,
                                &slot->m47_up, activated, hidden);
     prom_m47_update_descriptor(state, bank->m47[4],
-                               request->gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
+                               selected_gating_strategy == PROM_M47_GATING_FUSED_DIRECT_PACKED
                                    ? &slot->m47_gate : hidden,
                                &slot->m47_up, hidden,
                                reduced != 0u ? &slot->m47_hidden_packed : hidden);
@@ -10999,7 +11006,7 @@ static int prom_transformer_prepare_block(
   memset(&block->ffn_request, 0, sizeof(block->ffn_request));
   block->ffn_request.ffn_width = request->ffn_width;
   block->ffn_request.projection_path = selected_path;
-  block->ffn_request.gating_strategy = request->gating_strategy;
+  block->ffn_request.gating_strategy = selected_gating_strategy;
   block->ffn_request.residual_strategy = request->residual_strategy;
   block->ffn_request.submit_policy = PROM_M47_SUBMIT_ONE_COMMAND_BUFFER;
   for (weight = 0u; weight < PROM_M47_WEIGHT_COUNT; ++weight)
@@ -11243,6 +11250,11 @@ static void prom_m48_fill_layer_timings(const prom_reduction_runtime_state* stat
   memset(result, 0, sizeof(*result));
   result->layer_index = plan->layer;
   result->selected_projection_path = block->ffn_plan.projection_path;
+  result->dispatch_count = block->attention_plan.dispatch_count +
+                           block->projection_plan.dispatch_count +
+                           block->residual_plan.dispatch_count +
+                           block->norm_plan.dispatch_count +
+                           block->ffn_plan.dispatch_count;
   result->attention_strategy = block->attention_plan.execution_strategy;
   result->output_projection_strategy = block->projection_plan.aggregation_strategy;
   result->rmsnorm_strategy = block->norm_plan.strategy;
@@ -11310,6 +11322,7 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   uint32_t optional_readback;
   uint32_t stage_audit;
   uint32_t pipeline_path;
+  uint32_t pipeline_layer;
   uint32_t host_wait_audit;
   uint32_t host_bounce_audit;
   int32_t detail = 0;
@@ -11372,6 +11385,9 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   plan_request.ffn_width = request->ffn_width;
   plan_request.precision_policy = request->precision_policy;
   plan_request.projection_path = request->projection_path;
+  memcpy(plan_request.audit_layer_projection_path,
+         request->audit_layer_projection_path,
+         sizeof(plan_request.audit_layer_projection_path));
   plan_request.attention_strategy = request->attention_strategy;
   plan_request.output_projection_strategy = request->output_projection_strategy;
   plan_request.rmsnorm_strategy = request->rmsnorm_strategy;
@@ -11459,6 +11475,18 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
       !prom_m40b_ensure_sgemm_pipeline(state, pipeline_path)) {
     out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
     return PROM_ERROR;
+  }
+  for (pipeline_layer = 0u; pipeline_layer < request->layer_count; ++pipeline_layer) {
+    uint32_t layer_path = request->audit_layer_projection_path[pipeline_layer] != 0u
+                              ? request->audit_layer_projection_path[pipeline_layer]
+                              : pipeline_path;
+    if (layer_path == PROM_M47_PROJECTION_COOPERATIVE &&
+        (services.cooperative_matrix_feature_enabled == 0u || services.subgroup_size != 32u))
+      layer_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
+    if (!prom_m40b_ensure_sgemm_pipeline(state, layer_path)) {
+      out_result->detail_code = PROM_M48_DETAIL_RESOURCE;
+      return PROM_ERROR;
+    }
   }
   slot = prom_reduction_acquire_slot(state, state->next_logical_request_id++);
   if (slot == NULL) {
@@ -11826,6 +11854,7 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
                                 &out_result->plan.layer[layer],
                                 &out_result->layer[layer]);
     out_result->total_stack_gpu_ns += out_result->layer[layer].total_gpu_ns;
+    out_result->dispatch_count += out_result->layer[layer].dispatch_count;
   }
   if (optional_readback != 0u) {
     uint64_t readback_begin = prom_reduction_now_ns();
@@ -11855,6 +11884,10 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   out_result->intermediate_readback_count =
       (host_bounce_audit != 0u ? request->layer_count - 1u : 0u) + stage_audit;
   out_result->selected_projection_path = block[0].ffn_plan.projection_path;
+  for (layer = 1u; layer < request->layer_count; ++layer) {
+    if (block[layer].ffn_plan.projection_path != out_result->selected_projection_path)
+      out_result->selected_projection_path = 0u;
+  }
   out_result->retained_bytes = out_result->plan.memory.exact_retained_bytes;
   out_result->persistent_weight_bytes = out_result->plan.memory.persistent_weight_bytes;
   out_result->block_working_set_bytes = out_result->plan.memory.one_block_working_set_bytes;

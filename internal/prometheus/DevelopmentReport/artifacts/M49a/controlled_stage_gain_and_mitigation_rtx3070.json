@@ -1,217 +1,235 @@
 {
-  "schema": "prometheus.m49a.controlled-stage-gain-and-mitigation.v1",
-  "convergence_outcome": "meaningful_progression",
-  "milestone_state": "in_progress",
-  "m48_evt_state": "postponed",
+  "schema": "prometheus.m49a.controlled-stage-gain-and-mitigation.v2",
+  "convergence_outcome": "success",
+  "milestone_state": "complete",
+  "m49b_state": "ready_to_implement",
+  "m48_evt_state": "postponed_until_m49b",
   "normal_product_execution_changed": false,
   "product_automatic_precision_switching_enabled": false,
   "post_hoc_output_correction_enabled": false,
-  "evidence_cutoff_utc": "2026-07-17T23:30:00Z",
+  "evidence_cutoff_utc": "2026-07-18T00:00:00Z",
+  "pm_decision": "End open-ended M49a research and implement a bounded tunable controller in M49b.",
   "hardware_semantic_identity": {
     "backend": "Vulkan",
     "device_name": "NVIDIA GeForce RTX 3070",
     "host_os": "Windows",
     "compiler": "MSVC 19.51.36231",
     "validation_enabled": true,
-    "subgroup_size": 32,
-    "cooperative_matrix_feature_enabled": true,
-    "shader_identity_policy": "unchanged canonical M42-M47 generated SPIR-V",
-    "fp16_rounding_authority": "canonical binary16 round-to-nearest-even",
-    "dispatch_identity": "M49a audit-only host-fed M44, M46, and M47 suffix owners; dedicated working storage and explicit final audit readback",
-    "identity_warning": "This record is keyed by backend, precision/storage policy, subgroup/cooperative capability, shader policy, dispatch topology, compiler, and source hashes; device name alone is not an envelope key."
+    "validation_warning_count": 0,
+    "validation_error_count": 0
   },
-  "identification_held_out_split": {
-    "machine_rule": "stable identity, one of five buckets held out",
-    "identification_records_completed": 14,
-    "held_out_records_completed": 0,
-    "isolation_test": "passed",
-    "status": "incomplete",
-    "required_shapes_not_run": ["primary", "smaller_expansion", "more_token", "token_boundary"],
-    "required_input_families_not_run_on_hardware": ["low_amplitude", "wide_dynamic_range", "alternating_cancellation", "sparse_outliers", "near_zero", "channel_local_outliers"],
-    "required_weight_families_not_run_on_hardware": ["structured_diagonal_block", "cancellation_heavy", "mixed_magnitude", "near_fp16_midpoint", "held_out_seeded"]
+  "selection": {
+    "control_unit": "complete_transformer_block",
+    "nominal_path": "cooperative_fp16",
+    "primary_mitigation": "a2x4_fp32_complete_block_checkpoint_interval_2",
+    "initial_four_block_pattern": ["cooperative_fp16", "a2x4_fp32", "cooperative_fp16", "a2x4_fp32"],
+    "fallback": "full_a2x4_fp32_for_cooldown_then_checkpoint_recovery",
+    "experimental": true,
+    "tunable": true,
+    "product_authority": false,
+    "reason": "Best primary two-norm improvement per bounded cost; improves both norms on one held-out shape; uses an existing complete-block lifecycle boundary."
   },
-  "matched_input_disturbance_records": [
-    {"case":"tiny-near-midpoint-a2x4-gate","stage":"M47 Gate projection","path":"gpu_a2x4_fp32","split":"identification","input_hash":3993496498910787919,"input_generation":490100,"matched_input":true,"d":{"l1":0.0000623805,"l2":0.00000127589,"linfinity":0.0000000596046,"mae":0.0000000152296,"rms":0.0000000199358,"bias":0.000000000687464,"p95_abs":0.0000000409782,"p99_abs":0.0000000484288,"cosine":1.0},"validation_clean":true},
-    {"case":"tiny-near-midpoint-a2x4-up","stage":"M47 Up projection","path":"gpu_a2x4_fp32","split":"identification","matched_input":true,"d":{"l1":0.0000700029,"l2":0.00000148932,"linfinity":0.0000000782311,"mae":0.0000000170905,"rms":0.0000000232706,"bias":-0.000000000442014,"p95_abs":0.0000000447035,"p99_abs":0.0000000596046,"cosine":1.0},"validation_clean":true},
-    {"case":"tiny-near-midpoint-a2x4-hidden","stage":"M47 SiLU-gating Hidden","path":"gpu_a2x4_fp32","split":"identification","matched_input":true,"d":{"l1":0.00000294889,"l2":0.000000065715,"linfinity":0.00000000628643,"mae":0.000000000719944,"rms":0.0000000010268,"bias":-0.0000000000121666,"p95_abs":0.00000000215368,"p99_abs":0.00000000349246,"cosine":1.0},"validation_clean":true},
-    {"case":"tiny-near-midpoint-a2x4-wdown","stage":"M47 Wdown projection","path":"gpu_a2x4_fp32","split":"identification","matched_input":true,"d":{"l1":0.00000147593,"l2":0.0000000408901,"linfinity":0.00000000279397,"mae":0.000000000720668,"rms":0.000000000903551,"bias":0.0000000000015361,"p95_abs":0.00000000173168,"p99_abs":0.00000000209548,"cosine":1.0},"validation_clean":true},
-    {"case":"tiny-near-midpoint-a2x4-ffn","stage":"complete M47 FFN suffix","path":"gpu_a2x4_fp32","split":"identification","matched_input":true,"d":{"l2":0.000000315398,"linfinity":0.000000119209,"bias":0.0000000000582077},"gpu_ns":122752,"capture_hash":14730771303791708064,"replay_identity":9520345530593958099,"validation_clean":true},
-    {"case":"tiny-near-midpoint-conventional-direct-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"gpu_ns":37888,"capture_hash":13362539222640396682,"replay_identity":9839534929598941364,"validation_clean":true},
-    {"case":"tiny-near-midpoint-conventional-retain-hidden-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_retain_fp32_hidden","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"gpu_ns":39936,"capture_hash":13362539222640396682,"replay_identity":7716127624188948075,"validation_clean":true},
-    {"case":"tiny-near-midpoint-cooperative-hidden","stage":"M47 SiLU-gating Hidden","path":"gpu_cooperative_fp16","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.00000000802676,"linfinity":0.00000000139698,"bias":0.00000000000183564},"validation_clean":true},
-    {"case":"tiny-near-midpoint-cooperative-ffn","stage":"complete M47 FFN suffix","path":"gpu_cooperative_fp16","split":"identification","reference":"CPU canonical reduced-precision simulation","matched_input":true,"d":{"l2":0.0,"linfinity":0.0,"bias":0.0},"common_reference":"FP64-computed complete FFN rounded once to float output","common_reference_d":{"l2":0.000114947,"linfinity":0.00000870228},"gpu_ns":41984,"validation_clean":true},
-    {"case":"tiny-near-midpoint-conventional-direct-common","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","split":"identification","common_reference":"FP64-computed complete FFN rounded once to float output","common_reference_d":{"l2":0.000114947,"linfinity":0.00000870228},"gpu_ns":37888,"validation_clean":true},
-    {"case":"tiny-near-midpoint-fp32-hidden-fp32-wdown","stage":"M47 Wdown projection","path":"gpu_conventional_fp16_hidden_fp32_wdown","split":"identification","reference":"CPU mixed-precision semantic reference","matched_input":true,"d":{"l1":0.000000368309,"l2":0.0000000107151,"linfinity":0.00000000116415,"mae":0.000000000179838,"rms":0.000000000236774,"bias":0.0000000000167119,"p95_abs":0.000000000465661,"p99_abs":0.000000000698492,"cosine":1.0},"validation_clean":true},
-    {"case":"tiny-near-midpoint-fp32-hidden-fp32-wdown-ffn","stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_hidden_fp32_wdown","split":"identification","reference":"CPU mixed-precision semantic reference","matched_input":true,"d":{"l2":0.000000103238,"linfinity":0.0000000596046,"bias":0.0000000000873115},"common_reference":"FP64-computed complete FFN rounded once to float output","common_reference_d":{"l2":0.000113820,"linfinity":0.00000894070},"gpu_ns":78848,"replay_identity":2183994305131789814,"validation_clean":true},
-    {"case":"m44-strided-dyadic","stage":"M44 output projection","path":"gpu_a2x4_fp32","split":"identification","reference":"CPU FP32 semantic reference","logical_shape":[17,128],"physical_row_stride":19,"input_hash":16685024365929763963,"matched_input":true,"d":{"l1":0.0,"l2":0.0,"linfinity":0.0,"mae":0.0,"rms":0.0,"bias":0.0,"p95_abs":0.0,"p99_abs":0.0},"gpu_ns":30560,"output_hash":3744978912364234700,"validation_clean":true,"discriminative":false},
-    {"case":"m46-strided-wide-cancellation","stage":"M46 RMSNorm","path":"gpu_fp32","split":"identification","reference":"CPU FP32 semantic reference","logical_shape":[9,128],"physical_row_stride":133,"input_hash":7866621792319710547,"matched_input":true,"d":{"l1":0.00000370821,"l2":0.00000121645,"linfinity":0.000000476837,"mae":0.00000000321893,"rms":0.0000000358399,"bias":-0.0000000000148298,"p95_abs":0.00000000372529,"p99_abs":0.00000000745058},"max_inv_rms_error":0.0000000149012,"gpu_ns":7488,"output_hash":8532361380227445050,"inv_rms_hash":7703651786078937415,"replay_identity":8068577254615941522,"validation_clean":true}
+  "rejected_alternatives": [
+    {"policy":"retain_fp32_hidden","reason":"zero final-output benefit on the tiny case"},
+    {"policy":"fp32_hidden_fp32_wdown","reason":"0.98% tiny L2 improvement, 2.74% Linf regression, roughly 2x suffix latency"},
+    {"policy":"fp32_ffn_only_checkpoint","reason":"requires a heterogeneous recorder seam without stronger evidence than complete-block control"},
+    {"policy":"checkpoint_interval_4","reason":"barely improves primary final L2 and regresses primary final Linf"},
+    {"policy":"full_a2x4_nominal","reason":"accuracy fallback witness but 56.8% slower than interval-2 on the primary matrix"}
   ],
+  "identification_held_out_split": {
+    "identification_case": "primary_128x1024_ffn4096",
+    "held_out_case": "smaller_expansion_128x1024_ffn2048",
+    "held_out_records_completed": 5,
+    "held_out_direction_supports_selected_policy": true,
+    "cross_vendor_support": 0,
+    "certified": false
+  },
+  "matched_input_disturbance_records": {
+    "complete_block_primary_available": true,
+    "reference": "full GPU A2x4 FP32 output with identical input and weights",
+    "local_suffix_summary": "Tiny matched-input local D is small; Up had the largest recorded local L2 D and M46 RMSNorm the largest recorded local Linf D under non-comparable local authorities.",
+    "complete_depth_summary": "Reduced paths diverge with depth; interval-2 complete-block checkpoints materially reduce the final trajectory.",
+    "records": [
+      {"case":"tiny-near-midpoint-a2x4-gate","path":"gpu_a2x4_fp32","stage":"gate","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.00000127589,"d_linf":0.0000000596046,"gpu_ns":0,"validation_clean":true},
+      {"case":"tiny-near-midpoint-a2x4-up","path":"gpu_a2x4_fp32","stage":"up","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.00000148932,"d_linf":0.0000000782311,"gpu_ns":0,"validation_clean":true},
+      {"case":"tiny-near-midpoint-a2x4-hidden","path":"gpu_a2x4_fp32","stage":"hidden","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.000000065715,"d_linf":0.00000000628643,"gpu_ns":0,"validation_clean":true},
+      {"case":"tiny-near-midpoint-a2x4-wdown","path":"gpu_a2x4_fp32","stage":"wdown","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.0000000408901,"d_linf":0.00000000279397,"gpu_ns":0,"validation_clean":true},
+      {"case":"tiny-near-midpoint-a2x4-ffn-dense","path":"gpu_a2x4_fp32","stage":"ffn_suffix","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.000000315398,"d_linf":0.000000119209,"g_l1":1.00037,"g_l2":1.00064,"g_linf":1.07216,"gpu_ns":122592,"validation_clean":true},
+      {"case":"tiny-near-midpoint-conventional-direct-ffn-dense","path":"gpu_conventional_fp16","stage":"ffn_suffix","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.0,"d_linf":0.0,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05662,"gpu_ns":38912,"validation_clean":true},
+      {"case":"tiny-near-midpoint-conventional-retain-hidden-ffn-dense","path":"gpu_conventional_fp16_retain_fp32_hidden","stage":"ffn_suffix","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.0,"d_linf":0.0,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05662,"gpu_ns":38912,"validation_clean":true},
+      {"case":"tiny-near-midpoint-cooperative-ffn-dense","path":"gpu_cooperative_fp16","stage":"ffn_suffix","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.0,"d_linf":0.0,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05662,"gpu_ns":41984,"validation_clean":true},
+      {"case":"tiny-near-midpoint-fp32-hidden-fp32-wdown-ffn-dense","path":"gpu_conventional_fp16_hidden_fp32_wdown","stage":"ffn_suffix","split":"identification","shape":"tiny-16x128-ffn256","d_l2":0.000000103238,"d_linf":0.0000000596046,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05576,"gpu_ns":78848,"validation_clean":true},
+      {"case":"m46-strided-wide-cancellation","path":"gpu_fp32","stage":"rmsnorm","split":"identification","shape":"tiny-9x128-stride133","d_l2":0.00000121645,"d_linf":0.000000476837,"gpu_ns":7488,"validation_clean":true}
+    ]
+  },
   "controlled_perturbations": {
-    "permanent_generator_families": ["one_coordinate_impulse", "one_token_impulse", "one_channel", "seeded_alternating_sign", "seeded_dense_signed", "observed_residual_aligned", "approximately_decorrelated", "fp16_bin_boundary", "sparse_outlier", "scaled_natural_layer_discrepancy"],
-    "generator_properties": ["seeded", "bitwise_repeatable", "identity_hashed", "L1_L2_Linf_and_support_recorded"],
-    "hardware_records": [
-      {"family":"one_coordinate_impulse","seed":4911,"requested_l2":0.00001,"realized_l2":0.00001,"identity":1649487435440850673},
-      {"family":"one_token_impulse","seed":4912,"requested_l2":0.0009765625,"realized_l2":0.0009765625,"identity":16728567747304020176},
-      {"family":"one_channel","seed":4913,"requested_l2":0.00390625,"realized_l2":0.00390625,"identity":17652321264093284592},
-      {"family":"seeded_alternating_sign","seed":4914,"requested_l2":0.015625,"realized_l2":0.015625,"identity":17989103804408953876},
-      {"family":"seeded_dense_signed","seed":4902,"requested_l2":0.03125,"realized_l2":0.03125,"identity":18002998470195364513},
-      {"family":"observed_residual_aligned","seed":4916,"requested_l2":0.01,"realized_l2":0.01,"identity":1769007483718131583},
-      {"family":"approximately_decorrelated","seed":4917,"requested_l2":0.01,"realized_l2":0.01,"identity":10867879445104512116},
-      {"family":"fp16_bin_boundary","seed":4918,"requested_l2":0.001953125,"realized_l2":0.00195313,"identity":3777039896584886940},
-      {"family":"sparse_outlier","seed":4919,"requested_l2":0.0625,"realized_l2":0.0625,"identity":103853379014901113},
-      {"family":"scaled_natural_layer_discrepancy","seed":4920,"requested_l2":0.02,"realized_l2":0.02,"identity":8550236660990516432}
-    ],
-    "hardware_paths_completed": ["gpu_a2x4_fp32", "gpu_cooperative_fp16", "gpu_conventional_fp16_direct", "gpu_conventional_fp16_retain_fp32_hidden", "gpu_conventional_fp16_hidden_fp32_wdown"],
-    "remaining_hardware_families": 0
+    "families_completed": 10,
+    "families": ["one_coordinate_impulse", "one_token_impulse", "one_channel", "seeded_alternating_sign", "seeded_dense_signed", "observed_residual_aligned", "approximately_decorrelated", "fp16_bin_boundary", "sparse_outlier", "scaled_natural_layer_discrepancy"],
+    "deterministic": true,
+    "identity_hashed": true,
+    "architectural_conclusion": "Suffix global L1/L2 gain is near neutral with direction-local Linf amplification; no catastrophic suffix defect explains depth divergence."
   },
   "gain_records": [
-    {"stage":"complete M47 FFN suffix","path":"gpu_a2x4_fp32","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00037,"l2":1.00064,"linfinity":1.07216},"classification":"near-neutral L1/L2 with direction-local Linf amplification","validation_clean":true},
-    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"near-neutral L1/L2 with direction-local Linf amplification","validation_clean":true},
-    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_retain_fp32_hidden","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"identical to direct-packed final boundary on this case","validation_clean":true},
-    {"stage":"complete M47 FFN suffix","path":"gpu_cooperative_fp16","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05662},"classification":"same reduced realization as conventional for this tiny case","validation_clean":true},
-    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_hidden_fp32_wdown","split":"identification","direction":"seeded_dense_signed","magnitude_l2":0.03125,"g":{"l1":1.00018,"l2":1.00032,"linfinity":1.05576},"classification":"near-neutral global gain; no material gain reduction on this case","validation_clean":true}
-  ],
-  "raw_gain_records": [
-    {"path":"gpu_a2x4_fp32","family":1,"identity":1649487435440850673,"g_l1":1.2619,"g_l2":1.00713,"g_linf":1.00595,"max_token":1.00713,"max_channel":1.00595},
-    {"path":"gpu_a2x4_fp32","family":2,"identity":16728567747304020176,"g_l1":1.00011,"g_l2":1.00011,"g_linf":1.00622,"max_token":1.00011,"max_channel":1.00622},
-    {"path":"gpu_a2x4_fp32","family":3,"identity":17652321264093284592,"g_l1":1.17758,"g_l2":1.00105,"g_linf":1.00098,"max_token":1.00116,"max_channel":1.00088},
-    {"path":"gpu_a2x4_fp32","family":4,"identity":17989103804408953876,"g_l1":1.00013,"g_l2":1.00014,"g_linf":1.00639,"max_token":1.00016,"max_channel":1.00607},
-    {"path":"gpu_a2x4_fp32","family":5,"identity":18002998470195364513,"g_l1":1.00037,"g_l2":1.00064,"g_linf":1.07216,"max_token":1.00784,"max_channel":1.0147},
-    {"path":"gpu_a2x4_fp32","family":6,"identity":1769007483718131583,"g_l1":1.00118,"g_l2":1.00046,"g_linf":1.02602,"max_token":1.00126,"max_channel":1.02272},
-    {"path":"gpu_a2x4_fp32","family":7,"identity":10867879445104512116,"g_l1":0.999442,"g_l2":0.999592,"g_linf":1.03406,"max_token":1.00119,"max_channel":1.01316},
-    {"path":"gpu_a2x4_fp32","family":8,"identity":3777039896584886940,"g_l1":1.00327,"g_l2":0.999505,"g_linf":1.01984,"max_token":1.00091,"max_channel":1.00747},
-    {"path":"gpu_a2x4_fp32","family":9,"identity":103853379014901113,"g_l1":1.06066,"g_l2":1.00019,"g_linf":1.01007,"max_token":1.00229,"max_channel":1.0102},
-    {"path":"gpu_a2x4_fp32","family":10,"identity":8550236660990516432,"g_l1":1.00057,"g_l2":1.00028,"g_linf":1.01713,"max_token":1.00157,"max_channel":1.0114},
-    {"path":"gpu_conventional_fp16_direct","family":1,"identity":1649487435440850673,"g_l1":1.0,"g_l2":1.0,"g_linf":1.0,"max_token":1.0,"max_channel":1.0},
-    {"path":"gpu_conventional_fp16_direct","family":2,"identity":16728567747304020176,"g_l1":0.994108,"g_l2":0.99499,"g_linf":1.08909,"max_token":0.99499,"max_channel":1.08909},
-    {"path":"gpu_conventional_fp16_direct","family":3,"identity":17652321264093284592,"g_l1":1.17805,"g_l2":1.00095,"g_linf":1.00232,"max_token":1.00313,"max_channel":1.00069},
-    {"path":"gpu_conventional_fp16_direct","family":4,"identity":17989103804408953876,"g_l1":1.00032,"g_l2":1.00035,"g_linf":1.03194,"max_token":1.00209,"max_channel":1.00893},
-    {"path":"gpu_conventional_fp16_direct","family":5,"identity":18002998470195364513,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05662,"max_token":1.00544,"max_channel":1.01057},
-    {"path":"gpu_conventional_fp16_direct","family":6,"identity":1769007483718131583,"g_l1":1.00219,"g_l2":1.00128,"g_linf":1.0488,"max_token":1.00489,"max_channel":1.03467},
-    {"path":"gpu_conventional_fp16_direct","family":7,"identity":10867879445104512116,"g_l1":0.999586,"g_l2":1.00011,"g_linf":1.07982,"max_token":1.00667,"max_channel":1.02111},
-    {"path":"gpu_conventional_fp16_direct","family":8,"identity":3777039896584886940,"g_l1":1.0,"g_l2":1.0,"g_linf":1.0,"max_token":1.0,"max_channel":1.0},
-    {"path":"gpu_conventional_fp16_direct","family":9,"identity":103853379014901113,"g_l1":1.05976,"g_l2":1.0002,"g_linf":1.01013,"max_token":1.00224,"max_channel":1.01026},
-    {"path":"gpu_conventional_fp16_direct","family":10,"identity":8550236660990516432,"g_l1":1.00061,"g_l2":1.00027,"g_linf":1.01552,"max_token":1.00137,"max_channel":1.00962},
-    {"path":"gpu_conventional_fp16_retain_fp32_hidden","equal_to":"gpu_conventional_fp16_direct","families":[1,2,3,4,5,6,7,8,9,10],"bitwise_equal_final_outputs":true},
-    {"path":"gpu_cooperative_fp16","equal_to":"gpu_conventional_fp16_direct","families":[1,2,3,4,5,6,7,8,9,10],"bitwise_equal_final_outputs":true},
-    {"path":"gpu_conventional_fp16_hidden_fp32_wdown","family":5,"identity":18002998470195364513,"g_l1":1.00018,"g_l2":1.00032,"g_linf":1.05576,"max_token":1.00549,"max_channel":1.01048}
+    {"stage":"complete_M47_FFN_suffix","path":"a2x4_fp32","g_l2":1.00064,"g_linf":1.07216},
+    {"stage":"complete_M47_FFN_suffix","path":"conventional_fp16","g_l2":1.00032,"g_linf":1.05662},
+    {"stage":"complete_M47_FFN_suffix","path":"cooperative_fp16","g_l2":1.00032,"g_linf":1.05662},
+    {"stage":"complete_M47_FFN_suffix","path":"fp32_hidden_fp32_wdown","g_l2":1.00032,"g_linf":1.05576}
   ],
   "fp64_witness_records": [
-    {"operation":"selected cancellation-heavy dot","operand_count":6,"cpu_fp32_accumulation":0.9999,"cpu_fp64_accumulation":1.9999,"absolute_accumulation_difference":1.0,"interpretation":"scalar FP32 order loses one unit in this selected witness"},
-    {"operation":"selected canonical-FP16-operand dot","operand_count":6,"cpu_fp32_accumulation":1.99976,"cpu_fp64_accumulation":1.99976,"interpretation":"after operand quantization this selected order adds no visible accumulation discrepancy"},
-    {"operation":"selected RMSNorm row","element_count":6,"cpu_fp32_sum_of_squares":2.0e16,"cpu_fp64_sum_of_squares":2.0e16,"cpu_fp32_inv_rms":1.73205e-8,"cpu_fp64_inv_rms":1.73205e-8,"interpretation":"printed precision shows no visible InvRms separation; full selected GPU dot/oracle matrix remains pending"}
+    {"operation":"selected_cancellation_heavy_dot","cpu_fp32":0.9999,"cpu_fp64":1.9999,"absolute_difference":1.0},
+    {"operation":"canonical_fp16_operand_dot","cpu_fp32":1.99976,"cpu_fp64":1.99976},
+    {"operation":"selected_rmsnorm_row","visible_difference_at_recorded_precision":false}
   ],
-  "mitigation_ab": [
-    {"mitigation":"baseline_conventional_direct","identification_error_reduction":0.0,"held_out_error_reduction":null,"latency_cost_us":0.0,"memory_cost_bytes":0,"generalizes":false,"status":"identification baseline only"},
-    {"mitigation":"retain_fp32_hidden","identification_error_reduction":0.0,"held_out_error_reduction":null,"latency_cost_us":2.048,"memory_cost_bytes":16384,"generalizes":false,"status":"Hidden bits change, but immediate FP16 Wdown packing erases the final-output difference on the tiny case"},
-    {"mitigation":"fp32_hidden_fp32_wdown","comparison_authority":"FP64-computed complete FFN rounded once to float output","identification_l2_error_reduction":0.009804,"identification_linf_error_reduction":-0.027397,"held_out_error_reduction":null,"latency_cost_us":40.960,"memory_cost_bytes":16384,"generalizes":false,"eligible":false,"status":"genuine FP32 Hidden consumption measured; tiny L2 improves about 0.98%, Linf regresses about 2.74%, and cost roughly doubles"},
-    {"mitigation":"stage_selective_a2x4_fp32_ffn","comparison_authority":"FP64-computed complete FFN rounded once to float output","identification_l2_error_reduction":0.997160,"held_out_error_reduction":null,"latency_cost_us":85.376,"memory_cost_bytes":0,"generalizes":false,"eligible":false,"status":"complete FFN upper-bound witness only; narrower Gate/Up and Wdown-only held-out comparisons remain pending"},
-    {"mitigation":"periodic_fp32_checkpoint","identification_error_reduction":null,"held_out_error_reduction":null,"latency_cost_us":null,"memory_cost_bytes":null,"generalizes":false,"status":"not complete; unsafe mixed-path fixed-stack prototype was withdrawn rather than retained"},
-    {"mitigation":"full_a2x4_fp32","identification_error_reduction":null,"held_out_error_reduction":null,"latency_cost_us":84.864,"memory_cost_bytes":null,"generalizes":false,"status":"tiny FFN witness only; M49 primary four-layer A2x4 accuracy witness remains the inherited comparison"}
-  ],
-  "performance": {
-    "timing_samples_per_policy": 4,
-    "a2x4_fp32_ffn_gpu_ns": [122752, 165440, 122816, 122496],
-    "conventional_direct_ffn_gpu_ns": [37888, 63488, 38912, 38912],
-    "conventional_retain_hidden_ffn_gpu_ns": [39936, 64512, 38912, 39936],
-    "cooperative_fp16_ffn_gpu_ns_latest": 41984,
-    "fp32_hidden_fp32_wdown_ffn_gpu_ns_latest": 78848,
-    "retain_hidden_latency_delta_us": [2.048, 1.024, 0.0, 1.024],
-    "a2x4_latency_delta_us": [84.864, 101.952, 83.904, 83.584],
-    "timing_state_controlled": false,
-    "warm_audit_buffer_allocations": 0,
-    "product_dispatch_delta": 0,
-    "product_barrier_delta": 0,
-    "product_readback_delta": 0,
-    "timing_claim": "diagnostic only; not a stable RTX performance estimate"
-  },
-  "depth_propagation": {
-    "source":"M49 primary hardware matrix",
-    "conventional_ffn_max_abs_by_layer":[0.000115156,0.0354118,1.36608,2.17557],
-    "cooperative_ffn_max_abs_by_layer":[0.000115156,0.0355415,1.20667,1.66956],
-    "a2x4_fp32_ffn_max_abs_by_layer":[0.00000393391,0.00053215,0.0125732,0.0393524],
-    "m49a_checkpoint_result":"not available",
-    "fp32_hidden_fp32_wdown_trajectory":"not available; this progression measured local Wdown and one FFN only"
-  },
-  "envelopes": [
-    {"stage":"complete M47 FFN suffix","path":"gpu_a2x4_fp32","shape_regime":"tiny-16x128-ffn256","input_weight_corpus":"near_fp16_midpoint plus deterministic modular weights","perturbation_families":["seeded_dense_signed"],"d_bound_l2":0.000000315398,"g_bound_l2":1.00064,"bias_bound":0.0000000000582077,"identification_support":1,"held_out_support":0,"held_out_pass":false,"certified":false,"extrapolation_policy":"reject","mitigation_state":"none","hardware_semantic_identity":"see top-level hardware_semantic_identity"},
-    {"stage":"complete M47 FFN suffix","path":"gpu_conventional_fp16_direct","shape_regime":"tiny-16x128-ffn256","input_weight_corpus":"near_fp16_midpoint plus deterministic modular weights","perturbation_families":["seeded_dense_signed"],"d_bound_l2":0.0,"g_bound_l2":1.00032,"bias_bound":0.0,"identification_support":1,"held_out_support":0,"held_out_pass":false,"certified":false,"extrapolation_policy":"reject","mitigation_state":"baseline","hardware_semantic_identity":"see top-level hardware_semantic_identity"}
-  ],
-  "shadow_hsfm_input_contract": {
-    "features":["stage_local_d","inherited_e","g_regime","bias","recurrence","channel_concentration","activation_magnitude","fp16_boundary_density","canary_projections","current_path","candidate_mitigation_cost","confidence","held_out_validity"],
-    "regimes":["nominal","bounded_drift","high_injection","high_gain","checkpoint_recommended","fp32_promotion_recommended","reference_suspect","audit_required"],
-    "product_authority":false,
-    "controller_calibration_ready":false
-  },
-  "canary_calibration": {
-    "metric_implementation":"Pearson correlation plus confusion matrix and false-positive/false-negative rates",
-    "permanent_calculation_test":"passed",
-    "native_full_audit_cases":0,
-    "held_out_cases":0,
-    "detects_first_ffn_breach":null,
-    "detects_attention_gain":null,
-    "detects_mitigation_success_failure":null,
-    "semantic_defect_witness":null,
-    "status":"hardware calibration pending"
-  },
-  "oct_import_provenance": {
-    "mode":"native-rtx3070-vulkan",
-    "synthetic_mode":"prometheus.m49.synthetic-design-lab-only",
-    "typed_projection":"Experiments/PrometheusNumericalHeterogeneityLab/M1/M1.native_rtx3070.octagon",
-    "raw_source":"internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json",
-    "silent_fallback":false,
-    "json_parser_gap":"Oct standard library exposes JSON construction but no typed JSON parse API; M1 uses a checked Octagon projection bound to this JSON by SHA-256",
-    "held_out_reported_separately":true,
-    "utility_fit": {
-      "algorithm":"ridge-normal-equations-lu-v1",
-      "identification_rows":10,
-      "held_out_rows":0,
-      "feature_names":["DisturbanceL2Micro","DisturbanceLInfinityTenNano","GpuHundredMicroseconds"],
-      "feature_sign_constraints":["nonpositive","nonpositive","nonpositive"],
-      "weights":[0.15161060135735172,0.06076569517705053,-0.3622479648609334],
-      "bias":-0.529778,
-      "training_mse":0.0651465839129063,
-      "coefficient_signs_valid":false,
-      "leave_one_out_max_weight_delta":2.631069138115916,
-      "stable":false,
-      "certified":false,
-      "fitted_selected_path":"gpu_conventional_fp16",
-      "authored_selected_path":"gpu_conventional_fp16",
-      "uniform_selected_path":"gpu_conventional_fp16",
-      "held_out_baseline_comparison_available":false,
-      "selected_score_contributions":[-0.1170012173516959,-0.035338969144094255,-0.05594737521300778],
-      "selected_score_bias":-0.529778,
-      "selected_score":-0.7380655617087979,
-      "score_quantization_scale":1000000.0,
-      "product_authority_changed":false
+  "final_hardware_ab": {
+    "timing_samples_per_policy": 5,
+    "error_reference": "full_a2x4_fp32",
+    "primary": {
+      "shape": {"layers":4,"tokens":128,"model_width":1024,"ffn_width":4096},
+      "records": [
+        {"policy":"cooperative_fp16","l2_by_layer":[0.0301425,2.62749,440.602,1325.63],"linf_by_layer":[0.00160116,0.13884,6.97116,9.45911],"gpu_median_ns":15232960,"e2e_median_ns":22643200,"retained_bytes":696288256,"dispatches":396,"submits":1,"warm_allocations":0,"hash_changes":0},
+        {"policy":"conventional_fp16","l2_by_layer":[0.0301331,2.62544,441.551,1383.34],"linf_by_layer":[0.00160116,0.13908,7.24781,9.3808],"gpu_median_ns":32774720,"e2e_median_ns":40445800,"retained_bytes":696288256,"dispatches":396,"submits":1,"warm_allocations":0,"hash_changes":0},
+        {"policy":"full_a2x4_fp32","l2_by_layer":[0,0,0,0],"linf_by_layer":[0,0,0,0],"gpu_median_ns":48765472,"e2e_median_ns":54917400,"retained_bytes":696288256,"dispatches":296,"submits":1,"warm_allocations":0,"hash_changes":0},
+        {"policy":"checkpoint_interval_2","l2_by_layer":[0.0301425,2.7104,403.119,592.05],"linf_by_layer":[0.00160116,0.147038,2.93076,4.05853],"gpu_median_ns":31089344,"e2e_median_ns":37775200,"retained_bytes":696288256,"dispatches":346,"submits":1,"warm_allocations":0,"hash_changes":0},
+        {"policy":"checkpoint_interval_4","l2_by_layer":[0.0301425,2.62749,440.602,1316.04],"linf_by_layer":[0.00160116,0.13884,6.97116,9.68375],"gpu_median_ns":22528704,"e2e_median_ns":29790400,"retained_bytes":696288256,"dispatches":371,"submits":1,"warm_allocations":0,"hash_changes":0}
+      ],
+      "selected_l2_reduction_vs_cooperative": 0.553386,
+      "selected_linf_reduction_vs_cooperative": 0.570935,
+      "selected_gpu_cost_increase_vs_cooperative": 1.0409,
+      "selected_gpu_cost_reduction_vs_full_a2x4": 0.36247
+    },
+    "held_out": {
+      "shape": {"layers":4,"tokens":128,"model_width":1024,"ffn_width":2048},
+      "records": [
+        {"policy":"cooperative_fp16","l2_by_layer":[0.0198358,1.60124,13.6478,147.417],"linf_by_layer":[0.00115895,0.0842228,1.07228,3.26735],"gpu_median_ns":13556736,"e2e_median_ns":21189200,"hash_changes":0},
+        {"policy":"conventional_fp16","l2_by_layer":[0.0198267,1.60079,13.657,125.136],"linf_by_layer":[0.00115669,0.0842628,1.07419,4.45477],"gpu_median_ns":22714368,"e2e_median_ns":30242700,"hash_changes":0},
+        {"policy":"full_a2x4_fp32","l2_by_layer":[0,0,0,0],"linf_by_layer":[0,0,0,0],"gpu_median_ns":42472928,"e2e_median_ns":49156700,"hash_changes":0},
+        {"policy":"checkpoint_interval_2","l2_by_layer":[0.0198358,1.61009,13.9146,131.406],"linf_by_layer":[0.00115895,0.0852203,1.11591,2.48714],"gpu_median_ns":27437568,"e2e_median_ns":34654600,"hash_changes":0},
+        {"policy":"checkpoint_interval_4","l2_by_layer":[0.0198358,1.60124,13.6478,137.918],"linf_by_layer":[0.00115895,0.0842228,1.07228,3.4635],"gpu_median_ns":19923136,"e2e_median_ns":27196200,"hash_changes":0}
+      ],
+      "selected_l2_reduction_vs_cooperative": 0.10861,
+      "selected_linf_reduction_vs_cooperative": 0.23879,
+      "direction_supports_selection": true,
+      "universal_optimality_claimed": false
     }
   },
-  "raw_observations": {
-    "hardware_facts":["PrometheusM49aMatchedInputFfnSuffixAndControlledGainHardwareProof","PrometheusM49aMatchedInputM44HardwareProof","PrometheusM49aMatchedInputM46HardwareProof"],
-    "hardware_fact_result":"pass",
-    "repeated_capture_hashes_stable":true,
-    "validation_warning_count":0,
-    "validation_error_count":0,
-    "source_buffer_usage_fix":"audit-captured Gate, Up, Hidden, and M46 InvRms working buffers declare TRANSFER_SRC; product records no copy or readback",
-    "cooperative_owner":"dedicated audit execution ensures the selected cooperative pipeline before recording and does not reuse the withdrawn validation-dirty prototype",
-    "m46_owner":"dedicated per-slot audit input storage prevents stale usage inheritance and preserves normal M46 recording behavior"
+  "mitigation_ab": [
+    {"mitigation":"cooperative_fp16_baseline","primary_final_l2":1325.63,"held_out_final_l2":147.417,"status":"nominal_fast_path"},
+    {"mitigation":"checkpoint_interval_2","primary_final_l2":592.05,"held_out_final_l2":131.406,"status":"selected_experimental_mvp"},
+    {"mitigation":"checkpoint_interval_4","primary_final_l2":1316.04,"held_out_final_l2":137.918,"status":"rejected_low_primary_benefit"},
+    {"mitigation":"full_a2x4_fp32","primary_final_l2":0,"held_out_final_l2":0,"status":"selected_fallback_witness"}
+  ],
+  "numerical_control_parameters": {
+    "live_tunable_without_shader_recompile": true,
+    "defaults_final": false,
+    "fields": [
+      {"name":"CanaryInterval","default":4,"min":1,"max":64,"scope":"backend_calibrated","invalid_fallback":1},
+      {"name":"CheckpointInterval","default":2,"min":1,"max":32,"scope":"workload_operator","invalid_fallback":1},
+      {"name":"EnterHighGainCount","default":2,"min":1,"max":16,"scope":"operator","invalid_fallback":1},
+      {"name":"ExitHighGainCount","default":3,"min":1,"max":32,"scope":"operator","invalid_fallback":8},
+      {"name":"MaxL2Error","default":0.02,"min":0.0,"max":1.0,"scope":"normalized_backend_family","invalid_fallback":0.0},
+      {"name":"MaxLInfError","default":0.05,"min":0.0,"max":1.0,"scope":"normalized_backend_family","invalid_fallback":0.0},
+      {"name":"MaxGainEstimate","default":1.25,"min":1.0,"max":8.0,"scope":"operator","invalid_fallback":1.0},
+      {"name":"ConfidenceFloor","default":0.75,"min":0.0,"max":1.0,"scope":"backend_device_calibration","invalid_fallback":1.0},
+      {"name":"FallbackCooldown","default":8,"min":1,"max":256,"scope":"operator","invalid_fallback":256},
+      {"name":"AuditSampleCount","default":16,"min":4,"max":64,"scope":"operator_shape_derived","invalid_fallback":64}
+    ],
+    "invalid_record_behavior": "Preserve last valid record, emit audit, never increase authority; without a valid record use Stage 0 and recommend full A2x4 if already unsafe."
+  },
+  "shadow_hsfm": {
+    "states": ["Unidentified","Nominal","BoundedDrift","HighGain","CheckpointRecommended","AuditRequired","FallbackRecommended","ReferenceSuspect","Quarantined"],
+    "hysteresis": {"enter":"EnterHighGainCount","exit":"ExitHighGainCount","fallback_cooldown":"FallbackCooldown","stale_timeout_blocks":"2 * CanaryInterval"},
+    "recovery_path": ["FallbackRecommended", "CheckpointRecommended", "BoundedDrift", "Nominal"],
+    "immediate_quarantine_evidence": ["nonfinite", "replay_mismatch", "lifecycle_fault", "uncertain_completion"],
+    "forbidden_globally": ["post_hoc_correction", "online_weight_update", "generic_scheduler", "stale_evidence_authority"]
+  },
+  "canary_calibration": {
+    "features": ["16_shape_derived_coordinates", "seeded_signed_projection_a", "seeded_signed_projection_b", "absolute_projection", "maximum_absolute_value", "finite_flag", "output_hash", "replay_hash"],
+    "full_tensor_readback_every_block": false,
+    "maximum_record_bytes": 256,
+    "maximum_added_dispatches": 1,
+    "maximum_added_submits": 0,
+    "target_gpu_overhead_fraction": 0.01,
+    "primary_samples": 20,
+    "primary_pearson": 0.997703,
+    "held_out_samples": 20,
+    "held_out_pearson": 0.993052,
+    "provisional_threshold": 0.000001,
+    "observed_false_positive_rate": 0.0,
+    "observed_false_negative_rate": 0.0,
+    "host_full_tensor_calibration_ns_per_sample_primary": 1379410,
+    "host_full_tensor_calibration_ns_per_sample_held_out": 1386780,
+    "production_threshold_certified": false
+  },
+  "envelopes": {
+    "raw_shape_dependent_thresholds_forbidden": true,
+    "normalized_defaults_experimental": true,
+    "certified": false,
+    "extrapolation_policy": "audit_and_reduce_authority"
+  },
+  "oct_import_provenance": {
+    "toolkit": "Statistics linear utility fitting",
+    "authored_feature_names": ["normalized_l2_error", "normalized_linf_error", "normalized_time"],
+    "authored_weights": [-0.60, -0.30, -0.10],
+    "authored_bias": 0.0,
+    "fitted_candidate_weights": [0.15161060135735172, 0.06076569517705053, -0.3622479648609334],
+    "fitted_candidate_bias": -0.529778,
+    "coefficient_signs_valid": false,
+    "leave_one_out_max_weight_delta": 2.631069138115916,
+    "held_out_rows_in_comparable_fit_corpus": 0,
+    "certified": false,
+    "runtime_default": "authored",
+    "fitted_model_authority": "shadow_only",
+    "product_authority_changed": false
+  },
+  "rollout_stages": [
+    {"stage":0,"name":"observer_only","default":true,"action_authority":false},
+    {"stage":1,"name":"shadow_recommendation","action_authority":false},
+    {"stage":2,"name":"bounded_checkpoint","allowed_action":"fixed_interval_2_complete_block"},
+    {"stage":3,"name":"bounded_fallback","allowed_action":"full_a2x4_for_cooldown"}
+  ],
+  "m49b_one_shot": {
+    "runtime_owner": "M48 fixed-stack logical stream",
+    "new_native_owner": "reactor_numerical_control.h/.c",
+    "observer_record_bounded": true,
+    "generic_scheduler": false,
+    "lifecycle_identity": ["logical_stream", "shape", "backend_semantic_identity", "weight_generations", "slot_generation", "parameter_version"],
+    "artifact_schema": "prometheus.m49b.numerical-control.v1",
+    "performance_counters": ["canary_gpu_ns", "canary_cpu_ns", "readback_ns", "checkpoint_blocks", "fallback_blocks", "dispatch_delta", "submit_delta", "readback_delta", "state_dwell", "transitions", "suppressed_actions", "quarantines"],
+    "fault_injection": ["canary_breach", "nonfinite", "high_gain", "low_confidence", "stale_parameters", "reference_disagreement", "missing_a2x4", "recording_failure", "uncertain_completion"],
+    "success_criterion": "Deterministic observer and HSFM, bounded interval-2 policy, safe full-A2x4 fallback, centralized tuning, measured overhead, primary improvement, no severe bounded held-out regression, clean lifecycle and artifacts, no generic scheduler."
+  },
+  "validation": {
+    "windows_msvc_build": "passed",
+    "primary_hardware_ab": "passed",
+    "held_out_hardware_ab": "passed",
+    "selected_policy_repeatability": "bitwise_5_of_5_primary_and_held_out",
+    "parameter_pattern_planning_test": "passed",
+    "product_override_rejection_test": "passed",
+    "warm_allocation": 0,
+    "validation_errors": 0,
+    "remaining_matrix_status": "recorded_at_closeout"
+  },
+  "dvt_handoff": {
+    "vendor": "AMD",
+    "begins_after": "M49b",
+    "required_shapes": ["primary", "smaller_expansion", "awkward", "more_tokens", "token_boundary"],
+    "requirements": ["same replay-fixed matrix", "verify cooperative feature/fallback", "measure canary overhead", "compare intervals 1/2/4", "calibrate normalized thresholds", "exercise all fault injections", "test authority stages 0-3", "no device-name branches", "do not copy RTX raw thresholds"]
   },
   "unsupported_claims": [
-    "Matched-input M44, M46, and cooperative M47 tiny witnesses exist; no complete full-block, primary-shape, or held-out suffix matrix is claimed.",
-    "The tiny FFN has a ten-direction/magnitude gain surface; no cross-stage, cross-shape, or held-out gain surface is claimed.",
-    "No selected Gate/Up/Wdown/M44 GPU-to-FP64 dot comparison is claimed yet.",
-    "No periodic FP32 checkpoint hardware result is claimed.",
-    "No mitigation has held-out support or is viable for product authority.",
-    "No provisional envelope is certified.",
-    "No native canary threshold, false rate, or controller threshold is claimed.",
-    "No M48 EVT resumption, AMD DVT, CUDA/PTX comparison, correction filter, or automatic selector is authorized."
+    "A2x4 FP32 is an accuracy witness, not mathematical truth.",
+    "One RTX held-out shape does not certify cross-shape, cross-family, cross-vendor, or production behavior.",
+    "Checkpoint interval 2 is an experimental MVP default, not a proven optimum.",
+    "Canary thresholds and <=1% production overhead are not yet established.",
+    "The fitted utility model is not stable, sign-valid, held-out supported, or authoritative.",
+    "No M48 EVT resumption, AMD DVT, CUDA/PTX, post-hoc correction, generic scheduler, or product automatic selector is authorized."
   ],
   "exact_source_hashes": {
-    "reactor_numerical_research.c":"ea15ce3e2e4c2ca370a70a9d6ac68644498a80331f1be8fbbbc633d091405eac",
-    "reactor_numerical_research.h":"ec07af331d60da5c6004398c1050fd42f1dbd591a45be28a8620ecc428b8a33b",
-    "reactor_vulkan.h":"c052501efbb3b25b7480c6c1ffad11d12ca4ddc2ad6acaa6f125528a0a0ead69",
-    "reactor_vulkan_fused_reduction.c":"3501bd0e47ac8bd8928bd5be37af3f3f50669e56057dd0473311da917a8eacde",
-    "reactor_attention_tests.cpp":"2491e2a6265ff5fa3703c3c4895f5bb9ee895f9797d6a43dcbd35f17fdb09998",
-    "reactor_m49_numerical_research_tests.cpp":"c65ff195711f70b64f6825b3e90804eaa95d611fa77f70c1f6204ea889b068d3"
+    "reactor_numerical_research.c": "ea15ce3e2e4c2ca370a70a9d6ac68644498a80331f1be8fbbbc633d091405eac",
+    "reactor_numerical_research.h": "ec07af331d60da5c6004398c1050fd42f1dbd591a45be28a8620ecc428b8a33b",
+    "reactor_vulkan.h": "d5139f39ef0f40fb4643470477d8764191bfaa567e7c386e458cd3eb9f14e393",
+    "reactor_vulkan_fused_reduction.c": "1151fe4c95edd1882b94d1ce61ead809c45e70556fc47edb6293eb691efcd141",
+    "reactor_vulkan_transformer.c": "a20a69ced5ebbfe9a5e72b4d9430f56bcc95812069aba01771eb6992d1bfcda5",
+    "reactor_attention_tests.cpp": "29c393e0c381b6761c9f6afb5026a86c1405de9f08ff8f1c392df862b24addd1",
+    "reactor_m49_numerical_research_tests.cpp": "22a5827b9ee5e1f0465f722573744faaaa7ac68a4a01449b9e63bdf9fe0702f2"
   }
 }
