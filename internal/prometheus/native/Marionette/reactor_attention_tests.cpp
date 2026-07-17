@@ -4129,6 +4129,303 @@ FACT(PrometheusM47CompleteTransformerBlockHardwareProof)
     prom_reactor_runtime_destroy_impl(runtime);
 }
 
+FACT(PrometheusM49aMatchedInputFfnSuffixAndControlledGainHardwareProof)
+{
+    EnvironmentValue validationEnvironment("PROMETHEUS_VK_VALIDATION", "1");
+    void* runtime = nullptr;
+    if (prom_reactor_runtime_create_impl(nullptr, &runtime) != PROM_OK || runtime == nullptr)
+        SKIP("Vulkan runtime unavailable");
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                 "M49a Vulkan services are available");
+    constexpr std::uint32_t tokens = 16u;
+    constexpr std::uint32_t modelWidth = 128u;
+    constexpr std::uint32_t ffnWidth = 256u;
+    constexpr std::uint64_t inputGeneration = 490100u;
+    const std::array<std::uint64_t, PROM_M47_WEIGHT_COUNT> generations{{
+        490101u, 490102u, 490103u}};
+    std::vector<float> n(static_cast<std::size_t>(tokens) * modelWidth);
+    ASSERT_TRUE(prom_num_generate_input(PROM_NUM_INPUT_NEAR_FP16_MIDPOINT, 4901u,
+                                        n.data(), tokens, modelWidth) != 0,
+                "M49a deterministic matched N generates");
+    std::array<std::vector<float>, PROM_M47_WEIGHT_COUNT> weights;
+    weights[PROM_M47_WEIGHT_GATE].resize(static_cast<std::size_t>(modelWidth) * ffnWidth);
+    weights[PROM_M47_WEIGHT_UP].resize(static_cast<std::size_t>(modelWidth) * ffnWidth);
+    weights[PROM_M47_WEIGHT_DOWN].resize(static_cast<std::size_t>(ffnWidth) * modelWidth);
+    for (std::size_t index = 0u; index < weights[PROM_M47_WEIGHT_GATE].size(); ++index) {
+        weights[PROM_M47_WEIGHT_GATE][index] =
+            static_cast<float>(static_cast<int>((index * 17u + 3u) % 41u) - 20) / 256.0f;
+        weights[PROM_M47_WEIGHT_UP][index] =
+            static_cast<float>(static_cast<int>((index * 19u + 5u) % 43u) - 21) / 256.0f;
+    }
+    for (std::size_t index = 0u; index < weights[PROM_M47_WEIGHT_DOWN].size(); ++index)
+        weights[PROM_M47_WEIGHT_DOWN][index] =
+            static_cast<float>(static_cast<int>((index * 23u + 7u) % 47u) - 23) / 256.0f;
+    for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind) {
+        prom_m47_weight_prepare_request prepare{};
+        prepare.values = weights[kind].data();
+        prepare.element_count = weights[kind].size();
+        prepare.kind = kind;
+        prepare.model_width = modelWidth;
+        prepare.ffn_width = ffnWidth;
+        prepare.generation = generations[kind];
+        prom_m47_weight_prepare_result prepared{};
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m47_prepare_weight(runtime, &prepare, &prepared),
+                     "M49a prepares exact FFN weight generations");
+    }
+    struct PathCase {
+        const char* name;
+        std::uint32_t path;
+        std::uint32_t gating;
+        std::uint32_t residual;
+    };
+    const std::array<PathCase, 3u> paths{{
+        {"a2x4_fp32", PROM_M47_PROJECTION_A2X4_FP32, PROM_M47_GATING_FUSED_FP32,
+         PROM_M47_RESIDUAL_SEPARATE_OUTPUT},
+        {"conventional_fp16_direct", PROM_M47_PROJECTION_CONVENTIONAL_FP16,
+         PROM_M47_GATING_FUSED_DIRECT_PACKED, PROM_M47_RESIDUAL_SEPARATE_OUTPUT},
+        {"conventional_fp16_retain_fp32_hidden", PROM_M47_PROJECTION_CONVENTIONAL_FP16,
+         PROM_M47_GATING_FUSED_FP32, PROM_M47_RESIDUAL_SEPARATE_OUTPUT},
+    }};
+    struct PerturbationCase {
+        const char* name;
+        std::uint32_t family;
+        std::uint64_t seed;
+        double magnitude;
+    };
+    const std::array<PerturbationCase, 10u> perturbations{{
+        {"one_coordinate_fp32_only", PROM_NUM_PERTURB_ONE_COORDINATE, 4911u, 0.00001},
+        {"one_token_near_ulp", PROM_NUM_PERTURB_ONE_TOKEN, 4912u, 0.0009765625},
+        {"one_channel_several_ulp", PROM_NUM_PERTURB_ONE_CHANNEL, 4913u, 0.00390625},
+        {"alternating_sign", PROM_NUM_PERTURB_ALTERNATING_SIGN, 4914u, 0.015625},
+        {"dense_signed", PROM_NUM_PERTURB_DENSE_SIGNED, 4902u, 0.03125},
+        {"residual_aligned", PROM_NUM_PERTURB_ALIGNED_RESIDUAL, 4916u, 0.01},
+        {"residual_decorrelated", PROM_NUM_PERTURB_DECORRELATED_RESIDUAL, 4917u, 0.01},
+        {"fp16_bin_boundary", PROM_NUM_PERTURB_FP16_BIN_BOUNDARY, 4918u, 0.001953125},
+        {"sparse_outlier", PROM_NUM_PERTURB_SPARSE_OUTLIER, 4919u, 0.0625},
+        {"natural_layer_scale", PROM_NUM_PERTURB_NATURAL_LAYER_DISCREPANCY, 4920u, 0.02},
+    }};
+    std::vector<float> observedResidual(n.size());
+    std::vector<float> naturalDiscrepancy(n.size());
+    for (std::size_t index = 0u; index < n.size(); ++index) {
+        observedResidual[index] =
+            static_cast<float>(static_cast<int>((index * 13u + 5u) % 23u) - 11) /
+            65536.0f;
+        naturalDiscrepancy[index] =
+            static_cast<float>(static_cast<int>((index * 29u + 7u) % 31u) - 15) /
+            32768.0f;
+    }
+    const std::uint64_t inputHash = prom_num_hash_float_bits(n.data(), n.size());
+    for (const PathCase& path : paths) {
+        if (path.path == PROM_M47_PROJECTION_COOPERATIVE &&
+            services.cooperative_matrix_feature_enabled == 0u) continue;
+        std::vector<float> gate(static_cast<std::size_t>(tokens) * ffnWidth);
+        std::vector<float> up(gate.size());
+        std::vector<float> hidden(gate.size());
+        std::vector<float> down(n.size());
+        std::vector<float> expected(n.size());
+        prom_m47_reference_request reference{};
+        reference.n = n.data();
+        reference.wgate = weights[PROM_M47_WEIGHT_GATE].data();
+        reference.wup = weights[PROM_M47_WEIGHT_UP].data();
+        reference.wdown = weights[PROM_M47_WEIGHT_DOWN].data();
+        reference.gate = gate.data();
+        reference.up = up.data();
+        reference.hidden = hidden.data();
+        reference.down = down.data();
+        reference.output = expected.data();
+        reference.n_element_count = n.size();
+        reference.wgate_element_count = weights[PROM_M47_WEIGHT_GATE].size();
+        reference.wup_element_count = weights[PROM_M47_WEIGHT_UP].size();
+        reference.wdown_element_count = weights[PROM_M47_WEIGHT_DOWN].size();
+        reference.output_element_count = expected.size();
+        reference.tokens = tokens;
+        reference.model_width = modelWidth;
+        reference.ffn_width = ffnWidth;
+        reference.n_row_stride = modelWidth;
+        reference.output_row_stride = modelWidth;
+        reference.projection_path = path.path;
+        ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_cpu_reference(&reference),
+                     "matched-input CPU FFN semantic reference succeeds");
+
+        std::vector<float> actual(expected.size());
+        prom_m49a_ffn_suffix_request request{};
+        request.matched_n = n.data();
+        request.matched_n_element_count = n.size();
+        request.capture_output = actual.data();
+        request.capture_output_element_count = actual.size();
+        request.capture_stage = PROM_M49A_CAPTURE_FFN_SUFFIX;
+        request.tokens = tokens;
+        request.model_width = modelWidth;
+        request.ffn_width = ffnWidth;
+        request.projection_path = path.path;
+        request.gating_strategy = path.gating;
+        request.residual_strategy = path.residual;
+        request.input_generation = inputGeneration;
+        request.reference_input_hash = inputHash;
+        request.exact_source_hash = 0x49a00001u;
+        for (std::uint32_t kind = 0u; kind < PROM_M47_WEIGHT_COUNT; ++kind)
+            request.required_weight_generation[kind] = generations[kind];
+        prom_m49a_ffn_suffix_result result{};
+        const int suffixStatus =
+            prom_reactor_runtime_m49a_execute_ffn_suffix(runtime, &request, &result);
+        if (suffixStatus != PROM_OK)
+            std::fprintf(stderr, "M49a suffix failure path=%s detail=%d stage=%u input_hash=%llu expected_hash=%llu\n",
+                         path.name, result.detail_code, result.stage,
+                         static_cast<unsigned long long>(result.input_hash),
+                         static_cast<unsigned long long>(inputHash));
+        ASSERT_EQUAL(PROM_OK, suffixStatus,
+                     "audit-only matched-input FFN suffix executes on hardware");
+        ASSERT_EQUAL(1u, result.matched_input, "hardware D run enforces exact input identity");
+        ASSERT_EQUAL(1u, result.audit_only, "suffix execution is explicitly audit-only");
+        ASSERT_EQUAL(0u, result.product_authority_changed,
+                     "suffix execution cannot alter product authority");
+        ASSERT_EQUAL(1u, result.no_product_intermediate_readback_change,
+                     "product readback contract remains unchanged");
+        std::vector<double> scratch(actual.size());
+        prom_num_error_summary disturbance{};
+        ASSERT_TRUE(prom_num_summarize_error(expected.data(), actual.data(), tokens,
+                                             modelWidth, 1.0e-6, 1.0, 1.0,
+                                             scratch.data(), scratch.size(),
+                                             &disturbance) != 0,
+                    "matched-input local D is measured independently");
+        if (path.gating == PROM_M47_GATING_FUSED_FP32) {
+            struct StageCapture {
+                const char* name;
+                std::uint32_t stage;
+                const std::vector<float>* expectedValues;
+                std::uint32_t channels;
+            };
+            const std::array<StageCapture, 4u> captures{{
+                {"gate", PROM_M49A_CAPTURE_GATE, &gate, ffnWidth},
+                {"up", PROM_M49A_CAPTURE_UP, &up, ffnWidth},
+                {"hidden", PROM_M49A_CAPTURE_HIDDEN, &hidden, ffnWidth},
+                {"wdown", PROM_M49A_CAPTURE_DOWN, &down, modelWidth},
+            }};
+            for (const StageCapture& capture : captures) {
+                std::vector<float> stageOutput(capture.expectedValues->size());
+                prom_m49a_ffn_suffix_request stageRequest = request;
+                stageRequest.capture_stage = capture.stage;
+                stageRequest.capture_output = stageOutput.data();
+                stageRequest.capture_output_element_count = stageOutput.size();
+                prom_m49a_ffn_suffix_result stageResult{};
+                ASSERT_EQUAL(PROM_OK,
+                             prom_reactor_runtime_m49a_execute_ffn_suffix(
+                                 runtime, &stageRequest, &stageResult),
+                             "matched-input major FFN stage capture executes");
+                std::vector<double> stageScratch(stageOutput.size());
+                prom_num_error_summary stageDisturbance{};
+                ASSERT_TRUE(prom_num_summarize_error(
+                                capture.expectedValues->data(), stageOutput.data(), tokens,
+                                capture.channels, 1.0e-6, 1.0, 1.0,
+                                stageScratch.data(), stageScratch.size(),
+                                &stageDisturbance) != 0,
+                            "major FFN stage local D summarizes");
+                ASSERT_TRUE(stageDisturbance.linfinity_norm < 1.0e-2,
+                            "matched-input major FFN stage remains bounded");
+                std::fprintf(stderr,
+                             "M49a matched stage path=%s stage=%s D_l1=%g D_l2=%g D_linf=%g mae=%g rms=%g bias=%g p95=%g p99=%g cosine=%g\n",
+                             path.name, capture.name, stageDisturbance.l1_norm,
+                             stageDisturbance.l2_norm, stageDisturbance.linfinity_norm,
+                             stageDisturbance.mean_absolute_error,
+                             stageDisturbance.rms_error,
+                             stageDisturbance.signed_mean_bias,
+                             stageDisturbance.p95_absolute_error,
+                             stageDisturbance.p99_absolute_error,
+                             stageDisturbance.cosine_similarity);
+            }
+        }
+
+        std::fprintf(stderr,
+                     "M49a matched FFN path=%s D_l2=%g D_linf=%g D_bias=%g gpu_ns=%llu input_hash=%llu replay=%llu\n",
+                     path.name, disturbance.l2_norm, disturbance.linfinity_norm,
+                     disturbance.signed_mean_bias,
+                     static_cast<unsigned long long>(result.ffn.m47_gpu_ns),
+                     static_cast<unsigned long long>(result.input_hash),
+                     static_cast<unsigned long long>(result.replay_identity));
+        for (std::size_t perturbationIndex = 0u;
+             perturbationIndex < perturbations.size(); ++perturbationIndex) {
+            const PerturbationCase& perturbationCase = perturbations[perturbationIndex];
+            std::vector<float> perturbation(n.size());
+            prom_num_perturbation_summary perturbationSummary{};
+            ASSERT_TRUE(prom_num_generate_perturbation(
+                            perturbationCase.family, perturbationCase.seed,
+                            perturbationCase.magnitude, n.data(),
+                            observedResidual.data(), naturalDiscrepancy.data(),
+                            perturbation.data(), tokens, modelWidth,
+                            &perturbationSummary) != 0,
+                        "required controlled perturbation generates for hardware");
+            std::vector<float> perturbed = n;
+            for (std::size_t index = 0u; index < perturbed.size(); ++index)
+                perturbed[index] += perturbation[index];
+            const std::uint64_t perturbedHash =
+                prom_num_hash_float_bits(perturbed.data(), perturbed.size());
+            std::vector<float> perturbedOutput(actual.size());
+            prom_m49a_ffn_suffix_request perturbedRequest = request;
+            perturbedRequest.matched_n = perturbed.data();
+            perturbedRequest.capture_output = perturbedOutput.data();
+            perturbedRequest.input_generation =
+                inputGeneration + 1u + static_cast<std::uint64_t>(perturbationIndex);
+            perturbedRequest.reference_input_hash = perturbedHash;
+            perturbedRequest.exact_source_hash =
+                0x49a00002u + static_cast<std::uint64_t>(perturbationIndex);
+            prom_m49a_ffn_suffix_result perturbedResult{};
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_m49a_execute_ffn_suffix(
+                             runtime, &perturbedRequest, &perturbedResult),
+                         "controlled perturbed FFN suffix executes on hardware");
+            prom_num_gain_summary gain{};
+            ASSERT_TRUE(prom_num_summarize_gain(
+                            n.data(), perturbed.data(), actual.data(),
+                            perturbedOutput.data(), tokens, modelWidth, &gain) != 0,
+                        "controlled real-stage gain is measured");
+            ASSERT_TRUE(gain.l1_gain >= 0.0 && gain.l2_gain >= 0.0 &&
+                            gain.linfinity_gain >= 0.0,
+                        "hardware gain retains multiple norms including contraction");
+            std::fprintf(stderr,
+                         "M49a gain path=%s perturbation=%s family=%u seed=%llu requested_l2=%g realized_l2=%g identity=%llu G_l1=%g G_l2=%g G_linf=%g max_token=%g max_channel=%g\n",
+                         path.name, perturbationCase.name, perturbationCase.family,
+                         static_cast<unsigned long long>(perturbationCase.seed),
+                         perturbationCase.magnitude, perturbationSummary.l2_norm,
+                         static_cast<unsigned long long>(perturbationSummary.identity),
+                         gain.l1_gain, gain.l2_gain, gain.linfinity_gain,
+                         gain.maximum_token_gain, gain.maximum_channel_gain);
+        }
+        prom_m49a_ffn_suffix_result repeated{};
+        std::vector<float> repeatedOutput(actual.size());
+        request.capture_output = repeatedOutput.data();
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m49a_execute_ffn_suffix(runtime, &request, &repeated),
+                     "matched-input suffix repeats");
+        ASSERT_EQUAL(result.capture_hash, repeated.capture_hash,
+                     "matched-input suffix is bitwise deterministic within plan");
+        ASSERT_EQUAL(result.replay_identity, repeated.replay_identity,
+                     "matched-input replay identity repeats");
+        prom_m49a_ffn_suffix_result warm = repeated;
+        for (std::uint32_t run = 0u; run < 6u; ++run) {
+            request.capture_output = repeatedOutput.data();
+            ASSERT_EQUAL(PROM_OK,
+                         prom_reactor_runtime_m49a_execute_ffn_suffix(runtime, &request, &warm),
+                         "audit suffix warms all bounded physical slots");
+        }
+        std::fprintf(stderr,
+                     "M49a warm path=%s allocations=%llu capture_hash=%llu\n",
+                     path.name,
+                     static_cast<unsigned long long>(warm.buffer_allocation_count),
+                     static_cast<unsigned long long>(warm.capture_hash));
+        ASSERT_EQUAL(static_cast<std::uint64_t>(0u), warm.buffer_allocation_count,
+                     "warm audit suffix execution allocates no Vulkan buffer");
+    }
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &services),
+                 "M49a validation services remain available");
+    ASSERT_EQUAL(0u, services.validation_warning_count,
+                 "M49a suffix path is validation-warning clean");
+    ASSERT_EQUAL(0u, services.validation_error_count,
+                 "M49a suffix path is validation-error clean");
+    prom_reactor_runtime_destroy_impl(runtime);
+}
+
 FACT(PrometheusM47ExtensionAbsentUsesDeviceResidentConventionalFallback)
 {
     EnvironmentValue disabled("PROMETHEUS_VK_DISABLE_COOPERATIVE_MATRIX", "1");

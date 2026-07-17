@@ -20,11 +20,11 @@ fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "PrometheusNumericalHeterogeneityLab"
         Version: "0.1.0"
-        Description: "Synthetic identification and shadow-control lab for Prometheus numerical heterogeneity"
+        Description: "Synthetic and native-evidence identification lab for Prometheus numerical heterogeneity"
         Authors: ["Codex"]
         Date: "2026-07-16"
         Kind: "experiment"
-        EntryMilestone: "M0"
+        EntryMilestone: "M1"
         Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
     }
 }

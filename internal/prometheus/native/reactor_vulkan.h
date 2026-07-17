@@ -2243,6 +2243,57 @@ typedef struct prom_m47_mismatch {
   uint64_t m47_replay_id;
 } prom_m47_mismatch;
 
+/* M49a-only host-fed FFN identification entry point. It owns an explicit
+   audit upload/readback and is never considered by product selectors. */
+typedef enum prom_m49a_ffn_capture_stage {
+  PROM_M49A_CAPTURE_GATE = 1u,
+  PROM_M49A_CAPTURE_UP = 2u,
+  PROM_M49A_CAPTURE_HIDDEN = 3u,
+  PROM_M49A_CAPTURE_DOWN = 4u,
+  PROM_M49A_CAPTURE_SECOND_RESIDUAL = 5u,
+  PROM_M49A_CAPTURE_FFN_SUFFIX = 6u,
+} prom_m49a_ffn_capture_stage;
+
+typedef struct prom_m49a_ffn_suffix_request {
+  const float* matched_n;
+  uint64_t matched_n_element_count;
+  float* capture_output;
+  uint64_t capture_output_element_count;
+  uint32_t capture_stage;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t ffn_width;
+  uint32_t projection_path;
+  uint32_t gating_strategy;
+  uint32_t residual_strategy;
+  uint64_t input_generation;
+  uint64_t reference_input_hash;
+  uint64_t required_weight_generation[PROM_M47_WEIGHT_COUNT];
+  uint64_t exact_source_hash;
+} prom_m49a_ffn_suffix_request;
+
+typedef struct prom_m49a_ffn_suffix_result {
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t capture_stage;
+  uint32_t matched_input;
+  uint32_t audit_only;
+  uint32_t product_authority_changed;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t intermediate_host_copy_count;
+  uint32_t no_product_intermediate_readback_change;
+  uint64_t input_hash;
+  uint64_t capture_hash;
+  uint64_t replay_identity;
+  uint64_t capture_gpu_ns;
+  uint64_t upload_gpu_ns;
+  uint64_t end_to_end_ns;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  prom_m47_composed_result ffn;
+} prom_m49a_ffn_suffix_result;
+
 /* M48 repeats the exact M43-M47 block as one fixed, bounded model-shaped
    owner.  The product contract is exactly four homogeneous layers; one- and
    two-layer plans are available only when audit_mode is explicit. */
@@ -3035,6 +3086,9 @@ int prom_reactor_runtime_m47_prepare_weight(void* handle,
 int prom_reactor_runtime_m47_execute_composed(void* handle,
                                               const prom_m47_composed_request* request,
                                               prom_m47_composed_result* out_result);
+int prom_reactor_runtime_m49a_execute_ffn_suffix(
+    void* handle, const prom_m49a_ffn_suffix_request* request,
+    prom_m49a_ffn_suffix_result* out_result);
 uint32_t prom_m48_attention_resource_index(uint32_t head, uint32_t weight_kind);
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
                                           prom_m48_transformer_stack_plan* out_plan);

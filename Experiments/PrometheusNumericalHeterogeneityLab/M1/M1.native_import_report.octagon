@@ -1,0 +1,45 @@
+M1ImportReport {
+    Schema: "prometheus.m49a.oct-native-import.v1"
+    EvidenceAuthority: "native-rtx3070-vulkan"
+    SyntheticAuthority: "prometheus.m49.synthetic-design-lab-only"
+    SourceJsonPath: "internal/prometheus/DevelopmentReport/artifacts/M49a/controlled_stage_gain_and_mitigation_rtx3070.json"
+    SourceJsonSha256: "668a8768fbcb42ef1c386ad73e89b85c079f8d227965408bf157d3b3347cc5f7"
+    NativeRecordCount: (7)
+    Envelope: M1EnvelopeEvaluation {
+        IdentificationSupport: (7)
+        HeldOutSupport: (0)
+        HeldOutFailures: (0)
+        DisturbanceBound: (1.48932e-06)
+        GainBound: (1.00064)
+        HeldOutPassFraction: (0)
+        Certified: false
+        ExtrapolationPolicy: "reject any path, stage, shape, family, or magnitude absent from held-out support"
+    }
+    Mitigations: [M1MitigationRecord {
+        Name: "retain_fp32_hidden"
+        IdentificationErrorReduction: (0)
+        HeldOutErrorReduction: (0)
+        LatencyCostUs: (2.048)
+        MemoryCostBytes: (16384)
+        Generalizes: false
+        Status: "tiny identification only; Wdown FP16 pack erased Hidden difference"
+    }, M1MitigationRecord {
+        Name: "stage_selective_fp32_ffn"
+        IdentificationErrorReduction: (0)
+        HeldOutErrorReduction: (0)
+        LatencyCostUs: (83.68)
+        MemoryCostBytes: (0)
+        Generalizes: false
+        Status: "path measured, but no held-out mitigation comparison"
+    }, M1MitigationRecord {
+        Name: "periodic_fp32_checkpoint"
+        IdentificationErrorReduction: (0)
+        HeldOutErrorReduction: (0)
+        LatencyCostUs: (0)
+        MemoryCostBytes: (0)
+        Generalizes: false
+        Status: "not implemented; mixed-path fixed-stack attempt was withdrawn after validation failure"
+    }]
+    ProductAuthorityChanged: false
+    Interpretation: "native identification imported; no envelope or mitigation is certified without held-out hardware support"
+}

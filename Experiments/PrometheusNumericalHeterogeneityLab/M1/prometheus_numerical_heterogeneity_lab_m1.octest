@@ -1,0 +1,33 @@
+package PrometheusNumericalHeterogeneityLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M1")]
+fn M1NativeAndSyntheticAuthoritiesRemainSeparate() -> Void ! Error {
+    let evidence = M1LoadNativeEvidence()?
+    let report = M1BuildImportReport(evidence)
+    Assert.Equal("native-rtx3070-vulkan", report.EvidenceAuthority, "native RTX evidence is explicit")
+    Assert.Equal("prometheus.m49.synthetic-design-lab-only", report.SyntheticAuthority, "synthetic mode remains separate")
+    Assert.True(report.EvidenceAuthority != report.SyntheticAuthority, "native import cannot silently become synthetic")
+    Assert.Equal(false, report.ProductAuthorityChanged, "Oct analysis has no product authority")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M1")]
+fn M1EnvelopeFitsIdentificationAndRejectsMissingHeldOutSupport() -> Void ! Error {
+    let evidence = M1LoadNativeEvidence()?
+    let envelope = M1EvaluateEnvelope(evidence)
+    Assert.True(envelope.IdentificationSupport > 0, "native identification records imported")
+    Assert.Equal(0, envelope.HeldOutSupport, "held-out records are not fabricated")
+    Assert.Equal(false, envelope.Certified, "identification-only envelope is not certified")
+}
+
+[Artifact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M1")]
+fn M1NativeArtifactsWrite() -> Void ! Error {
+    let _ = M1WriteArtifacts()?
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M1/M1.native_import_report.octagon")?) > 0, "native Octagon report")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_records.csv")?) > 1, "native CSV")
+    Assert.True(Len(IO.Load("Experiments/PrometheusNumericalHeterogeneityLab/M1/native_import_summary.json")?) > 0, "native summary JSON")
+}

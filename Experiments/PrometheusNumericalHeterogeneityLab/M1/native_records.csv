@@ -1,0 +1,8 @@
+case,path,stage,split,shape,inputFamily,weightFamily,perturbation,dL2,dLinf,gL1,gL2,gLinf,gpuNs,validationClean
+tiny-near-midpoint-a2x4-gate,gpu_a2x4_fp32,gate,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,none-matched-input,1.27589e-06,5.96046e-08,0,0,0,0,true
+tiny-near-midpoint-a2x4-up,gpu_a2x4_fp32,up,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,none-matched-input,1.48932e-06,7.82311e-08,0,0,0,0,true
+tiny-near-midpoint-a2x4-hidden,gpu_a2x4_fp32,hidden,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,none-matched-input,6.5715e-08,6.28643e-09,0,0,0,0,true
+tiny-near-midpoint-a2x4-wdown,gpu_a2x4_fp32,wdown,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,none-matched-input,4.08901e-08,2.79397e-09,0,0,0,0,true
+tiny-near-midpoint-a2x4-ffn-dense,gpu_a2x4_fp32,ffn_suffix,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,seeded_dense_signed-l2-0.03125,3.15398e-07,1.19209e-07,1.00037,1.00064,1.07216,122592,true
+tiny-near-midpoint-conventional-direct-ffn-dense,gpu_conventional_fp16,ffn_suffix,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,seeded_dense_signed-l2-0.03125,0,0,1.00018,1.00032,1.05662,38912,true
+tiny-near-midpoint-conventional-retain-hidden-ffn-dense,gpu_conventional_fp16_retain_fp32_hidden,ffn_suffix,identification,tiny-16x128-ffn256,near_fp16_midpoint,deterministic_modular,seeded_dense_signed-l2-0.03125,0,0,1.00018,1.00032,1.05662,38912,true

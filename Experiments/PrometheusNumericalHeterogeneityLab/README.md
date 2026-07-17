@@ -1,8 +1,8 @@
 # Prometheus Numerical Heterogeneity Lab
 
-This experiment is the synthetic design companion to Prometheus M49. It models depth-wise numerical-error recurrence across conventional, cooperative, and A2x4 paths, evaluates source-side mitigation candidates on a separate held-out split, and emits an Octagon report plus CSV, JSON, Markdown, and PNG artifacts.
+M0 is the synthetic design companion to Prometheus M49. M1 separately imports the native M49a RTX evidence through a typed Octagon projection bound to the raw JSON artifact by SHA-256. Native and synthetic authorities are never merged.
 
-The experiment has no product authority. Native matched-input CPU/GPU audits remain the measurement source of truth, and M48 EVT remains postponed while M49 is in progress.
+The experiment has no product authority. Native matched-input CPU/GPU audits remain the measurement source of truth. M1 refuses to certify an identification-only envelope when held-out native support is absent, and M48 EVT remains postponed while M49a is in progress.
 
 Run:
 

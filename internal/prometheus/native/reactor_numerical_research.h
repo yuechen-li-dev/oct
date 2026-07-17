@@ -11,7 +11,7 @@ extern "C" {
 /* M49 is an audit-only numerical system-identification layer.  These types do
    not participate in product dispatch or selector authority. */
 
-#define PROM_NUM_RESEARCH_SCHEMA_VERSION 1u
+#define PROM_NUM_RESEARCH_SCHEMA_VERSION 2u
 #define PROM_NUM_MAX_CANDIDATES 8u
 #define PROM_NUM_MAX_CONSIDERATIONS 6u
 
@@ -20,6 +20,8 @@ typedef enum prom_num_path {
   PROM_NUM_PATH_GPU_A2X4_FP32 = 2u,
   PROM_NUM_PATH_GPU_CONVENTIONAL_FP16 = 3u,
   PROM_NUM_PATH_GPU_COOPERATIVE_FP16 = 4u,
+  PROM_NUM_PATH_CPU_FP16_SIMULATION = 5u,
+  PROM_NUM_PATH_CPU_FP64_ORACLE = 6u,
 } prom_num_path;
 
 typedef enum prom_num_stage {
@@ -35,7 +37,21 @@ typedef enum prom_num_stage {
   PROM_NUM_STAGE_DOWN = 10u,
   PROM_NUM_STAGE_SECOND_RESIDUAL = 11u,
   PROM_NUM_STAGE_COMPLETE_BLOCK = 12u,
+  PROM_NUM_STAGE_FFN_SUFFIX = 13u,
 } prom_num_stage;
+
+typedef enum prom_num_perturbation_family {
+  PROM_NUM_PERTURB_ONE_COORDINATE = 1u,
+  PROM_NUM_PERTURB_ONE_TOKEN = 2u,
+  PROM_NUM_PERTURB_ONE_CHANNEL = 3u,
+  PROM_NUM_PERTURB_ALTERNATING_SIGN = 4u,
+  PROM_NUM_PERTURB_DENSE_SIGNED = 5u,
+  PROM_NUM_PERTURB_ALIGNED_RESIDUAL = 6u,
+  PROM_NUM_PERTURB_DECORRELATED_RESIDUAL = 7u,
+  PROM_NUM_PERTURB_FP16_BIN_BOUNDARY = 8u,
+  PROM_NUM_PERTURB_SPARSE_OUTLIER = 9u,
+  PROM_NUM_PERTURB_NATURAL_LAYER_DISCREPANCY = 10u,
+} prom_num_perturbation_family;
 
 typedef enum prom_num_input_family {
   PROM_NUM_INPUT_LOW_AMPLITUDE = 1u,
@@ -97,8 +113,17 @@ typedef struct prom_num_correlation_summary {
 } prom_num_correlation_summary;
 
 typedef struct prom_num_gain_summary {
+  double input_l1;
   double input_l2;
+  double input_linfinity;
+  double output_l1;
   double output_l2;
+  double output_linfinity;
+  double l1_gain;
+  double l2_gain;
+  double linfinity_gain;
+  double output_natural_residual_alignment;
+  /* Compatibility alias for the M49 L2 gain name. */
   double global_gain;
   double maximum_token_gain;
   double maximum_channel_gain;
@@ -107,6 +132,99 @@ typedef struct prom_num_gain_summary {
   uint32_t maximum_channel;
   uint32_t valid;
 } prom_num_gain_summary;
+
+typedef struct prom_num_suffix_identity_request {
+  uint32_t stage;
+  uint32_t path;
+  uint32_t tokens;
+  uint32_t input_channels;
+  uint32_t output_channels;
+  uint32_t precision_contract;
+  uint64_t input_generation;
+  uint64_t weight_generation;
+  uint64_t input_hash;
+  uint64_t reference_input_hash;
+  uint64_t source_hash;
+} prom_num_suffix_identity_request;
+
+typedef struct prom_num_suffix_identity {
+  uint64_t replay_identity;
+  uint64_t exact_input_identity;
+  uint32_t matched_input;
+  uint32_t valid;
+} prom_num_suffix_identity;
+
+typedef struct prom_num_perturbation_summary {
+  uint32_t family;
+  uint64_t seed;
+  uint64_t identity;
+  uint64_t nonzero_count;
+  double requested_magnitude;
+  double l1_norm;
+  double l2_norm;
+  double linfinity_norm;
+  uint32_t valid;
+} prom_num_perturbation_summary;
+
+typedef struct prom_num_fp64_dot_witness {
+  double fp32_accumulation;
+  double fp64_accumulation;
+  double absolute_accumulation_difference;
+  uint64_t operand_count;
+  uint32_t operands_rounded_to_fp16;
+  uint32_t valid;
+} prom_num_fp64_dot_witness;
+
+typedef struct prom_num_fp64_rms_witness {
+  double fp32_sum_of_squares;
+  double fp64_sum_of_squares;
+  double fp32_inv_rms;
+  double fp64_inv_rms;
+  double inv_rms_absolute_difference;
+  uint64_t element_count;
+  uint32_t valid;
+} prom_num_fp64_rms_witness;
+
+typedef struct prom_num_envelope_sample {
+  uint32_t split;
+  double input_error;
+  double output_error;
+  double local_disturbance;
+  double signed_bias;
+} prom_num_envelope_sample;
+
+typedef struct prom_num_envelope_fit_summary {
+  uint64_t identification_count;
+  uint64_t held_out_count;
+  uint64_t held_out_failure_count;
+  double held_out_pass_fraction;
+  double worst_held_out_excess;
+  uint32_t valid;
+} prom_num_envelope_fit_summary;
+
+typedef struct prom_num_mitigation_evidence {
+  double identification_baseline_error;
+  double identification_mitigated_error;
+  double held_out_baseline_error;
+  double held_out_mitigated_error;
+  double worst_held_out_regression;
+  double latency_microseconds;
+  uint64_t retained_bytes;
+  uint64_t identification_count;
+  uint64_t held_out_count;
+} prom_num_mitigation_evidence;
+
+typedef struct prom_num_canary_calibration {
+  uint64_t sample_count;
+  uint64_t true_positive;
+  uint64_t true_negative;
+  uint64_t false_positive;
+  uint64_t false_negative;
+  double pearson_correlation;
+  double false_positive_rate;
+  double false_negative_rate;
+  uint32_t valid;
+} prom_num_canary_calibration;
 
 typedef struct prom_num_determinism_tracker {
   uint64_t sample_count;
@@ -267,6 +385,35 @@ int prom_num_summarize_gain(const float* input_a, const float* input_b,
                             const float* output_a, const float* output_b,
                             uint32_t tokens, uint32_t channels,
                             prom_num_gain_summary* out_summary);
+int prom_num_suffix_identity_build(const prom_num_suffix_identity_request* request,
+                                   prom_num_suffix_identity* out_identity);
+int prom_num_generate_perturbation(uint32_t family, uint64_t seed,
+                                   double magnitude, const float* base,
+                                   const float* residual,
+                                   const float* natural_discrepancy,
+                                   float* perturbation, uint32_t tokens,
+                                   uint32_t channels,
+                                   prom_num_perturbation_summary* out_summary);
+int prom_num_fp64_dot_oracle(const float* left, const float* right,
+                             uint64_t count, uint32_t round_operands_to_fp16,
+                             prom_num_fp64_dot_witness* out_witness);
+int prom_num_fp64_rms_oracle(const float* values, uint64_t count,
+                             double epsilon,
+                             prom_num_fp64_rms_witness* out_witness);
+int prom_num_envelope_fit(const prom_num_envelope_sample* samples,
+                          uint64_t sample_count, uint32_t path,
+                          uint32_t stage, uint32_t minimum_tokens,
+                          uint32_t maximum_tokens, uint32_t minimum_width,
+                          uint32_t maximum_width, prom_num_envelope* out_envelope,
+                          prom_num_envelope_fit_summary* out_summary);
+int prom_num_mitigation_eligible(const prom_num_mitigation_evidence* evidence,
+                                 double maximum_held_out_regression,
+                                 uint32_t* out_eligible);
+int prom_num_canary_calibrate(const double* canary_scores,
+                              const double* full_tensor_errors,
+                              uint64_t count, double canary_threshold,
+                              double error_threshold,
+                              prom_num_canary_calibration* out_calibration);
 void prom_num_determinism_init(prom_num_determinism_tracker* tracker);
 int prom_num_determinism_update(prom_num_determinism_tracker* tracker,
                                 const float* baseline, const float* sample,

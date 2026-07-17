@@ -1,0 +1,178 @@
+package PrometheusNumericalHeterogeneityLab
+
+import String
+import Artifact
+import Markdown
+import Json
+
+/// A typed projection of one native M49a record. The source JSON remains the
+/// raw evidence authority; SourceJsonSha256 binds this import to it.
+record M1NativeRecord {
+    CaseName: String
+    Path: String
+    Stage: String
+    Split: String
+    Shape: String
+    InputFamily: String
+    WeightFamily: String
+    Perturbation: String
+    DisturbanceL2: Float
+    DisturbanceLInfinity: Float
+    GainL1: Float
+    GainL2: Float
+    GainLInfinity: Float
+    GpuNs: Int
+    ValidationClean: Bool
+}
+
+record M1MitigationRecord {
+    Name: String
+    IdentificationErrorReduction: Float
+    HeldOutErrorReduction: Float
+    LatencyCostUs: Float
+    MemoryCostBytes: Int
+    Generalizes: Bool
+    Status: String
+}
+
+record M1NativeEvidence {
+    Schema: String
+    Authority: String
+    SourceJsonPath: String
+    SourceJsonSha256: String
+    Records: M1NativeRecord[]
+    Mitigations: M1MitigationRecord[]
+    ProductAuthorityChanged: Bool
+    MilestoneState: String
+}
+
+record M1EnvelopeEvaluation {
+    IdentificationSupport: Int
+    HeldOutSupport: Int
+    HeldOutFailures: Int
+    DisturbanceBound: Float
+    GainBound: Float
+    HeldOutPassFraction: Float
+    Certified: Bool
+    ExtrapolationPolicy: String
+}
+
+record M1ImportReport {
+    Schema: String
+    EvidenceAuthority: String
+    SyntheticAuthority: String
+    SourceJsonPath: String
+    SourceJsonSha256: String
+    NativeRecordCount: Int
+    Envelope: M1EnvelopeEvaluation
+    Mitigations: M1MitigationRecord[]
+    ProductAuthorityChanged: Bool
+    Interpretation: String
+}
+
+fn M1NativeEvidencePath() -> String {
+    return "Experiments/PrometheusNumericalHeterogeneityLab/M1/M1.native_rtx3070.octagon"
+}
+
+fn M1LoadNativeEvidence() -> M1NativeEvidence ! Error {
+    return LoadOctagon<M1NativeEvidence>(M1NativeEvidencePath())?
+}
+
+/// Fits only identification records, then evaluates without changing the fit.
+fn M1EvaluateEnvelope(evidence: M1NativeEvidence) -> M1EnvelopeEvaluation {
+    var dBound = 0.0
+    var gBound = 0.0
+    var identification = 0
+    for i in 0..Len(evidence.Records) {
+        let row = evidence.Records[i]
+        if row.Split == "identification" and row.ValidationClean {
+            identification = identification + 1
+            if row.DisturbanceL2 > dBound { dBound = row.DisturbanceL2 }
+            if row.GainL2 > gBound { gBound = row.GainL2 }
+        }
+    }
+    var heldOut = 0
+    var failures = 0
+    for i in 0..Len(evidence.Records) {
+        let row = evidence.Records[i]
+        if row.Split == "held-out" and row.ValidationClean {
+            heldOut = heldOut + 1
+            if row.DisturbanceL2 > dBound or row.GainL2 > gBound { failures = failures + 1 }
+        }
+    }
+    let passFraction = if heldOut == 0 { 0.0 } else { Float(heldOut - failures) / Float(heldOut) }
+    return M1EnvelopeEvaluation {
+        IdentificationSupport: identification
+        HeldOutSupport: heldOut
+        HeldOutFailures: failures
+        DisturbanceBound: dBound
+        GainBound: gBound
+        HeldOutPassFraction: passFraction
+        Certified: identification > 0 and heldOut > 0 and failures == 0
+        ExtrapolationPolicy: "reject any path, stage, shape, family, or magnitude absent from held-out support"
+    }
+}
+
+fn M1BuildImportReport(evidence: M1NativeEvidence) -> M1ImportReport {
+    let envelope = M1EvaluateEnvelope(evidence)
+    return M1ImportReport {
+        Schema: "prometheus.m49a.oct-native-import.v1"
+        EvidenceAuthority: evidence.Authority
+        SyntheticAuthority: "prometheus.m49.synthetic-design-lab-only"
+        SourceJsonPath: evidence.SourceJsonPath
+        SourceJsonSha256: evidence.SourceJsonSha256
+        NativeRecordCount: Len(evidence.Records)
+        Envelope: envelope
+        Mitigations: evidence.Mitigations
+        ProductAuthorityChanged: false
+        Interpretation: if envelope.Certified { "held-out native support certifies this bounded imported envelope" } else { "native identification imported; no envelope or mitigation is certified without held-out hardware support" }
+    }
+}
+
+fn M1RowsCsv(evidence: M1NativeEvidence) -> String[][] {
+    var rows = [["case","path","stage","split","shape","inputFamily","weightFamily","perturbation","dL2","dLinf","gL1","gL2","gLinf","gpuNs","validationClean"]]
+    for i in 0..Len(evidence.Records) {
+        let row = evidence.Records[i]
+        rows = Append(rows, [row.CaseName,row.Path,row.Stage,row.Split,row.Shape,row.InputFamily,row.WeightFamily,row.Perturbation,String.From<Float>(row.DisturbanceL2),String.From<Float>(row.DisturbanceLInfinity),String.From<Float>(row.GainL1),String.From<Float>(row.GainL2),String.From<Float>(row.GainLInfinity),String.From<Int>(row.GpuNs),String.From<Bool>(row.ValidationClean)])
+    }
+    return rows
+}
+
+fn M1SummaryJsonText(report: M1ImportReport) -> String {
+    return String.Concat([
+        "{\"schema\":", String.QuoteJson(report.Schema),
+        ",\"evidenceAuthority\":", String.QuoteJson(report.EvidenceAuthority),
+        ",\"syntheticAuthority\":", String.QuoteJson(report.SyntheticAuthority),
+        ",\"sourceJsonSha256\":", String.QuoteJson(report.SourceJsonSha256),
+        ",\"nativeRecordCount\":", String.From<Int>(report.NativeRecordCount),
+        ",\"identificationSupport\":", String.From<Int>(report.Envelope.IdentificationSupport),
+        ",\"heldOutSupport\":", String.From<Int>(report.Envelope.HeldOutSupport),
+        ",\"heldOutFailures\":", String.From<Int>(report.Envelope.HeldOutFailures),
+        ",\"envelopeCertified\":", String.From<Bool>(report.Envelope.Certified),
+        ",\"productAuthorityChanged\":false}"
+    ])
+}
+
+fn M1WriteArtifacts() -> Int ! Error {
+    let evidence = M1LoadNativeEvidence()?
+    let report = M1BuildImportReport(evidence)
+    let root = "Experiments/PrometheusNumericalHeterogeneityLab/M1/"
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus M49a native evidence import"),
+        Markdown.Section("Authority", [Markdown.KeyValueTable(["native evidence","synthetic evidence","source JSON","source SHA-256","product authority changed"],[report.EvidenceAuthority,report.SyntheticAuthority,report.SourceJsonPath,report.SourceJsonSha256,String.From<Bool>(report.ProductAuthorityChanged)])]),
+        Markdown.Section("Envelope evaluation", [Markdown.KeyValueTable(["identification support","held-out support","held-out failures","D bound","G bound","certified"],[String.From<Int>(report.Envelope.IdentificationSupport),String.From<Int>(report.Envelope.HeldOutSupport),String.From<Int>(report.Envelope.HeldOutFailures),String.From<Float>(report.Envelope.DisturbanceBound),String.From<Float>(report.Envelope.GainBound),String.From<Bool>(report.Envelope.Certified)])]),
+        Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation),Markdown.Paragraph(report.Envelope.ExtrapolationPolicy)])
+    ])
+    var x: Float[] = []
+    var d: Float[] = []
+    for i in 0..Len(evidence.Records) {
+        x = Append(x, Float(i))
+        d = Append(d, evidence.Records[i].DisturbanceL2)
+    }
+    Artifact.WriteOctagon(root + "M1.native_import_report.octagon", report)
+    Artifact.WriteCsv(root + "native_records.csv", M1RowsCsv(evidence))
+    Artifact.WriteJson(root + "native_import_summary.json", Json.Object(M1SummaryJsonText(report)))
+    Artifact.WriteMarkdown(root + "FINDINGS.md", md)
+    let _disturbancePlot = PlotLine(x, d, root + "M1.native_disturbance_l2.png")
+    return 0
+}

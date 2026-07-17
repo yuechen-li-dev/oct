@@ -7,6 +7,8 @@ Convergence outcome: **MEANINGFUL PROGRESSION**
 Milestone state: **IN PROGRESS**  
 M48 EVT state: **POSTPONED**
 
+Continuation: [M49a controlled stage gain and mitigation](PROMETHEUS_M49A_CONTROLLED_STAGE_GAIN_AND_MITIGATION.md) adds an audit-only matched-input M47 suffix and first controlled hardware D/G evidence. M49a remains **IN PROGRESS**; no mitigation has held-out support and M48 EVT remains postponed.
+
 ## Outcome
 
 M49 establishes the first bounded numerical-heterogeneity identification and shadow-control framework for the M43–M48 transformer path. It also resolves an important ambiguity on the primary `128/1024/8/128/4096` workload:

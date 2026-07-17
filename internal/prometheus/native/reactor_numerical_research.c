@@ -294,11 +294,21 @@ int prom_num_summarize_gain(const float* input_a, const float* input_b,
     if (!isfinite(input_delta) || !isfinite(output_delta)) return 0;
     input_energy += input_delta * input_delta;
     output_energy += output_delta * output_delta;
+    out_summary->input_l1 += prom_num_abs(input_delta);
+    out_summary->output_l1 += prom_num_abs(output_delta);
+    if (prom_num_abs(input_delta) > out_summary->input_linfinity)
+      out_summary->input_linfinity = prom_num_abs(input_delta);
+    if (prom_num_abs(output_delta) > out_summary->output_linfinity)
+      out_summary->output_linfinity = prom_num_abs(output_delta);
   }
   if (input_energy == 0.0) return 0;
   out_summary->input_l2 = sqrt(input_energy);
   out_summary->output_l2 = sqrt(output_energy);
-  out_summary->global_gain = out_summary->output_l2 / out_summary->input_l2;
+  out_summary->l1_gain = out_summary->output_l1 / out_summary->input_l1;
+  out_summary->l2_gain = out_summary->output_l2 / out_summary->input_l2;
+  out_summary->linfinity_gain = out_summary->output_linfinity /
+                                out_summary->input_linfinity;
+  out_summary->global_gain = out_summary->l2_gain;
   out_summary->minimum_token_gain = DBL_MAX;
   for (token = 0u; token < tokens; ++token) {
     double local_input = 0.0;
@@ -338,6 +348,199 @@ int prom_num_summarize_gain(const float* input_a, const float* input_b,
     }
   }
   if (out_summary->minimum_token_gain == DBL_MAX) out_summary->minimum_token_gain = 0.0;
+  out_summary->valid = 1u;
+  return 1;
+}
+
+int prom_num_suffix_identity_build(const prom_num_suffix_identity_request* request,
+                                   prom_num_suffix_identity* out_identity) {
+  uint64_t hash = 1469598103934665603ull;
+  if (out_identity == NULL) return 0;
+  memset(out_identity, 0, sizeof(*out_identity));
+  if (request == NULL || request->stage < PROM_NUM_STAGE_OUTPUT_PROJECTION ||
+      request->stage > PROM_NUM_STAGE_FFN_SUFFIX ||
+      request->path < PROM_NUM_PATH_CPU_FP32 ||
+      request->path > PROM_NUM_PATH_CPU_FP64_ORACLE ||
+      request->tokens == 0u || request->input_channels == 0u ||
+      request->output_channels == 0u || request->precision_contract == 0u ||
+      request->input_generation == 0u || request->weight_generation == 0u ||
+      request->input_hash == 0u || request->reference_input_hash == 0u ||
+      request->source_hash == 0u) return 0;
+  out_identity->exact_input_identity = request->input_hash;
+  out_identity->matched_input = request->input_hash == request->reference_input_hash ? 1u : 0u;
+  if (out_identity->matched_input == 0u) return 0;
+  hash = prom_num_hash_u64(hash, PROM_NUM_RESEARCH_SCHEMA_VERSION);
+  hash = prom_num_hash_u64(hash, request->stage);
+  hash = prom_num_hash_u64(hash, request->path);
+  hash = prom_num_hash_u64(hash, request->tokens);
+  hash = prom_num_hash_u64(hash, request->input_channels);
+  hash = prom_num_hash_u64(hash, request->output_channels);
+  hash = prom_num_hash_u64(hash, request->precision_contract);
+  hash = prom_num_hash_u64(hash, request->input_generation);
+  hash = prom_num_hash_u64(hash, request->weight_generation);
+  hash = prom_num_hash_u64(hash, request->input_hash);
+  hash = prom_num_hash_u64(hash, request->source_hash);
+  out_identity->replay_identity = hash;
+  out_identity->valid = 1u;
+  return 1;
+}
+
+static uint16_t prom_num_float_to_half_rne(float value) {
+  uint32_t bits = 0u;
+  uint32_t sign;
+  uint32_t exponent;
+  uint32_t mantissa;
+  int32_t half_exponent;
+  memcpy(&bits, &value, sizeof(bits));
+  sign = (bits >> 16u) & 0x8000u;
+  exponent = (bits >> 23u) & 0xffu;
+  mantissa = bits & 0x7fffffu;
+  if (exponent == 0xffu)
+    return (uint16_t)(sign | (mantissa == 0u ? 0x7c00u : 0x7e00u));
+  half_exponent = (int32_t)exponent - 127 + 15;
+  if (half_exponent >= 31) return (uint16_t)(sign | 0x7c00u);
+  if (half_exponent <= 0) {
+    uint32_t shifted;
+    uint32_t remainder;
+    uint32_t halfway;
+    uint32_t shift;
+    if (half_exponent < -10) return (uint16_t)sign;
+    mantissa |= 0x800000u;
+    shift = (uint32_t)(14 - half_exponent);
+    shifted = mantissa >> shift;
+    remainder = mantissa & ((1u << shift) - 1u);
+    halfway = 1u << (shift - 1u);
+    if (remainder > halfway || (remainder == halfway && (shifted & 1u) != 0u)) shifted += 1u;
+    return (uint16_t)(sign | shifted);
+  }
+  {
+    uint32_t rounded = mantissa >> 13u;
+    const uint32_t remainder = mantissa & 0x1fffu;
+    if (remainder > 0x1000u || (remainder == 0x1000u && (rounded & 1u) != 0u)) {
+      rounded += 1u;
+      if (rounded == 0x400u) {
+        rounded = 0u;
+        half_exponent += 1;
+        if (half_exponent >= 31) return (uint16_t)(sign | 0x7c00u);
+      }
+    }
+    return (uint16_t)(sign | ((uint32_t)half_exponent << 10u) | rounded);
+  }
+}
+
+static float prom_num_half_to_float(uint16_t value) {
+  const uint32_t sign = ((uint32_t)value & 0x8000u) << 16u;
+  uint32_t exponent = ((uint32_t)value >> 10u) & 0x1fu;
+  uint32_t mantissa = (uint32_t)value & 0x3ffu;
+  uint32_t bits;
+  float result;
+  if (exponent == 0u) {
+    if (mantissa == 0u) bits = sign;
+    else {
+      int32_t adjusted = -14;
+      while ((mantissa & 0x400u) == 0u) { mantissa <<= 1u; adjusted -= 1; }
+      mantissa &= 0x3ffu;
+      bits = sign | ((uint32_t)(adjusted + 127) << 23u) | (mantissa << 13u);
+    }
+  } else if (exponent == 31u) {
+    bits = sign | 0x7f800000u | (mantissa << 13u);
+  } else {
+    bits = sign | ((exponent - 15u + 127u) << 23u) | (mantissa << 13u);
+  }
+  memcpy(&result, &bits, sizeof(result));
+  return result;
+}
+
+static float prom_num_round_fp16(float value) {
+  return prom_num_half_to_float(prom_num_float_to_half_rne(value));
+}
+
+int prom_num_generate_perturbation(uint32_t family, uint64_t seed,
+                                   double magnitude, const float* base,
+                                   const float* residual,
+                                   const float* natural_discrepancy,
+                                   float* perturbation, uint32_t tokens,
+                                   uint32_t channels,
+                                   prom_num_perturbation_summary* out_summary) {
+  uint64_t count;
+  uint64_t index;
+  uint64_t state = seed == 0u ? 0xa0761d6478bd642full : seed;
+  double raw_l2 = 0.0;
+  double scale = magnitude;
+  if (out_summary == NULL) return 0;
+  memset(out_summary, 0, sizeof(*out_summary));
+  if (perturbation == NULL || tokens == 0u || channels == 0u ||
+      magnitude <= 0.0 || !isfinite(magnitude) ||
+      family < PROM_NUM_PERTURB_ONE_COORDINATE ||
+      family > PROM_NUM_PERTURB_NATURAL_LAYER_DISCREPANCY) return 0;
+  count = (uint64_t)tokens * channels;
+  if (count / channels != tokens) return 0;
+  memset(perturbation, 0, (size_t)(count * sizeof(float)));
+  if (family == PROM_NUM_PERTURB_ONE_COORDINATE) {
+    perturbation[prom_num_next_u64(&state) % count] = 1.0f;
+  } else if (family == PROM_NUM_PERTURB_ONE_TOKEN) {
+    const uint32_t token = (uint32_t)(prom_num_next_u64(&state) % tokens);
+    for (index = (uint64_t)token * channels; index < (uint64_t)(token + 1u) * channels; ++index)
+      perturbation[index] = (index & 1u) == 0u ? 1.0f : -1.0f;
+  } else if (family == PROM_NUM_PERTURB_ONE_CHANNEL) {
+    const uint32_t channel = (uint32_t)(prom_num_next_u64(&state) % channels);
+    for (index = channel; index < count; index += channels)
+      perturbation[index] = ((index / channels) & 1u) == 0u ? 1.0f : -1.0f;
+  } else if (family == PROM_NUM_PERTURB_ALTERNATING_SIGN) {
+    for (index = 0u; index < count; ++index) perturbation[index] = (index & 1u) == 0u ? 1.0f : -1.0f;
+  } else if (family == PROM_NUM_PERTURB_DENSE_SIGNED) {
+    for (index = 0u; index < count; ++index)
+      perturbation[index] = (prom_num_next_u64(&state) & 1u) == 0u ? 1.0f : -1.0f;
+  } else if (family == PROM_NUM_PERTURB_ALIGNED_RESIDUAL ||
+             family == PROM_NUM_PERTURB_DECORRELATED_RESIDUAL) {
+    double projection = 0.0;
+    double residual_energy = 0.0;
+    if (residual == NULL) return 0;
+    for (index = 0u; index < count; ++index) {
+      if (!isfinite(residual[index])) return 0;
+      if (family == PROM_NUM_PERTURB_ALIGNED_RESIDUAL) perturbation[index] = residual[index];
+      else perturbation[index] = (prom_num_next_u64(&state) & 1u) == 0u ? 1.0f : -1.0f;
+      projection += (double)perturbation[index] * residual[index];
+      residual_energy += (double)residual[index] * residual[index];
+    }
+    if (family == PROM_NUM_PERTURB_DECORRELATED_RESIDUAL && residual_energy > 0.0)
+      for (index = 0u; index < count; ++index)
+        perturbation[index] = (float)((double)perturbation[index] -
+                              projection / residual_energy * residual[index]);
+  } else if (family == PROM_NUM_PERTURB_FP16_BIN_BOUNDARY) {
+    if (base == NULL) return 0;
+    for (index = 0u; index < count; ++index) {
+      const float rounded = prom_num_round_fp16(base[index]);
+      float toward = nextafterf(rounded, base[index] >= rounded ? INFINITY : -INFINITY);
+      if (toward == rounded) toward = nextafterf(rounded, INFINITY);
+      perturbation[index] = toward - base[index];
+    }
+  } else if (family == PROM_NUM_PERTURB_SPARSE_OUTLIER) {
+    const uint64_t stride = count < 17u ? count : 17u;
+    for (index = prom_num_next_u64(&state) % stride; index < count; index += stride)
+      perturbation[index] = ((index / stride) & 1u) == 0u ? 8.0f : -8.0f;
+  } else {
+    if (natural_discrepancy == NULL) return 0;
+    for (index = 0u; index < count; ++index) perturbation[index] = natural_discrepancy[index];
+  }
+  for (index = 0u; index < count; ++index) raw_l2 += (double)perturbation[index] * perturbation[index];
+  if (raw_l2 == 0.0 || !isfinite(raw_l2)) return 0;
+  scale /= sqrt(raw_l2);
+  for (index = 0u; index < count; ++index) {
+    const double value = (double)perturbation[index] * scale;
+    const double absolute = prom_num_abs(value);
+    perturbation[index] = (float)value;
+    if (perturbation[index] != 0.0f) out_summary->nonzero_count += 1u;
+    out_summary->l1_norm += absolute;
+    out_summary->l2_norm += value * value;
+    if (absolute > out_summary->linfinity_norm) out_summary->linfinity_norm = absolute;
+  }
+  out_summary->l2_norm = sqrt(out_summary->l2_norm);
+  out_summary->family = family;
+  out_summary->seed = seed;
+  out_summary->requested_magnitude = magnitude;
+  out_summary->identity = prom_num_hash_u64(prom_num_hash_float_bits(perturbation, count), family);
+  out_summary->identity = prom_num_hash_u64(out_summary->identity, seed);
   out_summary->valid = 1u;
   return 1;
 }
@@ -645,5 +848,207 @@ int prom_num_bias_evaluate(const prom_num_bias_model* model,
   }
   *out_uncorrected_rms = sqrt(uncorrected / (double)count);
   *out_corrected_rms = sqrt(corrected / (double)count);
+  return 1;
+}
+
+int prom_num_fp64_dot_oracle(const float* left, const float* right,
+                             uint64_t count, uint32_t round_operands_to_fp16,
+                             prom_num_fp64_dot_witness* out_witness) {
+  uint64_t index;
+  float fp32 = 0.0f;
+  double fp64 = 0.0;
+  if (out_witness == NULL) return 0;
+  memset(out_witness, 0, sizeof(*out_witness));
+  if (left == NULL || right == NULL || count == 0u || round_operands_to_fp16 > 1u)
+    return 0;
+  for (index = 0u; index < count; ++index) {
+    const float a = round_operands_to_fp16 != 0u ? prom_num_round_fp16(left[index]) : left[index];
+    const float b = round_operands_to_fp16 != 0u ? prom_num_round_fp16(right[index]) : right[index];
+    if (!isfinite(a) || !isfinite(b)) return 0;
+    fp32 = fp32 + a * b;
+    fp64 += (double)a * (double)b;
+  }
+  out_witness->fp32_accumulation = fp32;
+  out_witness->fp64_accumulation = fp64;
+  out_witness->absolute_accumulation_difference = prom_num_abs((double)fp32 - fp64);
+  out_witness->operand_count = count;
+  out_witness->operands_rounded_to_fp16 = round_operands_to_fp16;
+  out_witness->valid = 1u;
+  return 1;
+}
+
+int prom_num_fp64_rms_oracle(const float* values, uint64_t count,
+                             double epsilon,
+                             prom_num_fp64_rms_witness* out_witness) {
+  uint64_t index;
+  float fp32 = 0.0f;
+  double fp64 = 0.0;
+  float fp32_mean;
+  if (out_witness == NULL) return 0;
+  memset(out_witness, 0, sizeof(*out_witness));
+  if (values == NULL || count == 0u || epsilon < 0.0 || !isfinite(epsilon)) return 0;
+  for (index = 0u; index < count; ++index) {
+    const float value = values[index];
+    if (!isfinite(value)) return 0;
+    fp32 = fp32 + value * value;
+    fp64 += (double)value * value;
+  }
+  fp32_mean = fp32 / (float)count;
+  out_witness->fp32_sum_of_squares = fp32;
+  out_witness->fp64_sum_of_squares = fp64;
+  out_witness->fp32_inv_rms = 1.0 / sqrt((double)fp32_mean + epsilon);
+  out_witness->fp64_inv_rms = 1.0 / sqrt(fp64 / (double)count + epsilon);
+  out_witness->inv_rms_absolute_difference =
+      prom_num_abs(out_witness->fp32_inv_rms - out_witness->fp64_inv_rms);
+  out_witness->element_count = count;
+  out_witness->valid = 1u;
+  return 1;
+}
+
+int prom_num_envelope_fit(const prom_num_envelope_sample* samples,
+                          uint64_t sample_count, uint32_t path,
+                          uint32_t stage, uint32_t minimum_tokens,
+                          uint32_t maximum_tokens, uint32_t minimum_width,
+                          uint32_t maximum_width, prom_num_envelope* out_envelope,
+                          prom_num_envelope_fit_summary* out_summary) {
+  uint64_t index;
+  double maximum_disturbance = 0.0;
+  double maximum_bias = 0.0;
+  double maximum_gain = 0.0;
+  uint64_t identity = 1469598103934665603ull;
+  if (out_envelope == NULL || out_summary == NULL) return 0;
+  memset(out_envelope, 0, sizeof(*out_envelope));
+  memset(out_summary, 0, sizeof(*out_summary));
+  if (samples == NULL || sample_count == 0u || path == 0u || stage == 0u ||
+      minimum_tokens == 0u || minimum_width == 0u ||
+      maximum_tokens < minimum_tokens || maximum_width < minimum_width) return 0;
+  for (index = 0u; index < sample_count; ++index) {
+    const prom_num_envelope_sample* sample = &samples[index];
+    if ((sample->split != PROM_NUM_SPLIT_IDENTIFICATION &&
+         sample->split != PROM_NUM_SPLIT_HELD_OUT) ||
+        sample->input_error < 0.0 || sample->output_error < 0.0 ||
+        sample->local_disturbance < 0.0 || !isfinite(sample->signed_bias)) return 0;
+    if (sample->split == PROM_NUM_SPLIT_IDENTIFICATION) {
+      const double bias = prom_num_abs(sample->signed_bias);
+      out_summary->identification_count += 1u;
+      if (sample->local_disturbance > maximum_disturbance)
+        maximum_disturbance = sample->local_disturbance;
+      if (bias > maximum_bias) maximum_bias = bias;
+    } else {
+      out_summary->held_out_count += 1u;
+    }
+  }
+  if (out_summary->identification_count == 0u || out_summary->held_out_count == 0u) return 0;
+  for (index = 0u; index < sample_count; ++index) {
+    const prom_num_envelope_sample* sample = &samples[index];
+    if (sample->split == PROM_NUM_SPLIT_IDENTIFICATION && sample->input_error > 0.0) {
+      double required = (sample->output_error - maximum_disturbance - maximum_bias) /
+                        sample->input_error;
+      if (required < 0.0) required = 0.0;
+      if (required > maximum_gain) maximum_gain = required;
+    }
+  }
+  out_envelope->path = path;
+  out_envelope->stage = stage;
+  out_envelope->minimum_tokens = minimum_tokens;
+  out_envelope->maximum_tokens = maximum_tokens;
+  out_envelope->minimum_width = minimum_width;
+  out_envelope->maximum_width = maximum_width;
+  out_envelope->local_disturbance_bound = maximum_disturbance;
+  out_envelope->gain_bound = maximum_gain;
+  out_envelope->bias_bound = maximum_bias;
+  out_envelope->held_out_confidence = 1.0;
+  identity = prom_num_hash_u64(identity, path);
+  identity = prom_num_hash_u64(identity, stage);
+  identity = prom_num_hash_u64(identity, out_summary->identification_count);
+  out_envelope->identity = identity;
+  for (index = 0u; index < sample_count; ++index) {
+    const prom_num_envelope_sample* sample = &samples[index];
+    if (sample->split == PROM_NUM_SPLIT_HELD_OUT) {
+      const double bound = maximum_gain * sample->input_error +
+                           maximum_disturbance + maximum_bias;
+      const double excess = sample->output_error - bound;
+      if (excess > 0.0) {
+        out_summary->held_out_failure_count += 1u;
+        if (excess > out_summary->worst_held_out_excess)
+          out_summary->worst_held_out_excess = excess;
+      }
+    }
+  }
+  out_summary->held_out_pass_fraction =
+      1.0 - (double)out_summary->held_out_failure_count /
+                (double)out_summary->held_out_count;
+  out_envelope->held_out_confidence = out_summary->held_out_pass_fraction;
+  out_summary->valid = 1u;
+  return 1;
+}
+
+int prom_num_mitigation_eligible(const prom_num_mitigation_evidence* evidence,
+                                 double maximum_held_out_regression,
+                                 uint32_t* out_eligible) {
+  if (out_eligible == NULL) return 0;
+  *out_eligible = 0u;
+  if (evidence == NULL || maximum_held_out_regression < 0.0 ||
+      evidence->identification_count == 0u || evidence->held_out_count == 0u ||
+      evidence->identification_baseline_error < 0.0 ||
+      evidence->identification_mitigated_error < 0.0 ||
+      evidence->held_out_baseline_error < 0.0 ||
+      evidence->held_out_mitigated_error < 0.0 ||
+      evidence->latency_microseconds < 0.0) return 0;
+  *out_eligible = evidence->identification_mitigated_error <
+                      evidence->identification_baseline_error &&
+                  evidence->held_out_mitigated_error < evidence->held_out_baseline_error &&
+                  evidence->worst_held_out_regression <= maximum_held_out_regression
+                      ? 1u : 0u;
+  return 1;
+}
+
+int prom_num_canary_calibrate(const double* canary_scores,
+                              const double* full_tensor_errors,
+                              uint64_t count, double canary_threshold,
+                              double error_threshold,
+                              prom_num_canary_calibration* out_calibration) {
+  uint64_t index;
+  double canary_mean = 0.0;
+  double error_mean = 0.0;
+  double numerator = 0.0;
+  double canary_energy = 0.0;
+  double error_energy = 0.0;
+  if (out_calibration == NULL) return 0;
+  memset(out_calibration, 0, sizeof(*out_calibration));
+  if (canary_scores == NULL || full_tensor_errors == NULL || count == 0u ||
+      canary_threshold < 0.0 || error_threshold < 0.0) return 0;
+  for (index = 0u; index < count; ++index) {
+    if (!isfinite(canary_scores[index]) || !isfinite(full_tensor_errors[index])) return 0;
+    canary_mean += canary_scores[index];
+    error_mean += full_tensor_errors[index];
+  }
+  canary_mean /= (double)count;
+  error_mean /= (double)count;
+  for (index = 0u; index < count; ++index) {
+    const uint32_t predicted = canary_scores[index] >= canary_threshold ? 1u : 0u;
+    const uint32_t actual = full_tensor_errors[index] >= error_threshold ? 1u : 0u;
+    const double centered_canary = canary_scores[index] - canary_mean;
+    const double centered_error = full_tensor_errors[index] - error_mean;
+    if (predicted != 0u && actual != 0u) out_calibration->true_positive += 1u;
+    else if (predicted == 0u && actual == 0u) out_calibration->true_negative += 1u;
+    else if (predicted != 0u) out_calibration->false_positive += 1u;
+    else out_calibration->false_negative += 1u;
+    numerator += centered_canary * centered_error;
+    canary_energy += centered_canary * centered_canary;
+    error_energy += centered_error * centered_error;
+  }
+  out_calibration->sample_count = count;
+  if (canary_energy > 0.0 && error_energy > 0.0)
+    out_calibration->pearson_correlation = numerator / sqrt(canary_energy * error_energy);
+  if (out_calibration->false_positive + out_calibration->true_negative > 0u)
+    out_calibration->false_positive_rate =
+        (double)out_calibration->false_positive /
+        (double)(out_calibration->false_positive + out_calibration->true_negative);
+  if (out_calibration->false_negative + out_calibration->true_positive > 0u)
+    out_calibration->false_negative_rate =
+        (double)out_calibration->false_negative /
+        (double)(out_calibration->false_negative + out_calibration->true_positive);
+  out_calibration->valid = 1u;
   return 1;
 }

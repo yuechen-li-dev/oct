@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
@@ -358,4 +359,230 @@ FACT(PrometheusM49ArtifactSchemaRetainsRawEvidenceAndUnsupportedClaims)
     ASSERT_TRUE(artifact.find("\"milestone_state\": \"in_progress\"") !=
                     std::string::npos,
                 "artifact does not overclaim completion before the hardware matrix closes");
+}
+
+FACT(PrometheusM49aSuffixIdentityRequiresExactMatchedInput)
+{
+    prom_num_suffix_identity_request request{};
+    request.stage = PROM_NUM_STAGE_FFN_SUFFIX;
+    request.path = PROM_NUM_PATH_GPU_COOPERATIVE_FP16;
+    request.tokens = 8u;
+    request.input_channels = 32u;
+    request.output_channels = 32u;
+    request.precision_contract = 16u;
+    request.input_generation = 49001u;
+    request.weight_generation = 49002u;
+    request.input_hash = 0x12345678u;
+    request.reference_input_hash = request.input_hash;
+    request.source_hash = 0xabcdefu;
+    prom_num_suffix_identity first{};
+    prom_num_suffix_identity repeated{};
+    ASSERT_TRUE(prom_num_suffix_identity_build(&request, &first) != 0,
+                "matched-input suffix identity builds");
+    ASSERT_TRUE(prom_num_suffix_identity_build(&request, &repeated) != 0,
+                "matched-input suffix identity repeats");
+    ASSERT_EQUAL(first.replay_identity, repeated.replay_identity,
+                 "suffix replay identity is deterministic");
+    ASSERT_EQUAL(1u, first.matched_input, "exact input identity is explicit");
+    request.reference_input_hash += 1u;
+    prom_num_suffix_identity rejected{};
+    ASSERT_TRUE(prom_num_suffix_identity_build(&request, &rejected) == 0,
+                "inherited input discrepancy cannot masquerade as local D");
+}
+
+FACT(PrometheusM49aPerturbationFamiliesAndNormsAreDeterministic)
+{
+    constexpr std::uint32_t tokens = 4u;
+    constexpr std::uint32_t channels = 8u;
+    constexpr std::size_t count = tokens * channels;
+    std::array<float, count> base{};
+    std::array<float, count> residual{};
+    std::array<float, count> natural{};
+    std::array<float, count> first{};
+    std::array<float, count> repeated{};
+    for (std::size_t i = 0u; i < count; ++i) {
+        base[i] = 1.0f + static_cast<float>(i) / 64.0f;
+        residual[i] = (i & 1u) == 0u ? 0.01f : -0.02f;
+        natural[i] = static_cast<float>(static_cast<int>(i % 7u) - 3) / 1000.0f;
+    }
+    for (std::uint32_t family = PROM_NUM_PERTURB_ONE_COORDINATE;
+         family <= PROM_NUM_PERTURB_NATURAL_LAYER_DISCREPANCY; ++family) {
+        prom_num_perturbation_summary a{};
+        prom_num_perturbation_summary b{};
+        ASSERT_TRUE(prom_num_generate_perturbation(
+                        family, 490100u + family, 0.125, base.data(), residual.data(),
+                        natural.data(), first.data(), tokens, channels, &a) != 0,
+                    "each required deterministic perturbation family generates");
+        ASSERT_TRUE(prom_num_generate_perturbation(
+                        family, 490100u + family, 0.125, base.data(), residual.data(),
+                        natural.data(), repeated.data(), tokens, channels, &b) != 0,
+                    "each required perturbation family repeats");
+        ASSERT_EQUAL(a.identity, b.identity, "perturbation identity repeats exactly");
+        ASSERT_EQUAL(prom_num_hash_float_bits(first.data(), count),
+                     prom_num_hash_float_bits(repeated.data(), count),
+                     "perturbation values repeat bitwise");
+        ASSERT_TRUE(std::abs(a.l2_norm - 0.125) < 1.0e-6,
+                    "requested perturbation magnitude is its L2 norm");
+        ASSERT_TRUE(a.nonzero_count > 0u && a.l1_norm >= a.l2_norm &&
+                        a.l2_norm >= a.linfinity_norm,
+                    "all perturbation norms and support are recorded");
+    }
+}
+
+FACT(PrometheusM49aGainReportsL1L2AndLInfinitySeparately)
+{
+    const std::array<float, 4u> inputA{{0, 0, 0, 0}};
+    const std::array<float, 4u> inputB{{1, -2, 0, 0}};
+    const std::array<float, 4u> outputA{{0, 0, 0, 0}};
+    const std::array<float, 4u> outputB{{3, -2, 4, 0}};
+    prom_num_gain_summary gain{};
+    ASSERT_TRUE(prom_num_summarize_gain(inputA.data(), inputB.data(),
+                                        outputA.data(), outputB.data(),
+                                        2u, 2u, &gain) != 0,
+                "multinorm gain summary succeeds");
+    ASSERT_TRUE(std::abs(gain.l1_gain - 3.0) < 1.0e-12,
+                "L1 gain is retained independently");
+    ASSERT_TRUE(std::abs(gain.l2_gain - std::sqrt(29.0 / 5.0)) < 1.0e-12,
+                "L2 gain is retained independently");
+    ASSERT_TRUE(std::abs(gain.linfinity_gain - 2.0) < 1.0e-12,
+                "L-infinity gain is retained independently");
+    ASSERT_TRUE(gain.l1_gain != gain.l2_gain && gain.l2_gain != gain.linfinity_gain,
+                "multimodal gain is not collapsed to one scalar");
+}
+
+FACT(PrometheusM49aFp64SelectedDotAndRmsWitnessesSeparateAccumulation)
+{
+    const std::array<float, 6u> left{{1.0e8f, 1.0f, -1.0e8f, 0.3333f, 0.3333f, 0.3333f}};
+    const std::array<float, 6u> fp16SafeLeft{{1.0e4f, 1.0f, -1.0e4f, 0.3333f, 0.3333f, 0.3333f}};
+    const std::array<float, 6u> right{{1, 1, 1, 1, 1, 1}};
+    prom_num_fp64_dot_witness fp32Operands{};
+    prom_num_fp64_dot_witness fp16Operands{};
+    ASSERT_TRUE(prom_num_fp64_dot_oracle(left.data(), right.data(), left.size(), 0u,
+                                         &fp32Operands) != 0,
+                "selected FP64 dot witness evaluates FP32 operands");
+    ASSERT_TRUE(prom_num_fp64_dot_oracle(fp16SafeLeft.data(), right.data(), fp16SafeLeft.size(), 1u,
+                                         &fp16Operands) != 0,
+                "selected FP64 dot witness evaluates canonical FP16 operands");
+    ASSERT_TRUE(fp32Operands.absolute_accumulation_difference > 0.0,
+                "FP32 scalar accumulation error remains measurable");
+    ASSERT_TRUE(fp16Operands.fp64_accumulation != 0.9999,
+                "operand quantization is separate from accumulation order");
+
+    prom_num_fp64_rms_witness rms{};
+    ASSERT_TRUE(prom_num_fp64_rms_oracle(left.data(), left.size(), 1.0e-5, &rms) != 0,
+                "selected RMSNorm FP64 witness evaluates");
+    ASSERT_TRUE(rms.fp64_sum_of_squares > 0.0 && rms.fp32_inv_rms > 0.0 &&
+                    rms.fp64_inv_rms > 0.0,
+                "sum-of-squares and InvRms authorities are explicit");
+    std::fprintf(stderr,
+                 "M49a FP64 dot_fp32acc=%g dot_fp64acc=%g abs_accum_diff=%g fp16_dot_fp32acc=%g fp16_dot_fp64acc=%g rms_sumsq_fp32=%g rms_sumsq_fp64=%g invrms_fp32=%g invrms_fp64=%g\n",
+                 fp32Operands.fp32_accumulation, fp32Operands.fp64_accumulation,
+                 fp32Operands.absolute_accumulation_difference,
+                 fp16Operands.fp32_accumulation, fp16Operands.fp64_accumulation,
+                 rms.fp32_sum_of_squares, rms.fp64_sum_of_squares,
+                 rms.fp32_inv_rms, rms.fp64_inv_rms);
+}
+
+FACT(PrometheusM49aEnvelopeFitNeverLearnsFromHeldOutRecords)
+{
+    std::array<prom_num_envelope_sample, 5u> samples{{
+        {PROM_NUM_SPLIT_IDENTIFICATION, 0.0, 0.10, 0.10, 0.0},
+        {PROM_NUM_SPLIT_IDENTIFICATION, 0.10, 0.25, 0.10, 0.0},
+        {PROM_NUM_SPLIT_IDENTIFICATION, 0.20, 0.40, 0.10, 0.0},
+        {PROM_NUM_SPLIT_HELD_OUT, 0.15, 0.325, 99.0, 99.0},
+        {PROM_NUM_SPLIT_HELD_OUT, 0.30, 0.80, 99.0, 99.0},
+    }};
+    prom_num_envelope envelope{};
+    prom_num_envelope_fit_summary summary{};
+    ASSERT_TRUE(prom_num_envelope_fit(samples.data(), samples.size(),
+                                      PROM_NUM_PATH_GPU_COOPERATIVE_FP16,
+                                      PROM_NUM_STAGE_FFN_SUFFIX, 1u, 256u,
+                                      8u, 4096u, &envelope, &summary) != 0,
+                "identification-only empirical envelope fits");
+    ASSERT_TRUE(std::abs(envelope.local_disturbance_bound - 0.10) < 1.0e-12 &&
+                    std::abs(envelope.gain_bound - 1.5) < 1.0e-12,
+                "held-out disturbance values never tune the envelope");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(3u), summary.identification_count,
+                 "identification support count is explicit");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(2u), summary.held_out_count,
+                 "held-out support count is explicit");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1u), summary.held_out_failure_count,
+                 "held-out failure is reported rather than tuning the fit");
+}
+
+FACT(PrometheusM49aMitigationEligibilityRequiresHeldOutBenefit)
+{
+    prom_num_mitigation_evidence evidence{};
+    evidence.identification_baseline_error = 1.0;
+    evidence.identification_mitigated_error = 0.5;
+    evidence.held_out_baseline_error = 1.2;
+    evidence.held_out_mitigated_error = 0.9;
+    evidence.latency_microseconds = 20.0;
+    evidence.identification_count = 12u;
+    evidence.held_out_count = 4u;
+    std::uint32_t eligible = 0u;
+    ASSERT_TRUE(prom_num_mitigation_eligible(&evidence, 0.0, &eligible) != 0,
+                "bounded mitigation evidence evaluates");
+    ASSERT_EQUAL(1u, eligible, "identification and held-out improvement is eligible");
+    evidence.held_out_mitigated_error = 1.3;
+    ASSERT_TRUE(prom_num_mitigation_eligible(&evidence, 0.0, &eligible) != 0,
+                "held-out regression evaluates");
+    ASSERT_EQUAL(0u, eligible, "primary-only improvement is rejected");
+}
+
+FACT(PrometheusM49aCanaryCalibrationReportsCorrelationAndFalseRates)
+{
+    const std::array<double, 6u> canary{{0.1, 0.2, 0.8, 0.9, 0.7, 0.3}};
+    const std::array<double, 6u> audit{{0.1, 0.6, 0.9, 1.0, 0.2, 0.3}};
+    prom_num_canary_calibration calibration{};
+    ASSERT_TRUE(prom_num_canary_calibrate(canary.data(), audit.data(), canary.size(),
+                                          0.5, 0.5, &calibration) != 0,
+                "canary/full-audit calibration evaluates");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(2u), calibration.true_positive,
+                 "true positives are explicit");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1u), calibration.false_positive,
+                 "false positives are explicit");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(1u), calibration.false_negative,
+                 "false negatives are explicit");
+    ASSERT_TRUE(calibration.pearson_correlation > 0.0 &&
+                    calibration.false_positive_rate > 0.0 &&
+                    calibration.false_negative_rate > 0.0,
+                "correlation and both false rates remain visible");
+}
+
+FACT(PrometheusM49aArtifactSchemaSeparatesCompletedAndUnsupportedEvidence)
+{
+    const std::string path = std::string(MARIONETTE_TEST_REPO_ROOT) +
+        "/internal/prometheus/DevelopmentReport/artifacts/M49a/"
+        "controlled_stage_gain_and_mitigation_rtx3070.json";
+    std::ifstream input(path, std::ios::binary);
+    ASSERT_TRUE(input.good(), "the M49a machine-readable artifact is readable");
+    const std::string artifact((std::istreambuf_iterator<char>(input)),
+                               std::istreambuf_iterator<char>());
+    for (const std::string& required : {
+             "prometheus.m49a.controlled-stage-gain-and-mitigation.v1",
+             "matched_input_disturbance_records",
+             "controlled_perturbations",
+             "gain_records",
+             "fp64_witness_records",
+             "identification_held_out_split",
+             "mitigation_ab",
+             "envelopes",
+             "canary_calibration",
+             "oct_import_provenance",
+             "unsupported_claims",
+             "exact_source_hashes",
+         }) {
+        ASSERT_TRUE(artifact.find(required) != std::string::npos,
+                    "M49a artifact retains each required evidence family");
+    }
+    ASSERT_TRUE(artifact.find("\"normal_product_execution_changed\": false") !=
+                    std::string::npos,
+                "M49a artifact records unchanged normal product execution");
+    ASSERT_TRUE(artifact.find("\"milestone_state\": \"in_progress\"") !=
+                    std::string::npos,
+                "M49a artifact cannot overclaim incomplete held-out work");
+    ASSERT_TRUE(artifact.find("\"held_out_records_completed\": 0") !=
+                    std::string::npos,
+                "M49a artifact exposes absent held-out hardware evidence");
 }
