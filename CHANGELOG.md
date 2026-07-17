@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Productize `oct-mcp` 0.1.0 with bounded source-only tools, stdio and streamable HTTP transports, structured results, temporary workspaces, artifact IDs, security/deployment documentation, and the local Codex plugin package.
+- Dogfood and simplify the agent workflow: local Codex is now skills-first around `oct test --json` and `oct artifact --json`; hosted MCP exposes `oct_workspace_info`, `oct_test`, `oct_artifact`, playground-only `oct_run`, and scoped `oct_get_artifact`. The CLI now reports stable structured test/artifact results, explicit test fallback counts, and interpreted artifact metadata.
+
 ## v0.1.0 — initial preview
 
 Oct 0.1 is an early preview of a scientific programming language and toolchain for reproducible research, portable computation, and AI-assisted experimentation.

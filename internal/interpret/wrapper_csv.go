@@ -88,6 +88,7 @@ func (i *interpreter) evalCSVWriteBuiltin(env *environment, pkgName string, call
 	if writeErr := writer.Error(); writeErr != nil {
 		return wrapperErrorResult(callee, mapCSVError(writeErr)), nil
 	}
+	i.recordArtifactWrite(path)
 	return wrapperIntResult(0), nil
 }
 

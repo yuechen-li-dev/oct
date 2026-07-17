@@ -2,6 +2,7 @@ package ArrayMapGenerics
 
 import String
 
+/// Keeps the leading bounded window used by the experiment's array probe.
 fn FirstN(xs: Float[], n: Int) -> Float[] {
     return Array.CrossSection(xs, ..n)
 }

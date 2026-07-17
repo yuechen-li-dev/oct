@@ -329,6 +329,7 @@ type interpreter struct {
 	wrapperClients           *interpretedWrapperClientCache
 	assertRecorder           func()
 	artifactProgressRecorder func(event ArtifactProgressEvent)
+	artifactWriteRecorder    func(event ArtifactWriteEvent)
 	currentFunctionName      string
 	ctx                      context.Context
 }
@@ -341,6 +342,7 @@ type ExecuteOptions struct {
 	OutputPathPrefix         string
 	AssertionRecorder        func()
 	ArtifactProgressRecorder func(event ArtifactProgressEvent)
+	ArtifactWriteRecorder    func(event ArtifactWriteEvent)
 	Context                  context.Context
 }
 
@@ -350,6 +352,13 @@ type ArtifactProgressEvent struct {
 	Label    string
 	Current  int64
 	Total    int64
+}
+
+// ArtifactWriteEvent reports a file produced by an interpreted artifact lane.
+// It is observation only: artifact writes retain their ordinary Oct behavior.
+type ArtifactWriteEvent struct {
+	Function string
+	Path     string
 }
 
 type SkipTestError struct {
@@ -454,6 +463,7 @@ func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, fun
 	defer interpreter.close()
 	interpreter.assertRecorder = options.AssertionRecorder
 	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
+	interpreter.artifactWriteRecorder = options.ArtifactWriteRecorder
 	interpreter.ctx = options.Context
 	interpreter.currentFunctionName = functionName
 	key := pkgName + "." + functionName
@@ -4915,7 +4925,14 @@ func (i interpreter) evalWriteOctagonBuiltinCallExpr(env *environment, pkgName s
 	if err := WriteOctagon(pathValue.value.Text, contentValue.value); err != nil {
 		return evalResult{}, fmt.Errorf("runtime error: %w", err)
 	}
+	i.recordArtifactWrite(attributedOutputPath(pathValue.value.Text))
 	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
+}
+
+func (i *interpreter) recordArtifactWrite(path string) {
+	if i.artifactWriteRecorder != nil {
+		i.artifactWriteRecorder(ArtifactWriteEvent{Function: i.currentFunctionName, Path: path})
+	}
 }
 
 func numericValueAsFloat(value Value, functionName string) (float64, error) {

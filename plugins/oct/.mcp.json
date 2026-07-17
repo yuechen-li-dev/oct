@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "oct": {
+      "command": "oct-mcp",
+      "args": ["--stdio"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

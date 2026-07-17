@@ -16,9 +16,11 @@
 - `oct test <path>` runs `.octest` and `.octfail` suites.
 - `oct test <path> --suite <name>` runs only tests tagged with `[Suite("<name>")]`.
 - `oct test <path> --execution <auto|compiled|interpreted>` selects the test execution mode.
+- `oct test <path> --json` emits one `oct.cli.result.v1` result for a single target, including normalized command diagnostics, discovered test files, counts, execution/fallback information, timing, and exit status.
 - `auto` is the default test execution mode; `compiled` is a valid test path and requires each selected `.octest` case to run through compiled execution.
 - Compiled test execution may build and run generated compiled artifacts internally, but that internal artifact layout is not a user-facing `.octbin` contract. Some packages still contain unsupported compiled features, and missing sidecars can affect compiled wrapper tests.
-- `oct artifact <path>` runs `[Artifact]` functions only.
+- `oct artifact <path>` runs `[Artifact]` functions only from the selected entry package. Use `--all-packages` to include imported package artifact lanes.
+- `oct artifact <path> --json` emits one `oct.cli.result.v1` result for a single target and, for interpreted artifacts, the exact generated paths, MIME types, sizes, and SHA-256 hashes.
 - `oct bench <path>` runs `[Benchmark]` functions only.
 - `oct bench <path> --filter <pattern>` runs only benchmarks whose qualified name (`Package.Function`) contains `<pattern>`.
 - `oct bench <path> --profile` writes a deterministic Oct-native CPU profile artifact (`bench.cpu.octagon`) for the benchmark run.
@@ -113,7 +115,9 @@ oct build App/main.oct
 oct test Language
 oct test Language --execution compiled
 oct test Language --execution interpreted
+oct test Language/Types/UnitsM1/valid --execution auto --json
 oct artifact Language
+oct artifact Experiments/OctErgonomicsLab/M0 --execution interpreted --json
 oct bench Language --octagon-out bench.octagon
 oct bench Language --filter HotPath
 oct bench Language --filter Main.Fast --profile

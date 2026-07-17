@@ -1,0 +1,239 @@
+{
+  "schemaVersion": "oct.mcp.agent.dogfood.v1",
+  "cliSchemaVersion": "oct.cli.result.v1",
+  "mcpToolSchemaVersion": "2.0",
+  "generation": "deterministic; no timestamp, host path, execution ID, or duration",
+  "scenarios": [
+    {
+      "id": "experiment-scaffold-default-placement",
+      "workflow": "mixed-local",
+      "skill": "oct-experiments",
+      "mcpTools": [],
+      "commands": [
+        "oct new experiment DogfoodDefaultExperiment",
+        "oct test Experiments/DogfoodDefaultExperiment --execution auto --json"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "the existing Experiments directory selected the default target; root result reported M0 as the one selected test file",
+      "fallback": "0",
+      "outcome": "compiled M0 scaffold passed"
+    },
+    {
+      "id": "experiment-milestone-artifact",
+      "workflow": "mixed-local",
+      "skill": "oct-experiments",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/McpExperiment/M0 --execution auto --json",
+        "oct artifact .dogfood/McpExperiment --execution interpreted --json"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "root artifact result retained milestone-prefixed pass counts and a CSV hash",
+      "fallback": "0",
+      "outcome": "focused test and root milestone artifact passed"
+    },
+    {
+      "id": "minimal-octest",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/McpDogfood --execution auto --json"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "pass/fail summary and execution counts",
+      "fallback": "compiled fallback observed separately",
+      "outcome": "passed"
+    },
+    {
+      "id": "syntax-repair",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/McpDogfood --execution auto"
+      ],
+      "repairIterations": 1,
+      "diagnostic": "standalone-expression guidance identified the trailing invalid token",
+      "fallback": "none",
+      "outcome": "repaired then passed"
+    },
+    {
+      "id": "type-repair",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/McpDogfood --execution auto"
+      ],
+      "repairIterations": 1,
+      "diagnostic": "Identity argument expected Int, got String",
+      "fallback": "none",
+      "outcome": "repaired then passed"
+    },
+    {
+      "id": "unit-repair",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/McpDogfood --execution auto"
+      ],
+      "repairIterations": 1,
+      "diagnostic": "let annotation expected Float\u003cs\u003e, got Float\u003cm/s\u003e",
+      "fallback": "none",
+      "outcome": "repaired then passed"
+    },
+    {
+      "id": "record-table",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/McpDogfood --execution auto --json"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "record table row indexing compiled limitation was explicit",
+      "fallback": "2 interpreted fallbacks",
+      "outcome": "interpreter pass with disclosed compiled gap"
+    },
+    {
+      "id": "artifact",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct artifact .dogfood/McpDogfood --execution interpreted --json"
+      ],
+      "repairIterations": 2,
+      "diagnostic": "artifact import and manifest dependency needed two real repairs",
+      "fallback": "interpreted is canonical artifact default",
+      "outcome": "csv, markdown, and json metadata hashed"
+    },
+    {
+      "id": "artifact-package-scope",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct artifact .dogfood/McpDogfood --execution interpreted --json",
+        "oct artifact .dogfood/McpDogfood --execution interpreted --all-packages --json"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "imported Artifact package lane was unexpectedly executed before scoped default",
+      "fallback": "none",
+      "outcome": "default narrowed; --all-packages is explicit"
+    },
+    {
+      "id": "existing-experiment",
+      "workflow": "mixed-local",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test Experiments/LanguageFriction/ArrayMapGenerics/array_transform_manual.octest --execution auto"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "focused file output limited the run to two facts",
+      "fallback": "0",
+      "outcome": "passed after a repository experiment edit"
+    },
+    {
+      "id": "compiled-success",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test examples/SmartGreenhouseController --execution compiled"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "execution summary",
+      "fallback": "0",
+      "outcome": "7 compiled cases passed"
+    },
+    {
+      "id": "empty-workspace",
+      "workflow": "direct-cli",
+      "skill": "oct-workflow",
+      "mcpTools": [],
+      "commands": [
+        "oct test .dogfood/Empty --execution auto"
+      ],
+      "repairIterations": 0,
+      "diagnostic": "unknown package Main",
+      "fallback": "not applicable",
+      "outcome": "expected failure; no hidden scaffold"
+    },
+    {
+      "id": "current-mcp-gap",
+      "workflow": "mcp-only-pre-redesign",
+      "skill": "legacy-five-skills",
+      "mcpTools": [
+        "oct_check",
+        "oct_run"
+      ],
+      "commands": [],
+      "repairIterations": 0,
+      "diagnostic": "source entry was restricted to .oct and could not run .octest contracts",
+      "fallback": "not represented",
+      "outcome": "failed product fit"
+    },
+    {
+      "id": "hosted-golden-flow",
+      "workflow": "mcp-only-final",
+      "skill": "oct-workflow",
+      "mcpTools": [
+        "oct_workspace_info",
+        "oct_test",
+        "oct_artifact",
+        "oct_get_artifact"
+      ],
+      "commands": [],
+      "repairIterations": 1,
+      "diagnostic": "structured oct_test diagnostic repaired an existing invalid fixture",
+      "fallback": "reported by embedded CLI result",
+      "outcome": "valid contract, four artifacts, and scoped retrieval passed"
+    },
+    {
+      "id": "http-discovery",
+      "workflow": "mcp-only-final",
+      "skill": "oct-workflow",
+      "mcpTools": [
+        "oct_workspace_info"
+      ],
+      "commands": [],
+      "repairIterations": 0,
+      "diagnostic": "streamable HTTP tool discovery",
+      "fallback": "not applicable",
+      "outcome": "passed"
+    }
+  ],
+  "finalToolSurface": [
+    "oct_workspace_info",
+    "oct_test",
+    "oct_artifact",
+    "oct_run",
+    "oct_get_artifact"
+  ],
+  "skillHashes": [
+    {
+      "path": "plugins/oct/skills/oct-workflow/SKILL.md",
+      "sha256": "dbd24dec3ecaf8c637d1cae7ad4efb5dc912a3c4d96b36431b57551385fe8f10"
+    },
+    {
+      "path": "plugins/oct/skills/oct-experiments/SKILL.md",
+      "sha256": "697a3afa5b5924546919c59bc111ea3812abc5b13c2a5ad8cf94d4810483c786"
+    }
+  ],
+  "unsupportedClaims": [
+    "arbitrary shell",
+    "unrestricted filesystem",
+    "unrestricted network",
+    "Python fallback",
+    "Prometheus GPU execution",
+    "image generation",
+    "package installation",
+    "notebooks",
+    "IDE UI",
+    "generic remote build service"
+  ]
+}

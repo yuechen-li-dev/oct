@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -119,6 +120,59 @@ func discoverCanonicalExperimentMilestones(path string) ([]milestoneRef, bool, e
 	}
 	slices.SortFunc(milestones, compareMilestones)
 	return milestones, true, nil
+}
+
+// DiscoverTestFilesForTarget reports the .octest and .octfail files selected
+// by an oct test root. Experiment roots deliberately report canonical
+// milestone files only, matching ExecuteWithOptions rather than merely walking
+// every support or auxiliary directory.
+func DiscoverTestFilesForTarget(path string) []string {
+	milestones, isExperiment, err := discoverCanonicalExperimentMilestones(path)
+	if err != nil {
+		return []string{}
+	}
+	if isExperiment {
+		files := make([]string, 0)
+		for _, milestone := range milestones {
+			for _, file := range discoverTestFilesInPath(milestone.Path) {
+				files = append(files, filepath.ToSlash(filepath.Join(milestone.Name, file)))
+			}
+		}
+		sort.Strings(files)
+		return files
+	}
+	return discoverTestFilesInPath(path)
+}
+
+func discoverTestFilesInPath(path string) []string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return []string{}
+	}
+	if !info.IsDir() {
+		ext := filepath.Ext(path)
+		if ext == ".octest" || ext == ".octfail" {
+			return []string{filepath.ToSlash(filepath.Base(path))}
+		}
+		return []string{}
+	}
+	files := make([]string, 0)
+	_ = filepath.WalkDir(path, func(candidate string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+		ext := filepath.Ext(candidate)
+		if ext != ".octest" && ext != ".octfail" {
+			return nil
+		}
+		rel, relErr := filepath.Rel(path, candidate)
+		if relErr == nil {
+			files = append(files, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	sort.Strings(files)
+	return files
 }
 
 func hasFile(root string, name string) bool {

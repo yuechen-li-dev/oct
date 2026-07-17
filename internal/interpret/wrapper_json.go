@@ -94,5 +94,6 @@ func (i *interpreter) evalJSONSaveBuiltin(env *environment, pkgName string, call
 	if writeErr := os.WriteFile(path, compact.Bytes(), 0o644); writeErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
 	}
+	i.recordArtifactWrite(path)
 	return wrapperIntResult(0), nil
 }

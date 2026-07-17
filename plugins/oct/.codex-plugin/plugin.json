@@ -1,0 +1,19 @@
+{
+  "name": "oct",
+  "version": "0.1.0",
+  "description": "Develop Oct libraries and milestone experiments with canonical test and artifact evidence workflows.",
+  "author": {
+    "name": "Oct maintainers"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Oct",
+    "shortDescription": "Build Oct libraries and experiments with exact evidence.",
+    "longDescription": "Local Codex uses repository-native oct test and oct artifact workflows. Use the focused experiment skill for M0/M1 work; the bundled MCP server is for bounded hosted virtual workspaces, not a replacement shell.",
+    "developerName": "Oct maintainers",
+    "category": "Developer Tools",
+    "capabilities": ["Repository workflow", "MCP hosted playground", "Artifacts"],
+    "defaultPrompt": ["Add an Oct test and validate it with oct test.", "Create an Oct experiment M0 and report its milestone evidence.", "Repair this Oct diagnostic and report compiled versus interpreted execution.", "Generate and inspect an Oct artifact with hashes."]
+  },
+  "mcpServers": "./.mcp.json"
+}

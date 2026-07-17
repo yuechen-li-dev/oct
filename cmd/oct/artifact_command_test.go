@@ -38,7 +38,7 @@ func TestOctArtifactUsesDeterministicOrdering(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"artifact", root}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"artifact", root, "--all-packages"}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected artifact success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 	output := stdout.String()

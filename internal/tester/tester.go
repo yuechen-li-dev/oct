@@ -56,6 +56,7 @@ type TestOptions struct {
 	Suite       string
 	Execution   string
 	AllPackages bool
+	JSON        bool
 }
 
 func Execute(path string, stdout io.Writer) error {

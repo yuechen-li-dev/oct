@@ -1,0 +1,4 @@
+interface:
+  display_name: "Oct Experiments"
+  short_description: "Create and advance Oct experiment milestones."
+  default_prompt: "Create an Oct experiment milestone, validate it, and report evidence."

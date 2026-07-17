@@ -1,0 +1,12 @@
+{
+  "plugin": {"name": "oct", "version": "0.1.0"},
+  "server": {"binary": "oct-mcp", "version": "0.1.0", "toolSchemaVersion": "2.0", "mcpSDK": "github.com/modelcontextprotocol/go-sdk v1.6.1"},
+  "tools": ["oct_workspace_info", "oct_test", "oct_artifact", "oct_run", "oct_get_artifact"],
+  "limits": {"sourceBytes": 262144, "fileCount": 32, "executionSeconds": 15, "stdoutBytes": 65536, "stderrBytes": 65536, "artifactCount": 8, "artifactBytes": 2097152, "concurrentExecutions": 2, "artifactTTLSeconds": 600},
+  "transports": {"local": "skills-first repository workflow; optional stdio hosted-workspace helper", "hosted": "streamable HTTP /mcp; TLS at ingress"},
+  "skills": ["oct-workflow", "oct-experiments"],
+  "workflow": {"localCodex": ["choose oct new library for stable reuse or oct new experiment for M0/M1 evidence", "oct test <target> --execution auto --json", "repair exact diagnostic", "oct artifact <target> --execution interpreted --json", "inspect local artifact paths"], "hostedChatGPT": ["oct_workspace_info", "oct_test", "repair submitted virtual sources", "oct_artifact", "oct_get_artifact"]},
+  "policies": {"privacyURL": "OWNER_REQUIRED", "termsURL": "OWNER_REQUIRED", "supportURL": "OWNER_REQUIRED", "authentication": "anonymous MVP plus ingress abuse controls", "retention": "workspace deleted per request; in-memory artifacts expire after 10 minutes"},
+  "unsupportedClaims": ["full MATLAB replacement", "full Python replacement", "arbitrary GPU", "production ML", "perfect numerical portability", "unrestricted filesystem/network/processes"],
+  "submissionReadiness": "REQUIRES_OWNER_HOSTING_LEGAL_AND_ACCOUNT_UI_ACTION"
+}

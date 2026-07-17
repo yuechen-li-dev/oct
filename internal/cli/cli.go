@@ -145,6 +145,12 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 		if err != nil {
 			return reportCommandError(stderr, command, err)
 		}
+		if options.JSON {
+			if len(paths) != 1 {
+				return reportCommandError(stderr, command, fmt.Errorf("--json requires exactly one file-or-root target"))
+			}
+			return executeTestJSON(resolveWorkingPath(workingDir, paths[0]), stdout, options)
+		}
 		for _, path := range paths {
 			path = resolveWorkingPath(workingDir, path)
 			if err := tester.ExecuteWithOptions(path, stdout, options); err != nil {
@@ -159,6 +165,12 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 		options, paths, err := parseArtifactOptions(args[1:])
 		if err != nil {
 			return reportCommandError(stderr, command, err)
+		}
+		if options.JSON {
+			if len(paths) != 1 {
+				return reportCommandError(stderr, command, fmt.Errorf("--json requires exactly one file-or-root target"))
+			}
+			return executeArtifactJSON(resolveWorkingPath(workingDir, paths[0]), stdout, options)
 		}
 		for _, path := range paths {
 			path = resolveWorkingPath(workingDir, path)
@@ -1339,11 +1351,11 @@ func writeSDSLvHelp(out io.Writer) error {
 	return err
 }
 func writeTestHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages]\nRun octest files.\nOptions: --suite, --execution, --all-packages\nExample: oct test Language/Testing --execution compiled --all-packages")
+	_, err := fmt.Fprintln(out, "usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages] [--json]\nRun octest files.\nOptions: --suite, --execution, --all-packages, --json\n--json emits one stable command result object for a single target.\nExample: oct test Language/Testing --execution compiled --all-packages")
 	return err
 }
 func writeArtifactHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--execution <compiled|interpreted>]\nRun artifact generation for discovered artifact blocks.\nDefault execution: interpreted.\nExample: oct artifact path/to/file.oct --execution compiled")
+	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--execution <compiled|interpreted>] [--all-packages] [--json]\nRun artifact generation for discovered artifact blocks.\nDefault execution: interpreted. Imported-package artifacts require --all-packages. --json emits one stable command result object for a single target.\nExample: oct artifact path/to/file.oct --execution compiled")
 	return err
 }
 func writeBenchHelp(out io.Writer) error {
@@ -1440,10 +1452,18 @@ func parseArtifactOptions(args []string) (tester.ArtifactOptions, []string, erro
 			}
 			continue
 		}
+		if arg == "--all-packages" {
+			options.AllPackages = true
+			continue
+		}
+		if arg == "--json" {
+			options.JSON = true
+			continue
+		}
 		paths = append(paths, arg)
 	}
 	if len(paths) == 0 {
-		return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--execution <compiled|interpreted>]")
+		return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--execution <compiled|interpreted>] [--all-packages] [--json]")
 	}
 	return options, paths, nil
 }
@@ -1479,10 +1499,14 @@ func parseTestOptions(args []string) (tester.TestOptions, []string, error) {
 			options.AllPackages = true
 			continue
 		}
+		if arg == "--json" {
+			options.JSON = true
+			continue
+		}
 		paths = append(paths, arg)
 	}
 	if len(paths) == 0 {
-		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages]")
+		return tester.TestOptions{}, nil, fmt.Errorf("usage: oct test <file-or-root> [--suite <name>] [--execution <auto|compiled|interpreted>] [--all-packages] [--json]")
 	}
 	return options, paths, nil
 }

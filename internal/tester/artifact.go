@@ -2,11 +2,14 @@ package tester
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -23,7 +26,26 @@ type artifactCase struct {
 }
 
 type ArtifactOptions struct {
-	Execution string
+	Execution   string
+	AllPackages bool
+	JSON        bool
+	Report      *ArtifactReport
+}
+
+// ArtifactReport is an observation of the artifact lane for CLI and agent
+// callers. It does not change file creation or artifact execution semantics.
+type ArtifactReport struct {
+	Execution        string
+	MetadataComplete bool
+	Artifacts        []GeneratedArtifact
+}
+
+type GeneratedArtifact struct {
+	Function string `json:"function"`
+	Path     string `json:"path"`
+	MIMEType string `json:"mimeType"`
+	Bytes    int64  `json:"bytes"`
+	SHA256   string `json:"sha256"`
 }
 
 func ExecuteArtifacts(path string, stdout io.Writer) error {
@@ -38,12 +60,17 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 	if executionMode != "compiled" && executionMode != "interpreted" {
 		return fmt.Errorf("invalid artifact execution mode %q (expected compiled|interpreted)", executionMode)
 	}
+	if options.Report != nil {
+		options.Report.Execution = executionMode
+		options.Report.MetadataComplete = executionMode == "interpreted"
+		options.Report.Artifacts = nil
+	}
 	return executeForPathOrExperiment(path, stdout, "artifact", func(singlePath string, singleStdout io.Writer) error {
-		return executeArtifactsSingleRoot(singlePath, singleStdout, executionMode)
+		return executeArtifactsSingleRoot(singlePath, singleStdout, executionMode, options.AllPackages, options.Report)
 	})
 }
 
-func executeArtifactsSingleRoot(path string, stdout io.Writer, executionMode string) error {
+func executeArtifactsSingleRoot(path string, stdout io.Writer, executionMode string, allPackages bool, report *ArtifactReport) error {
 	program, err := project.LoadForTest(path)
 	if err != nil {
 		return err
@@ -52,10 +79,17 @@ func executeArtifactsSingleRoot(path string, stdout io.Writer, executionMode str
 		return err
 	}
 
+	selectedSources, err := selectedTestSources(path)
+	if err != nil {
+		return err
+	}
 	var artifacts []artifactCase
 	for pkgName, pkg := range program.Packages {
+		if !allPackages && pkgName != program.Entry {
+			continue
+		}
 		for _, fn := range pkg.Functions {
-			if !fn.IsArtifact {
+			if !fn.IsArtifact || !isSelectedSource(selectedSources, fn.SourcePath) {
 				continue
 			}
 			artifacts = append(artifacts, artifactCase{pkg: pkgName, filePath: fn.SourcePath, name: fn.Name})
@@ -80,7 +114,7 @@ func executeArtifactsSingleRoot(path string, stdout io.Writer, executionMode str
 	for _, artifact := range artifacts {
 		qualified := fmt.Sprintf("%s.%s", artifact.pkg, artifact.name)
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, artifact.filePath))
-		err := executeArtifactCase(program, artifact, stdout, executionMode)
+		err := executeArtifactCase(program, artifact, stdout, executionMode, report)
 		if err != nil {
 			_, _ = fmt.Fprintf(stdout, "FAIL %s (%s): %v\n", qualified, shortPath(path, artifact.filePath), err)
 			return fmt.Errorf("1 artifact(s) failed")
@@ -92,7 +126,7 @@ func executeArtifactsSingleRoot(path string, stdout io.Writer, executionMode str
 	return nil
 }
 
-func executeArtifactCase(program project.Program, artifact artifactCase, stdout io.Writer, executionMode string) error {
+func executeArtifactCase(program project.Program, artifact artifactCase, stdout io.Writer, executionMode string, report *ArtifactReport) error {
 	if executionMode == "compiled" {
 		return executeCompiledArtifactCase(program, artifact, stdout)
 	}
@@ -107,7 +141,56 @@ func executeArtifactCase(program project.Program, artifact artifactCase, stdout 
 				_, _ = fmt.Fprintf(stdout, "PROGRESS %s: %s %d/%d\n", qualified, event.Label, event.Current, event.Total)
 			}
 		},
+		ArtifactWriteRecorder: func(event interpret.ArtifactWriteEvent) {
+			if report != nil {
+				reportGeneratedArtifact(report, event)
+			}
+		},
 	})
+}
+
+func reportGeneratedArtifact(report *ArtifactReport, event interpret.ArtifactWriteEvent) {
+	info, err := os.Stat(event.Path)
+	if err != nil || info.IsDir() {
+		return
+	}
+	contents, err := os.ReadFile(event.Path)
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256(contents)
+	record := GeneratedArtifact{
+		Function: event.Function,
+		Path:     filepath.ToSlash(filepath.Clean(event.Path)),
+		MIMEType: artifactMIMEType(filepath.Ext(event.Path)),
+		Bytes:    info.Size(),
+		SHA256:   hex.EncodeToString(sum[:]),
+	}
+	for index, existing := range report.Artifacts {
+		if existing.Path == record.Path {
+			report.Artifacts[index] = record
+			return
+		}
+	}
+	report.Artifacts = append(report.Artifacts, record)
+	sort.Slice(report.Artifacts, func(i, j int) bool { return report.Artifacts[i].Path < report.Artifacts[j].Path })
+}
+
+func artifactMIMEType(ext string) string {
+	switch strings.ToLower(ext) {
+	case ".csv":
+		return "text/csv"
+	case ".json":
+		return "application/json"
+	case ".md":
+		return "text/markdown"
+	case ".octagon":
+		return "application/octet-stream"
+	case ".png":
+		return "image/png"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func executeCompiledArtifactCase(program project.Program, artifact artifactCase, stdout io.Writer) (retErr error) {

@@ -10,6 +10,12 @@
 A single `.octest` file may also contain `[Artifact]` and `[Benchmark]` functions, but `oct test` runs only `[Fact]` and `[Theory]` cases plus `.octfail` checks.
 Use `oct artifact` for `[Artifact]` functions and `oct bench` for `[Benchmark]` functions.
 
+For agent or CI consumption, add `--json` to one target. It emits one
+`oct.cli.result.v1` object with command/version identity, test-file discovery,
+pass/fail/skip counts, compiled and interpreted-fallback counts, diagnostics,
+human output, timing, and exit status. Human-readable output remains the
+default.
+
 ## `[Fact]`
 
 `[Fact]` marks one test function.
@@ -178,6 +184,13 @@ fn EmitReferenceData() -> Void {
 Artifact functions write files explicitly from user code.
 Prefer `Artifact.Write*` helpers (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
 Use `Artifact.Checkpoint(label)` and `Artifact.Progress(label, current, total)` for deterministic progress output in long-running artifact functions.
+
+`oct artifact <path>` selects artifact functions in the entry package by
+default, matching `oct test`'s default package scope. Add `--all-packages` only
+when imported package artifact lanes are deliberately part of the run. Its
+single-target `--json` result reports generated path, MIME type, byte count,
+and SHA-256 for interpreted artifact writes; compiled artifact metadata is
+explicitly marked incomplete in this preview.
 
 See [09 builtins](../language/09-builtins.md) for non-test builtin surface.
 See [34 octagon](./34-octagon.md) for benchmark and artifact output guidance.

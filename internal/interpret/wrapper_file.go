@@ -63,6 +63,7 @@ func (i *interpreter) evalFileWriteTextBuiltin(env *environment, pkgName string,
 	if writeErr := fileWriteText(path, text); writeErr != nil {
 		return wrapperErrorResult(callee, writeErr), nil
 	}
+	i.recordArtifactWrite(path)
 	return wrapperIntResult(0), nil
 }
 
@@ -144,6 +145,7 @@ func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string
 	if writeErr := os.WriteFile(path, bytes, 0o644); writeErr != nil {
 		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
 			if retryErr := os.WriteFile(path, bytes, 0o644); retryErr == nil {
+				i.recordArtifactWrite(path)
 				return wrapperIntResult(0), nil
 			} else {
 				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
@@ -151,6 +153,7 @@ func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string
 		}
 		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
 	}
+	i.recordArtifactWrite(path)
 	return wrapperIntResult(0), nil
 }
 
@@ -199,6 +202,7 @@ func (i *interpreter) evalFileWriteLinesBuiltin(env *environment, pkgName string
 	if writeErr := writeLines(path, lines); writeErr != nil {
 		return wrapperErrorResult(callee, writeErr), nil
 	}
+	i.recordArtifactWrite(path)
 	return wrapperIntResult(0), nil
 }
 
