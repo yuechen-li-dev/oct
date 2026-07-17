@@ -1,0 +1,69 @@
+package PrometheusNumericalHeterogeneityLab
+
+import IO
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
+fn M0CorpusHasExplicitHeldOutSplitAndDiverseFamilies() -> Void {
+    let cases = M0BuildCases()
+    var identification = 0
+    var heldOut = 0
+    for i in 0..Len(cases) {
+        if cases[i].Split == M0Split.Identification { identification = identification + 1 }
+        if cases[i].Split == M0Split.HeldOut { heldOut = heldOut + 1 }
+    }
+    Assert.Equal(12, Len(cases), "bounded corpus size")
+    Assert.Equal(6, identification, "identification cases")
+    Assert.Equal(6, heldOut, "held-out cases")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
+fn M0RecurrenceIsDeterministicAndDepthResolved() -> Void {
+    let c = M0BuildCases()[10]
+    let a = M0RunTrajectory(c, M0Mitigation.ObserveOnly)
+    let b = M0RunTrajectory(c, M0Mitigation.ObserveOnly)
+    Assert.Equal(9, Len(a.Errors), "depth zero through eight")
+    Assert.Near(a.Errors[4], b.Errors[4], 0.000000000001, "same plan produces same midpoint")
+    Assert.Near(a.FinalAbsError, b.FinalAbsError, 0.000000000001, "same plan produces same final error")
+    Assert.True(a.FinalAbsError > 0.0, "final error measured")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
+fn M0MitigationSelectionUsesHeldOutEvidence() -> Void {
+    let report = M0RunSimulation()
+    Assert.Equal(4, Len(report.Mitigations), "bounded candidates")
+    Assert.True(report.SelectedHeldOutMeanError < report.BaselineHeldOutMeanError, "selection improves held-out mean")
+    Assert.True(report.HeldOutImprovementPct > 0.0, "held-out improvement reported")
+    Assert.Equal(false, report.ProductAuthorityChanged, "simulation cannot change product authority")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
+fn M0ShadowJudgmentIsDeterministicAndAuditOnly() -> Void {
+    let evidence = M0ShadowEvidence {Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100}
+    let a = M0SelectShadowAction(evidence)
+    let b = M0SelectShadowAction(evidence)
+    Assert.Equal(a.Action, b.Action, "bounded score is deterministic")
+    Assert.Equal(false, a.ProductAuthorityChanged, "shadow controller has no authority")
+    Assert.True(a.Action != M0ShadowAction.Observe, "large deterministic discrepancy requests an audit")
+}
+
+[Fact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
+fn M0SuspectReferenceIsQuarantined() -> Void {
+    let decision = M0SelectShadowAction(M0ShadowEvidence {Deterministic: true ReferenceSuspect: true ErrorMilli: 9000 GainMilli: 1800 Repeats: 100})
+    Assert.Equal(M0ShadowAction.QuarantineEvidence, decision.Action, "suspect reference blocks mitigation claims")
+    Assert.Equal(false, decision.ProductAuthorityChanged, "quarantine remains audit-only")
+}
+
+[Artifact]
+[Suite("Experiments.PrometheusNumericalHeterogeneityLab.M0")]
+fn M0SyntheticArtifactsWrite() -> Void ! Error {
+    let _ = M0WriteArtifacts()
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M0/M0.synthetic_report.octagon")?) > 0, "Octagon report")
+    Assert.True(Len(IO.Load("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_summary.json")?) > 0, "summary JSON")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M0/synthetic_trajectories.csv")?) > 1, "trajectory CSV")
+    Assert.True(Len(IO.ReadLines("Experiments/PrometheusNumericalHeterogeneityLab/M0/FINDINGS.md")?) > 0, "findings")
+}

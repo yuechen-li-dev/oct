@@ -1,0 +1,408 @@
+{
+  "schema": "prometheus.m49.numerical-heterogeneity.v1",
+  "convergence_outcome": "meaningful_progression",
+  "milestone_state": "in_progress",
+  "m48_evt_state": "postponed",
+  "normal_product_execution_changed": false,
+  "experiment_plan_identity": 6467588263106873876,
+  "provenance": {
+    "host_os": "Windows",
+    "device": "NVIDIA GeForce RTX 3070",
+    "backend": "Vulkan",
+    "compiler": "MSVC 19.51.36231",
+    "validation_enabled": true,
+    "shader_policy": "existing M42-M47 shader identities unchanged",
+    "device_specific_thresholds_enabled": false
+  },
+  "vocabulary": {
+    "plant": "one numerical stage, complete M43-M47 block, or repeated M48 stack",
+    "reference_model": "selected semantically matched CPU or independent GPU witness",
+    "realization": "backend, precision, shader, accumulation/storage, and submit policy",
+    "state": "activation entering a stage or block",
+    "measurement": "audit-only stage readback or bounded canary summary",
+    "residual": "realization output minus selected reference output",
+    "disturbance_injection": "matched-input output residual",
+    "disturbance_gain": "output perturbation norm divided by input perturbation norm",
+    "observer": "research-only numerical-regime HFSM",
+    "controller": "shadow-only path or precision recommendation",
+    "reproducibility_floor": "smallest discrepancy after semantic alignment without copying machine order"
+  },
+  "corpus_definitions": {
+    "split_rule": "stable FNV identity; one of five hash buckets held out",
+    "identification_set": {
+      "families": [
+        "low_amplitude", "wide_amplitude", "alternating_sign", "sparse",
+        "cancellation_heavy", "monotonic_ramp"
+      ]
+    },
+    "held_out_validation": {
+      "families": ["near_fp16_midpoint", "outlier_channel", "m48_legacy"],
+      "policy": "no observer threshold or compensation fit may consume held-out outcomes"
+    },
+    "shapes": [
+      {"name": "tiny", "tokens": 16, "model_width": 128, "head_dim": 16, "ffn_width": 256},
+      {"name": "primary", "tokens": 128, "model_width": 1024, "head_dim": 128, "ffn_width": 4096},
+      {"name": "more_tokens", "tokens": 256, "model_width": 1024, "head_dim": 128, "ffn_width": 4096},
+      {"name": "smaller_expansion", "tokens": 128, "model_width": 1024, "head_dim": 128, "ffn_width": 2048},
+      {"name": "awkward", "tokens": 128, "model_width": 1000, "head_dim": 125, "ffn_width": 3008},
+      {"name": "token_boundary", "tokens": 1024, "model_width": 128, "head_dim": 16, "ffn_width": 512}
+    ]
+  },
+  "path_definitions": [
+    {
+      "id": "cpu_fp32_semantic",
+      "authority_role": "inspectable semantic reference",
+      "precision": "FP32 with canonical binary16 RNE at reduced boundaries",
+      "absolute_truth": false
+    },
+    {
+      "id": "gpu_a2x4_fp32",
+      "authority_role": "independent all-FP32 hardware witness",
+      "precision": "FP32 input, accumulation, storage, and output",
+      "absolute_truth": false
+    },
+    {
+      "id": "gpu_conventional_fp16",
+      "authority_role": "reduced-precision witness",
+      "precision": "binary16 storage/input with FP32 accumulation/output",
+      "absolute_truth": false
+    },
+    {
+      "id": "gpu_cooperative_fp16",
+      "authority_role": "independent reduced-precision cooperative witness",
+      "precision": "binary16 cooperative inputs with FP32 accumulation/output",
+      "absolute_truth": false
+    }
+  ],
+  "repeated_run_determinism": [
+    {
+      "path": "cpu_corpus_generator",
+      "runs": 100,
+      "classification": "bitwise_deterministic",
+      "distinct_output_hashes": 1,
+      "scope": "non-hardware permanent identity test"
+    },
+    {
+      "path": "gpu_conventional_fp16_primary",
+      "runs": 100,
+      "classification": "bitwise_deterministic_within_plan",
+      "first_output_hash": 11954385417472968597,
+      "output_hash_changes": 0
+    },
+    {
+      "path": "gpu_cooperative_fp16_primary",
+      "runs": 100,
+      "classification": "bitwise_deterministic_within_plan",
+      "first_output_hash": 12759720903673541007,
+      "output_hash_changes": 0
+    },
+    {
+      "path": "gpu_a2x4_fp32_primary",
+      "runs": 100,
+      "classification": "bitwise_deterministic_within_plan",
+      "first_output_hash": 4962826545120659717,
+      "output_hash_changes": 0
+    }
+  ],
+  "primary_hardware_stage_matrix": {
+    "date": "2026-07-16",
+    "shape": {"tokens": 128, "model_width": 1024, "head_dim": 128, "ffn_width": 4096},
+    "elements_per_stage": 131072,
+    "stage_order": ["attention", "output_projection", "first_residual", "rmsnorm", "ffn"],
+    "paths": [
+      {
+        "path": "gpu_conventional_fp16",
+        "fact_passed": false,
+        "max_abs_by_layer_stage": [
+          [0.00000286102, 0, 0, 0.00000101328, 0.000115156],
+          [0.000223398, 0.000141352, 0.000139415, 0.000156403, 0.0354118],
+          [0.1875, 0.125778, 0.127167, 0.00688416, 1.36608],
+          [9.0, 4.91187, 4.95862, 0.00559902, 2.17557]
+        ],
+        "mismatch_count_by_layer_stage": [
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 2], [0, 61, 27, 11, 361], [22680, 15180, 120, 7500, 0]
+        ],
+        "first_out_of_envelope_stage": "layer_1_ffn",
+        "four_submit_gpu_ns": 37297152,
+        "warm_100_median_gpu_ns": 32934848
+      },
+      {
+        "path": "gpu_cooperative_fp16",
+        "fact_passed": false,
+        "max_abs_by_layer_stage": [
+          [0.00000286102, 0, 0, 0.00000101328, 0.000115156],
+          [0.00022392, 0.000141352, 0.000139177, 0.000156045, 0.0355415],
+          [0.1875, 0.125793, 0.127045, 0.00734365, 1.20667],
+          [8.25, 4.21915, 4.27954, 0.00445843, 1.66956]
+        ],
+        "mismatch_count_by_layer_stage": [
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 2], [0, 61, 27, 17, 301], [22680, 15180, 7320, 3138, 0]
+        ],
+        "first_out_of_envelope_stage": "layer_1_ffn",
+        "four_submit_gpu_ns": 15247648,
+        "warm_100_median_gpu_ns": 13992704
+      },
+      {
+        "path": "gpu_a2x4_fp32",
+        "fact_passed": true,
+        "max_abs_by_layer_stage": [
+          [0.000000476837, 0.0000012964, 0.00000762939, 0.00000101328, 0.00000393391],
+          [0.00000211596, 0.00000102818, 0.00000393391, 0.0000038147, 0.00053215],
+          [0.00207901, 0.001297, 0.00131226, 0.0000241995, 0.0125732],
+          [0.163574, 0.0889282, 0.085968, 0.000074625, 0.0393524]
+        ],
+        "mismatch_count_by_layer_stage": [
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]
+        ],
+        "first_out_of_envelope_stage": null,
+        "four_submit_gpu_ns": 48474464,
+        "warm_100_median_gpu_ns": 48455072
+      }
+    ],
+    "interpretation": "The discrepancy is repeatable and realization-dependent. Both FP16 realizations first exceed tolerance at layer-1 FFN and then amplify; the all-FP32 A2x4 witness remains inside every established stage tolerance through layer 4."
+  },
+  "matched_input_disturbance_records": [
+    {
+      "stage": "M43_attention",
+      "path": "gpu_conventional_fp16",
+      "input_authority": "captured identical layer input",
+      "status": "existing_live_audit_passed",
+      "raw_summary": "M48 hardware fact compares full matched-input attention at every audited prefix"
+    },
+    {
+      "stage": "M44_to_M47_substages",
+      "status": "depth_resolved_boundary_matrix_complete_for_primary_shape",
+      "scope": "five boundaries per layer across four layers and all three GPU realizations",
+      "remaining_gap": "arbitrary captured-input injection into each suffix stage is not implemented"
+    }
+  ],
+  "inherited_gain_records": [
+    {
+      "stage": "synthetic_linear_witness",
+      "perturbation": "deterministic signed pattern",
+      "global_gain": 2.0,
+      "maximum_token_gain": 2.0,
+      "maximum_channel_gain": 2.0,
+      "authority": "permanent non-hardware calculation test"
+    },
+    {
+      "stage": "real_M43_M47",
+      "status": "measurement_pending",
+      "reason": "controlled perturbation injection has not yet been added to the hardware executor"
+    }
+  ],
+  "depth_trajectories": [
+    {
+      "path": "gpu_conventional_fp16",
+      "depths": [1, 2, 4],
+      "shape": "primary",
+      "gpu_ns": [8231936, 16463456, 37297152],
+      "layer_ffn_max_abs": [0.000115156, 0.0354118, 1.36608, 2.17557],
+      "source": "M49 controlled post-RNE rerun"
+    },
+    {
+      "path": "gpu_cooperative_fp16",
+      "depths": [4],
+      "shape": "primary",
+      "gpu_ns": [15247648],
+      "layer_ffn_max_abs": [0.000115156, 0.0355415, 1.20667, 1.66956],
+      "source": "M49 controlled post-RNE rerun"
+    },
+    {
+      "path": "gpu_a2x4_fp32",
+      "depths": [4],
+      "shape": "primary",
+      "gpu_ns": [48474464],
+      "layer_ffn_max_abs": [0.00000393391, 0.00053215, 0.0125732, 0.0393524],
+      "source": "M49 controlled post-RNE rerun"
+    }
+  ],
+  "distribution_correlation_summaries": [
+    {
+      "corpus": "permanent structured residual witness",
+      "residual_reference_correlation": ">0.9",
+      "channel_recurrence_fraction": ">0.9",
+      "interpretation": "the framework detects structured magnitude-dependent drift and does not label it Gaussian"
+    },
+    {
+      "corpus": "primary_conventional_layer3_attention",
+      "l1": 536239.0,
+      "l2": 1767.92,
+      "linf": 9.0,
+      "mae": 4.09118,
+      "rms": 4.88322,
+      "bias": 0.000154972,
+      "p95_absolute_error": 9.0,
+      "p99_absolute_error": 9.0,
+      "residual_reference_correlation": 0.529877,
+      "channel_recurrence_fraction": 0.987482
+    },
+    {
+      "corpus": "primary_a2x4_layer3_attention",
+      "l1": 2337.85,
+      "l2": 8.11145,
+      "linf": 0.163574,
+      "mae": 0.0178364,
+      "rms": 0.0224049,
+      "bias": 0.0000209654,
+      "p95_absolute_error": 0.0494385,
+      "p99_absolute_error": 0.0494385,
+      "residual_reference_correlation": -0.635241,
+      "channel_recurrence_fraction": 0.992987
+    }
+  ],
+  "raw_observations": [
+    {
+      "source": "M48_pre_RNE_contradiction",
+      "path": "gpu_conventional_fp16",
+      "layer": 3,
+      "stage": "final",
+      "token": 31,
+      "column": 511,
+      "cpu_reference": -106.834,
+      "gpu_observed": -113.538,
+      "absolute_error": 6.70318,
+      "relative_error": 0.0627436,
+      "interpretation": "historical reference defect witness; not used as the post-RNE floor"
+    },
+    {
+      "source": "M49_post_RNE_primary",
+      "stage": "layer_1_ffn",
+      "conventional_max_abs": 0.0354118,
+      "cooperative_max_abs": 0.0355415,
+      "a2x4_max_abs": 0.00053215,
+      "interpretation": "first established tolerance failures occur in both FP16 paths while the all-FP32 witness remains in envelope"
+    },
+    {
+      "source": "M49_post_RNE_primary",
+      "stage": "layer_3_attention",
+      "conventional_max_abs": 9.0,
+      "cooperative_max_abs": 8.25,
+      "a2x4_max_abs": 0.163574,
+      "interpretation": "depth amplifies a repeatable realization-dependent disturbance; bias is tiny relative to RMS, so scalar correction is not supported"
+    }
+  ],
+  "reproducibility_floor": {
+    "status": "bounded_for_primary_shape_not_certified_for_transfer",
+    "semantic_mismatch_removed": "canonical IEEE binary16 round-to-nearest-even conversion",
+    "primary_all_fp32_witness_layer3_ffn_max_abs": 0.0393524,
+    "primary_fp16_conventional_layer3_ffn_max_abs": 2.17557,
+    "primary_fp16_cooperative_layer3_ffn_max_abs": 1.66956,
+    "reason": "the primary matrix is complete, but multi-shape held-out hardware and an FP64 selected-dot oracle are not complete"
+  },
+  "mitigation_experiments": [
+    {
+      "name": "A2x4_FP32_upper_bound",
+      "path": "gpu_a2x4_fp32",
+      "primary_four_block_gpu_ns": 48474464,
+      "baseline_conventional_gpu_ns": 37297152,
+      "latency_ratio_vs_conventional": 1.300,
+      "numerical_result": "all 20 audited stage boundaries within established tolerance",
+      "classification": "measured source-side upper-bound witness"
+    },
+    {
+      "name": "cooperative_FP16_backend_change",
+      "path": "gpu_cooperative_fp16",
+      "primary_four_block_gpu_ns": 15247648,
+      "baseline_conventional_gpu_ns": 37297152,
+      "speedup_vs_conventional": 2.446,
+      "numerical_result": "same first failure at layer-1 FFN and nine failing boundaries overall",
+      "classification": "faster reduced-precision backend; not a numerical mitigation"
+    },
+    {
+      "name": "retain_FP32_hidden_before_Wdown",
+      "source": "M47 primary artifact",
+      "direct_packed_gpu_ns": 1035000,
+      "fused_fp32_then_pack_gpu_ns": 1043000,
+      "extra_retained_bytes": 2097152,
+      "classification": "measured implementation candidate; held-out numerical reduction pending"
+    }
+  ],
+  "held_out_validation": {
+    "source_side_mitigation_complete": false,
+    "synthetic_design_lab": {
+      "artifact": "Experiments/PrometheusNumericalHeterogeneityLab/M0/M0.synthetic_report.octagon",
+      "case_count": 12,
+      "trajectory_count": 48,
+      "selected_candidate": "FP32-checkpoint",
+      "held_out_improvement_pct": 91.8456402153865,
+      "authority": "synthetic_only"
+    },
+    "compensation_filter": {
+      "model": "per-stage scalar bias",
+      "status": "rejected_by_contract_when_held_out_rms_worsens",
+      "production_enabled": false
+    }
+  },
+  "observer_states": [
+    "Unidentified", "Nominal", "BoundedDrift", "HighInjection", "HighGain",
+    "ReferenceSuspect", "PrecisionPromotionRecommended",
+    "BackendFallbackRecommended", "AuditRequired", "Quarantined"
+  ],
+  "shadow_controller_recommendations": {
+    "authority": "shadow_only",
+    "normal_selected_path_remains_authoritative": true,
+    "candidate_actions": [
+      "accept", "cooperative_fp16", "conventional_fp16", "a2x4_fp32",
+      "selective_fp32_stage", "periodic_fp32_checkpoint", "stage_audit",
+      "reject_or_quarantine"
+    ],
+    "considerations": [
+      "risk_reduction", "latency_cost", "memory_cost", "portability",
+      "complexity", "evidence_confidence"
+    ]
+  },
+  "canary_results": [
+    {
+      "canary": "dual_seeded_signed_projection_plus_L1_L2_Linf_absolute_projection_and_bit_hash",
+      "structured_cancellation_test": "passed",
+      "hardware_detection_sensitivity": "not_yet_measured",
+      "product_path_enabled": false
+    }
+  ],
+  "proposed_envelopes": [
+    {
+      "form": "error_out <= gain_bound * error_in + local_disturbance_bound + bias_bound",
+      "scope": "stage/path/shape bounded",
+      "unsupported_extrapolation_rejected": true,
+      "certification_status": "framework_complete_measurement_pending"
+    }
+  ],
+  "performance_cost": {
+    "research_statistics": "host-only outside product timing",
+    "audit_readback": "dedicated explicit M48 audit submission",
+    "normal_path_dispatch_delta": 0,
+    "normal_path_readback_delta": 0,
+    "normal_path_warm_allocation_delta": 0
+  },
+  "dvt_transfer": {
+    "abstract_identity_fields": [
+      "backend", "precision", "cooperative_tuple", "shader_hash",
+      "accumulation_storage_policy", "transcendental_policy",
+      "dispatch_topology", "memory_regime"
+    ],
+    "amd_threshold_reuse_allowed": false,
+    "required_action": "rerun identification and held-out validation on AMD unified-memory hardware"
+  },
+  "unsupported_claims": [
+    "no Gaussian-noise claim",
+    "no bitwise cross-device equivalence claim",
+    "no multi-shape post-RNE reproducibility floor",
+    "no arbitrary captured-input injection into every M44-M47 suffix stage yet",
+    "no real-stage controlled perturbation gain matrix yet",
+    "no eight-layer hardware trajectory",
+    "no held-out mitigation generalization result",
+    "no production correction, filtering, or automatic selector authority",
+    "no AMD DVT result"
+  ],
+  "exact_source_hashes": {
+    "reactor_numerical_research.c": "8de806b7b5196213d244481f9d4b13142a6be74985fa517ad8cafbe7b2c7bcc5",
+    "reactor_numerical_research.h": "e6a44cc677d55c346ca9894f0db39adb988baf6259d4d49d07ceacb8d7703d99",
+    "reactor_vulkan_transformer.c": "f3b88965a771b9164aa0a0441e3c39cbbb0520d424b5881220a783bae7a31221",
+    "reactor_vulkan_sgemm.c": "525da49b59fd15c98c2302219cf6dbe4973cf77b8ad29545513863d937da402b",
+    "reactor_vulkan_fused_reduction.c": "4589987617267526cfed234748e6007d865743fd4e04bc81398b3c9708d23199",
+    "reactor_attention_tests.cpp": "2b8b5a3eb558eb984e9e76f34e10fc453ad682ae2daa195074b1c212893f4688",
+    "reactor_m49_numerical_research_tests.cpp": "02daacb209aef8a7692a9ae8e667fb63b7dfc3bc23befbac64ec31ffeea1fa62",
+    "prometheus_numerical_heterogeneity_lab_m0.oct": "c848345b49b189ddd6119f0a096b266c57106422bc90c409cac1ab5f058e0055"
+  }
+}

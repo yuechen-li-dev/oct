@@ -1,6 +1,7 @@
 #include "test_harness.h"
 
 #include "../reactor_vulkan.h"
+#include "../reactor_numerical_research.h"
 
 #include <algorithm>
 #include <array>
@@ -2815,6 +2816,8 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                 float maximumAbsoluteError = 0.0f;
                 float maximumRelativeError = 0.0f;
                 std::uint32_t mismatchCount = 0u;
+                std::vector<float> metricReference(activationElements, 0.0f);
+                std::vector<float> metricActual(activationElements, 0.0f);
                 layerRequest.layer_count = auditLayer + 1u;
                 layerRequest.audit_mode = 1u;
                 layerRequest.output = nullptr;
@@ -2839,6 +2842,10 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                         : static_cast<std::uint32_t>(index % modelWidth);
                     const float expected = referenceStageOutputs[auditLayer][auditStage][index];
                     const float actual = stageOutput[index];
+                    const std::size_t metricIndex =
+                        static_cast<std::size_t>(token) * modelWidth + column;
+                    metricReference[metricIndex] = expected;
+                    metricActual[metricIndex] = actual;
                     const float absoluteError = std::abs(actual - expected);
                     const float relativeError = absoluteError /
                         std::max(std::abs(expected), 1.0e-20f);
@@ -2862,10 +2869,35 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                         }
                     }
                 }
+                std::vector<double> metricScratch(activationElements, 0.0);
+                prom_num_error_summary errorSummary{};
+                prom_num_correlation_summary correlationSummary{};
+                ASSERT_TRUE(prom_num_summarize_error(
+                                metricReference.data(), metricActual.data(), tokens, modelWidth,
+                                1.0e-8, absoluteTolerances[auditStage],
+                                relativeTolerances[auditStage], metricScratch.data(),
+                                metricScratch.size(), &errorSummary) != 0,
+                            "M49 error statistics consume the real M48 audit boundary");
+                ASSERT_TRUE(prom_num_summarize_correlation(
+                                metricReference.data(), metricActual.data(), tokens, modelWidth,
+                                &correlationSummary) != 0,
+                            "M49 structure statistics consume the real M48 audit boundary");
                 std::fprintf(stderr,
                              "M48 stage audit summary layer=%u stage=%s max_abs=%g max_rel=%g mismatches=%u elements=%zu\n",
                              auditLayer, stageNames[auditStage], maximumAbsoluteError,
                              maximumRelativeError, mismatchCount, activationElements);
+                std::fprintf(stderr,
+                             "M49 stage identification layer=%u stage=%s l1=%g l2=%g linf=%g mae=%g rms=%g bias=%g p95=%g p99=%g cosine=%g worst_token_fraction=%g worst_token=%u worst_channel_fraction=%g worst_channel=%u residual_reference_correlation=%g lag1=%g channel_recurrence=%g\n",
+                             auditLayer, stageNames[auditStage], errorSummary.l1_norm,
+                             errorSummary.l2_norm, errorSummary.linfinity_norm,
+                             errorSummary.mean_absolute_error, errorSummary.rms_error,
+                             errorSummary.signed_mean_bias, errorSummary.p95_absolute_error,
+                             errorSummary.p99_absolute_error, errorSummary.cosine_similarity,
+                             errorSummary.worst_token_l2_fraction, errorSummary.worst_token,
+                             errorSummary.worst_channel_l2_fraction, errorSummary.worst_channel,
+                             correlationSummary.residual_reference_correlation,
+                             correlationSummary.residual_lag1_autocorrelation,
+                             correlationSummary.channel_recurrence_fraction);
                 ASSERT_EQUAL(0u, mismatchCount,
                              "stage boundary agrees with its established precision tolerance");
                 if (auditStage == PROM_M48_AUDIT_STAGE_ATTENTION - 1u) {
@@ -3076,9 +3108,15 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
     std::uint64_t warm100Median = 0u;
     std::uint64_t warm100P10 = 0u;
     std::uint64_t warm100P90 = 0u;
+    std::uint64_t warm10OutputHash = 0u;
+    std::uint64_t warm10OutputHashChangeCount = 0u;
+    std::uint64_t warm100OutputHash = 0u;
+    std::uint64_t warm100OutputHashChangeCount = 0u;
     if (printCorpus) {
         auto measureWarm = [&](std::uint32_t count, std::uint64_t* median,
-                               std::uint64_t* p10, std::uint64_t* p90) {
+                               std::uint64_t* p10, std::uint64_t* p90,
+                               std::uint64_t* firstOutputHash,
+                               std::uint64_t* outputHashChangeCount) {
             std::vector<std::uint64_t> samples;
             samples.reserve(count);
             request.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
@@ -3089,14 +3127,20 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                 ASSERT_EQUAL(static_cast<std::uint64_t>(0u), value.buffer_allocation_count,
                              "primed warm corpus stack allocates no Vulkan buffer");
                 samples.push_back(value.total_stack_gpu_ns);
+                const std::uint64_t outputHash =
+                    prom_num_hash_float_bits(request.output, activationElements);
+                if (sample == 0u) *firstOutputHash = outputHash;
+                else if (outputHash != *firstOutputHash) *outputHashChangeCount += 1u;
             }
             std::sort(samples.begin(), samples.end());
             *median = samples[samples.size() / 2u];
             *p10 = samples[(samples.size() - 1u) / 10u];
             *p90 = samples[((samples.size() - 1u) * 9u) / 10u];
         };
-        measureWarm(10u, &warm10Median, &warm10P10, &warm10P90);
-        measureWarm(100u, &warm100Median, &warm100P10, &warm100P90);
+        measureWarm(10u, &warm10Median, &warm10P10, &warm10P90,
+                    &warm10OutputHash, &warm10OutputHashChangeCount);
+        measureWarm(100u, &warm100Median, &warm100P10, &warm100P90,
+                    &warm100OutputHash, &warm100OutputHashChangeCount);
     }
 
     const std::array<std::pair<std::uint32_t, std::uint32_t>, 4u> liveReplacements{{
@@ -3138,7 +3182,7 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                  "validation-enabled one/four-submit stack execution adds no errors");
     if (!fullOracle || printCorpus) {
         std::fprintf(stderr,
-                     "M48 corpus shape=%.*s path=%.*s one=%llu two=%llu four_one_submit=%llu four_submit=%llu layer0=%llu layer1=%llu layer2=%llu layer3=%llu host_wait_gpu=%llu host_wait_e2e=%llu host_wait_cpu_wait=%llu host_bounce_gpu=%llu host_bounce_e2e=%llu host_bounce_cpu_wait=%llu host_bounce_copy=%llu resident_e2e=%llu host_e2e=%llu warm=%llu warm10_med=%llu warm10_p10=%llu warm10_p90=%llu warm100_med=%llu warm100_p10=%llu warm100_p90=%llu\n",
+                     "M48 corpus shape=%.*s path=%.*s one=%llu two=%llu four_one_submit=%llu four_submit=%llu layer0=%llu layer1=%llu layer2=%llu layer3=%llu host_wait_gpu=%llu host_wait_e2e=%llu host_wait_cpu_wait=%llu host_bounce_gpu=%llu host_bounce_e2e=%llu host_bounce_cpu_wait=%llu host_bounce_copy=%llu resident_e2e=%llu host_e2e=%llu warm=%llu warm10_med=%llu warm10_p10=%llu warm10_p90=%llu warm10_output_hash=%llu warm10_hash_changes=%llu warm10_determinism=%s warm100_med=%llu warm100_p10=%llu warm100_p90=%llu warm100_output_hash=%llu warm100_hash_changes=%llu warm100_determinism=%s\n",
                      static_cast<int>(shape.size()), shape.data(),
                      static_cast<int>(pathName.size()), pathName.data(),
                      static_cast<unsigned long long>(auditGpu[0]),
@@ -3162,9 +3206,15 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                      static_cast<unsigned long long>(warm10Median),
                      static_cast<unsigned long long>(warm10P10),
                      static_cast<unsigned long long>(warm10P90),
+                     static_cast<unsigned long long>(warm10OutputHash),
+                     static_cast<unsigned long long>(warm10OutputHashChangeCount),
+                     warm10OutputHashChangeCount == 0u ? "bitwise" : "variable",
                      static_cast<unsigned long long>(warm100Median),
                      static_cast<unsigned long long>(warm100P10),
-                     static_cast<unsigned long long>(warm100P90));
+                     static_cast<unsigned long long>(warm100P90),
+                     static_cast<unsigned long long>(warm100OutputHash),
+                     static_cast<unsigned long long>(warm100OutputHashChangeCount),
+                     warm100OutputHashChangeCount == 0u ? "bitwise" : "variable");
     }
     prom_reactor_runtime_destroy_impl(runtime);
 }

@@ -1,0 +1,410 @@
+package PrometheusNumericalHeterogeneityLab
+
+import String
+import Artifact
+import Markdown
+import Json
+
+/// Synthetic design lab for M49. These values are hypotheses and never replace
+/// matched-input CPU/GPU measurements from the native Prometheus audit harness.
+enum M0Path {
+    Conventional
+    Cooperative
+    A2x4
+}
+
+enum M0Family {
+    BoundedRandom
+    AlternatingCancellation
+    SparseOutlier
+    NearZero
+}
+
+enum M0Split {
+    Identification
+    HeldOut
+}
+
+enum M0Mitigation {
+    ObserveOnly
+    Fp32Checkpoint
+    SelectiveFp32Hidden
+    BackendRoute
+}
+
+enum M0ShadowAction {
+    Observe
+    RequestCheckpointAudit
+    RequestBackendAudit
+    QuarantineEvidence
+}
+
+record M0PlantCase {
+    CaseName: String
+    Path: M0Path
+    Family: M0Family
+    Split: M0Split
+    InitialError: Float
+    Injection: Float
+    Gain: Float
+}
+
+record M0Trajectory {
+    CaseName: String
+    Path: String
+    Family: String
+    Split: String
+    Mitigation: String
+    Depths: Float[]
+    Errors: Float[]
+    FinalAbsError: Float
+    RmsError: Float
+    LatencyCostPct: Float
+    MemoryCostMiB: Float
+}
+
+record M0MitigationAggregate {
+    Mitigation: M0Mitigation
+    IdentificationMeanError: Float
+    HeldOutMeanError: Float
+    LatencyCostPct: Float
+    MemoryCostMiB: Float
+    Eligible: Bool
+    RejectionReason: String
+}
+
+record M0ShadowEvidence {
+    Deterministic: Bool
+    ReferenceSuspect: Bool
+    ErrorMilli: Int
+    GainMilli: Int
+    Repeats: Int
+}
+
+record M0ShadowDecision {
+    Action: M0ShadowAction
+    ActionName: String
+    Score: Int
+    Rationale: String
+    ProductAuthorityChanged: Bool
+}
+
+record M0SimulationReport {
+    Cases: M0PlantCase[]
+    Trajectories: M0Trajectory[]
+    Mitigations: M0MitigationAggregate[]
+    SelectedMitigation: String
+    SelectedHeldOutMeanError: Float
+    BaselineHeldOutMeanError: Float
+    HeldOutImprovementPct: Float
+    ShadowDecision: M0ShadowDecision
+    ProductAuthorityChanged: Bool
+    Interpretation: String
+}
+
+fn M0PathName(path: M0Path) -> String {
+    return switch {
+        case path == M0Path.Conventional => "conventional"
+        case path == M0Path.Cooperative => "cooperative"
+        else => "A2x4"
+    }
+}
+
+fn M0FamilyName(family: M0Family) -> String {
+    return switch {
+        case family == M0Family.BoundedRandom => "bounded-random"
+        case family == M0Family.AlternatingCancellation => "alternating-cancellation"
+        case family == M0Family.SparseOutlier => "sparse-outlier"
+        else => "near-zero"
+    }
+}
+
+fn M0SplitName(split: M0Split) -> String {
+    return switch {
+        case split == M0Split.Identification => "identification"
+        else => "held-out"
+    }
+}
+
+fn M0MitigationName(mitigation: M0Mitigation) -> String {
+    return switch {
+        case mitigation == M0Mitigation.ObserveOnly => "observe-only"
+        case mitigation == M0Mitigation.Fp32Checkpoint => "FP32-checkpoint"
+        case mitigation == M0Mitigation.SelectiveFp32Hidden => "selective-FP32-hidden"
+        else => "backend-route"
+    }
+}
+
+fn M0AllMitigations() -> M0Mitigation[] {
+    return [
+        M0Mitigation.ObserveOnly,
+        M0Mitigation.Fp32Checkpoint,
+        M0Mitigation.SelectiveFp32Hidden,
+        M0Mitigation.BackendRoute
+    ]
+}
+
+fn M0BuildCases() -> M0PlantCase[] {
+    return [
+        M0PlantCase {CaseName: "id-conventional-random" Path: M0Path.Conventional Family: M0Family.BoundedRandom Split: M0Split.Identification InitialError: 0.018 Injection: 0.012 Gain: 1.08},
+        M0PlantCase {CaseName: "id-conventional-cancel" Path: M0Path.Conventional Family: M0Family.AlternatingCancellation Split: M0Split.Identification InitialError: 0.024 Injection: -0.016 Gain: 1.18},
+        M0PlantCase {CaseName: "id-cooperative-outlier" Path: M0Path.Cooperative Family: M0Family.SparseOutlier Split: M0Split.Identification InitialError: 0.036 Injection: 0.030 Gain: 1.31},
+        M0PlantCase {CaseName: "id-a2x4-near-zero" Path: M0Path.A2x4 Family: M0Family.NearZero Split: M0Split.Identification InitialError: 0.010 Injection: 0.009 Gain: 1.44},
+        M0PlantCase {CaseName: "id-a2x4-cancel" Path: M0Path.A2x4 Family: M0Family.AlternatingCancellation Split: M0Split.Identification InitialError: -0.021 Injection: 0.017 Gain: 1.37},
+        M0PlantCase {CaseName: "id-cooperative-random" Path: M0Path.Cooperative Family: M0Family.BoundedRandom Split: M0Split.Identification InitialError: 0.020 Injection: 0.015 Gain: 1.22},
+        M0PlantCase {CaseName: "hold-conventional-outlier" Path: M0Path.Conventional Family: M0Family.SparseOutlier Split: M0Split.HeldOut InitialError: -0.031 Injection: 0.026 Gain: 1.14},
+        M0PlantCase {CaseName: "hold-conventional-near-zero" Path: M0Path.Conventional Family: M0Family.NearZero Split: M0Split.HeldOut InitialError: 0.008 Injection: -0.010 Gain: 1.11},
+        M0PlantCase {CaseName: "hold-cooperative-cancel" Path: M0Path.Cooperative Family: M0Family.AlternatingCancellation Split: M0Split.HeldOut InitialError: 0.028 Injection: -0.021 Gain: 1.29},
+        M0PlantCase {CaseName: "hold-cooperative-near-zero" Path: M0Path.Cooperative Family: M0Family.NearZero Split: M0Split.HeldOut InitialError: -0.012 Injection: 0.011 Gain: 1.34},
+        M0PlantCase {CaseName: "hold-a2x4-random" Path: M0Path.A2x4 Family: M0Family.BoundedRandom Split: M0Split.HeldOut InitialError: 0.025 Injection: 0.019 Gain: 1.42},
+        M0PlantCase {CaseName: "hold-a2x4-outlier" Path: M0Path.A2x4 Family: M0Family.SparseOutlier Split: M0Split.HeldOut InitialError: -0.040 Injection: 0.034 Gain: 1.51}
+    ]
+}
+
+fn M0MitigationGainScale(mitigation: M0Mitigation) -> Float {
+    return switch {
+        case mitigation == M0Mitigation.ObserveOnly => 1.0
+        case mitigation == M0Mitigation.Fp32Checkpoint => 0.62
+        case mitigation == M0Mitigation.SelectiveFp32Hidden => 0.74
+        else => 0.52
+    }
+}
+
+fn M0MitigationInjectionScale(mitigation: M0Mitigation) -> Float {
+    return switch {
+        case mitigation == M0Mitigation.ObserveOnly => 1.0
+        case mitigation == M0Mitigation.Fp32Checkpoint => 0.42
+        case mitigation == M0Mitigation.SelectiveFp32Hidden => 0.58
+        else => 0.68
+    }
+}
+
+fn M0LatencyCost(mitigation: M0Mitigation) -> Float {
+    return switch {
+        case mitigation == M0Mitigation.ObserveOnly => 0.0
+        case mitigation == M0Mitigation.Fp32Checkpoint => 7.5
+        case mitigation == M0Mitigation.SelectiveFp32Hidden => 4.0
+        else => 13.0
+    }
+}
+
+fn M0MemoryCost(mitigation: M0Mitigation) -> Float {
+    return switch {
+        case mitigation == M0Mitigation.ObserveOnly => 0.0
+        case mitigation == M0Mitigation.Fp32Checkpoint => 16.0
+        case mitigation == M0Mitigation.SelectiveFp32Hidden => 32.0
+        else => 8.0
+    }
+}
+
+fn M0FamilyForcing(family: M0Family, depth: Int) -> Float {
+    return switch {
+        case family == M0Family.BoundedRandom => Float(((depth * 17 + 5) % 11) - 5) * 0.001
+        case family == M0Family.AlternatingCancellation => if depth % 2 == 0 { 0.009 } else { -0.011 }
+        case family == M0Family.SparseOutlier => if depth == 4 { 0.065 } else { -0.002 }
+        else => Float((depth % 3) - 1) * 0.0008
+    }
+}
+
+fn M0RunTrajectory(c: M0PlantCase, mitigation: M0Mitigation) -> M0Trajectory {
+    let gain = c.Gain * M0MitigationGainScale(mitigation)
+    let injection = c.Injection * M0MitigationInjectionScale(mitigation)
+    var depths: Float[] = [0.0]
+    var errors: Float[] = [c.InitialError]
+    var error = c.InitialError
+    var sumSq = error * error
+    for depth in 1..9 {
+        error = gain * error + injection + M0FamilyForcing(c.Family, depth) * M0MitigationInjectionScale(mitigation)
+        depths = Append(depths, Float(depth))
+        errors = Append(errors, error)
+        sumSq = sumSq + error * error
+    }
+    return M0Trajectory {
+        CaseName: c.CaseName
+        Path: M0PathName(c.Path)
+        Family: M0FamilyName(c.Family)
+        Split: M0SplitName(c.Split)
+        Mitigation: M0MitigationName(mitigation)
+        Depths: depths
+        Errors: errors
+        FinalAbsError: Abs(error)
+        RmsError: Sqrt(sumSq / Float(Len(errors)))
+        LatencyCostPct: M0LatencyCost(mitigation)
+        MemoryCostMiB: M0MemoryCost(mitigation)
+    }
+}
+
+fn M0AllTrajectories(cases: M0PlantCase[]) -> M0Trajectory[] {
+    var rows: M0Trajectory[] = []
+    let mitigations = M0AllMitigations()
+    for i in 0..Len(cases) {
+        for j in 0..Len(mitigations) {
+            rows = Append(rows, M0RunTrajectory(cases[i], mitigations[j]))
+        }
+    }
+    return rows
+}
+
+fn M0MeanFinalFor(rows: M0Trajectory[], mitigation: M0Mitigation, split: M0Split) -> Float {
+    let mitigationName = M0MitigationName(mitigation)
+    let splitName = M0SplitName(split)
+    var sum = 0.0
+    var count = 0
+    for i in 0..Len(rows) {
+        let row = rows[i]
+        if row.Mitigation == mitigationName and row.Split == splitName {
+            sum = sum + row.FinalAbsError
+            count = count + 1
+        }
+    }
+    return sum / Float(count)
+}
+
+fn M0Aggregate(rows: M0Trajectory[], mitigation: M0Mitigation) -> M0MitigationAggregate {
+    let idMean = M0MeanFinalFor(rows, mitigation, M0Split.Identification)
+    let heldMean = M0MeanFinalFor(rows, mitigation, M0Split.HeldOut)
+    let eligible = mitigation == M0Mitigation.ObserveOnly or heldMean < M0MeanFinalFor(rows, M0Mitigation.ObserveOnly, M0Split.HeldOut)
+    return M0MitigationAggregate {
+        Mitigation: mitigation
+        IdentificationMeanError: idMean
+        HeldOutMeanError: heldMean
+        LatencyCostPct: M0LatencyCost(mitigation)
+        MemoryCostMiB: M0MemoryCost(mitigation)
+        Eligible: eligible
+        RejectionReason: if eligible { "none" } else { "held-out error did not improve" }
+    }
+}
+
+fn M0BuildAggregates(rows: M0Trajectory[]) -> M0MitigationAggregate[] {
+    let mitigations = M0AllMitigations()
+    var result: M0MitigationAggregate[] = []
+    for i in 0..Len(mitigations) {
+        result = Append(result, M0Aggregate(rows, mitigations[i]))
+    }
+    return result
+}
+
+fn M0MitigationScore(a: M0MitigationAggregate) -> Int {
+    return 10000 - FloorToInt(a.HeldOutMeanError * 10000.0) - FloorToInt(a.LatencyCostPct * 22.0) - FloorToInt(a.MemoryCostMiB * 3.0)
+}
+
+fn M0SelectMitigation(aggregates: M0MitigationAggregate[]) -> M0MitigationAggregate {
+    let observe = aggregates[0]
+    let checkpoint = aggregates[1]
+    let selective = aggregates[2]
+    let backend = aggregates[3]
+    let selected = when utility {
+        case observe when observe.Eligible score M0MitigationScore(observe)
+        case checkpoint when checkpoint.Eligible score M0MitigationScore(checkpoint)
+        case selective when selective.Eligible score M0MitigationScore(selective)
+        case backend when backend.Eligible score M0MitigationScore(backend)
+        else observe
+    }
+    return selected
+}
+
+fn M0ShadowActionName(action: M0ShadowAction) -> String {
+    return switch {
+        case action == M0ShadowAction.Observe => "observe"
+        case action == M0ShadowAction.RequestCheckpointAudit => "request-checkpoint-audit"
+        case action == M0ShadowAction.RequestBackendAudit => "request-backend-audit"
+        else => "quarantine-evidence"
+    }
+}
+
+fn M0SelectShadowAction(e: M0ShadowEvidence) -> M0ShadowDecision {
+    let observeScore = 50 - e.ErrorMilli / 20
+    let checkpointScore = 35 + e.ErrorMilli / 12 + e.GainMilli / 80
+    let backendScore = 25 + e.ErrorMilli / 15 + e.GainMilli / 45
+    let quarantineScore = if e.ReferenceSuspect { 250 } else { -250 }
+    let action = when utility {
+        case M0ShadowAction.Observe when e.ErrorMilli < 1000 score observeScore
+        case M0ShadowAction.RequestCheckpointAudit when e.Deterministic and not e.ReferenceSuspect and e.Repeats >= 10 score checkpointScore
+        case M0ShadowAction.RequestBackendAudit when e.Deterministic and not e.ReferenceSuspect and e.Repeats >= 100 score backendScore
+        case M0ShadowAction.QuarantineEvidence when e.ReferenceSuspect score quarantineScore
+        else M0ShadowAction.Observe
+    }
+    let score = switch {
+        case action == M0ShadowAction.RequestCheckpointAudit => checkpointScore
+        case action == M0ShadowAction.RequestBackendAudit => backendScore
+        case action == M0ShadowAction.QuarantineEvidence => quarantineScore
+        else => observeScore
+    }
+    return M0ShadowDecision {
+        Action: action
+        ActionName: M0ShadowActionName(action)
+        Score: score
+        Rationale: "deterministic bounded-candidate score; audit request only; no product authority"
+        ProductAuthorityChanged: false
+    }
+}
+
+fn M0RunSimulation() -> M0SimulationReport {
+    let cases = M0BuildCases()
+    let rows = M0AllTrajectories(cases)
+    let aggregates = M0BuildAggregates(rows)
+    let selected = M0SelectMitigation(aggregates)
+    let baselineHeld = aggregates[0].HeldOutMeanError
+    let improvement = (baselineHeld - selected.HeldOutMeanError) * 100.0 / baselineHeld
+    let decision = M0SelectShadowAction(M0ShadowEvidence {Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100})
+    return M0SimulationReport {
+        Cases: cases
+        Trajectories: rows
+        Mitigations: aggregates
+        SelectedMitigation: M0MitigationName(selected.Mitigation)
+        SelectedHeldOutMeanError: selected.HeldOutMeanError
+        BaselineHeldOutMeanError: baselineHeld
+        HeldOutImprovementPct: improvement
+        ShadowDecision: decision
+        ProductAuthorityChanged: false
+        Interpretation: "Synthetic recurrence study only. Identification and held-out cases are deterministic, but native matched-input evidence remains authoritative."
+    }
+}
+
+fn M0RowsCsv(report: M0SimulationReport) -> String[][] {
+    var csv = [["case","path","family","split","mitigation","depth","error","finalAbsError","rmsError","latencyCostPct","memoryCostMiB"]]
+    for i in 0..Len(report.Trajectories) {
+        let row = report.Trajectories[i]
+        for j in 0..Len(row.Depths) {
+            csv = Append(csv, [row.CaseName,row.Path,row.Family,row.Split,row.Mitigation,String.From<Float>(row.Depths[j]),String.From<Float>(row.Errors[j]),String.From<Float>(row.FinalAbsError),String.From<Float>(row.RmsError),String.From<Float>(row.LatencyCostPct),String.From<Float>(row.MemoryCostMiB)])
+        }
+    }
+    return csv
+}
+
+fn M0SummaryJsonText(report: M0SimulationReport) -> String {
+    return String.Concat([
+        "{\"schema\":\"prometheus.m49.synthetic-numerical-heterogeneity.v1\"",
+        ",\"authority\":\"synthetic-design-lab-only\"",
+        ",\"caseCount\":", String.From<Int>(Len(report.Cases)),
+        ",\"trajectoryCount\":", String.From<Int>(Len(report.Trajectories)),
+        ",\"selectedMitigation\":", String.QuoteJson(report.SelectedMitigation),
+        ",\"baselineHeldOutMeanError\":", String.From<Float>(report.BaselineHeldOutMeanError),
+        ",\"selectedHeldOutMeanError\":", String.From<Float>(report.SelectedHeldOutMeanError),
+        ",\"heldOutImprovementPct\":", String.From<Float>(report.HeldOutImprovementPct),
+        ",\"shadowAction\":", String.QuoteJson(report.ShadowDecision.ActionName),
+        ",\"productAuthorityChanged\":false",
+        ",\"m48EvtState\":\"postponed\"}"
+    ])
+}
+
+fn M0WriteArtifacts() -> Int {
+    let report = M0RunSimulation()
+    let root = "Experiments/PrometheusNumericalHeterogeneityLab/M0/"
+    let representative = M0RunTrajectory(report.Cases[11], M0Mitigation.ObserveOnly)
+    let mitigated = M0RunTrajectory(report.Cases[11], M0Mitigation.SelectiveFp32Hidden)
+    let md = Markdown.Report([
+        Markdown.Title("Prometheus M49 numerical heterogeneity synthetic lab"),
+        Markdown.Section("Authority", [Markdown.Paragraph("This Oct experiment is a deterministic design simulation. It does not replace native matched-input CPU/GPU evidence and cannot authorize a product-path change.")]),
+        Markdown.Section("Corpus", [Markdown.KeyValueTable(["cases","splits","families","paths"],[String.From<Int>(Len(report.Cases)),"identification + held-out","bounded-random, cancellation, sparse-outlier, near-zero","conventional, cooperative, A2x4"])]),
+        Markdown.Section("Selected bounded intervention", [Markdown.KeyValueTable(["mitigation","baseline held-out mean error","selected held-out mean error","held-out improvement percent","shadow action","product authority changed"],[report.SelectedMitigation,String.From<Float>(report.BaselineHeldOutMeanError),String.From<Float>(report.SelectedHeldOutMeanError),String.From<Float>(report.HeldOutImprovementPct),report.ShadowDecision.ActionName,String.From<Bool>(report.ProductAuthorityChanged)])]),
+        Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation),Markdown.Paragraph("M48 EVT remains postponed until the real hardware matrix and held-out source-side mitigation evidence converge.")])
+    ])
+    Artifact.WriteOctagon(root + "synthetic_report.octagon", report)
+    Artifact.WriteCsv(root + "synthetic_trajectories.csv", M0RowsCsv(report))
+    Artifact.WriteJson(root + "synthetic_summary.json", Json.Object(M0SummaryJsonText(report)))
+    Artifact.WriteMarkdown(root + "FINDINGS.md", md)
+    let _baselinePlot = PlotLine(representative.Depths, representative.Errors, root + "a2x4_sparse_outlier_baseline.png")
+    let _mitigatedPlot = PlotLine(mitigated.Depths, mitigated.Errors, root + "a2x4_sparse_outlier_selective_fp32.png")
+    return 0
+}

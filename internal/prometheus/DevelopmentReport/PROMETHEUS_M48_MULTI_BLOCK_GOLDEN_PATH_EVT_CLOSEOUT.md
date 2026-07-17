@@ -1,5 +1,7 @@
 # Prometheus M48 multi-block golden path and EVT closeout
 
+> **M49 status update (2026-07-16):** EVT closure is postponed pending [PROMETHEUS_M49_NUMERICAL_HETEROGENEITY_CONTROL_RESEARCH.md](PROMETHEUS_M49_NUMERICAL_HETEROGENEITY_CONTROL_RESEARCH.md). M49 preserves this report's history and establishes the current authority: primary A2x4 FP32 passes all four-layer stage bounds, while conventional and cooperative FP16 show deterministic layer-1 FFN injection followed by depth amplification. Do not reinterpret the residual as random noise or widen a global tolerance.
+
 ## Outcome
 
 Convergence outcome: **MEANINGFUL PROGRESSION**  

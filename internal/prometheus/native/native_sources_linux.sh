@@ -19,6 +19,7 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_vulkan_fft.c"
   "$NATIVE_DIR/reactor_vulkan_fused_reduction.c"
   "$NATIVE_DIR/reactor_vulkan_transformer.c"
+  "$NATIVE_DIR/reactor_numerical_research.c"
 )
 PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/test_harness.cpp"
@@ -64,6 +65,7 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/reactor_reduction_benchmarks.cpp"
   "$NATIVE_DIR/Marionette/reactor_cooperative_matrix_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_attention_tests.cpp"
+  "$NATIVE_DIR/Marionette/reactor_m49_numerical_research_tests.cpp"
 )
 PROMETHEUS_MARIONETTE_SLOW_ONLY=(
 )
