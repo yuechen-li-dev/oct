@@ -5,6 +5,7 @@
 #include "reactor_vulkan.h"
 #include "reactor_shader_registry.h"
 #include "reactor_numerical_research.h"
+#include "reactor_vulkan_transformer_control.h"
 #include "../shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16_spirv.h"
 #include "../shaders/sdslv/experimental/attention/attention_pack_f32_to_f16_spirv.h"
 #include "../shaders/sdslv/experimental/attention/attention_transpose_f32_spirv.h"
@@ -361,6 +362,9 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m48_host_initial;
   prom_vk_buffer m48_activation[2u];
   prom_vk_buffer m48_readback;
+  /* Fixed-size host-visible capture for the transformer controller.  It is
+     owned by the stack slot and therefore cannot outlive a recycled slot. */
+  prom_vk_buffer m49b_canary_readback;
   uint64_t composed_command_reuse_count;
   uint64_t m42_command_reuse_count;
   uint64_t m43_command_reuse_count;
@@ -492,6 +496,9 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m48_buffer_grow_count;
   uint64_t m48_buffer_reuse_count;
   uint64_t m48_descriptor_update_count;
+  prom_num_m49b_controller m49b_controller;
+  uint64_t m49b_next_execution_index;
+  uint32_t m49b_enabled;
   prom_reduction_slot slots[PROM_REDUCTION_RING_MAX_DEPTH];
   PrometheusReductionDiagnostics diagnostics;
 } prom_reduction_runtime_state;
@@ -3299,6 +3306,7 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
     prom_vk_destroy_buffer(device, &slot->m44_concat_f32);
     prom_vk_destroy_buffer(device, &slot->m44_concat_upload);
     prom_vk_destroy_buffer(device, &slot->m48_readback);
+    prom_vk_destroy_buffer(device, &slot->m49b_canary_readback);
     prom_vk_destroy_buffer(device, &slot->m48_activation[1u]);
     prom_vk_destroy_buffer(device, &slot->m48_activation[0u]);
     prom_vk_destroy_buffer(device, &slot->m48_host_initial);
@@ -10688,9 +10696,13 @@ static int prom_transformer_prepare_block(
   uint64_t activation_elements;
   uint64_t input_hash;
   VkDeviceSize packed_x_bytes;
-  uint32_t selected_path = request->audit_layer_projection_path[layer_index] != 0u
-                               ? request->audit_layer_projection_path[layer_index]
-                               : request->projection_path;
+  uint32_t selected_path =
+      request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_M49B &&
+              request->controller_layer_projection_path[layer_index] != 0u
+          ? request->controller_layer_projection_path[layer_index]
+          : request->audit_layer_projection_path[layer_index] != 0u
+                ? request->audit_layer_projection_path[layer_index]
+                : request->projection_path;
   uint32_t selected_precision;
   uint32_t selected_gating_strategy;
   uint32_t head;
@@ -11233,6 +11245,47 @@ static int prom_transformer_record_block(
                                                out_fault_stage);
 }
 
+/* This is a fixed-size transfer canary on the completed stack output.  It is
+   intentionally kept beside block recording because it shares that output's
+   exact row stride and command-buffer lifetime. */
+static int prom_m49b_record_stack_canary(
+    VkCommandBuffer command_buffer, const prom_transformer_recorded_block* final_block,
+    const prom_m48_stack_request* request, prom_reduction_slot* slot,
+    uint64_t execution_identity, uint32_t output_already_transfer_ready) {
+  uint32_t coordinates[PROM_NUM_M49B_MAX_SAMPLES];
+  uint32_t index;
+  uint64_t elements;
+  const uint64_t shape_identity = prom_m49b_shape_identity(request);
+  if (command_buffer == VK_NULL_HANDLE || final_block == NULL || request == NULL || slot == NULL ||
+      final_block->output == NULL ||
+      !prom_m40b_checked_product_u64(request->tokens, request->model_width, &elements)) return 0;
+  if (!prom_num_m49b_derive_coordinates(shape_identity, execution_identity,
+                                        (uint32_t)elements,
+                                        PROM_NUM_M49B_MAX_SAMPLES, coordinates)) return 0;
+  if (output_already_transfer_ready == 0u &&
+      !prom_m43_one_buffer_barrier(command_buffer, final_block->output,
+                                   final_block->output->size,
+                                   VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT)) return 0;
+  for (index = 0u; index < PROM_NUM_M49B_MAX_SAMPLES; ++index) {
+    VkBufferCopy copy;
+    const uint32_t row = coordinates[index] / request->model_width;
+    const uint32_t column = coordinates[index] % request->model_width;
+    memset(&copy, 0, sizeof(copy));
+    copy.srcOffset = (VkDeviceSize)((uint64_t)(row * final_block->ffn_plan.output_row_stride +
+                                                column) * sizeof(float));
+    copy.dstOffset = (VkDeviceSize)((uint64_t)index * sizeof(float));
+    copy.size = sizeof(float);
+    vkCmdCopyBuffer(command_buffer, final_block->output->buffer,
+                    slot->m49b_canary_readback.buffer, 1u, &copy);
+  }
+  return prom_m43_one_buffer_barrier(command_buffer, &slot->m49b_canary_readback,
+                                     (VkDeviceSize)(PROM_NUM_M49B_MAX_SAMPLES * sizeof(float)),
+                                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT);
+}
+
 static uint64_t prom_m48_duration_ns(const prom_reduction_runtime_state* state,
                                      const uint64_t* timestamps,
                                      uint32_t begin,
@@ -11286,10 +11339,41 @@ static void prom_m48_fill_layer_timings(const prom_reduction_runtime_state* stat
   result->output_generation = plan->output_generation;
 }
 
+int prom_reactor_runtime_m49b_set_parameters(
+    void* handle, const prom_num_m49b_parameters* parameters,
+    uint64_t* out_parameter_generation) {
+  prom_reduction_runtime_state* state;
+  int32_t detail = 0;
+  if (out_parameter_generation != NULL) *out_parameter_generation = 0u;
+  if (!prom_num_m49b_validate_parameters(parameters)) return PROM_ERROR;
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL || !prom_m40b_wait_all_slots(state)) return PROM_ERROR;
+  if (state->m49b_enabled == 0u) {
+    prom_num_m49b_init(&state->m49b_controller);
+    state->m49b_enabled = 1u;
+  }
+  if (!prom_num_m49b_update_parameters(&state->m49b_controller, parameters)) return PROM_ERROR;
+  if (out_parameter_generation != NULL)
+    *out_parameter_generation = state->m49b_controller.parameter_generation;
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_m49b_reset(void* handle) {
+  prom_reduction_runtime_state* state;
+  int32_t detail = 0;
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL || !prom_m40b_wait_all_slots(state)) return PROM_ERROR;
+  prom_num_m49b_init(&state->m49b_controller);
+  state->m49b_enabled = 1u;
+  state->m49b_next_execution_index = 0u;
+  return PROM_OK;
+}
+
 int prom_reactor_runtime_m48_execute_stack(void* handle,
                                            const prom_m48_stack_request* request,
                                            prom_m48_stack_result* out_result) {
   prom_reduction_runtime_state* state;
+  prom_m48_stack_request effective_request;
   prom_reduction_slot* slot = NULL;
   prom_vk_runtime_services services;
   prom_m48_plan_request plan_request;
@@ -11325,6 +11409,15 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   uint32_t pipeline_layer;
   uint32_t host_wait_audit;
   uint32_t host_bounce_audit;
+  uint32_t m49b_enabled = 0u;
+  uint32_t m49b_canary_due = 0u;
+  uint32_t m49b_internal_witness = 0u;
+  uint32_t m49b_witness_failed = 0u;
+  uint32_t m49b_state_before = PROM_NUM_M49B_UNIDENTIFIED;
+  uint64_t m49b_execution_identity = 0u;
+  prom_m48_stack_request m49b_witness_request;
+  prom_m48_stack_result m49b_witness_result;
+  prom_m49b_paired_estimate m49b_paired_estimate;
   int32_t detail = 0;
   VkResult vk_result;
   if (out_result == NULL) return PROM_ERROR;
@@ -11348,7 +11441,8 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
         request->audit_stage > PROM_M48_AUDIT_STAGE_FFN)) ||
       (request->audit_stage_output == NULL &&
        (request->audit_stage_output_element_count != 0u ||
-        request->audit_stage != PROM_M48_AUDIT_STAGE_NONE))) {
+        request->audit_stage != PROM_M48_AUDIT_STAGE_NONE)) ||
+      request->numerical_witness_mode > 1u) {
     out_result->detail_code = PROM_M48_DETAIL_INVALID_REQUEST;
     return PROM_ERROR;
   }
@@ -11366,6 +11460,27 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   if (state == NULL || prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) {
     out_result->detail_code = state == NULL ? detail : PROM_M48_DETAIL_RESOURCE;
     return PROM_ERROR;
+  }
+  m49b_enabled = state->m49b_enabled;
+  if (m49b_enabled != 0u) {
+    effective_request = *request;
+    request = &effective_request;
+    m49b_internal_witness = request->numerical_witness_mode;
+    m49b_execution_identity = m49b_internal_witness != 0u
+                                  ? request->controller_execution_identity
+                                  : ++state->m49b_next_execution_index;
+    m49b_state_before = state->m49b_controller.state;
+    if (m49b_internal_witness == 0u) {
+      prom_m49b_apply_fixed_stack_policy(&state->m49b_controller, &effective_request,
+                                         m49b_execution_identity);
+      m49b_canary_due = prom_m49b_canary_due(&state->m49b_controller,
+                                              m49b_execution_identity);
+    } else {
+      /* Internal witnesses are pinned to the selected request identity and
+         always return the compact evidence capture.  They do not consume a
+         cadence slot or mutate controller state. */
+      m49b_canary_due = 1u;
+    }
   }
   pipeline_path = request->projection_path;
   if (pipeline_path == PROM_M47_PROJECTION_COOPERATIVE &&
@@ -11388,6 +11503,13 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   memcpy(plan_request.audit_layer_projection_path,
          request->audit_layer_projection_path,
          sizeof(plan_request.audit_layer_projection_path));
+  plan_request.numerical_control_mode = request->numerical_control_mode;
+  memcpy(plan_request.controller_layer_projection_path,
+         request->controller_layer_projection_path,
+         sizeof(plan_request.controller_layer_projection_path));
+  plan_request.controller_parameter_generation = request->controller_parameter_generation;
+  plan_request.controller_execution_identity = request->controller_execution_identity;
+  plan_request.numerical_witness_mode = request->numerical_witness_mode;
   plan_request.attention_strategy = request->attention_strategy;
   plan_request.output_projection_strategy = request->output_projection_strategy;
   plan_request.rmsnorm_strategy = request->rmsnorm_strategy;
@@ -11477,9 +11599,13 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
     return PROM_ERROR;
   }
   for (pipeline_layer = 0u; pipeline_layer < request->layer_count; ++pipeline_layer) {
-    uint32_t layer_path = request->audit_layer_projection_path[pipeline_layer] != 0u
-                              ? request->audit_layer_projection_path[pipeline_layer]
-                              : pipeline_path;
+    uint32_t layer_path =
+        request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_M49B &&
+                request->controller_layer_projection_path[pipeline_layer] != 0u
+            ? request->controller_layer_projection_path[pipeline_layer]
+            : request->audit_layer_projection_path[pipeline_layer] != 0u
+                  ? request->audit_layer_projection_path[pipeline_layer]
+                  : pipeline_path;
     if (layer_path == PROM_M47_PROJECTION_COOPERATIVE &&
         (services.cooperative_matrix_feature_enabled == 0u || services.subgroup_size != 32u))
       layer_path = PROM_M47_PROJECTION_CONVENTIONAL_FP16;
@@ -11516,6 +11642,13 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
                               VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL) ||
       ((optional_readback != 0u || stage_audit != 0u) &&
        !prom_m48_ensure_buffer(state, &slot->m48_readback, logical_bytes,
+                               VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                               1, NULL)) ||
+      (m49b_canary_due != 0u &&
+       !prom_m48_ensure_buffer(state, &slot->m49b_canary_readback,
+                               (VkDeviceSize)(PROM_NUM_M49B_MAX_SAMPLES * sizeof(float)),
                                VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -11714,6 +11847,15 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
       goto known_fail;
     }
   }
+  if (m49b_canary_due != 0u) {
+    VkCommandBuffer command_buffer = slot->m48_command_buffers[command_count - 1u];
+    if (!prom_m49b_record_stack_canary(
+            command_buffer, &block[request->layer_count - 1u], request, slot,
+            m49b_execution_identity, optional_readback != 0u ? 1u : 0u)) {
+      out_result->detail_code = PROM_M48_DETAIL_COMMAND;
+      goto known_fail;
+    }
+  }
   for (layer = 0u; layer < command_count; ++layer) {
     if (vkEndCommandBuffer(slot->m48_command_buffers[layer]) != VK_SUCCESS) {
       out_result->detail_code = PROM_M48_DETAIL_COMMAND;
@@ -11765,6 +11907,9 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
       if (vk_result != VK_SUCCESS) {
         slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
         state->diagnostics.quarantine_count += 1u;
+        if (m49b_enabled != 0u)
+          prom_m49b_quarantine_execution(&state->m49b_controller, request,
+                                         m49b_execution_identity);
         out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
         prom_transformer_select_descriptor_bank(slot, &standalone_bank);
         return PROM_ERROR;
@@ -11791,6 +11936,9 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   if (request->fault_point == PROM_M48_FAULT_UNCERTAIN_COMPLETION) {
     slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
     state->diagnostics.quarantine_count += 1u;
+    if (m49b_enabled != 0u)
+      prom_m49b_quarantine_execution(&state->m49b_controller, request,
+                                     m49b_execution_identity);
     out_result->stage = request->layer_count - 1u;
     out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
     prom_transformer_select_descriptor_bank(slot, &standalone_bank);
@@ -11804,6 +11952,9 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
     if (vk_result != VK_SUCCESS) {
       slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
       state->diagnostics.quarantine_count += 1u;
+      if (m49b_enabled != 0u)
+        prom_m49b_quarantine_execution(&state->m49b_controller, request,
+                                       m49b_execution_identity);
       out_result->detail_code = PROM_M48_DETAIL_COMPLETION_UNCERTAIN;
       prom_transformer_select_descriptor_bank(slot, &standalone_bank);
       return PROM_ERROR;
@@ -11874,6 +12025,132 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
       goto completed_fail;
     }
   }
+  if (m49b_enabled != 0u && m49b_canary_due != 0u) {
+    memcpy(out_result->numerical_canary_samples, slot->m49b_canary_readback.mapped,
+           sizeof(out_result->numerical_canary_samples));
+    out_result->numerical_canary_identity = prom_m40b_hash_u64(
+        prom_num_hash_float_bits(out_result->numerical_canary_samples,
+                                 PROM_NUM_M49B_MAX_SAMPLES),
+        out_result->plan.final_output_generation);
+    out_result->numerical_canary_identity = prom_m40b_hash_u64(
+        out_result->numerical_canary_identity, m49b_execution_identity);
+    out_result->numerical_canary_ran = 1u;
+  }
+  if (m49b_enabled != 0u && m49b_canary_due != 0u && m49b_internal_witness == 0u) {
+    prom_num_m49b_observation observation;
+    prom_num_m49b_evidence evidence;
+    prom_num_m49b_decision decision;
+    uint64_t observation_begin;
+    memset(&m49b_paired_estimate, 0, sizeof(m49b_paired_estimate));
+    memset(&m49b_witness_result, 0, sizeof(m49b_witness_result));
+    if (state->ring_depth >= 2u && request->audit_mode == 0u) {
+      uint32_t witness_layer;
+      m49b_witness_request = *request;
+      m49b_witness_request.audit_mode = 0u;
+      m49b_witness_request.audit_stage = PROM_M48_AUDIT_STAGE_NONE;
+      m49b_witness_request.audit_stage_output = NULL;
+      m49b_witness_request.audit_stage_output_element_count = 0u;
+      m49b_witness_request.output = NULL;
+      m49b_witness_request.output_element_count = 0u;
+      m49b_witness_request.precision_policy = PROM_M42_PRECISION_FP32;
+      m49b_witness_request.projection_path = PROM_M47_PROJECTION_A2X4_FP32;
+      m49b_witness_request.gating_strategy = PROM_M47_GATING_FUSED_FP32;
+      m49b_witness_request.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
+      m49b_witness_request.numerical_control_mode = PROM_M48_NUMERICAL_CONTROL_M49B;
+      m49b_witness_request.controller_parameter_generation =
+          state->m49b_controller.parameter_generation;
+      m49b_witness_request.controller_execution_identity = m49b_execution_identity;
+      m49b_witness_request.numerical_witness_mode = 1u;
+      for (witness_layer = 0u; witness_layer < request->layer_count; ++witness_layer)
+        m49b_witness_request.controller_layer_projection_path[witness_layer] =
+            PROM_M47_PROJECTION_A2X4_FP32;
+      if (prom_reactor_runtime_m48_execute_stack(handle, &m49b_witness_request,
+                                                  &m49b_witness_result) != PROM_OK ||
+          m49b_witness_result.numerical_canary_ran == 0u ||
+          !prom_m49b_estimate_paired_discrepancy(
+              out_result->numerical_canary_samples,
+              m49b_witness_result.numerical_canary_samples,
+              PROM_NUM_M49B_MAX_SAMPLES, prom_m49b_shape_identity(request),
+              out_result->plan.replay_id, m49b_witness_result.plan.replay_id,
+              state->m49b_controller.parameter_generation, &m49b_paired_estimate)) {
+        m49b_witness_failed = 1u;
+      } else {
+        out_result->numerical_witness_ran = 1u;
+        out_result->numerical_witness_replay_id = m49b_witness_result.replay_id;
+        out_result->numerical_witness_gpu_ns = m49b_witness_result.total_stack_gpu_ns;
+        out_result->numerical_witness_end_to_end_ns = m49b_witness_result.end_to_end_ns;
+        out_result->numerical_witness_confidence =
+            (float)m49b_paired_estimate.confidence;
+      }
+    } else {
+      /* A single-slot configuration cannot retain the selected output while
+         recording the independent witness.  Do not recycle it early or make
+         an unsafe comparison; the controller will request bounded audit. */
+      m49b_witness_failed = 1u;
+    }
+    /* Keep the cheap observer measurement separate from the explicitly
+       reported witness execution.  The witness's GPU and end-to-end time live
+       in their own result fields. */
+    observation_begin = prom_reduction_now_ns();
+    memset(&observation, 0, sizeof(observation));
+    observation.completion_known = 1u;
+    observation.current_path = prom_m49b_num_path(
+        block[request->layer_count - 1u].ffn_plan.projection_path);
+    observation.execution_index = m49b_execution_identity;
+    observation.shape_identity = prom_m49b_shape_identity(request);
+    observation.output_replay_identity = out_result->plan.replay_id;
+    observation.reference_identity = m49b_paired_estimate.paired_identity;
+    observation.sampled_values = m49b_witness_failed == 0u
+                                    ? m49b_paired_estimate.sample_delta
+                                    : out_result->numerical_canary_samples;
+    observation.sampled_value_count = PROM_NUM_M49B_MAX_SAMPLES;
+    observation.observed_l2_error = m49b_paired_estimate.sampled_l2_error;
+    observation.observed_linf_error = m49b_paired_estimate.sampled_linf_error;
+    observation.observed_gain = m49b_paired_estimate.estimated_gain;
+    observation.confidence = m49b_paired_estimate.confidence;
+    observation.reference_suspect = m49b_paired_estimate.reference_suspect;
+    observation.force_audit = m49b_witness_failed;
+    if (m49b_witness_failed != 0u &&
+        state->m49b_controller.state == PROM_NUM_M49B_QUARANTINED) {
+      /* An uncertain witness completion already quarantined its owning slot.
+         Preserve that transition: no selected-path evidence is accepted until
+         reap confirms completion. */
+      out_result->numerical_state_before = m49b_state_before;
+      out_result->numerical_state_after = state->m49b_controller.state;
+      out_result->numerical_action = PROM_NUM_M49B_QUARANTINE;
+      out_result->numerical_parameter_generation =
+          state->m49b_controller.parameter_generation;
+      out_result->numerical_controller_identity =
+          state->m49b_controller.controller_state_identity;
+    } else {
+      prom_num_m49b_advance_execution(&state->m49b_controller,
+                                      m49b_execution_identity);
+      if (!prom_num_m49b_observe(&state->m49b_controller, &observation,
+                                  &evidence, &decision)) {
+        out_result->detail_code = PROM_M48_DETAIL_MISMATCH;
+        goto completed_fail;
+      }
+      out_result->numerical_state_before = m49b_state_before;
+      out_result->numerical_state_after = decision.state_after;
+      out_result->numerical_action = decision.action;
+      out_result->numerical_parameter_generation = decision.parameter_generation;
+      out_result->numerical_evidence_identity = evidence.evidence_identity;
+      out_result->numerical_controller_identity = decision.controller_state_identity;
+    }
+    out_result->numerical_canary_cpu_ns =
+        prom_reduction_elapsed_ns(observation_begin, prom_reduction_now_ns());
+  } else if (m49b_enabled != 0u && m49b_internal_witness == 0u) {
+    /* A cooldown is counted in completed stack executions, not canary
+       samples.  This cannot accept stale evidence because it accepts none. */
+    prom_num_m49b_advance_execution(&state->m49b_controller,
+                                    m49b_execution_identity);
+    out_result->numerical_state_before = m49b_state_before;
+    out_result->numerical_state_after = state->m49b_controller.state;
+    out_result->numerical_parameter_generation =
+        state->m49b_controller.parameter_generation;
+    out_result->numerical_controller_identity =
+        state->m49b_controller.controller_state_identity;
+  }
   out_result->submit_count = command_count;
   out_result->semaphore_count = (host_wait_audit != 0u || host_bounce_audit != 0u)
                                     ? 0u : command_count - 1u;
@@ -11903,6 +12180,9 @@ int prom_reactor_runtime_m48_execute_stack(void* handle,
   out_result->output_view = block[request->layer_count - 1u].output_view;
   out_result->output_view.owning_lifetime_id = out_result->plan.final_output_generation;
   out_result->end_to_end_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  if (out_result->numerical_witness_ran != 0u &&
+      out_result->end_to_end_ns >= out_result->numerical_witness_end_to_end_ns)
+    out_result->end_to_end_ns -= out_result->numerical_witness_end_to_end_ns;
   out_result->physical_slot_recyclable = 1u;
   out_result->stage = 0u;
   out_result->detail_code = 0;

@@ -689,6 +689,9 @@ static int prom_m48_add_working_set(const prom_m48_plan_request* request,
 
 static uint32_t prom_m48_layer_projection_path(const prom_m48_plan_request* request,
                                                uint32_t layer) {
+  if (request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_M49B &&
+      request->controller_layer_projection_path[layer] != 0u)
+    return request->controller_layer_projection_path[layer];
   return request->audit_layer_projection_path[layer] != 0u
              ? request->audit_layer_projection_path[layer]
              : request->projection_path;
@@ -734,12 +737,29 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
        request->projection_path != PROM_M47_PROJECTION_A2X4_FP32) ||
       (request->precision_policy == PROM_M42_PRECISION_F16_ROUNDED &&
        request->projection_path == PROM_M47_PROJECTION_A2X4_FP32)) return PROM_ERROR;
+  if (request->numerical_control_mode > PROM_M48_NUMERICAL_CONTROL_M49B ||
+      (request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_NONE &&
+       (request->controller_parameter_generation != 0u ||
+        request->controller_execution_identity != 0u ||
+        request->numerical_witness_mode != 0u))) return PROM_ERROR;
+  if (request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_M49B &&
+      (request->controller_parameter_generation == 0u ||
+       request->controller_execution_identity == 0u ||
+       request->numerical_witness_mode > 1u)) return PROM_ERROR;
   for (layer = 0u; layer < request->layer_count; ++layer) {
-    const uint32_t path = request->audit_layer_projection_path[layer];
-    if ((request->audit_mode == 0u && path != 0u) ||
-        (path != 0u &&
-         (path < PROM_M47_PROJECTION_COOPERATIVE ||
-          path > PROM_M47_PROJECTION_CONVENTIONAL_FP16))) return PROM_ERROR;
+    const uint32_t audit_path = request->audit_layer_projection_path[layer];
+    const uint32_t controller_path = request->controller_layer_projection_path[layer];
+    if ((request->audit_mode == 0u && audit_path != 0u) ||
+        (audit_path != 0u &&
+         (audit_path < PROM_M47_PROJECTION_COOPERATIVE ||
+          audit_path > PROM_M47_PROJECTION_CONVENTIONAL_FP16)) ||
+        (request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_NONE &&
+         controller_path != 0u) ||
+        (request->numerical_control_mode == PROM_M48_NUMERICAL_CONTROL_M49B &&
+         audit_path != 0u) ||
+        (controller_path != 0u &&
+         (controller_path < PROM_M47_PROJECTION_COOPERATIVE ||
+          controller_path > PROM_M47_PROJECTION_CONVENTIONAL_FP16))) return PROM_ERROR;
   }
   out_plan->eligibility_reason = PROM_M48_INELIGIBLE_STRATEGY;
   if (request->attention_strategy < PROM_M43_STRATEGY_COMPLETE_HEADS ||
@@ -849,6 +869,10 @@ int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
   hash = prom_m47_hash_u32(hash, request->submit_topology);
   hash = prom_m47_hash_u32(hash, request->optional_final_readback);
   hash = prom_m47_hash_u32(hash, request->audit_stage);
+  hash = prom_m47_hash_u32(hash, request->numerical_control_mode);
+  hash = prom_m47_hash_u64(hash, request->controller_parameter_generation);
+  hash = prom_m47_hash_u64(hash, request->controller_execution_identity);
+  hash = prom_m47_hash_u32(hash, request->numerical_witness_mode);
   hash = prom_m47_hash_u64(hash, request->expected_initial_generation);
   hash = prom_m47_hash_u64(hash, request->initial_content_hash);
   activation_range_bytes = (uint64_t)padded_tokens * padded_model_width * sizeof(float);

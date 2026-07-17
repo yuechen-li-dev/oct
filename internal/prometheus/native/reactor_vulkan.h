@@ -3,6 +3,7 @@
 
 #include "reactor_api.h"
 #include "reactor_batch.h"
+#include "reactor_numerical_research.h"
 #include "reactor_sgemm_dispatch_metadata.h"
 #include <vulkan/vulkan.h>
 
@@ -2414,6 +2415,14 @@ typedef enum prom_m48_submit_topology {
   PROM_M48_SUBMIT_HOST_BOUNCE_PER_LAYER_AUDIT = 4u,
 } prom_m48_submit_topology;
 
+/* This is a fixed-stack authorization bit, not a general path scheduler.
+   Audit overrides and numerical-control overrides deliberately have distinct
+   fields so product authority cannot accidentally borrow audit semantics. */
+typedef enum prom_m48_numerical_control_mode {
+  PROM_M48_NUMERICAL_CONTROL_NONE = 0u,
+  PROM_M48_NUMERICAL_CONTROL_M49B = 1u,
+} prom_m48_numerical_control_mode;
+
 #define PROM_M48_AUDIT_STAGE_COUNT 5u
 
 typedef enum prom_m48_audit_stage {
@@ -2462,6 +2471,13 @@ typedef struct prom_m48_plan_request {
   /* Audit-only fixed four-layer precision pattern. Zero inherits
      projection_path. Product planning requires every entry to remain zero. */
   uint32_t audit_layer_projection_path[PROM_M48_LAYER_COUNT];
+  /* Controller-owned fixed pattern. It is legal only under M49b authority;
+     zero inherits projection_path. */
+  uint32_t numerical_control_mode;
+  uint32_t controller_layer_projection_path[PROM_M48_LAYER_COUNT];
+  uint64_t controller_parameter_generation;
+  uint64_t controller_execution_identity;
+  uint32_t numerical_witness_mode;
   uint32_t attention_strategy;
   uint32_t output_projection_strategy;
   uint32_t rmsnorm_strategy;
@@ -2692,6 +2708,11 @@ typedef struct prom_m48_stack_request {
   /* Audit-only fixed four-layer precision pattern. Zero inherits
      projection_path. It is deliberately not a generic scheduler. */
   uint32_t audit_layer_projection_path[PROM_M48_LAYER_COUNT];
+  uint32_t numerical_control_mode;
+  uint32_t controller_layer_projection_path[PROM_M48_LAYER_COUNT];
+  uint64_t controller_parameter_generation;
+  uint64_t controller_execution_identity;
+  uint32_t numerical_witness_mode;
   uint32_t attention_strategy;
   uint32_t output_projection_strategy;
   uint32_t rmsnorm_strategy;
@@ -2765,6 +2786,21 @@ typedef struct prom_m48_stack_result {
   uint64_t initial_generation;
   uint64_t final_output_generation;
   uint64_t replay_id;
+  uint32_t numerical_canary_ran;
+  uint32_t numerical_state_before;
+  uint32_t numerical_state_after;
+  uint32_t numerical_action;
+  uint64_t numerical_parameter_generation;
+  uint64_t numerical_evidence_identity;
+  uint64_t numerical_controller_identity;
+  uint64_t numerical_canary_cpu_ns;
+  float numerical_canary_samples[PROM_NUM_M49B_MAX_SAMPLES];
+  uint64_t numerical_canary_identity;
+  uint32_t numerical_witness_ran;
+  uint64_t numerical_witness_replay_id;
+  uint64_t numerical_witness_gpu_ns;
+  uint64_t numerical_witness_end_to_end_ns;
+  float numerical_witness_confidence;
   prom_m48_layer_execution_result layer[PROM_M48_LAYER_COUNT];
   prom_m48_transformer_stack_plan plan;
   prom_device_buffer_view output_view;
@@ -3200,6 +3236,10 @@ int prom_reactor_runtime_m48_prepare_initial_activation(
 int prom_reactor_runtime_m48_execute_stack(void* handle,
                                            const prom_m48_stack_request* request,
                                            prom_m48_stack_result* out_result);
+int prom_reactor_runtime_m49b_set_parameters(
+    void* handle, const prom_num_m49b_parameters* parameters,
+    uint64_t* out_parameter_generation);
+int prom_reactor_runtime_m49b_reset(void* handle);
 uint16_t prom_sgemm_float32_to_fp16_bits(float value);
 float prom_sgemm_fp16_bits_to_float32(uint16_t value);
 void prom_reactor_runtime_reduction_cleanup_state(void* state, VkDevice device);

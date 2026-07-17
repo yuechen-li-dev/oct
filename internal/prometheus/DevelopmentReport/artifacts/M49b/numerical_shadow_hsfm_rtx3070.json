@@ -1,0 +1,196 @@
+{
+  "schema": "prometheus.m49b.numerical-control.v2",
+  "artifact_state": "frozen_pre_dvt_baseline",
+  "date": "2026-07-17",
+  "classification": {
+    "convergence_outcome": "SUCCESS",
+    "milestone_state": "COMPLETE",
+    "m48_evt_state": "POSTPONED_TO_DVT",
+    "dvt_state": "READY"
+  },
+  "provenance": {
+    "base_revision": "be4bfd13",
+    "working_tree_change_set": true,
+    "device": {
+      "name": "NVIDIA GeForce RTX 3070",
+      "driver": "596.36",
+      "memory_mib": 8192
+    },
+    "source_sha256": {
+      "reactor_vulkan_fused_reduction.c": "17c0ced75a4709c1c95a8e538806fdb42a42865a3e66321167cdab5d44a55d84",
+      "reactor_vulkan_transformer.c": "fe362105e7a70c815d7d6b47ebd4622a710a3d52f83c25ba4b249de1e0e95fe9",
+      "reactor_vulkan_transformer_control.c": "4ac050e3f9144d8068fdc96961238f249f0d940338eaaaa73d71d8af4e4dce19",
+      "reactor_numerical_research.c": "a66bf9329abf3b3ab3c69865fa63ce3997af1349345e56cc358739eda464719d"
+    },
+    "binary_sha256": {
+      "prometheus_reactor.dll": "79910d1adeb403c6c7ecf314316cef0bb38fffa26f03a0b61e24b6c2e49f9b08",
+      "marionette_tests.exe": "d8cf860b39dbf8862b64624c02b8ff0aeeb4a58568e608a5e22bf8b6241c3fc9"
+    }
+  },
+  "source_organization": {
+    "fused_reduction_lines_before": 14453,
+    "fused_reduction_lines_after": 14733,
+    "extracted_module": "reactor_vulkan_transformer_control.c",
+    "extracted_module_lines": 155,
+    "planner_module": "reactor_vulkan_transformer.c",
+    "ownership": {
+      "control": "pure policy, paired estimation, cadence, quarantine adaptation",
+      "stack_owner": "slot capture, descriptors, command recording, submit, completion, witness",
+      "planner": "path validation and replay identity"
+    }
+  },
+  "parameters": {
+    "defaults": {
+      "canary_interval": 4,
+      "checkpoint_interval": 2,
+      "enter_high_gain_count": 2,
+      "exit_high_gain_count": 3,
+      "max_l2_error": 0.02,
+      "max_linf_error": 0.05,
+      "max_gain_estimate": 1.25,
+      "confidence_floor": 0.75,
+      "fallback_cooldown": 8,
+      "audit_sample_count": 16,
+      "rollout_stage": 0
+    },
+    "utility_weights": [-0.60, -0.30, -0.10],
+    "fitted_policy_authority": "shadow_only",
+    "publication": "wait_all_slots_then_publish_next_generation"
+  },
+  "paired_witness": {
+    "selected_path_product_authoritative": true,
+    "witness_path": "all_a2x4_fp32_fixed_four_layer_stack",
+    "same_initial_activation_layer_resources_shape_order_and_parameter_generation": true,
+    "capture": "16 deterministic final-output coordinate transfer copies per stack",
+    "capture_bytes_per_slot": 64,
+    "full_tensor_readback": false,
+    "product_tensor_mutation": false,
+    "witness_recursion": false,
+    "compute_shader": false,
+    "features": [
+      "sampled_l2",
+      "sampled_linf",
+      "two_signed_projection_deltas",
+      "absolute_projection_delta",
+      "finite_agreement",
+      "coordinate_disagreement_count",
+      "witness_identity"
+    ]
+  },
+  "estimator": {
+    "complete_finite_pair_confidence": 0.80,
+    "confidence_floor": 0.75,
+    "estimated_gain": 1.0,
+    "reference_suspect_on_missing_identity_or_finite_disagreement": true,
+    "identity": "shape + selected replay + witness replay + parameter generation + delta bits"
+  },
+  "cadence_and_lifecycle": {
+    "selected_execution_unit": "fixed_four_layer_stack",
+    "due_states": ["Unidentified", "ReferenceSuspect", "Quarantined"],
+    "periodic_rule": "execution_index % canary_interval == 0",
+    "parameter_update_forces_pair": true,
+    "completion_time_only": true,
+    "uncertain_completion": "quarantine_slot_and_controller_no_evidence_acceptance",
+    "one_slot_behavior": "AuditRequired; do not recycle selected output early"
+  },
+  "rollout": {
+    "default_stage": 0,
+    "stage0_stage1": "product path unchanged; shadow evidence/action only",
+    "stage2": "first-class interval-two checkpoint blocks 1 and 3 use A2x4",
+    "stage3": "full A2x4 while cooldown positive, then checkpoint recovery",
+    "audit_override_mixing": "rejected",
+    "controlled_transition_coverage": [
+      "Unidentified_to_Nominal",
+      "Nominal_to_BoundedDrift",
+      "BoundedDrift_to_HighGain",
+      "HighGain_to_CheckpointRecommended",
+      "FallbackRecommended",
+      "Cooldown_to_CheckpointRecovery",
+      "Quarantined_and_reap"
+    ]
+  },
+  "primary_outcome": {
+    "shape": {"layers": 4, "tokens": 128, "model_width": 1024, "heads": 8, "head_dim": 128, "ffn_width": 4096},
+    "requested_path": "cooperative",
+    "selected_gpu_ns": 13987744,
+    "selected_e2e_ns_excluding_witness": 20455800,
+    "observer_cpu_ns": 1100,
+    "witness_gpu_ns": 48121088,
+    "witness_e2e_ns": 52758200,
+    "confidence": 0.80,
+    "state_before": "Unidentified",
+    "state_after": "BoundedDrift",
+    "action": "ContinueCooperative_shadow",
+    "canary_identity": "13133589003333920077",
+    "witness_replay_identity": "5233646395579545000",
+    "evidence_identity": "7963429468135628739",
+    "controller_identity": "17706179060646069574",
+    "product_authority_changed": false,
+    "warm_paired_allocation_count": 0,
+    "repeatability": "M48 warm corpus bitwise"
+  },
+  "held_out_outcome": {
+    "shape": {"layers": 4, "tokens": 128, "model_width": 1024, "heads": 8, "head_dim": 128, "ffn_width": 2048},
+    "requested_path": "cooperative",
+    "selected_gpu_ns": 12451936,
+    "selected_e2e_ns_excluding_witness": 19084500,
+    "observer_cpu_ns": 1500,
+    "witness_gpu_ns": 42379424,
+    "witness_e2e_ns": 47195600,
+    "confidence": 0.80,
+    "state_before": "Unidentified",
+    "state_after": "BoundedDrift",
+    "action": "ContinueCooperative_shadow",
+    "canary_identity": "8225047763399955016",
+    "witness_replay_identity": "16433110970959169920",
+    "evidence_identity": "11274842124219885905",
+    "controller_identity": "4676268274102808232",
+    "product_authority_changed": false,
+    "repeatability": "M48 warm corpus bitwise"
+  },
+  "overhead": {
+    "observer_cpu_ns_primary": 1100,
+    "observer_cpu_ns_held_out": 1500,
+    "witness_is_reported_separately": true,
+    "canary_transfer_gpu_ns": null,
+    "cadence_amortized_production_overhead": null,
+    "reason": "transfer capture has no separate timestamp query; witness is synchronous calibration work"
+  },
+  "faults_and_recovery": {
+    "invalid_parameter": "focused_test_passed",
+    "identity_and_generation_validation": "focused_test_passed",
+    "low_confidence_and_nonfinite": "focused_test_passed",
+    "checkpoint_and_fallback_policy": "focused_test_passed",
+    "uncertain_completion_quarantine_reap": "live_stack_test_passed",
+    "warm_paired_zero_allocation": "live_stack_test_passed",
+    "parameter_update_boundary": "focused_test_passed"
+  },
+  "validation": {
+    "windows_msvc_native_rebuild": "passed",
+    "focused_m49b_and_m48_live_tests": "passed",
+    "go_internal_and_cmd_sweep": "passed",
+    "native_manifest": "passed",
+    "sdslv_workspace": "passed",
+    "linux_gcc_script": "blocked_missing_vulkan_headers_in_msys2_environment"
+  },
+  "oct_handoff": {
+    "artifact_authority": "live_m49b_evidence",
+    "product_authority_changed": false,
+    "separate_oct_controller": false
+  },
+  "dvt_reset": [
+    "reset controller to Unidentified",
+    "segregate RTX history and confidence",
+    "roll out Stage 0 and force a pair",
+    "query memory, subgroup/wave, timestamps, dispatch limits, cooperative tuples, shader hashes",
+    "run FP32 then conventional FP16 then verified cooperative",
+    "calibrate paired evidence before Stage 2 or 3 authority"
+  ],
+  "unsupported_claims": [
+    "No full-tensor discrepancy is claimed from the compact paired samples.",
+    "No canary compute shader or separately timestamped transfer-GPU cost exists.",
+    "No sub-1-percent cadence-amortized production overhead is claimed.",
+    "No complete hardware-triggered Stage-2 or Stage-3 RTX outcome matrix is claimed.",
+    "RTX thresholds and confidence are not AMD certification."
+  ]
+}

@@ -1052,3 +1052,316 @@ int prom_num_canary_calibrate(const double* canary_scores,
   out_calibration->valid = 1u;
   return 1;
 }
+
+typedef char prom_num_m49b_evidence_must_fit_readback_budget[
+    sizeof(prom_num_m49b_evidence) <= 256u ? 1 : -1];
+
+static int prom_num_m49b_in_range_u32(uint32_t value, uint32_t low, uint32_t high) {
+  return value >= low && value <= high;
+}
+
+static int prom_num_m49b_in_range_double(double value, double low, double high) {
+  return isfinite(value) && value >= low && value <= high;
+}
+
+prom_num_m49b_parameters prom_num_m49b_default_parameters(void) {
+  prom_num_m49b_parameters result;
+  memset(&result, 0, sizeof(result));
+  result.canary_interval = 4u;
+  result.checkpoint_interval = 2u;
+  result.enter_high_gain_count = 2u;
+  result.exit_high_gain_count = 3u;
+  result.max_l2_error = 0.02;
+  result.max_linf_error = 0.05;
+  result.max_gain_estimate = 1.25;
+  result.confidence_floor = 0.75;
+  result.fallback_cooldown = 8u;
+  result.audit_sample_count = 16u;
+  result.rollout_stage = 0u;
+  return result;
+}
+
+int prom_num_m49b_validate_parameters(const prom_num_m49b_parameters* parameters) {
+  if (parameters == NULL) return 0;
+  return prom_num_m49b_in_range_u32(parameters->canary_interval, 1u, 64u) &&
+         prom_num_m49b_in_range_u32(parameters->checkpoint_interval, 1u, 32u) &&
+         prom_num_m49b_in_range_u32(parameters->enter_high_gain_count, 1u, 16u) &&
+         prom_num_m49b_in_range_u32(parameters->exit_high_gain_count, 1u, 32u) &&
+         prom_num_m49b_in_range_double(parameters->max_l2_error, 0.0, 1.0) &&
+         prom_num_m49b_in_range_double(parameters->max_linf_error, 0.0, 1.0) &&
+         prom_num_m49b_in_range_double(parameters->max_gain_estimate, 1.0, 8.0) &&
+         prom_num_m49b_in_range_double(parameters->confidence_floor, 0.0, 1.0) &&
+         prom_num_m49b_in_range_u32(parameters->fallback_cooldown, 1u, 256u) &&
+         prom_num_m49b_in_range_u32(parameters->audit_sample_count, 4u, 64u) &&
+         prom_num_m49b_in_range_u32(parameters->rollout_stage, 0u, 3u);
+}
+
+uint64_t prom_num_m49b_parameter_identity(const prom_num_m49b_parameters* parameters) {
+  uint64_t hash = 1469598103934665603ull;
+  uint64_t bits = 0u;
+  if (!prom_num_m49b_validate_parameters(parameters)) return 0u;
+  hash = prom_num_hash_u64(hash, parameters->canary_interval);
+  hash = prom_num_hash_u64(hash, parameters->checkpoint_interval);
+  hash = prom_num_hash_u64(hash, parameters->enter_high_gain_count);
+  hash = prom_num_hash_u64(hash, parameters->exit_high_gain_count);
+  memcpy(&bits, &parameters->max_l2_error, sizeof(bits)); hash = prom_num_hash_u64(hash, bits);
+  memcpy(&bits, &parameters->max_linf_error, sizeof(bits)); hash = prom_num_hash_u64(hash, bits);
+  memcpy(&bits, &parameters->max_gain_estimate, sizeof(bits)); hash = prom_num_hash_u64(hash, bits);
+  memcpy(&bits, &parameters->confidence_floor, sizeof(bits)); hash = prom_num_hash_u64(hash, bits);
+  hash = prom_num_hash_u64(hash, parameters->fallback_cooldown);
+  hash = prom_num_hash_u64(hash, parameters->audit_sample_count);
+  return prom_num_hash_u64(hash, parameters->rollout_stage);
+}
+
+void prom_num_m49b_init(prom_num_m49b_controller* controller) {
+  if (controller == NULL) return;
+  memset(controller, 0, sizeof(*controller));
+  controller->parameters = prom_num_m49b_default_parameters();
+  controller->parameter_generation = 1u;
+  controller->parameter_identity = prom_num_m49b_parameter_identity(&controller->parameters);
+  controller->state = PROM_NUM_M49B_UNIDENTIFIED;
+  controller->controller_state_identity = prom_num_hash_u64(1469598103934665603ull,
+                                                              controller->parameter_identity);
+}
+
+int prom_num_m49b_update_parameters(prom_num_m49b_controller* controller,
+                                     const prom_num_m49b_parameters* parameters) {
+  uint64_t identity;
+  if (controller == NULL || !prom_num_m49b_validate_parameters(parameters)) return 0;
+  identity = prom_num_m49b_parameter_identity(parameters);
+  if (identity == 0u) return 0;
+  if (identity == controller->parameter_identity) return 1;
+  controller->parameters = *parameters;
+  controller->parameter_identity = identity;
+  controller->parameter_generation += 1u;
+  controller->state = PROM_NUM_M49B_UNIDENTIFIED;
+  controller->enter_count = 0u;
+  controller->exit_count = 0u;
+  controller->cooldown_remaining = 0u;
+  controller->state_entry_execution = controller->execution_count;
+  return 1;
+}
+
+int prom_num_m49b_derive_coordinates(uint64_t shape_identity, uint64_t seed,
+                                      uint32_t element_count, uint32_t sample_count,
+                                      uint32_t* out_coordinates) {
+  uint64_t state;
+  uint32_t index;
+  if (out_coordinates == NULL || element_count == 0u || sample_count < 4u ||
+      sample_count > PROM_NUM_M49B_MAX_SAMPLES) return 0;
+  state = shape_identity ^ (seed + 0x9e3779b97f4a7c15ull);
+  for (index = 0u; index < sample_count; ++index) {
+    uint32_t candidate;
+    uint32_t retry;
+    candidate = (uint32_t)(prom_num_next_u64(&state) % element_count);
+    for (retry = 0u; retry < element_count && retry < 64u; ++retry) {
+      uint32_t prior;
+      uint32_t duplicate = 0u;
+      for (prior = 0u; prior < index; ++prior)
+        if (out_coordinates[prior] == candidate) duplicate = 1u;
+      if (duplicate == 0u) break;
+      candidate = (candidate + 1u) % element_count;
+    }
+    out_coordinates[index] = candidate;
+  }
+  return 1;
+}
+
+static void prom_num_m49b_transition(prom_num_m49b_controller* controller,
+                                     uint32_t next, uint64_t execution_index) {
+  if (controller->state != next) {
+    controller->state = next;
+    controller->state_entry_execution = execution_index;
+    controller->enter_count = 0u;
+    controller->exit_count = 0u;
+  }
+}
+
+void prom_num_m49b_advance_execution(prom_num_m49b_controller* controller,
+                                     uint64_t execution_index) {
+  if (controller == NULL || !prom_num_m49b_validate_parameters(&controller->parameters))
+    return;
+  controller->execution_count = execution_index;
+  if (controller->cooldown_remaining != 0u) {
+    controller->cooldown_remaining -= 1u;
+    if (controller->cooldown_remaining == 0u)
+      prom_num_m49b_transition(controller, PROM_NUM_M49B_CHECKPOINT_RECOMMENDED,
+                               execution_index);
+  }
+  controller->controller_state_identity =
+      prom_num_hash_u64(prom_num_hash_u64(controller->parameter_identity, controller->state),
+                        controller->cooldown_remaining);
+}
+
+static void prom_num_m49b_score(uint32_t action, double risk, double latency,
+                                 double memory, prom_num_m49b_decision* decision) {
+  /* Costs are normalized positive quantities.  Negative authored weights make
+     increased risk, latency, and memory deterministically less desirable. */
+  const double authored = -0.60 * risk - 0.30 * latency - 0.10 * memory;
+  const double uniform = -(risk + latency + memory) / 3.0;
+  const double fitted_shadow = -0.50 * risk - 0.25 * latency - 0.25 * memory;
+  (void)action;
+  decision->authored_score = authored;
+  decision->uniform_score = uniform;
+  decision->fitted_shadow_score = fitted_shadow;
+}
+
+int prom_num_m49b_observe(prom_num_m49b_controller* controller,
+                          const prom_num_m49b_observation* observation,
+                          prom_num_m49b_evidence* out_evidence,
+                          prom_num_m49b_decision* out_decision) {
+  prom_num_m49b_evidence evidence;
+  prom_num_m49b_decision decision;
+  uint64_t hash = 1469598103934665603ull;
+  uint32_t index;
+  uint32_t sample_count;
+  uint32_t high;
+  uint32_t good;
+  uint32_t state_before;
+  if (controller == NULL || observation == NULL || out_evidence == NULL || out_decision == NULL ||
+      !prom_num_m49b_validate_parameters(&controller->parameters) ||
+      observation->completion_known > 1u || observation->lifecycle_fault > 1u ||
+      observation->reference_suspect > 1u || observation->force_audit > 1u ||
+      observation->sampled_values == NULL || observation->sampled_value_count == 0u) return 0;
+  memset(&evidence, 0, sizeof(evidence));
+  memset(&decision, 0, sizeof(decision));
+  sample_count = controller->parameters.audit_sample_count;
+  if (sample_count > PROM_NUM_M49B_MAX_SAMPLES) sample_count = PROM_NUM_M49B_MAX_SAMPLES;
+  if (sample_count > observation->sampled_value_count) sample_count = observation->sampled_value_count;
+  if (sample_count < 4u) return 0;
+  state_before = controller->state;
+  evidence.execution_index = observation->execution_index;
+  evidence.shape_identity = observation->shape_identity;
+  evidence.output_replay_identity = observation->output_replay_identity;
+  evidence.reference_identity = observation->reference_identity;
+  evidence.parameter_generation = controller->parameter_generation;
+  evidence.current_path = observation->current_path;
+  evidence.block_index = (uint32_t)(observation->execution_index % 16u);
+  evidence.sample_count = sample_count;
+  evidence.finite = 1u;
+  for (index = 0u; index < sample_count; ++index) {
+    const float value = observation->sampled_values[index];
+    const double absolute_value = prom_num_abs(value);
+    if (!isfinite(value)) evidence.finite = 0u;
+    evidence.samples[index] = value;
+    evidence.signed_projection_a += (index & 1u) == 0u ? value : -value;
+    evidence.signed_projection_b += ((index * 7u + 3u) & 1u) == 0u ? value : -value;
+    evidence.absolute_projection += (float)absolute_value;
+    if ((float)absolute_value > evidence.maximum_absolute_sample)
+      evidence.maximum_absolute_sample = (float)absolute_value;
+    hash = prom_num_hash_u64(hash, prom_num_hash_float_bits(&value, 1u));
+  }
+  evidence.canary_identity = prom_num_hash_u64(hash, observation->shape_identity);
+  evidence.estimated_l2_error = (float)(isfinite(observation->observed_l2_error) &&
+                                         observation->observed_l2_error >= 0.0
+                                             ? observation->observed_l2_error
+                                             : evidence.absolute_projection / sqrt((double)sample_count));
+  evidence.estimated_linf_error = (float)(isfinite(observation->observed_linf_error) &&
+                                           observation->observed_linf_error >= 0.0
+                                               ? observation->observed_linf_error
+                                               : evidence.maximum_absolute_sample);
+  evidence.estimated_gain = (float)(isfinite(observation->observed_gain) && observation->observed_gain >= 0.0
+                                        ? observation->observed_gain : 1.0);
+  evidence.confidence = (float)(isfinite(observation->confidence) && observation->confidence >= 0.0 &&
+                                 observation->confidence <= 1.0 ? observation->confidence : 0.0);
+  evidence.reference_suspect = observation->reference_suspect;
+  evidence.valid = evidence.finite != 0u && observation->completion_known != 0u &&
+                   observation->lifecycle_fault == 0u;
+  evidence.evidence_identity = prom_num_hash_u64(evidence.canary_identity, evidence.parameter_generation);
+  evidence.evidence_identity = prom_num_hash_u64(evidence.evidence_identity, observation->output_replay_identity);
+  controller->execution_count = observation->execution_index;
+  if (observation->lifecycle_fault != 0u || observation->completion_known == 0u) {
+    prom_num_m49b_transition(controller, PROM_NUM_M49B_QUARANTINED, observation->execution_index);
+  } else if (observation->reference_suspect != 0u) {
+    prom_num_m49b_transition(controller, PROM_NUM_M49B_REFERENCE_SUSPECT, observation->execution_index);
+  } else if (evidence.valid == 0u || observation->force_audit != 0u ||
+             evidence.confidence < controller->parameters.confidence_floor) {
+    prom_num_m49b_transition(controller, PROM_NUM_M49B_AUDIT_REQUIRED, observation->execution_index);
+  } else {
+    high = evidence.estimated_l2_error > controller->parameters.max_l2_error ||
+           evidence.estimated_linf_error > controller->parameters.max_linf_error ||
+           evidence.estimated_gain > controller->parameters.max_gain_estimate;
+    good = high == 0u;
+    if (controller->cooldown_remaining == 0u &&
+        controller->state == PROM_NUM_M49B_UNIDENTIFIED && good != 0u) {
+      prom_num_m49b_transition(controller, PROM_NUM_M49B_NOMINAL, observation->execution_index);
+    } else if (high != 0u) {
+      controller->enter_count += 1u;
+      controller->exit_count = 0u;
+      if (controller->state == PROM_NUM_M49B_UNIDENTIFIED ||
+          controller->state == PROM_NUM_M49B_NOMINAL)
+        prom_num_m49b_transition(controller, PROM_NUM_M49B_BOUNDED_DRIFT, observation->execution_index);
+      else if (controller->state == PROM_NUM_M49B_BOUNDED_DRIFT &&
+               controller->enter_count >= controller->parameters.enter_high_gain_count)
+        prom_num_m49b_transition(controller, PROM_NUM_M49B_HIGH_GAIN, observation->execution_index);
+      else if (controller->state == PROM_NUM_M49B_HIGH_GAIN)
+        prom_num_m49b_transition(controller, PROM_NUM_M49B_CHECKPOINT_RECOMMENDED,
+                                 observation->execution_index);
+      else if (controller->state == PROM_NUM_M49B_CHECKPOINT_RECOMMENDED &&
+               controller->enter_count >= controller->parameters.enter_high_gain_count)
+        prom_num_m49b_transition(controller, PROM_NUM_M49B_FALLBACK_RECOMMENDED,
+                                 observation->execution_index);
+    } else if (good != 0u) {
+      controller->exit_count += 1u;
+      controller->enter_count = 0u;
+      if (controller->state != PROM_NUM_M49B_NOMINAL &&
+          controller->exit_count >= controller->parameters.exit_high_gain_count)
+        prom_num_m49b_transition(controller, PROM_NUM_M49B_NOMINAL, observation->execution_index);
+    }
+  }
+  decision.state_before = state_before;
+  decision.state_after = controller->state;
+  decision.parameter_generation = controller->parameter_generation;
+  decision.evidence_identity = evidence.evidence_identity;
+  decision.shadow_only = controller->parameters.rollout_stage < 2u ? 1u : 0u;
+  if (controller->state == PROM_NUM_M49B_QUARANTINED) decision.action = PROM_NUM_M49B_QUARANTINE;
+  else if (controller->state == PROM_NUM_M49B_AUDIT_REQUIRED ||
+           controller->state == PROM_NUM_M49B_REFERENCE_SUSPECT) decision.action = PROM_NUM_M49B_RUN_AUDIT;
+  else if (controller->state == PROM_NUM_M49B_FALLBACK_RECOMMENDED) {
+    decision.action = controller->parameters.rollout_stage == 3u
+                          ? PROM_NUM_M49B_APPLY_A2X4_FALLBACK : PROM_NUM_M49B_RECOMMEND_FALLBACK;
+    if (decision.action == PROM_NUM_M49B_APPLY_A2X4_FALLBACK) {
+      if (controller->cooldown_remaining == 0u)
+        controller->cooldown_remaining = controller->parameters.fallback_cooldown;
+      decision.fallback_active = 1u;
+    }
+  } else if (controller->state == PROM_NUM_M49B_CHECKPOINT_RECOMMENDED) {
+    decision.action = controller->parameters.rollout_stage >= 2u
+                          ? PROM_NUM_M49B_APPLY_CHECKPOINT : PROM_NUM_M49B_CONTINUE_CURRENT;
+    decision.checkpoint_active = decision.action == PROM_NUM_M49B_APPLY_CHECKPOINT;
+  } else decision.action = PROM_NUM_M49B_CONTINUE_COOPERATIVE;
+  decision.applied = decision.shadow_only == 0u && decision.action != PROM_NUM_M49B_NO_ACTION;
+  decision.cooldown_remaining = controller->cooldown_remaining;
+  for (index = 0u; index < PROM_NUM_M49B_MAX_SAMPLES; ++index) {
+    decision.block_path[index] = observation->current_path;
+    if (decision.fallback_active != 0u) decision.block_path[index] = PROM_NUM_PATH_GPU_A2X4_FP32;
+    else if (decision.checkpoint_active != 0u &&
+             index % controller->parameters.checkpoint_interval ==
+                 controller->parameters.checkpoint_interval - 1u)
+      decision.block_path[index] = PROM_NUM_PATH_GPU_A2X4_FP32;
+  }
+  prom_num_m49b_score(decision.action,
+                      decision.action == PROM_NUM_M49B_CONTINUE_COOPERATIVE ? 1.0 : 0.1,
+                      decision.fallback_active != 0u ? 1.0 : decision.checkpoint_active != 0u ? 0.5 : 0.0,
+                      0.0, &decision);
+  decision.controller_state_identity = prom_num_hash_u64(controller->parameter_identity, controller->state);
+  decision.controller_state_identity = prom_num_hash_u64(decision.controller_state_identity,
+                                                          controller->cooldown_remaining);
+  decision.controller_state_identity = prom_num_hash_u64(decision.controller_state_identity,
+                                                          evidence.evidence_identity);
+  decision.execution_replay_identity = observation->output_replay_identity;
+  if (decision.applied != 0u) {
+    decision.execution_replay_identity = prom_num_hash_u64(decision.execution_replay_identity,
+                                                            controller->parameter_generation);
+    decision.execution_replay_identity = prom_num_hash_u64(decision.execution_replay_identity,
+                                                            decision.action);
+  }
+  controller->controller_state_identity = decision.controller_state_identity;
+  controller->last_reference_identity = observation->reference_identity;
+  controller->history[controller->history_next] = evidence;
+  controller->history_next = (controller->history_next + 1u) % PROM_NUM_M49B_HISTORY_CAPACITY;
+  if (controller->history_count < PROM_NUM_M49B_HISTORY_CAPACITY) controller->history_count += 1u;
+  *out_evidence = evidence;
+  *out_decision = decision;
+  return 1;
+}

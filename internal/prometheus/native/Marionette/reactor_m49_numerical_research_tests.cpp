@@ -1,4 +1,5 @@
 #include "../reactor_numerical_research.h"
+#include "../reactor_vulkan_transformer_control.h"
 #include "test_harness.h"
 
 #include <array>
@@ -593,4 +594,160 @@ FACT(PrometheusM49aArtifactSchemaSeparatesCompletedAndUnsupportedEvidence)
                     std::string::npos &&
                     artifact.find("\"product_authority\": false") != std::string::npos,
                 "the selected mitigation remains experimental and outside product authority");
+}
+
+FACT(PrometheusM49bControllerParametersEvidenceAndBoundedAuthority)
+{
+    prom_num_m49b_controller controller{};
+    prom_num_m49b_init(&controller);
+    ASSERT_EQUAL(0u, controller.parameters.rollout_stage,
+                 "M49b defaults to observer-only authority");
+    ASSERT_EQUAL(4u, controller.parameters.canary_interval,
+                 "M49b owns the authored canary cadence in one parameter record");
+    ASSERT_TRUE(prom_num_m49b_validate_parameters(&controller.parameters) != 0,
+                "M49b default parameters validate");
+    prom_num_m49b_parameters invalid = controller.parameters;
+    invalid.audit_sample_count = 3u;
+    ASSERT_TRUE(prom_num_m49b_validate_parameters(&invalid) == 0,
+                "M49b rejects out-of-range parameters conservatively");
+
+    std::array<std::uint32_t, 16u> coordinates{};
+    ASSERT_TRUE(prom_num_m49b_derive_coordinates(0x49b0u, 0x123u, 128u, 16u,
+                                                  coordinates.data()) != 0,
+                "M49b derives bounded coordinates from shape and seed");
+    for (std::size_t i = 0u; i < coordinates.size(); ++i) {
+        ASSERT_TRUE(coordinates[i] < 128u, "every canary coordinate is in bounds");
+        for (std::size_t j = 0u; j < i; ++j)
+            ASSERT_TRUE(coordinates[i] != coordinates[j],
+                        "the normal-size canary has no duplicate coordinates");
+    }
+
+    const std::array<float, 16u> witnessSamples{{0.10f, -0.10f, 0.20f, -0.20f,
+                                                   0.30f, -0.30f, 0.40f, -0.40f,
+                                                   0.50f, -0.50f, 0.60f, -0.60f,
+                                                   0.70f, -0.70f, 0.80f, -0.80f}};
+    std::array<float, 16u> selectedSamples = witnessSamples;
+    selectedSamples[3u] += 0.01f;
+    selectedSamples[11u] -= 0.02f;
+    prom_m49b_paired_estimate paired{};
+    prom_m49b_paired_estimate repeatedPaired{};
+    ASSERT_TRUE(prom_m49b_estimate_paired_discrepancy(
+                    selectedSamples.data(), witnessSamples.data(),
+                    static_cast<std::uint32_t>(selectedSamples.size()),
+                    0x88u, 0x99u, 0xa2a4u, 7u, &paired) != 0,
+                "M49b derives bounded paired discrepancy evidence");
+    ASSERT_TRUE(prom_m49b_estimate_paired_discrepancy(
+                    selectedSamples.data(), witnessSamples.data(),
+                    static_cast<std::uint32_t>(selectedSamples.size()),
+                    0x88u, 0x99u, 0xa2a4u, 7u, &repeatedPaired) != 0,
+                "paired evidence remains replay-identifiable on repeat");
+    ASSERT_TRUE(paired.sampled_l2_error > 0.02 && paired.sampled_linf_error >= 0.019,
+                "paired selected/witness samples expose discrepancy regimes");
+    ASSERT_TRUE(paired.confidence >= 0.75 && paired.reference_suspect == 0u,
+                "a complete finite same-request witness clears the confidence floor");
+    ASSERT_EQUAL(paired.paired_identity, repeatedPaired.paired_identity,
+                 "paired evidence identity is deterministic");
+
+    const std::array<float, 16u> samples{{0.1f, -0.1f, 0.2f, -0.2f,
+                                           0.3f, -0.3f, 0.4f, -0.4f,
+                                           0.5f, -0.5f, 0.6f, -0.6f,
+                                           0.7f, -0.7f, 0.8f, -0.8f}};
+    prom_num_m49b_observation observation{};
+    observation.completion_known = 1u;
+    observation.current_path = PROM_NUM_PATH_GPU_COOPERATIVE_FP16;
+    observation.execution_index = 1u;
+    observation.shape_identity = 0x88u;
+    observation.output_replay_identity = 0x99u;
+    observation.reference_identity = 0x77u;
+    observation.sampled_values = samples.data();
+    observation.sampled_value_count = static_cast<std::uint32_t>(samples.size());
+    observation.observed_l2_error = 0.01;
+    observation.observed_linf_error = 0.01;
+    observation.observed_gain = 1.0;
+    observation.confidence = 0.9;
+    prom_num_m49b_evidence evidence{};
+    prom_num_m49b_decision decision{};
+    ASSERT_TRUE(prom_num_m49b_observe(&controller, &observation, &evidence, &decision) != 0,
+                "M49b observer records finite evidence");
+    ASSERT_TRUE(sizeof(evidence) <= 256u, "M49b evidence stays inside the readback budget");
+    ASSERT_EQUAL(1u, decision.shadow_only, "Stage 0 emits no applied authority");
+    ASSERT_EQUAL(observation.output_replay_identity, decision.execution_replay_identity,
+                 "shadow evidence does not change execution replay identity");
+
+    prom_num_m49b_parameters stage2 = controller.parameters;
+    stage2.rollout_stage = 2u;
+    ASSERT_TRUE(prom_num_m49b_update_parameters(&controller, &stage2) != 0,
+                "M49b accepts a live request-boundary parameter update");
+    const std::uint64_t parameterGeneration = controller.parameter_generation;
+    observation.observed_l2_error = 0.2;
+    observation.observed_linf_error = 0.2;
+    observation.observed_gain = 2.0;
+    for (std::uint64_t execution = 2u; execution < 6u; ++execution) {
+        observation.execution_index = execution;
+        ASSERT_TRUE(prom_num_m49b_observe(&controller, &observation, &evidence, &decision) != 0,
+                    "M49b high-gain hysteresis observes deterministically");
+    }
+    ASSERT_EQUAL(parameterGeneration, evidence.parameter_generation,
+                 "one completed execution reports its pinned parameter generation");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_NUM_M49B_APPLY_CHECKPOINT), decision.action,
+                 "Stage 2 eventually authorizes the fixed checkpoint action");
+    ASSERT_EQUAL(PROM_NUM_PATH_GPU_COOPERATIVE_FP16, decision.block_path[0],
+                 "checkpoint pattern preserves cooperative block zero");
+    ASSERT_EQUAL(PROM_NUM_PATH_GPU_A2X4_FP32, decision.block_path[1],
+                 "checkpoint pattern promotes every second block only");
+    ASSERT_TRUE(decision.execution_replay_identity != observation.output_replay_identity,
+                "applied Stage 2 authority changes execution replay identity");
+
+    controller.state = PROM_NUM_M49B_FALLBACK_RECOMMENDED;
+    controller.cooldown_remaining = 2u;
+    prom_num_m49b_advance_execution(&controller, 6u);
+    ASSERT_EQUAL(1u, controller.cooldown_remaining,
+                 "a known completion decrements fallback cooldown without fabricating evidence");
+    prom_num_m49b_advance_execution(&controller, 7u);
+    ASSERT_EQUAL(0u, controller.cooldown_remaining,
+                 "fallback cooldown ends deterministically at an execution boundary");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_NUM_M49B_CHECKPOINT_RECOMMENDED),
+                 controller.state,
+                 "fallback recovery returns through the bounded checkpoint state");
+}
+
+FACT(PrometheusM49bFixedStackAdapterKeepsAuditAndAuthoritySeparate)
+{
+    prom_num_m49b_controller controller{};
+    prom_num_m49b_init(&controller);
+    prom_num_m49b_parameters stage2 = controller.parameters;
+    stage2.rollout_stage = 2u;
+    ASSERT_TRUE(prom_num_m49b_update_parameters(&controller, &stage2) != 0,
+                "Stage 2 parameters publish into the fixed-stack adapter");
+    controller.state = PROM_NUM_M49B_CHECKPOINT_RECOMMENDED;
+    prom_m48_stack_request request{};
+    request.layer_count = PROM_M48_LAYER_COUNT;
+    request.projection_path = PROM_M47_PROJECTION_COOPERATIVE;
+    prom_m49b_apply_fixed_stack_policy(&controller, &request, 0x49b2u);
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M48_NUMERICAL_CONTROL_M49B),
+                 request.numerical_control_mode,
+                 "checkpoint authority uses the first-class controller path field");
+    ASSERT_EQUAL(0u, request.audit_layer_projection_path[1u],
+                 "controller authority does not borrow audit override storage");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
+                 request.controller_layer_projection_path[1u],
+                 "interval-two checkpoint promotes block one");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
+                 request.controller_layer_projection_path[3u],
+                 "interval-two checkpoint promotes block three");
+
+    prom_num_m49b_parameters stage3 = stage2;
+    stage3.rollout_stage = 3u;
+    ASSERT_TRUE(prom_num_m49b_update_parameters(&controller, &stage3) != 0,
+                "Stage 3 parameters publish at a request boundary");
+    controller.state = PROM_NUM_M49B_FALLBACK_RECOMMENDED;
+    controller.cooldown_remaining = 8u;
+    request = {};
+    request.layer_count = PROM_M48_LAYER_COUNT;
+    request.projection_path = PROM_M47_PROJECTION_COOPERATIVE;
+    prom_m49b_apply_fixed_stack_policy(&controller, &request, 0x49b3u);
+    for (const std::uint32_t path : request.controller_layer_projection_path) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32), path,
+                     "active fallback gives every complete block the A2x4 path");
+    }
 }

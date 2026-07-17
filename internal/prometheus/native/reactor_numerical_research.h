@@ -362,6 +362,149 @@ typedef struct prom_num_bias_model {
   uint32_t valid;
 } prom_num_bias_model;
 
+/* M49b is intentionally a fixed-stack controller, not a scheduler.  Its
+   parameter record is copied at an execution boundary; callers retain that
+   snapshot until known completion. */
+#define PROM_NUM_M49B_HISTORY_CAPACITY 32u
+#define PROM_NUM_M49B_MAX_SAMPLES 16u
+
+typedef enum prom_num_m49b_state {
+  PROM_NUM_M49B_UNIDENTIFIED = 0u,
+  PROM_NUM_M49B_NOMINAL = 1u,
+  PROM_NUM_M49B_BOUNDED_DRIFT = 2u,
+  PROM_NUM_M49B_HIGH_GAIN = 3u,
+  PROM_NUM_M49B_CHECKPOINT_RECOMMENDED = 4u,
+  PROM_NUM_M49B_AUDIT_REQUIRED = 5u,
+  PROM_NUM_M49B_FALLBACK_RECOMMENDED = 6u,
+  PROM_NUM_M49B_REFERENCE_SUSPECT = 7u,
+  PROM_NUM_M49B_QUARANTINED = 8u,
+} prom_num_m49b_state;
+
+typedef enum prom_num_m49b_action {
+  PROM_NUM_M49B_NO_ACTION = 0u,
+  PROM_NUM_M49B_CONTINUE_COOPERATIVE = 1u,
+  PROM_NUM_M49B_CONTINUE_CURRENT = 2u,
+  PROM_NUM_M49B_APPLY_CHECKPOINT = 3u,
+  PROM_NUM_M49B_RUN_AUDIT = 4u,
+  PROM_NUM_M49B_RECOMMEND_FALLBACK = 5u,
+  PROM_NUM_M49B_APPLY_A2X4_FALLBACK = 6u,
+  PROM_NUM_M49B_RECOVER_CHECKPOINT = 7u,
+  PROM_NUM_M49B_QUARANTINE = 8u,
+} prom_num_m49b_action;
+
+typedef struct prom_num_m49b_parameters {
+  uint32_t canary_interval;
+  uint32_t checkpoint_interval;
+  uint32_t enter_high_gain_count;
+  uint32_t exit_high_gain_count;
+  double max_l2_error;
+  double max_linf_error;
+  double max_gain_estimate;
+  double confidence_floor;
+  uint32_t fallback_cooldown;
+  uint32_t audit_sample_count;
+  uint32_t rollout_stage;
+} prom_num_m49b_parameters;
+
+/* This stays well below the 256-byte device/readback budget (the static
+   assertion lives in the C implementation so C and C++ callers agree). */
+typedef struct prom_num_m49b_evidence {
+  uint64_t execution_index;
+  uint64_t shape_identity;
+  uint64_t output_replay_identity;
+  uint64_t parameter_generation;
+  uint64_t canary_identity;
+  uint64_t evidence_identity;
+  uint64_t reference_identity;
+  float samples[PROM_NUM_M49B_MAX_SAMPLES];
+  float signed_projection_a;
+  float signed_projection_b;
+  float absolute_projection;
+  float maximum_absolute_sample;
+  float estimated_l2_error;
+  float estimated_linf_error;
+  float estimated_gain;
+  float confidence;
+  uint32_t block_index;
+  uint32_t current_path;
+  uint32_t finite;
+  uint32_t valid;
+  uint32_t reference_suspect;
+  uint32_t sample_count;
+} prom_num_m49b_evidence;
+
+typedef struct prom_num_m49b_observation {
+  uint32_t completion_known;
+  uint32_t lifecycle_fault;
+  uint32_t reference_suspect;
+  uint32_t force_audit;
+  uint32_t current_path;
+  uint64_t execution_index;
+  uint64_t shape_identity;
+  uint64_t output_replay_identity;
+  uint64_t reference_identity;
+  const float* sampled_values;
+  uint32_t sampled_value_count;
+  double observed_l2_error;
+  double observed_linf_error;
+  double observed_gain;
+  double confidence;
+} prom_num_m49b_observation;
+
+typedef struct prom_num_m49b_decision {
+  uint32_t state_before;
+  uint32_t state_after;
+  uint32_t action;
+  uint32_t applied;
+  uint32_t shadow_only;
+  uint32_t checkpoint_active;
+  uint32_t fallback_active;
+  uint32_t cooldown_remaining;
+  uint32_t block_path[PROM_NUM_M49B_MAX_SAMPLES];
+  uint64_t parameter_generation;
+  uint64_t evidence_identity;
+  uint64_t execution_replay_identity;
+  uint64_t controller_state_identity;
+  double authored_score;
+  double uniform_score;
+  double fitted_shadow_score;
+} prom_num_m49b_decision;
+
+typedef struct prom_num_m49b_controller {
+  prom_num_m49b_parameters parameters;
+  uint64_t parameter_generation;
+  uint64_t parameter_identity;
+  uint64_t execution_count;
+  uint64_t state_entry_execution;
+  uint64_t last_reference_identity;
+  uint64_t controller_state_identity;
+  uint32_t state;
+  uint32_t enter_count;
+  uint32_t exit_count;
+  uint32_t cooldown_remaining;
+  uint32_t history_next;
+  uint32_t history_count;
+  prom_num_m49b_evidence history[PROM_NUM_M49B_HISTORY_CAPACITY];
+} prom_num_m49b_controller;
+
+prom_num_m49b_parameters prom_num_m49b_default_parameters(void);
+int prom_num_m49b_validate_parameters(const prom_num_m49b_parameters* parameters);
+uint64_t prom_num_m49b_parameter_identity(const prom_num_m49b_parameters* parameters);
+void prom_num_m49b_init(prom_num_m49b_controller* controller);
+int prom_num_m49b_update_parameters(prom_num_m49b_controller* controller,
+                                     const prom_num_m49b_parameters* parameters);
+/* Records a known-complete execution that produced no canary.  It advances
+   cooldown only; it never accepts or fabricates numerical evidence. */
+void prom_num_m49b_advance_execution(prom_num_m49b_controller* controller,
+                                     uint64_t execution_index);
+int prom_num_m49b_derive_coordinates(uint64_t shape_identity, uint64_t seed,
+                                      uint32_t element_count, uint32_t sample_count,
+                                      uint32_t* out_coordinates);
+int prom_num_m49b_observe(prom_num_m49b_controller* controller,
+                          const prom_num_m49b_observation* observation,
+                          prom_num_m49b_evidence* out_evidence,
+                          prom_num_m49b_decision* out_decision);
+
 uint64_t prom_num_hash_float_bits(const float* values, uint64_t count);
 uint64_t prom_num_experiment_plan_identity(uint32_t schema_version,
                                            const uint32_t* paths,

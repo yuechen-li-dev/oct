@@ -2501,6 +2501,32 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
     mixed.audit_mode = 0u;
     ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&mixed, &mixedPlan) != PROM_OK,
                 "product planning rejects every per-layer precision override");
+    prom_m48_plan_request controlled = M48ResidentPlanRequest();
+    controlled.numerical_control_mode = PROM_M48_NUMERICAL_CONTROL_M49B;
+    controlled.controller_parameter_generation = 49u;
+    controlled.controller_execution_identity = 4901u;
+    controlled.controller_layer_projection_path[1u] = PROM_M47_PROJECTION_A2X4_FP32;
+    controlled.controller_layer_projection_path[3u] = PROM_M47_PROJECTION_A2X4_FP32;
+    prom_m48_transformer_stack_plan controlledPlan{};
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&controlled, &controlledPlan),
+                 "M49b controller authority owns a first-class fixed checkpoint pattern");
+    ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
+                 controlledPlan.layer[1u].selected_projection_path,
+                 "controller checkpoint block one is explicit in the execution plan");
+    ASSERT_EQUAL(0u, controlledPlan.intermediate_readback_count,
+                 "controller mixed execution does not inherit audit readback behavior");
+    ASSERT_TRUE(controlledPlan.replay_id != oneSubmit.replay_id,
+                "controller generation and bounded pattern participate in execution replay");
+    prom_m48_plan_request witness = controlled;
+    prom_m48_transformer_stack_plan witnessPlan{};
+    witness.numerical_witness_mode = 1u;
+    ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&witness, &witnessPlan),
+                 "the internal full-A2x4 witness has a first-class fixed-stack plan");
+    ASSERT_TRUE(witnessPlan.replay_id != controlledPlan.replay_id,
+                "witness identity participates in replay without borrowing audit identity");
+    controlled.audit_layer_projection_path[1u] = PROM_M47_PROJECTION_A2X4_FP32;
+    ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&controlled, &controlledPlan) != PROM_OK,
+                "controller and audit overrides cannot be confused");
     prom_m48_plan_request invalid = M48ResidentPlanRequest(2u, 0u);
     prom_m48_transformer_stack_plan rejected{};
     ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
@@ -3349,8 +3375,71 @@ FACT(PrometheusM48LiveFixedStackUsesFourLayerBundlesAndTwoSubmitTopologies)
                     "each exact live replacement changes aggregate replay identity");
         precedingReplay = afterReplacement.replay_id;
     }
+
+    /* This is the live M49b seam: the selected path remains product authority
+       while one internal full-A2x4 stack returns only the paired 16-sample
+       witness.  The test is naturally skipped with the rest of this live
+       suite when Vulkan is unavailable. */
+    prom_num_m49b_parameters m49bParameters = prom_num_m49b_default_parameters();
+    std::uint64_t m49bGeneration = 0u;
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m49b_set_parameters(runtime, &m49bParameters,
+                                                          &m49bGeneration),
+                 "M49b parameter publication waits for an exact slot boundary");
+    prom_m48_stack_request m49bRequest = request;
+    m49bRequest.submit_topology = PROM_M48_SUBMIT_ONE_STACK;
+    prom_m48_stack_result m49bObserver{};
+    ASSERT_EQUAL(PROM_OK,
+                 prom_reactor_runtime_m48_execute_stack(runtime, &m49bRequest, &m49bObserver),
+                 "the live selected stack completes with a paired A2x4 witness");
+    ASSERT_EQUAL(1u, m49bObserver.numerical_canary_ran,
+                 "the selected stack exposes its compact canary capture");
+    ASSERT_EQUAL(1u, m49bObserver.numerical_witness_ran,
+                 "one bounded all-A2x4 witness accompanies initial calibration");
+    ASSERT_TRUE(m49bObserver.numerical_witness_confidence >= 0.75f,
+                "complete paired live evidence clears the authored confidence floor");
+    ASSERT_EQUAL(m49bGeneration, m49bObserver.numerical_parameter_generation,
+                 "paired evidence retains the request-bound parameter generation");
+    ASSERT_TRUE(m49bObserver.numerical_canary_identity != 0u &&
+                    m49bObserver.numerical_witness_replay_id != 0u,
+                "selected and witness evidence retain separate deterministic identities");
+    ASSERT_EQUAL(0u, m49bObserver.intermediate_readback_count,
+                 "paired observation does not add product intermediate readback");
+    prom_m48_stack_result m49bWarm{};
+    for (std::uint32_t execution = 0u; execution < 3u; ++execution) {
+        ASSERT_EQUAL(PROM_OK,
+                     prom_reactor_runtime_m48_execute_stack(runtime, &m49bRequest, &m49bWarm),
+                     "a completed M49b request advances its bounded stack cadence");
+    }
+    ASSERT_EQUAL(1u, m49bWarm.numerical_canary_ran,
+                 "the fourth selected stack reaches the authored calibration cadence");
+    ASSERT_EQUAL(1u, m49bWarm.numerical_witness_ran,
+                 "the warm cadence still returns one paired A2x4 witness");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0u), m49bWarm.buffer_allocation_count,
+                 "a warm paired calibration reuses its slot-owned capture buffers");
+    if (printCorpus) {
+        std::fprintf(stderr,
+                     "M49b paired shape=%.*s path=%.*s selected_gpu_ns=%llu selected_e2e_ns=%llu canary_cpu_ns=%llu witness_gpu_ns=%llu witness_e2e_ns=%llu confidence=%g state_before=%u state_after=%u action=%u parameter_generation=%llu selected_canary=%llu witness_replay=%llu evidence=%llu controller=%llu\n",
+                     static_cast<int>(shape.size()), shape.data(),
+                     static_cast<int>(pathName.size()), pathName.data(),
+                     static_cast<unsigned long long>(m49bObserver.total_stack_gpu_ns),
+                     static_cast<unsigned long long>(m49bObserver.end_to_end_ns),
+                     static_cast<unsigned long long>(m49bObserver.numerical_canary_cpu_ns),
+                     static_cast<unsigned long long>(m49bObserver.numerical_witness_gpu_ns),
+                     static_cast<unsigned long long>(m49bObserver.numerical_witness_end_to_end_ns),
+                     m49bObserver.numerical_witness_confidence,
+                     m49bObserver.numerical_state_before,
+                     m49bObserver.numerical_state_after,
+                     m49bObserver.numerical_action,
+                     static_cast<unsigned long long>(m49bObserver.numerical_parameter_generation),
+                     static_cast<unsigned long long>(m49bObserver.numerical_canary_identity),
+                     static_cast<unsigned long long>(m49bObserver.numerical_witness_replay_id),
+                     static_cast<unsigned long long>(m49bObserver.numerical_evidence_identity),
+                     static_cast<unsigned long long>(m49bObserver.numerical_controller_identity));
+    }
+
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(runtime, &after),
-                 "validation result is readable");
+                "validation result is readable");
     ASSERT_EQUAL(before.validation_error_count, after.validation_error_count,
                  "validation-enabled one/four-submit stack execution adds no errors");
     if (!fullOracle || printCorpus) {

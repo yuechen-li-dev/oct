@@ -8,6 +8,8 @@ Milestone state: **COMPLETE**
 M49b state: **READY TO IMPLEMENT**
 M48 EVT state: **POSTPONED UNTIL M49B**
 
+Continuation: [M49b numerical Shadow-HSFM integration](PROMETHEUS_M49B_NUMERICAL_SHADOW_HSFM.md).
+
 ## PM decision
 
 M49a ends here. The numerical plant is deterministic, reduced precision has depth-correlated drift, A2x4 FP32 is the accuracy witness, local matched-input disturbance is small, and the retained-Hidden/Wdown branch has poor error-reduction-per-cost. The final bounded matrix now shows that a fixed periodic complete-block checkpoint materially improves the primary trajectory and improves both error norms on one held-out shape. That is enough to choose a safe, reversible, tunable MVP. Thresholds and weights remain experimental; no certification or product authority is implied.

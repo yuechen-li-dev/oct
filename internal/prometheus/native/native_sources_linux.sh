@@ -19,6 +19,7 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_vulkan_fft.c"
   "$NATIVE_DIR/reactor_vulkan_fused_reduction.c"
   "$NATIVE_DIR/reactor_vulkan_transformer.c"
+  "$NATIVE_DIR/reactor_vulkan_transformer_control.c"
   "$NATIVE_DIR/reactor_numerical_research.c"
 )
 PROMETHEUS_MARIONETTE_CPP=(
