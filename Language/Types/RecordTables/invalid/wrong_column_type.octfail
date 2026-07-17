@@ -1,0 +1,10 @@
+expect error: "record 'Measurements' field 'Latency' expects Float[], got String[]"
+
+package MainInvalid
+
+record table Measurements {Latency: Float}
+
+fn Main() -> Int {
+    let bad = Measurements {Latency:["slow"]}
+    return Len(bad)
+}

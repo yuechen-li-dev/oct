@@ -596,6 +596,11 @@ func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
 	if err != nil {
 		return ast.RecordDecl{}, err
 	}
+	isTable := false
+	if p.current().Kind == lex.Identifier && p.current().Lexeme == "table" {
+		isTable = true
+		p.advance()
+	}
 	name, err := p.expect(lex.Identifier, "expected record name")
 	if err != nil {
 		return ast.RecordDecl{}, err
@@ -629,9 +634,10 @@ func (p *parser) parseRecordDecl() (ast.RecordDecl, error) {
 	p.advance()
 
 	return ast.RecordDecl{
-		Name:   name.Lexeme,
-		Fields: fields,
-		Doc:    p.docCommentAtLine(recordToken.Line),
+		Name:    name.Lexeme,
+		Fields:  fields,
+		Doc:     p.docCommentAtLine(recordToken.Line),
+		IsTable: isTable,
 	}, nil
 }
 

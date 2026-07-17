@@ -1,0 +1,10 @@
+expect error: "OCT-RTBL009"
+
+package MainInvalid
+
+record table Measurements { Stage: String }
+
+fn Main() -> Int {
+    let bad = Measurements { Stage: ["A"] Latency: [1.0] }
+    return Len(bad)
+}

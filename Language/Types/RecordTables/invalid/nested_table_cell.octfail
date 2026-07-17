@@ -1,0 +1,8 @@
+expect error: "OCT-RTBL006"
+
+package MainInvalid
+
+record table Inner { Value: Int }
+record table Outer { Nested: Inner }
+
+fn Main() -> Int { return 0 }

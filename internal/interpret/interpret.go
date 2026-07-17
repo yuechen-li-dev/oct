@@ -1658,6 +1658,26 @@ func (i interpreter) evalExpr(env *environment, pkgName string, expr ast.Expr) (
 				return evalResult{}, err
 			}
 			return evalResult{value: projected}, nil
+		case ValueRecord:
+			tableDecl, _, ok := i.lookupRecordDecl(pkgName, target.value.Record.TypeName)
+			if !ok || !tableDecl.IsTable {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index non-table record %s", target.value.Record.TypeName)
+			}
+			if !allIntIndices || len(indices) != 1 {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: record table indexing requires exactly one Int index")
+			}
+			rowIndex := indices[0]
+			rowFields := make(map[string]Value, len(tableDecl.Fields))
+			rowOrder := make([]string, 0, len(tableDecl.Fields))
+			for _, field := range tableDecl.Fields {
+				column := target.value.Record.Fields[field.Name]
+				if rowIndex < 0 || rowIndex >= int64(len(column.Array)) {
+					return evalResult{}, fmt.Errorf("runtime error [OCT-RTBL005]: row index %d out of bounds for record table '%s' of length %d", rowIndex, target.value.Record.TypeName, len(column.Array))
+				}
+				rowFields[field.Name] = column.Array[rowIndex]
+				rowOrder = append(rowOrder, field.Name)
+			}
+			return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: "__oct_table_row_" + target.value.Record.TypeName, FieldOrder: rowOrder, Fields: rowFields}}}, nil
 		default:
 			return evalResult{}, fmt.Errorf("runtime invariant violation: cannot index value of kind %s", target.value.Kind)
 		}
@@ -2381,6 +2401,11 @@ regularCall:
 		}
 		return evalResult{}, fmt.Errorf("runtime invariant violation: undefined function %s", functionKey)
 	}
+	if targetPkg != pkgName {
+		for index := range arguments {
+			arguments[index] = dequalifyTargetPackageValue(arguments[index], targetPkg)
+		}
+	}
 
 	result, err := i.executeFunction(function, targetPkg, arguments)
 	if err != nil {
@@ -2646,6 +2671,44 @@ func qualifyCrossPackageValue(value Value, pkgName string) Value {
 		if value.FieldOp.Right != nil {
 			right := qualifyCrossPackageValue(*value.FieldOp.Right, pkgName)
 			value.FieldOp.Right = &right
+		}
+	}
+	return value
+}
+
+// Values are qualified when they leave their declaring package so callers can
+// distinguish same-named records and enums. Restore the target package's local
+// identity before executing one of its functions; enum constants evaluated in
+// that function intentionally use the package-local identity.
+func dequalifyTargetPackageValue(value Value, pkgName string) Value {
+	prefix := pkgName + "."
+	switch value.Kind {
+	case ValueRecord:
+		value.Record.TypeName = strings.TrimPrefix(value.Record.TypeName, prefix)
+		for fieldName, fieldValue := range value.Record.Fields {
+			value.Record.Fields[fieldName] = dequalifyTargetPackageValue(fieldValue, pkgName)
+		}
+	case ValueEnum:
+		value.Enum.TypeName = strings.TrimPrefix(value.Enum.TypeName, prefix)
+		if value.Enum.Payload != nil {
+			payload := dequalifyTargetPackageValue(*value.Enum.Payload, pkgName)
+			value.Enum.Payload = &payload
+		}
+	case ValueArray:
+		for index := range value.Array {
+			value.Array[index] = dequalifyTargetPackageValue(value.Array[index], pkgName)
+		}
+	case ValueVector:
+		for index := range value.Vector {
+			value.Vector[index] = dequalifyTargetPackageValue(value.Vector[index], pkgName)
+		}
+	case ValueMatrix:
+		for index := range value.Matrix.Elements {
+			value.Matrix.Elements[index] = dequalifyTargetPackageValue(value.Matrix.Elements[index], pkgName)
+		}
+	case ValueTuple:
+		for index := range value.Tuple {
+			value.Tuple[index] = dequalifyTargetPackageValue(value.Tuple[index], pkgName)
 		}
 	}
 	return value
@@ -4262,7 +4325,13 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		if argument.value.Kind == ValueVector {
 			return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Vector))}}, nil
 		}
-		return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String, Bytes, Array, or Vector, got %s", argument.value.Kind)
+		if argument.value.Kind == ValueRecord {
+			tableDecl, _, ok := i.lookupRecordDecl(pkgName, argument.value.Record.TypeName)
+			if ok && tableDecl.IsTable && len(tableDecl.Fields) > 0 {
+				return evalResult{value: Value{Kind: ValueInt, Int: int64(len(argument.value.Record.Fields[tableDecl.Fields[0].Name].Array))}}, nil
+			}
+		}
+		return evalResult{}, fmt.Errorf("runtime invariant violation: Len expects String, Bytes, Array, Vector, or record table, got %s", argument.value.Kind)
 	case "Abs":
 		switch argument.value.Kind {
 		case ValueInt:
@@ -5148,6 +5217,27 @@ func (i interpreter) evalRecordLiteralExpr(env *environment, pkgName string, exp
 			return evalResult{}, fmt.Errorf("runtime invariant violation: record '%s' missing field '%s'", expr.TypeName, field.Name)
 		}
 		fieldOrder = append(fieldOrder, field.Name)
+	}
+	if recordDecl.IsTable && len(recordDecl.Fields) > 0 {
+		lengths := make([]string, 0, len(recordDecl.Fields))
+		want := -1
+		mismatch := false
+		for _, field := range recordDecl.Fields {
+			column := fieldValues[field.Name]
+			if column.Kind != ValueArray {
+				return evalResult{}, fmt.Errorf("runtime invariant violation: record table '%s' column '%s' is not an array", expr.TypeName, field.Name)
+			}
+			length := len(column.Array)
+			lengths = append(lengths, fmt.Sprintf("%s: %d", field.Name, length))
+			if want < 0 {
+				want = length
+			} else if length != want {
+				mismatch = true
+			}
+		}
+		if mismatch {
+			return evalResult{}, fmt.Errorf("runtime error [OCT-RTBL003]: record table '%s' columns have inconsistent lengths: %s", expr.TypeName, strings.Join(lengths, ", "))
+		}
 	}
 	return evalResult{value: Value{Kind: ValueRecord, Record: RecordValue{TypeName: resolvedTypeName, FieldOrder: fieldOrder, Fields: fieldValues}}}, nil
 }

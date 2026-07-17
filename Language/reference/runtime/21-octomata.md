@@ -403,6 +403,16 @@ fn LocalOwner(a: Int, b: Int) -> Int {
 In utility `when`, the `else` arm is the default selected value when no case qualifies as the winner.
 It is not a statement-style `return`; it is the fallback candidate in the selection set.
 
+Standalone utility selection evaluates policy expressions first, then visits
+cases in source order. Each condition is evaluated once. A false condition
+skips its score and value. For each true condition, its dimensionless `Int`
+score and value are evaluated once. The greatest score wins; equal scores keep
+the earliest source case. If no condition is true, only the required `else`
+value is evaluated. All case values and `else` must have one result type, and
+the expression returns that type directly. Because scores are `Int`, NaN is
+not representable in the established utility surface. `Float` scores and a
+separate decision-evidence result are not part of this form.
+
 Use this when multiple valid choices compete and you need explicit arbitration.
 Avoid this when a single guard decides the branch; guard `when` is the simpler form.
 

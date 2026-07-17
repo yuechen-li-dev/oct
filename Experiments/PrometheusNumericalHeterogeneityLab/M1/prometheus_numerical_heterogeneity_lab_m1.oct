@@ -4,6 +4,7 @@ import String
 import Artifact
 import Markdown
 import Json
+import Statistics
 
 /// A typed projection of one native M49a record. The source JSON remains the
 /// raw evidence authority; SourceJsonSha256 binds this import to it.
@@ -57,6 +58,16 @@ record M1EnvelopeEvaluation {
     ExtrapolationPolicy: String
 }
 
+record M1LearnedPolicyReport {
+    Model: Statistics.LinearUtilityModel
+    SelectedPath: String
+    AuthoredSelectedPath: String
+    UniformSelectedPath: String
+    HeldOutBaselineComparisonAvailable: Bool
+    ShadowOnly: Bool
+    ProductAuthorityChanged: Bool
+}
+
 record M1ImportReport {
     Schema: String
     EvidenceAuthority: String
@@ -65,9 +76,78 @@ record M1ImportReport {
     SourceJsonSha256: String
     NativeRecordCount: Int
     Envelope: M1EnvelopeEvaluation
+    LearnedPolicy: M1LearnedPolicyReport
     Mitigations: M1MitigationRecord[]
     ProductAuthorityChanged: Bool
     Interpretation: String
+}
+
+fn M1UtilityEvidence(evidence: M1NativeEvidence) -> Statistics.UtilityObservations {
+    var names: String[] = []
+    var features: Float[][] = []
+    var targets: Float[] = []
+    var importance: Float[] = []
+    var heldOut: Bool[] = []
+    for i in 0..Len(evidence.Records) {
+        let row = evidence.Records[i]
+        if row.ValidationClean {
+            names = Append(names, row.CaseName)
+            features = Append(features, [row.DisturbanceL2 * 1000000.0, row.DisturbanceLInfinity * 10000000.0, Float(row.GpuNs) / 100000.0])
+            targets = Append(targets, 0.0 - row.GainLInfinity)
+            importance = Append(importance, 1.0)
+            heldOut = Append(heldOut, row.Split == "held-out")
+        }
+    }
+    return Statistics.UtilityObservations { CaseName: names Features: features Target: targets Importance: importance IsHeldOut: heldOut }
+}
+
+fn M1FitLearnedPolicy(evidence: M1NativeEvidence) -> Statistics.LinearUtilityModel {
+    let options = Statistics.UtilityFitDefaults(["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]) with {
+        L2Regularization: 0.000001
+        MaximumLeaveOneOutWeightDelta: 1.0
+        IdentificationEvidenceHash: evidence.SourceJsonSha256 + ":identification"
+        HeldOutEvidenceHash: "none-zero-held-out-native-rows"
+    }
+    return Statistics.FitLinearUtility(M1UtilityEvidence(evidence), options)!
+}
+
+fn M1PathFeatures(row: M1NativeRecord) -> Statistics.UtilityFeatureVector {
+    return Statistics.UtilityFeatureVector {
+        Names: ["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]
+        Values: [row.DisturbanceL2 * 1000000.0, row.DisturbanceLInfinity * 10000000.0, Float(row.GpuNs) / 100000.0]
+    }
+}
+
+fn M1PathScore(row: M1NativeRecord, model: Statistics.LinearUtilityModel) -> Int {
+    return Statistics.QuantizeLinearUtilityScore(Statistics.ScoreLinearUtility(M1PathFeatures(row), model)!, 1000000.0)!
+}
+
+fn M1SelectShadowPath(evidence: M1NativeEvidence, model: Statistics.LinearUtilityModel) -> String {
+    let a2x4 = evidence.Records[4]
+    let conventional = evidence.Records[5]
+    let retained = evidence.Records[6]
+    return when utility {
+        case a2x4.Path when a2x4.ValidationClean score M1PathScore(a2x4, model)
+        case conventional.Path when conventional.ValidationClean score M1PathScore(conventional, model)
+        case retained.Path when retained.ValidationClean score M1PathScore(retained, model)
+        else "audit-only-no-eligible-path"
+    }
+}
+
+fn M1BuildLearnedPolicyReport(evidence: M1NativeEvidence) -> M1LearnedPolicyReport {
+    let model = M1FitLearnedPolicy(evidence)
+    let authored = model with { Weights: [0.0 - 0.60, 0.0 - 0.30, 0.0 - 0.10] Bias: 0.0 }
+    let uniform = model with { Weights: [0.0 - 1.0, 0.0 - 1.0, 0.0 - 1.0] Bias: 0.0 }
+    let comparison = Statistics.CompareLinearUtilityModels(M1UtilityEvidence(evidence), model, authored)!
+    return M1LearnedPolicyReport {
+        Model: model
+        SelectedPath: M1SelectShadowPath(evidence, model)
+        AuthoredSelectedPath: M1SelectShadowPath(evidence, authored)
+        UniformSelectedPath: M1SelectShadowPath(evidence, uniform)
+        HeldOutBaselineComparisonAvailable: comparison.HeldOutComparisonAvailable
+        ShadowOnly: true
+        ProductAuthorityChanged: false
+    }
 }
 
 fn M1NativeEvidencePath() -> String {
@@ -115,6 +195,7 @@ fn M1EvaluateEnvelope(evidence: M1NativeEvidence) -> M1EnvelopeEvaluation {
 
 fn M1BuildImportReport(evidence: M1NativeEvidence) -> M1ImportReport {
     let envelope = M1EvaluateEnvelope(evidence)
+    let learnedPolicy = M1BuildLearnedPolicyReport(evidence)
     return M1ImportReport {
         Schema: "prometheus.m49a.oct-native-import.v1"
         EvidenceAuthority: evidence.Authority
@@ -123,6 +204,7 @@ fn M1BuildImportReport(evidence: M1NativeEvidence) -> M1ImportReport {
         SourceJsonSha256: evidence.SourceJsonSha256
         NativeRecordCount: Len(evidence.Records)
         Envelope: envelope
+        LearnedPolicy: learnedPolicy
         Mitigations: evidence.Mitigations
         ProductAuthorityChanged: false
         Interpretation: if envelope.Certified { "held-out native support certifies this bounded imported envelope" } else { "native identification imported; no envelope or mitigation is certified without held-out hardware support" }
@@ -149,6 +231,9 @@ fn M1SummaryJsonText(report: M1ImportReport) -> String {
         ",\"heldOutSupport\":", String.From<Int>(report.Envelope.HeldOutSupport),
         ",\"heldOutFailures\":", String.From<Int>(report.Envelope.HeldOutFailures),
         ",\"envelopeCertified\":", String.From<Bool>(report.Envelope.Certified),
+        ",\"learnedPolicyCertified\":", String.From<Bool>(report.LearnedPolicy.Model.Certified),
+        ",\"learnedPolicySelectedPath\":", String.QuoteJson(report.LearnedPolicy.SelectedPath),
+        ",\"learnedPolicyShadowOnly\":true",
         ",\"productAuthorityChanged\":false}"
     ])
 }
@@ -161,6 +246,7 @@ fn M1WriteArtifacts() -> Int ! Error {
         Markdown.Title("Prometheus M49a native evidence import"),
         Markdown.Section("Authority", [Markdown.KeyValueTable(["native evidence","synthetic evidence","source JSON","source SHA-256","product authority changed"],[report.EvidenceAuthority,report.SyntheticAuthority,report.SourceJsonPath,report.SourceJsonSha256,String.From<Bool>(report.ProductAuthorityChanged)])]),
         Markdown.Section("Envelope evaluation", [Markdown.KeyValueTable(["identification support","held-out support","held-out failures","D bound","G bound","certified"],[String.From<Int>(report.Envelope.IdentificationSupport),String.From<Int>(report.Envelope.HeldOutSupport),String.From<Int>(report.Envelope.HeldOutFailures),String.From<Float>(report.Envelope.DisturbanceBound),String.From<Float>(report.Envelope.GainBound),String.From<Bool>(report.Envelope.Certified)])]),
+        Markdown.Section("Evidence-fitted shadow utility", [Markdown.KeyValueTable(["algorithm","training rows","held-out rows","training MSE","held-out MSE","learned selected path","authored selected path","uniform selected path","certified","shadow only"],[report.LearnedPolicy.Model.Algorithm,String.From<Int>(report.LearnedPolicy.Model.Training.Rows),String.From<Int>(report.LearnedPolicy.Model.HeldOut.Rows),String.From<Float>(report.LearnedPolicy.Model.Training.MeanSquaredError),String.From<Float>(report.LearnedPolicy.Model.HeldOut.MeanSquaredError),report.LearnedPolicy.SelectedPath,report.LearnedPolicy.AuthoredSelectedPath,report.LearnedPolicy.UniformSelectedPath,String.From<Bool>(report.LearnedPolicy.Model.Certified),String.From<Bool>(report.LearnedPolicy.ShadowOnly)])]),
         Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation),Markdown.Paragraph(report.Envelope.ExtrapolationPolicy)])
     ])
     var x: Float[] = []

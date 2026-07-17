@@ -1,0 +1,11 @@
+expect error: "record tables are immutable"
+
+package MainInvalid
+
+record table Measurements {Stage: String}
+
+fn Main() -> Int {
+    let table = Measurements {Stage:["A"]}
+    let bad = table with {Stage:["B"]}
+    return Len(bad)
+}

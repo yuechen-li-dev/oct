@@ -4,6 +4,7 @@ import String
 import Artifact
 import Markdown
 import Json
+import Statistics
 
 /// Synthetic design lab for M49. These values are hypotheses and never replace
 /// matched-input CPU/GPU measurements from the native Prometheus audit harness.
@@ -49,14 +50,20 @@ record M0PlantCase {
     Gain: Float
 }
 
+/// A validated depth/error trace. The schema denotes cell types; storage is
+/// columnar and construction proves both columns have one shared row count.
+record table M0Trace {
+    Depth: Float
+    Error: Float
+}
+
 record M0Trajectory {
     CaseName: String
     Path: String
     Family: String
     Split: String
     Mitigation: String
-    Depths: Float[]
-    Errors: Float[]
+    Trace: M0Trace
     FinalAbsError: Float
     RmsError: Float
     LatencyCostPct: Float
@@ -97,6 +104,11 @@ record M0SimulationReport {
     SelectedHeldOutMeanError: Float
     BaselineHeldOutMeanError: Float
     HeldOutImprovementPct: Float
+    LearnedPolicy: Statistics.LinearUtilityModel
+    AuthoredBaselineHeldOut: Statistics.UtilityFitMetrics
+    UniformBaselineHeldOut: Statistics.UtilityFitMetrics
+    AuthoredSelectedMitigation: String
+    UniformSelectedMitigation: String
     ShadowDecision: M0ShadowDecision
     ProductAuthorityChanged: Bool
     Interpretation: String
@@ -225,8 +237,7 @@ fn M0RunTrajectory(c: M0PlantCase, mitigation: M0Mitigation) -> M0Trajectory {
         Family: M0FamilyName(c.Family)
         Split: M0SplitName(c.Split)
         Mitigation: M0MitigationName(mitigation)
-        Depths: depths
-        Errors: errors
+        Trace: M0Trace { Depth: depths Error: errors }
         FinalAbsError: Abs(error)
         RmsError: Sqrt(sumSq / Float(Len(errors)))
         LatencyCostPct: M0LatencyCost(mitigation)
@@ -284,23 +295,135 @@ fn M0BuildAggregates(rows: M0Trajectory[]) -> M0MitigationAggregate[] {
     return result
 }
 
-fn M0MitigationScore(a: M0MitigationAggregate) -> Int {
+fn M0AuthoredMitigationScore(a: M0MitigationAggregate) -> Int {
     return 10000 - FloorToInt(a.HeldOutMeanError * 10000.0) - FloorToInt(a.LatencyCostPct * 22.0) - FloorToInt(a.MemoryCostMiB * 3.0)
 }
 
-fn M0SelectMitigation(aggregates: M0MitigationAggregate[]) -> M0MitigationAggregate {
+fn M0SelectAuthoredMitigation(aggregates: M0MitigationAggregate[]) -> M0MitigationAggregate {
     let observe = aggregates[0]
     let checkpoint = aggregates[1]
     let selective = aggregates[2]
     let backend = aggregates[3]
     let selected = when utility {
-        case observe when observe.Eligible score M0MitigationScore(observe)
-        case checkpoint when checkpoint.Eligible score M0MitigationScore(checkpoint)
-        case selective when selective.Eligible score M0MitigationScore(selective)
-        case backend when backend.Eligible score M0MitigationScore(backend)
+        case observe when observe.Eligible score M0AuthoredMitigationScore(observe)
+        case checkpoint when checkpoint.Eligible score M0AuthoredMitigationScore(checkpoint)
+        case selective when selective.Eligible score M0AuthoredMitigationScore(selective)
+        case backend when backend.Eligible score M0AuthoredMitigationScore(backend)
         else observe
     }
     return selected
+}
+
+fn M0UniformMitigationScore(a: M0MitigationAggregate) -> Int {
+    return 0 - RoundToInt((a.IdentificationMeanError + a.LatencyCostPct / 100.0 + a.MemoryCostMiB / 100.0) * 10000.0)
+}
+
+fn M0SelectUniformMitigation(aggregates: M0MitigationAggregate[]) -> M0MitigationAggregate {
+    let observe = aggregates[0]
+    let checkpoint = aggregates[1]
+    let selective = aggregates[2]
+    let backend = aggregates[3]
+    return when utility {
+        case observe when observe.Eligible score M0UniformMitigationScore(observe)
+        case checkpoint when checkpoint.Eligible score M0UniformMitigationScore(checkpoint)
+        case selective when selective.Eligible score M0UniformMitigationScore(selective)
+        case backend when backend.Eligible score M0UniformMitigationScore(backend)
+        else observe
+    }
+}
+
+fn M0BuildUtilityEvidence(cases: M0PlantCase[]) -> Statistics.UtilityObservations {
+    var names: String[] = []
+    var features: Float[][] = []
+    var targets: Float[] = []
+    var importance: Float[] = []
+    var heldOut: Bool[] = []
+    let mitigations = M0AllMitigations()
+    for caseIndex in 0..Len(cases) {
+        let c = cases[caseIndex]
+        for mitigationIndex in 0..Len(mitigations) {
+            let mitigation = mitigations[mitigationIndex]
+            let trajectory = M0RunTrajectory(c, mitigation)
+            names = Append(names, c.CaseName + ":" + M0MitigationName(mitigation))
+            features = Append(features, [
+                Abs(c.InitialError),
+                c.Gain * M0MitigationGainScale(mitigation),
+                Abs(c.Injection * M0MitigationInjectionScale(mitigation)),
+                M0LatencyCost(mitigation),
+                M0MemoryCost(mitigation)
+            ])
+            targets = Append(targets, 0.0 - trajectory.FinalAbsError)
+            importance = Append(importance, 1.0)
+            heldOut = Append(heldOut, c.Split == M0Split.HeldOut)
+        }
+    }
+    return Statistics.UtilityObservations {
+        CaseName: names
+        Features: features
+        Target: targets
+        Importance: importance
+        IsHeldOut: heldOut
+    }
+}
+
+fn M0FitLearnedPolicy(cases: M0PlantCase[]) -> Statistics.LinearUtilityModel {
+    let options = Statistics.UtilityFitDefaults(["InitialAbsError", "EffectiveGain", "EffectiveInjection", "LatencyCostPct", "MemoryCostMiB"]) with {
+        FeatureSigns: [Statistics.UtilityFeatureSign.Any, Statistics.UtilityFeatureSign.Nonpositive, Statistics.UtilityFeatureSign.Nonpositive, Statistics.UtilityFeatureSign.Any, Statistics.UtilityFeatureSign.Any]
+        IncludeBias: true
+        Normalize: true
+        L2Regularization: 0.000001
+        MaximumLeaveOneOutWeightDelta: 1.0
+        IdentificationEvidenceHash: "prometheus-m49-m0-identification-v1"
+        HeldOutEvidenceHash: "prometheus-m49-m0-held-out-v1"
+    }
+    return Statistics.FitLinearUtility(M0BuildUtilityEvidence(cases), options)!
+}
+
+fn M0AuthoredPredictor(model: Statistics.LinearUtilityModel) -> Statistics.LinearUtilityModel {
+    return model with { Weights: [0.0 - 0.25, 0.0 - 0.50, 0.0 - 0.25, 0.0 - 0.05, 0.0 - 0.05] Bias: 0.0 }
+}
+
+fn M0UniformPredictor(model: Statistics.LinearUtilityModel) -> Statistics.LinearUtilityModel {
+    return model with { Weights: [0.0 - 1.0, 0.0 - 1.0, 0.0 - 1.0, 0.0 - 1.0, 0.0 - 1.0] Bias: 0.0 }
+}
+
+fn M0MitigationFeatureVector(cases: M0PlantCase[], mitigation: M0Mitigation) -> Statistics.UtilityFeatureVector {
+    var initial = 0.0
+    var gain = 0.0
+    var injection = 0.0
+    var rows = 0
+    for i in 0..Len(cases) {
+        let c = cases[i]
+        if c.Split == M0Split.Identification {
+            initial = initial + Abs(c.InitialError)
+            gain = gain + c.Gain * M0MitigationGainScale(mitigation)
+            injection = injection + Abs(c.Injection * M0MitigationInjectionScale(mitigation))
+            rows = rows + 1
+        }
+    }
+    return Statistics.UtilityFeatureVector {
+        Names: ["InitialAbsError", "EffectiveGain", "EffectiveInjection", "LatencyCostPct", "MemoryCostMiB"]
+        Values: [initial / Float(rows), gain / Float(rows), injection / Float(rows), M0LatencyCost(mitigation), M0MemoryCost(mitigation)]
+    }
+}
+
+fn M0LearnedMitigationScore(cases: M0PlantCase[], mitigation: M0Mitigation, model: Statistics.LinearUtilityModel) -> Int {
+    let score = Statistics.ScoreLinearUtility(M0MitigationFeatureVector(cases, mitigation), model)!
+    return Statistics.QuantizeLinearUtilityScore(score, 1000000.0)!
+}
+
+fn M0SelectLearnedMitigation(cases: M0PlantCase[], aggregates: M0MitigationAggregate[], model: Statistics.LinearUtilityModel) -> M0MitigationAggregate {
+    let observe = aggregates[0]
+    let checkpoint = aggregates[1]
+    let selective = aggregates[2]
+    let backend = aggregates[3]
+    return when utility {
+        case observe when observe.Eligible score M0LearnedMitigationScore(cases, observe.Mitigation, model)
+        case checkpoint when checkpoint.Eligible score M0LearnedMitigationScore(cases, checkpoint.Mitigation, model)
+        case selective when selective.Eligible score M0LearnedMitigationScore(cases, selective.Mitigation, model)
+        case backend when backend.Eligible score M0LearnedMitigationScore(cases, backend.Mitigation, model)
+        else observe
+    }
 }
 
 fn M0ShadowActionName(action: M0ShadowAction) -> String {
@@ -343,7 +466,13 @@ fn M0RunSimulation() -> M0SimulationReport {
     let cases = M0BuildCases()
     let rows = M0AllTrajectories(cases)
     let aggregates = M0BuildAggregates(rows)
-    let selected = M0SelectMitigation(aggregates)
+    let learnedPolicy = M0FitLearnedPolicy(cases)
+    let utilityEvidence = M0BuildUtilityEvidence(cases)
+    let authoredBaselineHeldOut = Statistics.EvaluateLinearUtilityEvidence(utilityEvidence, M0AuthoredPredictor(learnedPolicy), true)!
+    let uniformBaselineHeldOut = Statistics.EvaluateLinearUtilityEvidence(utilityEvidence, M0UniformPredictor(learnedPolicy), true)!
+    let selected = M0SelectLearnedMitigation(cases, aggregates, learnedPolicy)
+    let authoredSelected = M0SelectAuthoredMitigation(aggregates)
+    let uniformSelected = M0SelectUniformMitigation(aggregates)
     let baselineHeld = aggregates[0].HeldOutMeanError
     let improvement = (baselineHeld - selected.HeldOutMeanError) * 100.0 / baselineHeld
     let decision = M0SelectShadowAction(M0ShadowEvidence {Deterministic: true ReferenceSuspect: false ErrorMilli: 6703 GainMilli: 1420 Repeats: 100})
@@ -355,6 +484,11 @@ fn M0RunSimulation() -> M0SimulationReport {
         SelectedHeldOutMeanError: selected.HeldOutMeanError
         BaselineHeldOutMeanError: baselineHeld
         HeldOutImprovementPct: improvement
+        LearnedPolicy: learnedPolicy
+        AuthoredBaselineHeldOut: authoredBaselineHeldOut
+        UniformBaselineHeldOut: uniformBaselineHeldOut
+        AuthoredSelectedMitigation: M0MitigationName(authoredSelected.Mitigation)
+        UniformSelectedMitigation: M0MitigationName(uniformSelected.Mitigation)
         ShadowDecision: decision
         ProductAuthorityChanged: false
         Interpretation: "Synthetic recurrence study only. Identification and held-out cases are deterministic, but native matched-input evidence remains authoritative."
@@ -365,8 +499,9 @@ fn M0RowsCsv(report: M0SimulationReport) -> String[][] {
     var csv = [["case","path","family","split","mitigation","depth","error","finalAbsError","rmsError","latencyCostPct","memoryCostMiB"]]
     for i in 0..Len(report.Trajectories) {
         let row = report.Trajectories[i]
-        for j in 0..Len(row.Depths) {
-            csv = Append(csv, [row.CaseName,row.Path,row.Family,row.Split,row.Mitigation,String.From<Float>(row.Depths[j]),String.From<Float>(row.Errors[j]),String.From<Float>(row.FinalAbsError),String.From<Float>(row.RmsError),String.From<Float>(row.LatencyCostPct),String.From<Float>(row.MemoryCostMiB)])
+        for j in 0..Len(row.Trace) {
+            let point = row.Trace[j]
+            csv = Append(csv, [row.CaseName,row.Path,row.Family,row.Split,row.Mitigation,String.From<Float>(point.Depth),String.From<Float>(point.Error),String.From<Float>(row.FinalAbsError),String.From<Float>(row.RmsError),String.From<Float>(row.LatencyCostPct),String.From<Float>(row.MemoryCostMiB)])
         }
     }
     return csv
@@ -382,6 +517,16 @@ fn M0SummaryJsonText(report: M0SimulationReport) -> String {
         ",\"baselineHeldOutMeanError\":", String.From<Float>(report.BaselineHeldOutMeanError),
         ",\"selectedHeldOutMeanError\":", String.From<Float>(report.SelectedHeldOutMeanError),
         ",\"heldOutImprovementPct\":", String.From<Float>(report.HeldOutImprovementPct),
+        ",\"learnedPolicyAlgorithm\":", String.QuoteJson(report.LearnedPolicy.Algorithm),
+        ",\"learnedPolicyTrainingRows\":", String.From<Int>(report.LearnedPolicy.Training.Rows),
+        ",\"learnedPolicyHeldOutRows\":", String.From<Int>(report.LearnedPolicy.HeldOut.Rows),
+        ",\"learnedPolicyTrainingMse\":", String.From<Float>(report.LearnedPolicy.Training.MeanSquaredError),
+        ",\"learnedPolicyHeldOutMse\":", String.From<Float>(report.LearnedPolicy.HeldOut.MeanSquaredError),
+        ",\"authoredBaselineHeldOutMse\":", String.From<Float>(report.AuthoredBaselineHeldOut.MeanSquaredError),
+        ",\"uniformBaselineHeldOutMse\":", String.From<Float>(report.UniformBaselineHeldOut.MeanSquaredError),
+        ",\"learnedPolicyCertified\":", String.From<Bool>(report.LearnedPolicy.Certified),
+        ",\"authoredSelectedMitigation\":", String.QuoteJson(report.AuthoredSelectedMitigation),
+        ",\"uniformSelectedMitigation\":", String.QuoteJson(report.UniformSelectedMitigation),
         ",\"shadowAction\":", String.QuoteJson(report.ShadowDecision.ActionName),
         ",\"productAuthorityChanged\":false",
         ",\"m48EvtState\":\"postponed\"}"
@@ -398,13 +543,14 @@ fn M0WriteArtifacts() -> Int {
         Markdown.Section("Authority", [Markdown.Paragraph("This Oct experiment is a deterministic design simulation. It does not replace native matched-input CPU/GPU evidence and cannot authorize a product-path change.")]),
         Markdown.Section("Corpus", [Markdown.KeyValueTable(["cases","splits","families","paths"],[String.From<Int>(Len(report.Cases)),"identification + held-out","bounded-random, cancellation, sparse-outlier, near-zero","conventional, cooperative, A2x4"])]),
         Markdown.Section("Selected bounded intervention", [Markdown.KeyValueTable(["mitigation","baseline held-out mean error","selected held-out mean error","held-out improvement percent","shadow action","product authority changed"],[report.SelectedMitigation,String.From<Float>(report.BaselineHeldOutMeanError),String.From<Float>(report.SelectedHeldOutMeanError),String.From<Float>(report.HeldOutImprovementPct),report.ShadowDecision.ActionName,String.From<Bool>(report.ProductAuthorityChanged)])]),
+        Markdown.Section("Evidence-fitted utility policy", [Markdown.KeyValueTable(["algorithm","training rows","held-out rows","training MSE","held-out MSE","authored baseline held-out MSE","uniform baseline held-out MSE","learned selection","authored selection","uniform selection","weight: initial error","weight: effective gain","weight: effective injection","weight: latency","weight: memory","certified"],[report.LearnedPolicy.Algorithm,String.From<Int>(report.LearnedPolicy.Training.Rows),String.From<Int>(report.LearnedPolicy.HeldOut.Rows),String.From<Float>(report.LearnedPolicy.Training.MeanSquaredError),String.From<Float>(report.LearnedPolicy.HeldOut.MeanSquaredError),String.From<Float>(report.AuthoredBaselineHeldOut.MeanSquaredError),String.From<Float>(report.UniformBaselineHeldOut.MeanSquaredError),report.SelectedMitigation,report.AuthoredSelectedMitigation,report.UniformSelectedMitigation,String.From<Float>(report.LearnedPolicy.Weights[0]),String.From<Float>(report.LearnedPolicy.Weights[1]),String.From<Float>(report.LearnedPolicy.Weights[2]),String.From<Float>(report.LearnedPolicy.Weights[3]),String.From<Float>(report.LearnedPolicy.Weights[4]),String.From<Bool>(report.LearnedPolicy.Certified)])]),
         Markdown.Section("Interpretation", [Markdown.Paragraph(report.Interpretation),Markdown.Paragraph("M48 EVT remains postponed until the real hardware matrix and held-out source-side mitigation evidence converge.")])
     ])
-    Artifact.WriteOctagon(root + "synthetic_report.octagon", report)
+    Artifact.WriteOctagon(root + "M0.synthetic_report.octagon", report)
     Artifact.WriteCsv(root + "synthetic_trajectories.csv", M0RowsCsv(report))
     Artifact.WriteJson(root + "synthetic_summary.json", Json.Object(M0SummaryJsonText(report)))
     Artifact.WriteMarkdown(root + "FINDINGS.md", md)
-    let _baselinePlot = PlotLine(representative.Depths, representative.Errors, root + "a2x4_sparse_outlier_baseline.png")
-    let _mitigatedPlot = PlotLine(mitigated.Depths, mitigated.Errors, root + "a2x4_sparse_outlier_selective_fp32.png")
+    let _baselinePlot = PlotLine(representative.Trace.Depth, representative.Trace.Error, root + "a2x4_sparse_outlier_baseline.png")
+    let _mitigatedPlot = PlotLine(mitigated.Trace.Depth, mitigated.Trace.Error, root + "a2x4_sparse_outlier_selective_fp32.png")
     return 0
 }

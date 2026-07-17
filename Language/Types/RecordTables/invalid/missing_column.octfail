@@ -1,0 +1,10 @@
+expect error: "record 'Measurements' missing field 'Latency'"
+
+package MainInvalid
+
+record table Measurements {Stage: String Latency: Float}
+
+fn Main() -> Int {
+    let bad = Measurements {Stage:["A"]}
+    return Len(bad)
+}

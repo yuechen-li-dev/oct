@@ -1,0 +1,7 @@
+expect error: "record table 'Empty' must declare at least one column"
+
+package MainInvalid
+
+record table Empty {}
+
+fn Main() -> Int {return 0}

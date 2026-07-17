@@ -19,8 +19,11 @@ fn Manifest() -> PackageManifest {
         Name: "Statistics"
         Version: "0.1.0"
         Authors: ["Codex", "Claude"]
-        Date: "2026-06-15"
-        Description: "Descriptive statistics core"
-        Dependencies:[Dependency {Name: "OctStd" VersionRequirement: "0.1.0"}]
+        Date: "2026-07-17"
+        Description: "Descriptive statistics and bounded evidence-fitted utility models"
+        Dependencies: [
+            Dependency { Name: "OctStd" VersionRequirement: "0.1.0" },
+            Dependency { Name: "LinearAlgebra" VersionRequirement: "0.1.0" }
+        ]
     }
 }

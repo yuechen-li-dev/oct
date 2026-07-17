@@ -648,9 +648,20 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 		for _, r := range pkg.Records {
 			mr := MIRRecord{Package: pkgName, Name: r.Name}
 			for _, f := range r.Fields {
-				mr.Fields = append(mr.Fields, MIRField{Name: f.Name, Type: typeRefStringForPackage(pkgName, f.Type)})
+				fieldType := typeRefStringForPackage(pkgName, f.Type)
+				if r.IsTable {
+					fieldType += "[]"
+				}
+				mr.Fields = append(mr.Fields, MIRField{Name: f.Name, Type: fieldType})
 			}
 			module.Records = append(module.Records, mr)
+			if r.IsTable {
+				row := MIRRecord{Package: pkgName, Name: "__oct_table_row_" + r.Name}
+				for _, f := range r.Fields {
+					row.Fields = append(row.Fields, MIRField{Name: f.Name, Type: typeRefStringForPackage(pkgName, f.Type)})
+				}
+				module.Records = append(module.Records, row)
+			}
 		}
 		for _, e := range pkg.Enums {
 			variants := make([]MIREnumVariant, 0, len(e.Variants))
@@ -2846,6 +2857,13 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			ret = snapshotType
 		}
+		if builtin && callee == "Len" && len(argTypes) == 1 {
+			if table, _, ok := c.lookupRecordTable(argTypes[0]); ok {
+				tmp := c.temp("Int")
+				c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("len(%s.%s)", args[0], table.Fields[0].Name)})
+				return tmp, "Int", false, nil
+			}
+		}
 		localType := ret
 		if fallible {
 			localType = fallibleType(ret)
@@ -3001,6 +3019,27 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			}
 			return "", "", false, fmt.Errorf("compiled mode matrix indexing expects either [Int, Int] element access or [Index, Index] Einstein term access, got [%s, %s]", firstType, secondType)
 		}
+		if table, tablePkg, ok := c.lookupRecordTable(targetType); ok {
+			if len(e.Indices) != 1 {
+				return "", "", false, fmt.Errorf("compiled record table indexing requires exactly one Int index")
+			}
+			idx, idxType, _, err := c.lowerExpr(e.Indices[0])
+			if err != nil {
+				return "", "", false, err
+			}
+			if idxType != "Int" {
+				return "", "", false, fmt.Errorf("compiled record table row index must be Int, got %s", idxType)
+			}
+			rowType := tablePkg + ".__oct_table_row_" + table.Name
+			parts := make([]string, 0, len(table.Fields))
+			for _, field := range table.Fields {
+				parts = append(parts, fmt.Sprintf("%s: %s.%s[%s]", field.Name, target, field.Name, idx))
+			}
+			expr := fmt.Sprintf("func() %s { if %s < 0 || %s >= len(%s.%s) { panic(fmt.Sprintf(\"runtime error [OCT-RTBL005]: row index %%d out of bounds for record table '%s' of length %%d\", %s, len(%s.%s))) }; return %s{%s} }()", goType(rowType), idx, idx, target, table.Fields[0].Name, table.Name, idx, target, table.Fields[0].Name, goType(rowType), strings.Join(parts, ", "))
+			tmp := c.temp(rowType)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: expr})
+			return tmp, rowType, false, nil
+		}
 		if len(e.Indices) != 1 {
 			return "", "", false, fmt.Errorf("compiled mode only supports single-dimension indexing")
 		}
@@ -3058,6 +3097,39 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			names = append(names, f.Name)
 		}
 		tmp := c.temp(typeName)
+		if table, _, ok := c.lookupRecordTable(typeName); ok && len(vals) > 0 {
+			byName := make(map[string]string, len(names))
+			for idx, name := range names {
+				byName[name] = vals[idx]
+			}
+			first := byName[table.Fields[0].Name]
+			checks := make([]string, 0, len(table.Fields)-1)
+			lengthArgs := make([]string, 0, len(table.Fields))
+			literalParts := make([]string, 0, len(table.Fields))
+			for idx, field := range table.Fields {
+				value := byName[field.Name]
+				if idx > 0 {
+					checks = append(checks, fmt.Sprintf("len(%s) != len(%s)", value, first))
+				}
+				lengthArgs = append(lengthArgs, value)
+				literalParts = append(literalParts, fmt.Sprintf("%s: %s", field.Name, value))
+			}
+			formatParts := make([]string, 0, len(table.Fields))
+			for _, field := range table.Fields {
+				formatParts = append(formatParts, field.Name+": %d")
+			}
+			guard := "false"
+			if len(checks) > 0 {
+				guard = strings.Join(checks, " || ")
+			}
+			lenCalls := make([]string, 0, len(lengthArgs))
+			for _, value := range lengthArgs {
+				lenCalls = append(lenCalls, "len("+value+")")
+			}
+			valueExpr := fmt.Sprintf("func() %s { if %s { panic(fmt.Sprintf(\"runtime error [OCT-RTBL003]: record table '%s' columns have inconsistent lengths: %s\", %s)) }; return %s{%s} }()", goType(typeName), guard, table.Name, strings.Join(formatParts, ", "), strings.Join(lenCalls, ", "), goType(typeName), strings.Join(literalParts, ", "))
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: valueExpr})
+			return tmp, typeName, false, nil
+		}
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRConstructRecord{Target: tmp, TypeName: typeName, FieldNames: names, FieldVals: vals})
 		return tmp, typeName, false, nil
 	case ast.RecordUpdateExpr:
@@ -3334,12 +3406,17 @@ func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, 
 		return "", false
 	}
 	for _, record := range pkg.Records {
-		if record.Name != typeName {
+		isTableRow := record.IsTable && "__oct_table_row_"+record.Name == typeName
+		if record.Name != typeName && !isTableRow {
 			continue
 		}
 		for _, field := range record.Fields {
 			if field.Name == fieldName {
-				return typeRefStringForPackage(pkgName, field.Type), true
+				fieldType := typeRefStringForPackage(pkgName, field.Type)
+				if record.IsTable && !isTableRow {
+					fieldType += "[]"
+				}
+				return fieldType, true
 			}
 		}
 	}
@@ -3357,6 +3434,25 @@ func (c *lowerCtx) lookupRecordFieldType(recordType, fieldName string) (string, 
 	return "", false
 }
 
+func (c *lowerCtx) lookupRecordTable(recordType string) (ast.RecordDecl, string, bool) {
+	pkgName := c.pkg.Name
+	typeName := recordType
+	if strings.Contains(typeName, ".") {
+		parts := strings.SplitN(typeName, ".", 2)
+		pkgName, typeName = parts[0], parts[1]
+	}
+	pkg, ok := c.program.Packages[pkgName]
+	if !ok {
+		return ast.RecordDecl{}, "", false
+	}
+	for _, record := range pkg.Records {
+		if record.Name == typeName && record.IsTable {
+			return record, pkgName, true
+		}
+	}
+	return ast.RecordDecl{}, "", false
+}
+
 func (c *lowerCtx) lookupRecordFields(recordType string) ([]MIRField, bool) {
 	pkgName := c.pkg.Name
 	typeName := recordType
@@ -3370,12 +3466,17 @@ func (c *lowerCtx) lookupRecordFields(recordType string) ([]MIRField, bool) {
 		return nil, false
 	}
 	for _, record := range pkg.Records {
-		if record.Name != typeName {
+		isTableRow := record.IsTable && "__oct_table_row_"+record.Name == typeName
+		if record.Name != typeName && !isTableRow {
 			continue
 		}
 		fields := make([]MIRField, 0, len(record.Fields))
 		for _, field := range record.Fields {
-			fields = append(fields, MIRField{Name: field.Name, Type: typeRefStringForPackage(pkgName, field.Type)})
+			fieldType := typeRefStringForPackage(pkgName, field.Type)
+			if record.IsTable && !isTableRow {
+				fieldType += "[]"
+			}
+			fields = append(fields, MIRField{Name: field.Name, Type: fieldType})
 		}
 		return fields, true
 	}

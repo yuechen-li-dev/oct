@@ -2010,6 +2010,44 @@ fn Main() -> Int {
 	}
 }
 
+func TestRecordTableDynamicLengthValidationParity(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.oct")
+	src := `package Main
+
+record table Measurements { Stage: String Latency: Float }
+
+fn Build(stages: String[], latencies: Float[]) -> Measurements {
+    return Measurements { Stage: stages Latency: latencies }
+}
+
+fn Main() -> Int {
+    return Len(Build(["A", "B"], [1.0]))
+}
+`
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	program, err := project.Load(mainPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatalf("typecheck: %v", err)
+	}
+	if _, err := interpret.ExecuteMain(program, nil); err == nil || !strings.Contains(err.Error(), "OCT-RTBL003") {
+		t.Fatalf("expected interpreted OCT-RTBL003, got %v", err)
+	}
+	result, err := Compile(mainPath)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	out, runErr := exec.Command(result.ArtifactPath).CombinedOutput()
+	if runErr == nil || !strings.Contains(string(out), "OCT-RTBL003") {
+		t.Fatalf("expected compiled OCT-RTBL003, got err=%v output=%s", runErr, out)
+	}
+}
+
 func TestCompileModeUnsupportedSurfaceDiagnostics(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -1174,6 +1174,16 @@ func TestBuildFileParsesStandaloneUtilityWhenWithDefaults(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesRecordTableCellSchema(t *testing.T) {
+	file := parseSource(t, "record table Measurements { Stage: String Samples: Float[] }")
+	if len(file.Records) != 1 || !file.Records[0].IsTable {
+		t.Fatalf("expected one record table, got %#v", file.Records)
+	}
+	if got := file.Records[0].Fields[1].Type.ArrayDepth; got != 1 {
+		t.Fatalf("expected Samples cell type to retain one declared array depth, got %d", got)
+	}
+}
+
 func TestBuildFileParsesStandaloneUtilityWhenWithExplicitPolicy(t *testing.T) {
 	file := parseSource(t, "fn Main(flag: Bool) -> Int { return when utility { hysteresis: 5 } { case 1 when flag score 10 else 0 } }")
 	returnStmt, ok := file.Functions[0].Body.Statements[0].(ast.ReturnStmt)

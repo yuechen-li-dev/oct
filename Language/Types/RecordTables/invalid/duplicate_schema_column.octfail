@@ -1,0 +1,7 @@
+expect error: "OCT-RTBL007"
+
+package MainInvalid
+
+record table Measurements { Stage: String Stage: String }
+
+fn Main() -> Int { return 0 }

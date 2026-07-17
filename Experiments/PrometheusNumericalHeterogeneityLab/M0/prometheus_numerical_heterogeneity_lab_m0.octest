@@ -23,8 +23,8 @@ fn M0RecurrenceIsDeterministicAndDepthResolved() -> Void {
     let c = M0BuildCases()[10]
     let a = M0RunTrajectory(c, M0Mitigation.ObserveOnly)
     let b = M0RunTrajectory(c, M0Mitigation.ObserveOnly)
-    Assert.Equal(9, Len(a.Errors), "depth zero through eight")
-    Assert.Near(a.Errors[4], b.Errors[4], 0.000000000001, "same plan produces same midpoint")
+    Assert.Equal(9, Len(a.Trace), "depth zero through eight")
+    Assert.Near(a.Trace[4].Error, b.Trace[4].Error, 0.000000000001, "same plan produces same midpoint")
     Assert.Near(a.FinalAbsError, b.FinalAbsError, 0.000000000001, "same plan produces same final error")
     Assert.True(a.FinalAbsError > 0.0, "final error measured")
 }
@@ -36,6 +36,13 @@ fn M0MitigationSelectionUsesHeldOutEvidence() -> Void {
     Assert.Equal(4, Len(report.Mitigations), "bounded candidates")
     Assert.True(report.SelectedHeldOutMeanError < report.BaselineHeldOutMeanError, "selection improves held-out mean")
     Assert.True(report.HeldOutImprovementPct > 0.0, "held-out improvement reported")
+    Assert.Equal(24, report.LearnedPolicy.Training.Rows, "fit uses identification rows only")
+    Assert.Equal(24, report.LearnedPolicy.HeldOut.Rows, "held-out rows are evaluated without refitting")
+    Assert.Equal(5, Len(report.LearnedPolicy.Weights), "tiny inspectable policy")
+    Assert.True(report.LearnedPolicy.HeldOut.MeanSquaredError < report.AuthoredBaselineHeldOut.MeanSquaredError, "fitted predictor beats authored baseline on this synthetic held-out corpus")
+    Assert.True(report.LearnedPolicy.HeldOut.MeanSquaredError < report.UniformBaselineHeldOut.MeanSquaredError, "fitted predictor beats uniform baseline on this synthetic held-out corpus")
+    Assert.True(Len(report.AuthoredSelectedMitigation) > 0, "authored selection retained for comparison")
+    Assert.True(Len(report.UniformSelectedMitigation) > 0, "uniform selection retained for comparison")
     Assert.Equal(false, report.ProductAuthorityChanged, "simulation cannot change product authority")
 }
 

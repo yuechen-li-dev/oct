@@ -1,0 +1,172 @@
+package Statistics
+
+fn KnownLinearUtilityEvidence() -> UtilityObservations {
+    // Target = 1 + 2 * latency - 3 * risk.
+    return UtilityObservations {
+        CaseName: ["id-0", "id-1", "id-2", "id-3", "id-4", "hold-0", "hold-1"]
+        Features: [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [2.0, 1.0], [1.0, 2.0], [3.0, 1.0], [2.0, 3.0]]
+        Target: [1.0, 3.0, 0.0 - 2.0, 2.0, 0.0 - 3.0, 4.0, 0.0 - 4.0]
+        Importance: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+        IsHeldOut: [false, false, false, false, false, true, true]
+    }
+}
+
+fn KnownLinearUtilityOptions() -> LinearUtilityFitOptions {
+    return LinearUtilityFitOptions {
+        FeatureNames: ["Latency", "AccuracyRisk"]
+        FeatureSigns: [UtilityFeatureSign.Nonnegative, UtilityFeatureSign.Nonpositive]
+        IncludeBias: true
+        Normalize: false
+        L2Regularization: 0.0
+        MaximumLeaveOneOutWeightDelta: 0.000001
+        IdentificationEvidenceHash: "sha256:id-known-system"
+        HeldOutEvidenceHash: "sha256:held-known-system"
+    }
+}
+
+[Fact]
+fn LinearUtilityFitRecoversKnownWeightsAndBias() -> Void {
+    let fit = FitLinearUtility(KnownLinearUtilityEvidence(), KnownLinearUtilityOptions())!
+    Assert.Near(2.0, fit.Weights[0], 0.000001, "first learned coefficient")
+    Assert.Near(0.0 - 3.0, fit.Weights[1], 0.000001, "second learned coefficient")
+    Assert.Near(1.0, fit.Bias, 0.000001, "learned bias")
+    Assert.Equal(5, fit.Training.Rows, "identification rows")
+    Assert.Equal(2, fit.HeldOut.Rows, "held-out rows")
+    Assert.Near(0.0, fit.Training.MeanSquaredError, 0.000001, "training error")
+    Assert.Near(0.0, fit.HeldOut.MeanSquaredError, 0.000001, "held-out error")
+    Assert.True(fit.CoefficientSignsValid, "expected coefficient directions")
+    Assert.True(fit.Stable, "leave-one-out coefficients are stable")
+    Assert.True(fit.Certified, "held-out, signs, and stability support certification")
+}
+
+[Fact]
+fn LinearUtilityFitIsDeterministicAndIdentityFieldsAreInspectable() -> Void {
+    let first = FitLinearUtility(KnownLinearUtilityEvidence(), KnownLinearUtilityOptions())!
+    let second = FitLinearUtility(KnownLinearUtilityEvidence(), KnownLinearUtilityOptions())!
+    Assert.Equal(first.Algorithm, second.Algorithm, "algorithm identity")
+    Assert.Equal(first.Identity, second.Identity, "canonical model identity")
+    Assert.True(Len(first.Identity) > 0, "model identity is readable")
+    Assert.Equal(first.IdentificationEvidenceHash, "sha256:id-known-system", "identification evidence identity")
+    Assert.Equal(first.HeldOutEvidenceHash, "sha256:held-known-system", "held-out evidence identity")
+    Assert.Near(first.Weights[0], second.Weights[0], 0.0, "repeat coefficient zero")
+    Assert.Near(first.Weights[1], second.Weights[1], 0.0, "repeat coefficient one")
+    Assert.Near(first.Bias, second.Bias, 0.0, "repeat bias")
+}
+
+[Fact]
+fn LinearUtilityScoringPinsNamesOrderContributionsAndQuantization() -> Void {
+    let fit = FitLinearUtility(KnownLinearUtilityEvidence(), KnownLinearUtilityOptions())!
+    let features = UtilityFeatureVector { Names: ["Latency", "AccuracyRisk"] Values: [3.0, 1.0] }
+    let score = ScoreLinearUtility(features, fit)!
+    let breakdown = BreakdownLinearUtilityScore(features, fit)!
+    Assert.Near(4.0, score, 0.000001, "exact learned score")
+    Assert.Near(6.0, breakdown.Contributions[0], 0.000001, "latency contribution")
+    Assert.Near(0.0 - 3.0, breakdown.Contributions[1], 0.000001, "risk contribution")
+    Assert.Equal(400, QuantizeLinearUtilityScore(score, 100.0)!, "explicit Float to Int bridge")
+    Assert.Error(ScoreLinearUtility(UtilityFeatureVector { Names: ["AccuracyRisk", "Latency"] Values: [1.0, 3.0] }, fit), "reordered names must be rejected")
+}
+
+[Fact]
+fn LinearUtilityNoHeldOutRemainsUncertified() -> Void {
+    let evidence = UtilityObservations {
+        CaseName: ["a", "b", "c", "d"]
+        Features: [[0.0], [1.0], [2.0], [3.0]]
+        Target: [1.0, 3.0, 5.0, 7.0]
+        Importance: [1.0, 1.0, 1.0, 1.0]
+        IsHeldOut: [false, false, false, false]
+    }
+    let options = LinearUtilityFitOptions {
+        FeatureNames: ["Benefit"]
+        FeatureSigns: [UtilityFeatureSign.Nonnegative]
+        IncludeBias: true
+        Normalize: false
+        L2Regularization: 0.0
+        MaximumLeaveOneOutWeightDelta: 0.000001
+        IdentificationEvidenceHash: "sha256:id-only"
+        HeldOutEvidenceHash: "none"
+    }
+    let fit = FitLinearUtility(evidence, options)!
+    Assert.Equal(0, fit.HeldOut.Rows, "no held-out support")
+    Assert.False(fit.Certified, "identification-only fit must remain uncertified")
+}
+
+[Fact]
+fn LinearUtilityNormalizationUsesIdentificationOnly() -> Void {
+    let evidence = UtilityObservations {
+        CaseName: ["id-a", "id-b", "id-c", "hold"]
+        Features: [[0.0], [2.0], [4.0], [1000.0]]
+        Target: [0.0, 2.0, 4.0, 1000.0]
+        Importance: [1.0, 1.0, 1.0, 1.0]
+        IsHeldOut: [false, false, false, true]
+    }
+    let options = UtilityFitDefaults(["Benefit"]) with {
+        L2Regularization: 0.0
+        MaximumLeaveOneOutWeightDelta: 0.000001
+    }
+    let fit = FitLinearUtility(evidence, options)!
+    Assert.Near(2.0, fit.Normalization.Means[0], 0.000001, "held-out row cannot influence identification mean")
+    Assert.Near(Sqrt(8.0 / 3.0), fit.Normalization.Scales[0], 0.000001, "held-out row cannot influence identification scale")
+}
+
+[Fact]
+fn LinearUtilityRejectsMalformedEvidenceAndDegenerateFits() -> Void {
+    let badShape = UtilityObservations {
+        CaseName: ["bad"]
+        Features: [[1.0]]
+        Target: [1.0]
+        Importance: [1.0]
+        IsHeldOut: [false]
+    }
+    let wrongNames = UtilityFitDefaults(["A", "B"])
+    Assert.Error(FitLinearUtility(badShape, wrongNames), "feature vector length mismatch")
+
+    let constant = UtilityObservations {
+        CaseName: ["a", "b", "c"]
+        Features: [[1.0], [1.0], [1.0]]
+        Target: [1.0, 2.0, 3.0]
+        Importance: [1.0, 1.0, 1.0]
+        IsHeldOut: [false, false, false]
+    }
+    Assert.Error(FitLinearUtility(constant, UtilityFitDefaults(["Constant"])), "zero-range normalized feature")
+
+    let duplicate = UtilityFitDefaults(["Same", "Same"])
+    Assert.Error(FitLinearUtility(UtilityObservations {
+        CaseName: ["a", "b", "c"]
+        Features: [[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]]
+        Target: [0.0, 1.0, 2.0]
+        Importance: [1.0, 1.0, 1.0]
+        IsHeldOut: [false, false, false]
+    }, duplicate), "duplicate feature names")
+}
+
+[Fact]
+fn LinearUtilityRejectsNaNAndInfinityEvidenceAndScores() -> Void {
+    let nan = Pow(0.0 - 1.0, 0.5)
+    let infinity = Pow(10.0, 400.0)
+    Assert.False(IsFiniteUtilityNumber(nan), "NaN is not finite")
+    Assert.False(IsFiniteUtilityNumber(infinity), "infinity is not finite")
+    Assert.Error(QuantizeLinearUtilityScore(nan, 100.0), "NaN score")
+    Assert.Error(QuantizeLinearUtilityScore(infinity, 100.0), "infinite score")
+    Assert.Error(QuantizeLinearUtilityScore(1000000000000000000.0, 100.0), "out-of-range Int score")
+    let evidence = UtilityObservations {
+        CaseName: ["a", "b", "c"]
+        Features: [[0.0], [1.0], [2.0]]
+        Target: [0.0, nan, 2.0]
+        Importance: [1.0, 1.0, 1.0]
+        IsHeldOut: [false, false, false]
+    }
+    Assert.Error(FitLinearUtility(evidence, UtilityFitDefaults(["Feature"])), "nonfinite target evidence")
+}
+
+[Fact]
+fn ExistingWhenUtilityConsumesExplicitlyQuantizedLearnedScores() -> Void {
+    let fit = FitLinearUtility(KnownLinearUtilityEvidence(), KnownLinearUtilityOptions())!
+    let cooperativeScore = QuantizeLinearUtilityScore(ScoreLinearUtility(UtilityFeatureVector { Names: fit.FeatureNames Values: [3.0, 1.0] }, fit)!, 100.0)!
+    let auditScore = QuantizeLinearUtilityScore(ScoreLinearUtility(UtilityFeatureVector { Names: fit.FeatureNames Values: [1.0, 2.0] }, fit)!, 100.0)!
+    let selected = when utility {
+        case "cooperative" when true score cooperativeScore
+        case "audit" when true score auditScore
+        else "fallback"
+    }
+    Assert.Equal("cooperative", selected, "existing deterministic utility syntax remains authoritative")
+}

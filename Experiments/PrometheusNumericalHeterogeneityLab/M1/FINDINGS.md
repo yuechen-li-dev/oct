@@ -21,6 +21,21 @@
 | G bound | 1.00064 |
 | certified | false |
 
+## Evidence-fitted shadow utility
+
+| key | value |
+| --- | --- |
+| algorithm | ridge-normal-equations-lu-v1 |
+| training rows | 7 |
+| held-out rows | 0 |
+| training MSE | 0.002247484797368486 |
+| held-out MSE | 0 |
+| learned selected path | gpu_conventional_fp16 |
+| authored selected path | gpu_conventional_fp16 |
+| uniform selected path | gpu_conventional_fp16 |
+| certified | false |
+| shadow only | true |
+
 ## Interpretation
 
 native identification imported; no envelope or mitigation is certified without held-out hardware support

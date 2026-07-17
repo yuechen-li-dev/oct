@@ -28,6 +28,41 @@ Individual record fields are not assigned in place.
 - `with` evaluates the source expression once.
 - Record values are whole-value mutable only: rebind the record value, not individual fields.
 
+## Record tables
+
+`record table` is a distinct nominal record form for immutable validated
+columnar data:
+
+```oct
+record table Measurements {
+    Stage: String
+    Latency: Float
+}
+
+let results = Measurements {
+    Stage: ["Attention", "FFN"]
+    Latency: [2.4, 0.96]
+}
+```
+
+The declared field type is the cell type. Storage adds one implicit array
+depth, so `results.Latency` has type `Float[]`; a declared cell type `Float[]`
+would therefore produce `Float[][]` storage. Every column is required exactly
+once and all columns have one shared row count. Literal length disagreement is
+a type-checking error. Dynamically computed columns are checked once during
+construction and an invalid construction terminates with a deterministic
+runtime diagnostic; no malformed table value is produced.
+
+`Len(results)` returns the shared row count. `results[i]` performs ordinary
+bounds checking and returns a compiler-owned immutable row value whose fields
+have the declared cell types. The row type has no source-level name. Direct
+column access returns the stored typed array.
+
+Tables are immutable. Table `with`, row/column assignment, append/delete,
+nested table-valued cells, row iteration syntax, queries, joins, and mutable
+views are not part of this bounded form. Iterate row indices with
+`for i in 0..Len(table)` and project `table[i]`.
+
 ## Immutable `with` updates
 
 Use `with` when a function needs to return an updated record while preserving all fields not mentioned by the update.

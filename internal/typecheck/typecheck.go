@@ -247,16 +247,39 @@ func CheckProgram(program project.Program) error {
 func (c checker) rebindRecordTypes(file ast.File) error {
 	for _, record := range file.Records {
 		fields := make(map[string]Type, len(record.Fields))
+		rowFields := make(map[string]Type, len(record.Fields))
 		fieldOrder := make([]string, 0, len(record.Fields))
 		for _, field := range record.Fields {
 			fieldType, err := c.resolveNonReturnType(field.Type)
 			if err != nil {
 				return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
 			}
+			rowFields[field.Name] = fieldType
+			if record.IsTable {
+				fieldType = tableColumnType(fieldType)
+			}
 			fields[field.Name] = fieldType
 			fieldOrder = append(fieldOrder, field.Name)
 		}
-		c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder}
+		rowType := "__oct_table_row_" + record.Name
+		c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder, isTable: record.IsTable, rowType: rowType}
+		if record.IsTable {
+			c.records[rowType] = recordInfo{fields: rowFields, fieldOrder: fieldOrder}
+		}
+	}
+	for _, record := range file.Records {
+		if !record.IsTable {
+			continue
+		}
+		for _, field := range record.Fields {
+			cellType, err := c.resolveNonReturnType(field.Type)
+			if err != nil {
+				return err
+			}
+			if nested, ok := c.lookupRecord(cellType.Name); ok && nested.isTable && !cellType.IsArray {
+				return fmt.Errorf("[OCT-RTBL006] record table '%s' column '%s' cannot use record table '%s' as a cell type", record.Name, field.Name, cellType.Name)
+			}
+		}
 	}
 	return nil
 }
@@ -284,6 +307,12 @@ type packageSymbols struct {
 type recordInfo struct {
 	fields     map[string]Type
 	fieldOrder []string
+	isTable    bool
+	rowType    string
+}
+
+func tableColumnType(cell Type) Type {
+	return withArrayDepth(cell, cell.ArrayDepth+1)
 }
 
 type enumInfo struct {
@@ -437,20 +466,36 @@ func (c checker) checkPackageFunctions(file ast.File) error {
 }
 
 func (c checker) registerRecord(record ast.RecordDecl) error {
+	if record.IsTable && len(record.Fields) == 0 {
+		return fmt.Errorf("[OCT-RTBL001] record table '%s' must declare at least one column", record.Name)
+	}
 	fields := make(map[string]Type, len(record.Fields))
+	rowFields := make(map[string]Type, len(record.Fields))
 	fieldOrder := make([]string, 0, len(record.Fields))
 	for _, field := range record.Fields {
 		if _, exists := fields[field.Name]; exists {
+			if record.IsTable {
+				return fmt.Errorf("[OCT-RTBL007] record table '%s' column '%s' specified more than once", record.Name, field.Name)
+			}
 			return fmt.Errorf("record '%s' field '%s' specified more than once", record.Name, field.Name)
 		}
 		fieldType, err := c.resolveNonReturnType(field.Type)
 		if err != nil {
 			return fmt.Errorf("record '%s' field '%s': %w", record.Name, field.Name, err)
 		}
+		rowFields[field.Name] = fieldType
+		if record.IsTable {
+			fieldType = tableColumnType(fieldType)
+		}
 		fields[field.Name] = fieldType
 		fieldOrder = append(fieldOrder, field.Name)
 	}
-	c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder}
+	rowType := "__oct_table_row_" + record.Name
+	c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder, isTable: record.IsTable, rowType: rowType}
+	if record.IsTable {
+		c.records[rowType] = recordInfo{fields: rowFields, fieldOrder: fieldOrder}
+		c.typeNames[rowType] = struct{}{}
+	}
 	return nil
 }
 
@@ -1356,6 +1401,20 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			}
 			indexTypes = append(indexTypes, indexType.ValueType)
 		}
+		if table, ok := c.lookupRecord(targetType.ValueType.Name); ok && table.isTable && !targetType.ValueType.IsArray {
+			if len(node.Indices) != 1 {
+				return ExprType{}, fmt.Errorf("record table indexing requires exactly 1 row index, got %d", len(node.Indices))
+			}
+			if indexTypes[0] != (Type{Base: BaseTypeInt}) {
+				return ExprType{}, fmt.Errorf("record table row index must be Int, got %s", indexTypes[0])
+			}
+			rowType := table.rowType
+			if strings.Contains(targetType.ValueType.Name, ".") {
+				pkg, _, _ := splitQualifiedTypeName(targetType.ValueType.Name)
+				rowType = pkg + "." + rowType
+			}
+			return ExprType{ValueType: Type{Name: rowType}}, nil
+		}
 		switch {
 		case targetType.ValueType == (Type{Base: BaseTypeBytes}):
 			if len(node.Indices) != 1 {
@@ -1467,6 +1526,9 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			fieldType, ok := recordDecl.fields[node.Field]
 			if !ok {
 				return ExprType{}, c.missingFieldError(targetType.ValueType.Name, node.Field, chain, chainOK)
+			}
+			if pkgName, _, qualified := splitQualifiedTypeName(targetType.ValueType.Name); qualified {
+				fieldType = c.qualifyImportedType(pkgName, fieldType)
 			}
 			return ExprType{ValueType: fieldType}, nil
 		}
@@ -1684,6 +1746,9 @@ func (c checker) checkUtilityWhenExpr(scope *scope, expr ast.UtilityWhenExpr, ct
 	if expr.Else == nil {
 		return ExprType{}, fmt.Errorf("utility when requires else arm")
 	}
+	if len(expr.Cases) == 0 {
+		return ExprType{}, fmt.Errorf("utility when requires at least one scored candidate")
+	}
 
 	var resultType Type
 	hasResultType := false
@@ -1782,6 +1847,9 @@ func (c checker) checkEnumTargetedUtilityWhenExpr(scope *scope, expr ast.Utility
 
 	if expr.Else == nil {
 		return ExprType{}, fmt.Errorf("enum utility selection requires else fallback")
+	}
+	if len(expr.Cases) == 0 {
+		return ExprType{}, fmt.Errorf("enum utility selection requires at least one scored candidate")
 	}
 
 	for idx, whenCase := range expr.Cases {
@@ -2901,7 +2969,7 @@ func (c checker) qualifyImportedSignature(pkgName string, signature functionSign
 }
 
 func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
-	if valueType.Name == "" || valueType.IsArray {
+	if valueType.Name == "" {
 		return valueType
 	}
 	if strings.Contains(valueType.Name, ".") {
@@ -4597,6 +4665,9 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if argumentType.ValueType == (Type{Base: BaseTypeBytes}) {
 			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
 		}
+		if table, ok := c.lookupRecord(argumentType.ValueType.Name); ok && table.isTable && !argumentType.ValueType.IsArray {
+			return ExprType{ValueType: Type{Base: BaseTypeInt}}, nil
+		}
 		if !argumentType.ValueType.IsArray && !argumentType.ValueType.IsVector {
 			return ExprType{}, fmt.Errorf("function 'Len' argument 1 expects String, Bytes, array type, or Vector, got %s", argumentType.ValueType)
 		}
@@ -6002,12 +6073,18 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 	seen := make(map[string]struct{}, len(expr.Fields))
 	for _, field := range expr.Fields {
 		if _, exists := seen[field.Name]; exists {
+			if recordDecl.isTable {
+				return ExprType{}, fmt.Errorf("[OCT-RTBL007] record '%s' field '%s' specified more than once", expr.TypeName, field.Name)
+			}
 			return ExprType{}, fmt.Errorf("record '%s' field '%s' specified more than once", expr.TypeName, field.Name)
 		}
 		seen[field.Name] = struct{}{}
 
 		expectedType, exists := recordDecl.fields[field.Name]
 		if !exists {
+			if recordDecl.isTable {
+				return ExprType{}, fmt.Errorf("[OCT-RTBL009] record '%s' has no field '%s'", expr.TypeName, field.Name)
+			}
 			return ExprType{}, fmt.Errorf("record '%s' has no field '%s'", expr.TypeName, field.Name)
 		}
 		actualType, err := c.checkExprWithExpected(scope, field.Value, ctx, &expectedType)
@@ -6018,12 +6095,46 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isAssignable(actualType.ValueType, expectedType) {
+			if recordDecl.isTable {
+				return ExprType{}, fmt.Errorf("[OCT-RTBL010] record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
+			}
 			return ExprType{}, fmt.Errorf("record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
 		}
 	}
 	for _, fieldName := range recordDecl.fieldOrder {
 		if _, exists := seen[fieldName]; !exists {
+			if recordDecl.isTable {
+				return ExprType{}, fmt.Errorf("[OCT-RTBL008] record '%s' missing field '%s'", expr.TypeName, fieldName)
+			}
 			return ExprType{}, fmt.Errorf("record '%s' missing field '%s'", expr.TypeName, fieldName)
+		}
+	}
+	if recordDecl.isTable {
+		lengths := make(map[string]int, len(expr.Fields))
+		allKnown := true
+		for _, field := range expr.Fields {
+			literal, ok := field.Value.(ast.ArrayLiteralExpr)
+			if !ok {
+				allKnown = false
+				break
+			}
+			lengths[field.Name] = len(literal.Elements)
+		}
+		if allKnown && len(recordDecl.fieldOrder) > 0 {
+			want := lengths[recordDecl.fieldOrder[0]]
+			mismatch := false
+			for _, name := range recordDecl.fieldOrder {
+				if lengths[name] != want {
+					mismatch = true
+				}
+			}
+			if mismatch {
+				parts := make([]string, 0, len(recordDecl.fieldOrder))
+				for _, name := range recordDecl.fieldOrder {
+					parts = append(parts, fmt.Sprintf("%s: %d", name, lengths[name]))
+				}
+				return ExprType{}, fmt.Errorf("[OCT-RTBL002] record table '%s' columns have inconsistent literal lengths: %s", expr.TypeName, strings.Join(parts, ", "))
+			}
 		}
 	}
 	return ExprType{ValueType: Type{Name: expr.TypeName}}, nil
@@ -6043,6 +6154,9 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 	recordDecl, ok := c.lookupRecord(sourceType.ValueType.Name)
 	if !ok {
 		return ExprType{}, fmt.Errorf("unknown record type: %s", sourceType.ValueType.Name)
+	}
+	if recordDecl.isTable {
+		return ExprType{}, fmt.Errorf("[OCT-RTBL004] record tables are immutable; construct a validated replacement table instead of using 'with'")
 	}
 	for _, field := range expr.Fields {
 		fieldType, exists := recordDecl.fields[field.Name]

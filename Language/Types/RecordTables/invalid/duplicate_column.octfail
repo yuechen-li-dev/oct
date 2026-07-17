@@ -1,0 +1,10 @@
+expect error: "record 'Measurements' field 'Stage' specified more than once"
+
+package MainInvalid
+
+record table Measurements {Stage: String}
+
+fn Main() -> Int {
+    let bad = Measurements {Stage:["A"] Stage:["B"]}
+    return Len(bad)
+}

@@ -21,6 +21,13 @@ fn M1EnvelopeFitsIdentificationAndRejectsMissingHeldOutSupport() -> Void ! Error
     Assert.True(envelope.IdentificationSupport > 0, "native identification records imported")
     Assert.Equal(0, envelope.HeldOutSupport, "held-out records are not fabricated")
     Assert.Equal(false, envelope.Certified, "identification-only envelope is not certified")
+    let learned = M1BuildLearnedPolicyReport(evidence)
+    Assert.Equal(7, learned.Model.Training.Rows, "native identification rows fit the shadow model")
+    Assert.Equal(0, learned.Model.HeldOut.Rows, "native held-out rows are not fabricated")
+    Assert.Equal(false, learned.Model.Certified, "zero-held-out learned policy is uncertified")
+    Assert.Equal(false, learned.HeldOutBaselineComparisonAvailable, "baseline improvement is not claimed without held-out evidence")
+    Assert.True(learned.ShadowOnly, "learned native selection is shadow-only")
+    Assert.Equal(false, learned.ProductAuthorityChanged, "learned native selection has no product authority")
 }
 
 [Artifact]

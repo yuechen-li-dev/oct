@@ -15,6 +15,50 @@ M1ImportReport {
         Certified: false
         ExtrapolationPolicy: "reject any path, stage, shape, family, or magnitude absent from held-out support"
     }
+    LearnedPolicy: M1LearnedPolicyReport {
+        Model: LinearUtilityModel {
+            Algorithm: "ridge-normal-equations-lu-v1"
+            Identity: "ridge-normal-equations-lu-v1|features=DisturbanceL2Micro,DisturbanceLInfinityTenNano,GpuHundredMicroseconds|signs=any,any,any|weights=-0.594188368835852,0.9090206936478299,-1.0825108532121401|bias=-0.45505714285714277|means=0.4553161571428571,0.3801787142857143,0.28630857142857147|scales=0.5976437177688055,0.4442234743935613,0.41950658239101296|includeBias=true|normalize=true|l2=1e-06|looThreshold=1|identification=668a8768fbcb42ef1c386ad73e89b85c079f8d227965408bf157d3b3347cc5f7:identification|heldOut=none-zero-held-out-native-rows"
+            FeatureNames: ["DisturbanceL2Micro", "DisturbanceLInfinityTenNano", "GpuHundredMicroseconds"]
+            Weights: [-0.594188368835852, 0.9090206936478299, -1.0825108532121401]
+            Bias: (-0.45505714285714277)
+            Normalization: UtilityNormalization {
+                Means: [0.4553161571428571, 0.3801787142857143, 0.28630857142857147]
+                Scales: [0.5976437177688055, 0.4442234743935613, 0.41950658239101296]
+            }
+            IncludeBias: true
+            L2Regularization: (1e-06)
+            IdentificationEvidenceHash: "668a8768fbcb42ef1c386ad73e89b85c079f8d227965408bf157d3b3347cc5f7:identification"
+            HeldOutEvidenceHash: "none-zero-held-out-native-rows"
+            Training: UtilityFitMetrics {
+                Rows: (7)
+                MeanSquaredError: (0.002247484797368486)
+                MeanAbsoluteError: (0.03495483111553675)
+                MaximumAbsoluteError: (0.09035289690613124)
+                RSquared: (0.9918606452070374)
+                RSquaredDefined: true
+            }
+            HeldOut: UtilityFitMetrics {
+                Rows: (0)
+                MeanSquaredError: (0)
+                MeanAbsoluteError: (0)
+                MaximumAbsoluteError: (0)
+                RSquared: (0)
+                RSquaredDefined: false
+            }
+            CoefficientSignsValid: true
+            LeaveOneOutMaxWeightDelta: (0.9090183148228655)
+            Stable: true
+            ConditioningOrStabilityWarning: false
+            Certified: false
+        }
+        SelectedPath: "gpu_conventional_fp16"
+        AuthoredSelectedPath: "gpu_conventional_fp16"
+        UniformSelectedPath: "gpu_conventional_fp16"
+        HeldOutBaselineComparisonAvailable: false
+        ShadowOnly: true
+        ProductAuthorityChanged: false
+    }
     Mitigations: [M1MitigationRecord {
         Name: "retain_fp32_hidden"
         IdentificationErrorReduction: (0)

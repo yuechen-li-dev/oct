@@ -29,9 +29,10 @@ type DocSection struct {
 }
 
 type RecordDecl struct {
-	Name   string
-	Doc    *DocComment
-	Fields []RecordField
+	Name    string
+	Doc     *DocComment
+	Fields  []RecordField
+	IsTable bool
 }
 
 type RecordField struct {

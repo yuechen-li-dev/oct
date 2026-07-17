@@ -1,0 +1,71 @@
+package MainValid
+
+enum StageKind {Input Compute Output}
+
+record Meta {Native: Bool}
+
+record table Measurements {
+    Stage: String
+    Kind: StageKind
+    Latency: Float
+    Count: Int
+    Meta: Meta
+}
+
+record table ArrayCells { Samples: Float[] }
+
+record MeasurementBundle { Values: Measurements }
+
+fn Build(stages: String[], kinds: StageKind[], latencies: Float[], counts: Int[], metadata: Meta[]) -> Measurements {
+    return Measurements {
+        Stage: stages
+        Kind: kinds
+        Latency: latencies
+        Count: counts
+        Meta: metadata
+    }
+}
+
+fn PassThrough(table: Measurements) -> Measurements {
+    return table
+}
+
+fn Bundle(table: Measurements) -> MeasurementBundle {
+    return MeasurementBundle { Values: table }
+}
+
+[Fact]
+fn RecordTableConstructionAccessLengthAndRows() -> Void {
+    let table = Measurements {
+        Stage:["Attention", "RMSNorm", "FFN"]
+        Kind:[StageKind.Input, StageKind.Compute, StageKind.Output]
+        Latency:[2.4, 0.008, 0.96]
+        Count:[1, 2, 3]
+        Meta:[Meta {Native: true}, Meta {Native: false}, Meta {Native: true}]
+    }
+    Assert.Equal(3, Len(table), "table length is the shared row count")
+    Assert.Equal(0.008, table.Latency[1], "column access returns a typed array")
+    let row = table[2]
+    Assert.Equal("FFN", row.Stage, "row projection preserves fields")
+    Assert.Equal(3, row.Count, "row projection preserves scalar cell types")
+    Assert.Equal(true, row.Meta.Native, "record-valued cells project normally")
+    Assert.Equal(3, Len(PassThrough(table)), "tables work as function parameters and returns")
+    Assert.Equal(3, Len(Bundle(table).Values), "ordinary records can contain table values")
+}
+
+[Fact]
+fn RecordTableZeroAndDynamicRows() -> Void {
+    let empty = Measurements {
+        Stage:[]
+        Kind:[]
+        Latency:[]
+        Count:[]
+        Meta:[]
+    }
+    Assert.Equal(0, Len(empty), "zero-row tables are valid")
+    let dynamic = Build(["Only"],[StageKind.Compute],[1.25],[7],[Meta {Native: true}])
+    Assert.Equal(1, Len(dynamic), "dynamic equal-length construction validates once")
+    Assert.Equal(StageKind.Compute, dynamic[0].Kind, "enum-valued cells work")
+    let nested = ArrayCells { Samples: [[1.0, 2.0], [3.0]] }
+    Assert.Equal(2.0, nested[0].Samples[1], "array-valued cell types add one unambiguous storage depth")
+}

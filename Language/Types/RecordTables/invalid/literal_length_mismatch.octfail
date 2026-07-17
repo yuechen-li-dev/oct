@@ -1,0 +1,18 @@
+expect error: "columns have inconsistent literal lengths: Stage: 2, Latency: 1, Error: 2"
+
+package MainInvalid
+
+record table Measurements {
+    Stage: String
+    Latency: Float
+    Error: Float
+}
+
+fn Main() -> Int {
+    let bad = Measurements {
+        Stage:["A", "B"]
+        Latency:[1.0]
+        Error:[0.1, 0.2]
+    }
+    return Len(bad)
+}

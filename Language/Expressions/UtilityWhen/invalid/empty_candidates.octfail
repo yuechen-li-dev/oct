@@ -1,0 +1,7 @@
+expect error: "utility when requires at least one scored candidate"
+
+package MainInvalid
+
+fn Main() -> Int {
+    return when utility { else 0 }
+}

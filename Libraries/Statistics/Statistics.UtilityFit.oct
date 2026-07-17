@@ -1,0 +1,490 @@
+package Statistics
+
+import LinearAlgebra
+import String
+
+/// A direction expected from domain knowledge. Fitting never silently clamps.
+enum UtilityFeatureSign {
+    Any
+    Nonnegative
+    Nonpositive
+}
+
+/// Canonical evidence input. FeatureNames on the options define the exact,
+/// ordered meaning of every Features cell.
+record table UtilityObservations {
+    CaseName: String
+    Features: Float[]
+    Target: Float
+    Importance: Float
+    IsHeldOut: Bool
+}
+
+record LinearUtilityFitOptions {
+    FeatureNames: String[]
+    FeatureSigns: UtilityFeatureSign[]
+    IncludeBias: Bool
+    Normalize: Bool
+    L2Regularization: Float
+    MaximumLeaveOneOutWeightDelta: Float
+    IdentificationEvidenceHash: String
+    HeldOutEvidenceHash: String
+}
+
+record UtilityNormalization {
+    Means: Float[]
+    Scales: Float[]
+}
+
+record UtilityFitMetrics {
+    Rows: Int
+    MeanSquaredError: Float
+    MeanAbsoluteError: Float
+    MaximumAbsoluteError: Float
+    RSquared: Float
+    RSquaredDefined: Bool
+}
+
+record LinearUtilityModel {
+    Algorithm: String
+    Identity: String
+    FeatureNames: String[]
+    Weights: Float[]
+    Bias: Float
+    Normalization: UtilityNormalization
+    IncludeBias: Bool
+    L2Regularization: Float
+    IdentificationEvidenceHash: String
+    HeldOutEvidenceHash: String
+    Training: UtilityFitMetrics
+    HeldOut: UtilityFitMetrics
+    CoefficientSignsValid: Bool
+    LeaveOneOutMaxWeightDelta: Float
+    Stable: Bool
+    ConditioningOrStabilityWarning: Bool
+    Certified: Bool
+}
+
+record UtilityFeatureVector {
+    Names: String[]
+    Values: Float[]
+}
+
+record UtilityScoreBreakdown {
+    FeatureNames: String[]
+    Contributions: Float[]
+    Bias: Float
+    Score: Float
+}
+
+record UtilityModelComparison {
+    Fitted: UtilityFitMetrics
+    Baseline: UtilityFitMetrics
+    HeldOutMeanSquaredErrorImprovement: Float
+    HeldOutComparisonAvailable: Bool
+}
+
+fn UtilityFitDefaults(featureNames: String[]) -> LinearUtilityFitOptions {
+    var signs = [UtilityFeatureSign.Any]
+    for i in 1..Len(featureNames) {
+        signs = Append(signs, UtilityFeatureSign.Any)
+    }
+    return LinearUtilityFitOptions {
+        FeatureNames: featureNames
+        FeatureSigns: signs
+        IncludeBias: true
+        Normalize: true
+        L2Regularization: 0.000001
+        MaximumLeaveOneOutWeightDelta: 1.0
+        IdentificationEvidenceHash: "unspecified"
+        HeldOutEvidenceHash: "none"
+    }
+}
+
+fn IsFiniteUtilityNumber(value: Float) -> Bool {
+    return value == value and value - value == 0.0
+}
+
+fn UtilityZeroVector(length: Int) -> Float[] {
+    var values = [0.0]
+    for i in 1..length {
+        values = Append(values, 0.0)
+    }
+    return values
+}
+
+fn ValidateUtilityFeatureNames(names: String[]) -> Bool ! Error {
+    if Len(names) < 1 or Len(names) > 32 {
+        return error("[OCT-UFIT001] linear utility fitting requires between 1 and 32 named features")
+    }
+    for i in 0..Len(names) {
+        if names[i] == "" {
+            return error("[OCT-UFIT001] linear utility feature names must not be empty")
+        }
+        for j in i + 1..Len(names) {
+            if names[i] == names[j] {
+                return error("[OCT-UFIT001] linear utility feature names must be unique")
+            }
+        }
+    }
+    return true
+}
+
+fn ValidateUtilityEvidence(evidence: UtilityObservations, options: LinearUtilityFitOptions) -> Bool ! Error {
+    let _names = ValidateUtilityFeatureNames(options.FeatureNames)?
+    if Len(options.FeatureSigns) != Len(options.FeatureNames) {
+        return error("[OCT-UFIT002] linear utility feature signs must match the feature schema")
+    }
+    if options.L2Regularization < 0.0 or not IsFiniteUtilityNumber(options.L2Regularization) {
+        return error("[OCT-UFIT002] linear utility L2 regularization must be finite and nonnegative")
+    }
+    if options.MaximumLeaveOneOutWeightDelta < 0.0 or not IsFiniteUtilityNumber(options.MaximumLeaveOneOutWeightDelta) {
+        return error("[OCT-UFIT002] linear utility stability threshold must be finite and nonnegative")
+    }
+    if Len(evidence) == 0 {
+        return error("[OCT-UFIT003] linear utility fitting requires nonempty evidence")
+    }
+    if Len(evidence) > 256 {
+        return error("[OCT-UFIT003] linear utility fitting is bounded to 256 observations")
+    }
+    var identificationRows = 0
+    for i in 0..Len(evidence) {
+        let row = evidence[i]
+        if Len(row.Features) != Len(options.FeatureNames) {
+            return error("[OCT-UFIT003] linear utility observation feature count does not match the named schema")
+        }
+        if row.Importance <= 0.0 or not IsFiniteUtilityNumber(row.Importance) {
+            return error("[OCT-UFIT003] linear utility observation importance must be finite and positive")
+        }
+        if not IsFiniteUtilityNumber(row.Target) {
+            return error("[OCT-UFIT003] linear utility targets must be finite")
+        }
+        for featureIndex in 0..Len(row.Features) {
+            if not IsFiniteUtilityNumber(row.Features[featureIndex]) {
+                return error("[OCT-UFIT003] linear utility features must be finite")
+            }
+        }
+        if not row.IsHeldOut {
+            identificationRows = identificationRows + 1
+        }
+    }
+    let parameterCount = Len(options.FeatureNames) + if options.IncludeBias { 1 } else { 0 }
+    if identificationRows < parameterCount and options.L2Regularization == 0.0 {
+        return error("[OCT-UFIT004] unregularized linear utility fitting requires at least as many identification rows as parameters")
+    }
+    if identificationRows == 0 {
+        return error("[OCT-UFIT004] linear utility fitting requires identification evidence")
+    }
+    return true
+}
+
+/// Fits normalization only on identification rows. Held-out values never
+/// influence these parameters.
+fn FitUtilityNormalization(evidence: UtilityObservations, options: LinearUtilityFitOptions) -> UtilityNormalization ! Error {
+    let featureCount = Len(options.FeatureNames)
+    var means = UtilityZeroVector(featureCount)
+    var totalImportance = 0.0
+    for i in 0..Len(evidence) {
+        let row = evidence[i]
+        if not row.IsHeldOut {
+            totalImportance = totalImportance + row.Importance
+            for j in 0..featureCount {
+                means[j] = means[j] + row.Features[j] * row.Importance
+            }
+        }
+    }
+    for j in 0..featureCount {
+        means[j] = means[j] / totalImportance
+    }
+    var scales = UtilityZeroVector(featureCount)
+    for i in 0..Len(evidence) {
+        let row = evidence[i]
+        if not row.IsHeldOut {
+            for j in 0..featureCount {
+                let delta = row.Features[j] - means[j]
+                scales[j] = scales[j] + delta * delta * row.Importance
+            }
+        }
+    }
+    for j in 0..featureCount {
+        if options.Normalize {
+            scales[j] = Sqrt(scales[j] / totalImportance)
+            if scales[j] == 0.0 or not IsFiniteUtilityNumber(scales[j]) {
+                return error("[OCT-UFIT005] linear utility normalization requires nonconstant identification features")
+            }
+        } else {
+            means[j] = 0.0
+            scales[j] = 1.0
+        }
+    }
+    return UtilityNormalization { Means: means Scales: scales }
+}
+
+fn NormalizedUtilityFeature(value: Float, featureIndex: Int, normalization: UtilityNormalization) -> Float {
+    return (value - normalization.Means[featureIndex]) / normalization.Scales[featureIndex]
+}
+
+fn FitLinearUtilityCoefficients(evidence: UtilityObservations, options: LinearUtilityFitOptions, normalization: UtilityNormalization, excludedRow: Int) -> Float[] ! Error {
+    let featureCount = Len(options.FeatureNames)
+    let parameterCount = featureCount + if options.IncludeBias { 1 } else { 0 }
+    var normal = UtilityZeroVector(parameterCount * parameterCount)
+    var rhs = UtilityZeroVector(parameterCount)
+    for rowIndex in 0..Len(evidence) {
+        let row = evidence[rowIndex]
+        if not row.IsHeldOut and rowIndex != excludedRow {
+            var design = UtilityZeroVector(parameterCount)
+            for featureIndex in 0..featureCount {
+                design[featureIndex] = NormalizedUtilityFeature(row.Features[featureIndex], featureIndex, normalization)
+            }
+            if options.IncludeBias {
+                design[parameterCount - 1] = 1.0
+            }
+            for r in 0..parameterCount {
+                rhs[r] = rhs[r] + row.Importance * design[r] * row.Target
+                for c in 0..parameterCount {
+                    let matrixIndex = r * parameterCount + c
+                    normal[matrixIndex] = normal[matrixIndex] + row.Importance * design[r] * design[c]
+                }
+            }
+        }
+    }
+    for diagonal in 0..featureCount {
+        let index = diagonal * parameterCount + diagonal
+        normal[index] = normal[index] + options.L2Regularization
+    }
+    match LinearAlgebra.SolveLinearSystem(normal, parameterCount, parameterCount, rhs) {
+        ok(coefficients) => {
+            for i in 0..Len(coefficients) {
+                if not IsFiniteUtilityNumber(coefficients[i]) {
+                    return error("[OCT-UFIT008] linear utility fit produced a nonfinite coefficient")
+                }
+            }
+            return coefficients
+        }
+        err(e) => {
+            return error("[OCT-UFIT004] linear utility system is singular or numerically unresolved; use independent evidence or explicit regularization")
+        }
+    }
+}
+
+fn LinearUtilityScoreValues(values: Float[], model: LinearUtilityModel) -> Float ! Error {
+    if Len(values) != Len(model.FeatureNames) {
+        return error("[OCT-UFIT006] linear utility score values do not match the model feature count")
+    }
+    var score = model.Bias
+    for i in 0..Len(values) {
+        if not IsFiniteUtilityNumber(values[i]) {
+            return error("[OCT-UFIT006] linear utility score features must be finite")
+        }
+        score = score + model.Weights[i] * NormalizedUtilityFeature(values[i], i, model.Normalization)
+    }
+    if not IsFiniteUtilityNumber(score) {
+        return error("[OCT-UFIT006] linear utility score is not finite")
+    }
+    return score
+}
+
+fn EmptyUtilityMetrics() -> UtilityFitMetrics {
+    return UtilityFitMetrics { Rows: 0 MeanSquaredError: 0.0 MeanAbsoluteError: 0.0 MaximumAbsoluteError: 0.0 RSquared: 0.0 RSquaredDefined: false }
+}
+
+fn EvaluateLinearUtilityEvidence(evidence: UtilityObservations, model: LinearUtilityModel, heldOut: Bool) -> UtilityFitMetrics ! Error {
+    var rows = 0
+    var weightSum = 0.0
+    var targetSum = 0.0
+    for i in 0..Len(evidence) {
+        let row = evidence[i]
+        if row.IsHeldOut == heldOut {
+            rows = rows + 1
+            weightSum = weightSum + row.Importance
+            targetSum = targetSum + row.Target * row.Importance
+        }
+    }
+    if rows == 0 {
+        return EmptyUtilityMetrics()
+    }
+    let targetMean = targetSum / weightSum
+    var squared = 0.0
+    var absolute = 0.0
+    var maximum = 0.0
+    var totalTargetSquares = 0.0
+    for i in 0..Len(evidence) {
+        let row = evidence[i]
+        if row.IsHeldOut == heldOut {
+            let prediction = LinearUtilityScoreValues(row.Features, model)?
+            let residual = prediction - row.Target
+            let residualAbsolute = Abs(residual)
+            squared = squared + residual * residual * row.Importance
+            absolute = absolute + residualAbsolute * row.Importance
+            if residualAbsolute > maximum { maximum = residualAbsolute }
+            let targetDelta = row.Target - targetMean
+            totalTargetSquares = totalTargetSquares + targetDelta * targetDelta * row.Importance
+        }
+    }
+    let rSquaredDefined = totalTargetSquares > 0.0
+    return UtilityFitMetrics {
+        Rows: rows
+        MeanSquaredError: squared / weightSum
+        MeanAbsoluteError: absolute / weightSum
+        MaximumAbsoluteError: maximum
+        RSquared: if rSquaredDefined { 1.0 - squared / totalTargetSquares } else { 0.0 }
+        RSquaredDefined: rSquaredDefined
+    }
+}
+
+fn UtilitySignsValid(weights: Float[], signs: UtilityFeatureSign[]) -> Bool {
+    var valid = true
+    for i in 0..Len(weights) {
+        if signs[i] == UtilityFeatureSign.Nonnegative and weights[i] < 0.0 { valid = false }
+        if signs[i] == UtilityFeatureSign.Nonpositive and weights[i] > 0.0 { valid = false }
+    }
+    return valid
+}
+
+fn UtilityFeatureSignName(sign: UtilityFeatureSign) -> String {
+    return switch {
+        case sign == UtilityFeatureSign.Nonnegative => "nonnegative"
+        case sign == UtilityFeatureSign.Nonpositive => "nonpositive"
+        else => "any"
+    }
+}
+
+fn LinearUtilityModelIdentity(weights: Float[], bias: Float, normalization: UtilityNormalization, options: LinearUtilityFitOptions) -> String {
+    var identity = "ridge-normal-equations-lu-v1|features="
+    for i in 0..Len(options.FeatureNames) {
+        identity = identity + if i == 0 { options.FeatureNames[i] } else { "," + options.FeatureNames[i] }
+    }
+    identity = identity + "|signs="
+    for i in 0..Len(options.FeatureSigns) {
+        identity = identity + if i == 0 { UtilityFeatureSignName(options.FeatureSigns[i]) } else { "," + UtilityFeatureSignName(options.FeatureSigns[i]) }
+    }
+    identity = identity + "|weights="
+    for i in 0..Len(weights) {
+        identity = identity + if i == 0 { String.From<Float>(weights[i]) } else { "," + String.From<Float>(weights[i]) }
+    }
+    identity = identity + "|bias=" + String.From<Float>(bias) + "|means="
+    for i in 0..Len(normalization.Means) {
+        identity = identity + if i == 0 { String.From<Float>(normalization.Means[i]) } else { "," + String.From<Float>(normalization.Means[i]) }
+    }
+    identity = identity + "|scales="
+    for i in 0..Len(normalization.Scales) {
+        identity = identity + if i == 0 { String.From<Float>(normalization.Scales[i]) } else { "," + String.From<Float>(normalization.Scales[i]) }
+    }
+    return identity + "|includeBias=" + String.From<Bool>(options.IncludeBias) + "|normalize=" + String.From<Bool>(options.Normalize) + "|l2=" + String.From<Float>(options.L2Regularization) + "|looThreshold=" + String.From<Float>(options.MaximumLeaveOneOutWeightDelta) + "|identification=" + options.IdentificationEvidenceHash + "|heldOut=" + options.HeldOutEvidenceHash
+}
+
+fn FitLinearUtility(evidence: UtilityObservations, options: LinearUtilityFitOptions) -> LinearUtilityModel ! Error {
+    let _valid = ValidateUtilityEvidence(evidence, options)?
+    let normalization = FitUtilityNormalization(evidence, options)?
+    let coefficients = FitLinearUtilityCoefficients(evidence, options, normalization, 0 - 1)?
+    let featureCount = Len(options.FeatureNames)
+    var weights = [coefficients[0]]
+    for i in 1..featureCount { weights = Append(weights, coefficients[i]) }
+    let bias = if options.IncludeBias { coefficients[Len(coefficients) - 1] } else { 0.0 }
+    let signsValid = UtilitySignsValid(weights, options.FeatureSigns)
+    var model = LinearUtilityModel {
+        Algorithm: "ridge-normal-equations-lu-v1"
+        Identity: "pending-fit-metrics"
+        FeatureNames: options.FeatureNames
+        Weights: weights
+        Bias: bias
+        Normalization: normalization
+        IncludeBias: options.IncludeBias
+        L2Regularization: options.L2Regularization
+        IdentificationEvidenceHash: options.IdentificationEvidenceHash
+        HeldOutEvidenceHash: options.HeldOutEvidenceHash
+        Training: EmptyUtilityMetrics()
+        HeldOut: EmptyUtilityMetrics()
+        CoefficientSignsValid: signsValid
+        LeaveOneOutMaxWeightDelta: 0.0
+        Stable: false
+        ConditioningOrStabilityWarning: true
+        Certified: false
+    }
+    let training = EvaluateLinearUtilityEvidence(evidence, model, false)?
+    let heldOut = EvaluateLinearUtilityEvidence(evidence, model, true)?
+    var maxDelta = 0.0
+    if training.Rows > Len(coefficients) {
+        for excluded in 0..Len(evidence) {
+            if not evidence[excluded].IsHeldOut {
+                let reduced = FitLinearUtilityCoefficients(evidence, options, normalization, excluded)?
+                for coefficientIndex in 0..featureCount {
+                    let delta = Abs(reduced[coefficientIndex] - weights[coefficientIndex])
+                    if delta > maxDelta { maxDelta = delta }
+                }
+            }
+        }
+    }
+    let stable = training.Rows > Len(coefficients) and maxDelta <= options.MaximumLeaveOneOutWeightDelta
+    return LinearUtilityModel {
+        Algorithm: model.Algorithm
+        Identity: LinearUtilityModelIdentity(weights, bias, normalization, options)
+        FeatureNames: model.FeatureNames
+        Weights: model.Weights
+        Bias: model.Bias
+        Normalization: model.Normalization
+        IncludeBias: model.IncludeBias
+        L2Regularization: model.L2Regularization
+        IdentificationEvidenceHash: model.IdentificationEvidenceHash
+        HeldOutEvidenceHash: model.HeldOutEvidenceHash
+        Training: training
+        HeldOut: heldOut
+        CoefficientSignsValid: signsValid
+        LeaveOneOutMaxWeightDelta: maxDelta
+        Stable: stable
+        ConditioningOrStabilityWarning: not stable
+        Certified: heldOut.Rows > 0 and signsValid and stable
+    }
+}
+
+/// Exact name and order equality prevents applying an Accuracy weight to a
+/// Latency value by accident.
+fn ScoreLinearUtility(features: UtilityFeatureVector, model: LinearUtilityModel) -> Float ! Error {
+    if Len(features.Names) != Len(model.FeatureNames) or Len(features.Values) != Len(model.FeatureNames) {
+        return error("[OCT-UFIT006] linear utility score feature schema does not match the model")
+    }
+    for i in 0..Len(model.FeatureNames) {
+        if features.Names[i] != model.FeatureNames[i] {
+            return error("[OCT-UFIT006] linear utility score feature names or order do not match the model")
+        }
+    }
+    return LinearUtilityScoreValues(features.Values, model)?
+}
+
+fn BreakdownLinearUtilityScore(features: UtilityFeatureVector, model: LinearUtilityModel) -> UtilityScoreBreakdown ! Error {
+    let score = ScoreLinearUtility(features, model)?
+    var contributions = [0.0]
+    for i in 0..Len(model.FeatureNames) {
+        let contribution = model.Weights[i] * NormalizedUtilityFeature(features.Values[i], i, model.Normalization)
+        if i == 0 { contributions[0] = contribution } else { contributions = Append(contributions, contribution) }
+    }
+    return UtilityScoreBreakdown { FeatureNames: model.FeatureNames Contributions: contributions Bias: model.Bias Score: score }
+}
+
+/// Existing when utility scores remain Int. This named bridge rejects nonfinite
+/// values and makes both scale and rounding explicit at the call site.
+fn QuantizeLinearUtilityScore(score: Float, scale: Float) -> Int ! Error {
+    if not IsFiniteUtilityNumber(score) or not IsFiniteUtilityNumber(scale) or scale <= 0.0 {
+        return error("[OCT-UFIT007] linear utility quantization requires a finite score and positive finite scale")
+    }
+    let scaled = score * scale
+    if not IsFiniteUtilityNumber(scaled) {
+        return error("[OCT-UFIT007] linear utility quantized score is not finite")
+    }
+    if Abs(scaled) > 9223372036854770000.0 {
+        return error("[OCT-UFIT007] linear utility quantized score is outside the Int range")
+    }
+    return RoundToInt(scaled)
+}
+
+fn CompareLinearUtilityModels(evidence: UtilityObservations, fitted: LinearUtilityModel, baseline: LinearUtilityModel) -> UtilityModelComparison ! Error {
+    let fittedHeldOut = EvaluateLinearUtilityEvidence(evidence, fitted, true)?
+    let baselineHeldOut = EvaluateLinearUtilityEvidence(evidence, baseline, true)?
+    let available = fittedHeldOut.Rows > 0 and baselineHeldOut.Rows > 0
+    return UtilityModelComparison {
+        Fitted: fittedHeldOut
+        Baseline: baselineHeldOut
+        HeldOutMeanSquaredErrorImprovement: if available { baselineHeldOut.MeanSquaredError - fittedHeldOut.MeanSquaredError } else { 0.0 }
+        HeldOutComparisonAvailable: available
+    }
+}
