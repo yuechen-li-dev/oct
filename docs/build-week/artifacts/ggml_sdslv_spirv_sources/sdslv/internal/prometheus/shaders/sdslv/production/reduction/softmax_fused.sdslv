@@ -1,0 +1,108 @@
+namespace Prometheus.Production.Reduction;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream ReductionIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Auxiliary0: readwrite array<f32>;
+    [binding(2)] Auxiliary1: readwrite array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record ReductionParams {
+    RowCount: u32;
+    ElementsPerRow: u32;
+    PartialsPerRow: u32;
+    InputRowStride: u32;
+    ChunkElements: u32;
+    TotalElements: u32;
+    StageRole: u32;
+    Reserved: u32;
+}
+
+enum ReductionLane {
+    Idle;
+    Active { Partner: f32; }
+}
+
+fn MaximumFinite(a: f32, b: f32) -> f32 {
+    if b > a { return b; }
+    return a;
+}
+
+// SDSL-V does not yet expose Exp as a compiler intrinsic.
+fn ExpF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+shader SoftmaxFused {
+    resources ReductionIO;
+    workgroup Shared: array<f32, 256u>;
+
+    fn SelectLane(index: u32, stride: u32) -> ReductionLane {
+        if index < stride {
+            return ReductionLane.Active { Partner: Shared[index + stride] };
+        }
+        return ReductionLane.Idle;
+    }
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(thread: ComputeThread, params: ReductionParams) -> void {
+        let row: u32 = thread.GroupId.x;
+        let inputRowBase: u32 = row * params.InputRowStride;
+        let outputRowBase: u32 = row * params.ElementsPerRow;
+        var maximum: f32 = Bitcast<f32>(4286578688u);
+        for column in thread.GroupIndex..params.ElementsPerRow step 256u {
+            maximum = MaximumFinite(maximum, Input[inputRowBase + column]);
+        }
+        Shared[thread.GroupIndex] = maximum;
+        WorkgroupMemoryBarrierWithSync();
+
+        var stride: u32 = 128u;
+        for maxRound in 0u..8u step 1u {
+            let lane: ReductionLane = SelectLane(thread.GroupIndex, stride);
+            let reduced: f32 = match lane {
+                ReductionLane.Idle => Shared[thread.GroupIndex]
+                ReductionLane.Active(payload) => MaximumFinite(Shared[thread.GroupIndex], payload.Partner)
+            };
+            if thread.GroupIndex < stride {
+                Shared[thread.GroupIndex] = reduced;
+            }
+            WorkgroupMemoryBarrierWithSync();
+            stride = stride / 2u;
+        }
+
+        maximum = Shared[0u];
+        var denominator: f32 = 0.0;
+        for column in thread.GroupIndex..params.ElementsPerRow step 256u {
+            denominator = denominator + ExpF32(Input[inputRowBase + column] - maximum);
+        }
+        Shared[thread.GroupIndex] = denominator;
+        WorkgroupMemoryBarrierWithSync();
+
+        stride = 128u;
+        for sumRound in 0u..8u step 1u {
+            let lane: ReductionLane = SelectLane(thread.GroupIndex, stride);
+            let reduced: f32 = match lane {
+                ReductionLane.Idle => Shared[thread.GroupIndex]
+                ReductionLane.Active(payload) => Shared[thread.GroupIndex] + payload.Partner
+            };
+            if thread.GroupIndex < stride {
+                Shared[thread.GroupIndex] = reduced;
+            }
+            WorkgroupMemoryBarrierWithSync();
+            stride = stride / 2u;
+        }
+
+        denominator = Shared[0u];
+        for column in thread.GroupIndex..params.ElementsPerRow step 256u {
+            Output[outputRowBase + column] = ExpF32(Input[inputRowBase + column] - maximum) / denominator;
+        }
+        return;
+    }
+}

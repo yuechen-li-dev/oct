@@ -143,6 +143,43 @@ FACT(PrometheusReduction_PlannerCoversRequiredBoundariesDeterministically)
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_reduction_plan(&request, &plan), "required row count must plan");
         ASSERT_EQUAL(rows, plan.stages[0].groups_x, "single-workgroup max must dispatch one group per row");
     }
+
+    for (const std::uint32_t operation : {PROM_REDUCTION_OPERATION_SUM, PROM_REDUCTION_OPERATION_SOFTMAX}) {
+        PrometheusReductionRequest packed{};
+        packed.struct_size = static_cast<std::uint32_t>(sizeof(packed));
+        packed.input = &input_value;
+        packed.output = &output_value;
+        packed.row_count = 512u;
+        packed.elements_per_row = 64u;
+        packed.input_element_count = 512u * 64u;
+        packed.output_element_count = operation == PROM_REDUCTION_OPERATION_SOFTMAX ? 512u * 64u : 512u;
+        packed.operation = operation;
+        packed.finalization = operation == PROM_REDUCTION_OPERATION_SOFTMAX
+            ? PROM_REDUCTION_FINALIZATION_STABLE_SOFTMAX
+            : PROM_REDUCTION_FINALIZATION_NONE;
+        PrometheusReductionPlan plan{};
+        PrometheusReductionPlan replay{};
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_reduction_plan(&packed, &plan), "packed short-row request must plan");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_reduction_plan(&packed, &replay), "packed short-row request must replay");
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS), plan.strategy,
+                     "short high-row case must select packed plan");
+        ASSERT_EQUAL(64u, plan.stages[0].groups_x, "eight short rows must share one workgroup");
+        ASSERT_EQUAL(plan.replay_id, replay.replay_id, "packed plan replay must be stable");
+        ASSERT_EQUAL(PROM_OK, prom_reduction_validate_plan_for_test(&plan, plan.temporary_bytes, nullptr),
+                     "packed plan must retain normal structural validation");
+
+        packed.row_count = 1u;
+        packed.input_element_count = 64u;
+        packed.output_element_count = operation == PROM_REDUCTION_OPERATION_SOFTMAX ? 64u : 1u;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_reduction_plan(&packed, &plan), "decode request must plan");
+        if (operation == PROM_REDUCTION_OPERATION_SUM) {
+            ASSERT_TRUE(plan.strategy != PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS,
+                        "few-row sum must retain the wide-row plan");
+        } else {
+            ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS), plan.strategy,
+                         "short-width stable softmax must select the packed plan");
+        }
+    }
 }
 
 FACT(PrometheusReduction_PlannerRejectsMalformedSizesAndTemporaryCapacity)
@@ -223,11 +260,13 @@ FACT(PrometheusReduction_VulkanSumMaxAndStableSoftmaxCorrectness)
     const Case cases[] = {
         {"one_element_sum", 2u, 1u, PROM_REDUCTION_OPERATION_SUM, 0.0f},
         {"odd_mixed_sum", 16u, 513u, PROM_REDUCTION_OPERATION_SUM, 0.0f},
+        {"packed_short_sum", 512u, 64u, PROM_REDUCTION_OPERATION_SUM, 0.0f},
         {"large_staged_sum", 16u, 4096u, PROM_REDUCTION_OPERATION_SUM, 0.0f},
         {"negative_only_max", 2u, 31u, PROM_REDUCTION_OPERATION_MAX, -20.0f},
         {"odd_mixed_max", 16u, 513u, PROM_REDUCTION_OPERATION_MAX, 0.0f},
         {"large_staged_max", 16u, 4096u, PROM_REDUCTION_OPERATION_MAX, -4.0f},
         {"stable_positive_softmax", 16u, 129u, PROM_REDUCTION_OPERATION_SOFTMAX, 10000.0f},
+        {"packed_short_softmax", 512u, 64u, PROM_REDUCTION_OPERATION_SOFTMAX, 10000.0f},
         {"stable_negative_softmax", 16u, 513u, PROM_REDUCTION_OPERATION_SOFTMAX, -10000.0f},
         {"large_staged_softmax", 16u, 4096u, PROM_REDUCTION_OPERATION_SOFTMAX, 5000.0f},
     };
@@ -352,7 +391,7 @@ FACT(PrometheusReduction_PersistentRingReusesResourcesAndReplayIdentity)
     ASSERT_EQUAL(2u, after.configured_ring_depth, "configured physical ring depth must remain two");
     ASSERT_EQUAL(2u, after.physical_slot_count, "diagnostics must report actual slot count");
     ASSERT_EQUAL(3u, observed_slot_mask, "both persistent physical slots must participate");
-    ASSERT_EQUAL(static_cast<uint64_t>(5u), after.pipeline_create_count, "five reduction pipelines must be created once per runtime");
+    ASSERT_EQUAL(static_cast<uint64_t>(7u), after.pipeline_create_count, "seven reduction pipelines must be created once per runtime");
     ASSERT_EQUAL(warm.buffer_allocation_count, after.buffer_allocation_count, "steady-state replay must not allocate Vulkan buffers");
     ASSERT_TRUE(after.buffer_reuse_count > warm.buffer_reuse_count, "steady-state replay must reuse slot buffers");
     ASSERT_EQUAL(0u, after.quarantined_slots, "successful replay must leave no quarantined slots");

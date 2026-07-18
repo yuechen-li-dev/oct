@@ -175,7 +175,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusReduction_M39bRtx3070Corpus, 1)
          << ",\"validation_errors\":" << diagnostics.validation_error_count
          << "},\"device_loss\":false}";
     ASSERT_EQUAL(0u, diagnostics.validation_error_count, "benchmark corpus must end with zero validation errors");
-    ASSERT_EQUAL(static_cast<uint64_t>(5u), diagnostics.pipeline_create_count, "benchmark corpus must reuse five pre-created pipelines");
+    ASSERT_EQUAL(static_cast<uint64_t>(7u), diagnostics.pipeline_create_count, "benchmark corpus must reuse seven pre-created pipelines");
     ASSERT_TRUE(context.WriteTextArtifact("m39b_reduction_benchmark.json", json.str()),
                 "benchmark evidence JSON must be persisted");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "benchmark runtime destroy must succeed");

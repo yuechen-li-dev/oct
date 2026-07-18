@@ -28,7 +28,10 @@ foreach ($relative in $required) {
     Assert-True (Test-Path -LiteralPath (Join-Path $packetRoot $relative)) "Missing packet file: $relative"
 }
 
-$ledger = Get-Content (Join-Path $packetRoot "BUILD_WEEK_COMMITS.json") -Raw | ConvertFrom-Json
+# Build Week commit dates are ISO-8601 strings, not host-local DateTime values.
+# Without DateKind String PowerShell coerces the JSON value and formats it using
+# the machine locale before the exact Git comparison below.
+$ledger = Get-Content (Join-Path $packetRoot "BUILD_WEEK_COMMITS.json") -Raw | ConvertFrom-Json -DateKind String
 Assert-True ($ledger.schemaVersion -eq "oct.build-week.commits.v1") "Unexpected ledger schema"
 Assert-True ($ledger.commits.Count -eq 23) "Expected 23 eligible commits"
 $uniqueShas = @($ledger.commits.sha | Sort-Object -Unique)

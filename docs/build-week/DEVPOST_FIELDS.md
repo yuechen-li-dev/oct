@@ -111,6 +111,9 @@ and made execution fallbacks and artifact provenance explicit.
 ## Accomplishments
 
 - Added a production-owned fused-reduction reactor with tests and evidence.
+- Used direct GGML GLSL versus SDSL-V SPIR-V measurements to find a short-row
+  weakness, then added and measured one bounded packed-row plan; the report
+  includes wins, losses, and no matmul claim.
 - Added canonical SDSL-V vertex/pixel compilation and conformance artifacts.
 - Joined a bounded device-resident transformer block and fixed four-block stack.
 - Used Oct to analyze native numerical evidence and generate reproducible

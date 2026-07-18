@@ -20,6 +20,8 @@
 #include "reactor_vulkan_reduction_softmax_exp_sum_spirv.h"
 #include "reactor_vulkan_reduction_softmax_normalize_spirv.h"
 #include "reactor_vulkan_reduction_softmax_fused_spirv.h"
+#include "reactor_vulkan_reduction_row_sum_packed_short_spirv.h"
+#include "reactor_vulkan_reduction_softmax_packed_short_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -82,6 +84,16 @@ static const prom_shader_asset k_reduction_shader_assets[] = {
                   "internal/prometheus/shaders/sdslv/production/reduction/softmax_fused.sdslv",
                   "reactor_vulkan_reduction_softmax_fused_spirv.h", 1u, PROM_REDUCTION_STAGE_SOFTMAX_FUSED,
                   PROM_REDUCTION_SINGLE_STAGE_THRESHOLD),
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_ROW_SUM_PACKED_SHORT, "reduction-row-sum-packed-short",
+                  k_prom_reduction_row_sum_packed_short_spirv, "RowSumPackedShort_CS",
+                  "internal/prometheus/shaders/sdslv/production/reduction/row_sum_packed_short.sdslv",
+                  "reactor_vulkan_reduction_row_sum_packed_short_spirv.h", 0u,
+                  PROM_REDUCTION_STAGE_ROW_SUM_PACKED_SHORT, PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX),
+  REDUCTION_ASSET(PROM_REDUCTION_SHADER_SOFTMAX_PACKED_SHORT, "reduction-softmax-packed-short",
+                  k_prom_reduction_softmax_packed_short_spirv, "SoftmaxPackedShort_CS",
+                  "internal/prometheus/shaders/sdslv/production/reduction/softmax_packed_short.sdslv",
+                  "reactor_vulkan_reduction_softmax_packed_short_spirv.h", 1u,
+                  PROM_REDUCTION_STAGE_SOFTMAX_PACKED_SHORT, PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX),
 };
 
 #define IMPL(id, label, shader, meta, slot) \
@@ -113,6 +125,10 @@ static const prom_reduction_kernel_dispatch_metadata k_softmax_normalize_meta =
     REDUCTION_META(PROM_REDUCTION_STAGE_SOFTMAX_NORMALIZE, PROM_REDUCTION_MAX_ELEMENTS_PER_ROW);
 static const prom_reduction_kernel_dispatch_metadata k_softmax_fused_meta =
     REDUCTION_META(PROM_REDUCTION_STAGE_SOFTMAX_FUSED, PROM_REDUCTION_SINGLE_STAGE_THRESHOLD);
+static const prom_reduction_kernel_dispatch_metadata k_reduction_sum_packed_short_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_ROW_SUM_PACKED_SHORT, PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX);
+static const prom_reduction_kernel_dispatch_metadata k_softmax_packed_short_meta =
+    REDUCTION_META(PROM_REDUCTION_STAGE_SOFTMAX_PACKED_SHORT, PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX);
 
 #define REDUCTION_IMPL(id, operation, label, shader, metadata, index) \
   { id, operation, label, shader, NULL, 0u, 1u, 0u, 1u, PROM_COMPUTE_PIPELINE_COUNT, metadata, \
@@ -130,6 +146,12 @@ static const prom_compute_implementation k_reduction_compute_implementations[] =
                  &k_softmax_normalize_meta, 3u),
   REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED, PROM_SHADER_OPERATION_SOFTMAX,
                  "reduction-softmax-fused", PROM_REDUCTION_SHADER_SOFTMAX_FUSED, &k_softmax_fused_meta, 4u),
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_ROW_SUM_PACKED_SHORT, PROM_SHADER_OPERATION_REDUCTION_SUM,
+                 "reduction-row-sum-packed-short", PROM_REDUCTION_SHADER_ROW_SUM_PACKED_SHORT,
+                 &k_reduction_sum_packed_short_meta, 5u),
+  REDUCTION_IMPL(PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT, PROM_SHADER_OPERATION_SOFTMAX,
+                 "reduction-softmax-packed-short", PROM_REDUCTION_SHADER_SOFTMAX_PACKED_SHORT,
+                 &k_softmax_packed_short_meta, 6u),
 };
 
 const prom_shader_asset* prom_shader_registry_find_shader(uint32_t id) { for (size_t i=0u;i<sizeof(k_shader_assets)/sizeof(k_shader_assets[0]);++i) if(k_shader_assets[i].shader_id==id) return &k_shader_assets[i]; for (size_t i=0u;i<sizeof(k_reduction_shader_assets)/sizeof(k_reduction_shader_assets[0]);++i) if(k_reduction_shader_assets[i].shader_id==id) return &k_reduction_shader_assets[i]; return NULL; }

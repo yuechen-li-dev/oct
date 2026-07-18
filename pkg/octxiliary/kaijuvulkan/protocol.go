@@ -11,29 +11,31 @@ import (
 
 const (
 	Family          = "kaiju-vulkan"
-	ProtocolVersion = 1
+	ProtocolVersion = 2
 
 	OperationCapabilities = "compute.capabilities"
 	OperationDispatch     = "compute.dispatch"
 	OperationBenchmark    = "compute.benchmark"
 
-	recordCapabilities     = "VulkanCapabilities"
-	recordUInt3            = "VulkanUInt3"
-	recordResource         = "VulkanResource"
-	recordResourceList     = "VulkanResourceList"
-	recordDispatchRequest  = "VulkanDispatchRequest"
-	recordBenchmarkRequest = "VulkanBenchmarkRequest"
-	recordReadback         = "VulkanReadback"
-	recordReadbackList     = "VulkanReadbackList"
-	recordDeviceInfo       = "VulkanDeviceInfo"
-	recordTiming           = "VulkanTiming"
-	recordValidation       = "VulkanValidationStatus"
-	recordDiagnostic       = "VulkanDiagnostic"
-	recordDiagnosticList   = "VulkanDiagnosticList"
-	recordIntList          = "VulkanIntList"
-	recordStringList       = "VulkanStringList"
-	recordLimits           = "VulkanLimits"
-	recordResponse         = "VulkanDispatchResponse"
+	recordCapabilities       = "VulkanCapabilities"
+	recordUInt3              = "VulkanUInt3"
+	recordResource           = "VulkanResource"
+	recordResourceList       = "VulkanResourceList"
+	recordSpecialization     = "VulkanSpecializationConstant"
+	recordSpecializationList = "VulkanSpecializationConstantList"
+	recordDispatchRequest    = "VulkanDispatchRequest"
+	recordBenchmarkRequest   = "VulkanBenchmarkRequest"
+	recordReadback           = "VulkanReadback"
+	recordReadbackList       = "VulkanReadbackList"
+	recordDeviceInfo         = "VulkanDeviceInfo"
+	recordTiming             = "VulkanTiming"
+	recordValidation         = "VulkanValidationStatus"
+	recordDiagnostic         = "VulkanDiagnostic"
+	recordDiagnosticList     = "VulkanDiagnosticList"
+	recordIntList            = "VulkanIntList"
+	recordStringList         = "VulkanStringList"
+	recordLimits             = "VulkanLimits"
+	recordResponse           = "VulkanDispatchResponse"
 )
 
 const (
@@ -84,16 +86,25 @@ type Resource struct {
 	Readback    bool
 }
 
+// SpecializationConstant is an explicitly typed uint32 pipeline specialization
+// value.  It covers the public GGML compute shaders' local-size constants
+// without making the Kaiju protocol a shader-language-specific compiler API.
+type SpecializationConstant struct {
+	ID    uint32
+	Value uint32
+}
+
 type DispatchRequest struct {
-	BenchmarkID    string
-	ReplayID       string
-	Spirv          []byte
-	SpirvSHA256    string
-	EntryPoint     string
-	WorkgroupSize  UInt3
-	DispatchGroups UInt3
-	PushConstants  []byte
-	Resources      []Resource
+	BenchmarkID             string
+	ReplayID                string
+	Spirv                   []byte
+	SpirvSHA256             string
+	EntryPoint              string
+	WorkgroupSize           UInt3
+	DispatchGroups          UInt3
+	PushConstants           []byte
+	SpecializationConstants []SpecializationConstant
+	Resources               []Resource
 }
 
 type BenchmarkRequest struct {
@@ -415,6 +426,7 @@ func dispatchRequestFields(v DispatchRequest) []octxiliary.FieldValue {
 		field("WorkgroupSize", uint3Value(v.WorkgroupSize)),
 		field("DispatchGroups", uint3Value(v.DispatchGroups)),
 		field("PushConstants", octxiliary.BytesValue(v.PushConstants)),
+		field("SpecializationConstants", specializationListValue(v.SpecializationConstants)),
 		field("Resources", resourceListValue(v.Resources)),
 	}
 }
@@ -449,17 +461,67 @@ func parseDispatchRequest(fields []octxiliary.FieldValue) (DispatchRequest, erro
 	if err != nil {
 		return DispatchRequest{}, err
 	}
+	specializations := []SpecializationConstant{}
+	if value, ok := indexed["SpecializationConstants"]; ok {
+		specializations, err = parseSpecializationListValue(value)
+		if err != nil {
+			return DispatchRequest{}, err
+		}
+	}
 	return DispatchRequest{
-		BenchmarkID:    stringFieldMust(indexed, "BenchmarkID"),
-		ReplayID:       stringFieldMust(indexed, "ReplayID"),
-		Spirv:          spirv,
-		SpirvSHA256:    stringFieldMust(indexed, "SpirvSHA256"),
-		EntryPoint:     stringFieldMust(indexed, "EntryPoint"),
-		WorkgroupSize:  workgroup,
-		DispatchGroups: dispatchGroups,
-		PushConstants:  push,
-		Resources:      resources,
+		BenchmarkID:             stringFieldMust(indexed, "BenchmarkID"),
+		ReplayID:                stringFieldMust(indexed, "ReplayID"),
+		Spirv:                   spirv,
+		SpirvSHA256:             stringFieldMust(indexed, "SpirvSHA256"),
+		EntryPoint:              stringFieldMust(indexed, "EntryPoint"),
+		WorkgroupSize:           workgroup,
+		DispatchGroups:          dispatchGroups,
+		PushConstants:           push,
+		SpecializationConstants: specializations,
+		Resources:               resources,
 	}, nil
+}
+
+func specializationListValue(values []SpecializationConstant) octxiliary.Value {
+	items := append([]SpecializationConstant(nil), values...)
+	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	fields := []octxiliary.FieldValue{field("Count", octxiliary.IntValue(len(items)))}
+	for i, value := range items {
+		fields = append(fields, field("Item"+strconv.Itoa(i), octxiliary.RecordValue(recordSpecialization, []octxiliary.FieldValue{
+			field("ID", octxiliary.IntValue(int(value.ID))),
+			field("Value", octxiliary.IntValue(int(value.Value))),
+		})))
+	}
+	return octxiliary.RecordValue(recordSpecializationList, fields)
+}
+
+func parseSpecializationListValue(value octxiliary.Value) ([]SpecializationConstant, error) {
+	if value.Kind != octxiliary.ValueRecord || value.RecordType != recordSpecializationList {
+		return nil, fmt.Errorf("expected %s record", recordSpecializationList)
+	}
+	indexed := fieldsByName(value.Fields)
+	count, err := intField(indexed, "Count")
+	if err != nil {
+		return nil, err
+	}
+	items := make([]SpecializationConstant, 0, count)
+	for i := 0; i < count; i++ {
+		item, err := recordField(indexed, "Item"+strconv.Itoa(i), recordSpecialization)
+		if err != nil {
+			return nil, err
+		}
+		fields := fieldsByName(item.Fields)
+		id, err := uint32Field(fields, "ID")
+		if err != nil {
+			return nil, err
+		}
+		constant, err := uint32Field(fields, "Value")
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, SpecializationConstant{ID: id, Value: constant})
+	}
+	return items, nil
 }
 
 func uint3Value(v UInt3) octxiliary.Value {

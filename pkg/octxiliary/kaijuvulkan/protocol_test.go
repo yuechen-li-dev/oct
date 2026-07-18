@@ -11,14 +11,15 @@ import (
 func TestBenchmarkRequestRoundTrip(t *testing.T) {
 	request := kaijuvulkan.BenchmarkRequest{
 		DispatchRequest: kaijuvulkan.DispatchRequest{
-			BenchmarkID:    "bench-id",
-			ReplayID:       "replay-id",
-			Spirv:          []byte{3, 2, 35, 7},
-			SpirvSHA256:    "abc",
-			EntryPoint:     "entry",
-			WorkgroupSize:  kaijuvulkan.UInt3{X: 1, Y: 2, Z: 3},
-			DispatchGroups: kaijuvulkan.UInt3{X: 4, Y: 5, Z: 6},
-			PushConstants:  []byte{1, 2, 3, 4},
+			BenchmarkID:             "bench-id",
+			ReplayID:                "replay-id",
+			Spirv:                   []byte{3, 2, 35, 7},
+			SpirvSHA256:             "abc",
+			EntryPoint:              "entry",
+			WorkgroupSize:           kaijuvulkan.UInt3{X: 1, Y: 2, Z: 3},
+			DispatchGroups:          kaijuvulkan.UInt3{X: 4, Y: 5, Z: 6},
+			PushConstants:           []byte{1, 2, 3, 4},
+			SpecializationConstants: []kaijuvulkan.SpecializationConstant{{ID: 0, Value: 32}},
 			Resources: []kaijuvulkan.Resource{{
 				Set: 0, Binding: 1, Access: kaijuvulkan.ResourceAccessReadwrite, Kind: kaijuvulkan.ResourceKindStorageBuffer,
 				ElementType: kaijuvulkan.ElementTypeF32, ByteLength: 8, Payload: []byte{9, 8, 7, 6, 5, 4, 3, 2}, Readback: true,
@@ -39,7 +40,7 @@ func TestBenchmarkRequestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.BenchmarkID != request.BenchmarkID || got.ReplayID != request.ReplayID || !bytes.Equal(got.Spirv, request.Spirv) || len(got.Resources) != 1 || !bytes.Equal(got.Resources[0].Payload, request.Resources[0].Payload) {
+	if got.BenchmarkID != request.BenchmarkID || got.ReplayID != request.ReplayID || !bytes.Equal(got.Spirv, request.Spirv) || len(got.SpecializationConstants) != 1 || got.SpecializationConstants[0] != (kaijuvulkan.SpecializationConstant{ID: 0, Value: 32}) || len(got.Resources) != 1 || !bytes.Equal(got.Resources[0].Payload, request.Resources[0].Payload) {
 		t.Fatalf("unexpected roundtrip: %#v", got)
 	}
 }

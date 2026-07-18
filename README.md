@@ -27,6 +27,10 @@ through the current submission state, GPT-5.6 Codex sessions materially added:
 
 - the production SDSL-V fused-reduction reactor and its Vulkan lifecycle,
   correctness, benchmark, and machine-readable evidence;
+- a direct same-harness GGML GLSL versus SDSL-V SPIR-V audit that exposed a
+  short-row reduction weakness, then added one bounded packed-row plan with
+  controlled RTX 3070 crossover evidence; no general GGML or matmul claim is
+  made;
 - the canonical SDSL-V vertex/pixel graphics language and conformance bundle
   (a compiler/toolchain feature, not a graphics runtime or renderer);
 - a bounded device-resident transformer vertical: cooperative matrix SGEMM,

@@ -72,6 +72,9 @@ used materially across the eligible engineering work.
   pretending its parameters were certified.
 - Local Codex should use the repository and canonical CLI; hosted MCP is a
   different, bounded virtual-workspace boundary.
+- The human treated direct GGML/SPIR-V evidence as the authority when it exposed
+  a severe SDSL-V short-row loss, proposed one bounded packed-row physical
+  regime, and required a remeasurement instead of another operator/reactor.
 
 ## Codex changed its own interface after dogfooding
 
@@ -102,6 +105,7 @@ The deterministic evidence is
 | A fitted utility model lacked held-out authority. | Kept fitted scores shadow-only; selected explicit bounded/tunable policy. |
 | The original MCP guessed what an LLM needed. | Dogfooded the product, removed speculative operations, and delegated local semantics to the CLI. |
 | Compiled record-table support was incomplete. | Structured results disclose interpreted fallbacks; compiled mode fails rather than hiding the gap. |
+| Direct GGML benchmarking showed the wide-row reduction plan lost badly on high-row short inputs. | The human proposed a fixed packed-row regime; Codex implemented it inside the existing reduction authority, validated it, and measured the crossover. |
 
 ## Claude boundary
 

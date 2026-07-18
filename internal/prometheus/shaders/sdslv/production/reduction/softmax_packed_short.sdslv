@@ -1,0 +1,91 @@
+namespace Prometheus.Production.Reduction;
+
+// Bounded short-row physical plan. Eight 32-lane partitions own eight rows,
+// with five partition-local reduction rounds instead of 256-lane trees.
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream ReductionIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Auxiliary0: readwrite array<f32>;
+    [binding(2)] Auxiliary1: readwrite array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record ReductionParams {
+    RowCount: u32;
+    ElementsPerRow: u32;
+    PartialsPerRow: u32;
+    InputRowStride: u32;
+    ChunkElements: u32;
+    TotalElements: u32;
+    StageRole: u32;
+    Reserved: u32;
+}
+
+fn MaximumFinite(a: f32, b: f32) -> f32 {
+    if b > a { return b; }
+    return a;
+}
+
+fn ExpF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+shader SoftmaxPackedShort {
+    resources ReductionIO;
+    workgroup Shared: array<f32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(thread: ComputeThread, params: ReductionParams) -> void {
+        let subgroup: u32 = thread.GroupIndex / 32u;
+        let lane: u32 = thread.GroupIndex - subgroup * 32u;
+        let row: u32 = thread.GroupId.x * 8u + subgroup;
+        let inputBase: u32 = row * params.InputRowStride;
+        let outputBase: u32 = row * params.ElementsPerRow;
+        var localMaximum: f32 = Bitcast<f32>(4286578688u);
+        if row < params.RowCount {
+            for column in lane..params.ElementsPerRow step 32u {
+                localMaximum = MaximumFinite(localMaximum, Input[inputBase + column]);
+            }
+        }
+        Shared[thread.GroupIndex] = localMaximum;
+        WorkgroupMemoryBarrierWithSync();
+        var maxStride: u32 = 16u;
+        for maxRound in 0u..5u step 1u {
+            if lane < maxStride {
+                Shared[thread.GroupIndex] = MaximumFinite(Shared[thread.GroupIndex], Shared[thread.GroupIndex + maxStride]);
+            }
+            WorkgroupMemoryBarrierWithSync();
+            maxStride = maxStride / 2u;
+        }
+        let maximum: f32 = Shared[subgroup * 32u];
+        var localDenominator: f32 = 0.0;
+        if row < params.RowCount {
+            for column in lane..params.ElementsPerRow step 32u {
+                localDenominator = localDenominator + ExpF32(Input[inputBase + column] - maximum);
+            }
+        }
+        Shared[thread.GroupIndex] = localDenominator;
+        WorkgroupMemoryBarrierWithSync();
+        var sumStride: u32 = 16u;
+        for sumRound in 0u..5u step 1u {
+            if lane < sumStride {
+                Shared[thread.GroupIndex] = Shared[thread.GroupIndex] + Shared[thread.GroupIndex + sumStride];
+            }
+            WorkgroupMemoryBarrierWithSync();
+            sumStride = sumStride / 2u;
+        }
+        let denominator: f32 = Shared[subgroup * 32u];
+        if row < params.RowCount {
+            for column in lane..params.ElementsPerRow step 32u {
+                Output[outputBase + column] = ExpF32(Input[inputBase + column] - maximum) / denominator;
+            }
+        }
+        return;
+    }
+}

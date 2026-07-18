@@ -1,8 +1,9 @@
-# llama.cpp CUDA, Vulkan, and SDSL-V Vulkan comparison
+# llama.cpp CUDA, Vulkan, and SDSL-V Vulkan integration history (superseded as primary comparison)
 
-Status: **MEANINGFUL PROGRESSION** (2026-07-18 UTC). This is a benchmark-only
-shader-injection evidence packet, not a claim that Prometheus is a complete
-llama.cpp backend.
+Status: **INTEGRATION HISTORY** (2026-07-18 UTC). This is a benchmark-only
+shader-injection evidence packet, not a primary shader-performance comparison
+or a claim that Prometheus is a complete llama.cpp backend. Its direct
+replacement is [the neutral GGML/SDSL-V SPIR-V comparison](GGML_SDSLV_SPIRV_COMPARISON.md).
 
 ## Identity and environment
 

@@ -1,0 +1,83 @@
+// Benchmark-only SDSL-V adapter for llama.cpp's GGML_OP_RMS_NORM FP32 path.
+//
+// This intentionally mirrors the stock Vulkan shader ABI for the non-fused,
+// non-partials path: bindings 0..3 and the 116-byte vk_op_binary_push_constants
+// layout. It is not a Prometheus runtime shader and must only be selected by
+// the GGML_VULKAN_SDSLV_EXPERIMENT benchmark patch.
+namespace BuildWeek.LlamaCpp.RmsNorm;
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream RmsNormIO {
+    [binding(0)] Input: readonly array<f32>;
+    // GGML always binds this slot. It is intentionally unused in non-fused
+    // RMSNorm, where src1 aliases src0.
+    [binding(1)] Source1: readonly array<f32>;
+    [binding(2)] Output: readwrite array<f32>;
+    // GGML always binds this slot; it is used by stock partial RMSNorm only.
+    [binding(3)] Partials: readonly array<f32>;
+}
+
+// Exact field order and scalar widths of ggml's vk_op_binary_push_constants.
+record GgmlBinaryPushConstants {
+    Ne: u32;
+    Ne00: u32; Ne01: u32; Ne02: u32; Ne03: u32;
+    Nb00: u32; Nb01: u32; Nb02: u32; Nb03: u32;
+    Ne10: u32; Ne11: u32; Ne12: u32; Ne13: u32;
+    Nb10: u32; Nb11: u32; Nb12: u32; Nb13: u32;
+    Ne20: u32; Ne21: u32; Ne22: u32; Ne23: u32;
+    Nb20: u32; Nb21: u32; Nb22: u32; Nb23: u32;
+    MisalignOffsets: u32;
+    Epsilon: f32;
+    Param2: f32;
+    Param3: u32;
+}
+
+fn ReciprocalSqrtF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return rsqrt(value); };
+    return result;
+}
+
+shader GgmlRmsNormF32 {
+    resources RmsNormIO;
+    workgroup Sum: array<f32, 512u>;
+
+    stage compute [numthreads(512u, 1u, 1u)] fn CS(thread: ComputeThread, params: GgmlBinaryPushConstants) -> void {
+        let row: u32 = thread.GroupId.x;
+        let channel: u32 = thread.GroupId.y;
+        let sample: u32 = thread.GroupId.z;
+        let inputOffset: u32 = sample * params.Nb03 + channel * params.Nb02 + row * params.Nb01 + (params.MisalignOffsets / 65536u);
+        let outputOffset: u32 = ((sample * params.Ne02 + channel) * params.Ne01 + row) * params.Ne00 + (params.MisalignOffsets % 256u);
+
+        var partialSum: f32 = 0.0;
+        for column in thread.GroupIndex..params.Ne00 step 512u {
+            let value: f32 = Input[inputOffset + column];
+            partialSum = partialSum + value * value;
+        }
+        Sum[thread.GroupIndex] = partialSum;
+        WorkgroupMemoryBarrierWithSync();
+
+        var stride: u32 = 256u;
+        // This reduction tree has a fixed extent dictated by numthreads(512).
+        // Keep it compiler-directed rather than making the tensor width static.
+        [unroll]
+        for round in 0u..9u step 1u {
+            if thread.GroupIndex < stride {
+                Sum[thread.GroupIndex] = Sum[thread.GroupIndex] + Sum[thread.GroupIndex + stride];
+            }
+            WorkgroupMemoryBarrierWithSync();
+            stride = stride / 2u;
+        }
+
+        let scale: f32 = ReciprocalSqrtF32(Sum[0u] / params.Ne00 + params.Epsilon);
+        for column in thread.GroupIndex..params.Ne00 step 512u {
+            Output[outputOffset + column] = scale * Input[inputOffset + column];
+        }
+        return;
+    }
+}

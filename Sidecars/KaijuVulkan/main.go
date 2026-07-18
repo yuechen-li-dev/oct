@@ -26,7 +26,8 @@ func main() {
 		fmt.Printf("%s %s protocol=%d kaiju=%s fork=%s go=%s\n", sidecarName, sidecarVersion, kaijuvulkan.ProtocolVersion, upstreamCommit, forkCommit, runtime.Version())
 		return
 	}
-	if octxiliary.Main(os.Stdin, os.Stdout, handleRequest) != 0 {
+	if err := octxiliary.Serve(os.Stdin, os.Stdout, handleRequest); err != nil {
+		fmt.Fprintln(os.Stderr, "octxiliary-kaiju-vulkan:", err)
 		os.Exit(1)
 	}
 }

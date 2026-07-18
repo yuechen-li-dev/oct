@@ -48,18 +48,19 @@ const (
 )
 
 type validatedExecutionRequest struct {
-	benchmarkID    string
-	replayID       string
-	spirvSHA256    string
-	entryPoint     string
-	spv            []byte
-	workgroupSize  kaijuvulkan.UInt3
-	dispatchGroups kaijuvulkan.UInt3
-	pushConstants  []byte
-	resources      []kaijuvulkan.Resource
-	warmup         uint32
-	iterations     uint32
-	measureTiming  bool
+	benchmarkID             string
+	replayID                string
+	spirvSHA256             string
+	entryPoint              string
+	spv                     []byte
+	workgroupSize           kaijuvulkan.UInt3
+	dispatchGroups          kaijuvulkan.UInt3
+	pushConstants           []byte
+	specializationConstants []kaijuvulkan.SpecializationConstant
+	resources               []kaijuvulkan.Resource
+	warmup                  uint32
+	iterations              uint32
+	measureTiming           bool
 }
 
 type validationLayerInfo struct {
@@ -144,18 +145,19 @@ func protocolFailure(code, replayID, message string) kaijuvulkan.DispatchRespons
 
 func validateDispatchRequest(request kaijuvulkan.DispatchRequest) (validatedExecutionRequest, *kaijuvulkan.DispatchResponse) {
 	validated, code, message := validateCommon(validatedExecutionRequest{
-		benchmarkID:    request.BenchmarkID,
-		replayID:       request.ReplayID,
-		spirvSHA256:    strings.ToLower(request.SpirvSHA256),
-		entryPoint:     request.EntryPoint,
-		spv:            append([]byte(nil), request.Spirv...),
-		workgroupSize:  request.WorkgroupSize,
-		dispatchGroups: request.DispatchGroups,
-		pushConstants:  append([]byte(nil), request.PushConstants...),
-		resources:      cloneResources(request.Resources),
-		warmup:         0,
-		iterations:     1,
-		measureTiming:  false,
+		benchmarkID:             request.BenchmarkID,
+		replayID:                request.ReplayID,
+		spirvSHA256:             strings.ToLower(request.SpirvSHA256),
+		entryPoint:              request.EntryPoint,
+		spv:                     append([]byte(nil), request.Spirv...),
+		workgroupSize:           request.WorkgroupSize,
+		dispatchGroups:          request.DispatchGroups,
+		pushConstants:           append([]byte(nil), request.PushConstants...),
+		specializationConstants: append([]kaijuvulkan.SpecializationConstant(nil), request.SpecializationConstants...),
+		resources:               cloneResources(request.Resources),
+		warmup:                  0,
+		iterations:              1,
+		measureTiming:           false,
 	})
 	if code != "" {
 		response := protocolFailure(code, request.ReplayID, message)
@@ -168,18 +170,19 @@ func validateDispatchRequest(request kaijuvulkan.DispatchRequest) (validatedExec
 
 func validateBenchmarkRequest(request kaijuvulkan.BenchmarkRequest) (validatedExecutionRequest, *kaijuvulkan.DispatchResponse) {
 	validated, code, message := validateCommon(validatedExecutionRequest{
-		benchmarkID:    request.BenchmarkID,
-		replayID:       request.ReplayID,
-		spirvSHA256:    strings.ToLower(request.SpirvSHA256),
-		entryPoint:     request.EntryPoint,
-		spv:            append([]byte(nil), request.Spirv...),
-		workgroupSize:  request.WorkgroupSize,
-		dispatchGroups: request.DispatchGroups,
-		pushConstants:  append([]byte(nil), request.PushConstants...),
-		resources:      cloneResources(request.Resources),
-		warmup:         request.Warmup,
-		iterations:     request.Iterations,
-		measureTiming:  true,
+		benchmarkID:             request.BenchmarkID,
+		replayID:                request.ReplayID,
+		spirvSHA256:             strings.ToLower(request.SpirvSHA256),
+		entryPoint:              request.EntryPoint,
+		spv:                     append([]byte(nil), request.Spirv...),
+		workgroupSize:           request.WorkgroupSize,
+		dispatchGroups:          request.DispatchGroups,
+		pushConstants:           append([]byte(nil), request.PushConstants...),
+		specializationConstants: append([]kaijuvulkan.SpecializationConstant(nil), request.SpecializationConstants...),
+		resources:               cloneResources(request.Resources),
+		warmup:                  request.Warmup,
+		iterations:              request.Iterations,
+		measureTiming:           true,
 	})
 	if code != "" {
 		response := protocolFailure(code, request.ReplayID, message)
@@ -226,6 +229,13 @@ func validateCommon(request validatedExecutionRequest) (validatedExecutionReques
 	}
 	if len(request.pushConstants)%4 != 0 {
 		return request, errorInvalidPushConstants, "push constant byte length must be divisible by four"
+	}
+	seenConstants := map[uint32]struct{}{}
+	for _, constant := range request.specializationConstants {
+		if _, exists := seenConstants[constant.ID]; exists {
+			return request, errorInvalidDispatch, fmt.Sprintf("duplicate specialization constant %d", constant.ID)
+		}
+		seenConstants[constant.ID] = struct{}{}
 	}
 	if request.warmup > limits.MaxWarmup {
 		return request, errorOversizedRequest, fmt.Sprintf("warmup %d exceeds limit %d", request.warmup, limits.MaxWarmup)
@@ -413,7 +423,7 @@ func (c *context) initialize(request validatedExecutionRequest) error {
 	if err := c.createDescriptors(); err != nil {
 		return fmt.Errorf("%s: %w", errorDescriptorFailure, err)
 	}
-	if err := c.createPipeline(request.entryPoint, request.spv, len(request.pushConstants)); err != nil {
+	if err := c.createPipeline(request.entryPoint, request.spv, len(request.pushConstants), request.specializationConstants); err != nil {
 		return fmt.Errorf("%s: %w", errorPipelineFailure, err)
 	}
 	if err := c.createCommands(request.measureTiming); err != nil {
@@ -448,7 +458,10 @@ func (c *context) initializeLoaderAndInstance() error {
 		ApplicationVersion: vk.MakeVersion(0, 1, 0),
 		PEngineName:        (*vk.Char)(unsafe.Pointer(&engineName[0])),
 		EngineVersion:      1,
-		ApiVersion:         vk.MakeVersion(1, 0, 0),
+		// GGML's official generator targets Vulkan 1.2 SPIR-V.  The sidecar
+		// remains a compute-only harness, but its instance contract must admit
+		// those public modules rather than silently constraining them to 1.0.
+		ApiVersion: vk.MakeVersion(1, 2, 0),
 	}
 	createInfo := vk.InstanceCreateInfo{SType: vc.StructureTypeInstanceCreateInfo, PApplicationInfo: &app}
 	if c.validation.requested {
@@ -690,7 +703,7 @@ func (c *context) createDescriptors() error {
 	return nil
 }
 
-func (c *context) createPipeline(entry string, spv []byte, pushBytes int) error {
+func (c *context) createPipeline(entry string, spv []byte, pushBytes int, constants []kaijuvulkan.SpecializationConstant) error {
 	words := make([]uint32, len(spv)/4)
 	for i := range words {
 		words[i] = binary.LittleEndian.Uint32(spv[i*4:])
@@ -727,13 +740,27 @@ func (c *context) createPipeline(entry string, spv []byte, pushBytes int) error 
 		Module: c.shader,
 		PName:  (*vk.Char)(unsafe.Pointer(&name[0])),
 	}
+	entries := make([]vk.SpecializationMapEntry, len(constants))
+	data := make([]byte, len(constants)*4)
+	if len(constants) > 0 {
+		for i, constant := range constants {
+			entries[i] = vk.SpecializationMapEntry{ConstantID: constant.ID, Offset: uint32(i * 4), Size: 4}
+			binary.LittleEndian.PutUint32(data[i*4:], constant.Value)
+		}
+		specialization := vk.SpecializationInfo{MapEntryCount: uint32(len(entries)), PMapEntries: &entries[0], DataSize: uint(len(data)), PData: unsafe.Pointer(&data[0])}
+		stage.PSpecializationInfo = &specialization
+		defer runtime.KeepAlive(specialization)
+	}
 	createInfo := vk.ComputePipelineCreateInfo{
 		SType:             vc.StructureTypeComputePipelineCreateInfo,
 		Stage:             stage,
 		Layout:            c.pipelineLayout,
 		BasePipelineIndex: -1,
 	}
-	return check("vkCreateComputePipelines", vk.CreateComputePipelines(c.device, nil, 1, &createInfo, nil, &c.pipeline))
+	err := check("vkCreateComputePipelines", vk.CreateComputePipelines(c.device, nil, 1, &createInfo, nil, &c.pipeline))
+	runtime.KeepAlive(entries)
+	runtime.KeepAlive(data)
+	return err
 }
 
 func (c *context) createCommands(enableTiming bool) error {

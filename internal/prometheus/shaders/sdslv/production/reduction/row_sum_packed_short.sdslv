@@ -1,0 +1,59 @@
+namespace Prometheus.Production.Reduction;
+
+// Bounded short-row physical plan. Eight 32-lane partitions own eight rows,
+// replacing the 256-lane shared-memory tree with five partition-local rounds.
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream ReductionIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Auxiliary0: readwrite array<f32>;
+    [binding(2)] Auxiliary1: readwrite array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record ReductionParams {
+    RowCount: u32;
+    ElementsPerRow: u32;
+    PartialsPerRow: u32;
+    InputRowStride: u32;
+    ChunkElements: u32;
+    TotalElements: u32;
+    StageRole: u32;
+    Reserved: u32;
+}
+
+shader RowSumPackedShort {
+    resources ReductionIO;
+    workgroup Shared: array<f32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(thread: ComputeThread, params: ReductionParams) -> void {
+        let subgroup: u32 = thread.GroupIndex / 32u;
+        let lane: u32 = thread.GroupIndex - subgroup * 32u;
+        let row: u32 = thread.GroupId.x * 8u + subgroup;
+        var value: f32 = 0.0;
+        if row < params.RowCount {
+            for column in lane..params.ElementsPerRow step 32u {
+                value = value + Input[row * params.InputRowStride + column];
+            }
+        }
+        Shared[thread.GroupIndex] = value;
+        WorkgroupMemoryBarrierWithSync();
+        var stride: u32 = 16u;
+        for round in 0u..5u step 1u {
+            if lane < stride {
+                Shared[thread.GroupIndex] = Shared[thread.GroupIndex] + Shared[thread.GroupIndex + stride];
+            }
+            WorkgroupMemoryBarrierWithSync();
+            stride = stride / 2u;
+        }
+        if row < params.RowCount and lane == 0u {
+            Output[row] = Shared[thread.GroupIndex];
+        }
+        return;
+    }
+}

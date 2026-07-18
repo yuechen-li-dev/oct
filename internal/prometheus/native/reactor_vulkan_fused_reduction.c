@@ -38,7 +38,7 @@
 
 #define PROM_REDUCTION_STATE_MAGIC 0x52333942u
 #define PROM_REDUCTION_RING_MAX_DEPTH 4u
-#define PROM_REDUCTION_PIPELINE_COUNT 5u
+#define PROM_REDUCTION_PIPELINE_COUNT 7u
 #define PROM_REDUCTION_MIN_BINDING_BYTES ((VkDeviceSize)sizeof(float))
 #define PROM_REDUCTION_QUERY_STRIDE 1024u
 #define PROM_M40B_QUERY_COUNT 8u
@@ -3071,7 +3071,8 @@ static void prom_reduction_assign_temporary_metadata(PrometheusReductionPlan* pl
     plan->temporary_bytes = partial_bytes;
     return;
   }
-  if (plan->strategy == PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP) {
+  if (plan->strategy == PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP ||
+      plan->strategy == PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS) {
     plan->temporary_bytes = 0u;
     return;
   }
@@ -3091,6 +3092,21 @@ static void prom_reduction_assign_temporary_metadata(PrometheusReductionPlan* pl
     plan->stages[1].temporary_bytes_written = row_bytes;
   }
   plan->temporary_bytes = partial_bytes + 2u * row_bytes;
+}
+
+/* The short-row crossover is a fixed RTX 3070 witness fact, not a scheduler:
+   packed sum repays its partition overhead only at high row counts, while the
+   packed stable-softmax path wins across its supported short-width envelope. */
+static uint32_t prom_reduction_select_packed_short(const PrometheusReductionRequest* request) {
+  if (request->operation == PROM_REDUCTION_OPERATION_SOFTMAX) {
+    return request->flags == 0u && request->elements_per_row <= PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX;
+  }
+  if (request->operation == PROM_REDUCTION_OPERATION_SUM) {
+    if (request->elements_per_row <= 96u && request->row_count >= PROM_REDUCTION_PACKED_SHORT_SUM_MIN_ROWS) return 1u;
+    return request->elements_per_row <= PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX &&
+           request->row_count >= PROM_REDUCTION_PACKED_SHORT_SUM_WIDE_MIN_ROWS;
+  }
+  return 0u;
 }
 
 int prom_reactor_reduction_plan_impl(const PrometheusReductionRequest* request,
@@ -3121,16 +3137,36 @@ int prom_reactor_reduction_plan_impl(const PrometheusReductionRequest* request,
     uint32_t implementation = request->operation == PROM_REDUCTION_OPERATION_SUM
                                   ? PROM_REDUCTION_IMPLEMENTATION_ROW_SUM
                                   : PROM_REDUCTION_IMPLEMENTATION_ROW_MAX;
-    out_plan->strategy = PROM_REDUCTION_STRATEGY_COMPOSED;
-    prom_reduction_add_stage(out_plan, role, shader, implementation, request->row_count * partial_count,
-                             request->elements_per_row, partial_count);
+    const uint32_t packed_short = prom_reduction_select_packed_short(request);
+    out_plan->strategy = packed_short != 0u ? PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS
+                                            : PROM_REDUCTION_STRATEGY_COMPOSED;
+    if (packed_short != 0u) {
+      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_ROW_SUM_PACKED_SHORT,
+                               PROM_REDUCTION_SHADER_ROW_SUM_PACKED_SHORT,
+                               PROM_REDUCTION_IMPLEMENTATION_ROW_SUM_PACKED_SHORT,
+                               prom_reduction_ceil_div_u32(request->row_count,
+                                                           PROM_REDUCTION_PACKED_SHORT_ROWS_PER_GROUP),
+                               request->elements_per_row, 1u);
+    } else {
+      prom_reduction_add_stage(out_plan, role, shader, implementation, request->row_count * partial_count,
+                               request->elements_per_row, partial_count);
+    }
     if (partial_count > 1u) {
       prom_reduction_add_stage(out_plan, role, shader, implementation, request->row_count, partial_count, 1u);
     }
   } else {
     composed = (request->flags & PROM_REDUCTION_FLAG_FORCE_COMPOSED) != 0u ||
                request->elements_per_row > PROM_REDUCTION_SINGLE_STAGE_THRESHOLD;
-    if (!composed) {
+    const uint32_t packed_short = prom_reduction_select_packed_short(request);
+    if (packed_short != 0u) {
+      out_plan->strategy = PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS;
+      prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_SOFTMAX_PACKED_SHORT,
+                               PROM_REDUCTION_SHADER_SOFTMAX_PACKED_SHORT,
+                               PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT,
+                               prom_reduction_ceil_div_u32(request->row_count,
+                                                           PROM_REDUCTION_PACKED_SHORT_ROWS_PER_GROUP),
+                               request->elements_per_row, 1u);
+    } else if (!composed) {
       out_plan->strategy = PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP;
       prom_reduction_add_stage(out_plan, PROM_REDUCTION_STAGE_SOFTMAX_FUSED,
                                PROM_REDUCTION_SHADER_SOFTMAX_FUSED,
@@ -3405,6 +3441,8 @@ static int prom_reduction_create_pipelines(prom_reduction_runtime_state* state) 
       PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_EXP_SUM,
       PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_NORMALIZE,
       PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED,
+      PROM_REDUCTION_IMPLEMENTATION_ROW_SUM_PACKED_SHORT,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT,
   };
   uint32_t index;
   for (index = 0u; index < PROM_REDUCTION_PIPELINE_COUNT; ++index) {
@@ -3861,7 +3899,8 @@ static void prom_reduction_stage_bindings_for_io(const prom_reduction_slot* slot
     if (plan->partial_count > 1u && stage_index == 1u) out->input = &slot->scratch;
     return;
   }
-  if (plan->strategy == PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP) return;
+  if (plan->strategy == PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP ||
+      plan->strategy == PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS) return;
   if (plan->partial_count > 1u) {
     if (stage_index == 0u) out->output = &slot->scratch;
     if (stage_index == 1u) { out->input = &slot->scratch; out->output = &slot->row_max; }
