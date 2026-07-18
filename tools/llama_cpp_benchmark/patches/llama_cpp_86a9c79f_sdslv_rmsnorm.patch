@@ -1,0 +1,111 @@
+diff --git a/ggml/src/ggml-vulkan/CMakeLists.txt b/ggml/src/ggml-vulkan/CMakeLists.txt
+index 1dc6a145..cf0f2446 100644
+--- a/ggml/src/ggml-vulkan/CMakeLists.txt
++++ b/ggml/src/ggml-vulkan/CMakeLists.txt
+@@ -6,6 +6,11 @@ if (POLICY CMP0147)
+     cmake_policy(SET CMP0147 NEW)
+ endif()
+ 
++# Benchmark-only adapter: retain the stock Vulkan runtime and swap only the
++# non-fused FP32 RMSNorm SPIR-V module.  This is deliberately opt-in and is
++# not an upstream production backend option.
++option(GGML_VULKAN_SDSLV_EXPERIMENT "Use the benchmark-only SDSL-V RMSNorm SPIR-V adapter" OFF)
++
+ find_package(Vulkan COMPONENTS glslc REQUIRED)
+ 
+ if (DEFINED ENV{VULKAN_SDK})
+@@ -64,6 +69,10 @@ if (Vulkan_FOUND)
+                              ../../include/ggml-vulkan.h
+                             )
+ 
++    if (GGML_VULKAN_SDSLV_EXPERIMENT)
++        target_compile_definitions(ggml-vulkan PRIVATE GGML_VULKAN_SDSLV_EXPERIMENT)
++    endif()
++
+     set(VULKAN_SHADER_GEN_CMAKE_ARGS "")
+ 
+     # Test all shader extensions
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index c3fd436a..d195a72f 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -95,6 +95,10 @@ typedef struct VkPhysicalDeviceCooperativeMatrixDecodeVectorFeaturesNV {
+ 
+ #include "ggml-vulkan-shaders.hpp"
+ 
++#if defined(GGML_VULKAN_SDSLV_EXPERIMENT)
++#include "ggml-vulkan-sdslv-experiment.hpp"
++#endif
++
+ // remove this once it's more widely available in the SDK
+ #if !defined(VK_KHR_shader_bfloat16)
+ 
+@@ -2192,6 +2196,12 @@ struct ggml_backend_vk_context {
+     std::vector<int> query_node_idx;
+     int32_t num_queries {};
+     int32_t query_idx {};
++
++#if defined(GGML_VULKAN_SDSLV_EXPERIMENT)
++    uint64_t sdslv_graph_nodes {};
++    uint64_t sdslv_substituted_rms_norm_nodes {};
++    uint64_t sdslv_stock_vulkan_nodes {};
++#endif
+ };
+ 
+ static void * const vk_ptr_base = (void *)(uintptr_t) 0x1000;  // NOLINT
+@@ -5187,7 +5197,12 @@ static void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+     ggml_vk_create_pipeline(device, device->pipeline_norm_f32, "norm_f32", norm_f32_len, norm_f32_data, "main", 2, sizeof(vk_op_unary_push_constants), {1, 1, 1}, {}, 1);
+     ggml_vk_create_pipeline(device, device->pipeline_group_norm_f32, "group_norm_f32", group_norm_f32_len, group_norm_f32_data, "main", 2, sizeof(vk_op_push_constants), {1, 1, 1}, {}, 1);
+ 
++#if defined(GGML_VULKAN_SDSLV_EXPERIMENT)
++    GGML_LOG_INFO("SDSL-V benchmark substitution: rms_norm_f32 <- rms_norm_f32_ggml_abi (sha256=1d50d664966549d69d6b4e1a70e29e4abb67af6b31bf6b306ab8911f806f3170)\n");
++    ggml_vk_create_pipeline(device, device->pipeline_rms_norm_f32, "rms_norm_f32_sdslv_benchmark", k_sdslv_benchmark_rms_norm_f32_ggml_abi_spirv_byte_length, k_sdslv_benchmark_rms_norm_f32_ggml_abi_spirv, "GgmlRmsNormF32_CS", 4, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {0, 0}, 1, true);
++#else
+     ggml_vk_create_pipeline(device, device->pipeline_rms_norm_f32, "rms_norm_f32", rms_norm_f32_len, rms_norm_f32_data, "main", 4, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {0, 0}, 1, true);
++#endif
+     ggml_vk_create_pipeline(device, device->pipeline_rms_norm_mul_f32, "rms_norm_mul_f32", rms_norm_f32_len, rms_norm_f32_data, "main", 4, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {0, 1}, 1, true);
+     ggml_vk_create_pipeline(device, device->pipeline_rms_norm_partials_f32, "rms_norm_partials_f32", rms_norm_partials_f32_len, rms_norm_partials_f32_data, "main", 4, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {0, 0}, 1, true);
+     ggml_vk_create_pipeline(device, device->pipeline_rms_norm_mul_partials_f32, "rms_norm_mul_partials_f32", rms_norm_partials_f32_len, rms_norm_partials_f32_data, "main", 4, sizeof(vk_op_binary_push_constants), {1, 1, 1}, {0, 1}, 1, true);
+@@ -12842,6 +12857,19 @@ static void ggml_vk_rms_norm(ggml_backend_vk_context * ctx, vk_context& subctx,
+                 ggml_vk_subbuffer(ctx, buf[6], offset[6]),
+             }, pc, elements);
+     } else {
++#if defined(GGML_VULKAN_SDSLV_EXPERIMENT)
++        if (ctx->do_add_rms_partials) {
++            GGML_LOG_INFO("SDSL-V benchmark stock fallback: rms_norm_partials_f32 (partial reduction required)\n");
++        } else if (ctx->num_additional_fused_ops == 1) {
++            GGML_LOG_INFO("SDSL-V benchmark stock fallback: rms_norm_mul_f32 (fusion required)\n");
++        } else if (ctx->num_additional_fused_ops > 1) {
++            GGML_LOG_INFO("SDSL-V benchmark stock fallback: rms_norm_mul_rope_f32_* (multi-op fusion required)\n");
++        } else {
++            ctx->sdslv_substituted_rms_norm_nodes += 1;
++            GGML_ASSERT(ctx->sdslv_stock_vulkan_nodes > 0);
++            ctx->sdslv_stock_vulkan_nodes -= 1;
++        }
++#endif
+         ggml_vk_op_f32<vk_op_binary_push_constants>(ctx, subctx, src0, src1, nullptr, nullptr, dst, GGML_OP_RMS_NORM, std::move(bin));
+     }
+ 
+@@ -15655,6 +15683,10 @@ static void ggml_backend_vk_free(ggml_backend_t backend) {
+     ggml_backend_vk_context * ctx = (ggml_backend_vk_context *)backend->context;
+     VK_LOG_DEBUG("ggml_backend_vk_free(" << ctx->name << ")");
+ 
++#if defined(GGML_VULKAN_SDSLV_EXPERIMENT)
++    GGML_LOG_INFO("SDSL-V benchmark coverage: substituted_pipeline_families=1 substituted_rms_norm_nodes=%llu stock_vulkan_graph_nodes=%llu cpu_fallback_nodes=0 (Vulkan backend scope) total_graph_nodes=%llu\n", static_cast<unsigned long long>(ctx->sdslv_substituted_rms_norm_nodes), static_cast<unsigned long long>(ctx->sdslv_stock_vulkan_nodes), static_cast<unsigned long long>(ctx->sdslv_graph_nodes));
++#endif
++
+     ggml_vk_cleanup(ctx);
+ 
+     delete ctx;
+@@ -16445,6 +16477,11 @@ static ggml_status ggml_backend_vk_graph_compute(ggml_backend_t backend, ggml_cg
+     VK_LOG_DEBUG("ggml_backend_vk_graph_compute(" << cgraph->n_nodes << " nodes)");
+     ggml_backend_vk_context * ctx = (ggml_backend_vk_context *)backend->context;
+ 
++#if defined(GGML_VULKAN_SDSLV_EXPERIMENT)
++    ctx->sdslv_graph_nodes += cgraph->n_nodes;
++    ctx->sdslv_stock_vulkan_nodes += cgraph->n_nodes;
++#endif
++
+     if (vk_instance.debug_utils_support) {
+         vk::DebugUtilsLabelEXT dul = {};
+         dul.pLabelName = "ggml_backend_vk_graph_compute";

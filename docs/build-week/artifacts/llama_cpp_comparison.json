@@ -1,0 +1,41 @@
+{
+  "schema": "oct.build_week.llama_cpp_comparison.v1",
+  "status": "meaningful_progression",
+  "pinned_llama_cpp_commit": "86a9c79f866799eb0e7e89c03578ccfbcc5d808e",
+  "oct_commit": "dff95f309f7949b024f6416b41380596df733e15",
+  "model": {
+    "repository": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+    "commit": "91cad51170dc346986eccefdc2dd33a9da36ead9",
+    "file": "qwen2.5-1.5b-instruct-fp16.gguf",
+    "sha256": "fc89e330deb3fd8fa560f1c0f35a1e2b8da96d59e13445559ed190307a6f5649",
+    "llama_reported_params": 1777088000,
+    "final_model_selection": false
+  },
+  "substitution": {
+    "operator": "GGML_OP_RMS_NORM",
+    "pipeline": "pipeline_rms_norm_f32",
+    "entry_point": "GgmlRmsNormF32_CS",
+    "shader_sha256": "1d50d664966549d69d6b4e1a70e29e4abb67af6b31bf6b306ab8911f806f3170",
+    "workgroup": [512, 1, 1],
+    "accumulation": "fp32",
+    "temporary_bytes": 0,
+    "end_to_end_coverage": "unmeasured; no Qwen substitution log observed"
+  },
+  "correctness": {
+    "test_backend_ops_rms_norm": {"passed": 21, "failed": 0},
+    "model_logits": "not_collected"
+  },
+  "operator_decode_2048x1_host_us": {
+    "cuda_single": 6.04,
+    "vulkan_stock_single": 4.77,
+    "sdslv_single": 5.19,
+    "sdslv_samples": [5.32, 5.39, 5.32, 5.32, 5.32, 5.32, 5.32, 5.37, 5.32, 5.32],
+    "sdslv_summary": {"mean": 5.332, "median": 5.32, "stddev": 0.026, "min": 5.32, "p95": 5.39}
+  },
+  "llama_bench_pp128_tps": {
+    "cuda": {"mean": 6800.730965, "stddev": 1311.975877},
+    "vulkan_stock": {"mean": 3585.028487, "stddev": 49.94112},
+    "vulkan_sdslv_build": {"mean": 3545.688307, "stddev": 51.426467}
+  },
+  "publishable": false
+}

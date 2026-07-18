@@ -103,3 +103,6 @@ Backends/ClrOct/tests/ClrOct.Octest.Tests/obj/Debug/net10.0/ClrOct.Octest.Tests.
 markdown_m1_smoke.md
 markdown_smoke.md
 
+# Reproducible but machine-local llama.cpp benchmark checkouts, builds, and models.
+work/
+

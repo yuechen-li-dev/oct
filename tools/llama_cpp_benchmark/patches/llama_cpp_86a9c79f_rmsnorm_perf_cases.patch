@@ -1,0 +1,23 @@
+diff --git a/tests/test-backend-ops.cpp b/tests/test-backend-ops.cpp
+--- a/tests/test-backend-ops.cpp
++++ b/tests/test-backend-ops.cpp
+@@ -9778,3 +9778,10 @@ static std::vector<std::unique_ptr<test_case>> make_test_cases_perf() {
+     test_cases.emplace_back(new test_soft_max(GGML_TYPE_F32, {77, 64, 20, 1}, false, false, GGML_TYPE_F32, {1, 1}, 1.0f, 0.0f));
+ 
++    // Build Week benchmark-only RMSNorm cases.  These use the normal GGML
++    // operator path and are intentionally shared by CUDA and Vulkan builds.
++    test_cases.emplace_back(new test_rms_norm(GGML_TYPE_F32, {2048,   1, 1, 1}, false, 1e-5f)); // decode
++    test_cases.emplace_back(new test_rms_norm(GGML_TYPE_F32, {2048, 128, 1, 1}, false, 1e-5f)); // prompt
++    test_cases.emplace_back(new test_rms_norm(GGML_TYPE_F32, {2053,   7, 3, 1}, false, 1e-5f)); // awkward
++    test_cases.emplace_back(new test_rms_norm(GGML_TYPE_F32, {2048, 512, 1, 1}, false, 1e-5f)); // primary
++
+     test_cases.emplace_back(new test_argmax(GGML_TYPE_F32, {32, 10, 1, 1}));
+@@ -1629,7 +1629,7 @@ struct test_case {
+             total_time_us += end_time - start_time;
+             total_mem += mem;
+             total_runs += n_runs;
+-        } while (total_time_us < 1000*1000); // run for at least 1 second
++        } while (total_time_us < 0); // Build Week harness: one densified graph execution per sample
+ 
+         // Create test result
+         double avg_time_us      = (double) total_time_us / total_runs;
