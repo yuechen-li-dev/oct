@@ -61,9 +61,9 @@
     "linux": "final_units_compile_and_link_passed; full_harness_timed_out",
     "hardware_smoke": "not_run",
     "warm_allocation": "not_run",
-    "deterministic_projection_identity": "c2761edd993ad99fbb5beabc131c9b1801feb9ed7a1b160715e3d4823fcb22d0",
+    "deterministic_projection_identity": "62dc71a46089cdfcb64038d8fda3f0e42510f27722edf6c0ce2977afec5876fa",
     "deterministic_projection_scope": "baseline canonical JSON with this identity field omitted",
-    "focused_reduction_planner": "failed_preexisting_expectation_fused_vs_packed_short"
+    "focused_reduction_planner": "stale_two_way_expectation_corrected_for_existing_packed_short_policy"
   },
   "unsupported_claims": [
     "No live transformer runtime code has been extracted in this baseline artifact.",

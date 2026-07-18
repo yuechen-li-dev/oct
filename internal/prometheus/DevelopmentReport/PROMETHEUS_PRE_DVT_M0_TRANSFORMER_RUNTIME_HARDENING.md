@@ -94,10 +94,10 @@ fault, and completion ownership share one bounded slot lifecycle.
 - focused Windows Marionette reduction correctness, M48 fixed-stack ownership,
   and M49b controller facts pass;
 - native manifest and Linux build-script syntax checks pass;
-- the focused reduction planner test currently fails one historical assertion:
-  it expects fused short-row softmax while the current implementation selects
-  packed-short strategy. No policy was changed by this refactor, so this is
-  retained as a baseline failure, not repaired by changing selection behavior.
+- the focused reduction planner contract was corrected: its prior two-way
+  fused-versus-composed expectation omitted the existing packed-short branch
+  for widths through `PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX`. Production plan
+  selection was not changed.
 
 Full Linux harness build/smoke, hardware smoke, warm-allocation proof, replay
 equivalence corpus, and the requested full Go matrix are still pending.

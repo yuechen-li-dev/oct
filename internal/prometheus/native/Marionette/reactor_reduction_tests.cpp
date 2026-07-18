@@ -122,9 +122,11 @@ FACT(PrometheusReduction_PlannerCoversRequiredBoundariesDeterministically)
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_reduction_plan(&softmax, &softmax_plan), "softmax boundary width must plan");
         ASSERT_EQUAL(width > 1024u ? 5u : 1u, softmax_plan.stage_count, "softmax must use fused or explicit five-stage plan");
         ASSERT_EQUAL(width > 1024u ? static_cast<std::uint32_t>(PROM_REDUCTION_STRATEGY_COMPOSED)
-                                   : static_cast<std::uint32_t>(PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP),
+                                   : (width <= PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX
+                                          ? static_cast<std::uint32_t>(PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS)
+                                          : static_cast<std::uint32_t>(PROM_REDUCTION_STRATEGY_FUSED_SINGLE_WORKGROUP)),
                      softmax_plan.strategy,
-                     "softmax selector must use the documented bounded threshold");
+                     "softmax selector must preserve packed-short, fused, and staged boundaries");
     }
 
     const std::uint32_t row_counts[] = {1u, 2u, 16u, 128u, 1024u};
