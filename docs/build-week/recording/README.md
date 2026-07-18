@@ -57,3 +57,23 @@ fixture facts, stop and investigate rather than editing the narration.
 Open `title-card.html` and `closing-card.html` in a browser at 1920×1080. Use
 full-screen mode, hide the browser chrome, and record six seconds of each. The
 cards use only local HTML/CSS and the exact approved wording.
+
+## Deterministic narrated recording
+
+The following path generates the approved neural narration and evidence-backed
+presentation. The speech dependency is installed only under `.tmp`; generated
+media stays under ignored `out/build-week-video`.
+
+```powershell
+powershell -File docs/build-week/recording/generate-ai-narration.ps1
+powershell -File docs/build-week/recording/generate-video-presentation.ps1
+npm install --prefix .tmp/obs-control obs-websocket-js@5 --no-audit --no-fund
+$env:NODE_PATH = (Resolve-Path .tmp/obs-control/node_modules).Path
+node docs/build-week/recording/record-with-obs.cjs 164.5
+```
+
+`record-with-obs.cjs` expects OBS 32 with its bundled WebSocket server enabled
+on the configured local port. It creates and selects isolated `BuildWeek`
+profile and scene-collection names, records 1920×1080 at 30 fps, explicitly
+refreshes the browser timeline at time zero, and saves a closing thumbnail.
+It reads the existing OBS WebSocket password without printing it.

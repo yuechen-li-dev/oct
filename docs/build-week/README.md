@@ -54,13 +54,13 @@ Required submission facts reflected here:
 
 ## Owner sign-off checklist
 
-Only the owner can complete these actions:
+The owner has confirmed `/feedback`
+`019f6cb4-b438-70e2-b91c-487d7ad45bbd`, approved the title, attribution,
+scope boundary, claims table, narration, and AI-assisted narration. Codex
+produced and validated the exact 2:44 narrated screen recording. Only the owner
+can complete these remaining actions:
 
-- [x] `/feedback` confirmed from M48:
-  `019f6cb4-b438-70e2-b91c-487d7ad45bbd`.
-- [x] Title, attribution, scope boundary, and claims table approved by owner.
-- [x] Narration and AI-assisted narration approved by owner.
-- [ ] Record the exact screen clips in the shot list.
+- [ ] Review the final recorded cut; optionally replace the approved AI voice.
 - [ ] Upload the final public YouTube video and replace `VIDEO_URL_OWNER_REQUIRED`.
 - [ ] Paste the prepared fields into Devpost and verify the selected category.
 - [ ] Verify entrant/team identity and repository visibility on Devpost.

@@ -1,8 +1,7 @@
 # Submission packet validation
 
 Validated locally on 2026-07-17 from the audited eligible head plus this
-submission packet. A public CI artifact can exist only after the packet commit
-is pushed and a workflow run succeeds.
+submission packet.
 
 ## Passed checks
 
@@ -23,9 +22,11 @@ is pushed and a workflow run succeeds.
 | Tracked no-rebuild server | The committed Linux x86-64 `oct-mcp` started under WSL2 and returned `ok` from `/healthz`; its size and SHA-256 match the quickstart. |
 | README install | `go install github.com/yuechen-li-dev/oct/cmd/oct@v0.1.0` succeeded with repo-local Go caches and the installed binary ran. |
 | Workflow syntax | actionlint v1.7.12 passed the general CI and narrow Build Week judge-artifact workflows. |
+| Public judge artifacts | Build Week Judge Artifacts run `29626116336` passed on both `ubuntu-latest` and `windows-latest`; both jobs built, exercised the fixture, and uploaded the bundle. |
 | Plugin metadata | plugin and marketplace JSON parse; category is Developer Tools; MCP command is `oct-mcp --stdio`. |
 | Public state | GitHub reports a public `main` repository with GPL-3.0; no GitHub Release is claimed. |
 | Privacy/placeholders | No private absolute path appears in packet content; only the owner-controlled video URL placeholder remains. The `/feedback` ID is confirmed. |
+| Final recorded cut | 164.70-second MP4; 1920×1080; 30 fps; audio present at -22.0 dB mean / -4.3 dB max; 126,816,702 bytes; SHA-256 `43db909a0cd6172a0fdbc57eb9cbdd89bcfd9384b657906dcc690b7c8b689cbd`. Opening, transformer, artifact, plugin, and closing frames were visually inspected. |
 | Whitespace | `git diff --check` passes after removal of the README Markdown trailing spaces. |
 
 Run the reproducible packet checks with:
@@ -48,7 +49,10 @@ The separate `Build Week Judge Artifacts` workflow is intentionally narrow. It
 builds `oct` and `oct-mcp` with CGO disabled, runs the deterministic judge test
 and artifact fixture on Windows and Linux, and only then uploads the binaries
 and plugin. This provides the no-rebuild test bundle without misrepresenting the
-broader repository CI as green.
+broader repository CI as green. The [public artifact run](https://github.com/yuechen-li-dev/oct/actions/runs/29626116336)
+completed successfully on both operating systems. The repaired
+[general CI run](https://github.com/yuechen-li-dev/oct/actions/runs/29626051983)
+completed with the pre-existing failures described above.
 
 ## Deliberate non-reruns
 
