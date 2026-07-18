@@ -1,0 +1,7 @@
+{
+  "schema":"oct.prometheus.evt2m05.noise-refiner-oracle.v1",
+  "block":"noise_refiner.0","reference_run":"oracle/f332072aa78be7aecdf3ee76d5c247082da564a6/run_02",
+  "full_boundaries":{"input":{"shape":[1,1024,3840],"dtype":"BF16","bytes":7864320,"sha256":"857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded"},"timestep":{"shape":[1,256],"dtype":"BF16","bytes":512,"sha256":"bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2"},"output":{"shape":[1,1024,3840],"dtype":"BF16","bytes":7864320,"sha256":"6dae8d91b2118e7c425ee16d5db214ec0d8df1e988487e855aebd1fe81575873"}},
+  "internal_bounded_stages":["adaln_modulation","attention_norm1_input","attention_norm1_output","qkv_projection_input","qkv_projection","q_after_qk_rmsnorm","k_after_qk_rmsnorm","q_after_rope","k_after_rope","attention_selected_logits","attention_selected_probabilities","attention_output","attention_out_projection","attention_output_rmsnorm","ffn_norm1_input","ffn_norm1_output","ffn_w1","ffn_w3","ffn_silu_w1_times_w3","ffn_w2","ffn_output_rmsnorm"],
+  "repeatability":"bitwise stable between run_02 and run_03"
+}

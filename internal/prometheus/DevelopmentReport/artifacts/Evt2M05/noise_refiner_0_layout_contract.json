@@ -1,0 +1,6 @@
+{
+  "schema":"oct.prometheus.evt2m05.layout-contract.v1","block":"noise_refiner.0","batch":1,"image_tokens":1024,"hidden":3840,"heads":30,"head_dimension":128,"ffn":10240,
+  "qkv":{"source_weight":"[11520,3840] PyTorch [out,in]","logical_order":"Q[3840], K[3840], V[3840]","activation":"[1,1024,11520] then split, reshape [1,1024,30,128], move tokens to [1,30,1024,128] for attention"},
+  "rope":{"axes":"[32,48,48]","frequency_tensor":"[1,1024,128,2,2] after Comfy movedim","arithmetic":"FP32 witness authority"},
+  "residual":"x + tanh(gate_msa)*RMSNorm2(attention); then x + tanh(gate_mlp)*RMSNorm2(ffn)","mask":"none for 512x512 image-only block","storage":"BF16 reference; M1 target FP16 transformed weight storage with FP32 norm/reduction/softmax/RoPE"
+}

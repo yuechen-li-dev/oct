@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2m0.memory-budget.v1",
+  "units":"bytes",
+  "machine":{"vram_physical":8589934592,"vram_hard_ceiling":7730941132,"host_ram_physical":34359738368,"host_ram_soft_ceiling":25769803776,"disk_free_observed":192139288576,"project_disk_ceiling":107374182400},
+  "m1_noise_refiner_0":{"source_bf16_weights":361820672,"fp16_transformed_weights":361820672,"optional_next_block_prefetch":0,"image_tokens":1024,"hidden_fp16_ping_pong":15728640,"qkv_fp16":23592960,"attention_scores_fp32_unfused":125829120,"attention_probabilities_fp32_unfused":125829120,"attention_output_fp16":7864320,"ffn_w1_w3_fp16":41943040,"ffn_hidden_and_output_fp16":28835840,"norm_modulation_and_rope_fp32":25165824,"descriptor_control_margin":134217728,"planned_peak_unfused":1126164480,"planned_peak_fused":874512384},
+  "full_product_streaming":{"current_block_only_weights":361820672,"persistent_latent_and_conditioning_budget":134217728,"working_set_budget":805306368,"driver_os_margin":2684354560,"planned_vram_peak":3865470566,"headroom_under_hard_ceiling":3865470566},
+  "host_and_disk":{"immutable_denoiser":12309866400,"text_encoder":8044982048,"vae":335304388,"transformed_per_layer_cache_full_estimate":12309817472,"reference_oracles_cap":8589934592,"temporary_conversion_max":402653184,"no_second_full_checkpoint":true,"host_staging_current_and_next_block":724000000,"reference_cpu_offload_peak_budget":23622320128},
+  "policy":"FP16 GPU storage and transformed cache; FP32 reductions, RMSNorm, RoPE construction/rotation, softmax, scheduler update, and selected CPU/reference boundaries. No simultaneous text encoder, denoiser, and VAE residency."
+}

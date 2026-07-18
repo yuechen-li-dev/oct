@@ -29,18 +29,36 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
   ASSERT_EQUAL(static_cast<std::size_t>(15), prom_shader_registry_shader_asset_count(), "SGEMM production assets must remain stable");
-  ASSERT_EQUAL(static_cast<std::size_t>(5), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets must be present");
+  ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
 FACT(PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated) {
-  ASSERT_EQUAL(static_cast<std::size_t>(5), prom_shader_registry_reduction_compute_implementation_count(), "M39b must register five fixed reduction implementations");
+  const std::array<uint32_t, 7> expected_shader_ids = {
+      PROM_REDUCTION_SHADER_ROW_SUM,
+      PROM_REDUCTION_SHADER_ROW_MAX,
+      PROM_REDUCTION_SHADER_SOFTMAX_EXP_SUM,
+      PROM_REDUCTION_SHADER_SOFTMAX_NORMALIZE,
+      PROM_REDUCTION_SHADER_SOFTMAX_FUSED,
+      PROM_REDUCTION_SHADER_ROW_SUM_PACKED_SHORT,
+      PROM_REDUCTION_SHADER_SOFTMAX_PACKED_SHORT,
+  };
+  const std::array<uint32_t, 7> expected_implementation_ids = {
+      PROM_REDUCTION_IMPLEMENTATION_ROW_SUM,
+      PROM_REDUCTION_IMPLEMENTATION_ROW_MAX,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_EXP_SUM,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_NORMALIZE,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_FUSED,
+      PROM_REDUCTION_IMPLEMENTATION_ROW_SUM_PACKED_SHORT,
+      PROM_REDUCTION_IMPLEMENTATION_SOFTMAX_PACKED_SHORT,
+  };
+  ASSERT_EQUAL(expected_shader_ids.size(), prom_shader_registry_reduction_compute_implementation_count(), "M39b must register every fixed production reduction implementation");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_compute_implementation_count(), "promoted reduction implementations must not remain experimental");
   for (std::size_t i = 0; i < prom_shader_registry_reduction_shader_asset_count(); ++i) {
     const auto* asset = prom_shader_registry_reduction_shader_asset_at(i);
     const auto* implementation = prom_shader_registry_reduction_compute_implementation_at(i);
     ASSERT_TRUE(asset != nullptr && implementation != nullptr, "reduction registry rows must be complete");
-    ASSERT_EQUAL(static_cast<uint32_t>(PROM_REDUCTION_SHADER_ROW_SUM + i), asset->shader_id, "reduction shader IDs must remain stable");
-    ASSERT_EQUAL(static_cast<uint32_t>(PROM_REDUCTION_IMPLEMENTATION_ROW_SUM + i), implementation->implementation_id, "reduction implementation IDs must remain stable");
+    ASSERT_EQUAL(expected_shader_ids[i], asset->shader_id, "reduction shader IDs must remain stable, including packed-short variants");
+    ASSERT_EQUAL(expected_implementation_ids[i], implementation->implementation_id, "reduction implementation IDs must remain stable, including packed-short variants");
     ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, asset->authority, "reduction source authority must be production");
     ASSERT_EQUAL(PROM_SHADER_AUTHORITY_PRODUCTION, implementation->authority, "reduction implementation authority must be production");
     ASSERT_EQUAL(PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION, implementation->pipeline_family, "reduction implementation must not enter the SGEMM pipeline family");

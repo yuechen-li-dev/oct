@@ -1,0 +1,9 @@
+{
+  "schema":"oct.prometheus.evt2m0.reference-manifest.v1",
+  "authority":{"model_repository":"Tongyi-MAI/Z-Image-Turbo","model_revision":"f332072aa78be7aecdf3ee76d5c247082da564a6","source_repository":"https://github.com/Tongyi-MAI/Z-Image","source_revision":"26f23eda626ffadda020b04ff79488e1d72004cd","diffusers_target":"0.36.0","checkpoint_conversion_repository":"Comfy-Org/z_image_turbo","checkpoint_conversion_revision":"9b4ad77b1aade74887689de16d9b95b959ce2d23"},
+  "requested_run":{"prompt":"A lighthouse in fog at dawn","seed":42,"height":512,"width":512,"guidance_scale":0.0,"official_card_num_inference_steps":9,"expected_denoiser_evaluations":8,"negative_prompt":"not used; Turbo guidance is 0"},
+  "environment_smoke":{"python":"3.12 (ComfyUI venv)","torch":"2.9.1+cu130","cuda":"13.0","transformers":"4.57.3","safetensors":"0.5.2","device":"NVIDIA GeForce RTX 3070 / driver 596.36","bf16_reported_supported":true,"diffusers":"not installed at M0 capture attempt"},
+  "capture_status":"BLOCKED_BEFORE_EXECUTION",
+  "blocker":"The machine has the exact Comfy single-file conversion but not the pinned original Diffusers transformer shards/tokenizer. Diffusers was absent from the existing isolated ComfyUI environment. M0 does not download another 24.6 GiB original transformer copy merely to duplicate an already verified conversion; obtain a pinned Diffusers environment and either official original shards or an audited reversible conversion mapping before oracle capture.",
+  "required_next_artifacts":["token ids and attention mask","Qwen3 hidden_states[-2] prompt embeddings","9-value scheduler timetable/sigmas and eight evaluation rows","initial latent, step-0 denoiser input/output and update","noise_refiner.0 input/output and selected checkpoints","final latent, VAE input/output PNG","second run hashes"]
+}

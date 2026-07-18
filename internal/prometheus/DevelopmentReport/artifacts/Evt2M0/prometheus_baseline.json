@@ -1,0 +1,23 @@
+{
+  "schema":"oct.prometheus.evt2m0.prometheus-baseline.v1",
+  "repository_revision":"cb2b80c38d83a469dadbf16ced4509a6c780f09c",
+  "recorded_at":"2026-07-18",
+  "authority_artifacts":[
+    "artifacts/M42/device_resident_attention_rtx3070.json",
+    "artifacts/M43/bounded_grouped_attention_rtx3070.json",
+    "artifacts/M44/multihead_aggregation_output_projection_rtx3070.json",
+    "artifacts/M45/device_resident_residual_rtx3070.json",
+    "artifacts/M46/device_resident_rmsnorm_rtx3070.json",
+    "artifacts/M47/gated_ffn_complete_transformer_block_rtx3070.json",
+    "artifacts/M48/multi_block_golden_path_evt_closeout_rtx3070.json"
+  ],
+  "current_native_executable":"out/prometheus/native/marionette_tests.exe",
+  "current_native_result":{"tests":429,"passed":394,"skipped":32,"failed":3,"assertion_failures":13,"hardware_baseline":"NOT_REFRESHED"},
+  "failures":[
+    "PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated",
+    "PrometheusReduction_PlannerCoversRequiredBoundariesDeterministically",
+    "PrometheusShaderRegistryIdsAreUnique"
+  ],
+  "vulkan":"PrometheusVulkanRuntimePreflight skipped because Vulkan initialization failed; no current RTX timings, validation state, warm allocation evidence, shader hash refresh, replay refresh, or Stage 0 hardware claim is made.",
+  "evt2_rule":"Treat committed M42-M48 RTX artifacts as historical authority only. Repair/re-establish a clean native baseline before claiming current-hardware EVT-2 regression evidence. Preserve M49 stage-local capture discipline."
+}

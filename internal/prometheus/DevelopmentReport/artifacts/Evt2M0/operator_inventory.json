@@ -1,0 +1,21 @@
+{
+  "schema": "oct.prometheus.evt2m0.operator-inventory.v1",
+  "model": "Z-Image-Turbo",
+  "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "inventory": [
+    {"operation":"BF16 safetensors bounded read","classification":"small bounded map/kernel required","evidence":"No existing safetensors reader in Oct; M0 adds Go header/range inspector only.","M1":"host conversion reads exact tensor extents and converts to FP16 cache."},
+    {"operation":"linear projection","classification":"implemented with shape/layout adaptation","evidence":"M40b/M44 use row-major X*[in,out]; checkpoint stores PyTorch [out,in] and fused QKV [3*out,in].","M1":"transpose and split into M40b-compatible plans."},
+    {"operation":"30-head full attention","classification":"new contraction shape/plan required","evidence":"M43 is explicitly fixed to eight heads, while Z-Image has 30 heads of 128.","M1":"one fixed 30x128-head plan over the 1024-token image-refiner stream."},
+    {"operation":"attention mask","classification":"small bounded map kernel required","evidence":"M42/M43 document no mask system; the first 512 image tokens are unmasked but padded-token semantics must be explicit.","M1":"fixed all-valid 1024-token mask with an explicit future padded-token rejection contract."},
+    {"operation":"stable softmax","classification":"implemented with shape adaptation","evidence":"M39b/M42 supply stable FP32 softmax, but the exact 1024x1024x30 score layout needs an audited reuse plan.","M1":"reuse reduction path only after 30-head physical layout is fixed."},
+    {"operation":"RMSNorm and Q/K RMSNorm","classification":"implemented with shape adaptation","evidence":"M46 has FP32 RMSNorm, width <=4096; Z-Image requires widths 3840 and 128.","M1":"four 3840 norms plus Q/K head-dimension 128 norms, epsilon 1e-5."},
+    {"operation":"RoPE","classification":"small bounded map kernel required","evidence":"No M42-M49 rotary path; Z-Image uses three axes [32,48,48], theta 256, complex FP32 rotate then BF16/FP16 type cast.","M1":"fixed 1024 image coordinate RoPE."},
+    {"operation":"AdaLN modulation with tanh gates","classification":"small bounded map kernel required","evidence":"M47 has SiLU gate but not 4-way AdaLN scale/gate broadcast or tanh.","M1":"linear [256,15360], split, tanh gates, scale=1+value."},
+    {"operation":"SwiGLU / SiLU FFN","classification":"implemented with layout adaptation","evidence":"M47 supplies SiLU gating and down projection; Z-Image has W1/W3/W2 at width 10240 and pre/post RMSNorm.","M1":"use real W1/W3/W2 cache slices, not M47 toy weights."},
+    {"operation":"residual add","classification":"implemented with shape adaptation","evidence":"M45/M47 preserve an immutable residual source and support row-major widths through 4096.","M1":"two residuals following the exact noise-refiner order."},
+    {"operation":"patchify/unpatchify/final LayerNorm","classification":"CPU/reference-only for initial MVP","evidence":"Outside the selected first-block boundary; no M1 claim depends on it.","M1":"reference artifact supplies post-patch-embed block input."},
+    {"operation":"scheduler arithmetic","classification":"CPU/reference-only for initial MVP","evidence":"Official Euler step is FP32 sample + (sigma_next-sigma)*model_output.","M1":"reference capture owns schedule."},
+    {"operation":"VAE decode and text encoder","classification":"CPU/reference-only for initial MVP","evidence":"Explicitly deferred product seams.","M1":"precomputed conditioning and block input only."}
+  ],
+  "first_mandatory_missing_operator": "fixed-layout 30-head attention planner/executor with the associated QKV split/interleave contract"
+}

@@ -1,0 +1,11 @@
+{
+  "schema":"oct.prometheus.evt2m05.reference-capture.v1",
+  "authority":"installed ComfyUI Lumina/Z-Image implementation",
+  "model_revision":"f332072aa78be7aecdf3ee76d5c247082da564a6",
+  "checkpoint_sha256":"2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "request":{"prompt":"A lighthouse in fog at dawn","seed":42,"resolution":[512,512],"turbo_guidance":0.0,"comfy_cfg":1.0,"steps":9,"denoiser_evaluations":8,"sampler":"res_multistep","scheduler":"simple","aura_flow_shift":3.0,"lora":"disabled","controlnet":"disabled"},
+  "environment":{"python":"3.12.9","torch":"2.9.1+cu130","cuda":"13.0","cudnn":91200,"transformers":"4.57.3","safetensors":"0.5.2","gpu":"NVIDIA GeForce RTX 3070","driver":"596.36"},
+  "selected_run":"oracle/f332072aa78be7aecdf3ee76d5c247082da564a6/run_02",
+  "final_png":{"sha256":"f0556937c803a1706d4c0a0b13158f37c697fa0f47d57379cab81f40c5a76dc5","bytes":277506},
+  "repeatability":{"run_02_vs_run_03":"bitwise equal for all full artifacts and final PNG","run_02_seconds":10.0249721,"run_03_seconds":8.7348889}
+}
