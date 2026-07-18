@@ -24,10 +24,18 @@ Current Vulkan reactor file topology (P12 M5 baseline):
   - production M39b row-wise FP32 sum/max/stable-softmax family: deterministic
     plans, one-workgroup and staged dispatch, persistent family ring,
     device-local reusable temporaries, timestamps, validation, and CPU oracle.
-  - Current pre-DVT debt: this unit also retains live M42-M49b transformer
-    runtime ownership through a shared private slot/state type.  See
-    `../DevelopmentReport/PROMETHEUS_PRE_DVT_M0_TRANSFORMER_RUNTIME_HARDENING.md`;
-    this is a migration target, not intended final ownership.
+- `reactor_vulkan_transformer.c`
+  - complete M42-M49b transformer runtime: attention through FFN, fixed-stack
+    recording, activation handoff, descriptor banks, lifecycle, replay/fault
+    integration, and the existing planning/reference code.
+- `reactor_vulkan_transformer_control.c`
+  - pure M49b policy and state transitions; it owns no Vulkan resources.
+
+Pre-DVT M0 removed live transformer implementation from the fused-reduction
+translation unit. `reactor_vulkan_runtime_internal.h` is the intentionally
+temporary private migration seam for the historical mixed slot/state record;
+its callable reduction contract does not transfer slot, descriptor, or buffer
+ownership to the transformer runtime.
 
 Topology rule:
 

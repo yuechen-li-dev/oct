@@ -6,10 +6,17 @@ Convergence outcome: **MEANINGFUL PROGRESSION**
 Milestone state: **IN PROGRESS**  
 DVT state: **NOT READY**
 
-This is the source-ownership baseline for M0.  It is deliberately a ledger,
-not a claim that a source-file move preserves runtime behavior.  The live
-Vulkan transformer implementation remains coupled to the M39b reduction
-runtime state and must be extracted through a narrow private runtime contract.
+This began as the source-ownership baseline for M0. The extraction direction
+was then inverted: the reduction subsystem was moved first, compiled as a
+separate unit, and renamed back to its enduring source name. The large
+remainder was merged with the existing transformer planning/reference unit and
+renamed to `reactor_vulkan_transformer.c`.
+
+The live transformer and reduction implementations no longer share a
+translation unit. The remaining migration seam is explicit in
+`reactor_vulkan_runtime_internal.h`: it contains the historical mixed state
+record, while transformer code may call only the declared reduction lifecycle,
+capacity, slot, pipeline, binding, barrier, and non-finite-validation helpers.
 
 ## Pre-refactor responsibility inventory
 
@@ -57,6 +64,43 @@ pools, command buffers, fences, and the M49b controller.
    owner is independent of fused-reduction state.
 5. Delete transitional wrappers only after Windows and Linux builds plus the
    focused native lifecycle suites pass.
+
+## Ownership inversion completed in this pass
+
+Temporary sequence:
+
+1. `reactor_vulkan_fused_reduction_extracted.c` received the M39b/M40b
+   planning, runtime, lifecycle, diagnostics, CPU oracle, and benchmark code.
+2. The historical giant source retained M42-M49b plans, persistent resources,
+   block/stack recording, controller integration, and lifecycle consumers.
+3. The two units compiled independently and linked into one native reactor.
+4. The pre-existing `reactor_vulkan_transformer.c` planning/reference unit was
+   merged into the remainder.
+5. The remainder became `reactor_vulkan_transformer.c`; the extracted unit
+   became `reactor_vulkan_fused_reduction.c`; the temporary filename was
+   removed from all manifests.
+
+Final source counts are 2,518 lines for fused reduction and 12,911 lines for
+the coherent transformer runtime. The transformer file remains intentionally
+large because its block, fixed-stack, descriptor-bank, activation, replay,
+fault, and completion ownership share one bounded slot lifecycle.
+
+### Current validation facts
+
+- the final fused-reduction and transformer units each compile as C11;
+- the final native object set links as one Vulkan reactor library;
+- the authoritative Windows MSVC build completed and produced the reactor DLL
+  plus Marionette harnesses;
+- focused Windows Marionette reduction correctness, M48 fixed-stack ownership,
+  and M49b controller facts pass;
+- native manifest and Linux build-script syntax checks pass;
+- the focused reduction planner test currently fails one historical assertion:
+  it expects fused short-row softmax while the current implementation selects
+  packed-short strategy. No policy was changed by this refactor, so this is
+  retained as a baseline failure, not repaired by changing selection behavior.
+
+Full Linux harness build/smoke, hardware smoke, warm-allocation proof, replay
+equivalence corpus, and the requested full Go matrix are still pending.
 
 ## Lifecycle that an extraction must preserve
 
