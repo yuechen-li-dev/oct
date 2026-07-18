@@ -1,6 +1,15 @@
 # EVT-2 M0.5 — Z-Image-Turbo Reference and Baseline
 
-## Result
+## M0.75 continuation
+
+M0.75 closes the two remaining M0.5 gates: the first-block deterministic FP16
+cache and a clean-process RTX authority. See
+[`PROMETHEUS_EVT2_M075_Z_IMAGE_FP16_CACHE_AND_BASELINE.md`](PROMETHEUS_EVT2_M075_Z_IMAGE_FP16_CACHE_AND_BASELINE.md).
+M0.5 final state: **SUCCESS / COMPLETE / READY FOR M1**. The monolithic Vulkan
+process-order limitation is documented there and does not change the selected
+clean-process validation lane.
+
+## Original M0.5 result
 
 Convergence outcome: **MEANINGFUL PROGRESSION**  
 Milestone state: **IN PROGRESS**  
