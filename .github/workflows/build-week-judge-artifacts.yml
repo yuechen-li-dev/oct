@@ -1,0 +1,74 @@
+name: Build Week Judge Artifacts
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            binary_name: oct
+            mcp_binary_name: oct-mcp
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            binary_name: oct.exe
+            mcp_binary_name: oct-mcp.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build judge binaries
+        shell: pwsh
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          go build -o dist/${{ matrix.binary_name }} ./cmd/oct
+          go build -o dist/${{ matrix.mcp_binary_name }} ./cmd/oct-mcp
+
+      - name: Smoke binaries and deterministic judge fixture
+        shell: pwsh
+        run: |
+          $oct = Join-Path $PWD "dist/${{ matrix.binary_name }}"
+          $mcp = Join-Path $PWD "dist/${{ matrix.mcp_binary_name }}"
+          & $oct --version
+          if ($LASTEXITCODE -ne 0) { throw "oct version smoke failed" }
+          & $mcp --help
+          if ($LASTEXITCODE -ne 0) { throw "oct-mcp help smoke failed" }
+          & $oct test docs/build-week/recording/fixtures/JudgeDemo --execution auto --json
+          if ($LASTEXITCODE -ne 0) { throw "judge fixture test failed" }
+          & $oct artifact docs/build-week/recording/fixtures/JudgeDemo --execution interpreted --json
+          if ($LASTEXITCODE -ne 0) { throw "judge fixture artifact failed" }
+
+      - name: Upload judge bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: oct-build-week-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/${{ matrix.binary_name }}
+            dist/${{ matrix.mcp_binary_name }}
+            plugins/oct
+          if-no-files-found: error
+          retention-days: 14

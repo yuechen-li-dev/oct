@@ -22,7 +22,7 @@ is pushed and a workflow run succeeds.
 | Current binaries | Current `oct` and `oct-mcp` built locally; `oct --version` and `oct-mcp --help` succeeded. |
 | Tracked no-rebuild server | The committed Linux x86-64 `oct-mcp` started under WSL2 and returned `ok` from `/healthz`; its size and SHA-256 match the quickstart. |
 | README install | `go install github.com/yuechen-li-dev/oct/cmd/oct@v0.1.0` succeeded with repo-local Go caches and the installed binary ran. |
-| Workflow syntax | actionlint v1.7.12 passed `.github/workflows/ci.yml`. |
+| Workflow syntax | actionlint v1.7.12 passed the general CI and narrow Build Week judge-artifact workflows. |
 | Plugin metadata | plugin and marketplace JSON parse; category is Developer Tools; MCP command is `oct-mcp --stdio`. |
 | Public state | GitHub reports a public `main` repository with GPL-3.0; no GitHub Release is claimed. |
 | Privacy/placeholders | No private absolute path appears in packet content; only the owner-controlled video URL placeholder remains. The `/feedback` ID is confirmed. |
@@ -39,10 +39,16 @@ powershell -NoProfile -File docs/build-week/recording/verify-recording-assets.ps
 
 The public workflow at audited head was failing before jobs started because a
 job-level environment expression referenced `runner.temp`, a context unavailable
-there. This packet changes the owned temporary root to `github.workspace`, adds
-manual dispatch, and packages both `oct` and `oct-mcp` plus the plugin for
-Windows/Linux. actionlint validates the repair locally. The quickstart does not
-claim that those new CI artifacts already exist.
+there. The repaired general workflow now parses and starts, exposing older
+cross-platform failures: case-sensitive SDSL-V example paths and missing DXC on
+Linux, plus native-manifest/golden hash drift and missing DXC on Windows. Those
+failures remain visible rather than being skipped.
+
+The separate `Build Week Judge Artifacts` workflow is intentionally narrow. It
+builds `oct` and `oct-mcp` with CGO disabled, runs the deterministic judge test
+and artifact fixture on Windows and Linux, and only then uploads the binaries
+and plugin. This provides the no-rebuild test bundle without misrepresenting the
+broader repository CI as green.
 
 ## Deliberate non-reruns
 

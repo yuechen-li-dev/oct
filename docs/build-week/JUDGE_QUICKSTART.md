@@ -7,7 +7,7 @@ audited head without a rebuild.
 
 ## Path A: Windows local Codex plugin from the CI test-build
 
-Open the repository's [CI workflow](https://github.com/yuechen-li-dev/oct/actions/workflows/ci.yml),
+Open the repository's [Build Week Judge Artifacts workflow](https://github.com/yuechen-li-dev/oct/actions/workflows/build-week-judge-artifacts.yml),
 select the successful run for the submission commit, and download
 `oct-build-week-windows-amd64`. Extract it into a clone of the repository so
 that `dist/oct.exe`, `dist/oct-mcp.exe`, and `plugins/oct` are present. In
@@ -34,9 +34,11 @@ Expected behavior: Codex selects the repository-native workflow, invokes
 evidence. The plugin does not expose the host filesystem through hosted MCP;
 local repository work deliberately delegates to the CLI.
 
-The workflow configuration is actionlint-valid, but the new artifact is not
-claimed to exist before the packet commit runs publicly. If it is absent, use
-Path B or the exact source fallback in [TESTING_INSTRUCTIONS.md](TESTING_INSTRUCTIONS.md).
+The narrow workflow builds both binaries and runs the committed test/artifact
+fixture before upload. It is independent of the broader repository CI lanes,
+whose existing cross-platform DXC/path/manifest failures remain visible. If the
+bundle is unavailable or expired, use Path B or the exact source fallback in
+[TESTING_INSTRUCTIONS.md](TESTING_INSTRUCTIONS.md).
 
 ## Path B: tracked Linux x86-64 MCP server, no rebuild
 
