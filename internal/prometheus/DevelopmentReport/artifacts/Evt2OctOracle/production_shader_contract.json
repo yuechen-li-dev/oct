@@ -1,0 +1,17 @@
+{
+  "schema": "oct.prometheus.evt2.o20.production-shader-contract.v1",
+  "status": "accepted conservative reference implementation contract",
+  "weight_policy": "all 13 package tensors remain FP16 little-endian cache values; every load expands to FP32 before arithmetic; no persistent FP32 weight mirror is required",
+  "activation_policy": "all resident activation and reduction scratch is FP32; post-normalization FP16 activation experiments are not adopted by this contract",
+  "required_shaders": [
+    {"name": "nr0_adaln", "operations": ["timestep [1,256] x adaln [256,15360] + bias", "split contiguous [attention_scale, attention_gate, mlp_scale, mlp_gate]", "scale=1+raw", "gate=tanh(raw)"], "witness_boundary": "timestep_linear, scales, gates"},
+    {"name": "nr0_attention_qkv", "operations": ["RMSNorm1", "attention modulation", "QKV projection", "split Q|K|V at 3840 and reshape [token,head,channel]", "Q/K RMSNorm", "frame-33 three-axis RoPE"], "witness_boundary": "attention_norm through q_rope/k_rope"},
+    {"name": "nr0_attention", "operations": ["per query/head fixed-order FP32 dot", "scale by 1/sqrt(128)", "max-subtracted stable softmax", "FP32 probability/V aggregation"], "witness_boundary": "selected logits/probabilities and attention_aggregation"},
+    {"name": "nr0_attention_out_residual", "operations": ["output projection", "RMSNorm2", "residual + tanh(attention_gate)*normalized_projection"], "witness_boundary": "attention_projection and attention_residual"},
+    {"name": "nr0_ffn_w1_w3", "operations": ["FFN RMSNorm1", "MLP modulation", "W1 and W3 projections", "SiLU(W1)*W3"], "witness_boundary": "ffn_norm, w1, w3, ffn_gated_hidden"},
+    {"name": "nr0_ffn_w2_residual", "operations": ["W2 projection", "FFN RMSNorm2", "residual + tanh(mlp_gate)*normalized_W2"], "witness_boundary": "w2 and final_output"}
+  ],
+  "nonnegotiable_order": ["AdaLN", "attention RMSNorm1 and scale", "QKV", "Q/K RMSNorm", "Q/K-only RoPE", "scaled non-causal attention", "attention output projection", "attention RMSNorm2", "attention gated residual", "FFN RMSNorm1 and scale", "W1/W3", "SiLU(W1)*W3", "W2", "FFN RMSNorm2", "MLP gated residual"],
+  "fusion_rules": {"allowed_after_reference_validation": ["QKV split with Q/K norm and RoPE", "softmax with V aggregation", "W1/W3 with SiLU/gate", "RMSNorm2 with gated residual"], "forbidden": ["crossing AdaLN, QKV, attention, attention projection, W1/W3/gate, W2, or residual witness boundaries", "hidden dtype conversion", "clamping or saturation as correctness policy"]},
+  "fault_conditions": ["any non-finite", "FP16 cast before attention_norm2", "FP16 cast before ffn_norm2", "FP16 cast of final gated residual", "wrong QKV order/layout", "RoPE applied to V", "mean subtraction in RMSNorm", "unstable softmax", "non-FP32 accumulation"]
+}

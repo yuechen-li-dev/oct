@@ -1,0 +1,19 @@
+{
+  "schema": "oct.prometheus.evt2.o20.production-execution-contract.v1",
+  "abi": "accepted M1a resident noise_refiner.0 ABI, unchanged",
+  "input": {"shape": [1,1024,3840], "storage": "BF16 accepted at boundary then expanded to FP32"},
+  "timestep": {"shape": [1,256], "storage": "BF16 accepted at boundary then expanded to FP32"},
+  "execution": [
+    "adaln writes four FP32 [3840] vectors",
+    "A input is FP32-normalized and modulated; QKV writes C",
+    "C is viewed as contiguous Q, K, V [1024,30,128]; normalize/rope Q and K only",
+    "attention uses per-head [1024] FP32 logits/probabilities and writes B",
+    "attention projection writes C prefix; RMSNorm2 and attention gate write B residual",
+    "FFN norm/modulation reads B; W1 writes C and W3 writes D; SiLU(W1)*W3 overwrites C",
+    "W2 writes A; FFN RMSNorm2 is in-place on A; MLP gate plus B residual writes final A",
+    "copy A to the resident output ABI only after final witness boundary"
+  ],
+  "reduction_policy": "fixed logical channel order, FP32 products and FP32 sums; stable softmax uses max then exp then FP32 sum; no adaptive reduction or model-specific fused oracle",
+  "audit_boundaries": ["timestep_linear", "attention_norm", "qkv", "q_norm", "k_norm", "q_rope", "k_rope", "attention logits/probabilities", "attention_aggregation", "attention_projection", "attention_residual", "ffn_norm", "w1", "w3", "ffn_gated_hidden", "w2", "final_output"],
+  "initial_acceptance": {"structural": "exact", "finite": "all values", "canonical_cpu_bundle": "all 34 stage payload SHA-256 values exact", "gpu_reference_shader": "compare selected canonical FP32 witness coordinates before permitting optimization; any disagreement is a fault requiring localization, not tolerance widening"}
+}

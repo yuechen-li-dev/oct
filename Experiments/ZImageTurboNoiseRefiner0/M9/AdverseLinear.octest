@@ -1,0 +1,21 @@
+package ZImageTurboNoiseRefiner0
+
+[Suite("EVT2.O11.AdverseLinear")]
+[Theory]
+[InlineData("qkv_high")]
+[InlineData("w1_high")]
+[InlineData("w3_high")]
+[InlineData("qkv_error")]
+[InlineData("w1_error")]
+[InlineData("w3_error")]
+[InlineData("qkv_cancel")]
+[InlineData("w1_cancel")]
+[InlineData("w3_cancel")]
+fn HighOutputSourceCacheRowsAgree(name: String) -> Void ! Error {
+    let path = "Experiments/ZImageTurboNoiseRefiner0/M9/" + name + ".octagon"
+    let witness = LoadOctagon<LinearPolicyWitness>(path)?
+    let bf16 = AdverseDot(witness.Input, witness.BF16Weight)
+    let fp16 = AdverseDot(witness.Input, witness.FP16Weight)
+    Assert.Near(bf16, fp16, 0.001, "high-output source/cache comparison")
+    Assert.Near(witness.Expected, fp16, 0.001, "high-output captured projection")
+}

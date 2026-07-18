@@ -1,0 +1,51 @@
+{
+  "schema": "oct.prometheus.evt2.o2.corrected-diagnostic-replay.v1",
+  "policy": "FP16 cache values expanded to FP32; fixed-order FP32 reductions; corrected IEEE FP16 decode",
+  "final_output_f32": {
+    "count": 3932160,
+    "finite": true,
+    "min": -6.843756198883057,
+    "max": 40.04807662963867,
+    "abs_max": 40.04807662963867,
+    "sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43"
+  },
+  "w2_f32": {
+    "count": 3932160,
+    "finite": true,
+    "min": -62296.31640625,
+    "max": 142581.390625,
+    "abs_max": 142581.390625,
+    "sha256": "05dd618f61f060af714f346df81bb1dd48a88b912b4bea3fc823966c60da30f0"
+  },
+  "reference_output_bf16": {
+    "count": 3932160,
+    "finite": true,
+    "min": -6.84375,
+    "max": 40.25,
+    "abs_max": 40.25,
+    "sha256": "6dae8d91b2118e7c425ee16d5db214ec0d8df1e988487e855aebd1fe81575873"
+  },
+  "final_vs_reference_bf16": {
+    "count": 3932160,
+    "finite": true,
+    "linf": 0.41104888916015625,
+    "relative_l2": 0.003709630779937986,
+    "max_error_flat_index": 2581718
+  },
+  "conclusion": "Controlled diagnostic candidate comparison; not canonical authority.",
+  "candidate_final_output_f32": {
+    "count": 3932160,
+    "finite": true,
+    "min": -6.843756198883057,
+    "max": 40.048091888427734,
+    "abs_max": 40.048091888427734,
+    "sha256": "bf31335a415f3a962547be9d979637788d703ac6796fcd528462445ec6d96886"
+  },
+  "final_vs_candidate": {
+    "count": 3932160,
+    "finite": true,
+    "linf": 0.00006103515625,
+    "relative_l2": 6.82871884669764e-7,
+    "max_error_flat_index": 3461078
+  }
+}

@@ -1,4 +1,5 @@
 {
+  "canonicality": "diagnostic witness only; payloads remain local and are not a substitute for the official BF16 compatibility output",
   "final_output": {
     "dtype": "float32",
     "relative_path": "final_output.f32.bin",
@@ -10,30 +11,10 @@
     ]
   },
   "numerical_policy": "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode",
-  "required_stages": [
-    "AdaLN",
-    "scales_gates",
-    "attention_norm_modulation",
-    "fused_qkv",
-    "q_k_v",
-    "q_k_norm",
-    "q_k_rope",
-    "selected_scores",
-    "selected_probabilities",
-    "attention_aggregation",
-    "output_projection",
-    "attention_residual",
-    "ffn_norm",
-    "w1",
-    "w3",
-    "gated_hidden",
-    "w2",
-    "final_output"
-  ],
   "rope_frame": 33,
-  "schema": "oct.prometheus.evt2.o19.canonical-stage-manifest.v2",
+  "schema": "oct.prometheus.evt2.o19.canonical-stage-projections.v1",
   "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
-  "stages": {
+  "stage_projections": {
     "attention_aggregation": {
       "bytes": 15728640,
       "dtype": "float32",
@@ -1721,6 +1702,5 @@
         10240
       ]
     }
-  },
-  "status": "complete diagnostic witness; canonical CPU laboratory authority, not official-BF16 compatibility equivalence"
+  }
 }

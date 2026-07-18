@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.o9.linear-bf16-fp16-policy.v1",
+  "terms": 3840,
+  "weight_exact_count": 3839,
+  "weight_max_abs_difference": 2.9802322e-8,
+  "bf16_expanded_fp32_output": -62.973343,
+  "fp16_expanded_fp32_output": -62.973343,
+  "bf16_minus_fp16": 0
+}

@@ -80,6 +80,50 @@ func canonicalCopy(value []float32) []float32 {
 	copy(out, value)
 	return out
 }
+
+func canonicalF32ToFP16(bits uint32) uint16 {
+	sign := uint16((bits >> 16) & 0x8000)
+	exponent := int((bits >> 23) & 0xff)
+	mantissa := bits & 0x7fffff
+	if exponent == 0xff {
+		if mantissa == 0 {
+			return sign | 0x7c00
+		}
+		return sign | 0x7e00
+	}
+	e16 := exponent - 127 + 15
+	if e16 >= 31 {
+		return sign | 0x7c00
+	}
+	if e16 <= 0 {
+		if e16 < -10 {
+			return sign
+		}
+		mantissa |= 0x800000
+		shift := uint(14 - e16)
+		out := uint16(mantissa >> shift)
+		remainder := mantissa & ((uint32(1) << shift) - 1)
+		half := uint32(1) << (shift - 1)
+		if remainder > half || (remainder == half && out&1 != 0) {
+			out++
+		}
+		return sign | out
+	}
+	out := sign | uint16(e16<<10) | uint16(mantissa>>13)
+	remainder := mantissa & 0x1fff
+	if remainder > 0x1000 || (remainder == 0x1000 && out&1 != 0) {
+		out++
+	}
+	return out
+}
+
+func canonicalFP16RoundTrip(values []float32) []float32 {
+	out := make([]float32, len(values))
+	for i, v := range values {
+		out[i] = FP16ToFloat32(canonicalF32ToFP16(math.Float32bits(v)))
+	}
+	return out
+}
 func canonicalStage(stages map[string][]float32, name string, value []float32) {
 	if stages != nil {
 		stages[name] = canonicalCopy(value)
@@ -225,6 +269,16 @@ func canonicalAttention(q, k, v []float32, stages map[string][]float32) []float3
 // RunCanonicalNoiseRefiner0 executes the exact one-block source contract with
 // no framework imports and no historical-output value in its computation.
 func RunCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool) (CanonicalNoiseRefiner0Result, error) {
+	return runCanonicalNoiseRefiner0(paths, capture, nil)
+}
+
+// RunCanonicalNoiseRefiner0WithF16StageCasts is diagnostic-only equipment for
+// controlled activation-storage experiments; production must not use it.
+func RunCanonicalNoiseRefiner0WithF16StageCasts(paths CanonicalNoiseRefiner0Paths, capture bool, casts map[string]bool) (CanonicalNoiseRefiner0Result, error) {
+	return runCanonicalNoiseRefiner0(paths, capture, casts)
+}
+
+func runCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool, casts map[string]bool) (CanonicalNoiseRefiner0Result, error) {
 	bundle, err := LoadNoiseRefiner0PayloadBundle(NoiseRefiner0PayloadPaths{CacheRoot: paths.CacheRoot, OracleRoot: paths.OracleRoot})
 	if err != nil {
 		return CanonicalNoiseRefiner0Result{}, err
@@ -275,6 +329,9 @@ func RunCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool) 
 		return CanonicalNoiseRefiner0Result{}, err
 	}
 	canonicalStage(stages, "attention_norm", norm)
+	if casts["attention_norm"] {
+		norm = canonicalFP16RoundTrip(norm)
+	}
 	mod := canonicalScale(norm, scaleA)
 	canonicalStage(stages, "attention_modulated", mod)
 	qkv, err := canonicalLinear(mod, 1024, 3840, 11520, w.qkv, nil)
@@ -326,6 +383,9 @@ func RunCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool) 
 		return CanonicalNoiseRefiner0Result{}, err
 	}
 	canonicalStage(stages, "ffn_norm", ffnNorm)
+	if casts["ffn_norm"] {
+		ffnNorm = canonicalFP16RoundTrip(ffnNorm)
+	}
 	ffnIn := canonicalScale(ffnNorm, scaleM)
 	canonicalStage(stages, "ffn_modulated", ffnIn)
 	w1, err := canonicalLinear(ffnIn, 1024, 3840, 10240, w.w1, nil)

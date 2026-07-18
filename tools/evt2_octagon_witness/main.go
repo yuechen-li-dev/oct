@@ -62,6 +62,21 @@ func readF32(path string, count int) ([]float32, error) {
 	return out, nil
 }
 
+func readF32Slice(path string, offset, count int) ([]float32, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if offset < 0 || len(b) < (offset+count)*4 {
+		return nil, fmt.Errorf("%s does not contain requested F32 slice", path)
+	}
+	out := make([]float32, count)
+	for i := range out {
+		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[(offset+i)*4:]))
+	}
+	return out, nil
+}
+
 func readFP16(path string) ([]float32, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -133,6 +148,8 @@ func main() {
 	analysisOut := flag.String("analysis-out", "", "optional W2 range-analysis JSON output")
 	rawRange := flag.String("raw-range", "", "official contiguous BF16 source range for w2policy mode")
 	tensor := flag.String("tensor", "", "qkv, w1, or w3 for linearpolicy mode")
+	token := flag.Int("token", 0, "input token for linearpolicy mode")
+	channel := flag.Int("channel", 0, "output channel for linearpolicy mode")
 	flag.Parse()
 	if *stages == "" || *out == "" || (*mode == "qnorm" && *cacheBlock == "") {
 		flag.Usage()
@@ -320,19 +337,22 @@ func main() {
 		if cacheName == "" {
 			panic("linear weight absent from cache manifest")
 		}
-		input, err := readF32(filepath.Join(*stages, spec.InputStage), 3840)
+		if *token < 0 || *token >= 1024 || *channel < 0 || *channel >= spec.Outputs {
+			panic("linearpolicy token or channel out of range")
+		}
+		input, err := readF32Slice(filepath.Join(*stages, spec.InputStage), *token*3840, 3840)
 		if err != nil {
 			panic(err)
 		}
-		expected, err := readF32(filepath.Join(*stages, spec.OutputStage), 1)
+		expected, err := readF32Slice(filepath.Join(*stages, spec.OutputStage), *token*spec.Outputs+*channel, 1)
 		if err != nil {
 			panic(err)
 		}
-		fp16Weight, err := readFP16Column(filepath.Join(*cacheBlock, cacheName), 3840, spec.Outputs, 0)
+		fp16Weight, err := readFP16Column(filepath.Join(*cacheBlock, cacheName), 3840, spec.Outputs, *channel)
 		if err != nil {
 			panic(err)
 		}
-		bf16Weight, err := readBF16(*rawRange, spec.Offset, 3840)
+		bf16Weight, err := readBF16(*rawRange, spec.Offset+*channel*3840*2, 3840)
 		if err != nil {
 			panic(err)
 		}

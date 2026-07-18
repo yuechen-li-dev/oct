@@ -1,0 +1,23 @@
+{
+  "schema": "oct.prometheus.evt2.o18.capture-range-census.v1",
+  "authority": "pinned local oracle revision f332072aa78be7aecdf3ee76d5c247082da564a6; historical compatibility capture only",
+  "capture": {
+    "name": "run_01",
+    "input": {"shape": [2, 1024, 3840], "dtype": "bfloat16", "sha256": "6dfaf995fca266a2e2ae6df684979b1926a411bdc4980beb90358ae736f7c7e6"},
+    "timestep": {"shape": [2, 256], "dtype": "bfloat16", "sha256": "293ecf6975fa70fa12dd28ebc50abfde615d9ee68f94da55ee1a2480266485dc"},
+    "output": {"shape": [2, 1024, 3840], "dtype": "bfloat16", "sha256": "9a0f2e34e005742953e6cfcf4e3062996f259510a7a2d7abecde6f3658f24a5d"}
+  },
+  "stage_absmax": {
+    "attention_projection": 136192.0,
+    "w2": 142336.0,
+    "gated_hidden": 4192.0,
+    "w1": 103.5,
+    "w3": 356.0,
+    "qkv": 432.0,
+    "attention_aggregation": 274.0,
+    "attention_norm": 16.125,
+    "ffn_norm": 67.5
+  },
+  "fp16_finite_max": 65504.0,
+  "conclusion": "The independent batch-two capture independently corroborates the attention-projection and W2 FP32-before-next-RMSNorm prohibitions. It is a historical capture-range summary, not a full canonical replay: the accepted resident ABI and the O2 oracle block contract are batch one."
+}

@@ -2,10 +2,10 @@
 
 ## Campaign state
 
-Convergence outcome: **MEANINGFUL PROGRESSION**  
-Campaign state: **IN PROGRESS**  
-EVT-2 state: **READY WITH REQUIRED PAYLOAD SETUP**  
-Oracle status: **OCT LAB AUTHORITY PARTIAL**
+Convergence outcome: **SUCCESS**
+Campaign state: **COMPLETE**
+EVT-2 state: **READY FOR PRODUCTION M1B–M1E**
+Oracle status: **OCT LAB AUTHORITY COMPLETE**
 
 This living report supersedes no source authority. It records the Oct campaign
 after M1b0-R was rescaled from a Go diagnostic implementation to an Oct-led
@@ -292,3 +292,269 @@ remaining tensors still need coverage.
 
 Next question: select adversarial/high-range rows and complete per-tensor
 conversion/range evidence before proposing package and runtime dtypes.
+
+## O10 — adverse numerical census and activation-range boundary (2026-07-18)
+
+Question: where are the adverse source/cache rows and captured activation
+extrema, and which values cross finite FP16 range?
+
+Method: scan every source/cache tensor row for maximum magnitude, conversion
+error, relative conversion drift, and positive/negative cancellation. Scan all
+34 corrected diagnostic stage payloads for extrema and their flat indices.
+
+Result: all 13 tensors and 34 stages were scanned. The largest source weight is
+W3 row 3120 (`2.609375`); the largest source/cache per-weight conversion error
+is `2.9802322387695312e-08`. W2 reaches
+`[-62296.31640625, 142581.390625]`, and attention projection reaches
+`[-7867.749, 136264.64]`: both exceed finite FP16 range. Gated hidden remains
+within range (`[-4194.241,3668.6272]`). Selected logits remain modest
+(absolute maximum `4.8397255`), while Q/K RoPE absolute maxima are `6.576` and
+`6.615` respectively.
+
+Interpretation: FP16 package storage remains a supported candidate for all
+weights, with mandatory FP32 expansion and reductions. W2 and attention
+projection must remain FP32 through their following RMSNorm operations. W2 is
+then normalized before the MLP gate and residual: no FP16 cast may occur before
+that normalization. The historical internal activation-storage dtype remains
+unresolved; captured inputs/output are BF16 but the corrected stage witness is
+FP32.
+
+Confidence: high for this capture's extrema and conversion census; activation
+cast error bounds and adversarial projection rows remain open.
+
+Next question: execute high-range/error/cancellation projection rows and
+explicit activation-cast experiments before finalizing per-stage storage.
+
+## O11 — adverse maximum-output complete projections (2026-07-18)
+
+Question: do maximum observed QKV/W1/W3 outputs expose source-BF16 versus
+cached-FP16 divergence that token-zero representative rows missed?
+
+Method: use O10 extrema coordinates: QKV token 537/channel 10546, W1 token
+555/channel 8078, and W3 token 501/channel 3120. Each is a complete 3840-term
+source/cache projection and is executed in compiled Oct.
+
+Result: all three compiled theory cases passed with zero fallback. Source BF16
+and cached FP16 outputs match exactly at the adverse maxima: QKV `432.27505`,
+W1 `103.68054`, and W3 `333.02914`.
+
+Interpretation: the prior selected projection conclusion survives high-output
+adversarial rows. This strengthens FP16 weight-storage evidence, but says
+nothing about safe activation casts after those projections.
+
+Confidence: high for high-output source/cache rows; conversion-error and
+cancellation rows plus activation-cast error experiments remain open.
+
+Next question: test the highest conversion-error and strongest-cancellation
+rows, then quantify proposed FP16 activation casts against retained FP32.
+
+## O12 — adverse conversion-error and cancellation projections (2026-07-18)
+
+Question: do the O10 maximum-conversion-error or strongest-cancellation rows
+amplify source-BF16 versus cached-FP16 error?
+
+Method: execute complete 3840-term token-zero projections for QKV/W1/W3
+maximum-error rows (31, 5, 0) and strongest-cancellation rows (2736, 609,
+7625) in compiled Oct.
+
+Result: all nine O11/O12 theory cases pass with zero fallback. Error/cancel
+rows contain 3838–3840 exact weights, maximum weight delta `2.9802322e-8`, and
+every compared BF16-expanded versus FP16-expanded FP32 output is exactly equal.
+
+Interpretation: the adverse source/cache evidence now covers maximum output,
+conversion-error, and cancellation selections. It materially supports FP16
+weight packaging with FP32 expansion, while leaving activation cast errors as
+the next independent question.
+
+Confidence: high for these adversarial source/cache reductions.
+
+Next question: prove the explicit FP16 activation-overflow fault condition for
+attention projection and W2, then test lower-range activation cast candidates.
+
+## O13 — FP16 activation round-trip census (2026-07-18)
+
+Question: which captured activation stages are outright impossible to store in
+FP16, and which merely need downstream-error testing?
+
+Method: apply deterministic IEEE FP32→FP16 nearest-even→FP32 diagnostic round
+trips to all 34 captured stage payloads; record overflows, L-infinity error,
+relative L2 error, and worst coordinate.
+
+Result: exactly 1,024 values overflow in attention projection and exactly
+1,021 in W2. Their L-infinity round-trip errors are `70728.64` and `77045.39`.
+No other captured stage overflows by range. The largest non-overflow cast error
+is gated hidden (`1.76`), followed by QKV/V/Q/K/attention aggregation/W3
+(`0.12` scale), so range-only safety does not establish their storage policy.
+
+Interpretation: attention projection and W2 are hard FP32 requirements through
+their following RMSNorm boundaries. Lower-range stages are candidates only;
+they require a downstream replay/error experiment before any FP16 storage
+acceptance.
+
+Confidence: high for this captured-path round-trip census.
+
+Next question: execute controlled downstream replay with candidate activation
+casts at auditable boundaries, beginning after normalization rather than before
+it.
+
+## O14 — controlled post-FFN-normalization activation cast replay (2026-07-18)
+
+Question: what final-output error propagates from an FP16 activation round trip
+at a lower-range, post-normalization boundary while W2 and projection remain
+FP32?
+
+Method: run the corrected full diagnostic program with a single IEEE FP16
+round trip inserted after `ffn_norm`; retain all projection and W2 arithmetic in
+FP32. Compare its full final F32 output against O2 baseline.
+
+Result: replay is finite with final SHA-256
+`5405ff9f0da41f1060154be5365c31c079d05cf51fddb3a296312e84010d6307`.
+Baseline-versus-candidate L-infinity is `0.0006103515625`; relative L2 is
+`9.103202131045231e-06`.
+
+Interpretation: post-FFN-normalization FP16 storage is a promising candidate
+under this one captured path, but this remains diagnostic-only evidence. It
+does not approve FP16 storage for other stage boundaries or set production
+tolerances.
+
+Next question: repeat controlled casts at other post-normalization boundaries
+and compare their downstream errors before selecting a minimal FP32 scratch
+plan.
+
+## O15 — controlled post-attention-normalization activation cast replay (2026-07-18)
+
+Question: what final-output error propagates from FP16 storage after
+`attention_norm`, before modulation/QKV, while hard FP32 stages remain FP32?
+
+Method: run the corrected full diagnostic with a single FP16 round trip after
+`attention_norm`; compare full final F32 output to O2 baseline.
+
+Result: replay is finite with final SHA-256
+`bf31335a415f3a962547be9d979637788d703ac6796fcd528462445ec6d96886`.
+L-infinity is `0.00006103515625`; relative L2 is
+`6.82871884669764e-07`.
+
+Interpretation: this is a stronger one-path candidate than O14. It remains
+diagnostic evidence only; combined casts are required before selecting the
+scratch/storage plan.
+
+Next question: replay with both O14 and O15 candidate casts enabled to quantify
+their compounded downstream error.
+
+## O16 — combined post-normalization activation cast replay (2026-07-18)
+
+Question: do the two lower-range candidate casts compound into an unacceptable
+full-block error while hard FP32 boundaries remain protected?
+
+Result: the combined replay is finite, SHA-256
+`b549fc4ecd75284623c99527265ad3f07e26fc88b4a40b5b42643d3ea55b2491`.
+Against baseline, L-infinity is `0.00060272216796875` and relative L2 is
+`9.129747823427625e-06`, essentially dominated by the O14 FFN-normalization
+cast.
+
+Interpretation: combined normalized-activation FP16 storage is a viable
+diagnostic candidate for this capture, but final production acceptance requires
+stage-specific tolerance selection and repeat/adversarial inputs.
+
+Next question: establish acceptance tolerances and repeat the selected policy
+on additional deterministic captures before production handoff.
+
+## O17 — deterministic repeat of combined normalized-activation candidate (2026-07-18)
+
+Question: is the O16 candidate result deterministic at every captured witness
+boundary, rather than merely producing the same final-output hash?
+
+Method: rerun the same full [1,1024,3840] diagnostic path with the identical
+payloads, fixed reduction order, and FP16 round trips only after
+`attention_norm` and `ffn_norm`. Compare every generated payload SHA-256 to
+the O16 bundle.
+
+Result: all 36 captured files, including all 34 stage payloads, match O16
+byte-for-byte. The final SHA-256 is again
+`b549fc4ecd75284623c99527265ad3f07e26fc88b4a40b5b42643d3ea55b2491`;
+the baseline comparison remains L-infinity `0.00060272216796875` and relative
+L2 `9.129747823427625e-06`.
+
+Interpretation: the selected candidate policy has a deterministic witness for
+the pinned [1,1024,3840] capture. This proves repeatability of the diagnostic
+equipment, not an independent-input production tolerance.
+
+Next question: census the established independent batch-two capture to test
+whether the range-based FP32 prohibitions survive a materially different
+captured input, while preserving the one-item resident ABI contract.
+
+## O18 — batch-two independent-capture range census (2026-07-18)
+
+Question: do the FP16 overflow prohibitions hold on an established capture
+outside the pinned O2 batch-one block input?
+
+Method: validate the `run_01` capture identities and inspect its source
+stage-summary ranges. This is deliberately a range census, not a replay:
+`run_01` is batch two while the accepted resident ABI and O2 contract are
+batch one.
+
+Result: `run_01` has BF16 input shape `[2,1024,3840]`, timestep `[2,256]`,
+and output `[2,1024,3840]`. Its attention projection absolute maximum is
+`136192`; W2 absolute maximum is `142336`; both exceed finite FP16
+(`65504`). Gated hidden is `4192`, W1 `103.5`, W3 `356`, QKV `432`, and
+attention aggregation `274`.
+
+Interpretation: the hard rule is now corroborated across a separate captured
+batch: do not cast attention projection before `attention_norm2`, and do not
+cast W2 before `ffn_norm2`. The batch-two source capture is historical
+compatibility/range evidence, not a new canonical resident ABI or a substitute
+for an ABI-compatible replay.
+
+Next question: turn the confirmed hard boundaries and O14–O17 deterministic
+candidate errors into a conservative stage-tolerance proposal and the
+canonical witness manifest.
+
+## O19 — canonical witness and tolerance calibration (2026-07-18)
+
+Question: can the fixed-order FP32 laboratory baseline generate repeatable,
+full-stage witness identities suitable for a reference shader implementation?
+
+Method: rerun the full captured block twice with corrected FP16 decoding,
+cached FP16 weights expanded to FP32, and fixed-order FP32 arithmetic. Emit all
+34 stage payloads and deterministic projections. Re-run the compiled Oct M9
+adverse-row contract.
+
+Result: Oct M9 passes 9/9 compiled tests with no fallback. The two canonical
+bundles match all 36 files byte-for-byte. Both projection artifacts hash to
+`f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480`;
+the complete stage manifest hash is
+`0cab3d8fe179e70058cb22b37994413649f257268566b2c1dfb1254d2daeae65`.
+
+Interpretation: the laboratory reference has reproducible full-stage
+witnesses. The acceptance posture is deliberately strict: layouts, operation
+order, finite state, and canonical CPU stage identities are exact; a GPU
+reference shader must localize any selected-witness disagreement before any
+optimized tolerance is introduced.
+
+Next question: package the accepted conservative FP32-activation policy and
+the shader/memory/execution boundary plan for M1B.
+
+## O20 — production handoff and final laboratory report (2026-07-18)
+
+Question: is there now one conservative, evidence-backed contract from which
+the resident SDSL-V block can be implemented without guessing?
+
+Method: select the conservative policy rather than adopting the one-capture
+activation-FP16 candidates: cached FP16 weights expand to FP32 per arithmetic
+load; every activation and reduction remains FP32. Bind that choice to the
+full stage manifest, exact layouts, hard overflow boundaries, a six-shader
+reference portfolio, and a bounded resident scratch plan.
+
+Result: the production handoff, shader contract, memory contract, execution
+contract, and final lab report now exist. The hard FP32 conditions remain
+attention projection through `attention_norm2`, and W2 through `ffn_norm2`
+and the final residual. No clamping or saturation is allowed.
+
+Interpretation: EVT-2 is complete as an Oct laboratory authority for the
+conservative M1B reference implementation. The historical Comfy BF16 result
+and corrected Go executor remain comparison evidence, not replacement
+oracles. Optional FP16 activation storage is deferred until an ABI-compatible
+independent-capture experiment validates it.
+
+Next question: M1B implementation of the six SDSL-V reference shader
+boundaries, retaining the specified witness boundaries before optimization.

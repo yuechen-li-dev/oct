@@ -1,0 +1,17 @@
+{
+  "schema": "oct.prometheus.evt2.o20.production-memory-contract.v1",
+  "immutable_weights": {"dtype": "FP16", "bytes": 361820672, "mebibytes": 345.059082, "identity": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"},
+  "runtime_weight_policy": "expand FP16 operands to FP32 registers or tiles on load; do not allocate a persistent 690.118164 MiB FP32 weight mirror",
+  "fp32_scratch": [
+    {"buffer": "A", "shape": [1,1024,3840], "bytes": 15728640, "purpose": "input, then W2/final output after original input is no longer needed"},
+    {"buffer": "B", "shape": [1,1024,3840], "bytes": 15728640, "purpose": "attention aggregation, then attention residual"},
+    {"buffer": "C", "shape": [1,1024,11520], "bytes": 47185920, "purpose": "fused QKV, then reused as W1/gated hidden"},
+    {"buffer": "D", "shape": [1,1024,10240], "bytes": 41943040, "purpose": "W3 hidden"},
+    {"buffer": "softmax", "shape": [2,1024], "bytes": 8192, "purpose": "one head's logits and probabilities"}
+  ],
+  "minimum_scratch_bytes": 120594432,
+  "minimum_scratch_mebibytes": 115.0078125,
+  "recommended_aligned_scratch_mebibytes": 128,
+  "resident_total_minimum_mebibytes": 460.0668945,
+  "notes": ["AdaLN vectors are negligible relative to the declared scratch and may be a small FP32 uniform/storage buffer.", "The plan intentionally uses FP32 for every live activation so the W2 and attention-projection overflow cases cannot be silently saturated."]
+}

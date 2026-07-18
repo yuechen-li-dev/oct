@@ -1,0 +1,312 @@
+{
+  "schema": "oct.prometheus.evt2.o13.activation-fp16-roundtrip.v1",
+  "stages": [
+    {
+      "name": "attention_aggregation.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.124969482421875,
+      "relative_l2": 0.00020574920858103485,
+      "max_error_index": 3420383,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_gate_raw.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.0004292726516723633,
+      "relative_l2": 0.00021571071852358019,
+      "max_error_index": 2169,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_gate_tanh.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.00023299455642700195,
+      "relative_l2": 0.00020872907228427527,
+      "max_error_index": 2733,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_logits_token0_head0.f32.bin",
+      "count": 1024,
+      "fp16_overflow_count": 0,
+      "linf": 0.0016770362854003906,
+      "relative_l2": 0.00020287295731860773,
+      "max_error_index": 34,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_logits_token1023_head29.f32.bin",
+      "count": 1024,
+      "fp16_overflow_count": 0,
+      "linf": 0.0019068717956542969,
+      "relative_l2": 0.0002105968382135491,
+      "max_error_index": 718,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_modulated.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.015625,
+      "relative_l2": 0.0002071498925419066,
+      "max_error_index": 3626095,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_norm.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.00390625,
+      "relative_l2": 0.00020735552396338616,
+      "max_error_index": 2613871,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_probabilities_token0_head0.f32.bin",
+      "count": 1024,
+      "fp16_overflow_count": 0,
+      "linf": 0.000007927417755126953,
+      "relative_l2": 0.00020442144734624911,
+      "max_error_index": 33,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_probabilities_token1023_head29.f32.bin",
+      "count": 1024,
+      "fp16_overflow_count": 0,
+      "linf": 0.000006845220923423767,
+      "relative_l2": 0.00021549460899366582,
+      "max_error_index": 718,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_projection.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 1024,
+      "linf": 70728.640625,
+      "relative_l2": 0.49656485316694327,
+      "max_error_index": 2374358,
+      "candidate": "prohibited: overflow"
+    },
+    {
+      "name": "attention_residual.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.015613555908203125,
+      "relative_l2": 0.00015622406835308605,
+      "max_error_index": 342998,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_scale_adjusted.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.0012021064758300781,
+      "relative_l2": 0.00020790793886831674,
+      "max_error_index": 3239,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "attention_scale_raw.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.0009760856628417969,
+      "relative_l2": 0.00020517797019182365,
+      "max_error_index": 925,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "ffn_gated_hidden.f32.bin",
+      "count": 10485760,
+      "fp16_overflow_count": 0,
+      "linf": 1.7587890625,
+      "relative_l2": 0.00020738834853095448,
+      "max_error_index": 2790311,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "ffn_modulated.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.015625,
+      "relative_l2": 0.00020827809673978898,
+      "max_error_index": 308438,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "ffn_norm.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.0310211181640625,
+      "relative_l2": 0.00018459785706486574,
+      "max_error_index": 3856598,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "final_output.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.015621185302734375,
+      "relative_l2": 0.00021548881822261578,
+      "max_error_index": 1011158,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "k.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.124969482421875,
+      "relative_l2": 0.00020745503450820605,
+      "max_error_index": 3021610,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "k_norm.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.0019516944885253906,
+      "relative_l2": 0.00020717164562367006,
+      "max_error_index": 1558579,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "k_rope.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.001953125,
+      "relative_l2": 0.00020707281014871644,
+      "max_error_index": 3590945,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "mlp_gate_raw.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.0007843971252441406,
+      "relative_l2": 0.00021029995726579354,
+      "max_error_index": 3378,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "mlp_gate_tanh.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.00024116039276123047,
+      "relative_l2": 0.000203971263652813,
+      "max_error_index": 3244,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "mlp_scale_adjusted.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.0009546279907226562,
+      "relative_l2": 0.0002063341233467542,
+      "max_error_index": 922,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "mlp_scale_raw.f32.bin",
+      "count": 3840,
+      "fp16_overflow_count": 0,
+      "linf": 0.0009660720825195312,
+      "relative_l2": 0.00021300437405656581,
+      "max_error_index": 2904,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "q.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.12493896484375,
+      "relative_l2": 0.00020672935812693347,
+      "max_error_index": 1272455,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "q_norm.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.0019516944885253906,
+      "relative_l2": 0.0002079261999439586,
+      "max_error_index": 1647543,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "q_rope.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.001953125,
+      "relative_l2": 0.00020769054546175943,
+      "max_error_index": 1997023,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "qkv.f32.bin",
+      "count": 11796480,
+      "fp16_overflow_count": 0,
+      "linf": 0.125,
+      "relative_l2": 0.00020711751357103196,
+      "max_error_index": 1367709,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "timestep_input.f32.bin",
+      "count": 256,
+      "fp16_overflow_count": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "max_error_index": -1,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "timestep_linear.f32.bin",
+      "count": 15360,
+      "fp16_overflow_count": 0,
+      "linf": 0.0009760856628417969,
+      "relative_l2": 0.00020896448703241596,
+      "max_error_index": 925,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "v.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 0,
+      "linf": 0.125,
+      "relative_l2": 0.0002073191626611899,
+      "max_error_index": 453789,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "w1.f32.bin",
+      "count": 10485760,
+      "fp16_overflow_count": 0,
+      "linf": 0.030670166015625,
+      "relative_l2": 0.00020424098254392291,
+      "max_error_index": 7667904,
+      "candidate": "range-only candidate; downstream error replay required"
+    },
+    {
+      "name": "w2.f32.bin",
+      "count": 3932160,
+      "fp16_overflow_count": 1021,
+      "linf": 77045.390625,
+      "relative_l2": 0.08094557922785739,
+      "max_error_index": 1982678,
+      "candidate": "prohibited: overflow"
+    },
+    {
+      "name": "w3.f32.bin",
+      "count": 10485760,
+      "fp16_overflow_count": 0,
+      "linf": 0.1246337890625,
+      "relative_l2": 0.00020741296609317958,
+      "max_error_index": 8450014,
+      "candidate": "range-only candidate; downstream error replay required"
+    }
+  ],
+  "conclusion": "Round-trip range/error evidence only; a candidate is not an accepted activation-storage policy until downstream replay."
+}

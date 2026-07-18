@@ -1,0 +1,22 @@
+{
+  "schema": "oct.prometheus.evt2.o13.activation-fault-conditions.v1",
+  "fp16_finite_max": 65504,
+  "faults": [
+    {
+      "stage": "attention_projection",
+      "observed_min": -7867.749,
+      "observed_max": 136264.64,
+      "fault_condition": "casting projection output to FP16 before attention_norm2",
+      "result": "positive values above 65504 overflow; retain FP32 through attention_norm2"
+    },
+    {
+      "stage": "w2",
+      "observed_min": -62296.31640625,
+      "observed_max": 142581.390625,
+      "fault_condition": "casting W2 output to FP16 before ffn_norm2",
+      "result": "positive values above 65504 overflow; retain FP32 through ffn_norm2 and final gate/residual"
+    }
+  ],
+  "order": ["w2", "ffn_norm2", "mlp_gate_tanh multiply", "add attention_residual"],
+  "conclusion": "FP16 weight storage is compatible with FP32 activation and accumulation. FP16 activation storage is prohibited at the listed pre-normalization boundaries."
+}

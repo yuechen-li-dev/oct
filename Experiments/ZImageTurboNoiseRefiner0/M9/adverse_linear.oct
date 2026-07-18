@@ -1,0 +1,16 @@
+package ZImageTurboNoiseRefiner0
+
+record LinearPolicyWitness {
+    Input: Float[]
+    BF16Weight: Float[]
+    FP16Weight: Float[]
+    Expected: Float
+}
+
+fn AdverseDot(input: Float[], weight: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(input) {
+        sum = sum + input[i] * weight[i]
+    }
+    return sum
+}

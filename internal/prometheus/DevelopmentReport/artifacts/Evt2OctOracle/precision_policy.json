@@ -1,7 +1,39 @@
 {
-  "schema": "oct.prometheus.evt2.oct-oracle.precision-policy.v1",
-  "status": "UNRESOLVED — corrected diagnostic replay complete; canonical Oct policy comparison required",
-  "established": ["source BF16 weight values are finite", "no source BF16-to-FP16 overflow occurs", "Q/K RMSNorm scales are exactly BF16-to-FP16 representable", "all 10240 W2 weights in the selected complete source/cache comparison are exact and produce identical FP32 output", "corrected cached-FP16-to-FP32 diagnostic replay is finite through W2 and final output", "the old FP16 rejection was caused by a normal FP16 decoder defect", "source-weight-only conversion cannot establish production activation-path safety", "norm, RoPE, softmax, and reductions require FP32 experiment authority"],
-  "prohibited": ["clamping", "saturation as correctness policy", "accepting the old diagnostic final hash", "accepting corrected Go diagnostic output as canonical", "one-dtype-for-all-tensors conclusion"],
-  "next_measurement": "Oct-orchestrated comparison of original BF16 values expanded to FP32, cached FP16 values expanded to FP32, and explicit mixed policies at the canonical stage boundaries"
+  "schema": "oct.prometheus.evt2.o10.precision-policy.v2",
+  "status": "ACCEPTED CONSERVATIVE PRODUCTION REFERENCE POLICY — FP16 package weights expanded per load to FP32; all activations and reductions FP32",
+  "weight_policy": {
+    "source_dtype": "BF16",
+    "package_dtype": "FP16",
+    "runtime_expansion_dtype": "FP32",
+    "accumulation_dtype": "FP32",
+    "evidence": "O1 all tensors finite with no FP16 overflow; O8/O9 complete source/cache projection comparisons"
+  },
+  "tensors": [
+    {"tensor":"adaLN_modulation.0.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O10 max conversion error 2.98e-8; max row relative drift 3.49e-7"},
+    {"tensor":"adaLN_modulation.0.bias","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O10 max conversion error 1.86e-8"},
+    {"tensor":"attention_norm1.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O1 exact conversion"},
+    {"tensor":"attention.qkv.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O9 complete selected row exact; O10 max conversion error 2.98e-8"},
+    {"tensor":"attention.q_norm.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O1 exact conversion; O5 complete real head witness"},
+    {"tensor":"attention.k_norm.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O1 exact conversion"},
+    {"tensor":"attention.out.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O10 max conversion error 2.98e-8"},
+    {"tensor":"attention_norm2.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O10 max conversion error 2.98e-8"},
+    {"tensor":"ffn_norm1.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O1 exact conversion"},
+    {"tensor":"feed_forward.w1.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O9 complete selected row exact"},
+    {"tensor":"feed_forward.w3.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O9 one selected delta 2.98e-8, identical FP32 output"},
+    {"tensor":"feed_forward.w2.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O8 complete source/cache W2 row exact, identical FP32 dot"},
+    {"tensor":"ffn_norm2.weight","source":"BF16","package":"FP16","runtime":"FP32","accumulation":"FP32","status":"candidate-safe","evidence":"O10 max conversion error 2.98e-8"}
+  ],
+  "stages": [
+    {"stage":"AdaLN scales/gates","input_storage":"BF16 at ABI then FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32","cast_boundary":"no cast before modulation","range":"adjusted scales [-2.266,4.281], gates [-0.987,0.981]","evidence":"O3,O10,O19"},
+    {"stage":"attention norm/modulation/QKV/QK/RoPE","input_storage":"FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32; diagnostic FP16-storage candidate only after attention_norm","cast_boundary":"O15/O16 permit only the post-attention_norm candidate boundary; no cast before Q/K norm or RoPE","range":"Q/K pre-norm absmax 384.131/358.456; Q/K RoPE absmax 6.576/6.615","evidence":"O4,O5,O10,O15,O16,O17"},
+    {"stage":"attention logits/probabilities/aggregation","input_storage":"FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32","cast_boundary":"probabilities remain FP32 through V aggregation","range":"selected logits absmax 4.840; aggregation absmax 273.013","evidence":"O6,O10"},
+    {"stage":"attention projection","input_storage":"FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32 REQUIRED","cast_boundary":"only after attention_norm2 if a future error experiment permits","range":"[-7867.749,136264.64] exceeds finite FP16","evidence":"O10"},
+    {"stage":"attention residual / FFN norm / modulation","input_storage":"FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32; diagnostic FP16-storage candidate only after ffn_norm","cast_boundary":"no cast before FFN norm; O14/O16 permit only the post-ffn_norm candidate boundary","range":"residual absmax 34.105; ffn_modulated absmax 46.864","evidence":"O10,O14,O16,O17"},
+    {"stage":"W1/W3/gated hidden","input_storage":"FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32","cast_boundary":"no cast before W2","range":"W1 absmax 103.681; W3 absmax 356.354; hidden absmax 4194.241","evidence":"O9,O10,O19"},
+    {"stage":"W2 → ffn_norm2 → final gate/residual","input_storage":"FP32","arithmetic":"FP32","accumulation":"FP32","output_storage":"FP32 REQUIRED through ffn_norm2 and final gate/residual","cast_boundary":"W2 cannot cast to FP16 before ffn_norm2; final output cast remains unapproved","range":"W2 [-62296.316,142581.391] exceeds finite FP16; final absmax 40.048","evidence":"O2,O7,O10; canonical order W2 then ffn_norm2 then gate/residual"}
+  ],
+  "historical_activation_storage": "UNRESOLVED: captured inputs and compatibility output are BF16; the pinned source/corrected diagnostic witnesses use FP32 stage arithmetic. The production reference policy intentionally does not depend on resolving historical internal activation storage.",
+  "prohibited": ["clamping","saturation as correctness policy","FP16 cast of attention projection or W2 before their following RMSNorm","conflating FP16-safe weights with FP16-safe activations","accepting the corrected Go diagnostic as canonical final output"],
+  "optimization_note": "O14-O17 establish post-attention_norm and post-ffn_norm FP16 storage as deterministic one-capture optimization candidates only. They are excluded from the accepted reference path.",
+  "next_measurement": "M1B reference SDSL-V implementation: validate the selected canonical witnesses without changing this numerical policy"
 }

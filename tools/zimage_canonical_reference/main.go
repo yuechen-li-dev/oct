@@ -83,13 +83,25 @@ func main() {
 	cacheRoot := flag.String("cache-root", "", "EVT-2 root containing layers")
 	oracleRoot := flag.String("oracle-root", "", "revision directory containing run_02 and m075")
 	out := flag.String("out", "", "local canonical bundle output directory")
+	projectionsOut := flag.String("projections-out", "", "optional deterministic canonical stage-projection artifact JSON path")
+	stageManifestOut := flag.String("stage-manifest-out", "", "optional deterministic canonical stage-manifest artifact JSON path")
 	capture := flag.Bool("capture", false, "write full local stage payloads")
+	castFfnNorm := flag.Bool("cast-ffn-norm-fp16", false, "diagnostic-only FP16 round trip after ffn_norm")
+	castAttentionNorm := flag.Bool("cast-attention-norm-fp16", false, "diagnostic-only FP16 round trip after attention_norm")
 	flag.Parse()
 	if *cacheRoot == "" || *oracleRoot == "" || *out == "" {
 		flag.Usage()
 		os.Exit(2)
 	}
-	result, err := zimage.RunCanonicalNoiseRefiner0(zimage.CanonicalNoiseRefiner0Paths{CacheRoot: *cacheRoot, OracleRoot: *oracleRoot}, *capture)
+	paths := zimage.CanonicalNoiseRefiner0Paths{CacheRoot: *cacheRoot, OracleRoot: *oracleRoot}
+	var result zimage.CanonicalNoiseRefiner0Result
+	var err error
+	if *castFfnNorm || *castAttentionNorm {
+		casts := map[string]bool{"ffn_norm": *castFfnNorm, "attention_norm": *castAttentionNorm}
+		result, err = zimage.RunCanonicalNoiseRefiner0WithF16StageCasts(paths, *capture, casts)
+	} else {
+		result, err = zimage.RunCanonicalNoiseRefiner0(paths, *capture)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -132,6 +144,49 @@ func main() {
 	}
 	if err = os.WriteFile(filepath.Join(*out, "manifest.json"), append(data, '\n'), 0644); err != nil {
 		panic(err)
+	}
+	if *projectionsOut != "" {
+		if err = os.MkdirAll(filepath.Dir(*projectionsOut), 0755); err != nil {
+			panic(err)
+		}
+		artifact := map[string]any{
+			"schema":            "oct.prometheus.evt2.o19.canonical-stage-projections.v1",
+			"source_revision":   zimage.CanonicalNoiseRefiner0SourceRevision,
+			"rope_frame":        33,
+			"numerical_policy":  "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode",
+			"final_output":      manifest["final_output"],
+			"stage_projections": manifest["stages"],
+			"canonicality":      "diagnostic witness only; payloads remain local and are not a substitute for the official BF16 compatibility output",
+		}
+		artifactData, err := json.MarshalIndent(artifact, "", "  ")
+		if err != nil {
+			panic(err)
+		}
+		if err = os.WriteFile(*projectionsOut, append(artifactData, '\n'), 0644); err != nil {
+			panic(err)
+		}
+	}
+	if *stageManifestOut != "" {
+		if err = os.MkdirAll(filepath.Dir(*stageManifestOut), 0755); err != nil {
+			panic(err)
+		}
+		stageManifest := map[string]any{
+			"schema":           "oct.prometheus.evt2.o19.canonical-stage-manifest.v2",
+			"status":           "complete diagnostic witness; canonical CPU laboratory authority, not official-BF16 compatibility equivalence",
+			"required_stages":  []string{"AdaLN", "scales_gates", "attention_norm_modulation", "fused_qkv", "q_k_v", "q_k_norm", "q_k_rope", "selected_scores", "selected_probabilities", "attention_aggregation", "output_projection", "attention_residual", "ffn_norm", "w1", "w3", "gated_hidden", "w2", "final_output"},
+			"source_revision":  zimage.CanonicalNoiseRefiner0SourceRevision,
+			"rope_frame":       33,
+			"numerical_policy": "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode",
+			"final_output":     manifest["final_output"],
+			"stages":           manifest["stages"],
+		}
+		stageData, err := json.MarshalIndent(stageManifest, "", "  ")
+		if err != nil {
+			panic(err)
+		}
+		if err = os.WriteFile(*stageManifestOut, append(stageData, '\n'), 0644); err != nil {
+			panic(err)
+		}
 	}
 	fmt.Println(manifest["final_output"])
 }
