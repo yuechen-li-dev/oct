@@ -3202,6 +3202,15 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     rt->cooperative_matrix_shader_float16_enabled = 1u;
     rt->cooperative_matrix_vulkan_memory_model_enabled = 1u;
     rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED;
+    /* The checked-in cooperative shader has LocalSize.x = 32 and subgroup
+       scope.  Do not admit it merely from extension/tuple bits on a wave64
+       device: Vulkan requires LocalSize.x to be a multiple of the effective
+       subgroup size.  Keep the independently useful FP16 device features
+       enabled for conventional paths, but classify this shader route as
+       unavailable so transformer planning takes its established fallback. */
+    if (rt->subgroup_size != 32u) {
+      rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_COMPILER_ROUTE_UNAVAILABLE;
+    }
   }
 #endif
   if (rt->validation_requested != 0u) {
