@@ -1,0 +1,13 @@
+{
+  "schema": "oct.prometheus.evt2m1b0r.canonical-final-output.v1",
+  "status": "diagnostic-only-non-authoritative",
+  "dtype": "float32",
+  "shape": [1, 1024, 3840],
+  "sha256": "ea247df111e3230fec9aaf85a742c1635f707a65217818d5a354e09defba83db",
+  "rope_frame": 33,
+  "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+  "precision_policy": "FP16 cached weights expanded to fixed-order FP32 arithmetic; FP32 RMSNorm, RoPE, scores, and stable softmax",
+  "historical_comfy_comparison": "non-normative; this byte hash is diagnostic only because W2 and final output contain non-finite values under the declared FP16-cache/fixed-order-FP32 policy",
+  "blocking_first_stage": "W2",
+  "milestone_disposition": "M1b0-R RESCOPED; retained only for differential diagnosis"
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "oct.prometheus.evt2m1b0r.canonical-rope-contract.v1",
+  "status": "canonical-source-derived",
+  "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+  "raw_text_tokens": 15,
+  "text_sequence_multiple": 32,
+  "text_padding_tokens": 17,
+  "text_padded_length": 32,
+  "image_frame_formula": "raw_text_tokens + ((32 - raw_text_tokens % 32) % 32) + 1",
+  "image_frame": 33,
+  "image_grid": [1, 32, 32],
+  "token_mapping": "token = row * 32 + column; token 0=[33,0,0], token 31=[33,0,31], token 32=[33,1,0], token 1023=[33,31,31]",
+  "axes_scalar_widths": [32, 48, 48],
+  "theta": 256,
+  "pairing": "contiguous even/odd scalar channels; [0,32), [32,80), [80,128)",
+  "frequency": "pair p in scalar width d uses theta ** (-(2*p)/d); source multiplies complex (even+i*odd) by cos(angle)+i*sin(angle)",
+  "decision": "frame 33 is canonical because it follows pinned patchify_and_embed source. Historical frame 16 was an isolated Comfy wrapper reconstruction that omitted padded-text position semantics.",
+  "comfy_status": "compatibility comparison only; never pass/fail authority"
+}

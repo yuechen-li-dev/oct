@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2m1b0.handoff.v1",
+  "state": "REQUIRES RESCOPE",
+  "reference_status": "AUTHORITY BLOCKED",
+  "do_not_implement": ["Prometheus shaders", "Vulkan pipelines", "resident execution", "AdaLN GPU", "QKV GPU", "Q/K RMSNorm GPU", "RoPE GPU", "attention", "FFN"],
+  "usable_environment_authority": "The exact ComfyUI runtime and accepted isolated FP16/FP32 final-output reproduction are restored and pinned.",
+  "missing_m1b_authority": "No pre-attention tensor bundle is supplied because its RoPE contract cannot simultaneously match the frame-33 frozen capture and the frame-16 accepted FP16 script.",
+  "resolution_artifact": "internal/prometheus/DevelopmentReport/artifacts/Evt2M1b0/fp16_pre_attention_rope_contract.json"
+}

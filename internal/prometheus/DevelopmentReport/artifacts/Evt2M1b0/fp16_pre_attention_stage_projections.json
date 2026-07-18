@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2m1b0.fp16-pre-attention-stage-projections.v1",
+  "status": "not-generated",
+  "reason": "Stage projections would encode Q/K RoPE outputs for the frame-16 isolated invocation and therefore cannot be committed as M1b authority.",
+  "stage_count": 0,
+  "large_payloads_in_git": false
+}

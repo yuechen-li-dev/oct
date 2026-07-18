@@ -1,0 +1,27 @@
+{
+  "schema": "oct.prometheus.evt2m1b0r.canonical-noise-refiner0-contract.v1",
+  "status": "source-derived-pre-execution",
+  "model": "Tongyi-MAI/Z-Image-Turbo",
+  "model_revision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
+  "source": {
+    "repository": "Tongyi-MAI/Z-Image",
+    "revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+    "transformer_git_blob": "866a00ba95c7df49bbfaf9d2f7bc3fa3bfa9d431",
+    "config_git_blob": "926033a358b9a54070ad78e7e27e40c0bf19abe2"
+  },
+  "input": {"shape": [1, 1024, 3840], "dtype": "bfloat16", "sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded"},
+  "timestep": {"shape": [1, 256], "dtype": "bfloat16", "sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2"},
+  "cached_weights": {"tensor_count": 13, "dtype": "float16", "bytes": 361820672, "aggregate_sha256": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"},
+  "shape_contract": {"width": 3840, "heads": 30, "head_width": 128, "ffn_width": 10240, "adaln_width": 15360, "qkv": [1, 1024, 11520], "qkv_split_order": ["Q", "K", "V"]},
+  "operations": [
+    "AdaLN linear 256->15360 with bias; split scale_msa, gate_msa, scale_mlp, gate_mlp; tanh gates and add one to scales",
+    "attention_norm1 RMSNorm(x) then scale_msa multiplication",
+    "fused cached QKV is logical concatenation of official to_q, to_k, to_v; split then [token,head,channel] views",
+    "per-token/head Q and K RMSNorm with epsilon 1e-5 and learned scale; V bypasses it",
+    "three-axis RoPE then non-causal scaled dot-product attention with 1/sqrt(128) and FP32 stable softmax",
+    "attention output projection, RMSNorm2, tanh attention gate, first residual",
+    "RMSNorm FFN input, MLP scale, W1 and W3, SiLU(W1)*W3, W2, RMSNorm2, tanh MLP gate, final residual"
+  ],
+  "precision_policy": "FP16 cached values expanded explicitly to FP32; fixed-order FP32 reductions, reciprocal square root, RoPE, and softmax; no TF32, autocast, or framework dispatch",
+  "execution_status": "The source contract and source-independent coordinate/RMSNorm helpers are committed. Full cached-weight execution and canonical stage bundle are not yet generated."
+}

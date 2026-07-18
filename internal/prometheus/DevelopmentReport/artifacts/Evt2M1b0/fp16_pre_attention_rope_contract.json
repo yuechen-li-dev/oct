@@ -1,0 +1,27 @@
+{
+  "schema": "oct.prometheus.evt2m1b0.rope-authority-conflict.v1",
+  "status": "blocked",
+  "required_frozen_contract": {
+    "frame_coordinate": 33,
+    "rows": "0..31",
+    "columns": "0..31",
+    "axes_dims": [32, 48, 48],
+    "theta": 256
+  },
+  "frozen_bf16_capture_evidence": {
+    "relative_path": "oracle/f332072aa78be7aecdf3ee76d5c247082da564a6/run_02/capture.json",
+    "stage": "noise_refiner_0_rope",
+    "sample_indices": [0, 1, 87381, 131072, 262142, 262143],
+    "sample_values": [-0.013276747427880764, -0.9999118447303772, 0.008209878578782082, -0.013276747427880764, 0.15197736024856567, 0.988383948802948],
+    "interpretation": "these values exactly match Comfy EmbedND(pos_ids_x(33, 32, 32, 1), theta=256, axes=[32,48,48])"
+  },
+  "accepted_fp16_script_evidence": {
+    "script_relative_path": "tools/zimage_fp16_block_drift.py",
+    "script_sha256": "2011cb1b4ecb9f4e4eeef2d93e3205f8de8ffdfd52f2e53c775bebf7f1cc6773",
+    "source_line_behavior": "pos_ids_x(16, 32, 32, 1, device)",
+    "computed_first_frequency_values": [-0.9576594829559326, 0.2879033088684082],
+    "accepted_final_output_sha256": "7e1e6d3d802402a5f0055b6fb257ef04a57cff8166b5925dcce8f9a235f281a7"
+  },
+  "decision": "No Q/K RoPE witness is frozen. A frame-16 witness would satisfy the accepted isolated FP16 script but violate the frozen frame-33 reference contract; changing the script to frame 33 would no longer be the accepted final-output path.",
+  "required_resolution": "establish a single accepted FP16 reference invocation whose image RoPE IDs are frame 33 and whose final-output identity is explicitly authorized."
+}

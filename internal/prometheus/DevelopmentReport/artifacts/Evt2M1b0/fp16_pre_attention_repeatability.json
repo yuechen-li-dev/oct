@@ -1,0 +1,14 @@
+{
+  "schema": "oct.prometheus.evt2m1b0.fp16-pre-attention-repeatability.v1",
+  "environment_reproduction": {
+    "status": "passed",
+    "accepted_output_sha256": "7e1e6d3d802402a5f0055b6fb257ef04a57cff8166b5925dcce8f9a235f281a7",
+    "runs": 2,
+    "drift_json_byte_identical": true,
+    "drift_json_sha256": "50c414c16fbfe2526b059aa097420015499519c52fca285a9770c1efaefe3fedd"
+  },
+  "stage_witness_generation": {
+    "status": "not-run",
+    "reason": "blocked before payload generation by the frame-16/frame-33 RoPE authority conflict"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "schema": "oct.prometheus.evt2m1b0.reference-environment-lock.v1",
+  "status": "restored-and-reproduced",
+  "comfyui": {
+    "revision": "635406e283e9c0c8964f2fde3ff1ff4a8b31201e",
+    "lumina_model_git_blob_sha256": "a22f2e9e4d4cb30f09063809eaec45763af24eda121ae955f5e04f26e1849ced",
+    "restoration": "reconstructed separate checkout; the original source checkout was absent",
+    "source_archive_name": "ComfyUI-EVT2-635406e283e9-source.zip",
+    "source_archive_sha256": "9c1806bedaa6c79af91c898b3304f997de222e70894d83f8f5a66a141a534978",
+    "source_archive_bytes": 7268864
+  },
+  "runtime": {
+    "python": "3.12.9",
+    "torch": "2.9.1+cu130",
+    "cuda": "13.0",
+    "cudnn": 91200,
+    "numpy": "2.2.6",
+    "einops": "0.8.0",
+    "safetensors": "0.5.2",
+    "transformers": "4.57.3",
+    "device": "NVIDIA GeForce RTX 3070",
+    "deterministic_settings": {
+      "cudnn_benchmark": false,
+      "cudnn_deterministic": false,
+      "torch_deterministic_algorithms": false
+    }
+  },
+  "reference": {
+    "script_relative_path": "tools/zimage_fp16_block_drift.py",
+    "script_sha256": "2011cb1b4ecb9f4e4eeef2d93e3205f8de8ffdfd52f2e53c775bebf7f1cc6773",
+    "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+    "model_revision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
+    "cache_aggregate_sha256": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e",
+    "cache_manifest_sha256": "664dba8c5b25cb1164730d5e4e2f4ca4000a9566bd87239e9238773625cc29a2",
+    "input_sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
+    "timestep_sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2",
+    "accepted_fp16_weight_fp32_compute_output_sha256": "7e1e6d3d802402a5f0055b6fb257ef04a57cff8166b5925dcce8f9a235f281a7",
+    "official_bf16_output_sha256": "6dae8d91b2118e7c425ee16d5db214ec0d8df1e988487e855aebd1fe81575873"
+  },
+  "model_path_configuration": {
+    "mechanism": "the reference script calls folder_paths.add_model_folder_path for diffusion_models using <data-root>/models/diffusion_models",
+    "payload_policy": "reuse the existing model root read-only; no weights copied or modified"
+  },
+  "invocation": {
+    "recommended_working_directory": "<reference-checkout>",
+    "sys_path": "the script prepends --comfy-root before importing folder_paths, nodes, and the Lumina model",
+    "environment_variables": "none required by the script; do not set PYTHONPATH when --comfy-root is supplied",
+    "command_template": "<existing-venv-python> <repo>/tools/zimage_fp16_block_drift.py --comfy-root <reference-checkout> --data-root <existing-model-root> --oracle-root <evt2-oracle-root> --cache-root <evt2-oracle-root> --out <local-output>"
+  },
+  "reproduction": {
+    "runs": ["m1b0-env-repro-1", "m1b0-env-repro-2"],
+    "result": "both runs emitted the accepted FP16-weight/FP32-compute output hash; drift JSON was byte-identical",
+    "drift_json_sha256": "50c414c16fbfe2526b059aa097420015499519c52fca285a9770c1efaefe3fedd"
+  }
+}

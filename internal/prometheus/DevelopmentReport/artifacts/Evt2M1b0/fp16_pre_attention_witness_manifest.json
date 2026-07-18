@@ -1,0 +1,11 @@
+{
+  "schema": "oct.prometheus.evt2m1b0.fp16-pre-attention-witness-manifest.v1",
+  "status": "authority-blocked",
+  "reason": "The exact accepted FP16/FP32 script uses frame-16 RoPE while the frozen source capture requires frame 33. No local stage payloads were written.",
+  "environment_lock_relative_path": "internal/prometheus/DevelopmentReport/artifacts/Evt2M1b0/fp16_reference_environment_lock.json",
+  "rope_conflict_relative_path": "internal/prometheus/DevelopmentReport/artifacts/Evt2M1b0/fp16_pre_attention_rope_contract.json",
+  "accepted_fp16_weight_fp32_compute_output_sha256": "7e1e6d3d802402a5f0055b6fb257ef04a57cff8166b5925dcce8f9a235f281a7",
+  "payload_count": 0,
+  "payload_bytes": 0,
+  "bf16_status": "BF16 remains informational only and is not an FP16-stage authority."
+}

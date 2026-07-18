@@ -1,0 +1,22 @@
+{
+  "schema": "oct.prometheus.evt2m1b0r.handoff.v1",
+  "state": "RESCOPED",
+  "reference_status": "DIAGNOSTIC AUTHORITY ONLY",
+  "frame_coordinate": 33,
+  "all_fp16_cache_complete_block_authority": "rejected",
+  "first_non_finite_stage": "W2",
+  "diagnostic_final_output_sha256": "ea247df111e3230fec9aaf85a742c1635f707a65217818d5a354e09defba83db",
+  "diagnostic_final_output_status": "non-authoritative",
+  "comfyui_status": "historical compatibility evidence only",
+  "go_implementation_status": "diagnostic differential implementation only",
+  "next_milestone": "EVT-2 M1b-O0 — Oct experiment vessel and Prometheus primitive seam",
+  "oct_authority_path": [
+    "M1b-O0: Oct experiment vessel and Prometheus primitive seam",
+    "M1b-O1: per-tensor precision and W2 range study",
+    "M1b-O2: canonical pre-attention oracle",
+    "M1b-O3: canonical attention oracle",
+    "M1b-O4: canonical FFN and complete-block output",
+    "M1b-O5: reproducible oracle package and differential proof"
+  ],
+  "do_not_implement": ["GPU shaders", "Vulkan pipelines", "resident ABI changes", "generic tensor framework", "ComfyUI canonical dependency", "unjustified saturation or clamping"]
+}

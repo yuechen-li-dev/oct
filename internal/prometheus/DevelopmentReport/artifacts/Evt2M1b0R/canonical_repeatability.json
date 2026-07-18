@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2m1b0r.canonical-repeatability.v1",
+  "runs": ["run_01", "run_02", "capture_01", "capture_02"],
+  "final_output_sha256": "ea247df111e3230fec9aaf85a742c1635f707a65217818d5a354e09defba83db",
+  "capture_payload_file_count": 32,
+  "capture_payload_bytes": 440593347,
+  "capture_01_vs_capture_02": "all relative payload hashes identical",
+  "capture_manifest_sha256": "6db9cd34196dc83d7fdcd5c207728e7467a1cbd8ab0d61ce05d586a8f8c5be13"
+}
