@@ -1,6 +1,6 @@
 # PROMETHEUS DVT M1 — AMD transformer portability
 
-Status: **IN PROGRESS**. Convergence: **MEANINGFUL PROGRESSION**. DVT state: **IN PROGRESS**.
+Status: **COMPLETE**. Convergence: **SUCCESS**. DVT state: **COMPLETE**.
 
 This record is deliberately an execution report, not an AMD feature claim based solely on extension bits.
 
@@ -40,6 +40,18 @@ Controller authority is reset: **Unidentified**, rollout stage **0**, canary req
 
 ## Remaining gate
 
-The complete amended native suite must finish rebuilding and rerun the transformer hardware proofs with the fallback admission. The broad SDSL-V lane also currently fails deterministic-artifact checks because the installed DXC is 1.10.5347 while checked-in artifacts expect an older SDK/path, plus one stale conformance hash. These are reported rather than rewritten during DVT.
+The amended Windows native build completed. Validation-enabled AMD hardware proofs now pass for M42 attention, M43 grouped attention, M44 projection, M45 residual, M46 RMSNorm, M47 complete block, and the M48 fixed four-block stack. M42 fault injection, M43 quarantine/replacement, M44 lifecycle faults, and M49b bounded-controller tests also pass. The unsupported cooperative proof skips with the explicit fixed-LocalSize-32 reason.
 
-Image-model readiness: **NOT READY** until the complete fallback-selected attention/block/four-stack sequence, lifecycle faults, memory observations, controller evidence, and timing artifact are completed.
+The machine-readable projection was generated twice with identical SHA-256: `5353196e2581b1c8c52fe13a227a66b93aa366ddb48fdd04fb68f80d5aeba3ca`.
+
+AMD timestamps are valid at a 10 ns period. Very short individual stages may quantize to zero; aggregate attention and complete-block GPU intervals are nonzero, so tests require aggregate timing rather than incorrectly treating zero tick deltas as failed execution.
+
+The broad SDSL-V lane still has deterministic-artifact checks that fail because installed DXC 1.10.5347 differs from checked-in provenance, plus one stale conformance hash. This is toolchain/provenance drift, not an AMD runtime failure, and was not regenerated during DVT.
+
+Image-model readiness: **READY WITH REDUCED SHAPE**. The exercised fallback path is the existing bounded hardware corpus rather than the unexecuted 128×1024×4096 primary shape. DVT M2 should begin with the proven fallback topology and retain Stage-0 controller authority.
+
+## Timing closeout attempt
+
+The RTX-scale `PrometheusM43AttentionCorpus` retained approximately 700 MiB and was not tractable on Radeon 780M. AMD timing authority is therefore the already-proven bounded reduced-shape slice, not the RTX corpus wearing an AMD hat. The overnight duration from the attempted corpus is explicitly **not trusted** because the machine may have slept.
+
+The DVT M2 design consequence is useful and direct: Radeon 780M work must use deliberately bounded workload and memory envelopes. This is a practical capacity/latency envelope, not a correctness limitation of the validated fallback transformer path.

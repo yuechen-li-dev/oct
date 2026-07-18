@@ -2736,7 +2736,7 @@ int prom_reactor_runtime_m42_prepare_weights(void* handle,
       !prom_m40b_wait_all_slots(state) || !prom_m42_ensure_pipelines(state) ||
       !prom_m40b_ensure_sgemm_pipeline(state, PROM_M40B_KERNEL_A2X4) ||
       !prom_m40b_ensure_sgemm_pipeline(state, PROM_M40B_KERNEL_CONVENTIONAL_FP16) ||
-      (services.cooperative_matrix_feature_enabled != 0u &&
+      (services.cooperative_matrix_state >= PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED &&
        !prom_m40b_ensure_sgemm_pipeline(state, PROM_M40B_KERNEL_COOPERATIVE))) {
     out_result->stage = PROM_STAGE_INIT; out_result->detail_code = PROM_M42_DETAIL_RESOURCE; return PROM_ERROR;
   }
