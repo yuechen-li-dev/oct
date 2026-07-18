@@ -115,6 +115,34 @@ Semantic spaces do not type tensor axes, infer contractions, declare automatic
 basis transformations, or add operator overloading. Those capabilities require
 a separate future tensor-index design if a concrete kernel needs them.
 
+Repetitive families may use the flat grouped spelling:
+
+```sdslv
+space zimage.attention {
+    QueryHead: float4;
+    KeyHead: float4;
+    PositionedQueryHead: float4;
+    Score: float4;
+}
+```
+
+This is syntax sugar only. Each member is an ordinary lexical type alias whose
+space is the group path plus a canonical member suffix: PascalCase ASCII names
+become lower snake case, and consecutive uppercase acronym runs stay together.
+Thus `QueryHead` becomes `zimage.attention.query_head`,
+`PositionedQueryHead` becomes `zimage.attention.positioned_query_head`, and
+`QKVHead` becomes `zimage.attention.qkv_head`. The expanded `Score` spelling is
+`type Score = float4 @space(zimage.attention.score);`.
+
+Members must use PascalCase ASCII identifiers. Groups are flat and
+non-generic; nested groups and relation, conversion, or pairing declarations
+are not supported. Duplicate generated type names use `SDSL-V1509`. Distinct
+declarations that produce the same explicit semantic space identity use
+`SDSL-V4124`, including a grouped member colliding with an explicit alias.
+Ordinary function signatures remain the sole transformation and pairing
+authority. Grouping is erased by front-end desugaring and has no VD-MIR,
+HLSL, SPIR-V, ABI, or runtime representation beyond the aliases it generates.
+
 ### 2.4 Streams
 
 A stream is a typed compiler-owned shader boundary. Validation assigns exactly

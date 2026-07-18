@@ -43,7 +43,7 @@ Before this PoC, the live behavior was:
 
 | Question | Audited behavior |
 |---|---|
-| Naming | `type Alias = Base @space(dotted.path)`; the parser already stores the complete path string. Reserved grammar words cannot be path segments, so the PoC uses `score_value` rather than the reserved `score`. |
+| Naming | `type Alias = Base @space(dotted.path)`; the parser stores the complete path string. The grouped-declaration follow-up admits reserved tokens as segments only inside `@space(...)`, allowing the exact expanded `zimage.attention.score` identity. |
 | Attachment | Direct annotations are valid only on named aliases. Resolved bases were and remain only `float2`, `float3`, or `float4`; arbitrary scalars and records cannot be annotated directly. |
 | Identity | Compatibility is the exact pair `(resolved physical base, nominal space string)`. Separate aliases with the same pair are compatible. Different strings are incompatible. |
 | Aliases | Alias resolution recursively preserves the established target space. There is no implicit spaced/unspaced conversion. |
@@ -88,7 +88,7 @@ The mandatory production vocabulary is:
 - `zimage.attention.value_head`
 - `zimage.attention.positioned_query_head`
 - `zimage.attention.positioned_key_head`
-- `zimage.attention.score_value`
+- `zimage.attention.score`
 - `zimage.attention.probability`
 
 The PoC additionally uses `zimage.attention.output`,
@@ -97,9 +97,9 @@ The PoC additionally uses `zimage.attention.output`,
 `qwen.position.text_token`, a foreign value-head space, and an incompatible
 position convention.
 
-`score_value` is the source-compatible spelling because lowercase `score` is a
-reserved SDSL-V judgment token. This is only a vocabulary spelling issue, not a
-semantic limitation.
+The grouped-declaration follow-up uses `Score` and deterministically expands it
+to `zimage.attention.score`; explicit `@space(zimage.attention.score)` is also
+accepted even though lowercase `score` is a judgment token elsewhere.
 
 ## Legal transformations and pairing
 
@@ -220,7 +220,7 @@ with canonical SDSL-V HLSL generation, DXC SPIR-V generation, and `spirv-val`.
 
 | Evidence | Semantic | Erased control |
 |---|---|---|
-| HLSL SHA-256 | `8ffaa49ea7860311142e888bdb5933e15ab4d0a60e7761c5607dfacee4e9f414` | `dd2a71447f52fbde5c8fb505269b08f702c7b5a44f01c49c030a2df199904d27` |
+| HLSL SHA-256 | `9957188bf20cd6dd41205bbfb3b811e814f234779361c27b66406a6181e66dd2` | `dd2a71447f52fbde5c8fb505269b08f702c7b5a44f01c49c030a2df199904d27` |
 | SPIR-V SHA-256 | `bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743` | `bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743` |
 | `spirv-val` | pass | pass |
 
@@ -246,10 +246,11 @@ so semantic-source identity remains explicit alongside generated identities.
 both controls, requires `spirv-val`, compares runtime HLSL and SPIR-V, and emits
 `artifacts/AttentionSpacePoc/attention_space_poc.json`.
 
-Two consecutive final generations produced identical artifact SHA-256
-`94782d2a2ed80431b9560c7a68b4defcaabd5e67b9bf0109ac439aa947cabce1`.
+Two consecutive final generations after the grouped-declaration follow-up
+produced identical artifact SHA-256
+`e86a9ccd6edffd836e587867935c10baec1d4dceb9759a1ad2be11fb766db036`.
 The internal projection identity is
-`98285715c5fb45baa7a9d99609963f80023abcb469e71411fbbd9d6baa6201b4`,
+`3f1a04aa91c3b5ebfc9d114b74f5818902743c6381359c6e034dcf580a04c57b`,
 computed with its own field empty to avoid a self-hash cycle.
 
 ## EVT-2 M1 integration decision

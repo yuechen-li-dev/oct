@@ -22,6 +22,8 @@ const (
 	artifactDirectory = "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc"
 	semanticSource    = "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid"
 	erasedSource      = "examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid"
+	groupedSource     = "examples/SDSL-V/AttentionSpacePoc/GroupedSpaceEquivalence.sdslv"
+	expandedSource    = "examples/SDSL-V/AttentionSpacePoc/ExpandedSpaceEquivalence.sdslv"
 )
 
 type artifact struct {
@@ -32,6 +34,7 @@ type artifact struct {
 	LegalPairings             []pairing           `json:"legal_pairings"`
 	InvalidFixtureResults     []invalidResult     `json:"invalid_fixture_results"`
 	DiagnosticCodes           []string            `json:"diagnostic_codes"`
+	GroupedDeclaration        groupedDeclaration  `json:"grouped_declaration"`
 	Backend                   backendEvidence     `json:"backend_erasure"`
 	TokenDomainClassification tokenClassification `json:"token_domain_support"`
 	ZImageApplicability       applicability       `json:"zimage_applicability"`
@@ -107,6 +110,23 @@ type backendEvidence struct {
 	AdditionalBranches    bool     `json:"additional_branches"`
 }
 
+type groupedDeclaration struct {
+	Syntax                   string   `json:"syntax"`
+	Canonicalization         string   `json:"canonicalization"`
+	GeneratedAliases         []string `json:"generated_aliases"`
+	DuplicateNameDiagnostic  string   `json:"duplicate_name_diagnostic"`
+	DuplicateSpaceDiagnostic string   `json:"duplicate_space_diagnostic"`
+	GroupedSource            string   `json:"grouped_source"`
+	ExpandedSource           string   `json:"expanded_source"`
+	GroupedHLSLSHA256        string   `json:"grouped_hlsl_sha256"`
+	ExpandedHLSLSHA256       string   `json:"expanded_hlsl_sha256"`
+	HLSLByteIdentical        bool     `json:"hlsl_byte_identical"`
+	GroupedSPIRVSHA256       string   `json:"grouped_spirv_sha256"`
+	ExpandedSPIRVSHA256      string   `json:"expanded_spirv_sha256"`
+	SPIRVByteIdentical       bool     `json:"spirv_byte_identical"`
+	SPIRVValidated           bool     `json:"spirv_validated"`
+}
+
 type tokenClassification struct {
 	VectorValueSpaces string `json:"vector_value_spaces"`
 	TensorElements    string `json:"tensor_elements"`
@@ -155,6 +175,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	grouped, err := compile(groupedSource, "grouped_space_equivalence")
+	if err != nil {
+		return err
+	}
+	expanded, err := compile(expandedSource, "expanded_space_equivalence")
+	if err != nil {
+		return err
+	}
 	invalid, err := collectInvalidResults()
 	if err != nil {
 		return err
@@ -175,6 +203,22 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	groupedHLSL, err := os.ReadFile(grouped.hlsl)
+	if err != nil {
+		return err
+	}
+	expandedHLSL, err := os.ReadFile(expanded.hlsl)
+	if err != nil {
+		return err
+	}
+	groupedSPIRV, err := os.ReadFile(grouped.spirv)
+	if err != nil {
+		return err
+	}
+	expandedSPIRV, err := os.ReadFile(expanded.spirv)
+	if err != nil {
+		return err
+	}
 
 	a := artifact{
 		Schema: "sdslv.attention-space-poc.v1",
@@ -188,7 +232,7 @@ func run() error {
 		SpaceVocabulary: []string{
 			"zimage.noise_refiner.embedding", "zimage.attention.query_head", "zimage.attention.key_head",
 			"zimage.attention.value_head", "zimage.attention.positioned_query_head",
-			"zimage.attention.positioned_key_head", "zimage.attention.score_value",
+			"zimage.attention.positioned_key_head", "zimage.attention.score",
 			"zimage.attention.probability", "zimage.attention.output", "zimage.position.frame",
 			"zimage.position.row", "zimage.position.column",
 		},
@@ -200,15 +244,36 @@ func run() error {
 			{"NormalizeKey", []string{"zimage.attention.key_head"}, "zimage.attention.key_head"},
 			{"ApplyQueryRoPE", []string{"zimage.attention.query_head", "zimage.position.frame", "zimage.position.row", "zimage.position.column"}, "zimage.attention.positioned_query_head"},
 			{"ApplyKeyRoPE", []string{"zimage.attention.key_head", "zimage.position.frame", "zimage.position.row", "zimage.position.column"}, "zimage.attention.positioned_key_head"},
-			{"Score", []string{"zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head"}, "zimage.attention.score_value"},
-			{"NormalizeScores", []string{"zimage.attention.score_value"}, "zimage.attention.probability"},
+			{"Score", []string{"zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head"}, "zimage.attention.score"},
+			{"NormalizeScores", []string{"zimage.attention.score"}, "zimage.attention.probability"},
 			{"AggregateValues", []string{"zimage.attention.probability", "zimage.attention.value_head"}, "zimage.attention.output"},
 			{"OutputProject", []string{"zimage.attention.output"}, "zimage.noise_refiner.embedding"},
 			{"AddResidual", []string{"zimage.noise_refiner.embedding", "zimage.noise_refiner.embedding"}, "zimage.noise_refiner.embedding"},
 		},
-		LegalPairings:         []pairing{{"Score", "zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head", "zimage.attention.score_value", "closed function signature; no generalized pairing language"}},
+		LegalPairings:         []pairing{{"Score", "zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head", "zimage.attention.score", "closed function signature; no generalized pairing language"}},
 		InvalidFixtureResults: invalid,
-		DiagnosticCodes:       []string{"SDSL-V4120", "SDSL-V4123"},
+		DiagnosticCodes:       []string{"SDSL-V4120", "SDSL-V4123", "SDSL-V4124"},
+		GroupedDeclaration: groupedDeclaration{
+			Syntax:           "space dotted.path { PascalCaseMember: VectorType; }",
+			Canonicalization: "PascalCase member names become lower_snake_case suffixes with acronym runs kept together",
+			GeneratedAliases: []string{
+				"type QueryHead = float4 @space(zimage.attention.query_head)",
+				"type KeyHead = float4 @space(zimage.attention.key_head)",
+				"type ValueHead = float4 @space(zimage.attention.value_head)",
+				"type PositionedQueryHead = float4 @space(zimage.attention.positioned_query_head)",
+				"type PositionedKeyHead = float4 @space(zimage.attention.positioned_key_head)",
+				"type Score = float4 @space(zimage.attention.score)",
+				"type Probability = float4 @space(zimage.attention.probability)",
+				"type Output = float4 @space(zimage.attention.output)",
+			},
+			DuplicateNameDiagnostic: "SDSL-V1509", DuplicateSpaceDiagnostic: "SDSL-V4124",
+			GroupedSource: groupedSource, ExpandedSource: expandedSource,
+			GroupedHLSLSHA256: hashBytes(groupedHLSL), ExpandedHLSLSHA256: hashBytes(expandedHLSL),
+			HLSLByteIdentical:  bytes.Equal(groupedHLSL, expandedHLSL),
+			GroupedSPIRVSHA256: hashBytes(groupedSPIRV), ExpandedSPIRVSHA256: hashBytes(expandedSPIRV),
+			SPIRVByteIdentical: bytes.Equal(groupedSPIRV, expandedSPIRV),
+			SPIRVValidated:     grouped.validated && expanded.validated,
+		},
 		Backend: backendEvidence{
 			SemanticSource: semanticSource, ErasedSource: erasedSource,
 			SemanticSourceSHA256: hashFile(semanticSource), ErasedSourceSHA256: hashFile(erasedSource),

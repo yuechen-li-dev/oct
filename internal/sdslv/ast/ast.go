@@ -44,6 +44,24 @@ type TypeAliasDecl struct {
 
 func (TypeAliasDecl) declNode() {}
 
+// SpaceGroupDecl is parser-facing sugar. BuildModule deterministically expands
+// it to ordinary TypeAliasDecl nodes before validation and lowering.
+type SpaceGroupDecl struct {
+	Span     source.Span
+	PathSpan source.Span
+	Path     string
+	Members  []SpaceGroupMember
+}
+
+func (SpaceGroupDecl) declNode() {}
+
+type SpaceGroupMember struct {
+	Span     source.Span
+	NameSpan source.Span
+	Name     string
+	Type     TypeRef
+}
+
 type RecordDecl struct {
 	Span   source.Span
 	Name   string

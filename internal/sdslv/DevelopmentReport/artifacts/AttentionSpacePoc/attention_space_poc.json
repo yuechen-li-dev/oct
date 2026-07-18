@@ -24,7 +24,7 @@
     "zimage.attention.value_head",
     "zimage.attention.positioned_query_head",
     "zimage.attention.positioned_key_head",
-    "zimage.attention.score_value",
+    "zimage.attention.score",
     "zimage.attention.probability",
     "zimage.attention.output",
     "zimage.position.frame",
@@ -93,12 +93,12 @@
         "zimage.attention.positioned_query_head",
         "zimage.attention.positioned_key_head"
       ],
-      "output": "zimage.attention.score_value"
+      "output": "zimage.attention.score"
     },
     {
       "operation": "NormalizeScores",
       "inputs": [
-        "zimage.attention.score_value"
+        "zimage.attention.score"
       ],
       "output": "zimage.attention.probability"
     },
@@ -131,7 +131,7 @@
       "operation": "Score",
       "left": "zimage.attention.positioned_query_head",
       "right": "zimage.attention.positioned_key_head",
-      "output": "zimage.attention.score_value",
+      "output": "zimage.attention.score",
       "design": "closed function signature; no generalized pairing language"
     }
   ],
@@ -249,14 +249,40 @@
   ],
   "diagnostic_codes": [
     "SDSL-V4120",
-    "SDSL-V4123"
+    "SDSL-V4123",
+    "SDSL-V4124"
   ],
+  "grouped_declaration": {
+    "syntax": "space dotted.path { PascalCaseMember: VectorType; }",
+    "canonicalization": "PascalCase member names become lower_snake_case suffixes with acronym runs kept together",
+    "generated_aliases": [
+      "type QueryHead = float4 @space(zimage.attention.query_head)",
+      "type KeyHead = float4 @space(zimage.attention.key_head)",
+      "type ValueHead = float4 @space(zimage.attention.value_head)",
+      "type PositionedQueryHead = float4 @space(zimage.attention.positioned_query_head)",
+      "type PositionedKeyHead = float4 @space(zimage.attention.positioned_key_head)",
+      "type Score = float4 @space(zimage.attention.score)",
+      "type Probability = float4 @space(zimage.attention.probability)",
+      "type Output = float4 @space(zimage.attention.output)"
+    ],
+    "duplicate_name_diagnostic": "SDSL-V1509",
+    "duplicate_space_diagnostic": "SDSL-V4124",
+    "grouped_source": "examples/SDSL-V/AttentionSpacePoc/GroupedSpaceEquivalence.sdslv",
+    "expanded_source": "examples/SDSL-V/AttentionSpacePoc/ExpandedSpaceEquivalence.sdslv",
+    "grouped_hlsl_sha256": "51502080c6e6d5776cc5eb88aa9caa18b071ce406b16d2ab19eb4282cff93468",
+    "expanded_hlsl_sha256": "51502080c6e6d5776cc5eb88aa9caa18b071ce406b16d2ab19eb4282cff93468",
+    "hlsl_byte_identical": true,
+    "grouped_spirv_sha256": "7c821f28dd528bcaccc0dcbf6999d73732721520afbaa8afb81e377355122b3a",
+    "expanded_spirv_sha256": "7c821f28dd528bcaccc0dcbf6999d73732721520afbaa8afb81e377355122b3a",
+    "spirv_byte_identical": true,
+    "spirv_validated": true
+  },
   "backend_erasure": {
     "semantic_source": "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
     "erased_source": "examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid",
-    "semantic_source_sha256": "c6aa2b28401b0244bfd5ce89bd1a9d821192fcf83f4bd9e40234c10b6d360ed1",
+    "semantic_source_sha256": "5282a11317a094d521d3ad75cf7ec4e0fb302ca226093e704dcfb83cc21402dc",
     "erased_source_sha256": "4b63b6b44f11c9f7e4abd2e4ed1de7916605b5bac345bd273c1058be52c7b303",
-    "semantic_hlsl_sha256": "8ffaa49ea7860311142e888bdb5933e15ab4d0a60e7761c5607dfacee4e9f414",
+    "semantic_hlsl_sha256": "9957188bf20cd6dd41205bbfb3b811e814f234779361c27b66406a6181e66dd2",
     "erased_hlsl_sha256": "dd2a71447f52fbde5c8fb505269b08f702c7b5a44f01c49c030a2df199904d27",
     "semantic_spirv_sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743",
     "erased_spirv_sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743",
@@ -308,5 +334,5 @@
   "convergence_outcome": "SUCCESS",
   "milestone_state": "COMPLETE",
   "evt2_state": "READY FOR M1 WITH ATTENTION SPACES",
-  "projection_sha256": "98285715c5fb45baa7a9d99609963f80023abcb469e71411fbbd9d6baa6201b4"
+  "projection_sha256": "3f1a04aa91c3b5ebfc9d114b74f5818902743c6381359c6e034dcf580a04c57b"
 }

@@ -16,6 +16,7 @@ func BuildModule(result lex.Result) (ast.Module, error) {
 	if err != nil {
 		return ast.Module{}, fmt.Errorf("parse %s: %w", result.Source.Path, err)
 	}
+	module = desugarSpaceGroups(module)
 	module.Source = result.Source
 	return module, nil
 }
@@ -101,11 +102,112 @@ func (p *parser) parseDecl() (ast.Decl, error) {
 		p.skipUnsupportedTopLevel()
 		return ast.UnsupportedDecl{Kind: kind, Span: p.spanSince(start)}, nil
 	default:
+		if p.current().Kind == token.Identifier && p.current().Lexeme == "space" {
+			return p.parseSpaceGroup()
+		}
 		if p.current().Kind == token.Identifier && p.current().Lexeme == "state" {
 			return nil, p.errorAtCurrent("state blocks are only valid inside flow blocks in SDSL-V M22")
 		}
 		return nil, p.errorAtCurrent("expected SDSL-V top-level declaration")
 	}
+}
+
+func (p *parser) parseSpaceGroup() (ast.SpaceGroupDecl, error) {
+	start := p.position
+	p.advance()
+	pathStart := p.current().Span.Start
+	path, err := p.parsePath()
+	if err != nil {
+		return ast.SpaceGroupDecl{}, err
+	}
+	pathEnd := p.tokens[p.position-1].Span.End
+	if _, err := p.expect(token.LeftBrace, "expected '{' after semantic space group path"); err != nil {
+		return ast.SpaceGroupDecl{}, err
+	}
+	group := ast.SpaceGroupDecl{Path: path, PathSpan: spanFrom(pathStart, pathEnd)}
+	for p.current().Kind != token.RightBrace {
+		if p.current().Kind == token.EOF {
+			return ast.SpaceGroupDecl{}, p.errorAtCurrent("expected '}' to close semantic space group")
+		}
+		memberStart := p.position
+		name, err := p.expect(token.Identifier, "expected PascalCase semantic space member name")
+		if err != nil {
+			return ast.SpaceGroupDecl{}, err
+		}
+		if !isPascalSpaceMember(name.Lexeme) {
+			return ast.SpaceGroupDecl{}, p.errorAtToken(name, "semantic space member names must be PascalCase ASCII identifiers")
+		}
+		if _, err := p.expect(token.Colon, "expected ':' after semantic space member name"); err != nil {
+			return ast.SpaceGroupDecl{}, err
+		}
+		ref, err := p.parseTypeRef(false)
+		if err != nil {
+			return ast.SpaceGroupDecl{}, err
+		}
+		if ref.Space != "" {
+			return ast.SpaceGroupDecl{}, p.errorAtToken(name, "semantic space group members derive their space and must not declare @space")
+		}
+		if _, err := p.expect(token.Semicolon, "expected ';' after semantic space group member"); err != nil {
+			return ast.SpaceGroupDecl{}, err
+		}
+		group.Members = append(group.Members, ast.SpaceGroupMember{
+			Span: p.spanSince(memberStart), NameSpan: name.Span, Name: name.Lexeme, Type: ref,
+		})
+	}
+	p.advance()
+	group.Span = p.spanSince(start)
+	return group, nil
+}
+
+func desugarSpaceGroups(module ast.Module) ast.Module {
+	decls := make([]ast.Decl, 0, len(module.Decls))
+	for _, decl := range module.Decls {
+		group, ok := decl.(ast.SpaceGroupDecl)
+		if !ok {
+			decls = append(decls, decl)
+			continue
+		}
+		for _, member := range group.Members {
+			ref := member.Type
+			ref.Space = group.Path + "." + canonicalSpaceMember(member.Name)
+			ref.SpaceSpan = member.NameSpan
+			ref.AnnotationSpan = member.Span
+			decls = append(decls, ast.TypeAliasDecl{Span: member.Span, Name: member.Name, Type: ref})
+		}
+	}
+	module.Decls = decls
+	return module
+}
+
+func isPascalSpaceMember(name string) bool {
+	if name == "" || name[0] < 'A' || name[0] > 'Z' {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		if (name[i] >= 'A' && name[i] <= 'Z') || (name[i] >= 'a' && name[i] <= 'z') || (name[i] >= '0' && name[i] <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func canonicalSpaceMember(name string) string {
+	var out strings.Builder
+	for i := 0; i < len(name); i++ {
+		current := name[i]
+		if current >= 'A' && current <= 'Z' {
+			previousLowerOrDigit := i > 0 && ((name[i-1] >= 'a' && name[i-1] <= 'z') || (name[i-1] >= '0' && name[i-1] <= '9'))
+			acronymBoundary := i > 0 && name[i-1] >= 'A' && name[i-1] <= 'Z' && i+1 < len(name) && name[i+1] >= 'a' && name[i+1] <= 'z'
+			if previousLowerOrDigit || acronymBoundary {
+				out.WriteByte('_')
+			}
+			out.WriteByte(current + ('a' - 'A'))
+			continue
+		}
+		out.WriteByte(current)
+	}
+	return out.String()
 }
 
 func (p *parser) parseTypeAlias() (ast.TypeAliasDecl, error) {
@@ -2276,7 +2378,7 @@ func (p *parser) parseTypeRef(allowZeroBang bool) (ast.TypeRef, error) {
 			return ast.TypeRef{}, err
 		}
 		spaceStart := p.current().Span.Start
-		path, err := p.parsePath()
+		path, err := p.parseSemanticSpacePath()
 		if err != nil {
 			return ast.TypeRef{}, err
 		}
@@ -2480,6 +2582,25 @@ func (p *parser) parsePath() (string, error) {
 			return "", err
 		}
 		segments = append(segments, next.Lexeme)
+	}
+	return strings.Join(segments, "."), nil
+}
+
+func (p *parser) parseSemanticSpacePath() (string, error) {
+	segments := make([]string, 0, 4)
+	for {
+		current := p.current()
+		if current.Kind != token.Identifier && !strings.HasPrefix(string(current.Kind), "Keyword") {
+			if len(segments) == 0 {
+				return "", p.errorAtCurrent("expected semantic space path segment")
+			}
+			return "", p.errorAtCurrent("expected semantic space path segment after '.'")
+		}
+		segments = append(segments, current.Lexeme)
+		p.advance()
+		if !p.match(token.Dot) {
+			break
+		}
 	}
 	return strings.Join(segments, "."), nil
 }

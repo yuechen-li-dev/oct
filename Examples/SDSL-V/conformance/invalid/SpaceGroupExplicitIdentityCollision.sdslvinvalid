@@ -1,0 +1,4 @@
+type ExistingQuery = float4 @space(zimage.attention.query_head);
+space zimage.attention {
+    QueryHead: float4;
+}

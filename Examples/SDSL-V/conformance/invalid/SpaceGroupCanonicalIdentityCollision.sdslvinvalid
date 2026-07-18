@@ -1,0 +1,4 @@
+space zimage.attention {
+    QKVHead: float4;
+    QkvHead: float4;
+}

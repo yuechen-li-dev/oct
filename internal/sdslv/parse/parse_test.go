@@ -953,7 +953,7 @@ return;
 }
 
 func TestSdslvTensorParsesMultipleReductionIndices(t *testing.T) {
-module := parseTestModule(t, `fn F(A: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>) -> void {
+	module := parseTestModule(t, `fn F(A: array<array<array<array<f32, 2u>, 2u>, 2u>, 2u>) -> void {
 var C: array<array<f32, 2u>, 2u> = Fill(0.0);
 tensor C[i, j] = Sum[kx, ky](A[i, j, kx, ky]);
 return;
@@ -1192,6 +1192,69 @@ func TestSdslvRejectsMalformedCompilerIntrinsicGenericSyntax(t *testing.T) {
 				t.Fatalf("BuildModule() error = %v, want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseModuleRetainsSpaceGroupSyntaxBeforeDesugaring(t *testing.T) {
+	result, err := lex.Analyze(source.File{Path: "test.sdslv", Text: `space zimage.attention {
+    QueryHead: float4;
+    QKVHead: float4;
+}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	module, err := (&parser{tokens: result.Tokens}).parseModule()
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, ok := module.Decls[0].(ast.SpaceGroupDecl)
+	if !ok {
+		t.Fatalf("decl = %T, want SpaceGroupDecl", module.Decls[0])
+	}
+	if group.Path != "zimage.attention" || len(group.Members) != 2 || group.Members[1].Name != "QKVHead" {
+		t.Fatalf("group = %#v", group)
+	}
+}
+
+func TestBuildModuleDesugarsSpaceGroupToOrdinaryAliases(t *testing.T) {
+	module := parseTestModule(t, `space zimage.attention {
+    QueryHead: float4;
+    PositionedQueryHead: float4;
+    Score: float4;
+}`)
+	want := []struct{ name, space string }{
+		{"QueryHead", "zimage.attention.query_head"},
+		{"PositionedQueryHead", "zimage.attention.positioned_query_head"},
+		{"Score", "zimage.attention.score"},
+	}
+	for i, expected := range want {
+		alias, ok := module.Decls[i].(ast.TypeAliasDecl)
+		if !ok {
+			t.Fatalf("decl[%d] = %T, want TypeAliasDecl", i, module.Decls[i])
+		}
+		if alias.Name != expected.name || alias.Type.Name != "float4" || alias.Type.Space != expected.space {
+			t.Fatalf("alias[%d] = %#v, want %s/%s", i, alias, expected.name, expected.space)
+		}
+	}
+}
+
+func TestCanonicalSpaceMemberUsesDocumentedAcronymRule(t *testing.T) {
+	cases := map[string]string{
+		"QueryHead": "query_head", "PositionedQueryHead": "positioned_query_head",
+		"QKVHead": "qkv_head", "QkvHead": "qkv_head", "Score": "score",
+	}
+	for input, want := range cases {
+		if got := canonicalSpaceMember(input); got != want {
+			t.Fatalf("canonicalSpaceMember(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestExplicitSpacePathMayContainReservedScoreSegment(t *testing.T) {
+	module := parseTestModule(t, `type Score = float4 @space(zimage.attention.score);`)
+	alias := module.Decls[0].(ast.TypeAliasDecl)
+	if alias.Type.Space != "zimage.attention.score" {
+		t.Fatalf("space = %q", alias.Type.Space)
 	}
 }
 

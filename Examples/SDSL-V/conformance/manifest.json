@@ -109,13 +109,13 @@
       "entry_points": ["AttentionSpacePoc_CS"],
       "stages": ["compute"],
       "stream_roles": {"ComputeThread": "builtin", "AttentionSpaceIO": "resource"},
-      "coordinate_spaces": ["zimage.noise_refiner.embedding", "qwen.hidden", "zimage.attention.query_head", "zimage.attention.key_head", "zimage.attention.value_head", "zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head", "zimage.attention.positioned_key_head.text_convention", "zimage.attention.score_value", "zimage.attention.probability", "zimage.attention.output", "zimage.position.frame", "zimage.position.row", "zimage.position.column", "qwen.position.text_token", "other_model.attention.value_head"],
+      "coordinate_spaces": ["zimage.noise_refiner.embedding", "qwen.hidden", "zimage.attention.query_head", "zimage.attention.key_head", "zimage.attention.value_head", "zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head", "zimage.attention.score", "zimage.attention.probability", "zimage.attention.output", "zimage.attention.positioned_key_head.text_convention", "zimage.position.frame", "zimage.position.row", "zimage.position.column", "qwen.position.text_token", "other_model.attention.value_head"],
       "bindings": ["Input:set0/binding0:storage-buffer:readonly", "Output:set0/binding1:storage-buffer:readwrite"],
       "locations": [],
       "builtins": ["dispatch_thread_id:uint3", "group_id:uint3", "group_thread_id:uint3", "group_index:u32"],
       "required_capabilities": [],
       "reference_artifacts": [
-        {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.hlsl", "sha256": "8ffaa49ea7860311142e888bdb5933e15ab4d0a60e7761c5607dfacee4e9f414"},
+        {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.hlsl", "sha256": "9957188bf20cd6dd41205bbfb3b811e814f234779361c27b66406a6181e66dd2"},
         {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.spv", "sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743"}
       ]
     },
@@ -138,6 +138,9 @@
     }
   ],
   "invalid": [
+    {"source": "examples/SDSL-V/conformance/invalid/SpaceGroupDuplicateTypeName.sdslvinvalid", "code": "SDSL-V1509", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-name"},
+    {"source": "examples/SDSL-V/conformance/invalid/SpaceGroupCanonicalIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 2, "related_column": 5, "category": "semantic-space-group-identity"},
+    {"source": "examples/SDSL-V/conformance/invalid/SpaceGroupExplicitIdentityCollision.sdslvinvalid", "code": "SDSL-V4124", "line": 3, "column": 5, "related_line": 1, "related_column": 36, "category": "semantic-space-group-explicit-collision"},
     {"source": "examples/SDSL-V/conformance/invalid/SpaceAnnotationRequiresAlias.sdslvinvalid", "code": "SDSL-V4120", "line": 1, "column": 26, "category": "semantic-space-declaration"},
     {"source": "examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 98, "category": "attention-space-pairing"},
     {"source": "examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 118, "category": "attention-space-value"},

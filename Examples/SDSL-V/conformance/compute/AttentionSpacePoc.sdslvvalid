@@ -4,15 +4,19 @@ namespace Sdslv.Conformance.AttentionSpace;
 // one float4 slice; these declarations retain the frozen real model extents.
 type ModelEmbedding = float4 @space(zimage.noise_refiner.embedding);
 type QwenHidden = float4 @space(qwen.hidden);
-type QueryHead = float4 @space(zimage.attention.query_head);
-type KeyHead = float4 @space(zimage.attention.key_head);
-type ValueHead = float4 @space(zimage.attention.value_head);
-type PositionedQueryHead = float4 @space(zimage.attention.positioned_query_head);
-type PositionedKeyHead = float4 @space(zimage.attention.positioned_key_head);
+
+space zimage.attention {
+    QueryHead: float4;
+    KeyHead: float4;
+    ValueHead: float4;
+    PositionedQueryHead: float4;
+    PositionedKeyHead: float4;
+    Score: float4;
+    Probability: float4;
+    Output: float4;
+}
+
 type AlternatePositionedKeyHead = float4 @space(zimage.attention.positioned_key_head.text_convention);
-type AttentionScore = float4 @space(zimage.attention.score_value);
-type AttentionProbability = float4 @space(zimage.attention.probability);
-type AttentionOutput = float4 @space(zimage.attention.output);
 type FrameCoordinate = float2 @space(zimage.position.frame);
 type RowCoordinate = float2 @space(zimage.position.row);
 type ColumnCoordinate = float2 @space(zimage.position.column);
@@ -104,7 +108,7 @@ fn ApplyKeyRoPE(value: KeyHead, frame: FrameCoordinate, row: RowCoordinate, colu
     return float4(value.x + semanticWitness, value.y, value.z, value.w);
 }
 
-fn Score(query: PositionedQueryHead, key: PositionedKeyHead) -> AttentionScore {
+fn Score(query: PositionedQueryHead, key: PositionedKeyHead) -> Score {
     let dot: f32 = query.x * key.x + query.y * key.y + query.z * key.z + query.w * key.w;
     return float4(dot, dot - 1.0, dot - 2.0, dot - 3.0);
 }
@@ -114,7 +118,7 @@ fn ExpF32(value: f32) -> f32 {
     return result;
 }
 
-fn NormalizeScores(scores: AttentionScore) -> AttentionProbability {
+fn NormalizeScores(scores: Score) -> Probability {
     let maximum: f32 = MaximumFinite(MaximumFinite(scores.x, scores.y), MaximumFinite(scores.z, scores.w));
     let ex: f32 = ExpF32(scores.x - maximum);
     let ey: f32 = ExpF32(scores.y - maximum);
@@ -124,7 +128,7 @@ fn NormalizeScores(scores: AttentionScore) -> AttentionProbability {
     return float4(ex / denominator, ey / denominator, ez / denominator, ew / denominator);
 }
 
-fn AggregateValues(probability: AttentionProbability, value: ValueHead) -> AttentionOutput {
+fn AggregateValues(probability: Probability, value: ValueHead) -> Output {
     return float4(
         probability.x * value.x,
         probability.y * value.y,
@@ -133,7 +137,7 @@ fn AggregateValues(probability: AttentionProbability, value: ValueHead) -> Atten
     );
 }
 
-fn OutputProject(value: AttentionOutput) -> ModelEmbedding {
+fn OutputProject(value: Output) -> ModelEmbedding {
     return float4(value.x, value.y, value.z, value.w);
 }
 
@@ -169,9 +173,9 @@ shader AttentionSpacePoc {
         let column: ColumnCoordinate = float2(Convert<f32>(contract.RopeColumnWidth), 0.0);
         let positionedQuery: PositionedQueryHead = ApplyQueryRoPE(query, frame, row, column);
         let positionedKey: PositionedKeyHead = ApplyKeyRoPE(key, frame, row, column);
-        let attentionScore: AttentionScore = Score(positionedQuery, positionedKey);
-        let probability: AttentionProbability = NormalizeScores(attentionScore);
-        let aggregated: AttentionOutput = AggregateValues(probability, fused.Value);
+        let attentionScore: Score = Score(positionedQuery, positionedKey);
+        let probability: Probability = NormalizeScores(attentionScore);
+        let aggregated: Output = AggregateValues(probability, fused.Value);
         let projected: ModelEmbedding = OutputProject(aggregated);
         let output: ModelEmbedding = AddResidual(embedding, projected);
         Output[0u] = output.x + Convert<f32>(thread.GroupIndex + contract.HeadCount + contract.HeadWidth + contract.ModelWidth + contract.FfnWidth + contract.RopeColumnWidth + contract.RopeTheta) * 0.0;

@@ -1,0 +1,4 @@
+space zimage.attention {
+    QueryHead: float4;
+    QueryHead: float4;
+}

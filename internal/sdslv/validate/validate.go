@@ -24,6 +24,7 @@ func Diagnostics(module ast.Module) []diagnostic.Diagnostic {
 		shaderDecls:    map[string]ast.ShaderDecl{},
 		streams:        map[string]ast.StreamDecl{},
 		compileAliases: map[string]struct{}{},
+		spaceAliases:   map[string]source.Span{},
 	}
 	switch filepath.Ext(module.Source.Path) {
 	case ".sdslvtest", ".sdslvvalid", ".sdslvinvalid":
@@ -135,6 +136,7 @@ type validator struct {
 	shaderDecls       map[string]ast.ShaderDecl
 	streams           map[string]ast.StreamDecl
 	compileAliases    map[string]struct{}
+	spaceAliases      map[string]source.Span
 	resources         map[string]ast.ResourceDecl
 	testSource        bool
 	benchmarkSource   bool
@@ -369,6 +371,7 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		case ast.TypeAliasDecl:
 			v.validateTypeAliasTarget(d.Type)
 			v.validateSpaceAlias(d)
+			v.validateUniqueSpaceAlias(d)
 		case ast.RecordDecl:
 			v.validateFields(d.Name, "record", d.Fields, false)
 		case ast.BoardDecl:
@@ -393,6 +396,21 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		v.currentSpan = previous
 	}
 	v.validateGraphicsPrograms(decls)
+}
+
+func (v *validator) validateUniqueSpaceAlias(decl ast.TypeAliasDecl) {
+	if decl.Type.Space == "" {
+		return
+	}
+	span := decl.Type.SpaceSpan
+	if !span.Known() {
+		span = decl.Span
+	}
+	if prior, exists := v.spaceAliases[decl.Type.Space]; exists {
+		v.errorRelated(span, "SDSL-V4124", fmt.Sprintf("duplicate semantic space identity %s", decl.Type.Space), prior, "first semantic space declaration is here")
+		return
+	}
+	v.spaceAliases[decl.Type.Space] = span
 }
 
 func (v *validator) validateFields(owner, kind string, fields []ast.Field, allowAccess bool) {

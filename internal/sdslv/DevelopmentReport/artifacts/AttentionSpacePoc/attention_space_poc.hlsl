@@ -15,13 +15,13 @@
 
 // type PositionedKeyHead = float4 @space(zimage.attention.positioned_key_head)
 
+// type Score = float4 @space(zimage.attention.score)
+
+// type Probability = float4 @space(zimage.attention.probability)
+
+// type Output = float4 @space(zimage.attention.output)
+
 // type AlternatePositionedKeyHead = float4 @space(zimage.attention.positioned_key_head.text_convention)
-
-// type AttentionScore = float4 @space(zimage.attention.score_value)
-
-// type AttentionProbability = float4 @space(zimage.attention.probability)
-
-// type AttentionOutput = float4 @space(zimage.attention.output)
 
 // type FrameCoordinate = float2 @space(zimage.position.frame)
 
@@ -173,7 +173,7 @@ float ExpF32(float value)
 {
     float __sdslv_inline_hlsl_3;
     {
-        // BEGIN INLINE HLSL examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid:113
+        // BEGIN INLINE HLSL examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid:117
          __sdslv_inline_hlsl_3 = exp(value); 
         // END INLINE HLSL
     }
