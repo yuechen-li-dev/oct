@@ -177,8 +177,6 @@ Release, CUDA comparison, or all-hardware portability claim exists.
 
 ## `/feedback` Session ID
 
-[FEEDBACK_SESSION_ID_OWNER_REQUIRED]
+019f6cb4-b438-70e2-b91c-487d7ad45bbd
 
-Recommended task to open before running `/feedback`:
-`019f6cb4-b438-70e2-b91c-487d7ad45bbd` (M48). Paste the returned Session ID,
-not this recommendation unless the command returns the same value.
+Confirmed by the owner from `/feedback` in the M48 primary task.

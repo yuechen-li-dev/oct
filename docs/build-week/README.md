@@ -1,6 +1,6 @@
 # OpenAI Build Week submission packet
 
-Status: **OWNER SIGN-OFF REQUIRED**
+Status: **CLAIMS AND NARRATION APPROVED — RECORDING/UPLOAD REMAIN**
 Prepared from repository and Codex-session evidence on 2026-07-17.
 
 ## Submission identity
@@ -56,10 +56,10 @@ Required submission facts reflected here:
 
 Only the owner can complete these actions:
 
-- [ ] Run `/feedback` in the recommended M48 task and confirm its returned
-  Session ID for Devpost.
-- [ ] Approve the title, attribution, scope boundary, and claims table.
-- [ ] Approve the narration and either record it or approve AI-assisted narration.
+- [x] `/feedback` confirmed from M48:
+  `019f6cb4-b438-70e2-b91c-487d7ad45bbd`.
+- [x] Title, attribution, scope boundary, and claims table approved by owner.
+- [x] Narration and AI-assisted narration approved by owner.
 - [ ] Record the exact screen clips in the shot list.
 - [ ] Upload the final public YouTube video and replace `VIDEO_URL_OWNER_REQUIRED`.
 - [ ] Paste the prepared fields into Devpost and verify the selected category.

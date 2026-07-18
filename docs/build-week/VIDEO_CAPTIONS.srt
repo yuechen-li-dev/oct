@@ -16,7 +16,8 @@ helped write the next bounded prompt.
 4
 00:00:30,000 --> 00:00:42,000
 Fresh, ephemeral GPT-5.6 Codex tasks then re-grounded in the repository, authored one vertical, ran its tests, and left durable reports and artifacts.
-I chose architecture, scope, hardware questions, and stop-or-continue decisions. Claude's relevant contribution here is in the pre-event baseline.
+I chose architecture, scope, hardware questions, and stop-or-continue decisions.
+Claude mainly rubber-ducked and audited; its original MCP work was pre-event.
 
 5
 00:00:42,000 --> 00:00:53,000

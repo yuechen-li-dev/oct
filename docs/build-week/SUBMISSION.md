@@ -41,7 +41,7 @@ and not merely the MCP plugin.
 | “portable across all hardware” | Windows RTX 3070 live evidence; Linux build/smoke; AMD DVT not complete. | “Portable compiler/tooling paths with one recorded live GPU platform.” | “Portable across all hardware.” |
 | “hosted demo” | Deployment docs exist; no deployed endpoint is evidenced. | “A bounded MCP server and container path are included; no public hosted service is claimed.” | “Try the hosted demo.” |
 | “GPT-5.6 use” | Session files record Sol and Terra across the eligible implementation threads. | “GPT-5.6 Sol performed most vertical work; Terra participated in named continuation/productization threads.” | “One GPT-5.6 thread built everything.” |
-| “Claude contribution” | Original `oct-mcp` commit `0ffa09e…` and library manifests predate the event. | “Claude contributed to the pre-existing baseline; eligible plugin redesign was GPT-5.6 Codex work.” | “Claude built the Build Week transformer work.” |
+| “Claude contribution” | Original `oct-mcp` commit `0ffa09e…` and library manifests predate the event; the owner characterizes eligible-period involvement mainly as rubber-duck review/audit. | “Claude mainly rubber-ducked or audited during the spike; eligible implementation claims belong to the evidenced GPT-5.6 Codex tasks.” | “Claude built the Build Week transformer work.” |
 
 ## Selected factual limitations
 

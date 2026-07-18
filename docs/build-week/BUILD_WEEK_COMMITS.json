@@ -5,9 +5,10 @@
   "auditHead": "b07c8849efa00fe0455e827e9a162856f389878f",
   "lastPreEventCommit": "8c029d6d8f8d5f698276edfda138fa96f5fb305e",
   "repository": "https://github.com/yuechen-li-dev/oct",
+  "primaryFeedbackSessionId": "019f6cb4-b438-70e2-b91c-487d7ad45bbd",
   "notes": [
     "All dates are commit author dates in ISO 8601 with Pacific offset.",
-    "Session IDs identify local Codex task records; the Devpost feedback ID must be obtained by running /feedback in the selected task.",
+    "The primary feedback Session ID was confirmed by the owner from /feedback in the selected M48 task.",
     "Files are representative, not a replacement for git show --stat <sha>."
   ],
   "commits": [

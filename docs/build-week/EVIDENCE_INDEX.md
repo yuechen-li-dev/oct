@@ -42,15 +42,13 @@ evidence, not substitutes for the owner-obtained `/feedback` ID.
 
 ## Primary task recommendation
 
-Use the M48 task, `019f6cb4-b438-70e2-b91c-487d7ad45bbd`, as the first task to
-open and run `/feedback` in. It contains the largest coherent Build Week
+The owner ran `/feedback` in the M48 task and confirmed the returned Session ID
+as **`019f6cb4-b438-70e2-b91c-487d7ad45bbd`**. It contains the largest coherent Build Week
 vertical: a planning stop, a live four-block continuation, hardware evidence,
 and the numerical course correction. It used both GPT-5.6 Sol and Terra.
 
-The owner must paste the **actual value returned by `/feedback`**, not merely
-the local task UUID. If the app determines a different eligible task contains
-the majority of core work, use that returned ID and retain M48 as supplementary
-evidence. Do not claim one task built the entire submission.
+This confirmed primary ID does not imply one task built the entire submission;
+the supplementary task index records the distributed verticals.
 
 Supplementary task groups are indexed in
 [`BUILD_WEEK_COMMITS.json`](BUILD_WEEK_COMMITS.json), including the fused

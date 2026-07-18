@@ -102,10 +102,11 @@ foreach ($section in $devpostSections) {
 
 $allPacketText = (Get-ChildItem -LiteralPath $packetRoot -Recurse -File | Where-Object { ($_.Extension -in @(".md", ".srt", ".json", ".ps1", ".html", ".txt", ".oct", ".octest")) -and ($_.Name -ne "validate-packet.ps1") } | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }) -join "`n"
 Assert-True ($allPacketText -notmatch "C:\\Users\\|/Users/|/home/") "Private absolute path found in packet"
-$placeholders = [regex]::Matches($allPacketText, "\[(?:VIDEO_URL_OWNER_REQUIRED|FEEDBACK_SESSION_ID_OWNER_REQUIRED)\]")
-$otherPlaceholders = [regex]::Matches($allPacketText, "\[[A-Z][A-Z0-9_]*OWNER_REQUIRED\]") | Where-Object { $_.Value -notin @("[VIDEO_URL_OWNER_REQUIRED]", "[FEEDBACK_SESSION_ID_OWNER_REQUIRED]") }
+$placeholders = [regex]::Matches($allPacketText, "\[VIDEO_URL_OWNER_REQUIRED\]")
+$otherPlaceholders = [regex]::Matches($allPacketText, "\[[A-Z][A-Z0-9_]*OWNER_REQUIRED\]") | Where-Object { $_.Value -ne "[VIDEO_URL_OWNER_REQUIRED]" }
 Assert-True ($otherPlaceholders.Count -eq 0) "Unexpected owner placeholder found"
-Assert-True ($placeholders.Count -ge 2) "Required owner placeholders are missing"
+Assert-True ($placeholders.Count -ge 1) "Required video URL placeholder is missing"
+Assert-True ($allPacketText -match "019f6cb4-b438-70e2-b91c-487d7ad45bbd") "Confirmed feedback Session ID is missing"
 
 $licenseText = Get-Content (Join-Path $repoRoot "LICENSE") -Raw
 Assert-True ($licenseText -match "GNU GENERAL PUBLIC LICENSE") "Public license check failed"
@@ -116,4 +117,4 @@ Write-Host "PACKET VALIDATION PASSED" -ForegroundColor Green
 Write-Host "Eligible commits: 23"
 Write-Host "Narration: $wordCount words, 164 seconds, $wpm WPM"
 Write-Host "Devpost caps: title <= 80, tagline <= 200, short <= 500, long <= 2000"
-Write-Host "Owner placeholders: VIDEO URL and /feedback Session ID only"
+Write-Host "Owner placeholders: VIDEO URL only; /feedback Session ID confirmed"

@@ -1,6 +1,6 @@
 # Video script
 
-Target: **2:44** at approximately **135 words per minute**. Read the narration
+Target: **2:44** at approximately **146 words per minute**. Read the narration
 verbatim. Brief pauses are already budgeted; do not add an intro animation.
 
 ## Exact narration
@@ -18,8 +18,8 @@ The unusual part is ROALoop. Persistent ChatGPT reviewed every handoff and
 helped write the next bounded prompt. Fresh, ephemeral GPT-5.6 Codex tasks then
 re-grounded in the repository, authored one vertical, ran its tests, and left
 durable reports and artifacts. I chose architecture, scope, hardware questions,
-and stop-or-continue decisions. Claude's relevant contribution here is in the
-pre-event baseline.
+and stop-or-continue decisions. Claude mainly rubber-ducked and audited; its
+original MCP work was pre-event.
 
 ### 00:42–01:03 — Reduction and graphics
 

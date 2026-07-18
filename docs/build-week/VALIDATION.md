@@ -12,7 +12,7 @@ is pushed and a workflow run succeeds.
 | Evidence paths and links | Every local Markdown link and every concrete ledger file/test/artifact path resolves. |
 | Ledger JSON | `BUILD_WEEK_COMMITS.json` parses as `oct.build-week.commits.v1`. |
 | Subtitle file | 13 monotonic, non-overlapping ranges; exact narration token match; ends at 00:02:44. |
-| Narration rate | 398 words in 164 seconds, approximately 145.6 WPM. |
+| Narration rate | 400 words in 164 seconds, approximately 146.3 WPM. |
 | Devpost copy | Project name 61 characters, tagline 172, short description 460, long description 1,885; all within the packet's conservative caps. |
 | Judge fixture test | 2 passed; 2 compiled; 0 interpreted fallbacks. |
 | Judge fixture artifact | 1 passed; JSON; 62 bytes; SHA-256 `4efc9d55ed0eac0e8401f92f1d6b320e7e4c4b7e09778f1c5b7f9917c484209c`. |
@@ -25,7 +25,7 @@ is pushed and a workflow run succeeds.
 | Workflow syntax | actionlint v1.7.12 passed `.github/workflows/ci.yml`. |
 | Plugin metadata | plugin and marketplace JSON parse; category is Developer Tools; MCP command is `oct-mcp --stdio`. |
 | Public state | GitHub reports a public `main` repository with GPL-3.0; no GitHub Release is claimed. |
-| Privacy/placeholders | No private absolute path appears in packet content; only the video URL and `/feedback` Session ID owner placeholders remain. |
+| Privacy/placeholders | No private absolute path appears in packet content; only the owner-controlled video URL placeholder remains. The `/feedback` ID is confirmed. |
 | Whitespace | `git diff --check` passes after removal of the README Markdown trailing spaces. |
 
 Run the reproducible packet checks with:

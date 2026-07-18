@@ -105,9 +105,11 @@ The deterministic evidence is
 
 ## Claude boundary
 
-Claude is an occasional historical contributor, not the author of the eligible
-transformer vertical. The repository explicitly records an original pre-event
-`oct-mcp` contribution in commit `0ffa09e10c45116141047c69541e90b50b276da8`
-and author metadata in several libraries. GPT-5.6 Codex productized and then
-redesigned the plugin during Build Week. No eligible-period Claude session is
-claimed without session evidence.
+Claude is not the author of the eligible transformer vertical. During the Build
+Week spike its role was mainly occasional rubber-duck review and audit, without
+a direct milestone-author claim. The repository separately records original
+pre-event `oct-mcp` work in commit
+`0ffa09e10c45116141047c69541e90b50b276da8` and author metadata in several
+libraries. GPT-5.6 Codex productized and redesigned the plugin during Build
+Week. No eligible-period Claude implementation session is claimed without
+session evidence.

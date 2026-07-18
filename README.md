@@ -46,10 +46,10 @@ test generation, hardware-corpus execution, artifact production, and
 documentation. The human owner chose the product thesis, milestone order,
 architecture and scope boundaries, hardware questions, stop/go criteria,
 unsupported claims, and when failed numerical hypotheses required a course
-correction. Claude's evidenced contribution relevant to this story is
-historical: it authored the original pre-event `oct-mcp` baseline and portions
-of earlier libraries; Build Week plugin productization and redesign were done in
-GPT-5.6 Codex sessions.
+correction. Claude's direct Build Week role was limited mainly to occasional
+rubber-duck review and audit. Its original `oct-mcp` work and portions of earlier
+libraries belong to the pre-event baseline; Build Week plugin productization and
+redesign were done in GPT-5.6 Codex sessions.
 
 The models now use the same user-facing contracts they helped improve: local
 Codex edits Oct source, runs `oct test ... --json`, repairs the returned
