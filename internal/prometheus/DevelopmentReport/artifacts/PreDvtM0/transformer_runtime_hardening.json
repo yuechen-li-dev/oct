@@ -1,0 +1,58 @@
+{
+  "schema": "prometheus.pre_dvt_m0.transformer_runtime_hardening.v1",
+  "status": {
+    "convergence_outcome": "MEANINGFUL_PROGRESSION",
+    "milestone_state": "IN_PROGRESS",
+    "dvt_state": "NOT_READY"
+  },
+  "baseline": {
+    "source_files": {
+      "reactor_vulkan_fused_reduction.c": 14772,
+      "reactor_vulkan_transformer.c": 1169,
+      "reactor_vulkan_transformer_control.c": 155
+    },
+    "production_reduction_shader_ids": [16, 17, 18, 19, 20, 21, 22],
+    "production_reduction_implementation_ids": [1001, 1002, 1003, 1004, 1005, 1006, 1007],
+    "fixed_stack": {
+      "layer_count_contract": "PROM_M48_LAYER_COUNT",
+      "command_buffers_per_slot": 4,
+      "semaphores_per_slot": 3,
+      "activation_ping_pong_buffers": 2
+    }
+  },
+  "responsibility_classifications": [
+    {"range": "36-512", "classification": "shared Vulkan primitive and mixed runtime state"},
+    {"range": "783-2913", "classification": "transformer audit/reference"},
+    {"range": "2924-4770", "classification": "reduction core, lifecycle, planner, shader/pipeline ownership"},
+    {"range": "4770-7278", "classification": "transformer block recorder and persistent resources"},
+    {"range": "7279-7615", "classification": "transformer stack owner"},
+    {"range": "7616-10531", "classification": "transformer block recorder"},
+    {"range": "10532-12247", "classification": "transformer stack owner and numerical control live integration"},
+    {"range": "12248-14331", "classification": "transformer block recorder and audit-only helper"},
+    {"range": "14332-14772", "classification": "reduction core and benchmark/research helper"}
+  ],
+  "dependency_edges": [
+    "transformer block recorder -> reduction plan and softmax recording",
+    "transformer stack -> transformer block recorder",
+    "transformer stack -> transformer control pure policy",
+    "transformer stack -> shared Vulkan slot lifecycle",
+    "reduction lifecycle -> shared Vulkan slot lifecycle"
+  ],
+  "identity_preservation": {
+    "replay_identity_changed": false,
+    "source_identity_changed": true,
+    "reason": "baseline ledger and artifact added; no live source extraction yet"
+  },
+  "validation": {
+    "windows": "not_run",
+    "linux": "not_run",
+    "hardware_smoke": "not_run",
+    "warm_allocation": "not_run",
+    "deterministic_projection_identity": "d5859bfb2727e39e07400d9db99f7fa387861e813f11293377758d563ec397ce",
+    "deterministic_projection_scope": "canonical JSON with this identity field omitted"
+  },
+  "unsupported_claims": [
+    "No live transformer runtime code has been extracted in this baseline artifact.",
+    "No post-extraction behavior-equivalence result is claimed."
+  ]
+}

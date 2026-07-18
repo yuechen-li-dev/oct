@@ -24,6 +24,10 @@ Current Vulkan reactor file topology (P12 M5 baseline):
   - production M39b row-wise FP32 sum/max/stable-softmax family: deterministic
     plans, one-workgroup and staged dispatch, persistent family ring,
     device-local reusable temporaries, timestamps, validation, and CPU oracle.
+  - Current pre-DVT debt: this unit also retains live M42-M49b transformer
+    runtime ownership through a shared private slot/state type.  See
+    `../DevelopmentReport/PROMETHEUS_PRE_DVT_M0_TRANSFORMER_RUNTIME_HARDENING.md`;
+    this is a migration target, not intended final ownership.
 
 Topology rule:
 
