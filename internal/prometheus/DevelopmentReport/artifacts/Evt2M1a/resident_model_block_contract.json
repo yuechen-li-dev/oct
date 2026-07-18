@@ -1,0 +1,166 @@
+{
+  "schema": "oct.prometheus.evt2.m1a.resident-model-block.v1",
+  "model": {
+    "ModelID": "Tongyi-MAI/Z-Image-Turbo",
+    "ModelRevision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
+    "SourceCheckpointSHA": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+    "CacheAggregateSHA": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e",
+    "TopologyVersion": "zimage-noise-refiner.0-topology-v1",
+    "PrecisionPolicy": "fp16-weights-fp32-norm-reduction-softmax-rope-v1",
+    "SemanticSourceSHA256": "5c3010d829c99d20865f9c0c64365eb4ff87dc73f8e9aceacbbe724150d673b1",
+    "DeviceCapabilityRoute": "rtx-3070-vulkan",
+    "RuntimeVersion": "prometheus-evt2-m1-v1",
+    "ShaderPortfolio": [
+      {
+        "ID": "model-block-resident-identity",
+        "SHA256": "5c3010d829c99d20865f9c0c64365eb4ff87dc73f8e9aceacbbe724150d673b1",
+        "PipelineID": "resident-model-block-v1"
+      }
+    ],
+    "ModelContractID": "c845e87fe9269ed35d49d144d08d9fdf71522c9647e03cb4c29ed829752d3a94",
+    "WeightID": "4ed54d0ff05fcaa67c53a7690369b452f5cf92e5b9fac779bdd883ea31201ead",
+    "ShaderPortfolioID": "c19d12d32321ed55dbc6cbc8f63a14911ce28db0b7077e888a75e61d68aa4676",
+    "ExecutionReplayID": "7ab234fbb6d804d521a9e5a2723f4c2fd14f60983d9c2cd9edb8254d888072e0"
+  },
+  "resident_plan": {
+    "ModelContractID": "c845e87fe9269ed35d49d144d08d9fdf71522c9647e03cb4c29ed829752d3a94",
+    "WeightID": "4ed54d0ff05fcaa67c53a7690369b452f5cf92e5b9fac779bdd883ea31201ead",
+    "ShaderPortfolioID": "c19d12d32321ed55dbc6cbc8f63a14911ce28db0b7077e888a75e61d68aa4676",
+    "PrecisionPolicy": "fp16-weights-fp32-norm-reduction-softmax-rope-v1",
+    "ShaderID": "model-block-resident-identity",
+    "ShaderSHA256": "5c3010d829c99d20865f9c0c64365eb4ff87dc73f8e9aceacbbe724150d673b1",
+    "PipelineID": "resident-model-block-v1",
+    "ExecutionSteps": [
+      "bind-pipeline",
+      "bind-declared-resources",
+      "push-declared-constants",
+      "dispatch",
+      "barrier",
+      "audit-copy",
+      "output-copy"
+    ],
+    "Weights": [
+      {
+        "SourceName": "noise_refiner.0.adaLN_modulation.0.bias",
+        "CacheRelativePath": "noise_refiner.0.adaLN_modulation.0.bias.fp16.bin",
+        "Bytes": 30720,
+        "ContentSHA256": "888c771757614948c1ba1eefae9d7701159be6a34841e24230fee8e398ef6757",
+        "Layout": "vector preserved"
+      },
+      {
+        "SourceName": "noise_refiner.0.adaLN_modulation.0.weight",
+        "CacheRelativePath": "noise_refiner.0.adaLN_modulation.0.weight.fp16.bin",
+        "Bytes": 7864320,
+        "ContentSHA256": "297322530dbae554572810bb66c804d4ef1db2836b113894e6f1da8d6701130a",
+        "Layout": "row-major [in,out], transposed from PyTorch [out,in]"
+      },
+      {
+        "SourceName": "noise_refiner.0.attention.k_norm.weight",
+        "CacheRelativePath": "noise_refiner.0.attention.k_norm.weight.fp16.bin",
+        "Bytes": 256,
+        "ContentSHA256": "c4b6ad46c88618b889a553779bc851b7b61457fd4a6448f54d32d3678ae35d86",
+        "Layout": "vector preserved"
+      },
+      {
+        "SourceName": "noise_refiner.0.attention.out.weight",
+        "CacheRelativePath": "noise_refiner.0.attention.out.weight.fp16.bin",
+        "Bytes": 29491200,
+        "ContentSHA256": "85fb4ccdede4b192c8acd0776ce39cd18e0337f92abe2a8cb70ce243e616a59f",
+        "Layout": "row-major [in,out], transposed from PyTorch [out,in]"
+      },
+      {
+        "SourceName": "noise_refiner.0.attention.q_norm.weight",
+        "CacheRelativePath": "noise_refiner.0.attention.q_norm.weight.fp16.bin",
+        "Bytes": 256,
+        "ContentSHA256": "9a962ae63443d427924ba44a643b33596f04fdffccd2f77881f77a041149e7eb",
+        "Layout": "vector preserved"
+      },
+      {
+        "SourceName": "noise_refiner.0.attention.qkv.weight",
+        "CacheRelativePath": "noise_refiner.0.attention.qkv.weight.fp16.bin",
+        "Bytes": 88473600,
+        "ContentSHA256": "306aeca2d1a7317cae5786d9b89c18c5708f4291b27e8a523e1d9d0c87dcf867",
+        "Layout": "row-major [in,out], transposed from PyTorch [out,in]"
+      },
+      {
+        "SourceName": "noise_refiner.0.attention_norm1.weight",
+        "CacheRelativePath": "noise_refiner.0.attention_norm1.weight.fp16.bin",
+        "Bytes": 7680,
+        "ContentSHA256": "bef84a5d7dc74518dce6548e8f7289c690e641095414d5bc897d3a1e9cdd3185",
+        "Layout": "vector preserved"
+      },
+      {
+        "SourceName": "noise_refiner.0.attention_norm2.weight",
+        "CacheRelativePath": "noise_refiner.0.attention_norm2.weight.fp16.bin",
+        "Bytes": 7680,
+        "ContentSHA256": "f2bfe565b60d159f7394bbd69a3a6bbb986b9ce079201571873c604ac85ff743",
+        "Layout": "vector preserved"
+      },
+      {
+        "SourceName": "noise_refiner.0.feed_forward.w1.weight",
+        "CacheRelativePath": "noise_refiner.0.feed_forward.w1.weight.fp16.bin",
+        "Bytes": 78643200,
+        "ContentSHA256": "3b90d452efe4978469a06904e98fdaa1e2420902537efc3d50c3f9db5a7b8053",
+        "Layout": "row-major [in,out], transposed from PyTorch [out,in]"
+      },
+      {
+        "SourceName": "noise_refiner.0.feed_forward.w2.weight",
+        "CacheRelativePath": "noise_refiner.0.feed_forward.w2.weight.fp16.bin",
+        "Bytes": 78643200,
+        "ContentSHA256": "406ca8dfa944dea25eed9be5e7b5950923ff0ec10b256dbc430a74ed05aa0e1a",
+        "Layout": "row-major [in,out], transposed from PyTorch [out,in]"
+      },
+      {
+        "SourceName": "noise_refiner.0.feed_forward.w3.weight",
+        "CacheRelativePath": "noise_refiner.0.feed_forward.w3.weight.fp16.bin",
+        "Bytes": 78643200,
+        "ContentSHA256": "9ef1cb38965d82b3b6a6dffdf77f9a90f62afc3954cdaee4438480341738be6b",
+        "Layout": "row-major [in,out], transposed from PyTorch [out,in]"
+      },
+      {
+        "SourceName": "noise_refiner.0.ffn_norm1.weight",
+        "CacheRelativePath": "noise_refiner.0.ffn_norm1.weight.fp16.bin",
+        "Bytes": 7680,
+        "ContentSHA256": "db8f41dfe0800207727802821325c264bb025421e69d612615b21d8ef541f577",
+        "Layout": "vector preserved"
+      },
+      {
+        "SourceName": "noise_refiner.0.ffn_norm2.weight",
+        "CacheRelativePath": "noise_refiner.0.ffn_norm2.weight.fp16.bin",
+        "Bytes": 7680,
+        "ContentSHA256": "e627bd67eefd8058c6da9d55d7c22146b709ea9f1ed57a3ac486c2a3e716d06d",
+        "Layout": "vector preserved"
+      }
+    ],
+    "Memory": {
+      "PersistentWeightBytes": 361820672,
+      "ReusableBytes": 151388160,
+      "AuditBytes": 8192,
+      "ExternalInputBytes": 15728640,
+      "ExternalOutputBytes": 15728640,
+      "TotalCommittedBytes": 513217024,
+      "MemoryCeilingBytes": 536870912
+    },
+    "ExecutionPlanID": "d84c5b3a5168bfd186fef22652361dfa9693444265eb7cf2d795be5e118ae20a",
+    "ResidentReplaySeedID": "a4768c56bb8ff34d05ae26b4fd0dc6cb7810a83883adc5a358ad0417de2deb18"
+  },
+  "native_abi": {
+    "header": "internal/prometheus/native/reactor_api.h",
+    "entry_points": [
+      "create",
+      "upload_weights",
+      "execute",
+      "get_evidence",
+      "destroy"
+    ],
+    "closed_steps": [
+      "bind-pipeline",
+      "bind-declared-resources",
+      "push-declared-constants",
+      "dispatch",
+      "barrier",
+      "audit-copy",
+      "output-copy"
+    ]
+  }
+}

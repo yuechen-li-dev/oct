@@ -1,0 +1,19 @@
+{
+  "schema": "oct.prometheus.evt2.m1a.memory.v1",
+  "memory": {
+    "PersistentWeightBytes": 361820672,
+    "ReusableBytes": 151388160,
+    "AuditBytes": 8192,
+    "ExternalInputBytes": 15728640,
+    "ExternalOutputBytes": 15728640,
+    "TotalCommittedBytes": 513217024,
+    "MemoryCeilingBytes": 536870912
+  },
+  "resident_proof_expectation": {
+    "weight_binding_count": 13,
+    "cold_buffer_count": 20,
+    "warm_buffer_allocations": 0,
+    "pipeline_creations": 1,
+    "descriptor_sets": 1
+  }
+}

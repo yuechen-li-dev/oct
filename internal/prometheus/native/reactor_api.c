@@ -177,6 +177,34 @@ int prometheus_reactor_runtime_reduction_benchmark(void* handle,
   return prom_reactor_runtime_reduction_benchmark_impl(handle, request, out_result);
 }
 
+int prometheus_reactor_runtime_model_block_create(
+    void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_model_block_create_impl(handle, request, out_block_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_model_block_upload_weights(
+    void* handle, uint64_t block_id, const PrometheusModelBlockWeightUpload* uploads,
+    uint32_t upload_count, PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_model_block_upload_weights_impl(handle, block_id, uploads, upload_count,
+                                                               out_evidence);
+}
+
+int prometheus_reactor_runtime_model_block_execute(
+    void* handle, uint64_t block_id, const PrometheusModelBlockExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_model_block_execute_impl(handle, block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_model_block_get_evidence(void* handle, uint64_t block_id,
+                                                        PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_model_block_get_evidence_impl(handle, block_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_model_block_destroy(void* handle, uint64_t block_id) {
+  return prom_reactor_runtime_model_block_destroy_impl(handle, block_id);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

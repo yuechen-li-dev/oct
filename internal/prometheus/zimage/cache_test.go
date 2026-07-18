@@ -7,6 +7,50 @@ import (
 	"testing"
 )
 
+func TestLoadNoiseRefiner0PayloadBundleWhenLocalPayloadsAreAvailable(t *testing.T) {
+	cacheRoot := os.Getenv("OCT_EVT2_CACHE")
+	oracleRoot := os.Getenv("OCT_EVT2_ORACLE")
+	if cacheRoot == "" || oracleRoot == "" {
+		t.Skip("local EVT-2 payload roots are not configured")
+	}
+	bundle, err := LoadNoiseRefiner0PayloadBundle(NoiseRefiner0PayloadPaths{
+		CacheRoot:  cacheRoot,
+		OracleRoot: oracleRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.CacheBytes != 361820672 || bundle.CacheManifest.AggregateSHA256 != NoiseRefiner0CacheAggregateSHA256 {
+		t.Fatalf("unexpected cache identity: bytes=%d aggregate=%s", bundle.CacheBytes, bundle.CacheManifest.AggregateSHA256)
+	}
+	if bundle.Input.SHA256 != "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded" ||
+		bundle.Timestep.SHA256 != "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2" ||
+		bundle.FP16Reference.SHA256 != NoiseRefiner0FP16ReferenceSHA256 {
+		t.Fatal("unexpected local oracle identity")
+	}
+	if len(bundle.StageNames) < 20 {
+		t.Fatalf("stage witness count = %d, want at least 20", len(bundle.StageNames))
+	}
+	contract, err := NewNoiseRefiner0ModuleContract(bundle, NoiseRefiner0ResidentProofShaderSHA256, "rtx-3070-vulkan", []NoiseRefiner0ShaderIdentity{{
+		ID:         NoiseRefiner0ResidentProofShaderID,
+		SHA256:     NoiseRefiner0ResidentProofShaderSHA256,
+		PipelineID: NoiseRefiner0ResidentProofPipelineID,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := NewNoiseRefiner0ResidentBlockPlan(bundle, contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Weights) != 13 || plan.Memory.PersistentWeightBytes != 361820672 || plan.Memory.TotalCommittedBytes > plan.Memory.MemoryCeilingBytes {
+		t.Fatalf("unexpected M1a resident plan: weights=%d memory=%+v", len(plan.Weights), plan.Memory)
+	}
+	if len(plan.ExecutionSteps) != 7 || plan.ExecutionPlanID == "" || plan.ResidentReplaySeedID == "" {
+		t.Fatalf("resident plan identity or fixed program missing: %+v", plan)
+	}
+}
+
 func TestBF16ToFP16BoundarySemantics(t *testing.T) {
 	tests := []struct {
 		name string

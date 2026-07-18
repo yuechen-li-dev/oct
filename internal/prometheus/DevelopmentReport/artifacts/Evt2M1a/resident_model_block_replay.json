@@ -1,0 +1,19 @@
+{
+  "schema": "oct.prometheus.evt2.m1a.replay.v1",
+  "model_contract_identity": "c845e87fe9269ed35d49d144d08d9fdf71522c9647e03cb4c29ed829752d3a94",
+  "weight_identity": "4ed54d0ff05fcaa67c53a7690369b452f5cf92e5b9fac779bdd883ea31201ead",
+  "shader_portfolio_identity": "c19d12d32321ed55dbc6cbc8f63a14911ce28db0b7077e888a75e61d68aa4676",
+  "execution_plan_identity": "d84c5b3a5168bfd186fef22652361dfa9693444265eb7cf2d795be5e118ae20a",
+  "resident_replay_seed_identity": "a4768c56bb8ff34d05ae26b4fd0dc6cb7810a83883adc5a358ad0417de2deb18",
+  "replay_inputs": [
+    "model-contract",
+    "weight-bundle",
+    "shader-portfolio",
+    "fixed-plan",
+    "precision-policy",
+    "capability-route",
+    "input-identity",
+    "audit-mode",
+    "runtime-version"
+  ]
+}

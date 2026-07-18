@@ -566,6 +566,108 @@ typedef struct PrometheusReductionBenchmarkResult {
   int32_t detail_code;
 } PrometheusReductionBenchmarkResult;
 
+/* EVT-2 M1a is one compiled, resident command program. These declarations are
+   deliberately closed: they do not admit graph nodes, arbitrary pipelines, or
+   runtime topology negotiation. */
+#define PROM_MODEL_BLOCK_MAX_WEIGHTS 13u
+#define PROM_MODEL_BLOCK_MAX_STEPS 7u
+#define PROM_MODEL_BLOCK_MAX_AUDIT_POINTS 1u
+
+enum {
+  PROM_MODEL_BLOCK_STEP_BIND_PIPELINE = 1u,
+  PROM_MODEL_BLOCK_STEP_BIND_RESOURCES = 2u,
+  PROM_MODEL_BLOCK_STEP_PUSH_CONSTANTS = 3u,
+  PROM_MODEL_BLOCK_STEP_DISPATCH = 4u,
+  PROM_MODEL_BLOCK_STEP_BARRIER = 5u,
+  PROM_MODEL_BLOCK_STEP_AUDIT_COPY = 6u,
+  PROM_MODEL_BLOCK_STEP_OUTPUT_COPY = 7u,
+};
+
+enum {
+  PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST = -6901,
+  PROM_MODEL_BLOCK_DETAIL_NOT_FOUND = -6902,
+  PROM_MODEL_BLOCK_DETAIL_ALREADY_CREATED = -6903,
+  PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH = -6904,
+  PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED = -6905,
+  PROM_MODEL_BLOCK_DETAIL_PIPELINE_CREATE_FAILED = -6906,
+  PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED = -6907,
+  PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED = -6908,
+  PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED = -6909,
+  PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN = -6910,
+  PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED = -6911,
+  PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT = -6912,
+};
+
+typedef struct PrometheusModelBlockWeightDeclaration {
+  uint64_t content_identity;
+  uint64_t layout_identity;
+  uint64_t byte_count;
+} PrometheusModelBlockWeightDeclaration;
+
+typedef struct PrometheusModelBlockCreateRequest {
+  uint32_t struct_size;
+  uint64_t model_contract_identity;
+  uint64_t weight_identity;
+  uint64_t shader_portfolio_identity;
+  uint64_t precision_policy_identity;
+  uint64_t capability_route_identity;
+  uint64_t memory_ceiling_bytes;
+  uint64_t external_input_bytes;
+  uint64_t external_output_bytes;
+  uint64_t audit_bytes;
+  uint32_t shader_id;
+  uint32_t weight_count;
+  PrometheusModelBlockWeightDeclaration weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+  uint32_t step_count;
+  uint32_t steps[PROM_MODEL_BLOCK_MAX_STEPS];
+} PrometheusModelBlockCreateRequest;
+
+typedef struct PrometheusModelBlockWeightUpload {
+  uint32_t binding_index;
+  const void* bytes;
+  uint64_t byte_count;
+  uint64_t content_identity;
+  uint64_t layout_identity;
+} PrometheusModelBlockWeightUpload;
+
+typedef struct PrometheusModelBlockExecuteRequest {
+  uint32_t struct_size;
+  const float* input;
+  float* output;
+  uint64_t element_count;
+  uint64_t input_identity;
+  uint32_t audit_enabled;
+  float* audit_output;
+  uint64_t audit_element_capacity;
+} PrometheusModelBlockExecuteRequest;
+
+typedef struct PrometheusModelBlockEvidence {
+  uint32_t struct_size;
+  int32_t detail_code;
+  uint32_t created;
+  uint32_t weights_uploaded;
+  uint32_t quarantined;
+  uint32_t output_valid;
+  uint32_t audit_valid;
+  uint32_t fixed_step_count;
+  uint32_t weight_count;
+  uint64_t persistent_bytes;
+  uint64_t reusable_bytes;
+  uint64_t audit_bytes;
+  uint64_t external_bytes;
+  uint64_t total_committed_bytes;
+  uint64_t peak_plan_bytes;
+  uint64_t cold_buffer_allocation_count;
+  uint64_t warm_buffer_allocation_count;
+  uint64_t pipeline_create_count;
+  uint64_t descriptor_set_count;
+  uint64_t weight_upload_count;
+  uint64_t execution_count;
+  uint64_t last_execution_ns;
+  uint64_t execution_plan_identity;
+  uint64_t replay_identity;
+} PrometheusModelBlockEvidence;
+
 typedef struct PrometheusFftRequest {
   uint32_t struct_size;
   const PrometheusComplex32* input;
@@ -1618,6 +1720,20 @@ PROM_REACTOR_API int prometheus_reactor_runtime_reduction_benchmark(
     void* handle,
     const PrometheusReductionBenchmarkRequest* request,
     PrometheusReductionBenchmarkResult* out_result);
+
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_create(
+    void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_upload_weights(
+    void* handle, uint64_t block_id, const PrometheusModelBlockWeightUpload* uploads,
+    uint32_t upload_count, PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute(
+    void* handle, uint64_t block_id, const PrometheusModelBlockExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
+    void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_destroy(void* handle,
+                                                                      uint64_t block_id);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);

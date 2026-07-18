@@ -1,0 +1,40 @@
+{
+  "schema": "oct.prometheus.evt2.m1a.faults.v1",
+  "faults": [
+    {
+      "name": "malformed-fixed-plan",
+      "detail_code": -6901,
+      "expected": "reject before resource allocation"
+    },
+    {
+      "name": "wrong-or-missing-weight-binding",
+      "detail_code": -6904,
+      "expected": "reject immutable bundle before upload"
+    },
+    {
+      "name": "pipeline-create",
+      "detail_code": -6906,
+      "expected": "clean partial state and permit later creation"
+    },
+    {
+      "name": "weight-upload",
+      "detail_code": -6907,
+      "expected": "reject bundle and allow destruction"
+    },
+    {
+      "name": "queue-submit",
+      "detail_code": -6909,
+      "expected": "reject stale output and recover after one-shot fault"
+    },
+    {
+      "name": "completion-uncertain",
+      "detail_code": -6910,
+      "expected": "quarantine, reap fence, then recover"
+    },
+    {
+      "name": "audit-copy",
+      "detail_code": -6911,
+      "expected": "reject output and preserve no-stale-output rule"
+    }
+  ]
+}

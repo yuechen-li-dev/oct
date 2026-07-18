@@ -6,7 +6,7 @@
     "reactor_dominatus_prestage.c", "reactor_dominatus_sgemm_adapter.c",
     "reactor_dominatus_slot_adapter.c", "reactor_policy_memory.c", "reactor_slot_hfsm.c",
     "reactor_vulkan_common.c", "reactor_shader_registry.c", "reactor_vulkan_sgemm.c", "reactor_batch.c", "reactor_vulkan_fft.c",
-    "reactor_vulkan_fused_reduction.c",
+    "reactor_vulkan_fused_reduction.c", "reactor_vulkan_model_block.c",
     "reactor_vulkan_transformer.c", "reactor_vulkan_transformer_control.c",
     "reactor_numerical_research.c"
   ],
@@ -30,7 +30,8 @@
     "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp",
     "Marionette/reactor_fft_benchmarks.cpp", "Marionette/reactor_reduction_tests.cpp",
     "Marionette/reactor_reduction_benchmarks.cpp", "Marionette/reactor_cooperative_matrix_tests.cpp",
-    "Marionette/reactor_attention_tests.cpp", "Marionette/reactor_m49_numerical_research_tests.cpp"
+    "Marionette/reactor_attention_tests.cpp", "Marionette/reactor_m49_numerical_research_tests.cpp",
+    "Marionette/reactor_model_block_tests.cpp"
   ],
   "slow_only_test_sources": [],
   "test_mains": {
@@ -47,7 +48,8 @@
     "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h", "reactor_vulkan_sgemm_srt_2accum_k_spirv.h",
     "reactor_vulkan_tiled_spirv.h", "reactor_vulkan_reduction_row_sum_spirv.h",
     "reactor_vulkan_reduction_row_max_spirv.h", "reactor_vulkan_reduction_softmax_exp_sum_spirv.h",
-    "reactor_vulkan_reduction_softmax_normalize_spirv.h", "reactor_vulkan_reduction_softmax_fused_spirv.h"
+    "reactor_vulkan_reduction_softmax_normalize_spirv.h", "reactor_vulkan_reduction_softmax_fused_spirv.h",
+    "reactor_vulkan_model_block_resident_identity_spirv.h"
   ],
   "platform_exceptions": {"windows": [], "linux": []}
 }

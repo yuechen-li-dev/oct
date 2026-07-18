@@ -1,0 +1,23 @@
+{
+  "schema": "oct.prometheus.evt2.m1b-handoff.v1",
+  "milestone": "EVT-2 M1b - modulation normalization and RoPE",
+  "reuse": [
+    "validated 13-tensor cache contract and resident bindings",
+    "fixed model-block create/upload/execute/audit/destroy lifecycle",
+    "closed production SDSL-V portfolio registration and shader identity",
+    "resident memory declaration, replay identity, quarantine and reap behavior"
+  ],
+  "add": [
+    "timestep linear and AdaLN split/gate/scale shader steps",
+    "attention-input RMSNorm/modulation and Q/K RMSNorm",
+    "three-axis RoPE semantic-space transitions and bounded stage audits",
+    "M0.5 witnesses for AdaLN, normalized input, normalized Q/K and positioned Q/K"
+  ],
+  "deliberately_absent": [
+    "fused 30-head QKV",
+    "attention score/softmax/value aggregation",
+    "output projection and residual",
+    "10240-wide FFN",
+    "scheduler and remaining model blocks"
+  ]
+}

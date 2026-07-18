@@ -28,7 +28,7 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(15), prom_shader_registry_shader_asset_count(), "SGEMM production assets must remain stable");
+  ASSERT_EQUAL(static_cast<std::size_t>(16), prom_shader_registry_shader_asset_count(), "production assets must include the resident model-block proof");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
@@ -120,6 +120,13 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
   ASSERT_EQUAL(1u, proof->contains_inline_hlsl, "proof provenance must record inline HLSL");
   ASSERT_EQUAL(2u, proof->inline_hlsl_block_count, "proof block count must agree with source");
   ASSERT_TRUE(std::string(proof->foreign_targets) == "HLSL", "proof target provenance must be HLSL");
+  const auto* resident = prom_shader_registry_find_shader(23u);
+  ASSERT_TRUE(resident != nullptr, "M1a resident model-block proof must be registered");
+  ASSERT_EQUAL(PROM_SHADER_SOURCE_SDSLV, resident->source_language, "resident proof source must be SDSL-V");
+  ASSERT_EQUAL(3u, resident->descriptor_binding_count, "resident proof owns its exact binding contract");
+  ASSERT_EQUAL(8u, resident->push_constant_bytes, "resident proof owns its exact push constants");
+  ASSERT_TRUE(std::string(resident->source_path).find("/production/model_block/") != std::string::npos,
+              "resident proof source must live in production ownership");
 }
 FACT(PrometheusComputePipelineInstancesMatchDescriptors) {
   std::array<VkPipeline, PROM_COMPUTE_PIPELINE_COUNT> pipelines{};

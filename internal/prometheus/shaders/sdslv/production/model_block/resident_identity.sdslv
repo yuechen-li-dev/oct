@@ -1,0 +1,27 @@
+namespace Prometheus.Production.ModelBlock;
+
+// EVT-2 M1a resident-block proof. This shader is intentionally an identity
+// transform: model operators remain owned by later M1 milestones.
+stream ResidentBlockIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Output: readwrite array<f32>;
+    [binding(2)] Audit: readwrite array<f32>;
+}
+
+record ResidentBlockParams {
+    ElementCount: u32;
+    AuditElementCount: u32;
+}
+
+shader ResidentModelBlockIdentity {
+    resources ResidentBlockIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: ResidentBlockParams) -> void {
+        let element: u32 = DispatchThreadID.x;
+        if element >= params.ElementCount { return; }
+        let value: f32 = Input[element];
+        Output[element] = value;
+        if element < params.AuditElementCount { Audit[element] = value; }
+        return;
+    }
+}

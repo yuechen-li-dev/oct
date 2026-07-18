@@ -274,6 +274,66 @@ typedef struct prom_m43_head_slot {
   prom_vk_buffer output;
 } prom_m43_head_slot;
 
+/* M1a owns exactly one compiled model-block vessel. It lives inside the
+   established reactor state so command-pool, device, teardown, and quarantine
+   policy remain centralized while the historical state split is completed. */
+typedef struct prom_model_block_weight_resource {
+  prom_vk_buffer device;
+  uint64_t content_identity;
+  uint64_t layout_identity;
+  uint64_t byte_count;
+  uint32_t uploaded;
+} prom_model_block_weight_resource;
+
+typedef struct prom_model_block_state {
+  uint64_t block_id;
+  uint64_t next_block_id;
+  uint64_t model_contract_identity;
+  uint64_t weight_identity;
+  uint64_t shader_portfolio_identity;
+  uint64_t precision_policy_identity;
+  uint64_t capability_route_identity;
+  uint64_t memory_ceiling_bytes;
+  uint64_t external_input_bytes;
+  uint64_t external_output_bytes;
+  uint64_t declared_audit_bytes;
+  uint64_t execution_plan_identity;
+  uint64_t replay_identity;
+  uint32_t created;
+  uint32_t weights_uploaded;
+  uint32_t quarantined;
+  uint32_t output_valid;
+  uint32_t audit_valid;
+  int32_t last_detail_code;
+  uint32_t shader_id;
+  uint32_t test_flags;
+  uint32_t weight_count;
+  uint32_t step_count;
+  uint32_t steps[PROM_MODEL_BLOCK_MAX_STEPS];
+  uint64_t cold_buffer_allocation_count;
+  uint64_t warm_buffer_allocation_count;
+  uint64_t pipeline_create_count;
+  uint64_t descriptor_set_count;
+  uint64_t weight_upload_count;
+  uint64_t execution_count;
+  uint64_t last_execution_ns;
+  VkDescriptorSetLayout descriptor_set_layout;
+  VkDescriptorPool descriptor_pool;
+  VkPipelineLayout pipeline_layout;
+  VkDescriptorSet descriptor_set;
+  VkCommandBuffer command_buffer;
+  VkFence fence;
+  prom_reduction_pipeline pipeline;
+  prom_vk_buffer input_upload;
+  prom_vk_buffer input_device;
+  prom_vk_buffer output_device;
+  prom_vk_buffer output_readback;
+  prom_vk_buffer audit_device;
+  prom_vk_buffer audit_readback;
+  prom_vk_buffer weight_upload;
+  prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+} prom_model_block_state;
+
 typedef struct prom_reduction_slot {
   uint32_t slot_id;
   uint32_t generation;
@@ -382,6 +442,7 @@ typedef struct prom_reduction_runtime_state {
   uint32_t timestamp_supported;
   float timestamp_period_ns;
   uint32_t reduction_test_flags;
+  uint32_t model_block_create_test_flags;
   prom_reduction_pipeline pipelines[PROM_REDUCTION_PIPELINE_COUNT];
   prom_reduction_pipeline m40b_sgemm_pipelines[PROM_M40B_SGEMM_PIPELINE_COUNT];
   prom_vk_buffer persistent_b_upload;
@@ -484,6 +545,8 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m48_buffer_reuse_count;
   uint64_t m48_descriptor_update_count;
   prom_num_m49b_controller m49b_controller;
+
+  prom_model_block_state model_block;
   uint64_t m49b_next_execution_index;
   uint32_t m49b_enabled;
   prom_reduction_slot slots[PROM_REDUCTION_RING_MAX_DEPTH];
@@ -564,6 +627,7 @@ void prom_reduction_update_descriptor_set(prom_reduction_runtime_state* state, V
 void prom_reduction_record_barrier(VkCommandBuffer command_buffer);
 int prom_reduction_find_nonfinite(const float* input, uint64_t count, uint64_t* out_index);
 void prom_reduction_destroy_pipeline(VkDevice device, prom_reduction_pipeline* pipeline);
+void prom_model_block_cleanup_state(prom_reduction_runtime_state* state);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel);
 int prom_m40b_pack_matrix(const float* values, uint32_t rows, uint32_t columns,
