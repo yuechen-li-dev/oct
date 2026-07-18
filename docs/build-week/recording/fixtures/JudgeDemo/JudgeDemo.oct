@@ -1,0 +1,9 @@
+package JudgeDemo
+
+fn Twice(value: Int) -> Int {
+    return value * 2
+}
+
+fn SummaryText() -> String {
+    return "{\"project\":\"Oct and SDSL-V\",\"twice21\":42,\"deterministic\":true}"
+}

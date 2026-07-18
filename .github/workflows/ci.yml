@@ -3,13 +3,16 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   build-test-artifact:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     env:
-      OCT_TEST_TEMP_ROOT: ${{ runner.temp }}/oct-test-artifacts
+      # `runner.*` is not available in job-level `env`; using the workspace
+      # keeps the path valid during workflow parsing and the final step removes it.
+      OCT_TEST_TEMP_ROOT: ${{ github.workspace }}/.oct-test-artifacts
     strategy:
       fail-fast: false
       matrix:
@@ -18,10 +21,12 @@ jobs:
             goos: linux
             goarch: amd64
             binary_name: oct
+            mcp_binary_name: oct-mcp
           - os: windows-latest
             goos: windows
             goarch: amd64
             binary_name: oct.exe
+            mcp_binary_name: oct-mcp.exe
 
     steps:
       - name: Checkout
@@ -41,14 +46,16 @@ jobs:
           release: false
           path-type: inherit
 
-      - name: Build oct binary
+      - name: Build judge binaries
+        shell: pwsh
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "1"
         run: |
-          mkdir -p dist
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
           go build -o dist/${{ matrix.binary_name }} ./cmd/oct
+          go build -o dist/${{ matrix.mcp_binary_name }} ./cmd/oct-mcp
 
       - name: Run fast tests
         run: go test -count=1 -parallel 8 ./...
@@ -74,7 +81,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: oct-test-artifacts-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: ${{ runner.temp }}/oct-test-artifacts
+          path: ${{ github.workspace }}/.oct-test-artifacts
           if-no-files-found: ignore
           retention-days: 7
 
@@ -90,8 +97,11 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: oct-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/${{ matrix.binary_name }}
+          name: oct-build-week-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            dist/${{ matrix.binary_name }}
+            dist/${{ matrix.mcp_binary_name }}
+            plugins/oct
           if-no-files-found: error
           retention-days: 14
 

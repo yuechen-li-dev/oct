@@ -1,0 +1,6 @@
+package JudgeDemo
+
+[Fact]
+fn TwiceIsDeterministic() -> Void {
+    Assert.Equal(42, Twice(21), "the repaired fixture must pass")
+}

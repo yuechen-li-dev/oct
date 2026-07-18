@@ -1,0 +1,20 @@
+package JudgeDemo
+
+import Artifact
+import IO
+
+[Fact]
+fn TwiceIsDeterministic() -> Void {
+    Assert.Equal(42, Twice(21), "the fixture calculation must remain stable")
+}
+
+[Fact]
+fn SummaryTextIsStable() -> Void {
+    Assert.Equal("{\"project\":\"Oct and SDSL-V\",\"twice21\":42,\"deterministic\":true}", SummaryText(), "artifact payload must remain stable")
+}
+
+[Artifact]
+fn WriteJudgeSummary() -> Void {
+    let _mkdir = IO.MakeAll("out/build-week/judge-demo")!
+    Artifact.WriteJson("out/build-week/judge-demo/summary.json", SummaryText())
+}

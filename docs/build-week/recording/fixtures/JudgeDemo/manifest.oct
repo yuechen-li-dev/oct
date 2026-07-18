@@ -1,0 +1,26 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "JudgeDemo"
+        Version: "0.1.0"
+        Description: "Deterministic OpenAI Build Week judge and recording fixture"
+        Authors: ["Yuechen Li", "GPT-5.6 Codex"]
+        Date: "2026-07-17"
+        Dependencies: [Dependency { Name: "Artifact" VersionRequirement: "0.1.0" }, Dependency { Name: "IO" VersionRequirement: "0.1.0" }]
+    }
+}

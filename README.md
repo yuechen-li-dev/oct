@@ -4,6 +4,87 @@ Oct is a scientific programming language and toolchain for reproducible research
 
 It is designed for the point where notebooks and scripts stop being enough: when an experiment needs tests, units, artifacts, packages, native binaries, and a distribution story. Oct's guiding principle is that the correct way should also be the easiest way.
 
+## OpenAI Build Week 2026
+
+**Submission:** *Oct and SDSL-V: Programming Languages Built by AI, Used by AI*
+**Category:** Developer Tools
+
+This submission is the eligible July 13–21 extension of a project that predates
+Build Week. Oct is the correctness-oriented scientific language and toolchain;
+SDSL-V is the typed compute/graphics shader language; Prometheus is the Vulkan
+execution runtime in this repository; and ROALoop is the human-orchestrated
+review/author loop. Persistent ChatGPT holds cross-milestone context, reviews
+handoffs, and helps prepare each bounded prompt; fresh GPT-5.6 Codex author
+tasks re-ground in the repository, implement a vertical, and leave durable
+tests, reports, and artifacts for the next review. Occasional Claude work is
+part of the older repository history. The Oct foundation, SDSL-V compute
+foundation, Prometheus SGEMM/runtime,
+and earlier ROALoop work all existed before the event and are not presented as
+Build Week inventions.
+
+From the official eligibility boundary, July 13, 2026 at 9:00 a.m. Pacific,
+through the current submission state, GPT-5.6 Codex sessions materially added:
+
+- the production SDSL-V fused-reduction reactor and its Vulkan lifecycle,
+  correctness, benchmark, and machine-readable evidence;
+- the canonical SDSL-V vertex/pixel graphics language and conformance bundle
+  (a compiler/toolchain feature, not a graphics runtime or renderer);
+- a bounded device-resident transformer vertical: cooperative matrix SGEMM,
+  attention, grouped multi-head attention, output projection, residual add,
+  RMSNorm, gated FFN, one complete experimental transformer block, and a fixed
+  four-block stack;
+- numerical-heterogeneity experiments, stage-gain/mitigation evidence, and an
+  experimental Shadow-HSFM observer/controller path on one RTX 3070;
+- a Codex-native Oct plugin, bounded MCP server, structured `oct test` and
+  `oct artifact` JSON, and a dogfooding campaign that removed speculative MCP
+  tools and made the real CLI workflow authoritative.
+
+GPT-5.6 Sol handled most one-shot vertical implementation and validation passes;
+GPT-5.6 Terra also participated in the M40b, M48, M49b, and plugin/productization
+threads. Codex accelerated repository inspection, cross-layer implementation,
+test generation, hardware-corpus execution, artifact production, and
+documentation. The human owner chose the product thesis, milestone order,
+architecture and scope boundaries, hardware questions, stop/go criteria,
+unsupported claims, and when failed numerical hypotheses required a course
+correction. Claude's evidenced contribution relevant to this story is
+historical: it authored the original pre-event `oct-mcp` baseline and portions
+of earlier libraries; Build Week plugin productization and redesign were done in
+GPT-5.6 Codex sessions.
+
+The models now use the same user-facing contracts they helped improve: local
+Codex edits Oct source, runs `oct test ... --json`, repairs the returned
+diagnostic, then runs `oct artifact ... --json` and reports exact paths, types,
+sizes, and SHA-256 hashes. SDSL-V sources compile to reviewable HLSL and
+validated SPIR-V; Prometheus consumes production or explicitly experimental
+shader assets under recorded authority boundaries.
+
+Judges should start with the [Build Week judge quickstart](docs/build-week/JUDGE_QUICKSTART.md).
+The no-rebuild path is the tracked Linux x86-64 `oct-mcp` server; the strongest
+local desktop-plugin path is the Windows CI test-build artifact configured by
+this revision once its public workflow run succeeds. The packet also includes a
+minimal deterministic Oct test and artifact fixture. The
+specialized Vulkan evidence is prerecorded and committed because live execution
+was measured only on Windows with an NVIDIA RTX 3070 and Vulkan validation.
+
+Supported and limited today:
+
+- Oct CLI/compiler: developed and tested on Windows x86-64 and Linux x86-64;
+  it is a pre-1.0 preview and compiled feature coverage is not universal.
+- SDSL-V compiler/toolchain: Windows and Linux Go tests; graphics artifact
+  compilation additionally requires DXC and `spirv-val`; there is no graphics
+  runtime, window, swapchain, render pass, or pipeline-state engine.
+- Prometheus native runtime: authoritative live Build Week hardware evidence is
+  Windows x86-64 on one RTX 3070/driver; Linux compiles and smoke-tests, but no
+  live Linux Vulkan result or AMD/cross-vendor DVT is claimed.
+- Oct plugin/MCP: local plugin metadata and bounded stdio/HTTP server are
+  present; the committed prebuilt server is Linux x86-64. CI builds Windows and
+  Linux test binaries. No hosted public MCP deployment or marketplace approval
+  is claimed.
+
+The exact eligibility ledger, commits, sessions, claims, artifacts, judge
+commands, Devpost copy, and video package are indexed in
+[docs/build-week/README.md](docs/build-week/README.md).
+
 ## What is Oct?
 
 Oct is an early scientific programming language/toolchain for portable computation, reproducible research, and AI-assisted experimentation.
