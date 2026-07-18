@@ -1,0 +1,55 @@
+{
+  "schema": "prometheus.dvt-m1.amd-transformer-portability.v1",
+  "status": "complete",
+  "convergence_outcome": "success",
+  "machine": {
+    "manufacturer": "ASUSTeK COMPUTER INC.",
+    "model": "ASUS Adolbook 14 M5406UA_ADOL14UA",
+    "cpu": "AMD Ryzen 9 8945H w/ Radeon 780M Graphics",
+    "ram_bytes": 33565962240,
+    "os": "Microsoft Windows 11 Pro 10.0.26200",
+    "power_plan": "Balanced"
+  },
+  "vulkan": {
+    "device": "AMD Radeon 780M Graphics",
+    "vendor_id": "0x1002",
+    "device_id": "0x1900",
+    "type": "integrated",
+    "api_version": "1.4.349",
+    "driver": "AMD proprietary driver 26.6.4 (LLPC)",
+    "loader": "1.4.350",
+    "subgroup_size": 64,
+    "subgroup_size_range": [32, 64],
+    "compute_queue_timestamp_valid_bits": 64,
+    "timestamp_period_ns": 10,
+    "max_compute_workgroup_invocations": 1024,
+    "max_compute_shared_memory_bytes": 32768,
+    "max_storage_buffer_range": 4294967295,
+    "non_coherent_atom_size": 128,
+    "extensions": {"cooperative_matrix": true, "float16_int8": true, "synchronization2": true, "timeline_semaphore": true, "memory_budget": true}
+  },
+  "execution": {
+    "fp32_a2x4_ffn": "supported",
+    "fp32_projection": "supported",
+    "fp32_rmsnorm": "supported",
+    "reduction_and_stable_softmax": "supported",
+    "attention": "supported through fallback-selected runtime",
+    "complete_transformer_block": "supported through fallback-selected runtime",
+    "fixed_four_block_stack": "supported through real M48 live-stack test",
+    "cooperative_f16": "unsupported_by_current_fixed-local-size shader",
+    "first_failing_path": "cooperative matrix pipeline: LocalSize.x 32 is not a multiple of AMD effective subgroup size 64",
+    "portability_fix": "capability admission classifies non-32 subgroup as compiler route unavailable while retaining FP16 device features for conventional paths"
+  },
+  "validation": {
+    "spirv_val": "all checked production/experimental SPIR-V modules passed",
+    "native_manifest": "passed after regenerated Linux fragment",
+    "go_source": "passed",
+    "go_diagnostic": "passed",
+    "go_sdslv": "failed: canonical artifact / conformance hashes drift under installed DXC 1.10.5347"
+  },
+  "controller": {"state": "Unidentified", "rollout_stage": 0, "rtx_calibration_authority": false, "stage_2_or_3_authorized": false},
+  "hardware_proofs": ["M42 attention", "M43 grouped attention", "M44 projection", "M45 residual", "M46 RMSNorm", "M47 complete block", "M48 fixed four-block stack", "M42 fault injection", "M43 quarantine/replacement", "M44 lifecycle faults", "M49b bounded controller"],
+  "timing": {"timestamp_period_ns": 10, "substage_zero_intervals": "valid quantization on short kernels; aggregate attention and M47 intervals are nonzero", "authority": "bounded reduced-shape slice", "overnight_corpus_duration_trusted": false, "limitation": "RTX-scale M43 corpus retained roughly 700 MiB and was not tractable on Radeon 780M; possible machine sleep invalidates elapsed duration"},
+  "image_model_readiness": "ready_with_reduced_shape",
+  "unsupported_claims": ["No primary 128x1024x4096 AMD stack evidence", "No 10/30-sample timing baseline", "No completed unified-memory measurement matrix", "No Stage 2/3 authorization", "No cooperative execution claim"]
+}

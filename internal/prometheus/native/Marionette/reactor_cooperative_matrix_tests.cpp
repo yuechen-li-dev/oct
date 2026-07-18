@@ -428,7 +428,13 @@ FACT(PrometheusM40aCooperativeMatrixHardwareProof)
         prom_reactor_runtime_destroy_impl(runtime);
         SKIP("useful KHR cooperative tuple unavailable");
     }
-    ASSERT_EQUAL(32u, services.subgroup_size, "selected proof contract uses one full 32-lane subgroup");
+    if (services.subgroup_size != 32u) {
+        ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_VK_COOPERATIVE_MATRIX_COMPILER_ROUTE_UNAVAILABLE),
+                     services.cooperative_matrix_state,
+                     "non-32-lane devices reject the fixed LocalSize 32 cooperative route before pipeline creation");
+        prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("fixed LocalSize 32 cooperative shader is not valid for this subgroup size");
+    }
     ASSERT_TRUE(services.validation_enabled != 0u, "validation is enabled for hardware proof");
     const auto descriptor = CooperativeDescriptor();
     for (const std::uint32_t size : {16u, 256u, 512u, 1024u}) {
