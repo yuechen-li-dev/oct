@@ -1,0 +1,30 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Kind: String
+    EntryMilestone: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ZImageTurboNoiseRefiner0"
+        Version: "0.1.0"
+        Description: "Oct oracle experiments for the pinned Z-Image-Turbo noise_refiner.0 block"
+        Authors: ["Codex"]
+        Date: "2026-07-18"
+        Kind: "experiment"
+        EntryMilestone: "M0"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

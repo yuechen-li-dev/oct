@@ -1,0 +1,12 @@
+package PrometheusSeam
+
+// O0's deliberately boring equipment seam. `PrometheusMatMul` owns neither
+// model layout nor stage fusion; it only receives a fully materialized matrix
+// contraction and its runtime route remains visible in the command evidence.
+fn Main() -> Int {
+    let left = matrix[[1.0, 2.0]]
+    let right = matrix[[3.0] [4.0]]
+    let result = PrometheusMatMul(left, right)
+    Print(result[0, 0])
+    return 0
+}

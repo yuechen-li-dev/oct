@@ -1,0 +1,51 @@
+{
+  "schema": "oct.prometheus.evt2.o1.w2-failure-analysis.v1",
+  "status": "diagnostic-root-cause-confirmed; Oct-policy-experiments-pending",
+  "historical_observation": "W2 was the first recorded non-finite stage under the rejected FP16-cache/fixed-order-FP32 diagnostic path.",
+  "source_weight_finding": {
+    "tensor": "noise_refiner.0.feed_forward.w2.weight",
+    "source_dtype": "BF16",
+    "source_min": -1.796875,
+    "source_max": 1.7421875,
+    "fp16_conversion_overflow_count": 0,
+    "fp16_conversion_underflow_count": 3,
+    "maximum_conversion_error": 2.9802322387695312e-08
+  },
+  "identified_fault": {
+    "component": "internal/prometheus/zimage.FP16ToFloat32",
+    "fault": "normal binary16 exponent was treated as an unbiased exponent before adding binary32 bias",
+    "effect": "every normal FP16 value was decoded with exponent 15 too large, a factor of 32768",
+    "corrected_by": "subtract binary16 bias 15 before applying binary32 bias 127",
+    "coverage": "scalar normal/subnormal cases, exhaustive 63,488 finite binary16 patterns against an independent reference, and all 13 real cached tensors"
+  },
+  "excluded_causes": ["W2 source-weight FP16 overflow", "source NaN or infinity", "intentional FP16 saturation"],
+  "corrected_full_path": {
+    "policy": "FP16 cache expanded to FP32; fixed-order FP32 reduction; corrected decoder",
+    "w2_finite": true,
+    "w2_min": -62296.31640625,
+    "w2_max": 142581.390625,
+    "w2_sha256": "05dd618f61f060af714f346df81bb1dd48a88b912b4bea3fc823966c60da30f0",
+    "final_finite": true,
+    "final_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43",
+    "repeated_final_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43",
+    "conclusion": "The historical W2 non-finite disappears completely under corrected decode."
+  },
+  "o7_selected_complete_reduction": {
+    "token": 0,
+    "output_channel": 0,
+    "terms": 10240,
+    "first_non_finite_index": -1,
+    "product_min": -748.3084,
+    "product_max": 409.52567,
+    "partial_sum_min": -4047.3066,
+    "partial_sum_max": 549.47736,
+    "fixed_order_fp32_output": -4012.8704,
+    "captured_w2_output": -4012.8704,
+    "conclusion": "No selected W2 product or partial-sum overflow remains after corrected decode."
+  },
+  "not_yet_tested": ["BF16 versus FP16 versus mixed canonical policy comparison", "W2 per-product and partial-sum witness", "accumulation grouping sensitivity", "residual/gate causality"],
+  "required_next_input_hashes": {
+    "block_input_bf16": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
+    "timestep_bf16": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2"
+  }
+}

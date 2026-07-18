@@ -1,0 +1,27 @@
+package ZImageTurboNoiseRefiner0
+
+record AttentionRowWitness {
+    Logits: Float[]
+    Expected: Float[]
+}
+
+fn StableSoftmax(logits: Float[]) -> Float[] {
+    var maximum = logits[0]
+    for i in 1..Len(logits) {
+        if logits[i] > maximum {
+            maximum = logits[i]
+        }
+    }
+    var denominator = 0.0
+    var exponentials: Float[] = []
+    for i in 0..Len(logits) {
+        let value = Exp(logits[i] - maximum)
+        exponentials = Append(exponentials, value)
+        denominator = denominator + value
+    }
+    var probabilities: Float[] = []
+    for i in 0..Len(exponentials) {
+        probabilities = Append(probabilities, exponentials[i] / denominator)
+    }
+    return probabilities
+}

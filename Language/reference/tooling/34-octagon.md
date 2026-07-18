@@ -10,6 +10,8 @@ Load and write are explicit through builtins.
 
 - `.octagon` payload is a single top-level value.
 - Allowed surface is data-only values: scalar literals, arrays, record literals, and enum values.
+- Signed `Int` and `Float` scalar literals are data literals (for example `-1`
+  and `-0.5`), including inside arrays and record fields.
 - Disallowed surface includes package declarations, function declarations, bindings, calls, control flow, and multiple top-level values.
 - `WriteOctagon(path, value)` writes `.octagon` data and returns `Int` status.
 - `WriteOctagon` path must end with `.octagon`.

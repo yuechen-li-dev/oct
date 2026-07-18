@@ -9,6 +9,29 @@ import (
 
 func (i interpreter) materializeOctagonValue(currentPkg string, expectedType ast.TypeRef, expr ast.Expr) (Value, error) {
 	expr = unwrapParenExpr(expr)
+	// Octagon is data-only, but signed numeric literals parse as a unary minus
+	// over a literal. Materialize that narrow scalar form before checking the
+	// declared data type; arbitrary expressions remain rejected.
+	if unary, ok := expr.(ast.UnaryExpr); ok && unary.Operator == "-" {
+		switch operand := unwrapParenExpr(unary.Operand).(type) {
+		case ast.IntegerLiteral:
+			if expectedType.Name == "Int" && !expectedType.IsArray && expectedType.Package == "" && operand.Dimension == expectedType.Dimension {
+				value, err := strconv.ParseInt(operand.Value, 10, 64)
+				if err != nil {
+					return Value{}, fmt.Errorf("invalid Int literal %q", operand.Value)
+				}
+				return Value{Kind: ValueInt, Int: -value, Dimension: operand.Dimension}, nil
+			}
+		case ast.FloatLiteral:
+			if expectedType.Name == "Float" && !expectedType.IsArray && expectedType.Package == "" && operand.Dimension == expectedType.Dimension {
+				value, err := strconv.ParseFloat(operand.Value, 64)
+				if err != nil {
+					return Value{}, fmt.Errorf("invalid Float literal %q", operand.Value)
+				}
+				return Value{Kind: ValueFloat, Float: -value, Dimension: operand.Dimension}, nil
+			}
+		}
+	}
 	if expectedType.IsArray && expectedType.ArrayDepth == 0 {
 		expectedType.ArrayDepth = 1
 	}

@@ -1,0 +1,26 @@
+package ZImageTurboNoiseRefiner0
+
+import Artifact
+import IO
+
+[Suite("EVT2.O6.Attention")]
+[Fact]
+fn CapturedAttentionRowUsesStableSoftmax() -> Void ! Error {
+    let witness = LoadOctagon<AttentionRowWitness>("Experiments/ZImageTurboNoiseRefiner0/M5/attention_token0_head0.octagon")?
+    let actual = StableSoftmax(witness.Logits)
+    var sum = 0.0
+    for i in 0..Len(actual) {
+        sum = sum + actual[i]
+        Assert.Near(witness.Expected[i], actual[i], 0.00000002, "captured probability")
+    }
+    Assert.Near(1.0, sum, 0.0000000001, "probability row sum")
+}
+
+[Suite("EVT2.O6.Attention")]
+[Artifact]
+fn WriteO6AttentionWitness() -> Void ! Error {
+    let witness = LoadOctagon<AttentionRowWitness>("Experiments/ZImageTurboNoiseRefiner0/M5/attention_token0_head0.octagon")?
+    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle"
+    let _directory = IO.MakeAll(root)?
+    Artifact.WriteOctagon(IO.JoinPath([root, "o6_attention_token0_head0_witness.octagon"]), AttentionRowWitness { Logits: witness.Logits Expected: StableSoftmax(witness.Logits) })
+}

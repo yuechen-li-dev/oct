@@ -1,0 +1,12 @@
+{
+  "schema": "oct.prometheus.evt2.o7.w2-dot-range.v1",
+  "input_count": 10240,
+  "first_non_finite_index": -1,
+  "product_min": -748.3084,
+  "product_max": 409.52567,
+  "partial_sum_min": -4047.3066,
+  "partial_sum_max": 549.47736,
+  "fixed_order_fp32_output": -4012.8704,
+  "captured_w2_output": -4012.8704,
+  "captured_minus_fixed_order": 0
+}

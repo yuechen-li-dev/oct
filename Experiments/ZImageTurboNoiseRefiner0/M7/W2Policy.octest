@@ -1,0 +1,23 @@
+package ZImageTurboNoiseRefiner0
+
+import Artifact
+import IO
+
+[Suite("EVT2.O8.W2Policy")]
+[Fact]
+fn SourceBf16AndCachedFp16SelectedW2DotAreCompared() -> Void ! Error {
+    let witness = LoadOctagon<W2PolicyWitness>("Experiments/ZImageTurboNoiseRefiner0/M7/w2_token0_channel0_policy.octagon")?
+    let bf16 = FixedDot(witness.Input, witness.BF16Weight)
+    let fp16 = FixedDot(witness.Input, witness.FP16Weight)
+    Assert.Equal(10240, Len(witness.Input), "complete W2 reduction width")
+    Assert.Near(bf16, fp16, 0.001, "source BF16 versus cached FP16 selected dot")
+}
+
+[Suite("EVT2.O8.W2Policy")]
+[Artifact]
+fn WriteO8W2PolicyWitness() -> Void ! Error {
+    let witness = LoadOctagon<W2PolicyWitness>("Experiments/ZImageTurboNoiseRefiner0/M7/w2_token0_channel0_policy.octagon")?
+    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle"
+    let _directory = IO.MakeAll(root)?
+    Artifact.WriteOctagon(IO.JoinPath([root, "o8_w2_token0_channel0_policy_witness.octagon"]), witness)
+}

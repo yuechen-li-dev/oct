@@ -1,0 +1,7 @@
+QkvRopeSelectedWitness {
+    FusedToken0: [0.11094941, 43.58648, 54.267914]
+    QNormPair: RotaryPair {
+        Even: (-0.44072045550958433)
+        Odd: (-0.1587258058012074)
+    }
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.oct-oracle.layout-contract.v1",
+  "status": "structural-proof-complete",
+  "weights": "PyTorch source matrices are [out,in]; the existing cache representation is row-major [in,out] after transpose",
+  "qkv": {"source_shape": [11520, 3840], "logical_order": ["Q", "K", "V"], "logical_each": [1, 1024, 30, 128], "token_head_channel_index": "((token * 30) + head) * 128 + channel"},
+  "ffn": {"w1_source_shape": [10240, 3840], "w3_source_shape": [10240, 3840], "w2_source_shape": [3840, 10240], "bias": "none"},
+  "adaln": {"source_shape": [15360, 256], "bias_shape": [15360], "split_order": ["attention_scale", "attention_gate", "mlp_scale", "mlp_gate"]}
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.oct-oracle.precision-policy.v1",
+  "status": "UNRESOLVED — corrected diagnostic replay complete; canonical Oct policy comparison required",
+  "established": ["source BF16 weight values are finite", "no source BF16-to-FP16 overflow occurs", "Q/K RMSNorm scales are exactly BF16-to-FP16 representable", "all 10240 W2 weights in the selected complete source/cache comparison are exact and produce identical FP32 output", "corrected cached-FP16-to-FP32 diagnostic replay is finite through W2 and final output", "the old FP16 rejection was caused by a normal FP16 decoder defect", "source-weight-only conversion cannot establish production activation-path safety", "norm, RoPE, softmax, and reductions require FP32 experiment authority"],
+  "prohibited": ["clamping", "saturation as correctness policy", "accepting the old diagnostic final hash", "accepting corrected Go diagnostic output as canonical", "one-dtype-for-all-tensors conclusion"],
+  "next_measurement": "Oct-orchestrated comparison of original BF16 values expanded to FP32, cached FP16 values expanded to FP32, and explicit mixed policies at the canonical stage boundaries"
+}

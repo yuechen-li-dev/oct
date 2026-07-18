@@ -2,6 +2,7 @@ package zimage
 
 import (
 	"encoding/binary"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -76,6 +77,88 @@ func TestBF16ToFP16BoundarySemantics(t *testing.T) {
 				t.Fatalf("BF16ToFP16(%#04x) = %#04x, want %#04x", test.bf16, got, test.want)
 			}
 		})
+	}
+}
+
+func TestFP16ToFloat32NormalAndSubnormalSemantics(t *testing.T) {
+	tests := []struct {
+		name string
+		fp16 uint16
+		want float32
+	}{
+		{"positive one", 0x3c00, 1},
+		{"negative one", 0xbc00, -1},
+		{"normal half", 0x3800, 0.5},
+		{"smallest normal", 0x0400, 1.0 / 16384.0},
+		{"smallest subnormal", 0x0001, 1.0 / 16777216.0},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := FP16ToFloat32(test.fp16); got != test.want {
+				t.Fatalf("FP16ToFloat32(%#04x) = %g, want %g", test.fp16, got, test.want)
+			}
+		})
+	}
+}
+
+func referenceFP16Finite(bits uint16) float32 {
+	sign := 1.0
+	if bits&0x8000 != 0 {
+		sign = -1.0
+	}
+	exponent := int((bits >> 10) & 0x1f)
+	fraction := int(bits & 0x03ff)
+	if exponent == 0 {
+		if fraction == 0 {
+			return math.Float32frombits(uint32(bits&0x8000) << 16)
+		}
+		return float32(sign * math.Ldexp(float64(fraction), -24))
+	}
+	return float32(sign * math.Ldexp(float64(1024+fraction), exponent-25))
+}
+
+func TestFP16ToFloat32ExhaustiveFiniteReference(t *testing.T) {
+	for raw := 0; raw <= 0xffff; raw++ {
+		bits := uint16(raw)
+		if bits&0x7c00 == 0x7c00 { // infinities and NaNs are covered separately.
+			continue
+		}
+		got, want := FP16ToFloat32(bits), referenceFP16Finite(bits)
+		if math.Float32bits(got) != math.Float32bits(want) {
+			t.Fatalf("FP16ToFloat32(%#04x) = %#08x, want %#08x", bits, math.Float32bits(got), math.Float32bits(want))
+		}
+	}
+}
+
+func TestFP16CacheDecodedValuesRemainFiniteAndUnscaledWhenLocalPayloadsAreAvailable(t *testing.T) {
+	cacheRoot := os.Getenv("OCT_EVT2_CACHE")
+	oracleRoot := os.Getenv("OCT_EVT2_ORACLE")
+	if cacheRoot == "" || oracleRoot == "" {
+		t.Skip("local EVT-2 payload roots are not configured")
+	}
+	bundle, err := LoadNoiseRefiner0PayloadBundle(NoiseRefiner0PayloadPaths{
+		CacheRoot:  cacheRoot,
+		OracleRoot: oracleRoot,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tensor := range bundle.CacheManifest.Tensors {
+		values, err := canonicalRead16(filepath.Join(bundle.CacheBlockPath, tensor.DestinationName), FP16ToFloat32)
+		if err != nil {
+			t.Fatalf("read %s: %v", tensor.DestinationName, err)
+		}
+		for index, value := range values {
+			if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+				t.Fatalf("%s[%d] is non-finite after FP16 decode: %g", tensor.DestinationName, index, value)
+			}
+			// O1's source census establishes that every cached weight has |x| < 2.61.
+			// Four permits a small invariant margin while permanently detecting the
+			// historical normal-exponent bug, which inflated ordinary values by 32768.
+			if math.Abs(float64(value)) > 4 {
+				t.Fatalf("%s[%d] = %g exceeds the O1 cache range bound; possible scaled FP16 decode", tensor.DestinationName, index, value)
+			}
+		}
 	}
 }
 

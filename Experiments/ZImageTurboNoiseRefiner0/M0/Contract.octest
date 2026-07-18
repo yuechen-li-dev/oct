@@ -1,0 +1,50 @@
+package ZImageTurboNoiseRefiner0
+
+import Artifact
+import IO
+import Json
+import String
+
+[Suite("EVT2.O0.Structural")]
+[Fact]
+fn Frame33CoordinatesArePinned() -> Void {
+    Assert.Equal(33, CanonicalImageFrame(15), "15 text tokens pad by 17 then reserve frame zero")
+    Assert.Equal(0, ImageRow(0), "first image token row")
+    Assert.Equal(31, ImageColumn(31), "last column of first row")
+    Assert.Equal(1, ImageRow(32), "second image row")
+    Assert.Equal(0, ImageColumn(32), "second row first column")
+    Assert.Equal(31, ImageRow(1023), "last image row")
+    Assert.Equal(31, ImageColumn(1023), "last image column")
+}
+
+[Suite("EVT2.O0.Structural")]
+[Fact]
+fn RopePairsPreserveMagnitudeAndAxisBoundaries() -> Void {
+    let input = RotaryPair { Even: 3.0 Odd: 4.0 }
+    let rotated = RopeRotate(input, 33.0, 32, 0)
+    Assert.Near(25.0, rotated.Even * rotated.Even + rotated.Odd * rotated.Odd, 0.0000000001, "complex rotation preserves squared magnitude")
+    Assert.Near(1.0, RopeFrequency(32, 0), 0.0000000001, "first pair frequency")
+    Assert.True(RopeFrequency(48, 23) < RopeFrequency(48, 0), "frequency declines within each scalar-width partition")
+}
+
+[Suite("EVT2.O0.Structural")]
+[Fact]
+fn AdaLnOrderAndRmsNormAreExplicit() -> Void {
+    let adjusted = AdaLnAdjust([2.0, 100.0, -0.5, -100.0], 1)
+    Assert.Near(3.0, adjusted[0], 0.0000000001, "attention scale gets one plus raw value")
+    Assert.Near(Tanh(100.0), adjusted[1], 0.0000000001, "attention gate gets tanh")
+    Assert.Near(0.5, adjusted[2], 0.0000000001, "MLP scale gets one plus raw value")
+    Assert.Near(Tanh(-100.0), adjusted[3], 0.0000000001, "MLP gate gets tanh")
+
+    let norm = RmsNorm([1.0, 3.0], [1.0, 1.0], 0.0)
+    Assert.Near(1.0 / Sqrt(5.0), norm[0], 0.0000000001, "RMSNorm has no mean subtraction")
+}
+
+[Suite("EVT2.O0.Structural")]
+[Artifact]
+fn WriteO0StructuralWitness() -> Void ! Error {
+    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle"
+    let _directory = IO.MakeAll(root)?
+    let json = Json.Object("{\"schema\":\"oct.prometheus.evt2.o0.structural-witness.v1\",\"frame\":33,\"token_0\":[33,0,0],\"token_31\":[33,0,31],\"token_32\":[33,1,0],\"token_1023\":[33,31,31],\"rope_axes\":[32,48,48],\"rope_theta\":256,\"qkv_order\":[\"Q\",\"K\",\"V\"],\"adaln_order\":[\"attention_scale\",\"attention_gate\",\"mlp_scale\",\"mlp_gate\"]}")
+    Artifact.WriteJson(IO.JoinPath([root, "o0_structural_witness.json"]), json)
+}

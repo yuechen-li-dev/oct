@@ -1,0 +1,16 @@
+package ZImageTurboNoiseRefiner0
+
+[Suite("EVT2.O9.LinearPolicy")]
+[Theory]
+[InlineData("qkv")]
+[InlineData("w1")]
+[InlineData("w3")]
+fn SourceBf16AndCachedFp16LinearDotsAgree(name: String) -> Void ! Error {
+    let path = "Experiments/ZImageTurboNoiseRefiner0/M8/" + name + "_token0_channel0_policy.octagon"
+    let witness = LoadOctagon<LinearPolicyWitness>(path)?
+    let bf16 = LinearDot(witness.Input, witness.BF16Weight)
+    let fp16 = LinearDot(witness.Input, witness.FP16Weight)
+    Assert.Equal(3840, Len(witness.Input), "model width")
+    Assert.Near(bf16, fp16, 0.001, "source BF16 versus cached FP16 dot")
+    Assert.Near(witness.Expected, fp16, 0.001, "cached FP16 dot versus captured projection")
+}

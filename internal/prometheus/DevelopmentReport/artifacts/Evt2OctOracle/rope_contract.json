@@ -1,0 +1,14 @@
+{
+  "schema": "oct.prometheus.evt2.oct-oracle.rope-contract.v1",
+  "status": "structural-proof-complete",
+  "frame": 33,
+  "token_coordinate": "[33, floor(token/32), token%32]",
+  "examples": {"0": [33, 0, 0], "31": [33, 0, 31], "32": [33, 1, 0], "1023": [33, 31, 31]},
+  "scalar_partitions": [32, 48, 48],
+  "theta": 256,
+  "frequency": "theta^(-2*pair/width)",
+  "pairing": "contiguous even/odd scalar channels form complex pairs",
+  "rotation": "(even,odd) -> (even*cos-angle - odd*sin-angle, even*sin-angle + odd*cos-angle)",
+  "applies_to": ["Q", "K"],
+  "does_not_apply_to": ["V"]
+}

@@ -11,6 +11,11 @@ record SamplesConfig {
     Samples: Float<m>[]
 }
 
+record SignedSamplesConfig {
+    Offset: Float
+    Samples: Float[]
+}
+
 enum SolverMode {
     Explicit
     Implicit
@@ -54,4 +59,12 @@ fn LoadNestedRecordArrayEnum() -> Void ! Error {
     let mode = LoadOctagon<SolverMode>("Language/Data/Octagon/valid/enum_value.octagon")?
     Assert.Equal(SolverMode.Explicit, mode, "nested enum load")
     Assert.Equal(3, Len(samples.Samples), "nested array field")
+}
+
+[Fact]
+fn LoadSignedNumericData() -> Void ! Error {
+    let values = LoadOctagon<SignedSamplesConfig>("Language/Data/Octagon/Load/valid/signed_samples_config.octagon")?
+    Assert.Near(-0.5, values.Offset, 0.0000001, "signed scalar field")
+    Assert.Near(-1.25, values.Samples[0], 0.0000001, "signed array float")
+    Assert.Near(2.0, values.Samples[1], 0.0000001, "positive array float")
 }

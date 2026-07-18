@@ -1,0 +1,22 @@
+package ZImageTurboNoiseRefiner0
+
+record AdaLnSelectedWitness {
+    Raw: Float[]
+    Expected: Float[]
+}
+
+// The source emits four contiguous width-sized lanes: attention scale,
+// attention gate, MLP scale, MLP gate. Scale lanes use 1 + x; gate lanes use
+// tanh(x). This function is intentionally small enough to audit lane by lane.
+fn ApplyAdaLnWitness(raw: Float[], width: Int) -> Float[] {
+    var adjusted: Float[] = []
+    for i in 0..Len(raw) {
+        let lane = i / width
+        if lane == 0 or lane == 2 {
+            adjusted = Append(adjusted, 1.0 + raw[i])
+        } else {
+            adjusted = Append(adjusted, Tanh(raw[i]))
+        }
+    }
+    return adjusted
+}

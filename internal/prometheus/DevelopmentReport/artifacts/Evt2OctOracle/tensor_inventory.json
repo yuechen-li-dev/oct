@@ -1,0 +1,291 @@
+{
+  "schema": "oct.prometheus.evt2.o1.tensor-inventory.v1",
+  "status": "complete-source-weight-census; activation-policy-open",
+  "source_checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "downloaded_source_range_start": 11584667040,
+  "downloaded_source_range_end_exclusive": 11946487712,
+  "downloaded_range_sha256": "e16b8be211852c7f4f3ab6197b78728e245f47cbc4b233afa264b4193b0f1a12",
+  "tensor_count": 13,
+  "tensors": [
+    {
+      "name": "noise_refiner.0.adaLN_modulation.0.bias",
+      "shape": [
+        15360
+      ],
+      "source_dtype": "BF16",
+      "source_min": -0.81640625,
+      "source_max": 0.79296875,
+      "source_abs_max": 0.81640625,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 27,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999348958333333,
+      "relative_l2_conversion_drift": 7.616778898563603e-10,
+      "maximum_conversion_error": 1.862645149230957e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.adaLN_modulation.0.weight",
+      "shape": [
+        15360,
+        256
+      ],
+      "source_dtype": "BF16",
+      "source_min": -1.3359375,
+      "source_max": 1.1796875,
+      "source_abs_max": 1.3359375,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 5,
+      "fp16_subnormal_count": 3117,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999338785807291,
+      "relative_l2_conversion_drift": 2.212503648176883e-9,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.attention.k_norm.weight",
+      "shape": [
+        128
+      ],
+      "source_dtype": "BF16",
+      "source_min": 0.44921875,
+      "source_max": 1.3671875,
+      "source_abs_max": 1.3671875,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 0,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 1,
+      "relative_l2_conversion_drift": 0,
+      "maximum_conversion_error": 0,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.attention.out.weight",
+      "shape": [
+        3840,
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -1.1640625,
+      "source_max": 1.1015625,
+      "source_abs_max": 1.1640625,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 9,
+      "fp16_subnormal_count": 11417,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999374050564236,
+      "relative_l2_conversion_drift": 2.381623214539479e-9,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.attention.q_norm.weight",
+      "shape": [
+        128
+      ],
+      "source_dtype": "BF16",
+      "source_min": 0.36328125,
+      "source_max": 1.3671875,
+      "source_abs_max": 1.3671875,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 0,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 1,
+      "relative_l2_conversion_drift": 0,
+      "maximum_conversion_error": 0,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.attention.qkv.weight",
+      "shape": [
+        11520,
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -1.6640625,
+      "source_max": 1.7109375,
+      "source_abs_max": 1.7109375,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 5,
+      "fp16_subnormal_count": 15735,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999708161530672,
+      "relative_l2_conversion_drift": 8.866816020739377e-10,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.attention_norm1.weight",
+      "shape": [
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": 0.08935546875,
+      "source_max": 1.8359375,
+      "source_abs_max": 1.8359375,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 0,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 1,
+      "relative_l2_conversion_drift": 0,
+      "maximum_conversion_error": 0,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.attention_norm2.weight",
+      "shape": [
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -0.07568359375,
+      "source_max": 1.953125,
+      "source_abs_max": 1.953125,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 84,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9981770833333333,
+      "relative_l2_conversion_drift": 8.65685642901591e-9,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.feed_forward.w1.weight",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -1.6484375,
+      "source_max": 1.3515625,
+      "source_abs_max": 1.6484375,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 7,
+      "fp16_subnormal_count": 15429,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999684651692708,
+      "relative_l2_conversion_drift": 1.056079615366058e-9,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.feed_forward.w2.weight",
+      "shape": [
+        3840,
+        10240
+      ],
+      "source_dtype": "BF16",
+      "source_min": -1.796875,
+      "source_max": 1.7421875,
+      "source_abs_max": 1.796875,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 3,
+      "fp16_subnormal_count": 12362,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999729919433594,
+      "relative_l2_conversion_drift": 7.994758311491118e-10,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.feed_forward.w3.weight",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -2.609375,
+      "source_max": 2.5625,
+      "source_abs_max": 2.609375,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 8,
+      "fp16_subnormal_count": 14065,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9999700673421223,
+      "relative_l2_conversion_drift": 5.359092516910485e-10,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.ffn_norm1.weight",
+      "shape": [
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -0.00616455078125,
+      "source_max": 1.9921875,
+      "source_abs_max": 1.9921875,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 0,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 1,
+      "relative_l2_conversion_drift": 0,
+      "maximum_conversion_error": 0,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    },
+    {
+      "name": "noise_refiner.0.ffn_norm2.weight",
+      "shape": [
+        3840
+      ],
+      "source_dtype": "BF16",
+      "source_min": -0.357421875,
+      "source_max": 2.015625,
+      "source_abs_max": 2.015625,
+      "source_finite": true,
+      "source_zero_count": 0,
+      "source_subnormal_count": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_subnormal_count": 35,
+      "fp16_saturation_count": 0,
+      "exact_value_preservation_rate": 0.9984375,
+      "relative_l2_conversion_drift": 4.859943617002784e-9,
+      "maximum_conversion_error": 2.9802322387695312e-8,
+      "likely_production_representation": "BF16 source is FP16-representable; storage decision remains unresolved until the captured activation-path W2 study."
+    }
+  ],
+  "conclusion": "All 13 source BF16 tensors are finite and convert to finite FP16 values without overflow. This rejects source-weight overflow as the direct cause of the historical W2 non-finite result; it does not certify all-FP16 activation-path correctness."
+}

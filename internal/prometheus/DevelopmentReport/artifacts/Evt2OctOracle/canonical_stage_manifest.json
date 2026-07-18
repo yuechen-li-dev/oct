@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.oct-oracle.canonical-stage-manifest.v1",
+  "status": "PARTIAL — payloads validated; O2 diagnostic stages available; canonical Oct witnesses pending",
+  "required_stages": ["AdaLN", "scales_gates", "attention_norm_modulation", "fused_qkv", "q_k_v", "q_k_norm", "q_k_rope", "selected_scores", "selected_probabilities", "attention_aggregation", "output_projection", "attention_residual", "ffn_norm", "w1", "w3", "gated_hidden", "w2", "final_output"],
+  "available_structural_witness": "o0_structural_witness.json",
+  "validated_payloads": ["run_02 input BF16", "run_02 timestep BF16", "13-tensor FP16 cache aggregate"],
+  "required_hashes": {"input": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded", "timestep": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2", "cache_aggregate": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"},
+  "o2_diagnostic_witness": {"final_f32_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43", "w2_f32_sha256": "05dd618f61f060af714f346df81bb1dd48a88b912b4bea3fc823966c60da30f0", "status": "diagnostic-only"}
+}

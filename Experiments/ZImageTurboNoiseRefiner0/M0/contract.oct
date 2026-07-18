@@ -1,0 +1,63 @@
+package ZImageTurboNoiseRefiner0
+
+record RotaryPair {
+    Even: Float
+    Odd: Float
+}
+
+// The pinned patchify program pads text to a multiple of 32, then reserves
+// frame zero. The frozen capture has 15 source text tokens, so image frame 33.
+fn CanonicalImageFrame(textTokens: Int) -> Int {
+    let padding = (32 - textTokens % 32) % 32
+    return textTokens + padding + 1
+}
+
+fn ImageRow(token: Int) -> Int {
+    return token / 32
+}
+
+fn ImageColumn(token: Int) -> Int {
+    return token % 32
+}
+
+// `pair` is a complex-pair index, not a scalar-channel index.
+fn RopeFrequency(width: Int, pair: Int) -> Float {
+    return 1.0 / Pow(256.0, Float(2 * pair) / Float(width))
+}
+
+fn RopeRotate(value: RotaryPair, coordinate: Float, width: Int, pair: Int) -> RotaryPair {
+    let angle = coordinate * RopeFrequency(width, pair)
+    return RotaryPair {
+        Even: value.Even * Cos(angle) - value.Odd * Sin(angle)
+        Odd: value.Even * Sin(angle) + value.Odd * Cos(angle)
+    }
+}
+
+// This intentionally uses an uncentered left-to-right reduction, matching the
+// source RMSNorm contract rather than LayerNorm.
+fn RmsNorm(input: Float[], scale: Float[], epsilon: Float) -> Float[] {
+    var sum = 0.0
+    for i in 0..Len(input) {
+        sum = sum + input[i] * input[i]
+    }
+    let reciprocalRms = 1.0 / Sqrt(sum / Float(Len(input)) + epsilon)
+    var output: Float[] = []
+    for i in 0..Len(input) {
+        output = Append(output, input[i] * reciprocalRms * scale[i])
+    }
+    return output
+}
+
+// The source emits four contiguous width-sized segments in this exact order.
+fn AdaLnAdjust(raw: Float[], width: Int) -> Float[] {
+    var adjusted: Float[] = []
+    for i in 0..Len(raw) {
+        let lane = i / width
+        if lane == 0 or lane == 2 {
+            adjusted = Append(adjusted, 1.0 + raw[i])
+        } else {
+            adjusted = Append(adjusted, Tanh(raw[i]))
+        }
+    }
+    return adjusted
+}

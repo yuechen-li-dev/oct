@@ -1,0 +1,15 @@
+package ZImageTurboNoiseRefiner0
+
+record W2PolicyWitness {
+    Input: Float[]
+    BF16Weight: Float[]
+    FP16Weight: Float[]
+}
+
+fn FixedDot(input: Float[], weight: Float[]) -> Float {
+    var sum = 0.0
+    for i in 0..Len(input) {
+        sum = sum + input[i] * weight[i]
+    }
+    return sum
+}

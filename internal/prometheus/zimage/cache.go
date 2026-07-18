@@ -267,6 +267,10 @@ func FP16ToFloat32(bits uint16) float32 {
 			exp--
 		}
 		mant &= 0x3ff
+	} else {
+		// Normal binary16 exponents use bias 15. Convert the stored exponent
+		// to its unbiased form before applying binary32's bias 127.
+		exp -= 15
 	}
 	if exp == 31 {
 		return math.Float32frombits(sign | 0x7f800000 | (mant << 13))

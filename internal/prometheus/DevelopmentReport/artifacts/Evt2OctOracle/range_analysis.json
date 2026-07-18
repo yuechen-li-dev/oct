@@ -1,0 +1,10 @@
+{
+  "schema": "oct.prometheus.evt2.oct-oracle.range-analysis.v1",
+  "status": "source-weight-complete; corrected-diagnostic-activation-sample-complete; canonical-policy-comparison-pending",
+  "source_range_artifact": "tensor_inventory.json",
+  "source_range_sha256": "e16b8be211852c7f4f3ab6197b78728e245f47cbc4b233afa264b4193b0f1a12",
+  "inventory_sha256": "815298da249f2b817fabda59ff72a7ce4873aba80f597c57dfca3d13fc04cbd2",
+  "w2": {"source_min": -1.796875, "source_max": 1.7421875, "fp16_overflow_count": 0, "fp16_underflow_count": 3, "maximum_conversion_error": 2.9802322387695312e-08},
+  "corrected_diagnostic": {"w2_finite": true, "w2_min": -62296.31640625, "w2_max": 142581.390625, "final_finite": true, "final_min": -6.843756198883057, "final_max": 40.04807662963867, "final_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43"},
+  "conclusion": "No source tensor explains W2 through FP16 overflow. Corrected full-path diagnostic replay is finite through W2 and final output. Product, partial-sum, residual, and canonical mixed-policy ranges remain experiments to perform."
+}

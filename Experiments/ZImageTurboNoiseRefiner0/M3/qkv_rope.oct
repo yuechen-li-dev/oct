@@ -1,0 +1,43 @@
+package ZImageTurboNoiseRefiner0
+
+record RotaryPair {
+    Even: Float
+    Odd: Float
+}
+
+record QkvRopeSelectedWitness {
+    FusedToken0: Float[]
+    QNormPair: RotaryPair
+}
+
+record QkvTriplet {
+    Q: Float[]
+    K: Float[]
+    V: Float[]
+}
+
+fn RopeFrequency(width: Int, pair: Int) -> Float {
+    return 1.0 / Pow(256.0, Float(2 * pair) / Float(width))
+}
+
+fn RopeRotate(value: RotaryPair, coordinate: Float, width: Int, pair: Int) -> RotaryPair {
+    let angle = coordinate * RopeFrequency(width, pair)
+    return RotaryPair {
+        Even: value.Even * Cos(angle) - value.Odd * Sin(angle)
+        Odd: value.Even * Sin(angle) + value.Odd * Cos(angle)
+    }
+}
+
+// The fused projection is logically [Q | K | V] for every token. The reduced
+// witness uses width one so each segment remains directly inspectable.
+fn SplitQkv(fused: Float[], width: Int) -> QkvTriplet {
+    var q: Float[] = []
+    var k: Float[] = []
+    var v: Float[] = []
+    for i in 0..width {
+        q = Append(q, fused[i])
+        k = Append(k, fused[width + i])
+        v = Append(v, fused[2 * width + i])
+    }
+    return QkvTriplet { Q: q K: k V: v }
+}

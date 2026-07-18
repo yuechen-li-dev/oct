@@ -1,0 +1,30 @@
+package ZImageTurboNoiseRefiner0
+
+import Artifact
+import IO
+
+[Suite("EVT2.O4.QKV.RoPE")]
+[Fact]
+fn CapturedQkvOrderAndFrame33RopePairAgree() -> Void ! Error {
+    let witness = LoadOctagon<QkvRopeSelectedWitness>("Experiments/ZImageTurboNoiseRefiner0/M3/qkv_rope_selected.octagon")?
+    let qkv = SplitQkv(witness.FusedToken0, 1)
+    Assert.Near(0.11094941, qkv.Q[0], 0.000001, "token zero Q begins at fused offset zero")
+    Assert.Near(43.58648, qkv.K[0], 0.000001, "token zero K begins at fused offset width")
+    Assert.Near(54.267914, qkv.V[0], 0.000001, "token zero V begins at fused offset two widths")
+
+    let rotated = RopeRotate(witness.QNormPair, 33.0, 32, 4)
+    Assert.Near(-0.4407204, rotated.Even, 0.000001, "frame-33 first-axis RoPE even channel")
+    Assert.Near(-0.1587258, rotated.Odd, 0.000001, "frame-33 first-axis RoPE odd channel")
+    Assert.Near(witness.QNormPair.Even * witness.QNormPair.Even + witness.QNormPair.Odd * witness.QNormPair.Odd, rotated.Even * rotated.Even + rotated.Odd * rotated.Odd, 0.000001, "RoPE preserves selected Q pair magnitude")
+}
+
+[Suite("EVT2.O4.QKV.RoPE")]
+[Artifact]
+fn WriteO4QkvRopeWitness() -> Void ! Error {
+    let witness = LoadOctagon<QkvRopeSelectedWitness>("Experiments/ZImageTurboNoiseRefiner0/M3/qkv_rope_selected.octagon")?
+    let qkv = SplitQkv(witness.FusedToken0, 1)
+    let rotated = RopeRotate(witness.QNormPair, 33.0, 32, 4)
+    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle"
+    let _directory = IO.MakeAll(root)?
+    Artifact.WriteOctagon(IO.JoinPath([root, "o4_qkv_rope_selected_witness.octagon"]), QkvRopeSelectedWitness { FusedToken0: [qkv.Q[0], qkv.K[0], qkv.V[0]] QNormPair: rotated })
+}

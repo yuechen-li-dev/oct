@@ -1,0 +1,1 @@
+{"schema":"oct.prometheus.evt2.o0.structural-witness.v1","frame":33,"token_0":[33,0,0],"token_31":[33,0,31],"token_32":[33,1,0],"token_1023":[33,31,31],"rope_axes":[32,48,48],"rope_theta":256,"qkv_order":["Q","K","V"],"adaln_order":["attention_scale","attention_gate","mlp_scale","mlp_gate"]}

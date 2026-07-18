@@ -1,0 +1,21 @@
+package ZImageTurboNoiseRefiner0
+
+record QNormRowWitness {
+    Input: Float[]
+    Scale: Float[]
+    Expected: Float[]
+}
+
+// Fixed left-to-right scalar reduction makes the numerical policy visible.
+fn QkRmsNorm(input: Float[], scale: Float[]) -> Float[] {
+    var sum = 0.0
+    for i in 0..Len(input) {
+        sum = sum + input[i] * input[i]
+    }
+    let inverse = 1.0 / Sqrt(sum / Float(Len(input)) + 0.00001)
+    var output: Float[] = []
+    for i in 0..Len(input) {
+        output = Append(output, input[i] * inverse * scale[i])
+    }
+    return output
+}

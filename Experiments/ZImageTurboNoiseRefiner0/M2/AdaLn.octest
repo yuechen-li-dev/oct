@@ -1,0 +1,28 @@
+package ZImageTurboNoiseRefiner0
+
+import Artifact
+import IO
+
+[Suite("EVT2.O3.AdaLN")]
+[Fact]
+fn SelectedCapturedAdaLnLanesProveSplitAndTransform() -> Void ! Error {
+    let witness = LoadOctagon<AdaLnSelectedWitness>("Experiments/ZImageTurboNoiseRefiner0/M2/adaln_selected.octagon")?
+    let actual = ApplyAdaLnWitness(witness.Raw, 2)
+    for i in 0..Len(actual) {
+        Assert.Near(witness.Expected[i], actual[i], 0.0000001, "captured AdaLN lane transform")
+    }
+    Assert.True(actual[0] > 1.0, "attention scale retains one-plus offset")
+    Assert.True(actual[2] < 0.0 and actual[2] > -1.0, "attention gate is bounded tanh, not one-plus")
+    Assert.True(actual[4] < 0.0, "MLP scale preserves a negative one-plus result")
+    Assert.True(actual[6] > 0.0 and actual[6] < 1.0, "MLP gate is bounded tanh")
+}
+
+[Suite("EVT2.O3.AdaLN")]
+[Artifact]
+fn WriteO3AdaLnWitness() -> Void ! Error {
+    let witness = LoadOctagon<AdaLnSelectedWitness>("Experiments/ZImageTurboNoiseRefiner0/M2/adaln_selected.octagon")?
+    let result = ApplyAdaLnWitness(witness.Raw, 2)
+    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle"
+    let _directory = IO.MakeAll(root)?
+    Artifact.WriteOctagon(IO.JoinPath([root, "o3_adaln_selected_witness.octagon"]), AdaLnSelectedWitness { Raw: witness.Raw Expected: result })
+}

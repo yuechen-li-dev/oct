@@ -1,0 +1,14 @@
+{
+  "schema": "oct.prometheus.evt2.oct-oracle.block-contract.v1",
+  "status": "source-derived; full-payload-replay-pending",
+  "block": "noise_refiner.0",
+  "input": {"shape": [1, 1024, 3840], "dtype": "BF16", "sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded"},
+  "timestep": {"shape": [1, 256], "dtype": "BF16", "sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2"},
+  "width": 3840,
+  "heads": 30,
+  "head_width": 128,
+  "ffn_width": 10240,
+  "adaln_width": 15360,
+  "qkv_shape": [11520, 3840],
+  "operation_order": ["AdaLN", "RMSNorm1", "attention scale", "QKV", "Q/K RMSNorm", "Q/K RoPE", "scaled non-causal attention", "attention output projection", "RMSNorm2", "tanh attention residual", "FFN RMSNorm", "MLP scale", "W1 and W3", "SiLU(W1)*W3", "W2", "RMSNorm2", "tanh MLP residual"]
+}
