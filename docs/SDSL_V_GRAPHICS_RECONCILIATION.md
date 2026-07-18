@@ -21,7 +21,7 @@ The detailed machine-readable decision ledger is
 | mutable or uninitialized `let` | initialized immutable `let`; initialized mutable `var` | explicit binding intent and definite initialization |
 | integer-only enum | unit or payload enum plus exhaustive `match` | unit cases remain directly expressible; payload cases are canonical |
 | separate stage/resource/builtin constructs | one `stream` with validated role | role is explicit in semantic model and VD-MIR |
-| graphics coordinate alias | `type T = Base @space(name)` | statically distinct, zero-cost, no implicit transformations |
+| graphics coordinate alias | `type T = Base @space(name)` | statically distinct, zero-cost, no implicit transformations; the shared nominal mechanism also admits dotted non-graphics semantic vector spaces |
 | engine material parameter keys | `material` sugar over record + readonly uniform | deterministic binding/layout, no runtime reflection magic |
 | raw graphics texture objects | `texture2d<T>`, `sampler`, `Sample` | backend-neutral typed resource surface |
 | generic shader interface hierarchy | concept-constrained template materialization | only concrete `compile` results emit entry points |

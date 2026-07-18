@@ -1,0 +1,183 @@
+namespace Sdslv.Conformance.AttentionSpaceErased;
+
+// Z-Image-Turbo noise_refiner.0 semantic contract. Runtime values below use
+// one float4 slice; these declarations retain the frozen real model extents.
+type ModelEmbedding = float4;
+type QwenHidden = float4;
+type QueryHead = float4;
+type KeyHead = float4;
+type ValueHead = float4;
+type PositionedQueryHead = float4;
+type PositionedKeyHead = float4;
+type AlternatePositionedKeyHead = float4;
+type AttentionScore = float4;
+type AttentionProbability = float4;
+type AttentionOutput = float4;
+type FrameCoordinate = float2;
+type RowCoordinate = float2;
+type ColumnCoordinate = float2;
+type TextTokenCoordinate = float2;
+type ForeignValueHead = float4;
+
+// Element spaces are representable and survive fixed-shape type lowering.
+// The [token, head] axes themselves are not space-typed by this PoC.
+type QueryTensor = ndarray<QueryHead, [1024u, 30u]>;
+type KeyTensor = ndarray<KeyHead, [1024u, 30u]>;
+type ValueTensor = ndarray<ValueHead, [1024u, 30u]>;
+
+record ZImageM1Contract {
+    ModelWidth: u32;
+    HeadCount: u32;
+    HeadWidth: u32;
+    FfnWidth: u32;
+    RopeFrameWidth: u32;
+    RopeRowWidth: u32;
+    RopeColumnWidth: u32;
+    RopeTheta: u32;
+}
+
+record FusedQKV {
+    Query: QueryHead;
+    Key: KeyHead;
+    Value: ValueHead;
+}
+
+enum QueryPositionState {
+    Unpositioned { Value: QueryHead; }
+    Positioned { Value: PositionedQueryHead; }
+}
+
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream AttentionSpaceIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Output: readwrite array<f32>;
+}
+
+fn ProjectQuery(value: ModelEmbedding) -> QueryHead {
+    return float4(value.x, value.y, value.z, value.w);
+}
+
+fn ProjectKey(value: ModelEmbedding) -> KeyHead {
+    return float4(value.x, value.y, value.z, value.w);
+}
+
+fn ProjectValue(value: ModelEmbedding) -> ValueHead {
+    return float4(value.x, value.y, value.z, value.w);
+}
+
+fn ProjectFusedQKV(value: ModelEmbedding) -> FusedQKV {
+    return FusedQKV {
+        Query: ProjectQuery(value);
+        Key: ProjectKey(value);
+        Value: ProjectValue(value);
+    };
+}
+
+fn MaximumFinite(a: f32, b: f32) -> f32 {
+    if b > a { return b; }
+    return a;
+}
+
+fn NormalizeQuery(value: QueryHead) -> QueryHead {
+    let scale: f32 = 1.0 / MaximumFinite(0.000001, value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w);
+    return float4(value.x * scale, value.y * scale, value.z * scale, value.w * scale);
+}
+
+fn NormalizeKey(value: KeyHead) -> KeyHead {
+    let scale: f32 = 1.0 / MaximumFinite(0.000001, value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w);
+    return float4(value.x * scale, value.y * scale, value.z * scale, value.w * scale);
+}
+
+fn ApplyQueryRoPE(value: QueryHead, frame: FrameCoordinate, row: RowCoordinate, column: ColumnCoordinate) -> PositionedQueryHead {
+    let semanticWitness: f32 = (frame.x + row.x + column.x) * 0.0;
+    return float4(value.x + semanticWitness, value.y, value.z, value.w);
+}
+
+fn ApplyKeyRoPE(value: KeyHead, frame: FrameCoordinate, row: RowCoordinate, column: ColumnCoordinate) -> PositionedKeyHead {
+    let semanticWitness: f32 = (frame.x + row.x + column.x) * 0.0;
+    return float4(value.x + semanticWitness, value.y, value.z, value.w);
+}
+
+fn Score(query: PositionedQueryHead, key: PositionedKeyHead) -> AttentionScore {
+    let dot: f32 = query.x * key.x + query.y * key.y + query.z * key.z + query.w * key.w;
+    return float4(dot, dot - 1.0, dot - 2.0, dot - 3.0);
+}
+
+fn ExpF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+fn NormalizeScores(scores: AttentionScore) -> AttentionProbability {
+    let maximum: f32 = MaximumFinite(MaximumFinite(scores.x, scores.y), MaximumFinite(scores.z, scores.w));
+    let ex: f32 = ExpF32(scores.x - maximum);
+    let ey: f32 = ExpF32(scores.y - maximum);
+    let ez: f32 = ExpF32(scores.z - maximum);
+    let ew: f32 = ExpF32(scores.w - maximum);
+    let denominator: f32 = ex + ey + ez + ew;
+    return float4(ex / denominator, ey / denominator, ez / denominator, ew / denominator);
+}
+
+fn AggregateValues(probability: AttentionProbability, value: ValueHead) -> AttentionOutput {
+    return float4(
+        probability.x * value.x,
+        probability.y * value.y,
+        probability.z * value.z,
+        probability.w * value.w
+    );
+}
+
+fn OutputProject(value: AttentionOutput) -> ModelEmbedding {
+    return float4(value.x, value.y, value.z, value.w);
+}
+
+fn AddResidual(residual: ModelEmbedding, attention: ModelEmbedding) -> ModelEmbedding {
+    return float4(
+        residual.x + attention.x,
+        residual.y + attention.y,
+        residual.z + attention.z,
+        residual.w + attention.w
+    );
+}
+
+shader AttentionSpacePoc {
+    resources AttentionSpaceIO;
+
+    stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread) -> void {
+        let contract: ZImageM1Contract = ZImageM1Contract {
+            ModelWidth: 3840u;
+            HeadCount: 30u;
+            HeadWidth: 128u;
+            FfnWidth: 10240u;
+            RopeFrameWidth: 32u;
+            RopeRowWidth: 48u;
+            RopeColumnWidth: 48u;
+            RopeTheta: 256u;
+        };
+        let embedding: ModelEmbedding = float4(Input[0u], Input[1u], Input[2u], Input[3u]);
+        let fused: FusedQKV = ProjectFusedQKV(embedding);
+        let query: QueryHead = NormalizeQuery(fused.Query);
+        let key: KeyHead = NormalizeKey(fused.Key);
+        let frame: FrameCoordinate = float2(Convert<f32>(contract.RopeFrameWidth), 0.0);
+        let row: RowCoordinate = float2(Convert<f32>(contract.RopeRowWidth), 0.0);
+        let column: ColumnCoordinate = float2(Convert<f32>(contract.RopeColumnWidth), 0.0);
+        let positionedQuery: PositionedQueryHead = ApplyQueryRoPE(query, frame, row, column);
+        let positionedKey: PositionedKeyHead = ApplyKeyRoPE(key, frame, row, column);
+        let attentionScore: AttentionScore = Score(positionedQuery, positionedKey);
+        let probability: AttentionProbability = NormalizeScores(attentionScore);
+        let aggregated: AttentionOutput = AggregateValues(probability, fused.Value);
+        let projected: ModelEmbedding = OutputProject(aggregated);
+        let output: ModelEmbedding = AddResidual(embedding, projected);
+        Output[0u] = output.x + Convert<f32>(thread.GroupIndex + contract.HeadCount + contract.HeadWidth + contract.ModelWidth + contract.FfnWidth + contract.RopeColumnWidth + contract.RopeTheta) * 0.0;
+        Output[1u] = output.y;
+        Output[2u] = output.z;
+        Output[3u] = output.w;
+        return;
+    }
+}

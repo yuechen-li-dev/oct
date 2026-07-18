@@ -1,0 +1,5 @@
+type QueryHead = float4 @space(zimage.attention.query_head);
+type PositionedQueryHead = float4 @space(zimage.attention.positioned_query_head);
+type FrameCoordinate = float2 @space(zimage.position.frame);
+fn ApplyQueryRoPE(query: QueryHead, frame: FrameCoordinate) -> PositionedQueryHead { return float4(query.x + frame.x * 0.0, query.y, query.z, query.w); }
+fn Invalid(query: PositionedQueryHead, frame: FrameCoordinate) -> PositionedQueryHead { return ApplyQueryRoPE(query, frame); }

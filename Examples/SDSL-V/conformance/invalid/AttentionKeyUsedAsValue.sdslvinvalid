@@ -1,0 +1,6 @@
+type AttentionProbability = float4 @space(zimage.attention.probability);
+type KeyHead = float4 @space(zimage.attention.key_head);
+type ValueHead = float4 @space(zimage.attention.value_head);
+type AttentionOutput = float4 @space(zimage.attention.output);
+fn AggregateValues(probability: AttentionProbability, value: ValueHead) -> AttentionOutput { return float4(probability.x * value.x, 0.0, 0.0, 0.0); }
+fn Invalid(probability: AttentionProbability, key: KeyHead) -> AttentionOutput { return AggregateValues(probability, key); }

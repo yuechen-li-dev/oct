@@ -1,0 +1,4 @@
+type ModelEmbedding = float4 @space(zimage.noise_refiner.embedding);
+type QueryHead = float4 @space(zimage.attention.query_head);
+fn AddResidual(left: ModelEmbedding, right: ModelEmbedding) -> ModelEmbedding { return float4(left.x + right.x, left.y + right.y, left.z + right.z, left.w + right.w); }
+fn Invalid(model: ModelEmbedding, query: QueryHead) -> ModelEmbedding { return AddResidual(model, query); }

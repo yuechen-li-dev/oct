@@ -25,7 +25,7 @@ type graphicsInterfaceField struct {
 
 func materialTypeName(shader string) string { return shader + "_Material" }
 
-func (v *validator) validateCoordinateAlias(decl ast.TypeAliasDecl) {
+func (v *validator) validateSpaceAlias(decl ast.TypeAliasDecl) {
 	if decl.Type.Space == "" {
 		return
 	}
@@ -35,14 +35,21 @@ func (v *validator) validateCoordinateAlias(decl ast.TypeAliasDecl) {
 	switch resolved.Name {
 	case "float2", "float3", "float4":
 	default:
-		v.errorAt(decl.Type.AnnotationSpan, "SDSL-V4120", "coordinate-space alias %s must use float2, float3, or float4", decl.Name)
+		v.errorAt(decl.Type.AnnotationSpan, "SDSL-V4120", "semantic-space alias %s must use float2, float3, or float4", decl.Name)
 	}
 	parts := strings.Split(decl.Type.Space, ".")
-	if len(parts) != 2 || !oneOf(parts[0], "object", "world", "view", "clip") || !oneOf(parts[1], "position", "normal", "vector") {
-		v.errorAt(decl.Type.SpaceSpan, "SDSL-V4120", "unsupported coordinate space %s; use object|world|view|clip with position|normal|vector", decl.Type.Space)
+	if len(parts) < 2 {
+		v.errorAt(decl.Type.SpaceSpan, "SDSL-V4120", "semantic space %s must be a dotted nominal name", decl.Type.Space)
+		return
 	}
-	if parts[0] == "clip" && parts[1] != "position" {
-		v.errorAt(decl.Type.SpaceSpan, "SDSL-V4120", "clip space supports only clip.position in canonical SDSL-V")
+	if oneOf(parts[0], "object", "world", "view", "clip") {
+		if len(parts) != 2 || !oneOf(parts[1], "position", "normal", "vector") {
+			v.errorAt(decl.Type.SpaceSpan, "SDSL-V4120", "unsupported graphics coordinate space %s; use object|world|view|clip with position|normal|vector", decl.Type.Space)
+			return
+		}
+		if parts[0] == "clip" && parts[1] != "position" {
+			v.errorAt(decl.Type.SpaceSpan, "SDSL-V4120", "clip space supports only clip.position in canonical SDSL-V")
+		}
 	}
 }
 

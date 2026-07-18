@@ -103,6 +103,23 @@
       ]
     },
     {
+      "id": "compute.zimage-attention-semantic-spaces",
+      "source": "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
+      "profile": "compute",
+      "entry_points": ["AttentionSpacePoc_CS"],
+      "stages": ["compute"],
+      "stream_roles": {"ComputeThread": "builtin", "AttentionSpaceIO": "resource"},
+      "coordinate_spaces": ["zimage.noise_refiner.embedding", "qwen.hidden", "zimage.attention.query_head", "zimage.attention.key_head", "zimage.attention.value_head", "zimage.attention.positioned_query_head", "zimage.attention.positioned_key_head", "zimage.attention.positioned_key_head.text_convention", "zimage.attention.score_value", "zimage.attention.probability", "zimage.attention.output", "zimage.position.frame", "zimage.position.row", "zimage.position.column", "qwen.position.text_token", "other_model.attention.value_head"],
+      "bindings": ["Input:set0/binding0:storage-buffer:readonly", "Output:set0/binding1:storage-buffer:readwrite"],
+      "locations": [],
+      "builtins": ["dispatch_thread_id:uint3", "group_id:uint3", "group_thread_id:uint3", "group_index:u32"],
+      "required_capabilities": [],
+      "reference_artifacts": [
+        {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.hlsl", "sha256": "8ffaa49ea7860311142e888bdb5933e15ab4d0a60e7761c5607dfacee4e9f414"},
+        {"path": "internal/sdslv/DevelopmentReport/artifacts/AttentionSpacePoc/attention_space_poc.spv", "sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743"}
+      ]
+    },
+    {
       "id": "compute.no-regression",
       "source": "examples/SDSL-V/conformance/compute/ComputeNoRegression.sdslvvalid",
       "profile": "compute",
@@ -121,6 +138,17 @@
     }
   ],
   "invalid": [
+    {"source": "examples/SDSL-V/conformance/invalid/SpaceAnnotationRequiresAlias.sdslvinvalid", "code": "SDSL-V4120", "line": 1, "column": 26, "category": "semantic-space-declaration"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 98, "category": "attention-space-pairing"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 118, "category": "attention-space-value"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionUnpositionedQuery.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 87, "category": "attention-space-position"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionRopeAppliedTwice.sdslvinvalid", "code": "SDSL-V4123", "line": 5, "column": 111, "category": "attention-space-rope"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionIncompatiblePositionConvention.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 108, "category": "attention-space-position"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionQwenResidual.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 99, "category": "attention-space-residual"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionProbabilityAsScore.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 90, "category": "attention-space-normalization"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionScoreBeforeNormalization.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 106, "category": "attention-space-normalization"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionHeadResidual.sdslvinvalid", "code": "SDSL-V4123", "line": 4, "column": 99, "category": "attention-space-residual"},
+    {"source": "examples/SDSL-V/conformance/invalid/AttentionWrongRopeCoordinate.sdslvinvalid", "code": "SDSL-V4123", "line": 6, "column": 117, "category": "attention-space-coordinate"},
     {"source": "examples/SDSL-V/conformance/invalid/CoordinateAssignment.sdslvinvalid", "code": "SDSL-V1503", "line": 4, "column": 33, "category": "coordinate-space-assignment"},
     {"source": "examples/SDSL-V/conformance/invalid/CoordinateCallArgument.sdslvinvalid", "code": "SDSL-V1503", "line": 5, "column": 59, "category": "coordinate-space-call"},
     {"source": "examples/SDSL-V/conformance/invalid/CoordinateReturn.sdslvinvalid", "code": "SDSL-V1504", "line": 4, "column": 60, "category": "coordinate-space-return"},

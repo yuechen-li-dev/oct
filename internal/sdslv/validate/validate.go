@@ -367,8 +367,8 @@ func (v *validator) validateDecls(decls []ast.Decl) {
 		v.currentSpan = declSpan(decl)
 		switch d := decl.(type) {
 		case ast.TypeAliasDecl:
-			v.validateType(d.Type)
-			v.validateCoordinateAlias(d)
+			v.validateTypeAliasTarget(d.Type)
+			v.validateSpaceAlias(d)
 		case ast.RecordDecl:
 			v.validateFields(d.Name, "record", d.Fields, false)
 		case ast.BoardDecl:
@@ -402,9 +402,6 @@ func (v *validator) validateFields(owner, kind string, fields []ast.Field, allow
 		}
 		if len(field.Attributes) > 0 && kind != "stream" {
 			v.errorf("%s field %s.%s does not support attributes", kind, owner, field.Name)
-		}
-		if field.Type.Space != "" {
-			v.errorAt(field.Type.AnnotationSpan, "SDSL-V4120", "@space(...) is valid only on a named type alias")
 		}
 		v.validateType(field.Type)
 		if field.Type.Name == "reg_tile" {
@@ -1275,7 +1272,18 @@ func (v *validator) validateBlock(block ast.Block, returnType ast.TypeRef, scope
 }
 
 func (v *validator) validateType(ref ast.TypeRef) {
+	v.validateTypeRef(ref, false)
+}
+
+func (v *validator) validateTypeAliasTarget(ref ast.TypeRef) {
+	v.validateTypeRef(ref, true)
+}
+
+func (v *validator) validateTypeRef(ref ast.TypeRef, allowSpace bool) {
 	defer v.scoped(ref.Span)()
+	if ref.Space != "" && !allowSpace {
+		v.errorAt(ref.AnnotationSpan, "SDSL-V4120", "@space(...) is valid only on a named type alias")
+	}
 	if ref.ZeroAllowed {
 		v.errorf("u32! is only valid for concept/config fields in SDSL-V M11")
 		return
@@ -2071,7 +2079,9 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 				for i, arg := range call.Arguments {
 					argType := v.exprTypeWithExpected(arg, scope, shaderName, templateParam, &info.params[i].Type, "")
 					if !v.compatible(info.params[i].Type, argType) {
-						v.errorAt(ast.ExprSpan(arg), "SDSL-V1503", "function %s argument %d expects %s, got %s", id.Name, i+1, typeName(info.params[i].Type), typeName(argType))
+						if !v.semanticSpaceMismatch(ast.ExprSpan(arg), "function "+id.Name, info.params[i].Type, argType) {
+							v.errorAt(ast.ExprSpan(arg), "SDSL-V1503", "function %s argument %d expects %s, got %s", id.Name, i+1, typeName(info.params[i].Type), typeName(argType))
+						}
 					}
 				}
 				return info.returnType
@@ -2080,6 +2090,37 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 	}
 	v.errorAt(call.Span, "SDSL-V1508", "unsupported or unknown function call")
 	return ast.TypeRef{Name: "<error>"}
+}
+
+func (v *validator) semanticSpaceMismatch(span source.Span, operation string, expected, actual ast.TypeRef) bool {
+	want := v.resolveAlias(expected)
+	got := v.resolveAlias(actual)
+	if want.Space == got.Space || (want.Space == "" && got.Space == "") {
+		return false
+	}
+	// Graphics coordinate diagnostics retain their established codes and corpus
+	// contract. SDSL-V4123 is the semantic-space transition diagnostic.
+	if isGraphicsSpace(want.Space) && isGraphicsSpace(got.Space) {
+		return false
+	}
+	wantSpace := want.Space
+	if wantSpace == "" {
+		wantSpace = "<unspaced>"
+	}
+	gotSpace := got.Space
+	if gotSpace == "" {
+		gotSpace = "<unspaced>"
+	}
+	v.errorAt(span, "SDSL-V4123", "%s requires space `%s`, got `%s`; establish `%s` with a function returning that space", operation, wantSpace, gotSpace, wantSpace)
+	return true
+}
+
+func isGraphicsSpace(space string) bool {
+	if space == "" {
+		return true
+	}
+	root, _, _ := strings.Cut(space, ".")
+	return oneOf(root, "object", "world", "view", "clip")
 }
 
 func (v *validator) vectorConstructorType(name string, call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {

@@ -1,0 +1,312 @@
+{
+  "schema": "sdslv.attention-space-poc.v1",
+  "model": {
+    "name": "Z-Image-Turbo",
+    "model_revision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
+    "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+    "block": "noise_refiner.0",
+    "model_width": 3840,
+    "head_count": 30,
+    "head_width": 128,
+    "ffn_width": 10240,
+    "rope_dimensions": [
+      32,
+      48,
+      48
+    ],
+    "rope_theta": 256,
+    "weight_cache_sha256": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"
+  },
+  "space_vocabulary": [
+    "zimage.noise_refiner.embedding",
+    "zimage.attention.query_head",
+    "zimage.attention.key_head",
+    "zimage.attention.value_head",
+    "zimage.attention.positioned_query_head",
+    "zimage.attention.positioned_key_head",
+    "zimage.attention.score_value",
+    "zimage.attention.probability",
+    "zimage.attention.output",
+    "zimage.position.frame",
+    "zimage.position.row",
+    "zimage.position.column"
+  ],
+  "valid_transition_graph": [
+    {
+      "operation": "ProjectQuery",
+      "inputs": [
+        "zimage.noise_refiner.embedding"
+      ],
+      "output": "zimage.attention.query_head"
+    },
+    {
+      "operation": "ProjectKey",
+      "inputs": [
+        "zimage.noise_refiner.embedding"
+      ],
+      "output": "zimage.attention.key_head"
+    },
+    {
+      "operation": "ProjectValue",
+      "inputs": [
+        "zimage.noise_refiner.embedding"
+      ],
+      "output": "zimage.attention.value_head"
+    },
+    {
+      "operation": "NormalizeQuery",
+      "inputs": [
+        "zimage.attention.query_head"
+      ],
+      "output": "zimage.attention.query_head"
+    },
+    {
+      "operation": "NormalizeKey",
+      "inputs": [
+        "zimage.attention.key_head"
+      ],
+      "output": "zimage.attention.key_head"
+    },
+    {
+      "operation": "ApplyQueryRoPE",
+      "inputs": [
+        "zimage.attention.query_head",
+        "zimage.position.frame",
+        "zimage.position.row",
+        "zimage.position.column"
+      ],
+      "output": "zimage.attention.positioned_query_head"
+    },
+    {
+      "operation": "ApplyKeyRoPE",
+      "inputs": [
+        "zimage.attention.key_head",
+        "zimage.position.frame",
+        "zimage.position.row",
+        "zimage.position.column"
+      ],
+      "output": "zimage.attention.positioned_key_head"
+    },
+    {
+      "operation": "Score",
+      "inputs": [
+        "zimage.attention.positioned_query_head",
+        "zimage.attention.positioned_key_head"
+      ],
+      "output": "zimage.attention.score_value"
+    },
+    {
+      "operation": "NormalizeScores",
+      "inputs": [
+        "zimage.attention.score_value"
+      ],
+      "output": "zimage.attention.probability"
+    },
+    {
+      "operation": "AggregateValues",
+      "inputs": [
+        "zimage.attention.probability",
+        "zimage.attention.value_head"
+      ],
+      "output": "zimage.attention.output"
+    },
+    {
+      "operation": "OutputProject",
+      "inputs": [
+        "zimage.attention.output"
+      ],
+      "output": "zimage.noise_refiner.embedding"
+    },
+    {
+      "operation": "AddResidual",
+      "inputs": [
+        "zimage.noise_refiner.embedding",
+        "zimage.noise_refiner.embedding"
+      ],
+      "output": "zimage.noise_refiner.embedding"
+    }
+  ],
+  "legal_pairings": [
+    {
+      "operation": "Score",
+      "left": "zimage.attention.positioned_query_head",
+      "right": "zimage.attention.positioned_key_head",
+      "output": "zimage.attention.score_value",
+      "design": "closed function signature; no generalized pairing language"
+    }
+  ],
+  "invalid_fixture_results": [
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionQContractedWithValue.sdslvinvalid",
+      "mistake": "Q contracted with V instead of K",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 6,
+      "column": 98,
+      "message": "function Score requires space `zimage.attention.positioned_key_head`, got `zimage.attention.value_head`; establish `zimage.attention.positioned_key_head` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionKeyUsedAsValue.sdslvinvalid",
+      "mistake": "K used where V is required",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 6,
+      "column": 118,
+      "message": "function AggregateValues requires space `zimage.attention.value_head`, got `zimage.attention.key_head`; establish `zimage.attention.value_head` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionUnpositionedQuery.sdslvinvalid",
+      "mistake": "unpositioned Q paired with positioned K",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 6,
+      "column": 87,
+      "message": "function Score requires space `zimage.attention.positioned_query_head`, got `zimage.attention.query_head`; establish `zimage.attention.positioned_query_head` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionRopeAppliedTwice.sdslvinvalid",
+      "mistake": "RoPE applied twice",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 5,
+      "column": 111,
+      "message": "function ApplyQueryRoPE requires space `zimage.attention.query_head`, got `zimage.attention.positioned_query_head`; establish `zimage.attention.query_head` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionIncompatiblePositionConvention.sdslvinvalid",
+      "mistake": "incompatible positioned key convention",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 6,
+      "column": 108,
+      "message": "function Score requires space `zimage.attention.positioned_key_head`, got `zimage.attention.positioned_key_head.text_convention`; establish `zimage.attention.positioned_key_head` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionQwenResidual.sdslvinvalid",
+      "mistake": "Qwen hidden state used as a Z-Image residual",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 4,
+      "column": 99,
+      "message": "function AddResidual requires space `zimage.noise_refiner.embedding`, got `qwen.hidden`; establish `zimage.noise_refiner.embedding` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionProbabilityAsScore.sdslvinvalid",
+      "mistake": "attention probability treated as score",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 4,
+      "column": 90,
+      "message": "function NormalizeScores requires space `zimage.attention.score_value`, got `zimage.attention.probability`; establish `zimage.attention.score_value` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionScoreBeforeNormalization.sdslvinvalid",
+      "mistake": "attention score aggregated before normalization",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 6,
+      "column": 106,
+      "message": "function AggregateValues requires space `zimage.attention.probability`, got `zimage.attention.score_value`; establish `zimage.attention.probability` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionHeadResidual.sdslvinvalid",
+      "mistake": "attention head added as model residual",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 4,
+      "column": 99,
+      "message": "function AddResidual requires space `zimage.noise_refiner.embedding`, got `zimage.attention.query_head`; establish `zimage.noise_refiner.embedding` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    },
+    {
+      "fixture": "examples/SDSL-V/conformance/invalid/AttentionWrongRopeCoordinate.sdslvinvalid",
+      "mistake": "text-token coordinate supplied to image RoPE",
+      "rejected": true,
+      "code": "SDSL-V4123",
+      "line": 6,
+      "column": 117,
+      "message": "function ApplyQueryRoPE requires space `zimage.position.frame`, got `qwen.position.text_token`; establish `zimage.position.frame` with a function returning that space",
+      "names_actual_and_expected_spaces": true,
+      "names_operation": true
+    }
+  ],
+  "diagnostic_codes": [
+    "SDSL-V4120",
+    "SDSL-V4123"
+  ],
+  "backend_erasure": {
+    "semantic_source": "examples/SDSL-V/conformance/compute/AttentionSpacePoc.sdslvvalid",
+    "erased_source": "examples/SDSL-V/conformance/compute/AttentionSpacePocErased.sdslvvalid",
+    "semantic_source_sha256": "c6aa2b28401b0244bfd5ce89bd1a9d821192fcf83f4bd9e40234c10b6d360ed1",
+    "erased_source_sha256": "4b63b6b44f11c9f7e4abd2e4ed1de7916605b5bac345bd273c1058be52c7b303",
+    "semantic_hlsl_sha256": "8ffaa49ea7860311142e888bdb5933e15ab4d0a60e7761c5607dfacee4e9f414",
+    "erased_hlsl_sha256": "dd2a71447f52fbde5c8fb505269b08f702c7b5a44f01c49c030a2df199904d27",
+    "semantic_spirv_sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743",
+    "erased_spirv_sha256": "bd5df6e5c12b0b4cdd18220ab997509d83e8abae5d206c7a949e096a0d914743",
+    "spirv_byte_identical": true,
+    "runtime_hlsl_equivalent": true,
+    "spirv_validated": true,
+    "resource_interface": [
+      "set0/binding0 readonly StructuredBuffer\u003cfloat\u003e",
+      "set0/binding1 RWStructuredBuffer\u003cfloat\u003e"
+    ],
+    "push_constants": [],
+    "buffer_element_layout": "f32 elements; unchanged",
+    "runtime_tags": false,
+    "additional_storage": false,
+    "additional_branches": false
+  },
+  "token_domain_support": {
+    "vector_value_spaces": "supported now",
+    "tensor_elements": "supported now through ndarray\u003cT\u003e element aliases",
+    "tensor_axes": "not represented",
+    "caught_now": "image coordinate values versus text-token coordinate values",
+    "deferred": "query-token/key-token axes and probability/value token-domain alignment require future tensor-axis/index semantics"
+  },
+  "zimage_applicability": {
+    "catches_at_least_three_realistic_mistakes": true,
+    "caught_mistakes": [
+      "Q/V pairing",
+      "K/V confusion",
+      "unpositioned scoring",
+      "double RoPE",
+      "score/probability confusion",
+      "residual-domain confusion",
+      "wrong RoPE coordinate domain"
+    ],
+    "mandatory_m1_spaces": [
+      "model embedding",
+      "query head",
+      "key head",
+      "value head",
+      "positioned query head",
+      "positioned key head",
+      "attention score",
+      "attention probability"
+    ],
+    "complexity_effect": "small increase in declarations and explicit transition functions; lower debugging complexity through compile-time rejection",
+    "recommendation": "use bounded semantic spaces in EVT-2 M1 vector-value boundaries; do not block M1 on token-axis typing"
+  },
+  "final_verdict": "USEFUL WITH BOUNDED EXTENSION",
+  "convergence_outcome": "SUCCESS",
+  "milestone_state": "COMPLETE",
+  "evt2_state": "READY FOR M1 WITH ATTENTION SPACES",
+  "projection_sha256": "98285715c5fb45baa7a9d99609963f80023abcb469e71411fbbd9d6baa6201b4"
+}

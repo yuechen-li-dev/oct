@@ -298,16 +298,25 @@ func FormatType(t Type) string {
 	case TypeUint4:
 		return "uint4"
 	case TypeFloat2:
-		return "float2"
+		return formatSpace("float2", t.Space)
 	case TypeFloat3:
-		return "float3"
+		return formatSpace("float3", t.Space)
 	case TypeFloat4:
-		return "float4"
+		return formatSpace("float4", t.Space)
 	case TypeRuntimeArray:
 		if t.Element == nil {
 			return "array<?>"
 		}
 		return fmt.Sprintf("array<%s>", FormatType(*t.Element))
+	case TypeNDArray:
+		if t.Element == nil {
+			return "ndarray<?>"
+		}
+		shape := make([]string, 0, len(t.Shape))
+		for _, extent := range t.Shape {
+			shape = append(shape, fmt.Sprint(extent))
+		}
+		return fmt.Sprintf("ndarray<%s,[%s]>", FormatType(*t.Element), strings.Join(shape, ","))
 	case TypeArray:
 		if t.Element == nil {
 			return "array<?>"
@@ -338,8 +347,15 @@ func FormatType(t Type) string {
 	case TypeStream:
 		return "stream " + t.Name
 	default:
-		return t.Name
+		return formatSpace(t.Name, t.Space)
 	}
+}
+
+func formatSpace(physical, space string) string {
+	if space == "" {
+		return physical
+	}
+	return physical + "@space(" + space + ")"
 }
 
 func (r Resource) ElementTypeRef() *Type {

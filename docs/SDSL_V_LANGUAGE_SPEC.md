@@ -71,9 +71,9 @@ or runtime `error(...)`. Historical syntax receives `SDSL-V4100`. Logical
 negation remains canonical. Programs represent recoverable GPU state with an
 explicit payload enum or status/resource value.
 
-### 2.3 Coordinate-space aliases
+### 2.3 Semantic-space aliases
 
-A type alias may attach a canonical coordinate identity:
+A named vector alias may attach a dotted nominal semantic identity:
 
 ```sdslv
 type ClipPosition4 = float4 @space(clip.position);
@@ -89,8 +89,31 @@ constructor or function establishes a space only when its declared target or
 return type supplies that space. This is a static rule with no runtime cost.
 The compiler preserves useful alias comments in HLSL.
 
+The same mechanism may name a bounded non-graphics semantic basis or domain,
+for example `zimage.attention.query_head`. Such names must be dotted and remain
+exact nominal strings; `@space` has no parameters, inheritance, pairing
+declarations, or runtime identity. It is valid only on aliases whose resolved
+physical base is `float2`, `float3`, or `float4`. Alias references may be used
+as record or payload-enum fields, function parameters and returns, locals, and
+array/`ndarray` element types. The space belongs to the element value, not to a
+tensor axis.
+
+Ordinary function signatures define legal transformations. A function that
+accepts one space and returns another is the explicit establishment boundary.
+Function argument mismatches involving non-graphics semantic spaces use
+`SDSL-V4123` and name the operation, expected space, actual space, and the need
+for an establishment function. Intrinsics that require plain vectors do not
+silently erase a space; spaced code must extract ordinary scalar components and
+explicitly establish its result.
+
 `clip.position` on a vertex output is the graphics position builtin. The
 compiler performs no automatic object/world/view/clip matrix transformation.
+The established graphics roots `object`, `world`, `view`, and `clip` retain
+their closed position/normal/vector vocabulary and existing diagnostics.
+
+Semantic spaces do not type tensor axes, infer contractions, declare automatic
+basis transformations, or add operator overloading. Those capabilities require
+a separate future tensor-index design if a concrete kernel needs them.
 
 ### 2.4 Streams
 

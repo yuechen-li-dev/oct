@@ -1,0 +1,6 @@
+type QueryHead = float4 @space(zimage.attention.query_head);
+type PositionedQueryHead = float4 @space(zimage.attention.positioned_query_head);
+type PositionedKeyHead = float4 @space(zimage.attention.positioned_key_head);
+type AttentionScore = float4 @space(zimage.attention.score_value);
+fn Score(query: PositionedQueryHead, key: PositionedKeyHead) -> AttentionScore { return float4(query.x * key.x, 0.0, 0.0, 0.0); }
+fn Invalid(query: QueryHead, key: PositionedKeyHead) -> AttentionScore { return Score(query, key); }

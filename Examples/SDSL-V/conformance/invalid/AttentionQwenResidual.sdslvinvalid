@@ -1,0 +1,4 @@
+type ModelEmbedding = float4 @space(zimage.noise_refiner.embedding);
+type QwenHidden = float4 @space(qwen.hidden);
+fn AddResidual(left: ModelEmbedding, right: ModelEmbedding) -> ModelEmbedding { return float4(left.x + right.x, left.y + right.y, left.z + right.z, left.w + right.w); }
+fn Invalid(model: ModelEmbedding, qwen: QwenHidden) -> ModelEmbedding { return AddResidual(model, qwen); }

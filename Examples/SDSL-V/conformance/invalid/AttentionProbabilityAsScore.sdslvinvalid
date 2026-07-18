@@ -1,0 +1,4 @@
+type AttentionScore = float4 @space(zimage.attention.score_value);
+type AttentionProbability = float4 @space(zimage.attention.probability);
+fn NormalizeScores(value: AttentionScore) -> AttentionProbability { return float4(value.x, value.y, value.z, value.w); }
+fn Invalid(value: AttentionProbability) -> AttentionProbability { return NormalizeScores(value); }
