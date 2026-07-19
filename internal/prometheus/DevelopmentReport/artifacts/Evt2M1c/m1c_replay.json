@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.replay.v1",
+  "m1b_requirement": "M1C rejects a missing or nonmatching m1b_prefix_replay_identity as stale output.",
+  "m1c_identity": "hash(m1b_prefix_replay_identity, output_identity, audit_stage)",
+  "no_host_qkv_ingress": true,
+  "real_replay_test": "PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness",
+  "result": "PASS"
+}

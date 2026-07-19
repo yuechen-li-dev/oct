@@ -296,6 +296,8 @@ typedef struct prom_model_block_m1b_pipeline {
   prom_reduction_pipeline pipeline;
 } prom_model_block_m1b_pipeline;
 
+#define PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT 3u
+
 typedef struct prom_model_block_state {
   uint64_t block_id;
   uint64_t next_block_id;
@@ -310,6 +312,7 @@ typedef struct prom_model_block_state {
   uint64_t declared_audit_bytes;
   uint64_t execution_plan_identity;
   uint64_t replay_identity;
+  uint64_t m1b_prefix_replay_identity;
   uint32_t created;
   uint32_t weights_uploaded;
   uint32_t quarantined;
@@ -358,7 +361,11 @@ typedef struct prom_model_block_state {
   prom_vk_buffer modulated;
   prom_vk_buffer norm_audit;
   prom_vk_buffer qkv;
+  prom_vk_buffer attention;
+  prom_vk_buffer attention_projection;
+  prom_vk_buffer attention_residual;
   prom_model_block_m1b_pipeline m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
 } prom_model_block_state;
 

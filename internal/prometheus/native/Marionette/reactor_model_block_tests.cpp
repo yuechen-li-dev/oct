@@ -532,6 +532,123 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
                  "repeat warm replay succeeds");
     ASSERT_EQUAL(stableWarmReplay, evidence.replay_identity, "identical warm runs retain deterministic replay identity");
+    const char* runM1C = std::getenv("OCT_EVT2_M1C_REAL");
+    if (runM1C != nullptr && std::string(runM1C) == "1") {
+        std::vector<float> attentionResidual(1024u * 3840u);
+        PrometheusModelBlockM1CExecuteRequest m1c{};
+        m1c.struct_size = sizeof(m1c);
+        m1c.m1b_prefix_replay_identity = evidence.replay_identity;
+        m1c.output_identity = 0xff02d4bf4acfc0dcull;
+        m1c.output = attentionResidual.data();
+        m1c.output_element_capacity = attentionResidual.size();
+        std::array<float, PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS> transientAudit{};
+        m1c.transient_audit = transientAudit.data();
+        m1c.transient_audit_element_capacity = transientAudit.size();
+        const char* cacheRootText = std::getenv("OCT_EVT2_CACHE");
+        ASSERT_TRUE(cacheRootText != nullptr, "real M1C requires the documented OCT_EVT2_CACHE root");
+        const std::filesystem::path m1cRoot = std::filesystem::path(cacheRootText == nullptr ? "" : cacheRootText) /
+            "canonical" / "f332072aa78be7aecdf3ee76d5c247082da564a6" / "o19-fp32-reference" / "noise_refiner.0" / "stages";
+        constexpr std::array<std::uint32_t, 6> m1cCoordinates{0u, 1u, 1310720u, 2621440u, 3932158u, 3932159u};
+        struct M1CStage { const char* name; std::uint32_t auditStage; std::array<float, 6> expected; };
+        const std::array<M1CStage, 3> m1cStages{{
+            {"attention_aggregation", PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION, {22.60872f,-16.405487f,-10.827898f,208.46693f,-74.963585f,110.65977f}},
+            {"attention_projection", PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION, {38.777737f,392.79315f,469.82147f,-6.6808763f,89.16175f,-10.219366f}},
+            {"attention_residual", PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, {-1.0000031f,-0.1181361f,-0.19042696f,0.018676776f,0.01519823f,-0.5390627f}}
+        }};
+        for (const M1CStage& stage : m1cStages) {
+            m1c.audit_stage = stage.auditStage;
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1c(runtime, blockID, &m1c, &evidence),
+                         "resident M1C consumes the matching M1B replay without host QKV ingress");
+            const std::vector<std::uint8_t> canonicalBytes = read_binary_file(m1cRoot / (std::string(stage.name) + ".f32.bin"));
+            ASSERT_EQUAL(static_cast<std::uint64_t>(attentionResidual.size()) * sizeof(float),
+                         static_cast<std::uint64_t>(canonicalBytes.size()), "O19 M1C boundary payload exists");
+            double errorSquares = 0.0, referenceSquares = 0.0, linf = 0.0;
+            std::uint32_t firstDifference = static_cast<std::uint32_t>(attentionResidual.size());
+            float minimum = attentionResidual[0u], maximum = attentionResidual[0u];
+            for (std::uint32_t element = 0u; element < attentionResidual.size(); ++element) {
+                float reference = 0.0f;
+                std::memcpy(&reference, canonicalBytes.data() + element * sizeof(float), sizeof(reference));
+                const double difference = static_cast<double>(attentionResidual[element]) - static_cast<double>(reference);
+                errorSquares += difference * difference;
+                referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                linf = std::max(linf, std::fabs(difference));
+                minimum = std::min(minimum, attentionResidual[element]);
+                maximum = std::max(maximum, attentionResidual[element]);
+                if (firstDifference == attentionResidual.size() && attentionResidual[element] != reference) firstDifference = element;
+            }
+            const double l2 = std::sqrt(errorSquares);
+            const double relativeL2 = l2 / std::sqrt(referenceSquares);
+            const double rms = std::sqrt(errorSquares / static_cast<double>(attentionResidual.size()));
+            for (std::uint32_t index = 0u; index < m1cCoordinates.size(); ++index) {
+                const float difference = std::fabs(attentionResidual[m1cCoordinates[index]] - stage.expected[index]);
+                ASSERT_TRUE(std::isfinite(attentionResidual[m1cCoordinates[index]]) && difference <= 2.0e-3f,
+                            "M1C selected O19 witness stays within the narrow measured bound");
+            }
+            ASSERT_TRUE(std::isfinite(minimum) && std::isfinite(maximum) && relativeL2 <= 2.0e-5,
+                        "M1C full resident boundary is finite and remains within the measured FP32 bound");
+            std::cout << "M1C stage " << stage.name << " shape=[1,1024,3840] layout=row-major finite=true min="
+                      << minimum << " max=" << maximum << " l2=" << l2 << " linf=" << linf
+                      << " relative_l2=" << relativeL2 << " rms=" << rms
+                      << " first_mismatching_coordinate=" << firstDifference << "\n";
+        }
+        ASSERT_EQUAL(1.0f, transientAudit[30u], "first selected softmax denominator is finite and positive");
+        ASSERT_EQUAL(1.0f, transientAudit[62u], "last selected softmax denominator is finite and positive");
+        ASSERT_TRUE(std::isfinite(transientAudit[20u]) && std::isfinite(transientAudit[21u]) &&
+                        std::isfinite(transientAudit[22u]) && std::fabs(transientAudit[22u] - 1.0f) <= 2.0e-5f &&
+                        std::isfinite(transientAudit[52u]) && std::isfinite(transientAudit[53u]) &&
+                        std::isfinite(transientAudit[54u]) && std::fabs(transientAudit[54u] - 1.0f) <= 2.0e-5f,
+                    "selected first and last softmax rows are finite and normalize to one");
+        std::cout << "M1C transient first raw=" << transientAudit[0u] << " scaled=" << transientAudit[1u]
+                  << " max=" << transientAudit[20u] << " shifted=" << transientAudit[2u]
+                  << " exp=" << transientAudit[3u] << " sum=" << transientAudit[21u]
+                  << " probability=" << transientAudit[4u] << " row_sum=" << transientAudit[22u]
+                  << " probability_times_v=" << transientAudit[23u] << " head_output=" << transientAudit[24u] << "\n";
+        std::cout << "M1C transient last raw=" << transientAudit[32u] << " scaled=" << transientAudit[33u]
+                  << " max=" << transientAudit[52u] << " shifted=" << transientAudit[34u]
+                  << " exp=" << transientAudit[35u] << " sum=" << transientAudit[53u]
+                  << " probability=" << transientAudit[36u] << " row_sum=" << transientAudit[54u]
+                  << " probability_times_v=" << transientAudit[55u] << " head_output=" << transientAudit[56u] << "\n";
+        std::array<std::uint64_t, 10> chainedWarmNs{};
+        const std::uint64_t allocationsBeforeWarm = evidence.warm_buffer_allocation_count;
+        const std::uint64_t uploadsBeforeWarm = evidence.weight_upload_count;
+        const std::uint64_t pipelinesBeforeWarm = evidence.pipeline_create_count;
+        const std::uint64_t descriptorsBeforeWarm = evidence.descriptor_set_count;
+        for (std::uint32_t iteration = 0u; iteration < chainedWarmNs.size(); ++iteration) {
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                         "warm chained M1B prefix execution succeeds");
+            m1c.m1b_prefix_replay_identity = evidence.replay_identity;
+            m1c.audit_stage = PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL;
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1c(runtime, blockID, &m1c, &evidence),
+                         "warm chained M1C residual execution succeeds");
+            chainedWarmNs[iteration] = evidence.last_execution_ns;
+        }
+        ASSERT_EQUAL(allocationsBeforeWarm, evidence.warm_buffer_allocation_count,
+                     "warm M1B to M1C chain allocates no buffers");
+        ASSERT_EQUAL(uploadsBeforeWarm, evidence.weight_upload_count, "warm M1B to M1C chain uploads no weights");
+        ASSERT_EQUAL(pipelinesBeforeWarm, evidence.pipeline_create_count, "warm M1B to M1C chain creates no pipelines");
+        ASSERT_EQUAL(descriptorsBeforeWarm, evidence.descriptor_set_count, "warm M1B to M1C chain grows no descriptor pools");
+        std::array<std::uint64_t, 10> sortedChainedWarmNs = chainedWarmNs;
+        std::sort(sortedChainedWarmNs.begin(), sortedChainedWarmNs.end());
+        const double chainedWarmMean = static_cast<double>(std::accumulate(chainedWarmNs.begin(), chainedWarmNs.end(), std::uint64_t{0})) /
+            static_cast<double>(chainedWarmNs.size());
+        double chainedWarmVariance = 0.0;
+        for (const std::uint64_t elapsed : chainedWarmNs) {
+            const double delta = static_cast<double>(elapsed) - chainedWarmMean;
+            chainedWarmVariance += delta * delta;
+        }
+        std::cout << "M1C chained_warm_ns=";
+        for (std::size_t index = 0u; index < chainedWarmNs.size(); ++index) {
+            if (index != 0u) std::cout << ',';
+            std::cout << chainedWarmNs[index];
+        }
+        std::cout << "\n";
+        std::cout << "M1C chained_warm_stats_ns median="
+                  << (sortedChainedWarmNs[4u] + sortedChainedWarmNs[5u]) / 2u
+                  << " mean=" << chainedWarmMean
+                  << " min=" << sortedChainedWarmNs.front()
+                  << " p95=" << sortedChainedWarmNs[9u]
+                  << " stddev=" << std::sqrt(chainedWarmVariance / static_cast<double>(chainedWarmNs.size())) << "\n";
+    }
     std::cout << "M1B evidence uploaded_bytes=361820672 upload_ns=" << uploadNs
               << " persistent_bytes=" << evidence.persistent_bytes
               << " reusable_bytes=" << evidence.reusable_bytes

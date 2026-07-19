@@ -29,6 +29,9 @@
 #include "reactor_vulkan_zimage_nr0_fused_qkv_spirv.h"
 #include "reactor_vulkan_zimage_nr0_q_norm_rope_spirv.h"
 #include "reactor_vulkan_zimage_nr0_k_norm_rope_spirv.h"
+#include "reactor_vulkan_zimage_nr0_attention_streaming_spirv.h"
+#include "reactor_vulkan_zimage_nr0_attention_projection_spirv.h"
+#include "reactor_vulkan_zimage_nr0_attention_residual_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -102,6 +105,24 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/nr0_bf16_ingress.sdslv",
     "reactor_vulkan_zimage_nr0_bf16_ingress_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 4u, 8u, 0u, 1u, 3932160u },
+  { 30u, "zimage-nr0-attention-streaming", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_attention_streaming_spirv, sizeof(k_prom_zimage_nr0_attention_streaming_spirv),
+    "Nr0AttentionStreaming_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_attention_streaming.sdslv",
+    "reactor_vulkan_zimage_nr0_attention_streaming_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 3u, 16u, 0u, 1024u, 1024u },
+  { 31u, "zimage-nr0-attention-projection", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_attention_projection_spirv, sizeof(k_prom_zimage_nr0_attention_projection_spirv),
+    "Nr0AttentionProjection_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_attention_projection.sdslv",
+    "reactor_vulkan_zimage_nr0_attention_projection_spirv.h", 1u, 0u, 0u, NULL,
+    PROM_SHADER_AUTHORITY_PRODUCTION, 3u, 16u, 0u, 1u, 3840u },
+  { 32u, "zimage-nr0-attention-residual", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_attention_residual_spirv, sizeof(k_prom_zimage_nr0_attention_residual_spirv),
+    "Nr0AttentionResidual_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_attention_residual.sdslv",
+    "reactor_vulkan_zimage_nr0_attention_residual_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 5u, 16u, 0u, 1u, 3840u },
 };
 
 #define REDUCTION_ASSET(id, label, words, entry, source, header, inline_count, role, max_width) \

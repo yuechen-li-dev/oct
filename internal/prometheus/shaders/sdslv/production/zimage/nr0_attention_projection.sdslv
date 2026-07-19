@@ -1,0 +1,31 @@
+namespace Prometheus.Production.ZImage;
+
+stream AttentionProjectionIO {
+    [binding(0)] Attention: readonly array<f32>;
+    [binding(1)] OutputWeightF16: readonly array<u32>;
+    [binding(2)] Projection: readwrite array<f32>;
+}
+
+record AttentionProjectionParams { TokenCount: u32; ModelWidth: u32; OutputWidth: u32; Reserved: u32; }
+
+// Fixed FP32 accumulation over the row-major cached [in,out] attention-out
+// weight. This remains a distinct witness boundary from attention aggregation.
+shader Nr0AttentionProjection {
+    resources AttentionProjectionIO;
+
+    stage compute [numthreads(8u, 8u, 1u)] fn CS(params: AttentionProjectionParams) -> void {
+        let token: u32 = DispatchThreadID.x;
+        let output: u32 = DispatchThreadID.y;
+        if token >= params.TokenCount or output >= params.OutputWidth { return; }
+        var value: f32 = 0.0;
+        for channel in 0u..params.ModelWidth {
+            let weightElement: u32 = channel * params.OutputWidth + output;
+            let weightLanes: float2 = Unpack<F16x2>(OutputWeightF16[weightElement / 2u]);
+            var weight: f32 = weightLanes.x;
+            if (weightElement % 2u) != 0u { weight = weightLanes.y; }
+            value = value + Attention[token * params.ModelWidth + channel] * weight;
+        }
+        Projection[token * params.OutputWidth + output] = value;
+        return;
+    }
+}

@@ -1,0 +1,109 @@
+namespace Prometheus.Production.ZImage;
+
+stream AttentionStreamingIO {
+    [binding(0)] Qkv: readonly array<f32>;
+    [binding(1)] Attention: readwrite array<f32>;
+    [binding(2)] Audit: readwrite array<f32>;
+}
+
+record AttentionStreamingParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
+
+fn ExponentialF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+// One workgroup owns exactly one (query-token, head) row. Scores and
+// probabilities are workgroup-local FP32 rows: no 30-head score tensor is
+// materialized. The serial reductions intentionally preserve the O19 logical
+// key order for the fixed 1024-token contract.
+shader Nr0AttentionStreaming {
+    resources AttentionStreamingIO;
+    workgroup Scores: array<f32, 1024u>;
+    workgroup Probabilities: array<f32, 1024u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionStreamingParams) -> void {
+        let packedRow: u32 = GroupID.x;
+        let token: u32 = packedRow / params.HeadCount;
+        let head: u32 = packedRow - token * params.HeadCount;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        for part in 0u..4u {
+            let key: u32 = lane + part * 256u;
+            var dot: f32 = 0.0;
+            for channel in 0u..params.HeadWidth {
+                let qIndex: u32 = token * params.FusedWidth + head * params.HeadWidth + channel;
+                let kIndex: u32 = key * params.FusedWidth + 3840u + head * params.HeadWidth + channel;
+                dot = dot + Qkv[qIndex] * Qkv[kIndex];
+            }
+            Scores[key] = dot * 0.08838834764831843;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane == 0u {
+            var maximum: f32 = Scores[0u];
+            for key in 1u..params.TokenCount {
+                if Scores[key] > maximum { maximum = Scores[key]; }
+            }
+            var probabilitySum: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let exponential: f32 = ExponentialF32(Scores[key] - maximum);
+                Probabilities[key] = exponential;
+                probabilitySum = probabilitySum + exponential;
+            }
+            let selected: bool = (token == 0u and head == 0u) or (token == 1023u and head == 29u);
+            var auditBase: u32 = 0u;
+            if token == 1023u { auditBase = 32u; }
+            if selected {
+                for sample in 0u..4u {
+                    var key: u32 = 0u;
+                    if sample == 1u { key = 1u; }
+                    if sample == 2u { key = 512u; }
+                    if sample == 3u { key = 1023u; }
+                    let offset: u32 = auditBase + sample * 5u;
+                    Audit[offset] = Scores[key] / 0.08838834764831843;
+                    Audit[offset + 1u] = Scores[key];
+                    Audit[offset + 2u] = Scores[key] - maximum;
+                    Audit[offset + 3u] = Probabilities[key];
+                    Audit[offset + 4u] = 0.0;
+                }
+                Audit[auditBase + 20u] = maximum;
+                Audit[auditBase + 21u] = probabilitySum;
+            }
+            var denominatorValid: u32 = 0u;
+            if probabilitySum == probabilitySum and probabilitySum > 0.0 and (probabilitySum - probabilitySum) == 0.0 {
+                denominatorValid = 1u;
+            }
+            if selected {
+                if denominatorValid != 0u { Audit[auditBase + 30u] = 1.0; }
+                else { Audit[auditBase + 30u] = 0.0; }
+            }
+            var rowSum: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                if denominatorValid != 0u { Probabilities[key] = Probabilities[key] / probabilitySum; }
+                else { Probabilities[key] = 0.0; }
+                rowSum = rowSum + Probabilities[key];
+            }
+            if selected {
+                for sample in 0u..4u { Audit[auditBase + sample * 5u + 4u] = Probabilities[sample * 511u]; }
+                Audit[auditBase + 22u] = rowSum;
+            }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < params.HeadWidth {
+            var total: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let valueIndex: u32 = key * params.FusedWidth + 7680u + head * params.HeadWidth + lane;
+                total = total + Probabilities[key] * Qkv[valueIndex];
+            }
+            Attention[token * 3840u + head * params.HeadWidth + lane] = total;
+            if lane == 0u and ((token == 0u and head == 0u) or (token == 1023u and head == 29u)) {
+                var auditBase: u32 = 0u;
+                if token == 1023u { auditBase = 32u; }
+                let value0: f32 = Qkv[7680u + head * params.HeadWidth];
+                Audit[auditBase + 23u] = Probabilities[0u] * value0;
+                Audit[auditBase + 24u] = total;
+            }
+        }
+        return;
+    }
+}

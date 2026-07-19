@@ -52,6 +52,9 @@
   "next": "fixed 30-head score scale stable-softmax probability-times-V projection norm gated residual",
 
   "payload_setup_guide": "docs/EVT2_LOCAL_PAYLOADS.md",
+  "canonical_stage_authority": "internal/prometheus/DevelopmentReport/artifacts/Evt2M1c/m1c_canonical_stage_authority.json",
+  "canonical_stage_root": "derived from OCT_EVT2_CACHE: canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/o19-fp32-reference/noise_refiner.0",
+  "historical_capture_exclusion": "canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/noise_refiner.0/capture_04 is forensic only and must not be used for M1C acceptance",
   "no_cast_boundaries": [
     "PositionedQ",
     "PositionedK",
@@ -60,5 +63,5 @@
   ],
   "schema": "oct.prometheus.evt2.m1c.handoff.v1",
   "score_scratch": "one head logits and probabilities: 2 x 1024 FP32 = 8192 bytes",
-  "status": "ready"
+  "status": "M1C resident attention, projection, norm2, and gated residual implemented against O19 canonical authority"
 }

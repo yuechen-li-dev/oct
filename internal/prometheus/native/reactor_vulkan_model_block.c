@@ -1,4 +1,6 @@
 #include "reactor_vulkan_runtime_internal.h"
+
+#include <stdio.h>
 #include "reactor_shader_registry.h"
 
 #include <limits.h>
@@ -17,6 +19,9 @@
 #define PROM_MODEL_BLOCK_M1B_Q_ROPE_SHADER_ID 27u
 #define PROM_MODEL_BLOCK_M1B_K_ROPE_SHADER_ID 28u
 #define PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID 29u
+#define PROM_MODEL_BLOCK_M1C_ATTENTION_SHADER_ID 30u
+#define PROM_MODEL_BLOCK_M1C_PROJECTION_SHADER_ID 31u
+#define PROM_MODEL_BLOCK_M1C_RESIDUAL_SHADER_ID 32u
 #define PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS (1024u * 3840u)
 #define PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS 256u
 #define PROM_MODEL_BLOCK_M1B_QKV_ELEMENTS (1024u * 11520u)
@@ -54,6 +59,13 @@ typedef struct prom_model_block_m1b_head_constants {
   uint32_t head_count;
   uint32_t head_width;
 } prom_model_block_m1b_head_constants;
+
+typedef struct prom_model_block_m1c_attention_constants {
+  uint32_t token_count;
+  uint32_t head_count;
+  uint32_t head_width;
+  uint32_t fused_width;
+} prom_model_block_m1c_attention_constants;
 
 static const uint32_t k_prom_model_block_m1b_shader_ids[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT] = {
     PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID, PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID,
@@ -142,7 +154,9 @@ static void prom_model_block_fill_evidence(const prom_model_block_state* block,
                    (uint64_t)block->attention_scale.size + (uint64_t)block->attention_gate.size +
                    (uint64_t)block->mlp_scale.size + (uint64_t)block->mlp_gate.size +
                    (uint64_t)block->modulated.size + (uint64_t)block->norm_audit.size +
-                   (uint64_t)block->qkv.size;
+                   (uint64_t)block->qkv.size + (uint64_t)block->attention.size +
+                   (uint64_t)block->attention_projection.size +
+                   (uint64_t)block->attention_residual.size;
   audit_bytes = (uint64_t)block->audit_device.size + (uint64_t)block->audit_readback.size;
   external_bytes = block->external_input_bytes + block->external_output_bytes;
   total_bytes = persistent_bytes + reusable_bytes + audit_bytes;
@@ -384,10 +398,10 @@ static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
 }
 
 static int prom_model_block_m1b_create_pipeline(
-    prom_reduction_runtime_state* state, prom_model_block_state* block, uint32_t pipeline_index,
+    prom_reduction_runtime_state* state, prom_model_block_state* block,
+    prom_model_block_m1b_pipeline* pipeline, uint32_t shader_id,
     const prom_vk_buffer* const* buffers, uint32_t buffer_count, uint32_t expected_push_constant_bytes) {
   const prom_shader_asset* asset;
-  prom_model_block_m1b_pipeline* pipeline;
   VkDescriptorSetLayoutBinding bindings[8];
   VkDescriptorSetLayoutCreateInfo layout_info;
   VkDescriptorPoolSize pool_size;
@@ -400,16 +414,29 @@ static int prom_model_block_m1b_create_pipeline(
   VkShaderModuleCreateInfo module_info;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo compute_info;
+  VkResult create_result;
+  int diagnostics_enabled;
   uint32_t index;
-  if (state == NULL || block == NULL || buffers == NULL ||
-      pipeline_index >= PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT || buffer_count == 0u || buffer_count > 8u) return 0;
-  asset = prom_shader_registry_find_shader(k_prom_model_block_m1b_shader_ids[pipeline_index]);
+  if (state == NULL || block == NULL || pipeline == NULL || buffers == NULL ||
+      buffer_count == 0u || buffer_count > 8u) return 0;
+  diagnostics_enabled = getenv("OCT_EVT2_M1C_PIPELINE_DIAGNOSTICS") != NULL;
+  asset = prom_shader_registry_find_shader(shader_id);
+  if (diagnostics_enabled && (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
+      asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
+      asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
+      asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL)) {
+    fprintf(stderr, "EVT2_M1C_CREATE_PRECHECK shader=%u asset=%p bindings=%u expected_bindings=%u push=%u expected_push=%u stage=%u authority=%u source=%u spirv=%zu entry=%p\n",
+            shader_id, (const void*)asset, asset == NULL ? 0u : asset->descriptor_binding_count, buffer_count,
+            asset == NULL ? 0u : asset->push_constant_bytes, expected_push_constant_bytes,
+            asset == NULL ? 0u : (uint32_t)asset->stage, asset == NULL ? 0u : (uint32_t)asset->authority,
+            asset == NULL ? 0u : (uint32_t)asset->source_language, asset == NULL ? 0u : asset->spirv_size_bytes,
+            asset == NULL ? NULL : (const void*)asset->entry_point);
+  }
   if (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
       asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
       asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
       asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL ||
       (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
-  pipeline = &block->m1b_pipelines[pipeline_index];
   memset(bindings, 0, sizeof(bindings));
   for (index = 0u; index < buffer_count; ++index) {
     if (buffers[index] == NULL || buffers[index]->buffer == VK_NULL_HANDLE || buffers[index]->size == 0u) return 0;
@@ -422,7 +449,9 @@ static int prom_model_block_m1b_create_pipeline(
   layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
   layout_info.bindingCount = buffer_count;
   layout_info.pBindings = bindings;
-  if (vkCreateDescriptorSetLayout(state->device, &layout_info, NULL, &pipeline->descriptor_set_layout) != VK_SUCCESS) return 0;
+  create_result = vkCreateDescriptorSetLayout(state->device, &layout_info, NULL, &pipeline->descriptor_set_layout);
+  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u bindings=%u descriptor_set_layout=%d\n", shader_id, buffer_count, create_result);
+  if (create_result != VK_SUCCESS) return 0;
   memset(&pool_size, 0, sizeof(pool_size));
   pool_size.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   pool_size.descriptorCount = buffer_count;
@@ -447,7 +476,9 @@ static int prom_model_block_m1b_create_pipeline(
   pipeline_layout_info.pSetLayouts = &pipeline->descriptor_set_layout;
   pipeline_layout_info.pushConstantRangeCount = 1u;
   pipeline_layout_info.pPushConstantRanges = &push_range;
-  if (vkCreatePipelineLayout(state->device, &pipeline_layout_info, NULL, &pipeline->pipeline_layout) != VK_SUCCESS) return 0;
+  create_result = vkCreatePipelineLayout(state->device, &pipeline_layout_info, NULL, &pipeline->pipeline_layout);
+  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u pipeline_layout=%d push_constants=%u\n", shader_id, create_result, expected_push_constant_bytes);
+  if (create_result != VK_SUCCESS) return 0;
   memset(buffer_infos, 0, sizeof(buffer_infos));
   memset(writes, 0, sizeof(writes));
   for (index = 0u; index < buffer_count; ++index) {
@@ -465,7 +496,9 @@ static int prom_model_block_m1b_create_pipeline(
   module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   module_info.codeSize = asset->spirv_size_bytes;
   module_info.pCode = asset->spirv_words;
-  if (vkCreateShaderModule(state->device, &module_info, NULL, &pipeline->pipeline.shader_module) != VK_SUCCESS) return 0;
+  create_result = vkCreateShaderModule(state->device, &module_info, NULL, &pipeline->pipeline.shader_module);
+  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u shader_module=%d spirv_bytes=%zu\n", shader_id, create_result, asset->spirv_size_bytes);
+  if (create_result != VK_SUCCESS) return 0;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -475,8 +508,10 @@ static int prom_model_block_m1b_create_pipeline(
   compute_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   compute_info.stage = stage_info;
   compute_info.layout = pipeline->pipeline_layout;
-  if (vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1u, &compute_info, NULL,
-                               &pipeline->pipeline.pipeline) != VK_SUCCESS) return 0;
+  create_result = vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1u, &compute_info, NULL,
+                                            &pipeline->pipeline.pipeline);
+  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u compute_pipeline=%d entry=%s\n", shader_id, create_result, asset->entry_point);
+  if (create_result != VK_SUCCESS) return 0;
   pipeline->shader_id = asset->shader_id;
   pipeline->binding_count = buffer_count;
   pipeline->push_constant_bytes = expected_push_constant_bytes;
@@ -503,18 +538,37 @@ static int prom_model_block_m1b_create_pipelines(prom_reduction_runtime_state* s
                                        &block->norm_audit};
   const prom_vk_buffer* k_buffers[] = {&block->qkv, &block->weights[2u].device,
                                        &block->norm_audit};
-  return prom_model_block_m1b_create_pipeline(state, block, 0u, ingress_buffers, 4u,
+  return prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u], k_prom_model_block_m1b_shader_ids[0u], ingress_buffers, 4u,
                                                sizeof(prom_model_block_m1b_ingress_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, 1u, adaln_buffers, 8u,
+         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[1u], k_prom_model_block_m1b_shader_ids[1u], adaln_buffers, 8u,
                                                sizeof(prom_model_block_m1b_adaln_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, 2u, norm_buffers, 5u,
+         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[2u], k_prom_model_block_m1b_shader_ids[2u], norm_buffers, 5u,
                                                sizeof(prom_model_block_m1b_norm_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, 3u, qkv_buffers, 3u,
+         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[3u], k_prom_model_block_m1b_shader_ids[3u], qkv_buffers, 3u,
                                                sizeof(prom_model_block_m1b_qkv_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, 4u, q_buffers, 3u,
+         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[4u], k_prom_model_block_m1b_shader_ids[4u], q_buffers, 3u,
                                                sizeof(prom_model_block_m1b_head_constants)) &&
-         prom_model_block_m1b_create_pipeline(state, block, 5u, k_buffers, 3u,
+         prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[5u], k_prom_model_block_m1b_shader_ids[5u], k_buffers, 3u,
                                                sizeof(prom_model_block_m1b_head_constants));
+}
+
+static int prom_model_block_m1c_create_pipelines(prom_reduction_runtime_state* state,
+                                                  prom_model_block_state* block) {
+  const prom_vk_buffer* attention_buffers[] = {&block->qkv, &block->attention, &block->audit_device};
+  const prom_vk_buffer* projection_buffers[] = {&block->attention, &block->weights[3u].device,
+                                                 &block->attention_projection};
+  const prom_vk_buffer* residual_buffers[] = {&block->attention_projection, &block->weights[7u].device,
+                                               &block->attention_gate, &block->input_device,
+                                               &block->attention_residual};
+  return prom_model_block_m1b_create_pipeline(
+             state, block, &block->m1c_pipelines[0u], PROM_MODEL_BLOCK_M1C_ATTENTION_SHADER_ID,
+             attention_buffers, 3u, sizeof(prom_model_block_m1c_attention_constants)) &&
+         prom_model_block_m1b_create_pipeline(
+             state, block, &block->m1c_pipelines[1u], PROM_MODEL_BLOCK_M1C_PROJECTION_SHADER_ID,
+             projection_buffers, 3u, sizeof(prom_model_block_m1b_qkv_constants)) &&
+         prom_model_block_m1b_create_pipeline(
+             state, block, &block->m1c_pipelines[2u], PROM_MODEL_BLOCK_M1C_RESIDUAL_SHADER_ID,
+             residual_buffers, 5u, sizeof(prom_model_block_m1b_norm_constants));
 }
 
 static int prom_model_block_create_command_resources(prom_reduction_runtime_state* state,
@@ -740,6 +794,20 @@ static int prom_model_block_m1b_create_buffers(prom_reduction_runtime_state* sta
          prom_model_block_create_buffer(state, block, &block->qkv,
                                         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_QKV_ELEMENTS),
                                         device_storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) &&
+         prom_model_block_create_buffer(state, block, &block->attention,
+                                        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS),
+                                        device_storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) &&
+         prom_model_block_create_buffer(state, block, &block->attention_projection,
+                                        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS),
+                                        device_storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) &&
+         prom_model_block_create_buffer(state, block, &block->attention_residual,
+                                        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS),
+                                        device_storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) &&
+         /* M1C's fixed third descriptor is a 64-float device-local audit/status
+            record. It is bounded and separate from the full host readback. */
+         prom_model_block_create_buffer(state, block, &block->audit_device,
+                                        PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float),
+                                        device_storage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) &&
          prom_model_block_create_buffer(state, block, &block->audit_readback, block->declared_audit_bytes,
                                         VK_BUFFER_USAGE_TRANSFER_DST_BIT, host_visible, 1) &&
          prom_model_block_create_buffer(state, block, &block->weight_upload, max_weight_bytes,
@@ -797,6 +865,27 @@ static void prom_model_block_m1b_record_audit_capture(
   barrier.size = VK_WHOLE_SIZE;
   vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
+}
+
+static void prom_model_block_record_small_audit_capture(
+    VkCommandBuffer command_buffer, const prom_vk_buffer* source, VkDeviceSize bytes,
+    const prom_vk_buffer* audit_readback, VkDeviceSize destination_offset) {
+  VkBufferMemoryBarrier barrier;
+  VkBufferCopy copy;
+  memset(&barrier, 0, sizeof(barrier));
+  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = source->buffer;
+  barrier.size = bytes;
+  vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
+  memset(&copy, 0, sizeof(copy));
+  copy.size = bytes;
+  copy.dstOffset = destination_offset;
+  vkCmdCopyBuffer(command_buffer, source->buffer, audit_readback->buffer, 1u, &copy);
 }
 
 static void prom_model_block_m1b_capture_stage(prom_model_block_state* block,
@@ -992,6 +1081,13 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
       if (pipeline->descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(state->device, pipeline->descriptor_pool, NULL);
       if (pipeline->descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(state->device, pipeline->descriptor_set_layout, NULL);
     }
+    for (index = 0u; index < PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT; ++index) {
+      prom_model_block_m1b_pipeline* pipeline = &block->m1c_pipelines[index];
+      prom_reduction_destroy_pipeline(state->device, &pipeline->pipeline);
+      if (pipeline->pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(state->device, pipeline->pipeline_layout, NULL);
+      if (pipeline->descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(state->device, pipeline->descriptor_pool, NULL);
+      if (pipeline->descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(state->device, pipeline->descriptor_set_layout, NULL);
+    }
     for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
       prom_vk_destroy_buffer(state->device, &block->weights[index].device);
     }
@@ -999,6 +1095,9 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
     prom_vk_destroy_buffer(state->device, &block->audit_readback);
     prom_vk_destroy_buffer(state->device, &block->audit_device);
     prom_vk_destroy_buffer(state->device, &block->qkv);
+    prom_vk_destroy_buffer(state->device, &block->attention_residual);
+    prom_vk_destroy_buffer(state->device, &block->attention_projection);
+    prom_vk_destroy_buffer(state->device, &block->attention);
     prom_vk_destroy_buffer(state->device, &block->norm_audit);
     prom_vk_destroy_buffer(state->device, &block->modulated);
     prom_vk_destroy_buffer(state->device, &block->mlp_gate);
@@ -1110,7 +1209,8 @@ int prom_reactor_runtime_model_block_create_impl(
                                         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) goto fail;
   }
   if (block->shader_id == PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID) {
-    if (!prom_model_block_m1b_create_pipelines(state, block)) goto pipeline_fail;
+    if (!prom_model_block_m1b_create_pipelines(state, block) ||
+        !prom_model_block_m1c_create_pipelines(state, block)) goto pipeline_fail;
   } else {
     if (!prom_model_block_create_descriptor_resources(state, block)) goto pipeline_fail;
     if (!prom_model_block_create_pipeline(state, block)) goto pipeline_fail;
@@ -1375,6 +1475,118 @@ int prom_reactor_runtime_model_block_execute_m1b_impl(
   block->replay_identity = prom_model_block_hash_u64(block->execution_plan_identity, request->input_identity);
   block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->timestep_identity);
   block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->audit_enabled);
+  block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->audit_stage);
+  block->m1b_prefix_replay_identity = block->replay_identity;
+  block->last_detail_code = 0;
+  prom_model_block_fill_evidence(block, 0, out_evidence);
+  return PROM_OK;
+}
+
+static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* state,
+                                                prom_model_block_state* block,
+                                                uint32_t audit_stage,
+                                                int32_t* out_detail) {
+  VkCommandBufferBeginInfo begin_info;
+  prom_model_block_m1c_attention_constants attention_constants = {1024u, 30u, 128u, 11520u};
+  prom_model_block_m1b_qkv_constants projection_constants = {1024u, 3840u, 3840u, 0u};
+  prom_model_block_m1b_norm_constants residual_constants = {1.0e-5f, 1024u, 3840u, 0u};
+  if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
+  if (state == NULL || block == NULL ||
+      prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
+  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
+  if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+    if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
+    return 0;
+  }
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
+                                         &attention_constants, sizeof(attention_constants), 30720u, 1u, 1u);
+  prom_reduction_record_barrier(block->command_buffer);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
+                                         &projection_constants, sizeof(projection_constants), 128u, 480u, 1u);
+  prom_reduction_record_barrier(block->command_buffer);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
+                                         &residual_constants, sizeof(residual_constants), 1024u, 1u, 1u);
+  const prom_vk_buffer* audit_source = &block->attention_residual;
+  if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION) audit_source = &block->attention;
+  if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION) audit_source = &block->attention_projection;
+  prom_model_block_m1b_record_audit_capture(block->command_buffer, audit_source, 0u,
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
+  prom_model_block_record_small_audit_capture(block->command_buffer, &block->audit_device,
+      PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float), &block->audit_readback,
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
+  if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
+  return prom_model_block_submit_and_wait(state, block, out_detail);
+}
+
+int prom_reactor_runtime_model_block_execute_m1c_impl(
+    void* handle, uint64_t block_id, const PrometheusModelBlockM1CExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  prom_reduction_runtime_state* state;
+  prom_model_block_state* block;
+  uint64_t required_elements = PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS;
+  uint64_t begin_ns;
+  int32_t execution_detail;
+  if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
+      request->struct_size != sizeof(*request) || request->output == NULL || request->output_identity == 0u ||
+      request->m1b_prefix_replay_identity == 0u || request->output_element_capacity < required_elements ||
+      request->audit_stage < PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION ||
+      request->audit_stage > PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
+    return PROM_ERROR;
+  }
+  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
+  if (state == NULL || state->model_block.created == 0u || state->model_block.block_id != block_id) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_NOT_FOUND, out_evidence);
+    return PROM_ERROR;
+  }
+  block = &state->model_block;
+  if (block->shader_id != PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID || block->weights_uploaded == 0u ||
+      block->m1b_prefix_replay_identity != request->m1b_prefix_replay_identity ||
+      block->audit_readback.size < PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  block->output_valid = 0u;
+  block->audit_valid = 0u;
+  begin_ns = prom_reduction_now_ns();
+  if (!prom_model_block_m1c_record_execute(state, block, request->audit_stage, &execution_detail)) {
+    prom_model_block_mark_failure(block, execution_detail);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if ((block->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  const float* transient_audit = (const float*)((const uint8_t*)block->audit_readback.mapped +
+      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
+  if (transient_audit[30u] != 1.0f || transient_audit[62u] != 1.0f) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_M1C_SOFTMAX_INVALID);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if (request->transient_audit != NULL &&
+      request->transient_audit_element_capacity >= PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS) {
+    memcpy(request->transient_audit, transient_audit,
+           PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float));
+  }
+  memcpy(request->output, block->audit_readback.mapped,
+         (size_t)PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
+  block->output_valid = 1u;
+  block->execution_count += 1u;
+  block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  block->replay_identity = prom_model_block_hash_u64(block->m1b_prefix_replay_identity, request->output_identity);
   block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->audit_stage);
   block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);

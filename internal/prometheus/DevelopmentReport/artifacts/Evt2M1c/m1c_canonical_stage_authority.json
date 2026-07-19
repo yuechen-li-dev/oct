@@ -1,0 +1,29 @@
+{
+  "schema": "oct.prometheus.evt2.m1c-canonical-stage-authority.v1",
+  "authority_version": "o19-fp32-reference",
+  "canonical_local_relative_root": "canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/o19-fp32-reference/noise_refiner.0",
+  "accepted_identities": {
+    "stage_manifest_sha256": "0cab3d8fe179e70058cb22b37994413649f257268566b2c1dfb1254d2daeae65",
+    "stage_projections_sha256": "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480",
+    "final_diagnostic_f32_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43"
+  },
+  "reproduction_command": "go run ./tools/zimage_canonical_reference -cache-root $env:OCT_EVT2_CACHE -oracle-root $env:OCT_EVT2_ORACLE -out \"$env:OCT_EVT2_CACHE\\canonical\\f332072aa78be7aecdf3ee76d5c247082da564a6\\o19-fp32-reference\\noise_refiner.0\" -capture -projections-out \"$env:OCT_EVT2_CACHE\\canonical\\f332072aa78be7aecdf3ee76d5c247082da564a6\\o19-fp32-reference\\noise_refiner.0\\o19_stage_projections.json\" -stage-manifest-out \"$env:OCT_EVT2_CACHE\\canonical\\f332072aa78be7aecdf3ee76d5c247082da564a6\\o19-fp32-reference\\noise_refiner.0\\o19_stage_manifest.json\"",
+  "historical_capture_exclusions": ["canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/noise_refiner.0/capture_04"],
+  "full_stage_payload_count": 34,
+  "m1c_witness_inventory": {
+    "selected_scaled_logits": {"canonical_stage_names": ["attention_logits_token0_head0", "attention_logits_token1023_head29"], "relative_paths": ["stages/attention_logits_token0_head0.f32.bin", "stages/attention_logits_token1023_head29.f32.bin"], "sha256": ["d2dad31fb20cce91e6ab99ed28733490e84694e41ebb897dadb9fed45f36796e", "86b137d8c182d329c43798fef44d5288882fff6fd6c81b7eac4933a4e0b67e05"], "projection_sha256": ["d160a2e505929b3a35fe0303d664396e0d1da9d6762f8c3ced391a3f4bf8d71d", "6b42ce5f5b99496212b03ef6236fa2aee9e9f20026def07af803f168a370471f"], "shape": [1024], "dtype": "float32", "layout": "row-major contiguous", "strides": "contiguous", "byte_count_each": 4096},
+    "selected_probabilities": {"canonical_stage_names": ["attention_probabilities_token0_head0", "attention_probabilities_token1023_head29"], "relative_paths": ["stages/attention_probabilities_token0_head0.f32.bin", "stages/attention_probabilities_token1023_head29.f32.bin"], "sha256": ["257418f931e61d32cdc504a00ecdc68f5d7b182e33ba3c0d6571de71bd25d029", "375efa4d2968272c2a71bb354ea14748f23fdb39c1d7a6053b4fc5863ba05738"], "projection_sha256": ["8965d5ddb9be57433c754fcdcd2f75cd8df2e6700f46e329f309f2eae70b9379", "d5a59c1bda97178fdde603398f931ab64f2c146032c846b3d1dd503d218bd188"], "shape": [1024], "dtype": "float32", "layout": "row-major contiguous", "strides": "contiguous", "byte_count_each": 4096},
+    "probability_times_v_per_head_and_aggregated_attention": {"canonical_stage_name": "attention_aggregation", "relative_path": "stages/attention_aggregation.f32.bin", "sha256": "94260ffe6d6647dcae418deb8b19b8adda442d412e3dd84922e2366fd042ec2d", "projection_sha256": "a795e79fb7d24c216acca6fb975c4bfdc39a44eebc5d25dfea1e046ee0e9f8f5", "shape": [1,1024,3840], "dtype": "float32", "layout": "row-major contiguous", "strides": "contiguous", "byte_count": 15728640},
+    "output_projection": {"canonical_stage_name": "attention_projection", "relative_path": "stages/attention_projection.f32.bin", "sha256": "9296c23a7f26d49a33b4b54def202f1833d4771a79f83ed9597b16fb792d569c", "projection_sha256": "66fa3c90917d3441a2680600029849f82f948f441ccd91a647bfc310a3c0769a", "shape": [1,1024,3840], "dtype": "float32", "layout": "row-major contiguous", "strides": "contiguous", "byte_count": 15728640},
+    "gated_attention_residual": {"canonical_stage_name": "attention_residual", "relative_path": "stages/attention_residual.f32.bin", "sha256": "ff02d4bf4acfc0dc37f2ae8303e72ba8fa2dbc6bfa32f258228b652ba1498856", "projection_sha256": "d63456bf1a68711692d846380d03ea9b0a13a32bfbe6e55292a450ff6f32d6ee", "shape": [1,1024,3840], "dtype": "float32", "layout": "row-major contiguous", "strides": "contiguous", "byte_count": 15728640}
+  },
+  "derived_streaming_softmax_records": ["row maximum", "shifted logits", "exponentials", "row sum", "probability row sum"],
+  "not_captured_as_separate_payloads": ["raw unscaled dot products", "per-head attention output", "attention_norm2"],
+  "implementation": {
+    "resident_pipeline": ["Nr0AttentionStreaming", "Nr0AttentionProjection", "Nr0AttentionResidual"],
+    "entrypoint": "prometheus_reactor_runtime_model_block_execute_m1c",
+    "ingress": "requires the matching resident M1B replay identity; no host Q/K/V ingress",
+    "real_witness_command": "OCT_EVT2_M1B_REAL=1; OCT_EVT2_M1C_REAL=1; out\\prometheus\\native\\marionette_tests.exe PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness"
+  },
+  "m1c_readiness": "IMPLEMENTED: canonical boundaries and selected softmax rows are exact; listed streaming intermediates are audited by deterministic recomputation, not invented payload hashes."
+}

@@ -1,5 +1,5 @@
 {
-  "schema": "oct.prometheus.evt2.local-payload-contract.v1",
+  "schema": "oct.prometheus.evt2.local-payload-contract.v2",
   "documentation": "docs/EVT2_LOCAL_PAYLOADS.md",
   "environment": {
     "cache": {"name": "OCT_EVT2_CACHE", "default_windows_relative_path": "%LOCALAPPDATA%\\Oct\\evt2-z-image-turbo"},
@@ -11,7 +11,15 @@
     "cache_aggregate_sha256": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e",
     "captured_block_input_sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
     "captured_timestep_sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2",
-    "canonical_stage_projections_sha256": "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480"
+    "canonical_stage_manifest_sha256": "0cab3d8fe179e70058cb22b37994413649f257268566b2c1dfb1254d2daeae65",
+    "canonical_stage_projections_sha256": "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480",
+    "canonical_final_diagnostic_f32_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43"
+  },
+  "canonical_o19": {
+    "authority_version": "o19-fp32-reference",
+    "derived_from": "OCT_EVT2_CACHE",
+    "relative_root": "canonical/<model-revision>/o19-fp32-reference/noise_refiner.0",
+    "historical_exclusion": "canonical/<model-revision>/noise_refiner.0/capture_04"
   },
   "required_relative_paths": [
     "layers/<checkpoint-sha>/noise_refiner.0/manifest.json",
@@ -20,9 +28,11 @@
     "oracle/<model-revision>/run_02/noise_refiner_0_input.bin",
     "oracle/<model-revision>/run_02/noise_refiner_0_timestep.bin",
     "oracle/<model-revision>/m075/noise_refiner_0_fp16_weight_output.bin",
-    "canonical/<model-revision>/noise_refiner.0/capture_04/manifest.json",
-    "canonical/<model-revision>/noise_refiner.0/capture_04/stages/*.f32.bin",
-    "canonical/<model-revision>/noise_refiner.0/capture_04/final_output.f32.bin"
+    "canonical/<model-revision>/o19-fp32-reference/noise_refiner.0/manifest.json",
+    "canonical/<model-revision>/o19-fp32-reference/noise_refiner.0/o19_stage_manifest.json",
+    "canonical/<model-revision>/o19-fp32-reference/noise_refiner.0/o19_stage_projections.json",
+    "canonical/<model-revision>/o19-fp32-reference/noise_refiner.0/stages/<34 FP32 payloads>.f32.bin",
+    "canonical/<model-revision>/o19-fp32-reference/noise_refiner.0/final_output.f32.bin"
   ],
   "validation_command": "go run ./tools/evt2_payload_check"
 }

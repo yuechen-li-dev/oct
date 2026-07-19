@@ -190,6 +190,9 @@ the pinned oracle revision root. Run compiled Oct M9, then:
 -oracle-root $env:OCT_EVT2_ORACLE -out .tmp\\evt2-oct-oracle\\canonical
 -capture -projections-out internal\\prometheus\\DevelopmentReport\\artifacts\\Evt2OctOracle\\canonical_stage_projections.json`.
 
+For production M1C-M1E acceptance, regenerate the local O19 bundle at the
+versioned derived path in [`docs/EVT2_LOCAL_PAYLOADS.md`](../../../docs/EVT2_LOCAL_PAYLOADS.md), including `-stage-manifest-out`, and run `go run ./tools/evt2_payload_check`. The older `capture_04` tree is historical compatibility evidence and is explicitly excluded from O19 acceptance.
+
 ## 30. Conclusion
 
 **SUCCESS / COMPLETE / READY FOR PRODUCTION M1B–M1E / OCT LAB AUTHORITY

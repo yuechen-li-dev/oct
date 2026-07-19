@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m1d-handoff.v1",
+  "m1c_boundary": "resident attention_residual FP32 [1,1024,3840]",
+  "authority": "canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/o19-fp32-reference/noise_refiner.0",
+  "required_precondition": "exact accepted M1B replay and accepted M1C final residual witness",
+  "handoff_status": "Blocked on M1C transient numerical status and timing/fault closeout; do not treat this as an accepted M1C closeout."
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.timing.v1",
+  "command": "OCT_EVT2_M1B_REAL=1; OCT_EVT2_M1C_REAL=1; out\\prometheus\\native\\marionette_tests.exe PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness",
+  "warm_chained_m1b_m1c_ns": [352598100,358762400,356474000,357584000,354887300,360695600,351636900,356290900,367871200,358656700],
+  "warm_chained_m1b_m1c_stats_ns": {"median": 357029000, "mean": 357546000, "min": 351636900, "p95": 367871200, "stddev": 4340930},
+  "warm_runtime_contract": {"buffer_allocations": 0, "weight_uploads": 0, "pipeline_creations": 0, "descriptor_growth": 0, "payload_reads": 0, "host_tensor_computation": 0, "intermediate_host_bounce": 0},
+  "note": "The native evidence API currently reports the complete chained wall time, not timestamp-query splits for scoring, projection, and residual."
+}

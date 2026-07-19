@@ -1,0 +1,11 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.execution-plan.v1",
+  "entrypoint": "prometheus_reactor_runtime_model_block_execute_m1c",
+  "requires": "exact matching resident M1B replay identity",
+  "host_qkv_ingress": false,
+  "pipelines": ["Nr0AttentionStreaming", "Nr0AttentionProjection", "Nr0AttentionResidual"],
+  "attention_schedule": "one workgroup per (query token, head); 1024 FP32 scores then 1024 FP32 probabilities are workgroup-local",
+  "semantic_contract": {"token_count": 1024, "head_count": 30, "head_width": 128, "scale": "1/sqrt(128)=0.08838834764831843", "causal": false, "reduction_order": "ascending key"},
+  "resident_boundaries": ["attention_aggregation", "attention_projection", "attention_residual"],
+  "precision": "FP32 activations/reductions/projection/norm/residual; FP16 cached weights expand at use"
+}

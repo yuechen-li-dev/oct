@@ -1,0 +1,54 @@
+namespace Prometheus.Production.ZImage;
+
+stream AttentionResidualIO {
+    [binding(0)] Projection: readonly array<f32>;
+    [binding(1)] AttentionNorm2F16: readonly array<u32>;
+    [binding(2)] AttentionGate: readonly array<f32>;
+    [binding(3)] OriginalResidual: readonly array<f32>;
+    [binding(4)] Residual: readwrite array<f32>;
+}
+
+record AttentionResidualParams { Epsilon: f32; TokenCount: u32; ModelWidth: u32; Reserved: u32; }
+
+fn ReciprocalSqrtF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return rsqrt(value); };
+    return result;
+}
+
+// Every workgroup owns a projected token row. It performs the canonical RMS
+// reduction before multiplying the FP32 gate and adding the original M1B
+// residual, preserving the hard FP32 boundary through attention_norm2.
+shader Nr0AttentionResidual {
+    resources AttentionResidualIO;
+    workgroup PartialSquares: array<f32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionResidualParams) -> void {
+        let token: u32 = GroupID.x;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        var squares: f32 = 0.0;
+        for part in 0u..15u {
+            let channel: u32 = lane + part * 256u;
+            let value: f32 = Projection[token * params.ModelWidth + channel];
+            squares = squares + value * value;
+        }
+        PartialSquares[lane] = squares;
+        WorkgroupMemoryBarrierWithSync();
+        if lane == 0u {
+            var total: f32 = 0.0;
+            for sourceLane in 0u..256u { total = total + PartialSquares[sourceLane]; }
+            PartialSquares[0u] = ReciprocalSqrtF32(total / params.ModelWidth + params.Epsilon);
+        }
+        WorkgroupMemoryBarrierWithSync();
+        for part in 0u..15u {
+            let channel: u32 = lane + part * 256u;
+            let weightLanes: float2 = Unpack<F16x2>(AttentionNorm2F16[channel / 2u]);
+            var weight: f32 = weightLanes.x;
+            if (channel % 2u) != 0u { weight = weightLanes.y; }
+            let normalized: f32 = Projection[token * params.ModelWidth + channel] * PartialSquares[0u] * weight;
+            let index: u32 = token * params.ModelWidth + channel;
+            Residual[index] = OriginalResidual[index] + AttentionGate[channel] * normalized;
+        }
+        return;
+    }
+}

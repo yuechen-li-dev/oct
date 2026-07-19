@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.faults.v1",
+  "shared_model_block_coverage": ["pipeline creation failure", "dispatch failure", "audit-copy failure", "uncertain completion quarantine and reap", "stale-output rejection", "partial initialization teardown", "destroy and recreate"],
+  "m1c_specific_coverage": ["matching M1B replay required", "invalid audit stage rejected", "shared dispatch/audit failure propagation"],
+  "remaining_closeout_work": ["device-visible softmax denominator/nonfinite status capture", "M1C-specific fault-injection assertions for every shared fault", "timestamp-query timing splits"],
+  "status": "PARTIAL: do not infer numerical softmax fault detection from the boundary witness."
+}

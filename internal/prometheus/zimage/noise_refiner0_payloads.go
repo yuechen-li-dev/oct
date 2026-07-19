@@ -16,7 +16,10 @@ const (
 	NoiseRefiner0CacheAggregateSHA256   = "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"
 	NoiseRefiner0OracleRevision         = "f332072aa78be7aecdf3ee76d5c247082da564a6"
 	NoiseRefiner0FP16ReferenceSHA256    = "7e1e6d3d802402a5f0055b6fb257ef04a57cff8166b5925dcce8f9a235f281a7"
+	NoiseRefiner0StageManifestSHA256    = "0cab3d8fe179e70058cb22b37994413649f257268566b2c1dfb1254d2daeae65"
 	NoiseRefiner0StageProjectionsSHA256 = "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480"
+	NoiseRefiner0FinalDiagnosticSHA256  = "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43"
+	NoiseRefiner0O19CanonicalVersion    = "o19-fp32-reference"
 	NoiseRefiner0PayloadGuide           = "See docs/EVT2_LOCAL_PAYLOADS.md"
 )
 
@@ -85,6 +88,19 @@ func noiseRefiner0CacheBlockPath(root string) string {
 	return filepath.Join(root, "layers", NoiseRefiner0SourceCheckpointSHA256, "noise_refiner.0")
 }
 
+// NoiseRefiner0O19CanonicalRoot is the only normative full-stage bundle for
+// M1C-M1E. It deliberately derives from OCT_EVT2_CACHE, rather than adding a
+// third ambient variable that could accidentally select a historical capture.
+func NoiseRefiner0O19CanonicalRoot(cacheRoot string) string {
+	return filepath.Join(cacheRoot, "canonical", NoiseRefiner0OracleRevision, NoiseRefiner0O19CanonicalVersion, "noise_refiner.0")
+}
+
+// NoiseRefiner0HistoricalCaptureRoot is forensic compatibility evidence. It
+// is never an M1C-M1E numerical authority.
+func NoiseRefiner0HistoricalCaptureRoot(cacheRoot string) string {
+	return filepath.Join(cacheRoot, "canonical", NoiseRefiner0OracleRevision, "noise_refiner.0", "capture_04")
+}
+
 func hashReader(reader io.Reader) (string, error) {
 	hash := sha256.New()
 	if _, err := io.Copy(hash, reader); err != nil {
@@ -113,6 +129,9 @@ func noiseRefiner0Aggregate(manifest CacheManifest) (string, error) {
 func noiseRefiner0Payload(path, role, dtype string, shape []uint64, expectedBytes uint64, expectedSHA256 string) (NoiseRefiner0Payload, error) {
 	info, err := os.Stat(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return NoiseRefiner0Payload{}, fmt.Errorf("noise_refiner.0 %s payload missing: %s", role, path)
+		}
 		return NoiseRefiner0Payload{}, fmt.Errorf("noise_refiner.0 %s: %w", role, err)
 	}
 	if uint64(info.Size()) != expectedBytes {
@@ -225,6 +244,9 @@ func LoadNoiseRefiner0PayloadBundle(paths NoiseRefiner0PayloadPaths) (bundle Noi
 	capturePath := filepath.Join(paths.OracleRoot, "run_02", "capture.json")
 	captureBytes, err := os.ReadFile(capturePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return NoiseRefiner0PayloadBundle{}, fmt.Errorf("noise_refiner.0 oracle capture manifest absent: %s", capturePath)
+		}
 		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("noise_refiner.0 oracle capture: %w", err)
 	}
 	var capture noiseRefiner0Capture

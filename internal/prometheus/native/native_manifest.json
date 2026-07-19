@@ -49,7 +49,10 @@
     "reactor_vulkan_tiled_spirv.h", "reactor_vulkan_reduction_row_sum_spirv.h",
     "reactor_vulkan_reduction_row_max_spirv.h", "reactor_vulkan_reduction_softmax_exp_sum_spirv.h",
     "reactor_vulkan_reduction_softmax_normalize_spirv.h", "reactor_vulkan_reduction_softmax_fused_spirv.h",
-    "reactor_vulkan_model_block_resident_identity_spirv.h"
+    "reactor_vulkan_model_block_resident_identity_spirv.h",
+    "reactor_vulkan_zimage_nr0_attention_streaming_spirv.h",
+    "reactor_vulkan_zimage_nr0_attention_projection_spirv.h",
+    "reactor_vulkan_zimage_nr0_attention_residual_spirv.h"
   ],
   "platform_exceptions": {"windows": [], "linux": []}
 }

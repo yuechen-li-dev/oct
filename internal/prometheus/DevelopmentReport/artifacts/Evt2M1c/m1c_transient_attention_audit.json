@@ -1,0 +1,14 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.transient-attention-audit.v1",
+  "authority": "o19-fp32-reference",
+  "selected_rows": [
+    {"query_token": 0, "head": 0, "scaled_logits": {"path": "stages/attention_logits_token0_head0.f32.bin", "sha256": "d2dad31fb20cce91e6ab99ed28733490e84694e41ebb897dadb9fed45f36796e"}, "probabilities": {"path": "stages/attention_probabilities_token0_head0.f32.bin", "sha256": "257418f931e61d32cdc504a00ecdc68f5d7b182e33ba3c0d6571de71bd25d029"}},
+    {"query_token": 1023, "head": 29, "scaled_logits": {"path": "stages/attention_logits_token1023_head29.f32.bin", "sha256": "86b137d8c182d329c43798fef44d5288882fff6fd6c81b7eac4933a4e0b67e05"}, "probabilities": {"path": "stages/attention_probabilities_token1023_head29.f32.bin", "sha256": "375efa4d2968272c2a71bb354ea14748f23fdb39c1d7a6053b4fc5863ba05738"}}
+  ],
+  "required_observations": ["raw Q dot K", "scaled logits", "row maximum", "shifted logits", "exponentials", "row sum", "probabilities", "probability row sum", "probability times V", "head output", "aggregation"],
+  "workgroup_contract": {"raw_to_scaled": "raw * 1/sqrt(128)", "softmax": "exp(score-max)/sum(exp(score-max))", "non_causal": true, "key_order": "ascending 0..1023"},
+  "persistent_payloads": ["selected scaled logits", "selected probabilities", "aggregation"],
+  "not_persistent": ["raw logits", "row max", "shifted logits", "exponentials", "row sum", "per-head output"],
+  "runtime_observation_status": "PENDING: production shader currently retains these as workgroup-local state without a selected-coordinate audit/status buffer.",
+  "conclusion": "The payload authority and downstream aggregation comparison pass, but this artifact deliberately does not claim the required transient GPU observations have passed."
+}

@@ -113,7 +113,7 @@ func main() {
 	if err = os.WriteFile(filepath.Join(*out, "final_output.f32.bin"), final, 0644); err != nil {
 		panic(err)
 	}
-	manifest := map[string]any{"schema": "oct.prometheus.evt2m1b0r.canonical-local-bundle.v1", "source_revision": zimage.CanonicalNoiseRefiner0SourceRevision, "rope_frame": 33, "final_output": map[string]any{"relative_path": "final_output.f32.bin", "sha256": hash(final), "shape": []int{1, 1024, 3840}, "dtype": "float32"}, "capture": *capture}
+	manifest := map[string]any{"schema": "oct.prometheus.evt2.o19.fp32-reference-bundle.v1", "source_revision": zimage.CanonicalNoiseRefiner0SourceRevision, "rope_frame": 33, "numerical_policy": "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode", "final_output": map[string]any{"relative_path": "final_output.f32.bin", "sha256": hash(final), "shape": []int{1, 1024, 3840}, "dtype": "float32"}, "capture": *capture}
 	if *capture {
 		names := make([]string, 0, len(result.Stages))
 		for name := range result.Stages {

@@ -1,0 +1,11 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.boundary-audit.v1",
+  "authority": "o19-fp32-reference",
+  "shape": [1,1024,3840], "layout": "row-major contiguous", "dtype": "float32",
+  "boundaries": [
+    {"stage": "attention_aggregation", "finite": true, "min": -273.013, "max": 255.06, "l2": 0.0349641, "linf": 0.000274658, "relative_l2": 2.41332e-7, "rms": 1.76322e-5, "first_mismatching_coordinate": 1, "payload_sha256": "94260ffe6d6647dcae418deb8b19b8adda442d412e3dd84922e2366fd042ec2d"},
+    {"stage": "attention_projection", "finite": true, "min": -7867.75, "max": 136265, "l2": 0.983439, "linf": 0.0546875, "relative_l2": 2.30291e-7, "rms": 0.000495943, "first_mismatching_coordinate": 0, "payload_sha256": "9296c23a7f26d49a33b4b54def202f1833d4771a79f83ed9597b16fb792d569c"},
+    {"stage": "attention_residual", "finite": true, "min": -6.84375, "max": 34.1046, "l2": 0.00188878, "linf": 0.000154495, "relative_l2": 1.45129e-6, "rms": 9.52504e-7, "first_mismatching_coordinate": 35, "payload_sha256": "ff02d4bf4acfc0dc37f2ae8303e72ba8fa2dbc6bfa32f258228b652ba1498856"}
+  ],
+  "attention_norm2_and_gated_product": "computed inside the FP32 residual workgroup and not retained as separate resident payloads; the final residual boundary is the downstream witness."
+}

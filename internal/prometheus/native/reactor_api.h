@@ -602,6 +602,7 @@ enum {
   PROM_MODEL_BLOCK_DETAIL_INGRESS_AUDIT_MISMATCH = -6915,
   PROM_MODEL_BLOCK_DETAIL_INGRESS_INPUT_SIZE_MISMATCH = -6916,
   PROM_MODEL_BLOCK_DETAIL_INGRESS_TIMESTEP_SIZE_MISMATCH = -6917,
+  PROM_MODEL_BLOCK_DETAIL_M1C_SOFTMAX_INVALID = -6918,
 };
 
 enum {
@@ -689,6 +690,28 @@ typedef struct PrometheusModelBlockM1BExecuteRequest {
   float* audit_output;
   uint64_t audit_element_capacity;
 } PrometheusModelBlockM1BExecuteRequest;
+
+/* M1C consumes only the resident M1B Q/K/V views, FP32 gate, and original
+   residual. The prefix replay identity prevents a stale or substituted QKV
+   buffer from being treated as a valid attention ingress. */
+typedef struct PrometheusModelBlockM1CExecuteRequest {
+  uint32_t struct_size;
+  uint64_t m1b_prefix_replay_identity;
+  uint64_t output_identity;
+  float* output;
+  uint64_t output_element_capacity;
+  uint32_t audit_stage;
+  float* transient_audit;
+  uint64_t transient_audit_element_capacity;
+} PrometheusModelBlockM1CExecuteRequest;
+
+enum {
+  PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION = 1u,
+  PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION = 2u,
+  PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL = 3u,
+};
+
+#define PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS 64u
 
 typedef struct PrometheusModelBlockEvidence {
   uint32_t struct_size;
@@ -1782,6 +1805,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1b(
     void* handle, uint64_t block_id, const PrometheusModelBlockM1BExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1c(
+    void* handle, uint64_t block_id, const PrometheusModelBlockM1CExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);

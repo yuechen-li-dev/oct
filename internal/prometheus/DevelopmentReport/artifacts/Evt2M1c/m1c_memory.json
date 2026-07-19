@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.memory.v1",
+  "streaming_scratch": {"scores_bytes_per_workgroup": 4096, "probabilities_bytes_per_workgroup": 4096, "total_bytes_per_workgroup": 8192, "persistent_full_logits_or_probabilities": false},
+  "resident_m1c_boundaries": {"attention_bytes": 15728640, "projection_bytes": 15728640, "residual_bytes": 15728640},
+  "measured": {"persistent_bytes": 361820672, "reusable_bytes": 245884928, "audit_bytes": 47185920, "peak_device_bytes": 654891520, "cold_buffer_allocations": 32, "pipelines": 9, "descriptor_sets": 9},
+  "interpretation": "The three resident M1C boundaries are intentionally retained; full [1024,1024] logits/probability tensors are not."
+}
