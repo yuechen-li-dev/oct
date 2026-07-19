@@ -823,6 +823,15 @@ typedef struct PrometheusNoiseRefinerFinalAuditRequest {
   uint64_t output_element_capacity;
 } PrometheusNoiseRefinerFinalAuditRequest;
 
+typedef struct PrometheusNoiseRefinerStaticAuditRequest {
+  uint32_t struct_size;
+  uint64_t lock_identity;
+  uint64_t input_generation;
+  uint64_t output_identity;
+  void* audit_arena;
+  uint64_t audit_arena_capacity_bytes;
+} PrometheusNoiseRefinerStaticAuditRequest;
+
 enum {
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED = 2u,
@@ -1951,6 +1960,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_rebind(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_execute_resident(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_execute_static_audit(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerStaticAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_audit_final(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,

@@ -1,0 +1,217 @@
+namespace Prometheus.Production.ZImage;
+
+// Audit-only vocabulary for the lock-derived persistent-stage schedule.  This
+// shader is deliberately not a tensor analytics framework: one dispatch owns
+// one declared FP32 range and writes one fixed 256-byte record.
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream PersistentAuditIO {
+    [binding(0)] Source0: readonly array<f32>;
+    [binding(1)] Source1: readonly array<f32>;
+    [binding(2)] Source2: readonly array<f32>;
+    [binding(3)] AuditArena: readwrite array<u32>;
+}
+
+record PersistentAuditParams {
+    SourceBaseElement: u32;
+    ElementCount: u32;
+    StageId: u32;
+    ExecutionGeneration: u32;
+    Part0ElementCount: u32;
+    Part1ElementCount: u32;
+    DestinationWordOffset: u32;
+    ProjectionKeyCount: u32;
+    SourceMode: u32;
+    ProjectionKeys: array<u32, 15u>;
+}
+
+fn SquareRootF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return sqrt(value); };
+    return result;
+}
+
+// Classification is a closed, inspectable choice.  The finite payload keeps
+// the arithmetic path explicit while NaN and infinity remain separately
+// countable audit facts.
+enum AuditValueClass {
+    Finite { Value: f32; }
+    NotANumber;
+    Infinity;
+}
+
+fn ClassifyAuditValue(value: f32) -> AuditValueClass {
+    if value != value { return AuditValueClass.NotANumber; }
+    if (value - value) != 0.0 { return AuditValueClass.Infinity; }
+    return AuditValueClass.Finite { Value: value };
+}
+
+// The record has 64 u32 words.  Min/max are over finite values only.  If a
+// range has no finite values, the finite flag is zero and min/max/RMS carry
+// quiet-NaN bit patterns.  SumSquares is finite-only FP32.
+//
+//   0 stage id, 1 generation, 2 count, 3 flags,
+//   4 NaN count, 5 infinity count, 6 finite count, 7 projection count,
+//   8 min, 9 max, 10 sum squares, 11 RMS, 12 completion, 13 status,
+//   14..15 reserved, 16..47 (source index,value) projection pairs.
+//
+// One fixed 256-lane workgroup uses a fixed binary tree.  Each lane consumes
+// its increasing 256-stride subsequence, so repeated identical executions are
+// stable under the declared GPU arithmetic semantics.  This is not asserted
+// to be bit-identical to a CPU serial reduction.
+shader Nr0PersistentAuditSummary {
+    resources PersistentAuditIO;
+    workgroup SumSquares: array<f32, 256u>;
+    workgroup Minimums: array<f32, 256u>;
+    workgroup Maximums: array<f32, 256u>;
+    workgroup FiniteCounts: array<u32, 256u>;
+    workgroup NanCounts: array<u32, 256u>;
+    workgroup InfinityCounts: array<u32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(thread: ComputeThread, params: PersistentAuditParams) -> void {
+        let lane: u32 = thread.GroupIndex;
+        var sumSquares: f32 = 0.0;
+        var minimum: f32 = Bitcast<f32>(2139095040u);
+        var maximum: f32 = Bitcast<f32>(4286578688u);
+        var finiteCount: u32 = 0u;
+        var nanCount: u32 = 0u;
+        var infinityCount: u32 = 0u;
+
+        for relative in lane..params.ElementCount step 256u {
+            var value: f32 = 0.0;
+            if params.SourceMode == 1u {
+                let token: u32 = relative / 3840u;
+                let channel: u32 = relative - token * 3840u;
+                value = Source0[token * 11520u + params.SourceBaseElement + channel];
+            } else {
+                if relative < params.Part0ElementCount {
+                    value = Source0[params.SourceBaseElement + relative];
+                } else {
+                    let afterPart0: u32 = relative - params.Part0ElementCount;
+                    if afterPart0 < params.Part1ElementCount {
+                        value = Source1[afterPart0];
+                    } else {
+                        value = Source2[afterPart0 - params.Part1ElementCount];
+                    }
+                }
+            }
+            let classification: AuditValueClass = ClassifyAuditValue(value);
+            let nanIncrement: u32 = match classification {
+                AuditValueClass.NotANumber => 1u
+                AuditValueClass.Infinity => 0u
+                AuditValueClass.Finite(payload) => 0u
+            };
+            let infinityIncrement: u32 = match classification {
+                AuditValueClass.NotANumber => 0u
+                AuditValueClass.Infinity => 1u
+                AuditValueClass.Finite(payload) => 0u
+            };
+            let finiteValue: f32 = match classification {
+                AuditValueClass.NotANumber => 0.0
+                AuditValueClass.Infinity => 0.0
+                AuditValueClass.Finite(payload) => payload.Value
+            };
+            let finiteIncrement: u32 = match classification {
+                AuditValueClass.NotANumber => 0u
+                AuditValueClass.Infinity => 0u
+                AuditValueClass.Finite(payload) => 1u
+            };
+            nanCount = nanCount + nanIncrement;
+            infinityCount = infinityCount + infinityIncrement;
+            if finiteIncrement != 0u {
+                finiteCount = finiteCount + 1u;
+                sumSquares = sumSquares + finiteValue * finiteValue;
+                if finiteValue < minimum { minimum = finiteValue; }
+                if finiteValue > maximum { maximum = finiteValue; }
+            }
+        }
+        SumSquares[lane] = sumSquares;
+        Minimums[lane] = minimum;
+        Maximums[lane] = maximum;
+        FiniteCounts[lane] = finiteCount;
+        NanCounts[lane] = nanCount;
+        InfinityCounts[lane] = infinityCount;
+        WorkgroupMemoryBarrierWithSync();
+
+        var stride: u32 = 128u;
+        for round in 0u..8u {
+            if lane < stride {
+                let partner: u32 = lane + stride;
+                SumSquares[lane] = SumSquares[lane] + SumSquares[partner];
+                FiniteCounts[lane] = FiniteCounts[lane] + FiniteCounts[partner];
+                NanCounts[lane] = NanCounts[lane] + NanCounts[partner];
+                InfinityCounts[lane] = InfinityCounts[lane] + InfinityCounts[partner];
+                if Minimums[partner] < Minimums[lane] { Minimums[lane] = Minimums[partner]; }
+                if Maximums[partner] > Maximums[lane] { Maximums[lane] = Maximums[partner]; }
+            }
+            WorkgroupMemoryBarrierWithSync();
+            stride = stride / 2u;
+        }
+
+        if lane == 0u {
+            let destination: u32 = params.DestinationWordOffset;
+            let finite: u32 = FiniteCounts[0u];
+            var flags: u32 = 0u;
+            if finite == params.ElementCount { flags = 1u; }
+            var rms: f32 = Bitcast<f32>(2143289344u);
+            var minimumOut: f32 = Minimums[0u];
+            var maximumOut: f32 = Maximums[0u];
+            if finite != 0u {
+                rms = SquareRootF32(SumSquares[0u] / finite);
+            } else {
+                minimumOut = Bitcast<f32>(2143289344u);
+                maximumOut = Bitcast<f32>(2143289344u);
+            }
+            AuditArena[destination] = params.StageId;
+            AuditArena[destination + 1u] = params.ExecutionGeneration;
+            AuditArena[destination + 2u] = params.ElementCount;
+            AuditArena[destination + 3u] = flags;
+            AuditArena[destination + 4u] = NanCounts[0u];
+            AuditArena[destination + 5u] = InfinityCounts[0u];
+            AuditArena[destination + 6u] = finite;
+            AuditArena[destination + 7u] = params.ProjectionKeyCount;
+            AuditArena[destination + 8u] = Bitcast<u32>(minimumOut);
+            AuditArena[destination + 9u] = Bitcast<u32>(maximumOut);
+            AuditArena[destination + 10u] = Bitcast<u32>(SumSquares[0u]);
+            AuditArena[destination + 11u] = Bitcast<u32>(rms);
+            AuditArena[destination + 12u] = 1u;
+            AuditArena[destination + 13u] = 0u;
+            for projection in 0u..15u {
+                if projection < params.ProjectionKeyCount {
+                    let sourceIndex: u32 = params.ProjectionKeys[projection];
+                    let pairOffset: u32 = destination + 16u + projection * 2u;
+                    if sourceIndex < params.ElementCount {
+                        var projectionValue: f32 = 0.0;
+                        if params.SourceMode == 1u {
+                            let token: u32 = sourceIndex / 3840u;
+                            let channel: u32 = sourceIndex - token * 3840u;
+                            projectionValue = Source0[token * 11520u + params.SourceBaseElement + channel];
+                        } else {
+                            if sourceIndex < params.Part0ElementCount {
+                                projectionValue = Source0[params.SourceBaseElement + sourceIndex];
+                            } else {
+                                let afterPart0: u32 = sourceIndex - params.Part0ElementCount;
+                                if afterPart0 < params.Part1ElementCount {
+                                    projectionValue = Source1[afterPart0];
+                                } else {
+                                    projectionValue = Source2[afterPart0 - params.Part1ElementCount];
+                                }
+                            }
+                        }
+                        AuditArena[pairOffset] = sourceIndex;
+                        AuditArena[pairOffset + 1u] = Bitcast<u32>(projectionValue);
+                    } else {
+                        AuditArena[pairOffset] = sourceIndex;
+                        AuditArena[pairOffset + 1u] = Bitcast<u32>(Bitcast<f32>(2143289344u));
+                        AuditArena[destination + 13u] = 1u;
+                    }
+                }
+            }
+        }
+        return;
+    }
+}

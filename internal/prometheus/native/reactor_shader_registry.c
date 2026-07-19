@@ -36,6 +36,7 @@
 #include "reactor_vulkan_zimage_nr0_ffn_w1_w3_spirv.h"
 #include "reactor_vulkan_zimage_nr0_ffn_gate_spirv.h"
 #include "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h"
+#include "reactor_vulkan_zimage_nr0_persistent_audit_summary_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -151,6 +152,17 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/nr0_ffn_w2_residual.sdslv",
     "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 7u, 16u, 0u, 1u, 10240u },
+  /* Audit-only: this asset is deliberately absent from the model's 13-pipeline
+     execution portfolio.  It can be instantiated only by the static audit
+     batch owner, so no-audit model creation and production execution identity
+     remain unchanged. */
+  { 37u, "zimage-nr0-persistent-audit-summary", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_persistent_audit_summary_spirv,
+    sizeof(k_prom_zimage_nr0_persistent_audit_summary_spirv),
+    "Nr0PersistentAuditSummary_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_persistent_audit_summary.sdslv",
+    "reactor_vulkan_zimage_nr0_persistent_audit_summary_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 4u, 96u, 0u, 1u, 10485760u },
 };
 
 #define REDUCTION_ASSET(id, label, words, entry, source, header, inline_count, role, max_width) \

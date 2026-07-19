@@ -298,6 +298,7 @@ typedef struct prom_model_block_m1b_pipeline {
 
 #define PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT 3u
 #define PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT 4u
+#define PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT 13u
 
 typedef struct prom_model_block_state {
   uint64_t block_id;
@@ -380,6 +381,7 @@ typedef struct prom_model_block_state {
   prom_model_block_m1b_pipeline m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline audit_pipelines[PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT];
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   /* A complete candidate bundle is uploaded here before the descriptor
      transaction.  It is never visible to a dispatch until commit. */
@@ -691,6 +693,9 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
     PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_execute_static_audit_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerStaticAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_noise_refiner_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,

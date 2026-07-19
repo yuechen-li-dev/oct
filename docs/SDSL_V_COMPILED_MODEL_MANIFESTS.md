@@ -27,8 +27,10 @@ go run ./tools/compiled_model_lock
 go run ./tools/compiled_model_lock -check
 ```
 
-`-check` rejects a missing or stale lock. The current runtime seam compares
-the resolved family, parameter-set aggregate, ABI and generation contract with
-the closed native NoiseRefiner rebind API. Full native registry consumption is
-deferred to EVT-2 M2A closeout; context refiners, arbitrary graphs, package
-download, hot reload, weight embedding, and model arithmetic remain excluded.
+`-check` rejects a missing or stale lock. The runtime compares the resolved
+family, parameter-set aggregate, ABI and generation contract with the closed
+native NoiseRefiner rebind API. The same lock directly generates the native
+audit schedule and bounded arena proof; native execution consumes those
+generated constants and has no hand-maintained model or audit-stage registry.
+Context refiners, arbitrary graphs, package download, hot reload, weight
+embedding, and model arithmetic remain excluded.

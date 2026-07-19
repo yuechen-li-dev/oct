@@ -1,5 +1,5 @@
 {
-  "lock_identity": "50fbf0a02d11a884f3589cf8b44e19b9dab5d5092a6c5db3f0a6f9130cd928d7",
+  "lock_identity": "b3660657c5546e9c289dcea9ae230e6c2b9bb860123fef37c9be5bda8d55ce67",
   "manifest_path": "internal/prometheus/models/zimage-turbo/manifest.oct",
   "schema": "oct.sdslv.compiled-model-lock-identity.v1"
 }

@@ -28,7 +28,7 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(29), prom_shader_registry_shader_asset_count(), "production assets must include the fixed M1D FFN portfolio");
+  ASSERT_EQUAL(static_cast<std::size_t>(30), prom_shader_registry_shader_asset_count(), "production assets must include the audit-only persistent summary shader");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
@@ -127,6 +127,12 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
   ASSERT_EQUAL(8u, resident->push_constant_bytes, "resident proof owns its exact push constants");
   ASSERT_TRUE(std::string(resident->source_path).find("/production/model_block/") != std::string::npos,
               "resident proof source must live in production ownership");
+  const auto* audit = prom_shader_registry_find_shader(37u);
+  ASSERT_TRUE(audit != nullptr, "the static persistent audit shader must be registered");
+  ASSERT_EQUAL(4u, audit->descriptor_binding_count, "audit shader owns three closed source views and the arena binding");
+  ASSERT_EQUAL(96u, audit->push_constant_bytes, "audit shader receives the bounded lock-derived projection keys");
+  ASSERT_TRUE(std::string(audit->source_path).find("persistent_audit_summary.sdslv") != std::string::npos,
+              "audit shader stays isolated from the model arithmetic sources");
 }
 FACT(PrometheusComputePipelineInstancesMatchDescriptors) {
   std::array<VkPipeline, PROM_COMPUTE_PIPELINE_COUNT> pipelines{};

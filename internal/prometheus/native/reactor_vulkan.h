@@ -3029,6 +3029,9 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
 int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_execute_static_audit_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerStaticAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_noise_refiner_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);

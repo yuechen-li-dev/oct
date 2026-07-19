@@ -29,6 +29,8 @@ func main() {
 	out := flag.String("out", "", "lock-tagon.octagon output path (defaults beside manifest)")
 	check := flag.Bool("check", false, "require an existing byte-identical lock")
 	nativeOut := flag.String("native-out", "", "generated native descriptor header (defaults beside lock)")
+	auditNativeOut := flag.String("audit-native-out", "", "generated native audit schedule header (defaults beside lock)")
+	auditLayoutOut := flag.String("audit-layout-out", "", "generated audit arena layout JSON (defaults beside lock)")
 	flag.Parse()
 	lockPath := *out
 	if lockPath == "" {
@@ -37,6 +39,14 @@ func main() {
 	nativePath := *nativeOut
 	if nativePath == "" {
 		nativePath = filepath.Join(filepath.Dir(lockPath), "resolved_descriptor.h")
+	}
+	auditNativePath := *auditNativeOut
+	if auditNativePath == "" {
+		auditNativePath = filepath.Join(filepath.Dir(lockPath), "resolved_audit_schedule.h")
+	}
+	auditLayoutPath := *auditLayoutOut
+	if auditLayoutPath == "" {
+		auditLayoutPath = filepath.Join(filepath.Dir(lockPath), "resolved_audit_arena.json")
 	}
 	data, err := os.ReadFile(*manifest)
 	if err != nil {
@@ -68,7 +78,7 @@ func main() {
 			fail("compiled-model declaration is missing required authority %q", required)
 		}
 	}
-	manifestID := digest(data)
+	manifestID := resolvedManifestIdentity(data)
 	lock := render(manifestID)
 	if *check {
 		existing, readErr := os.ReadFile(lockPath)
@@ -85,6 +95,13 @@ func main() {
 			fail("generate native descriptor: %v", generateErr)
 		} else if actual, actualErr := os.ReadFile(nativePath); actualErr != nil || string(actual) != generated {
 			fail("stale native descriptor: %s differs from lock-tagon; run compiled_model_lock", nativePath)
+		}
+		if generated, layout, generateErr := auditScheduleProjection(existing); generateErr != nil {
+			fail("generate native audit schedule: %v", generateErr)
+		} else if actual, actualErr := os.ReadFile(auditNativePath); actualErr != nil || string(actual) != generated {
+			fail("stale native audit schedule: %s differs from lock-tagon; run compiled_model_lock", auditNativePath)
+		} else if actual, actualErr := os.ReadFile(auditLayoutPath); actualErr != nil || string(actual) != layout {
+			fail("stale audit arena layout: %s differs from lock-tagon", auditLayoutPath)
 		}
 		fmt.Printf("compiled model lock valid: %s\n", digest([]byte(lock)))
 		return
@@ -105,6 +122,16 @@ func main() {
 	if err := os.WriteFile(nativePath, []byte(projection), 0o644); err != nil {
 		fail("write native descriptor: %v", err)
 	}
+	auditSchedule, auditLayout, auditErr := auditScheduleProjection([]byte(lock))
+	if auditErr != nil {
+		fail("generate native audit schedule: %v", auditErr)
+	}
+	if err := os.WriteFile(auditNativePath, []byte(auditSchedule), 0o644); err != nil {
+		fail("write native audit schedule: %v", err)
+	}
+	if err := os.WriteFile(auditLayoutPath, []byte(auditLayout), 0o644); err != nil {
+		fail("write audit arena layout: %v", err)
+	}
 	fmt.Printf("wrote %s\ncompiled model lock identity: %s\n", lockPath, digest([]byte(lock)))
 }
 
@@ -119,6 +146,15 @@ func hasFunction(functions []ast.FunctionDecl, name string) bool {
 
 func digest(data []byte) string       { sum := sha256.Sum256(data); return hex.EncodeToString(sum[:]) }
 func fail(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...); os.Exit(1) }
+
+// The authored file is parsed and its closed facts are validated above.  The
+// manifest identity normalizes only platform line endings, so the same authored
+// declaration resolves identically on Windows and Unix while every semantic
+// byte remains part of the accepted lock.
+func resolvedManifestIdentity(data []byte) string {
+	normalized := strings.ReplaceAll(string(data), "\r\n", "\n")
+	return digest([]byte(normalized))
+}
 
 func render(manifestID string) string {
 	semanticID := digest([]byte("ZImageTurbo|f332072aa78be7aecdf3ee76d5c247082da564a6|NoiseRefiner|ModelEmbedding.FP32|ZImageReferenceFp32"))

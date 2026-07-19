@@ -1,0 +1,31 @@
+{
+  "schema": "prometheus.evt2.m2a-static-audit-closeout.v1",
+  "status": "SUCCESS",
+  "lock_identity": "b3660657c5546e9c289dcea9ae230e6c2b9bb860123fef37c9be5bda8d55ce67",
+  "model_semantic_identity": "a8faf8923ab4c7489f04f790f9778958c21068eb7875eecf222a859a3291d436",
+  "production_execution_identity": "0868bd2b1127fa750fed1e826aeeb78ace75058efb3b6da8e09d031eedb16f52",
+  "audit_profile_identity": "de558800cbe07b4a9403c4ca92e378b040994778718c148174e0c72c22e9a80a",
+  "audit_shader_id": 37,
+  "persistent_stage_count": 29,
+  "projection_key_count": 143,
+  "arena_ceiling_bytes": 47186176,
+  "arena_required_bytes": 189696,
+  "arena_slack_bytes": 46996480,
+  "execution": {
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "validation_enabled": true,
+    "submissions_per_static_batch": 1,
+    "readbacks_per_static_batch": 1,
+    "prefix_replay": false,
+    "warm_allocations": 0,
+    "module_recreation": false,
+    "descriptor_rebind": false
+  },
+  "final_block1": {
+    "relative_l2": 0.00000127829,
+    "linf": 0.000152588,
+    "accepted_threshold": 0.00005,
+    "canonical_authority": "f332072aa78be7aecdf3ee76d5c247082da564a6"
+  },
+  "m2b_handoff": "Context-refiner family remains excluded and must introduce its separate non-modulated contract and tensor authority."
+}

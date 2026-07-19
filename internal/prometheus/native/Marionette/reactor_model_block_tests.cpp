@@ -2,6 +2,7 @@
 
 #include "../reactor_api.h"
 #include "../reactor_vulkan.h"
+#include "../../models/zimage-turbo/resolved_audit_schedule.h"
 
 #include <algorithm>
 #include <array>
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <sstream>
 #include <vector>
@@ -233,8 +235,10 @@ FACT(PrometheusM1BPreAttentionOwnerCreatesIngressAndFiveModelPipelines)
         return;
     }
     ASSERT_EQUAL(PROM_MODEL_BLOCK_MAX_WEIGHTS, evidence.weight_count, "M1B declares all thirteen immutable weights");
-    ASSERT_EQUAL(13u, evidence.pipeline_create_count, "cold creation materializes the fixed M1B, M1C, and M1D portfolio");
-    ASSERT_EQUAL(13u, evidence.descriptor_set_count, "cold creation owns one fixed descriptor set per shader");
+    ASSERT_EQUAL(26u, evidence.pipeline_create_count,
+                 "cold creation owns 13 model pipelines plus 13 immutable audit-source views");
+    ASSERT_EQUAL(26u, evidence.descriptor_set_count,
+                 "cold creation owns every model and audit descriptor set before execution");
     ASSERT_TRUE(evidence.persistent_bytes == 361820672u, "M1B immutable arena has the accepted cache byte count");
     ASSERT_TRUE(evidence.cold_buffer_allocation_count >= 26u, "M1B preallocates all resident and bounded-audit buffers");
     ASSERT_EQUAL(0u, evidence.weight_upload_count, "creation does not permit an implicit warm upload");
@@ -374,7 +378,7 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
         SKIP("Vulkan runtime unavailable");
     }
     PrometheusModelBlockCreateRequest create = make_m1b_request();
-    create.audit_bytes = 1024ull * 11520ull * sizeof(float);
+    create.audit_bytes = PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES;
     std::uint64_t blockID = 0u;
     PrometheusModelBlockEvidence evidence{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
@@ -803,7 +807,7 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
             }
             PrometheusNoiseRefinerRebindRequest rebind{};
             rebind.struct_size = sizeof(rebind);
-            rebind.lock_identity = 0x50fbf0a02d11a884ull;
+            rebind.lock_identity = 0xb3660657c5546e9cull;
             rebind.model_local_block_id = 1u;
             rebind.upload_count = static_cast<std::uint32_t>(block1Uploads.size());
             rebind.uploads = block1Uploads.data();
@@ -865,87 +869,159 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
             const double block1RelativeL2 = std::sqrt(block1ErrorSquares) / std::sqrt(block1ReferenceSquares);
             ASSERT_TRUE(std::isfinite(block1RelativeL2) && block1RelativeL2 <= 5.0e-5,
                         "block-1 resident final matches the canonical FP32 authority within the accepted compiled-block threshold");
-            struct Block1PersistentStage {
-                const char* name;
-                std::uint32_t family;
-                std::uint32_t stage;
-                std::uint32_t elements;
-            };
-            const std::array<Block1PersistentStage, 29> block1PersistentStages{{
-                {"timestep_linear", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION, 15360u},
-                {"attention_scale_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_RAW, 3840u},
-                {"attention_scale_adjusted", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_ADJUSTED, 3840u},
-                {"attention_gate_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_RAW, 3840u},
-                {"attention_gate_tanh", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_TANH, 3840u},
-                {"mlp_scale_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_RAW, 3840u},
-                {"mlp_scale_adjusted", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_ADJUSTED, 3840u},
-                {"mlp_gate_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_RAW, 3840u},
-                {"mlp_gate_tanh", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_TANH, 3840u},
-                {"attention_norm", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM, 1024u * 3840u},
-                {"attention_modulated", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_MODULATED, 1024u * 3840u},
-                {"qkv", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV, 1024u * 3u * 3840u},
-                {"q", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_Q, 1024u * 3840u},
-                {"k", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_K, 1024u * 3840u},
-                {"v", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_V, 1024u * 3840u},
-                {"q_norm", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_Q_NORM, 1024u * 3840u},
-                {"k_norm", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM, 1024u * 3840u},
-                {"q_rope", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q, 1024u * 3840u},
-                {"k_rope", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K, 1024u * 3840u},
-                {"attention_aggregation", PROM_NOISE_REFINER_AUDIT_M1C, PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION, 1024u * 3840u},
-                {"attention_projection", PROM_NOISE_REFINER_AUDIT_M1C, PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION, 1024u * 3840u},
-                {"attention_residual", PROM_NOISE_REFINER_AUDIT_M1C, PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, 1024u * 3840u},
-                {"ffn_norm", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM, 1024u * 3840u},
-                {"ffn_modulated", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED, 1024u * 3840u},
-                {"w1", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_W1, 1024u * 10240u},
-                {"w3", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_W3, 1024u * 10240u},
-                {"ffn_gated_hidden", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN, 1024u * 10240u},
-                {"w2", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_W2, 1024u * 3840u},
-                {"final_output", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, 1024u * 3840u},
-            }};
-            std::vector<float> block1StageAudit(1024u * 10240u);
+            const std::array<const char*, PROM_ZIMAGE_TURBO_AUDIT_STAGE_COUNT> block1PersistentStages{{
+                "timestep_linear", "attention_scale_raw", "attention_scale_adjusted", "attention_gate_raw",
+                "attention_gate_tanh", "mlp_scale_raw", "mlp_scale_adjusted", "mlp_gate_raw", "mlp_gate_tanh",
+                "attention_norm", "attention_modulated", "qkv", "q", "k", "v", "q_norm", "k_norm", "q_rope",
+                "k_rope", "attention_aggregation", "attention_projection", "attention_residual", "ffn_norm",
+                "ffn_modulated", "w1", "w3", "ffn_gated_hidden", "w2", "final_output"}};
             const std::filesystem::path block1StageRoot = block1Canonical.parent_path() / "stages";
-            const char* block1AuditOnly = std::getenv("OCT_EVT2_BLOCK1_AUDIT_STAGE");
-            for (const Block1PersistentStage& stage : block1PersistentStages) {
-                if (block1AuditOnly != nullptr && std::string(block1AuditOnly) != stage.name) continue;
-                std::cout << "M2A block1 audit_start=" << stage.name << "\n";
-                resident.audit_enabled = 1u;
-                resident.audit_family = stage.family;
-                resident.audit_stage = stage.stage;
-                resident.audit_output = block1StageAudit.data();
-                resident.audit_element_capacity = block1StageAudit.size();
-                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_resident(runtime, blockID, &resident, &evidence),
-                             "block-1 persistent stage audit replays only the saved resident FP32 predecessor");
-                const std::vector<std::uint8_t> canonicalBytes = read_binary_file(block1StageRoot / (std::string(stage.name) + ".f32.bin"));
-                ASSERT_EQUAL(static_cast<std::uint64_t>(stage.elements) * sizeof(float), static_cast<std::uint64_t>(canonicalBytes.size()),
+            std::vector<std::uint8_t> staticAuditArena(PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES, 0u);
+            std::vector<std::uint8_t> repeatedAuditArena(PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES, 0u);
+            PrometheusNoiseRefinerStaticAuditRequest staticAudit{};
+            staticAudit.struct_size = sizeof(staticAudit);
+            staticAudit.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+            staticAudit.input_generation = block0OutputGeneration;
+            staticAudit.output_identity = 0x9b133c9ed3772f78ull;
+            staticAudit.audit_arena = staticAuditArena.data();
+            staticAudit.audit_arena_capacity_bytes = staticAuditArena.size();
+            PrometheusNoiseRefinerStaticAuditRequest invalidStaticAudit = staticAudit;
+            invalidStaticAudit.lock_identity ^= 1u;
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner_execute_static_audit(
+                                         runtime, blockID, &invalidStaticAudit, &evidence),
+                         "foreign static-audit lock is rejected before GPU submission");
+            invalidStaticAudit = staticAudit;
+            invalidStaticAudit.audit_arena_capacity_bytes = PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES - 1u;
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner_execute_static_audit(
+                                         runtime, blockID, &invalidStaticAudit, &evidence),
+                         "static audit cannot mutate or exceed the fixed arena contract");
+            invalidStaticAudit = staticAudit;
+            invalidStaticAudit.input_generation += 1u;
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner_execute_static_audit(
+                                         runtime, blockID, &invalidStaticAudit, &evidence),
+                         "mixed resident execution generation is rejected before command recording");
+            const std::uint64_t staticAllocations = evidence.warm_buffer_allocation_count;
+            const std::uint64_t staticPipelines = evidence.pipeline_create_count;
+            const std::uint64_t staticDescriptors = evidence.descriptor_set_count;
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_static_audit(
+                                      runtime, blockID, &staticAudit, &evidence),
+                         "block-1 executes every persistent capture in one lock-derived static batch");
+            const std::uint32_t staticGeneration = static_cast<std::uint32_t>(evidence.output_generation);
+            ASSERT_EQUAL(staticAllocations, evidence.warm_buffer_allocation_count,
+                         "static audit allocates no warm tensor shadow arena");
+            ASSERT_EQUAL(staticPipelines, evidence.pipeline_create_count,
+                         "static audit recreates no shader module or pipeline");
+            ASSERT_EQUAL(staticDescriptors, evidence.descriptor_set_count,
+                         "static audit performs no repeated descriptor rebind");
+            staticAudit.audit_arena = repeatedAuditArena.data();
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_static_audit(
+                                      runtime, blockID, &staticAudit, &evidence),
+                         "a repeated complete static batch reuses the immutable resident predecessor");
+            const std::uint32_t repeatedGeneration = static_cast<std::uint32_t>(evidence.output_generation);
+            ASSERT_EQUAL(staticGeneration + 1u, repeatedGeneration,
+                         "each complete static batch owns exactly one execution generation");
+            ASSERT_TRUE(std::memcmp(staticAuditArena.data() + PROM_ZIMAGE_TURBO_AUDIT_TRANSIENT_ATTENTION_OFFSET,
+                                    repeatedAuditArena.data() + PROM_ZIMAGE_TURBO_AUDIT_TRANSIENT_ATTENTION_OFFSET,
+                                    PROM_ZIMAGE_TURBO_AUDIT_TRANSIENT_ATTENTION_BYTES) == 0,
+                        "bounded transient attention witnesses do not accumulate state across static batches");
+
+            for (std::size_t stageIndex = 0u; stageIndex < block1PersistentStages.size(); ++stageIndex) {
+                const char* stageName = block1PersistentStages[stageIndex];
+                const auto& schedule = k_prom_zimage_turbo_audit_schedule[stageIndex];
+                const std::vector<std::uint8_t> canonicalBytes = read_binary_file(
+                    block1StageRoot / (std::string(stageName) + ".f32.bin"));
+                ASSERT_EQUAL(static_cast<std::uint64_t>(schedule.element_count) * sizeof(float),
+                             static_cast<std::uint64_t>(canonicalBytes.size()),
                              "block-1 persistent canonical stage payload has its declared physical size");
                 double errorSquares = 0.0, referenceSquares = 0.0, linf = 0.0;
-                float minimum = block1StageAudit[0u], maximum = block1StageAudit[0u];
-                std::uint32_t firstDifference = stage.elements;
-                for (std::uint32_t element = 0u; element < stage.elements && canonicalBytes.size() == static_cast<std::size_t>(stage.elements) * sizeof(float); ++element) {
+                double actualSquares = 0.0, canonicalSquares = 0.0;
+                float minimum = std::numeric_limits<float>::infinity();
+                float maximum = -std::numeric_limits<float>::infinity();
+                float canonicalMinimum = std::numeric_limits<float>::infinity();
+                float canonicalMaximum = -std::numeric_limits<float>::infinity();
+                std::uint32_t firstDifference = schedule.element_count;
+                std::uint32_t compared = 0u;
+                const auto* record = reinterpret_cast<const std::uint32_t*>(
+                    staticAuditArena.data() + schedule.audit_destination_offset);
+                const auto* repeatedRecord = reinterpret_cast<const std::uint32_t*>(
+                    repeatedAuditArena.data() + schedule.audit_destination_offset);
+                if (schedule.capture_policy == PROM_ZIMAGE_AUDIT_CAPTURE_FULL) {
+                    const auto* actual = reinterpret_cast<const float*>(record);
+                    for (std::uint32_t element = 0u; element < schedule.element_count; ++element) {
+                        float reference = 0.0f;
+                        std::memcpy(&reference, canonicalBytes.data() + element * sizeof(float), sizeof(reference));
+                        const double difference = static_cast<double>(actual[element]) - static_cast<double>(reference);
+                        errorSquares += difference * difference;
+                        referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                        linf = std::max(linf, std::fabs(difference));
+                        minimum = std::min(minimum, actual[element]);
+                        maximum = std::max(maximum, actual[element]);
+                        actualSquares += static_cast<double>(actual[element]) * static_cast<double>(actual[element]);
+                        if (firstDifference == schedule.element_count && actual[element] != reference) firstDifference = element;
+                    }
+                    ASSERT_TRUE(std::memcmp(record, repeatedRecord, schedule.element_count * sizeof(float)) == 0,
+                                "full-copy audit evidence is deterministic across complete static batches");
+                    compared = schedule.element_count;
+                } else {
+                    ASSERT_EQUAL(schedule.stage_id, record[0u], "summary record retains the generated stage ID");
+                    ASSERT_EQUAL(staticGeneration, record[1u], "summary record retains one execution generation");
+                    ASSERT_EQUAL(schedule.element_count, record[2u], "summary record retains the declared element count");
+                    ASSERT_TRUE(record[3u] != 0u && record[4u] == 0u && record[5u] == 0u &&
+                                    record[6u] == schedule.element_count && record[12u] == 1u && record[13u] == 0u,
+                                "summary record is finite, complete, and status-clean");
+                    ASSERT_EQUAL(repeatedGeneration, repeatedRecord[1u],
+                                 "repeated summary record has only the next complete execution generation");
+                    for (std::uint32_t word = 0u; word < 64u; ++word) {
+                        if (word != 1u) ASSERT_EQUAL(record[word], repeatedRecord[word],
+                                                    "summary shader output is deterministic apart from generation");
+                    }
+                    std::memcpy(&minimum, &record[8u], sizeof(minimum));
+                    std::memcpy(&maximum, &record[9u], sizeof(maximum));
+                    for (std::uint32_t projection = 0u; projection < record[7u]; ++projection) {
+                        const std::uint32_t sourceIndex = record[16u + projection * 2u];
+                        float actual = 0.0f;
+                        float reference = 0.0f;
+                        std::memcpy(&actual, &record[17u + projection * 2u], sizeof(actual));
+                        std::memcpy(&reference, canonicalBytes.data() + sourceIndex * sizeof(float), sizeof(reference));
+                        const double difference = static_cast<double>(actual) - static_cast<double>(reference);
+                        errorSquares += difference * difference;
+                        referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                        linf = std::max(linf, std::fabs(difference));
+                        if (firstDifference == schedule.element_count && actual != reference) firstDifference = sourceIndex;
+                        ++compared;
+                    }
+                }
+                for (std::uint32_t element = 0u; element < schedule.element_count; ++element) {
                     float reference = 0.0f;
                     std::memcpy(&reference, canonicalBytes.data() + element * sizeof(float), sizeof(reference));
-                    const double difference = static_cast<double>(block1StageAudit[element]) - static_cast<double>(reference);
-                    errorSquares += difference * difference;
-                    referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
-                    linf = std::max(linf, std::fabs(difference));
-                    minimum = std::min(minimum, block1StageAudit[element]);
-                    maximum = std::max(maximum, block1StageAudit[element]);
-                    if (firstDifference == stage.elements && block1StageAudit[element] != reference) firstDifference = element;
+                    canonicalSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                    canonicalMinimum = std::min(canonicalMinimum, reference);
+                    canonicalMaximum = std::max(canonicalMaximum, reference);
                 }
                 const double l2 = std::sqrt(errorSquares);
                 const double relativeL2 = referenceSquares == 0.0 ? 0.0 : l2 / std::sqrt(referenceSquares);
-                const double rms = std::sqrt(errorSquares / static_cast<double>(stage.elements));
-                ASSERT_TRUE(std::isfinite(minimum) && std::isfinite(maximum) && relativeL2 <= 5.0e-5,
-                            "block-1 persistent stage is finite and remains within the final accepted compiled-block threshold");
-                std::cout << "M2A block1 stage " << stage.name << " finite=true min=" << minimum << " max=" << maximum
-                          << " l2=" << l2 << " linf=" << linf << " relative_l2=" << relativeL2 << " rms=" << rms
-                          << " first_mismatching_coordinate=" << firstDifference << " elements=" << stage.elements << "\n";
+                const double errorRms = std::sqrt(errorSquares / static_cast<double>(compared));
+                float outputRms = 0.0f;
+                if (schedule.capture_policy != PROM_ZIMAGE_AUDIT_CAPTURE_FULL) {
+                    std::memcpy(&outputRms, &record[11u], sizeof(outputRms));
+                } else {
+                    outputRms = static_cast<float>(std::sqrt(actualSquares / schedule.element_count));
+                }
+                const double canonicalRms = std::sqrt(canonicalSquares / schedule.element_count);
+                const double minimumTolerance = std::max(1.52588e-4, std::fabs(canonicalMinimum) * 5.0e-5);
+                const double maximumTolerance = std::max(1.52588e-4, std::fabs(canonicalMaximum) * 5.0e-5);
+                const double rmsTolerance = std::max(1.52588e-4, std::fabs(canonicalRms) * 5.0e-5);
+                ASSERT_TRUE(std::isfinite(minimum) && std::isfinite(maximum) && std::isfinite(outputRms) &&
+                                relativeL2 <= 5.0e-5 &&
+                                std::fabs(static_cast<double>(minimum) - canonicalMinimum) <= minimumTolerance &&
+                                std::fabs(static_cast<double>(maximum) - canonicalMaximum) <= maximumTolerance &&
+                                std::fabs(static_cast<double>(outputRms) - canonicalRms) <= rmsTolerance,
+                            "block-1 persistent evidence remains finite and inside measured summary/projection tolerances");
+                std::cout << "M2A static stage " << stageName << " finite=true min=" << minimum << " max=" << maximum
+                          << " l2=" << l2 << " linf=" << linf << " relative_l2=" << relativeL2 << " rms=" << errorRms
+                          << " summary_rms=" << outputRms << " first_mismatching_coordinate=" << firstDifference
+                          << " accepted_threshold=5e-5 authority=f332072aa78be7aecdf3ee76d5c247082da564a6\n";
             }
-            resident.audit_enabled = 0u;
-            resident.audit_family = PROM_NOISE_REFINER_AUDIT_NONE;
-            resident.audit_stage = 0u;
-            resident.audit_output = nullptr;
-            resident.audit_element_capacity = 0u;
             std::cout << "M2A chain block0_output_generation=" << block0OutputGeneration
                       << " block1_output_generation=" << evidence.output_generation
                       << " rebind_ns=" << std::chrono::duration_cast<std::chrono::nanoseconds>(rebindEnd - rebindBegin).count()
