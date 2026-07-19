@@ -1,0 +1,39 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.noise_refiner {
+    FfnHiddenW1: float4;
+    FfnHiddenW3: float4;
+    FfnGatedHidden: float4;
+}
+
+fn GateFfn(value: FfnHiddenW1) -> FfnGatedHidden { return float4(value.x, value.y, value.z, value.w); }
+
+stream FfnGateIO {
+    [binding(0)] W1: readwrite array<f32>;
+    [binding(1)] W3PartA: readonly array<f32>;
+    [binding(2)] W3PartB: readonly array<f32>;
+    [binding(3)] W3PartC: readonly array<f32>;
+}
+
+record FfnGateParams { ElementCount: u32; Reserved0: u32; Reserved1: u32; Reserved2: u32; }
+
+fn ExponentialF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return exp(value); }; return result; }
+
+// W1 is transformed in place only after its separate audit boundary; W3 is
+// immutable through this stage, preserving its independent witness.
+shader Nr0FfnGate {
+    resources FfnGateIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: FfnGateParams) -> void {
+        let index: u32 = DispatchThreadID.x;
+        if index >= params.ElementCount { return; }
+        let w1: f32 = W1[index];
+        let silu: f32 = w1 / (1.0 + ExponentialF32(-w1));
+        var w3: f32 = 0.0;
+        if index < 3932160u { w3 = W3PartA[index]; }
+        if index >= 3932160u and index < 7864320u { w3 = W3PartB[index - 3932160u]; }
+        if index >= 7864320u { w3 = W3PartC[index - 7864320u]; }
+        W1[index] = silu * w3;
+        return;
+    }
+}

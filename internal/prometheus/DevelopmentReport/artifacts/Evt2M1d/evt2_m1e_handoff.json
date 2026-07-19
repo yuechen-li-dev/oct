@@ -1,0 +1,11 @@
+{
+  "schema":"oct.prometheus.evt2.m1e-handoff.v1",
+  "status":"READY FOR M1E",
+  "resident_output":{"dtype":"FP32","shape":[1,1024,3840],"layout":"row-major contiguous","semantic_space":"ModelEmbedding"},
+  "required_prefix":"M1B then M1C then fixed M1D; no host tensor bounce",
+  "shader_ids":[33,34,35,36],
+  "memory_plan_bytes":654891776,
+  "canonical_final_identity":"4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43",
+  "acceptance":{"final_relative_l2":1.30438e-6,"stage_threshold_relative_l2":0.00005,"all_audited_stages_finite":true},
+  "next_scope":"assemble and verify the completed six-boundary noise_refiner.0 module only; do not add further block families"
+}

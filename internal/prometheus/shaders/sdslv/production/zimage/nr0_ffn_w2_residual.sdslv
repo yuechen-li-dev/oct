@@ -1,0 +1,69 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.noise_refiner {
+    FfnGatedHidden: float4;
+    FfnProjectedOutput: float4;
+    ModelEmbedding: float4;
+}
+
+fn ProjectW2(value: FfnGatedHidden) -> FfnProjectedOutput { return float4(value.x, value.y, value.z, value.w); }
+fn AddFfnResidual(value: FfnProjectedOutput) -> ModelEmbedding { return float4(value.x, value.y, value.z, value.w); }
+
+stream FfnW2ResidualIO {
+    [binding(0)] GatedHidden: readonly array<f32>;
+    [binding(1)] W2F16: readonly array<u32>;
+    [binding(2)] FfnNorm2F16: readonly array<u32>;
+    [binding(3)] TanhMlpGate: readonly array<f32>;
+    [binding(4)] AttentionResidual: readonly array<f32>;
+    [binding(5)] W2: readwrite array<f32>;
+    [binding(6)] FinalOutput: readwrite array<f32>;
+}
+
+record FfnW2ResidualParams { Epsilon: f32; TokenCount: u32; ModelWidth: u32; HiddenWidth: u32; }
+
+fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return rsqrt(value); }; return result; }
+
+// One workgroup owns a token. Every W2 accumulator, the post-W2 RMSNorm, and
+// final gated residual stay FP32; W2 is separately retained for audit before
+// final output is written. No value crosses an FP16 activation boundary.
+shader Nr0FfnW2Residual {
+    resources FfnW2ResidualIO;
+    workgroup SumSquares: array<f32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: FfnW2ResidualParams) -> void {
+        let token: u32 = GroupID.x;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        for channel in lane..params.ModelWidth step 256u {
+            var projected: f32 = 0.0;
+            for hidden in 0u..params.HiddenWidth {
+                let element: u32 = hidden * params.ModelWidth + channel;
+                let packed: float2 = Unpack<F16x2>(W2F16[element / 2u]);
+                var weight: f32 = packed.x;
+                if (element % 2u) != 0u { weight = packed.y; }
+                projected = projected + GatedHidden[token * params.HiddenWidth + hidden] * weight;
+            }
+            W2[token * params.ModelWidth + channel] = projected;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane == 0u {
+            var reductionTotal: f32 = 0.0;
+            for channel in 0u..params.ModelWidth {
+                let value: f32 = W2[token * params.ModelWidth + channel];
+                reductionTotal = reductionTotal + value * value;
+            }
+            SumSquares[0u] = reductionTotal;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let invRms: f32 = ReciprocalSqrtF32(SumSquares[0u] / params.ModelWidth + params.Epsilon);
+        for channel in lane..params.ModelWidth step 256u {
+            let packed: float2 = Unpack<F16x2>(FfnNorm2F16[channel / 2u]);
+            var learned: f32 = packed.x;
+            if (channel % 2u) != 0u { learned = packed.y; }
+            let index: u32 = token * params.ModelWidth + channel;
+            let normalized: f32 = W2[index] * invRms * learned;
+            FinalOutput[index] = AttentionResidual[index] + TanhMlpGate[channel] * normalized;
+        }
+        return;
+    }
+}

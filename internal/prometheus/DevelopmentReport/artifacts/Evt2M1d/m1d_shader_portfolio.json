@@ -1,0 +1,12 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.shader-portfolio.v1",
+  "entrypoint": "prometheus_reactor_runtime_model_block_execute_m1d",
+  "pipelines": [
+    {"id": 33, "name": "Nr0FfnNormModulate", "source_sha256": "591678bc55e867d018a65d20ea4493e2161a3d0d246b6d74bf69f63502593945", "bindings": 5, "dispatch": [1024,1,1]},
+    {"id": 34, "name": "Nr0FfnW1W3", "source_sha256": "b3f450d20bcdf47583d5a63c9ac9ee147110b2a4f804896ac40463dbf323a66f", "bindings": 7, "dispatch": [128,1280,1]},
+    {"id": 35, "name": "Nr0FfnGate", "source_sha256": "3cb4d8103132f675318b89d9b13a2049d32614239b8d09bd335fb81e6066c085", "bindings": 4, "dispatch": [40960,1,1]},
+    {"id": 36, "name": "Nr0FfnW2Residual", "source_sha256": "f1443fd83db2714e3239bab43590e77422c228a43648619a9c59aaee0c4bf55a", "bindings": 7, "dispatch": [1024,1,1]}
+  ],
+  "semantic_spaces": ["ModelEmbedding", "FfnNormalizedEmbedding", "FfnHiddenW1", "FfnHiddenW3", "FfnGatedHidden", "FfnProjectedOutput"],
+  "precision": "FP32 activations and reductions; cached FP16 weights unpack to FP32 only at arithmetic use; no TF32, BF16 runtime path, FP16 activation, clamp, or saturation"
+}

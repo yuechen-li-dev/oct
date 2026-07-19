@@ -297,6 +297,7 @@ typedef struct prom_model_block_m1b_pipeline {
 } prom_model_block_m1b_pipeline;
 
 #define PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT 3u
+#define PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT 4u
 
 typedef struct prom_model_block_state {
   uint64_t block_id;
@@ -366,6 +367,7 @@ typedef struct prom_model_block_state {
   prom_vk_buffer attention_residual;
   prom_model_block_m1b_pipeline m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
 } prom_model_block_state;
 

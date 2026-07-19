@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.faults.v1",
+  "covered_by_shared_model_block_suite": ["pipeline creation failure", "dispatch failure", "audit-copy failure", "uncertain-completion quarantine/reap", "stale-output rejection", "partial initialization teardown", "destroy/recreate"],
+  "m1d_contract_checks": ["matching M1C replay identity required", "audit stage range checked", "output capacity uses hidden width only for W1/W3/gated audits", "M1D pipeline portfolio participates in create/destroy"],
+  "remaining_granularity": ["per-M1D-pipeline fault labels", "device-side non-finite status buffer", "M1D-specific lifecycle injection assertions"],
+  "status":"shared lifecycle is safe; remaining granularity is explicitly not claimed as separate M1D fault instrumentation"
+}

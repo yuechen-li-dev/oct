@@ -28,7 +28,7 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(16), prom_shader_registry_shader_asset_count(), "production assets must include the resident model-block proof");
+  ASSERT_EQUAL(static_cast<std::size_t>(29), prom_shader_registry_shader_asset_count(), "production assets must include the fixed M1D FFN portfolio");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }

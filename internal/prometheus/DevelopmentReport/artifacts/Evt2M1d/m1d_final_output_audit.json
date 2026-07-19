@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.final-output-audit.v1",
+  "authority": {"name":"o19-fp32-reference", "final_diagnostic_f32_sha256":"4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43"},
+  "shape": [1,1024,3840], "dtype": "float32", "layout": "row-major contiguous", "threshold_relative_l2": 0.00005,
+  "metrics": {"finite":true,"min":-6.84376,"max":40.048,"l2":0.00193052,"linf":0.000152588,"relative_l2":1.30438e-6,"rms":9.73549e-7,"first_mismatching_coordinate":2},
+  "canonical_projection": {"mean":0.011504338661256249,"rms":0.7463677974152415,"l2":1480.0230653617875,"min":-6.843756,"max":40.048077},
+  "result": "PASS: final FP32 ModelEmbedding agrees narrowly without GPU byte-identity being required"
+}

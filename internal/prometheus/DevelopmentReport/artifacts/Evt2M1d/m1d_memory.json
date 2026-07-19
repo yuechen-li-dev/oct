@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.memory.v1",
+  "measured": {"persistent_bytes":361820672,"reusable_bytes":245884928,"audit_bytes":47186176,"total_committed_bytes":654891776,"peak_plan_bytes":654891776,"cold_buffer_allocations":33,"warm_buffer_allocations":0,"pipelines":13,"descriptor_sets":13},
+  "reconciliation": "The M1D implementation reuses C/qkv for W1 then gated hidden; attention, attention_projection, and norm_audit hold W3 partitions only until the gate; input_device holds W2; attention becomes the final output. No additional 10240-wide FP32 W3 allocation is retained.",
+  "laboratory_ceiling_bytes":654891776,
+  "result":"PASS: measured resident plan equals the accepted M1C ceiling"
+}

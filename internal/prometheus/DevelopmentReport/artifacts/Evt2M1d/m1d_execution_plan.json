@@ -1,0 +1,10 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.execution-plan.v1",
+  "entrypoint": "prometheus_reactor_runtime_model_block_execute_m1d",
+  "requires": "exact M1C replay identity; no host tensor ingress",
+  "fixed_shape": {"batch": 1, "tokens": 1024, "model_width": 3840, "hidden_width": 10240},
+  "sequence": ["FFN RMSNorm1", "adjusted MLP-scale modulation", "W1 and W3 FP32 contractions", "SiLU(W1) times W3", "W2 FP32 contraction", "FFN RMSNorm2", "tanh MLP-gated final residual"],
+  "barriers": ["norm/modulation to W1/W3", "W1/W3 to gate", "gated hidden to W2/norm2/residual", "final output to audit"],
+  "resident_output": {"buffer": "attention", "shape": [1,1024,3840], "dtype": "float32", "semantic_space": "ModelEmbedding"},
+  "host_bounce": false
+}

@@ -32,6 +32,10 @@
 #include "reactor_vulkan_zimage_nr0_attention_streaming_spirv.h"
 #include "reactor_vulkan_zimage_nr0_attention_projection_spirv.h"
 #include "reactor_vulkan_zimage_nr0_attention_residual_spirv.h"
+#include "reactor_vulkan_zimage_nr0_ffn_norm_modulate_spirv.h"
+#include "reactor_vulkan_zimage_nr0_ffn_w1_w3_spirv.h"
+#include "reactor_vulkan_zimage_nr0_ffn_gate_spirv.h"
+#include "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -123,6 +127,30 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/nr0_attention_residual.sdslv",
     "reactor_vulkan_zimage_nr0_attention_residual_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 5u, 16u, 0u, 1u, 3840u },
+  { 33u, "zimage-nr0-ffn-norm-modulate", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_ffn_norm_modulate_spirv, sizeof(k_prom_zimage_nr0_ffn_norm_modulate_spirv),
+    "Nr0FfnNormModulate_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_ffn_norm_modulate.sdslv",
+    "reactor_vulkan_zimage_nr0_ffn_norm_modulate_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 5u, 16u, 0u, 1u, 3840u },
+  { 34u, "zimage-nr0-ffn-w1-w3", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_ffn_w1_w3_spirv, sizeof(k_prom_zimage_nr0_ffn_w1_w3_spirv),
+    "Nr0FfnW1W3_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_ffn_w1_w3.sdslv",
+    "reactor_vulkan_zimage_nr0_ffn_w1_w3_spirv.h", 1u, 0u, 0u, NULL,
+    PROM_SHADER_AUTHORITY_PRODUCTION, 7u, 16u, 0u, 1u, 10240u },
+  { 35u, "zimage-nr0-ffn-gate", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_ffn_gate_spirv, sizeof(k_prom_zimage_nr0_ffn_gate_spirv),
+    "Nr0FfnGate_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_ffn_gate.sdslv",
+    "reactor_vulkan_zimage_nr0_ffn_gate_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 4u, 16u, 0u, 1u, 10485760u },
+  { 36u, "zimage-nr0-ffn-w2-residual", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_nr0_ffn_w2_residual_spirv, sizeof(k_prom_zimage_nr0_ffn_w2_residual_spirv),
+    "Nr0FfnW2Residual_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/nr0_ffn_w2_residual.sdslv",
+    "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 7u, 16u, 0u, 1u, 10240u },
 };
 
 #define REDUCTION_ASSET(id, label, words, entry, source, header, inline_count, role, max_width) \

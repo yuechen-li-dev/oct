@@ -1,0 +1,10 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.replay.v1",
+  "observed_execution_plan_identity":3212572515069549270,
+  "execution_plan_identity":"includes model contract, immutable weights, shader portfolio, precision and capability identities, M1B/M1C/M1D pipeline IDs, bindings, push-constant sizes, and fixed steps",
+  "m1d_replay_identity":"hash(matching_m1c_replay_identity, output_identity, audit_stage)",
+  "observed_final_output_audit_replay_identity":6445635600144955590,
+  "exclusions":["timestamps","absolute paths","Vulkan handles","host addresses","source comments"],
+  "real_witness":"PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness",
+  "result":"PASS: stable static execution program and replay inputs; audit stages are intentionally distinct replay products"
+}

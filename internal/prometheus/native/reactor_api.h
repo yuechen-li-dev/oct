@@ -603,6 +603,7 @@ enum {
   PROM_MODEL_BLOCK_DETAIL_INGRESS_INPUT_SIZE_MISMATCH = -6916,
   PROM_MODEL_BLOCK_DETAIL_INGRESS_TIMESTEP_SIZE_MISMATCH = -6917,
   PROM_MODEL_BLOCK_DETAIL_M1C_SOFTMAX_INVALID = -6918,
+  PROM_MODEL_BLOCK_DETAIL_M1D_NONFINITE = -6919,
 };
 
 enum {
@@ -712,6 +713,28 @@ enum {
 };
 
 #define PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS 64u
+
+/* M1D only consumes the resident M1C attention residual and the resident M1B
+   MLP modulation vectors. The host output is an audit egress; final output
+   remains resident for the next block seam. */
+typedef struct PrometheusModelBlockM1DExecuteRequest {
+  uint32_t struct_size;
+  uint64_t m1c_prefix_replay_identity;
+  uint64_t output_identity;
+  float* output;
+  uint64_t output_element_capacity;
+  uint32_t audit_stage;
+} PrometheusModelBlockM1DExecuteRequest;
+
+enum {
+  PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
+  PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED = 2u,
+  PROM_MODEL_BLOCK_M1D_AUDIT_W1 = 3u,
+  PROM_MODEL_BLOCK_M1D_AUDIT_W3 = 4u,
+  PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN = 5u,
+  PROM_MODEL_BLOCK_M1D_AUDIT_W2 = 6u,
+  PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT = 7u,
+};
 
 typedef struct PrometheusModelBlockEvidence {
   uint32_t struct_size;
@@ -1808,6 +1831,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1b(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1c(
     void* handle, uint64_t block_id, const PrometheusModelBlockM1CExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1d(
+    void* handle, uint64_t block_id, const PrometheusModelBlockM1DExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);

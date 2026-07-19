@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.timing.v1",
+  "hardware": "NVIDIA GeForce RTX 3070, Vulkan validation enabled",
+  "m1c_prefix_warm_ns": [371635200,358091600,361011800,359537300,359739100,358786600,358973400,364347400,363111500,369928600],
+  "m1c_prefix_warm_stats_ns": {"median":360375450,"mean":362516150,"min":358091600,"p95":371635200,"stddev":4546380},
+  "m1b_boundary_gpu_ns": [85696,52224,1280000,359745536,317440,318464],
+  "m1d_timing_limit": "The current native evidence API records complete command elapsed time but has no timestamp-query splits for the four M1D pipelines; this artifact does not invent per-stage GPU timings.",
+  "warm_runtime_contract": {"buffer_allocations":0,"weight_uploads":0,"pipeline_creations":0,"descriptor_growth":0,"payload_reads":0,"host_tensor_computation":0,"intermediate_host_bounce":0}
+}

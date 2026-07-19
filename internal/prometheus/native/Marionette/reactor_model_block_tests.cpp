@@ -224,14 +224,14 @@ FACT(PrometheusM1BPreAttentionOwnerCreatesIngressAndFiveModelPipelines)
     ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED, evidence.detail_code,
                  "ingress pipeline creation failure has exact fault identity");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
-                 "M1B owner creates the fixed ingress plus five-model-pipeline program");
+                 "resident owner creates the fixed M1B through M1D shader portfolio");
     if (blockID == 0u) {
         prom_reactor_runtime_destroy_impl(runtime);
         return;
     }
     ASSERT_EQUAL(PROM_MODEL_BLOCK_MAX_WEIGHTS, evidence.weight_count, "M1B declares all thirteen immutable weights");
-    ASSERT_EQUAL(6u, evidence.pipeline_create_count, "M1B cold creation makes the ingress and complete model portfolio");
-    ASSERT_EQUAL(6u, evidence.descriptor_set_count, "M1B cold creation owns one fixed descriptor set per shader");
+    ASSERT_EQUAL(13u, evidence.pipeline_create_count, "cold creation materializes the fixed M1B, M1C, and M1D portfolio");
+    ASSERT_EQUAL(13u, evidence.descriptor_set_count, "cold creation owns one fixed descriptor set per shader");
     ASSERT_TRUE(evidence.persistent_bytes == 361820672u, "M1B immutable arena has the accepted cache byte count");
     ASSERT_TRUE(evidence.cold_buffer_allocation_count >= 26u, "M1B preallocates all resident and bounded-audit buffers");
     ASSERT_EQUAL(0u, evidence.weight_upload_count, "creation does not permit an implicit warm upload");
@@ -664,6 +664,63 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
                   << " min=" << sortedChainedWarmNs.front()
                   << " p95=" << sortedChainedWarmNs[9u]
                   << " stddev=" << std::sqrt(chainedWarmVariance / static_cast<double>(chainedWarmNs.size())) << "\n";
+
+        const char* runM1D = std::getenv("OCT_EVT2_M1D_REAL");
+        if (runM1D != nullptr && std::string(runM1D) == "1") {
+            struct M1DStage { const char* name; std::uint32_t auditStage; std::uint32_t elements; };
+            const std::array<M1DStage, 7> m1dStages{{
+                {"ffn_norm", PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM, 1024u * 3840u},
+                {"ffn_modulated", PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED, 1024u * 3840u},
+                {"w1", PROM_MODEL_BLOCK_M1D_AUDIT_W1, 1024u * 10240u},
+                {"w3", PROM_MODEL_BLOCK_M1D_AUDIT_W3, 1024u * 10240u},
+                {"ffn_gated_hidden", PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN, 1024u * 10240u},
+                {"w2", PROM_MODEL_BLOCK_M1D_AUDIT_W2, 1024u * 3840u},
+                {"final_output", PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, 1024u * 3840u},
+            }};
+            std::vector<float> m1dOutput(1024u * 10240u);
+            PrometheusModelBlockM1DExecuteRequest m1d{};
+            m1d.struct_size = sizeof(m1d);
+            m1d.output_identity = 0xa4fd07d58b1c9e23ull;
+            m1d.output = m1dOutput.data();
+            m1d.output_element_capacity = m1dOutput.size();
+            for (const M1DStage& stage : m1dStages) {
+                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                             "M1D audit replays the required real M1B resident prefix");
+                m1c.m1b_prefix_replay_identity = evidence.replay_identity;
+                m1c.audit_stage = PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL;
+                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1c(runtime, blockID, &m1c, &evidence),
+                             "M1D audit replays the required real M1C resident residual");
+                m1d.m1c_prefix_replay_identity = evidence.replay_identity;
+                m1d.audit_stage = stage.auditStage;
+                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1d(runtime, blockID, &m1d, &evidence),
+                             "M1D executes a fixed resident FFN stage without host ingress");
+                const std::vector<std::uint8_t> canonicalBytes = read_binary_file(m1cRoot / (std::string(stage.name) + ".f32.bin"));
+                ASSERT_EQUAL(static_cast<std::uint64_t>(stage.elements) * sizeof(float), static_cast<std::uint64_t>(canonicalBytes.size()),
+                             "M1D canonical O19 stage payload exists with the fixed shape");
+                double errorSquares = 0.0, referenceSquares = 0.0, linf = 0.0;
+                float minimum = m1dOutput[0u], maximum = m1dOutput[0u];
+                std::uint32_t firstDifference = stage.elements;
+                for (std::uint32_t element = 0u; element < stage.elements; ++element) {
+                    float reference = 0.0f;
+                    std::memcpy(&reference, canonicalBytes.data() + element * sizeof(float), sizeof(reference));
+                    const double difference = static_cast<double>(m1dOutput[element]) - static_cast<double>(reference);
+                    errorSquares += difference * difference;
+                    referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                    linf = std::max(linf, std::fabs(difference));
+                    minimum = std::min(minimum, m1dOutput[element]);
+                    maximum = std::max(maximum, m1dOutput[element]);
+                    if (firstDifference == stage.elements && m1dOutput[element] != reference) firstDifference = element;
+                }
+                const double l2 = std::sqrt(errorSquares);
+                const double relativeL2 = referenceSquares == 0.0 ? 0.0 : l2 / std::sqrt(referenceSquares);
+                const double rms = std::sqrt(errorSquares / static_cast<double>(stage.elements));
+                ASSERT_TRUE(std::isfinite(minimum) && std::isfinite(maximum) && relativeL2 <= 5.0e-5,
+                            "M1D resident stage remains FP32-finite and within the narrow measured O19 bound");
+                std::cout << "M1D stage " << stage.name << " finite=true min=" << minimum << " max=" << maximum
+                          << " l2=" << l2 << " linf=" << linf << " relative_l2=" << relativeL2
+                          << " rms=" << rms << " first_mismatching_coordinate=" << firstDifference << "\n";
+            }
+        }
     }
     std::cout << "M1B evidence uploaded_bytes=361820672 upload_ns=" << uploadNs
               << " persistent_bytes=" << evidence.persistent_bytes

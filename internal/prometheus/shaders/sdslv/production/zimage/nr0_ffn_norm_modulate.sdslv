@@ -1,0 +1,59 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.noise_refiner {
+    ModelEmbedding: float4;
+    FfnNormalizedEmbedding: float4;
+}
+
+fn ToFfnNormalized(value: ModelEmbedding) -> FfnNormalizedEmbedding {
+    return float4(value.x, value.y, value.z, value.w);
+}
+
+stream FfnNormIO {
+    [binding(0)] AttentionResidual: readonly array<f32>;
+    [binding(1)] FfnNorm1F16: readonly array<u32>;
+    [binding(2)] AdjustedMlpScale: readonly array<f32>;
+    [binding(3)] FfnNormalized: readwrite array<f32>;
+    [binding(4)] FfnModulated: readwrite array<f32>;
+}
+
+record FfnNormParams { Epsilon: f32; TokenCount: u32; ModelWidth: u32; Reserved: u32; }
+
+fn ReciprocalSqrtF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return rsqrt(value); };
+    return result;
+}
+
+// This is the fixed [1024,3840] FFN ingress. It is deliberately distinct from
+// attention RMSNorm: its two outputs preserve the O19 norm and modulation
+// witness boundaries before either projection may consume them.
+shader Nr0FfnNormModulate {
+    resources FfnNormIO;
+    workgroup SumSquares: array<f32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: FfnNormParams) -> void {
+        let token: u32 = GroupID.x;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        if lane == 0u {
+            var reductionTotal: f32 = 0.0;
+            for channel in 0u..params.ModelWidth {
+                let value: f32 = AttentionResidual[token * params.ModelWidth + channel];
+                reductionTotal = reductionTotal + value * value;
+            }
+            SumSquares[0u] = reductionTotal;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let invRms: f32 = ReciprocalSqrtF32(SumSquares[0u] / params.ModelWidth + params.Epsilon);
+        for channel in lane..params.ModelWidth step 256u {
+            let packed: float2 = Unpack<F16x2>(FfnNorm1F16[channel / 2u]);
+            var learned: f32 = packed.x;
+            if (channel % 2u) != 0u { learned = packed.y; }
+            let index: u32 = token * params.ModelWidth + channel;
+            let normalized: f32 = AttentionResidual[index] * invRms * learned;
+            FfnNormalized[index] = normalized;
+            FfnModulated[index] = normalized * AdjustedMlpScale[channel];
+        }
+        return;
+    }
+}

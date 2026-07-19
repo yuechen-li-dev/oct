@@ -52,7 +52,11 @@
     "reactor_vulkan_model_block_resident_identity_spirv.h",
     "reactor_vulkan_zimage_nr0_attention_streaming_spirv.h",
     "reactor_vulkan_zimage_nr0_attention_projection_spirv.h",
-    "reactor_vulkan_zimage_nr0_attention_residual_spirv.h"
+    "reactor_vulkan_zimage_nr0_attention_residual_spirv.h",
+    "reactor_vulkan_zimage_nr0_ffn_norm_modulate_spirv.h",
+    "reactor_vulkan_zimage_nr0_ffn_w1_w3_spirv.h",
+    "reactor_vulkan_zimage_nr0_ffn_gate_spirv.h",
+    "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h"
   ],
   "platform_exceptions": {"windows": [], "linux": []}
 }

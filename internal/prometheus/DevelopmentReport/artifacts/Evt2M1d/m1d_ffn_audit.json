@@ -1,0 +1,16 @@
+{
+  "schema": "oct.prometheus.evt2.m1d.ffn-audit.v1",
+  "authority": "o19-fp32-reference",
+  "threshold_relative_l2": 0.00005,
+  "shape_and_layout": "FP32 row-major contiguous; [1,1024,3840] for norm/modulation/W2, [1,1024,10240] for W1/W3/gated hidden",
+  "stages": [
+    {"stage":"ffn_norm","finite":true,"min":-8.40769,"max":67.646,"l2":0.00183598,"linf":0.000118256,"relative_l2":8.29172e-7,"rms":9.25875e-7,"first_mismatching_coordinate":0},
+    {"stage":"ffn_modulated","finite":true,"min":-14.4328,"max":46.8637,"l2":0.0017005,"linf":8.01086e-5,"relative_l2":9.33449e-7,"rms":8.57554e-7,"first_mismatching_coordinate":0},
+    {"stage":"w1","finite":true,"min":-75.2414,"max":103.681,"l2":0.0420696,"linf":0.000175476,"relative_l2":7.41145e-7,"rms":1.29918e-5,"first_mismatching_coordinate":0},
+    {"stage":"w3","finite":true,"min":-356.355,"max":333.029,"l2":0.0843106,"linf":0.000564575,"relative_l2":8.77522e-7,"rms":2.60365e-5,"first_mismatching_coordinate":0},
+    {"stage":"ffn_gated_hidden","finite":true,"min":-4194.26,"max":3668.63,"l2":0.709942,"linf":0.0146484,"relative_l2":2.09487e-6,"rms":0.000219242,"first_mismatching_coordinate":0},
+    {"stage":"w2","finite":true,"min":-62296.4,"max":142582,"l2":25.8384,"linf":0.40625,"relative_l2":1.94789e-6,"rms":0.0130302,"first_mismatching_coordinate":0}
+  ],
+  "fused_boundaries": {"silu_w1":"computed exactly as x/(1+exp(-x)) inside the FP32 gate; W1 and gated-hidden audits bracket it", "ffn_norm2":"computed inside the FP32 W2/final-residual shader; W2 and final-output audits bracket it"},
+  "result": "PASS"
+}
