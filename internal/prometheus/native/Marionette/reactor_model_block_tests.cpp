@@ -803,10 +803,24 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
             }
             PrometheusNoiseRefinerRebindRequest rebind{};
             rebind.struct_size = sizeof(rebind);
-            rebind.parameter_set = PROM_NOISE_REFINER_PARAMETER_SET_1;
-            rebind.parameter_set_aggregate_identity = 0x80c0cd75f44cc434ull;
+            rebind.lock_identity = 0x50fbf0a02d11a884ull;
+            rebind.model_local_block_id = 1u;
             rebind.upload_count = static_cast<std::uint32_t>(block1Uploads.size());
             rebind.uploads = block1Uploads.data();
+            PrometheusNoiseRefinerRebindRequest invalidRebind = rebind;
+            invalidRebind.lock_identity ^= 1u;
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner_rebind(runtime, blockID, &invalidRebind, &evidence),
+                         "stale or foreign lock identity is rejected before resident mutation");
+            invalidRebind = rebind;
+            invalidRebind.model_local_block_id = 0u;
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner_rebind(runtime, blockID, &invalidRebind, &evidence),
+                         "illegal block-0 to block-0 transition is rejected by the resolved predecessor/successor contract");
+            invalidRebind = rebind;
+            const std::uint64_t originalBlock1Bytes = block1Uploads[0u].byte_count;
+            block1Uploads[0u].byte_count -= 2u;
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner_rebind(runtime, blockID, &invalidRebind, &evidence),
+                         "wrong block-1 payload layout is rejected before the candidate arena is allocated");
+            block1Uploads[0u].byte_count = originalBlock1Bytes;
             const std::uint64_t block0OutputGeneration = evidence.output_generation;
             const auto rebindBegin = std::chrono::steady_clock::now();
             ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_rebind(runtime, blockID, &rebind, &evidence),
@@ -824,12 +838,122 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
             resident.output_identity = 0x9b133c9ed3772f78ull;
             ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_resident(runtime, blockID, &resident, &evidence),
                          "block-1 consumes the resident block-0 FP32 final without BF16 ingress or host activation bounce");
+            std::vector<float> block1Final(1024u * 3840u);
+            PrometheusNoiseRefinerFinalAuditRequest block1Audit{};
+            block1Audit.struct_size = sizeof(block1Audit);
+            block1Audit.required_output_generation = evidence.output_generation;
+            block1Audit.output_identity = 0x9b133c9ed3772f78ull;
+            block1Audit.output = block1Final.data();
+            block1Audit.output_element_capacity = block1Final.size();
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_audit_final(runtime, blockID, &block1Audit, &evidence),
+                         "post-chain audit copies the completed block-1 FP32 final without changing the resident chain ABI");
+            const std::filesystem::path block1Canonical = std::filesystem::path(cacheRootText) / "canonical" /
+                "f332072aa78be7aecdf3ee76d5c247082da564a6" / "o19-fp32-reference" / "noise_refiner.1" / "final_output.f32.bin";
+            const std::vector<std::uint8_t> block1CanonicalBytes = read_binary_file(block1Canonical);
+            ASSERT_EQUAL(static_cast<std::uint64_t>(block1Final.size()) * sizeof(float),
+                         static_cast<std::uint64_t>(block1CanonicalBytes.size()), "block-1 canonical final authority is present");
+            double block1ErrorSquares = 0.0, block1ReferenceSquares = 0.0, block1Linf = 0.0;
+            for (std::uint32_t element = 0u; element < block1Final.size() &&
+                 block1CanonicalBytes.size() == block1Final.size() * sizeof(float); ++element) {
+                float reference = 0.0f;
+                std::memcpy(&reference, block1CanonicalBytes.data() + element * sizeof(float), sizeof(reference));
+                const double difference = static_cast<double>(block1Final[element]) - static_cast<double>(reference);
+                block1ErrorSquares += difference * difference;
+                block1ReferenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                block1Linf = std::max(block1Linf, std::fabs(difference));
+            }
+            const double block1RelativeL2 = std::sqrt(block1ErrorSquares) / std::sqrt(block1ReferenceSquares);
+            ASSERT_TRUE(std::isfinite(block1RelativeL2) && block1RelativeL2 <= 5.0e-5,
+                        "block-1 resident final matches the canonical FP32 authority within the accepted compiled-block threshold");
+            struct Block1PersistentStage {
+                const char* name;
+                std::uint32_t family;
+                std::uint32_t stage;
+                std::uint32_t elements;
+            };
+            const std::array<Block1PersistentStage, 29> block1PersistentStages{{
+                {"timestep_linear", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION, 15360u},
+                {"attention_scale_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_RAW, 3840u},
+                {"attention_scale_adjusted", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_ADJUSTED, 3840u},
+                {"attention_gate_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_RAW, 3840u},
+                {"attention_gate_tanh", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_TANH, 3840u},
+                {"mlp_scale_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_RAW, 3840u},
+                {"mlp_scale_adjusted", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_ADJUSTED, 3840u},
+                {"mlp_gate_raw", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_RAW, 3840u},
+                {"mlp_gate_tanh", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_TANH, 3840u},
+                {"attention_norm", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM, 1024u * 3840u},
+                {"attention_modulated", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_MODULATED, 1024u * 3840u},
+                {"qkv", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV, 1024u * 3u * 3840u},
+                {"q", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_Q, 1024u * 3840u},
+                {"k", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_K, 1024u * 3840u},
+                {"v", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_V, 1024u * 3840u},
+                {"q_norm", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_Q_NORM, 1024u * 3840u},
+                {"k_norm", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM, 1024u * 3840u},
+                {"q_rope", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q, 1024u * 3840u},
+                {"k_rope", PROM_NOISE_REFINER_AUDIT_M1B, PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K, 1024u * 3840u},
+                {"attention_aggregation", PROM_NOISE_REFINER_AUDIT_M1C, PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION, 1024u * 3840u},
+                {"attention_projection", PROM_NOISE_REFINER_AUDIT_M1C, PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION, 1024u * 3840u},
+                {"attention_residual", PROM_NOISE_REFINER_AUDIT_M1C, PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, 1024u * 3840u},
+                {"ffn_norm", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM, 1024u * 3840u},
+                {"ffn_modulated", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED, 1024u * 3840u},
+                {"w1", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_W1, 1024u * 10240u},
+                {"w3", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_W3, 1024u * 10240u},
+                {"ffn_gated_hidden", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN, 1024u * 10240u},
+                {"w2", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_W2, 1024u * 3840u},
+                {"final_output", PROM_NOISE_REFINER_AUDIT_M1D, PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, 1024u * 3840u},
+            }};
+            std::vector<float> block1StageAudit(1024u * 10240u);
+            const std::filesystem::path block1StageRoot = block1Canonical.parent_path() / "stages";
+            const char* block1AuditOnly = std::getenv("OCT_EVT2_BLOCK1_AUDIT_STAGE");
+            for (const Block1PersistentStage& stage : block1PersistentStages) {
+                if (block1AuditOnly != nullptr && std::string(block1AuditOnly) != stage.name) continue;
+                std::cout << "M2A block1 audit_start=" << stage.name << "\n";
+                resident.audit_enabled = 1u;
+                resident.audit_family = stage.family;
+                resident.audit_stage = stage.stage;
+                resident.audit_output = block1StageAudit.data();
+                resident.audit_element_capacity = block1StageAudit.size();
+                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_resident(runtime, blockID, &resident, &evidence),
+                             "block-1 persistent stage audit replays only the saved resident FP32 predecessor");
+                const std::vector<std::uint8_t> canonicalBytes = read_binary_file(block1StageRoot / (std::string(stage.name) + ".f32.bin"));
+                ASSERT_EQUAL(static_cast<std::uint64_t>(stage.elements) * sizeof(float), static_cast<std::uint64_t>(canonicalBytes.size()),
+                             "block-1 persistent canonical stage payload has its declared physical size");
+                double errorSquares = 0.0, referenceSquares = 0.0, linf = 0.0;
+                float minimum = block1StageAudit[0u], maximum = block1StageAudit[0u];
+                std::uint32_t firstDifference = stage.elements;
+                for (std::uint32_t element = 0u; element < stage.elements && canonicalBytes.size() == static_cast<std::size_t>(stage.elements) * sizeof(float); ++element) {
+                    float reference = 0.0f;
+                    std::memcpy(&reference, canonicalBytes.data() + element * sizeof(float), sizeof(reference));
+                    const double difference = static_cast<double>(block1StageAudit[element]) - static_cast<double>(reference);
+                    errorSquares += difference * difference;
+                    referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                    linf = std::max(linf, std::fabs(difference));
+                    minimum = std::min(minimum, block1StageAudit[element]);
+                    maximum = std::max(maximum, block1StageAudit[element]);
+                    if (firstDifference == stage.elements && block1StageAudit[element] != reference) firstDifference = element;
+                }
+                const double l2 = std::sqrt(errorSquares);
+                const double relativeL2 = referenceSquares == 0.0 ? 0.0 : l2 / std::sqrt(referenceSquares);
+                const double rms = std::sqrt(errorSquares / static_cast<double>(stage.elements));
+                ASSERT_TRUE(std::isfinite(minimum) && std::isfinite(maximum) && relativeL2 <= 5.0e-5,
+                            "block-1 persistent stage is finite and remains within the final accepted compiled-block threshold");
+                std::cout << "M2A block1 stage " << stage.name << " finite=true min=" << minimum << " max=" << maximum
+                          << " l2=" << l2 << " linf=" << linf << " relative_l2=" << relativeL2 << " rms=" << rms
+                          << " first_mismatching_coordinate=" << firstDifference << " elements=" << stage.elements << "\n";
+            }
+            resident.audit_enabled = 0u;
+            resident.audit_family = PROM_NOISE_REFINER_AUDIT_NONE;
+            resident.audit_stage = 0u;
+            resident.audit_output = nullptr;
+            resident.audit_element_capacity = 0u;
             std::cout << "M2A chain block0_output_generation=" << block0OutputGeneration
                       << " block1_output_generation=" << evidence.output_generation
                       << " rebind_ns=" << std::chrono::duration_cast<std::chrono::nanoseconds>(rebindEnd - rebindBegin).count()
                       << " block1_execution_ns=" << evidence.last_execution_ns
                       << " binding_generation=" << evidence.binding_generation
                       << " descriptor_generation=" << evidence.descriptor_generation
+                      << " block1_relative_l2=" << block1RelativeL2
+                      << " block1_linf=" << block1Linf
                       << " replay_identity=" << evidence.replay_identity << "\n";
         }
     }

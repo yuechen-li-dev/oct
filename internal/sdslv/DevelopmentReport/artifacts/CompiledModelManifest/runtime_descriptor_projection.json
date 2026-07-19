@@ -1,0 +1,9 @@
+{
+  "assembly_family": "ZImageTurbo.NoiseRefiner",
+  "parameter_sets": [
+    {"tag": "NoiseRefiner0", "aggregate": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"},
+    {"tag": "NoiseRefiner1", "aggregate": "80c0cd75f44cc434d9306c0fd9a8f02e48b593ecc254de01c1f8fcc29f4bc7c8"}
+  ],
+  "resident_boundary": "ModelEmbedding.FP32",
+  "contract": "atomic rebind; generation invalidates stale output and replay"
+}

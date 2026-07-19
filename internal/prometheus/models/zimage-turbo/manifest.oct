@@ -1,0 +1,83 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Dependencies: Dependency[]
+    Authors: String[]
+    Date: String
+    Kind: String
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+record ModelBlock {
+    Name: String
+    Assembly: String
+    Parameters: String
+    Cache: String
+    Oracle: String
+}
+
+record ModelManifest {
+    Name: String
+    Revision: String
+    Checkpoint: String
+    Runtime: String
+    Precision: String
+    Assembly: String
+    InputAbi: String
+    OutputAbi: String
+    Blocks: ModelBlock[]
+    Flow: String[]
+    Export: String
+    AuditProfile: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ZImageTurboCompiledModel"
+        Version: "0.1.0"
+        Description: "Resolved-source declaration for the EVT-2 compiled Z-Image Turbo subset."
+        Dependencies: []
+        Authors: ["yuechen-li-dev"]
+        Date: "2026-07-19"
+        Kind: "pure"
+    }
+}
+
+fn CompiledModel() -> ModelManifest {
+    return ModelManifest {
+        Name: "ZImageTurbo"
+        Revision: "f332072aa78be7aecdf3ee76d5c247082da564a6"
+        Checkpoint: "sha256:2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"
+        Runtime: "Prometheus.Vulkan"
+        Precision: "ZImageReferenceFp32"
+        Assembly: "NoiseRefiner"
+        InputAbi: "ModelEmbedding.FP32"
+        OutputAbi: "ModelEmbedding.FP32"
+        Blocks: [
+            ModelBlock {
+                Name: "NoiseRefiner0"
+                Assembly: "NoiseRefiner"
+                Parameters: "noise_refiner.0"
+                Cache: "sha256:a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"
+                Oracle: "O19.NoiseRefiner0"
+            },
+            ModelBlock {
+                Name: "NoiseRefiner1"
+                Assembly: "NoiseRefiner"
+                Parameters: "noise_refiner.1"
+                Cache: "sha256:80c0cd75f44cc434d9306c0fd9a8f02e48b593ecc254de01c1f8fcc29f4bc7c8"
+                Oracle: "sha256:9b133c9ed3772f782e1bd77ff5b89732dc28406eec2078f1692d1899e2eb39e7"
+            }
+        ]
+        Flow: ["NoiseRefiner0", "NoiseRefiner1"]
+        Export: "ZImageTurbo.NoiseRefiner"
+        AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1; static; bounded; no prefix replay"
+    }
+}
