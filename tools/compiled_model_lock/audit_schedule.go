@@ -16,7 +16,7 @@ const (
 	auditCeilingBytes = 47186176
 	auditAlignment    = 256
 	auditSummaryBytes = 256
-	acceptedLockID    = "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b"
+	acceptedLockID    = "f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a"
 )
 
 type auditStageSpec struct {
@@ -211,9 +211,9 @@ func auditScheduleProjectionForStages(lock []byte, stages []auditStageSpec, ceil
 		"NoiseRefinerPersistentProjectionSummary.v1",
 		"AuditBudgetBytes: 47186176",
 		"no repeated prefix replay",
-		"ModelSemanticIdentity: \"sha256:a3be975154e505ee1757a67f8d21ca791abc9d5347c9a29be127b7b96725446d\"",
-		"ProductionExecutionIdentity: \"sha256:cdfc5326beb859db5c39c0cee32018bd2bf12da8dec2e22a9208a6ae47749a22\"",
-		"AuditProfileIdentity: \"sha256:81e46633d34aea59ca040654fe23d9244099792f35b53660bdbd30e2ab29c26f\"",
+		"ModelSemanticIdentity: \"sha256:6e66a4ff9938d7920e69e71f7dd346b6e850178b75f8b49e7953ffb96ed56ea8\"",
+		"ProductionExecutionIdentity: \"sha256:309574858856b0cacc68a68cf22dd512abf73c028bfbaa1159eb9e265017b8d6\"",
+		"AuditProfileIdentity: \"sha256:df3a1340b6999daeb2769803a33d18a83151255bc2090e2621e4eb1c129afd11\"",
 	} {
 		if !strings.Contains(text, required) {
 			return "", "", fmt.Errorf("lock missing audit authority %q", required)

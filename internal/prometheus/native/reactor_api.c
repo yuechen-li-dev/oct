@@ -295,6 +295,35 @@ int prometheus_reactor_runtime_model_block_destroy(void* handle, uint64_t block_
   return prom_reactor_runtime_model_block_destroy_impl(handle, block_id);
 }
 
+int prometheus_reactor_runtime_compiled_model_session_create(
+    void* handle, const PrometheusCompiledModelSessionCreateRequest* request, uint64_t* out_session_id,
+    PrometheusCompiledModelSessionEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_session_create_impl(handle, request, out_session_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_session_capture_completed(
+    void* handle, uint64_t session_id, uint64_t completed_block_id,
+    const PrometheusCompiledModelSessionCaptureRequest* request,
+    PrometheusCompiledModelSessionEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_session_capture_completed_impl(
+      handle, session_id, completed_block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_session_compose_joint(
+    void* handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest* request,
+    PrometheusCompiledModelSessionEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_session_compose_joint_impl(handle, session_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_session_get_evidence(
+    void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_session_get_evidence_impl(handle, session_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_session_destroy(void* handle, uint64_t session_id) {
+  return prom_reactor_runtime_compiled_model_session_destroy_impl(handle, session_id);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

@@ -23,6 +23,23 @@ record ModelBlock {
     Oracle: String
 }
 
+record ResidentStream {
+    Role: String
+    Producer: String
+    SemanticAbi: String
+    Dtype: String
+    Tokens: Int
+    Width: Int
+    Layout: String
+    Bytes: Int
+    Generation: String
+    Lifetime: String
+    Consumers: String
+    Mutability: String
+    Alias: String
+    Transport: String
+}
+
 record ModelManifest {
     Name: String
     Revision: String
@@ -35,6 +52,7 @@ record ModelManifest {
     Flow: String
     Export: String
     AuditProfile: String
+    ResidentStreams: ResidentStream[]
 }
 
 fn Manifest() -> PackageManifest {
@@ -86,10 +104,22 @@ fn CompiledModel() -> ModelManifest {
                 Parameters: "context_refiner.1"
                 Cache: "sha256:30268c3b0d7a6fafc411119c929326854e73d394ec95ebeba21f89aa43dfc95f"
                 Oracle: "sha256:08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0"
+            },
+            ModelBlock {
+                Name: "MainTransformer0"
+                Assembly: "MainTransformer"
+                Parameters: "layers.0"
+                Cache: "sha256:48e987811885741ae5f1bf16b28db33ca7f23e09f1e99c1c2fe3d81bdd1caeb6"
+                Oracle: "M2C.JointFp32.layers.0"
             }
         ]
-        Flow: "NoiseRefiner0 -> NoiseRefiner1; ContextEmbedding -> ContextRefiner0 -> ContextRefiner1; independent FP32 resident chains"
-        Export: "ZImageTurbo.NoiseRefiner; ZImageTurbo.ContextRefiner"
-        AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1; ContextRefinerPersistentProjectionSummary.v1; static; bounded; no prefix replay"
+        Flow: "NoiseRefiner0 -> NoiseRefiner1 -> PreparedImage; ContextEmbedding -> ContextRefiner0 -> ContextRefiner1 -> PreparedContext; Joint = Image | Context; MainTransformer0(layers.0); serialized execution with concurrent session residency"
+        Export: "ZImageTurbo.NoiseRefiner; ZImageTurbo.ContextRefiner; ZImageTurbo.MainTransformer0"
+        AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1; ContextRefinerPersistentProjectionSummary.v1; MainTransformerRepresentativeStatic.v1; static; bounded; no prefix replay"
+        ResidentStreams: [
+            ResidentStream { Role: "PreparedImage" Producer: "NoiseRefiner1" SemanticAbi: "ModelEmbedding.FP32" Dtype: "FP32" Tokens: 1024 Width: 3840 Layout: "TokenChannel" Bytes: 15728640 Generation: "replace-on-capture" Lifetime: "session" Consumers: "MainTransformer" Mutability: "immutable" Alias: "forbidden" Transport: "device-local" },
+            ResidentStream { Role: "PreparedContext" Producer: "ContextRefiner1" SemanticAbi: "ModelEmbedding.FP32" Dtype: "FP32" Tokens: 32 Width: 3840 Layout: "TokenChannel" Bytes: 491520 Generation: "replace-on-capture" Lifetime: "session" Consumers: "MainTransformer" Mutability: "immutable" Alias: "forbidden" Transport: "device-local" },
+            ResidentStream { Role: "JointWorking" Producer: "M2CPhysicalComposition" SemanticAbi: "ModelEmbedding.FP32" Dtype: "FP32" Tokens: 1056 Width: 3840 Layout: "TokenChannel.ImageThenContext" Bytes: 16220160 Generation: "replace-on-compose" Lifetime: "session" Consumers: "MainTransformer" Mutability: "immutable" Alias: "forbidden" Transport: "device-local" }
+        ]
     }
 }

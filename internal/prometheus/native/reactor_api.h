@@ -607,6 +607,21 @@ enum {
   PROM_MODEL_BLOCK_DETAIL_PARAMETER_SET_MISMATCH = -6920,
   PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED = -6921,
   PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED = -6922,
+  PROM_MODEL_SESSION_DETAIL_INVALID_REQUEST = -6923,
+  PROM_MODEL_SESSION_DETAIL_STALE_STREAM = -6924,
+  PROM_MODEL_SESSION_DETAIL_STREAM_MISMATCH = -6925,
+  PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN = -6926,
+};
+
+/* M2C has a closed, lock-defined stream vocabulary. These are not
+   caller-named resources and capture never accepts a caller-selected slot. */
+enum {
+  PROM_ZIMAGE_STREAM_PREPARED_IMAGE = 1u,
+  PROM_ZIMAGE_STREAM_PREPARED_CONTEXT = 2u,
+  PROM_ZIMAGE_STREAM_JOINT_WORKING = 3u,
+  PROM_ZIMAGE_STREAM_MAIN_IMAGE_OUTPUT = 4u,
+  PROM_ZIMAGE_STREAM_MAIN_CONTEXT_OUTPUT = 5u,
+  PROM_ZIMAGE_STREAM_SLOT_COUNT = 5u,
 };
 
 /* The compiled noise-refiner owner is intentionally a closed family.  These
@@ -619,6 +634,21 @@ enum {
   PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO = 2u,
   PROM_CONTEXT_REFINER_PARAMETER_SET_0 = 1u,
   PROM_CONTEXT_REFINER_PARAMETER_SET_1 = 2u,
+  PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO = 3u,
+  PROM_MAIN_TRANSFORMER_PARAMETER_SET_0 = 1u,
+};
+
+enum {
+  PROM_ZIMAGE_STREAM_SEMANTIC_ABI_MODEL_EMBEDDING_FP32 = 1u,
+  PROM_ZIMAGE_STREAM_DTYPE_FP32 = 1u,
+  PROM_ZIMAGE_STREAM_LAYOUT_TOKEN_CHANNEL = 1u,
+  PROM_ZIMAGE_STREAM_GENERATION_REPLACE_ON_CAPTURE = 1u,
+  PROM_ZIMAGE_STREAM_GENERATION_REPLACE_ON_COMPOSE = 2u,
+  PROM_ZIMAGE_STREAM_LIFETIME_SESSION = 1u,
+  PROM_ZIMAGE_STREAM_MUTABILITY_IMMUTABLE = 1u,
+  PROM_ZIMAGE_STREAM_ALIAS_FORBIDDEN = 0u,
+  PROM_ZIMAGE_STREAM_TRANSPORT_DEVICE_LOCAL = 1u,
+  PROM_ZIMAGE_STREAM_CONSUMER_MAIN_TRANSFORMER = 1u,
 };
 
 enum {
@@ -737,6 +767,48 @@ typedef struct PrometheusNoiseRefinerResolvedDescriptor {
    family and parameter set discriminate it; no caller-authored topology is
    admitted at this ABI boundary. */
 typedef PrometheusNoiseRefinerResolvedDescriptor PrometheusContextRefinerResolvedDescriptor;
+
+/* These declarations are generated directly from the model lock. They freeze
+   the closed stream ABI and the single M2C representative; no native caller
+   supplies shape, slot, consumer, or sequence-order metadata. */
+typedef struct PrometheusCompiledModelResidentStreamDescriptor {
+  uint64_t lock_identity;
+  uint32_t stream_role;
+  uint32_t producer_family;
+  uint32_t producer_block_id;
+  uint32_t semantic_abi;
+  uint32_t dtype;
+  uint32_t token_count;
+  uint32_t hidden_width;
+  uint32_t physical_layout;
+  uint64_t byte_count;
+  uint32_t generation_policy;
+  uint32_t lifetime;
+  uint32_t legal_consumers;
+  uint32_t mutability;
+  uint32_t alias_permissions;
+  uint32_t transport;
+} PrometheusCompiledModelResidentStreamDescriptor;
+
+typedef struct PrometheusMainTransformerResolvedDescriptor {
+  uint64_t lock_identity;
+  uint32_t model_local_block_id;
+  uint32_t assembly_family;
+  uint32_t parameter_set;
+  uint64_t parameter_set_aggregate_identity;
+  uint64_t internal_abi_identity;
+  uint64_t precision_policy_identity;
+  uint64_t memory_plan_identity;
+  uint64_t execution_plan_identity;
+  uint64_t canonical_authority_identity;
+  uint32_t prepared_image_role;
+  uint32_t prepared_context_role;
+  uint32_t joint_working_role;
+  uint32_t image_token_count;
+  uint32_t context_token_count;
+  uint32_t joint_token_count;
+  uint32_t hidden_width;
+} PrometheusMainTransformerResolvedDescriptor;
 
 typedef struct PrometheusModelBlockExecuteRequest {
   uint32_t struct_size;
@@ -919,6 +991,48 @@ typedef struct PrometheusModelBlockEvidence {
   uint64_t descriptor_generation;
   uint64_t m1b_boundary_gpu_ns[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
 } PrometheusModelBlockEvidence;
+
+typedef struct PrometheusCompiledModelSessionCreateRequest {
+  uint32_t struct_size;
+  uint64_t lock_identity;
+} PrometheusCompiledModelSessionCreateRequest;
+
+/* A completed NoiseRefiner1 becomes PreparedImage and a completed
+   ContextRefiner1 becomes PreparedContext; callers cannot name a slot. */
+typedef struct PrometheusCompiledModelSessionCaptureRequest {
+  uint32_t struct_size;
+  uint64_t source_output_generation;
+} PrometheusCompiledModelSessionCaptureRequest;
+
+/* The generation pair is a stale-input guard, not caller topology. */
+typedef struct PrometheusCompiledModelSessionComposeRequest {
+  uint32_t struct_size;
+  uint64_t required_image_generation;
+  uint64_t required_context_generation;
+} PrometheusCompiledModelSessionComposeRequest;
+
+typedef struct PrometheusCompiledModelSessionEvidence {
+  uint32_t struct_size;
+  int32_t detail_code;
+  uint32_t created;
+  uint32_t quarantined;
+  uint64_t session_identity;
+  uint64_t lock_identity;
+  uint64_t active_block_id;
+  uint64_t binding_generation;
+  uint64_t replay_identity;
+  uint64_t prepared_image_generation;
+  uint64_t prepared_context_generation;
+  uint64_t joint_generation;
+  uint64_t joint_image_generation;
+  uint64_t joint_context_generation;
+  uint64_t prepared_image_bytes;
+  uint64_t prepared_context_bytes;
+  uint64_t joint_bytes;
+  uint64_t cold_buffer_allocation_count;
+  uint64_t warm_buffer_allocation_count;
+  uint64_t composition_count;
+} PrometheusCompiledModelSessionEvidence;
 
 typedef struct PrometheusFftRequest {
   uint32_t struct_size;
@@ -2031,6 +2145,20 @@ PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_destroy(void* handle,
                                                                       uint64_t block_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_create(
+    void* handle, const PrometheusCompiledModelSessionCreateRequest* request, uint64_t* out_session_id,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_capture_completed(
+    void* handle, uint64_t session_id, uint64_t completed_block_id,
+    const PrometheusCompiledModelSessionCaptureRequest* request,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_compose_joint(
+    void* handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest* request,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_get_evidence(
+    void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_destroy(void* handle,
+                                                                                 uint64_t session_id);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);

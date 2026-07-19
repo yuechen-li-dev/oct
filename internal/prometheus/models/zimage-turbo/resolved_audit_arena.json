@@ -610,7 +610,7 @@
       "bytes": 256
     }
   ],
-  "lock_identity": "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b",
+  "lock_identity": "f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a",
   "projection_key_count": 143,
   "required_bytes": 189696,
   "schema": "oct.prometheus.evt2.audit-arena-layout.v1",

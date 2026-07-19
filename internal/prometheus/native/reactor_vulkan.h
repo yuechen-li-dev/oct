@@ -3056,6 +3056,19 @@ int prom_reactor_runtime_context_refiner_audit_final_impl(
 int prom_reactor_runtime_model_block_get_evidence_impl(void* handle, uint64_t block_id,
                                                        PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_model_block_destroy_impl(void* handle, uint64_t block_id);
+int prom_reactor_runtime_compiled_model_session_create_impl(
+    void* handle, const PrometheusCompiledModelSessionCreateRequest* request, uint64_t* out_session_id,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_session_capture_completed_impl(
+    void* handle, uint64_t session_id, uint64_t completed_block_id,
+    const PrometheusCompiledModelSessionCaptureRequest* request,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_session_compose_joint_impl(
+    void* handle, uint64_t session_id, const PrometheusCompiledModelSessionComposeRequest* request,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_session_get_evidence_impl(
+    void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_session_destroy_impl(void* handle, uint64_t session_id);
 /* Native-test seam only.  Production callers cannot mutate a block plan or
    resources after creation; this merely injects an existing lifecycle fault. */
 int prom_reactor_runtime_model_block_test_inject_impl(void* handle, uint64_t block_id,

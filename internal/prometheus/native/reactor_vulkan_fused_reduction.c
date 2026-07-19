@@ -584,6 +584,7 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   if (state == NULL) return;
   if (device == VK_NULL_HANDLE) device = state->device;
   prom_model_block_cleanup_state(state);
+  prom_compiled_model_session_cleanup_state(state);
   for (slot_index = 0u; slot_index < PROM_REDUCTION_RING_MAX_DEPTH; ++slot_index) {
     prom_reduction_slot* slot = &state->slots[slot_index];
     uint32_t m43_head_index;

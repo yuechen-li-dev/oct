@@ -2,7 +2,7 @@
 #ifndef OCT_ZIMAGE_TURBO_RESOLVED_DESCRIPTOR_H
 #define OCT_ZIMAGE_TURBO_RESOLVED_DESCRIPTOR_H
 
-#define PROM_ZIMAGE_TURBO_LOCK_ID 0x4b4aeb0474779325ull
+#define PROM_ZIMAGE_TURBO_LOCK_ID 0xf67b31bdd1e54945ull
 #define PROM_ZIMAGE_TURBO_NO_BLOCK UINT32_MAX
 static const PrometheusNoiseRefinerResolvedDescriptor k_prom_zimage_turbo_noise_refiner_blocks[] = {
   {PROM_ZIMAGE_TURBO_LOCK_ID, 0u, PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_NOISE_REFINER_PARAMETER_SET_0, 0xa1ba526898a2a752ull, 0u, 0u, 0u, 654891776ull, 6517444848718386192ull, 0u, PROM_ZIMAGE_TURBO_NO_BLOCK, 1u},
@@ -12,6 +12,14 @@ static const PrometheusContextRefinerResolvedDescriptor k_prom_zimage_turbo_cont
   {PROM_ZIMAGE_TURBO_LOCK_ID, 0u, PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_CONTEXT_REFINER_PARAMETER_SET_0, 0xc08b908a921a80e1ull, 0u, 0u, 0u, 536870912ull, 0xa30b2ac6ff947b21ull, 0xd2b8167de614da25ull, PROM_ZIMAGE_TURBO_NO_BLOCK, 1u},
   {PROM_ZIMAGE_TURBO_LOCK_ID, 1u, PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_CONTEXT_REFINER_PARAMETER_SET_1, 0x30268c3b0d7a6fafull, 0u, 0u, 0u, 536870912ull, 0xa30b2ac6ff947b21ull, 0x08377e8a46b65cffull, 0u, PROM_ZIMAGE_TURBO_NO_BLOCK},
 };
+static const PrometheusCompiledModelResidentStreamDescriptor k_prom_zimage_turbo_resident_streams[] = {
+  {PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_STREAM_PREPARED_IMAGE, PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO, 1u, PROM_ZIMAGE_STREAM_SEMANTIC_ABI_MODEL_EMBEDDING_FP32, PROM_ZIMAGE_STREAM_DTYPE_FP32, 1024u, 3840u, PROM_ZIMAGE_STREAM_LAYOUT_TOKEN_CHANNEL, 15728640ull, PROM_ZIMAGE_STREAM_GENERATION_REPLACE_ON_CAPTURE, PROM_ZIMAGE_STREAM_LIFETIME_SESSION, PROM_ZIMAGE_STREAM_CONSUMER_MAIN_TRANSFORMER, PROM_ZIMAGE_STREAM_MUTABILITY_IMMUTABLE, PROM_ZIMAGE_STREAM_ALIAS_FORBIDDEN, PROM_ZIMAGE_STREAM_TRANSPORT_DEVICE_LOCAL},
+  {PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT, PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO, 1u, PROM_ZIMAGE_STREAM_SEMANTIC_ABI_MODEL_EMBEDDING_FP32, PROM_ZIMAGE_STREAM_DTYPE_FP32, 32u, 3840u, PROM_ZIMAGE_STREAM_LAYOUT_TOKEN_CHANNEL, 491520ull, PROM_ZIMAGE_STREAM_GENERATION_REPLACE_ON_CAPTURE, PROM_ZIMAGE_STREAM_LIFETIME_SESSION, PROM_ZIMAGE_STREAM_CONSUMER_MAIN_TRANSFORMER, PROM_ZIMAGE_STREAM_MUTABILITY_IMMUTABLE, PROM_ZIMAGE_STREAM_ALIAS_FORBIDDEN, PROM_ZIMAGE_STREAM_TRANSPORT_DEVICE_LOCAL},
+  {PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_STREAM_JOINT_WORKING, PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO, 0u, PROM_ZIMAGE_STREAM_SEMANTIC_ABI_MODEL_EMBEDDING_FP32, PROM_ZIMAGE_STREAM_DTYPE_FP32, 1056u, 3840u, PROM_ZIMAGE_STREAM_LAYOUT_TOKEN_CHANNEL, 16220160ull, PROM_ZIMAGE_STREAM_GENERATION_REPLACE_ON_COMPOSE, PROM_ZIMAGE_STREAM_LIFETIME_SESSION, PROM_ZIMAGE_STREAM_CONSUMER_MAIN_TRANSFORMER, PROM_ZIMAGE_STREAM_MUTABILITY_IMMUTABLE, PROM_ZIMAGE_STREAM_ALIAS_FORBIDDEN, PROM_ZIMAGE_STREAM_TRANSPORT_DEVICE_LOCAL},
+};
+static const PrometheusMainTransformerResolvedDescriptor k_prom_zimage_turbo_main_transformer_blocks[] = {
+  {PROM_ZIMAGE_TURBO_LOCK_ID, 0u, PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO, PROM_MAIN_TRANSFORMER_PARAMETER_SET_0, 0x48e987811885741aull, PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_TURBO_LOCK_ID, PROM_ZIMAGE_STREAM_PREPARED_IMAGE, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT, PROM_ZIMAGE_STREAM_JOINT_WORKING, 1024u, 32u, 1056u, 3840u},
+};
 static const PrometheusNoiseRefinerResolvedDescriptor* prom_zimage_turbo_resolve_noise_refiner_descriptor(uint64_t lock_identity, uint32_t model_local_block_id) {
   if (lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID || model_local_block_id > 1u) return NULL;
   return &k_prom_zimage_turbo_noise_refiner_blocks[model_local_block_id];
@@ -19,5 +27,13 @@ static const PrometheusNoiseRefinerResolvedDescriptor* prom_zimage_turbo_resolve
 static const PrometheusContextRefinerResolvedDescriptor* prom_zimage_turbo_resolve_context_refiner_descriptor(uint64_t lock_identity, uint32_t model_local_block_id) {
   if (lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID || model_local_block_id > 1u) return NULL;
   return &k_prom_zimage_turbo_context_refiner_blocks[model_local_block_id];
+}
+static const PrometheusCompiledModelResidentStreamDescriptor* prom_zimage_turbo_resolve_resident_stream_descriptor(uint64_t lock_identity, uint32_t role) {
+  if (lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID || role == 0u || role > 3u) return NULL;
+  return &k_prom_zimage_turbo_resident_streams[role - 1u];
+}
+static const PrometheusMainTransformerResolvedDescriptor* prom_zimage_turbo_resolve_main_transformer_descriptor(uint64_t lock_identity, uint32_t model_local_block_id) {
+  if (lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID || model_local_block_id != 0u) return NULL;
+  return &k_prom_zimage_turbo_main_transformer_blocks[0u];
 }
 #endif

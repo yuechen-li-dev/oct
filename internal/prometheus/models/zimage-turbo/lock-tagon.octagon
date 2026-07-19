@@ -1,28 +1,34 @@
 CompiledModelLock {
     Schema: "oct.sdslv.compiled-model-lock-tagon.v1"
-    ManifestIdentity: "sha256:b242ade01b76f7a9fe19e2788d3134e29f67bed2c6161e53e2159bc6d4db2cb3"
+    ManifestIdentity: "sha256:b26f4eb08a825aab384c11f4ce66652442b3582dae1570f805ecdbf7ffb08fda"
     Model: "ZImageTurbo"
     Revision: "f332072aa78be7aecdf3ee76d5c247082da564a6"
     Checkpoint: "sha256:2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"
     Runtime: "Prometheus.Vulkan"
     AssemblyFamily: "ZImageTurbo.ClosedFamilies"
-    InternalAbi: "ModelEmbedding.FP32 -> ModelEmbedding.FP32; ContextEmbedding.FP32 -> ContextEmbedding.FP32"
+    InternalAbi: "ModelEmbedding.FP32 -> ModelEmbedding.FP32; ContextEmbedding.FP32 -> ContextEmbedding.FP32; PreparedImage | PreparedContext -> JointWorking[ImageThenContext].FP32"
     Precision: "FP16 immutable weights; FP32 arithmetic/activations/reductions; no activation FP16"
-    ShaderPortfolio: "NoiseRefiner ids 24-36; ContextRefiner reuses ids 25,26,31-37 and adds ids 38-39"
-    MemoryPlan: "NoiseRefiner: 654891776 bytes steady-state; ContextRefiner: 536870912 bytes steady-state; shared window is sized for NoiseRefiner"
-    ExecutionPlan: "NoiseRefiner: AdaLN -> attention -> FFN; ContextRefiner: RMSNorm -> attention -> FFN; independent resident FP32 chains"
-	    ModelSemanticIdentity: "sha256:a3be975154e505ee1757a67f8d21ca791abc9d5347c9a29be127b7b96725446d"
-	    ProductionExecutionIdentity: "sha256:cdfc5326beb859db5c39c0cee32018bd2bf12da8dec2e22a9208a6ae47749a22"
-    AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1; ContextRefinerPersistentProjectionSummary.v1"
-	    AuditProfileIdentity: "sha256:81e46633d34aea59ca040654fe23d9244099792f35b53660bdbd30e2ab29c26f"
+    ShaderPortfolio: "NoiseRefiner ids 24-36; ContextRefiner reuses ids 25,26,31-37 and adds ids 38-39; MainTransformer joint ids 40-43"
+    MemoryPlan: "NoiseRefiner: 654891776 bytes steady-state; ContextRefiner: 536870912 bytes steady-state; session streams: PreparedImage=15728640, PreparedContext=491520, JointWorking=16220160 bytes"
+    ExecutionPlan: "NoiseRefiner: AdaLN -> attention -> FFN; ContextRefiner: RMSNorm -> attention -> FFN; session captures both final FP32 streams; physical ImageThenContext composition; serialized MainTransformer0 representative"
+	    ModelSemanticIdentity: "sha256:6e66a4ff9938d7920e69e71f7dd346b6e850178b75f8b49e7953ffb96ed56ea8"
+	    ProductionExecutionIdentity: "sha256:309574858856b0cacc68a68cf22dd512abf73c028bfbaa1159eb9e265017b8d6"
+    AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1; ContextRefinerPersistentProjectionSummary.v1; MainTransformerRepresentativeStatic.v1"
+	    AuditProfileIdentity: "sha256:df3a1340b6999daeb2769803a33d18a83151255bc2090e2621e4eb1c129afd11"
 	    AuditBudgetBytes: 47186176
 	    AuditPolicy: "Full small vectors; ProjectionAndSummary large persistent stages; static capture at last legal lifetime; no repeated prefix replay"
     Blocks: [
         ResolvedBlock { Family: "ZImageTurbo.NoiseRefiner" Id: 0 Name: "NoiseRefiner0" ParameterSet: "NoiseRefiner0" Parameters: "noise_refiner.0" Cache: "sha256:a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e" Oracle: "O19.NoiseRefiner0" Predecessor: "" Successor: "NoiseRefiner1" Transport: "ModelEmbedding.FP32 resident" },
         ResolvedBlock { Family: "ZImageTurbo.NoiseRefiner" Id: 1 Name: "NoiseRefiner1" ParameterSet: "NoiseRefiner1" Parameters: "noise_refiner.1" Cache: "sha256:80c0cd75f44cc434d9306c0fd9a8f02e48b593ecc254de01c1f8fcc29f4bc7c8" Oracle: "sha256:9b133c9ed3772f782e1bd77ff5b89732dc28406eec2078f1692d1899e2eb39e7" Predecessor: "NoiseRefiner0" Successor: "" Transport: "ModelEmbedding.FP32 resident" },
         ResolvedBlock { Family: "ZImageTurbo.ContextRefiner" Id: 0 Name: "ContextRefiner0" ParameterSet: "ContextRefiner0" Parameters: "context_refiner.0" Cache: "sha256:c08b908a921a80e16995abc3f3eefcadd1a94a78cd76b56e58d6b21e6ce412ae" Oracle: "sha256:d2b8167de614da25211eb69991e1b7700992bf5f4ae527bff8a55366ea1ae6df" Predecessor: "ContextEmbedding" Successor: "ContextRefiner1" Transport: "ContextEmbedding.FP32 resident" },
-        ResolvedBlock { Family: "ZImageTurbo.ContextRefiner" Id: 1 Name: "ContextRefiner1" ParameterSet: "ContextRefiner1" Parameters: "context_refiner.1" Cache: "sha256:30268c3b0d7a6fafc411119c929326854e73d394ec95ebeba21f89aa43dfc95f" Oracle: "sha256:08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0" Predecessor: "ContextRefiner0" Successor: "MainTransformer.ContextInput" Transport: "ContextEmbedding.FP32 resident" }
+        ResolvedBlock { Family: "ZImageTurbo.ContextRefiner" Id: 1 Name: "ContextRefiner1" ParameterSet: "ContextRefiner1" Parameters: "context_refiner.1" Cache: "sha256:30268c3b0d7a6fafc411119c929326854e73d394ec95ebeba21f89aa43dfc95f" Oracle: "sha256:08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0" Predecessor: "ContextRefiner0" Successor: "PreparedContext" Transport: "ModelEmbedding.FP32 resident" },
+        ResolvedBlock { Family: "ZImageTurbo.MainTransformer" Id: 0 Name: "MainTransformer0" ParameterSet: "MainTransformer0" Parameters: "layers.0" Cache: "sha256:48e987811885741ae5f1bf16b28db33ca7f23e09f1e99c1c2fe3d81bdd1caeb6" Oracle: "M2C.JointFp32.layers.0" Predecessor: "PreparedImage|PreparedContext" Successor: "MainImageOutput" Transport: "JointWorking.FP32 ImageThenContext resident" }
     ]
-    Flow: "NoiseRefiner0 -> NoiseRefiner1 and ContextEmbedding -> ContextRefiner0 -> ContextRefiner1; independent streams; family-local FP32 resident handoff; atomic rebind; no BF16 cast; no host bounce"
-    Replay: "assembly-family + parameter-set + binding-generation + input + execution-contract"
+    ResidentStreams: [
+        ResidentStream { Role: "PreparedImage" Producer: "NoiseRefiner1" SemanticAbi: "ModelEmbedding.FP32" Dtype: "FP32" Tokens: 1024 Width: 3840 Layout: "TokenChannel" Bytes: 15728640 Generation: "replace-on-capture" Lifetime: "session" Consumers: "MainTransformer" Mutability: "immutable" Alias: "forbidden" Transport: "device-local" },
+        ResidentStream { Role: "PreparedContext" Producer: "ContextRefiner1" SemanticAbi: "ModelEmbedding.FP32" Dtype: "FP32" Tokens: 32 Width: 3840 Layout: "TokenChannel" Bytes: 491520 Generation: "replace-on-capture" Lifetime: "session" Consumers: "MainTransformer" Mutability: "immutable" Alias: "forbidden" Transport: "device-local" },
+        ResidentStream { Role: "JointWorking" Producer: "M2CPhysicalComposition" SemanticAbi: "ModelEmbedding.FP32" Dtype: "FP32" Tokens: 1056 Width: 3840 Layout: "TokenChannel.ImageThenContext" Bytes: 16220160 Generation: "replace-on-compose" Lifetime: "session" Consumers: "MainTransformer" Mutability: "immutable" Alias: "forbidden" Transport: "device-local" }
+    ]
+    Flow: "NoiseRefiner0 -> NoiseRefiner1 -> PreparedImage and ContextEmbedding -> ContextRefiner0 -> ContextRefiner1 -> PreparedContext; Joint = Image | Context; serialized session execution; atomic rebind; no BF16 cast; no host bounce"
+    Replay: "lock + assembly-family + parameter-set + binding-generation + PreparedImage-generation + PreparedContext-generation + joint-composition"
 }

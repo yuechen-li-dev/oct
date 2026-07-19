@@ -3,6 +3,7 @@
 #include "../reactor_api.h"
 #include "../reactor_vulkan.h"
 #include "../../models/zimage-turbo/resolved_audit_schedule.h"
+#include "../../models/zimage-turbo/resolved_descriptor.h"
 
 #include <algorithm>
 #include <array>
@@ -1318,6 +1319,51 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
     ASSERT_EQUAL(0u, evidence.warm_buffer_allocation_count, "first real execution performs no warm buffer allocation");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "real resident M1B resources destroy safely");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "real M1B runtime destroys safely");
+}
+
+FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
+{
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "M2C session runtime creates");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    PrometheusCompiledModelSessionCreateRequest create{};
+    create.struct_size = sizeof(create);
+    create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID ^ 1u;
+    PrometheusCompiledModelSessionEvidence evidence{};
+    std::uint64_t sessionID = 0u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_compiled_model_session_create(
+                                 runtime, &create, &sessionID, &evidence),
+                 "M2C session rejects a foreign lock before allocating streams");
+    create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_create(
+                                runtime, &create, &sessionID, &evidence),
+                 "M2C session preallocates the lock-defined image context and joint slots");
+    ASSERT_TRUE(sessionID != 0u && evidence.prepared_image_bytes == 1024ull * 3840ull * sizeof(float) &&
+                    evidence.prepared_context_bytes == 32ull * 3840ull * sizeof(float) &&
+                    evidence.joint_bytes == (1024ull + 32ull) * 3840ull * sizeof(float),
+                "M2C physical joint plan freezes Image then Context FP32 extents");
+    ASSERT_EQUAL(3u, evidence.cold_buffer_allocation_count, "M2C allocates all resident stream slots during cold setup");
+    PrometheusCompiledModelSessionComposeRequest compose{};
+    compose.struct_size = sizeof(compose);
+    compose.required_image_generation = 1u;
+    compose.required_context_generation = 1u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                                 runtime, sessionID, &compose, &evidence),
+                 "M2C rejects a joint when one or both closed producer slots are missing");
+    ASSERT_EQUAL(PROM_MODEL_SESSION_DETAIL_STALE_STREAM, evidence.detail_code,
+                 "M2C missing stream rejection has a distinct stale-generation identity");
+    const std::uint64_t retainedSessionID = sessionID;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_compiled_model_session_create(
+                                 runtime, &create, &sessionID, &evidence),
+                 "M2C runtime admits only one closed session owner");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, retainedSessionID),
+                 "M2C session releases all three resident slots safely");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, retainedSessionID),
+                 "M2C repeated session destruction cannot transfer ownership twice");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M2C session runtime destroys safely");
 }
 
 FACT(PrometheusResidentModelBlockRejectsMalformedProgramAndPipelineFault)

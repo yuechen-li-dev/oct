@@ -483,6 +483,36 @@ typedef struct prom_reduction_slot {
   uint64_t m48_command_reuse_count;
 } prom_reduction_slot;
 
+typedef struct prom_compiled_model_stream_slot {
+  prom_vk_buffer device;
+  uint64_t generation;
+  uint64_t producer_block_id;
+  uint64_t producer_output_generation;
+  uint32_t valid;
+} prom_compiled_model_stream_slot;
+
+/* One session, one serialized executor, and fixed lock-owned stream slots.
+   This is intentionally neither a graph nor a string-keyed resource map. */
+typedef struct prom_compiled_model_session_state {
+  uint64_t session_id;
+  uint64_t next_session_id;
+  uint64_t lock_identity;
+  uint64_t active_block_id;
+  uint64_t binding_generation;
+  uint64_t replay_identity;
+  uint64_t joint_image_generation;
+  uint64_t joint_context_generation;
+  uint64_t cold_buffer_allocation_count;
+  uint64_t warm_buffer_allocation_count;
+  uint64_t composition_count;
+  uint32_t created;
+  uint32_t quarantined;
+  int32_t last_detail_code;
+  VkCommandBuffer command_buffer;
+  VkFence fence;
+  prom_compiled_model_stream_slot streams[PROM_ZIMAGE_STREAM_SLOT_COUNT];
+} prom_compiled_model_session_state;
+
 typedef struct prom_reduction_runtime_state {
   uint32_t magic;
   uint32_t initialized;
@@ -608,6 +638,7 @@ typedef struct prom_reduction_runtime_state {
   prom_num_m49b_controller m49b_controller;
 
   prom_model_block_state model_block;
+  prom_compiled_model_session_state compiled_session;
   uint64_t m49b_next_execution_index;
   uint32_t m49b_enabled;
   prom_reduction_slot slots[PROM_REDUCTION_RING_MAX_DEPTH];
@@ -689,6 +720,7 @@ void prom_reduction_record_barrier(VkCommandBuffer command_buffer);
 int prom_reduction_find_nonfinite(const float* input, uint64_t count, uint64_t* out_index);
 void prom_reduction_destroy_pipeline(VkDevice device, prom_reduction_pipeline* pipeline);
 void prom_model_block_cleanup_state(prom_reduction_runtime_state* state);
+void prom_compiled_model_session_cleanup_state(prom_reduction_runtime_state* state);
 int prom_reactor_runtime_noise_refiner0_execute_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefiner0ExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
