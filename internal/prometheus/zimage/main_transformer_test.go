@@ -1,6 +1,22 @@
 package zimage
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
+
+func TestMainTransformerLayerNamespaceIsClosed(t *testing.T) {
+	for index := uint32(0); index < 30; index++ {
+		block, err := MainTransformerLayerBlock(index)
+		want := "layers." + strconv.FormatUint(uint64(index), 10)
+		if err != nil || block != want {
+			t.Fatalf("closed layer %d resolved as %q, %v; want %q", index, block, err, want)
+		}
+	}
+	if _, err := MainTransformerLayerBlock(30); err == nil {
+		t.Fatal("layer 30 escaped the closed MainTransformer namespace")
+	}
+}
 
 func TestMainTransformerRepresentativeIsClosedAndModulated(t *testing.T) {
 	if MainTransformerBlock != "layers.0" || len(mainTransformer0Specs) != 13 {

@@ -1,0 +1,12 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.final-authority.v1",
+  "authority": "CUDA FP32 deterministic MainTransformer chain",
+  "layers": 30,
+  "final_layer": "layers.29",
+  "final_joint_sha256": "1015ca4b43537d5fdaa6720ca8bb7ec6882e0b260c08d4a33172266daabe2893",
+  "final_manifest_sha256": "157e32dd93e24eff8a274a9b762c88022c5b75cf0f137b0e93a866ad02c598fd",
+  "deterministic_rerun": true,
+  "precision": "FP16 immutable cache operands expanded to FP32 at use; FP32 activations, reductions, RoPE, softmax, projections, and residuals",
+  "input_contract": "PreparedImage | PreparedContext, Image tokens first",
+  "output_contract": "JointWorking FP32 after layers.29"
+}

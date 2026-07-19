@@ -1776,6 +1776,111 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     std::cout << "\nM2C warm_stats_ns median=" << (sortedWarm[4u] + sortedWarm[5u]) / 2u
               << " mean=" << mean_ns(warmNs) << " min=" << sortedWarm.front()
               << " p95=" << sortedWarm[9u] << " churn=zero\n";
+    std::array<std::uint64_t, 30> chainExecutionNs{};
+    std::array<std::uint64_t, 29> chainRebindNs{};
+    const auto chainStart = std::chrono::steady_clock::now();
+    mainExecute.resident_chain_mode = 1u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
+                 "chain mode advances JointWorking from layers.0 without host reconstruction");
+    chainExecutionNs[0u] = evidence.last_execution_ns;
+    const std::uint64_t chainedJointGeneration = evidence.output_generation == 0u ? 0u : jointGeneration + 1u;
+    std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> main1WeightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> main1Uploads{};
+    for (std::uint32_t index = 0u; index < noise0Names.size(); ++index) {
+        std::string name(noise0Names[index]);
+        name.replace(0u, std::string("noise_refiner.0").size(), "layers.1");
+        main1WeightBytes[index] = read_binary_file(checkpointRoot / "layers.1" / name);
+        ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(main1WeightBytes[index].size()),
+                     "MainTransformer layers.1 cache tensor has its declared size");
+        main1Uploads[index].binding_index = index;
+        main1Uploads[index].bytes = main1WeightBytes[index].data();
+        main1Uploads[index].byte_count = main1WeightBytes[index].size();
+        main1Uploads[index].content_identity = 0x9200u + index;
+        main1Uploads[index].layout_identity = 0x9300u + index;
+    }
+    PrometheusMainTransformerRebindRequest mainRebind{};
+    mainRebind.struct_size = sizeof(mainRebind);
+    mainRebind.model_local_block_id = 1u;
+    mainRebind.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    mainRebind.upload_count = static_cast<std::uint32_t>(main1Uploads.size());
+    mainRebind.uploads = main1Uploads.data();
+    const auto firstRebindStart = std::chrono::steady_clock::now();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_rebind(runtime, mainBlockID, &mainRebind, &evidence),
+                 "MainTransformer rebind accepts only the immediate layers.1 successor");
+    chainRebindNs[0u] = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - firstRebindStart).count());
+    mainExecute.model_local_block_id = 1u;
+    mainExecute.required_joint_generation = chainedJointGeneration;
+    mainExecute.output_identity = 0x4d32435f6d616e31ull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
+                 "layers.1 consumes the layers.0 device-resident JointWorking generation");
+    chainExecutionNs[1u] = evidence.last_execution_ns;
+    std::uint64_t chainJointGeneration = chainedJointGeneration + 1u;
+    for (std::uint32_t layer = 2u; layer < 30u; ++layer) {
+        std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> layerWeightBytes{};
+        std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> layerUploads{};
+        for (std::uint32_t index = 0u; index < noise0Names.size(); ++index) {
+            std::string name(noise0Names[index]);
+            name.replace(0u, std::string("noise_refiner.0").size(), "layers." + std::to_string(layer));
+            layerWeightBytes[index] = read_binary_file(checkpointRoot / ("layers." + std::to_string(layer)) / name);
+            ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(layerWeightBytes[index].size()),
+                         "MainTransformer successor cache tensor has its declared size");
+            layerUploads[index].binding_index = index;
+            layerUploads[index].bytes = layerWeightBytes[index].data();
+            layerUploads[index].byte_count = layerWeightBytes[index].size();
+            layerUploads[index].content_identity = 0x9400u + layer * 32u + index;
+            layerUploads[index].layout_identity = 0x9800u + layer * 32u + index;
+        }
+        PrometheusMainTransformerRebindRequest rebind{};
+        rebind.struct_size = sizeof(rebind);
+        rebind.model_local_block_id = layer;
+        rebind.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+        rebind.upload_count = static_cast<std::uint32_t>(layerUploads.size());
+        rebind.uploads = layerUploads.data();
+        const auto rebindStart = std::chrono::steady_clock::now();
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_rebind(runtime, mainBlockID, &rebind, &evidence),
+                     "MainTransformer transition follows the lock-resolved immediate successor");
+        chainRebindNs[layer - 1u] = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - rebindStart).count());
+        mainExecute.model_local_block_id = layer;
+        mainExecute.required_joint_generation = chainJointGeneration;
+        mainExecute.output_identity = 0x4d32435f6d616e30ull + layer;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
+                     "MainTransformer successor consumes the preceding resident joint generation");
+        chainExecutionNs[layer] = evidence.last_execution_ns;
+        chainJointGeneration += 1u;
+    }
+    finalAudit.required_output_generation = evidence.output_generation;
+    finalAudit.output_identity = mainExecute.output_identity;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_audit_final(runtime, mainBlockID, &finalAudit, &evidence),
+                 "layer-29 final audit reads the completed resident chain output");
+    const std::filesystem::path chainCanonical = cacheRoot / "canonical" / "f332072aa78be7aecdf3ee76d5c247082da564a6" /
+        "m2d-fp32-reference" / "layers.29" / "stages" / "final_joint_output.f32.bin";
+    const std::vector<std::uint8_t> chainReference = read_binary_file(chainCanonical);
+    ASSERT_EQUAL(static_cast<std::uint64_t>(finalJoint.size()) * sizeof(float),
+                 static_cast<std::uint64_t>(chainReference.size()),
+                 "M2D layer-29 FP32 authority has exact physical joint size");
+    const ComparisonMetrics chainJoint = compare_float_region(finalJoint.data(), chainReference, 0u, finalJoint.size());
+    const ComparisonMetrics chainImage = compare_float_region(finalJoint.data(), chainReference, 0u, 1024u * 3840u);
+    const ComparisonMetrics chainContext = compare_float_region(finalJoint.data(), chainReference, 1024u * 3840u, 32u * 3840u);
+    const ComparisonMetrics chainLastImage = compare_float_region(finalJoint.data(), chainReference, 1023u * 3840u, 3840u);
+    const ComparisonMetrics chainFirstContext = compare_float_region(finalJoint.data(), chainReference, 1024u * 3840u, 3840u);
+    std::cout << "M2D final_joint finite=" << chainJoint.finite << " relative_l2=" << chainJoint.relativeL2
+              << " linf=" << chainJoint.linf << " image_relative_l2=" << chainImage.relativeL2
+              << " context_relative_l2=" << chainContext.relativeL2 << " last_image_relative_l2="
+              << chainLastImage.relativeL2 << " first_context_relative_l2=" << chainFirstContext.relativeL2
+              << " first_mismatch=" << chainJoint.firstMismatch << " accepted_threshold=5e-5\n";
+    ASSERT_TRUE(chainJoint.finite && chainJoint.relativeL2 <= 5.0e-5 && chainImage.relativeL2 <= 5.0e-5 &&
+                    chainContext.relativeL2 <= 5.0e-5 && chainLastImage.relativeL2 <= 5.0e-5 &&
+                    chainFirstContext.relativeL2 <= 5.0e-5,
+                "the complete resident MainTransformer chain matches the layer-29 FP32 authority");
+    const std::uint64_t chainElapsedNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - chainStart).count());
+    const std::uint64_t chainExecutionTotalNs = std::accumulate(chainExecutionNs.begin(), chainExecutionNs.end(), std::uint64_t{0u});
+    const std::uint64_t chainRebindTotalNs = std::accumulate(chainRebindNs.begin(), chainRebindNs.end(), std::uint64_t{0u});
+    const std::uint64_t layerUploadBytes = 361820672ull;
+    std::cout << "M2D chain_timing total_ns=" << chainElapsedNs << " execution_ns=" << chainExecutionTotalNs
+              << " rebind_ns=" << chainRebindTotalNs << " upload_bytes=" << layerUploadBytes * 29u
+              << " rebind_upload_bandwidth_bytes_per_second="
+              << (chainRebindTotalNs == 0u ? 0u : (layerUploadBytes * 29u * 1000000000ull) / chainRebindTotalNs)
+              << " committed_bytes=" << evidence.total_committed_bytes << " peak_plan_bytes=" << evidence.peak_plan_bytes << "\n";
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, mainBlockID),
                  "MainTransformer owner destroys safely after retained-stream reuse");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, sessionID),

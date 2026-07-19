@@ -97,8 +97,16 @@ shader MainTransformerJointQkNormRope {
         let normalizedMate: f32 = mate * invRms * mateScale;
         let cosine: f32 = CosineF32(coordinate * frequency);
         let sine: f32 = SineF32(coordinate * frequency);
+        // The pinned FP32 authority performs the even-slice write before its
+        // odd-slice write. Its odd expression therefore observes the rotated
+        // even lane, rather than the original normalized mate. Preserve that
+        // source-visible ordering exactly; simplifying this into the usual
+        // independent complex-pair rotation changes the established witness.
         if (axisChannel % 2u) == 0u { Qkv[index] = normalized * cosine - normalizedMate * sine; }
-        if (axisChannel % 2u) != 0u { Qkv[index] = normalizedMate * sine + normalized * cosine; }
+        if (axisChannel % 2u) != 0u {
+            let rotatedMate: f32 = normalizedMate * cosine - normalized * sine;
+            Qkv[index] = rotatedMate * sine + normalized * cosine;
+        }
         return;
     }
 }

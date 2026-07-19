@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.timing.v1",
+  "chain_layers": 30,
+  "chain_elapsed_ns": 25539434100,
+  "sum_layer_execution_ns": 16308485300,
+  "sum_rebind_ns": 1289940800,
+  "warm_representative": {"runs": 10, "median_ns": 542977000, "min_ns": 536809800, "p95_ns": 544858400}
+}

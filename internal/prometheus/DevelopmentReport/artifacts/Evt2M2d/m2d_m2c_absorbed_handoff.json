@@ -1,0 +1,12 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.absorbed-handoff.v1",
+  "m2c_baseline_lock_identity": "f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a",
+  "m2d_lock_identity": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+  "representative": "layers.0",
+  "first_divergence": {
+    "stage": "joint_qk_rope",
+    "cause": "canonical in-place even-lane update is observed by the odd-lane expression",
+    "repair": "generated SDSL-V RoPE kernel preserves the canonical update order"
+  },
+  "absorbed_m2c_status": "numerical representative closeout complete; scaling and stage-local audit remain M2D work"
+}

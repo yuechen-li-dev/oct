@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.memory.v1",
+  "model_owned_resolved_ceiling_bytes": 643587076,
+  "persistent_weight_bytes": 361820672,
+  "prepared_image_bytes": 15728640,
+  "prepared_context_bytes": 491520,
+  "joint_working_bytes": 16220160,
+  "scope": "model-owned resolved allocation; not a whole-device VRAM claim"
+}

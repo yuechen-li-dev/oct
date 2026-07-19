@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -45,8 +47,37 @@ var mainTransformer0Specs = []cacheSpec{
 	{"layers.0.ffn_norm2.weight", "FFN post-norm", false, []uint64{3840}},
 }
 
+// MainTransformerLayerBlock validates the only legal package namespace for a
+// source-defined MainTransformer block.  The runtime receives resolved layer
+// identities from the lock; this helper is solely the deterministic cache
+// producer and rejects arbitrary tensor prefixes.
+func MainTransformerLayerBlock(index uint32) (string, error) {
+	if index >= 30 {
+		return "", fmt.Errorf("main transformer layer index %d is outside the closed 30-block model", index)
+	}
+	return "layers." + strconv.FormatUint(uint64(index), 10), nil
+}
+
+func mainTransformerSpecsForBlock(block string) []cacheSpec {
+	specs := make([]cacheSpec, 0, len(mainTransformer0Specs))
+	for _, spec := range mainTransformer0Specs {
+		copy := spec
+		copy.name = strings.Replace(spec.name, MainTransformerBlock, block, 1)
+		specs = append(specs, copy)
+	}
+	return specs
+}
+
 func MainTransformerCacheRoot(cacheRoot string) string {
-	return filepath.Join(cacheRoot, "layers", NoiseRefiner0SourceCheckpointSHA256, MainTransformerBlock)
+	return MainTransformerLayerCacheRoot(cacheRoot, 0)
+}
+
+func MainTransformerLayerCacheRoot(cacheRoot string, index uint32) string {
+	block, err := MainTransformerLayerBlock(index)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(cacheRoot, "layers", NoiseRefiner0SourceCheckpointSHA256, block)
 }
 
 func MainTransformerCanonicalRoot(cacheRoot string) string {
@@ -58,8 +89,25 @@ func MainTransformerCanonicalRoot(cacheRoot string) string {
 // same-shaped tensors are interchangeable; M2D must create a separate closed
 // package and prove its aggregate identity before rebinding it.
 func BuildMainTransformerCache(sourcePath, cacheRoot, expectedSHA256 string) (CacheManifest, []NoiseRefiner1TensorInventory, error) {
-	return buildClosedFP16Cache(sourcePath, cacheRoot, expectedSHA256, MainTransformerBlock,
-		MainTransformerCacheSchema, MainTransformerTransformID, mainTransformer0Specs)
+	return BuildMainTransformerLayerCache(sourcePath, cacheRoot, expectedSHA256, 0)
+}
+
+// BuildMainTransformerLayerCache is the closed all-layer package producer. It
+// accepts one of the pinned source's thirty numeric layer IDs, validates the
+// exact thirteen-role set, and emits a distinct aggregate for that immutable
+// parameter package.
+func BuildMainTransformerLayerCache(sourcePath, cacheRoot, expectedSHA256 string, index uint32) (CacheManifest, []NoiseRefiner1TensorInventory, error) {
+	block, err := MainTransformerLayerBlock(index)
+	if err != nil {
+		return CacheManifest{}, nil, err
+	}
+	schema := "oct.prometheus.evt2.m2d.fp16-cache.v1"
+	transform := "zimage-main-transformer-bf16-fp16-transpose-v1"
+	if index == 0 {
+		schema = MainTransformerCacheSchema
+		transform = MainTransformerTransformID
+	}
+	return buildClosedFP16Cache(sourcePath, cacheRoot, expectedSHA256, block, schema, transform, mainTransformerSpecsForBlock(block))
 }
 
 // LoadMainTransformerCacheManifest verifies the full representative package,

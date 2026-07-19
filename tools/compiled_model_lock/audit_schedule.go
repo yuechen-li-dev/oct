@@ -16,7 +16,7 @@ const (
 	auditCeilingBytes = 47186176
 	auditAlignment    = 256
 	auditSummaryBytes = 256
-	acceptedLockID    = "f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a"
+	acceptedLockID    = "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e"
 )
 
 type auditStageSpec struct {
@@ -211,8 +211,8 @@ func auditScheduleProjectionForStages(lock []byte, stages []auditStageSpec, ceil
 		"NoiseRefinerPersistentProjectionSummary.v1",
 		"AuditBudgetBytes: 47186176",
 		"no repeated prefix replay",
-		"ModelSemanticIdentity: \"sha256:6e66a4ff9938d7920e69e71f7dd346b6e850178b75f8b49e7953ffb96ed56ea8\"",
-		"ProductionExecutionIdentity: \"sha256:309574858856b0cacc68a68cf22dd512abf73c028bfbaa1159eb9e265017b8d6\"",
+		"ModelSemanticIdentity: \"sha256:ed6a7b765d0d7ece22a02a4416734fbd55d8d46684c8acb3dda1044b555bbeb7\"",
+		"ProductionExecutionIdentity: \"sha256:6a883d7797b0ebe363bc5024cf8f21cc721e879558f1520be2c124779d515c25\"",
 		"AuditProfileIdentity: \"sha256:df3a1340b6999daeb2769803a33d18a83151255bc2090e2621e4eb1c129afd11\"",
 	} {
 		if !strings.Contains(text, required) {

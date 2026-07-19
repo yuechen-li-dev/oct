@@ -744,11 +744,12 @@ typedef struct PrometheusContextRefinerCreateRequest {
 
 typedef PrometheusContextRefinerCreateRequest PrometheusContextRefinerRebindRequest;
 
-/* MainTransformer is a lock-selected representative program. The caller
-   supplies only the closed block id and a validated layers.0 payload; family,
+/* MainTransformer is a lock-selected 30-layer program. The caller
+   supplies only the closed block id and a validated fixed-role payload; family,
    stream roles, token counts, ABI, shader portfolio, and memory plan are
    resolved from lock-tagon. */
 typedef PrometheusContextRefinerCreateRequest PrometheusMainTransformerCreateRequest;
+typedef PrometheusContextRefinerCreateRequest PrometheusMainTransformerRebindRequest;
 
 typedef struct PrometheusMainTransformerExecuteRequest {
   uint32_t struct_size;
@@ -756,6 +757,8 @@ typedef struct PrometheusMainTransformerExecuteRequest {
   uint64_t lock_identity;
   uint32_t model_local_block_id;
   uint32_t audit_enabled;
+  uint32_t resident_chain_mode;
+  uint32_t reserved0;
   uint64_t required_image_generation;
   uint64_t required_context_generation;
   uint64_t required_joint_generation;
@@ -790,7 +793,7 @@ typedef struct PrometheusNoiseRefinerResolvedDescriptor {
 typedef PrometheusNoiseRefinerResolvedDescriptor PrometheusContextRefinerResolvedDescriptor;
 
 /* These declarations are generated directly from the model lock. They freeze
-   the closed stream ABI and the single M2C representative; no native caller
+   the closed stream ABI and all 30 MainTransformer parameter sets; no native caller
    supplies shape, slot, consumer, or sequence-order metadata. */
 typedef struct PrometheusCompiledModelResidentStreamDescriptor {
   uint64_t lock_identity;
@@ -2165,6 +2168,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner_audit_final(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_create(
     void* handle, const PrometheusMainTransformerCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_rebind(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerRebindRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_execute(
     void* handle, uint64_t block_id, const PrometheusMainTransformerExecuteRequest* request,

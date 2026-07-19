@@ -292,6 +292,12 @@ int prometheus_reactor_runtime_main_transformer_create(
   return prom_reactor_runtime_main_transformer_create_impl(handle, request, out_block_id, out_evidence);
 }
 
+int prometheus_reactor_runtime_main_transformer_rebind(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_main_transformer_rebind_impl(handle, block_id, request, out_evidence);
+}
+
 int prometheus_reactor_runtime_main_transformer_execute(
     void* handle, uint64_t block_id, const PrometheusMainTransformerExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence) {

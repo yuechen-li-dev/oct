@@ -177,6 +177,7 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
                                                 prom_model_block_state* block,
                                                 prom_compiled_model_session_state* session,
                                                 uint64_t requested_joint_generation,
+                                                uint32_t resident_chain_mode,
                                                 int32_t* out_detail);
 static int prom_context_refiner_record_execute(prom_reduction_runtime_state* state,
                                                prom_model_block_state* block, int resident_input,
@@ -340,7 +341,7 @@ static int prom_model_block_validate_create_request(const PrometheusModelBlockCr
        request->parameter_set_aggregate_identity != prom_context_refiner_expected_aggregate(request->parameter_set) ||
        request->shader_id != PROM_MODEL_BLOCK_M1B_NORM_SHADER_ID)) return 0;
   if (request->assembly_family == PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO &&
-      (request->parameter_set != PROM_MAIN_TRANSFORMER_PARAMETER_SET_0 ||
+      (request->parameter_set == 0u || request->parameter_set > 30u ||
        request->parameter_set_aggregate_identity != prom_main_transformer_expected_aggregate(request->parameter_set) ||
        request->shader_id != PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID)) return 0;
   if (request->assembly_family != 0u &&
@@ -928,7 +929,7 @@ static uint64_t prom_context_refiner_expected_aggregate(uint32_t parameter_set) 
 
 static uint64_t prom_main_transformer_expected_aggregate(uint32_t parameter_set) {
   uint32_t index;
-  for (index = 0u; index < 1u; ++index) {
+  for (index = 0u; index < 30u; ++index) {
     if (k_prom_zimage_turbo_main_transformer_blocks[index].parameter_set == parameter_set)
       return k_prom_zimage_turbo_main_transformer_blocks[index].parameter_set_aggregate_identity;
   }
@@ -2647,7 +2648,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
                                                                      request->model_local_block_id);
   if (descriptor == NULL ||
       descriptor->assembly_family != PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO ||
-      descriptor->parameter_set != PROM_MAIN_TRANSFORMER_PARAMETER_SET_0 ||
+      descriptor->parameter_set != descriptor->model_local_block_id + 1u ||
       descriptor->parameter_set_aggregate_identity != prom_main_transformer_expected_aggregate(descriptor->parameter_set) ||
       descriptor->prepared_image_role != PROM_ZIMAGE_STREAM_PREPARED_IMAGE ||
       descriptor->prepared_context_role != PROM_ZIMAGE_STREAM_PREPARED_CONTEXT ||
@@ -3931,10 +3932,11 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
                                                 prom_model_block_state* block,
                                                 prom_compiled_model_session_state* session,
                                                 uint64_t requested_joint_generation,
+                                                uint32_t resident_chain_mode,
                                                 int32_t* out_detail) {
   prom_compiled_model_stream_slot* joint;
   VkCommandBufferBeginInfo begin_info;
-  VkBufferCopy copies[2];
+  VkBufferCopy copies[3];
   VkBufferMemoryBarrier barriers[2];
   prom_model_block_m1b_ingress_constants ingress = {0u, PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS};
   prom_model_block_m1b_adaln_constants adaln = {15360u, 256u};
@@ -4031,6 +4033,28 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u],
                                          &w2, sizeof(w2), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
+  /* W2 writes its projected intermediate to input_device and the final FP32
+     gated residual to attention. Chain mode copies that final buffer back to
+     the lock-owned JointWorking slot before completion, making attention and
+     and JointWorking the two fixed ping/pong states for the next layer. */
+  if (resident_chain_mode != 0u) {
+  barriers[0].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barriers[0].buffer = block->attention.buffer;
+  barriers[0].size = block->attention.size;
+  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, barriers, 0u, NULL);
+  memset(&copies[2], 0, sizeof(copies[2]));
+  copies[2].size = joint->device.size;
+  vkCmdCopyBuffer(block->command_buffer, block->attention.buffer, joint->device.buffer, 1u, &copies[2]);
+  barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+  barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+  barriers[0].buffer = joint->device.buffer;
+  barriers[0].size = joint->device.size;
+  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       0u, 0u, NULL, 1u, barriers, 0u, NULL);
+  }
   result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
                ? VK_ERROR_INITIALIZATION_FAILED
                : vkEndCommandBuffer(block->command_buffer);
@@ -4364,6 +4388,102 @@ invalid:
   return PROM_ERROR;
 }
 
+/* Rebinding is deliberately limited to the lock's immediate successor.  The
+   transaction replaces immutable weights and descriptors only; JointWorking
+   remains device-resident and is never copied through the host. */
+int prom_reactor_runtime_main_transformer_rebind_impl(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  prom_reduction_runtime_state* state;
+  prom_model_block_state* block;
+  const PrometheusMainTransformerResolvedDescriptor* descriptor;
+  prom_model_block_weight_resource old_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+  uint32_t index;
+  if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->uploads == NULL ||
+      request->struct_size != sizeof(*request) || request->upload_count != PROM_MODEL_BLOCK_MAX_WEIGHTS) goto invalid;
+  descriptor = prom_zimage_turbo_resolve_main_transformer_descriptor(request->lock_identity,
+                                                                     request->model_local_block_id);
+  if (descriptor == NULL || descriptor->assembly_family != PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO ||
+      descriptor->parameter_set != descriptor->model_local_block_id + 1u ||
+      descriptor->parameter_set_aggregate_identity != prom_main_transformer_expected_aggregate(descriptor->parameter_set)) goto invalid;
+  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
+  if (state == NULL || state->model_block.created == 0u || state->model_block.block_id != block_id) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_NOT_FOUND, out_evidence);
+    return PROM_ERROR;
+  }
+  block = &state->model_block;
+  if (!prom_model_block_is_main_transformer(block) || block->weights_uploaded == 0u ||
+      block->quarantined != 0u || block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
+      descriptor->parameter_set != block->parameter_set + 1u || !prom_model_block_reap(state, block)) goto failed;
+  block->binding_state = PROM_NOISE_REFINER_BINDING_VALIDATING;
+  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
+    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
+    if (upload->binding_index != index || upload->bytes == NULL || upload->content_identity == 0u ||
+        upload->layout_identity == 0u || upload->byte_count != k_prom_model_block_m1b_weight_bytes[index] ||
+        upload->byte_count > (uint64_t)block->weight_upload.size) goto mismatch;
+  }
+  prom_model_block_destroy_pending_weights(state, block);
+  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
+    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
+    block->pending_weights[index].content_identity = upload->content_identity;
+    block->pending_weights[index].layout_identity = upload->layout_identity;
+    block->pending_weights[index].byte_count = upload->byte_count;
+    if (!prom_model_block_create_buffer(state, block, &block->pending_weights[index].device,
+                                        (VkDeviceSize)upload->byte_count,
+                                        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0)) goto resource_fail;
+  }
+  block->binding_state = PROM_NOISE_REFINER_BINDING_UPLOADING;
+  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) {
+    const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
+    memcpy(block->weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
+    if (!prom_model_block_record_upload(state, block, block->pending_weights, index)) goto upload_fail;
+    block->pending_weights[index].uploaded = 1u;
+  }
+  block->binding_state = PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS;
+  if (!prom_model_block_update_weight_descriptors(state, block, block->pending_weights)) goto descriptor_fail;
+  block->binding_state = PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT;
+  memcpy(old_weights, block->weights, sizeof(old_weights));
+  memcpy(block->weights, block->pending_weights, sizeof(block->weights));
+  memset(block->pending_weights, 0, sizeof(block->pending_weights));
+  for (index = 0u; index < PROM_MODEL_BLOCK_MAX_WEIGHTS; ++index) prom_vk_destroy_buffer(state->device, &old_weights[index].device);
+  block->parameter_set = descriptor->parameter_set;
+  block->parameter_set_aggregate_identity = descriptor->parameter_set_aggregate_identity;
+  block->binding_generation += 1u;
+  block->descriptor_generation += 1u;
+  block->output_valid = 0u;
+  block->audit_valid = 0u;
+  block->replay_identity = 0u;
+  block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
+  block->weight_upload_count += PROM_MODEL_BLOCK_MAX_WEIGHTS;
+  block->last_detail_code = 0;
+  prom_model_block_fill_evidence(block, 0, out_evidence);
+  return PROM_OK;
+mismatch:
+  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_WEIGHT_MISMATCH;
+  goto rebind_fail;
+resource_fail:
+  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED;
+  goto rebind_fail;
+upload_fail:
+  block->last_detail_code = block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_UPLOAD_FAILED;
+  goto rebind_fail;
+descriptor_fail:
+  block->last_detail_code = PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED;
+rebind_fail:
+  prom_model_block_destroy_pending_weights(state, block);
+  block->binding_state = block->quarantined != 0u ? PROM_NOISE_REFINER_BINDING_QUARANTINED : PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT;
+  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+  return PROM_ERROR;
+failed:
+  prom_model_block_mark_failure(block, block->quarantined != 0u ? PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN : PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED);
+  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+  return PROM_ERROR;
+invalid:
+  prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
+  return PROM_ERROR;
+}
+
 int prom_reactor_runtime_main_transformer_execute_impl(
     void* handle, uint64_t block_id, const PrometheusMainTransformerExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence) {
@@ -4377,7 +4497,7 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   uint64_t begin_ns;
   int32_t detail;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
-      request->struct_size != sizeof(*request) || request->audit_enabled != 0u ||
+      request->struct_size != sizeof(*request) || request->audit_enabled != 0u || request->resident_chain_mode > 1u ||
       request->lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID ||
       request->timestep_bf16 == NULL ||
       request->timestep_bytes != PROM_MODEL_BLOCK_M1B_BF16_BYTES(PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS) ||
@@ -4391,7 +4511,7 @@ int prom_reactor_runtime_main_transformer_execute_impl(
                                                                      request->model_local_block_id);
   if (descriptor == NULL ||
       descriptor->assembly_family != PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO ||
-      descriptor->parameter_set != PROM_MAIN_TRANSFORMER_PARAMETER_SET_0 ||
+      descriptor->parameter_set != descriptor->model_local_block_id + 1u ||
       descriptor->joint_token_count != PROM_MODEL_BLOCK_MAIN_TOKENS ||
       descriptor->image_token_count != PROM_MODEL_BLOCK_MAIN_IMAGE_TOKENS ||
       descriptor->context_token_count != PROM_MODEL_BLOCK_CONTEXT_TOKENS ||
@@ -4435,13 +4555,19 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   block->audit_valid = 0u;
   memcpy(block->timestep_upload.mapped, request->timestep_bf16, (size_t)request->timestep_bytes);
   begin_ns = prom_reduction_now_ns();
-  if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation, &detail)) {
+  if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation,
+                                            request->resident_chain_mode, &detail)) {
     prom_model_block_mark_failure(block, detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
   block->output_valid = 1u;
   block->output_generation += 1u;
+  if (request->resident_chain_mode != 0u) {
+    joint->generation += 1u;
+    joint->producer_block_id = block_id;
+    joint->producer_output_generation = block->output_generation;
+  }
   block->execution_count += 1u;
   block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
   block->replay_identity = prom_model_block_hash_u64(request->lock_identity, request->session_identity);

@@ -1,0 +1,20 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.representative-execution.v1",
+  "lock_identity": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+  "representative": "layers.0",
+  "finite": true,
+  "accepted_threshold": 0.00005,
+  "first_mismatch_coordinate": 0,
+  "joint": { "relative_l2": 8.38066e-07, "linf": 0.000640869 },
+  "image_region": { "relative_l2": 1.20583e-06, "linf": 0.000152588 },
+  "context_region": { "relative_l2": 4.73599e-07, "linf": 0.000640869 },
+  "last_image_token_relative_l2": 5.88321e-07,
+  "first_context_token_relative_l2": 3.43408e-07,
+  "warm_runs": 10,
+  "warm_churn": {
+    "buffer_allocations": 0,
+    "weight_uploads": 0,
+    "pipeline_creation": 0,
+    "descriptor_pool_growth": 0
+  }
+}

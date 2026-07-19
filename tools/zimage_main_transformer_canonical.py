@@ -57,25 +57,28 @@ def bf16_file(path: Path, expected_elements: int) -> np.ndarray:
 
 
 class Authority:
-    def __init__(self, cache_root: Path, oracle_root: Path, out: Path):
+    def __init__(self, cache_root: Path, oracle_root: Path, out: Path, block: str,
+                 input_joint: Path | None, summary_only: bool):
         self.cache_root = cache_root
         self.oracle_root = oracle_root
         self.out = out
-        self.cache_dir = cache_root / "layers" / CHECKPOINT / "layers.0"
+        self.block = block
+        self.input_joint = input_joint
+        self.summary_only = summary_only
+        self.cache_dir = cache_root / "layers" / CHECKPOINT / block
         self.stage_dir = out / "stages"
         self.stages: dict[str, dict] = {}
         self.selected: dict[str, dict] = {}
         self.cache_manifest = json.loads((self.cache_dir / "manifest.json").read_text(encoding="utf-8"))
-        if (self.cache_manifest.get("schema") != "oct.prometheus.evt2.m2c.fp16-cache.v1" or
-                self.cache_manifest.get("block") != "layers.0" or
-                self.cache_manifest.get("aggregate_sha256") != CACHE_AGGREGATE or
+        if (self.cache_manifest.get("schema") not in {"oct.prometheus.evt2.m2c.fp16-cache.v1", "oct.prometheus.evt2.m2d.fp16-cache.v1"} or
+                self.cache_manifest.get("block") != block or
                 len(self.cache_manifest.get("tensors", [])) != 13):
-            raise RuntimeError("layers.0 cache manifest is not the frozen M2C representative")
+            raise RuntimeError(f"{block} cache manifest is not a closed MainTransformer package")
         self.tensors = {item["source_name"]: item for item in self.cache_manifest["tensors"]}
         self.device = torch.device("cuda")
 
     def weight(self, suffix: str) -> torch.Tensor:
-        name = "layers.0" + suffix
+        name = self.block + suffix
         entry = self.tensors.get(name)
         if entry is None:
             raise RuntimeError(f"cache lacks {name}")
@@ -87,6 +90,8 @@ class Authority:
         return torch.from_numpy(values.reshape(shape).astype("<f4", copy=False)).to(self.device)
 
     def record(self, name: str, tensor: torch.Tensor, selected: bool = False) -> None:
+        if self.summary_only and name not in {"final_joint_output", "final_image_output", "final_context_output"}:
+            return
         values = tensor.detach().to("cpu", dtype=torch.float32).contiguous().numpy().astype("<f4", copy=False)
         if not np.isfinite(values).all():
             raise RuntimeError(f"non-finite canonical stage: {name}")
@@ -171,15 +176,19 @@ def build(authority: Authority) -> dict:
     image_path = revision_root / "o19-fp32-reference" / "noise_refiner.1" / "final_output.f32.bin"
     context_path = revision_root / "m2b-fp32-reference" / "context_refiner.1" / "final_output.f32.bin"
     timestep_path = authority.oracle_root / "run_02" / "noise_refiner_0_timestep.bin"
-    image = float32_file(image_path, IMAGE_TOKENS * WIDTH).reshape(IMAGE_TOKENS, WIDTH)
-    context = float32_file(context_path, CONTEXT_TOKENS * WIDTH).reshape(CONTEXT_TOKENS, WIDTH)
     timestep = bf16_file(timestep_path, 256).reshape(1, 256)
-    source_provenance = {
-        "prepared_image_stream": authority.provenance(image_path),
-        "prepared_context_stream": authority.provenance(context_path),
-        "conditioning": {"relative_path": "run_02/noise_refiner_0_timestep.bin", "sha256": sha256(timestep_path.read_bytes()), "bytes": timestep_path.stat().st_size, "dtype": "bfloat16"},
-    }
-    joint = torch.from_numpy(np.concatenate((image, context), axis=0)).to(authority.device)
+    if authority.input_joint is None:
+        image = float32_file(image_path, IMAGE_TOKENS * WIDTH).reshape(IMAGE_TOKENS, WIDTH)
+        context = float32_file(context_path, CONTEXT_TOKENS * WIDTH).reshape(CONTEXT_TOKENS, WIDTH)
+        joint = torch.from_numpy(np.concatenate((image, context), axis=0)).to(authority.device)
+        source_provenance = {
+            "prepared_image_stream": authority.provenance(image_path),
+            "prepared_context_stream": authority.provenance(context_path),
+        }
+    else:
+        joint = torch.from_numpy(float32_file(authority.input_joint, TOKENS * WIDTH).reshape(TOKENS, WIDTH)).to(authority.device)
+        source_provenance = {"previous_joint_state": authority.provenance(authority.input_joint)}
+    source_provenance["conditioning"] = {"relative_path": "run_02/noise_refiner_0_timestep.bin", "sha256": sha256(timestep_path.read_bytes()), "bytes": timestep_path.stat().st_size, "dtype": "bfloat16"}
     condition = torch.from_numpy(timestep).to(authority.device)
     authority.record("image_input", joint[:IMAGE_TOKENS])
     authority.record("context_input", joint[IMAGE_TOKENS:])
@@ -269,6 +278,9 @@ def main() -> None:
     parser.add_argument("--cache-root", type=Path, required=True)
     parser.add_argument("--oracle-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--block", default="layers.0")
+    parser.add_argument("--input-joint", type=Path)
+    parser.add_argument("--summary-only", action="store_true")
     args = parser.parse_args()
     if not torch.cuda.is_available():
         raise RuntimeError("M2C canonical authority requires the validated CUDA RTX laboratory")
@@ -276,18 +288,18 @@ def main() -> None:
     torch.set_float32_matmul_precision("highest")
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
-    authority = Authority(args.cache_root, args.oracle_root, args.out)
+    authority = Authority(args.cache_root, args.oracle_root, args.out, args.block, args.input_joint, args.summary_only)
     provenance = build(authority)
     final_image = authority.stages["final_image_output"]
     final_context = authority.stages["final_context_output"]
     manifest = {
-        "schema": "oct.prometheus.evt2.m2c.main-transformer-canonical.v1",
-        "representative": "layers.0",
+        "schema": "oct.prometheus.evt2.m2c.main-transformer-canonical.v1" if args.block == "layers.0" and args.input_joint is None else "oct.prometheus.evt2.m2d.main-transformer-canonical.v1",
+        "representative": args.block,
         "family": "ZImageTurbo.MainTransformer",
         "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
         "model_revision": REVISION,
         "checkpoint_sha256": CHECKPOINT,
-        "cache_aggregate_sha256": CACHE_AGGREGATE,
+        "cache_aggregate_sha256": authority.cache_manifest["aggregate_sha256"],
         "precision_policy": "FP16 immutable packaged weights expanded to FP32 at use; FP32 activations, reductions, RoPE, softmax, projections, and residuals; no activation FP16",
         "stream_contract": {
             "composition": "Joint = Concat(Image, Context)",

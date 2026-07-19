@@ -15,7 +15,7 @@ func TestAuditScheduleIsLockDerivedBoundedAndStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit schedule: %v", err)
 	}
-	if !strings.Contains(header, "PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID 0xf67b31bdd1e54945ull") {
+	if !strings.Contains(header, "PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID 0x71ef202b4e34b562ull") {
 		t.Fatal("schedule does not preserve the accepted lock identity")
 	}
 	if !strings.Contains(header, "PROM_ZIMAGE_TURBO_AUDIT_STAGE_COUNT 29u") ||
@@ -41,7 +41,7 @@ func TestManifestIdentityIsLineEndingStableButContentSensitive(t *testing.T) {
 	}
 	lf := strings.ReplaceAll(string(manifest), "\r\n", "\n")
 	crlf := strings.ReplaceAll(lf, "\n", "\r\n")
-	if got := resolvedManifestIdentity([]byte(lf)); got != "b26f4eb08a825aab384c11f4ce66652442b3582dae1570f805ecdbf7ffb08fda" {
+	if got := resolvedManifestIdentity([]byte(lf)); got != "a5693690f1242462f03843da7d48ba0b198c64c8294cda528e6e7062bd495f92" {
 		t.Fatalf("accepted manifest identity changed: %s", got)
 	}
 	if resolvedManifestIdentity([]byte(lf)) != resolvedManifestIdentity([]byte(crlf)) {
@@ -49,6 +49,31 @@ func TestManifestIdentityIsLineEndingStableButContentSensitive(t *testing.T) {
 	}
 	if resolvedManifestIdentity([]byte(lf+" ")) == resolvedManifestIdentity([]byte(lf)) {
 		t.Fatal("authored content mutation did not change the resolved manifest identity")
+	}
+}
+
+func TestNativeProjectionFreezesAllThirtyMainTransformerParameterSets(t *testing.T) {
+	manifest, err := os.ReadFile("../../internal/prometheus/models/zimage-turbo/manifest.oct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := nativeProjection([]byte(render(resolvedManifestIdentity(manifest))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(projection, "static const PrometheusMainTransformerResolvedDescriptor")
+	if start < 0 {
+		t.Fatal("native projection is missing the MainTransformer descriptor table")
+	}
+	end := strings.Index(projection[start:], "};")
+	if end < 0 || strings.Count(projection[start:start+end], "PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO") != 30 {
+		t.Fatal("native projection did not emit exactly thirty MainTransformer descriptors")
+	}
+	for index, aggregate := range mainTransformerAggregates {
+		if !strings.Contains(projection, aggregate[:16]) ||
+			!strings.Contains(projection, "model_local_block_id >= 30u") {
+			t.Fatalf("native projection is missing closed MainTransformer%d authority", index)
+		}
 	}
 }
 
@@ -62,8 +87,8 @@ func TestAuditScheduleRejectsAlteredProfileAndBudget(t *testing.T) {
 		"profile":               strings.Replace(string(lock), "NoiseRefinerPersistentProjectionSummary.v1", "foreign", 1),
 		"budget":                strings.Replace(string(lock), "AuditBudgetBytes: 47186176", "AuditBudgetBytes: 1", 1),
 		"policy":                strings.Replace(string(lock), "no repeated prefix replay", "runtime mutation", 1),
-		"semantic identity":     strings.Replace(string(lock), "6e66a4ff9938d792", "0000000000000000", 1),
-		"production identity":   strings.Replace(string(lock), "309574858856b0ca", "0000000000000000", 1),
+		"semantic identity":     strings.Replace(string(lock), "ed6a7b765d0d7ece", "0000000000000000", 1),
+		"production identity":   strings.Replace(string(lock), "6a883d7797b0ebe3", "0000000000000000", 1),
 		"audit identity":        strings.Replace(string(lock), "df3a1340b6999dae", "0000000000000000", 1),
 		"foreign complete lock": string(lock) + " ",
 	} {

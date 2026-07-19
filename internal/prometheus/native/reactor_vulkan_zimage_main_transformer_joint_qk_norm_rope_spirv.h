@@ -9,7 +9,7 @@
 // Deterministic SPIR-V words emitted for Prometheus-native inclusion.
 
 static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv[] = {
-    0x07230203u, 0x00010000u, 0x000e0000u, 0x000000dbu,
+    0x07230203u, 0x00010000u, 0x000e0000u, 0x000000deu,
     0x00000000u, 0x00020011u, 0x00000001u, 0x0006000bu,
     0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu,
     0x00000000u, 0x0003000eu, 0x00000000u, 0x00000001u,
@@ -336,16 +336,20 @@ static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv[] 
     0x000000d6u, 0x00000000u, 0x000400fau, 0x000000d5u,
     0x000000d7u, 0x000000d6u, 0x000200f8u, 0x000000d7u,
     0x00050085u, 0x0000001bu, 0x000000d8u, 0x000000cau,
-    0x000000cdu, 0x00050085u, 0x0000001bu, 0x000000d9u,
-    0x00000084u, 0x000000ccu, 0x00050081u, 0x0000001bu,
-    0x000000dau, 0x000000d8u, 0x000000d9u, 0x0003003eu,
-    0x0000005cu, 0x000000dau, 0x000200f9u, 0x000000d6u,
-    0x000200f8u, 0x000000d6u, 0x000200f9u, 0x0000003fu,
-    0x000200f8u, 0x0000003fu, 0x000100fdu, 0x00010038u
+    0x000000ccu, 0x00050085u, 0x0000001bu, 0x000000d9u,
+    0x00000084u, 0x000000cdu, 0x00050083u, 0x0000001bu,
+    0x000000dau, 0x000000d8u, 0x000000d9u, 0x00050085u,
+    0x0000001bu, 0x000000dbu, 0x000000dau, 0x000000cdu,
+    0x00050085u, 0x0000001bu, 0x000000dcu, 0x00000084u,
+    0x000000ccu, 0x00050081u, 0x0000001bu, 0x000000ddu,
+    0x000000dbu, 0x000000dcu, 0x0003003eu, 0x0000005cu,
+    0x000000ddu, 0x000200f9u, 0x000000d6u, 0x000200f8u,
+    0x000000d6u, 0x000200f9u, 0x0000003fu, 0x000200f8u,
+    0x0000003fu, 0x000100fdu, 0x00010038u
 };
 
-static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_word_count = 1332u;
-static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_byte_length = 5328u;
+static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_word_count = 1347u;
+static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_byte_length = 5388u;
 static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_numthreads_x = 128u;
 static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_numthreads_y = 1u;
 static const uint32_t k_prom_zimage_main_transformer_joint_qk_norm_rope_spirv_numthreads_z = 1u;

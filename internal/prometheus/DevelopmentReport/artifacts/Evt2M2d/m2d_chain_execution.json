@@ -1,0 +1,20 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.chain-execution.v1",
+  "lock_identity": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+  "blocks": 30,
+  "execution": "layers.0 through layers.29 with immediate transactional rebind",
+  "activation_transport": "device-resident JointWorking <-> MainTransformer final-output ping-pong",
+  "host_activation_bounce": false,
+  "activation_bf16_round_trip": false,
+  "final": {
+    "finite": true,
+    "relative_l2": 1.02005e-05,
+    "linf": 0.0117188,
+    "image_relative_l2": 1.19522e-05,
+    "context_relative_l2": 4.2375e-06,
+    "last_image_token_relative_l2": 5.44081e-06,
+    "first_context_token_relative_l2": 4.22729e-06,
+    "first_mismatch_coordinate": 0,
+    "accepted_threshold": 5e-05
+  }
+}
