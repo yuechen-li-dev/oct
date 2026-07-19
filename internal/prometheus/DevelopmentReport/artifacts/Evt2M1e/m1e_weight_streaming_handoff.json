@@ -1,0 +1,14 @@
+{
+  "async_prefetch": false,
+  "baseline": [
+    "validate current block weights",
+    "upload current block into the 361820672-byte maximum observed block arena",
+    "execute and establish completion",
+    "retain activation ping-pong/output",
+    "evict only after certain completion",
+    "reuse arena for next block"
+  ],
+  "replay": "include streamed block identity and cache aggregate",
+  "schema": "oct.prometheus.evt2.m1e.weight-streaming-handoff.v1",
+  "uncertain_completion": "quarantine current resources; do not evict or reuse until reap"
+}

@@ -66,6 +66,12 @@ The normative M1C-M1E local authority is derived from `OCT_EVT2_CACHE`: `canonic
 
 The committed, payload-free numerical authority is [canonical_stage_projections.json](../internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/canonical_stage_projections.json), [canonical_stage_manifest.json](../internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/canonical_stage_manifest.json), and the M1C inventory [m1c_canonical_stage_authority.json](../internal/prometheus/DevelopmentReport/artifacts/Evt2M1c/m1c_canonical_stage_authority.json). Relevant experiment metadata lives in `internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/`.
 
+The M1E payload-free compiled-block package is generated with
+`go run ./tools/evt2_m1e_assembly` into
+`internal/prometheus/DevelopmentReport/artifacts/Evt2M1e/`. It references the
+same immutable cache and O19 identities; it does not add another payload root
+or package large weights into Git.
+
 ## Fresh-author startup
 
 1. Read this document.

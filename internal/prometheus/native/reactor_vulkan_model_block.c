@@ -1552,6 +1552,7 @@ int prom_reactor_runtime_model_block_execute_m1b_impl(
 static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* state,
                                                 prom_model_block_state* block,
                                                 uint32_t audit_stage,
+                                                int capture_audit,
                                                 int32_t* out_detail) {
   VkCommandBufferBeginInfo begin_info;
   prom_model_block_m1c_attention_constants attention_constants = {1024u, 30u, 128u, 11520u};
@@ -1577,14 +1578,16 @@ static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* sta
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
                                          &residual_constants, sizeof(residual_constants), 1024u, 1u, 1u);
-  const prom_vk_buffer* audit_source = &block->attention_residual;
-  if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION) audit_source = &block->attention;
-  if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION) audit_source = &block->attention_projection;
-  prom_model_block_m1b_record_audit_capture(block->command_buffer, audit_source, 0u,
-      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
-  prom_model_block_record_small_audit_capture(block->command_buffer, &block->audit_device,
-      PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float), &block->audit_readback,
-      PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
+  if (capture_audit != 0) {
+    const prom_vk_buffer* audit_source = &block->attention_residual;
+    if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_ATTENTION) audit_source = &block->attention;
+    if (audit_stage == PROM_MODEL_BLOCK_M1C_AUDIT_PROJECTION) audit_source = &block->attention_projection;
+    prom_model_block_m1b_record_audit_capture(block->command_buffer, audit_source, 0u,
+        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
+    prom_model_block_record_small_audit_capture(block->command_buffer, &block->audit_device,
+        PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float), &block->audit_readback,
+        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
+  }
   if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
   return prom_model_block_submit_and_wait(state, block, out_detail);
 }
@@ -1626,7 +1629,7 @@ int prom_reactor_runtime_model_block_execute_m1c_impl(
   block->output_valid = 0u;
   block->audit_valid = 0u;
   begin_ns = prom_reduction_now_ns();
-  if (!prom_model_block_m1c_record_execute(state, block, request->audit_stage, &execution_detail)) {
+  if (!prom_model_block_m1c_record_execute(state, block, request->audit_stage, 1, &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
@@ -1663,6 +1666,7 @@ int prom_reactor_runtime_model_block_execute_m1c_impl(
 static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* state,
                                                 prom_model_block_state* block,
                                                 uint32_t audit_stage,
+                                                int capture_audit,
                                                 int32_t* out_detail) {
   VkCommandBufferBeginInfo begin_info;
   prom_model_block_m1b_norm_constants norm_constants = {1.0e-5f, 1024u, 3840u, 0u};
@@ -1684,22 +1688,22 @@ static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* sta
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u],
                                          &norm_constants, sizeof(norm_constants), 1024u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->norm_audit, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
   }
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->modulated, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
   }
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
                                          &projection_constants, sizeof(projection_constants), 128u, 1280u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W1) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W1) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->qkv, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1D_HIDDEN_ELEMENTS), 0, &block->audit_readback);
   }
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W3) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W3) {
     prom_model_block_record_small_audit_capture(block->command_buffer, &block->attention,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), &block->audit_readback, 0u);
     prom_model_block_record_small_audit_capture(block->command_buffer, &block->attention_projection,
@@ -1712,17 +1716,17 @@ static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* sta
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],
                                          &gate_constants, sizeof(gate_constants), 40960u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_GATED_HIDDEN) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->qkv, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1D_HIDDEN_ELEMENTS), 0, &block->audit_readback);
   }
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u],
                                          &w2_constants, sizeof(w2_constants), 1024u, 1u, 1u);
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W2) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W2) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->input_device, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
   }
-  if (audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT) {
+  if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->attention, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
   }
@@ -1776,7 +1780,7 @@ int prom_reactor_runtime_model_block_execute_m1d_impl(
   block->output_valid = 0u;
   block->audit_valid = 0u;
   begin_ns = prom_reduction_now_ns();
-  if (!prom_model_block_m1d_record_execute(state, block, request->audit_stage, &execution_detail)) {
+  if (!prom_model_block_m1d_record_execute(state, block, request->audit_stage, 1, &execution_detail)) {
     prom_model_block_mark_failure(block, execution_detail);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
@@ -1793,6 +1797,85 @@ int prom_reactor_runtime_model_block_execute_m1d_impl(
   block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
   block->replay_identity = prom_model_block_hash_u64(request->m1c_prefix_replay_identity, request->output_identity);
   block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->audit_stage);
+  block->last_detail_code = 0;
+  prom_model_block_fill_evidence(block, 0, out_evidence);
+  return PROM_OK;
+}
+
+/* This facade deliberately shares the established M1B ingress implementation,
+   then records M1C/M1D without audit captures or host copies. The three
+   resident transitions remain the implementation authority; this is only the
+   narrow model-specific callable assembly. */
+int prom_reactor_runtime_noise_refiner0_execute_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefiner0ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  PrometheusModelBlockM1BExecuteRequest m1b;
+  PrometheusModelBlockEvidence ignored_evidence;
+  prom_reduction_runtime_state* state;
+  prom_model_block_state* block;
+  uint64_t begin_ns;
+  int32_t execution_detail;
+  if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
+      request->struct_size != sizeof(*request) || request->model_input_bf16 == NULL ||
+      request->timestep_bf16 == NULL || request->model_input_bytes !=
+          PROM_MODEL_BLOCK_M1B_BF16_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS) ||
+      request->timestep_bytes != PROM_MODEL_BLOCK_M1B_BF16_BYTES(PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS) ||
+      request->input_identity == 0u || request->timestep_identity == 0u ||
+      request->output_identity == 0u || request->audit_enabled != 0u) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
+    return PROM_ERROR;
+  }
+  memset(&m1b, 0, sizeof(m1b));
+  m1b.struct_size = sizeof(m1b);
+  m1b.model_input_bf16 = request->model_input_bf16;
+  m1b.timestep_bf16 = request->timestep_bf16;
+  m1b.model_input_bytes = request->model_input_bytes;
+  m1b.timestep_bytes = request->timestep_bytes;
+  m1b.input_identity = request->input_identity;
+  m1b.timestep_identity = request->timestep_identity;
+  m1b.audit_enabled = 0u;
+  m1b.audit_stage = PROM_MODEL_BLOCK_M1B_AUDIT_NONE;
+  if (prom_reactor_runtime_model_block_execute_m1b_impl(handle, block_id, &m1b,
+                                                        &ignored_evidence) != PROM_OK) {
+    if (out_evidence != NULL) *out_evidence = ignored_evidence;
+    return PROM_ERROR;
+  }
+  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
+  block = state == NULL ? NULL : &state->model_block;
+  if (block == NULL || block->m1b_prefix_replay_identity == 0u || !prom_model_block_reap(state, block)) {
+    if (block != NULL) prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN);
+    prom_model_block_fill_evidence(block, block == NULL ? PROM_MODEL_BLOCK_DETAIL_NOT_FOUND : block->last_detail_code,
+                                  out_evidence);
+    return PROM_ERROR;
+  }
+  block->output_valid = 0u;
+  block->audit_valid = 0u;
+  begin_ns = prom_reduction_now_ns();
+  if (!prom_model_block_m1c_record_execute(state, block, PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL, 0,
+                                            &execution_detail)) {
+    prom_model_block_mark_failure(block, execution_detail);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  block->replay_identity = prom_model_block_hash_u64(block->m1b_prefix_replay_identity, request->output_identity);
+  block->replay_identity = prom_model_block_hash_u64(block->replay_identity, PROM_MODEL_BLOCK_M1C_AUDIT_RESIDUAL);
+  if (!prom_model_block_reap(state, block)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if (!prom_model_block_m1d_record_execute(state, block, PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT, 0,
+                                            &execution_detail)) {
+    prom_model_block_mark_failure(block, execution_detail);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  block->output_valid = 1u;
+  block->audit_valid = 0u;
+  block->execution_count += 2u;
+  block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->output_identity);
+  block->replay_identity = prom_model_block_hash_u64(block->replay_identity, PROM_MODEL_BLOCK_M1D_AUDIT_FINAL_OUTPUT);
   block->last_detail_code = 0;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;

@@ -1,0 +1,13 @@
+{
+  "exclusions": [
+    "context refiners",
+    "main blocks",
+    "streaming runtime",
+    "scheduler/text/VAE/PNG",
+    "optimization"
+  ],
+  "new_required": "noise_refiner.1 tensor manifest, topology diff, O19 witnesses, exact memory reconciliation",
+  "recommendation": "EVT-2 M2A — compile noise_refiner.1 by assembly reuse, contingent on pinned-source inventory validation",
+  "reused": "M1E internal ABI discipline, fixed execution program, callable resident facade, metadata package, and FP32 policy; actual shader reuse remains source-proven only",
+  "schema": "oct.prometheus.evt2.m2-handoff.v1"
+}

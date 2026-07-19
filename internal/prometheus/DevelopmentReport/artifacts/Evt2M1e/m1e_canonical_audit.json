@@ -1,0 +1,2095 @@
+{
+  "authority": "o19-fp32-reference",
+  "full_stage_payload_count": 34,
+  "m1b_results": {
+    "acceptance": "selected coordinates use max(2e-5, abs(reference)*2e-5); full metrics reported without broad tolerance",
+    "authority_projection_sha256": "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480",
+    "ingress_exhaustive_patterns": 65536,
+    "real_input_exact_bits": true,
+    "schema": "oct.prometheus.evt2.m1b.stage-audit.v1",
+    "stages": [
+      {
+        "elements": 15360,
+        "finite": true,
+        "first_bit_difference": 15360,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "timestep_linear"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 3840,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "attention_scale_raw"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 3840,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "attention_scale_adjusted"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 3840,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "attention_gate_raw"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 7,
+        "l2": 4.33271e-7,
+        "linf": 5.96046e-8,
+        "relative_l2": 6.61781e-8,
+        "rms": 6.99188e-9,
+        "selected_linf": 7.45058e-9,
+        "stage": "attention_gate_tanh"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 3840,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "mlp_scale_raw"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 3840,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "mlp_scale_adjusted"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 3840,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "mlp_gate_raw"
+      },
+      {
+        "elements": 3840,
+        "finite": true,
+        "first_bit_difference": 4,
+        "l2": 9.52406e-7,
+        "linf": 5.96046e-8,
+        "relative_l2": 6.80887e-8,
+        "rms": 1.53694e-8,
+        "selected_linf": 1.49012e-8,
+        "stage": "mlp_gate_tanh"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.000128602,
+        "linf": 0.00000286102,
+        "relative_l2": 6.9512e-8,
+        "rms": 6.48533e-8,
+        "selected_linf": 2.38419e-7,
+        "stage": "attention_norm"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.000247931,
+        "linf": 0.00000762939,
+        "relative_l2": 7.24332e-8,
+        "rms": 1.2503e-7,
+        "selected_linf": 4.76837e-7,
+        "stage": "attention_modulated"
+      },
+      {
+        "elements": 11796480,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.0283286,
+        "linf": 0.000137329,
+        "relative_l2": 1.33528e-7,
+        "rms": 0.00000824801,
+        "selected_linf": 0.0000152588,
+        "stage": "qkv"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.0172346,
+        "linf": 0.00012207,
+        "relative_l2": 1.27933e-7,
+        "rms": 0.00000869133,
+        "selected_linf": 0.00000762939,
+        "stage": "q"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.0151786,
+        "linf": 0.00012207,
+        "relative_l2": 1.3916e-7,
+        "rms": 0.00000765449,
+        "selected_linf": 0.0000038147,
+        "stage": "k"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.0165858,
+        "linf": 0.000137329,
+        "relative_l2": 1.35583e-7,
+        "rms": 0.00000836412,
+        "selected_linf": 0.0000152588,
+        "stage": "v"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.000237239,
+        "linf": 0.00000190735,
+        "relative_l2": 1.38199e-7,
+        "rms": 1.19639e-7,
+        "selected_linf": 1.19209e-7,
+        "stage": "q_norm"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.000262113,
+        "linf": 0.00000214577,
+        "relative_l2": 1.5134e-7,
+        "rms": 1.32182e-7,
+        "selected_linf": 5.96046e-8,
+        "stage": "k_norm"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.00150785,
+        "linf": 0.0000154972,
+        "relative_l2": 8.78366e-7,
+        "rms": 7.60402e-7,
+        "selected_linf": 0.00000181049,
+        "stage": "q_rope"
+      },
+      {
+        "elements": 3932160,
+        "finite": true,
+        "first_bit_difference": 0,
+        "l2": 0.00140753,
+        "linf": 0.0000237525,
+        "relative_l2": 8.12688e-7,
+        "rms": 7.09812e-7,
+        "selected_linf": 0.0000012517,
+        "stage": "k_rope"
+      },
+      {
+        "elements": 256,
+        "finite": true,
+        "first_bit_difference": 256,
+        "l2": 0,
+        "linf": 0,
+        "relative_l2": 0,
+        "rms": 0,
+        "selected_linf": 0,
+        "stage": "timestep_input"
+      }
+    ]
+  },
+  "m1c_streaming_results": {
+    "authority": "o19-fp32-reference",
+    "canonical_payloads": "selected scaled-logit/probability rows are hash-addressed in m1c_canonical_stage_authority.json; aggregation is full-boundary audited",
+    "coordinates": {
+      "heads": [
+        0,
+        29
+      ],
+      "keys": [
+        0,
+        1,
+        512,
+        1023
+      ],
+      "query_rows": [
+        0,
+        1023
+      ]
+    },
+    "invariants": {
+      "causal": false,
+      "denominators": "finite and positive",
+      "probabilities": "finite and nonnegative",
+      "row_sum": "1 within 2e-5"
+    },
+    "schema": "oct.prometheus.evt2.m1c.attention-audit.v1",
+    "selected_runtime": {
+      "first": {
+        "exp": 0.117214,
+        "head_output": 22.6087,
+        "max": 4.55009,
+        "probability": 0.00380338,
+        "probability_times_v": 0.206401,
+        "raw": 27.2246,
+        "scaled": 2.40634,
+        "shifted": -2.14375,
+        "sum": 30.8184
+      },
+      "last": {
+        "exp": 0.00634683,
+        "head_output": -45.1471,
+        "max": 4.67999,
+        "probability": 0.000173386,
+        "probability_times_v": -0.0247716,
+        "raw": -4.29706,
+        "scaled": -0.37981,
+        "shifted": -5.0598,
+        "sum": 36.6052
+      }
+    },
+    "status": "PASS"
+  },
+  "m1d_results": {
+    "authority": "o19-fp32-reference",
+    "fused_boundaries": {
+      "ffn_norm2": "computed inside the FP32 W2/final-residual shader; W2 and final-output audits bracket it",
+      "silu_w1": "computed exactly as x/(1+exp(-x)) inside the FP32 gate; W1 and gated-hidden audits bracket it"
+    },
+    "result": "PASS",
+    "schema": "oct.prometheus.evt2.m1d.ffn-audit.v1",
+    "shape_and_layout": "FP32 row-major contiguous; [1,1024,3840] for norm/modulation/W2, [1,1024,10240] for W1/W3/gated hidden",
+    "stages": [
+      {
+        "finite": true,
+        "first_mismatching_coordinate": 0,
+        "l2": 0.00183598,
+        "linf": 0.000118256,
+        "max": 67.646,
+        "min": -8.40769,
+        "relative_l2": 8.29172e-7,
+        "rms": 9.25875e-7,
+        "stage": "ffn_norm"
+      },
+      {
+        "finite": true,
+        "first_mismatching_coordinate": 0,
+        "l2": 0.0017005,
+        "linf": 0.0000801086,
+        "max": 46.8637,
+        "min": -14.4328,
+        "relative_l2": 9.33449e-7,
+        "rms": 8.57554e-7,
+        "stage": "ffn_modulated"
+      },
+      {
+        "finite": true,
+        "first_mismatching_coordinate": 0,
+        "l2": 0.0420696,
+        "linf": 0.000175476,
+        "max": 103.681,
+        "min": -75.2414,
+        "relative_l2": 7.41145e-7,
+        "rms": 0.0000129918,
+        "stage": "w1"
+      },
+      {
+        "finite": true,
+        "first_mismatching_coordinate": 0,
+        "l2": 0.0843106,
+        "linf": 0.000564575,
+        "max": 333.029,
+        "min": -356.355,
+        "relative_l2": 8.77522e-7,
+        "rms": 0.0000260365,
+        "stage": "w3"
+      },
+      {
+        "finite": true,
+        "first_mismatching_coordinate": 0,
+        "l2": 0.709942,
+        "linf": 0.0146484,
+        "max": 3668.63,
+        "min": -4194.26,
+        "relative_l2": 0.00000209487,
+        "rms": 0.000219242,
+        "stage": "ffn_gated_hidden"
+      },
+      {
+        "finite": true,
+        "first_mismatching_coordinate": 0,
+        "l2": 25.8384,
+        "linf": 0.40625,
+        "max": 142582,
+        "min": -62296.4,
+        "relative_l2": 0.00000194789,
+        "rms": 0.0130302,
+        "stage": "w2"
+      }
+    ],
+    "threshold_relative_l2": 0.00005
+  },
+  "result": "PASS: all 34 canonical witnesses are accounted for by the completed resident assembly",
+  "schema": "oct.prometheus.evt2.m1e.canonical-audit.v1",
+  "stage_inventory": {
+    "final_output": {
+      "dtype": "float32",
+      "relative_path": "final_output.f32.bin",
+      "sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43",
+      "shape": [
+        1,
+        1024,
+        3840
+      ]
+    },
+    "numerical_policy": "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode",
+    "required_stages": [
+      "AdaLN",
+      "scales_gates",
+      "attention_norm_modulation",
+      "fused_qkv",
+      "q_k_v",
+      "q_k_norm",
+      "q_k_rope",
+      "selected_scores",
+      "selected_probabilities",
+      "attention_aggregation",
+      "output_projection",
+      "attention_residual",
+      "ffn_norm",
+      "w1",
+      "w3",
+      "gated_hidden",
+      "w2",
+      "final_output"
+    ],
+    "rope_frame": 33,
+    "schema": "oct.prometheus.evt2.o19.canonical-stage-manifest.v2",
+    "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+    "stages": {
+      "attention_aggregation": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 22.60872,
+          "l2": 144879.45190740208,
+          "last_element": 110.65977,
+          "max": 255.06015,
+          "mean": 0.786174028089188,
+          "min": -273.0131,
+          "rms": 73.06194068294619,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 22.60872
+            },
+            {
+              "flat_index": 1,
+              "value": -16.405487
+            },
+            {
+              "flat_index": 1310720,
+              "value": -10.827898
+            },
+            {
+              "flat_index": 2621440,
+              "value": 208.46693
+            },
+            {
+              "flat_index": 3932158,
+              "value": -74.963585
+            },
+            {
+              "flat_index": 3932159,
+              "value": 110.65977
+            }
+          ]
+        },
+        "projection_sha256": "a795e79fb7d24c216acca6fb975c4bfdc39a44eebc5d25dfea1e046ee0e9f8f5",
+        "relative_path": "stages/attention_aggregation.f32.bin",
+        "sha256": "94260ffe6d6647dcae418deb8b19b8adda442d412e3dd84922e2366fd042ec2d",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "attention_gate_raw": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -0.092752255,
+          "l2": 6.92783782618208,
+          "last_element": -0.030876685,
+          "max": 1.8578511,
+          "mean": 0.0005920026563217106,
+          "min": -0.81553787,
+          "rms": 0.11179750219178745,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -0.092752255
+            },
+            {
+              "flat_index": 1,
+              "value": 0.033863652
+            },
+            {
+              "flat_index": 1280,
+              "value": 0.03414398
+            },
+            {
+              "flat_index": 2560,
+              "value": -0.009241605
+            },
+            {
+              "flat_index": 3838,
+              "value": 0.11381386
+            },
+            {
+              "flat_index": 3839,
+              "value": -0.030876685
+            }
+          ]
+        },
+        "projection_sha256": "1a40873cb30d3804db75beb45cd467b885108266cf73404232b6ac3fe063a50a",
+        "relative_path": "stages/attention_gate_raw.f32.bin",
+        "sha256": "b99c1df7a121d259dc11f417f9e201e91b67fe42b040e4a1443f50660ca24b09",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "attention_gate_tanh": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -0.092487186,
+          "l2": 6.547044552428788,
+          "last_element": -0.030866876,
+          "max": 0.9524799,
+          "mean": 0.0003637181496439249,
+          "min": -0.6726339,
+          "rms": 0.10565247716014453,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -0.092487186
+            },
+            {
+              "flat_index": 1,
+              "value": 0.033850715
+            },
+            {
+              "flat_index": 1280,
+              "value": 0.03413072
+            },
+            {
+              "flat_index": 2560,
+              "value": -0.009241343
+            },
+            {
+              "flat_index": 3838,
+              "value": 0.11332496
+            },
+            {
+              "flat_index": 3839,
+              "value": -0.030866876
+            }
+          ]
+        },
+        "projection_sha256": "97bf112a72702edbbc113345ebf638db61bfa0a2fd073ed67fb9ad77a5a2598f",
+        "relative_path": "stages/attention_gate_tanh.f32.bin",
+        "sha256": "91f73387486508f6c9a4756718ff5680d7abeaf49c5b6ee7f11bec2dc8521860",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "attention_logits_token0_head0": {
+        "bytes": 4096,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 2.4063396,
+          "l2": 36.88627487383076,
+          "last_element": 0.73476005,
+          "max": 4.5500927,
+          "mean": 0.33924567892029245,
+          "min": -2.844795,
+          "rms": 1.1526960898072112,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 2.4063396
+            },
+            {
+              "flat_index": 1,
+              "value": 2.2120225
+            },
+            {
+              "flat_index": 341,
+              "value": -0.88219935
+            },
+            {
+              "flat_index": 682,
+              "value": -0.29553077
+            },
+            {
+              "flat_index": 1022,
+              "value": -0.91834974
+            },
+            {
+              "flat_index": 1023,
+              "value": 0.73476005
+            }
+          ]
+        },
+        "projection_sha256": "d160a2e505929b3a35fe0303d664396e0d1da9d6762f8c3ced391a3f4bf8d71d",
+        "relative_path": "stages/attention_logits_token0_head0.f32.bin",
+        "sha256": "d2dad31fb20cce91e6ab99ed28733490e84694e41ebb897dadb9fed45f36796e",
+        "shape": [
+          1024
+        ]
+      },
+      "attention_logits_token1023_head29": {
+        "bytes": 4096,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -0.37980968,
+          "l2": 55.30138867431164,
+          "last_element": 2.0046077,
+          "max": 4.67999,
+          "mean": -0.031508693114119524,
+          "min": -4.8397255,
+          "rms": 1.7281683960722387,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -0.37980968
+            },
+            {
+              "flat_index": 1,
+              "value": -0.28456676
+            },
+            {
+              "flat_index": 341,
+              "value": -0.34210557
+            },
+            {
+              "flat_index": 682,
+              "value": -1.3402411
+            },
+            {
+              "flat_index": 1022,
+              "value": 0.77930224
+            },
+            {
+              "flat_index": 1023,
+              "value": 2.0046077
+            }
+          ]
+        },
+        "projection_sha256": "6b42ce5f5b99496212b03ef6236fa2aee9e9f20026def07af803f168a370471f",
+        "relative_path": "stages/attention_logits_token1023_head29.f32.bin",
+        "sha256": "86b137d8c182d329c43798fef44d5288882fff6fd6c81b7eac4933a4e0b67e05",
+        "shape": [
+          1024
+        ]
+      },
+      "attention_modulated": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -6.887817,
+          "l2": 3422.8917961132347,
+          "last_element": 1.0863377,
+          "max": 49.482956,
+          "mean": 0.007933524448786165,
+          "min": -49.942738,
+          "rms": 1.72614621383028,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -6.887817
+            },
+            {
+              "flat_index": 1,
+              "value": -0.42718977
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.0431859
+            },
+            {
+              "flat_index": 2621440,
+              "value": 0.056008715
+            },
+            {
+              "flat_index": 3932158,
+              "value": -0.0116824275
+            },
+            {
+              "flat_index": 3932159,
+              "value": 1.0863377
+            }
+          ]
+        },
+        "projection_sha256": "1bd19891fe893ec9e35935ab75a70e8f1de6575f6b81a242d49b28937d5c2cda",
+        "relative_path": "stages/attention_modulated.f32.bin",
+        "sha256": "0f3bba0f37085f3ac75652757038dafa93797e39574004e182eaf3f2fb5b5a88",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "attention_norm": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -2.9183338,
+          "l2": 1850.0684553766582,
+          "last_element": -1.058256,
+          "max": 16.153719,
+          "mean": 0.007826831988165894,
+          "min": -16.04362,
+          "rms": 0.9329797287783173,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -2.9183338
+            },
+            {
+              "flat_index": 1,
+              "value": -0.2905034
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.47690302
+            },
+            {
+              "flat_index": 2621440,
+              "value": 0.07386842
+            },
+            {
+              "flat_index": 3932158,
+              "value": 0.038262118
+            },
+            {
+              "flat_index": 3932159,
+              "value": -1.058256
+            }
+          ]
+        },
+        "projection_sha256": "0f5bf98ff1ac626bfb1b31e7065ec46bc3b60036a2a0a959ccc617fe7c9f2ebf",
+        "relative_path": "stages/attention_norm.f32.bin",
+        "sha256": "d4022f586b3060c4602df46a1569c6fc682d2fedc1ecc3a12472104c65b5187c",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "attention_probabilities_token0_head0": {
+        "bytes": 4096,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.0038033766,
+          "l2": 0.07358025280834343,
+          "last_element": 0.00071484444,
+          "max": 0.032448113,
+          "mean": 0.0009765625115729648,
+          "min": 0.000019935651,
+          "rms": 0.0022993829002607323,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.0038033766
+            },
+            {
+              "flat_index": 1,
+              "value": 0.0031316879
+            },
+            {
+              "flat_index": 341,
+              "value": 0.00014189759
+            },
+            {
+              "flat_index": 682,
+              "value": 0.0002551302
+            },
+            {
+              "flat_index": 1022,
+              "value": 0.00013685954
+            },
+            {
+              "flat_index": 1023,
+              "value": 0.00071484444
+            }
+          ]
+        },
+        "projection_sha256": "8965d5ddb9be57433c754fcdcd2f75cd8df2e6700f46e329f309f2eae70b9379",
+        "relative_path": "stages/attention_probabilities_token0_head0.f32.bin",
+        "sha256": "257418f931e61d32cdc504a00ecdc68f5d7b182e33ba3c0d6571de71bd25d029",
+        "shape": [
+          1024
+        ]
+      },
+      "attention_probabilities_token1023_head29": {
+        "bytes": 4096,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.00017338601,
+          "l2": 0.07448157199979212,
+          "last_element": 0.0018817132,
+          "max": 0.027318519,
+          "mean": 0.0009765620365387306,
+          "min": 0.0000020049213,
+          "rms": 0.0023275491249935038,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.00017338601
+            },
+            {
+              "flat_index": 1,
+              "value": 0.0001907118
+            },
+            {
+              "flat_index": 341,
+              "value": 0.00018004826
+            },
+            {
+              "flat_index": 682,
+              "value": 0.00006635966
+            },
+            {
+              "flat_index": 1022,
+              "value": 0.0005525989
+            },
+            {
+              "flat_index": 1023,
+              "value": 0.0018817132
+            }
+          ]
+        },
+        "projection_sha256": "d5a59c1bda97178fdde603398f931ab64f2c146032c846b3d1dd503d218bd188",
+        "relative_path": "stages/attention_probabilities_token1023_head29.f32.bin",
+        "sha256": "375efa4d2968272c2a71bb354ea14748f23fdb39c1d7a6053b4fc5863ba05738",
+        "shape": [
+          1024
+        ]
+      },
+      "attention_projection": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 38.777737,
+          "l2": 4270413.958538444,
+          "last_element": -10.219366,
+          "max": 136264.64,
+          "mean": 26.652372614005767,
+          "min": -7867.749,
+          "rms": 2153.547154014464,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 38.777737
+            },
+            {
+              "flat_index": 1,
+              "value": 392.79315
+            },
+            {
+              "flat_index": 1310720,
+              "value": 469.82147
+            },
+            {
+              "flat_index": 2621440,
+              "value": -6.6808763
+            },
+            {
+              "flat_index": 3932158,
+              "value": 89.16175
+            },
+            {
+              "flat_index": 3932159,
+              "value": -10.219366
+            }
+          ]
+        },
+        "projection_sha256": "66fa3c90917d3441a2680600029849f82f948f441ccd91a647bfc310a3c0769a",
+        "relative_path": "stages/attention_projection.f32.bin",
+        "sha256": "9296c23a7f26d49a33b4b54def202f1833d4771a79f83ed9597b16fb792d569c",
+        "shape": [
+          1024
+        ]
+      },
+      "attention_residual": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -1.0000031,
+          "l2": 1301.4515976463017,
+          "last_element": -0.5390627,
+          "max": 34.104607,
+          "mean": 0.009965027371710285,
+          "min": -6.84375,
+          "rms": 0.6563151515077035,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -1.0000031
+            },
+            {
+              "flat_index": 1,
+              "value": -0.1181361
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.19042696
+            },
+            {
+              "flat_index": 2621440,
+              "value": 0.018676776
+            },
+            {
+              "flat_index": 3932158,
+              "value": 0.01519823
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.5390627
+            }
+          ]
+        },
+        "projection_sha256": "d63456bf1a68711692d846380d03ea9b0a13a32bfbe6e55292a450ff6f32d6ee",
+        "relative_path": "stages/attention_residual.f32.bin",
+        "sha256": "ff02d4bf4acfc0dc37f2ae8303e72ba8fa2dbc6bfa32f258228b652ba1498856",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "attention_scale_adjusted": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 2.3601882,
+          "l2": 88.72041756472808,
+          "last_element": -1.0265357,
+          "max": 4.033954,
+          "mean": 1.0083472041102748,
+          "min": -2.2664263,
+          "rms": 1.4317195820698327,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 2.3601882
+            },
+            {
+              "flat_index": 1,
+              "value": 1.4705155
+            },
+            {
+              "flat_index": 1280,
+              "value": 0.09055489
+            },
+            {
+              "flat_index": 2560,
+              "value": 0.7582227
+            },
+            {
+              "flat_index": 3838,
+              "value": -0.30532622
+            },
+            {
+              "flat_index": 3839,
+              "value": -1.0265357
+            }
+          ]
+        },
+        "projection_sha256": "8f3a0480fc6946a642903da3062ec11e3032f7d9fd3dd02f48482d553c5d0c06",
+        "relative_path": "stages/attention_scale_adjusted.f32.bin",
+        "sha256": "4826c6237bcb9e7721c857ddcef3e759b7630e1bcde12c5ecec3e1cc9c897ac2",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "attention_scale_raw": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 1.3601882,
+          "l2": 62.98576002442708,
+          "last_element": -2.0265357,
+          "max": 3.0339541,
+          "mean": 0.008347203712704261,
+          "min": -3.2664263,
+          "rms": 1.0164283317617622,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 1.3601882
+            },
+            {
+              "flat_index": 1,
+              "value": 0.47051555
+            },
+            {
+              "flat_index": 1280,
+              "value": -0.9094451
+            },
+            {
+              "flat_index": 2560,
+              "value": -0.24177729
+            },
+            {
+              "flat_index": 3838,
+              "value": -1.3053262
+            },
+            {
+              "flat_index": 3839,
+              "value": -2.0265357
+            }
+          ]
+        },
+        "projection_sha256": "02d73442080c61a424e5c72b4e751ea282b852ac7b0110289dbad9a1bfcc972e",
+        "relative_path": "stages/attention_scale_raw.f32.bin",
+        "sha256": "436241e41cd4d6e86241fd2663254e16c5be5db1cdf963297bc14168a2b7c6d8",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "ffn_gated_hidden": {
+        "bytes": 41943040,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 86.23877,
+          "l2": 338894.952269732,
+          "last_element": 0.17709681,
+          "max": 3668.6272,
+          "mean": -0.24081311783810283,
+          "min": -4194.241,
+          "rms": 104.65624381898463,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 86.23877
+            },
+            {
+              "flat_index": 1,
+              "value": -111.47739
+            },
+            {
+              "flat_index": 3495253,
+              "value": 0.00030108856
+            },
+            {
+              "flat_index": 6990506,
+              "value": -0.00012565145
+            },
+            {
+              "flat_index": 10485758,
+              "value": -108.114
+            },
+            {
+              "flat_index": 10485759,
+              "value": 0.17709681
+            }
+          ]
+        },
+        "projection_sha256": "956ce4b14b6a6f43dd43d12e2dc990e1b41b7a799d60d42c85dc36c2d7f6674e",
+        "relative_path": "stages/ffn_gated_hidden.f32.bin",
+        "sha256": "b1b4ef28d8b99ccfc5ffbe8917dbf1e2626a16141ce791189c806768c05ac151",
+        "shape": [
+          1,
+          1024,
+          10240
+        ]
+      },
+      "ffn_modulated": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.39552665,
+          "l2": 1821.7395791924807,
+          "last_element": -0.840353,
+          "max": 46.863678,
+          "mean": 0.011587013885961691,
+          "min": -14.432778,
+          "rms": 0.9186936264764826,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.39552665
+            },
+            {
+              "flat_index": 1,
+              "value": -0.11619787
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.082168385
+            },
+            {
+              "flat_index": 2621440,
+              "value": -0.002241078
+            },
+            {
+              "flat_index": 3932158,
+              "value": 0.005427759
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.840353
+            }
+          ]
+        },
+        "projection_sha256": "b7b03ddf30906da4aeea201f3890a34ca9392945494ea97093afe9d80a547b90",
+        "relative_path": "stages/ffn_modulated.f32.bin",
+        "sha256": "6e431acdae1d2b38c9c98a408c71926177ce8bad66cd8ff958e222c80fc59111",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "ffn_norm": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -1.7531931,
+          "l2": 2214.2308743263575,
+          "last_element": -0.6544778,
+          "max": 67.64603,
+          "mean": 0.01812542356348978,
+          "min": -8.407685,
+          "rms": 1.1166249089745144,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -1.7531931
+            },
+            {
+              "flat_index": 1,
+              "value": -0.2085142
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.1921056
+            },
+            {
+              "flat_index": 2621440,
+              "value": 0.03340469
+            },
+            {
+              "flat_index": 3932158,
+              "value": 0.014925797
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.6544778
+            }
+          ]
+        },
+        "projection_sha256": "791605160a7a02a6fa047d85a742a5ab46baf35650090241e9c2fca631c4b575",
+        "relative_path": "stages/ffn_norm.f32.bin",
+        "sha256": "3080b919f44aca4840e45d6df5602202a6b84dd0c33dc64ded17b815b9dbd0ec",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "final_output": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -0.9999907,
+          "l2": 1480.0230653617875,
+          "last_element": -0.5402644,
+          "max": 40.048077,
+          "mean": 0.011504338661256249,
+          "min": -6.843756,
+          "rms": 0.7463677974152415,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -0.9999907
+            },
+            {
+              "flat_index": 1,
+              "value": -0.118997894
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.1904274
+            },
+            {
+              "flat_index": 2621440,
+              "value": 0.019296706
+            },
+            {
+              "flat_index": 3932158,
+              "value": 0.015311475
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.5402644
+            }
+          ]
+        },
+        "projection_sha256": "16f70f96a76c2e61038590a8fad08b7aba90ab1242541759a1b2bc348ef65660",
+        "relative_path": "stages/final_output.f32.bin",
+        "sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "k": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 43.58648,
+          "l2": 109072.78301758964,
+          "last_element": -7.610529,
+          "max": 358.4561,
+          "mean": -0.10844371870023303,
+          "min": -339.85767,
+          "rms": 55.0048271030755,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 43.58648
+            },
+            {
+              "flat_index": 1,
+              "value": -8.07982
+            },
+            {
+              "flat_index": 1310720,
+              "value": -65.52536
+            },
+            {
+              "flat_index": 2621440,
+              "value": -5.828332
+            },
+            {
+              "flat_index": 3932158,
+              "value": -23.167105
+            },
+            {
+              "flat_index": 3932159,
+              "value": -7.610529
+            }
+          ]
+        },
+        "projection_sha256": "3b97e9a2eaff09ed04b1c9ceab58296d58dd418332d9ea694298c631d7470219",
+        "relative_path": "stages/k.f32.bin",
+        "sha256": "3b28d792cf3ca5869244dea6207c177b2f2793f986bcb3acb9a3653afd244fa0",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "k_norm": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.6562256,
+          "l2": 1731.9496904537443,
+          "last_element": -0.15771928,
+          "max": 6.49533,
+          "mean": -0.0036358410360675586,
+          "min": -6.8400536,
+          "rms": 0.8734130608849535,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.6562256
+            },
+            {
+              "flat_index": 1,
+              "value": -0.14462532
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.72043616
+            },
+            {
+              "flat_index": 2621440,
+              "value": -0.069245115
+            },
+            {
+              "flat_index": 3932158,
+              "value": -0.44722673
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.15771928
+            }
+          ]
+        },
+        "projection_sha256": "db20328da6b9ecec9f6ad03d0c6b5661f36ccf9b87445428489a27cad5d567f2",
+        "relative_path": "stages/k_norm.f32.bin",
+        "sha256": "c3f4eb22418ba57e0ec83220bfe52de8f4d07bb1eb011c7f8b1ea3a68a86e070",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "k_rope": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.13590002,
+          "l2": 1731.9496925970575,
+          "last_element": -0.22385556,
+          "max": 6.614504,
+          "mean": -0.004250370863347155,
+          "min": -6.216064,
+          "rms": 0.8734130619658149,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.13590002
+            },
+            {
+              "flat_index": 1,
+              "value": 0.6580879
+            },
+            {
+              "flat_index": 1310720,
+              "value": 0.2728928
+            },
+            {
+              "flat_index": 2621440,
+              "value": -1.1536793
+            },
+            {
+              "flat_index": 3932158,
+              "value": -0.41806194
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.22385556
+            }
+          ]
+        },
+        "projection_sha256": "6b656a6f887ae946241515a964bc05838fc73b6a93ba1903de0e17d5e9e3dfb0",
+        "relative_path": "stages/k_rope.f32.bin",
+        "sha256": "7d0e63f374bf472ccbd67ac71e12e9dcdaa05c62e2a9f26fb27446c82759e8cb",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "mlp_gate_raw": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.12004629,
+          "l2": 15.973434817057905,
+          "last_element": 0.20466696,
+          "max": 2.3332,
+          "mean": 0.005240003846483887,
+          "min": -2.5066004,
+          "rms": 0.2577701959508124,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.12004629
+            },
+            {
+              "flat_index": 1,
+              "value": -0.1627551
+            },
+            {
+              "flat_index": 1280,
+              "value": -0.004695369
+            },
+            {
+              "flat_index": 2560,
+              "value": 0.16414051
+            },
+            {
+              "flat_index": 3838,
+              "value": 0.117215075
+            },
+            {
+              "flat_index": 3839,
+              "value": 0.20466696
+            }
+          ]
+        },
+        "projection_sha256": "801f12bd4e808744128573ed3a4ff939de4f9e7d46d6ef50aa9b43a10ec1c5e3",
+        "relative_path": "stages/mlp_gate_raw.f32.bin",
+        "sha256": "bf12660c9381a4c38303ab0a69c56fec29e605d8a0306ca667e945cfe6bc9537",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "mlp_gate_tanh": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.11947293,
+          "l2": 13.987711529418158,
+          "last_element": 0.2018563,
+          "max": 0.9813632,
+          "mean": 0.004123248344634097,
+          "min": -0.9867887,
+          "rms": 0.22572572418745834,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.11947293
+            },
+            {
+              "flat_index": 1,
+              "value": -0.16133308
+            },
+            {
+              "flat_index": 1280,
+              "value": -0.0046953345
+            },
+            {
+              "flat_index": 2560,
+              "value": 0.16268213
+            },
+            {
+              "flat_index": 3838,
+              "value": 0.11668119
+            },
+            {
+              "flat_index": 3839,
+              "value": 0.2018563
+            }
+          ]
+        },
+        "projection_sha256": "525ba9f67b9465c0dd0507ba78b4bc50ae6ebf79916067225f442ba7464f0ddd",
+        "relative_path": "stages/mlp_gate_tanh.f32.bin",
+        "sha256": "8bffd7be42c5c1443f7c01f782350fc318b78692810ddcf97c4f925bd68ff076",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "mlp_scale_adjusted": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -0.22560358,
+          "l2": 45.488725006372796,
+          "last_element": 1.2840054,
+          "max": 4.2813935,
+          "mean": 0.3156591484012703,
+          "min": -1.988256,
+          "rms": 0.7340711432912114,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -0.22560358
+            },
+            {
+              "flat_index": 1,
+              "value": 0.557266
+            },
+            {
+              "flat_index": 1280,
+              "value": 0.42772508
+            },
+            {
+              "flat_index": 2560,
+              "value": -0.06708872
+            },
+            {
+              "flat_index": 3838,
+              "value": 0.36364955
+            },
+            {
+              "flat_index": 3839,
+              "value": 1.2840054
+            }
+          ]
+        },
+        "projection_sha256": "fc881543e84343c0efcd56a318c9b67148529b8ea24f759b2c42d4cd76384332",
+        "relative_path": "stages/mlp_scale_adjusted.f32.bin",
+        "sha256": "5b1aea422dce547e49cda7a714fae1c46b457d6c2a3f4476bb993a7a23892603",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "mlp_scale_raw": {
+        "bytes": 15360,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -1.2256036,
+          "l2": 59.03356539524409,
+          "last_element": 0.2840054,
+          "max": 3.2813935,
+          "mean": -0.6843408518559347,
+          "min": -2.988256,
+          "rms": 0.9526500651792784,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -1.2256036
+            },
+            {
+              "flat_index": 1,
+              "value": -0.44273403
+            },
+            {
+              "flat_index": 1280,
+              "value": -0.5722749
+            },
+            {
+              "flat_index": 2560,
+              "value": -1.0670887
+            },
+            {
+              "flat_index": 3838,
+              "value": -0.63635045
+            },
+            {
+              "flat_index": 3839,
+              "value": 0.2840054
+            }
+          ]
+        },
+        "projection_sha256": "5a25661ab5f6b2c2ae171e4afd3802af9a4f1a18d23dbeef48b1ecda4a300bb6",
+        "relative_path": "stages/mlp_scale_raw.f32.bin",
+        "sha256": "73d8f3cc8aff587488e012d6243f568929175e783695363620a0690350520ad1",
+        "shape": [
+          1,
+          3840
+        ]
+      },
+      "q": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.11094941,
+          "l2": 134715.6836326702,
+          "last_element": -39.493553,
+          "max": 384.13135,
+          "mean": -1.2128312957745733,
+          "min": -380.05746,
+          "rms": 67.93640614352587,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.11094941
+            },
+            {
+              "flat_index": 1,
+              "value": -20.398643
+            },
+            {
+              "flat_index": 1310720,
+              "value": 81.20082
+            },
+            {
+              "flat_index": 2621440,
+              "value": -106.941124
+            },
+            {
+              "flat_index": 3932158,
+              "value": -67.58962
+            },
+            {
+              "flat_index": 3932159,
+              "value": -39.493553
+            }
+          ]
+        },
+        "projection_sha256": "2217f9f238d15748a84a2caccf0bea956964848d4dc75d3ae36eaa51b6bafa07",
+        "relative_path": "stages/q.f32.bin",
+        "sha256": "dcf02a78fe0fe21f995fba6e02a44789f49e8dcfe3b6efc380a4fb8235194a34",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "q_norm": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.0015781499,
+          "l2": 1716.655566629373,
+          "last_element": -0.5325902,
+          "max": 5.7034874,
+          "mean": -0.0136687738154804,
+          "min": -6.84026,
+          "rms": 0.865700315199195,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.0015781499
+            },
+            {
+              "flat_index": 1,
+              "value": -0.3210185
+            },
+            {
+              "flat_index": 1310720,
+              "value": 0.9649556
+            },
+            {
+              "flat_index": 2621440,
+              "value": -1.1055946
+            },
+            {
+              "flat_index": 3932158,
+              "value": -0.8490496
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.5325902
+            }
+          ]
+        },
+        "projection_sha256": "ce17a7a9e891b4999d31b2af61d972e7cadf3b0c20d785cd312f9cc523d9794a",
+        "relative_path": "stages/q_norm.f32.bin",
+        "sha256": "02587f37363d409360b4e703c59171af6382cc77866d64dc6aeb2120d31a852b",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "q_rope": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.32096922,
+          "l2": 1716.6555673791047,
+          "last_element": -0.6554399,
+          "max": 6.5263457,
+          "mean": -0.008442384066037204,
+          "min": -6.5763354,
+          "rms": 0.8657003155772808,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.32096922
+            },
+            {
+              "flat_index": 1,
+              "value": 0.005840092
+            },
+            {
+              "flat_index": 1310720,
+              "value": -0.046113525
+            },
+            {
+              "flat_index": 2621440,
+              "value": 0.07149897
+            },
+            {
+              "flat_index": 3932158,
+              "value": -0.75824535
+            },
+            {
+              "flat_index": 3932159,
+              "value": -0.6554399
+            }
+          ]
+        },
+        "projection_sha256": "a5b8a9177d79572ae4684d7c848fcd5aff62d6a83da6dffe676937af4b29d8fd",
+        "relative_path": "stages/q_rope.f32.bin",
+        "sha256": "2b6d51a46a953388af1ea4e70a2e1fc445f279b8b4ec43bc6c76b0b7be5c4d05",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "qkv": {
+        "bytes": 47185920,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.11094941,
+          "l2": 212154.92058207592,
+          "last_element": 62.262966,
+          "max": 432.27505,
+          "mean": -0.12861041027005274,
+          "min": -398.14944,
+          "rms": 61.76989898210821,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.11094941
+            },
+            {
+              "flat_index": 1,
+              "value": -20.398643
+            },
+            {
+              "flat_index": 3932160,
+              "value": -8.927877
+            },
+            {
+              "flat_index": 7864320,
+              "value": 21.416372
+            },
+            {
+              "flat_index": 11796478,
+              "value": -111.61618
+            },
+            {
+              "flat_index": 11796479,
+              "value": 62.262966
+            }
+          ]
+        },
+        "projection_sha256": "a3ec64f72b508593f7400d42bf0a50bfd13a3ea62c3b770b7ebc826ec0d2354b",
+        "relative_path": "stages/qkv.f32.bin",
+        "sha256": "8dcf63fc78dbec3422cb7211445f73166dbee8c1ddfbe405c63e98720da2828e",
+        "shape": [
+          1,
+          1024,
+          11520
+        ]
+      },
+      "timestep_input": {
+        "bytes": 1024,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 0.06298828,
+          "l2": 2.550899262621181,
+          "last_element": -0.115722656,
+          "max": 0.84765625,
+          "mean": 0.021070405840873718,
+          "min": -1.3125,
+          "rms": 0.15943120391382382,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 0.06298828
+            },
+            {
+              "flat_index": 1,
+              "value": 0.21582031
+            },
+            {
+              "flat_index": 85,
+              "value": -0.067871094
+            },
+            {
+              "flat_index": 170,
+              "value": 0.10107422
+            },
+            {
+              "flat_index": 254,
+              "value": -0.076171875
+            },
+            {
+              "flat_index": 255,
+              "value": -0.115722656
+            }
+          ]
+        },
+        "projection_sha256": "bcab14dc88c28fb37b1210ab7ac819135fb2d65919e11e7eb21a71fafc1c2584",
+        "relative_path": "stages/timestep_input.f32.bin",
+        "sha256": "1782bf688258d4c54d4fd855014a6e688ffe39a4813dd12c1f64b306e057571f",
+        "shape": [
+          1,
+          256
+        ]
+      },
+      "timestep_linear": {
+        "bytes": 61440,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 1.3601882,
+          "l2": 88.06425702820674,
+          "last_element": 0.20466696,
+          "max": 3.2813935,
+          "mean": -0.16754041041010623,
+          "min": -3.2664263,
+          "rms": 0.7105654184716128,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 1.3601882
+            },
+            {
+              "flat_index": 1,
+              "value": 0.47051555
+            },
+            {
+              "flat_index": 5120,
+              "value": 0.03414398
+            },
+            {
+              "flat_index": 10240,
+              "value": -1.0670887
+            },
+            {
+              "flat_index": 15358,
+              "value": 0.117215075
+            },
+            {
+              "flat_index": 15359,
+              "value": 0.20466696
+            }
+          ]
+        },
+        "projection_sha256": "38cc7419194733afddb9f51cb673e0699c7cdae471a5763c4df55d36385e7d1c",
+        "relative_path": "stages/timestep_linear.f32.bin",
+        "sha256": "ef50414ef859ef62714799dbb21781f7b93dd8447b31501fe726c3646401b17a",
+        "shape": [
+          1,
+          15360
+        ]
+      },
+      "v": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 54.267914,
+          "l2": 122329.56680765333,
+          "last_element": 62.262966,
+          "max": 432.27505,
+          "mean": 0.9354437836646484,
+          "min": -398.14944,
+          "rms": 61.690152994115756,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 54.267914
+            },
+            {
+              "flat_index": 1,
+              "value": -6.3479257
+            },
+            {
+              "flat_index": 1310720,
+              "value": 26.322664
+            },
+            {
+              "flat_index": 2621440,
+              "value": 61.98557
+            },
+            {
+              "flat_index": 3932158,
+              "value": -111.61618
+            },
+            {
+              "flat_index": 3932159,
+              "value": 62.262966
+            }
+          ]
+        },
+        "projection_sha256": "96785b19b6d4bc296d25ddbda4c141a6b6a4d0ed298e47fe088135f2291ddc3a",
+        "relative_path": "stages/v.f32.bin",
+        "sha256": "96420418b6d6e25e594378c6258bd381e2c533a978d5b547523e78f1bbba2713",
+        "shape": [
+          1,
+          1024,
+          30,
+          128
+        ]
+      },
+      "w1": {
+        "bytes": 41943040,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 4.170632,
+          "l2": 56762.93186627654,
+          "last_element": -5.284274,
+          "max": 103.68054,
+          "mean": -10.620550117614926,
+          "min": -75.24131,
+          "rms": 17.529311656873645,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 4.170632
+            },
+            {
+              "flat_index": 1,
+              "value": 10.645585
+            },
+            {
+              "flat_index": 3495253,
+              "value": -7.801183
+            },
+            {
+              "flat_index": 6990506,
+              "value": -16.428953
+            },
+            {
+              "flat_index": 10485758,
+              "value": 5.9734144
+            },
+            {
+              "flat_index": 10485759,
+              "value": -5.284274
+            }
+          ]
+        },
+        "projection_sha256": "e0f21c209784698fd20f0272e593079439f4301326f5799f6201e841a9ec0521",
+        "relative_path": "stages/w1.f32.bin",
+        "sha256": "f2d46cfb19e646eaa27390be95761bdb88f7e7527eb3223f6685e5bc3d9aca5a",
+        "shape": [
+          1,
+          1024,
+          10240
+        ]
+      },
+      "w2": {
+        "bytes": 15728640,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": -4012.8704,
+          "l2": 13264780.175461821,
+          "last_element": 13911.135,
+          "max": 142581.39,
+          "mean": -49.341560145225365,
+          "min": -62296.316,
+          "rms": 6689.35842586796,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": -4012.8704
+            },
+            {
+              "flat_index": 1,
+              "value": 3028.6165
+            },
+            {
+              "flat_index": 1310720,
+              "value": -1814.3175
+            },
+            {
+              "flat_index": 2621440,
+              "value": 1459.0753
+            },
+            {
+              "flat_index": 3932158,
+              "value": -9783
+            },
+            {
+              "flat_index": 3932159,
+              "value": 13911.135
+            }
+          ]
+        },
+        "projection_sha256": "2b1e841a89f675c2e34b0cdc1b5d912fff9d9b72a23433200020c57299536f27",
+        "relative_path": "stages/w2.f32.bin",
+        "sha256": "05dd618f61f060af714f346df81bb1dd48a88b912b4bea3fc823966c60da30f0",
+        "shape": [
+          1,
+          1024,
+          3840
+        ]
+      },
+      "w3": {
+        "bytes": 41943040,
+        "dtype": "float32",
+        "logical_layout": "row-major contiguous",
+        "physical_strides": "contiguous",
+        "projection": {
+          "finite": true,
+          "first_element": 20.99694,
+          "l2": 96077.99083465725,
+          "last_element": -6.64283,
+          "max": 333.02914,
+          "mean": -0.19733531534921575,
+          "min": -356.35446,
+          "rms": 29.670437895537003,
+          "selected_coordinates": [
+            {
+              "flat_index": 0,
+              "value": 20.99694
+            },
+            {
+              "flat_index": 1,
+              "value": -10.471951
+            },
+            {
+              "flat_index": 3495253,
+              "value": -0.09434573
+            },
+            {
+              "flat_index": 6990506,
+              "value": 104.366554
+            },
+            {
+              "flat_index": 10485758,
+              "value": -18.145267
+            },
+            {
+              "flat_index": 10485759,
+              "value": -6.64283
+            }
+          ]
+        },
+        "projection_sha256": "a478f0160635e42df6f1def2a472209e9583d302385118f3a351eb13460f6b9e",
+        "relative_path": "stages/w3.f32.bin",
+        "sha256": "89057b0368f90896147c22904173982c03a60fef0063b14fdfe3872f99c9ce33",
+        "shape": [
+          1,
+          1024,
+          10240
+        ]
+      }
+    },
+    "status": "complete diagnostic witness; canonical CPU laboratory authority, not official-BF16 compatibility equivalence"
+  },
+  "stage_manifest": "0cab3d8fe179e70058cb22b37994413649f257268566b2c1dfb1254d2daeae65",
+  "stage_projections": "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480",
+  "transient_limit": "scores and probabilities are selected-row witnesses, not materialized full tensors"
+}

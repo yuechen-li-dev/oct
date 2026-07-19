@@ -1,0 +1,10 @@
+{
+  "amd": "not proven",
+  "other_nvidia": "not proven",
+  "resident_plan": "proven only on RTX 3070",
+  "routes": "existing selected SGEMM/reduction and fixed streaming-attention routes; no cooperative route is claimed unless selected by the existing owner",
+  "schema": "oct.prometheus.evt2.m1e.capability-route.v1",
+  "semantics": "portable",
+  "spirv": "validated",
+  "validated_device": "NVIDIA GeForce RTX 3070 with Vulkan validation"
+}

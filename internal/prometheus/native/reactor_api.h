@@ -726,6 +726,21 @@ typedef struct PrometheusModelBlockM1DExecuteRequest {
   uint32_t audit_stage;
 } PrometheusModelBlockM1DExecuteRequest;
 
+/* The M1F complete-block surface has no host intermediate output. The final
+   FP32 ModelEmbedding remains resident; audit replay is a separate bounded
+   operation so a warm execution cannot accidentally become a host bounce. */
+typedef struct PrometheusNoiseRefiner0ExecuteRequest {
+  uint32_t struct_size;
+  const void* model_input_bf16;
+  const void* timestep_bf16;
+  uint64_t model_input_bytes;
+  uint64_t timestep_bytes;
+  uint64_t input_identity;
+  uint64_t timestep_identity;
+  uint64_t output_identity;
+  uint32_t audit_enabled;
+} PrometheusNoiseRefiner0ExecuteRequest;
+
 enum {
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED = 2u,
@@ -1834,6 +1849,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1c(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1d(
     void* handle, uint64_t block_id, const PrometheusModelBlockM1DExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner0_execute(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefiner0ExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);

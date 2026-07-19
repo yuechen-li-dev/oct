@@ -207,3 +207,9 @@ shader contract `8a311ee26e42d3e00cb6df6e5ffb3466c03e4a08bcaba43ac753f8d102b6e10
 memory contract `715ec6c201c0d88b0d6dd6ce3660345a97e7eaa85d21c9c9d82a28e94191e974`;
 execution contract `85305f917a14f1485862f24724bf5b81850e8714ed4be1e6c6ba439b0366efa3`;
 and production handoff `629be9339c87bd37a996ea1b2e169271cbc66c5971faa1c638de4ca6cbc4a590`.
+
+The production M1B–M1D result is frozen as a payload-free compiled-block
+assembly by [the M1E report](PROMETHEUS_EVT2_M1E_Z_IMAGE_COMPILED_BLOCK_ASSEMBLY.md).
+That report records the fixed portfolio, ABI/resource/execution contracts,
+complete O19 witness accounting, lifecycle limits, and the constrained M2
+handoff without reclassifying historical payloads as authorities.

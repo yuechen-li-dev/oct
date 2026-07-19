@@ -1,0 +1,17 @@
+{
+  "attention": "PositionedQ + PositionedK + V + attention gate + preserved residual -\u003e FP32 attention residual",
+  "cast_prohibitions": [
+    "no cast before attention_norm2",
+    "no cast before gated attention residual",
+    "no cast after W2 before ffn_norm2",
+    "no cast before final gated residual"
+  ],
+  "ffn": "FP32 attention residual + adjusted MLP scale + tanh MLP gate -\u003e FP32 ModelEmbedding",
+  "ingress": {
+    "input": "BF16 [1,1024,3840] -\u003e resident FP32 ModelEmbedding",
+    "ownership": "module-owned; no ambient host tensor interpretation",
+    "timestep": "BF16 [1,256] -\u003e resident FP32"
+  },
+  "pre_attention": "FP32 ModelEmbedding + modulation -\u003e PositionedQ + PositionedK + V + gates + preserved residual",
+  "schema": "oct.prometheus.evt2.m1e.internal-abi.v1"
+}

@@ -1,0 +1,25 @@
+{
+  "assembly_identity_inputs": [
+    "shader portfolio",
+    "internal ABI",
+    "resource/alias plan",
+    "execution program",
+    "precision policy",
+    "canonical authority",
+    "RTX capability route"
+  ],
+  "cache": "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e",
+  "checkpoint": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "exclusions": [
+    "timestamps",
+    "absolute paths",
+    "Vulkan handles",
+    "host pointers",
+    "source comments",
+    "file enumeration order"
+  ],
+  "m1d_execution_plan_identity": 3212572515069549270,
+  "m1d_final_audit_replay_identity": 6445635600144955590,
+  "model_contract": "Tongyi-MAI/Z-Image-Turbo@f332072aa78be7aecdf3ee76d5c247082da564a6",
+  "schema": "oct.prometheus.evt2.m1e.replay.v1"
+}

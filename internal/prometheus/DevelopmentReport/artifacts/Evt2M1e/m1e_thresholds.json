@@ -1,0 +1,14 @@
+{
+  "exact_or_near_exact": "M1B ingress/modulation and canonical projections",
+  "final_output_limit": 0.00005,
+  "final_output_relative_l2": 0.00000130438,
+  "policy": "stage-specific observed discrepancies from M1B/M1C/M1D; no broad fallback threshold",
+  "resident_full_boundary_relative_l2_limit": 0.00005,
+  "schema": "oct.prometheus.evt2.m1e.thresholds.v1",
+  "structural_bugs_excluded_by": [
+    "canonical shape/layout/stride identities",
+    "FP32 finite-state checks",
+    "fixed source/pipeline IDs",
+    "no activation FP16 or clamp route"
+  ]
+}

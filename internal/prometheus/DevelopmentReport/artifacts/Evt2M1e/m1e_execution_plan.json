@@ -1,0 +1,23 @@
+{
+  "arbitrary_shader_lookup": false,
+  "entrypoint": "prometheus_reactor_runtime_noise_refiner0_execute",
+  "host_topology": false,
+  "runtime_graph_traversal": false,
+  "schema": "oct.prometheus.evt2.m1e.execution-program.v1",
+  "steps": [
+    "BF16 ingress",
+    "AdaLN",
+    "attention RMSNorm/modulation",
+    "fused QKV",
+    "Q RMSNorm/RoPE",
+    "K RMSNorm/RoPE",
+    "streaming fixed-30-head attention",
+    "attention projection/norm/gated residual",
+    "FFN RMSNorm/modulation",
+    "W1/W3",
+    "SiLU(W1)*W3",
+    "W2/FFN norm/final residual",
+    "resident FP32 output completion"
+  ],
+  "warm_audit_capture": false
+}

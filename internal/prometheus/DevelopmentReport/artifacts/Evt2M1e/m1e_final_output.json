@@ -1,0 +1,14 @@
+{
+  "authority_sha256": "4aff8bf19cfbfc9aebf2e8aa78ef91fb7bb5c117f98504080ed1bc3b206e0c43",
+  "dtype": "FP32",
+  "relative_l2": 0.00000130438,
+  "result": "PASS",
+  "schema": "oct.prometheus.evt2.m1e.final-output.v1",
+  "semantic_space": "ModelEmbedding",
+  "shape": [
+    1,
+    1024,
+    3840
+  ],
+  "threshold": 0.00005
+}

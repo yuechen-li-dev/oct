@@ -1,0 +1,8 @@
+{
+  "context_refiners": "not inspected from a locally available pinned source snapshot",
+  "main_blocks": "not inspected from a locally available pinned source snapshot",
+  "noise_refiner_1": "candidate parameter-only reuse; not implemented or certified",
+  "rule": "M2 must acquire/validate the pinned source tensor inventory before converting candidates into reuse claims",
+  "schema": "oct.prometheus.evt2.m1e.block-family-reuse.v1",
+  "status": "SOURCE INVENTORY REQUIRED BEFORE CLAIMING REUSE"
+}

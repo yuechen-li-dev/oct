@@ -1,0 +1,33 @@
+{
+  "complete_warm_ns": [
+    734894700,
+    573798600,
+    497984200,
+    415107300,
+    383119000,
+    380956100,
+    380028000,
+    381319600,
+    381624100,
+    388814200
+  ],
+  "complete_warm_stats_ns": {
+    "mean": 451764580,
+    "median": 385966600,
+    "min": 380028000,
+    "p95": 734894700,
+    "stddev": 112806000
+  },
+  "hardware": "NVIDIA GeForce RTX 3070, Vulkan validation enabled",
+  "schema": "oct.prometheus.evt2.m1f.timing.v1",
+  "timing_limit": "The complete elapsed time is available. Per-M1D timestamp-query splits remain intentionally unavailable.",
+  "warm_runtime_contract": {
+    "buffer_allocations": 0,
+    "descriptor_growth": 0,
+    "host_tensor_computation": 0,
+    "intermediate_host_bounce": 0,
+    "payload_reads": 0,
+    "pipeline_creations": 0,
+    "weight_uploads": 0
+  }
+}

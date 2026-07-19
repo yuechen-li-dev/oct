@@ -720,6 +720,52 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
                           << " l2=" << l2 << " linf=" << linf << " relative_l2=" << relativeL2
                           << " rms=" << rms << " first_mismatching_coordinate=" << firstDifference << "\n";
             }
+            PrometheusNoiseRefiner0ExecuteRequest complete{};
+            complete.struct_size = sizeof(complete);
+            complete.model_input_bf16 = input.data();
+            complete.timestep_bf16 = timestep.data();
+            complete.model_input_bytes = input.size();
+            complete.timestep_bytes = timestep.size();
+            complete.input_identity = 0x9a7d6e5c4b3a2918ull;
+            complete.timestep_identity = 0x1029384756abcdefull;
+            complete.output_identity = 0xa4fd07d58b1c9e23ull;
+            const std::uint64_t completeAllocations = evidence.warm_buffer_allocation_count;
+            const std::uint64_t completeUploads = evidence.weight_upload_count;
+            const std::uint64_t completePipelines = evidence.pipeline_create_count;
+            const std::uint64_t completeDescriptors = evidence.descriptor_set_count;
+            std::array<std::uint64_t, 10> completeWarmNs{};
+            for (std::uint32_t iteration = 0u; iteration < completeWarmNs.size(); ++iteration) {
+                const int completeResult = prometheus_reactor_runtime_noise_refiner0_execute(runtime, blockID, &complete, &evidence);
+                std::cout << "M1F complete iteration=" << iteration << " result=" << completeResult
+                          << " detail=" << evidence.detail_code << "\n";
+                ASSERT_EQUAL(PROM_OK, completeResult,
+                             "M1F complete resident block execution succeeds without host intermediate output");
+                ASSERT_TRUE(evidence.output_valid != 0u && evidence.audit_valid == 0u,
+                            "M1F retains resident output and does not turn a warm execution into an audit bounce");
+                completeWarmNs[iteration] = evidence.last_execution_ns;
+            }
+            ASSERT_EQUAL(completeAllocations, evidence.warm_buffer_allocation_count, "M1F warm block allocates no buffers");
+            ASSERT_EQUAL(completeUploads, evidence.weight_upload_count, "M1F warm block uploads no weights");
+            ASSERT_EQUAL(completePipelines, evidence.pipeline_create_count, "M1F warm block creates no pipelines");
+            ASSERT_EQUAL(completeDescriptors, evidence.descriptor_set_count, "M1F warm block grows no descriptors");
+            std::array<std::uint64_t, 10> sortedCompleteWarmNs = completeWarmNs;
+            std::sort(sortedCompleteWarmNs.begin(), sortedCompleteWarmNs.end());
+            const double completeWarmMean = static_cast<double>(std::accumulate(completeWarmNs.begin(), completeWarmNs.end(), std::uint64_t{0})) /
+                static_cast<double>(completeWarmNs.size());
+            double completeWarmVariance = 0.0;
+            for (const std::uint64_t elapsed : completeWarmNs) {
+                const double delta = static_cast<double>(elapsed) - completeWarmMean;
+                completeWarmVariance += delta * delta;
+            }
+            std::cout << "M1F complete_warm_ns=";
+            for (std::size_t index = 0u; index < completeWarmNs.size(); ++index) {
+                if (index != 0u) std::cout << ',';
+                std::cout << completeWarmNs[index];
+            }
+            std::cout << "\nM1F complete_warm_stats_ns median=" << (sortedCompleteWarmNs[4u] + sortedCompleteWarmNs[5u]) / 2u
+                      << " mean=" << completeWarmMean << " min=" << sortedCompleteWarmNs.front()
+                      << " p95=" << sortedCompleteWarmNs[9u]
+                      << " stddev=" << std::sqrt(completeWarmVariance / static_cast<double>(completeWarmNs.size())) << "\n";
         }
     }
     std::cout << "M1B evidence uploaded_bytes=361820672 upload_ns=" << uploadNs

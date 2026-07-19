@@ -1,0 +1,13 @@
+{
+  "block": "noise_refiner.0",
+  "native_api": [
+    "prometheus_reactor_runtime_model_block_create",
+    "prometheus_reactor_runtime_model_block_upload_weights",
+    "prometheus_reactor_runtime_noise_refiner0_execute",
+    "prometheus_reactor_runtime_model_block_get_evidence",
+    "prometheus_reactor_runtime_model_block_destroy"
+  ],
+  "precision": "FP16 immutable weights expanded at FP32 arithmetic use; FP32 activations/reductions; no TF32, activation FP16, clamp, saturation, CPU fallback, or host intermediate bounce",
+  "schema": "oct.prometheus.evt2.m1e.compiled-block-manifest.v1",
+  "status": "FIRST REAL COMPILED BLOCK ASSEMBLY COMPLETE"
+}

@@ -1,0 +1,12 @@
+{
+  "overlapping_live_ranges_alias": false,
+  "rules": [
+    "Q/K/V remain live until streaming attention completes",
+    "C/QKV storage is reused only after attention consumption",
+    "attention/projection/audit W3 partitions end before gate completion",
+    "W1 storage becomes gated-hidden only after its audit boundary",
+    "final FP32 output remains resident in released attention storage",
+    "failed execution quarantines and rejects stale output"
+  ],
+  "schema": "oct.prometheus.evt2.m1e.alias-plan.v1"
+}
