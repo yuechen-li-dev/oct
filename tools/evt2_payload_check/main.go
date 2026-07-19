@@ -174,6 +174,38 @@ func validateNoiseRefiner1Canonical(root string) error {
 	return nil
 }
 
+func validateContextRefinerCanonical(root, block, wantFinal string) error {
+	data, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	if err != nil {
+		return fmt.Errorf("%s canonical manifest: %w", block, err)
+	}
+	var manifest struct {
+		Schema      string `json:"schema"`
+		Block       string `json:"block"`
+		FinalOutput struct {
+			SHA256 string `json:"sha256"`
+		} `json:"final_output"`
+		Stages map[string]payload `json:"stages"`
+	}
+	if err = json.Unmarshal(data, &manifest); err != nil {
+		return fmt.Errorf("%s canonical manifest decode: %w", block, err)
+	}
+	if manifest.Schema != "oct.prometheus.evt2.m2b.context-refiner-canonical.v1" || manifest.Block != block || len(manifest.Stages) != 18 || manifest.FinalOutput.SHA256 != wantFinal {
+		return fmt.Errorf("%s canonical manifest contract mismatch", block)
+	}
+	for name, stage := range manifest.Stages {
+		actual, hashErr := fileHash(filepath.Join(root, filepath.FromSlash(stage.RelativePath)))
+		if hashErr != nil || actual != stage.SHA256 || stage.Bytes == 0 || stage.DType != "float32" {
+			return fmt.Errorf("%s canonical stage identity mismatch: %s", block, name)
+		}
+	}
+	actual, err := fileHash(filepath.Join(root, "final_output.f32.bin"))
+	if err != nil || actual != wantFinal {
+		return fmt.Errorf("%s canonical final identity mismatch", block)
+	}
+	return nil
+}
+
 func main() {
 	paths, err := zimage.NoiseRefiner0PayloadPathsFromEnvironment()
 	if err != nil {
@@ -201,10 +233,24 @@ func main() {
 	if _, err := zimage.LoadNoiseRefiner1CacheManifest(paths.CacheRoot); err != nil {
 		fail("%v", err)
 	}
+	for _, block := range []string{"context_refiner.0", "context_refiner.1"} {
+		if _, err := zimage.LoadContextRefinerCacheManifest(paths.CacheRoot, block); err != nil {
+			fail("%v", err)
+		}
+	}
+	if err := validateContextRefinerCanonical(zimage.ContextRefinerCanonicalRoot(paths.CacheRoot, "context_refiner.0"), "context_refiner.0", zimage.ContextRefiner0CanonicalFinalSHA256); err != nil {
+		fail("%v", err)
+	}
+	if err := validateContextRefinerCanonical(zimage.ContextRefinerCanonicalRoot(paths.CacheRoot, "context_refiner.1"), "context_refiner.1", zimage.ContextRefiner1CanonicalFinalSHA256); err != nil {
+		fail("%v", err)
+	}
 	if err := validateNoiseRefiner1Canonical(zimage.NoiseRefiner1CanonicalRoot(paths.CacheRoot)); err != nil {
 		fail("%v", err)
 	}
 	fmt.Printf("noise_refiner.0 authority: valid\n")
 	fmt.Printf("noise_refiner.1 authority: valid\n")
 	fmt.Printf("two-block chain authority: valid\n")
+	fmt.Printf("context_refiner.0 cache authority: valid\n")
+	fmt.Printf("context_refiner.1 cache authority: valid\n")
+	fmt.Printf("context_refiner two-block canonical authority: valid\n")
 }

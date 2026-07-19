@@ -1,0 +1,32 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.context-source-audit.v1",
+  "source": {
+    "repository": "Tongyi-MAI/Z-Image",
+    "revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+    "transformer_blob": "sha1:866a00ba95c7df49bbfaf9d2f7bc3fa3bfa9d431"
+  },
+  "family": "context_refiner",
+  "blocks": ["context_refiner.0", "context_refiner.1"],
+  "block_class": "ZImageTransformerBlock(modulation=False)",
+  "structure": {
+    "width": 3840,
+    "tokens": "captured 15 text embeddings padded by repeat-last to SEQ_MULTI_OF=32",
+    "heads": 30,
+    "head_width": 128,
+    "kv_heads": 30,
+    "attention": "self-attention; non-causal; dropout=0",
+    "mask": "all 32 source-padded context positions are valid in the captured batch",
+    "qkv_layout": "checkpoint fused [Q,K,V] 11520x3840; source logical projections are Q then K then V",
+    "qk_normalization": "RMSNorm per 128-wide head, epsilon=1e-5",
+    "rope": "three-axis complex RoPE; theta=256; axes=[32,48,48]; context coordinates [token+1,0,0]",
+    "normalization": "RMSNorm x / sqrt(mean(x^2)+1e-5) times learned scale",
+    "adaln": "absent",
+    "gates": "absent",
+    "residual_order": "x + attention_norm2(attention(attention_norm1(x))); then x + ffn_norm2(FFN(ffn_norm1(x)))",
+    "ffn": "3840 -> 10240 -> 3840; SiLU(W1) * W3; no biases",
+    "input_semantic_domain": "ContextEmbedding.FP32",
+    "output_semantic_domain": "ContextEmbedding.FP32",
+    "next_stage": "concatenated with separately refined image stream for MainTransformer; no direct NoiseRefiner activation edge"
+  },
+  "classification": "context_refiner.0 and context_refiner.1 are identical assembly with different immutable weights"
+}

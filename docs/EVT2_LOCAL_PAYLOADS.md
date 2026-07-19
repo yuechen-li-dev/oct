@@ -90,6 +90,48 @@ The canonical block-1 input is the accepted block-0 FP32 final payload. That
 is the two-block chain reproduction boundary: do not convert it to BF16 for
 the internal hand-off.
 
+## M2B `context_refiner.0` and `context_refiner.1` cache authority
+
+ContextRefiner has its own closed, unmodulated package family. Each block has
+11 BF16-source tensors cached as FP16 (`353925632` bytes): Q/K RMSNorm,
+fused QKV, output projection, two attention norms, three FFN matrices, and two
+FFN norms. Unlike NoiseRefiner, neither package has AdaLN weight or bias.
+
+```text
+layers/2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6/context_refiner.0/
+layers/2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6/context_refiner.1/
+```
+
+The fixed aggregates are respectively
+`c08b908a921a80e16995abc3f3eefcadd1a94a78cd76b56e58d6b21e6ce412ae` and
+`30268c3b0d7a6fafc411119c929326854e73d394ec95ebeba21f89aa43dfc95f`.
+Regenerate only from the pinned local checkpoint, once per closed block:
+
+```powershell
+go run ./tools/zimage_context_refiner_cache -source "$env:USERPROFILE\ComfyUI\models\diffusion_models\z_image_turbo_bf16.safetensors" -cache-root $env:OCT_EVT2_CACHE -block context_refiner.0
+go run ./tools/zimage_context_refiner_cache -source "$env:USERPROFILE\ComfyUI\models\diffusion_models\z_image_turbo_bf16.safetensors" -cache-root $env:OCT_EVT2_CACHE -block context_refiner.1
+go run ./tools/evt2_payload_check
+```
+
+These are only weight-package authorities. The first ContextRefiner input is
+the separately prepared `ContextEmbedding` stream after `cap_embedder` and
+padding, not a NoiseRefiner activation. Do not claim a ContextRefiner canonical
+execution bundle from these caches alone.
+
+The M2B canonical laboratory adds the separate local bundle below. It starts
+from the existing 15x2560 captured `prompt_embeddings`, repeats the final text
+row to the pinned 32-token multiple, and applies the pinned `cap_embedder`
+before ContextRefiner0. The block-0/block-1 boundary stays FP32.
+
+```text
+canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/m2b-fp32-reference/context_refiner.0/
+canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/m2b-fp32-reference/context_refiner.1/
+```
+
+The deterministic final identities are respectively
+`d2b8167de614da25211eb69991e1b7700992bf5f4ae527bff8a55366ea1ae6df` and
+`08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0`.
+
 The current M2A-R native rebind/chain witness is deliberately gated on the
 real payload lane. It binds block 0, executes the complete resident block,
 stages and atomically commits the block-1 package, then starts block 1 from

@@ -1,0 +1,11 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.precision-policy.v1",
+  "accepted": true,
+  "policy": "FP16 immutable package weights expanded to FP32; FP32 ContextEmbedding, normalizations, Q/K normalization, RoPE, attention reductions, softmax, projections, FFN, and residuals; no activation FP16 and no clamp/saturation correctness path.",
+  "evidence": {
+    "context_refiner.0": {"finite_tensors": 11, "fp16_overflow_count": 0, "fp16_underflow_count": 17, "maximum_conversion_absolute_drift": 2.9802322e-08},
+    "context_refiner.1": {"finite_tensors": 11, "fp16_overflow_count": 0, "fp16_underflow_count": 15, "maximum_conversion_absolute_drift": 2.9802322e-08}
+  },
+  "cast_boundaries": ["checkpoint BF16 to package FP16", "package FP16 to FP32 at arithmetic use", "captured prompt FP32 through FP32 cap_embedder laboratory boundary"],
+  "rejected": ["activation FP16 storage", "internal BF16 round trip", "clamp or saturation correctness path"]
+}

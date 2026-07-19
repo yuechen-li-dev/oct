@@ -1,0 +1,10 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.canonical-authority.v1",
+  "block": "context_refiner.0",
+  "input_sha256": "e5cf72ade51275464dc22d4f6eb59baba2025e93d6d9596a6f74051a34511a9c",
+  "final_sha256": "d2b8167de614da25211eb69991e1b7700992bf5f4ae527bff8a55366ea1ae6df",
+  "shape": [1, 32, 3840],
+  "stage_count": 18,
+  "precision": "FP16 package weights expanded to FP32; FP32 activation/reduction/softmax/RoPE",
+  "reproduction": "go run ./tools/zimage_context_refiner_canonical -block context_refiner.0 with the documented local roots"
+}

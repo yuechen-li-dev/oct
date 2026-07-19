@@ -1,0 +1,13 @@
+{
+  "schema": "oct.prometheus.evt2.m2c-handoff.v1",
+  "next_milestone": "EVT-2 M2C - MainTransformer Family Oracle and Representative Compiled Assembly",
+  "frozen_from_pinned_source": {
+    "main_transformer_class": "ZImageTransformerBlock(modulation=True)",
+    "input_stream": "concatenation of refined image ModelEmbedding and refined ContextEmbedding",
+    "token_layout": "image tokens followed by context tokens; source positional frequencies are concatenated in the same order",
+    "differences_from_context_refiner": ["AdaLN modulation", "timestep conditioning", "tanh gates", "gated residuals"],
+    "shared_candidates": ["RMSNorm", "fused QKV physical primitive", "Q/K normalization", "RoPE", "non-causal attention", "output projection", "SiLU-gated FFN"]
+  },
+  "required_before_implementation": ["freeze representative main block tensor inventory", "capture legal concatenated FP32 input boundary", "prove modulation and gate stages", "select MainTransformer parameter set without a generic graph", "extend the lock-derived runtime descriptor only after the ContextRefiner native family closes"],
+  "explicit_exclusions": ["all 30 parameter sets", "scheduler", "VAE", "text encoder", "tokenizer", "PNG", "generic transformer graph", "prefetch", "activation FP16"]
+}

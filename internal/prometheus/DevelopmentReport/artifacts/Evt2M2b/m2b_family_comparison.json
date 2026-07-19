@@ -1,0 +1,22 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.family-comparison.v1",
+  "noise_refiner": {
+    "assembly": "ZImageTransformerBlock(modulation=True)",
+    "input": "ModelEmbedding.FP32 from image patch embedding",
+    "conditioning": "timestep-derived 256-wide AdaLN input",
+    "parameter_tensors": 13,
+    "residuals": "gated attention and gated FFN",
+    "transition": "family-internal FP32 ModelEmbedding boundary"
+  },
+  "context_refiner": {
+    "assembly": "ZImageTransformerBlock(modulation=False)",
+    "input": "ContextEmbedding.FP32 after cap_embedder and 32-token padding",
+    "conditioning": "none",
+    "parameter_tensors": 11,
+    "residuals": "ungated attention and ungated FFN",
+    "transition": "ContextEmbedding is concatenated with image stream only at MainTransformer"
+  },
+  "shared_physical_primitives": ["RMSNorm", "fused QKV", "Q/K RMSNorm", "three-axis RoPE", "non-causal streaming attention", "output projection", "SiLU-gated FFN", "FP32 residual"],
+  "distinct_semantic_contract": "ContextRefiner is structurally distinct from NoiseRefiner because its modulation, gates, source stream, transport, and tensor role set differ.",
+  "within_context_family": "identical assembly, different weights"
+}

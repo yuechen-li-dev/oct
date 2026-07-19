@@ -171,53 +171,66 @@ func isFinite32(value float32) bool {
 // BuildNoiseRefiner1Cache reads exactly the second pinned block.  It never
 // calls the block-0 builder and it never writes in the block-0 directory.
 func BuildNoiseRefiner1Cache(sourcePath, cacheRoot, expectedSHA256 string) (NoiseRefiner1CacheResult, error) {
-	if err := VerifySHA256(sourcePath, expectedSHA256); err != nil {
+	manifest, inventory, err := buildClosedFP16Cache(sourcePath, cacheRoot, expectedSHA256,
+		"noise_refiner.1", NoiseRefiner1CacheSchema, NoiseRefiner1TransformID, noiseRefiner1Specs)
+	if err != nil {
 		return NoiseRefiner1CacheResult{}, err
+	}
+	return NoiseRefiner1CacheResult{Manifest: manifest, Inventory: inventory}, nil
+}
+
+// buildClosedFP16Cache is the common deterministic conversion mechanism for a
+// source-audited, fixed tensor-role set. Callers still supply one exact block,
+// schema, transform, and spec list; this is intentionally not a checkpoint
+// importer or runtime-selected tensor map.
+func buildClosedFP16Cache(sourcePath, cacheRoot, expectedSHA256, block, schema, transform string, specs []cacheSpec) (CacheManifest, []NoiseRefiner1TensorInventory, error) {
+	if err := VerifySHA256(sourcePath, expectedSHA256); err != nil {
+		return CacheManifest{}, nil, err
 	}
 	manifest, err := ReadManifest(sourcePath, "local-model-cache/z_image_turbo_bf16.safetensors")
 	if err != nil {
-		return NoiseRefiner1CacheResult{}, err
+		return CacheManifest{}, nil, err
 	}
 	source, err := os.Open(sourcePath)
 	if err != nil {
-		return NoiseRefiner1CacheResult{}, err
+		return CacheManifest{}, nil, err
 	}
 	defer source.Close()
-	dir := filepath.Join(cacheRoot, "layers", expectedSHA256, "noise_refiner.1")
+	dir := filepath.Join(cacheRoot, "layers", expectedSHA256, block)
 	if err = os.MkdirAll(dir, 0755); err != nil {
-		return NoiseRefiner1CacheResult{}, err
+		return CacheManifest{}, nil, err
 	}
-	result := NoiseRefiner1CacheResult{Manifest: CacheManifest{Schema: NoiseRefiner1CacheSchema, TransformID: NoiseRefiner1TransformID,
-		SourceCheckpointSHA256: expectedSHA256, Block: "noise_refiner.1", DType: "FP16 little-endian IEEE-754", Tensors: make([]CacheTensor, 0, len(noiseRefiner1Specs))},
-		Inventory: make([]NoiseRefiner1TensorInventory, 0, len(noiseRefiner1Specs))}
-	for _, spec := range noiseRefiner1Specs {
+	result := NoiseRefiner1CacheResult{Manifest: CacheManifest{Schema: schema, TransformID: transform,
+		SourceCheckpointSHA256: expectedSHA256, Block: block, DType: "FP16 little-endian IEEE-754", Tensors: make([]CacheTensor, 0, len(specs))},
+		Inventory: make([]NoiseRefiner1TensorInventory, 0, len(specs))}
+	for _, spec := range specs {
 		tensor, ok := findTensor(manifest, spec.name)
 		if !ok {
-			return NoiseRefiner1CacheResult{}, fmt.Errorf("required tensor %q missing", spec.name)
+			return CacheManifest{}, nil, fmt.Errorf("%s required tensor %q missing", block, spec.name)
 		}
 		if tensor.DType != "BF16" || !sameShape(tensor.Shape, spec.shape) {
-			return NoiseRefiner1CacheResult{}, fmt.Errorf("tensor %q contract mismatch", spec.name)
+			return CacheManifest{}, nil, fmt.Errorf("%s tensor %q contract mismatch", block, spec.name)
 		}
 		input := make([]byte, tensor.Bytes)
 		if _, err = source.ReadAt(input, int64(tensor.FileRange[0])); err != nil {
-			return NoiseRefiner1CacheResult{}, err
+			return CacheManifest{}, nil, err
 		}
 		output, err := convertTensor(source, tensor, spec)
 		if err != nil {
-			return NoiseRefiner1CacheResult{}, err
+			return CacheManifest{}, nil, err
 		}
 		sourceDigest := sha256.Sum256(input)
 		cacheDigest := sha256.Sum256(output)
 		path := filepath.Join(dir, fp16Name(spec.name))
 		if current, readErr := os.ReadFile(path); readErr != nil || len(current) != len(output) || sha256.Sum256(current) != cacheDigest {
 			if err = writeAtomic(path, output); err != nil {
-				return NoiseRefiner1CacheResult{}, err
+				return CacheManifest{}, nil, err
 			}
 		}
 		sourceHash, cacheHash := hex.EncodeToString(sourceDigest[:]), hex.EncodeToString(cacheDigest[:])
 		entry, err := noiseRefiner1Inventory(input, output, tensor, spec, sourceHash, cacheHash)
 		if err != nil {
-			return NoiseRefiner1CacheResult{}, err
+			return CacheManifest{}, nil, err
 		}
 		layout := entry.CacheOrientation
 		result.Manifest.Tensors = append(result.Manifest.Tensors, CacheTensor{SourceName: spec.name, SourceShape: append([]uint64(nil), tensor.Shape...), SourceRange: tensor.FileRange, SourceSHA256: sourceHash, DestinationName: fp16Name(spec.name), DestinationShape: destinationShape(spec), DestinationLayout: layout, Transpose: spec.transpose, Bytes: uint64(len(output)), SHA256: cacheHash, Consumer: spec.consumer})
@@ -234,12 +247,12 @@ func BuildNoiseRefiner1Cache(sourcePath, cacheRoot, expectedSHA256 string) (Nois
 	}
 	result.Manifest.AggregateSHA256 = hex.EncodeToString(h.Sum(nil))
 	if err = writeNoiseRefiner1JSON(filepath.Join(dir, "manifest.json"), result.Manifest); err != nil {
-		return NoiseRefiner1CacheResult{}, err
+		return CacheManifest{}, nil, err
 	}
 	if err = writeNoiseRefiner1JSON(filepath.Join(dir, "tensor_inventory.json"), result.Inventory); err != nil {
-		return NoiseRefiner1CacheResult{}, err
+		return CacheManifest{}, nil, err
 	}
-	return result, nil
+	return result.Manifest, result.Inventory, nil
 }
 
 func writeNoiseRefiner1JSON(path string, value any) error {
