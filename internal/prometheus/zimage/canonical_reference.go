@@ -4,6 +4,7 @@ package zimage
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
@@ -13,6 +14,10 @@ import (
 type CanonicalNoiseRefiner0Paths struct {
 	CacheRoot  string
 	OracleRoot string
+	// Block is empty or noise_refiner.0 for the original authority.  M2A uses
+	// noise_refiner.1 with InputF32Path so the FP32 block boundary is preserved.
+	Block        string
+	InputF32Path string
 }
 
 type CanonicalNoiseRefiner0Result struct {
@@ -42,9 +47,9 @@ func canonicalRead16(path string, convert func(uint16) float32) ([]float32, erro
 	return values, nil
 }
 
-func canonicalLoadWeights(bundle NoiseRefiner0PayloadBundle) (canonicalWeights, error) {
+func canonicalLoadWeights(manifest CacheManifest, cacheBlockPath, block string) (canonicalWeights, error) {
 	byName := map[string]CacheTensor{}
-	for _, tensor := range bundle.CacheManifest.Tensors {
+	for _, tensor := range manifest.Tensors {
 		byName[tensor.SourceName] = tensor
 	}
 	load := func(name string) ([]float32, error) {
@@ -52,7 +57,7 @@ func canonicalLoadWeights(bundle NoiseRefiner0PayloadBundle) (canonicalWeights, 
 		if !ok {
 			return nil, fmt.Errorf("canonical reference cache lacks %s", name)
 		}
-		return canonicalRead16(filepath.Join(bundle.CacheBlockPath, tensor.DestinationName), FP16ToFloat32)
+		return canonicalRead16(filepath.Join(cacheBlockPath, tensor.DestinationName), FP16ToFloat32)
 	}
 	var w canonicalWeights
 	var err error
@@ -60,12 +65,12 @@ func canonicalLoadWeights(bundle NoiseRefiner0PayloadBundle) (canonicalWeights, 
 		name string
 		dst  *[]float32
 	}{
-		{"noise_refiner.0.adaLN_modulation.0.bias", &w.adalnBias}, {"noise_refiner.0.adaLN_modulation.0.weight", &w.adaln},
-		{"noise_refiner.0.attention.q_norm.weight", &w.qNorm}, {"noise_refiner.0.attention.k_norm.weight", &w.kNorm},
-		{"noise_refiner.0.attention.out.weight", &w.attnOut}, {"noise_refiner.0.attention.qkv.weight", &w.qkv},
-		{"noise_refiner.0.attention_norm1.weight", &w.attnNorm1}, {"noise_refiner.0.attention_norm2.weight", &w.attnNorm2},
-		{"noise_refiner.0.feed_forward.w1.weight", &w.w1}, {"noise_refiner.0.feed_forward.w2.weight", &w.w2},
-		{"noise_refiner.0.feed_forward.w3.weight", &w.w3}, {"noise_refiner.0.ffn_norm1.weight", &w.ffnNorm1}, {"noise_refiner.0.ffn_norm2.weight", &w.ffnNorm2},
+		{block + ".adaLN_modulation.0.bias", &w.adalnBias}, {block + ".adaLN_modulation.0.weight", &w.adaln},
+		{block + ".attention.q_norm.weight", &w.qNorm}, {block + ".attention.k_norm.weight", &w.kNorm},
+		{block + ".attention.out.weight", &w.attnOut}, {block + ".attention.qkv.weight", &w.qkv},
+		{block + ".attention_norm1.weight", &w.attnNorm1}, {block + ".attention_norm2.weight", &w.attnNorm2},
+		{block + ".feed_forward.w1.weight", &w.w1}, {block + ".feed_forward.w2.weight", &w.w2},
+		{block + ".feed_forward.w3.weight", &w.w3}, {block + ".ffn_norm1.weight", &w.ffnNorm1}, {block + ".ffn_norm2.weight", &w.ffnNorm2},
 	} {
 		*item.dst, err = load(item.name)
 		if err != nil {
@@ -73,6 +78,21 @@ func canonicalLoadWeights(bundle NoiseRefiner0PayloadBundle) (canonicalWeights, 
 		}
 	}
 	return w, nil
+}
+
+func canonicalReadF32(path string) ([]float32, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(data)%4 != 0 {
+		return nil, fmt.Errorf("%s is not a float32 payload", path)
+	}
+	values := make([]float32, len(data)/4)
+	for index := range values {
+		values[index] = math.Float32frombits(binary.LittleEndian.Uint32(data[index*4:]))
+	}
+	return values, nil
 }
 
 func canonicalCopy(value []float32) []float32 {
@@ -272,6 +292,13 @@ func RunCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool) 
 	return runCanonicalNoiseRefiner0(paths, capture, nil, false)
 }
 
+// RunCanonicalNoiseRefiner1 uses the accepted block-0 FP32 final payload as
+// the boundary input.  It deliberately has no BF16 boundary round trip.
+func RunCanonicalNoiseRefiner1(cacheRoot, oracleRoot, inputF32Path string, capture bool) (CanonicalNoiseRefiner0Result, error) {
+	return runCanonicalNoiseRefiner0(CanonicalNoiseRefiner0Paths{CacheRoot: cacheRoot, OracleRoot: oracleRoot,
+		Block: "noise_refiner.1", InputF32Path: inputF32Path}, capture, nil, false)
+}
+
 // RunCanonicalNoiseRefiner0PreAttention replays the accepted canonical owner
 // only through the final M1B witness. It is audit equipment for production
 // stage comparison and introduces no alternate model semantics.
@@ -290,11 +317,36 @@ func runCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool, 
 	if err != nil {
 		return CanonicalNoiseRefiner0Result{}, err
 	}
-	w, err := canonicalLoadWeights(bundle)
+	block := paths.Block
+	if block == "" {
+		block = "noise_refiner.0"
+	}
+	weightManifest := bundle.CacheManifest
+	weightPath := bundle.CacheBlockPath
+	if block == "noise_refiner.1" {
+		encoded, readErr := os.ReadFile(filepath.Join(paths.CacheRoot, "layers", NoiseRefiner0SourceCheckpointSHA256, block, "manifest.json"))
+		if readErr != nil {
+			return CanonicalNoiseRefiner0Result{}, readErr
+		}
+		if err = json.Unmarshal(encoded, &weightManifest); err != nil {
+			return CanonicalNoiseRefiner0Result{}, err
+		}
+		if weightManifest.Schema != NoiseRefiner1CacheSchema || weightManifest.Block != block || len(weightManifest.Tensors) != len(noiseRefiner1Specs) {
+			return CanonicalNoiseRefiner0Result{}, fmt.Errorf("noise_refiner.1 cache manifest contract mismatch")
+		}
+		weightPath = filepath.Join(paths.CacheRoot, "layers", NoiseRefiner0SourceCheckpointSHA256, block)
+	}
+	w, err := canonicalLoadWeights(weightManifest, weightPath, block)
 	if err != nil {
 		return CanonicalNoiseRefiner0Result{}, err
 	}
 	input, err := canonicalRead16(bundle.Input.Path, canonicalBF16)
+	if block == "noise_refiner.1" {
+		if paths.InputF32Path == "" {
+			return CanonicalNoiseRefiner0Result{}, fmt.Errorf("noise_refiner.1 requires its canonical FP32 boundary input")
+		}
+		input, err = canonicalReadF32(paths.InputF32Path)
+	}
 	if err != nil {
 		return CanonicalNoiseRefiner0Result{}, err
 	}

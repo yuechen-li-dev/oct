@@ -143,6 +143,37 @@ func validateCanonical(root string) error {
 	return nil
 }
 
+func validateNoiseRefiner1Canonical(root string) error {
+	manifestPath := filepath.Join(root, "manifest.json")
+	manifest, err := readManifest(manifestPath)
+	if err != nil {
+		return fmt.Errorf("noise_refiner.1 canonical manifest: %w", err)
+	}
+	if manifest.Schema != "oct.prometheus.evt2.o19.fp32-reference-bundle.v1" || manifest.RopeFrame != 33 || len(manifest.Stages) != 34 {
+		return fmt.Errorf("noise_refiner.1 canonical manifest contract mismatch")
+	}
+	for name, stage := range manifest.Stages {
+		if !stage.Projection.Finite || stage.RelativePath == "" || stage.SHA256 == "" || stage.Bytes == 0 {
+			return fmt.Errorf("noise_refiner.1 canonical stage metadata mismatch: %s", name)
+		}
+		path := filepath.Join(root, filepath.FromSlash(stage.RelativePath))
+		info, statErr := os.Stat(path)
+		if statErr != nil || info.Size() != stage.Bytes {
+			return fmt.Errorf("noise_refiner.1 canonical stage missing or truncated: %s", name)
+		}
+		digest, hashErr := fileHash(path)
+		if hashErr != nil || digest != stage.SHA256 {
+			return fmt.Errorf("noise_refiner.1 canonical stage identity mismatch: %s", name)
+		}
+	}
+	finalPath := filepath.Join(root, "final_output.f32.bin")
+	digest, err := fileHash(finalPath)
+	if err != nil || digest != zimage.NoiseRefiner1CanonicalFinalSHA256 || manifest.FinalOutput.SHA256 != zimage.NoiseRefiner1CanonicalFinalSHA256 {
+		return fmt.Errorf("noise_refiner.1 canonical final identity mismatch")
+	}
+	return nil
+}
+
 func main() {
 	paths, err := zimage.NoiseRefiner0PayloadPathsFromEnvironment()
 	if err != nil {
@@ -167,4 +198,13 @@ func main() {
 		fail("%v", err)
 	}
 	fmt.Printf("M1C-M1E canonical stage authority: valid\n")
+	if _, err := zimage.LoadNoiseRefiner1CacheManifest(paths.CacheRoot); err != nil {
+		fail("%v", err)
+	}
+	if err := validateNoiseRefiner1Canonical(zimage.NoiseRefiner1CanonicalRoot(paths.CacheRoot)); err != nil {
+		fail("%v", err)
+	}
+	fmt.Printf("noise_refiner.0 authority: valid\n")
+	fmt.Printf("noise_refiner.1 authority: valid\n")
+	fmt.Printf("two-block chain authority: valid\n")
 }
