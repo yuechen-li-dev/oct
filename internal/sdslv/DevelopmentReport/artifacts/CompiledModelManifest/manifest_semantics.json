@@ -1,0 +1,7 @@
+{
+  "authored_file": "internal/prometheus/models/zimage-turbo/manifest.oct",
+  "declarations": ["Manifest", "CompiledModel"],
+  "family": "ZImageTurbo.NoiseRefiner",
+  "parameter_sets": ["NoiseRefiner0", "NoiseRefiner1"],
+  "schema": "oct.sdslv.compiled-model-manifest-semantics.v1"
+}

@@ -317,6 +317,10 @@ typedef struct prom_model_block_state {
   uint64_t parameter_set_aggregate_identity;
   uint64_t binding_generation;
   uint64_t output_generation;
+  /* The resident chain owns a single immutable FP32 predecessor generation.
+     Audit replays may consume the copied device-local input, but may never
+     silently substitute a later block output for that predecessor. */
+  uint64_t resident_input_generation;
   uint64_t descriptor_generation;
   uint32_t created;
   uint32_t weights_uploaded;
@@ -353,6 +357,7 @@ typedef struct prom_model_block_state {
   prom_vk_buffer input_upload;
   prom_vk_buffer input_bf16_device;
   prom_vk_buffer input_device;
+  prom_vk_buffer resident_boundary_device;
   prom_vk_buffer output_device;
   prom_vk_buffer output_readback;
   prom_vk_buffer audit_device;
@@ -686,6 +691,9 @@ int prom_reactor_runtime_noise_refiner_rebind_impl(
     PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_audit_final_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel);

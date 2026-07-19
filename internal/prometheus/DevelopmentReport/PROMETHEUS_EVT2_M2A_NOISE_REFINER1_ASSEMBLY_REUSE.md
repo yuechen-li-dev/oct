@@ -36,7 +36,8 @@ generation, descriptor generation, lifecycle state, and replay identity.
 `noise_refiner0_execute` and `noise_refiner1_execute` verify that tag before
 they can run; neither spelling can relabel a handle.
 
-`noise_refiner_rebind` validates all 13 declarations before state mutation,
+`noise_refiner_rebind` consumes the immutable resolved lock identity plus the
+closed model-local block ID; it validates all 13 declarations before state mutation,
 uploads a complete candidate package into a separate device-local arena,
 updates all weight descriptors in one bounded write batch only after certain
 completion, then swaps ownership and increments the binding generation. A
@@ -53,16 +54,16 @@ activation memory.
 `go run ./tools/evt2_payload_check` validates both caches, both 34-stage
 authorities, and the FP32 two-block boundary authority. The full Windows
 native build and the clean RTX block-0 hardware witness continue to pass.
-The generated block-1 oracle is independent from the native implementation;
+The generated block-1 oracle is independent from the native implementation.
 The clean RTX 3070 chain witness passed: 13 block-0 uploads, 13 staged
 block-1 uploads, binding generation `2`, descriptor generation `1`, with no
 pipeline or descriptor-pool growth. The measured baseline was 46,350,800 ns
 for rebind and 1,102,526,700 ns for the first block-1 resident execution.
-
-This remains **in progress** because the new resident output audit accessor
-and block-1 full-stage numerical closure have not yet been implemented. The
-canonical final identity is present and validated independently, but it has
-not been copied out through a bounded post-execution audit path for comparison.
+The subsequent lock-authoritative run measured 50,330,900 ns rebind and
+1,171,125,300 ns first block-1 execution. Its explicit post-completion audit
+matched the canonical final `9b133c…39e7` at relative L2 `1.27829e-6` and
+Linf `1.52588e-4`, below the accepted `5e-5` bound. The audit happens only
+after the resident chain completes and is not an internal activation bounce.
 
 ## M2B direction
 

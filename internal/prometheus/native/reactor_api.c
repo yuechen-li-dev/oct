@@ -238,6 +238,12 @@ int prometheus_reactor_runtime_noise_refiner_execute_resident(
   return prom_reactor_runtime_noise_refiner_execute_resident_impl(handle, block_id, request, out_evidence);
 }
 
+int prometheus_reactor_runtime_noise_refiner_audit_final(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_noise_refiner_audit_final_impl(handle, block_id, request, out_evidence);
+}
+
 int prometheus_reactor_runtime_model_block_get_evidence(void* handle, uint64_t block_id,
                                                         PrometheusModelBlockEvidence* out_evidence) {
   return prom_reactor_runtime_model_block_get_evidence_impl(handle, block_id, out_evidence);

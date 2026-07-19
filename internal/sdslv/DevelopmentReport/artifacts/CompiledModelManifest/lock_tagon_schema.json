@@ -1,0 +1,6 @@
+{
+  "format": "Octagon data-only single record",
+  "generated_file": "lock-tagon.octagon",
+  "schema": "oct.sdslv.compiled-model-lock-tagon.v1",
+  "volatile_fields_excluded": ["absolute paths", "timestamps", "Vulkan handles", "host pointers", "payload bytes"]
+}

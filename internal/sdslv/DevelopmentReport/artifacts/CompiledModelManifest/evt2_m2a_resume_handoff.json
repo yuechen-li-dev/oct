@@ -1,0 +1,6 @@
+{
+  "next": "EVT-2 M2A numerical closeout",
+  "preserve": ["manifest.oct", "lock-tagon.octagon", "closed NoiseRefiner parameter tags", "resident FP32 two-block seam"],
+  "remaining": "add bounded resident block-1 final-output audit and compare against canonical FP32 authority",
+  "exclusions": ["context refiners", "generic ML graph", "model arithmetic changes"]
+}

@@ -692,11 +692,30 @@ typedef struct PrometheusModelBlockWeightUpload {
 
 typedef struct PrometheusNoiseRefinerRebindRequest {
   uint32_t struct_size;
-  uint32_t parameter_set;
-  uint64_t parameter_set_aggregate_identity;
+  uint32_t model_local_block_id;
+  uint64_t lock_identity;
   uint32_t upload_count;
   const PrometheusModelBlockWeightUpload* uploads;
 } PrometheusNoiseRefinerRebindRequest;
+
+/* A resolved descriptor is model-scoped and immutable. Callers identify it by
+   lock identity plus closed model-local ID; they never author family, ABI,
+   aggregate, or transition fields. */
+typedef struct PrometheusNoiseRefinerResolvedDescriptor {
+  uint64_t lock_identity;
+  uint32_t model_local_block_id;
+  uint32_t assembly_family;
+  uint32_t parameter_set;
+  uint64_t parameter_set_aggregate_identity;
+  uint64_t tensor_manifest_identity;
+  uint64_t internal_abi_identity;
+  uint64_t precision_policy_identity;
+  uint64_t memory_plan_identity;
+  uint64_t execution_plan_identity;
+  uint64_t canonical_authority_identity;
+  uint32_t predecessor_block_id;
+  uint32_t successor_block_id;
+} PrometheusNoiseRefinerResolvedDescriptor;
 
 typedef struct PrometheusModelBlockExecuteRequest {
   uint32_t struct_size;
@@ -783,7 +802,26 @@ typedef struct PrometheusNoiseRefinerResidentExecuteRequest {
   uint64_t input_generation;
   uint64_t output_identity;
   uint32_t audit_enabled;
+  uint32_t audit_family;
+  uint32_t audit_stage;
+  float* audit_output;
+  uint64_t audit_element_capacity;
 } PrometheusNoiseRefinerResidentExecuteRequest;
+
+enum {
+  PROM_NOISE_REFINER_AUDIT_NONE = 0u,
+  PROM_NOISE_REFINER_AUDIT_M1B = 1u,
+  PROM_NOISE_REFINER_AUDIT_M1C = 2u,
+  PROM_NOISE_REFINER_AUDIT_M1D = 3u,
+};
+
+typedef struct PrometheusNoiseRefinerFinalAuditRequest {
+  uint32_t struct_size;
+  uint64_t required_output_generation;
+  uint64_t output_identity;
+  float* output;
+  uint64_t output_element_capacity;
+} PrometheusNoiseRefinerFinalAuditRequest;
 
 enum {
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
@@ -1913,6 +1951,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_rebind(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_execute_resident(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_audit_final(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);
