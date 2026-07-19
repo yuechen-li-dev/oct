@@ -198,12 +198,16 @@ def build(authority: Authority) -> dict:
     adaln = condition @ adaln_weight + adaln_bias
     authority.record("adaln_projection", adaln)
     attention_scale_raw, attention_gate_raw, mlp_scale_raw, mlp_gate_raw = torch.chunk(adaln, 4, dim=1)
+    authority.record("attention_scale_raw", attention_scale_raw)
+    authority.record("attention_gate_raw", attention_gate_raw)
+    authority.record("mlp_scale_raw", mlp_scale_raw)
+    authority.record("mlp_gate_raw", mlp_gate_raw)
     attention_scale, mlp_scale = 1.0 + attention_scale_raw, 1.0 + mlp_scale_raw
     attention_gate, mlp_gate = torch.tanh(attention_gate_raw), torch.tanh(mlp_gate_raw)
-    authority.record("attention_scale", attention_scale)
-    authority.record("attention_gate", attention_gate)
-    authority.record("mlp_scale", mlp_scale)
-    authority.record("mlp_gate", mlp_gate)
+    authority.record("attention_scale_adjusted", attention_scale)
+    authority.record("attention_gate_tanh", attention_gate)
+    authority.record("mlp_scale_adjusted", mlp_scale)
+    authority.record("mlp_gate_tanh", mlp_gate)
     del adaln_weight, adaln_bias, adaln, attention_scale_raw, attention_gate_raw, mlp_scale_raw, mlp_gate_raw
 
     attn_norm1 = authority.weight(".attention_norm1.weight")
@@ -229,8 +233,8 @@ def build(authority: Authority) -> dict:
     del q_norm, k_norm
     coordinates = joint_coordinates(authority.device)
     q, k = rope(q, coordinates), rope(k, coordinates)
-    authority.record("positioned_q", q.reshape(TOKENS, WIDTH))
-    authority.record("positioned_k", k.reshape(TOKENS, WIDTH))
+    authority.record("q_rope", q.reshape(TOKENS, WIDTH))
+    authority.record("k_rope", k.reshape(TOKENS, WIDTH))
     del coordinates
 
     aggregated = attention(authority, q, k, v)

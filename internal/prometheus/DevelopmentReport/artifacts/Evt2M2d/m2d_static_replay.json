@@ -1,0 +1,13 @@
+{
+  "schema": "oct.prometheus.evt2.m2d.static-replay.v1",
+  "lock_identity": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+  "representative": "layers.0",
+  "execution": "resident JointWorking replay with no activation reconstruction or BF16 activation conversion",
+  "captured_boundary": "final gated-residual JointWorking output",
+  "finite": true,
+  "relative_l2": 8.38066e-07,
+  "linf": 0.000640869,
+  "accepted_threshold": 0.00005,
+  "canonical_stage_corpus": "local m2d-fp32-reference/layers.0 now contains 34 captured stage payloads plus four selected attention vectors",
+  "status": "final-boundary replay passed; per-stage native summary capture remains required for M2D SUCCESS"
+}

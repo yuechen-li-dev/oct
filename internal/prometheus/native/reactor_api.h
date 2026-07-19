@@ -970,6 +970,18 @@ typedef struct PrometheusNoiseRefinerStaticAuditRequest {
 typedef PrometheusNoiseRefinerFinalAuditRequest PrometheusContextRefinerFinalAuditRequest;
 typedef PrometheusNoiseRefinerFinalAuditRequest PrometheusMainTransformerFinalAuditRequest;
 typedef PrometheusNoiseRefinerStaticAuditRequest PrometheusContextRefinerStaticAuditRequest;
+typedef struct PrometheusMainTransformerStaticAuditRequest {
+  uint32_t struct_size;
+  uint64_t session_identity;
+  uint64_t lock_identity;
+  uint32_t model_local_block_id;
+  uint64_t required_image_generation;
+  uint64_t required_context_generation;
+  uint64_t required_joint_generation;
+  uint64_t output_identity;
+  void* audit_arena;
+  uint64_t audit_arena_capacity_bytes;
+} PrometheusMainTransformerStaticAuditRequest;
 
 enum {
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
@@ -2174,6 +2186,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_rebind(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_execute(
     void* handle, uint64_t block_id, const PrometheusMainTransformerExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_execute_static_audit(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerStaticAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_main_transformer_audit_final(
     void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,

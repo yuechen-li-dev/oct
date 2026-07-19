@@ -4585,6 +4585,108 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   return PROM_OK;
 }
 
+/* The static-audit entry point deliberately replays one completed, lock-bound
+   MainTransformer invocation from the resident JointWorking generation.  The
+   shared execute recorder owns the fixed kernel order and final gated-residual
+   target; this wrapper adds the audit egress without creating an activation
+   ingress or changing the session generation. */
+int prom_reactor_runtime_main_transformer_execute_static_audit_impl(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerStaticAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  prom_reduction_runtime_state* state;
+  prom_model_block_state* block;
+  prom_compiled_model_session_state* session;
+  prom_compiled_model_stream_slot* image;
+  prom_compiled_model_stream_slot* context;
+  prom_compiled_model_stream_slot* joint;
+  const PrometheusMainTransformerResolvedDescriptor* descriptor;
+  VkCommandBufferBeginInfo begin_info;
+  VkBufferMemoryBarrier barrier;
+  VkBufferCopy copy;
+  uint64_t begin_ns;
+  int32_t detail = PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED;
+  const uint64_t output_bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS);
+  if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
+      request->struct_size != sizeof(*request) || request->lock_identity != PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID ||
+      request->model_local_block_id != 0u || request->session_identity == 0u ||
+      request->required_image_generation == 0u || request->required_context_generation == 0u ||
+      request->required_joint_generation == 0u || request->output_identity == 0u ||
+      request->audit_arena == NULL || request->audit_arena_capacity_bytes < output_bytes) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
+    return PROM_ERROR;
+  }
+  descriptor = prom_zimage_turbo_resolve_main_transformer_descriptor(request->lock_identity,
+                                                                     request->model_local_block_id);
+  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
+  if (descriptor == NULL || state == NULL || state->model_block.created == 0u ||
+      state->model_block.block_id != block_id) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_NOT_FOUND, out_evidence);
+    return PROM_ERROR;
+  }
+  block = &state->model_block;
+  session = &state->compiled_session;
+  image = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
+  context = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_PREPARED_CONTEXT);
+  joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
+  if (!prom_model_block_is_main_transformer(block) ||
+      block->parameter_set != descriptor->parameter_set ||
+      block->parameter_set_aggregate_identity != descriptor->parameter_set_aggregate_identity ||
+      block->weights_uploaded == 0u || block->quarantined != 0u ||
+      block->binding_state != PROM_NOISE_REFINER_BINDING_BOUND ||
+      session->created == 0u || session->session_id != request->session_identity ||
+      session->lock_identity != request->lock_identity || session->quarantined != 0u ||
+      image == NULL || context == NULL || joint == NULL || image->valid == 0u ||
+      context->valid == 0u || joint->valid == 0u ||
+      image->generation != request->required_image_generation ||
+      context->generation != request->required_context_generation ||
+      joint->generation != request->required_joint_generation ||
+      session->joint_image_generation != image->generation ||
+      session->joint_context_generation != context->generation || !prom_model_block_reap(state, block)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  block->output_valid = 0u;
+  block->audit_valid = 0u;
+  begin_ns = prom_reduction_now_ns();
+  if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation, 0u, &detail)) goto failure;
+  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) goto failure;
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) goto failure;
+  memset(&barrier, 0, sizeof(barrier));
+  barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+  barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+  barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+  barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+  barrier.buffer = block->attention.buffer;
+  barrier.size = output_bytes;
+  vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
+  memset(&copy, 0, sizeof(copy));
+  copy.size = output_bytes;
+  vkCmdCopyBuffer(block->command_buffer, block->attention.buffer, block->audit_readback.buffer, 1u, &copy);
+  if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS ||
+      !prom_model_block_submit_and_wait(state, block, &detail)) goto failure;
+  memset(request->audit_arena, 0, (size_t)request->audit_arena_capacity_bytes);
+  memcpy(request->audit_arena, block->audit_readback.mapped, (size_t)output_bytes);
+  block->output_valid = 1u;
+  block->audit_valid = 1u;
+  block->output_generation += 1u;
+  block->execution_count += 1u;
+  block->last_execution_ns = prom_reduction_elapsed_ns(begin_ns, prom_reduction_now_ns());
+  block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->output_identity);
+  block->last_detail_code = 0;
+  prom_model_block_fill_evidence(block, 0, out_evidence);
+  return PROM_OK;
+failure:
+  prom_model_block_mark_failure(block, detail == 0 ? PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED : detail);
+  prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+  return PROM_ERROR;
+}
+
 int prom_reactor_runtime_main_transformer_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence) {

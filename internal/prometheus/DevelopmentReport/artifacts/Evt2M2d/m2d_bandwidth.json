@@ -2,7 +2,7 @@
   "schema": "oct.prometheus.evt2.m2d.bandwidth.v1",
   "parameter_rebinds": 29,
   "uploaded_bytes": 10492799488,
-  "measured_rebind_ns": 1289940800,
-  "effective_bytes_per_second": 8134326387,
+  "measured_rebind_ns": 1249444800,
+  "effective_bytes_per_second": 8397969632,
   "note": "weight uploads are expected parameter transitions, not warm execution churn"
 }

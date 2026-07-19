@@ -304,6 +304,12 @@ int prometheus_reactor_runtime_main_transformer_execute(
   return prom_reactor_runtime_main_transformer_execute_impl(handle, block_id, request, out_evidence);
 }
 
+int prometheus_reactor_runtime_main_transformer_execute_static_audit(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerStaticAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_main_transformer_execute_static_audit_impl(handle, block_id, request, out_evidence);
+}
+
 int prometheus_reactor_runtime_main_transformer_audit_final(
     void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence) {

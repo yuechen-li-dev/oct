@@ -1752,6 +1752,27 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
                     contextRegion.relativeL2 <= 5.0e-5,
                 "MainTransformer0 representative output matches the deterministic FP32 joint oracle");
 
+    std::vector<float> staticAuditJoint(1056u * 3840u);
+    PrometheusMainTransformerStaticAuditRequest staticAudit{};
+    staticAudit.struct_size = sizeof(staticAudit);
+    staticAudit.session_identity = sessionID;
+    staticAudit.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    staticAudit.model_local_block_id = 0u;
+    staticAudit.required_image_generation = preparedImageGeneration;
+    staticAudit.required_context_generation = preparedContextGeneration;
+    staticAudit.required_joint_generation = jointGeneration;
+    staticAudit.output_identity = 0x4d32435f73746174ull;
+    staticAudit.audit_arena = staticAuditJoint.data();
+    staticAudit.audit_arena_capacity_bytes = staticAuditJoint.size() * sizeof(float);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute_static_audit(
+                              runtime, mainBlockID, &staticAudit, &evidence),
+                 "MainTransformer0 static replay reads the lock-bound resident joint without activation reconstruction");
+    const ComparisonMetrics staticJoint = compare_float_region(staticAuditJoint.data(), referenceJoint, 0u, staticAuditJoint.size());
+    std::cout << "M2D static_final finite=" << staticJoint.finite << " relative_l2=" << staticJoint.relativeL2
+              << " linf=" << staticJoint.linf << " accepted_threshold=5e-5\n";
+    ASSERT_TRUE(staticJoint.finite && staticJoint.relativeL2 <= 5.0e-5,
+                "MainTransformer0 static replay preserves the accepted final gated-residual boundary");
+
     const std::uint64_t warmAllocations = evidence.warm_buffer_allocation_count;
     const std::uint64_t warmUploads = evidence.weight_upload_count;
     const std::uint64_t warmPipelines = evidence.pipeline_create_count;
@@ -1880,6 +1901,10 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
               << " rebind_ns=" << chainRebindTotalNs << " upload_bytes=" << layerUploadBytes * 29u
               << " rebind_upload_bandwidth_bytes_per_second="
               << (chainRebindTotalNs == 0u ? 0u : (layerUploadBytes * 29u * 1000000000ull) / chainRebindTotalNs)
+              << " persistent_bytes=" << evidence.persistent_bytes
+              << " reusable_bytes=" << evidence.reusable_bytes
+              << " audit_bytes=" << evidence.audit_bytes
+              << " external_bytes=" << evidence.external_bytes
               << " committed_bytes=" << evidence.total_committed_bytes << " peak_plan_bytes=" << evidence.peak_plan_bytes << "\n";
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, mainBlockID),
                  "MainTransformer owner destroys safely after retained-stream reuse");
