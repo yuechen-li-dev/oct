@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.memory-plan.v1",
+  "context_refiner": {"immutable_weight_bytes": 353925632, "maximum_single_weight_bytes": 88473600, "resolved_steady_state_ceiling_bytes": 536870912, "audit_arena_bytes": 1048576, "model_scratch": "FP32 ContextEmbedding/QKV/attention/FFN buffers"},
+  "shared_weight_window": {"selected_family": "NoiseRefiner", "largest_proven_immutable_package_bytes": 361820672, "context_package_fits": true, "prefetch": "explicitly excluded"},
+  "transition_overlap": "ContextRefiner rebind stages a complete second 353925632-byte immutable package before descriptor commit; the runtime destroys old weights only after the commit.",
+  "peak_vram_claim": "No device-wide peak-VRAM counter is exported by this bounded owner; the resolved ceiling is an allocation contract, not a substituted telemetry claim."
+}

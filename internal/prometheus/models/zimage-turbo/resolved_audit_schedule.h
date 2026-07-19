@@ -2,7 +2,7 @@
 #ifndef OCT_ZIMAGE_TURBO_RESOLVED_AUDIT_SCHEDULE_H
 #define OCT_ZIMAGE_TURBO_RESOLVED_AUDIT_SCHEDULE_H
 
-#define PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID 0xb3660657c5546e9cull
+#define PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID 0x4b4aeb0474779325ull
 #define PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES 47186176u
 #define PROM_ZIMAGE_TURBO_AUDIT_REQUIRED_BYTES 189696u
 #define PROM_ZIMAGE_TURBO_AUDIT_SLACK_BYTES 46996480u
@@ -64,4 +64,40 @@ static const prom_zimage_turbo_audit_schedule_entry k_prom_zimage_turbo_audit_sc
   {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,28u,4u,12u,2u,0u,3932160u,133u,5u,188928u,12u,13u}, /* w2: after_w2 -> before_final_residual */
   {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,29u,4u,9u,2u,0u,3932160u,138u,5u,189184u,13u,14u}, /* final_output: after_final_residual -> resident_output_replaced */
 };
+#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_ARENA_BYTES 1048576u
+#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_REQUIRED_BYTES 4352u
+#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_OFFSET 4096u
+#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_BYTES 256u
+#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_STAGE_COUNT 16u
+static const uint32_t k_prom_zimage_turbo_context_audit_projection_keys[] = {
+  0u,122879u,61440u,3839u,0u,122879u,61440u,3839u,
+  0u,368639u,184320u,122879u,122880u,245760u,0u,122879u,
+  61440u,127u,128u,0u,122879u,61440u,127u,128u,
+  0u,122879u,61440u,63u,64u,127u,128u,0u,
+  122879u,61440u,63u,64u,127u,128u,0u,122879u,
+  61440u,127u,128u,0u,122879u,61440u,3839u,0u,
+  122879u,61440u,3839u,0u,122879u,61440u,3839u,0u,
+  327679u,163840u,10239u,0u,327679u,163840u,10239u,0u,
+  327679u,163840u,10239u,0u,122879u,61440u,3839u,0u,
+  122879u,61440u,3839u,
+};
+static const prom_zimage_turbo_audit_schedule_entry k_prom_zimage_turbo_context_audit_schedule[] = {
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,1u,4u,12u,2u,0u,122880u,0u,4u,0u,1u,2u}, /* context_embedding_input */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,2u,4u,6u,2u,0u,122880u,4u,4u,256u,2u,3u}, /* attention_norm */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,3u,4u,8u,3u,0u,368640u,8u,6u,512u,3u,4u}, /* qkv */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,4u,4u,6u,4u,0u,122880u,14u,5u,768u,4u,4u}, /* q_norm */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,5u,4u,6u,4u,0u,122880u,19u,5u,1024u,5u,5u}, /* k_norm */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,6u,4u,8u,4u,0u,122880u,24u,7u,1280u,4u,6u}, /* q_rope */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,7u,4u,8u,4u,122880u,122880u,31u,7u,1536u,5u,6u}, /* k_rope */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,8u,4u,9u,4u,0u,122880u,38u,5u,1792u,6u,7u}, /* attention_aggregation */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,9u,4u,10u,2u,0u,122880u,43u,4u,2048u,7u,8u}, /* attention_projection */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,10u,4u,11u,2u,0u,122880u,47u,4u,2304u,8u,9u}, /* attention_residual */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,11u,4u,7u,2u,0u,122880u,51u,4u,2560u,9u,10u}, /* ffn_norm */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,12u,4u,8u,5u,0u,327680u,55u,4u,2816u,10u,11u}, /* w1 */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,13u,4u,13u,5u,0u,327680u,59u,4u,3072u,10u,11u}, /* w3 */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,14u,4u,8u,5u,0u,327680u,63u,4u,3328u,11u,12u}, /* ffn_gated_hidden */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,15u,4u,10u,2u,0u,122880u,67u,4u,3584u,12u,13u}, /* w2 */
+  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,16u,4u,9u,2u,0u,122880u,71u,4u,3840u,13u,14u}, /* final_output */
+};
+
 #endif

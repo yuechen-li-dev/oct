@@ -37,6 +37,8 @@
 #include "reactor_vulkan_zimage_nr0_ffn_gate_spirv.h"
 #include "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h"
 #include "reactor_vulkan_zimage_nr0_persistent_audit_summary_spirv.h"
+#include "reactor_vulkan_zimage_context_refiner_qk_norm_rope_spirv.h"
+#include "reactor_vulkan_zimage_context_refiner_attention_streaming_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -163,6 +165,20 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/nr0_persistent_audit_summary.sdslv",
     "reactor_vulkan_zimage_nr0_persistent_audit_summary_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 4u, 96u, 0u, 1u, 10485760u },
+  { 38u, "zimage-context-refiner-qk-norm-rope", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_context_refiner_qk_norm_rope_spirv,
+    sizeof(k_prom_zimage_context_refiner_qk_norm_rope_spirv),
+    "ContextQkNormRope_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/context_refiner_qk_norm_rope.sdslv",
+    "reactor_vulkan_zimage_context_refiner_qk_norm_rope_spirv.h", 1u, 1u, 5u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 3u, 20u, 0u, 1u, 128u },
+  { 39u, "zimage-context-refiner-attention-streaming", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_context_refiner_attention_streaming_spirv,
+    sizeof(k_prom_zimage_context_refiner_attention_streaming_spirv),
+    "ContextAttentionStreaming_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/context_refiner_attention_streaming.sdslv",
+    "reactor_vulkan_zimage_context_refiner_attention_streaming_spirv.h", 1u, 1u, 2u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 3u, 16u, 0u, 1u, 32u },
 };
 
 #define REDUCTION_ASSET(id, label, words, entry, source, header, inline_count, role, max_width) \

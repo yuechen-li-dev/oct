@@ -1,0 +1,6 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.context-chain.v1",
+  "chain": ["ContextEmbedding.FP32", "ContextRefiner0", "atomic ContextRefiner1 rebind", "ContextRefiner1", "MainTransformer.ContextInput"],
+  "boundary": {"bytes": 491520, "storage": "device-local resident_boundary_device", "immutable_after_first_transfer": true, "host_activation_bounce": false, "internal_bf16": false},
+  "results": {"context0_relative_l2": 3.19051e-7, "context1_relative_l2": 4.64152e-7, "result": "pass"}
+}

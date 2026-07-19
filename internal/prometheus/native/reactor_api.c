@@ -250,6 +250,42 @@ int prometheus_reactor_runtime_noise_refiner_audit_final(
   return prom_reactor_runtime_noise_refiner_audit_final_impl(handle, block_id, request, out_evidence);
 }
 
+int prometheus_reactor_runtime_context_refiner_create(
+    void* handle, const PrometheusContextRefinerCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_context_refiner_create_impl(handle, request, out_block_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_context_refiner_rebind(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_context_refiner_rebind_impl(handle, block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_context_refiner0_execute(
+    void* handle, uint64_t block_id, const PrometheusContextRefiner0ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_context_refiner0_execute_impl(handle, block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_context_refiner_execute_resident(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_context_refiner_execute_resident_impl(handle, block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_context_refiner_execute_static_audit(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerStaticAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_context_refiner_execute_static_audit_impl(handle, block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_context_refiner_audit_final(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerFinalAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_context_refiner_audit_final_impl(handle, block_id, request, out_evidence);
+}
+
 int prometheus_reactor_runtime_model_block_get_evidence(void* handle, uint64_t block_id,
                                                         PrometheusModelBlockEvidence* out_evidence) {
   return prom_reactor_runtime_model_block_get_evidence_impl(handle, block_id, out_evidence);

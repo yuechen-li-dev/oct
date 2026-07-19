@@ -2,14 +2,22 @@
 #ifndef OCT_ZIMAGE_TURBO_RESOLVED_DESCRIPTOR_H
 #define OCT_ZIMAGE_TURBO_RESOLVED_DESCRIPTOR_H
 
-#define PROM_ZIMAGE_TURBO_LOCK_ID 0xb3660657c5546e9cull
+#define PROM_ZIMAGE_TURBO_LOCK_ID 0x4b4aeb0474779325ull
 #define PROM_ZIMAGE_TURBO_NO_BLOCK UINT32_MAX
 static const PrometheusNoiseRefinerResolvedDescriptor k_prom_zimage_turbo_noise_refiner_blocks[] = {
   {PROM_ZIMAGE_TURBO_LOCK_ID, 0u, PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_NOISE_REFINER_PARAMETER_SET_0, 0xa1ba526898a2a752ull, 0u, 0u, 0u, 654891776ull, 6517444848718386192ull, 0u, PROM_ZIMAGE_TURBO_NO_BLOCK, 1u},
   {PROM_ZIMAGE_TURBO_LOCK_ID, 1u, PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_NOISE_REFINER_PARAMETER_SET_1, 0x80c0cd75f44cc434ull, 0u, 0u, 0u, 654891776ull, 6517444848718386192ull, 0x9b133c9ed3772f78ull, 0u, PROM_ZIMAGE_TURBO_NO_BLOCK},
 };
+static const PrometheusContextRefinerResolvedDescriptor k_prom_zimage_turbo_context_refiner_blocks[] = {
+  {PROM_ZIMAGE_TURBO_LOCK_ID, 0u, PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_CONTEXT_REFINER_PARAMETER_SET_0, 0xc08b908a921a80e1ull, 0u, 0u, 0u, 536870912ull, 0xa30b2ac6ff947b21ull, 0xd2b8167de614da25ull, PROM_ZIMAGE_TURBO_NO_BLOCK, 1u},
+  {PROM_ZIMAGE_TURBO_LOCK_ID, 1u, PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO, PROM_CONTEXT_REFINER_PARAMETER_SET_1, 0x30268c3b0d7a6fafull, 0u, 0u, 0u, 536870912ull, 0xa30b2ac6ff947b21ull, 0x08377e8a46b65cffull, 0u, PROM_ZIMAGE_TURBO_NO_BLOCK},
+};
 static const PrometheusNoiseRefinerResolvedDescriptor* prom_zimage_turbo_resolve_noise_refiner_descriptor(uint64_t lock_identity, uint32_t model_local_block_id) {
   if (lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID || model_local_block_id > 1u) return NULL;
   return &k_prom_zimage_turbo_noise_refiner_blocks[model_local_block_id];
+}
+static const PrometheusContextRefinerResolvedDescriptor* prom_zimage_turbo_resolve_context_refiner_descriptor(uint64_t lock_identity, uint32_t model_local_block_id) {
+  if (lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID || model_local_block_id > 1u) return NULL;
+  return &k_prom_zimage_turbo_context_refiner_blocks[model_local_block_id];
 }
 #endif

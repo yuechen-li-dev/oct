@@ -1,0 +1,6 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.internal-abi.v1",
+  "context_ingress": {"domain": "ContextEmbedding.FP32", "shape": [32,3840], "bytes": 491520, "source": "cap_embedder after repeat-last padding to 32 tokens"},
+  "context_family_handoff": {"from": "ContextRefiner0", "to": "ContextRefiner1", "domain": "ContextEmbedding.FP32", "storage": "immutable device-local resident boundary", "host_activation_bounce": false, "internal_bf16": false},
+  "family_relationship": {"noise_to_context_data_edge": false, "ordering": "independent streams under one lock; both outputs are retained for MainTransformer composition", "next_context_successor": "MainTransformer.ContextInput"}
+}

@@ -616,6 +616,9 @@ enum {
   PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO = 1u,
   PROM_NOISE_REFINER_PARAMETER_SET_0 = 1u,
   PROM_NOISE_REFINER_PARAMETER_SET_1 = 2u,
+  PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO = 2u,
+  PROM_CONTEXT_REFINER_PARAMETER_SET_0 = 1u,
+  PROM_CONTEXT_REFINER_PARAMETER_SET_1 = 2u,
 };
 
 enum {
@@ -698,6 +701,19 @@ typedef struct PrometheusNoiseRefinerRebindRequest {
   const PrometheusModelBlockWeightUpload* uploads;
 } PrometheusNoiseRefinerRebindRequest;
 
+/* ContextRefiner is a separate closed family. The caller supplies only a
+   lock-selected model block and a complete, already-validated payload bundle;
+   family, ABI, cache aggregate, and shader portfolio remain descriptor-owned. */
+typedef struct PrometheusContextRefinerCreateRequest {
+  uint32_t struct_size;
+  uint32_t model_local_block_id;
+  uint64_t lock_identity;
+  uint32_t upload_count;
+  const PrometheusModelBlockWeightUpload* uploads;
+} PrometheusContextRefinerCreateRequest;
+
+typedef PrometheusContextRefinerCreateRequest PrometheusContextRefinerRebindRequest;
+
 /* A resolved descriptor is model-scoped and immutable. Callers identify it by
    lock identity plus closed model-local ID; they never author family, ABI,
    aggregate, or transition fields. */
@@ -716,6 +732,11 @@ typedef struct PrometheusNoiseRefinerResolvedDescriptor {
   uint32_t predecessor_block_id;
   uint32_t successor_block_id;
 } PrometheusNoiseRefinerResolvedDescriptor;
+
+/* ContextRefiner uses the same closed descriptor envelope.  The assembly
+   family and parameter set discriminate it; no caller-authored topology is
+   admitted at this ABI boundary. */
+typedef PrometheusNoiseRefinerResolvedDescriptor PrometheusContextRefinerResolvedDescriptor;
 
 typedef struct PrometheusModelBlockExecuteRequest {
   uint32_t struct_size;
@@ -808,6 +829,24 @@ typedef struct PrometheusNoiseRefinerResidentExecuteRequest {
   uint64_t audit_element_capacity;
 } PrometheusNoiseRefinerResidentExecuteRequest;
 
+/* ContextRefiner ingress is the already-prepared FP32 ContextEmbedding stream.
+   It has no BF16 ingress adapter, timestep, AdaLN, or caller-provided graph. */
+typedef struct PrometheusContextRefiner0ExecuteRequest {
+  uint32_t struct_size;
+  const float* context_input;
+  uint64_t context_input_bytes;
+  uint64_t input_identity;
+  uint64_t output_identity;
+  uint32_t audit_enabled;
+} PrometheusContextRefiner0ExecuteRequest;
+
+typedef struct PrometheusContextRefinerResidentExecuteRequest {
+  uint32_t struct_size;
+  uint64_t input_generation;
+  uint64_t output_identity;
+  uint32_t audit_enabled;
+} PrometheusContextRefinerResidentExecuteRequest;
+
 enum {
   PROM_NOISE_REFINER_AUDIT_NONE = 0u,
   PROM_NOISE_REFINER_AUDIT_M1B = 1u,
@@ -831,6 +870,9 @@ typedef struct PrometheusNoiseRefinerStaticAuditRequest {
   void* audit_arena;
   uint64_t audit_arena_capacity_bytes;
 } PrometheusNoiseRefinerStaticAuditRequest;
+
+typedef PrometheusNoiseRefinerFinalAuditRequest PrometheusContextRefinerFinalAuditRequest;
+typedef PrometheusNoiseRefinerStaticAuditRequest PrometheusContextRefinerStaticAuditRequest;
 
 enum {
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
@@ -1966,6 +2008,24 @@ PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_execute_static_aud
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_audit_final(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner_create(
+    void* handle, const PrometheusContextRefinerCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner_rebind(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner0_execute(
+    void* handle, uint64_t block_id, const PrometheusContextRefiner0ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner_execute_resident(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner_execute_static_audit(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerStaticAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_context_refiner_audit_final(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);

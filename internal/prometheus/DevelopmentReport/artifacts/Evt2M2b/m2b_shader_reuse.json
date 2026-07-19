@@ -1,0 +1,16 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.shader-reuse.v1",
+  "reused_production_shaders": {
+    "25": "FP32 RMSNorm using the ContextRefiner unit scale identity port",
+    "26": "fused [Q,K,V] 3840x11520 projection",
+    "31": "attention output projection",
+    "32": "ungated FP32 attention residual via the ContextRefiner unit port",
+    "33": "FP32 FFN RMSNorm via the ContextRefiner unit port",
+    "34": "W1/W3 FP32 projection",
+    "35": "SiLU(W1) times ContextRefiner-owned W3",
+    "36": "W2 FP32 projection and ungated final residual",
+    "37": "lock-derived persistent audit summary"
+  },
+  "rejected_reuse": ["NoiseRefiner BF16 ingress", "AdaLN projection", "modulated or learned-gated tensor semantics"],
+  "semantic_guard": "shared physical kernels do not make the ContextRefiner a NoiseRefiner family member"
+}

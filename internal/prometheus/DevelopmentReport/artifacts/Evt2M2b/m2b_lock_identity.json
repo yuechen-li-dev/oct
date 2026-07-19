@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.lock-identity.v1",
+  "old_lock_sha256": "b3660657c5546e9c289dcea9ae230e6c2b9bb860123fef37c9be5bda8d55ce67",
+  "new_lock_sha256": "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b",
+  "model_semantic_identity_sha256": "a3be975154e505ee1757a67f8d21ca791abc9d5347c9a29be127b7b96725446d",
+  "production_execution_identity_sha256": "cdfc5326beb859db5c39c0cee32018bd2bf12da8dec2e22a9208a6ae47749a22",
+  "audit_profile_identity_sha256": "81e46633d34aea59ca040654fe23d9244099792f35b53660bdbd30e2ab29c26f",
+  "lock_low64": "0x4b4aeb0474779325"
+}

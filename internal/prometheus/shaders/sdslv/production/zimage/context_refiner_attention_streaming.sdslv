@@ -1,0 +1,86 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.context_refiner {
+    PositionedContextQueryHead: float4;
+    PositionedContextKeyHead: float4;
+    ContextValueHead: float4;
+    ContextAttentionProbability: float4;
+}
+
+stream ContextAttentionStreamingIO {
+    [binding(0)] Qkv: readonly array<f32>;
+    [binding(1)] Attention: readwrite array<f32>;
+    [binding(2)] Audit: readwrite array<f32>;
+}
+
+record ContextAttentionStreamingParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
+
+fn ExponentialF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return exp(value); }; return result; }
+fn UintToF32(value: u32) -> f32 { let result: f32 = HLSL<f32>(value) { return float(value); }; return result; }
+
+// One workgroup owns a ContextRefiner query/head. The fixed 32-entry local
+// row is intentional: it cannot read the unused 1024-token NoiseRefiner tail.
+shader ContextAttentionStreaming {
+    resources ContextAttentionStreamingIO;
+    workgroup Scores: array<f32, 32u>;
+    workgroup Probabilities: array<f32, 32u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: ContextAttentionStreamingParams) -> void {
+        let packedRow: u32 = GroupID.x;
+        let token: u32 = packedRow / params.HeadCount;
+        let head: u32 = packedRow - token * params.HeadCount;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        if lane < params.TokenCount {
+            var dot: f32 = 0.0;
+            for channel in 0u..params.HeadWidth {
+                let qIndex: u32 = token * params.FusedWidth + head * params.HeadWidth + channel;
+                let kIndex: u32 = lane * params.FusedWidth + 3840u + head * params.HeadWidth + channel;
+                dot = dot + Qkv[qIndex] * Qkv[kIndex];
+            }
+            Scores[lane] = dot * 0.08838834764831843;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane == 0u {
+            var maximum: f32 = Scores[0u];
+            for key in 1u..params.TokenCount {
+                if Scores[key] > maximum { maximum = Scores[key]; }
+            }
+            var probabilitySum: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let exponential: f32 = ExponentialF32(Scores[key] - maximum);
+                Probabilities[key] = exponential;
+                probabilitySum = probabilitySum + exponential;
+            }
+            var valid: u32 = 0u;
+            if probabilitySum == probabilitySum and probabilitySum > 0.0 and (probabilitySum - probabilitySum) == 0.0 { valid = 1u; }
+            var rowSum: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                if valid != 0u { Probabilities[key] = Probabilities[key] / probabilitySum; }
+                else { Probabilities[key] = 0.0; }
+                rowSum = rowSum + Probabilities[key];
+            }
+            let selected: bool = (token == 0u and head == 0u) or (token + 1u == params.TokenCount and head + 1u == params.HeadCount);
+            if selected {
+                var base: u32 = 0u;
+                if token != 0u { base = 32u; }
+                Audit[base] = Scores[0u] / 0.08838834764831843;
+                Audit[base + 1u] = Scores[0u];
+                Audit[base + 2u] = Scores[0u] - maximum;
+                Audit[base + 3u] = Probabilities[0u];
+                Audit[base + 4u] = rowSum;
+                Audit[base + 30u] = UintToF32(valid);
+            }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < params.HeadWidth {
+            var total: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let valueIndex: u32 = key * params.FusedWidth + 7680u + head * params.HeadWidth + lane;
+                total = total + Probabilities[key] * Qkv[valueIndex];
+            }
+            Attention[token * 3840u + head * params.HeadWidth + lane] = total;
+        }
+        return;
+    }
+}

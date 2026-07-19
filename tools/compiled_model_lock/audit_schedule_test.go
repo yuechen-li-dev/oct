@@ -15,7 +15,7 @@ func TestAuditScheduleIsLockDerivedBoundedAndStable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("audit schedule: %v", err)
 	}
-	if !strings.Contains(header, "PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID 0xb3660657c5546e9cull") {
+	if !strings.Contains(header, "PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID 0x4b4aeb0474779325ull") {
 		t.Fatal("schedule does not preserve the accepted lock identity")
 	}
 	if !strings.Contains(header, "PROM_ZIMAGE_TURBO_AUDIT_STAGE_COUNT 29u") ||
@@ -41,7 +41,7 @@ func TestManifestIdentityIsLineEndingStableButContentSensitive(t *testing.T) {
 	}
 	lf := strings.ReplaceAll(string(manifest), "\r\n", "\n")
 	crlf := strings.ReplaceAll(lf, "\n", "\r\n")
-	if got := resolvedManifestIdentity([]byte(lf)); got != "7b9ff0f3cb66bce9bff83cc4bb28f78c5cdc6f35a1781ae6a4608052500d9d32" {
+	if got := resolvedManifestIdentity([]byte(lf)); got != "b242ade01b76f7a9fe19e2788d3134e29f67bed2c6161e53e2159bc6d4db2cb3" {
 		t.Fatalf("accepted manifest identity changed: %s", got)
 	}
 	if resolvedManifestIdentity([]byte(lf)) != resolvedManifestIdentity([]byte(crlf)) {
@@ -62,9 +62,9 @@ func TestAuditScheduleRejectsAlteredProfileAndBudget(t *testing.T) {
 		"profile":               strings.Replace(string(lock), "NoiseRefinerPersistentProjectionSummary.v1", "foreign", 1),
 		"budget":                strings.Replace(string(lock), "AuditBudgetBytes: 47186176", "AuditBudgetBytes: 1", 1),
 		"policy":                strings.Replace(string(lock), "no repeated prefix replay", "runtime mutation", 1),
-		"semantic identity":     strings.Replace(string(lock), "a8faf8923ab4c748", "0000000000000000", 1),
-		"production identity":   strings.Replace(string(lock), "0868bd2b1127fa75", "0000000000000000", 1),
-		"audit identity":        strings.Replace(string(lock), "de558800cbe07b4a", "0000000000000000", 1),
+		"semantic identity":     strings.Replace(string(lock), "a3be975154e505ee", "0000000000000000", 1),
+		"production identity":   strings.Replace(string(lock), "cdfc5326beb859db", "0000000000000000", 1),
+		"audit identity":        strings.Replace(string(lock), "81e46633d34aea59", "0000000000000000", 1),
 		"foreign complete lock": string(lock) + " ",
 	} {
 		if _, _, err := auditScheduleProjection([]byte(altered)); err == nil {

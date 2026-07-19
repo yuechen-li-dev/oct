@@ -610,7 +610,7 @@
       "bytes": 256
     }
   ],
-  "lock_identity": "b3660657c5546e9c289dcea9ae230e6c2b9bb860123fef37c9be5bda8d55ce67",
+  "lock_identity": "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b",
   "projection_key_count": 143,
   "required_bytes": 189696,
   "schema": "oct.prometheus.evt2.audit-arena-layout.v1",
@@ -621,4 +621,18 @@
     "bytes": 256,
     "description": "fixed 64-float first/last-head attention witness; no score or probability tensor is materialized"
   }
+,
+  "context_refiner": {
+  "ceiling_bytes": 1048576,
+  "profile": "ContextRefinerPersistentProjectionSummary.v1",
+  "projection_key_count": 75,
+  "required_bytes": 4352,
+  "slack_bytes": 1044224,
+  "stage_count": 16,
+  "transient_attention_record": {
+    "audit_destination_offset": 4096,
+    "bytes": 256,
+    "description": "fixed first and last ContextRefiner attention rows; no score or probability tensor is materialized"
+  }
+}
 }

@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.four-block-prefix.v1",
+  "lock_sha256": "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b",
+  "resolved_execution": ["NoiseRefiner0", "NoiseRefiner1", "ContextEmbedding", "ContextRefiner0", "ContextRefiner1"],
+  "dependency_graph": {"noise_stream": "NoiseRefiner0 -> NoiseRefiner1", "context_stream": "ContextEmbedding -> ContextRefiner0 -> ContextRefiner1", "cross_family_activation_edge": false},
+  "native_clean_process_command": "marionette_tests.exe PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness,PrometheusContextRefinerRealPayloadExecutesTheClosedResidentBlock",
+  "results": {"noise_refiner1_relative_l2": 1.27829e-6, "context_refiner0_relative_l2": 3.19051e-7, "context_refiner1_relative_l2": 4.64152e-7, "result": "pass"},
+  "note": "The two family owners are deliberately independent because the pinned model has parallel image and context streams; this proof does not invent a NoiseRefiner-to-ContextRefiner tensor transfer."
+}

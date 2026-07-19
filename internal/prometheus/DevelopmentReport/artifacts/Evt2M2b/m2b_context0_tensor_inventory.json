@@ -1,0 +1,15 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.tensor-inventory.v1",
+  "block": "context_refiner.0",
+  "tensor_count": 11,
+  "package_bytes_fp16": 353925632,
+  "orientation": "checkpoint linear matrices are [input,output] and expand to FP32 at use",
+  "tensors": [
+    ["attention.k_norm.weight", [128], 256], ["attention.out.weight", [3840,3840], 29491200],
+    ["attention.q_norm.weight", [128], 256], ["attention.qkv.weight", [3840,11520], 88473600],
+    ["attention_norm1.weight", [3840], 7680], ["attention_norm2.weight", [3840], 7680],
+    ["feed_forward.w1.weight", [3840,10240], 78643200], ["feed_forward.w2.weight", [10240,3840], 78643200],
+    ["feed_forward.w3.weight", [3840,10240], 78643200], ["ffn_norm1.weight", [3840], 7680],
+    ["ffn_norm2.weight", [3840], 7680]
+  ]
+}

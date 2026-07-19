@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.timing.v1",
+  "measurement": "representative successful clean-process RTX run; values are wall-clock nanoseconds and are not a deterministic artifact identity",
+  "context_refiner0": {"first_execution_ns": 25640200, "warm_ns": [26568100,25897200,25634500,25915800,25881700,24409800,23562100,23289500,23444700,24355700]},
+  "context_rebind_ns": 42006900,
+  "context_refiner1": {"first_execution_ns": 23376700, "warm_ns": [23065400,23280900,22991500,24336800,22947200,23705800,23358400,23271400,23724700,23073700]},
+  "warm_churn": {"buffer_allocation": 0, "weight_upload": 0, "pipeline_creation": 0, "descriptor_growth": 0, "payload_read": 0, "host_tensor_work": 0},
+  "noise_refiner_chain_reference": {"noise_refiner1_execution_ns": 859576400, "noise_refiner_rebind_ns": 42570100}
+}

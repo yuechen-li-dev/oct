@@ -1,0 +1,9 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.manifest-projection.v1",
+  "manifest_identity_sha256": "b242ade01b76f7a9fe19e2788d3134e29f67bed2c6161e53e2159bc6d4db2cb3",
+  "resolved_blocks": [
+    {"family": "ZImageTurbo.ContextRefiner", "id": 0, "parameter_set": "ContextRefiner0", "predecessor": "ContextEmbedding", "successor": "ContextRefiner1"},
+    {"family": "ZImageTurbo.ContextRefiner", "id": 1, "parameter_set": "ContextRefiner1", "predecessor": "ContextRefiner0", "successor": "MainTransformer.ContextInput"}
+  ],
+  "flow": "NoiseRefiner0 -> NoiseRefiner1; ContextEmbedding -> ContextRefiner0 -> ContextRefiner1; independent FP32 resident chains"
+}

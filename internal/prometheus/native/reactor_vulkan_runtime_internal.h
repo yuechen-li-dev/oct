@@ -378,6 +378,13 @@ typedef struct prom_model_block_state {
   prom_vk_buffer attention;
   prom_vk_buffer attention_projection;
   prom_vk_buffer attention_residual;
+  /* A single host-visible, immutable FP32 vector of ones. ContextRefiner binds
+     it to the shared physical modulation/gate ports, making those ports exact
+     identity operations without introducing an AdaLN or a learned gate. */
+  prom_vk_buffer context_unit;
+  /* ContextRefiner W3 has 32*10240 FP32 elements and cannot alias the
+     32*3840 attention output buffer used by the NoiseRefiner partition plan. */
+  prom_vk_buffer context_w3;
   prom_model_block_m1b_pipeline m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
@@ -699,6 +706,24 @@ int prom_reactor_runtime_noise_refiner_execute_static_audit_impl(
     PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_noise_refiner_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_context_refiner_create_impl(
+    void* handle, const PrometheusContextRefinerCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_context_refiner_rebind_impl(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_context_refiner0_execute_impl(
+    void* handle, uint64_t block_id, const PrometheusContextRefiner0ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_context_refiner_execute_resident_impl(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_context_refiner_execute_static_audit_impl(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerStaticAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_context_refiner_audit_final_impl(
+    void* handle, uint64_t block_id, const PrometheusContextRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel);

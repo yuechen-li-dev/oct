@@ -1,0 +1,10 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.audit-profile.v1",
+  "profile": "ContextRefinerPersistentProjectionSummary.v1",
+  "identity_sha256": "81e46633d34aea59ca040654fe23d9244099792f35b53660bdbd30e2ab29c26f",
+  "stage_count": 16,
+  "arena_bytes": 1048576,
+  "required_bytes": 4352,
+  "transient_attention": {"offset_bytes": 4096, "bytes": 256, "policy": "first and last 32-token attention rows only"},
+  "capture_policy": "all persistent stages are projection-and-summary records in one execution; no repeated-prefix replay"
+}

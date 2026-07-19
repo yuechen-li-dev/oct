@@ -1,0 +1,10 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.tensor-inventory.v1",
+  "block": "context_refiner.1",
+  "tensor_count": 11,
+  "package_bytes_fp16": 353925632,
+  "orientation": "checkpoint linear matrices are [input,output] and expand to FP32 at use",
+  "same_assembly_as": "context_refiner.0",
+  "different_immutable_parameter_set": true,
+  "tensor_roles": "identical ordered roles to context_refiner.0; the package aggregate and every immutable payload differ"
+}

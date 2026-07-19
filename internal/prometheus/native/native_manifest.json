@@ -56,7 +56,9 @@
     "reactor_vulkan_zimage_nr0_ffn_norm_modulate_spirv.h",
     "reactor_vulkan_zimage_nr0_ffn_w1_w3_spirv.h",
     "reactor_vulkan_zimage_nr0_ffn_gate_spirv.h",
-    "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h"
+    "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h",
+    "reactor_vulkan_zimage_context_refiner_qk_norm_rope_spirv.h",
+    "reactor_vulkan_zimage_context_refiner_attention_streaming_spirv.h"
   ],
   "platform_exceptions": {"windows": [], "linux": []}
 }

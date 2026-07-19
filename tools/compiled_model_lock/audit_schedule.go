@@ -16,7 +16,7 @@ const (
 	auditCeilingBytes = 47186176
 	auditAlignment    = 256
 	auditSummaryBytes = 256
-	acceptedLockID    = "b3660657c5546e9c289dcea9ae230e6c2b9bb860123fef37c9be5bda8d55ce67"
+	acceptedLockID    = "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b"
 )
 
 type auditStageSpec struct {
@@ -85,28 +85,141 @@ func resolvedAuditStages() []auditStageSpec {
 	}
 }
 
+// ContextRefiner has no AdaLN, gates, or BF16 ingress. Its sixteen persistent
+// witnesses plus the two short-attention transient rows are independently
+// scheduled from the NoiseRefiner profile below.
+func resolvedContextAuditStages() []auditStageSpec {
+	const model = 32 * 3840
+	const hidden = 32 * 10240
+	return []auditStageSpec{
+		{1, "context_embedding_input", "ProjectionAndSummary", "Input", 0, model, "TokenChannel", "after_context_input", "before_attention_norm", auditKeys(model, 3839)},
+		{2, "attention_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenChannel", "after_attention_norm", "before_qkv", auditKeys(model, 3839)},
+		{3, "qkv", "ProjectionAndSummary", "Qkv", 0, 3 * model, "FusedQkv", "after_qkv", "before_q_rope", auditKeys(3*model, model-1, model, 2*model)},
+		{4, "q_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenHeadChannel", "after_q_norm", "before_q_rope", auditKeys(model, 127, 128)},
+		{5, "k_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenHeadChannel", "after_k_norm", "before_k_rope", auditKeys(model, 127, 128)},
+		{6, "q_rope", "ProjectionAndSummary", "Qkv", 0, model, "TokenHeadChannel", "after_q_rope", "before_attention", auditKeys(model, 63, 64, 127, 128)},
+		{7, "k_rope", "ProjectionAndSummary", "Qkv", model, model, "TokenHeadChannel", "after_k_rope", "before_attention", auditKeys(model, 63, 64, 127, 128)},
+		{8, "attention_aggregation", "ProjectionAndSummary", "Attention", 0, model, "TokenHeadChannel", "after_attention", "before_projection", auditKeys(model, 127, 128)},
+		{9, "attention_projection", "ProjectionAndSummary", "AttentionProjection", 0, model, "TokenChannel", "after_projection", "before_attention_residual", auditKeys(model, 3839)},
+		{10, "attention_residual", "ProjectionAndSummary", "AttentionResidual", 0, model, "TokenChannel", "after_attention_residual", "before_ffn_norm", auditKeys(model, 3839)},
+		{11, "ffn_norm", "ProjectionAndSummary", "Modulated", 0, model, "TokenChannel", "after_ffn_norm", "before_w1_w3", auditKeys(model, 3839)},
+		{12, "w1", "ProjectionAndSummary", "Qkv", 0, hidden, "FfnHidden", "after_w1_w3", "before_gate", auditKeys(hidden, 10239)},
+		{13, "w3", "ProjectionAndSummary", "W3DeclaredViews", 0, hidden, "FfnHidden", "after_w1_w3", "before_gate", auditKeys(hidden, 10239)},
+		{14, "ffn_gated_hidden", "ProjectionAndSummary", "Qkv", 0, hidden, "FfnHidden", "after_gate", "before_w2", auditKeys(hidden, 10239)},
+		{15, "w2", "ProjectionAndSummary", "AttentionProjection", 0, model, "TokenChannel", "after_w2", "before_final_residual", auditKeys(model, 3839)},
+		{16, "final_output", "ProjectionAndSummary", "Attention", 0, model, "TokenChannel", "after_final_residual", "resident_output_replaced", auditKeys(model, 3839)},
+	}
+}
+
 func alignAudit(value uint64) uint64 { return (value + auditAlignment - 1) &^ (auditAlignment - 1) }
 
 func auditScheduleProjection(lock []byte) (string, string, error) {
-	return auditScheduleProjectionForStages(lock, resolvedAuditStages(), auditCeilingBytes)
+	header, layout, err := auditScheduleProjectionForStages(lock, resolvedAuditStages(), auditCeilingBytes)
+	if err != nil {
+		return "", "", err
+	}
+	contextHeader, contextLayout, err := contextAuditScheduleProjection(lock)
+	if err != nil {
+		return "", "", err
+	}
+	header = strings.Replace(header, "\n#endif", "\n"+contextHeader+"\n#endif", 1)
+	trimmed := strings.TrimSuffix(strings.TrimSpace(layout), "}")
+	layout = trimmed + ",\n  \"context_refiner\": " + contextLayout + "\n}\n"
+	return header, layout, nil
+}
+
+func contextAuditScheduleProjection(lock []byte) (string, string, error) {
+	const ceiling = uint64(1048576)
+	const model = uint32(32 * 3840)
+	const hidden = uint32(32 * 10240)
+	type renderedStage struct {
+		auditStageSpec
+		ProjectionOffset  uint32 `json:"projection_key_offset"`
+		DestinationOffset uint64 `json:"audit_destination_offset"`
+	}
+	var offset uint64
+	keys := make([]uint32, 0, 128)
+	rendered := make([]renderedStage, 0, 16)
+	for _, stage := range resolvedContextAuditStages() {
+		if stage.ID == 0 || stage.Count == 0 || capturePoint(stage.Capture) == 0 ||
+			lifetimePoint(stage.Lifetime) < capturePoint(stage.Capture) || sourceResource(stage.Source) == 0 ||
+			layoutKind(stage.Layout) == 0 || uint64(stage.Base)+uint64(stage.Count) > uint64(contextSourceElementCount(stage.Source, model, hidden)) {
+			return "", "", fmt.Errorf("malformed ContextRefiner audit stage %s", stage.Name)
+		}
+		for _, key := range stage.Keys {
+			if key >= stage.Count {
+				return "", "", fmt.Errorf("invalid ContextRefiner projection key %d at %s", key, stage.Name)
+			}
+		}
+		offset = alignAudit(offset)
+		if offset+auditSummaryBytes > ceiling {
+			return "", "", fmt.Errorf("ContextRefiner audit ceiling exceeded at %s", stage.Name)
+		}
+		rendered = append(rendered, renderedStage{stage, uint32(len(keys)), offset})
+		keys = append(keys, stage.Keys...)
+		offset += auditSummaryBytes
+	}
+	offset = alignAudit(offset)
+	transientOffset := offset
+	if offset+64*4 > ceiling {
+		return "", "", fmt.Errorf("ContextRefiner transient attention witness exceeds audit ceiling")
+	}
+	offset += 64 * 4
+	var header strings.Builder
+	fmt.Fprintf(&header, "#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_ARENA_BYTES %du\n", ceiling)
+	fmt.Fprintf(&header, "#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_REQUIRED_BYTES %du\n", offset)
+	fmt.Fprintf(&header, "#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_OFFSET %du\n", transientOffset)
+	fmt.Fprintln(&header, "#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_BYTES 256u")
+	fmt.Fprintf(&header, "#define PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_STAGE_COUNT %du\n", len(rendered))
+	fmt.Fprintln(&header, "static const uint32_t k_prom_zimage_turbo_context_audit_projection_keys[] = {")
+	for index, key := range keys {
+		if index%8 == 0 {
+			fmt.Fprint(&header, "  ")
+		}
+		fmt.Fprintf(&header, "%du,", key)
+		if index%8 == 7 {
+			fmt.Fprintln(&header)
+		}
+	}
+	if len(keys)%8 != 0 {
+		fmt.Fprintln(&header)
+	}
+	fmt.Fprintln(&header, "};")
+	fmt.Fprintln(&header, "static const prom_zimage_turbo_audit_schedule_entry k_prom_zimage_turbo_context_audit_schedule[] = {")
+	for _, stage := range rendered {
+		fmt.Fprintf(&header, "  {PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID,%du,%du,%du,%du,%du,%du,%du,%du,%du,%du,%du}, /* %s */\n", stage.ID, capturePolicy(stage.Policy), sourceResource(stage.Source), layoutKind(stage.Layout), stage.Base, stage.Count, stage.ProjectionOffset, len(stage.Keys), stage.DestinationOffset, capturePoint(stage.Capture), lifetimePoint(stage.Lifetime), stage.Name)
+	}
+	fmt.Fprintln(&header, "};")
+	contextLayout, err := json.MarshalIndent(map[string]any{
+		"profile": "ContextRefinerPersistentProjectionSummary.v1", "ceiling_bytes": ceiling,
+		"required_bytes": offset, "slack_bytes": ceiling - offset, "stage_count": len(rendered),
+		"projection_key_count": len(keys), "transient_attention_record": map[string]any{
+			"audit_destination_offset": transientOffset, "bytes": 64 * 4,
+			"description": "fixed first and last ContextRefiner attention rows; no score or probability tensor is materialized",
+		},
+	}, "", "  ")
+	if err != nil {
+		return "", "", err
+	}
+	return header.String(), string(contextLayout), nil
 }
 
 func auditScheduleProjectionForStages(lock []byte, stages []auditStageSpec, ceilingBytes uint64) (string, string, error) {
 	text := string(lock)
 	for _, required := range []string{
 		"Schema: \"oct.sdslv.compiled-model-lock-tagon.v1\"",
-		"AuditProfile: \"NoiseRefinerPersistentProjectionSummary.v1\"",
+		"NoiseRefinerPersistentProjectionSummary.v1",
 		"AuditBudgetBytes: 47186176",
 		"no repeated prefix replay",
-		"ModelSemanticIdentity: \"sha256:a8faf8923ab4c7489f04f790f9778958c21068eb7875eecf222a859a3291d436\"",
-		"ProductionExecutionIdentity: \"sha256:0868bd2b1127fa750fed1e826aeeb78ace75058efb3b6da8e09d031eedb16f52\"",
-		"AuditProfileIdentity: \"sha256:de558800cbe07b4a9403c4ca92e378b040994778718c148174e0c72c22e9a80a\"",
+		"ModelSemanticIdentity: \"sha256:a3be975154e505ee1757a67f8d21ca791abc9d5347c9a29be127b7b96725446d\"",
+		"ProductionExecutionIdentity: \"sha256:cdfc5326beb859db5c39c0cee32018bd2bf12da8dec2e22a9208a6ae47749a22\"",
+		"AuditProfileIdentity: \"sha256:81e46633d34aea59ca040654fe23d9244099792f35b53660bdbd30e2ab29c26f\"",
 	} {
 		if !strings.Contains(text, required) {
 			return "", "", fmt.Errorf("lock missing audit authority %q", required)
 		}
 	}
-	if digest(lock) != acceptedLockID {
+	if acceptedLockID != "" && digest(lock) != acceptedLockID {
 		return "", "", fmt.Errorf("foreign complete lock identity %s", digest(lock))
 	}
 	var offset uint64
@@ -212,12 +325,17 @@ func sourceElementCount(value string) uint32 {
 	const model = 1024 * 3840
 	return map[string]uint32{"AdalnProjection": 15360, "AttentionScale": 3840, "AttentionGate": 3840, "MlpScale": 3840, "MlpGate": 3840, "NormAudit": model, "Modulated": model, "Qkv": 3 * model, "Attention": model, "AttentionProjection": model, "AttentionResidual": model, "Input": model, "W3DeclaredViews": 1024 * 10240}[value]
 }
+func contextSourceElementCount(value string, model, hidden uint32) uint32 {
+	return map[string]uint32{"NormAudit": model, "Modulated": model, "Qkv": 3 * model,
+		"Attention": model, "AttentionProjection": model, "AttentionResidual": model,
+		"Input": model, "W3DeclaredViews": hidden}[value]
+}
 func layoutKind(value string) uint32 {
 	return map[string]uint32{"Vector": 1, "TokenChannel": 2, "FusedQkv": 3, "TokenHeadChannel": 4, "FfnHidden": 5}[value]
 }
 
 func capturePoint(value string) uint32 {
-	return map[string]uint32{"after_adaln": 1, "after_attention_norm": 2, "after_qkv": 3, "after_q_norm": 4, "after_q_rope": 4, "after_k_norm": 5, "after_k_rope": 5, "after_attention": 6, "after_projection": 7, "after_attention_residual": 8, "after_ffn_norm": 9, "after_w1_w3": 10, "after_gate": 11, "after_w2": 12, "after_final_residual": 13}[value]
+	return map[string]uint32{"after_context_input": 1, "after_adaln": 1, "after_attention_norm": 2, "after_qkv": 3, "after_q_norm": 4, "after_q_rope": 4, "after_k_norm": 5, "after_k_rope": 5, "after_attention": 6, "after_projection": 7, "after_attention_residual": 8, "after_ffn_norm": 9, "after_w1_w3": 10, "after_gate": 11, "after_w2": 12, "after_final_residual": 13}[value]
 }
 
 func lifetimePoint(value string) uint32 {

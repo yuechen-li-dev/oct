@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.new-shader-portfolio.v1",
+  "shaders": [
+    {"id": 38, "name": "zimage-context-refiner-qk-norm-rope", "entry": "ContextQkNormRope_CS", "contract": "per-head RMSNorm epsilon=1e-5 and text coordinates [token+1,0,0], theta=256, axes=[32,48,48]"},
+    {"id": 39, "name": "zimage-context-refiner-attention-streaming", "entry": "ContextAttentionStreaming_CS", "contract": "32-token non-causal stable softmax attention in FP32"}
+  ],
+  "validation": ["go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/production/zimage/context_refiner_qk_norm_rope.sdslv", "go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/production/zimage/context_refiner_attention_streaming.sdslv"]
+}

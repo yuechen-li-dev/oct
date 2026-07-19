@@ -1,0 +1,12 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.runtime-audit.v1",
+  "block": "context_refiner.0",
+  "execution": "real Vulkan native static-audit batch",
+  "stage_count": 16,
+  "worst_projection_linf": 0.00003814697265625,
+  "worst_stage": "attention_projection",
+  "final_relative_l2": 3.19051e-7,
+  "final_linf": 0.00018310546875,
+  "accepted_bounds": {"relative_l2": 0.00001, "linf": 0.001},
+  "result": "pass"
+}

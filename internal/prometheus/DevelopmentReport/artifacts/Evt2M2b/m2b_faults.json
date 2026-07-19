@@ -1,0 +1,14 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.faults.v1",
+  "covered": [
+    "foreign or stale ContextRefiner rebind lock rejected before mutation",
+    "ContextRefiner0 to ContextRefiner0 rebind rejected by resolved predecessor contract",
+    "partial ContextRefiner1 package rejected before staging",
+    "initial payload upload failure destroys the newly-created ContextRefiner owner",
+    "stale resident generation rejected",
+    "foreign or undersized static-audit request rejected",
+    "final audit requires current output generation"
+  ],
+  "lifecycle": "rebind has pre-commit pending weights, descriptor update, atomic commit, stale-output invalidation, quarantine/reap through the resident owner",
+  "result": "no mixed-family binding or stale output acceptance observed in covered paths"
+}

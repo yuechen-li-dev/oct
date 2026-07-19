@@ -1,27 +1,28 @@
 CompiledModelLock {
     Schema: "oct.sdslv.compiled-model-lock-tagon.v1"
-    ManifestIdentity: "sha256:7b9ff0f3cb66bce9bff83cc4bb28f78c5cdc6f35a1781ae6a4608052500d9d32"
+    ManifestIdentity: "sha256:b242ade01b76f7a9fe19e2788d3134e29f67bed2c6161e53e2159bc6d4db2cb3"
     Model: "ZImageTurbo"
     Revision: "f332072aa78be7aecdf3ee76d5c247082da564a6"
     Checkpoint: "sha256:2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"
     Runtime: "Prometheus.Vulkan"
-    AssemblyFamily: "ZImageTurbo.NoiseRefiner"
-    AssemblyIdentity: "sha256:6517444848718386192"
-    InternalAbi: "ModelEmbedding.FP32 -> ModelEmbedding.FP32"
+    AssemblyFamily: "ZImageTurbo.ClosedFamilies"
+    InternalAbi: "ModelEmbedding.FP32 -> ModelEmbedding.FP32; ContextEmbedding.FP32 -> ContextEmbedding.FP32"
     Precision: "FP16 immutable weights; FP32 arithmetic/activations/reductions; no activation FP16"
-    ShaderPortfolio: "13 production SDSL-V pipelines; ids 24-36; reused unchanged"
-    MemoryPlan: "654891776 bytes steady-state; 361820672 byte parameter arena"
-    ExecutionPlan: "AdaLN -> attention -> FFN; resident FP32 boundary"
-	    ModelSemanticIdentity: "sha256:a8faf8923ab4c7489f04f790f9778958c21068eb7875eecf222a859a3291d436"
-	    ProductionExecutionIdentity: "sha256:0868bd2b1127fa750fed1e826aeeb78ace75058efb3b6da8e09d031eedb16f52"
-	    AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1"
-	    AuditProfileIdentity: "sha256:de558800cbe07b4a9403c4ca92e378b040994778718c148174e0c72c22e9a80a"
+    ShaderPortfolio: "NoiseRefiner ids 24-36; ContextRefiner reuses ids 25,26,31-37 and adds ids 38-39"
+    MemoryPlan: "NoiseRefiner: 654891776 bytes steady-state; ContextRefiner: 536870912 bytes steady-state; shared window is sized for NoiseRefiner"
+    ExecutionPlan: "NoiseRefiner: AdaLN -> attention -> FFN; ContextRefiner: RMSNorm -> attention -> FFN; independent resident FP32 chains"
+	    ModelSemanticIdentity: "sha256:a3be975154e505ee1757a67f8d21ca791abc9d5347c9a29be127b7b96725446d"
+	    ProductionExecutionIdentity: "sha256:cdfc5326beb859db5c39c0cee32018bd2bf12da8dec2e22a9208a6ae47749a22"
+    AuditProfile: "NoiseRefinerPersistentProjectionSummary.v1; ContextRefinerPersistentProjectionSummary.v1"
+	    AuditProfileIdentity: "sha256:81e46633d34aea59ca040654fe23d9244099792f35b53660bdbd30e2ab29c26f"
 	    AuditBudgetBytes: 47186176
 	    AuditPolicy: "Full small vectors; ProjectionAndSummary large persistent stages; static capture at last legal lifetime; no repeated prefix replay"
     Blocks: [
-        ResolvedBlock { Id: 0 Name: "NoiseRefiner0" ParameterSet: "NoiseRefiner0" Parameters: "noise_refiner.0" Cache: "sha256:a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e" Oracle: "O19.NoiseRefiner0" Predecessor: "" Successor: "NoiseRefiner1" },
-        ResolvedBlock { Id: 1 Name: "NoiseRefiner1" ParameterSet: "NoiseRefiner1" Parameters: "noise_refiner.1" Cache: "sha256:80c0cd75f44cc434d9306c0fd9a8f02e48b593ecc254de01c1f8fcc29f4bc7c8" Oracle: "sha256:9b133c9ed3772f782e1bd77ff5b89732dc28406eec2078f1692d1899e2eb39e7" Predecessor: "NoiseRefiner0" Successor: "" }
+        ResolvedBlock { Family: "ZImageTurbo.NoiseRefiner" Id: 0 Name: "NoiseRefiner0" ParameterSet: "NoiseRefiner0" Parameters: "noise_refiner.0" Cache: "sha256:a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e" Oracle: "O19.NoiseRefiner0" Predecessor: "" Successor: "NoiseRefiner1" Transport: "ModelEmbedding.FP32 resident" },
+        ResolvedBlock { Family: "ZImageTurbo.NoiseRefiner" Id: 1 Name: "NoiseRefiner1" ParameterSet: "NoiseRefiner1" Parameters: "noise_refiner.1" Cache: "sha256:80c0cd75f44cc434d9306c0fd9a8f02e48b593ecc254de01c1f8fcc29f4bc7c8" Oracle: "sha256:9b133c9ed3772f782e1bd77ff5b89732dc28406eec2078f1692d1899e2eb39e7" Predecessor: "NoiseRefiner0" Successor: "" Transport: "ModelEmbedding.FP32 resident" },
+        ResolvedBlock { Family: "ZImageTurbo.ContextRefiner" Id: 0 Name: "ContextRefiner0" ParameterSet: "ContextRefiner0" Parameters: "context_refiner.0" Cache: "sha256:c08b908a921a80e16995abc3f3eefcadd1a94a78cd76b56e58d6b21e6ce412ae" Oracle: "sha256:d2b8167de614da25211eb69991e1b7700992bf5f4ae527bff8a55366ea1ae6df" Predecessor: "ContextEmbedding" Successor: "ContextRefiner1" Transport: "ContextEmbedding.FP32 resident" },
+        ResolvedBlock { Family: "ZImageTurbo.ContextRefiner" Id: 1 Name: "ContextRefiner1" ParameterSet: "ContextRefiner1" Parameters: "context_refiner.1" Cache: "sha256:30268c3b0d7a6fafc411119c929326854e73d394ec95ebeba21f89aa43dfc95f" Oracle: "sha256:08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0" Predecessor: "ContextRefiner0" Successor: "MainTransformer.ContextInput" Transport: "ContextEmbedding.FP32 resident" }
     ]
-    Flow: "NoiseRefiner0 -> NoiseRefiner1; FP32 resident; atomic rebind; no BF16 cast; no host bounce"
+    Flow: "NoiseRefiner0 -> NoiseRefiner1 and ContextEmbedding -> ContextRefiner0 -> ContextRefiner1; independent streams; family-local FP32 resident handoff; atomic rebind; no BF16 cast; no host bounce"
     Replay: "assembly-family + parameter-set + binding-generation + input + execution-contract"
 }

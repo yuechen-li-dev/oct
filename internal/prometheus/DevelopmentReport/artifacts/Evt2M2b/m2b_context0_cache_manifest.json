@@ -1,0 +1,8 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.cache-manifest.v1",
+  "block": "context_refiner.0",
+  "cache_aggregate_sha256": "c08b908a921a80e16995abc3f3eefcadd1a94a78cd76b56e58d6b21e6ce412ae",
+  "tensor_count": 11,
+  "package_bytes_fp16": 353925632,
+  "validation": "tools/evt2_payload_check validates the closed ordered package before native creation"
+}

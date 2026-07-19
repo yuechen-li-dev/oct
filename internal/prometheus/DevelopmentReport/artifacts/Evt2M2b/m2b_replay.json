@@ -1,0 +1,7 @@
+{
+  "schema": "oct.prometheus.evt2.m2b.replay.v1",
+  "identity_domains": ["model semantic", "production execution", "audit profile", "whole lock", "parameter aggregate", "canonical authority", "resident generation"],
+  "context_replay": "execution plan plus ContextEmbedding ingress identity or retained ContextRefiner0 generation, output identity, and parameter-set aggregate",
+  "transition": "ContextRefiner rebind clears output validity, resident predecessor generation, and replay acceptance before ContextRefiner1 execution",
+  "determinism": "identical warm ContextRefiner executions reuse preallocated ownership and retain an immutable predecessor boundary"
+}

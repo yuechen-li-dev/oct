@@ -333,6 +333,262 @@ FACT(PrometheusM1BIngressRejectsWrongExternalByteCounts)
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "ingress ABI fault runtime destroys safely");
 }
 
+FACT(PrometheusContextRefinerRealPayloadExecutesTheClosedResidentBlock)
+{
+    const char* enabled = std::getenv("OCT_EVT2_M2B_REAL");
+    const char* cacheRootText = std::getenv("OCT_EVT2_CACHE");
+    if (enabled == nullptr || std::string(enabled) != "1" || cacheRootText == nullptr) {
+        SKIP("set OCT_EVT2_M2B_REAL=1 and OCT_EVT2_CACHE for the ContextRefiner hardware lane");
+    }
+    const std::filesystem::path cacheRoot(cacheRootText);
+    const std::filesystem::path layer = cacheRoot / "layers" /
+        "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6" / "context_refiner.0";
+    const std::filesystem::path canonical = cacheRoot / "canonical" /
+        "f332072aa78be7aecdf3ee76d5c247082da564a6" / "m2b-fp32-reference" / "context_refiner.0";
+    constexpr std::array<const char*, 11> names{{
+        "context_refiner.0.attention.k_norm.weight.fp16.bin", "context_refiner.0.attention.out.weight.fp16.bin",
+        "context_refiner.0.attention.q_norm.weight.fp16.bin", "context_refiner.0.attention.qkv.weight.fp16.bin",
+        "context_refiner.0.attention_norm1.weight.fp16.bin", "context_refiner.0.attention_norm2.weight.fp16.bin",
+        "context_refiner.0.feed_forward.w1.weight.fp16.bin", "context_refiner.0.feed_forward.w2.weight.fp16.bin",
+        "context_refiner.0.feed_forward.w3.weight.fp16.bin", "context_refiner.0.ffn_norm1.weight.fp16.bin",
+        "context_refiner.0.ffn_norm2.weight.fp16.bin"}};
+    constexpr std::array<std::uint64_t, 11> byteCounts{{256u,29491200u,256u,88473600u,7680u,7680u,78643200u,78643200u,78643200u,7680u,7680u}};
+    std::array<std::vector<std::uint8_t>, 11> weightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, 11> uploads{};
+    for (std::uint32_t index = 0u; index < names.size(); ++index) {
+        weightBytes[index] = read_binary_file(layer / names[index]);
+        ASSERT_EQUAL(byteCounts[index], static_cast<std::uint64_t>(weightBytes[index].size()), "ContextRefiner cache tensor has its declared physical size");
+        uploads[index].binding_index = index;
+        uploads[index].bytes = weightBytes[index].data();
+        uploads[index].byte_count = weightBytes[index].size();
+        uploads[index].content_identity = 0x7100u + index;
+        uploads[index].layout_identity = 0x7200u + index;
+    }
+    const std::vector<std::uint8_t> inputBytes = read_binary_file(canonical / "input.f32.bin");
+    const std::vector<std::uint8_t> referenceBytes = read_binary_file(canonical / "final_output.f32.bin");
+    ASSERT_EQUAL(32u * 3840u * sizeof(float), static_cast<std::uint64_t>(inputBytes.size()), "ContextEmbedding input has the fixed FP32 ABI");
+    ASSERT_EQUAL(inputBytes.size(), referenceBytes.size(), "ContextRefiner canonical final has the fixed FP32 ABI");
+    if (inputBytes.size() != 32u * 3840u * sizeof(float) || referenceBytes.size() != inputBytes.size()) return;
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "ContextRefiner runtime creates");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    PrometheusContextRefinerCreateRequest create{};
+    create.struct_size = sizeof(create);
+    create.model_local_block_id = 0u;
+    create.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+    create.upload_count = static_cast<std::uint32_t>(uploads.size());
+    create.uploads = uploads.data();
+    std::uint64_t blockID = 0u;
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_create(runtime, &create, &blockID, &evidence), "ContextRefiner0 creates from its lock-resolved closed bundle");
+    if (blockID == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        return;
+    }
+    PrometheusContextRefiner0ExecuteRequest execute{};
+    execute.struct_size = sizeof(execute);
+    execute.context_input = reinterpret_cast<const float*>(inputBytes.data());
+    execute.context_input_bytes = inputBytes.size();
+    execute.input_identity = 0xf6e4a2842dbbdfa7ull;
+    execute.output_identity = 0xd2b8167de614da25ull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner0_execute(runtime, blockID, &execute, &evidence), "ContextRefiner0 executes as one resident FP32 command sequence");
+    const std::uint64_t context0FirstExecutionNs = evidence.last_execution_ns;
+    const std::uint64_t context0Allocations = evidence.warm_buffer_allocation_count;
+    const std::uint64_t context0Uploads = evidence.weight_upload_count;
+    const std::uint64_t context0Pipelines = evidence.pipeline_create_count;
+    const std::uint64_t context0Descriptors = evidence.descriptor_set_count;
+    std::array<std::uint64_t, 10> context0WarmNs{};
+    for (std::uint32_t iteration = 0u; iteration < context0WarmNs.size(); ++iteration) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner0_execute(runtime, blockID, &execute, &evidence),
+                     "ContextRefiner0 warm execution retains its closed FP32 ingress contract");
+        context0WarmNs[iteration] = evidence.last_execution_ns;
+    }
+    ASSERT_EQUAL(context0Allocations, evidence.warm_buffer_allocation_count, "ContextRefiner0 warm executions allocate no buffers");
+    ASSERT_EQUAL(context0Uploads, evidence.weight_upload_count, "ContextRefiner0 warm executions upload no weights");
+    ASSERT_EQUAL(context0Pipelines, evidence.pipeline_create_count, "ContextRefiner0 warm executions create no pipelines");
+    ASSERT_EQUAL(context0Descriptors, evidence.descriptor_set_count, "ContextRefiner0 warm executions grow no descriptor pool");
+    const std::uint64_t firstGeneration = evidence.output_generation;
+    std::vector<std::uint32_t> staticAudit(PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_ARENA_BYTES / sizeof(std::uint32_t));
+    PrometheusContextRefinerStaticAuditRequest staticRequest{};
+    staticRequest.struct_size = sizeof(staticRequest);
+    staticRequest.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+    staticRequest.input_generation = firstGeneration;
+    staticRequest.output_identity = 0xd2b8167de614da25ull;
+    staticRequest.audit_arena = staticAudit.data();
+    staticRequest.audit_arena_capacity_bytes = staticAudit.size() * sizeof(std::uint32_t);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_execute_static_audit(runtime, blockID, &staticRequest, &evidence), "ContextRefiner static audit captures every lock-declared persistent stage in one execution");
+    constexpr std::array<const char*, PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_STAGE_COUNT> stageNames{{
+        "context_embedding_input", "attention_norm", "qkv", "q_norm", "k_norm", "q_rope", "k_rope",
+        "attention_aggregation", "attention_projection", "attention_residual", "ffn_norm", "w1", "w3",
+        "ffn_gated_hidden", "w2", "final_output"}};
+    for (std::uint32_t stage = 0u; stage < stageNames.size(); ++stage) {
+        const auto& entry = k_prom_zimage_turbo_context_audit_schedule[stage];
+        const std::vector<std::uint8_t> stageBytes = stage == 0u
+            ? read_binary_file(canonical / "input.f32.bin")
+            : read_binary_file(canonical / "stages" / (std::string(stageNames[stage]) + ".f32.bin"));
+        ASSERT_EQUAL(static_cast<std::uint64_t>(entry.element_count) * sizeof(float), static_cast<std::uint64_t>(stageBytes.size()), "ContextRefiner canonical stage has the scheduled extent");
+        double maximumDifference = 0.0;
+        const std::uint32_t words = entry.audit_destination_offset / sizeof(std::uint32_t);
+        for (std::uint32_t projection = 0u; projection < entry.projection_key_count; ++projection) {
+            const std::uint32_t key = staticAudit[words + 16u + projection * 2u];
+            float actual = 0.0f, reference = 0.0f;
+            std::memcpy(&actual, &staticAudit[words + 17u + projection * 2u], sizeof(actual));
+            std::memcpy(&reference, stageBytes.data() + key * sizeof(float), sizeof(reference));
+            maximumDifference = std::max(maximumDifference, std::fabs(static_cast<double>(actual) - static_cast<double>(reference)));
+        }
+        std::cout << "M2B stage=" << stageNames[stage] << " projection_linf=" << maximumDifference << "\n";
+        ASSERT_TRUE(std::isfinite(maximumDifference) && maximumDifference <= 1.0e-4,
+                    "ContextRefiner static-audit projection matches its canonical stage without a broad tolerance");
+    }
+    std::vector<float> output(32u * 3840u);
+    PrometheusContextRefinerFinalAuditRequest audit{};
+    audit.struct_size = sizeof(audit);
+    audit.required_output_generation = evidence.output_generation;
+    audit.output_identity = execute.output_identity;
+    audit.output = output.data();
+    audit.output_element_capacity = output.size();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_audit_final(runtime, blockID, &audit, &evidence), "ContextRefiner final audit is an explicit post-completion egress");
+    float finiteMaximum = 0.0f;
+    double errorSquares = 0.0, referenceSquares = 0.0, linf = 0.0;
+    for (std::size_t index = 0u; index < output.size(); ++index) {
+        float reference = 0.0f;
+        std::memcpy(&reference, referenceBytes.data() + index * sizeof(float), sizeof(reference));
+        const double difference = static_cast<double>(output[index]) - static_cast<double>(reference);
+        finiteMaximum = std::max(finiteMaximum, std::fabs(output[index]));
+        errorSquares += difference * difference;
+        referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+        linf = std::max(linf, std::fabs(difference));
+    }
+    const double relativeL2 = std::sqrt(errorSquares / referenceSquares);
+    ASSERT_TRUE(std::isfinite(finiteMaximum), "ContextRefiner0 final output is finite");
+    ASSERT_TRUE(std::isfinite(relativeL2) && std::isfinite(linf), "ContextRefiner0 final comparison is finite");
+    std::cout << "M2B ContextRefiner0 final_abs_max=" << finiteMaximum << " relative_l2=" << relativeL2
+              << " linf=" << linf << " execution_ns=" << evidence.last_execution_ns << "\n";
+    ASSERT_TRUE(relativeL2 <= 1.0e-5 && linf <= 1.0e-3, "ContextRefiner0 final stays within the accepted FP32 numerical bound");
+    const std::uint64_t context0ResidentGeneration = evidence.output_generation;
+    const std::filesystem::path layer1 = cacheRoot / "layers" /
+        "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6" / "context_refiner.1";
+    const std::filesystem::path canonical1 = cacheRoot / "canonical" /
+        "f332072aa78be7aecdf3ee76d5c247082da564a6" / "m2b-fp32-reference" / "context_refiner.1";
+    std::array<std::vector<std::uint8_t>, 11> weightBytes1{};
+    std::array<PrometheusModelBlockWeightUpload, 11> uploads1{};
+    for (std::uint32_t index = 0u; index < names.size(); ++index) {
+        std::string name(names[index]);
+        name.replace(0u, std::string("context_refiner.0").size(), "context_refiner.1");
+        weightBytes1[index] = read_binary_file(layer1 / name);
+        ASSERT_EQUAL(byteCounts[index], static_cast<std::uint64_t>(weightBytes1[index].size()), "ContextRefiner1 cache tensor has its declared physical size");
+        uploads1[index].binding_index = index;
+        uploads1[index].bytes = weightBytes1[index].data();
+        uploads1[index].byte_count = weightBytes1[index].size();
+        uploads1[index].content_identity = 0x7300u + index;
+        uploads1[index].layout_identity = 0x7400u + index;
+    }
+    PrometheusContextRefinerRebindRequest rebind{};
+    rebind.struct_size = sizeof(rebind);
+    rebind.model_local_block_id = 1u;
+    rebind.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
+    rebind.upload_count = static_cast<std::uint32_t>(uploads1.size());
+    rebind.uploads = uploads1.data();
+    PrometheusContextRefinerRebindRequest invalidRebind = rebind;
+    invalidRebind.lock_identity ^= 1u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_context_refiner_rebind(runtime, blockID, &invalidRebind, &evidence),
+                 "ContextRefiner rebind rejects a stale or foreign lock before resident mutation");
+    invalidRebind = rebind;
+    invalidRebind.model_local_block_id = 0u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_context_refiner_rebind(runtime, blockID, &invalidRebind, &evidence),
+                 "ContextRefiner rebind rejects the illegal ContextRefiner0 to ContextRefiner0 transition");
+    invalidRebind = rebind;
+    invalidRebind.upload_count -= 1u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_context_refiner_rebind(runtime, blockID, &invalidRebind, &evidence),
+                 "ContextRefiner rebind rejects a partial immutable ContextRefiner1 package");
+    const auto contextRebindBegin = std::chrono::steady_clock::now();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_rebind(runtime, blockID, &rebind, &evidence), "ContextRefiner0 weights atomically rebind to ContextRefiner1");
+    const std::uint64_t contextRebindNs = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - contextRebindBegin).count());
+    PrometheusContextRefinerResidentExecuteRequest execute1{};
+    execute1.struct_size = sizeof(execute1);
+    execute1.input_generation = context0ResidentGeneration;
+    execute1.output_identity = 0x08377e8a46b65cffull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_execute_resident(runtime, blockID, &execute1, &evidence), "ContextRefiner1 consumes the resident FP32 ContextRefiner0 boundary");
+    const std::uint64_t context1FirstExecutionNs = evidence.last_execution_ns;
+    const std::uint64_t context1Allocations = evidence.warm_buffer_allocation_count;
+    const std::uint64_t context1Uploads = evidence.weight_upload_count;
+    const std::uint64_t context1Pipelines = evidence.pipeline_create_count;
+    const std::uint64_t context1Descriptors = evidence.descriptor_set_count;
+    std::array<std::uint64_t, 10> context1WarmNs{};
+    for (std::uint32_t iteration = 0u; iteration < context1WarmNs.size(); ++iteration) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_execute_resident(runtime, blockID, &execute1, &evidence),
+                     "ContextRefiner1 warm execution reuses the immutable resident ContextRefiner0 boundary");
+        context1WarmNs[iteration] = evidence.last_execution_ns;
+    }
+    ASSERT_EQUAL(context1Allocations, evidence.warm_buffer_allocation_count, "ContextRefiner1 warm executions allocate no buffers");
+    ASSERT_EQUAL(context1Uploads, evidence.weight_upload_count, "ContextRefiner1 warm executions upload no weights");
+    ASSERT_EQUAL(context1Pipelines, evidence.pipeline_create_count, "ContextRefiner1 warm executions create no pipelines");
+    ASSERT_EQUAL(context1Descriptors, evidence.descriptor_set_count, "ContextRefiner1 warm executions grow no descriptor pool");
+    const std::vector<std::uint8_t> reference1Bytes = read_binary_file(canonical1 / "final_output.f32.bin");
+    ASSERT_EQUAL(referenceBytes.size(), reference1Bytes.size(), "ContextRefiner1 canonical final has the fixed FP32 ABI");
+    staticRequest.input_generation = context0ResidentGeneration;
+    staticRequest.output_identity = execute1.output_identity;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_execute_static_audit(runtime, blockID, &staticRequest, &evidence),
+                 "ContextRefiner1 static audit reuses the immutable ContextRefiner0 resident boundary");
+    for (std::uint32_t stage = 0u; stage < stageNames.size(); ++stage) {
+        const auto& entry = k_prom_zimage_turbo_context_audit_schedule[stage];
+        const std::vector<std::uint8_t> stageBytes = stage == 0u
+            ? read_binary_file(canonical / "stages" / "final_output.f32.bin")
+            : read_binary_file(canonical1 / "stages" / (std::string(stageNames[stage]) + ".f32.bin"));
+        double maximumDifference = 0.0;
+        const std::uint32_t words = entry.audit_destination_offset / sizeof(std::uint32_t);
+        for (std::uint32_t projection = 0u; projection < entry.projection_key_count; ++projection) {
+            const std::uint32_t key = staticAudit[words + 16u + projection * 2u];
+            float actual = 0.0f, reference = 0.0f;
+            std::memcpy(&actual, &staticAudit[words + 17u + projection * 2u], sizeof(actual));
+            std::memcpy(&reference, stageBytes.data() + key * sizeof(float), sizeof(reference));
+            maximumDifference = std::max(maximumDifference, std::fabs(static_cast<double>(actual) - static_cast<double>(reference)));
+        }
+        std::cout << "M2B context1_static_stage=" << stageNames[stage] << " projection_linf=" << maximumDifference << "\n";
+        ASSERT_TRUE(std::isfinite(maximumDifference) && maximumDifference <= 1.0e-4,
+                    "ContextRefiner1 static-audit projection matches its canonical stage without a broad tolerance");
+    }
+    PrometheusContextRefinerFinalAuditRequest audit1{};
+    audit1.struct_size = sizeof(audit1);
+    audit1.required_output_generation = evidence.output_generation;
+    audit1.output_identity = execute1.output_identity;
+    audit1.output = output.data();
+    audit1.output_element_capacity = output.size();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_audit_final(runtime, blockID, &audit1, &evidence), "ContextRefiner1 final audit is an explicit post-completion egress");
+    double errorSquares1 = 0.0, referenceSquares1 = 0.0, linf1 = 0.0;
+    for (std::size_t index = 0u; index < output.size(); ++index) {
+        float reference = 0.0f;
+        std::memcpy(&reference, reference1Bytes.data() + index * sizeof(float), sizeof(reference));
+        const double difference = static_cast<double>(output[index]) - static_cast<double>(reference);
+        errorSquares1 += difference * difference;
+        referenceSquares1 += static_cast<double>(reference) * static_cast<double>(reference);
+        linf1 = std::max(linf1, std::fabs(difference));
+    }
+    const double relativeL21 = std::sqrt(errorSquares1 / referenceSquares1);
+    std::cout << "M2B ContextRefiner1 relative_l2=" << relativeL21 << " linf=" << linf1
+              << " execution_ns=" << evidence.last_execution_ns << "\n";
+    std::cout << "M2B timing context0_first_ns=" << context0FirstExecutionNs << " context0_warm_ns=";
+    for (std::size_t index = 0u; index < context0WarmNs.size(); ++index) {
+        if (index != 0u) std::cout << ',';
+        std::cout << context0WarmNs[index];
+    }
+    std::cout << " rebind_ns=" << contextRebindNs << " context1_first_ns=" << context1FirstExecutionNs
+              << " context1_warm_ns=";
+    for (std::size_t index = 0u; index < context1WarmNs.size(); ++index) {
+        if (index != 0u) std::cout << ',';
+        std::cout << context1WarmNs[index];
+    }
+    std::cout << " warm_churn=zero\n";
+    ASSERT_TRUE(std::isfinite(relativeL21) && relativeL21 <= 1.0e-5 && linf1 <= 1.0e-3,
+                "ContextRefiner1 resident chain output stays within the accepted FP32 numerical bound");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "ContextRefiner block destroys safely");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "ContextRefiner runtime destroys safely");
+}
+
 FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
 {
     const char* enabled = std::getenv("OCT_EVT2_M1B_REAL");
@@ -807,7 +1063,7 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
             }
             PrometheusNoiseRefinerRebindRequest rebind{};
             rebind.struct_size = sizeof(rebind);
-            rebind.lock_identity = 0xb3660657c5546e9cull;
+            rebind.lock_identity = PROM_ZIMAGE_TURBO_AUDIT_LOCK_ID;
             rebind.model_local_block_id = 1u;
             rebind.upload_count = static_cast<std::uint32_t>(block1Uploads.size());
             rebind.uploads = block1Uploads.data();
