@@ -1,0 +1,20 @@
+{
+  "attention": "QKV projection; per-head Q/K RMSNorm; three-axis RoPE; non-causal stable softmax attention; output projection",
+  "egress": "the source applies final projection only to the image prefix; M2C still audits the updated context suffix before that projection",
+  "feed_forward": "w2(SiLU(w1(x)) * w3(x))",
+  "main_family": {
+    "block_count": 30,
+    "checkpoint_prefix": "layers.N",
+    "constructor": "ZImageTransformerBlock(modulation=True)",
+    "container": "self.layers",
+    "indexed_source_special_cases": false
+  },
+  "modulation": "linear(adaln_input) split Q scale/gate then MLP scale/gate; scales are 1 + projection; gates use tanh",
+  "schema": "oct.prometheus.evt2.m2c.main-source-audit.v1",
+  "source": {
+    "path": "src/zimage/transformer.py",
+    "repository": "Tongyi-MAI/Z-Image",
+    "revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+    "url": "https://raw.githubusercontent.com/Tongyi-MAI/Z-Image/26f23eda626ffadda020b04ff79488e1d72004cd/src/zimage/transformer.py"
+  }
+}

@@ -1,0 +1,12 @@
+type ImagePositionedQueryHead = float4 @space(zimage.main_transformer.image.positioned_query_head);
+type ImagePositionedKeyHead = float4 @space(zimage.main_transformer.image.positioned_key_head);
+type ContextPositionedKeyHead = float4 @space(zimage.main_transformer.context.positioned_key_head);
+type AttentionScore = float4 @space(zimage.main_transformer.attention.score);
+
+fn ScoreImage(query: ImagePositionedQueryHead, key: ImagePositionedKeyHead) -> AttentionScore {
+    return float4(query.x * key.x, query.y * key.y, query.z * key.z, query.w * key.w);
+}
+
+fn Invalid(query: ImagePositionedQueryHead, contextKey: ContextPositionedKeyHead) -> AttentionScore {
+    return ScoreImage(query, contextKey);
+}

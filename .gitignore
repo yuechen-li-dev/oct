@@ -70,6 +70,12 @@ dist/
 temp/
 out/
 
+# Native SDSL-V header generation keeps these compiler intermediates beside
+# the checked-in header; only the generated .h is repository material.
+internal/prometheus/native/*_spirv.hlsl
+internal/prometheus/native/*_spirv.spv
+tools/__pycache__/
+
 # ------------------------------
 # Dependency vendoring
 # Default: keep vendor tracked when intentionally generated.

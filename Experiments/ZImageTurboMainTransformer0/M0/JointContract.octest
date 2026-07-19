@@ -1,0 +1,40 @@
+package ZImageTurboMainTransformer0
+
+import Artifact
+import Json
+
+[Suite("EVT2.M2C.JointContract")]
+[Fact]
+fn JointStreamIsImageFirstWithTwoPositionDomains() -> Void {
+    Assert.Equal(1056, JointTokenCount(), "joint stream width")
+    Assert.True(IsImageToken(1023), "last image token remains in image prefix")
+    Assert.False(IsImageToken(1024), "first context token follows image prefix")
+    Assert.Equal(1024, ContextJointOffset(0), "context starts after full image grid")
+    Assert.Equal(1055, ContextJointOffset(31), "context suffix ends joint stream")
+
+    let image = ImagePosition(1023)
+    Assert.Equal(33, image.Frame, "image frame reserves padded text and frame zero")
+    Assert.Equal(31, image.Row, "last image row")
+    Assert.Equal(31, image.Column, "last image column")
+    let context = ContextPosition(31)
+    Assert.Equal(32, context.Frame, "text RoPE uses token plus one")
+    Assert.Equal(0, context.Row, "text rows are zero")
+    Assert.Equal(0, context.Column, "text columns are zero")
+}
+
+[Suite("EVT2.M2C.JointContract")]
+[Fact]
+fn AdaLnOrderMatchesTheMainTransformerSource() -> Void {
+    Assert.Equal("attention_scale", AdaLnSegment(0), "first segment")
+    Assert.Equal("attention_gate", AdaLnSegment(1), "second segment")
+    Assert.Equal("mlp_scale", AdaLnSegment(2), "third segment")
+    Assert.Equal("mlp_gate", AdaLnSegment(3), "fourth segment")
+}
+
+[Suite("EVT2.M2C.JointContract")]
+[Artifact]
+fn WriteM2CJointContractWitness() -> Void {
+    let root = "internal/prometheus/DevelopmentReport/artifacts/Evt2M2c"
+    let json = Json.Object("{\"schema\":\"oct.prometheus.evt2.m2c.oct-joint-contract.v1\",\"composition\":\"Joint = Concat(Image, Context)\",\"image\":{\"offset\":0,\"tokens\":1024,\"position\":\"[33,row,column]\"},\"context\":{\"offset\":1024,\"tokens\":32,\"position\":\"[token+1,0,0]\"},\"adaln\":[\"attention_scale\",\"attention_gate\",\"mlp_scale\",\"mlp_gate\"]}")
+    Artifact.WriteJson(root + "/m2c_oct_joint_contract.json", json)
+}

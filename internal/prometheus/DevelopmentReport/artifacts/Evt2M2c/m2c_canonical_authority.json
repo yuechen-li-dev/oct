@@ -1,0 +1,552 @@
+{
+  "cache_aggregate_sha256": "48e987811885741ae5f1bf16b28db33ca7f23e09f1e99c1c2fe3d81bdd1caeb6",
+  "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "execution": {
+    "deterministic_algorithms": true,
+    "device": "NVIDIA GeForce RTX 3070",
+    "tf32": false,
+    "torch": "2.9.1+cu130"
+  },
+  "family": "ZImageTurbo.MainTransformer",
+  "final_context_output": {
+    "absolute_max": 663.7386474609375,
+    "bytes": 491520,
+    "dtype": "float32",
+    "finite": true,
+    "max": 663.7386474609375,
+    "min": -84.91959381103516,
+    "relative_path": "stages/final_context_output.f32.bin",
+    "sha256": "0d4b5cf45c2eace2b8cce21124505961df5e05c4a3a469ac7259c2ce060a0173",
+    "shape": [
+      32,
+      3840
+    ]
+  },
+  "final_image_output": {
+    "absolute_max": 42.31656265258789,
+    "bytes": 15728640,
+    "dtype": "float32",
+    "finite": true,
+    "max": 42.31656265258789,
+    "min": -6.844869136810303,
+    "relative_path": "stages/final_image_output.f32.bin",
+    "sha256": "9c8fee6d4208500b585e118150056b05c984bc14374f3f47a875543d58868555",
+    "shape": [
+      1024,
+      3840
+    ]
+  },
+  "inputs": {
+    "conditioning": {
+      "bytes": 512,
+      "dtype": "bfloat16",
+      "relative_path": "run_02/noise_refiner_0_timestep.bin",
+      "sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2"
+    },
+    "prepared_context_stream": {
+      "bytes": 491520,
+      "dtype": "float32",
+      "relative_path": "final_output.f32.bin",
+      "sha256": "08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0"
+    },
+    "prepared_image_stream": {
+      "bytes": 15728640,
+      "dtype": "float32",
+      "relative_path": "final_output.f32.bin",
+      "sha256": "9b133c9ed3772f782e1bd77ff5b89732dc28406eec2078f1692d1899e2eb39e7"
+    }
+  },
+  "model_revision": "f332072aa78be7aecdf3ee76d5c247082da564a6",
+  "precision_policy": "FP16 immutable packaged weights expanded to FP32 at use; FP32 activations, reductions, RoPE, softmax, projections, and residuals; no activation FP16",
+  "representative": "layers.0",
+  "schema": "oct.prometheus.evt2.m2c.main-transformer-canonical.v1",
+  "selected_attention": {
+    "attention_logits_context_query0_head0": {
+      "absolute_max": 8.798490524291992,
+      "bytes": 4224,
+      "dtype": "float32",
+      "finite": true,
+      "max": 8.798490524291992,
+      "min": -2.1678712368011475,
+      "relative_path": "stages/attention_logits_context_query0_head0.f32.bin",
+      "sha256": "c1deaf02fe8466930f772b9d45aa43806b1575d484b65c03e32842217387931d",
+      "shape": [
+        1056
+      ]
+    },
+    "attention_logits_image_query0_head0": {
+      "absolute_max": 8.24138069152832,
+      "bytes": 4224,
+      "dtype": "float32",
+      "finite": true,
+      "max": 8.24138069152832,
+      "min": -1.0478606224060059,
+      "relative_path": "stages/attention_logits_image_query0_head0.f32.bin",
+      "sha256": "415444eafbd1789e8a19603439262ebfa8a84e6b1d6bc5adcd080012fa29ec25",
+      "shape": [
+        1056
+      ]
+    },
+    "attention_probabilities_context_query0_head0": {
+      "absolute_max": 0.5419772863388062,
+      "bytes": 4224,
+      "dtype": "float32",
+      "finite": true,
+      "max": 0.5419772863388062,
+      "min": 0.000009361610864289105,
+      "relative_path": "stages/attention_probabilities_context_query0_head0.f32.bin",
+      "sha256": "c61378efaf9d42b2de14c682ae46660768e61a2fa8338233ab232e2bc9d05ff0",
+      "shape": [
+        1056
+      ]
+    },
+    "attention_probabilities_image_query0_head0": {
+      "absolute_max": 0.031371768563985825,
+      "bytes": 4224,
+      "dtype": "float32",
+      "finite": true,
+      "max": 0.031371768563985825,
+      "min": 0.0000028991623821639223,
+      "relative_path": "stages/attention_probabilities_image_query0_head0.f32.bin",
+      "sha256": "0672d08b01d179caa6330b83cfced99d642023199bbc5823c8d137c63f4dc9cc",
+      "shape": [
+        1056
+      ]
+    }
+  },
+  "source_revision": "26f23eda626ffadda020b04ff79488e1d72004cd",
+  "stages": {
+    "adaln_projection": {
+      "absolute_max": 5.63784646987915,
+      "bytes": 61440,
+      "dtype": "float32",
+      "finite": true,
+      "max": 5.63784646987915,
+      "min": -4.478724479675293,
+      "relative_path": "stages/adaln_projection.f32.bin",
+      "sha256": "cc447abf1e9e6587693ee58c176a772832b7a524bf2521ecbee4c994fa4dfde4",
+      "shape": [
+        1,
+        15360
+      ]
+    },
+    "attention_aggregation": {
+      "absolute_max": 101.98052215576172,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 96.12508392333984,
+      "min": -101.98052215576172,
+      "relative_path": "stages/attention_aggregation.f32.bin",
+      "sha256": "12f2e74de81353388769e2be70a53907e75cca21497abdcb2323773a875ba3a2",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "attention_gate": {
+      "absolute_max": 0.9801642894744873,
+      "bytes": 15360,
+      "dtype": "float32",
+      "finite": true,
+      "max": 0.9801642894744873,
+      "min": -0.9641372561454773,
+      "relative_path": "stages/attention_gate.f32.bin",
+      "sha256": "06df1a012acba66d02980ac2fdf68374aed2d9d66c677be74a6ad14412004d91",
+      "shape": [
+        1,
+        3840
+      ]
+    },
+    "attention_modulated": {
+      "absolute_max": 45.572044372558594,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 45.572044372558594,
+      "min": -42.840763092041016,
+      "relative_path": "stages/attention_modulated.f32.bin",
+      "sha256": "db40a48a6025a3dd066f912236525b762612319b408e905b2979072fc6103cca",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "attention_norm": {
+      "absolute_max": 48.33340072631836,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 48.33340072631836,
+      "min": -18.07673454284668,
+      "relative_path": "stages/attention_norm.f32.bin",
+      "sha256": "5ed2ee961967a534db97edd7bc3dc73af474a80e9eb9d54f30e37b187e194198",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "attention_projection": {
+      "absolute_max": 9504.1640625,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 9504.1640625,
+      "min": -2823.4736328125,
+      "relative_path": "stages/attention_projection.f32.bin",
+      "sha256": "f01133d25c055ade5722c0e68392b49f6da4b7c3a9af031419394f5e99f36cf9",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "attention_residual": {
+      "absolute_max": 648.56396484375,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 648.56396484375,
+      "min": -84.91989135742188,
+      "relative_path": "stages/attention_residual.f32.bin",
+      "sha256": "9a6636ae712e815575eee64f971d1a685ac5880e11e068bc3aec6504eafa2972",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "attention_scale": {
+      "absolute_max": 5.662838935852051,
+      "bytes": 15360,
+      "dtype": "float32",
+      "finite": true,
+      "max": 5.662838935852051,
+      "min": -2.054882526397705,
+      "relative_path": "stages/attention_scale.f32.bin",
+      "sha256": "e4e22c1ea3c5ee58d79d60862da1c63b151e43772814914f26ce5162fcb1bf92",
+      "shape": [
+        1,
+        3840
+      ]
+    },
+    "context_input": {
+      "absolute_max": 647.8280029296875,
+      "bytes": 491520,
+      "dtype": "float32",
+      "finite": true,
+      "max": 647.8280029296875,
+      "min": -85.14974975585938,
+      "relative_path": "stages/context_input.f32.bin",
+      "sha256": "08377e8a46b65cff998b740a3fd0ba3c1565b471dad71fcca3f4310617c220b0",
+      "shape": [
+        32,
+        3840
+      ]
+    },
+    "ffn_modulated": {
+      "absolute_max": 33.23240661621094,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 33.23240661621094,
+      "min": -11.698415756225586,
+      "relative_path": "stages/ffn_modulated.f32.bin",
+      "sha256": "1c1d754e5acf6d6cdff14b92dee542a86b85fa5ceddcd05c996e43a44e518785",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "ffn_norm": {
+      "absolute_max": 56.37009048461914,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 56.37009048461914,
+      "min": -19.563806533813477,
+      "relative_path": "stages/ffn_norm.f32.bin",
+      "sha256": "af598130b32761571d8fa573e420e2eed702324f0cdc674da254eced9c46edfc",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "final_context_output": {
+      "absolute_max": 663.7386474609375,
+      "bytes": 491520,
+      "dtype": "float32",
+      "finite": true,
+      "max": 663.7386474609375,
+      "min": -84.91959381103516,
+      "relative_path": "stages/final_context_output.f32.bin",
+      "sha256": "0d4b5cf45c2eace2b8cce21124505961df5e05c4a3a469ac7259c2ce060a0173",
+      "shape": [
+        32,
+        3840
+      ]
+    },
+    "final_image_output": {
+      "absolute_max": 42.31656265258789,
+      "bytes": 15728640,
+      "dtype": "float32",
+      "finite": true,
+      "max": 42.31656265258789,
+      "min": -6.844869136810303,
+      "relative_path": "stages/final_image_output.f32.bin",
+      "sha256": "9c8fee6d4208500b585e118150056b05c984bc14374f3f47a875543d58868555",
+      "shape": [
+        1024,
+        3840
+      ]
+    },
+    "final_joint_output": {
+      "absolute_max": 663.7386474609375,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 663.7386474609375,
+      "min": -84.91959381103516,
+      "relative_path": "stages/final_joint_output.f32.bin",
+      "sha256": "28369528809327faa3d624665d21f2028363ac4224c7051827acdd1b7029561b",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "gated_hidden": {
+      "absolute_max": 24278.33203125,
+      "bytes": 43253760,
+      "dtype": "float32",
+      "finite": true,
+      "max": 4832.244140625,
+      "min": -24278.33203125,
+      "relative_path": "stages/gated_hidden.f32.bin",
+      "sha256": "1b73fe786de9b228d079dce8e61db38444608e80cd330fe5835a82380b9e9706",
+      "shape": [
+        1056,
+        10240
+      ]
+    },
+    "image_input": {
+      "absolute_max": 42.370689392089844,
+      "bytes": 15728640,
+      "dtype": "float32",
+      "finite": true,
+      "max": 42.370689392089844,
+      "min": -6.845043659210205,
+      "relative_path": "stages/image_input.f32.bin",
+      "sha256": "9b133c9ed3772f782e1bd77ff5b89732dc28406eec2078f1692d1899e2eb39e7",
+      "shape": [
+        1024,
+        3840
+      ]
+    },
+    "joint_input": {
+      "absolute_max": 647.8280029296875,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 647.8280029296875,
+      "min": -85.14974975585938,
+      "relative_path": "stages/joint_input.f32.bin",
+      "sha256": "5d34136990628a1057a263f9307d756be003b93ec805e59f80d1e66ab0893ea9",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "k": {
+      "absolute_max": 183.33297729492188,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 145.46136474609375,
+      "min": -183.33297729492188,
+      "relative_path": "stages/k.f32.bin",
+      "sha256": "3b1810a7f5f40411e03070e1cbb385e1fbe0fc489c92c984714fcbe6026ae2df",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "k_norm": {
+      "absolute_max": 10.755216598510742,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 9.921135902404785,
+      "min": -10.755216598510742,
+      "relative_path": "stages/k_norm.f32.bin",
+      "sha256": "4f8ea5ad0b597485a5d438c7f18df8cecd7e9108ab2799a38c604bf425906970",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "mlp_gate": {
+      "absolute_max": 0.9757272601127625,
+      "bytes": 15360,
+      "dtype": "float32",
+      "finite": true,
+      "max": 0.9757272601127625,
+      "min": -0.795543909072876,
+      "relative_path": "stages/mlp_gate.f32.bin",
+      "sha256": "11115c8c3be66ea6c7b21f172d26c66ffe45d73ac37d154ca2b0c1bce3790ac6",
+      "shape": [
+        1,
+        3840
+      ]
+    },
+    "mlp_scale": {
+      "absolute_max": 6.63784646987915,
+      "bytes": 15360,
+      "dtype": "float32",
+      "finite": true,
+      "max": 6.63784646987915,
+      "min": -3.478724479675293,
+      "relative_path": "stages/mlp_scale.f32.bin",
+      "sha256": "68b4807b44428ee19a370ae384a548f51cdb332b4df033d75c953ac037cc2e26",
+      "shape": [
+        1,
+        3840
+      ]
+    },
+    "positioned_k": {
+      "absolute_max": 10.599562644958496,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 10.496204376220703,
+      "min": -10.599562644958496,
+      "relative_path": "stages/positioned_k.f32.bin",
+      "sha256": "35453cc276d052d16552782e9283ef81d579325894bdb0241c7b22a65ef1f85a",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "positioned_q": {
+      "absolute_max": 9.544486999511719,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 9.544486999511719,
+      "min": -7.614905834197998,
+      "relative_path": "stages/positioned_q.f32.bin",
+      "sha256": "ab9621fe55df12839edeced93bc14238735c277e93ffbe7fff3b45f64df5c809",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "q": {
+      "absolute_max": 148.68234252929688,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 148.68234252929688,
+      "min": -130.81536865234375,
+      "relative_path": "stages/q.f32.bin",
+      "sha256": "24a4a9a1c8bf116e38128eb39aafa966103e76a13381869cf20624cb82ff6a5d",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "q_norm": {
+      "absolute_max": 7.440078258514404,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 6.260178089141846,
+      "min": -7.440078258514404,
+      "relative_path": "stages/q_norm.f32.bin",
+      "sha256": "e9b787de262827309c53a88089aadcaf9ad5ce98076f899dd9458bcc7690ecb7",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "qkv": {
+      "absolute_max": 183.33297729492188,
+      "bytes": 48660480,
+      "dtype": "float32",
+      "finite": true,
+      "max": 148.68234252929688,
+      "min": -183.33297729492188,
+      "relative_path": "stages/qkv.f32.bin",
+      "sha256": "40bdd2de8812bb97afa57a059392da1e982bb6bd7cfa8db2c84c642b3be87cf6",
+      "shape": [
+        1056,
+        11520
+      ]
+    },
+    "v": {
+      "absolute_max": 124.46742248535156,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 124.43144989013672,
+      "min": -124.46742248535156,
+      "relative_path": "stages/v.f32.bin",
+      "sha256": "d7d16ec170b876e08af6eb00a35767e74d54137f5e1a610a81192c5a96ad6766",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "w1": {
+      "absolute_max": 163.40036010742188,
+      "bytes": 43253760,
+      "dtype": "float32",
+      "finite": true,
+      "max": 163.40036010742188,
+      "min": -76.54154205322266,
+      "relative_path": "stages/w1.f32.bin",
+      "sha256": "482c19a6ae60471fc6044c1f2af4b9aea2108df3a6faaaa53a56eff52a20348b",
+      "shape": [
+        1056,
+        10240
+      ]
+    },
+    "w2": {
+      "absolute_max": 90446.9765625,
+      "bytes": 16220160,
+      "dtype": "float32",
+      "finite": true,
+      "max": 4263.0283203125,
+      "min": -90446.9765625,
+      "relative_path": "stages/w2.f32.bin",
+      "sha256": "09709ddf14048f8264e103bfca6362a0c864e15c4129bbe4fb732f41163eb933",
+      "shape": [
+        1056,
+        3840
+      ]
+    },
+    "w3": {
+      "absolute_max": 150.3700408935547,
+      "bytes": 43253760,
+      "dtype": "float32",
+      "finite": true,
+      "max": 149.7698974609375,
+      "min": -150.3700408935547,
+      "relative_path": "stages/w3.f32.bin",
+      "sha256": "1b8fe2159dab4fe1482cadf452a94296e1eb064549092f2a03edefa55a4806a9",
+      "shape": [
+        1056,
+        10240
+      ]
+    }
+  },
+  "stream_contract": {
+    "composition": "Joint = Concat(Image, Context)",
+    "context_coordinates": "[token+1, 0, 0] for token 0..31",
+    "context_offset": 1024,
+    "context_tokens": 32,
+    "dtype": "float32",
+    "image_coordinates": "[33, token//32, token%32] for token 0..1023",
+    "image_offset": 0,
+    "image_tokens": 1024,
+    "joint_tokens": 1056,
+    "width": 3840
+  }
+}

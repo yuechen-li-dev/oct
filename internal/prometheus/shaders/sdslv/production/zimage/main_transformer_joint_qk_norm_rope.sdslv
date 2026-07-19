@@ -1,0 +1,104 @@
+namespace Prometheus.Production.ZImage;
+
+// These names are nominal semantic boundaries only. They intentionally erase
+// to the existing FP32 buffer ABI: M2C models value spaces, not token axes.
+space zimage.main_transformer {
+    JointEmbedding: float4;
+    JointQueryHead: float4;
+    JointKeyHead: float4;
+    PositionedJointQueryHead: float4;
+    PositionedJointKeyHead: float4;
+    ImageCoordinate: float4;
+    ContextCoordinate: float4;
+}
+
+fn NormalizeJointQuery(value: JointQueryHead) -> JointQueryHead { return float4(value.x, value.y, value.z, value.w); }
+fn NormalizeJointKey(value: JointKeyHead) -> JointKeyHead { return float4(value.x, value.y, value.z, value.w); }
+fn PositionJointQuery(value: JointQueryHead) -> PositionedJointQueryHead { return float4(value.x, value.y, value.z, value.w); }
+fn PositionJointKey(value: JointKeyHead) -> PositionedJointKeyHead { return float4(value.x, value.y, value.z, value.w); }
+
+stream MainTransformerJointQkIO {
+    [binding(0)] Qkv: readwrite array<f32>;
+    [binding(1)] NormF16: readonly array<u32>;
+    [binding(2)] NormAudit: readwrite array<f32>;
+}
+
+record MainTransformerJointQkParams {
+    Epsilon: f32;
+    TokenCount: u32;
+    HeadCount: u32;
+    HeadWidth: u32;
+    SegmentOffset: u32;
+    ImageTokens: u32;
+}
+
+fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return rsqrt(value); }; return result; }
+fn CosineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return cos(value); }; return result; }
+fn SineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return sin(value); }; return result; }
+fn PowerF32(base: f32, exponent: f32) -> f32 { let result: f32 = HLSL<f32>(base, exponent) { return pow(base, exponent); }; return result; }
+fn UintToF32(value: u32) -> f32 { let result: f32 = HLSL<f32>(value) { return float(value); }; return result; }
+
+// One physical program owns Q and K by the closed segment-offset binding. The
+// first 1024 tokens use [33,row,column]; the 32-token suffix uses
+// [token+1,0,0]. It never treats those position domains as interchangeable.
+shader MainTransformerJointQkNormRope {
+    resources MainTransformerJointQkIO;
+    workgroup SumSquares: array<f32, 128u>;
+    workgroup HeadValues: array<f32, 128u>;
+
+    stage compute [numthreads(128u, 1u, 1u)] fn CS(params: MainTransformerJointQkParams) -> void {
+        let packedHead: u32 = GroupID.x;
+        let token: u32 = packedHead / params.HeadCount;
+        let head: u32 = packedHead - token * params.HeadCount;
+        let channel: u32 = GroupThreadID.x;
+        if token >= params.TokenCount or channel >= params.HeadWidth { return; }
+        let headOffset: u32 = head * params.HeadWidth + channel;
+        let index: u32 = token * 11520u + params.SegmentOffset + headOffset;
+        let value: f32 = Qkv[index];
+        HeadValues[channel] = value;
+        WorkgroupMemoryBarrierWithSync();
+        if channel == 0u {
+            var serialSum: f32 = 0.0;
+            for sourceChannel in 0u..params.HeadWidth {
+                let sourceValue: f32 = HeadValues[sourceChannel];
+                serialSum = serialSum + sourceValue * sourceValue;
+            }
+            SumSquares[0u] = serialSum;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let scaleLanes: float2 = Unpack<F16x2>(NormF16[channel / 2u]);
+        var scale: f32 = scaleLanes.x;
+        if (channel % 2u) != 0u { scale = scaleLanes.y; }
+        let invRms: f32 = ReciprocalSqrtF32(SumSquares[0u] / params.HeadWidth + params.Epsilon);
+        let normalized: f32 = value * invRms * scale;
+        NormAudit[token * 3840u + headOffset] = normalized;
+        var axisChannel: u32 = channel;
+        var axisWidth: u32 = 32u;
+        var coordinate: f32 = 0.0;
+        if token < params.ImageTokens { coordinate = 33.0; }
+        else { coordinate = UintToF32(token - params.ImageTokens + 1u); }
+        if channel >= 32u and channel < 80u {
+            axisWidth = 48u;
+            axisChannel = channel - 32u;
+            if token < params.ImageTokens { coordinate = UintToF32(token / 32u); } else { coordinate = 0.0; }
+        }
+        if channel >= 80u {
+            axisWidth = 48u;
+            axisChannel = channel - 80u;
+            if token < params.ImageTokens { coordinate = UintToF32(token % 32u); } else { coordinate = 0.0; }
+        }
+        let pair: u32 = axisChannel / 2u;
+        let frequency: f32 = 1.0 / PowerF32(256.0, (2.0 * UintToF32(pair)) / UintToF32(axisWidth));
+        let mateChannel: u32 = channel + 1u - 2u * (channel % 2u);
+        let mate: f32 = HeadValues[mateChannel];
+        let mateLanes: float2 = Unpack<F16x2>(NormF16[mateChannel / 2u]);
+        var mateScale: f32 = mateLanes.x;
+        if (mateChannel % 2u) != 0u { mateScale = mateLanes.y; }
+        let normalizedMate: f32 = mate * invRms * mateScale;
+        let cosine: f32 = CosineF32(coordinate * frequency);
+        let sine: f32 = SineF32(coordinate * frequency);
+        if (axisChannel % 2u) == 0u { Qkv[index] = normalized * cosine - normalizedMate * sine; }
+        if (axisChannel % 2u) != 0u { Qkv[index] = normalizedMate * sine + normalized * cosine; }
+        return;
+    }
+}

@@ -1,0 +1,24 @@
+{
+  "composition": "Joint = Concat(Image, Context)",
+  "dtype": "FP32",
+  "ingress_authority": "NoiseRefiner1 and ContextRefiner1 accepted FP32 final resident outputs",
+  "joint_tokens": 1056,
+  "layout": [
+    {
+      "positions": "[33, token//32, token%32]",
+      "stream": "Image",
+      "token_offset": 0,
+      "tokens": 1024,
+      "width": 3840
+    },
+    {
+      "positions": "[token+1, 0, 0]",
+      "stream": "Context",
+      "token_offset": 1024,
+      "tokens": 32,
+      "width": 3840
+    }
+  ],
+  "schema": "oct.prometheus.evt2.m2c.joint-stream-contract.v1",
+  "semantics": "both prefixes participate in every main-block attention, residual, and FFN update"
+}

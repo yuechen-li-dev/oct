@@ -1,0 +1,10 @@
+{
+  "non_claim": "Structural equivalence does not permit value substitution: M2D must bind the remaining 29 aggregate-identified packages.",
+  "schema": "oct.prometheus.evt2.m2c.representative-selection.v1",
+  "selected": "layers.0",
+  "selection_basis": [
+    "pinned source constructs every self.layers entry with the same modulation-enabled block class",
+    "all thirty checkpoint prefixes have the same 13 source role/shape/dtype fingerprint",
+    "layers.0 is the first source-defined main block and has a separate immutable cache aggregate"
+  ]
+}

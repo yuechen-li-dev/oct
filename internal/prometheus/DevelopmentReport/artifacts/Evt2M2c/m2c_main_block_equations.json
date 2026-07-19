@@ -1,0 +1,9 @@
+{
+  "adaln": "[sA,gA,sM,gM] = split(linear(timestep)); sA=1+sA; sM=1+sM; gA=tanh(gA); gM=tanh(gM)",
+  "attention": "A = OutProj(Softmax((RoPE(RMSNorm(Q)) @ RoPE(RMSNorm(K))^T) / sqrt(128)) @ V)",
+  "attention_residual": "R = X + gA * RMSNorm(A)",
+  "ffn": "H = SiLU(W1(RMSNorm(R) * sM)) * W3(RMSNorm(R) * sM); Y = R + gM * RMSNorm(W2(H))",
+  "input": "X = Concat(Image[1024,3840], Context[32,3840])",
+  "precision": "FP16 immutable weights widened at use; all listed arithmetic and resident stages remain FP32",
+  "schema": "oct.prometheus.evt2.m2c.main-equations.v1"
+}

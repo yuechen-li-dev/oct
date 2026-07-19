@@ -1,0 +1,35 @@
+package ZImageTurboMainTransformer0
+
+record Position3 {
+    Frame: Int
+    Row: Int
+    Column: Int
+}
+
+fn ImageTokenCount() -> Int { return 1024 }
+fn ContextTokenCount() -> Int { return 32 }
+fn JointTokenCount() -> Int { return ImageTokenCount() + ContextTokenCount() }
+
+fn ImagePosition(token: Int) -> Position3 {
+    return Position3 { Frame: 33 Row: token / 32 Column: token % 32 }
+}
+
+fn ContextPosition(token: Int) -> Position3 {
+    return Position3 { Frame: token + 1 Row: 0 Column: 0 }
+}
+
+fn IsImageToken(jointToken: Int) -> Bool { return jointToken < ImageTokenCount() }
+
+fn ContextJointOffset(contextToken: Int) -> Int { return ImageTokenCount() + contextToken }
+
+// The modulation projection has four contiguous model-width regions. The
+// source uses the resulting values as [1+scale, tanh(gate), 1+scale,
+// tanh(gate)] in this exact order.
+fn AdaLnSegment(lane: Int) -> String {
+    return switch lane {
+        case 0 => "attention_scale"
+        case 1 => "attention_gate"
+        case 2 => "mlp_scale"
+        else => "mlp_gate"
+    }
+}

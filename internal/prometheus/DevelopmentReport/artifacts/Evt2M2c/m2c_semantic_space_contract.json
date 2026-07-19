@@ -1,0 +1,33 @@
+{
+  "erasure": "nominal vector-value aliases erase before HLSL/SPIR-V; descriptor ABI, buffer layout, and runtime tags are unchanged",
+  "group": "zimage.main_transformer",
+  "invalid_fixtures": [
+    {
+      "diagnostic": "SDSL-V4123",
+      "mistake": "cross-stream positioned-key use",
+      "path": "examples/SDSL-V/conformance/invalid/MainTransformerContextKeyAsImageKey.sdslvinvalid"
+    },
+    {
+      "diagnostic": "SDSL-V4123",
+      "mistake": "context coordinate passed to image RoPE",
+      "path": "examples/SDSL-V/conformance/invalid/MainTransformerContextCoordinateAsImageCoordinate.sdslvinvalid"
+    }
+  ],
+  "non_claim": "token axes and probability-to-value token alignment remain out of scope for current SDSL-V tensor-axis typing",
+  "schema": "oct.prometheus.evt2.m2c.semantic-space-contract.v1",
+  "spaces": [
+    "JointEmbedding",
+    "JointQueryHead",
+    "JointKeyHead",
+    "PositionedJointQueryHead",
+    "PositionedJointKeyHead",
+    "ImageCoordinate",
+    "ContextCoordinate"
+  ],
+  "transitions": [
+    "JointEmbedding -\u003e JointQueryHead",
+    "JointEmbedding -\u003e JointKeyHead",
+    "JointQueryHead -\u003e PositionedJointQueryHead",
+    "JointKeyHead -\u003e PositionedJointKeyHead"
+  ]
+}

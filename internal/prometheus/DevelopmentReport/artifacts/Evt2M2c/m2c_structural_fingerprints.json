@@ -1,0 +1,608 @@
+{
+  "all_blocks": [
+    {
+      "block": "layers.0",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.1",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.2",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.3",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.4",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.5",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.6",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.7",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.8",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.9",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.10",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.11",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.12",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.13",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.14",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.15",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.16",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.17",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.18",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.19",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.20",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.21",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.22",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.23",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.24",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.25",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.26",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.27",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.28",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    },
+    {
+      "block": "layers.29",
+      "tensor_count": 13,
+      "roles": [
+        "BF16:adaLN_modulation.0.bias:[15360]",
+        "BF16:adaLN_modulation.0.weight:[15360 256]",
+        "BF16:attention.k_norm.weight:[128]",
+        "BF16:attention.out.weight:[3840 3840]",
+        "BF16:attention.q_norm.weight:[128]",
+        "BF16:attention.qkv.weight:[11520 3840]",
+        "BF16:attention_norm1.weight:[3840]",
+        "BF16:attention_norm2.weight:[3840]",
+        "BF16:feed_forward.w1.weight:[10240 3840]",
+        "BF16:feed_forward.w2.weight:[3840 10240]",
+        "BF16:feed_forward.w3.weight:[10240 3840]",
+        "BF16:ffn_norm1.weight:[3840]",
+        "BF16:ffn_norm2.weight:[3840]"
+      ],
+      "fingerprint_sha256": "2e510e60462f618cf9534705132a329613e94d99398370e3d4019b455b888076"
+    }
+  ],
+  "checkpoint": "sha256:2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "fingerprint_basis": "source dtype plus role suffix plus shape; values and cache aggregates remain package-specific",
+  "representative": "layers.0",
+  "schema": "oct.prometheus.evt2.m2c.structural-fingerprints.v1"
+}

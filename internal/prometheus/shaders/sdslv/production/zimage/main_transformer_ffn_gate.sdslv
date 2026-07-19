@@ -1,0 +1,34 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.main_transformer {
+    JointFfnHiddenW1: float4;
+    JointFfnHiddenW3: float4;
+    JointFfnGatedHidden: float4;
+}
+
+stream MainTransformerFfnGateIO {
+    [binding(0)] W1: readwrite array<f32>;
+    [binding(1)] W3PartA: readonly array<f32>;
+    [binding(2)] W3PartB: readonly array<f32>;
+    [binding(3)] W3PartC: readonly array<f32>;
+}
+
+record MainTransformerFfnGateParams { ElementCount: u32; Reserved0: u32; Reserved1: u32; Reserved2: u32; }
+fn ExponentialF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return exp(value); }; return result; }
+
+shader MainTransformerFfnGate {
+    resources MainTransformerFfnGateIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: MainTransformerFfnGateParams) -> void {
+        let index: u32 = DispatchThreadID.x;
+        if index >= params.ElementCount { return; }
+        let w1: f32 = W1[index];
+        let silu: f32 = w1 / (1.0 + ExponentialF32(-w1));
+        var w3: f32 = 0.0;
+        if index < 4055040u { w3 = W3PartA[index]; }
+        if index >= 4055040u and index < 8110080u { w3 = W3PartB[index - 4055040u]; }
+        if index >= 8110080u { w3 = W3PartC[index - 8110080u]; }
+        W1[index] = silu * w3;
+        return;
+    }
+}

@@ -1,0 +1,86 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.main_transformer {
+    PositionedJointQueryHead: float4;
+    PositionedJointKeyHead: float4;
+    JointValueHead: float4;
+    JointAttentionProbability: float4;
+}
+
+stream MainTransformerJointAttentionIO {
+    [binding(0)] Qkv: readonly array<f32>;
+    [binding(1)] Attention: readwrite array<f32>;
+    [binding(2)] Audit: readwrite array<f32>;
+}
+
+record MainTransformerJointAttentionParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
+
+fn ExponentialF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return exp(value); }; return result; }
+
+// One workgroup owns one (query token, head) row. The 1056 score and
+// probability entries are workgroup-local only; this program does not
+// materialize a head-by-query-by-key global score/probability tensor.
+shader MainTransformerJointAttentionStreaming {
+    resources MainTransformerJointAttentionIO;
+    workgroup Scores: array<f32, 1056u>;
+    workgroup Probabilities: array<f32, 1056u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: MainTransformerJointAttentionParams) -> void {
+        let packedRow: u32 = GroupID.x;
+        let token: u32 = packedRow / params.HeadCount;
+        let head: u32 = packedRow - token * params.HeadCount;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        for part in 0u..5u {
+            let key: u32 = lane + part * 256u;
+            if key < params.TokenCount {
+                var dot: f32 = 0.0;
+                for channel in 0u..params.HeadWidth {
+                    let qIndex: u32 = token * params.FusedWidth + head * params.HeadWidth + channel;
+                    let kIndex: u32 = key * params.FusedWidth + 3840u + head * params.HeadWidth + channel;
+                    dot = dot + Qkv[qIndex] * Qkv[kIndex];
+                }
+                Scores[key] = dot * 0.08838834764831843;
+            }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane == 0u {
+            var maximum: f32 = Scores[0u];
+            for key in 1u..params.TokenCount { if Scores[key] > maximum { maximum = Scores[key]; } }
+            var total: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let exponential: f32 = ExponentialF32(Scores[key] - maximum);
+                Probabilities[key] = exponential;
+                total = total + exponential;
+            }
+            var valid: u32 = 0u;
+            if total == total and total > 0.0 and (total - total) == 0.0 { valid = 1u; }
+            var rowSum: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                if valid != 0u { Probabilities[key] = Probabilities[key] / total; } else { Probabilities[key] = 0.0; }
+                rowSum = rowSum + Probabilities[key];
+            }
+            let selected: bool = (token == 0u and head == 0u) or (token == 1024u and head == 0u);
+            if selected {
+                var base: u32 = 0u;
+                if token == 1024u { base = 32u; }
+                Audit[base] = Scores[0u] / 0.08838834764831843;
+                Audit[base + 1u] = Scores[0u];
+                Audit[base + 2u] = Scores[0u] - maximum;
+                Audit[base + 3u] = Probabilities[0u];
+                Audit[base + 4u] = rowSum;
+                if valid != 0u { Audit[base + 30u] = 1.0; } else { Audit[base + 30u] = 0.0; }
+            }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < params.HeadWidth {
+            var aggregate: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let valueIndex: u32 = key * params.FusedWidth + 7680u + head * params.HeadWidth + lane;
+                aggregate = aggregate + Probabilities[key] * Qkv[valueIndex];
+            }
+            Attention[token * 3840u + head * params.HeadWidth + lane] = aggregate;
+        }
+        return;
+    }
+}

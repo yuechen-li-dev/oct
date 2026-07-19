@@ -1,0 +1,22 @@
+{
+  "schema": "oct.prometheus.evt2.m2c.handoff.v1",
+  "outcome": "meaningful_progression",
+  "representative": "layers.0",
+  "m2b_lock_baseline": "4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b",
+  "closed": [
+    "pinned source semantics and all-30 structural fingerprint evidence",
+    "layers.0 immutable FP16 cache and conversion inventory",
+    "deterministic FP32 joint-stream canonical authority",
+    "compiled Oct stream and AdaLN contracts",
+    "SDSL-V semantic-space rejection fixtures",
+    "registered joint-only SDSL-V shader portfolio"
+  ],
+  "not_claimed": [
+    "MainTransformer native create or execute API",
+    "device-to-device handoff from the M2B refiner owners",
+    "compiled representative numerical comparison",
+    "static audit, warm-path, fault, lifecycle, or scaling closure",
+    "compiled-model lock transition"
+  ],
+  "next_owner_seam": "replace the single state->model_block owner with explicit concurrently-live resident model owners and stream-handle validation before binding the two accepted M2B streams into the M2C joint input"
+}

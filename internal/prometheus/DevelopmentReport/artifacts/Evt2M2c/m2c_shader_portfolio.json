@@ -1,0 +1,56 @@
+{
+  "new_physical_kernels": [
+    {
+      "id": 40,
+      "reason": "image prefix and text suffix coordinate programs",
+      "role": "joint Q/K RMSNorm plus two-domain RoPE"
+    },
+    {
+      "id": 41,
+      "reason": "1024 and 32 token workgroup arrays are ineligible",
+      "role": "1056-token joint one-query-head attention"
+    },
+    {
+      "id": 42,
+      "reason": "fixed 1024-token W3 view partition is ineligible",
+      "role": "1056-token W1/W3 projection"
+    },
+    {
+      "id": 43,
+      "reason": "fixed 1024-token W3 view partition is ineligible",
+      "role": "1056-token SiLU gate"
+    }
+  ],
+  "reused_physical_kernels": [
+    {
+      "id": 24,
+      "role": "AdaLN"
+    },
+    {
+      "id": 25,
+      "role": "RMSNorm plus modulation"
+    },
+    {
+      "id": 26,
+      "role": "fused QKV"
+    },
+    {
+      "id": 31,
+      "role": "attention output projection"
+    },
+    {
+      "id": 32,
+      "role": "gated attention residual"
+    },
+    {
+      "id": 33,
+      "role": "FFN norm plus modulation"
+    },
+    {
+      "id": 36,
+      "role": "W2 plus final residual"
+    }
+  ],
+  "schema": "oct.prometheus.evt2.m2c.shader-portfolio.v1",
+  "semantic_wrapper_rule": "each reused physical kernel retains an assembly-specific descriptor binding and named semantic boundary; there is no source copy presented as a new primitive"
+}

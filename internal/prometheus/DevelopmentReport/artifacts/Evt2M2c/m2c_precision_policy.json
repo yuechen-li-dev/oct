@@ -1,0 +1,22 @@
+{
+  "fp32_resident": [
+    "joint ingress",
+    "AdaLN",
+    "RMSNorm",
+    "QKV",
+    "RoPE",
+    "attention logits/probabilities/value accumulation",
+    "output projection",
+    "FFN",
+    "residuals",
+    "image and context egress"
+  ],
+  "prohibited": [
+    "activation FP16 narrowing",
+    "score/probability tensor materialization",
+    "tolerance widening",
+    "saturation or clamping"
+  ],
+  "schema": "oct.prometheus.evt2.m2c.precision-policy.v1",
+  "weights": "checkpoint BF16 -\u003e immutable FP16 cache -\u003e FP32 at use"
+}

@@ -1,0 +1,12 @@
+type ImageQueryHead = float4 @space(zimage.main_transformer.image.query_head);
+type ImagePositionedQueryHead = float4 @space(zimage.main_transformer.image.positioned_query_head);
+type ImageCoordinate = float2 @space(zimage.main_transformer.image.coordinate);
+type ContextCoordinate = float2 @space(zimage.main_transformer.context.coordinate);
+
+fn ApplyImageRoPE(query: ImageQueryHead, coordinate: ImageCoordinate) -> ImagePositionedQueryHead {
+    return float4(query.x + coordinate.x * 0.0, query.y, query.z, query.w);
+}
+
+fn Invalid(query: ImageQueryHead, contextCoordinate: ContextCoordinate) -> ImagePositionedQueryHead {
+    return ApplyImageRoPE(query, contextCoordinate);
+}

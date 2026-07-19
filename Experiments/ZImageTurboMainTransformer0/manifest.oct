@@ -1,0 +1,30 @@
+package Manifest
+
+record PackageManifest {
+    Name: String
+    Version: String
+    Description: String
+    Authors: String[]
+    Date: String
+    Kind: String
+    EntryMilestone: String
+    Dependencies: Dependency[]
+}
+
+record Dependency {
+    Name: String
+    VersionRequirement: String
+}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "ZImageTurboMainTransformer0"
+        Version: "0.1.0"
+        Description: "Focused Oct source contracts for EVT-2 M2C layers.0 joint MainTransformer assembly"
+        Authors: ["Codex"]
+        Date: "2026-07-19"
+        Kind: "experiment"
+        EntryMilestone: "M0"
+        Dependencies: [Dependency { Name: "OctStd" VersionRequirement: "0.1.0" }]
+    }
+}

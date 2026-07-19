@@ -1,0 +1,1 @@
+{"schema":"oct.prometheus.evt2.m2c.oct-joint-contract.v1","composition":"Joint = Concat(Image, Context)","image":{"offset":0,"tokens":1024,"position":"[33,row,column]"},"context":{"offset":1024,"tokens":32,"position":"[token+1,0,0]"},"adaln":["attention_scale","attention_gate","mlp_scale","mlp_gate"]}

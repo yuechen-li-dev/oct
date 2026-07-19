@@ -1,0 +1,565 @@
+{
+  "inventory": [
+    {
+      "absolute_max": 1.9921875,
+      "cache_bytes": 30720,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "5b1a7102a9e813b9b00d570e39afb19f1b3f40ebec6c19ccc9edc03ef2878387",
+      "canonical_name": "layers.0.adaLN_modulation.0.bias",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 1.9921875,
+      "min": -1.21875,
+      "semantic_role": "AdaLN bias",
+      "source_bytes": 30720,
+      "source_dtype": "BF16",
+      "source_sha256": "81a8588a0b86fa39f95e4fea0c0fc5b3ab1c24fc26787950d140b68fae59a132",
+      "source_shape": [
+        15360
+      ]
+    },
+    {
+      "absolute_max": 1.1875,
+      "cache_bytes": 7864320,
+      "cache_orientation": "row-major [in,out], transposed from PyTorch [out,in]",
+      "cache_sha256": "4f8c209fde2f420087400e64b2f950f1b5229d0d0205c6e20a7c891a35300fba",
+      "canonical_name": "layers.0.adaLN_modulation.0.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 1,
+      "fp16_representable": true,
+      "max": 1.0625,
+      "min": -1.1875,
+      "semantic_role": "AdaLN projection",
+      "source_bytes": 7864320,
+      "source_dtype": "BF16",
+      "source_sha256": "332eaf5fa490eab3e2d4c7c525719e98947956750d7b6554bc65057199228b14",
+      "source_shape": [
+        15360,
+        256
+      ]
+    },
+    {
+      "absolute_max": 1.8671875,
+      "cache_bytes": 256,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "64f6695ae7ab235ddb8b6dda55287cefafcff29f757bb0fb3b91f2b6571a962e",
+      "canonical_name": "layers.0.attention.k_norm.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 1.8671875,
+      "min": 0.47070312,
+      "semantic_role": "K RMSNorm",
+      "source_bytes": 256,
+      "source_dtype": "BF16",
+      "source_sha256": "21a7e4bdd2e171ae87b1395b6faf296abc7a48054a2fbf8372aba432f4b975c0",
+      "source_shape": [
+        128
+      ]
+    },
+    {
+      "absolute_max": 1.7578125,
+      "cache_bytes": 29491200,
+      "cache_orientation": "row-major [in,out], transposed from PyTorch [out,in]",
+      "cache_sha256": "7cdf96fae26f730c273b5943f2f677b0757bc647cd2bce4dc1a8662c0ecf64d5",
+      "canonical_name": "layers.0.attention.out.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 4,
+      "fp16_representable": true,
+      "max": 1.7421875,
+      "min": -1.7578125,
+      "semantic_role": "attention output projection",
+      "source_bytes": 29491200,
+      "source_dtype": "BF16",
+      "source_sha256": "a32e82ac5615d92a16d97bb49a0a46b0786798fc094bbf03a5baf3aa79f4f264",
+      "source_shape": [
+        3840,
+        3840
+      ]
+    },
+    {
+      "absolute_max": 1.828125,
+      "cache_bytes": 256,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "f53c5af823478e0176ae72debf539f2b599eacebe773153e54c2a6dc4f22faf5",
+      "canonical_name": "layers.0.attention.q_norm.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 1.828125,
+      "min": 0.19335938,
+      "semantic_role": "Q RMSNorm",
+      "source_bytes": 256,
+      "source_dtype": "BF16",
+      "source_sha256": "339f2c4e8b2d525fe245667702c9409fb888a17ab53aebafb86b97bf8b41a6a2",
+      "source_shape": [
+        128
+      ]
+    },
+    {
+      "absolute_max": 2.015625,
+      "cache_bytes": 88473600,
+      "cache_orientation": "row-major [in,out], transposed from PyTorch [out,in]",
+      "cache_sha256": "4c772e2285421f4a7615e3e6a5825f3becbcaf4b4300a4e5c75e50c98fa5e88d",
+      "canonical_name": "layers.0.attention.qkv.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 12,
+      "fp16_representable": true,
+      "max": 2.015625,
+      "min": -1.890625,
+      "semantic_role": "fused QKV projection; logical Q,K,V views in Q,K,V order",
+      "source_bytes": 88473600,
+      "source_dtype": "BF16",
+      "source_sha256": "7f247ef300a540f18a06d97b18b3447c6988ce8a8e7744cab2283aed7ac9d339",
+      "source_shape": [
+        11520,
+        3840
+      ]
+    },
+    {
+      "absolute_max": 2.859375,
+      "cache_bytes": 7680,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "73837a88e13e410d810cf297f62ea1905ec82f6fd9c59d9cb9e16365d5dd07ad",
+      "canonical_name": "layers.0.attention_norm1.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 2.859375,
+      "min": -0.000074863434,
+      "semantic_role": "attention pre-norm",
+      "source_bytes": 7680,
+      "source_dtype": "BF16",
+      "source_sha256": "4d4c41d610aec7dcfeb8e2ec9187391867c17b729b522f45cce5c59ab64cde4c",
+      "source_shape": [
+        3840
+      ]
+    },
+    {
+      "absolute_max": 1.453125,
+      "cache_bytes": 7680,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "a34f73114c43984384c3835d14714752e1a83859471a985ae0ac86ba96d99d96",
+      "canonical_name": "layers.0.attention_norm2.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 1.453125,
+      "min": -0.21972656,
+      "semantic_role": "attention post-norm",
+      "source_bytes": 7680,
+      "source_dtype": "BF16",
+      "source_sha256": "fbbbdec1957aff00fb59b3a00bc6122c5d404118ba100f2e99817f2897fecc9d",
+      "source_shape": [
+        3840
+      ]
+    },
+    {
+      "absolute_max": 2,
+      "cache_bytes": 78643200,
+      "cache_orientation": "row-major [in,out], transposed from PyTorch [out,in]",
+      "cache_sha256": "931cd8b831bc2a6bfc1e77eb5bb77047af05528f98b4451666e19fb9e0df7462",
+      "canonical_name": "layers.0.feed_forward.w1.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 5,
+      "fp16_representable": true,
+      "max": 1.6328125,
+      "min": -2,
+      "semantic_role": "FFN W1",
+      "source_bytes": 78643200,
+      "source_dtype": "BF16",
+      "source_sha256": "892ac1c3abcd5efcf69b98a94a7ddc45bd0ed2a663e1e8dd853d4fbc4c474088",
+      "source_shape": [
+        10240,
+        3840
+      ]
+    },
+    {
+      "absolute_max": 5.625,
+      "cache_bytes": 78643200,
+      "cache_orientation": "row-major [in,out], transposed from PyTorch [out,in]",
+      "cache_sha256": "0b8409b0151cc408d984cd6e86e879d8fd0c2f02917c58794f51d7bb19a78be0",
+      "canonical_name": "layers.0.feed_forward.w2.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 7,
+      "fp16_representable": true,
+      "max": 3.984375,
+      "min": -5.625,
+      "semantic_role": "FFN W2",
+      "source_bytes": 78643200,
+      "source_dtype": "BF16",
+      "source_sha256": "95e417c8ee7b7672cb5aa6cddbc055df9d69830fbfcfe4790ed5c271296ddbe2",
+      "source_shape": [
+        3840,
+        10240
+      ]
+    },
+    {
+      "absolute_max": 2.28125,
+      "cache_bytes": 78643200,
+      "cache_orientation": "row-major [in,out], transposed from PyTorch [out,in]",
+      "cache_sha256": "c6bc2c52cacf8c41d0cbfbea1b92c184f6866004cc0c3d5207a73bf68ddb73d5",
+      "canonical_name": "layers.0.feed_forward.w3.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 1,
+      "fp16_representable": true,
+      "max": 2.0625,
+      "min": -2.28125,
+      "semantic_role": "FFN W3",
+      "source_bytes": 78643200,
+      "source_dtype": "BF16",
+      "source_sha256": "86d4e4817c12600290b01b9aaad6f2a05277a30905b0ab36ed2066002910863f",
+      "source_shape": [
+        10240,
+        3840
+      ]
+    },
+    {
+      "absolute_max": 2.53125,
+      "cache_bytes": 7680,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "755673f47826e367aef6f29efba65cc3a0c2b7a658726929dd498112ac63faac",
+      "canonical_name": "layers.0.ffn_norm1.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 0,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 2.53125,
+      "min": -0.265625,
+      "semantic_role": "FFN pre-norm",
+      "source_bytes": 7680,
+      "source_dtype": "BF16",
+      "source_sha256": "6b149e37f2aad5045f745c307822ff339fa233376cc6cc0742a990e38bee8097",
+      "source_shape": [
+        3840
+      ]
+    },
+    {
+      "absolute_max": 2.796875,
+      "cache_bytes": 7680,
+      "cache_orientation": "vector preserved",
+      "cache_sha256": "82b163223fd59911898b4a397f6a1609571ba7fbb71049cbf0cc5fb300aed247",
+      "canonical_name": "layers.0.ffn_norm2.weight",
+      "finite": true,
+      "fp16_conversion_max_absolute_drift": 2.9802322e-8,
+      "fp16_conversion_overflow_count": 0,
+      "fp16_conversion_underflow_count": 0,
+      "fp16_representable": true,
+      "max": 2.796875,
+      "min": -0.89453125,
+      "semantic_role": "FFN post-norm",
+      "source_bytes": 7680,
+      "source_dtype": "BF16",
+      "source_sha256": "93c5bd9d7e7629ce7c820167cbf094b6cd09153fe9b9dd39029ac073a139a623",
+      "source_shape": [
+        3840
+      ]
+    }
+  ],
+  "manifest": {
+    "aggregate_sha256": "48e987811885741ae5f1bf16b28db33ca7f23e09f1e99c1c2fe3d81bdd1caeb6",
+    "block": "layers.0",
+    "dtype": "FP16 little-endian IEEE-754",
+    "schema": "oct.prometheus.evt2.m2c.fp16-cache.v1",
+    "source_checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+    "tensors": [
+      {
+        "consumer": "AdaLN bias",
+        "destination_bytes": 30720,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.adaLN_modulation.0.bias.fp16.bin",
+        "destination_sha256": "5b1a7102a9e813b9b00d570e39afb19f1b3f40ebec6c19ccc9edc03ef2878387",
+        "destination_shape": [
+          15360
+        ],
+        "source_file_byte_range": [
+          730046880,
+          730077600
+        ],
+        "source_name": "layers.0.adaLN_modulation.0.bias",
+        "source_sha256": "81a8588a0b86fa39f95e4fea0c0fc5b3ab1c24fc26787950d140b68fae59a132",
+        "source_shape": [
+          15360
+        ],
+        "transpose": false
+      },
+      {
+        "consumer": "AdaLN projection",
+        "destination_bytes": 7864320,
+        "destination_layout": "row-major [in,out], transposed from PyTorch [out,in]",
+        "destination_name": "layers.0.adaLN_modulation.0.weight.fp16.bin",
+        "destination_sha256": "4f8c209fde2f420087400e64b2f950f1b5229d0d0205c6e20a7c891a35300fba",
+        "destination_shape": [
+          256,
+          15360
+        ],
+        "source_file_byte_range": [
+          730077600,
+          737941920
+        ],
+        "source_name": "layers.0.adaLN_modulation.0.weight",
+        "source_sha256": "332eaf5fa490eab3e2d4c7c525719e98947956750d7b6554bc65057199228b14",
+        "source_shape": [
+          15360,
+          256
+        ],
+        "transpose": true
+      },
+      {
+        "consumer": "K RMSNorm",
+        "destination_bytes": 256,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.attention.k_norm.weight.fp16.bin",
+        "destination_sha256": "64f6695ae7ab235ddb8b6dda55287cefafcff29f757bb0fb3b91f2b6571a962e",
+        "destination_shape": [
+          128
+        ],
+        "source_file_byte_range": [
+          737941920,
+          737942176
+        ],
+        "source_name": "layers.0.attention.k_norm.weight",
+        "source_sha256": "21a7e4bdd2e171ae87b1395b6faf296abc7a48054a2fbf8372aba432f4b975c0",
+        "source_shape": [
+          128
+        ],
+        "transpose": false
+      },
+      {
+        "consumer": "attention output projection",
+        "destination_bytes": 29491200,
+        "destination_layout": "row-major [in,out], transposed from PyTorch [out,in]",
+        "destination_name": "layers.0.attention.out.weight.fp16.bin",
+        "destination_sha256": "7cdf96fae26f730c273b5943f2f677b0757bc647cd2bce4dc1a8662c0ecf64d5",
+        "destination_shape": [
+          3840,
+          3840
+        ],
+        "source_file_byte_range": [
+          737942176,
+          767433376
+        ],
+        "source_name": "layers.0.attention.out.weight",
+        "source_sha256": "a32e82ac5615d92a16d97bb49a0a46b0786798fc094bbf03a5baf3aa79f4f264",
+        "source_shape": [
+          3840,
+          3840
+        ],
+        "transpose": true
+      },
+      {
+        "consumer": "Q RMSNorm",
+        "destination_bytes": 256,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.attention.q_norm.weight.fp16.bin",
+        "destination_sha256": "f53c5af823478e0176ae72debf539f2b599eacebe773153e54c2a6dc4f22faf5",
+        "destination_shape": [
+          128
+        ],
+        "source_file_byte_range": [
+          767433376,
+          767433632
+        ],
+        "source_name": "layers.0.attention.q_norm.weight",
+        "source_sha256": "339f2c4e8b2d525fe245667702c9409fb888a17ab53aebafb86b97bf8b41a6a2",
+        "source_shape": [
+          128
+        ],
+        "transpose": false
+      },
+      {
+        "consumer": "fused QKV projection; logical Q,K,V views in Q,K,V order",
+        "destination_bytes": 88473600,
+        "destination_layout": "row-major [in,out], transposed from PyTorch [out,in]",
+        "destination_name": "layers.0.attention.qkv.weight.fp16.bin",
+        "destination_sha256": "4c772e2285421f4a7615e3e6a5825f3becbcaf4b4300a4e5c75e50c98fa5e88d",
+        "destination_shape": [
+          3840,
+          11520
+        ],
+        "source_file_byte_range": [
+          767433632,
+          855907232
+        ],
+        "source_name": "layers.0.attention.qkv.weight",
+        "source_sha256": "7f247ef300a540f18a06d97b18b3447c6988ce8a8e7744cab2283aed7ac9d339",
+        "source_shape": [
+          11520,
+          3840
+        ],
+        "transpose": true
+      },
+      {
+        "consumer": "attention pre-norm",
+        "destination_bytes": 7680,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.attention_norm1.weight.fp16.bin",
+        "destination_sha256": "73837a88e13e410d810cf297f62ea1905ec82f6fd9c59d9cb9e16365d5dd07ad",
+        "destination_shape": [
+          3840
+        ],
+        "source_file_byte_range": [
+          855907232,
+          855914912
+        ],
+        "source_name": "layers.0.attention_norm1.weight",
+        "source_sha256": "4d4c41d610aec7dcfeb8e2ec9187391867c17b729b522f45cce5c59ab64cde4c",
+        "source_shape": [
+          3840
+        ],
+        "transpose": false
+      },
+      {
+        "consumer": "attention post-norm",
+        "destination_bytes": 7680,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.attention_norm2.weight.fp16.bin",
+        "destination_sha256": "a34f73114c43984384c3835d14714752e1a83859471a985ae0ac86ba96d99d96",
+        "destination_shape": [
+          3840
+        ],
+        "source_file_byte_range": [
+          855914912,
+          855922592
+        ],
+        "source_name": "layers.0.attention_norm2.weight",
+        "source_sha256": "fbbbdec1957aff00fb59b3a00bc6122c5d404118ba100f2e99817f2897fecc9d",
+        "source_shape": [
+          3840
+        ],
+        "transpose": false
+      },
+      {
+        "consumer": "FFN W1",
+        "destination_bytes": 78643200,
+        "destination_layout": "row-major [in,out], transposed from PyTorch [out,in]",
+        "destination_name": "layers.0.feed_forward.w1.weight.fp16.bin",
+        "destination_sha256": "931cd8b831bc2a6bfc1e77eb5bb77047af05528f98b4451666e19fb9e0df7462",
+        "destination_shape": [
+          3840,
+          10240
+        ],
+        "source_file_byte_range": [
+          855922592,
+          934565792
+        ],
+        "source_name": "layers.0.feed_forward.w1.weight",
+        "source_sha256": "892ac1c3abcd5efcf69b98a94a7ddc45bd0ed2a663e1e8dd853d4fbc4c474088",
+        "source_shape": [
+          10240,
+          3840
+        ],
+        "transpose": true
+      },
+      {
+        "consumer": "FFN W2",
+        "destination_bytes": 78643200,
+        "destination_layout": "row-major [in,out], transposed from PyTorch [out,in]",
+        "destination_name": "layers.0.feed_forward.w2.weight.fp16.bin",
+        "destination_sha256": "0b8409b0151cc408d984cd6e86e879d8fd0c2f02917c58794f51d7bb19a78be0",
+        "destination_shape": [
+          10240,
+          3840
+        ],
+        "source_file_byte_range": [
+          934565792,
+          1013208992
+        ],
+        "source_name": "layers.0.feed_forward.w2.weight",
+        "source_sha256": "95e417c8ee7b7672cb5aa6cddbc055df9d69830fbfcfe4790ed5c271296ddbe2",
+        "source_shape": [
+          3840,
+          10240
+        ],
+        "transpose": true
+      },
+      {
+        "consumer": "FFN W3",
+        "destination_bytes": 78643200,
+        "destination_layout": "row-major [in,out], transposed from PyTorch [out,in]",
+        "destination_name": "layers.0.feed_forward.w3.weight.fp16.bin",
+        "destination_sha256": "c6bc2c52cacf8c41d0cbfbea1b92c184f6866004cc0c3d5207a73bf68ddb73d5",
+        "destination_shape": [
+          3840,
+          10240
+        ],
+        "source_file_byte_range": [
+          1013208992,
+          1091852192
+        ],
+        "source_name": "layers.0.feed_forward.w3.weight",
+        "source_sha256": "86d4e4817c12600290b01b9aaad6f2a05277a30905b0ab36ed2066002910863f",
+        "source_shape": [
+          10240,
+          3840
+        ],
+        "transpose": true
+      },
+      {
+        "consumer": "FFN pre-norm",
+        "destination_bytes": 7680,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.ffn_norm1.weight.fp16.bin",
+        "destination_sha256": "755673f47826e367aef6f29efba65cc3a0c2b7a658726929dd498112ac63faac",
+        "destination_shape": [
+          3840
+        ],
+        "source_file_byte_range": [
+          1091852192,
+          1091859872
+        ],
+        "source_name": "layers.0.ffn_norm1.weight",
+        "source_sha256": "6b149e37f2aad5045f745c307822ff339fa233376cc6cc0742a990e38bee8097",
+        "source_shape": [
+          3840
+        ],
+        "transpose": false
+      },
+      {
+        "consumer": "FFN post-norm",
+        "destination_bytes": 7680,
+        "destination_layout": "vector preserved",
+        "destination_name": "layers.0.ffn_norm2.weight.fp16.bin",
+        "destination_sha256": "82b163223fd59911898b4a397f6a1609571ba7fbb71049cbf0cc5fb300aed247",
+        "destination_shape": [
+          3840
+        ],
+        "source_file_byte_range": [
+          1091859872,
+          1091867552
+        ],
+        "source_name": "layers.0.ffn_norm2.weight",
+        "source_sha256": "93c5bd9d7e7629ce7c820167cbf094b6cd09153fe9b9dd39029ac073a139a623",
+        "source_shape": [
+          3840
+        ],
+        "transpose": false
+      }
+    ],
+    "transform_id": "zimage-main-transformer.0-bf16-fp16-transpose-v1"
+  }
+}
