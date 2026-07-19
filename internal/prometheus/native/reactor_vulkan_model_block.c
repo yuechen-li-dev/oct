@@ -258,6 +258,9 @@ static uint64_t prom_model_block_plan_identity(const prom_model_block_state* blo
   hash = prom_model_block_hash_u64(hash, block->external_input_bytes);
   hash = prom_model_block_hash_u64(hash, block->external_output_bytes);
   hash = prom_model_block_hash_u64(hash, block->declared_audit_bytes);
+  /* The fixed M1C third binding is topology, not incidental scratch. */
+  hash = prom_model_block_hash_u64(hash, PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float));
+  hash = prom_model_block_hash_u64(hash, 3u);
   for (index = 0u; index < block->weight_count; ++index) {
     hash = prom_model_block_hash_u64(hash, block->weights[index].content_identity);
     hash = prom_model_block_hash_u64(hash, block->weights[index].layout_identity);

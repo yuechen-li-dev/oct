@@ -9,6 +9,6 @@
   "workgroup_contract": {"raw_to_scaled": "raw * 1/sqrt(128)", "softmax": "exp(score-max)/sum(exp(score-max))", "non_causal": true, "key_order": "ascending 0..1023"},
   "persistent_payloads": ["selected scaled logits", "selected probabilities", "aggregation"],
   "not_persistent": ["raw logits", "row max", "shifted logits", "exponentials", "row sum", "per-head output"],
-  "runtime_observation_status": "PENDING: production shader currently retains these as workgroup-local state without a selected-coordinate audit/status buffer.",
-  "conclusion": "The payload authority and downstream aggregation comparison pass, but this artifact deliberately does not claim the required transient GPU observations have passed."
+  "runtime_observation_status": "PASS: a 64-float (256-byte) device-local audit/status record captures the two canonical rows; the real resident witness compares selected scaled logits and probabilities against these O19 payloads, verifies positive finite denominators, and verifies row normalization.",
+  "conclusion": "Streaming workgroup-local state remains non-persistent. The bounded audit record proves selected canonical rows without allocating full score/probability tensors."
 }

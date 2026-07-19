@@ -598,6 +598,22 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
                         std::isfinite(transientAudit[52u]) && std::isfinite(transientAudit[53u]) &&
                         std::isfinite(transientAudit[54u]) && std::fabs(transientAudit[54u] - 1.0f) <= 2.0e-5f,
                     "selected first and last softmax rows are finite and normalize to one");
+        const std::array<const char*, 2> transientRows{{"attention_logits_token0_head0", "attention_logits_token1023_head29"}};
+        const std::array<const char*, 2> transientProbabilities{{"attention_probabilities_token0_head0", "attention_probabilities_token1023_head29"}};
+        constexpr std::array<std::uint32_t, 4> transientKeys{{0u, 1u, 512u, 1023u}};
+        for (std::uint32_t row = 0u; row < 2u; ++row) {
+            const std::vector<std::uint8_t> logits = read_binary_file(m1cRoot / (std::string(transientRows[row]) + ".f32.bin"));
+            const std::vector<std::uint8_t> probabilities = read_binary_file(m1cRoot / (std::string(transientProbabilities[row]) + ".f32.bin"));
+            const std::uint32_t base = row * 32u;
+            for (std::uint32_t sample = 0u; sample < transientKeys.size(); ++sample) {
+                float canonicalLogit = 0.0f, canonicalProbability = 0.0f;
+                std::memcpy(&canonicalLogit, logits.data() + transientKeys[sample] * sizeof(float), sizeof(float));
+                std::memcpy(&canonicalProbability, probabilities.data() + transientKeys[sample] * sizeof(float), sizeof(float));
+                ASSERT_TRUE(std::fabs(transientAudit[base + sample * 5u + 1u] - canonicalLogit) <= 2.0e-5f &&
+                                std::fabs(transientAudit[base + sample * 5u + 4u] - canonicalProbability) <= 2.0e-6f,
+                            "selected streaming logits and probabilities match the exact O19 row witnesses");
+            }
+        }
         std::cout << "M1C transient first raw=" << transientAudit[0u] << " scaled=" << transientAudit[1u]
                   << " max=" << transientAudit[20u] << " shifted=" << transientAudit[2u]
                   << " exp=" << transientAudit[3u] << " sum=" << transientAudit[21u]

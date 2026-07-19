@@ -84,7 +84,13 @@ shader Nr0AttentionStreaming {
                 rowSum = rowSum + Probabilities[key];
             }
             if selected {
-                for sample in 0u..4u { Audit[auditBase + sample * 5u + 4u] = Probabilities[sample * 511u]; }
+                for sample in 0u..4u {
+                    var key: u32 = 0u;
+                    if sample == 1u { key = 1u; }
+                    if sample == 2u { key = 512u; }
+                    if sample == 3u { key = 1023u; }
+                    Audit[auditBase + sample * 5u + 4u] = Probabilities[key];
+                }
                 Audit[auditBase + 22u] = rowSum;
             }
         }

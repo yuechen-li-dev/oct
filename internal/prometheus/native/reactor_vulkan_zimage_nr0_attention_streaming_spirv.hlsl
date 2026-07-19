@@ -136,7 +136,20 @@ void Nr0AttentionStreaming_CS(uint3 GroupThreadID : SV_GroupThreadID, uint3 Grou
         {
             for (uint sample = 0u; sample < 4u; sample += 1)
             {
-                Audit[((auditBase + (sample * 5u)) + 4u)] = Probabilities[(sample * 511u)];
+                uint key = 0u;
+                if ((sample == 1u))
+                {
+                    key = 1u;
+                }
+                if ((sample == 2u))
+                {
+                    key = 512u;
+                }
+                if ((sample == 3u))
+                {
+                    key = 1023u;
+                }
+                Audit[((auditBase + (sample * 5u)) + 4u)] = Probabilities[key];
             }
             Audit[(auditBase + 22u)] = rowSum;
         }
