@@ -9,15 +9,11 @@ import (
 )
 
 func TestLoadNoiseRefiner0PayloadBundleWhenLocalPayloadsAreAvailable(t *testing.T) {
-	cacheRoot := os.Getenv("OCT_EVT2_CACHE")
-	oracleRoot := os.Getenv("OCT_EVT2_ORACLE")
-	if cacheRoot == "" || oracleRoot == "" {
-		t.Skip("local EVT-2 payload roots are not configured")
+	paths, err := NoiseRefiner0PayloadPathsFromEnvironment()
+	if err != nil {
+		t.Skip(err)
 	}
-	bundle, err := LoadNoiseRefiner0PayloadBundle(NoiseRefiner0PayloadPaths{
-		CacheRoot:  cacheRoot,
-		OracleRoot: oracleRoot,
-	})
+	bundle, err := LoadNoiseRefiner0PayloadBundle(paths)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,15 +127,11 @@ func TestFP16ToFloat32ExhaustiveFiniteReference(t *testing.T) {
 }
 
 func TestFP16CacheDecodedValuesRemainFiniteAndUnscaledWhenLocalPayloadsAreAvailable(t *testing.T) {
-	cacheRoot := os.Getenv("OCT_EVT2_CACHE")
-	oracleRoot := os.Getenv("OCT_EVT2_ORACLE")
-	if cacheRoot == "" || oracleRoot == "" {
-		t.Skip("local EVT-2 payload roots are not configured")
+	paths, err := NoiseRefiner0PayloadPathsFromEnvironment()
+	if err != nil {
+		t.Skip(err)
 	}
-	bundle, err := LoadNoiseRefiner0PayloadBundle(NoiseRefiner0PayloadPaths{
-		CacheRoot:  cacheRoot,
-		OracleRoot: oracleRoot,
-	})
+	bundle, err := LoadNoiseRefiner0PayloadBundle(paths)
 	if err != nil {
 		t.Fatal(err)
 	}

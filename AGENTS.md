@@ -10,6 +10,10 @@ Before editing, read the smallest relevant slice of the repo truth:
 - Relevant `Language/...` fixtures; they are examples **and** semantic contracts.
 - Relevant `docs/internal/...` notes for release, package-manager, wrapper, or compiled-backend work.
 
+For EVT-2 Z-Image work, read `docs/EVT2_LOCAL_PAYLOADS.md` before reporting
+missing local payloads. Unset environment variables are ordinary setup, not an
+architectural blocker.
+
 Testing guidance:
 
 - Language behavior belongs in `.octest` / `.octfail` corpus tests under `Language/`; prefer adding or updating those contracts over embedding Oct programs in Go tests.

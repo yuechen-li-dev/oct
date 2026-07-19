@@ -1,0 +1,30 @@
+{
+  "schema": "oct.prometheus.evt2.m1c.ingress.v1",
+  "source": "accepted M1B resident buffers",
+  "fused_qkv": {
+    "buffer_identity": "m1b-qkv-fp32",
+    "dtype": "FP32",
+    "token_row_elements": 11520,
+    "layout": "[token,segment,head,channel] flattened as [token,11520]",
+    "views": [
+      {"name": "PositionedQ", "offset_elements": 0, "shape": [1, 1024, 30, 128], "semantic_space": "PositionedQueryHead"},
+      {"name": "PositionedK", "offset_elements": 3840, "shape": [1, 1024, 30, 128], "semantic_space": "PositionedKeyHead"},
+      {"name": "V", "offset_elements": 7680, "shape": [1, 1024, 30, 128], "semantic_space": "ValueHead"}
+    ]
+  },
+  "resident_inputs": [
+    {"name": "tanh_attention_gate", "buffer_identity": "m1b-attention-gate-fp32", "shape": [1, 3840], "dtype": "FP32"},
+    {"name": "original_residual", "buffer_identity": "m1b-input-device-fp32", "shape": [1, 1024, 3840], "dtype": "FP32", "semantic_space": "ModelEmbedding"},
+    {"name": "adjusted_mlp_scale", "buffer_identity": "m1b-mlp-scale-fp32", "shape": [1, 3840], "dtype": "FP32"},
+    {"name": "tanh_mlp_gate", "buffer_identity": "m1b-mlp-gate-fp32", "shape": [1, 3840], "dtype": "FP32"}
+  ],
+  "softmax_scratch": {
+    "schedule": "one head and one query row at a time; logits then probabilities",
+    "logits": {"shape": [1024], "dtype": "FP32", "bytes": 4096},
+    "probabilities": {"shape": [1024], "dtype": "FP32", "bytes": 4096},
+    "total_bytes": 8192,
+    "authority": "production_memory_contract.json and canonicalAttention row schedule"
+  },
+  "no_activation_copy": ["PositionedQ", "PositionedK", "V"],
+  "precision_policy": "FP32 activations and reductions; cached FP16 weights expand at arithmetic use; no FP16 projection, norm, or residual storage"
+}

@@ -179,6 +179,11 @@ cross-boundary fusion in M1B.
 
 ## 29. Reproduction instructions
 
+Before resolving local inputs, read [`docs/EVT2_LOCAL_PAYLOADS.md`](../../../docs/EVT2_LOCAL_PAYLOADS.md).
+It is the repository-owned authority for the local cache/oracle roots, payload
+identities, and validation procedure; unset environment variables are setup,
+not a numerical or architectural conclusion.
+
 Set `OCT_EVT2_CACHE` to the root containing `layers` and `OCT_EVT2_ORACLE` to
 the pinned oracle revision root. Run compiled Oct M9, then:
 `go run ./tools/zimage_canonical_reference -cache-root $env:OCT_EVT2_CACHE

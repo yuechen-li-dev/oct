@@ -16,6 +16,8 @@ const (
 	NoiseRefiner0CacheAggregateSHA256   = "a1ba526898a2a7522b31167c6d5e1bc48c39a8708cf5c3ad88b193e536ca5d5e"
 	NoiseRefiner0OracleRevision         = "f332072aa78be7aecdf3ee76d5c247082da564a6"
 	NoiseRefiner0FP16ReferenceSHA256    = "7e1e6d3d802402a5f0055b6fb257ef04a57cff8166b5925dcce8f9a235f281a7"
+	NoiseRefiner0StageProjectionsSHA256 = "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480"
+	NoiseRefiner0PayloadGuide           = "See docs/EVT2_LOCAL_PAYLOADS.md"
 )
 
 type NoiseRefiner0PayloadPaths struct {
@@ -26,6 +28,22 @@ type NoiseRefiner0PayloadPaths struct {
 	// OracleRoot is the revision directory that directly contains run_02/ and
 	// m075/. It is intentionally local and must never be committed as payload.
 	OracleRoot string
+}
+
+// NoiseRefiner0PayloadPathsFromEnvironment resolves the deliberately local
+// EVT-2 authority. It does not guess another cache location or fall back to a
+// downloaded checkpoint: an unset variable is ordinary setup and the error
+// points directly to the repository-owned setup guide.
+func NoiseRefiner0PayloadPathsFromEnvironment() (NoiseRefiner0PayloadPaths, error) {
+	cacheRoot := os.Getenv("OCT_EVT2_CACHE")
+	if cacheRoot == "" {
+		return NoiseRefiner0PayloadPaths{}, fmt.Errorf("OCT_EVT2_CACHE is unset; %s", NoiseRefiner0PayloadGuide)
+	}
+	oracleRoot := os.Getenv("OCT_EVT2_ORACLE")
+	if oracleRoot == "" {
+		return NoiseRefiner0PayloadPaths{}, fmt.Errorf("OCT_EVT2_ORACLE is unset; %s", NoiseRefiner0PayloadGuide)
+	}
+	return NoiseRefiner0PayloadPaths{CacheRoot: cacheRoot, OracleRoot: oracleRoot}, nil
 }
 
 type NoiseRefiner0Payload struct {
@@ -118,14 +136,45 @@ func noiseRefiner0Payload(path, role, dtype string, shape []uint64, expectedByte
 // LoadNoiseRefiner0PayloadBundle validates the exact local M0.5/M0.75 payload
 // bundle. It performs only bounded streaming reads, validates all thirteen
 // cache tensors, and never falls back to a checkpoint or a regenerated oracle.
-func LoadNoiseRefiner0PayloadBundle(paths NoiseRefiner0PayloadPaths) (NoiseRefiner0PayloadBundle, error) {
-	if paths.CacheRoot == "" || paths.OracleRoot == "" {
-		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("noise_refiner.0 payload roots must both be set")
+func LoadNoiseRefiner0PayloadBundle(paths NoiseRefiner0PayloadPaths) (bundle NoiseRefiner0PayloadBundle, err error) {
+	defer func() {
+		if err != nil {
+			err = fmt.Errorf("%w; %s", err, NoiseRefiner0PayloadGuide)
+		}
+	}()
+	if paths.CacheRoot == "" {
+		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_CACHE is unset")
+	}
+	if paths.OracleRoot == "" {
+		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_ORACLE is unset")
+	}
+	cacheInfo, statErr := os.Stat(paths.CacheRoot)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_CACHE directory absent: %s", paths.CacheRoot)
+		}
+		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_CACHE directory check: %w", statErr)
+	}
+	if !cacheInfo.IsDir() {
+		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_CACHE is not a directory: %s", paths.CacheRoot)
+	}
+	oracleInfo, statErr := os.Stat(paths.OracleRoot)
+	if statErr != nil {
+		if os.IsNotExist(statErr) {
+			return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_ORACLE directory absent: %s", paths.OracleRoot)
+		}
+		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_ORACLE directory check: %w", statErr)
+	}
+	if !oracleInfo.IsDir() {
+		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("OCT_EVT2_ORACLE is not a directory: %s", paths.OracleRoot)
 	}
 	block := noiseRefiner0CacheBlockPath(paths.CacheRoot)
 	manifestPath := filepath.Join(block, "manifest.json")
 	encoded, err := os.ReadFile(manifestPath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return NoiseRefiner0PayloadBundle{}, fmt.Errorf("noise_refiner.0 cache manifest absent: %s", manifestPath)
+		}
 		return NoiseRefiner0PayloadBundle{}, fmt.Errorf("noise_refiner.0 cache manifest: %w", err)
 	}
 	var manifest CacheManifest

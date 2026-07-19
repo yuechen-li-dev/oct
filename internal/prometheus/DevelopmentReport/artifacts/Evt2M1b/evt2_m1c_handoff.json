@@ -50,6 +50,8 @@
     }
   ],
   "next": "fixed 30-head score scale stable-softmax probability-times-V projection norm gated residual",
+
+  "payload_setup_guide": "docs/EVT2_LOCAL_PAYLOADS.md",
   "no_cast_boundaries": [
     "PositionedQ",
     "PositionedK",
