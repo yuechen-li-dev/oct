@@ -757,6 +757,9 @@ int prom_reactor_runtime_context_refiner_execute_static_audit_impl(
 int prom_reactor_runtime_context_refiner_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusContextRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_main_transformer_audit_final_impl(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel);
 int prom_m40b_pack_matrix(const float* values, uint32_t rows, uint32_t columns,

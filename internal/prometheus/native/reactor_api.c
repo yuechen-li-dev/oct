@@ -286,6 +286,24 @@ int prometheus_reactor_runtime_context_refiner_audit_final(
   return prom_reactor_runtime_context_refiner_audit_final_impl(handle, block_id, request, out_evidence);
 }
 
+int prometheus_reactor_runtime_main_transformer_create(
+    void* handle, const PrometheusMainTransformerCreateRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_main_transformer_create_impl(handle, request, out_block_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_main_transformer_execute(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_main_transformer_execute_impl(handle, block_id, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_main_transformer_audit_final(
+    void* handle, uint64_t block_id, const PrometheusMainTransformerFinalAuditRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_main_transformer_audit_final_impl(handle, block_id, request, out_evidence);
+}
+
 int prometheus_reactor_runtime_model_block_get_evidence(void* handle, uint64_t block_id,
                                                         PrometheusModelBlockEvidence* out_evidence) {
   return prom_reactor_runtime_model_block_get_evidence_impl(handle, block_id, out_evidence);

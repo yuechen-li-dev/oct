@@ -4,11 +4,14 @@
 
 **Meaningful progression; not M2C closeout.**
 
-This change closes the source, package, canonical-authority, semantic-space,
-and shader-portfolio work for the single representative `layers.0` block. It
-does not claim a compiled MainTransformer execution, static audit, warm-path
-measurement, or a resident NoiseRefiner/ContextRefiner handoff. Those claims
-remain blocked by the current native owner topology described below.
+This change preserves the source, package, canonical-authority,
+semantic-space, shader-portfolio, session-ownership, lock-transition, and
+device-to-device joint-composition work for the single representative
+`layers.0` block, and adds the first closed native MainTransformer owner and
+execution recorder. It does not claim representative RTX numerical closure,
+MainTransformer static-audit closure, ten-run warm zero-churn closure, or the
+complete retained-refiner-chain comparison. Those claims remain open and must
+be completed before M2C can become `SUCCESS`.
 
 ## Frozen authority
 
@@ -17,8 +20,8 @@ remain blocked by the current native owner topology described below.
   `src/zimage/transformer.py`.
 - Model revision: `f332072aa78be7aecdf3ee76d5c247082da564a6`.
 - Checkpoint: `sha256:2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6`.
-- M2B lock baseline (not replaced here):
-  `4b4aeb0474779325d60a8725d1094796d9c2271b7669f596b11815e7a7a6970b`.
+- Current compiled-model lock:
+  `f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a`.
 
 The source constructs all thirty `self.layers` entries with the same
 modulation-enabled `ZImageTransformerBlock` class. The checkpoint inventory
@@ -75,20 +78,61 @@ boundaries, not tensor axes.
 
 ## Native boundary and next blocker
 
-`prom_reduction_runtime_state` currently owns one `prom_model_block_state` at
-`state->model_block`. That makes NoiseRefiner, ContextRefiner, and a new
-MainTransformer mutually exclusive resident owners. Feeding the representative
-by reading either accepted M2B stream back through the host would violate the
-requested device-to-device handoff; it was not implemented or represented as
-success.
+The previous single `state->model_block` ownership boundary has been split by
+the compiled-model session path. The session now owns fixed lock-derived
+resident slots:
 
-The narrow next step is a multi-owner resident block registry with explicit
-stream handles and ownership/liveness checks. It must allow the two accepted
-M2B owners and one MainTransformer owner to coexist, bind image/context
-buffers directly into the 1056-token joint ingress, and preserve the fixed
-audit arena/no-prefix-replay rules. Only then should the compiled-model lock
-transition from the M2B baseline and only then can an RTX execution, ten warm
-runs, fault matrix, static audit, and scaling evidence be reported.
+- `PreparedImage = 1`;
+- `PreparedContext = 2`;
+- `JointWorking = 3`.
+
+`JointWorking` is physically composed on device in the exact `Image | Context`
+order with the accepted byte boundary:
+
+- image bytes: `15,728,640`;
+- context bytes: `491,520`;
+- joint bytes: `16,220,160`;
+- image byte offset: `0`;
+- context byte offset: `15,728,640`.
+
+This pass adds a distinct closed owner/program path for
+`ZImageTurbo.MainTransformer`, `MainTransformer0 / layers.0`. Creation resolves
+the family, parameter set, tensor-role inventory, shader portfolio, stream
+roles, token counts, joint extent, and memory plan from the generated lock
+descriptor. The execution request accepts only the compiled-model session, lock
+identity, model-local block id, validated `layers.0` payload bundle, timestep
+conditioning payload, and execution options. Wrong lock, wrong block id,
+missing or stale joint/source generations, malformed payloads, and descriptor
+drift are rejected before execution mutation. A final-output audit egress now
+copies only the completed representative joint stream for oracle comparison; it
+does not participate in the block-to-block resident path.
+
+The clean retained-chain RTX lane now runs
+`NoiseRefiner0 -> NoiseRefiner1 -> PreparedImage`,
+`ContextRefiner0 -> ContextRefiner1 -> PreparedContext`,
+device-composes `JointWorking`, executes `MainTransformer0 / layers.0`, reads
+back the final joint output, and performs ten warm representative executions
+with no buffer allocation, memory allocation, weight upload, pipeline creation,
+or descriptor-pool growth. The output is finite, but numerical closure fails
+against the deterministic FP32 joint oracle:
+
+| region | relative L2 | Linf |
+| --- | ---: | ---: |
+| joint | `0.0234765` | `2.24572` |
+| image | `0.0375236` | `2.24572` |
+| context | `0.00248398` | `1.10574` |
+| last image token | `0.0425776` | not recorded |
+| first context token | `0.00202765` | not recorded |
+
+The first joint mismatch is coordinate `0`. This is a MainTransformer
+execution-arithmetic/stage-wiring seam, not a refiner-stream or session
+ownership contradiction: the accepted clean-process M1F/M2A real lane still
+passes with block-1 final relative L2 `1.27829e-6` and Linf `1.52588e-4`.
+
+The MainTransformer static audit schedule, one-batch stage-local readback, and
+full lifecycle fault corpus must still be completed before M2C can close. No
+host activation bounce, canonical tensor substitution, or tolerance widening
+has been claimed.
 
 ## Evidence and commands
 
@@ -104,10 +148,13 @@ go run ./tools/evt2_m2c_artifacts -cache-root $env:OCT_EVT2_CACHE
 go run ./cmd/oct test Experiments/ZImageTurboMainTransformer0 --execution compiled
 ```
 
-SDSL-V checks for all four new kernels pass. The native Windows build was
+SDSL-V checks for all four joint kernels pass. The native Windows build was
 performed inside the configured Visual Studio developer environment. The
-focused registry filters passed, including the generated-header/manifest
-check, and the full Marionette run completed with **437 tests, 403 passed,
-34 skipped, and 0 failed**. That build evidence validates the new production
-asset records; it is not a substitute for the absent M2C runtime owner or
-numerical execution.
+generated lock check passes for
+`f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a`, and the
+full default Marionette run completed with **440 tests, 405 passed, 35 skipped,
+and 0 failed**. The opt-in M2C real lane executed on the local RTX path and
+proved finite output plus zero warm churn, but failed the final joint numerical
+assertion with the metrics above. That evidence validates the closed owner,
+retained stream ingestion, final-output audit egress, and warm reuse; it is not
+a substitute for the still-open generated static audit or numerical closure.

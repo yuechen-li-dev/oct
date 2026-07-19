@@ -1,0 +1,161 @@
+{
+  "artifact": "m2c_representative_execution",
+  "classification": {
+    "convergence_outcome": "MEANINGFUL_PROGRESSION",
+    "milestone_state": "IN_PROGRESS",
+    "evt2_state": "NOT_READY",
+    "compiled_model_status": "MAIN_TRANSFORMER_PARTIAL"
+  },
+  "lock_identity": "f67b31bdd1e54945d9dd66f6371f0f3ca8e99595b702aa9a3da310529f9ffa6a",
+  "representative": {
+    "family": "ZImageTurbo.MainTransformer",
+    "model_local_block_id": 0,
+    "source_layer": "layers.0",
+    "parameter_set": "MainTransformer0",
+    "aggregate_identity": "48e987811885741ae5f1bf16b28db33ca7f23e09f1e99c1c2fe3d81bdd1caeb6",
+    "cached_fp16_bytes": 361820672
+  },
+  "resident_ingress": {
+    "strategy": "physical_device_to_device_composition",
+    "order": "Image | Context",
+    "slots": {
+      "PreparedImage": 1,
+      "PreparedContext": 2,
+      "JointWorking": 3
+    },
+    "tokens": {
+      "image": 1024,
+      "context": 32,
+      "joint": 1056,
+      "hidden_width": 3840
+    },
+    "bytes": {
+      "prepared_image": 15728640,
+      "prepared_context": 491520,
+      "joint_working": 16220160,
+      "image_offset": 0,
+      "context_offset": 15728640
+    }
+  },
+  "native_executor": {
+    "owner_path": "closed_lock_resolved_main_transformer_owner",
+    "implemented": true,
+    "caller_supplies_topology": false,
+    "caller_supplies_stream_slots": false,
+    "caller_supplies_token_counts": false,
+    "caller_supplies_shader_portfolio": false,
+    "caller_supplies_tensor_role_map": false,
+    "pre_mutation_rejections": [
+      "wrong_lock",
+      "wrong_block_id",
+      "missing_joint_generation",
+      "stale_prepared_image_generation",
+      "stale_prepared_context_generation",
+      "stale_joint_generation",
+      "mixed_source_generations",
+      "malformed_payload",
+      "wrong_payload_aggregate",
+      "descriptor_drift"
+    ],
+    "program_order": [
+      "joint_input",
+      "adaln_modulation",
+      "attention_norm_modulation",
+      "qkv",
+      "qk_normalization",
+      "joint_qk_rope",
+      "streaming_joint_attention",
+      "attention_aggregation",
+      "output_projection",
+      "attention_residual",
+      "ffn_norm_modulation",
+      "w1_w3",
+      "gated_hidden",
+      "w2",
+      "final_residual_output"
+    ],
+    "shader_portfolio": {
+      "reused": [24, 25, 26, 29, 31, 32, 33, 36],
+      "joint_specific": [40, 41, 42, 43]
+    }
+  },
+  "buffer_plan": {
+    "activation_dtype": "fp32",
+    "reduction_dtype": "fp32",
+    "timestep_payload": "bf16_256",
+    "joint_fp32_bytes": 16220160,
+    "qkv_bytes": 48660480,
+    "w1_or_w3_hidden_bytes": 43253760,
+    "adaln_projection_bytes": 61440,
+    "scale_or_gate_bytes_each": 15360,
+    "warm_allocation_required": false
+  },
+  "open_closure_items": {
+    "clean_process_retained_refiner_chain_execution": "ran",
+    "rtx_numerical_comparison": "failed_final_joint_threshold",
+    "main_transformer_static_audit": "not_implemented",
+    "ten_warm_zero_churn_runs": "passed_zero_churn",
+    "full_lifecycle_fault_corpus": "partial"
+  },
+  "numerical_result": {
+    "finite": true,
+    "accepted_threshold": 0.00005,
+    "first_mismatch_coordinate": 0,
+    "joint": {
+      "relative_l2": 0.0234765,
+      "linf": 2.24572
+    },
+    "image_region": {
+      "relative_l2": 0.0375236,
+      "linf": 2.24572
+    },
+    "context_region": {
+      "relative_l2": 0.00248398,
+      "linf": 1.10574
+    },
+    "last_image_token": {
+      "relative_l2": 0.0425776
+    },
+    "first_context_token": {
+      "relative_l2": 0.00202765
+    },
+    "classification": "finite_but_outside_threshold",
+    "localized_boundary": "MainTransformer0 representative execution after accepted retained stream ingress"
+  },
+  "warm_timing": {
+    "runs": 10,
+    "durations_ns": [
+      568177400,
+      583313200,
+      555190000,
+      568131900,
+      594670500,
+      582757800,
+      576257300,
+      557928900,
+      582218100,
+      551127600
+    ],
+    "median_ns": 572217350,
+    "mean_ns": 571977070,
+    "min_ns": 551127600,
+    "p95_ns": 594670500,
+    "buffer_allocation_churn": 0,
+    "weight_upload_churn": 0,
+    "pipeline_creation_churn": 0,
+    "descriptor_pool_growth_churn": 0
+  },
+  "validation": {
+    "windows_native_build": "passed",
+    "marionette": {
+      "total": 440,
+      "passed": 405,
+      "skipped": 35,
+      "failed": 0
+    },
+    "opt_in_real_m2c_lane": "failed_numerical_assertion_after_finite_zero_churn_execution",
+    "compiled_model_lock_check": "passed",
+    "targeted_go_tests": "passed",
+    "git_diff_check": "passed_with_line_ending_warnings"
+  }
+}

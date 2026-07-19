@@ -97,6 +97,49 @@ std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path)
     return bytes;
 }
 
+struct ComparisonMetrics {
+    double l2 = 0.0;
+    double linf = 0.0;
+    double relativeL2 = 0.0;
+    std::uint64_t firstMismatch = 0u;
+    bool finite = true;
+};
+
+ComparisonMetrics compare_float_region(const float* actual, const std::vector<std::uint8_t>& referenceBytes,
+                                       std::uint64_t startElement, std::uint64_t elementCount)
+{
+    ComparisonMetrics metrics{};
+    double errorSquares = 0.0;
+    double referenceSquares = 0.0;
+    metrics.firstMismatch = elementCount;
+    if (referenceBytes.size() < static_cast<std::size_t>((startElement + elementCount) * sizeof(float))) {
+        metrics.finite = false;
+        metrics.firstMismatch = 0u;
+        return metrics;
+    }
+    for (std::uint64_t offset = 0u; offset < elementCount; ++offset) {
+        float reference = 0.0f;
+        std::memcpy(&reference, referenceBytes.data() + static_cast<std::size_t>((startElement + offset) * sizeof(float)),
+                    sizeof(reference));
+        const float value = actual[startElement + offset];
+        const double difference = static_cast<double>(value) - static_cast<double>(reference);
+        metrics.finite = metrics.finite && std::isfinite(value) && std::isfinite(reference);
+        errorSquares += difference * difference;
+        referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+        metrics.linf = std::max(metrics.linf, std::fabs(difference));
+        if (metrics.firstMismatch == elementCount && value != reference) metrics.firstMismatch = offset;
+    }
+    metrics.l2 = std::sqrt(errorSquares);
+    metrics.relativeL2 = referenceSquares == 0.0 ? 0.0 : metrics.l2 / std::sqrt(referenceSquares);
+    return metrics;
+}
+
+double mean_ns(const std::array<std::uint64_t, 10>& values)
+{
+    return static_cast<double>(std::accumulate(values.begin(), values.end(), std::uint64_t{0})) /
+        static_cast<double>(values.size());
+}
+
 int upload_all(void* runtime, std::uint64_t block_id, const PrometheusModelBlockCreateRequest& request,
                PrometheusModelBlockEvidence* out_evidence)
 {
@@ -1364,6 +1407,380 @@ FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
     ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, retainedSessionID),
                  "M2C repeated session destruction cannot transfer ownership twice");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M2C session runtime destroys safely");
+}
+
+FACT(PrometheusM2CMainTransformerFacadeRejectsUnresolvedOrPartialRequests)
+{
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "M2C main runtime creates");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+
+    PrometheusModelBlockEvidence evidence{};
+    std::uint64_t blockID = 0u;
+    PrometheusMainTransformerCreateRequest create{};
+    create.struct_size = sizeof(create);
+    create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID ^ 1u;
+    create.model_local_block_id = 0u;
+    create.upload_count = PROM_MODEL_BLOCK_MAX_WEIGHTS;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_main_transformer_create(
+                                 runtime, &create, &blockID, &evidence),
+                 "MainTransformer facade rejects a foreign lock before owner mutation");
+    ASSERT_EQUAL(0u, blockID, "foreign lock does not allocate a representative owner");
+
+    create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    create.model_local_block_id = 1u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_main_transformer_create(
+                                 runtime, &create, &blockID, &evidence),
+                 "MainTransformer facade rejects runtime-selected topology before mutation");
+    ASSERT_EQUAL(0u, blockID, "wrong representative id leaves the model owner empty");
+
+    create.model_local_block_id = 0u;
+    create.upload_count = PROM_MODEL_BLOCK_MAX_WEIGHTS - 1u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_main_transformer_create(
+                                 runtime, &create, &blockID, &evidence),
+                 "MainTransformer facade rejects a partial layers.0 payload before mutation");
+    ASSERT_EQUAL(0u, blockID, "partial payload cannot install a parameter set");
+
+    PrometheusMainTransformerExecuteRequest execute{};
+    execute.struct_size = sizeof(execute);
+    execute.session_identity = 1u;
+    execute.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    execute.model_local_block_id = 0u;
+    execute.required_image_generation = 1u;
+    execute.required_context_generation = 1u;
+    execute.required_joint_generation = 1u;
+    std::array<std::uint16_t, 256> timestep{};
+    execute.timestep_bf16 = timestep.data();
+    execute.timestep_bytes = timestep.size() * sizeof(std::uint16_t);
+    execute.timestep_identity = 0x4d32435f74696d65ull;
+    execute.output_identity = 0x4d32435f6d61696eull;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_main_transformer_execute(
+                                 runtime, blockID, &execute, &evidence),
+                 "MainTransformer execute rejects before mutation when no closed owner exists");
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_NOT_FOUND, evidence.detail_code,
+                 "missing representative owner has an exact failure identity");
+
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M2C main runtime destroys safely");
+}
+
+FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
+{
+    const char* enabled = std::getenv("OCT_EVT2_M2C_REAL");
+    const char* cacheRootText = std::getenv("OCT_EVT2_CACHE");
+    const char* oracleRootText = std::getenv("OCT_EVT2_ORACLE");
+    if (enabled == nullptr || std::string(enabled) != "1" || cacheRootText == nullptr || oracleRootText == nullptr) {
+        SKIP("set OCT_EVT2_M2C_REAL=1, OCT_EVT2_CACHE, and OCT_EVT2_ORACLE for the real retained MainTransformer lane");
+    }
+    const std::filesystem::path cacheRoot(cacheRootText);
+    const std::filesystem::path oracleRoot(oracleRootText);
+    const std::filesystem::path checkpointRoot = cacheRoot / "layers" /
+        "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6";
+    constexpr std::array<const char*, PROM_MODEL_BLOCK_MAX_WEIGHTS> noise0Names{
+        "noise_refiner.0.adaLN_modulation.0.bias.fp16.bin",
+        "noise_refiner.0.adaLN_modulation.0.weight.fp16.bin",
+        "noise_refiner.0.attention.k_norm.weight.fp16.bin",
+        "noise_refiner.0.attention.out.weight.fp16.bin",
+        "noise_refiner.0.attention.q_norm.weight.fp16.bin",
+        "noise_refiner.0.attention.qkv.weight.fp16.bin",
+        "noise_refiner.0.attention_norm1.weight.fp16.bin",
+        "noise_refiner.0.attention_norm2.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w1.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w2.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w3.weight.fp16.bin",
+        "noise_refiner.0.ffn_norm1.weight.fp16.bin",
+        "noise_refiner.0.ffn_norm2.weight.fp16.bin"};
+    std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> noise0WeightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> noise0Uploads{};
+    for (std::uint32_t index = 0u; index < noise0Names.size(); ++index) {
+        noise0WeightBytes[index] = read_binary_file(checkpointRoot / "noise_refiner.0" / noise0Names[index]);
+        ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(noise0WeightBytes[index].size()),
+                     "NoiseRefiner0 cache tensor has its declared size");
+    }
+    const std::vector<std::uint8_t> modelInput = read_binary_file(oracleRoot / "run_02" / "noise_refiner_0_input.bin");
+    const std::vector<std::uint8_t> timestep = read_binary_file(oracleRoot / "run_02" / "noise_refiner_0_timestep.bin");
+    ASSERT_EQUAL(1024u * 3840u * sizeof(std::uint16_t), static_cast<std::uint64_t>(modelInput.size()),
+                 "M2C real image ingress BF16 payload exists");
+    ASSERT_EQUAL(256u * sizeof(std::uint16_t), static_cast<std::uint64_t>(timestep.size()),
+                 "M2C real timestep BF16 payload exists");
+    if (modelInput.size() != 1024u * 3840u * sizeof(std::uint16_t) ||
+        timestep.size() != 256u * sizeof(std::uint16_t)) return;
+
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "M2C clean runtime creates");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    PrometheusCompiledModelSessionCreateRequest sessionCreate{};
+    sessionCreate.struct_size = sizeof(sessionCreate);
+    sessionCreate.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    PrometheusCompiledModelSessionEvidence sessionEvidence{};
+    std::uint64_t sessionID = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_create(
+                              runtime, &sessionCreate, &sessionID, &sessionEvidence),
+                 "M2C clean process creates the closed compiled-model session");
+    ASSERT_TRUE(sessionID != 0u && sessionEvidence.prepared_image_bytes == 15728640ull &&
+                    sessionEvidence.prepared_context_bytes == 491520ull &&
+                    sessionEvidence.joint_bytes == 16220160ull,
+                "M2C session exposes only the three lock-defined resident stream slots");
+
+    PrometheusModelBlockCreateRequest noiseCreate = make_m1b_request();
+    noiseCreate.audit_bytes = PROM_ZIMAGE_TURBO_AUDIT_ARENA_BYTES;
+    std::uint64_t noiseBlockID = 0u;
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &noiseCreate, &noiseBlockID, &evidence),
+                 "NoiseRefiner0 owner creates for M2C retained image preparation");
+    for (std::uint32_t index = 0u; index < noise0Uploads.size(); ++index) {
+        noise0Uploads[index].binding_index = index;
+        noise0Uploads[index].bytes = noise0WeightBytes[index].data();
+        noise0Uploads[index].byte_count = noise0WeightBytes[index].size();
+        noise0Uploads[index].content_identity = noiseCreate.weights[index].content_identity;
+        noise0Uploads[index].layout_identity = noiseCreate.weights[index].layout_identity;
+    }
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_upload_weights(
+                              runtime, noiseBlockID, noise0Uploads.data(), static_cast<std::uint32_t>(noise0Uploads.size()), &evidence),
+                 "NoiseRefiner0 validated payload uploads before M2C execution");
+    PrometheusNoiseRefiner0ExecuteRequest noise0{};
+    noise0.struct_size = sizeof(noise0);
+    noise0.model_input_bf16 = modelInput.data();
+    noise0.timestep_bf16 = timestep.data();
+    noise0.model_input_bytes = modelInput.size();
+    noise0.timestep_bytes = timestep.size();
+    noise0.input_identity = 0x857cea75e69d665cull;
+    noise0.timestep_identity = 0xbc0ba90e94f5ae98ull;
+    noise0.output_identity = 0xa4fd07d58b1c9e23ull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner0_execute(runtime, noiseBlockID, &noise0, &evidence),
+                 "NoiseRefiner0 produces the real retained image predecessor without host intermediate arithmetic");
+    const std::uint64_t noise0Generation = evidence.output_generation;
+
+    std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> noise1WeightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> noise1Uploads{};
+    for (std::uint32_t index = 0u; index < noise0Names.size(); ++index) {
+        std::string name(noise0Names[index]);
+        name.replace(0u, std::string("noise_refiner.0").size(), "noise_refiner.1");
+        noise1WeightBytes[index] = read_binary_file(checkpointRoot / "noise_refiner.1" / name);
+        ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(noise1WeightBytes[index].size()),
+                     "NoiseRefiner1 cache tensor has its declared size");
+        noise1Uploads[index].binding_index = index;
+        noise1Uploads[index].bytes = noise1WeightBytes[index].data();
+        noise1Uploads[index].byte_count = noise1WeightBytes[index].size();
+        noise1Uploads[index].content_identity = 0x8000u + index;
+        noise1Uploads[index].layout_identity = 0x8100u + index;
+    }
+    PrometheusNoiseRefinerRebindRequest noiseRebind{};
+    noiseRebind.struct_size = sizeof(noiseRebind);
+    noiseRebind.model_local_block_id = 1u;
+    noiseRebind.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    noiseRebind.upload_count = static_cast<std::uint32_t>(noise1Uploads.size());
+    noiseRebind.uploads = noise1Uploads.data();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_rebind(runtime, noiseBlockID, &noiseRebind, &evidence),
+                 "NoiseRefiner1 parameter set binds atomically for M2C");
+    PrometheusNoiseRefinerResidentExecuteRequest noise1{};
+    noise1.struct_size = sizeof(noise1);
+    noise1.input_generation = noise0Generation;
+    noise1.output_identity = 0x9b133c9ed3772f78ull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_resident(runtime, noiseBlockID, &noise1, &evidence),
+                 "NoiseRefiner1 consumes the retained image stream without host reconstruction");
+    PrometheusCompiledModelSessionCaptureRequest capture{};
+    capture.struct_size = sizeof(capture);
+    capture.source_output_generation = evidence.output_generation;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                              runtime, sessionID, noiseBlockID, &capture, &sessionEvidence),
+                 "NoiseRefiner1 final captures into PreparedImage");
+    const std::uint64_t preparedImageGeneration = sessionEvidence.prepared_image_generation;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, noiseBlockID),
+                 "NoiseRefiner owner is destroyed after image capture without destroying the session");
+
+    constexpr std::array<const char*, 11> context0Names{{
+        "context_refiner.0.attention.k_norm.weight.fp16.bin", "context_refiner.0.attention.out.weight.fp16.bin",
+        "context_refiner.0.attention.q_norm.weight.fp16.bin", "context_refiner.0.attention.qkv.weight.fp16.bin",
+        "context_refiner.0.attention_norm1.weight.fp16.bin", "context_refiner.0.attention_norm2.weight.fp16.bin",
+        "context_refiner.0.feed_forward.w1.weight.fp16.bin", "context_refiner.0.feed_forward.w2.weight.fp16.bin",
+        "context_refiner.0.feed_forward.w3.weight.fp16.bin", "context_refiner.0.ffn_norm1.weight.fp16.bin",
+        "context_refiner.0.ffn_norm2.weight.fp16.bin"}};
+    constexpr std::array<std::uint64_t, 11> contextBytes{{256u,29491200u,256u,88473600u,7680u,7680u,78643200u,78643200u,78643200u,7680u,7680u}};
+    std::array<std::vector<std::uint8_t>, 11> context0WeightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, 11> context0Uploads{};
+    for (std::uint32_t index = 0u; index < context0Names.size(); ++index) {
+        context0WeightBytes[index] = read_binary_file(checkpointRoot / "context_refiner.0" / context0Names[index]);
+        ASSERT_EQUAL(contextBytes[index], static_cast<std::uint64_t>(context0WeightBytes[index].size()),
+                     "ContextRefiner0 cache tensor has its declared size");
+        context0Uploads[index].binding_index = index;
+        context0Uploads[index].bytes = context0WeightBytes[index].data();
+        context0Uploads[index].byte_count = context0WeightBytes[index].size();
+        context0Uploads[index].content_identity = 0x7100u + index;
+        context0Uploads[index].layout_identity = 0x7200u + index;
+    }
+    const std::filesystem::path context0Canonical = cacheRoot / "canonical" / "f332072aa78be7aecdf3ee76d5c247082da564a6" /
+        "m2b-fp32-reference" / "context_refiner.0";
+    const std::vector<std::uint8_t> contextInput = read_binary_file(context0Canonical / "input.f32.bin");
+    ASSERT_EQUAL(32u * 3840u * sizeof(float), static_cast<std::uint64_t>(contextInput.size()),
+                 "ContextRefiner0 real context ingress exists");
+    PrometheusContextRefinerCreateRequest contextCreate{};
+    contextCreate.struct_size = sizeof(contextCreate);
+    contextCreate.model_local_block_id = 0u;
+    contextCreate.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    contextCreate.upload_count = static_cast<std::uint32_t>(context0Uploads.size());
+    contextCreate.uploads = context0Uploads.data();
+    std::uint64_t contextBlockID = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_create(runtime, &contextCreate, &contextBlockID, &evidence),
+                 "ContextRefiner0 owner creates for M2C retained context preparation");
+    PrometheusContextRefiner0ExecuteRequest context0{};
+    context0.struct_size = sizeof(context0);
+    context0.context_input = reinterpret_cast<const float*>(contextInput.data());
+    context0.context_input_bytes = contextInput.size();
+    context0.input_identity = 0xf6e4a2842dbbdfa7ull;
+    context0.output_identity = 0xd2b8167de614da25ull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner0_execute(runtime, contextBlockID, &context0, &evidence),
+                 "ContextRefiner0 prepares the real context stream");
+    const std::uint64_t context0Generation = evidence.output_generation;
+    std::array<std::vector<std::uint8_t>, 11> context1WeightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, 11> context1Uploads{};
+    for (std::uint32_t index = 0u; index < context0Names.size(); ++index) {
+        std::string name(context0Names[index]);
+        name.replace(0u, std::string("context_refiner.0").size(), "context_refiner.1");
+        context1WeightBytes[index] = read_binary_file(checkpointRoot / "context_refiner.1" / name);
+        ASSERT_EQUAL(contextBytes[index], static_cast<std::uint64_t>(context1WeightBytes[index].size()),
+                     "ContextRefiner1 cache tensor has its declared size");
+        context1Uploads[index].binding_index = index;
+        context1Uploads[index].bytes = context1WeightBytes[index].data();
+        context1Uploads[index].byte_count = context1WeightBytes[index].size();
+        context1Uploads[index].content_identity = 0x7300u + index;
+        context1Uploads[index].layout_identity = 0x7400u + index;
+    }
+    PrometheusContextRefinerRebindRequest contextRebind{};
+    contextRebind.struct_size = sizeof(contextRebind);
+    contextRebind.model_local_block_id = 1u;
+    contextRebind.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    contextRebind.upload_count = static_cast<std::uint32_t>(context1Uploads.size());
+    contextRebind.uploads = context1Uploads.data();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_rebind(runtime, contextBlockID, &contextRebind, &evidence),
+                 "ContextRefiner1 parameter set binds atomically for M2C");
+    PrometheusContextRefinerResidentExecuteRequest context1{};
+    context1.struct_size = sizeof(context1);
+    context1.input_generation = context0Generation;
+    context1.output_identity = 0x08377e8a46b65cffull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_context_refiner_execute_resident(runtime, contextBlockID, &context1, &evidence),
+                 "ContextRefiner1 consumes retained context without host reconstruction");
+    capture.source_output_generation = evidence.output_generation;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_capture_completed(
+                              runtime, sessionID, contextBlockID, &capture, &sessionEvidence),
+                 "ContextRefiner1 final captures into PreparedContext without invalidating PreparedImage");
+    const std::uint64_t preparedContextGeneration = sessionEvidence.prepared_context_generation;
+    ASSERT_EQUAL(preparedImageGeneration, sessionEvidence.prepared_image_generation,
+                 "capturing PreparedContext does not invalidate PreparedImage");
+    PrometheusCompiledModelSessionComposeRequest compose{};
+    compose.struct_size = sizeof(compose);
+    compose.required_image_generation = preparedImageGeneration;
+    compose.required_context_generation = preparedContextGeneration;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_compose_joint(
+                              runtime, sessionID, &compose, &sessionEvidence),
+                 "M2C composes JointWorking on device in Image then Context order");
+    ASSERT_EQUAL(1u, sessionEvidence.joint_generation, "first physical joint composition owns generation one");
+    const std::uint64_t jointGeneration = sessionEvidence.joint_generation;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, contextBlockID),
+                 "ContextRefiner owner is destroyed after context capture without destroying the session");
+
+    std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> mainWeightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> mainUploads{};
+    for (std::uint32_t index = 0u; index < noise0Names.size(); ++index) {
+        std::string name(noise0Names[index]);
+        name.replace(0u, std::string("noise_refiner.0").size(), "layers.0");
+        mainWeightBytes[index] = read_binary_file(checkpointRoot / "layers.0" / name);
+        ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(mainWeightBytes[index].size()),
+                     "MainTransformer layers.0 cache tensor has its declared size");
+        mainUploads[index].binding_index = index;
+        mainUploads[index].bytes = mainWeightBytes[index].data();
+        mainUploads[index].byte_count = mainWeightBytes[index].size();
+        mainUploads[index].content_identity = 0x9000u + index;
+        mainUploads[index].layout_identity = 0x9100u + index;
+    }
+    PrometheusMainTransformerCreateRequest mainCreate{};
+    mainCreate.struct_size = sizeof(mainCreate);
+    mainCreate.model_local_block_id = 0u;
+    mainCreate.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    mainCreate.upload_count = static_cast<std::uint32_t>(mainUploads.size());
+    mainCreate.uploads = mainUploads.data();
+    std::uint64_t mainBlockID = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_create(runtime, &mainCreate, &mainBlockID, &evidence),
+                 "MainTransformer0 layers.0 owner creates from the lock-resolved descriptor");
+    PrometheusMainTransformerExecuteRequest mainExecute{};
+    mainExecute.struct_size = sizeof(mainExecute);
+    mainExecute.session_identity = sessionID;
+    mainExecute.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    mainExecute.model_local_block_id = 0u;
+    mainExecute.required_image_generation = preparedImageGeneration;
+    mainExecute.required_context_generation = preparedContextGeneration;
+    mainExecute.required_joint_generation = jointGeneration;
+    mainExecute.timestep_bf16 = timestep.data();
+    mainExecute.timestep_bytes = timestep.size();
+    mainExecute.timestep_identity = 0xbc0ba90e94f5ae98ull;
+    mainExecute.output_identity = 0x4d32435f6d61696eull;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
+                 "MainTransformer0 consumes real retained JointWorking without host activation bounce");
+    const std::uint64_t mainOutputGeneration = evidence.output_generation;
+    std::vector<float> finalJoint(1056u * 3840u);
+    PrometheusMainTransformerFinalAuditRequest finalAudit{};
+    finalAudit.struct_size = sizeof(finalAudit);
+    finalAudit.required_output_generation = mainOutputGeneration;
+    finalAudit.output_identity = mainExecute.output_identity;
+    finalAudit.output = finalJoint.data();
+    finalAudit.output_element_capacity = finalJoint.size();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_audit_final(runtime, mainBlockID, &finalAudit, &evidence),
+                 "MainTransformer final audit reads back only the completed representative joint output");
+    const std::filesystem::path mainCanonical = cacheRoot / "canonical" / "f332072aa78be7aecdf3ee76d5c247082da564a6" /
+        "m2c-fp32-reference" / "layers.0" / "stages" / "final_joint_output.f32.bin";
+    const std::vector<std::uint8_t> referenceJoint = read_binary_file(mainCanonical);
+    ASSERT_EQUAL(static_cast<std::uint64_t>(finalJoint.size()) * sizeof(float),
+                 static_cast<std::uint64_t>(referenceJoint.size()),
+                 "M2C final joint FP32 oracle exists with exact physical size");
+    const ComparisonMetrics joint = compare_float_region(finalJoint.data(), referenceJoint, 0u, finalJoint.size());
+    const ComparisonMetrics image = compare_float_region(finalJoint.data(), referenceJoint, 0u, 1024u * 3840u);
+    const ComparisonMetrics contextRegion = compare_float_region(finalJoint.data(), referenceJoint, 1024u * 3840u, 32u * 3840u);
+    const ComparisonMetrics lastImageToken = compare_float_region(finalJoint.data(), referenceJoint, 1023u * 3840u, 3840u);
+    const ComparisonMetrics firstContextToken = compare_float_region(finalJoint.data(), referenceJoint, 1024u * 3840u, 3840u);
+    std::cout << "M2C final_joint finite=" << joint.finite << " relative_l2=" << joint.relativeL2
+              << " linf=" << joint.linf << " accepted_threshold=5e-5 first_mismatch=" << joint.firstMismatch << "\n";
+    std::cout << "M2C image_region relative_l2=" << image.relativeL2 << " linf=" << image.linf
+              << " context_region_relative_l2=" << contextRegion.relativeL2 << " context_region_linf=" << contextRegion.linf
+              << " last_image_token_relative_l2=" << lastImageToken.relativeL2
+              << " first_context_token_relative_l2=" << firstContextToken.relativeL2 << "\n";
+    ASSERT_TRUE(joint.finite && joint.relativeL2 <= 5.0e-5 && image.relativeL2 <= 5.0e-5 &&
+                    contextRegion.relativeL2 <= 5.0e-5,
+                "MainTransformer0 representative output matches the deterministic FP32 joint oracle");
+
+    const std::uint64_t warmAllocations = evidence.warm_buffer_allocation_count;
+    const std::uint64_t warmUploads = evidence.weight_upload_count;
+    const std::uint64_t warmPipelines = evidence.pipeline_create_count;
+    const std::uint64_t warmDescriptors = evidence.descriptor_set_count;
+    std::array<std::uint64_t, 10> warmNs{};
+    for (std::uint32_t iteration = 0u; iteration < warmNs.size(); ++iteration) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
+                     "warm MainTransformer execution reuses retained streams and bound parameters");
+        warmNs[iteration] = evidence.last_execution_ns;
+    }
+    ASSERT_EQUAL(warmAllocations, evidence.warm_buffer_allocation_count, "warm M2C execution allocates no buffers");
+    ASSERT_EQUAL(warmUploads, evidence.weight_upload_count, "warm M2C execution uploads no weights");
+    ASSERT_EQUAL(warmPipelines, evidence.pipeline_create_count, "warm M2C execution creates no pipelines");
+    ASSERT_EQUAL(warmDescriptors, evidence.descriptor_set_count, "warm M2C execution grows no descriptor pools");
+    std::array<std::uint64_t, 10> sortedWarm = warmNs;
+    std::sort(sortedWarm.begin(), sortedWarm.end());
+    std::cout << "M2C warm_ns=";
+    for (std::size_t index = 0u; index < warmNs.size(); ++index) {
+        if (index != 0u) std::cout << ',';
+        std::cout << warmNs[index];
+    }
+    std::cout << "\nM2C warm_stats_ns median=" << (sortedWarm[4u] + sortedWarm[5u]) / 2u
+              << " mean=" << mean_ns(warmNs) << " min=" << sortedWarm.front()
+              << " p95=" << sortedWarm[9u] << " churn=zero\n";
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, mainBlockID),
+                 "MainTransformer owner destroys safely after retained-stream reuse");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, sessionID),
+                 "M2C compiled-model session destroys all three resident slots safely");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M2C runtime destroys safely");
 }
 
 FACT(PrometheusResidentModelBlockRejectsMalformedProgramAndPipelineFault)
