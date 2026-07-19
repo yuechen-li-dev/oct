@@ -62,6 +62,48 @@ The local root has this actual structure (large `.bin` files remain local):
 
 The cache manifest is `layers/<checkpoint>/noise_refiner.0/manifest.json`; its 13 tensor paths are the `destination_name` values in that manifest. The loader consumes the oracle's `run_02/capture.json`, `run_02/noise_refiner_0_input.bin`, `run_02/noise_refiner_0_timestep.bin`, `run_02/noise_refiner_0_output.bin`, and `m075/noise_refiner_0_fp16_weight_output.bin`.
 
+## M2A `noise_refiner.1` authority
+
+The second immutable package is deliberately separate from block 0:
+
+```text
+layers/2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6/noise_refiner.1/
+  manifest.json
+  tensor_inventory.json
+  <13 FP16 cache tensors>
+canonical/f332072aa78be7aecdf3ee76d5c247082da564a6/o19-fp32-reference/noise_refiner.1/
+  manifest.json
+  final_output.f32.bin
+  stages/<34 FP32 stage payloads>.f32.bin
+```
+
+Its cache aggregate is `80c0cd75f44cc434d9306c0fd9a8f02e48b593ecc254de01c1f8fcc29f4bc7c8`.
+Regenerate it only from the pinned local checkpoint:
+
+```powershell
+go run ./tools/zimage_noise_refiner1_cache -source "$env:USERPROFILE\ComfyUI\models\diffusion_models\z_image_turbo_bf16.safetensors" -cache-root $env:OCT_EVT2_CACHE
+go run ./tools/zimage_canonical_reference -cache-root $env:OCT_EVT2_CACHE -oracle-root $env:OCT_EVT2_ORACLE -block noise_refiner.1 -input-f32 "$env:OCT_EVT2_CACHE\canonical\f332072aa78be7aecdf3ee76d5c247082da564a6\o19-fp32-reference\noise_refiner.0\final_output.f32.bin" -out "$env:OCT_EVT2_CACHE\canonical\f332072aa78be7aecdf3ee76d5c247082da564a6\o19-fp32-reference\noise_refiner.1" -capture
+go run ./tools/evt2_payload_check
+```
+
+The canonical block-1 input is the accepted block-0 FP32 final payload. That
+is the two-block chain reproduction boundary: do not convert it to BF16 for
+the internal hand-off.
+
+The current M2A-R native rebind/chain witness is deliberately gated on the
+real payload lane. It binds block 0, executes the complete resident block,
+stages and atomically commits the block-1 package, then starts block 1 from
+the resident FP32 final without the BF16 ingress adapter:
+
+```powershell
+$env:PROMETHEUS_REQUIRE_VULKAN_HARDWARE = '1'
+$env:PROMETHEUS_VK_VALIDATION = '1'
+$env:OCT_EVT2_M1B_REAL = '1'
+$env:OCT_EVT2_M1C_REAL = '1'
+$env:OCT_EVT2_M1D_REAL = '1'
+.\out\prometheus\native\marionette_tests.exe PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness
+```
+
 The normative M1C-M1E local authority is derived from `OCT_EVT2_CACHE`: `canonical/<revision>/o19-fp32-reference/noise_refiner.0`. It contains the O19 stage manifest, projections, final diagnostic, and all 34 hash-addressed FP32 stage payloads. No third environment variable is needed. The older `canonical/<revision>/noise_refiner.0/capture_04` tree is historical, non-normative, incompatible with O19 production acceptance, and retained only for forensic comparison. Do not point `OCT_EVT2_M1B_CANONICAL` at it.
 
 The committed, payload-free numerical authority is [canonical_stage_projections.json](../internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/canonical_stage_projections.json), [canonical_stage_manifest.json](../internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/canonical_stage_manifest.json), and the M1C inventory [m1c_canonical_stage_authority.json](../internal/prometheus/DevelopmentReport/artifacts/Evt2M1c/m1c_canonical_stage_authority.json). Relevant experiment metadata lives in `internal/prometheus/DevelopmentReport/artifacts/Evt2OctOracle/`.

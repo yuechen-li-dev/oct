@@ -3020,6 +3020,15 @@ int prom_reactor_runtime_model_block_execute_m1d_impl(
 int prom_reactor_runtime_noise_refiner0_execute_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefiner0ExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner1_execute_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefiner1ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_rebind_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_execute_resident_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_model_block_get_evidence_impl(void* handle, uint64_t block_id,
                                                        PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_model_block_destroy_impl(void* handle, uint64_t block_id);

@@ -314,6 +314,10 @@ typedef struct prom_model_block_state {
   uint64_t execution_plan_identity;
   uint64_t replay_identity;
   uint64_t m1b_prefix_replay_identity;
+  uint64_t parameter_set_aggregate_identity;
+  uint64_t binding_generation;
+  uint64_t output_generation;
+  uint64_t descriptor_generation;
   uint32_t created;
   uint32_t weights_uploaded;
   uint32_t quarantined;
@@ -324,6 +328,9 @@ typedef struct prom_model_block_state {
   uint32_t test_flags;
   uint32_t weight_count;
   uint32_t step_count;
+  uint32_t assembly_family;
+  uint32_t parameter_set;
+  uint32_t binding_state;
   uint32_t steps[PROM_MODEL_BLOCK_MAX_STEPS];
   uint64_t cold_buffer_allocation_count;
   uint64_t warm_buffer_allocation_count;
@@ -369,6 +376,9 @@ typedef struct prom_model_block_state {
   prom_model_block_m1b_pipeline m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+  /* A complete candidate bundle is uploaded here before the descriptor
+     transaction.  It is never visible to a dispatch until commit. */
+  prom_model_block_weight_resource pending_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
 } prom_model_block_state;
 
 typedef struct prom_reduction_slot {
@@ -665,6 +675,18 @@ void prom_reduction_record_barrier(VkCommandBuffer command_buffer);
 int prom_reduction_find_nonfinite(const float* input, uint64_t count, uint64_t* out_index);
 void prom_reduction_destroy_pipeline(VkDevice device, prom_reduction_pipeline* pipeline);
 void prom_model_block_cleanup_state(prom_reduction_runtime_state* state);
+int prom_reactor_runtime_noise_refiner0_execute_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefiner0ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner1_execute_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefiner1ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_rebind_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_noise_refiner_execute_resident_impl(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
 int prom_m40b_wait_all_slots(prom_reduction_runtime_state* state);
 int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel);
 int prom_m40b_pack_matrix(const float* values, uint32_t rows, uint32_t columns,

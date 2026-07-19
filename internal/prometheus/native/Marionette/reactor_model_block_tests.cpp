@@ -65,6 +65,9 @@ PrometheusModelBlockCreateRequest make_m1b_request()
     request.external_output_bytes = 0u;
     request.audit_bytes = 65536ull * sizeof(float);
     request.shader_id = 24u;
+    request.assembly_family = PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO;
+    request.parameter_set = PROM_NOISE_REFINER_PARAMETER_SET_0;
+    request.parameter_set_aggregate_identity = 0xa1ba526898a2a752ull;
     for (std::uint32_t i = 0u; i < request.weight_count; ++i) {
         request.weights[i].content_identity = 0x5a00u + i;
         request.weights[i].layout_identity = 0x6b00u + i;
@@ -766,6 +769,68 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
                       << " mean=" << completeWarmMean << " min=" << sortedCompleteWarmNs.front()
                       << " p95=" << sortedCompleteWarmNs[9u]
                       << " stddev=" << std::sqrt(completeWarmVariance / static_cast<double>(completeWarmNs.size())) << "\n";
+
+            /* M2A-R: the second parameter set is never a facade alias.  The
+               block-0 FP32 final remains in attention while a complete second
+               immutable package is staged, descriptor-bound, and committed. */
+            const std::filesystem::path block1Cache = std::filesystem::path(cacheRootText) / "layers" /
+                "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6" / "noise_refiner.1";
+            constexpr std::array<const char*, PROM_MODEL_BLOCK_MAX_WEIGHTS> block1Names{
+                "noise_refiner.1.adaLN_modulation.0.bias.fp16.bin",
+                "noise_refiner.1.adaLN_modulation.0.weight.fp16.bin",
+                "noise_refiner.1.attention.k_norm.weight.fp16.bin",
+                "noise_refiner.1.attention.out.weight.fp16.bin",
+                "noise_refiner.1.attention.q_norm.weight.fp16.bin",
+                "noise_refiner.1.attention.qkv.weight.fp16.bin",
+                "noise_refiner.1.attention_norm1.weight.fp16.bin",
+                "noise_refiner.1.attention_norm2.weight.fp16.bin",
+                "noise_refiner.1.feed_forward.w1.weight.fp16.bin",
+                "noise_refiner.1.feed_forward.w2.weight.fp16.bin",
+                "noise_refiner.1.feed_forward.w3.weight.fp16.bin",
+                "noise_refiner.1.ffn_norm1.weight.fp16.bin",
+                "noise_refiner.1.ffn_norm2.weight.fp16.bin"};
+            std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> block1Bytes{};
+            std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> block1Uploads{};
+            for (std::uint32_t index = 0u; index < block1Names.size(); ++index) {
+                block1Bytes[index] = read_binary_file(block1Cache / block1Names[index]);
+                ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(block1Bytes[index].size()),
+                             "block-1 cache has the identical closed physical tensor layout");
+                block1Uploads[index].binding_index = index;
+                block1Uploads[index].bytes = block1Bytes[index].data();
+                block1Uploads[index].byte_count = block1Bytes[index].size();
+                block1Uploads[index].content_identity = 0x7c00u + index;
+                block1Uploads[index].layout_identity = 0x8d00u + index;
+            }
+            PrometheusNoiseRefinerRebindRequest rebind{};
+            rebind.struct_size = sizeof(rebind);
+            rebind.parameter_set = PROM_NOISE_REFINER_PARAMETER_SET_1;
+            rebind.parameter_set_aggregate_identity = 0x80c0cd75f44cc434ull;
+            rebind.upload_count = static_cast<std::uint32_t>(block1Uploads.size());
+            rebind.uploads = block1Uploads.data();
+            const std::uint64_t block0OutputGeneration = evidence.output_generation;
+            const auto rebindBegin = std::chrono::steady_clock::now();
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_rebind(runtime, blockID, &rebind, &evidence),
+                         "complete block-1 package commits only after all staged uploads and descriptor writes succeed");
+            const auto rebindEnd = std::chrono::steady_clock::now();
+            ASSERT_EQUAL(PROM_NOISE_REFINER_PARAMETER_SET_1, evidence.parameter_set,
+                         "committed resident handle reports the closed block-1 parameter identity");
+            ASSERT_TRUE(evidence.output_valid == 0u && evidence.replay_identity == 0u,
+                        "commit invalidates block-0 output and replay acceptance before block-1 dispatch");
+            ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_noise_refiner0_execute(runtime, blockID, &complete, &evidence),
+                         "block-0 facade cannot relabel a block-1 resident binding");
+            PrometheusNoiseRefinerResidentExecuteRequest resident{};
+            resident.struct_size = sizeof(resident);
+            resident.input_generation = block0OutputGeneration;
+            resident.output_identity = 0x9b133c9ed3772f78ull;
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_noise_refiner_execute_resident(runtime, blockID, &resident, &evidence),
+                         "block-1 consumes the resident block-0 FP32 final without BF16 ingress or host activation bounce");
+            std::cout << "M2A chain block0_output_generation=" << block0OutputGeneration
+                      << " block1_output_generation=" << evidence.output_generation
+                      << " rebind_ns=" << std::chrono::duration_cast<std::chrono::nanoseconds>(rebindEnd - rebindBegin).count()
+                      << " block1_execution_ns=" << evidence.last_execution_ns
+                      << " binding_generation=" << evidence.binding_generation
+                      << " descriptor_generation=" << evidence.descriptor_generation
+                      << " replay_identity=" << evidence.replay_identity << "\n";
         }
     }
     std::cout << "M1B evidence uploaded_bytes=361820672 upload_ns=" << uploadNs
@@ -793,7 +858,7 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
         std::cout << evidence.m1b_boundary_gpu_ns[index];
     }
     std::cout << "\n";
-    ASSERT_EQUAL(13u, evidence.weight_upload_count, "real package has exactly thirteen cold uploads");
+    ASSERT_EQUAL(26u, evidence.weight_upload_count, "two validated parameter sets perform exactly two complete cold packages");
     ASSERT_EQUAL(0u, evidence.warm_buffer_allocation_count, "first real execution performs no warm buffer allocation");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "real resident M1B resources destroy safely");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "real M1B runtime destroys safely");

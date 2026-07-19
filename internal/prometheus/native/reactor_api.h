@@ -604,6 +604,30 @@ enum {
   PROM_MODEL_BLOCK_DETAIL_INGRESS_TIMESTEP_SIZE_MISMATCH = -6917,
   PROM_MODEL_BLOCK_DETAIL_M1C_SOFTMAX_INVALID = -6918,
   PROM_MODEL_BLOCK_DETAIL_M1D_NONFINITE = -6919,
+  PROM_MODEL_BLOCK_DETAIL_PARAMETER_SET_MISMATCH = -6920,
+  PROM_MODEL_BLOCK_DETAIL_REBIND_FAILED = -6921,
+  PROM_MODEL_BLOCK_DETAIL_DESCRIPTOR_UPDATE_FAILED = -6922,
+};
+
+/* The compiled noise-refiner owner is intentionally a closed family.  These
+   tags are part of the native ABI; callers cannot relabel a resident handle
+   with an arbitrary block number or tensor map. */
+enum {
+  PROM_NOISE_REFINER_FAMILY_Z_IMAGE_TURBO = 1u,
+  PROM_NOISE_REFINER_PARAMETER_SET_0 = 1u,
+  PROM_NOISE_REFINER_PARAMETER_SET_1 = 2u,
+};
+
+enum {
+  PROM_NOISE_REFINER_BINDING_BOUND = 1u,
+  PROM_NOISE_REFINER_BINDING_VALIDATING = 2u,
+  PROM_NOISE_REFINER_BINDING_UPLOADING = 3u,
+  PROM_NOISE_REFINER_BINDING_UPDATING_DESCRIPTORS = 4u,
+  PROM_NOISE_REFINER_BINDING_READY_TO_COMMIT = 5u,
+  PROM_NOISE_REFINER_BINDING_COMMITTED = 6u,
+  PROM_NOISE_REFINER_BINDING_FAILED_BEFORE_COMMIT = 7u,
+  PROM_NOISE_REFINER_BINDING_COMPLETION_UNCERTAIN = 8u,
+  PROM_NOISE_REFINER_BINDING_QUARANTINED = 9u,
 };
 
 enum {
@@ -639,6 +663,9 @@ typedef struct PrometheusModelBlockWeightDeclaration {
 
 typedef struct PrometheusModelBlockCreateRequest {
   uint32_t struct_size;
+  uint32_t assembly_family;
+  uint32_t parameter_set;
+  uint64_t parameter_set_aggregate_identity;
   uint64_t model_contract_identity;
   uint64_t weight_identity;
   uint64_t shader_portfolio_identity;
@@ -662,6 +689,14 @@ typedef struct PrometheusModelBlockWeightUpload {
   uint64_t content_identity;
   uint64_t layout_identity;
 } PrometheusModelBlockWeightUpload;
+
+typedef struct PrometheusNoiseRefinerRebindRequest {
+  uint32_t struct_size;
+  uint32_t parameter_set;
+  uint64_t parameter_set_aggregate_identity;
+  uint32_t upload_count;
+  const PrometheusModelBlockWeightUpload* uploads;
+} PrometheusNoiseRefinerRebindRequest;
 
 typedef struct PrometheusModelBlockExecuteRequest {
   uint32_t struct_size;
@@ -741,6 +776,15 @@ typedef struct PrometheusNoiseRefiner0ExecuteRequest {
   uint32_t audit_enabled;
 } PrometheusNoiseRefiner0ExecuteRequest;
 
+typedef PrometheusNoiseRefiner0ExecuteRequest PrometheusNoiseRefiner1ExecuteRequest;
+
+typedef struct PrometheusNoiseRefinerResidentExecuteRequest {
+  uint32_t struct_size;
+  uint64_t input_generation;
+  uint64_t output_identity;
+  uint32_t audit_enabled;
+} PrometheusNoiseRefinerResidentExecuteRequest;
+
 enum {
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_NORM = 1u,
   PROM_MODEL_BLOCK_M1D_AUDIT_FFN_MODULATED = 2u,
@@ -776,6 +820,14 @@ typedef struct PrometheusModelBlockEvidence {
   uint64_t last_execution_ns;
   uint64_t execution_plan_identity;
   uint64_t replay_identity;
+  uint32_t assembly_family;
+  uint32_t parameter_set;
+  uint32_t binding_state;
+  uint32_t reserved0;
+  uint64_t parameter_set_aggregate_identity;
+  uint64_t binding_generation;
+  uint64_t output_generation;
+  uint64_t descriptor_generation;
   uint64_t m1b_boundary_gpu_ns[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
 } PrometheusModelBlockEvidence;
 
@@ -1852,6 +1904,15 @@ PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1d(
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner0_execute(
     void* handle, uint64_t block_id, const PrometheusNoiseRefiner0ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner1_execute(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefiner1ExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_rebind(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerRebindRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_noise_refiner_execute_resident(
+    void* handle, uint64_t block_id, const PrometheusNoiseRefinerResidentExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);

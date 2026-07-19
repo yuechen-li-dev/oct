@@ -86,6 +86,8 @@ func main() {
 	projectionsOut := flag.String("projections-out", "", "optional deterministic canonical stage-projection artifact JSON path")
 	stageManifestOut := flag.String("stage-manifest-out", "", "optional deterministic canonical stage-manifest artifact JSON path")
 	capture := flag.Bool("capture", false, "write full local stage payloads")
+	block := flag.String("block", "noise_refiner.0", "closed noise-refiner block: noise_refiner.0 or noise_refiner.1")
+	inputF32 := flag.String("input-f32", "", "required FP32 block-boundary input for noise_refiner.1")
 	castFfnNorm := flag.Bool("cast-ffn-norm-fp16", false, "diagnostic-only FP16 round trip after ffn_norm")
 	castAttentionNorm := flag.Bool("cast-attention-norm-fp16", false, "diagnostic-only FP16 round trip after attention_norm")
 	flag.Parse()
@@ -96,7 +98,17 @@ func main() {
 	paths := zimage.CanonicalNoiseRefiner0Paths{CacheRoot: *cacheRoot, OracleRoot: *oracleRoot}
 	var result zimage.CanonicalNoiseRefiner0Result
 	var err error
-	if *castFfnNorm || *castAttentionNorm {
+	if *block != "noise_refiner.0" && *block != "noise_refiner.1" {
+		fmt.Fprintln(os.Stderr, "-block must be noise_refiner.0 or noise_refiner.1")
+		os.Exit(2)
+	}
+	if *block == "noise_refiner.1" && (*castFfnNorm || *castAttentionNorm) {
+		fmt.Fprintln(os.Stderr, "diagnostic activation casts are only available for noise_refiner.0")
+		os.Exit(2)
+	}
+	if *block == "noise_refiner.1" {
+		result, err = zimage.RunCanonicalNoiseRefiner1(*cacheRoot, *oracleRoot, *inputF32, *capture)
+	} else if *castFfnNorm || *castAttentionNorm {
 		casts := map[string]bool{"ffn_norm": *castFfnNorm, "attention_norm": *castAttentionNorm}
 		result, err = zimage.RunCanonicalNoiseRefiner0WithF16StageCasts(paths, *capture, casts)
 	} else {
@@ -113,7 +125,7 @@ func main() {
 	if err = os.WriteFile(filepath.Join(*out, "final_output.f32.bin"), final, 0644); err != nil {
 		panic(err)
 	}
-	manifest := map[string]any{"schema": "oct.prometheus.evt2.o19.fp32-reference-bundle.v1", "source_revision": zimage.CanonicalNoiseRefiner0SourceRevision, "rope_frame": 33, "numerical_policy": "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode", "final_output": map[string]any{"relative_path": "final_output.f32.bin", "sha256": hash(final), "shape": []int{1, 1024, 3840}, "dtype": "float32"}, "capture": *capture}
+	manifest := map[string]any{"schema": "oct.prometheus.evt2.o19.fp32-reference-bundle.v1", "block": *block, "source_revision": zimage.CanonicalNoiseRefiner0SourceRevision, "rope_frame": 33, "numerical_policy": "cached FP16 weights expanded to FP32; fixed-order FP32 arithmetic; corrected IEEE FP16 decode", "final_output": map[string]any{"relative_path": "final_output.f32.bin", "sha256": hash(final), "shape": []int{1, 1024, 3840}, "dtype": "float32"}, "capture": *capture}
 	if *capture {
 		names := make([]string, 0, len(result.Stages))
 		for name := range result.Stages {
