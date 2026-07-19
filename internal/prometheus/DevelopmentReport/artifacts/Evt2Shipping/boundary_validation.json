@@ -1,0 +1,44 @@
+{
+  "schema": "prometheus.evt2.zimage.shipping-boundary-validation.v1",
+  "smoke": {
+    "png_path": "C:\\Users\\yuech\\AppData\\Local\\oct\\evt2-z-image-turbo\\shipping_smoke\\zimage_turbo_prometheus_seed42.png",
+    "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "valid_png": true,
+    "visual_result": "recognizable illuminated lighthouse in fog; soft/blocky detail but no corruption",
+    "model_evaluations": 9,
+    "all_evaluations_completed_layers_0_through_29": true
+  },
+  "python_oracle_boundary": {
+    "qwen_prompt_embedding": {
+      "shape": [1, 15, 2560],
+      "dtype": "float32",
+      "frozen_oracle_sha256": "f6e4a2842dbbdfa7e983fb8260ab15a9e0ea1f763a6615fcaf170ec8cb8838bd",
+      "smoke_sha256": "f6e4a2842dbbdfa7e983fb8260ab15a9e0ea1f763a6615fcaf170ec8cb8838bd",
+      "bit_exact": true
+    },
+    "first_image_embedding": {
+      "shape": [1, 1024, 3840],
+      "dtype": "bfloat16",
+      "frozen_oracle_positive_row_sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
+      "smoke_sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
+      "bit_exact": true
+    },
+    "first_timestep_embedding": {
+      "shape": [1, 256],
+      "dtype": "bfloat16",
+      "frozen_partial_step_oracle_positive_row_sha256": "d88bf2beb78bda9c6d32f90a0c363142270e15546ed480365d3848406d16599b",
+      "full_scheduler_smoke_sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2",
+      "bit_exact": false,
+      "full_scheduler_source_check": "The smoke hash is the current source-owned TimestepEmbedder output for sigma=1, transformed as (1 - timestep) * time_scale = 0 with time_scale=1000.",
+      "disposition": "Recorded as a partial-step-oracle invocation discrepancy. It did not prevent a source-faithful full scheduler run or valid image, and no internal transformer stage was reopened."
+    }
+  },
+  "accepted_native_authority": {
+    "final_joint_cuda_sha256": "1015ca4b43537d5fdaa6720ca8bb7ec6882e0b260c08d4a33172266daabe2893",
+    "joint_relative_l2": 0.0000102005,
+    "image_relative_l2": 0.0000119522,
+    "context_relative_l2": 0.0000042375,
+    "threshold": 0.00005,
+    "model_owned_allocation_ceiling_bytes": 643587076
+  }
+}

@@ -1,0 +1,256 @@
+{
+  "allocation": {
+    "audit_bytes": 47186432,
+    "model_owned_ceiling_bytes": 643587076,
+    "persistent_bytes": 361820672,
+    "reusable_bytes": 234579972
+  },
+  "authority": {
+    "bridge_dll_sha256": "0e99a0803efd3d31722a824ecae612f7d61fa649f87b1668e37a1656104e71b8",
+    "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+    "compiled_model_lock_sha256": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+    "lock_path": "C:\\Users\\yuech\\source\\repos\\oct\\internal\\prometheus\\models\\zimage-turbo\\lock-tagon.octagon",
+    "model": "Tongyi-MAI/Z-Image-Turbo@f332072aa78be7aecdf3ee76d5c247082da564a6",
+    "payload_root": "C:\\Users\\yuech\\AppData\\Local\\oct\\evt2-z-image-turbo",
+    "reactor_dll_sha256": "c10f110a88745e71a5d252a3819df5978b1497b5703b0e3f56f2959ef0afc377",
+    "source": "Tongyi-MAI/Z-Image@26f23eda626ffadda020b04ff79488e1d72004cd",
+    "text_encoder_sha256": "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a",
+    "vae_sha256": "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"
+  },
+  "deferred_native_work": "M2D 29-stage audit wiring and exhaustive 30-layer lifecycle matrix; explicitly not a blocker for this shipping smoke.",
+  "environment": {
+    "cuda": "13.0",
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.9 (main, Feb 12 2025, 14:52:31) [MSC v.1942 64 bit (AMD64)]",
+    "python_executable": "C:\\Users\\yuech\\ComfyUI\\.venv\\Scripts\\python.exe",
+    "torch": "2.9.1+cu130"
+  },
+  "native_evaluations": [
+    {
+      "audit_bytes": 47186432,
+      "context_reused": false,
+      "evaluation_index": 1,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.3539552,
+      "parameter_rebind_seconds": 1.3867964,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 12286112768,
+      "wall_time_seconds": 27.2551959
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 2,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.3527489,
+      "parameter_rebind_seconds": 1.321519,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.049413
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 3,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.3657779,
+      "parameter_rebind_seconds": 1.3212192,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.0984669
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 4,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 16.8502172,
+      "parameter_rebind_seconds": 1.3137328,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.0923548
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 5,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.3567755,
+      "parameter_rebind_seconds": 1.3064117,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 25.9177425
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 6,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.3626901,
+      "parameter_rebind_seconds": 1.3110062,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.0482847
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 7,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.499337,
+      "parameter_rebind_seconds": 1.3220544,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.2034573
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 8,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.9156463,
+      "parameter_rebind_seconds": 1.36639,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.8636889
+    },
+    {
+      "audit_bytes": 47186432,
+      "context_reused": true,
+      "evaluation_index": 9,
+      "main_layer_count": 30,
+      "model_allocation_ceiling_bytes": 643587076,
+      "model_execution_seconds": 17.3971828,
+      "parameter_rebind_seconds": 1.3287775,
+      "persistent_bytes": 361820672,
+      "reusable_bytes": 234579972,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 26.0828663
+    }
+  ],
+  "output": {
+    "bytes": 262126,
+    "height": 512,
+    "mode": "RGB",
+    "path": "C:\\Users\\yuech\\AppData\\Local\\oct\\evt2-z-image-turbo\\shipping_smoke\\zimage_turbo_prometheus_seed42.png",
+    "pixel_max": 255,
+    "pixel_min": 0,
+    "sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "width": 512
+  },
+  "prometheus_boundary": {
+    "context_tokens": {
+      "dtype": "float32",
+      "layout": "contiguous token-major [batch,token,channel]",
+      "sha256": "d8d00f082d1b91a348e1f3b1e241acd71777e430f402757132115a7906f589d2",
+      "shape": [
+        1,
+        32,
+        3840
+      ]
+    },
+    "image_tokens": {
+      "dtype": "bfloat16",
+      "layout": "contiguous token-major [batch,token,channel]",
+      "sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
+      "shape": [
+        1,
+        1024,
+        3840
+      ]
+    },
+    "prometheus_output_image_tokens": {
+      "dtype": "float32",
+      "layout": "contiguous token-major [batch,token,channel]",
+      "sha256": "ed89f93b028a54e53e3ee902d05ce823d1ea6f165e628341201c4c0111b2fa22",
+      "shape": [
+        1,
+        1024,
+        3840
+      ]
+    },
+    "qwen_prompt": {
+      "dtype": "float32",
+      "sha256": "f6e4a2842dbbdfa7e983fb8260ab15a9e0ea1f763a6615fcaf170ec8cb8838bd",
+      "shape": [
+        1,
+        15,
+        2560
+      ]
+    },
+    "timestep_embedding": {
+      "dtype": "bfloat16",
+      "layout": "contiguous [batch,channel]",
+      "sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2",
+      "shape": [
+        1,
+        256
+      ]
+    }
+  },
+  "python_components_retained": [
+    "ComfyUI Qwen tokenizer/encoder",
+    "t_embedder",
+    "x_embedder",
+    "cap_embedder and padding",
+    "FinalLayer AdaLN/linear",
+    "unpatchify",
+    "ComfyUI res_multistep/simple scheduler",
+    "ComfyUI VAE decoder",
+    "Pillow PNG writer"
+  ],
+  "reproduction_command": "& \"C:\\Users\\yuech\\ComfyUI\\.venv\\Scripts\\python.exe\" \"C:\\Users\\yuech\\source\\repos\\oct\\tools\\zimage_prometheus_smoke.py\"",
+  "request": {
+    "actual_model_evaluations": 9,
+    "aura_flow_shift": 3.0,
+    "configured_steps": 9,
+    "height": 512,
+    "negative_prompt": null,
+    "negative_prompt_policy": "not evaluated; CFG=1 uses the single positive branch",
+    "prompt": "A lighthouse in fog at dawn",
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "seed": 42,
+    "sigmas": [
+      1.0,
+      0.9600432515144348,
+      0.9131456017494202,
+      0.8573263883590698,
+      0.7897727489471436,
+      0.70634925365448,
+      0.6007193922996521,
+      0.462655633687973,
+      0.27450981736183167,
+      0.0
+    ],
+    "width": 512
+  },
+  "schema": "prometheus.evt2.zimage.python-image-smoke.v1",
+  "status": "success",
+  "timings": {
+    "denoising_seconds": 237.16951349999727,
+    "external_final_projection_seconds": 0.043721999987610616,
+    "prometheus_session_create_seconds": 7.566815199999837,
+    "qwen_conditioning_seconds": 8.481494500003464,
+    "reference_boundary_model_load_seconds": 8.953816900000675,
+    "vae_decode_and_png_seconds": 0.7608728999985033,
+    "wall_time_seconds": 263.09146979999787
+  }
+}

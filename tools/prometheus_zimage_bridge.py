@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""Minimal ctypes binding for the closed Prometheus Z-Image session ABI."""
+
+from __future__ import annotations
+
+import ctypes
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+
+IMAGE_SHAPE = (1, 1024, 3840)
+CONTEXT_SHAPE = (1, 32, 3840)
+TIMESTEP_SHAPE = (1, 256)
+OUTPUT_SHAPE = IMAGE_SHAPE
+
+
+class _CreateRequest(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("reactor_dll_path", ctypes.c_char_p),
+        ("compiled_model_lock_path", ctypes.c_char_p),
+        ("payload_root", ctypes.c_char_p),
+        ("device_index", ctypes.c_int32),
+    ]
+
+
+class _ExecuteRequest(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("image_bf16", ctypes.c_void_p),
+        ("image_bytes", ctypes.c_uint64),
+        ("image_batch", ctypes.c_uint32),
+        ("image_tokens", ctypes.c_uint32),
+        ("image_width", ctypes.c_uint32),
+        ("context_fp32", ctypes.POINTER(ctypes.c_float)),
+        ("context_bytes", ctypes.c_uint64),
+        ("context_batch", ctypes.c_uint32),
+        ("context_tokens", ctypes.c_uint32),
+        ("context_width", ctypes.c_uint32),
+        ("timestep_bf16", ctypes.c_void_p),
+        ("timestep_bytes", ctypes.c_uint64),
+        ("timestep_batch", ctypes.c_uint32),
+        ("timestep_width", ctypes.c_uint32),
+        ("output_image_fp32", ctypes.POINTER(ctypes.c_float)),
+        ("output_image_bytes", ctypes.c_uint64),
+    ]
+
+
+class _ExecuteEvidence(ctypes.Structure):
+    _fields_ = [
+        ("struct_size", ctypes.c_uint32),
+        ("evaluation_index", ctypes.c_uint32),
+        ("main_layer_count", ctypes.c_uint32),
+        ("context_reused", ctypes.c_uint32),
+        ("wall_time_ns", ctypes.c_uint64),
+        ("model_execution_ns", ctypes.c_uint64),
+        ("parameter_rebind_ns", ctypes.c_uint64),
+        ("uploaded_weight_bytes", ctypes.c_uint64),
+        ("model_allocation_ceiling_bytes", ctypes.c_uint64),
+        ("persistent_bytes", ctypes.c_uint64),
+        ("reusable_bytes", ctypes.c_uint64),
+        ("audit_bytes", ctypes.c_uint64),
+    ]
+
+
+@dataclass(frozen=True)
+class ExecuteEvidence:
+    evaluation_index: int
+    main_layer_count: int
+    context_reused: bool
+    wall_time_seconds: float
+    model_execution_seconds: float
+    parameter_rebind_seconds: float
+    uploaded_weight_bytes: int
+    model_allocation_ceiling_bytes: int
+    persistent_bytes: int
+    reusable_bytes: int
+    audit_bytes: int
+
+
+def _absolute_existing(path: Path | str, label: str, directory: bool = False) -> Path:
+    resolved = Path(path).expanduser().resolve(strict=True)
+    if directory != resolved.is_dir():
+        expected = "directory" if directory else "file"
+        raise ValueError(f"{label} must be an existing {expected}: {resolved}")
+    return resolved
+
+
+def _require_array(value: np.ndarray, label: str, dtype: np.dtype, shape: tuple[int, ...]) -> np.ndarray:
+    if not isinstance(value, np.ndarray):
+        raise TypeError(f"{label} must be a NumPy array")
+    if value.dtype != dtype:
+        raise TypeError(f"{label} dtype={value.dtype}; require {dtype}")
+    if value.ndim != len(shape) or value.shape != shape:
+        raise ValueError(f"{label} shape={value.shape}; require {shape}")
+    if not value.flags.c_contiguous:
+        raise ValueError(f"{label} must use C-contiguous token-major storage")
+    if value.nbytes != int(np.prod(shape)) * dtype.itemsize:
+        raise ValueError(f"{label} byte count does not match its shape and dtype")
+    return value
+
+
+class PrometheusZImageSession:
+    """One serialized, long-lived Vulkan session; Python never supplies topology."""
+
+    def __init__(self, bridge_dll: Path | str, reactor_dll: Path | str, lock_path: Path | str, payload_root: Path | str, device_index: int = -1):
+        self._bridge_path = _absolute_existing(bridge_dll, "bridge DLL")
+        reactor_path = _absolute_existing(reactor_dll, "reactor DLL")
+        lock = _absolute_existing(lock_path, "compiled-model lock")
+        payload = _absolute_existing(payload_root, "payload root", directory=True)
+        self._dll = ctypes.CDLL(str(self._bridge_path))
+        self._dll.prometheus_zimage_bridge_abi_version.argtypes = []
+        self._dll.prometheus_zimage_bridge_abi_version.restype = ctypes.c_uint32
+        self._dll.prometheus_zimage_session_create.argtypes = [ctypes.POINTER(_CreateRequest), ctypes.POINTER(ctypes.c_uint64)]
+        self._dll.prometheus_zimage_session_create.restype = ctypes.c_int
+        self._dll.prometheus_zimage_session_execute.argtypes = [ctypes.c_uint64, ctypes.POINTER(_ExecuteRequest), ctypes.POINTER(_ExecuteEvidence)]
+        self._dll.prometheus_zimage_session_execute.restype = ctypes.c_int
+        self._dll.prometheus_zimage_session_destroy.argtypes = [ctypes.c_uint64]
+        self._dll.prometheus_zimage_session_destroy.restype = ctypes.c_int
+        self._dll.prometheus_zimage_last_error.argtypes = [ctypes.c_uint64, ctypes.c_char_p, ctypes.c_uint64]
+        self._dll.prometheus_zimage_last_error.restype = ctypes.c_uint64
+        if self._dll.prometheus_zimage_bridge_abi_version() != 1:
+            raise RuntimeError("unsupported Prometheus Z-Image bridge ABI")
+        encoded = [str(path).encode("utf-8") for path in (reactor_path, lock, payload)]
+        request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index)
+        handle = ctypes.c_uint64()
+        if self._dll.prometheus_zimage_session_create(ctypes.byref(request), ctypes.byref(handle)) != 0:
+            raise RuntimeError(self._last_error(0))
+        if handle.value == 0:
+            raise RuntimeError("Prometheus returned a null Z-Image session")
+        self._handle = handle.value
+
+    def _last_error(self, handle: int | None = None) -> str:
+        selected = getattr(self, "_handle", 0) if handle is None else handle
+        needed = int(self._dll.prometheus_zimage_last_error(selected, None, 0))
+        if needed <= 1:
+            return "Prometheus Z-Image bridge failed without diagnostic text"
+        buffer = ctypes.create_string_buffer(needed)
+        self._dll.prometheus_zimage_last_error(selected, buffer, needed)
+        return buffer.value.decode("utf-8", errors="replace")
+
+    def evaluate(self, image_bf16_bits: np.ndarray, context_fp32: np.ndarray, timestep_bf16_bits: np.ndarray) -> tuple[np.ndarray, ExecuteEvidence]:
+        if not getattr(self, "_handle", 0):
+            raise RuntimeError("Prometheus Z-Image session is closed")
+        image = _require_array(image_bf16_bits, "image_bf16_bits", np.dtype(np.uint16), IMAGE_SHAPE)
+        context = _require_array(context_fp32, "context_fp32", np.dtype(np.float32), CONTEXT_SHAPE)
+        timestep = _require_array(timestep_bf16_bits, "timestep_bf16_bits", np.dtype(np.uint16), TIMESTEP_SHAPE)
+        output = np.empty(OUTPUT_SHAPE, dtype=np.float32, order="C")
+        request = _ExecuteRequest(
+            ctypes.sizeof(_ExecuteRequest),
+            image.ctypes.data,
+            image.nbytes,
+            *IMAGE_SHAPE,
+            context.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            context.nbytes,
+            *CONTEXT_SHAPE,
+            timestep.ctypes.data,
+            timestep.nbytes,
+            *TIMESTEP_SHAPE,
+            output.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            output.nbytes,
+        )
+        raw = _ExecuteEvidence()
+        raw.struct_size = ctypes.sizeof(_ExecuteEvidence)
+        if self._dll.prometheus_zimage_session_execute(self._handle, ctypes.byref(request), ctypes.byref(raw)) != 0:
+            raise RuntimeError(self._last_error())
+        if raw.main_layer_count != 30 or raw.model_allocation_ceiling_bytes != 643_587_076:
+            raise RuntimeError(f"incomplete native evidence: layers={raw.main_layer_count}, allocation={raw.model_allocation_ceiling_bytes}")
+        if not np.isfinite(output).all():
+            raise RuntimeError("Prometheus returned a non-finite image stream")
+        evidence = ExecuteEvidence(
+            evaluation_index=raw.evaluation_index,
+            main_layer_count=raw.main_layer_count,
+            context_reused=bool(raw.context_reused),
+            wall_time_seconds=raw.wall_time_ns / 1e9,
+            model_execution_seconds=raw.model_execution_ns / 1e9,
+            parameter_rebind_seconds=raw.parameter_rebind_ns / 1e9,
+            uploaded_weight_bytes=raw.uploaded_weight_bytes,
+            model_allocation_ceiling_bytes=raw.model_allocation_ceiling_bytes,
+            persistent_bytes=raw.persistent_bytes,
+            reusable_bytes=raw.reusable_bytes,
+            audit_bytes=raw.audit_bytes,
+        )
+        return output, evidence
+
+    def close(self) -> None:
+        handle = getattr(self, "_handle", 0)
+        if handle:
+            if self._dll.prometheus_zimage_session_destroy(handle) != 0:
+                message = self._last_error(0)
+                self._handle = 0
+                raise RuntimeError(message)
+            self._handle = 0
+
+    def __enter__(self) -> "PrometheusZImageSession":
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.close()

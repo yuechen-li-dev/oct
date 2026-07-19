@@ -23,6 +23,9 @@ if defined PROMETHEUS_NATIVE_CC set "CC=%PROMETHEUS_NATIVE_CC%"
 set "PUSHD_ACTIVE=0"
 
 if not defined PROMETHEUS_NATIVE_CC where cl >nul 2>nul
+if not defined PROMETHEUS_NATIVE_CC if not defined INCLUDE if exist "%VSDEVCMD_BAT%" (
+  call "%VSDEVCMD_BAT%" -arch=x64 -host_arch=x64 >nul
+)
 if not defined PROMETHEUS_NATIVE_CC if errorlevel 1 (
   if exist "%VSDEVCMD_BAT%" (
     call "%VSDEVCMD_BAT%" -arch=x64 -host_arch=x64 >nul
@@ -60,7 +63,7 @@ if errorlevel 1 call :fail_now "enter repository root" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 set "PUSHD_ACTIVE=1"
 
-call "%CC%" /nologo /TC /std:c11 /O2 /W4 /c %VULKAN_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
+call "%CC%" /nologo /TC /std:c11 /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL /c %VULKAN_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
 if errorlevel 1 call :fail_now "compile common native sources" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
