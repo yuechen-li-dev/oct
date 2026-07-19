@@ -3008,6 +3008,9 @@ int prom_reactor_runtime_model_block_upload_weights_impl(
 int prom_reactor_runtime_model_block_execute_impl(
     void* handle, uint64_t block_id, const PrometheusModelBlockExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_model_block_execute_m1b_impl(
+    void* handle, uint64_t block_id, const PrometheusModelBlockM1BExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_model_block_get_evidence_impl(void* handle, uint64_t block_id,
                                                        PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_model_block_destroy_impl(void* handle, uint64_t block_id);
@@ -3020,6 +3023,9 @@ int prom_reactor_runtime_model_block_test_inject_create_fault_impl(void* handle,
 int prom_reactor_runtime_model_block_test_inject_execution_fault_impl(void* handle,
                                                                       uint64_t block_id,
                                                                       uint32_t test_flags);
+int prom_reactor_runtime_model_block_test_bf16_ingress_impl(
+    void* handle, uint64_t block_id, const uint16_t* input_bf16, uint32_t element_count,
+    float* output_fp32, uint32_t output_capacity, PrometheusModelBlockEvidence* out_evidence);
 
 int prom_reactor_runtime_validate_handle(void* handle);
 int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services* out_services);

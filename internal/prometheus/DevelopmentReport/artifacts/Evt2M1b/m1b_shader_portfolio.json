@@ -1,0 +1,51 @@
+{
+  "ingress_adapter_count": 1,
+  "model_computation_boundary_count": 5,
+  "pipelines": [
+    {
+      "generated_header_sha256": "eac1c6421dddf7dd016db1121872358331cb31ca348b2bc4d33e3a239ee2efc0",
+      "id": 29,
+      "name": "zimage-nr0-bf16-ingress",
+      "source_sha256": "fa7a7b56072da667e171397d816cc6e111481059688aa2bf679fc0be0320ca62",
+      "validated_spirv": true
+    },
+    {
+      "generated_header_sha256": "80c75af19d61a16af2d42ea88bdf5beb43bd75781eeec1cf5acc96a090d7b0a9",
+      "id": 24,
+      "name": "zimage-nr0-adaln",
+      "source_sha256": "abd4db2b4ac619cfc405935c85105664ff35d9ef681ab8bde3c3c5944806cbd8",
+      "validated_spirv": true
+    },
+    {
+      "generated_header_sha256": "8f45f1cfc4d49a1cfefcee3d23b5332c689af1bbf6bdde4418ab2454ad6e6be0",
+      "id": 25,
+      "name": "zimage-nr0-attention-norm-modulate",
+      "source_sha256": "b04456314bedebdc2d96d2bf2fd24f3bc98c8eb1425c37d4c565ab3c47643f5c",
+      "validated_spirv": true
+    },
+    {
+      "generated_header_sha256": "c4cc83d9cf806980e43370c34b70a21d357e63343d77dcc404ff953964271d06",
+      "id": 26,
+      "name": "zimage-nr0-fused-qkv",
+      "source_sha256": "4c42d56189d2d5147a51240c97ce82b003ca164cdf5b4bce8e740aee61b66334",
+      "validated_spirv": true
+    },
+    {
+      "generated_header_sha256": "ac4d57b2e843b7f7dfc27d3e919a5a1bed4bcdd61a828f8c3b92009a314745b3",
+      "id": 27,
+      "name": "zimage-nr0-q-norm-rope",
+      "source_sha256": "e98739a5146dfab678128a708e3f570665b962ed4a883c997f2b806b363208b6",
+      "validated_spirv": true
+    },
+    {
+      "generated_header_sha256": "ef042f4d54b261c233c7c482e3a4cf46aae96d7b593de9107efdee4d74c2b293",
+      "id": 28,
+      "name": "zimage-nr0-k-norm-rope",
+      "source_sha256": "8e9ada8fe8b90c44f09633e71797aa83c29079ae8055791cffad1af7682c1dd7",
+      "validated_spirv": true
+    }
+  ],
+  "schema": "oct.prometheus.evt2.m1b.shader-portfolio.v1",
+  "semantic_spaces": "pass",
+  "spirv_val": "pass"
+}

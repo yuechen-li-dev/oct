@@ -572,6 +572,7 @@ typedef struct PrometheusReductionBenchmarkResult {
 #define PROM_MODEL_BLOCK_MAX_WEIGHTS 13u
 #define PROM_MODEL_BLOCK_MAX_STEPS 7u
 #define PROM_MODEL_BLOCK_MAX_AUDIT_POINTS 1u
+#define PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT 6u
 
 enum {
   PROM_MODEL_BLOCK_STEP_BIND_PIPELINE = 1u,
@@ -596,6 +597,36 @@ enum {
   PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN = -6910,
   PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED = -6911,
   PROM_MODEL_BLOCK_DETAIL_STALE_OUTPUT = -6912,
+  PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED = -6913,
+  PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED = -6914,
+  PROM_MODEL_BLOCK_DETAIL_INGRESS_AUDIT_MISMATCH = -6915,
+  PROM_MODEL_BLOCK_DETAIL_INGRESS_INPUT_SIZE_MISMATCH = -6916,
+  PROM_MODEL_BLOCK_DETAIL_INGRESS_TIMESTEP_SIZE_MISMATCH = -6917,
+};
+
+enum {
+  PROM_MODEL_BLOCK_M1B_AUDIT_NONE = 0u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_INPUT = 1u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_TIMESTEP = 2u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION = 3u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_RAW = 4u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_ADJUSTED = 5u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_RAW = 6u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_TANH = 7u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_RAW = 8u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_ADJUSTED = 9u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_RAW = 10u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_TANH = 11u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM = 12u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_MODULATED = 13u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV = 14u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_Q = 15u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_K = 16u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_V = 17u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_Q_NORM = 18u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM = 19u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q = 20u,
+  PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K = 21u,
 };
 
 typedef struct PrometheusModelBlockWeightDeclaration {
@@ -641,6 +672,24 @@ typedef struct PrometheusModelBlockExecuteRequest {
   uint64_t audit_element_capacity;
 } PrometheusModelBlockExecuteRequest;
 
+/* EVT-2 M1B keeps the canonical external payload ABI as packed BF16 bytes.
+   The fixed ingress pipeline widens those bytes into resident FP32 buffers
+   before the five model-computation pipelines. There is no host conversion,
+   caller-provided pipeline, node, or dispatch description. */
+typedef struct PrometheusModelBlockM1BExecuteRequest {
+  uint32_t struct_size;
+  const void* model_input_bf16;
+  const void* timestep_bf16;
+  uint64_t model_input_bytes;
+  uint64_t timestep_bytes;
+  uint64_t input_identity;
+  uint64_t timestep_identity;
+  uint32_t audit_enabled;
+  uint32_t audit_stage;
+  float* audit_output;
+  uint64_t audit_element_capacity;
+} PrometheusModelBlockM1BExecuteRequest;
+
 typedef struct PrometheusModelBlockEvidence {
   uint32_t struct_size;
   int32_t detail_code;
@@ -666,6 +715,7 @@ typedef struct PrometheusModelBlockEvidence {
   uint64_t last_execution_ns;
   uint64_t execution_plan_identity;
   uint64_t replay_identity;
+  uint64_t m1b_boundary_gpu_ns[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
 } PrometheusModelBlockEvidence;
 
 typedef struct PrometheusFftRequest {
@@ -1729,6 +1779,9 @@ PROM_REACTOR_API int prometheus_reactor_runtime_model_block_upload_weights(
     uint32_t upload_count, PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute(
     void* handle, uint64_t block_id, const PrometheusModelBlockExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_model_block_execute_m1b(
+    void* handle, uint64_t block_id, const PrometheusModelBlockM1BExecuteRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_get_evidence(
     void* handle, uint64_t block_id, PrometheusModelBlockEvidence* out_evidence);

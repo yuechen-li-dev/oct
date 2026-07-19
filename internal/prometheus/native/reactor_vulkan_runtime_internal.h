@@ -285,6 +285,17 @@ typedef struct prom_model_block_weight_resource {
   uint32_t uploaded;
 } prom_model_block_weight_resource;
 
+typedef struct prom_model_block_m1b_pipeline {
+  uint32_t shader_id;
+  uint32_t binding_count;
+  uint32_t push_constant_bytes;
+  VkDescriptorSetLayout descriptor_set_layout;
+  VkDescriptorPool descriptor_pool;
+  VkPipelineLayout pipeline_layout;
+  VkDescriptorSet descriptor_set;
+  prom_reduction_pipeline pipeline;
+} prom_model_block_m1b_pipeline;
+
 typedef struct prom_model_block_state {
   uint64_t block_id;
   uint64_t next_block_id;
@@ -323,14 +334,31 @@ typedef struct prom_model_block_state {
   VkDescriptorSet descriptor_set;
   VkCommandBuffer command_buffer;
   VkFence fence;
+  VkQueryPool m1b_timestamp_query_pool;
+  float m1b_timestamp_period_ns;
+  uint32_t m1b_timestamp_supported;
+  uint64_t m1b_boundary_gpu_ns[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
   prom_reduction_pipeline pipeline;
   prom_vk_buffer input_upload;
+  prom_vk_buffer input_bf16_device;
   prom_vk_buffer input_device;
   prom_vk_buffer output_device;
   prom_vk_buffer output_readback;
   prom_vk_buffer audit_device;
   prom_vk_buffer audit_readback;
   prom_vk_buffer weight_upload;
+  prom_vk_buffer timestep_upload;
+  prom_vk_buffer timestep_bf16_device;
+  prom_vk_buffer timestep_device;
+  prom_vk_buffer adaln_projection;
+  prom_vk_buffer attention_scale;
+  prom_vk_buffer attention_gate;
+  prom_vk_buffer mlp_scale;
+  prom_vk_buffer mlp_gate;
+  prom_vk_buffer modulated;
+  prom_vk_buffer norm_audit;
+  prom_vk_buffer qkv;
+  prom_model_block_m1b_pipeline m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
 } prom_model_block_state;
 

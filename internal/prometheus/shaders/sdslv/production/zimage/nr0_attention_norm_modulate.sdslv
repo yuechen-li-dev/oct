@@ -1,0 +1,51 @@
+namespace Prometheus.Production.ZImage;
+
+stream AttentionNormIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] AttentionNormF16: readonly array<u32>;
+    [binding(2)] AttentionScale: readonly array<f32>;
+    [binding(3)] Modulated: readwrite array<f32>;
+    [binding(4)] NormAudit: readwrite array<f32>;
+}
+
+record AttentionNormParams { Epsilon: f32; TokenCount: u32; ModelWidth: u32; Reserved: u32; }
+
+fn ReciprocalSqrtF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return rsqrt(value); };
+    return result;
+}
+
+// One workgroup owns one 3840-wide token row. No mean subtraction occurs;
+// the FP32 square reduction and epsilon placement are the laboratory contract.
+shader Nr0AttentionNormModulate {
+    resources AttentionNormIO;
+    workgroup SumSquares: array<f32, 256u>;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionNormParams) -> void {
+        let token: u32 = GroupID.x;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+        // The first reference implementation preserves the canonical
+        // left-to-right channel sum exactly. Parallel reduction is deferred
+        // until the measured stage-difference pattern justifies it.
+        if lane == 0u {
+            var serialSum: f32 = 0.0;
+            for channel in 0u..params.ModelWidth {
+                let value: f32 = Input[token * params.ModelWidth + channel];
+                serialSum = serialSum + value * value;
+            }
+            SumSquares[0u] = serialSum;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let invRms: f32 = ReciprocalSqrtF32(SumSquares[0u] / params.ModelWidth + params.Epsilon);
+        for channel in lane..params.ModelWidth step 256u {
+            let normLanes: float2 = Unpack<F16x2>(AttentionNormF16[channel / 2u]);
+            var normWeight: f32 = normLanes.x;
+            if (channel % 2u) != 0u { normWeight = normLanes.y; }
+            let normalized: f32 = Input[token * params.ModelWidth + channel] * invRms * normWeight;
+            NormAudit[token * params.ModelWidth + channel] = normalized;
+            Modulated[token * params.ModelWidth + channel] = normalized * AttentionScale[channel];
+        }
+        return;
+    }
+}

@@ -1,0 +1,81 @@
+namespace Prometheus.Production.ZImage;
+
+space zimage.noise_refiner {
+    ModelEmbedding: float4;
+    QueryHead: float4;
+    KeyHead: float4;
+    ValueHead: float4;
+    PositionedQueryHead: float4;
+    PositionedKeyHead: float4;
+    AttentionScore: float4;
+    AttentionProbability: float4;
+}
+
+fn NormalizeKey(value: KeyHead) -> KeyHead { return float4(value.x, value.y, value.z, value.w); }
+fn PositionKey(value: KeyHead) -> PositionedKeyHead { return float4(value.x, value.y, value.z, value.w); }
+
+stream KeyNormRopeIO {
+    [binding(0)] Qkv: readwrite array<f32>;
+    [binding(1)] KNormF16: readonly array<u32>;
+    [binding(2)] NormAudit: readwrite array<f32>;
+}
+
+record KeyNormRopeParams { Epsilon: f32; TokenCount: u32; HeadCount: u32; HeadWidth: u32; }
+
+fn ReciprocalSqrtF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return rsqrt(value); }; return result; }
+fn CosineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return cos(value); }; return result; }
+fn SineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return sin(value); }; return result; }
+fn PowerF32(base: f32, exponent: f32) -> f32 { let result: f32 = HLSL<f32>(base, exponent) { return pow(base, exponent); }; return result; }
+fn UintToF32(value: u32) -> f32 { let result: f32 = HLSL<f32>(value) { return float(value); }; return result; }
+
+// Identical arithmetic to Q except for the fixed K segment (3840) and K
+// learned scale. ValueHead is intentionally absent from this source.
+shader Nr0KeyNormRope {
+    resources KeyNormRopeIO;
+    workgroup SumSquares: array<f32, 128u>;
+    workgroup HeadValues: array<f32, 128u>;
+
+    stage compute [numthreads(128u, 1u, 1u)] fn CS(params: KeyNormRopeParams) -> void {
+        let packedHead: u32 = GroupID.x;
+        let token: u32 = packedHead / params.HeadCount;
+        let head: u32 = packedHead - token * params.HeadCount;
+        let channel: u32 = GroupThreadID.x;
+        if token >= params.TokenCount or channel >= params.HeadWidth { return; }
+        let index: u32 = token * 11520u + 3840u + ((head * params.HeadWidth) + channel);
+        let value: f32 = Qkv[index];
+        HeadValues[channel] = value;
+        WorkgroupMemoryBarrierWithSync();
+        if channel == 0u {
+            var serialSum: f32 = 0.0;
+            for sourceChannel in 0u..params.HeadWidth {
+                let sourceValue: f32 = HeadValues[sourceChannel];
+                serialSum = serialSum + sourceValue * sourceValue;
+            }
+            SumSquares[0u] = serialSum;
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let scaleLanes: float2 = Unpack<F16x2>(KNormF16[channel / 2u]);
+        var learnedScale: f32 = scaleLanes.x;
+        if (channel % 2u) != 0u { learnedScale = scaleLanes.y; }
+        let normalized: f32 = value * ReciprocalSqrtF32(SumSquares[0u] / params.HeadWidth + params.Epsilon) * learnedScale;
+        NormAudit[token * 3840u + (head * params.HeadWidth) + channel] = normalized;
+        var axisChannel: u32 = channel;
+        var axisWidth: u32 = 32u;
+        var coordinate: f32 = 33.0;
+        if channel >= 32u and channel < 80u { axisWidth = 48u; axisChannel = channel - 32u; coordinate = UintToF32(token / 32u); }
+        if channel >= 80u { axisWidth = 48u; axisChannel = channel - 80u; coordinate = UintToF32(token % 32u); }
+        let pair: u32 = axisChannel / 2u;
+        let frequency: f32 = 1.0 / PowerF32(256.0, (2.0 * UintToF32(pair)) / UintToF32(axisWidth));
+        let mateChannel: u32 = channel + 1u - 2u * (channel % 2u);
+        let mate: f32 = HeadValues[mateChannel];
+        let mateLanes: float2 = Unpack<F16x2>(KNormF16[mateChannel / 2u]);
+        var mateScale: f32 = mateLanes.x;
+        if (mateChannel % 2u) != 0u { mateScale = mateLanes.y; }
+        let normalizedMate: f32 = mate * ReciprocalSqrtF32(SumSquares[0u] / params.HeadWidth + params.Epsilon) * mateScale;
+        let cosine: f32 = CosineF32(coordinate * frequency);
+        let sine: f32 = SineF32(coordinate * frequency);
+        if (axisChannel % 2u) == 0u { Qkv[index] = normalized * cosine - normalizedMate * sine; }
+        if (axisChannel % 2u) != 0u { Qkv[index] = normalizedMate * sine + normalized * cosine; }
+        return;
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "cold_buffer_allocations": 29,
+  "descriptor_sets": 6,
+  "device_peak_live_bytes": 464181248,
+  "device_peak_live_mib": 442.677734375,
+  "device_scratch_bytes": 102360576,
+  "immutable_weight_bytes": 361820672,
+  "owner_reported_audit_bytes": 47185920,
+  "owner_reported_reusable_bytes": 198699008,
+  "owner_reported_total_committed_bytes": 607705600,
+  "pipelines": 6,
+  "reserved_scratch_bytes": 134217728,
+  "schema": "oct.prometheus.evt2.m1b.memory.v1",
+  "warm_buffer_allocations": 0
+}

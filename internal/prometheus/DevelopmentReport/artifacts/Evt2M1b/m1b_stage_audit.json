@@ -1,0 +1,229 @@
+{
+  "acceptance": "selected coordinates use max(2e-5, abs(reference)*2e-5); full metrics reported without broad tolerance",
+  "authority_projection_sha256": "f9350d37b46a26d132d4a1e6c80c984ebce87f6f3fe4fd9eb274ffbfd631f480",
+  "ingress_exhaustive_patterns": 65536,
+  "real_input_exact_bits": true,
+  "schema": "oct.prometheus.evt2.m1b.stage-audit.v1",
+  "stages": [
+    {
+      "elements": 15360,
+      "finite": true,
+      "first_bit_difference": 15360,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "timestep_linear"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 3840,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "attention_scale_raw"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 3840,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "attention_scale_adjusted"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 3840,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "attention_gate_raw"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 7,
+      "l2": 4.33271e-7,
+      "linf": 5.96046e-8,
+      "relative_l2": 6.61781e-8,
+      "rms": 6.99188e-9,
+      "selected_linf": 7.45058e-9,
+      "stage": "attention_gate_tanh"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 3840,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "mlp_scale_raw"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 3840,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "mlp_scale_adjusted"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 3840,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "mlp_gate_raw"
+    },
+    {
+      "elements": 3840,
+      "finite": true,
+      "first_bit_difference": 4,
+      "l2": 9.52406e-7,
+      "linf": 5.96046e-8,
+      "relative_l2": 6.80887e-8,
+      "rms": 1.53694e-8,
+      "selected_linf": 1.49012e-8,
+      "stage": "mlp_gate_tanh"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.000128602,
+      "linf": 0.00000286102,
+      "relative_l2": 6.9512e-8,
+      "rms": 6.48533e-8,
+      "selected_linf": 2.38419e-7,
+      "stage": "attention_norm"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.000247931,
+      "linf": 0.00000762939,
+      "relative_l2": 7.24332e-8,
+      "rms": 1.2503e-7,
+      "selected_linf": 4.76837e-7,
+      "stage": "attention_modulated"
+    },
+    {
+      "elements": 11796480,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.0283286,
+      "linf": 0.000137329,
+      "relative_l2": 1.33528e-7,
+      "rms": 0.00000824801,
+      "selected_linf": 0.0000152588,
+      "stage": "qkv"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.0172346,
+      "linf": 0.00012207,
+      "relative_l2": 1.27933e-7,
+      "rms": 0.00000869133,
+      "selected_linf": 0.00000762939,
+      "stage": "q"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.0151786,
+      "linf": 0.00012207,
+      "relative_l2": 1.3916e-7,
+      "rms": 0.00000765449,
+      "selected_linf": 0.0000038147,
+      "stage": "k"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.0165858,
+      "linf": 0.000137329,
+      "relative_l2": 1.35583e-7,
+      "rms": 0.00000836412,
+      "selected_linf": 0.0000152588,
+      "stage": "v"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.000237239,
+      "linf": 0.00000190735,
+      "relative_l2": 1.38199e-7,
+      "rms": 1.19639e-7,
+      "selected_linf": 1.19209e-7,
+      "stage": "q_norm"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.000262113,
+      "linf": 0.00000214577,
+      "relative_l2": 1.5134e-7,
+      "rms": 1.32182e-7,
+      "selected_linf": 5.96046e-8,
+      "stage": "k_norm"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.00150785,
+      "linf": 0.0000154972,
+      "relative_l2": 8.78366e-7,
+      "rms": 7.60402e-7,
+      "selected_linf": 0.00000181049,
+      "stage": "q_rope"
+    },
+    {
+      "elements": 3932160,
+      "finite": true,
+      "first_bit_difference": 0,
+      "l2": 0.00140753,
+      "linf": 0.0000237525,
+      "relative_l2": 8.12688e-7,
+      "rms": 7.09812e-7,
+      "selected_linf": 0.0000012517,
+      "stage": "k_rope"
+    },
+    {
+      "elements": 256,
+      "finite": true,
+      "first_bit_difference": 256,
+      "l2": 0,
+      "linf": 0,
+      "relative_l2": 0,
+      "rms": 0,
+      "selected_linf": 0,
+      "stage": "timestep_input"
+    }
+  ]
+}

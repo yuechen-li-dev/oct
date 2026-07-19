@@ -196,6 +196,12 @@ int prometheus_reactor_runtime_model_block_execute(
   return prom_reactor_runtime_model_block_execute_impl(handle, block_id, request, out_evidence);
 }
 
+int prometheus_reactor_runtime_model_block_execute_m1b(
+    void* handle, uint64_t block_id, const PrometheusModelBlockM1BExecuteRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_model_block_execute_m1b_impl(handle, block_id, request, out_evidence);
+}
+
 int prometheus_reactor_runtime_model_block_get_evidence(void* handle, uint64_t block_id,
                                                         PrometheusModelBlockEvidence* out_evidence) {
   return prom_reactor_runtime_model_block_get_evidence_impl(handle, block_id, out_evidence);

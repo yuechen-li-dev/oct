@@ -6,7 +6,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
+#include <cstring>
 #include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 #include <numeric>
 #include <sstream>
 #include <vector>
@@ -16,6 +22,9 @@ namespace
 constexpr std::uint32_t kElementCount = 1024u;
 constexpr std::uint32_t kAuditElements = 64u;
 constexpr std::uint32_t kWeightBytes = 64u;
+constexpr std::array<std::uint64_t, PROM_MODEL_BLOCK_MAX_WEIGHTS> kM1BWeightBytes{
+    30720u, 7864320u, 256u, 29491200u, 256u, 88473600u, 7680u,
+    7680u, 78643200u, 78643200u, 78643200u, 7680u, 7680u};
 
 PrometheusModelBlockCreateRequest make_request()
 {
@@ -48,10 +57,38 @@ PrometheusModelBlockCreateRequest make_request()
     return request;
 }
 
+PrometheusModelBlockCreateRequest make_m1b_request()
+{
+    PrometheusModelBlockCreateRequest request = make_request();
+    request.memory_ceiling_bytes = 512ull * 1024ull * 1024ull;
+    request.external_input_bytes = 1024ull * 3840ull * sizeof(std::uint16_t);
+    request.external_output_bytes = 0u;
+    request.audit_bytes = 65536ull * sizeof(float);
+    request.shader_id = 24u;
+    for (std::uint32_t i = 0u; i < request.weight_count; ++i) {
+        request.weights[i].content_identity = 0x5a00u + i;
+        request.weights[i].layout_identity = 0x6b00u + i;
+        request.weights[i].byte_count = kM1BWeightBytes[i];
+    }
+    return request;
+}
+
 bool runtime_available(void* runtime)
 {
     PrometheusCaps caps{};
     return prometheus_reactor_runtime_probe(runtime, &caps) == PROM_OK && caps.available != 0u;
+}
+
+std::vector<std::uint8_t> read_binary_file(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    if (!stream) return {};
+    const std::streamsize size = stream.tellg();
+    if (size <= 0) return {};
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    stream.seekg(0, std::ios::beg);
+    if (!stream.read(reinterpret_cast<char*>(bytes.data()), size)) return {};
+    return bytes;
 }
 
 int upload_all(void* runtime, std::uint64_t block_id, const PrometheusModelBlockCreateRequest& request,
@@ -166,6 +203,364 @@ FACT(PrometheusResidentModelBlockExecutesAClosedGpuProgramAndStaysWarm)
     ASSERT_TRUE(recreated != block_id, "owner identity does not recycle after destruction");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, recreated), "destroy before execution is safe");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "runtime teardown reclaims model-block resources");
+}
+
+FACT(PrometheusM1BPreAttentionOwnerCreatesIngressAndFiveModelPipelines)
+{
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "Vulkan runtime creates for M1B owner preflight");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    const PrometheusModelBlockCreateRequest create = make_m1b_request();
+    std::uint64_t blockID = 0u;
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_create_fault_impl(
+                              runtime, PROM_TESTCFG_FAIL_PIPELINE_CREATE),
+                 "next M1B creation receives the ingress pipeline fault");
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
+                 "ingress pipeline creation failure cleans partial M1B ownership");
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INGRESS_PIPELINE_CREATE_FAILED, evidence.detail_code,
+                 "ingress pipeline creation failure has exact fault identity");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
+                 "M1B owner creates the fixed ingress plus five-model-pipeline program");
+    if (blockID == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        return;
+    }
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_MAX_WEIGHTS, evidence.weight_count, "M1B declares all thirteen immutable weights");
+    ASSERT_EQUAL(6u, evidence.pipeline_create_count, "M1B cold creation makes the ingress and complete model portfolio");
+    ASSERT_EQUAL(6u, evidence.descriptor_set_count, "M1B cold creation owns one fixed descriptor set per shader");
+    ASSERT_TRUE(evidence.persistent_bytes == 361820672u, "M1B immutable arena has the accepted cache byte count");
+    ASSERT_TRUE(evidence.cold_buffer_allocation_count >= 26u, "M1B preallocates all resident and bounded-audit buffers");
+    ASSERT_EQUAL(0u, evidence.weight_upload_count, "creation does not permit an implicit warm upload");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID),
+                 "M1B preflight resources destroy safely before upload");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "M1B preflight runtime destroys safely");
+}
+
+FACT(PrometheusM1BBf16IngressWidensEveryBitPatternExactlyOnGpu)
+{
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "Vulkan runtime creates for exhaustive BF16 ingress");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    const PrometheusModelBlockCreateRequest create = make_m1b_request();
+    std::uint64_t blockID = 0u;
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
+                 "fixed production ingress pipeline creates with the M1B owner");
+    if (blockID == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        return;
+    }
+    std::vector<std::uint16_t> input(65536u);
+    std::vector<float> output(input.size(), 0.0f);
+    for (std::uint32_t bits = 0u; bits < input.size(); ++bits) input[bits] = static_cast<std::uint16_t>(bits);
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_bf16_ingress_impl(
+                              runtime, blockID, input.data(), static_cast<std::uint32_t>(input.size()),
+                              output.data(), static_cast<std::uint32_t>(output.size()), &evidence),
+                 "production ingress widens the exhaustive BF16 domain on GPU");
+    std::uint32_t firstMismatch = static_cast<std::uint32_t>(input.size());
+    for (std::uint32_t bits = 0u; bits < input.size(); ++bits) {
+        std::uint32_t actual = 0u;
+        std::memcpy(&actual, &output[bits], sizeof(actual));
+        if (actual != (bits << 16u)) {
+            firstMismatch = bits;
+            break;
+        }
+    }
+    ASSERT_EQUAL(static_cast<std::uint32_t>(input.size()), firstMismatch,
+                 "all 65536 GPU results have the exact canonical FP32 bit pattern");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_inject_execution_fault_impl(
+                              runtime, blockID, PROM_TESTCFG_FAIL_DISPATCH),
+                 "ingress dispatch fault is injected into the resident block");
+    ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_model_block_test_bf16_ingress_impl(
+                                 runtime, blockID, input.data(), static_cast<std::uint32_t>(input.size()),
+                                 output.data(), static_cast<std::uint32_t>(output.size()), &evidence),
+                 "ingress dispatch failure rejects the audit output");
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED, evidence.detail_code,
+                 "ingress dispatch failure has exact fault identity");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID),
+                 "exhaustive ingress resources destroy safely");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "exhaustive ingress runtime destroys safely");
+}
+
+FACT(PrometheusM1BIngressRejectsWrongExternalByteCounts)
+{
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "Vulkan runtime creates for ingress ABI faults");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    const PrometheusModelBlockCreateRequest create = make_m1b_request();
+    std::uint64_t blockID = 0u;
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
+                 "M1B owner creates for exact ingress size faults");
+    std::array<std::uint16_t, 1> input{};
+    std::array<std::uint16_t, 1> timestep{};
+    PrometheusModelBlockM1BExecuteRequest execute{};
+    execute.struct_size = sizeof(execute);
+    execute.model_input_bf16 = input.data();
+    execute.timestep_bf16 = timestep.data();
+    execute.model_input_bytes = 1u;
+    execute.timestep_bytes = 512u;
+    execute.input_identity = 1u;
+    execute.timestep_identity = 2u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                 "wrong BF16 model input byte count is rejected before execution");
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INGRESS_INPUT_SIZE_MISMATCH, evidence.detail_code,
+                 "wrong input byte count has exact fault identity");
+    execute.model_input_bytes = 1024ull * 3840ull * sizeof(std::uint16_t);
+    execute.timestep_bytes = 1u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                 "wrong BF16 timestep byte count is rejected before execution");
+    ASSERT_EQUAL(PROM_MODEL_BLOCK_DETAIL_INGRESS_TIMESTEP_SIZE_MISMATCH, evidence.detail_code,
+                 "wrong timestep byte count has exact fault identity");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "ingress ABI fault block destroys safely");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "ingress ABI fault runtime destroys safely");
+}
+
+FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
+{
+    const char* enabled = std::getenv("OCT_EVT2_M1B_REAL");
+    const char* cacheRootText = std::getenv("OCT_EVT2_CACHE");
+    const char* oracleRootText = std::getenv("OCT_EVT2_ORACLE");
+    if (enabled == nullptr || std::string(enabled) != "1" || cacheRootText == nullptr || oracleRootText == nullptr) {
+        SKIP("set OCT_EVT2_M1B_REAL=1 and the validated payload roots for the real hardware lane");
+    }
+    const std::filesystem::path cacheBlock = std::filesystem::path(cacheRootText) / "layers" /
+        "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6" / "noise_refiner.0";
+    const std::filesystem::path oracleRun = std::filesystem::path(oracleRootText) / "run_02";
+    constexpr std::array<const char*, PROM_MODEL_BLOCK_MAX_WEIGHTS> names{
+        "noise_refiner.0.adaLN_modulation.0.bias.fp16.bin",
+        "noise_refiner.0.adaLN_modulation.0.weight.fp16.bin",
+        "noise_refiner.0.attention.k_norm.weight.fp16.bin",
+        "noise_refiner.0.attention.out.weight.fp16.bin",
+        "noise_refiner.0.attention.q_norm.weight.fp16.bin",
+        "noise_refiner.0.attention.qkv.weight.fp16.bin",
+        "noise_refiner.0.attention_norm1.weight.fp16.bin",
+        "noise_refiner.0.attention_norm2.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w1.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w2.weight.fp16.bin",
+        "noise_refiner.0.feed_forward.w3.weight.fp16.bin",
+        "noise_refiner.0.ffn_norm1.weight.fp16.bin",
+        "noise_refiner.0.ffn_norm2.weight.fp16.bin"};
+    std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> weightBytes{};
+    std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> uploads{};
+    for (std::uint32_t index = 0u; index < names.size(); ++index) {
+        weightBytes[index] = read_binary_file(cacheBlock / names[index]);
+        ASSERT_EQUAL(kM1BWeightBytes[index], static_cast<std::uint64_t>(weightBytes[index].size()),
+                     "validated cache tensor retains its exact physical byte count");
+    }
+    const std::vector<std::uint8_t> input = read_binary_file(oracleRun / "noise_refiner_0_input.bin");
+    const std::vector<std::uint8_t> timestep = read_binary_file(oracleRun / "noise_refiner_0_timestep.bin");
+    ASSERT_EQUAL(7864320u, static_cast<std::uint64_t>(input.size()), "real captured BF16 input is complete");
+    ASSERT_EQUAL(512u, static_cast<std::uint64_t>(timestep.size()), "real captured BF16 timestep is complete");
+    if (input.size() != 7864320u || timestep.size() != 512u) return;
+
+    void* runtime = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(nullptr, &runtime), "clean Vulkan runtime creates for the real M1B pass");
+    if (runtime == nullptr || !runtime_available(runtime)) {
+        if (runtime != nullptr) prom_reactor_runtime_destroy_impl(runtime);
+        SKIP("Vulkan runtime unavailable");
+    }
+    PrometheusModelBlockCreateRequest create = make_m1b_request();
+    create.audit_bytes = 1024ull * 11520ull * sizeof(float);
+    std::uint64_t blockID = 0u;
+    PrometheusModelBlockEvidence evidence{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_create(runtime, &create, &blockID, &evidence),
+                 "real M1B resident owner creates its complete fixed portfolio");
+    if (blockID == 0u) {
+        prom_reactor_runtime_destroy_impl(runtime);
+        return;
+    }
+    std::vector<float> widened(1024u * 3840u);
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_model_block_test_bf16_ingress_impl(
+                              runtime, blockID, reinterpret_cast<const std::uint16_t*>(input.data()),
+                              static_cast<std::uint32_t>(widened.size()), widened.data(),
+                              static_cast<std::uint32_t>(widened.size()), &evidence),
+                 "full real captured input widens on GPU before model arithmetic");
+    std::uint32_t ingressMismatch = static_cast<std::uint32_t>(widened.size());
+    for (std::uint32_t index = 0u; index < widened.size(); ++index) {
+        const std::uint16_t bf16 = static_cast<std::uint16_t>(input[index * 2u]) |
+                                   static_cast<std::uint16_t>(input[index * 2u + 1u] << 8u);
+        std::uint32_t actual = 0u;
+        std::memcpy(&actual, &widened[index], sizeof(actual));
+        if (actual != (static_cast<std::uint32_t>(bf16) << 16u)) {
+            ingressMismatch = index;
+            break;
+        }
+    }
+    ASSERT_EQUAL(static_cast<std::uint32_t>(widened.size()), ingressMismatch,
+                 "full real input ingress has exact FP32 bit identity");
+    for (std::uint32_t index = 0u; index < uploads.size(); ++index) {
+        uploads[index].binding_index = index;
+        uploads[index].bytes = weightBytes[index].data();
+        uploads[index].byte_count = weightBytes[index].size();
+        uploads[index].content_identity = create.weights[index].content_identity;
+        uploads[index].layout_identity = create.weights[index].layout_identity;
+    }
+    const auto uploadBegin = std::chrono::steady_clock::now();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_upload_weights(
+                              runtime, blockID, uploads.data(), static_cast<std::uint32_t>(uploads.size()), &evidence),
+                 "all thirteen validated FP16 tensors upload exactly once");
+    const auto uploadEnd = std::chrono::steady_clock::now();
+    const std::uint64_t uploadNs = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(uploadEnd - uploadBegin).count());
+    std::vector<float> audit(1024u * 11520u);
+    PrometheusModelBlockM1BExecuteRequest execute{};
+    execute.struct_size = sizeof(execute);
+    execute.model_input_bf16 = input.data();
+    execute.timestep_bf16 = timestep.data();
+    execute.model_input_bytes = input.size();
+    execute.timestep_bytes = timestep.size();
+    execute.input_identity = 0x857cea75e69d665cull;
+    execute.timestep_identity = 0xbc0ba90e94f5ae98ull;
+    execute.audit_enabled = 1u;
+    execute.audit_stage = PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION;
+    execute.audit_output = audit.data();
+    execute.audit_element_capacity = audit.size();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                 "real fixed M1B program reaches resident PositionedQ PositionedK and V");
+    constexpr std::array<std::uint32_t, 6> coordinates{0u, 1u, 5120u, 10240u, 15358u, 15359u};
+    constexpr std::array<float, 6> expected{1.3601882f, 0.47051555f, 0.03414398f, -1.0670887f, 0.117215075f, 0.20466696f};
+    for (std::uint32_t index = 0u; index < coordinates.size(); ++index) {
+        const float difference = std::fabs(audit[coordinates[index]] - expected[index]);
+        std::cout << "M1B AdaLN coordinate " << coordinates[index] << " gpu=" << audit[coordinates[index]]
+                  << " canonical=" << expected[index] << " abs=" << difference << "\n";
+        ASSERT_TRUE(std::isfinite(audit[coordinates[index]]) && difference <= 1.0e-4f,
+                    "AdaLN selected canonical witness matches without a broad tolerance");
+    }
+    struct StageWitness {
+        const char* name;
+        std::uint32_t stage;
+        std::uint32_t elements;
+        std::array<std::uint32_t, 6> coordinates;
+        std::array<float, 6> expected;
+    };
+    const std::array<StageWitness, 20> stages{{
+        {"timestep_linear", PROM_MODEL_BLOCK_M1B_AUDIT_ADALN_PROJECTION, 15360u, {0u,1u,5120u,10240u,15358u,15359u}, {1.3601882f,0.47051555f,0.03414398f,-1.0670887f,0.117215075f,0.20466696f}},
+        {"attention_scale_raw", PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_RAW, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {1.3601882f,0.47051555f,-0.9094451f,-0.24177729f,-1.3053262f,-2.0265357f}},
+        {"attention_scale_adjusted", PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_SCALE_ADJUSTED, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {2.3601882f,1.4705155f,0.09055489f,0.7582227f,-0.30532622f,-1.0265357f}},
+        {"attention_gate_raw", PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_RAW, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {-0.092752255f,0.033863652f,0.03414398f,-0.009241605f,0.11381386f,-0.030876685f}},
+        {"attention_gate_tanh", PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_GATE_TANH, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {-0.092487186f,0.033850715f,0.03413072f,-0.009241343f,0.11332496f,-0.030866876f}},
+        {"mlp_scale_raw", PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_RAW, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {-1.2256036f,-0.44273403f,-0.5722749f,-1.0670887f,-0.63635045f,0.2840054f}},
+        {"mlp_scale_adjusted", PROM_MODEL_BLOCK_M1B_AUDIT_MLP_SCALE_ADJUSTED, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {-0.22560358f,0.557266f,0.42772508f,-0.06708872f,0.36364955f,1.2840054f}},
+        {"mlp_gate_raw", PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_RAW, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {0.12004629f,-0.1627551f,-0.004695369f,0.16414051f,0.117215075f,0.20466696f}},
+        {"mlp_gate_tanh", PROM_MODEL_BLOCK_M1B_AUDIT_MLP_GATE_TANH, 3840u, {0u,1u,1280u,2560u,3838u,3839u}, {0.11947293f,-0.16133308f,-0.0046953345f,0.16268213f,0.11668119f,0.2018563f}},
+        {"attention_norm", PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_NORM, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {-2.9183338f,-0.2905034f,-0.47690302f,0.07386842f,0.038262118f,-1.058256f}},
+        {"attention_modulated", PROM_MODEL_BLOCK_M1B_AUDIT_ATTENTION_MODULATED, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {-6.887817f,-0.42718977f,-0.0431859f,0.056008715f,-0.0116824275f,1.0863377f}},
+        {"qkv", PROM_MODEL_BLOCK_M1B_AUDIT_FUSED_QKV, 11796480u, {0u,1u,3932160u,7864320u,11796478u,11796479u}, {0.11094941f,-20.398643f,-8.927877f,21.416372f,-111.61618f,62.262966f}},
+        {"q", PROM_MODEL_BLOCK_M1B_AUDIT_Q, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {0.11094941f,-20.398643f,81.20082f,-106.941124f,-67.58962f,-39.493553f}},
+        {"k", PROM_MODEL_BLOCK_M1B_AUDIT_K, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {43.58648f,-8.07982f,-65.52536f,-5.828332f,-23.167105f,-7.610529f}},
+        {"v", PROM_MODEL_BLOCK_M1B_AUDIT_V, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {54.267914f,-6.3479257f,26.322664f,61.98557f,-111.61618f,62.262966f}},
+        {"q_norm", PROM_MODEL_BLOCK_M1B_AUDIT_Q_NORM, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {0.0015781499f,-0.3210185f,0.9649556f,-1.1055946f,-0.8490496f,-0.5325902f}},
+        {"k_norm", PROM_MODEL_BLOCK_M1B_AUDIT_K_NORM, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {0.6562256f,-0.14462532f,-0.72043616f,-0.069245115f,-0.44722673f,-0.15771928f}},
+        {"q_rope", PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_Q, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {0.32096922f,0.005840092f,-0.046113525f,0.07149897f,-0.75824535f,-0.6554399f}},
+        {"k_rope", PROM_MODEL_BLOCK_M1B_AUDIT_POSITIONED_K, 3932160u, {0u,1u,1310720u,2621440u,3932158u,3932159u}, {0.13590002f,0.6580879f,0.2728928f,-1.1536793f,-0.41806194f,-0.22385556f}},
+        {"timestep_input", PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_TIMESTEP, 256u, {0u,1u,85u,170u,254u,255u}, {0.06298828f,0.21582031f,-0.067871094f,0.10107422f,-0.076171875f,-0.115722656f}}
+    }};
+    const char* canonicalRootText = std::getenv("OCT_EVT2_M1B_CANONICAL");
+    const std::filesystem::path canonicalRoot = canonicalRootText == nullptr
+        ? std::filesystem::path(".tmp") / "evt2-m1b-canonical"
+        : std::filesystem::path(canonicalRootText);
+    for (const StageWitness& stage : stages) {
+        execute.audit_stage = stage.stage;
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                     "real M1B stage audit execution succeeds");
+        float maxDifference = 0.0f;
+        for (std::uint32_t index = 0u; index < stage.coordinates.size(); ++index) {
+            const float actual = audit[stage.coordinates[index]];
+            const float difference = std::fabs(actual - stage.expected[index]);
+            maxDifference = std::max(maxDifference, difference);
+            const float bound = std::max(2.0e-5f, std::fabs(stage.expected[index]) * 2.0e-5f);
+            ASSERT_TRUE(std::isfinite(actual) && difference <= bound,
+                        "selected canonical stage coordinate matches the narrow measured bound");
+        }
+        const std::vector<std::uint8_t> canonicalBytes = read_binary_file(canonicalRoot / (std::string(stage.name) + ".f32.bin"));
+        ASSERT_EQUAL(static_cast<std::uint64_t>(stage.elements) * sizeof(float),
+                     static_cast<std::uint64_t>(canonicalBytes.size()),
+                     "local canonical M1B replay stage has the exact physical size");
+        double errorSquares = 0.0;
+        double referenceSquares = 0.0;
+        double linf = 0.0;
+        std::uint32_t firstDifference = stage.elements;
+        if (canonicalBytes.size() == static_cast<std::size_t>(stage.elements) * sizeof(float)) {
+            for (std::uint32_t element = 0u; element < stage.elements; ++element) {
+                float reference = 0.0f;
+                std::memcpy(&reference, canonicalBytes.data() + element * sizeof(float), sizeof(reference));
+                const double difference = static_cast<double>(audit[element]) - static_cast<double>(reference);
+                errorSquares += difference * difference;
+                referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
+                linf = std::max(linf, std::fabs(difference));
+                if (firstDifference == stage.elements) {
+                    std::uint32_t actualBits = 0u;
+                    std::uint32_t referenceBits = 0u;
+                    std::memcpy(&actualBits, &audit[element], sizeof(actualBits));
+                    std::memcpy(&referenceBits, &reference, sizeof(referenceBits));
+                    if (actualBits != referenceBits) firstDifference = element;
+                }
+            }
+        }
+        const double l2 = std::sqrt(errorSquares);
+        const double rms = std::sqrt(errorSquares / static_cast<double>(stage.elements));
+        const double relativeL2 = referenceSquares == 0.0 ? 0.0 : l2 / std::sqrt(referenceSquares);
+        std::cout << "M1B stage " << stage.name << " selected_linf=" << maxDifference
+                  << " l2=" << l2 << " linf=" << linf << " relative_l2=" << relativeL2
+                  << " rms=" << rms << " first_bit_difference=" << firstDifference
+                  << " elements=" << stage.elements << "\n";
+    }
+    execute.audit_enabled = 0u;
+    execute.audit_stage = PROM_MODEL_BLOCK_M1B_AUDIT_NONE;
+    const std::uint64_t replayIdentity = evidence.replay_identity;
+    std::array<std::uint64_t, 10> warmNs{};
+    for (std::uint32_t iteration = 0u; iteration < warmNs.size(); ++iteration) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                     "zero-audit warm resident execution succeeds");
+        warmNs[iteration] = evidence.last_execution_ns;
+    }
+    ASSERT_EQUAL(0u, evidence.warm_buffer_allocation_count, "ten warm executions allocate no buffers");
+    ASSERT_EQUAL(13u, evidence.weight_upload_count, "ten warm executions perform no additional uploads");
+    ASSERT_TRUE(evidence.replay_identity != replayIdentity, "audit mode participates in replay identity");
+    const std::uint64_t stableWarmReplay = evidence.replay_identity;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_execute_m1b(runtime, blockID, &execute, &evidence),
+                 "repeat warm replay succeeds");
+    ASSERT_EQUAL(stableWarmReplay, evidence.replay_identity, "identical warm runs retain deterministic replay identity");
+    std::cout << "M1B evidence uploaded_bytes=361820672 upload_ns=" << uploadNs
+              << " persistent_bytes=" << evidence.persistent_bytes
+              << " reusable_bytes=" << evidence.reusable_bytes
+              << " audit_bytes=" << evidence.audit_bytes
+              << " total_committed_bytes=" << evidence.total_committed_bytes
+              << " peak_plan_bytes=" << evidence.peak_plan_bytes
+              << " cold_buffer_allocations=" << evidence.cold_buffer_allocation_count
+              << " warm_buffer_allocations=" << evidence.warm_buffer_allocation_count
+              << " pipeline_creations=" << evidence.pipeline_create_count
+              << " descriptor_sets=" << evidence.descriptor_set_count
+              << " weight_uploads=" << evidence.weight_upload_count
+              << " execution_plan_identity=" << evidence.execution_plan_identity
+              << " replay_identity=" << evidence.replay_identity << "\n";
+    std::cout << "M1B warm_ns=";
+    for (std::size_t index = 0u; index < warmNs.size(); ++index) {
+        if (index != 0u) std::cout << ',';
+        std::cout << warmNs[index];
+    }
+    std::cout << "\n";
+    std::cout << "M1B boundary_gpu_ns=";
+    for (std::size_t index = 0u; index < PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT; ++index) {
+        if (index != 0u) std::cout << ',';
+        std::cout << evidence.m1b_boundary_gpu_ns[index];
+    }
+    std::cout << "\n";
+    ASSERT_EQUAL(13u, evidence.weight_upload_count, "real package has exactly thirteen cold uploads");
+    ASSERT_EQUAL(0u, evidence.warm_buffer_allocation_count, "first real execution performs no warm buffer allocation");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "real resident M1B resources destroy safely");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "real M1B runtime destroys safely");
 }
 
 FACT(PrometheusResidentModelBlockRejectsMalformedProgramAndPipelineFault)

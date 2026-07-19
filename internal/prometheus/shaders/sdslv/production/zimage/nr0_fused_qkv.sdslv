@@ -1,0 +1,32 @@
+namespace Prometheus.Production.ZImage;
+
+stream FusedQkvIO {
+    [binding(0)] Modulated: readonly array<f32>;
+    [binding(1)] QkvWeightF16: readonly array<u32>;
+    [binding(2)] Qkv: readwrite array<f32>;
+}
+
+record FusedQkvParams { TokenCount: u32; ModelWidth: u32; OutputWidth: u32; Reserved: u32; }
+
+// Fixed Z-Image contraction only: [1024,3840] x [3840,11520]. The cached
+// operand is row-major [in,out], so output 0..3839 is Q, 3840..7679 is K,
+// and 7680..11519 is V. Every packed binary16 lane expands directly to f32.
+shader Nr0FusedQkv {
+    resources FusedQkvIO;
+
+    stage compute [numthreads(8u, 8u, 1u)] fn CS(params: FusedQkvParams) -> void {
+        let token: u32 = DispatchThreadID.x;
+        let output: u32 = DispatchThreadID.y;
+        if token >= params.TokenCount or output >= params.OutputWidth { return; }
+        var value: f32 = 0.0;
+        for channel in 0u..params.ModelWidth {
+            let weightElement: u32 = channel * params.OutputWidth + output;
+            let weightLanes: float2 = Unpack<F16x2>(QkvWeightF16[weightElement / 2u]);
+            var weight: f32 = weightLanes.x;
+            if (weightElement % 2u) != 0u { weight = weightLanes.y; }
+            value = value + Modulated[token * params.ModelWidth + channel] * weight;
+        }
+        Qkv[token * params.OutputWidth + output] = value;
+        return;
+    }
+}

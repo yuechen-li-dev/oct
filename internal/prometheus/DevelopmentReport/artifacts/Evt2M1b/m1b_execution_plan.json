@@ -1,0 +1,19 @@
+{
+  "closed": true,
+  "identity": 18394515842619901263,
+  "order": [
+    "BF16 ingress",
+    "barrier",
+    "AdaLN",
+    "barrier",
+    "attention RMSNorm/modulation",
+    "barrier",
+    "fixed QKV",
+    "barrier",
+    "Query RMSNorm/RoPE",
+    "barrier",
+    "Key RMSNorm/RoPE"
+  ],
+  "runtime_graph": false,
+  "schema": "oct.prometheus.evt2.m1b.execution-plan.v1"
+}

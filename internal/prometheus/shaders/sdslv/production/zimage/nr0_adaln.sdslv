@@ -1,0 +1,51 @@
+namespace Prometheus.Production.ZImage;
+
+// EVT-2 M1B boundary one.  The three immutable operands are packed FP16
+// cache values; every lane is expanded to f32 before it participates in the
+// declared left-to-right projection reduction.
+stream AdaLNIO {
+    [binding(0)] Timestep: readonly array<f32>;
+    [binding(1)] WeightF16: readonly array<u32>;
+    [binding(2)] BiasF16: readonly array<u32>;
+    [binding(3)] Projection: readwrite array<f32>;
+    [binding(4)] AttentionScale: readwrite array<f32>;
+    [binding(5)] AttentionGate: readwrite array<f32>;
+    [binding(6)] MlpScale: readwrite array<f32>;
+    [binding(7)] MlpGate: readwrite array<f32>;
+}
+
+record AdaLNParams {
+    ProjectionWidth: u32;
+    InputWidth: u32;
+}
+
+fn TanhF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return tanh(value); };
+    return result;
+}
+
+shader Nr0AdaLN {
+    resources AdaLNIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AdaLNParams) -> void {
+        let lane: u32 = DispatchThreadID.x;
+        if lane >= params.ProjectionWidth { return; }
+        let biasLanes: float2 = Unpack<F16x2>(BiasF16[lane / 2u]);
+        var value: f32 = biasLanes.x;
+        if (lane % 2u) != 0u { value = biasLanes.y; }
+        for channel in 0u..params.InputWidth {
+            // Cached matrix orientation is exactly row-major [in,out].
+            let weightElement: u32 = channel * params.ProjectionWidth + lane;
+            let weightLanes: float2 = Unpack<F16x2>(WeightF16[weightElement / 2u]);
+            var weight: f32 = weightLanes.x;
+            if (weightElement % 2u) != 0u { weight = weightLanes.y; }
+            value = value + Timestep[channel] * weight;
+        }
+        Projection[lane] = value;
+        if lane < 3840u { AttentionScale[lane] = 1.0 + value; }
+        if lane >= 3840u and lane < 7680u { AttentionGate[lane - 3840u] = TanhF32(value); }
+        if lane >= 7680u and lane < 11520u { MlpScale[lane - 7680u] = 1.0 + value; }
+        if lane >= 11520u { MlpGate[lane - 11520u] = TanhF32(value); }
+        return;
+    }
+}

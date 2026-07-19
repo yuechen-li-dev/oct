@@ -1,0 +1,21 @@
+{
+  "covered": [
+    "wrong aggregate cache hash",
+    "wrong tensor hash",
+    "missing tensor",
+    "truncated tensor",
+    "wrong tensor shape",
+    "wrong BF16 input byte count",
+    "wrong timestep byte count",
+    "ingress pipeline creation failure",
+    "ingress dispatch failure",
+    "uncertain completion",
+    "audit copy failure",
+    "destroy during partial initialization",
+    "repeated destroy",
+    "quarantine/reap",
+    "recreate/rerun"
+  ],
+  "schema": "oct.prometheus.evt2.m1b.faults.v1",
+  "status": "pass"
+}

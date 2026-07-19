@@ -1,0 +1,39 @@
+namespace Prometheus.Production.ZImage;
+
+// ABI-only ingress. Packed BF16 payload words are widened by moving the exact
+// sixteen source bits into the high half of an IEEE-754 binary32 bit pattern.
+// This source performs no model arithmetic and owns no model witness boundary.
+stream Bf16IngressIO {
+    [binding(0)] InputBF16: readonly array<u32>;
+    [binding(1)] TimestepBF16: readonly array<u32>;
+    [binding(2)] InputF32: readwrite array<f32>;
+    [binding(3)] TimestepF32: readwrite array<f32>;
+}
+
+record Bf16IngressParams {
+    InputElements: u32;
+    TimestepElements: u32;
+}
+
+fn WidenBF16(word: u32, element: u32) -> f32 {
+    let widened: f32 = HLSL<f32>(word, element) {
+        uint bf16Bits = (element % 2u) == 0u ? (word & 65535u) : (word >> 16u);
+        return asfloat(bf16Bits << 16u);
+    };
+    return widened;
+}
+
+shader Nr0Bf16Ingress {
+    resources Bf16IngressIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: Bf16IngressParams) -> void {
+        let lane: u32 = DispatchThreadID.x;
+        if lane < params.InputElements {
+            InputF32[lane] = WidenBF16(InputBF16[lane / 2u], lane);
+        }
+        if lane < params.TimestepElements {
+            TimestepF32[lane] = WidenBF16(TimestepBF16[lane / 2u], lane);
+        }
+        return;
+    }
+}

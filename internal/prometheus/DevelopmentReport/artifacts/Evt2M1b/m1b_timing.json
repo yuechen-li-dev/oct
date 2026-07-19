@@ -1,0 +1,29 @@
+{
+  "boundary_gpu_ns": {
+    "adaln": 33792,
+    "attention_norm_modulate": 790528,
+    "bf16_ingress": 59488,
+    "fixed_qkv": 175003648,
+    "key_norm_rope": 156672,
+    "query_norm_rope": 157696
+  },
+  "host_observed": true,
+  "mean_ns": 243311080,
+  "median_ns": 235840850,
+  "min_ns": 184623300,
+  "p95_ns": 323233300,
+  "samples_ns": [
+    323233300,
+    299976700,
+    279221900,
+    258854300,
+    242583400,
+    229098300,
+    217066700,
+    204540800,
+    193912100,
+    184623300
+  ],
+  "schema": "oct.prometheus.evt2.m1b.timing.v1",
+  "stddev_ns": 44055285.600590535
+}

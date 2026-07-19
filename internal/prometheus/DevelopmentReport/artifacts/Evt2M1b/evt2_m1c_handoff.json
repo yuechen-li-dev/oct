@@ -1,0 +1,62 @@
+{
+  "inputs": [
+    {
+      "name": "PositionedQ",
+      "physical": "Q segment in each 11520-wide fused token row",
+      "semantic_space": "PositionedQueryHead",
+      "shape": [
+        1,
+        1024,
+        30,
+        128
+      ]
+    },
+    {
+      "name": "PositionedK",
+      "physical": "K segment offset 3840 in each fused token row",
+      "semantic_space": "PositionedKeyHead",
+      "shape": [
+        1,
+        1024,
+        30,
+        128
+      ]
+    },
+    {
+      "name": "V",
+      "physical": "V segment offset 7680 in each fused token row",
+      "semantic_space": "ValueHead",
+      "shape": [
+        1,
+        1024,
+        30,
+        128
+      ]
+    },
+    {
+      "name": "attention_gate_tanh",
+      "shape": [
+        1,
+        3840
+      ]
+    },
+    {
+      "name": "original_residual",
+      "shape": [
+        1,
+        1024,
+        3840
+      ]
+    }
+  ],
+  "next": "fixed 30-head score scale stable-softmax probability-times-V projection norm gated residual",
+  "no_cast_boundaries": [
+    "PositionedQ",
+    "PositionedK",
+    "V",
+    "attention projection through attention_norm2"
+  ],
+  "schema": "oct.prometheus.evt2.m1c.handoff.v1",
+  "score_scratch": "one head logits and probabilities: 2 x 1024 FP32 = 8192 bytes",
+  "status": "ready"
+}

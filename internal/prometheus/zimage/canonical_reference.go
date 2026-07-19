@@ -269,16 +269,23 @@ func canonicalAttention(q, k, v []float32, stages map[string][]float32) []float3
 // RunCanonicalNoiseRefiner0 executes the exact one-block source contract with
 // no framework imports and no historical-output value in its computation.
 func RunCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool) (CanonicalNoiseRefiner0Result, error) {
-	return runCanonicalNoiseRefiner0(paths, capture, nil)
+	return runCanonicalNoiseRefiner0(paths, capture, nil, false)
+}
+
+// RunCanonicalNoiseRefiner0PreAttention replays the accepted canonical owner
+// only through the final M1B witness. It is audit equipment for production
+// stage comparison and introduces no alternate model semantics.
+func RunCanonicalNoiseRefiner0PreAttention(paths CanonicalNoiseRefiner0Paths) (CanonicalNoiseRefiner0Result, error) {
+	return runCanonicalNoiseRefiner0(paths, true, nil, true)
 }
 
 // RunCanonicalNoiseRefiner0WithF16StageCasts is diagnostic-only equipment for
 // controlled activation-storage experiments; production must not use it.
 func RunCanonicalNoiseRefiner0WithF16StageCasts(paths CanonicalNoiseRefiner0Paths, capture bool, casts map[string]bool) (CanonicalNoiseRefiner0Result, error) {
-	return runCanonicalNoiseRefiner0(paths, capture, casts)
+	return runCanonicalNoiseRefiner0(paths, capture, casts, false)
 }
 
-func runCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool, casts map[string]bool) (CanonicalNoiseRefiner0Result, error) {
+func runCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool, casts map[string]bool, stopAfterPreAttention bool) (CanonicalNoiseRefiner0Result, error) {
 	bundle, err := LoadNoiseRefiner0PayloadBundle(NoiseRefiner0PayloadPaths{CacheRoot: paths.CacheRoot, OracleRoot: paths.OracleRoot})
 	if err != nil {
 		return CanonicalNoiseRefiner0Result{}, err
@@ -365,6 +372,9 @@ func runCanonicalNoiseRefiner0(paths CanonicalNoiseRefiner0Paths, capture bool, 
 	}
 	canonicalStage(stages, "q_rope", q)
 	canonicalStage(stages, "k_rope", k)
+	if stopAfterPreAttention {
+		return CanonicalNoiseRefiner0Result{Stages: stages}, nil
+	}
 	attn := canonicalAttention(q, k, v, stages)
 	canonicalStage(stages, "attention_aggregation", attn)
 	projected, err := canonicalLinear(attn, 1024, 3840, 3840, w.attnOut, nil)
