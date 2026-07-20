@@ -54,6 +54,8 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint64_t persistent_bytes;
   uint64_t reusable_bytes;
   uint64_t audit_bytes;
+  uint64_t host_package_cache_bytes;
+  uint64_t host_package_cache_hits;
   /* Ordered as NoiseRefiner0, NoiseRefiner1, ContextRefiner0,
      ContextRefiner1, MainTransformer0..29.  These are host-visible
      per-block probes; last_execution_ns is supplied by the native reactor. */

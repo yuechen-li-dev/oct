@@ -1,0 +1,23 @@
+{
+  "caller_cannot_supply": [
+    "layer IDs",
+    "package identities",
+    "resource slots",
+    "memory plans",
+    "shader topology"
+  ],
+  "closed_authority": [
+    "lock identity",
+    "payload package identities",
+    "device/runtime",
+    "resident stream slots",
+    "single GPU weight window"
+  ],
+  "host_package_store": {
+    "bytes": 12286112768,
+    "immutable": true,
+    "packages": 34
+  },
+  "schema": "prometheus.dvt2.m0.session-contract.v1",
+  "serialized_evaluation": true
+}

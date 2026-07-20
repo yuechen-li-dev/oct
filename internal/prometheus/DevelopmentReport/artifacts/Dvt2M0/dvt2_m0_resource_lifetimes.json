@@ -1,0 +1,42 @@
+{
+  "host_package_cache_bytes": 12286112768,
+  "model_owned_ceiling_bytes": 643587076,
+  "resources": [
+    {
+      "lifetime": "session",
+      "reset": "never per evaluation",
+      "resource": "Vulkan instance/device/queue/command pool"
+    },
+    {
+      "lifetime": "session",
+      "reset": "logical generations only",
+      "resource": "compiled-model resident streams"
+    },
+    {
+      "lifetime": "session",
+      "reset": "never per evaluation",
+      "resource": "lock authority/generated descriptors/payload metadata"
+    },
+    {
+      "lifetime": "session",
+      "reset": "released on close",
+      "resource": "immutable host package cache"
+    },
+    {
+      "lifetime": "evaluation-family",
+      "reset": "retargeted by the existing create/rebind/destroy seam",
+      "resource": "single GPU weight window and active execution target"
+    },
+    {
+      "lifetime": "evaluation",
+      "reset": "new logical generation",
+      "resource": "image/context/timestep/JointWorking/output/replay generations"
+    },
+    {
+      "lifetime": "transient command",
+      "reset": "reset before submission",
+      "resource": "command recording"
+    }
+  ],
+  "schema": "prometheus.dvt2.m0.resource-lifetimes.v1"
+}

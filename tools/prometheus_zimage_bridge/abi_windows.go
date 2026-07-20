@@ -47,6 +47,8 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint64_t persistent_bytes;
   uint64_t reusable_bytes;
   uint64_t audit_bytes;
+  uint64_t host_package_cache_bytes;
+  uint64_t host_package_cache_hits;
   uint64_t stage_execution_ns[34];
   uint64_t stage_rebind_ns[34];
   uint64_t stage_payload_read_ns[34];
@@ -81,6 +83,7 @@ const outputImageFP32Bytes = uint64(imageTokens) * uint64(modelWidth) * 4
 type bridgeSession struct {
 	mu                sync.Mutex
 	payload           validatedPayload
+	hostPackages      *cachedPayload
 	reactor           *reactorDLL
 	contextDigest     [32]byte
 	contextGeneration uint64
@@ -244,7 +247,13 @@ func prometheus_zimage_session_create(request *C.PrometheusZImageSessionCreateRe
 		setGlobalError(err)
 		return 1
 	}
-	session := &bridgeSession{payload: payload, reactor: reactor}
+	hostPackages, err := cachePayload(payload)
+	if err != nil {
+		_ = reactor.close()
+		setGlobalError(err)
+		return 1
+	}
+	session := &bridgeSession{payload: payload, hostPackages: hostPackages, reactor: reactor}
 	bridgeSessions.Lock()
 	handle := bridgeSessions.next
 	bridgeSessions.next++
@@ -272,7 +281,7 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	metrics := runMetrics{}
 	contextDigest := sha256.Sum256(unsafe.Slice((*byte)(unsafe.Pointer(request.context_fp32)), int(contextFP32Bytes)))
 	if session.contextGeneration == 0 || session.contextDigest != contextDigest {
-		generation, contextMetrics, err := session.reactor.prepareContext(session.payload.context, unsafe.Pointer(request.context_fp32), memoryIdentity(unsafe.Pointer(request.context_fp32), contextFP32Bytes))
+		generation, contextMetrics, err := session.reactor.prepareContext(session.hostPackages.context, unsafe.Pointer(request.context_fp32), memoryIdentity(unsafe.Pointer(request.context_fp32), contextFP32Bytes))
 		addMetrics(&metrics, contextMetrics)
 		if err != nil {
 			session.lastError = err.Error()
@@ -280,13 +289,15 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 		}
 		session.contextDigest = contextDigest
 		session.contextGeneration = generation
+		metrics.hostPackageCacheHits += 2
 	} else {
 		metrics.contextReused = true
 	}
 	imageIdentity := memoryIdentity(request.image_bf16, imageBF16Bytes)
 	timestepIdentity := memoryIdentity(request.timestep_bf16, timestepBF16Bytes)
-	imageGeneration, imageMetrics, err := session.reactor.prepareImage(session.payload.noise, request.image_bf16, request.timestep_bf16, imageIdentity, timestepIdentity)
+	imageGeneration, imageMetrics, err := session.reactor.prepareImage(session.hostPackages.noise, request.image_bf16, request.timestep_bf16, imageIdentity, timestepIdentity)
 	addMetrics(&metrics, imageMetrics)
+	metrics.hostPackageCacheHits += 2
 	if err != nil {
 		session.lastError = err.Error()
 		return 1
@@ -297,8 +308,9 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 		return 1
 	}
 	joint := make([]float32, uint64(jointTokens)*uint64(modelWidth))
-	mainMetrics, err := session.reactor.runMain(session.payload.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, session.contextGeneration, jointGeneration, timestepIdentity)
+	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, session.contextGeneration, jointGeneration, timestepIdentity)
 	addMetrics(&metrics, mainMetrics)
+	metrics.hostPackageCacheHits += 30
 	if err != nil {
 		session.lastError = err.Error()
 		return 1
@@ -326,6 +338,8 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	evidence.persistent_bytes = C.uint64_t(metrics.persistentBytes)
 	evidence.reusable_bytes = C.uint64_t(metrics.reusableBytes)
 	evidence.audit_bytes = C.uint64_t(metrics.auditBytes)
+	evidence.host_package_cache_bytes = C.uint64_t(session.hostPackages.bytes)
+	evidence.host_package_cache_hits = C.uint64_t(metrics.hostPackageCacheHits)
 	for index := range metrics.stageExecutionNS {
 		C.oct_prom_set_execute_stage(evidence, C.uint32_t(index), C.uint64_t(metrics.stageExecutionNS[index]), C.uint64_t(metrics.stageRebindNS[index]), C.uint64_t(metrics.stagePayloadReadNS[index]), C.uint64_t(metrics.stageUploadedBytes[index]))
 	}
@@ -342,7 +356,9 @@ func prometheus_zimage_session_destroy(handle C.uint64_t) C.int {
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if err := session.reactor.close(); err != nil {
+	err := session.reactor.close()
+	session.hostPackages.free()
+	if err != nil {
 		setGlobalError(err)
 		return 1
 	}

@@ -62,6 +62,8 @@ class _ExecuteEvidence(ctypes.Structure):
         ("persistent_bytes", ctypes.c_uint64),
         ("reusable_bytes", ctypes.c_uint64),
         ("audit_bytes", ctypes.c_uint64),
+        ("host_package_cache_bytes", ctypes.c_uint64),
+        ("host_package_cache_hits", ctypes.c_uint64),
         ("stage_execution_ns", ctypes.c_uint64 * 34),
         ("stage_rebind_ns", ctypes.c_uint64 * 34),
         ("stage_payload_read_ns", ctypes.c_uint64 * 34),
@@ -82,6 +84,8 @@ class ExecuteEvidence:
     persistent_bytes: int
     reusable_bytes: int
     audit_bytes: int
+    host_package_cache_bytes: int
+    host_package_cache_hits: int
     stage_execution_seconds: tuple[float, ...]
     stage_rebind_seconds: tuple[float, ...]
     stage_payload_read_seconds: tuple[float, ...]
@@ -129,7 +133,7 @@ class PrometheusZImageSession:
         self._dll.prometheus_zimage_session_destroy.restype = ctypes.c_int
         self._dll.prometheus_zimage_last_error.argtypes = [ctypes.c_uint64, ctypes.c_char_p, ctypes.c_uint64]
         self._dll.prometheus_zimage_last_error.restype = ctypes.c_uint64
-        if self._dll.prometheus_zimage_bridge_abi_version() != 2:
+        if self._dll.prometheus_zimage_bridge_abi_version() != 3:
             raise RuntimeError("unsupported Prometheus Z-Image bridge ABI")
         encoded = [str(path).encode("utf-8") for path in (reactor_path, lock, payload)]
         request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index)
@@ -190,6 +194,8 @@ class PrometheusZImageSession:
             persistent_bytes=raw.persistent_bytes,
             reusable_bytes=raw.reusable_bytes,
             audit_bytes=raw.audit_bytes,
+            host_package_cache_bytes=raw.host_package_cache_bytes,
+            host_package_cache_hits=raw.host_package_cache_hits,
             stage_execution_seconds=tuple(value / 1e9 for value in raw.stage_execution_ns),
             stage_rebind_seconds=tuple(value / 1e9 for value in raw.stage_rebind_ns),
             stage_payload_read_seconds=tuple(value / 1e9 for value in raw.stage_payload_read_ns),

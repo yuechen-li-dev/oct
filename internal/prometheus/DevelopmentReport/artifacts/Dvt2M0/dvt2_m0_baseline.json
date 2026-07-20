@@ -1,0 +1,33 @@
+{
+  "m0_warm_wall_seconds": 209.87941110000247,
+  "pre_m0_warm_wall_seconds": 267.3846362999975,
+  "request": {
+    "actual_model_evaluations": 9,
+    "aura_flow_shift": 3.0,
+    "configured_steps": 9,
+    "height": 512,
+    "negative_prompt": null,
+    "negative_prompt_policy": "not evaluated; CFG=1 uses the single positive branch",
+    "prompt": "A lighthouse in fog at dawn",
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "seed": 42,
+    "sigmas": [
+      1.0,
+      0.9600432515144348,
+      0.9131456017494202,
+      0.8573263883590698,
+      0.7897727489471436,
+      0.70634925365448,
+      0.6007193922996521,
+      0.462655633687973,
+      0.27450981736183167,
+      0.0
+    ],
+    "width": 512
+  },
+  "rescope": "M0 retains one native session and one GPU window, adds a session-owned immutable host package store; shared-owner retargeting is M1.",
+  "schema": "prometheus.dvt2.m0.baseline.v1",
+  "wall_reduction_percent": 21.506555498377963,
+  "wall_reduction_seconds": 57.50522519999504
+}

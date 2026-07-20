@@ -1,0 +1,8 @@
+{
+  "hypothesis": "Preserving lock-derived pipelines, descriptor infrastructure, and arena allocations across family retargets will remove repeated owner reconstruction without adding another weight window.",
+  "measured_remaining_cost": "parameter rebind is about 1.35-1.45 seconds/evaluation after immutable payload reads reach zero",
+  "prefetch": "not in scope",
+  "required_memory_increase": 0,
+  "schema": "prometheus.dvt2.m1-handoff.v1",
+  "target": "shared active-owner retargeting over the existing single GPU arena"
+}

@@ -1,0 +1,6 @@
+{
+  "host-cache-create-failure": "cache frees all prior package allocations and session creation fails",
+  "known_m1_gap": "native active-owner retarget/quarantine corpus remains the next bounded seam",
+  "schema": "prometheus.dvt2.m0.faults.v1",
+  "session-close": "host cache releases after reactor close"
+}

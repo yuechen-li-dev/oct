@@ -156,6 +156,7 @@ def main() -> None:
     bridge_start = time.perf_counter()
     session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root)
     timings["prometheus_session_create_seconds"] = time.perf_counter() - bridge_start
+    sample_memory("after_prometheus_session_create")
     final_projection_seconds = 0.0
     invocation_count = 0
 
@@ -240,6 +241,8 @@ def main() -> None:
         raise RuntimeError(f"scheduler/native invocation accounting failed: calls={invocation_count}, evidence={len(evidence_rows)}")
     if any(row["main_layer_count"] != 30 for row in evidence_rows):
         raise RuntimeError("a denoising evaluation did not execute all 30 native layers")
+    if any(any(value != 0.0 for value in row["stage_payload_read_seconds"]) for row in evidence_rows):
+        raise RuntimeError("persistent session reread an immutable package after creation")
 
     del model, diffusion_model
     comfy.model_management.unload_all_models()
@@ -307,6 +310,8 @@ def main() -> None:
             "persistent_bytes": evidence_rows[-1]["persistent_bytes"],
             "reusable_bytes": evidence_rows[-1]["reusable_bytes"],
             "audit_bytes": evidence_rows[-1]["audit_bytes"],
+            "host_package_cache_bytes": evidence_rows[-1]["host_package_cache_bytes"],
+            "host_package_cache_hits_per_evaluation": [row["host_package_cache_hits"] for row in evidence_rows],
         },
         "output": {
             "path": str(args.output.resolve()),

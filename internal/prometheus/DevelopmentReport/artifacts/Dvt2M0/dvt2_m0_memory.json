@@ -1,0 +1,11 @@
+{
+  "host_package_cache_bytes": 12286112768,
+  "model_owned": {
+    "audit_bytes": 47186432,
+    "model_owned_ceiling_bytes": 643587076,
+    "persistent_bytes": 361820672,
+    "reusable_bytes": 234579972
+  },
+  "peak_sampled_python_rss_bytes": 19054112768,
+  "schema": "prometheus.dvt2.m0.memory.v1"
+}

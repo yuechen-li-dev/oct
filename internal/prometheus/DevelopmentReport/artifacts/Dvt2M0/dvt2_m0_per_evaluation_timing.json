@@ -1,0 +1,104 @@
+{
+  "evaluations": [
+    {
+      "context_reused": false,
+      "evaluation_index": 1,
+      "host_package_cache_hits": 34,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.4413674,
+      "parameter_rebind_seconds": 1.4373792,
+      "uploaded_weight_bytes": 12286112768,
+      "wall_time_seconds": 19.5754112
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 2,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.441127,
+      "parameter_rebind_seconds": 1.3542595,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.2377426
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 3,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.5594402,
+      "parameter_rebind_seconds": 1.3519294,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.3479404
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 4,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.5443808,
+      "parameter_rebind_seconds": 1.3568644,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.3282718
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 5,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.5060959,
+      "parameter_rebind_seconds": 1.3834398,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.3955859
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 6,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.4767647,
+      "parameter_rebind_seconds": 1.4335012,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.3302716
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 7,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.4610433,
+      "parameter_rebind_seconds": 1.4433778,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.3022055
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 8,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.6096359,
+      "parameter_rebind_seconds": 1.446834,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.4764859
+    },
+    {
+      "context_reused": true,
+      "evaluation_index": 9,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0,
+      "main_layer_count": 30,
+      "model_execution_seconds": 17.4563721,
+      "parameter_rebind_seconds": 1.4475864,
+      "uploaded_weight_bytes": 11578261504,
+      "wall_time_seconds": 19.3109701
+    }
+  ],
+  "schema": "prometheus.dvt2.m0.per-evaluation-timing.v1"
+}

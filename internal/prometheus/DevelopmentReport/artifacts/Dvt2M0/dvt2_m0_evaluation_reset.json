@@ -1,0 +1,18 @@
+{
+  "note": "The single active native owner is still reconstructed between families; that explicit retarget seam is selected for M1.",
+  "preserved": [
+    "device/runtime",
+    "lock authority",
+    "payload metadata",
+    "host package bytes",
+    "resident stream allocations"
+  ],
+  "reset": [
+    "image generation",
+    "timestep identity",
+    "JointWorking generation",
+    "output validity",
+    "replay identity"
+  ],
+  "schema": "prometheus.dvt2.m0.evaluation-reset.v1"
+}

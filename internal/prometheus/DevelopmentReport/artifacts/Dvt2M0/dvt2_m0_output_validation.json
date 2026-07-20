@@ -1,0 +1,64 @@
+{
+  "all_30_layers": true,
+  "boundary": {
+    "context_tokens": {
+      "dtype": "float32",
+      "layout": "contiguous token-major [batch,token,channel]",
+      "sha256": "d8d00f082d1b91a348e1f3b1e241acd71777e430f402757132115a7906f589d2",
+      "shape": [
+        1,
+        32,
+        3840
+      ]
+    },
+    "image_tokens": {
+      "dtype": "bfloat16",
+      "layout": "contiguous token-major [batch,token,channel]",
+      "sha256": "857cea75e69d665c43779c9bc860796e76ac8b78c5c70882e02a04940e78fded",
+      "shape": [
+        1,
+        1024,
+        3840
+      ]
+    },
+    "prometheus_output_image_tokens": {
+      "dtype": "float32",
+      "layout": "contiguous token-major [batch,token,channel]",
+      "sha256": "ed89f93b028a54e53e3ee902d05ce823d1ea6f165e628341201c4c0111b2fa22",
+      "shape": [
+        1,
+        1024,
+        3840
+      ]
+    },
+    "qwen_prompt": {
+      "dtype": "float32",
+      "sha256": "f6e4a2842dbbdfa7e983fb8260ab15a9e0ea1f763a6615fcaf170ec8cb8838bd",
+      "shape": [
+        1,
+        15,
+        2560
+      ]
+    },
+    "timestep_embedding": {
+      "dtype": "bfloat16",
+      "layout": "contiguous [batch,channel]",
+      "sha256": "bc0ba90e94f5ae98779c6f7c44e7d1346f8aa6aa1cc048f62a748d96076823b2",
+      "shape": [
+        1,
+        256
+      ]
+    }
+  },
+  "output": {
+    "bytes": 262126,
+    "height": 512,
+    "mode": "RGB",
+    "path": "C:\\Users\\yuech\\AppData\\Local\\oct\\evt2-z-image-turbo\\shipping_smoke\\zimage_turbo_prometheus_m0_seed42.png",
+    "pixel_max": 255,
+    "pixel_min": 0,
+    "sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "width": 512
+  },
+  "schema": "prometheus.dvt2.m0.output-validation.v1"
+}

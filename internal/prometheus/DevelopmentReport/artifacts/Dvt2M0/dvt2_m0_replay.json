@@ -1,0 +1,6 @@
+{
+  "lock_sha256": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+  "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "prediction_boundary_sha256": "ed89f93b028a54e53e3ee902d05ce823d1ea6f165e628341201c4c0111b2fa22",
+  "schema": "prometheus.dvt2.m0.replay.v1"
+}

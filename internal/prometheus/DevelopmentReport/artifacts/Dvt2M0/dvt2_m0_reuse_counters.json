@@ -1,0 +1,54 @@
+{
+  "assertions": {
+    "all_evaluation_cache_hits_positive": true,
+    "all_evaluation_payload_reads_zero": true
+  },
+  "evaluations": [
+    {
+      "evaluation_index": 1,
+      "host_package_cache_hits": 34,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 2,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 3,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 4,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 5,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 6,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 7,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 8,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    },
+    {
+      "evaluation_index": 9,
+      "host_package_cache_hits": 32,
+      "immutable_payload_read_seconds": 0.0
+    }
+  ],
+  "schema": "prometheus.dvt2.m0.reuse-counters.v1"
+}

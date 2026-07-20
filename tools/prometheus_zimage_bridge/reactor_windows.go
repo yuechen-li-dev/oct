@@ -387,6 +387,18 @@ type loadedUploads struct {
 	byteCount  uint64
 }
 
+// cachedPayload is owned by one bridge session. Its C allocations intentionally
+// remain live until session teardown: every package is immutable, lock-validated
+// before caching, and reactor calls synchronously consume the upload pointers.
+// This is a host-residency optimization only; it never creates another device
+// weight window or changes the lock-derived execution order.
+type cachedPayload struct {
+	noise   [2]loadedUploads
+	context [2]loadedUploads
+	main    [30]loadedUploads
+	bytes   uint64
+}
+
 func openReactor(path string) (*reactorDLL, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
@@ -428,6 +440,54 @@ func (reactor *reactorDLL) close() error {
 	}
 	C.oct_prom_zimage_unload(&reactor.api)
 	return first
+}
+
+func cachePayload(payload validatedPayload) (*cachedPayload, error) {
+	cache := &cachedPayload{}
+	for index := range payload.noise {
+		loaded, err := loadUploads(payload.noise[index])
+		if err != nil {
+			cache.free()
+			return nil, fmt.Errorf("cache %s: %w", payload.noise[index].name, err)
+		}
+		cache.noise[index] = loaded
+		cache.bytes += loaded.byteCount
+	}
+	for index := range payload.context {
+		loaded, err := loadUploads(payload.context[index])
+		if err != nil {
+			cache.free()
+			return nil, fmt.Errorf("cache %s: %w", payload.context[index].name, err)
+		}
+		cache.context[index] = loaded
+		cache.bytes += loaded.byteCount
+	}
+	for index := range payload.main {
+		loaded, err := loadUploads(payload.main[index])
+		if err != nil {
+			cache.free()
+			return nil, fmt.Errorf("cache %s: %w", payload.main[index].name, err)
+		}
+		cache.main[index] = loaded
+		cache.bytes += loaded.byteCount
+	}
+	return cache, nil
+}
+
+func (cache *cachedPayload) free() {
+	if cache == nil {
+		return
+	}
+	for index := range cache.noise {
+		cache.noise[index].free()
+	}
+	for index := range cache.context {
+		cache.context[index].free()
+	}
+	for index := range cache.main {
+		cache.main[index].free()
+	}
+	*cache = cachedPayload{}
 }
 
 func loadUploads(block payloadBlock) (loadedUploads, error) {
@@ -492,20 +552,13 @@ func (uploads *loadedUploads) free() {
 	*uploads = loadedUploads{}
 }
 
-func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsafe.Pointer, identity uint64) (uint64, runMetrics, error) {
+func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsafe.Pointer, identity uint64) (uint64, runMetrics, error) {
 	var metrics runMetrics
-	loadStart := time.Now()
-	uploads0, err := loadUploads(payload[0])
-	metrics.stagePayloadReadNS[2] += uint64(time.Since(loadStart))
-	if err != nil {
-		return 0, metrics, err
-	}
 	var evidence C.PrometheusModelBlockEvidence
 	var blockID C.uint64_t
-	status := C.oct_prom_context_create(&reactor.api, reactor.runtime, uploads0.pointer, C.uint32_t(len(payload[0].tensors)), &blockID, &evidence)
-	metrics.uploadedWeightBytes += uploads0.byteCount
-	metrics.stageUploadedBytes[2] += uploads0.byteCount
-	uploads0.free()
+	status := C.oct_prom_context_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
+	metrics.uploadedWeightBytes += payload[0].byteCount
+	metrics.stageUploadedBytes[2] += payload[0].byteCount
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("create ContextRefiner0: detail=%d", int32(evidence.detail_code))
 	}
@@ -521,20 +574,13 @@ func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsaf
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[2] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
-	loadStart = time.Now()
-	uploads1, err := loadUploads(payload[1])
-	metrics.stagePayloadReadNS[3] += uint64(time.Since(loadStart))
-	if err != nil {
-		return 0, metrics, err
-	}
 	rebindStart := time.Now()
-	status = C.oct_prom_context_rebind(&reactor.api, reactor.runtime, blockID, uploads1.pointer, C.uint32_t(len(payload[1].tensors)), &evidence)
+	status = C.oct_prom_context_rebind(&reactor.api, reactor.runtime, blockID, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
 	rebindDuration := uint64(time.Since(rebindStart))
 	metrics.parameterRebindNS += rebindDuration
 	metrics.stageRebindNS[3] += rebindDuration
-	metrics.uploadedWeightBytes += uploads1.byteCount
-	metrics.stageUploadedBytes[3] += uploads1.byteCount
-	uploads1.free()
+	metrics.uploadedWeightBytes += payload[1].byteCount
+	metrics.stageUploadedBytes[3] += payload[1].byteCount
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("rebind ContextRefiner1: detail=%d", int32(evidence.detail_code))
 	}
@@ -554,20 +600,13 @@ func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsaf
 	return uint64(sessionEvidence.prepared_context_generation), metrics, nil
 }
 
-func (reactor *reactorDLL) prepareImage(payload [2]payloadBlock, image, timestep unsafe.Pointer, inputIdentity, timestepIdentity uint64) (uint64, runMetrics, error) {
+func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timestep unsafe.Pointer, inputIdentity, timestepIdentity uint64) (uint64, runMetrics, error) {
 	var metrics runMetrics
-	loadStart := time.Now()
-	uploads0, err := loadUploads(payload[0])
-	metrics.stagePayloadReadNS[0] += uint64(time.Since(loadStart))
-	if err != nil {
-		return 0, metrics, err
-	}
 	var evidence C.PrometheusModelBlockEvidence
 	var blockID C.uint64_t
-	status := C.oct_prom_noise_create(&reactor.api, reactor.runtime, uploads0.pointer, C.uint32_t(len(payload[0].tensors)), &blockID, &evidence)
-	metrics.uploadedWeightBytes += uploads0.byteCount
-	metrics.stageUploadedBytes[0] += uploads0.byteCount
-	uploads0.free()
+	status := C.oct_prom_noise_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
+	metrics.uploadedWeightBytes += payload[0].byteCount
+	metrics.stageUploadedBytes[0] += payload[0].byteCount
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("create NoiseRefiner0: detail=%d", int32(evidence.detail_code))
 	}
@@ -584,20 +623,13 @@ func (reactor *reactorDLL) prepareImage(payload [2]payloadBlock, image, timestep
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[0] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
-	loadStart = time.Now()
-	uploads1, err := loadUploads(payload[1])
-	metrics.stagePayloadReadNS[1] += uint64(time.Since(loadStart))
-	if err != nil {
-		return 0, metrics, err
-	}
 	rebindStart := time.Now()
-	status = C.oct_prom_noise_rebind(&reactor.api, reactor.runtime, blockID, 1, uploads1.pointer, C.uint32_t(len(payload[1].tensors)), &evidence)
+	status = C.oct_prom_noise_rebind(&reactor.api, reactor.runtime, blockID, 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
 	rebindDuration := uint64(time.Since(rebindStart))
 	metrics.parameterRebindNS += rebindDuration
 	metrics.stageRebindNS[1] += rebindDuration
-	metrics.uploadedWeightBytes += uploads1.byteCount
-	metrics.stageUploadedBytes[1] += uploads1.byteCount
-	uploads1.free()
+	metrics.uploadedWeightBytes += payload[1].byteCount
+	metrics.stageUploadedBytes[1] += payload[1].byteCount
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("rebind NoiseRefiner1: detail=%d", int32(evidence.detail_code))
 	}
@@ -625,20 +657,13 @@ func (reactor *reactorDLL) compose(imageGeneration, contextGeneration uint64) (u
 	return uint64(evidence.joint_generation), nil
 }
 
-func (reactor *reactorDLL) runMain(payload [30]payloadBlock, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64) (runMetrics, error) {
+func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64) (runMetrics, error) {
 	var metrics runMetrics
-	loadStart := time.Now()
-	uploads0, err := loadUploads(payload[0])
-	metrics.stagePayloadReadNS[4] += uint64(time.Since(loadStart))
-	if err != nil {
-		return metrics, err
-	}
 	var evidence C.PrometheusModelBlockEvidence
 	var blockID C.uint64_t
-	status := C.oct_prom_main_create(&reactor.api, reactor.runtime, uploads0.pointer, C.uint32_t(len(payload[0].tensors)), &blockID, &evidence)
-	metrics.uploadedWeightBytes += uploads0.byteCount
-	metrics.stageUploadedBytes[4] += uploads0.byteCount
-	uploads0.free()
+	status := C.oct_prom_main_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
+	metrics.uploadedWeightBytes += payload[0].byteCount
+	metrics.stageUploadedBytes[4] += payload[0].byteCount
 	if status != C.PROM_OK {
 		return metrics, fmt.Errorf("create MainTransformer0: detail=%d", int32(evidence.detail_code))
 	}
@@ -651,20 +676,13 @@ func (reactor *reactorDLL) runMain(payload [30]payloadBlock, timestep, output un
 	var outputIdentity uint64
 	for layer := 0; layer < 30; layer++ {
 		if layer > 0 {
-			loadStart = time.Now()
-			uploads, loadErr := loadUploads(payload[layer])
-			metrics.stagePayloadReadNS[4+layer] += uint64(time.Since(loadStart))
-			if loadErr != nil {
-				return metrics, loadErr
-			}
 			rebindStart := time.Now()
-			status = C.oct_prom_main_rebind(&reactor.api, reactor.runtime, blockID, C.uint32_t(layer), uploads.pointer, C.uint32_t(len(payload[layer].tensors)), &evidence)
+			status = C.oct_prom_main_rebind(&reactor.api, reactor.runtime, blockID, C.uint32_t(layer), payload[layer].pointer, C.uint32_t(len(payload[layer].buffers)), &evidence)
 			rebindDuration := uint64(time.Since(rebindStart))
 			metrics.parameterRebindNS += rebindDuration
 			metrics.stageRebindNS[4+layer] += rebindDuration
-			metrics.uploadedWeightBytes += uploads.byteCount
-			metrics.stageUploadedBytes[4+layer] += uploads.byteCount
-			uploads.free()
+			metrics.uploadedWeightBytes += payload[layer].byteCount
+			metrics.stageUploadedBytes[4+layer] += payload[layer].byteCount
 			if status != C.PROM_OK {
 				return metrics, fmt.Errorf("rebind MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
 			}

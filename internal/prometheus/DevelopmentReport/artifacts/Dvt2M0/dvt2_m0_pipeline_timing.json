@@ -1,0 +1,67 @@
+{
+  "m0": {
+    "denoising_seconds": 175.46340590000182,
+    "external_final_projection_seconds": 0.04375359999539796,
+    "model_discovery_seconds": 5.959999543847516e-05,
+    "png_encode_write_seconds": 0.05945550000615185,
+    "prometheus_session_create_seconds": 17.708575999997265,
+    "prometheus_session_destroy_seconds": 0.6911255000013625,
+    "python_module_import_seconds": 5.689513999997871,
+    "qwen_conditioning_seconds": 7.367396899993764,
+    "qwen_encode_seconds": 1.9186359999948763,
+    "qwen_load_seconds": 5.289185299996461,
+    "reference_boundary_model_load_seconds": 8.558002900004794,
+    "tokenization_seconds": 0.00975779999862425,
+    "vae_decode_and_png_seconds": 0.6562274999960209,
+    "vae_decode_seconds": 0.34628610000072513,
+    "vae_load_seconds": 0.24508649999916088,
+    "wall_time_seconds": 209.87941110000247
+  },
+  "pre_m0": {
+    "cold": {
+      "denoising_seconds": 403.2740477999978,
+      "external_final_projection_seconds": 0.03661439999996219,
+      "model_discovery_seconds": 9.31999966269359e-05,
+      "png_encode_write_seconds": 0.07702330000029178,
+      "prometheus_session_create_seconds": 10.65232520000427,
+      "prometheus_session_destroy_seconds": 0.03647929999715416,
+      "python_module_import_seconds": 14.669004999996105,
+      "qwen_conditioning_seconds": 7.081311800000549,
+      "qwen_encode_seconds": 2.00511109999934,
+      "qwen_load_seconds": 4.905229299998609,
+      "reference_boundary_model_load_seconds": 9.574629200003983,
+      "tokenization_seconds": 0.003086500000790693,
+      "vae_decode_and_png_seconds": 0.7186131999987992,
+      "vae_decode_seconds": 0.3475949000057881,
+      "vae_load_seconds": 0.2898793999993359,
+      "wall_time_seconds": 431.4677948000026
+    },
+    "evaluation_wall_summary": {
+      "max_seconds": 49.4789202,
+      "mean_seconds": 44.75670224444444,
+      "median_seconds": 46.6714471,
+      "min_seconds": 29.8957414
+    },
+    "measurement": "time.perf_counter monotonic host timing; native stage execution is reactor evidence",
+    "schema": "prometheus.dvt2.pipeline-timing.v1",
+    "warm_repeat": {
+      "denoising_seconds": 242.75512829999934,
+      "external_final_projection_seconds": 0.038135400012834,
+      "model_discovery_seconds": 7.439999899361283e-05,
+      "png_encode_write_seconds": 0.057933000003686175,
+      "prometheus_session_create_seconds": 7.82136509999691,
+      "prometheus_session_destroy_seconds": 0.04435550000198418,
+      "python_module_import_seconds": 4.616890299999795,
+      "qwen_conditioning_seconds": 7.338983999994525,
+      "qwen_encode_seconds": 1.932074799995462,
+      "qwen_load_seconds": 5.259657300004619,
+      "reference_boundary_model_load_seconds": 8.606614500000433,
+      "tokenization_seconds": 0.0035690999939106405,
+      "vae_decode_and_png_seconds": 0.7044132000009995,
+      "vae_decode_seconds": 0.3552475000033155,
+      "vae_load_seconds": 0.28624069999932544,
+      "wall_time_seconds": 267.3846362999975
+    }
+  },
+  "schema": "prometheus.dvt2.m0.pipeline-timing.v1"
+}
