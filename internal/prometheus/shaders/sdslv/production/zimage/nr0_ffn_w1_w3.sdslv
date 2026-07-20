@@ -25,29 +25,61 @@ record FfnProjectionParams { TokenCount: u32; ModelWidth: u32; HiddenWidth: u32;
 // layout is row-major [in,out]; Unpack expands IEEE binary16 directly to f32.
 shader Nr0FfnW1W3 {
     resources FfnW1W3IO;
+    workgroup InputTile: tile<f32, 16u, 16u>;
+    workgroup W1Tile: tile<f32, 16u, 16u>;
+    workgroup W3Tile: tile<f32, 16u, 16u>;
 
     stage compute [numthreads(8u, 8u, 1u)] fn CS(params: FfnProjectionParams) -> void {
-        let token: u32 = DispatchThreadID.x;
-        let output: u32 = DispatchThreadID.y;
-        if token >= params.TokenCount or output >= params.HiddenWidth { return; }
-        var w1: f32 = 0.0;
-        var w3: f32 = 0.0;
-        for channel in 0u..params.ModelWidth {
-            let element: u32 = channel * params.HiddenWidth + output;
-            let w1Lanes: float2 = Unpack<F16x2>(W1F16[element / 2u]);
-            let w3Lanes: float2 = Unpack<F16x2>(W3F16[element / 2u]);
-            var w1Weight: f32 = w1Lanes.x;
-            var w3Weight: f32 = w3Lanes.x;
-            if (element % 2u) != 0u { w1Weight = w1Lanes.y; w3Weight = w3Lanes.y; }
-            let input: f32 = FfnInput[token * params.ModelWidth + channel];
-            w1 = w1 + input * w1Weight;
-            w3 = w3 + input * w3Weight;
+        let localToken: u32 = GroupThreadID.x;
+        let localOutput: u32 = GroupThreadID.y;
+        let localLinear: u32 = localToken * 8u + localOutput;
+        let groupToken: u32 = GroupID.x * 16u;
+        let groupOutput: u32 = GroupID.y * 16u;
+        let token: u32 = groupToken + localToken * 2u;
+        let output: u32 = groupOutput + localOutput * 2u;
+        var w1: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+        var w3: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+        let tileCount: u32 = 240u;
+        [loop]
+        for tile in 0u..tileCount {
+            let tileBase: u32 = tile * 16u;
+            comptime for lane in 0u..4u {
+                let tileIndex: u32 = localLinear * 4u + lane;
+                let tileRow: u32 = tileIndex / 16u;
+                let tileColumn: u32 = tileIndex % 16u;
+                let element: u32 = (tileBase + tileRow) * 10240u + groupOutput + tileColumn;
+                let w1Lanes: float2 = Unpack<F16x2>(W1F16[element / 2u]);
+                let w3Lanes: float2 = Unpack<F16x2>(W3F16[element / 2u]);
+                var w1Weight: f32 = w1Lanes.x;
+                var w3Weight: f32 = w3Lanes.x;
+                if (element % 2u) != 0u { w1Weight = w1Lanes.y; w3Weight = w3Lanes.y; }
+                InputTile[tileRow, tileColumn] = FfnInput[(groupToken + tileRow) * 3840u + tileBase + tileColumn];
+                W1Tile[tileRow, tileColumn] = w1Weight;
+                W3Tile[tileRow, tileColumn] = w3Weight;
+            }
+            WorkgroupMemoryBarrierWithSync();
+            [unroll]
+            for channel in 0u..16u {
+                comptime for tokenLane in 0u..2u {
+                    comptime for outputLane in 0u..2u {
+                        w1[tokenLane, outputLane] = w1[tokenLane, outputLane] +
+                            InputTile[localToken * 2u + tokenLane, channel] * W1Tile[channel, localOutput * 2u + outputLane];
+                        w3[tokenLane, outputLane] = w3[tokenLane, outputLane] +
+                            InputTile[localToken * 2u + tokenLane, channel] * W3Tile[channel, localOutput * 2u + outputLane];
+                    }
+                }
+            }
+            WorkgroupMemoryBarrierWithSync();
         }
-        let index: u32 = token * params.HiddenWidth + output;
-        W1[index] = w1;
-        if index < 3932160u { W3PartA[index] = w3; }
-        if index >= 3932160u and index < 7864320u { W3PartB[index - 3932160u] = w3; }
-        if index >= 7864320u { W3PartC[index - 7864320u] = w3; }
+        comptime for tokenLane in 0u..2u {
+            comptime for outputLane in 0u..2u {
+                let index: u32 = (token + tokenLane) * 10240u + output + outputLane;
+                W1[index] = w1[tokenLane, outputLane];
+                if index < 3932160u { W3PartA[index] = w3[tokenLane, outputLane]; }
+                if index >= 3932160u and index < 7864320u { W3PartB[index - 3932160u] = w3[tokenLane, outputLane]; }
+                if index >= 7864320u { W3PartC[index - 7864320u] = w3[tokenLane, outputLane]; }
+            }
+        }
         return;
     }
 }

@@ -1916,7 +1916,7 @@ static int prom_model_block_m1b_record_execute(prom_reduction_runtime_state* sta
   prom_model_block_m1b_capture_stage(block, audit_stage, 2u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u],
-                                         &qkv_constants, sizeof(qkv_constants), 128u, 1440u, 1u);
+                                         &qkv_constants, sizeof(qkv_constants), 64u, 720u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
       block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
       block->m1b_timestamp_query_pool, 4u);
@@ -2642,7 +2642,7 @@ static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* sta
                                          &attention_constants, sizeof(attention_constants), 30720u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
-                                         &projection_constants, sizeof(projection_constants), 128u, 480u, 1u);
+                                         &projection_constants, sizeof(projection_constants), 64u, 240u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
                                          &residual_constants, sizeof(residual_constants), 1024u, 1u, 1u);
@@ -2774,7 +2774,7 @@ static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* sta
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
   }
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
-                                         &projection_constants, sizeof(projection_constants), 128u, 1280u, 1u);
+                                         &projection_constants, sizeof(projection_constants), 64u, 640u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (capture_audit != 0 && audit_stage == PROM_MODEL_BLOCK_M1D_AUDIT_W1) {
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->qkv, 0u,
@@ -3478,7 +3478,7 @@ static int prom_context_refiner_record_execute(prom_reduction_runtime_state* sta
   }
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u], &qkv, sizeof(qkv), 4u, 1440u, 1u);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u], &qkv, sizeof(qkv), 2u, 720u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u], &q_head, sizeof(q_head), 960u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
@@ -3486,13 +3486,13 @@ static int prom_context_refiner_record_execute(prom_reduction_runtime_state* sta
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u], &attention, sizeof(attention), 960u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u], &projection, sizeof(projection), 4u, 480u, 1u);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u], &projection, sizeof(projection), 2u, 240u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u], &norm, sizeof(norm), 32u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u], &hidden, sizeof(hidden), 4u, 1280u, 1u);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u], &hidden, sizeof(hidden), 2u, 640u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u], &gate, sizeof(gate), 1280u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
@@ -3610,7 +3610,7 @@ static int prom_context_refiner_record_static_audit(
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 1u, execution_generation, 2u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u], &qkv, sizeof(qkv), 4u, 1440u, 1u);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u], &qkv, sizeof(qkv), 2u, 720u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 2u, execution_generation, 3u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u], &q_head, sizeof(q_head), 960u, 1u, 1u);
@@ -3628,7 +3628,7 @@ static int prom_context_refiner_record_static_audit(
                                                PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_BYTES,
                                                &block->audit_readback,
                                                PROM_ZIMAGE_TURBO_CONTEXT_AUDIT_TRANSIENT_ATTENTION_OFFSET);
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u], &projection, sizeof(projection), 4u, 480u, 1u);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u], &projection, sizeof(projection), 2u, 240u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 8u, execution_generation, 7u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u], &norm, sizeof(norm), 32u, 1u, 1u);
@@ -3637,7 +3637,7 @@ static int prom_context_refiner_record_static_audit(
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u], &norm, sizeof(norm), 32u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 10u, execution_generation, 9u)) return 0;
-  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u], &hidden, sizeof(hidden), 4u, 1280u, 1u);
+  prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u], &hidden, sizeof(hidden), 2u, 640u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_context_refiner_record_static_audit_entry(block, 11u, execution_generation, 10u) ||
       !prom_context_refiner_record_static_audit_entry(block, 12u, execution_generation, 10u)) return 0;
@@ -3924,7 +3924,7 @@ static int prom_model_block_record_static_audit_batch(
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_model_block_record_static_audit_range(block, 10u, 11u, execution_generation, 2u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u],
-                                         &qkv, sizeof(qkv), 128u, 1440u, 1u);
+                                         &qkv, sizeof(qkv), 64u, 720u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_model_block_record_static_audit_range(block, 12u, 15u, execution_generation, 3u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[4u],
@@ -3947,7 +3947,7 @@ static int prom_model_block_record_static_audit_batch(
       PROM_ZIMAGE_TURBO_AUDIT_TRANSIENT_ATTENTION_BYTES, &block->audit_readback,
       PROM_ZIMAGE_TURBO_AUDIT_TRANSIENT_ATTENTION_OFFSET);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
-                                         &model_projection, sizeof(model_projection), 128u, 480u, 1u);
+                                         &model_projection, sizeof(model_projection), 64u, 240u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_model_block_record_static_audit_entry(block, 20u, execution_generation, 7u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
@@ -3960,7 +3960,7 @@ static int prom_model_block_record_static_audit_batch(
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_model_block_record_static_audit_range(block, 23u, 24u, execution_generation, 9u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
-                                         &hidden_projection, sizeof(hidden_projection), 128u, 1280u, 1u);
+                                         &hidden_projection, sizeof(hidden_projection), 64u, 640u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   if (!prom_model_block_record_static_audit_range(block, 25u, 26u, execution_generation, 10u)) return 0;
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],
@@ -4482,7 +4482,7 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 4u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u],
-                                         &qkv, sizeof(qkv), 132u, 1440u, 1u);
+                                         &qkv, sizeof(qkv), 66u, 720u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 5u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[4u],
@@ -4498,7 +4498,7 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 8u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
-                                         &projection, sizeof(projection), 132u, 480u, 1u);
+                                         &projection, sizeof(projection), 66u, 240u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 9u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
@@ -4510,7 +4510,7 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 11u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
-                                         &hidden, sizeof(hidden), 132u, 1280u, 1u);
+                                         &hidden, sizeof(hidden), 66u, 640u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 12u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],

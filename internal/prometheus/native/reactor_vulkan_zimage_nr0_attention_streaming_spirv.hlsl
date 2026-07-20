@@ -27,6 +27,22 @@ float ExponentialF32(float value)
     return result;
 }
 
+void Nr0AttentionStreaming_WriteAuditSample(uint base, uint offset, uint key, float maximum)
+{
+    Audit[(base + offset)] = (Scores[key] / 0.08838834764831843);
+    Audit[((base + offset) + 1u)] = Scores[key];
+    Audit[((base + offset) + 2u)] = (Scores[key] - maximum);
+    Audit[((base + offset) + 3u)] = Probabilities[key];
+    Audit[((base + offset) + 4u)] = 0.0;
+    return;
+}
+
+void Nr0AttentionStreaming_WriteAuditProbability(uint base, uint offset, uint key)
+{
+    Audit[((base + offset) + 4u)] = Probabilities[key];
+    return;
+}
+
 [[vk::push_constant]] ConstantBuffer<AttentionStreamingParams> params;
 
 [numthreads(256, 1, 1)]
@@ -78,28 +94,10 @@ void Nr0AttentionStreaming_CS(uint3 GroupThreadID : SV_GroupThreadID, uint3 Grou
         }
         if (selected)
         {
-            for (uint sample = 0u; sample < 4u; sample += 1)
-            {
-                uint key = 0u;
-                if ((sample == 1u))
-                {
-                    key = 1u;
-                }
-                if ((sample == 2u))
-                {
-                    key = 512u;
-                }
-                if ((sample == 3u))
-                {
-                    key = 1023u;
-                }
-                uint offset = (auditBase + (sample * 5u));
-                Audit[offset] = (Scores[key] / 0.08838834764831843);
-                Audit[(offset + 1u)] = Scores[key];
-                Audit[(offset + 2u)] = (Scores[key] - maximum);
-                Audit[(offset + 3u)] = Probabilities[key];
-                Audit[(offset + 4u)] = 0.0;
-            }
+            Nr0AttentionStreaming_WriteAuditSample(auditBase, 0u, 0u, maximum);
+            Nr0AttentionStreaming_WriteAuditSample(auditBase, 5u, 1u, maximum);
+            Nr0AttentionStreaming_WriteAuditSample(auditBase, 10u, 512u, maximum);
+            Nr0AttentionStreaming_WriteAuditSample(auditBase, 15u, 1023u, maximum);
             Audit[(auditBase + 20u)] = maximum;
             Audit[(auditBase + 21u)] = probabilitySum;
         }
@@ -134,23 +132,10 @@ void Nr0AttentionStreaming_CS(uint3 GroupThreadID : SV_GroupThreadID, uint3 Grou
         }
         if (selected)
         {
-            for (uint sample = 0u; sample < 4u; sample += 1)
-            {
-                uint key = 0u;
-                if ((sample == 1u))
-                {
-                    key = 1u;
-                }
-                if ((sample == 2u))
-                {
-                    key = 512u;
-                }
-                if ((sample == 3u))
-                {
-                    key = 1023u;
-                }
-                Audit[((auditBase + (sample * 5u)) + 4u)] = Probabilities[key];
-            }
+            Nr0AttentionStreaming_WriteAuditProbability(auditBase, 0u, 0u);
+            Nr0AttentionStreaming_WriteAuditProbability(auditBase, 5u, 1u);
+            Nr0AttentionStreaming_WriteAuditProbability(auditBase, 10u, 512u);
+            Nr0AttentionStreaming_WriteAuditProbability(auditBase, 15u, 1023u);
             Audit[(auditBase + 22u)] = rowSum;
         }
     }

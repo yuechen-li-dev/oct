@@ -1,0 +1,37 @@
+{
+  "schema": "prometheus.dvt2.m4.obvious-shader-optimization.v1",
+  "device": "NVIDIA GeForce RTX 3070",
+  "route": "fixed-reg2x2-tile16x16-fp32-activation-packed-fp16-weight",
+  "precision": {
+    "activation": "float32",
+    "weight_storage": "packed IEEE binary16, row-major [in,out]",
+    "accumulator": "float32",
+    "output": "float32"
+  },
+  "generated_code": [
+    {"shader":"nr0_fused_qkv","hlsl_sha256":"ae15f1607ec12c11d1513ff8584441efc9929f6d2c7c4b50418b769444ff251a","spirv_sha256":"503d2c9fbc137ee63d9c3480916823e4c4621e89d8da39ab76c7ec91db31f746","hlsl_bytes":5794,"spirv_bytes":12516,"hlsl_loops":2,"spirv_loops":1,"spirv_conditional_branches":1,"barriers":2,"remaining_loop":"240 K tiles; 16-lane inner product unrolled"},
+    {"shader":"nr0_attention_projection","hlsl_sha256":"dc0661322178ec4e76cf74329972631805538dd36a74882f72ca746360000f2c","spirv_sha256":"243605f287894393a87c94d3f51e6bfb12377f533da039e94c378a2957e8b15d","hlsl_bytes":5881,"spirv_bytes":12532,"hlsl_loops":2,"spirv_loops":1,"spirv_conditional_branches":1,"barriers":2,"remaining_loop":"240 K tiles; 16-lane inner product unrolled"},
+    {"shader":"nr0_ffn_w1_w3","hlsl_sha256":"d03cdcd6c9f20ca361ddb92b05e4ec697f71a444ee55795ec0c67295cd94d598","spirv_sha256":"a627f918995eea1fc0eb687f6861d9b838b40030717d207d1bf82b7ac5025c64","hlsl_bytes":9924,"spirv_bytes":21044,"hlsl_loops":2,"spirv_loops":1,"spirv_conditional_branches":17,"barriers":2,"remaining_loop":"240 K tiles; 16-lane inner product unrolled; branches are retained W3 alias-range stores"},
+    {"shader":"main_transformer_ffn_w1_w3","hlsl_sha256":"6d0116171a1460d0d481e503b501824e6aee2a2f6fb7f850f7e4de71f857678f","spirv_sha256":"97367de378566572da8457dd08d60087d1a60aad94f3d82cbd42245014918036","hlsl_bytes":9970,"spirv_bytes":21068,"hlsl_loops":2,"spirv_loops":1,"spirv_conditional_branches":17,"barriers":2,"remaining_loop":"240 K tiles; 16-lane inner product unrolled; branches are retained W3 alias-range stores"},
+    {"shader":"nr0_attention_streaming","hlsl_sha256":"3e1a37df6744229a8f162a0b3c655630d6808dc822885a575dc63f89bfb29765","spirv_sha256":"359bd57720f849e07784dca991b7374b679887075aa6ad0c50d00b36324e6c74","hlsl_bytes":5753,"spirv_bytes":10256,"hlsl_loops":6,"spirv_loops":6,"spirv_conditional_branches":24,"barriers":2,"audit_sample_runtime_loop":false,"audit_sample_variant_ladder":false,"remaining_loop":"attention score, stable-softmax, and probability-times-value loops"}
+  ],
+  "canonical": {
+    "metadata_local_path": "out/prometheus/dvt2_m4_specialized_canonical.json",
+    "png_local_path": "out/prometheus/dvt2_m4_specialized_canonical.png",
+    "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "evaluations": 9,
+    "wall_seconds": 165.4385159000085,
+    "denoising_seconds": 130.86833019999904,
+    "main_transformer_gpu_seconds": {
+      "ffn_w1_w3": 29.55978448,
+      "qkv": 28.458574048,
+      "attention": 31.81510352,
+      "w2_residual": 18.950846336,
+      "projection_residual": 9.258071776
+    }
+  },
+  "rejected_candidates": [
+    {"route":"shared-tile-16x16-one-output","reason":"W1/W3 regression","ffn_w1_w3_seconds":44.325912,"canonical_wall_seconds":198.4169606,"png_sha256":"7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613"},
+    {"route":"split-reg2x2-W2-plus-postprocess","reason":"representative MainTransformer regression","representative_gpu_median_seconds":0.452129408,"accepted_route_gpu_median_seconds":0.436341936,"numerical_status":"accepted but slower"}
+  ]
+}

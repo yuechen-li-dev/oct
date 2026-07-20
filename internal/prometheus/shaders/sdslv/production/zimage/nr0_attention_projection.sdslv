@@ -12,20 +12,51 @@ record AttentionProjectionParams { TokenCount: u32; ModelWidth: u32; OutputWidth
 // weight. This remains a distinct witness boundary from attention aggregation.
 shader Nr0AttentionProjection {
     resources AttentionProjectionIO;
+    workgroup InputTile: tile<f32, 16u, 16u>;
+    workgroup WeightTile: tile<f32, 16u, 16u>;
 
     stage compute [numthreads(8u, 8u, 1u)] fn CS(params: AttentionProjectionParams) -> void {
-        let token: u32 = DispatchThreadID.x;
-        let output: u32 = DispatchThreadID.y;
-        if token >= params.TokenCount or output >= params.OutputWidth { return; }
-        var value: f32 = 0.0;
-        for channel in 0u..params.ModelWidth {
-            let weightElement: u32 = channel * params.OutputWidth + output;
-            let weightLanes: float2 = Unpack<F16x2>(OutputWeightF16[weightElement / 2u]);
-            var weight: f32 = weightLanes.x;
-            if (weightElement % 2u) != 0u { weight = weightLanes.y; }
-            value = value + Attention[token * params.ModelWidth + channel] * weight;
+        let localToken: u32 = GroupThreadID.x;
+        let localOutput: u32 = GroupThreadID.y;
+        let localLinear: u32 = localToken * 8u + localOutput;
+        let groupToken: u32 = GroupID.x * 16u;
+        let groupOutput: u32 = GroupID.y * 16u;
+        let token: u32 = groupToken + localToken * 2u;
+        let output: u32 = groupOutput + localOutput * 2u;
+        var values: reg_tile<f32, 2u, 2u> = reg_tile_zero();
+        let tileCount: u32 = 240u;
+        [loop]
+        for tile in 0u..tileCount {
+            let tileBase: u32 = tile * 16u;
+            comptime for lane in 0u..4u {
+                let tileIndex: u32 = localLinear * 4u + lane;
+                let tileRow: u32 = tileIndex / 16u;
+                let tileColumn: u32 = tileIndex % 16u;
+                let weightElement: u32 = (tileBase + tileRow) * 3840u + groupOutput + tileColumn;
+                let weightLanes: float2 = Unpack<F16x2>(OutputWeightF16[weightElement / 2u]);
+                var weight: f32 = weightLanes.x;
+                if (weightElement % 2u) != 0u { weight = weightLanes.y; }
+                InputTile[tileRow, tileColumn] = Attention[(groupToken + tileRow) * 3840u + tileBase + tileColumn];
+                WeightTile[tileRow, tileColumn] = weight;
+            }
+            WorkgroupMemoryBarrierWithSync();
+            [unroll]
+            for channel in 0u..16u {
+                comptime for tokenLane in 0u..2u {
+                    comptime for outputLane in 0u..2u {
+                        values[tokenLane, outputLane] = values[tokenLane, outputLane] +
+                            InputTile[localToken * 2u + tokenLane, channel] *
+                            WeightTile[channel, localOutput * 2u + outputLane];
+                    }
+                }
+            }
+            WorkgroupMemoryBarrierWithSync();
         }
-        Projection[token * params.OutputWidth + output] = value;
+        comptime for tokenLane in 0u..2u {
+            comptime for outputLane in 0u..2u {
+                Projection[(token + tokenLane) * 3840u + output + outputLane] = values[tokenLane, outputLane];
+            }
+        }
         return;
     }
 }

@@ -22,6 +22,20 @@ shader Nr0AttentionStreaming {
     workgroup Scores: array<f32, 1024u>;
     workgroup Probabilities: array<f32, 1024u>;
 
+    fn WriteAuditSample(base: u32, offset: u32, key: u32, maximum: f32) -> void {
+        Audit[base + offset] = Scores[key] / 0.08838834764831843;
+        Audit[base + offset + 1u] = Scores[key];
+        Audit[base + offset + 2u] = Scores[key] - maximum;
+        Audit[base + offset + 3u] = Probabilities[key];
+        Audit[base + offset + 4u] = 0.0;
+        return;
+    }
+
+    fn WriteAuditProbability(base: u32, offset: u32, key: u32) -> void {
+        Audit[base + offset + 4u] = Probabilities[key];
+        return;
+    }
+
     stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionStreamingParams) -> void {
         let packedRow: u32 = GroupID.x;
         let token: u32 = packedRow / params.HeadCount;
@@ -54,18 +68,10 @@ shader Nr0AttentionStreaming {
             var auditBase: u32 = 0u;
             if token == 1023u { auditBase = 32u; }
             if selected {
-                for sample in 0u..4u {
-                    var key: u32 = 0u;
-                    if sample == 1u { key = 1u; }
-                    if sample == 2u { key = 512u; }
-                    if sample == 3u { key = 1023u; }
-                    let offset: u32 = auditBase + sample * 5u;
-                    Audit[offset] = Scores[key] / 0.08838834764831843;
-                    Audit[offset + 1u] = Scores[key];
-                    Audit[offset + 2u] = Scores[key] - maximum;
-                    Audit[offset + 3u] = Probabilities[key];
-                    Audit[offset + 4u] = 0.0;
-                }
+                WriteAuditSample(auditBase, 0u, 0u, maximum);
+                WriteAuditSample(auditBase, 5u, 1u, maximum);
+                WriteAuditSample(auditBase, 10u, 512u, maximum);
+                WriteAuditSample(auditBase, 15u, 1023u, maximum);
                 Audit[auditBase + 20u] = maximum;
                 Audit[auditBase + 21u] = probabilitySum;
             }
@@ -84,13 +90,10 @@ shader Nr0AttentionStreaming {
                 rowSum = rowSum + Probabilities[key];
             }
             if selected {
-                for sample in 0u..4u {
-                    var key: u32 = 0u;
-                    if sample == 1u { key = 1u; }
-                    if sample == 2u { key = 512u; }
-                    if sample == 3u { key = 1023u; }
-                    Audit[auditBase + sample * 5u + 4u] = Probabilities[key];
-                }
+                WriteAuditProbability(auditBase, 0u, 0u);
+                WriteAuditProbability(auditBase, 5u, 1u);
+                WriteAuditProbability(auditBase, 10u, 512u);
+                WriteAuditProbability(auditBase, 15u, 1023u);
                 Audit[auditBase + 22u] = rowSum;
             }
         }
