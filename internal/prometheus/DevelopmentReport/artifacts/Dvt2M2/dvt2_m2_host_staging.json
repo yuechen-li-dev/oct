@@ -1,0 +1,10 @@
+{
+  "immutable_cache_rereads_per_evaluation": 0,
+  "immutable_session_cache_bytes": 12286112768,
+  "mapped": true,
+  "ownership": "one active upload slot and one prefetch upload slot; each reused only after its transfer fence",
+  "pinned": false,
+  "schema": "prometheus.dvt2.m2.host-staging.v1",
+  "slot_extent_bytes": 88473600,
+  "slots": 2
+}

@@ -1,0 +1,239 @@
+{
+  "lock_derived": true,
+  "schema": "prometheus.dvt2.m2.prefetch-schedule.v1",
+  "terminal_block": "MainTransformer29",
+  "terminal_prefetch": null,
+  "transitions": [
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "NoiseRefiner0",
+      "destination_window": 1,
+      "next": "NoiseRefiner1",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "NoiseRefiner1",
+      "destination_window": 1,
+      "next": "ContextRefiner0",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "ContextRefiner0",
+      "destination_window": 1,
+      "next": "ContextRefiner1",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "ContextRefiner1",
+      "destination_window": 1,
+      "next": "MainTransformer0",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer0",
+      "destination_window": 1,
+      "next": "MainTransformer1",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer1",
+      "destination_window": 1,
+      "next": "MainTransformer2",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer2",
+      "destination_window": 1,
+      "next": "MainTransformer3",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer3",
+      "destination_window": 1,
+      "next": "MainTransformer4",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer4",
+      "destination_window": 1,
+      "next": "MainTransformer5",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer5",
+      "destination_window": 1,
+      "next": "MainTransformer6",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer6",
+      "destination_window": 1,
+      "next": "MainTransformer7",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer7",
+      "destination_window": 1,
+      "next": "MainTransformer8",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer8",
+      "destination_window": 1,
+      "next": "MainTransformer9",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer9",
+      "destination_window": 1,
+      "next": "MainTransformer10",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer10",
+      "destination_window": 1,
+      "next": "MainTransformer11",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer11",
+      "destination_window": 1,
+      "next": "MainTransformer12",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer12",
+      "destination_window": 1,
+      "next": "MainTransformer13",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer13",
+      "destination_window": 1,
+      "next": "MainTransformer14",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer14",
+      "destination_window": 1,
+      "next": "MainTransformer15",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer15",
+      "destination_window": 1,
+      "next": "MainTransformer16",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer16",
+      "destination_window": 1,
+      "next": "MainTransformer17",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer17",
+      "destination_window": 1,
+      "next": "MainTransformer18",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer18",
+      "destination_window": 1,
+      "next": "MainTransformer19",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer19",
+      "destination_window": 1,
+      "next": "MainTransformer20",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer20",
+      "destination_window": 1,
+      "next": "MainTransformer21",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer21",
+      "destination_window": 1,
+      "next": "MainTransformer22",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer22",
+      "destination_window": 1,
+      "next": "MainTransformer23",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer23",
+      "destination_window": 1,
+      "next": "MainTransformer24",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer24",
+      "destination_window": 1,
+      "next": "MainTransformer25",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer25",
+      "destination_window": 1,
+      "next": "MainTransformer26",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer26",
+      "destination_window": 1,
+      "next": "MainTransformer27",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer27",
+      "destination_window": 1,
+      "next": "MainTransformer28",
+      "prefetch_point": "before current compute"
+    },
+    {
+      "activation_point": "after current compute and transfer completion",
+      "current": "MainTransformer28",
+      "destination_window": 1,
+      "next": "MainTransformer29",
+      "prefetch_point": "before current compute"
+    }
+  ]
+}

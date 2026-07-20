@@ -19,6 +19,7 @@ typedef struct PrometheusZImageSessionCreateRequest {
   const char* compiled_model_lock_path;
   const char* payload_root;
   int32_t device_index;
+  uint32_t execution_profile; /* 1=MinimumMemory, 2=Prefetch */
 } PrometheusZImageSessionCreateRequest;
 
 typedef struct PrometheusZImageExecuteRequest {
@@ -56,6 +57,11 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint64_t audit_bytes;
   uint64_t host_package_cache_bytes;
   uint64_t host_package_cache_hits;
+  uint64_t prefetch_transfer_ns;
+  uint64_t prefetch_overlap_ns;
+  uint64_t prefetch_wait_ns;
+  uint32_t prefetch_count;
+  uint32_t reserved0;
   /* Ordered as NoiseRefiner0, NoiseRefiner1, ContextRefiner0,
      ContextRefiner1, MainTransformer0..29.  These are host-visible
      per-block probes; last_execution_ns is supplied by the native reactor. */

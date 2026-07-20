@@ -216,6 +216,76 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
   return VK_SUCCESS;
 }
 
+/* M2 uses concurrent sharing only for its two weight windows.  This avoids
+   ownership handoffs for a buffer that alternates between the dedicated
+   transfer and compute families; all other reactor buffers retain the
+   established exclusive-owner recipe. */
+VkResult prom_vk_create_buffer_shared_between_families(
+    VkPhysicalDevice physical_device, VkDevice device, uint32_t test_flags, VkDeviceSize size,
+    VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, int map_memory,
+    uint32_t first_queue_family, uint32_t second_queue_family, prom_vk_buffer* out_buffer) {
+  VkResult result;
+  VkBufferCreateInfo buffer_info;
+  VkMemoryRequirements requirements;
+  VkMemoryAllocateInfo alloc_info;
+  VkPhysicalDeviceMemoryProperties physical_memory_properties;
+  uint32_t memory_type_index;
+  uint32_t families[2];
+  if (device == VK_NULL_HANDLE || out_buffer == NULL || first_queue_family == UINT32_MAX ||
+      second_queue_family == UINT32_MAX || first_queue_family == second_queue_family) return VK_ERROR_INITIALIZATION_FAILED;
+  if ((test_flags & PROM_TESTCFG_FAIL_BUFFER_ALLOC) != 0u) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+  memset(out_buffer, 0, sizeof(*out_buffer));
+  families[0] = first_queue_family;
+  families[1] = second_queue_family;
+  out_buffer->size = size;
+  out_buffer->usage_flags = usage;
+  out_buffer->sharing_mode = VK_SHARING_MODE_CONCURRENT;
+  memset(&buffer_info, 0, sizeof(buffer_info));
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = size;
+  buffer_info.usage = usage;
+  buffer_info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+  buffer_info.queueFamilyIndexCount = 2u;
+  buffer_info.pQueueFamilyIndices = families;
+  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  if (result != VK_SUCCESS) return result;
+  vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
+  out_buffer->memory_alignment = requirements.alignment;
+  memory_type_index = prom_vk_find_memory_type(physical_device, requirements.memoryTypeBits, memory_properties);
+  if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
+      (((test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
+       (memory_properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0u)) memory_type_index = UINT32_MAX;
+  if (memory_type_index == UINT32_MAX) {
+    prom_vk_destroy_buffer(device, out_buffer);
+    return VK_ERROR_FEATURE_NOT_PRESENT;
+  }
+  vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_memory_properties);
+  out_buffer->memory_type_index = memory_type_index;
+  out_buffer->memory_property_flags = physical_memory_properties.memoryTypes[memory_type_index].propertyFlags;
+  memset(&alloc_info, 0, sizeof(alloc_info));
+  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  alloc_info.allocationSize = requirements.size;
+  alloc_info.memoryTypeIndex = memory_type_index;
+  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
+  if (result != VK_SUCCESS) {
+    prom_vk_destroy_buffer(device, out_buffer);
+    return result;
+  }
+  result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0);
+  if (result != VK_SUCCESS) {
+    prom_vk_destroy_buffer(device, out_buffer);
+    return result;
+  }
+  if (map_memory != 0) {
+    result = vkMapMemory(device, out_buffer->memory, 0, size, 0, &out_buffer->mapped);
+    if (result != VK_SUCCESS) {
+      prom_vk_destroy_buffer(device, out_buffer);
+      return result;
+    }
+  }
+  return VK_SUCCESS;
+}
+
 VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
                                              VkDevice device,
                                              uint32_t test_flags,

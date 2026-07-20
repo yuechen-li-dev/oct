@@ -28,6 +28,10 @@ CHECKPOINT_SHA256 = "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825
 TEXT_ENCODER_SHA256 = "6c671498573ac2f7a5501502ccce8d2b08ea6ca2f661c458e708f36b36edfc5a"
 VAE_SHA256 = "afc8e28272cd15db3919bacdb6918ce9c1ed22e96cb12c4d5ed0fba823529e38"
 LOCK_SHA256 = "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e"
+MODEL_EXECUTION_PROFILES = {
+    643_587_076: "MinimumMemory",
+    1_005_407_748: "Prefetch",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -71,6 +75,7 @@ def main() -> None:
     parser.add_argument("--bridge-dll", type=Path, default=repo / "out" / "prometheus" / "python_bridge" / "prometheus_zimage_bridge.dll")
     parser.add_argument("--reactor-dll", type=Path, default=repo / "out" / "prometheus" / "native" / "prometheus_reactor.dll")
     parser.add_argument("--lock", type=Path, default=repo / "internal" / "prometheus" / "models" / "zimage-turbo" / "lock-tagon.octagon")
+    parser.add_argument("--execution-profile", choices=("MinimumMemory", "Prefetch"), default="MinimumMemory")
     parser.add_argument("--output", type=Path, default=default_payload / "shipping_smoke" / "zimage_turbo_prometheus_seed42.png")
     parser.add_argument("--metadata", type=Path, default=repo / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "Evt2Shipping" / "zimage_python_smoke.json")
     args = parser.parse_args()
@@ -154,7 +159,7 @@ def main() -> None:
     sample_memory("after_boundary_model_load")
 
     bridge_start = time.perf_counter()
-    session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root)
+    session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root, execution_profile=args.execution_profile)
     timings["prometheus_session_create_seconds"] = time.perf_counter() - bridge_start
     sample_memory("after_prometheus_session_create")
     final_projection_seconds = 0.0
@@ -272,6 +277,10 @@ def main() -> None:
     sample_memory("after_png")
 
     png_hash = sha256_file(args.output)
+    model_ceiling = int(evidence_rows[-1]["model_allocation_ceiling_bytes"])
+    execution_profile = MODEL_EXECUTION_PROFILES.get(model_ceiling)
+    if execution_profile is None:
+        raise RuntimeError(f"unknown Prometheus model allocation ceiling: {model_ceiling}")
     metadata = {
         "schema": "prometheus.evt2.zimage.python-image-smoke.v1",
         "status": "success",
@@ -306,12 +315,19 @@ def main() -> None:
         "native_evaluations": evidence_rows,
         "timings": timings,
         "allocation": {
-            "model_owned_ceiling_bytes": 643_587_076,
+            "execution_profile": execution_profile,
+            "model_owned_ceiling_bytes": model_ceiling,
             "persistent_bytes": evidence_rows[-1]["persistent_bytes"],
             "reusable_bytes": evidence_rows[-1]["reusable_bytes"],
             "audit_bytes": evidence_rows[-1]["audit_bytes"],
             "host_package_cache_bytes": evidence_rows[-1]["host_package_cache_bytes"],
             "host_package_cache_hits_per_evaluation": [row["host_package_cache_hits"] for row in evidence_rows],
+        },
+        "prefetch": {
+            "transfer_seconds": sum(float(row["prefetch_transfer_seconds"]) for row in evidence_rows),
+            "overlap_seconds": sum(float(row["prefetch_overlap_seconds"]) for row in evidence_rows),
+            "wait_seconds": sum(float(row["prefetch_wait_seconds"]) for row in evidence_rows),
+            "count": sum(int(row["prefetch_count"]) for row in evidence_rows),
         },
         "output": {
             "path": str(args.output.resolve()),

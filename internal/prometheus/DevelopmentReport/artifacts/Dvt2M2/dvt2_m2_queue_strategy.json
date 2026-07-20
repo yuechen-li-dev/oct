@@ -1,0 +1,9 @@
+{
+  "compute_family": "universal",
+  "fallback": "MinimumMemory if dedicated transfer capability is absent",
+  "gpu": "NVIDIA GeForce RTX 3070",
+  "ownership_transfer": "not required: two weight windows use concurrent sharing between exactly these families",
+  "schema": "prometheus.dvt2.m2.queue-strategy.v1",
+  "selected": "dedicated transfer queue plus compute queue",
+  "transfer_family": "transfer-only"
+}

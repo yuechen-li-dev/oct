@@ -1,0 +1,9 @@
+{
+  "overlap_percent": 99.34669453193565,
+  "overlap_seconds": 8.3749186,
+  "profile": "Prefetch",
+  "proof": "prefetch and compute host monotonic intervals intersect; transfer uses a distinct transfer-only Vulkan queue",
+  "schema": "prometheus.dvt2.m2.overlap.v1",
+  "transfer_seconds": 8.4299922,
+  "wait_seconds": 0.0515843
+}

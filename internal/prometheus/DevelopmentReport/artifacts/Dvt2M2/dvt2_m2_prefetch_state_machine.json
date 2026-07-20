@@ -1,0 +1,49 @@
+{
+  "legal_transitions": [
+    [
+      "Empty",
+      "HostPrepared"
+    ],
+    [
+      "HostPrepared",
+      "UploadSubmitted"
+    ],
+    [
+      "UploadSubmitted",
+      "DeviceReady"
+    ],
+    [
+      "DeviceReady",
+      "Active"
+    ],
+    [
+      "Active",
+      "Empty"
+    ],
+    [
+      "UploadSubmitted",
+      "Uncertain"
+    ],
+    [
+      "Uncertain",
+      "Quarantined"
+    ]
+  ],
+  "rejected": [
+    "prefetch into active window",
+    "activate before DeviceReady",
+    "mixed payload identity",
+    "wrong successor",
+    "stale generation"
+  ],
+  "schema": "prometheus.dvt2.m2.prefetch-state-machine.v1",
+  "states": [
+    "Empty",
+    "HostPrepared",
+    "UploadSubmitted",
+    "DeviceReady",
+    "Active",
+    "Uncertain",
+    "Quarantined"
+  ]
+}

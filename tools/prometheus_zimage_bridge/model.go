@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	bridgeABIVersion       = uint32(3)
+	bridgeABIVersion       = uint32(4)
 	acceptedLockSHA256     = "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e"
 	checkpointSHA256       = "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"
 	imageTokens            = uint32(1024)
@@ -105,6 +105,10 @@ type runMetrics struct {
 	auditBytes             uint64
 	hostPackageCacheBytes  uint64
 	hostPackageCacheHits   uint64
+	prefetchTransferNS     uint64
+	prefetchOverlapNS      uint64
+	prefetchWaitNS         uint64
+	prefetchCount          uint32
 	mainLayerCount         uint32
 	contextReused          bool
 	stageExecutionNS       [34]uint64

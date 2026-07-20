@@ -40,6 +40,10 @@ typedef struct prom_vk_runtime_services {
   VkQueue compute_queue;
   uint32_t compute_queue_family_index;
   VkCommandPool compute_command_pool;
+  VkQueue transfer_queue;
+  uint32_t transfer_queue_family_index;
+  VkCommandPool transfer_command_pool;
+  uint32_t transfer_queue_available;
   uint32_t backend_available;
   uint32_t backend_reason_code;
   uint32_t test_flags;
@@ -2988,6 +2992,10 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
                                VkMemoryPropertyFlags memory_properties,
                                int map_memory,
                                prom_vk_buffer* out_buffer);
+VkResult prom_vk_create_buffer_shared_between_families(
+    VkPhysicalDevice physical_device, VkDevice device, uint32_t test_flags, VkDeviceSize size,
+    VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, int map_memory,
+    uint32_t first_queue_family, uint32_t second_queue_family, prom_vk_buffer* out_buffer);
 VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
                                              VkDevice device,
                                              uint32_t test_flags,
@@ -3090,6 +3098,11 @@ int prom_reactor_runtime_compiled_model_owner_create_impl(
 int prom_reactor_runtime_compiled_model_retarget_impl(
     void* handle, const PrometheusCompiledModelRetargetRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_prefetch_impl(
+    void* handle, const PrometheusCompiledModelPrefetchRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_activate_prefetch_impl(
+    void* handle, uint64_t session_id, PrometheusModelBlockEvidence* out_evidence);
 int prom_reactor_runtime_compiled_model_evaluation_reset_impl(
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
 /* Native-test seam only.  Production callers cannot mutate a block plan or

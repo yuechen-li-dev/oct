@@ -1,0 +1,7 @@
+{
+  "m1_repeat_denoising_seconds": 169.28845429999637,
+  "m1_repeat_wall_seconds": 203.63866870000493,
+  "model_ceiling_bytes": 643587076,
+  "schema": "prometheus.dvt2.m2.baseline.v1",
+  "single_window_bytes": 361820672
+}

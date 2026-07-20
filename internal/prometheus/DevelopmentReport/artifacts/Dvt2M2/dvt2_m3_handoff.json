@@ -1,0 +1,9 @@
+{
+  "hypothesis": "typed transport generations can lower the remaining swap/bridge coordination cost without adding prefetch depth or changing semantic ownership",
+  "m2_exposed_prefetch_wait_seconds": 0.0515843,
+  "m2_overlap_seconds": 8.3749186,
+  "remaining_bottleneck": "compute and Python scheduler/bridge crossings after bounded dual-window overlap",
+  "schema": "prometheus.dvt2.m3-handoff.v1",
+  "selected_target": "typed transport and residency generations",
+  "status": "ready"
+}

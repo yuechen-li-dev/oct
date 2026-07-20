@@ -12,6 +12,7 @@ typedef struct PrometheusZImageSessionCreateRequest {
   const char* compiled_model_lock_path;
   const char* payload_root;
   int32_t device_index;
+  uint32_t execution_profile;
 } PrometheusZImageSessionCreateRequest;
 
 typedef struct PrometheusZImageExecuteRequest {
@@ -49,6 +50,11 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint64_t audit_bytes;
   uint64_t host_package_cache_bytes;
   uint64_t host_package_cache_hits;
+  uint64_t prefetch_transfer_ns;
+  uint64_t prefetch_overlap_ns;
+  uint64_t prefetch_wait_ns;
+  uint32_t prefetch_count;
+  uint32_t reserved0;
   uint64_t stage_execution_ns[34];
   uint64_t stage_rebind_ns[34];
   uint64_t stage_payload_read_ns[34];
@@ -242,7 +248,12 @@ func prometheus_zimage_session_create(request *C.PrometheusZImageSessionCreateRe
 		setGlobalError(err)
 		return 1
 	}
-	reactor, err := openReactor(reactorPath)
+	profile, err := selectedExecutionProfile(uint32(request.execution_profile))
+	if err != nil {
+		setGlobalError(err)
+		return 1
+	}
+	reactor, err := openReactor(reactorPath, uint32(profile))
 	if err != nil {
 		setGlobalError(err)
 		return 1
@@ -332,6 +343,10 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	evidence.audit_bytes = C.uint64_t(metrics.auditBytes)
 	evidence.host_package_cache_bytes = C.uint64_t(session.hostPackages.bytes)
 	evidence.host_package_cache_hits = C.uint64_t(metrics.hostPackageCacheHits)
+	evidence.prefetch_transfer_ns = C.uint64_t(metrics.prefetchTransferNS)
+	evidence.prefetch_overlap_ns = C.uint64_t(metrics.prefetchOverlapNS)
+	evidence.prefetch_wait_ns = C.uint64_t(metrics.prefetchWaitNS)
+	evidence.prefetch_count = C.uint32_t(metrics.prefetchCount)
 	for index := range metrics.stageExecutionNS {
 		C.oct_prom_set_execute_stage(evidence, C.uint32_t(index), C.uint64_t(metrics.stageExecutionNS[index]), C.uint64_t(metrics.stageRebindNS[index]), C.uint64_t(metrics.stagePayloadReadNS[index]), C.uint64_t(metrics.stageUploadedBytes[index]))
 	}

@@ -393,6 +393,25 @@ typedef struct prom_model_block_state {
   /* A complete candidate bundle is uploaded here before the descriptor
      transaction.  It is never visible to a dispatch until commit. */
   prom_model_block_weight_resource pending_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+  /* M2 owns exactly one inactive, complete weight window.  It is deliberately
+     separate from the active descriptors and receives only the lock-derived
+     immediate successor. */
+  prom_model_block_weight_resource prefetch_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+  prom_vk_buffer prefetch_weight_upload;
+  VkCommandBuffer prefetch_command_buffer;
+  VkFence prefetch_fence;
+  VkQueue prefetch_queue;
+  VkCommandPool prefetch_command_pool;
+  uint32_t prefetch_queue_family;
+  uint32_t active_weight_window;
+  uint32_t prefetch_state;
+  uint32_t prefetch_weight_count;
+  uint32_t prefetch_assembly_family;
+  uint32_t prefetch_parameter_set;
+  uint64_t prefetch_parameter_set_aggregate_identity;
+  uint64_t prefetch_generation;
+  uint64_t prefetch_descriptor_generation;
+  uint64_t prefetch_target_position;
   /* M1 keeps one physical owner while selecting one generated family view. */
   uint32_t shared_owner;
   uint64_t owner_construction_count;
@@ -523,6 +542,9 @@ typedef struct prom_compiled_model_session_state {
   uint64_t warm_buffer_allocation_count;
   uint64_t composition_count;
   uint64_t evaluation_generation;
+  uint32_t requested_execution_profile;
+  uint32_t selected_execution_profile;
+  uint32_t profile_fallback_reason;
   uint32_t retarget_position;
   uint32_t evaluation_complete;
   uint32_t created;
@@ -555,6 +577,8 @@ typedef struct prom_reduction_runtime_state {
   uint32_t reduction_test_flags;
   uint32_t model_block_create_test_flags;
   uint32_t model_block_create_shared_owner;
+  uint32_t model_block_create_prefetch;
+  uint32_t model_block_create_transfer_queue_family;
   prom_reduction_pipeline pipelines[PROM_REDUCTION_PIPELINE_COUNT];
   prom_reduction_pipeline m40b_sgemm_pipelines[PROM_M40B_SGEMM_PIPELINE_COUNT];
   prom_vk_buffer persistent_b_upload;

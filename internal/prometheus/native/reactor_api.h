@@ -20,6 +20,14 @@ extern "C" {
 #endif
 
 enum {
+  /* Closed DVT-2 execution policy.  This is intentionally not a window count:
+     the only legal production choices are the established one-window path and
+     the bounded two-window transfer/compute overlap path. */
+  PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY = 1u,
+  PROM_MODEL_EXECUTION_PROFILE_PREFETCH = 2u,
+};
+
+enum {
   PROM_OK = 0,
   PROM_ERROR = 1,
   PROM_INVALID_HANDLE = 2,
@@ -664,6 +672,16 @@ enum {
 };
 
 enum {
+  PROM_MODEL_WEIGHT_WINDOW_EMPTY = 0u,
+  PROM_MODEL_WEIGHT_WINDOW_HOST_PREPARED = 1u,
+  PROM_MODEL_WEIGHT_WINDOW_UPLOAD_SUBMITTED = 2u,
+  PROM_MODEL_WEIGHT_WINDOW_DEVICE_READY = 3u,
+  PROM_MODEL_WEIGHT_WINDOW_ACTIVE = 4u,
+  PROM_MODEL_WEIGHT_WINDOW_UNCERTAIN = 5u,
+  PROM_MODEL_WEIGHT_WINDOW_QUARANTINED = 6u,
+};
+
+enum {
   PROM_MODEL_BLOCK_M1B_AUDIT_NONE = 0u,
   PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_INPUT = 1u,
   PROM_MODEL_BLOCK_M1B_AUDIT_INGRESS_TIMESTEP = 2u,
@@ -1032,6 +1050,7 @@ typedef struct PrometheusModelBlockEvidence {
 typedef struct PrometheusCompiledModelSessionCreateRequest {
   uint32_t struct_size;
   uint64_t lock_identity;
+  uint32_t execution_profile;
 } PrometheusCompiledModelSessionCreateRequest;
 
 /* A completed NoiseRefiner1 becomes PreparedImage and a completed
@@ -1069,6 +1088,9 @@ typedef struct PrometheusCompiledModelSessionEvidence {
   uint64_t cold_buffer_allocation_count;
   uint64_t warm_buffer_allocation_count;
   uint64_t composition_count;
+  uint32_t requested_execution_profile;
+  uint32_t selected_execution_profile;
+  uint32_t profile_fallback_reason;
 } PrometheusCompiledModelSessionEvidence;
 
 /* The transition position, not the bridge, selects the assembly family. */
@@ -1080,6 +1102,11 @@ typedef struct PrometheusCompiledModelRetargetRequest {
   uint32_t upload_count;
   const PrometheusModelBlockWeightUpload* uploads;
 } PrometheusCompiledModelRetargetRequest;
+
+/* A prefetch request is the same closed, lock-resolved payload contract as a
+   retarget, but it can only name the immediate successor of the active block.
+   It never mutates active descriptors or the active window. */
+typedef PrometheusCompiledModelRetargetRequest PrometheusCompiledModelPrefetchRequest;
 
 typedef struct PrometheusFftRequest {
   uint32_t struct_size;
@@ -2227,6 +2254,11 @@ PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_owner_create(
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_retarget(
     void* handle, const PrometheusCompiledModelRetargetRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_prefetch(
+    void* handle, const PrometheusCompiledModelPrefetchRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_activate_prefetch(
+    void* handle, uint64_t session_id, PrometheusModelBlockEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_evaluation_reset(
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
 

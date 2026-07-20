@@ -1,0 +1,38 @@
+{
+  "m1_repeat_wall_seconds": 203.63866870000493,
+  "minimum_memory": {
+    "denoising_seconds": 169.27343549999932,
+    "device_ceiling_bytes": 643587076,
+    "output_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "prefetch_count": 0,
+    "prefetch_overlap_seconds": 0.0,
+    "prefetch_transfer_seconds": 0.0,
+    "prefetch_wait_seconds": 0.0,
+    "profile": "MinimumMemory",
+    "wall_seconds": 203.46811189999426
+  },
+  "prefetch_cold": {
+    "denoising_seconds": 161.54753690000507,
+    "device_ceiling_bytes": 1005407748,
+    "output_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "prefetch_count": 279,
+    "prefetch_overlap_seconds": 8.3749186,
+    "prefetch_transfer_seconds": 8.4299922,
+    "prefetch_wait_seconds": 0.0515843,
+    "profile": "Prefetch",
+    "wall_seconds": 196.2883648000061
+  },
+  "prefetch_repeat": {
+    "denoising_seconds": 161.581165399999,
+    "device_ceiling_bytes": 1005407748,
+    "output_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "prefetch_count": 279,
+    "prefetch_overlap_seconds": 8.4341694,
+    "prefetch_transfer_seconds": 8.4883867,
+    "prefetch_wait_seconds": 0.0513803,
+    "profile": "Prefetch",
+    "wall_seconds": 195.45165120000456
+  },
+  "repeat_wall_improvement_seconds": 8.187017500000366,
+  "schema": "prometheus.dvt2.m2.pipeline-timing.v1"
+}

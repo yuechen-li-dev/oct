@@ -1,0 +1,30 @@
+{
+  "largest_supported_package_bytes": 361820672,
+  "minimum_memory_ceiling_bytes": 643587076,
+  "prefetch_ceiling_bytes": 1005407748,
+  "schema": "prometheus.dvt2.m2.dual-window-plan.v1",
+  "shared_allocations": [
+    "activations",
+    "QKV scratch",
+    "attention scratch",
+    "FFN scratch",
+    "resident stream slots",
+    "audit/readback",
+    "pipeline portfolio"
+  ],
+  "staging_extent_bytes": 88473600,
+  "validated_prefetch_ceiling_bytes": 1005407748,
+  "window_alignment_bytes": 256,
+  "windows": [
+    {
+      "base": 0,
+      "extent_bytes": 361820672,
+      "index": 0
+    },
+    {
+      "base": 361820672,
+      "extent_bytes": 361820672,
+      "index": 1
+    }
+  ]
+}

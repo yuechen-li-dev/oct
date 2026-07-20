@@ -1,0 +1,7 @@
+{
+  "active_window_only": true,
+  "bindings": "generated lock descriptors",
+  "generation": "binding and descriptor generations advance atomically at activation",
+  "mutation_rule": "inactive descriptor resources may be prepared; active bindings change only at completed swap",
+  "schema": "prometheus.dvt2.m2.descriptor-strategy.v1"
+}

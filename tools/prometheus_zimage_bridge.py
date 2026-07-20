@@ -14,6 +14,8 @@ IMAGE_SHAPE = (1, 1024, 3840)
 CONTEXT_SHAPE = (1, 32, 3840)
 TIMESTEP_SHAPE = (1, 256)
 OUTPUT_SHAPE = IMAGE_SHAPE
+MODEL_EXECUTION_PROFILE_CEILINGS = frozenset((643_587_076, 1_005_407_748))
+MODEL_EXECUTION_PROFILES = {"MinimumMemory": 1, "Prefetch": 2}
 
 
 class _CreateRequest(ctypes.Structure):
@@ -23,6 +25,7 @@ class _CreateRequest(ctypes.Structure):
         ("compiled_model_lock_path", ctypes.c_char_p),
         ("payload_root", ctypes.c_char_p),
         ("device_index", ctypes.c_int32),
+        ("execution_profile", ctypes.c_uint32),
     ]
 
 
@@ -64,6 +67,11 @@ class _ExecuteEvidence(ctypes.Structure):
         ("audit_bytes", ctypes.c_uint64),
         ("host_package_cache_bytes", ctypes.c_uint64),
         ("host_package_cache_hits", ctypes.c_uint64),
+        ("prefetch_transfer_ns", ctypes.c_uint64),
+        ("prefetch_overlap_ns", ctypes.c_uint64),
+        ("prefetch_wait_ns", ctypes.c_uint64),
+        ("prefetch_count", ctypes.c_uint32),
+        ("reserved0", ctypes.c_uint32),
         ("stage_execution_ns", ctypes.c_uint64 * 34),
         ("stage_rebind_ns", ctypes.c_uint64 * 34),
         ("stage_payload_read_ns", ctypes.c_uint64 * 34),
@@ -86,6 +94,10 @@ class ExecuteEvidence:
     audit_bytes: int
     host_package_cache_bytes: int
     host_package_cache_hits: int
+    prefetch_transfer_seconds: float
+    prefetch_overlap_seconds: float
+    prefetch_wait_seconds: float
+    prefetch_count: int
     stage_execution_seconds: tuple[float, ...]
     stage_rebind_seconds: tuple[float, ...]
     stage_payload_read_seconds: tuple[float, ...]
@@ -117,7 +129,7 @@ def _require_array(value: np.ndarray, label: str, dtype: np.dtype, shape: tuple[
 class PrometheusZImageSession:
     """One serialized, long-lived Vulkan session; Python never supplies topology."""
 
-    def __init__(self, bridge_dll: Path | str, reactor_dll: Path | str, lock_path: Path | str, payload_root: Path | str, device_index: int = -1):
+    def __init__(self, bridge_dll: Path | str, reactor_dll: Path | str, lock_path: Path | str, payload_root: Path | str, device_index: int = -1, execution_profile: str = "MinimumMemory"):
         self._bridge_path = _absolute_existing(bridge_dll, "bridge DLL")
         reactor_path = _absolute_existing(reactor_dll, "reactor DLL")
         lock = _absolute_existing(lock_path, "compiled-model lock")
@@ -133,10 +145,12 @@ class PrometheusZImageSession:
         self._dll.prometheus_zimage_session_destroy.restype = ctypes.c_int
         self._dll.prometheus_zimage_last_error.argtypes = [ctypes.c_uint64, ctypes.c_char_p, ctypes.c_uint64]
         self._dll.prometheus_zimage_last_error.restype = ctypes.c_uint64
-        if self._dll.prometheus_zimage_bridge_abi_version() != 3:
+        if self._dll.prometheus_zimage_bridge_abi_version() != 4:
             raise RuntimeError("unsupported Prometheus Z-Image bridge ABI")
+        if execution_profile not in MODEL_EXECUTION_PROFILES:
+            raise ValueError("execution_profile must be MinimumMemory or Prefetch")
         encoded = [str(path).encode("utf-8") for path in (reactor_path, lock, payload)]
-        request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index)
+        request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index, MODEL_EXECUTION_PROFILES[execution_profile])
         handle = ctypes.c_uint64()
         if self._dll.prometheus_zimage_session_create(ctypes.byref(request), ctypes.byref(handle)) != 0:
             raise RuntimeError(self._last_error(0))
@@ -178,7 +192,7 @@ class PrometheusZImageSession:
         raw.struct_size = ctypes.sizeof(_ExecuteEvidence)
         if self._dll.prometheus_zimage_session_execute(self._handle, ctypes.byref(request), ctypes.byref(raw)) != 0:
             raise RuntimeError(self._last_error())
-        if raw.main_layer_count != 30 or raw.model_allocation_ceiling_bytes != 643_587_076:
+        if raw.main_layer_count != 30 or raw.model_allocation_ceiling_bytes not in MODEL_EXECUTION_PROFILE_CEILINGS:
             raise RuntimeError(f"incomplete native evidence: layers={raw.main_layer_count}, allocation={raw.model_allocation_ceiling_bytes}")
         if not np.isfinite(output).all():
             raise RuntimeError("Prometheus returned a non-finite image stream")
@@ -196,6 +210,10 @@ class PrometheusZImageSession:
             audit_bytes=raw.audit_bytes,
             host_package_cache_bytes=raw.host_package_cache_bytes,
             host_package_cache_hits=raw.host_package_cache_hits,
+            prefetch_transfer_seconds=raw.prefetch_transfer_ns / 1e9,
+            prefetch_overlap_seconds=raw.prefetch_overlap_ns / 1e9,
+            prefetch_wait_seconds=raw.prefetch_wait_ns / 1e9,
+            prefetch_count=raw.prefetch_count,
             stage_execution_seconds=tuple(value / 1e9 for value in raw.stage_execution_ns),
             stage_rebind_seconds=tuple(value / 1e9 for value in raw.stage_rebind_ns),
             stage_payload_read_seconds=tuple(value / 1e9 for value in raw.stage_payload_read_ns),

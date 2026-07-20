@@ -1,0 +1,16 @@
+{
+  "host_cache_unchanged_bytes": 12286112768,
+  "minimum_memory": {
+    "model_ceiling_bytes": 643587076,
+    "weight_windows": 1,
+    "window_bytes": 361820672
+  },
+  "prefetch": {
+    "model_ceiling_bytes": 1005407748,
+    "second_host_staging_bytes": 88473600,
+    "second_window_bytes": 361820672,
+    "weight_windows": 2
+  },
+  "schema": "prometheus.dvt2.m2.memory-profiles.v1",
+  "telemetry_limit": "model-owned allocation accounting excludes Vulkan driver bookkeeping"
+}

@@ -1,0 +1,14 @@
+{
+  "fallback_profile": "MinimumMemory",
+  "guarded_conditions": [
+    "wrong successor",
+    "prefetch active window",
+    "activation before completion",
+    "stale target position",
+    "payload mismatch",
+    "uncertain completion quarantines window",
+    "reset reaps completion",
+    "missing transfer capability falls back"
+  ],
+  "schema": "prometheus.dvt2.m2.faults.v1"
+}

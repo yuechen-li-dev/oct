@@ -1,0 +1,10 @@
+{
+  "activation": "fence wait, acquire, descriptor commit, generation increment, role swap",
+  "compute_visibility": "transfer-write to shader-read acquire barrier recorded on compute queue before descriptor commit",
+  "forbidden": [
+    "compute from UploadSubmitted",
+    "descriptor mutation of active window"
+  ],
+  "schema": "prometheus.dvt2.m2.sync-contract.v1",
+  "transfer_completion": "per-slot VkFence"
+}

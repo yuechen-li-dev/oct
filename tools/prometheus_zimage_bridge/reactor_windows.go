@@ -24,6 +24,8 @@ typedef struct oct_prom_zimage_api {
   FARPROC model_destroy;
   FARPROC owner_create;
   FARPROC owner_retarget;
+  FARPROC owner_prefetch;
+  FARPROC owner_activate_prefetch;
   FARPROC evaluation_reset;
   FARPROC noise_execute0;
   FARPROC noise_rebind;
@@ -37,6 +39,7 @@ typedef struct oct_prom_zimage_api {
   FARPROC main_execute;
   FARPROC main_audit_final;
   FARPROC session_create;
+  FARPROC session_get_evidence;
   FARPROC session_capture;
   FARPROC session_compose;
   FARPROC session_destroy;
@@ -51,6 +54,8 @@ typedef int (__cdecl *oct_model_upload_fn)(void*, uint64_t, const PrometheusMode
 typedef int (__cdecl *oct_model_destroy_fn)(void*, uint64_t);
 typedef int (__cdecl *oct_owner_create_fn)(void*, const PrometheusNoiseRefinerRebindRequest*, uint64_t*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_owner_retarget_fn)(void*, const PrometheusCompiledModelRetargetRequest*, PrometheusModelBlockEvidence*);
+typedef int (__cdecl *oct_owner_prefetch_fn)(void*, const PrometheusCompiledModelPrefetchRequest*, PrometheusModelBlockEvidence*);
+typedef int (__cdecl *oct_owner_activate_prefetch_fn)(void*, uint64_t, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_evaluation_reset_fn)(void*, uint64_t, PrometheusCompiledModelSessionEvidence*);
 typedef int (__cdecl *oct_noise_execute0_fn)(void*, uint64_t, const PrometheusNoiseRefiner0ExecuteRequest*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_noise_rebind_fn)(void*, uint64_t, const PrometheusNoiseRefinerRebindRequest*, PrometheusModelBlockEvidence*);
@@ -64,6 +69,7 @@ typedef int (__cdecl *oct_main_rebind_fn)(void*, uint64_t, const PrometheusMainT
 typedef int (__cdecl *oct_main_execute_fn)(void*, uint64_t, const PrometheusMainTransformerExecuteRequest*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_main_audit_fn)(void*, uint64_t, const PrometheusMainTransformerFinalAuditRequest*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_session_create_fn)(void*, const PrometheusCompiledModelSessionCreateRequest*, uint64_t*, PrometheusCompiledModelSessionEvidence*);
+typedef int (__cdecl *oct_session_get_evidence_fn)(void*, uint64_t, PrometheusCompiledModelSessionEvidence*);
 typedef int (__cdecl *oct_session_capture_fn)(void*, uint64_t, uint64_t, const PrometheusCompiledModelSessionCaptureRequest*, PrometheusCompiledModelSessionEvidence*);
 typedef int (__cdecl *oct_session_compose_fn)(void*, uint64_t, const PrometheusCompiledModelSessionComposeRequest*, PrometheusCompiledModelSessionEvidence*);
 typedef int (__cdecl *oct_session_destroy_fn)(void*, uint64_t);
@@ -86,6 +92,8 @@ static int oct_prom_zimage_load(const char* path, oct_prom_zimage_api* api, DWOR
   OCT_LOAD(model_destroy, "prometheus_reactor_runtime_model_block_destroy");
   OCT_LOAD(owner_create, "prometheus_reactor_runtime_compiled_model_owner_create");
   OCT_LOAD(owner_retarget, "prometheus_reactor_runtime_compiled_model_retarget");
+  OCT_LOAD(owner_prefetch, "prometheus_reactor_runtime_compiled_model_prefetch");
+  OCT_LOAD(owner_activate_prefetch, "prometheus_reactor_runtime_compiled_model_activate_prefetch");
   OCT_LOAD(evaluation_reset, "prometheus_reactor_runtime_compiled_model_evaluation_reset");
   OCT_LOAD(noise_execute0, "prometheus_reactor_runtime_noise_refiner0_execute");
   OCT_LOAD(noise_rebind, "prometheus_reactor_runtime_noise_refiner_rebind");
@@ -99,6 +107,7 @@ static int oct_prom_zimage_load(const char* path, oct_prom_zimage_api* api, DWOR
   OCT_LOAD(main_execute, "prometheus_reactor_runtime_main_transformer_execute");
   OCT_LOAD(main_audit_final, "prometheus_reactor_runtime_main_transformer_audit_final");
   OCT_LOAD(session_create, "prometheus_reactor_runtime_compiled_model_session_create");
+  OCT_LOAD(session_get_evidence, "prometheus_reactor_runtime_compiled_model_session_get_evidence");
   OCT_LOAD(session_capture, "prometheus_reactor_runtime_compiled_model_session_capture_completed");
   OCT_LOAD(session_compose, "prometheus_reactor_runtime_compiled_model_session_compose_joint");
   OCT_LOAD(session_destroy, "prometheus_reactor_runtime_compiled_model_session_destroy");
@@ -137,13 +146,19 @@ static int oct_prom_runtime_close(oct_prom_zimage_api* api, void* runtime) {
   return runtime == NULL ? PROM_OK : ((oct_runtime_destroy_fn)api->runtime_destroy)(runtime);
 }
 
-static int oct_prom_session_create(oct_prom_zimage_api* api, void* runtime, uint64_t* out_session,
+static int oct_prom_session_create(oct_prom_zimage_api* api, void* runtime, uint32_t profile, uint64_t* out_session,
                                    PrometheusCompiledModelSessionEvidence* evidence) {
   PrometheusCompiledModelSessionCreateRequest request;
   memset(&request, 0, sizeof(request));
   request.struct_size = sizeof(request);
   request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+  request.execution_profile = profile;
   return ((oct_session_create_fn)api->session_create)(runtime, &request, out_session, evidence);
+}
+
+static int oct_prom_session_get_evidence(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
+                                         PrometheusCompiledModelSessionEvidence* evidence) {
+  return ((oct_session_get_evidence_fn)api->session_get_evidence)(runtime, session_id, evidence);
 }
 
 static int oct_prom_session_capture(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
@@ -196,6 +211,25 @@ static int oct_prom_owner_retarget(oct_prom_zimage_api* api, void* runtime, uint
   request.upload_count = upload_count;
   request.uploads = uploads;
   return ((oct_owner_retarget_fn)api->owner_retarget)(runtime, &request, evidence);
+}
+
+static int oct_prom_owner_prefetch(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
+                                   uint32_t local_block_id, const PrometheusModelBlockWeightUpload* uploads,
+                                   uint32_t upload_count, PrometheusModelBlockEvidence* evidence) {
+  PrometheusCompiledModelPrefetchRequest request;
+  memset(&request, 0, sizeof(request));
+  request.struct_size = sizeof(request);
+  request.session_identity = session_id;
+  request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+  request.model_local_block_id = local_block_id;
+  request.upload_count = upload_count;
+  request.uploads = uploads;
+  return ((oct_owner_prefetch_fn)api->owner_prefetch)(runtime, &request, evidence);
+}
+
+static int oct_prom_owner_activate_prefetch(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
+                                            PrometheusModelBlockEvidence* evidence) {
+  return ((oct_owner_activate_prefetch_fn)api->owner_activate_prefetch)(runtime, session_id, evidence);
 }
 
 static int oct_prom_evaluation_reset(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
@@ -420,6 +454,23 @@ type reactorDLL struct {
 	runtime   unsafe.Pointer
 	sessionID uint64
 	ownerID   uint64
+	profile   C.uint32_t
+}
+
+type modelExecutionProfile uint32
+
+const (
+	minimumMemoryProfile modelExecutionProfile = modelExecutionProfile(C.PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY)
+	prefetchProfile      modelExecutionProfile = modelExecutionProfile(C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH)
+)
+
+func selectedExecutionProfile(requested uint32) (modelExecutionProfile, error) {
+	switch modelExecutionProfile(requested) {
+	case minimumMemoryProfile, prefetchProfile:
+		return modelExecutionProfile(requested), nil
+	default:
+		return 0, fmt.Errorf("execution_profile=%d must be MinimumMemory (1) or Prefetch (2)", requested)
+	}
 }
 
 type loadedUploads struct {
@@ -427,6 +478,71 @@ type loadedUploads struct {
 	allocation unsafe.Pointer
 	buffers    []unsafe.Pointer
 	byteCount  uint64
+}
+
+type prefetchResult struct {
+	evidence C.PrometheusModelBlockEvidence
+	duration uint64
+	started  time.Time
+	ended    time.Time
+	err      error
+}
+
+func (reactor *reactorDLL) prefetch(blockID uint32, payload loadedUploads) <-chan prefetchResult {
+	result := make(chan prefetchResult, 1)
+	if reactor.profile != C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
+		result <- prefetchResult{}
+		return result
+	}
+	go func() {
+		var evidence C.PrometheusModelBlockEvidence
+		start := time.Now()
+		status := C.oct_prom_owner_prefetch(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), C.uint32_t(blockID), payload.pointer, C.uint32_t(len(payload.buffers)), &evidence)
+		ended := time.Now()
+		entry := prefetchResult{evidence: evidence, duration: uint64(ended.Sub(start)), started: start, ended: ended}
+		if status != C.PROM_OK {
+			entry.err = fmt.Errorf("prefetch block %d: detail=%d", blockID, int32(evidence.detail_code))
+		}
+		result <- entry
+	}()
+	return result
+}
+
+func (reactor *reactorDLL) activatePrefetch(result <-chan prefetchResult) (C.PrometheusModelBlockEvidence, prefetchResult, uint64, error) {
+	entry := <-result
+	if entry.err != nil {
+		return entry.evidence, entry, entry.duration, entry.err
+	}
+	if reactor.profile != C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
+		return entry.evidence, entry, entry.duration, nil
+	}
+	start := time.Now()
+	if C.oct_prom_owner_activate_prefetch(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), &entry.evidence) != C.PROM_OK {
+		return entry.evidence, entry, entry.duration + uint64(time.Since(start)), fmt.Errorf("activate prefetched block: detail=%d", int32(entry.evidence.detail_code))
+	}
+	return entry.evidence, entry, entry.duration + uint64(time.Since(start)), nil
+}
+
+func recordPrefetchOverlap(metrics *runMetrics, entry prefetchResult, computeStart, computeEnd time.Time) {
+	if entry.started.IsZero() || entry.ended.IsZero() {
+		return
+	}
+	metrics.prefetchCount++
+	metrics.prefetchTransferNS += entry.duration
+	start := entry.started
+	if computeStart.After(start) {
+		start = computeStart
+	}
+	end := entry.ended
+	if computeEnd.Before(end) {
+		end = computeEnd
+	}
+	if end.After(start) {
+		metrics.prefetchOverlapNS += uint64(end.Sub(start))
+	}
+	if entry.ended.After(computeEnd) {
+		metrics.prefetchWaitNS += uint64(entry.ended.Sub(computeEnd))
+	}
 }
 
 // cachedPayload is owned by one bridge session. Its C allocations intentionally
@@ -441,10 +557,14 @@ type cachedPayload struct {
 	bytes   uint64
 }
 
-func openReactor(path string) (*reactorDLL, error) {
+func openReactor(path string, requestedProfile uint32) (*reactorDLL, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	reactor := &reactorDLL{}
+	profile, err := selectedExecutionProfile(requestedProfile)
+	if err != nil {
+		return nil, err
+	}
+	reactor := &reactorDLL{profile: C.uint32_t(profile)}
 	var winError C.DWORD
 	if C.oct_prom_zimage_load(cPath, &reactor.api, &winError) != 0 {
 		return nil, fmt.Errorf("load Prometheus reactor %s: Win32 error %d", path, uint32(winError))
@@ -455,7 +575,7 @@ func openReactor(path string) (*reactorDLL, error) {
 		return nil, fmt.Errorf("create Prometheus Vulkan runtime")
 	}
 	var evidence C.PrometheusCompiledModelSessionEvidence
-	if C.oct_prom_session_create(&reactor.api, reactor.runtime, (*C.uint64_t)(&reactor.sessionID), &evidence) != C.PROM_OK {
+	if C.oct_prom_session_create(&reactor.api, reactor.runtime, reactor.profile, (*C.uint64_t)(&reactor.sessionID), &evidence) != C.PROM_OK {
 		C.oct_prom_runtime_close(&reactor.api, reactor.runtime)
 		C.oct_prom_zimage_unload(&reactor.api)
 		return nil, fmt.Errorf("create lock-resolved compiled-model session: detail=%d", int32(evidence.detail_code))
@@ -614,15 +734,29 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("retarget ContextRefiner0: detail=%d", int32(evidence.detail_code))
 	}
+	nextPrefetch := reactor.prefetch(1, payload[1])
+	computeStart := time.Now()
 	if C.oct_prom_context_execute0(&reactor.api, reactor.runtime, blockID, (*C.float)(context), C.uint64_t(contextFP32Bytes), C.uint64_t(identity), C.uint64_t(identityFromText("context_refiner.0 output")), &evidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("execute ContextRefiner0: detail=%d", int32(evidence.detail_code))
 	}
+	computeEnd := time.Now()
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[2] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
-	rebindStart = time.Now()
-	status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
-	rebindDuration = uint64(time.Since(rebindStart))
+	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
+		var activateErr error
+		var prefetchEntry prefetchResult
+		evidence, prefetchEntry, rebindDuration, activateErr = reactor.activatePrefetch(nextPrefetch)
+		recordPrefetchOverlap(&metrics, prefetchEntry, computeStart, computeEnd)
+		if activateErr != nil {
+			return 0, metrics, activateErr
+		}
+		status = C.PROM_OK
+	} else {
+		rebindStart = time.Now()
+		status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
+		rebindDuration = uint64(time.Since(rebindStart))
+	}
 	metrics.parameterRebindNS += rebindDuration
 	metrics.stageRebindNS[3] += rebindDuration
 	metrics.uploadedWeightBytes += payload[1].byteCount
@@ -651,6 +785,16 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 		status = C.oct_prom_owner_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
 		if status == C.PROM_OK {
 			reactor.ownerID = uint64(blockID)
+			var sessionEvidence C.PrometheusCompiledModelSessionEvidence
+			if C.oct_prom_session_get_evidence(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), &sessionEvidence) != C.PROM_OK {
+				return 0, metrics, fmt.Errorf("inspect selected execution profile: detail=%d", int32(sessionEvidence.detail_code))
+			}
+			switch sessionEvidence.selected_execution_profile {
+			case C.PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY, C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH:
+				reactor.profile = sessionEvidence.selected_execution_profile
+			default:
+				return 0, metrics, fmt.Errorf("native selected unknown execution profile %d", uint32(sessionEvidence.selected_execution_profile))
+			}
 		}
 	} else {
 		var sessionEvidence C.PrometheusCompiledModelSessionEvidence
@@ -669,16 +813,31 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("bind NoiseRefiner0: detail=%d", int32(evidence.detail_code))
 	}
+	nextPrefetch := reactor.prefetch(1, payload[1])
 	outputIdentity := identityFromText(fmt.Sprintf("noise0:%016x:%016x", inputIdentity, timestepIdentity))
+	computeStart := time.Now()
 	if C.oct_prom_noise_execute0(&reactor.api, reactor.runtime, blockID, image, C.uint64_t(imageBF16Bytes), timestep, C.uint64_t(timestepBF16Bytes), C.uint64_t(inputIdentity), C.uint64_t(timestepIdentity), C.uint64_t(outputIdentity), &evidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("execute NoiseRefiner0: detail=%d", int32(evidence.detail_code))
 	}
+	computeEnd := time.Now()
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[0] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
-	rebindStart := time.Now()
-	status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
-	rebindDuration := uint64(time.Since(rebindStart))
+	var rebindDuration uint64
+	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
+		var activateErr error
+		var prefetchEntry prefetchResult
+		evidence, prefetchEntry, rebindDuration, activateErr = reactor.activatePrefetch(nextPrefetch)
+		recordPrefetchOverlap(&metrics, prefetchEntry, computeStart, computeEnd)
+		if activateErr != nil {
+			return 0, metrics, activateErr
+		}
+		status = C.PROM_OK
+	} else {
+		rebindStart := time.Now()
+		status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
+		rebindDuration = uint64(time.Since(rebindStart))
+	}
 	metrics.parameterRebindNS += rebindDuration
 	metrics.stageRebindNS[1] += rebindDuration
 	metrics.uploadedWeightBytes += payload[1].byteCount
@@ -711,10 +870,26 @@ func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output u
 	var evidence C.PrometheusModelBlockEvidence
 	blockID := C.uint64_t(reactor.ownerID)
 	var outputIdentity uint64
+	var nextPrefetch <-chan prefetchResult
+	var previousComputeStart time.Time
+	var previousComputeEnd time.Time
 	for layer := 0; layer < 30; layer++ {
-		rebindStart := time.Now()
-		status := C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), C.uint32_t(layer), payload[layer].pointer, C.uint32_t(len(payload[layer].buffers)), &evidence)
-		rebindDuration := uint64(time.Since(rebindStart))
+		var status C.int
+		var rebindDuration uint64
+		if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH && layer > 0 {
+			var activateErr error
+			var prefetchEntry prefetchResult
+			evidence, prefetchEntry, rebindDuration, activateErr = reactor.activatePrefetch(nextPrefetch)
+			recordPrefetchOverlap(&metrics, prefetchEntry, previousComputeStart, previousComputeEnd)
+			if activateErr != nil {
+				return metrics, activateErr
+			}
+			status = C.PROM_OK
+		} else {
+			rebindStart := time.Now()
+			status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), C.uint32_t(layer), payload[layer].pointer, C.uint32_t(len(payload[layer].buffers)), &evidence)
+			rebindDuration = uint64(time.Since(rebindStart))
+		}
 		metrics.parameterRebindNS += rebindDuration
 		metrics.stageRebindNS[4+layer] += rebindDuration
 		metrics.uploadedWeightBytes += payload[layer].byteCount
@@ -722,10 +897,15 @@ func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output u
 		if status != C.PROM_OK {
 			return metrics, fmt.Errorf("retarget MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
 		}
+		if layer+1 < len(payload) {
+			nextPrefetch = reactor.prefetch(uint32(layer+1), payload[layer+1])
+		}
 		outputIdentity = identityFromText(fmt.Sprintf("main:%016x:%d", timestepIdentity, layer))
+		previousComputeStart = time.Now()
 		if C.oct_prom_main_execute(&reactor.api, reactor.runtime, blockID, C.uint64_t(reactor.sessionID), C.uint32_t(layer), C.uint64_t(imageGeneration), C.uint64_t(contextGeneration), C.uint64_t(jointGeneration), timestep, C.uint64_t(timestepBF16Bytes), C.uint64_t(timestepIdentity), C.uint64_t(outputIdentity), &evidence) != C.PROM_OK {
 			return metrics, fmt.Errorf("execute MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
 		}
+		previousComputeEnd = time.Now()
 		metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 		metrics.stageExecutionNS[4+layer] += uint64(evidence.last_execution_ns)
 		metrics.mainLayerCount++
@@ -738,8 +918,12 @@ func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output u
 	metrics.reusableBytes = uint64(evidence.reusable_bytes)
 	metrics.auditBytes = uint64(evidence.audit_bytes)
 	metrics.allocationCeilingBytes = metrics.persistentBytes + metrics.reusableBytes + metrics.auditBytes
-	if metrics.allocationCeilingBytes != modelAllocationCeiling {
-		return metrics, fmt.Errorf("model-owned allocation ceiling mismatch: got %d want %d", metrics.allocationCeilingBytes, modelAllocationCeiling)
+	expectedCeiling := modelAllocationCeiling
+	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
+		expectedCeiling += 361820672
+	}
+	if metrics.allocationCeilingBytes != expectedCeiling {
+		return metrics, fmt.Errorf("model-owned allocation ceiling mismatch: got %d want %d", metrics.allocationCeilingBytes, expectedCeiling)
 	}
 	return metrics, nil
 }
@@ -748,6 +932,10 @@ func addMetrics(target *runMetrics, source runMetrics) {
 	target.modelExecutionNS += source.modelExecutionNS
 	target.parameterRebindNS += source.parameterRebindNS
 	target.uploadedWeightBytes += source.uploadedWeightBytes
+	target.prefetchTransferNS += source.prefetchTransferNS
+	target.prefetchOverlapNS += source.prefetchOverlapNS
+	target.prefetchWaitNS += source.prefetchWaitNS
+	target.prefetchCount += source.prefetchCount
 	if source.allocationCeilingBytes != 0 {
 		target.allocationCeilingBytes = source.allocationCeilingBytes
 		target.persistentBytes = source.persistentBytes

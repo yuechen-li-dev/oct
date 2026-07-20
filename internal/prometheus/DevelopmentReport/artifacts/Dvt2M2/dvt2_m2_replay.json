@@ -1,0 +1,10 @@
+{
+  "payload_root": "C:\\Users\\yuech\\AppData\\Local\\oct\\evt2-z-image-turbo",
+  "profiles_frozen": [
+    "MinimumMemory",
+    "Prefetch"
+  ],
+  "reproduction": "tools/zimage_prometheus_smoke.py --execution-profile <profile>",
+  "schema": "prometheus.dvt2.m2.replay.v1",
+  "semantic_lock_sha256": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e"
+}

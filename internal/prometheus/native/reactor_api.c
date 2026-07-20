@@ -366,6 +366,17 @@ int prometheus_reactor_runtime_compiled_model_retarget(
   return prom_reactor_runtime_compiled_model_retarget_impl(handle, request, out_evidence);
 }
 
+int prometheus_reactor_runtime_compiled_model_prefetch(
+    void* handle, const PrometheusCompiledModelPrefetchRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_prefetch_impl(handle, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_activate_prefetch(
+    void* handle, uint64_t session_id, PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_activate_prefetch_impl(handle, session_id, out_evidence);
+}
+
 int prometheus_reactor_runtime_compiled_model_evaluation_reset(
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence) {
   return prom_reactor_runtime_compiled_model_evaluation_reset_impl(handle, session_id, out_evidence);

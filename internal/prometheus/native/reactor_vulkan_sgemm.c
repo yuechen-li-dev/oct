@@ -1487,6 +1487,10 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->compute_queue = rt->compute_queue;
   out_services->compute_queue_family_index = rt->queue_family_index;
   out_services->compute_command_pool = rt->command_pool;
+  out_services->transfer_queue = rt->transfer_queue;
+  out_services->transfer_queue_family_index = rt->transfer_queue_family_index;
+  out_services->transfer_command_pool = rt->transfer_command_pool;
+  out_services->transfer_queue_available = rt->transfer_queue_enabled;
   out_services->backend_available = rt->available;
   out_services->backend_reason_code = rt->reason_code;
   out_services->test_flags = rt->test_flags;

@@ -1,0 +1,7 @@
+{
+  "bytes_uploaded": 110575014912,
+  "effective_bytes_per_second": 13116858508.12531,
+  "limitation": "host interval includes bounded staging fill, per-tensor fence reuse, and transfer submission",
+  "schema": "prometheus.dvt2.m2.bandwidth.v1",
+  "transfer_seconds": 8.4299922
+}
