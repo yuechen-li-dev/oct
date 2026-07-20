@@ -1,0 +1,35 @@
+{
+  "interpretation": "The observed delta is negative and within run noise; validation is not a material contributor.",
+  "matched_single_evaluation": [
+    {
+      "call_seconds": 18.0601729,
+      "create_seconds": 13.7328231,
+      "main_gpu_seconds": 16.202012064,
+      "model_execution_seconds": 17.156475,
+      "native_wall_seconds": 18.0442443,
+      "prefetch_transfer_seconds": 1.7422163,
+      "prefetch_wait_seconds": 0.0289956,
+      "validation": false
+    },
+    {
+      "call_seconds": 17.9745738,
+      "create_seconds": 14.1097438,
+      "main_gpu_seconds": 16.138688704,
+      "model_execution_seconds": 17.1461415,
+      "native_wall_seconds": 17.967966,
+      "prefetch_transfer_seconds": 1.7962967,
+      "prefetch_wait_seconds": 0.0158736,
+      "validation": true
+    }
+  ],
+  "schema": "prometheus.dvt2.m3.v1",
+  "timing_probe_ab": {
+    "caveat": "Adjacent canonical runs use the same request/profile/hash but different bridge binaries.",
+    "delta_percent": 0.4348587376943325,
+    "delta_seconds": 0.8499400999983209,
+    "full_m3_probe_seconds": 196.30194009999832,
+    "minimized_historical_m2_repeat_seconds": 195.452
+  },
+  "validation_minus_disabled_percent": -0.4227292577722331,
+  "validation_minus_disabled_seconds": -0.07627829999999847
+}

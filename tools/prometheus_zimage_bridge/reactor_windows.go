@@ -742,6 +742,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	computeEnd := time.Now()
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[2] += uint64(evidence.last_execution_ns)
+	metrics.stageGPUExecutionNS[2] += uint64(evidence.gpu_compute_ns)
 	inputGeneration := uint64(evidence.output_generation)
 	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
 		var activateErr error
@@ -769,6 +770,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[3] += uint64(evidence.last_execution_ns)
+	metrics.stageGPUExecutionNS[3] += uint64(evidence.gpu_compute_ns)
 	var sessionEvidence C.PrometheusCompiledModelSessionEvidence
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedContext: detail=%d", int32(sessionEvidence.detail_code))
@@ -822,6 +824,7 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	computeEnd := time.Now()
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[0] += uint64(evidence.last_execution_ns)
+	metrics.stageGPUExecutionNS[0] += uint64(evidence.gpu_compute_ns)
 	inputGeneration := uint64(evidence.output_generation)
 	var rebindDuration uint64
 	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
@@ -850,6 +853,7 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[1] += uint64(evidence.last_execution_ns)
+	metrics.stageGPUExecutionNS[1] += uint64(evidence.gpu_compute_ns)
 	var sessionEvidence C.PrometheusCompiledModelSessionEvidence
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedImage: detail=%d", int32(sessionEvidence.detail_code))
@@ -865,7 +869,52 @@ func (reactor *reactorDLL) compose(imageGeneration, contextGeneration uint64) (u
 	return uint64(evidence.joint_generation), nil
 }
 
-func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64) (runMetrics, error) {
+func recordMainLayerTrace(trace *mainLayerTrace, evidence *C.PrometheusModelBlockEvidence, layer int, evaluationStart, cpuBegin, cpuEnd time.Time) {
+	trace.correlationID = identityFromText(fmt.Sprintf("dvt2-m3:main:%d:%d", layer, uint64(evidence.output_generation)))
+	trace.cpuBeginNS = uint64(cpuBegin.Sub(evaluationStart))
+	trace.cpuEndNS = uint64(cpuEnd.Sub(evaluationStart))
+	trace.parameterGeneration = uint64(evidence.binding_generation)
+	trace.executionGeneration = uint64(evidence.output_generation)
+	trace.activeWeightWindow = uint32(evidence.active_weight_window)
+	trace.gpuTotalBeginTick = uint64(evidence.gpu_total_begin_tick)
+	trace.gpuTotalEndTick = uint64(evidence.gpu_total_end_tick)
+	trace.gpuTotalNS = uint64(evidence.gpu_total_ns)
+	trace.gpuComputeBeginTick = uint64(evidence.gpu_compute_begin_tick)
+	trace.gpuComputeEndTick = uint64(evidence.gpu_compute_end_tick)
+	trace.gpuComputeNS = uint64(evidence.gpu_compute_ns)
+	trace.gpuIngressTransferNS = uint64(evidence.gpu_ingress_transfer_ns)
+	trace.gpuJointCopyNS = uint64(evidence.gpu_joint_copy_ns)
+	beginTicks := unsafe.Slice((*uint64)(unsafe.Pointer(&evidence.main_stage_gpu_begin_tick[0])), mainStageCount)
+	endTicks := unsafe.Slice((*uint64)(unsafe.Pointer(&evidence.main_stage_gpu_end_tick[0])), mainStageCount)
+	durations := unsafe.Slice((*uint64)(unsafe.Pointer(&evidence.main_stage_gpu_ns[0])), mainStageCount)
+	for stage := 0; stage < mainStageCount; stage++ {
+		trace.stageGPUBeginTick[stage] = beginTicks[stage]
+		trace.stageGPUEndTick[stage] = endTicks[stage]
+		trace.stageGPUNS[stage] = durations[stage]
+	}
+	trace.activeTargetValidationNS = uint64(evidence.last_active_target_validation_ns)
+	trace.commandResetNS = uint64(evidence.last_command_reset_ns)
+	trace.commandBeginNS = uint64(evidence.last_command_begin_ns)
+	trace.commandRecordNS = uint64(evidence.last_command_record_ns)
+	trace.commandEndNS = uint64(evidence.last_command_end_ns)
+	trace.queueSubmitNS = uint64(evidence.last_queue_submit_ns)
+	trace.fenceWaitNS = uint64(evidence.last_fence_wait_ns)
+	trace.descriptorUpdateNS = uint64(evidence.last_descriptor_update_ns)
+	trace.stagingMemcpyNS = uint64(evidence.last_staging_memcpy_ns)
+	trace.counters = nativeCallCounters{
+		createBuffer: uint64(evidence.vk_create_buffer_count), destroyBuffer: uint64(evidence.vk_destroy_buffer_count),
+		allocateMemory: uint64(evidence.vk_allocate_memory_count), freeMemory: uint64(evidence.vk_free_memory_count),
+		createShaderModule: uint64(evidence.vk_create_shader_module_count), destroyShaderModule: uint64(evidence.vk_destroy_shader_module_count),
+		createPipelines: uint64(evidence.vk_create_compute_pipelines_count), allocateDescriptorSets: uint64(evidence.vk_allocate_descriptor_sets_count),
+		updateDescriptorSets: uint64(evidence.vk_update_descriptor_sets_count), createCommandPool: uint64(evidence.vk_create_command_pool_count),
+		allocateCommandBuffers: uint64(evidence.vk_allocate_command_buffers_count), resetCommandBuffer: uint64(evidence.vk_reset_command_buffer_count),
+		queueSubmit: uint64(evidence.vk_queue_submit_count), fenceWait: uint64(evidence.vk_fence_wait_count), timelineWait: uint64(evidence.vk_timeline_wait_count),
+		mapMemory: uint64(evidence.vk_map_memory_count), unmapMemory: uint64(evidence.vk_unmap_memory_count),
+		flush: uint64(evidence.vk_flush_count), invalidate: uint64(evidence.vk_invalidate_count),
+	}
+}
+
+func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64, evaluationStart time.Time) (runMetrics, error) {
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
 	blockID := C.uint64_t(reactor.ownerID)
@@ -906,14 +955,18 @@ func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output u
 			return metrics, fmt.Errorf("execute MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
 		}
 		previousComputeEnd = time.Now()
+		recordMainLayerTrace(&metrics.mainTrace[layer], &evidence, layer, evaluationStart, previousComputeStart, previousComputeEnd)
 		metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 		metrics.stageExecutionNS[4+layer] += uint64(evidence.last_execution_ns)
+		metrics.stageGPUExecutionNS[4+layer] += uint64(evidence.gpu_compute_ns)
 		metrics.mainLayerCount++
 		jointGeneration++
 	}
 	if C.oct_prom_main_audit_final(&reactor.api, reactor.runtime, blockID, evidence.output_generation, C.uint64_t(outputIdentity), (*C.float)(output), C.uint64_t(uint64(jointTokens)*uint64(modelWidth)), &evidence) != C.PROM_OK {
 		return metrics, fmt.Errorf("read back MainTransformer29 final boundary: detail=%d", int32(evidence.detail_code))
 	}
+	metrics.finalReadbackGPUNS = uint64(evidence.gpu_readback_ns)
+	metrics.finalReadbackHostNS = uint64(evidence.last_output_readback_ns)
 	metrics.persistentBytes = uint64(evidence.persistent_bytes)
 	metrics.reusableBytes = uint64(evidence.reusable_bytes)
 	metrics.auditBytes = uint64(evidence.audit_bytes)
@@ -936,6 +989,10 @@ func addMetrics(target *runMetrics, source runMetrics) {
 	target.prefetchOverlapNS += source.prefetchOverlapNS
 	target.prefetchWaitNS += source.prefetchWaitNS
 	target.prefetchCount += source.prefetchCount
+	if source.finalReadbackGPUNS != 0 || source.finalReadbackHostNS != 0 {
+		target.finalReadbackGPUNS = source.finalReadbackGPUNS
+		target.finalReadbackHostNS = source.finalReadbackHostNS
+	}
 	if source.allocationCeilingBytes != 0 {
 		target.allocationCeilingBytes = source.allocationCeilingBytes
 		target.persistentBytes = source.persistentBytes
@@ -945,9 +1002,15 @@ func addMetrics(target *runMetrics, source runMetrics) {
 	target.mainLayerCount += source.mainLayerCount
 	for index := range target.stageExecutionNS {
 		target.stageExecutionNS[index] += source.stageExecutionNS[index]
+		target.stageGPUExecutionNS[index] += source.stageGPUExecutionNS[index]
 		target.stageRebindNS[index] += source.stageRebindNS[index]
 		target.stagePayloadReadNS[index] += source.stagePayloadReadNS[index]
 		target.stageUploadedBytes[index] += source.stageUploadedBytes[index]
+	}
+	for layer := range source.mainTrace {
+		if source.mainTrace[layer].correlationID != 0 {
+			target.mainTrace[layer] = source.mainTrace[layer]
+		}
 	}
 }
 

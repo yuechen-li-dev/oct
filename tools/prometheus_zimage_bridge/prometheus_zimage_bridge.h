@@ -66,9 +66,41 @@ typedef struct PrometheusZImageExecuteEvidence {
      ContextRefiner1, MainTransformer0..29.  These are host-visible
      per-block probes; last_execution_ns is supplied by the native reactor. */
   uint64_t stage_execution_ns[34];
+  uint64_t stage_gpu_execution_ns[34];
   uint64_t stage_rebind_ns[34];
   uint64_t stage_payload_read_ns[34];
   uint64_t stage_uploaded_weight_bytes[34];
+  /* DVT-2 M3 correlated MainTransformer traces. Stage order is documented in
+     dvt2_m3_timing_schema.json; main_native_counters uses 19 counters/layer. */
+  uint64_t main_correlation_id[30];
+  uint64_t main_cpu_begin_ns[30];
+  uint64_t main_cpu_end_ns[30];
+  uint64_t main_parameter_generation[30];
+  uint64_t main_execution_generation[30];
+  uint32_t main_active_weight_window[30];
+  uint64_t main_gpu_total_begin_tick[30];
+  uint64_t main_gpu_total_end_tick[30];
+  uint64_t main_gpu_total_ns[30];
+  uint64_t main_gpu_compute_begin_tick[30];
+  uint64_t main_gpu_compute_end_tick[30];
+  uint64_t main_gpu_compute_ns[30];
+  uint64_t main_gpu_ingress_transfer_ns[30];
+  uint64_t main_gpu_joint_copy_ns[30];
+  uint64_t main_stage_gpu_begin_tick[390];
+  uint64_t main_stage_gpu_end_tick[390];
+  uint64_t main_stage_gpu_ns[390];
+  uint64_t main_active_target_validation_ns[30];
+  uint64_t main_command_reset_ns[30];
+  uint64_t main_command_begin_ns[30];
+  uint64_t main_command_record_ns[30];
+  uint64_t main_command_end_ns[30];
+  uint64_t main_queue_submit_ns[30];
+  uint64_t main_fence_wait_ns[30];
+  uint64_t main_descriptor_update_ns[30];
+  uint64_t main_staging_memcpy_ns[30];
+  uint64_t main_native_counters[570];
+  uint64_t final_readback_gpu_ns;
+  uint64_t final_readback_host_ns;
 } PrometheusZImageExecuteEvidence;
 
 PROM_ZIMAGE_BRIDGE_API uint32_t prometheus_zimage_bridge_abi_version(void);

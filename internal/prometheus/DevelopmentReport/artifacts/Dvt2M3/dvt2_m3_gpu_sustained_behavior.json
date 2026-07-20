@@ -1,0 +1,299 @@
+{
+  "clean_interpretation": "No monotonic late-evaluation slowdown is present.",
+  "clean_main_gpu_seconds_per_evaluation": [
+    16.606443680000005,
+    16.599268224,
+    16.595306432,
+    16.618889696,
+    16.607857631999998,
+    16.654373215999996,
+    16.840067584000003,
+    16.588776575999997,
+    16.634832447999997
+  ],
+  "observed": {
+    "graphics_clock_mhz_range": [
+      1830,
+      1995
+    ],
+    "memory_clock_mhz": 7001,
+    "power_w_range": [
+      197.15,
+      207.96
+    ],
+    "temperature_c_range": [
+      64,
+      69
+    ],
+    "throttle_reasons_seen": [
+      "SW power cap",
+      "HW slowdown/thermal bit samples"
+    ],
+    "transfer_engine_utilization": "unavailable from installed nvidia-smi query interface",
+    "utilization_percent_under_sustained_work": 100
+  },
+  "schema": "prometheus.dvt2.m3.v1",
+  "telemetry": [
+    {
+      "evaluation_index": null,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_python_imports",
+      "sample_overhead_seconds": 0.04568529999960447,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:24:46.435",
+        "1755",
+        "7001",
+        "0",
+        "43.92",
+        "46",
+        "2135",
+        "0x0000000000000000"
+      ]
+    },
+    {
+      "evaluation_index": 1,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.05350700000417419,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:27:26.848",
+        "1980",
+        "7001",
+        "2",
+        "197.44",
+        "64",
+        "3206",
+        "0x0000000000000004"
+      ]
+    },
+    {
+      "evaluation_index": 2,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.04428100000222912,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:28:10.656",
+        "1995",
+        "7001",
+        "100",
+        "197.15",
+        "67",
+        "3206",
+        "0x0000000000000001"
+      ]
+    },
+    {
+      "evaluation_index": 3,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.04694089999975404,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:28:53.810",
+        "1935",
+        "7001",
+        "100",
+        "200.35",
+        "67",
+        "3361",
+        "0x0000000000000004"
+      ]
+    },
+    {
+      "evaluation_index": 4,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.05025939999904949,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:29:36.161",
+        "1995",
+        "7001",
+        "100",
+        "205.45",
+        "67",
+        "3218",
+        "0x0000000000000001"
+      ]
+    },
+    {
+      "evaluation_index": 5,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.0603084000031231,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:30:19.544",
+        "1890",
+        "7001",
+        "100",
+        "197.95",
+        "68",
+        "3239",
+        "0x0000000000000001"
+      ]
+    },
+    {
+      "evaluation_index": 6,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.053565900001558475,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:31:02.743",
+        "1995",
+        "7001",
+        "100",
+        "202.24",
+        "68",
+        "3250",
+        "0x0000000000000001"
+      ]
+    },
+    {
+      "evaluation_index": 7,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.05132199999934528,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:31:46.203",
+        "1965",
+        "7001",
+        "100",
+        "202.43",
+        "69",
+        "3250",
+        "0x0000000000000004"
+      ]
+    },
+    {
+      "evaluation_index": 8,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.05296069999894826,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:32:30.403",
+        "1860",
+        "7001",
+        "100",
+        "201.88",
+        "69",
+        "3250",
+        "0x0000000000000004"
+      ]
+    },
+    {
+      "evaluation_index": 9,
+      "fields": [
+        "timestamp",
+        "clocks.gr",
+        "clocks.mem",
+        "utilization.gpu",
+        "power.draw",
+        "temperature.gpu",
+        "memory.used",
+        "clocks_throttle_reasons.active"
+      ],
+      "label": "after_native_evaluation",
+      "sample_overhead_seconds": 0.05372209999768529,
+      "status": "ok",
+      "values": [
+        "2026/07/19 22:33:09.949",
+        "1830",
+        "7001",
+        "100",
+        "207.96",
+        "69",
+        "5567",
+        "0x0000000000000004"
+      ]
+    }
+  ],
+  "telemetry_source": "labeled contended diagnostic; excluded from baseline timing"
+}

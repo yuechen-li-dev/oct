@@ -1,0 +1,22 @@
+{
+  "experiments": [
+    {
+      "name": "isolated-versus-retained",
+      "result": "matched GPU medians differ by about 2%; historical 386 ms label was NoiseRefiner0"
+    },
+    {
+      "name": "validation A/B",
+      "result": "no measurable validation penalty"
+    },
+    {
+      "name": "timing probes A/B",
+      "result": "0.43% adjacent-run delta versus accepted M2 repeat"
+    },
+    {
+      "name": "accidental dual-run contention",
+      "result": "GPU compute doubled and prefetch exposed wait rose to 42.6 s, proving external queue contention is visible in GPU timestamps",
+      "status": "excluded from baseline"
+    }
+  ],
+  "schema": "prometheus.dvt2.m3.v1"
+}

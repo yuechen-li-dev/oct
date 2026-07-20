@@ -1,0 +1,69 @@
+{
+  "clock_domains": {
+    "cpu": "QueryPerformanceCounter-derived monotonic nanoseconds",
+    "gpu": "Vulkan timestamp ticks with timestampPeriod conversion"
+  },
+  "event_fields": [
+    "run_identity",
+    "evaluation_index",
+    "family",
+    "block_id",
+    "stage_id",
+    "queue",
+    "command_buffer_identity",
+    "active_weight_window",
+    "parameter_generation",
+    "execution_generation",
+    "cpu_monotonic_begin_ns",
+    "cpu_monotonic_end_ns",
+    "gpu_begin_tick",
+    "gpu_end_tick",
+    "thread_id",
+    "submission_id",
+    "semaphore_or_fence",
+    "bytes_moved",
+    "status"
+  ],
+  "limitations": [
+    "CPU and GPU durations are correlated by shared event identity; absolute clock epochs are not equated.",
+    "Thread ID is schema-defined but unavailable through bridge ABI v5 and is null in captured events."
+  ],
+  "main_stage_order": [
+    "ingress_cast",
+    "adaln_modulation",
+    "attention_norm1",
+    "qkv",
+    "q_norm_rope",
+    "k_norm_rope",
+    "attention",
+    "projection_residual",
+    "attention_norm2",
+    "ffn_norm",
+    "ffn_w1_w3",
+    "gate",
+    "w2_residual"
+  ],
+  "native_counter_order": [
+    "vkCreateBuffer",
+    "vkDestroyBuffer",
+    "vkAllocateMemory",
+    "vkFreeMemory",
+    "vkCreateShaderModule",
+    "vkDestroyShaderModule",
+    "vkCreateComputePipelines",
+    "vkAllocateDescriptorSets",
+    "vkUpdateDescriptorSets",
+    "vkCreateCommandPool",
+    "vkAllocateCommandBuffers",
+    "vkResetCommandBuffer",
+    "vkQueueSubmit",
+    "vkWaitForFences",
+    "timelineWait",
+    "vkMapMemory",
+    "vkUnmapMemory",
+    "vkFlushMappedMemoryRanges",
+    "vkInvalidateMappedMemoryRanges"
+  ],
+  "schema": "prometheus.dvt2.m3.v1",
+  "shared_correlation": "one correlation_id per block execution"
+}

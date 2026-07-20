@@ -1,0 +1,52 @@
+{
+  "accepted_png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "environment": {
+    "cuda": "13.0",
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.9 (main, Feb 12 2025, 14:52:31) [MSC v.1942 64 bit (AMD64)]",
+    "python_executable": "C:\\Users\\yuech\\ComfyUI\\.venv\\Scripts\\python.exe",
+    "static_audit": "final_layer_29_readback_only",
+    "timing_probes": "dvt2_m3_full",
+    "torch": "2.9.1+cu130",
+    "vulkan_validation": false
+  },
+  "host_package_cache_bytes": 12286112768,
+  "main_gpu_compute_seconds": 149.74581548799998,
+  "main_host_execution_seconds": 149.8481062,
+  "model_owned_ceiling_bytes": 1005407748,
+  "native_evaluation_count": 9,
+  "native_wall_seconds": 161.99748639999999,
+  "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "pre_import_seconds": 6.251396600004227,
+  "process_elapsed_including_import_seconds": 202.55333670000255,
+  "run_identity": "canonical-prefetch-seed42",
+  "schema": "prometheus.dvt2.m3.v1",
+  "settings": {
+    "actual_model_evaluations": 9,
+    "aura_flow_shift": 3.0,
+    "configured_steps": 9,
+    "height": 512,
+    "negative_prompt": null,
+    "negative_prompt_policy": "not evaluated; CFG=1 uses the single positive branch",
+    "prompt": "A lighthouse in fog at dawn",
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "seed": 42,
+    "sigmas": [
+      1.0,
+      0.9600432515144348,
+      0.9131456017494202,
+      0.8573263883590698,
+      0.7897727489471436,
+      0.70634925365448,
+      0.6007193922996521,
+      0.462655633687973,
+      0.27450981736183167,
+      0.0
+    ],
+    "width": 512
+  },
+  "status": "success",
+  "wall_time_seconds": 196.30194009999832
+}

@@ -1,0 +1,1937 @@
+{
+  "full_image_stage_totals_seconds": {
+    "adaln_modulation": 0.008987648000000011,
+    "attention": 32.31722745600002,
+    "attention_norm1": 0.207889856,
+    "attention_norm2": 0.031536640000000074,
+    "ffn_norm": 0.19997046400000004,
+    "ffn_w1_w3": 42.023984768,
+    "gate": 0.08437635199999995,
+    "ingress_cast": 0.0011477120000000017,
+    "k_norm_rope": 0.038181056000000005,
+    "projection_residual": 13.556339968000003,
+    "q_norm_rope": 0.038417504000000005,
+    "qkv": 41.62821155200001,
+    "w2_residual": 19.609544512000003
+  },
+  "representative_layers": [
+    {
+      "evaluation_index": 1,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525668027072512,
+          "end_tick": 1784525668027104256,
+          "seconds": 3.1744e-05
+        },
+        "attention": {
+          "begin_tick": 1784525668178942976,
+          "end_tick": 1784525668300859392,
+          "seconds": 0.121916416
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525668027104256,
+          "end_tick": 1784525668027826176,
+          "seconds": 0.00072192
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525668350350336,
+          "end_tick": 1784525668350464000,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525668350464000,
+          "end_tick": 1784525668351196160,
+          "seconds": 0.00073216
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525668351196160,
+          "end_tick": 1784525668509877248,
+          "seconds": 0.158681088
+        },
+        "gate": {
+          "begin_tick": 1784525668509877248,
+          "end_tick": 1784525668510184448,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525668027068192,
+          "end_tick": 1784525668027072512,
+          "seconds": 4.32e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525668178803712,
+          "end_tick": 1784525668178942976,
+          "seconds": 0.000139264
+        },
+        "projection_residual": {
+          "begin_tick": 1784525668300859392,
+          "end_tick": 1784525668350350336,
+          "seconds": 0.049490944
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525668178664448,
+          "end_tick": 1784525668178803712,
+          "seconds": 0.000139264
+        },
+        "qkv": {
+          "begin_tick": 1784525668027826176,
+          "end_tick": 1784525668178664448,
+          "seconds": 0.150838272
+        },
+        "w2_residual": {
+          "begin_tick": 1784525668510184448,
+          "end_tick": 1784525668590466048,
+          "seconds": 0.0802816
+        }
+      }
+    },
+    {
+      "evaluation_index": 1,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525676365639680,
+          "end_tick": 1784525676365672448,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525676519456768,
+          "end_tick": 1784525676633159680,
+          "seconds": 0.113702912
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525676365672448,
+          "end_tick": 1784525676366435328,
+          "seconds": 0.00076288
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525676682648576,
+          "end_tick": 1784525676682763264,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525676682763264,
+          "end_tick": 1784525676683500544,
+          "seconds": 0.00073728
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525676683500544,
+          "end_tick": 1784525676837567488,
+          "seconds": 0.154066944
+        },
+        "gate": {
+          "begin_tick": 1784525676837567488,
+          "end_tick": 1784525676837874688,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525676365635360,
+          "end_tick": 1784525676365639680,
+          "seconds": 4.32e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525676519307264,
+          "end_tick": 1784525676519456768,
+          "seconds": 0.000149504
+        },
+        "projection_residual": {
+          "begin_tick": 1784525676633159680,
+          "end_tick": 1784525676682648576,
+          "seconds": 0.049488896
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525676519165952,
+          "end_tick": 1784525676519307264,
+          "seconds": 0.000141312
+        },
+        "qkv": {
+          "begin_tick": 1784525676366435328,
+          "end_tick": 1784525676519165952,
+          "seconds": 0.152730624
+        },
+        "w2_residual": {
+          "begin_tick": 1784525676837874688,
+          "end_tick": 1784525676908936192,
+          "seconds": 0.071061504
+        }
+      }
+    },
+    {
+      "evaluation_index": 1,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525684090494976,
+          "end_tick": 1784525684090527744,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525684245180416,
+          "end_tick": 1784525684367656960,
+          "seconds": 0.122476544
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525684090527744,
+          "end_tick": 1784525684091286528,
+          "seconds": 0.000758784
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525684417748992,
+          "end_tick": 1784525684417863680,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525684417863680,
+          "end_tick": 1784525684418597888,
+          "seconds": 0.000734208
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525684418597888,
+          "end_tick": 1784525684573442048,
+          "seconds": 0.15484416
+        },
+        "gate": {
+          "begin_tick": 1784525684573442048,
+          "end_tick": 1784525684573748224,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525684090490912,
+          "end_tick": 1784525684090494976,
+          "seconds": 4.064e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525684245040128,
+          "end_tick": 1784525684245180416,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525684367656960,
+          "end_tick": 1784525684417748992,
+          "seconds": 0.050092032
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525684244898816,
+          "end_tick": 1784525684245040128,
+          "seconds": 0.000141312
+        },
+        "qkv": {
+          "begin_tick": 1784525684091286528,
+          "end_tick": 1784525684244898816,
+          "seconds": 0.153612288
+        },
+        "w2_residual": {
+          "begin_tick": 1784525684573748224,
+          "end_tick": 1784525684650016000,
+          "seconds": 0.076267776
+        }
+      }
+    },
+    {
+      "evaluation_index": 2,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525686043184128,
+          "end_tick": 1784525686043215872,
+          "seconds": 3.1744e-05
+        },
+        "attention": {
+          "begin_tick": 1784525686195488768,
+          "end_tick": 1784525686303688704,
+          "seconds": 0.108199936
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525686043215872,
+          "end_tick": 1784525686043944960,
+          "seconds": 0.000729088
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525686353803264,
+          "end_tick": 1784525686353917952,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525686353917952,
+          "end_tick": 1784525686354652160,
+          "seconds": 0.000734208
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525686354652160,
+          "end_tick": 1784525686509288448,
+          "seconds": 0.154636288
+        },
+        "gate": {
+          "begin_tick": 1784525686509288448,
+          "end_tick": 1784525686509597696,
+          "seconds": 0.000309248
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525686043180192,
+          "end_tick": 1784525686043184128,
+          "seconds": 3.936e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525686195348480,
+          "end_tick": 1784525686195488768,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525686303688704,
+          "end_tick": 1784525686353803264,
+          "seconds": 0.05011456
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525686195208192,
+          "end_tick": 1784525686195348480,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525686043944960,
+          "end_tick": 1784525686195208192,
+          "seconds": 0.151263232
+        },
+        "w2_residual": {
+          "begin_tick": 1784525686509597696,
+          "end_tick": 1784525686580833280,
+          "seconds": 0.071235584
+        }
+      }
+    },
+    {
+      "evaluation_index": 2,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525694345849856,
+          "end_tick": 1784525694345883648,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525694500649984,
+          "end_tick": 1784525694623347712,
+          "seconds": 0.122697728
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525694345883648,
+          "end_tick": 1784525694346653696,
+          "seconds": 0.000770048
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525694674666496,
+          "end_tick": 1784525694674780160,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525694674780160,
+          "end_tick": 1784525694675513344,
+          "seconds": 0.000733184
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525694675513344,
+          "end_tick": 1784525694830390272,
+          "seconds": 0.154876928
+        },
+        "gate": {
+          "begin_tick": 1784525694830390272,
+          "end_tick": 1784525694830697472,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525694345845600,
+          "end_tick": 1784525694345849856,
+          "seconds": 4.256e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525694500509696,
+          "end_tick": 1784525694500649984,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525694623347712,
+          "end_tick": 1784525694674666496,
+          "seconds": 0.051318784
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525694500368384,
+          "end_tick": 1784525694500509696,
+          "seconds": 0.000141312
+        },
+        "qkv": {
+          "begin_tick": 1784525694346653696,
+          "end_tick": 1784525694500368384,
+          "seconds": 0.153714688
+        },
+        "w2_residual": {
+          "begin_tick": 1784525694830697472,
+          "end_tick": 1784525694901972992,
+          "seconds": 0.07127552
+        }
+      }
+    },
+    {
+      "evaluation_index": 2,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525702101246976,
+          "end_tick": 1784525702101280768,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525702254775296,
+          "end_tick": 1784525702377113600,
+          "seconds": 0.122338304
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525702101280768,
+          "end_tick": 1784525702102036480,
+          "seconds": 0.000755712
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525702427046912,
+          "end_tick": 1784525702427159552,
+          "seconds": 0.00011264
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525702427159552,
+          "end_tick": 1784525702427895808,
+          "seconds": 0.000736256
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525702427895808,
+          "end_tick": 1784525702582867968,
+          "seconds": 0.15497216
+        },
+        "gate": {
+          "begin_tick": 1784525702582867968,
+          "end_tick": 1784525702583174144,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525702101243264,
+          "end_tick": 1784525702101246976,
+          "seconds": 3.712e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525702254635008,
+          "end_tick": 1784525702254775296,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525702377113600,
+          "end_tick": 1784525702427046912,
+          "seconds": 0.049933312
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525702254495744,
+          "end_tick": 1784525702254635008,
+          "seconds": 0.000139264
+        },
+        "qkv": {
+          "begin_tick": 1784525702102036480,
+          "end_tick": 1784525702254495744,
+          "seconds": 0.152459264
+        },
+        "w2_residual": {
+          "begin_tick": 1784525702583174144,
+          "end_tick": 1784525702660170752,
+          "seconds": 0.076996608
+        }
+      }
+    },
+    {
+      "evaluation_index": 3,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525703995156480,
+          "end_tick": 1784525703995189248,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525704148170752,
+          "end_tick": 1784525704271342592,
+          "seconds": 0.12317184
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525703995189248,
+          "end_tick": 1784525703995908096,
+          "seconds": 0.000718848
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525704321169408,
+          "end_tick": 1784525704321284096,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525704321284096,
+          "end_tick": 1784525704322017280,
+          "seconds": 0.000733184
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525704322017280,
+          "end_tick": 1784525704476920832,
+          "seconds": 0.154903552
+        },
+        "gate": {
+          "begin_tick": 1784525704476920832,
+          "end_tick": 1784525704477224960,
+          "seconds": 0.000304128
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525703995152352,
+          "end_tick": 1784525703995156480,
+          "seconds": 4.128e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525704148029440,
+          "end_tick": 1784525704148170752,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525704271342592,
+          "end_tick": 1784525704321169408,
+          "seconds": 0.049826816
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525704147889152,
+          "end_tick": 1784525704148029440,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525703995908096,
+          "end_tick": 1784525704147889152,
+          "seconds": 0.151981056
+        },
+        "w2_residual": {
+          "begin_tick": 1784525704477224960,
+          "end_tick": 1784525704548715520,
+          "seconds": 0.07149056
+        }
+      }
+    },
+    {
+      "evaluation_index": 3,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525712290416640,
+          "end_tick": 1784525712290451456,
+          "seconds": 3.4816e-05
+        },
+        "attention": {
+          "begin_tick": 1784525712445136896,
+          "end_tick": 1784525712567767040,
+          "seconds": 0.122630144
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525712290451456,
+          "end_tick": 1784525712291222528,
+          "seconds": 0.000771072
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525712617677824,
+          "end_tick": 1784525712617792512,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525712617792512,
+          "end_tick": 1784525712618530816,
+          "seconds": 0.000738304
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525712618530816,
+          "end_tick": 1784525712774715392,
+          "seconds": 0.156184576
+        },
+        "gate": {
+          "begin_tick": 1784525712774715392,
+          "end_tick": 1784525712775020544,
+          "seconds": 0.000305152
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525712290412576,
+          "end_tick": 1784525712290416640,
+          "seconds": 4.064e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525712444995584,
+          "end_tick": 1784525712445136896,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525712567767040,
+          "end_tick": 1784525712617677824,
+          "seconds": 0.049910784
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525712444855296,
+          "end_tick": 1784525712444995584,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525712291222528,
+          "end_tick": 1784525712444855296,
+          "seconds": 0.153632768
+        },
+        "w2_residual": {
+          "begin_tick": 1784525712775020544,
+          "end_tick": 1784525712847771648,
+          "seconds": 0.072751104
+        }
+      }
+    },
+    {
+      "evaluation_index": 3,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525720055322624,
+          "end_tick": 1784525720055355392,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525720209538048,
+          "end_tick": 1784525720330267648,
+          "seconds": 0.1207296
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525720055355392,
+          "end_tick": 1784525720056114176,
+          "seconds": 0.000758784
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525720380224512,
+          "end_tick": 1784525720380340224,
+          "seconds": 0.000115712
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525720380340224,
+          "end_tick": 1784525720381087744,
+          "seconds": 0.00074752
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525720381087744,
+          "end_tick": 1784525720535961600,
+          "seconds": 0.154873856
+        },
+        "gate": {
+          "begin_tick": 1784525720535961600,
+          "end_tick": 1784525720536266752,
+          "seconds": 0.000305152
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525720055318720,
+          "end_tick": 1784525720055322624,
+          "seconds": 3.904e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525720209397760,
+          "end_tick": 1784525720209538048,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525720330267648,
+          "end_tick": 1784525720380224512,
+          "seconds": 0.049956864
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525720209257472,
+          "end_tick": 1784525720209397760,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525720056114176,
+          "end_tick": 1784525720209257472,
+          "seconds": 0.153143296
+        },
+        "w2_residual": {
+          "begin_tick": 1784525720536266752,
+          "end_tick": 1784525720607958016,
+          "seconds": 0.071691264
+        }
+      }
+    },
+    {
+      "evaluation_index": 4,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525721917505536,
+          "end_tick": 1784525721917537280,
+          "seconds": 3.1744e-05
+        },
+        "attention": {
+          "begin_tick": 1784525722070388736,
+          "end_tick": 1784525722192526336,
+          "seconds": 0.1221376
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525721917537280,
+          "end_tick": 1784525721918264320,
+          "seconds": 0.00072704
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525722242549760,
+          "end_tick": 1784525722242667520,
+          "seconds": 0.00011776
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525722242667520,
+          "end_tick": 1784525722243404800,
+          "seconds": 0.00073728
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525722243404800,
+          "end_tick": 1784525722398299136,
+          "seconds": 0.154894336
+        },
+        "gate": {
+          "begin_tick": 1784525722398299136,
+          "end_tick": 1784525722398604288,
+          "seconds": 0.000305152
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525721917501664,
+          "end_tick": 1784525721917505536,
+          "seconds": 3.872e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525722070247424,
+          "end_tick": 1784525722070388736,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525722192526336,
+          "end_tick": 1784525722242549760,
+          "seconds": 0.050023424
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525722070107136,
+          "end_tick": 1784525722070247424,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525721918264320,
+          "end_tick": 1784525722070107136,
+          "seconds": 0.151842816
+        },
+        "w2_residual": {
+          "begin_tick": 1784525722398604288,
+          "end_tick": 1784525722470173696,
+          "seconds": 0.071569408
+        }
+      }
+    },
+    {
+      "evaluation_index": 4,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525730219965440,
+          "end_tick": 1784525730219999232,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525730375274496,
+          "end_tick": 1784525730498895872,
+          "seconds": 0.123621376
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525730219999232,
+          "end_tick": 1784525730220769280,
+          "seconds": 0.000770048
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525730548780032,
+          "end_tick": 1784525730548895744,
+          "seconds": 0.000115712
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525730548895744,
+          "end_tick": 1784525730549633024,
+          "seconds": 0.00073728
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525730549633024,
+          "end_tick": 1784525730704657408,
+          "seconds": 0.155024384
+        },
+        "gate": {
+          "begin_tick": 1784525730704657408,
+          "end_tick": 1784525730705187840,
+          "seconds": 0.000530432
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525730219960704,
+          "end_tick": 1784525730219965440,
+          "seconds": 4.736e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525730375134208,
+          "end_tick": 1784525730375274496,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525730498895872,
+          "end_tick": 1784525730548780032,
+          "seconds": 0.04988416
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525730374993920,
+          "end_tick": 1784525730375134208,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525730220769280,
+          "end_tick": 1784525730374993920,
+          "seconds": 0.15422464
+        },
+        "w2_residual": {
+          "begin_tick": 1784525730705187840,
+          "end_tick": 1784525730785830912,
+          "seconds": 0.080643072
+        }
+      }
+    },
+    {
+      "evaluation_index": 4,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525738003963904,
+          "end_tick": 1784525738003997696,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525738158359552,
+          "end_tick": 1784525738275993600,
+          "seconds": 0.117634048
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525738003997696,
+          "end_tick": 1784525738004759552,
+          "seconds": 0.000761856
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525738325832704,
+          "end_tick": 1784525738325948416,
+          "seconds": 0.000115712
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525738325948416,
+          "end_tick": 1784525738326693216,
+          "seconds": 0.0007448
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525738326693216,
+          "end_tick": 1784525738481831936,
+          "seconds": 0.15513872
+        },
+        "gate": {
+          "begin_tick": 1784525738481831936,
+          "end_tick": 1784525738482138112,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525738003959392,
+          "end_tick": 1784525738003963904,
+          "seconds": 4.512e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525738158218240,
+          "end_tick": 1784525738158359552,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525738275993600,
+          "end_tick": 1784525738325832704,
+          "seconds": 0.049839104
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525738158077952,
+          "end_tick": 1784525738158218240,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525738004759552,
+          "end_tick": 1784525738158077952,
+          "seconds": 0.1533184
+        },
+        "w2_residual": {
+          "begin_tick": 1784525738482138112,
+          "end_tick": 1784525738553609216,
+          "seconds": 0.071471104
+        }
+      }
+    },
+    {
+      "evaluation_index": 5,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525739877251072,
+          "end_tick": 1784525739877283840,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525740030034944,
+          "end_tick": 1784525740151178240,
+          "seconds": 0.121143296
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525739877283840,
+          "end_tick": 1784525739878007808,
+          "seconds": 0.000723968
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525740201141248,
+          "end_tick": 1784525740201254912,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525740201254912,
+          "end_tick": 1784525740201992192,
+          "seconds": 0.00073728
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525740201992192,
+          "end_tick": 1784525740356994048,
+          "seconds": 0.155001856
+        },
+        "gate": {
+          "begin_tick": 1784525740356994048,
+          "end_tick": 1784525740357301248,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525739877247616,
+          "end_tick": 1784525739877251072,
+          "seconds": 3.456e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525740029893632,
+          "end_tick": 1784525740030034944,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525740151178240,
+          "end_tick": 1784525740201141248,
+          "seconds": 0.049963008
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525740029753344,
+          "end_tick": 1784525740029893632,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525739878007808,
+          "end_tick": 1784525740029753344,
+          "seconds": 0.151745536
+        },
+        "w2_residual": {
+          "begin_tick": 1784525740357301248,
+          "end_tick": 1784525740428977152,
+          "seconds": 0.071675904
+        }
+      }
+    },
+    {
+      "evaluation_index": 5,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525748186599424,
+          "end_tick": 1784525748186634240,
+          "seconds": 3.4816e-05
+        },
+        "attention": {
+          "begin_tick": 1784525748340841472,
+          "end_tick": 1784525748463784960,
+          "seconds": 0.122943488
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525748186634240,
+          "end_tick": 1784525748187400192,
+          "seconds": 0.000765952
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525748514002944,
+          "end_tick": 1784525748514117632,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525748514117632,
+          "end_tick": 1784525748514853888,
+          "seconds": 0.000736256
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525748514853888,
+          "end_tick": 1784525748669886464,
+          "seconds": 0.155032576
+        },
+        "gate": {
+          "begin_tick": 1784525748669886464,
+          "end_tick": 1784525748670192640,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525748186595104,
+          "end_tick": 1784525748186599424,
+          "seconds": 4.32e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525748340700160,
+          "end_tick": 1784525748340841472,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525748463784960,
+          "end_tick": 1784525748514002944,
+          "seconds": 0.050217984
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525748340559872,
+          "end_tick": 1784525748340700160,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525748187400192,
+          "end_tick": 1784525748340559872,
+          "seconds": 0.15315968
+        },
+        "w2_residual": {
+          "begin_tick": 1784525748670192640,
+          "end_tick": 1784525748746637184,
+          "seconds": 0.076444544
+        }
+      }
+    },
+    {
+      "evaluation_index": 5,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525755949099008,
+          "end_tick": 1784525755949131776,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525756103975936,
+          "end_tick": 1784525756224038912,
+          "seconds": 0.120062976
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525755949131776,
+          "end_tick": 1784525755949895680,
+          "seconds": 0.000763904
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525756274112512,
+          "end_tick": 1784525756274227200,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525756274227200,
+          "end_tick": 1784525756274960384,
+          "seconds": 0.000733184
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525756274960384,
+          "end_tick": 1784525756429705216,
+          "seconds": 0.154744832
+        },
+        "gate": {
+          "begin_tick": 1784525756429705216,
+          "end_tick": 1784525756430049280,
+          "seconds": 0.000344064
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525755949095072,
+          "end_tick": 1784525755949099008,
+          "seconds": 3.936e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525756103835744,
+          "end_tick": 1784525756103975936,
+          "seconds": 0.000140192
+        },
+        "projection_residual": {
+          "begin_tick": 1784525756224038912,
+          "end_tick": 1784525756274112512,
+          "seconds": 0.0500736
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525756103691264,
+          "end_tick": 1784525756103835744,
+          "seconds": 0.00014448
+        },
+        "qkv": {
+          "begin_tick": 1784525755949895680,
+          "end_tick": 1784525756103691264,
+          "seconds": 0.153795584
+        },
+        "w2_residual": {
+          "begin_tick": 1784525756430049280,
+          "end_tick": 1784525756501610496,
+          "seconds": 0.071561216
+        }
+      }
+    },
+    {
+      "evaluation_index": 6,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525757808828416,
+          "end_tick": 1784525757808862208,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525757962109952,
+          "end_tick": 1784525758082107392,
+          "seconds": 0.11999744
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525757808862208,
+          "end_tick": 1784525757809587200,
+          "seconds": 0.000724992
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525758132014080,
+          "end_tick": 1784525758132127744,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525758132127744,
+          "end_tick": 1784525758132861952,
+          "seconds": 0.000734208
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525758132861952,
+          "end_tick": 1784525758287661056,
+          "seconds": 0.154799104
+        },
+        "gate": {
+          "begin_tick": 1784525758287661056,
+          "end_tick": 1784525758287967232,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525757808824448,
+          "end_tick": 1784525757808828416,
+          "seconds": 3.968e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525757961968640,
+          "end_tick": 1784525757962109952,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525758082107392,
+          "end_tick": 1784525758132014080,
+          "seconds": 0.049906688
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525757961828352,
+          "end_tick": 1784525757961968640,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525757809587200,
+          "end_tick": 1784525757961828352,
+          "seconds": 0.152241152
+        },
+        "w2_residual": {
+          "begin_tick": 1784525758287967232,
+          "end_tick": 1784525758359208960,
+          "seconds": 0.071241728
+        }
+      }
+    },
+    {
+      "evaluation_index": 6,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525766131534848,
+          "end_tick": 1784525766131568640,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525766286761984,
+          "end_tick": 1784525766408750080,
+          "seconds": 0.121988096
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525766131568640,
+          "end_tick": 1784525766132335616,
+          "seconds": 0.000766976
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525766458594304,
+          "end_tick": 1784525766458710016,
+          "seconds": 0.000115712
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525766458710016,
+          "end_tick": 1784525766459449344,
+          "seconds": 0.000739328
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525766459449344,
+          "end_tick": 1784525766614568960,
+          "seconds": 0.155119616
+        },
+        "gate": {
+          "begin_tick": 1784525766614568960,
+          "end_tick": 1784525766614876160,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525766131530336,
+          "end_tick": 1784525766131534848,
+          "seconds": 4.512e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525766286620672,
+          "end_tick": 1784525766286761984,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525766408750080,
+          "end_tick": 1784525766458594304,
+          "seconds": 0.049844224
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525766286480384,
+          "end_tick": 1784525766286620672,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525766132335616,
+          "end_tick": 1784525766286480384,
+          "seconds": 0.154144768
+        },
+        "w2_residual": {
+          "begin_tick": 1784525766614876160,
+          "end_tick": 1784525766686407424,
+          "seconds": 0.071531264
+        }
+      }
+    },
+    {
+      "evaluation_index": 6,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525773926231040,
+          "end_tick": 1784525773926264832,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525774081090560,
+          "end_tick": 1784525774203042816,
+          "seconds": 0.121952256
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525773926264832,
+          "end_tick": 1784525773927027712,
+          "seconds": 0.00076288
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525774252826624,
+          "end_tick": 1784525774252941312,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525774252941312,
+          "end_tick": 1784525774253677568,
+          "seconds": 0.000736256
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525774253677568,
+          "end_tick": 1784525774408806400,
+          "seconds": 0.155128832
+        },
+        "gate": {
+          "begin_tick": 1784525774408806400,
+          "end_tick": 1784525774409182208,
+          "seconds": 0.000375808
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525773926226816,
+          "end_tick": 1784525773926231040,
+          "seconds": 4.224e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525774080950272,
+          "end_tick": 1784525774081090560,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525774203042816,
+          "end_tick": 1784525774252826624,
+          "seconds": 0.049783808
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525774080808960,
+          "end_tick": 1784525774080950272,
+          "seconds": 0.000141312
+        },
+        "qkv": {
+          "begin_tick": 1784525773927027712,
+          "end_tick": 1784525774080808960,
+          "seconds": 0.153781248
+        },
+        "w2_residual": {
+          "begin_tick": 1784525774409182208,
+          "end_tick": 1784525774480596992,
+          "seconds": 0.071414784
+        }
+      }
+    },
+    {
+      "evaluation_index": 7,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525775783433216,
+          "end_tick": 1784525775783465984,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525775936169984,
+          "end_tick": 1784525776056788992,
+          "seconds": 0.120619008
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525775783465984,
+          "end_tick": 1784525775784205312,
+          "seconds": 0.000739328
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525776106796032,
+          "end_tick": 1784525776106909696,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525776106909696,
+          "end_tick": 1784525776107643904,
+          "seconds": 0.000734208
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525776107643904,
+          "end_tick": 1784525776262360064,
+          "seconds": 0.15471616
+        },
+        "gate": {
+          "begin_tick": 1784525776262360064,
+          "end_tick": 1784525776262666240,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525775783428672,
+          "end_tick": 1784525775783433216,
+          "seconds": 4.544e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525775936029696,
+          "end_tick": 1784525775936169984,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525776056788992,
+          "end_tick": 1784525776106796032,
+          "seconds": 0.05000704
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525775935889408,
+          "end_tick": 1784525775936029696,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525775784205312,
+          "end_tick": 1784525775935889408,
+          "seconds": 0.151684096
+        },
+        "w2_residual": {
+          "begin_tick": 1784525776262666240,
+          "end_tick": 1784525776334003200,
+          "seconds": 0.07133696
+        }
+      }
+    },
+    {
+      "evaluation_index": 7,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525784263140352,
+          "end_tick": 1784525784263174144,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525784425207808,
+          "end_tick": 1784525784532413440,
+          "seconds": 0.107205632
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525784263174144,
+          "end_tick": 1784525784263915520,
+          "seconds": 0.000741376
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525784586008576,
+          "end_tick": 1784525784586124288,
+          "seconds": 0.000115712
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525784586124288,
+          "end_tick": 1784525784586857472,
+          "seconds": 0.000733184
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525784586857472,
+          "end_tick": 1784525784751863808,
+          "seconds": 0.165006336
+        },
+        "gate": {
+          "begin_tick": 1784525784751863808,
+          "end_tick": 1784525784752172032,
+          "seconds": 0.000308224
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525784263135680,
+          "end_tick": 1784525784263140352,
+          "seconds": 4.672e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525784425068544,
+          "end_tick": 1784525784425207808,
+          "seconds": 0.000139264
+        },
+        "projection_residual": {
+          "begin_tick": 1784525784532413440,
+          "end_tick": 1784525784586008576,
+          "seconds": 0.053595136
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525784424930304,
+          "end_tick": 1784525784425068544,
+          "seconds": 0.00013824
+        },
+        "qkv": {
+          "begin_tick": 1784525784263915520,
+          "end_tick": 1784525784424930304,
+          "seconds": 0.161014784
+        },
+        "w2_residual": {
+          "begin_tick": 1784525784752172032,
+          "end_tick": 1784525784833779712,
+          "seconds": 0.08160768
+        }
+      }
+    },
+    {
+      "evaluation_index": 7,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525792084540416,
+          "end_tick": 1784525792084573184,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525792242444288,
+          "end_tick": 1784525792362574848,
+          "seconds": 0.12013056
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525792084573184,
+          "end_tick": 1784525792085336064,
+          "seconds": 0.00076288
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525792412426240,
+          "end_tick": 1784525792412540928,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525792412540928,
+          "end_tick": 1784525792413277184,
+          "seconds": 0.000736256
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525792413277184,
+          "end_tick": 1784525792568199168,
+          "seconds": 0.154921984
+        },
+        "gate": {
+          "begin_tick": 1784525792568199168,
+          "end_tick": 1784525792568508416,
+          "seconds": 0.000309248
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525792084535584,
+          "end_tick": 1784525792084540416,
+          "seconds": 4.832e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525792242293760,
+          "end_tick": 1784525792242444288,
+          "seconds": 0.000150528
+        },
+        "projection_residual": {
+          "begin_tick": 1784525792362574848,
+          "end_tick": 1784525792412426240,
+          "seconds": 0.049851392
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525792242144256,
+          "end_tick": 1784525792242293760,
+          "seconds": 0.000149504
+        },
+        "qkv": {
+          "begin_tick": 1784525792085336064,
+          "end_tick": 1784525792242144256,
+          "seconds": 0.156808192
+        },
+        "w2_residual": {
+          "begin_tick": 1784525792568508416,
+          "end_tick": 1784525792640101376,
+          "seconds": 0.07159296
+        }
+      }
+    },
+    {
+      "evaluation_index": 8,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525793998233600,
+          "end_tick": 1784525793998265344,
+          "seconds": 3.1744e-05
+        },
+        "attention": {
+          "begin_tick": 1784525794151271424,
+          "end_tick": 1784525794271212544,
+          "seconds": 0.11994112
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525793998265344,
+          "end_tick": 1784525793998993408,
+          "seconds": 0.000728064
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525794321127424,
+          "end_tick": 1784525794321242112,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525794321242112,
+          "end_tick": 1784525794321976320,
+          "seconds": 0.000734208
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525794321976320,
+          "end_tick": 1784525794476696576,
+          "seconds": 0.154720256
+        },
+        "gate": {
+          "begin_tick": 1784525794476696576,
+          "end_tick": 1784525794477000704,
+          "seconds": 0.000304128
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525793998229824,
+          "end_tick": 1784525793998233600,
+          "seconds": 3.776e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525794151131136,
+          "end_tick": 1784525794151271424,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525794271212544,
+          "end_tick": 1784525794321127424,
+          "seconds": 0.04991488
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525794150989824,
+          "end_tick": 1784525794151131136,
+          "seconds": 0.000141312
+        },
+        "qkv": {
+          "begin_tick": 1784525793998993408,
+          "end_tick": 1784525794150989824,
+          "seconds": 0.151996416
+        },
+        "w2_residual": {
+          "begin_tick": 1784525794477000704,
+          "end_tick": 1784525794548278272,
+          "seconds": 0.071277568
+        }
+      }
+    },
+    {
+      "evaluation_index": 8,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525802287944704,
+          "end_tick": 1784525802287978496,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525802442418176,
+          "end_tick": 1784525802562627584,
+          "seconds": 0.120209408
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525802287978496,
+          "end_tick": 1784525802288740352,
+          "seconds": 0.000761856
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525802612603904,
+          "end_tick": 1784525802612718592,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525802612718592,
+          "end_tick": 1784525802613456896,
+          "seconds": 0.000738304
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525802613456896,
+          "end_tick": 1784525802768899072,
+          "seconds": 0.155442176
+        },
+        "gate": {
+          "begin_tick": 1784525802768899072,
+          "end_tick": 1784525802769206272,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525802287940864,
+          "end_tick": 1784525802287944704,
+          "seconds": 3.84e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525802442277888,
+          "end_tick": 1784525802442418176,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525802562627584,
+          "end_tick": 1784525802612603904,
+          "seconds": 0.04997632
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525802442136576,
+          "end_tick": 1784525802442277888,
+          "seconds": 0.000141312
+        },
+        "qkv": {
+          "begin_tick": 1784525802288740352,
+          "end_tick": 1784525802442136576,
+          "seconds": 0.153396224
+        },
+        "w2_residual": {
+          "begin_tick": 1784525802769206272,
+          "end_tick": 1784525802845022208,
+          "seconds": 0.075815936
+        }
+      }
+    },
+    {
+      "evaluation_index": 8,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525810055101440,
+          "end_tick": 1784525810055137280,
+          "seconds": 3.584e-05
+        },
+        "attention": {
+          "begin_tick": 1784525810210197504,
+          "end_tick": 1784525810326849536,
+          "seconds": 0.116652032
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525810055137280,
+          "end_tick": 1784525810055904256,
+          "seconds": 0.000766976
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525810376840192,
+          "end_tick": 1784525810376955904,
+          "seconds": 0.000115712
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525810376955904,
+          "end_tick": 1784525810377689088,
+          "seconds": 0.000733184
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525810377689088,
+          "end_tick": 1784525810532366336,
+          "seconds": 0.154677248
+        },
+        "gate": {
+          "begin_tick": 1784525810532366336,
+          "end_tick": 1784525810532672512,
+          "seconds": 0.000306176
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525810055097664,
+          "end_tick": 1784525810055101440,
+          "seconds": 3.776e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525810210056192,
+          "end_tick": 1784525810210197504,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525810326849536,
+          "end_tick": 1784525810376840192,
+          "seconds": 0.049990656
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525810209915904,
+          "end_tick": 1784525810210056192,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525810055904256,
+          "end_tick": 1784525810209915904,
+          "seconds": 0.154011648
+        },
+        "w2_residual": {
+          "begin_tick": 1784525810532672512,
+          "end_tick": 1784525810604250112,
+          "seconds": 0.0715776
+        }
+      }
+    },
+    {
+      "evaluation_index": 9,
+      "layer": 0,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525811966588928,
+          "end_tick": 1784525811966621696,
+          "seconds": 3.2768e-05
+        },
+        "attention": {
+          "begin_tick": 1784525812119117184,
+          "end_tick": 1784525812240358400,
+          "seconds": 0.121241216
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525811966621696,
+          "end_tick": 1784525811967345664,
+          "seconds": 0.000723968
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525812290265088,
+          "end_tick": 1784525812290379776,
+          "seconds": 0.000114688
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525812290379776,
+          "end_tick": 1784525812291120128,
+          "seconds": 0.000740352
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525812291120128,
+          "end_tick": 1784525812446034944,
+          "seconds": 0.154914816
+        },
+        "gate": {
+          "begin_tick": 1784525812446034944,
+          "end_tick": 1784525812446343168,
+          "seconds": 0.000308224
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525811966585440,
+          "end_tick": 1784525811966588928,
+          "seconds": 3.488e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525812118975488,
+          "end_tick": 1784525812119117184,
+          "seconds": 0.000141696
+        },
+        "projection_residual": {
+          "begin_tick": 1784525812240358400,
+          "end_tick": 1784525812290265088,
+          "seconds": 0.049906688
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525812118835200,
+          "end_tick": 1784525812118975488,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525811967345664,
+          "end_tick": 1784525812118835200,
+          "seconds": 0.151489536
+        },
+        "w2_residual": {
+          "begin_tick": 1784525812446343168,
+          "end_tick": 1784525812517948416,
+          "seconds": 0.071605248
+        }
+      }
+    },
+    {
+      "evaluation_index": 9,
+      "layer": 15,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525820280382464,
+          "end_tick": 1784525820280416256,
+          "seconds": 3.3792e-05
+        },
+        "attention": {
+          "begin_tick": 1784525820435225600,
+          "end_tick": 1784525820557574144,
+          "seconds": 0.122348544
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525820280416256,
+          "end_tick": 1784525820281184256,
+          "seconds": 0.000768
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525820607638528,
+          "end_tick": 1784525820607752192,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525820607752192,
+          "end_tick": 1784525820608489472,
+          "seconds": 0.00073728
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525820608489472,
+          "end_tick": 1784525820763348992,
+          "seconds": 0.15485952
+        },
+        "gate": {
+          "begin_tick": 1784525820763348992,
+          "end_tick": 1784525820763707392,
+          "seconds": 0.0003584
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525820280378176,
+          "end_tick": 1784525820280382464,
+          "seconds": 4.288e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525820435084288,
+          "end_tick": 1784525820435225600,
+          "seconds": 0.000141312
+        },
+        "projection_residual": {
+          "begin_tick": 1784525820557574144,
+          "end_tick": 1784525820607638528,
+          "seconds": 0.050064384
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525820434944000,
+          "end_tick": 1784525820435084288,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525820281184256,
+          "end_tick": 1784525820434944000,
+          "seconds": 0.153759744
+        },
+        "w2_residual": {
+          "begin_tick": 1784525820763707392,
+          "end_tick": 1784525820843580704,
+          "seconds": 0.079873312
+        }
+      }
+    },
+    {
+      "evaluation_index": 9,
+      "layer": 29,
+      "stages": {
+        "adaln_modulation": {
+          "begin_tick": 1784525828068780032,
+          "end_tick": 1784525828068814848,
+          "seconds": 3.4816e-05
+        },
+        "attention": {
+          "begin_tick": 1784525828223542272,
+          "end_tick": 1784525828341486592,
+          "seconds": 0.11794432
+        },
+        "attention_norm1": {
+          "begin_tick": 1784525828068814848,
+          "end_tick": 1784525828069588992,
+          "seconds": 0.000774144
+        },
+        "attention_norm2": {
+          "begin_tick": 1784525828391461888,
+          "end_tick": 1784525828391575552,
+          "seconds": 0.000113664
+        },
+        "ffn_norm": {
+          "begin_tick": 1784525828391575552,
+          "end_tick": 1784525828392308736,
+          "seconds": 0.000733184
+        },
+        "ffn_w1_w3": {
+          "begin_tick": 1784525828392308736,
+          "end_tick": 1784525828547119104,
+          "seconds": 0.154810368
+        },
+        "gate": {
+          "begin_tick": 1784525828547119104,
+          "end_tick": 1784525828547426304,
+          "seconds": 0.0003072
+        },
+        "ingress_cast": {
+          "begin_tick": 1784525828068776128,
+          "end_tick": 1784525828068780032,
+          "seconds": 3.904e-06
+        },
+        "k_norm_rope": {
+          "begin_tick": 1784525828223401984,
+          "end_tick": 1784525828223542272,
+          "seconds": 0.000140288
+        },
+        "projection_residual": {
+          "begin_tick": 1784525828341486592,
+          "end_tick": 1784525828391461888,
+          "seconds": 0.049975296
+        },
+        "q_norm_rope": {
+          "begin_tick": 1784525828223261696,
+          "end_tick": 1784525828223401984,
+          "seconds": 0.000140288
+        },
+        "qkv": {
+          "begin_tick": 1784525828069588992,
+          "end_tick": 1784525828223261696,
+          "seconds": 0.153672704
+        },
+        "w2_residual": {
+          "begin_tick": 1784525828547426304,
+          "end_tick": 1784525828619134976,
+          "seconds": 0.071708672
+        }
+      }
+    }
+  ],
+  "schema": "prometheus.dvt2.m3.v1"
+}

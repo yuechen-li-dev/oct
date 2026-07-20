@@ -1,0 +1,2103 @@
+{
+  "conclusion": "Inter-layer idle is sub-millisecond and cannot explain the image wall time.",
+  "pairs": [
+    {
+      "controller_residual_seconds": 0.000275392,
+      "evaluation_index": 1,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000437824,
+      "joint_copy_plus_next_ingress_seconds": 0.000162432,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.000314624,
+      "evaluation_index": 1,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000473344,
+      "joint_copy_plus_next_ingress_seconds": 0.00015872,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.000383552,
+      "evaluation_index": 1,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000545792,
+      "joint_copy_plus_next_ingress_seconds": 0.00016224000000000002,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.00040511999999999997,
+      "evaluation_index": 1,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.000570048,
+      "joint_copy_plus_next_ingress_seconds": 0.000164928,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.0003830400000000001,
+      "evaluation_index": 1,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.0005464,
+      "joint_copy_plus_next_ingress_seconds": 0.00016335999999999998,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.00036320000000000005,
+      "evaluation_index": 1,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000528448,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.00042332799999999994,
+      "evaluation_index": 1,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000588384,
+      "joint_copy_plus_next_ingress_seconds": 0.000165056,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.00040716799999999996,
+      "evaluation_index": 1,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000572608,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.000376,
+      "evaluation_index": 1,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000541856,
+      "joint_copy_plus_next_ingress_seconds": 0.00016585599999999998,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.000311904,
+      "evaluation_index": 1,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000475936,
+      "joint_copy_plus_next_ingress_seconds": 0.000164032,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00057776,
+      "evaluation_index": 1,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000743552,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.000693088,
+      "evaluation_index": 1,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000859424,
+      "joint_copy_plus_next_ingress_seconds": 0.000166336,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.00037526400000000004,
+      "evaluation_index": 1,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.00054016,
+      "joint_copy_plus_next_ingress_seconds": 0.000164896,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.000360416,
+      "evaluation_index": 1,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.00052464,
+      "joint_copy_plus_next_ingress_seconds": 0.000164224,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.00038467199999999997,
+      "evaluation_index": 1,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000549664,
+      "joint_copy_plus_next_ingress_seconds": 0.00016499199999999998,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.000379232,
+      "evaluation_index": 1,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000543072,
+      "joint_copy_plus_next_ingress_seconds": 0.00016384,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.000414912,
+      "evaluation_index": 1,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000580384,
+      "joint_copy_plus_next_ingress_seconds": 0.000165472,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.00039056,
+      "evaluation_index": 1,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000556,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.0003328,
+      "evaluation_index": 1,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000496832,
+      "joint_copy_plus_next_ingress_seconds": 0.000164032,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.0003848,
+      "evaluation_index": 1,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000548736,
+      "joint_copy_plus_next_ingress_seconds": 0.000163936,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.0003104,
+      "evaluation_index": 1,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.000475328,
+      "joint_copy_plus_next_ingress_seconds": 0.000164928,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.00060432,
+      "evaluation_index": 1,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000769632,
+      "joint_copy_plus_next_ingress_seconds": 0.00016531199999999998,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.000329312,
+      "evaluation_index": 1,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000494496,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000383168,
+      "evaluation_index": 1,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000548448,
+      "joint_copy_plus_next_ingress_seconds": 0.00016528000000000002,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.000492224,
+      "evaluation_index": 1,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000676704,
+      "joint_copy_plus_next_ingress_seconds": 0.00018448,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.000358432,
+      "evaluation_index": 1,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.00052368,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.000528,
+      "evaluation_index": 1,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000693056,
+      "joint_copy_plus_next_ingress_seconds": 0.000165056,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.000421728,
+      "evaluation_index": 1,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.000586624,
+      "joint_copy_plus_next_ingress_seconds": 0.000164896,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.000347168,
+      "evaluation_index": 1,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000513056,
+      "joint_copy_plus_next_ingress_seconds": 0.000165888,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.000522496,
+      "evaluation_index": 2,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000687776,
+      "joint_copy_plus_next_ingress_seconds": 0.00016528,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.000447008,
+      "evaluation_index": 2,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000612576,
+      "joint_copy_plus_next_ingress_seconds": 0.000165568,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.000389184,
+      "evaluation_index": 2,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.00055488,
+      "joint_copy_plus_next_ingress_seconds": 0.000165696,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.000322048,
+      "evaluation_index": 2,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.000487232,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.00038575999999999997,
+      "evaluation_index": 2,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000552096,
+      "joint_copy_plus_next_ingress_seconds": 0.000166336,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.00043350400000000003,
+      "evaluation_index": 2,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000598752,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.000345664,
+      "evaluation_index": 2,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000509824,
+      "joint_copy_plus_next_ingress_seconds": 0.00016416,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.00040943999999999996,
+      "evaluation_index": 2,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000575488,
+      "joint_copy_plus_next_ingress_seconds": 0.00016604800000000002,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.00033759999999999997,
+      "evaluation_index": 2,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000502944,
+      "joint_copy_plus_next_ingress_seconds": 0.000165344,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.000671264,
+      "evaluation_index": 2,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000836576,
+      "joint_copy_plus_next_ingress_seconds": 0.00016531199999999998,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.000712384,
+      "evaluation_index": 2,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000878016,
+      "joint_copy_plus_next_ingress_seconds": 0.000165632,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.00035904,
+      "evaluation_index": 2,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000545024,
+      "joint_copy_plus_next_ingress_seconds": 0.000185984,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.00037824,
+      "evaluation_index": 2,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000543424,
+      "joint_copy_plus_next_ingress_seconds": 0.00016518400000000002,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.0005145600000000001,
+      "evaluation_index": 2,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.000680096,
+      "joint_copy_plus_next_ingress_seconds": 0.00016553599999999998,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.000379616,
+      "evaluation_index": 2,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.00056304,
+      "joint_copy_plus_next_ingress_seconds": 0.000183424,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.000381376,
+      "evaluation_index": 2,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000547424,
+      "joint_copy_plus_next_ingress_seconds": 0.000166048,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.0007329280000000001,
+      "evaluation_index": 2,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000899232,
+      "joint_copy_plus_next_ingress_seconds": 0.00016630399999999999,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.00041132800000000003,
+      "evaluation_index": 2,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000575616,
+      "joint_copy_plus_next_ingress_seconds": 0.000164288,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.000566624,
+      "evaluation_index": 2,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000731776,
+      "joint_copy_plus_next_ingress_seconds": 0.000165152,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.000403584,
+      "evaluation_index": 2,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000569536,
+      "joint_copy_plus_next_ingress_seconds": 0.000165952,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.00033043199999999997,
+      "evaluation_index": 2,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.000493792,
+      "joint_copy_plus_next_ingress_seconds": 0.00016336,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.000355968,
+      "evaluation_index": 2,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000521024,
+      "joint_copy_plus_next_ingress_seconds": 0.000165056,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.000522944,
+      "evaluation_index": 2,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000688096,
+      "joint_copy_plus_next_ingress_seconds": 0.000165152,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.00049616,
+      "evaluation_index": 2,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000679392,
+      "joint_copy_plus_next_ingress_seconds": 0.000183232,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.000319232,
+      "evaluation_index": 2,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000485216,
+      "joint_copy_plus_next_ingress_seconds": 0.000165984,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.000528544,
+      "evaluation_index": 2,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.00069424,
+      "joint_copy_plus_next_ingress_seconds": 0.000165696,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.00038995200000000005,
+      "evaluation_index": 2,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000555744,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00045017600000000005,
+      "evaluation_index": 2,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.00061552,
+      "joint_copy_plus_next_ingress_seconds": 0.000165344,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.00037232000000000004,
+      "evaluation_index": 2,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000537984,
+      "joint_copy_plus_next_ingress_seconds": 0.000165664,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.00038374400000000004,
+      "evaluation_index": 3,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.00054768,
+      "joint_copy_plus_next_ingress_seconds": 0.000163936,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.00040201600000000005,
+      "evaluation_index": 3,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.0005672,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.00044,
+      "evaluation_index": 3,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000606464,
+      "joint_copy_plus_next_ingress_seconds": 0.000166464,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.000690272,
+      "evaluation_index": 3,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.000855456,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.00043990399999999997,
+      "evaluation_index": 3,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000605504,
+      "joint_copy_plus_next_ingress_seconds": 0.00016560000000000001,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.00035859199999999997,
+      "evaluation_index": 3,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000542944,
+      "joint_copy_plus_next_ingress_seconds": 0.00018435199999999999,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.00031475199999999996,
+      "evaluation_index": 3,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000480928,
+      "joint_copy_plus_next_ingress_seconds": 0.000166176,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.00035264000000000004,
+      "evaluation_index": 3,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000517568,
+      "joint_copy_plus_next_ingress_seconds": 0.000164928,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.00041318400000000003,
+      "evaluation_index": 3,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.00057808,
+      "joint_copy_plus_next_ingress_seconds": 0.000164896,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.000396832,
+      "evaluation_index": 3,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000562112,
+      "joint_copy_plus_next_ingress_seconds": 0.00016528000000000002,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00040780799999999996,
+      "evaluation_index": 3,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000573056,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.000412448,
+      "evaluation_index": 3,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000577376,
+      "joint_copy_plus_next_ingress_seconds": 0.000164928,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.000382656,
+      "evaluation_index": 3,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000548096,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.0003992,
+      "evaluation_index": 3,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.000564416,
+      "joint_copy_plus_next_ingress_seconds": 0.00016521599999999998,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.00037897600000000005,
+      "evaluation_index": 3,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000561184,
+      "joint_copy_plus_next_ingress_seconds": 0.000182208,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.000424992,
+      "evaluation_index": 3,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000592128,
+      "joint_copy_plus_next_ingress_seconds": 0.00016713600000000002,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.00033974400000000006,
+      "evaluation_index": 3,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000503872,
+      "joint_copy_plus_next_ingress_seconds": 0.00016412799999999998,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.00041913599999999997,
+      "evaluation_index": 3,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000584384,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.00037340800000000004,
+      "evaluation_index": 3,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000538784,
+      "joint_copy_plus_next_ingress_seconds": 0.000165376,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.000499008,
+      "evaluation_index": 3,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000664288,
+      "joint_copy_plus_next_ingress_seconds": 0.00016528000000000002,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.00040639999999999996,
+      "evaluation_index": 3,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.00057296,
+      "joint_copy_plus_next_ingress_seconds": 0.00016656,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.0006020159999999999,
+      "evaluation_index": 3,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.00076704,
+      "joint_copy_plus_next_ingress_seconds": 0.000165024,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.000615904,
+      "evaluation_index": 3,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.00078096,
+      "joint_copy_plus_next_ingress_seconds": 0.000165056,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.00035452799999999995,
+      "evaluation_index": 3,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000520352,
+      "joint_copy_plus_next_ingress_seconds": 0.00016582400000000002,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.00045891199999999996,
+      "evaluation_index": 3,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000641536,
+      "joint_copy_plus_next_ingress_seconds": 0.000182624,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.0006885439999999999,
+      "evaluation_index": 3,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.00085392,
+      "joint_copy_plus_next_ingress_seconds": 0.000165376,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.000554528,
+      "evaluation_index": 3,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000720256,
+      "joint_copy_plus_next_ingress_seconds": 0.000165728,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00040384,
+      "evaluation_index": 3,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.000584096,
+      "joint_copy_plus_next_ingress_seconds": 0.000180256,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.00032108799999999997,
+      "evaluation_index": 3,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000486592,
+      "joint_copy_plus_next_ingress_seconds": 0.000165504,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.00082896,
+      "evaluation_index": 4,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.00101136,
+      "joint_copy_plus_next_ingress_seconds": 0.0001824,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.00044246399999999994,
+      "evaluation_index": 4,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000608864,
+      "joint_copy_plus_next_ingress_seconds": 0.0001664,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.00036390399999999996,
+      "evaluation_index": 4,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000529792,
+      "joint_copy_plus_next_ingress_seconds": 0.000165888,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.00039561600000000006,
+      "evaluation_index": 4,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.00057824,
+      "joint_copy_plus_next_ingress_seconds": 0.000182624,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.00039248,
+      "evaluation_index": 4,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000557504,
+      "joint_copy_plus_next_ingress_seconds": 0.000165024,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.000378368,
+      "evaluation_index": 4,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000543616,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.00050464,
+      "evaluation_index": 4,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000670208,
+      "joint_copy_plus_next_ingress_seconds": 0.000165568,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.00039840000000000003,
+      "evaluation_index": 4,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000563456,
+      "joint_copy_plus_next_ingress_seconds": 0.000165056,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.00041289600000000005,
+      "evaluation_index": 4,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000577984,
+      "joint_copy_plus_next_ingress_seconds": 0.000165088,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.000392896,
+      "evaluation_index": 4,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000558048,
+      "joint_copy_plus_next_ingress_seconds": 0.000165152,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00032697600000000004,
+      "evaluation_index": 4,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.00049328,
+      "joint_copy_plus_next_ingress_seconds": 0.00016630399999999999,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.000403264,
+      "evaluation_index": 4,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000568544,
+      "joint_copy_plus_next_ingress_seconds": 0.00016528000000000002,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.000364512,
+      "evaluation_index": 4,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000529472,
+      "joint_copy_plus_next_ingress_seconds": 0.00016496,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.00035632000000000003,
+      "evaluation_index": 4,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.000521216,
+      "joint_copy_plus_next_ingress_seconds": 0.000164896,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.00040624,
+      "evaluation_index": 4,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000571776,
+      "joint_copy_plus_next_ingress_seconds": 0.00016553599999999998,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.00034672,
+      "evaluation_index": 4,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000509984,
+      "joint_copy_plus_next_ingress_seconds": 0.000163264,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.000358976,
+      "evaluation_index": 4,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000524416,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.0003764160000000001,
+      "evaluation_index": 4,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000560192,
+      "joint_copy_plus_next_ingress_seconds": 0.000183776,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.000415424,
+      "evaluation_index": 4,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000580256,
+      "joint_copy_plus_next_ingress_seconds": 0.000164832,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.00059136,
+      "evaluation_index": 4,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000757536,
+      "joint_copy_plus_next_ingress_seconds": 0.000166176,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.00063472,
+      "evaluation_index": 4,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.00080016,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.0003928,
+      "evaluation_index": 4,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000557696,
+      "joint_copy_plus_next_ingress_seconds": 0.000164896,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.00041068800000000004,
+      "evaluation_index": 4,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000576608,
+      "joint_copy_plus_next_ingress_seconds": 0.00016592,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000753504,
+      "evaluation_index": 4,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000918688,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.000337856,
+      "evaluation_index": 4,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000501376,
+      "joint_copy_plus_next_ingress_seconds": 0.00016352,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.000408512,
+      "evaluation_index": 4,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.000574016,
+      "joint_copy_plus_next_ingress_seconds": 0.000165504,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.0003264,
+      "evaluation_index": 4,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000491488,
+      "joint_copy_plus_next_ingress_seconds": 0.000165088,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00033907200000000005,
+      "evaluation_index": 4,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.000506336,
+      "joint_copy_plus_next_ingress_seconds": 0.000167264,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.00030976,
+      "evaluation_index": 4,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000475744,
+      "joint_copy_plus_next_ingress_seconds": 0.000165984,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.00033568000000000004,
+      "evaluation_index": 5,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000519744,
+      "joint_copy_plus_next_ingress_seconds": 0.000184064,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.000490144,
+      "evaluation_index": 5,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000655488,
+      "joint_copy_plus_next_ingress_seconds": 0.000165344,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.000394592,
+      "evaluation_index": 5,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000561056,
+      "joint_copy_plus_next_ingress_seconds": 0.000166464,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.00037209599999999993,
+      "evaluation_index": 5,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.0005376,
+      "joint_copy_plus_next_ingress_seconds": 0.000165504,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.00043446399999999997,
+      "evaluation_index": 5,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000617664,
+      "joint_copy_plus_next_ingress_seconds": 0.0001832,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.000326848,
+      "evaluation_index": 5,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000492928,
+      "joint_copy_plus_next_ingress_seconds": 0.00016608,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.000458656,
+      "evaluation_index": 5,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000622624,
+      "joint_copy_plus_next_ingress_seconds": 0.000163968,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.000435424,
+      "evaluation_index": 5,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000620192,
+      "joint_copy_plus_next_ingress_seconds": 0.000184768,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.000347424,
+      "evaluation_index": 5,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.00051264,
+      "joint_copy_plus_next_ingress_seconds": 0.00016521599999999998,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.00036399999999999996,
+      "evaluation_index": 5,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000530304,
+      "joint_copy_plus_next_ingress_seconds": 0.000166304,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00045689600000000004,
+      "evaluation_index": 5,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000622144,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.00044463999999999994,
+      "evaluation_index": 5,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000610784,
+      "joint_copy_plus_next_ingress_seconds": 0.00016614400000000001,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.00039958400000000003,
+      "evaluation_index": 5,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000565568,
+      "joint_copy_plus_next_ingress_seconds": 0.000165984,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.00035443199999999996,
+      "evaluation_index": 5,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.000519264,
+      "joint_copy_plus_next_ingress_seconds": 0.000164832,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.00050384,
+      "evaluation_index": 5,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000687904,
+      "joint_copy_plus_next_ingress_seconds": 0.000184064,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.000420864,
+      "evaluation_index": 5,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000584896,
+      "joint_copy_plus_next_ingress_seconds": 0.000164032,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.000428192,
+      "evaluation_index": 5,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000592288,
+      "joint_copy_plus_next_ingress_seconds": 0.000164096,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.000451552,
+      "evaluation_index": 5,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.00061776,
+      "joint_copy_plus_next_ingress_seconds": 0.000166208,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.000362208,
+      "evaluation_index": 5,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000528032,
+      "joint_copy_plus_next_ingress_seconds": 0.00016582400000000002,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.000337056,
+      "evaluation_index": 5,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.00050336,
+      "joint_copy_plus_next_ingress_seconds": 0.00016630399999999999,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.00036422399999999996,
+      "evaluation_index": 5,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.00054512,
+      "joint_copy_plus_next_ingress_seconds": 0.000180896,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.00041951999999999994,
+      "evaluation_index": 5,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000584928,
+      "joint_copy_plus_next_ingress_seconds": 0.000165408,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.00041187200000000003,
+      "evaluation_index": 5,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000576992,
+      "joint_copy_plus_next_ingress_seconds": 0.00016512,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000320672,
+      "evaluation_index": 5,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000484736,
+      "joint_copy_plus_next_ingress_seconds": 0.000164064,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.00037584,
+      "evaluation_index": 5,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000541632,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.00043788800000000005,
+      "evaluation_index": 5,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.000622144,
+      "joint_copy_plus_next_ingress_seconds": 0.000184256,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.000374048,
+      "evaluation_index": 5,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.00054,
+      "joint_copy_plus_next_ingress_seconds": 0.000165952,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.000379392,
+      "evaluation_index": 5,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.00054512,
+      "joint_copy_plus_next_ingress_seconds": 0.000165728,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.00039651199999999996,
+      "evaluation_index": 5,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000562336,
+      "joint_copy_plus_next_ingress_seconds": 0.00016582400000000002,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.000753696,
+      "evaluation_index": 6,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000936704,
+      "joint_copy_plus_next_ingress_seconds": 0.000183008,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.0007704000000000001,
+      "evaluation_index": 6,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000935488,
+      "joint_copy_plus_next_ingress_seconds": 0.000165088,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.00032665600000000004,
+      "evaluation_index": 6,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000491712,
+      "joint_copy_plus_next_ingress_seconds": 0.000165056,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.000425888,
+      "evaluation_index": 6,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.00059024,
+      "joint_copy_plus_next_ingress_seconds": 0.000164352,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.000357184,
+      "evaluation_index": 6,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000522144,
+      "joint_copy_plus_next_ingress_seconds": 0.00016496,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.000351552,
+      "evaluation_index": 6,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.00051744,
+      "joint_copy_plus_next_ingress_seconds": 0.000165888,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.00039478399999999997,
+      "evaluation_index": 6,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000560608,
+      "joint_copy_plus_next_ingress_seconds": 0.00016582400000000002,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.000373248,
+      "evaluation_index": 6,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000538272,
+      "joint_copy_plus_next_ingress_seconds": 0.000165024,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.00032592,
+      "evaluation_index": 6,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000489312,
+      "joint_copy_plus_next_ingress_seconds": 0.000163392,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.000405728,
+      "evaluation_index": 6,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000588064,
+      "joint_copy_plus_next_ingress_seconds": 0.000182336,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00038592,
+      "evaluation_index": 6,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000551264,
+      "joint_copy_plus_next_ingress_seconds": 0.000165344,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.000407712,
+      "evaluation_index": 6,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000574816,
+      "joint_copy_plus_next_ingress_seconds": 0.000167104,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.000710112,
+      "evaluation_index": 6,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000875296,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.0003496959999999999,
+      "evaluation_index": 6,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.00051456,
+      "joint_copy_plus_next_ingress_seconds": 0.000164864,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.000356864,
+      "evaluation_index": 6,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000538208,
+      "joint_copy_plus_next_ingress_seconds": 0.000181344,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.00036432,
+      "evaluation_index": 6,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000557664,
+      "joint_copy_plus_next_ingress_seconds": 0.000193344,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.000587296,
+      "evaluation_index": 6,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.00077168,
+      "joint_copy_plus_next_ingress_seconds": 0.000184384,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.000331392,
+      "evaluation_index": 6,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000526112,
+      "joint_copy_plus_next_ingress_seconds": 0.00019472,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.000336384,
+      "evaluation_index": 6,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000500736,
+      "joint_copy_plus_next_ingress_seconds": 0.000164352,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.000433728,
+      "evaluation_index": 6,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000599168,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.000371008,
+      "evaluation_index": 6,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.000535936,
+      "joint_copy_plus_next_ingress_seconds": 0.000164928,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.000343488,
+      "evaluation_index": 6,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000509664,
+      "joint_copy_plus_next_ingress_seconds": 0.000166176,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.00040585599999999996,
+      "evaluation_index": 6,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000572608,
+      "joint_copy_plus_next_ingress_seconds": 0.000166752,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000473984,
+      "evaluation_index": 6,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000641408,
+      "joint_copy_plus_next_ingress_seconds": 0.000167424,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.00039958400000000003,
+      "evaluation_index": 6,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000565568,
+      "joint_copy_plus_next_ingress_seconds": 0.000165984,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.000599744,
+      "evaluation_index": 6,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.000765344,
+      "joint_copy_plus_next_ingress_seconds": 0.00016560000000000001,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.000340384,
+      "evaluation_index": 6,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000523424,
+      "joint_copy_plus_next_ingress_seconds": 0.00018304,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00041679999999999994,
+      "evaluation_index": 6,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.000582752,
+      "joint_copy_plus_next_ingress_seconds": 0.000165952,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.000356544,
+      "evaluation_index": 6,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000523136,
+      "joint_copy_plus_next_ingress_seconds": 0.00016659200000000002,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.0003472,
+      "evaluation_index": 7,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000512928,
+      "joint_copy_plus_next_ingress_seconds": 0.000165728,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.000474624,
+      "evaluation_index": 7,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000640128,
+      "joint_copy_plus_next_ingress_seconds": 0.00016550400000000002,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.00036672000000000007,
+      "evaluation_index": 7,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000532352,
+      "joint_copy_plus_next_ingress_seconds": 0.000165632,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.00038041599999999996,
+      "evaluation_index": 7,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.000546016,
+      "joint_copy_plus_next_ingress_seconds": 0.00016560000000000001,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.00033817600000000004,
+      "evaluation_index": 7,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000503968,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.000489056,
+      "evaluation_index": 7,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000655104,
+      "joint_copy_plus_next_ingress_seconds": 0.000166048,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.000358144,
+      "evaluation_index": 7,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000522208,
+      "joint_copy_plus_next_ingress_seconds": 0.000164064,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.000455296,
+      "evaluation_index": 7,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000620704,
+      "joint_copy_plus_next_ingress_seconds": 0.000165408,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.000287872,
+      "evaluation_index": 7,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000451296,
+      "joint_copy_plus_next_ingress_seconds": 0.000163424,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.001117856,
+      "evaluation_index": 7,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.0012896,
+      "joint_copy_plus_next_ingress_seconds": 0.000171744,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00034998399999999996,
+      "evaluation_index": 7,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.00051328,
+      "joint_copy_plus_next_ingress_seconds": 0.000163296,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.000336192,
+      "evaluation_index": 7,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000499104,
+      "joint_copy_plus_next_ingress_seconds": 0.000162912,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.00031993600000000005,
+      "evaluation_index": 7,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000480672,
+      "joint_copy_plus_next_ingress_seconds": 0.000160736,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.000457408,
+      "evaluation_index": 7,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.0006208,
+      "joint_copy_plus_next_ingress_seconds": 0.000163392,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.00032409599999999995,
+      "evaluation_index": 7,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000505024,
+      "joint_copy_plus_next_ingress_seconds": 0.000180928,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.00029446400000000003,
+      "evaluation_index": 7,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000458048,
+      "joint_copy_plus_next_ingress_seconds": 0.00016358399999999998,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.00037315199999999997,
+      "evaluation_index": 7,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000536032,
+      "joint_copy_plus_next_ingress_seconds": 0.00016288,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.00041443199999999995,
+      "evaluation_index": 7,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000580128,
+      "joint_copy_plus_next_ingress_seconds": 0.000165696,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.0004339200000000001,
+      "evaluation_index": 7,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000599552,
+      "joint_copy_plus_next_ingress_seconds": 0.000165632,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.000322752,
+      "evaluation_index": 7,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000486016,
+      "joint_copy_plus_next_ingress_seconds": 0.000163264,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.00035571200000000005,
+      "evaluation_index": 7,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.000521376,
+      "joint_copy_plus_next_ingress_seconds": 0.000165664,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.0003840320000000001,
+      "evaluation_index": 7,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000549216,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.00035151999999999997,
+      "evaluation_index": 7,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000538592,
+      "joint_copy_plus_next_ingress_seconds": 0.000187072,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000366048,
+      "evaluation_index": 7,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000531136,
+      "joint_copy_plus_next_ingress_seconds": 0.000165088,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.000511488,
+      "evaluation_index": 7,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.00067776,
+      "joint_copy_plus_next_ingress_seconds": 0.000166272,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.000359552,
+      "evaluation_index": 7,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.000538528,
+      "joint_copy_plus_next_ingress_seconds": 0.00017897600000000002,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.00046009599999999995,
+      "evaluation_index": 7,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000623296,
+      "joint_copy_plus_next_ingress_seconds": 0.0001632,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00038646400000000005,
+      "evaluation_index": 7,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.000551776,
+      "joint_copy_plus_next_ingress_seconds": 0.00016531199999999998,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.000354016,
+      "evaluation_index": 7,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.00052048,
+      "joint_copy_plus_next_ingress_seconds": 0.000166464,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.0003714240000000001,
+      "evaluation_index": 8,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000536608,
+      "joint_copy_plus_next_ingress_seconds": 0.000165184,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.00035737599999999996,
+      "evaluation_index": 8,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000523168,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.000393056,
+      "evaluation_index": 8,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000558496,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.000594656,
+      "evaluation_index": 8,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.00076,
+      "joint_copy_plus_next_ingress_seconds": 0.000165344,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.000609376,
+      "evaluation_index": 8,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000790976,
+      "joint_copy_plus_next_ingress_seconds": 0.00018160000000000002,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.00036131199999999997,
+      "evaluation_index": 8,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.000526048,
+      "joint_copy_plus_next_ingress_seconds": 0.00016473600000000002,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.0005490240000000001,
+      "evaluation_index": 8,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000713472,
+      "joint_copy_plus_next_ingress_seconds": 0.000164448,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.0005562239999999999,
+      "evaluation_index": 8,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000721344,
+      "joint_copy_plus_next_ingress_seconds": 0.00016512,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.00042976000000000006,
+      "evaluation_index": 8,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000597024,
+      "joint_copy_plus_next_ingress_seconds": 0.000167264,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.000396768,
+      "evaluation_index": 8,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000577952,
+      "joint_copy_plus_next_ingress_seconds": 0.00018118399999999998,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.00031619199999999997,
+      "evaluation_index": 8,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000482112,
+      "joint_copy_plus_next_ingress_seconds": 0.00016592,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.000293504,
+      "evaluation_index": 8,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000459104,
+      "joint_copy_plus_next_ingress_seconds": 0.00016560000000000001,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.00031891199999999997,
+      "evaluation_index": 8,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.00048384,
+      "joint_copy_plus_next_ingress_seconds": 0.000164928,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.000382464,
+      "evaluation_index": 8,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.000547872,
+      "joint_copy_plus_next_ingress_seconds": 0.000165408,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.00039209600000000004,
+      "evaluation_index": 8,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000556288,
+      "joint_copy_plus_next_ingress_seconds": 0.00016419200000000002,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.00034268799999999996,
+      "evaluation_index": 8,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000508032,
+      "joint_copy_plus_next_ingress_seconds": 0.000165344,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.00039958400000000003,
+      "evaluation_index": 8,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.000579328,
+      "joint_copy_plus_next_ingress_seconds": 0.000179744,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.00043267200000000005,
+      "evaluation_index": 8,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000598464,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.000528576,
+      "evaluation_index": 8,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.00069472,
+      "joint_copy_plus_next_ingress_seconds": 0.00016614400000000001,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.00040083199999999995,
+      "evaluation_index": 8,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000566624,
+      "joint_copy_plus_next_ingress_seconds": 0.000165792,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.000401088,
+      "evaluation_index": 8,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.000566752,
+      "joint_copy_plus_next_ingress_seconds": 0.000165664,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.00040848,
+      "evaluation_index": 8,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000572928,
+      "joint_copy_plus_next_ingress_seconds": 0.00016444799999999998,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.000629312,
+      "evaluation_index": 8,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000813696,
+      "joint_copy_plus_next_ingress_seconds": 0.000184384,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000432032,
+      "evaluation_index": 8,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.000597504,
+      "joint_copy_plus_next_ingress_seconds": 0.000165472,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.000342016,
+      "evaluation_index": 8,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.000507552,
+      "joint_copy_plus_next_ingress_seconds": 0.00016553599999999998,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.000384544,
+      "evaluation_index": 8,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.000551136,
+      "joint_copy_plus_next_ingress_seconds": 0.000166592,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.000407904,
+      "evaluation_index": 8,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000573568,
+      "joint_copy_plus_next_ingress_seconds": 0.000165664,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00042115199999999994,
+      "evaluation_index": 8,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.00058656,
+      "joint_copy_plus_next_ingress_seconds": 0.000165408,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.0005090240000000001,
+      "evaluation_index": 8,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000692544,
+      "joint_copy_plus_next_ingress_seconds": 0.00018352,
+      "to_layer": 29
+    },
+    {
+      "controller_residual_seconds": 0.00044969599999999997,
+      "evaluation_index": 9,
+      "from_layer": 0,
+      "gpu_idle_gap_seconds": 0.000614848,
+      "joint_copy_plus_next_ingress_seconds": 0.000165152,
+      "to_layer": 1
+    },
+    {
+      "controller_residual_seconds": 0.00042409599999999995,
+      "evaluation_index": 9,
+      "from_layer": 1,
+      "gpu_idle_gap_seconds": 0.000589568,
+      "joint_copy_plus_next_ingress_seconds": 0.000165472,
+      "to_layer": 2
+    },
+    {
+      "controller_residual_seconds": 0.000579808,
+      "evaluation_index": 9,
+      "from_layer": 2,
+      "gpu_idle_gap_seconds": 0.000752032,
+      "joint_copy_plus_next_ingress_seconds": 0.000172224,
+      "to_layer": 3
+    },
+    {
+      "controller_residual_seconds": 0.000423168,
+      "evaluation_index": 9,
+      "from_layer": 3,
+      "gpu_idle_gap_seconds": 0.000588416,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 4
+    },
+    {
+      "controller_residual_seconds": 0.000374656,
+      "evaluation_index": 9,
+      "from_layer": 4,
+      "gpu_idle_gap_seconds": 0.000540064,
+      "joint_copy_plus_next_ingress_seconds": 0.000165408,
+      "to_layer": 5
+    },
+    {
+      "controller_residual_seconds": 0.0004536,
+      "evaluation_index": 9,
+      "from_layer": 5,
+      "gpu_idle_gap_seconds": 0.00061872,
+      "joint_copy_plus_next_ingress_seconds": 0.00016512,
+      "to_layer": 6
+    },
+    {
+      "controller_residual_seconds": 0.0005524799999999999,
+      "evaluation_index": 9,
+      "from_layer": 6,
+      "gpu_idle_gap_seconds": 0.000717792,
+      "joint_copy_plus_next_ingress_seconds": 0.000165312,
+      "to_layer": 7
+    },
+    {
+      "controller_residual_seconds": 0.00043203199999999995,
+      "evaluation_index": 9,
+      "from_layer": 7,
+      "gpu_idle_gap_seconds": 0.000597536,
+      "joint_copy_plus_next_ingress_seconds": 0.000165504,
+      "to_layer": 8
+    },
+    {
+      "controller_residual_seconds": 0.000549728,
+      "evaluation_index": 9,
+      "from_layer": 8,
+      "gpu_idle_gap_seconds": 0.000714752,
+      "joint_copy_plus_next_ingress_seconds": 0.000165024,
+      "to_layer": 9
+    },
+    {
+      "controller_residual_seconds": 0.00037087999999999997,
+      "evaluation_index": 9,
+      "from_layer": 9,
+      "gpu_idle_gap_seconds": 0.000553696,
+      "joint_copy_plus_next_ingress_seconds": 0.000182816,
+      "to_layer": 10
+    },
+    {
+      "controller_residual_seconds": 0.000319008,
+      "evaluation_index": 9,
+      "from_layer": 10,
+      "gpu_idle_gap_seconds": 0.000483264,
+      "joint_copy_plus_next_ingress_seconds": 0.000164256,
+      "to_layer": 11
+    },
+    {
+      "controller_residual_seconds": 0.00035238399999999997,
+      "evaluation_index": 9,
+      "from_layer": 11,
+      "gpu_idle_gap_seconds": 0.000517376,
+      "joint_copy_plus_next_ingress_seconds": 0.00016499199999999998,
+      "to_layer": 12
+    },
+    {
+      "controller_residual_seconds": 0.000407168,
+      "evaluation_index": 9,
+      "from_layer": 12,
+      "gpu_idle_gap_seconds": 0.000572448,
+      "joint_copy_plus_next_ingress_seconds": 0.00016528000000000002,
+      "to_layer": 13
+    },
+    {
+      "controller_residual_seconds": 0.000776576,
+      "evaluation_index": 9,
+      "from_layer": 13,
+      "gpu_idle_gap_seconds": 0.000942016,
+      "joint_copy_plus_next_ingress_seconds": 0.00016544,
+      "to_layer": 14
+    },
+    {
+      "controller_residual_seconds": 0.000302368,
+      "evaluation_index": 9,
+      "from_layer": 14,
+      "gpu_idle_gap_seconds": 0.000467776,
+      "joint_copy_plus_next_ingress_seconds": 0.000165408,
+      "to_layer": 15
+    },
+    {
+      "controller_residual_seconds": 0.000414048,
+      "evaluation_index": 9,
+      "from_layer": 15,
+      "gpu_idle_gap_seconds": 0.000576416,
+      "joint_copy_plus_next_ingress_seconds": 0.000162368,
+      "to_layer": 16
+    },
+    {
+      "controller_residual_seconds": 0.00037923199999999996,
+      "evaluation_index": 9,
+      "from_layer": 16,
+      "gpu_idle_gap_seconds": 0.00054512,
+      "joint_copy_plus_next_ingress_seconds": 0.000165888,
+      "to_layer": 17
+    },
+    {
+      "controller_residual_seconds": 0.000510624,
+      "evaluation_index": 9,
+      "from_layer": 17,
+      "gpu_idle_gap_seconds": 0.000675872,
+      "joint_copy_plus_next_ingress_seconds": 0.000165248,
+      "to_layer": 18
+    },
+    {
+      "controller_residual_seconds": 0.00041577599999999997,
+      "evaluation_index": 9,
+      "from_layer": 18,
+      "gpu_idle_gap_seconds": 0.000582272,
+      "joint_copy_plus_next_ingress_seconds": 0.000166496,
+      "to_layer": 19
+    },
+    {
+      "controller_residual_seconds": 0.00046153599999999997,
+      "evaluation_index": 9,
+      "from_layer": 19,
+      "gpu_idle_gap_seconds": 0.000629088,
+      "joint_copy_plus_next_ingress_seconds": 0.000167552,
+      "to_layer": 20
+    },
+    {
+      "controller_residual_seconds": 0.000574752,
+      "evaluation_index": 9,
+      "from_layer": 20,
+      "gpu_idle_gap_seconds": 0.000740512,
+      "joint_copy_plus_next_ingress_seconds": 0.00016575999999999999,
+      "to_layer": 21
+    },
+    {
+      "controller_residual_seconds": 0.00062144,
+      "evaluation_index": 9,
+      "from_layer": 21,
+      "gpu_idle_gap_seconds": 0.000785376,
+      "joint_copy_plus_next_ingress_seconds": 0.000163936,
+      "to_layer": 22
+    },
+    {
+      "controller_residual_seconds": 0.00038278399999999995,
+      "evaluation_index": 9,
+      "from_layer": 22,
+      "gpu_idle_gap_seconds": 0.000548384,
+      "joint_copy_plus_next_ingress_seconds": 0.00016560000000000001,
+      "to_layer": 23
+    },
+    {
+      "controller_residual_seconds": 0.000585344,
+      "evaluation_index": 9,
+      "from_layer": 23,
+      "gpu_idle_gap_seconds": 0.0007472,
+      "joint_copy_plus_next_ingress_seconds": 0.000161856,
+      "to_layer": 24
+    },
+    {
+      "controller_residual_seconds": 0.00030480000000000004,
+      "evaluation_index": 9,
+      "from_layer": 24,
+      "gpu_idle_gap_seconds": 0.00046672,
+      "joint_copy_plus_next_ingress_seconds": 0.00016192,
+      "to_layer": 25
+    },
+    {
+      "controller_residual_seconds": 0.00038918399999999994,
+      "evaluation_index": 9,
+      "from_layer": 25,
+      "gpu_idle_gap_seconds": 0.000555104,
+      "joint_copy_plus_next_ingress_seconds": 0.00016592,
+      "to_layer": 26
+    },
+    {
+      "controller_residual_seconds": 0.00032512,
+      "evaluation_index": 9,
+      "from_layer": 26,
+      "gpu_idle_gap_seconds": 0.000490496,
+      "joint_copy_plus_next_ingress_seconds": 0.000165376,
+      "to_layer": 27
+    },
+    {
+      "controller_residual_seconds": 0.00033875200000000005,
+      "evaluation_index": 9,
+      "from_layer": 27,
+      "gpu_idle_gap_seconds": 0.000511136,
+      "joint_copy_plus_next_ingress_seconds": 0.00017238399999999998,
+      "to_layer": 28
+    },
+    {
+      "controller_residual_seconds": 0.00041260799999999996,
+      "evaluation_index": 9,
+      "from_layer": 28,
+      "gpu_idle_gap_seconds": 0.000593088,
+      "joint_copy_plus_next_ingress_seconds": 0.00018048,
+      "to_layer": 29
+    }
+  ],
+  "schema": "prometheus.dvt2.m3.v1",
+  "statistics": {
+    "count": 261,
+    "maximum_seconds": 0.0012896,
+    "mean_seconds": 0.0005916247049808429,
+    "median_seconds": 0.000562112,
+    "p95_seconds": 0.000813696,
+    "total_seconds": 0.15441404800000003
+  },
+  "total_controller_residual_seconds": 0.1106569279999999
+}

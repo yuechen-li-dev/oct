@@ -1374,6 +1374,7 @@ FACT(PrometheusM2CSessionKeepsClosedSlotsAndRejectsMissingOrStaleJointInputs)
     }
     PrometheusCompiledModelSessionCreateRequest create{};
     create.struct_size = sizeof(create);
+    create.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
     create.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID ^ 1u;
     PrometheusCompiledModelSessionEvidence evidence{};
     std::uint64_t sessionID = 0u;
@@ -1517,6 +1518,7 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     PrometheusCompiledModelSessionCreateRequest sessionCreate{};
     sessionCreate.struct_size = sizeof(sessionCreate);
     sessionCreate.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+    sessionCreate.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
     PrometheusCompiledModelSessionEvidence sessionEvidence{};
     std::uint64_t sessionID = 0u;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_create(
@@ -1778,17 +1780,21 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     const std::uint64_t warmPipelines = evidence.pipeline_create_count;
     const std::uint64_t warmDescriptors = evidence.descriptor_set_count;
     std::array<std::uint64_t, 10> warmNs{};
+    std::array<std::uint64_t, 10> warmGpuNs{};
     for (std::uint32_t iteration = 0u; iteration < warmNs.size(); ++iteration) {
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
                      "warm MainTransformer execution reuses retained streams and bound parameters");
         warmNs[iteration] = evidence.last_execution_ns;
+        warmGpuNs[iteration] = evidence.gpu_compute_ns;
     }
     ASSERT_EQUAL(warmAllocations, evidence.warm_buffer_allocation_count, "warm M2C execution allocates no buffers");
     ASSERT_EQUAL(warmUploads, evidence.weight_upload_count, "warm M2C execution uploads no weights");
     ASSERT_EQUAL(warmPipelines, evidence.pipeline_create_count, "warm M2C execution creates no pipelines");
     ASSERT_EQUAL(warmDescriptors, evidence.descriptor_set_count, "warm M2C execution grows no descriptor pools");
     std::array<std::uint64_t, 10> sortedWarm = warmNs;
+    std::array<std::uint64_t, 10> sortedWarmGpu = warmGpuNs;
     std::sort(sortedWarm.begin(), sortedWarm.end());
+    std::sort(sortedWarmGpu.begin(), sortedWarmGpu.end());
     std::cout << "M2C warm_ns=";
     for (std::size_t index = 0u; index < warmNs.size(); ++index) {
         if (index != 0u) std::cout << ',';
@@ -1796,14 +1802,18 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     }
     std::cout << "\nM2C warm_stats_ns median=" << (sortedWarm[4u] + sortedWarm[5u]) / 2u
               << " mean=" << mean_ns(warmNs) << " min=" << sortedWarm.front()
-              << " p95=" << sortedWarm[9u] << " churn=zero\n";
+              << " p95=" << sortedWarm[9u] << " gpu_median="
+              << (sortedWarmGpu[4u] + sortedWarmGpu[5u]) / 2u
+              << " gpu_mean=" << mean_ns(warmGpuNs) << " churn=zero\n";
     std::array<std::uint64_t, 30> chainExecutionNs{};
+    std::array<std::uint64_t, 30> chainGpuNs{};
     std::array<std::uint64_t, 29> chainRebindNs{};
     const auto chainStart = std::chrono::steady_clock::now();
     mainExecute.resident_chain_mode = 1u;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
                  "chain mode advances JointWorking from layers.0 without host reconstruction");
     chainExecutionNs[0u] = evidence.last_execution_ns;
+    chainGpuNs[0u] = evidence.gpu_compute_ns;
     const std::uint64_t chainedJointGeneration = evidence.output_generation == 0u ? 0u : jointGeneration + 1u;
     std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> main1WeightBytes{};
     std::array<PrometheusModelBlockWeightUpload, PROM_MODEL_BLOCK_MAX_WEIGHTS> main1Uploads{};
@@ -1835,6 +1845,7 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
                  "layers.1 consumes the layers.0 device-resident JointWorking generation");
     chainExecutionNs[1u] = evidence.last_execution_ns;
+    chainGpuNs[1u] = evidence.gpu_compute_ns;
     std::uint64_t chainJointGeneration = chainedJointGeneration + 1u;
     for (std::uint32_t layer = 2u; layer < 30u; ++layer) {
         std::array<std::vector<std::uint8_t>, PROM_MODEL_BLOCK_MAX_WEIGHTS> layerWeightBytes{};
@@ -1867,6 +1878,7 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
         ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
                      "MainTransformer successor consumes the preceding resident joint generation");
         chainExecutionNs[layer] = evidence.last_execution_ns;
+        chainGpuNs[layer] = evidence.gpu_compute_ns;
         chainJointGeneration += 1u;
     }
     finalAudit.required_output_generation = evidence.output_generation;
@@ -1895,9 +1907,11 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
                 "the complete resident MainTransformer chain matches the layer-29 FP32 authority");
     const std::uint64_t chainElapsedNs = static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - chainStart).count());
     const std::uint64_t chainExecutionTotalNs = std::accumulate(chainExecutionNs.begin(), chainExecutionNs.end(), std::uint64_t{0u});
+    const std::uint64_t chainGpuTotalNs = std::accumulate(chainGpuNs.begin(), chainGpuNs.end(), std::uint64_t{0u});
     const std::uint64_t chainRebindTotalNs = std::accumulate(chainRebindNs.begin(), chainRebindNs.end(), std::uint64_t{0u});
     const std::uint64_t layerUploadBytes = 361820672ull;
     std::cout << "M2D chain_timing total_ns=" << chainElapsedNs << " execution_ns=" << chainExecutionTotalNs
+              << " gpu_ns=" << chainGpuTotalNs
               << " rebind_ns=" << chainRebindTotalNs << " upload_bytes=" << layerUploadBytes * 29u
               << " rebind_upload_bandwidth_bytes_per_second="
               << (chainRebindTotalNs == 0u ? 0u : (layerUploadBytes * 29u * 1000000000ull) / chainRebindTotalNs)

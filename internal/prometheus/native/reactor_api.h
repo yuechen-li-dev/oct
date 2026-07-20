@@ -581,6 +581,7 @@ typedef struct PrometheusReductionBenchmarkResult {
 #define PROM_MODEL_BLOCK_MAX_STEPS 7u
 #define PROM_MODEL_BLOCK_MAX_AUDIT_POINTS 1u
 #define PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT 6u
+#define PROM_MODEL_BLOCK_MAIN_STAGE_COUNT 13u
 
 enum {
   PROM_MODEL_BLOCK_STEP_BIND_PIPELINE = 1u,
@@ -1039,12 +1040,53 @@ typedef struct PrometheusModelBlockEvidence {
   uint32_t assembly_family;
   uint32_t parameter_set;
   uint32_t binding_state;
-  uint32_t reserved0;
+  uint32_t active_weight_window;
   uint64_t parameter_set_aggregate_identity;
   uint64_t binding_generation;
   uint64_t output_generation;
   uint64_t descriptor_generation;
   uint64_t m1b_boundary_gpu_ns[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
+  uint64_t gpu_total_begin_tick;
+  uint64_t gpu_total_end_tick;
+  uint64_t gpu_total_ns;
+  uint64_t gpu_compute_begin_tick;
+  uint64_t gpu_compute_end_tick;
+  uint64_t gpu_compute_ns;
+  uint64_t gpu_ingress_transfer_ns;
+  uint64_t gpu_joint_copy_ns;
+  uint64_t gpu_readback_ns;
+  uint64_t main_stage_gpu_begin_tick[PROM_MODEL_BLOCK_MAIN_STAGE_COUNT];
+  uint64_t main_stage_gpu_end_tick[PROM_MODEL_BLOCK_MAIN_STAGE_COUNT];
+  uint64_t main_stage_gpu_ns[PROM_MODEL_BLOCK_MAIN_STAGE_COUNT];
+  uint64_t last_active_target_validation_ns;
+  uint64_t last_command_reset_ns;
+  uint64_t last_command_begin_ns;
+  uint64_t last_command_record_ns;
+  uint64_t last_command_end_ns;
+  uint64_t last_queue_submit_ns;
+  uint64_t last_fence_wait_ns;
+  uint64_t last_descriptor_update_ns;
+  uint64_t last_staging_memcpy_ns;
+  uint64_t last_output_readback_ns;
+  uint64_t vk_create_buffer_count;
+  uint64_t vk_destroy_buffer_count;
+  uint64_t vk_allocate_memory_count;
+  uint64_t vk_free_memory_count;
+  uint64_t vk_create_shader_module_count;
+  uint64_t vk_destroy_shader_module_count;
+  uint64_t vk_create_compute_pipelines_count;
+  uint64_t vk_allocate_descriptor_sets_count;
+  uint64_t vk_update_descriptor_sets_count;
+  uint64_t vk_create_command_pool_count;
+  uint64_t vk_allocate_command_buffers_count;
+  uint64_t vk_reset_command_buffer_count;
+  uint64_t vk_queue_submit_count;
+  uint64_t vk_fence_wait_count;
+  uint64_t vk_timeline_wait_count;
+  uint64_t vk_map_memory_count;
+  uint64_t vk_unmap_memory_count;
+  uint64_t vk_flush_count;
+  uint64_t vk_invalidate_count;
 } PrometheusModelBlockEvidence;
 
 typedef struct PrometheusCompiledModelSessionCreateRequest {

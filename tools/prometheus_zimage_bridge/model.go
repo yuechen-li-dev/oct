@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	bridgeABIVersion       = uint32(4)
+	bridgeABIVersion       = uint32(5)
 	acceptedLockSHA256     = "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e"
 	checkpointSHA256       = "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6"
 	imageTokens            = uint32(1024)
@@ -112,9 +112,44 @@ type runMetrics struct {
 	mainLayerCount         uint32
 	contextReused          bool
 	stageExecutionNS       [34]uint64
+	stageGPUExecutionNS    [34]uint64
 	stageRebindNS          [34]uint64
 	stagePayloadReadNS     [34]uint64
 	stageUploadedBytes     [34]uint64
+	mainTrace              [30]mainLayerTrace
+	finalReadbackGPUNS     uint64
+	finalReadbackHostNS    uint64
+}
+
+const mainStageCount = 13
+
+type nativeCallCounters struct {
+	createBuffer, destroyBuffer, allocateMemory, freeMemory       uint64
+	createShaderModule, destroyShaderModule, createPipelines      uint64
+	allocateDescriptorSets, updateDescriptorSets                  uint64
+	createCommandPool, allocateCommandBuffers, resetCommandBuffer uint64
+	queueSubmit, fenceWait, timelineWait                          uint64
+	mapMemory, unmapMemory, flush, invalidate                     uint64
+}
+
+type mainLayerTrace struct {
+	correlationID                            uint64
+	cpuBeginNS, cpuEndNS                     uint64
+	parameterGeneration, executionGeneration uint64
+	activeWeightWindow                       uint32
+	gpuTotalBeginTick, gpuTotalEndTick       uint64
+	gpuTotalNS                               uint64
+	gpuComputeBeginTick, gpuComputeEndTick   uint64
+	gpuComputeNS, gpuIngressTransferNS       uint64
+	gpuJointCopyNS                           uint64
+	stageGPUBeginTick, stageGPUEndTick       [mainStageCount]uint64
+	stageGPUNS                               [mainStageCount]uint64
+	activeTargetValidationNS                 uint64
+	commandResetNS, commandBeginNS           uint64
+	commandRecordNS, commandEndNS            uint64
+	queueSubmitNS, fenceWaitNS               uint64
+	descriptorUpdateNS, stagingMemcpyNS      uint64
+	counters                                 nativeCallCounters
 }
 
 type cacheLockRecord struct {

@@ -1,0 +1,18 @@
+{
+  "primary_bottleneck": "GPU kernel compute",
+  "primary_evidence": {
+    "main_gpu_seconds": 149.74581548799998,
+    "main_gpu_to_host_layer_execution_percent": 99.93173706722493,
+    "percent_of_wall": 76.28341085763995
+  },
+  "rejected_primary_categories": [
+    "host/controller idle bubbles",
+    "synchronization/submission overhead",
+    "measurement-boundary mismatch",
+    "validation/instrumentation overhead",
+    "outer Python pipeline"
+  ],
+  "schema": "prometheus.dvt2.m3.v1",
+  "secondary_bottleneck": "session startup and boundary-model load",
+  "secondary_evidence_seconds": 25.831662000004144
+}

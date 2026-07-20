@@ -1,0 +1,144 @@
+{
+  "accounted_percent": 99.9413023631223,
+  "accounted_seconds": 196.18671550001454,
+  "canonical_wall_seconds": 196.30194009999832,
+  "full_image_additive_buckets": [
+    {
+      "category": "Qwen conditioning",
+      "percent": 3.3855372986224914,
+      "seconds": 6.645875400005025
+    },
+    {
+      "category": "reference boundary model load",
+      "percent": 4.2824599164517805,
+      "seconds": 8.406551899999613
+    },
+    {
+      "category": "Prometheus session startup/load",
+      "percent": 8.876687663467814,
+      "seconds": 17.42511010000453
+    },
+    {
+      "category": "MainTransformer GPU compute",
+      "percent": 76.28341085763995,
+      "seconds": 149.74581548799998
+    },
+    {
+      "category": "refiner GPU compute",
+      "percent": 4.143524643646693,
+      "seconds": 8.133819264
+    },
+    {
+      "category": "MainTransformer ingress transfer",
+      "percent": 0.011980678330545056,
+      "seconds": 0.023518304000000035
+    },
+    {
+      "category": "device-to-device joint composition",
+      "percent": 0.011063919179268586,
+      "seconds": 0.021718688000000045
+    },
+    {
+      "category": "final GPU readback",
+      "percent": 0.002834718799602963,
+      "seconds": 0.0055646079999999995
+    },
+    {
+      "category": "exposed GPU transfer",
+      "percent": 0.03788138821354429,
+      "seconds": 0.07436189999999954
+    },
+    {
+      "category": "native controller/other",
+      "percent": 2.0339524642324425,
+      "seconds": 3.992688148000009
+    },
+    {
+      "category": "Python/native crossing overhead",
+      "percent": 0.01747094296418717,
+      "seconds": 0.03429579999246357
+    },
+    {
+      "category": "Python pre-call",
+      "percent": 0.07932270048536931,
+      "seconds": 0.15571199999249075
+    },
+    {
+      "category": "Python marshaling",
+      "percent": 0.0054314287482018124,
+      "seconds": 0.01066200000786921
+    },
+    {
+      "category": "final projection/unpatchify",
+      "percent": 0.017868952280017548,
+      "seconds": 0.03507710000121733
+    },
+    {
+      "category": "scheduler/outer loop",
+      "percent": 0.04603449154389775,
+      "seconds": 0.09036660001584096
+    },
+    {
+      "category": "session teardown",
+      "percent": 0.34256722050827604,
+      "seconds": 0.6724661000043852
+    },
+    {
+      "category": "denoising residual",
+      "percent": 0.04226983184417675,
+      "seconds": 0.08297649998712586
+    },
+    {
+      "category": "VAE and PNG",
+      "percent": 0.3210032461640461,
+      "seconds": 0.6301356000039959
+    },
+    {
+      "category": "Unexplained",
+      "percent": 0.0586976368776994,
+      "seconds": 0.11522459998377599
+    }
+  ],
+  "nine_evaluations": {
+    "device_to_device_joint_composition_seconds": 0.021718688000000045,
+    "exposed_transfer_seconds": 0.07436189999999954,
+    "final_readback_gpu_seconds": 0.0055646079999999995,
+    "gpu_busy_compute_seconds": 157.879634752,
+    "main_gpu_seconds": 149.74581548799998,
+    "main_ingress_transfer_seconds": 0.023518304000000035,
+    "native_controller_other_seconds": 3.992688148000009,
+    "native_wall_seconds": 161.99748639999999,
+    "refiner_gpu_seconds_estimated_from_timestamped_matched_probe": 8.133819264
+  },
+  "non_additive_overlap": {
+    "main_fence_wait_seconds": 149.8215677999999,
+    "transfer_busy_seconds": 8.4916985,
+    "transfer_compute_overlap_seconds": 8.4173366
+  },
+  "one_evaluation": {
+    "evaluation_index": 2,
+    "main_gpu_seconds": 16.599268224,
+    "native_wall_seconds": 17.9328745,
+    "python_timing": {
+      "bridge_forward_wall_seconds": 17.941642199999478,
+      "evaluation_index": 2,
+      "final_3840_to_64_projection_seconds": 8.569999772589654e-05,
+      "final_adaln_seconds": 0.0004178000017418526,
+      "final_projection_unpatchify_seconds": 0.0022030000036465935,
+      "garbage_collection_count": 0,
+      "garbage_collection_seconds": 0,
+      "native_call_and_readback_seconds": 17.936775999995007,
+      "native_to_python_latent_conversion_seconds": 0.0015554000055999495,
+      "python_pre_call_seconds": 0.0009142999988398515,
+      "python_to_native_marshaling_seconds": 0.001741399995808024,
+      "scheduler_iteration_begin_monotonic_seconds": 61460.4155362,
+      "scheduler_iteration_end_monotonic_seconds": 61478.3571784,
+      "scheduler_update_and_outer_loop_seconds": 0.01732310000079451,
+      "unpatchify_seconds": 0.00014409999857889488
+    }
+  },
+  "pre_wall_import_seconds": 6.251396600004227,
+  "schema": "prometheus.dvt2.m3.v1",
+  "unexplained_percent": 0.0586976368776994,
+  "unexplained_seconds": 0.11522459998377599
+}

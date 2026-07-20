@@ -1,0 +1,70 @@
+{
+  "schema": "prometheus.dvt2.m3.v1",
+  "tooling_limitations": [
+    "Nsight occupancy/register/shared-memory counters were not available in the bounded environment."
+  ],
+  "top_three": [
+    {
+      "algorithm": "one output element/thread; serial 3840-channel FP32 accumulation for both FP16 weight matrices",
+      "alternatives": [
+        "tiled SGEMM/reactor path",
+        "subgroup-cooperative dot products",
+        "shared input tiles"
+      ],
+      "arithmetic_intensity": "low effective reuse",
+      "current_variant": "production SDSL-V scalar dot-product",
+      "dispatch_count": 270,
+      "local_size": [
+        8,
+        8,
+        1
+      ],
+      "memory_traffic": "each output thread rereads its full input row and two weight rows",
+      "occupancy_evidence": "no vendor occupancy/register report available",
+      "shader_id": 42,
+      "shared_memory_use": false,
+      "stage": "ffn_w1_w3",
+      "subgroup_use": false,
+      "total_seconds": 42.023984768,
+      "workgroups": [
+        132,
+        1280,
+        1
+      ]
+    },
+    {
+      "alternatives": [
+        "tiled SGEMM/reactor path"
+      ],
+      "dispatch_count": 270,
+      "local_size": "registry/source-defined",
+      "occupancy_evidence": "unavailable",
+      "shader_id": 39,
+      "stage": "qkv",
+      "subgroup_use": "not established",
+      "total_seconds": 41.62821155200001,
+      "workgroups": [
+        132,
+        1440,
+        1
+      ]
+    },
+    {
+      "alternatives": [
+        "benchmark existing streaming geometry variants"
+      ],
+      "dispatch_count": 270,
+      "occupancy_evidence": "unavailable",
+      "shader_id": 41,
+      "stage": "attention",
+      "subgroup_use": true,
+      "total_seconds": 32.31722745600002,
+      "variant": "joint-attention-streaming",
+      "workgroups": [
+        31680,
+        1,
+        1
+      ]
+    }
+  ]
+}

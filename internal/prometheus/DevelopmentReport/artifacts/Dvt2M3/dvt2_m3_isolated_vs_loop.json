@@ -1,0 +1,38 @@
+{
+  "configurations": [
+    {
+      "command_record_plus_submit_seconds": 0.00029796,
+      "configuration": "isolated warm layers.0",
+      "gpu_busy_seconds": 0.54370504,
+      "host_elapsed_seconds": 0.544003,
+      "output_readback_seconds": 0.0,
+      "transfer_seconds": 0.0
+    },
+    {
+      "configuration": "retained 30-layer chain",
+      "gpu_busy_seconds": 16.319588832,
+      "host_elapsed_seconds": 16.3297045,
+      "parameter_rebind_seconds": 1.2114901,
+      "transfer_seconds": 0.0
+    },
+    {
+      "configuration": "canonical Prefetch real loop, per layer mean",
+      "descriptor_update_seconds": 2.6518518518518508e-06,
+      "fence_wait_seconds": 0.5548946955555553,
+      "gpu_busy_seconds": 0.554614131437037,
+      "host_elapsed_seconds": 0.5549929859259259,
+      "queue_submit_seconds": 2.3560370370370374e-05,
+      "transfer_seconds": 0.030436195340501793
+    }
+  ],
+  "normalization": {
+    "parameter_package": "lock-derived layers.0",
+    "precision": "FP32 activation / FP16 weights",
+    "shader_portfolio": "production shader IDs 36-44",
+    "static_audit": false,
+    "tokens": 1056,
+    "validation": false
+  },
+  "reconciliation": "The historical ~386 ms value was NoiseRefiner0, not MainTransformer. Matched isolated MainTransformer is 544.003 ms host/543.705 ms GPU; canonical real-loop MainTransformer averages 554.993 ms host/554.614 ms GPU. The remaining 2.0% delta is sustained-workload variation, not a 2.5x controller gap.",
+  "schema": "prometheus.dvt2.m3.v1"
+}

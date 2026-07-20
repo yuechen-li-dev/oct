@@ -1,0 +1,2173 @@
+{
+  "layers": [
+    {
+      "correlation_id": "ed010b044cc6eda9",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525668027068192,
+      "gpu_duration_seconds": 0.563397856,
+      "gpu_end_tick": 1784525668590466048,
+      "layer": 0
+    },
+    {
+      "correlation_id": "ad00b582aa7d6e49",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525668590903872,
+      "gpu_duration_seconds": 0.564107296,
+      "gpu_end_tick": 1784525669155011168,
+      "layer": 1
+    },
+    {
+      "correlation_id": "84b808e7f9810a06",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525669155484512,
+      "gpu_duration_seconds": 0.563677728,
+      "gpu_end_tick": 1784525669719162240,
+      "layer": 2
+    },
+    {
+      "correlation_id": "8ba5ee956638df9f",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525669719708032,
+      "gpu_duration_seconds": 0.552375936,
+      "gpu_end_tick": 1784525670272083968,
+      "layer": 3
+    },
+    {
+      "correlation_id": "5baa877451ae31df",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525670272654016,
+      "gpu_duration_seconds": 0.57606288,
+      "gpu_end_tick": 1784525670848716896,
+      "layer": 4
+    },
+    {
+      "correlation_id": "752ff288fbf7bdd3",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525670849263296,
+      "gpu_duration_seconds": 0.547878208,
+      "gpu_end_tick": 1784525671397141504,
+      "layer": 5
+    },
+    {
+      "correlation_id": "41135e29c23f36b4",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525671397669952,
+      "gpu_duration_seconds": 0.546193344,
+      "gpu_end_tick": 1784525671943863296,
+      "layer": 6
+    },
+    {
+      "correlation_id": "896f2f615e6541a9",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525671944451680,
+      "gpu_duration_seconds": 0.548080032,
+      "gpu_end_tick": 1784525672492531712,
+      "layer": 7
+    },
+    {
+      "correlation_id": "5f6c051c09c3d961",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525672493104320,
+      "gpu_duration_seconds": 0.553048896,
+      "gpu_end_tick": 1784525673046153216,
+      "layer": 8
+    },
+    {
+      "correlation_id": "998d269fdc08b82b",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525673046695072,
+      "gpu_duration_seconds": 0.553286336,
+      "gpu_end_tick": 1784525673599981408,
+      "layer": 9
+    },
+    {
+      "correlation_id": "0dac94918dfafaf0",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525673600457344,
+      "gpu_duration_seconds": 0.554310016,
+      "gpu_end_tick": 1784525674154767360,
+      "layer": 10
+    },
+    {
+      "correlation_id": "ea16623b2dee090e",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525674155510912,
+      "gpu_duration_seconds": 0.549453696,
+      "gpu_end_tick": 1784525674704964608,
+      "layer": 11
+    },
+    {
+      "correlation_id": "472f462b0ac816b2",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525674705824032,
+      "gpu_duration_seconds": 0.552755936,
+      "gpu_end_tick": 1784525675258579968,
+      "layer": 12
+    },
+    {
+      "correlation_id": "14266070d2a8c39f",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525675259120128,
+      "gpu_duration_seconds": 0.553347584,
+      "gpu_end_tick": 1784525675812467712,
+      "layer": 13
+    },
+    {
+      "correlation_id": "ff6e7294ecd90e83",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525675812992352,
+      "gpu_duration_seconds": 0.552093344,
+      "gpu_end_tick": 1784525676365085696,
+      "layer": 14
+    },
+    {
+      "correlation_id": "f7ffbc9a336f33e3",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525676365635360,
+      "gpu_duration_seconds": 0.543300832,
+      "gpu_end_tick": 1784525676908936192,
+      "layer": 15
+    },
+    {
+      "correlation_id": "ed95acb388474f0f",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525676909479264,
+      "gpu_duration_seconds": 0.550615712,
+      "gpu_end_tick": 1784525677460094976,
+      "layer": 16
+    },
+    {
+      "correlation_id": "1fec3274e85e3483",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525677460675360,
+      "gpu_duration_seconds": 0.552655072,
+      "gpu_end_tick": 1784525678013330432,
+      "layer": 17
+    },
+    {
+      "correlation_id": "a559b6ae68fad902",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525678013886432,
+      "gpu_duration_seconds": 0.553221152,
+      "gpu_end_tick": 1784525678567107584,
+      "layer": 18
+    },
+    {
+      "correlation_id": "193a6f90d786d621",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525678567604416,
+      "gpu_duration_seconds": 0.552117056,
+      "gpu_end_tick": 1784525679119721472,
+      "layer": 19
+    },
+    {
+      "correlation_id": "4ece27356645bfb8",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525679120270208,
+      "gpu_duration_seconds": 0.55688,
+      "gpu_end_tick": 1784525679677150208,
+      "layer": 20
+    },
+    {
+      "correlation_id": "9982e893066c35eb",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525679677625536,
+      "gpu_duration_seconds": 0.552392512,
+      "gpu_end_tick": 1784525680230018048,
+      "layer": 21
+    },
+    {
+      "correlation_id": "b6162c6a43c595df",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525680230787680,
+      "gpu_duration_seconds": 0.55580304,
+      "gpu_end_tick": 1784525680786590720,
+      "layer": 22
+    },
+    {
+      "correlation_id": "81a034f7ccbaed33",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525680787085216,
+      "gpu_duration_seconds": 0.551093344,
+      "gpu_end_tick": 1784525681338178560,
+      "layer": 23
+    },
+    {
+      "correlation_id": "4e85222494ba3f6d",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525681338727008,
+      "gpu_duration_seconds": 0.548167072,
+      "gpu_end_tick": 1784525681886894080,
+      "layer": 24
+    },
+    {
+      "correlation_id": "6e993a9dbcfba0d6",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525681887570784,
+      "gpu_duration_seconds": 0.550045856,
+      "gpu_end_tick": 1784525682437616640,
+      "layer": 25
+    },
+    {
+      "correlation_id": "81ae6bea15a388da",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525682438140320,
+      "gpu_duration_seconds": 0.5455704,
+      "gpu_end_tick": 1784525682983710720,
+      "layer": 26
+    },
+    {
+      "correlation_id": "0e98798b39337047",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525682984403776,
+      "gpu_duration_seconds": 0.554405056,
+      "gpu_end_tick": 1784525683538808832,
+      "layer": 27
+    },
+    {
+      "correlation_id": "986311b95caef29a",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525683539395456,
+      "gpu_duration_seconds": 0.5505824,
+      "gpu_end_tick": 1784525684089977856,
+      "layer": 28
+    },
+    {
+      "correlation_id": "54a0357e128b127c",
+      "evaluation_index": 1,
+      "gpu_begin_tick": 1784525684090490912,
+      "gpu_duration_seconds": 0.559525088,
+      "gpu_end_tick": 1784525684650016000,
+      "layer": 29
+    },
+    {
+      "correlation_id": "5dc990699b2373c1",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525686043180192,
+      "gpu_duration_seconds": 0.537653088,
+      "gpu_end_tick": 1784525686580833280,
+      "layer": 0
+    },
+    {
+      "correlation_id": "b66a7442a2cb251f",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525686581521056,
+      "gpu_duration_seconds": 0.554312032,
+      "gpu_end_tick": 1784525687135833088,
+      "layer": 1
+    },
+    {
+      "correlation_id": "8b84d16d863c518f",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525687136445664,
+      "gpu_duration_seconds": 0.560002848,
+      "gpu_end_tick": 1784525687696448512,
+      "layer": 2
+    },
+    {
+      "correlation_id": "b80de6e78832335e",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525687697003392,
+      "gpu_duration_seconds": 0.55531328,
+      "gpu_end_tick": 1784525688252316672,
+      "layer": 3
+    },
+    {
+      "correlation_id": "043de832c5d532b8",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525688252803904,
+      "gpu_duration_seconds": 0.548930752,
+      "gpu_end_tick": 1784525688801734656,
+      "layer": 4
+    },
+    {
+      "correlation_id": "b1ea4cc22d2648bd",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525688802286752,
+      "gpu_duration_seconds": 0.5534616,
+      "gpu_end_tick": 1784525689355748352,
+      "layer": 5
+    },
+    {
+      "correlation_id": "f68ba19b30b012fe",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525689356347104,
+      "gpu_duration_seconds": 0.556308768,
+      "gpu_end_tick": 1784525689912655872,
+      "layer": 6
+    },
+    {
+      "correlation_id": "ae7ac75733531fbe",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525689913165696,
+      "gpu_duration_seconds": 0.548368512,
+      "gpu_end_tick": 1784525690461534208,
+      "layer": 7
+    },
+    {
+      "correlation_id": "1b5511f972d34176",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525690462109696,
+      "gpu_duration_seconds": 0.547903488,
+      "gpu_end_tick": 1784525691010013184,
+      "layer": 8
+    },
+    {
+      "correlation_id": "d068a04eea28ce12",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525691010516128,
+      "gpu_duration_seconds": 0.556104544,
+      "gpu_end_tick": 1784525691566620672,
+      "layer": 9
+    },
+    {
+      "correlation_id": "a174b24b8816648c",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525691567457248,
+      "gpu_duration_seconds": 0.553728032,
+      "gpu_end_tick": 1784525692121185280,
+      "layer": 10
+    },
+    {
+      "correlation_id": "cb0c5d1b6ee17e7d",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525692122063296,
+      "gpu_duration_seconds": 0.563601984,
+      "gpu_end_tick": 1784525692685665280,
+      "layer": 11
+    },
+    {
+      "correlation_id": "e67ffae16b4a7169",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525692686210304,
+      "gpu_duration_seconds": 0.554050304,
+      "gpu_end_tick": 1784525693240260608,
+      "layer": 12
+    },
+    {
+      "correlation_id": "73a204693264f104",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525693240804032,
+      "gpu_duration_seconds": 0.554211648,
+      "gpu_end_tick": 1784525693795015680,
+      "layer": 13
+    },
+    {
+      "correlation_id": "19f1b51cdd9cb29e",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525693795695776,
+      "gpu_duration_seconds": 0.549586784,
+      "gpu_end_tick": 1784525694345282560,
+      "layer": 14
+    },
+    {
+      "correlation_id": "3999cbb10ad43dbf",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525694345845600,
+      "gpu_duration_seconds": 0.556127392,
+      "gpu_end_tick": 1784525694901972992,
+      "layer": 15
+    },
+    {
+      "correlation_id": "12d374f237b5f67f",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525694902520416,
+      "gpu_duration_seconds": 0.549649824,
+      "gpu_end_tick": 1784525695452170240,
+      "layer": 16
+    },
+    {
+      "correlation_id": "7fa9166d895241dd",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525695453069472,
+      "gpu_duration_seconds": 0.544369504,
+      "gpu_end_tick": 1784525695997438976,
+      "layer": 17
+    },
+    {
+      "correlation_id": "5abeaa9fcae1f3f6",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525695998014592,
+      "gpu_duration_seconds": 0.552143744,
+      "gpu_end_tick": 1784525696550158336,
+      "layer": 18
+    },
+    {
+      "correlation_id": "29238ddc2816da5a",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525696550890112,
+      "gpu_duration_seconds": 0.55730112,
+      "gpu_end_tick": 1784525697108191232,
+      "layer": 19
+    },
+    {
+      "correlation_id": "b8cd14d199247e11",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525697108760768,
+      "gpu_duration_seconds": 0.566534976,
+      "gpu_end_tick": 1784525697675295744,
+      "layer": 20
+    },
+    {
+      "correlation_id": "abbe747fa446b087",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525697675789536,
+      "gpu_duration_seconds": 0.553400096,
+      "gpu_end_tick": 1784525698229189632,
+      "layer": 21
+    },
+    {
+      "correlation_id": "33697584b2acf70c",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525698229710656,
+      "gpu_duration_seconds": 0.556072128,
+      "gpu_end_tick": 1784525698785782784,
+      "layer": 22
+    },
+    {
+      "correlation_id": "841c1d0303920e85",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525698786470880,
+      "gpu_duration_seconds": 0.551826464,
+      "gpu_end_tick": 1784525699338297344,
+      "layer": 23
+    },
+    {
+      "correlation_id": "1d61452cbe7ab2b2",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525699338976736,
+      "gpu_duration_seconds": 0.552310304,
+      "gpu_end_tick": 1784525699891287040,
+      "layer": 24
+    },
+    {
+      "correlation_id": "bfe39c54a10fc591",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525699891772256,
+      "gpu_duration_seconds": 0.55544336,
+      "gpu_end_tick": 1784525700447215616,
+      "layer": 25
+    },
+    {
+      "correlation_id": "2f29bcc6c952c03d",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525700447909856,
+      "gpu_duration_seconds": 0.544341024,
+      "gpu_end_tick": 1784525700992250880,
+      "layer": 26
+    },
+    {
+      "correlation_id": "266acbec03995f4f",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525700992806624,
+      "gpu_duration_seconds": 0.552064288,
+      "gpu_end_tick": 1784525701544870912,
+      "layer": 27
+    },
+    {
+      "correlation_id": "a8fb39fb5ea1cb8a",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525701545486432,
+      "gpu_duration_seconds": 0.555218848,
+      "gpu_end_tick": 1784525702100705280,
+      "layer": 28
+    },
+    {
+      "correlation_id": "cf41fdfda27e2a9e",
+      "evaluation_index": 2,
+      "gpu_begin_tick": 1784525702101243264,
+      "gpu_duration_seconds": 0.558927488,
+      "gpu_end_tick": 1784525702660170752,
+      "layer": 29
+    },
+    {
+      "correlation_id": "56e543868ffd69a8",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525703995152352,
+      "gpu_duration_seconds": 0.553563168,
+      "gpu_end_tick": 1784525704548715520,
+      "layer": 0
+    },
+    {
+      "correlation_id": "17face118d74f353",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525704549263200,
+      "gpu_duration_seconds": 0.557392032,
+      "gpu_end_tick": 1784525705106655232,
+      "layer": 1
+    },
+    {
+      "correlation_id": "32c573793d043f5b",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525705107222432,
+      "gpu_duration_seconds": 0.558473888,
+      "gpu_end_tick": 1784525705665696320,
+      "layer": 2
+    },
+    {
+      "correlation_id": "166693631cc0bccd",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525705666302784,
+      "gpu_duration_seconds": 0.551672,
+      "gpu_end_tick": 1784525706217974784,
+      "layer": 3
+    },
+    {
+      "correlation_id": "a9a13bb8ebebce05",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525706218830240,
+      "gpu_duration_seconds": 0.552731232,
+      "gpu_end_tick": 1784525706771561472,
+      "layer": 4
+    },
+    {
+      "correlation_id": "ba05441635cb81d5",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525706772166976,
+      "gpu_duration_seconds": 0.545647296,
+      "gpu_end_tick": 1784525707317814272,
+      "layer": 5
+    },
+    {
+      "correlation_id": "cc859f052721b4e8",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525707318357216,
+      "gpu_duration_seconds": 0.554122016,
+      "gpu_end_tick": 1784525707872479232,
+      "layer": 6
+    },
+    {
+      "correlation_id": "24557bfcd5b46de1",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525707872960160,
+      "gpu_duration_seconds": 0.550682976,
+      "gpu_end_tick": 1784525708423643136,
+      "layer": 7
+    },
+    {
+      "correlation_id": "1ca63a2ac54a8290",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525708424160704,
+      "gpu_duration_seconds": 0.541240896,
+      "gpu_end_tick": 1784525708965401600,
+      "layer": 8
+    },
+    {
+      "correlation_id": "2f82852c5c7d6243",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525708965979680,
+      "gpu_duration_seconds": 0.555161056,
+      "gpu_end_tick": 1784525709521140736,
+      "layer": 9
+    },
+    {
+      "correlation_id": "b42d2144af15d800",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525709521702848,
+      "gpu_duration_seconds": 0.548496448,
+      "gpu_end_tick": 1784525710070199296,
+      "layer": 10
+    },
+    {
+      "correlation_id": "a40afb423ce8d8af",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525710070772352,
+      "gpu_duration_seconds": 0.55191488,
+      "gpu_end_tick": 1784525710622687232,
+      "layer": 11
+    },
+    {
+      "correlation_id": "0818d4635c2c1c9e",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525710623264608,
+      "gpu_duration_seconds": 0.55695888,
+      "gpu_end_tick": 1784525711180223488,
+      "layer": 12
+    },
+    {
+      "correlation_id": "ff06ad34f3c6c491",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525711180771584,
+      "gpu_duration_seconds": 0.554795776,
+      "gpu_end_tick": 1784525711735567360,
+      "layer": 13
+    },
+    {
+      "correlation_id": "89a257f207b1332d",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525711736131776,
+      "gpu_duration_seconds": 0.553719616,
+      "gpu_end_tick": 1784525712289851392,
+      "layer": 14
+    },
+    {
+      "correlation_id": "347d417fd9f7a2dc",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525712290412576,
+      "gpu_duration_seconds": 0.557359072,
+      "gpu_end_tick": 1784525712847771648,
+      "layer": 15
+    },
+    {
+      "correlation_id": "a1a7ecbdab85fc27",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525712848363776,
+      "gpu_duration_seconds": 0.556861184,
+      "gpu_end_tick": 1784525713405224960,
+      "layer": 16
+    },
+    {
+      "correlation_id": "18d52e0c30c4b3f2",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525713405728832,
+      "gpu_duration_seconds": 0.541603776,
+      "gpu_end_tick": 1784525713947332608,
+      "layer": 17
+    },
+    {
+      "correlation_id": "48b42cd6321657f8",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525713947916992,
+      "gpu_duration_seconds": 0.555444544,
+      "gpu_end_tick": 1784525714503361536,
+      "layer": 18
+    },
+    {
+      "correlation_id": "06d368b80f8ab03e",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525714503900320,
+      "gpu_duration_seconds": 0.555184992,
+      "gpu_end_tick": 1784525715059085312,
+      "layer": 19
+    },
+    {
+      "correlation_id": "dac7e984fcd42b79",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525715059749600,
+      "gpu_duration_seconds": 0.547944736,
+      "gpu_end_tick": 1784525715607694336,
+      "layer": 20
+    },
+    {
+      "correlation_id": "9343f562360ffa45",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525715608267296,
+      "gpu_duration_seconds": 0.556003808,
+      "gpu_end_tick": 1784525716164271104,
+      "layer": 21
+    },
+    {
+      "correlation_id": "c2528a858882ce8a",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525716165038144,
+      "gpu_duration_seconds": 0.557265856,
+      "gpu_end_tick": 1784525716722304000,
+      "layer": 22
+    },
+    {
+      "correlation_id": "184de18562a2f968",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525716723084960,
+      "gpu_duration_seconds": 0.554030432,
+      "gpu_end_tick": 1784525717277115392,
+      "layer": 23
+    },
+    {
+      "correlation_id": "542a1eb19ab48298",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525717277635744,
+      "gpu_duration_seconds": 0.553824096,
+      "gpu_end_tick": 1784525717831459840,
+      "layer": 24
+    },
+    {
+      "correlation_id": "18abf0d7516d8808",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525717832101376,
+      "gpu_duration_seconds": 0.55365888,
+      "gpu_end_tick": 1784525718385760256,
+      "layer": 25
+    },
+    {
+      "correlation_id": "9bf21fe019c1abbd",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525718386614176,
+      "gpu_duration_seconds": 0.553400416,
+      "gpu_end_tick": 1784525718940014592,
+      "layer": 26
+    },
+    {
+      "correlation_id": "9e1f5732c56c8783",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525718940734848,
+      "gpu_duration_seconds": 0.557428352,
+      "gpu_end_tick": 1784525719498163200,
+      "layer": 27
+    },
+    {
+      "correlation_id": "a1014fe5dd1fe8f1",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525719498747296,
+      "gpu_duration_seconds": 0.556084832,
+      "gpu_end_tick": 1784525720054832128,
+      "layer": 28
+    },
+    {
+      "correlation_id": "9f179b47e94b524c",
+      "evaluation_index": 3,
+      "gpu_begin_tick": 1784525720055318720,
+      "gpu_duration_seconds": 0.552639296,
+      "gpu_end_tick": 1784525720607958016,
+      "layer": 29
+    },
+    {
+      "correlation_id": "48f5c9fec5a0ec3f",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525721917501664,
+      "gpu_duration_seconds": 0.552672032,
+      "gpu_end_tick": 1784525722470173696,
+      "layer": 0
+    },
+    {
+      "correlation_id": "a7a612c466caf0a3",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525722471185056,
+      "gpu_duration_seconds": 0.545147232,
+      "gpu_end_tick": 1784525723016332288,
+      "layer": 1
+    },
+    {
+      "correlation_id": "531eadb9cfb5db20",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525723016941152,
+      "gpu_duration_seconds": 0.554493344,
+      "gpu_end_tick": 1784525723571434496,
+      "layer": 2
+    },
+    {
+      "correlation_id": "f4d07b8cacd699b5",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525723571964288,
+      "gpu_duration_seconds": 0.54493248,
+      "gpu_end_tick": 1784525724116896768,
+      "layer": 3
+    },
+    {
+      "correlation_id": "4985834def2f2c23",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525724117475008,
+      "gpu_duration_seconds": 0.551277888,
+      "gpu_end_tick": 1784525724668752896,
+      "layer": 4
+    },
+    {
+      "correlation_id": "f9199f5cb650b59a",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525724669310400,
+      "gpu_duration_seconds": 0.555561536,
+      "gpu_end_tick": 1784525725224871936,
+      "layer": 5
+    },
+    {
+      "correlation_id": "2cb3cc91226899d8",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525725225415552,
+      "gpu_duration_seconds": 0.555263104,
+      "gpu_end_tick": 1784525725780678656,
+      "layer": 6
+    },
+    {
+      "correlation_id": "7f78d24b8fc0c9ee",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525725781348864,
+      "gpu_duration_seconds": 0.554642944,
+      "gpu_end_tick": 1784525726335991808,
+      "layer": 7
+    },
+    {
+      "correlation_id": "cb909f55c802c792",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525726336555264,
+      "gpu_duration_seconds": 0.555618048,
+      "gpu_end_tick": 1784525726892173312,
+      "layer": 8
+    },
+    {
+      "correlation_id": "b58d9ba76c0f75b2",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525726892751296,
+      "gpu_duration_seconds": 0.55344288,
+      "gpu_end_tick": 1784525727446194176,
+      "layer": 9
+    },
+    {
+      "correlation_id": "dbe42ba5bd7ec2f7",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525727446752224,
+      "gpu_duration_seconds": 0.549032992,
+      "gpu_end_tick": 1784525727995785216,
+      "layer": 10
+    },
+    {
+      "correlation_id": "56a12a6be0eb2eb8",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525727996278496,
+      "gpu_duration_seconds": 0.556284192,
+      "gpu_end_tick": 1784525728552562688,
+      "layer": 11
+    },
+    {
+      "correlation_id": "d6306b65d6279446",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525728553131232,
+      "gpu_duration_seconds": 0.5532936,
+      "gpu_end_tick": 1784525729106424832,
+      "layer": 12
+    },
+    {
+      "correlation_id": "0c6e48a5b6df90c4",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525729106954304,
+      "gpu_duration_seconds": 0.555457472,
+      "gpu_end_tick": 1784525729662411776,
+      "layer": 13
+    },
+    {
+      "correlation_id": "4abfea66ea4c4d25",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525729662932992,
+      "gpu_duration_seconds": 0.556455936,
+      "gpu_end_tick": 1784525730219388928,
+      "layer": 14
+    },
+    {
+      "correlation_id": "d26eaea8989926e5",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525730219960704,
+      "gpu_duration_seconds": 0.565870208,
+      "gpu_end_tick": 1784525730785830912,
+      "layer": 15
+    },
+    {
+      "correlation_id": "6fb67fd3effcbaa1",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525730786340896,
+      "gpu_duration_seconds": 0.549830624,
+      "gpu_end_tick": 1784525731336171520,
+      "layer": 16
+    },
+    {
+      "correlation_id": "0d31f62bf5e88ba6",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525731336695936,
+      "gpu_duration_seconds": 0.557542272,
+      "gpu_end_tick": 1784525731894238208,
+      "layer": 17
+    },
+    {
+      "correlation_id": "880d8784051505b9",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525731894798400,
+      "gpu_duration_seconds": 0.553384896,
+      "gpu_end_tick": 1784525732448183296,
+      "layer": 18
+    },
+    {
+      "correlation_id": "6b75bc6a324325e2",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525732448763552,
+      "gpu_duration_seconds": 0.551862624,
+      "gpu_end_tick": 1784525733000626176,
+      "layer": 19
+    },
+    {
+      "correlation_id": "dc9e540e97cb40fc",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525733001383712,
+      "gpu_duration_seconds": 0.5560824,
+      "gpu_end_tick": 1784525733557466112,
+      "layer": 20
+    },
+    {
+      "correlation_id": "16849700ceebe562",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525733558266272,
+      "gpu_duration_seconds": 0.55210352,
+      "gpu_end_tick": 1784525734110369792,
+      "layer": 21
+    },
+    {
+      "correlation_id": "25d57479fd73197e",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525734110927488,
+      "gpu_duration_seconds": 0.55194048,
+      "gpu_end_tick": 1784525734662867968,
+      "layer": 22
+    },
+    {
+      "correlation_id": "2414b6ccc8900ab0",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525734663444576,
+      "gpu_duration_seconds": 0.55573904,
+      "gpu_end_tick": 1784525735219183616,
+      "layer": 23
+    },
+    {
+      "correlation_id": "7f87b9867cad27f6",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525735220102304,
+      "gpu_duration_seconds": 0.559925088,
+      "gpu_end_tick": 1784525735780027392,
+      "layer": 24
+    },
+    {
+      "correlation_id": "f36d18c2eaf9023e",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525735780528768,
+      "gpu_duration_seconds": 0.554012032,
+      "gpu_end_tick": 1784525736334540800,
+      "layer": 25
+    },
+    {
+      "correlation_id": "b93c7b067c7ddebb",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525736335114816,
+      "gpu_duration_seconds": 0.55633248,
+      "gpu_end_tick": 1784525736891447296,
+      "layer": 26
+    },
+    {
+      "correlation_id": "95e8584f5fb50dc5",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525736891938784,
+      "gpu_duration_seconds": 0.557154336,
+      "gpu_end_tick": 1784525737449093120,
+      "layer": 27
+    },
+    {
+      "correlation_id": "231b856ef0244211",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525737449599456,
+      "gpu_duration_seconds": 0.553884192,
+      "gpu_end_tick": 1784525738003483648,
+      "layer": 28
+    },
+    {
+      "correlation_id": "dea872e852d94558",
+      "evaluation_index": 4,
+      "gpu_begin_tick": 1784525738003959392,
+      "gpu_duration_seconds": 0.549649824,
+      "gpu_end_tick": 1784525738553609216,
+      "layer": 29
+    },
+    {
+      "correlation_id": "6b5f54d7b77b9256",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525739877247616,
+      "gpu_duration_seconds": 0.551729536,
+      "gpu_end_tick": 1784525740428977152,
+      "layer": 0
+    },
+    {
+      "correlation_id": "7f4ddfd9fc3f3aff",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525740429496896,
+      "gpu_duration_seconds": 0.555921856,
+      "gpu_end_tick": 1784525740985418752,
+      "layer": 1
+    },
+    {
+      "correlation_id": "01c619f0db8ebdd8",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525740986074240,
+      "gpu_duration_seconds": 0.555622272,
+      "gpu_end_tick": 1784525741541696512,
+      "layer": 2
+    },
+    {
+      "correlation_id": "1f2042aeadf5069d",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525741542257568,
+      "gpu_duration_seconds": 0.5416152,
+      "gpu_end_tick": 1784525742083872768,
+      "layer": 3
+    },
+    {
+      "correlation_id": "dada54891f565f16",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525742084410368,
+      "gpu_duration_seconds": 0.55327744,
+      "gpu_end_tick": 1784525742637687808,
+      "layer": 4
+    },
+    {
+      "correlation_id": "b7c75bf85543f08a",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525742638305472,
+      "gpu_duration_seconds": 0.555734848,
+      "gpu_end_tick": 1784525743194040320,
+      "layer": 5
+    },
+    {
+      "correlation_id": "ad5333c256460963",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525743194533248,
+      "gpu_duration_seconds": 0.559230336,
+      "gpu_end_tick": 1784525743753763584,
+      "layer": 6
+    },
+    {
+      "correlation_id": "0a39a2f885befc9a",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525743754386208,
+      "gpu_duration_seconds": 0.550200544,
+      "gpu_end_tick": 1784525744304586752,
+      "layer": 7
+    },
+    {
+      "correlation_id": "0a48ac8990dbe95f",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525744305206944,
+      "gpu_duration_seconds": 0.55561968,
+      "gpu_end_tick": 1784525744860826624,
+      "layer": 8
+    },
+    {
+      "correlation_id": "a77cd5cb727b5a36",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525744861339264,
+      "gpu_duration_seconds": 0.555764096,
+      "gpu_end_tick": 1784525745417103360,
+      "layer": 9
+    },
+    {
+      "correlation_id": "8de8bb1e7434db32",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525745417633664,
+      "gpu_duration_seconds": 0.55812928,
+      "gpu_end_tick": 1784525745975762944,
+      "layer": 10
+    },
+    {
+      "correlation_id": "f3253f5830f683f2",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525745976385088,
+      "gpu_duration_seconds": 0.555539904,
+      "gpu_end_tick": 1784525746531924992,
+      "layer": 11
+    },
+    {
+      "correlation_id": "a34939deb0ada921",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525746532535776,
+      "gpu_duration_seconds": 0.544945696,
+      "gpu_end_tick": 1784525747077481472,
+      "layer": 12
+    },
+    {
+      "correlation_id": "768394678d29e111",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525747078047040,
+      "gpu_duration_seconds": 0.550469312,
+      "gpu_end_tick": 1784525747628516352,
+      "layer": 13
+    },
+    {
+      "correlation_id": "05ac236e6cd942c0",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525747629035616,
+      "gpu_duration_seconds": 0.556871584,
+      "gpu_end_tick": 1784525748185907200,
+      "layer": 14
+    },
+    {
+      "correlation_id": "85b609747de8de58",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525748186595104,
+      "gpu_duration_seconds": 0.56004208,
+      "gpu_end_tick": 1784525748746637184,
+      "layer": 15
+    },
+    {
+      "correlation_id": "c6cce1556f56e063",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525748747222080,
+      "gpu_duration_seconds": 0.549007296,
+      "gpu_end_tick": 1784525749296229376,
+      "layer": 16
+    },
+    {
+      "correlation_id": "4b6ff08f1b1b2651",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525749296821664,
+      "gpu_duration_seconds": 0.553667168,
+      "gpu_end_tick": 1784525749850488832,
+      "layer": 17
+    },
+    {
+      "correlation_id": "73d69baad371407e",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525749851106592,
+      "gpu_duration_seconds": 0.556804832,
+      "gpu_end_tick": 1784525750407911424,
+      "layer": 18
+    },
+    {
+      "correlation_id": "e81f10e60bcfaa96",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525750408439456,
+      "gpu_duration_seconds": 0.554803552,
+      "gpu_end_tick": 1784525750963243008,
+      "layer": 19
+    },
+    {
+      "correlation_id": "08c8fa583f75c38d",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525750963746368,
+      "gpu_duration_seconds": 0.548904384,
+      "gpu_end_tick": 1784525751512650752,
+      "layer": 20
+    },
+    {
+      "correlation_id": "350ef0a159c70a3f",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525751513195872,
+      "gpu_duration_seconds": 0.545629856,
+      "gpu_end_tick": 1784525752058825728,
+      "layer": 21
+    },
+    {
+      "correlation_id": "c021c48df2658d45",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525752059410656,
+      "gpu_duration_seconds": 0.554981152,
+      "gpu_end_tick": 1784525752614391808,
+      "layer": 22
+    },
+    {
+      "correlation_id": "762eb2516d2b5840",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525752614968800,
+      "gpu_duration_seconds": 0.558459424,
+      "gpu_end_tick": 1784525753173428224,
+      "layer": 23
+    },
+    {
+      "correlation_id": "17da0eb48128dcff",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525753173912960,
+      "gpu_duration_seconds": 0.545748608,
+      "gpu_end_tick": 1784525753719661568,
+      "layer": 24
+    },
+    {
+      "correlation_id": "f591ffc2168afd52",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525753720203200,
+      "gpu_duration_seconds": 0.556689472,
+      "gpu_end_tick": 1784525754276892672,
+      "layer": 25
+    },
+    {
+      "correlation_id": "7fea3aaa0d90470b",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525754277514816,
+      "gpu_duration_seconds": 0.558084544,
+      "gpu_end_tick": 1784525754835599360,
+      "layer": 26
+    },
+    {
+      "correlation_id": "c1efb602f709dee0",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525754836139360,
+      "gpu_duration_seconds": 0.553637536,
+      "gpu_end_tick": 1784525755389776896,
+      "layer": 27
+    },
+    {
+      "correlation_id": "36f67eb0f7eb748d",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525755390322016,
+      "gpu_duration_seconds": 0.55821072,
+      "gpu_end_tick": 1784525755948532736,
+      "layer": 28
+    },
+    {
+      "correlation_id": "e137c690031a7323",
+      "evaluation_index": 5,
+      "gpu_begin_tick": 1784525755949095072,
+      "gpu_duration_seconds": 0.552515424,
+      "gpu_end_tick": 1784525756501610496,
+      "layer": 29
+    },
+    {
+      "correlation_id": "b68bd198f2e0d905",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525757808824448,
+      "gpu_duration_seconds": 0.550384512,
+      "gpu_end_tick": 1784525758359208960,
+      "layer": 0
+    },
+    {
+      "correlation_id": "99b747643e4eaf58",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525758360145664,
+      "gpu_duration_seconds": 0.557926656,
+      "gpu_end_tick": 1784525758918072320,
+      "layer": 1
+    },
+    {
+      "correlation_id": "dd66b428254c5cb8",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525758919007808,
+      "gpu_duration_seconds": 0.55058272,
+      "gpu_end_tick": 1784525759469590528,
+      "layer": 2
+    },
+    {
+      "correlation_id": "03d98f081535c0db",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525759470082240,
+      "gpu_duration_seconds": 0.554625856,
+      "gpu_end_tick": 1784525760024708096,
+      "layer": 3
+    },
+    {
+      "correlation_id": "bc725283e12a6193",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525760025298336,
+      "gpu_duration_seconds": 0.553923168,
+      "gpu_end_tick": 1784525760579221504,
+      "layer": 4
+    },
+    {
+      "correlation_id": "fa19f16cc733b862",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525760579743648,
+      "gpu_duration_seconds": 0.55268464,
+      "gpu_end_tick": 1784525761132428288,
+      "layer": 5
+    },
+    {
+      "correlation_id": "b28cd31b653fd4d4",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525761132945728,
+      "gpu_duration_seconds": 0.555240128,
+      "gpu_end_tick": 1784525761688185856,
+      "layer": 6
+    },
+    {
+      "correlation_id": "c5c93272ae45b699",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525761688746464,
+      "gpu_duration_seconds": 0.55554512,
+      "gpu_end_tick": 1784525762244291584,
+      "layer": 7
+    },
+    {
+      "correlation_id": "5b66fad03d75da27",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525762244829856,
+      "gpu_duration_seconds": 0.560435552,
+      "gpu_end_tick": 1784525762805265408,
+      "layer": 8
+    },
+    {
+      "correlation_id": "ad4d3548cf082435",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525762805754720,
+      "gpu_duration_seconds": 0.55444992,
+      "gpu_end_tick": 1784525763360204640,
+      "layer": 9
+    },
+    {
+      "correlation_id": "9a2aefe55c3ad306",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525763360792704,
+      "gpu_duration_seconds": 0.55556288,
+      "gpu_end_tick": 1784525763916355584,
+      "layer": 10
+    },
+    {
+      "correlation_id": "a9407827613bcdf8",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525763916906848,
+      "gpu_duration_seconds": 0.555371168,
+      "gpu_end_tick": 1784525764472278016,
+      "layer": 11
+    },
+    {
+      "correlation_id": "5ed39f6883458322",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525764472852832,
+      "gpu_duration_seconds": 0.552589984,
+      "gpu_end_tick": 1784525765025442816,
+      "layer": 12
+    },
+    {
+      "correlation_id": "edcc6ac6f6180195",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525765026318112,
+      "gpu_duration_seconds": 0.54972848,
+      "gpu_end_tick": 1784525765576046592,
+      "layer": 13
+    },
+    {
+      "correlation_id": "4345243f2a7ff1c8",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525765576561152,
+      "gpu_duration_seconds": 0.554430976,
+      "gpu_end_tick": 1784525766130992128,
+      "layer": 14
+    },
+    {
+      "correlation_id": "bc332fbd652b088f",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525766131530336,
+      "gpu_duration_seconds": 0.554877088,
+      "gpu_end_tick": 1784525766686407424,
+      "layer": 15
+    },
+    {
+      "correlation_id": "7a3b2e3089420bdd",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525766686965088,
+      "gpu_duration_seconds": 0.554352288,
+      "gpu_end_tick": 1784525767241317376,
+      "layer": 16
+    },
+    {
+      "correlation_id": "642ccedbceedb0a8",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525767242089056,
+      "gpu_duration_seconds": 0.562367904,
+      "gpu_end_tick": 1784525767804456960,
+      "layer": 17
+    },
+    {
+      "correlation_id": "d22d87f72c837c49",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525767804983072,
+      "gpu_duration_seconds": 0.556111072,
+      "gpu_end_tick": 1784525768361094144,
+      "layer": 18
+    },
+    {
+      "correlation_id": "1f656c68d190cb12",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525768361594880,
+      "gpu_duration_seconds": 0.55729152,
+      "gpu_end_tick": 1784525768918886400,
+      "layer": 19
+    },
+    {
+      "correlation_id": "bfd13b49bafde204",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525768919485568,
+      "gpu_duration_seconds": 0.555242368,
+      "gpu_end_tick": 1784525769474727936,
+      "layer": 20
+    },
+    {
+      "correlation_id": "70efa6409f447bfe",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525769475263872,
+      "gpu_duration_seconds": 0.556130944,
+      "gpu_end_tick": 1784525770031394816,
+      "layer": 21
+    },
+    {
+      "correlation_id": "4d89a0c24da50b56",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525770031904480,
+      "gpu_duration_seconds": 0.555015456,
+      "gpu_end_tick": 1784525770586919936,
+      "layer": 22
+    },
+    {
+      "correlation_id": "e01a842d56ab188d",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525770587492544,
+      "gpu_duration_seconds": 0.556266304,
+      "gpu_end_tick": 1784525771143758848,
+      "layer": 23
+    },
+    {
+      "correlation_id": "0b5d202cfefa678d",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525771144400256,
+      "gpu_duration_seconds": 0.552425088,
+      "gpu_end_tick": 1784525771696825344,
+      "layer": 24
+    },
+    {
+      "correlation_id": "53523281bf8e0b32",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525771697390912,
+      "gpu_duration_seconds": 0.556940992,
+      "gpu_end_tick": 1784525772254331904,
+      "layer": 25
+    },
+    {
+      "correlation_id": "eed5ff7c651da7c5",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525772255097248,
+      "gpu_duration_seconds": 0.563176032,
+      "gpu_end_tick": 1784525772818273280,
+      "layer": 26
+    },
+    {
+      "correlation_id": "9c48c18a2ce45cc0",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525772818796704,
+      "gpu_duration_seconds": 0.549435232,
+      "gpu_end_tick": 1784525773368231936,
+      "layer": 27
+    },
+    {
+      "correlation_id": "b8178308c3c35a87",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525773368814688,
+      "gpu_duration_seconds": 0.556888992,
+      "gpu_end_tick": 1784525773925703680,
+      "layer": 28
+    },
+    {
+      "correlation_id": "df1f60e2e65e434d",
+      "evaluation_index": 6,
+      "gpu_begin_tick": 1784525773926226816,
+      "gpu_duration_seconds": 0.554370176,
+      "gpu_end_tick": 1784525774480596992,
+      "layer": 29
+    },
+    {
+      "correlation_id": "49776e5a647c2165",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525775783428672,
+      "gpu_duration_seconds": 0.550574528,
+      "gpu_end_tick": 1784525776334003200,
+      "layer": 0
+    },
+    {
+      "correlation_id": "ee9c9f155ed339d2",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525776334516128,
+      "gpu_duration_seconds": 0.555610208,
+      "gpu_end_tick": 1784525776890126336,
+      "layer": 1
+    },
+    {
+      "correlation_id": "837a26d383fdf4cb",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525776890766464,
+      "gpu_duration_seconds": 0.55521984,
+      "gpu_end_tick": 1784525777445986304,
+      "layer": 2
+    },
+    {
+      "correlation_id": "7e19273619e6d654",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525777446518656,
+      "gpu_duration_seconds": 0.556642432,
+      "gpu_end_tick": 1784525778003161088,
+      "layer": 3
+    },
+    {
+      "correlation_id": "dac9cb818bd1b8b5",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525778003707104,
+      "gpu_duration_seconds": 0.546962208,
+      "gpu_end_tick": 1784525778550669312,
+      "layer": 4
+    },
+    {
+      "correlation_id": "e5edf1953757b922",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525778551173280,
+      "gpu_duration_seconds": 0.549115744,
+      "gpu_end_tick": 1784525779100289024,
+      "layer": 5
+    },
+    {
+      "correlation_id": "8f05b3455eadd624",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525779100944128,
+      "gpu_duration_seconds": 0.556198144,
+      "gpu_end_tick": 1784525779657142272,
+      "layer": 6
+    },
+    {
+      "correlation_id": "1e27c5c606709b79",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525779657664480,
+      "gpu_duration_seconds": 0.557787168,
+      "gpu_end_tick": 1784525780215451648,
+      "layer": 7
+    },
+    {
+      "correlation_id": "941d9ad0309c4ab0",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525780216072352,
+      "gpu_duration_seconds": 0.558476736,
+      "gpu_end_tick": 1784525780774549088,
+      "layer": 8
+    },
+    {
+      "correlation_id": "452ac6173953d44a",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525780775000384,
+      "gpu_duration_seconds": 0.589687488,
+      "gpu_end_tick": 1784525781364687872,
+      "layer": 9
+    },
+    {
+      "correlation_id": "d662219d9d94e047",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525781365977472,
+      "gpu_duration_seconds": 0.60693744,
+      "gpu_end_tick": 1784525781972914912,
+      "layer": 10
+    },
+    {
+      "correlation_id": "afc1f2aaa0478ed5",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525781973428192,
+      "gpu_duration_seconds": 0.571323008,
+      "gpu_end_tick": 1784525782544751200,
+      "layer": 11
+    },
+    {
+      "correlation_id": "ad65a5bca3148c5c",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525782545250304,
+      "gpu_duration_seconds": 0.570753408,
+      "gpu_end_tick": 1784525783116003712,
+      "layer": 12
+    },
+    {
+      "correlation_id": "c5e02878ac6307e8",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525783116484384,
+      "gpu_duration_seconds": 0.572694528,
+      "gpu_end_tick": 1784525783689178912,
+      "layer": 13
+    },
+    {
+      "correlation_id": "4aafa8f4b16c2d41",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525783689799712,
+      "gpu_duration_seconds": 0.572830944,
+      "gpu_end_tick": 1784525784262630656,
+      "layer": 14
+    },
+    {
+      "correlation_id": "6a979f44c968aa04",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525784263135680,
+      "gpu_duration_seconds": 0.570644032,
+      "gpu_end_tick": 1784525784833779712,
+      "layer": 15
+    },
+    {
+      "correlation_id": "0051708e94735f4e",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525784834237760,
+      "gpu_duration_seconds": 0.570629792,
+      "gpu_end_tick": 1784525785404867552,
+      "layer": 16
+    },
+    {
+      "correlation_id": "54e9004fd78303ef",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525785405403584,
+      "gpu_duration_seconds": 0.553091648,
+      "gpu_end_tick": 1784525785958495232,
+      "layer": 17
+    },
+    {
+      "correlation_id": "af34d0b3c80c6e1b",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525785959075360,
+      "gpu_duration_seconds": 0.5547064,
+      "gpu_end_tick": 1784525786513781760,
+      "layer": 18
+    },
+    {
+      "correlation_id": "d8873bb889ad8914",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525786514381312,
+      "gpu_duration_seconds": 0.578058016,
+      "gpu_end_tick": 1784525787092439328,
+      "layer": 19
+    },
+    {
+      "correlation_id": "0021e6c80c4095b8",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525787092925344,
+      "gpu_duration_seconds": 0.553167968,
+      "gpu_end_tick": 1784525787646093312,
+      "layer": 20
+    },
+    {
+      "correlation_id": "2d1ce342db5405cb",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525787646614688,
+      "gpu_duration_seconds": 0.55282672,
+      "gpu_end_tick": 1784525788199441408,
+      "layer": 21
+    },
+    {
+      "correlation_id": "1c03355e4b77c124",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525788199990624,
+      "gpu_duration_seconds": 0.54900496,
+      "gpu_end_tick": 1784525788748995584,
+      "layer": 22
+    },
+    {
+      "correlation_id": "ffad7c162b1b8433",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525788749534176,
+      "gpu_duration_seconds": 0.557040672,
+      "gpu_end_tick": 1784525789306574848,
+      "layer": 23
+    },
+    {
+      "correlation_id": "61c6d70d70197a60",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525789307105984,
+      "gpu_duration_seconds": 0.556366144,
+      "gpu_end_tick": 1784525789863472128,
+      "layer": 24
+    },
+    {
+      "correlation_id": "4d30551f59fe7c3c",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525789864149888,
+      "gpu_duration_seconds": 0.559078528,
+      "gpu_end_tick": 1784525790423228416,
+      "layer": 25
+    },
+    {
+      "correlation_id": "5cdf9ee5ba7789d1",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525790423766944,
+      "gpu_duration_seconds": 0.5588696,
+      "gpu_end_tick": 1784525790982636544,
+      "layer": 26
+    },
+    {
+      "correlation_id": "ac0b98b3304f8471",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525790983259840,
+      "gpu_duration_seconds": 0.546892096,
+      "gpu_end_tick": 1784525791530151936,
+      "layer": 27
+    },
+    {
+      "correlation_id": "1d3d17e0cf66891d",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525791530703712,
+      "gpu_duration_seconds": 0.553311392,
+      "gpu_end_tick": 1784525792084015104,
+      "layer": 28
+    },
+    {
+      "correlation_id": "fc26817fac0bbdf3",
+      "evaluation_index": 7,
+      "gpu_begin_tick": 1784525792084535584,
+      "gpu_duration_seconds": 0.555565792,
+      "gpu_end_tick": 1784525792640101376,
+      "layer": 29
+    },
+    {
+      "correlation_id": "aa3f0e5ec56b9d8e",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525793998229824,
+      "gpu_duration_seconds": 0.550048448,
+      "gpu_end_tick": 1784525794548278272,
+      "layer": 0
+    },
+    {
+      "correlation_id": "1b28deff8062761d",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525794548814880,
+      "gpu_duration_seconds": 0.545142752,
+      "gpu_end_tick": 1784525795093957632,
+      "layer": 1
+    },
+    {
+      "correlation_id": "1231de0f06684dee",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525795094480800,
+      "gpu_duration_seconds": 0.553402464,
+      "gpu_end_tick": 1784525795647883264,
+      "layer": 2
+    },
+    {
+      "correlation_id": "8296fcefe1fa213e",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525795648441760,
+      "gpu_duration_seconds": 0.557055584,
+      "gpu_end_tick": 1784525796205497344,
+      "layer": 3
+    },
+    {
+      "correlation_id": "91ca3a9b0cda4e32",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525796206257344,
+      "gpu_duration_seconds": 0.563255232,
+      "gpu_end_tick": 1784525796769512576,
+      "layer": 4
+    },
+    {
+      "correlation_id": "8bd5ba01fdde7843",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525796770303552,
+      "gpu_duration_seconds": 0.551138752,
+      "gpu_end_tick": 1784525797321442304,
+      "layer": 5
+    },
+    {
+      "correlation_id": "71355f09234570e6",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525797321968352,
+      "gpu_duration_seconds": 0.558334176,
+      "gpu_end_tick": 1784525797880302528,
+      "layer": 6
+    },
+    {
+      "correlation_id": "b7fc18213869b926",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525797881016000,
+      "gpu_duration_seconds": 0.552659264,
+      "gpu_end_tick": 1784525798433675264,
+      "layer": 7
+    },
+    {
+      "correlation_id": "b3369dfd584b154d",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525798434396608,
+      "gpu_duration_seconds": 0.538639936,
+      "gpu_end_tick": 1784525798973036544,
+      "layer": 8
+    },
+    {
+      "correlation_id": "fc8d3e8d2e9531f3",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525798973633568,
+      "gpu_duration_seconds": 0.546448352,
+      "gpu_end_tick": 1784525799520081920,
+      "layer": 9
+    },
+    {
+      "correlation_id": "19692b140bcd56fa",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525799520659872,
+      "gpu_duration_seconds": 0.546644576,
+      "gpu_end_tick": 1784525800067304448,
+      "layer": 10
+    },
+    {
+      "correlation_id": "c8efbc4256242687",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525800067786560,
+      "gpu_duration_seconds": 0.547257536,
+      "gpu_end_tick": 1784525800615044096,
+      "layer": 11
+    },
+    {
+      "correlation_id": "611a9745ac42a57b",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525800615503200,
+      "gpu_duration_seconds": 0.558729888,
+      "gpu_end_tick": 1784525801174233088,
+      "layer": 12
+    },
+    {
+      "correlation_id": "f086941bc0b9d636",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525801174716928,
+      "gpu_duration_seconds": 0.556272128,
+      "gpu_end_tick": 1784525801730989056,
+      "layer": 13
+    },
+    {
+      "correlation_id": "12766fa8ab611284",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525801731536928,
+      "gpu_duration_seconds": 0.555847648,
+      "gpu_end_tick": 1784525802287384576,
+      "layer": 14
+    },
+    {
+      "correlation_id": "6a46a328b15e96d2",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525802287940864,
+      "gpu_duration_seconds": 0.557081344,
+      "gpu_end_tick": 1784525802845022208,
+      "layer": 15
+    },
+    {
+      "correlation_id": "294b7a35e5a16186",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525802845530240,
+      "gpu_duration_seconds": 0.549339008,
+      "gpu_end_tick": 1784525803394869248,
+      "layer": 16
+    },
+    {
+      "correlation_id": "c99d7239b9a3a801",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525803395448576,
+      "gpu_duration_seconds": 0.558085376,
+      "gpu_end_tick": 1784525803953533952,
+      "layer": 17
+    },
+    {
+      "correlation_id": "c91f41a8c36bbef2",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525803954132416,
+      "gpu_duration_seconds": 0.55556768,
+      "gpu_end_tick": 1784525804509700096,
+      "layer": 18
+    },
+    {
+      "correlation_id": "bc2a8ea98a001c94",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525804510394816,
+      "gpu_duration_seconds": 0.54863008,
+      "gpu_end_tick": 1784525805059024896,
+      "layer": 19
+    },
+    {
+      "correlation_id": "a4be5d88388a49a4",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525805059591520,
+      "gpu_duration_seconds": 0.553965216,
+      "gpu_end_tick": 1784525805613556736,
+      "layer": 20
+    },
+    {
+      "correlation_id": "684b54f0e7acdc27",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525805614123488,
+      "gpu_duration_seconds": 0.550775328,
+      "gpu_end_tick": 1784525806164898816,
+      "layer": 21
+    },
+    {
+      "correlation_id": "9b9b8075fa0dd5c4",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525806165471744,
+      "gpu_duration_seconds": 0.555257344,
+      "gpu_end_tick": 1784525806720729088,
+      "layer": 22
+    },
+    {
+      "correlation_id": "f909ff020721decd",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525806721542784,
+      "gpu_duration_seconds": 0.55371712,
+      "gpu_end_tick": 1784525807275259904,
+      "layer": 23
+    },
+    {
+      "correlation_id": "f242f78bb13a1515",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525807275857408,
+      "gpu_duration_seconds": 0.558893568,
+      "gpu_end_tick": 1784525807834750976,
+      "layer": 24
+    },
+    {
+      "correlation_id": "6a81419427bf7c6c",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525807835258528,
+      "gpu_duration_seconds": 0.555022688,
+      "gpu_end_tick": 1784525808390281216,
+      "layer": 25
+    },
+    {
+      "correlation_id": "b14a1da7833bcd76",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525808390832352,
+      "gpu_duration_seconds": 0.556489504,
+      "gpu_end_tick": 1784525808947321856,
+      "layer": 26
+    },
+    {
+      "correlation_id": "23df798b675395fc",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525808947895424,
+      "gpu_duration_seconds": 0.553779072,
+      "gpu_end_tick": 1784525809501674496,
+      "layer": 27
+    },
+    {
+      "correlation_id": "66b7b49d352912d3",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525809502261056,
+      "gpu_duration_seconds": 0.552144064,
+      "gpu_end_tick": 1784525810054405120,
+      "layer": 28
+    },
+    {
+      "correlation_id": "a47c4fe24944628d",
+      "evaluation_index": 8,
+      "gpu_begin_tick": 1784525810055097664,
+      "gpu_duration_seconds": 0.549152448,
+      "gpu_end_tick": 1784525810604250112,
+      "layer": 29
+    },
+    {
+      "correlation_id": "a65000d8ac860a64",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525811966585440,
+      "gpu_duration_seconds": 0.551362976,
+      "gpu_end_tick": 1784525812517948416,
+      "layer": 0
+    },
+    {
+      "correlation_id": "7795555432b66e68",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525812518563264,
+      "gpu_duration_seconds": 0.553005632,
+      "gpu_end_tick": 1784525813071568896,
+      "layer": 1
+    },
+    {
+      "correlation_id": "ce6056427acf0c52",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525813072158464,
+      "gpu_duration_seconds": 0.5560128,
+      "gpu_end_tick": 1784525813628171264,
+      "layer": 2
+    },
+    {
+      "correlation_id": "6b0d78a6b6f862f0",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525813628923296,
+      "gpu_duration_seconds": 0.556548704,
+      "gpu_end_tick": 1784525814185472000,
+      "layer": 3
+    },
+    {
+      "correlation_id": "8238209744f06a53",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525814186060416,
+      "gpu_duration_seconds": 0.547329408,
+      "gpu_end_tick": 1784525814733389824,
+      "layer": 4
+    },
+    {
+      "correlation_id": "29c96b900c2fbd9c",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525814733929888,
+      "gpu_duration_seconds": 0.552828512,
+      "gpu_end_tick": 1784525815286758400,
+      "layer": 5
+    },
+    {
+      "correlation_id": "c079122840f80581",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525815287377120,
+      "gpu_duration_seconds": 0.56291408,
+      "gpu_end_tick": 1784525815850291200,
+      "layer": 6
+    },
+    {
+      "correlation_id": "50b8416b55c723d6",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525815851008992,
+      "gpu_duration_seconds": 0.556509216,
+      "gpu_end_tick": 1784525816407518208,
+      "layer": 7
+    },
+    {
+      "correlation_id": "54ffffeef1e09823",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525816408115744,
+      "gpu_duration_seconds": 0.548559328,
+      "gpu_end_tick": 1784525816956675072,
+      "layer": 8
+    },
+    {
+      "correlation_id": "a8c1e1579936b579",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525816957389824,
+      "gpu_duration_seconds": 0.55588352,
+      "gpu_end_tick": 1784525817513273344,
+      "layer": 9
+    },
+    {
+      "correlation_id": "8a2329df2050a63b",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525817513827040,
+      "gpu_duration_seconds": 0.555441184,
+      "gpu_end_tick": 1784525818069268224,
+      "layer": 10
+    },
+    {
+      "correlation_id": "1e376203586a258a",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525818069751488,
+      "gpu_duration_seconds": 0.552066368,
+      "gpu_end_tick": 1784525818621817856,
+      "layer": 11
+    },
+    {
+      "correlation_id": "9b8f592a0438eb74",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525818622335232,
+      "gpu_duration_seconds": 0.54757248,
+      "gpu_end_tick": 1784525819169907712,
+      "layer": 12
+    },
+    {
+      "correlation_id": "bf8953100edf56eb",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525819170480160,
+      "gpu_duration_seconds": 0.556604384,
+      "gpu_end_tick": 1784525819727084544,
+      "layer": 13
+    },
+    {
+      "correlation_id": "92bd0fc0f7cd387b",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525819728026560,
+      "gpu_duration_seconds": 0.55188384,
+      "gpu_end_tick": 1784525820279910400,
+      "layer": 14
+    },
+    {
+      "correlation_id": "e4aa763c2eed09f6",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525820280378176,
+      "gpu_duration_seconds": 0.563202528,
+      "gpu_end_tick": 1784525820843580704,
+      "layer": 15
+    },
+    {
+      "correlation_id": "5d24e38e569a5bbf",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525820844157120,
+      "gpu_duration_seconds": 0.553990976,
+      "gpu_end_tick": 1784525821398148096,
+      "layer": 16
+    },
+    {
+      "correlation_id": "f0a5f39eca94ec7d",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525821398693216,
+      "gpu_duration_seconds": 0.556160672,
+      "gpu_end_tick": 1784525821954853888,
+      "layer": 17
+    },
+    {
+      "correlation_id": "b93512032d98e5fb",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525821955529760,
+      "gpu_duration_seconds": 0.555347936,
+      "gpu_end_tick": 1784525822510877696,
+      "layer": 18
+    },
+    {
+      "correlation_id": "db1f5a8baecca51e",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525822511459968,
+      "gpu_duration_seconds": 0.555824512,
+      "gpu_end_tick": 1784525823067284480,
+      "layer": 19
+    },
+    {
+      "correlation_id": "a257bbd0f9e3b95a",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525823067913568,
+      "gpu_duration_seconds": 0.554466976,
+      "gpu_end_tick": 1784525823622380544,
+      "layer": 20
+    },
+    {
+      "correlation_id": "a792418689ff3c2a",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525823623121056,
+      "gpu_duration_seconds": 0.541442912,
+      "gpu_end_tick": 1784525824164563968,
+      "layer": 21
+    },
+    {
+      "correlation_id": "956f7255a9ba0836",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525824165349344,
+      "gpu_duration_seconds": 0.553173024,
+      "gpu_end_tick": 1784525824718522368,
+      "layer": 22
+    },
+    {
+      "correlation_id": "300269501f55621d",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525824719070752,
+      "gpu_duration_seconds": 0.558608448,
+      "gpu_end_tick": 1784525825277679200,
+      "layer": 23
+    },
+    {
+      "correlation_id": "380a51f7ce1d1335",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525825278426400,
+      "gpu_duration_seconds": 0.570144416,
+      "gpu_end_tick": 1784525825848570816,
+      "layer": 24
+    },
+    {
+      "correlation_id": "54ed85218305b6b7",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525825849037536,
+      "gpu_duration_seconds": 0.551531808,
+      "gpu_end_tick": 1784525826400569344,
+      "layer": 25
+    },
+    {
+      "correlation_id": "02906d945027f327",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525826401124448,
+      "gpu_duration_seconds": 0.552235936,
+      "gpu_end_tick": 1784525826953360384,
+      "layer": 26
+    },
+    {
+      "correlation_id": "504d057dc2532213",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525826953850880,
+      "gpu_duration_seconds": 0.556478464,
+      "gpu_end_tick": 1784525827510329344,
+      "layer": 27
+    },
+    {
+      "correlation_id": "484891bcf31a36ba",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525827510840480,
+      "gpu_duration_seconds": 0.55734256,
+      "gpu_end_tick": 1784525828068183040,
+      "layer": 28
+    },
+    {
+      "correlation_id": "f924e4d372de243c",
+      "evaluation_index": 9,
+      "gpu_begin_tick": 1784525828068776128,
+      "gpu_duration_seconds": 0.550358848,
+      "gpu_end_tick": 1784525828619134976,
+      "layer": 29
+    }
+  ],
+  "schema": "prometheus.dvt2.m3.v1",
+  "summary": {
+    "count": 270,
+    "maximum_seconds": 0.60693744,
+    "mean_seconds": 0.5546141314370371,
+    "median_seconds": 0.5543876160000001,
+    "p95_seconds": 0.564107296,
+    "total_seconds": 149.74581548799998
+  }
+}

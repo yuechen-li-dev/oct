@@ -56,9 +56,39 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint32_t prefetch_count;
   uint32_t reserved0;
   uint64_t stage_execution_ns[34];
+  uint64_t stage_gpu_execution_ns[34];
   uint64_t stage_rebind_ns[34];
   uint64_t stage_payload_read_ns[34];
   uint64_t stage_uploaded_weight_bytes[34];
+  uint64_t main_correlation_id[30];
+  uint64_t main_cpu_begin_ns[30];
+  uint64_t main_cpu_end_ns[30];
+  uint64_t main_parameter_generation[30];
+  uint64_t main_execution_generation[30];
+  uint32_t main_active_weight_window[30];
+  uint64_t main_gpu_total_begin_tick[30];
+  uint64_t main_gpu_total_end_tick[30];
+  uint64_t main_gpu_total_ns[30];
+  uint64_t main_gpu_compute_begin_tick[30];
+  uint64_t main_gpu_compute_end_tick[30];
+  uint64_t main_gpu_compute_ns[30];
+  uint64_t main_gpu_ingress_transfer_ns[30];
+  uint64_t main_gpu_joint_copy_ns[30];
+  uint64_t main_stage_gpu_begin_tick[390];
+  uint64_t main_stage_gpu_end_tick[390];
+  uint64_t main_stage_gpu_ns[390];
+  uint64_t main_active_target_validation_ns[30];
+  uint64_t main_command_reset_ns[30];
+  uint64_t main_command_begin_ns[30];
+  uint64_t main_command_record_ns[30];
+  uint64_t main_command_end_ns[30];
+  uint64_t main_queue_submit_ns[30];
+  uint64_t main_fence_wait_ns[30];
+  uint64_t main_descriptor_update_ns[30];
+  uint64_t main_staging_memcpy_ns[30];
+  uint64_t main_native_counters[570];
+  uint64_t final_readback_gpu_ns;
+  uint64_t final_readback_host_ns;
 } PrometheusZImageExecuteEvidence;
 
 static void oct_prom_set_execute_stage(PrometheusZImageExecuteEvidence* evidence,
@@ -315,7 +345,7 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 		return 1
 	}
 	joint := make([]float32, uint64(jointTokens)*uint64(modelWidth))
-	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, contextGeneration, jointGeneration, timestepIdentity)
+	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, contextGeneration, jointGeneration, timestepIdentity, start)
 	addMetrics(&metrics, mainMetrics)
 	metrics.hostPackageCacheHits += 30
 	if err != nil {
@@ -349,7 +379,53 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	evidence.prefetch_count = C.uint32_t(metrics.prefetchCount)
 	for index := range metrics.stageExecutionNS {
 		C.oct_prom_set_execute_stage(evidence, C.uint32_t(index), C.uint64_t(metrics.stageExecutionNS[index]), C.uint64_t(metrics.stageRebindNS[index]), C.uint64_t(metrics.stagePayloadReadNS[index]), C.uint64_t(metrics.stageUploadedBytes[index]))
+		evidence.stage_gpu_execution_ns[index] = C.uint64_t(metrics.stageGPUExecutionNS[index])
 	}
+	for layer := range metrics.mainTrace {
+		trace := &metrics.mainTrace[layer]
+		evidence.main_correlation_id[layer] = C.uint64_t(trace.correlationID)
+		evidence.main_cpu_begin_ns[layer] = C.uint64_t(trace.cpuBeginNS)
+		evidence.main_cpu_end_ns[layer] = C.uint64_t(trace.cpuEndNS)
+		evidence.main_parameter_generation[layer] = C.uint64_t(trace.parameterGeneration)
+		evidence.main_execution_generation[layer] = C.uint64_t(trace.executionGeneration)
+		evidence.main_active_weight_window[layer] = C.uint32_t(trace.activeWeightWindow)
+		evidence.main_gpu_total_begin_tick[layer] = C.uint64_t(trace.gpuTotalBeginTick)
+		evidence.main_gpu_total_end_tick[layer] = C.uint64_t(trace.gpuTotalEndTick)
+		evidence.main_gpu_total_ns[layer] = C.uint64_t(trace.gpuTotalNS)
+		evidence.main_gpu_compute_begin_tick[layer] = C.uint64_t(trace.gpuComputeBeginTick)
+		evidence.main_gpu_compute_end_tick[layer] = C.uint64_t(trace.gpuComputeEndTick)
+		evidence.main_gpu_compute_ns[layer] = C.uint64_t(trace.gpuComputeNS)
+		evidence.main_gpu_ingress_transfer_ns[layer] = C.uint64_t(trace.gpuIngressTransferNS)
+		evidence.main_gpu_joint_copy_ns[layer] = C.uint64_t(trace.gpuJointCopyNS)
+		for stage := 0; stage < mainStageCount; stage++ {
+			flat := layer*mainStageCount + stage
+			evidence.main_stage_gpu_begin_tick[flat] = C.uint64_t(trace.stageGPUBeginTick[stage])
+			evidence.main_stage_gpu_end_tick[flat] = C.uint64_t(trace.stageGPUEndTick[stage])
+			evidence.main_stage_gpu_ns[flat] = C.uint64_t(trace.stageGPUNS[stage])
+		}
+		evidence.main_active_target_validation_ns[layer] = C.uint64_t(trace.activeTargetValidationNS)
+		evidence.main_command_reset_ns[layer] = C.uint64_t(trace.commandResetNS)
+		evidence.main_command_begin_ns[layer] = C.uint64_t(trace.commandBeginNS)
+		evidence.main_command_record_ns[layer] = C.uint64_t(trace.commandRecordNS)
+		evidence.main_command_end_ns[layer] = C.uint64_t(trace.commandEndNS)
+		evidence.main_queue_submit_ns[layer] = C.uint64_t(trace.queueSubmitNS)
+		evidence.main_fence_wait_ns[layer] = C.uint64_t(trace.fenceWaitNS)
+		evidence.main_descriptor_update_ns[layer] = C.uint64_t(trace.descriptorUpdateNS)
+		evidence.main_staging_memcpy_ns[layer] = C.uint64_t(trace.stagingMemcpyNS)
+		counterValues := [...]uint64{
+			trace.counters.createBuffer, trace.counters.destroyBuffer, trace.counters.allocateMemory,
+			trace.counters.freeMemory, trace.counters.createShaderModule, trace.counters.destroyShaderModule,
+			trace.counters.createPipelines, trace.counters.allocateDescriptorSets, trace.counters.updateDescriptorSets,
+			trace.counters.createCommandPool, trace.counters.allocateCommandBuffers, trace.counters.resetCommandBuffer,
+			trace.counters.queueSubmit, trace.counters.fenceWait, trace.counters.timelineWait,
+			trace.counters.mapMemory, trace.counters.unmapMemory, trace.counters.flush, trace.counters.invalidate,
+		}
+		for counter := range counterValues {
+			evidence.main_native_counters[layer*len(counterValues)+counter] = C.uint64_t(counterValues[counter])
+		}
+	}
+	evidence.final_readback_gpu_ns = C.uint64_t(metrics.finalReadbackGPUNS)
+	evidence.final_readback_host_ns = C.uint64_t(metrics.finalReadbackHostNS)
 	session.lastError = ""
 	return 0
 }

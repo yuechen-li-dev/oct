@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -98,6 +99,7 @@ def main() -> None:
     import nodes
     from PIL import Image
     from comfy.ldm.lumina.model import pad_zimage
+    from comfy.ldm.lumina.model import modulate
     from comfy_extras.nodes_model_advanced import ModelSamplingAuraFlow
     from prometheus_zimage_bridge import PrometheusZImageSession
 
@@ -108,6 +110,31 @@ def main() -> None:
     evidence_rows: list[dict[str, object]] = []
     process = psutil.Process()
     memory_samples: list[dict[str, int | str]] = []
+    gpu_telemetry: list[dict[str, object]] = []
+    gc_events: list[dict[str, object]] = []
+    gc_active: dict[int, float] = {}
+
+    def gc_probe(phase: str, info: dict[str, int]) -> None:
+        generation = int(info.get("generation", -1))
+        if phase == "start":
+            gc_active[generation] = time.perf_counter()
+        elif phase == "stop":
+            begin = gc_active.pop(generation, time.perf_counter())
+            gc_events.append({"generation": generation, "duration_seconds": time.perf_counter() - begin, "collected": int(info.get("collected", 0)), "uncollectable": int(info.get("uncollectable", 0))})
+
+    gc.callbacks.append(gc_probe)
+
+    def sample_gpu(label: str, evaluation_index: int | None = None) -> None:
+        if os.environ.get("PROMETHEUS_DVT2_M3_TELEMETRY") != "1":
+            return
+        query = "timestamp,clocks.gr,clocks.mem,utilization.gpu,power.draw,temperature.gpu,memory.used,clocks_throttle_reasons.active"
+        started = time.perf_counter()
+        try:
+            result = subprocess.run(["nvidia-smi", f"--query-gpu={query}", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5, check=True)
+            values = [value.strip() for value in result.stdout.splitlines()[0].split(",")]
+            gpu_telemetry.append({"label": label, "evaluation_index": evaluation_index, "sample_overhead_seconds": time.perf_counter() - started, "fields": query.split(","), "values": values, "status": "ok"})
+        except (OSError, subprocess.SubprocessError, IndexError) as error:
+            gpu_telemetry.append({"label": label, "evaluation_index": evaluation_index, "sample_overhead_seconds": time.perf_counter() - started, "status": "unavailable", "detail": str(error)})
 
     def sample_memory(label: str) -> None:
         info = process.memory_info()
@@ -115,6 +142,7 @@ def main() -> None:
         memory_samples.append({"label": label, "rss_bytes": int(info.rss), "vms_bytes": int(info.vms), "system_available_bytes": int(virtual.available), "system_used_bytes": int(virtual.used)})
 
     sample_memory("after_python_imports")
+    sample_gpu("after_python_imports")
 
     conditioning_start = time.perf_counter()
     configure_model_paths(data_root)
@@ -170,7 +198,9 @@ def main() -> None:
         if x.shape[0] != 1 or context.shape[0] != 1 or timesteps.shape != (1,):
             raise RuntimeError(f"closed smoke supports batch one only: x={tuple(x.shape)} context={tuple(context.shape)} timestep={tuple(timesteps.shape)}")
         invocation_count += 1
-        evaluation_timing: dict[str, float | int] = {"evaluation_index": invocation_count}
+        evaluation_begin = time.perf_counter()
+        gc_begin_index = len(gc_events)
+        evaluation_timing: dict[str, float | int] = {"evaluation_index": invocation_count, "scheduler_iteration_begin_monotonic_seconds": evaluation_begin}
         bs, channels, height, width = x.shape
         pre_call_start = time.perf_counter()
         x = comfy.ldm.common_dit.pad_to_patch_size(x, (diffusion_model.patch_size, diffusion_model.patch_size))
@@ -214,14 +244,28 @@ def main() -> None:
                 "timestep_embedding": {"shape": list(t.shape), "dtype": "bfloat16", "layout": "contiguous [batch,channel]", "sha256": sha256_bytes(timestep_bits.tobytes())},
                 "prometheus_output_image_tokens": {"shape": list(output.shape), "dtype": "float32", "layout": "contiguous token-major [batch,token,channel]", "sha256": sha256_bytes(output.tobytes())},
             })
-        projection_start = time.perf_counter()
+        conversion_start = time.perf_counter()
         projected_input = torch.from_numpy(output).to(device=image.device, dtype=image.dtype)
-        projected = diffusion_model.final_layer(projected_input, t, timestep_zero_index=None)
+        evaluation_timing["native_to_python_latent_conversion_seconds"] = time.perf_counter() - conversion_start
+        adaln_start = time.perf_counter()
+        scale = diffusion_model.final_layer.adaLN_modulation(t)
+        projected_input = modulate(diffusion_model.final_layer.norm_final(projected_input), scale, timestep_zero_index=None)
+        evaluation_timing["final_adaln_seconds"] = time.perf_counter() - adaln_start
+        projection_start = time.perf_counter()
+        projected = diffusion_model.final_layer.linear(projected_input)
+        evaluation_timing["final_3840_to_64_projection_seconds"] = time.perf_counter() - projection_start
+        unpatchify_start = time.perf_counter()
         result = diffusion_model.unpatchify(projected, [(height, width)], [0], return_tensor=True)[:, :, :height, :width]
-        projection_seconds = time.perf_counter() - projection_start
+        evaluation_timing["unpatchify_seconds"] = time.perf_counter() - unpatchify_start
+        projection_seconds = evaluation_timing["final_adaln_seconds"] + evaluation_timing["final_3840_to_64_projection_seconds"] + evaluation_timing["unpatchify_seconds"] + evaluation_timing["native_to_python_latent_conversion_seconds"]
         final_projection_seconds += projection_seconds
         evaluation_timing["final_projection_unpatchify_seconds"] = projection_seconds
+        evaluation_timing["scheduler_iteration_end_monotonic_seconds"] = time.perf_counter()
+        evaluation_timing["bridge_forward_wall_seconds"] = evaluation_timing["scheduler_iteration_end_monotonic_seconds"] - evaluation_begin
+        evaluation_timing["garbage_collection_count"] = len(gc_events) - gc_begin_index
+        evaluation_timing["garbage_collection_seconds"] = sum(float(event["duration_seconds"]) for event in gc_events[gc_begin_index:])
         evidence_rows.append(native.__dict__ | {"python_timing": evaluation_timing})
+        sample_gpu("after_native_evaluation", invocation_count)
         if tuple(result.shape) != (1, 16, 64, 64) or not torch.isfinite(result).all():
             raise RuntimeError(f"invalid external final projection: {tuple(result.shape)}")
         return -result
@@ -240,6 +284,10 @@ def main() -> None:
         session.close()
         timings["prometheus_session_destroy_seconds"] = time.perf_counter() - session_destroy_start
     timings["denoising_seconds"] = time.perf_counter() - denoise_start
+    for index, row in enumerate(evidence_rows):
+        timing = row["python_timing"]
+        next_begin = evidence_rows[index + 1]["python_timing"]["scheduler_iteration_begin_monotonic_seconds"] if index + 1 < len(evidence_rows) else denoise_start + timings["denoising_seconds"] - timings["prometheus_session_destroy_seconds"]
+        timing["scheduler_update_and_outer_loop_seconds"] = max(0.0, float(next_begin) - float(timing["scheduler_iteration_end_monotonic_seconds"]))
     sample_memory("after_denoising")
     timings["external_final_projection_seconds"] = final_projection_seconds
     if invocation_count != len(evidence_rows) or invocation_count == 0:
@@ -312,6 +360,16 @@ def main() -> None:
         },
         "python_components_retained": ["ComfyUI Qwen tokenizer/encoder", "t_embedder", "x_embedder", "cap_embedder and padding", "FinalLayer AdaLN/linear", "unpatchify", "ComfyUI res_multistep/simple scheduler", "ComfyUI VAE decoder", "Pillow PNG writer"],
         "prometheus_boundary": boundary,
+        "boundary_accounting": {
+            "python_to_native_calls_per_evaluation": 1,
+            "python_to_native_calls_full_image": invocation_count,
+            "boundary_crossings_full_image": invocation_count,
+            "crossings_inside_main_transformer_chain": 0,
+            "bytes_to_native_per_evaluation": 8_356_352,
+            "bytes_from_native_per_evaluation": 15_728_640,
+            "bytes_to_native_full_image": 8_356_352 * invocation_count,
+            "bytes_from_native_full_image": 15_728_640 * invocation_count,
+        },
         "native_evaluations": evidence_rows,
         "timings": timings,
         "allocation": {
@@ -346,8 +404,13 @@ def main() -> None:
             "torch": torch.__version__,
             "cuda": torch.version.cuda,
             "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+            "vulkan_validation": os.environ.get("PROMETHEUS_VK_VALIDATION") == "1",
+            "static_audit": "final_layer_29_readback_only",
+            "timing_probes": "dvt2_m3_full",
         },
         "process_memory": {"samples": memory_samples, "peak_sampled_rss_bytes": max(sample["rss_bytes"] for sample in memory_samples)},
+        "gpu_telemetry": gpu_telemetry,
+        "garbage_collection": {"events": gc_events, "total_seconds": sum(float(event["duration_seconds"]) for event in gc_events)},
         "deferred_native_work": "M2D 29-stage audit wiring and exhaustive 30-layer lifecycle matrix; explicitly not a blocker for this shipping smoke.",
         "reproduction_command": f'& "{sys.executable}" "{Path(__file__).resolve()}"',
     }
@@ -355,6 +418,7 @@ def main() -> None:
     temporary = args.metadata.with_suffix(args.metadata.suffix + ".tmp")
     temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(args.metadata)
+    gc.callbacks.remove(gc_probe)
     print(json.dumps({"png": str(args.output.resolve()), "sha256": png_hash, "metadata": str(args.metadata.resolve()), "evaluations": invocation_count, "wall_time_seconds": timings["wall_time_seconds"]}, indent=2))
 
 

@@ -1,0 +1,15 @@
+{
+  "baseline_category_seconds": 42.023984768,
+  "baseline_wall_seconds": 196.30194009999832,
+  "hypothesis": "If M4 replaces shader 42's scalar per-output dot products with a tiled SGEMM/reactor implementation, then FFN W1/W3 GPU time should fall from 42.024 s to 21.012 s or less, reducing canonical full-image wall time from 196.302 s toward 175.290 s, while preserving the accepted PNG hash, FP32 activation/FP16 weight policy, two-window Prefetch ceiling, and zero immutable rereads.",
+  "invariants": [
+    "PNG SHA-256 7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "model-owned ceiling 1,005,407,748 bytes",
+    "two weight windows",
+    "no evaluation-time immutable rereads"
+  ],
+  "m4_target": "specific kernel optimization: MainTransformer FFN W1/W3 shader 42",
+  "schema": "prometheus.dvt2.m3.v1",
+  "target_category_seconds": 21.011992384,
+  "target_wall_seconds": 175.28994771599832
+}

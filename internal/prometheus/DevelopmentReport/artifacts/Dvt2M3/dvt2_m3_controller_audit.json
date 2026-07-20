@@ -1,0 +1,30 @@
+{
+  "can_submit_ahead": "not with the current single mutable weight window/descriptor generation per active slot",
+  "conclusion": "Controller architecture is chatty but its exposed MainTransformer gap is only 0.154 s across the image.",
+  "current_loop": "record -> submit -> host fence wait -> retarget -> repeat",
+  "fixed_schedule_record_once": "not with streamed mutable parameter windows",
+  "full_image_host_phase_seconds": {
+    "active_target_validation": 0.0001245999999999997,
+    "command_begin": 0.0005674999999999993,
+    "command_end": 0.0008164000000000001,
+    "command_record": 0.016613099999999995,
+    "command_reset": 0.0006692999999999992,
+    "descriptor_update": 0.0007159999999999997,
+    "fence_wait": 149.8215677999999,
+    "queue_submit": 0.006361300000000001,
+    "staging_memcpy": 4.115360699999998
+  },
+  "inter_layer_idle_seconds": 0.15441404800000003,
+  "per_evaluation": {
+    "all_fence_waits_warm": 539,
+    "all_queue_submissions_warm": 508,
+    "command_buffer_resets_warm": 500,
+    "cpu_wakeups_between_main_layers": 29,
+    "descriptor_commits_warm": 34,
+    "main_compute_command_buffers_recorded": 30,
+    "main_compute_submissions": 30
+  },
+  "schema": "prometheus.dvt2.m3.v1",
+  "secondary_command_buffer_reuse": "possible only after descriptor/weight address stability is redesigned",
+  "timeline_semaphore_can_replace_wait": true
+}

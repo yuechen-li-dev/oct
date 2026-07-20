@@ -1,0 +1,214 @@
+{
+  "ranking": [
+    {
+      "call_count": 270,
+      "classification": "compute-bound",
+      "mean_seconds": 0.15564438802962963,
+      "optimization_headroom": "high",
+      "p95_seconds": 0.159839232,
+      "percent_of_wall": 21.407829564288832,
+      "rank": 1,
+      "stage": "ffn_w1_w3",
+      "total_seconds": 42.023984768
+    },
+    {
+      "call_count": 270,
+      "classification": "compute-bound",
+      "mean_seconds": 0.15417856130370375,
+      "optimization_headroom": "high",
+      "p95_seconds": 0.156808192,
+      "percent_of_wall": 21.20621504341432,
+      "rank": 2,
+      "stage": "qkv",
+      "total_seconds": 41.62821155200001
+    },
+    {
+      "call_count": 270,
+      "classification": "bandwidth/compute mixed",
+      "mean_seconds": 0.1196934350222223,
+      "optimization_headroom": "high",
+      "p95_seconds": 0.123900928,
+      "percent_of_wall": 16.463019896562038,
+      "rank": 3,
+      "stage": "attention",
+      "total_seconds": 32.31722745600002
+    },
+    {
+      "call_count": 270,
+      "classification": "compute-bound",
+      "mean_seconds": 0.07262794263703705,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.08093632,
+      "percent_of_wall": 9.989480746858991,
+      "rank": 4,
+      "stage": "w2_residual",
+      "total_seconds": 19.609544512000003
+    },
+    {
+      "call_count": 270,
+      "classification": "compute-bound",
+      "mean_seconds": 0.05020866654814816,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.051868672,
+      "percent_of_wall": 6.905861430149013,
+      "rank": 5,
+      "stage": "projection_residual",
+      "total_seconds": 13.556339968000003
+    },
+    {
+      "call_count": 279,
+      "classification": "measured support work",
+      "mean_seconds": 0.030436195340501793,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.030436195340501793,
+      "percent_of_wall": 4.325835239159755,
+      "rank": 6,
+      "stage": "transfer_busy",
+      "total_seconds": 8.4916985
+    },
+    {
+      "call_count": 36,
+      "classification": "measured support work",
+      "mean_seconds": 0.225939424,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.225939424,
+      "percent_of_wall": 4.143524643646693,
+      "rank": 7,
+      "stage": "refiner_compute",
+      "total_seconds": 8.133819264
+    },
+    {
+      "call_count": 1,
+      "classification": "measured support work",
+      "mean_seconds": 6.645875400005025,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 6.645875400005025,
+      "percent_of_wall": 3.3855372986224914,
+      "rank": 8,
+      "stage": "qwen",
+      "total_seconds": 6.645875400005025
+    },
+    {
+      "call_count": 1,
+      "classification": "measured support work",
+      "mean_seconds": 0.6301356000039959,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.6301356000039959,
+      "percent_of_wall": 0.3210032461640461,
+      "rank": 9,
+      "stage": "vae",
+      "total_seconds": 0.6301356000039959
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 0.0007699624296296296,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.000780288,
+      "percent_of_wall": 0.10590310818838504,
+      "rank": 10,
+      "stage": "attention_norm1",
+      "total_seconds": 0.207889856
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 0.0007406313481481483,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.000746496,
+      "percent_of_wall": 0.10186881693483667,
+      "rank": 11,
+      "stage": "ffn_norm",
+      "total_seconds": 0.19997046400000004
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 0.0003125050074074072,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.000356352,
+      "percent_of_wall": 0.042982943498682556,
+      "rank": 12,
+      "stage": "gate",
+      "total_seconds": 0.08437635199999995
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 0.0002836983703703704,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.000297984,
+      "percent_of_wall": 0.03902078602023998,
+      "rank": 13,
+      "stage": "qk_norm_rope",
+      "total_seconds": 0.07659856000000001
+    },
+    {
+      "call_count": 9,
+      "classification": "measured support work",
+      "mean_seconds": 0.0038974555556908147,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.0038974555556908147,
+      "percent_of_wall": 0.017868952280017548,
+      "rank": 14,
+      "stage": "final_python_projection",
+      "total_seconds": 0.03507710000121733
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 0.00011680237037037064,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.000137216,
+      "percent_of_wall": 0.016065373568867926,
+      "rank": 15,
+      "stage": "attention_norm2",
+      "total_seconds": 0.031536640000000074
+    },
+    {
+      "call_count": 9,
+      "classification": "measured support work",
+      "mean_seconds": 0.0024131875555555606,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.0024131875555555606,
+      "percent_of_wall": 0.011063919179268586,
+      "rank": 16,
+      "stage": "joint_composition",
+      "total_seconds": 0.021718688000000045
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 3.328758518518523e-05,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 3.4816e-05,
+      "percent_of_wall": 0.0045784814940808055,
+      "rank": 17,
+      "stage": "adaln_modulation",
+      "total_seconds": 0.008987648000000011
+    },
+    {
+      "call_count": 9,
+      "classification": "measured support work",
+      "mean_seconds": 0.0006182897777777777,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 0.0006182897777777777,
+      "percent_of_wall": 0.002834718799602963,
+      "rank": 18,
+      "stage": "readback",
+      "total_seconds": 0.0055646079999999995
+    },
+    {
+      "call_count": 270,
+      "classification": "measured support work",
+      "mean_seconds": 4.250785185185191e-06,
+      "optimization_headroom": "low-to-moderate",
+      "p95_seconds": 4.8e-06,
+      "percent_of_wall": 0.0005846666616821743,
+      "rank": 19,
+      "stage": "ingress_cast",
+      "total_seconds": 0.0011477120000000017
+    }
+  ],
+  "schema": "prometheus.dvt2.m3.v1"
+}

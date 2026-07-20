@@ -50,6 +50,7 @@
 #define PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS (PROM_MODEL_BLOCK_MAIN_TOKENS * 3840u)
 #define PROM_MODEL_BLOCK_MAIN_QKV_ELEMENTS (PROM_MODEL_BLOCK_MAIN_TOKENS * 11520u)
 #define PROM_MODEL_BLOCK_MAIN_HIDDEN_ELEMENTS (PROM_MODEL_BLOCK_MAIN_TOKENS * 10240u)
+#define PROM_MODEL_BLOCK_MAIN_QUERY_COUNT 16u
 #define PROM_MODEL_BLOCK_M1B_BF16_BYTES(elements) ((VkDeviceSize)(elements) * sizeof(uint16_t))
 #define PROM_MODEL_BLOCK_M1B_FP32_BYTES(elements) ((VkDeviceSize)(elements) * sizeof(float))
 
@@ -314,6 +315,7 @@ static void prom_model_block_fill_evidence(const prom_model_block_state* block,
   out_evidence->assembly_family = block->assembly_family;
   out_evidence->parameter_set = block->parameter_set;
   out_evidence->binding_state = block->binding_state;
+  out_evidence->active_weight_window = block->active_weight_window;
   out_evidence->parameter_set_aggregate_identity = block->parameter_set_aggregate_identity;
   out_evidence->binding_generation = block->binding_generation;
   out_evidence->output_generation = block->output_generation;
@@ -321,6 +323,51 @@ static void prom_model_block_fill_evidence(const prom_model_block_state* block,
   for (boundary = 0u; boundary < PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT; ++boundary) {
     out_evidence->m1b_boundary_gpu_ns[boundary] = block->m1b_boundary_gpu_ns[boundary];
   }
+  out_evidence->gpu_total_begin_tick = block->gpu_total_begin_tick;
+  out_evidence->gpu_total_end_tick = block->gpu_total_end_tick;
+  out_evidence->gpu_total_ns = block->gpu_total_ns;
+  out_evidence->gpu_compute_begin_tick = block->gpu_compute_begin_tick;
+  out_evidence->gpu_compute_end_tick = block->gpu_compute_end_tick;
+  out_evidence->gpu_compute_ns = block->gpu_compute_ns;
+  out_evidence->gpu_ingress_transfer_ns = block->gpu_ingress_transfer_ns;
+  out_evidence->gpu_joint_copy_ns = block->gpu_joint_copy_ns;
+  out_evidence->gpu_readback_ns = block->gpu_readback_ns;
+  for (boundary = 0u; boundary < PROM_MODEL_BLOCK_MAIN_STAGE_COUNT; ++boundary) {
+    out_evidence->main_stage_gpu_begin_tick[boundary] = block->main_stage_gpu_begin_tick[boundary];
+    out_evidence->main_stage_gpu_end_tick[boundary] = block->main_stage_gpu_end_tick[boundary];
+    out_evidence->main_stage_gpu_ns[boundary] = block->main_stage_gpu_ns[boundary];
+  }
+#define PROM_COPY_BLOCK_EVIDENCE_FIELD(name) out_evidence->name = block->name
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_active_target_validation_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_command_reset_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_command_begin_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_command_record_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_command_end_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_queue_submit_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_fence_wait_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_descriptor_update_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_staging_memcpy_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(last_output_readback_ns);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_create_buffer_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_destroy_buffer_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_allocate_memory_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_free_memory_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_create_shader_module_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_destroy_shader_module_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_create_compute_pipelines_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_allocate_descriptor_sets_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_update_descriptor_sets_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_create_command_pool_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_allocate_command_buffers_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_reset_command_buffer_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_queue_submit_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_fence_wait_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_timeline_wait_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_map_memory_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_unmap_memory_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_flush_count);
+  PROM_COPY_BLOCK_EVIDENCE_FIELD(vk_invalidate_count);
+#undef PROM_COPY_BLOCK_EVIDENCE_FIELD
 }
 
 static void prom_model_block_mark_failure(prom_model_block_state* block, int32_t detail) {
@@ -493,6 +540,9 @@ static int prom_model_block_create_buffer(prom_reduction_runtime_state* state,
                                  usage, properties, map_memory, buffer);
   if (result != VK_SUCCESS) return 0;
   block->cold_buffer_allocation_count += 1u;
+  block->vk_create_buffer_count += 1u;
+  block->vk_allocate_memory_count += 1u;
+  if (map_memory != 0) block->vk_map_memory_count += 1u;
   return 1;
 }
 
@@ -537,6 +587,7 @@ static int prom_model_block_create_descriptor_resources(prom_reduction_runtime_s
   set_info.pSetLayouts = &block->descriptor_set_layout;
   if (vkAllocateDescriptorSets(state->device, &set_info, &block->descriptor_set) != VK_SUCCESS) return 0;
   block->descriptor_set_count = 1u;
+  block->vk_allocate_descriptor_sets_count += 1u;
   memset(&push_range, 0, sizeof(push_range));
   push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
   push_range.size = sizeof(prom_model_block_push_constants);
@@ -564,6 +615,7 @@ static int prom_model_block_create_descriptor_resources(prom_reduction_runtime_s
     writes[index].pBufferInfo = &buffer_infos[index];
   }
   vkUpdateDescriptorSets(state->device, 3u, writes, 0u, NULL);
+  block->vk_update_descriptor_sets_count += 1u;
   return 1;
 }
 
@@ -585,6 +637,7 @@ static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
   module_info.codeSize = asset->spirv_size_bytes;
   module_info.pCode = asset->spirv_words;
   if (vkCreateShaderModule(state->device, &module_info, NULL, &block->pipeline.shader_module) != VK_SUCCESS) return 0;
+  block->vk_create_shader_module_count += 1u;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -596,6 +649,7 @@ static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
   pipeline_info.layout = block->pipeline_layout;
   if (vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
                                &block->pipeline.pipeline) != VK_SUCCESS) return 0;
+  block->vk_create_compute_pipelines_count += 1u;
   block->pipeline.shader_id = asset->shader_id;
   block->pipeline_create_count = 1u;
   return 1;
@@ -671,6 +725,7 @@ static int prom_model_block_m1b_create_pipeline(
   set_info.descriptorSetCount = 1u;
   set_info.pSetLayouts = &pipeline->descriptor_set_layout;
   if (vkAllocateDescriptorSets(state->device, &set_info, &pipeline->descriptor_set) != VK_SUCCESS) return 0;
+  block->vk_allocate_descriptor_sets_count += 1u;
   memset(&push_range, 0, sizeof(push_range));
   push_range.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
   push_range.size = expected_push_constant_bytes;
@@ -696,6 +751,7 @@ static int prom_model_block_m1b_create_pipeline(
     writes[index].pBufferInfo = &buffer_infos[index];
   }
   vkUpdateDescriptorSets(state->device, buffer_count, writes, 0u, NULL);
+  block->vk_update_descriptor_sets_count += 1u;
   memset(&module_info, 0, sizeof(module_info));
   module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
   module_info.codeSize = asset->spirv_size_bytes;
@@ -703,6 +759,7 @@ static int prom_model_block_m1b_create_pipeline(
   create_result = vkCreateShaderModule(state->device, &module_info, NULL, &pipeline->pipeline.shader_module);
   if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u shader_module=%d spirv_bytes=%zu\n", shader_id, create_result, asset->spirv_size_bytes);
   if (create_result != VK_SUCCESS) return 0;
+  block->vk_create_shader_module_count += 1u;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -716,6 +773,7 @@ static int prom_model_block_m1b_create_pipeline(
                                             &pipeline->pipeline.pipeline);
   if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u compute_pipeline=%d entry=%s\n", shader_id, create_result, asset->entry_point);
   if (create_result != VK_SUCCESS) return 0;
+  block->vk_create_compute_pipelines_count += 1u;
   pipeline->shader_id = asset->shader_id;
   pipeline->binding_count = buffer_count;
   pipeline->push_constant_bytes = expected_push_constant_bytes;
@@ -1026,6 +1084,7 @@ static int prom_model_block_update_weight_descriptors(
   VkWriteDescriptorSet writes[49];
   uint32_t count = 0u;
   uint32_t index;
+  uint64_t update_begin_ns;
   prom_model_block_weight_resource logical[PROM_MODEL_BLOCK_MAX_WEIGHTS];
 #define PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(pipe, binding, source) do { \
   infos[count].buffer = (source)->buffer; infos[count].offset = 0u; infos[count].range = (source)->size; \
@@ -1072,8 +1131,11 @@ static int prom_model_block_update_weight_descriptors(
     PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m1d_pipelines[3u], 1u, &weights[9u].device);
     PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m1d_pipelines[3u], 2u, &weights[12u].device);
   }
+  update_begin_ns = prom_reduction_now_ns();
   vkUpdateDescriptorSets(state->device, count, writes, 0u, NULL);
+  block->last_descriptor_update_ns = prom_reduction_elapsed_ns(update_begin_ns, prom_reduction_now_ns());
   block->descriptor_update_count += 1u;
+  block->vk_update_descriptor_sets_count += 1u;
 #undef PROM_MODEL_BLOCK_DESCRIPTOR_WRITE
   return 1;
 }
@@ -1090,16 +1152,19 @@ static int prom_model_block_create_command_resources(prom_reduction_runtime_stat
   command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
   command_info.commandBufferCount = 1u;
   if (vkAllocateCommandBuffers(state->device, &command_info, &block->command_buffer) != VK_SUCCESS) return 0;
+  block->vk_allocate_command_buffers_count += 1u;
   memset(&fence_info, 0, sizeof(fence_info));
   fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
   fence_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
   if (vkCreateFence(state->device, &fence_info, NULL, &block->fence) != VK_SUCCESS) return 0;
-  if (block->shader_id == PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID &&
+  if ((block->shader_id == PROM_MODEL_BLOCK_M1B_ADALN_SHADER_ID ||
+       block->shader_id == PROM_MODEL_BLOCK_M1B_NORM_SHADER_ID ||
+       block->shader_id == PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID) &&
       state->timestamp_supported != 0u && state->timestamp_period_ns > 0.0f) {
     memset(&query_info, 0, sizeof(query_info));
     query_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
     query_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
-    query_info.queryCount = PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT + 1u;
+    query_info.queryCount = PROM_MODEL_BLOCK_MAIN_QUERY_COUNT;
     if (vkCreateQueryPool(state->device, &query_info, NULL,
                           &block->m1b_timestamp_query_pool) != VK_SUCCESS) return 0;
     block->m1b_timestamp_supported = 1u;
@@ -1113,6 +1178,7 @@ static int prom_model_block_submit_and_wait(prom_reduction_runtime_state* state,
                                             int32_t* out_detail) {
   VkSubmitInfo submit_info;
   VkResult result;
+  uint64_t phase_begin_ns;
   if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED;
   if (state == NULL || block == NULL || block->command_buffer == VK_NULL_HANDLE || block->fence == VK_NULL_HANDLE) return 0;
   result = vkResetFences(state->device, 1u, &block->fence);
@@ -1129,7 +1195,10 @@ static int prom_model_block_submit_and_wait(prom_reduction_runtime_state* state,
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_QUEUE_SUBMIT_FAILED;
     return 0;
   }
+  phase_begin_ns = prom_reduction_now_ns();
   result = vkQueueSubmit(state->queue, 1u, &submit_info, block->fence);
+  block->last_queue_submit_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
+  block->vk_queue_submit_count += 1u;
   if (result != VK_SUCCESS) return 0;
   if ((block->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u ||
       prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMPLETION_OBSERVATION)) {
@@ -1137,13 +1206,32 @@ static int prom_model_block_submit_and_wait(prom_reduction_runtime_state* state,
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
     return 0;
   }
+  phase_begin_ns = prom_reduction_now_ns();
   result = vkWaitForFences(state->device, 1u, &block->fence, VK_TRUE, UINT64_MAX);
+  block->last_fence_wait_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
+  block->vk_fence_wait_count += 1u;
   if (result != VK_SUCCESS) {
     block->quarantined = 1u;
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMPLETION_UNCERTAIN;
     return 0;
   }
   return 1;
+}
+
+static uint64_t prom_model_block_resolve_gpu_span(prom_reduction_runtime_state* state,
+                                                   prom_model_block_state* block,
+                                                   uint32_t end_query) {
+  uint64_t ticks[2];
+  if (state == NULL || block == NULL || block->m1b_timestamp_supported == 0u ||
+      block->m1b_timestamp_query_pool == VK_NULL_HANDLE || end_query == 0u) return 0u;
+  if (vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, 0u, 1u,
+                            sizeof(uint64_t), &ticks[0], sizeof(uint64_t),
+                            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS ||
+      vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, end_query, 1u,
+                            sizeof(uint64_t), &ticks[1], sizeof(uint64_t),
+                            VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS) return 0u;
+  return (uint64_t)((double)(ticks[1] - ticks[0]) *
+                    (double)block->m1b_timestamp_period_ns + 0.5);
 }
 
 static int prom_model_block_reap(prom_reduction_runtime_state* state,
@@ -1168,6 +1256,7 @@ static int prom_model_block_record_upload(prom_reduction_runtime_state* state,
   int32_t detail = PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED;
   if (state == NULL || block == NULL || destination == NULL || weight_index >= PROM_MODEL_BLOCK_MAX_WEIGHTS) return 0;
   if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
+  block->vk_reset_command_buffer_count += 1u;
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -1199,6 +1288,7 @@ static int prom_model_block_record_prefetch_upload(prom_reduction_runtime_state*
       block->prefetch_weights[weight_index].device.buffer == VK_NULL_HANDLE) return 0;
   if (vkResetCommandBuffer(block->prefetch_command_buffer, 0u) != VK_SUCCESS ||
       vkResetFences(state->device, 1u, &block->prefetch_fence) != VK_SUCCESS) return 0;
+  block->vk_reset_command_buffer_count += 1u;
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -1225,8 +1315,10 @@ static int prom_model_block_record_prefetch_upload(prom_reduction_runtime_state*
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &block->prefetch_command_buffer;
-  if (vkQueueSubmit(block->prefetch_queue, 1u, &submit_info, block->prefetch_fence) != VK_SUCCESS ||
-      vkWaitForFences(state->device, 1u, &block->prefetch_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return 0;
+  block->vk_queue_submit_count += 1u;
+  if (vkQueueSubmit(block->prefetch_queue, 1u, &submit_info, block->prefetch_fence) != VK_SUCCESS) return 0;
+  block->vk_fence_wait_count += 1u;
+  if (vkWaitForFences(state->device, 1u, &block->prefetch_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) return 0;
   return 1;
 }
 
@@ -1239,6 +1331,7 @@ static int prom_model_block_acquire_prefetched_weights(prom_reduction_runtime_st
   int32_t detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
   if (state == NULL || block == NULL || block->prefetch_weight_count == 0u) return 0;
   if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
+  block->vk_reset_command_buffer_count += 1u;
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -2479,6 +2572,7 @@ int prom_reactor_runtime_model_block_execute_m1b_impl(
       block->m1b_timestamp_query_pool != VK_NULL_HANDLE) {
     uint64_t timestamps[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT + 1u];
     uint32_t boundary;
+    block->gpu_compute_ns = 0u;
     if (vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, 0u,
                               PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT + 1u,
                               sizeof(timestamps), timestamps, sizeof(uint64_t),
@@ -2491,6 +2585,7 @@ int prom_reactor_runtime_model_block_execute_m1b_impl(
       block->m1b_boundary_gpu_ns[boundary] = (uint64_t)(
           (double)(timestamps[boundary + 1u] - timestamps[boundary]) *
               (double)block->m1b_timestamp_period_ns + 0.5);
+      block->gpu_compute_ns += block->m1b_boundary_gpu_ns[boundary];
     }
   }
   if ((block->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
@@ -2534,6 +2629,11 @@ static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* sta
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
+  if (block->m1b_timestamp_supported != 0u) {
+    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
+    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        block->m1b_timestamp_query_pool, 0u);
+  }
   if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
     return 0;
@@ -2556,6 +2656,9 @@ static int prom_model_block_m1c_record_execute(prom_reduction_runtime_state* sta
         PROM_MODEL_BLOCK_M1C_TRANSIENT_AUDIT_FLOATS * sizeof(float), &block->audit_readback,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS));
   }
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+      block->m1b_timestamp_query_pool, 1u);
   if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
   return prom_model_block_submit_and_wait(state, block, out_detail);
 }
@@ -2650,6 +2753,11 @@ static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* sta
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
+  if (block->m1b_timestamp_supported != 0u) {
+    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
+    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        block->m1b_timestamp_query_pool, 0u);
+  }
   if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
     return 0;
@@ -2699,6 +2807,9 @@ static int prom_model_block_m1d_record_execute(prom_reduction_runtime_state* sta
     prom_model_block_m1b_record_audit_capture(block->command_buffer, &block->attention, 0u,
         PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS), 0, &block->audit_readback);
   }
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+      block->m1b_timestamp_query_pool, 1u);
   if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
   return prom_model_block_submit_and_wait(state, block, out_detail);
 }
@@ -3135,6 +3246,8 @@ static int prom_context_refiner_execute_closed(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  block->gpu_compute_ns = prom_model_block_resolve_gpu_span(state, block, 1u);
+  block->gpu_total_ns = block->gpu_compute_ns;
   block->output_valid = 1u;
   block->output_generation = output_generation;
   if (first_resident_execution) block->resident_input_generation = input_generation;
@@ -3324,6 +3437,11 @@ static int prom_context_refiner_record_execute(prom_reduction_runtime_state* sta
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
+  if (block->m1b_timestamp_supported != 0u) {
+    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
+    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        block->m1b_timestamp_query_pool, 0u);
+  }
   memset(&copy, 0, sizeof(copy));
   copy.size = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_CONTEXT_MODEL_ELEMENTS);
   if (resident_input == 1) {
@@ -3379,6 +3497,9 @@ static int prom_context_refiner_record_execute(prom_reduction_runtime_state* sta
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u], &gate, sizeof(gate), 1280u, 1u, 1u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u], &w2, sizeof(w2), 32u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+      block->m1b_timestamp_query_pool, 1u);
   if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS) return 0;
   return prom_model_block_submit_and_wait(state, block, out_detail);
 }
@@ -3936,6 +4057,7 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
   prom_model_block_state* block;
   uint64_t begin_ns;
   uint64_t audit_elements = 0u;
+  uint64_t gpu_compute_ns = 0u;
   int capture_m1b;
   int capture_m1c;
   int capture_m1d;
@@ -3998,6 +4120,8 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  gpu_compute_ns += prom_model_block_resolve_gpu_span(
+      state, block, PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT);
   if (capture_m1b) {
     memcpy(request->audit_output, block->audit_readback.mapped, (size_t)(audit_elements * sizeof(float)));
     block->audit_valid = 1u;
@@ -4014,6 +4138,7 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  gpu_compute_ns += prom_model_block_resolve_gpu_span(state, block, 1u);
   if (capture_m1c) {
     memcpy(request->audit_output, block->audit_readback.mapped, (size_t)(audit_elements * sizeof(float)));
     block->audit_valid = 1u;
@@ -4030,6 +4155,9 @@ int prom_reactor_runtime_noise_refiner_execute_resident_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  gpu_compute_ns += prom_model_block_resolve_gpu_span(state, block, 1u);
+  block->gpu_compute_ns = gpu_compute_ns;
+  block->gpu_total_ns = gpu_compute_ns;
   block->output_valid = 1u;
   if (block->resident_input_generation == 0u) block->resident_input_generation = request->input_generation;
   if (request->audit_enabled != 0u) {
@@ -4227,6 +4355,37 @@ static prom_compiled_model_stream_slot* prom_compiled_session_slot(
   return &session->streams[role - 1u];
 }
 
+static int prom_main_transformer_resolve_timestamps(prom_reduction_runtime_state* state,
+                                                     prom_model_block_state* block) {
+  uint64_t timestamps[PROM_MODEL_BLOCK_MAIN_QUERY_COUNT];
+  uint32_t stage;
+  if (state == NULL || block == NULL || block->m1b_timestamp_supported == 0u ||
+      block->m1b_timestamp_query_pool == VK_NULL_HANDLE) return 0;
+  if (vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, 0u,
+                            PROM_MODEL_BLOCK_MAIN_QUERY_COUNT, sizeof(timestamps), timestamps,
+                            sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS) return 0;
+  block->gpu_total_begin_tick = timestamps[0u];
+  block->gpu_total_end_tick = timestamps[15u];
+  block->gpu_compute_begin_tick = timestamps[1u];
+  block->gpu_compute_end_tick = timestamps[14u];
+  block->gpu_total_ns = (uint64_t)((double)(timestamps[15u] - timestamps[0u]) *
+                                   (double)block->m1b_timestamp_period_ns + 0.5);
+  block->gpu_compute_ns = (uint64_t)((double)(timestamps[14u] - timestamps[1u]) *
+                                     (double)block->m1b_timestamp_period_ns + 0.5);
+  block->gpu_ingress_transfer_ns = (uint64_t)((double)(timestamps[1u] - timestamps[0u]) *
+                                              (double)block->m1b_timestamp_period_ns + 0.5);
+  block->gpu_joint_copy_ns = (uint64_t)((double)(timestamps[15u] - timestamps[14u]) *
+                                        (double)block->m1b_timestamp_period_ns + 0.5);
+  for (stage = 0u; stage < PROM_MODEL_BLOCK_MAIN_STAGE_COUNT; ++stage) {
+    block->main_stage_gpu_begin_tick[stage] = timestamps[stage + 1u];
+    block->main_stage_gpu_end_tick[stage] = timestamps[stage + 2u];
+    block->main_stage_gpu_ns[stage] = (uint64_t)(
+        (double)(timestamps[stage + 2u] - timestamps[stage + 1u]) *
+        (double)block->m1b_timestamp_period_ns + 0.5);
+  }
+  return 1;
+}
+
 static int prom_main_transformer_record_execute(prom_reduction_runtime_state* state,
                                                 prom_model_block_state* block,
                                                 prom_compiled_model_session_state* session,
@@ -4258,18 +4417,32 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   prom_model_block_m1d_w2_constants w2 = {1.0e-5f, PROM_MODEL_BLOCK_MAIN_TOKENS,
                                            PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS, 10240u};
   VkResult result;
+  uint64_t phase_begin_ns;
+  uint64_t record_begin_ns;
   if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_COMMAND_RECORD_FAILED;
   if (state == NULL || block == NULL || session == NULL ||
       prom_reduction_take_test_flag(state, PROM_REDUCTION_TESTCFG_FAIL_COMMAND_RECORD)) return 0;
   joint = prom_compiled_session_slot(session, PROM_ZIMAGE_STREAM_JOINT_WORKING);
   if (joint == NULL || joint->valid == 0u || joint->generation != requested_joint_generation ||
       joint->device.size != PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS) ||
-      block->input_device.size != joint->device.size || block->timestep_upload.mapped == NULL ||
-      vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
+      block->input_device.size != joint->device.size || block->timestep_upload.mapped == NULL) return 0;
+  phase_begin_ns = prom_reduction_now_ns();
+  if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) return 0;
+  block->last_command_reset_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
+  block->vk_reset_command_buffer_count += 1u;
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  phase_begin_ns = prom_reduction_now_ns();
   if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) return 0;
+  block->last_command_begin_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
+  record_begin_ns = prom_reduction_now_ns();
+  if (block->m1b_timestamp_supported != 0u) {
+    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u,
+                        PROM_MODEL_BLOCK_MAIN_QUERY_COUNT);
+    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        block->m1b_timestamp_query_pool, 0u);
+  }
   memset(copies, 0, sizeof(copies));
   copies[0].size = joint->device.size;
   copies[1].size = block->timestep_upload.size;
@@ -4289,48 +4462,64 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   barriers[1].size = block->timestep_bf16_device.size;
   vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 2u, barriers, 0u, NULL);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+      block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+      block->m1b_timestamp_query_pool, 1u);
   if ((block->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     if (out_detail != NULL) *out_detail = PROM_MODEL_BLOCK_DETAIL_INGRESS_DISPATCH_FAILED;
     return 0;
   }
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[0u],
                                          &ingress, sizeof(ingress), 1u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 2u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[1u],
                                          &adaln, sizeof(adaln), 60u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 3u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[2u],
                                          &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 4u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[3u],
                                          &qkv, sizeof(qkv), 132u, 1440u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 5u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[4u],
                                          &q_head, sizeof(q_head), 31680u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 6u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1b_pipelines[5u],
                                          &k_head, sizeof(k_head), 31680u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 7u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
                                          &attention, sizeof(attention), 31680u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 8u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
                                          &projection, sizeof(projection), 132u, 480u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 9u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[2u],
                                          &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 10u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[0u],
                                          &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 11u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
                                          &hidden, sizeof(hidden), 132u, 1280u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 12u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],
                                          &gate, sizeof(gate), 42240u, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 13u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u],
                                          &w2, sizeof(w2), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 14u);
   prom_reduction_record_barrier(block->command_buffer);
   /* W2 writes its projected intermediate to input_device and the final FP32
      gated residual to attention. Chain mode copies that final buffer back to
@@ -4354,9 +4543,16 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
                        VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                        0u, 0u, NULL, 1u, barriers, 0u, NULL);
   }
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+      block->command_buffer,
+      resident_chain_mode != 0u ? VK_PIPELINE_STAGE_TRANSFER_BIT : VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+      block->m1b_timestamp_query_pool, 15u);
+  block->last_command_record_ns = prom_reduction_elapsed_ns(record_begin_ns, prom_reduction_now_ns());
+  phase_begin_ns = prom_reduction_now_ns();
   result = (block->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u
                ? VK_ERROR_INITIALIZATION_FAILED
                : vkEndCommandBuffer(block->command_buffer);
+  block->last_command_end_ns = prom_reduction_elapsed_ns(phase_begin_ns, prom_reduction_now_ns());
   if (result != VK_SUCCESS) return 0;
   return prom_model_block_submit_and_wait(state, block, out_detail);
 }
@@ -4804,6 +5000,8 @@ int prom_reactor_runtime_main_transformer_execute_impl(
   prom_compiled_model_stream_slot* joint;
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
   uint64_t begin_ns;
+  uint64_t validation_begin_ns = prom_reduction_now_ns();
+  uint64_t memcpy_begin_ns;
   int32_t detail;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->audit_enabled != 0u || request->resident_chain_mode > 1u ||
@@ -4860,13 +5058,23 @@ int prom_reactor_runtime_main_transformer_execute_impl(
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
+  block->last_active_target_validation_ns =
+      prom_reduction_elapsed_ns(validation_begin_ns, prom_reduction_now_ns());
   block->output_valid = 0u;
   block->audit_valid = 0u;
+  memcpy_begin_ns = prom_reduction_now_ns();
   memcpy(block->timestep_upload.mapped, request->timestep_bf16, (size_t)request->timestep_bytes);
+  block->last_staging_memcpy_ns = prom_reduction_elapsed_ns(memcpy_begin_ns, prom_reduction_now_ns());
   begin_ns = prom_reduction_now_ns();
   if (!prom_main_transformer_record_execute(state, block, session, request->required_joint_generation,
                                             request->resident_chain_mode, &detail)) {
     prom_model_block_mark_failure(block, detail);
+    prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
+    return PROM_ERROR;
+  }
+  if (block->m1b_timestamp_supported != 0u &&
+      !prom_main_transformer_resolve_timestamps(state, block)) {
+    prom_model_block_mark_failure(block, PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED);
     prom_model_block_fill_evidence(block, block->last_detail_code, out_evidence);
     return PROM_ERROR;
   }
@@ -5005,6 +5213,7 @@ int prom_reactor_runtime_main_transformer_audit_final_impl(
   VkBufferMemoryBarrier barrier;
   VkBufferCopy copy;
   const uint64_t output_bytes = PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS);
+  uint64_t readback_begin_ns;
   int32_t detail = PROM_MODEL_BLOCK_DETAIL_AUDIT_FAILED;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || request->output == NULL ||
       request->struct_size != sizeof(*request) || request->output_identity == 0u ||
@@ -5026,10 +5235,16 @@ int prom_reactor_runtime_main_transformer_audit_final_impl(
     return PROM_ERROR;
   }
   if (vkResetCommandBuffer(block->command_buffer, 0u) != VK_SUCCESS) goto failure;
+  block->vk_reset_command_buffer_count += 1u;
   memset(&begin_info, 0, sizeof(begin_info));
   begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
   if (vkBeginCommandBuffer(block->command_buffer, &begin_info) != VK_SUCCESS) goto failure;
+  if (block->m1b_timestamp_supported != 0u) {
+    vkCmdResetQueryPool(block->command_buffer, block->m1b_timestamp_query_pool, 0u, 2u);
+    vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        block->m1b_timestamp_query_pool, 0u);
+  }
   memset(&barrier, 0, sizeof(barrier));
   barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
   barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -5043,9 +5258,22 @@ int prom_reactor_runtime_main_transformer_audit_final_impl(
   memset(&copy, 0, sizeof(copy));
   copy.size = output_bytes;
   vkCmdCopyBuffer(block->command_buffer, block->attention.buffer, block->audit_readback.buffer, 1u, &copy);
+  if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+      block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+      block->m1b_timestamp_query_pool, 1u);
   if (vkEndCommandBuffer(block->command_buffer) != VK_SUCCESS ||
       !prom_model_block_submit_and_wait(state, block, &detail)) goto failure;
+  if (block->m1b_timestamp_supported != 0u) {
+    uint64_t timestamps[2u];
+    if (vkGetQueryPoolResults(state->device, block->m1b_timestamp_query_pool, 0u, 2u,
+                              sizeof(timestamps), timestamps, sizeof(uint64_t),
+                              VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT) != VK_SUCCESS) goto failure;
+    block->gpu_readback_ns = (uint64_t)((double)(timestamps[1u] - timestamps[0u]) *
+                                        (double)block->m1b_timestamp_period_ns + 0.5);
+  }
+  readback_begin_ns = prom_reduction_now_ns();
   memcpy(request->output, block->audit_readback.mapped, (size_t)output_bytes);
+  block->last_output_readback_ns = prom_reduction_elapsed_ns(readback_begin_ns, prom_reduction_now_ns());
   block->audit_valid = 1u;
   block->replay_identity = prom_model_block_hash_u64(block->replay_identity, request->output_identity);
   block->last_detail_code = 0;
@@ -5198,6 +5426,7 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
   uint64_t aggregate;
   uint32_t expected_count;
   uint32_t index;
+  uint64_t memcpy_total_ns = 0u;
   const uint64_t* expected_bytes;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
@@ -5259,7 +5488,9 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
     const PrometheusModelBlockWeightUpload* upload = &request->uploads[index];
     uint32_t physical = family == PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO
                             ? k_prom_context_shared_weight_slots[index] : index;
+    uint64_t memcpy_begin_ns = prom_reduction_now_ns();
     memcpy(block->weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
+    memcpy_total_ns += prom_reduction_elapsed_ns(memcpy_begin_ns, prom_reduction_now_ns());
     block->weights[physical].content_identity = upload->content_identity;
     block->weights[physical].layout_identity = upload->layout_identity;
     block->weights[physical].byte_count = upload->byte_count;
@@ -5284,6 +5515,7 @@ int prom_reactor_runtime_compiled_model_retarget_impl(
   block->replay_identity = 0u;
   block->binding_state = PROM_NOISE_REFINER_BINDING_BOUND;
   block->last_detail_code = 0;
+  block->last_staging_memcpy_ns = memcpy_total_ns;
   session->retarget_position += 1u;
   session->active_block_id = block->block_id;
   session->binding_generation = block->binding_generation;
@@ -5319,6 +5551,7 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
   prom_compiled_model_session_state* session;
   uint32_t family, parameter_set, expected_count, index;
   uint64_t aggregate;
+  uint64_t memcpy_total_ns = 0u;
   const uint64_t* expected_bytes;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
@@ -5368,7 +5601,11 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
         upload->layout_identity == 0u || upload->byte_count != expected_bytes[index] ||
         upload->byte_count > (uint64_t)block->prefetch_weight_upload.size ||
         upload->byte_count > (uint64_t)block->prefetch_weights[physical].device.size) goto failed_before_submit;
-    memcpy(block->prefetch_weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
+    {
+      uint64_t memcpy_begin_ns = prom_reduction_now_ns();
+      memcpy(block->prefetch_weight_upload.mapped, upload->bytes, (size_t)upload->byte_count);
+      memcpy_total_ns += prom_reduction_elapsed_ns(memcpy_begin_ns, prom_reduction_now_ns());
+    }
     block->prefetch_weights[physical].content_identity = upload->content_identity;
     block->prefetch_weights[physical].layout_identity = upload->layout_identity;
     block->prefetch_weights[physical].byte_count = upload->byte_count;
@@ -5383,6 +5620,7 @@ int prom_reactor_runtime_compiled_model_prefetch_impl(
   block->prefetch_target_position = session->retarget_position;
   block->prefetch_generation += 1u;
   block->prefetch_state = PROM_MODEL_WEIGHT_WINDOW_DEVICE_READY;
+  block->last_staging_memcpy_ns = memcpy_total_ns;
   prom_model_block_fill_evidence(block, 0, out_evidence);
   return PROM_OK;
 failed_before_submit:
@@ -5420,6 +5658,7 @@ int prom_reactor_runtime_compiled_model_activate_prefetch_impl(
   /* The scoped bridge waits for current compute before activation.  The fence
      is checked again here so a stale or uncertain upload can never become the
      active descriptor set. */
+  block->vk_fence_wait_count += 1u;
   if (vkWaitForFences(state->device, 1u, &block->prefetch_fence, VK_TRUE, UINT64_MAX) != VK_SUCCESS) goto uncertain;
   /* The window uses concurrent sharing across the dedicated transfer and
      compute families, so no ownership handoff is required.  A compute-queue
