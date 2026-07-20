@@ -1517,13 +1517,25 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->subgroup_compute_supported = rt->subgroup_compute_supported;
   out_services->subgroup_arithmetic_supported = rt->subgroup_arithmetic_supported;
   out_services->subgroup_basic_supported = rt->subgroup_basic_supported;
+  out_services->subgroup_shuffle_supported = rt->subgroup_shuffle_supported;
   out_services->subgroup_fixed_size_32_admitted = rt->subgroup_fixed_size_32_admitted;
+  out_services->subgroup_owned_attention_admitted = rt->subgroup_owned_attention_admitted;
 
   if (rt->available == 0u) return PROM_ERROR;
   if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
     return PROM_ERROR;
   }
   return PROM_OK;
+}
+
+const char* prom_vk_subgroup_owned_attention_admission_reason(
+    const prom_vk_runtime_services* services) {
+  if (services == NULL || services->subgroup_compute_supported == 0u) return "missing compute-stage subgroup support";
+  if (services->subgroup_size != 32u) return "subgroup size is not 32";
+  if (services->subgroup_arithmetic_supported == 0u) return "missing subgroup arithmetic support";
+  if (services->subgroup_basic_supported == 0u) return "missing subgroup basic support";
+  if (services->subgroup_shuffle_supported == 0u) return "missing subgroup shuffle support";
+  return NULL;
 }
 
 
@@ -3002,7 +3014,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   rt->subgroup_compute_supported = 0u;
   rt->subgroup_arithmetic_supported = 0u;
   rt->subgroup_basic_supported = 0u;
+  rt->subgroup_shuffle_supported = 0u;
   rt->subgroup_fixed_size_32_admitted = 0u;
+  rt->subgroup_owned_attention_admitted = 0u;
   {
     VkPhysicalDeviceSubgroupProperties subgroup_properties;
     VkPhysicalDeviceProperties2 properties2;
@@ -3021,9 +3035,13 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
         (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0u ? 1u : 0u;
     rt->subgroup_basic_supported =
         (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_BASIC_BIT) != 0u ? 1u : 0u;
+    rt->subgroup_shuffle_supported =
+        (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0u ? 1u : 0u;
     rt->subgroup_fixed_size_32_admitted =
         (rt->subgroup_size == 32u && rt->subgroup_compute_supported != 0u &&
          rt->subgroup_arithmetic_supported != 0u && rt->subgroup_basic_supported != 0u) ? 1u : 0u;
+    rt->subgroup_owned_attention_admitted =
+        (rt->subgroup_fixed_size_32_admitted != 0u && rt->subgroup_shuffle_supported != 0u) ? 1u : 0u;
   }
 
 #ifdef VK_KHR_cooperative_matrix

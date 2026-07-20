@@ -74,3 +74,28 @@ add explicit Vulkan 1.1 subgroup target admission; only then should M5c repeat
 the topology experiment from M4.
 
 All deterministic evidence is in `artifacts/Dvt2M5b/`.
+
+## M5b resumed after Mx5
+
+**MEANINGFUL PROGRESSION.** Mx5 removed the former Vulkan-target blocker. The
+new non-default `MainTransformerJointAttentionSubgroupOwned` route is generated
+through `ProductionVulkan14`, registered as experimental, and selected only by
+`PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT`; SerialCanonical remains the
+default shader and dispatch geometry.
+
+One 256-thread group maps eight independent 32-lane rows. A lane owns 33
+strided keys and four output channels. Scores and exponentials are two
+function-private 33-float arrays; the four output totals are function-private.
+The emitted SPIR-V has `OpGroupNonUniformFMax` and
+`OpGroupNonUniformShuffle`, zero workgroup variables, zero control or memory
+barriers, and zero atomics. The candidate uses canonical channel order and
+canonical broadcast key order, and divides each probability before V
+multiplication.
+
+The generated module validates under Vulkan 1.4 semantics and the default
+native build, workspace parity, registry tests, and RTX 3070 preflight pass.
+It is not promoted: the next isolated blocker is an exact production-path
+arbitrary-lane subgroup capability probe and admission, followed by an
+experimental macro build and real representative numerical/timestamp run. No
+numerical, image, or performance result is claimed yet. See
+`artifacts/Dvt2M5b/dvt2_m5b_subgroup_owned_candidate.json`.

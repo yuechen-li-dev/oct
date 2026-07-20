@@ -2,6 +2,7 @@
 #include "test_harness.h"
 
 #include <array>
+#include <cstring>
 #include <cstdlib>
 #include <cstdint>
 #include <filesystem>
@@ -28,9 +29,39 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(36), prom_shader_registry_shader_asset_count(), "production assets must include the M2C joint MainTransformer portfolio");
+  ASSERT_EQUAL(static_cast<std::size_t>(37), prom_shader_registry_shader_asset_count(), "registered assets must include the M5b experimental MainTransformer subgroup route");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
+}
+FACT(PrometheusM5bSubgroupOwnedAttentionAdmissionIsExact) {
+  prom_vk_runtime_services services{};
+  services.subgroup_compute_supported = 1u;
+  services.subgroup_size = 32u;
+  services.subgroup_arithmetic_supported = 1u;
+  services.subgroup_basic_supported = 1u;
+  services.subgroup_shuffle_supported = 1u;
+  ASSERT_TRUE(prom_vk_subgroup_owned_attention_admission_reason(&services) == nullptr,
+              "the exact compute/32/arithmetic/basic/shuffle capability set is admitted");
+
+  services.subgroup_compute_supported = 0u;
+  ASSERT_TRUE(std::strcmp(prom_vk_subgroup_owned_attention_admission_reason(&services),
+                          "missing compute-stage subgroup support") == 0,
+              "missing compute-stage support has a specific diagnostic");
+  services.subgroup_compute_supported = 1u;
+  services.subgroup_size = 64u;
+  ASSERT_TRUE(std::strcmp(prom_vk_subgroup_owned_attention_admission_reason(&services),
+                          "subgroup size is not 32") == 0,
+              "a non-32 subgroup has a specific diagnostic");
+  services.subgroup_size = 32u;
+  services.subgroup_arithmetic_supported = 0u;
+  ASSERT_TRUE(std::strcmp(prom_vk_subgroup_owned_attention_admission_reason(&services),
+                          "missing subgroup arithmetic support") == 0,
+              "missing FMax arithmetic support has a specific diagnostic");
+  services.subgroup_arithmetic_supported = 1u;
+  services.subgroup_shuffle_supported = 0u;
+  ASSERT_TRUE(std::strcmp(prom_vk_subgroup_owned_attention_admission_reason(&services),
+                          "missing subgroup shuffle support") == 0,
+              "BroadcastFirst is not accepted in place of arbitrary-lane shuffle");
 }
 FACT(PrometheusM39bReductionRegistryIsProductionOwnedAndIsolated) {
   const std::array<uint32_t, 7> expected_shader_ids = {
@@ -269,8 +300,17 @@ FACT(PrometheusVulkanRuntimePreflight) {
       "\nvk_result=" + std::to_string(vk_result) + "\n";
   if (runtime != nullptr && caps.available != 0u) {
     PrometheusVulkanDeviceDiagnostics device{};
+    prom_vk_runtime_services services{};
     const int device_result = prometheus_reactor_runtime_vulkan_device_diagnostics(handle, &device);
     artifact += "device_result=" + std::to_string(device_result) + "\ndevice_name=" + device.device_name + "\nvendor_id=" + std::to_string(device.vendor_id) + "\n";
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services),
+                 "preflight must expose the exact subgroup route requirements");
+    artifact += "subgroup_size=" + std::to_string(services.subgroup_size) +
+        "\nsubgroup_compute_supported=" + std::to_string(services.subgroup_compute_supported) +
+        "\nsubgroup_arithmetic_supported=" + std::to_string(services.subgroup_arithmetic_supported) +
+        "\nsubgroup_basic_supported=" + std::to_string(services.subgroup_basic_supported) +
+        "\nsubgroup_shuffle_supported=" + std::to_string(services.subgroup_shuffle_supported) +
+        "\nsubgroup_owned_attention_admitted=" + std::to_string(services.subgroup_owned_attention_admitted) + "\n";
   }
   context.WriteTextArtifact("prometheus_vulkan_runtime_preflight.txt", artifact);
   const char* required = std::getenv("PROMETHEUS_REQUIRE_VULKAN_HARDWARE");

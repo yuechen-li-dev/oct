@@ -70,8 +70,16 @@ typedef struct prom_vk_runtime_services {
   uint32_t subgroup_compute_supported;
   uint32_t subgroup_arithmetic_supported;
   uint32_t subgroup_basic_supported;
+  uint32_t subgroup_shuffle_supported;
   uint32_t subgroup_fixed_size_32_admitted;
+  uint32_t subgroup_owned_attention_admitted;
 } prom_vk_runtime_services;
+
+/* Returns NULL only when the exact M5b subgroup-owned attention route is
+   admitted. The strings are stable diagnostics for explicit experimental
+   selection and native negative-admission coverage. */
+const char* prom_vk_subgroup_owned_attention_admission_reason(
+    const prom_vk_runtime_services* services);
 
 /* Test/audit-only request. This is never accepted by policy or the production
    shader registry; it supplies one temporary pipeline to the existing SGEMM

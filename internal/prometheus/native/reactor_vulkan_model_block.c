@@ -33,7 +33,13 @@
 #define PROM_MODEL_BLOCK_CONTEXT_QK_ROPE_SHADER_ID 38u
 #define PROM_MODEL_BLOCK_CONTEXT_ATTENTION_SHADER_ID 39u
 #define PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID 40u
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 44u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 3960u
+#else
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 41u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 31680u
+#endif
 #define PROM_MODEL_BLOCK_MAIN_W1_W3_SHADER_ID 42u
 #define PROM_MODEL_BLOCK_MAIN_GATE_SHADER_ID 43u
 #define PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS (1024u * 3840u)
@@ -2999,6 +3005,12 @@ int prom_reactor_runtime_context_refiner_create_impl(
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
     return PROM_ERROR;
   }
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
+  if (prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
+    return PROM_ERROR;
+  }
+#endif
   descriptor = prom_zimage_turbo_resolve_context_refiner_descriptor(request->lock_identity, request->model_local_block_id);
   if (descriptor == NULL || descriptor->assembly_family != PROM_CONTEXT_REFINER_FAMILY_Z_IMAGE_TURBO ||
       descriptor->parameter_set != PROM_CONTEXT_REFINER_PARAMETER_SET_0 ||
@@ -4494,7 +4506,7 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 7u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
-                                         &attention, sizeof(attention), 31680u, 1u, 1u);
+                                         &attention, sizeof(attention), PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS, 1u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 8u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],

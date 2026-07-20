@@ -677,7 +677,9 @@ typedef struct prometheus_runtime {
 	uint32_t subgroup_compute_supported;
 	uint32_t subgroup_arithmetic_supported;
 	uint32_t subgroup_basic_supported;
+	uint32_t subgroup_shuffle_supported;
 	uint32_t subgroup_fixed_size_32_admitted;
+	uint32_t subgroup_owned_attention_admitted;
   VkDebugUtilsMessageSeverityFlagBitsEXT validation_last_severity;
   VkDebugUtilsMessageTypeFlagsEXT validation_last_type;
   char validation_last_message_id[128];

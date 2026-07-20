@@ -1,0 +1,84 @@
+namespace Prometheus.Production.ZImage;
+
+stream MainTransformerJointAttentionSubgroupOwnedIO {
+    [binding(0)] Qkv: readonly array<f32>;
+    [binding(1)] Attention: readwrite array<f32>;
+    [binding(2)] Audit: readwrite array<f32>;
+}
+
+record MainTransformerJointAttentionSubgroupOwnedParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
+
+// Experimental M5b route: eight independent 32-lane subgroups own eight rows.
+// Scores and exponentials are fixed per-lane private arrays; Wave operations are
+// the only cross-lane communication and this shader declares no workgroup state.
+shader MainTransformerJointAttentionSubgroupOwned {
+    resources MainTransformerJointAttentionSubgroupOwnedIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: MainTransformerJointAttentionSubgroupOwnedParams) -> void {
+        let rawLane: u32 = GroupThreadID.x;
+        let rawGroup: u32 = GroupID.x;
+        HLSL {
+            const uint subgroup = rawLane / 32u;
+            const uint lane = rawLane - subgroup * 32u;
+            const uint packedRow = rawGroup * 8u + subgroup;
+            const uint token = packedRow / params.HeadCount;
+            const uint head = packedRow - token * params.HeadCount;
+            if (token >= params.TokenCount) return;
+
+            float scores[33];
+            float exponentials[33];
+            float localMaximum = -3.402823466e+38F;
+            for (uint keyGroup = 0u; keyGroup < 33u; ++keyGroup) {
+                const uint key = lane + keyGroup * 32u;
+                float dot = 0.0F;
+                for (uint channel = 0u; channel < 128u; ++channel) {
+                    const uint qIndex = token * params.FusedWidth + head * 128u + channel;
+                    const uint kIndex = key * params.FusedWidth + 3840u + head * 128u + channel;
+                    dot += Qkv[qIndex] * Qkv[kIndex];
+                }
+                const float score = dot * 0.08838834764831843F;
+                scores[keyGroup] = score;
+                localMaximum = max(localMaximum, score);
+            }
+            const float maximum = WaveActiveMax(localMaximum);
+            for (uint keyGroup = 0u; keyGroup < 33u; ++keyGroup) exponentials[keyGroup] = exp(scores[keyGroup] - maximum);
+
+            float denominator = 0.0F;
+            for (uint keyGroup = 0u; keyGroup < 33u; ++keyGroup) {
+                for (uint sourceLane = 0u; sourceLane < 32u; ++sourceLane) denominator += WaveReadLaneAt(exponentials[keyGroup], sourceLane);
+            }
+            const bool valid = denominator == denominator && denominator > 0.0F && (denominator - denominator) == 0.0F;
+            float rowSum = 0.0F;
+            for (uint keyGroup = 0u; keyGroup < 33u; ++keyGroup) {
+                for (uint sourceLane = 0u; sourceLane < 32u; ++sourceLane) {
+                    const float exponential = WaveReadLaneAt(exponentials[keyGroup], sourceLane);
+                    rowSum += valid ? exponential / denominator : 0.0F;
+                }
+            }
+
+            float totals[4] = {0.0F, 0.0F, 0.0F, 0.0F};
+            for (uint keyGroup = 0u; keyGroup < 33u; ++keyGroup) {
+                for (uint sourceLane = 0u; sourceLane < 32u; ++sourceLane) {
+                    const uint key = sourceLane + keyGroup * 32u;
+                    const float exponential = WaveReadLaneAt(exponentials[keyGroup], sourceLane);
+                    const float probability = valid ? exponential / denominator : 0.0F;
+                    for (uint channelPart = 0u; channelPart < 4u; ++channelPart) {
+                        const uint channel = lane + channelPart * 32u;
+                        totals[channelPart] += probability * Qkv[key * params.FusedWidth + 7680u + head * 128u + channel];
+                    }
+                }
+            }
+            for (uint channelPart = 0u; channelPart < 4u; ++channelPart) Attention[token * 3840u + head * 128u + lane + channelPart * 32u] = totals[channelPart];
+            if (lane == 0u && ((token == 0u && head == 0u) || (token == 1024u && head == 0u))) {
+                const uint base = token == 1024u ? 32u : 0u;
+                Audit[base] = scores[0u] / 0.08838834764831843F;
+                Audit[base + 1u] = scores[0u];
+                Audit[base + 2u] = scores[0u] - maximum;
+                Audit[base + 3u] = valid ? exponentials[0u] / denominator : 0.0F;
+                Audit[base + 4u] = rowSum;
+                Audit[base + 30u] = valid ? 1.0F : 0.0F;
+            }
+        }
+        return;
+    }
+}
