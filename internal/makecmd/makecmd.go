@@ -221,11 +221,38 @@ func loadContext(opts Options, stdout io.Writer) (context, error) {
 	if err != nil {
 		return context{}, err
 	}
+	// NativePlan is an optional companion entrypoint.  Keeping it separate
+	// preserves every pre-native Make.Plan literal unchanged.
+	if hasFunction(program, "NativePlan") {
+		nv, callErr := interpret.CallFunctionWithArgsAndOptions(program, program.Entry, "NativePlan", nil, stdout, interpret.ExecuteOptions{})
+		if callErr != nil {
+			return context{}, fmt.Errorf("call NativePlan(): %w", callErr)
+		}
+		commands, phonies, lowerErr := lowerNative(root, nativeTargets(nv))
+		if lowerErr != nil {
+			return context{}, lowerErr
+		}
+		plan.CommandTargets = append(plan.CommandTargets, commands...)
+		plan.PhonyTargets = append(plan.PhonyTargets, phonies...)
+	}
 	targets, err := validate(plan)
 	if err != nil {
 		return context{}, err
 	}
 	return context{makeFile: makeFile, root: root, program: program, plan: plan, targets: targets}, nil
+}
+
+func hasFunction(program project.Program, name string) bool {
+	p, ok := program.Packages[program.Entry]
+	if !ok {
+		return false
+	}
+	for _, fn := range p.Functions {
+		if fn.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func discover(explicit string) (string, string, error) {
@@ -715,6 +742,17 @@ func run(order []string, m map[string]*target, root, makeFile string, program pr
 	return decs, nil
 }
 func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) (string, string, int, error) {
+	// Native lowering owns concrete artifact paths.  Creating their parent
+	// directories here keeps commands direct while avoiding shell mkdir steps.
+	for _, output := range c.Outputs {
+		path := output
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(root, path)
+		}
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return "", "", 0, err
+		}
+	}
 	cwd := c.Cwd
 	if cwd == "" {
 		cwd = root

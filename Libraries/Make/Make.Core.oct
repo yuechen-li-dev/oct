@@ -81,6 +81,36 @@ record Plan {
     PhonyTargets: PhonyTarget[]
 }
 
+// NativePlan is intentionally separate from Plan so adding the production
+// native surface does not make older Make.Plan literals source-incompatible.
+// The direct backend discovers an optional NativePlan() function beside Plan().
+enum NativeLanguage { C Cpp }
+enum NativeKind { ObjectSet SharedLibrary Executable }
+enum NativeProfile { Debug Release }
+
+record NativeTarget {
+    Name: String
+    Variant: String
+    Kind: NativeKind
+    Language: NativeLanguage
+    Sources: String[]
+    Manifest: String
+    ManifestSection: String
+    Inputs: String[]
+    Deps: String[]
+    IncludeDirs: String[]
+    Defines: String[]
+    Standard: String
+    Profile: NativeProfile
+    LinkLibraries: String[]
+    Output: String
+    InstallCopies: String[]
+}
+
+record NativePlan {
+    Targets: NativeTarget[]
+}
+
 record CommandTarget {
     Name: String
     Inputs: String[]

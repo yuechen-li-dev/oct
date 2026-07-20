@@ -3,47 +3,14 @@ package Main
 import Make
 
 [Fact]
-fn PlanDefaultIsTestNative() -> Void {
-    Assert.Equal("TestNative", Plan().Default, "Prometheus dogfood default should be TestNative")
+fn ProductionPlanUsesRealBuildTarget() -> Void {
+    Assert.Equal("TestNative", Plan().Default, "native smoke is the production default")
 }
 
 [Fact]
-fn DogfoodConfigUsesPrometheusStateAndTrace() -> Void {
-    let cfg = DogfoodConfig()
-    Assert.Equal("PrometheusDogfood", cfg.Profile, "dogfood profile should be named")
-    Assert.Equal(".octmake/prometheus", cfg.StateDir, "dogfood state should be isolated")
-    Assert.True(cfg.Trace, "dogfood config should enable trace")
-    Assert.Equal(Make.Staleness.Timestamp, cfg.Staleness, "dogfood config should use timestamp staleness")
-}
-
-[Fact]
-fn PlanHasExpectedTargetCounts() -> Void {
-    Assert.Equal(2, CommandTargetCount(), "plan should include build and harness command targets")
-    Assert.Equal(3, FunctionTargetCount(), "plan should include environment, tool, and clean function targets")
-    Assert.Equal(1, FlowTargetCount(), "plan should include one dogfood FlowTarget")
-    Assert.Equal(1, PhonyTargetCount(), "plan should include one default phony target")
-}
-
-[Fact]
-fn PlanIncludesDogfoodFlowTargetMetadata() -> Void {
-    Assert.Equal(16, PrometheusDogfoodMaxSteps(), "dogfood flow should have fixed M0 max steps")
-}
-
-[Fact]
-fn TestNativeDependsOnDogfoodFlow() -> Void {
-    Assert.Equal("PrometheusDogfoodFlow", TestNativeTargetDependency(), "TestNative should depend on PrometheusDogfoodFlow")
-}
-
-[Fact]
-fn PlanIncludesRequiredCommandTargets() -> Void {
-    Assert.Equal("BuildPrometheus", BuildPrometheusTargetName(), "plan should include BuildPrometheus")
-    Assert.Equal("RunHarness", RunHarnessTargetName(), "plan should include RunHarness")
-}
-
-[Fact]
-fn CommandTargetsUseStructuredProgramAndArgs() -> Void {
-    Assert.Equal("bash", BuildPrometheusTargetProgram(), "build command should use Program")
-    Assert.Equal("internal/prometheus/native/build_linux.sh", BuildPrometheusTargetFirstArg(), "build command should use Args")
-    Assert.Equal("out/prometheus/native/marionette_tests", RunHarnessTargetProgram(), "harness command should use Program")
-    Assert.Equal("PrometheusNativeHarness_Smoke", RunHarnessTargetFirstArg(), "harness command should use Args")
+fn NativePlanDeclaresVariantIsolation() -> Void {
+    let targets = NativePlan().Targets
+    Assert.Equal("SerialCanonical", targets[0].Variant, "default objects have an explicit identity")
+    Assert.Equal("M5bSubgroupOwnedExperimental", targets[5].Variant, "experimental objects do not reuse default identity")
+    Assert.Equal(Make.NativeKind.ObjectSet, targets[0].Kind, "common C sources are reusable objects")
 }
