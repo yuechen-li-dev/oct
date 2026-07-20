@@ -49,7 +49,7 @@ func TestBuildDXCArgs(t *testing.T) {
 		"-T", "cs_6_0",
 		"-E", "VectorAdd_CS",
 		"-Fo", "out/vector_add.spv",
-		"-fspv-target-env=vulkan1.0",
+		"-fspv-target-env=vulkan1.3",
 		"-O3",
 		"-fspv-extension=SPV_KHR_storage_buffer_storage_class",
 		"out/vector_add.hlsl",
@@ -73,6 +73,9 @@ func TestCooperativeMatrixTargetContract(t *testing.T) {
 		strings.Join(target.spirvExtensions, ",") != "SPV_KHR_cooperative_matrix" ||
 		!strings.Contains(strings.Join(target.spirvCapabilities, ","), "CooperativeMatrixKHR") {
 		t.Fatalf("target capability manifest = %#v", target)
+	}
+	if target.name != "ProductionVulkan14" || target.validatorTarget != "vulkan1.4" || target.spirvVersion != "1.6" {
+		t.Fatalf("unexpected production target authority = %#v", target)
 	}
 }
 

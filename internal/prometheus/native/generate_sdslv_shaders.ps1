@@ -24,8 +24,8 @@ try {
     foreach ($job in $jobs) {
         go run ./cmd/oct sdslv check $job.Shader
         go run ./cmd/oct sdslv emit-hlsl $job.Shader -o (Join-Path $outDir ($job.Stem + ".hlsl"))
-        go run ./cmd/oct sdslv compile-spv $job.Shader -o (Join-Path $outDir ($job.Stem + ".spv"))
-        go run ./cmd/oct sdslv generate-header $job.Shader -o $job.Header --symbol $job.Symbol
+        go run ./cmd/oct sdslv compile-spv $job.Shader -o (Join-Path $outDir ($job.Stem + ".spv")) --validate --require-spirv-val
+        go run ./cmd/oct sdslv generate-header $job.Shader -o $job.Header --symbol $job.Symbol --validate --require-spirv-val
 
         Remove-Item -LiteralPath $job.NativeTempHlsl -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $job.NativeTempSpv -ErrorAction SilentlyContinue

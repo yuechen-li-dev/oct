@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.mx5.compatibility-policy.v1","production":"ProductionVulkan14 only","legacy_vulkan10":"not supported and never silently selected","fallback":"M4 serial implementation route only, under the same ProductionVulkan14 identity"}

@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.mx5.numerical-validation.v1","status":"Prefetch replay pass","final_relative_l2":0.0000102005,"threshold":0.00005,"png_sha256":"7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613","payload_check":"pass","execution_profile":"Prefetch","model_owned_ceiling_bytes":1005407748}

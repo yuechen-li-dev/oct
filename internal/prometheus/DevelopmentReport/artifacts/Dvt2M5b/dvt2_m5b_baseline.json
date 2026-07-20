@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.m5b.baseline.v1","route":"M4 serial softmax","prefetch_wall_seconds":165.439,"restored_confirmation_seconds":166.097,"attention_seconds":32.317,"png_sha256":"7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613","final_30_layer_relative_l2":1.02005e-5,"relative_l2_threshold":5e-5}

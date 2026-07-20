@@ -1512,6 +1512,12 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->cooperative_matrix_selected_n = rt->cooperative_matrix_selected_n;
   out_services->cooperative_matrix_selected_k = rt->cooperative_matrix_selected_k;
   out_services->subgroup_size = rt->subgroup_size;
+  out_services->subgroup_supported_stages = rt->subgroup_supported_stages;
+  out_services->subgroup_supported_operations = rt->subgroup_supported_operations;
+  out_services->subgroup_compute_supported = rt->subgroup_compute_supported;
+  out_services->subgroup_arithmetic_supported = rt->subgroup_arithmetic_supported;
+  out_services->subgroup_basic_supported = rt->subgroup_basic_supported;
+  out_services->subgroup_fixed_size_32_admitted = rt->subgroup_fixed_size_32_admitted;
 
   if (rt->available == 0u) return PROM_ERROR;
   if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
@@ -2804,7 +2810,12 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     if (enumerate_instance_version != NULL) (void)enumerate_instance_version(&loader_api_version);
   }
 #endif
-  application_info.apiVersion = loader_api_version < VK_API_VERSION_1_3 ? loader_api_version : VK_API_VERSION_1_3;
+  /* Production shader artifacts are SPIR-V 1.6 validated under Vulkan 1.4.
+     Do not silently lower the runtime contract to the loader's older API. */
+  if (loader_api_version < VK_API_VERSION_1_4) {
+    return VK_ERROR_INCOMPATIBLE_DRIVER;
+  }
+  application_info.apiVersion = VK_API_VERSION_1_4;
   memset(&instance_info, 0, sizeof(instance_info));
   instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   instance_info.pApplicationInfo = &application_info;
@@ -2872,6 +2883,13 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   if (rt->physical_device == VK_NULL_HANDLE || rt->queue_family_index == UINT32_MAX) {
     return VK_ERROR_FEATURE_NOT_PRESENT;
+  }
+  {
+    VkPhysicalDeviceProperties platform_properties;
+    vkGetPhysicalDeviceProperties(rt->physical_device, &platform_properties);
+    if (platform_properties.apiVersion < VK_API_VERSION_1_4) {
+      return VK_ERROR_INCOMPATIBLE_DRIVER;
+    }
   }
   {
     uint32_t family_count = 0u;
@@ -2979,6 +2997,34 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   rt->cooperative_matrix_selected_n = 0u;
   rt->cooperative_matrix_selected_k = 0u;
   rt->subgroup_size = 0u;
+  rt->subgroup_supported_stages = 0u;
+  rt->subgroup_supported_operations = 0u;
+  rt->subgroup_compute_supported = 0u;
+  rt->subgroup_arithmetic_supported = 0u;
+  rt->subgroup_basic_supported = 0u;
+  rt->subgroup_fixed_size_32_admitted = 0u;
+  {
+    VkPhysicalDeviceSubgroupProperties subgroup_properties;
+    VkPhysicalDeviceProperties2 properties2;
+    memset(&subgroup_properties, 0, sizeof(subgroup_properties));
+    subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
+    memset(&properties2, 0, sizeof(properties2));
+    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties2.pNext = &subgroup_properties;
+    vkGetPhysicalDeviceProperties2(rt->physical_device, &properties2);
+    rt->subgroup_size = subgroup_properties.subgroupSize;
+    rt->subgroup_supported_stages = (uint32_t)subgroup_properties.supportedStages;
+    rt->subgroup_supported_operations = (uint32_t)subgroup_properties.supportedOperations;
+    rt->subgroup_compute_supported =
+        (subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0u ? 1u : 0u;
+    rt->subgroup_arithmetic_supported =
+        (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0u ? 1u : 0u;
+    rt->subgroup_basic_supported =
+        (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_BASIC_BIT) != 0u ? 1u : 0u;
+    rt->subgroup_fixed_size_32_admitted =
+        (rt->subgroup_size == 32u && rt->subgroup_compute_supported != 0u &&
+         rt->subgroup_arithmetic_supported != 0u && rt->subgroup_basic_supported != 0u) ? 1u : 0u;
+  }
 
 #ifdef VK_KHR_cooperative_matrix
   {

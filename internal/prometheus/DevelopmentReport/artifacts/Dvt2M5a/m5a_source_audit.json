@@ -1,0 +1,9 @@
+{
+  "schema": "prometheus.dvt2.m5a.attention-source-audit.v1",
+  "families": [
+    {"shader":"nr0_attention_streaming","tokens":1024,"workgroup":256,"scores":"workgroup f32[1024], four keys per lane","max":"lane 0 serial key order","exp_sum":"lane 0 serial key order","normalize":"lane 0 serial key order","pv":"lanes 0..127 each serially accumulate all keys","audit":"two selected rows; sample/probability stores"},
+    {"shader":"context_refiner_attention_streaming","tokens":32,"workgroup":256,"scores":"workgroup f32[32], lanes 0..31 active","max":"lane 0 serial key order","exp_sum":"lane 0 serial key order","normalize":"lane 0 serial key order","pv":"lanes 0..127 each serially accumulate all keys","audit":"two selected rows"},
+    {"shader":"main_transformer_joint_attention_streaming","tokens":1056,"workgroup":256,"scores":"workgroup f32[1056], up to five keys per lane","max":"lane 0 serial key order","exp_sum":"lane 0 serial key order","normalize":"lane 0 serial key order","pv":"lanes 0..127 each serially accumulate all keys","audit":"two selected rows"}
+  ],
+  "finding":"All families have the same 1-of-256 serial max/exp/normalize pattern; only the score-striping and token envelope differ. Production source is restored to this validated M4 baseline after the rejected candidate."
+}

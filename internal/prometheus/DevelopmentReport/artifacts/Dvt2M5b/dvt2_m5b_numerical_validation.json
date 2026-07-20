@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.m5b.numerical-validation.v1","serial_m4":{"representative_relative_l2":8.38066e-7,"final_30_layer_relative_l2":1.02005e-5,"threshold":5e-5,"png_sha256":"7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613"},"subgroup_candidates":"not executable through the production toolchain; no authority is claimed"}

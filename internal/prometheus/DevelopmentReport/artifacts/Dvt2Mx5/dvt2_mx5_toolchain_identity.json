@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.mx5.toolchain-identity.v1","vulkan_sdk":"1.4.350.0","dxc":"1.9.0.5347 (1.10.5347-fe261573)","dxc_highest_vulkan_spelling":"vulkan1.3","spirv_tools":"v2026.2","validator_vulkan14_spirv":"1.6","result":"supported via DXC vulkan1.3 lowering plus Vulkan 1.4 validation"}

@@ -65,6 +65,12 @@ typedef struct prom_vk_runtime_services {
   uint32_t cooperative_matrix_selected_n;
   uint32_t cooperative_matrix_selected_k;
   uint32_t subgroup_size;
+  uint32_t subgroup_supported_stages;
+  uint32_t subgroup_supported_operations;
+  uint32_t subgroup_compute_supported;
+  uint32_t subgroup_arithmetic_supported;
+  uint32_t subgroup_basic_supported;
+  uint32_t subgroup_fixed_size_32_admitted;
 } prom_vk_runtime_services;
 
 /* Test/audit-only request. This is never accepted by policy or the production

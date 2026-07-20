@@ -1,0 +1,27 @@
+{
+  "schema": "prometheus.dvt2.m5a.softmax-parallelization.v1",
+  "baseline": {
+    "identity": "restored validated M4 CanonicalFp32 Prefetch",
+    "wall_seconds": 165.4385159000085,
+    "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "final_30_layer_relative_l2": 1.02005e-5,
+    "relative_l2_threshold": 5e-5
+  },
+  "candidate": {
+    "name": "canonical-order-denominator_parallel-max-exp-normalize",
+    "retained": false,
+    "softmax": "fixed 256-lane max tree; distributed exponentiation and normalization; lane-0 denominator in logical key order",
+    "workgroup_memory_bytes": 9476,
+    "barriers": 13,
+    "numerical": {
+      "representative_main_transformer_relative_l2": 8.38066e-7,
+      "final_30_layer_relative_l2": 1.02005e-5,
+      "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613"
+    },
+    "prefetch_full_image_wall_seconds": 175.23212879999483,
+    "wall_delta_seconds": 9.79361289998633,
+    "wall_delta_percent": 5.919804355
+  },
+  "decision": "rejected: canonical full-image performance regressed despite preserving authority and PNG identity; restored M4 production shader and generated headers",
+  "optional_fixed_tree_denominator": "not run: the canonical-order route was not full-image-positive"
+}

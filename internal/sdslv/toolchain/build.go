@@ -45,6 +45,8 @@ type CompileResult struct {
 	ValidationSucceeded       bool
 	Requirements              []vdmir.CapabilityRequirement
 	TargetEnvironment         string
+	ShaderTarget              string
+	SPIRVVersion              string
 	RequiredVulkanExtensions  []string
 	RequiredSPIRVExtensions   []string
 	RequiredSPIRVCapabilities []string
@@ -217,7 +219,9 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 		Profile:                   target.profile,
 		DXCArgs:                   append([]string(nil), dxcArgs...),
 		Requirements:              append([]vdmir.CapabilityRequirement(nil), mir.Requirements...),
-		TargetEnvironment:         target.environment,
+		TargetEnvironment:         target.validatorTarget,
+		ShaderTarget:              target.name,
+		SPIRVVersion:              target.spirvVersion,
 		RequiredVulkanExtensions:  append([]string(nil), target.vulkanExtensions...),
 		RequiredSPIRVExtensions:   append([]string(nil), target.spirvExtensions...),
 		RequiredSPIRVCapabilities: append([]string(nil), target.spirvCapabilities...),
@@ -234,10 +238,7 @@ func compileToSPIRV(host host, opts CompileOptions) (CompileResult, error) {
 			}
 			return compileResult, nil
 		}
-		args := []string{outputPath}
-		if target.environment != "vulkan1.0" {
-			args = []string{"--target-env", target.environment, outputPath}
-		}
+		args := []string{"--target-env", target.validatorTarget, outputPath}
 		validationResult, validationErr := host.runner(Command{
 			Program: validatorPath,
 			Args:    args,
@@ -371,29 +372,48 @@ func validateEntryParams(module ast.Module, entry vdmir.ComputeEntryPoint) error
 	return nil
 }
 
-func buildDXCArgs(entry, outputPath, inputPath string, extra []string) []string {
-	return buildDXCArgsForTarget(entry, outputPath, inputPath, extra, shaderTargetContract{
-		profile: "cs_6_0", environment: "vulkan1.0",
-	})
-}
+// ShaderTarget is a closed production target model.  The public platform
+// contract is deliberately distinct from DXC's last named target spelling:
+// current DXC accepts vulkan1.3, whose SPIR-V 1.6 output is validated under
+// Vulkan 1.4 semantics.  Do not lower the production contract to match the
+// compiler spelling.
+type ShaderTarget uint8
+
+const (
+	ProductionVulkan14 ShaderTarget = iota + 1
+)
 
 type shaderTargetContract struct {
+	target            ShaderTarget
+	name              string
 	profile           string
-	environment       string
+	dxcEnvironment    string
+	validatorTarget   string
+	spirvVersion      string
 	extraArgs         []string
 	vulkanExtensions  []string
 	spirvExtensions   []string
 	spirvCapabilities []string
 }
 
+func productionTargetContract(profile string) shaderTargetContract {
+	return shaderTargetContract{
+		target: ProductionVulkan14, name: "ProductionVulkan14", profile: profile,
+		dxcEnvironment: "vulkan1.3", validatorTarget: "vulkan1.4", spirvVersion: "1.6",
+	}
+}
+
+func buildDXCArgs(entry, outputPath, inputPath string, extra []string) []string {
+	return buildDXCArgsForTarget(entry, outputPath, inputPath, extra, productionTargetContract("cs_6_0"))
+}
+
 func targetContract(module vdmir.Module) shaderTargetContract {
-	result := shaderTargetContract{profile: "cs_6_0", environment: "vulkan1.0"}
+	result := productionTargetContract("cs_6_0")
 	for _, requirement := range module.Requirements {
 		if requirement.Kind != vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup {
 			continue
 		}
 		result.profile = "cs_6_9"
-		result.environment = "vulkan1.3"
 		result.extraArgs = []string{"-fspv-use-vulkan-memory-model", "-enable-16bit-types"}
 		result.vulkanExtensions = []string{"VK_KHR_cooperative_matrix"}
 		result.spirvExtensions = []string{"SPV_KHR_cooperative_matrix"}
@@ -405,9 +425,9 @@ func targetContract(module vdmir.Module) shaderTargetContract {
 func targetContractForStage(module vdmir.Module, stage vdmir.ShaderStage) shaderTargetContract {
 	switch stage {
 	case vdmir.StageVertex:
-		return shaderTargetContract{profile: "vs_6_0", environment: "vulkan1.0"}
+		return productionTargetContract("vs_6_0")
 	case vdmir.StagePixel:
-		return shaderTargetContract{profile: "ps_6_0", environment: "vulkan1.0"}
+		return productionTargetContract("ps_6_0")
 	default:
 		return targetContract(module)
 	}
@@ -419,7 +439,7 @@ func buildDXCArgsForTarget(entry, outputPath, inputPath string, extra []string, 
 		"-T", target.profile,
 		"-E", entry,
 		"-Fo", outputPath,
-		"-fspv-target-env=" + target.environment,
+		"-fspv-target-env=" + target.dxcEnvironment,
 		"-O3",
 	}
 	args = append(args, target.extraArgs...)

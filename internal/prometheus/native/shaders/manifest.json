@@ -1,6 +1,14 @@
 {
   "schema": "prometheus.shader-registry.v2",
   "generator": "internal/prometheus/native/generate_sdslv_shaders.ps1",
+  "shader_target": {
+    "profile": "ProductionVulkan14",
+    "vulkan_api": "1.4",
+    "dxc_target_environment": "vulkan1.3",
+    "validator_target_environment": "vulkan1.4",
+    "spirv_version": "1.6",
+    "toolchain_note": "DXC 1.9.0.5347 has no vulkan1.4 spelling; its highest Vulkan lowering is vulkan1.3 and the resulting SPIR-V 1.6 is validated under Vulkan 1.4 semantics."
+  },
   "workspace": {
     "production_source_root": "internal/prometheus/shaders/sdslv/production",
     "experimental_source_root": "internal/prometheus/shaders/sdslv/experimental",

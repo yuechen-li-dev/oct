@@ -44,7 +44,9 @@ func Compile(suite Suite, artifactRoot string) ([]Group, error) {
 		if err != nil {
 			return nil, fmt.Errorf("DXC not found: %w", err)
 		}
-		out, err := exec.Command(dxc, "-T", "cs_6_0", "-E", "main", "-spirv", "-fspv-target-env=vulkan1.0", "-Fo", g.SPIRVPath, g.HLSLPath).CombinedOutput()
+		// DXC's highest spelling is vulkan1.3; test artifacts are SPIR-V 1.6
+		// and the production validator applies Vulkan 1.4 semantics.
+		out, err := exec.Command(dxc, "-T", "cs_6_0", "-E", "main", "-spirv", "-fspv-target-env=vulkan1.3", "-Fo", g.SPIRVPath, g.HLSLPath).CombinedOutput()
 		if err != nil {
 			return nil, fmt.Errorf("DXC compile %s: %w: %s", g.ID, err, out)
 		}

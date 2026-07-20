@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.mx5.faults.v1","covered":["DXC target/toolchain ceiling documented","validator target explicit","loader below Vulkan 1.4 rejected","physical device below Vulkan 1.4 rejected"],"pending":["subgroup route admission negative corpus","generated-header target drift test","stale-lock target test"]}

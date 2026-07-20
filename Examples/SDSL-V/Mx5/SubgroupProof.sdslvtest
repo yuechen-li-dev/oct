@@ -1,0 +1,17 @@
+// Mx5 uses SDSL-V's established typed HLSL escape hatch for the two pending
+// M5b wave operations.  The source remains compiler-owned through normal
+// SDSL-V parsing, validation, HLSL emission, DXC, SPIR-V validation, and the
+// native assertion host.
+[WorkgroupSize(32, 1, 1)]
+[DispatchGroups(2, 1, 1)]
+[Fact]
+fn ProductionSubgroupMaximumAndBroadcastFirst() -> void {
+    let maximum: f32 = HLSL<f32> {
+        return WaveActiveMax(float(DispatchThreadID.x % 32u));
+    };
+    let first: f32 = HLSL<f32> {
+        return WaveReadLaneFirst(float(DispatchThreadID.x % 32u));
+    };
+    Assert.Equal(maximum, 31.0, "subgroup floating maximum must be real wave arithmetic");
+    Assert.Equal(first, 0.0, "subgroup broadcast-first must read lane zero");
+}

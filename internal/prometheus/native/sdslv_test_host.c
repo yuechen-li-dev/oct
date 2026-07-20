@@ -645,6 +645,7 @@ int main(int argc, char **argv) {
   manifest_input_metadata input_metadata;
   VkResult vr;
   VkInstance instance = VK_NULL_HANDLE;
+  uint32_t loader_api_version = VK_API_VERSION_1_0;
   VkPhysicalDevice physical = VK_NULL_HANDLE;
   VkDevice device = VK_NULL_HANDLE;
   VkQueue queue = VK_NULL_HANDLE;
@@ -728,7 +729,20 @@ int main(int argc, char **argv) {
   }
 
   {
+    VkApplicationInfo application_info = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
     VkInstanceCreateInfo create_info = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    PFN_vkEnumerateInstanceVersion enumerate_instance_version =
+        (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
+    if (enumerate_instance_version != NULL) {
+      (void)enumerate_instance_version(&loader_api_version);
+    }
+    if (loader_api_version < VK_API_VERSION_1_4) {
+      json("HOST_FAILURE", "Vulkan 1.4 loader required", stable_id, NULL);
+      goto done;
+    }
+    application_info.pApplicationName = "SDSL-V production assertion host";
+    application_info.apiVersion = VK_API_VERSION_1_4;
+    create_info.pApplicationInfo = &application_info;
     vr = vkCreateInstance(&create_info, 0, &instance);
     if (vr != VK_SUCCESS) {
       json("HOST_FAILURE", "vkCreateInstance", stable_id, NULL);

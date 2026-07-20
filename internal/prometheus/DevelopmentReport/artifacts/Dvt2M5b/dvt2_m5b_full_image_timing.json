@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.m5b.full-image-timing.v1","serial_m4_prefetch_wall_seconds":165.439,"m5a_rejected_prefetch_wall_seconds":175.23212879999483,"subgroup_candidates":"not run: compiler rejects required subgroup source before native pipeline creation"}

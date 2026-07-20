@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.mx5.subgroup-capabilities.v1","device":"NVIDIA GeForce RTX 3070","subgroup_size":32,"compute_stage":true,"operations":["arithmetic","broadcast/shuffle"],"required_spirv":["GroupNonUniformArithmetic","GroupNonUniform","OpGroupNonUniformFMax","OpGroupNonUniformBroadcastFirst"],"source":"Dvt2M5b capability probe"}

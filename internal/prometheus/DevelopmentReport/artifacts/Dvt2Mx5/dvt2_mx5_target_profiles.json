@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.mx5.target-profiles.v1","profiles":[{"id":"ProductionVulkan14","ship":true,"diagnostic_only":false,"vulkan_api":"1.4","dxc_target_environment":"vulkan1.3","validator_target_environment":"vulkan1.4","spirv_version":"1.6","required_runtime":"Vulkan 1.4","purpose":"preferred production route"}],"legacy":"no supported legacy production route"}
