@@ -1071,6 +1071,16 @@ typedef struct PrometheusCompiledModelSessionEvidence {
   uint64_t composition_count;
 } PrometheusCompiledModelSessionEvidence;
 
+/* The transition position, not the bridge, selects the assembly family. */
+typedef struct PrometheusCompiledModelRetargetRequest {
+  uint32_t struct_size;
+  uint64_t session_identity;
+  uint64_t lock_identity;
+  uint32_t model_local_block_id;
+  uint32_t upload_count;
+  const PrometheusModelBlockWeightUpload* uploads;
+} PrometheusCompiledModelRetargetRequest;
+
 typedef struct PrometheusFftRequest {
   uint32_t struct_size;
   const PrometheusComplex32* input;
@@ -2211,6 +2221,14 @@ PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_get_evide
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_destroy(void* handle,
                                                                                  uint64_t session_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_owner_create(
+    void* handle, const PrometheusNoiseRefinerRebindRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_retarget(
+    void* handle, const PrometheusCompiledModelRetargetRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_evaluation_reset(
+    void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
 
 /* Backward-compat aliases for earlier contract drafts. */
 PROM_REACTOR_API int prometheus_runtime_create(void* config, void** out_handle);

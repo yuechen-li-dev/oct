@@ -279,20 +279,6 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	}
 	start := time.Now()
 	metrics := runMetrics{}
-	contextDigest := sha256.Sum256(unsafe.Slice((*byte)(unsafe.Pointer(request.context_fp32)), int(contextFP32Bytes)))
-	if session.contextGeneration == 0 || session.contextDigest != contextDigest {
-		generation, contextMetrics, err := session.reactor.prepareContext(session.hostPackages.context, unsafe.Pointer(request.context_fp32), memoryIdentity(unsafe.Pointer(request.context_fp32), contextFP32Bytes))
-		addMetrics(&metrics, contextMetrics)
-		if err != nil {
-			session.lastError = err.Error()
-			return 1
-		}
-		session.contextDigest = contextDigest
-		session.contextGeneration = generation
-		metrics.hostPackageCacheHits += 2
-	} else {
-		metrics.contextReused = true
-	}
 	imageIdentity := memoryIdentity(request.image_bf16, imageBF16Bytes)
 	timestepIdentity := memoryIdentity(request.timestep_bf16, timestepBF16Bytes)
 	imageGeneration, imageMetrics, err := session.reactor.prepareImage(session.hostPackages.noise, request.image_bf16, request.timestep_bf16, imageIdentity, timestepIdentity)
@@ -302,13 +288,23 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 		session.lastError = err.Error()
 		return 1
 	}
-	jointGeneration, err := session.reactor.compose(imageGeneration, session.contextGeneration)
+	/* PreparedContext is evaluation-lifetime state: it depends on the current
+	   timestep/modulation and is deliberately recomputed after PreparedImage. */
+	contextGeneration, contextMetrics, err := session.reactor.prepareContext(session.hostPackages.context, unsafe.Pointer(request.context_fp32), memoryIdentity(unsafe.Pointer(request.context_fp32), contextFP32Bytes))
+	addMetrics(&metrics, contextMetrics)
+	if err != nil {
+		session.lastError = err.Error()
+		return 1
+	}
+	session.contextGeneration = contextGeneration
+	metrics.hostPackageCacheHits += 2
+	jointGeneration, err := session.reactor.compose(imageGeneration, contextGeneration)
 	if err != nil {
 		session.lastError = err.Error()
 		return 1
 	}
 	joint := make([]float32, uint64(jointTokens)*uint64(modelWidth))
-	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, session.contextGeneration, jointGeneration, timestepIdentity)
+	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, contextGeneration, jointGeneration, timestepIdentity)
 	addMetrics(&metrics, mainMetrics)
 	metrics.hostPackageCacheHits += 30
 	if err != nil {
@@ -325,11 +321,7 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	metrics.wallTimeNS = uint64(time.Since(start))
 	evidence.evaluation_index = C.uint32_t(session.evaluationIndex)
 	evidence.main_layer_count = C.uint32_t(metrics.mainLayerCount)
-	if metrics.contextReused {
-		evidence.context_reused = 1
-	} else {
-		evidence.context_reused = 0
-	}
+	evidence.context_reused = 0
 	evidence.wall_time_ns = C.uint64_t(metrics.wallTimeNS)
 	evidence.model_execution_ns = C.uint64_t(metrics.modelExecutionNS)
 	evidence.parameter_rebind_ns = C.uint64_t(metrics.parameterRebindNS)

@@ -1,0 +1,8 @@
+{
+  "schema": "prometheus.dvt2.m1.replay.v1",
+  "lock_identity": "71ef202b4e34b562",
+  "transition_targets_per_evaluation": 34,
+  "evaluation_generation_reset": true,
+  "stale_stream_rejection": true,
+  "accepted_boundary_output_sha256": "ed89f93b028a54e53e3ee902d05ce823d1ea6f165e628341201c4c0111b2fa22"
+}

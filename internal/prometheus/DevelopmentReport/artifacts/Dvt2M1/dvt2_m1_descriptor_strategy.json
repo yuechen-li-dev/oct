@@ -1,0 +1,7 @@
+{
+  "current_behavior": "family-local descriptor pools and layouts are created and destroyed with prom_model_block_state",
+  "required_strategy": "closed per-family descriptor portfolios allocated once by the persistent owner; retarget updates only the inactive generated binding view before commit",
+  "shared_window_requirement": "ContextRefiner package indices must be translated to the modulated semantic slots before descriptor update",
+  "schema": "prometheus.dvt2.m1.descriptor-strategy.v1",
+  "status": "design_frozen_not_implemented"
+}

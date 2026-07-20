@@ -1,0 +1,10 @@
+{
+  "implementation_status": "validated",
+  "m0_repeat_wall_seconds": 209.87941110000247,
+  "m0_first_wall_seconds": 211.699,
+  "model_owned_device_ceiling_bytes": 643587076,
+  "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "m1_canonical_wall_seconds": 205.30019119999633,
+  "m1_repeat_wall_seconds": 203.63866870000493,
+  "schema": "prometheus.dvt2.m1.baseline.v1"
+}

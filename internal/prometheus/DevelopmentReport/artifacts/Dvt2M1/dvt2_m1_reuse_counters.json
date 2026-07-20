@@ -1,0 +1,5 @@
+{
+  "schema": "prometheus.dvt2.m1.reuse-counters.v1",
+  "session": {"owner_constructions": 1, "owner_destructions": 1, "cold_arena_allocations_after_creation": 0, "pipeline_creations_after_creation": 0, "descriptor_pool_creations_after_creation": 0},
+  "nine_evaluations": {"owner_reconstructions": 0, "family_targets": 306, "retargets": 305, "weight_package_uploads": 306, "host_cache_hits_per_evaluation": [34,34,34,34,34,34,34,34,34], "context_reused_per_evaluation": [false,false,false,false,false,false,false,false,false], "main_layers_per_evaluation": [30,30,30,30,30,30,30,30,30]}
+}

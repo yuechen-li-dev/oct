@@ -1,0 +1,9 @@
+{
+  "prepared_image": "produced by noise_refiner.1 and consumed by MainTransformer composition",
+  "prepared_context": "produced by context_refiner.1 and consumed by MainTransformer composition",
+  "joint_working": "produced by composition and advanced by each MainTransformer layer",
+  "current_behavior": "session-owned stream slots survive model-block destruction",
+  "required_m1_behavior": "retarget invalidates only active-target output/audit/replay state and preserves unrelated valid stream generations",
+  "status": "design_frozen_not_implemented",
+  "schema": "prometheus.dvt2.m1.stream-lifetimes.v1"
+}

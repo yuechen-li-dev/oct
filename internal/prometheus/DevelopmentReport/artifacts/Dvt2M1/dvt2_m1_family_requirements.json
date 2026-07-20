@@ -1,0 +1,16 @@
+{
+  "context_refiner": {
+    "package_bytes": 353925632,
+    "tensor_count": 11
+  },
+  "main_transformer": {
+    "package_bytes": 361820672,
+    "tensor_count": 13
+  },
+  "noise_refiner": {
+    "package_bytes": 361820672,
+    "tensor_count": 13
+  },
+  "finding": "ContextRefiner is an eleven-tensor semantic subset with a different package ordering; array-index maxima are not a valid shared-window contract.",
+  "schema": "prometheus.dvt2.m1.family-requirements.v1"
+}

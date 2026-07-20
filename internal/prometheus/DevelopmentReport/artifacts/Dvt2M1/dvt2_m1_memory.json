@@ -1,0 +1,7 @@
+{
+  "schema": "prometheus.dvt2.m1.memory.v1",
+  "model_owned_device_ceiling_bytes": 643587076,
+  "weight_window_bytes": 361820672,
+  "host_package_cache_bytes": 12286112768,
+  "shared_owner": {"one_weight_window": true, "second_weight_window": false, "duplicate_family_arena": false, "context_unit": "15360-byte immutable host-visible buffer", "context_w3": "bounded audit-arena view"}
+}

@@ -1,0 +1,6 @@
+{
+  "schema": "prometheus.dvt2.m1.faults.v1",
+  "focused_native_test": "PrometheusResidentModelBlockRejectsMalformedProgramAndPipelineFault",
+  "result": "passed",
+  "safety_contract": ["invalid lock or target rejected before mutation", "quarantined completion rejected", "reset invalidates streams and replay", "descriptor failure remains pre-commit"]
+}

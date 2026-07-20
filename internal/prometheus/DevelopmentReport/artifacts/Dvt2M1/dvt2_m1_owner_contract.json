@@ -1,0 +1,15 @@
+{
+  "current_owner": "prom_model_block_state",
+  "current_problem": "persistent Vulkan resources and family-local active target fields are conflated",
+  "persistent_owner_must_retain": [
+    "device/runtime reference",
+    "command infrastructure",
+    "closed pipeline and descriptor portfolios",
+    "single semantic weight window",
+    "shared arena views",
+    "lock identity",
+    "quarantine/reap state"
+  ],
+  "status": "design_frozen_not_implemented",
+  "schema": "prometheus.dvt2.m1.owner-contract.v1"
+}

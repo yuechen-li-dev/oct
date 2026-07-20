@@ -1,0 +1,20 @@
+{
+  "caller_inputs": [
+    "persistent session/owner",
+    "lock identity",
+    "model-local block id",
+    "validated payload"
+  ],
+  "lock_resolves": [
+    "family",
+    "parameter set",
+    "transition legality",
+    "stream roles",
+    "semantic weight slots",
+    "pipeline portfolio",
+    "descriptor view",
+    "execution program"
+  ],
+  "status": "design_frozen_not_implemented",
+  "schema": "prometheus.dvt2.m1.retarget-contract.v1"
+}

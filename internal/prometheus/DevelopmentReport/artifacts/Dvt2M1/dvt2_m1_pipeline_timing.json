@@ -1,0 +1,9 @@
+{
+  "schema": "prometheus.dvt2.m1.pipeline-timing.v1",
+  "canonical_session_create_seconds": 19.21225649999542,
+  "canonical_session_destroy_seconds": 0.6541339999967022,
+  "repeat_session_create_seconds": 16.73451589999604,
+  "repeat_session_destroy_seconds": 0.614912800003367,
+  "portfolio_creation": "once per session",
+  "evaluation_shader_pipeline_descriptor_pool_creation": 0
+}

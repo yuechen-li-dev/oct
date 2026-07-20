@@ -354,6 +354,23 @@ int prometheus_reactor_runtime_compiled_model_session_destroy(void* handle, uint
   return prom_reactor_runtime_compiled_model_session_destroy_impl(handle, session_id);
 }
 
+int prometheus_reactor_runtime_compiled_model_owner_create(
+    void* handle, const PrometheusNoiseRefinerRebindRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_owner_create_impl(handle, request, out_block_id, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_retarget(
+    void* handle, const PrometheusCompiledModelRetargetRequest* request,
+    PrometheusModelBlockEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_retarget_impl(handle, request, out_evidence);
+}
+
+int prometheus_reactor_runtime_compiled_model_evaluation_reset(
+    void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_evaluation_reset_impl(handle, session_id, out_evidence);
+}
+
 int prometheus_runtime_create(void* config, void** out_handle) {
   return prometheus_reactor_runtime_create(config, out_handle);
 }

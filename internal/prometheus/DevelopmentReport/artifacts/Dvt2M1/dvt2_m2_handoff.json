@@ -1,0 +1,13 @@
+{
+  "candidate": "double-buffered layer-weight upload and prefetch",
+  "blocked_by": "none",
+  "current_single_window_bytes": 361820672,
+  "expected_current_overlap": "zero; synchronous single-window uploads precede each execution",
+  "largest_main_transformer_package_bytes": 361820672,
+  "required_second_host_staging_bytes": 88473600,
+  "required_second_vram_weight_window_bytes": 361820672,
+  "expected_device_ceiling_bytes": 1005407748,
+  "fallback": "current validated single-window path",
+  "schema": "prometheus.dvt2.m2-handoff.v1",
+  "status": "ready"
+}

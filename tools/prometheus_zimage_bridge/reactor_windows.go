@@ -22,6 +22,9 @@ typedef struct oct_prom_zimage_api {
   FARPROC model_create;
   FARPROC model_upload;
   FARPROC model_destroy;
+  FARPROC owner_create;
+  FARPROC owner_retarget;
+  FARPROC evaluation_reset;
   FARPROC noise_execute0;
   FARPROC noise_rebind;
   FARPROC noise_execute_resident;
@@ -46,6 +49,9 @@ typedef int (__cdecl *oct_runtime_probe_fn)(void*, PrometheusCaps*);
 typedef int (__cdecl *oct_model_create_fn)(void*, const PrometheusModelBlockCreateRequest*, uint64_t*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_model_upload_fn)(void*, uint64_t, const PrometheusModelBlockWeightUpload*, uint32_t, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_model_destroy_fn)(void*, uint64_t);
+typedef int (__cdecl *oct_owner_create_fn)(void*, const PrometheusNoiseRefinerRebindRequest*, uint64_t*, PrometheusModelBlockEvidence*);
+typedef int (__cdecl *oct_owner_retarget_fn)(void*, const PrometheusCompiledModelRetargetRequest*, PrometheusModelBlockEvidence*);
+typedef int (__cdecl *oct_evaluation_reset_fn)(void*, uint64_t, PrometheusCompiledModelSessionEvidence*);
 typedef int (__cdecl *oct_noise_execute0_fn)(void*, uint64_t, const PrometheusNoiseRefiner0ExecuteRequest*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_noise_rebind_fn)(void*, uint64_t, const PrometheusNoiseRefinerRebindRequest*, PrometheusModelBlockEvidence*);
 typedef int (__cdecl *oct_noise_resident_fn)(void*, uint64_t, const PrometheusNoiseRefinerResidentExecuteRequest*, PrometheusModelBlockEvidence*);
@@ -78,6 +84,9 @@ static int oct_prom_zimage_load(const char* path, oct_prom_zimage_api* api, DWOR
   OCT_LOAD(model_create, "prometheus_reactor_runtime_model_block_create");
   OCT_LOAD(model_upload, "prometheus_reactor_runtime_model_block_upload_weights");
   OCT_LOAD(model_destroy, "prometheus_reactor_runtime_model_block_destroy");
+  OCT_LOAD(owner_create, "prometheus_reactor_runtime_compiled_model_owner_create");
+  OCT_LOAD(owner_retarget, "prometheus_reactor_runtime_compiled_model_retarget");
+  OCT_LOAD(evaluation_reset, "prometheus_reactor_runtime_compiled_model_evaluation_reset");
   OCT_LOAD(noise_execute0, "prometheus_reactor_runtime_noise_refiner0_execute");
   OCT_LOAD(noise_rebind, "prometheus_reactor_runtime_noise_refiner_rebind");
   OCT_LOAD(noise_execute_resident, "prometheus_reactor_runtime_noise_refiner_execute_resident");
@@ -160,6 +169,38 @@ static int oct_prom_session_compose(oct_prom_zimage_api* api, void* runtime, uin
 
 static int oct_prom_session_destroy(oct_prom_zimage_api* api, void* runtime, uint64_t session_id) {
   return ((oct_session_destroy_fn)api->session_destroy)(runtime, session_id);
+}
+
+static int oct_prom_owner_create(oct_prom_zimage_api* api, void* runtime,
+                                 const PrometheusModelBlockWeightUpload* uploads, uint32_t upload_count,
+                                 uint64_t* out_block, PrometheusModelBlockEvidence* evidence) {
+  PrometheusNoiseRefinerRebindRequest request;
+  memset(&request, 0, sizeof(request));
+  request.struct_size = sizeof(request);
+  request.model_local_block_id = 0u;
+  request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+  request.upload_count = upload_count;
+  request.uploads = uploads;
+  return ((oct_owner_create_fn)api->owner_create)(runtime, &request, out_block, evidence);
+}
+
+static int oct_prom_owner_retarget(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
+                                   uint32_t local_block_id, const PrometheusModelBlockWeightUpload* uploads,
+                                   uint32_t upload_count, PrometheusModelBlockEvidence* evidence) {
+  PrometheusCompiledModelRetargetRequest request;
+  memset(&request, 0, sizeof(request));
+  request.struct_size = sizeof(request);
+  request.session_identity = session_id;
+  request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
+  request.model_local_block_id = local_block_id;
+  request.upload_count = upload_count;
+  request.uploads = uploads;
+  return ((oct_owner_retarget_fn)api->owner_retarget)(runtime, &request, evidence);
+}
+
+static int oct_prom_evaluation_reset(oct_prom_zimage_api* api, void* runtime, uint64_t session_id,
+                                     PrometheusCompiledModelSessionEvidence* evidence) {
+  return ((oct_evaluation_reset_fn)api->evaluation_reset)(runtime, session_id, evidence);
 }
 
 static int oct_prom_noise_create(oct_prom_zimage_api* api, void* runtime,
@@ -378,6 +419,7 @@ type reactorDLL struct {
 	api       C.oct_prom_zimage_api
 	runtime   unsafe.Pointer
 	sessionID uint64
+	ownerID   uint64
 }
 
 type loadedUploads struct {
@@ -426,6 +468,12 @@ func (reactor *reactorDLL) close() error {
 		return nil
 	}
 	var first error
+	if reactor.runtime != nil && reactor.ownerID != 0 {
+		if C.oct_prom_model_destroy(&reactor.api, reactor.runtime, C.uint64_t(reactor.ownerID)) != C.PROM_OK {
+			first = fmt.Errorf("destroy persistent compiled-model owner")
+		}
+		reactor.ownerID = 0
+	}
 	if reactor.runtime != nil && reactor.sessionID != 0 {
 		if C.oct_prom_session_destroy(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID)) != C.PROM_OK {
 			first = fmt.Errorf("destroy compiled-model session")
@@ -555,34 +603,32 @@ func (uploads *loadedUploads) free() {
 func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsafe.Pointer, identity uint64) (uint64, runMetrics, error) {
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
-	var blockID C.uint64_t
-	status := C.oct_prom_context_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
+	blockID := C.uint64_t(reactor.ownerID)
+	rebindStart := time.Now()
+	status := C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 0, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &evidence)
+	rebindDuration := uint64(time.Since(rebindStart))
+	metrics.parameterRebindNS += rebindDuration
+	metrics.stageRebindNS[2] += rebindDuration
 	metrics.uploadedWeightBytes += payload[0].byteCount
 	metrics.stageUploadedBytes[2] += payload[0].byteCount
 	if status != C.PROM_OK {
-		return 0, metrics, fmt.Errorf("create ContextRefiner0: detail=%d", int32(evidence.detail_code))
+		return 0, metrics, fmt.Errorf("retarget ContextRefiner0: detail=%d", int32(evidence.detail_code))
 	}
-	destroy := true
-	defer func() {
-		if destroy {
-			C.oct_prom_model_destroy(&reactor.api, reactor.runtime, blockID)
-		}
-	}()
 	if C.oct_prom_context_execute0(&reactor.api, reactor.runtime, blockID, (*C.float)(context), C.uint64_t(contextFP32Bytes), C.uint64_t(identity), C.uint64_t(identityFromText("context_refiner.0 output")), &evidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("execute ContextRefiner0: detail=%d", int32(evidence.detail_code))
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[2] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
-	rebindStart := time.Now()
-	status = C.oct_prom_context_rebind(&reactor.api, reactor.runtime, blockID, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
-	rebindDuration := uint64(time.Since(rebindStart))
+	rebindStart = time.Now()
+	status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
+	rebindDuration = uint64(time.Since(rebindStart))
 	metrics.parameterRebindNS += rebindDuration
 	metrics.stageRebindNS[3] += rebindDuration
 	metrics.uploadedWeightBytes += payload[1].byteCount
 	metrics.stageUploadedBytes[3] += payload[1].byteCount
 	if status != C.PROM_OK {
-		return 0, metrics, fmt.Errorf("rebind ContextRefiner1: detail=%d", int32(evidence.detail_code))
+		return 0, metrics, fmt.Errorf("retarget ContextRefiner1: detail=%d", int32(evidence.detail_code))
 	}
 	if C.oct_prom_context_execute_resident(&reactor.api, reactor.runtime, blockID, C.uint64_t(inputGeneration), C.uint64_t(identityFromText("context_refiner.1 output")), &evidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("execute ContextRefiner1: detail=%d", int32(evidence.detail_code))
@@ -593,10 +639,6 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedContext: detail=%d", int32(sessionEvidence.detail_code))
 	}
-	if C.oct_prom_model_destroy(&reactor.api, reactor.runtime, blockID) != C.PROM_OK {
-		return 0, metrics, fmt.Errorf("destroy ContextRefiner owner")
-	}
-	destroy = false
 	return uint64(sessionEvidence.prepared_context_generation), metrics, nil
 }
 
@@ -604,18 +646,29 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
 	var blockID C.uint64_t
-	status := C.oct_prom_noise_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
+	var status C.int
+	if reactor.ownerID == 0 {
+		status = C.oct_prom_owner_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
+		if status == C.PROM_OK {
+			reactor.ownerID = uint64(blockID)
+		}
+	} else {
+		var sessionEvidence C.PrometheusCompiledModelSessionEvidence
+		if C.oct_prom_evaluation_reset(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), &sessionEvidence) != C.PROM_OK {
+			return 0, metrics, fmt.Errorf("reset persistent owner: detail=%d", int32(sessionEvidence.detail_code))
+		}
+		blockID = C.uint64_t(reactor.ownerID)
+		rebindStart := time.Now()
+		status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 0, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &evidence)
+		rebindDuration := uint64(time.Since(rebindStart))
+		metrics.parameterRebindNS += rebindDuration
+		metrics.stageRebindNS[0] += rebindDuration
+	}
 	metrics.uploadedWeightBytes += payload[0].byteCount
 	metrics.stageUploadedBytes[0] += payload[0].byteCount
 	if status != C.PROM_OK {
-		return 0, metrics, fmt.Errorf("create NoiseRefiner0: detail=%d", int32(evidence.detail_code))
+		return 0, metrics, fmt.Errorf("bind NoiseRefiner0: detail=%d", int32(evidence.detail_code))
 	}
-	destroy := true
-	defer func() {
-		if destroy {
-			C.oct_prom_model_destroy(&reactor.api, reactor.runtime, blockID)
-		}
-	}()
 	outputIdentity := identityFromText(fmt.Sprintf("noise0:%016x:%016x", inputIdentity, timestepIdentity))
 	if C.oct_prom_noise_execute0(&reactor.api, reactor.runtime, blockID, image, C.uint64_t(imageBF16Bytes), timestep, C.uint64_t(timestepBF16Bytes), C.uint64_t(inputIdentity), C.uint64_t(timestepIdentity), C.uint64_t(outputIdentity), &evidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("execute NoiseRefiner0: detail=%d", int32(evidence.detail_code))
@@ -624,14 +677,14 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	metrics.stageExecutionNS[0] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
 	rebindStart := time.Now()
-	status = C.oct_prom_noise_rebind(&reactor.api, reactor.runtime, blockID, 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
+	status = C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), 1, payload[1].pointer, C.uint32_t(len(payload[1].buffers)), &evidence)
 	rebindDuration := uint64(time.Since(rebindStart))
 	metrics.parameterRebindNS += rebindDuration
 	metrics.stageRebindNS[1] += rebindDuration
 	metrics.uploadedWeightBytes += payload[1].byteCount
 	metrics.stageUploadedBytes[1] += payload[1].byteCount
 	if status != C.PROM_OK {
-		return 0, metrics, fmt.Errorf("rebind NoiseRefiner1: detail=%d", int32(evidence.detail_code))
+		return 0, metrics, fmt.Errorf("retarget NoiseRefiner1: detail=%d", int32(evidence.detail_code))
 	}
 	if C.oct_prom_noise_execute_resident(&reactor.api, reactor.runtime, blockID, C.uint64_t(inputGeneration), C.uint64_t(identityFromText("noise_refiner.1 output")), &evidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("execute NoiseRefiner1: detail=%d", int32(evidence.detail_code))
@@ -642,10 +695,6 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedImage: detail=%d", int32(sessionEvidence.detail_code))
 	}
-	if C.oct_prom_model_destroy(&reactor.api, reactor.runtime, blockID) != C.PROM_OK {
-		return 0, metrics, fmt.Errorf("destroy NoiseRefiner owner")
-	}
-	destroy = false
 	return uint64(sessionEvidence.prepared_image_generation), metrics, nil
 }
 
@@ -660,32 +709,18 @@ func (reactor *reactorDLL) compose(imageGeneration, contextGeneration uint64) (u
 func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64) (runMetrics, error) {
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
-	var blockID C.uint64_t
-	status := C.oct_prom_main_create(&reactor.api, reactor.runtime, payload[0].pointer, C.uint32_t(len(payload[0].buffers)), &blockID, &evidence)
-	metrics.uploadedWeightBytes += payload[0].byteCount
-	metrics.stageUploadedBytes[4] += payload[0].byteCount
-	if status != C.PROM_OK {
-		return metrics, fmt.Errorf("create MainTransformer0: detail=%d", int32(evidence.detail_code))
-	}
-	destroy := true
-	defer func() {
-		if destroy {
-			C.oct_prom_model_destroy(&reactor.api, reactor.runtime, blockID)
-		}
-	}()
+	blockID := C.uint64_t(reactor.ownerID)
 	var outputIdentity uint64
 	for layer := 0; layer < 30; layer++ {
-		if layer > 0 {
-			rebindStart := time.Now()
-			status = C.oct_prom_main_rebind(&reactor.api, reactor.runtime, blockID, C.uint32_t(layer), payload[layer].pointer, C.uint32_t(len(payload[layer].buffers)), &evidence)
-			rebindDuration := uint64(time.Since(rebindStart))
-			metrics.parameterRebindNS += rebindDuration
-			metrics.stageRebindNS[4+layer] += rebindDuration
-			metrics.uploadedWeightBytes += payload[layer].byteCount
-			metrics.stageUploadedBytes[4+layer] += payload[layer].byteCount
-			if status != C.PROM_OK {
-				return metrics, fmt.Errorf("rebind MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
-			}
+		rebindStart := time.Now()
+		status := C.oct_prom_owner_retarget(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), C.uint32_t(layer), payload[layer].pointer, C.uint32_t(len(payload[layer].buffers)), &evidence)
+		rebindDuration := uint64(time.Since(rebindStart))
+		metrics.parameterRebindNS += rebindDuration
+		metrics.stageRebindNS[4+layer] += rebindDuration
+		metrics.uploadedWeightBytes += payload[layer].byteCount
+		metrics.stageUploadedBytes[4+layer] += payload[layer].byteCount
+		if status != C.PROM_OK {
+			return metrics, fmt.Errorf("retarget MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
 		}
 		outputIdentity = identityFromText(fmt.Sprintf("main:%016x:%d", timestepIdentity, layer))
 		if C.oct_prom_main_execute(&reactor.api, reactor.runtime, blockID, C.uint64_t(reactor.sessionID), C.uint32_t(layer), C.uint64_t(imageGeneration), C.uint64_t(contextGeneration), C.uint64_t(jointGeneration), timestep, C.uint64_t(timestepBF16Bytes), C.uint64_t(timestepIdentity), C.uint64_t(outputIdentity), &evidence) != C.PROM_OK {
@@ -706,10 +741,6 @@ func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output u
 	if metrics.allocationCeilingBytes != modelAllocationCeiling {
 		return metrics, fmt.Errorf("model-owned allocation ceiling mismatch: got %d want %d", metrics.allocationCeilingBytes, modelAllocationCeiling)
 	}
-	if C.oct_prom_model_destroy(&reactor.api, reactor.runtime, blockID) != C.PROM_OK {
-		return metrics, fmt.Errorf("destroy MainTransformer owner")
-	}
-	destroy = false
 	return metrics, nil
 }
 

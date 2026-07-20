@@ -393,6 +393,23 @@ typedef struct prom_model_block_state {
   /* A complete candidate bundle is uploaded here before the descriptor
      transaction.  It is never visible to a dispatch until commit. */
   prom_model_block_weight_resource pending_weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
+  /* M1 keeps one physical owner while selecting one generated family view. */
+  uint32_t shared_owner;
+  uint64_t owner_construction_count;
+  uint64_t owner_destruction_count;
+  uint64_t retarget_count;
+  uint64_t descriptor_update_count;
+  prom_model_block_m1b_pipeline noise_m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline noise_m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline noise_m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline noise_audit_pipelines[PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT];
+  prom_model_block_m1b_pipeline context_m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline context_m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline context_m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline context_audit_pipelines[PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT];
+  prom_model_block_m1b_pipeline main_m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline main_m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline main_m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
 } prom_model_block_state;
 
 typedef struct prom_reduction_slot {
@@ -505,6 +522,9 @@ typedef struct prom_compiled_model_session_state {
   uint64_t cold_buffer_allocation_count;
   uint64_t warm_buffer_allocation_count;
   uint64_t composition_count;
+  uint64_t evaluation_generation;
+  uint32_t retarget_position;
+  uint32_t evaluation_complete;
   uint32_t created;
   uint32_t quarantined;
   int32_t last_detail_code;
@@ -534,6 +554,7 @@ typedef struct prom_reduction_runtime_state {
   float timestamp_period_ns;
   uint32_t reduction_test_flags;
   uint32_t model_block_create_test_flags;
+  uint32_t model_block_create_shared_owner;
   prom_reduction_pipeline pipelines[PROM_REDUCTION_PIPELINE_COUNT];
   prom_reduction_pipeline m40b_sgemm_pipelines[PROM_M40B_SGEMM_PIPELINE_COUNT];
   prom_vk_buffer persistent_b_upload;
@@ -739,6 +760,14 @@ int prom_reactor_runtime_noise_refiner_execute_static_audit_impl(
 int prom_reactor_runtime_noise_refiner_audit_final_impl(
     void* handle, uint64_t block_id, const PrometheusNoiseRefinerFinalAuditRequest* request,
     PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_owner_create_impl(
+    void* handle, const PrometheusNoiseRefinerRebindRequest* request, uint64_t* out_block_id,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_retarget_impl(
+    void* handle, const PrometheusCompiledModelRetargetRequest* request,
+    PrometheusModelBlockEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_evaluation_reset_impl(
+    void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
 int prom_reactor_runtime_context_refiner_create_impl(
     void* handle, const PrometheusContextRefinerCreateRequest* request, uint64_t* out_block_id,
     PrometheusModelBlockEvidence* out_evidence);

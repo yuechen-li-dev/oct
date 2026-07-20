@@ -1,0 +1,10 @@
+{
+  "schema": "prometheus.dvt2.m1.output-validation.v1",
+  "accepted_png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "canonical_png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "repeat_png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+  "evaluations": 9,
+  "main_transformer_layers": 270,
+  "persistent_owner_identity": "one owner per smoke session",
+  "context_recomputed_each_evaluation": true
+}
