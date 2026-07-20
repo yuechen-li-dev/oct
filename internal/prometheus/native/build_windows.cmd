@@ -19,6 +19,8 @@ set "MARIONETTE_BENCH_PDB=%OUT_DIR%\marionette_benchmarks.pdb"
 set "SDSLV_TEST_HOST=%OUT_DIR%\sdslv_test_host.exe"
 set "VSDEVCMD_BAT=C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat"
 set "CC=cl"
+set "PROMETHEUS_MX5_CONTROL_DEFINE="
+if "%PROMETHEUS_DVT2_MX5_VULKAN10_CONTROL%"=="1" set "PROMETHEUS_MX5_CONTROL_DEFINE=/DPROMETHEUS_DVT2_MX5_VULKAN10_CONTROL"
 if defined PROMETHEUS_NATIVE_CC set "CC=%PROMETHEUS_NATIVE_CC%"
 set "PUSHD_ACTIVE=0"
 
@@ -63,7 +65,7 @@ if errorlevel 1 call :fail_now "enter repository root" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 set "PUSHD_ACTIVE=1"
 
-call "%CC%" /nologo /TC /std:c11 /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL /c %VULKAN_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
+call "%CC%" /nologo /TC /std:c11 /O2 /W4 /DPROMETHEUS_REACTOR_BUILD_DLL %PROMETHEUS_MX5_CONTROL_DEFINE% /c %VULKAN_INCLUDE% /Fo"%OBJ_DIR%\\" %PROMETHEUS_COMMON_C_SRCS%
 if errorlevel 1 call :fail_now "compile common native sources" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
@@ -79,7 +81,7 @@ copy /Y "%REACTOR_DLL%" "%REACTOR_DIR%\prometheus_reactor.dll" >nul
 if errorlevel 1 call :fail_now "copy reactor bridge" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-call :build_marionette "%MARIONETTE_EXE%" "%MARIONETTE_PDB%" %PROMETHEUS_MARIONETTE_MAIN% "/DMARIONETTE_EXCLUDE_SLOW_TESTS /DMARIONETTE_EXCLUDE_BENCHMARK_TESTS" ""
+call :build_marionette "%MARIONETTE_EXE%" "%MARIONETTE_PDB%" %PROMETHEUS_MARIONETTE_MAIN% "/DMARIONETTE_EXCLUDE_SLOW_TESTS /DMARIONETTE_EXCLUDE_BENCHMARK_TESTS %PROMETHEUS_MX5_CONTROL_DEFINE%" ""
 if errorlevel 1 call :fail_now "build Marionette tests" %ERRORLEVEL%
 if errorlevel 1 exit /b %ERRORLEVEL%
 

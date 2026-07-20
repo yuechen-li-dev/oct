@@ -29,7 +29,11 @@
 #include "reactor_vulkan_zimage_nr0_fused_qkv_spirv.h"
 #include "reactor_vulkan_zimage_nr0_q_norm_rope_spirv.h"
 #include "reactor_vulkan_zimage_nr0_k_norm_rope_spirv.h"
+#if defined(PROMETHEUS_DVT2_MX5_VULKAN10_CONTROL)
+#include "reactor_vulkan_zimage_nr0_attention_streaming_vulkan10_control_spirv.h"
+#else
 #include "reactor_vulkan_zimage_nr0_attention_streaming_spirv.h"
+#endif
 #include "reactor_vulkan_zimage_nr0_attention_projection_spirv.h"
 #include "reactor_vulkan_zimage_nr0_attention_residual_spirv.h"
 #include "reactor_vulkan_zimage_nr0_ffn_norm_modulate_spirv.h"
@@ -38,9 +42,14 @@
 #include "reactor_vulkan_zimage_nr0_ffn_w2_residual_spirv.h"
 #include "reactor_vulkan_zimage_nr0_persistent_audit_summary_spirv.h"
 #include "reactor_vulkan_zimage_context_refiner_qk_norm_rope_spirv.h"
+#if defined(PROMETHEUS_DVT2_MX5_VULKAN10_CONTROL)
+#include "reactor_vulkan_zimage_context_refiner_attention_streaming_vulkan10_control_spirv.h"
+#include "reactor_vulkan_zimage_main_transformer_joint_attention_streaming_vulkan10_control_spirv.h"
+#else
 #include "reactor_vulkan_zimage_context_refiner_attention_streaming_spirv.h"
-#include "reactor_vulkan_zimage_main_transformer_joint_qk_norm_rope_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_streaming_spirv.h"
+#endif
+#include "reactor_vulkan_zimage_main_transformer_joint_qk_norm_rope_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_ffn_w1_w3_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_ffn_gate_spirv.h"
 
