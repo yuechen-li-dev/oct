@@ -1358,7 +1358,7 @@ FACT(PrometheusM1BRealPayloadReachesTheFirstCanonicalModelWitness)
         std::cout << evidence.m1b_boundary_gpu_ns[index];
     }
     std::cout << "\n";
-    ASSERT_EQUAL(26u, evidence.weight_upload_count, "two validated parameter sets perform exactly two complete cold packages");
+    ASSERT_EQUAL(13u, evidence.weight_upload_count, "the one NoiseRefiner0 owner uploads its declared thirteen-tensor package exactly once");
     ASSERT_EQUAL(0u, evidence.warm_buffer_allocation_count, "first real execution performs no warm buffer allocation");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, blockID), "real resident M1B resources destroy safely");
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime), "real M1B runtime destroys safely");

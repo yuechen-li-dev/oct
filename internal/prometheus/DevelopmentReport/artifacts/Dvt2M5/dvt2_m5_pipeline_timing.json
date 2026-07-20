@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.m5.pipeline-timing.v1","m4_canonical_wall_seconds":165.439,"m5_real_chain_total_ns":24428888100,"m5_real_chain_gpu_ns":12787854848,"interpretation":"representative real chain passes; fixed Prefetch full-image timing remains required before claiming a new canonical wall"}

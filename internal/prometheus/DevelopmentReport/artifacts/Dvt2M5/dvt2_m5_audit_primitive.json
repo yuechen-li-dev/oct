@@ -1,0 +1,1 @@
+{"schema":"prometheus.dvt2.m5.audit-primitive.v1","result":"no new primitive added","evidence":"M4 already supplies bounded WriteAuditSample/WriteAuditProbability helpers and fixed direct sample keys; persistent summary already uses a closed enum and match","normal_path":"audit calculations/stores are selected-row diagnostic work; no runtime sample-key ladder remains"}
