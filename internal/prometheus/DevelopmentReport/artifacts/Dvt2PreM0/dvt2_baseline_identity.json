@@ -1,0 +1,29 @@
+{
+  "bridge_dll_sha256": "dcad95430bc48567faa7168f6db2d5e1e975e3bd72df0c5a096fc9f4358bf05a",
+  "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "commit": "e80c7d027e578154445754092e7ae8347b8fce73",
+  "environment": {
+    "cuda": "13.0",
+    "gpu": "NVIDIA GeForce RTX 3070",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.12.9 (main, Feb 12 2025, 14:52:31) [MSC v.1942 64 bit (AMD64)]",
+    "python_executable": "C:\\Users\\yuech\\ComfyUI\\.venv\\Scripts\\python.exe",
+    "torch": "2.9.1+cu130"
+  },
+  "lock_sha256": "71ef202b4e34b562bd0d8526d1e0c674640cbba02fb7c484d8dadf981c8b226e",
+  "model": "Tongyi-MAI/Z-Image-Turbo@f332072aa78be7aecdf3ee76d5c247082da564a6",
+  "reactor_dll_sha256": "71deaccb5e4df9cb5c3022cf676627db7bc179b4f922fef761312cf772711faa",
+  "schema": "prometheus.dvt2.pre-m0.identity.v1",
+  "shader_portfolio": "lock-tagon.octagon: NoiseRefiner 24-36; ContextRefiner 25-39; MainTransformer 40-43",
+  "smoke_output": {
+    "bytes": 262126,
+    "height": 512,
+    "mode": "RGB",
+    "path": "C:\\Users\\yuech\\AppData\\Local\\oct\\evt2-z-image-turbo\\shipping_smoke\\zimage_turbo_prometheus_seed42.png",
+    "pixel_max": 255,
+    "pixel_min": 0,
+    "sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "width": 512
+  },
+  "source": "Tongyi-MAI/Z-Image@26f23eda626ffadda020b04ff79488e1d72004cd"
+}

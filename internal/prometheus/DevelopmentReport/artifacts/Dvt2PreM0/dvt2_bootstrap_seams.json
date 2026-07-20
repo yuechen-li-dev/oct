@@ -1,0 +1,71 @@
+{
+  "contracts": [
+    {
+      "dtype": "FP32",
+      "identity": "SHA-256",
+      "layout": "C-contiguous token-major",
+      "mask": "not currently required",
+      "name": "ConditioningTensor.v1",
+      "normalization": "source-owned",
+      "producer_identity": "Qwen/tokenizer revision",
+      "role": "context",
+      "selected_qwen_layer": "ComfyUI lumina2 scheduled output",
+      "shape": "[1,32,3840]"
+    },
+    {
+      "dtype": "BF16",
+      "generation": "per evaluation",
+      "layout": "C-contiguous token-major",
+      "mutability": "immutable",
+      "name": "ImageIngress.v1",
+      "ownership": "caller until execute",
+      "scaling": "source x_embedder",
+      "shape": "[1,1024,3840]"
+    },
+    {
+      "AuraFlow_shift": 3.0,
+      "dtype": "BF16",
+      "encoding": "t_embedder((1-timestep)*1000)",
+      "generation": "per evaluation",
+      "name": "SchedulerConditioning.v1",
+      "shape": "[1,256]",
+      "step_identity": "sigma index + value"
+    },
+    {
+      "errors": "nonzero C status plus sized diagnostic",
+      "input": "ImageIngress.v1 + ConditioningTensor.v1 + SchedulerConditioning.v1",
+      "lifecycle": "one denoising evaluation per call",
+      "name": "PrometheusEvaluation.v2",
+      "output": "[1,1024,3840] FP32",
+      "ownership": "session-owned device work / caller output buffer",
+      "replay": "lock + generations + tensor identities"
+    },
+    {
+      "dtype": "source boundary dtype",
+      "input": "[1,1024,3840] FP32 + [1,256] BF16",
+      "name": "FinalProjection.v1",
+      "output": "[1,16,64,64]",
+      "scaling": "source sign inversion retained",
+      "weights": "source FinalLayer identity"
+    },
+    {
+      "channel_order": "latent channels",
+      "dtype": "FP32",
+      "name": "DecoderInput.v1",
+      "output": "[1,512,512,3] RGB",
+      "scaling": "ComfyUI VAE contract",
+      "shape": "[1,16,64,64]"
+    },
+    {
+      "bit_depth": 8,
+      "channel_order": "RGB",
+      "color_space": "not asserted by current writer",
+      "hash": "SHA-256 full file",
+      "metadata": "no nondeterministic metadata",
+      "name": "PNG.v1",
+      "size": "512x512"
+    }
+  ],
+  "runtime_authority": "typed in-memory records and the C ABI; JSON is report-only",
+  "schema": "prometheus.dvt2.bootstrap-seams.v1"
+}

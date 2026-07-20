@@ -1,0 +1,61 @@
+{
+  "schema": "prometheus.dvt2.python-removal.v1",
+  "stages": [
+    {
+      "abi": "ConditioningRequest.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "typed tokenizer producer",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "tokenizer"
+    },
+    {
+      "abi": "ConditioningTensor.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "typed encoder service",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "Qwen"
+    },
+    {
+      "abi": "ImageIngress.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "native ingress producer",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "embedding/patchify"
+    },
+    {
+      "abi": "SchedulerConditioning.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "native scheduler",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "scheduler"
+    },
+    {
+      "abi": "FinalProjection.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "native projection",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "final AdaLN/linear/unpatchify"
+    },
+    {
+      "abi": "DecoderInput.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "native/external decoder",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "VAE"
+    },
+    {
+      "abi": "PNG.v1",
+      "current": "Python/ComfyUI",
+      "replacement": "artifact writer",
+      "semantic_change": false,
+      "shipping_required": false,
+      "stage": "PNG"
+    }
+  ]
+}

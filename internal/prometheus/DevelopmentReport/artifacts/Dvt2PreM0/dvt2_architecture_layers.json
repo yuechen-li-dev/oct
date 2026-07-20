@@ -1,0 +1,93 @@
+[
+  {
+    "compute_heavy": false,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": true,
+    "current_owner": "Python CLI fixed prompt",
+    "input_abi": "user intent",
+    "layer": "authoring/front-end",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "replaceable producer",
+    "output_abi": "ConditioningRequest.v1",
+    "replaceable": true,
+    "state": "none"
+  },
+  {
+    "compute_heavy": true,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": true,
+    "current_owner": "ComfyUI tokenizer/Qwen/embedders",
+    "input_abi": "ConditioningRequest.v1",
+    "layer": "conditioning",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "typed conditioning producer",
+    "output_abi": "ConditioningTensor.v1",
+    "replaceable": true,
+    "state": "Qwen weights"
+  },
+  {
+    "compute_heavy": true,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": true,
+    "current_owner": "Prometheus",
+    "input_abi": "PrometheusEvaluation.v2",
+    "layer": "compiled model",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "Prometheus",
+    "output_abi": "ImageTokens.FP32",
+    "replaceable": false,
+    "state": "lock/session/device streams"
+  },
+  {
+    "compute_heavy": false,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": true,
+    "current_owner": "ComfyUI Python",
+    "input_abi": "SchedulerStep.v1",
+    "layer": "scheduler",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "native or typed external scheduler",
+    "output_abi": "Latent.FP32",
+    "replaceable": true,
+    "state": "sigmas/latent"
+  },
+  {
+    "compute_heavy": false,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": true,
+    "current_owner": "ComfyUI Python",
+    "input_abi": "FinalProjection.v1",
+    "layer": "final projection",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "native or external projection",
+    "output_abi": "Latent.FP32",
+    "replaceable": true,
+    "state": "final-layer weights"
+  },
+  {
+    "compute_heavy": true,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": false,
+    "current_owner": "ComfyUI VAE",
+    "input_abi": "DecoderInput.v1",
+    "layer": "decoder",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "decoder ABI",
+    "output_abi": "Image.RGB",
+    "replaceable": true,
+    "state": "VAE weights"
+  },
+  {
+    "compute_heavy": false,
+    "correctness_authority": "pinned source boundary plus recorded tensor/artifact identities",
+    "critical_path": false,
+    "current_owner": "Pillow",
+    "input_abi": "Image.RGB",
+    "layer": "artifact",
+    "lifecycle": "per request unless explicitly session-resident",
+    "long_term_owner": "artifact writer ABI",
+    "output_abi": "PNG.v1",
+    "replaceable": true,
+    "state": "none"
+  }
+]

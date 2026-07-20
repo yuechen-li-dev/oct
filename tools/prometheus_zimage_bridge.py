@@ -62,6 +62,10 @@ class _ExecuteEvidence(ctypes.Structure):
         ("persistent_bytes", ctypes.c_uint64),
         ("reusable_bytes", ctypes.c_uint64),
         ("audit_bytes", ctypes.c_uint64),
+        ("stage_execution_ns", ctypes.c_uint64 * 34),
+        ("stage_rebind_ns", ctypes.c_uint64 * 34),
+        ("stage_payload_read_ns", ctypes.c_uint64 * 34),
+        ("stage_uploaded_weight_bytes", ctypes.c_uint64 * 34),
     ]
 
 
@@ -78,6 +82,10 @@ class ExecuteEvidence:
     persistent_bytes: int
     reusable_bytes: int
     audit_bytes: int
+    stage_execution_seconds: tuple[float, ...]
+    stage_rebind_seconds: tuple[float, ...]
+    stage_payload_read_seconds: tuple[float, ...]
+    stage_uploaded_weight_bytes: tuple[int, ...]
 
 
 def _absolute_existing(path: Path | str, label: str, directory: bool = False) -> Path:
@@ -121,7 +129,7 @@ class PrometheusZImageSession:
         self._dll.prometheus_zimage_session_destroy.restype = ctypes.c_int
         self._dll.prometheus_zimage_last_error.argtypes = [ctypes.c_uint64, ctypes.c_char_p, ctypes.c_uint64]
         self._dll.prometheus_zimage_last_error.restype = ctypes.c_uint64
-        if self._dll.prometheus_zimage_bridge_abi_version() != 1:
+        if self._dll.prometheus_zimage_bridge_abi_version() != 2:
             raise RuntimeError("unsupported Prometheus Z-Image bridge ABI")
         encoded = [str(path).encode("utf-8") for path in (reactor_path, lock, payload)]
         request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index)
@@ -182,6 +190,10 @@ class PrometheusZImageSession:
             persistent_bytes=raw.persistent_bytes,
             reusable_bytes=raw.reusable_bytes,
             audit_bytes=raw.audit_bytes,
+            stage_execution_seconds=tuple(value / 1e9 for value in raw.stage_execution_ns),
+            stage_rebind_seconds=tuple(value / 1e9 for value in raw.stage_rebind_ns),
+            stage_payload_read_seconds=tuple(value / 1e9 for value in raw.stage_payload_read_ns),
+            stage_uploaded_weight_bytes=tuple(int(value) for value in raw.stage_uploaded_weight_bytes),
         )
         return output, evidence
 

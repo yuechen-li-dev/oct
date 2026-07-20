@@ -1,0 +1,17 @@
+{
+  "accepted_ceiling": 643587076,
+  "components": {
+    "audit_arena": 47186432,
+    "persistent_weight_window": 361820672,
+    "reusable_activation_and_session": 234579972
+  },
+  "note": "QKV/attention/FFN scratch are included in the reactor reusable allocation rather than separately exported by this ABI.",
+  "schema": "prometheus.dvt2.memory.v1",
+  "streams": {
+    "JointWorking": 16220160,
+    "PreparedContext": 491520,
+    "PreparedImage": 15728640
+  },
+  "total": 643587076,
+  "validation": true
+}

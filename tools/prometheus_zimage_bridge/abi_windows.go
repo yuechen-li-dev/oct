@@ -47,7 +47,22 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint64_t persistent_bytes;
   uint64_t reusable_bytes;
   uint64_t audit_bytes;
+  uint64_t stage_execution_ns[34];
+  uint64_t stage_rebind_ns[34];
+  uint64_t stage_payload_read_ns[34];
+  uint64_t stage_uploaded_weight_bytes[34];
 } PrometheusZImageExecuteEvidence;
+
+static void oct_prom_set_execute_stage(PrometheusZImageExecuteEvidence* evidence,
+                                       uint32_t index, uint64_t execution_ns,
+                                       uint64_t rebind_ns, uint64_t payload_read_ns,
+                                       uint64_t uploaded_weight_bytes) {
+  if (evidence == NULL || index >= 34u) return;
+  evidence->stage_execution_ns[index] = execution_ns;
+  evidence->stage_rebind_ns[index] = rebind_ns;
+  evidence->stage_payload_read_ns[index] = payload_read_ns;
+  evidence->stage_uploaded_weight_bytes[index] = uploaded_weight_bytes;
+}
 */
 import "C"
 
@@ -311,6 +326,9 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	evidence.persistent_bytes = C.uint64_t(metrics.persistentBytes)
 	evidence.reusable_bytes = C.uint64_t(metrics.reusableBytes)
 	evidence.audit_bytes = C.uint64_t(metrics.auditBytes)
+	for index := range metrics.stageExecutionNS {
+		C.oct_prom_set_execute_stage(evidence, C.uint32_t(index), C.uint64_t(metrics.stageExecutionNS[index]), C.uint64_t(metrics.stageRebindNS[index]), C.uint64_t(metrics.stagePayloadReadNS[index]), C.uint64_t(metrics.stageUploadedBytes[index]))
+	}
 	session.lastError = ""
 	return 0
 }

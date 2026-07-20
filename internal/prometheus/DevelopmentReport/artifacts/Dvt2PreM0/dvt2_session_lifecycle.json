@@ -1,0 +1,51 @@
+{
+  "resources": [
+    {
+      "cost": "warm session create 10.652s",
+      "created": "session create",
+      "destroyed": "session destroy",
+      "future_owner": "Prometheus",
+      "resource": "Vulkan runtime, session, lock index, fixed streams",
+      "reused": true
+    },
+    {
+      "cost": "13.345s cold host-visible rebind total",
+      "created": "evaluation",
+      "destroyed": "after family/final layer",
+      "future_owner": "Prometheus warm-session M0",
+      "resource": "ContextRefiner/NoiseRefiner/MainTransformer owner",
+      "reused": false
+    },
+    {
+      "cost": "included in model execution and session reusable allocation",
+      "created": "capture/compose",
+      "destroyed": "session destroy or replacement",
+      "future_owner": "Prometheus",
+      "resource": "PreparedImage/PreparedContext/JointWorking",
+      "reused": "context only when digest matches"
+    },
+    {
+      "cost": "Qwen 7.081s, VAE 0.719s cold",
+      "created": "Python load",
+      "destroyed": "ComfyUI unload/process end",
+      "future_owner": "replaceable producer/decoder",
+      "resource": "Qwen/VAE",
+      "reused": false
+    }
+  ],
+  "schema": "prometheus.dvt2.lifecycle.v1",
+  "sequence": [
+    "Python starts/imports",
+    "DLL/session create validates lock and payloads",
+    "Vulkan runtime/session creates",
+    "each evaluation prepares/reuses context",
+    "NoiseRefiner owner create/execute/rebind/destroy",
+    "capture PreparedImage",
+    "compose JointWorking",
+    "MainTransformer owner create/rebind layers 0-29/destroy",
+    "read back image tokens",
+    "Python final projection/scheduler",
+    "session destroy",
+    "VAE/PNG"
+  ]
+}

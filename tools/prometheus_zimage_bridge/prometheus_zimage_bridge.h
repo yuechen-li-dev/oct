@@ -54,6 +54,13 @@ typedef struct PrometheusZImageExecuteEvidence {
   uint64_t persistent_bytes;
   uint64_t reusable_bytes;
   uint64_t audit_bytes;
+  /* Ordered as NoiseRefiner0, NoiseRefiner1, ContextRefiner0,
+     ContextRefiner1, MainTransformer0..29.  These are host-visible
+     per-block probes; last_execution_ns is supplied by the native reactor. */
+  uint64_t stage_execution_ns[34];
+  uint64_t stage_rebind_ns[34];
+  uint64_t stage_payload_read_ns[34];
+  uint64_t stage_uploaded_weight_bytes[34];
 } PrometheusZImageExecuteEvidence;
 
 PROM_ZIMAGE_BRIDGE_API uint32_t prometheus_zimage_bridge_abi_version(void);

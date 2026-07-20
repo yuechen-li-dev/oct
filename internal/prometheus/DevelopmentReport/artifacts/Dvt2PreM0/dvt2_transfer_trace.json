@@ -1,0 +1,9 @@
+{
+  "all_evaluations_uploaded_weight_bytes": 104912204800,
+  "device_to_device_joint_bytes_per_evaluation": 16220160,
+  "limitations": "The bridge records payload-read and host-visible rebind windows. The current reactor C ABI does not expose GPU copy timestamps, pinned-memory state, or disk-cache counters; do not interpret these as PCIe-only measurements.",
+  "payload_disk_read_host_seconds": 75.9111044,
+  "python_ingress_bytes": 75207168,
+  "readback_bytes": 141557760,
+  "schema": "prometheus.dvt2.transfer-trace.v1"
+}

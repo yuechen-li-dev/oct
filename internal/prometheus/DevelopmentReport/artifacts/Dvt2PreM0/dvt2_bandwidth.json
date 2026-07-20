@@ -1,0 +1,9 @@
+{
+  "bytes": 104912204800,
+  "classification": "bounded host-visible rebind window, not claimed PCIe bandwidth",
+  "host_visible_weight_window_bytes_per_second": 7861611390.8435955,
+  "host_visible_weight_window_gib_per_second": 7.32169616114683,
+  "overlap": "none measured; current calls serialize payload load, rebind, and execute",
+  "schema": "prometheus.dvt2.bandwidth.v1",
+  "window_seconds": 13.344872899999999
+}

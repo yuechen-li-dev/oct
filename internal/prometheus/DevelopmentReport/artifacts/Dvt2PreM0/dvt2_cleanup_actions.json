@@ -1,0 +1,8 @@
+{
+  "actions": [
+    "centralized per-stage trace schema in bridge ABI v2",
+    "preserved one canonical smoke entry point",
+    "kept generated DLLs and payloads local-only"
+  ],
+  "schema": "prometheus.dvt2.cleanup.v1"
+}

@@ -1,0 +1,47 @@
+{
+  "conclusion": "Do not conflate this precise model-owned ceiling with total VRAM or process RSS.",
+  "model_owned_bytes": 643587076,
+  "python_process": {
+    "peak_sampled_rss_bytes": 5763436544,
+    "samples": [
+      {
+        "label": "after_python_imports",
+        "rss_bytes": 807948288,
+        "system_available_bytes": 23670554624,
+        "system_used_bytes": 9742221312,
+        "vms_bytes": 2393804800
+      },
+      {
+        "label": "after_qwen_conditioning",
+        "rss_bytes": 3487182848,
+        "system_available_bytes": 20972568576,
+        "system_used_bytes": 12440207360,
+        "vms_bytes": 6624665600
+      },
+      {
+        "label": "after_boundary_model_load",
+        "rss_bytes": 4898492416,
+        "system_available_bytes": 15234318336,
+        "system_used_bytes": 18178457600,
+        "vms_bytes": 13606514688
+      },
+      {
+        "label": "after_denoising",
+        "rss_bytes": 5565349888,
+        "system_available_bytes": 15504801792,
+        "system_used_bytes": 17907974144,
+        "vms_bytes": 14386323456
+      },
+      {
+        "label": "after_png",
+        "rss_bytes": 5763436544,
+        "system_available_bytes": 15350693888,
+        "system_used_bytes": 18062082048,
+        "vms_bytes": 17792978944
+      }
+    ]
+  },
+  "qwen_vae_ram": "not separately observable",
+  "schema": "prometheus.dvt2.process-memory.v1",
+  "whole_device_vulkan_memory": "unavailable through current reactor ABI"
+}

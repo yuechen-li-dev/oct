@@ -1,0 +1,16 @@
+{
+  "canonical_command": "& \"$env:USERPROFILE\\ComfyUI\\.venv\\Scripts\\python.exe\" tools\\zimage_prometheus_smoke.py --metadata internal\\prometheus\\DevelopmentReport\\artifacts\\Dvt2PreM0\\dvt2_profile_cold.json",
+  "outputs": [
+    "local PNG",
+    "fixed smoke metadata",
+    "DVT2 profile JSON"
+  ],
+  "requires": [
+    "OCT_EVT2_CACHE or default local payload root",
+    "ComfyUI source/data roots or OCT_COMFY_ROOT/OCT_COMFY_DATA",
+    "out/prometheus/native/prometheus_reactor.dll",
+    "out/prometheus/python_bridge/prometheus_zimage_bridge.dll"
+  ],
+  "schema": "prometheus.dvt2.reproduction.v1",
+  "validation": "PNG verify, 30 layers/evaluation, allocation ceiling, boundary hashes"
+}

@@ -1,0 +1,43 @@
+{
+  "candidates": [
+    {
+      "bottleneck": "payload reconstruction and owner rebind",
+      "candidate": "persistent warm model session across scheduler evaluations",
+      "expected_wall_reduction": "remove repeated owner allocation/reconstruction; measure against current host-visible  75.91s payload-read + 13.34s rebind",
+      "recommendation": "SELECT M0"
+    },
+    {
+      "candidate": "double-buffered prefetch",
+      "recommendation": "defer; depends on persistent ownership"
+    },
+    {
+      "candidate": "typed transport",
+      "recommendation": "defer; architectural follow-up"
+    },
+    {
+      "candidate": "native scheduler",
+      "recommendation": "defer; larger semantic boundary"
+    },
+    {
+      "candidate": "native final projection",
+      "recommendation": "defer; measured negligible"
+    },
+    {
+      "candidate": "pinned packing",
+      "recommendation": "defer; no pinned-memory evidence"
+    },
+    {
+      "candidate": "bridge lifecycle cleanup",
+      "recommendation": "covered by M0 seam"
+    },
+    {
+      "candidate": "native VAE",
+      "recommendation": "defer; low measured payoff"
+    },
+    {
+      "candidate": "native Qwen",
+      "recommendation": "defer; large scope, low share"
+    }
+  ],
+  "schema": "prometheus.dvt2.m0-candidates.v1"
+}

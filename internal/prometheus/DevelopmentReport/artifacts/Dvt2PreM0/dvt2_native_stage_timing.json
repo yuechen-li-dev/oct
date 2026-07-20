@@ -1,0 +1,753 @@
+{
+  "schema": "prometheus.dvt2.native-stage-timing.v1",
+  "stages": [
+    {
+      "execution": {
+        "max_seconds": 0.8244354,
+        "mean_seconds": 0.7192403888888889,
+        "median_seconds": 0.7436698,
+        "min_seconds": 0.3904282
+      },
+      "payload_read": {
+        "max_seconds": 0.350722,
+        "mean_seconds": 0.26409693333333334,
+        "median_seconds": 0.2350816,
+        "min_seconds": 0.2166725
+      },
+      "rebind": {
+        "max_seconds": 0.0,
+        "mean_seconds": 0.0,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "stage": "NoiseRefiner0",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2125256,
+        "mean_seconds": 1.0559724444444445,
+        "median_seconds": 1.1006973,
+        "min_seconds": 0.5335238
+      },
+      "payload_read": {
+        "max_seconds": 0.332105,
+        "mean_seconds": 0.27512484444444446,
+        "median_seconds": 0.2856714,
+        "min_seconds": 0.2113719
+      },
+      "rebind": {
+        "max_seconds": 0.0537014,
+        "mean_seconds": 0.05116051111111111,
+        "median_seconds": 0.0510385,
+        "min_seconds": 0.0461059
+      },
+      "stage": "NoiseRefiner1",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 0.0511386,
+        "mean_seconds": 0.005682066666666667,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "payload_read": {
+        "max_seconds": 0.2372547,
+        "mean_seconds": 0.026361633333333336,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "rebind": {
+        "max_seconds": 0.0,
+        "mean_seconds": 0.0,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "stage": "ContextRefiner0",
+      "uploaded_weight_bytes": 353925632
+    },
+    {
+      "execution": {
+        "max_seconds": 0.049718,
+        "mean_seconds": 0.005524222222222222,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "payload_read": {
+        "max_seconds": 0.2024613,
+        "mean_seconds": 0.0224957,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "rebind": {
+        "max_seconds": 0.0516542,
+        "mean_seconds": 0.005739355555555555,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "stage": "ContextRefiner1",
+      "uploaded_weight_bytes": 353925632
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1751706,
+        "mean_seconds": 1.0752003444444445,
+        "median_seconds": 1.1233095,
+        "min_seconds": 0.5998014
+      },
+      "payload_read": {
+        "max_seconds": 0.3557044,
+        "mean_seconds": 0.27367355555555556,
+        "median_seconds": 0.2587677,
+        "min_seconds": 0.2162725
+      },
+      "rebind": {
+        "max_seconds": 0.0,
+        "mean_seconds": 0.0,
+        "median_seconds": 0.0,
+        "min_seconds": 0.0
+      },
+      "stage": "MainTransformer0",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.3017048,
+        "mean_seconds": 1.1136047111111111,
+        "median_seconds": 1.135908,
+        "min_seconds": 0.6020783
+      },
+      "payload_read": {
+        "max_seconds": 0.3418181,
+        "mean_seconds": 0.26515567777777777,
+        "median_seconds": 0.2629722,
+        "min_seconds": 0.2044772
+      },
+      "rebind": {
+        "max_seconds": 0.0579568,
+        "mean_seconds": 0.0513766,
+        "median_seconds": 0.0516109,
+        "min_seconds": 0.0463329
+      },
+      "stage": "MainTransformer1",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2608312,
+        "mean_seconds": 1.0927663777777776,
+        "median_seconds": 1.132411,
+        "min_seconds": 0.6006173
+      },
+      "payload_read": {
+        "max_seconds": 0.3366282,
+        "mean_seconds": 0.2643164888888889,
+        "median_seconds": 0.2689248,
+        "min_seconds": 0.207855
+      },
+      "rebind": {
+        "max_seconds": 0.0515133,
+        "mean_seconds": 0.049756822222222226,
+        "median_seconds": 0.0503272,
+        "min_seconds": 0.0460722
+      },
+      "stage": "MainTransformer2",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2585809,
+        "mean_seconds": 1.0865787222222223,
+        "median_seconds": 1.1362877,
+        "min_seconds": 0.5865601
+      },
+      "payload_read": {
+        "max_seconds": 0.3613852,
+        "mean_seconds": 0.26583572222222224,
+        "median_seconds": 0.2770827,
+        "min_seconds": 0.2051785
+      },
+      "rebind": {
+        "max_seconds": 0.0516328,
+        "mean_seconds": 0.0489109,
+        "median_seconds": 0.0492548,
+        "min_seconds": 0.0435238
+      },
+      "stage": "MainTransformer3",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2622938,
+        "mean_seconds": 1.1061732444444445,
+        "median_seconds": 1.1339153,
+        "min_seconds": 0.5995421
+      },
+      "payload_read": {
+        "max_seconds": 0.3133847,
+        "mean_seconds": 0.2556879888888889,
+        "median_seconds": 0.2735686,
+        "min_seconds": 0.2092707
+      },
+      "rebind": {
+        "max_seconds": 0.0522234,
+        "mean_seconds": 0.04935627777777778,
+        "median_seconds": 0.0490424,
+        "min_seconds": 0.0463355
+      },
+      "stage": "MainTransformer4",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2329894,
+        "mean_seconds": 1.095089988888889,
+        "median_seconds": 1.1351763,
+        "min_seconds": 0.6028548
+      },
+      "payload_read": {
+        "max_seconds": 0.3218268,
+        "mean_seconds": 0.2603958,
+        "median_seconds": 0.2631829,
+        "min_seconds": 0.2141482
+      },
+      "rebind": {
+        "max_seconds": 0.0517667,
+        "mean_seconds": 0.04942936666666667,
+        "median_seconds": 0.0491034,
+        "min_seconds": 0.0480123
+      },
+      "stage": "MainTransformer5",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2346388,
+        "mean_seconds": 1.1023539333333334,
+        "median_seconds": 1.1435834,
+        "min_seconds": 0.5851484
+      },
+      "payload_read": {
+        "max_seconds": 0.3085176,
+        "mean_seconds": 0.26047441111111114,
+        "median_seconds": 0.2649112,
+        "min_seconds": 0.2076472
+      },
+      "rebind": {
+        "max_seconds": 0.0550644,
+        "mean_seconds": 0.04985557777777778,
+        "median_seconds": 0.0496578,
+        "min_seconds": 0.045556
+      },
+      "stage": "MainTransformer6",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.231688,
+        "mean_seconds": 1.113720611111111,
+        "median_seconds": 1.1616543,
+        "min_seconds": 0.6064561
+      },
+      "payload_read": {
+        "max_seconds": 0.3013181,
+        "mean_seconds": 0.25580206666666666,
+        "median_seconds": 0.2546346,
+        "min_seconds": 0.2104053
+      },
+      "rebind": {
+        "max_seconds": 0.054766,
+        "mean_seconds": 0.05007392222222222,
+        "median_seconds": 0.0494352,
+        "min_seconds": 0.0470106
+      },
+      "stage": "MainTransformer7",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2346657,
+        "mean_seconds": 1.1041606333333334,
+        "median_seconds": 1.1513827,
+        "min_seconds": 0.5809379
+      },
+      "payload_read": {
+        "max_seconds": 0.3179236,
+        "mean_seconds": 0.26085644444444445,
+        "median_seconds": 0.2596137,
+        "min_seconds": 0.2137281
+      },
+      "rebind": {
+        "max_seconds": 0.0514522,
+        "mean_seconds": 0.04937324444444444,
+        "median_seconds": 0.0499057,
+        "min_seconds": 0.0454941
+      },
+      "stage": "MainTransformer8",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1968185,
+        "mean_seconds": 1.0761771333333334,
+        "median_seconds": 1.1272418,
+        "min_seconds": 0.5846681
+      },
+      "payload_read": {
+        "max_seconds": 0.3167384,
+        "mean_seconds": 0.2566958111111111,
+        "median_seconds": 0.231119,
+        "min_seconds": 0.2057805
+      },
+      "rebind": {
+        "max_seconds": 0.0507849,
+        "mean_seconds": 0.04895017777777778,
+        "median_seconds": 0.0490369,
+        "min_seconds": 0.0454007
+      },
+      "stage": "MainTransformer9",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1489177,
+        "mean_seconds": 0.9411739222222222,
+        "median_seconds": 1.125579,
+        "min_seconds": 0.0
+      },
+      "payload_read": {
+        "max_seconds": 0.325366,
+        "mean_seconds": 0.2563664,
+        "median_seconds": 0.2214241,
+        "min_seconds": 0.2088188
+      },
+      "rebind": {
+        "max_seconds": 0.0531514,
+        "mean_seconds": 0.04960654444444444,
+        "median_seconds": 0.0492382,
+        "min_seconds": 0.0456569
+      },
+      "stage": "MainTransformer10",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1286082,
+        "mean_seconds": 1.0609221222222223,
+        "median_seconds": 1.1209733,
+        "min_seconds": 0.6012848
+      },
+      "payload_read": {
+        "max_seconds": 0.3274035,
+        "mean_seconds": 0.25678645555555557,
+        "median_seconds": 0.2398225,
+        "min_seconds": 0.2092454
+      },
+      "rebind": {
+        "max_seconds": 0.0515022,
+        "mean_seconds": 0.04865945555555556,
+        "median_seconds": 0.0484359,
+        "min_seconds": 0.0475743
+      },
+      "stage": "MainTransformer11",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2517424,
+        "mean_seconds": 1.0918538666666666,
+        "median_seconds": 1.1325431,
+        "min_seconds": 0.6007392
+      },
+      "payload_read": {
+        "max_seconds": 0.3388026,
+        "mean_seconds": 0.2606634666666667,
+        "median_seconds": 0.2436587,
+        "min_seconds": 0.2029328
+      },
+      "rebind": {
+        "max_seconds": 0.050106,
+        "mean_seconds": 0.048419666666666666,
+        "median_seconds": 0.0482095,
+        "min_seconds": 0.0465684
+      },
+      "stage": "MainTransformer12",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1444514,
+        "mean_seconds": 1.0677831,
+        "median_seconds": 1.1349397,
+        "min_seconds": 0.5508092
+      },
+      "payload_read": {
+        "max_seconds": 0.344992,
+        "mean_seconds": 0.2654984,
+        "median_seconds": 0.2468667,
+        "min_seconds": 0.208167
+      },
+      "rebind": {
+        "max_seconds": 0.0525373,
+        "mean_seconds": 0.04853728888888889,
+        "median_seconds": 0.0488598,
+        "min_seconds": 0.0429499
+      },
+      "stage": "MainTransformer13",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2462747,
+        "mean_seconds": 1.0863750555555556,
+        "median_seconds": 1.1438567,
+        "min_seconds": 0.5470513
+      },
+      "payload_read": {
+        "max_seconds": 0.3438779,
+        "mean_seconds": 0.25790443333333335,
+        "median_seconds": 0.2494307,
+        "min_seconds": 0.2018969
+      },
+      "rebind": {
+        "max_seconds": 0.0520974,
+        "mean_seconds": 0.048969177777777775,
+        "median_seconds": 0.0495947,
+        "min_seconds": 0.0439626
+      },
+      "stage": "MainTransformer14",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2729572,
+        "mean_seconds": 1.0904872,
+        "median_seconds": 1.1247791,
+        "min_seconds": 0.5938698
+      },
+      "payload_read": {
+        "max_seconds": 0.3103025,
+        "mean_seconds": 0.2514900222222222,
+        "median_seconds": 0.2274189,
+        "min_seconds": 0.2052873
+      },
+      "rebind": {
+        "max_seconds": 0.0540579,
+        "mean_seconds": 0.049157655555555554,
+        "median_seconds": 0.0488931,
+        "min_seconds": 0.0426082
+      },
+      "stage": "MainTransformer15",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2641619,
+        "mean_seconds": 1.0943334777777778,
+        "median_seconds": 1.1455101,
+        "min_seconds": 0.5865591
+      },
+      "payload_read": {
+        "max_seconds": 0.3254455,
+        "mean_seconds": 0.2607930333333333,
+        "median_seconds": 0.237614,
+        "min_seconds": 0.2065067
+      },
+      "rebind": {
+        "max_seconds": 0.0511064,
+        "mean_seconds": 0.04899512222222222,
+        "median_seconds": 0.0490895,
+        "min_seconds": 0.0470429
+      },
+      "stage": "MainTransformer16",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2735921,
+        "mean_seconds": 1.0895451777777778,
+        "median_seconds": 1.1298413,
+        "min_seconds": 0.6046508
+      },
+      "payload_read": {
+        "max_seconds": 0.3164835,
+        "mean_seconds": 0.25629552222222224,
+        "median_seconds": 0.24676,
+        "min_seconds": 0.2040602
+      },
+      "rebind": {
+        "max_seconds": 0.0516275,
+        "mean_seconds": 0.04880908888888889,
+        "median_seconds": 0.0489501,
+        "min_seconds": 0.0450388
+      },
+      "stage": "MainTransformer17",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2339299,
+        "mean_seconds": 1.0898063666666666,
+        "median_seconds": 1.1378452,
+        "min_seconds": 0.578982
+      },
+      "payload_read": {
+        "max_seconds": 0.3086833,
+        "mean_seconds": 0.25651758888888887,
+        "median_seconds": 0.2522131,
+        "min_seconds": 0.2032496
+      },
+      "rebind": {
+        "max_seconds": 0.0516576,
+        "mean_seconds": 0.04929911111111111,
+        "median_seconds": 0.0495332,
+        "min_seconds": 0.0462101
+      },
+      "stage": "MainTransformer18",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2034422,
+        "mean_seconds": 1.0782478111111111,
+        "median_seconds": 1.1400562,
+        "min_seconds": 0.5495753
+      },
+      "payload_read": {
+        "max_seconds": 0.3369826,
+        "mean_seconds": 0.2638388111111111,
+        "median_seconds": 0.2553259,
+        "min_seconds": 0.2101432
+      },
+      "rebind": {
+        "max_seconds": 0.0510732,
+        "mean_seconds": 0.04849387777777778,
+        "median_seconds": 0.0490345,
+        "min_seconds": 0.0427368
+      },
+      "stage": "MainTransformer19",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.181601,
+        "mean_seconds": 1.0240473222222222,
+        "median_seconds": 1.1419574,
+        "min_seconds": 0.5707608
+      },
+      "payload_read": {
+        "max_seconds": 0.3178928,
+        "mean_seconds": 0.26116574444444446,
+        "median_seconds": 0.2531059,
+        "min_seconds": 0.2032632
+      },
+      "rebind": {
+        "max_seconds": 0.0496504,
+        "mean_seconds": 0.047449377777777774,
+        "median_seconds": 0.048086,
+        "min_seconds": 0.0435998
+      },
+      "stage": "MainTransformer20",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2038468,
+        "mean_seconds": 1.0174898222222222,
+        "median_seconds": 1.1274867,
+        "min_seconds": 0.5518275
+      },
+      "payload_read": {
+        "max_seconds": 0.3176189,
+        "mean_seconds": 0.26271883333333335,
+        "median_seconds": 0.2637495,
+        "min_seconds": 0.2052409
+      },
+      "rebind": {
+        "max_seconds": 0.0550603,
+        "mean_seconds": 0.04916628888888889,
+        "median_seconds": 0.0495386,
+        "min_seconds": 0.0427089
+      },
+      "stage": "MainTransformer21",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1364289,
+        "mean_seconds": 0.9957562888888889,
+        "median_seconds": 1.1263849,
+        "min_seconds": 0.5496452
+      },
+      "payload_read": {
+        "max_seconds": 0.3224113,
+        "mean_seconds": 0.2636994222222222,
+        "median_seconds": 0.2602973,
+        "min_seconds": 0.2104897
+      },
+      "rebind": {
+        "max_seconds": 0.0488886,
+        "mean_seconds": 0.04719568888888889,
+        "median_seconds": 0.048528,
+        "min_seconds": 0.0426321
+      },
+      "stage": "MainTransformer22",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.201614,
+        "mean_seconds": 1.0057454,
+        "median_seconds": 1.1195383,
+        "min_seconds": 0.5454239
+      },
+      "payload_read": {
+        "max_seconds": 0.324828,
+        "mean_seconds": 0.27018993333333335,
+        "median_seconds": 0.2504989,
+        "min_seconds": 0.2122689
+      },
+      "rebind": {
+        "max_seconds": 0.0510342,
+        "mean_seconds": 0.048339655555555555,
+        "median_seconds": 0.0490452,
+        "min_seconds": 0.0435476
+      },
+      "stage": "MainTransformer23",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1501485,
+        "mean_seconds": 1.0015705444444445,
+        "median_seconds": 1.1332633,
+        "min_seconds": 0.5442717
+      },
+      "payload_read": {
+        "max_seconds": 0.3233576,
+        "mean_seconds": 0.2619189111111111,
+        "median_seconds": 0.2522218,
+        "min_seconds": 0.2084669
+      },
+      "rebind": {
+        "max_seconds": 0.0504802,
+        "mean_seconds": 0.048088455555555555,
+        "median_seconds": 0.0493717,
+        "min_seconds": 0.043162
+      },
+      "stage": "MainTransformer24",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.1773885,
+        "mean_seconds": 1.0086916444444445,
+        "median_seconds": 1.1240297,
+        "min_seconds": 0.5424867
+      },
+      "payload_read": {
+        "max_seconds": 0.3268626,
+        "mean_seconds": 0.26185373333333334,
+        "median_seconds": 0.258912,
+        "min_seconds": 0.205626
+      },
+      "rebind": {
+        "max_seconds": 0.0505954,
+        "mean_seconds": 0.048425355555555556,
+        "median_seconds": 0.0488329,
+        "min_seconds": 0.0432197
+      },
+      "stage": "MainTransformer25",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2267852,
+        "mean_seconds": 1.0249895,
+        "median_seconds": 1.134353,
+        "min_seconds": 0.5505047
+      },
+      "payload_read": {
+        "max_seconds": 0.3308735,
+        "mean_seconds": 0.2563653111111111,
+        "median_seconds": 0.2372789,
+        "min_seconds": 0.2010942
+      },
+      "rebind": {
+        "max_seconds": 0.0529556,
+        "mean_seconds": 0.04841988888888889,
+        "median_seconds": 0.0490947,
+        "min_seconds": 0.0433105
+      },
+      "stage": "MainTransformer26",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2404521,
+        "mean_seconds": 1.0114454555555554,
+        "median_seconds": 1.1241843,
+        "min_seconds": 0.547877
+      },
+      "payload_read": {
+        "max_seconds": 0.32985,
+        "mean_seconds": 0.27182774444444446,
+        "median_seconds": 0.2832237,
+        "min_seconds": 0.2079195
+      },
+      "rebind": {
+        "max_seconds": 0.0548194,
+        "mean_seconds": 0.049564166666666666,
+        "median_seconds": 0.0495648,
+        "min_seconds": 0.0431672
+      },
+      "stage": "MainTransformer27",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.3721964,
+        "mean_seconds": 1.036930111111111,
+        "median_seconds": 1.1300696,
+        "min_seconds": 0.5461653
+      },
+      "payload_read": {
+        "max_seconds": 0.3257931,
+        "mean_seconds": 0.2629282777777778,
+        "median_seconds": 0.2368871,
+        "min_seconds": 0.2062387
+      },
+      "rebind": {
+        "max_seconds": 0.0520422,
+        "mean_seconds": 0.04810078888888889,
+        "median_seconds": 0.048692,
+        "min_seconds": 0.043019
+      },
+      "stage": "MainTransformer28",
+      "uploaded_weight_bytes": 361820672
+    },
+    {
+      "execution": {
+        "max_seconds": 1.2874504,
+        "mean_seconds": 1.0220666,
+        "median_seconds": 1.1286365,
+        "min_seconds": 0.5521425
+      },
+      "payload_read": {
+        "max_seconds": 0.3343513,
+        "mean_seconds": 0.2687720333333333,
+        "median_seconds": 0.279259,
+        "min_seconds": 0.2069321
+      },
+      "rebind": {
+        "max_seconds": 0.1033984,
+        "mean_seconds": 0.055084244444444444,
+        "median_seconds": 0.0499063,
+        "min_seconds": 0.0435161
+      },
+      "stage": "MainTransformer29",
+      "uploaded_weight_bytes": 361820672
+    }
+  ]
+}

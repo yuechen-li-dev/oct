@@ -1,0 +1,40 @@
+{
+  "ranked": [
+    {
+      "candidate": "native model execution",
+      "payoff": "high",
+      "percent_wall": 70.06862485301724,
+      "risk": "high",
+      "seconds": 302.3235505
+    },
+    {
+      "candidate": "payload read/reconstruction",
+      "payoff": "high",
+      "percent_wall": 17.593689567302913,
+      "risk": "medium",
+      "seconds": 75.9111044
+    },
+    {
+      "candidate": "owner rebind window",
+      "payoff": "medium",
+      "percent_wall": 3.0929012688387836,
+      "risk": "medium",
+      "seconds": 13.344872899999999
+    },
+    {
+      "candidate": "session creation",
+      "payoff": "low per image",
+      "percent_wall": 2.4688575435721507,
+      "risk": "low",
+      "seconds": 10.65232520000427
+    },
+    {
+      "candidate": "Qwen/VAE/final/PNG",
+      "payoff": "low",
+      "percent_wall": 0,
+      "risk": "high if native",
+      "seconds": 7.83653939999931
+    }
+  ],
+  "schema": "prometheus.dvt2.bottlenecks.v1"
+}

@@ -1,0 +1,45 @@
+{
+  "entries": [
+    {
+      "action": "keep production bootstrap",
+      "owner": "bootstrap",
+      "path": "tools/zimage_prometheus_smoke.py",
+      "purpose": "canonical fixed smoke",
+      "references": "shipping report and DVT2 docs",
+      "risk": "low"
+    },
+    {
+      "action": "keep diagnostic/bridge",
+      "owner": "Prometheus",
+      "path": "tools/prometheus_zimage_bridge.py",
+      "purpose": "typed ctypes ABI",
+      "references": "smoke",
+      "risk": "low"
+    },
+    {
+      "action": "keep tooling",
+      "owner": "DVT2",
+      "path": "tools/zimage_dvt2_pre_m0_report.py",
+      "purpose": "deterministic audit materializer",
+      "references": "DVT2 artifacts",
+      "risk": "low"
+    },
+    {
+      "action": "keep canonical evidence",
+      "owner": "EVT2",
+      "path": "internal/prometheus/DevelopmentReport/artifacts/Evt2Shipping",
+      "purpose": "canonical accepted evidence",
+      "references": "reports",
+      "risk": "high"
+    },
+    {
+      "action": "local-only generated artifact",
+      "owner": "native build",
+      "path": "out/",
+      "purpose": "local DLL/build outputs",
+      "references": "local smoke",
+      "risk": "do not commit"
+    }
+  ],
+  "schema": "prometheus.dvt2.scaffolding.v1"
+}

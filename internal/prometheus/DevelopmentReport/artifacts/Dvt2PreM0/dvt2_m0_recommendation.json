@@ -1,0 +1,22 @@
+{
+  "acceptance": [
+    "fixed smoke produces valid 512x512 RGB PNG",
+    "nine evaluations each report 30 layers",
+    "model-owned ceiling remains <=643587076",
+    "no host activation reconstruction inside transformer",
+    "cold and warm trace prove a lower repeated owner/payload cost",
+    "boundary identities remain deterministic where expected"
+  ],
+  "deferred": [
+    "prefetch",
+    "native scheduler",
+    "native Qwen",
+    "native VAE",
+    "full transport subsystem",
+    "M2D deferred audit hardening"
+  ],
+  "expected_performance": "measure first; no unverified percentage claim",
+  "hypothesis": "If Prometheus retains legal owner allocations and immutable packages across successive scheduler evaluations, then the measured repeated payload-read/rebind contribution will fall materially while the exact lock, 30-layer count, FP32 activation policy, allocation ceiling, and image boundary hashes remain valid.",
+  "schema": "prometheus.dvt2.m0-recommendation.v1",
+  "selected_target": "persistent warm model owner/session across scheduler evaluations"
+}

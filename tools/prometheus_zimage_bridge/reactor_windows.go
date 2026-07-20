@@ -494,7 +494,9 @@ func (uploads *loadedUploads) free() {
 
 func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsafe.Pointer, identity uint64) (uint64, runMetrics, error) {
 	var metrics runMetrics
+	loadStart := time.Now()
 	uploads0, err := loadUploads(payload[0])
+	metrics.stagePayloadReadNS[2] += uint64(time.Since(loadStart))
 	if err != nil {
 		return 0, metrics, err
 	}
@@ -502,6 +504,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsaf
 	var blockID C.uint64_t
 	status := C.oct_prom_context_create(&reactor.api, reactor.runtime, uploads0.pointer, C.uint32_t(len(payload[0].tensors)), &blockID, &evidence)
 	metrics.uploadedWeightBytes += uploads0.byteCount
+	metrics.stageUploadedBytes[2] += uploads0.byteCount
 	uploads0.free()
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("create ContextRefiner0: detail=%d", int32(evidence.detail_code))
@@ -516,15 +519,21 @@ func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsaf
 		return 0, metrics, fmt.Errorf("execute ContextRefiner0: detail=%d", int32(evidence.detail_code))
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
+	metrics.stageExecutionNS[2] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
+	loadStart = time.Now()
 	uploads1, err := loadUploads(payload[1])
+	metrics.stagePayloadReadNS[3] += uint64(time.Since(loadStart))
 	if err != nil {
 		return 0, metrics, err
 	}
 	rebindStart := time.Now()
 	status = C.oct_prom_context_rebind(&reactor.api, reactor.runtime, blockID, uploads1.pointer, C.uint32_t(len(payload[1].tensors)), &evidence)
-	metrics.parameterRebindNS += uint64(time.Since(rebindStart))
+	rebindDuration := uint64(time.Since(rebindStart))
+	metrics.parameterRebindNS += rebindDuration
+	metrics.stageRebindNS[3] += rebindDuration
 	metrics.uploadedWeightBytes += uploads1.byteCount
+	metrics.stageUploadedBytes[3] += uploads1.byteCount
 	uploads1.free()
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("rebind ContextRefiner1: detail=%d", int32(evidence.detail_code))
@@ -533,6 +542,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsaf
 		return 0, metrics, fmt.Errorf("execute ContextRefiner1: detail=%d", int32(evidence.detail_code))
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
+	metrics.stageExecutionNS[3] += uint64(evidence.last_execution_ns)
 	var sessionEvidence C.PrometheusCompiledModelSessionEvidence
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedContext: detail=%d", int32(sessionEvidence.detail_code))
@@ -546,7 +556,9 @@ func (reactor *reactorDLL) prepareContext(payload [2]payloadBlock, context unsaf
 
 func (reactor *reactorDLL) prepareImage(payload [2]payloadBlock, image, timestep unsafe.Pointer, inputIdentity, timestepIdentity uint64) (uint64, runMetrics, error) {
 	var metrics runMetrics
+	loadStart := time.Now()
 	uploads0, err := loadUploads(payload[0])
+	metrics.stagePayloadReadNS[0] += uint64(time.Since(loadStart))
 	if err != nil {
 		return 0, metrics, err
 	}
@@ -554,6 +566,7 @@ func (reactor *reactorDLL) prepareImage(payload [2]payloadBlock, image, timestep
 	var blockID C.uint64_t
 	status := C.oct_prom_noise_create(&reactor.api, reactor.runtime, uploads0.pointer, C.uint32_t(len(payload[0].tensors)), &blockID, &evidence)
 	metrics.uploadedWeightBytes += uploads0.byteCount
+	metrics.stageUploadedBytes[0] += uploads0.byteCount
 	uploads0.free()
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("create NoiseRefiner0: detail=%d", int32(evidence.detail_code))
@@ -569,15 +582,21 @@ func (reactor *reactorDLL) prepareImage(payload [2]payloadBlock, image, timestep
 		return 0, metrics, fmt.Errorf("execute NoiseRefiner0: detail=%d", int32(evidence.detail_code))
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
+	metrics.stageExecutionNS[0] += uint64(evidence.last_execution_ns)
 	inputGeneration := uint64(evidence.output_generation)
+	loadStart = time.Now()
 	uploads1, err := loadUploads(payload[1])
+	metrics.stagePayloadReadNS[1] += uint64(time.Since(loadStart))
 	if err != nil {
 		return 0, metrics, err
 	}
 	rebindStart := time.Now()
 	status = C.oct_prom_noise_rebind(&reactor.api, reactor.runtime, blockID, 1, uploads1.pointer, C.uint32_t(len(payload[1].tensors)), &evidence)
-	metrics.parameterRebindNS += uint64(time.Since(rebindStart))
+	rebindDuration := uint64(time.Since(rebindStart))
+	metrics.parameterRebindNS += rebindDuration
+	metrics.stageRebindNS[1] += rebindDuration
 	metrics.uploadedWeightBytes += uploads1.byteCount
+	metrics.stageUploadedBytes[1] += uploads1.byteCount
 	uploads1.free()
 	if status != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("rebind NoiseRefiner1: detail=%d", int32(evidence.detail_code))
@@ -586,6 +605,7 @@ func (reactor *reactorDLL) prepareImage(payload [2]payloadBlock, image, timestep
 		return 0, metrics, fmt.Errorf("execute NoiseRefiner1: detail=%d", int32(evidence.detail_code))
 	}
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
+	metrics.stageExecutionNS[1] += uint64(evidence.last_execution_ns)
 	var sessionEvidence C.PrometheusCompiledModelSessionEvidence
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedImage: detail=%d", int32(sessionEvidence.detail_code))
@@ -607,7 +627,9 @@ func (reactor *reactorDLL) compose(imageGeneration, contextGeneration uint64) (u
 
 func (reactor *reactorDLL) runMain(payload [30]payloadBlock, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64) (runMetrics, error) {
 	var metrics runMetrics
+	loadStart := time.Now()
 	uploads0, err := loadUploads(payload[0])
+	metrics.stagePayloadReadNS[4] += uint64(time.Since(loadStart))
 	if err != nil {
 		return metrics, err
 	}
@@ -615,6 +637,7 @@ func (reactor *reactorDLL) runMain(payload [30]payloadBlock, timestep, output un
 	var blockID C.uint64_t
 	status := C.oct_prom_main_create(&reactor.api, reactor.runtime, uploads0.pointer, C.uint32_t(len(payload[0].tensors)), &blockID, &evidence)
 	metrics.uploadedWeightBytes += uploads0.byteCount
+	metrics.stageUploadedBytes[4] += uploads0.byteCount
 	uploads0.free()
 	if status != C.PROM_OK {
 		return metrics, fmt.Errorf("create MainTransformer0: detail=%d", int32(evidence.detail_code))
@@ -628,14 +651,19 @@ func (reactor *reactorDLL) runMain(payload [30]payloadBlock, timestep, output un
 	var outputIdentity uint64
 	for layer := 0; layer < 30; layer++ {
 		if layer > 0 {
+			loadStart = time.Now()
 			uploads, loadErr := loadUploads(payload[layer])
+			metrics.stagePayloadReadNS[4+layer] += uint64(time.Since(loadStart))
 			if loadErr != nil {
 				return metrics, loadErr
 			}
 			rebindStart := time.Now()
 			status = C.oct_prom_main_rebind(&reactor.api, reactor.runtime, blockID, C.uint32_t(layer), uploads.pointer, C.uint32_t(len(payload[layer].tensors)), &evidence)
-			metrics.parameterRebindNS += uint64(time.Since(rebindStart))
+			rebindDuration := uint64(time.Since(rebindStart))
+			metrics.parameterRebindNS += rebindDuration
+			metrics.stageRebindNS[4+layer] += rebindDuration
 			metrics.uploadedWeightBytes += uploads.byteCount
+			metrics.stageUploadedBytes[4+layer] += uploads.byteCount
 			uploads.free()
 			if status != C.PROM_OK {
 				return metrics, fmt.Errorf("rebind MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
@@ -646,6 +674,7 @@ func (reactor *reactorDLL) runMain(payload [30]payloadBlock, timestep, output un
 			return metrics, fmt.Errorf("execute MainTransformer%d: detail=%d", layer, int32(evidence.detail_code))
 		}
 		metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
+		metrics.stageExecutionNS[4+layer] += uint64(evidence.last_execution_ns)
 		metrics.mainLayerCount++
 		jointGeneration++
 	}
@@ -677,6 +706,12 @@ func addMetrics(target *runMetrics, source runMetrics) {
 		target.auditBytes = source.auditBytes
 	}
 	target.mainLayerCount += source.mainLayerCount
+	for index := range target.stageExecutionNS {
+		target.stageExecutionNS[index] += source.stageExecutionNS[index]
+		target.stageRebindNS[index] += source.stageRebindNS[index]
+		target.stagePayloadReadNS[index] += source.stagePayloadReadNS[index]
+		target.stageUploadedBytes[index] += source.stageUploadedBytes[index]
+	}
 }
 
 func main() {}
