@@ -1,0 +1,235 @@
+namespace Prometheus.Production.ZImage;
+
+stream AttentionStreamingIO {
+    [binding(0)] Qkv: readonly array<f32>;
+    [binding(1)] Attention: readwrite array<f32>;
+    [binding(2)] Audit: readwrite array<f32>;
+}
+
+record AttentionStreamingParams { TokenCount: u32; HeadCount: u32; HeadWidth: u32; FusedWidth: u32; }
+
+fn ExponentialF32(value: f32) -> f32 {
+    let result: f32 = HLSL<f32>(value) { return exp(value); };
+    return result;
+}
+
+// One workgroup owns exactly one (query-token, head) row. Scores and
+// probabilities are workgroup-local FP32 rows: no 30-head score tensor is
+// materialized.
+//
+// PARALLEL REDUCTION VARIANT: max-find, exp+sum, and normalize now use all
+// 256 threads instead of a single lane (lane==0u) doing three fully serial
+// passes over up to 1024 keys. NOTE: this changes the floating-point
+// summation order relative to the original strictly-sequential version --
+// each thread first reduces its own contiguous 4-key chunk in original
+// order, then a standard power-of-2 tree combines the 256 partial results.
+// This is fully deterministic and reproducible (same GPU, same inputs,
+// same bits every run) but is NOT guaranteed bit-identical to the original
+// key-by-key sequential accumulation, since float addition is not
+// associative. If "O19 logical key order" requires exact bit-for-bit
+// match to a specific reference (not just numerical closeness within
+// tolerance), this needs explicit sign-off before replacing the original.
+shader Nr0AttentionStreamingParallel {
+    resources AttentionStreamingIO;
+    workgroup Scores: array<f32, 1024u>;
+    workgroup Probabilities: array<f32, 1024u>;
+    workgroup PartialMax: array<f32, 256u>;
+    workgroup PartialSum: array<f32, 256u>;
+
+    fn WriteAuditSample(base: u32, offset: u32, key: u32, maximum: f32) -> void {
+        Audit[base + offset] = Scores[key] / 0.08838834764831843;
+        Audit[base + offset + 1u] = Scores[key];
+        Audit[base + offset + 2u] = Scores[key] - maximum;
+        Audit[base + offset + 3u] = Probabilities[key];
+        Audit[base + offset + 4u] = 0.0;
+        return;
+    }
+
+    fn WriteAuditProbability(base: u32, offset: u32, key: u32) -> void {
+        Audit[base + offset + 4u] = Probabilities[key];
+        return;
+    }
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionStreamingParams) -> void {
+        let packedRow: u32 = GroupID.x;
+        let token: u32 = packedRow / params.HeadCount;
+        let head: u32 = packedRow - token * params.HeadCount;
+        let lane: u32 = GroupThreadID.x;
+        if token >= params.TokenCount { return; }
+
+        for part in 0u..4u {
+            let key: u32 = lane + part * 256u;
+            var dot: f32 = 0.0;
+            for channel in 0u..params.HeadWidth {
+                let qIndex: u32 = token * params.FusedWidth + head * params.HeadWidth + channel;
+                let kIndex: u32 = key * params.FusedWidth + 3840u + head * params.HeadWidth + channel;
+                dot = dot + Qkv[qIndex] * Qkv[kIndex];
+            }
+            Scores[key] = dot * 0.08838834764831843;
+        }
+        WorkgroupMemoryBarrierWithSync();
+
+        // --- parallel max-find: each lane reduces its own 4-key chunk in
+        // original order, then a tree reduction combines 256 partials ---
+        var localMax: f32 = Scores[lane * 4u];
+        for offset in 1u..4u {
+            let key: u32 = lane * 4u + offset;
+            if key < params.TokenCount {
+                if Scores[key] > localMax { localMax = Scores[key]; }
+            }
+        }
+        PartialMax[lane] = localMax;
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 128u {
+            if PartialMax[lane + 128u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 128u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 64u {
+            if PartialMax[lane + 64u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 64u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 32u {
+            if PartialMax[lane + 32u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 32u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 16u {
+            if PartialMax[lane + 16u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 16u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 8u {
+            if PartialMax[lane + 8u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 8u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 4u {
+            if PartialMax[lane + 4u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 4u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 2u {
+            if PartialMax[lane + 2u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 2u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 1u {
+            if PartialMax[lane + 1u] > PartialMax[lane] { PartialMax[lane] = PartialMax[lane + 1u]; }
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let maximum: f32 = PartialMax[0u];
+
+        // --- parallel exp+sum: same chunk-then-tree pattern ---
+        var localSum: f32 = 0.0;
+        for offset in 0u..4u {
+            let key: u32 = lane * 4u + offset;
+            if key < params.TokenCount {
+                let exponential: f32 = ExponentialF32(Scores[key] - maximum);
+                Probabilities[key] = exponential;
+                localSum = localSum + exponential;
+            }
+        }
+        PartialSum[lane] = localSum;
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 128u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 128u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 64u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 64u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 32u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 32u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 16u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 16u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 8u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 8u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 4u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 4u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 2u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 2u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        if lane < 1u {
+            PartialSum[lane] = PartialSum[lane] + PartialSum[lane + 1u];
+        }
+        WorkgroupMemoryBarrierWithSync();
+        let probabilitySum: f32 = PartialSum[0u];
+
+        if lane == 0u {
+            let selected: bool = (token == 0u and head == 0u) or (token == 1023u and head == 29u);
+            var auditBase: u32 = 0u;
+            if token == 1023u { auditBase = 32u; }
+            if selected {
+                WriteAuditSample(auditBase, 0u, 0u, maximum);
+                WriteAuditSample(auditBase, 5u, 1u, maximum);
+                WriteAuditSample(auditBase, 10u, 512u, maximum);
+                WriteAuditSample(auditBase, 15u, 1023u, maximum);
+                Audit[auditBase + 20u] = maximum;
+                Audit[auditBase + 21u] = probabilitySum;
+            }
+            var denominatorValid: u32 = 0u;
+            if probabilitySum == probabilitySum and probabilitySum > 0.0 and (probabilitySum - probabilitySum) == 0.0 {
+                denominatorValid = 1u;
+            }
+            if selected {
+                if denominatorValid != 0u { Audit[auditBase + 30u] = 1.0; }
+                else { Audit[auditBase + 30u] = 0.0; }
+            }
+        }
+        WorkgroupMemoryBarrierWithSync();
+
+        // --- parallel normalize: no reduction needed, every lane can
+        // normalize its own chunk independently once probabilitySum is known ---
+        var denominatorValid: u32 = 0u;
+        if probabilitySum == probabilitySum and probabilitySum > 0.0 and (probabilitySum - probabilitySum) == 0.0 {
+            denominatorValid = 1u;
+        }
+        for offset in 0u..4u {
+            let key: u32 = lane * 4u + offset;
+            if key < params.TokenCount {
+                if denominatorValid != 0u { Probabilities[key] = Probabilities[key] / probabilitySum; }
+                else { Probabilities[key] = 0.0; }
+            }
+        }
+        WorkgroupMemoryBarrierWithSync();
+
+        if lane == 0u {
+            let selected: bool = (token == 0u and head == 0u) or (token == 1023u and head == 29u);
+            var auditBase: u32 = 0u;
+            if token == 1023u { auditBase = 32u; }
+            var rowSum: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                rowSum = rowSum + Probabilities[key];
+            }
+            if selected {
+                WriteAuditProbability(auditBase, 0u, 0u);
+                WriteAuditProbability(auditBase, 5u, 1u);
+                WriteAuditProbability(auditBase, 10u, 512u);
+                WriteAuditProbability(auditBase, 15u, 1023u);
+                Audit[auditBase + 22u] = rowSum;
+            }
+        }
+
+        if lane < params.HeadWidth {
+            var total: f32 = 0.0;
+            for key in 0u..params.TokenCount {
+                let valueIndex: u32 = key * params.FusedWidth + 7680u + head * params.HeadWidth + lane;
+                total = total + Probabilities[key] * Qkv[valueIndex];
+            }
+            Attention[token * 3840u + head * params.HeadWidth + lane] = total;
+            if lane == 0u and ((token == 0u and head == 0u) or (token == 1023u and head == 29u)) {
+                var auditBase: u32 = 0u;
+                if token == 1023u { auditBase = 32u; }
+                let value0: f32 = Qkv[7680u + head * params.HeadWidth];
+                Audit[auditBase + 23u] = Probabilities[0u] * value0;
+                Audit[auditBase + 24u] = total;
+            }
+        }
+        return;
+    }
+}

@@ -2,7 +2,7 @@
 
 ## Outcome
 
-**MEANINGFUL PROGRESSION — IN PROGRESS — READY WITH REQUIRED ADAPTATIONS.**
+**SUCCESS — COMPLETE — READY TO RESUME M5B.**
 
 The complete registered SDSL-V production portfolio (40 assets) now compiles
 with the compiler-owned `ProductionVulkan14` contract: DXC's highest supported
@@ -33,8 +33,10 @@ PNG SHA-256, unchanged Prefetch allocation ceiling (`1,005,407,748` bytes),
 and unchanged serial M4 route.  Two post-migration runs measured 174.946 s and
 172.396 s rather than the accepted 165.439 s.  GPU accounting on the first run
 localizes 2.495 s of additional GPU time, including 2.297 s in unchanged
-attention shaders.  This is a material unexplained target-legalization
-regression, so Mx5 cannot close successfully or promote M5b.
+attention shaders. This is a material target-legalization/driver-artifact
+regression. The owner has accepted it as the post-migration M4 baseline for
+M5b rather than a reason to weaken the Vulkan 1.4 platform contract. It is a
+tracked future performance investigation, not an Mx5 acceptance blocker.
 
 ## Controlled attention artifact experiment
 
@@ -112,11 +114,31 @@ warranted. The production toolchain remains pinned as previously recorded.
 
 ## M5b handoff
 
-After the target-legalization performance regression is isolated, resume
-subgroup attention using `ProductionVulkan14`, an RTX 3070 subgroup
+Resume subgroup attention using `ProductionVulkan14`, an RTX 3070 subgroup
 size of 32, and the already established operations
 `OpGroupNonUniformFMax` and `OpGroupNonUniformBroadcastFirst`.  Preserve the
 M4 serial route as the explicit fallback.  Do not reuse M5a's rejected
-256-thread topology.  First add the production SDSL-V subgroup proof and its
-capability admission test, then evaluate one 32-thread subgroup-row topology
-and the separately admitted multi-row-256 candidate.
+256-thread topology. The production SDSL-V subgroup proof and capability
+admission evidence are complete. Evaluate one 32-thread subgroup-row topology
+and the separately admitted multi-row-256 candidate against the recorded
+post-migration serial baseline; investigate the SPIR-V 1.6 driver-artifact
+regression separately and never restore Vulkan 1.0 as production policy.
+
+## Closeout validation and remaining limitations
+
+Mx5 closure re-ran the complete SDSL-V Go suite, the production-path subgroup
+probe, native manifest parity, RTX Vulkan runtime preflight with validation,
+JSON artifact parsing, and `git diff --check`. The native Windows build was
+completed for the restored default ProductionVulkan14 binary. Earlier accepted
+payload-backed authority remains final relative L2 `1.02005e-5` under `5e-5`
+and canonical Prefetch output remains the exact accepted PNG SHA-256.
+
+The only performance limitation carried forward is the observed SPIR-V 1.6
+driver-artifact regression: best post-migration serial wall time is 172.396 s
+against the historical 165.439 s baseline, with 2.297 s localized to attention
+in the first measured post-migration replay. It is recorded as the M5b
+comparison baseline and future toolchain/driver investigation. It does not
+alter the Vulkan 1.4 production contract, the numerical authority, or the
+explicit SerialCanonical fallback. The user-provided
+`nr0_attention_streaming_parallel.sdslv` remains unregistered experimental
+source for M5b; its full-workgroup reduction topology is not part of Mx5.
