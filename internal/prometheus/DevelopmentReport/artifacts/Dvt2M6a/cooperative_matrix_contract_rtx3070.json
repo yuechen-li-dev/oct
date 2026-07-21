@@ -1,0 +1,326 @@
+{
+  "schema": "prometheus.dvt2.m6a.cooperative-matrix-contract.v1",
+  "source_probe_schema": "prometheus.m40a.cooperative-matrix-probe.v1",
+  "device": "NVIDIA GeForce RTX 3070",
+  "driver": "596.36",
+  "extension_spec_version": 2,
+  "feature_enabled": true,
+  "compute_stage_supported": true,
+  "layout_reporting_note": "VkCooperativeMatrixPropertiesKHR reports component types, scope, dimensions, and saturation; it does not enumerate matrix layouts. Row/column are SPIR-V load/store operands, and M6A validates only row-major.",
+  "f16_f16_f32_f32_available": true,
+  "bf16_configurations": [
+    {
+      "scope": "subgroup",
+      "m": 16,
+      "n": 16,
+      "k": 16,
+      "a_type": "bfloat16",
+      "b_type": "bfloat16",
+      "c_type": "float32",
+      "result_type": "float32",
+      "saturating_accumulation": false,
+      "mma_usable": true
+    }
+  ],
+  "gemm_configurations": [
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 8,
+        "k": 8,
+        "a_type": "float16",
+        "b_type": "float16",
+        "c_type": "float16",
+        "result_type": "float16",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 8,
+        "k": 8,
+        "a_type": "float16",
+        "b_type": "float16",
+        "c_type": "float32",
+        "result_type": "float32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 8,
+        "k": 16,
+        "a_type": "float16",
+        "b_type": "float16",
+        "c_type": "float16",
+        "result_type": "float16",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 8,
+        "k": 16,
+        "a_type": "float16",
+        "b_type": "float16",
+        "c_type": "float32",
+        "result_type": "float32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 8,
+        "k": 32,
+        "a_type": "sint8",
+        "b_type": "sint8",
+        "c_type": "sint32",
+        "result_type": "sint32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 8,
+        "k": 32,
+        "a_type": "uint8",
+        "b_type": "uint8",
+        "c_type": "uint32",
+        "result_type": "uint32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 16,
+        "k": 16,
+        "a_type": "float16",
+        "b_type": "float16",
+        "c_type": "float16",
+        "result_type": "float16",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 16,
+        "k": 16,
+        "a_type": "float16",
+        "b_type": "float16",
+        "c_type": "float32",
+        "result_type": "float32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [
+        "row-major"
+      ],
+      "storage_contract": "A and B are row-major IEEE F16 pairs packed low-lane-first in u32 storage buffers; C/result is row-major F32; cooperative tiles stage through Workgroup memory",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "logical M, N, and K must each be divisible by 16; buffer ranges must cover the complete packed matrices",
+      "sdslv_route_supported": true
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 16,
+        "k": 16,
+        "a_type": "bfloat16",
+        "b_type": "bfloat16",
+        "c_type": "float32",
+        "result_type": "float32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 16,
+        "k": 32,
+        "a_type": "sint8",
+        "b_type": "sint8",
+        "c_type": "sint32",
+        "result_type": "sint32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    },
+    {
+      "configuration": {
+        "scope": "subgroup",
+        "m": 16,
+        "n": 16,
+        "k": 32,
+        "a_type": "uint8",
+        "b_type": "uint8",
+        "c_type": "uint32",
+        "result_type": "uint32",
+        "saturating_accumulation": false,
+        "mma_usable": true
+      },
+      "vulkan_extension": "VK_KHR_cooperative_matrix",
+      "vulkan_feature": "cooperativeMatrix",
+      "required_subgroup_size": 32,
+      "property_reported_layouts": [],
+      "spirv_load_store_layout_enumerants": [
+        "row-major",
+        "column-major"
+      ],
+      "m6a_validated_layouts": [],
+      "storage_contract": "not implemented by the bounded SDSL-V cooperative route",
+      "base_offset_alignment_bytes": 16,
+      "shape_alignment": "no M6A route admission contract",
+      "sdslv_route_supported": false
+    }
+  ]
+}

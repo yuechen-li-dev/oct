@@ -836,6 +836,13 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	metrics.uploadedWeightBytes += payload[0].byteCount
 	metrics.stageUploadedBytes[0] += payload[0].byteCount
 	if status != C.PROM_OK {
+		var sessionEvidence C.PrometheusCompiledModelSessionEvidence
+		if C.oct_prom_session_get_evidence(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), &sessionEvidence) == C.PROM_OK {
+			return 0, metrics, fmt.Errorf("bind NoiseRefiner0: detail=%d requested_attention_route=%d selected_attention_route=%d attention_shader_id=%d fallback_reason=%d",
+				int32(evidence.detail_code), uint32(sessionEvidence.requested_main_attention_route),
+				uint32(sessionEvidence.selected_main_attention_route), uint32(sessionEvidence.main_attention_shader_id),
+				uint32(sessionEvidence.main_attention_fallback_reason))
+		}
 		return 0, metrics, fmt.Errorf("bind NoiseRefiner0: detail=%d", int32(evidence.detail_code))
 	}
 	nextPrefetch := reactor.prefetch(1, payload[1])

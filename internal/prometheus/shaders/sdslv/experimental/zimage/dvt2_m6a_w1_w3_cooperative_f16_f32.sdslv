@@ -1,0 +1,38 @@
+namespace Prometheus.Experimental.ZImage;
+
+// DVT2-M6A only: fixed real layer W1/W3 contraction contract.
+// A is the explicitly packed FP16 activation [M,K], B is the existing
+// streamed FP16 row-major weight cache [K,N], C and accumulation are FP32.
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream Dvt2M6aCooperativeIO {
+    [binding(0)] A: readonly array<u32>;
+    [binding(1)] B: readonly array<u32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record Dvt2M6aCooperativeParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+shader Dvt2M6aW1W3CooperativeF16F32 {
+    resources Dvt2M6aCooperativeIO;
+
+    stage compute [numthreads(32, 1, 1)] fn CS(
+        thread: ComputeThread,
+        params: Dvt2M6aCooperativeParams
+    ) -> void {
+        CooperativeMatMul<F16F32M16N16K16Subgroup>(
+            A, B, C, thread.GroupId, thread.GroupIndex,
+            params.m, params.n, params.k
+        );
+        return;
+    }
+}

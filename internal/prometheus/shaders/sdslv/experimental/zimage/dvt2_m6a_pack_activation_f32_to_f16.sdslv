@@ -1,0 +1,31 @@
+namespace Prometheus.Experimental.ZImage;
+
+// DVT2-M6A only. Packs the authoritative live FP32 FFN activation once for
+// reuse by both W1 and W3. The fixed MainTransformer dimensions are still
+// supplied explicitly so the payload remains inspectable and non-production.
+stream PackActivationIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Output: readwrite array<u32>;
+}
+
+record PackActivationParams {
+    LogicalElements: u32;
+    PackedWords: u32;
+}
+
+shader Dvt2M6aPackActivationF32ToF16 {
+    resources PackActivationIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: PackActivationParams) -> void {
+        let word: u32 = DispatchThreadID.x;
+        if word >= params.PackedWords { return; }
+        let lowIndex: u32 = word * 2u;
+        let highIndex: u32 = lowIndex + 1u;
+        var low: f32 = 0.0;
+        var high: f32 = 0.0;
+        if lowIndex < params.LogicalElements { low = Input[lowIndex]; }
+        if highIndex < params.LogicalElements { high = Input[highIndex]; }
+        Output[word] = Pack<F16x2>(float2(low, high));
+        return;
+    }
+}

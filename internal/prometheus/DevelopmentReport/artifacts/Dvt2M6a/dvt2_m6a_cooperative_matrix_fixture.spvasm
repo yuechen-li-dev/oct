@@ -1,0 +1,203 @@
+; SPIR-V
+; Version: 1.6
+; Generator: Google spiregg; 0
+; Bound: 129
+; Schema: 0
+               OpCapability VulkanMemoryModel
+               OpCapability CooperativeMatrixKHR
+               OpCapability Shader
+               OpCapability Float16
+               OpCapability VulkanMemoryModel
+               OpExtension "SPV_KHR_cooperative_matrix"
+          %1 = OpExtInstImport "GLSL.std.450"
+               OpMemoryModel Logical Vulkan
+               OpEntryPoint GLCompute %Dvt2M6aCooperativeMatrixFixture_CS "Dvt2M6aCooperativeMatrixFixture_CS" %gl_WorkGroupID %gl_LocalInvocationIndex %__sdslv_cooperative_tile_a %__sdslv_cooperative_tile_b %A %B %C %params
+               OpExecutionMode %Dvt2M6aCooperativeMatrixFixture_CS LocalSize 32 1 1
+               OpSource HLSL 690
+               OpName %__sdslv_cooperative_tile_a "__sdslv_cooperative_tile_a"
+               OpName %__sdslv_cooperative_tile_b "__sdslv_cooperative_tile_b"
+               OpName %type_StructuredBuffer_uint "type.StructuredBuffer.uint"
+               OpName %A "A"
+               OpName %B "B"
+               OpName %type_RWStructuredBuffer_float "type.RWStructuredBuffer.float"
+               OpName %C "C"
+               OpName %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams "type.ConstantBuffer.Dvt2M6aCooperativeMatrixParams"
+               OpMemberName %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams 0 "m"
+               OpMemberName %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams 1 "n"
+               OpMemberName %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams 2 "k"
+               OpName %params "params"
+               OpName %Dvt2M6aCooperativeMatrixFixture_CS "Dvt2M6aCooperativeMatrixFixture_CS"
+               OpName %spirvIntrinsicType "spirvIntrinsicType"
+               OpName %spirvIntrinsicType_0 "spirvIntrinsicType"
+               OpName %spirvIntrinsicType_1 "spirvIntrinsicType"
+               OpDecorate %gl_WorkGroupID BuiltIn WorkgroupId
+               OpDecorate %gl_LocalInvocationIndex BuiltIn LocalInvocationIndex
+               OpDecorate %A DescriptorSet 0
+               OpDecorate %A Binding 0
+               OpDecorate %B DescriptorSet 0
+               OpDecorate %B Binding 1
+               OpDecorate %C DescriptorSet 0
+               OpDecorate %C Binding 2
+               OpDecorate %_runtimearr_uint ArrayStride 4
+               OpMemberDecorate %type_StructuredBuffer_uint 0 Offset 0
+               OpMemberDecorate %type_StructuredBuffer_uint 0 NonWritable
+               OpDecorate %type_StructuredBuffer_uint Block
+               OpDecorate %_runtimearr_float ArrayStride 4
+               OpMemberDecorate %type_RWStructuredBuffer_float 0 Offset 0
+               OpDecorate %type_RWStructuredBuffer_float Block
+               OpMemberDecorate %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams 0 Offset 0
+               OpMemberDecorate %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams 1 Offset 4
+               OpMemberDecorate %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams 2 Offset 8
+               OpDecorate %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams Block
+        %int = OpTypeInt 32 1
+      %int_2 = OpConstant %int 2
+      %int_0 = OpConstant %int 0
+      %int_1 = OpConstant %int 1
+       %uint = OpTypeInt 32 0
+    %uint_16 = OpConstant %uint 16
+     %uint_3 = OpConstant %uint 3
+     %uint_2 = OpConstant %uint 2
+      %float = OpTypeFloat 32
+    %float_0 = OpConstant %float 0
+     %uint_0 = OpConstant %uint 0
+   %uint_256 = OpConstant %uint 256
+ %uint_65535 = OpConstant %uint 65535
+    %uint_32 = OpConstant %uint 32
+     %uint_1 = OpConstant %uint 1
+       %half = OpTypeFloat 16
+%_arr_half_uint_256 = OpTypeArray %half %uint_256
+%_ptr_Workgroup__arr_half_uint_256 = OpTypePointer Workgroup %_arr_half_uint_256
+%_runtimearr_uint = OpTypeRuntimeArray %uint
+%type_StructuredBuffer_uint = OpTypeStruct %_runtimearr_uint
+%_ptr_StorageBuffer_type_StructuredBuffer_uint = OpTypePointer StorageBuffer %type_StructuredBuffer_uint
+%_runtimearr_float = OpTypeRuntimeArray %float
+%type_RWStructuredBuffer_float = OpTypeStruct %_runtimearr_float
+%_ptr_StorageBuffer_type_RWStructuredBuffer_float = OpTypePointer StorageBuffer %type_RWStructuredBuffer_float
+%type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams = OpTypeStruct %uint %uint %uint
+%_ptr_PushConstant_type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams = OpTypePointer PushConstant %type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams
+     %v3uint = OpTypeVector %uint 3
+%_ptr_Input_v3uint = OpTypePointer Input %v3uint
+%_ptr_Input_uint = OpTypePointer Input %uint
+       %void = OpTypeVoid
+         %44 = OpTypeFunction %void
+%spirvIntrinsicType = OpTypeCooperativeMatrixKHR %float %uint_3 %uint_16 %uint_16 %uint_2
+%spirvIntrinsicType_0 = OpTypeCooperativeMatrixKHR %half %uint_3 %uint_16 %uint_16 %uint_0
+%spirvIntrinsicType_1 = OpTypeCooperativeMatrixKHR %half %uint_3 %uint_16 %uint_16 %uint_1
+%_ptr_PushConstant_uint = OpTypePointer PushConstant %uint
+       %bool = OpTypeBool
+%_ptr_StorageBuffer_uint = OpTypePointer StorageBuffer %uint
+    %v2float = OpTypeVector %float 2
+%_ptr_Workgroup_half = OpTypePointer Workgroup %half
+   %uint_264 = OpConstant %uint 264
+%_ptr_StorageBuffer_float = OpTypePointer StorageBuffer %float
+%__sdslv_cooperative_tile_a = OpVariable %_ptr_Workgroup__arr_half_uint_256 Workgroup
+%__sdslv_cooperative_tile_b = OpVariable %_ptr_Workgroup__arr_half_uint_256 Workgroup
+          %A = OpVariable %_ptr_StorageBuffer_type_StructuredBuffer_uint StorageBuffer
+          %B = OpVariable %_ptr_StorageBuffer_type_StructuredBuffer_uint StorageBuffer
+          %C = OpVariable %_ptr_StorageBuffer_type_RWStructuredBuffer_float StorageBuffer
+     %params = OpVariable %_ptr_PushConstant_type_ConstantBuffer_Dvt2M6aCooperativeMatrixParams PushConstant
+%gl_WorkGroupID = OpVariable %_ptr_Input_v3uint Input
+%gl_LocalInvocationIndex = OpVariable %_ptr_Input_uint Input
+%Dvt2M6aCooperativeMatrixFixture_CS = OpFunction %void None %44
+         %52 = OpLabel
+         %53 = OpLoad %v3uint %gl_WorkGroupID
+         %54 = OpLoad %uint %gl_LocalInvocationIndex
+         %55 = OpCompositeExtract %uint %53 0
+         %56 = OpIMul %uint %55 %uint_16
+         %57 = OpCompositeExtract %uint %53 1
+         %58 = OpIMul %uint %57 %uint_16
+         %59 = OpCompositeConstruct %spirvIntrinsicType %float_0
+               OpBranch %60
+         %60 = OpLabel
+         %61 = OpPhi %spirvIntrinsicType %59 %52 %62 %63
+         %64 = OpPhi %uint %uint_0 %52 %65 %63
+         %66 = OpAccessChain %_ptr_PushConstant_uint %params %int_2
+         %67 = OpLoad %uint %66
+         %68 = OpULessThan %bool %64 %67
+               OpLoopMerge %69 %63 DontUnroll
+               OpBranchConditional %68 %70 %69
+         %70 = OpLabel
+               OpBranch %71
+         %71 = OpLabel
+         %72 = OpPhi %uint %54 %70 %73 %74
+         %75 = OpULessThan %bool %72 %uint_256
+               OpLoopMerge %76 %74 Unroll
+               OpBranchConditional %75 %77 %76
+         %77 = OpLabel
+         %78 = OpUDiv %uint %72 %uint_16
+         %79 = OpUMod %uint %72 %uint_16
+         %80 = OpIAdd %uint %56 %78
+         %81 = OpIMul %uint %80 %67
+         %82 = OpIAdd %uint %81 %64
+         %83 = OpIAdd %uint %82 %79
+         %84 = OpIAdd %uint %64 %78
+         %85 = OpAccessChain %_ptr_PushConstant_uint %params %int_1
+         %86 = OpLoad %uint %85
+         %87 = OpIMul %uint %84 %86
+         %88 = OpIAdd %uint %87 %58
+         %89 = OpIAdd %uint %88 %79
+         %90 = OpUDiv %uint %83 %uint_2
+         %91 = OpAccessChain %_ptr_StorageBuffer_uint %A %int_0 %90
+         %92 = OpLoad %uint %91
+         %93 = OpUDiv %uint %89 %uint_2
+         %94 = OpAccessChain %_ptr_StorageBuffer_uint %B %int_0 %93
+         %95 = OpLoad %uint %94
+         %96 = OpUMod %uint %83 %uint_2
+         %97 = OpIEqual %bool %96 %uint_0
+               OpSelectionMerge %98 None
+               OpBranchConditional %97 %99 %100
+         %99 = OpLabel
+        %101 = OpBitwiseAnd %uint %92 %uint_65535
+               OpBranch %98
+        %100 = OpLabel
+        %102 = OpShiftRightLogical %uint %92 %uint_16
+               OpBranch %98
+         %98 = OpLabel
+        %103 = OpPhi %uint %101 %99 %102 %100
+        %104 = OpExtInst %v2float %1 UnpackHalf2x16 %103
+        %105 = OpCompositeExtract %float %104 0
+        %106 = OpFConvert %half %105
+        %107 = OpAccessChain %_ptr_Workgroup_half %__sdslv_cooperative_tile_a %72
+               OpStore %107 %106 MakePointerAvailable|NonPrivatePointer %uint_2
+        %108 = OpUMod %uint %89 %uint_2
+        %109 = OpIEqual %bool %108 %uint_0
+               OpSelectionMerge %110 None
+               OpBranchConditional %109 %111 %112
+        %111 = OpLabel
+        %113 = OpBitwiseAnd %uint %95 %uint_65535
+               OpBranch %110
+        %112 = OpLabel
+        %114 = OpShiftRightLogical %uint %95 %uint_16
+               OpBranch %110
+        %110 = OpLabel
+        %115 = OpPhi %uint %113 %111 %114 %112
+        %116 = OpExtInst %v2float %1 UnpackHalf2x16 %115
+        %117 = OpCompositeExtract %float %116 0
+        %118 = OpFConvert %half %117
+        %119 = OpAccessChain %_ptr_Workgroup_half %__sdslv_cooperative_tile_b %72
+               OpStore %119 %118 MakePointerAvailable|NonPrivatePointer %uint_2
+               OpBranch %74
+         %74 = OpLabel
+         %73 = OpIAdd %uint %72 %uint_32
+               OpBranch %71
+         %76 = OpLabel
+               OpControlBarrier %uint_2 %uint_2 %uint_264
+        %120 = OpAccessChain %_ptr_Workgroup_half %__sdslv_cooperative_tile_a %int_0
+        %121 = OpCooperativeMatrixLoadKHR %spirvIntrinsicType_0 %120 %int_0 %uint_16 MakePointerVisible|NonPrivatePointer %int_2
+        %122 = OpAccessChain %_ptr_Workgroup_half %__sdslv_cooperative_tile_b %int_0
+        %123 = OpCooperativeMatrixLoadKHR %spirvIntrinsicType_1 %122 %int_0 %uint_16 MakePointerVisible|NonPrivatePointer %int_2
+         %62 = OpCooperativeMatrixMulAddKHR %spirvIntrinsicType %121 %123 %61 NoneKHR
+               OpControlBarrier %uint_2 %uint_2 %uint_264
+               OpBranch %63
+         %63 = OpLabel
+         %65 = OpIAdd %uint %64 %uint_16
+               OpBranch %60
+         %69 = OpLabel
+        %124 = OpAccessChain %_ptr_PushConstant_uint %params %int_1
+        %125 = OpLoad %uint %124
+        %126 = OpIMul %uint %56 %125
+        %127 = OpIAdd %uint %126 %58
+        %128 = OpAccessChain %_ptr_StorageBuffer_float %C %int_0 %127
+               OpCooperativeMatrixStoreKHR %128 %61 %int_0 %125 None
+               OpReturn
+               OpFunctionEnd

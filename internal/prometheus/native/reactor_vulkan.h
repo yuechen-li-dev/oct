@@ -4,6 +4,7 @@
 #include "reactor_api.h"
 #include "reactor_batch.h"
 #include "reactor_numerical_research.h"
+#include "reactor_shader_registry.h"
 #include "reactor_sgemm_dispatch_metadata.h"
 #include <vulkan/vulkan.h>
 
@@ -94,6 +95,8 @@ const char* prom_main_attention_route_select(uint32_t requested_route,
                                              uint32_t head_width, uint32_t fused_width,
                                              uint32_t output_stride, uint32_t dispatch_groups,
                                              prom_main_attention_route_decision* out_decision);
+const char* prom_main_attention_route_asset_rejection_reason(
+    const prom_main_attention_route_decision* decision, const prom_shader_asset* asset);
 
 /* Test/audit-only request. This is never accepted by policy or the production
    shader registry; it supplies one temporary pipeline to the existing SGEMM
@@ -3439,6 +3442,10 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
                                                     uint64_t* out_samples_ns,
                                                     uint32_t sample_capacity,
                                                     prom_sgemm_audit_execution_result* out_result);
+
+/* DVT2-M6A test-only mapped capture. Production builds return NULL. */
+const float* prom_model_block_m6a_raw_audit_data(void* handle, uint64_t block_id,
+                                                 uint64_t* out_element_count);
 int prom_reactor_runtime_sgemm_placement_benchmark_impl(void* handle,
                                                         const float* a,
                                                         const float* b,

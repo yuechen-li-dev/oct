@@ -58,6 +58,8 @@
 #include "reactor_vulkan_zimage_main_transformer_joint_qk_norm_rope_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_ffn_w1_w3_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_ffn_gate_spirv.h"
+#include "../shaders/sdslv/experimental/zimage/dvt2_m6a_pack_activation_f32_to_f16_spirv.h"
+#include "../shaders/sdslv/experimental/zimage/dvt2_m6a_w1_w3_cooperative_f16_f32_spirv.h"
 
 extern const uint32_t k_prom_sgemm_spirv[];
 extern const size_t k_prom_sgemm_spirv_size_bytes;
@@ -268,6 +270,18 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_ffn_gate.sdslv",
     "reactor_vulkan_zimage_main_transformer_ffn_gate_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 4u, 16u, 0u, 1u, 10813440u },
+  { 50u, "dvt2-m6a-pack-activation-f32-to-f16", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_dvt2_m6a_pack_activation_spirv, sizeof(k_prom_dvt2_m6a_pack_activation_spirv),
+    "Dvt2M6aPackActivationF32ToF16_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/experimental/zimage/dvt2_m6a_pack_activation_f32_to_f16.sdslv",
+    "../shaders/sdslv/experimental/zimage/dvt2_m6a_pack_activation_f32_to_f16_spirv.h", 1u, 0u, 0u, NULL,
+    PROM_SHADER_AUTHORITY_EXPERIMENTAL, 2u, 8u, 0u, 1u, 4055040u },
+  { 51u, "dvt2-m6a-w1-w3-cooperative-f16-f32", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_dvt2_m6a_w1_w3_cooperative_spirv, sizeof(k_prom_dvt2_m6a_w1_w3_cooperative_spirv),
+    "Dvt2M6aW1W3CooperativeF16F32_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/experimental/zimage/dvt2_m6a_w1_w3_cooperative_f16_f32.sdslv",
+    "../shaders/sdslv/experimental/zimage/dvt2_m6a_w1_w3_cooperative_f16_f32_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_EXPERIMENTAL, 3u, 12u, 0u, 1056u, 10240u },
 };
 
 #define REDUCTION_ASSET(id, label, words, entry, source, header, inline_count, role, max_width) \
@@ -392,6 +406,24 @@ uint32_t prom_shader_registry_validate_tables(const prom_shader_asset* assets, s
   for (size_t i=0u;i<asset_count;++i) { const prom_shader_asset* a=&assets[i]; if(a->shader_id==0u||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->entry_point==NULL||a->entry_point[0]=='\0'||a->spirv_words==NULL||a->spirv_size_bytes==0u||(a->spirv_size_bytes%sizeof(uint32_t))!=0u||(a->contains_inline_hlsl==0u&&a->inline_hlsl_block_count!=0u)||(a->contains_inline_hlsl!=0u&&(a->inline_hlsl_block_count==0u||a->foreign_targets==NULL||a->foreign_targets[0]=='\0'))) return 0u; for(size_t j=i+1u;j<asset_count;++j) if(a->shader_id==assets[j].shader_id) return 0u; }
   for (size_t i=0u;i<implementation_count;++i) { const prom_compute_implementation* c=&implementations[i]; const prom_shader_asset* a=NULL; for(size_t k=0u;k<asset_count;++k) if(assets[k].shader_id==c->shader_id) { a=&assets[k]; break; } if(c->implementation_id==0u||a==NULL||a->stage!=PROM_SHADER_STAGE_COMPUTE||a->authority!=c->authority||(c->selector_eligible!=0u&&c->dispatchable==0u)||(c->benchmark_enabled!=0u&&c->dispatchable==0u)) return 0u; if(c->operation_id==PROM_SHADER_OPERATION_SGEMM){if(c->dispatch==NULL||c->pipeline_slot>=PROM_COMPUTE_PIPELINE_COUNT||c->pipeline_family!=PROM_COMPUTE_PIPELINE_FAMILY_SGEMM)return 0u;}else if(c->operation_id==PROM_SHADER_OPERATION_REDUCTION_SUM||c->operation_id==PROM_SHADER_OPERATION_REDUCTION_MAX||c->operation_id==PROM_SHADER_OPERATION_SOFTMAX){if(c->reduction_dispatch==NULL||c->pipeline_family!=PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION||c->selector_eligible!=0u)return 0u;}else{return 0u;} for(size_t j=i+1u;j<implementation_count;++j) if(c->implementation_id==implementations[j].implementation_id) return 0u; } return 1u;
 }
-uint32_t prom_shader_registry_validate(void) { if(!prom_shader_registry_validate_tables(k_shader_assets, prom_shader_registry_shader_asset_count(), k_compute_implementations, prom_shader_registry_compute_implementation_count()))return 0u; if(!prom_shader_registry_validate_tables(k_reduction_shader_assets, prom_shader_registry_reduction_shader_asset_count(), k_reduction_compute_implementations, prom_shader_registry_reduction_compute_implementation_count()))return 0u; for(size_t i=0u;i<prom_shader_registry_shader_asset_count();++i)for(size_t j=0u;j<prom_shader_registry_reduction_shader_asset_count();++j)if(k_shader_assets[i].shader_id==k_reduction_shader_assets[j].shader_id)return 0u; for(size_t i=0u;i<prom_shader_registry_compute_implementation_count();++i)for(size_t j=0u;j<prom_shader_registry_reduction_compute_implementation_count();++j)if(k_compute_implementations[i].implementation_id==k_reduction_compute_implementations[j].implementation_id)return 0u; return 1u; }
+uint32_t prom_shader_registry_validate(void) {
+  const prom_shader_asset* serial;
+  const prom_shader_asset* subgroup_owned;
+  if(!prom_shader_registry_validate_tables(k_shader_assets, prom_shader_registry_shader_asset_count(), k_compute_implementations, prom_shader_registry_compute_implementation_count()))return 0u;
+  if(!prom_shader_registry_validate_tables(k_reduction_shader_assets, prom_shader_registry_reduction_shader_asset_count(), k_reduction_compute_implementations, prom_shader_registry_reduction_compute_implementation_count()))return 0u;
+  for(size_t i=0u;i<prom_shader_registry_shader_asset_count();++i)for(size_t j=0u;j<prom_shader_registry_reduction_shader_asset_count();++j)if(k_shader_assets[i].shader_id==k_reduction_shader_assets[j].shader_id)return 0u;
+  for(size_t i=0u;i<prom_shader_registry_compute_implementation_count();++i)for(size_t j=0u;j<prom_shader_registry_reduction_compute_implementation_count();++j)if(k_compute_implementations[i].implementation_id==k_reduction_compute_implementations[j].implementation_id)return 0u;
+  serial = prom_shader_registry_find_shader(41u);
+  subgroup_owned = prom_shader_registry_find_shader(49u);
+  if (serial == NULL || subgroup_owned == NULL ||
+      serial->authority != PROM_SHADER_AUTHORITY_PRODUCTION ||
+      subgroup_owned->authority != PROM_SHADER_AUTHORITY_PRODUCTION ||
+      serial->source_language != PROM_SHADER_SOURCE_SDSLV ||
+      subgroup_owned->source_language != PROM_SHADER_SOURCE_SDSLV ||
+      strcmp(serial->source_path, "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_streaming.sdslv") != 0 ||
+      strcmp(subgroup_owned->source_path, "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_builtin_topology.sdslv") != 0)
+    return 0u;
+  return 1u;
+}
 void prom_shader_registry_initialize_pipeline_instances(prom_compute_pipeline_instance* instances,size_t count,const VkPipeline* pipelines,size_t pipeline_count) { for(size_t i=0u;i<count;++i){ instances[i].implementation=prom_shader_registry_compute_implementation_at(i); instances[i].pipeline=VK_NULL_HANDLE; instances[i].status=PROM_PIPELINE_UNAVAILABLE; instances[i].failure_detail=0; if(instances[i].implementation!=NULL&&instances[i].implementation->pipeline_slot<pipeline_count){instances[i].pipeline=pipelines[instances[i].implementation->pipeline_slot];instances[i].status=instances[i].pipeline!=VK_NULL_HANDLE?PROM_PIPELINE_READY:PROM_PIPELINE_FAILED;} } }
 VkPipeline prom_shader_registry_pipeline_for_variant(const prom_compute_pipeline_instance* instances,size_t count,uint32_t id) { for(size_t i=0u;i<count;++i) if(instances[i].implementation!=NULL&&instances[i].implementation->implementation_id==id&&instances[i].status==PROM_PIPELINE_READY) return instances[i].pipeline; return VK_NULL_HANDLE; }

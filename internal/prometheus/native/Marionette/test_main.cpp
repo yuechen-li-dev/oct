@@ -19,7 +19,7 @@ namespace
 int main(int argc, char** argv)
 {
     if (argc >= 1 && argv[0] != nullptr) {
-        ::marionette::tests::SetMarionetteExecutablePath(std::filesystem::path(argv[0]));
+        ::marionette::tests::SetMarionetteExecutablePath(std::filesystem::absolute(std::filesystem::path(argv[0])));
     }
 
     const std::string_view mode = ArgOrEmpty(argc, argv, 1);

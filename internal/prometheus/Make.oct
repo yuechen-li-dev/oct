@@ -52,6 +52,10 @@ fn Plan() -> Make.Plan {
                 Deps: ["M5bBtReactor", "M5bBtTests"]
             },
             Make.PhonyTarget {
+                Name: "BuildM6aCooperativeExperimental"
+                Deps: ["M6aReactor", "M6aTests"]
+            },
+            Make.PhonyTarget {
                 Name: "TestNative"
                 Deps: ["RunSmoke"]
             }
@@ -99,6 +103,18 @@ fn NativePlan() -> Make.NativePlan {
             Make.NativeTarget {
                 Name: "M5bBtTests" Variant: "M5bBuiltinTopologyExperimental" Kind: Make.NativeKind.Executable Language: Make.NativeLanguage.Cpp
                 Sources: ["native/Marionette/test_main.cpp"] Manifest: "native/native_manifest.json" ManifestSection: "native_test_sources" Inputs: ["native/native_manifest.json", "native/Marionette/test_harness.h"] Deps: ["M5bBtObjects"] IncludeDirs: ["native", "native/Marionette"] Defines: ["MARIONETTE_EXCLUDE_SLOW_TESTS", "MARIONETTE_EXCLUDE_BENCHMARK_TESTS", "PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT"] ProjectRootStringDefines: ["MARIONETTE_TEST_REPO_ROOT"] Standard: "c++23" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/M5bBuiltinTopologyExperimental/marionette_tests" InstallCopies: []
+            },
+            Make.NativeTarget {
+                Name: "M6aObjects" Variant: "M6aCooperativeExperimental" Kind: Make.NativeKind.ObjectSet Language: Make.NativeLanguage.C
+                Sources: [] Manifest: "native/native_manifest.json" ManifestSection: "production_sources" Inputs: ["native/native_manifest.json", "native/reactor_api.h", "native/reactor_vulkan.h"] Deps: [] IncludeDirs: ["native"] Defines: ["PROMETHEUS_REACTOR_BUILD_DLL", "PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT"] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: [] Output: "" InstallCopies: []
+            },
+            Make.NativeTarget {
+                Name: "M6aReactor" Variant: "M6aCooperativeExperimental" Kind: Make.NativeKind.SharedLibrary Language: Make.NativeLanguage.C
+                Sources: [] Manifest: "" ManifestSection: "" Inputs: [] Deps: ["M6aObjects"] IncludeDirs: ["native"] Defines: [] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/M6aCooperativeExperimental/prometheus_reactor.so" InstallCopies: []
+            },
+            Make.NativeTarget {
+                Name: "M6aTests" Variant: "M6aCooperativeExperimental" Kind: Make.NativeKind.Executable Language: Make.NativeLanguage.Cpp
+                Sources: ["native/Marionette/test_main.cpp"] Manifest: "native/native_manifest.json" ManifestSection: "native_test_sources" Inputs: ["native/native_manifest.json", "native/Marionette/test_harness.h"] Deps: ["M6aObjects"] IncludeDirs: ["native", "native/Marionette"] Defines: ["MARIONETTE_EXCLUDE_SLOW_TESTS", "MARIONETTE_EXCLUDE_BENCHMARK_TESTS", "PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT"] ProjectRootStringDefines: ["MARIONETTE_TEST_REPO_ROOT"] Standard: "c++23" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/M6aCooperativeExperimental/marionette_tests" InstallCopies: []
             }
         ]
     }

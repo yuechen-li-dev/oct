@@ -102,6 +102,8 @@ struct ComparisonMetrics {
     double linf = 0.0;
     double relativeL2 = 0.0;
     std::uint64_t firstMismatch = 0u;
+    std::uint64_t nonFiniteCount = 0u;
+    double maximumRelativeError = 0.0;
     bool finite = true;
 };
 
@@ -123,10 +125,15 @@ ComparisonMetrics compare_float_region(const float* actual, const std::vector<st
                     sizeof(reference));
         const float value = actual[startElement + offset];
         const double difference = static_cast<double>(value) - static_cast<double>(reference);
-        metrics.finite = metrics.finite && std::isfinite(value) && std::isfinite(reference);
+        const bool finite = std::isfinite(value) && std::isfinite(reference);
+        metrics.finite = metrics.finite && finite;
+        if (!finite) ++metrics.nonFiniteCount;
         errorSquares += difference * difference;
         referenceSquares += static_cast<double>(reference) * static_cast<double>(reference);
         metrics.linf = std::max(metrics.linf, std::fabs(difference));
+        metrics.maximumRelativeError = std::max(
+            metrics.maximumRelativeError,
+            std::fabs(difference) / std::max(std::fabs(static_cast<double>(reference)), 1.0e-6));
         if (metrics.firstMismatch == elementCount && value != reference) metrics.firstMismatch = offset;
     }
     metrics.l2 = std::sqrt(errorSquares);
@@ -1734,8 +1741,48 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     mainExecute.timestep_bytes = timestep.size();
     mainExecute.timestep_identity = 0xbc0ba90e94f5ae98ull;
     mainExecute.output_identity = 0x4d32435f6d61696eull;
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(runtime, mainBlockID, &mainExecute, &evidence),
+    const int mainExecuteStatus = prometheus_reactor_runtime_main_transformer_execute(
+        runtime, mainBlockID, &mainExecute, &evidence);
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+    std::cout << "M6A first_execute_status=" << mainExecuteStatus
+              << " detail=" << evidence.detail_code
+              << " gpu_compute_ns=" << evidence.gpu_compute_ns
+              << " peak_plan_bytes=" << evidence.peak_plan_bytes << "\n";
+#endif
+    ASSERT_EQUAL(PROM_OK, mainExecuteStatus,
                  "MainTransformer0 consumes real retained JointWorking without host activation bounce");
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+    if (std::getenv("OCT_DVT2_M6A_CAPTURE_RAW") != nullptr && mainExecuteStatus == PROM_OK) {
+        std::uint64_t rawElementCount = 0u;
+        const float* raw = prom_model_block_m6a_raw_audit_data(runtime, mainBlockID, &rawElementCount);
+        ASSERT_TRUE(raw != nullptr && rawElementCount == 3ull * 1056ull * 10240ull,
+                    "M6A raw capture buffer is host-visible after bounded execution");
+        if (raw != nullptr) {
+            constexpr std::uint64_t hiddenElements = 1056ull * 10240ull;
+            const std::filesystem::path rawStages = cacheRoot / "canonical" /
+                "f332072aa78be7aecdf3ee76d5c247082da564a6" / "m2c-fp32-reference" /
+                "layers.0" / "stages";
+            const auto rawW1Reference = read_binary_file(rawStages / "w1.f32.bin");
+            const auto rawW3Reference = read_binary_file(rawStages / "w3.f32.bin");
+            const auto gateReference = read_binary_file(rawStages / "gated_hidden.f32.bin");
+            const auto rawW1 = compare_float_region(raw, rawW1Reference, 0u, hiddenElements);
+            const auto rawW3 = compare_float_region(raw + hiddenElements, rawW3Reference, 0u, hiddenElements);
+            const auto gated = compare_float_region(raw + hiddenElements * 2u, gateReference, 0u, hiddenElements);
+            const auto printRaw = [](const char* stage, const ComparisonMetrics& metrics) {
+                std::cout << "M6A numerical_stage=" << stage
+                          << " relative_l2=" << metrics.relativeL2
+                          << " linf=" << metrics.linf
+                          << " maximum_relative_error_guard_1e-6=" << metrics.maximumRelativeError
+                          << " non_finite_count=" << metrics.nonFiniteCount << '\n';
+            };
+            printRaw("raw_w1", rawW1);
+            printRaw("raw_w3", rawW3);
+            printRaw("post_silu_gate", gated);
+            ASSERT_TRUE(rawW1.finite && rawW3.finite && gated.finite,
+                        "M6A raw W1, raw W3, and gated intermediate are finite");
+        }
+    }
+#endif
     const std::uint64_t mainOutputGeneration = evidence.output_generation;
     std::vector<float> finalJoint(1056u * 3840u);
     PrometheusMainTransformerFinalAuditRequest finalAudit{};
@@ -1758,7 +1805,10 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     const ComparisonMetrics lastImageToken = compare_float_region(finalJoint.data(), referenceJoint, 1023u * 3840u, 3840u);
     const ComparisonMetrics firstContextToken = compare_float_region(finalJoint.data(), referenceJoint, 1024u * 3840u, 3840u);
     std::cout << "M2C final_joint finite=" << joint.finite << " relative_l2=" << joint.relativeL2
-              << " linf=" << joint.linf << " accepted_threshold=5e-5 first_mismatch=" << joint.firstMismatch << "\n";
+              << " linf=" << joint.linf
+              << " maximum_relative_error_guard_1e-6=" << joint.maximumRelativeError
+              << " non_finite_count=" << joint.nonFiniteCount
+              << " accepted_threshold=5e-5 first_mismatch=" << joint.firstMismatch << "\n";
     std::cout << "M2C image_region relative_l2=" << image.relativeL2 << " linf=" << image.linf
               << " context_region_relative_l2=" << contextRegion.relativeL2 << " context_region_linf=" << contextRegion.linf
               << " last_image_token_relative_l2=" << lastImageToken.relativeL2
@@ -1818,6 +1868,89 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
               << " p95=" << sortedWarm[9u] << " gpu_median="
               << (sortedWarmGpu[4u] + sortedWarmGpu[5u]) / 2u
               << " gpu_mean=" << mean_ns(warmGpuNs) << " churn=zero\n";
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+    if (const char* alternatingM6a = std::getenv("OCT_DVT2_M6A_ALTERNATING");
+        alternatingM6a != nullptr && std::string(alternatingM6a) == "1") {
+        std::array<std::uint64_t, 20> canonicalTotal{}, cooperativeTotal{};
+        std::array<std::uint64_t, 20> canonicalContraction{}, cooperativeContraction{};
+        std::array<std::uint64_t, 20> canonicalEpilogue{}, cooperativeEpilogue{};
+        std::array<std::uint64_t, 20> cooperativePack{}, cooperativeExecute{}, cooperativeRepack{};
+        const auto selectM6a = [](const char* route) {
+#ifdef _WIN32
+            _putenv_s("OCT_DVT2_M6A_W1W3_ROUTE", route);
+#else
+            setenv("OCT_DVT2_M6A_W1W3_ROUTE", route, 1);
+#endif
+        };
+        const auto runM6a = [&](const char* route, std::uint64_t* total,
+                                std::uint64_t* contraction, std::uint64_t* epilogue) {
+            selectM6a(route);
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(
+                                      runtime, mainBlockID, &mainExecute, &evidence),
+                         "alternating M6A route executes the retained layer-0 boundary");
+            *total = evidence.last_execution_ns;
+            *contraction = evidence.main_stage_gpu_ns[10u];
+            *epilogue = evidence.main_stage_gpu_ns[11u];
+        };
+        for (std::uint32_t warm = 0u; warm < 4u; ++warm) {
+            std::uint64_t discarded = 0u;
+            runM6a("canonical", &discarded, &discarded, &discarded);
+            runM6a("cooperative", &discarded, &discarded, &discarded);
+        }
+        for (std::uint32_t sample = 0u; sample < canonicalTotal.size(); ++sample) {
+            runM6a("canonical", &canonicalTotal[sample], &canonicalContraction[sample],
+                    &canonicalEpilogue[sample]);
+            runM6a("cooperative", &cooperativeTotal[sample], &cooperativeContraction[sample],
+                    &cooperativeEpilogue[sample]);
+            cooperativePack[sample] = evidence.m6a_activation_pack_gpu_ns;
+            cooperativeExecute[sample] = evidence.m6a_cooperative_execute_gpu_ns;
+            cooperativeRepack[sample] = evidence.m6a_w3_segment_repack_gpu_ns;
+        }
+        const auto printM6a = [](const char* label, const auto& values) {
+            std::cout << label << '=';
+            for (std::size_t index = 0u; index < values.size(); ++index) {
+                if (index != 0u) std::cout << ',';
+                std::cout << values[index];
+            }
+            std::cout << '\n';
+        };
+        std::cout << "M6A alternating_warmup_pairs=4 measured_pairs=20 "
+                     "candidate_payloads=50,51 canonical_payload=42 attention_payload=49\n";
+        printM6a("M6A canonical_total_ns", canonicalTotal);
+        printM6a("M6A cooperative_total_ns", cooperativeTotal);
+        printM6a("M6A canonical_w1_w3_ns", canonicalContraction);
+        printM6a("M6A cooperative_pack_w1_w3_repack_ns", cooperativeContraction);
+        printM6a("M6A cooperative_activation_pack_ns", cooperativePack);
+        printM6a("M6A cooperative_matrix_execute_ns", cooperativeExecute);
+        printM6a("M6A cooperative_w3_segment_repack_ns", cooperativeRepack);
+        printM6a("M6A canonical_fp32_epilogue_ns", canonicalEpilogue);
+        printM6a("M6A cooperative_fp32_epilogue_ns", cooperativeEpilogue);
+        selectM6a("cooperative");
+        std::vector<float> replayA(finalJoint.size()), replayB(finalJoint.size());
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(
+                                  runtime, mainBlockID, &mainExecute, &evidence),
+                     "M6A deterministic replay A executes");
+        finalAudit.required_output_generation = evidence.output_generation;
+        finalAudit.output_identity = 0x4d36415f72657041ull;
+        finalAudit.output = replayA.data();
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_audit_final(
+                                  runtime, mainBlockID, &finalAudit, &evidence),
+                     "M6A deterministic replay A reads back");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(
+                                  runtime, mainBlockID, &mainExecute, &evidence),
+                     "M6A deterministic replay B executes");
+        finalAudit.required_output_generation = evidence.output_generation;
+        finalAudit.output_identity = 0x4d36415f72657042ull;
+        finalAudit.output = replayB.data();
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_audit_final(
+                                  runtime, mainBlockID, &finalAudit, &evidence),
+                     "M6A deterministic replay B reads back");
+        const bool deterministic = std::memcmp(replayA.data(), replayB.data(),
+                                                replayA.size() * sizeof(float)) == 0;
+        std::cout << "M6A deterministic_replay_bitwise_equal=" << deterministic << '\n';
+        ASSERT_TRUE(deterministic, "M6A cooperative completed layer output replays bitwise exactly");
+    }
+#endif
     if (const char* alternating = std::getenv("OCT_EVT2_M5B_ALTERNATING");
         alternating != nullptr && std::string(alternating) == "1") {
         const auto run_route = [&](std::uint32_t route, bool audit, std::uint32_t sample,

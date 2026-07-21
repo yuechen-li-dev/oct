@@ -1,0 +1,43 @@
+namespace Prometheus.Dvt2M6a;
+
+// Compile-only proof for the exact M6A arithmetic contract. This fixture is
+// not a production payload and is never registered for runtime selection.
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
+stream Dvt2M6aCooperativeMatrixIO {
+    [binding(0)] A: readonly array<u32>;
+    [binding(1)] B: readonly array<u32>;
+    [binding(2)] C: readwrite array<f32>;
+}
+
+record Dvt2M6aCooperativeMatrixParams {
+    m: u32;
+    n: u32;
+    k: u32;
+}
+
+shader Dvt2M6aCooperativeMatrixFixture {
+    resources Dvt2M6aCooperativeMatrixIO;
+
+    stage compute [numthreads(32, 1, 1)] fn CS(
+        thread: ComputeThread,
+        params: Dvt2M6aCooperativeMatrixParams
+    ) -> void {
+        CooperativeMatMul<F16F32M16N16K16Subgroup>(
+            A,
+            B,
+            C,
+            thread.GroupId,
+            thread.GroupIndex,
+            params.m,
+            params.n,
+            params.k
+        );
+        return;
+    }
+}

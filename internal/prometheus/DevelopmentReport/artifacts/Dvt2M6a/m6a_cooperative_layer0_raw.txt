@@ -1,0 +1,11 @@
+[RUN] PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer
+M6A first_execute_status=0 detail=0 gpu_compute_ns=364528672 peak_plan_bytes=694950916
+M2C final_joint finite=1 relative_l2=4.65441e-06 linf=0.00247192 accepted_threshold=5e-5 first_mismatch=0
+M2C image_region relative_l2=4.33112e-06 linf=0.000293732 context_region_relative_l2=4.84882e-06 context_region_linf=0.00247192 last_image_token_relative_l2=4.87137e-06 first_context_token_relative_l2=6.31246e-06
+M2D static_final finite=1 relative_l2=4.65441e-06 linf=0.00247192 accepted_threshold=5e-5
+M2C warm_ns=366976200,373624500,371708800,372382900,375852700,369516400,370723700,374125000,372990800,371919400
+M2C warm_stats_ns median=372151150 mean=3.71982e+08 min=366976200 p95=375852700 gpu_median=371766976 gpu_mean=3.71638e+08 churn=zero
+M2C bounded_m5b=1 route=3 shader_id=49
+[PASS] PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer
+
+Summary: 1 test(s), 1 passed, 0 skipped, 0 failed, 0 assertion failure(s)

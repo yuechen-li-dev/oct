@@ -1,4 +1,5 @@
 #include "../reactor_vulkan_sgemm_internal.h"
+#include "test_doom.h"
 #include "test_harness.h"
 
 #include <array>
@@ -27,9 +28,34 @@ bool valid(std::vector<prom_shader_asset>& a, std::vector<prom_compute_implement
 std::string read_file(const std::filesystem::path& path) { std::ifstream file(path); return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()); }
 }
 
+DOOM_FACT(PrometheusForcedAttentionRouteRejectionReturnsOrdinaryExit)
+{
+  prom_main_attention_route_decision decision{};
+  decision.selected_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
+  decision.shader_id = 41u;
+  prom_shader_asset rejected = *prom_shader_registry_find_shader(41u);
+  rejected.authority = PROM_SHADER_AUTHORITY_EXPERIMENTAL;
+  const char* reason = prom_main_attention_route_asset_rejection_reason(&decision, &rejected);
+  if (reason == nullptr || std::strcmp(reason, "selected main attention shader lacks production authority") != 0) std::exit(36);
+  FORETELL_DOOM(reason);
+  std::exit(7);
+}
+
+FACT(PrometheusForcedAttentionRouteRejectionIsAnOrdinaryProcessFailure)
+{
+  const auto result = marionette::tests::RunDoomCaseSubprocess(
+      "PrometheusForcedAttentionRouteRejectionReturnsOrdinaryExit",
+      context.ArtifactDirectory() / "forced-route-rejection-child");
+  ASSERT_TRUE(result.launched, "forced-route rejection child launches");
+  ASSERT_EQUAL(7, result.exitCode, "forced-route rejection returns an ordinary nonzero exit status");
+  ASSERT_EQUAL(0, result.signalNumber, "forced-route rejection is not an access violation or signal");
+  ASSERT_EQUAL(std::string("selected main attention shader lacks production authority"), result.foretelling,
+               "forced-route rejection preserves the precise structured reason");
+}
+
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(41), prom_shader_registry_shader_asset_count(), "registered assets must include both production MainTransformer attention routes and isolated experimental M5b/Gemini/builtin-topology routes");
+  ASSERT_EQUAL(static_cast<std::size_t>(44), prom_shader_registry_shader_asset_count(), "registered assets must include the production routes and isolated experimental M5b/M6A payloads");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
@@ -48,6 +74,14 @@ FACT(PrometheusSubgroupOwned32RouteSelectionIsStrictAndFallsBackOnlyForAuto) {
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, &services, 1u, 1u, 1u, 1u, 1u, 1u, &decision) == nullptr,
               "forced SerialCanonical does not depend on subgroup shape admission");
   ASSERT_EQUAL(41u, decision.shader_id, "SerialCanonical retains a distinct embedded payload identity");
+  ASSERT_TRUE(prom_main_attention_route_asset_rejection_reason(
+                  &decision, prom_shader_registry_find_shader(decision.shader_id)) == nullptr,
+              "forced SerialCanonical resolves only through its production registry asset");
+  prom_shader_asset rejectedSerial = *prom_shader_registry_find_shader(41u);
+  rejectedSerial.authority = PROM_SHADER_AUTHORITY_EXPERIMENTAL;
+  ASSERT_TRUE(std::strcmp(prom_main_attention_route_asset_rejection_reason(&decision, &rejectedSerial),
+                          "selected main attention shader lacks production authority") == 0,
+              "forced SerialCanonical authority rejection is precise and happens before dispatch");
   services.subgroup_shuffle_supported = 0u;
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr,
               "Auto falls back when arbitrary-lane shuffle is unavailable");
@@ -63,6 +97,12 @@ FACT(PrometheusSubgroupOwned32RouteSelectionIsStrictAndFallsBackOnlyForAuto) {
   services.subgroup_owned_attention_topology_proven = 0u;
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.shader_id == 49u,
               "builtin-topology production selection does not require an empirical topology proof");
+  ASSERT_TRUE(prom_main_attention_route_asset_rejection_reason(
+                  &decision, prom_shader_registry_find_shader(decision.shader_id)) == nullptr,
+              "Auto and forced SubgroupOwned32 share the admitted identity-49 production asset");
+  ASSERT_TRUE(std::strcmp(prom_main_attention_route_asset_rejection_reason(&decision, nullptr),
+                          "selected main attention shader is absent from the runtime registry") == 0,
+              "an absent forced-route payload returns a stable rejection instead of dereferencing it");
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1055u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_SHAPE,
               "each shape/layout mismatch is rejected by the fixed contract");
 }
@@ -199,12 +239,21 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
               "audit shader stays isolated from the model arithmetic sources");
   const auto* jointQk = prom_shader_registry_find_shader(40u);
   const auto* jointAttention = prom_shader_registry_find_shader(41u);
+  const auto* builtinAttention = prom_shader_registry_find_shader(49u);
   const auto* geminiExact = prom_shader_registry_find_shader(45u);
   const auto* geminiInPlace = prom_shader_registry_find_shader(46u);
   const auto* jointW1W3 = prom_shader_registry_find_shader(42u);
   const auto* jointGate = prom_shader_registry_find_shader(43u);
   ASSERT_TRUE(jointQk != nullptr && jointAttention != nullptr && jointW1W3 != nullptr && jointGate != nullptr,
               "M2C must register every new joint-only physical kernel");
+  ASSERT_TRUE(jointAttention->authority == PROM_SHADER_AUTHORITY_PRODUCTION &&
+                  builtinAttention != nullptr && builtinAttention->authority == PROM_SHADER_AUTHORITY_PRODUCTION,
+              "identities 41 and 49 must retain explicit production authority");
+  ASSERT_TRUE(std::string(jointAttention->source_path) ==
+                  "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_streaming.sdslv" &&
+                  std::string(builtinAttention->source_path) ==
+                  "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_builtin_topology.sdslv",
+              "production attention route sources cannot drift independently of their identities");
   ASSERT_EQUAL(24u, jointQk->push_constant_bytes, "joint Q/K RoPE owns image-prefix count and segment binding");
   ASSERT_EQUAL(1056u, jointAttention->minimum_row_width, "joint attention must reject the 1024-token kernel envelope");
   ASSERT_EQUAL(1056u, jointAttention->maximum_row_width, "joint attention fixed contract must be exact");
@@ -355,7 +404,7 @@ FACT(PrometheusVulkanRuntimePreflight) {
         "\nsubgroup_shuffle_supported=" + std::to_string(services.subgroup_shuffle_supported) +
         "\nsubgroup_owned_attention_admitted=" + std::to_string(services.subgroup_owned_attention_admitted) + "\n";
   }
-  context.WriteTextArtifact("prometheus_vulkan_runtime_preflight.txt", artifact);
+  (void)context.WriteTextArtifact("prometheus_vulkan_runtime_preflight.txt", artifact);
   const char* required = std::getenv("PROMETHEUS_REQUIRE_VULKAN_HARDWARE");
   const bool hardware_required = required != nullptr && std::string(required) == "1";
   if (handle != nullptr) ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "preflight runtime must be destroyed");

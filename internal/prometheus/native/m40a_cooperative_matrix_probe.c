@@ -193,7 +193,12 @@ int main(void) {
   printf("\"device\":{\"name\":"); json_string(properties.deviceName);
   printf(",\"api_version\":%u,\"vendor_id\":%u,\"device_id\":%u,\"driver_version\":%u,\"driver_id\":%u,\"driver_name\":",
          properties.apiVersion, properties.vendorID, properties.deviceID, properties.driverVersion, (uint32_t)driver.driverID);
-  json_string(driver.driverName); printf(",\"driver_info\":"); json_string(driver.driverInfo); printf("},");
+  json_string(driver.driverName); printf(",\"driver_info\":"); json_string(driver.driverInfo);
+  printf(",\"limits\":{\"min_storage_buffer_offset_alignment\":%llu,\"max_storage_buffer_range\":%u,"
+         "\"max_compute_workgroup_invocations\":%u}},",
+         (unsigned long long)properties.limits.minStorageBufferOffsetAlignment,
+         properties.limits.maxStorageBufferRange,
+         properties.limits.maxComputeWorkGroupInvocations);
   printf("\"extensions\":{\"VK_KHR_cooperative_matrix\":%u,\"VK_NV_cooperative_matrix\":%u,\"VK_NV_cooperative_matrix2\":%u},",
          khr_spec, nv_spec, nv2_spec);
   printf("\"features\":{\"shader_float16\":%s,\"vulkan_memory_model\":%s,\"khr_cooperative_matrix\":%s,"

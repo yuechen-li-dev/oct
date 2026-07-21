@@ -46,6 +46,8 @@
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS 3960u
 #define PROM_MODEL_BLOCK_MAIN_W1_W3_SHADER_ID 42u
 #define PROM_MODEL_BLOCK_MAIN_GATE_SHADER_ID 43u
+#define PROM_MODEL_BLOCK_M6A_PACK_SHADER_ID 50u
+#define PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID 51u
 #define PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS (1024u * 3840u)
 #define PROM_MODEL_BLOCK_M1B_TIMESTEP_ELEMENTS 256u
 #define PROM_MODEL_BLOCK_M1B_QKV_ELEMENTS (1024u * 11520u)
@@ -60,7 +62,11 @@
 #define PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS (PROM_MODEL_BLOCK_MAIN_TOKENS * 3840u)
 #define PROM_MODEL_BLOCK_MAIN_QKV_ELEMENTS (PROM_MODEL_BLOCK_MAIN_TOKENS * 11520u)
 #define PROM_MODEL_BLOCK_MAIN_HIDDEN_ELEMENTS (PROM_MODEL_BLOCK_MAIN_TOKENS * 10240u)
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+#define PROM_MODEL_BLOCK_MAIN_QUERY_COUNT 19u
+#else
 #define PROM_MODEL_BLOCK_MAIN_QUERY_COUNT 16u
+#endif
 #define PROM_MODEL_BLOCK_M1B_BF16_BYTES(elements) ((VkDeviceSize)(elements) * sizeof(uint16_t))
 #define PROM_MODEL_BLOCK_M1B_FP32_BYTES(elements) ((VkDeviceSize)(elements) * sizeof(float))
 
@@ -68,6 +74,17 @@ typedef struct prom_model_block_m1b_ingress_constants {
   uint32_t input_elements;
   uint32_t timestep_elements;
 } prom_model_block_m1b_ingress_constants;
+
+typedef struct prom_model_block_m6a_pack_constants {
+  uint32_t logical_elements;
+  uint32_t packed_words;
+} prom_model_block_m6a_pack_constants;
+
+typedef struct prom_model_block_m6a_cooperative_constants {
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+} prom_model_block_m6a_cooperative_constants;
 
 typedef struct prom_model_block_m1b_adaln_constants {
   uint32_t projection_width;
@@ -280,7 +297,10 @@ static void prom_model_block_fill_evidence(const prom_model_block_state* block,
                    (uint64_t)block->timestep_device.size + (uint64_t)block->adaln_projection.size +
                    (uint64_t)block->attention_scale.size + (uint64_t)block->attention_gate.size +
                    (uint64_t)block->mlp_scale.size + (uint64_t)block->mlp_gate.size +
-                   (uint64_t)block->modulated.size + (uint64_t)block->norm_audit.size +
+                   (uint64_t)block->modulated.size + (uint64_t)block->m6a_modulated_fp16.size +
+                   (uint64_t)block->m6a_w3_fp32.size +
+                   (uint64_t)block->m6a_raw_audit.size +
+                   (uint64_t)block->norm_audit.size +
                    (uint64_t)block->qkv.size + (uint64_t)block->attention.size +
                     (uint64_t)block->attention_projection.size +
                     (uint64_t)block->attention_residual.size + (uint64_t)block->context_unit.size +
@@ -347,6 +367,9 @@ static void prom_model_block_fill_evidence(const prom_model_block_state* block,
     out_evidence->main_stage_gpu_end_tick[boundary] = block->main_stage_gpu_end_tick[boundary];
     out_evidence->main_stage_gpu_ns[boundary] = block->main_stage_gpu_ns[boundary];
   }
+  out_evidence->m6a_activation_pack_gpu_ns = block->m6a_activation_pack_gpu_ns;
+  out_evidence->m6a_cooperative_execute_gpu_ns = block->m6a_cooperative_execute_gpu_ns;
+  out_evidence->m6a_w3_segment_repack_gpu_ns = block->m6a_w3_segment_repack_gpu_ns;
 #define PROM_COPY_BLOCK_EVIDENCE_FIELD(name) out_evidence->name = block->name
   PROM_COPY_BLOCK_EVIDENCE_FIELD(last_active_target_validation_ns);
   PROM_COPY_BLOCK_EVIDENCE_FIELD(last_command_reset_ns);
@@ -533,6 +556,13 @@ static uint64_t prom_model_block_plan_identity(const prom_model_block_state* blo
       hash = prom_model_block_hash_u64(hash, block->m1d_pipelines[index].binding_count);
       hash = prom_model_block_hash_u64(hash, block->m1d_pipelines[index].push_constant_bytes);
     }
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+    if (prom_model_block_is_main_transformer(block)) {
+      hash = prom_model_block_hash_u64(hash, block->m6a_pack_pipeline.shader_id);
+      hash = prom_model_block_hash_u64(hash, block->m6a_w1_pipeline.shader_id);
+      hash = prom_model_block_hash_u64(hash, block->m6a_w3_pipeline.shader_id);
+    }
+#endif
   }
   return hash;
 }
@@ -682,6 +712,12 @@ static int prom_model_block_m1b_shader_asset_is_admitted(const prom_shader_asset
   if (shader_id == 46u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
       asset->source_language == PROM_SHADER_SOURCE_HLSL) return 1;
 #endif
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  if ((shader_id == PROM_MODEL_BLOCK_M6A_PACK_SHADER_ID ||
+       shader_id == PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID) &&
+      asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+      asset->source_language == PROM_SHADER_SOURCE_SDSLV) return 1;
+#endif
   return 0;
 }
 
@@ -793,6 +829,11 @@ static int prom_model_block_m1b_create_pipeline(
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = pipeline->pipeline.shader_module;
   stage_info.pName = asset->entry_point;
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT) && \
+    defined(VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT)
+  if (shader_id == PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID)
+    stage_info.flags |= VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT;
+#endif
   memset(&compute_info, 0, sizeof(compute_info));
   compute_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   compute_info.stage = stage_info;
@@ -986,12 +1027,19 @@ static int prom_main_transformer_create_pipelines(prom_reduction_runtime_state* 
                                         &block->weights[12u].device, &block->mlp_gate,
                                         &block->attention_residual, &block->input_device,
                                         &block->attention};
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  const prom_vk_buffer* m6a_pack_buffers[] = {&block->modulated, &block->m6a_modulated_fp16};
+  const prom_vk_buffer* m6a_w1_buffers[] = {&block->m6a_modulated_fp16, &block->weights[8u].device,
+                                            &block->qkv};
+  const prom_vk_buffer* m6a_w3_buffers[] = {&block->m6a_modulated_fp16, &block->weights[10u].device,
+                                            &block->m6a_w3_fp32};
+#endif
   const uint32_t attention_shader_id = state->compiled_session.main_attention_shader_id;
   if (attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID &&
       attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID &&
       attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_BUILTIN_TOPOLOGY_SHADER_ID) return 0;
   block->main_attention_shader_id = attention_shader_id;
-  return prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u],
+  int created = prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u],
                                                PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID, ingress_buffers, 4u,
                                                sizeof(prom_model_block_m1b_ingress_constants)) &&
          prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[1u],
@@ -1030,6 +1078,16 @@ static int prom_main_transformer_create_pipelines(prom_reduction_runtime_state* 
          prom_model_block_m1b_create_pipeline(state, block, &block->m1d_pipelines[3u],
                                                PROM_MODEL_BLOCK_M1D_W2_RESIDUAL_SHADER_ID, w2_buffers, 7u,
                                                sizeof(prom_model_block_m1d_w2_constants));
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  if (created) created =
+      prom_model_block_m1b_create_pipeline(state, block, &block->m6a_pack_pipeline,
+                                            PROM_MODEL_BLOCK_M6A_PACK_SHADER_ID, m6a_pack_buffers, 2u, 8u) &&
+      prom_model_block_m1b_create_pipeline(state, block, &block->m6a_w1_pipeline,
+                                            PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID, m6a_w1_buffers, 3u, 12u) &&
+      prom_model_block_m1b_create_pipeline(state, block, &block->m6a_w3_pipeline,
+                                            PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID, m6a_w3_buffers, 3u, 12u);
+#endif
+  return created;
 }
 
 static uint64_t prom_context_refiner_expected_aggregate(uint32_t parameter_set) {
@@ -1056,6 +1114,24 @@ static int prom_model_block_is_context_refiner(const prom_model_block_state* blo
 
 static int prom_model_block_is_main_transformer(const prom_model_block_state* block) {
   return block != NULL && block->assembly_family == PROM_MAIN_TRANSFORMER_FAMILY_Z_IMAGE_TURBO;
+}
+
+const float* prom_model_block_m6a_raw_audit_data(void* handle, uint64_t block_id,
+                                                 uint64_t* out_element_count) {
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  prom_reduction_runtime_state* state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
+  if (out_element_count != NULL) *out_element_count = 0u;
+  if (state == NULL || state->model_block.block_id != block_id ||
+      state->model_block.m6a_raw_audit.mapped == NULL) return NULL;
+  if (out_element_count != NULL)
+    *out_element_count = (uint64_t)state->model_block.m6a_raw_audit.size / sizeof(float);
+  return (const float*)state->model_block.m6a_raw_audit.mapped;
+#else
+  (void)handle;
+  (void)block_id;
+  if (out_element_count != NULL) *out_element_count = 0u;
+  return NULL;
+#endif
 }
 
 static const prom_vk_buffer* prom_model_block_audit_source(
@@ -1163,6 +1239,12 @@ static int prom_model_block_update_weight_descriptors(
     PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m1d_pipelines[1u], 2u, &weights[10u].device);
     PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m1d_pipelines[3u], 1u, &weights[9u].device);
     PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m1d_pipelines[3u], 2u, &weights[12u].device);
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+    if (prom_model_block_is_main_transformer(block)) {
+      PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m6a_w1_pipeline, 1u, &weights[8u].device);
+      PROM_MODEL_BLOCK_DESCRIPTOR_WRITE(&block->m6a_w3_pipeline, 1u, &weights[10u].device);
+    }
+#endif
   }
   update_begin_ns = prom_reduction_now_ns();
   vkUpdateDescriptorSets(state->device, count, writes, 0u, NULL);
@@ -1632,6 +1714,34 @@ static int prom_model_block_create_shared_portfolios(prom_reduction_runtime_stat
   return 1;
 }
 
+static int prom_main_transformer_create_m6a_buffer(prom_reduction_runtime_state* state,
+                                                   prom_model_block_state* block,
+                                                   VkBufferUsageFlags usage) {
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  int created = prom_model_block_create_buffer(
+      state, block, &block->m6a_modulated_fp16,
+      PROM_MODEL_BLOCK_M1B_BF16_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS),
+      usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) &&
+      prom_model_block_create_buffer(
+          state, block, &block->m6a_w3_fp32,
+          PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_HIDDEN_ELEMENTS),
+          usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
+  if (created && getenv("OCT_DVT2_M6A_CAPTURE_RAW") != NULL) {
+    created = prom_model_block_create_buffer(
+        state, block, &block->m6a_raw_audit,
+        PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_HIDDEN_ELEMENTS) * 3u,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1);
+  }
+  return created;
+#else
+  (void)state;
+  (void)block;
+  (void)usage;
+  return 1;
+#endif
+}
+
 static int prom_main_transformer_create_buffers(prom_reduction_runtime_state* state,
                                                 prom_model_block_state* block,
                                                 VkDeviceSize max_weight_bytes) {
@@ -1695,7 +1805,8 @@ static int prom_main_transformer_create_buffers(prom_reduction_runtime_state* st
                                         VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                         host_visible, 1) &&
          prom_model_block_create_buffer(state, block, &block->weight_upload, max_weight_bytes,
-                                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, host_visible, 1);
+                                        VK_BUFFER_USAGE_TRANSFER_SRC_BIT, host_visible, 1) &&
+         prom_main_transformer_create_m6a_buffer(state, block, device_storage);
 }
 
 static void prom_model_block_m1b_bind_and_dispatch(VkCommandBuffer command_buffer,
@@ -2016,6 +2127,9 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
       if (pipeline->descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(state->device, pipeline->descriptor_pool, NULL);
       if (pipeline->descriptor_set_layout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(state->device, pipeline->descriptor_set_layout, NULL);
     }
+    prom_model_block_destroy_portfolio(state, &block->m6a_pack_pipeline, 1u);
+    prom_model_block_destroy_portfolio(state, &block->m6a_w1_pipeline, 1u);
+    prom_model_block_destroy_portfolio(state, &block->m6a_w3_pipeline, 1u);
     for (index = 0u; index < PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT; ++index) {
       prom_model_block_m1b_pipeline* pipeline = &block->audit_pipelines[index];
       prom_reduction_destroy_pipeline(state->device, &pipeline->pipeline);
@@ -2052,6 +2166,9 @@ void prom_model_block_cleanup_state(prom_reduction_runtime_state* state) {
     prom_vk_destroy_buffer(state->device, &block->attention);
     prom_vk_destroy_buffer(state->device, &block->norm_audit);
     prom_vk_destroy_buffer(state->device, &block->modulated);
+    prom_vk_destroy_buffer(state->device, &block->m6a_modulated_fp16);
+    prom_vk_destroy_buffer(state->device, &block->m6a_w3_fp32);
+    prom_vk_destroy_buffer(state->device, &block->m6a_raw_audit);
     prom_vk_destroy_buffer(state->device, &block->mlp_gate);
     prom_vk_destroy_buffer(state->device, &block->mlp_scale);
     prom_vk_destroy_buffer(state->device, &block->attention_gate);
@@ -4459,6 +4576,14 @@ static int prom_main_transformer_resolve_timestamps(prom_reduction_runtime_state
         (double)(timestamps[stage + 2u] - timestamps[stage + 1u]) *
         (double)block->m1b_timestamp_period_ns + 0.5);
   }
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  block->m6a_activation_pack_gpu_ns = (uint64_t)(
+      (double)(timestamps[16u] - timestamps[11u]) * (double)block->m1b_timestamp_period_ns + 0.5);
+  block->m6a_cooperative_execute_gpu_ns = (uint64_t)(
+      (double)(timestamps[17u] - timestamps[16u]) * (double)block->m1b_timestamp_period_ns + 0.5);
+  block->m6a_w3_segment_repack_gpu_ns = (uint64_t)(
+      (double)(timestamps[18u] - timestamps[17u]) * (double)block->m1b_timestamp_period_ns + 0.5);
+#endif
   return 1;
 }
 
@@ -4589,12 +4714,143 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
                                          &norm, sizeof(norm), PROM_MODEL_BLOCK_MAIN_TOKENS, 1u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 11u);
   prom_reduction_record_barrier(block->command_buffer);
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  {
+    const char* m6a_route = getenv("OCT_DVT2_M6A_W1W3_ROUTE");
+    const int use_cooperative = m6a_route != NULL && strcmp(m6a_route, "cooperative") == 0;
+    if (use_cooperative) {
+      const prom_model_block_m6a_pack_constants pack = {
+          PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS,
+          PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS / 2u};
+      const prom_model_block_m6a_cooperative_constants cooperative = {
+          PROM_MODEL_BLOCK_MAIN_TOKENS, 10240u, 3840u};
+      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m6a_pack_pipeline,
+                                             &pack, sizeof(pack), 7920u, 1u, 1u);
+      if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+          block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+          block->m1b_timestamp_query_pool, 16u);
+      prom_reduction_record_barrier(block->command_buffer);
+      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m6a_w1_pipeline,
+                                             &cooperative, sizeof(cooperative), 66u, 640u, 1u);
+      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m6a_w3_pipeline,
+                                             &cooperative, sizeof(cooperative), 66u, 640u, 1u);
+      if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+          block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+          block->m1b_timestamp_query_pool, 17u);
+      {
+        VkBufferMemoryBarrier to_transfer[2];
+        VkBufferMemoryBarrier to_compute[3];
+        VkBufferCopy segments[3];
+        const VkDeviceSize segment_bytes =
+            PROM_MODEL_BLOCK_M1B_FP32_BYTES(PROM_MODEL_BLOCK_MAIN_MODEL_ELEMENTS);
+        memset(to_transfer, 0, sizeof(to_transfer));
+        for (uint32_t source = 0u; source < 2u; ++source) {
+          to_transfer[source].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+          to_transfer[source].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+          to_transfer[source].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+          to_transfer[source].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+          to_transfer[source].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        }
+        to_transfer[0].buffer = block->m6a_w3_fp32.buffer;
+        to_transfer[0].size = block->m6a_w3_fp32.size;
+        to_transfer[1].buffer = block->qkv.buffer;
+        to_transfer[1].size = block->qkv.size;
+        vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                             VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 2u,
+                             to_transfer, 0u, NULL);
+        memset(segments, 0, sizeof(segments));
+        segments[0].size = segment_bytes;
+        segments[1].srcOffset = segment_bytes;
+        segments[1].size = segment_bytes;
+        segments[2].srcOffset = segment_bytes * 2u;
+        segments[2].size = block->m6a_w3_fp32.size - segment_bytes * 2u;
+        vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
+                        block->attention.buffer, 1u, &segments[0]);
+        vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
+                        block->attention_projection.buffer, 1u, &segments[1]);
+        vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
+                        block->norm_audit.buffer, 1u, &segments[2]);
+        if (block->m6a_raw_audit.buffer != VK_NULL_HANDLE) {
+          VkBufferCopy audit_copy;
+          memset(&audit_copy, 0, sizeof(audit_copy));
+          audit_copy.size = block->m6a_w3_fp32.size;
+          vkCmdCopyBuffer(block->command_buffer, block->qkv.buffer,
+                          block->m6a_raw_audit.buffer, 1u, &audit_copy);
+          audit_copy.dstOffset = block->m6a_w3_fp32.size;
+          vkCmdCopyBuffer(block->command_buffer, block->m6a_w3_fp32.buffer,
+                          block->m6a_raw_audit.buffer, 1u, &audit_copy);
+        }
+        memset(to_compute, 0, sizeof(to_compute));
+        for (uint32_t segment = 0u; segment < 3u; ++segment) {
+          to_compute[segment].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+          to_compute[segment].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+          to_compute[segment].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+          to_compute[segment].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+          to_compute[segment].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        }
+        to_compute[0].buffer = block->attention.buffer;
+        to_compute[0].size = block->attention.size;
+        to_compute[1].buffer = block->attention_projection.buffer;
+        to_compute[1].size = block->attention_projection.size;
+        to_compute[2].buffer = block->norm_audit.buffer;
+        to_compute[2].size = block->norm_audit.size;
+        vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0u, 0u, NULL, 3u,
+                             to_compute, 0u, NULL);
+        if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(
+            block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            block->m1b_timestamp_query_pool, 18u);
+      }
+    } else {
+      prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
+                                             &hidden, sizeof(hidden), 66u, 640u, 1u);
+      if (block->m1b_timestamp_supported != 0u) {
+        vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            block->m1b_timestamp_query_pool, 16u);
+        vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            block->m1b_timestamp_query_pool, 17u);
+        vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                            block->m1b_timestamp_query_pool, 18u);
+      }
+    }
+  }
+#else
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[1u],
                                          &hidden, sizeof(hidden), 66u, 640u, 1u);
+#endif
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 12u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[2u],
                                          &gate, sizeof(gate), 42240u, 1u, 1u);
+#if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT)
+  if (block->m6a_raw_audit.buffer != VK_NULL_HANDLE) {
+    VkBufferMemoryBarrier capture_barrier;
+    VkBufferCopy capture_copy;
+    memset(&capture_barrier, 0, sizeof(capture_barrier));
+    capture_barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    capture_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    capture_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    capture_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    capture_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    capture_barrier.buffer = block->qkv.buffer;
+    capture_barrier.size = block->m6a_w3_fp32.size;
+    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0u, 0u, NULL, 1u,
+                         &capture_barrier, 0u, NULL);
+    memset(&capture_copy, 0, sizeof(capture_copy));
+    capture_copy.dstOffset = block->m6a_w3_fp32.size * 2u;
+    capture_copy.size = block->m6a_w3_fp32.size;
+    vkCmdCopyBuffer(block->command_buffer, block->qkv.buffer,
+                    block->m6a_raw_audit.buffer, 1u, &capture_copy);
+    capture_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    capture_barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    capture_barrier.buffer = block->m6a_raw_audit.buffer;
+    capture_barrier.size = block->m6a_raw_audit.size;
+    vkCmdPipelineBarrier(block->command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_HOST_BIT, 0u, 0u, NULL, 1u,
+                         &capture_barrier, 0u, NULL);
+  }
+#endif
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 13u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1d_pipelines[3u],
@@ -5492,13 +5748,25 @@ int prom_reactor_runtime_compiled_model_owner_create_impl(
   {
     prom_vk_runtime_services services;
     prom_main_attention_route_decision decision;
+    memset(&decision, 0, sizeof(decision));
     const char* route_error = prom_reactor_runtime_get_vk_services(handle, &services) == PROM_OK
                                   ? prom_main_attention_route_select(
                                         state->compiled_session.requested_main_attention_route, &services,
                                         PROM_MODEL_BLOCK_MAIN_TOKENS, 30u, 128u, 11520u, 3840u,
                                         PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS, &decision)
                                   : "missing Vulkan 1.4 runtime services";
-    if (route_error != NULL) goto invalid;
+    if (route_error == NULL)
+      route_error = prom_main_attention_route_asset_rejection_reason(
+          &decision, prom_shader_registry_find_shader(decision.shader_id));
+    if (route_error != NULL) {
+      state->compiled_session.selected_main_attention_route = decision.selected_route;
+      state->compiled_session.main_attention_fallback_reason = decision.fallback_reason;
+      state->compiled_session.main_attention_shader_id = decision.shader_id;
+      state->compiled_session.last_detail_code = PROM_MODEL_SESSION_DETAIL_MAIN_ATTENTION_ROUTE_REJECTED;
+      prom_model_block_fill_evidence(NULL, PROM_MODEL_SESSION_DETAIL_MAIN_ATTENTION_ROUTE_REJECTED,
+                                     out_evidence);
+      return PROM_ERROR;
+    }
     state->compiled_session.selected_main_attention_route = decision.selected_route;
     state->compiled_session.main_attention_fallback_reason = decision.fallback_reason;
     state->compiled_session.main_attention_shader_id = decision.shader_id;

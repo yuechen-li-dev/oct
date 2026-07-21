@@ -488,6 +488,15 @@ func check(root string, inventory bool) error {
 			lines = append(lines, fmt.Sprintf("id=%d name=%s authority=%s source_sha256=%s module_sha256=%s source=%s header=%s", asset.ID, asset.Name, authority, fileHash(filepath.Join(root, filepath.FromSlash(asset.Source))), moduleHash, asset.Source, asset.Header))
 		}
 	}
+	for id, expected := range map[uint32]struct{ name, source string }{
+		41: {"zimage-main-transformer-joint-attention-streaming", "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_streaming.sdslv"},
+		49: {"zimage-main-transformer-joint-attention-builtin-topology", "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_builtin_topology.sdslv"},
+	} {
+		asset, ok := assetsByID[id]
+		if !ok || asset.Name != expected.name || asset.Authority != "production" || asset.SourceLanguage != "sdslv" || asset.Source != expected.source {
+			return fmt.Errorf("production main-attention authority drift for shader %d: %#v", id, asset)
+		}
+	}
 	seenExperimental := map[string]bool{}
 	for _, asset := range m.ExperimentalShaderAssets {
 		if asset.ID == "" || seenExperimental[asset.ID] {

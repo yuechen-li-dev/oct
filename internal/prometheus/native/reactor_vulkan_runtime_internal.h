@@ -367,6 +367,9 @@ typedef struct prom_model_block_state {
   uint64_t main_stage_gpu_begin_tick[PROM_MODEL_BLOCK_MAIN_STAGE_COUNT];
   uint64_t main_stage_gpu_end_tick[PROM_MODEL_BLOCK_MAIN_STAGE_COUNT];
   uint64_t main_stage_gpu_ns[PROM_MODEL_BLOCK_MAIN_STAGE_COUNT];
+  uint64_t m6a_activation_pack_gpu_ns;
+  uint64_t m6a_cooperative_execute_gpu_ns;
+  uint64_t m6a_w3_segment_repack_gpu_ns;
   uint64_t last_active_target_validation_ns;
   uint64_t last_command_reset_ns;
   uint64_t last_command_begin_ns;
@@ -415,6 +418,10 @@ typedef struct prom_model_block_state {
   prom_vk_buffer mlp_scale;
   prom_vk_buffer mlp_gate;
   prom_vk_buffer modulated;
+  /* DVT2-M6A experimental-only allocation. Production builds leave it null. */
+  prom_vk_buffer m6a_modulated_fp16;
+  prom_vk_buffer m6a_w3_fp32;
+  prom_vk_buffer m6a_raw_audit;
   prom_vk_buffer norm_audit;
   prom_vk_buffer qkv;
   prom_vk_buffer attention;
@@ -430,6 +437,9 @@ typedef struct prom_model_block_state {
   prom_model_block_m1b_pipeline m1b_pipelines[PROM_MODEL_BLOCK_M1B_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1c_pipelines[PROM_MODEL_BLOCK_M1C_PIPELINE_COUNT];
   prom_model_block_m1b_pipeline m1d_pipelines[PROM_MODEL_BLOCK_M1D_PIPELINE_COUNT];
+  prom_model_block_m1b_pipeline m6a_pack_pipeline;
+  prom_model_block_m1b_pipeline m6a_w1_pipeline;
+  prom_model_block_m1b_pipeline m6a_w3_pipeline;
   prom_model_block_m1b_pipeline audit_pipelines[PROM_MODEL_BLOCK_AUDIT_SOURCE_COUNT];
   prom_model_block_weight_resource weights[PROM_MODEL_BLOCK_MAX_WEIGHTS];
   /* A complete candidate bundle is uploaded here before the descriptor

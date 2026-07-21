@@ -1,0 +1,14 @@
+[RUN] PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer
+M6A first_execute_status=0 detail=0 gpu_compute_ns=371624832 peak_plan_bytes=824712196
+M6A numerical_stage=raw_w1 relative_l2=6.78747e-05 linf=0.016983 maximum_relative_error_guard_1e-6=150.2 non_finite_count=0
+M6A numerical_stage=raw_w3 relative_l2=0.000102317 linf=0.0238037 maximum_relative_error_guard_1e-6=186.624 non_finite_count=0
+M6A numerical_stage=post_silu_gate relative_l2=7.57058e-05 linf=4.80078 maximum_relative_error_guard_1e-6=86.7001 non_finite_count=0
+M2C final_joint finite=1 relative_l2=4.65441e-06 linf=0.00247192 maximum_relative_error_guard_1e-6=13.6171 non_finite_count=0 accepted_threshold=5e-5 first_mismatch=0
+M2C image_region relative_l2=4.33112e-06 linf=0.000293732 context_region_relative_l2=4.84882e-06 context_region_linf=0.00247192 last_image_token_relative_l2=4.87137e-06 first_context_token_relative_l2=6.31246e-06
+M2D static_final finite=1 relative_l2=4.65441e-06 linf=0.00247192 accepted_threshold=5e-5
+M2C warm_ns=374026200,363462300,377047600,376845400,377905700,370928000,376471700,376946400,364417600,379788300
+M2C warm_stats_ns median=376658550 mean=3.73784e+08 min=363462300 p95=379788300 gpu_median=376270800 gpu_mean=3.73431e+08 churn=zero
+M2C bounded_m5b=1 route=3 shader_id=49
+[PASS] PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer
+
+Summary: 1 test(s), 1 passed, 0 skipped, 0 failed, 0 assertion failure(s)

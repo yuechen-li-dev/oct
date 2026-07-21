@@ -1,0 +1,49 @@
+{
+  "schema": "prometheus.dvt2.m6a.cooperative-matrix-compiler-proof.v1",
+  "source": "internal/sdslv/testdata/dvt2_m6a_cooperative_matrix_fixture.sdslv",
+  "generated_hlsl": {
+    "path": "internal/prometheus/DevelopmentReport/artifacts/Dvt2M6a/dvt2_m6a_cooperative_matrix_fixture.hlsl",
+    "sha256": "34d76ca219997b3c567fd968b2b787d8a1c5e14b00954bdb8a4ea51c762bb507"
+  },
+  "spirv": {
+    "path": "internal/prometheus/DevelopmentReport/artifacts/Dvt2M6a/dvt2_m6a_cooperative_matrix_fixture.spv",
+    "sha256": "de90496248b19fc62266b56a9501610345523fb3467222662beefac212a61ca8",
+    "target_environment": "vulkan1.3",
+    "version": "1.6",
+    "validation": {
+      "tool": "SPIRV-Tools v2026.2",
+      "passed": true
+    }
+  },
+  "disassembly": {
+    "path": "internal/prometheus/DevelopmentReport/artifacts/Dvt2M6a/dvt2_m6a_cooperative_matrix_fixture.spvasm",
+    "sha256": "1ad3a0058521b67e648d27cd548a67bdce4736c7e8107b9cb451bd277f557f07",
+    "cooperative_matrix_type_count": 3,
+    "cooperative_matrix_load_count": 2,
+    "cooperative_matrix_mul_add_count": 1,
+    "cooperative_matrix_store_count": 1,
+    "control_barrier_count": 2,
+    "atomic_instruction_count": 0
+  },
+  "contract": {
+    "entry_point": "Dvt2M6aCooperativeMatrixFixture_CS",
+    "scope": "subgroup",
+    "local_size": [32, 1, 1],
+    "tile": {"m": 16, "n": 16, "k": 16},
+    "a_type": "float16",
+    "b_type": "float16",
+    "accumulator_type": "float32",
+    "result_type": "float32",
+    "layout": "row-major",
+    "bindings": [
+      {"set": 0, "binding": 0, "storage": "u32 packed F16x2", "access": "readonly"},
+      {"set": 0, "binding": 1, "storage": "u32 packed F16x2", "access": "readonly"},
+      {"set": 0, "binding": 2, "storage": "float32", "access": "readwrite"}
+    ],
+    "capabilities": ["CooperativeMatrixKHR", "Float16", "VulkanMemoryModel"],
+    "extension": "SPV_KHR_cooperative_matrix",
+    "barrier_audit": "The two workgroup control barriers are intentional and bound the cooperative tile staging/load lifetime; there are no extra barriers around output storage.",
+    "atomic_audit": "No atomic instruction is present."
+  },
+  "hand_edited_spirv": false
+}

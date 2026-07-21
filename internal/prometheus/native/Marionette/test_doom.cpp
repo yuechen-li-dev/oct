@@ -189,12 +189,18 @@ namespace marionette::tests
             return result;
         }
 
-        const std::string command =
+        std::string command =
             QuotePath(executablePath) +
             " --doom-case " + std::string(doomCaseName) +
             " --doom-artifact-dir " + QuotePath(artifactDirectory) +
             " > " + QuotePath(result.stdoutPath) +
             " 2> " + QuotePath(result.stderrPath);
+#if defined(_WIN32)
+        // cmd.exe strips the first quoted program path unless the complete /C
+        // command is also quoted. Keep subprocess launch stable for paths with
+        // spaces and preserve the child's ordinary exit status.
+        command = "\"" + command + "\"";
+#endif
 
         result.launched = true;
         const int status = std::system(command.c_str());

@@ -1578,6 +1578,23 @@ const char* prom_main_attention_route_select(uint32_t requested_route,
   return NULL;
 }
 
+const char* prom_main_attention_route_asset_rejection_reason(
+    const prom_main_attention_route_decision* decision, const prom_shader_asset* asset) {
+  if (decision == NULL || decision->selected_route == 0u || decision->shader_id == 0u)
+    return "main attention route has no selected shader";
+  if (asset == NULL || asset->shader_id != decision->shader_id)
+    return "selected main attention shader is absent from the runtime registry";
+  if (asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION)
+    return "selected main attention shader lacks production authority";
+  if (asset->stage != PROM_SHADER_STAGE_COMPUTE)
+    return "selected main attention shader is not a compute asset";
+  if (asset->source_language != PROM_SHADER_SOURCE_SDSLV)
+    return "selected main attention shader is not SDSL-V owned";
+  if (asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL)
+    return "selected main attention shader payload is incomplete";
+  return NULL;
+}
+
 
 static int registry_add(void* handle) {
   size_t i;

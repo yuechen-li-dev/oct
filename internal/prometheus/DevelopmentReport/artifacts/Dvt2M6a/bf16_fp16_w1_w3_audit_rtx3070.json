@@ -1,0 +1,1521 @@
+{
+  "schema": "prometheus.dvt2.m6a.bf16-fp16-weight-audit.v1",
+  "generated_utc": "2026-07-21T17:22:24Z",
+  "checkpoint_display_path": "local-model-cache/z_image_turbo_bf16.safetensors",
+  "checkpoint_sha256": "2407613050b809ffdff18a4ac99af83ea6b95443ecebdf80e064a79c825574a6",
+  "conversion": "IEEE BF16 exact FP32 value to IEEE FP16 round-to-nearest-even",
+  "exact_count_definition": "finite source values whose FP16 value widened to FP32 equals the BF16 value exactly",
+  "relative_error_definition": "abs(fp16_widened-source)/abs(source) for finite nonzero source values",
+  "totals": {
+    "tensor_count": 60,
+    "element_count": 2359296000,
+    "non_finite_count": 0,
+    "fp16_overflow_count": 0,
+    "underflow_to_zero_count": 384,
+    "exact_conversion_count": 2359234575,
+    "maximum_absolute_error": 2.9802322387695312e-8,
+    "maximum_relative_error": 1
+  },
+  "tensors": [
+    {
+      "name": "layers.0.feed_forward.w1.weight",
+      "layer": 0,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        855922592,
+        934565792
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 5,
+      "exact_conversion_count": 39320576,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2,
+      "source_finite_maximum": 1.6328125,
+      "converted_finite_minimum": -2,
+      "converted_finite_maximum": 1.6328125,
+      "source_sha256": "892ac1c3abcd5efcf69b98a94a7ddc45bd0ed2a663e1e8dd853d4fbc4c474088"
+    },
+    {
+      "name": "layers.0.feed_forward.w3.weight",
+      "layer": 0,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        1013208992,
+        1091852192
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 1,
+      "exact_conversion_count": 39320654,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.28125,
+      "source_finite_maximum": 2.0625,
+      "converted_finite_minimum": -2.28125,
+      "converted_finite_maximum": 2.0625,
+      "source_sha256": "86d4e4817c12600290b01b9aaad6f2a05277a30905b0ab36ed2066002910863f"
+    },
+    {
+      "name": "layers.1.feed_forward.w1.weight",
+      "layer": 1,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        1217743264,
+        1296386464
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 4,
+      "exact_conversion_count": 39320661,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -1.984375,
+      "source_finite_maximum": 1.703125,
+      "converted_finite_minimum": -1.984375,
+      "converted_finite_maximum": 1.703125,
+      "source_sha256": "e77552b056fd03cbd1affe86aef072c20540ac0d42c62fe29d4f47e430723c99"
+    },
+    {
+      "name": "layers.1.feed_forward.w3.weight",
+      "layer": 1,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        1375029664,
+        1453672864
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320705,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.4375,
+      "source_finite_maximum": 2.390625,
+      "converted_finite_minimum": -2.4375,
+      "converted_finite_maximum": 2.390625,
+      "source_sha256": "c5ab25ba7a553699b8bc49a5b03b305386bb6442b676f0b8e1828ad0297000c8"
+    },
+    {
+      "name": "layers.2.feed_forward.w1.weight",
+      "layer": 2,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        5197770656,
+        5276413856
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 11,
+      "exact_conversion_count": 39320613,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.53125,
+      "source_finite_maximum": 2.015625,
+      "converted_finite_minimum": -2.53125,
+      "converted_finite_maximum": 2.015625,
+      "source_sha256": "3f293d54bd5b288a21737f27a971c771c43760ca0d41b7fc466c278d65f03aea"
+    },
+    {
+      "name": "layers.2.feed_forward.w3.weight",
+      "layer": 2,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        5355057056,
+        5433700256
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 3,
+      "exact_conversion_count": 39320690,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.390625,
+      "source_finite_maximum": 2.921875,
+      "converted_finite_minimum": -2.390625,
+      "converted_finite_maximum": 2.921875,
+      "source_sha256": "a92417486a9be6eba7bf690ccbdda4873a592310908e9c8d5e4ce2f091a7e80a"
+    },
+    {
+      "name": "layers.3.feed_forward.w1.weight",
+      "layer": 3,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        9177798048,
+        9256441248
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 5,
+      "exact_conversion_count": 39320575,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -1.8828125,
+      "source_finite_maximum": 3.015625,
+      "converted_finite_minimum": -1.8828125,
+      "converted_finite_maximum": 3.015625,
+      "source_sha256": "377a729709e0e24c24b1f04a001689296feec7a9f6ab91864ae70e6d9f2af88e"
+    },
+    {
+      "name": "layers.3.feed_forward.w3.weight",
+      "layer": 3,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        9335084448,
+        9413727648
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 4,
+      "exact_conversion_count": 39320627,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.65625,
+      "source_finite_maximum": 3.59375,
+      "converted_finite_minimum": -3.65625,
+      "converted_finite_maximum": 3.59375,
+      "source_sha256": "d0d18a830c89a49bc1e55c8fcd39c3c9953e32275ea09c4bf829e6fdf26800ef"
+    },
+    {
+      "name": "layers.4.feed_forward.w1.weight",
+      "layer": 4,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        9539618720,
+        9618261920
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320556,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -1.8203125,
+      "source_finite_maximum": 2.125,
+      "converted_finite_minimum": -1.8203125,
+      "converted_finite_maximum": 2.125,
+      "source_sha256": "84f848ea39bbe6c84924ac0bfd0f1364d7264d2e2f19d72a84bf99801c3fd7aa"
+    },
+    {
+      "name": "layers.4.feed_forward.w3.weight",
+      "layer": 4,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        9696905120,
+        9775548320
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 1,
+      "exact_conversion_count": 39320738,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.28125,
+      "source_finite_maximum": 3,
+      "converted_finite_minimum": -3.28125,
+      "converted_finite_maximum": 3,
+      "source_sha256": "dee4b69a1b5a5f1d6a08d4a70d37458a9484ee9ef5012ddbe1334f55d9337a18"
+    },
+    {
+      "name": "layers.5.feed_forward.w1.weight",
+      "layer": 5,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        9901439392,
+        9980082592
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 4,
+      "exact_conversion_count": 39320612,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.71875,
+      "source_finite_maximum": 1.90625,
+      "converted_finite_minimum": -2.71875,
+      "converted_finite_maximum": 1.90625,
+      "source_sha256": "9e496e23fe1758b5f9915cfa744410ca520af3594e3935526466f6f1cccd88f9"
+    },
+    {
+      "name": "layers.5.feed_forward.w3.weight",
+      "layer": 5,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        10058725792,
+        10137368992
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 2,
+      "exact_conversion_count": 39320707,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.84375,
+      "source_finite_maximum": 3.34375,
+      "converted_finite_minimum": -2.84375,
+      "converted_finite_maximum": 3.34375,
+      "source_sha256": "b634282e25ce3568fc7554c409c3d04319daec1dfb3a306a722cf343203d74d0"
+    },
+    {
+      "name": "layers.6.feed_forward.w1.weight",
+      "layer": 6,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        10263260064,
+        10341903264
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320589,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.140625,
+      "source_finite_maximum": 1.796875,
+      "converted_finite_minimum": -2.140625,
+      "converted_finite_maximum": 1.796875,
+      "source_sha256": "1b09fc806ddf716ce01f8ee9a280304edb305869f2d761ce08ec7eb811a6c785"
+    },
+    {
+      "name": "layers.6.feed_forward.w3.weight",
+      "layer": 6,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        10420546464,
+        10499189664
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320615,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.390625,
+      "source_finite_maximum": 2.640625,
+      "converted_finite_minimum": -3.390625,
+      "converted_finite_maximum": 2.640625,
+      "source_sha256": "19b79297c8cd0b815f3686cee737915c0fc63579ca98896589ce955c65a6ae27"
+    },
+    {
+      "name": "layers.7.feed_forward.w1.weight",
+      "layer": 7,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        10625080736,
+        10703723936
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320573,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.625,
+      "source_finite_maximum": 2.5625,
+      "converted_finite_minimum": -2.625,
+      "converted_finite_maximum": 2.5625,
+      "source_sha256": "767e31060f53217e85825ad2d621b65cbf4af318d875acfba7df484836e00735"
+    },
+    {
+      "name": "layers.7.feed_forward.w3.weight",
+      "layer": 7,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        10782367136,
+        10861010336
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320596,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.09375,
+      "source_finite_maximum": 2.375,
+      "converted_finite_minimum": -2.09375,
+      "converted_finite_maximum": 2.375,
+      "source_sha256": "e49c887e0544932c0040f07c0df0b1c8b43bc05ca1ac17753362811451f21d5a"
+    },
+    {
+      "name": "layers.8.feed_forward.w1.weight",
+      "layer": 8,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        10986901408,
+        11065544608
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320568,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.203125,
+      "source_finite_maximum": 2.203125,
+      "converted_finite_minimum": -2.203125,
+      "converted_finite_maximum": 2.203125,
+      "source_sha256": "78b793e680b2bc89a6777e348fd727cf6701281bbce1d3f220052b88990d9775"
+    },
+    {
+      "name": "layers.8.feed_forward.w3.weight",
+      "layer": 8,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        11144187808,
+        11222831008
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320674,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.234375,
+      "source_finite_maximum": 2.953125,
+      "converted_finite_minimum": -3.234375,
+      "converted_finite_maximum": 2.953125,
+      "source_sha256": "78270c99e77112546e6f03a7e52c0c7c672b66beea13c2d370675900a4a4bece"
+    },
+    {
+      "name": "layers.9.feed_forward.w1.weight",
+      "layer": 9,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        11348722080,
+        11427365280
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320588,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.265625,
+      "source_finite_maximum": 2.890625,
+      "converted_finite_minimum": -2.265625,
+      "converted_finite_maximum": 2.890625,
+      "source_sha256": "abfb0333e3a9b715ea2ffab16061596f7cf6f70a9795097889366e1a154e106c"
+    },
+    {
+      "name": "layers.9.feed_forward.w3.weight",
+      "layer": 9,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        11506008480,
+        11584651680
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 9,
+      "exact_conversion_count": 39320616,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -1.96875,
+      "source_finite_maximum": 2.765625,
+      "converted_finite_minimum": -1.96875,
+      "converted_finite_maximum": 2.765625,
+      "source_sha256": "b95b862dfbc92f7450ee4e42f40aa405f0e84ac192c6cae0bae5076d47b8985c"
+    },
+    {
+      "name": "layers.10.feed_forward.w1.weight",
+      "layer": 10,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        1579563936,
+        1658207136
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320658,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.1875,
+      "source_finite_maximum": 2.09375,
+      "converted_finite_minimum": -2.1875,
+      "converted_finite_maximum": 2.09375,
+      "source_sha256": "86a31b85dfed64cb9dd79c9b49d4d6a586451d7703f42cb6bd97e5c90538e792"
+    },
+    {
+      "name": "layers.10.feed_forward.w3.weight",
+      "layer": 10,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        1736850336,
+        1815493536
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320631,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.203125,
+      "source_finite_maximum": 2.21875,
+      "converted_finite_minimum": -2.203125,
+      "converted_finite_maximum": 2.21875,
+      "source_sha256": "2f4bbdf20dc0c44dd44e5269fd27fd3916050c6b42690a87f2911c678f2ab6a1"
+    },
+    {
+      "name": "layers.11.feed_forward.w1.weight",
+      "layer": 11,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        1941384608,
+        2020027808
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 8,
+      "exact_conversion_count": 39320614,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.703125,
+      "source_finite_maximum": 2.734375,
+      "converted_finite_minimum": -2.703125,
+      "converted_finite_maximum": 2.734375,
+      "source_sha256": "38d41d47cf765b70666fd5b74d40cc76c80cf4e4953fc0ce6d16f5b9e094837d"
+    },
+    {
+      "name": "layers.11.feed_forward.w3.weight",
+      "layer": 11,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        2098671008,
+        2177314208
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 4,
+      "exact_conversion_count": 39320607,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.125,
+      "source_finite_maximum": 2.28125,
+      "converted_finite_minimum": -3.125,
+      "converted_finite_maximum": 2.28125,
+      "source_sha256": "d23e23716d9a2ab298de7f5dc839489af7087772a4a52ed05b1047182f126cbf"
+    },
+    {
+      "name": "layers.12.feed_forward.w1.weight",
+      "layer": 12,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        2303205280,
+        2381848480
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 9,
+      "exact_conversion_count": 39320646,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.53125,
+      "source_finite_maximum": 2.5625,
+      "converted_finite_minimum": -2.53125,
+      "converted_finite_maximum": 2.5625,
+      "source_sha256": "19e5430dcfcc30a78d8739213af7ca9da4a3a52696e4e9e789e2088304239bdf"
+    },
+    {
+      "name": "layers.12.feed_forward.w3.weight",
+      "layer": 12,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        2460491680,
+        2539134880
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320624,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.890625,
+      "source_finite_maximum": 2.765625,
+      "converted_finite_minimum": -2.890625,
+      "converted_finite_maximum": 2.765625,
+      "source_sha256": "aaedb508c37a5abedad81c4c9d16af27e74eb19d755d7565df43bc1fe5afaf85"
+    },
+    {
+      "name": "layers.13.feed_forward.w1.weight",
+      "layer": 13,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        2665025952,
+        2743669152
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 10,
+      "exact_conversion_count": 39320559,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.640625,
+      "source_finite_maximum": 2.53125,
+      "converted_finite_minimum": -2.640625,
+      "converted_finite_maximum": 2.53125,
+      "source_sha256": "c9f5bc397b292aed66da35d3b39c058a6ef5487ecdb70a4fe46799116260e2b5"
+    },
+    {
+      "name": "layers.13.feed_forward.w3.weight",
+      "layer": 13,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        2822312352,
+        2900955552
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 5,
+      "exact_conversion_count": 39320584,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -4.0625,
+      "source_finite_maximum": 2.453125,
+      "converted_finite_minimum": -4.0625,
+      "converted_finite_maximum": 2.453125,
+      "source_sha256": "504e3d4e30054a1f102a14db9f32b692d99f88129c78c802c4b4b16b1ac7fa13"
+    },
+    {
+      "name": "layers.14.feed_forward.w1.weight",
+      "layer": 14,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        3026846624,
+        3105489824
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 3,
+      "exact_conversion_count": 39320540,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.75,
+      "source_finite_maximum": 3.015625,
+      "converted_finite_minimum": -2.75,
+      "converted_finite_maximum": 3.015625,
+      "source_sha256": "517edf7f9a6fc66ce0a0b1ed5d86777ac3a615bb40a9282fee5c119d1f5a1bc3"
+    },
+    {
+      "name": "layers.14.feed_forward.w3.weight",
+      "layer": 14,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        3184133024,
+        3262776224
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320592,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.46875,
+      "source_finite_maximum": 3.375,
+      "converted_finite_minimum": -2.46875,
+      "converted_finite_maximum": 3.375,
+      "source_sha256": "cd7288e91a554f6c092f4b61a9dc4873839ce63d1e52993c8bf1c240b002af0f"
+    },
+    {
+      "name": "layers.15.feed_forward.w1.weight",
+      "layer": 15,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        3388667296,
+        3467310496
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 9,
+      "exact_conversion_count": 39320616,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.203125,
+      "source_finite_maximum": 2.734375,
+      "converted_finite_minimum": -2.203125,
+      "converted_finite_maximum": 2.734375,
+      "source_sha256": "f91b02198eb9e8decd049fa5ed61218b05f8ee0c224f75d97ad90e3c2e995c14"
+    },
+    {
+      "name": "layers.15.feed_forward.w3.weight",
+      "layer": 15,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        3545953696,
+        3624596896
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320565,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.578125,
+      "source_finite_maximum": 2.6875,
+      "converted_finite_minimum": -2.578125,
+      "converted_finite_maximum": 2.6875,
+      "source_sha256": "836e6dd3549e3904b41d9b96aa095574801b8173014436139db040a5e9e14d04"
+    },
+    {
+      "name": "layers.16.feed_forward.w1.weight",
+      "layer": 16,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        3750487968,
+        3829131168
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320580,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.28125,
+      "source_finite_maximum": 5.90625,
+      "converted_finite_minimum": -3.28125,
+      "converted_finite_maximum": 5.90625,
+      "source_sha256": "9710cea00617b5a5cd4ee66a3de433c8525a396e03df16b1539011e565fce8e5"
+    },
+    {
+      "name": "layers.16.feed_forward.w3.weight",
+      "layer": 16,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        3907774368,
+        3986417568
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 9,
+      "exact_conversion_count": 39320613,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.65625,
+      "source_finite_maximum": 2.859375,
+      "converted_finite_minimum": -2.65625,
+      "converted_finite_maximum": 2.859375,
+      "source_sha256": "6c91c49458d36d64cb62c59b697f23ba42e0b338f7c29bf3237827c40097eda2"
+    },
+    {
+      "name": "layers.17.feed_forward.w1.weight",
+      "layer": 17,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        4112308640,
+        4190951840
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320557,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -5.5,
+      "source_finite_maximum": 4.125,
+      "converted_finite_minimum": -5.5,
+      "converted_finite_maximum": 4.125,
+      "source_sha256": "85f1eb3b9a2aeb8d6ad16030a408bf988a628ea611550e3a0fdb3da176558a2f"
+    },
+    {
+      "name": "layers.17.feed_forward.w3.weight",
+      "layer": 17,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        4269595040,
+        4348238240
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 5,
+      "exact_conversion_count": 39320595,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.171875,
+      "source_finite_maximum": 2.765625,
+      "converted_finite_minimum": -3.171875,
+      "converted_finite_maximum": 2.765625,
+      "source_sha256": "2054974eb7ce7d9127c818066da24046acc5b6961570b2ed67775dbbebe2a48c"
+    },
+    {
+      "name": "layers.18.feed_forward.w1.weight",
+      "layer": 18,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        4474129312,
+        4552772512
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 4,
+      "exact_conversion_count": 39320668,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.09375,
+      "source_finite_maximum": 4.28125,
+      "converted_finite_minimum": -3.09375,
+      "converted_finite_maximum": 4.28125,
+      "source_sha256": "85eac675ae253abce38cdedd7684e43bf98083ca88ed3acb5028fe3d16768d3a"
+    },
+    {
+      "name": "layers.18.feed_forward.w3.weight",
+      "layer": 18,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        4631415712,
+        4710058912
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320648,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.734375,
+      "source_finite_maximum": 3.296875,
+      "converted_finite_minimum": -2.734375,
+      "converted_finite_maximum": 3.296875,
+      "source_sha256": "d92921eee0494cc9986a4cc2209666a2679e6f36f27703ccb7847726ab4bf840"
+    },
+    {
+      "name": "layers.19.feed_forward.w1.weight",
+      "layer": 19,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        4835949984,
+        4914593184
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320596,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -4.71875,
+      "source_finite_maximum": 4.125,
+      "converted_finite_minimum": -4.71875,
+      "converted_finite_maximum": 4.125,
+      "source_sha256": "926a32b04c7b13a4aa3f6c1ffa3b66584cb00b5e9086ef6da7b432350a8e01b6"
+    },
+    {
+      "name": "layers.19.feed_forward.w3.weight",
+      "layer": 19,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        4993236384,
+        5071879584
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 11,
+      "exact_conversion_count": 39320632,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.671875,
+      "source_finite_maximum": 5.09375,
+      "converted_finite_minimum": -3.671875,
+      "converted_finite_maximum": 5.09375,
+      "source_sha256": "b19cdaf41223a8549b8295cccc257c15e782f9ea2c81ccd067d0bfc55d18417e"
+    },
+    {
+      "name": "layers.20.feed_forward.w1.weight",
+      "layer": 20,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        5559591328,
+        5638234528
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320635,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.09375,
+      "source_finite_maximum": 2.5625,
+      "converted_finite_minimum": -3.09375,
+      "converted_finite_maximum": 2.5625,
+      "source_sha256": "9ef72163ecccc4405742cdb3e02797970c8f05748e9f37380ad6b9c37ed22ac8"
+    },
+    {
+      "name": "layers.20.feed_forward.w3.weight",
+      "layer": 20,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        5716877728,
+        5795520928
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 9,
+      "exact_conversion_count": 39320630,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.90625,
+      "source_finite_maximum": 2.6875,
+      "converted_finite_minimum": -2.90625,
+      "converted_finite_maximum": 2.6875,
+      "source_sha256": "1c92e1105e325944d6b38be1a9b43af492fe0d8d58b0b52807a53aeb9ea7e9af"
+    },
+    {
+      "name": "layers.21.feed_forward.w1.weight",
+      "layer": 21,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        5921412000,
+        6000055200
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 5,
+      "exact_conversion_count": 39320622,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.859375,
+      "source_finite_maximum": 4.3125,
+      "converted_finite_minimum": -3.859375,
+      "converted_finite_maximum": 4.3125,
+      "source_sha256": "6cf8b44bcfca5d4780fa9caef8e7126d1e52fdbc8fd047429417ffe94c47ca7f"
+    },
+    {
+      "name": "layers.21.feed_forward.w3.weight",
+      "layer": 21,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        6078698400,
+        6157341600
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 9,
+      "exact_conversion_count": 39320623,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.203125,
+      "source_finite_maximum": 2.6875,
+      "converted_finite_minimum": -3.203125,
+      "converted_finite_maximum": 2.6875,
+      "source_sha256": "23c7dcb20c12102cbbe916f6207b6f53c90a0ae0017fe25fb2c9cff3b24959c9"
+    },
+    {
+      "name": "layers.22.feed_forward.w1.weight",
+      "layer": 22,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        6283232672,
+        6361875872
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320565,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.640625,
+      "source_finite_maximum": 4.40625,
+      "converted_finite_minimum": -3.640625,
+      "converted_finite_maximum": 4.40625,
+      "source_sha256": "11dcabbc37c0f5751b05864f52ce7cd2946b10bee6e00e5b66919defdb9e4940"
+    },
+    {
+      "name": "layers.22.feed_forward.w3.weight",
+      "layer": 22,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        6440519072,
+        6519162272
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320595,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.890625,
+      "source_finite_maximum": 3.296875,
+      "converted_finite_minimum": -2.890625,
+      "converted_finite_maximum": 3.296875,
+      "source_sha256": "7d396440669f2aebeff1adfa5cab3364c0a0d63038801ac1276b6d27135e4334"
+    },
+    {
+      "name": "layers.23.feed_forward.w1.weight",
+      "layer": 23,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        6645053344,
+        6723696544
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320383,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -4.0625,
+      "source_finite_maximum": 4.8125,
+      "converted_finite_minimum": -4.0625,
+      "converted_finite_maximum": 4.8125,
+      "source_sha256": "7439ab8ab209329492d9de7c7f32d3c55ae260967ba15cf7c1df2095dd3429bd"
+    },
+    {
+      "name": "layers.23.feed_forward.w3.weight",
+      "layer": 23,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        6802339744,
+        6880982944
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 11,
+      "exact_conversion_count": 39320539,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.578125,
+      "source_finite_maximum": 2.78125,
+      "converted_finite_minimum": -2.578125,
+      "converted_finite_maximum": 2.78125,
+      "source_sha256": "2664212e52ca29f2db4e55fd8eda013fca3952e995b97f44e8979857288e410b"
+    },
+    {
+      "name": "layers.24.feed_forward.w1.weight",
+      "layer": 24,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        7006874016,
+        7085517216
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320494,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -4.46875,
+      "source_finite_maximum": 6.21875,
+      "converted_finite_minimum": -4.46875,
+      "converted_finite_maximum": 6.21875,
+      "source_sha256": "a90683d2c2c5e0bd0b6450ae7395a95a57f8e79887084e1f22d783b01f34ce1c"
+    },
+    {
+      "name": "layers.24.feed_forward.w3.weight",
+      "layer": 24,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        7164160416,
+        7242803616
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320495,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.609375,
+      "source_finite_maximum": 3.140625,
+      "converted_finite_minimum": -3.609375,
+      "converted_finite_maximum": 3.140625,
+      "source_sha256": "6a3acbc184913715856228bd4b34286b16a234e1df5a92d76df458e24e2fe906"
+    },
+    {
+      "name": "layers.25.feed_forward.w1.weight",
+      "layer": 25,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        7368694688,
+        7447337888
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320336,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.15625,
+      "source_finite_maximum": 3.640625,
+      "converted_finite_minimum": -3.15625,
+      "converted_finite_maximum": 3.640625,
+      "source_sha256": "9661b6bc1e395d85978af0836de6b824f23a6429613c449620ad70cdbd91e8c1"
+    },
+    {
+      "name": "layers.25.feed_forward.w3.weight",
+      "layer": 25,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        7525981088,
+        7604624288
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 7,
+      "exact_conversion_count": 39320512,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.671875,
+      "source_finite_maximum": 3.484375,
+      "converted_finite_minimum": -2.671875,
+      "converted_finite_maximum": 3.484375,
+      "source_sha256": "f8d596dcdba97649a026b83d894e13bb64da234d2c70baacb894202b2440f562"
+    },
+    {
+      "name": "layers.26.feed_forward.w1.weight",
+      "layer": 26,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        7730515360,
+        7809158560
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 11,
+      "exact_conversion_count": 39320435,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -3.578125,
+      "source_finite_maximum": 3.28125,
+      "converted_finite_minimum": -3.578125,
+      "converted_finite_maximum": 3.28125,
+      "source_sha256": "9076957f4bd6a1b95dda5f91debb751302f2272a5f4283b84d4b75ed51c9505b"
+    },
+    {
+      "name": "layers.26.feed_forward.w3.weight",
+      "layer": 26,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        7887801760,
+        7966444960
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320506,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -4.78125,
+      "source_finite_maximum": 2.375,
+      "converted_finite_minimum": -4.78125,
+      "converted_finite_maximum": 2.375,
+      "source_sha256": "ea18cb6c321dc783384e83860e44508d687e40b0c9fc11d80869eec7bd192c15"
+    },
+    {
+      "name": "layers.27.feed_forward.w1.weight",
+      "layer": 27,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        8092336032,
+        8170979232
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 10,
+      "exact_conversion_count": 39320331,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.8125,
+      "source_finite_maximum": 3.28125,
+      "converted_finite_minimum": -2.8125,
+      "converted_finite_maximum": 3.28125,
+      "source_sha256": "184104718aaf1d2fc9d23a6e4871264b59a68b2bd1b0e474d183dacdc29ce784"
+    },
+    {
+      "name": "layers.27.feed_forward.w3.weight",
+      "layer": 27,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        8249622432,
+        8328265632
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 5,
+      "exact_conversion_count": 39320524,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.46875,
+      "source_finite_maximum": 2.484375,
+      "converted_finite_minimum": -2.46875,
+      "converted_finite_maximum": 2.484375,
+      "source_sha256": "17f6b8a37d50074ff5edd2a0295dd87c4c76e9a17ece8ae1a04cfebb68033f06"
+    },
+    {
+      "name": "layers.28.feed_forward.w1.weight",
+      "layer": 28,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        8454156704,
+        8532799904
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 8,
+      "exact_conversion_count": 39320357,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.59375,
+      "source_finite_maximum": 2.484375,
+      "converted_finite_minimum": -2.59375,
+      "converted_finite_maximum": 2.484375,
+      "source_sha256": "6cc169c27cda8ec9ac7e0404fdb8a392aeff122b0131ba16d97c86de69f578f4"
+    },
+    {
+      "name": "layers.28.feed_forward.w3.weight",
+      "layer": 28,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        8611443104,
+        8690086304
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 3,
+      "exact_conversion_count": 39320509,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -4.65625,
+      "source_finite_maximum": 2.0625,
+      "converted_finite_minimum": -4.65625,
+      "converted_finite_maximum": 2.0625,
+      "source_sha256": "68c64815ca16a8ef0ad0d4e8715e8b5685059af04a4a325d923bd87fe19f4b7a"
+    },
+    {
+      "name": "layers.29.feed_forward.w1.weight",
+      "layer": 29,
+      "role": "W1",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        8815977376,
+        8894620576
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320320,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.6875,
+      "source_finite_maximum": 2.671875,
+      "converted_finite_minimum": -2.6875,
+      "converted_finite_maximum": 2.671875,
+      "source_sha256": "81fa0110e232468a28aad8fa3b4db70e643f366474f393653a11eb8a74e8ea20"
+    },
+    {
+      "name": "layers.29.feed_forward.w3.weight",
+      "layer": 29,
+      "role": "W3",
+      "shape": [
+        10240,
+        3840
+      ],
+      "source_byte_range": [
+        8973263776,
+        9051906976
+      ],
+      "element_count": 39321600,
+      "non_finite_count": 0,
+      "fp16_overflow_count": 0,
+      "underflow_to_zero_count": 6,
+      "exact_conversion_count": 39320506,
+      "maximum_absolute_error": 2.9802322387695312e-8,
+      "maximum_relative_error": 1,
+      "source_finite_minimum": -2.703125,
+      "source_finite_maximum": 3,
+      "converted_finite_minimum": -2.703125,
+      "converted_finite_maximum": 3,
+      "source_sha256": "484d6fd492eb1adeb072872e99e464d6ac4950295ceb7365c204fc7c5e39f5bd"
+    }
+  ]
+}

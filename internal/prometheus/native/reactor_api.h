@@ -640,6 +640,7 @@ enum {
   PROM_MODEL_SESSION_DETAIL_STALE_STREAM = -6924,
   PROM_MODEL_SESSION_DETAIL_STREAM_MISMATCH = -6925,
   PROM_MODEL_SESSION_DETAIL_COMPLETION_UNCERTAIN = -6926,
+  PROM_MODEL_SESSION_DETAIL_MAIN_ATTENTION_ROUTE_REJECTED = -6927,
 };
 
 /* M2C has a closed, lock-defined stream vocabulary. These are not
@@ -1107,6 +1108,9 @@ typedef struct PrometheusModelBlockEvidence {
   uint64_t vk_unmap_memory_count;
   uint64_t vk_flush_count;
   uint64_t vk_invalidate_count;
+  uint64_t m6a_activation_pack_gpu_ns;
+  uint64_t m6a_cooperative_execute_gpu_ns;
+  uint64_t m6a_w3_segment_repack_gpu_ns;
 } PrometheusModelBlockEvidence;
 
 typedef struct PrometheusCompiledModelSessionCreateRequest {
