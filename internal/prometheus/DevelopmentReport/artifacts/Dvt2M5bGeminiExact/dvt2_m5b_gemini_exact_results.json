@@ -41,10 +41,22 @@
     "gemini_exact": {"executed": true, "relative_l2": 8.39396e-7, "finite": true, "chain_relative_l2": 9.66693e-6}
   },
   "timing": {
-    "classification": "bounded-harness-stage-telemetry-not-full-image-or-kernel-benchmark",
+    "classification": "ten-sample-warm-complete-representative-layer0-main-transformer-stage-not-attention-dispatch-only",
     "warm_sample_count": 10,
-    "host_median_ns": {"serial_canonical": 442917100, "original_m5b": 428223000, "gemini_exact": 439794150},
-    "gpu_median_ns": {"serial_canonical": 442379232, "original_m5b": 427337472, "gemini_exact": 439158800},
+    "host_timer": "CPU wall clock (std::chrono::steady_clock path behind evidence.last_execution_ns)",
+    "gpu_timer": "Vulkan VK_QUERY_TYPE_TIMESTAMP; compute-boundary interval; RTX 3070 timestampPeriod=1ns; 64 valid bits",
+    "raw_gpu_samples_available": false,
+    "cpu_samples_ns": {
+      "serial_canonical": [440805700,445419300,443262900,443375100,443629000,444113800,442571300,442315300,440592800,441075200],
+      "original_m5b": [433995800,422320700,427048400,407979200,431250200,429232400,427213600,431902300,431936000,426795800],
+      "gemini_exact": [436283900,439284800,410193700,435820500,439212700,443864900,440303500,453664900,443193200,448592900]
+    },
+    "cpu_statistics_ns": {
+      "serial_canonical": {"best":440592800,"median":442917100,"mean":442716040,"population_variance":2185970468400,"population_stddev":1478502.8},
+      "original_m5b": {"best":407979200,"median":428223000,"mean":426967440,"population_variance":50415141348400,"population_stddev":7100362.1},
+      "gemini_exact": {"best":410193700,"median":439794150,"mean":439041500,"population_variance":119743078190000,"population_stddev":10942718}
+    },
+    "gpu_statistics_ns": {"serial_canonical":{"median":442379232,"mean":442105000},"original_m5b":{"median":427337472,"mean":426074000},"gemini_exact":{"median":439158800,"mean":438281000}},
     "full_zimage_executed": false,
     "promotion_decision": "not-promoted"
   }

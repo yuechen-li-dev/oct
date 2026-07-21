@@ -29,9 +29,44 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(38), prom_shader_registry_shader_asset_count(), "registered assets must include isolated M5b and GeminiExact MainTransformer subgroup routes");
+  ASSERT_EQUAL(static_cast<std::size_t>(40), prom_shader_registry_shader_asset_count(), "registered assets must include both production MainTransformer attention routes and isolated experimental M5b/Gemini routes");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
+}
+FACT(PrometheusSubgroupOwned32RouteSelectionIsStrictAndFallsBackOnlyForAuto) {
+  prom_vk_runtime_services services{};
+  prom_main_attention_route_decision decision{};
+  services.subgroup_compute_supported = 1u;
+  services.subgroup_size = 32u;
+  services.subgroup_arithmetic_supported = 1u;
+  services.subgroup_basic_supported = 1u;
+  services.subgroup_shuffle_supported = 1u;
+  services.subgroup_owned_attention_topology_proven = 1u;
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr,
+              "fully admitted Auto must select SubgroupOwned32");
+  ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32, decision.selected_route, "Auto selects the subgroup-owned route");
+  ASSERT_EQUAL(47u, decision.shader_id, "SubgroupOwned32 has an isolated production payload identity");
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, &services, 1u, 1u, 1u, 1u, 1u, 1u, &decision) == nullptr,
+              "forced SerialCanonical does not depend on subgroup shape admission");
+  ASSERT_EQUAL(41u, decision.shader_id, "SerialCanonical retains a distinct embedded payload identity");
+  services.subgroup_shuffle_supported = 0u;
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr,
+              "Auto falls back when arbitrary-lane shuffle is unavailable");
+  ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, decision.selected_route, "missing capability selects SerialCanonical");
+  ASSERT_EQUAL(PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SHUFFLE, decision.fallback_reason, "fallback reason records missing shuffle");
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) != nullptr,
+              "forced unsupported SubgroupOwned32 fails instead of silently falling back");
+  services.subgroup_shuffle_supported = 1u;
+  services.subgroup_size = 64u;
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.shader_id == 41u,
+              "subgroup-size mismatch falls back");
+  services.subgroup_size = 32u;
+  services.subgroup_owned_attention_topology_proven = 0u;
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_TOPOLOGY_PROOF,
+              "topology-proof failure falls back");
+  services.subgroup_owned_attention_topology_proven = 1u;
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1055u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_SHAPE,
+              "each shape/layout mismatch is rejected by the fixed contract");
 }
 FACT(PrometheusM5bSubgroupOwnedAttentionAdmissionIsExact) {
   prom_vk_runtime_services services{};
@@ -167,6 +202,7 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
   const auto* jointQk = prom_shader_registry_find_shader(40u);
   const auto* jointAttention = prom_shader_registry_find_shader(41u);
   const auto* geminiExact = prom_shader_registry_find_shader(45u);
+  const auto* geminiInPlace = prom_shader_registry_find_shader(46u);
   const auto* jointW1W3 = prom_shader_registry_find_shader(42u);
   const auto* jointGate = prom_shader_registry_find_shader(43u);
   ASSERT_TRUE(jointQk != nullptr && jointAttention != nullptr && jointW1W3 != nullptr && jointGate != nullptr,
@@ -181,6 +217,10 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
                   geminiExact->source_language == PROM_SHADER_SOURCE_HLSL &&
                   std::string(geminiExact->source_path).find("m5b-gemini-exact.hlsl") != std::string::npos,
               "GeminiExact must remain a separately identified external experimental HLSL asset");
+  ASSERT_TRUE(geminiInPlace != nullptr && geminiInPlace->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+                  geminiInPlace->source_language == PROM_SHADER_SOURCE_HLSL &&
+                  std::string(geminiInPlace->source_path).find("m5b-gemini-inplace.hlsl") != std::string::npos,
+              "GeminiInPlace must remain a separately identified reviewer-derived experimental HLSL asset");
 }
 FACT(PrometheusComputePipelineInstancesMatchDescriptors) {
   std::array<VkPipeline, PROM_COMPUTE_PIPELINE_COUNT> pipelines{};

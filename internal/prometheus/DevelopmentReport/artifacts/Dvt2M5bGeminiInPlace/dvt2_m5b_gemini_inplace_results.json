@@ -1,0 +1,14 @@
+{
+  "milestone": "DVT2-M5B-GEMINI-INPLACE",
+  "status": "experimental-measured-not-promoted",
+  "provenance": "gemini-algorithm-reviewer-derived-in-place-private-array-storage-transform-only",
+  "hypothesis": "GeminiExact additional private arrays mask subgroup-reduction benefit",
+  "source": {"path":"internal/prometheus/shaders/hlsl/experimental/m5b-gemini-inplace.hlsl","sha256":"02bc4eeba55f99d18b631df0611c13d010897f7f2f3e21cf1a4622492bd67f9e"},
+  "binary": {"path":"internal/prometheus/shaders/hlsl/experimental/m5b-gemini-inplace.spv","bytes":6404,"sha256":"d7b5e2deda2d1a901ed2f741d066ae71915d6a3b3247e60cc3dc7f250f743aa8","dxc_target":"vulkan1.3","validator_target":"vulkan1.4","spirv":"1.6","validated":true},
+  "static_audit": {"instructions":372,"fmax":1,"fadd":2,"shuffle":1,"function_private_arrays":["float[33]"],"workgroup_variables":0,"barriers":0,"atomics":0,"register_or_local_memory_metric":"not exposed by DXC SPIR-V output"},
+  "admission":{"device":"NVIDIA GeForce RTX 3070","subgroup_size":32,"arithmetic":true,"shuffle":true,"vulkan":"1.4","spirv":"1.6","admitted":true},
+  "authority":{"final_transformer_relative_l2_limit":0.00005,"relative_l2":8.39396e-7,"chain_relative_l2":9.66693e-6,"finite":true,"audit_valid":true},
+  "timing":{"boundary":"complete-retained-representative-layer0-main-transformer-stage-not-attention-dispatch-only","warm_sample_count":10,"cpu_samples_ns":[477647500,480393800,478923500,462692400,463774000,466765200,462939600,477924400,478658100,476820100],"cpu_best_ns":462692400,"cpu_median_ns":477233800,"cpu_mean_ns":472653860,"cpu_population_variance_ns2":51246430588400,"cpu_population_stddev_ns":7158661.2,"gpu_timer":"Vulkan timestamp query compute-boundary interval","gpu_timestamp_period_ns":1,"gpu_timestamp_valid_bits":64,"gpu_median_ns":476628528,"gpu_mean_ns":472053000,"raw_gpu_samples_available":false},
+  "full_zimage_executed":false,
+  "decision":"not-promoted-no-meaningful-improvement"
+}

@@ -48,9 +48,11 @@
 #else
 #include "reactor_vulkan_zimage_context_refiner_attention_streaming_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_streaming_spirv.h"
+#include "reactor_vulkan_zimage_main_transformer_joint_attention_subgroup_owned32_spirv.h"
 #endif
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_subgroup_owned_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_gemini_exact_spirv.h"
+#include "reactor_vulkan_zimage_main_transformer_joint_attention_gemini_inplace_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_joint_qk_norm_rope_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_ffn_w1_w3_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_ffn_gate_spirv.h"
@@ -208,6 +210,13 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_streaming.sdslv",
     "reactor_vulkan_zimage_main_transformer_joint_attention_streaming_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 3u, 16u, 0u, 1056u, 1056u },
+  { 47u, "zimage-main-transformer-joint-attention-subgroup-owned32", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_main_transformer_joint_attention_subgroup_owned32_spirv,
+    sizeof(k_prom_zimage_main_transformer_joint_attention_subgroup_owned32_spirv),
+    "MainTransformerJointAttentionSubgroupOwned_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_joint_attention_subgroup_owned32.sdslv",
+    "reactor_vulkan_zimage_main_transformer_joint_attention_subgroup_owned32_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_PRODUCTION, 3u, 16u, 0u, 1056u, 1056u },
   { 44u, "zimage-main-transformer-joint-attention-subgroup-owned", PROM_SHADER_STAGE_COMPUTE,
     k_prom_zimage_main_transformer_joint_attention_subgroup_owned_spirv,
     sizeof(k_prom_zimage_main_transformer_joint_attention_subgroup_owned_spirv),
@@ -221,6 +230,13 @@ static const prom_shader_asset k_shader_assets[] = {
     "MainTransformerJointAttentionSubgroupOwned_CS", 0u, PROM_SHADER_SOURCE_HLSL,
     "internal/prometheus/shaders/hlsl/external/m5b-gemini-exact.hlsl",
     "reactor_vulkan_zimage_main_transformer_joint_attention_gemini_exact_spirv.h", 1u, 0u, 0u, NULL,
+    PROM_SHADER_AUTHORITY_EXPERIMENTAL, 3u, 16u, 0u, 1056u, 1056u },
+  { 46u, "zimage-main-transformer-joint-attention-gemini-inplace", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_main_transformer_joint_attention_gemini_inplace_spirv,
+    sizeof(k_prom_zimage_main_transformer_joint_attention_gemini_inplace_spirv),
+    "MainTransformerJointAttentionSubgroupOwned_CS", 0u, PROM_SHADER_SOURCE_HLSL,
+    "internal/prometheus/shaders/hlsl/experimental/m5b-gemini-inplace.hlsl",
+    "reactor_vulkan_zimage_main_transformer_joint_attention_gemini_inplace_spirv.h", 1u, 0u, 0u, NULL,
     PROM_SHADER_AUTHORITY_EXPERIMENTAL, 3u, 16u, 0u, 1056u, 1056u },
   { 42u, "zimage-main-transformer-ffn-w1-w3", PROM_SHADER_STAGE_COMPUTE,
     k_prom_zimage_main_transformer_ffn_w1_w3_spirv,

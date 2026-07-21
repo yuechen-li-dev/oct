@@ -1520,6 +1520,7 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->subgroup_shuffle_supported = rt->subgroup_shuffle_supported;
   out_services->subgroup_fixed_size_32_admitted = rt->subgroup_fixed_size_32_admitted;
   out_services->subgroup_owned_attention_admitted = rt->subgroup_owned_attention_admitted;
+  out_services->subgroup_owned_attention_topology_proven = rt->subgroup_owned_attention_topology_proven;
 
   if (rt->available == 0u) return PROM_ERROR;
   if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
@@ -1535,6 +1536,46 @@ const char* prom_vk_subgroup_owned_attention_admission_reason(
   if (services->subgroup_arithmetic_supported == 0u) return "missing subgroup arithmetic support";
   if (services->subgroup_basic_supported == 0u) return "missing subgroup basic support";
   if (services->subgroup_shuffle_supported == 0u) return "missing subgroup shuffle support";
+  return NULL;
+}
+
+const char* prom_main_attention_route_select(uint32_t requested_route,
+                                             const prom_vk_runtime_services* services,
+                                             uint32_t token_count, uint32_t head_count,
+                                             uint32_t head_width, uint32_t fused_width,
+                                             uint32_t output_stride, uint32_t dispatch_groups,
+                                             prom_main_attention_route_decision* out_decision) {
+  const char* reason = NULL;
+  uint32_t fallback = PROM_MAIN_ATTENTION_FALLBACK_NONE;
+  if (out_decision == NULL) return "missing route decision output";
+  memset(out_decision, 0, sizeof(*out_decision));
+  out_decision->requested_route = requested_route;
+  if (requested_route != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
+      requested_route != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
+      requested_route != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32) return "unknown main attention route";
+  if (requested_route == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL) {
+    out_decision->selected_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
+    out_decision->shader_id = 41u;
+    return NULL;
+  }
+  if (services == NULL) { reason = "missing Vulkan 1.4 runtime services"; fallback = PROM_MAIN_ATTENTION_FALLBACK_RUNTIME_CONTRACT; }
+  else if (services->subgroup_compute_supported == 0u) { reason = "missing compute-stage subgroup support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_COMPUTE; }
+  else if (services->subgroup_size != 32u) { reason = "subgroup size is not 32"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SIZE; }
+  else if (services->subgroup_arithmetic_supported == 0u) { reason = "missing subgroup arithmetic support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_ARITHMETIC; }
+  else if (services->subgroup_basic_supported == 0u) { reason = "missing subgroup basic support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_BASIC; }
+  else if (services->subgroup_shuffle_supported == 0u) { reason = "missing subgroup shuffle support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SHUFFLE; }
+  else if (services->subgroup_owned_attention_topology_proven == 0u) { reason = "256-thread subgroup lane topology preflight has not passed"; fallback = PROM_MAIN_ATTENTION_FALLBACK_TOPOLOGY_PROOF; }
+  else if (token_count != 1056u || head_count != 30u || head_width != 128u || fused_width != 11520u ||
+           output_stride != 3840u || dispatch_groups != 3960u) { reason = "SubgroupOwned32 shape/layout contract mismatch"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SHAPE; }
+  if (reason == NULL) {
+    out_decision->selected_route = PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32;
+    out_decision->shader_id = 47u;
+    return NULL;
+  }
+  out_decision->fallback_reason = fallback;
+  if (requested_route == PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32) return reason;
+  out_decision->selected_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
+  out_decision->shader_id = 41u;
   return NULL;
 }
 
@@ -3017,6 +3058,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   rt->subgroup_shuffle_supported = 0u;
   rt->subgroup_fixed_size_32_admitted = 0u;
   rt->subgroup_owned_attention_admitted = 0u;
+  rt->subgroup_owned_attention_topology_proven = 0u;
   {
     VkPhysicalDeviceSubgroupProperties subgroup_properties;
     VkPhysicalDeviceProperties2 properties2;
@@ -3042,6 +3084,10 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
          rt->subgroup_arithmetic_supported != 0u && rt->subgroup_basic_supported != 0u) ? 1u : 0u;
     rt->subgroup_owned_attention_admitted =
         (rt->subgroup_fixed_size_32_admitted != 0u && rt->subgroup_shuffle_supported != 0u) ? 1u : 0u;
+    /* This remains false until the bounded 256-invocation compute/readback
+       proof has completed for this physical-device/driver session.  It must
+       never be inferred from subgroup size or advertised capabilities. */
+    rt->subgroup_owned_attention_topology_proven = 0u;
   }
 
 #ifdef VK_KHR_cooperative_matrix

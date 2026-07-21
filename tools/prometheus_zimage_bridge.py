@@ -16,6 +16,7 @@ TIMESTEP_SHAPE = (1, 256)
 OUTPUT_SHAPE = IMAGE_SHAPE
 MODEL_EXECUTION_PROFILE_CEILINGS = frozenset((643_587_076, 1_005_407_748))
 MODEL_EXECUTION_PROFILES = {"MinimumMemory": 1, "Prefetch": 2}
+MAIN_ATTENTION_ROUTES = {"Auto": 1, "SerialCanonical": 2, "SubgroupOwned32": 3}
 MAIN_STAGE_NAMES = (
     "ingress_cast", "adaln_modulation", "attention_norm1", "qkv",
     "q_norm_rope", "k_norm_rope", "attention", "projection_residual",
@@ -39,6 +40,7 @@ class _CreateRequest(ctypes.Structure):
         ("payload_root", ctypes.c_char_p),
         ("device_index", ctypes.c_int32),
         ("execution_profile", ctypes.c_uint32),
+        ("main_attention_route_policy", ctypes.c_uint32),
     ]
 
 
@@ -176,7 +178,7 @@ def _require_array(value: np.ndarray, label: str, dtype: np.dtype, shape: tuple[
 class PrometheusZImageSession:
     """One serialized, long-lived Vulkan session; Python never supplies topology."""
 
-    def __init__(self, bridge_dll: Path | str, reactor_dll: Path | str, lock_path: Path | str, payload_root: Path | str, device_index: int = -1, execution_profile: str = "MinimumMemory"):
+    def __init__(self, bridge_dll: Path | str, reactor_dll: Path | str, lock_path: Path | str, payload_root: Path | str, device_index: int = -1, execution_profile: str = "MinimumMemory", main_attention_route: str = "Auto"):
         self._bridge_path = _absolute_existing(bridge_dll, "bridge DLL")
         reactor_path = _absolute_existing(reactor_dll, "reactor DLL")
         lock = _absolute_existing(lock_path, "compiled-model lock")
@@ -196,8 +198,10 @@ class PrometheusZImageSession:
             raise RuntimeError("unsupported Prometheus Z-Image bridge ABI")
         if execution_profile not in MODEL_EXECUTION_PROFILES:
             raise ValueError("execution_profile must be MinimumMemory or Prefetch")
+        if main_attention_route not in MAIN_ATTENTION_ROUTES:
+            raise ValueError("main_attention_route must be Auto, SerialCanonical, or SubgroupOwned32")
         encoded = [str(path).encode("utf-8") for path in (reactor_path, lock, payload)]
-        request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index, MODEL_EXECUTION_PROFILES[execution_profile])
+        request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index, MODEL_EXECUTION_PROFILES[execution_profile], MAIN_ATTENTION_ROUTES[main_attention_route])
         handle = ctypes.c_uint64()
         if self._dll.prometheus_zimage_session_create(ctypes.byref(request), ctypes.byref(handle)) != 0:
             raise RuntimeError(self._last_error(0))

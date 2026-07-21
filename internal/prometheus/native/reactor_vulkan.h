@@ -73,13 +73,27 @@ typedef struct prom_vk_runtime_services {
   uint32_t subgroup_shuffle_supported;
   uint32_t subgroup_fixed_size_32_admitted;
   uint32_t subgroup_owned_attention_admitted;
+  uint32_t subgroup_owned_attention_topology_proven;
 } prom_vk_runtime_services;
+
+typedef struct prom_main_attention_route_decision {
+  uint32_t requested_route;
+  uint32_t selected_route;
+  uint32_t fallback_reason;
+  uint32_t shader_id;
+} prom_main_attention_route_decision;
 
 /* Returns NULL only when the exact M5b subgroup-owned attention route is
    admitted. The strings are stable diagnostics for explicit experimental
    selection and native negative-admission coverage. */
 const char* prom_vk_subgroup_owned_attention_admission_reason(
     const prom_vk_runtime_services* services);
+const char* prom_main_attention_route_select(uint32_t requested_route,
+                                             const prom_vk_runtime_services* services,
+                                             uint32_t token_count, uint32_t head_count,
+                                             uint32_t head_width, uint32_t fused_width,
+                                             uint32_t output_stride, uint32_t dispatch_groups,
+                                             prom_main_attention_route_decision* out_decision);
 
 /* Test/audit-only request. This is never accepted by policy or the production
    shader registry; it supplies one temporary pipeline to the existing SGEMM

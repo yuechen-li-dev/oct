@@ -80,15 +80,26 @@ candidate evidence.
 
 ## Timing and decision
 
-The existing correctness harness emits ten warm MainTransformer-stage samples;
-these are bounded stage telemetry, not a separately designed kernel benchmark
-or full-image timing. Median / GPU median were SerialCanonical 442.917 / 442.379
-ms, original M5b 428.223 / 427.337 ms, and GeminiExact 439.794 / 439.159 ms.
-They were obtained after warm-up under the same route, runtime, driver, model,
-shape, and validation settings, but in separate rebuilt executable runs; they
-are not a promotion claim. GeminiExact's ~0.7% host-median difference from
-SerialCanonical is not a meaningful bounded-stage improvement. No full
-Z-Image workload, canonical image hash, or production timing claim was made.
+The existing correctness harness emits ten measured warm samples after the
+retained streams, weights, descriptors, and pipelines are warm. A sample is
+one complete `prometheus_reactor_runtime_main_transformer_execute` of the
+representative layer-0 MainTransformer: Q/K rope, the attention dispatch,
+projection, residual, FFN, and other recorded MainTransformer stages. It is
+not an attention-dispatch-only measurement. `warm_ns` is CPU wall time;
+`gpu_compute_ns` is a Vulkan timestamp-query interval from the first compute
+boundary through the final compute boundary, with `timestampPeriod=1 ns` and
+64 valid bits on the RTX 3070 compute queue. The log emitted all ten CPU samples
+but only GPU median/mean, so raw GPU samples and their variance are unavailable.
+
+| Variant | Raw CPU samples (ns) | Best / median / mean (ns) | Population variance (ns²), stddev | GPU median / mean (ns) |
+| --- | --- | --- | --- | --- |
+| SerialCanonical | 440805700,445419300,443262900,443375100,443629000,444113800,442571300,442315300,440592800,441075200 | 440592800 / 442917100 / 442716040 | 2185970468400, 1478502.8 | 442379232 / 442105000 |
+| Original M5b | 433995800,422320700,427048400,407979200,431250200,429232400,427213600,431902300,431936000,426795800 | 407979200 / 428223000 / 426967440 | 50415141348400, 7100362.1 | 427337472 / 426074000 |
+| GeminiExact | 436283900,439284800,410193700,435820500,439212700,443864900,440303500,453664900,443193200,448592900 | 410193700 / 439794150 / 439041500 | 119743078190000, 10942718.0 | 439158800 / 438281000 |
+
+These were separate rebuilt executable runs under the same route, runtime,
+driver, model, shape, and validation settings. No full Z-Image workload,
+canonical image hash, or production timing claim was made.
 
 Decision: retain GeminiExact as an isolated experimental external artifact.
 Do not promote, translate, or modify it. SerialCanonical remains the production

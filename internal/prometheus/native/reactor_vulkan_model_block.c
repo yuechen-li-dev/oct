@@ -33,16 +33,10 @@
 #define PROM_MODEL_BLOCK_CONTEXT_QK_ROPE_SHADER_ID 38u
 #define PROM_MODEL_BLOCK_CONTEXT_ATTENTION_SHADER_ID 39u
 #define PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID 40u
-#if defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
-#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 45u
-#define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 3960u
-#elif defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
-#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 44u
-#define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 3960u
-#else
-#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 41u
-#define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 31680u
-#endif
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID 41u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID 47u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_GROUPS 31680u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS 3960u
 #define PROM_MODEL_BLOCK_MAIN_W1_W3_SHADER_ID 42u
 #define PROM_MODEL_BLOCK_MAIN_GATE_SHADER_ID 43u
 #define PROM_MODEL_BLOCK_M1B_MODEL_ELEMENTS (1024u * 3840u)
@@ -677,6 +671,10 @@ static int prom_model_block_m1b_shader_asset_is_admitted(const prom_shader_asset
   if (shader_id == 45u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
       asset->source_language == PROM_SHADER_SOURCE_HLSL) return 1;
 #endif
+#if defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
+  if (shader_id == 46u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+      asset->source_language == PROM_SHADER_SOURCE_HLSL) return 1;
+#endif
   return 0;
 }
 
@@ -981,6 +979,10 @@ static int prom_main_transformer_create_pipelines(prom_reduction_runtime_state* 
                                         &block->weights[12u].device, &block->mlp_gate,
                                         &block->attention_residual, &block->input_device,
                                         &block->attention};
+  const uint32_t attention_shader_id = state->compiled_session.main_attention_shader_id;
+  if (attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID &&
+      attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID) return 0;
+  block->main_attention_shader_id = attention_shader_id;
   return prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u],
                                                PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID, ingress_buffers, 4u,
                                                sizeof(prom_model_block_m1b_ingress_constants)) &&
@@ -1000,7 +1002,7 @@ static int prom_main_transformer_create_pipelines(prom_reduction_runtime_state* 
                                                PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID, k_buffers, 3u,
                                                sizeof(prom_model_block_main_qk_constants)) &&
          prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[0u],
-                                               PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID, attention_buffers, 3u,
+                                               attention_shader_id, attention_buffers, 3u,
                                                sizeof(prom_model_block_m1c_attention_constants)) &&
          prom_model_block_m1b_create_pipeline(state, block, &block->m1c_pipelines[1u],
                                                PROM_MODEL_BLOCK_M1C_PROJECTION_SHADER_ID, projection_buffers, 3u,
@@ -3080,7 +3082,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
   PrometheusModelBlockCreateRequest closed;
   uint32_t index;
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
   prom_vk_runtime_services services;
 #endif
   if (out_block_id != NULL) *out_block_id = 0u;
@@ -3090,7 +3092,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
     return PROM_ERROR;
   }
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
   if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
       prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
@@ -4537,7 +4539,10 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 7u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
-                                         &attention, sizeof(attention), PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS, 1u, 1u);
+                                         &attention, sizeof(attention),
+                                         (block->main_attention_shader_id == PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID
+                                             ? PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS
+                                             : PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_GROUPS), 1u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 8u);
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[1u],
@@ -4637,6 +4642,10 @@ static void prom_compiled_session_fill_evidence(const prom_compiled_model_sessio
   out_evidence->requested_execution_profile = session->requested_execution_profile;
   out_evidence->selected_execution_profile = session->selected_execution_profile;
   out_evidence->profile_fallback_reason = session->profile_fallback_reason;
+  out_evidence->requested_main_attention_route = session->requested_main_attention_route;
+  out_evidence->selected_main_attention_route = session->selected_main_attention_route;
+  out_evidence->main_attention_fallback_reason = session->main_attention_fallback_reason;
+  out_evidence->main_attention_shader_id = session->main_attention_shader_id;
 }
 
 static int prom_compiled_session_submit_and_wait(prom_reduction_runtime_state* state,
@@ -4699,7 +4708,10 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || out_session_id == NULL ||
       request->struct_size != sizeof(*request) || request->lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID ||
       (request->execution_profile != PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY &&
-       request->execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH)) {
+       request->execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH) ||
+      (request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
+       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
+       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32)) {
     prom_compiled_session_fill_evidence(NULL, out_evidence);
     return PROM_ERROR;
   }
@@ -4714,9 +4726,12 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
   session->next_session_id = next_session_id == 0u ? 1u : next_session_id;
   session->lock_identity = request->lock_identity;
   session->requested_execution_profile = request->execution_profile;
+  session->requested_main_attention_route = request->main_attention_route_policy;
   /* The owner performs the final admission after it has observed the runtime
      transfer queue.  Session creation freezes the request for replay. */
   session->selected_execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+  session->selected_main_attention_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
+  session->main_attention_shader_id = PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID;
   image_descriptor = prom_zimage_turbo_resolve_resident_stream_descriptor(
       request->lock_identity, PROM_ZIMAGE_STREAM_PREPARED_IMAGE);
   context_descriptor = prom_zimage_turbo_resolve_resident_stream_descriptor(
@@ -5417,6 +5432,20 @@ int prom_reactor_runtime_compiled_model_owner_create_impl(
   } else {
     state->compiled_session.selected_execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
     state->compiled_session.profile_fallback_reason = 0u;
+  }
+  {
+    prom_vk_runtime_services services;
+    prom_main_attention_route_decision decision;
+    const char* route_error = prom_reactor_runtime_get_vk_services(handle, &services) == PROM_OK
+                                  ? prom_main_attention_route_select(
+                                        state->compiled_session.requested_main_attention_route, &services,
+                                        PROM_MODEL_BLOCK_MAIN_TOKENS, 30u, 128u, 11520u, 3840u,
+                                        PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS, &decision)
+                                  : "missing Vulkan 1.4 runtime services";
+    if (route_error != NULL) goto invalid;
+    state->compiled_session.selected_main_attention_route = decision.selected_route;
+    state->compiled_session.main_attention_fallback_reason = decision.fallback_reason;
+    state->compiled_session.main_attention_shader_id = decision.shader_id;
   }
   memset(&closed, 0, sizeof(closed));
   closed.struct_size = sizeof(closed);

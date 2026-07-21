@@ -13,6 +13,7 @@ typedef struct PrometheusZImageSessionCreateRequest {
   const char* payload_root;
   int32_t device_index;
   uint32_t execution_profile;
+  uint32_t main_attention_route_policy;
 } PrometheusZImageSessionCreateRequest;
 
 typedef struct PrometheusZImageExecuteRequest {
@@ -283,7 +284,12 @@ func prometheus_zimage_session_create(request *C.PrometheusZImageSessionCreateRe
 		setGlobalError(err)
 		return 1
 	}
-	reactor, err := openReactor(reactorPath, uint32(profile))
+	route, err := selectedMainAttentionRoute(uint32(request.main_attention_route_policy))
+	if err != nil {
+		setGlobalError(err)
+		return 1
+	}
+	reactor, err := openReactor(reactorPath, uint32(profile), uint32(route))
 	if err != nil {
 		setGlobalError(err)
 		return 1

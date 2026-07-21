@@ -330,6 +330,7 @@ typedef struct prom_model_block_state {
   uint32_t audit_valid;
   int32_t last_detail_code;
   uint32_t shader_id;
+  uint32_t main_attention_shader_id;
   uint32_t test_flags;
   uint32_t weight_count;
   uint32_t step_count;
@@ -586,6 +587,10 @@ typedef struct prom_compiled_model_session_state {
   uint32_t requested_execution_profile;
   uint32_t selected_execution_profile;
   uint32_t profile_fallback_reason;
+  uint32_t requested_main_attention_route;
+  uint32_t selected_main_attention_route;
+  uint32_t main_attention_fallback_reason;
+  uint32_t main_attention_shader_id;
   uint32_t retarget_position;
   uint32_t evaluation_complete;
   uint32_t created;

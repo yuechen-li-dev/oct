@@ -27,6 +27,26 @@ enum {
   PROM_MODEL_EXECUTION_PROFILE_PREFETCH = 2u,
 };
 
+/* The main attention policy is a closed, typed session request.  Auto is the
+   production default; SerialCanonical remains a separately embedded route. */
+enum {
+  PROM_MAIN_ATTENTION_ROUTE_AUTO = 1u,
+  PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL = 2u,
+  PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 = 3u,
+};
+
+enum {
+  PROM_MAIN_ATTENTION_FALLBACK_NONE = 0u,
+  PROM_MAIN_ATTENTION_FALLBACK_RUNTIME_CONTRACT = 1u,
+  PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_COMPUTE = 2u,
+  PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SIZE = 3u,
+  PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_ARITHMETIC = 4u,
+  PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_BASIC = 5u,
+  PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SHUFFLE = 6u,
+  PROM_MAIN_ATTENTION_FALLBACK_TOPOLOGY_PROOF = 7u,
+  PROM_MAIN_ATTENTION_FALLBACK_SHAPE = 8u,
+};
+
 enum {
   PROM_OK = 0,
   PROM_ERROR = 1,
@@ -1093,6 +1113,7 @@ typedef struct PrometheusCompiledModelSessionCreateRequest {
   uint32_t struct_size;
   uint64_t lock_identity;
   uint32_t execution_profile;
+  uint32_t main_attention_route_policy;
 } PrometheusCompiledModelSessionCreateRequest;
 
 /* A completed NoiseRefiner1 becomes PreparedImage and a completed
@@ -1133,6 +1154,10 @@ typedef struct PrometheusCompiledModelSessionEvidence {
   uint32_t requested_execution_profile;
   uint32_t selected_execution_profile;
   uint32_t profile_fallback_reason;
+  uint32_t requested_main_attention_route;
+  uint32_t selected_main_attention_route;
+  uint32_t main_attention_fallback_reason;
+  uint32_t main_attention_shader_id;
 } PrometheusCompiledModelSessionEvidence;
 
 /* The transition position, not the bridge, selects the assembly family. */

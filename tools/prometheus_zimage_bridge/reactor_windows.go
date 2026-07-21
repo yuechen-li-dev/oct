@@ -146,13 +146,14 @@ static int oct_prom_runtime_close(oct_prom_zimage_api* api, void* runtime) {
   return runtime == NULL ? PROM_OK : ((oct_runtime_destroy_fn)api->runtime_destroy)(runtime);
 }
 
-static int oct_prom_session_create(oct_prom_zimage_api* api, void* runtime, uint32_t profile, uint64_t* out_session,
+static int oct_prom_session_create(oct_prom_zimage_api* api, void* runtime, uint32_t profile, uint32_t attention_route, uint64_t* out_session,
                                    PrometheusCompiledModelSessionEvidence* evidence) {
   PrometheusCompiledModelSessionCreateRequest request;
   memset(&request, 0, sizeof(request));
   request.struct_size = sizeof(request);
   request.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
   request.execution_profile = profile;
+  request.main_attention_route_policy = attention_route;
   return ((oct_session_create_fn)api->session_create)(runtime, &request, out_session, evidence);
 }
 
@@ -450,14 +451,17 @@ import (
 )
 
 type reactorDLL struct {
-	api       C.oct_prom_zimage_api
-	runtime   unsafe.Pointer
-	sessionID uint64
-	ownerID   uint64
-	profile   C.uint32_t
+	api            C.oct_prom_zimage_api
+	runtime        unsafe.Pointer
+	sessionID      uint64
+	ownerID        uint64
+	profile        C.uint32_t
+	attentionRoute C.uint32_t
 }
 
 type modelExecutionProfile uint32
+
+type mainAttentionRoute uint32
 
 const (
 	minimumMemoryProfile modelExecutionProfile = modelExecutionProfile(C.PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY)
@@ -470,6 +474,21 @@ func selectedExecutionProfile(requested uint32) (modelExecutionProfile, error) {
 		return modelExecutionProfile(requested), nil
 	default:
 		return 0, fmt.Errorf("execution_profile=%d must be MinimumMemory (1) or Prefetch (2)", requested)
+	}
+}
+
+const (
+	mainAttentionAuto            mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_AUTO)
+	mainAttentionSerialCanonical mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL)
+	mainAttentionSubgroupOwned32 mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32)
+)
+
+func selectedMainAttentionRoute(requested uint32) (mainAttentionRoute, error) {
+	switch mainAttentionRoute(requested) {
+	case mainAttentionAuto, mainAttentionSerialCanonical, mainAttentionSubgroupOwned32:
+		return mainAttentionRoute(requested), nil
+	default:
+		return 0, fmt.Errorf("main_attention_route_policy=%d must be Auto (1), SerialCanonical (2), or SubgroupOwned32 (3)", requested)
 	}
 }
 
@@ -557,14 +576,18 @@ type cachedPayload struct {
 	bytes   uint64
 }
 
-func openReactor(path string, requestedProfile uint32) (*reactorDLL, error) {
+func openReactor(path string, requestedProfile uint32, requestedAttentionRoute uint32) (*reactorDLL, error) {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	profile, err := selectedExecutionProfile(requestedProfile)
 	if err != nil {
 		return nil, err
 	}
-	reactor := &reactorDLL{profile: C.uint32_t(profile)}
+	route, err := selectedMainAttentionRoute(requestedAttentionRoute)
+	if err != nil {
+		return nil, err
+	}
+	reactor := &reactorDLL{profile: C.uint32_t(profile), attentionRoute: C.uint32_t(route)}
 	var winError C.DWORD
 	if C.oct_prom_zimage_load(cPath, &reactor.api, &winError) != 0 {
 		return nil, fmt.Errorf("load Prometheus reactor %s: Win32 error %d", path, uint32(winError))
@@ -575,7 +598,7 @@ func openReactor(path string, requestedProfile uint32) (*reactorDLL, error) {
 		return nil, fmt.Errorf("create Prometheus Vulkan runtime")
 	}
 	var evidence C.PrometheusCompiledModelSessionEvidence
-	if C.oct_prom_session_create(&reactor.api, reactor.runtime, reactor.profile, (*C.uint64_t)(&reactor.sessionID), &evidence) != C.PROM_OK {
+	if C.oct_prom_session_create(&reactor.api, reactor.runtime, reactor.profile, reactor.attentionRoute, (*C.uint64_t)(&reactor.sessionID), &evidence) != C.PROM_OK {
 		C.oct_prom_runtime_close(&reactor.api, reactor.runtime)
 		C.oct_prom_zimage_unload(&reactor.api)
 		return nil, fmt.Errorf("create lock-resolved compiled-model session: detail=%d", int32(evidence.detail_code))

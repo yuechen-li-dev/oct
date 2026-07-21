@@ -1,0 +1,11 @@
+{
+  "milestone": "DVT2-M5B-ORIGINAL-FULL-IMAGE",
+  "status": "eligible-for-separate-promotion-review-not-promoted",
+  "variant": {"name":"original-m5b-subgroup-owned","registry_id":44,"macro":"PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT","spirv_sha256":"bf53ad5fe22d83a581a41cc096358762f1766bf5c922ac3f3966880fd4616ebc","spirv_bytes":7076},
+  "static_invariants":{"fmax":1,"shuffle":3,"workgroup_variables":0,"barriers":0,"atomics":0,"serial_canonical_fallback":"active-after-test"},
+  "admission":{"device":"NVIDIA GeForce RTX 3070","subgroup_size":32,"compute":true,"arithmetic":true,"basic":true,"shuffle":true,"admitted":true},
+  "numerical_authority":{"relative_l2_limit":0.00005,"representative_final_l2":8.38066e-7,"chain_final_l2":1.02005e-5,"finite":true,"audit_valid":true,"canonical_png_sha256":"7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613"},
+  "bounded_timing":{"boundary":"complete-representative-layer0-main-transformer-stage-not-attention-only","serial_samples_ns":[440805700,445419300,443262900,443375100,443629000,444113800,442571300,442315300,440592800,441075200],"m5b_samples_ns":[433995800,422320700,427048400,407979200,431250200,429232400,427213600,431902300,431936000,426795800],"serial_median_ns":442917100,"m5b_median_ns":428223000,"speedup_percent":3.3177,"distributions_overlap":false},
+  "full_image":{"boundary":"nine-evaluation-512x512-prefetch-smoke-wall-time","order":["serial_1","m5b_1","serial_2","m5b_2"],"serial_seconds":[172.2471449,166.2933085],"m5b_seconds":[159.5279281,161.4066003],"serial_mean_seconds":169.2702267,"serial_population_stddev_seconds":2.9769182,"m5b_mean_seconds":160.4672642,"m5b_population_stddev_seconds":0.9393361,"pair_speedup_percent":[7.3843,2.9386],"mean_speedup_percent":5.2005,"m5b_best_vs_post_migration_serial_best_seconds":172.396,"m5b_best_vs_post_migration_speedup_percent":7.4643,"all_png_hashes_match":true,"raw_artifact_directory":"out/prometheus/dvt2_m5b_original_full_image"},
+  "decision":"separate-promotion-review-eligible; remain-experimental"
+}
