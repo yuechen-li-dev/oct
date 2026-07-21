@@ -1520,7 +1520,7 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     sessionCreate.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
     sessionCreate.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
 #if defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
-    sessionCreate.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY;
+    sessionCreate.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32;
 #else
     sessionCreate.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_AUTO;
 #endif
@@ -1717,7 +1717,7 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_get_evidence(runtime, sessionID, &sessionEvidence),
                  "MainTransformer route selection is available after owner creation");
 #if defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
-    ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, sessionEvidence.selected_main_attention_route,
+    ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32, sessionEvidence.selected_main_attention_route,
                  "builtin-topology route remains selected without a topology-probe execution runner");
     ASSERT_EQUAL(49u, sessionEvidence.main_attention_shader_id,
                  "builtin-topology route binds the isolated payload identity");
@@ -1862,11 +1862,11 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
         for (std::uint32_t warm = 0u; warm < 4u; ++warm) {
             std::uint64_t discarded = 0u;
             run_route(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, false, warm, &discarded);
-            run_route(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, false, warm, &discarded);
+            run_route(PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32, false, warm, &discarded);
         }
         for (std::uint32_t sample = 0u; sample < serialAlternatingNs.size(); ++sample) {
             run_route(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, sample == 0u, sample, &serialAlternatingNs[sample]);
-            run_route(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, sample == 0u, sample, &builtinAlternatingNs[sample]);
+            run_route(PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32, sample == 0u, sample, &builtinAlternatingNs[sample]);
         }
         std::cout << "M2C alternating_boundary=MainTransformer layer-0 execute last_execution_ns; "
                      "one retained compiled session, prepared streams, joint generation, Vulkan runtime, weights, "

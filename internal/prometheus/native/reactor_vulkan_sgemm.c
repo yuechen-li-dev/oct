@@ -1547,37 +1547,32 @@ const char* prom_main_attention_route_select(uint32_t requested_route,
                                              prom_main_attention_route_decision* out_decision) {
   const char* reason = NULL;
   uint32_t fallback = PROM_MAIN_ATTENTION_FALLBACK_NONE;
-  int builtin_topology = 0;
   if (out_decision == NULL) return "missing route decision output";
   memset(out_decision, 0, sizeof(*out_decision));
   out_decision->requested_route = requested_route;
   if (requested_route != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
       requested_route != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
-      requested_route != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 &&
-      requested_route != PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY) return "unknown main attention route";
+      requested_route != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32) return "unknown main attention route";
   if (requested_route == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL) {
     out_decision->selected_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
     out_decision->shader_id = 41u;
     return NULL;
   }
-  builtin_topology = requested_route == PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY;
   if (services == NULL) { reason = "missing Vulkan 1.4 runtime services"; fallback = PROM_MAIN_ATTENTION_FALLBACK_RUNTIME_CONTRACT; }
   else if (services->subgroup_compute_supported == 0u) { reason = "missing compute-stage subgroup support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_COMPUTE; }
   else if (services->subgroup_size != 32u) { reason = "subgroup size is not 32"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SIZE; }
   else if (services->subgroup_arithmetic_supported == 0u) { reason = "missing subgroup arithmetic support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_ARITHMETIC; }
   else if (services->subgroup_basic_supported == 0u) { reason = "missing subgroup basic support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_BASIC; }
   else if (services->subgroup_shuffle_supported == 0u) { reason = "missing subgroup shuffle support"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SUBGROUP_SHUFFLE; }
-  else if (!builtin_topology && services->subgroup_owned_attention_topology_proven == 0u) { reason = "256-thread subgroup lane topology preflight has not passed"; fallback = PROM_MAIN_ATTENTION_FALLBACK_TOPOLOGY_PROOF; }
   else if (token_count != 1056u || head_count != 30u || head_width != 128u || fused_width != 11520u ||
            output_stride != 3840u || dispatch_groups != 3960u) { reason = "SubgroupOwned32 shape/layout contract mismatch"; fallback = PROM_MAIN_ATTENTION_FALLBACK_SHAPE; }
   if (reason == NULL) {
-    out_decision->selected_route = builtin_topology ? PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY : PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32;
-    out_decision->shader_id = builtin_topology ? 49u : 47u;
+    out_decision->selected_route = PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32;
+    out_decision->shader_id = 49u;
     return NULL;
   }
   out_decision->fallback_reason = fallback;
-  if (requested_route == PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 ||
-      requested_route == PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY) return reason;
+  if (requested_route == PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32) return reason;
   out_decision->selected_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
   out_decision->shader_id = 41u;
   return NULL;

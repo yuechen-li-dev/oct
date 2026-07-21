@@ -77,10 +77,14 @@ def main() -> None:
     parser.add_argument("--reactor-dll", type=Path, default=repo / "out" / "prometheus" / "native" / "prometheus_reactor.dll")
     parser.add_argument("--lock", type=Path, default=repo / "internal" / "prometheus" / "models" / "zimage-turbo" / "lock-tagon.octagon")
     parser.add_argument("--execution-profile", choices=("MinimumMemory", "Prefetch"), default="MinimumMemory")
-    parser.add_argument("--main-attention-route", choices=("Auto", "SerialCanonical", "BuiltinTopology"), default="Auto")
+    parser.add_argument("--main-attention-route", choices=("Auto", "SerialCanonical", "SubgroupOwned32"), default="Auto")
+    parser.add_argument("--preflight-one-evaluation", action="store_true")
     parser.add_argument("--output", type=Path, default=default_payload / "shipping_smoke" / "zimage_turbo_prometheus_seed42.png")
     parser.add_argument("--metadata", type=Path, default=repo / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "Evt2Shipping" / "zimage_python_smoke.json")
     args = parser.parse_args()
+    print(json.dumps({"event": "process_start", "route": args.main_attention_route,
+                      "profile": args.execution_profile, "output": str(args.output),
+                      "metadata": str(args.metadata)}), flush=True)
 
     comfy_root = args.comfy_root.resolve(strict=True)
     data_root = args.data_root.resolve(strict=True)
@@ -191,6 +195,7 @@ def main() -> None:
     session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root,
                                      execution_profile=args.execution_profile,
                                      main_attention_route=args.main_attention_route)
+    print(json.dumps({"event": "native_session_created", "route": args.main_attention_route}), flush=True)
     timings["prometheus_session_create_seconds"] = time.perf_counter() - bridge_start
     sample_memory("after_prometheus_session_create")
     final_projection_seconds = 0.0
@@ -268,6 +273,11 @@ def main() -> None:
         evaluation_timing["garbage_collection_count"] = len(gc_events) - gc_begin_index
         evaluation_timing["garbage_collection_seconds"] = sum(float(event["duration_seconds"]) for event in gc_events[gc_begin_index:])
         evidence_rows.append(native.__dict__ | {"python_timing": evaluation_timing})
+        print(json.dumps({"event": "native_evaluation_complete", "index": invocation_count,
+                          "route": args.main_attention_route, "finite": bool(torch.isfinite(result).all())}), flush=True)
+        if args.preflight_one_evaluation:
+            print(json.dumps({"event": "preflight_complete", "route": args.main_attention_route}), flush=True)
+            raise SystemExit(0)
         sample_gpu("after_native_evaluation", invocation_count)
         if tuple(result.shape) != (1, 16, 64, 64) or not torch.isfinite(result).all():
             raise RuntimeError(f"invalid external final projection: {tuple(result.shape)}")
@@ -306,6 +316,7 @@ def main() -> None:
     gc.collect()
 
     vae_start = time.perf_counter()
+    print(json.dumps({"event": "python_postprocessing_start", "route": args.main_attention_route}), flush=True)
     vae = nodes.VAELoader().load_vae("ae.safetensors")[0]
     timings["vae_load_seconds"] = time.perf_counter() - vae_start
     vae_decode_start = time.perf_counter()
@@ -378,8 +389,8 @@ def main() -> None:
         "main_attention_payloads": {
             "requested_route": args.main_attention_route,
             "selection_contract": "an explicit route is admitted during each MainTransformer owner creation; an unavailable route aborts the run",
-            "expected_selected_route": {"SerialCanonical": 2, "BuiltinTopology": 4}.get(args.main_attention_route),
-            "expected_shader_id": {"SerialCanonical": 41, "BuiltinTopology": 49}.get(args.main_attention_route),
+            "expected_selected_route": {"SerialCanonical": 2, "SubgroupOwned32": 3}.get(args.main_attention_route),
+            "expected_shader_id": {"SerialCanonical": 41, "SubgroupOwned32": 49}.get(args.main_attention_route),
         },
         "timings": timings,
         "allocation": {
@@ -428,6 +439,8 @@ def main() -> None:
     temporary = args.metadata.with_suffix(args.metadata.suffix + ".tmp")
     temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(args.metadata)
+    print(json.dumps({"event": "output_complete", "route": args.main_attention_route,
+                      "png": str(args.output.resolve()), "metadata": str(args.metadata.resolve())}), flush=True)
     gc.callbacks.remove(gc_probe)
     print(json.dumps({"png": str(args.output.resolve()), "sha256": png_hash, "metadata": str(args.metadata.resolve()), "evaluations": invocation_count, "wall_time_seconds": timings["wall_time_seconds"]}, indent=2))
 

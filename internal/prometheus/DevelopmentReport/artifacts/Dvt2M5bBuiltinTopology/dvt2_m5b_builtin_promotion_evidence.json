@@ -1,0 +1,13 @@
+{
+  "schema": "oct.prometheus.dvt2.m5b.builtin-promotion.v1",
+  "status": "complete",
+  "production_routes": {"auto": {"route": 3, "shader_id": 49}, "subgroup_owned32": {"route": 3, "shader_id": 49}, "serial_canonical": {"route": 2, "shader_id": 41}},
+  "historical_identity_47": "preserved and unreachable through production route selection; topology proof remains unchanged and unused",
+  "serial_preflight": {"requested_route": "SerialCanonical", "profile": "Prefetch", "exit_status": 0, "finite": true, "relative_l2": 8.38066e-07},
+  "post_promotion_full_images": {
+    "auto": {"requested_route": "Auto", "expected_shader_id": 49, "wall_seconds": 165.0506682999985, "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613"},
+    "serial_canonical": {"requested_route": "SerialCanonical", "expected_shader_id": 41, "wall_seconds": 165.85988199999701, "png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613", "exit_status": 0}
+  },
+  "silent_attempt_root_causes": ["first launcher sequence did not emit a Serial child artifact or diagnostics", "second Serial child reached native session creation then exited 0xC0000005 because registry asset 41 was accidentally marked experimental and the rejected pipeline was later dereferenced"],
+  "performance_interpretation": "The accepted alternating evidence remains the performance authority; this single post-promotion pair validates selection and integration only."
+}

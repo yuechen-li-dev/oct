@@ -2,8 +2,7 @@
 
 #if (defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) + \
      defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) + \
-     defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT) + \
-     defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)) > 1
+     defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)) > 1
 #error "DVT2 M5b experimental attention routes are mutually exclusive"
 #endif
 
@@ -682,10 +681,6 @@ static int prom_model_block_m1b_shader_asset_is_admitted(const prom_shader_asset
 #if defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
   if (shader_id == 46u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
       asset->source_language == PROM_SHADER_SOURCE_HLSL) return 1;
-#endif
-#if defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
-  if (shader_id == 49u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
-      asset->source_language == PROM_SHADER_SOURCE_SDSLV) return 1;
 #endif
   return 0;
 }
@@ -3095,7 +3090,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
   PrometheusModelBlockCreateRequest closed;
   uint32_t index;
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
   prom_vk_runtime_services services;
 #endif
   if (out_block_id != NULL) *out_block_id = 0u;
@@ -3105,7 +3100,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
     return PROM_ERROR;
   }
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
   if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
       prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
@@ -4748,8 +4743,7 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
        request->execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH) ||
        (request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
        request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
-       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 &&
-       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY)) {
+       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32)) {
     prom_compiled_session_fill_evidence(NULL, out_evidence);
     return PROM_ERROR;
   }
@@ -5402,8 +5396,7 @@ int prom_reactor_runtime_compiled_model_session_set_main_attention_route_impl(
   if (out_evidence == NULL || !prom_reactor_runtime_validate_handle(handle) ||
       (main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
        main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
-       main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 &&
-       main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY)) return PROM_ERROR;
+       main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32)) return PROM_ERROR;
   state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   if (state == NULL || state->compiled_session.created == 0u ||
       state->compiled_session.session_id != session_id || state->model_block.created != 0u) {

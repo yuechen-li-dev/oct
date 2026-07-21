@@ -41,11 +41,10 @@ FACT(PrometheusSubgroupOwned32RouteSelectionIsStrictAndFallsBackOnlyForAuto) {
   services.subgroup_arithmetic_supported = 1u;
   services.subgroup_basic_supported = 1u;
   services.subgroup_shuffle_supported = 1u;
-  services.subgroup_owned_attention_topology_proven = 1u;
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr,
               "fully admitted Auto must select SubgroupOwned32");
   ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32, decision.selected_route, "Auto selects the subgroup-owned route");
-  ASSERT_EQUAL(47u, decision.shader_id, "SubgroupOwned32 has an isolated production payload identity");
+  ASSERT_EQUAL(49u, decision.shader_id, "SubgroupOwned32 selects the builtin-topology production payload identity");
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, &services, 1u, 1u, 1u, 1u, 1u, 1u, &decision) == nullptr,
               "forced SerialCanonical does not depend on subgroup shape admission");
   ASSERT_EQUAL(41u, decision.shader_id, "SerialCanonical retains a distinct embedded payload identity");
@@ -62,13 +61,8 @@ FACT(PrometheusSubgroupOwned32RouteSelectionIsStrictAndFallsBackOnlyForAuto) {
               "subgroup-size mismatch falls back");
   services.subgroup_size = 32u;
   services.subgroup_owned_attention_topology_proven = 0u;
-  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_TOPOLOGY_PROOF,
-              "topology-proof failure falls back");
-  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr,
-              "builtin-topology does not require an empirical local-index topology proof");
-  ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, decision.selected_route, "builtin-topology selects its isolated route");
-  ASSERT_EQUAL(49u, decision.shader_id, "builtin-topology has an isolated experimental payload identity");
-  services.subgroup_owned_attention_topology_proven = 1u;
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.shader_id == 49u,
+              "builtin-topology production selection does not require an empirical topology proof");
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1055u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_SHAPE,
               "each shape/layout mismatch is rejected by the fixed contract");
 }
