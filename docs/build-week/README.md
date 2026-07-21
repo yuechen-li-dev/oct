@@ -1,67 +1,23 @@
-# OpenAI Build Week submission packet
+# Prometheus Build Week submission packet
 
-Status: **CLAIMS AND NARRATION APPROVED — RECORDING/UPLOAD REMAIN**
-Prepared from repository and Codex-session evidence on 2026-07-17.
+**Audited submission head:** 3e41eb67e40445754dfc9e057cc95e4efb471c07
+**Audit:** 2026-07-21 12:10:04 Pacific (-07:00)
+**Status:** DVT2-M6A closed; M6B not started.
 
-## Submission identity
+## The five-minute story
 
-- **Title:** Oct and SDSL-V: Programming Languages Built by AI, Used by AI
-- **Category:** Developer Tools
-- **One line:** Persistent ChatGPT review and ephemeral GPT-5.6 Codex author
-  tasks extended two AI-built programming languages into a measured Vulkan
-  transformer stack—then Codex dogfooded Oct itself.
-- **Repository:** https://github.com/yuechen-li-dev/oct
-- **License:** GNU GPL v3.0
+During Build Week, Prometheus evolved from an experimental Vulkan runtime with prototype SGEMM shaders into a compiled transformer execution system. It ran the complete Z-Image-Turbo transformer—two noise refiners, two context refiners, and 30 main layers—inside all nine evaluations of one deterministic 512x512 image generation on an 8 GiB NVIDIA RTX 3070.
 
-## Authoritative event requirements checked
-
-The packet was checked against the current [official rules](https://openai.devpost.com/rules)
-and [FAQ](https://openai.devpost.com/details/faqs). The rules prevail if they
-change. The submission period is July 13, 2026 at 9:00 a.m. Pacific through
-July 21, 2026 at 5:00 p.m. Pacific. A pre-existing project is eligible only for
-meaningful extensions made after the start, and must distinguish old from new.
-
-Required submission facts reflected here:
-
-- working project built with Codex and GPT-5.6;
-- one category, text description, and repository with relevant license;
-- public YouTube demo under three minutes with audio explaining what was built,
-  how Codex was used, and how GPT-5.6 was used;
-- README coverage of Codex acceleration and human decisions;
-- `/feedback` Session ID from the thread where the majority of the submitted
-  core functionality was built, or the most representative primary thread when
-  work was distributed;
-- installation, supported platforms, and a no-rebuild judge path for a
-  Developer Tool.
+The official BF16 checkpoint contains 453 tensors and 12,309,817,472 payload bytes, exceeding the GPU’s VRAM. Prometheus keeps immutable weights in system memory, retains FP32 activations on the GPU, and streams bounded manifest-authorized packages. Model-owned GPU memory is 1,005,407,748 bytes with Prefetch, or 643,587,076 bytes in MinimumMemory. The production Auto run generated one deterministic 512x512 image in 165.051 seconds, including all nine model evaluations.
 
 ## Packet map
 
-| Need | File |
-| --- | --- |
-| Submission summary and final claims table | [SUBMISSION.md](SUBMISSION.md) |
-| Pre-existing versus eligible scope | [BUILD_WEEK_SCOPE.md](BUILD_WEEK_SCOPE.md) |
-| Codex/GPT-5.6/human/Claude collaboration | [CODEX_COLLABORATION.md](CODEX_COLLABORATION.md) |
-| Fast judge path | [JUDGE_QUICKSTART.md](JUDGE_QUICKSTART.md) |
-| Full testing matrix | [TESTING_INSTRUCTIONS.md](TESTING_INSTRUCTIONS.md) |
-| Claim-to-commit/session/file/test/artifact map | [EVIDENCE_INDEX.md](EVIDENCE_INDEX.md) |
-| Copy-paste Devpost fields | [DEVPOST_FIELDS.md](DEVPOST_FIELDS.md) |
-| Exact 2:44 narration and YouTube copy | [VIDEO_SCRIPT.md](VIDEO_SCRIPT.md) |
-| Exact shots and recording order | [VIDEO_SHOT_LIST.md](VIDEO_SHOT_LIST.md) |
-| Upload-ready subtitles | [VIDEO_CAPTIONS.srt](VIDEO_CAPTIONS.srt) |
-| Machine-readable commit ledger | [BUILD_WEEK_COMMITS.json](BUILD_WEEK_COMMITS.json) |
-| Deterministic recording kit | [recording/README.md](recording/README.md) |
-| Validation results and reproducible checks | [VALIDATION.md](VALIDATION.md) |
+- [Submission copy](SUBMISSION.md)
+- [Slide source and speaker notes](SLIDE_BRIEF.md)
+- [Presenter briefing](PRESENTER_BRIEF.md)
+- [Judge Q&A](JUDGE_QA.md)
+- [Claims-to-evidence matrix](CLAIMS_EVIDENCE.md)
+- [Eligibility and commit ledger](BUILD_WEEK_SCOPE.md)
+- [Current reviewer handoff](../../internal/prometheus/DevelopmentReport/PROMETHEUS_DVT2_REVIEWER_HANDOFF.md)
 
-## Owner sign-off checklist
-
-The owner has confirmed `/feedback`
-`019f6cb4-b438-70e2-b91c-487d7ad45bbd`, approved the title, attribution,
-scope boundary, claims table, narration, and AI-assisted narration. Codex
-produced and validated the exact 2:44 narrated screen recording. Only the owner
-can complete these remaining actions:
-
-- [ ] Review the final recorded cut; optionally replace the approved AI voice.
-- [ ] Upload the final public YouTube video and replace `VIDEO_URL_OWNER_REQUIRED`.
-- [ ] Paste the prepared fields into Devpost and verify the selected category.
-- [ ] Verify entrant/team identity and repository visibility on Devpost.
-- [ ] Click submit before July 21, 2026 at 5:00 p.m. Pacific.
+The canonical image is authoritative local evidence, not tracked media: C:\Users\yuech\AppData\Local\oct\evt2-z-image-turbo\shipping_smoke\zimage_turbo_prometheus_seed42.png. Recorded SHA-256: 7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613.

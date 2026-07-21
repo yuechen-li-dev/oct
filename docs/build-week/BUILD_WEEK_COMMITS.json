@@ -2,14 +2,18 @@
   "schemaVersion": "oct.build-week.commits.v1",
   "event": "OpenAI Build Week 2026",
   "eligibilityStart": "2026-07-13T09:00:00-07:00",
-  "auditHead": "b07c8849efa00fe0455e827e9a162856f389878f",
+  "auditHead": "3e41eb67e40445754dfc9e057cc95e4efb471c07",
+  "auditTimestampPacific": "2026-07-21T12:10:04-07:00",
+  "eligibleReachableCommitCount": 83,
+  "eligibleFirstParentCommitCount": 79,
   "lastPreEventCommit": "8c029d6d8f8d5f698276edfda138fa96f5fb305e",
   "repository": "https://github.com/yuechen-li-dev/oct",
   "primaryFeedbackSessionId": "019f6cb4-b438-70e2-b91c-487d7ad45bbd",
   "notes": [
     "All dates are commit author dates in ISO 8601 with Pacific offset.",
     "The primary feedback Session ID was confirmed by the owner from /feedback in the selected M48 task.",
-    "Files are representative, not a replacement for git show --stat <sha>."
+    "Files are representative, not a replacement for git show --stat <sha>.",
+    "The listed per-commit entries are the earlier detailed snapshot through b07c884; BUILD_WEEK_SCOPE.md is the current eligibility ledger through the audited M6A head."
   ],
   "commits": [
     {

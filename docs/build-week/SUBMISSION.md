@@ -1,59 +1,48 @@
-# Submission summary and claims review
+# Judge-facing submission copy
 
-## Judge thesis
+## Title and tagline
 
-Oct and SDSL-V are not week-old toy languages. They are pre-existing,
-AI-assisted language/compiler projects. The Build Week submission is the
-eligible GPT-5.6 Codex extension that joined their existing foundations to a
-measured Vulkan transformer vertical, investigated its numerical behavior in
-Oct, and then redesigned the Oct/Codex interface by using it for real work.
+**Prometheus: compiling a 12.31 GB transformer to run on an 8 GiB GPU**
 
-The judging unit is the Build Week delta documented in
-[BUILD_WEEK_SCOPE.md](BUILD_WEEK_SCOPE.md), not all historical repository work
-and not merely the MCP plugin.
+**Tagline:** A compiled Vulkan transformer system that streams an official 12.31 GB BF16 model through a bounded GPU window and generated a deterministic 512x512 image in 165.051 seconds.
 
-## What judges can verify
+## Approximately 50 words
 
-1. Run one Oct correctness contract and one artifact lane through structured
-   CLI output with [JUDGE_QUICKSTART.md](JUDGE_QUICKSTART.md).
-2. Inspect the SDSL-V source, generated HLSL, validated SPIR-V, and manifest
-   provenance committed for reduction, graphics, attention, and transformer
-   stages.
-3. Inspect machine-readable RTX 3070 artifacts for the bounded Vulkan path.
-4. Re-run portable Go/compiler/plugin tests; live Prometheus GPU reproduction
-   requires compatible Vulkan hardware and the documented native toolchain.
-5. Trace every major claim to a commit, GPT-5.6 session, file, test, artifact,
-   and limitation in [EVIDENCE_INDEX.md](EVIDENCE_INDEX.md).
+During Build Week, Prometheus became a compiled Vulkan execution system for the complete Z-Image-Turbo transformer. Its 12.31 GB BF16 checkpoint exceeds an RTX 3070’s 8 GiB VRAM, so Prometheus streams manifest-authorized weights while keeping FP32 activations resident. It generated one deterministic 512x512 image in 165.051 seconds, including all nine model evaluations.
 
-## Final claims table
+## Approximately 150 words
 
-| Claim | Evidence and eligibility | Safe wording | Avoid |
-| --- | --- | --- | --- |
-| “built by AI” | Long-running Codex/Claude-authored repository history plus eligible GPT-5.6 session logs; the human committed and directed the work. | “AI-built under human orchestration” or “developed through a human-orchestrated AI engineering loop.” | “Autonomously built with no human decisions.” |
-| “two programming languages” | Oct language/reference/corpus and Go implementation; SDSL-V spec, compiler, conformance corpus, HLSL/SPIR-V toolchain. Oct and SDSL-V predate Build Week. | “Two pre-existing AI-assisted programming-language projects, materially extended during Build Week.” | “Both languages were created during Build Week.” |
-| “production fused reduction” | `adc527d…`; production registry/source ownership; validation and RTX corpus. | “Production-owned SDSL-V fused-reduction reactor within Prometheus, validated on the bounded recorded platform.” | “Production-ready on all GPUs.” |
-| “graphics-capable shader language” | `f2d4ea8…`; vertex/pixel grammar, validation, conformance and golden artifacts. | “SDSL-V gained canonical vertex/pixel compilation and conformance output.” | “A complete graphics engine/runtime.” |
-| “complete transformer block” | M42–M47 reports/artifacts; attention through second residual. | “A complete bounded experimental transformer block for the documented fixed topology.” | “A complete LLM inference engine.” |
-| “multi-block stack” | M48 fixed four-block executor and artifact; later numerical audit postponed EVT closure. | “A fixed four-block device-resident stack with measured RTX evidence and explicit numerical caveats.” | “An arbitrary transformer graph or certified production model runtime.” |
-| “numerical controller” | M49–M49b reports/artifacts and Shadow-HSFM state machine. | “An experimental bounded Shadow-HSFM observer/controller and checkpoint policy.” | “A generally validated stability controller.” |
-| “beats CUDA” | No direct CUDA comparison exists. | “No CUDA superiority claim is made.” | “Beats CUDA.” |
-| “replaces ComfyUI” | No such product or comparison is present. | Do not mention. | “Replaces ComfyUI.” |
-| “portable across all hardware” | Windows RTX 3070 live evidence; Linux build/smoke; AMD DVT not complete. | “Portable compiler/tooling paths with one recorded live GPU platform.” | “Portable across all hardware.” |
-| “hosted demo” | Deployment docs exist; no deployed endpoint is evidenced. | “A bounded MCP server and container path are included; no public hosted service is claimed.” | “Try the hosted demo.” |
-| “GPT-5.6 use” | Session files record Sol and Terra across the eligible implementation threads. | “GPT-5.6 Sol performed most vertical work; Terra participated in named continuation/productization threads.” | “One GPT-5.6 thread built everything.” |
-| “Claude contribution” | Original `oct-mcp` commit `0ffa09e…` and library manifests predate the event; the owner characterizes eligible-period involvement mainly as rubber-duck review/audit. | “Claude mainly rubber-ducked or audited during the spike; eligible implementation claims belong to the evidenced GPT-5.6 Codex tasks.” | “Claude built the Build Week transformer work.” |
+Prometheus treats a trained model as a compiled program. During Build Week, we turned an experimental Vulkan runtime into a full Z-Image-Turbo transformer execution system: two noise refiners, two context refiners, 30 main layers, and nine evaluations within one image generation. The official checkpoint has 453 BF16 tensors totaling 12,309,817,472 bytes—larger than the entire 8 GiB VRAM of our RTX 3070.
 
-## Selected factual limitations
+The system compiles manifest authority into native execution descriptors and SDSL-V shaders. Immutable weights stay in system memory; persistent FP32 activations stay on the GPU; one active and one prefetched weight window move only the next legal package. Model-owned GPU memory peaks at 1,005,407,748 bytes with prefetch, or 643,587,076 bytes in MinimumMemory. Measured complete-image time improved from 263.091 to 165.051 seconds while preserving the canonical lighthouse PNG hash.
 
-- Oct is a pre-1.0 preview with incomplete compiled parity.
-- SDSL-V graphics compilation does not provide a windowing or graphics runtime.
-- Prometheus does not provide tokenizer, embeddings, rotary encoding, logits,
-  sampling, KV cache, autoregressive decoding, model import, training, or an
-  arbitrary graph scheduler.
-- The recorded hardware results are one Windows RTX 3070/driver environment;
-  they do not establish NVIDIA-wide, AMD, Linux-live, or cross-vendor behavior.
-- Cooperative and other FP16 paths exhibited deterministic depth-correlated
-  numerical drift in the bounded stack. The repository preserves that failure
-  evidence rather than widening tolerances.
-- The plugin is local and the MCP server is bounded; no public hosting or
-  marketplace approval exists at submission-packet time.
+## Full description
+
+The constraint was simple: the official Z-Image-Turbo transformer checkpoint is 12.31 GB of BF16 weights, but the NVIDIA RTX 3070 has 8 GiB of VRAM. Prometheus compiles model-manifest authority into native descriptors and SDSL-V shader routes. Immutable weights stay in system memory, FP32 activations remain on the GPU, and bounded layer packages stream through an active window while Prefetch fills the next legal package.
+
+The complete proof is a deterministic 512x512 RGB PNG for “A lighthouse in fog at dawn,” seed 42. One generation contains nine scheduler/model evaluations: two noise-refiner blocks, two context-refiner blocks, and all 30 main layers on each evaluation—270 main-layer and 306 transformer-block executions. The production Auto route generated one such image in 165.051 seconds, not nine images and not an average. The initial measured complete-image run was 263.091 seconds: an observed 98.040-second (37.3%) progression.
+
+Build Week added complete transformer integration; bounded streaming and prefetch; critical-path measurement; tiled SGEMM reuse; production attention; OctMake typed NativePlans; canonical SDSL-V compute/vertex/pixel compilation through typed semantics, VD-MIR, HLSL, DXC, and validated SPIR-V; Vulkan 1.4 admission; and compiled Oct O0–O19 model investigation. M6A proved a real RTX 3070 tensor-hardware route at a layer-0 W1/W3 boundary: 15.66% median improvement, preserved as an explicit FastMixedPrecision experimental profile while CanonicalFP32 remains the authoritative default.
+
+Python remains the bootstrap shell for tokenizer/encoder, scheduling, VAE, and PNG work. Prometheus executes the complete heavy transformer body.
+
+## What changed during Build Week
+
+- Complete transformer integration, bounded streaming, host caching, persistent ownership, and double-buffered Prefetch.
+- 99.941% wall-time accounting; GPU kernels established as the main bottleneck.
+- Tiled SGEMM reuse for W1/W3, QKV, and projection; M4 reached 165.439 seconds.
+- Production Auto attention at shader identity 49; integration run 165.051 seconds.
+- OctMake typed NativePlans, C11/C++23 targets, variants, dependencies/staleness, structured execution, diagnostics, traces, and reproducible action identities.
+- SDSL-V compute/vertex/pixel typed parsing/semantics, VD-MIR, generated HLSL, DXC, validated SPIR-V, deterministic artifacts, and interface/binding provenance.
+- Vulkan 1.4 production policy; DXC’s highest spelling is `vulkan1.3`, with validated SPIR-V 1.6 admitted under Vulkan 1.4 semantics.
+- Compiled Oct O0–O19 facts with zero interpreted fallback.
+
+## Human / ChatGPT / Codex collaboration
+
+The owner was product owner, TPM, architect, acceptance authority, and engineering orchestrator: selecting the problem, priorities, constraints, milestones, production policy, and stop/go decisions. Persistent ChatGPT maintained cross-milestone context, reviewed handoffs, challenged claims, and shaped bounded tasks. Fresh Codex author turns implemented, built, tested, inspected failures, and left auditable reports and JSON evidence. Claude and Gemini are credited only where repository evidence records their contribution. This was human-directed, evidence-gated agentic engineering.
+
+## Challenges, results, future direction
+
+The hard problem was preserving correctness while moving a checkpoint larger than VRAM through a GPU at useful speed. The response was explicit ownership, payload identities, deterministic output, numerical authority, profiling, and reversible optimizations. Result: the observed 263.091-to-165.051-second progression with the canonical image preserved. Next: reusable compiled compute reactors and separately authorized whole-transformer/final-image FastMixedPrecision investigation.
+
+Repository: <https://github.com/yuechen-li-dev/oct>. Evidence: [CLAIMS_EVIDENCE.md](CLAIMS_EVIDENCE.md).
