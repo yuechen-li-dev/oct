@@ -1,5 +1,7 @@
 {
   "schema": "prometheus.dvt2.m6a.layer0-alternating.v1",
+  "milestone": "DVT2-M6A-COOPERATIVE-MATRIX-FEASIBILITY",
+  "milestone_status": "accepted_success_closed",
   "device": "NVIDIA GeForce RTX 3070",
   "warmup_pairs": 4,
   "measured_pairs": 20,
@@ -8,7 +10,13 @@
     "activation_pack_shader_id": 50,
     "cooperative_shader_id": 51,
     "attention_shader_id": 49,
-    "macro": "PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT"
+    "macro": "PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT",
+    "canonical_compute_profile": "CanonicalFP32",
+    "candidate_compute_profile": "FastMixedPrecision",
+    "candidate_diagnostic_identity": "compute_profile=FastMixedPrecision",
+    "default_compute_profile": "CanonicalFP32",
+    "candidate_requires_explicit_selection": true,
+    "candidate_production_promoted": false
   },
   "units": "nanoseconds",
   "raw": {
@@ -375,6 +383,29 @@
       "non_finite_count": 0,
       "threshold_pass": false
     },
-    "owner_decision_required": true
+    "owner_decision_required": false,
+    "canonical_threshold_unchanged": true,
+    "canonical_threshold_applies_to": "CanonicalFP32",
+    "completed_layer0_is_30_layer_authority": false,
+    "completed_layer0_is_final_image_authority": false
+  },
+  "owner_decision": {
+    "selected_policy": "FastMixedPrecision",
+    "candidate_preserved": true,
+    "eligible_for_future_m6b": true,
+    "m6b_started": false,
+    "canonical_fp32_remains_default_authority": true,
+    "silent_default_selection_forbidden": true,
+    "future_production_eligibility_requires": [
+      "whole_transformer_authority",
+      "final_image_authority"
+    ]
+  },
+  "discarded_execution": {
+    "identity": "accidental-unbounded-final-validation-m2d-entry",
+    "classification": "discarded_non_authoritative",
+    "included_in_m6a_conclusions": false,
+    "included_in_performance_history": false,
+    "image_workload_executed": false
   }
 }

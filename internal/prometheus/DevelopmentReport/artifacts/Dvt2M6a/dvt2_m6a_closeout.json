@@ -1,0 +1,80 @@
+{
+  "schema": "prometheus.dvt2.m6a.closeout.v1",
+  "milestone": "DVT2-M6A-COOPERATIVE-MATRIX-FEASIBILITY",
+  "status": "accepted_success_closed",
+  "owner_decision": {
+    "compute_profile": "FastMixedPrecision",
+    "precision_contract": "F16xF16_to_F32",
+    "preserved_for_future_m6b": true,
+    "production_promoted": false,
+    "m6b_started": false,
+    "complete_image_work_started": false
+  },
+  "profile_policy": {
+    "default_authoritative_profile": "CanonicalFP32",
+    "canonical_threshold_relative_l2": 0.00005,
+    "canonical_threshold_unchanged": true,
+    "fast_mixed_precision_requires_explicit_selection": true,
+    "silent_default_selection_forbidden": true,
+    "future_production_eligibility_requires": [
+      "whole_transformer_numerical_authority",
+      "final_image_numerical_authority"
+    ],
+    "layer0_result_is_30_layer_authority": false,
+    "layer0_result_is_final_image_authority": false
+  },
+  "api_and_diagnostics_policy": {
+    "required_profile_identity": "FastMixedPrecision",
+    "current_environment_route_is_public_profile_api": false,
+    "future_api_requires_explicit_profile_selection": true,
+    "future_diagnostics_must_emit_profile_identity": true,
+    "manifest_records_profile_identity": true,
+    "auto_or_default_alias_allowed": false
+  },
+  "performance": {
+    "scope": "real_layer0_w1_w3_boundary",
+    "canonical_median_ms": 440.529,
+    "fast_mixed_precision_median_ms": 371.525,
+    "median_improvement_percent": 15.66,
+    "candidate_wins": 19,
+    "paired_samples": 20,
+    "peak_model_owned_vram_bytes": 694950916,
+    "prefetch_preserved": true
+  },
+  "numerical": {
+    "finite_outputs": true,
+    "deterministic_replay": true,
+    "raw_w1_relative_l2": 0.0000678747,
+    "raw_w3_relative_l2": 0.000102317,
+    "post_silu_gate_relative_l2": 0.0000757058,
+    "completed_layer0_relative_l2": 0.00000465441,
+    "interpretation": "internal mixed-precision boundary differences do not reject the separately named profile; completed layer-0 does not establish whole-transformer authority"
+  },
+  "weight_conversion_audit": {
+    "element_count": 2359296000,
+    "non_finite_count": 0,
+    "fp16_overflow_count": 0,
+    "underflow_to_zero_count": 384,
+    "exact_conversion_count": 2359234575,
+    "exact_conversion_percent": 99.9974
+  },
+  "platform_and_compiler": {
+    "device": "NVIDIA GeForce RTX 3070",
+    "cooperative_f16_f16_f32_supported": true,
+    "sdslv_to_dxc_to_validated_spirv_proof": "passed"
+  },
+  "forced_route_rejection": {
+    "structured_evidence": true,
+    "ordinary_nonzero_exit_status": 7,
+    "signal_number": 0,
+    "dispatch_possible_after_rejection": false,
+    "absent_pipeline_dereference_possible": false
+  },
+  "discarded_execution": {
+    "identity": "accidental-unbounded-final-validation-m2d-entry",
+    "classification": "discarded_non_authoritative",
+    "included_in_milestone_conclusions": false,
+    "included_in_performance_history": false,
+    "image_workload_executed": false
+  }
+}

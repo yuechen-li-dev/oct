@@ -2,15 +2,15 @@
 
 Date: 2026-07-21
 
-Status: **MEANINGFUL PROGRESSION — OWNER DECISION REQUIRED; DO NOT START M6B.**
+Status: **SUCCESS — ACCEPTED FEASIBILITY MILESTONE; CLOSED.**
 
 M6A proves that the real layer-0 W1/W3 contraction can execute through an
 isolated F16 × F16 → F32 cooperative-matrix route and materially reduce the
-measured layer boundary. It does not promote that route. Raw W1, raw W3, and
-the gated intermediate exceed the existing `5e-5` numerical authority, even
-though the completed layer output is below it. The required next action is an
-explicit owner choice among canonical-accuracy production only, a separately
-named fast mixed-precision profile, or rejection.
+measured layer boundary. The owner accepts the route for preservation under the
+separately named `FastMixedPrecision` compute profile and for possible future
+M6B study. This is not a production promotion: canonical FP32 remains the
+default authoritative production profile, and the cooperative route cannot be
+selected silently by the current default route.
 
 ## Preserved production state and forced-route hardening
 
@@ -76,7 +76,7 @@ weight cache, and runtime weight-conversion cost is consequently zero at this
 boundary. This repository fact is explicit in the evidence rather than being
 misreported as an in-dispatch BF16 conversion.
 
-## Isolated candidate
+## Isolated `FastMixedPrecision` candidate
 
 The candidate is available only under
 `PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT` and runtime route
@@ -92,6 +92,13 @@ The candidate is available only under
   experimental build when the route variable is absent;
 - the ordinary production build allocates none of the M6A buffers.
 
+`FastMixedPrecision` is the durable policy identity for this candidate. Future
+API selection, diagnostics, manifests, and evidence must name it explicitly.
+It is never an alias for Auto, canonical FP32, or the current default route.
+The current experimental environment switch remains a test seam, not a public
+profile-selection API. Any later API enum, serialized policy, or diagnostic
+field must use `FastMixedPrecision` verbatim and require explicit selection.
+
 The candidate adds 8,110,080 bytes for packed activation and 43,253,760 bytes
 for contiguous FP32 W3 before copying into the established three-view gate
 layout. Measured model-owned peak is 694,950,916 bytes with Prefetch preserved.
@@ -101,11 +108,8 @@ host-visible capture and is not the performance-route footprint.
 ## Bounded real layer-0 evaluation
 
 The test alternated canonical and candidate on one retained layer-0 session,
-after four warm-up pairs, for 20 measured pairs. The retained evidence is
-layer-0-only and no image workload ran. During final validation, one invocation
-omitted the existing bounded flag and entered the legacy M2D full-transformer
-branch; that output was discarded, was not used to evaluate M6A, and the lane
-was rerun successfully with `OCT_EVT2_M5B_BOUNDED=1`.
+after four warm-up pairs, for 20 measured pairs. The authoritative M6A evidence
+is layer-0-only and no image workload ran.
 
 | Boundary | Canonical median | Candidate median |
 |---|---:|---:|
@@ -136,18 +140,37 @@ maximum relative error:
 
 Two completed candidate replays are bitwise identical. No non-finite values
 were observed. The large maximum-relative values are guarded near-zero
-coordinates; they do not replace relative L2 or justify a looser contract.
+coordinates; they do not replace relative L2 or justify a looser canonical
+contract. Internal mixed-precision boundary differences do not reject the
+route because `FastMixedPrecision` is a distinct profile, while the completed
+layer result is not evidence of 30-layer or final-image authority.
 
 ## Decision
 
-Do not promote and do not proceed to M6B yet. Compiler/static audits, finiteness,
-determinism, performance, and Prefetch VRAM compatibility pass. The raw
-numerical authority does not. Preserve the evidence and obtain an explicit
-owner decision among:
+The owner accepts M6A as a successful feasibility milestone and selects the
+second policy outcome: preserve the route as the separately named
+`FastMixedPrecision` compute profile. It is eligible for a future M6B, but M6B
+does not begin in this closeout and the candidate is not production-eligible.
 
-1. canonical-accuracy production only;
-2. a separately named fast mixed-precision profile;
-3. rejection of the cooperative route.
+The canonical FP32 `5e-5` authority threshold remains unchanged. Any later
+production-eligibility decision for `FastMixedPrecision` requires separate,
+explicit whole-transformer and final-image numerical authority. The passing
+layer-0 semantic boundary does not establish that authority.
+
+## Accepted conclusions
+
+- Real layer-0 medians are 440.529 ms canonical and 371.525 ms cooperative:
+  15.66% improvement with 19/20 paired wins.
+- Production-route peak model-owned VRAM is 694,950,916 bytes with Prefetch
+  preserved; output is finite and replay is deterministic.
+- Relative L2 is 6.78747e-5 raw W1, 1.02317e-4 raw W3, 7.57058e-5 after
+  SiLU/gating, and 4.65441e-6 at completed layer 0.
+- The real audit covers 2,359,296,000 W1/W3 elements: zero non-finite values,
+  zero FP16 overflows, 384 underflows, and 99.9974% exact conversion.
+- RTX 3070 F16×F16→F32 cooperative support and the SDSL-V → DXC → validated
+  SPIR-V lowering proof both pass.
+- Forced-route rejection returns structured evidence and ordinary nonzero exit
+  status 7, cannot dispatch, and cannot dereference an absent pipeline.
 
 ## Evidence and validation
 
@@ -156,3 +179,7 @@ The affected Go tools, SDSL-V generation, DXC/`spirv-val`, SPIR-V disassembly,
 native production and M6A builds, registry tests, workspace parity, JSON
 parsing, payload hashes, macro isolation, and real bounded tests were run.
 No `.octmake` content is part of the change.
+
+One final-validation invocation accidentally entered the existing M2D branch
+without the bounded flag. It is recorded only as discarded, non-authoritative
+execution; its output is absent from M6A conclusions and performance history.
