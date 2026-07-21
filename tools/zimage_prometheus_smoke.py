@@ -77,6 +77,7 @@ def main() -> None:
     parser.add_argument("--reactor-dll", type=Path, default=repo / "out" / "prometheus" / "native" / "prometheus_reactor.dll")
     parser.add_argument("--lock", type=Path, default=repo / "internal" / "prometheus" / "models" / "zimage-turbo" / "lock-tagon.octagon")
     parser.add_argument("--execution-profile", choices=("MinimumMemory", "Prefetch"), default="MinimumMemory")
+    parser.add_argument("--main-attention-route", choices=("Auto", "SerialCanonical", "BuiltinTopology"), default="Auto")
     parser.add_argument("--output", type=Path, default=default_payload / "shipping_smoke" / "zimage_turbo_prometheus_seed42.png")
     parser.add_argument("--metadata", type=Path, default=repo / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "Evt2Shipping" / "zimage_python_smoke.json")
     args = parser.parse_args()
@@ -187,7 +188,9 @@ def main() -> None:
     sample_memory("after_boundary_model_load")
 
     bridge_start = time.perf_counter()
-    session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root, execution_profile=args.execution_profile)
+    session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root,
+                                     execution_profile=args.execution_profile,
+                                     main_attention_route=args.main_attention_route)
     timings["prometheus_session_create_seconds"] = time.perf_counter() - bridge_start
     sample_memory("after_prometheus_session_create")
     final_projection_seconds = 0.0
@@ -345,6 +348,7 @@ def main() -> None:
             "actual_model_evaluations": invocation_count,
             "sigmas": sigmas,
             "aura_flow_shift": 3.0,
+            "main_attention_route": args.main_attention_route,
         },
         "authority": {
             "model": f"Tongyi-MAI/Z-Image-Turbo@{MODEL_REVISION}",
@@ -371,6 +375,12 @@ def main() -> None:
             "bytes_from_native_full_image": 15_728_640 * invocation_count,
         },
         "native_evaluations": evidence_rows,
+        "main_attention_payloads": {
+            "requested_route": args.main_attention_route,
+            "selection_contract": "an explicit route is admitted during each MainTransformer owner creation; an unavailable route aborts the run",
+            "expected_selected_route": {"SerialCanonical": 2, "BuiltinTopology": 4}.get(args.main_attention_route),
+            "expected_shader_id": {"SerialCanonical": 41, "BuiltinTopology": 49}.get(args.main_attention_route),
+        },
         "timings": timings,
         "allocation": {
             "execution_profile": execution_profile,

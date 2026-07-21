@@ -1818,6 +1818,78 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
               << " p95=" << sortedWarm[9u] << " gpu_median="
               << (sortedWarmGpu[4u] + sortedWarmGpu[5u]) / 2u
               << " gpu_mean=" << mean_ns(warmGpuNs) << " churn=zero\n";
+    if (const char* alternating = std::getenv("OCT_EVT2_M5B_ALTERNATING");
+        alternating != nullptr && std::string(alternating) == "1") {
+        const auto run_route = [&](std::uint32_t route, bool audit, std::uint32_t sample,
+                                   std::uint64_t* out_ns) {
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, mainBlockID),
+                         "alternating M5b releases the previous MainTransformer owner");
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_set_main_attention_route(
+                                      runtime, sessionID, route, &sessionEvidence),
+                         "alternating M5b changes only the unmaterialized route on the retained session");
+            mainBlockID = 0u;
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_create(
+                                      runtime, &mainCreate, &mainBlockID, &evidence),
+                         "alternating M5b recreates MainTransformer from identical retained inputs and weights");
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_get_evidence(
+                                      runtime, sessionID, &sessionEvidence),
+                         "alternating M5b records selected payload identity");
+            ASSERT_EQUAL(route, sessionEvidence.selected_main_attention_route,
+                         "alternating M5b selected the requested admitted route");
+            ASSERT_EQUAL(route == PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL ? 41u : 49u,
+                         sessionEvidence.main_attention_shader_id,
+                         "alternating M5b selected the expected isolated payload identity");
+            ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_execute(
+                                      runtime, mainBlockID, &mainExecute, &evidence),
+                         "alternating M5b executes the same layer-0 retained boundary");
+            *out_ns = evidence.last_execution_ns;
+            if (audit) {
+                std::vector<float> alternateAuditJoint(1056u * 3840u);
+                finalAudit.required_output_generation = evidence.output_generation;
+                finalAudit.output_identity = 0x4d32435f616c7400ull + sample;
+                finalAudit.output = alternateAuditJoint.data();
+                ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_audit_final(
+                                          runtime, mainBlockID, &finalAudit, &evidence),
+                             "alternating M5b representative output audit succeeds");
+                const ComparisonMetrics alternateJoint = compare_float_region(
+                    alternateAuditJoint.data(), referenceJoint, 0u, alternateAuditJoint.size());
+                ASSERT_TRUE(alternateJoint.finite && alternateJoint.relativeL2 <= 5.0e-5,
+                            "alternating M5b representative output remains numerically authoritative");
+            }
+        };
+        std::array<std::uint64_t, 20> serialAlternatingNs{};
+        std::array<std::uint64_t, 20> builtinAlternatingNs{};
+        for (std::uint32_t warm = 0u; warm < 4u; ++warm) {
+            std::uint64_t discarded = 0u;
+            run_route(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, false, warm, &discarded);
+            run_route(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, false, warm, &discarded);
+        }
+        for (std::uint32_t sample = 0u; sample < serialAlternatingNs.size(); ++sample) {
+            run_route(PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL, sample == 0u, sample, &serialAlternatingNs[sample]);
+            run_route(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, sample == 0u, sample, &builtinAlternatingNs[sample]);
+        }
+        std::cout << "M2C alternating_boundary=MainTransformer layer-0 execute last_execution_ns; "
+                     "one retained compiled session, prepared streams, joint generation, Vulkan runtime, weights, "
+                     "and 4 alternating warm-up pairs; owner creation/destruction and audits excluded\n";
+        std::cout << "M2C alternating_serial_ns=";
+        for (std::size_t index = 0u; index < serialAlternatingNs.size(); ++index) {
+            if (index != 0u) std::cout << ',';
+            std::cout << serialAlternatingNs[index];
+        }
+        std::cout << "\nM2C alternating_builtin_topology_ns=";
+        for (std::size_t index = 0u; index < builtinAlternatingNs.size(); ++index) {
+            if (index != 0u) std::cout << ',';
+            std::cout << builtinAlternatingNs[index];
+        }
+        std::cout << "\nM2C alternating_selected_serial=41 alternating_selected_builtin_topology=49\n";
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, mainBlockID),
+                     "alternating M5b final MainTransformer owner destroys safely");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, sessionID),
+                     "alternating M5b retained session destroys safely");
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime),
+                     "alternating M5b runtime destroys safely");
+        return;
+    }
     if (const char* bounded = std::getenv("OCT_EVT2_M5B_BOUNDED"); bounded != nullptr && std::string(bounded) == "1") {
         std::cout << "M2C bounded_m5b=1 route=" << sessionEvidence.selected_main_attention_route
                   << " shader_id=" << sessionEvidence.main_attention_shader_id << "\n";

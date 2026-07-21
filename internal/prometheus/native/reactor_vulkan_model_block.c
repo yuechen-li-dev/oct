@@ -4766,7 +4766,7 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
   session->requested_execution_profile = request->execution_profile;
   session->requested_main_attention_route = request->main_attention_route_policy;
   /* The owner performs the final admission after it has observed the runtime
-     transfer queue.  Session creation freezes the request for replay. */
+     transfer queue. */
   session->selected_execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
   session->selected_main_attention_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
   session->main_attention_shader_id = PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID;
@@ -5391,6 +5391,31 @@ int prom_reactor_runtime_compiled_model_session_get_evidence_impl(
     return PROM_ERROR;
   }
   prom_compiled_session_fill_evidence(&state->compiled_session, out_evidence);
+  return PROM_OK;
+}
+
+int prom_reactor_runtime_compiled_model_session_set_main_attention_route_impl(
+    void* handle, uint64_t session_id, uint32_t main_attention_route_policy,
+    PrometheusCompiledModelSessionEvidence* out_evidence) {
+  prom_reduction_runtime_state* state;
+  prom_compiled_model_session_state* session;
+  if (out_evidence == NULL || !prom_reactor_runtime_validate_handle(handle) ||
+      (main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
+       main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
+       main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 &&
+       main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY)) return PROM_ERROR;
+  state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
+  if (state == NULL || state->compiled_session.created == 0u ||
+      state->compiled_session.session_id != session_id || state->model_block.created != 0u) {
+    prom_compiled_session_fill_evidence(state == NULL ? NULL : &state->compiled_session, out_evidence);
+    return PROM_ERROR;
+  }
+  session = &state->compiled_session;
+  session->requested_main_attention_route = main_attention_route_policy;
+  session->selected_main_attention_route = PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL;
+  session->main_attention_fallback_reason = 0u;
+  session->main_attention_shader_id = PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID;
+  prom_compiled_session_fill_evidence(session, out_evidence);
   return PROM_OK;
 }
 

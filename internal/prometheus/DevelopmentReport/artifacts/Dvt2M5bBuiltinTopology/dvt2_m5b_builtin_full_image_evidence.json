@@ -1,0 +1,29 @@
+{
+  "schema": "oct.prometheus.dvt2.m5b.builtin-topology-full-image.v1",
+  "status": "promotion-candidate-not-promoted",
+  "identities": {"serial_canonical": 41, "historical_subgroup_owned32": 47, "builtin_topology": 49},
+  "bounded_alternating": {
+    "samples_per_route": 20,
+    "boundary": "last_execution_ns for layer-0 MainTransformer execute; one retained compiled session, prepared streams, joint generation, Vulkan runtime and weights; four alternating warm-up pairs; owner setup and audits excluded",
+    "serial_ns": [438388600,437123700,436683200,438948300,436619200,438601100,436842400,438964200,438572200,437567200,441386500,441444500,440570600,438861300,439977300,441327000,440835400,442436000,441373900,440529900],
+    "builtin_ns": [434573200,436483600,437167000,437201800,435646900,430847300,438312700,438964400,437335200,436607700,437960200,436815900,435594600,439792400,437843800,435967000,434683800,438881000,437869800,439967100],
+    "selection": {"serial_shader_id": 41, "builtin_shader_id": 49},
+    "serial_statistics_ns": {"median": 438956250, "mean": 439352625, "min": 436619200, "max": 442436000, "standard_deviation": 1823461.8625238498, "coefficient_of_variation": 0.004150337926224635},
+    "builtin_statistics_ns": {"median": 437184400, "mean": 436925770, "min": 430847300, "max": 439967100, "standard_deviation": 2085288.451105935, "coefficient_of_variation": 0.004772637812381575},
+    "candidate_wins": 16,
+    "paired_differences_serial_minus_builtin_ns": [3815400,640100,-483800,1746500,972300,7753800,-1470300,-200,1237000,959500,3426300,4628600,4976000,-931100,2133500,5360000,6151600,3555000,3504100,562800],
+    "authority": {"finite": true, "relative_l2": 8.38066e-07, "threshold": 5e-05}
+  },
+  "full_image": {
+    "profile": "Prefetch", "order": ["SerialCanonical", "BuiltinTopology", "SerialCanonical", "BuiltinTopology"],
+    "wall_seconds": [166.5402800999982,165.70577640000192,167.0417911000004,165.51668710000013],
+    "paired_serial_minus_builtin_seconds": [0.8345036999962758,1.5251040000002831],
+    "serial_mean_median_seconds": 166.7910355999993,
+    "builtin_mean_median_seconds": 165.61123175000102,
+    "canonical_png_sha256": "7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613",
+    "all_png_hashes_match": true,
+    "evaluations_per_run": 9,
+    "builtin_selection": {"requested_route": 4, "expected_shader_id": 49, "admission": "explicit unavailable route aborts owner creation"}
+  },
+  "decision": "Identity 49 is the current portable promotion candidate. Identity 47 remains historical, numerically valid and topology-assumption dependent; identity 41 remains the production fallback. Do not promote in this milestone."
+}

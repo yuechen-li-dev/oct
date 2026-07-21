@@ -350,6 +350,13 @@ int prometheus_reactor_runtime_compiled_model_session_get_evidence(
   return prom_reactor_runtime_compiled_model_session_get_evidence_impl(handle, session_id, out_evidence);
 }
 
+int prometheus_reactor_runtime_compiled_model_session_set_main_attention_route(
+    void* handle, uint64_t session_id, uint32_t main_attention_route_policy,
+    PrometheusCompiledModelSessionEvidence* out_evidence) {
+  return prom_reactor_runtime_compiled_model_session_set_main_attention_route_impl(
+      handle, session_id, main_attention_route_policy, out_evidence);
+}
+
 int prometheus_reactor_runtime_compiled_model_session_destroy(void* handle, uint64_t session_id) {
   return prom_reactor_runtime_compiled_model_session_destroy_impl(handle, session_id);
 }

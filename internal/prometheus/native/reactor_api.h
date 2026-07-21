@@ -2314,6 +2314,11 @@ PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_compose_j
     PrometheusCompiledModelSessionEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_get_evidence(
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
+/* Changes only the not-yet-materialized MainTransformer route. The retained
+   session streams remain intact; an active owner makes this request invalid. */
+PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_set_main_attention_route(
+    void* handle, uint64_t session_id, uint32_t main_attention_route_policy,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_session_destroy(void* handle,
                                                                                  uint64_t session_id);
 PROM_REACTOR_API int prometheus_reactor_runtime_compiled_model_owner_create(

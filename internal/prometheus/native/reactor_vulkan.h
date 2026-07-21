@@ -3119,6 +3119,9 @@ int prom_reactor_runtime_compiled_model_session_compose_joint_impl(
     PrometheusCompiledModelSessionEvidence* out_evidence);
 int prom_reactor_runtime_compiled_model_session_get_evidence_impl(
     void* handle, uint64_t session_id, PrometheusCompiledModelSessionEvidence* out_evidence);
+int prom_reactor_runtime_compiled_model_session_set_main_attention_route_impl(
+    void* handle, uint64_t session_id, uint32_t main_attention_route_policy,
+    PrometheusCompiledModelSessionEvidence* out_evidence);
 int prom_reactor_runtime_compiled_model_session_destroy_impl(void* handle, uint64_t session_id);
 int prom_reactor_runtime_compiled_model_owner_create_impl(
     void* handle, const PrometheusNoiseRefinerRebindRequest* request, uint64_t* out_block_id,
