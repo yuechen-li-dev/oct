@@ -33,7 +33,10 @@
 #define PROM_MODEL_BLOCK_CONTEXT_QK_ROPE_SHADER_ID 38u
 #define PROM_MODEL_BLOCK_CONTEXT_ATTENTION_SHADER_ID 39u
 #define PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID 40u
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 45u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 3960u
+#elif defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SHADER_ID 44u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_GROUPS 3960u
 #else
@@ -661,6 +664,22 @@ static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
   return 1;
 }
 
+static int prom_model_block_m1b_shader_asset_is_admitted(const prom_shader_asset* asset, uint32_t shader_id) {
+  if (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE) return 0;
+  if (asset->authority == PROM_SHADER_AUTHORITY_PRODUCTION && asset->source_language == PROM_SHADER_SOURCE_SDSLV) {
+    return 1;
+  }
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
+  if (shader_id == 44u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+      asset->source_language == PROM_SHADER_SOURCE_SDSLV) return 1;
+#endif
+#if defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
+  if (shader_id == 45u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+      asset->source_language == PROM_SHADER_SOURCE_HLSL) return 1;
+#endif
+  return 0;
+}
+
 static int prom_model_block_m1b_create_pipeline(
     prom_reduction_runtime_state* state, prom_model_block_state* block,
     prom_model_block_m1b_pipeline* pipeline, uint32_t shader_id,
@@ -685,8 +704,7 @@ static int prom_model_block_m1b_create_pipeline(
       buffer_count == 0u || buffer_count > 8u) return 0;
   diagnostics_enabled = getenv("OCT_EVT2_M1C_PIPELINE_DIAGNOSTICS") != NULL;
   asset = prom_shader_registry_find_shader(shader_id);
-  if (diagnostics_enabled && (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
-      asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
+  if (diagnostics_enabled && (!prom_model_block_m1b_shader_asset_is_admitted(asset, shader_id) ||
       asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
       asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL)) {
     fprintf(stderr, "EVT2_M1C_CREATE_PRECHECK shader=%u asset=%p bindings=%u expected_bindings=%u push=%u expected_push=%u stage=%u authority=%u source=%u spirv=%zu entry=%p\n",
@@ -696,8 +714,7 @@ static int prom_model_block_m1b_create_pipeline(
             asset == NULL ? 0u : (uint32_t)asset->source_language, asset == NULL ? 0u : asset->spirv_size_bytes,
             asset == NULL ? NULL : (const void*)asset->entry_point);
   }
-  if (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
-      asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
+  if (!prom_model_block_m1b_shader_asset_is_admitted(asset, shader_id) ||
       asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
       asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL ||
       (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
@@ -3063,6 +3080,9 @@ int prom_reactor_runtime_main_transformer_create_impl(
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
   PrometheusModelBlockCreateRequest closed;
   uint32_t index;
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
+  prom_vk_runtime_services services;
+#endif
   if (out_block_id != NULL) *out_block_id = 0u;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || out_block_id == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL ||
@@ -3070,6 +3090,13 @@ int prom_reactor_runtime_main_transformer_create_impl(
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
     return PROM_ERROR;
   }
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT)
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
+      prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
+    prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
+    return PROM_ERROR;
+  }
+#endif
   descriptor = prom_zimage_turbo_resolve_main_transformer_descriptor(request->lock_identity,
                                                                      request->model_local_block_id);
   if (descriptor == NULL ||

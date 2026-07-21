@@ -126,7 +126,9 @@ func lowerNative(root string, ns []NativeTarget) ([]CommandTarget, []PhonyTarget
 			}
 			args := nativeCompileArgs(configured, src, obj)
 			name := n.Name + ".compile." + id
-			commands = append(commands, CommandTarget{Name: name, Inputs: append([]string{src}, n.Inputs...), Outputs: []string{obj}, Program: compiler, Args: args, Env: tools.env})
+			command := CommandTarget{Name: name, Inputs: append([]string{src}, n.Inputs...), Outputs: []string{obj}, Program: compiler, Args: args, Env: tools.env}
+			command.Discovery = nativeCompileDiscovery(src, obj, command.Args)
+			commands = append(commands, command)
 			objects[n.Name] = append(objects[n.Name], obj)
 		}
 		if n.Kind == "ObjectSet" {
@@ -422,6 +424,10 @@ func nativeCompileArgs(n NativeTarget, src, obj string) []string {
 		for _, x := range n.Defines {
 			a = append(a, "/D"+x)
 		}
+		// The executor supplies the following attempt-local filename from the
+		// typed DiscoverySpec.  Keeping it out of this lowered command makes the
+		// action hash stable while still giving cl.exe a fresh output per run.
+		a = append(a, "/sourceDependencies")
 		return a
 	}
 	a = []string{"-c", src, "-o", obj, "-fPIC"}
@@ -440,6 +446,21 @@ func nativeCompileArgs(n NativeTarget, src, obj string) []string {
 		a = append(a, "-D"+x)
 	}
 	return a
+}
+
+func nativeCompileDiscovery(source, object string, args []string) *DiscoverySpec {
+	if runtime.GOOS != "windows" {
+		return nil
+	}
+	return &DiscoverySpec{
+		Kind:          MSVCSourceDependenciesKind,
+		SchemaVersion: MSVCSourceDependenciesSchemaV1,
+		OutputArgument: RuntimeOutputArgument{
+			Position: len(args),
+		},
+		ExpectedSourceIdentity:         source,
+		ExpectedPhysicalOutputIdentity: object,
+	}
 }
 func nativeLinkArgs(n NativeTarget, objs []string) []string {
 	a := append([]string{}, objs...)

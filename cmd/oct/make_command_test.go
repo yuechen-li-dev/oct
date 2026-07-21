@@ -315,9 +315,8 @@ fn Plan() -> Make.Plan {
 			t.Fatalf("command failure trace missing %s:\n%s", want, body)
 		}
 	}
-	stateBody, _ := os.ReadFile(filepath.Join(root, ".octmake", "state.octagon"))
-	if !strings.Contains(string(stateBody), `LastStatus: "Failed"`) {
-		t.Fatalf("command failure state missing failed status:\n%s", stateBody)
+	if _, stateErr := os.Stat(filepath.Join(root, ".octmake", "state.octagon")); !os.IsNotExist(stateErr) {
+		t.Fatalf("command failure must not replace or create cacheable state: %v", stateErr)
 	}
 }
 

@@ -48,6 +48,7 @@ type CommandTarget struct {
 	Args                  []string
 	Cwd                   string
 	Env                   []string
+	Discovery             *DiscoverySpec
 }
 type FunctionTarget struct {
 	Name                  string
@@ -102,8 +103,46 @@ type decision struct {
 	CheckpointError                   string
 	ExitCode                          int
 	Stdout, Stderr, Error             string
+	FailurePhase                      string
+	DiscoveryKind                     string
+	DiscoverySchemaVersion            string
+	DiscoveredInputs                  []string
+	DiscoveryCollector                string
+	DiscoveryProvenance               string
 	FailureArtifactPath               string
 	StartedUnixNano, FinishedUnixNano int64
+}
+
+type processOutcome struct {
+	ExitCode       int
+	Stdout, Stderr string
+	Err            error
+}
+
+type commandExecutionResult struct {
+	Process      processOutcome
+	Discovery    *DiscoveredInputs
+	FailurePhase string
+	Err          error
+	Started      time.Time
+	Finished     time.Time
+}
+
+type commandProcessRunner func(CommandTarget, string, io.Writer, io.Writer) processOutcome
+type makeStateWriter func(string, Plan, makeState) error
+
+type executor struct {
+	collectors discoveryCollectors
+	process    commandProcessRunner
+	writeState makeStateWriter
+}
+
+func defaultExecutor() executor {
+	return executor{
+		collectors: defaultDiscoveryCollectors(),
+		process:    runCommandProcess,
+		writeState: writeMakeStateAtomic,
+	}
 }
 
 func Execute(opts Options, stdout, stderr io.Writer) error {
@@ -154,7 +193,7 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 		return maybeTrace(opts, plan, root, makeFile, selected, nil, nil, time.Now(), time.Now())
 	}
 	started := time.Now()
-	decisions, runErr := run(order, targets, root, makeFile, program, plan, opts, stdout, stderr)
+	decisions, runErr := runWithExecutor(order, targets, root, makeFile, program, plan, selected, opts, stdout, stderr, defaultExecutor())
 	finished := time.Now()
 	failurePath, failureErr := maybeFailureArtifact(opts, plan, root, makeFile, decisions, finished)
 	if failurePath != "" {
@@ -166,16 +205,12 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 		}
 	}
 	traceErr := maybeTrace(opts, plan, root, makeFile, selected, order, decisions, started, finished)
-	stateErr := maybeState(opts, plan, root, selected, targets, decisions)
 	if runErr != nil {
 		if failureErr != nil {
 			return failureErr
 		}
 		if traceErr != nil {
 			return traceErr
-		}
-		if stateErr != nil {
-			return stateErr
 		}
 		if failurePath != "" {
 			return fmt.Errorf("%w\nfailure artifact: %s", runErr, filepath.ToSlash(failurePath))
@@ -188,7 +223,7 @@ func Execute(opts Options, stdout, stderr io.Writer) error {
 	if traceErr != nil {
 		return traceErr
 	}
-	return stateErr
+	return nil
 }
 
 type context struct {
@@ -563,7 +598,7 @@ func closure(sel string, m map[string]*target) ([]string, error) {
 	return out, visit(sel)
 }
 
-func run(order []string, m map[string]*target, root, makeFile string, program project.Program, plan Plan, opts Options, stdout, stderr io.Writer) ([]decision, error) {
+func runWithExecutor(order []string, m map[string]*target, root, makeFile string, program project.Program, plan Plan, selected string, opts Options, stdout, stderr io.Writer, exec executor) ([]decision, error) {
 	state := loadState(root, plan)
 	ran := map[string]bool{}
 	decs := []decision{}
@@ -576,7 +611,7 @@ func run(order []string, m map[string]*target, root, makeFile string, program pr
 		if t.flow != nil {
 			checkpoint, checkpointPath, resumeCheckpoint, checkpointInvalidReason = validFlowCheckpoint(root, makeFile, plan, *t.flow, ran, program)
 		}
-		stale, reason, err := stale(t, root, ran, plan.Config.Staleness, state)
+		stale, reason, err := stale(t, root, ran, plan, plan.Config.Staleness, state, exec.collectors)
 		if err != nil {
 			return decs, err
 		}
@@ -614,19 +649,24 @@ func run(order []string, m map[string]*target, root, makeFile string, program pr
 			continue
 		}
 		if t.command != nil {
-			if out, errOut, code, err := runCommand(*t.command, root, stdout, stderr); err != nil {
+			result := exec.executeCommand(*t.command, root, stateDir(root, plan), stdout, stderr)
+			d.ExitCode = result.Process.ExitCode
+			d.Stdout = result.Process.Stdout
+			d.Stderr = result.Process.Stderr
+			if result.Discovery != nil {
+				d.DiscoveryKind = t.command.Discovery.Kind
+				d.DiscoverySchemaVersion = t.command.Discovery.SchemaVersion
+				d.DiscoveredInputs = append([]string(nil), result.Discovery.Paths...)
+				d.DiscoveryCollector = result.Discovery.Provenance.Collector
+				d.DiscoveryProvenance = result.Discovery.Provenance.Detail
+			}
+			if result.Err != nil {
 				d.Status = "Failed"
-				d.ExitCode = code
-				d.Stdout = out
-				d.Stderr = errOut
-				d.Error = err.Error()
+				d.FailurePhase = result.FailurePhase
+				d.Error = result.Err.Error()
 				d.FinishedUnixNano = time.Now().UnixNano()
 				decs = append(decs, d)
-				return decs, fmt.Errorf("target %q: %w", n, err)
-			} else {
-				d.ExitCode = code
-				d.Stdout = out
-				d.Stderr = errOut
+				return decs, fmt.Errorf("target %q: %w", n, result.Err)
 			}
 		} else if t.function != nil {
 			fn := t.function.Function
@@ -758,23 +798,108 @@ func run(order []string, m map[string]*target, root, makeFile string, program pr
 			}
 		}
 		d.FinishedUnixNano = time.Now().UnixNano()
+		if err := exec.commitActionState(root, plan, selected, &state, t, d); err != nil {
+			d.Status = "Failed"
+			d.FailurePhase = "StatePersistence"
+			d.Error = fmt.Sprintf("persist successful action state: %v", err)
+			d.FinishedUnixNano = time.Now().UnixNano()
+			decs = append(decs, d)
+			return decs, fmt.Errorf("target %q: %s", n, d.Error)
+		}
 		decs = append(decs, d)
 		ran[n] = true
 	}
 	return decs, nil
 }
-func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) (string, string, int, error) {
-	// Native lowering owns concrete artifact paths.  Creating their parent
-	// directories here keeps commands direct while avoiding shell mkdir steps.
+func (exec executor) executeCommand(c CommandTarget, root, discoveryDir string, stdout, stderr io.Writer) (result commandExecutionResult) {
+	result.Started = time.Now()
+	defer func() { result.Finished = time.Now() }()
 	for _, output := range c.Outputs {
 		path := output
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(root, path)
 		}
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return "", "", 0, err
+			result.FailurePhase = "Process"
+			result.Err = err
+			return result
 		}
 	}
+	var attemptDir string
+	if c.Discovery != nil {
+		if err := discoverySpecMatchesAction(root, c, *c.Discovery); err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = err
+			return result
+		}
+		collector, err := exec.collectors.collectorFor(*c.Discovery)
+		if err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = err
+			return result
+		}
+		attemptRoot := filepath.Join(discoveryDir, "discovery", sanitizeTargetName(c.Name)+"-"+commandHash(c)[:16])
+		if err := os.MkdirAll(attemptRoot, 0755); err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = err
+			return result
+		}
+		attemptDir, err = os.MkdirTemp(attemptRoot, "attempt-")
+		if err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = err
+			return result
+		}
+		defer os.RemoveAll(attemptDir)
+		discoveryOutput := filepath.Join(attemptDir, "discovery.json")
+		args := append([]string(nil), c.Args...)
+		position := c.Discovery.OutputArgument.Position
+		args = append(args, "")
+		copy(args[position+1:], args[position:])
+		args[position] = c.Discovery.OutputArgument.Prefix + discoveryOutput
+		c.Args = args
+		result.Process = exec.process(c, root, stdout, stderr)
+		if result.Process.Err != nil {
+			result.FailurePhase = "Process"
+			result.Err = result.Process.Err
+			return result
+		}
+		outputIdentity := canonicalIdentity(root, c.Discovery.ExpectedPhysicalOutputIdentity)
+		if _, err := os.Stat(filepath.FromSlash(outputIdentity)); err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = fmt.Errorf("expected physical output %q after successful process: %w", outputIdentity, err)
+			return result
+		}
+		collectorSpec := *c.Discovery
+		collectorSpec.ExpectedSourceIdentity = canonicalIdentity(root, collectorSpec.ExpectedSourceIdentity)
+		collectorSpec.ExpectedPhysicalOutputIdentity = canonicalIdentity(root, collectorSpec.ExpectedPhysicalOutputIdentity)
+		discovered, err := collector.Collect(collectorSpec, discoveryOutput)
+		if err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = err
+			return result
+		}
+		paths, err := canonicalDiscoveredInputs(root, discovered.Paths)
+		if err != nil {
+			result.FailurePhase = "Discovery"
+			result.Err = err
+			return result
+		}
+		discovered.Paths = paths
+		result.Discovery = &discovered
+		return result
+	}
+	result.Process = exec.process(c, root, stdout, stderr)
+	if result.Process.Err != nil {
+		result.FailurePhase = "Process"
+		result.Err = result.Process.Err
+	}
+	return result
+}
+
+func runCommandProcess(c CommandTarget, root string, stdout, stderr io.Writer) processOutcome {
+	// Native lowering owns concrete artifact paths.  Creating their parent
+	// directories here keeps commands direct while avoiding shell mkdir steps.
 	cwd := c.Cwd
 	if cwd == "" {
 		cwd = root
@@ -795,7 +920,7 @@ func runCommand(c CommandTarget, root string, stdout, stderr io.Writer) (string,
 	if cmd.ProcessState != nil {
 		code = cmd.ProcessState.ExitCode()
 	}
-	return outb.String(), errb.String(), code, err
+	return processOutcome{ExitCode: code, Stdout: outb.String(), Stderr: errb.String(), Err: err}
 }
 func mergeEnv(base, overlay []string) []string {
 	index := map[string]int{}
@@ -819,9 +944,14 @@ func mergeEnv(base, overlay []string) []string {
 	return out
 }
 
-func stale(t *target, root string, ran map[string]bool, policy string, state makeState) (bool, string, error) {
+func stale(t *target, root string, ran map[string]bool, plan Plan, policy string, state makeState, collectors discoveryCollectors) (bool, string, error) {
 	if policy == "Always" && t.kind != "phony" {
 		return true, "Always", nil
+	}
+	if pending, err := actionHasFailureMarker(root, plan, t); err != nil {
+		return false, "", err
+	} else if pending {
+		return true, "PreviousFailure", nil
 	}
 	for _, d := range deps(t) {
 		if ran[d] {
@@ -863,6 +993,40 @@ func stale(t *target, root string, ran map[string]bool, policy string, state mak
 	}
 	if t.command != nil {
 		cur := commandHash(*t.command)
+		if t.command.Discovery != nil {
+			if err := discoverySpecMatchesAction(root, *t.command, *t.command.Discovery); err != nil {
+				return true, "DiscoverySourceOutputIdentityMismatch", nil
+			}
+			collector, supported := collectors[t.command.Discovery.Kind]
+			if !supported || !collector.Supports(*t.command.Discovery) {
+				return true, "DiscoveryUnsupportedSchemaOrKind", nil
+			}
+			discovery := state.discovery[t.name]
+			if discovery == nil {
+				return true, "DiscoveryStateAbsent", nil
+			}
+			if discovery.Kind != t.command.Discovery.Kind || discovery.SchemaVersion != t.command.Discovery.SchemaVersion {
+				return true, "DiscoveryUnsupportedSchemaOrKind", nil
+			}
+			if discovery.ActionName != t.name || discovery.ActionHash != cur {
+				return true, "DiscoveryActionMismatch", nil
+			}
+			if !sameIdentity(discovery.ExpectedSourceIdentity, canonicalIdentity(root, t.command.Discovery.ExpectedSourceIdentity)) || !sameIdentity(discovery.ExpectedPhysicalOutputIdentity, canonicalIdentity(root, t.command.Discovery.ExpectedPhysicalOutputIdentity)) {
+				return true, "DiscoverySourceOutputIdentityMismatch", nil
+			}
+			for _, dependency := range discovery.DiscoveredInputs {
+				info, err := os.Stat(filepath.FromSlash(dependency.Identity))
+				if err != nil {
+					if os.IsNotExist(err) {
+						return true, "DiscoveredDependencyMissing", nil
+					}
+					return false, "", err
+				}
+				if info.ModTime().After(oldestOut) {
+					return true, "DiscoveredDependencyNewerThanOutput", nil
+				}
+			}
+		}
 		prev, ok := state.commandHashes[t.name]
 		if !ok || prev == "" {
 			return true, "CommandHashMissing", nil
@@ -1000,7 +1164,9 @@ func maybeTrace(opts Options, plan Plan, root, makeFile, selected string, order 
 		writeStringArray(&b, d.CommandArgs)
 		fmt.Fprintf(&b, "\n            CommandCwd: %q\n            CommandEnv: ", d.CommandCwd)
 		writeStringArray(&b, d.CommandEnv)
-		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            Function: %q\n            ExitCode: %d\n            ResultCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            FailureArtifactPath: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.CommandHash, d.PreviousCommandHash, d.Function, d.ExitCode, d.ResultCode, d.Stdout, d.Stderr, d.Error, filepath.ToSlash(d.FailureArtifactPath), d.StartedUnixNano, d.FinishedUnixNano)
+		fmt.Fprintf(&b, "\n            CommandHash: %q\n            PreviousCommandHash: %q\n            DiscoveryKind: %q\n            DiscoverySchemaVersion: %q\n            DiscoveredInputs: ", d.CommandHash, d.PreviousCommandHash, d.DiscoveryKind, d.DiscoverySchemaVersion)
+		writeStringArray(&b, d.DiscoveredInputs)
+		fmt.Fprintf(&b, "\n            DiscoveryCollector: %q\n            DiscoveryProvenance: %q\n            FailurePhase: %q\n            Function: %q\n            ExitCode: %d\n            ResultCode: %d\n            Stdout: %q\n            Stderr: %q\n            Error: %q\n            FailureArtifactPath: %q\n            StartedUnixNano: %d\n            FinishedUnixNano: %d\n", d.DiscoveryCollector, d.DiscoveryProvenance, d.FailurePhase, d.Function, d.ExitCode, d.ResultCode, d.Stdout, d.Stderr, d.Error, filepath.ToSlash(d.FailureArtifactPath), d.StartedUnixNano, d.FinishedUnixNano)
 		if d.Kind == "flow" {
 			fmt.Fprintf(&b, "            Flow: %q\n            MaxSteps: %d\n            Steps: %d\n            FinalState: %q\n            StateHistory: ", d.Flow, d.MaxSteps, d.Steps, d.FinalState)
 			writeStringArray(&b, d.StateHistory)
@@ -1029,9 +1195,57 @@ func maybeFailureArtifact(opts Options, plan Plan, root, makeFile string, decs [
 		if err := os.WriteFile(path, []byte(failureArtifact(plan, makeFile, path, d, runID, at)), 0644); err != nil {
 			return "", err
 		}
+		if err := writeActionFailureMarker(root, plan, d); err != nil {
+			return path, err
+		}
 		return path, nil
 	}
 	return "", nil
+}
+
+func actionFailureMarkerPath(root string, plan Plan, target string) string {
+	return filepath.Join(stateDir(root, plan), "failures", sanitizeTargetName(target), "pending.octagon")
+}
+
+func writeActionFailureMarker(root string, plan Plan, d decision) error {
+	path := actionFailureMarkerPath(root, plan, d.Name)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	var b strings.Builder
+	b.WriteString("MakeActionFailureMarker {\n")
+	fmt.Fprintf(&b, "    Version: 1\n    Name: %q\n    Kind: %q\n    CommandHash: %q\n    Phase: %q\n    Outputs: ", d.Name, d.Kind, d.CommandHash, d.FailurePhase)
+	writeStringArray(&b, d.Outputs)
+	b.WriteString("\n}\n")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".pending-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.WriteString(b.String()); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return atomicRename(temporaryPath, path)
+}
+
+func actionHasFailureMarker(root string, plan Plan, target *target) (bool, error) {
+	path := actionFailureMarkerPath(root, plan, target.name)
+	body, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if fieldString(string(body), "Name") != target.name || fieldString(string(body), "Kind") != target.kind {
+		return false, fmt.Errorf("failure marker %q does not bind to target %q", path, target.name)
+	}
+	return true, nil
 }
 
 func sanitizeTargetName(name string) string {
@@ -1055,7 +1269,11 @@ func failureArtifact(plan Plan, makeFile, path string, d decision, runID string,
 		durationMs = (d.FinishedUnixNano - d.StartedUnixNano) / int64(time.Millisecond)
 	}
 	reason := "TargetFailed"
-	if d.Kind == "command" {
+	if d.FailurePhase == "Discovery" {
+		reason = "DiscoveryFailed"
+	} else if d.FailurePhase == "StatePersistence" {
+		reason = "StatePersistenceFailed"
+	} else if d.Kind == "command" {
 		reason = "CommandFailed"
 	} else if d.Kind == "function" {
 		reason = "FunctionFailed"
@@ -1064,7 +1282,7 @@ func failureArtifact(plan Plan, makeFile, path string, d decision, runID string,
 	}
 	var b strings.Builder
 	b.WriteString("MakeFailureArtifact {\n")
-	fmt.Fprintf(&b, "    Version: 0\n    RunId: %q\n    TimeUtc: %q\n    MakeFile: %q\n    StateDir: %q\n    TracePath: %q\n    FailureArtifactPath: %q\n    Target: %q\n    TargetKind: %q\n    Reason: %q\n    Message: %q\n", runID, at.UTC().Format(time.RFC3339Nano), filepath.ToSlash(makeFile), filepath.ToSlash(plan.Config.StateDir), filepath.ToSlash(filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(path)))), "trace.octagon")), filepath.ToSlash(path), d.Name, d.Kind, reason, d.Error)
+	fmt.Fprintf(&b, "    Version: 1\n    RunId: %q\n    TimeUtc: %q\n    MakeFile: %q\n    StateDir: %q\n    TracePath: %q\n    FailureArtifactPath: %q\n    Target: %q\n    TargetKind: %q\n    Phase: %q\n    Reason: %q\n    Message: %q\n", runID, at.UTC().Format(time.RFC3339Nano), filepath.ToSlash(makeFile), filepath.ToSlash(plan.Config.StateDir), filepath.ToSlash(filepath.Join(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(path)))), "trace.octagon")), filepath.ToSlash(path), d.Name, d.Kind, d.FailurePhase, reason, d.Error)
 	fmt.Fprintf(&b, "    Decision: TargetDecision { Status: %q Reason: %q DurationMs: %d }\n", d.Status, d.Reason, durationMs)
 	switch d.Kind {
 	case "command":
@@ -1101,76 +1319,203 @@ func failureArtifact(plan Plan, makeFile, path string, d decision, runID string,
 	b.WriteString("}\n")
 	return b.String()
 }
-func maybeState(opts Options, plan Plan, root, selected string, targets map[string]*target, decs []decision) error {
-	if opts.DryRun {
-		return nil
+
+const makeStateFormatVersion = 1
+
+type makeDiscoveryState struct {
+	ActionName, ActionHash                                 string
+	Kind, SchemaVersion                                    string
+	ExpectedSourceIdentity, ExpectedPhysicalOutputIdentity string
+	OutputArgumentPosition                                 int
+	OutputArgumentPrefix, Collector, Provenance            string
+	DiscoveredInputs                                       []makePathState
+}
+
+type makeTargetState struct {
+	Name, Kind, LastStatus, CommandHash string
+	LastRunUnixNano                     int64
+	Inputs, Outputs                     []makePathState
+	Discovery                           *makeDiscoveryState
+	FinalState                          string
+	ResultCode                          int64
+}
+
+type makeState struct {
+	Version, Backend, LastRunTarget string
+	Targets                         map[string]makeTargetState
+	// commandHashes and discovery retain the compact lookup shape used by
+	// selection while Targets remains the complete, persistable record.
+	commandHashes map[string]string
+	discovery     map[string]*makeDiscoveryState
+}
+
+func newMakeState() makeState {
+	return makeState{Version: "0", Targets: map[string]makeTargetState{}, commandHashes: map[string]string{}, discovery: map[string]*makeDiscoveryState{}}
+}
+
+func (exec executor) commitActionState(root string, plan Plan, selected string, state *makeState, target *target, d decision) error {
+	if state.Targets == nil {
+		*state = newMakeState()
 	}
+	entry := makeTargetState{
+		Name:            target.name,
+		Kind:            target.kind,
+		LastStatus:      "Succeeded",
+		LastRunUnixNano: d.FinishedUnixNano,
+		Inputs:          pathStates(root, rawInputs(target)),
+		Outputs:         pathStates(root, rawOutputs(target)),
+		FinalState:      d.FinalState,
+		ResultCode:      d.ResultCode,
+	}
+	if target.command != nil {
+		entry.CommandHash = commandHash(*target.command)
+		if target.command.Discovery != nil {
+			spec := *target.command.Discovery
+			entry.Discovery = &makeDiscoveryState{
+				ActionName:                     target.name,
+				ActionHash:                     entry.CommandHash,
+				Kind:                           spec.Kind,
+				SchemaVersion:                  spec.SchemaVersion,
+				ExpectedSourceIdentity:         canonicalIdentity(root, spec.ExpectedSourceIdentity),
+				ExpectedPhysicalOutputIdentity: canonicalIdentity(root, spec.ExpectedPhysicalOutputIdentity),
+				OutputArgumentPosition:         spec.OutputArgument.Position,
+				OutputArgumentPrefix:           spec.OutputArgument.Prefix,
+				Collector:                      d.DiscoveryCollector,
+				Provenance:                     d.DiscoveryProvenance,
+				DiscoveredInputs:               pathStates(root, d.DiscoveredInputs),
+			}
+		}
+	}
+	next := cloneMakeState(*state)
+	next.Version = strconv.Itoa(makeStateFormatVersion)
+	next.Backend = "direct"
+	next.LastRunTarget = selected
+	next.Targets[target.name] = entry
+	next.commandHashes[target.name] = entry.CommandHash
+	next.discovery[target.name] = entry.Discovery
+	if err := exec.writeState(root, plan, next); err != nil {
+		return err
+	}
+	*state = next
+	// A failure marker is invalidation-only: state remains the sole successful
+	// cache record.  A successful atomic commit makes an older failure marker
+	// obsolete; a later cleanup failure is conservative because it only causes
+	// another rebuild.
+	_ = os.Remove(actionFailureMarkerPath(root, plan, target.name))
+	return nil
+}
+
+func rawInputs(t *target) []string {
+	ins, _ := rawPaths(t)
+	return ins
+}
+
+func rawOutputs(t *target) []string {
+	_, outs := rawPaths(t)
+	return outs
+}
+
+func pathStates(root string, paths []string) []makePathState {
+	out := make([]makePathState, 0, len(paths))
+	for _, path := range paths {
+		identity := canonicalIdentity(root, path)
+		state := makePathState{Path: filepath.ToSlash(path), Identity: identity}
+		if info, err := os.Stat(filepath.FromSlash(identity)); err == nil {
+			state.Exists = true
+			state.ModifiedUnixNano = info.ModTime().UnixNano()
+		}
+		out = append(out, state)
+	}
+	return out
+}
+
+func cloneMakeState(in makeState) makeState {
+	out := newMakeState()
+	out.Version = in.Version
+	out.Backend = in.Backend
+	out.LastRunTarget = in.LastRunTarget
+	for name, target := range in.Targets {
+		out.Targets[name] = target
+		out.commandHashes[name] = target.CommandHash
+		out.discovery[name] = target.Discovery
+	}
+	return out
+}
+
+func writeMakeStateAtomic(root string, plan Plan, state makeState) error {
 	dir := stateDir(root, plan)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	status := map[string]string{}
-	for _, d := range decs {
-		if d.Status == "Failed" {
-			status[d.Name] = "Failed"
-		} else if d.Status == "Ran" {
-			status[d.Name] = "Succeeded"
-		} else {
-			status[d.Name] = "Skipped"
-		}
+	temporary, err := os.CreateTemp(dir, ".state-*")
+	if err != nil {
+		return err
 	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.WriteString(renderMakeState(state)); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return atomicRename(temporaryPath, filepath.Join(dir, "state.octagon"))
+}
+
+func atomicRename(source, target string) error {
+	// Windows can briefly deny replacement while a just-closed state file is
+	// still observed by local indexing or protection software.  Retrying the
+	// same rename preserves atomic replacement; deleting the target would not.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		err := os.Rename(source, target)
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+}
+
+func renderMakeState(state makeState) string {
 	var b strings.Builder
 	b.WriteString("MakeState {\n")
-	fmt.Fprintf(&b, "    Version: 0\n    Backend: %q\n    LastRunTarget: %q\n    Targets: [\n", "direct", selected)
-	names := make([]string, 0, len(targets))
-	for n := range targets {
-		names = append(names, n)
+	fmt.Fprintf(&b, "    Version: %d\n    Backend: %q\n    LastRunTarget: %q\n    Targets: [\n", makeStateFormatVersion, state.Backend, state.LastRunTarget)
+	names := make([]string, 0, len(state.Targets))
+	for name := range state.Targets {
+		names = append(names, name)
 	}
-	sort.SliceStable(names, func(i, j int) bool { return targets[names[i]].order < targets[names[j]].order })
-	for _, n := range names {
-		t := targets[n]
-		ins, outs := rawPaths(t)
-		fmt.Fprintf(&b, "        MakeTargetState {\n            Name: %q\n            Kind: %q\n            LastStatus: %q\n            LastRunUnixNano: %d\n", n, t.kind, status[n], time.Now().UnixNano())
-		if t.command != nil {
-			fmt.Fprintf(&b, "            CommandHash: %q\n", commandHash(*t.command))
+	sort.Strings(names)
+	for _, name := range names {
+		target := state.Targets[name]
+		fmt.Fprintf(&b, "        MakeTargetState {\n            Name: %q\n            Kind: %q\n            LastStatus: %q\n            LastRunUnixNano: %d\n            CommandHash: %q\n", target.Name, target.Kind, target.LastStatus, target.LastRunUnixNano, target.CommandHash)
+		writePathStates(&b, "Inputs", target.Inputs, "            ")
+		writePathStates(&b, "Outputs", target.Outputs, "            ")
+		if target.Discovery != nil {
+			discovery := target.Discovery
+			fmt.Fprintf(&b, "            Discovery: MakeDiscoveryState {\n                ActionName: %q\n                ActionHash: %q\n                Kind: %q\n                SchemaVersion: %q\n                ExpectedSourceIdentity: %q\n                ExpectedPhysicalOutputIdentity: %q\n                OutputArgumentPosition: %d\n                OutputArgumentPrefix: %q\n                Collector: %q\n                Provenance: %q\n", discovery.ActionName, discovery.ActionHash, discovery.Kind, discovery.SchemaVersion, discovery.ExpectedSourceIdentity, discovery.ExpectedPhysicalOutputIdentity, discovery.OutputArgumentPosition, discovery.OutputArgumentPrefix, discovery.Collector, discovery.Provenance)
+			writePathStates(&b, "DiscoveredInputs", discovery.DiscoveredInputs, "                ")
+			b.WriteString("            }\n")
 		}
-		if d, ok := decisionByName(decs, n); ok && t.kind == "flow" {
-			fmt.Fprintf(&b, "            FinalState: %q\n            ResultCode: %d\n", d.FinalState, d.ResultCode)
+		if target.Kind == "flow" {
+			fmt.Fprintf(&b, "            FinalState: %q\n            ResultCode: %d\n", target.FinalState, target.ResultCode)
 		}
-		b.WriteString("            Inputs: [\n")
-		for _, p := range ins {
-			writePathState(&b, root, p)
-		}
-		b.WriteString("            ]\n            Outputs: [\n")
-		for _, p := range outs {
-			writePathState(&b, root, p)
-		}
-		b.WriteString("            ]\n        }\n")
+		b.WriteString("        }\n")
 	}
 	b.WriteString("    ]\n}\n")
-	return os.WriteFile(filepath.Join(dir, "state.octagon"), []byte(b.String()), 0644)
+	return b.String()
 }
-func writePathState(b *strings.Builder, root, p string) {
-	full := p
-	if !filepath.IsAbs(full) {
-		full = filepath.Join(root, p)
+
+func writePathStates(b *strings.Builder, label string, paths []makePathState, indent string) {
+	fmt.Fprintf(b, "%s%s: [\n", indent, label)
+	for _, path := range paths {
+		fmt.Fprintf(b, "%s    MakePathState { Path: %q Identity: %q Exists: %t ModifiedUnixNano: %d Hash: %q }\n", indent, path.Path, path.Identity, path.Exists, path.ModifiedUnixNano, "")
 	}
-	exists := true
-	mod := int64(0)
-	if info, err := os.Stat(full); err == nil {
-		mod = info.ModTime().UnixNano()
-	} else {
-		exists = false
-	}
-	fmt.Fprintf(b, "                MakePathState { Path: %q Exists: %t ModifiedUnixNano: %d Hash: %q }\n", filepath.ToSlash(p), exists, mod, "")
-}
-func decisionByName(decs []decision, name string) (decision, bool) {
-	for _, d := range decs {
-		if d.Name == name {
-			return d, true
-		}
-	}
-	return decision{}, false
+	fmt.Fprintf(b, "%s]\n", indent)
 }
 func withMakeAuthorityValue(fn func() (interpret.Value, error)) (interpret.Value, error) {
 	old, had := os.LookupEnv("OCT_MAKE_AUTHORITY")
@@ -1197,29 +1542,81 @@ func withMakeAuthorityFlow(fn func() (interpret.FlowRunResult, error)) (interpre
 	return fn()
 }
 
-type makeState struct {
-	commandHashes map[string]string
-}
-
 func loadState(root string, plan Plan) makeState {
-	state := makeState{commandHashes: map[string]string{}}
+	state := newMakeState()
 	body, err := os.ReadFile(filepath.Join(stateDir(root, plan), "state.octagon"))
 	if err != nil {
 		return state
 	}
 	text := string(body)
-	for _, block := range strings.Split(text, "MakeTargetState {")[1:] {
-		end := strings.Index(block, "\n        }")
-		if end >= 0 {
-			block = block[:end]
-		}
+	state.Version = fieldNumber(text, "Version")
+	state.Backend = fieldString(text, "Backend")
+	state.LastRunTarget = fieldString(text, "LastRunTarget")
+	for _, block := range recordBlocks(text, "MakeTargetState {") {
 		name := fieldString(block, "Name")
 		if name == "" {
 			continue
 		}
-		state.commandHashes[name] = fieldString(block, "CommandHash")
+		target := makeTargetState{
+			Name:            name,
+			Kind:            fieldString(block, "Kind"),
+			LastStatus:      fieldString(block, "LastStatus"),
+			LastRunUnixNano: fieldInt(block, "LastRunUnixNano"),
+			CommandHash:     fieldString(block, "CommandHash"),
+			Inputs:          parsePathStates(section(block, "Inputs")),
+			Outputs:         parsePathStates(section(block, "Outputs")),
+			FinalState:      fieldString(block, "FinalState"),
+			ResultCode:      fieldInt(block, "ResultCode"),
+		}
+		for _, discoveryBlock := range recordBlocks(block, "MakeDiscoveryState {") {
+			discovery := &makeDiscoveryState{
+				ActionName:                     fieldString(discoveryBlock, "ActionName"),
+				ActionHash:                     fieldString(discoveryBlock, "ActionHash"),
+				Kind:                           fieldString(discoveryBlock, "Kind"),
+				SchemaVersion:                  fieldString(discoveryBlock, "SchemaVersion"),
+				ExpectedSourceIdentity:         fieldString(discoveryBlock, "ExpectedSourceIdentity"),
+				ExpectedPhysicalOutputIdentity: fieldString(discoveryBlock, "ExpectedPhysicalOutputIdentity"),
+				OutputArgumentPosition:         int(fieldInt(discoveryBlock, "OutputArgumentPosition")),
+				OutputArgumentPrefix:           fieldString(discoveryBlock, "OutputArgumentPrefix"),
+				Collector:                      fieldString(discoveryBlock, "Collector"),
+				Provenance:                     fieldString(discoveryBlock, "Provenance"),
+				DiscoveredInputs:               parsePathStates(section(discoveryBlock, "DiscoveredInputs")),
+			}
+			target.Discovery = discovery
+			break
+		}
+		state.Targets[name] = target
+		state.commandHashes[name] = target.CommandHash
+		state.discovery[name] = target.Discovery
 	}
 	return state
+}
+
+func recordBlocks(text, marker string) []string {
+	blocks := []string{}
+	for offset := 0; ; {
+		start := strings.Index(text[offset:], marker)
+		if start < 0 {
+			return blocks
+		}
+		start += offset + len(marker)
+		depth := 1
+		end := start
+		for end < len(text) && depth > 0 {
+			switch text[end] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			end++
+		}
+		if depth != 0 {
+			return blocks
+		}
+		blocks = append(blocks, text[start:end-1])
+		offset = end
+	}
 }
 
 func fieldString(block, field string) string {
@@ -1249,6 +1646,20 @@ func fieldString(block, field string) string {
 	return ""
 }
 
+func fieldNumber(block, field string) string {
+	needle := field + ": "
+	start := strings.Index(block, needle)
+	if start < 0 {
+		return ""
+	}
+	start += len(needle)
+	end := start
+	for end < len(block) && block[end] >= '0' && block[end] <= '9' {
+		end++
+	}
+	return block[start:end]
+}
+
 func commandHash(c CommandTarget) string {
 	h := sha256.New()
 	writeHashField(h, "Kind", "command")
@@ -1260,6 +1671,17 @@ func commandHash(c CommandTarget) string {
 	writeHashList(h, "Outputs", c.Outputs)
 	writeHashList(h, "Inputs", c.Inputs)
 	writeHashList(h, "Deps", c.Deps)
+	if c.Discovery == nil {
+		writeHashField(h, "Discovery", "none")
+	} else {
+		writeHashField(h, "Discovery", "enabled")
+		writeHashField(h, "DiscoveryKind", c.Discovery.Kind)
+		writeHashField(h, "DiscoverySchemaVersion", c.Discovery.SchemaVersion)
+		writeHashField(h, "DiscoveryOutputArgumentPosition", strconv.Itoa(c.Discovery.OutputArgument.Position))
+		writeHashField(h, "DiscoveryOutputArgumentPrefix", c.Discovery.OutputArgument.Prefix)
+		writeHashField(h, "DiscoveryExpectedSourceIdentity", c.Discovery.ExpectedSourceIdentity)
+		writeHashField(h, "DiscoveryExpectedPhysicalOutputIdentity", c.Discovery.ExpectedPhysicalOutputIdentity)
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -1298,7 +1720,11 @@ func writePlanSnapshot(path string, plan Plan, makeFile string) error {
 		writeStringArray(&b, t.Args)
 		fmt.Fprintf(&b, " Env: ")
 		writeStringArray(&b, t.Env)
-		fmt.Fprintf(&b, " Cwd: %q CommandHash: %q }", t.Cwd, commandHash(t))
+		fmt.Fprintf(&b, " Cwd: %q CommandHash: %q", t.Cwd, commandHash(t))
+		if t.Discovery != nil {
+			fmt.Fprintf(&b, " Discovery: MakeDiscoverySpecSnapshot { Kind: %q SchemaVersion: %q OutputArgumentPosition: %d OutputArgumentPrefix: %q ExpectedSourceIdentity: %q ExpectedPhysicalOutputIdentity: %q }", t.Discovery.Kind, t.Discovery.SchemaVersion, t.Discovery.OutputArgument.Position, t.Discovery.OutputArgument.Prefix, t.Discovery.ExpectedSourceIdentity, t.Discovery.ExpectedPhysicalOutputIdentity)
+		}
+		b.WriteString(" }")
 		if i+1 < len(plan.CommandTargets) {
 			b.WriteString(",")
 		}
@@ -1351,7 +1777,7 @@ func explain(selected string, order []string, m map[string]*target, root string,
 	ran := map[string]bool{}
 	for _, n := range order {
 		t := m[n]
-		wouldRun, reason, err := stale(t, root, ran, plan.Config.Staleness, loadState(root, plan))
+		wouldRun, reason, err := stale(t, root, ran, plan, plan.Config.Staleness, loadState(root, plan), defaultDiscoveryCollectors())
 		if err != nil {
 			return err
 		}
@@ -1814,6 +2240,7 @@ func existence(path string) string {
 
 type makePathState struct {
 	Path             string
+	Identity         string
 	Exists           bool
 	ModifiedUnixNano int64
 	Hash             string
@@ -2010,7 +2437,11 @@ func parsePathStates(s string) []makePathState {
 		if end >= 0 {
 			blk = blk[:end]
 		}
-		out = append(out, makePathState{Path: fieldString(blk, "Path"), Exists: fieldBool(blk, "Exists"), ModifiedUnixNano: fieldInt(blk, "ModifiedUnixNano"), Hash: fieldString(blk, "Hash")})
+		identity := fieldString(blk, "Identity")
+		if identity == "" {
+			identity = fieldString(blk, "Path")
+		}
+		out = append(out, makePathState{Path: fieldString(blk, "Path"), Identity: identity, Exists: fieldBool(blk, "Exists"), ModifiedUnixNano: fieldInt(blk, "ModifiedUnixNano"), Hash: fieldString(blk, "Hash")})
 	}
 	return out
 }

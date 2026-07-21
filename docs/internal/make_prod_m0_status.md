@@ -17,6 +17,13 @@ validates source extensions and duplicates before lowering. The legacy generated
 Windows/Linux fragments and scripts remain parity controls and are not invoked by
 the native backend.
 
+## Milestone declaration
+
+MAKE-PROD-M0 is the direct Windows native-build vertical slice. Its successor,
+MAKE-PROD-M1, provides Windows transitive-header correctness; the verified
+Windows evidence is recorded in `docs/internal/make_prod_m1_windows_validation.md`.
+GCC/Clang discovery remains explicitly deferred backend work.
+
 Prometheus now declares SerialCanonical reactor, SDSL-V host, normal Marionette,
 benchmark, and isolated M5b build-only targets. The M5b target carries
 `PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT` and has an independent artifact

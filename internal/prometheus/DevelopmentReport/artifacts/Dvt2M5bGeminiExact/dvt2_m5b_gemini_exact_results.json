@@ -1,0 +1,51 @@
+{
+  "milestone": "DVT2-M5B-GEMINI-EXACT",
+  "status": "experimental-measured-not-promoted",
+  "external_source": {
+    "path": "internal/prometheus/shaders/hlsl/external/m5b-gemini-exact.hlsl",
+    "bytes": 4508,
+    "sha256": "0ebc86c1c595f03a671ddd63f25f882ae2ce70606c025a875627456038b44755",
+    "provenance": "external-authored-byte-exact-not-sdslv-generated"
+  },
+  "binary": {
+    "path": "internal/prometheus/shaders/hlsl/external/m5b-gemini-exact.spv",
+    "bytes": 6508,
+    "sha256": "2414fae73dfa055e4e23c35eed17ab8c22093feb4b4c3f002c268d09e6357803",
+    "entry_point": "MainTransformerJointAttentionSubgroupOwned_CS",
+    "compile": "dxc -spirv -T cs_6_0 -E MainTransformerJointAttentionSubgroupOwned_CS -fspv-target-env=vulkan1.3 -O3",
+    "validation": "spirv-val --target-env vulkan1.4",
+    "validation_passed": true
+  },
+  "static_audit": {
+    "instruction_count": {"original_m5b": 434, "gemini_exact": 378},
+    "spirv_bytes": {"original_m5b": 7076, "gemini_exact": 6508},
+    "subgroup_operations": {"fmax": 1, "fadd": 2, "shuffle": 1},
+    "workgroup_variables": 0,
+    "workgroup_barriers": 0,
+    "atomics": 0,
+    "function_arrays": ["float[33]", "float[33]", "float[33]"]
+  },
+  "admission": {
+    "device": "NVIDIA GeForce RTX 3070",
+    "subgroup_size": 32,
+    "compute": true,
+    "arithmetic": true,
+    "basic": true,
+    "shuffle": true,
+    "admitted": true
+  },
+  "numerical_authority": {
+    "final_transformer_relative_l2_limit": 0.00005,
+    "serial_canonical": {"executed": true, "relative_l2": 8.38066e-7, "finite": true},
+    "original_m5b": {"executed": true, "relative_l2": 8.38066e-7, "finite": true},
+    "gemini_exact": {"executed": true, "relative_l2": 8.39396e-7, "finite": true, "chain_relative_l2": 9.66693e-6}
+  },
+  "timing": {
+    "classification": "bounded-harness-stage-telemetry-not-full-image-or-kernel-benchmark",
+    "warm_sample_count": 10,
+    "host_median_ns": {"serial_canonical": 442917100, "original_m5b": 428223000, "gemini_exact": 439794150},
+    "gpu_median_ns": {"serial_canonical": 442379232, "original_m5b": 427337472, "gemini_exact": 439158800},
+    "full_zimage_executed": false,
+    "promotion_decision": "not-promoted"
+  }
+}

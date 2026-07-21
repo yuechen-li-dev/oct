@@ -1,0 +1,10 @@
+{
+  "Version": "1.2",
+  "Data": {
+    "Source": "C:/fixture/space path/main.c",
+    "Includes": [
+      "C:/fixture/space path/direct.h",
+      "C:/fixture/space path/transitive.h"
+    ]
+  }
+}

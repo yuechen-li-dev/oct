@@ -1,0 +1,25 @@
+package Main
+
+import Make
+
+fn Plan() -> Make.Plan {
+    return Make.Plan {
+        Default: "FixtureObjects"
+        Config: Make.Config { Profile: "MSVCSourceDependenciesFixture" StateDir: ".octmake" Trace: true Staleness: Make.Staleness.Timestamp }
+        CommandTargets: []
+        FunctionTargets: []
+        FlowTargets: []
+        PhonyTargets: []
+    }
+}
+
+fn NativePlan() -> Make.NativePlan {
+    return Make.NativePlan {
+        Targets: [
+            Make.NativeTarget {
+                Name: "FixtureObjects" Variant: "PathWithSpaces" Kind: Make.NativeKind.ObjectSet Language: Make.NativeLanguage.C
+                Sources: ["space path/main.c"] Manifest: "" ManifestSection: "" Inputs: [] Deps: [] IncludeDirs: ["space path"] Defines: [] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: [] Output: "" InstallCopies: []
+            }
+        ]
+    }
+}

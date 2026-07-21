@@ -29,7 +29,7 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(37), prom_shader_registry_shader_asset_count(), "registered assets must include the M5b experimental MainTransformer subgroup route");
+  ASSERT_EQUAL(static_cast<std::size_t>(38), prom_shader_registry_shader_asset_count(), "registered assets must include isolated M5b and GeminiExact MainTransformer subgroup routes");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
@@ -166,6 +166,7 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
               "audit shader stays isolated from the model arithmetic sources");
   const auto* jointQk = prom_shader_registry_find_shader(40u);
   const auto* jointAttention = prom_shader_registry_find_shader(41u);
+  const auto* geminiExact = prom_shader_registry_find_shader(45u);
   const auto* jointW1W3 = prom_shader_registry_find_shader(42u);
   const auto* jointGate = prom_shader_registry_find_shader(43u);
   ASSERT_TRUE(jointQk != nullptr && jointAttention != nullptr && jointW1W3 != nullptr && jointGate != nullptr,
@@ -175,7 +176,11 @@ FACT(PrometheusShaderManifestMatchesGeneratedAssets) {
   ASSERT_EQUAL(1056u, jointAttention->maximum_row_width, "joint attention fixed contract must be exact");
   ASSERT_EQUAL(10813440u, jointGate->maximum_row_width, "joint gate envelope must cover 1056 by 10240 hidden entries");
   ASSERT_TRUE(std::string(jointQk->source_path).find("main_transformer_joint_qk_norm_rope.sdslv") != std::string::npos,
-              "joint Q/K source must remain independently reviewable");
+               "joint Q/K source must remain independently reviewable");
+  ASSERT_TRUE(geminiExact != nullptr && geminiExact->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+                  geminiExact->source_language == PROM_SHADER_SOURCE_HLSL &&
+                  std::string(geminiExact->source_path).find("m5b-gemini-exact.hlsl") != std::string::npos,
+              "GeminiExact must remain a separately identified external experimental HLSL asset");
 }
 FACT(PrometheusComputePipelineInstancesMatchDescriptors) {
   std::array<VkPipeline, PROM_COMPUTE_PIPELINE_COUNT> pipelines{};
