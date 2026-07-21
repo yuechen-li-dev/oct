@@ -1,0 +1,30 @@
+namespace Prometheus.Production.ZImage;
+
+// Bounded production admission probe. CPU validation owns all pass/fail
+// judgment; this shader writes six raw uint facts for every local invocation.
+stream MainTransformerSubgroupOwned32TopologyProbeIO {
+    [binding(0)] Evidence: readwrite array<u32>;
+}
+
+shader MainTransformerSubgroupOwned32TopologyProbe {
+    resources MainTransformerSubgroupOwned32TopologyProbeIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS() -> void {
+        let localIndex: u32 = GroupThreadID.x;
+        HLSL {
+            const uint lane = WaveGetLaneIndex();
+            const uint laneCount = WaveGetLaneCount();
+            const uint laneZeroIndex = WaveReadLaneAt(localIndex, 0u);
+            const uint arithmeticMaximum = asuint(WaveActiveMax(float(localIndex)));
+            const uint laneThirtyOneIndex = WaveReadLaneAt(localIndex, 31u);
+            const uint offset = localIndex * 6u;
+            Evidence[offset + 0u] = localIndex;
+            Evidence[offset + 1u] = lane;
+            Evidence[offset + 2u] = laneCount;
+            Evidence[offset + 3u] = laneZeroIndex;
+            Evidence[offset + 4u] = arithmeticMaximum;
+            Evidence[offset + 5u] = laneThirtyOneIndex;
+        }
+        return;
+    }
+}
