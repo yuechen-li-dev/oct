@@ -29,7 +29,7 @@ std::string read_file(const std::filesystem::path& path) { std::ifstream file(pa
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(40), prom_shader_registry_shader_asset_count(), "registered assets must include both production MainTransformer attention routes and isolated experimental M5b/Gemini routes");
+  ASSERT_EQUAL(static_cast<std::size_t>(41), prom_shader_registry_shader_asset_count(), "registered assets must include both production MainTransformer attention routes and isolated experimental M5b/Gemini/builtin-topology routes");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
@@ -64,6 +64,10 @@ FACT(PrometheusSubgroupOwned32RouteSelectionIsStrictAndFallsBackOnlyForAuto) {
   services.subgroup_owned_attention_topology_proven = 0u;
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_TOPOLOGY_PROOF,
               "topology-proof failure falls back");
+  ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, &services, 1056u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr,
+              "builtin-topology does not require an empirical local-index topology proof");
+  ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, decision.selected_route, "builtin-topology selects its isolated route");
+  ASSERT_EQUAL(49u, decision.shader_id, "builtin-topology has an isolated experimental payload identity");
   services.subgroup_owned_attention_topology_proven = 1u;
   ASSERT_TRUE(prom_main_attention_route_select(PROM_MAIN_ATTENTION_ROUTE_AUTO, &services, 1055u, 30u, 128u, 11520u, 3840u, 3960u, &decision) == nullptr && decision.fallback_reason == PROM_MAIN_ATTENTION_FALLBACK_SHAPE,
               "each shape/layout mismatch is rejected by the fixed contract");

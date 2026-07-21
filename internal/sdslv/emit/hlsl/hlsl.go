@@ -297,7 +297,9 @@ func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint)
 	} else {
 		for _, builtin := range entry.Builtins {
 			if builtin.Referenced {
-				params = append(params, fmt.Sprintf("%s %s : %s", typeRef(builtin.Type, ""), hlslIdentifier(builtin.Name), builtin.Semantic))
+				if builtin.SPIRVInputBuiltinID == 0 {
+					params = append(params, fmt.Sprintf("%s %s : %s", typeRef(builtin.Type, ""), hlslIdentifier(builtin.Name), builtin.Semantic))
+				}
 			}
 		}
 	}
@@ -318,6 +320,18 @@ func (e *emitter) emitFunction(fn vdmir.Function, entry vdmir.ComputeEntryPoint)
 }
 
 func (e *emitter) emitEntryParamGlobals(entry vdmir.ComputeEntryPoint) {
+	emittedBuiltin := false
+	for _, builtin := range entry.Builtins {
+		if !builtin.Referenced || builtin.SPIRVInputBuiltinID == 0 {
+			continue
+		}
+		e.line(fmt.Sprintf("[[vk::ext_builtin_input(/* %s */ %d)]]", builtin.Name, builtin.SPIRVInputBuiltinID))
+		e.line(fmt.Sprintf("static const %s %s;", typeRef(builtin.Type, ""), hlslIdentifier(builtin.Name)))
+		emittedBuiltin = true
+	}
+	if emittedBuiltin {
+		e.line("")
+	}
 	for _, param := range entry.Params {
 		e.line(fmt.Sprintf("[[vk::push_constant]] ConstantBuffer<%s> %s;", typeRef(param.Type, ""), hlslIdentifier(param.Name)))
 	}

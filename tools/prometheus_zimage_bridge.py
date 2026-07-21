@@ -16,7 +16,7 @@ TIMESTEP_SHAPE = (1, 256)
 OUTPUT_SHAPE = IMAGE_SHAPE
 MODEL_EXECUTION_PROFILE_CEILINGS = frozenset((643_587_076, 1_005_407_748))
 MODEL_EXECUTION_PROFILES = {"MinimumMemory": 1, "Prefetch": 2}
-MAIN_ATTENTION_ROUTES = {"Auto": 1, "SerialCanonical": 2, "SubgroupOwned32": 3}
+MAIN_ATTENTION_ROUTES = {"Auto": 1, "SerialCanonical": 2, "SubgroupOwned32": 3, "BuiltinTopology": 4}
 MAIN_STAGE_NAMES = (
     "ingress_cast", "adaln_modulation", "attention_norm1", "qkv",
     "q_norm_rope", "k_norm_rope", "attention", "projection_residual",
@@ -199,7 +199,7 @@ class PrometheusZImageSession:
         if execution_profile not in MODEL_EXECUTION_PROFILES:
             raise ValueError("execution_profile must be MinimumMemory or Prefetch")
         if main_attention_route not in MAIN_ATTENTION_ROUTES:
-            raise ValueError("main_attention_route must be Auto, SerialCanonical, or SubgroupOwned32")
+            raise ValueError("main_attention_route must be Auto, SerialCanonical, SubgroupOwned32, or BuiltinTopology")
         encoded = [str(path).encode("utf-8") for path in (reactor_path, lock, payload)]
         request = _CreateRequest(ctypes.sizeof(_CreateRequest), encoded[0], encoded[1], encoded[2], device_index, MODEL_EXECUTION_PROFILES[execution_profile], MAIN_ATTENTION_ROUTES[main_attention_route])
         handle = ctypes.c_uint64()

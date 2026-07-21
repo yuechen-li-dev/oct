@@ -1,0 +1,18 @@
+namespace Prometheus.CompilerFixtures;
+
+// Compile-only DVT2-M5B fixture. It proves the SDSL-V builtins lower through
+// DXC to native SPIR-V subgroup identity inputs; it is not a runtime probe.
+stream Dvt2M5bBuiltinTopologyFixtureIO {
+    [binding(0)] Evidence: readwrite array<u32>;
+}
+
+shader Dvt2M5bBuiltinTopologyFixture {
+    resources Dvt2M5bBuiltinTopologyFixtureIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS() -> void {
+        let offset: u32 = GroupIndex * 2u;
+        Evidence[offset] = SubgroupId;
+        Evidence[offset + 1u] = SubgroupLocalInvocationId;
+        return;
+    }
+}

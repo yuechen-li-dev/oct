@@ -74,6 +74,31 @@ return;
 	}
 }
 
+func TestEmitComputeSubgroupBuiltinsWithVulkanAnnotations(t *testing.T) {
+	text := `stream IO { [binding(0)] Evidence: readwrite array<u32>; }
+shader SubgroupBuiltins {
+resources IO;
+stage compute [numthreads(256, 1, 1)] fn CS() -> void {
+let offset: u32 = GroupIndex * 2u;
+Evidence[offset] = SubgroupId;
+Evidence[offset + 1u] = SubgroupLocalInvocationId;
+return;
+}
+}`
+	out := emitSource(t, text)
+	for _, want := range []string{
+		"uint GroupIndex : SV_GroupIndex",
+		"[[vk::ext_builtin_input(/* SubgroupId */ 40)]]",
+		"static const uint SubgroupId;",
+		"[[vk::ext_builtin_input(/* SubgroupLocalInvocationId */ 41)]]",
+		"static const uint SubgroupLocalInvocationId;",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestSdslvTensorUsesSharedEmitterLoopsAndAccumulator(t *testing.T) {
 	text := `fn Dot(A: array<array<f32, 3u>, 2u>, B: array<f32, 3u>) -> void {
   var C: array<f32, 2u> = Fill(0.0);

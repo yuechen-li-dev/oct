@@ -50,6 +50,7 @@
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_streaming_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_subgroup_owned32_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_subgroup_owned32_topology_probe_spirv.h"
+#include "reactor_vulkan_zimage_main_transformer_joint_attention_builtin_topology_spirv.h"
 #endif
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_subgroup_owned_spirv.h"
 #include "reactor_vulkan_zimage_main_transformer_joint_attention_gemini_exact_spirv.h"
@@ -225,6 +226,13 @@ static const prom_shader_asset k_shader_assets[] = {
     "internal/prometheus/shaders/sdslv/production/zimage/main_transformer_subgroup_owned32_topology_probe.sdslv",
     "reactor_vulkan_zimage_main_transformer_subgroup_owned32_topology_probe_spirv.h", 1u, 1u, 1u, "HLSL",
     PROM_SHADER_AUTHORITY_PRODUCTION, 1u, 0u, 0u, 256u, 256u },
+  { 49u, "zimage-main-transformer-joint-attention-builtin-topology", PROM_SHADER_STAGE_COMPUTE,
+    k_prom_zimage_main_transformer_joint_attention_builtin_topology_spirv,
+    sizeof(k_prom_zimage_main_transformer_joint_attention_builtin_topology_spirv),
+    "MainTransformerJointAttentionBuiltinTopology_CS", 0u, PROM_SHADER_SOURCE_SDSLV,
+    "internal/prometheus/shaders/sdslv/experimental/attention/main_transformer_joint_attention_builtin_topology.sdslv",
+    "reactor_vulkan_zimage_main_transformer_joint_attention_builtin_topology_spirv.h", 1u, 1u, 1u, "HLSL",
+    PROM_SHADER_AUTHORITY_EXPERIMENTAL, 3u, 16u, 0u, 1056u, 1056u },
   { 44u, "zimage-main-transformer-joint-attention-subgroup-owned", PROM_SHADER_STAGE_COMPUTE,
     k_prom_zimage_main_transformer_joint_attention_subgroup_owned_spirv,
     sizeof(k_prom_zimage_main_transformer_joint_attention_subgroup_owned_spirv),

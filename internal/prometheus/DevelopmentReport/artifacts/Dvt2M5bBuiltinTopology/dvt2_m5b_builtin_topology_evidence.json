@@ -1,0 +1,117 @@
+{
+  "schema": "oct.prometheus.dvt2.m5b.builtin-topology-evidence.v1",
+  "status": "meaningful-progression-not-promotion-ready",
+  "scope": "DVT2-M5B-BUILTIN-TOPOLOGY bounded MainTransformer layer-0 evaluation only",
+  "compiler_fixture": {
+    "source": "internal/sdslv/testdata/dvt2_m5b_builtin_topology_fixture.sdslv",
+    "hlsl_mechanism": "[[vk::ext_builtin_input(/* SubgroupId */ 40)]] static const uint SubgroupId; [[vk::ext_builtin_input(/* SubgroupLocalInvocationId */ 41)]] static const uint SubgroupLocalInvocationId;",
+    "spirv_validation": {
+      "dxc_target_environment": "vulkan1.3",
+      "spirv_validator": "passed",
+      "decorations": [
+        "OpDecorate %SubgroupId BuiltIn SubgroupId",
+        "OpDecorate %SubgroupLocalInvocationId BuiltIn SubgroupLocalInvocationId"
+      ]
+    }
+  },
+  "preserved": {
+    "serial_canonical_shader_id": 41,
+    "subgroup_owned32_shader_id": 47,
+    "subgroup_owned32_source_sha256": "7f489c3e591d61163eaad70a9fad9d5f3b684fadc4a357655063d495554421ba",
+    "subgroup_owned32_spirv_sha256": "bf53ad5fe22d83a581a41cc096358762f1766bf5c922ac3f3966880fd4616ebc",
+    "gemini_shader_ids": [45, 46],
+    "topology_probe_shader_id": 48,
+    "preserved_manifest_entries": [41, 45, 46, 47, 48]
+  },
+  "builtin_topology_candidate": {
+    "shader_id": 49,
+    "authority": "experimental",
+    "route_identity": "BuiltinTopology",
+    "source": "internal/prometheus/shaders/sdslv/experimental/attention/main_transformer_joint_attention_builtin_topology.sdslv",
+    "source_sha256": "242d2ebf4846df6ba7c8af910fc69a0edbc891fe9706f4c88a7114e78e943aa8",
+    "spirv_sha256": "7aaa8e8a4f2893109015c0d65a1e49e95a4b2906f38347e650096559308415bb",
+    "macro": "PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT",
+    "route": 4
+  },
+  "static_audit": {
+    "passed": true,
+    "original_spirv": {
+      "bytes": 7076,
+      "sha256": "bf53ad5fe22d83a581a41cc096358762f1766bf5c922ac3f3966880fd4616ebc",
+      "instruction_count": 434,
+      "fmax_count": 1,
+      "shuffle_count": 3
+    },
+    "candidate_spirv": {
+      "bytes": 7072,
+      "sha256": "7aaa8e8a4f2893109015c0d65a1e49e95a4b2906f38347e650096559308415bb",
+      "instruction_count": 435,
+      "fmax_count": 1,
+      "shuffle_count": 3,
+      "subgroup_id_builtin_count": 1,
+      "subgroup_local_invocation_id_builtin_count": 1,
+      "workgroup_variable_count": 0,
+      "barrier_count": 0,
+      "atomic_count": 0,
+      "group_index_reference_count": 0
+    },
+    "local_size": [256, 1, 1],
+    "required_subgroup_size": 32,
+    "macro_exclusion": "Compiling reactor_vulkan_model_block.c with the original M5b macro and PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT rejects with DVT2 M5b experimental attention routes are mutually exclusive.",
+    "resource_contract": {
+      "descriptor_bindings": [0, 1, 2],
+      "push_constant_offsets": [0, 4, 8, 12],
+      "shape": {
+        "token_count": 1056,
+        "head_count": 30,
+        "head_width": 128,
+        "fused_width": 11520,
+        "output_stride": 3840,
+        "dispatch_groups": 3960
+      }
+    }
+  },
+  "bounded_runtime": {
+    "hardware_required": true,
+    "validation_enabled": true,
+    "candidate_selected_route": 4,
+    "candidate_selected_shader_id": 49,
+    "measured_boundary": "MainTransformer layer-0 final JointWorking output, 1056 x 3840 FP32 values; image and context subregions; static audit replay",
+    "candidate_numerics": {
+      "finite": true,
+      "final_joint_relative_l2": 8.38066e-07,
+      "image_relative_l2": 1.20583e-06,
+      "context_relative_l2": 4.73599e-07,
+      "last_image_token_relative_l2": 5.88321e-07,
+      "first_context_token_relative_l2": 3.43408e-07,
+      "static_audit_relative_l2": 8.38066e-07,
+      "threshold": 5e-05,
+      "valid_output_and_audit": true,
+      "timeout": false,
+      "device_loss": false
+    },
+    "serial_canonical": {
+      "route": 2,
+      "shader_id": 41,
+      "samples_ns": [440483700, 443102200, 440438800, 441976500, 441458000, 442728400, 442300300, 443461800, 442279800, 440951300],
+      "median_ns": 442128150,
+      "mean_ns": 441918080,
+      "variance_ns2": 1011422897600
+    },
+    "builtin_topology": {
+      "samples_ns": [434694400, 439227200, 439538800, 436853400, 438984900, 438497500, 438664200, 439219900, 440614500, 438705600],
+      "median_ns": 438845250,
+      "mean_ns": 438500040,
+      "variance_ns2": 2409554170400,
+      "median_ratio_to_serial": 0.9925747772450136,
+      "mean_ratio_to_serial": 0.9922654443104025
+    },
+    "sampling_note": "Both routes used the same bounded layer-0 path and ten warm samples. Alternating original-M5b/candidate samples cannot be collected without executing identity 47."
+  },
+  "original_m5b_runtime": {
+    "executed": false,
+    "reason": "The preserved identity-47 selector requires subgroup_owned_attention_topology_proven. Runtime initialization sets that field to zero until the separate topology-probe runner completes, and this milestone explicitly forbids implementing that runner.",
+    "interpretation": "The preserved topology probe remains empirical device evidence, not a Vulkan-spec proof. No fabricated topology admission or identity-47 payload rewrite was used."
+  },
+  "decision": "The builtin candidate removes SV_GroupIndex-derived subgroup ownership in the optimized kernel and is numerically authoritative versus SerialCanonical with no measured regression. Do not promote it yet: the requested original-M5b runtime comparison and alternating timing comparison are blocked by the intentionally unimplemented topology-probe runner."
+}

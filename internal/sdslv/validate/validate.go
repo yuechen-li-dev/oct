@@ -808,6 +808,8 @@ func (v *validator) validateFunction(fn ast.FunctionDecl, shaderName string, sta
 		scope["GroupThreadID"] = varInfo{typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin}
 		scope["GroupID"] = varInfo{typ: ast.TypeRef{Name: "uint3"}, origin: varBuiltin}
 		scope["GroupIndex"] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin}
+		scope["SubgroupId"] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin}
+		scope["SubgroupLocalInvocationId"] = varInfo{typ: ast.TypeRef{Name: "u32"}, origin: varBuiltin}
 	}
 	for _, resource := range resources {
 		scope[resource.Name] = varInfo{typ: resource.Type, origin: varResource, access: resource.Access}

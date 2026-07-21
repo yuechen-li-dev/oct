@@ -518,6 +518,26 @@ stage compute [numthreads(16, 16, 1)] fn CS(params: VectorParams) -> void {
 	}
 }
 
+func TestModuleLowersNativeSubgroupBuiltinsToVDMIR(t *testing.T) {
+	mir := lowerSource(t, `stream IO { [binding(0)] Evidence: readwrite array<u32>; }
+shader SubgroupBuiltins {
+resources IO;
+stage compute [numthreads(256, 1, 1)] fn CS() -> void {
+let offset: u32 = GroupIndex * 2u;
+Evidence[offset] = SubgroupId;
+Evidence[offset + 1u] = SubgroupLocalInvocationId;
+return;
+}
+}`)
+	entry := mir.EntryPoints[0]
+	if !entry.Builtins[3].Referenced || !entry.Builtins[4].Referenced || !entry.Builtins[5].Referenced {
+		t.Fatalf("subgroup fixture builtins were not referenced: %#v", entry.Builtins)
+	}
+	if entry.Builtins[4].SPIRVInputBuiltinID != 40 || entry.Builtins[5].SPIRVInputBuiltinID != 41 {
+		t.Fatalf("subgroup builtin annotations = %#v", entry.Builtins)
+	}
+}
+
 func TestModuleLowersBoardValuesThroughVDMIR(t *testing.T) {
 	mir := lowerSource(t, `board LoadCoord {
 linear: u32;

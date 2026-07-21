@@ -481,14 +481,15 @@ const (
 	mainAttentionAuto            mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_AUTO)
 	mainAttentionSerialCanonical mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL)
 	mainAttentionSubgroupOwned32 mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32)
+	mainAttentionBuiltinTopology mainAttentionRoute = mainAttentionRoute(C.PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY)
 )
 
 func selectedMainAttentionRoute(requested uint32) (mainAttentionRoute, error) {
 	switch mainAttentionRoute(requested) {
-	case mainAttentionAuto, mainAttentionSerialCanonical, mainAttentionSubgroupOwned32:
+	case mainAttentionAuto, mainAttentionSerialCanonical, mainAttentionSubgroupOwned32, mainAttentionBuiltinTopology:
 		return mainAttentionRoute(requested), nil
 	default:
-		return 0, fmt.Errorf("main_attention_route_policy=%d must be Auto (1), SerialCanonical (2), or SubgroupOwned32 (3)", requested)
+		return 0, fmt.Errorf("main_attention_route_policy=%d must be Auto (1), SerialCanonical (2), SubgroupOwned32 (3), or BuiltinTopology (4)", requested)
 	}
 }
 

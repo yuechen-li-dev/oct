@@ -290,10 +290,12 @@ const (
 type ComputeBuiltin string
 
 const (
-	BuiltinDispatchThreadID ComputeBuiltin = "DispatchThreadID"
-	BuiltinGroupThreadID    ComputeBuiltin = "GroupThreadID"
-	BuiltinGroupID          ComputeBuiltin = "GroupID"
-	BuiltinGroupIndex       ComputeBuiltin = "GroupIndex"
+	BuiltinDispatchThreadID          ComputeBuiltin = "DispatchThreadID"
+	BuiltinGroupThreadID             ComputeBuiltin = "GroupThreadID"
+	BuiltinGroupID                   ComputeBuiltin = "GroupID"
+	BuiltinGroupIndex                ComputeBuiltin = "GroupIndex"
+	BuiltinSubgroupID                ComputeBuiltin = "SubgroupId"
+	BuiltinSubgroupLocalInvocationID ComputeBuiltin = "SubgroupLocalInvocationId"
 )
 
 type ComputeEntryPoint struct {
@@ -388,12 +390,13 @@ type ComputeThreadFieldBinding struct {
 }
 
 type BuiltinParam struct {
-	Name       string
-	Type       Type
-	Semantic   string
-	Builtin    ComputeBuiltin
-	Available  bool
-	Referenced bool
+	Name                string
+	Type                Type
+	Semantic            string
+	SPIRVInputBuiltinID uint32
+	Builtin             ComputeBuiltin
+	Available           bool
+	Referenced          bool
 }
 
 type Function struct {

@@ -921,10 +921,12 @@ func expandComptimeShader(shader ast.ShaderDecl, resourceBundles map[string][]as
 
 func expandComptimeFunction(fn ast.FunctionDecl, resources []ast.ResourceDecl, workgroups []ast.WorkgroupDecl) (ast.FunctionDecl, error) {
 	runtime := map[string]runtimeBinding{
-		"DispatchThreadID": {origin: runtimeBuiltin},
-		"GroupThreadID":    {origin: runtimeBuiltin},
-		"GroupID":          {origin: runtimeBuiltin},
-		"GroupIndex":       {origin: runtimeBuiltin},
+		"DispatchThreadID":          {origin: runtimeBuiltin},
+		"GroupThreadID":             {origin: runtimeBuiltin},
+		"GroupID":                   {origin: runtimeBuiltin},
+		"GroupIndex":                {origin: runtimeBuiltin},
+		"SubgroupId":                {origin: runtimeBuiltin},
+		"SubgroupLocalInvocationId": {origin: runtimeBuiltin},
 	}
 	for _, resource := range resources {
 		runtime[resource.Name] = runtimeBinding{origin: runtimeResource}
@@ -3271,6 +3273,8 @@ func (l *lowering) lowerComputeEntryPoint(shader ast.ShaderDecl, fn ast.Function
 		{Name: "GroupThreadID", Type: vdmir.Type{Kind: vdmir.TypeUint3, Name: "uint3"}, Semantic: "SV_GroupThreadID", Builtin: vdmir.BuiltinGroupThreadID, Available: true, Referenced: directBuiltins["GroupThreadID"] || threadParams["GroupThreadID"]},
 		{Name: "GroupID", Type: vdmir.Type{Kind: vdmir.TypeUint3, Name: "uint3"}, Semantic: "SV_GroupID", Builtin: vdmir.BuiltinGroupID, Available: true, Referenced: directBuiltins["GroupID"] || threadParams["GroupID"]},
 		{Name: "GroupIndex", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, Semantic: "SV_GroupIndex", Builtin: vdmir.BuiltinGroupIndex, Available: true, Referenced: directBuiltins["GroupIndex"] || threadParams["GroupIndex"]},
+		{Name: "SubgroupId", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, SPIRVInputBuiltinID: 40, Builtin: vdmir.BuiltinSubgroupID, Available: true, Referenced: directBuiltins["SubgroupId"]},
+		{Name: "SubgroupLocalInvocationId", Type: vdmir.Type{Kind: vdmir.TypeU32, Name: "u32"}, SPIRVInputBuiltinID: 41, Builtin: vdmir.BuiltinSubgroupLocalInvocationID, Available: true, Referenced: directBuiltins["SubgroupLocalInvocationId"]},
 	}
 	_ = resources
 	return entry
@@ -3585,6 +3589,8 @@ func addBuiltinBindings(scope map[string]binding) {
 	scope["GroupThreadID"] = binding{name: "GroupThreadID", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "uint3"}}
 	scope["GroupID"] = binding{name: "GroupID", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "uint3"}}
 	scope["GroupIndex"] = binding{name: "GroupIndex", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "u32"}}
+	scope["SubgroupId"] = binding{name: "SubgroupId", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "u32"}}
+	scope["SubgroupLocalInvocationId"] = binding{name: "SubgroupLocalInvocationId", kind: vdmir.VarBuiltin, typ: ast.TypeRef{Name: "u32"}}
 }
 
 func collectLocals(locals map[string]vdmir.Type, provenance vdmir.Provenance) []vdmir.Local {
@@ -3672,7 +3678,7 @@ func walkExpr(expr ast.Expr, builtins map[string]bool) {
 	switch e := expr.(type) {
 	case ast.IdentifierExpr:
 		switch e.Name {
-		case "DispatchThreadID", "GroupThreadID", "GroupID", "GroupIndex":
+		case "DispatchThreadID", "GroupThreadID", "GroupID", "GroupIndex", "SubgroupId", "SubgroupLocalInvocationId":
 			builtins[e.Name] = true
 		}
 	case ast.FieldAccessExpr:

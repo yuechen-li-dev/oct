@@ -1519,6 +1519,11 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     sessionCreate.struct_size = sizeof(sessionCreate);
     sessionCreate.lock_identity = PROM_ZIMAGE_TURBO_LOCK_ID;
     sessionCreate.execution_profile = PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY;
+#if defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
+    sessionCreate.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY;
+#else
+    sessionCreate.main_attention_route_policy = PROM_MAIN_ATTENTION_ROUTE_AUTO;
+#endif
     PrometheusCompiledModelSessionEvidence sessionEvidence{};
     std::uint64_t sessionID = 0u;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_create(
@@ -1709,6 +1714,14 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
     std::uint64_t mainBlockID = 0u;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_main_transformer_create(runtime, &mainCreate, &mainBlockID, &evidence),
                  "MainTransformer0 layers.0 owner creates from the lock-resolved descriptor");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_get_evidence(runtime, sessionID, &sessionEvidence),
+                 "MainTransformer route selection is available after owner creation");
+#if defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
+    ASSERT_EQUAL(PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY, sessionEvidence.selected_main_attention_route,
+                 "builtin-topology route remains selected without a topology-probe execution runner");
+    ASSERT_EQUAL(49u, sessionEvidence.main_attention_shader_id,
+                 "builtin-topology route binds the isolated payload identity");
+#endif
     PrometheusMainTransformerExecuteRequest mainExecute{};
     mainExecute.struct_size = sizeof(mainExecute);
     mainExecute.session_identity = sessionID;
@@ -1805,6 +1818,17 @@ FACT(PrometheusM2CRealRetainedStreamsFeedRepresentativeMainTransformer)
               << " p95=" << sortedWarm[9u] << " gpu_median="
               << (sortedWarmGpu[4u] + sortedWarmGpu[5u]) / 2u
               << " gpu_mean=" << mean_ns(warmGpuNs) << " churn=zero\n";
+    if (const char* bounded = std::getenv("OCT_EVT2_M5B_BOUNDED"); bounded != nullptr && std::string(bounded) == "1") {
+        std::cout << "M2C bounded_m5b=1 route=" << sessionEvidence.selected_main_attention_route
+                  << " shader_id=" << sessionEvidence.main_attention_shader_id << "\n";
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_model_block_destroy(runtime, mainBlockID),
+                     "bounded M5b MainTransformer owner destroys safely");
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_compiled_model_session_destroy(runtime, sessionID),
+                     "bounded M5b compiled-model session destroys safely");
+        ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(runtime),
+                     "bounded M5b runtime destroys safely");
+        return;
+    }
     std::array<std::uint64_t, 30> chainExecutionNs{};
     std::array<std::uint64_t, 30> chainGpuNs{};
     std::array<std::uint64_t, 29> chainRebindNs{};

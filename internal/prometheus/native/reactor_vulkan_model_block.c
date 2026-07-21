@@ -1,5 +1,12 @@
 #include "reactor_vulkan_runtime_internal.h"
 
+#if (defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) + \
+     defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) + \
+     defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT) + \
+     defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)) > 1
+#error "DVT2 M5b experimental attention routes are mutually exclusive"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "reactor_shader_registry.h"
@@ -35,6 +42,7 @@
 #define PROM_MODEL_BLOCK_MAIN_QK_ROPE_SHADER_ID 40u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID 41u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID 47u
+#define PROM_MODEL_BLOCK_MAIN_ATTENTION_BUILTIN_TOPOLOGY_SHADER_ID 49u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_GROUPS 31680u
 #define PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS 3960u
 #define PROM_MODEL_BLOCK_MAIN_W1_W3_SHADER_ID 42u
@@ -675,6 +683,10 @@ static int prom_model_block_m1b_shader_asset_is_admitted(const prom_shader_asset
   if (shader_id == 46u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
       asset->source_language == PROM_SHADER_SOURCE_HLSL) return 1;
 #endif
+#if defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
+  if (shader_id == 49u && asset->authority == PROM_SHADER_AUTHORITY_EXPERIMENTAL &&
+      asset->source_language == PROM_SHADER_SOURCE_SDSLV) return 1;
+#endif
   return 0;
 }
 
@@ -981,7 +993,8 @@ static int prom_main_transformer_create_pipelines(prom_reduction_runtime_state* 
                                         &block->attention};
   const uint32_t attention_shader_id = state->compiled_session.main_attention_shader_id;
   if (attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_SHADER_ID &&
-      attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID) return 0;
+      attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID &&
+      attention_shader_id != PROM_MODEL_BLOCK_MAIN_ATTENTION_BUILTIN_TOPOLOGY_SHADER_ID) return 0;
   block->main_attention_shader_id = attention_shader_id;
   return prom_model_block_m1b_create_pipeline(state, block, &block->m1b_pipelines[0u],
                                                PROM_MODEL_BLOCK_M1B_INGRESS_SHADER_ID, ingress_buffers, 4u,
@@ -3082,7 +3095,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
   const PrometheusMainTransformerResolvedDescriptor* descriptor;
   PrometheusModelBlockCreateRequest closed;
   uint32_t index;
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
   prom_vk_runtime_services services;
 #endif
   if (out_block_id != NULL) *out_block_id = 0u;
@@ -3092,7 +3105,7 @@ int prom_reactor_runtime_main_transformer_create_impl(
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
     return PROM_ERROR;
   }
-#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT)
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_EXACT_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_GEMINI_INPLACE_EXPERIMENT) || defined(PROMETHEUS_DVT2_M5B_BUILTIN_TOPOLOGY_EXPERIMENT)
   if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
       prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
@@ -3114,6 +3127,29 @@ int prom_reactor_runtime_main_transformer_create_impl(
       descriptor->hidden_width != PROM_MODEL_BLOCK_M1B_VECTOR_ELEMENTS) {
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_INVALID_REQUEST, out_evidence);
     return PROM_ERROR;
+  }
+  {
+    prom_reduction_runtime_state* state = prom_reduction_ensure_state(handle, NULL);
+    prom_vk_runtime_services route_services;
+    prom_main_attention_route_decision decision;
+    const char* route_error;
+    if (state == NULL || state->compiled_session.created == 0u ||
+        state->compiled_session.lock_identity != request->lock_identity ||
+        prom_reactor_runtime_get_vk_services(handle, &route_services) != PROM_OK) {
+      prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
+      return PROM_ERROR;
+    }
+    route_error = prom_main_attention_route_select(
+        state->compiled_session.requested_main_attention_route, &route_services,
+        PROM_MODEL_BLOCK_MAIN_TOKENS, 30u, 128u, 11520u, 3840u,
+        PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS, &decision);
+    if (route_error != NULL) {
+      prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
+      return PROM_ERROR;
+    }
+    state->compiled_session.selected_main_attention_route = decision.selected_route;
+    state->compiled_session.main_attention_fallback_reason = decision.fallback_reason;
+    state->compiled_session.main_attention_shader_id = decision.shader_id;
   }
   memset(&closed, 0, sizeof(closed));
   closed.struct_size = (uint32_t)sizeof(closed);
@@ -4540,7 +4576,8 @@ static int prom_main_transformer_record_execute(prom_reduction_runtime_state* st
   prom_reduction_record_barrier(block->command_buffer);
   prom_model_block_m1b_bind_and_dispatch(block->command_buffer, &block->m1c_pipelines[0u],
                                          &attention, sizeof(attention),
-                                         (block->main_attention_shader_id == PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID
+                                         (block->main_attention_shader_id == PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_SHADER_ID ||
+                                          block->main_attention_shader_id == PROM_MODEL_BLOCK_MAIN_ATTENTION_BUILTIN_TOPOLOGY_SHADER_ID
                                              ? PROM_MODEL_BLOCK_MAIN_ATTENTION_SUBGROUP_OWNED32_GROUPS
                                              : PROM_MODEL_BLOCK_MAIN_ATTENTION_SERIAL_GROUPS), 1u, 1u);
   if (block->m1b_timestamp_supported != 0u) vkCmdWriteTimestamp(block->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, block->m1b_timestamp_query_pool, 8u);
@@ -4709,9 +4746,10 @@ int prom_reactor_runtime_compiled_model_session_create_impl(
       request->struct_size != sizeof(*request) || request->lock_identity != PROM_ZIMAGE_TURBO_LOCK_ID ||
       (request->execution_profile != PROM_MODEL_EXECUTION_PROFILE_MINIMUM_MEMORY &&
        request->execution_profile != PROM_MODEL_EXECUTION_PROFILE_PREFETCH) ||
-      (request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
+       (request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_AUTO &&
        request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SERIAL_CANONICAL &&
-       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32)) {
+       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_SUBGROUP_OWNED32 &&
+       request->main_attention_route_policy != PROM_MAIN_ATTENTION_ROUTE_BUILTIN_TOPOLOGY)) {
     prom_compiled_session_fill_evidence(NULL, out_evidence);
     return PROM_ERROR;
   }
