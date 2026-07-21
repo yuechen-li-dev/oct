@@ -1,0 +1,32 @@
+MakeFailureArtifact {
+    Version: 0
+    RunId: "20260720T235334.120085600Z"
+    TimeUtc: "2026-07-20T23:53:34.1200856Z"
+    MakeFile: "C:/Users/yuech/source/repos/oct/internal/prometheus/Make.oct"
+    StateDir: ".octmake/prometheus-native"
+    TracePath: "C:/Users/yuech/source/repos/oct/internal/prometheus/.octmake/prometheus-native/trace.octagon"
+    FailureArtifactPath: "C:/Users/yuech/source/repos/oct/internal/prometheus/.octmake/prometheus-native/failures/RunSmoke/20260720T235334.120085600Z/failure.octagon"
+    Target: "RunSmoke"
+    TargetKind: "command"
+    Reason: "CommandFailed"
+    Message: "exec: \"C:\\\\Users\\\\yuech\\\\source\\\\out\\\\prometheus\\\\native\\\\SerialCanonical\\\\marionette_tests\": executable file not found in %PATH%"
+    Decision: TargetDecision { Status: "Failed" Reason: "NoOutputs" DurationMs: 0 }
+    Command: CommandFailure {
+        Target: "RunSmoke"
+        TargetKind: "command"
+        Program: "../../out/prometheus/native/SerialCanonical/marionette_tests"
+        Args: ["PrometheusNativeHarness_Smoke"]
+        Env: []
+        Cwd: "../.."
+        Inputs: ["../../out/prometheus/native/SerialCanonical/marionette_tests"]
+        Outputs: []
+        Deps: ["MarionetteTests"]
+        ExitCode: 0
+        Stdout: ""
+        Stderr: ""
+        CommandHash: "e7fa317315639977e9954f2be87627e6db1be61a23d257ab06c3d701da17fac3"
+        PreviousCommandHash: "e7fa317315639977e9954f2be87627e6db1be61a23d257ab06c3d701da17fac3"
+        DecisionReason: "NoOutputs"
+        DurationMs: 0
+    }
+}

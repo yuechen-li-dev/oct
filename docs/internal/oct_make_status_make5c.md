@@ -28,8 +28,7 @@ This note parks the MAKE0-MAKE5 line of work. The current surface is usable M0 i
 
 - No Ninja backend.
 - No manifest `Build` section.
-- Typed C/C++ direct-backend lowering now exists as MAKE-PROD-M0 work; real
-  Prometheus package-root/bootstrap and Windows validation remain pending.
+- No typed C/C++ helpers.
 - No typed Go helpers.
 - No C ABI artifact model yet.
 - No hash-based cache/staleness.

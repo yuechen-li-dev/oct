@@ -28,7 +28,7 @@ fn Plan() -> Make.Plan {
                 Deps: ["MarionetteTests"]
                 Program: "../../out/prometheus/native/SerialCanonical/marionette_tests"
                 Args: ["PrometheusNativeHarness_Smoke"]
-                Cwd: "../.."
+                Cwd: ""
                 Env: []
             }
         ]
@@ -62,27 +62,27 @@ fn NativePlan() -> Make.NativePlan {
         Targets: [
             Make.NativeTarget {
                 Name: "ReactorObjects" Variant: "SerialCanonical" Kind: Make.NativeKind.ObjectSet Language: Make.NativeLanguage.C
-                Sources: [] Manifest: "native/native_manifest.json" ManifestSection: "production_sources" Inputs: ["native/reactor_api.h", "native/reactor_vulkan.h"] Deps: [] IncludeDirs: ["native"] Defines: ["PROMETHEUS_REACTOR_BUILD_DLL"] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: [] Output: "" InstallCopies: []
+                Sources: [] Manifest: "native/native_manifest.json" ManifestSection: "production_sources" Inputs: ["native/native_manifest.json", "native/reactor_api.h", "native/reactor_vulkan.h"] Deps: [] IncludeDirs: ["native"] Defines: ["PROMETHEUS_REACTOR_BUILD_DLL"] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: [] Output: "" InstallCopies: []
             },
             Make.NativeTarget {
                 Name: "Reactor" Variant: "SerialCanonical" Kind: Make.NativeKind.SharedLibrary Language: Make.NativeLanguage.C
-                Sources: [] Manifest: "" ManifestSection: "" Inputs: [] Deps: ["ReactorObjects"] IncludeDirs: ["native"] Defines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/SerialCanonical/prometheus_reactor.so" InstallCopies: ["reactor/libprometheus_reactor.so"]
+                Sources: [] Manifest: "" ManifestSection: "" Inputs: [] Deps: ["ReactorObjects"] IncludeDirs: ["native"] Defines: [] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/SerialCanonical/prometheus_reactor.so" InstallCopies: ["reactor/libprometheus_reactor.so"]
             },
             Make.NativeTarget {
                 Name: "SdslvTestHost" Variant: "SerialCanonical" Kind: Make.NativeKind.Executable Language: Make.NativeLanguage.C
-                Sources: ["native/sdslv_test_host.c"] Manifest: "" ManifestSection: "" Inputs: [] Deps: [] IncludeDirs: ["native"] Defines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan"] Output: "../../out/prometheus/native/SerialCanonical/sdslv_test_host" InstallCopies: []
+                Sources: ["native/sdslv_test_host.c"] Manifest: "" ManifestSection: "" Inputs: [] Deps: [] IncludeDirs: ["native"] Defines: [] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan"] Output: "../../out/prometheus/native/SerialCanonical/sdslv_test_host" InstallCopies: []
             },
             Make.NativeTarget {
                 Name: "MarionetteTests" Variant: "SerialCanonical" Kind: Make.NativeKind.Executable Language: Make.NativeLanguage.Cpp
-                Sources: ["native/Marionette/test_main.cpp"] Manifest: "native/native_manifest.json" ManifestSection: "native_test_sources" Inputs: ["native/Marionette/test_harness.h"] Deps: ["ReactorObjects"] IncludeDirs: ["native", "native/Marionette"] Defines: ["MARIONETTE_EXCLUDE_SLOW_TESTS", "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"] Standard: "c++23" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/SerialCanonical/marionette_tests" InstallCopies: []
+                Sources: ["native/Marionette/test_main.cpp"] Manifest: "native/native_manifest.json" ManifestSection: "native_test_sources" Inputs: ["native/native_manifest.json", "native/Marionette/test_harness.h"] Deps: ["ReactorObjects"] IncludeDirs: ["native", "native/Marionette"] Defines: ["MARIONETTE_EXCLUDE_SLOW_TESTS", "MARIONETTE_EXCLUDE_BENCHMARK_TESTS"] ProjectRootStringDefines: ["MARIONETTE_TEST_REPO_ROOT"] Standard: "c++23" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/SerialCanonical/marionette_tests" InstallCopies: []
             },
             Make.NativeTarget {
                 Name: "MarionetteBenchmarks" Variant: "SerialCanonical" Kind: Make.NativeKind.Executable Language: Make.NativeLanguage.Cpp
-                Sources: ["native/Marionette/test_main_benchmarks.cpp"] Manifest: "native/native_manifest.json" ManifestSection: "native_test_sources" Inputs: ["native/Marionette/test_harness.h"] Deps: ["ReactorObjects"] IncludeDirs: ["native", "native/Marionette"] Defines: [] Standard: "c++23" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/SerialCanonical/marionette_benchmarks" InstallCopies: []
+                Sources: ["native/Marionette/test_main_benchmarks.cpp"] Manifest: "native/native_manifest.json" ManifestSection: "native_test_sources" Inputs: ["native/native_manifest.json", "native/Marionette/test_harness.h"] Deps: ["ReactorObjects"] IncludeDirs: ["native", "native/Marionette"] Defines: [] ProjectRootStringDefines: ["MARIONETTE_TEST_REPO_ROOT"] Standard: "c++23" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/SerialCanonical/marionette_benchmarks" InstallCopies: []
             },
             Make.NativeTarget {
                 Name: "ReactorM5b" Variant: "M5bSubgroupOwnedExperimental" Kind: Make.NativeKind.SharedLibrary Language: Make.NativeLanguage.C
-                Sources: [] Manifest: "native/native_manifest.json" ManifestSection: "production_sources" Inputs: ["native/reactor_api.h", "native/reactor_vulkan.h"] Deps: [] IncludeDirs: ["native"] Defines: ["PROMETHEUS_REACTOR_BUILD_DLL", "PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT"] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/M5bSubgroupOwnedExperimental/prometheus_reactor.so" InstallCopies: []
+                Sources: [] Manifest: "native/native_manifest.json" ManifestSection: "production_sources" Inputs: ["native/native_manifest.json", "native/reactor_api.h", "native/reactor_vulkan.h"] Deps: [] IncludeDirs: ["native"] Defines: ["PROMETHEUS_REACTOR_BUILD_DLL", "PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT"] ProjectRootStringDefines: [] Standard: "c11" Profile: Make.NativeProfile.Release LinkLibraries: ["vulkan", "-pthread", "-lm"] Output: "../../out/prometheus/native/M5bSubgroupOwnedExperimental/prometheus_reactor.so" InstallCopies: []
             }
         ]
     }

@@ -228,9 +228,12 @@ func loadContext(opts Options, stdout io.Writer) (context, error) {
 		if callErr != nil {
 			return context{}, fmt.Errorf("call NativePlan(): %w", callErr)
 		}
-		commands, phonies, lowerErr := lowerNative(root, nativeTargets(nv))
+		commands, phonies, artifacts, lowerErr := lowerNative(root, nativeTargets(nv))
 		if lowerErr != nil {
 			return context{}, lowerErr
+		}
+		for i := range plan.CommandTargets {
+			plan.CommandTargets[i] = resolveCommandArtifactRefs(plan.CommandTargets[i], artifacts)
 		}
 		plan.CommandTargets = append(plan.CommandTargets, commands...)
 		plan.PhonyTargets = append(plan.PhonyTargets, phonies...)
@@ -240,6 +243,25 @@ func loadContext(opts Options, stdout io.Writer) (context, error) {
 		return context{}, err
 	}
 	return context{makeFile: makeFile, root: root, program: program, plan: plan, targets: targets}, nil
+}
+func resolveCommandArtifactRefs(c CommandTarget, artifacts map[string]string) CommandTarget {
+	resolve := func(v string) string {
+		if p, ok := artifacts[v]; ok {
+			return p
+		}
+		return v
+	}
+	c.Program = resolve(c.Program)
+	for i := range c.Args {
+		c.Args[i] = resolve(c.Args[i])
+	}
+	for i := range c.Inputs {
+		c.Inputs[i] = resolve(c.Inputs[i])
+	}
+	for i := range c.Outputs {
+		c.Outputs[i] = resolve(c.Outputs[i])
+	}
+	return c
 }
 
 func hasFunction(program project.Program, name string) bool {

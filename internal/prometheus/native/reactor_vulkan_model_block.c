@@ -2999,6 +2999,9 @@ int prom_reactor_runtime_context_refiner_create_impl(
   const PrometheusContextRefinerResolvedDescriptor* descriptor;
   PrometheusModelBlockCreateRequest closed;
   uint32_t index;
+#if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
+  prom_vk_runtime_services services;
+#endif
   if (out_block_id != NULL) *out_block_id = 0u;
   if (!prom_reactor_runtime_validate_handle(handle) || request == NULL || out_block_id == NULL ||
       request->struct_size != sizeof(*request) || request->uploads == NULL || request->upload_count != 11u) {
@@ -3006,7 +3009,8 @@ int prom_reactor_runtime_context_refiner_create_impl(
     return PROM_ERROR;
   }
 #if defined(PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT)
-  if (prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK ||
+      prom_vk_subgroup_owned_attention_admission_reason(&services) != NULL) {
     prom_model_block_fill_evidence(NULL, PROM_MODEL_BLOCK_DETAIL_RESOURCE_CREATE_FAILED, out_evidence);
     return PROM_ERROR;
   }

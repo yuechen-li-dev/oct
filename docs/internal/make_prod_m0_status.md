@@ -22,11 +22,12 @@ benchmark, and isolated M5b build-only targets. The M5b target carries
 `PROMETHEUS_DVT2_M5B_SUBGROUP_OWNED_EXPERIMENT` and has an independent artifact
 identity. No GPU target is executed by this plan.
 
-Current boundary: this checkout cannot load `internal/prometheus/Make.oct` as an
-ordinary project because that directory has no Oct package manifest and package
-resolution searches `internal/Libraries/Make`, not the repository `Libraries`.
-The existing plan had the same unresolved bootstrap layout. As a result a real
-Windows build and smoke have not been claimed. The next bounded task is to fix
-that package-root/bootstrap seam, then validate MSVC environment discovery,
-Windows output lowering, smoke execution, and failure evidence before scripts
-can be retired.
+The nested explicit Make-file import seam is fixed through canonical repository
+root discovery: a lowercase implementation directory such as `internal/libraries`
+can no longer shadow the repository `Libraries` import root on Windows. Pure
+plan inspection now loads without a sidecar. The Windows direct route built the
+SerialCanonical reactor, SDSL-V host, normal Marionette executable, and benchmark,
+then passed `PrometheusNativeHarness_Smoke`; the isolated M5b variant built without
+execution. M0 does not claim transitive-header-correct incremental compilation:
+only declared inputs participate in staleness. MAKE-PROD-M1 owns discovered-input
+state and compiler dependency collection.

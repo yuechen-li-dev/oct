@@ -756,10 +756,17 @@ func detectRepoRoot(start string) string {
 
 func hasRepoImportRoots(root string) bool {
 	for _, name := range []string{"Libraries", "Packages"} {
-		path := filepath.Join(root, name)
-		info, err := os.Stat(path)
-		if err == nil && info.IsDir() {
-			return true
+		// A repository import root is deliberately case-sensitive.  On Windows
+		// os.Stat("Libraries") would also match an implementation directory named
+		// "libraries", incorrectly pinning nested packages below internal/.
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			return false
+		}
+		for _, entry := range entries {
+			if entry.Name() == name && entry.IsDir() {
+				return true
+			}
 		}
 	}
 	return false

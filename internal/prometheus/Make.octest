@@ -14,3 +14,8 @@ fn NativePlanDeclaresVariantIsolation() -> Void {
     Assert.Equal("M5bSubgroupOwnedExperimental", targets[5].Variant, "experimental objects do not reuse default identity")
     Assert.Equal(Make.NativeKind.ObjectSet, targets[0].Kind, "common C sources are reusable objects")
 }
+
+[Fact]
+fn NativePlanRetainsManifestInventory() -> Void {
+    Assert.Equal("native/native_manifest.json", NativePlan().Targets[0].Manifest, "object set declares canonical inventory")
+}

@@ -11,7 +11,8 @@ controlled Make runtime with explicit host capability boundaries and structured
 evidence artifacts.
 
 It is still an MVP/direct-backend feature: there is no Ninja backend, no plan
-diff, no replay, no native helper family, and no hermetic build sandbox. It is
+diff, no replay, and no hermetic build sandbox. MAKE-PROD-M0 adds a bounded
+typed native helper family; Windows execution validation remains in progress. It is
 no longer a toy. It has a typed target model, state and trace files, command
 identity hashing, read-only reporting, failure artifacts, C ABI metadata records,
 Chimera dogfood examples, Make-file attributes, authority enforcement, and
