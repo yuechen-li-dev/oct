@@ -1,6 +1,9 @@
 # Artifact Library
 
-`Artifact.*` is the canonical API for writing artifact outputs from `[Artifact]` functions.
+`Artifact.*` is the compiler-owned output capability for `[Artifact]` functions.
+`oct artifact` loads, binds, and type-checks the selected program before it
+evaluates artifact entry points through the shared typed interpreter. It does
+not generate or compile the application backend.
 
 ## API
 
@@ -11,7 +14,11 @@
 - `Artifact.WriteJson(path, value) -> Void`
 - `Artifact.WriteOctagon(path, value) -> Void`
 
-All functions fail the artifact run immediately on write errors.
+All functions are valid only during the explicit artifact phase. They declare
+paths relative to `--output-root` (the working directory by default), reject
+absolute and escaping paths, and fail on duplicate output paths. Outputs are
+staged until every selected entry point succeeds, then published in sorted path
+order. Identical content is reported as unchanged and is not rewritten.
 
 ## JSON authoring guidance (canonical)
 
@@ -34,4 +41,8 @@ fn WriteOutputs() {
 }
 ```
 
-Lower-level `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` APIs still exist for code that needs explicit fallible handling.
+Lower-level `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` APIs still exist for
+ordinary runtime code. During artifact evaluation, the legacy global
+`WriteOctagon` call is a compatibility alias for the same output capability;
+ordinary filesystem writes are rejected. `Directory.Make*` is accepted only as
+a confined staging-directory compatibility operation.

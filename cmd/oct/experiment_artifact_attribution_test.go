@@ -15,14 +15,15 @@ import (
 
 func TestExperimentArtifactAttributionExperimentRootArtifactPrefixesMilestoneOutputsAndExcludesAuxiliary(t *testing.T) {
 	root := createExperimentRoot(t)
-	shared := filepath.Join(t.TempDir(), "artifact-results.octagon")
+	outputRoot := t.TempDir()
+	shared := filepath.Join(outputRoot, "artifact-results.octagon")
 
 	writeMilestoneFile(t, root, "M0", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M0", "artifact.octest", strings.Join([]string{
 		"package Main",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, \"m0\")", shared),
+		"    WriteOctagon(\"artifact-results.octagon\", \"m0\")",
 		"}",
 	}, "\n")+"\n")
 	writeMilestoneFile(t, root, "M1", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
@@ -30,7 +31,7 @@ func TestExperimentArtifactAttributionExperimentRootArtifactPrefixesMilestoneOut
 		"package Main",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, \"m1\")", shared),
+		"    WriteOctagon(\"artifact-results.octagon\", \"m1\")",
 		"}",
 	}, "\n")+"\n")
 	writeMilestoneFile(t, root, "Mx2", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
@@ -38,13 +39,13 @@ func TestExperimentArtifactAttributionExperimentRootArtifactPrefixesMilestoneOut
 		"package Main",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, \"mx\")", shared),
+		"    WriteOctagon(\"artifact-results.octagon\", \"mx\")",
 		"}",
 	}, "\n")+"\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"artifact", root}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"artifact", root, "--output-root", outputRoot}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected artifact success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 
@@ -121,20 +122,21 @@ func TestExperimentArtifactAttributionExperimentRootBenchPrefixesMilestoneOutput
 
 func TestExperimentArtifactAttributionDirectMilestoneArtifactDoesNotPrefixOutputs(t *testing.T) {
 	root := createExperimentRoot(t)
-	output := filepath.Join(t.TempDir(), "direct.octagon")
+	outputRoot := t.TempDir()
+	output := filepath.Join(outputRoot, "direct.octagon")
 
 	writeMilestoneFile(t, root, "Mx1", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "Mx1", "artifact.octest", strings.Join([]string{
 		"package Main",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, \"direct\")", output),
+		"    WriteOctagon(\"direct.octagon\", \"direct\")",
 		"}",
 	}, "\n")+"\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"artifact", filepath.Join(root, "Mx1")}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"artifact", filepath.Join(root, "Mx1"), "--output-root", outputRoot}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected direct milestone artifact success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 	if _, err := os.Stat(output); err != nil {
@@ -148,14 +150,15 @@ func TestExperimentArtifactAttributionDirectMilestoneArtifactDoesNotPrefixOutput
 
 func TestExperimentArtifactAttributionArtifactCollisionSameFilenameAcrossMilestonesDoesNotOverwrite(t *testing.T) {
 	root := createExperimentRoot(t)
-	shared := filepath.Join(t.TempDir(), "plot.octagon")
+	outputRoot := t.TempDir()
+	shared := filepath.Join(outputRoot, "plot.octagon")
 
 	writeMilestoneFile(t, root, "M1", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
 	writeMilestoneFile(t, root, "M1", "artifact.octest", strings.Join([]string{
 		"package Main",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, \"first\")", shared),
+		"    WriteOctagon(\"plot.octagon\", \"first\")",
 		"}",
 	}, "\n")+"\n")
 	writeMilestoneFile(t, root, "M2", "main.oct", "package Main\nfn Main() -> Int { return 0 }\n")
@@ -163,13 +166,13 @@ func TestExperimentArtifactAttributionArtifactCollisionSameFilenameAcrossMilesto
 		"package Main",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, \"second\")", shared),
+		"    WriteOctagon(\"plot.octagon\", \"second\")",
 		"}",
 	}, "\n")+"\n")
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"artifact", root}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"artifact", root, "--output-root", outputRoot}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected artifact success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 

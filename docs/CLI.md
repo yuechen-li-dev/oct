@@ -13,7 +13,7 @@ Common commands:
 - `go run ./cmd/oct test <path> --execution compiled`
 - `go run ./cmd/oct test <path> --all-packages`
 - `go run ./cmd/oct artifact <path>`
-- `go run ./cmd/oct artifact <path> --execution compiled`
+- `go run ./cmd/oct artifact <path> --output-root <directory>`
 - `go run ./cmd/oct fmt <path> --mode en-llm --check`
 - `go run ./cmd/oct fmt <path> --mode en-llm-compact --check`
 - `go run ./cmd/oct bench <path> --profile`
@@ -65,16 +65,35 @@ oct make doctor --file internal/prometheus/Make.oct
 Future reporting work includes stdout/stderr sidecar files, replay, failure artifact pruning, plan diffing, hash-based staleness, and richer tool/environment snapshots.
 
 
-## `oct artifact` execution modes
+## `oct artifact` build phase
 
 Usage:
 
 ```sh
-oct artifact <file-or-root> [--execution <interpreted|compiled>]
-oct artifact path/to/file.oct --execution compiled
+oct artifact <file-or-root> [--output-root <directory>] [--all-packages] [--json]
+oct artifact path/to/file.oct --output-root out/generated
 ```
 
-`oct artifact` runs discovered `[Artifact]` entrypoints. The default remains interpreted execution. Passing `--execution interpreted` makes that default explicit; passing `--execution compiled` requires the compiled path and fails instead of silently falling back to interpreted execution if compilation is unsupported. Artifact command output includes stable execution metadata, for example `Execution: compiled`, so a later reader can tell which path generated the artifact output.
+`oct artifact` binds and type-checks the selected program, discovers `[Artifact]`
+entry points deterministically, evaluates them with the shared typed
+interpreter, then publishes staged outputs. The actual mode is reported as
+`build-time-interpreted`; no Go source, host executable, or application runtime
+is required. The older `--execution interpreted` spelling remains accepted and
+`--execution compiled` is a compatibility alias that explicitly delegates to
+the same evaluator.
+
+The output root defaults to the working directory. Artifact paths must be
+relative and confined to that root. Duplicate paths fail the run. Changed files
+are published in sorted order through same-directory temporary files, while
+byte-identical files are reported `UNCHANGED` and retain their modification
+time. `--json` includes requested and actual execution, source provenance,
+status, MIME type, size, and SHA-256.
+
+Artifact evaluation has a narrow output capability. Ordinary ambient file
+writes and reads, process/network access, clock access, crypto randomness, and
+wrapper sidecars are not available. Confined directory creation and the global
+`WriteOctagon` spelling are retained compatibility adaptations. Generated files
+cannot alter the already-bound program in the same artifact invocation.
 
 Artifact-producing labs should still validate scientific correctness separately from successful execution. Prefer comparing headline outputs against analytic solutions, Python/reference implementations, published values, or fixed golden outputs, and use `Assert.Close` or the closest available assertion before trusting artifact headline numbers.
 

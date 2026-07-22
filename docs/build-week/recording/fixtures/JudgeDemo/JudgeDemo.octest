@@ -1,7 +1,6 @@
 package JudgeDemo
 
 import Artifact
-import IO
 
 [Fact]
 fn TwiceIsDeterministic() -> Void {
@@ -15,6 +14,5 @@ fn SummaryTextIsStable() -> Void {
 
 [Artifact]
 fn WriteJudgeSummary() -> Void {
-    let _mkdir = IO.MakeAll("out/build-week/judge-demo")!
     Artifact.WriteJson("out/build-week/judge-demo/summary.json", SummaryText())
 }

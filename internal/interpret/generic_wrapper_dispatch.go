@@ -302,6 +302,9 @@ func isExecutableFile(path string) bool {
 }
 
 func (i interpreter) evalGenericWrapperCall(fn interpretedWrapperFunction, arguments []Value) (evalResult, error) {
+	if i.artifactCapability != nil {
+		return i.wrapperBoundaryResult(fn, fmt.Errorf("artifact evaluation rejected backend-only wrapper operation %s.%s", fn.PackageName, fn.OctName))
+	}
 	args, err := packInterpretedWrapperArgs(fn, arguments)
 	if err != nil {
 		return i.wrapperBoundaryResult(fn, err)

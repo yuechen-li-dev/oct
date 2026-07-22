@@ -40,11 +40,12 @@ func TestExperimentMilestoneManifestFallbackTestAndArtifact(t *testing.T) {
 		t.Fatalf("unexpected milestone discovery scope stdout=%q", stdout)
 	}
 
-	artifactOut := filepath.Join(t.TempDir(), "m1.octagon")
-	if err := os.WriteFile(filepath.Join(m1, "artifact.octest"), []byte("package Exp\n[Artifact]\nfn Emit() -> Void { WriteOctagon("+octStringLiteralPath(artifactOut)+", 1) }\n"), 0o644); err != nil {
+	artifactRoot := t.TempDir()
+	artifactOut := filepath.Join(artifactRoot, "m1.octagon")
+	if err := os.WriteFile(filepath.Join(m1, "artifact.octest"), []byte("package Exp\n[Artifact]\nfn Emit() -> Void { WriteOctagon(\"m1.octagon\", 1) }\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	artifactStdout, artifactStderr, artifactErr := executeCLI("artifact", m1)
+	artifactStdout, artifactStderr, artifactErr := executeCLIArgs("artifact", m1, "--output-root", artifactRoot)
 	if artifactErr != nil {
 		t.Fatalf("artifact m1 failed: %v stderr=%q stdout=%q", artifactErr, artifactStderr, artifactStdout)
 	}

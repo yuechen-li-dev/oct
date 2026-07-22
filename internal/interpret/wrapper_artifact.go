@@ -42,6 +42,10 @@ func (i *interpreter) evalArtifactWriteJsonBuiltin(env *environment, pkgName str
 }
 
 func (i *interpreter) evalArtifactWriteOctagonBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	if err := i.beginArtifactWrite(); err != nil {
+		return evalResult{}, err
+	}
+	defer i.endArtifactWrite()
 	if len(argumentExprs) != 2 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: ArtifactWriteOctagon expects 2 arguments")
 	}
@@ -56,6 +60,10 @@ func (i *interpreter) evalArtifactWriteOctagonBuiltin(env *environment, pkgName 
 }
 
 func (i *interpreter) evalArtifactWriteBuiltin(env *environment, pkgName string, callee string, delegate string, argumentExprs []ast.Expr) (evalResult, error) {
+	if err := i.beginArtifactWrite(); err != nil {
+		return evalResult{}, err
+	}
+	defer i.endArtifactWrite()
 	handler, ok := i.wrappers.handlers[delegate]
 	if !ok {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: missing %s wrapper", delegate)
@@ -71,6 +79,9 @@ func (i *interpreter) evalArtifactWriteBuiltin(env *environment, pkgName string,
 }
 
 func (i *interpreter) evalArtifactCheckpointBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	if i.artifactCapability == nil && i.artifactProgressRecorder == nil {
+		return evalResult{}, fmt.Errorf("Artifact.Checkpoint is available only during `oct artifact` evaluation")
+	}
 	if len(argumentExprs) != 1 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: ArtifactCheckpoint expects 1 argument")
 	}
@@ -88,6 +99,9 @@ func (i *interpreter) evalArtifactCheckpointBuiltin(env *environment, pkgName st
 }
 
 func (i *interpreter) evalArtifactProgressBuiltin(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	if i.artifactCapability == nil && i.artifactProgressRecorder == nil {
+		return evalResult{}, fmt.Errorf("Artifact.Progress is available only during `oct artifact` evaluation")
+	}
 	if len(argumentExprs) != 3 {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: ArtifactProgress expects 3 arguments")
 	}

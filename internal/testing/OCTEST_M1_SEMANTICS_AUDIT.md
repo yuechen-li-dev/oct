@@ -54,7 +54,7 @@ Conclusion: mixed-file is supported today at file level, but not mixed-attribute
 ### 2.3 `[Artifact]`
 
 - Executed by `oct artifact` only.
-- Artifacts currently use interpreter execution (`interpret.ExecuteFunction(...)`), writing function stdout to command output stream.
+- After loading and type checking, artifacts use the shared typed interpreter with a compiler-owned staged-output capability. Backend generation and host compilation are not involved.
 
 ### 2.4 Command partitioning
 
@@ -153,13 +153,14 @@ Policy alignment: current architecture already strongly supports a distinct perf
 ### 7.1 What `[Artifact]` means today
 
 - Marker for functions executed by `oct artifact` lane only.
-- Must be in `.octest`, no params, returns `Void`, and cannot combine with fact/theory/benchmark.
+- Must be in `.octest`, have no params, return `Void` or `Void ! Error`, and cannot combine with fact/theory/benchmark.
+- Direct calls are rejected; discovery and invocation belong to the explicit artifact phase.
 
 ### 7.2 Output behavior
 
-- Artifact function output is whatever the function writes to stdout (e.g., `Print(...)`) plus harness `RUN/PASS/FAIL` lines.
-- No dedicated artifact output directory contract in `oct artifact` itself.
-- `.octagon` writes occur only if artifact code explicitly calls `WriteOctagon(...)` (language/runtime builtin), not automatically by artifact runner.
+- `Artifact.Write*` declares output relative to `--output-root`, stages it, and publishes only after all selected entries succeed.
+- Absolute, escaping, and duplicate paths are rejected; unchanged content is not rewritten.
+- The global `WriteOctagon(...)` spelling delegates to the same capability for legacy consumers.
 
 ### 7.3 Failure behavior
 
@@ -168,14 +169,12 @@ Policy alignment: current architecture already strongly supports a distinct perf
 ### 7.4 Coexistence and run mode
 
 - Artifacts coexist in mixed `.octest` files; `oct artifact` partitions by attribute.
-- Artifact execution is interpreted today.
+- Artifact execution is a build-time phase backed by the typed interpreter.
 
 ### 7.5 Determinism/schema guidance
 
-- Runner does not enforce determinism.
-- `.octagon` emission/load contracts exist in language/runtime docs and typechecker/runtime checks, but artifact-lane-specific schema/versioning guidance is currently not explicit in `31-octest.md`.
-
-Documentation gap: add explicit artifact-lane guidance for deterministic evidence generation and schema/version expectations for structured `.octagon` outputs.
+- Discovery and publication order are deterministic; ambient effects are rejected and seeded Oct randomness remains deterministic.
+- `.octagon` emission/load contracts remain the structured-output convention; phase and path rules are normative in `31-octest.md`.
 
 ---
 

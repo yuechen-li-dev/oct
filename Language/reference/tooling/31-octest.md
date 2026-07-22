@@ -145,7 +145,7 @@ Interpreted and compiled parity is tracked by package and test coverage, so do n
 - `.octest` and `.oct` files use the same package import resolver and repository package-root search order.
 - `.octest` supports test-lane attributes only on functions.
 - `[Fact]`, `[Theory]`, `[Artifact]`, and `[Benchmark]` attributes are mutually constrained; invalid combinations are rejected.
-- `[Artifact]` and `[Benchmark]` functions must use `fn Name() -> Void` and do not require assertions.
+- `[Artifact]` functions must have no parameters and return `Void` or `Void ! Error`; `[Benchmark]` functions use `fn Name() -> Void`. Neither lane requires assertions.
 - Current Language fixtures commonly organize accepted behavior under `valid/` and rejected behavior under `invalid/`, with runtime-pass cases often under `runtime/valid/`.
 - Selecting a single `.octest` file limits execution to that selected source file; selecting a directory discovers tests recursively under that directory.
 
@@ -181,16 +181,43 @@ fn EmitReferenceData() -> Void {
 }
 ```
 
+Artifact functions are build-time entry points. They are discovered only after
+the selected package graph binds and type-checks successfully, run only for an
+explicit `oct artifact` command, do not run when imported, and cannot be called
+directly from ordinary Oct code. Normal backend lowering excludes them.
+
 Artifact functions write files explicitly from user code.
 Prefer `Artifact.Write*` helpers (`WriteText`, `WriteLines`, `WriteMarkdown`, `WriteCsv`, `WriteJson`, `WriteOctagon`) when authoring `[Artifact]` functions.
 Use `Artifact.Checkpoint(label)` and `Artifact.Progress(label, current, total)` for deterministic progress output in long-running artifact functions.
 
-`oct artifact <path>` selects artifact functions in the entry package by
+`oct artifact <path> [--output-root <directory>]` selects artifact functions in the entry package by
 default, matching `oct test`'s default package scope. Add `--all-packages` only
 when imported package artifact lanes are deliberately part of the run. Its
-single-target `--json` result reports generated path, MIME type, byte count,
-and SHA-256 for interpreted artifact writes; compiled artifact metadata is
-explicitly marked incomplete in this preview.
+single-target `--json` result reports requested and actual execution, source
+provenance, generated path, produced/unchanged status, MIME type, byte count,
+and SHA-256.
+
+The actual execution mode is always `build-time-interpreted`: parse, package
+resolution, binding, type checking, deterministic discovery, typed interpreter
+evaluation, staging, and publication. `--execution compiled` is a temporary
+compatibility alias for this same evaluator and never generates, compiles, or
+runs a host backend.
+
+Output paths are relative to the explicit output root, which defaults to the
+working directory. Empty, absolute, volume-qualified, and escaping paths are
+rejected. Duplicate paths are rejected case-insensitively. All selected entry
+points finish before publication begins; publication is sorted and each changed
+file is replaced from a same-directory temporary file. Equal content is left
+untouched. The phase exposes no ambient network, process, clock, crypto-random,
+environment, unrestricted filesystem, or wrapper-sidecar capability. Seeded
+Oct random functions remain deterministic. Reads are limited to outputs already
+declared in the same phase.
+
+Artifact output cannot add source to the typed program being evaluated. A
+generator that feeds a later compilation must remain an explicit staged build
+step. Concepts, records, refinements, arrays, enums, units, matching, ordinary
+pure functions, and fallibility are ordinary typed Oct semantics and need no
+artifact-specific template system.
 
 See [09 builtins](../language/09-builtins.md) for non-test builtin surface.
 See [34 octagon](./34-octagon.md) for benchmark and artifact output guidance.

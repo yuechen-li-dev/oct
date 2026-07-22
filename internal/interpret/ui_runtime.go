@@ -93,6 +93,12 @@ func uiirTreeContainsEvent(node *uiirNode, token string) bool {
 
 
 func (i interpreter) evalUIBuiltinCallExpr(env *environment, pkgName string, callee string, argumentExprs []ast.Expr) (evalResult, error) {
+	if i.artifactCapability != nil {
+		switch callee {
+		case "UIMount", "UIPatch", "UIUnmount", "UIEmit", "UIDrainEvents":
+			return evalResult{}, fmt.Errorf("artifact evaluation rejected ambient UI operation %s", callee)
+		}
+	}
 	switch callee {
 	case "UIText":
 		if len(argumentExprs) != 1 {

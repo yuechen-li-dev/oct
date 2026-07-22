@@ -148,8 +148,11 @@ func TestOctArtifactExecutionModesAndMetadata(t *testing.T) {
 				t.Fatalf("expected artifact %s success, got err=%v stderr=%q stdout=%q", mode, err, stderr.String(), stdout.String())
 			}
 			output := stdout.String()
-			if !strings.Contains(output, "Execution: "+mode) {
-				t.Fatalf("expected execution metadata for %s, got %q", mode, output)
+			if !strings.Contains(output, "Execution: build-time-interpreted") {
+				t.Fatalf("expected build-time interpreter metadata for %s, got %q", mode, output)
+			}
+			if mode == "compiled" && !strings.Contains(output, "no backend is generated or compiled") {
+				t.Fatalf("expected compiled compatibility delegation, got %q", output)
 			}
 			if !strings.Contains(output, "artifact-mode-ok") || !strings.Contains(output, "PASS Main.Generate") {
 				t.Fatalf("expected artifact output/pass for %s, got %q", mode, output)

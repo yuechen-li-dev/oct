@@ -36,6 +36,33 @@ func inspectProgram(path string) (MIRModule, string, error) {
 	return module, source, err
 }
 
+func TestOrdinaryBackendExcludesArtifactEntryPoints(t *testing.T) {
+	target := filepath.Join("..", "..", "Language", "Tooling", "Artifacts", "valid", "build_time_artifact_evaluation.octest")
+	program, err := project.LoadForTest(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := typecheck.CheckProgram(program); err != nil {
+		t.Fatal(err)
+	}
+	module, err := lowerProgram(program, compileOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fn := range module.Functions {
+		if fn.Name == "GenerateTypedArtifacts" {
+			t.Fatalf("ordinary MIR contains build-time artifact entry point: %+v", fn)
+		}
+	}
+	generated, err := emitGo(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(generated, "GenerateTypedArtifacts") || strings.Contains(generated, "oct artifact") {
+		t.Fatalf("ordinary generated Go contains artifact orchestration:\n%s", generated)
+	}
+}
+
 func TestLowerProgramBuildsMIRShape(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()

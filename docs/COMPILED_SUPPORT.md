@@ -158,7 +158,7 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 ## Current deferred / partial categories
 
 - Markdown wrapper-heavy paths are still largely interpreted/fallback territory.
-- Artifact-lane compiled support remains partial (artifact workflows should assume interpreted execution unless explicitly verified).
+- Artifact generation is a distinct build-time typed-interpreter phase; it does not use the application backend.
 - Flow expression calls still reject side-effectful wrappers and fallible calls in compiled mode.
 - **Direct compiled (no sidecar):** `FileExists`, `PathJoin`, `PathBaseName`, `PathExtension`, `PathStem`, `PathParent`, `PathClean`.
 - **Octxiliary sidecar-backed compiled (`... ! Error`):** `FileReadText`, `FileWriteText`, `FileReadLines`, `FileWriteLines`, `FileReadBytes`, `FileWriteBytes`, `FileDelete`, `DirectoryList`, `DirectoryMake`, `DirectoryMakeAll`, `DirectoryRemoveAll`, `CsvRead`, `CsvReadRows`, `CsvReadTable`, `CsvReadMatrix`, `CsvWrite`, `CsvWriteRows`, `JsonNormalize`, `JsonParse`, `JsonStringify`, `JsonLoad`, `JsonSave`.
@@ -190,10 +190,11 @@ M3 status after this sweep: the prior compiled blocker for `ast.ParenExpr` in fl
 - Auto mode remains useful for probing support (`compiled` then interpreted fallback), but fallback timeouts/blockers still appear in this area.
 - Treat this area as ongoing compiled convergence work, not a completed surface.
 
-## Artifact lane limitation
+## Artifact build phase
 
-- `[Artifact]` workflows are not yet a broadly green compiled lane.
-- Prefer interpreted artifact execution unless a specific compiled artifact target has been explicitly validated.
+- `[Artifact]` workflows are intentionally not a compiled runtime lane.
+- `oct artifact` evaluates the checked typed program through the shared interpreter and publishes staged outputs without Go generation or host compilation.
+- The legacy `--execution compiled` option delegates to this evaluator so there is one artifact engine.
 
 ## Next priorities
 

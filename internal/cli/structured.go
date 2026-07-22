@@ -42,6 +42,7 @@ type structuredDiagnostic struct {
 
 type structuredExecution struct {
 	Requested            string `json:"requested"`
+	Actual               string `json:"actual,omitempty"`
 	CompiledCases        int    `json:"compiledCases"`
 	InterpretedFallbacks int    `json:"interpretedFallbacks"`
 }
@@ -78,6 +79,7 @@ func executeArtifactJSON(path string, stdout io.Writer, options tester.ArtifactO
 	result := baseStructuredResult("oct artifact", path, "artifact", options.Execution, started, log.String(), err)
 	result.Artifacts = report.Artifacts
 	result.ArtifactMetadataComplete = report.MetadataComplete
+	result.Execution.Actual = report.Execution
 	return writeStructuredResult(stdout, result, err)
 }
 

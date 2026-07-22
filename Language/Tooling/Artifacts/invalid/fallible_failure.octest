@@ -1,0 +1,11 @@
+package Main
+
+[Artifact]
+fn FailsFallibly() -> Void ! Error {
+    Artifact.WriteText("must-not-publish.txt", "staged before failure")
+    let _value = FailArtifact() ?
+}
+
+fn FailArtifact() -> Int ! Error {
+    return error("artifact failure is visible")
+}

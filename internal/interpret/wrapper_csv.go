@@ -61,6 +61,10 @@ func (i *interpreter) evalCSVWriteBuiltin(env *environment, pkgName string, call
 	if errResult != nil {
 		return *errResult, nil
 	}
+	actualPath, logicalPath, stageErr := i.prepareArtifactOutput(path)
+	if stageErr != nil {
+		return evalResult{}, stageErr
+	}
 	rowsValue, errResult, err := call.evalArg(1)
 	if err != nil {
 		return evalResult{}, err
@@ -72,14 +76,14 @@ func (i *interpreter) evalCSVWriteBuiltin(env *environment, pkgName string, call
 	if decodeErr != nil {
 		return wrapperErrorResult(callee, decodeErr), nil
 	}
-	file, createErr := os.Create(path)
+	file, createErr := os.Create(actualPath)
 	if createErr != nil {
-		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
-			file, createErr = os.Create(path)
+		if mkdirErr := ensureParentDir(actualPath); mkdirErr == nil {
+			file, createErr = os.Create(actualPath)
 		}
 	}
 	if createErr != nil {
-		return wrapperErrorResult(callee, mapPathError(path, createErr)), nil
+		return wrapperErrorResult(callee, mapPathError(logicalPath, createErr)), nil
 	}
 	defer file.Close()
 
@@ -88,7 +92,7 @@ func (i *interpreter) evalCSVWriteBuiltin(env *environment, pkgName string, call
 	if writeErr := writer.Error(); writeErr != nil {
 		return wrapperErrorResult(callee, mapCSVError(writeErr)), nil
 	}
-	i.recordArtifactWrite(path)
+	i.recordArtifactWrite(logicalPath)
 	return wrapperIntResult(0), nil
 }
 

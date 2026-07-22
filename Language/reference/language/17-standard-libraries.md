@@ -161,7 +161,9 @@ Notes:
 
 Artifact guidance:
 - Prefer `Artifact.Write*` in `[Artifact]` functions.
-- `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain available as lower-level fallible APIs.
+- `Artifact.Write*` is a build-phase capability and is rejected during ordinary runtime execution.
+- Paths are relative to the `oct artifact --output-root`; absolute, escaping, and duplicate paths are rejected.
+- `IO.*`, `Csv.*`, `Json.*`, and `WriteOctagon` remain ordinary runtime APIs. Only legacy global `WriteOctagon` and confined directory creation are adapted to the artifact capability during the build phase.
 
 ## Markdown
 

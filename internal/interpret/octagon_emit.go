@@ -13,6 +13,10 @@ func WriteOctagon(path string, value Value) error {
 		return fmt.Errorf("WriteOctagon path must end with .octagon")
 	}
 	path = attributedOutputPath(path)
+	return writeOctagonPath(path, value)
+}
+
+func writeOctagonPath(path string, value Value) error {
 	rendered, err := serializeOctagonValue(value)
 	if err != nil {
 		return fmt.Errorf("WriteOctagon cannot serialize value: %w", err)

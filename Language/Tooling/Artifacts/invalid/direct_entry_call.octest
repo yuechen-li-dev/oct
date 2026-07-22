@@ -1,0 +1,11 @@
+package Main
+
+[Artifact]
+fn Generate() -> Void {
+    return
+}
+
+[Fact]
+fn CallsArtifactDirectly() -> Void {
+    Generate()
+}

@@ -1,7 +1,9 @@
 package ArtifactUsage
 
 import Artifact
+import Csv
 import IO
+import Json
 import Markdown
 
 record MetricsRow {
@@ -13,11 +15,11 @@ record MetricsRow {
 fn ArtifactWritesWithoutLetBinding() -> Void {
     let root = "out/test-artifacts/library_artifact"
     Artifact.WriteText(IO.JoinPath([root, "text.txt"]), "hello")
-    Artifact.WriteLines(IO.JoinPath([root, "lines.txt"]), ["alpha", "beta"])
-    Artifact.WriteMarkdown(IO.JoinPath([root, "report.md"]), ["# Report", "ok"])
-    Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]), [["name", "score"], ["ada", "42"]])
+    Artifact.WriteLines(IO.JoinPath([root, "lines.txt"]),["alpha", "beta"])
+    Artifact.WriteMarkdown(IO.JoinPath([root, "report.md"]),["# Report", "ok"])
+    Artifact.WriteCsv(IO.JoinPath([root, "metrics.csv"]),[["name", "score"],["ada", "42"]])
     Artifact.WriteJson(IO.JoinPath([root, "metrics.json"]), "{ \"ok\": true }")
-    Artifact.WriteOctagon(IO.JoinPath([root, "snapshot.octagon"]), MetricsRow { Name: "ada" Score: "42" })
+    Artifact.WriteOctagon(IO.JoinPath([root, "snapshot.octagon"]), MetricsRow {Name: "ada" Score: "42"})
 }
 
 [Fact]
@@ -26,20 +28,20 @@ fn ArtifactCsvAndJsonAreCompact() -> Void {
     let csvPath = IO.JoinPath([root, "compact.csv"])
     let jsonPath = IO.JoinPath([root, "compact.json"])
 
-    Artifact.WriteCsv(csvPath, [["a", "b"], ["1", "2"]])
-    Artifact.WriteJson(jsonPath, "{\n  \"a\": 1\n}")
+    Csv.Write(csvPath,[["a", "b"],["1", "2"]]) !
+    Json.Save(jsonPath, "{\n  \"a\": 1\n}") !
 
-    let csvText = IO.ReadText(csvPath)!
-    let jsonText = IO.ReadText(jsonPath)!
+    let csvText = IO.ReadText(csvPath) !
+    let jsonText = IO.ReadText(jsonPath) !
     Assert.Equal("a,b\n1,2\n", csvText, "csv writes compact deterministic output")
     Assert.Equal("{\"a\":1}", jsonText, "json writes compact output")
-    let _rm = IO.RemoveAll(root)!
+    let _rm = IO.RemoveAll(root) !
 }
 
 [Fact]
 fn MarkdownSemanticTitleAliasesM0() -> Void {
-    Assert.Equal(Markdown.H1("Title"), Markdown.Title("Title"), "title alias")
-    Assert.Equal(Markdown.H2("Subtitle"), Markdown.Subtitle("Subtitle"), "subtitle alias")
+    Assert.Equal(Markdown.H1("Title")[0], Markdown.Title("Title")[0], "title alias")
+    Assert.Equal(Markdown.H2("Subtitle")[0], Markdown.Subtitle("Subtitle")[0], "subtitle alias")
 
     let report = Markdown.Report([Markdown.Title("Report Title"), Markdown.Subtitle("Overview"), Markdown.Paragraph("Body.")])
     Assert.Equal("# Report Title", report[0], "report title line")

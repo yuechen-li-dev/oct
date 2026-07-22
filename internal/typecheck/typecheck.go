@@ -130,6 +130,7 @@ type functionSignature struct {
 	parameters []Type
 	returnType Type
 	isFallible bool
+	isArtifact bool
 }
 
 func (s functionSignature) asType() Type {
@@ -679,7 +680,7 @@ func (c checker) resolveFunctionSignature(function ast.FunctionDecl) (functionSi
 		parameters = append(parameters, parameterType)
 	}
 
-	return functionSignature{parameters: parameters, returnType: returnType, isFallible: function.IsFallible}, nil
+	return functionSignature{parameters: parameters, returnType: returnType, isFallible: function.IsFallible, isArtifact: function.IsArtifact}, nil
 }
 
 func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) {
@@ -3138,6 +3139,13 @@ func (c checker) checkFlowCallArguments(displayName string, signature flowSignat
 }
 
 func (c checker) checkFunctionCallArguments(displayName string, signature functionSignature, scope *scope, arguments []ast.Expr, ctx functionContext) (ExprType, error) {
+	if signature.isArtifact {
+		location := ctx.sourcePath
+		if location == "" {
+			location = "<source>"
+		}
+		return ExprType{}, fmt.Errorf("%s: function %s directly calls artifact entry point %s; [Artifact] functions are invoked only by the explicit artifact-generation phase", location, ctx.name, displayName)
+	}
 	if len(arguments) != len(signature.parameters) {
 		return ExprType{}, fmt.Errorf("function '%s' expects %d arguments, got %d", displayName, len(signature.parameters), len(arguments))
 	}

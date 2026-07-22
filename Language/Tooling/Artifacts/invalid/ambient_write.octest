@@ -1,0 +1,6 @@
+package Main
+
+[Artifact]
+fn UsesAmbientWrite() -> Void {
+    FileWriteText("ambient.txt", "not allowed") !
+}

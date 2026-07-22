@@ -34,6 +34,10 @@ func (i *interpreter) evalFileReadTextBuiltin(env *environment, pkgName string, 
 	if errResult != nil {
 		return *errResult, nil
 	}
+	path, err = i.prepareArtifactRead(path)
+	if err != nil {
+		return evalResult{}, err
+	}
 	text, readErr := fileReadText(path)
 	if readErr != nil {
 		return wrapperErrorResult(callee, readErr), nil
@@ -53,6 +57,10 @@ func (i *interpreter) evalFileWriteTextBuiltin(env *environment, pkgName string,
 	if errResult != nil {
 		return *errResult, nil
 	}
+	actualPath, logicalPath, stageErr := i.prepareArtifactOutput(path)
+	if stageErr != nil {
+		return evalResult{}, stageErr
+	}
 	text, errResult, err := call.stringArg(1)
 	if err != nil {
 		return evalResult{}, err
@@ -60,10 +68,10 @@ func (i *interpreter) evalFileWriteTextBuiltin(env *environment, pkgName string,
 	if errResult != nil {
 		return *errResult, nil
 	}
-	if writeErr := fileWriteText(path, text); writeErr != nil {
+	if writeErr := fileWriteText(actualPath, text); writeErr != nil {
 		return wrapperErrorResult(callee, writeErr), nil
 	}
-	i.recordArtifactWrite(path)
+	i.recordArtifactWrite(logicalPath)
 	return wrapperIntResult(0), nil
 }
 
@@ -78,6 +86,10 @@ func (i *interpreter) evalFileExistsBuiltin(env *environment, pkgName string, ca
 	}
 	if errResult != nil {
 		return *errResult, nil
+	}
+	path, err = i.prepareArtifactRead(path)
+	if err != nil {
+		return evalResult{}, err
 	}
 	exists, existsErr := fileExists(path)
 	if existsErr != nil {
@@ -116,6 +128,10 @@ func (i *interpreter) evalFileReadBytesBuiltin(env *environment, pkgName string,
 	if errResult != nil {
 		return *errResult, nil
 	}
+	path, err = i.prepareArtifactRead(path)
+	if err != nil {
+		return evalResult{}, err
+	}
 	contents, readErr := os.ReadFile(path)
 	if readErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, readErr)), nil
@@ -135,6 +151,10 @@ func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string
 	if errResult != nil {
 		return *errResult, nil
 	}
+	actualPath, logicalPath, stageErr := i.prepareArtifactOutput(path)
+	if stageErr != nil {
+		return evalResult{}, stageErr
+	}
 	bytes, errResult, err := call.bytesArg(1)
 	if err != nil {
 		return wrapperErrorResult(callee, err), nil
@@ -142,18 +162,18 @@ func (i *interpreter) evalFileWriteBytesBuiltin(env *environment, pkgName string
 	if errResult != nil {
 		return *errResult, nil
 	}
-	if writeErr := os.WriteFile(path, bytes, 0o644); writeErr != nil {
-		if mkdirErr := ensureParentDir(path); mkdirErr == nil {
-			if retryErr := os.WriteFile(path, bytes, 0o644); retryErr == nil {
-				i.recordArtifactWrite(path)
+	if writeErr := os.WriteFile(actualPath, bytes, 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(actualPath); mkdirErr == nil {
+			if retryErr := os.WriteFile(actualPath, bytes, 0o644); retryErr == nil {
+				i.recordArtifactWrite(logicalPath)
 				return wrapperIntResult(0), nil
 			} else {
-				return wrapperErrorResult(callee, mapPathError(path, retryErr)), nil
+				return wrapperErrorResult(callee, mapPathError(logicalPath, retryErr)), nil
 			}
 		}
-		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
+		return wrapperErrorResult(callee, mapPathError(logicalPath, writeErr)), nil
 	}
-	i.recordArtifactWrite(path)
+	i.recordArtifactWrite(logicalPath)
 	return wrapperIntResult(0), nil
 }
 
@@ -168,6 +188,10 @@ func (i *interpreter) evalFileReadLinesBuiltin(env *environment, pkgName string,
 	}
 	if errResult != nil {
 		return *errResult, nil
+	}
+	path, err = i.prepareArtifactRead(path)
+	if err != nil {
+		return evalResult{}, err
 	}
 	lines, readErr := readLines(path)
 	if readErr != nil {
@@ -188,6 +212,10 @@ func (i *interpreter) evalFileWriteLinesBuiltin(env *environment, pkgName string
 	if errResult != nil {
 		return *errResult, nil
 	}
+	actualPath, logicalPath, stageErr := i.prepareArtifactOutput(path)
+	if stageErr != nil {
+		return evalResult{}, stageErr
+	}
 	value, errResult, err := call.evalArg(1)
 	if err != nil {
 		return evalResult{}, err
@@ -199,10 +227,10 @@ func (i *interpreter) evalFileWriteLinesBuiltin(env *environment, pkgName string
 	if decodeErr != nil {
 		return wrapperErrorResult(callee, decodeErr), nil
 	}
-	if writeErr := writeLines(path, lines); writeErr != nil {
+	if writeErr := writeLines(actualPath, lines); writeErr != nil {
 		return wrapperErrorResult(callee, writeErr), nil
 	}
-	i.recordArtifactWrite(path)
+	i.recordArtifactWrite(logicalPath)
 	return wrapperIntResult(0), nil
 }
 

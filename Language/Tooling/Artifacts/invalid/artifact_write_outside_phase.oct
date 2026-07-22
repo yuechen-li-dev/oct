@@ -1,0 +1,6 @@
+package Main
+
+fn Main() -> Int {
+    Artifact.WriteText("outside.txt", "not allowed")
+    return 0
+}

@@ -1,0 +1,6 @@
+package Main
+
+[Artifact]
+fn EscapesRoot() -> Void {
+    Artifact.WriteText("../escape.txt", "not allowed")
+}

@@ -1,6 +1,7 @@
 package interpret
 
 import (
+	"fmt"
 	"os"
 	"sort"
 
@@ -67,6 +68,15 @@ func (i *interpreter) evalDirectoryMutation(env *environment, pkgName string, ca
 	}
 	if errResult != nil {
 		return *errResult, nil
+	}
+	if i.artifactCapability != nil {
+		if callee != "DirectoryMake" && callee != "DirectoryMakeAll" {
+			return evalResult{}, fmt.Errorf("artifact evaluation rejected ambient operation %s", callee)
+		}
+		path, err = i.prepareArtifactDirectory(path)
+		if err != nil {
+			return evalResult{}, err
+		}
 	}
 	if mutateErr := mutate(path); mutateErr != nil {
 		return wrapperErrorResult(callee, mapPathError(path, mutateErr)), nil

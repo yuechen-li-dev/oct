@@ -80,6 +80,10 @@ func (i *interpreter) evalJSONSaveBuiltin(env *environment, pkgName string, call
 	if errResult != nil {
 		return *errResult, nil
 	}
+	actualPath, logicalPath, stageErr := i.prepareArtifactOutput(path)
+	if stageErr != nil {
+		return evalResult{}, stageErr
+	}
 	input, errResult, err := call.stringArg(1)
 	if err != nil {
 		return evalResult{}, err
@@ -91,9 +95,14 @@ func (i *interpreter) evalJSONSaveBuiltin(env *environment, pkgName string, call
 	if err := json.Compact(&compact, []byte(input)); err != nil {
 		return wrapperErrorResult(callee, mapJSONError(err)), nil
 	}
-	if writeErr := os.WriteFile(path, compact.Bytes(), 0o644); writeErr != nil {
-		return wrapperErrorResult(callee, mapPathError(path, writeErr)), nil
+	if writeErr := os.WriteFile(actualPath, compact.Bytes(), 0o644); writeErr != nil {
+		if mkdirErr := ensureParentDir(actualPath); mkdirErr == nil {
+			writeErr = os.WriteFile(actualPath, compact.Bytes(), 0o644)
+		}
+		if writeErr != nil {
+			return wrapperErrorResult(callee, mapPathError(logicalPath, writeErr)), nil
+		}
 	}
-	i.recordArtifactWrite(path)
+	i.recordArtifactWrite(logicalPath)
 	return wrapperIntResult(0), nil
 }

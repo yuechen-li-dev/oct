@@ -166,6 +166,11 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 		if err != nil {
 			return reportCommandError(stderr, command, err)
 		}
+		if options.OutputRoot == "" {
+			options.OutputRoot = workingDir
+		} else {
+			options.OutputRoot = resolveWorkingPath(workingDir, options.OutputRoot)
+		}
 		if options.JSON {
 			if len(paths) != 1 {
 				return reportCommandError(stderr, command, fmt.Errorf("--json requires exactly one file-or-root target"))
@@ -1355,7 +1360,7 @@ func writeTestHelp(out io.Writer) error {
 	return err
 }
 func writeArtifactHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--execution <compiled|interpreted>] [--all-packages] [--json]\nRun artifact generation for discovered artifact blocks.\nDefault execution: interpreted. Imported-package artifacts require --all-packages. --json emits one stable command result object for a single target.\nExample: oct artifact path/to/file.oct --execution compiled")
+	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--output-root <directory>] [--execution <interpreted|compiled>] [--all-packages] [--json]\nType-check and evaluate discovered [Artifact] entry points through the build-time interpreter, then publish confined outputs.\nThe output root defaults to the working directory. --execution compiled is a compatibility alias for the same interpreter evaluator and does not generate or compile a backend. Imported-package artifacts require --all-packages. --json emits one stable command result object for a single target.\nExample: oct artifact path/to/package --output-root out/generated")
 	return err
 }
 func writeBenchHelp(out io.Writer) error {
@@ -1440,7 +1445,7 @@ func parseArtifactOptions(args []string) (tester.ArtifactOptions, []string, erro
 		arg := args[i]
 		if arg == "--execution" {
 			if i+1 >= len(args) {
-				return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--execution <compiled|interpreted>]")
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--output-root <directory>] [--execution <compiled|interpreted>]")
 			}
 			i++
 			options.Execution = strings.TrimSpace(args[i])
@@ -1449,6 +1454,17 @@ func parseArtifactOptions(args []string) (tester.ArtifactOptions, []string, erro
 			}
 			if options.Execution != "compiled" && options.Execution != "interpreted" {
 				return tester.ArtifactOptions{}, nil, fmt.Errorf("invalid artifact execution mode %q (expected compiled|interpreted)", options.Execution)
+			}
+			continue
+		}
+		if arg == "--output-root" {
+			if i+1 >= len(args) {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("--output-root requires a directory")
+			}
+			i++
+			options.OutputRoot = strings.TrimSpace(args[i])
+			if options.OutputRoot == "" {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("--output-root requires a non-empty directory")
 			}
 			continue
 		}
@@ -1463,7 +1479,7 @@ func parseArtifactOptions(args []string) (tester.ArtifactOptions, []string, erro
 		paths = append(paths, arg)
 	}
 	if len(paths) == 0 {
-		return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--execution <compiled|interpreted>] [--all-packages] [--json]")
+		return tester.ArtifactOptions{}, nil, fmt.Errorf("usage: oct artifact <file-or-root> [--output-root <directory>] [--execution <compiled|interpreted>] [--all-packages] [--json]")
 	}
 	return options, paths, nil
 }

@@ -330,6 +330,9 @@ type interpreter struct {
 	assertRecorder           func()
 	artifactProgressRecorder func(event ArtifactProgressEvent)
 	artifactWriteRecorder    func(event ArtifactWriteEvent)
+	artifactCapability       ArtifactWriteCapability
+	artifactSourcePath       string
+	artifactWriteDepth       int
 	currentFunctionName      string
 	ctx                      context.Context
 }
@@ -343,6 +346,8 @@ type ExecuteOptions struct {
 	AssertionRecorder        func()
 	ArtifactProgressRecorder func(event ArtifactProgressEvent)
 	ArtifactWriteRecorder    func(event ArtifactWriteEvent)
+	ArtifactCapability       ArtifactWriteCapability
+	ArtifactSourcePath       string
 	Context                  context.Context
 }
 
@@ -354,11 +359,12 @@ type ArtifactProgressEvent struct {
 	Total    int64
 }
 
-// ArtifactWriteEvent reports a file produced by an interpreted artifact lane.
-// It is observation only: artifact writes retain their ordinary Oct behavior.
+// ArtifactWriteEvent reports an output declared through the build-time artifact
+// capability after its path has been validated and routed to staging.
 type ArtifactWriteEvent struct {
-	Function string
-	Path     string
+	Function   string
+	SourcePath string
+	Path       string
 }
 
 type SkipTestError struct {
@@ -464,6 +470,8 @@ func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, fun
 	interpreter.assertRecorder = options.AssertionRecorder
 	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
 	interpreter.artifactWriteRecorder = options.ArtifactWriteRecorder
+	interpreter.artifactCapability = options.ArtifactCapability
+	interpreter.artifactSourcePath = options.ArtifactSourcePath
 	interpreter.ctx = options.Context
 	interpreter.currentFunctionName = functionName
 	key := pkgName + "." + functionName
@@ -2784,6 +2792,9 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		return evalResult{value: Value{Kind: ValueTuple, Tuple: []Value{{Kind: ValueBool, Bool: true}, {Kind: ValueInt, Int: 7}}}}, nil
 	}
 	if strings.HasPrefix(callee, "Random.") || (pkgName == "Random" && (callee == "RngSeed" || callee == "RandInt" || callee == "RandFloat01" || callee == "RandFloatRange" || callee == "RandBernoulli" || callee == "RandNormal" || callee == "Gaussian" || callee == "CryptoRandBytes" || callee == "CryptoRandInt" || callee == "CryptoRandFloat01")) {
+		if i.artifactCapability != nil && (strings.Contains(callee, "CryptoRand") || strings.HasPrefix(callee, "Crypto")) {
+			return evalResult{}, fmt.Errorf("artifact evaluation rejected ambient randomness operation %s", callee)
+		}
 		args := make([]Value, 0, len(argumentExprs))
 		for _, a := range argumentExprs {
 			r, err := i.evalExpr(env, pkgName, a)
@@ -4922,16 +4933,25 @@ func (i interpreter) evalWriteOctagonBuiltinCallExpr(env *environment, pkgName s
 		return evalResult{hasError: true, errorVal: contentValue.errorVal}, nil
 	}
 
-	if err := WriteOctagon(pathValue.value.Text, contentValue.value); err != nil {
+	logicalPath := attributedOutputPath(pathValue.value.Text)
+	actualPath := logicalPath
+	if i.artifactCapability != nil {
+		var stageErr error
+		actualPath, stageErr = i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{Path: logicalPath, Function: i.currentFunctionName, SourcePath: i.artifactSourcePath})
+		if stageErr != nil {
+			return evalResult{}, fmt.Errorf("runtime error: %w", stageErr)
+		}
+	}
+	if err := writeOctagonPath(actualPath, contentValue.value); err != nil {
 		return evalResult{}, fmt.Errorf("runtime error: %w", err)
 	}
-	i.recordArtifactWrite(attributedOutputPath(pathValue.value.Text))
+	i.recordArtifactWrite(logicalPath)
 	return evalResult{value: Value{Kind: ValueInt, Int: 0}}, nil
 }
 
 func (i *interpreter) recordArtifactWrite(path string) {
 	if i.artifactWriteRecorder != nil {
-		i.artifactWriteRecorder(ArtifactWriteEvent{Function: i.currentFunctionName, Path: path})
+		i.artifactWriteRecorder(ArtifactWriteEvent{Function: i.currentFunctionName, SourcePath: i.artifactSourcePath, Path: path})
 	}
 }
 

@@ -70,6 +70,11 @@ func (r wrapperBuiltinRegistry) eval(i *interpreter, env *environment, pkgName s
 	if !ok {
 		return evalResult{}, fmt.Errorf("runtime invariant violation: unsupported wrapper builtin %s", callee)
 	}
+	if i.artifactCapability != nil && i.artifactWriteDepth == 0 {
+		if diagnostic := artifactEffectDiagnostic(callee); diagnostic != "" {
+			return evalResult{}, fmt.Errorf("%s", diagnostic)
+		}
+	}
 	return handler(i, env, pkgName, callee, argumentExprs)
 }
 

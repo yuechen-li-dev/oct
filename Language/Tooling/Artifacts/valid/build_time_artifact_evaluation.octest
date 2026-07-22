@@ -1,0 +1,66 @@
+package Main
+
+concept Count = Int
+
+concept PositiveCount = Int {
+    Require(Self > 0, "artifact counts must be positive")
+}
+
+concept ArtifactModel {
+    Name: String
+    Count: PositiveCount
+    Samples: Float < m >[]
+    Mode: RenderMode
+}
+
+enum RenderMode {
+    Summary
+    Detailed(String)
+}
+
+fn RuntimeCount() -> Int {
+    return 3
+}
+
+fn RuntimeInvalidCount() -> Int {
+    return 0
+}
+
+fn AsInt(value: Count) -> Int {
+    return value
+}
+
+fn BuildModel() -> ArtifactModel ! Error {
+    let count = PositiveCount(RuntimeCount()) ?
+    return ArtifactModel {
+        Name: "typed-artifact"
+        Count: count
+        Samples:[1.0m, 2.0m, 3.0m]
+        Mode: RenderMode.Detailed("records-enums-units-arrays-concepts")
+    }
+}
+
+fn RenderModeName(mode: RenderMode) -> String {
+    return match mode {
+        case RenderMode.Summary -> "summary"
+        case RenderMode.Detailed(detail) -> detail
+    }
+}
+
+[Artifact]
+fn GenerateTypedArtifacts() -> Void ! Error {
+    let model = BuildModel() ?
+    let mode = RenderModeName(model.Mode)
+    Artifact.WriteText("nested/model.txt", model.Name + ":" + mode)
+    Artifact.WriteLines("nested/model.lines.txt",[model.Name, mode])
+    Artifact.WriteCsv("nested/model.csv",[["name", "count"],[model.Name, ToString(AsInt(model.Count))]])
+    Artifact.WriteJson("nested/model.json", "{\"name\":\"typed-artifact\",\"count\":3}")
+    Artifact.WriteOctagon("nested/model.octagon", model)
+
+    var handled = ""
+    match PositiveCount(RuntimeInvalidCount()) {
+        ok(value) -> {handled = ToString(AsInt(value))}
+        err(problem) -> {handled = "invalid-count-handled"}
+    }
+    Artifact.WriteText("nested/fallibility.txt", handled)
+}

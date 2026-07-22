@@ -78,7 +78,7 @@ type TestInput struct {
 
 type ArtifactWorkflowInput struct {
 	SourceInput
-	Execution   string `json:"execution,omitempty" jsonschema:"interpreted (default) or compiled"`
+	Execution   string `json:"execution,omitempty" jsonschema:"interpreted (default); compiled is a compatibility alias for the same build-time interpreter"`
 	AllPackages bool   `json:"allPackages,omitempty" jsonschema:"include imported package artifact lanes"`
 }
 

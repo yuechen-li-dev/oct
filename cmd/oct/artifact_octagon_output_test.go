@@ -4,7 +4,6 @@ package main
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,24 +36,24 @@ func TestOctArtifactWriteOctagonEmitsDeterministicValidOutput(t *testing.T) {
 		"",
 		"[Artifact]",
 		"fn Emit() -> Void {",
-		fmt.Sprintf("    WriteOctagon(%q, SimulationConfig {", outputOne),
+		"    WriteOctagon(\"first.octagon\", SimulationConfig {",
 		"        Name: \"Run A\"",
 		"        Enabled: true",
 		"        Samples: [9.81m/s^2, 1.23m/s^2]",
 		"    })",
-		fmt.Sprintf("    WriteOctagon(%q, SimulationConfig {", outputTwo),
+		"    WriteOctagon(\"second.octagon\", SimulationConfig {",
 		"        Name: \"Run A\"",
 		"        Enabled: true",
 		"        Samples: [9.81m/s^2, 1.23m/s^2]",
 		"    })",
-		fmt.Sprintf("    WriteOctagon(%q, SolverMode.Explicit)", outputEnum),
+		"    WriteOctagon(\"mode.octagon\", SolverMode.Explicit)",
 		"}",
 		"",
 	}, "\n"))
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := cli.Execute([]string{"artifact", root}, &stdout, &stderr); err != nil {
+	if err := cli.Execute([]string{"artifact", root, "--output-root", root}, &stdout, &stderr); err != nil {
 		t.Fatalf("expected artifact success, got err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())
 	}
 

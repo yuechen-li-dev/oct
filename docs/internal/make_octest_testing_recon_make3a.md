@@ -49,9 +49,13 @@ Recommended `Make.octest` use: `[Theory]` is useful for target/profile matrix ch
 
 ### `[Artifact]`
 
-`oct artifact <path>` is a separate command. It loads tests, typechecks, discovers functions marked `IsArtifact`, sorts them deterministically, and runs artifact functions. The default artifact execution mode is interpreted; `--execution compiled` uses a generated runner and selected-file compilation.
+`oct artifact <path>` is a separate compiler/build phase. It loads tests,
+typechecks, discovers functions marked `IsArtifact`, sorts them deterministically,
+and runs them through the shared typed interpreter with a confined staged-output
+capability. The retained `--execution compiled` spelling delegates to this same
+evaluator; it no longer generates a runner or invokes selected-file compilation.
 
-Artifact execution supports progress/checkpoint recorder output in interpreted mode. It is not part of ordinary `oct test` fact/theory execution.
+Artifact execution supports progress/checkpoint recorder output. It is not part of ordinary `oct test` fact/theory execution or application startup.
 
 Recommended `Make.octest` use: `[Artifact]` can be considered later for pure plan snapshots, build-plan examples, or trace-like documentation outputs. It must not become a hidden host-build execution lane. If an artifact calls side-effectful Make APIs, the caller must explicitly provide sidecar discovery and make authority.
 
@@ -63,7 +67,7 @@ Recommended `Make.octest` use: `[Benchmark]` is not important for MAKE3. It may 
 
 ### Selected-file compiled tests
 
-Fact/theory compiled execution now writes `runner.octest` and its compiled binary inside an owned `octest-run-*` temporary scope, then calls `build.CompileForTestWithSelectedFilesInPackage` so package resolution still uses the source package directory without writing generated files there. The project loader keeps all `.oct` source files while filtering `.octest` files to the selected external runner and selected test file. Artifact and benchmark compiled paths use the same lifecycle-scoped selected-file model. `OCT_KEEP_TEST_ARTIFACTS=1` is the explicit debug-retention escape hatch; ordinary `oct build` artifacts remain persistent.
+Fact/theory compiled execution now writes `runner.octest` and its compiled binary inside an owned `octest-run-*` temporary scope, then calls `build.CompileForTestWithSelectedFilesInPackage` so package resolution still uses the source package directory without writing generated files there. The project loader keeps all `.oct` source files while filtering `.octest` files to the selected external runner and selected test file. Benchmark compiled paths use the same lifecycle-scoped selected-file model. Artifact generation no longer uses this runner lifecycle; it is the build-time interpreter phase described above. `OCT_KEEP_TEST_ARTIFACTS=1` is the explicit debug-retention escape hatch; ordinary `oct build` artifacts remain persistent.
 
 Implication for `Make.octest`: selected-file compiled execution should see sibling `Make.oct` code and the selected `Make.octest`, but it should not compile unrelated `.octest` files in the directory. This is exactly the desired behavior for focused plan/config tests.
 
