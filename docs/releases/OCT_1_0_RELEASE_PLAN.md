@@ -1,5 +1,20 @@
 # Oct 1.0 Release Plan (RC1 -> RC2 -> GA)
 
+## Final GA procedure
+
+Before any irreversible action, start from the approved clean revision and repeat the artifact commands
+in `INSTALL_1_0.md` and the layered conformance gate below. Confirm the final
+files are exactly `oct-1.0.0-windows-amd64.zip`,
+`oct-1.0.0-linux-amd64.tar.gz`, and `checksums.sha256`, and independently verify
+the manifest on Windows and Linux.
+
+After a human approves those exact outputs: create an annotated `v1.0.0` tag at
+the approved revision, push that tag, create the GitHub release, upload only
+the two verified archives plus `checksums.sha256`, and publish the installation
+instructions. Stop rather than publish if any archive hash, version output,
+conformance count, fallback count, required archive entry, or host smoke test
+differs from the recorded GA evidence.
+
 ## RC2 bounded work
 
 1. **COMP-002** and **COMP-003** are closed: the stable-library compiled sweep

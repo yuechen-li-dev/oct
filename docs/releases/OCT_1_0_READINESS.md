@@ -150,3 +150,37 @@ The extracted Windows candidate also passes the 15-target compiled conformance
 gate (52 compiled cases, zero fallback). `go test -count=1 ./internal/build
 ./cmd/oct` passes after the packaging/runtime changes, as does `git diff
 --check`.
+
+### GA freeze verification — 2026-07-22
+
+**PKG-001 remains closed.** The final version-injected candidate was rebuilt
+from the frozen local release-preparation tree. The final approval revision is
+recorded in the GA completion report.
+No tag, GitHub release, or external publication was created.
+
+| Artifact | Size | SHA-256 | Build / execution evidence |
+| --- | ---: | --- | --- |
+| `oct-1.0.0-windows-amd64.zip` | 52,209,711 bytes | `f4d82bc06a1ab35831769f0488d43ca077be8863b4131ce8b97e8addc3863328` | Built and extracted/executed natively on Windows. |
+| `oct-1.0.0-linux-amd64.tar.gz` | 50,650,441 bytes | `b85cb3df85b41947bab80d5a8f1a57eca0e6f6e441e6b4eb6402c970bd66cd9f` | Built and extracted/executed under native WSL Linux. |
+
+The SHA-256 manifest was verified independently with PowerShell `Get-FileHash`
+and Linux `sha256sum -c`. Archive inspections found no absolute/traversal paths,
+one compiler executable per archive, and the required `LICENSE`, `INSTALL.md`,
+runtime module, protocol source, and 13 sidecars. Fresh external installation
+directories on both hosts reported `oct 1.0.0`; `help`, interpreted `run`,
+native `build` and execution, compiled `test` (one native case, zero fallback),
+and `fmt` all passed.
+
+The extracted Windows artifact also passed the authoritative 1.0 conformance
+driver: 15 interpreted targets and 15 compiled targets / 52 native cases, with
+zero fallback and zero failures. Source release lanes passed: 299 negative
+diagnostic contracts; `go test -count=1 -parallel 8 ./internal/... ./cmd/oct`;
+the 28-package compiled library sweep with zero fallback; and the slow wrapper
+toolchain lane with the bundled sidecar-equivalent path. The ordinary and
+integration-tagged broad Go suites both pass. `git diff --check` passes. No
+stable-language, packaging, or installation blocker remains.
+
+**GA recommendation: READY FOR OCT-1.0 GA.** The remaining operation is
+procedural: perform one final clean checkout verification at this revision,
+recreate the two archives and manifest, obtain human approval, then create and
+push `v1.0.0` and publish the verified files.

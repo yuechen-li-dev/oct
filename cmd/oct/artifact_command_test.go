@@ -122,7 +122,7 @@ func TestOctArtifactFailurePropagatesAndTestCommandUnaffected(t *testing.T) {
 func TestOctArtifactRealFixtureTemplateExample(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	root := filepath.Join("..", "..", "testdata", "m24h", "valid")
+	root := filepath.Join("..", "..", "testdata", "m24h", "valid", "Fixtures")
 	err := cli.Execute([]string{"artifact", root}, &stdout, &stderr)
 	if err != nil {
 		t.Fatalf("expected m24h artifact example to pass, err=%v stderr=%q stdout=%q", err, stderr.String(), stdout.String())

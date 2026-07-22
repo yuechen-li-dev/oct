@@ -34,8 +34,8 @@ Every stable 1.0 language construct is compiled by GoOct. The positive gate is
 `tools/Test-Oct10Conformance.ps1`; compiled mode requires native execution,
 at least one compiled case, and zero fallback.
 
-Release candidates are version-injected builds: `oct version` reports the
-artifact semantic version, beginning with `oct 1.0.0-rc.1`. Windows x86-64 and
+Release builds are version-injected: `oct version` reports the exact artifact
+semantic version. The verified GA candidate reports `oct 1.0.0`. Windows x86-64 and
 Linux x86-64 archives include the executable, 13 sidecars, `LICENSE`,
 `INSTALL.md`, and the minimal Go compiler runtime needed for native lowering.
 The Go toolchain declared by bundled `runtime/go.mod` remains a prerequisite for

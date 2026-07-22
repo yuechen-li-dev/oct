@@ -1259,7 +1259,7 @@ fn main() -> Int {
 	if !strings.Contains(text, "batch_map") {
 		t.Fatalf("expected batch_map in MIR, got:\n%s", text)
 	}
-	if !strings.Contains(text, "__batch_main_0") {
+	if !strings.Contains(text, "__oct_internal_batch_worker_0_main") {
 		t.Fatalf("expected lowered batch worker in MIR, got:\n%s", text)
 	}
 }
