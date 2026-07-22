@@ -78,27 +78,31 @@ type EnumVariantDecl struct {
 }
 
 type FunctionDecl struct {
-	Name                  string
-	Doc                   *DocComment
-	SourcePath            string
-	IsTestFile            bool
-	IsFact                bool
-	IsTheory              bool
-	IsArtifact            bool
-	IsBenchmark           bool
-	IsMakeFile            bool
-	IsMakePlan            bool
-	IsMakePure            bool
-	IsMakeNoWhile         bool
-	RequiresMakeAuthority bool
-	InlineData            []InlineDataRow
-	Suites                []string
-	CycleTime             Expr
-	Parameters            []Parameter
-	ReturnType            TypeRef
-	IsFallible            bool
-	ErrorType             TypeRef
-	Body                  Block
+	Name       string
+	Doc        *DocComment
+	SourcePath string
+	IsTestFile bool
+	IsFact     bool
+	IsTheory   bool
+	IsArtifact bool
+	// ArtifactCapabilityProvider names the package-local, zero-argument
+	// function whose typed value describes the authority requested by this
+	// artifact. It is metadata only; the value is never an authority token.
+	ArtifactCapabilityProvider string
+	IsBenchmark                bool
+	IsMakeFile                 bool
+	IsMakePlan                 bool
+	IsMakePure                 bool
+	IsMakeNoWhile              bool
+	RequiresMakeAuthority      bool
+	InlineData                 []InlineDataRow
+	Suites                     []string
+	CycleTime                  Expr
+	Parameters                 []Parameter
+	ReturnType                 TypeRef
+	IsFallible                 bool
+	ErrorType                  TypeRef
+	Body                       Block
 	// IsRefinementConstructor marks compiler-generated, package-local checked
 	// construction. It permits the final base-representation return to acquire
 	// the declared refinement; user functions never receive this privilege.

@@ -1360,7 +1360,7 @@ func writeTestHelp(out io.Writer) error {
 	return err
 }
 func writeArtifactHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--output-root <directory>] [--execution <interpreted|compiled>] [--all-packages] [--json]\nType-check and evaluate discovered [Artifact] entry points through the build-time interpreter, then publish confined outputs.\nThe output root defaults to the working directory. --execution compiled is a compatibility alias for the same interpreter evaluator and does not generate or compile a backend. Imported-package artifacts require --all-packages. --json emits one stable command result object for a single target.\nExample: oct artifact path/to/package --output-root out/generated")
+	_, err := fmt.Fprintln(out, "usage: oct artifact <file-or-root> [--output-root <directory>] [--grant-native <Package:Wrapper:Operation>] [--execution <interpreted|compiled>] [--all-packages] [--json]\nType-check and evaluate discovered [Artifact] entry points through the build-time interpreter, then publish confined outputs.\n--grant-native may be repeated and approves exactly one Concept-modeled, manifest-declared operation. It does not build or sandbox the sidecar. The output root defaults to the working directory. --execution compiled is a compatibility alias for the same interpreter evaluator and does not generate or compile a backend. Imported-package artifacts require --all-packages. --json emits one stable command result object for a single target.\nExample: oct artifact path/to/package --grant-native Main:test-wrapper:EchoStringRaw --output-root out/generated")
 	return err
 }
 func writeBenchHelp(out io.Writer) error {
@@ -1470,6 +1470,18 @@ func parseArtifactOptions(args []string) (tester.ArtifactOptions, []string, erro
 		}
 		if arg == "--all-packages" {
 			options.AllPackages = true
+			continue
+		}
+		if arg == "--grant-native" {
+			if i+1 >= len(args) {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("--grant-native requires Package:Wrapper:Operation")
+			}
+			i++
+			value := strings.TrimSpace(args[i])
+			if value == "" {
+				return tester.ArtifactOptions{}, nil, fmt.Errorf("--grant-native requires Package:Wrapper:Operation")
+			}
+			options.NativeApprovals = append(options.NativeApprovals, value)
 			continue
 		}
 		if arg == "--json" {

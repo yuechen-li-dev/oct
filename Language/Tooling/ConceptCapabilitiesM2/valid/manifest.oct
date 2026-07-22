@@ -1,0 +1,34 @@
+package Manifest
+
+record PackageManifest {Name: String Version: String Description: String Kind: String Authors: String[] Date: String Dependencies: Dependency[] Wrappers: Wrapper[]}
+record Dependency {Name: String VersionRequirement: String}
+record Wrapper {Name: String Family: String Protocol: String SidecarCommand: String GoModuleDir: String TransportTypes: WrapperTransportType[] Functions: WrapperFunction[]}
+record WrapperTransportType {Name: String Kind: String Fields: WrapperTransportField[]}
+record WrapperTransportField {Name: String Type: String}
+record WrapperFunction {OctName: String WireName: String Args: String[] Return: String Fallible: Bool}
+
+fn Manifest() -> PackageManifest {
+    return PackageManifest {
+        Name: "Main"
+        Version: "0.1.0"
+        Description: "Concept-modeled Artifact native capability proof"
+        Kind: "wrapper"
+        Authors:["Codex"]
+        Date: "2026-07-22"
+        Dependencies:[]
+        Wrappers:[
+        Wrapper {
+            Name: "test-wrapper"
+            Family: "TestWrapper"
+            Protocol: "octxiliary.v0"
+            SidecarCommand: "octxiliary-test-wrapper"
+            GoModuleDir: "wrappers/test"
+            TransportTypes:[]
+            Functions:[
+            WrapperFunction {OctName: "EchoStringRaw" WireName: "TestEchoString" Args:["String"] Return: "String" Fallible: true},
+            WrapperFunction {OctName: "NotOkRaw" WireName: "TestAlwaysFails" Args:[] Return: "String" Fallible: true}
+            ]
+        }
+        ]
+    }
+}

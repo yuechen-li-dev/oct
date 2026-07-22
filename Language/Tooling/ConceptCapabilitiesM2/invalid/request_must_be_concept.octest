@@ -1,0 +1,11 @@
+package Main
+
+record NativeComputeRequest {Package: String Wrapper: String Operation: String}
+record ArtifactCapabilityRequest {Native: NativeComputeRequest[]}
+
+fn Capabilities() -> ArtifactCapabilityRequest {
+    return ArtifactCapabilityRequest {Native:[]}
+}
+
+[Artifact(Capabilities)]
+fn Emit() -> Void {return}

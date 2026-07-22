@@ -17,21 +17,23 @@ import (
 const structuredSchemaVersion = "oct.cli.result.v1"
 
 type structuredCommandResult struct {
-	SchemaVersion            string                     `json:"schemaVersion"`
-	Command                  string                     `json:"command"`
-	OctVersion               string                     `json:"octVersion"`
-	ExecutionIdentity        string                     `json:"executionIdentity"`
-	Target                   string                     `json:"target"`
-	OK                       bool                       `json:"ok"`
-	ExitStatus               int                        `json:"exitStatus"`
-	TimingMilliseconds       int64                      `json:"timingMilliseconds"`
-	Diagnostics              []structuredDiagnostic     `json:"diagnostics"`
-	Stdout                   string                     `json:"stdout"`
-	DiscoveredTestFiles      []string                   `json:"discoveredTestFiles,omitempty"`
-	Execution                structuredExecution        `json:"execution"`
-	Summary                  structuredSummary          `json:"summary"`
-	Artifacts                []tester.GeneratedArtifact `json:"artifacts,omitempty"`
-	ArtifactMetadataComplete bool                       `json:"artifactMetadataComplete,omitempty"`
+	SchemaVersion            string                                `json:"schemaVersion"`
+	Command                  string                                `json:"command"`
+	OctVersion               string                                `json:"octVersion"`
+	ExecutionIdentity        string                                `json:"executionIdentity"`
+	Target                   string                                `json:"target"`
+	OK                       bool                                  `json:"ok"`
+	ExitStatus               int                                   `json:"exitStatus"`
+	TimingMilliseconds       int64                                 `json:"timingMilliseconds"`
+	Diagnostics              []structuredDiagnostic                `json:"diagnostics"`
+	Stdout                   string                                `json:"stdout"`
+	DiscoveredTestFiles      []string                              `json:"discoveredTestFiles,omitempty"`
+	Execution                structuredExecution                   `json:"execution"`
+	Summary                  structuredSummary                     `json:"summary"`
+	Artifacts                []tester.GeneratedArtifact            `json:"artifacts,omitempty"`
+	Capabilities             []tester.ArtifactCapabilityProvenance `json:"capabilities,omitempty"`
+	ArtifactMeasurements     tester.ArtifactCapabilityMeasurements `json:"artifactMeasurements,omitempty"`
+	ArtifactMetadataComplete bool                                  `json:"artifactMetadataComplete,omitempty"`
 }
 
 type structuredDiagnostic struct {
@@ -78,6 +80,8 @@ func executeArtifactJSON(path string, stdout io.Writer, options tester.ArtifactO
 	err := tester.ExecuteArtifactsWithOptions(path, &log, options)
 	result := baseStructuredResult("oct artifact", path, "artifact", options.Execution, started, log.String(), err)
 	result.Artifacts = report.Artifacts
+	result.Capabilities = report.Capabilities
+	result.ArtifactMeasurements = report.Measurements
 	result.ArtifactMetadataComplete = report.MetadataComplete
 	result.Execution.Actual = report.Execution
 	return writeStructuredResult(stdout, result, err)

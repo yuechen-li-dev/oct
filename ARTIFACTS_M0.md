@@ -108,6 +108,13 @@ filesystem, or generic wrapper/sidecar effect is granted. Seeded Oct random
 functions remain available because their state is explicit and deterministic.
 Progress/checkpoint output is diagnostic only and ordered with entry execution.
 
+Concepts M2 preserves this default. An entry may now opt into one exact,
+manifest-declared wrapper operation with `[Artifact(RequestProvider)]` plus a
+matching host `--grant-native Package:Wrapper:Operation`. The compiler-owned
+grant is checked at the existing generic dispatcher; request records are not
+authority. See `CONCEPTS_M2.md`. Authorized sidecars remain trusted,
+unsandboxed native processes and are outside the M0 confinement guarantee.
+
 ## Concepts, models, and staged generation
 
 Artifact code is ordinary typed Oct. Alias, refined, record, and named concepts;

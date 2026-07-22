@@ -66,6 +66,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 	pendingFact := false
 	pendingTheory := false
 	pendingArtifact := false
+	pendingArtifactCapabilityProvider := ""
 	pendingBenchmark := false
 	pendingInlineData := make([]ast.InlineDataRow, 0)
 	pendingSuites := make([]string, 0)
@@ -165,6 +166,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("[Benchmark] cannot be combined with [Artifact]")
 				}
 				pendingArtifact = true
+				pendingArtifactCapabilityProvider = attribute.provider
 			case "Benchmark":
 				if pendingBenchmark {
 					return ast.File{}, p.errorAtCurrent("duplicate [Benchmark] attribute on function")
@@ -270,8 +272,10 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 					return ast.File{}, p.errorAtCurrent("[CycleTime] is only valid on [Theory] functions")
 				}
 				function.IsArtifact = true
+				function.ArtifactCapabilityProvider = pendingArtifactCapabilityProvider
 				function.Suites = append(function.Suites, pendingSuites...)
 				pendingArtifact = false
+				pendingArtifactCapabilityProvider = ""
 				pendingSuites = pendingSuites[:0]
 			}
 			if pendingBenchmark {
@@ -593,6 +597,7 @@ type testAttribute struct {
 	values    []ast.Expr
 	value     ast.Expr
 	suiteName string
+	provider  string
 }
 
 func (p *parser) parseTestAttribute() (testAttribute, error) {
@@ -604,11 +609,27 @@ func (p *parser) parseTestAttribute() (testAttribute, error) {
 		return testAttribute{}, err
 	}
 	switch name.Lexeme {
-	case "Fact", "Theory", "Artifact", "Benchmark":
+	case "Fact", "Theory", "Benchmark":
 		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
 			return testAttribute{}, err
 		}
 		return testAttribute{kind: name.Lexeme}, nil
+	case "Artifact":
+		provider := ""
+		if p.match(lex.LeftParen) {
+			providerToken, err := p.expect(lex.Identifier, "[Artifact] capability provider must be a package-local function name")
+			if err != nil {
+				return testAttribute{}, err
+			}
+			provider = providerToken.Lexeme
+			if _, err := p.expect(lex.RightParen, "expected ')' after [Artifact] capability provider"); err != nil {
+				return testAttribute{}, err
+			}
+		}
+		if _, err := p.expect(lex.RightBracket, "expected ']' after attribute"); err != nil {
+			return testAttribute{}, err
+		}
+		return testAttribute{kind: name.Lexeme, provider: provider}, nil
 	case "InlineData":
 		if _, err := p.expect(lex.LeftParen, "expected '(' after InlineData"); err != nil {
 			return testAttribute{}, err

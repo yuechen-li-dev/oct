@@ -331,6 +331,8 @@ type interpreter struct {
 	artifactProgressRecorder func(event ArtifactProgressEvent)
 	artifactWriteRecorder    func(event ArtifactWriteEvent)
 	artifactCapability       ArtifactWriteCapability
+	artifactNativeGrant      ArtifactNativeGrant
+	requestDiscovery         bool
 	artifactSourcePath       string
 	artifactWriteDepth       int
 	currentFunctionName      string
@@ -347,6 +349,8 @@ type ExecuteOptions struct {
 	ArtifactProgressRecorder func(event ArtifactProgressEvent)
 	ArtifactWriteRecorder    func(event ArtifactWriteEvent)
 	ArtifactCapability       ArtifactWriteCapability
+	ArtifactNativeGrant      ArtifactNativeGrant
+	RequestDiscovery         bool
 	ArtifactSourcePath       string
 	Context                  context.Context
 }
@@ -471,6 +475,8 @@ func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, fun
 	interpreter.artifactProgressRecorder = options.ArtifactProgressRecorder
 	interpreter.artifactWriteRecorder = options.ArtifactWriteRecorder
 	interpreter.artifactCapability = options.ArtifactCapability
+	interpreter.artifactNativeGrant = options.ArtifactNativeGrant
+	interpreter.requestDiscovery = options.RequestDiscovery
 	interpreter.artifactSourcePath = options.ArtifactSourcePath
 	interpreter.ctx = options.Context
 	interpreter.currentFunctionName = functionName
@@ -2754,6 +2760,9 @@ func dequalifyTargetPackageValue(value Value, pkgName string) Value {
 }
 
 func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, callee string, typeArguments []ast.TypeRef, argumentExprs []ast.Expr) (evalResult, error) {
+	if i.requestDiscovery && (callee == "Print" || strings.Contains(callee, "CryptoRand") || callee == "WriteOctagon" || callee == "LoadOctagon" || callee == "JsonLoadStructured") {
+		return evalResult{}, fmt.Errorf("capability request is not statically discoverable: provider attempted effectful operation %s", callee)
+	}
 	if callee == "PlotLine" || callee == "PlotScatter" {
 		if len(typeArguments) != 0 {
 			return evalResult{}, fmt.Errorf("runtime invariant violation: %s does not accept type arguments", callee)

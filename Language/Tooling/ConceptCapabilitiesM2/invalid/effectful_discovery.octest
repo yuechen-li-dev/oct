@@ -1,0 +1,12 @@
+package Main
+
+concept NativeComputeRequest {Package: String Wrapper: String Operation: String}
+concept ArtifactCapabilityRequest {Native: NativeComputeRequest[]}
+
+fn Capabilities() -> ArtifactCapabilityRequest {
+    Print("not static")
+    return ArtifactCapabilityRequest {Native:[]}
+}
+
+[Artifact(Capabilities)]
+fn Emit() -> Void {return}

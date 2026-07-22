@@ -1,0 +1,14 @@
+package Main
+
+concept NativeComputeRequest {Package: String Wrapper: String Operation: String}
+concept ArtifactCapabilityRequest {Native: NativeComputeRequest[]}
+
+fn Capabilities() -> ArtifactCapabilityRequest {
+    return ArtifactCapabilityRequest {Native:[NativeComputeRequest {Package: "Main" Wrapper: "test-wrapper" Operation: "EchoStringRaw"}]}
+}
+
+[Artifact(Capabilities)]
+fn DifferentOperationIsDenied() -> Void ! Error {
+    let result = NotOkRaw() ?
+    Artifact.WriteText("must-not-publish.txt", result)
+}

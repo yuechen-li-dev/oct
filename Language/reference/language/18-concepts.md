@@ -98,6 +98,41 @@ Package-qualified refined types and statically proved arguments through imported
 
 ## Erasure and backends
 
+## Capability requests (Concepts M2)
+
+Concepts may describe requested environmental authority, but a Concept value is
+never authority. An artifact can associate an ordinary, typed request-provider
+function with its entry:
+
+```oct
+concept NativeComputeRequest { Package: String Wrapper: String Operation: String }
+concept ArtifactCapabilityRequest { Native: NativeComputeRequest[] }
+
+fn Capabilities() -> ArtifactCapabilityRequest {
+    return ArtifactCapabilityRequest { Native: [NativeComputeRequest { Package: "Main" Wrapper: "image" Operation: "ResizeRaw" }] }
+}
+
+[Artifact(Capabilities)]
+fn Emit() -> Void ! Error { /* protected call, then Artifact.Write* */ }
+```
+
+The provider is package-local, zero-argument, infallible, and must return the
+package-local record-shaped `ArtifactCapabilityRequest` Concept. Discovery runs
+after complete type checking and before the artifact entry. Exact duplicate
+atoms are deduplicated and atoms are sorted by `Package:Wrapper:Operation`.
+Each atom must resolve to one operation in the package's wrapper manifest.
+
+The invoking host separately approves exact atoms. The runtime creates a
+host-only grant from the intersection of request, approval, and manifest
+identity. Protected dispatch checks that grant again. Constructing either
+request Concept in Oct cannot implement the host interface and therefore cannot
+authorize a call. M2 defines `Native.Compute`; other families remain distinct:
+`Artifact.Publish`, `Artifact.ReadInputs`, `Crypto.Hash`, `Crypto.Random`,
+`Crypto.Encrypt`, `Crypto.KeyStore`, `Network`, `Process`,
+`AmbientFileSystem`, `Clock`, and `Environment`. Native.Compute implies none of
+them. In-memory hashing and explicitly seeded deterministic randomness retain
+their existing baseline semantics.
+
 The interpreter executes only programs whose requirements have already passed and treats accepted `Require` statements as erased. The Go backend does not lower them into MIR statements and emits no `Require` helper, conditional, panic, concept registry, or type descriptor. Named concepts lower to their concrete Go representation; record-shaped concepts lower to the same structs as records.
 
 ## Relationship to future behavior

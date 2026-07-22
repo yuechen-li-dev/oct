@@ -2,6 +2,26 @@ package interpret
 
 import "fmt"
 
+// NativeOperation is the normalized manifest identity checked at the broker.
+// It deliberately contains no filesystem path supplied by Oct code.
+type NativeOperation struct {
+	Package, Wrapper, Operation, WireOperation, Family, Protocol, SidecarCommand string
+}
+
+func (o NativeOperation) Identity() string {
+	return o.Package + ":" + o.Wrapper + ":" + o.Operation
+}
+
+// ArtifactNativeGrant is host-owned authority. Oct values can describe an
+// identical operation, but cannot implement or obtain this interface.
+type ArtifactNativeGrant interface {
+	AuthorizeArtifactNative(NativeOperation) error
+}
+
+type ArtifactNativeDispatchRecorder interface {
+	RecordArtifactNativeDispatch(NativeOperation, string, string)
+}
+
 // ArtifactOutputRequest identifies one output declared while evaluating a
 // typed [Artifact] entry point. The compiler-owned caller supplies the actual
 // staging implementation; the interpreter only routes writes through it.

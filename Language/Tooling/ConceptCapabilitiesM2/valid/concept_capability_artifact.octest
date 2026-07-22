@@ -1,0 +1,30 @@
+package Main
+
+concept CapabilityName = String {
+    Require(Self != "", "capability identity components must not be empty")
+}
+
+concept NativeComputeRequest {
+    Package: CapabilityName
+    Wrapper: CapabilityName
+    Operation: CapabilityName
+}
+
+concept ArtifactCapabilityRequest {
+    Native: NativeComputeRequest[]
+}
+
+fn EchoCapability() -> NativeComputeRequest {
+    return NativeComputeRequest {Package: "Main" Wrapper: "test-wrapper" Operation: "EchoStringRaw"}
+}
+
+fn RequestedCapabilities() -> ArtifactCapabilityRequest {
+    let echo = EchoCapability()
+    return ArtifactCapabilityRequest {Native:[echo, echo]}
+}
+
+[Artifact(RequestedCapabilities)]
+fn EmitNativeResult() -> Void ! Error {
+    let result = EchoStringRaw("concept grant") ?
+    Artifact.WriteText("nested/native-result.txt", result)
+}

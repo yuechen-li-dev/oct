@@ -824,6 +824,13 @@ func TestBuildFileParsesArtifactInOctest(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesArtifactCapabilityProvider(t *testing.T) {
+	file := parseSourceWithPath(t, "example.octest", "package Main\n[Artifact(RequestedCapabilities)]\nfn Generate() -> Void { return }\n")
+	if len(file.Functions) != 1 || file.Functions[0].ArtifactCapabilityProvider != "RequestedCapabilities" {
+		t.Fatalf("expected [Artifact] capability provider, got %+v", file.Functions)
+	}
+}
+
 func TestBuildFileRejectsInvalidArtifactUsage(t *testing.T) {
 	assertParseErrorContains(t, "package Main\n[Artifact]\nfn Nope() -> Void { return }\n", "[Artifact] is only valid in .octest files")
 	assertParseErrorContainsWithPath(t, "bad.octest", "package Main\n[Artifact]\nrecord R { X: Int }\n", "test attributes must apply to a function declaration")

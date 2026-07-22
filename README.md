@@ -297,6 +297,12 @@ types, sizes, and SHA-256 hashes. Local coding agents should edit and inspect
 the repository directly; the bounded MCP server is for hosted virtual
 workspaces, not a replacement filesystem or shell.
 
+Artifacts that explicitly request one manifest wrapper operation through a
+typed Concept provider may be invoked with
+`--grant-native Package:Wrapper:Operation`. The request is descriptive, the
+host grant is authoritative, and the broker checks it at dispatch. Sidecars
+must already be built and remain trusted unsandboxed native processes.
+
 Choose `oct new library Name` for stable reusable code. Choose
 `oct new experiment Name` for a milestone-driven investigation: it creates
 `REPORT.md` and M0, while root `oct test` / `oct artifact` run every canonical

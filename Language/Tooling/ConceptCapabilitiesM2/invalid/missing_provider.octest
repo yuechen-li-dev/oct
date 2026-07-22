@@ -1,0 +1,4 @@
+package Main
+
+[Artifact(MissingCapabilities)]
+fn Emit() -> Void {return}

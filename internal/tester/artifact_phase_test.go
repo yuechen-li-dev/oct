@@ -3,7 +3,9 @@ package tester
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,102 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
+
+func conceptCapabilitiesM2Fixture(parts ...string) string {
+	all := append([]string{"..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "valid"}, parts...)
+	return filepath.Join(all...)
+}
+
+func TestConceptModeledNativeCapabilityIsDeniedThenExactlyGranted(t *testing.T) {
+	target := conceptCapabilitiesM2Fixture("concept_capability_artifact.octest")
+	t.Setenv("OCT_WRAPPER_PATH", "")
+	var denied bytes.Buffer
+	err := ExecuteArtifactsWithOptions(target, &denied, ArtifactOptions{OutputRoot: t.TempDir()})
+	if err == nil || !strings.Contains(denied.String(), "requested but not approved") {
+		t.Fatalf("expected requested-but-not-approved denial, err=%v output=%s", err, denied.String())
+	}
+	broader := ArtifactOptions{OutputRoot: t.TempDir(), NativeApprovals: []string{"Main:test-wrapper:NotOkRaw"}}
+	if err := ExecuteArtifactsWithOptions(target, &bytes.Buffer{}, broader); err == nil || !strings.Contains(err.Error(), "broader than the discovered requests") {
+		t.Fatalf("expected broader approval rejection, got %v", err)
+	}
+	unavailableOutput := &bytes.Buffer{}
+	unavailable := ArtifactOptions{OutputRoot: t.TempDir(), NativeApprovals: []string{"Main:test-wrapper:EchoStringRaw"}}
+	if err := ExecuteArtifactsWithOptions(target, unavailableOutput, unavailable); err == nil || !strings.Contains(unavailableOutput.String(), "approved native operation") || !strings.Contains(unavailableOutput.String(), "is unavailable") {
+		t.Fatalf("expected approved-but-unavailable diagnostic, err=%v output=%s", err, unavailableOutput.String())
+	}
+
+	binDir := t.TempDir()
+	name := "octxiliary-test-wrapper"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	cmd := exec.Command("go", "build", "-o", filepath.Join(binDir, name), "./cmd/octxiliary-test-wrapper")
+	cmd.Dir = filepath.Join("..", "..")
+	if output, buildErr := cmd.CombinedOutput(); buildErr != nil {
+		t.Fatalf("build trusted test sidecar: %v\n%s", buildErr, output)
+	}
+	t.Setenv("OCT_WRAPPER_PATH", binDir)
+	outputRoot := t.TempDir()
+	report := &ArtifactReport{}
+	options := ArtifactOptions{OutputRoot: outputRoot, NativeApprovals: []string{"Main:test-wrapper:EchoStringRaw"}, Report: report}
+	var stdout bytes.Buffer
+	if err := ExecuteArtifactsWithOptions(target, &stdout, options); err != nil {
+		t.Fatalf("granted artifact failed: %v\n%s", err, stdout.String())
+	}
+	contents, err := os.ReadFile(filepath.Join(outputRoot, "nested", "native-result.txt"))
+	if err != nil || string(contents) != "concept grant" {
+		t.Fatalf("published native result = %q, err=%v", contents, err)
+	}
+	if len(report.Capabilities) != 1 || !report.Capabilities[0].Granted || !report.Capabilities[0].Dispatched || report.Capabilities[0].SidecarSHA256 == "" {
+		t.Fatalf("incomplete capability provenance: %+v", report.Capabilities)
+	}
+	if report.Measurements.RequestAtomsDiscovered != 2 || report.Measurements.NormalizedRequestAtoms != 1 || report.Measurements.GrantsEvaluated != 1 || report.Measurements.ApprovalsAccepted != 1 || report.Measurements.NativeDispatches != 1 || report.Measurements.BackendGenerations != 0 || report.Measurements.ArtifactHostExecutablesCreated != 0 {
+		t.Fatalf("unexpected capability measurements: %+v", report.Measurements)
+	}
+	report = &ArtifactReport{}
+	options.Report = report
+	stdout.Reset()
+	if err := ExecuteArtifactsWithOptions(target, &stdout, options); err != nil {
+		t.Fatalf("repeat artifact failed: %v", err)
+	}
+	if len(report.Artifacts) != 1 || report.Artifacts[0].Status != "unchanged" {
+		t.Fatalf("repeat report = %+v", report.Artifacts)
+	}
+	entries, err := os.ReadDir(outputRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if filepath.Ext(entry.Name()) == ".go" || filepath.Ext(entry.Name()) == ".exe" {
+			t.Fatalf("artifact evaluation created backend host file %s", entry.Name())
+		}
+	}
+}
+
+func TestConceptCapabilityDeclarationAndBrokerDiagnostics(t *testing.T) {
+	cases := []struct{ path, want string }{
+		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "missing_provider.octest"), "is not a package-local function"},
+		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "request_must_be_concept.octest"), "requires a package-local record Concept"},
+		{filepath.Join("..", "..", "Language", "Tooling", "ConceptCapabilitiesM2", "invalid", "effectful_discovery.octest"), "not statically discoverable"},
+		{conceptCapabilitiesM2Fixture("no_request_artifact.octest"), "was not requested"},
+	}
+	for _, tc := range cases {
+		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			var stdout bytes.Buffer
+			err := ExecuteArtifactsWithOptions(tc.path, &stdout, ArtifactOptions{OutputRoot: t.TempDir()})
+			if err == nil || !strings.Contains(stdout.String()+err.Error(), tc.want) {
+				t.Fatalf("expected %q, err=%v output=%s", tc.want, err, stdout.String())
+			}
+		})
+	}
+
+	t.Setenv("OCT_WRAPPER_PATH", "")
+	var stdout bytes.Buffer
+	err := ExecuteArtifactsWithOptions(conceptCapabilitiesM2Fixture("wrong_operation_artifact.octest"), &stdout, ArtifactOptions{OutputRoot: t.TempDir(), NativeApprovals: []string{"Main:test-wrapper:EchoStringRaw"}})
+	if err == nil || !strings.Contains(stdout.String(), "Main:test-wrapper:NotOkRaw was not requested") {
+		t.Fatalf("approval for one operation authorized another: err=%v output=%s", err, stdout.String())
+	}
+}
 
 func artifactLanguageFixture(parts ...string) string {
 	all := append([]string{"..", "..", "Language", "Tooling", "Artifacts"}, parts...)

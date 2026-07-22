@@ -70,7 +70,7 @@ Future reporting work includes stdout/stderr sidecar files, replay, failure arti
 Usage:
 
 ```sh
-oct artifact <file-or-root> [--output-root <directory>] [--all-packages] [--json]
+oct artifact <file-or-root> [--output-root <directory>] [--grant-native <Package:Wrapper:Operation>] [--all-packages] [--json]
 oct artifact path/to/file.oct --output-root out/generated
 ```
 
@@ -87,13 +87,27 @@ relative and confined to that root. Duplicate paths fail the run. Changed files
 are published in sorted order through same-directory temporary files, while
 byte-identical files are reported `UNCHANGED` and retain their modification
 time. `--json` includes requested and actual execution, source provenance,
-status, MIME type, size, and SHA-256.
+status, MIME type, size, SHA-256, and native capability provenance.
 
 Artifact evaluation has a narrow output capability. Ordinary ambient file
-writes and reads, process/network access, clock access, crypto randomness, and
-wrapper sidecars are not available. Confined directory creation and the global
+writes and reads, process/network access, clock access, and crypto randomness
+are not available. A capability-aware entry uses
+`[Artifact(RequestProvider)]`; the provider returns a package-local
+`ArtifactCapabilityRequest` record Concept containing exact
+`NativeComputeRequest { Package Wrapper Operation }` atoms. The provider is
+evaluated before the entry with effectful builtins and wrappers disabled.
+`--grant-native Main:test-wrapper:EchoStringRaw` approves only that discovered,
+manifest-declared operation. An ordinary request record is never a grant; the
+broker requires the host-owned grant immediately before dispatch. Confined directory creation and the global
 `WriteOctagon` spelling are retained compatibility adaptations. Generated files
 cannot alter the already-bound program in the same artifact invocation.
+
+Authorization does not make a native sidecar safe or pure. The prebuilt process
+is trusted native code. It currently starts with no arguments, piped stdin and
+stdout, the caller's current working directory, and the inherited environment
+and operating-system filesystem/process authority. The wrapper manifest and
+grant prevent unapproved dispatch; they do not sandbox a process after launch.
+The sidecar is not given the artifact staging/output root by the broker.
 
 Artifact-producing labs should still validate scientific correctness separately from successful execution. Prefer comparing headline outputs against analytic solutions, Python/reference implementations, published values, or fixed golden outputs, and use `Assert.Close` or the closest available assertion before trusting artifact headline numbers.
 

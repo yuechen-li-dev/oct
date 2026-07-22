@@ -243,6 +243,9 @@ func CheckProgram(program project.Program) error {
 		if err := chk.registerWrapperFunctionSignatures(pkg); err != nil {
 			return err
 		}
+		if err := chk.validateArtifactCapabilityProviders(file); err != nil {
+			return err
+		}
 		packageCheckers[name] = chk
 	}
 
@@ -251,6 +254,44 @@ func CheckProgram(program project.Program) error {
 		chk := packageCheckers[name]
 		if err := chk.checkPackageFunctions(file); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func (c checker) validateArtifactCapabilityProviders(file ast.File) error {
+	for _, fn := range file.Functions {
+		provider := fn.ArtifactCapabilityProvider
+		if !fn.IsArtifact || provider == "" {
+			continue
+		}
+		signature, ok := c.functions[provider]
+		if !ok {
+			return fmt.Errorf("%s: [Artifact] capability request provider %s is not a package-local function", fn.SourcePath, provider)
+		}
+		if len(signature.parameters) != 0 || signature.isFallible {
+			return fmt.Errorf("%s: [Artifact] capability request provider %s must take no parameters and be infallible", fn.SourcePath, provider)
+		}
+		if signature.returnType.Name != "ArtifactCapabilityRequest" || signature.returnType.IsArray {
+			return fmt.Errorf("%s: [Artifact] capability request provider %s must return the package-local ArtifactCapabilityRequest Concept", fn.SourcePath, provider)
+		}
+		record, ok := c.records["ArtifactCapabilityRequest"]
+		if !ok || !record.isConcept {
+			return fmt.Errorf("%s: [Artifact] capability request requires a package-local record Concept named ArtifactCapabilityRequest", fn.SourcePath)
+		}
+		native, ok := record.fields["Native"]
+		if !ok || !native.IsArray || native.Name != "NativeComputeRequest" {
+			return fmt.Errorf("%s: ArtifactCapabilityRequest Concept must contain Native: NativeComputeRequest[]", fn.SourcePath)
+		}
+		nativeRecord, ok := c.records["NativeComputeRequest"]
+		if !ok || !nativeRecord.isConcept {
+			return fmt.Errorf("%s: capability request requires a package-local record Concept named NativeComputeRequest", fn.SourcePath)
+		}
+		for _, field := range []string{"Package", "Wrapper", "Operation"} {
+			typ, exists := nativeRecord.fields[field]
+			if !exists || typ.Base != BaseTypeString || typ.IsArray {
+				return fmt.Errorf("%s: NativeComputeRequest Concept must contain %s: String", fn.SourcePath, field)
+			}
 		}
 	}
 	return nil
@@ -274,7 +315,7 @@ func (c checker) rebindRecordTypes(file ast.File) error {
 			fieldOrder = append(fieldOrder, field.Name)
 		}
 		rowType := "__oct_table_row_" + record.Name
-		c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder, isTable: record.IsTable, rowType: rowType}
+		c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder, isTable: record.IsTable, isConcept: record.IsConcept, rowType: rowType}
 		if record.IsTable {
 			c.records[rowType] = recordInfo{fields: rowFields, fieldOrder: fieldOrder}
 		}
@@ -322,6 +363,7 @@ type recordInfo struct {
 	fields     map[string]Type
 	fieldOrder []string
 	isTable    bool
+	isConcept  bool
 	rowType    string
 }
 
@@ -628,7 +670,7 @@ func (c checker) registerRecord(record ast.RecordDecl) error {
 		fieldOrder = append(fieldOrder, field.Name)
 	}
 	rowType := "__oct_table_row_" + record.Name
-	c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder, isTable: record.IsTable, rowType: rowType}
+	c.records[record.Name] = recordInfo{fields: fields, fieldOrder: fieldOrder, isTable: record.IsTable, isConcept: record.IsConcept, rowType: rowType}
 	if record.IsTable {
 		c.records[rowType] = recordInfo{fields: rowFields, fieldOrder: fieldOrder}
 		c.typeNames[rowType] = struct{}{}

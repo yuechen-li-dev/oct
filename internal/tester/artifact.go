@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/yuechen-li-dev/oct/internal/interpret"
 	"github.com/yuechen-li-dev/oct/internal/project"
@@ -20,14 +21,16 @@ type artifactCase struct {
 	pkg      string
 	filePath string
 	name     string
+	provider string
 }
 
 type ArtifactOptions struct {
-	Execution   string
-	OutputRoot  string
-	AllPackages bool
-	JSON        bool
-	Report      *ArtifactReport
+	Execution       string
+	OutputRoot      string
+	AllPackages     bool
+	JSON            bool
+	Report          *ArtifactReport
+	NativeApprovals []string
 }
 
 type ArtifactReport struct {
@@ -36,6 +39,39 @@ type ArtifactReport struct {
 	OutputRoot         string
 	MetadataComplete   bool
 	Artifacts          []GeneratedArtifact
+	Capabilities       []ArtifactCapabilityProvenance `json:"capabilities,omitempty"`
+	Measurements       ArtifactCapabilityMeasurements `json:"measurements"`
+}
+
+type ArtifactCapabilityMeasurements struct {
+	RequestAtomsDiscovered           int   `json:"requestAtomsDiscovered"`
+	NormalizedRequestAtoms           int   `json:"normalizedRequestAtoms"`
+	RequestNormalizationMicroseconds int64 `json:"requestNormalizationMicroseconds"`
+	GrantsEvaluated                  int   `json:"grantsEvaluated"`
+	ApprovalsAccepted                int   `json:"approvalsAccepted"`
+	ApprovalsRejected                int   `json:"approvalsRejected"`
+	NativeDispatches                 int   `json:"nativeDispatches"`
+	BackendGenerations               int   `json:"backendGenerations"`
+	ArtifactHostExecutablesCreated   int   `json:"artifactHostExecutablesCreated"`
+}
+
+type ArtifactCapabilityProvenance struct {
+	Artifact       string `json:"artifact"`
+	SourcePath     string `json:"sourcePath"`
+	Capability     string `json:"capability"`
+	Package        string `json:"package"`
+	Wrapper        string `json:"wrapper"`
+	Operation      string `json:"operation"`
+	WireOperation  string `json:"wireOperation"`
+	Family         string `json:"family"`
+	Protocol       string `json:"protocol"`
+	SidecarCommand string `json:"sidecarCommand"`
+	Requested      bool   `json:"requested"`
+	Approved       bool   `json:"approved"`
+	Granted        bool   `json:"granted"`
+	Dispatched     bool   `json:"dispatched"`
+	SidecarPath    string `json:"sidecarPath,omitempty"`
+	SidecarSHA256  string `json:"sidecarSha256,omitempty"`
 }
 
 type GeneratedArtifact struct {
@@ -78,6 +114,8 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 		options.Report.OutputRoot = filepath.ToSlash(filepath.Clean(rootAbs))
 		options.Report.MetadataComplete = true
 		options.Report.Artifacts = nil
+		options.Report.Capabilities = nil
+		options.Report.Measurements = ArtifactCapabilityMeasurements{}
 	}
 	publisher, err := newArtifactPublisher(rootAbs)
 	if err != nil {
@@ -96,7 +134,7 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 	}
 	passed := 0
 	if err := executeForPathOrExperiment(path, stdout, "artifact", func(singlePath string, singleStdout io.Writer) error {
-		count, err := evaluateArtifactsSingleRoot(singlePath, singleStdout, options.AllPackages, publisher)
+		count, err := evaluateArtifactsSingleRoot(singlePath, singleStdout, options.AllPackages, publisher, options.NativeApprovals, options.Report)
 		passed += count
 		return err
 	}); err != nil {
@@ -124,7 +162,8 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 	return nil
 }
 
-func evaluateArtifactsSingleRoot(path string, stdout io.Writer, allPackages bool, publisher *artifactPublisher) (int, error) {
+func evaluateArtifactsSingleRoot(path string, stdout io.Writer, allPackages bool, publisher *artifactPublisher, approvals []string, report *ArtifactReport) (int, error) {
+	normalizationStarted := time.Now()
 	program, err := project.LoadForTest(path)
 	if err != nil {
 		return 0, err
@@ -136,13 +175,93 @@ func evaluateArtifactsSingleRoot(path string, stdout io.Writer, allPackages bool
 	if err != nil {
 		return 0, err
 	}
+	requestedByArtifact := make(map[string][]interpret.NativeOperation, len(artifacts))
+	allRequested := map[string]struct{}{}
+	for _, artifact := range artifacts {
+		if artifact.provider == "" {
+			continue
+		}
+		value, discoveryErr := interpret.CallFunctionWithArgsAndOptions(program, artifact.pkg, artifact.provider, nil, io.Discard, interpret.ExecuteOptions{RequestDiscovery: true})
+		if discoveryErr != nil {
+			return 0, fmt.Errorf("capability discovery for %s.%s (%s): %w", artifact.pkg, artifact.name, filepath.ToSlash(artifact.filePath), discoveryErr)
+		}
+		operations, normalizeErr := normalizeNativeRequests(program, value)
+		if normalizeErr != nil {
+			return 0, fmt.Errorf("malformed capability request for %s.%s (%s): %w", artifact.pkg, artifact.name, filepath.ToSlash(artifact.filePath), normalizeErr)
+		}
+		qualified := artifact.pkg + "." + artifact.name
+		requestedByArtifact[qualified] = operations
+		if report != nil {
+			report.Measurements.NormalizedRequestAtoms += len(operations)
+			if native, ok := value.Record.Fields["Native"]; ok && native.Kind == interpret.ValueArray {
+				report.Measurements.RequestAtomsDiscovered += len(native.Array)
+			}
+		}
+		for _, operation := range operations {
+			allRequested[operation.Identity()] = struct{}{}
+			_, _ = fmt.Fprintf(stdout, "REQUEST %s for %s.%s (%s)\n", operation.Identity(), artifact.pkg, artifact.name, filepath.ToSlash(artifact.filePath))
+		}
+	}
+	approved, err := normalizeNativeApprovals(approvals)
+	if err != nil {
+		if report != nil {
+			report.Measurements.ApprovalsRejected++
+		}
+		return 0, err
+	}
+	for identity := range approved {
+		if _, ok := allRequested[identity]; !ok {
+			if report != nil {
+				report.Measurements.ApprovalsRejected++
+			}
+			return 0, fmt.Errorf("native approval %q is broader than the discovered requests", identity)
+		}
+	}
+	if report != nil {
+		report.Measurements.ApprovalsAccepted += len(approved)
+		report.Measurements.RequestNormalizationMicroseconds += time.Since(normalizationStarted).Microseconds()
+	}
 
 	for index, artifact := range artifacts {
 		qualified := artifact.pkg + "." + artifact.name
+		grant := &artifactNativeGrant{requested: map[string]interpret.NativeOperation{}, approved: approved}
+		for _, operation := range requestedByArtifact[qualified] {
+			grant.requested[operation.Identity()] = operation
+			if report != nil {
+				report.Measurements.GrantsEvaluated++
+			}
+		}
+		grant.onDispatch = func(operation interpret.NativeOperation, sidecarPath, digest string) {
+			_, _ = fmt.Fprintf(stdout, "DISPATCH %s sidecar=%s sha256=%s\n", operation.Identity(), sidecarPath, digest)
+			if report == nil {
+				return
+			}
+			report.Measurements.NativeDispatches++
+			for idx := range report.Capabilities {
+				capability := &report.Capabilities[idx]
+				if capability.Artifact == qualified && capability.Capability == operation.Identity() {
+					capability.Dispatched, capability.SidecarPath, capability.SidecarSHA256 = true, sidecarPath, digest
+				}
+			}
+		}
+		if report != nil {
+			for _, operation := range requestedByArtifact[qualified] {
+				_, isApproved := approved[operation.Identity()]
+				report.Capabilities = append(report.Capabilities, ArtifactCapabilityProvenance{Artifact: qualified, SourcePath: filepath.ToSlash(artifact.filePath), Capability: operation.Identity(), Package: operation.Package, Wrapper: operation.Wrapper, Operation: operation.Operation, WireOperation: operation.WireOperation, Family: operation.Family, Protocol: operation.Protocol, SidecarCommand: operation.SidecarCommand, Requested: true, Approved: isApproved, Granted: isApproved})
+			}
+		}
+		for _, operation := range requestedByArtifact[qualified] {
+			if _, ok := approved[operation.Identity()]; ok {
+				_, _ = fmt.Fprintf(stdout, "GRANT %s\n", operation.Identity())
+			} else {
+				_, _ = fmt.Fprintf(stdout, "DENY %s requested but not approved\n", operation.Identity())
+			}
+		}
 		_, _ = fmt.Fprintf(stdout, "RUN  %s (%s)\n", qualified, shortPath(path, artifact.filePath))
 		err := interpret.ExecuteFunctionWithArgsAndOptions(program, artifact.pkg, artifact.name, nil, stdout, interpret.ExecuteOptions{
-			ArtifactCapability: publisher,
-			ArtifactSourcePath: artifact.filePath,
+			ArtifactCapability:  publisher,
+			ArtifactNativeGrant: grant,
+			ArtifactSourcePath:  artifact.filePath,
 			ArtifactProgressRecorder: func(event interpret.ArtifactProgressEvent) {
 				if event.Kind == "checkpoint" {
 					_, _ = fmt.Fprintf(stdout, "CHECKPOINT %s: %s\n", qualified, event.Label)
@@ -172,7 +291,7 @@ func discoverArtifactCases(program project.Program, path string, allPackages boo
 		}
 		for _, fn := range pkg.Functions {
 			if fn.IsArtifact && isSelectedSource(selectedSources, fn.SourcePath) {
-				artifacts = append(artifacts, artifactCase{pkg: pkgName, filePath: fn.SourcePath, name: fn.Name})
+				artifacts = append(artifacts, artifactCase{pkg: pkgName, filePath: fn.SourcePath, name: fn.Name, provider: fn.ArtifactCapabilityProvider})
 			}
 		}
 	}
@@ -189,6 +308,114 @@ func discoverArtifactCases(program project.Program, path string, allPackages boo
 		return nil, fmt.Errorf("no [Artifact] functions found")
 	}
 	return artifacts, nil
+}
+
+type artifactNativeGrant struct {
+	requested  map[string]interpret.NativeOperation
+	approved   map[string]struct{}
+	onDispatch func(interpret.NativeOperation, string, string)
+}
+
+func (g *artifactNativeGrant) AuthorizeArtifactNative(operation interpret.NativeOperation) error {
+	requested, ok := g.requested[operation.Identity()]
+	if !ok {
+		return fmt.Errorf("artifact native operation %s was not requested", operation.Identity())
+	}
+	if requested != operation {
+		return fmt.Errorf("artifact native operation %s does not match the granted manifest identity", operation.Identity())
+	}
+	if _, ok := g.approved[operation.Identity()]; !ok {
+		return fmt.Errorf("artifact native operation %s was requested but not approved", operation.Identity())
+	}
+	return nil
+}
+
+func (g *artifactNativeGrant) RecordArtifactNativeDispatch(operation interpret.NativeOperation, path, digest string) {
+	if g.onDispatch != nil {
+		g.onDispatch(operation, path, digest)
+	}
+}
+
+func normalizeNativeApprovals(values []string) (map[string]struct{}, error) {
+	out := map[string]struct{}{}
+	for _, raw := range values {
+		value := strings.TrimSpace(raw)
+		parts := strings.Split(value, ":")
+		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+			return nil, fmt.Errorf("malformed native approval %q; expected Package:Wrapper:Operation", raw)
+		}
+		out[strings.Join(parts, ":")] = struct{}{}
+	}
+	return out, nil
+}
+
+func normalizeNativeRequests(program project.Program, value interpret.Value) ([]interpret.NativeOperation, error) {
+	if value.Kind != interpret.ValueRecord || unqualifiedRecordName(value.Record.TypeName) != "ArtifactCapabilityRequest" {
+		return nil, fmt.Errorf("provider returned %s, expected ArtifactCapabilityRequest Concept", value.Kind)
+	}
+	native, ok := value.Record.Fields["Native"]
+	if !ok || native.Kind != interpret.ValueArray {
+		return nil, fmt.Errorf("ArtifactCapabilityRequest.Native must be NativeComputeRequest[]")
+	}
+	byIdentity := map[string]interpret.NativeOperation{}
+	for idx, atom := range native.Array {
+		if atom.Kind != interpret.ValueRecord || unqualifiedRecordName(atom.Record.TypeName) != "NativeComputeRequest" {
+			return nil, fmt.Errorf("Native[%d] must be NativeComputeRequest", idx)
+		}
+		packageName, err := requestStringField(atom, "Package")
+		if err != nil {
+			return nil, fmt.Errorf("Native[%d]: %w", idx, err)
+		}
+		wrapperName, err := requestStringField(atom, "Wrapper")
+		if err != nil {
+			return nil, fmt.Errorf("Native[%d]: %w", idx, err)
+		}
+		operationName, err := requestStringField(atom, "Operation")
+		if err != nil {
+			return nil, fmt.Errorf("Native[%d]: %w", idx, err)
+		}
+		pkg, ok := program.Packages[packageName]
+		if !ok {
+			return nil, fmt.Errorf("unknown package %q", packageName)
+		}
+		var resolved *interpret.NativeOperation
+		for _, wrapper := range pkg.Wrappers {
+			if wrapper.Name != wrapperName {
+				continue
+			}
+			for _, function := range wrapper.Functions {
+				if function.OctName == operationName {
+					op := interpret.NativeOperation{Package: packageName, Wrapper: wrapper.Name, Operation: function.OctName, WireOperation: function.WireName, Family: wrapper.Family, Protocol: wrapper.Protocol, SidecarCommand: wrapper.SidecarCommand}
+					resolved = &op
+				}
+			}
+		}
+		if resolved == nil {
+			return nil, fmt.Errorf("wrapper operation %s:%s:%s is not declared by the package manifest", packageName, wrapperName, operationName)
+		}
+		byIdentity[resolved.Identity()] = *resolved
+	}
+	out := make([]interpret.NativeOperation, 0, len(byIdentity))
+	for _, operation := range byIdentity {
+		out = append(out, operation)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Identity() < out[j].Identity() })
+	return out, nil
+}
+
+func requestStringField(value interpret.Value, name string) (string, error) {
+	field, ok := value.Record.Fields[name]
+	if !ok || field.Kind != interpret.ValueString || strings.TrimSpace(field.Text) == "" {
+		return "", fmt.Errorf("NativeComputeRequest.%s must be a non-empty String", name)
+	}
+	return strings.TrimSpace(field.Text), nil
+}
+
+func unqualifiedRecordName(name string) string {
+	if dot := strings.LastIndex(name, "."); dot >= 0 {
+		return name[dot+1:]
+	}
+	return name
 }
 
 type stagedArtifactOutput struct {

@@ -1,6 +1,8 @@
 package interpret
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -302,8 +304,29 @@ func isExecutableFile(path string) bool {
 }
 
 func (i interpreter) evalGenericWrapperCall(fn interpretedWrapperFunction, arguments []Value) (evalResult, error) {
+	if i.requestDiscovery {
+		return i.wrapperBoundaryResult(fn, fmt.Errorf("capability request is not statically discoverable: provider attempted native operation %s.%s", fn.PackageName, fn.OctName))
+	}
 	if i.artifactCapability != nil {
-		return i.wrapperBoundaryResult(fn, fmt.Errorf("artifact evaluation rejected backend-only wrapper operation %s.%s", fn.PackageName, fn.OctName))
+		op := NativeOperation{Package: fn.PackageName, Wrapper: fn.WrapperName, Operation: fn.OctName, WireOperation: fn.WireName, Family: fn.Family, Protocol: fn.Protocol, SidecarCommand: fn.SidecarCommand}
+		if i.artifactNativeGrant == nil {
+			return i.wrapperBoundaryResult(fn, fmt.Errorf("artifact native operation %s was not requested and granted", op.Identity()))
+		}
+		if err := i.artifactNativeGrant.AuthorizeArtifactNative(op); err != nil {
+			return i.wrapperBoundaryResult(fn, err)
+		}
+		path, err := interpretedWrapperSidecarPath(fn)
+		if err != nil {
+			return i.wrapperBoundaryResult(fn, fmt.Errorf("approved native operation %s is unavailable: %w", op.Identity(), err))
+		}
+		digest := ""
+		if contents, readErr := os.ReadFile(path); readErr == nil {
+			sum := sha256.Sum256(contents)
+			digest = hex.EncodeToString(sum[:])
+		}
+		if recorder, ok := i.artifactNativeGrant.(ArtifactNativeDispatchRecorder); ok {
+			recorder.RecordArtifactNativeDispatch(op, filepath.ToSlash(path), digest)
+		}
 	}
 	args, err := packInterpretedWrapperArgs(fn, arguments)
 	if err != nil {

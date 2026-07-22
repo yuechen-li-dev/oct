@@ -233,6 +233,12 @@ Wrapper manifests can be inspected as native wrapper build plans for the current
 
 Wrapper build planning is inspection-only. It does not build Go modules, run `go mod download`, run `go build`, generate sidecar binaries, generate lockfiles, discover runtime sidecars, lower generic wrappers, execute sidecars, or change the Octxiliary protocol.
 
+`oct artifact --grant-native Package:Wrapper:Operation` is a separate execution
+policy seam. It never builds a wrapper. It can authorize only an exact operation
+already requested through the artifact's typed Concept provider and declared by
+the loaded manifest. The existing sidecar must already be discoverable. This
+authorization controls dispatch and is not an operating-system sandbox.
+
 Planning treats wrapper packages as native-code packages and marks them as requiring explicit future native build permission. Permission prompts, native build execution, runtime registry consumption, and `.octagon` lockfiles remain future work.
 
 ## Octxiliary registry artifact
