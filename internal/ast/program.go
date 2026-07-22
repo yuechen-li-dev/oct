@@ -11,10 +11,22 @@ type File struct {
 	IsMakeFile bool
 	Package    string
 	Imports    []string
+	Concepts   []ConceptDecl
 	Records    []RecordDecl
 	Enums      []EnumDecl
 	Functions  []FunctionDecl
 	Flows      []FlowDecl
+}
+
+// ConceptDecl is a transparent named value description. Record-shaped
+// concepts reuse RecordDecl with IsConcept set so every existing record
+// operation and backend representation remains authoritative.
+type ConceptDecl struct {
+	Name   string
+	Target TypeRef
+	Doc    *DocComment
+	Line   int
+	Column int
 }
 
 type DocComment struct {
@@ -29,10 +41,11 @@ type DocSection struct {
 }
 
 type RecordDecl struct {
-	Name    string
-	Doc     *DocComment
-	Fields  []RecordField
-	IsTable bool
+	Name      string
+	Doc       *DocComment
+	Fields    []RecordField
+	IsTable   bool
+	IsConcept bool
 }
 
 type RecordField struct {
@@ -363,6 +376,8 @@ type CallExpr struct {
 	Callee        Expr
 	TypeArguments []TypeRef
 	Arguments     []Expr
+	Line          int
+	Column        int
 }
 
 func (CallExpr) exprNode() {}

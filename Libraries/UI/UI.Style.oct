@@ -29,20 +29,28 @@ record Style {
     Padding: Insets
 }
 
-fn ValidateChannel(value: Int, name: String) -> Void {
-    Require(value >= 0, "UI." + name + " must be >= 0")
-    Require(value <= 255, "UI." + name + " must be <= 255")
+fn ValidateChannel(value: Int, name: String) -> Bool ! Error {
+    if value < 0 {
+        return error("UI color channel must be >= 0")
+    }
+    if value > 255 {
+        return error("UI color channel must be <= 255")
+    }
+    return true
 }
 
-fn ValidatePxNonNegative(value: Int<px>, name: String) -> Void {
-    Require(value >= 0px, "UI." + name + " must be >= 0px")
+fn ValidatePxNonNegative(value: Int<px>, name: String) -> Bool ! Error {
+    if value < 0px {
+        return error("UI pixel inset must be >= 0px")
+    }
+    return true
 }
 
 fn Rgba(r: Int, g: Int, b: Int, a: Int) -> Color {
-    ValidateChannel(r, "Rgba.r")
-    ValidateChannel(g, "Rgba.g")
-    ValidateChannel(b, "Rgba.b")
-    ValidateChannel(a, "Rgba.a")
+    ValidateChannel(r, "Rgba.r")!
+    ValidateChannel(g, "Rgba.g")!
+    ValidateChannel(b, "Rgba.b")!
+    ValidateChannel(a, "Rgba.a")!
 
     return Color { R: r G: g B: b A: a }
 }
@@ -52,7 +60,7 @@ fn Rgb(r: Int, g: Int, b: Int) -> Color {
 }
 
 fn InsetsAll(value: Int<px>) -> Insets {
-    ValidatePxNonNegative(value, "InsetsAll.value")
+    ValidatePxNonNegative(value, "InsetsAll.value")!
     return Insets {
         Top: value
         Right: value
@@ -62,8 +70,8 @@ fn InsetsAll(value: Int<px>) -> Insets {
 }
 
 fn InsetsXY(x: Int<px>, y: Int<px>) -> Insets {
-    ValidatePxNonNegative(x, "InsetsXY.x")
-    ValidatePxNonNegative(y, "InsetsXY.y")
+    ValidatePxNonNegative(x, "InsetsXY.x")!
+    ValidatePxNonNegative(y, "InsetsXY.y")!
 
     return Insets {
         Top: y

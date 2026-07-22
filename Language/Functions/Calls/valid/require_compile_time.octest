@@ -1,0 +1,10 @@
+package Main
+
+[Fact]
+fn CompileTimeRequirements() -> Void {
+    Require(true, "should pass")
+    Require(true)
+    let stages = ["parse", "check", "emit"]
+    Require(Len(stages) == 3, "compile stages must remain complete")
+    Assert.Equal(3, Len(stages), "accepted requirements erase before execution")
+}

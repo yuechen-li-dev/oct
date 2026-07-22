@@ -10,6 +10,8 @@ Records are immutable values.
 To change record-shaped state, create a new record value with `with` and then return or rebind that new value.
 Individual record fields are not assigned in place.
 
+`concept Name { ... }` is the preferred Concepts-M0 spelling when the declaration is intended as a user-facing valid-value description. It lowers to this same nominal record machinery. Existing `record` declarations remain supported and unchanged; `record table` remains record-only.
+
 ## Rules
 
 - Record declaration form is `record Name { Field: Type ... }`.

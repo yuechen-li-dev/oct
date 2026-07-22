@@ -111,9 +111,10 @@ Validate uncertain cases with explicit `oct test --execution compiled` runs agai
 
 ## Preconditions
 
-- `Require(condition, message)` enforces non-recoverable runtime preconditions in production code.
-- `message` is mandatory and must explain the violated invariant.
-- If `condition` is false, execution fails immediately with a runtime error including `message`.
-- Use `Require` for programmer errors/invalid arguments, not for recoverable failures.
-- Recoverable failures remain `! Error` values.
-- `Assert.*` remains test-only (`.octest`).
+- `Require(condition)` or `Require(condition, explanation)` is a compiler-owned compile-time assertion.
+- `condition` must be `Bool` and must be evaluable from the bounded compile-time expression subset documented in [18 Concepts](./18-concepts.md).
+- A true requirement is erased. A false requirement is a source-located compile diagnostic and includes `explanation` when supplied.
+- A requirement depending on parameters, mutable state, arbitrary calls, I/O, time, randomness, or other runtime values is rejected as non-evaluable.
+- `Require` never emits a Go call, conditional, helper, or panic. Interpreted execution observes the same erasure after type checking.
+- Runtime argument validation should use ordinary `if` plus fallible `Error` handling where recovery is part of the API, or an explicit unwrap at a deliberate non-recoverable boundary.
+- `Assert.True` is also available to ordinary source as the explicit non-recoverable runtime-validation compatibility path; the remaining `Assert.*` helpers stay test-only (`.octest`).

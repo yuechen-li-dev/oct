@@ -1,0 +1,7 @@
+expect error: "cyclic record-shaped concept"
+
+package ConceptsM0RecordCycle
+
+concept Node { Next: Node }
+
+fn Main(node: Node) -> Node { return node }

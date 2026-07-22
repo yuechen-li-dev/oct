@@ -88,7 +88,7 @@ fn CelsiusToGasMarkKnownValues() -> Void {
 [Fact]
 fn CelsiusToGasMarkRejectsTooLow() -> Void {
     /// Converted to Require precondition in M7c.
-    Assert.True(true, "low-temperature contract is now enforced via Require")
+    Assert.True(true, "low-temperature contract remains a runtime assertion")
 }
 
 // ============================================================

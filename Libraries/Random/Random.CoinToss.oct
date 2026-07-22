@@ -33,7 +33,7 @@ fn FlipBiasedCoin(rng: Rng, pHeads: Float) -> CoinFlipResult {
 }
 
 fn FlipCoins(rng: Rng, count: Int) -> CoinFlipManyResult {
-    Require(count >= 0, "FlipCoins requires count >= 0")
+    Assert.True(count >= 0, "FlipCoins requires count >= 0")
 
     var next = rng
     var flips: CoinSide[] = []

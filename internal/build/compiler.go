@@ -1350,6 +1350,11 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 				return fmt.Errorf("index assignment requires array or matrix local, got %s", targetType)
 			}
 		case ast.ExprStmt:
+			if call, ok := s.Value.(ast.CallExpr); ok {
+				if callee, direct := flattenDirectCallName(call.Callee); direct && callee == "Require" {
+					continue
+				}
+			}
 			v, t, _, err := c.lowerExpr(s.Value)
 			if err != nil {
 				return err
@@ -4623,14 +4628,14 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 		}
 		return "Complex[]", nil
 	case "Require":
-		if len(argTypes) != 2 {
-			return "", fmt.Errorf("function 'Require' expects 2 arguments, got %d", len(argTypes))
+		if len(argTypes) < 1 || len(argTypes) > 2 {
+			return "", fmt.Errorf("compile-time function 'Require' expects 1 or 2 arguments, got %d", len(argTypes))
 		}
 		if argTypes[0] != "Bool" {
-			return "", fmt.Errorf("compiled mode does not yet support builtin Require for type %s", argTypes[0])
+			return "", fmt.Errorf("function 'Require' argument 1 expects Bool, got %s", argTypes[0])
 		}
-		if argTypes[1] != "String" {
-			return "", fmt.Errorf("compiled mode does not yet support builtin Require for type %s", argTypes[1])
+		if len(argTypes) == 2 && argTypes[1] != "String" {
+			return "", fmt.Errorf("function 'Require' argument 2 expects String, got %s", argTypes[1])
 		}
 		return "Void", nil
 	case "FormatFloat":
@@ -9165,8 +9170,6 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octArrayWhere(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Print":
 				return fmt.Sprintf("fmt.Println(%s); %s = 0", st.Args[0], st.Target), nil
-			case "Require":
-				return fmt.Sprintf("if !%s { panic(\"runtime error: \" + %s) }; %s = 0", st.Args[0], st.Args[1], st.Target), nil
 			case "FormatFloat":
 				return fmt.Sprintf("%s = strconv.FormatFloat(%s, 'f', int(%s), 64)", st.Target, st.Args[0], st.Args[1]), nil
 			case "Assert.True":

@@ -1,0 +1,7 @@
+expect error: "unknown type: MissingConcept"
+
+package ConceptsM0Unknown
+
+concept Broken = MissingConcept
+
+fn Main(value: Broken) -> Void { return }

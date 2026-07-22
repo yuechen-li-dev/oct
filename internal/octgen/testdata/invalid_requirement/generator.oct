@@ -1,0 +1,18 @@
+package InvalidRequirementOctGen
+
+record TimeOperation {
+    Name: String
+    Mode: String
+    ArgumentKinds: String[]
+}
+
+record GeneratedTimeDispatch {
+    Package: String
+    Operations: TimeOperation[]
+}
+
+fn Generate() -> GeneratedTimeDispatch {
+    let operations = [TimeOperation { Name: "Only" Mode: "Now" ArgumentKinds: [] }]
+    Require(Len(operations) >= 3, "time dispatch must declare at least three operations")
+    return GeneratedTimeDispatch { Package: "main" Operations: operations }
+}

@@ -2,7 +2,7 @@ package Statistics
 
 fn Mean(xs: Float[]) -> Float {
     let n = Len(xs)
-    Require(n > 0, "Mean requires at least one value")
+    Assert.True(n > 0, "Mean requires at least one value")
 
     var sum = 0.0
     for i in 0 .. n {
@@ -14,7 +14,7 @@ fn Mean(xs: Float[]) -> Float {
 
 fn Variance(xs: Float[]) -> Float {
     let n = Len(xs)
-    Require(n > 0, "Variance requires at least one value")
+    Assert.True(n > 0, "Variance requires at least one value")
 
     let mean = Mean(xs)
     var accum = 0.0
@@ -34,7 +34,7 @@ fn StandardDeviation(xs: Float[]) -> Float {
 
 fn Median(xs: Float[]) -> Float {
     let n = Len(xs)
-    Require(n > 0, "Median requires at least one value")
+    Assert.True(n > 0, "Median requires at least one value")
 
     let sorted = SortedCopy(xs)
     let half = n / 2
@@ -49,9 +49,9 @@ fn Median(xs: Float[]) -> Float {
 
 fn Percentile(xs: Float[], p: Float) -> Float {
     let n = Len(xs)
-    Require(n > 0, "Percentile requires at least one value")
+    Assert.True(n > 0, "Percentile requires at least one value")
 
-    Require(p >= 0.0 and p <= 100.0, "Percentile requires p in [0, 100]")
+    Assert.True(p >= 0.0 and p <= 100.0, "Percentile requires p in [0, 100]")
 
     let sorted = SortedCopy(xs)
     if n == 1 {

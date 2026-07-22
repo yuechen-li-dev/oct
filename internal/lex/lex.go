@@ -48,6 +48,7 @@ const (
 	KeywordOr         TokenKind = "KeywordOr"
 	KeywordNot        TokenKind = "KeywordNot"
 	KeywordRecord     TokenKind = "KeywordRecord"
+	KeywordConcept    TokenKind = "KeywordConcept"
 	KeywordEnum       TokenKind = "KeywordEnum"
 	KeywordPackage    TokenKind = "KeywordPackage"
 	KeywordImport     TokenKind = "KeywordImport"
@@ -479,6 +480,8 @@ func lookupKeyword(lexeme string) TokenKind {
 		return KeywordNot
 	case "record":
 		return KeywordRecord
+	case "concept":
+		return KeywordConcept
 	case "enum":
 		return KeywordEnum
 	case "package":

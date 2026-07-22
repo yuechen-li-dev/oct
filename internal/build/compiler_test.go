@@ -50,6 +50,7 @@ fn main() -> Int {
         return 0
     }
 }
+
 `
 	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
@@ -74,6 +75,44 @@ fn main() -> Int {
 	text := dumpMIR(module)
 	if !strings.Contains(text, "branch") {
 		t.Fatalf("expected branch in dump, got:\n%s", text)
+	}
+}
+
+func TestConceptsAndTrueRequireEraseToConcreteGo(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.oct")
+	src := `package Main
+concept Length = Float<m>
+concept Motion { Distance: Length }
+fn main() -> Int {
+    let stages = [1, 2, 3]
+    Require(Len(stages) == 3, "must retain three stages")
+    let motion = Motion { Distance: 2.0m }
+    if motion.Distance == 2.0m { return 0 }
+    return 1
+}
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module, generated, err := inspectProgram(path)
+	if err != nil {
+		t.Fatalf("inspect concept program: %v", err)
+	}
+	if !strings.Contains(generated, "type Main_Motion struct") {
+		t.Fatalf("generated Go did not contain concrete record struct:\n%s", generated)
+	}
+	if strings.Contains(generated, "Require") || strings.Contains(generated, "must retain three stages") || strings.Contains(generated, "concept") {
+		t.Fatalf("generated Go retained compile-time concept/requirement metadata:\n%s", generated)
+	}
+	for _, function := range module.Functions {
+		for _, block := range function.Blocks {
+			for _, statement := range block.Statements {
+				if call, ok := statement.(MIRCall); ok && call.Callee == "Require" {
+					t.Fatal("Require survived into MIR")
+				}
+			}
+		}
 	}
 }
 

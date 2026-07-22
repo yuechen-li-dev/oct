@@ -1,7 +1,7 @@
-expect error: "function 'Require' expects 2 arguments, got 1"
+expect error: "compile-time function 'Require' expects 1 or 2 arguments, got 0"
 
 package Main
 
 fn Main() -> Void {
-    Require(true)
+    Require()
 }

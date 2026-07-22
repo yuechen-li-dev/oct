@@ -33,6 +33,7 @@ Unit behavior is explicit and deterministic.
 - Unit exponents are signed integers (for example `s^2`, `s^-1`, `m*s^-2`).
 - Use inverse-unit notation with signed exponents (for example `Float<s^-1>`); `<1/s>` is not supported in this milestone.
 - `Hz` is a named alias for `s^-1` and is dimensionally compatible with `Float<s^-1>`.
+- Transparent concepts may give a unit-bearing concrete type a domain name, for example `concept Speed = Float<m/s>`. The name adds no conversion, wrapper, allocation, or runtime object; dimensional arithmetic remains authoritative.
 
 ## Unit stripping
 

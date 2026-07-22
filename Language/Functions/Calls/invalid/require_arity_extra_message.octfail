@@ -1,4 +1,4 @@
-expect error: "function 'Require' expects 2 arguments, got 3"
+expect error: "compile-time function 'Require' expects 1 or 2 arguments, got 3"
 
 package Main
 

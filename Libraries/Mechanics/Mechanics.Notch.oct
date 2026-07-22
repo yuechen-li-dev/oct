@@ -5,8 +5,8 @@ package Mechanics
 /// Param notchRadius: Notch root radius rho.
 /// Precondition: petersonLength >= 0 and notchRadius > 0.
 fn NotchSensitivity(petersonLength: Float<m>, notchRadius: Float<m>) -> Float {
-    Require(petersonLength >= 0m, "NotchSensitivity requires petersonLength >= 0")
-    Require(notchRadius > 0m, "NotchSensitivity requires notchRadius > 0")
+    Assert.True(petersonLength >= 0m, "NotchSensitivity requires petersonLength >= 0")
+    Assert.True(notchRadius > 0m, "NotchSensitivity requires notchRadius > 0")
 
     let q = notchRadius / (notchRadius + petersonLength)
     if q < 0 {
@@ -21,17 +21,17 @@ fn NotchSensitivity(petersonLength: Float<m>, notchRadius: Float<m>) -> Float {
 /// Converts theoretical stress concentration Kt to fatigue concentration Kf.
 /// Remarks: Uses Kf = 1 + q*(Kt-1).
 fn FatigueStressConcentrationFactor(theoreticalStressConcentrationFactor: Float, notchSensitivity: Float) -> Float {
-    Require(theoreticalStressConcentrationFactor >= 1.0, "FatigueStressConcentrationFactor requires theoreticalStressConcentrationFactor >= 1")
-    Require(notchSensitivity >= 0, "FatigueStressConcentrationFactor requires notchSensitivity >= 0")
-    Require(notchSensitivity <= 1, "FatigueStressConcentrationFactor requires notchSensitivity <= 1")
+    Assert.True(theoreticalStressConcentrationFactor >= 1.0, "FatigueStressConcentrationFactor requires theoreticalStressConcentrationFactor >= 1")
+    Assert.True(notchSensitivity >= 0, "FatigueStressConcentrationFactor requires notchSensitivity >= 0")
+    Assert.True(notchSensitivity <= 1, "FatigueStressConcentrationFactor requires notchSensitivity <= 1")
     return 1.0 + notchSensitivity * (theoreticalStressConcentrationFactor - 1.0)
 }
 
 /// Converts theoretical shear concentration Kts to fatigue shear concentration Kfs.
 /// Remarks: Uses Kfs = 1 + q*(Kts-1).
 fn FatigueShearStressConcentrationFactor(theoreticalShearConcentrationFactor: Float, notchSensitivity: Float) -> Float {
-    Require(theoreticalShearConcentrationFactor >= 1.0, "FatigueShearStressConcentrationFactor requires theoreticalShearConcentrationFactor >= 1")
-    Require(notchSensitivity >= 0, "FatigueShearStressConcentrationFactor requires notchSensitivity >= 0")
-    Require(notchSensitivity <= 1, "FatigueShearStressConcentrationFactor requires notchSensitivity <= 1")
+    Assert.True(theoreticalShearConcentrationFactor >= 1.0, "FatigueShearStressConcentrationFactor requires theoreticalShearConcentrationFactor >= 1")
+    Assert.True(notchSensitivity >= 0, "FatigueShearStressConcentrationFactor requires notchSensitivity >= 0")
+    Assert.True(notchSensitivity <= 1, "FatigueShearStressConcentrationFactor requires notchSensitivity <= 1")
     return 1.0 + notchSensitivity * (theoreticalShearConcentrationFactor - 1.0)
 }

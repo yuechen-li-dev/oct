@@ -1,0 +1,8 @@
+expect error: "compile-time requirement failed in Main: stage catalog must not be empty"
+
+package ConceptsM0RequireFalse
+
+fn Main() -> Void {
+    let stages: Int[] = []
+    Require(Len(stages) > 0, "stage catalog must not be empty")
+}

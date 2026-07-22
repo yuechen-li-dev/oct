@@ -1,0 +1,8 @@
+expect error: "cannot add m and s"
+
+package ConceptsM0Units
+
+concept Length = Float<m>
+concept Duration = Float<s>
+
+fn Main(length: Length, duration: Duration) -> Float { return length + duration }

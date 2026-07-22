@@ -1,0 +1,31 @@
+package ConceptsM0Valid
+
+concept Length = Float<m>
+concept Duration = Float<s>
+concept Speed = Float<m/s>
+
+concept Position {
+    X: Length
+    Y: Length
+}
+
+concept Motion {
+    Position: Position
+    Velocity: Speed
+}
+
+fn AverageSpeed(distance: Length, duration: Duration) -> Speed {
+    return distance / duration
+}
+
+[Fact]
+fn NamedAndRecordConceptsAreOrdinaryValues() -> Void {
+    let stageNames = ["load", "check", "emit"]
+    Require(Len(stageNames) == 3, "compile pipeline must retain all three stages")
+    let point = Position { X: 10.0m Y: 20.0m }
+    let motion = Motion { Position: point Velocity: AverageSpeed(100.0m, 20.0s) }
+    let positions: Position[] = [point]
+    Assert.Equal(motion.Position.Y, 20.0m, "record-shaped concept fields should be checked and accessible")
+    Assert.Equal(motion.Velocity, 5.0m/s, "named unit concept arithmetic should remain dimensional")
+    Assert.Equal(positions[0], point, "record-shaped concepts should work in arrays and equality")
+}

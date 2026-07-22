@@ -1,0 +1,5 @@
+expect error: "cannot be evaluated at compile time"
+
+package ConceptsM0RequireDynamic
+
+fn Main(value: Bool) -> Void { Require(value, "runtime input is not compile-time evidence") }

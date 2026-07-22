@@ -4,27 +4,27 @@ package Mechanics
 /// Units: Force in N, area in m^2, stress in Pa.
 /// Precondition: area must be positive.
 fn NormalStress(force: Float<kg*m/s^2>, area: Float<m^2>) -> Float<kg/m/s^2> {
-    Require(area > 0m^2, "NormalStress requires area > 0")
+    Assert.True(area > 0m^2, "NormalStress requires area > 0")
     return force / area
 }
 
 /// Computes average direct shear stress under uniformly distributed load.
 /// Precondition: area must be positive.
 fn ShearStress(force: Float<kg*m/s^2>, area: Float<m^2>) -> Float<kg/m/s^2> {
-    Require(area > 0m^2, "ShearStress requires area > 0")
+    Assert.True(area > 0m^2, "ShearStress requires area > 0")
     return force / area
 }
 
 /// Computes flexural stress using sigma = M*c/I at the outer fiber.
 /// Remarks: Linear elastic beam theory with small deformation assumption.
 fn BendingStress(moment: Float<kg*m^2/s^2>, outerFiberDistance: Float<m>, secondMomentOfArea: Float<m^4>) -> Float<kg/m/s^2> {
-    Require(secondMomentOfArea > 0m^4, "BendingStress requires secondMomentOfArea > 0")
+    Assert.True(secondMomentOfArea > 0m^4, "BendingStress requires secondMomentOfArea > 0")
     return moment * outerFiberDistance / secondMomentOfArea
 }
 
 /// Computes torsional shear stress using tau = T*r/J.
 /// Remarks: Saint-Venant torsion form for elastic shafts.
 fn TorsionalShearStress(torque: Float<kg*m^2/s^2>, radius: Float<m>, polarMomentOfArea: Float<m^4>) -> Float<kg/m/s^2> {
-    Require(polarMomentOfArea > 0m^4, "TorsionalShearStress requires polarMomentOfArea > 0")
+    Assert.True(polarMomentOfArea > 0m^4, "TorsionalShearStress requires polarMomentOfArea > 0")
     return torque * radius / polarMomentOfArea
 }

@@ -36,10 +36,10 @@ fn ClampedPIDUpdate(
     outputMax: Float
 ) -> ClampedPIDResult {
     if dt <= 0.0 {
-        Require(dt > 0.0, "ClampedPIDUpdate requires dt > 0")
+        Assert.True(dt > 0.0, "ClampedPIDUpdate requires dt > 0")
     }
     if outputMin >= outputMax {
-        Require(outputMin < outputMax, "ClampedPIDUpdate requires outputMin < outputMax")
+        Assert.True(outputMin < outputMax, "ClampedPIDUpdate requires outputMin < outputMax")
     }
 
     let errorValue = setpoint - measurement
@@ -87,7 +87,7 @@ fn ClampedPIDUpdate(
 /// Clamp a Float value to [min, max].
 fn Clamp(value: Float, minVal: Float, maxVal: Float) -> Float {
     if minVal >= maxVal {
-        Require(minVal < maxVal, "Clamp requires minVal < maxVal")
+        Assert.True(minVal < maxVal, "Clamp requires minVal < maxVal")
     }
     if value < minVal { return minVal }
     if value > maxVal { return maxVal }
@@ -98,7 +98,7 @@ fn Clamp(value: Float, minVal: Float, maxVal: Float) -> Float {
 /// Useful for eliminating noise-driven control activity near setpoint.
 fn Deadband(value: Float, threshold: Float) -> Float {
     if threshold < 0.0 {
-        Require(threshold >= 0.0, "Deadband requires threshold >= 0")
+        Assert.True(threshold >= 0.0, "Deadband requires threshold >= 0")
     }
     if value > threshold { return value - threshold }
     if value < (0.0 - threshold) { return value + threshold }
@@ -109,7 +109,7 @@ fn Deadband(value: Float, threshold: Float) -> Float {
 /// Prevents actuator damage from step commands.
 fn RateLimit(current: Float, target: Float, maxRatePerTick: Float) -> Float {
     if maxRatePerTick <= 0.0 {
-        Require(maxRatePerTick > 0.0, "RateLimit requires maxRatePerTick > 0")
+        Assert.True(maxRatePerTick > 0.0, "RateLimit requires maxRatePerTick > 0")
     }
 
     let delta = target - current

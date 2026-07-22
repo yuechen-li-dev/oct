@@ -1,0 +1,8 @@
+expect error: "record 'Position' field 'X' expects Float<m>, got Float<s>"
+
+package ConceptsM0WrongField
+
+concept Length = Float<m>
+concept Position { X: Length }
+
+fn Main() -> Position { return Position { X: 1.0s } }

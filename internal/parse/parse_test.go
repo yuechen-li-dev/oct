@@ -75,6 +75,20 @@ func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesNamedAndRecordConcepts(t *testing.T) {
+	file := parseSource(t, "concept Length = Float<m>\nconcept Position { X: Length Y: Length }\nfn Main(p: Position) -> Length { return p.X }")
+	if len(file.Concepts) != 1 || file.Concepts[0].Name != "Length" || file.Concepts[0].Target.Name != "Float" || !file.Concepts[0].Target.HasUnit {
+		t.Fatalf("unexpected named concept AST: %+v", file.Concepts)
+	}
+	if len(file.Records) != 1 || !file.Records[0].IsConcept || file.Records[0].Name != "Position" || len(file.Records[0].Fields) != 2 {
+		t.Fatalf("unexpected record-shaped concept AST: %+v", file.Records)
+	}
+}
+
+func TestBuildFileRejectsMalformedConceptDeclaration(t *testing.T) {
+	assertParseErrorContains(t, "concept Broken = { Value: Int }", "invalid concept right-hand shape")
+}
+
 func TestBuildFileParsesParametersAndStatements(t *testing.T) {
 	file := parseSource(t, "fn Add(x: Int, y: Int) -> Int { let sum = x + y return sum }")
 
@@ -689,7 +703,7 @@ func TestBuildFileParsesNestedIndexAssignmentTarget(t *testing.T) {
 }
 
 func TestBuildFileRejectsInvalidTopLevelContent(t *testing.T) {
-	assertParseErrorContains(t, "let x = 1", "expected 'record', 'enum', 'fn', or 'flow' at top level")
+	assertParseErrorContains(t, "let x = 1", "expected 'concept', 'record', 'enum', 'fn', or 'flow' at top level")
 }
 
 func TestBuildFileRejectsUnterminatedBlock(t *testing.T) {

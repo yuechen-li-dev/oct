@@ -4,8 +4,8 @@ package Statistics
 // Both arrays must have the same length.
 fn Covariance(xs: Float[], ys: Float[]) -> Float {
     let n = Len(xs)
-    Require(n > 0, "Covariance requires at least one pair")
-    Require(n == Len(ys), "Covariance requires equal-length arrays")
+    Assert.True(n > 0, "Covariance requires at least one pair")
+    Assert.True(n == Len(ys), "Covariance requires equal-length arrays")
 
     let mx = Mean(xs)
     let my = Mean(ys)
@@ -22,8 +22,8 @@ fn Covariance(xs: Float[], ys: Float[]) -> Float {
 // Requires at least two pairs.
 fn SampleCovariance(xs: Float[], ys: Float[]) -> Float {
     let n = Len(xs)
-    Require(n >= 2, "SampleCovariance requires at least two pairs")
-    Require(n == Len(ys), "SampleCovariance requires equal-length arrays")
+    Assert.True(n >= 2, "SampleCovariance requires at least two pairs")
+    Assert.True(n == Len(ys), "SampleCovariance requires equal-length arrays")
 
     let mx = Mean(xs)
     let my = Mean(ys)
@@ -40,7 +40,7 @@ fn SampleCovariance(xs: Float[], ys: Float[]) -> Float {
 // Requires at least two values.
 fn SampleVariance(xs: Float[]) -> Float {
     let n = Len(xs)
-    Require(n >= 2, "SampleVariance requires at least two values")
+    Assert.True(n >= 2, "SampleVariance requires at least two values")
 
     let mean = Mean(xs)
     var accum = 0.0
@@ -62,8 +62,8 @@ fn SampleStandardDeviation(xs: Float[]) -> Float {
 // Returns a value in [-1, 1]. Returns an error if either sequence is constant.
 fn Correlation(xs: Float[], ys: Float[]) -> Float ! Error {
     let n = Len(xs)
-    Require(n > 0, "Correlation requires at least one pair")
-    Require(n == Len(ys), "Correlation requires equal-length arrays")
+    Assert.True(n > 0, "Correlation requires at least one pair")
+    Assert.True(n == Len(ys), "Correlation requires equal-length arrays")
 
     let cov = Covariance(xs, ys)
     let sx = StandardDeviation(xs)
@@ -90,8 +90,8 @@ record LinearRegressionResult {
 // Returns slope, intercept, and R-squared goodness of fit.
 fn LinearRegression(xs: Float[], ys: Float[]) -> LinearRegressionResult ! Error {
     let n = Len(xs)
-    Require(n >= 2, "LinearRegression requires at least two points")
-    Require(n == Len(ys), "LinearRegression requires equal-length arrays")
+    Assert.True(n >= 2, "LinearRegression requires at least two points")
+    Assert.True(n == Len(ys), "LinearRegression requires equal-length arrays")
 
     let mx = Mean(xs)
     let my = Mean(ys)

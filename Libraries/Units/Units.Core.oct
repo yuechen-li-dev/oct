@@ -1,5 +1,11 @@
 package Units
 
+concept Length = Float<m>
+concept Duration = Float<s>
+concept Speed = Float<m/s>
+concept Acceleration = Float<m/s^2>
+concept Temperature = Float<K>
+
 // ============================================================
 // Units.Core
 //
@@ -40,4 +46,12 @@ fn DegreesToRadians(degrees: Float) -> Float {
 
 fn RadiansToDegrees(radians: Float) -> Float {
     return radians * 180.0 / Pi()
+}
+
+fn AverageSpeed(distance: Length, duration: Duration) -> Speed {
+    return distance / duration
+}
+
+fn Accelerate(speedChange: Speed, duration: Duration) -> Acceleration {
+    return speedChange / duration
 }

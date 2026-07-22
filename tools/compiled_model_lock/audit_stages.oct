@@ -8,7 +8,7 @@ enum Shape {
     Adaln
 }
 
-record StageSpec {
+concept StageSpec {
     Name: String
     Policy: String
     Source: String
@@ -21,7 +21,7 @@ record StageSpec {
     ExtraKeys: Int[]
 }
 
-record AuditStage {
+concept AuditStage {
     ID: Int
     Name: String
     Policy: String
@@ -34,7 +34,7 @@ record AuditStage {
     Keys: Int[]
 }
 
-record GeneratedAuditStages {
+concept GeneratedAuditStages {
     Package: String
     Noise: AuditStage[]
     Context: AuditStage[]
@@ -160,6 +160,8 @@ fn Generate() -> GeneratedAuditStages {
         StageSpec { Name: "w2" Policy: "ProjectionAndSummary" Source: "AttentionProjection" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_w2" Lifetime: "before_final_residual" ExtraKeys: [3839] },
         StageSpec { Name: "final_output" Policy: "ProjectionAndSummary" Source: "Attention" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_final_residual" Lifetime: "resident_output_replaced" ExtraKeys: [3839] }
     ]
+    Require(Len(noise) == 29, "noise audit profile must declare exactly 29 stages")
+    Require(Len(context) == 16, "context audit profile must declare exactly 16 stages")
     return GeneratedAuditStages {
         Package: "main"
         Noise: BuildStages(noise, 3840, 3932160, 10485760, 15360)

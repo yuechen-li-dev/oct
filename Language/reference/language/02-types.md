@@ -3,7 +3,7 @@
 ## Overview
 
 Oct uses static, explicit types.
-Primitive, array, record, and enum types are first-class.
+Primitive, array, record, enum, and concept-described value shapes are first-class.
 Type identity is exact, including numeric dimensions.
 Record and enum identity is nominal.
 
@@ -24,6 +24,9 @@ Record and enum identity is nominal.
 - Two enums with matching variants are different types when names differ.
 - Array element type must match exactly, including dimensions and nominal names.
 - `Void` is valid only as a function return type.
+- A named value concept is a transparent name for an existing concrete type.
+- A record-shaped concept is nominal by concept name and uses ordinary record value semantics.
+- See [18 Concepts](./18-concepts.md) for the bounded Concepts-M0 surface.
 
 ## Examples
 

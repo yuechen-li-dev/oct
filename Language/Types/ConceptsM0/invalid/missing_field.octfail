@@ -1,0 +1,7 @@
+expect error: "missing field 'Y'"
+
+package ConceptsM0MissingField
+
+concept Position { X: Int Y: Int }
+
+fn Main() -> Position { return Position { X: 1 } }

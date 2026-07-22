@@ -29,6 +29,7 @@ Start with [00-overview.md](./00-overview.md).
 - [15 Function Values](./language/15-function-values.md)
 - [16 Vectors, Matrices, and Tensors](./language/16-vectors-and-matrices.md)
 - [17 Standard Libraries](./language/17-standard-libraries.md)
+- [18 Concepts](./language/18-concepts.md)
 - [Tensors](./tensors.md)
 
 ## Runtime

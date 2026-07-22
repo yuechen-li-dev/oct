@@ -18,3 +18,11 @@ fn DegRadRoundTrip() -> Void {
     let back = RadiansToDegrees(DegreesToRadians(angle))
     Assert.Near(45.0, back, 0.00001, "45 deg → rad → deg round trip")
 }
+
+[Fact]
+fn NamedQuantityConceptsPreserveDimensionalArithmetic() -> Void {
+    let speed: Speed = AverageSpeed(100.0m, 20.0s)
+    let acceleration: Acceleration = Accelerate(speed, 5.0s)
+    Assert.Near(speed, 5.0m/s, 0.000001m/s, "named speed concept should remain a concrete dimensioned Float")
+    Assert.Near(acceleration, 1.0m/s^2, 0.000001m/s^2, "named acceleration concept should preserve derived dimensions")
+}

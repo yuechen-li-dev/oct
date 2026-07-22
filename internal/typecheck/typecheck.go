@@ -9,6 +9,7 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/builtin"
+	"github.com/yuechen-li-dev/oct/internal/concept"
 	"github.com/yuechen-li-dev/oct/internal/dimension"
 	"github.com/yuechen-li-dev/oct/internal/project"
 )
@@ -149,6 +150,7 @@ func (s functionSignature) String() string {
 
 type functionContext struct {
 	name                  string
+	sourcePath            string
 	returnType            Type
 	isFallible            bool
 	isTestFile            bool
@@ -166,6 +168,11 @@ type functionContext struct {
 }
 
 func Check(file ast.File) error {
+	expanded, err := concept.ExpandFile(file)
+	if err != nil {
+		return err
+	}
+	file = expanded
 	checker := checker{
 		functions:        make(map[string]functionSignature),
 		wrapperFunctions: make(map[string]functionSignature),
@@ -330,8 +337,9 @@ type flowSignature struct {
 }
 
 type scope struct {
-	parent *scope
-	values map[string]binding
+	parent    *scope
+	values    map[string]binding
+	constants map[string]constantValue
 }
 
 type binding struct {
@@ -340,7 +348,19 @@ type binding struct {
 }
 
 func newScope(parent *scope) *scope {
-	return &scope{parent: parent, values: make(map[string]binding)}
+	return &scope{parent: parent, values: make(map[string]binding), constants: make(map[string]constantValue)}
+}
+
+func (s *scope) defineConstant(name string, value constantValue) { s.constants[name] = value }
+
+func (s *scope) lookupConstant(name string) (constantValue, bool) {
+	for current := s; current != nil; current = current.parent {
+		value, ok := current.constants[name]
+		if ok {
+			return value, true
+		}
+	}
+	return constantValue{}, false
 }
 
 func (s *scope) define(name string, valueType Type, mutable bool) {
@@ -617,7 +637,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		}
 	}
 
-	ctx := functionContext{name: function.Name, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure}
+	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -819,6 +839,9 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			valueType.ValueType = *expected
 		}
 		scope.define(node.Name, valueType.ValueType, false)
+		if constant, ok := evalConstantExpr(scope, node.Value); ok {
+			scope.defineConstant(node.Name, constant)
+		}
 		return false, nil
 	case ast.VarStmt:
 		var expected *Type
@@ -1011,6 +1034,34 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		}
 		if valueType.Fallible {
 			return false, fmt.Errorf("function %s: expression statement must not be fallible; %s", ctx.name, unhandledFallibleMessage(node.Value))
+		}
+		if call, ok := node.Value.(ast.CallExpr); ok {
+			if callee, direct := flattenDirectCallName(call.Callee); direct && callee == "Require" {
+				condition, evaluable := evalConstantExpr(scope, call.Arguments[0])
+				location := ctx.sourcePath
+				if location == "" {
+					location = "<source>"
+				}
+				location = fmt.Sprintf("%s:%d:%d", location, call.Line, call.Column)
+				if !evaluable || condition.kind != constantBool {
+					return false, fmt.Errorf("%s: requirement in %s cannot be evaluated at compile time", location, ctx.name)
+				}
+				message := ""
+				if len(call.Arguments) == 2 {
+					m, ok := evalConstantExpr(scope, call.Arguments[1])
+					if !ok || m.kind != constantString {
+						return false, fmt.Errorf("%s: requirement explanation must be a compile-time String", location)
+					}
+					message = m.text
+				}
+				if !condition.boolean {
+					conditionText := formatRequirementExpr(call.Arguments[0])
+					if message != "" {
+						return false, fmt.Errorf("%s: compile-time requirement failed in %s: %s (condition: %s)", location, ctx.name, message, conditionText)
+					}
+					return false, fmt.Errorf("%s: compile-time requirement failed in %s (condition: %s)", location, ctx.name, conditionText)
+				}
+			}
 		}
 		return false, nil
 	case ast.ForStmt:
@@ -2090,6 +2141,169 @@ func staticIntegerValue(expr ast.Expr) (int64, bool) {
 	return 0, false
 }
 
+type constantKind uint8
+
+const (
+	constantInvalid constantKind = iota
+	constantBool
+	constantInt
+	constantString
+	constantArray
+)
+
+type constantValue struct {
+	kind    constantKind
+	boolean bool
+	integer int64
+	text    string
+	length  int
+}
+
+// evalConstantExpr is deliberately a small proof evaluator, not a second Oct
+// runtime. It accepts literals, immutable constant bindings, Boolean/integer
+// operators, and Len over statically shaped array literals. All other ordinary
+// Oct expressions are rejected as non-evaluable requirements.
+func evalConstantExpr(scope *scope, expr ast.Expr) (constantValue, bool) {
+	switch node := expr.(type) {
+	case ast.BoolLiteral:
+		return constantValue{kind: constantBool, boolean: node.Value}, true
+	case ast.IntegerLiteral:
+		value, err := strconv.ParseInt(node.Value, 10, 64)
+		return constantValue{kind: constantInt, integer: value}, err == nil
+	case ast.StringLiteralExpr:
+		return constantValue{kind: constantString, text: node.Value}, true
+	case ast.ArrayLiteralExpr:
+		return constantValue{kind: constantArray, length: len(node.Elements)}, true
+	case ast.IdentifierExpr:
+		return scope.lookupConstant(node.Name)
+	case ast.ParenExpr:
+		return evalConstantExpr(scope, node.Inner)
+	case ast.UnaryExpr:
+		value, ok := evalConstantExpr(scope, node.Operand)
+		if !ok {
+			return constantValue{}, false
+		}
+		switch node.Operator {
+		case "not":
+			if value.kind != constantBool {
+				return constantValue{}, false
+			}
+			return constantValue{kind: constantBool, boolean: !value.boolean}, true
+		case "-":
+			if value.kind != constantInt {
+				return constantValue{}, false
+			}
+			return constantValue{kind: constantInt, integer: -value.integer}, true
+		default:
+			return constantValue{}, false
+		}
+	case ast.BinaryExpr:
+		left, leftOK := evalConstantExpr(scope, node.Left)
+		right, rightOK := evalConstantExpr(scope, node.Right)
+		if !leftOK || !rightOK {
+			return constantValue{}, false
+		}
+		if left.kind == constantBool && right.kind == constantBool {
+			switch node.Operator {
+			case "and":
+				return constantValue{kind: constantBool, boolean: left.boolean && right.boolean}, true
+			case "or":
+				return constantValue{kind: constantBool, boolean: left.boolean || right.boolean}, true
+			case "==":
+				return constantValue{kind: constantBool, boolean: left.boolean == right.boolean}, true
+			case "!=":
+				return constantValue{kind: constantBool, boolean: left.boolean != right.boolean}, true
+			}
+		}
+		if left.kind == constantInt && right.kind == constantInt {
+			switch node.Operator {
+			case "+":
+				return constantValue{kind: constantInt, integer: left.integer + right.integer}, true
+			case "-":
+				return constantValue{kind: constantInt, integer: left.integer - right.integer}, true
+			case "*":
+				return constantValue{kind: constantInt, integer: left.integer * right.integer}, true
+			case "/":
+				if right.integer != 0 {
+					return constantValue{kind: constantInt, integer: left.integer / right.integer}, true
+				}
+			case "%":
+				if right.integer != 0 {
+					return constantValue{kind: constantInt, integer: left.integer % right.integer}, true
+				}
+			case "==":
+				return constantValue{kind: constantBool, boolean: left.integer == right.integer}, true
+			case "!=":
+				return constantValue{kind: constantBool, boolean: left.integer != right.integer}, true
+			case "<":
+				return constantValue{kind: constantBool, boolean: left.integer < right.integer}, true
+			case "<=":
+				return constantValue{kind: constantBool, boolean: left.integer <= right.integer}, true
+			case ">":
+				return constantValue{kind: constantBool, boolean: left.integer > right.integer}, true
+			case ">=":
+				return constantValue{kind: constantBool, boolean: left.integer >= right.integer}, true
+			}
+		}
+		if left.kind == constantString && right.kind == constantString {
+			switch node.Operator {
+			case "+":
+				return constantValue{kind: constantString, text: left.text + right.text}, true
+			case "==":
+				return constantValue{kind: constantBool, boolean: left.text == right.text}, true
+			case "!=":
+				return constantValue{kind: constantBool, boolean: left.text != right.text}, true
+			}
+		}
+		return constantValue{}, false
+	case ast.CallExpr:
+		callee, ok := flattenDirectCallName(node.Callee)
+		if !ok || callee != "Len" || len(node.Arguments) != 1 {
+			return constantValue{}, false
+		}
+		value, ok := evalConstantExpr(scope, node.Arguments[0])
+		if !ok || value.kind != constantArray {
+			return constantValue{}, false
+		}
+		return constantValue{kind: constantInt, integer: int64(value.length)}, true
+	default:
+		return constantValue{}, false
+	}
+}
+
+func formatRequirementExpr(expr ast.Expr) string {
+	switch node := expr.(type) {
+	case ast.BoolLiteral:
+		if node.Value {
+			return "true"
+		}
+		return "false"
+	case ast.IntegerLiteral:
+		return node.Value
+	case ast.StringLiteralExpr:
+		return strconv.Quote(node.Value)
+	case ast.IdentifierExpr:
+		return node.Name
+	case ast.ParenExpr:
+		return "(" + formatRequirementExpr(node.Inner) + ")"
+	case ast.UnaryExpr:
+		return node.Operator + " " + formatRequirementExpr(node.Operand)
+	case ast.BinaryExpr:
+		return formatRequirementExpr(node.Left) + " " + node.Operator + " " + formatRequirementExpr(node.Right)
+	case ast.CallExpr:
+		callee, _ := flattenDirectCallName(node.Callee)
+		parts := make([]string, 0, len(node.Arguments))
+		for _, argument := range node.Arguments {
+			parts = append(parts, formatRequirementExpr(argument))
+		}
+		return callee + "(" + strings.Join(parts, ", ") + ")"
+	case ast.ArrayLiteralExpr:
+		return fmt.Sprintf("array literal with %d elements", len(node.Elements))
+	default:
+		return "<requirement>"
+	}
+}
+
 func (c checker) checkIfExpr(scope *scope, expr ast.IfExpr, ctx functionContext) (ExprType, error) {
 	conditionType, err := c.checkExpr(scope, expr.Condition, ctx)
 	if err != nil {
@@ -2529,7 +2743,10 @@ regularCall:
 		if len(expr.TypeArguments) > 0 {
 			return ExprType{}, fmt.Errorf("function '%s' does not accept type arguments", calleeName)
 		}
-		if !ctx.isTestFile {
+		// Assert.True remains available to ordinary source as the explicit
+		// runtime-validation path. Require is compiler-owned and must never
+		// fall back to runtime behavior for dynamic inputs.
+		if !ctx.isTestFile && calleeName != "Assert.True" {
 			return ExprType{}, fmt.Errorf("Assert is only available in .octest files")
 		}
 		return c.checkAssertCallExpr(scope, calleeName, expr.Arguments, ctx)
@@ -4572,8 +4789,8 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		return ExprType{ValueType: Type{Base: BaseTypeComplex}}, nil
 	}
 	if callee == "Require" {
-		if len(arguments) != 2 {
-			return ExprType{}, fmt.Errorf("function 'Require' expects 2 arguments, got %d", len(arguments))
+		if len(arguments) < 1 || len(arguments) > 2 {
+			return ExprType{}, fmt.Errorf("compile-time function 'Require' expects 1 or 2 arguments, got %d", len(arguments))
 		}
 		conditionType, err := c.checkExpr(scope, arguments[0], ctx)
 		if err != nil {
@@ -4585,15 +4802,17 @@ func (c checker) checkBuiltinCallExpr(scope *scope, callee string, typeArguments
 		if conditionType.ValueType != (Type{Base: BaseTypeBool}) {
 			return ExprType{}, fmt.Errorf("function 'Require' argument 1 expects Bool, got %s", conditionType.ValueType)
 		}
-		messageType, err := c.checkExpr(scope, arguments[1], ctx)
-		if err != nil {
-			return ExprType{}, err
-		}
-		if messageType.Fallible {
-			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
-		}
-		if messageType.ValueType != (Type{Base: BaseTypeString}) {
-			return ExprType{}, fmt.Errorf("function 'Require' argument 2 expects String, got %s", messageType.ValueType)
+		if len(arguments) == 2 {
+			messageType, err := c.checkExpr(scope, arguments[1], ctx)
+			if err != nil {
+				return ExprType{}, err
+			}
+			if messageType.Fallible {
+				return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
+			}
+			if messageType.ValueType != (Type{Base: BaseTypeString}) {
+				return ExprType{}, fmt.Errorf("function 'Require' argument 2 expects String, got %s", messageType.ValueType)
+			}
 		}
 		return ExprType{ValueType: Type{Base: BaseTypeVoid}}, nil
 	}

@@ -41,6 +41,14 @@ func TestAnalyzeTokenizesFrozenSubset(t *testing.T) {
 	)
 }
 
+func TestAnalyzeTokenizesConceptKeyword(t *testing.T) {
+	result, err := Analyze(source.File{Path: "concept.oct", Text: "concept Length = Float<m>"})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+	assertTokenKinds(t, result.Tokens, KeywordConcept, Identifier, Assign, Identifier, LeftAngle, Identifier, RightAngle, EOF)
+}
+
 func TestAnalyzeTokenizesM6OperatorsAndStrings(t *testing.T) {
 	file := source.File{Path: "example.oct", Text: "fn Main() -> Int ! Error { match Fail()? { ok(value) => { return value } err(e) => { return error(\"boom\")! } } }"}
 

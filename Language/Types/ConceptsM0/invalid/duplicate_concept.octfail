@@ -1,0 +1,8 @@
+expect error: "duplicate concept declaration 'Length'"
+
+package ConceptsM0Duplicate
+
+concept Length = Float<m>
+concept Length = Float<s>
+
+fn Main() -> Void { return }

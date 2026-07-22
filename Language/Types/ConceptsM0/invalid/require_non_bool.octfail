@@ -1,0 +1,5 @@
+expect error: "function 'Require' argument 1 expects Bool, got Int"
+
+package ConceptsM0RequireNonBool
+
+fn Main() -> Void { Require(1, "not Bool") }

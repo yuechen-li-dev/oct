@@ -23,46 +23,46 @@ record RandBoolResult {
 }
 
 fn RngSeed(seed: Int) -> Rng {
-    Require(false, "Random.RngSeed must dispatch to runtime builtin")
+    Assert.True(false, "Random.RngSeed must dispatch to runtime builtin")
     return Rng { _State0: 0 _State1: 0 _State2: 0 _State3: 0 }
 }
 
 fn RandInt(rng: Rng, min: Int, max: Int) -> RandIntResult {
-    Require(false, "Random.RandInt must dispatch to runtime builtin")
+    Assert.True(false, "Random.RandInt must dispatch to runtime builtin")
     return RandIntResult { Next: rng Value: min }
 }
 
 fn RandFloat01(rng: Rng) -> RandFloatResult {
-    Require(false, "Random.RandFloat01 must dispatch to runtime builtin")
+    Assert.True(false, "Random.RandFloat01 must dispatch to runtime builtin")
     return RandFloatResult { Next: rng Value: 0.0 }
 }
 
 fn RandFloatRange(rng: Rng, min: Float, max: Float) -> RandFloatResult {
-    Require(false, "Random.RandFloatRange must dispatch to runtime builtin")
+    Assert.True(false, "Random.RandFloatRange must dispatch to runtime builtin")
     return RandFloatResult { Next: rng Value: min }
 }
 
 fn RandBernoulli(rng: Rng, p: Float) -> RandBoolResult {
-    Require(false, "Random.RandBernoulli must dispatch to runtime builtin")
+    Assert.True(false, "Random.RandBernoulli must dispatch to runtime builtin")
     return RandBoolResult { Next: rng Value: false }
 }
 
 fn RandNormal(rng: Rng, mean: Float, stddev: Float) -> RandFloatResult {
-    Require(false, "Random.RandNormal must dispatch to runtime builtin")
+    Assert.True(false, "Random.RandNormal must dispatch to runtime builtin")
     return RandFloatResult { Next: rng Value: mean }
 }
 
 fn CryptoRandInt(min: Int, max: Int) -> Int ! Error {
-    Require(false, "Random.CryptoRandInt must dispatch to runtime builtin")
+    Assert.True(false, "Random.CryptoRandInt must dispatch to runtime builtin")
     return 0
 }
 
 fn CryptoRandFloat01() -> Float ! Error {
-    Require(false, "Random.CryptoRandFloat01 must dispatch to runtime builtin")
+    Assert.True(false, "Random.CryptoRandFloat01 must dispatch to runtime builtin")
     return 0.0
 }
 
 fn CryptoRandBytes(count: Int) -> Bytes ! Error {
-    Require(false, "Random.CryptoRandBytes must dispatch to runtime builtin")
+    Assert.True(false, "Random.CryptoRandBytes must dispatch to runtime builtin")
     return FileReadBytes("/dev/null")?
 }

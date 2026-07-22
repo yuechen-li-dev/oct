@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/concept"
 	"github.com/yuechen-li-dev/oct/internal/lex"
 	"github.com/yuechen-li-dev/oct/internal/parse"
 	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
@@ -21,6 +22,7 @@ type Package struct {
 	Name      string
 	Directory string
 	Imports   []string
+	Concepts  []ast.ConceptDecl
 	Records   []ast.RecordDecl
 	Enums     []ast.EnumDecl
 	Functions []ast.FunctionDecl
@@ -225,8 +227,18 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 			}
 			importSet[imp] = struct{}{}
 		}
+		for _, conceptDecl := range file.Concepts {
+			if _, exists := declSet[conceptDecl.Name]; exists {
+				return fmt.Errorf("duplicate concept declaration '%s' in package '%s'", conceptDecl.Name, packageName)
+			}
+			declSet[conceptDecl.Name] = struct{}{}
+			pkg.Concepts = append(pkg.Concepts, conceptDecl)
+		}
 		for _, record := range file.Records {
 			if _, exists := declSet[record.Name]; exists {
+				if record.IsConcept {
+					return fmt.Errorf("duplicate concept declaration '%s' in package '%s'", record.Name, packageName)
+				}
 				return fmt.Errorf("duplicate declaration '%s' in package '%s'", record.Name, packageName)
 			}
 			declSet[record.Name] = struct{}{}
@@ -254,6 +266,15 @@ func (b *builder) loadPackage(packageName string, directory string) error {
 			pkg.Flows = append(pkg.Flows, flow)
 		}
 	}
+	expanded, err := concept.ExpandFile(ast.File{Package: packageName, Concepts: pkg.Concepts, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows})
+	if err != nil {
+		return err
+	}
+	pkg.Concepts = expanded.Concepts
+	pkg.Records = expanded.Records
+	pkg.Enums = expanded.Enums
+	pkg.Functions = expanded.Functions
+	pkg.Flows = expanded.Flows
 
 	for imp := range importSet {
 		pkg.Imports = append(pkg.Imports, imp)

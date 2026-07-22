@@ -1,0 +1,8 @@
+expect error: "cyclic concept alias"
+
+package ConceptsM0AliasCycle
+
+concept A = B
+concept B = A
+
+fn Main(value: A) -> A { return value }

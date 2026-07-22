@@ -1,0 +1,5 @@
+expect error: "invalid concept right-hand shape: expected a value type"
+
+package ConceptsM0InvalidRhs
+
+concept Broken = { Value: Int }

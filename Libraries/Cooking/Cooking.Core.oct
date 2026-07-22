@@ -92,7 +92,7 @@ fn FahrenheitToCelsius(f: Float) -> Float {
 /// Reference: GM1=135C, GM2=150, GM3=160, GM4=175, GM5=190, GM6=200, GM7=220, GM8=230, GM9=245.
 fn CelsiusToGasMark(c: Float) -> Int {
     if c < 125.0 {
-        Require(c >= 125.0, "CelsiusToGasMark requires temperature >= 125 C")
+        Assert.True(c >= 125.0, "CelsiusToGasMark requires temperature >= 125 C")
     }
     return switch {
         case c < 143.0 => 1
@@ -191,7 +191,7 @@ fn CupsToGrams(cups: Float, ingredient: String) -> Float ! Error {
 /// Flour is always 100%. A 65% hydration bread has 65g water per 100g flour.
 fn BakersPercentage(ingredientGrams: Float, flourGrams: Float) -> Float {
     if flourGrams <= 0.0 {
-        Require(flourGrams > 0.0, "BakersPercentage requires flour weight > 0")
+        Assert.True(flourGrams > 0.0, "BakersPercentage requires flour weight > 0")
     }
     return (ingredientGrams / flourGrams) * 100.0
 }
@@ -199,7 +199,7 @@ fn BakersPercentage(ingredientGrams: Float, flourGrams: Float) -> Float {
 /// Weight of an ingredient from its baker's percentage and flour weight.
 fn FromBakersPercentage(percent: Float, flourGrams: Float) -> Float {
     if flourGrams <= 0.0 {
-        Require(flourGrams > 0.0, "FromBakersPercentage requires flour weight > 0")
+        Assert.True(flourGrams > 0.0, "FromBakersPercentage requires flour weight > 0")
     }
     return (percent / 100.0) * flourGrams
 }
@@ -210,10 +210,10 @@ fn FromBakersPercentage(percent: Float, flourGrams: Float) -> Float {
 /// flourGrams: the flour weight.
 fn TotalDoughWeight(percentages: Float[], flourGrams: Float) -> Float {
     if flourGrams <= 0.0 {
-        Require(flourGrams > 0.0, "TotalDoughWeight requires flour weight > 0")
+        Assert.True(flourGrams > 0.0, "TotalDoughWeight requires flour weight > 0")
     }
     if Len(percentages) == 0 {
-        Require(Len(percentages) > 0, "TotalDoughWeight requires at least one percentage")
+        Assert.True(Len(percentages) > 0, "TotalDoughWeight requires at least one percentage")
     }
     var total = 0.0
     for i in 0 .. Len(percentages) {
@@ -230,7 +230,7 @@ fn TotalDoughWeight(percentages: Float[], flourGrams: Float) -> Float {
 /// Use for most ingredients: flour, sugar, butter, liquids, spices.
 fn ScaleIngredient(amount: Float, scaleFactor: Float) -> Float {
     if scaleFactor <= 0.0 {
-        Require(scaleFactor > 0.0, "ScaleIngredient requires scale factor > 0")
+        Assert.True(scaleFactor > 0.0, "ScaleIngredient requires scale factor > 0")
     }
     return amount * scaleFactor
 }
@@ -250,7 +250,7 @@ fn ScaleIngredient(amount: Float, scaleFactor: Float) -> Float {
 ///   Corrected: 3 tsp (linear part) + 0.75*(4-3) = 3.75 tsp.
 fn ScaleLeavening(amount: Float, scaleFactor: Float) -> Float {
     if scaleFactor <= 0.0 {
-        Require(scaleFactor > 0.0, "ScaleLeavening requires scale factor > 0")
+        Assert.True(scaleFactor > 0.0, "ScaleLeavening requires scale factor > 0")
     }
     if scaleFactor <= 3.0 {
         return amount * scaleFactor
@@ -271,7 +271,7 @@ fn ScaleLeavening(amount: Float, scaleFactor: Float) -> Float {
 /// At 2× and above: linear up to 2×, then 90% of remaining increment.
 fn ScaleSalt(amount: Float, scaleFactor: Float) -> Float {
     if scaleFactor <= 0.0 {
-        Require(scaleFactor > 0.0, "ScaleSalt requires scale factor > 0")
+        Assert.True(scaleFactor > 0.0, "ScaleSalt requires scale factor > 0")
     }
     if scaleFactor <= 2.0 {
         return amount * scaleFactor
@@ -293,7 +293,7 @@ fn ScaleSalt(amount: Float, scaleFactor: Float) -> Float {
 ///   scaleFactor for ingredients = 1.266
 fn PanAreaScaleFactor(originalDiameter: Float, newDiameter: Float) -> Float {
     if originalDiameter <= 0.0 or newDiameter <= 0.0 {
-        Require(originalDiameter > 0.0 and newDiameter > 0.0, "PanAreaScaleFactor requires diameters > 0")
+        Assert.True(originalDiameter > 0.0 and newDiameter > 0.0, "PanAreaScaleFactor requires diameters > 0")
     }
     return (newDiameter * newDiameter) / (originalDiameter * originalDiameter)
 }

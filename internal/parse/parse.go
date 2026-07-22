@@ -192,6 +192,22 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			continue
 		}
 		switch p.current().Kind {
+		case lex.KeywordConcept:
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
+				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
+			}
+			if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+				return ast.File{}, p.errorAtCurrent("test attributes must apply to a function declaration")
+			}
+			conceptDecl, recordDecl, err := p.parseConceptDecl()
+			if err != nil {
+				return ast.File{}, err
+			}
+			if conceptDecl != nil {
+				file.Concepts = append(file.Concepts, *conceptDecl)
+			} else {
+				file.Records = append(file.Records, *recordDecl)
+			}
 		case lex.KeywordRecord:
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
@@ -342,7 +358,7 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			}
 			file.Flows = append(file.Flows, flow)
 		default:
-			return ast.File{}, p.errorAtCurrent("expected 'record', 'enum', 'fn', or 'flow' at top level")
+			return ast.File{}, p.errorAtCurrent("expected 'concept', 'record', 'enum', 'fn', or 'flow' at top level")
 		}
 	}
 	if pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
@@ -352,6 +368,47 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 		return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
 	}
 	return file, nil
+}
+
+func (p *parser) parseConceptDecl() (*ast.ConceptDecl, *ast.RecordDecl, error) {
+	conceptToken, err := p.expect(lex.KeywordConcept, "expected 'concept'")
+	if err != nil {
+		return nil, nil, err
+	}
+	name, err := p.expect(lex.Identifier, "expected concept name")
+	if err != nil {
+		return nil, nil, err
+	}
+	if p.match(lex.Assign) {
+		target, err := p.parseTypeRef()
+		if err != nil {
+			return nil, nil, p.errorAtCurrent("invalid concept right-hand shape: expected a value type")
+		}
+		return &ast.ConceptDecl{Name: name.Lexeme, Target: target, Doc: p.docCommentAtLine(conceptToken.Line), Line: conceptToken.Line, Column: conceptToken.Column}, nil, nil
+	}
+	if _, err := p.expect(lex.LeftBrace, "expected '=' or '{' after concept name"); err != nil {
+		return nil, nil, err
+	}
+	fields := make([]ast.RecordField, 0)
+	for p.current().Kind != lex.RightBrace {
+		if p.current().Kind == lex.EOF {
+			return nil, nil, p.errorAtCurrent("expected '}' to close record-shaped concept declaration")
+		}
+		fieldName, err := p.expectIdentifierLike("expected concept field name")
+		if err != nil {
+			return nil, nil, err
+		}
+		if _, err := p.expect(lex.Colon, "expected ':' after concept field name"); err != nil {
+			return nil, nil, err
+		}
+		fieldType, err := p.parseTypeRef()
+		if err != nil {
+			return nil, nil, err
+		}
+		fields = append(fields, ast.RecordField{Name: fieldName.Lexeme, Type: fieldType, Doc: p.docCommentAtLine(fieldName.Line)})
+	}
+	p.advance()
+	return nil, &ast.RecordDecl{Name: name.Lexeme, Fields: fields, Doc: p.docCommentAtLine(conceptToken.Line), IsConcept: true}, nil
 }
 
 func (p *parser) docCommentAtLine(line int) *ast.DocComment {
@@ -1573,12 +1630,14 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 	for {
 		switch {
 		case p.current().Kind == lex.LeftParen:
+			callToken := p.current()
 			arguments, err := p.parseCallArguments()
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.CallExpr{Callee: expr, Arguments: arguments}
+			expr = ast.CallExpr{Callee: expr, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
 		case p.current().Kind == lex.LeftAngle && p.looksLikeTypeArgumentList():
+			callToken := p.current()
 			typeArguments, err := p.parseTypeArguments()
 			if err != nil {
 				return nil, err
@@ -1587,7 +1646,7 @@ func (p *parser) parsePostfixExpr() (ast.Expr, error) {
 			if err != nil {
 				return nil, err
 			}
-			expr = ast.CallExpr{Callee: expr, TypeArguments: typeArguments, Arguments: arguments}
+			expr = ast.CallExpr{Callee: expr, TypeArguments: typeArguments, Arguments: arguments, Line: callToken.Line, Column: callToken.Column}
 		case p.current().Kind == lex.LeftBracket && p.looksLikeLegacyTypeArgumentList():
 			return nil, p.errorAtCurrent("type arguments must use '<...>'; legacy '[...]' syntax is no longer supported")
 		case p.current().Kind == lex.LeftBrace && p.looksLikeRecordLiteral() && p.isRecordLiteralTypeExpr(expr):

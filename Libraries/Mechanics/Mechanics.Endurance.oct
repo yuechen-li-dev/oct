@@ -3,17 +3,17 @@ package Mechanics
 /// Multiplies Marin-style endurance modifiers into one combined factor.
 /// Precondition: all modifier inputs must be positive.
 fn EnduranceModifierProduct(surfaceFactor: Float, sizeFactor: Float, loadFactor: Float, temperatureFactor: Float, reliabilityFactor: Float) -> Float {
-    Require(surfaceFactor > 0, "EnduranceModifierProduct requires surfaceFactor > 0")
-    Require(sizeFactor > 0, "EnduranceModifierProduct requires sizeFactor > 0")
-    Require(loadFactor > 0, "EnduranceModifierProduct requires loadFactor > 0")
-    Require(temperatureFactor > 0, "EnduranceModifierProduct requires temperatureFactor > 0")
-    Require(reliabilityFactor > 0, "EnduranceModifierProduct requires reliabilityFactor > 0")
+    Assert.True(surfaceFactor > 0, "EnduranceModifierProduct requires surfaceFactor > 0")
+    Assert.True(sizeFactor > 0, "EnduranceModifierProduct requires sizeFactor > 0")
+    Assert.True(loadFactor > 0, "EnduranceModifierProduct requires loadFactor > 0")
+    Assert.True(temperatureFactor > 0, "EnduranceModifierProduct requires temperatureFactor > 0")
+    Assert.True(reliabilityFactor > 0, "EnduranceModifierProduct requires reliabilityFactor > 0")
     return surfaceFactor * sizeFactor * loadFactor * temperatureFactor * reliabilityFactor
 }
 
 /// Applies endurance modifiers to unmodified endurance limit.
 fn DesignEnduranceLimit(unmodifiedEnduranceLimit: Float<kg/m/s^2>, surfaceFactor: Float, sizeFactor: Float, loadFactor: Float, temperatureFactor: Float, reliabilityFactor: Float) -> Float<kg/m/s^2> {
-    Require(unmodifiedEnduranceLimit > 0kg/m/s^2, "DesignEnduranceLimit requires unmodifiedEnduranceLimit > 0")
+    Assert.True(unmodifiedEnduranceLimit > 0kg/m/s^2, "DesignEnduranceLimit requires unmodifiedEnduranceLimit > 0")
 
     let modifier = EnduranceModifierProduct(surfaceFactor, sizeFactor, loadFactor, temperatureFactor, reliabilityFactor)
     return unmodifiedEnduranceLimit * modifier
@@ -24,8 +24,8 @@ fn DesignEnduranceLimit(unmodifiedEnduranceLimit: Float<kg/m/s^2>, surfaceFactor
 /// Param b: Fit exponent for finish/process.
 /// Remarks: Uses MPa-normalized ultimate strength in the correlation.
 fn SurfaceFactorFromUltimateStrength(ultimateStrength: Float<kg/m/s^2>, a: Float, b: Float) -> Float {
-    Require(ultimateStrength > 0kg/m/s^2, "SurfaceFactorFromUltimateStrength requires ultimateStrength > 0")
-    Require(a > 0, "SurfaceFactorFromUltimateStrength requires a > 0")
+    Assert.True(ultimateStrength > 0kg/m/s^2, "SurfaceFactorFromUltimateStrength requires ultimateStrength > 0")
+    Assert.True(a > 0, "SurfaceFactorFromUltimateStrength requires a > 0")
 
     let sutMpa = ultimateStrength / 1000000kg/m/s^2
     return a * Pow(sutMpa, b)
@@ -33,8 +33,8 @@ fn SurfaceFactorFromUltimateStrength(ultimateStrength: Float<kg/m/s^2>, a: Float
 
 /// Computes size factor from diameter ratio using a power-law model.
 fn SizeFactorFromDiameter(diameter: Float<m>, referenceDiameter: Float<m>, exponent: Float) -> Float {
-    Require(diameter > 0m, "SizeFactorFromDiameter requires diameter > 0")
-    Require(referenceDiameter > 0m, "SizeFactorFromDiameter requires referenceDiameter > 0")
+    Assert.True(diameter > 0m, "SizeFactorFromDiameter requires diameter > 0")
+    Assert.True(referenceDiameter > 0m, "SizeFactorFromDiameter requires referenceDiameter > 0")
 
     let ratio = diameter / referenceDiameter
     return Pow(ratio, exponent)
@@ -42,7 +42,7 @@ fn SizeFactorFromDiameter(diameter: Float<m>, referenceDiameter: Float<m>, expon
 
 /// Pass-through load factor with positivity guard.
 fn LoadFactorDirect(loadFactor: Float) -> Float {
-    Require(loadFactor > 0, "EnduranceModifierProduct requires loadFactor > 0")
+    Assert.True(loadFactor > 0, "EnduranceModifierProduct requires loadFactor > 0")
     return loadFactor
 }
 
@@ -63,7 +63,7 @@ fn LoadFactorTorsion() -> Float {
 
 /// Pass-through temperature factor with positivity guard.
 fn TemperatureFactorDirect(temperatureFactor: Float) -> Float {
-    Require(temperatureFactor > 0, "EnduranceModifierProduct requires temperatureFactor > 0")
+    Assert.True(temperatureFactor > 0, "EnduranceModifierProduct requires temperatureFactor > 0")
     return temperatureFactor
 }
 
@@ -71,7 +71,7 @@ fn TemperatureFactorDirect(temperatureFactor: Float) -> Float {
 /// Remarks: Linearized relation used as a simplified engineering fit.
 fn ReliabilityFactorFromStandardScore(standardScore: Float) -> Float {
     let factor = 1.0 - 0.08 * standardScore
-    Require(factor > 0, "ReliabilityFactorFromStandardScore requires resulting factor > 0")
+    Assert.True(factor > 0, "ReliabilityFactorFromStandardScore requires resulting factor > 0")
     return factor
 }
 

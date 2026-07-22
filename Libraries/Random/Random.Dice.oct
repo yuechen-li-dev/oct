@@ -12,7 +12,7 @@ record DiceRollResult {
 }
 
 fn RollDie(rng: Rng, sides: Int) -> DieRollResult {
-    Require(sides >= 2, "RollDie requires sides >= 2")
+    Assert.True(sides >= 2, "RollDie requires sides >= 2")
 
     let draw = RandInt(rng, 1, sides)
     return DieRollResult {
@@ -30,8 +30,8 @@ fn RollD20(rng: Rng) -> DieRollResult { return RollDie(rng, 20) }
 fn RollD100(rng: Rng) -> DieRollResult { return RollDie(rng, 100) }
 
 fn RollDice(rng: Rng, count: Int, sides: Int) -> DiceRollResult {
-    Require(count >= 0, "RollDice requires count >= 0")
-    Require(sides >= 2, "RollDice requires sides >= 2")
+    Assert.True(count >= 0, "RollDice requires count >= 0")
+    Assert.True(sides >= 2, "RollDice requires sides >= 2")
 
     var next = rng
     var values: Int[] = []

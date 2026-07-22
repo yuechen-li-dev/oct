@@ -2633,6 +2633,27 @@ func valuesEqual(left Value, right Value) bool {
 		default:
 			return valuesEqual(*left.Enum.Payload, *right.Enum.Payload)
 		}
+	case ValueArray:
+		if len(left.Array) != len(right.Array) {
+			return false
+		}
+		for index := range left.Array {
+			if !valuesEqual(left.Array[index], right.Array[index]) {
+				return false
+			}
+		}
+		return true
+	case ValueRecord:
+		if left.Record.TypeName != right.Record.TypeName || len(left.Record.Fields) != len(right.Record.Fields) {
+			return false
+		}
+		for name, leftField := range left.Record.Fields {
+			rightField, ok := right.Record.Fields[name]
+			if !ok || !valuesEqual(leftField, rightField) {
+				return false
+			}
+		}
+		return true
 	default:
 		return false
 	}
@@ -3182,29 +3203,8 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		return evalResult{value: Value{Kind: ValueComplex, Complex: cmplx.Rect(rValue, thetaValue)}}, nil
 	}
 	if callee == "Require" {
-		if len(argumentExprs) != 2 {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: %s expects 2 arguments", callee)
-		}
-		conditionResult, err := i.evalExpr(env, pkgName, argumentExprs[0])
-		if err != nil {
-			return evalResult{}, err
-		}
-		if conditionResult.hasError {
-			return evalResult{hasError: true, errorVal: conditionResult.errorVal}, nil
-		}
-		messageResult, err := i.evalExpr(env, pkgName, argumentExprs[1])
-		if err != nil {
-			return evalResult{}, err
-		}
-		if messageResult.hasError {
-			return evalResult{hasError: true, errorVal: messageResult.errorVal}, nil
-		}
-		if conditionResult.value.Kind != ValueBool || messageResult.value.Kind != ValueString {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: Require expects (Bool, String)")
-		}
-		if !conditionResult.value.Bool {
-			return evalResult{}, fmt.Errorf("runtime error: %s", messageResult.value.Text)
-		}
+		// Type checking has already evaluated and accepted this compiler-owned
+		// assertion. Interpreted execution observes the same erasure as Go.
 		return evalResult{value: Value{}}, nil
 	}
 	if callee == "Atan2" {

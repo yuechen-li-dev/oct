@@ -3,25 +3,25 @@ package Mechanics
 /// Provides solid circular shaft section and stress helpers for deterministic checks.
 /// Remarks: Assumes linear elastic behavior, small deformation, and critical outer surface.
 fn ShaftAreaSolidCircular(diameter: Float<m>) -> Float<m^2> {
-    Require(diameter > 0m, "ShaftAreaSolidCircular requires diameter > 0")
+    Assert.True(diameter > 0m, "ShaftAreaSolidCircular requires diameter > 0")
     return Pi() * diameter * diameter / 4.0
 }
 
 /// Returns second moment of area I for a solid circular shaft.
 fn ShaftSecondMomentAreaSolidCircular(diameter: Float<m>) -> Float<m^4> {
-    Require(diameter > 0m, "ShaftSecondMomentAreaSolidCircular requires diameter > 0")
+    Assert.True(diameter > 0m, "ShaftSecondMomentAreaSolidCircular requires diameter > 0")
     return Pi() * diameter * diameter * diameter * diameter / 64.0
 }
 
 /// Returns polar moment of area J for a solid circular shaft.
 fn ShaftPolarMomentAreaSolidCircular(diameter: Float<m>) -> Float<m^4> {
-    Require(diameter > 0m, "ShaftPolarMomentAreaSolidCircular requires diameter > 0")
+    Assert.True(diameter > 0m, "ShaftPolarMomentAreaSolidCircular requires diameter > 0")
     return Pi() * diameter * diameter * diameter * diameter / 32.0
 }
 
 /// Computes nominal outer-fiber bending stress for a solid circular shaft.
 fn ShaftBendingStress(moment: Float<kg*m^2/s^2>, diameter: Float<m>) -> Float<kg/m/s^2> {
-    Require(diameter > 0m, "ShaftBendingStress requires diameter > 0")
+    Assert.True(diameter > 0m, "ShaftBendingStress requires diameter > 0")
     let c = 0.5 * diameter
     let i = ShaftSecondMomentAreaSolidCircular(diameter)
     return BendingStress(moment, c, i)
@@ -29,7 +29,7 @@ fn ShaftBendingStress(moment: Float<kg*m^2/s^2>, diameter: Float<m>) -> Float<kg
 
 /// Computes nominal outer-surface torsional shear stress for a solid circular shaft.
 fn ShaftTorsionalShearStress(torque: Float<kg*m^2/s^2>, diameter: Float<m>) -> Float<kg/m/s^2> {
-    Require(diameter > 0m, "ShaftTorsionalShearStress requires diameter > 0")
+    Assert.True(diameter > 0m, "ShaftTorsionalShearStress requires diameter > 0")
     let r = 0.5 * diameter
     let j = ShaftPolarMomentAreaSolidCircular(diameter)
     return TorsionalShearStress(torque, r, j)
@@ -37,13 +37,13 @@ fn ShaftTorsionalShearStress(torque: Float<kg*m^2/s^2>, diameter: Float<m>) -> F
 
 /// Applies static stress concentration Kt to nominal shaft bending stress.
 fn ShaftStaticBendingStressWithKt(moment: Float<kg*m^2/s^2>, diameter: Float<m>, stressConcentrationFactor: Float) -> Float<kg/m/s^2> {
-    Require(stressConcentrationFactor >= 1.0, "ShaftStaticBendingStressWithKt requires stressConcentrationFactor >= 1")
+    Assert.True(stressConcentrationFactor >= 1.0, "ShaftStaticBendingStressWithKt requires stressConcentrationFactor >= 1")
     return stressConcentrationFactor * ShaftBendingStress(moment, diameter)
 }
 
 /// Applies static shear concentration Kts to nominal shaft torsional shear stress.
 fn ShaftStaticTorsionalShearStressWithKts(torque: Float<kg*m^2/s^2>, diameter: Float<m>, shearStressConcentrationFactor: Float) -> Float<kg/m/s^2> {
-    Require(shearStressConcentrationFactor >= 1.0, "ShaftStaticTorsionalShearStressWithKts requires shearStressConcentrationFactor >= 1")
+    Assert.True(shearStressConcentrationFactor >= 1.0, "ShaftStaticTorsionalShearStressWithKts requires shearStressConcentrationFactor >= 1")
     return shearStressConcentrationFactor * ShaftTorsionalShearStress(torque, diameter)
 }
 
@@ -62,7 +62,7 @@ fn ShaftCombinedStaticYieldFactorOfSafety(yieldStrength: Float<kg/m/s^2>, moment
 
 /// Computes fatigue alternating bending stress using Kf on nominal shaft bending cycle.
 fn ShaftFatigueBendingAlternatingStress(maxMoment: Float<kg*m^2/s^2>, minMoment: Float<kg*m^2/s^2>, diameter: Float<m>, kf: Float) -> Float<kg/m/s^2> {
-    Require(kf >= 1.0, "ShaftFatigueBendingAlternatingStress requires kf >= 1")
+    Assert.True(kf >= 1.0, "ShaftFatigueBendingAlternatingStress requires kf >= 1")
     let maxNominal = ShaftBendingStress(maxMoment, diameter)
     let minNominal = ShaftBendingStress(minMoment, diameter)
     return kf * AlternatingStress(maxNominal, minNominal)
@@ -70,7 +70,7 @@ fn ShaftFatigueBendingAlternatingStress(maxMoment: Float<kg*m^2/s^2>, minMoment:
 
 /// Computes fatigue mean bending stress using Kt on nominal shaft bending cycle.
 fn ShaftFatigueBendingMeanStress(maxMoment: Float<kg*m^2/s^2>, minMoment: Float<kg*m^2/s^2>, diameter: Float<m>, kt: Float) -> Float<kg/m/s^2> {
-    Require(kt >= 1.0, "ShaftFatigueBendingMeanStress requires kt >= 1")
+    Assert.True(kt >= 1.0, "ShaftFatigueBendingMeanStress requires kt >= 1")
     let maxNominal = ShaftBendingStress(maxMoment, diameter)
     let minNominal = ShaftBendingStress(minMoment, diameter)
     return kt * MeanStress(maxNominal, minNominal)
@@ -78,7 +78,7 @@ fn ShaftFatigueBendingMeanStress(maxMoment: Float<kg*m^2/s^2>, minMoment: Float<
 
 /// Computes fatigue alternating torsional shear stress using Kfs.
 fn ShaftFatigueTorsionAlternatingShearStress(maxTorque: Float<kg*m^2/s^2>, minTorque: Float<kg*m^2/s^2>, diameter: Float<m>, kfs: Float) -> Float<kg/m/s^2> {
-    Require(kfs >= 1.0, "ShaftFatigueTorsionAlternatingShearStress requires kfs >= 1")
+    Assert.True(kfs >= 1.0, "ShaftFatigueTorsionAlternatingShearStress requires kfs >= 1")
     let maxNominal = ShaftTorsionalShearStress(maxTorque, diameter)
     let minNominal = ShaftTorsionalShearStress(minTorque, diameter)
     return kfs * AlternatingStress(maxNominal, minNominal)
@@ -86,7 +86,7 @@ fn ShaftFatigueTorsionAlternatingShearStress(maxTorque: Float<kg*m^2/s^2>, minTo
 
 /// Computes fatigue mean torsional shear stress using Kts.
 fn ShaftFatigueTorsionMeanShearStress(maxTorque: Float<kg*m^2/s^2>, minTorque: Float<kg*m^2/s^2>, diameter: Float<m>, kts: Float) -> Float<kg/m/s^2> {
-    Require(kts >= 1.0, "ShaftFatigueTorsionMeanShearStress requires kts >= 1")
+    Assert.True(kts >= 1.0, "ShaftFatigueTorsionMeanShearStress requires kts >= 1")
     let maxNominal = ShaftTorsionalShearStress(maxTorque, diameter)
     let minNominal = ShaftTorsionalShearStress(minTorque, diameter)
     return kts * MeanStress(maxNominal, minNominal)

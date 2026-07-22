@@ -1,0 +1,7 @@
+expect error: "has no field 'Z'"
+
+package ConceptsM0ExtraField
+
+concept Position { X: Int Y: Int }
+
+fn Main() -> Position { return Position { X: 1 Y: 2 Z: 3 } }

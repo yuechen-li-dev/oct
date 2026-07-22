@@ -97,6 +97,7 @@ func TestInvalidOctAndInvalidModelHaveUsefulDiagnostics(t *testing.T) {
 	}{
 		{"invalid source", filepath.Join("testdata", "invalid_source", "generator.oct"), "type-check OctGen generator", "invalid_source"},
 		{"invalid model", filepath.Join("testdata", "invalid_model", "generator.oct"), "Operations[1] mode NormalizeIso8601", "invalid_model"},
+		{"invalid compile-time requirement", filepath.Join("testdata", "invalid_requirement", "generator.oct"), "compile-time requirement failed in Generate: time dispatch must declare at least three operations", "invalid_requirement"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			output := filepath.Join(filepath.Dir(tc.generator), "generated.go")

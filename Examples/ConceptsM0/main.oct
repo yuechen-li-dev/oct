@@ -1,0 +1,21 @@
+package Main
+
+concept Length = Float<m>
+concept Duration = Float<s>
+concept Speed = Float<m/s>
+
+concept Motion {
+    Distance: Length
+    Duration: Duration
+    Speed: Speed
+}
+
+fn Main() -> Int {
+    let stages = ["model", "check", "emit"]
+    Require(Len(stages) == 3, "example pipeline must retain three stages")
+    let motion = Motion { Distance: 100.0m Duration: 20.0s Speed: 5.0m/s }
+    if motion.Speed == motion.Distance / motion.Duration {
+        return 0
+    }
+    return 1
+}
