@@ -743,7 +743,7 @@ func (uploads *loadedUploads) free() {
 	*uploads = loadedUploads{}
 }
 
-func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsafe.Pointer, identity uint64) (uint64, runMetrics, error) {
+func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsafe.Pointer, identity uint64, onStageComplete func(uint32)) (uint64, runMetrics, error) {
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
 	blockID := C.uint64_t(reactor.ownerID)
@@ -766,6 +766,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[2] += uint64(evidence.last_execution_ns)
 	metrics.stageGPUExecutionNS[2] += uint64(evidence.gpu_compute_ns)
+	onStageComplete(2)
 	inputGeneration := uint64(evidence.output_generation)
 	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
 		var activateErr error
@@ -794,6 +795,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[3] += uint64(evidence.last_execution_ns)
 	metrics.stageGPUExecutionNS[3] += uint64(evidence.gpu_compute_ns)
+	onStageComplete(3)
 	var sessionEvidence C.PrometheusCompiledModelSessionEvidence
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedContext: detail=%d", int32(sessionEvidence.detail_code))
@@ -801,7 +803,7 @@ func (reactor *reactorDLL) prepareContext(payload [2]loadedUploads, context unsa
 	return uint64(sessionEvidence.prepared_context_generation), metrics, nil
 }
 
-func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timestep unsafe.Pointer, inputIdentity, timestepIdentity uint64) (uint64, runMetrics, error) {
+func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timestep unsafe.Pointer, inputIdentity, timestepIdentity uint64, onStageComplete func(uint32)) (uint64, runMetrics, error) {
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
 	var blockID C.uint64_t
@@ -855,6 +857,7 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[0] += uint64(evidence.last_execution_ns)
 	metrics.stageGPUExecutionNS[0] += uint64(evidence.gpu_compute_ns)
+	onStageComplete(0)
 	inputGeneration := uint64(evidence.output_generation)
 	var rebindDuration uint64
 	if reactor.profile == C.PROM_MODEL_EXECUTION_PROFILE_PREFETCH {
@@ -884,6 +887,7 @@ func (reactor *reactorDLL) prepareImage(payload [2]loadedUploads, image, timeste
 	metrics.modelExecutionNS += uint64(evidence.last_execution_ns)
 	metrics.stageExecutionNS[1] += uint64(evidence.last_execution_ns)
 	metrics.stageGPUExecutionNS[1] += uint64(evidence.gpu_compute_ns)
+	onStageComplete(1)
 	var sessionEvidence C.PrometheusCompiledModelSessionEvidence
 	if C.oct_prom_session_capture(&reactor.api, reactor.runtime, C.uint64_t(reactor.sessionID), blockID, evidence.output_generation, &sessionEvidence) != C.PROM_OK {
 		return 0, metrics, fmt.Errorf("capture PreparedImage: detail=%d", int32(sessionEvidence.detail_code))
@@ -944,7 +948,7 @@ func recordMainLayerTrace(trace *mainLayerTrace, evidence *C.PrometheusModelBloc
 	}
 }
 
-func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64, evaluationStart time.Time) (runMetrics, error) {
+func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output unsafe.Pointer, imageGeneration, contextGeneration, jointGeneration, timestepIdentity uint64, evaluationStart time.Time, onStageComplete func(uint32)) (runMetrics, error) {
 	var metrics runMetrics
 	var evidence C.PrometheusModelBlockEvidence
 	blockID := C.uint64_t(reactor.ownerID)
@@ -990,6 +994,7 @@ func (reactor *reactorDLL) runMain(payload [30]loadedUploads, timestep, output u
 		metrics.stageExecutionNS[4+layer] += uint64(evidence.last_execution_ns)
 		metrics.stageGPUExecutionNS[4+layer] += uint64(evidence.gpu_compute_ns)
 		metrics.mainLayerCount++
+		onStageComplete(uint32(4 + layer))
 		jointGeneration++
 	}
 	if C.oct_prom_main_audit_final(&reactor.api, reactor.runtime, blockID, evidence.output_generation, C.uint64_t(outputIdentity), (*C.float)(output), C.uint64_t(uint64(jointTokens)*uint64(modelWidth)), &evidence) != C.PROM_OK {

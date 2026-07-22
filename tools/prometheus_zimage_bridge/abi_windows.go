@@ -34,7 +34,12 @@ typedef struct PrometheusZImageExecuteRequest {
   uint32_t timestep_width;
   float* output_image_fp32;
   uint64_t output_image_bytes;
+  void (*progress_callback)(uint32_t completed_stage_index);
 } PrometheusZImageExecuteRequest;
+
+static void oct_prom_emit_progress(void (*callback)(uint32_t), uint32_t completed_stage_index) {
+  if (callback != NULL) callback(completed_stage_index);
+}
 
 typedef struct PrometheusZImageExecuteEvidence {
   uint32_t struct_size;
@@ -328,7 +333,8 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	metrics := runMetrics{}
 	imageIdentity := memoryIdentity(request.image_bf16, imageBF16Bytes)
 	timestepIdentity := memoryIdentity(request.timestep_bf16, timestepBF16Bytes)
-	imageGeneration, imageMetrics, err := session.reactor.prepareImage(session.hostPackages.noise, request.image_bf16, request.timestep_bf16, imageIdentity, timestepIdentity)
+	onStageComplete := func(stage uint32) { C.oct_prom_emit_progress(request.progress_callback, C.uint32_t(stage)) }
+	imageGeneration, imageMetrics, err := session.reactor.prepareImage(session.hostPackages.noise, request.image_bf16, request.timestep_bf16, imageIdentity, timestepIdentity, onStageComplete)
 	addMetrics(&metrics, imageMetrics)
 	metrics.hostPackageCacheHits += 2
 	if err != nil {
@@ -337,7 +343,7 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 	}
 	/* PreparedContext is evaluation-lifetime state: it depends on the current
 	   timestep/modulation and is deliberately recomputed after PreparedImage. */
-	contextGeneration, contextMetrics, err := session.reactor.prepareContext(session.hostPackages.context, unsafe.Pointer(request.context_fp32), memoryIdentity(unsafe.Pointer(request.context_fp32), contextFP32Bytes))
+	contextGeneration, contextMetrics, err := session.reactor.prepareContext(session.hostPackages.context, unsafe.Pointer(request.context_fp32), memoryIdentity(unsafe.Pointer(request.context_fp32), contextFP32Bytes), onStageComplete)
 	addMetrics(&metrics, contextMetrics)
 	if err != nil {
 		session.lastError = err.Error()
@@ -351,7 +357,7 @@ func prometheus_zimage_session_execute(handle C.uint64_t, request *C.PrometheusZ
 		return 1
 	}
 	joint := make([]float32, uint64(jointTokens)*uint64(modelWidth))
-	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, contextGeneration, jointGeneration, timestepIdentity, start)
+	mainMetrics, err := session.reactor.runMain(session.hostPackages.main, request.timestep_bf16, unsafe.Pointer(&joint[0]), imageGeneration, contextGeneration, jointGeneration, timestepIdentity, start, onStageComplete)
 	addMetrics(&metrics, mainMetrics)
 	metrics.hostPackageCacheHits += 30
 	if err != nil {

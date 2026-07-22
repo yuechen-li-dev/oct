@@ -20,6 +20,7 @@ typedef struct PrometheusZImageSessionCreateRequest {
   const char* payload_root;
   int32_t device_index;
   uint32_t execution_profile; /* 1=MinimumMemory, 2=Prefetch */
+  uint32_t main_attention_route_policy; /* 1=Auto, 2=SerialCanonical, 3=SubgroupOwned32 */
 } PrometheusZImageSessionCreateRequest;
 
 typedef struct PrometheusZImageExecuteRequest {
@@ -40,6 +41,8 @@ typedef struct PrometheusZImageExecuteRequest {
   uint32_t timestep_width;
   float* output_image_fp32;
   uint64_t output_image_bytes;
+  /* Called synchronously after each completed transformer block (0..33). */
+  void (*progress_callback)(uint32_t completed_stage_index);
 } PrometheusZImageExecuteRequest;
 
 typedef struct PrometheusZImageExecuteEvidence {

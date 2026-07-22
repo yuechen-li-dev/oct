@@ -21,3 +21,19 @@ The official BF16 checkpoint contains 453 tensors and 12,309,817,472 payload byt
 - [Current reviewer handoff](../../internal/prometheus/DevelopmentReport/PROMETHEUS_DVT2_REVIEWER_HANDOFF.md)
 
 The canonical image is authoritative local evidence, not tracked media: C:\Users\yuech\AppData\Local\oct\evt2-z-image-turbo\shipping_smoke\zimage_turbo_prometheus_seed42.png. Recorded SHA-256: 7ba9047ae27ea7060c8358ca25bf704e4169b006e628560b1901518bbb483613.
+
+## Recording the canonical transformer demo
+
+On the established Windows workstation, record the real canonical workflow with:
+
+```powershell
+& "$env:USERPROFILE\ComfyUI\.venv\Scripts\python.exe" tools\zimage_prometheus_smoke.py --demo
+```
+
+`--demo` selects the existing Prefetch production profile and Auto attention
+route. It redraws from synchronous native completion callbacks: each of the two
+noise refiners, two context refiners, and 30 main layers advances the display
+only after that transformer block returns. `--verbose` retains structured
+diagnostic events; `--no-ansi` uses ordinary line-based updates for redirected
+output. The final screen reports this run's elapsed time, PNG path, computed
+SHA-256, canonical-hash match, and the native-reported model-owned GPU ceiling.

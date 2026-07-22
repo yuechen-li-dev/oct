@@ -6,6 +6,7 @@ from __future__ import annotations
 import ctypes
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -63,6 +64,7 @@ class _ExecuteRequest(ctypes.Structure):
         ("timestep_width", ctypes.c_uint32),
         ("output_image_fp32", ctypes.POINTER(ctypes.c_float)),
         ("output_image_bytes", ctypes.c_uint64),
+        ("progress_callback", ctypes.c_void_p),
     ]
 
 
@@ -194,7 +196,7 @@ class PrometheusZImageSession:
         self._dll.prometheus_zimage_session_destroy.restype = ctypes.c_int
         self._dll.prometheus_zimage_last_error.argtypes = [ctypes.c_uint64, ctypes.c_char_p, ctypes.c_uint64]
         self._dll.prometheus_zimage_last_error.restype = ctypes.c_uint64
-        if self._dll.prometheus_zimage_bridge_abi_version() != 5:
+        if self._dll.prometheus_zimage_bridge_abi_version() != 6:
             raise RuntimeError("unsupported Prometheus Z-Image bridge ABI")
         if execution_profile not in MODEL_EXECUTION_PROFILES:
             raise ValueError("execution_profile must be MinimumMemory or Prefetch")
@@ -218,13 +220,16 @@ class PrometheusZImageSession:
         self._dll.prometheus_zimage_last_error(selected, buffer, needed)
         return buffer.value.decode("utf-8", errors="replace")
 
-    def evaluate(self, image_bf16_bits: np.ndarray, context_fp32: np.ndarray, timestep_bf16_bits: np.ndarray) -> tuple[np.ndarray, ExecuteEvidence]:
+    def evaluate(self, image_bf16_bits: np.ndarray, context_fp32: np.ndarray, timestep_bf16_bits: np.ndarray,
+                 progress_callback: Callable[[int], None] | None = None) -> tuple[np.ndarray, ExecuteEvidence]:
         if not getattr(self, "_handle", 0):
             raise RuntimeError("Prometheus Z-Image session is closed")
         image = _require_array(image_bf16_bits, "image_bf16_bits", np.dtype(np.uint16), IMAGE_SHAPE)
         context = _require_array(context_fp32, "context_fp32", np.dtype(np.float32), CONTEXT_SHAPE)
         timestep = _require_array(timestep_bf16_bits, "timestep_bf16_bits", np.dtype(np.uint16), TIMESTEP_SHAPE)
         output = np.empty(OUTPUT_SHAPE, dtype=np.float32, order="C")
+        callback_type = ctypes.CFUNCTYPE(None, ctypes.c_uint32)
+        callback = callback_type(lambda stage: progress_callback(int(stage))) if progress_callback else None
         request = _ExecuteRequest(
             ctypes.sizeof(_ExecuteRequest),
             image.ctypes.data,
@@ -238,6 +243,7 @@ class PrometheusZImageSession:
             *TIMESTEP_SHAPE,
             output.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
             output.nbytes,
+            ctypes.cast(callback, ctypes.c_void_p) if callback else None,
         )
         raw = _ExecuteEvidence()
         raw.struct_size = ctypes.sizeof(_ExecuteEvidence)

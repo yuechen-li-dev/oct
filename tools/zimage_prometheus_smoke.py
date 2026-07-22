@@ -76,15 +76,21 @@ def main() -> None:
     parser.add_argument("--bridge-dll", type=Path, default=repo / "out" / "prometheus" / "python_bridge" / "prometheus_zimage_bridge.dll")
     parser.add_argument("--reactor-dll", type=Path, default=repo / "out" / "prometheus" / "native" / "prometheus_reactor.dll")
     parser.add_argument("--lock", type=Path, default=repo / "internal" / "prometheus" / "models" / "zimage-turbo" / "lock-tagon.octagon")
-    parser.add_argument("--execution-profile", choices=("MinimumMemory", "Prefetch"), default="MinimumMemory")
+    parser.add_argument("--execution-profile", choices=("MinimumMemory", "Prefetch"))
     parser.add_argument("--main-attention-route", choices=("Auto", "SerialCanonical", "SubgroupOwned32"), default="Auto")
+    parser.add_argument("--demo", action="store_true", help="present the canonical Prefetch workflow in a compact recording-friendly display")
+    parser.add_argument("--verbose", action="store_true", help="keep structured diagnostic event output while using --demo")
+    parser.add_argument("--no-ansi", action="store_true", help="emit line-based demo updates instead of terminal redraws")
     parser.add_argument("--preflight-one-evaluation", action="store_true")
     parser.add_argument("--output", type=Path, default=default_payload / "shipping_smoke" / "zimage_turbo_prometheus_seed42.png")
     parser.add_argument("--metadata", type=Path, default=repo / "internal" / "prometheus" / "DevelopmentReport" / "artifacts" / "Evt2Shipping" / "zimage_python_smoke.json")
     args = parser.parse_args()
-    print(json.dumps({"event": "process_start", "route": args.main_attention_route,
-                      "profile": args.execution_profile, "output": str(args.output),
-                      "metadata": str(args.metadata)}), flush=True)
+    if args.execution_profile is None:
+        args.execution_profile = "Prefetch" if args.demo else "MinimumMemory"
+    if not args.demo or args.verbose:
+        print(json.dumps({"event": "process_start", "route": args.main_attention_route,
+                          "profile": args.execution_profile, "output": str(args.output),
+                          "metadata": str(args.metadata)}), flush=True)
 
     comfy_root = args.comfy_root.resolve(strict=True)
     data_root = args.data_root.resolve(strict=True)
@@ -107,6 +113,14 @@ def main() -> None:
     from comfy.ldm.lumina.model import modulate
     from comfy_extras.nodes_model_advanced import ModelSamplingAuraFlow
     from prometheus_zimage_bridge import PrometheusZImageSession
+    from zimage_demo_progress import DemoProgress
+
+    gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA GPU detected"
+    if torch.cuda.is_available():
+        gpu_name += f" — {torch.cuda.get_device_properties(0).total_memory / (1024 ** 3):.0f} GiB"
+    display = DemoProgress(gpu_name, args.execution_profile, {"MinimumMemory": 643_587_076, "Prefetch": 1_005_407_748}[args.execution_profile], ansi=False if args.no_ansi else None) if args.demo else None
+    if display:
+        display.render()
 
     torch.manual_seed(SEED)
     wall_start = time.perf_counter()
@@ -195,7 +209,10 @@ def main() -> None:
     session = PrometheusZImageSession(args.bridge_dll, args.reactor_dll, args.lock, payload_root,
                                      execution_profile=args.execution_profile,
                                      main_attention_route=args.main_attention_route)
-    print(json.dumps({"event": "native_session_created", "route": args.main_attention_route}), flush=True)
+    if display:
+        display.update(status="Loading compiled transformer")
+    if not args.demo or args.verbose:
+        print(json.dumps({"event": "native_session_created", "route": args.main_attention_route}), flush=True)
     timings["prometheus_session_create_seconds"] = time.perf_counter() - bridge_start
     sample_memory("after_prometheus_session_create")
     final_projection_seconds = 0.0
@@ -206,6 +223,8 @@ def main() -> None:
         if x.shape[0] != 1 or context.shape[0] != 1 or timesteps.shape != (1,):
             raise RuntimeError(f"closed smoke supports batch one only: x={tuple(x.shape)} context={tuple(context.shape)} timestep={tuple(timesteps.shape)}")
         invocation_count += 1
+        if display:
+            display.update(evaluation=invocation_count, status="Executing")
         evaluation_begin = time.perf_counter()
         gc_begin_index = len(gc_events)
         evaluation_timing: dict[str, float | int] = {"evaluation_index": invocation_count, "scheduler_iteration_begin_monotonic_seconds": evaluation_begin}
@@ -243,7 +262,8 @@ def main() -> None:
         timestep_bits = torch_bf16_bits(t)
         evaluation_timing["python_to_native_marshaling_seconds"] = time.perf_counter() - marshal_start
         native_call_start = time.perf_counter()
-        output, native = session.evaluate(image_bits, context_fp32, timestep_bits)
+        output, native = session.evaluate(image_bits, context_fp32, timestep_bits,
+                                          progress_callback=(lambda stage: display.complete_stage(invocation_count, stage)) if display else None)
         evaluation_timing["native_call_and_readback_seconds"] = time.perf_counter() - native_call_start
         if invocation_count == 1:
             boundary.update({
@@ -273,8 +293,9 @@ def main() -> None:
         evaluation_timing["garbage_collection_count"] = len(gc_events) - gc_begin_index
         evaluation_timing["garbage_collection_seconds"] = sum(float(event["duration_seconds"]) for event in gc_events[gc_begin_index:])
         evidence_rows.append(native.__dict__ | {"python_timing": evaluation_timing})
-        print(json.dumps({"event": "native_evaluation_complete", "index": invocation_count,
-                          "route": args.main_attention_route, "finite": bool(torch.isfinite(result).all())}), flush=True)
+        if not args.demo or args.verbose:
+            print(json.dumps({"event": "native_evaluation_complete", "index": invocation_count,
+                              "route": args.main_attention_route, "finite": bool(torch.isfinite(result).all())}), flush=True)
         if args.preflight_one_evaluation:
             print(json.dumps({"event": "preflight_complete", "route": args.main_attention_route}), flush=True)
             raise SystemExit(0)
@@ -316,7 +337,10 @@ def main() -> None:
     gc.collect()
 
     vae_start = time.perf_counter()
-    print(json.dumps({"event": "python_postprocessing_start", "route": args.main_attention_route}), flush=True)
+    if display:
+        display.update(status="Decoding")
+    if not args.demo or args.verbose:
+        print(json.dumps({"event": "python_postprocessing_start", "route": args.main_attention_route}), flush=True)
     vae = nodes.VAELoader().load_vae("ae.safetensors")[0]
     timings["vae_load_seconds"] = time.perf_counter() - vae_start
     vae_decode_start = time.perf_counter()
@@ -326,6 +350,8 @@ def main() -> None:
     if image_array.shape != (HEIGHT, WIDTH, 3) or image_array.min() == image_array.max():
         raise RuntimeError(f"decoded image is invalid or constant: shape={image_array.shape}, range=[{image_array.min()},{image_array.max()}]")
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    if display:
+        display.update(status="Writing PNG")
     png_start = time.perf_counter()
     Image.fromarray(image_array, mode="RGB").save(args.output, format="PNG")
     with Image.open(args.output) as check:
@@ -439,10 +465,14 @@ def main() -> None:
     temporary = args.metadata.with_suffix(args.metadata.suffix + ".tmp")
     temporary.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
     temporary.replace(args.metadata)
-    print(json.dumps({"event": "output_complete", "route": args.main_attention_route,
-                      "png": str(args.output.resolve()), "metadata": str(args.metadata.resolve())}), flush=True)
+    if display:
+        display.complete(args.output, png_hash, timings["wall_time_seconds"], model_ceiling)
+    if not args.demo or args.verbose:
+        print(json.dumps({"event": "output_complete", "route": args.main_attention_route,
+                          "png": str(args.output.resolve()), "metadata": str(args.metadata.resolve())}), flush=True)
     gc.callbacks.remove(gc_probe)
-    print(json.dumps({"png": str(args.output.resolve()), "sha256": png_hash, "metadata": str(args.metadata.resolve()), "evaluations": invocation_count, "wall_time_seconds": timings["wall_time_seconds"]}, indent=2))
+    if not args.demo or args.verbose:
+        print(json.dumps({"png": str(args.output.resolve()), "sha256": png_hash, "metadata": str(args.metadata.resolve()), "evaluations": invocation_count, "wall_time_seconds": timings["wall_time_seconds"]}, indent=2))
 
 
 if __name__ == "__main__":
