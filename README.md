@@ -303,6 +303,14 @@ Choose `oct new library Name` for stable reusable code. Choose
 `M<number>[letter]` milestone. See the bundled `oct-experiments` skill for the
 focused-milestone then root-evidence loop.
 
+## Oct 1.0 RC installation
+
+Candidate archives, checksum verification, prerequisites, native build, test,
+formatting, upgrade, and uninstall instructions are in
+[`docs/releases/INSTALL_1_0.md`](docs/releases/INSTALL_1_0.md). The candidate
+requires the Go toolchain declared by its bundled compiler runtime for `oct
+build`; a repository checkout is not required.
+
 ## Stability notice / pre-1.0 warning
 
 Oct 0.1 is a preview release. Language syntax, Go APIs, package registry format, standard-library APIs, wrapper metadata, and compiled-backend support may change before 1.0. Performance is not final, and no production-readiness promise is made for this prerelease.
@@ -344,5 +352,6 @@ For more details, start with:
 - `docs/releases/OCT_1_0_CONTRACT.md` — proposed 1.0 stable-surface and compatibility contract;
 - `docs/releases/OCT_1_0_READINESS.md` — RC1 evidence, discrepancies, and blocker ledger;
 - `docs/releases/OCT_1_0_RELEASE_PLAN.md` — RC2/GA gates and non-goals;
+- `docs/releases/OCT_1_0_SURFACE_MANIFEST.md` — authoritative stable and experimental API boundary;
 - `Language/reference/` — canonical language/reference corpus;
 - `docs/internal/canonical_registry_pm7.md` — canonical registry PM7 notes.

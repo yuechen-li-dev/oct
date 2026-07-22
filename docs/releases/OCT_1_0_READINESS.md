@@ -72,3 +72,81 @@ RC2 WITH OWNER DECISIONS.** The owner must choose whether 1.0 means complete
 compiled parity for every stable language construct, or a precisely constrained
 stable compiled subset with an explicit supported-program definition. A release
 cannot responsibly leave that boundary implicit.
+
+## RC2 update — 2026-07-21
+
+The owner selected complete compiled parity for every stable construct; a
+partial stable compiled subset is no longer an acceptable release outcome.
+
+### Closed, bounded backend defects
+
+| ID | Disposition | Evidence |
+| --- | --- | --- |
+| COMP-001a | Fixed | Stable `batch` expressions in separate functions emitted duplicate worker helpers. `Language/Concurrency/Batch/valid/batch_valid.octest --execution compiled` now passes 7 native cases. |
+| COMP-001b | Fixed | A literal zero divisor in an unselected `switch` arm was rejected by Go at compile time despite Oct lazy-arm semantics. The division lowering now defers evaluation; `ConditionSwitch` compiled lane passes 6 cases. |
+| COMP-001c | Fixed | Void-returning flows did not force emission of `__octVoid`; `OctomataCompiledBoundary` compiled lane passes. |
+| COMP-001d | Fixed | Explicit `return` in a fallible `Void` function emitted no result. Cross-package fallible compiled tests now pass 4 cases. |
+| COMP-001e | Fixed | Generated wrapper test sources in OS temp could not import `internal/octxiliary`. A transient module-local compile staging source preserves external test artifacts while satisfying Go's internal-package rule; focused slow wrapper tests pass. |
+| GATE-001 | Fixed | `tools/Test-Oct10Conformance.ps1` runs 15 selected stable source contracts in both modes; compiled mode requires native cases and zero fallback. Current compiled result: 52 cases, 0 fallback, 0 failed. |
+| API-001 | Progressed | `OCT_1_0_SURFACE_MANIFEST.md` establishes the authoritative boundary, but two established library candidates remain release-blocked. |
+
+### Remaining release blockers
+
+| ID | Severity | Evidence | Required next action |
+| --- | --- | --- | --- |
+| COMP-002 | P0 | `Libraries/Optimization --execution compiled` has four compiled Gauss-Newton/Levenberg-Marquardt failures: generated row assignment rejects a `Float[]` replacement with `row length mismatch: expected 1, got 2`. | Reconcile compiled row assignment with the already-passing interpreted semantics, then add a focused `Language/` parity contract. |
+| COMP-003 | P0 | `Libraries/Numerics` cannot load because `Numerics.Optimization.oct` contains `else if`, which the authoritative reference rejects. | Rewrite this existing library source to the documented `switch`/nested-block form, then run interpreted and compiled package lanes. |
+| PKG-001 | P1 | README and release guidance remain v0.1-oriented; no archive/checksum/install candidate proof has been produced. | Complete release-shaped artifact and install documentation/testing after P0 closure. |
+
+The strict core language gate is green, but the candidate cannot yet be called
+an Oct 1.0 RC because two established standard-library candidates lack the
+owner-required compiled parity.
+
+### RC2 parity closure — 2026-07-21
+
+| ID | Disposition | Evidence |
+| --- | --- | --- |
+| COMP-002 | Fixed | `JacobianCD` and `JtJ` now construct their first rows at the required shape rather than relying on interpreter-only row resizing. The authoritative array contract requires same-length whole-row replacement. `Libraries/Optimization` passes 40 interpreted and 40 compiled cases, with compiled fallback `0`. |
+| COMP-003 | Fixed | `Numerics.Optimization.oct` now uses the documented `switch` expression and flow `when` control form; its duplicate test declaration was removed. This exposed and closed a bounded native-flow callback lowering defect: function-valued flow parameters now call the stored callback and constructor storage cannot collide with parameter names. `Libraries/Numerics` passes 44 interpreted and 44 compiled cases, with compiled fallback `0`. |
+| COMP-004 | Fixed | The compiled flow constructor used `f` for both its local instance and a valid flow parameter, producing invalid Go. The constructor now uses a reserved local, and function-valued flow parameters lower to direct stored-callback invocation. |
+
+The declared stable-library sweep now passes all 28 packages through native
+execution with no fallback. The positive 1.0 conformance driver remains green
+in both modes (15 targets; compiled: 52 native cases, 0 fallback), and the
+separate negative diagnostic baseline passes 299 contracts.
+
+**Current RC2 status:** stable compiled parity is closed for the declared
+language and standard-library surface. **PKG-001 remains P1:** archive,
+checksum, and ordinary binary-install proof has not yet been completed, so the
+repository is not yet a GA candidate.
+
+The current Windows development binary was smoke-tested with `oct version`,
+`--help`, native `oct build`, and execution of the resulting executable. It
+reports `oct dev`, so this is compiler-path evidence only, not release-artifact
+or version-verification evidence.
+
+### RC3 artifact and installation verification — 2026-07-22
+
+**PKG-001: fixed.** The release scripts inject `1.0.0-rc.1`, bundle the
+compiler runtime and sidecars, create named archives, and write a conventional
+`checksums.sha256` manifest. The manifest was independently verified with
+`Get-FileHash` and `sha256sum -c`.
+
+| Artifact | Size | SHA-256 | Built / executed |
+| --- | ---: | --- | --- |
+| `oct-1.0.0-rc.1-windows-amd64.zip` | 52,210,046 bytes | `0162a38c8bffbb8df8e66f87b63f7e7c76f1f6e1fa0c342fbdc30d73d81f2a44` | Native Windows build and extracted execution |
+| `oct-1.0.0-rc.1-linux-amd64.tar.gz` | 52,531,781 bytes | `a41ea9ef9e606ae20776c467981d248f03a1300f1b2c5df6d504034475386611` | Native WSL Linux build and extracted execution |
+
+Each archive was inspected after fresh extraction: one `oct` executable,
+13 sidecars, `LICENSE`, `INSTALL.md`, and `runtime/go.mod`, `runtime/go.sum`,
+and `runtime/internal/octxiliary/protocol.go`; no absolute or traversal paths
+were found. Windows and Linux installed candidates both report `oct
+1.0.0-rc.1`, run an interpreted program, build and execute a native program,
+run a compiled `.octest` with zero fallback, and format source outside the
+repository. Linux verification found and fixed an output/source collision;
+non-Windows `oct build Main.oct` now emits `Main.oct.out`.
+
+The extracted Windows candidate also passes the 15-target compiled conformance
+gate (52 compiled cases, zero fallback). `go test -count=1 ./internal/build
+./cmd/oct` passes after the packaging/runtime changes, as does `git diff
+--check`.

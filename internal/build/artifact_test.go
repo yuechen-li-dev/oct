@@ -55,3 +55,15 @@ func TestDeriveTestArtifactPathsSeparatesSourceAndPlatformBinary(t *testing.T) {
 		})
 	}
 }
+
+func TestProgramOutputPathNeverCollidesWithSource(t *testing.T) {
+	for _, goos := range []string{"windows", "linux", "darwin"} {
+		t.Run(goos, func(t *testing.T) {
+			source := filepath.Join(t.TempDir(), "Main.oct")
+			output := programOutputPath(source, ArtifactExecutable, Target{GOOS: goos})
+			if filepath.Clean(output) == filepath.Clean(source) {
+				t.Fatalf("program output %q collides with source %q", output, source)
+			}
+		})
+	}
+}

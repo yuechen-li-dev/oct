@@ -1,4 +1,8 @@
-# Oct v0.1 release readiness
+# Historical Oct v0.1 release readiness
+
+This document records the pre-1.0 process only. Oct 1.0 RC artifact authority
+is `docs/releases/INSTALL_1_0.md`, `docs/releases/OCT_1_0_READINESS.md`, and
+`docs/RELEASE.md`; do not reuse the v0.1 tag or installation commands below.
 
 ## Release positioning
 

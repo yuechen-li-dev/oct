@@ -214,15 +214,15 @@ flow BrentFlow(
     state EvaluateU {
         let tol1 = tolerance * Abs(board.X) + 0.0000000001
         let rawU = board.X + board.D
-        board.U  = if Abs(board.D) >= tol1 { rawU }
-                   else if board.D > 0.0   { board.X + tol1 }
-                   else                     { board.X - tol1 }
+        board.U = switch {
+            case Abs(board.D) >= tol1 => rawU
+            case board.D > 0.0 => board.X + tol1
+            else => board.X - tol1
+        }
         board.FU = f(board.U)
-        // Utility selection: accept U as new best, or update secondary candidates.
-        // This replaces the nested if-else that triggered Oct's decision-ladder rule.
-        when utility {
-            board.FU <= board.FX score 10.0    // U is the new best
-            board.FU >  board.FX score  5.0    // U improves W or V
+        when {
+            case board.FU <= board.FX -> goto AcceptU
+            else                      -> goto UpdateCandidates
         }
     }
 

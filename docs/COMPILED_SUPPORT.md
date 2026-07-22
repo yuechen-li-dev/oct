@@ -1,8 +1,22 @@
 # Compiled Support Tracker
 
-_Last updated: 2026-06-12._
+_Last updated: 2026-07-21._
 
-This file is the **source of truth** for compiled support posture.
+This is an implementation evidence tracker. The public Oct 1.0 compatibility
+contract is `docs/releases/OCT_1_0_CONTRACT.md`; a tracked stable surface is
+not downgraded merely because this historical log contains an older partial
+status.
+
+## Oct 1.0 RC2 parity result
+
+The declared stable language and standard-library surface compiles natively
+without interpreter fallback. The 15-target positive conformance driver reports
+52 compiled cases and zero fallback; the declared 28-package stable-library
+sweep is compiled-green, including Numerics (44 cases) and Optimization (40
+cases). Function-valued flow parameters are supported where the documented
+function-value surface permits them. The deferred items below remain excluded
+only when the language reference and surface manifest say they are experimental
+or unsupported; they are not a partial stable-backend exception.
 
 ## Native artifact naming
 

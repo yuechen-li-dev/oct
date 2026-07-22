@@ -79,10 +79,9 @@ fn JacobianCD(
     // J is m x np: one row per data point, one col per parameter
     // Build each row independently — Float[] assignment is reference copy,
     // so reusing firstRow would make all rows aliases of the same array.
-    var J = [[0.0]]
     var r0 = [0.0]
     for k in 1 .. np { r0 = Append(r0, 0.0) }
-    J[0] = r0
+    var J = [r0]
     for i in 1 .. m {
         var ri = [0.0]
         for k in 1 .. np { ri = Append(ri, 0.0) }
@@ -146,10 +145,9 @@ fn JtJ(J: Float[][]) -> Float[][] ! Error {
         return error("JtJ: empty Jacobian")
     }
     let np = Len(J[0])
-    var H  = [[0.0]]
     var h0 = [0.0]
     for k in 1 .. np { h0 = Append(h0, 0.0) }
-    H[0] = h0
+    var H = [h0]
     for j in 1 .. np {
         var hj = [0.0]
         for k in 1 .. np { hj = Append(hj, 0.0) }

@@ -1,4 +1,4 @@
-# Oct 1.0 Contract (RC1 proposal)
+# Oct 1.0 Contract (RC2 candidate)
 
 ## Meaning of 1.0
 
@@ -30,17 +30,23 @@ The intended stable tools are `oct run`, `oct build`, `oct test`, `oct fmt`,
 `oct build` produces a native executable, not `.octbin`. Package import
 resolution is shared by run/build/test/artifact. `oct test --execution compiled`
 must never silently fall back; `auto` may report per-case interpreted fallback.
-The exact compiled coverage promised by 1.0 remains an RC2 release decision;
-it cannot be inferred from language acceptance alone.
+Every stable 1.0 language construct is compiled by GoOct. The positive gate is
+`tools/Test-Oct10Conformance.ps1`; compiled mode requires native execution,
+at least one compiled case, and zero fallback.
+
+Release candidates are version-injected builds: `oct version` reports the
+artifact semantic version, beginning with `oct 1.0.0-rc.1`. Windows x86-64 and
+Linux x86-64 archives include the executable, 13 sidecars, `LICENSE`,
+`INSTALL.md`, and the minimal Go compiler runtime needed for native lowering.
+The Go toolchain declared by bundled `runtime/go.mod` remains a prerequisite for
+`oct build`; no source checkout is required.
 
 ## Standard library boundary
 
-Stable library APIs must be named in the 1.0 release manifest and have a
-documented, tested interpreted path. Wrapper-backed APIs additionally require
-their documented sidecar and discovery behavior. Until that manifest exists,
-the library directory is evidence and source, not a blanket 1.0 compatibility
-promise. Core modules documented in `17-standard-libraries.md` are candidates,
-not automatically stable merely because they are present.
+The authoritative classification is
+`docs/releases/OCT_1_0_SURFACE_MANIFEST.md`. Stable wrapper-backed APIs require
+their documented sidecar and discovery behavior; missing sidecars are explicit
+compiled errors, never interpreter fallback.
 
 ## Exclusions and known limitations
 
@@ -48,9 +54,9 @@ not automatically stable merely because they are present.
   their internal/generated formats are separately versioned or experimental.
 - No user-defined generics, macros, reflection, metaprogramming, anonymous
   functions, lambdas, closures, maps, or general dynamic values are promised.
-- Compiled support is incomplete for some accepted language/library shapes;
-  `docs/COMPILED_SUPPORT.md` is the current evidence tracker, not a stable
-  promise. This is the primary RC2 decision/blocker.
+- `docs/COMPILED_SUPPORT.md` is an implementation tracker, not a separate
+  compatibility boundary. A stable program that passes binding must compile and
+  execute natively; unsupported experimental shapes must fail explicitly.
 - Sidecar availability is an explicit environmental prerequisite for the
   wrapper APIs that use it. Hardware/GPU paths are not essential tooling.
 
@@ -66,4 +72,3 @@ not automatically stable merely because they are present.
 5. Unspecified behavior, experimental facilities, implementation internals,
    generated Go, test-harness layouts, `.octbin`, and sidecar protocols are not
    compatibility promises unless a later public document explicitly says so.
-

@@ -1,47 +1,11 @@
-# Release Checklist (Go module / pkg.go.dev)
+# Oct 1.0 release checklist
 
-Use this checklist for public module releases.
+The RC artifact contract is documented in `docs/releases/INSTALL_1_0.md`.
+Build Windows with `tools/New-OctRelease.ps1 1.0.0-rc.1 <output-dir>` and Linux
+with `tools/new_oct_release.sh 1.0.0-rc.1 <output-dir>`. Each produces a
+versioned archive and `checksums.sha256`; verify with `Get-FileHash` on Windows
+or `sha256sum -c checksums.sha256` on Linux before extraction.
 
-1. Ensure CI is green:
-
-   ```bash
-   go test ./... -count=1
-   ```
-
-2. Verify local installs:
-
-   ```bash
-   go install ./cmd/oct
-   go install ./cmd/octxiliary-io
-   ```
-
-3. Tag and publish:
-
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-
-4. Trigger pkg.go.dev / module proxy indexing:
-
-   - Visit `https://pkg.go.dev/github.com/yuechen-li-dev/oct` and click **Request**, or
-   - Request:
-     `https://proxy.golang.org/github.com/yuechen-li-dev/oct/@v/v0.1.0.info`, or
-   - Run:
-
-   ```bash
-   GOPROXY=https://proxy.golang.org GO111MODULE=on go install github.com/yuechen-li-dev/oct/cmd/oct@v0.1.0
-   ```
-
-5. Verify versioned install commands:
-
-   ```bash
-   go install github.com/yuechen-li-dev/oct/cmd/oct@v0.1.0
-   go install github.com/yuechen-li-dev/oct/cmd/octxiliary-io@v0.1.0
-   ```
-
-Notes:
-
-- `v0` indicates experimental / pre-v1 module status.
-- Do not reuse tags.
-- If a bad version is published, release a newer version with module retractions rather than mutating an existing tag.
+Do not tag or publish an RC from this checklist. GA changes the injected version
+to `1.0.0`, repeats extraction-context verification on Windows and Linux, then
+requires explicit human approval before `git tag v1.0.0` and publication.

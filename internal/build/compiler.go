@@ -194,11 +194,13 @@ type MIRFlowUnaryExpr struct {
 func (MIRFlowUnaryExpr) mirFlowExpr() {}
 
 type MIRFlowCallExpr struct {
-	Callee   string
-	Args     []MIRFlowExpr
-	Builtin  bool
-	RetType  string
-	Fallible bool
+	Callee             string
+	Args               []MIRFlowExpr
+	Builtin            bool
+	FunctionValue      bool
+	FunctionValueLocal bool
+	RetType            string
+	Fallible           bool
 }
 
 func (MIRFlowCallExpr) mirFlowExpr() {}
@@ -459,7 +461,7 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 	if len(options.testHarnessCases) > 0 {
 		artifactKind = ArtifactTestExecutable
 	}
-	artifactPath := OutputPath(filepath.Join(filepath.Dir(program.EntrySource), filepath.Base(program.EntrySource)), artifactKind, HostTarget())
+	artifactPath := programOutputPath(program.EntrySource, artifactKind, HostTarget())
 	genPath := ""
 	if options.testArtifactLayout {
 		paths, err := DeriveTestArtifactPaths(program.EntrySource, HostTarget())
@@ -486,6 +488,25 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 	if err := os.WriteFile(genPath, []byte(goSrc), 0o644); err != nil {
 		return Result{}, fmt.Errorf("write generated go %s: %w", genPath, err)
 	}
+	buildSourcePath := genPath
+	if strings.Contains(goSrc, `github.com/yuechen-li-dev/oct/internal/`) {
+		// Go's internal-package rule is based on the generated source file's
+		// directory, not the compiler process working directory. Compiled test
+		// artifacts intentionally live in an OS-temp lifecycle scope, so stage a
+		// transient build input beneath the module while retaining that external
+		// artifact layout for runner cleanup and diagnostics.
+		stageDir, err := generatedBuildDir()
+		if err != nil {
+			return Result{}, err
+		}
+		if os.Getenv("OCT_KEEP_GEN") == "" {
+			defer os.RemoveAll(stageDir)
+		}
+		buildSourcePath = filepath.Join(stageDir, filepath.Base(genPath))
+		if err := os.WriteFile(buildSourcePath, []byte(goSrc), 0o644); err != nil {
+			return Result{}, fmt.Errorf("write staged generated go %s: %w", buildSourcePath, err)
+		}
+	}
 
 	if options.testArtifactLayout {
 		// A failed rebuild must not be able to execute a previous owned binary.
@@ -493,7 +514,7 @@ func compileProgram(program project.Program, options compileOptions) (Result, er
 			return Result{}, fmt.Errorf("remove stale compiled test binary %s: %w", artifactPath, err)
 		}
 	}
-	cmd := exec.Command("go", "build", "-o", artifactPath, genPath)
+	cmd := exec.Command("go", "build", "-o", artifactPath, buildSourcePath)
 	moduleRoot, err := compilerModuleRoot()
 	if err != nil {
 		return Result{}, err
@@ -538,12 +559,41 @@ func generatedBuildDir() (string, error) {
 	return dir, nil
 }
 
+func programOutputPath(source string, kind ArtifactKind, target Target) string {
+	path := OutputPath(filepath.Join(filepath.Dir(source), filepath.Base(source)), kind, target)
+	if filepath.Clean(path) == filepath.Clean(source) {
+		return path + ".out"
+	}
+	return path
+}
+
 func compilerModuleRoot() (string, error) {
+	if configured := strings.TrimSpace(os.Getenv("OCT_COMPILER_RUNTIME")); configured != "" {
+		return validateCompilerModuleRoot(configured)
+	}
+	if executable, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(executable), "runtime")
+		if _, err := os.Stat(filepath.Join(candidate, "go.mod")); err == nil {
+			return validateCompilerModuleRoot(candidate)
+		}
+	}
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		return "", fmt.Errorf("locate compiler module root: runtime caller unavailable")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..")), nil
+	return validateCompilerModuleRoot(filepath.Join(filepath.Dir(file), "..", ".."))
+}
+
+func validateCompilerModuleRoot(root string) (string, error) {
+	root = filepath.Clean(root)
+	info, err := os.Stat(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return "", fmt.Errorf("locate compiler runtime at %s: %w", root, err)
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("locate compiler runtime at %s: go.mod is a directory", root)
+	}
+	return root, nil
 }
 
 type einsteinTermMeta struct {
@@ -1309,7 +1359,11 @@ func (c *lowerCtx) lowerBlock(block ast.Block) error {
 			}
 		case ast.ReturnStmt:
 			if s.Value == nil {
-				c.blocks[c.cur].Terminator = MIRReturn{}
+				if c.fn.IsFallible {
+					c.blocks[c.cur].Terminator = MIRReturn{Value: fallibleOkValue(c.retType, "")}
+				} else {
+					c.blocks[c.cur].Terminator = MIRReturn{}
+				}
 				continue
 			}
 			v, t, _, err := c.withExpectedType(c.retType, func() (string, string, bool, error) { return c.lowerExpr(s.Value) })
@@ -2477,6 +2531,18 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 			})
 			return tmp, ret, false, nil
 		}
+		if op == "/" {
+			// Keep division operands as function parameters. Go rejects a literal
+			// zero divisor while compiling a non-selected switch arm, whereas Oct
+			// evaluates that arm lazily and reports division failure only if it is
+			// selected at runtime.
+			goRet := goType(ret)
+			c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{
+				Target: tmp,
+				Value:  fmt.Sprintf("func(__a %s, __b %s) %s { return __a / __b }(%s, %s)", goRet, goRet, goRet, l, r),
+			})
+			return tmp, ret, false, nil
+		}
 		c.blocks[c.cur].Statements = append(c.blocks[c.cur].Statements, MIRAssign{Target: tmp, Value: fmt.Sprintf("(%s %s %s)", l, op, r)})
 		return tmp, ret, false, nil
 	case ast.UnaryExpr:
@@ -3359,7 +3425,10 @@ func (c *lowerCtx) lowerBatchWorker(e ast.BatchExpr, itemType string) (MIRFuncti
 
 func (c *lowerCtx) internalBatchWorkerName() string {
 	for id := c.batchID; ; id++ {
-		candidate := internalName(internalBatchWorker, id)
+		// batchID is scoped to one lowering context. Include the owning function
+		// so independent batch expressions lowered from different functions do
+		// not emit duplicate package-level Go helpers.
+		candidate := fmt.Sprintf("%s_%s", internalName(internalBatchWorker, id), c.fn.Name)
 		conflicts := false
 		for _, fn := range c.pkg.Functions {
 			if fn.Name == candidate {
@@ -5285,9 +5354,22 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 				}
 			}
 		}
-		callee, ret, builtin, fallible, err := resolveFlowCall(e.Callee, pkg)
-		if err != nil {
-			return nil, err
+		callee, ret, builtin, fallible := "", "", false, false
+		functionValue, functionValueLocal := false, false
+		if ident, ok := e.Callee.(ast.IdentifierExpr); ok {
+			if signature, ok := parseCompiledFunctionType(env[ident.Name]); ok {
+				callee = ident.Name
+				ret = signature.ReturnType
+				functionValue = true
+				functionValueLocal = locals[ident.Name]
+			}
+		}
+		if !functionValue {
+			var err error
+			callee, ret, builtin, fallible, err = resolveFlowCall(e.Callee, pkg)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if fallible {
 			return nil, fmt.Errorf("fallible calls are not supported in compiled flow expressions; handle outside the flow or use non-fallible helper")
@@ -5300,7 +5382,7 @@ func lowerFlowExpr(expr ast.Expr, env map[string]string, locals map[string]bool,
 			}
 			args = append(args, v)
 		}
-		return MIRFlowCallExpr{Callee: callee, Args: args, Builtin: builtin, RetType: ret, Fallible: fallible}, nil
+		return MIRFlowCallExpr{Callee: callee, Args: args, Builtin: builtin, FunctionValue: functionValue, FunctionValueLocal: functionValueLocal, RetType: ret, Fallible: fallible}, nil
 	case ast.ArrayLiteralExpr:
 		elemType := "Int"
 		if len(e.Elements) > 0 {
@@ -6092,6 +6174,14 @@ func emitGo(m MIRModule) (string, error) {
 				}
 			}
 			if needsVoidType {
+				break
+			}
+		}
+	}
+	if !needsVoidType {
+		for _, flow := range m.Flows {
+			if flow.Return == "Void" {
+				needsVoidType = true
 				break
 			}
 		}
@@ -8248,14 +8338,14 @@ func emitGoFlow(b *strings.Builder, flow MIRFlow) error {
 		fmt.Fprintf(b, "%s %s", p.Name, goType(p.Type))
 	}
 	fmt.Fprintf(b, ") %s {\n", goType(flowInstanceTypeString(resultType)))
-	fmt.Fprintf(b, "\tf := &%s{}\n", structName)
+	fmt.Fprintf(b, "\t__flow := &%s{}\n", structName)
 	if flowHasUtilityWhen(flow) {
-		b.WriteString("\tf.utilitySites = map[int]__octUtilitySiteState{}\n")
+		b.WriteString("\t__flow.utilitySites = map[int]__octUtilitySiteState{}\n")
 	}
 	for _, p := range flow.Parameters {
-		fmt.Fprintf(b, "\tf.%s = %s\n", p.Name, p.Name)
+		fmt.Fprintf(b, "\t__flow.%s = %s\n", p.Name, p.Name)
 	}
-	b.WriteString("\treturn f\n}\n\n")
+	b.WriteString("\treturn __flow\n}\n\n")
 	fmt.Fprintf(b, "func (f *%s) __octActive() string {\n", structName)
 	b.WriteString("\tif !f.started || f.completed { return \"\" }\n\tswitch f.currentState {\n")
 	for idx, state := range flow.States {
@@ -8646,6 +8736,13 @@ func emitGoFlowExpr(expr MIRFlowExpr, pkg string) (string, error) {
 			args = append(args, v)
 		}
 		if !e.Builtin {
+			if e.FunctionValue {
+				callee := "f." + e.Callee
+				if e.FunctionValueLocal {
+					callee = e.Callee
+				}
+				return fmt.Sprintf("%s(%s)", callee, strings.Join(args, ", ")), nil
+			}
 			return fmt.Sprintf("fn_%s(%s)", strings.ReplaceAll(e.Callee, ".", "_"), strings.Join(args, ", ")), nil
 		}
 		return emitGoBuiltinCallExpr(e.Callee, args)

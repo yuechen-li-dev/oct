@@ -2,15 +2,16 @@
 
 ## RC2 bounded work
 
-1. Resolve **COMP-001**: inventory every documented core construct not
-   compiled-green, decide the stable compiled contract, and add focused
-   interpreted/compiled corpus evidence for it. Do not use `auto` fallback as
-   evidence for a compiled claim.
+1. **COMP-002** and **COMP-003** are closed: the stable-library compiled sweep
+   covers all 28 declared libraries with zero fallback. Keep this sweep in the
+   candidate evidence; do not relabel established libraries experimental to
+   bypass future parity failures.
 2. Resolve **API-001**: publish a stable-library manifest that marks each
    public module/API stable, experimental, wrapper-required, or excluded.
-3. Resolve **PKG-001**: replace 0.1 release/install examples with proposed 1.0
-   commands and perform an install/build/version smoke using release-shaped
-   binaries. Do not tag or publish.
+3. **PKG-001 is closed:** `1.0.0-rc.1` Windows and Linux archives are built,
+   checksummed, extracted, and smoke-tested outside the checkout. The final GA
+   operation changes only the injected version to `1.0.0`, repeats this gate,
+   then obtains human approval before tagging and publication.
 4. Turn the conformance gate below into a recorded RC2 result and repair only
    defects whose intended behavior is already clear.
 

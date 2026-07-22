@@ -61,11 +61,3 @@ fn MaximizationByNegation() -> Void {
     let result = Brent(fNegParabola, 0.0, 4.0, 0.000001, 100)!
     Assert.Near(2.0, result.XMin, 0.0001, "maximum of -x²+4x found at x=2 by negation")
 }
-
-[Fact]
-fn MaximizationByNegation() -> Void {
-    // max of -x²+4x = -(x-2)²+4 at x=2
-    // minimize x²-4x
-    let result = Brent(fNegParabola, 0.0, 4.0, 0.000001, 100)!
-    Assert.Near(2.0, result.XMin, 0.0001, "maximum of -x²+4x found at x=2 by negation")
-}
