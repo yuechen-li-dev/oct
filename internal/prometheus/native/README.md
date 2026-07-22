@@ -19,7 +19,8 @@ Current Vulkan reactor file topology (P12 M5 baseline):
     ownership to M30/M30a and M29; it does not own async tokens, queues, or
     future executors.
 - `reactor_vulkan_fft.c`
-  - inert future FFT reactor family stub; no capability/API/runtime behavior claims.
+  - M5/M6 Complex32 radix-2 Vulkan execution family; production qualification
+    remains unclaimed until its required RTX 3070 evidence is recorded.
 - `reactor_vulkan_fused_reduction.c`
   - production M39b row-wise FP32 sum/max/stable-softmax family: deterministic
     plans, one-workgroup and staged dispatch, persistent family ring,
@@ -65,7 +66,9 @@ Scope guardrails for this topology:
 
 - `reactor_vulkan_common.c` is for genuinely shared Vulkan plumbing only.
 - SGEMM policy/runtime behavior stays localized in `reactor_vulkan_sgemm.c` for auditability.
-- FFT remains inert until an implementation milestone explicitly adds behavior.
+- FFT executes its bounded Complex32 radix-2 Vulkan route through the generic
+  runtime-services seam. It has no host FFT fallback; hardware qualification is
+  tracked separately from route availability.
 - Fused reduction is row-wise and bounded; it does not own arbitrary tensor
   axes, a graph executor, normalization policy, or SGEMM selection.
 

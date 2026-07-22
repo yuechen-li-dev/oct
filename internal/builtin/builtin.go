@@ -204,7 +204,7 @@ var names = map[string]struct{}{
 	"Matrix.zeros":             {},
 	"Matrix.fill":              {},
 	"Matrix.identity":          {},
-	"fft":                      {},
+	"FFT":                      {},
 
 	"RngSeed":                  {},
 	"RandInt":                  {},

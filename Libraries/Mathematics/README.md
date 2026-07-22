@@ -19,7 +19,7 @@
 - `FastFourierTransform(x: Complex[]) -> Complex[] ! Error`
 - `IFFT(X: Complex[]) -> Complex[] ! Error`
 
-Production transforms should use builtin `fft(x: Complex[]) -> Complex[] ! Error`; `FastFourierTransform` remains the pure Oct reference/oracle path.
+Production transforms should use builtin `FFT(x: Complex[]) -> Complex[] ! Error`; `FastFourierTransform` remains the pure Oct reference/oracle path.
 
 Production exponentiation should use builtin `Pow(base, exponent)`; `PowExpLnReference` remains a pure-Oct educational/reference path.
 

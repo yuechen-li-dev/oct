@@ -1273,7 +1273,7 @@ fn Main() -> Int {
         Complex(0.0, 0.0),
         Complex(0.0, 0.0)
     ]
-    let spectrum = fft(signal)!
+    let spectrum = FFT(signal)!
     return Len(spectrum)
 }
 `

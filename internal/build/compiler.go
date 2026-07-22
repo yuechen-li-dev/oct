@@ -3945,8 +3945,8 @@ func (c *lowerCtx) resolveCall(callee ast.Expr) (string, string, bool, bool, err
 		if x.Name == "Complex" {
 			return "Complex", "Complex", true, false, nil
 		}
-		if x.Name == "fft" {
-			return "fft", "Complex[]", true, true, nil
+		if x.Name == "FFT" {
+			return "FFT", "Complex[]", true, true, nil
 		}
 		if x.Name == "Contains" || x.Name == "StartsWith" || x.Name == "EndsWith" {
 			return x.Name, "Bool", true, false, nil
@@ -4650,12 +4650,12 @@ func compiledBuiltinReturnType(name string, argTypes []string) (string, error) {
 			}
 		}
 		return "Matrix<" + unifyLinearElemType(leftElem, rightElem) + ">", nil
-	case "fft":
+	case "FFT":
 		if len(argTypes) != 1 {
-			return "", fmt.Errorf("function 'fft' expects 1 arguments, got %d", len(argTypes))
+			return "", fmt.Errorf("function 'FFT' expects 1 arguments, got %d", len(argTypes))
 		}
 		if argTypes[0] != "Complex[]" {
-			return "", fmt.Errorf("compiled mode does not yet support builtin fft for type %s", argTypes[0])
+			return "", fmt.Errorf("compiled mode does not yet support builtin FFT for type %s", argTypes[0])
 		}
 		return "Complex[]", nil
 	case "Require":
@@ -6151,7 +6151,7 @@ func emitGo(m MIRModule) (string, error) {
 			importSet[pkg] = struct{}{}
 		}
 	}
-	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] || usedBuiltins["fft"] {
+	if usedBuiltins["Abs"] || usedBuiltins["Pi"] || usedBuiltins["E"] || usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Sqrt"] || usedBuiltins["Sin"] || usedBuiltins["Cos"] || usedBuiltins["Tan"] || usedBuiltins["Asin"] || usedBuiltins["Acos"] || usedBuiltins["Atan"] || usedBuiltins["Atan2"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] || usedBuiltins["Pow"] || usedBuiltins["Log10"] || usedBuiltins["Sinh"] || usedBuiltins["Cosh"] || usedBuiltins["Tanh"] || usedBuiltins["FloorToInt"] || usedBuiltins["CeilToInt"] || usedBuiltins["RoundToInt"] || usedBuiltins["BaseValue"] || usedBuiltins["BaseUnit"] || usedBuiltins["FFT"] {
 		importSet["math"] = struct{}{}
 	}
 	if usedBuiltins["ComplexPolar"] || usedBuiltins["Arg"] || usedBuiltins["Conj"] || usedBuiltins["Exp"] || usedBuiltins["Ln"] {
@@ -6318,7 +6318,7 @@ func emitGo(m MIRModule) (string, error) {
 	if usedBuiltins["Abs"] || usedBuiltins["Real"] || usedBuiltins["Imag"] {
 		b.WriteString(__octComplexHelpers)
 	}
-	if usedBuiltins["fft"] {
+	if usedBuiltins["FFT"] {
 		b.WriteString(__octFFTHelpers)
 	}
 	if needsRandomHelpers {
@@ -7299,10 +7299,10 @@ const __octFFTHelpers = `
 func __octFFT(values []complex128) octResult_ComplexSlice {
 	n := len(values)
 	if n == 0 {
-		return octResult_ComplexSlice{Err: "runtime error: fft requires non-empty input", IsErr: true}
+		return octResult_ComplexSlice{Err: "runtime error: FFT requires non-empty input", IsErr: true}
 	}
 	if n&(n-1) != 0 {
-		return octResult_ComplexSlice{Err: "runtime error: fft requires power-of-two input length", IsErr: true}
+		return octResult_ComplexSlice{Err: "runtime error: FFT requires power-of-two input length", IsErr: true}
 	}
 
 	out := make([]complex128, n)
@@ -9396,7 +9396,7 @@ func goStmt(s MIRStmt) (string, error) {
 				return fmt.Sprintf("%s = __octMarkdownTable(%s)", st.Target, st.Args[0]), nil
 			case "MarkdownTableWithColumns":
 				return fmt.Sprintf("%s = __octMarkdownTableWithColumns(%s, %s)", st.Target, st.Args[0], st.Args[1]), nil
-			case "fft":
+			case "FFT":
 				return fmt.Sprintf("%s = __octFFT(%s)", st.Target, st.Args[0]), nil
 			case "WriteOctagon":
 				return fmt.Sprintf("__octWriteOctagon(%s, %s); %s = 0", st.Args[0], st.Args[1], st.Target), nil

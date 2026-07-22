@@ -5,22 +5,22 @@ import (
 	"math"
 )
 
-// fftCPU is the production CPU implementation used by the fft(...) builtin.
+// fftCPU is the production CPU implementation used by the FFT(...) builtin.
 // This is intentionally runtime-owned (not delegated to Libraries/Mathematics)
 // so the builtin remains a clean seam for future acceleration backends.
 func fftCPU(values []Value) ([]Value, error) {
 	n := len(values)
 	if n == 0 {
-		return nil, fmt.Errorf("runtime error: fft requires non-empty input")
+		return nil, fmt.Errorf("runtime error: FFT requires non-empty input")
 	}
 	if !isPowerOfTwo(n) {
-		return nil, fmt.Errorf("runtime error: fft requires power-of-two input length")
+		return nil, fmt.Errorf("runtime error: FFT requires power-of-two input length")
 	}
 
 	out := make([]complex128, n)
 	for i, value := range values {
 		if value.Kind != ValueComplex {
-			return nil, fmt.Errorf("runtime invariant violation: fft expects Complex[] input")
+			return nil, fmt.Errorf("runtime invariant violation: FFT expects Complex[] input")
 		}
 		out[i] = value.Complex
 	}

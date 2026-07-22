@@ -1,0 +1,59 @@
+namespace Prometheus.Production.FFT;
+
+// Fixed baseline: ordinary native HLSL sin/cos twiddles.  There is exactly
+// one twiddle strategy in this production radix-2 route.
+stream FftButterflyIO {
+    [binding(0)] Input: readonly array<float2>;
+    [binding(1)] Output: readwrite array<float2>;
+}
+
+record FftButterflyParams {
+    ElementCount: u32;
+    BatchCount: u32;
+    StrideElements: u32;
+    HalfSpan: u32;
+    Direction: u32;
+    NormalizeInverse: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+}
+
+fn CosineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return cos(value); }; return result; }
+fn SineF32(value: f32) -> f32 { let result: f32 = HLSL<f32>(value) { return sin(value); }; return result; }
+fn UintToF32(value: u32) -> f32 { let result: f32 = HLSL<f32>(value) { return float(value); }; return result; }
+
+shader FftRadix2Butterfly {
+    resources FftButterflyIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: FftButterflyParams) -> void {
+        let linear: u32 = DispatchThreadID.x;
+        let total: u32 = params.ElementCount * params.BatchCount;
+        if linear >= total { return; }
+
+        let batch: u32 = linear / params.ElementCount;
+        let element: u32 = linear - batch * params.ElementCount;
+        let span: u32 = params.HalfSpan * 2u;
+        let block: u32 = element / span;
+        let within: u32 = element - block * span;
+        let lower: u32 = within % params.HalfSpan;
+        let base: u32 = batch * params.StrideElements + block * span;
+        let even: float2 = Input[base + lower];
+        let odd: float2 = Input[base + lower + params.HalfSpan];
+        var sign: f32 = -1.0;
+        if params.Direction == 2u { sign = 1.0; }
+        let angle: f32 = sign * 6.28318530717958647692 * UintToF32(lower) / UintToF32(span);
+        let twiddle: float2 = float2(CosineF32(angle), SineF32(angle));
+        let twiddleProduct: float2 = float2(twiddle.x * odd.x - twiddle.y * odd.y,
+                                             twiddle.x * odd.y + twiddle.y * odd.x);
+        var result: float2 = float2(even.x - twiddleProduct.x, even.y - twiddleProduct.y);
+        if within < params.HalfSpan {
+            result = float2(even.x + twiddleProduct.x, even.y + twiddleProduct.y);
+        }
+        if params.Direction == 2u and params.NormalizeInverse != 0u {
+            let scale: f32 = UintToF32(params.ElementCount);
+            result = float2(result.x / scale, result.y / scale);
+        }
+        Output[batch * params.StrideElements + element] = result;
+        return;
+    }
+}

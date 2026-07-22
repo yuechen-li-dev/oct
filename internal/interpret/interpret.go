@@ -3075,12 +3075,12 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 		}
 		return evalResult{value: snapshot}, nil
 	}
-	if callee == "fft" {
+	if callee == "FFT" {
 		if len(typeArguments) != 0 {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: fft does not accept type arguments")
+			return evalResult{}, fmt.Errorf("runtime invariant violation: FFT does not accept type arguments")
 		}
 		if len(argumentExprs) != 1 {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: fft expects 1 argument")
+			return evalResult{}, fmt.Errorf("runtime invariant violation: FFT expects 1 argument")
 		}
 		argument, err := i.evalExpr(env, pkgName, argumentExprs[0])
 		if err != nil {
@@ -3090,7 +3090,7 @@ func (i interpreter) evalBuiltinCallExpr(env *environment, pkgName string, calle
 			return evalResult{hasError: true, errorVal: argument.errorVal}, nil
 		}
 		if argument.value.Kind != ValueArray {
-			return evalResult{}, fmt.Errorf("runtime invariant violation: fft expects Complex[] argument")
+			return evalResult{}, fmt.Errorf("runtime invariant violation: FFT expects Complex[] argument")
 		}
 		transformed, err := fftCPU(argument.value.Array)
 		if err != nil {

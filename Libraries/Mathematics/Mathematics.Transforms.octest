@@ -80,7 +80,7 @@ fn IFFTRoundTripNonTrivialSequence() -> Void {
 
     var i = 0
     while i < Len(signal) {
-        NearComplexAt(signal, reconstructed, i, 0.000001, "ifft(fft(x)) ~= x")
+        NearComplexAt(signal, reconstructed, i, 0.000001, "IFFT(FFT(x)) ~= x")
         i = i + 1
     }
 }
@@ -114,11 +114,11 @@ fn FFTBuiltinMatchesReferenceImplementation() -> Void {
     ]
 
     let referenceSpectrum = FastFourierTransform(signal)!
-    let builtinSpectrum = fft(signal)!
+    let builtinSpectrum = FFT(signal)!
 
     var i = 0
     while i < Len(signal) {
-        NearComplexAt(referenceSpectrum, builtinSpectrum, i, 0.000001, "fft builtin should match FastFourierTransform reference")
+        NearComplexAt(referenceSpectrum, builtinSpectrum, i, 0.000001, "FFT builtin should match FastFourierTransform reference")
         i = i + 1
     }
 }
@@ -126,5 +126,5 @@ fn FFTBuiltinMatchesReferenceImplementation() -> Void {
 [Fact]
 fn FFTBuiltinRejectsInvalidLengthPolicy() -> Void {
     let invalid = [Complex(1.0, 0.0), Complex(2.0, 0.0), Complex(3.0, 0.0)]
-    Assert.Error(fft(invalid), "fft builtin non-power-of-two length must fail")
+    Assert.Error(FFT(invalid), "FFT builtin non-power-of-two length must fail")
 }

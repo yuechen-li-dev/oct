@@ -1,0 +1,46 @@
+namespace Prometheus.Production.FFT;
+
+// Complex32 is stored as float2: x is real and y is imaginary.  The native
+// ABI uses the same two adjacent IEEE-754 f32 values.
+stream FftBitReverseIO {
+    [binding(0)] Input: readonly array<float2>;
+    [binding(1)] Output: readwrite array<float2>;
+}
+
+record FftBitReverseParams {
+    ElementCount: u32;
+    BatchCount: u32;
+    StrideElements: u32;
+    Reserved: u32;
+}
+
+fn ReverseBits(index: u32, elementCount: u32) -> u32 {
+    var value: u32 = index;
+    var reversed: u32 = 0u;
+    var width: u32 = elementCount;
+    // The production host contract bounds N to 2^20.  A fixed loop is also
+    // accepted by the portable SDSL-V compute subset.
+    for bit in 0u..20u step 1u {
+        if width > 1u {
+            reversed = reversed * 2u + (value % 2u);
+            value = value / 2u;
+            width = width / 2u;
+        }
+    }
+    return reversed;
+}
+
+shader FftRadix2BitReverse {
+    resources FftBitReverseIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: FftBitReverseParams) -> void {
+        let linear: u32 = DispatchThreadID.x;
+        let total: u32 = params.ElementCount * params.BatchCount;
+        if linear >= total { return; }
+        let batch: u32 = linear / params.ElementCount;
+        let element: u32 = linear - batch * params.ElementCount;
+        let reversed: u32 = ReverseBits(element, params.ElementCount);
+        Output[batch * params.StrideElements + reversed] = Input[batch * params.StrideElements + element];
+        return;
+    }
+}
