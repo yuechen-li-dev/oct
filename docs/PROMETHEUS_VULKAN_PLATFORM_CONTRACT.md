@@ -19,6 +19,11 @@ their extension, feature, tuple, float16, and Vulkan-memory-model facts.
 Absence rejects that optimized route rather than silently changing one
 execution identity.
 
+For the Mx5 proof, `OpGroupNonUniformFMax` requires subgroup arithmetic and
+`OpGroupNonUniformBroadcastFirst` requires basic/broadcast support. The
+RTX-specific route separately requires compute-stage support and subgroup size
+32; none follows merely from the Vulkan 1.4 API floor.
+
 Artifact and replay identities include `ProductionVulkan14`, DXC lowering
 `vulkan1.3`, validator environment `vulkan1.4`, SPIR-V 1.6, and the exact
 capability route.  Model and parameter identities do not change merely from

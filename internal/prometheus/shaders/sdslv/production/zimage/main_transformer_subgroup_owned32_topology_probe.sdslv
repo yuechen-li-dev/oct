@@ -14,7 +14,10 @@ shader MainTransformerSubgroupOwned32TopologyProbe {
         HLSL {
             const uint lane = WaveGetLaneIndex();
             const uint laneCount = WaveGetLaneCount();
-            const uint laneZeroIndex = WaveReadLaneAt(localIndex, 0u);
+            // This is deliberately BroadcastFirst rather than a lane-indexed
+            // shuffle: Mx5 proves the exact first-active-lane contract that
+            // route admission maps to VK_SUBGROUP_FEATURE_BASIC_BIT.
+            const uint laneZeroIndex = WaveReadLaneFirst(localIndex);
             const uint arithmeticMaximum = asuint(WaveActiveMax(float(localIndex)));
             const uint laneThirtyOneIndex = WaveReadLaneAt(localIndex, 31u);
             const uint offset = localIndex * 6u;

@@ -6,7 +6,7 @@
 [DispatchGroups(2, 1, 1)]
 [Fact]
  [TestInputUInt(31u)]
-fn ProductionSubgroupMaximumAndShuffle() -> void {
+fn ProductionSubgroupMaximumAndBroadcastFirst() -> void {
     let maximum: f32 = HLSL<f32> {
         return WaveActiveMax(float(DispatchThreadID.x % 32u));
     };
@@ -14,7 +14,7 @@ fn ProductionSubgroupMaximumAndShuffle() -> void {
     let sourceZero: f32 = HLSL<f32> {
         uint subgroup = DispatchThreadID.x / 32u;
         uint lane = DispatchThreadID.x % 32u;
-        return WaveReadLaneAt(float(subgroup * 100u + lane), 0u);
+        return WaveReadLaneFirst(float(subgroup * 100u + lane));
     };
     let sourceThirtyOne: f32 = HLSL<f32> {
         uint subgroup = DispatchThreadID.x / 32u;
@@ -29,7 +29,7 @@ fn ProductionSubgroupMaximumAndShuffle() -> void {
     let expectedZero: f32 = HLSL<f32> { return float((DispatchThreadID.x / 32u) * 100u); };
     let expectedThirtyOne: f32 = HLSL<f32> { return float((DispatchThreadID.x / 32u) * 100u + 31u); };
     Assert.Equal(maximum, 31.0, "subgroup floating maximum must be real wave arithmetic");
-    Assert.Equal(sourceZero, expectedZero, "shuffle source lane zero must remain in its subgroup");
+    Assert.Equal(sourceZero, expectedZero, "broadcast first must remain in its subgroup");
     Assert.Equal(sourceThirtyOne, expectedThirtyOne, "shuffle source lane thirty-one must remain in its subgroup");
     Assert.Equal(dynamicSource, expectedThirtyOne, "subgroup-uniform dynamic shuffle source must match the canonical source-lane loop");
 }

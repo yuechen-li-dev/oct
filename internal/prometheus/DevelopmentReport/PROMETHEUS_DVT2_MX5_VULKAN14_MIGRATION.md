@@ -2,7 +2,9 @@
 
 ## Outcome
 
-**SUCCESS — COMPLETE — READY TO RESUME M5B.**
+**DVT-2 Mx5 — CLOSED BY OWNER ACCEPTANCE.**
+
+**VULKAN 1.4 PRODUCTION TOOLCHAIN AND SUBGROUP SEMANTICS PROVEN.**
 
 The complete registered SDSL-V production portfolio (40 assets) now compiles
 with the compiler-owned `ProductionVulkan14` contract: DXC's highest supported
@@ -142,3 +144,62 @@ alter the Vulkan 1.4 production contract, the numerical authority, or the
 explicit SerialCanonical fallback. The user-provided
 `nr0_attention_streaming_parallel.sdslv` remains unregistered experimental
 source for M5b; its full-workgroup reduction topology is not part of Mx5.
+
+## Closure audit correction (2026-07-22)
+
+The prior recorded test proof used `WaveReadLaneAt(..., 0u)`. Although correct
+for a full subgroup, DXC lowers it to `OpGroupNonUniformShuffle`, not the
+requested `OpGroupNonUniformBroadcastFirst`. This audit corrected only the
+bounded production topology probe and matching SDSL-V fixture to use
+`WaveReadLaneFirst`; it is not an attention algorithm or dispatch-topology
+change.
+
+The production source is asset 48,
+`internal/prometheus/shaders/sdslv/production/zimage/main_transformer_subgroup_owned32_topology_probe.sdslv`,
+with native header
+`reactor_vulkan_zimage_main_transformer_subgroup_owned32_topology_probe_spirv.h`.
+The normal compiler-owned path is DXC `cs_6_0`, `-fspv-target-env=vulkan1.3`,
+then `spirv-val --target-env vulkan1.4`. Its regenerated SPIR-V 1.6 SHA-256
+is `9ea47bf2ad0376824ffc3d4485fc5c9228d3f82106e732757bba08b9aefb05dc`.
+Semantic disassembly confirms `OpGroupNonUniformFMax` and
+`OpGroupNonUniformBroadcastFirst` (plus the probe's deliberate arbitrary-lane
+shuffle evidence write). The manifest now declares `FMax`, `BroadcastFirst`,
+and `Shuffle`; Vulkan 1.4 alone does not imply any optional subgroup fact.
+
+This audit completed the canonical portfolio generator and Vulkan-1.4
+validation, native-host SDSL-V proof, route-admission test, payload check,
+model-lock check, native-manifest check, and workspace check. It does not
+re-label historical RTX, numerical, PNG, or performance records as freshly
+rerun evidence.
+
+## Owner-accepted closure and deferred requalification
+
+The owner accepts Mx5 as closed on the decisive production-path proof:
+subgroup maximum emits `OpGroupNonUniformFMax`, subgroup-first broadcast emits
+`OpGroupNonUniformBroadcastFirst`, and both traverse the one production
+SDSL-V → HLSL → DXC `vulkan1.3` → SPIR-V 1.6 → Vulkan-1.4-validation path.
+The generated header, manifest, compiled lock, local payload authority,
+workspace check, route admission, and focused tests agree.
+
+The closing turn did **not** freshly rerun the final payload-backed numerical
+authority, canonical lighthouse PNG smoke, real RTX 3070 probe, or
+post-migration performance benchmark. Their accepted historical records remain
+authoritative; they are deferred regression/requalification checks and are not
+replacement authorities or Mx5 blockers. The native Windows build command
+exceeded the command-time limit after producing updated binaries and reported
+no compilation failure.
+
+Next work: begin **DVT-2 M5b — Barrier-Conscious Subgroup Attention
+Topology** only in a separately scoped task. Preserve `SerialCanonical` as the
+fallback, compare against the recorded 172.396-second post-migration baseline,
+and keep the deferred requalification lanes distinct from an attention change.
+
+## Deferred compute-reactor experiment register
+
+| Experiment | Claimed advantage | Central assumption | Smallest falsification benchmark | Numerical risk | Ordering |
+| --- | --- | --- | --- | --- | --- |
+| Adaptive FFT radix | Better-balanced passes | Per-pass occupancy warrants a different radix | Fixed-radix versus fixed per-pass alternatives at 1K/4K/16K | Ordering/rounding | After conventional FFT baseline |
+| Inline CORDIC twiddles | Trade table reads for arithmetic | CORDIC beats tables or native transcendental evaluation | Same butterfly: table, native math, CORDIC | Phase approximation | After baseline |
+| Online Welford | Avoid an intermediate reduction pass | Required scope can merge safely in one dispatch | Required multi-workgroup shape versus two-pass reference | Merge/order; feasibility unproven | After baseline |
+| Procedural analytic BLAS | Exact primitive intersections | AABB plus analytic intersection is useful | Cylinder/plane scene versus triangles | Robustness/hit ordering | Outside DVT-2 closure |
+| Dominatus sample budget | Adaptive frame budget | Policy varies samples without obscuring correctness | Fixed-sample quality/time sweep | Quality nondeterminism | After renderer baseline |
