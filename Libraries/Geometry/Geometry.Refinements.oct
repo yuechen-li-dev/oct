@@ -1,0 +1,5 @@
+package Geometry
+
+concept NonNegativeLength = Float < m > {
+    Require(Self >= 0.0m, "a geometric length must be non-negative")
+}

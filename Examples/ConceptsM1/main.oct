@@ -1,0 +1,20 @@
+package Main
+
+concept ColorChannel = Int {
+    Require(Self >= 0, "a color channel must be at least 0")
+    Require(Self <= 255, "a color channel must be at most 255")
+}
+
+fn RuntimeSource() -> Int {
+    return 128
+}
+
+fn Consume(channel: ColorChannel) -> Int {
+    return channel
+}
+
+fn Main() -> Int {
+    let known: ColorChannel = 255
+    let checked = ColorChannel(RuntimeSource()) !
+    return Consume(known) + Consume(checked) - 383
+}

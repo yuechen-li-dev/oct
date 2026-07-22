@@ -8,14 +8,14 @@ record Color {
 }
 
 record Insets {
-    Top: Int<px>
-    Right: Int<px>
-    Bottom: Int<px>
-    Left: Int<px>
+    Top: Int < px >
+    Right: Int < px >
+    Bottom: Int < px >
+    Left: Int < px >
 }
 
 record TextStyle {
-    Size: Int<px>
+    Size: Int < px >
     Color: Color
     Weight: Int
 }
@@ -24,43 +24,29 @@ record Style {
     Background: Color
     Foreground: Color
     BorderColor: Color
-    BorderWidth: Int<px>
-    Radius: Int<px>
+    BorderWidth: Int < px >
+    Radius: Int < px >
     Padding: Insets
 }
 
-fn ValidateChannel(value: Int, name: String) -> Bool ! Error {
-    if value < 0 {
-        return error("UI color channel must be >= 0")
-    }
-    if value > 255 {
-        return error("UI color channel must be <= 255")
-    }
-    return true
+concept ColorChannel = Int {
+    Require(Self >= 0, "a color channel must be at least 0")
+    Require(Self <= 255, "a color channel must be at most 255")
 }
 
-fn ValidatePxNonNegative(value: Int<px>, name: String) -> Bool ! Error {
-    if value < 0px {
-        return error("UI pixel inset must be >= 0px")
-    }
-    return true
+concept NonNegativePx = Int < px > {
+    Require(Self >= 0px, "a pixel inset must be non-negative")
 }
 
-fn Rgba(r: Int, g: Int, b: Int, a: Int) -> Color {
-    ValidateChannel(r, "Rgba.r")!
-    ValidateChannel(g, "Rgba.g")!
-    ValidateChannel(b, "Rgba.b")!
-    ValidateChannel(a, "Rgba.a")!
-
-    return Color { R: r G: g B: b A: a }
+fn Rgba(r: ColorChannel, g: ColorChannel, b: ColorChannel, a: ColorChannel) -> Color {
+    return Color {R: r G: g B: b A: a}
 }
 
-fn Rgb(r: Int, g: Int, b: Int) -> Color {
+fn Rgb(r: ColorChannel, g: ColorChannel, b: ColorChannel) -> Color {
     return Rgba(r, g, b, 255)
 }
 
-fn InsetsAll(value: Int<px>) -> Insets {
-    ValidatePxNonNegative(value, "InsetsAll.value")!
+fn InsetsAll(value: NonNegativePx) -> Insets {
     return Insets {
         Top: value
         Right: value
@@ -69,10 +55,7 @@ fn InsetsAll(value: Int<px>) -> Insets {
     }
 }
 
-fn InsetsXY(x: Int<px>, y: Int<px>) -> Insets {
-    ValidatePxNonNegative(x, "InsetsXY.x")!
-    ValidatePxNonNegative(y, "InsetsXY.y")!
-
+fn InsetsXY(x: NonNegativePx, y: NonNegativePx) -> Insets {
     return Insets {
         Top: y
         Right: x

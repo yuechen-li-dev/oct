@@ -1,0 +1,68 @@
+package ConceptsM1
+
+concept ColorChannel = Int {
+    Require(Self >= 0, "a color channel must be at least 0")
+    Require(Self <= 255, "a color channel must be at most 255")
+}
+
+concept ChannelAlias = ColorChannel
+
+concept NonNegativeLength = Float < m > {
+    Require(Self >= 0.0m, "length must be non-negative")
+}
+
+record Pixel {
+    Channel: ColorChannel
+}
+
+fn Same(value: ColorChannel) -> ColorChannel {
+    return value
+}
+
+fn AsInt(value: Int) -> Int {
+    return value
+}
+
+fn Admit(value: Int) -> ColorChannel ! Error {
+    return ColorChannel(value) ?
+}
+
+fn InvalidRuntimeChannel() -> Int {
+    return 300
+}
+
+fn RuntimeChannel(value: Int) -> Int {
+    return value
+}
+
+[Fact]
+fn KnownValuesPreserveProofWithoutChecks() -> Void {
+    let low: ColorChannel = 0
+    let high: ChannelAlias = 250 + 5
+    let copied = Same(high)
+    let pixel = Pixel {Channel: copied}
+    let channels: ColorChannel[] =[low, 255]
+    let indexed = channels[1]
+    let computed = indexed + 1
+    let length: NonNegativeLength = 2.5m
+    Assert.True(pixel.Channel == 255, "record fields preserve refinement")
+    Assert.True(indexed == 255, "array indexing preserves refinement")
+    Assert.Equal(256, computed, "arithmetic returns the base representation")
+    Assert.Equal(255, AsInt(indexed), "refined-to-base use is zero cost")
+    Assert.True(length == 2.5m, "dimensional refinements preserve units")
+}
+
+[Fact]
+fn CheckedConstructionSupportsQuestionBangAndMatch() -> Void ! Error {
+    let viaQuestion = Admit(42) ?
+    let viaBang = ColorChannel(RuntimeChannel(7)) !
+    var matched = 0
+    match ColorChannel(RuntimeChannel(9)) {
+        ok(value) -> {matched = AsInt(value)}
+        err(problem) -> {matched = - 1}
+    }
+    Assert.True(viaQuestion == 42, "question propagation admits once")
+    Assert.True(viaBang == 7, "unwrap admits once")
+    Assert.Equal(9, matched, "match exposes the refined success value")
+    Assert.Error(ColorChannel(InvalidRuntimeChannel()), "checked construction reports requirement failure")
+}

@@ -1,0 +1,11 @@
+expect error: "implicit base-to-refined conversion from Int to ColorChannel is not allowed"
+
+package ConceptsM1ImplicitRuntime
+concept ColorChannel = Int {
+    Require(Self >= 0)
+    Require(Self <= 255)
+}
+fn Use(value: ColorChannel) -> Int {return value}
+fn Main(value: Int) -> Int {
+    return Use(value)
+}

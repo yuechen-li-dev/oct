@@ -92,7 +92,7 @@ func (t Type) String() string {
 	if base == "" {
 		base = string(t.Base)
 	}
-	if isDimensionCapableBaseType(t.Base) && !t.Dimension.IsDimensionless() {
+	if t.Name == "" && isDimensionCapableBaseType(t.Base) && !t.Dimension.IsDimensionless() {
 		base += "<" + t.Dimension.String() + ">"
 	}
 	if t.IsFunction {
@@ -149,22 +149,23 @@ func (s functionSignature) String() string {
 }
 
 type functionContext struct {
-	name                  string
-	sourcePath            string
-	returnType            Type
-	isFallible            bool
-	isTestFile            bool
-	isFact                bool
-	isTheory              bool
-	isBenchmark           bool
-	isMakeFile            bool
-	requiresMakeAuthority bool
-	isMakePure            bool
-	inFlow                bool
-	inState               bool
-	states                map[string]struct{}
-	boardType             Type
-	board                 map[string]Type
+	name                    string
+	sourcePath              string
+	returnType              Type
+	isFallible              bool
+	isTestFile              bool
+	isFact                  bool
+	isTheory                bool
+	isBenchmark             bool
+	isMakeFile              bool
+	requiresMakeAuthority   bool
+	isMakePure              bool
+	inFlow                  bool
+	inState                 bool
+	states                  map[string]struct{}
+	boardType               Type
+	board                   map[string]Type
+	isRefinementConstructor bool
 }
 
 func Check(file ast.File) error {
@@ -180,6 +181,7 @@ func Check(file ast.File) error {
 		records:          make(map[string]recordInfo),
 		enums:            make(map[string]enumInfo),
 		flows:            make(map[string]flowSignature),
+		refinements:      make(map[string]refinementInfo),
 		typeNames:        make(map[string]struct{}),
 	}
 	return checker.checkFile(file)
@@ -188,7 +190,7 @@ func Check(file ast.File) error {
 func CheckProgram(program project.Program) error {
 	packageCheckers := make(map[string]checker, len(program.Packages))
 	for name, pkg := range program.Packages {
-		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
+		file := ast.File{Package: name, Imports: pkg.Imports, Concepts: pkg.Concepts, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := checker{
 			functions:                    make(map[string]functionSignature),
 			wrapperFunctions:             make(map[string]functionSignature),
@@ -196,6 +198,7 @@ func CheckProgram(program project.Program) error {
 			records:                      make(map[string]recordInfo),
 			enums:                        make(map[string]enumInfo),
 			flows:                        make(map[string]flowSignature),
+			refinements:                  make(map[string]refinementInfo),
 			typeNames:                    make(map[string]struct{}),
 			allowUnresolvedImportedTypes: true,
 		}
@@ -218,11 +221,12 @@ func CheckProgram(program project.Program) error {
 				records:          imported.records,
 				enums:            imported.enums,
 				flows:            imported.flows,
+				refinements:      imported.refinements,
 			}
 		}
 		chk.importedPackages = imports
 		chk.allowUnresolvedImportedTypes = false
-		file := ast.File{Package: name, Imports: program.Packages[name].Imports, Records: program.Packages[name].Records, Enums: program.Packages[name].Enums, Functions: program.Packages[name].Functions, Flows: program.Packages[name].Flows}
+		file := ast.File{Package: name, Imports: program.Packages[name].Imports, Concepts: program.Packages[name].Concepts, Records: program.Packages[name].Records, Enums: program.Packages[name].Enums, Functions: program.Packages[name].Functions, Flows: program.Packages[name].Flows}
 		if err := chk.rebindRecordTypes(file); err != nil {
 			return err
 		}
@@ -230,7 +234,7 @@ func CheckProgram(program project.Program) error {
 	}
 
 	for name, pkg := range program.Packages {
-		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
+		file := ast.File{Package: name, Imports: pkg.Imports, Concepts: pkg.Concepts, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := packageCheckers[name]
 		if err := chk.registerFunctionSignatures(file); err != nil {
 			return err
@@ -242,7 +246,7 @@ func CheckProgram(program project.Program) error {
 	}
 
 	for name, pkg := range program.Packages {
-		file := ast.File{Package: name, Imports: pkg.Imports, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
+		file := ast.File{Package: name, Imports: pkg.Imports, Concepts: pkg.Concepts, Records: pkg.Records, Enums: pkg.Enums, Functions: pkg.Functions, Flows: pkg.Flows}
 		chk := packageCheckers[name]
 		if err := chk.checkPackageFunctions(file); err != nil {
 			return err
@@ -298,6 +302,7 @@ type checker struct {
 	records                      map[string]recordInfo
 	enums                        map[string]enumInfo
 	flows                        map[string]flowSignature
+	refinements                  map[string]refinementInfo
 	typeNames                    map[string]struct{}
 	importedPackages             map[string]packageSymbols
 	allowUnresolvedImportedTypes bool
@@ -309,6 +314,7 @@ type packageSymbols struct {
 	records          map[string]recordInfo
 	enums            map[string]enumInfo
 	flows            map[string]flowSignature
+	refinements      map[string]refinementInfo
 }
 
 type recordInfo struct {
@@ -328,6 +334,12 @@ type enumInfo struct {
 
 type enumVariantInfo struct {
 	payload *Type
+}
+
+type refinementInfo struct {
+	name         string
+	base         Type
+	requirements []ast.RefinementRequirement
 }
 
 type flowSignature struct {
@@ -403,6 +415,48 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 	for _, builtinTypeName := range []string{string(BaseTypeInt), string(BaseTypeFloat), string(BaseTypeComplex), string(BaseTypeBool), string(BaseTypeString), string(BaseTypeBytes), string(BaseTypeError), string(BaseTypeVoid), string(BaseTypeUI), string(BaseTypeIndex)} {
 		c.typeNames[builtinTypeName] = struct{}{}
 	}
+	for _, conceptDecl := range file.Concepts {
+		if len(conceptDecl.Requirements) == 0 {
+			continue
+		}
+		if _, exists := c.typeNames[conceptDecl.Name]; exists {
+			return fmt.Errorf("duplicate refined concept '%s'", conceptDecl.Name)
+		}
+		c.typeNames[conceptDecl.Name] = struct{}{}
+	}
+	refinedDecls := make(map[string]ast.ConceptDecl)
+	for _, conceptDecl := range file.Concepts {
+		if len(conceptDecl.Requirements) > 0 {
+			refinedDecls[conceptDecl.Name] = conceptDecl
+		}
+	}
+	visitingRefinement, visitedRefinement := map[string]bool{}, map[string]bool{}
+	var visitRefinement func(string) error
+	visitRefinement = func(name string) error {
+		if visitingRefinement[name] {
+			return fmt.Errorf("cyclic refinement involving '%s'", name)
+		}
+		if visitedRefinement[name] {
+			return nil
+		}
+		visitingRefinement[name] = true
+		decl := refinedDecls[name]
+		if decl.Target.Package == "" {
+			if _, ok := refinedDecls[decl.Target.Name]; ok {
+				if err := visitRefinement(decl.Target.Name); err != nil {
+					return err
+				}
+			}
+		}
+		visitingRefinement[name] = false
+		visitedRefinement[name] = true
+		return nil
+	}
+	for name := range refinedDecls {
+		if err := visitRefinement(name); err != nil {
+			return err
+		}
+	}
 	for _, record := range file.Records {
 		if _, exists := c.typeNames[record.Name]; exists {
 			return fmt.Errorf("duplicate type: %s", record.Name)
@@ -414,6 +468,33 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 			return fmt.Errorf("duplicate type: %s", enumDecl.Name)
 		}
 		c.typeNames[enumDecl.Name] = struct{}{}
+	}
+	for _, conceptDecl := range file.Concepts {
+		if len(conceptDecl.Requirements) == 0 {
+			continue
+		}
+		base, err := c.resolveType(conceptDecl.Target, false)
+		if err != nil {
+			return fmt.Errorf("refined concept '%s' has unknown refinement base: %w", conceptDecl.Name, err)
+		}
+		if base.Name != "" || base.Tuple != nil || base.IsFunction || base.IsFlowInstance || base.IsVector || base.IsMatrix || base.Base == BaseTypeVoid || base.Base == BaseTypeError || base.Base == BaseTypeRange || base.Base == BaseTypeUI || base.Base == BaseTypeIndex || base.Base == BaseTypeBytes {
+			return fmt.Errorf("refined concept '%s' has invalid refinement base shape %s; M1 supports scalar Int, Float, Bool, String, and arrays of those representations", conceptDecl.Name, base)
+		}
+		c.refinements[conceptDecl.Name] = refinementInfo{name: conceptDecl.Name, base: base, requirements: conceptDecl.Requirements}
+		requirementScope := newScope(nil)
+		requirementScope.define("Self", base, false)
+		for index, requirement := range conceptDecl.Requirements {
+			if err := validateRefinementExpr(requirement.Condition); err != nil {
+				return fmt.Errorf("refined concept '%s' requirement %d: %w", conceptDecl.Name, index+1, err)
+			}
+			t, err := c.checkExpr(requirementScope, requirement.Condition, functionContext{name: "refined concept " + conceptDecl.Name})
+			if err != nil {
+				return fmt.Errorf("refined concept '%s' requirement %d: %w", conceptDecl.Name, index+1, err)
+			}
+			if t.Fallible || t.ValueType != (Type{Base: BaseTypeBool}) {
+				return fmt.Errorf("refined concept '%s' requirement %d must be Bool, got %s", conceptDecl.Name, index+1, t.ValueType)
+			}
+		}
 	}
 
 	for _, record := range file.Records {
@@ -448,6 +529,41 @@ func (c checker) registerPackageDeclarations(file ast.File) error {
 	}
 
 	return nil
+}
+
+func validateRefinementExpr(expr ast.Expr) error {
+	switch node := expr.(type) {
+	case ast.IntegerLiteral, ast.FloatLiteral, ast.BoolLiteral, ast.StringLiteralExpr:
+		return nil
+	case ast.IdentifierExpr:
+		if node.Name != "Self" {
+			return fmt.Errorf("unknown or illegal refinement name '%s'; only Self is available", node.Name)
+		}
+		return nil
+	case ast.ParenExpr:
+		return validateRefinementExpr(node.Inner)
+	case ast.UnaryExpr:
+		if node.Operator != "not" && node.Operator != "-" {
+			return fmt.Errorf("impure or unsupported refinement unary operator %q", node.Operator)
+		}
+		return validateRefinementExpr(node.Operand)
+	case ast.BinaryExpr:
+		if !slices.Contains([]string{"+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">=", "and", "or"}, node.Operator) {
+			return fmt.Errorf("impure or unsupported refinement operator %q", node.Operator)
+		}
+		if err := validateRefinementExpr(node.Left); err != nil {
+			return err
+		}
+		return validateRefinementExpr(node.Right)
+	case ast.CallExpr:
+		callee, ok := flattenDirectCallName(node.Callee)
+		if !ok || callee != "Len" || len(node.Arguments) != 1 {
+			return fmt.Errorf("impure or unsupported refinement call; only Len(Self) is allowed")
+		}
+		return validateRefinementExpr(node.Arguments[0])
+	default:
+		return fmt.Errorf("impure or unsupported refinement expression %T", expr)
+	}
 }
 
 func (c checker) registerFunctionSignatures(file ast.File) error {
@@ -637,7 +753,7 @@ func (c checker) checkFunction(function ast.FunctionDecl) error {
 		}
 	}
 
-	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure}
+	ctx := functionContext{name: function.Name, sourcePath: function.SourcePath, returnType: signature.returnType, isFallible: signature.isFallible, isTestFile: function.IsTestFile, isFact: function.IsFact, isTheory: function.IsTheory, isBenchmark: function.IsBenchmark, isMakeFile: function.IsMakeFile, requiresMakeAuthority: function.RequiresMakeAuthority, isMakePure: function.IsMakePure, isRefinementConstructor: function.IsRefinementConstructor}
 	hasReturn, err := c.checkBlock(functionScope, function.Body, ctx)
 	if err != nil {
 		return err
@@ -832,8 +948,15 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: let %s: Void result cannot be used as a value", ctx.name, node.Name)
 		}
-		if expected != nil && !isAssignable(valueType.ValueType, *expected) {
-			return false, fmt.Errorf("function %s: let %s: expected %s, got %s", ctx.name, node.Name, *expected, valueType.ValueType)
+		if expected != nil {
+			if !isAssignable(valueType.ValueType, *expected) {
+				if !c.isRefinedExpected(*expected) {
+					return false, fmt.Errorf("function %s: let %s: expected %s, got %s", ctx.name, node.Name, *expected, valueType.ValueType)
+				}
+				if err := c.admitRefined(scope, node.Value, valueType.ValueType, *expected); err != nil {
+					return false, fmt.Errorf("function %s: let %s: %w", ctx.name, node.Name, err)
+				}
+			}
 		}
 		if expected != nil {
 			valueType.ValueType = *expected
@@ -862,8 +985,15 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 		if valueType.ValueType.Base == BaseTypeVoid {
 			return false, fmt.Errorf("function %s: var %s: Void result cannot be used as a value", ctx.name, node.Name)
 		}
-		if expected != nil && !isAssignable(valueType.ValueType, *expected) {
-			return false, fmt.Errorf("function %s: var %s: expected %s, got %s", ctx.name, node.Name, *expected, valueType.ValueType)
+		if expected != nil {
+			if !isAssignable(valueType.ValueType, *expected) {
+				if !c.isRefinedExpected(*expected) {
+					return false, fmt.Errorf("function %s: var %s: expected %s, got %s", ctx.name, node.Name, *expected, valueType.ValueType)
+				}
+				if err := c.admitRefined(scope, node.Value, valueType.ValueType, *expected); err != nil {
+					return false, fmt.Errorf("function %s: var %s: %w", ctx.name, node.Name, err)
+				}
+			}
 		}
 		if expected != nil {
 			valueType.ValueType = *expected
@@ -889,7 +1019,12 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assignment to %s: tuple return values must be destructured", ctx.name, node.Name)
 		}
 		if !isAssignable(valueType.ValueType, target.valueType) {
-			return false, fmt.Errorf("function %s: assignment to %s: expected %s, got %s", ctx.name, node.Name, target.valueType, valueType.ValueType)
+			if !c.isRefinedExpected(target.valueType) {
+				return false, fmt.Errorf("function %s: assignment to %s: expected %s, got %s", ctx.name, node.Name, target.valueType, valueType.ValueType)
+			}
+			if err := c.admitRefined(scope, node.Value, valueType.ValueType, target.valueType); err != nil {
+				return false, fmt.Errorf("function %s: assignment to %s: %w", ctx.name, node.Name, err)
+			}
 		}
 		return false, nil
 	case ast.DestructureAssignStmt:
@@ -994,7 +1129,12 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: assignment to %s.%s: %s", ctx.name, node.Target, node.Field, unhandledFallibleMessage(node.Value))
 		}
 		if !isAssignable(valueType.ValueType, fieldType) {
-			return false, fmt.Errorf("function %s: assignment to %s.%s: expected %s, got %s", ctx.name, node.Target, node.Field, fieldType, valueType.ValueType)
+			if !c.isRefinedExpected(fieldType) {
+				return false, fmt.Errorf("function %s: assignment to %s.%s: expected %s, got %s", ctx.name, node.Target, node.Field, fieldType, valueType.ValueType)
+			}
+			if err := c.admitRefined(scope, node.Value, valueType.ValueType, fieldType); err != nil {
+				return false, fmt.Errorf("function %s: assignment to %s.%s: %w", ctx.name, node.Target, node.Field, err)
+			}
 		}
 		return false, nil
 	case ast.ReturnStmt:
@@ -1015,13 +1155,29 @@ func (c checker) checkStmt(scope *scope, stmt ast.Stmt, ctx functionContext) (bo
 			return false, fmt.Errorf("function %s: return value must not be fallible; handle it with '?', '!', or match", ctx.name)
 		}
 		if ctx.isFallible {
+			if ctx.isRefinementConstructor && valueType.ValueType != (Type{Base: BaseTypeError}) {
+				refinement, ok := c.refinements[ctx.returnType.Name]
+				if ok && isAssignable(valueType.ValueType, refinement.base) {
+					return true, nil
+				}
+			}
 			if isAssignable(valueType.ValueType, ctx.returnType) || valueType.ValueType == (Type{Base: BaseTypeError}) {
 				return true, nil
+			}
+			if valueType.ValueType != (Type{Base: BaseTypeError}) {
+				if err := c.admitRefined(scope, node.Value, valueType.ValueType, ctx.returnType); err == nil {
+					return true, nil
+				}
 			}
 			return false, fmt.Errorf("function %s: function expects %s or Error, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
 		}
 		if !isAssignable(valueType.ValueType, ctx.returnType) {
-			return false, fmt.Errorf("function %s: function expects %s, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
+			if !c.isRefinedExpected(ctx.returnType) {
+				return false, fmt.Errorf("function %s: function expects %s, but return is %s", ctx.name, ctx.returnType, valueType.ValueType)
+			}
+			if err := c.admitRefined(scope, node.Value, valueType.ValueType, ctx.returnType); err != nil {
+				return false, fmt.Errorf("function %s: invalid refined return: %w", ctx.name, err)
+			}
 		}
 		return true, nil
 	case ast.ExprStmt:
@@ -1297,13 +1453,25 @@ func checkIndexAssignmentTarget(c checker, scope *scope, indices []ast.Expr, val
 		return fmt.Errorf("function %s: %s: fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error", ctx.name, label)
 	}
 	if !isAssignable(valueType.ValueType, elementType) {
-		if wholeRowAssignment {
-			if !valueType.ValueType.IsArray {
-				return fmt.Errorf("function %s: row assignment requires an array row value", ctx.name)
+		if !c.isRefinedExpected(elementType) {
+			if wholeRowAssignment {
+				if !valueType.ValueType.IsArray {
+					return fmt.Errorf("function %s: row assignment requires an array row value", ctx.name)
+				}
+				return fmt.Errorf("function %s: row element type mismatch: expected %s, got %s", ctx.name, elementType, valueType.ValueType)
 			}
-			return fmt.Errorf("function %s: row element type mismatch: expected %s, got %s", ctx.name, elementType, valueType.ValueType)
+			return fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
 		}
-		return fmt.Errorf("function %s: assigned value type does not match indexed element type", ctx.name)
+		err := c.admitRefined(scope, value, valueType.ValueType, elementType)
+		if err != nil {
+			if wholeRowAssignment {
+				if !valueType.ValueType.IsArray {
+					return fmt.Errorf("function %s: row assignment requires an array row value", ctx.name)
+				}
+				return fmt.Errorf("function %s: row element type mismatch: %w", ctx.name, err)
+			}
+			return fmt.Errorf("function %s: invalid refined array element assignment: %w", ctx.name, err)
+		}
 	}
 	return nil
 }
@@ -1680,7 +1848,11 @@ func (c checker) checkExprWithExpected(scope *scope, expr ast.Expr, ctx function
 			if !isRealNumericScalar(operandType.ValueType) {
 				return ExprType{}, fmt.Errorf("operator '-' requires Int or Float operand")
 			}
-			return ExprType{ValueType: operandType.ValueType}, nil
+			result := operandType.ValueType
+			if result.Base != "" {
+				result.Name = ""
+			}
+			return ExprType{ValueType: result}, nil
 		default:
 			return ExprType{}, fmt.Errorf("unsupported unary operator %q", node.Operator)
 		}
@@ -2147,6 +2319,7 @@ const (
 	constantInvalid constantKind = iota
 	constantBool
 	constantInt
+	constantFloat
 	constantString
 	constantArray
 )
@@ -2155,6 +2328,7 @@ type constantValue struct {
 	kind    constantKind
 	boolean bool
 	integer int64
+	real    float64
 	text    string
 	length  int
 }
@@ -2170,6 +2344,9 @@ func evalConstantExpr(scope *scope, expr ast.Expr) (constantValue, bool) {
 	case ast.IntegerLiteral:
 		value, err := strconv.ParseInt(node.Value, 10, 64)
 		return constantValue{kind: constantInt, integer: value}, err == nil
+	case ast.FloatLiteral:
+		value, err := strconv.ParseFloat(node.Value, 64)
+		return constantValue{kind: constantFloat, real: value}, err == nil
 	case ast.StringLiteralExpr:
 		return constantValue{kind: constantString, text: node.Value}, true
 	case ast.ArrayLiteralExpr:
@@ -2190,6 +2367,9 @@ func evalConstantExpr(scope *scope, expr ast.Expr) (constantValue, bool) {
 			}
 			return constantValue{kind: constantBool, boolean: !value.boolean}, true
 		case "-":
+			if value.kind == constantFloat {
+				return constantValue{kind: constantFloat, real: -value.real}, true
+			}
 			if value.kind != constantInt {
 				return constantValue{}, false
 			}
@@ -2245,6 +2425,39 @@ func evalConstantExpr(scope *scope, expr ast.Expr) (constantValue, bool) {
 				return constantValue{kind: constantBool, boolean: left.integer >= right.integer}, true
 			}
 		}
+		if (left.kind == constantInt || left.kind == constantFloat) && (right.kind == constantInt || right.kind == constantFloat) {
+			leftReal, rightReal := left.real, right.real
+			if left.kind == constantInt {
+				leftReal = float64(left.integer)
+			}
+			if right.kind == constantInt {
+				rightReal = float64(right.integer)
+			}
+			switch node.Operator {
+			case "+":
+				return constantValue{kind: constantFloat, real: leftReal + rightReal}, true
+			case "-":
+				return constantValue{kind: constantFloat, real: leftReal - rightReal}, true
+			case "*":
+				return constantValue{kind: constantFloat, real: leftReal * rightReal}, true
+			case "/":
+				if rightReal != 0 {
+					return constantValue{kind: constantFloat, real: leftReal / rightReal}, true
+				}
+			case "==":
+				return constantValue{kind: constantBool, boolean: leftReal == rightReal}, true
+			case "!=":
+				return constantValue{kind: constantBool, boolean: leftReal != rightReal}, true
+			case "<":
+				return constantValue{kind: constantBool, boolean: leftReal < rightReal}, true
+			case "<=":
+				return constantValue{kind: constantBool, boolean: leftReal <= rightReal}, true
+			case ">":
+				return constantValue{kind: constantBool, boolean: leftReal > rightReal}, true
+			case ">=":
+				return constantValue{kind: constantBool, boolean: leftReal >= rightReal}, true
+			}
+		}
 		if left.kind == constantString && right.kind == constantString {
 			switch node.Operator {
 			case "+":
@@ -2279,6 +2492,8 @@ func formatRequirementExpr(expr ast.Expr) string {
 		}
 		return "false"
 	case ast.IntegerLiteral:
+		return node.Value
+	case ast.FloatLiteral:
 		return node.Value
 	case ast.StringLiteralExpr:
 		return strconv.Quote(node.Value)
@@ -2910,10 +3125,14 @@ func (c checker) checkFlowCallArguments(displayName string, signature flowSignat
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		expected := signature.parameters[i]
-		if isAssignable(argumentType.ValueType, expected) {
-			continue
+		if !isAssignable(argumentType.ValueType, expected) {
+			if !c.isRefinedExpected(expected) {
+				return ExprType{}, fmt.Errorf("flow '%s' argument %d expects %s, got %s", displayName, i+1, expected, argumentType.ValueType)
+			}
+			if err := c.admitRefined(scope, argumentExpr, argumentType.ValueType, expected); err != nil {
+				return ExprType{}, fmt.Errorf("flow '%s' argument %d: %w", displayName, i+1, err)
+			}
 		}
-		return ExprType{}, fmt.Errorf("flow '%s' argument %d expects %s, got %s", displayName, i+1, expected, argumentType.ValueType)
 	}
 	return ExprType{ValueType: flowInstanceType(displayName, signature.returnType)}, nil
 }
@@ -2934,7 +3153,31 @@ func (c checker) checkFunctionCallArguments(displayName string, signature functi
 			return ExprType{}, fmt.Errorf("Void result cannot be used as a value")
 		}
 		if !isAssignable(argumentType.ValueType, signature.parameters[i]) {
-			return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", displayName, i+1, signature.parameters[i], argumentType.ValueType)
+			if !c.isRefinedExpected(signature.parameters[i]) {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d expects %s, got %s", displayName, i+1, signature.parameters[i], argumentType.ValueType)
+			}
+			if err := c.admitRefined(scope, argumentExpr, argumentType.ValueType, signature.parameters[i]); err != nil {
+				return ExprType{}, fmt.Errorf("function '%s' argument %d: %w", displayName, i+1, err)
+			}
+		}
+	}
+	if strings.HasPrefix(displayName, "__oct_refine_") && len(arguments) == 1 {
+		conceptName := strings.TrimPrefix(displayName, "__oct_refine_")
+		if refinement, ok := c.refinements[conceptName]; ok {
+			if candidate, known := evalConstantExpr(scope, arguments[0]); known {
+				proofScope := newScope(scope)
+				proofScope.defineConstant("Self", candidate)
+				for _, requirement := range refinement.requirements {
+					result, evaluable := evalConstantExpr(proofScope, requirement.Condition)
+					if evaluable && result.kind == constantBool && !result.boolean {
+						explanation := requirement.Explanation
+						if explanation == "" {
+							explanation = "requirement was not satisfied"
+						}
+						return ExprType{}, fmt.Errorf("invalid compile-time-known construction of refined concept %s from %s: %s (failed requirement: %s)", conceptName, formatRequirementExpr(arguments[0]), explanation, formatRequirementExpr(requirement.Condition))
+					}
+				}
+			}
 		}
 	}
 	return ExprType{ValueType: signature.returnType, Fallible: signature.isFallible}, nil
@@ -3198,6 +3441,10 @@ func (c checker) qualifyImportedType(pkgName string, valueType Type) Type {
 		return valueType
 	}
 	if _, ok := imported.enums[valueType.Name]; ok {
+		valueType.Name = pkgName + "." + valueType.Name
+		return valueType
+	}
+	if _, ok := imported.refinements[valueType.Name]; ok {
 		valueType.Name = pkgName + "." + valueType.Name
 		return valueType
 	}
@@ -6190,6 +6437,22 @@ func (c checker) checkArrayLiteralExpr(scope *scope, expr ast.ArrayLiteralExpr, 
 		}
 		return *expected, nil
 	}
+	if expected != nil && expected.IsArray {
+		elementExpected := peelArrayType(*expected)
+		for index, element := range expr.Elements {
+			elementType, err := c.checkExprWithExpected(scope, element, ctx, &elementExpected)
+			if err != nil {
+				return Type{}, fmt.Errorf("array element %d: %w", index, err)
+			}
+			if elementType.Fallible {
+				return Type{}, fmt.Errorf("array element %d is fallible and must be handled explicitly", index)
+			}
+			if err := c.admitRefined(scope, element, elementType.ValueType, elementExpected); err != nil {
+				return Type{}, fmt.Errorf("invalid refined array element %d: %w", index, err)
+			}
+		}
+		return *expected, nil
+	}
 
 	firstType, err := c.checkExpr(scope, expr.Elements[0], ctx)
 	if err != nil {
@@ -6314,10 +6577,19 @@ func (c checker) checkRecordLiteralExpr(scope *scope, expr ast.RecordLiteralExpr
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isAssignable(actualType.ValueType, expectedType) {
-			if recordDecl.isTable {
-				return ExprType{}, fmt.Errorf("[OCT-RTBL010] record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
+			if !c.isRefinedExpected(expectedType) {
+				if recordDecl.isTable {
+					return ExprType{}, fmt.Errorf("[OCT-RTBL010] record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
+				}
+				return ExprType{}, fmt.Errorf("record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
 			}
-			return ExprType{}, fmt.Errorf("record '%s' field '%s' expects %s, got %s", expr.TypeName, field.Name, expectedType, actualType.ValueType)
+			err := c.admitRefined(scope, field.Value, actualType.ValueType, expectedType)
+			if err != nil {
+				if recordDecl.isTable {
+					return ExprType{}, fmt.Errorf("[OCT-RTBL010] record '%s' field '%s': %w", expr.TypeName, field.Name, err)
+				}
+				return ExprType{}, fmt.Errorf("record '%s' invalid refined field '%s': %w", expr.TypeName, field.Name, err)
+			}
 		}
 	}
 	for _, fieldName := range recordDecl.fieldOrder {
@@ -6382,7 +6654,7 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 		if !exists {
 			return ExprType{}, fmt.Errorf("type '%s' has no field '%s'", sourceType.ValueType.Name, field.Name)
 		}
-		valueType, err := c.checkExpr(scope, field.Value, ctx)
+		valueType, err := c.checkExprWithExpected(scope, field.Value, ctx, &fieldType)
 		if err != nil {
 			return ExprType{}, err
 		}
@@ -6390,7 +6662,12 @@ func (c checker) checkRecordUpdateExpr(scope *scope, expr ast.RecordUpdateExpr, 
 			return ExprType{}, fmt.Errorf("fallible expression must be handled explicitly; use '?' to propagate, '!' to assert success, or match to handle the Error")
 		}
 		if !isAssignable(valueType.ValueType, fieldType) {
-			return ExprType{}, fmt.Errorf("field '%s' on type '%s' expects %s, got %s", field.Name, sourceType.ValueType.Name, fieldType, valueType.ValueType)
+			if !c.isRefinedExpected(fieldType) {
+				return ExprType{}, fmt.Errorf("field '%s' on type '%s' expects %s, got %s", field.Name, sourceType.ValueType.Name, fieldType, valueType.ValueType)
+			}
+			if err := c.admitRefined(scope, field.Value, valueType.ValueType, fieldType); err != nil {
+				return ExprType{}, fmt.Errorf("field '%s' on type '%s': %w", field.Name, sourceType.ValueType.Name, err)
+			}
 		}
 	}
 	return sourceType, nil
@@ -6515,6 +6792,14 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 			}
 			return withArrayDepth(Type{Name: qualifiedName}, arrayDepth), nil
 		}
+		if refinement, ok := imported.refinements[typeRef.Name]; ok {
+			if typeRef.HasUnit {
+				return Type{}, fmt.Errorf("refined concept '%s' cannot be dimension-qualified at its use site", qualifiedName)
+			}
+			base := refinement.base
+			base.Name = qualifiedName
+			return withArrayDepth(base, base.ArrayDepth+arrayDepth), nil
+		}
 		if _, ok := imported.functions[typeRef.Name]; ok {
 			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
 		}
@@ -6522,6 +6807,15 @@ func (c checker) resolveType(typeRef ast.TypeRef, allowVoid bool) (Type, error) 
 			return Type{}, fmt.Errorf("package-qualified function '%s.%s' used where a type is required", typeRef.Package, typeRef.Name)
 		}
 		return Type{}, fmt.Errorf("package '%s' has no type '%s'", typeRef.Package, typeRef.Name)
+	}
+	if refinement, ok := c.refinements[typeRef.Name]; ok {
+		if typeRef.HasUnit {
+			return Type{}, fmt.Errorf("refined concept '%s' cannot be dimension-qualified at its use site", typeRef.Name)
+		}
+		base := refinement.base
+		base.Name = typeRef.Name
+		base = withArrayDepth(base, base.ArrayDepth+arrayDepth)
+		return base, nil
 	}
 
 	baseType, err := resolveBaseType(typeRef.Name)
@@ -6563,6 +6857,15 @@ func resolveBaseType(name string) (BaseType, error) {
 }
 
 func (c checker) checkBinaryExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	// Ordinary computation consumes the representation and conservatively loses
+	// refinement identity. Direct bindings, storage, indexing and calls preserve
+	// identity because they do not compute a new value.
+	if leftType.Name != "" && leftType.Base != "" {
+		leftType.Name = ""
+	}
+	if rightType.Name != "" && rightType.Base != "" {
+		rightType.Name = ""
+	}
 	if operator == "and" || operator == "or" {
 		if leftType != (Type{Base: BaseTypeBool}) || rightType != (Type{Base: BaseTypeBool}) {
 			return Type{}, fmt.Errorf("operator '%s' requires Bool operands", operator)
@@ -6857,6 +7160,12 @@ func (c checker) checkArrayBinaryExpr(operator string, leftType Type, rightType 
 }
 
 func (c checker) checkComparisonExpr(operator string, leftType Type, rightType Type) (Type, error) {
+	if leftType.Name != "" && leftType.Base != "" && !leftType.IsArray {
+		leftType.Name = ""
+	}
+	if rightType.Name != "" && rightType.Base != "" && !rightType.IsArray {
+		rightType.Name = ""
+	}
 	if isOrderingOperator(operator) && (leftType == (Type{Base: BaseTypeBool}) || leftType == (Type{Base: BaseTypeString}) || leftType == (Type{Base: BaseTypeBytes})) && leftType == rightType {
 		return Type{}, fmt.Errorf("operator %q not defined for %s", operator, leftType)
 	}
@@ -7122,6 +7431,14 @@ func isAssignable(actual Type, expected Type) bool {
 		if actual.Name == expected.Name {
 			return true
 		}
+		// A scalar refined value may be used as its underlying representation.
+		// Arrays are intentionally invariant because mutable array storage would
+		// otherwise allow an unchecked base value to enter refined storage.
+		if actual.Name != "" && actual.Base != "" && expected.Name == "" && !actual.IsArray && !actual.IsVector && !actual.IsMatrix {
+			underlying := actual
+			underlying.Name = ""
+			return isAssignable(underlying, expected)
+		}
 		if actual.IsArray == expected.IsArray && actual.ArrayDepth == expected.ArrayDepth && actual.IsVector == expected.IsVector && actual.IsMatrix == expected.IsMatrix && actual.Dimension == expected.Dimension {
 			if strings.HasSuffix(actual.Name, "."+expected.Name) || strings.HasSuffix(expected.Name, "."+actual.Name) {
 				return true
@@ -7134,6 +7451,57 @@ func isAssignable(actual Type, expected Type) bool {
 	}
 	return (actual.Base == BaseTypeInt && expected.Base == BaseTypeFloat) ||
 		(isRealNumericScalar(actual) && isComplexScalar(expected))
+}
+
+func (c checker) admitRefined(scope *scope, expr ast.Expr, actual Type, expected Type) error {
+	if isAssignable(actual, expected) {
+		return nil
+	}
+	refinement, ok := c.lookupRefinement(expected.Name)
+	if !ok || expected.IsArray || expected.IsVector || expected.IsMatrix {
+		return fmt.Errorf("expected %s, got %s", expected, actual)
+	}
+	if !isAssignable(actual, refinement.base) || actual.Name != "" {
+		return fmt.Errorf("expected %s, got %s", expected, actual)
+	}
+	candidate, known := evalConstantExpr(scope, expr)
+	if !known {
+		return fmt.Errorf("implicit base-to-refined conversion from %s to %s is not allowed because membership is unproven; use %s(value)? (or !/match) for explicit checked construction", actual, expected, expected.Name)
+	}
+	proofScope := newScope(scope)
+	proofScope.defineConstant("Self", candidate)
+	for _, requirement := range refinement.requirements {
+		result, evaluable := evalConstantExpr(proofScope, requirement.Condition)
+		if !evaluable || result.kind != constantBool {
+			return fmt.Errorf("construction of refined concept %s from %s is not provable by the bounded evaluator; use %s(value)? for explicit checked construction", expected.Name, formatRequirementExpr(expr), expected.Name)
+		}
+		if !result.boolean {
+			explanation := requirement.Explanation
+			if explanation == "" {
+				explanation = "requirement was not satisfied"
+			}
+			return fmt.Errorf("invalid compile-time-known construction of refined concept %s from %s: %s (failed requirement: %s)", expected.Name, formatRequirementExpr(expr), explanation, formatRequirementExpr(requirement.Condition))
+		}
+	}
+	return nil
+}
+
+func (c checker) isRefinedExpected(expected Type) bool {
+	_, ok := c.lookupRefinement(expected.Name)
+	return ok
+}
+
+func (c checker) lookupRefinement(name string) (refinementInfo, bool) {
+	if pkgName, localName, qualified := splitQualifiedTypeName(name); qualified {
+		imported, ok := c.importedPackages[pkgName]
+		if !ok {
+			return refinementInfo{}, false
+		}
+		info, ok := imported.refinements[localName]
+		return info, ok
+	}
+	info, ok := c.refinements[name]
+	return info, ok
 }
 
 func isComplexCompatibleScalar(valueType Type) bool {

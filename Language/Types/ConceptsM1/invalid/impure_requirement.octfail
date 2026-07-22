@@ -1,0 +1,7 @@
+expect error: "impure or unsupported refinement call"
+
+package ConceptsM1Impure
+concept Broken = Int {
+    Require(RandomInt(Self) > 0)
+}
+fn Main() -> Void {}

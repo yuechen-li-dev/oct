@@ -28,9 +28,16 @@ type MIRModule struct {
 	EntryReturn   string
 	EntryFallible bool
 	Records       []MIRRecord
+	Refinements   []MIRRefinement
 	Enums         []MIREnum
 	Flows         []MIRFlow
 	Functions     []MIRFunction
+}
+
+type MIRRefinement struct {
+	Package string
+	Name    string
+	Base    string
 }
 
 type MIRRecord struct {
@@ -622,6 +629,21 @@ type lowerCtx struct {
 	einTerms          map[string]einsteinTermMeta
 }
 
+func (c *lowerCtx) eraseRefinementType(t string) string {
+	for pkgName, pkg := range c.program.Packages {
+		for _, conceptDecl := range pkg.Concepts {
+			if len(conceptDecl.Requirements) == 0 {
+				continue
+			}
+			qualified := pkgName + "." + conceptDecl.Name
+			if t == qualified || (pkgName == c.pkg.Name && t == conceptDecl.Name) {
+				return typeRefStringForPackage("", conceptDecl.Target)
+			}
+		}
+	}
+	return t
+}
+
 func lowerProgram(program project.Program, options compileOptions) (MIRModule, error) {
 	module := MIRModule{EntryPackage: program.Entry}
 	reachable := map[string]map[string]struct{}{}
@@ -679,6 +701,12 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 	sort.Strings(pkgNames)
 	for _, pkgName := range pkgNames {
 		pkg := program.Packages[pkgName]
+		for _, conceptDecl := range pkg.Concepts {
+			if len(conceptDecl.Requirements) == 0 {
+				continue
+			}
+			module.Refinements = append(module.Refinements, MIRRefinement{Package: pkgName, Name: conceptDecl.Name, Base: typeRefStringForPackage("", conceptDecl.Target)})
+		}
 		if pkgName == program.Entry {
 			for _, fn := range pkg.Functions {
 				if fn.Name == "main" {
@@ -2328,6 +2356,8 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		} else if _, rightIndexed := c.einTerm(r); rightIndexed {
 			return "", "", false, fmt.Errorf("compiled indexed tensor expressions must appear on both sides of '%s'", e.Operator)
 		}
+		lt = c.eraseRefinementType(lt)
+		rt = c.eraseRefinementType(rt)
 		if e.Operator == "@" {
 			if leftElem, ok := parseMatrixElemType(lt); ok {
 				if rightElem, ok := parseVectorElemType(rt); ok {
@@ -2555,6 +2585,7 @@ func (c *lowerCtx) lowerExpr(expr ast.Expr) (string, string, bool, error) {
 		if err != nil {
 			return "", "", false, err
 		}
+		t = c.eraseRefinementType(t)
 		tmp := c.temp(t)
 		op := e.Operator
 		if op == "not" {
@@ -6193,6 +6224,12 @@ func emitGo(m MIRModule) (string, error) {
 	}
 	if needsVoidType {
 		b.WriteString("type __octVoid struct{}\n\n")
+	}
+	for _, refinement := range m.Refinements {
+		fmt.Fprintf(&b, "type %s_%s = %s\n", refinement.Package, refinement.Name, goType(refinement.Base))
+	}
+	if len(m.Refinements) > 0 {
+		b.WriteString("\n")
 	}
 	b.WriteString("type __octRange struct {\n\tStart int\n\tHasStart bool\n\tEnd int\n\tHasEnd bool\n\tStep int\n\tHasStep bool\n}\n\n")
 	b.WriteString("func __octClone[T any](value T) T {\n\tcloned := __octCloneValue(reflect.ValueOf(value))\n\tif !cloned.IsValid() { return value }\n\treturn cloned.Interface().(T)\n}\n\nfunc __octCloneValue(value reflect.Value) reflect.Value {\n\tif !value.IsValid() { return value }\n\tswitch value.Kind() {\n\tcase reflect.Slice:\n\t\tif value.IsNil() { return reflect.Zero(value.Type()) }\n\t\tout := reflect.MakeSlice(value.Type(), value.Len(), value.Len())\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Array:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.Len(); i++ { out.Index(i).Set(__octCloneValue(value.Index(i))) }\n\t\treturn out\n\tcase reflect.Struct:\n\t\tout := reflect.New(value.Type()).Elem()\n\t\tfor i := 0; i < value.NumField(); i++ {\n\t\t\tif out.Field(i).CanSet() { out.Field(i).Set(__octCloneValue(value.Field(i))) }\n\t\t}\n\t\treturn out\n\tdefault:\n\t\treturn value\n\t}\n}\n\n")

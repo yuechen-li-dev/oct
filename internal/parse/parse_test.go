@@ -89,6 +89,24 @@ func TestBuildFileRejectsMalformedConceptDeclaration(t *testing.T) {
 	assertParseErrorContains(t, "concept Broken = { Value: Int }", "invalid concept right-hand shape")
 }
 
+func TestBuildFileParsesRefinedConceptRequirements(t *testing.T) {
+	file := parseSource(t, `concept ColorChannel = Int {
+    Require(Self >= 0, "low")
+    Require(Self <= 255, "high")
+}
+fn Main() -> Void { }
+`)
+	if len(file.Concepts) != 1 || file.Concepts[0].Name != "ColorChannel" {
+		t.Fatalf("unexpected refined concept AST: %+v", file.Concepts)
+	}
+	if got := len(file.Concepts[0].Requirements); got != 2 {
+		t.Fatalf("requirements = %d, want 2", got)
+	}
+	if file.Concepts[0].Requirements[1].Explanation != "high" {
+		t.Fatalf("unexpected explanation: %+v", file.Concepts[0].Requirements[1])
+	}
+}
+
 func TestBuildFileParsesParametersAndStatements(t *testing.T) {
 	file := parseSource(t, "fn Add(x: Int, y: Int) -> Int { let sum = x + y return sum }")
 

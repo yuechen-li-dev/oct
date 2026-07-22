@@ -1,0 +1,10 @@
+expect error: "invalid compile-time-known construction of refined concept Percentage from 60 + 50"
+
+package ConceptsM1InvalidConstant
+concept Percentage = Int {
+    Require(Self >= 0, "percentage must be non-negative")
+    Require(Self <= 100, "percentage must not exceed 100")
+}
+fn Main() -> Void {
+    let invalid: Percentage = 60 + 50
+}

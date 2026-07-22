@@ -1,0 +1,6 @@
+expect error: "cyclic refinement involving"
+
+package ConceptsM1Cycle
+concept A = B {Require(true)}
+concept B = A {Require(true)}
+fn Main() -> Void {}

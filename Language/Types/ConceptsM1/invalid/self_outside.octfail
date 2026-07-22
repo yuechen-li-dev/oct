@@ -1,0 +1,6 @@
+expect error: "undefined variable: Self"
+
+package ConceptsM1SelfOutside
+fn Main() -> Bool {
+    return Self >= 0
+}

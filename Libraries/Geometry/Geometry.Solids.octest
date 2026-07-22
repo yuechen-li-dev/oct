@@ -1,5 +1,9 @@
 package Geometry
 
+fn InvalidRuntimeSolidLength() -> Float < m > {
+    return - 1m
+}
+
 [Fact]
 fn SolidHandChecks() -> Void {
     let cylinderV = CylinderVolume(2m, 3m) !
@@ -26,15 +30,7 @@ fn SolidZeroDimensionPolicy() -> Void {
 
 [Fact]
 fn SolidNegativeDimensionsRejected() -> Void {
-    Assert.Error(CylinderVolume(0m - 1m, 2m), "negative radius must fail")
-
-    Assert.Error(CylinderSurfaceArea(2m, 0m - 1m), "negative height must fail")
-
-    Assert.Error(SphereVolume(0m - 1m), "negative radius must fail")
-
-    Assert.Error(SphereSurfaceArea(0m - 1m), "negative radius must fail")
-
-    Assert.Error(ConeVolume(2m, 0m - 1m), "negative height must fail")
+    Assert.Error(NonNegativeLength(InvalidRuntimeSolidLength()), "negative solid dimensions must fail checked construction")
 }
 
 [Fact]

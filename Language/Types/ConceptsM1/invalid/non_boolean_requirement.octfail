@@ -1,0 +1,7 @@
+expect error: "requirement 1 must be Bool, got Int"
+
+package ConceptsM1NonBoolean
+concept Broken = Int {
+    Require(Self + 1, "must be Boolean")
+}
+fn Main() -> Void {}

@@ -1,0 +1,8 @@
+expect error: "invalid refinement base shape Pair"
+
+package ConceptsM1UnsupportedBase
+record Pair {A: Int B: Int}
+concept Broken = Pair {
+    Require(true)
+}
+fn Main() -> Void {}

@@ -116,6 +116,50 @@ fn main() -> Int {
 	}
 }
 
+func TestRefinedConceptStaticProofErasesAndCheckedConstructionIsSingleBoundary(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.oct")
+	src := `package Main
+concept Channel = Int {
+    Require(Self >= 0, "channel low")
+    Require(Self <= 255, "channel high")
+}
+fn Source() -> Int { return 128 }
+fn Use(value: Channel) -> Int { return value }
+fn main() -> Int {
+    let known: Channel = 255
+    let checked = Channel(Source())!
+    return Use(known) + Use(checked) - 383
+}
+`
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	module, generated, err := inspectProgram(path)
+	if err != nil {
+		t.Fatalf("inspect refined concept program: %v", err)
+	}
+	dump := dumpMIR(module)
+	if !strings.Contains(generated, "type Main_Channel = int") {
+		t.Fatalf("refined representation was not an alias of int:\n%s", generated)
+	}
+	if strings.Count(dump, "call Main.__oct_refine_Channel") != 1 {
+		t.Fatalf("expected exactly one explicit checked boundary in MIR:\n%s", dump)
+	}
+	mainStart := strings.Index(dump, "fn Main.main")
+	constructorStart := strings.Index(dump, "fn Main.__oct_refine_Channel")
+	if mainStart < 0 || constructorStart < mainStart {
+		t.Fatalf("missing refined functions:\n%s", dump)
+	}
+	mainMIR := dump[mainStart:constructorStart]
+	if strings.Contains(mainMIR, "channel low") || strings.Contains(mainMIR, "channel high") {
+		t.Fatalf("static proof or downstream use retained validation:\n%s", mainMIR)
+	}
+	if strings.Count(generated, "refined concept Channel:") != 2 {
+		t.Fatalf("runtime constructor should emit exactly two requirement failures:\n%s", generated)
+	}
+}
+
 func TestCompileWritesMIRDumpWhenRequested(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.oct")

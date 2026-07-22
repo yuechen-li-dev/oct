@@ -1,5 +1,9 @@
 package Geometry
 
+fn InvalidRuntimeLength() -> Float < m > {
+    return - 1m
+}
+
 [Fact]
 fn Distance2DHandCheck() -> Void {
     let d = Distance2D(0m, 0m, 3m, 4m)
@@ -29,19 +33,24 @@ fn PlanarZeroDimensionPolicy() -> Void {
 
 [Fact]
 fn PlanarNegativeDimensionsRejected() -> Void {
-    Assert.Error(CircleArea(0m - 1m), "negative radius must fail")
+    Assert.Error(NonNegativeLength(InvalidRuntimeLength()), "negative dimensions must fail checked construction")
+}
 
-    Assert.Error(CircleCircumference(0m - 1m), "negative radius must fail")
-
-    Assert.Error(RectangleArea(0m - 1m, 2m), "negative width must fail")
-
-    Assert.Error(TriangleArea(3m, 0m - 1m), "negative height must fail")
+[Fact]
+fn RuntimeLengthAdmissionIsReusable() -> Void ! Error {
+    let raw = 3m
+    let admitted = NonNegativeLength(raw) ?
+    let circle = CircleArea(admitted) !
+    let sphere = SphereVolume(admitted) !
+    Assert.True(circle > 0m ^ 2, "admitted length is reusable for planar geometry")
+    Assert.True(sphere > 0m ^ 3, "admitted length is reusable for solid geometry")
 }
 
 [Fact]
 fn PlanarComposabilityChain() -> Void {
     let d = Distance2D(1m, 2m, 4m, 6m)
-    let sweptArea = CircleArea(d) !
+    let radius = NonNegativeLength(d) !
+    let sweptArea = CircleArea(radius) !
     let scaled = sweptArea / 2.0
 
     Assert.Near(5.0, d / 1m, 0.000001, "distance in chain should remain correct")

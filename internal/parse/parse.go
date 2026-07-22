@@ -384,7 +384,44 @@ func (p *parser) parseConceptDecl() (*ast.ConceptDecl, *ast.RecordDecl, error) {
 		if err != nil {
 			return nil, nil, p.errorAtCurrent("invalid concept right-hand shape: expected a value type")
 		}
-		return &ast.ConceptDecl{Name: name.Lexeme, Target: target, Doc: p.docCommentAtLine(conceptToken.Line), Line: conceptToken.Line, Column: conceptToken.Column}, nil, nil
+		decl := &ast.ConceptDecl{Name: name.Lexeme, Target: target, Doc: p.docCommentAtLine(conceptToken.Line), Line: conceptToken.Line, Column: conceptToken.Column}
+		if !p.match(lex.LeftBrace) {
+			return decl, nil, nil
+		}
+		for p.current().Kind != lex.RightBrace {
+			if p.current().Kind == lex.EOF {
+				return nil, nil, p.errorAtCurrent("expected '}' to close refined concept declaration")
+			}
+			expr, err := p.parseExpression()
+			if err != nil {
+				return nil, nil, err
+			}
+			call, ok := expr.(ast.CallExpr)
+			if !ok {
+				return nil, nil, p.errorAtCurrent("refined concept bodies may contain only Require(condition[, explanation])")
+			}
+			callee, ok := call.Callee.(ast.IdentifierExpr)
+			if !ok || callee.Name != "Require" {
+				return nil, nil, p.errorAtCurrent("refined concept bodies may contain only Require(condition[, explanation])")
+			}
+			if len(call.Arguments) < 1 || len(call.Arguments) > 2 {
+				return nil, nil, p.errorAtCurrent(fmt.Sprintf("refinement Require expects 1 or 2 arguments, got %d", len(call.Arguments)))
+			}
+			explanation := ""
+			if len(call.Arguments) == 2 {
+				literal, ok := call.Arguments[1].(ast.StringLiteralExpr)
+				if !ok {
+					return nil, nil, p.errorAtCurrent("refinement requirement explanation must be a String literal")
+				}
+				explanation = literal.Value
+			}
+			decl.Requirements = append(decl.Requirements, ast.RefinementRequirement{Condition: call.Arguments[0], Explanation: explanation, Line: call.Line, Column: call.Column})
+		}
+		p.advance()
+		if len(decl.Requirements) == 0 {
+			return nil, nil, p.errorAtToken(name, "refined concept must declare at least one Require")
+		}
+		return decl, nil, nil
 	}
 	if _, err := p.expect(lex.LeftBrace, "expected '=' or '{' after concept name"); err != nil {
 		return nil, nil, err

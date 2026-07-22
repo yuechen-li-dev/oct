@@ -59,6 +59,43 @@ Parameters, `var`, assignments, indexing, record-field inspection, arbitrary fun
 
 Legacy dynamic `Require` preconditions were migrated to explicit runtime validation. Recoverable APIs should use fallible `Error` results; existing non-recoverable library boundaries use `Assert.True`, which remains runtime behavior and is not a concept requirement.
 
+## Refined concepts (M1)
+
+A refined concept names the admissible subset of one existing scalar or array representation. It has distinct static identity but the same runtime data representation:
+
+```oct
+concept ColorChannel = Int {
+    Require(Self >= 0, "a color channel must be at least 0")
+    Require(Self <= 255, "a color channel must be at most 255")
+}
+```
+
+`Self` denotes the candidate value and is in scope only inside the refinement requirements. Each requirement must be pure, non-fallible, and Boolean. M1 accepts the bounded literal/operator subset used by compile-time `Require`, plus floating-point literals and `Len(Self)` for array refinements. Calls other than `Len`, mutation, I/O, process/environment access, time, randomness, reflection, compiler objects, and host authority are rejected.
+
+Known construction uses expected-type context:
+
+```oct
+let high: ColorChannel = 200 + 55 // proved while checking; no runtime branch
+```
+
+A known value that fails a requirement is rejected at that binding, argument, return, record field, array element, or assignment. An unknown base value is not admitted implicitly:
+
+```oct
+fn Admit(raw: Int) -> ColorChannel ! Error {
+    return ColorChannel(raw)?
+}
+```
+
+`Name(value)` is the explicit checked constructor for a package-local refined concept. It is fallible and therefore composes with `?`, `!`, and `match ok/err`. The compiler generates one ordinary fallible boundary function from the same typed requirement expressions used for static proof. On success its value has the refined identity; subsequent binding, parameter passing, returning unchanged, record/array storage, and indexing do not check again.
+
+Refined scalar to underlying representation is permitted and zero cost. Underlying representation to refined requires either bounded compile-time proof or explicit checked construction. Arrays remain invariant because mutable base-array access could otherwise insert an unchecked element. Equality and comparison consume the underlying values. Arithmetic and unary numeric computation conservatively return the underlying type, so a result must be proved or checked before it regains refinement.
+
+Transparent M0 aliases of a refined concept preserve the refinement identity. A refinement base may be a transparent alias that resolves to a supported representation. Refining a refined concept is rejected in M1; cycles are diagnosed. Record, enum, function, flow, vector, matrix, error, void, range, UI, bytes, and nominal-record bases are not supported refinement bases. Dimensioned `Int<D>` and `Float<D>` bases retain their unit dimension.
+
+The interpreter executes explicit checked construction through the synthesized ordinary fallible function. Go lowering emits a type alias to the concrete representation and only the constructor's requirement branches. Statically proved construction, parameters, fields, arrays, and downstream uses emit no descriptor, registry, reflection metadata, wrapper allocation, or repeated validation.
+
+Package-qualified refined types and statically proved arguments through imported function signatures are supported. Package-qualified checked-constructor spelling is not yet supported; checked construction currently occurs inside the declaring package or through a package API. General range inference, symbolic execution, dependent types, operation-preservation inference, behavioral conformance, templates, and specialization are not part of M1.
+
 ## Erasure and backends
 
 The interpreter executes only programs whose requirements have already passed and treats accepted `Require` statements as erased. The Go backend does not lower them into MIR statements and emits no `Require` helper, conditional, panic, concept registry, or type descriptor. Named concepts lower to their concrete Go representation; record-shaped concepts lower to the same structs as records.

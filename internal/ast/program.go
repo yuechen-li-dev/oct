@@ -22,11 +22,23 @@ type File struct {
 // concepts reuse RecordDecl with IsConcept set so every existing record
 // operation and backend representation remains authoritative.
 type ConceptDecl struct {
-	Name   string
-	Target TypeRef
-	Doc    *DocComment
-	Line   int
-	Column int
+	Name         string
+	Target       TypeRef
+	Requirements []RefinementRequirement
+	Doc          *DocComment
+	Line         int
+	Column       int
+}
+
+// RefinementRequirement is the single typed expression used for both static
+// admission and the explicit runtime constructor synthesized by concept
+// expansion. Explanation is deliberately stored as source text, not as a
+// runtime descriptor.
+type RefinementRequirement struct {
+	Condition   Expr
+	Explanation string
+	Line        int
+	Column      int
 }
 
 type DocComment struct {
@@ -87,6 +99,10 @@ type FunctionDecl struct {
 	IsFallible            bool
 	ErrorType             TypeRef
 	Body                  Block
+	// IsRefinementConstructor marks compiler-generated, package-local checked
+	// construction. It permits the final base-representation return to acquire
+	// the declared refinement; user functions never receive this privilege.
+	IsRefinementConstructor bool
 }
 
 type FlowDecl struct {

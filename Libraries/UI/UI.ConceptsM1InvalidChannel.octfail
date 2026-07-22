@@ -1,0 +1,12 @@
+expect error: "invalid compile-time-known construction of refined concept ColorChannel from 300: a color channel must be at most 255"
+
+package UI
+
+concept ColorChannel = Int {
+    Require(Self >= 0, "a color channel must be at least 0")
+    Require(Self <= 255, "a color channel must be at most 255")
+}
+
+fn InvalidLiteralColor() -> Void {
+    let invalid: ColorChannel = 300
+}

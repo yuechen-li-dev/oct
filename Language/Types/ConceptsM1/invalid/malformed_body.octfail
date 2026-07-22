@@ -1,0 +1,7 @@
+expect error: "refined concept bodies may contain only Require"
+
+package ConceptsM1Malformed
+concept Broken = Int {
+    Assert.True(Self >= 0, "not a refinement requirement")
+}
+fn Main() -> Void { }
