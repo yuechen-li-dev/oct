@@ -156,6 +156,112 @@ FACT(PrometheusReactor_RayQueryAdmissionIsOptionalAndCompleteWhenEnabled)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
 
+FACT(PrometheusReactor_RayQueryTriangleBlasTlasProbeUsesPersistentHardwareTraversal)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services), "runtime services should be available");
+    if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED)
+    {
+        SKIP("ray-query feature bundle is unavailable on this device");
+    }
+
+    const PrometheusRayQueryTriangle triangles[] = {{
+        {-1.0f, -1.0f, 2.0f,
+          1.0f, -1.0f, 2.0f,
+          0.0f,  1.0f, 2.0f}
+    }};
+    PrometheusRayQueryTriangleSceneCreateRequest request{};
+    request.struct_size = static_cast<std::uint32_t>(sizeof(request));
+    request.triangles = triangles;
+    request.triangle_count = 1u;
+    std::uint64_t sceneId = 0u;
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_ray_query_triangle_scene_create(handle, &request, &sceneId),
+                 "triangle scene should build persistent BLAS and TLAS");
+    ASSERT_TRUE(sceneId != 0u, "created scene must have a non-zero opaque handle");
+
+    PrometheusRayQueryProbeResult first{};
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_ray_query_triangle_scene_probe(handle, sceneId, &first),
+                 "first probe must dispatch the production SDSL-V ray-query shader");
+    ASSERT_EQUAL(1u, first.hit, "canonical M0 ray should hit the z=2 triangle");
+    ASSERT_EQUAL(1u, first.triangle_count, "scene retains its triangle count");
+    ASSERT_EQUAL(1u, first.blas_built, "triangle BLAS must remain live for warm probes");
+    ASSERT_EQUAL(1u, first.tlas_built, "TLAS must remain live for warm probes");
+    ASSERT_TRUE(first.vertex_device_address != 0u, "triangle geometry must be device-addressable");
+    ASSERT_TRUE(first.blas_device_address != 0u, "BLAS must expose a device address to TLAS build");
+    ASSERT_TRUE(first.tlas_device_address != 0u, "TLAS must expose a device address to traversal");
+
+    PrometheusRayQueryProbeResult warm{};
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_ray_query_triangle_scene_probe(handle, sceneId, &warm),
+                 "warm probe should reuse scene acceleration structures and pipeline");
+    ASSERT_EQUAL(1u, warm.hit, "warm probe must retain the hardware traversal result");
+    ASSERT_EQUAL(first.blas_device_address, warm.blas_device_address, "warm probe must retain the same BLAS");
+    ASSERT_EQUAL(first.tlas_device_address, warm.tlas_device_address, "warm probe must retain the same TLAS");
+
+    prom_vk_runtime_services afterProbe{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &afterProbe), "services should remain queryable after traversal");
+    ASSERT_EQUAL(services.validation_error_count, afterProbe.validation_error_count,
+                 "BLAS/TLAS build and traversal must introduce no validation errors");
+
+    ASSERT_EQUAL(PROM_OK,
+                 prometheus_reactor_runtime_ray_query_triangle_scene_destroy(handle, sceneId),
+                 "scene destroy must release acceleration structures before backing buffers");
+    ASSERT_EQUAL(PROM_INVALID_HANDLE,
+                 prometheus_reactor_runtime_ray_query_triangle_scene_probe(handle, sceneId, &warm),
+                 "destroyed scene handles must be rejected");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_RayQueryTriangleScenesRemainIsolated)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services), "runtime services should be available");
+    if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED)
+    {
+        SKIP("ray-query feature bundle is unavailable on this device");
+    }
+
+    const PrometheusRayQueryTriangle hitTriangle[] = {{
+        {-1.0f, -1.0f, 2.0f, 1.0f, -1.0f, 2.0f, 0.0f, 1.0f, 2.0f}
+    }};
+    const PrometheusRayQueryTriangle missTriangle[] = {{
+        {10.0f, -1.0f, 2.0f, 12.0f, -1.0f, 2.0f, 11.0f, 1.0f, 2.0f}
+    }};
+    PrometheusRayQueryTriangleSceneCreateRequest hitRequest{};
+    hitRequest.struct_size = static_cast<std::uint32_t>(sizeof(hitRequest));
+    hitRequest.triangles = hitTriangle;
+    hitRequest.triangle_count = 1u;
+    PrometheusRayQueryTriangleSceneCreateRequest missRequest = hitRequest;
+    missRequest.triangles = missTriangle;
+    std::uint64_t hitScene = 0u;
+    std::uint64_t missScene = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_create(handle, &hitRequest, &hitScene),
+                 "first live scene should build");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_create(handle, &missRequest, &missScene),
+                 "second live scene should build independently");
+    PrometheusRayQueryProbeResult hit{};
+    PrometheusRayQueryProbeResult miss{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_probe(handle, hitScene, &hit),
+                 "hit scene should dispatch");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_probe(handle, missScene, &miss),
+                 "miss scene should dispatch");
+    ASSERT_EQUAL(1u, hit.hit, "first scene must retain its own hit geometry");
+    ASSERT_EQUAL(0u, miss.hit, "second scene must retain its own miss geometry");
+    ASSERT_NOT_EQUAL(hit.tlas_device_address, miss.tlas_device_address, "live scenes must not alias their TLAS objects");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_destroy(handle, missScene),
+                 "second scene destroy should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_destroy(handle, hitScene),
+                 "first scene destroy should succeed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
 static std::vector<PrometheusComplex32> fft_dft_oracle(const std::vector<PrometheusComplex32>& input,
                                                         std::uint32_t elementCount,
                                                         std::uint32_t batchCount,

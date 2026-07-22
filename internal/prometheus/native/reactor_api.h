@@ -1544,6 +1544,44 @@ typedef struct PrometheusVulkanDeviceDiagnostics {
   uint32_t transfer_queue_family;
 } PrometheusVulkanDeviceDiagnostics;
 
+/* Ray-query M1 execution checkpoint.  Geometry is world-space Float32 and
+   each triangle has the documented vertex order (a, b, c).  The first
+   execution route intentionally dispatches the canonical M0 probe ray:
+   origin (0,0,0), direction (0,0,1), interval [0,100]. */
+enum {
+  PROM_RAY_QUERY_DETAIL_UNAVAILABLE = -6901,
+  PROM_RAY_QUERY_DETAIL_INVALID_REQUEST = -6902,
+  PROM_RAY_QUERY_DETAIL_INVALID_TRIANGLE = -6903,
+  PROM_RAY_QUERY_DETAIL_SIZE_OVERFLOW = -6904,
+  PROM_RAY_QUERY_DETAIL_BUFFER_CREATE_FAILED = -6905,
+  PROM_RAY_QUERY_DETAIL_DEVICE_ADDRESS_FAILED = -6906,
+  PROM_RAY_QUERY_DETAIL_BLAS_BUILD_FAILED = -6907,
+  PROM_RAY_QUERY_DETAIL_TLAS_BUILD_FAILED = -6908,
+  PROM_RAY_QUERY_DETAIL_DESCRIPTOR_OR_PIPELINE_FAILED = -6909,
+  PROM_RAY_QUERY_DETAIL_SUBMIT_OR_READBACK_FAILED = -6910,
+  PROM_RAY_QUERY_DETAIL_INVALID_SCENE = -6911,
+};
+
+typedef struct PrometheusRayQueryTriangle {
+  float positions[9];
+} PrometheusRayQueryTriangle;
+
+typedef struct PrometheusRayQueryTriangleSceneCreateRequest {
+  uint32_t struct_size;
+  const PrometheusRayQueryTriangle* triangles;
+  uint32_t triangle_count;
+} PrometheusRayQueryTriangleSceneCreateRequest;
+
+typedef struct PrometheusRayQueryProbeResult {
+  uint32_t hit;
+  uint32_t triangle_count;
+  uint32_t blas_built;
+  uint32_t tlas_built;
+  uint64_t vertex_device_address;
+  uint64_t blas_device_address;
+  uint64_t tlas_device_address;
+} PrometheusRayQueryProbeResult;
+
 typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
   uint32_t test_flags;
@@ -2144,6 +2182,12 @@ PROM_REACTOR_API int prometheus_reactor_runtime_destroy(void* handle);
 PROM_REACTOR_API int prometheus_reactor_runtime_probe(void* handle, PrometheusCaps* out_caps);
 PROM_REACTOR_API int prometheus_reactor_runtime_vulkan_device_diagnostics(void* handle,
                                                                            PrometheusVulkanDeviceDiagnostics* out_diag);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_triangle_scene_create(
+    void* handle, const PrometheusRayQueryTriangleSceneCreateRequest* request, uint64_t* out_scene_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_triangle_scene_probe(
+    void* handle, uint64_t scene_id, PrometheusRayQueryProbeResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_triangle_scene_destroy(void* handle,
+                                                                                   uint64_t scene_id);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       const float* a,
                                                       const float* b,

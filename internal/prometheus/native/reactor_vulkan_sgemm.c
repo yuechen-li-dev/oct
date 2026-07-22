@@ -4137,6 +4137,9 @@ int prom_reactor_runtime_destroy_impl(void* handle) {
   }
 
   registry_remove(handle);
+  /* Persistent ray-query scenes borrow this sole device owner.  Retire them
+     before vk_runtime_cleanup tears down their AS backing storage. */
+  prom_ray_query_scene_runtime_destroy_all(handle);
   prom_fft_diag_forget_handle(handle);
   vk_runtime_cleanup(runtime);
   free(runtime);

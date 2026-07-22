@@ -3043,6 +3043,16 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
                                VkMemoryPropertyFlags memory_properties,
                                int map_memory,
                                prom_vk_buffer* out_buffer);
+/* Device-address buffers use the one shared allocation recipe required by
+   acceleration-structure build inputs, storage, and scratch. */
+VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
+                                              VkDevice device,
+                                              uint32_t test_flags,
+                                              VkDeviceSize size,
+                                              VkBufferUsageFlags usage,
+                                              VkMemoryPropertyFlags memory_properties,
+                                              int map_memory,
+                                              prom_vk_buffer* out_buffer);
 VkResult prom_vk_create_buffer_shared_between_families(
     VkPhysicalDevice physical_device, VkDevice device, uint32_t test_flags, VkDeviceSize size,
     VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, int map_memory,
@@ -3058,6 +3068,13 @@ VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
 void prom_vk_destroy_buffer(VkDevice device, prom_vk_buffer* buffer);
 
 int prom_reactor_runtime_create_impl(void* config, void** out_handle);
+int prom_ray_query_triangle_scene_create_impl(
+    void* handle, const PrometheusRayQueryTriangleSceneCreateRequest* request, uint64_t* out_scene_id);
+int prom_ray_query_triangle_scene_probe_impl(void* handle, uint64_t scene_id,
+                                             PrometheusRayQueryProbeResult* out_result);
+int prom_ray_query_triangle_scene_destroy_impl(void* handle, uint64_t scene_id);
+/* Called by the sole Vulkan-owner teardown path before the device is destroyed. */
+void prom_ray_query_scene_runtime_destroy_all(void* runtime_handle);
 int prom_reactor_runtime_model_block_create_impl(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,
     PrometheusModelBlockEvidence* out_evidence);

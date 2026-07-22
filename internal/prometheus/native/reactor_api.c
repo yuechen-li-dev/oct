@@ -24,6 +24,20 @@ int prometheus_reactor_runtime_vulkan_device_diagnostics(void* handle, Prometheu
   return prom_reactor_runtime_vulkan_device_diagnostics_impl(handle, out_diag);
 }
 
+int prometheus_reactor_runtime_ray_query_triangle_scene_create(
+    void* handle, const PrometheusRayQueryTriangleSceneCreateRequest* request, uint64_t* out_scene_id) {
+  return prom_ray_query_triangle_scene_create_impl(handle, request, out_scene_id);
+}
+
+int prometheus_reactor_runtime_ray_query_triangle_scene_probe(
+    void* handle, uint64_t scene_id, PrometheusRayQueryProbeResult* out_result) {
+  return prom_ray_query_triangle_scene_probe_impl(handle, scene_id, out_result);
+}
+
+int prometheus_reactor_runtime_ray_query_triangle_scene_destroy(void* handle, uint64_t scene_id) {
+  return prom_ray_query_triangle_scene_destroy_impl(handle, scene_id);
+}
+
 
 int prometheus_reactor_runtime_sgemm(void* handle,
                                      const float* a,

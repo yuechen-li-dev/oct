@@ -216,6 +216,81 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
   return VK_SUCCESS;
 }
 
+VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
+                                              VkDevice device,
+                                              uint32_t test_flags,
+                                              VkDeviceSize size,
+                                              VkBufferUsageFlags usage,
+                                              VkMemoryPropertyFlags memory_properties,
+                                              int map_memory,
+                                              prom_vk_buffer* out_buffer) {
+  VkResult result;
+  VkBufferCreateInfo buffer_info;
+  VkMemoryRequirements requirements;
+  VkMemoryAllocateInfo alloc_info;
+  VkMemoryAllocateFlagsInfo address_flags;
+  VkPhysicalDeviceMemoryProperties physical_memory_properties;
+  uint32_t memory_type_index;
+
+  if (physical_device == VK_NULL_HANDLE || device == VK_NULL_HANDLE || out_buffer == NULL || size == 0u) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  if ((test_flags & PROM_TESTCFG_FAIL_BUFFER_ALLOC) != 0u) {
+    return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+  }
+
+  memset(out_buffer, 0, sizeof(*out_buffer));
+  out_buffer->size = size;
+  out_buffer->usage_flags = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+  out_buffer->sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
+
+  memset(&buffer_info, 0, sizeof(buffer_info));
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = size;
+  buffer_info.usage = out_buffer->usage_flags;
+  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+
+  vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
+  out_buffer->memory_alignment = requirements.alignment;
+  memory_type_index = prom_vk_find_memory_type(physical_device, requirements.memoryTypeBits, memory_properties);
+  if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
+      (((test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
+       (memory_properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0u)) {
+    memory_type_index = UINT32_MAX;
+  }
+  if (memory_type_index == UINT32_MAX) {
+    prom_vk_destroy_buffer(device, out_buffer);
+    return VK_ERROR_FEATURE_NOT_PRESENT;
+  }
+
+  vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_memory_properties);
+  out_buffer->memory_type_index = memory_type_index;
+  out_buffer->memory_property_flags = physical_memory_properties.memoryTypes[memory_type_index].propertyFlags;
+  memset(&address_flags, 0, sizeof(address_flags));
+  address_flags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+  address_flags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+  memset(&alloc_info, 0, sizeof(alloc_info));
+  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  alloc_info.pNext = &address_flags;
+  alloc_info.allocationSize = requirements.size;
+  alloc_info.memoryTypeIndex = memory_type_index;
+  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
+  if (result == VK_SUCCESS) {
+    result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0u);
+  }
+  if (result == VK_SUCCESS && map_memory != 0) {
+    result = vkMapMemory(device, out_buffer->memory, 0u, size, 0u, &out_buffer->mapped);
+  }
+  if (result != VK_SUCCESS) {
+    prom_vk_destroy_buffer(device, out_buffer);
+  }
+  return result;
+}
+
 /* M2 uses concurrent sharing only for its two weight windows.  This avoids
    ownership handoffs for a buffer that alternates between the dedicated
    transfer and compute families; all other reactor buffers retain the

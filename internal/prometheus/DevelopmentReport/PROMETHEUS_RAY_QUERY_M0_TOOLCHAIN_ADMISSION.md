@@ -1,15 +1,14 @@
-# P17 M0 — Ray-query toolchain and runtime admission
+# Prometheus Ray Query M0 — Toolchain and runtime admission
 
 Status: meaningful progression; this is not an M1 renderer qualification.
 
 ## Repository naming note
 
 `PROMETHEUS_P14_PLUS_ROADMAP.md` already uses **P17** for PVT evidence tuning.
-The requested ray-query work uses the same identifier.  This report preserves
-the requested `P17 M0` label so its evidence is discoverable, but does not
-silently rewrite that separate roadmap or claim that its PVT work is complete.
-Future planning should assign one of these tracks a distinct program identifier
-before treating either document as the single current-work pointer.
+The ray-query work therefore uses the explicit `PROMETHEUS_RAY_QUERY_M0` /
+`PROMETHEUS_RAY_QUERY_M1` namespace.  This report was renamed from
+`P17_M0_RAY_QUERY_TOOLCHAIN_ADMISSION.md`; no historical roadmap or unrelated
+milestone was renumbered.
 
 ## Purpose
 
@@ -41,7 +40,7 @@ SPIR-V Tools:
 
 ```text
 go run ./cmd/oct sdslv check internal/prometheus/shaders/sdslv/production/rayquery/ray_query_capability_probe.sdslv
-go run ./cmd/oct sdslv compile internal/prometheus/shaders/sdslv/production/rayquery/ray_query_capability_probe.sdslv --validate --require-spirv-val
+go run ./cmd/oct sdslv compile-spv internal/prometheus/shaders/sdslv/production/rayquery/ray_query_capability_probe.sdslv -o <temporary-output.spv> --validate --require-spirv-val
 ```
 
 The canonical module SHA-256 is
