@@ -1,4 +1,6 @@
 // Command octxiliary-time serves the Time standard-library Octxiliary wrapper.
+//
+//go:generate go run ../../tools/octgen generate -input time_dispatch.oct -output time_dispatch.generated.go
 package main
 
 import (
@@ -41,43 +43,6 @@ func main() {
 		if err := octxiliary.WriteFrame(os.Stdout, octxiliary.EncodeResponse(resp)); err != nil {
 			return
 		}
-	}
-}
-
-func dispatch(req octxiliary.Request) (octxiliary.Value, error) {
-	if req.Family != "Time" {
-		return octxiliary.Value{}, fmt.Errorf("unknown family %q", req.Family)
-	}
-	if !req.HasArgs {
-		return octxiliary.Value{}, fmt.Errorf("generic args missing")
-	}
-	switch req.Function {
-	case "TimeNowIso8601":
-		if err := expect(req.Args); err != nil {
-			return octxiliary.Value{}, err
-		}
-		return stringValue(time.Now().UTC().Format(time.RFC3339)), nil
-	case "TimeParseIso8601", "TimeFormatIso8601":
-		if err := expect(req.Args, octxiliary.ValueString); err != nil {
-			return octxiliary.Value{}, err
-		}
-		parsed, err := parseIso8601(req.Args[0].String)
-		if err != nil {
-			return octxiliary.Value{}, err
-		}
-		return stringValue(parsed.Format(time.RFC3339)), nil
-	case "TimeUnixSecondsNow":
-		if err := expect(req.Args); err != nil {
-			return octxiliary.Value{}, err
-		}
-		return intValue(int(time.Now().UTC().Unix())), nil
-	case "TimeFormatUnixSecond":
-		if err := expect(req.Args, octxiliary.ValueInt); err != nil {
-			return octxiliary.Value{}, err
-		}
-		return stringValue(time.Unix(int64(req.Args[0].Int), 0).UTC().Format(time.RFC3339)), nil
-	default:
-		return octxiliary.Value{}, fmt.Errorf("unknown function %q", req.Function)
 	}
 }
 

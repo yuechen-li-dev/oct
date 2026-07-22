@@ -1,0 +1,30 @@
+package InvalidModel
+
+enum TimeMode {
+    NowIso8601
+    NormalizeIso8601
+    UnixSecondsNow
+    FormatUnixSecond
+}
+
+record TimeOperation {
+    Name: String
+    Mode: TimeMode
+    ArgumentKinds: String[]
+}
+
+record GeneratedTimeDispatch {
+    Package: String
+    Operations: TimeOperation[]
+}
+
+fn Generate() -> GeneratedTimeDispatch {
+    return GeneratedTimeDispatch {
+        Package: "main"
+        Operations: [
+            TimeOperation { Name: "One" Mode: TimeMode.NowIso8601 ArgumentKinds: [] },
+            TimeOperation { Name: "Two" Mode: TimeMode.NormalizeIso8601 ArgumentKinds: ["Int"] },
+            TimeOperation { Name: "Three" Mode: TimeMode.UnixSecondsNow ArgumentKinds: [] }
+        ]
+    }
+}

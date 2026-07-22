@@ -1,0 +1,40 @@
+package TimeOctGen
+
+enum TimeMode {
+    NowIso8601
+    NormalizeIso8601
+    UnixSecondsNow
+    FormatUnixSecond
+}
+
+record TimeOperation {
+    Name: String
+    Mode: TimeMode
+    ArgumentKinds: String[]
+}
+
+record GeneratedTimeDispatch {
+    Package: String
+    Operations: TimeOperation[]
+}
+
+fn Generate() -> GeneratedTimeDispatch {
+    let declared = [
+        TimeOperation { Name: "TimeNowIso8601" Mode: TimeMode.NowIso8601 ArgumentKinds: [] },
+        TimeOperation { Name: "TimeParseIso8601" Mode: TimeMode.NormalizeIso8601 ArgumentKinds: ["String"] },
+        TimeOperation { Name: "TimeFormatIso8601" Mode: TimeMode.NormalizeIso8601 ArgumentKinds: ["String"] },
+        TimeOperation { Name: "TimeUnixSecondsNow" Mode: TimeMode.UnixSecondsNow ArgumentKinds: [] },
+        TimeOperation { Name: "TimeFormatUnixSecond" Mode: TimeMode.FormatUnixSecond ArgumentKinds: ["Int"] }
+    ]
+
+    var operations = [declared[0]]
+    for i in 1..Len(declared) {
+        if declared[i].Name != "" {
+            operations = Append(operations, declared[i])
+        }
+    }
+    return GeneratedTimeDispatch {
+        Package: "main"
+        Operations: operations
+    }
+}
