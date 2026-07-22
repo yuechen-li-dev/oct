@@ -1,0 +1,168 @@
+package AuditStageOctGen
+
+enum Shape {
+    Vector
+    Model
+    Hidden
+    Qkv
+    Adaln
+}
+
+record StageSpec {
+    Name: String
+    Policy: String
+    Source: String
+    BaseShape: Shape
+    BaseMultiplier: Int
+    CountShape: Shape
+    Layout: String
+    Capture: String
+    Lifetime: String
+    ExtraKeys: Int[]
+}
+
+record AuditStage {
+    ID: Int
+    Name: String
+    Policy: String
+    Source: String
+    Base: Int
+    Count: Int
+    Layout: String
+    Capture: String
+    Lifetime: String
+    Keys: Int[]
+}
+
+record GeneratedAuditStages {
+    Package: String
+    Noise: AuditStage[]
+    Context: AuditStage[]
+}
+
+fn CountOf(shape: Shape, vector: Int, model: Int, hidden: Int, adaln: Int) -> Int {
+    return switch shape {
+        case Shape.Vector => vector
+        case Shape.Model => model
+        case Shape.Hidden => hidden
+        case Shape.Qkv => model * 3
+        case Shape.Adaln => adaln
+    }
+}
+
+fn HasKey(keys: Int[], candidate: Int) -> Bool {
+    for i in 0..Len(keys) {
+        if keys[i] == candidate {
+            return true
+        }
+    }
+    return false
+}
+
+fn AddKey(keys: Int[], count: Int, candidate: Int) -> Int[] {
+    if candidate < 0 {
+        return keys
+    }
+    if candidate >= count {
+        return keys
+    }
+    if Len(keys) >= 15 {
+        return keys
+    }
+    if HasKey(keys, candidate) {
+        return keys
+    }
+    return Append(keys, candidate)
+}
+
+fn KeysFor(count: Int, extra: Int[]) -> Int[] {
+    var keys = [0]
+    keys = AddKey(keys, count, count - 1)
+    keys = AddKey(keys, count, count / 2)
+    for i in 0..Len(extra) {
+        keys = AddKey(keys, count, extra[i])
+    }
+    return keys
+}
+
+fn BuildStage(spec: StageSpec, id: Int, vector: Int, model: Int, hidden: Int, adaln: Int) -> AuditStage {
+    let count = CountOf(spec.CountShape, vector, model, hidden, adaln)
+    let base = CountOf(spec.BaseShape, vector, model, hidden, adaln) * spec.BaseMultiplier
+    return AuditStage {
+        ID: id
+        Name: spec.Name
+        Policy: spec.Policy
+        Source: spec.Source
+        Base: base
+        Count: count
+        Layout: spec.Layout
+        Capture: spec.Capture
+        Lifetime: spec.Lifetime
+        Keys: KeysFor(count, spec.ExtraKeys)
+    }
+}
+
+fn BuildStages(specs: StageSpec[], vector: Int, model: Int, hidden: Int, adaln: Int) -> AuditStage[] {
+    var stages = [BuildStage(specs[0], 1, vector, model, hidden, adaln)]
+    for i in 1..Len(specs) {
+        stages = Append(stages, BuildStage(specs[i], i + 1, vector, model, hidden, adaln))
+    }
+    return stages
+}
+
+fn Generate() -> GeneratedAuditStages {
+    let noise = [
+        StageSpec { Name: "timestep_linear" Policy: "Full" Source: "AdalnProjection" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Adaln Layout: "Vector" Capture: "after_adaln" Lifetime: "before_attention_norm" ExtraKeys: [3839, 7680, 11519] },
+        StageSpec { Name: "attention_scale_raw" Policy: "Full" Source: "AdalnProjection" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_attention_norm" ExtraKeys: [] },
+        StageSpec { Name: "attention_scale_adjusted" Policy: "Full" Source: "AttentionScale" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_attention_norm" ExtraKeys: [] },
+        StageSpec { Name: "attention_gate_raw" Policy: "Full" Source: "AdalnProjection" BaseShape: Shape.Vector BaseMultiplier: 1 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_attention_residual" ExtraKeys: [] },
+        StageSpec { Name: "attention_gate_tanh" Policy: "Full" Source: "AttentionGate" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_attention_residual" ExtraKeys: [] },
+        StageSpec { Name: "mlp_scale_raw" Policy: "Full" Source: "AdalnProjection" BaseShape: Shape.Vector BaseMultiplier: 2 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_ffn_norm" ExtraKeys: [] },
+        StageSpec { Name: "mlp_scale_adjusted" Policy: "Full" Source: "MlpScale" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_ffn_norm" ExtraKeys: [] },
+        StageSpec { Name: "mlp_gate_raw" Policy: "Full" Source: "AdalnProjection" BaseShape: Shape.Vector BaseMultiplier: 3 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_final_residual" ExtraKeys: [] },
+        StageSpec { Name: "mlp_gate_tanh" Policy: "Full" Source: "MlpGate" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Vector Layout: "Vector" Capture: "after_adaln" Lifetime: "before_final_residual" ExtraKeys: [] },
+        StageSpec { Name: "attention_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_attention_norm" Lifetime: "before_qkv" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "attention_modulated" Policy: "ProjectionAndSummary" Source: "Modulated" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_attention_norm" Lifetime: "before_qkv" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "qkv" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Qkv Layout: "FusedQkv" Capture: "after_qkv" Lifetime: "before_q_rope" ExtraKeys: [3932159, 3932160, 7864319, 7864320] },
+        StageSpec { Name: "q" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_qkv" Lifetime: "before_q_rope" ExtraKeys: [127, 128, 3928320] },
+        StageSpec { Name: "k" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Model BaseMultiplier: 1 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_qkv" Lifetime: "before_k_rope" ExtraKeys: [127, 128, 3928320] },
+        StageSpec { Name: "v" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Model BaseMultiplier: 2 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_qkv" Lifetime: "before_attention" ExtraKeys: [127, 128, 3928320] },
+        StageSpec { Name: "q_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_q_norm" Lifetime: "before_q_rope" ExtraKeys: [127, 128, 3928320] },
+        StageSpec { Name: "k_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_k_norm" Lifetime: "before_k_rope" ExtraKeys: [127, 128, 3928320] },
+        StageSpec { Name: "q_rope" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_q_rope" Lifetime: "before_attention" ExtraKeys: [63, 64, 127, 128, 3928320] },
+        StageSpec { Name: "k_rope" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Model BaseMultiplier: 1 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_k_rope" Lifetime: "before_attention" ExtraKeys: [63, 64, 127, 128, 3928320] },
+        StageSpec { Name: "attention_aggregation" Policy: "ProjectionAndSummary" Source: "Attention" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_attention" Lifetime: "before_projection" ExtraKeys: [127, 128, 3928320] },
+        StageSpec { Name: "attention_projection" Policy: "ProjectionAndSummary" Source: "AttentionProjection" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_projection" Lifetime: "before_attention_residual" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "attention_residual" Policy: "ProjectionAndSummary" Source: "AttentionResidual" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_attention_residual" Lifetime: "before_ffn_norm" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "ffn_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_ffn_norm" Lifetime: "before_w1_w3" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "ffn_modulated" Policy: "ProjectionAndSummary" Source: "Modulated" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_ffn_norm" Lifetime: "before_w1_w3" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "w1" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Hidden Layout: "FfnHidden" Capture: "after_w1_w3" Lifetime: "before_gate" ExtraKeys: [10239, 10475520] },
+        StageSpec { Name: "w3" Policy: "ProjectionAndSummary" Source: "W3DeclaredViews" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Hidden Layout: "FfnHidden" Capture: "after_w1_w3" Lifetime: "before_gate" ExtraKeys: [10239, 10475520] },
+        StageSpec { Name: "ffn_gated_hidden" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Hidden Layout: "FfnHidden" Capture: "after_gate" Lifetime: "before_w2" ExtraKeys: [10239, 10475520] },
+        StageSpec { Name: "w2" Policy: "ProjectionAndSummary" Source: "Input" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_w2" Lifetime: "before_final_residual" ExtraKeys: [3839, 3928320] },
+        StageSpec { Name: "final_output" Policy: "ProjectionAndSummary" Source: "Attention" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_final_residual" Lifetime: "resident_output_replaced" ExtraKeys: [3839, 3928320] }
+    ]
+    let context = [
+        StageSpec { Name: "context_embedding_input" Policy: "ProjectionAndSummary" Source: "Input" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_context_input" Lifetime: "before_attention_norm" ExtraKeys: [3839] },
+        StageSpec { Name: "attention_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_attention_norm" Lifetime: "before_qkv" ExtraKeys: [3839] },
+        StageSpec { Name: "qkv" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Qkv Layout: "FusedQkv" Capture: "after_qkv" Lifetime: "before_q_rope" ExtraKeys: [122879, 122880, 245760] },
+        StageSpec { Name: "q_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_q_norm" Lifetime: "before_q_rope" ExtraKeys: [127, 128] },
+        StageSpec { Name: "k_norm" Policy: "ProjectionAndSummary" Source: "NormAudit" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_k_norm" Lifetime: "before_k_rope" ExtraKeys: [127, 128] },
+        StageSpec { Name: "q_rope" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_q_rope" Lifetime: "before_attention" ExtraKeys: [63, 64, 127, 128] },
+        StageSpec { Name: "k_rope" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Model BaseMultiplier: 1 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_k_rope" Lifetime: "before_attention" ExtraKeys: [63, 64, 127, 128] },
+        StageSpec { Name: "attention_aggregation" Policy: "ProjectionAndSummary" Source: "Attention" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenHeadChannel" Capture: "after_attention" Lifetime: "before_projection" ExtraKeys: [127, 128] },
+        StageSpec { Name: "attention_projection" Policy: "ProjectionAndSummary" Source: "AttentionProjection" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_projection" Lifetime: "before_attention_residual" ExtraKeys: [3839] },
+        StageSpec { Name: "attention_residual" Policy: "ProjectionAndSummary" Source: "AttentionResidual" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_attention_residual" Lifetime: "before_ffn_norm" ExtraKeys: [3839] },
+        StageSpec { Name: "ffn_norm" Policy: "ProjectionAndSummary" Source: "Modulated" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_ffn_norm" Lifetime: "before_w1_w3" ExtraKeys: [3839] },
+        StageSpec { Name: "w1" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Hidden Layout: "FfnHidden" Capture: "after_w1_w3" Lifetime: "before_gate" ExtraKeys: [10239] },
+        StageSpec { Name: "w3" Policy: "ProjectionAndSummary" Source: "W3DeclaredViews" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Hidden Layout: "FfnHidden" Capture: "after_w1_w3" Lifetime: "before_gate" ExtraKeys: [10239] },
+        StageSpec { Name: "ffn_gated_hidden" Policy: "ProjectionAndSummary" Source: "Qkv" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Hidden Layout: "FfnHidden" Capture: "after_gate" Lifetime: "before_w2" ExtraKeys: [10239] },
+        StageSpec { Name: "w2" Policy: "ProjectionAndSummary" Source: "AttentionProjection" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_w2" Lifetime: "before_final_residual" ExtraKeys: [3839] },
+        StageSpec { Name: "final_output" Policy: "ProjectionAndSummary" Source: "Attention" BaseShape: Shape.Vector BaseMultiplier: 0 CountShape: Shape.Model Layout: "TokenChannel" Capture: "after_final_residual" Lifetime: "resident_output_replaced" ExtraKeys: [3839] }
+    ]
+    return GeneratedAuditStages {
+        Package: "main"
+        Noise: BuildStages(noise, 3840, 3932160, 10485760, 15360)
+        Context: BuildStages(context, 3840, 122880, 327680, 0)
+    }
+}

@@ -1,5 +1,7 @@
 // compiled_model_lock resolves the deliberately closed EVT-2 Z-Image Turbo
 // compiled-model manifest. It is a linker PoC, not a runtime graph loader.
+//
+//go:generate go run ../octgen generate -input audit_stages.oct -output audit_stages.generated.go
 package main
 
 import (

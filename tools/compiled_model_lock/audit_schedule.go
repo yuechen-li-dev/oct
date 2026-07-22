@@ -1,8 +1,8 @@
 package main
 
-// This file is the closed resolver for the current Z-Image NoiseRefiner
-// assembly.  It is intentionally part of lock generation rather than a native
-// table: native code consumes only the generated result below.
+// This file resolves the closed audit schedule consumed by the native header
+// projection. Stage declaration data is generated from audit_stages.oct; the
+// validation and native projection below remain ordinary Go-owned behavior.
 
 import (
 	"crypto/sha256"
@@ -32,83 +32,19 @@ type auditStageSpec struct {
 	Keys     []uint32
 }
 
-func auditKeys(count uint32, extra ...uint32) []uint32 {
-	seen := map[uint32]bool{}
-	keys := make([]uint32, 0, 8)
-	for _, key := range append([]uint32{0, count - 1, count / 2}, extra...) {
-		if key < count && !seen[key] && len(keys) < 15 {
-			seen[key] = true
-			keys = append(keys, key)
-		}
+func cloneAuditStages(stages []auditStageSpec) []auditStageSpec {
+	cloned := make([]auditStageSpec, len(stages))
+	for index, stage := range stages {
+		cloned[index] = stage
+		cloned[index].Keys = append([]uint32(nil), stage.Keys...)
 	}
-	return keys
+	return cloned
 }
 
-func resolvedAuditStages() []auditStageSpec {
-	const model = 1024 * 3840
-	const hidden = 1024 * 10240
-	const vector = 3840
-	const qkv = 1024 * 11520
-	return []auditStageSpec{
-		{1, "timestep_linear", "Full", "AdalnProjection", 0, 15360, "Vector", "after_adaln", "before_attention_norm", auditKeys(15360, 3839, 7680, 11519)},
-		{2, "attention_scale_raw", "Full", "AdalnProjection", 0, vector, "Vector", "after_adaln", "before_attention_norm", auditKeys(vector)},
-		{3, "attention_scale_adjusted", "Full", "AttentionScale", 0, vector, "Vector", "after_adaln", "before_attention_norm", auditKeys(vector)},
-		{4, "attention_gate_raw", "Full", "AdalnProjection", vector, vector, "Vector", "after_adaln", "before_attention_residual", auditKeys(vector)},
-		{5, "attention_gate_tanh", "Full", "AttentionGate", 0, vector, "Vector", "after_adaln", "before_attention_residual", auditKeys(vector)},
-		{6, "mlp_scale_raw", "Full", "AdalnProjection", 2 * vector, vector, "Vector", "after_adaln", "before_ffn_norm", auditKeys(vector)},
-		{7, "mlp_scale_adjusted", "Full", "MlpScale", 0, vector, "Vector", "after_adaln", "before_ffn_norm", auditKeys(vector)},
-		{8, "mlp_gate_raw", "Full", "AdalnProjection", 3 * vector, vector, "Vector", "after_adaln", "before_final_residual", auditKeys(vector)},
-		{9, "mlp_gate_tanh", "Full", "MlpGate", 0, vector, "Vector", "after_adaln", "before_final_residual", auditKeys(vector)},
-		{10, "attention_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenChannel", "after_attention_norm", "before_qkv", auditKeys(model, vector-1, model-vector)},
-		{11, "attention_modulated", "ProjectionAndSummary", "Modulated", 0, model, "TokenChannel", "after_attention_norm", "before_qkv", auditKeys(model, vector-1, model-vector)},
-		{12, "qkv", "ProjectionAndSummary", "Qkv", 0, qkv, "FusedQkv", "after_qkv", "before_q_rope", auditKeys(qkv, model-1, model, 2*model-1, 2*model)},
-		{13, "q", "ProjectionAndSummary", "Qkv", 0, model, "TokenHeadChannel", "after_qkv", "before_q_rope", auditKeys(model, 127, 128, model-vector)},
-		{14, "k", "ProjectionAndSummary", "Qkv", model, model, "TokenHeadChannel", "after_qkv", "before_k_rope", auditKeys(model, 127, 128, model-vector)},
-		{15, "v", "ProjectionAndSummary", "Qkv", 2 * model, model, "TokenHeadChannel", "after_qkv", "before_attention", auditKeys(model, 127, 128, model-vector)},
-		{16, "q_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenHeadChannel", "after_q_norm", "before_q_rope", auditKeys(model, 127, 128, model-vector)},
-		{17, "k_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenHeadChannel", "after_k_norm", "before_k_rope", auditKeys(model, 127, 128, model-vector)},
-		{18, "q_rope", "ProjectionAndSummary", "Qkv", 0, model, "TokenHeadChannel", "after_q_rope", "before_attention", auditKeys(model, 63, 64, 127, 128, model-vector)},
-		{19, "k_rope", "ProjectionAndSummary", "Qkv", model, model, "TokenHeadChannel", "after_k_rope", "before_attention", auditKeys(model, 63, 64, 127, 128, model-vector)},
-		{20, "attention_aggregation", "ProjectionAndSummary", "Attention", 0, model, "TokenHeadChannel", "after_attention", "before_projection", auditKeys(model, 127, 128, model-vector)},
-		{21, "attention_projection", "ProjectionAndSummary", "AttentionProjection", 0, model, "TokenChannel", "after_projection", "before_attention_residual", auditKeys(model, vector-1, model-vector)},
-		{22, "attention_residual", "ProjectionAndSummary", "AttentionResidual", 0, model, "TokenChannel", "after_attention_residual", "before_ffn_norm", auditKeys(model, vector-1, model-vector)},
-		{23, "ffn_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenChannel", "after_ffn_norm", "before_w1_w3", auditKeys(model, vector-1, model-vector)},
-		{24, "ffn_modulated", "ProjectionAndSummary", "Modulated", 0, model, "TokenChannel", "after_ffn_norm", "before_w1_w3", auditKeys(model, vector-1, model-vector)},
-		{25, "w1", "ProjectionAndSummary", "Qkv", 0, hidden, "FfnHidden", "after_w1_w3", "before_gate", auditKeys(hidden, 10239, hidden-10240)},
-		// W3 is the assembly's declared three-view alias.  The generated native
-		// consumer expands this one logical resource into its three fixed views;
-		// no arbitrary scatter/stride expression is admitted.
-		{26, "w3", "ProjectionAndSummary", "W3DeclaredViews", 0, hidden, "FfnHidden", "after_w1_w3", "before_gate", auditKeys(hidden, 10239, hidden-10240)},
-		{27, "ffn_gated_hidden", "ProjectionAndSummary", "Qkv", 0, hidden, "FfnHidden", "after_gate", "before_w2", auditKeys(hidden, 10239, hidden-10240)},
-		{28, "w2", "ProjectionAndSummary", "Input", 0, model, "TokenChannel", "after_w2", "before_final_residual", auditKeys(model, vector-1, model-vector)},
-		{29, "final_output", "ProjectionAndSummary", "Attention", 0, model, "TokenChannel", "after_final_residual", "resident_output_replaced", auditKeys(model, vector-1, model-vector)},
-	}
-}
+func resolvedAuditStages() []auditStageSpec { return cloneAuditStages(generatedNoiseAuditStages) }
 
-// ContextRefiner has no AdaLN, gates, or BF16 ingress. Its sixteen persistent
-// witnesses plus the two short-attention transient rows are independently
-// scheduled from the NoiseRefiner profile below.
 func resolvedContextAuditStages() []auditStageSpec {
-	const model = 32 * 3840
-	const hidden = 32 * 10240
-	return []auditStageSpec{
-		{1, "context_embedding_input", "ProjectionAndSummary", "Input", 0, model, "TokenChannel", "after_context_input", "before_attention_norm", auditKeys(model, 3839)},
-		{2, "attention_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenChannel", "after_attention_norm", "before_qkv", auditKeys(model, 3839)},
-		{3, "qkv", "ProjectionAndSummary", "Qkv", 0, 3 * model, "FusedQkv", "after_qkv", "before_q_rope", auditKeys(3*model, model-1, model, 2*model)},
-		{4, "q_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenHeadChannel", "after_q_norm", "before_q_rope", auditKeys(model, 127, 128)},
-		{5, "k_norm", "ProjectionAndSummary", "NormAudit", 0, model, "TokenHeadChannel", "after_k_norm", "before_k_rope", auditKeys(model, 127, 128)},
-		{6, "q_rope", "ProjectionAndSummary", "Qkv", 0, model, "TokenHeadChannel", "after_q_rope", "before_attention", auditKeys(model, 63, 64, 127, 128)},
-		{7, "k_rope", "ProjectionAndSummary", "Qkv", model, model, "TokenHeadChannel", "after_k_rope", "before_attention", auditKeys(model, 63, 64, 127, 128)},
-		{8, "attention_aggregation", "ProjectionAndSummary", "Attention", 0, model, "TokenHeadChannel", "after_attention", "before_projection", auditKeys(model, 127, 128)},
-		{9, "attention_projection", "ProjectionAndSummary", "AttentionProjection", 0, model, "TokenChannel", "after_projection", "before_attention_residual", auditKeys(model, 3839)},
-		{10, "attention_residual", "ProjectionAndSummary", "AttentionResidual", 0, model, "TokenChannel", "after_attention_residual", "before_ffn_norm", auditKeys(model, 3839)},
-		{11, "ffn_norm", "ProjectionAndSummary", "Modulated", 0, model, "TokenChannel", "after_ffn_norm", "before_w1_w3", auditKeys(model, 3839)},
-		{12, "w1", "ProjectionAndSummary", "Qkv", 0, hidden, "FfnHidden", "after_w1_w3", "before_gate", auditKeys(hidden, 10239)},
-		{13, "w3", "ProjectionAndSummary", "W3DeclaredViews", 0, hidden, "FfnHidden", "after_w1_w3", "before_gate", auditKeys(hidden, 10239)},
-		{14, "ffn_gated_hidden", "ProjectionAndSummary", "Qkv", 0, hidden, "FfnHidden", "after_gate", "before_w2", auditKeys(hidden, 10239)},
-		{15, "w2", "ProjectionAndSummary", "AttentionProjection", 0, model, "TokenChannel", "after_w2", "before_final_residual", auditKeys(model, 3839)},
-		{16, "final_output", "ProjectionAndSummary", "Attention", 0, model, "TokenChannel", "after_final_residual", "resident_output_replaced", auditKeys(model, 3839)},
-	}
+	return cloneAuditStages(generatedContextAuditStages)
 }
 
 func alignAudit(value uint64) uint64 { return (value + auditAlignment - 1) &^ (auditAlignment - 1) }
@@ -207,10 +143,7 @@ func contextAuditScheduleProjection(lock []byte) (string, string, error) {
 func auditScheduleProjectionForStages(lock []byte, stages []auditStageSpec, ceilingBytes uint64) (string, string, error) {
 	text := string(lock)
 	for _, required := range []string{
-		"Schema: \"oct.sdslv.compiled-model-lock-tagon.v1\"",
-		"NoiseRefinerPersistentProjectionSummary.v1",
-		"AuditBudgetBytes: 47186176",
-		"no repeated prefix replay",
+		"Schema: \"oct.sdslv.compiled-model-lock-tagon.v1\"", "NoiseRefinerPersistentProjectionSummary.v1", "AuditBudgetBytes: 47186176", "no repeated prefix replay",
 		"ModelSemanticIdentity: \"sha256:ed6a7b765d0d7ece22a02a4416734fbd55d8d46684c8acb3dda1044b555bbeb7\"",
 		"ProductionExecutionIdentity: \"sha256:6a883d7797b0ebe363bc5024cf8f21cc721e879558f1520be2c124779d515c25\"",
 		"AuditProfileIdentity: \"sha256:df3a1340b6999daeb2769803a33d18a83151255bc2090e2621e4eb1c129afd11\"",
@@ -233,9 +166,7 @@ func auditScheduleProjectionForStages(lock []byte, stages []auditStageSpec, ceil
 	rendered := make([]renderedStage, 0, len(stages))
 	seenStageIDs := make(map[uint32]bool, len(stages))
 	for _, stage := range stages {
-		if stage.ID == 0 || stage.Count == 0 || capturePoint(stage.Capture) == 0 ||
-			lifetimePoint(stage.Lifetime) < capturePoint(stage.Capture) || sourceResource(stage.Source) == 0 ||
-			layoutKind(stage.Layout) == 0 || len(stage.Keys) > 15 || seenStageIDs[stage.ID] {
+		if stage.ID == 0 || stage.Count == 0 || capturePoint(stage.Capture) == 0 || lifetimePoint(stage.Lifetime) < capturePoint(stage.Capture) || sourceResource(stage.Source) == 0 || layoutKind(stage.Layout) == 0 || len(stage.Keys) > 15 || seenStageIDs[stage.ID] {
 			return "", "", fmt.Errorf("malformed audit stage %s", stage.Name)
 		}
 		seenStageIDs[stage.ID] = true
@@ -318,26 +249,95 @@ func capturePolicy(value string) uint32 {
 	return 4
 }
 func sourceResource(value string) uint32 {
-	return map[string]uint32{"AdalnProjection": 1, "AttentionScale": 2, "AttentionGate": 3, "MlpScale": 4, "MlpGate": 5, "NormAudit": 6, "Modulated": 7, "Qkv": 8, "Attention": 9, "AttentionProjection": 10, "AttentionResidual": 11, "Input": 12, "W3DeclaredViews": 13}[value]
+	return map[string]uint32{
+		"AdalnProjection":     1,
+		"AttentionScale":      2,
+		"AttentionGate":       3,
+		"MlpScale":            4,
+		"MlpGate":             5,
+		"NormAudit":           6,
+		"Modulated":           7,
+		"Qkv":                 8,
+		"Attention":           9,
+		"AttentionProjection": 10,
+		"AttentionResidual":   11,
+		"Input":               12,
+		"W3DeclaredViews":     13,
+	}[value]
 }
-
 func sourceElementCount(value string) uint32 {
 	const model = 1024 * 3840
-	return map[string]uint32{"AdalnProjection": 15360, "AttentionScale": 3840, "AttentionGate": 3840, "MlpScale": 3840, "MlpGate": 3840, "NormAudit": model, "Modulated": model, "Qkv": 3 * model, "Attention": model, "AttentionProjection": model, "AttentionResidual": model, "Input": model, "W3DeclaredViews": 1024 * 10240}[value]
+	return map[string]uint32{
+		"AdalnProjection":     15360,
+		"AttentionScale":      3840,
+		"AttentionGate":       3840,
+		"MlpScale":            3840,
+		"MlpGate":             3840,
+		"NormAudit":           model,
+		"Modulated":           model,
+		"Qkv":                 3 * model,
+		"Attention":           model,
+		"AttentionProjection": model,
+		"AttentionResidual":   model,
+		"Input":               model,
+		"W3DeclaredViews":     1024 * 10240,
+	}[value]
 }
 func contextSourceElementCount(value string, model, hidden uint32) uint32 {
-	return map[string]uint32{"NormAudit": model, "Modulated": model, "Qkv": 3 * model,
-		"Attention": model, "AttentionProjection": model, "AttentionResidual": model,
-		"Input": model, "W3DeclaredViews": hidden}[value]
+	return map[string]uint32{
+		"NormAudit":           model,
+		"Modulated":           model,
+		"Qkv":                 3 * model,
+		"Attention":           model,
+		"AttentionProjection": model,
+		"AttentionResidual":   model,
+		"Input":               model,
+		"W3DeclaredViews":     hidden,
+	}[value]
 }
 func layoutKind(value string) uint32 {
-	return map[string]uint32{"Vector": 1, "TokenChannel": 2, "FusedQkv": 3, "TokenHeadChannel": 4, "FfnHidden": 5}[value]
+	return map[string]uint32{
+		"Vector":           1,
+		"TokenChannel":     2,
+		"FusedQkv":         3,
+		"TokenHeadChannel": 4,
+		"FfnHidden":        5,
+	}[value]
 }
-
 func capturePoint(value string) uint32 {
-	return map[string]uint32{"after_context_input": 1, "after_adaln": 1, "after_attention_norm": 2, "after_qkv": 3, "after_q_norm": 4, "after_q_rope": 4, "after_k_norm": 5, "after_k_rope": 5, "after_attention": 6, "after_projection": 7, "after_attention_residual": 8, "after_ffn_norm": 9, "after_w1_w3": 10, "after_gate": 11, "after_w2": 12, "after_final_residual": 13}[value]
+	return map[string]uint32{
+		"after_context_input":      1,
+		"after_adaln":              1,
+		"after_attention_norm":     2,
+		"after_qkv":                3,
+		"after_q_norm":             4,
+		"after_q_rope":             4,
+		"after_k_norm":             5,
+		"after_k_rope":             5,
+		"after_attention":          6,
+		"after_projection":         7,
+		"after_attention_residual": 8,
+		"after_ffn_norm":           9,
+		"after_w1_w3":              10,
+		"after_gate":               11,
+		"after_w2":                 12,
+		"after_final_residual":     13,
+	}[value]
 }
-
 func lifetimePoint(value string) uint32 {
-	return map[string]uint32{"before_attention_norm": 2, "before_qkv": 3, "before_q_rope": 4, "before_k_rope": 5, "before_attention": 6, "before_projection": 7, "before_attention_residual": 8, "before_ffn_norm": 9, "before_w1_w3": 10, "before_gate": 11, "before_w2": 12, "before_final_residual": 13, "resident_output_replaced": 14}[value]
+	return map[string]uint32{
+		"before_attention_norm":     2,
+		"before_qkv":                3,
+		"before_q_rope":             4,
+		"before_k_rope":             5,
+		"before_attention":          6,
+		"before_projection":         7,
+		"before_attention_residual": 8,
+		"before_ffn_norm":           9,
+		"before_w1_w3":              10,
+		"before_gate":               11,
+		"before_w2":                 12,
+		"before_final_residual":     13,
+		"resident_output_replaced":  14,
+	}[value]
 }

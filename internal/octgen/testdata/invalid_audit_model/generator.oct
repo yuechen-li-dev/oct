@@ -1,0 +1,32 @@
+package InvalidAuditModel
+
+record AuditStage {
+    ID: Int
+    Name: String
+    Policy: String
+    Source: String
+    Base: Int
+    Count: Int
+    Layout: String
+    Capture: String
+    Lifetime: String
+    Keys: Int[]
+}
+
+record GeneratedAuditStages {
+    Package: String
+    Noise: AuditStage[]
+    Context: AuditStage[]
+}
+
+fn Stage(id: Int, name: String) -> AuditStage {
+    return AuditStage { ID: id Name: name Policy: "Full" Source: "Input" Base: 0 Count: 4 Layout: "Vector" Capture: "after_adaln" Lifetime: "before_attention_norm" Keys: [0, 3] }
+}
+
+fn Generate() -> GeneratedAuditStages {
+    return GeneratedAuditStages {
+        Package: "main"
+        Noise: [Stage(1, "one"), Stage(3, "two"), Stage(3, "three")]
+        Context: [Stage(1, "one"), Stage(2, "two"), Stage(3, "three")]
+    }
+}

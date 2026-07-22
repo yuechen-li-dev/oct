@@ -11,7 +11,16 @@ import (
 
 func timeGenerator(t *testing.T) string {
 	t.Helper()
-	source := filepath.Join("..", "..", "cmd", "octxiliary-time", "time_dispatch.oct")
+	return copyGenerator(t, filepath.Join("..", "..", "cmd", "octxiliary-time", "time_dispatch.oct"))
+}
+
+func auditGenerator(t *testing.T) string {
+	t.Helper()
+	return copyGenerator(t, filepath.Join("..", "..", "tools", "compiled_model_lock", "audit_stages.oct"))
+}
+
+func copyGenerator(t *testing.T, source string) string {
+	t.Helper()
 	contents, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatalf("read time generator: %v", err)
@@ -117,5 +126,46 @@ func TestOrdinaryGoTestDoesNotRunOctGen(t *testing.T) {
 	}
 	if !after.ModTime().Equal(before.ModTime()) || after.Size() != before.Size() {
 		t.Fatal("ordinary go test modified generated source; it must not invoke OctGen")
+	}
+}
+
+func TestAuditStageGenerationComputesDeterministicTablesAndChecksStaleness(t *testing.T) {
+	generator := auditGenerator(t)
+	output := filepath.Join(filepath.Dir(generator), "audit_stages.generated.go")
+	first, err := Generate(generator, output)
+	if err != nil {
+		t.Fatalf("Generate audit stages: %v", err)
+	}
+	second, err := Generate(generator, output)
+	if err != nil {
+		t.Fatalf("Generate audit stages again: %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatal("audit-stage generation was not byte-for-byte deterministic")
+	}
+	for _, want := range []string{"generatedNoiseAuditStages", "generatedContextAuditStages", "ID: 29", "ID: 16", "Count: 11796480"} {
+		if !strings.Contains(string(first), want) {
+			t.Fatalf("generated audit stages missing %q", want)
+		}
+	}
+	if err := Write(generator, output); err != nil {
+		t.Fatalf("Write audit stages: %v", err)
+	}
+	if err := Check(generator, output); err != nil {
+		t.Fatalf("fresh audit-stage Check: %v", err)
+	}
+	if err := os.WriteFile(output, []byte("package main\n"), 0o644); err != nil {
+		t.Fatalf("modify audit-stage output: %v", err)
+	}
+	if err := Check(generator, output); err == nil || !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("stale audit-stage Check error = %v", err)
+	}
+}
+
+func TestInvalidAuditModelIncludesProvenance(t *testing.T) {
+	generator := filepath.Join("testdata", "invalid_audit_model", "generator.oct")
+	err := Write(generator, filepath.Join("testdata", "invalid_audit_model", "generated.go"))
+	if err == nil || !strings.Contains(err.Error(), "Noise[1].ID must be derived sequentially") || !strings.Contains(err.Error(), "invalid_audit_model") {
+		t.Fatalf("invalid audit model error = %v", err)
 	}
 }

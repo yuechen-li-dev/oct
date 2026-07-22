@@ -44,11 +44,11 @@ func Generate(generatorPath, outputPath string) ([]byte, error) {
 	if err := validateOutputPath(generatorPath, outputPath); err != nil {
 		return nil, err
 	}
-	model, err := execute(generatorPath)
+	value, err := execute(generatorPath)
 	if err != nil {
 		return nil, err
 	}
-	return render(model)
+	return renderGenerated(value, generatorPath)
 }
 
 // Write generates and atomically replaces outputPath only after rendering and
@@ -100,19 +100,44 @@ func validateOutputPath(generatorPath, outputPath string) error {
 	return nil
 }
 
-func execute(generatorPath string) (File, error) {
+// execute is the reusable staging seam: normal project loading, type checking,
+// and the existing interpreter return one typed runtime value to a host model
+// decoder. It does not add a second evaluator or generator-only Oct semantics.
+func execute(generatorPath string) (interpret.Value, error) {
 	program, err := project.Load(generatorPath)
 	if err != nil {
-		return File{}, fmt.Errorf("load OctGen generator %s: %w", generatorPath, err)
+		return interpret.Value{}, fmt.Errorf("load OctGen generator %s: %w", generatorPath, err)
 	}
 	if err := typecheck.CheckProgram(program); err != nil {
-		return File{}, fmt.Errorf("type-check OctGen generator %s: %w", generatorPath, err)
+		return interpret.Value{}, fmt.Errorf("type-check OctGen generator %s: %w", generatorPath, err)
 	}
 	value, err := interpret.CallFunctionWithArgsAndOptions(program, program.Entry, "Generate", nil, io.Discard, interpret.ExecuteOptions{})
 	if err != nil {
-		return File{}, fmt.Errorf("interpret OctGen generator %s: %w", generatorPath, err)
+		return interpret.Value{}, fmt.Errorf("interpret OctGen generator %s: %w", generatorPath, err)
 	}
-	return decodeFile(value, generatorPath)
+	return value, nil
+}
+
+func renderGenerated(value interpret.Value, provenance string) ([]byte, error) {
+	if value.Kind != interpret.ValueRecord {
+		return nil, modelError(provenance, "Generate must return a supported structured record")
+	}
+	switch value.Record.TypeName {
+	case "GeneratedTimeDispatch":
+		model, err := decodeFile(value, provenance)
+		if err != nil {
+			return nil, err
+		}
+		return render(model)
+	case "GeneratedAuditStages":
+		model, err := decodeAuditStages(value, provenance)
+		if err != nil {
+			return nil, err
+		}
+		return renderAuditStages(model)
+	default:
+		return nil, modelError(provenance, "unsupported Generate record %q", value.Record.TypeName)
+	}
 }
 
 func decodeFile(value interpret.Value, provenance string) (File, error) {
