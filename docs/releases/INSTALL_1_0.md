@@ -1,8 +1,8 @@
-# Installing Oct 1.0 release candidates
+# Installing Oct 1.0
 
 ## Supported hosts and prerequisite
 
-Oct 1.0 RC artifacts are provided for Windows x86-64 and Linux x86-64. Native
+Oct 1.0 artifacts are provided for Windows x86-64 and Linux x86-64. Native
 `oct build` uses the installed Go toolchain as its backend; install the Go
 version declared in the bundled `runtime/go.mod` before compiling Oct programs.
 No repository checkout is required.
@@ -12,9 +12,9 @@ No repository checkout is required.
 Windows PowerShell:
 
 ```powershell
-Get-FileHash .\oct-1.0.0-rc.1-windows-amd64.zip -Algorithm SHA256
-Expand-Archive .\oct-1.0.0-rc.1-windows-amd64.zip -DestinationPath $HOME\Apps
-$env:Path = "$HOME\Apps\oct-1.0.0-rc.1-windows-amd64;$env:Path"
+Get-FileHash .\oct-1.0.0-windows-amd64.zip -Algorithm SHA256
+Expand-Archive .\oct-1.0.0-windows-amd64.zip -DestinationPath $HOME\Apps
+$env:Path = "$HOME\Apps\oct-1.0.0-windows-amd64;$env:Path"
 oct version
 ```
 
@@ -22,8 +22,8 @@ Linux:
 
 ```sh
 sha256sum -c checksums.sha256
-tar -xzf oct-1.0.0-rc.1-linux-amd64.tar.gz -C "$HOME/.local/opt"
-export PATH="$HOME/.local/opt/oct-1.0.0-rc.1-linux-amd64:$PATH"
+tar -xzf oct-1.0.0-linux-amd64.tar.gz -C "$HOME/.local/opt"
+export PATH="$HOME/.local/opt/oct-1.0.0-linux-amd64:$PATH"
 oct version
 ```
 

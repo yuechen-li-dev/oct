@@ -303,11 +303,11 @@ Choose `oct new library Name` for stable reusable code. Choose
 `M<number>[letter]` milestone. See the bundled `oct-experiments` skill for the
 focused-milestone then root-evidence loop.
 
-## Oct 1.0 RC installation
+## Oct 1.0 installation
 
-Candidate archives, checksum verification, prerequisites, native build, test,
+Release archives, checksum verification, prerequisites, native build, test,
 formatting, upgrade, and uninstall instructions are in
-[`docs/releases/INSTALL_1_0.md`](docs/releases/INSTALL_1_0.md). The candidate
+[`docs/releases/INSTALL_1_0.md`](docs/releases/INSTALL_1_0.md). An artifact
 requires the Go toolchain declared by its bundled compiler runtime for `oct
 build`; a repository checkout is not required.
 
