@@ -8,7 +8,7 @@ import (
 	"go/token"
 	"strconv"
 
-	"github.com/yuechen-li-dev/oct/internal/interpret"
+	experimental "github.com/yuechen-li-dev/oct/experimental/octgen"
 )
 
 // AuditStages is the M1 package-local declaration model. Unlike the M0 Time
@@ -33,8 +33,8 @@ type AuditStage struct {
 	Keys     []int64
 }
 
-func decodeAuditStages(value interpret.Value, provenance string) (AuditStages, error) {
-	if value.Kind != interpret.ValueRecord || value.Record.TypeName != "GeneratedAuditStages" {
+func decodeAuditStages(value experimental.Value, provenance string) (AuditStages, error) {
+	if value.Kind != experimental.ValueRecord || value.Record.TypeName != "GeneratedAuditStages" {
 		return AuditStages{}, modelError(provenance, "Generate must return GeneratedAuditStages")
 	}
 	packageName, err := requiredString(value.Record.Fields, "Package", provenance)
@@ -55,9 +55,9 @@ func decodeAuditStages(value interpret.Value, provenance string) (AuditStages, e
 	return AuditStages{Package: packageName, Noise: noise, Context: context}, nil
 }
 
-func decodeAuditStageList(fields map[string]interpret.Value, name, provenance string) ([]AuditStage, error) {
+func decodeAuditStageList(fields map[string]experimental.Value, name, provenance string) ([]AuditStage, error) {
 	value, ok := fields[name]
-	if !ok || value.Kind != interpret.ValueArray {
+	if !ok || value.Kind != experimental.ValueArray {
 		return nil, modelError(provenance, "GeneratedAuditStages.%s must be AuditStage[]", name)
 	}
 	if len(value.Array) < 3 {
@@ -82,8 +82,8 @@ func decodeAuditStageList(fields map[string]interpret.Value, name, provenance st
 	return stages, nil
 }
 
-func decodeAuditStage(value interpret.Value, provenance, family string, index int) (AuditStage, error) {
-	if value.Kind != interpret.ValueRecord || value.Record.TypeName != "AuditStage" {
+func decodeAuditStage(value experimental.Value, provenance, family string, index int) (AuditStage, error) {
+	if value.Kind != experimental.ValueRecord || value.Record.TypeName != "AuditStage" {
 		return AuditStage{}, modelError(provenance, "GeneratedAuditStages.%s[%d] must be AuditStage", family, index)
 	}
 	strings := map[string]string{}
@@ -100,7 +100,7 @@ func decodeAuditStage(value interpret.Value, provenance, family string, index in
 	ints := map[string]int64{}
 	for _, name := range []string{"ID", "Base", "Count"} {
 		item, ok := value.Record.Fields[name]
-		if !ok || item.Kind != interpret.ValueInt {
+		if !ok || item.Kind != experimental.ValueInt {
 			return AuditStage{}, modelError(provenance, "GeneratedAuditStages.%s[%d].%s must be Int", family, index, name)
 		}
 		if item.Int < 0 || (name == "Count" && item.Int == 0) {
@@ -109,13 +109,13 @@ func decodeAuditStage(value interpret.Value, provenance, family string, index in
 		ints[name] = item.Int
 	}
 	keysValue, ok := value.Record.Fields["Keys"]
-	if !ok || keysValue.Kind != interpret.ValueArray {
+	if !ok || keysValue.Kind != experimental.ValueArray {
 		return AuditStage{}, modelError(provenance, "GeneratedAuditStages.%s[%d].Keys must be Int[]", family, index)
 	}
 	keys := make([]int64, 0, len(keysValue.Array))
 	seenKeys := map[int64]struct{}{}
 	for keyIndex, key := range keysValue.Array {
-		if key.Kind != interpret.ValueInt || key.Int < 0 || key.Int >= ints["Count"] {
+		if key.Kind != experimental.ValueInt || key.Int < 0 || key.Int >= ints["Count"] {
 			return AuditStage{}, modelError(provenance, "GeneratedAuditStages.%s[%d].Keys[%d] must be an in-range Int", family, index, keyIndex)
 		}
 		if _, exists := seenKeys[key.Int]; exists {
