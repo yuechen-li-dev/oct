@@ -410,14 +410,21 @@ func buildDXCArgs(entry, outputPath, inputPath string, extra []string) []string 
 func targetContract(module vdmir.Module) shaderTargetContract {
 	result := productionTargetContract("cs_6_0")
 	for _, requirement := range module.Requirements {
-		if requirement.Kind != vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup {
-			continue
+		switch requirement.Kind {
+		case vdmir.CapabilityCooperativeMatrixF16F32M16N16K16Subgroup:
+			result.profile = "cs_6_9"
+			result.extraArgs = append(result.extraArgs, "-fspv-use-vulkan-memory-model", "-enable-16bit-types")
+			result.vulkanExtensions = append(result.vulkanExtensions, "VK_KHR_cooperative_matrix")
+			result.spirvExtensions = append(result.spirvExtensions, "SPV_KHR_cooperative_matrix")
+			result.spirvCapabilities = append(result.spirvCapabilities, "CooperativeMatrixKHR", "Float16", "VulkanMemoryModel")
+		case vdmir.CapabilityRayQuery:
+			if result.profile == "cs_6_0" {
+				result.profile = "cs_6_5"
+			}
+			result.vulkanExtensions = append(result.vulkanExtensions, "VK_KHR_acceleration_structure", "VK_KHR_ray_query")
+			result.spirvExtensions = append(result.spirvExtensions, "SPV_KHR_acceleration_structure", "SPV_KHR_ray_query")
+			result.spirvCapabilities = append(result.spirvCapabilities, "RayQueryKHR")
 		}
-		result.profile = "cs_6_9"
-		result.extraArgs = []string{"-fspv-use-vulkan-memory-model", "-enable-16bit-types"}
-		result.vulkanExtensions = []string{"VK_KHR_cooperative_matrix"}
-		result.spirvExtensions = []string{"SPV_KHR_cooperative_matrix"}
-		result.spirvCapabilities = []string{"CooperativeMatrixKHR", "Float16", "VulkanMemoryModel"}
 	}
 	return result
 }

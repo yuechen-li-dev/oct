@@ -2099,6 +2099,11 @@ func (l *lowering) requireCooperativeMatrix() {
 	}
 }
 
+func (l *lowering) requireRayQuery() {
+	const kind = vdmir.CapabilityRayQuery
+	l.requirements[kind] = vdmir.CapabilityRequirement{Kind: kind, Scope: "compute", LogicalLayout: "tlas-inline-query"}
+}
+
 func (l *lowering) sortedRequirements() []vdmir.CapabilityRequirement {
 	keys := make([]string, 0, len(l.requirements))
 	for key := range l.requirements {
@@ -2948,6 +2953,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			if intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
 				l.requireCooperativeMatrix()
 			}
+			if intrinsic == vdmir.IntrinsicRayQueryAny {
+				l.requireRayQuery()
+			}
 			resultType := l.callResultType(e, scope, shaderName)
 			if id.Name == "Sample" && len(args) != 0 && args[0].Type().Element != nil {
 				resultType = *args[0].Type().Element
@@ -3419,6 +3427,8 @@ func (l *lowering) lowerTypeRef(ref ast.TypeRef) vdmir.Type {
 	case "uniform":
 		elem := l.lowerTypeRef(resolved.Args[0])
 		return vdmir.Type{Kind: vdmir.TypeUniform, Name: "uniform", Element: &elem}
+	case "acceleration_structure":
+		return vdmir.Type{Kind: vdmir.TypeAccelerationStructure, Name: "acceleration_structure"}
 	default:
 		if info, ok := l.types[resolved.Name]; ok {
 			switch info.kind {
@@ -3482,6 +3492,8 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 			return l.lowerTypeRef(ast.TypeRef{Name: id.Name})
 		case "Dot":
 			return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
+		case "RayQueryAny":
+			return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
 		case "Cross":
 			return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3"}
 		case "Normalize", "Saturate", "Reflect":
@@ -4177,6 +4189,8 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 		return vdmir.IntrinsicReflect, vdmir.Type{}
 	case "Sample":
 		return vdmir.IntrinsicSampleTexture2D, vdmir.Type{}
+	case "RayQueryAny":
+		return vdmir.IntrinsicRayQueryAny, vdmir.Type{}
 	default:
 		return vdmir.IntrinsicDot, vdmir.Type{}
 	}
@@ -4184,7 +4198,7 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 
 func isCompilerIntrinsicCall(name string) bool {
 	switch name {
-	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample":
+	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample", "RayQueryAny":
 		return true
 	default:
 		return false

@@ -690,6 +690,10 @@ func (v *validator) validateShader(shader ast.ShaderDecl) {
 			if resource.Access != "readonly" || len(resource.Type.Args) != 1 || (v.typeKind(resource.Type.Args[0]) != "record" && !isMaterialFieldType(v.resolveAlias(resource.Type.Args[0]))) {
 				v.errorAt(resource.Type.Span, "SDSL-V4115", "uniform resource %s.%s must be readonly uniform<RecordOrScalarVector>", shader.Name, resource.Name)
 			}
+		case "acceleration_structure":
+			if resource.Access != "readonly" || len(resource.Type.Args) != 0 {
+				v.errorAt(resource.Type.Span, "SDSL-V4115", "acceleration-structure resource %s.%s must be readonly acceleration_structure", shader.Name, resource.Name)
+			}
 		default:
 			v.errorAt(resource.Type.Span, "SDSL-V4115", "resource %s.%s uses unsupported resource type %s", shader.Name, resource.Name, typeName(resource.Type))
 		}
@@ -1408,6 +1412,12 @@ func (v *validator) validateTypeRef(ref ast.TypeRef, allowSpace bool) {
 		}
 		return
 	}
+	if ref.Name == "acceleration_structure" {
+		if len(ref.Args) != 0 {
+			v.errorAt(ref.Span, "SDSL-V4115", "acceleration_structure does not accept type arguments")
+		}
+		return
+	}
 	if _, ok := v.types[ref.Name]; !ok {
 		v.errorf("unknown type %s", ref.Name)
 	}
@@ -2050,6 +2060,8 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 			return v.lerpType(call, scope, shaderName, templateParam)
 		case "Sample":
 			return v.sampleType(call, scope, shaderName, templateParam)
+		case "RayQueryAny":
+			return v.rayQueryAnyType(call, scope, shaderName, templateParam)
 		}
 		if id.Name == "reg_tile_zero" {
 			if len(call.Arguments) != 0 {
@@ -2110,6 +2122,31 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 	}
 	v.errorAt(call.Span, "SDSL-V1508", "unsupported or unknown function call")
 	return ast.TypeRef{Name: "<error>"}
+}
+
+// rayQueryAnyType is the small compiler-owned M0 inline-query surface. It
+// proves production RayQuery lowering without exposing HLSL syntax or a raw
+// query object to source programs.
+func (v *validator) rayQueryAnyType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 5 {
+		v.errorAt(call.Span, "SDSL-V4201", "RayQueryAny expects acceleration_structure, float3 origin, float3 direction, f32 tMin, and f32 tMax")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	scene := v.resolveAlias(v.exprType(call.Arguments[0], scope, shaderName, templateParam))
+	origin := v.resolveAlias(v.exprType(call.Arguments[1], scope, shaderName, templateParam))
+	direction := v.resolveAlias(v.exprType(call.Arguments[2], scope, shaderName, templateParam))
+	tMin := v.resolveAlias(v.exprType(call.Arguments[3], scope, shaderName, templateParam))
+	tMax := v.resolveAlias(v.exprType(call.Arguments[4], scope, shaderName, templateParam))
+	if scene.Name != "acceleration_structure" {
+		v.errorAt(ast.ExprSpan(call.Arguments[0]), "SDSL-V4201", "RayQueryAny first argument must be acceleration_structure")
+	}
+	if origin.Name != "float3" || origin.Space != "" || direction.Name != "float3" || direction.Space != "" || !isFloat(tMin) || !isFloat(tMax) {
+		v.errorAt(call.Span, "SDSL-V4201", "RayQueryAny expects plain float3 origin/direction and f32 tMin/tMax")
+	}
+	if v.currentStage != "compute" {
+		v.errorAt(call.Span, "SDSL-V4202", "RayQueryAny is supported only in compute stages")
+	}
+	return ast.TypeRef{Name: "bool"}
 }
 
 func (v *validator) semanticSpaceMismatch(span source.Span, operation string, expected, actual ast.TypeRef) bool {

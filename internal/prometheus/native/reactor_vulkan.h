@@ -21,6 +21,14 @@ typedef enum prom_vk_cooperative_matrix_state {
   PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE = 5u,
 } prom_vk_cooperative_matrix_state;
 
+typedef enum prom_vk_ray_query_state {
+  PROM_VK_RAY_QUERY_UNSUPPORTED = 0u,
+  PROM_VK_RAY_QUERY_EXTENSION_MISSING = 1u,
+  PROM_VK_RAY_QUERY_FEATURE_MISSING = 2u,
+  PROM_VK_RAY_QUERY_ENTRY_POINT_MISSING = 3u,
+  PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED = 4u,
+} prom_vk_ray_query_state;
+
 typedef struct prom_vk_buffer {
   VkBuffer buffer;
   VkDeviceMemory memory;
@@ -75,6 +83,18 @@ typedef struct prom_vk_runtime_services {
   uint32_t subgroup_fixed_size_32_admitted;
   uint32_t subgroup_owned_attention_admitted;
   uint32_t subgroup_owned_attention_topology_proven;
+  uint32_t ray_query_state;
+  uint32_t ray_query_acceleration_structure_extension_supported;
+  uint32_t ray_query_extension_supported;
+  uint32_t ray_query_deferred_host_operations_extension_supported;
+  uint32_t ray_query_buffer_device_address_supported;
+  uint32_t ray_query_acceleration_structure_supported;
+  uint32_t ray_query_supported;
+  PFN_vkCreateAccelerationStructureKHR create_acceleration_structure;
+  PFN_vkDestroyAccelerationStructureKHR destroy_acceleration_structure;
+  PFN_vkGetAccelerationStructureBuildSizesKHR get_acceleration_structure_build_sizes;
+  PFN_vkCmdBuildAccelerationStructuresKHR cmd_build_acceleration_structures;
+  PFN_vkGetAccelerationStructureDeviceAddressKHR get_acceleration_structure_device_address;
 } prom_vk_runtime_services;
 
 typedef struct prom_main_attention_route_decision {

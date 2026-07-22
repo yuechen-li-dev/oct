@@ -1521,6 +1521,18 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   out_services->subgroup_fixed_size_32_admitted = rt->subgroup_fixed_size_32_admitted;
   out_services->subgroup_owned_attention_admitted = rt->subgroup_owned_attention_admitted;
   out_services->subgroup_owned_attention_topology_proven = rt->subgroup_owned_attention_topology_proven;
+  out_services->ray_query_state = rt->ray_query_state;
+  out_services->ray_query_acceleration_structure_extension_supported = rt->ray_query_acceleration_structure_extension_supported;
+  out_services->ray_query_extension_supported = rt->ray_query_extension_supported;
+  out_services->ray_query_deferred_host_operations_extension_supported = rt->ray_query_deferred_host_operations_extension_supported;
+  out_services->ray_query_buffer_device_address_supported = rt->ray_query_buffer_device_address_supported;
+  out_services->ray_query_acceleration_structure_supported = rt->ray_query_acceleration_structure_supported;
+  out_services->ray_query_supported = rt->ray_query_supported;
+  out_services->create_acceleration_structure = rt->create_acceleration_structure;
+  out_services->destroy_acceleration_structure = rt->destroy_acceleration_structure;
+  out_services->get_acceleration_structure_build_sizes = rt->get_acceleration_structure_build_sizes;
+  out_services->cmd_build_acceleration_structures = rt->cmd_build_acceleration_structures;
+  out_services->get_acceleration_structure_device_address = rt->get_acceleration_structure_device_address;
 
   if (rt->available == 0u) return PROM_ERROR;
   if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
@@ -2865,6 +2877,20 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   const char* cooperative_device_extensions[1];
   uint32_t cooperative_device_extension_count = 0u;
 #endif
+#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
+  VkPhysicalDeviceFeatures2 ray_query_features2;
+  VkPhysicalDeviceBufferDeviceAddressFeatures ray_query_buffer_device_address_features;
+  VkPhysicalDeviceAccelerationStructureFeaturesKHR ray_query_acceleration_structure_features;
+  VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features;
+  VkPhysicalDeviceBufferDeviceAddressFeatures ray_query_buffer_device_address_enable;
+  VkPhysicalDeviceAccelerationStructureFeaturesKHR ray_query_acceleration_structure_enable;
+  VkPhysicalDeviceRayQueryFeaturesKHR ray_query_enable;
+  const char* ray_query_device_extensions[3];
+  uint32_t ray_query_device_extension_count = 0u;
+#endif
+  const char* optional_device_extensions[4];
+  uint32_t optional_device_extension_count = 0u;
+  void* optional_device_feature_chain = NULL;
 
   memset(&application_info, 0, sizeof(application_info));
   application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -3075,6 +3101,13 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   rt->subgroup_fixed_size_32_admitted = 0u;
   rt->subgroup_owned_attention_admitted = 0u;
   rt->subgroup_owned_attention_topology_proven = 0u;
+  rt->ray_query_state = PROM_VK_RAY_QUERY_UNSUPPORTED;
+  rt->ray_query_acceleration_structure_extension_supported = 0u;
+  rt->ray_query_extension_supported = 0u;
+  rt->ray_query_deferred_host_operations_extension_supported = 0u;
+  rt->ray_query_buffer_device_address_supported = 0u;
+  rt->ray_query_acceleration_structure_supported = 0u;
+  rt->ray_query_supported = 0u;
   {
     VkPhysicalDeviceSubgroupProperties subgroup_properties;
     VkPhysicalDeviceProperties2 properties2;
@@ -3191,6 +3224,63 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
 #endif
 
+#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
+  {
+    uint32_t extension_count = 0u;
+    uint32_t extension_index;
+    VkExtensionProperties* extensions = NULL;
+    result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, NULL);
+    if (result == VK_SUCCESS && extension_count != 0u) {
+      extensions = (VkExtensionProperties*)calloc(extension_count, sizeof(*extensions));
+      if (extensions == NULL) return VK_ERROR_OUT_OF_HOST_MEMORY;
+      result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, extensions);
+    }
+    if (result != VK_SUCCESS) {
+      free(extensions);
+      return result;
+    }
+    for (extension_index = 0u; extension_index < extension_count; ++extension_index) {
+      const char* name = extensions[extension_index].extensionName;
+      if (strcmp(name, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0) {
+        rt->ray_query_acceleration_structure_extension_supported = 1u;
+      } else if (strcmp(name, VK_KHR_RAY_QUERY_EXTENSION_NAME) == 0) {
+        rt->ray_query_extension_supported = 1u;
+      } else if (strcmp(name, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0) {
+        rt->ray_query_deferred_host_operations_extension_supported = 1u;
+      }
+    }
+    free(extensions);
+    if (rt->ray_query_acceleration_structure_extension_supported == 0u ||
+        rt->ray_query_extension_supported == 0u ||
+        rt->ray_query_deferred_host_operations_extension_supported == 0u) {
+      rt->ray_query_state = PROM_VK_RAY_QUERY_EXTENSION_MISSING;
+    } else {
+      memset(&ray_query_features2, 0, sizeof(ray_query_features2));
+      memset(&ray_query_buffer_device_address_features, 0, sizeof(ray_query_buffer_device_address_features));
+      memset(&ray_query_acceleration_structure_features, 0, sizeof(ray_query_acceleration_structure_features));
+      memset(&ray_query_features, 0, sizeof(ray_query_features));
+      ray_query_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+      ray_query_buffer_device_address_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+      ray_query_acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+      ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+      ray_query_features2.pNext = &ray_query_buffer_device_address_features;
+      ray_query_buffer_device_address_features.pNext = &ray_query_acceleration_structure_features;
+      ray_query_acceleration_structure_features.pNext = &ray_query_features;
+      vkGetPhysicalDeviceFeatures2(rt->physical_device, &ray_query_features2);
+      rt->ray_query_buffer_device_address_supported = ray_query_buffer_device_address_features.bufferDeviceAddress == VK_TRUE ? 1u : 0u;
+      rt->ray_query_acceleration_structure_supported = ray_query_acceleration_structure_features.accelerationStructure == VK_TRUE ? 1u : 0u;
+      rt->ray_query_supported = ray_query_features.rayQuery == VK_TRUE ? 1u : 0u;
+      if (rt->ray_query_buffer_device_address_supported == 0u || rt->ray_query_acceleration_structure_supported == 0u || rt->ray_query_supported == 0u) {
+        rt->ray_query_state = PROM_VK_RAY_QUERY_FEATURE_MISSING;
+      } else {
+        ray_query_device_extensions[ray_query_device_extension_count++] = VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
+        ray_query_device_extensions[ray_query_device_extension_count++] = VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
+        ray_query_device_extensions[ray_query_device_extension_count++] = VK_KHR_RAY_QUERY_EXTENSION_NAME;
+      }
+    }
+  }
+#endif
+
   memset(queue_infos, 0, sizeof(queue_infos));
   queue_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queue_infos[0].queueFamilyIndex = rt->queue_family_index;
@@ -3221,11 +3311,36 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     cooperative_enable.cooperativeMatrix = VK_TRUE;
     shader_float16_enable.pNext = &vulkan_memory_model_enable;
     vulkan_memory_model_enable.pNext = &cooperative_enable;
-    device_info.pNext = &shader_float16_enable;
-    device_info.enabledExtensionCount = cooperative_device_extension_count;
-    device_info.ppEnabledExtensionNames = cooperative_device_extensions;
+    cooperative_enable.pNext = optional_device_feature_chain;
+    optional_device_feature_chain = &shader_float16_enable;
+    for (i = 0u; i < cooperative_device_extension_count; ++i) {
+      optional_device_extensions[optional_device_extension_count++] = cooperative_device_extensions[i];
+    }
   }
 #endif
+#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
+  if (ray_query_device_extension_count != 0u) {
+    memset(&ray_query_buffer_device_address_enable, 0, sizeof(ray_query_buffer_device_address_enable));
+    memset(&ray_query_acceleration_structure_enable, 0, sizeof(ray_query_acceleration_structure_enable));
+    memset(&ray_query_enable, 0, sizeof(ray_query_enable));
+    ray_query_buffer_device_address_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+    ray_query_buffer_device_address_enable.bufferDeviceAddress = VK_TRUE;
+    ray_query_acceleration_structure_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    ray_query_acceleration_structure_enable.accelerationStructure = VK_TRUE;
+    ray_query_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+    ray_query_enable.rayQuery = VK_TRUE;
+    ray_query_enable.pNext = optional_device_feature_chain;
+    ray_query_acceleration_structure_enable.pNext = &ray_query_enable;
+    ray_query_buffer_device_address_enable.pNext = &ray_query_acceleration_structure_enable;
+    optional_device_feature_chain = &ray_query_buffer_device_address_enable;
+    for (i = 0u; i < ray_query_device_extension_count; ++i) {
+      optional_device_extensions[optional_device_extension_count++] = ray_query_device_extensions[i];
+    }
+  }
+#endif
+  device_info.pNext = optional_device_feature_chain;
+  device_info.enabledExtensionCount = optional_device_extension_count;
+  device_info.ppEnabledExtensionNames = optional_device_extension_count == 0u ? NULL : optional_device_extensions;
 
   if ((rt->test_flags & PROM_TESTCFG_FAIL_DEVICE_CREATE) != 0u) {
     return VK_ERROR_INITIALIZATION_FAILED;
@@ -3235,6 +3350,22 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   if (result != VK_SUCCESS) {
     return result;
   }
+#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
+  if (ray_query_device_extension_count != 0u) {
+    rt->create_acceleration_structure = (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(rt->device, "vkCreateAccelerationStructureKHR");
+    rt->destroy_acceleration_structure = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(rt->device, "vkDestroyAccelerationStructureKHR");
+    rt->get_acceleration_structure_build_sizes = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(rt->device, "vkGetAccelerationStructureBuildSizesKHR");
+    rt->cmd_build_acceleration_structures = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(rt->device, "vkCmdBuildAccelerationStructuresKHR");
+    rt->get_acceleration_structure_device_address = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(rt->device, "vkGetAccelerationStructureDeviceAddressKHR");
+    if (rt->create_acceleration_structure == NULL || rt->destroy_acceleration_structure == NULL ||
+        rt->get_acceleration_structure_build_sizes == NULL || rt->cmd_build_acceleration_structures == NULL ||
+        rt->get_acceleration_structure_device_address == NULL) {
+      rt->ray_query_state = PROM_VK_RAY_QUERY_ENTRY_POINT_MISSING;
+    } else {
+      rt->ray_query_state = PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED;
+    }
+  }
+#endif
 
   rt->timestamp_query_supported = 0u;
   if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {

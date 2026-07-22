@@ -244,6 +244,8 @@ func (e *emitter) emitEnumConstructor(enumName string, variant vdmir.EnumVariant
 func (e *emitter) emitResource(resource vdmir.Resource) {
 	prefix := fmt.Sprintf("[[vk::binding(%d, %d)]] ", resource.Binding.Binding, resource.Binding.Set)
 	switch resource.Kind {
+	case vdmir.ResourceAccelerationStructure:
+		e.line(fmt.Sprintf("%sRaytracingAccelerationStructure %s;", prefix, hlslIdentifier(resource.Name)))
 	case vdmir.ResourceTexture2D:
 		e.line(fmt.Sprintf("%sTexture2D<%s> %s;", prefix, typeRef(resource.ElementType, ""), hlslIdentifier(resource.Name)))
 	case vdmir.ResourceSampler:
@@ -1007,6 +1009,9 @@ func (e *emitter) materializeExpr(expr vdmir.Expr) string {
 		}
 		return call
 	case vdmir.IntrinsicCallExpr:
+		if x.Intrinsic == vdmir.IntrinsicRayQueryAny {
+			return e.emitRayQueryAny(x)
+		}
 		if x.Intrinsic == vdmir.IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup {
 			args := make([]string, 0, len(x.Arguments))
 			for _, arg := range x.Arguments {
@@ -1064,6 +1069,29 @@ func (e *emitter) materializeExpr(expr vdmir.Expr) string {
 	default:
 		return e.expr(expr)
 	}
+}
+
+func (e *emitter) emitRayQueryAny(call vdmir.IntrinsicCallExpr) string {
+	if len(call.Arguments) != 5 {
+		e.err = fmt.Errorf("RayQueryAny lowering requires 5 arguments")
+		return "false"
+	}
+	args := make([]string, len(call.Arguments))
+	for i, arg := range call.Arguments {
+		args[i] = e.materializeOperand(arg)
+	}
+	name := e.nextTempWithPrefix("ray_query_any")
+	e.line("RayDesc " + name + "_ray;")
+	e.line(name + "_ray.Origin = " + args[1] + ";")
+	e.line(name + "_ray.Direction = " + args[2] + ";")
+	e.line(name + "_ray.TMin = " + args[3] + ";")
+	e.line(name + "_ray.TMax = " + args[4] + ";")
+	e.line("RayQuery<RAY_FLAG_NONE> " + name + ";")
+	e.line(name + ".TraceRayInline(" + args[0] + ", RAY_FLAG_NONE, 0xFFu, " + name + "_ray);")
+	e.line("while (" + name + ".Proceed()) {}")
+	result := e.nextTempWithPrefix("ray_query_hit")
+	e.line("bool " + result + " = (" + name + ".CommittedStatus() != COMMITTED_NOTHING);")
+	return result
 }
 
 func (e *emitter) materializeOperand(expr vdmir.Expr) string {
@@ -1570,6 +1598,8 @@ func typeRef(ref vdmir.Type, name string) string {
 		mapped = "uint4"
 	case vdmir.TypeVoid:
 		mapped = "void"
+	case vdmir.TypeAccelerationStructure:
+		mapped = "RaytracingAccelerationStructure"
 	}
 	if ref.IsArray() && ref.Element != nil {
 		elemType := *ref.Element

@@ -79,6 +79,20 @@ func TestCooperativeMatrixTargetContract(t *testing.T) {
 	}
 }
 
+func TestRayQueryTargetContract(t *testing.T) {
+	target := targetContract(vdmir.Module{Requirements: []vdmir.CapabilityRequirement{{Kind: vdmir.CapabilityRayQuery}}})
+	args := buildDXCArgsForTarget("main", "out.spv", "in.hlsl", nil, target)
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-T cs_6_5") || !strings.Contains(joined, "-fspv-target-env=vulkan1.3") {
+		t.Fatalf("args = %q", joined)
+	}
+	if strings.Join(target.vulkanExtensions, ",") != "VK_KHR_acceleration_structure,VK_KHR_ray_query" ||
+		strings.Join(target.spirvExtensions, ",") != "SPV_KHR_acceleration_structure,SPV_KHR_ray_query" ||
+		strings.Join(target.spirvCapabilities, ",") != "RayQueryKHR" {
+		t.Fatalf("target capability manifest = %#v", target)
+	}
+}
+
 func TestCompileToSPIRVSmokeIfDXCAvailable(t *testing.T) {
 	dxcPath, err := resolveDXCPath(defaultHost(), "")
 	if err != nil {

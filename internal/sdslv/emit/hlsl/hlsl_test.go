@@ -39,6 +39,28 @@ func TestCooperativeMatrixEmitterOwnsExactHLSLIsland(t *testing.T) {
 	}
 }
 
+func TestRayQueryEmitterOwnsInlineTraversal(t *testing.T) {
+	first := emitSource(t, rayQueryEmitterTestSource)
+	second := emitSource(t, rayQueryEmitterTestSource)
+	if first != second {
+		t.Fatal("ray-query HLSL emission is not deterministic")
+	}
+	for _, want := range []string{
+		"RaytracingAccelerationStructure Scene;",
+		"RayQuery<RAY_FLAG_NONE>",
+		"TraceRayInline(Scene, RAY_FLAG_NONE, 0xFFu",
+		"CommittedStatus() != COMMITTED_NOTHING",
+	} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("HLSL missing %q:\n%s", want, first)
+		}
+	}
+}
+
+const rayQueryEmitterTestSource = `stream IO { [binding(0)] Scene: readonly acceleration_structure; }
+shader RayProbe { resources IO; stage compute [numthreads(1,1,1)] fn CS() -> void {
+let hit: bool = RayQueryAny(Scene,float3(0.0,0.0,0.0),float3(0.0,0.0,1.0),0.0,100.0); return; } }`
+
 const cooperativeMatrixEmitterTestSource = `stream ComputeThread { DispatchId:uint3; GroupId:uint3; GroupThreadId:uint3; GroupIndex:u32; }
 stream IO { [binding(0)] A:readonly array<u32>; [binding(1)] B:readonly array<u32>; [binding(2)] C:readwrite array<f32>; }
 record P { m:u32; n:u32; k:u32; }

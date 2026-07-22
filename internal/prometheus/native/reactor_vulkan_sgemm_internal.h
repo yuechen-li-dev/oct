@@ -681,6 +681,18 @@ typedef struct prometheus_runtime {
   uint32_t subgroup_fixed_size_32_admitted;
   uint32_t subgroup_owned_attention_admitted;
   uint32_t subgroup_owned_attention_topology_proven;
+  uint32_t ray_query_state;
+  uint32_t ray_query_acceleration_structure_extension_supported;
+  uint32_t ray_query_extension_supported;
+  uint32_t ray_query_deferred_host_operations_extension_supported;
+  uint32_t ray_query_buffer_device_address_supported;
+  uint32_t ray_query_acceleration_structure_supported;
+  uint32_t ray_query_supported;
+  PFN_vkCreateAccelerationStructureKHR create_acceleration_structure;
+  PFN_vkDestroyAccelerationStructureKHR destroy_acceleration_structure;
+  PFN_vkGetAccelerationStructureBuildSizesKHR get_acceleration_structure_build_sizes;
+  PFN_vkCmdBuildAccelerationStructuresKHR cmd_build_acceleration_structures;
+  PFN_vkGetAccelerationStructureDeviceAddressKHR get_acceleration_structure_device_address;
   VkDebugUtilsMessageSeverityFlagBitsEXT validation_last_severity;
   VkDebugUtilsMessageTypeFlagsEXT validation_last_type;
   char validation_last_message_id[128];

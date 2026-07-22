@@ -139,6 +139,9 @@ func (l *lowering) lowerResource(resource ast.ResourceDecl, bundle string, bindi
 		out.Kind = vdmir.ResourceSampler
 	case "uniform":
 		out.Kind = vdmir.ResourceUniform
+	case "acceleration_structure":
+		out.Kind = vdmir.ResourceAccelerationStructure
+		l.requireRayQuery()
 	default:
 		out.Kind = vdmir.ResourceStorageBuffer
 	}

@@ -24,6 +24,7 @@
 #include "reactor_vulkan_reduction_softmax_packed_short_spirv.h"
 #include "reactor_vulkan_fft_bit_reverse_spirv.h"
 #include "reactor_vulkan_fft_butterfly_spirv.h"
+#include "reactor_vulkan_ray_query_capability_probe_spirv.h"
 #include "reactor_vulkan_model_block_resident_identity_spirv.h"
 #include "reactor_vulkan_zimage_nr0_bf16_ingress_spirv.h"
 #include "reactor_vulkan_zimage_nr0_adaln_spirv.h"
@@ -95,6 +96,7 @@ static const prom_shader_asset k_shader_assets[] = {
   { 15u, "sdslv-inline-hlsl-bitcast-proof", PROM_SHADER_STAGE_COMPUTE, k_prom_inline_hlsl_bitcast_proof_spirv, sizeof(k_prom_inline_hlsl_bitcast_proof_spirv), "InlineHlslBitCastProof_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/sgemm/inline_hlsl_bitcast_proof.sdslv", "reactor_vulkan_inline_hlsl_bitcast_proof_spirv.h", 1u, 1u, 2u, "HLSL", PRODUCTION_ASSET_TAIL },
   { 52u, "fft-radix2-bit-reverse", PROM_SHADER_STAGE_COMPUTE, k_prom_fft_bit_reverse_spirv, sizeof(k_prom_fft_bit_reverse_spirv), "FftRadix2BitReverse_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/fft/radix2_bit_reverse.sdslv", "reactor_vulkan_fft_bit_reverse_spirv.h", 1u, 0u, 0u, NULL, PROM_SHADER_AUTHORITY_PRODUCTION, 2u, 16u, 0u, 1u, 1048576u },
   { 53u, "fft-radix2-butterfly", PROM_SHADER_STAGE_COMPUTE, k_prom_fft_butterfly_spirv, sizeof(k_prom_fft_butterfly_spirv), "FftRadix2Butterfly_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/fft/radix2_butterfly.sdslv", "reactor_vulkan_fft_butterfly_spirv.h", 1u, 1u, 3u, "HLSL", PROM_SHADER_AUTHORITY_PRODUCTION, 2u, 32u, 0u, 1u, 1048576u },
+  { 54u, "ray-query-capability-probe", PROM_SHADER_STAGE_COMPUTE, k_prom_ray_query_capability_probe_spirv, sizeof(k_prom_ray_query_capability_probe_spirv), "RayQueryCapabilityProbe_CS", 0u, PROM_SHADER_SOURCE_SDSLV, "internal/prometheus/shaders/sdslv/production/rayquery/ray_query_capability_probe.sdslv", "reactor_vulkan_ray_query_capability_probe_spirv.h", 1u, 0u, 0u, NULL, PROM_SHADER_AUTHORITY_PRODUCTION, 2u, 0u, 0u, 1u, 1u },
   { 23u, "model-block-resident-identity", PROM_SHADER_STAGE_COMPUTE,
     k_prom_model_block_resident_identity_spirv, sizeof(k_prom_model_block_resident_identity_spirv),
     "ResidentModelBlockIdentity_CS", 0u, PROM_SHADER_SOURCE_SDSLV,

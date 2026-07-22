@@ -1,0 +1,27 @@
+namespace Prometheus.Production.RayQuery;
+
+// M0 toolchain admission probe.  This is a production SDSL-V shader, not a
+// raw-HLSL side route: the compiler owns both the acceleration-structure
+// resource declaration and inline traversal lowering.  M1 will replace this
+// boolean witness with the persistent triangle/procedural scene renderer.
+stream RayQueryProbeIO {
+    [binding(0)] Scene: readonly acceleration_structure;
+    [binding(1)] Evidence: readwrite array<u32>;
+}
+
+shader RayQueryCapabilityProbe {
+    resources RayQueryProbeIO;
+
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        let hit: bool = RayQueryAny(
+            Scene,
+            float3(0.0, 0.0, 0.0),
+            float3(0.0, 0.0, 1.0),
+            0.0,
+            100.0
+        );
+        if hit { Evidence[0u] = 1u; }
+        else { Evidence[0u] = 0u; }
+        return;
+    }
+}

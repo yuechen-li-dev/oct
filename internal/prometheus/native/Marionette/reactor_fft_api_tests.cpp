@@ -120,6 +120,42 @@ FACT(PrometheusReactor_FftExecutionDispatchesRadix2)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
 }
 
+FACT(PrometheusReactor_RayQueryAdmissionIsOptionalAndCompleteWhenEnabled)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+
+    prom_vk_runtime_services services{};
+    int status = prom_reactor_runtime_get_vk_services(handle, &services);
+    if (status == PROM_OK)
+    {
+        if (services.ray_query_state == PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED)
+        {
+            ASSERT_EQUAL(1u, services.ray_query_acceleration_structure_extension_supported, "enabled ray query requires acceleration-structure extension");
+            ASSERT_EQUAL(1u, services.ray_query_extension_supported, "enabled ray query requires ray-query extension");
+            ASSERT_EQUAL(1u, services.ray_query_deferred_host_operations_extension_supported, "enabled ray query requires deferred-host-operations extension");
+            ASSERT_EQUAL(1u, services.ray_query_buffer_device_address_supported, "enabled ray query requires buffer device address");
+            ASSERT_EQUAL(1u, services.ray_query_acceleration_structure_supported, "enabled ray query requires acceleration structures");
+            ASSERT_EQUAL(1u, services.ray_query_supported, "enabled ray query requires rayQuery feature");
+            ASSERT_TRUE(services.create_acceleration_structure != nullptr, "enabled ray query loads create entry point");
+            ASSERT_TRUE(services.destroy_acceleration_structure != nullptr, "enabled ray query loads destroy entry point");
+            ASSERT_TRUE(services.get_acceleration_structure_build_sizes != nullptr, "enabled ray query loads build-size entry point");
+            ASSERT_TRUE(services.cmd_build_acceleration_structures != nullptr, "enabled ray query loads build entry point");
+            ASSERT_TRUE(services.get_acceleration_structure_device_address != nullptr, "enabled ray query loads address entry point");
+        }
+        else
+        {
+            ASSERT_TRUE(services.ray_query_state == PROM_VK_RAY_QUERY_UNSUPPORTED ||
+                        services.ray_query_state == PROM_VK_RAY_QUERY_EXTENSION_MISSING ||
+                        services.ray_query_state == PROM_VK_RAY_QUERY_FEATURE_MISSING ||
+                        services.ray_query_state == PROM_VK_RAY_QUERY_ENTRY_POINT_MISSING,
+                        "unsupported ray-query admission must retain a precise optional state");
+        }
+    }
+
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "destroy should succeed");
+}
+
 static std::vector<PrometheusComplex32> fft_dft_oracle(const std::vector<PrometheusComplex32>& input,
                                                         std::uint32_t elementCount,
                                                         std::uint32_t batchCount,

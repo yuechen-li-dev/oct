@@ -29,6 +29,25 @@ func TestCooperativeMatrixLowersToClosedVDMIRRequirement(t *testing.T) {
 	}
 }
 
+func TestRayQueryLowersToClosedVDMIRRequirement(t *testing.T) {
+	mir := lowerSource(t, rayQueryLowerTestSource)
+	if len(mir.Requirements) != 1 || mir.Requirements[0].Kind != vdmir.CapabilityRayQuery {
+		t.Fatalf("requirements = %#v", mir.Requirements)
+	}
+	resource := mir.Resources[0]
+	if resource.Kind != vdmir.ResourceAccelerationStructure {
+		t.Fatalf("resource = %#v", resource)
+	}
+	call := mir.Functions[0].Body.Statements[0].(vdmir.LetStmt).Value.(vdmir.IntrinsicCallExpr)
+	if call.Intrinsic != vdmir.IntrinsicRayQueryAny || call.Type().Kind != vdmir.TypeBool {
+		t.Fatalf("unexpected intrinsic: %#v", call)
+	}
+}
+
+const rayQueryLowerTestSource = `stream IO { [binding(0)] Scene: readonly acceleration_structure; }
+shader RayProbe { resources IO; stage compute [numthreads(1,1,1)] fn CS() -> void {
+let hit: bool = RayQueryAny(Scene,float3(0.0,0.0,0.0),float3(0.0,0.0,1.0),0.0,100.0); return; } }`
+
 const cooperativeMatrixLowerTestSource = `stream ComputeThread { DispatchId:uint3; GroupId:uint3; GroupThreadId:uint3; GroupIndex:u32; }
 stream IO { [binding(0)] A:readonly array<u32>; [binding(1)] B:readonly array<u32>; [binding(2)] C:readwrite array<f32>; }
 record P { m:u32; n:u32; k:u32; }

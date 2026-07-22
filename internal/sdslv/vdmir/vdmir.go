@@ -42,6 +42,7 @@ type CapabilityRequirement struct {
 }
 
 const CapabilityCooperativeMatrixF16F32M16N16K16Subgroup = "cooperative-matrix-f16-f32-m16-n16-k16-subgroup"
+const CapabilityRayQuery = "ray-query"
 
 const (
 	CapabilityGraphicsVertexPixel = "graphics-vertex-pixel"
@@ -231,10 +232,11 @@ type Resource struct {
 type ResourceKind string
 
 const (
-	ResourceStorageBuffer ResourceKind = "storage-buffer"
-	ResourceUniform       ResourceKind = "uniform"
-	ResourceTexture2D     ResourceKind = "texture2d"
-	ResourceSampler       ResourceKind = "sampler"
+	ResourceStorageBuffer         ResourceKind = "storage-buffer"
+	ResourceUniform               ResourceKind = "uniform"
+	ResourceTexture2D             ResourceKind = "texture2d"
+	ResourceSampler               ResourceKind = "sampler"
+	ResourceAccelerationStructure ResourceKind = "acceleration-structure"
 )
 
 type Material struct {
@@ -643,6 +645,7 @@ const (
 	IntrinsicBitcast                                  Intrinsic = "Bitcast"
 	IntrinsicConvert                                  Intrinsic = "Convert"
 	IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup Intrinsic = "CooperativeMatMulF16F32M16N16K16Subgroup"
+	IntrinsicRayQueryAny                              Intrinsic = "RayQueryAny"
 )
 
 type LiteralExpr struct {
@@ -994,32 +997,33 @@ type Type struct {
 type TypeKind string
 
 const (
-	TypeVoid         TypeKind = "void"
-	TypeBool         TypeKind = "bool"
-	TypeI32          TypeKind = "i32"
-	TypeU32          TypeKind = "u32"
-	TypeF32          TypeKind = "f32"
-	TypeUint2        TypeKind = "uint2"
-	TypeUint3        TypeKind = "uint3"
-	TypeUint4        TypeKind = "uint4"
-	TypeFloat2       TypeKind = "float2"
-	TypeFloat3       TypeKind = "float3"
-	TypeFloat4       TypeKind = "float4"
-	TypeRuntimeArray TypeKind = "runtime_array"
-	TypeArray        TypeKind = "array"
-	TypeNDArray      TypeKind = "ndarray"
-	TypeTile         TypeKind = "tile"
-	TypeRegTile      TypeKind = "reg_tile"
-	TypeMatrixView   TypeKind = "matrix_view"
-	TypeRecord       TypeKind = "record"
-	TypeBoard        TypeKind = "board"
-	TypeStream       TypeKind = "stream"
-	TypeEnum         TypeKind = "enum"
-	TypeAliasKind    TypeKind = "alias"
-	TypeBuiltin      TypeKind = "builtin"
-	TypeTexture2D    TypeKind = "texture2d"
-	TypeSampler      TypeKind = "sampler"
-	TypeUniform      TypeKind = "uniform"
+	TypeVoid                  TypeKind = "void"
+	TypeBool                  TypeKind = "bool"
+	TypeI32                   TypeKind = "i32"
+	TypeU32                   TypeKind = "u32"
+	TypeF32                   TypeKind = "f32"
+	TypeUint2                 TypeKind = "uint2"
+	TypeUint3                 TypeKind = "uint3"
+	TypeUint4                 TypeKind = "uint4"
+	TypeFloat2                TypeKind = "float2"
+	TypeFloat3                TypeKind = "float3"
+	TypeFloat4                TypeKind = "float4"
+	TypeRuntimeArray          TypeKind = "runtime_array"
+	TypeArray                 TypeKind = "array"
+	TypeNDArray               TypeKind = "ndarray"
+	TypeTile                  TypeKind = "tile"
+	TypeRegTile               TypeKind = "reg_tile"
+	TypeMatrixView            TypeKind = "matrix_view"
+	TypeRecord                TypeKind = "record"
+	TypeBoard                 TypeKind = "board"
+	TypeStream                TypeKind = "stream"
+	TypeEnum                  TypeKind = "enum"
+	TypeAliasKind             TypeKind = "alias"
+	TypeBuiltin               TypeKind = "builtin"
+	TypeTexture2D             TypeKind = "texture2d"
+	TypeSampler               TypeKind = "sampler"
+	TypeUniform               TypeKind = "uniform"
+	TypeAccelerationStructure TypeKind = "acceleration_structure"
 )
 
 func (t Type) IsArray() bool {
