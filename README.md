@@ -341,5 +341,8 @@ For more details, start with:
 - `docs/ARCHITECTURE.md` — architecture and execution model;
 - `docs/CLI.md` — CLI quick reference;
 - `docs/COMPILED_SUPPORT.md` — compiled-backend status;
+- `docs/releases/OCT_1_0_CONTRACT.md` — proposed 1.0 stable-surface and compatibility contract;
+- `docs/releases/OCT_1_0_READINESS.md` — RC1 evidence, discrepancies, and blocker ledger;
+- `docs/releases/OCT_1_0_RELEASE_PLAN.md` — RC2/GA gates and non-goals;
 - `Language/reference/` — canonical language/reference corpus;
 - `docs/internal/canonical_registry_pm7.md` — canonical registry PM7 notes.

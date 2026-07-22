@@ -14,6 +14,9 @@ Dimensions participate in expression typing.
 - Arithmetic operators are `+`, `-`, `*`, `/`, `%`.
 - Comparison operators are `==`, `!=`, `<`, `<=`, `>`, `>=`.
 - Logical operators are `and`, `or`, `not`.
+- `and` and `or` evaluate left to right and short-circuit: the right operand is
+  evaluated only when it can affect the result. This rule applies to both the
+  interpreter and compiled GoOct execution.
 - Unary numeric negation is `-expr` for `Int`/`Float` expressions.
 - `+` on `String` performs concatenation.
 - Array arithmetic is element-wise for matching numeric array types.

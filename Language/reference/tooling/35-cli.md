@@ -9,9 +9,13 @@
 ## Rules
 
 - `oct run <path>` executes an Oct entry file.
-- `oct build <path>` compiles and writes an artifact at `<path>.octbin`.
+- `oct build <path>` compiles and writes a native executable beside the entry
+  source. On Windows, `Main.oct` produces `Main.oct.exe`; on Linux and macOS
+  the executable has no suffix. `.octbin` is reserved for a future portable
+  Oct-owned format and is not emitted by the current GoOct backend.
 - `run`, `build`, `test`, and `artifact` share one canonical package import resolver.
-- `.octbin` is the compiled binary artifact produced by `oct build`.
+- `.octbin` is reserved for a future portable artifact format; it is not a
+  current `oct build` output.
 - `oct run` executes program behavior and does not require a prebuilt `.octbin`.
 - `oct test <path>` runs `.octest` and `.octfail` suites.
 - `oct test <path> --suite <name>` runs only tests tagged with `[Suite("<name>")]`.
