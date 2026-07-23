@@ -27,7 +27,7 @@
     "Marionette/reactor_p15_m7_predictive_diagnostics_tests.cpp", "Marionette/reactor_p15_m8_shadow_hfsm_tests.cpp",
     "Marionette/reactor_p15_m9_shadow_calibration_tests.cpp", "Marionette/reactor_p15_m10_shadow_authority_gate_tests.cpp",
     "Marionette/reactor_p15_m11_shadow_would_act_tests.cpp", "Marionette/reactor_p15_m12_shadow_canary_tests.cpp",
-    "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp",
+    "Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp", "Marionette/reactor_fft_api_tests.cpp", "Marionette/ray_query_public_api_tests.cpp", "Marionette/ray_query_batch_dispatch_tests.cpp",
     "Marionette/reactor_fft_benchmarks.cpp", "Marionette/reactor_reduction_tests.cpp",
     "Marionette/reactor_reduction_benchmarks.cpp", "Marionette/reactor_cooperative_matrix_tests.cpp",
     "Marionette/reactor_attention_tests.cpp", "Marionette/reactor_m49_numerical_research_tests.cpp",

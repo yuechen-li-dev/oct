@@ -2155,11 +2155,11 @@ func (v *validator) rayQueryAnyType(call ast.CallExpr, scope map[string]varInfo,
 // query is not representable in source, preventing accidental copying or ABI
 // escape while preserving explicit candidate progression and commitment.
 func (v *validator) rayQueryTraceClosestType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
-	if len(call.Arguments) != 5 {
-		v.errorAt(call.Span, "SDSL-V4211", "RayQueryTraceClosest expects acceleration_structure, readonly sphere array, readonly ray array, readwrite raw-hit array, and readonly triangle-vertex array")
+	if len(call.Arguments) != 5 && len(call.Arguments) != 6 {
+		v.errorAt(call.Span, "SDSL-V4211", "RayQueryTraceClosest expects five resources and an optional ComputeThread for batched dispatch")
 		return ast.TypeRef{Name: "<error>"}
 	}
-	for i, arg := range call.Arguments {
+	for i, arg := range call.Arguments[:5] {
 		id, ok := arg.(ast.IdentifierExpr)
 		if !ok {
 			v.errorAt(ast.ExprSpan(arg), "SDSL-V4211", "RayQueryTraceClosest argument %d must be a named resource", i+1)
@@ -2181,6 +2181,12 @@ func (v *validator) rayQueryTraceClosestType(call ast.CallExpr, scope map[string
 		}
 		if i == 3 && info.access != "readwrite" {
 			v.errorAt(ast.ExprSpan(arg), "SDSL-V4212", "RayQueryTraceClosest raw-hit output must be readwrite")
+		}
+	}
+	if len(call.Arguments) == 6 {
+		thread := v.resolveAlias(v.exprType(call.Arguments[5], scope, shaderName, templateParam))
+		if thread.Name != "ComputeThread" {
+			v.errorAt(ast.ExprSpan(call.Arguments[5]), "SDSL-V4211", "RayQueryTraceClosest optional sixth argument must be ComputeThread")
 		}
 	}
 	if v.currentStage != "compute" {

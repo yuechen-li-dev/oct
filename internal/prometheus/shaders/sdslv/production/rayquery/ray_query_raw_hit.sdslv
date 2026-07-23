@@ -1,5 +1,12 @@
 namespace Prometheus.Production.RayQuery;
 
+stream ComputeThread {
+    DispatchId: uint3;
+    GroupId: uint3;
+    GroupThreadId: uint3;
+    GroupIndex: u32;
+}
+
 // The M1 raw traversal contract. RayWords[0] is (origin.xyz, tMin) and
 // RayWords[1] is (direction.xyz, tMax). A sphere is not tessellated: its
 // procedural AABB points at this exact analytic record.
@@ -28,10 +35,10 @@ stream RayQueryRawHitIO {
 shader RayQueryRawHit {
     resources RayQueryRawHitIO;
 
-    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+    stage compute [numthreads(1u, 1u, 1u)] fn CS(thread: ComputeThread) -> void {
         // Compiler-owned stateful inline traversal. The emitter owns the
         // opaque query local, candidate progression, and procedural commit.
-        RayQueryTraceClosest(Scene, Spheres, RayWords, Result, TriangleVertices);
+        RayQueryTraceClosest(Scene, Spheres, RayWords, Result, TriangleVertices, thread);
         return;
     }
 }

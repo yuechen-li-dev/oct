@@ -2,6 +2,8 @@
 
 #include "reactor_vulkan.h"
 
+#include <string.h>
+
 #define PROMETHEUS_REACTOR_ABI_V1 1u
 
 uint32_t prometheus_reactor_abi_version(void) {
@@ -51,6 +53,39 @@ int prometheus_reactor_runtime_ray_query_scene_trace(
 
 int prometheus_reactor_runtime_ray_query_scene_destroy(void* handle, uint64_t scene_id) {
   return prom_ray_query_scene_destroy_impl(handle, scene_id);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_create_empty(void* handle, uint64_t* out_scene_id) {
+  return prom_ray_query_scene_create_empty_impl(handle, out_scene_id);
+}
+
+int prometheus_ray_query_runtime_create(const PrometheusRayQueryRuntimeConfig* config, void** out_handle) {
+  PrometheusReactorConfig reactor_config;
+  if (config == NULL || config->struct_size < sizeof(*config)) return PROM_ERROR;
+  memset(&reactor_config, 0, sizeof(reactor_config));
+  reactor_config.struct_size = sizeof(reactor_config);
+  reactor_config.shader_package_root = config->shader_package_root;
+  return prom_reactor_runtime_create_impl(&reactor_config, out_handle);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_add_triangles(
+    void* handle, uint64_t scene_id, const PrometheusRayQueryTriangle* triangles, uint32_t triangle_count) {
+  return prom_ray_query_scene_add_triangles_impl(handle, scene_id, triangles, triangle_count);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_add_spheres(
+    void* handle, uint64_t scene_id, const PrometheusRayQuerySphere* spheres, uint32_t sphere_count) {
+  return prom_ray_query_scene_add_spheres_impl(handle, scene_id, spheres, sphere_count);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_commit(void* handle, uint64_t scene_id) {
+  return prom_ray_query_scene_commit_impl(handle, scene_id);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_submit_batch(
+    void* handle, uint64_t scene_id, const PrometheusRayQueryBatchRequest* request,
+    PrometheusRayQueryBatchResult* out_result) {
+  return prom_ray_query_scene_submit_batch_impl(handle, scene_id, request, out_result);
 }
 
 

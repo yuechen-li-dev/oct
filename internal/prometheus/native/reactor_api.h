@@ -1560,6 +1560,14 @@ enum {
   PROM_RAY_QUERY_DETAIL_DESCRIPTOR_OR_PIPELINE_FAILED = -6909,
   PROM_RAY_QUERY_DETAIL_SUBMIT_OR_READBACK_FAILED = -6910,
   PROM_RAY_QUERY_DETAIL_INVALID_SCENE = -6911,
+  PROM_RAY_QUERY_DETAIL_SCENE_UNCOMMITTED = -6912,
+  PROM_RAY_QUERY_DETAIL_SCENE_ALREADY_COMMITTED = -6913,
+  PROM_RAY_QUERY_DETAIL_NULL_RAYS = -6914,
+  PROM_RAY_QUERY_DETAIL_NULL_HITS = -6915,
+  PROM_RAY_QUERY_DETAIL_INVALID_RAY = -6916,
+  PROM_RAY_QUERY_DETAIL_INVALID_STRIDE = -6917,
+  PROM_RAY_QUERY_DETAIL_BATCH_TOO_LARGE = -6918,
+  PROM_RAY_QUERY_DETAIL_BATCH_DISPATCH_LIMIT = -6919,
 };
 
 typedef struct PrometheusRayQueryTriangle {
@@ -1618,6 +1626,66 @@ typedef struct PrometheusRayQueryRawHit {
   float barycentrics[4];
   float albedo_material[4];
 } PrometheusRayQueryRawHit;
+
+/* RQ-M1 managed host boundary. Geometry is copied by the add calls and may be
+   released or reused by the caller when they return. A committed scene is
+   immutable; all Vulkan resources, package objects, and synchronization stay
+   reactor-owned. */
+enum {
+  PROM_RAY_QUERY_GEOMETRY_NONE = 0u,
+  PROM_RAY_QUERY_GEOMETRY_TRIANGLE = 1u,
+  PROM_RAY_QUERY_GEOMETRY_ANALYTIC_SPHERE = 2u,
+  PROM_RAY_QUERY_VISIBILITY_MASK_ALL = 0xffu,
+};
+
+typedef struct PrometheusRayQueryRay {
+  float origin[3];
+  float t_min;
+  float direction[3];
+  float t_max;
+  uint32_t visibility_mask;
+  uint32_t reserved[3];
+} PrometheusRayQueryRay;
+
+typedef struct PrometheusRayQueryHit {
+  uint32_t hit;
+  uint32_t geometry_kind;
+  uint32_t instance_id;
+  uint32_t primitive_id;
+  float distance;
+  float barycentrics[2];
+  float reserved0;
+  float position[3];
+  float reserved1;
+  float normal[3];
+  float reserved2;
+  float albedo[3];
+  uint32_t material_id;
+} PrometheusRayQueryHit;
+
+typedef struct PrometheusRayQueryBatchRequest {
+  uint32_t struct_size;
+  const void* rays;
+  uint32_t ray_count;
+  uint32_t ray_stride;
+  void* hits;
+  uint32_t hit_stride;
+} PrometheusRayQueryBatchRequest;
+
+typedef struct PrometheusRayQueryBatchResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t ray_count;
+  uint64_t upload_wall_ns;
+  uint64_t execution_wall_ns;
+  uint64_t readback_wall_ns;
+} PrometheusRayQueryBatchResult;
+
+typedef struct PrometheusRayQueryRuntimeConfig {
+  uint32_t struct_size;
+  const char* shader_package_root;
+} PrometheusRayQueryRuntimeConfig;
 
 typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
@@ -2234,6 +2302,18 @@ PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_trace(
     void* handle, uint64_t scene_id, const PrometheusRayQueryRawRequest* request,
     PrometheusRayQueryRawHit* out_hit);
 PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_destroy(void* handle, uint64_t scene_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_create_empty(void* handle,
+                                                                              uint64_t* out_scene_id);
+PROM_REACTOR_API int prometheus_ray_query_runtime_create(
+    const PrometheusRayQueryRuntimeConfig* config, void** out_handle);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_add_triangles(
+    void* handle, uint64_t scene_id, const PrometheusRayQueryTriangle* triangles, uint32_t triangle_count);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_add_spheres(
+    void* handle, uint64_t scene_id, const PrometheusRayQuerySphere* spheres, uint32_t sphere_count);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_commit(void* handle, uint64_t scene_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_submit_batch(
+    void* handle, uint64_t scene_id, const PrometheusRayQueryBatchRequest* request,
+    PrometheusRayQueryBatchResult* out_result);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       const float* a,
                                                       const float* b,

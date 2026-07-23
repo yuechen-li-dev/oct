@@ -64,6 +64,8 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/reactor_p15_m12_shadow_canary_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_p15_m13_shadow_feedforward_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_fft_api_tests.cpp"
+  "$NATIVE_DIR/Marionette/ray_query_public_api_tests.cpp"
+  "$NATIVE_DIR/Marionette/ray_query_batch_dispatch_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_fft_benchmarks.cpp"
   "$NATIVE_DIR/Marionette/reactor_reduction_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_reduction_benchmarks.cpp"

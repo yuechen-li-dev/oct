@@ -1103,22 +1103,28 @@ func (e *emitter) emitRayQueryAny(call vdmir.IntrinsicCallExpr) string {
 // is an ordinary copyable value while still exposing a coherent traversal
 // facility to production shaders.
 func (e *emitter) emitRayQueryTraceClosest(call vdmir.IntrinsicCallExpr) {
-	if len(call.Arguments) != 5 {
-		e.err = fmt.Errorf("RayQueryTraceClosest lowering requires 5 arguments")
+	if len(call.Arguments) != 5 && len(call.Arguments) != 6 {
+		e.err = fmt.Errorf("RayQueryTraceClosest lowering requires 5 resource arguments and an optional ComputeThread")
 		return
 	}
-	args := make([]string, 5)
+	args := make([]string, len(call.Arguments))
 	for i, arg := range call.Arguments {
 		args[i] = e.materializeOperand(arg)
 	}
+	index := "0u"
+	if len(args) == 6 {
+		index = args[5] + ".DispatchId.x"
+	}
 	name := e.nextTempWithPrefix("ray_query_closest")
 	e.line("RayDesc " + name + "_ray;")
-	e.line(name + "_ray.Origin = " + args[2] + "[0u].xyz;")
-	e.line(name + "_ray.Direction = " + args[2] + "[1u].xyz;")
-	e.line(name + "_ray.TMin = " + args[2] + "[0u].w;")
-	e.line(name + "_ray.TMax = " + args[2] + "[1u].w;")
+	e.line("uint " + name + "_index = " + index + ";")
+	e.line("uint " + name + "_ray_base = " + name + "_index * 3u;")
+	e.line(name + "_ray.Origin = " + args[2] + "[" + name + "_ray_base + 0u].xyz;")
+	e.line(name + "_ray.Direction = " + args[2] + "[" + name + "_ray_base + 1u].xyz;")
+	e.line(name + "_ray.TMin = " + args[2] + "[" + name + "_ray_base + 0u].w;")
+	e.line(name + "_ray.TMax = " + args[2] + "[" + name + "_ray_base + 1u].w;")
 	e.line("RayQuery<RAY_FLAG_NONE> " + name + ";")
-	e.line(name + ".TraceRayInline(" + args[0] + ", RAY_FLAG_NONE, 0xFFu, " + name + "_ray);")
+	e.line(name + ".TraceRayInline(" + args[0] + ", RAY_FLAG_NONE, asuint(" + args[2] + "[" + name + "_ray_base + 2u].x), " + name + "_ray);")
 	e.line("while (" + name + ".Proceed()) {")
 	e.indent++
 	e.line("if (" + name + ".CandidateType() == CANDIDATE_PROCEDURAL_PRIMITIVE) {")
@@ -1147,12 +1153,12 @@ func (e *emitter) emitRayQueryTraceClosest(call vdmir.IntrinsicCallExpr) {
 	e.line("}")
 	e.line("uint " + name + "_status = " + name + ".CommittedStatus();")
 	e.line("bool " + name + "_hit = " + name + "_status != COMMITTED_NOTHING;")
-	e.line(args[3] + "[0u].Meta = uint4(" + name + "_hit ? 1u : 0u, " + name + "_status == COMMITTED_TRIANGLE_HIT ? 1u : (" + name + "_status == COMMITTED_PROCEDURAL_PRIMITIVE_HIT ? 2u : 0u), " + name + "_hit ? " + name + ".CommittedInstanceID() : 0xffffffffu, " + name + "_hit ? " + name + ".CommittedGeometryIndex() : 0xffffffffu);")
-	e.line(args[3] + "[0u].TPrimitive = float4(" + name + "_hit ? " + name + ".CommittedRayT() : -1.0f, asfloat(" + name + "_hit ? " + name + ".CommittedPrimitiveIndex() : 0xffffffffu), " + name + "_status == COMMITTED_TRIANGLE_HIT ? (" + name + ".CommittedTriangleFrontFace() ? 1.0f : 0.0f) : -1.0f, asfloat(" + name + "_status));")
+	e.line(args[3] + "[" + name + "_index].Meta = uint4(" + name + "_hit ? 1u : 0u, " + name + "_status == COMMITTED_TRIANGLE_HIT ? 1u : (" + name + "_status == COMMITTED_PROCEDURAL_PRIMITIVE_HIT ? 2u : 0u), " + name + "_hit ? " + name + ".CommittedInstanceID() : 0xffffffffu, " + name + "_hit ? " + name + ".CommittedGeometryIndex() : 0xffffffffu);")
+	e.line(args[3] + "[" + name + "_index].TPrimitive = float4(" + name + "_hit ? " + name + ".CommittedRayT() : -1.0f, asfloat(" + name + "_hit ? " + name + ".CommittedPrimitiveIndex() : 0xffffffffu), " + name + "_status == COMMITTED_TRIANGLE_HIT ? (" + name + ".CommittedTriangleFrontFace() ? 1.0f : 0.0f) : -1.0f, asfloat(" + name + "_status));")
 	e.line("float3 " + name + "_position = " + name + "_ray.Origin + (" + name + "_hit ? " + name + ".CommittedRayT() : 0.0f) * " + name + "_ray.Direction;")
-	e.line(args[3] + "[0u].Position = float4(" + name + "_position, 0.0f);")
-	e.line(args[3] + "[0u].Barycentrics = float4(" + name + "_status == COMMITTED_TRIANGLE_HIT ? " + name + ".CommittedTriangleBarycentrics() : float2(-1.0f, -1.0f), 0.0f, 0.0f);")
-	e.line("if (" + name + "_status == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) { float4 s = " + args[1] + "[" + name + ".CommittedPrimitiveIndex()].CenterRadius; " + args[3] + "[0u].Normal = float4(normalize(" + name + "_position - s.xyz), 0.0f); " + args[3] + "[0u].AlbedoMaterial = " + args[1] + "[" + name + ".CommittedPrimitiveIndex()].AlbedoMaterial; } else if (" + name + "_status == COMMITTED_TRIANGLE_HIT) { uint base = " + name + ".CommittedPrimitiveIndex() * 3u; float3 a = " + args[4] + "[base + 0u].xyz; float3 b = " + args[4] + "[base + 1u].xyz; float3 c = " + args[4] + "[base + 2u].xyz; " + args[3] + "[0u].Normal = float4(normalize(cross(b - a, c - a)), 0.0f); " + args[3] + "[0u].AlbedoMaterial = float4(1.0f, 1.0f, 1.0f, 0.0f); } else { " + args[3] + "[0u].Normal = float4(0.0f, 0.0f, 0.0f, 0.0f); " + args[3] + "[0u].AlbedoMaterial = float4(1.0f, 1.0f, 1.0f, 0.0f); }")
+	e.line(args[3] + "[" + name + "_index].Position = float4(" + name + "_position, 0.0f);")
+	e.line(args[3] + "[" + name + "_index].Barycentrics = float4(" + name + "_status == COMMITTED_TRIANGLE_HIT ? " + name + ".CommittedTriangleBarycentrics() : float2(-1.0f, -1.0f), 0.0f, 0.0f);")
+	e.line("if (" + name + "_status == COMMITTED_PROCEDURAL_PRIMITIVE_HIT) { float4 s = " + args[1] + "[" + name + ".CommittedPrimitiveIndex()].CenterRadius; " + args[3] + "[" + name + "_index].Normal = float4(normalize(" + name + "_position - s.xyz), 0.0f); " + args[3] + "[" + name + "_index].AlbedoMaterial = " + args[1] + "[" + name + ".CommittedPrimitiveIndex()].AlbedoMaterial; } else if (" + name + "_status == COMMITTED_TRIANGLE_HIT) { uint base = " + name + ".CommittedPrimitiveIndex() * 3u; float3 a = " + args[4] + "[base + 0u].xyz; float3 b = " + args[4] + "[base + 1u].xyz; float3 c = " + args[4] + "[base + 2u].xyz; " + args[3] + "[" + name + "_index].Normal = float4(normalize(cross(b - a, c - a)), 0.0f); " + args[3] + "[" + name + "_index].AlbedoMaterial = float4(1.0f, 1.0f, 1.0f, 0.0f); } else { " + args[3] + "[" + name + "_index].Normal = float4(0.0f, 0.0f, 0.0f, 0.0f); " + args[3] + "[" + name + "_index].AlbedoMaterial = float4(0.0f, 0.0f, 0.0f, 0.0f); }")
 }
 
 func (e *emitter) materializeOperand(expr vdmir.Expr) string {

@@ -200,12 +200,13 @@ malformed:prom_diag(d,PROM_SHADER_PACKAGE_MANIFEST_MALFORMED,"malformed shader p
 fail:free(schema_text);free(version);free(id);free(text);prom_shader_package_destroy(p);return 0;
 }
 
+static size_t prom_bounded_strlen(const char* text, size_t limit){size_t length=0u;if(text==NULL)return 0u;while(length<limit&&text[length]!='\0')++length;return length;}
 static uint32_t prom_word(const unsigned char* p){return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static int prom_spirv_entry_and_local_size(const unsigned char* bytes,size_t size,const prom_package_variant* v){
   size_t at=20u;uint32_t entry_id=0u,local[3]={0u,0u,0u};int entry=0,local_found=0;
   if(size<20u||(size&3u)!=0u||prom_word(bytes)!=0x07230203u)return 0;
   while(at<size){uint32_t instruction=prom_word(bytes+at),words=instruction>>16,opcode=instruction&0xffffu;if(words==0u||at+(size_t)words*4u>size)return 0;
-    if(opcode==15u&&words>=4u){const char* name=(const char*)(bytes+at+12u);size_t limit=(size_t)(words-3u)*4u,n=strnlen(name,limit);if(n<limit&&strcmp(name,v->entry_point)==0){entry_id=prom_word(bytes+at+8u);entry=1;}}
+    if(opcode==15u&&words>=4u){const char* name=(const char*)(bytes+at+12u);size_t limit=(size_t)(words-3u)*4u,n=prom_bounded_strlen(name,limit);if(n<limit&&strcmp(name,v->entry_point)==0){entry_id=prom_word(bytes+at+8u);entry=1;}}
     if(opcode==16u&&words>=6u&&entry&&prom_word(bytes+at+4u)==entry_id&&prom_word(bytes+at+8u)==17u){local[0]=prom_word(bytes+at+12u);local[1]=prom_word(bytes+at+16u);local[2]=prom_word(bytes+at+20u);local_found=1;}
     at+=(size_t)words*4u;
   }

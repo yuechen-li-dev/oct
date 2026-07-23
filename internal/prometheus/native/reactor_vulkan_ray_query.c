@@ -38,12 +38,33 @@ typedef struct prom_ray_query_scene {
   prom_vk_buffer evidence_buffer;
   prom_vk_buffer ray_buffer;
   prom_vk_buffer raw_hit_buffer;
+  /* Ray and raw-hit buffers are a paired, host-mapped batch capacity.  A
+     committed raw scene owns both buffers and is idle whenever they are
+     replaced, because this route submits synchronously. */
+  uint32_t batch_capacity;
+  uint64_t batch_buffer_reallocation_count;
+  uint64_t batch_descriptor_rebind_count;
+  uint64_t batch_physical_dispatch_count;
+  uint64_t batch_physical_submission_count;
+  uint32_t batch_last_dispatch_groups_x;
   uint32_t raw_scene;
   VkDescriptorSetLayout descriptor_set_layout;
   VkDescriptorPool descriptor_pool;
   VkDescriptorSet descriptor_set;
   VkPipelineLayout pipeline_layout;
   VkPipeline pipeline;
+  /* The RQ-M1 semantic scene is a small host-side builder which owns a
+     committed legacy traversal scene once commit succeeds. This preserves the
+     existing raw traversal recipe while keeping mutation outside Vulkan. */
+  uint32_t committed;
+  uint32_t empty_scene;
+  struct prom_ray_query_scene* committed_scene;
+  PrometheusRayQueryTriangle* staged_triangles;
+  uint32_t staged_triangle_count;
+  uint32_t staged_triangle_capacity;
+  PrometheusRayQuerySphere* staged_spheres;
+  uint32_t staged_sphere_count;
+  uint32_t staged_sphere_capacity;
 } prom_ray_query_scene;
 
 static prom_ray_query_scene* g_ray_query_scenes[PROM_RAY_QUERY_MAX_LIVE_SCENES];
@@ -69,6 +90,12 @@ static int prom_ray_mul_u64(uint64_t left, uint64_t right, uint64_t* out_value) 
   *out_value = left * right;
   return 1;
 }
+
+_Static_assert(sizeof(PrometheusRayQueryRay) == 48u, "public ray record ABI drift");
+_Static_assert(sizeof(PrometheusRayQueryHit) == 80u, "public hit record ABI drift");
+_Static_assert(sizeof(PrometheusRayQueryRawHit) == 96u, "shader raw-hit record ABI drift");
+
+enum { PROM_RAY_SHADER_WORDS_PER_RAY = 3u, PROM_RAY_SHADER_BYTES_PER_RAY = 48u };
 
 static int prom_ray_align_address(VkDeviceAddress address, VkDeviceSize alignment,
                                   VkDeviceAddress* out_address, VkDeviceSize* out_offset) {
@@ -225,6 +252,10 @@ static void prom_ray_destroy_as(const prom_ray_query_scene* scene, prom_ray_quer
 
 static void prom_ray_scene_destroy(prom_ray_query_scene* scene) {
   if (scene == NULL) return;
+  if (scene->committed_scene != NULL) {
+    prom_ray_scene_destroy(scene->committed_scene);
+    scene->committed_scene = NULL;
+  }
   if (scene->pipeline != VK_NULL_HANDLE) vkDestroyPipeline(scene->services.device, scene->pipeline, NULL);
   if (scene->pipeline_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(scene->services.device, scene->pipeline_layout, NULL);
   if (scene->descriptor_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(scene->services.device, scene->descriptor_pool, NULL);
@@ -240,6 +271,8 @@ static void prom_ray_scene_destroy(prom_ray_query_scene* scene) {
   prom_vk_destroy_buffer(scene->services.device, &scene->sphere_buffer);
   prom_vk_destroy_buffer(scene->services.device, &scene->triangle_shader_buffer);
   prom_vk_destroy_buffer(scene->services.device, &scene->vertex_buffer);
+  free(scene->staged_triangles);
+  free(scene->staged_spheres);
   scene->magic = 0u;
   free(scene);
 }
@@ -571,12 +604,13 @@ static int prom_ray_create_raw_compute_resources(prom_ray_query_scene* scene) {
   if (scene == NULL || scene->tlas.handle == VK_NULL_HANDLE) return 0;
   if (prom_reactor_runtime_get_shader_package(scene->runtime_handle, &package) != PROM_OK) return 0;
   if (prom_vk_create_buffer(scene->services.physical_device, scene->services.device, scene->services.test_flags,
-                            2u * sizeof(float) * 4u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                            PROM_RAY_SHADER_BYTES_PER_RAY, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &scene->ray_buffer) != VK_SUCCESS ||
       prom_vk_create_buffer(scene->services.physical_device, scene->services.device, scene->services.test_flags,
                             sizeof(PrometheusRayQueryRawHit), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &scene->raw_hit_buffer) != VK_SUCCESS ||
       scene->ray_buffer.mapped == NULL || scene->raw_hit_buffer.mapped == NULL) return 0;
+  scene->batch_capacity = 1u;
   memset(bindings, 0, sizeof(bindings));
   for (uint32_t i = 0u; i < 5u; ++i) { bindings[i].binding = i; bindings[i].descriptorCount = 1u; bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; bindings[i].descriptorType = i == 0u ? VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; }
   memset(&layout_info, 0, sizeof(layout_info)); layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; layout_info.bindingCount = 5u; layout_info.pBindings = bindings;
@@ -764,10 +798,10 @@ int prom_ray_query_triangle_scene_probe_impl(void* handle, uint64_t scene_id,
   return PROM_OK;
 }
 
-int prom_ray_query_scene_trace_impl(void* handle, uint64_t scene_id, const PrometheusRayQueryRawRequest* request,
-                                    PrometheusRayQueryRawHit* out_hit) {
-  prom_ray_query_scene* scene;
-  prom_vk_runtime_services services;
+static int prom_ray_scene_trace_direct(prom_ray_query_scene* scene,
+                                       const PrometheusRayQueryRawRequest* request,
+                                       uint32_t visibility_mask,
+                                       PrometheusRayQueryRawHit* out_hit) {
   VkCommandBuffer command_buffer = VK_NULL_HANDLE;
   float* words;
   if (out_hit == NULL || request == NULL || request->struct_size < sizeof(*request)) return PROM_ERROR;
@@ -775,13 +809,13 @@ int prom_ray_query_scene_trace_impl(void* handle, uint64_t scene_id, const Prome
   if (!isfinite(request->t_min) || !isfinite(request->t_max) || request->t_min < 0.0f || request->t_max < request->t_min) return PROM_ERROR;
   for (uint32_t i=0u; i<3u; ++i) if (!isfinite(request->origin[i]) || !isfinite(request->direction[i])) return PROM_ERROR;
   if (request->direction[0]*request->direction[0] + request->direction[1]*request->direction[1] + request->direction[2]*request->direction[2] <= 0.0f) return PROM_ERROR;
-  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) return PROM_INVALID_HANDLE;
-  scene = prom_ray_scene_find(handle, scene_id);
-  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC || !scene->raw_scene || scene->services.device != services.device ||
+  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC || !scene->raw_scene ||
       scene->ray_buffer.mapped == NULL || scene->raw_hit_buffer.mapped == NULL || scene->pipeline == VK_NULL_HANDLE) return PROM_INVALID_HANDLE;
   words = (float*)scene->ray_buffer.mapped;
   words[0]=request->origin[0]; words[1]=request->origin[1]; words[2]=request->origin[2]; words[3]=request->t_min;
   words[4]=request->direction[0]; words[5]=request->direction[1]; words[6]=request->direction[2]; words[7]=request->t_max;
+  memcpy(&words[8], &visibility_mask, sizeof(visibility_mask));
+  words[9]=0.0f; words[10]=0.0f; words[11]=0.0f;
   memset(scene->raw_hit_buffer.mapped, 0, sizeof(*out_hit));
   if (!prom_ray_begin_command(scene, &command_buffer)) return PROM_ERROR;
   vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, scene->pipeline);
@@ -789,6 +823,389 @@ int prom_ray_query_scene_trace_impl(void* handle, uint64_t scene_id, const Prome
   vkCmdDispatch(command_buffer, 1u, 1u, 1u);
   if (!prom_ray_end_submit_and_free(scene, command_buffer)) return PROM_ERROR;
   memcpy(out_hit, scene->raw_hit_buffer.mapped, sizeof(*out_hit));
+  return PROM_OK;
+}
+
+int prom_ray_query_scene_trace_impl(void* handle, uint64_t scene_id, const PrometheusRayQueryRawRequest* request,
+                                    PrometheusRayQueryRawHit* out_hit) {
+  prom_ray_query_scene* scene;
+  prom_vk_runtime_services services;
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) return PROM_INVALID_HANDLE;
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || scene->services.device != services.device) return PROM_INVALID_HANDLE;
+  return prom_ray_scene_trace_direct(scene, request, PROM_RAY_QUERY_VISIBILITY_MASK_ALL, out_hit);
+}
+
+static int prom_ray_scene_append_triangles(prom_ray_query_scene* scene,
+                                           const PrometheusRayQueryTriangle* triangles,
+                                           uint32_t triangle_count) {
+  uint64_t required, bytes;
+  uint32_t capacity;
+  PrometheusRayQueryTriangle* grown;
+  if (scene == NULL || (triangle_count != 0u && triangles == NULL)) return 0;
+  if (triangle_count == 0u) return 1;
+  for (uint32_t i = 0u; i < triangle_count; ++i) if (!prom_ray_triangle_is_valid(&triangles[i])) return 0;
+  if (!prom_ray_add_u64(scene->staged_triangle_count, triangle_count, &required) || required > UINT32_MAX ||
+      !prom_ray_mul_u64(required, sizeof(*triangles), &bytes) || bytes > SIZE_MAX) return 0;
+  capacity = scene->staged_triangle_capacity == 0u ? 4u : scene->staged_triangle_capacity;
+  while ((uint64_t)capacity < required) {
+    if (capacity > UINT32_MAX / 2u) { capacity = (uint32_t)required; break; }
+    capacity *= 2u;
+  }
+  if (capacity != scene->staged_triangle_capacity) {
+    if (!prom_ray_mul_u64(capacity, sizeof(*triangles), &bytes) || bytes > SIZE_MAX) return 0;
+    grown = (PrometheusRayQueryTriangle*)realloc(scene->staged_triangles, (size_t)bytes);
+    if (grown == NULL) return 0;
+    scene->staged_triangles = grown;
+    scene->staged_triangle_capacity = capacity;
+  }
+  memcpy(&scene->staged_triangles[scene->staged_triangle_count], triangles,
+         (size_t)triangle_count * sizeof(*triangles));
+  scene->staged_triangle_count = (uint32_t)required;
+  return 1;
+}
+
+static int prom_ray_scene_append_spheres(prom_ray_query_scene* scene,
+                                         const PrometheusRayQuerySphere* spheres,
+                                         uint32_t sphere_count) {
+  uint64_t required, bytes;
+  uint32_t capacity;
+  PrometheusRayQuerySphere* grown;
+  if (scene == NULL || (sphere_count != 0u && spheres == NULL)) return 0;
+  if (sphere_count == 0u) return 1;
+  for (uint32_t i = 0u; i < sphere_count; ++i) if (!prom_ray_sphere_is_valid(&spheres[i])) return 0;
+  if (!prom_ray_add_u64(scene->staged_sphere_count, sphere_count, &required) || required > UINT32_MAX ||
+      !prom_ray_mul_u64(required, sizeof(*spheres), &bytes) || bytes > SIZE_MAX) return 0;
+  capacity = scene->staged_sphere_capacity == 0u ? 4u : scene->staged_sphere_capacity;
+  while ((uint64_t)capacity < required) {
+    if (capacity > UINT32_MAX / 2u) { capacity = (uint32_t)required; break; }
+    capacity *= 2u;
+  }
+  if (capacity != scene->staged_sphere_capacity) {
+    if (!prom_ray_mul_u64(capacity, sizeof(*spheres), &bytes) || bytes > SIZE_MAX) return 0;
+    grown = (PrometheusRayQuerySphere*)realloc(scene->staged_spheres, (size_t)bytes);
+    if (grown == NULL) return 0;
+    scene->staged_spheres = grown;
+    scene->staged_sphere_capacity = capacity;
+  }
+  memcpy(&scene->staged_spheres[scene->staged_sphere_count], spheres,
+         (size_t)sphere_count * sizeof(*spheres));
+  scene->staged_sphere_count = (uint32_t)required;
+  return 1;
+}
+
+int prom_ray_query_scene_create_empty_impl(void* handle, uint64_t* out_scene_id) {
+  prom_ray_query_scene* scene;
+  if (out_scene_id == NULL) return PROM_ERROR;
+  *out_scene_id = 0u;
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  scene = (prom_ray_query_scene*)calloc(1u, sizeof(*scene));
+  if (scene == NULL) return PROM_ERROR;
+  scene->magic = PROM_RAY_QUERY_SCENE_MAGIC;
+  scene->runtime_handle = handle;
+  if (!prom_ray_scene_register(scene)) { prom_ray_scene_destroy(scene); return PROM_ERROR; }
+  *out_scene_id = (uint64_t)(uintptr_t)scene;
+  return PROM_OK;
+}
+
+int prom_ray_query_scene_add_triangles_impl(void* handle, uint64_t scene_id,
+                                            const PrometheusRayQueryTriangle* triangles,
+                                            uint32_t triangle_count) {
+  prom_ray_query_scene* scene;
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC) return PROM_INVALID_HANDLE;
+  if (scene->committed || scene->raw_scene) return PROM_ERROR;
+  return prom_ray_scene_append_triangles(scene, triangles, triangle_count) ? PROM_OK : PROM_ERROR;
+}
+
+int prom_ray_query_scene_add_spheres_impl(void* handle, uint64_t scene_id,
+                                          const PrometheusRayQuerySphere* spheres,
+                                          uint32_t sphere_count) {
+  prom_ray_query_scene* scene;
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC) return PROM_INVALID_HANDLE;
+  if (scene->committed || scene->raw_scene) return PROM_ERROR;
+  return prom_ray_scene_append_spheres(scene, spheres, sphere_count) ? PROM_OK : PROM_ERROR;
+}
+
+int prom_ray_query_scene_commit_impl(void* handle, uint64_t scene_id) {
+  prom_ray_query_scene* scene;
+  prom_vk_runtime_services services;
+  PrometheusRayQuerySceneCreateRequest request;
+  uint64_t committed_id = 0u;
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) return PROM_INVALID_HANDLE;
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC || scene->raw_scene || scene->committed) return PROM_ERROR;
+  if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) return PROM_ERROR;
+  scene->services = services;
+  if (scene->staged_triangle_count == 0u && scene->staged_sphere_count == 0u) {
+    scene->empty_scene = 1u;
+    scene->committed = 1u;
+    return PROM_OK;
+  }
+  memset(&request, 0, sizeof(request));
+  request.struct_size = sizeof(request);
+  request.triangles = scene->staged_triangles;
+  request.triangle_count = scene->staged_triangle_count;
+  request.spheres = scene->staged_spheres;
+  request.sphere_count = scene->staged_sphere_count;
+  if (prom_ray_query_scene_create_impl(handle, &request, &committed_id) != PROM_OK) return PROM_ERROR;
+  scene->committed_scene = prom_ray_scene_take(handle, committed_id);
+  if (scene->committed_scene == NULL) return PROM_ERROR;
+  free(scene->staged_triangles); scene->staged_triangles = NULL; scene->staged_triangle_capacity = 0u;
+  free(scene->staged_spheres); scene->staged_spheres = NULL; scene->staged_sphere_capacity = 0u;
+  scene->committed = 1u;
+  return PROM_OK;
+}
+
+static void prom_ray_public_hit_from_raw(const PrometheusRayQueryRawHit* raw, PrometheusRayQueryHit* out_hit) {
+  uint32_t primitive;
+  memset(out_hit, 0, sizeof(*out_hit));
+  out_hit->instance_id = UINT32_MAX;
+  out_hit->primitive_id = UINT32_MAX;
+  out_hit->material_id = UINT32_MAX;
+  out_hit->distance = -1.0f;
+  out_hit->barycentrics[0] = -1.0f;
+  out_hit->barycentrics[1] = -1.0f;
+  if (raw == NULL || raw->meta[0] == 0u) return;
+  memcpy(&primitive, &raw->t_primitive[1], sizeof(primitive));
+  out_hit->hit = 1u;
+  out_hit->geometry_kind = raw->meta[1];
+  out_hit->instance_id = raw->meta[2];
+  out_hit->primitive_id = primitive;
+  out_hit->distance = raw->t_primitive[0];
+  out_hit->barycentrics[0] = raw->barycentrics[0];
+  out_hit->barycentrics[1] = raw->barycentrics[1];
+  memcpy(out_hit->position, raw->position, sizeof(out_hit->position));
+  memcpy(out_hit->normal, raw->normal, sizeof(out_hit->normal));
+  memcpy(out_hit->albedo, raw->albedo_material, sizeof(out_hit->albedo));
+  if (raw->meta[1] == PROM_RAY_QUERY_GEOMETRY_ANALYTIC_SPHERE) {
+    out_hit->material_id = (uint32_t)raw->albedo_material[3];
+  }
+}
+
+static int prom_ray_public_ray_is_valid(const PrometheusRayQueryRay* ray) {
+  float direction_length_squared;
+  if (ray == NULL || !isfinite(ray->t_min) || !isfinite(ray->t_max) || ray->t_min < 0.0f ||
+      ray->t_max < ray->t_min || !isfinite(ray->origin[0]) || !isfinite(ray->origin[1]) ||
+      !isfinite(ray->origin[2]) || !isfinite(ray->direction[0]) || !isfinite(ray->direction[1]) ||
+      !isfinite(ray->direction[2])) return 0;
+  direction_length_squared = ray->direction[0] * ray->direction[0] +
+                             ray->direction[1] * ray->direction[1] +
+                             ray->direction[2] * ray->direction[2];
+  return isfinite(direction_length_squared) && direction_length_squared > 0.0f;
+}
+
+static int prom_ray_batch_byte_sizes(uint32_t ray_count, uint64_t* out_ray_bytes,
+                                     uint64_t* out_hit_bytes) {
+  return out_ray_bytes != NULL && out_hit_bytes != NULL &&
+         prom_ray_mul_u64(ray_count, PROM_RAY_SHADER_BYTES_PER_RAY, out_ray_bytes) &&
+         prom_ray_mul_u64(ray_count, sizeof(PrometheusRayQueryRawHit), out_hit_bytes) &&
+         *out_ray_bytes <= SIZE_MAX && *out_hit_bytes <= SIZE_MAX &&
+         *out_ray_bytes <= UINT64_MAX && *out_hit_bytes <= UINT64_MAX;
+}
+
+static int prom_ray_batch_is_admitted(const prom_ray_query_scene* scene, uint32_t ray_count,
+                                      uint64_t ray_bytes, uint64_t hit_bytes) {
+  VkPhysicalDeviceProperties properties;
+  if (scene == NULL || scene->services.physical_device == VK_NULL_HANDLE || ray_count == 0u) return 0;
+  memset(&properties, 0, sizeof(properties));
+  vkGetPhysicalDeviceProperties(scene->services.physical_device, &properties);
+  return ray_count <= properties.limits.maxComputeWorkGroupCount[0] &&
+         ray_bytes <= (uint64_t)properties.limits.maxStorageBufferRange &&
+         hit_bytes <= (uint64_t)properties.limits.maxStorageBufferRange;
+}
+
+static void prom_ray_rebind_batch_descriptors(prom_ray_query_scene* scene) {
+  VkDescriptorBufferInfo infos[2];
+  VkWriteDescriptorSet writes[2];
+  if (scene == NULL || scene->descriptor_set == VK_NULL_HANDLE) return;
+  memset(infos, 0, sizeof(infos));
+  infos[0].buffer = scene->ray_buffer.buffer;
+  infos[0].range = VK_WHOLE_SIZE;
+  infos[1].buffer = scene->raw_hit_buffer.buffer;
+  infos[1].range = VK_WHOLE_SIZE;
+  memset(writes, 0, sizeof(writes));
+  for (uint32_t i = 0u; i < 2u; ++i) {
+    writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[i].dstSet = scene->descriptor_set;
+    writes[i].dstBinding = 2u + i;
+    writes[i].descriptorCount = 1u;
+    writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    writes[i].pBufferInfo = &infos[i];
+  }
+  vkUpdateDescriptorSets(scene->services.device, 2u, writes, 0u, NULL);
+  ++scene->batch_descriptor_rebind_count;
+}
+
+static int prom_ray_ensure_batch_capacity(prom_ray_query_scene* scene, uint32_t required_count,
+                                          uint64_t required_ray_bytes, uint64_t required_hit_bytes) {
+  uint32_t capacity;
+  uint64_t ray_bytes;
+  uint64_t hit_bytes;
+  prom_vk_buffer new_ray_buffer;
+  prom_vk_buffer new_raw_hit_buffer;
+  if (scene == NULL || required_count == 0u || required_count <= scene->batch_capacity) return 1;
+  capacity = scene->batch_capacity == 0u ? 4u : scene->batch_capacity;
+  while (capacity < required_count) {
+    if (capacity > UINT32_MAX / 2u) { capacity = required_count; break; }
+    capacity *= 2u;
+  }
+  if (!prom_ray_batch_byte_sizes(capacity, &ray_bytes, &hit_bytes)) return 0;
+  /* A doubled capacity is useful only while each storage-buffer descriptor
+     remains admitted. Fall back to the exact already-admitted request. */
+  if (!prom_ray_batch_is_admitted(scene, capacity, ray_bytes, hit_bytes)) {
+    capacity = required_count;
+    ray_bytes = required_ray_bytes;
+    hit_bytes = required_hit_bytes;
+  }
+  memset(&new_ray_buffer, 0, sizeof(new_ray_buffer));
+  memset(&new_raw_hit_buffer, 0, sizeof(new_raw_hit_buffer));
+  if (prom_vk_create_buffer(scene->services.physical_device, scene->services.device,
+                            scene->services.test_flags, (VkDeviceSize)ray_bytes,
+                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                            1, &new_ray_buffer) != VK_SUCCESS || new_ray_buffer.mapped == NULL ||
+      prom_vk_create_buffer(scene->services.physical_device, scene->services.device,
+                            scene->services.test_flags, (VkDeviceSize)hit_bytes,
+                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                            1, &new_raw_hit_buffer) != VK_SUCCESS || new_raw_hit_buffer.mapped == NULL) {
+    prom_vk_destroy_buffer(scene->services.device, &new_raw_hit_buffer);
+    prom_vk_destroy_buffer(scene->services.device, &new_ray_buffer);
+    return 0;
+  }
+  /* The synchronous route has completed every prior submission before this
+     replacement. Rebinding precedes retirement so the descriptor set never
+     observes a retired buffer. */
+  {
+    prom_vk_buffer old_ray_buffer = scene->ray_buffer;
+    prom_vk_buffer old_raw_hit_buffer = scene->raw_hit_buffer;
+    scene->ray_buffer = new_ray_buffer;
+    scene->raw_hit_buffer = new_raw_hit_buffer;
+    prom_ray_rebind_batch_descriptors(scene);
+    prom_vk_destroy_buffer(scene->services.device, &old_ray_buffer);
+    prom_vk_destroy_buffer(scene->services.device, &old_raw_hit_buffer);
+  }
+  scene->batch_capacity = capacity;
+  ++scene->batch_buffer_reallocation_count;
+  return 1;
+}
+
+static int prom_ray_scene_trace_batch_direct(prom_ray_query_scene* scene,
+                                             const PrometheusRayQueryBatchRequest* request,
+                                             uint32_t ray_stride, uint32_t hit_stride,
+                                             uint64_t ray_bytes, uint64_t hit_bytes) {
+  VkCommandBuffer command_buffer = VK_NULL_HANDLE;
+  float* words;
+  PrometheusRayQueryRawHit* raw_hits;
+  if (scene == NULL || request == NULL || request->ray_count == 0u || !scene->raw_scene ||
+      scene->pipeline == VK_NULL_HANDLE || scene->ray_buffer.mapped == NULL ||
+      scene->raw_hit_buffer.mapped == NULL) return 0;
+  if (!prom_ray_ensure_batch_capacity(scene, request->ray_count, ray_bytes, hit_bytes)) return 0;
+  words = (float*)scene->ray_buffer.mapped;
+  for (uint32_t i = 0u; i < request->ray_count; ++i) {
+    const PrometheusRayQueryRay* ray = (const PrometheusRayQueryRay*)((const unsigned char*)request->rays +
+        (size_t)i * ray_stride);
+    float* ray_words = words + (size_t)i * PROM_RAY_SHADER_WORDS_PER_RAY * 4u;
+    ray_words[0] = ray->origin[0]; ray_words[1] = ray->origin[1]; ray_words[2] = ray->origin[2]; ray_words[3] = ray->t_min;
+    ray_words[4] = ray->direction[0]; ray_words[5] = ray->direction[1]; ray_words[6] = ray->direction[2]; ray_words[7] = ray->t_max;
+    memcpy(&ray_words[8], &ray->visibility_mask, sizeof(ray->visibility_mask));
+    ray_words[9] = 0.0f; ray_words[10] = 0.0f; ray_words[11] = 0.0f;
+  }
+  memset(scene->raw_hit_buffer.mapped, 0, (size_t)hit_bytes);
+  if (!prom_ray_begin_command(scene, &command_buffer)) return 0;
+  vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, scene->pipeline);
+  vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, scene->pipeline_layout,
+                          0u, 1u, &scene->descriptor_set, 0u, NULL);
+  vkCmdDispatch(command_buffer, request->ray_count, 1u, 1u);
+  ++scene->batch_physical_dispatch_count;
+  scene->batch_last_dispatch_groups_x = request->ray_count;
+  if (!prom_ray_end_submit_and_free(scene, command_buffer)) return 0;
+  ++scene->batch_physical_submission_count;
+  raw_hits = (PrometheusRayQueryRawHit*)scene->raw_hit_buffer.mapped;
+  for (uint32_t i = 0u; i < request->ray_count; ++i) {
+    PrometheusRayQueryHit* hit = (PrometheusRayQueryHit*)((unsigned char*)request->hits +
+        (size_t)i * hit_stride);
+    memset(hit, 0, hit_stride);
+    prom_ray_public_hit_from_raw(&raw_hits[i], hit);
+  }
+  return 1;
+}
+
+int prom_ray_query_scene_submit_batch_impl(void* handle, uint64_t scene_id,
+                                           const PrometheusRayQueryBatchRequest* request,
+                                           PrometheusRayQueryBatchResult* out_result) {
+  prom_ray_query_scene* scene;
+  uint32_t ray_stride, hit_stride;
+  uint64_t span;
+  uint64_t ray_bytes;
+  uint64_t hit_bytes;
+  if (out_result == NULL || out_result->struct_size < sizeof(*out_result)) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->stage = PROM_STAGE_INIT;
+  if (request == NULL || request->struct_size < sizeof(*request)) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_INVALID_REQUEST; return PROM_ERROR; }
+  if (!prom_reactor_runtime_validate_handle(handle)) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_INVALID_SCENE; return PROM_INVALID_HANDLE; }
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_INVALID_SCENE; return PROM_INVALID_HANDLE; }
+  if (!scene->committed) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_SCENE_UNCOMMITTED; return PROM_ERROR; }
+  out_result->ray_count = request->ray_count;
+  ray_stride = request->ray_stride == 0u ? (uint32_t)sizeof(PrometheusRayQueryRay) : request->ray_stride;
+  hit_stride = request->hit_stride == 0u ? (uint32_t)sizeof(PrometheusRayQueryHit) : request->hit_stride;
+  if (ray_stride < sizeof(PrometheusRayQueryRay) || hit_stride < sizeof(PrometheusRayQueryHit)) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_INVALID_STRIDE; return PROM_ERROR; }
+  if (request->ray_count == 0u) { out_result->stage = PROM_STAGE_CLEANUP; return PROM_OK; }
+  if (request->rays == NULL) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_NULL_RAYS; return PROM_ERROR; }
+  if (request->hits == NULL) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_NULL_HITS; return PROM_ERROR; }
+  if (!prom_ray_mul_u64((uint64_t)(request->ray_count - 1u), ray_stride, &span) ||
+      !prom_ray_add_u64(span, sizeof(PrometheusRayQueryRay), &span) || span > SIZE_MAX ||
+      !prom_ray_mul_u64((uint64_t)(request->ray_count - 1u), hit_stride, &span) ||
+       !prom_ray_add_u64(span, sizeof(PrometheusRayQueryHit), &span) || span > SIZE_MAX) { out_result->detail_code = PROM_RAY_QUERY_DETAIL_BATCH_TOO_LARGE; return PROM_ERROR; }
+  if (!prom_ray_batch_byte_sizes(request->ray_count, &ray_bytes, &hit_bytes)) {
+    out_result->detail_code = PROM_RAY_QUERY_DETAIL_BATCH_TOO_LARGE; return PROM_ERROR;
+  }
+  for (uint32_t i = 0u; i < request->ray_count; ++i) {
+    const PrometheusRayQueryRay* ray = (const PrometheusRayQueryRay*)((const unsigned char*)request->rays + (size_t)i * ray_stride);
+    if (!prom_ray_public_ray_is_valid(ray)) {
+      out_result->detail_code = PROM_RAY_QUERY_DETAIL_INVALID_RAY; return PROM_ERROR;
+    }
+  }
+  if (scene->empty_scene) {
+    for (uint32_t i = 0u; i < request->ray_count; ++i) {
+      PrometheusRayQueryHit* hit = (PrometheusRayQueryHit*)((unsigned char*)request->hits + (size_t)i * hit_stride);
+      memset(hit, 0, hit_stride);
+      prom_ray_public_hit_from_raw(NULL, hit);
+    }
+    out_result->stage = PROM_STAGE_CLEANUP;
+    return PROM_OK;
+  }
+  if (scene->committed_scene == NULL || !prom_ray_batch_is_admitted(scene->committed_scene, request->ray_count, ray_bytes, hit_bytes)) {
+    out_result->detail_code = PROM_RAY_QUERY_DETAIL_BATCH_DISPATCH_LIMIT; return PROM_ERROR;
+  }
+  if (!prom_ray_scene_trace_batch_direct(scene->committed_scene, request, ray_stride, hit_stride, ray_bytes, hit_bytes)) {
+    out_result->detail_code = PROM_RAY_QUERY_DETAIL_SUBMIT_OR_READBACK_FAILED; return PROM_ERROR;
+  }
+  out_result->stage = PROM_STAGE_CLEANUP;
+  return PROM_OK;
+}
+
+int prom_ray_query_scene_batch_diagnostics_impl(void* handle, uint64_t scene_id,
+                                                prom_ray_query_batch_diagnostics* out_diagnostics) {
+  prom_ray_query_scene* scene;
+  prom_ray_query_scene* execution_scene;
+  if (out_diagnostics == NULL || !prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  memset(out_diagnostics, 0, sizeof(*out_diagnostics));
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || !scene->committed || scene->empty_scene) return PROM_INVALID_HANDLE;
+  execution_scene = scene->committed_scene;
+  if (execution_scene == NULL || !execution_scene->raw_scene) return PROM_INVALID_HANDLE;
+  out_diagnostics->retained_capacity = execution_scene->batch_capacity;
+  out_diagnostics->last_dispatch_groups_x = execution_scene->batch_last_dispatch_groups_x;
+  out_diagnostics->buffer_reallocation_count = execution_scene->batch_buffer_reallocation_count;
+  out_diagnostics->descriptor_rebind_count = execution_scene->batch_descriptor_rebind_count;
+  out_diagnostics->physical_dispatch_count = execution_scene->batch_physical_dispatch_count;
+  out_diagnostics->physical_submission_count = execution_scene->batch_physical_submission_count;
   return PROM_OK;
 }
 

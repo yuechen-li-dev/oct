@@ -3080,6 +3080,29 @@ int prom_ray_query_scene_trace_impl(void* handle, uint64_t scene_id,
                                     const PrometheusRayQueryRawRequest* request,
                                     PrometheusRayQueryRawHit* out_hit);
 int prom_ray_query_scene_destroy_impl(void* handle, uint64_t scene_id);
+int prom_ray_query_scene_create_empty_impl(void* handle, uint64_t* out_scene_id);
+int prom_ray_query_scene_add_triangles_impl(void* handle, uint64_t scene_id,
+                                            const PrometheusRayQueryTriangle* triangles,
+                                            uint32_t triangle_count);
+int prom_ray_query_scene_add_spheres_impl(void* handle, uint64_t scene_id,
+                                          const PrometheusRayQuerySphere* spheres,
+                                          uint32_t sphere_count);
+int prom_ray_query_scene_commit_impl(void* handle, uint64_t scene_id);
+int prom_ray_query_scene_submit_batch_impl(void* handle, uint64_t scene_id,
+                                           const PrometheusRayQueryBatchRequest* request,
+                                           PrometheusRayQueryBatchResult* out_result);
+/* Reactor-private evidence for the RQ-M1b structural batch contract. This is
+   intentionally not part of the Vulkan-free foreign caller ABI. */
+typedef struct prom_ray_query_batch_diagnostics {
+  uint32_t retained_capacity;
+  uint32_t last_dispatch_groups_x;
+  uint64_t buffer_reallocation_count;
+  uint64_t descriptor_rebind_count;
+  uint64_t physical_dispatch_count;
+  uint64_t physical_submission_count;
+} prom_ray_query_batch_diagnostics;
+int prom_ray_query_scene_batch_diagnostics_impl(void* handle, uint64_t scene_id,
+                                                prom_ray_query_batch_diagnostics* out_diagnostics);
 /* Called by the sole Vulkan-owner teardown path before the device is destroyed. */
 void prom_ray_query_scene_runtime_destroy_all(void* runtime_handle);
 int prom_reactor_runtime_model_block_create_impl(

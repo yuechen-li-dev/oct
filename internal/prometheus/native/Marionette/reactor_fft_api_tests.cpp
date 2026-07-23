@@ -397,12 +397,14 @@ FACT(PrometheusReactor_RayQueryRawSphereAndTriangleTraversal)
     sceneRequest.struct_size = static_cast<std::uint32_t>(sizeof(sceneRequest));
     sceneRequest.triangles = triangles; sceneRequest.triangle_count = 1u;
     sceneRequest.spheres = spheres; sceneRequest.sphere_count = 1u;
-    std::uint64_t scene = 0u;
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_create(handle, &sceneRequest, &scene), "mixed scene must build triangle and procedural BLAS before TLAS");
     prom_shader_package* package = nullptr;
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_shader_package(handle, &package), "raw-hit runtime owns a package");
+    const std::uint64_t objectOpensBeforePipelineCreate = prom_shader_package_artifact_open_count(package);
+    std::uint64_t scene = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_create(handle, &sceneRequest, &scene), "mixed scene must build triangle and procedural BLAS before TLAS");
     const std::uint64_t objectOpensAfterPipelineCreate = prom_shader_package_artifact_open_count(package);
-    ASSERT_EQUAL(1u, objectOpensAfterPipelineCreate, "raw-hit pipeline opens its external object once");
+    ASSERT_EQUAL(objectOpensBeforePipelineCreate + 1u, objectOpensAfterPipelineCreate,
+                 "raw-hit pipeline opens exactly its verified external object once");
     PrometheusRayQueryRawRequest ray{};
     ray.struct_size = static_cast<std::uint32_t>(sizeof(ray));
     ray.origin[0] = 0.0f; ray.origin[1] = 0.0f; ray.origin[2] = 0.0f; ray.t_min = 0.0f;
