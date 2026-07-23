@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 
 import torch
@@ -59,6 +60,113 @@ def summary(value):
         "sha256_f32_le": hashlib.sha256(raw).hexdigest(),
         "comparison_policy": "Prometheus FP32 activations compared elementwise against this BF16-source reference; abs<=0.25 or rel<=0.02 for ordinary values, abs<=0.01 where |reference|<0.5.",
     }
+
+
+def bf16_precision_comparison(reference, actual):
+    """Compare a complete captured BF16 tensor without accepting tolerance drift."""
+    reference = reference.detach().float().contiguous().view(-1)
+    actual = actual.detach().float().contiguous().view(-1)
+    difference = (actual - reference).abs()
+    worst = int(difference.argmax())
+    nonzero_reference = reference.abs() >= 0.5
+    relative = torch.zeros_like(difference)
+    relative[nonzero_reference] = difference[nonzero_reference] / reference[nonzero_reference].abs()
+    reference_bits = int(reference[worst].to(torch.bfloat16).view(torch.uint16).item())
+    actual_bits = int(actual[worst].to(torch.bfloat16).view(torch.uint16).item())
+    return {
+        "element_count": int(reference.numel()),
+        "exact_match_count": int((actual == reference).sum()),
+        "differing_count": int((actual != reference).sum()),
+        "max_absolute_error": float(difference[worst]),
+        "max_relative_error": float(relative.max()),
+        "relative_l2": float(torch.linalg.vector_norm(actual - reference) / torch.linalg.vector_norm(reference)),
+        "worst_flat_index": worst,
+        "reference": float(reference[worst]),
+        "actual": float(actual[worst]),
+        "reference_bf16_hex": f"0x{reference_bits:04x}",
+        "actual_bf16_hex": f"0x{actual_bits:04x}",
+    }
+
+
+def projection_precision_diagnostics(layer, embeddings, initial_norm, projection_outputs):
+    """Distinguish activation storage from CPU BF16 linear backend behavior.
+
+    This is reference-only evidence.  Production Vulkan never imports this
+    computation or its outputs.
+    """
+    raw_norm = layer.input_layernorm._norm(embeddings.float()) * layer.input_layernorm.weight.float()
+    def strict_scalar(terms):
+        accumulator = torch.tensor(0.0, dtype=torch.float32)
+        for term in terms:
+            accumulator = accumulator + term
+        return accumulator
+
+    def pairwise_tree(terms):
+        values = list(terms.unbind())
+        while len(values) > 1:
+            values = [
+                values[index] + values[index + 1] if index + 1 < len(values) else values[index]
+                for index in range(0, len(values), 2)
+            ]
+        return values[0]
+
+    compact_terms = torch.tensor([16777216.0, -8388608.0, -8388608.0, -0.5], dtype=torch.float32)
+    compact_scalar = strict_scalar(compact_terms)
+    compact_pairwise = pairwise_tree(compact_terms)
+    result = {
+        "reference_expression": "torch.nn.Linear(BF16 activation, BF16 checkpoint weight)",
+        "operand_dtypes": {"activation": str(initial_norm.dtype), "weight": "torch.bfloat16"},
+        "activation_fp32_before_output_cast": bf16_precision_comparison(initial_norm, raw_norm),
+        "torch": torch.__version__,
+        "mkldnn_available": bool(torch.backends.mkldnn.is_available()),
+        "mkldnn_enabled": bool(torch.backends.mkldnn.enabled),
+        "mkl_available": bool(torch.backends.mkl.is_available()),
+        "thread_count": torch.get_num_threads(),
+        "interop_thread_count": torch.get_num_interop_threads(),
+        "environment": {name: os.environ.get(name) for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "ONEDNN_MAX_CPU_ISA")},
+        "projections": {},
+        "framework_stability": {},
+        "compact_contraction_order_witness": {
+            "terms": compact_terms.tolist(),
+            "strict_scalar_fp32": float(compact_scalar),
+            "strict_scalar_bf16_hex": f"0x{int(compact_scalar.to(torch.bfloat16).view(torch.uint16).item()):04x}",
+            "pairwise_tree_fp32": float(compact_pairwise),
+            "pairwise_tree_bf16_hex": f"0x{int(compact_pairwise.to(torch.bfloat16).view(torch.uint16).item()):04x}",
+        },
+    }
+    original_threads = torch.get_num_threads()
+    original_mkldnn = torch.backends.mkldnn.enabled
+    try:
+        for name, reference in projection_outputs.items():
+            linear = getattr(layer.self_attn, f"{name}_proj")
+            result["projections"][name] = {
+                "A_fp32_precast_activation_bf16_weight_fp32_accum_bf16_output": bf16_precision_comparison(
+                    reference, F.linear(raw_norm, linear.weight.float()).to(torch.bfloat16)
+                ),
+                "B_bf16_activation_bf16_weight_fp32_accum_bf16_output": bf16_precision_comparison(
+                    reference, F.linear(initial_norm.float(), linear.weight.float()).to(torch.bfloat16)
+                ),
+                "C_framework_bf16_linear": bf16_precision_comparison(reference, linear(initial_norm)),
+            }
+        for enabled in (True, False):
+            torch.backends.mkldnn.enabled = enabled
+            for threads in (1, original_threads):
+                torch.set_num_threads(threads)
+                key = f"mkldnn={enabled},threads={threads}"
+                result["framework_stability"][key] = {
+                    name: {
+                        "against_captured": bf16_precision_comparison(reference, getattr(layer.self_attn, f"{name}_proj")(initial_norm)),
+                        "repeat": bf16_precision_comparison(
+                            getattr(layer.self_attn, f"{name}_proj")(initial_norm),
+                            getattr(layer.self_attn, f"{name}_proj")(initial_norm),
+                        ),
+                    }
+                    for name, reference in projection_outputs.items()
+                }
+    finally:
+        torch.set_num_threads(original_threads)
+        torch.backends.mkldnn.enabled = original_mkldnn
+    return result
 
 
 def compact_rows(value):
@@ -184,10 +292,10 @@ def capture(root, authority_path, fixture_root):
     q_linear = layer.self_attn.q_proj(initial_norm)
     k_linear = layer.self_attn.k_proj(initial_norm)
     v_linear = layer.self_attn.v_proj(initial_norm)
-    q = layer.self_attn.q_norm(q_linear.view(1, len(TOKEN_IDS), HEADS, HEAD_DIM))
-    q = apply_rotary_pos_emb(q, cos, sin, unsqueeze_dim=2).transpose(1, 2)
-    k = layer.self_attn.k_norm(k_linear.view(1, len(TOKEN_IDS), 1, HEAD_DIM))
-    k = apply_rotary_pos_emb(k, cos, sin, unsqueeze_dim=2).transpose(1, 2)
+    q_normalized = layer.self_attn.q_norm(q_linear.view(1, len(TOKEN_IDS), HEADS, HEAD_DIM))
+    q = apply_rotary_pos_emb(q_normalized, cos, sin, unsqueeze_dim=2).transpose(1, 2)
+    k_normalized = layer.self_attn.k_norm(k_linear.view(1, len(TOKEN_IDS), 1, HEAD_DIM))
+    k = apply_rotary_pos_emb(k_normalized, cos, sin, unsqueeze_dim=2).transpose(1, 2)
     v = layer.self_attn.v_norm(v_linear.view(1, len(TOKEN_IDS), 1, HEAD_DIM)).transpose(1, 2)
     sequence = len(TOKEN_IDS)
     mask = torch.full((1, 1, sequence, sequence), torch.finfo(torch.bfloat16).min, dtype=torch.bfloat16)
@@ -219,7 +327,24 @@ def capture(root, authority_path, fixture_root):
     fixture_root.mkdir(parents=True, exist_ok=True)
     (fixture_root / "token_ids.u32le.bin").write_bytes(torch.tensor(TOKEN_IDS, dtype=torch.int32).numpy().astype("<u4").tobytes())
     (fixture_root / "base_token_embedding.bf16le.bin").write_bytes(embeddings.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_input_rmsnorm.bf16le.bin").write_bytes(initial_norm.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
     (fixture_root / "layer0_ple.bf16le.bin").write_bytes(ple0.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    # Projection-storage witnesses make the resident FP32 -> BF16 -> FP32
+    # boundary independently auditable before per-head normalization.
+    (fixture_root / "layer0_q_linear.bf16le.bin").write_bytes(q_linear.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_k_linear.bf16le.bin").write_bytes(k_linear.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_v_linear.bf16le.bin").write_bytes(v_linear.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    # The head-normalization fixtures are comparison authority only.  They
+    # preserve the pre-RoPE [token, head, channel] layout so the Vulkan path
+    # cannot accidentally hide a transpose or position transform error.
+    (fixture_root / "layer0_q_normalized.bf16le.bin").write_bytes(q_normalized.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_k_normalized.bf16le.bin").write_bytes(k_normalized.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    # RoPE authority is retained in the production [token, head, component]
+    # layout.  cos/sin are BF16 storage values computed from FP32 angles.
+    (fixture_root / "layer0_rope_cos.bf16le.bin").write_bytes(cos.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_rope_sin.bf16le.bin").write_bytes(sin.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_q_rope.bf16le.bin").write_bytes(q.transpose(1, 2).cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
+    (fixture_root / "layer0_k_rope.bf16le.bin").write_bytes(k.transpose(1, 2).cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
     (fixture_root / "layer0_output.bf16le.bin").write_bytes(output.cpu().view(torch.uint16).numpy().astype("<u2").tobytes())
     fixture_hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(fixture_root.glob("*.bin"))}
     boundaries = {
@@ -230,6 +355,7 @@ def capture(root, authority_path, fixture_root):
         "layer0_effective_ple": summary(ple0),
         "layer0_input_rmsnorm": summary(initial_norm),
         "layer0_q_linear": summary(q_linear), "layer0_k_linear": summary(k_linear), "layer0_v_linear": summary(v_linear),
+        "layer0_q_normalized": summary(q_normalized), "layer0_k_normalized": summary(k_normalized),
         "layer0_q_normalized_rope": summary(q), "layer0_k_normalized_rope": summary(k), "layer0_v_normalized": summary(v),
         "layer0_pre_softmax": summary(pre_softmax), "layer0_attention_probabilities": summary(probabilities),
         "layer0_attention_before_output_projection": summary(attention_before_projection),
@@ -240,6 +366,9 @@ def capture(root, authority_path, fixture_root):
         "layer0_post_ffn_residual": summary(post_ffn_residual), "layer0_ple_residual": summary(ple_norm_out),
         "layer0_output": summary(output), "layer0_output_ple_suppressed": summary(ablated),
     }
+    projection_diagnostics = projection_precision_diagnostics(
+        layer, embeddings, initial_norm, {"q": q_linear, "k": k_linear, "v": v_linear}
+    )
     return {
         "schema": "oct.prometheus.g4-e2b.m1-reference.v1", "repository": REPOSITORY, "revision": REVISION,
         "reference": {"transformers": __import__("transformers").__version__, "torch": torch.__version__, "device": "cpu", "weights_dtype": "bfloat16", "attention_implementation": "eager"},
@@ -247,6 +376,7 @@ def capture(root, authority_path, fixture_root):
         "ple": {"token_lookup": "embed_tokens_per_layer[id] * sqrt(256), packed [35,256]", "context": "RMSNorm((base_embedding @ W^T) / sqrt(1536))", "combine": "(token_lookup + context) / sqrt(2)", "layer0_injection": "after ordinary FFN residual via gelu(per_layer_input_gate(residual)) * ple0, projection, RMSNorm, residual", "initial_embedding_combination": "none; PLE does not alter the layer initial hidden state"},
         "attention": {"identity": "sliding_attention", "heads": HEADS, "kv_heads": 1, "head_dim": HEAD_DIM, "scale": 1.0, "rope_theta": 10000.0, "causal": True, "sliding_window": 512, "pre_softmax_rows": compact_rows(pre_softmax), "probability_rows": compact_rows(probabilities), "invariants": attention_invariants(probabilities)},
         "boundaries": boundaries, "ple_ablation": {"effective_layer_input_delta_linf": 0.0, "final_output_delta": summary(output - ablated)},
+        "projection_precision_diagnostics": projection_diagnostics,
         "fixtures": {"root": str(fixture_root), "files_sha256": fixture_hashes},
     }
 

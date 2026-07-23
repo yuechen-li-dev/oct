@@ -1,0 +1,60 @@
+// Gemma 4 E2B M1 model-private RoPE. Inputs and outputs are flattened
+// [token, head, component] BF16-reexpanded FP32 values. Each output reads both
+// original half-pair members, so reuse can never introduce an in-place hazard.
+namespace Prometheus.Production.Gemma4E2BM1;
+
+stream RopeIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Reserved0: readwrite array<f32>;
+    [binding(2)] Reserved1: readwrite array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record RopeParams {
+    TokenCount: u32;
+    HeadCount: u32;
+    HeadDim: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+    Reserved2: u32;
+    Reserved3: u32;
+    Reserved4: u32;
+}
+
+fn RoundtripBF16(value: f32) -> f32 {
+    return HLSL<f32>(value) {
+        uint bits = asuint(value); uint exponent = bits & 0x7f800000u;
+        uint mantissa = bits & 0x007fffffu;
+        if (exponent == 0x7f800000u) {
+            if (mantissa == 0u) return value;
+            return asfloat((((bits >> 16u) | 0x0040u) << 16u));
+        }
+        return asfloat(((bits + 0x00007fffu + ((bits >> 16u) & 1u)) >> 16u) << 16u);
+    };
+}
+
+shader Gemma4E2BM1RopeHalfSplit {
+    resources RopeIO;
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: RopeParams) -> void {
+        let element: u32 = DispatchThreadID.x;
+        let total: u32 = params.TokenCount * params.HeadCount * params.HeadDim;
+        if element < total {
+            let component: u32 = element % params.HeadDim;
+            let half: u32 = params.HeadDim / 2u;
+            let frequency_index: u32 = component % half;
+            let token: u32 = element / (params.HeadCount * params.HeadDim);
+            var pair_element: u32 = element - half;
+            if component < half { pair_element = element + half; }
+            let source: f32 = Input[element];
+            let pair_source: f32 = Input[pair_element];
+            let transformed: f32 = HLSL<f32>(source, pair_source, token, frequency_index, component, half) {
+                float angle = (float)token * pow(10000.0, -((float)(frequency_index * 2u) / 256.0));
+                float cosine = asfloat((asuint(cos(angle)) + 0x7fffu + ((asuint(cos(angle)) >> 16u) & 1u)) & 0xffff0000u);
+                float sine = asfloat((asuint(sin(angle)) + 0x7fffu + ((asuint(sin(angle)) >> 16u) & 1u)) & 0xffff0000u);
+                return component < half ? source * cosine - pair_source * sine : source * cosine + pair_source * sine;
+            };
+            Output[element] = RoundtripBF16(transformed);
+        }
+        return;
+    }
+}

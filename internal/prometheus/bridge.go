@@ -13,16 +13,18 @@ const (
 	reactorEnvVar             = "OCT_PROMETHEUS_REACTOR"
 	reactorExpectedABIVersion = uint32(1)
 
-	reactorSymbolABIVersion   = "prometheus_reactor_abi_version"
-	reactorSymbolCreate       = "prometheus_reactor_runtime_create"
-	reactorSymbolDestroy      = "prometheus_reactor_runtime_destroy"
-	reactorSymbolProbe        = "prometheus_reactor_runtime_probe"
-	reactorSymbolSGEMM        = "prometheus_reactor_runtime_sgemm"
-	reactorSymbolSubmitAsync  = "prometheus_reactor_runtime_sgemm_submit_async"
-	reactorSymbolQueryAsync   = "prometheus_reactor_runtime_sgemm_query_async"
-	reactorSymbolConsumeAsync = "prometheus_reactor_runtime_sgemm_consume_async"
-	reactorSymbolAbandonAsync = "prometheus_reactor_runtime_sgemm_abandon_async"
-	reactorSymbolGemmaInputRN = "prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm"
+	reactorSymbolABIVersion                  = "prometheus_reactor_abi_version"
+	reactorSymbolCreate                      = "prometheus_reactor_runtime_create"
+	reactorSymbolDestroy                     = "prometheus_reactor_runtime_destroy"
+	reactorSymbolProbe                       = "prometheus_reactor_runtime_probe"
+	reactorSymbolSGEMM                       = "prometheus_reactor_runtime_sgemm"
+	reactorSymbolSubmitAsync                 = "prometheus_reactor_runtime_sgemm_submit_async"
+	reactorSymbolQueryAsync                  = "prometheus_reactor_runtime_sgemm_query_async"
+	reactorSymbolConsumeAsync                = "prometheus_reactor_runtime_sgemm_consume_async"
+	reactorSymbolAbandonAsync                = "prometheus_reactor_runtime_sgemm_abandon_async"
+	reactorSymbolGemmaInputRN                = "prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm"
+	reactorSymbolGemmaProjectionActivationRN = "prometheus_reactor_runtime_gemma4e2b_m1_projection_activation_rmsnorm"
+	reactorSymbolGemmaHeadRN                 = "prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm"
 )
 
 type ReactorIssueCode string
@@ -103,6 +105,7 @@ type reactorQueryAsync func(reactorRuntimeHandle, int) (reactorAsyncStatus, erro
 type reactorConsumeAsync func(reactorRuntimeHandle, int, []float32) (reactorCallStatus, error)
 type reactorAbandonAsync func(reactorRuntimeHandle, int) error
 type reactorGemma4E2BM1InputRMSNorm func(reactorRuntimeHandle, []float32, []float32, uint32, uint32, uint32, float32, uint64, uint64, uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error)
+type reactorGemma4E2BM1HeadRMSNorm = reactorGemma4E2BM1InputRMSNorm
 
 type reactorGemma4E2BM1InputRMSNormResult struct {
 	StageCode                    uint32
@@ -156,16 +159,18 @@ var newPrometheusBridge = func() *prometheusBridge {
 }
 
 type nativeRuntime struct {
-	destroy      reactorDestroy
-	sgemm        reactorSGEMM
-	submitAsync  reactorSubmitAsync
-	queryAsync   reactorQueryAsync
-	consumeAsync reactorConsumeAsync
-	abandonAsync reactorAbandonAsync
-	gemmaInputRN reactorGemma4E2BM1InputRMSNorm
-	handle       reactorRuntimeHandle
-	caps         reactorCaps
-	lib          dynamicLibrary
+	destroy                     reactorDestroy
+	sgemm                       reactorSGEMM
+	submitAsync                 reactorSubmitAsync
+	queryAsync                  reactorQueryAsync
+	consumeAsync                reactorConsumeAsync
+	abandonAsync                reactorAbandonAsync
+	gemmaInputRN                reactorGemma4E2BM1InputRMSNorm
+	gemmaProjectionActivationRN reactorGemma4E2BM1InputRMSNorm
+	gemmaHeadRN                 reactorGemma4E2BM1HeadRMSNorm
+	handle                      reactorRuntimeHandle
+	caps                        reactorCaps
+	lib                         dynamicLibrary
 }
 
 func newNativeRuntime() (*nativeRuntime, error) {
@@ -296,6 +301,16 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 			rt.gemmaInputRN = gemmaFn
 		}
 	}
+	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaProjectionActivationRN); err == nil {
+		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1InputRMSNorm); ok {
+			rt.gemmaProjectionActivationRN = gemmaFn
+		}
+	}
+	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaHeadRN); err == nil {
+		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1HeadRMSNorm); ok {
+			rt.gemmaHeadRN = gemmaFn
+		}
+	}
 
 	return rt, nil
 }
@@ -375,6 +390,24 @@ func (r *nativeRuntime) Gemma4E2BM1InputRMSNorm(input, weight []float32, tokens,
 		return nil, nil, reactorGemma4E2BM1InputRMSNormResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 input rmsnorm entrypoint unavailable")
 	}
 	return r.gemmaInputRN(r.handle, input, weight, tokens, modelWidth, inputRowStride, epsilon, inputGeneration, weightGeneration, exactSourceHash)
+}
+
+// Gemma4E2BM1ProjectionActivationRMSNorm preserves the model-private BF16
+// storage boundary between layer RMSNorm and every Q/K/V projection.
+func (r *nativeRuntime) Gemma4E2BM1ProjectionActivationRMSNorm(input, weight []float32, tokens, modelWidth, inputRowStride uint32, epsilon float32, inputGeneration, weightGeneration, exactSourceHash uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error) {
+	if r == nil || r.gemmaProjectionActivationRN == nil {
+		return nil, nil, reactorGemma4E2BM1InputRMSNormResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 projection activation rmsnorm entrypoint unavailable")
+	}
+	return r.gemmaProjectionActivationRN(r.handle, input, weight, tokens, modelWidth, inputRowStride, epsilon, inputGeneration, weightGeneration, exactSourceHash)
+}
+
+// Gemma4E2BM1HeadRMSNorm admits flattened [token, head, channel] rows only.
+// The model-private boundary prevents an accidental layer-width substitution.
+func (r *nativeRuntime) Gemma4E2BM1HeadRMSNorm(input, weight []float32, rows, headWidth, inputRowStride uint32, epsilon float32, inputGeneration, weightGeneration, exactSourceHash uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error) {
+	if r == nil || r.gemmaHeadRN == nil {
+		return nil, nil, reactorGemma4E2BM1InputRMSNormResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 head rmsnorm entrypoint unavailable")
+	}
+	return r.gemmaHeadRN(r.handle, input, weight, rows, headWidth, inputRowStride, epsilon, inputGeneration, weightGeneration, exactSourceHash)
 }
 
 func (r *nativeRuntime) Environment() string {

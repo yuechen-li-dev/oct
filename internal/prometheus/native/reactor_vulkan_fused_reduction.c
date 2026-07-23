@@ -642,6 +642,7 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
     prom_vk_destroy_buffer(device, &slot->m47_gate);
     prom_vk_destroy_buffer(device, &slot->m47_n_packed);
     prom_vk_destroy_buffer(device, &slot->m46_readback);
+    prom_vk_destroy_buffer(device, &slot->gemma4e2b_m1_bf16_roundtrip);
     prom_vk_destroy_buffer(device, &slot->m49a_m46_z);
     prom_vk_destroy_buffer(device, &slot->m46_output);
     prom_vk_destroy_buffer(device, &slot->m46_inv_rms);
@@ -687,6 +688,7 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   for (pipeline_index = 0u; pipeline_index < PROM_M46_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m46_pipelines[pipeline_index]);
   }
+  prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_bf16_roundtrip_pipeline);
   for (pipeline_index = 0u; pipeline_index < PROM_M47_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m47_pipelines[pipeline_index]);
   }

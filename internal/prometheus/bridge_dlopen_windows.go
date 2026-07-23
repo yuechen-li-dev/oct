@@ -393,7 +393,7 @@ func (l *winDLLLibrary) Resolve(symbol string) (any, error) {
 			}
 			return nil
 		}), nil
-	case reactorSymbolGemmaInputRN:
+	case reactorSymbolGemmaInputRN, reactorSymbolGemmaProjectionActivationRN, reactorSymbolGemmaHeadRN:
 		return reactorGemma4E2BM1InputRMSNorm(func(handle reactorRuntimeHandle, input, weight []float32, tokens, modelWidth, inputRowStride uint32, epsilon float32, inputGeneration, weightGeneration, exactSourceHash uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error) {
 			output := make([]float32, int(tokens*modelWidth))
 			invRMS := make([]float32, int(tokens))

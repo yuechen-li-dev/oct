@@ -2,12 +2,16 @@
 
 ## State
 
-**MEANINGFUL PROGRESSION — reference boundary, fail-closed checkpoint
-selection, exact RMSNorm, and the first canonical Q/K/V projection boundary
-are closed on the package-backed Windows RTX 3070 route.** The full
-authoritative layer remains incomplete; the first remaining boundary is
-authoritative Q/K normalization. M0 remains accepted and unchanged. No
-checkpoint cache or checkpoint copy was added in this progression.
+**MEANINGFUL PROGRESSION — the owner-selected portable BF16 projection contract
+is now the M1 authority.** The production route BF16-rounds the resident layer
+RMSNorm activation before Q/K/V projection, uses the existing BF16 checkpoint
+weights with FP32 SGEMM accumulation, then stores each projection as BF16 before
+re-expansion. The historical oneDNN capture remains an important diagnostic,
+not a cross-backend bitwise contract. Q/K normalization is compared to the new
+portable strict reference, not accidentally to oneDNN reduction crossings.
+RoPE now has an authority fixture and validated package artifact, but its native
+device invocation seam remains unimplemented. M0 remains accepted and
+unchanged. No checkpoint cache or checkpoint copy was added in this progression.
 
 The owner-local checkpoint at `C:\Models\gemma-4-E2B-it` passed the unchanged
 full authority check: exact repository/revision, all nine required objects,
@@ -231,9 +235,257 @@ The accepted M0 plan remains the governing limit: stream exact BF16 layer-0
 and selected embedding/PLE rows; retain FP32 activations; do not make the full
 checkpoint device-resident.
 
-The next permitted boundary is authoritative Q/K normalization. Reusing the
-existing Z-Image hard-coded 1024x3840 model block, SiLU, or `1e-5` RMSNorm
-routes remains semantically wrong.
+That resident BF16 projection-to-normalization boundary is now closed under the
+portable contract. Reusing the existing Z-Image hard-coded 1024x3840 model
+block, SiLU, or `1e-5` RMSNorm routes remains semantically wrong.
+
+### Q/K normalization semantics
+
+The captured source establishes the following exact layer-0 facts; this
+supersedes any generic-Gemma shorthand in earlier report language:
+
+- Q has eight heads and K/V have one KV head, with `head_dim=256`; every query
+  head maps to KV head zero (`query_head / 8`).
+- Both `q_norm` and `k_norm` are learned-weight RMSNorm over exactly one
+  `[256]` head vector, with epsilon `1e-6`; they are not the layer-input
+  `[1536]` RMSNorm. The scale is the corresponding checkpoint vector
+  `self_attn.{q_norm,k_norm}.weight`.
+- Layer 0 is `sliding_attention` with causal local window 512. The canonical
+  15-token witness is consequently causal-only in practice, but must not be
+  used to infer that later rows are globally visible.
+- RoPE is local/default one-dimensional RoPE: positions originate at zero,
+  theta is `10000`, inverse frequencies are
+  `1 / (10000 ** (arange(0,256,2) / 256))`, and the reference forms the
+  duplicated-frequency cosine/sine vector before `apply_rotary_pos_emb`.
+  The implementation must preserve both source components before updating a
+  pair; the prior in-place even/odd hazard remains a required focused
+  regression.
+- Attention applies no additional `1/sqrt(head_dim)` factor: the captured
+  eager call uses scaling `1.0` before stable softmax.
+
+To prove the layout and reduction boundary without widening the public API, a
+model-private `prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm` symbol
+was added. It uses the established M46 FP32 reduction/application machinery
+but admits flattened head rows only: Q is `[15,8,256] -> [120,256]`, and K is
+`[15,1,256] -> [15,256]`. The reference harness now emits complete comparison
+fixtures `layer0_q_normalized.bf16le.bin` and
+`layer0_k_normalized.bf16le.bin` in the pre-RoPE `[token,head,channel]`
+layout; they are authority inputs only and are written outside the repository.
+
+On the rebuilt package-backed Windows RTX 3070 route, both calls had one final
+readback, no intermediate host replacement, all expected coordinates written,
+no zero/NaN/infinity values, and stable repeat results. Against an independent
+FP32 CPU reconstruction of the exact dispatched input they were:
+
+| Boundary | Max abs | Relative L2 | Coverage |
+| --- | ---: | ---: | --- |
+| Q head RMSNorm | `0.000002861023` | `1.2711686e-7` | `30720/30720` finite nonzero values |
+| K head RMSNorm | `0.00000023841858` | `1.1853089e-7` | `3840/3840` finite nonzero values |
+
+This was the pre-repair localization, not a current failure: PyTorch's layer
+executes a BF16 activation before the Q/K linear, while corrected package SGEMM
+had been supplied with the uncast FP32 layer-RMSNorm value. Passing that older
+projection into the otherwise-correct head reduction caused Q max absolute
+error `0.05006504` and K `0.0029935837`. It established a missing precision
+boundary—not a Q/K layout or scale error—and is now repaired by the
+model-private resident stage described below. No host conversion, CPU result
+replacement, or Gemma-specific SGEMM/GEMV workaround was introduced.
+
+### Resident BF16 transition implementation and exact localization
+
+The requested model-private stage is now package-backed as
+`kernel-67-default`, `Gemma4E2BM1Bf16Roundtrip_CS`, sourced from
+`internal/prometheus/shaders/sdslv/production/gemma4e2b/bf16_roundtrip.sdslv`.
+It has four storage-buffer bindings, a 32-byte push record, and 256 threads per
+workgroup. It writes an FP32 destination holding the exact value of
+FP32 -> BF16 -> FP32, rather than introducing a public quantization reactor or
+a host numerical conversion. Finite values use round-to-nearest-even at BF16
+bit 16; infinities are preserved and NaNs retain their high payload bits with
+the BF16 quiet bit set. The private Q/K entrypoint accepts only flattened
+256-channel rows, at most 120 rows, checkpoint scale length 256, and epsilon
+`1e-6`; malformed geometry is rejected before dispatch.
+
+The stage runs in the M46 command buffer after its resident upload and before
+the first head reduction. A second in-place device stage runs after M46 apply
+and before its only result readback, matching the captured BF16 normalized
+output storage. Both Q `[120,256]` and K `[15,256]` reported complete output,
+were finite, and were repeat-stable. This is device numerical work, but it is not yet a direct
+device-buffer handoff from generic SGEMM: the current public projection ABI
+performs its established host readback before the private head route uploads.
+No host-side numerical conversion or replacement occurs.
+
+The reference harness now writes bounded BF16 storage witnesses for
+`layer0_q_linear`, `layer0_k_linear`, and `layer0_v_linear`, in addition to
+the normalized fixtures. They demonstrate the relevant precision graph:
+
+```text
+input RMSNorm: BF16 source -> FP32 resident arithmetic/result
+Q/K/V projection: CPU-BF16 authority stores BF16; later consumers re-expand FP32
+Q/K head normalization: BF16 input -> FP32 reduction/application -> BF16 output storage
+RoPE inputs/constants/output: not implemented on Vulkan; captured source uses BF16 cos/sin
+attention scores/aggregation: not implemented; V's authority input is BF16-expanded
+```
+
+The following is the historical pre-activation-repair RTX witness. It records
+why post-projection BF16 rounding alone was insufficient and is retained as a
+diagnostic, not as the current portable comparison:
+
+| BF16 storage witness | Max abs | Failing elements | First differing authority / RTX value |
+| --- | ---: | ---: | --- |
+| Q `[15,2048]` | `4.0` | `10,418/30,720` | index `7`: `11.5 / 11.5625` |
+| K `[15,256]` | `1.0` | `1,327/3,840` | index `0`: `2.578125 / 2.59375` |
+| V `[15,256]` | `1.0` | `1,734/3,840` | index `0`: `1.8125 / 1.8671875` |
+
+Before the activation repair, complete normalized comparison consequently
+failed. The normalization implementation was not implicated: before BF16
+authority was introduced, its direct-FP32 operational comparisons were Q
+`2.861023e-6` (relative L2 `1.2711686e-7`) and K `2.3841858e-7` (relative L2
+`1.1853089e-7`). The only supported next repair investigation is the shared
+projection contraction's BF16 semantics; do not alter RMSNorm, add GEMV, or
+start RoPE to compensate downstream.
+
+### Projection-contraction operand and portability evidence
+
+The direct operand investigation closes the activation/weight ambiguity without
+changing production arithmetic. A new external fixture
+`layer0_input_rmsnorm.bf16le.bin` proves that the BF16 image of the RTX input
+RMSNorm output matches the authority element-for-element before all three
+projections. The Q/K/V weights are the same validated BF16 checkpoint byte
+windows consumed by both sides (raw SHA-256 respectively
+`d8edcc96...`, `58fb897c...`, and `69a32bbb...`); no transpose or operand
+layout discrepancy remains.
+
+The authoritative expression is `torch.nn.Linear(BF16 activation, BF16
+checkpoint weight)`. `Gemma4RMSNorm` computes its norm and learned scale in
+FP32, then casts to the BF16 activation presented to the linear. The uncast
+RMSNorm value differs from its BF16 stored value in 23,037 of 23,040 elements
+(max `0.7925415`), even though its BF16 image is exact. That missing activation
+storage boundary explains the earlier large Q/K/V mismatch:
+
+| Reconstruction against CPU-BF16 storage | Q exact / differing | K exact / differing | V exact / differing |
+| --- | ---: | ---: | ---: |
+| A: uncast FP32 RMSNorm x BF16 weight, FP32 accumulation, BF16 output | `20,304 / 10,416`, max `4.0` | `2,513 / 1,327`, max `1.0` | `2,106 / 1,734`, max `1.0` |
+| B: BF16 activation x BF16 weight, ordinary FP32 `F.linear`, BF16 output | `30,709 / 11`, max `0.25` | `3,838 / 2`, max `0.0078125` | `3,838 / 2`, max `0.25` |
+| C: captured `nn.Linear` BF16 operation | `30,720 / 0` | `3,840 / 0` | `3,840 / 0` |
+
+The package RTX operand witness is exact. Before this continuation the scalar
+package SGEMM still received the uncast FP32 activation. A controlled strict scalar FP32
+reconstruction with the accepted BF16 activation image passes K and V
+completely, while Q has exactly three remaining BF16 crossings (max `0.0625`;
+first flat index `5832`, authority `-0.022705078` / `0xbcba`, scalar
+`-0.022827148` / `0xbcbb`). This verifies that a resident activation BF16
+transition is necessary, but cannot yet close Q storage by itself.
+
+The remaining Q crossings are backend-sensitive rather than a stable model
+precision contract. The capture ran on PyTorch `2.9.1+cpu`, MKL 2025.3 and
+oneDNN v3.7.1, AVX512, eight compute/inter-op threads, with unset
+`OMP_NUM_THREADS`, `MKL_NUM_THREADS`, and `ONEDNN_MAX_CPU_ISA`. The captured
+oneDNN-enabled `nn.Linear` is bit-stable across repeats and across one versus
+eight threads. Disabling oneDNN is also repeat-stable and thread-independent,
+but changes `9` Q, `2` K, and `2` V BF16 values, matching the ordinary FP32
+linear reconstruction rather than the captured output. A compact order witness
+`[16777216, -8388608, -8388608, -0.5]` produces scalar FP32/BF16 `-0.5` /
+`0xbf00` and pairwise-tree `0.0` / `0x0000`; reduction topology can therefore
+change a final BF16 result without any operand error.
+
+### Owner decision: portable projection authority
+
+The owner selected the portable Gemma projection contract: BF16 activation
+operands, BF16 checkpoint-weight operands, multiplication after FP32
+re-expansion, FP32 accumulation, and BF16 projection storage. Execution must
+remain deterministic and bit-stable on each admitted backend, but FP32
+reduction order is implementation-defined within the stated BF16 acceptance
+policy. Exact oneDNN-enabled `torch.nn.Linear` parity is therefore diagnostic
+only, not a production target.
+
+There are now five deliberately distinct evidence streams:
+
+1. portable semantic authority: the operand and storage contract above;
+2. deterministic strict reference: increasing-K scalar FP32 accumulation with
+   the exact BF16 casts;
+3. historical oneDNN-enabled capture: the original complete fixture;
+4. oneDNN-disabled diagnostic capture: stable but changed at Q `9`, K `2`, and
+   V `2` BF16 values;
+5. Vulkan production: package `prometheus.core@1`, existing scalar
+   `kernel-1-default`, compared first to the strict reference.
+
+The resident repair is model-private
+`prometheus_reactor_runtime_gemma4e2b_m1_projection_activation_rmsnorm`. It
+uses `kernel-67-default` only after the layer RMSNorm apply stage, yielding the
+FP32 re-expansion of the authoritative BF16 activation before Q/K/V upload.
+The existing shared SGEMM reduction topology is unchanged. Q/K head RMSNorm
+continues to use its independently accepted BF16 input/output route.
+
+### Portable projection and Q/K-normalization acceptance — July 23, 2026
+
+The repaired canonical package-backed RTX 3070 route first compares the
+resident BF16 activation image directly with
+`layer0_input_rmsnorm.bf16le.bin`: all `23,040` BF16 values match exactly.
+Each checkpoint weight is decoded from the validated BF16 window and is passed
+as an FP32 re-expansion of those same bits. The canonical production sequence
+is therefore:
+
+```text
+FP32 layer RMSNorm apply
+  -> kernel-67-default: FP32 -> BF16 -> FP32 activation image
+  -> kernel-1-default: BF16-reexpanded activation x BF16-reexpanded weight,
+     FP32 accumulation
+  -> model-private Q/K per-head RMSNorm, whose resident input stage supplies
+     the required BF16 projection-storage image before the head reduction
+```
+
+The GPU does no host numerical conversion or result replacement. The existing
+generic SGEMM ABI still makes its normal bounded host transport between public
+calls; this is not a new resident generic-GEMM chaining API. Q/K enter the
+next private GPU stage where their BF16 storage image is made before head
+normalization. V has no downstream stage in this continuation; its BF16 image
+is formed only in the host-side *comparison authority*, never as a production
+replacement. The precision transition itself is resident, package-backed Vulkan
+work. Its FP32 buffers retain four bytes per logical element; physical BF16
+semantics are represented by the exact FP32 re-expansion, so element count,
+descriptor range, and capacity remain `4 * elements` bytes and no byte-packed
+BF16 alignment claim is made.
+
+Against the deterministic increasing-K strict reference, all three canonical
+Vulkan projection storage tensors are exact BF16 matches. No sentinel survived,
+all values were finite, and repeated Q/K/V calls were bit-stable:
+
+| Tensor | Shape | Exact / differing | Max BF16 ULP | Max abs | Relative L2 | finite / zero / NaN / infinity |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Q | `[15,2048]` | `30720 / 0` | `0` | `0` | `0` | `30720 / 0 / 0 / 0` |
+| K | `[15,256]` | `3840 / 0` | `0` | `0` | `0` | `3840 / 0 / 0 / 0` |
+| V | `[15,256]` | `3840 / 0` | `0` | `0` | `0` | `3840 / 0 / 0 / 0` |
+
+The historical oneDNN-enabled capture differs from that strict portable Q
+reference at three BF16 values (maximum `0.0625`; first flat index `5832`,
+`0xbcba` versus `0xbcbb`) and matches K/V. This is retained as backend evidence
+only. The oneDNN-disabled capture's Q `9`, K `2`, V `2` changes confirm that
+neither capture is the portable arithmetic target.
+
+Q/K normalization now consumes the accepted resident BF16 projection images.
+It preserves `[token,head,component]` layout—Q `[15,8,256]`, K `[15,1,256]`—
+with one 256-component learned-scale RMS reduction per head and epsilon
+`1e-6`. Complete results are finite, fully written, repeat-stable, and fresh
+across the alternating Q/K invocations:
+
+| Tensor | Exact / differing vs independent CPU head reconstruction | Max BF16 ULP | Max abs | Relative L2 | Worst coordinate (flat) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Q normalized | `30714 / 6` | `1` | `0.00390625` | `4.802524913e-5` | `5664`: `0.63671875 / 0.6328125` (`0x3f23 / 0x3f22`) |
+| K normalized | `3840 / 0` | `0` | `0` | `0` | none |
+
+The six Q differences are final BF16 rounding crossings caused by the accepted
+head-reduction order; every one is exactly one ordered BF16 step, with no
+non-finite result. The BF16-stage operational acceptance is therefore ordered
+ULP `<= 1` and relative L2 `<= 1e-4`; it is deliberately separate from the
+projection policy (relative L2 `<= 1e-5`) and does not relax the projection
+contract. Representative factors continue to use the captured learned Q/K
+weights and epsilon; the existing direct-FP32 head operational witnesses remain
+Q max abs `2.861023e-6`, relative L2 `1.2711686e-7`, and K max abs
+`2.3841858e-7`, relative L2 `1.1853089e-7`.
+
+The next layer-0 boundary is precise positional transformation (RoPE): no RoPE,
+attention score, softmax, aggregation, output projection, FFN, or PLE work
+began in this continuation.
 
 ## Validation run
 
@@ -268,24 +520,57 @@ $artifact = Join-Path out\prometheus\native\SerialCanonical\shaders\objects\sha2
 git diff --check
 ```
 
-All commands above passed on July 23, 2026. `vulkaninfo --summary` identifies
-the admitted RTX 3070 (Vulkan 1.4.329); the Windows native build completed in
-133.5 seconds. Vulkan validation remained clean for the sentinel coverage lane,
-the canonical shader package manifest check passed, and `spirv-val` accepted
-the unchanged package kernel-1 artifact. The existing Z-Image contract
-regression passed; the checkpoint-backed Q/K/V harness remains the relevant
-real numerical path for this generic SGEMM repair. No shader source changed,
-so DXC did not need regeneration. The Linux native build was started with `bash
+The checkpoint authority check, reference Python syntax check, package manifest
+check, native package check, targeted SDSL-V/DXC compile, `spirv-val` for the
+new kernel-67 artifact, targeted Go tests, Windows native build, canonical RTX
+test, small-M RTX corpus, real-DLL bridge test, Z-Image regression, and
+`git diff --check` passed on July 23, 2026. The canonical Q/K/V route passed
+under the portable contract and remains bit-stable. `vulkaninfo --summary`
+identifies the admitted RTX 3070 (Vulkan 1.4.329); Vulkan validation ran with
+zero errors for the baseline scalar diagnostic-sentinel coverage test. The
+workspace-wide `tools/sdslv_workspace_check` is not a passing gate in this
+state: it reports that the pre-existing scalar asset source is absent as a
+literal from `reactor_shader_registry.c`, even though the manifest/package
+checks and the actual kernel-67 SDSL-V/DXC/validation route pass. This
+continuation did not paper over that unrelated registry-check limitation. The
+Linux native build was previously started with `bash
 internal/prometheus/native/build_linux.sh` and honestly exceeded the bounded
-120-second window without completion; no Linux build pass is claimed. The
-older Marionette default-SGEMM test was not used as package-backed evidence
-because its no-config runtime still probes `out/prometheus/native/shaders`,
-whereas the admitted canonical package lives under `SerialCanonical/shaders`.
+120-second window; no Linux build pass is claimed.
 
-## Recommended next slice
+## First remaining layer-0 boundary
 
-Finish M1 before beginning M2: implement one closed package-backed layer-0
-Vulkan assembly and validate it on the RTX 3070 against these captured
-boundaries.  Once that passes, M2 should be a short multi-layer prefix proving
-layer-to-layer composition; persistent decode KV ownership should remain a
-separate later slice.
+### Positional-transformation staging — July 23, 2026
+
+The accepted reference makes the Gemma layer-0 RoPE precision graph explicit:
+Q/K head RMSNorm produces BF16-stored values re-expanded to FP32; positions are
+integer indices beginning at zero; inverse frequencies are FP32
+`1 / 10000^(2i/256)` for `i=0..127`; FP32 angles are evaluated with FP32
+transcendentals; cosine and sine are separately BF16-rounded; paired FP32
+multiply/add results are BF16-stored before downstream re-expansion. The
+logical production layout is `[token,head,component]`: Q `[15,8,256]`, K
+`[15,1,256]`. All 256 components transform. Pairing is **half-split**:
+component `i` pairs with `i+128`, not with an adjacent component. Q and K use
+the same positions, signs, and frequencies.
+
+The reference harness now emits bounded comparison fixtures for BF16 cosine,
+sine, Q RoPE, and K RoPE. A model-private SDSL-V artifact
+`rope_half_split.sdslv` was added and built as package
+`prometheus.core@1` / `kernel-68-default` / `Gemma4E2BM1RopeHalfSplit_CS`.
+It reads both half-pair source values into locals before writing a distinct
+output buffer, which directly excludes the in-place overwrite hazard. SDSL-V
+validation, DXC, package validation, and `spirv-val` pass for the artifact.
+
+This is deliberately not yet counted as a positional RTX pass: the production
+native invocation seam that allocates/binds the separate RoPE output buffer and
+feeds it from the accepted Q/K head-normalization device buffers remains to be
+implemented. Consequently no complete Q/K RoPE tensor comparison, lifecycle
+test, or in-place-pairing GPU regression is claimed. The first remaining
+boundary is that narrow model-private device invocation seam; attention scores
+remain out of scope until it passes.
+
+Do not begin M2, scores, softmax, aggregation, output projection, FFN, or PLE.
+The first remaining M1 boundary is the model-private RoPE invocation seam
+described above, followed by complete transformed Q/K tensor comparison before
+attention begins.
+The accepted small-M SGEMM dispatch-footprint repair is closed and must not be
+revisited.

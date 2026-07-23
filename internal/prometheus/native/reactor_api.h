@@ -1815,6 +1815,14 @@ typedef struct PrometheusGemma4E2BM1InputRmsNormResult {
   uint64_t end_to_end_ns;
 } PrometheusGemma4E2BM1InputRmsNormResult;
 
+/* M1's Q and K normalization is deliberately model-private.  Its wire
+   layout matches the already-proven RMSNorm primitive, but callers name this
+   boundary explicitly so a layer-width norm cannot be substituted by
+   accident.  The admitted rows are flattened [token, head, channel] with one
+   256-channel vector per row. */
+typedef PrometheusGemma4E2BM1InputRmsNormRequest PrometheusGemma4E2BM1HeadRmsNormRequest;
+typedef PrometheusGemma4E2BM1InputRmsNormResult PrometheusGemma4E2BM1HeadRmsNormResult;
+
 typedef struct PrometheusSgemmAsyncTaskDiagnostics {
   int32_t task_id;
   uint32_t generation;
@@ -2518,6 +2526,16 @@ PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
     void* handle,
     const PrometheusGemma4E2BM1InputRmsNormRequest* request,
     PrometheusGemma4E2BM1InputRmsNormResult* out_result);
+/* Model-private layer-input RMSNorm followed by the Gemma BF16 activation
+   storage boundary used by the Q/K/V projections. */
+PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_projection_activation_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1InputRmsNormRequest* request,
+    PrometheusGemma4E2BM1InputRmsNormResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1HeadRmsNormRequest* request,
+    PrometheusGemma4E2BM1HeadRmsNormResult* out_result);
 
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,

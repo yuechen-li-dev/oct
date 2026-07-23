@@ -249,10 +249,12 @@ int prometheus_reactor_runtime_row_wise_softmax(
   return prom_reactor_runtime_row_wise_softmax_impl(handle, request, out_result);
 }
 
-int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
+static int prometheus_reactor_runtime_gemma4e2b_m1_rmsnorm_impl(
     void* handle,
     const PrometheusGemma4E2BM1InputRmsNormRequest* request,
-    PrometheusGemma4E2BM1InputRmsNormResult* out_result) {
+    PrometheusGemma4E2BM1InputRmsNormResult* out_result,
+    uint32_t bf16_roundtrip_input,
+    uint32_t bf16_roundtrip_output) {
   prom_m46_weight_prepare_request weight_request;
   prom_m46_weight_prepare_result weight_result;
   prom_m49a_m46_request execute_request;
@@ -304,6 +306,8 @@ int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
   execute_request.required_weight_generation = weight_result.generation;
   execute_request.required_weight_hash = weight_result.hash;
   execute_request.exact_source_hash = request->exact_source_hash;
+  execute_request.bf16_roundtrip_input = bf16_roundtrip_input;
+  execute_request.bf16_roundtrip_output = bf16_roundtrip_output;
   memset(&execute_result, 0, sizeof(execute_result));
   if (prom_reactor_runtime_m49a_execute_m46(handle, &execute_request, &execute_result) != PROM_OK) {
     out_result->stage = execute_result.stage;
@@ -347,6 +351,49 @@ int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
   out_result->apply_gpu_ns = execute_result.rmsnorm.apply_gpu_ns;
   out_result->end_to_end_ns = execute_result.rmsnorm.end_to_end_ns;
   return PROM_OK;
+}
+
+int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1InputRmsNormRequest* request,
+    PrometheusGemma4E2BM1InputRmsNormResult* out_result) {
+  return prometheus_reactor_runtime_gemma4e2b_m1_rmsnorm_impl(handle, request,
+                                                               out_result, 0u, 0u);
+}
+
+int prometheus_reactor_runtime_gemma4e2b_m1_projection_activation_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1InputRmsNormRequest* request,
+    PrometheusGemma4E2BM1InputRmsNormResult* out_result) {
+  return prometheus_reactor_runtime_gemma4e2b_m1_rmsnorm_impl(handle, request,
+                                                               out_result, 0u, 1u);
+}
+
+int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1HeadRmsNormRequest* request,
+    PrometheusGemma4E2BM1HeadRmsNormResult* out_result) {
+  /* This retains M46's demonstrated arithmetic but admits only the M1 Q/K
+     geometry. Its resident FP32 -> BF16 -> FP32 stage is deliberately here,
+     before the first per-head reduction, rather than a downstream repair. */
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->struct_size = sizeof(*out_result);
+  if (request == NULL || request->struct_size < sizeof(*request) ||
+      request->input == NULL || request->weight == NULL || request->output == NULL ||
+      request->inv_rms_output == NULL || request->tokens == 0u || request->tokens > 120u ||
+      request->model_width != 256u || request->input_row_stride != 256u ||
+      request->input_element_count != (uint64_t)request->tokens * 256u ||
+      request->weight_element_count != 256u ||
+      request->output_element_count != (uint64_t)request->tokens * 256u ||
+      request->inv_rms_output_element_count != request->tokens ||
+      request->epsilon != 0.000001f) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  return prometheus_reactor_runtime_gemma4e2b_m1_rmsnorm_impl(handle, request,
+                                                               out_result, 1u, 1u);
 }
 
 int prometheus_reactor_runtime_model_block_create(

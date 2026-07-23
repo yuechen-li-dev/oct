@@ -546,6 +546,7 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m46_output;
   prom_vk_buffer m46_readback;
   prom_vk_buffer m49a_m46_z;
+  prom_vk_buffer gemma4e2b_m1_bf16_roundtrip;
   prom_vk_buffer m47_n_packed;
   prom_vk_buffer m47_gate;
   prom_vk_buffer m47_up;
@@ -709,6 +710,7 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m45_descriptor_update_count;
   uint64_t m45_pipeline_create_count;
   prom_reduction_pipeline m46_pipelines[PROM_M46_PIPELINE_COUNT];
+  prom_reduction_pipeline gemma4e2b_m1_bf16_roundtrip_pipeline;
   prom_vk_buffer m46_weight_upload;
   prom_vk_buffer m46_weight;
   uint64_t m46_weight_generation;

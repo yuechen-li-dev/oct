@@ -1896,6 +1896,7 @@ typedef struct prom_m46_composed_request {
   uint32_t submit_policy;
   uint32_t fault_point;
   uint32_t requested_reduction_plan;
+  uint32_t bf16_roundtrip_output;
   uint64_t required_weight_generation;
 } prom_m46_composed_request;
 
@@ -2411,6 +2412,8 @@ typedef struct prom_m49a_m46_request {
   uint64_t required_weight_generation;
   uint64_t required_weight_hash;
   uint64_t exact_source_hash;
+  uint32_t bf16_roundtrip_input;
+  uint32_t bf16_roundtrip_output;
 } prom_m49a_m46_request;
 
 typedef struct prom_m49a_m46_result {

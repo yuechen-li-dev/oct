@@ -1,7 +1,6 @@
 package prometheus
 
 import (
-	"encoding/json"
 	"os"
 	"testing"
 )
@@ -21,6 +20,24 @@ func TestGemma4E2BM1CanonicalQKVRTX(t *testing.T) {
 	if !result.RMSNorm.HashMatch {
 		t.Fatalf("RMSNorm hash drifted: got %s want %s", result.RMSNorm.ActualQuantized, result.RMSNorm.ReferenceHash)
 	}
+	if !result.ProjectionActivationBF16.Pass {
+		t.Fatalf("projection activation BF16 operand witness diverges: %+v", result.ProjectionActivationBF16)
+	}
+	t.Logf("oneDNN-enabled diagnostic captures against strict portable reference: Q=%+v K=%+v V=%+v", result.QActivationBF16CPU, result.KActivationBF16CPU, result.VActivationBF16CPU)
+	t.Logf("portable Vulkan projections: Q=%+v K=%+v V=%+v", result.QPortableProjection, result.KPortableProjection, result.VPortableProjection)
+	t.Logf("portable Vulkan Q/K normalization: Q=%+v K=%+v", result.QNormalizedPortable, result.KNormalizedPortable)
+	for _, projection := range []struct {
+		name   string
+		policy gemma4e2bPortableProjectionComparison
+	}{
+		{"Q", result.QPortableProjection},
+		{"K", result.KPortableProjection},
+		{"V", result.VPortableProjection},
+	} {
+		if !projection.policy.WithinPortablePolicy {
+			t.Fatalf("%s projection exceeds the portable BF16 contract: %+v", projection.name, projection.policy)
+		}
+	}
 	for _, projection := range []struct {
 		name     string
 		policy   CorrectnessResult
@@ -37,9 +54,20 @@ func TestGemma4E2BM1CanonicalQKVRTX(t *testing.T) {
 			t.Fatalf("%s projection changed across identical repeated dispatches", projection.name)
 		}
 	}
-	encoded, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		t.Fatal(err)
+	for _, normalization := range []struct {
+		name   string
+		policy gemma4e2bPortableProjectionComparison
+		stable bool
+		native reactorGemma4E2BM1InputRMSNormResult
+	}{
+		{"Q", result.QNormalizedPortable, result.QNormalizedStable, result.QNormalizedNative},
+		{"K", result.KNormalizedPortable, result.KNormalizedStable, result.KNormalizedNative},
+	} {
+		if !normalization.policy.WithinBF16StagePolicy {
+			t.Fatalf("%s head normalization violates the established numerical policy: %+v", normalization.name, normalization.policy)
+		}
+		if !normalization.stable || !normalization.native.OutputWritten || !normalization.native.MatchedInput {
+			t.Fatalf("%s head normalization was not fully written and stable: %+v", normalization.name, normalization.native)
+		}
 	}
-	t.Log(string(encoded))
 }

@@ -1,0 +1,52 @@
+// Gemma 4 E2B M1 model-private precision boundary. The authority stores Q/K/V
+// projection values as BF16 before re-expanding them for FP32 head work.
+namespace Prometheus.Production.Gemma4E2BM1;
+
+stream Bf16RoundtripIO {
+    [binding(0)] Input: readonly array<f32>;
+    [binding(1)] Reserved0: readwrite array<f32>;
+    [binding(2)] Reserved1: readwrite array<f32>;
+    [binding(3)] Output: readwrite array<f32>;
+}
+
+record Bf16RoundtripParams {
+    ElementCount: u32;
+    Reserved0: u32;
+    Reserved1: u32;
+    Reserved2: u32;
+    Reserved3: u32;
+    Reserved4: u32;
+    Reserved5: u32;
+    Reserved6: u32;
+}
+
+// Finite values round to nearest-even at BF16 bit 16. NaNs retain high payload
+// bits and are made quiet, preventing a signalling payload from becoming inf.
+fn RoundtripBF16(value: f32) -> f32 {
+    let rounded: f32 = HLSL<f32>(value) {
+        uint bits = asuint(value);
+        uint exponent = bits & 0x7f800000u;
+        uint mantissa = bits & 0x007fffffu;
+        if (exponent == 0x7f800000u) {
+            if (mantissa == 0u) return value;
+            uint bf16 = (bits >> 16u) | 0x0040u;
+            return asfloat(bf16 << 16u);
+        }
+        uint lsb = (bits >> 16u) & 1u;
+        uint bf16 = (bits + 0x00007fffu + lsb) >> 16u;
+        return asfloat(bf16 << 16u);
+    };
+    return rounded;
+}
+
+shader Gemma4E2BM1Bf16Roundtrip {
+    resources Bf16RoundtripIO;
+
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: Bf16RoundtripParams) -> void {
+        let element: u32 = DispatchThreadID.x;
+        if element < params.ElementCount {
+            Output[element] = RoundtripBF16(Input[element]);
+        }
+        return;
+    }
+}

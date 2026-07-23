@@ -20,8 +20,13 @@ const (
 	gemma4e2bM1QColumns        = 2048
 	gemma4e2bM1KColumns        = 256
 	gemma4e2bM1VColumns        = 256
+	gemma4e2bM1QHeads          = 8
+	gemma4e2bM1KVHeads         = 1
+	gemma4e2bM1HeadWidth       = 256
 	gemma4e2bM1RMSNormEpsilon  = float32(1e-6)
 	gemma4e2bM1ExactSourceHash = uint64(0x19dbb6c9cba24e13)
+	gemma4e2bM1QHeadSourceHash = uint64(0x516bfcdf20536173)
+	gemma4e2bM1KHeadSourceHash = uint64(0x2fc29800d1ddae2b)
 )
 
 type gemma4e2bReferenceBoundary struct {
@@ -37,6 +42,8 @@ type gemma4e2bReferenceRecord struct {
 		Layer0QLinear      gemma4e2bReferenceBoundary `json:"layer0_q_linear"`
 		Layer0KLinear      gemma4e2bReferenceBoundary `json:"layer0_k_linear"`
 		Layer0VLinear      gemma4e2bReferenceBoundary `json:"layer0_v_linear"`
+		Layer0QNormalized  gemma4e2bReferenceBoundary `json:"layer0_q_normalized"`
+		Layer0KNormalized  gemma4e2bReferenceBoundary `json:"layer0_k_normalized"`
 	} `json:"boundaries"`
 }
 
@@ -56,27 +63,51 @@ type gemma4e2bBoundaryCheck struct {
 }
 
 type gemma4e2bCanonicalSliceResult struct {
-	RuntimeEnvironment string
-	RMSNorm            gemma4e2bBoundaryCheck
-	Q                  gemma4e2bBoundaryCheck
-	K                  gemma4e2bBoundaryCheck
-	V                  gemma4e2bBoundaryCheck
-	QCPUContractHash   string
-	KCPUContractHash   string
-	VCPUContractHash   string
-	QCPUContractDiff   gemma4e2bComparison
-	KCPUContractDiff   gemma4e2bComparison
-	VCPUContractDiff   gemma4e2bComparison
-	QCPUContractPolicy CorrectnessResult
-	KCPUContractPolicy CorrectnessResult
-	VCPUContractPolicy CorrectnessResult
-	QRepeatedStable    bool
-	KRepeatedStable    bool
-	VRepeatedStable    bool
-	QOperands          gemma4e2bProjectionOperandAuthority
-	KOperands          gemma4e2bProjectionOperandAuthority
-	VOperands          gemma4e2bProjectionOperandAuthority
-	RMSNormNative      reactorGemma4E2BM1InputRMSNormResult
+	RuntimeEnvironment       string
+	RMSNorm                  gemma4e2bBoundaryCheck
+	ProjectionActivationBF16 CorrectnessResult
+	Q                        gemma4e2bBoundaryCheck
+	K                        gemma4e2bBoundaryCheck
+	V                        gemma4e2bBoundaryCheck
+	QNormalized              gemma4e2bBoundaryCheck
+	KNormalized              gemma4e2bBoundaryCheck
+	QProjectionBF16          CorrectnessResult
+	KProjectionBF16          CorrectnessResult
+	VProjectionBF16          CorrectnessResult
+	QPortableProjection      gemma4e2bPortableProjectionComparison
+	KPortableProjection      gemma4e2bPortableProjectionComparison
+	VPortableProjection      gemma4e2bPortableProjectionComparison
+	QActivationBF16CPU       CorrectnessResult
+	KActivationBF16CPU       CorrectnessResult
+	VActivationBF16CPU       CorrectnessResult
+	QCPUContractHash         string
+	KCPUContractHash         string
+	VCPUContractHash         string
+	QCPUContractDiff         gemma4e2bComparison
+	KCPUContractDiff         gemma4e2bComparison
+	VCPUContractDiff         gemma4e2bComparison
+	QCPUContractPolicy       CorrectnessResult
+	KCPUContractPolicy       CorrectnessResult
+	VCPUContractPolicy       CorrectnessResult
+	QRepeatedStable          bool
+	KRepeatedStable          bool
+	VRepeatedStable          bool
+	QNormalizedPolicy        CorrectnessResult
+	KNormalizedPolicy        CorrectnessResult
+	QNormalizedCPUDiff       gemma4e2bComparison
+	KNormalizedCPUDiff       gemma4e2bComparison
+	QNormalizedCPU           CorrectnessResult
+	KNormalizedCPU           CorrectnessResult
+	QNormalizedPortable      gemma4e2bPortableProjectionComparison
+	KNormalizedPortable      gemma4e2bPortableProjectionComparison
+	QNormalizedStable        bool
+	KNormalizedStable        bool
+	QNormalizedNative        reactorGemma4E2BM1InputRMSNormResult
+	KNormalizedNative        reactorGemma4E2BM1InputRMSNormResult
+	QOperands                gemma4e2bProjectionOperandAuthority
+	KOperands                gemma4e2bProjectionOperandAuthority
+	VOperands                gemma4e2bProjectionOperandAuthority
+	RMSNormNative            reactorGemma4E2BM1InputRMSNormResult
 }
 
 type gemma4e2bProjectionOperandAuthority struct {
@@ -111,6 +142,28 @@ type gemma4e2bComparison struct {
 	WorstIndex       int
 	Actual           float32
 	Reference        float32
+}
+
+// gemma4e2bPortableProjectionComparison is the owner-selected portable
+// projection policy: BF16 operands and outputs, FP32 accumulation, with a
+// one-BF16-step allowance only for a different valid FP32 reduction order.
+type gemma4e2bPortableProjectionComparison struct {
+	ExactMatches          int
+	Differing             int
+	MaximumBF16ULP        uint16
+	MaximumAbsolute       float32
+	RelativeL2            float64
+	WorstIndex            int
+	Reference             float32
+	Actual                float32
+	ReferenceBF16         uint16
+	ActualBF16            uint16
+	FiniteCount           int
+	ZeroCount             int
+	NaNCount              int
+	InfinityCount         int
+	WithinPortablePolicy  bool
+	WithinBF16StagePolicy bool
 }
 
 func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSliceResult, error) {
@@ -148,7 +201,7 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	if err != nil {
 		return result, err
 	}
-	normOutput, _, nativeResult, err := runtime.Gemma4E2BM1InputRMSNorm(
+	normOutput, _, nativeResult, err := runtime.Gemma4E2BM1ProjectionActivationRMSNorm(
 		input,
 		layerNormWeight,
 		gemma4e2bM1Tokens,
@@ -164,6 +217,14 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 		return result, err
 	}
 	result.RMSNorm = summarizeGemmaBoundary("layer0_input_rmsnorm", normOutput, reference.Boundaries.Layer0InputRMSNorm)
+	projectionActivationReference, err := loadBF16Fixture(
+		filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_input_rmsnorm.bf16le.bin"),
+		gemma4e2bM1Tokens*gemma4e2bM1Width,
+	)
+	if err != nil {
+		return result, err
+	}
+	result.ProjectionActivationBF16 = compareAgainstOracle(projectionActivationReference, roundTripBF16Slice(normOutput))
 
 	projectionRuntime, err := newNativeRuntime()
 	if err != nil {
@@ -184,10 +245,20 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 		return result, fmt.Errorf("q projection: %w", err)
 	}
 	result.Q = summarizeGemmaBoundary("layer0_q_linear", qOutput, reference.Boundaries.Layer0QLinear)
-	qCPU := cpuMatmulRowMajor(normOutput, qWeight, gemma4e2bM1Tokens, gemma4e2bM1QColumns, gemma4e2bM1Width)
+	qCPU := roundTripBF16Slice(cpuMatmulRowMajor(normOutput, qWeight, gemma4e2bM1Tokens, gemma4e2bM1QColumns, gemma4e2bM1Width))
 	result.QCPUContractHash = hashQuantizedBF16AsFloat32(qCPU)
 	result.QCPUContractDiff = compareVectors(qOutput, qCPU)
-	result.QCPUContractPolicy = compareAgainstOracle(qCPU, qOutput)
+	result.QCPUContractPolicy = compareAgainstOracle(qCPU, roundTripBF16Slice(qOutput))
+	result.QPortableProjection = comparePortableProjection(qCPU, roundTripBF16Slice(qOutput))
+	qProjectionBF16Reference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_q_linear.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1QColumns)
+	if err != nil {
+		return result, err
+	}
+	result.QProjectionBF16 = compareAgainstOracle(qProjectionBF16Reference, roundTripBF16Slice(qOutput))
+	result.QActivationBF16CPU = compareAgainstOracle(
+		qProjectionBF16Reference,
+		qCPU,
+	)
 
 	kWeight, err := decodeTransposedBF16Matrix(checkpoint, "model.language_model.layers.0.self_attn.k_proj.weight", gemma4e2bM1KColumns, gemma4e2bM1Width)
 	if err != nil {
@@ -202,10 +273,20 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 		return result, fmt.Errorf("k projection: %w", err)
 	}
 	result.K = summarizeGemmaBoundary("layer0_k_linear", kOutput, reference.Boundaries.Layer0KLinear)
-	kCPU := cpuMatmulRowMajor(normOutput, kWeight, gemma4e2bM1Tokens, gemma4e2bM1KColumns, gemma4e2bM1Width)
+	kCPU := roundTripBF16Slice(cpuMatmulRowMajor(normOutput, kWeight, gemma4e2bM1Tokens, gemma4e2bM1KColumns, gemma4e2bM1Width))
 	result.KCPUContractHash = hashQuantizedBF16AsFloat32(kCPU)
 	result.KCPUContractDiff = compareVectors(kOutput, kCPU)
-	result.KCPUContractPolicy = compareAgainstOracle(kCPU, kOutput)
+	result.KCPUContractPolicy = compareAgainstOracle(kCPU, roundTripBF16Slice(kOutput))
+	result.KPortableProjection = comparePortableProjection(kCPU, roundTripBF16Slice(kOutput))
+	kProjectionBF16Reference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_k_linear.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1KColumns)
+	if err != nil {
+		return result, err
+	}
+	result.KProjectionBF16 = compareAgainstOracle(kProjectionBF16Reference, roundTripBF16Slice(kOutput))
+	result.KActivationBF16CPU = compareAgainstOracle(
+		kProjectionBF16Reference,
+		kCPU,
+	)
 
 	vWeight, err := decodeTransposedBF16Matrix(checkpoint, "model.language_model.layers.0.self_attn.v_proj.weight", gemma4e2bM1VColumns, gemma4e2bM1Width)
 	if err != nil {
@@ -220,10 +301,68 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 		return result, fmt.Errorf("v projection: %w", err)
 	}
 	result.V = summarizeGemmaBoundary("layer0_v_linear", vOutput, reference.Boundaries.Layer0VLinear)
-	vCPU := cpuMatmulRowMajor(normOutput, vWeight, gemma4e2bM1Tokens, gemma4e2bM1VColumns, gemma4e2bM1Width)
+	vCPU := roundTripBF16Slice(cpuMatmulRowMajor(normOutput, vWeight, gemma4e2bM1Tokens, gemma4e2bM1VColumns, gemma4e2bM1Width))
 	result.VCPUContractHash = hashQuantizedBF16AsFloat32(vCPU)
 	result.VCPUContractDiff = compareVectors(vOutput, vCPU)
-	result.VCPUContractPolicy = compareAgainstOracle(vCPU, vOutput)
+	result.VCPUContractPolicy = compareAgainstOracle(vCPU, roundTripBF16Slice(vOutput))
+	result.VPortableProjection = comparePortableProjection(vCPU, roundTripBF16Slice(vOutput))
+	vProjectionBF16Reference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_v_linear.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1VColumns)
+	if err != nil {
+		return result, err
+	}
+	result.VProjectionBF16 = compareAgainstOracle(vProjectionBF16Reference, roundTripBF16Slice(vOutput))
+	result.VActivationBF16CPU = compareAgainstOracle(
+		vProjectionBF16Reference,
+		vCPU,
+	)
+
+	// Q is logically [token, query_head, head_channel]. The Q projection's
+	// row-major [token, 2048] staging is therefore exactly the flattened
+	// per-head layout required by the authoritative head RMSNorm.
+	qNormWeight, err := decodeBF16Vector(checkpoint, "model.language_model.layers.0.self_attn.q_norm.weight", gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	qNormalizedReference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_q_normalized.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1QHeads*gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	qNormalized, _, qNormalizedNative, err := runtime.Gemma4E2BM1HeadRMSNorm(qOutput, qNormWeight, gemma4e2bM1Tokens*gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 2, 2, gemma4e2bM1QHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("q head normalization: %w", err)
+	}
+	result.QNormalizedNative = qNormalizedNative
+	result.QNormalized = summarizeGemmaBoundary("layer0_q_normalized", qNormalized, reference.Boundaries.Layer0QNormalized)
+	result.QNormalizedPolicy = compareAgainstOracle(qNormalizedReference, qNormalized)
+	// The projection has already been accepted under the portable BF16 policy.
+	// Reconstruct the independent head boundary from that exact resident-BF16
+	// projection image, not from the historical oneDNN capture.
+	qNormalizedCPU := roundTripBF16Slice(cpuHeadRMSNorm(roundTripBF16Slice(qOutput), qNormWeight, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon))
+	result.QNormalizedCPUDiff = compareVectors(qNormalized, qNormalizedCPU)
+	result.QNormalizedCPU = compareAgainstOracle(qNormalizedCPU, qNormalized)
+	result.QNormalizedPortable = comparePortableProjection(qNormalizedCPU, qNormalized)
+
+	// K is [token, one_kv_head, head_channel], so its compact projection rows
+	// already are the authority's one-head normalization rows.
+	kNormWeight, err := decodeBF16Vector(checkpoint, "model.language_model.layers.0.self_attn.k_norm.weight", gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	kNormalizedReference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_k_normalized.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1KVHeads*gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	kNormalized, _, kNormalizedNative, err := runtime.Gemma4E2BM1HeadRMSNorm(kOutput, kNormWeight, gemma4e2bM1Tokens*gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 3, 3, gemma4e2bM1KHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("k head normalization: %w", err)
+	}
+	result.KNormalizedNative = kNormalizedNative
+	result.KNormalized = summarizeGemmaBoundary("layer0_k_normalized", kNormalized, reference.Boundaries.Layer0KNormalized)
+	result.KNormalizedPolicy = compareAgainstOracle(kNormalizedReference, kNormalized)
+	kNormalizedCPU := roundTripBF16Slice(cpuHeadRMSNorm(roundTripBF16Slice(kOutput), kNormWeight, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon))
+	result.KNormalizedCPUDiff = compareVectors(kNormalized, kNormalizedCPU)
+	result.KNormalizedCPU = compareAgainstOracle(kNormalizedCPU, kNormalized)
+	result.KNormalizedPortable = comparePortableProjection(kNormalizedCPU, kNormalized)
 
 	qRepeated, _, err := projectionRuntime.SGEMMWithStatus(int(gemma4e2bM1Tokens), gemma4e2bM1QColumns, gemma4e2bM1Width, normOutput, qWeight)
 	if err != nil {
@@ -240,6 +379,16 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	result.QRepeatedStable = equalFloat32Bits(qOutput, qRepeated)
 	result.KRepeatedStable = equalFloat32Bits(kOutput, kRepeated)
 	result.VRepeatedStable = equalFloat32Bits(vOutput, vRepeated)
+	qNormalizedRepeated, _, _, err := runtime.Gemma4E2BM1HeadRMSNorm(qOutput, qNormWeight, gemma4e2bM1Tokens*gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 4, 4, gemma4e2bM1QHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("repeat q head normalization: %w", err)
+	}
+	kNormalizedRepeated, _, _, err := runtime.Gemma4E2BM1HeadRMSNorm(kOutput, kNormWeight, gemma4e2bM1Tokens*gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 5, 5, gemma4e2bM1KHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("repeat k head normalization: %w", err)
+	}
+	result.QNormalizedStable = equalFloat32Bits(qNormalized, qNormalizedRepeated)
+	result.KNormalizedStable = equalFloat32Bits(kNormalized, kNormalizedRepeated)
 	return result, nil
 }
 
@@ -335,7 +484,7 @@ func projectionOperandAuthority(checkpoint *gemma4e2b.Layer0Checkpoint, name str
 		ActivationShape:        []int{m, k},
 		ActivationRowStride:    k,
 		ActivationElementCount: len(activation),
-		ActivationPrecision:    "fp32",
+		ActivationPrecision:    "bf16_storage_reexpanded_fp32",
 		ActivationSHA256F32LE:  hashFloat32LE(activation),
 		WeightTensor:           tensor.Name,
 		WeightDType:            tensor.DType,
@@ -439,6 +588,14 @@ func hashQuantizedBF16AsFloat32(values []float32) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func roundTripBF16Slice(values []float32) []float32 {
+	rounded := make([]float32, len(values))
+	for i, value := range values {
+		rounded[i] = bf16ToFloat32(float32ToBF16(value))
+	}
+	return rounded
+}
+
 func cpuMatmulRowMajor(a, b []float32, m, n, k int) []float32 {
 	output := make([]float32, m*n)
 	for row := 0; row < m; row++ {
@@ -450,6 +607,26 @@ func cpuMatmulRowMajor(a, b []float32, m, n, k int) []float32 {
 				sum += a[aRow+depth] * b[depth*n+column]
 			}
 			output[outRow+column] = sum
+		}
+	}
+	return output
+}
+
+func cpuHeadRMSNorm(input, weight []float32, headWidth int, epsilon float32) []float32 {
+	if headWidth <= 0 || len(input)%headWidth != 0 || len(weight) != headWidth {
+		return nil
+	}
+	output := make([]float32, len(input))
+	for row := 0; row < len(input)/headWidth; row++ {
+		start := row * headWidth
+		var sum float32
+		for channel := 0; channel < headWidth; channel++ {
+			value := input[start+channel]
+			sum += value * value
+		}
+		invRMS := float32(1.0 / math.Sqrt(float64(sum/float32(headWidth)+epsilon)))
+		for channel := 0; channel < headWidth; channel++ {
+			output[start+channel] = input[start+channel] * invRMS * weight[channel]
 		}
 	}
 	return output
@@ -490,6 +667,89 @@ func compareVectors(actual, reference []float32) gemma4e2bComparison {
 		Actual:           actualAtWorst,
 		Reference:        referenceAtWorst,
 	}
+}
+
+func comparePortableProjection(reference, actual []float32) gemma4e2bPortableProjectionComparison {
+	comparison := gemma4e2bPortableProjectionComparison{WorstIndex: -1}
+	if len(reference) != len(actual) {
+		return comparison
+	}
+	var sumSquareDiff float64
+	var sumSquareReference float64
+	allFiniteDifferencesWithinOneStep := true
+	for index := range reference {
+		referenceValue := reference[index]
+		actualValue := actual[index]
+		if math.IsNaN(float64(referenceValue)) || math.IsNaN(float64(actualValue)) {
+			comparison.NaNCount++
+			allFiniteDifferencesWithinOneStep = false
+			continue
+		}
+		if math.IsInf(float64(referenceValue), 0) || math.IsInf(float64(actualValue), 0) {
+			comparison.InfinityCount++
+			if referenceValue != actualValue {
+				allFiniteDifferencesWithinOneStep = false
+			}
+			continue
+		}
+		comparison.FiniteCount++
+		if referenceValue == 0 {
+			comparison.ZeroCount++
+		}
+		sumSquareReference += float64(referenceValue) * float64(referenceValue)
+		if math.Float32bits(referenceValue) == math.Float32bits(actualValue) {
+			comparison.ExactMatches++
+			continue
+		}
+		comparison.Differing++
+		referenceBits := float32ToBF16(referenceValue)
+		actualBits := float32ToBF16(actualValue)
+		ulp := orderedBF16Distance(referenceBits, actualBits)
+		if ulp > comparison.MaximumBF16ULP {
+			comparison.MaximumBF16ULP = ulp
+		}
+		if ulp > 1 {
+			allFiniteDifferencesWithinOneStep = false
+		}
+		diff := actualValue - referenceValue
+		absolute := float32(math.Abs(float64(diff)))
+		if comparison.WorstIndex < 0 || absolute > comparison.MaximumAbsolute {
+			comparison.MaximumAbsolute = absolute
+			comparison.WorstIndex = index
+			comparison.Reference = referenceValue
+			comparison.Actual = actualValue
+			comparison.ReferenceBF16 = referenceBits
+			comparison.ActualBF16 = actualBits
+		}
+		sumSquareDiff += float64(diff) * float64(diff)
+	}
+	if sumSquareReference > 0 {
+		comparison.RelativeL2 = math.Sqrt(sumSquareDiff / sumSquareReference)
+	} else if sumSquareDiff > 0 {
+		comparison.RelativeL2 = math.Inf(1)
+	}
+	comparison.WithinPortablePolicy = comparison.NaNCount == 0 && allFiniteDifferencesWithinOneStep && comparison.RelativeL2 <= 1e-5
+	// A final BF16 stage is evaluated in BF16 ordered-ULP space. Its compact
+	// operational tolerance is intentionally separate from the projection
+	// policy because one legal head-reduction crossing can affect a scale.
+	comparison.WithinBF16StagePolicy = comparison.NaNCount == 0 && allFiniteDifferencesWithinOneStep && comparison.RelativeL2 <= 1e-4
+	return comparison
+}
+
+func orderedBF16Distance(left, right uint16) uint16 {
+	leftOrdered := orderedBF16(left)
+	rightOrdered := orderedBF16(right)
+	if leftOrdered >= rightOrdered {
+		return leftOrdered - rightOrdered
+	}
+	return rightOrdered - leftOrdered
+}
+
+func orderedBF16(bits uint16) uint16 {
+	if bits&0x8000 != 0 {
+		return ^bits
+	}
+	return bits | 0x8000
 }
 
 func bf16ToFloat32(bits uint16) float32 {
