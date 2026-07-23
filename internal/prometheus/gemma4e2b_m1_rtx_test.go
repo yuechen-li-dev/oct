@@ -18,6 +18,25 @@ func TestGemma4E2BM1CanonicalQKVRTX(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !result.RMSNorm.HashMatch {
+		t.Fatalf("RMSNorm hash drifted: got %s want %s", result.RMSNorm.ActualQuantized, result.RMSNorm.ReferenceHash)
+	}
+	for _, projection := range []struct {
+		name     string
+		policy   CorrectnessResult
+		repeated bool
+	}{
+		{"Q", result.QCPUContractPolicy, result.QRepeatedStable},
+		{"K", result.KCPUContractPolicy, result.KRepeatedStable},
+		{"V", result.VCPUContractPolicy, result.VRepeatedStable},
+	} {
+		if !projection.policy.Pass {
+			t.Fatalf("%s projection violates the established numerical policy: %+v", projection.name, projection.policy)
+		}
+		if !projection.repeated {
+			t.Fatalf("%s projection changed across identical repeated dispatches", projection.name)
+		}
+	}
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		t.Fatal(err)

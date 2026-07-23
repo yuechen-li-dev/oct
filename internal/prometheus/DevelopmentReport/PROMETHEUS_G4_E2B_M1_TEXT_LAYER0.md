@@ -2,12 +2,12 @@
 
 ## State
 
-**MEANINGFUL PROGRESSION — reference boundary and fail-closed production
-checkpoint selection are closed; the package-backed Windows RTX 3070 route now
-executes one authoritative layer-0 boundary exactly, and the first remaining
-Vulkan blocker is localized to Q/K/V projection execution on the canonical
-Gemma shapes.** M0 remains accepted and unchanged. No public API, checkpoint
-cache, or checkpoint copy was added in this progression.
+**MEANINGFUL PROGRESSION — reference boundary, fail-closed checkpoint
+selection, exact RMSNorm, and the first canonical Q/K/V projection boundary
+are closed on the package-backed Windows RTX 3070 route.** The full
+authoritative layer remains incomplete; the first remaining boundary is
+authoritative Q/K normalization. M0 remains accepted and unchanged. No
+checkpoint cache or checkpoint copy was added in this progression.
 
 The owner-local checkpoint at `C:\Models\gemma-4-E2B-it` passed the unchanged
 full authority check: exact repository/revision, all nine required objects,
@@ -175,46 +175,65 @@ Native telemetry for that successful RMSNorm call:
 This is real package-backed RTX numerical execution, not compilation-only or a
 CPU fallback.
 
-### First remaining blocker: Q/K/V projection execution
+### Q/K/V projection repair and evidence
 
-After the exact RMSNorm boundary, the same accepted canonical case still fails
-at the next graph step. The admitted RTX projection outputs are finite but do
-not match either the accepted authority hashes or a CPU row-major contract
-evaluation over the same decoded checkpoint weights:
+The defect was host-side dispatch metadata, not checkpoint authority, BF16
+decode, shader arithmetic, synchronization, or a Gemma-specific convention.
+The production baseline package kernel is an 8x8 scalar kernel: one invocation
+writes exactly one `C[row,column]`. Its registry metadata accidentally claimed
+eight output columns per invocation. Consequently the generic ABI dispatched
+`ceil(N/64)` groups in Y although the shader needed `ceil(N/8)`:
 
-| Boundary | Authority hash | RTX quantized hash | CPU row-major contract hash |
-| --- | --- | --- | --- |
-| `layer0_q_linear` | `3999e585b50bbb44f05b716c2eff1fdfce141a98208af2f72092dc4029ea8ed9` | `5e45c0a677536f473e370cf9c5e567c4c58156a7cbc8c2b3bee2179b45617a25` | `213463d159b2b9c96e730e96e6e58817d71c509312cc663117919bdbd2147bb8` |
-| `layer0_k_linear` | `abd74262322068e44de11950ebc0d09ce34a1f0f3093771abf02c83f5539b477` | `72d7e23d55511ff77e42a6169632666607140a19887c9e4eae6c48ab564c518a` | `2699befd0a59d6ddbb77dcdce9894bd20977b128fa99dc99b27d48f130f1d4a8` |
-| `layer0_v_linear` | `4116fcda3d74748f837b6a7850f17a7c5710d4e4cf3b269fe7643e664634aaae` | `7d354aa5b0111eb22645737777e48c7a51ec12887954b9ce32f73e310ecfa340` | `bb55a0251d6a40dec70edd11d32c0ff91f049d67208a330150c6cb0b228cab24` |
+- Q (`15x1536x2048`) issued `2x32` groups and wrote columns `0..255`; the
+  zero-initialized unwritten region was columns `256..2047` (26,880 elements,
+  1,792 per row; output tiles 32..255 at width eight).
+- K/V (`15x1536x256`) issued `2x4` groups and wrote columns `0..31`; the
+  zero-initialized unwritten region was columns `32..255` (3,360 elements,
+  224 per row; output tiles 4..31).
 
-GPU-versus-CPU-contract error is large rather than roundoff-sized:
+This accounts for the former `~0.94` relative-L2 failures and the apparent GPU
+zeros at authority-nonzero coordinates. The earliest wrong shared boundary was
+therefore the logical output footprint used by `prom_sgemm_dispatch_geometry`,
+not the shader. It now records one output in each dimension, so the canonical
+topologies are Q `2x256x1` and K/V `2x32x1`. A direct-path diagnostic mode
+initializes C to finite `-1234567`; the package-backed RTX test leaves zero
+sentinels, proving that every coordinate was written rather than merely
+computed to zero.
 
-- Q: max-abs `1323.3868`, relative-L2 `0.9415936985608241`, worst index `6857`
-  (`actual 0`, `reference 1323.3868`)
-- K: max-abs `688.17847`, relative-L2 `0.9398494543686065`, worst index `856`
-  (`actual 0`, `reference -688.17847`)
-- V: max-abs `887.7394`, relative-L2 `0.9354558580861995`, worst index `1011`
-  (`actual 0`, `reference 887.7394`)
+The host uploads row-major FP32 activations `[M,1536]` and a transposed,
+row-major FP32 staging view of the BF16 checkpoint tensor `[out,1536]`, so the
+SGEMM contract is `C[M,N] = A[M,K] * B[K,N]`. The Q/K/V tensor byte windows are
+the validated BF16 ranges for the three exact `self_attn.*_proj.weight`
+records; decoding preserves their full byte lengths and the runtime receives
+`4*K*N` bytes of FP32 staging for B and `4*M*N` bytes for C. The selected
+package implementation is `prometheus.core@1`, `kernel-1-default`, baseline
+scalar, with push constants `(m,n,k)` and the topology above.
 
-This divergence persisted after reopening a fresh runtime for the Q/K/V calls,
-so it is not explained by sharing one runtime instance between the new
-Gemma-private RMSNorm entrypoint and the generic SGEMM entrypoint.
+The independent CPU FP32-accumulation comparison now passes the repository's
+near-zero policy for every element, and repeated Q/K/V calls are bit-stable:
 
-Separately, the generic real-DLL Windows SGEMM integration lane now passes
-again after the package-root discovery fix, so the next blocker is narrowed to
-the admitted projection route for the canonical Gemma shapes/weights rather
-than a blanket “real SGEMM is unavailable” claim.
+| Boundary | Max abs | Max relative (policy) | Relative L2 | Worst index, reference / RTX | finite / zero / nonzero |
+| --- | ---: | ---: | ---: | --- | --- |
+| Q `[15,2048]` | `0.00012207031` | `0.0023254042` | `1.0076983e-7` | `2743`, `-650.5747 / -650.5748` | `30720 / 0 / 30720` |
+| K `[15,256]` | `0.000061035156` | `0.0001151928` | `9.8288815e-8` | `856`, `-688.17847 / -688.1785` | `3840 / 0 / 3840` |
+| V `[15,256]` | `0.000061035156` | `0.0002626255` | `9.8570522e-8` | `243`, `672.1707 / 672.17065` | `3840 / 0 / 3840` |
+
+The reference's quantized-boundary hashes remain useful capture identities but
+are not an FP32-bitwise SGEMM acceptance rule. The exact RMSNorm hash remains
+`969264b7c7ed3fd03d364173143fcebe82fa7d1f7874b3c8ef908b6670bc9095`.
+
+The focused package-backed corpus passed deterministic FP32 activations and
+BF16-rounded weights for M=`1,2,7,15,16,17,31,32,33`, K=1536, N=256; canonical
+Q N=2048; exhaustive `17x19x17`; and alternating `15,32,15`. All elements were
+finite and written. The maximum corpus relative-L2 was `6.8640115e-7`.
 
 The accepted M0 plan remains the governing limit: stream exact BF16 layer-0
 and selected embedding/PLE rows; retain FP32 activations; do not make the full
 checkpoint device-resident.
 
-The next isolated blocker is now concrete: identify why admitted projection
-execution for shapes `15x1536x2048` and `15x1536x256` diverges on the RTX path,
-then carry the canonical execution forward into Q/K normalization, positional
-transform, and attention. Reusing the existing Z-Image hard-coded 1024x3840
-model block, SiLU, or `1e-5` RMSNorm routes would still be semantically wrong.
+The next permitted boundary is authoritative Q/K normalization. Reusing the
+existing Z-Image hard-coded 1024x3840 model block, SiLU, or `1e-5` RMSNorm
+routes remains semantically wrong.
 
 ## Validation run
 
@@ -230,23 +249,38 @@ go test ./tools/gemma4e2b_forensics ./internal/prometheus/zimage
 G4E2B_CHECKPOINT_ROOT=C:\Models\gemma-4-E2B-it go test -count=1 -v ./internal/prometheus/gemma4e2b
 $env:OCT_RUN_PROMETHEUS_INTEGRATION='1'
 $env:G4E2B_CHECKPOINT_ROOT='C:\Models\gemma-4-E2B-it'
-$env:OCT_PROMETHEUS_REACTOR='C:\Users\yuech\source\repos\oct\out\prometheus\native\prometheus_reactor.dll'
+$env:OCT_PROMETHEUS_REACTOR='C:\Users\yuech\source\repos\oct\internal\prometheus\reactor\prometheus_reactor.dll'
 go test -run TestGemma4E2BM1CanonicalQKVRTX -count=1 -v ./internal/prometheus
 
 $env:OCT_PROMETHEUS_REACTOR='C:\Users\yuech\source\repos\oct\internal\prometheus\reactor\prometheus_reactor.dll'
 go test -tags native -run TestWindowsRunSGEMMUsesRealReactorWhenDLLAvailable -count=1 -v ./internal/prometheus
+go test -run TestGemma4E2BM1ProductionSGEMMSmallMCorpusRTX -count=1 -v ./internal/prometheus
+go test -count=1 ./internal/prometheus/zimage
+
+$env:PROMETHEUS_REQUIRE_VULKAN_HARDWARE='1'
+$env:PROMETHEUS_VK_VALIDATION='1'
+.\out\prometheus\native\marionette_tests.exe PrometheusBaselineScalar
+go run ./tools/prometheus_native_manifest -check
+$manifest = Get-Content -Raw out\prometheus\native\SerialCanonical\shaders\manifest.json | ConvertFrom-Json
+$variant = $manifest.tables.variants | Where-Object { $_.id -eq 'kernel-1-default' }
+$artifact = Join-Path out\prometheus\native\SerialCanonical\shaders\objects\sha256 ($variant.artifact_sha256 + '.spv')
+& "$env:VULKAN_SDK\Bin\spirv-val.exe" $artifact
 git diff --check
 ```
 
-All commands above passed. `vulkaninfo --summary` identifies the admitted RTX
-3070 (Vulkan 1.4.329); the Windows native build also completed successfully in
-129.848 seconds (its launcher log records exit code 0). The canonical Gemma
-RTX run reached one exact numerical boundary and then localized the next
-projection blocker exactly as recorded above. DXC, Gemma SDSL-V, and SPIR-V
-validation still are not represented as Gemma M1 closure evidence because the
-complete layer-0 package-backed assembly does not exist yet. The existing Linux
-native build was started but exceeded this session's 120-second command window
-before it emitted a completion result, so no Linux build pass is claimed.
+All commands above passed on July 23, 2026. `vulkaninfo --summary` identifies
+the admitted RTX 3070 (Vulkan 1.4.329); the Windows native build completed in
+133.5 seconds. Vulkan validation remained clean for the sentinel coverage lane,
+the canonical shader package manifest check passed, and `spirv-val` accepted
+the unchanged package kernel-1 artifact. The existing Z-Image contract
+regression passed; the checkpoint-backed Q/K/V harness remains the relevant
+real numerical path for this generic SGEMM repair. No shader source changed,
+so DXC did not need regeneration. The Linux native build was started with `bash
+internal/prometheus/native/build_linux.sh` and honestly exceeded the bounded
+120-second window without completion; no Linux build pass is claimed. The
+older Marionette default-SGEMM test was not used as package-backed evidence
+because its no-config runtime still probes `out/prometheus/native/shaders`,
+whereas the admitted canonical package lives under `SerialCanonical/shaders`.
 
 ## Recommended next slice
 

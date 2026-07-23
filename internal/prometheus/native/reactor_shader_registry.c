@@ -16,8 +16,12 @@
 #define META_DETAIL(id, label, language, entry, source, header, generated, inline_hlsl, inline_count, targets, auth, bindings, push, minimum, maximum) \
   { id##u, label, PROM_SHADER_STAGE_COMPUTE, "kernel-" PROM_STRINGIFY(id) "-default", entry, 0u, language, source, header, generated, inline_hlsl, inline_count, targets, auth, bindings, push, 0u, minimum, maximum }
 
+/* The baseline scalar package kernel has an 8x8 workgroup and writes exactly
+ * one C[row, column] per invocation.  Keep the logical per-invocation
+ * footprint separate from the workgroup size: dispatch geometry multiplies
+ * them to find the number of logical columns each group covers. */
 static const prom_sgemm_kernel_dispatch_metadata k_meta_8x8 =
-    { 8u, 8u, 1u, 1u, 8u, 8u, 8u, 1u };
+    { 8u, 8u, 1u, 1u, 1u, 1u, 1u, 4u, 4u, 0u, 0u };
 static const prom_sgemm_kernel_dispatch_metadata k_meta_16x16 =
     { 16u, 16u, 1u, 1u, 16u, 16u, 16u, 1u };
 static const prom_sgemm_kernel_dispatch_metadata k_meta_reg2x2 =

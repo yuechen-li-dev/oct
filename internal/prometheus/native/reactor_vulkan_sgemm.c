@@ -61,6 +61,28 @@ enum {
   PROM_ARENA_SHRINK_COOLDOWN_EPOCHS = 4u,
 };
 
+/* This diagnostic is deliberately process-local instead of part of the public
+ * numerical ABI.  It is used only by targeted reactor coverage tests: a
+ * distinctive finite value makes any element the dispatched kernel did not
+ * overwrite visible at readback. */
+static uint32_t prom_sgemm_diagnostic_sentinel_enabled(void) {
+  const char* value = getenv("PROMETHEUS_SGEMM_DIAGNOSTIC_SENTINEL");
+  return value != NULL && strcmp(value, "1") == 0 ? 1u : 0u;
+}
+
+static void prom_sgemm_initialize_direct_output(void* mapped, size_t byte_count) {
+  if (mapped == NULL) return;
+  if (prom_sgemm_diagnostic_sentinel_enabled() == 0u) {
+    memset(mapped, 0, byte_count);
+    return;
+  }
+  {
+    float* values = (float*)mapped;
+    const size_t count = byte_count / sizeof(*values);
+    for (size_t index = 0u; index < count; ++index) values[index] = -1234567.0f;
+  }
+}
+
 #define PROM_ARENA_DEFAULT_BUDGET_BYTES (512ull * 1024ull * 1024ull)
 #define PROM_ARENA_DEFAULT_SHRINK_FLOOR_BYTES (64ull * 1024ull * 1024ull)
 
@@ -6012,7 +6034,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
            compute_mode == PROM_VK_COMPUTE_PACKED4_FP32 ? (const void*)packed_b_upload
            : (compute_mode == PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM ? (const void*)fp16_b_upload : (const void*)b),
            b_copy_size);
-    memset(rt->direct_c.mapped, 0, c_copy_size);
+    prom_sgemm_initialize_direct_output(rt->direct_c.mapped, c_copy_size);
     shader_a = &rt->direct_a;
     shader_b = &rt->direct_b;
     shader_c = &rt->direct_c;

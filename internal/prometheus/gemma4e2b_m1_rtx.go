@@ -51,6 +51,8 @@ type gemma4e2bBoundaryCheck struct {
 	FiniteCount     int
 	NaNCount        int
 	InfinityCount   int
+	ZeroCount       int
+	NonZeroCount    int
 }
 
 type gemma4e2bCanonicalSliceResult struct {
@@ -65,7 +67,42 @@ type gemma4e2bCanonicalSliceResult struct {
 	QCPUContractDiff   gemma4e2bComparison
 	KCPUContractDiff   gemma4e2bComparison
 	VCPUContractDiff   gemma4e2bComparison
+	QCPUContractPolicy CorrectnessResult
+	KCPUContractPolicy CorrectnessResult
+	VCPUContractPolicy CorrectnessResult
+	QRepeatedStable    bool
+	KRepeatedStable    bool
+	VRepeatedStable    bool
+	QOperands          gemma4e2bProjectionOperandAuthority
+	KOperands          gemma4e2bProjectionOperandAuthority
+	VOperands          gemma4e2bProjectionOperandAuthority
 	RMSNormNative      reactorGemma4E2BM1InputRMSNormResult
+}
+
+type gemma4e2bProjectionOperandAuthority struct {
+	ActivationPointer      string
+	ActivationShape        []int
+	ActivationRowStride    int
+	ActivationElementCount int
+	ActivationPrecision    string
+	ActivationSHA256F32LE  string
+	WeightTensor           string
+	WeightDType            string
+	WeightLogicalShape     []uint64
+	WeightBF16FileRange    [2]uint64
+	WeightBF16Bytes        uint64
+	WeightBF16SHA256       string
+	WeightTranspose        string
+	WeightSamples          [3]float32
+	UploadedFP32Bytes      int
+	DestinationShape       []int
+	DestinationRowStride   int
+	DestinationBytes       int
+	DescriptorRangeBytes   int
+	PushConstants          [3]int
+	DispatchGroups         [3]int
+	SelectedVariant        string
+	PackageIdentity        string
 }
 
 type gemma4e2bComparison struct {
@@ -138,6 +175,10 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	if err != nil {
 		return result, err
 	}
+	result.QOperands, err = projectionOperandAuthority(checkpoint, "model.language_model.layers.0.self_attn.q_proj.weight", normOutput, qWeight, gemma4e2bM1Tokens, gemma4e2bM1QColumns, gemma4e2bM1Width)
+	if err != nil {
+		return result, err
+	}
 	qOutput, _, err := projectionRuntime.SGEMMWithStatus(int(gemma4e2bM1Tokens), gemma4e2bM1QColumns, gemma4e2bM1Width, normOutput, qWeight)
 	if err != nil {
 		return result, fmt.Errorf("q projection: %w", err)
@@ -146,8 +187,13 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	qCPU := cpuMatmulRowMajor(normOutput, qWeight, gemma4e2bM1Tokens, gemma4e2bM1QColumns, gemma4e2bM1Width)
 	result.QCPUContractHash = hashQuantizedBF16AsFloat32(qCPU)
 	result.QCPUContractDiff = compareVectors(qOutput, qCPU)
+	result.QCPUContractPolicy = compareAgainstOracle(qCPU, qOutput)
 
 	kWeight, err := decodeTransposedBF16Matrix(checkpoint, "model.language_model.layers.0.self_attn.k_proj.weight", gemma4e2bM1KColumns, gemma4e2bM1Width)
+	if err != nil {
+		return result, err
+	}
+	result.KOperands, err = projectionOperandAuthority(checkpoint, "model.language_model.layers.0.self_attn.k_proj.weight", normOutput, kWeight, gemma4e2bM1Tokens, gemma4e2bM1KColumns, gemma4e2bM1Width)
 	if err != nil {
 		return result, err
 	}
@@ -159,8 +205,13 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	kCPU := cpuMatmulRowMajor(normOutput, kWeight, gemma4e2bM1Tokens, gemma4e2bM1KColumns, gemma4e2bM1Width)
 	result.KCPUContractHash = hashQuantizedBF16AsFloat32(kCPU)
 	result.KCPUContractDiff = compareVectors(kOutput, kCPU)
+	result.KCPUContractPolicy = compareAgainstOracle(kCPU, kOutput)
 
 	vWeight, err := decodeTransposedBF16Matrix(checkpoint, "model.language_model.layers.0.self_attn.v_proj.weight", gemma4e2bM1VColumns, gemma4e2bM1Width)
+	if err != nil {
+		return result, err
+	}
+	result.VOperands, err = projectionOperandAuthority(checkpoint, "model.language_model.layers.0.self_attn.v_proj.weight", normOutput, vWeight, gemma4e2bM1Tokens, gemma4e2bM1VColumns, gemma4e2bM1Width)
 	if err != nil {
 		return result, err
 	}
@@ -172,6 +223,23 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	vCPU := cpuMatmulRowMajor(normOutput, vWeight, gemma4e2bM1Tokens, gemma4e2bM1VColumns, gemma4e2bM1Width)
 	result.VCPUContractHash = hashQuantizedBF16AsFloat32(vCPU)
 	result.VCPUContractDiff = compareVectors(vOutput, vCPU)
+	result.VCPUContractPolicy = compareAgainstOracle(vCPU, vOutput)
+
+	qRepeated, _, err := projectionRuntime.SGEMMWithStatus(int(gemma4e2bM1Tokens), gemma4e2bM1QColumns, gemma4e2bM1Width, normOutput, qWeight)
+	if err != nil {
+		return result, fmt.Errorf("repeat q projection: %w", err)
+	}
+	kRepeated, _, err := projectionRuntime.SGEMMWithStatus(int(gemma4e2bM1Tokens), gemma4e2bM1KColumns, gemma4e2bM1Width, normOutput, kWeight)
+	if err != nil {
+		return result, fmt.Errorf("repeat k projection: %w", err)
+	}
+	vRepeated, _, err := projectionRuntime.SGEMMWithStatus(int(gemma4e2bM1Tokens), gemma4e2bM1VColumns, gemma4e2bM1Width, normOutput, vWeight)
+	if err != nil {
+		return result, fmt.Errorf("repeat v projection: %w", err)
+	}
+	result.QRepeatedStable = equalFloat32Bits(qOutput, qRepeated)
+	result.KRepeatedStable = equalFloat32Bits(kOutput, kRepeated)
+	result.VRepeatedStable = equalFloat32Bits(vOutput, vRepeated)
 	return result, nil
 }
 
@@ -245,12 +313,67 @@ func decodeTransposedBF16Matrix(checkpoint *gemma4e2b.Layer0Checkpoint, name str
 	return values, nil
 }
 
+func projectionOperandAuthority(checkpoint *gemma4e2b.Layer0Checkpoint, name string, activation, uploadedWeight []float32, m, n, k int) (gemma4e2bProjectionOperandAuthority, error) {
+	tensor, err := checkpoint.Tensor(name)
+	if err != nil {
+		return gemma4e2bProjectionOperandAuthority{}, err
+	}
+	bf16, err := checkpoint.Read(name)
+	if err != nil {
+		return gemma4e2bProjectionOperandAuthority{}, err
+	}
+	if len(activation) == 0 || len(bf16) < 2 {
+		return gemma4e2bProjectionOperandAuthority{}, fmt.Errorf("empty projection operand: %s", name)
+	}
+	sampleOffsets := [3]int{0, len(bf16)/2 - len(bf16)/2%2, len(bf16) - 2}
+	samples := [3]float32{}
+	for index, offset := range sampleOffsets {
+		samples[index] = bf16ToFloat32(binary.LittleEndian.Uint16(bf16[offset : offset+2]))
+	}
+	return gemma4e2bProjectionOperandAuthority{
+		ActivationPointer:      fmt.Sprintf("%p", &activation[0]),
+		ActivationShape:        []int{m, k},
+		ActivationRowStride:    k,
+		ActivationElementCount: len(activation),
+		ActivationPrecision:    "fp32",
+		ActivationSHA256F32LE:  hashFloat32LE(activation),
+		WeightTensor:           tensor.Name,
+		WeightDType:            tensor.DType,
+		WeightLogicalShape:     append([]uint64(nil), tensor.Shape...),
+		WeightBF16FileRange:    tensor.FileRange,
+		WeightBF16Bytes:        tensor.Bytes,
+		WeightBF16SHA256:       gemma4e2b.Digest(bf16),
+		WeightTranspose:        "checkpoint [N,K] is transposed to row-major SGEMM B[K,N]",
+		WeightSamples:          samples,
+		UploadedFP32Bytes:      len(uploadedWeight) * 4,
+		DestinationShape:       []int{m, n},
+		DestinationRowStride:   n,
+		DestinationBytes:       m * n * 4,
+		DescriptorRangeBytes:   m * n * 4,
+		PushConstants:          [3]int{m, n, k},
+		DispatchGroups:         [3]int{(m + 7) / 8, (n + 7) / 8, 1},
+		SelectedVariant:        "baseline-scalar-package-kernel-1",
+		PackageIdentity:        "prometheus.core@1",
+	}, nil
+}
+
+func hashFloat32LE(values []float32) string {
+	encoded := make([]byte, len(values)*4)
+	for index, value := range values {
+		binary.LittleEndian.PutUint32(encoded[index*4:], math.Float32bits(value))
+	}
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
+}
+
 func summarizeGemmaBoundary(name string, values []float32, reference gemma4e2bReferenceBoundary) gemma4e2bBoundaryCheck {
 	minimum := float32(0)
 	maximum := float32(0)
 	finiteCount := 0
 	nanCount := 0
 	infinityCount := 0
+	zeroCount := 0
+	nonZeroCount := 0
 	for i, value := range values {
 		if math.IsNaN(float64(value)) {
 			nanCount++
@@ -259,6 +382,11 @@ func summarizeGemmaBoundary(name string, values []float32, reference gemma4e2bRe
 		if math.IsInf(float64(value), 0) {
 			infinityCount++
 			continue
+		}
+		if value == 0 {
+			zeroCount++
+		} else {
+			nonZeroCount++
 		}
 		if finiteCount == 0 || value < minimum {
 			minimum = value
@@ -284,7 +412,21 @@ func summarizeGemmaBoundary(name string, values []float32, reference gemma4e2bRe
 		FiniteCount:     finiteCount,
 		NaNCount:        nanCount,
 		InfinityCount:   infinityCount,
+		ZeroCount:       zeroCount,
+		NonZeroCount:    nonZeroCount,
 	}
+}
+
+func equalFloat32Bits(left, right []float32) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if math.Float32bits(left[index]) != math.Float32bits(right[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 func hashQuantizedBF16AsFloat32(values []float32) string {

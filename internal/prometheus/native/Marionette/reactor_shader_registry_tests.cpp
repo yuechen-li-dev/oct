@@ -3,6 +3,7 @@
 #include "test_harness.h"
 
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <cstdint>
@@ -35,6 +36,26 @@ std::string staged_shader_package_root() {
     cursor = cursor.parent_path();
   }
 }
+class EnvironmentValue final {
+public:
+  EnvironmentValue(const char* name, const char* value) : name_(name) {
+    const char* previous = std::getenv(name);
+    if (previous != nullptr) { had_previous_ = true; previous_ = previous; }
+    Set(value);
+  }
+  ~EnvironmentValue() { Set(had_previous_ ? previous_.c_str() : nullptr); }
+private:
+  void Set(const char* value) {
+#ifdef _WIN32
+    _putenv_s(name_.c_str(), value == nullptr ? "" : value);
+#else
+    if (value == nullptr) unsetenv(name_.c_str()); else setenv(name_.c_str(), value, 1);
+#endif
+  }
+  std::string name_;
+  std::string previous_;
+  bool had_previous_ = false;
+};
 }
 
 FACT(PrometheusShaderPackageRootConfigIsStructSizeGatedAndRuntimeOwned) {
@@ -249,6 +270,52 @@ FACT(PrometheusComputeImplementationsPreserveEligibility) {
 }
 FACT(PrometheusComputeImplementationsHaveDispatchMetadata) {
   for (uint32_t id = 1u; id <= 11u; ++id) ASSERT_TRUE(prom_shader_registry_dispatch_metadata(id) != nullptr, "every implementation needs dispatch metadata");
+}
+FACT(PrometheusBaselineScalarDispatchMetadataMatchesOneOutputPerInvocation) {
+  const auto* metadata = prom_shader_registry_dispatch_metadata(PROM_OCCUPANCY_KERNEL_VARIANT_BASELINE_SCALAR);
+  ASSERT_TRUE(metadata != nullptr, "baseline scalar metadata must remain registered");
+  ASSERT_EQUAL(8u, metadata->threads_x, "baseline scalar workgroup X remains eight");
+  ASSERT_EQUAL(8u, metadata->threads_y, "baseline scalar workgroup Y remains eight");
+  ASSERT_EQUAL(1u, metadata->outputs_per_invocation_m, "each baseline invocation writes one row");
+  ASSERT_EQUAL(1u, metadata->outputs_per_invocation_n, "each baseline invocation writes one column");
+  const prom_sgemm_dispatch_geometry geometry = prom_sgemm_dispatch_geometry_for_metadata(15u, 2048u, metadata);
+  ASSERT_EQUAL(2u, geometry.groups_x, "M=15 requires two 8-row baseline groups");
+  ASSERT_EQUAL(256u, geometry.groups_y, "N=2048 requires 256 8-column baseline groups");
+  ASSERT_EQUAL(8u, geometry.logical_m_per_group, "baseline group footprint is eight rows");
+  ASSERT_EQUAL(8u, geometry.logical_n_per_group, "baseline group footprint is eight columns");
+}
+FACT(PrometheusBaselineScalarDiagnosticSentinelProvesFullCanonicalSmallMCoverage) {
+  EnvironmentValue sentinel("PROMETHEUS_SGEMM_DIAGNOSTIC_SENTINEL", "1");
+  const std::string package_root = staged_shader_package_root();
+  ASSERT_TRUE(!package_root.empty(), "diagnostic coverage uses the canonical staged package");
+  PrometheusReactorConfig config{};
+  config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+  config.test_flags = PROM_TESTCFG_FORCE_DIRECT_PATH | PROM_TESTCFG_FORCE_STRICT_FP32;
+  config.shader_package_root = package_root.c_str();
+  void* handle = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&config, &handle), "diagnostic runtime creation succeeds");
+  PrometheusCaps caps{};
+  ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_probe(handle, &caps), "diagnostic runtime probe succeeds");
+  if (caps.available == 0u) {
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle), "unavailable diagnostic runtime is destroyed");
+    SKIP("Vulkan runtime unavailable; sentinel coverage requires the real dispatch");
+  }
+  constexpr uint32_t m = 15u, n = 256u, k = 1536u;
+  std::vector<float> a(static_cast<std::size_t>(m) * k);
+  std::vector<float> b(static_cast<std::size_t>(k) * n);
+  std::vector<float> c(static_cast<std::size_t>(m) * n, -1234567.0f);
+  for (std::size_t index = 0; index < a.size(); ++index) a[index] = static_cast<float>(static_cast<int>(index % 17u) - 8) / 16.0f;
+  for (std::size_t index = 0; index < b.size(); ++index) b[index] = static_cast<float>(static_cast<int>(index % 19u) - 9) / 32.0f;
+  uint32_t stage = PROM_STAGE_NONE;
+  int detail = 0;
+  ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_sgemm(handle, a.data(), b.data(), c.data(), m, n, k, &stage, &detail), "canonical small-M sentinel dispatch succeeds");
+  std::size_t sentinel_count = 0u;
+  for (float value : c) {
+    ASSERT_TRUE(std::isfinite(value), "diagnostic readback must remain finite");
+    if (value == -1234567.0f) ++sentinel_count;
+  }
+  ASSERT_EQUAL(static_cast<std::size_t>(0u), sentinel_count, "every canonical small-M output coordinate is overwritten by the scalar kernel");
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle), "diagnostic runtime is destroyed");
 }
 FACT(PrometheusComputeImplementationLookupIsDeterministic) {
   for (uint32_t id = 1u; id <= 11u; ++id) ASSERT_EQUAL(prom_shader_registry_find_compute_implementation(id), prom_shader_registry_find_compute_implementation(id), "lookup must be stable");
