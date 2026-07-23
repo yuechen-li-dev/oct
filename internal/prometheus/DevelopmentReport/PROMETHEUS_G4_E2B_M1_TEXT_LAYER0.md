@@ -574,3 +574,178 @@ described above, followed by complete transformed Q/K tensor comparison before
 attention begins.
 The accepted small-M SGEMM dispatch-footprint repair is closed and must not be
 revisited.
+
+## Positional native-dispatch continuation — July 23, 2026
+
+This continuation established a narrow package-backed native Vulkan RoPE
+dispatch, but does **not** yet close the requested end-to-end resident handoff.
+The status is therefore meaningful progression rather than a complete
+positional closure.
+
+### Accepted positional authority and package ABI
+
+The authority remains fixed: Q is logical `[15,8,256]`, K is logical
+`[15,1,256]`, each pair is `i <-> i+128`, positions are zero-origin, and the
+precomputed `[15,256]` cosine and sine tables are BF16 storage values. The
+shader is `prometheus.core@1`, package variant `kernel-68-default`, entry point
+`Gemma4E2BM1RopeHalfSplit_CS`, with exactly four storage-buffer bindings and a
+32-byte push block:
+
+| Binding | Role | Required logical elements |
+| --- | --- | --- |
+| 0 | normalized Q or K source | `tokens * heads * 256` |
+| 1 | BF16-reexpanded cosine table | `15 * 256` |
+| 2 | BF16-reexpanded sine table | `15 * 256` |
+| 3 | distinct BF16-reexpanded transformed output | `tokens * heads * 256` |
+
+The shader reads both members of every half-split pair before it writes the
+separate destination. It consumes the table data directly, so no production
+transcendental operation remains and RTX `sin`/`cos` variation cannot explain a
+result. The observed fixture evidence further fixed the accepted arithmetic
+storage graph: each BF16-decoded product is BF16-rounded before the final
+BF16-rounded sum/difference. This was a precision-boundary correction only;
+the accepted geometry, signs, theta, origin, and pairing were unchanged.
+
+### Native seam and lifecycle evidence
+
+`prometheus_reactor_runtime_gemma4e2b_m1_rope` is model-private. It rejects
+nulls, unsupported token/head/head-width geometry, mismatched element counts,
+arithmetic-size overflow, nonfinite inputs, identical cosine/sine roles, and
+source/table-to-output aliasing before it acquires a slot or records a command.
+It resolves `kernel-68-default` through the immutable package manifest; no
+embedded substitute SPIR-V is used. A rejection of head count `2` was followed
+by valid Q then K dispatches in the same runtime.
+
+The first Q dispatch created the pipeline and eight bounded buffers; the
+following K dispatch created no buffers and reused all eight. Its descriptor
+update count advanced from one to two across the differing Q/K shapes, proving
+the four binding ranges are refreshed rather than inherited from the Q
+allocation. Q/K, K/Q, repeated Q, repeated K, and post-rejection Q/K calls are
+bit-stable. The direct shader witness computes each output member from the
+original pair and is not an in-place sequential update.
+
+### RTX tensor evidence
+
+The live Windows RTX 3070 Vulkan lane passed with validation enabled. Q had
+30,720 elements: 30,718 exact BF16 matches, 2 differing values, maximum ordered
+BF16 distance 1, maximum absolute error `0.0009765625`, and relative L2
+`6.329223424217383e-06`; all values were finite, with 11 zeros and no NaNs or
+infinities. K had 3,840/3,840 exact BF16 matches, zero difference, zero maximum
+error, and no nonfinite values. The two Q differences are fully accounted for
+by the already-accepted Q head-RMSNorm one-BF16-step policy (the normalizer has
+six such differences); the package shader matched exactly when compared against
+the BF16 storage graph over its actual resident source image. No aggregate
+tolerance is being used to hide a layout, position, pairing, table-addressing,
+or binding error.
+
+### Validation
+
+Passed: checkpoint authority checker; Python reference syntax check; targeted
+Gemma checkpoint tests; package build/check; SDSL-V validation; DXC;
+`spirv-val`; Windows native build (129.113 seconds); canonical RTX Q/K/V
+projection and Q/K normalization test; live package-backed Q/K RoPE test;
+small-M SGEMM RTX corpus; baseline scalar diagnostic-sentinel Vulkan test;
+Z-Image regression; native-manifest check; and `git diff --check`.
+
+The workspace-wide SDSL-V checker remains separately blocked by its known
+pre-existing scalar-SGEMM registry source-literal failure; this continuation
+did not weaken or mask it. Linux native build was not rerun in this continuation
+and no Linux pass is claimed.
+
+### First remaining layer-0 boundary
+
+The remaining implementation boundary is precise: the new RoPE API currently
+uploads its accepted normalized source image into its bounded device slot before
+dispatch. It must instead consume the already-resident output view from the
+accepted Q/K head-RMSNorm continuation, preserving the same distinct RoPE
+destination buffer and avoiding the current host staging seam. Projection,
+normalization, RoPE arithmetic, package identity, descriptor ABI, and all
+attention work remain closed or out of scope as stated above; do not begin
+scores, masking, softmax, aggregation, output projection, residual, FFN, PLE,
+or M2.
+
+## Resident normalization-to-RoPE closure — July 23, 2026
+
+The upload-based source route is now superseded in the model-private production
+chain. `prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope` accepts only
+the fixed M1 Q/K geometry and records M46 head RMSNorm plus package-backed
+`kernel-68-default` in one serialized submission. It does not expose an
+arbitrary-device-buffer API. M46's `continuation.n` (`slot->m46_output`) is
+the exact binding-0 source for RoPE; no normalized tensor is copied to host,
+reconstructed, uploaded, or copied into an upload-oriented device slot.
+
+Binding 0 is that resident normalized FP32 BF16-reexpansion, bindings 1 and 2
+are the authoritative `[15,256]` BF16 cosine and sine tables uploaded to their
+existing bounded table buffers, and binding 3 is the distinct device-local
+`slot->gemma4e2b_m1_rope_output`. Q uses 122,880 bytes and K uses 15,360 bytes;
+both source and destination offsets are zero and their ranges are exact. The
+only host transfer after the chain is the final transformed destination
+readback used by the caller/test. The normalizer's source range is never
+read back in this route (`normalized_readback_count=0`).
+
+The dependency is an in-command-buffer barrier on `continuation.n` from
+`COMPUTE_SHADER/SHADER_WRITE` to `COMPUTE_SHADER/SHADER_READ`; the distinct
+destination is made visible through `COMPUTE_SHADER/SHADER_WRITE` to
+`TRANSFER/TRANSFER_READ`, followed by the final host-visible readback barrier.
+The single submission fence gates every caller-visible output. Package tables
+are separately ordered `HOST_WRITE -> TRANSFER_READ -> SHADER_READ`. Thus Q/K
+alternation cannot depend on queue idleness or stale descriptor state.
+
+Live RTX evidence: the direct chain passed Q then K, K then Q, repeated Q,
+repeated K, alternating shapes, and a rejected invalid-head call followed by
+valid Q then K. Descriptor updates advanced across the Q/K range change; the
+pipeline remained one settled package pipeline. The first direct Q reported
+`resident_source_bound=true`, source/destination `122880` bytes, and zero
+normalized readbacks; K reported the same proof with `15360` bytes. New RoPE
+destination buffers are bounded slot allocations and are reused after warm-up.
+
+Numerically, the direct resident chain is stage-local exact against the
+authoritative BF16 storage graph over the accepted normalized values. K is
+3,840/3,840 exact against pristine authority. Q is 30,718/30,720 exact;
+the two one-ordered-BF16-ULP final values remain solely the accepted Q
+normalization-source deviations and each propagates through its half-split
+partner pair. There is no RoPE-originated divergence and no shader
+transcendental operation. Q retains 11 zeros and all 30,720 finite values;
+K retains 3,840 finite values, with no NaNs, infinities, or sentinels.
+
+Focused validation passed: Windows native build (129.6 s), real RTX Vulkan
+canonical Q/K/V projection, accepted Q/K normalization, resident Q/K RoPE
+comparison, descriptor alternation/repetition/recovery corpus, package-backed
+ABI resolution, and targeted Go test. Vulkan validation was clean in the live
+lane. The earlier accepted SDSL-V/DXC/`spirv-val`, package, small-M SGEMM, and
+Z-Image checks remain unchanged. Linux native build was not rerun here, so no
+Linux pass is claimed. The known workspace-wide scalar-SGEMM registry
+source-literal SDSL-V failure remains pre-existing and separate.
+
+This closes the positional continuation only. The first remaining layer-0
+boundary is attention-score construction from the separately resident
+transformed Q and K outputs; it remains explicitly out of scope for this work.
+
+## Attention-score authority and package prefix — July 23, 2026
+
+The pinned `google/gemma-4-E2B-it` revision `3e22461f...` establishes the
+pre-mask layer-0 score contract: Q is logical `[15,8,256]`, K is
+`[15,1,256]`, both are flattened token-major BF16-reexpanded FP32 resident
+storage, and scores are logical/physical `[8,15,15]` flattened as
+`[queryHead,queryPosition,keyPosition]`. The grouped-query map is
+`kvHead = queryHead / (8 / 1) = 0`. Coordinates are accumulated in increasing
+`d=0..255` order as FP32 products and additions, then scaled once after the
+dot product by `1/sqrt(256) = 1/16`; score storage is FP32. The configuration
+contains no attention-logit soft-cap or query-pre-attention scale. Its
+`final_logit_softcapping=30` applies to final vocabulary logits and is not
+part of this pre-mask attention boundary. Masking and softmax remain excluded.
+
+`kernel-69-default`, package identity `prometheus.core@1`, has been added as
+the narrow raw-score shader package artifact. Its ABI is binding 0 resident
+RoPE Q, binding 1 resident RoPE K, binding 3 distinct FP32 score output, and a
+32-byte push block carrying geometry and the explicit scale. SDSL-V validation
+and package build/check pass (69 kernels). It has no masking, exponentiation,
+or softmax operation.
+
+This is meaningful progression, not score-stage closure: the first remaining
+implementation boundary is the model-private native lifetime seam that retains
+both separately produced kernel-68 destination buffers simultaneously and
+binds those exact slot buffers to kernel 69 without a host round-trip. No RTX
+score tensor, numerical acceptance, or score-stage Vulkan dispatch is claimed
+yet. Attention masking, softmax, V aggregation, and all downstream stages have
+not been started.

@@ -1,0 +1,44 @@
+// Gemma 4 E2B M1 raw pre-mask grouped-query attention scores. Q is
+// [token, query-head, channel], K is [token, kv-head, channel]; score storage
+// is FP32 and masking/softmax are deliberately outside this kernel.
+namespace Prometheus.Production.Gemma4E2BM1;
+
+stream AttentionScoreIO {
+    [binding(0)] Query: readonly array<f32>;
+    [binding(1)] Key: readonly array<f32>;
+    [binding(3)] Score: readwrite array<f32>;
+}
+
+record AttentionScoreParams {
+    TokenCount: u32;
+    QueryHeadCount: u32;
+    KeyHeadCount: u32;
+    HeadDim: u32;
+    Scale: f32;
+    Reserved0: u32;
+    Reserved1: u32;
+    Reserved2: u32;
+}
+
+shader Gemma4E2BM1AttentionScores {
+    resources AttentionScoreIO;
+    stage compute [numthreads(256u, 1u, 1u)] fn CS(params: AttentionScoreParams) -> void {
+        let score_index: u32 = DispatchThreadID.x;
+        let score_count: u32 = params.QueryHeadCount * params.TokenCount * params.TokenCount;
+        if score_index < score_count {
+            let key_position: u32 = score_index % params.TokenCount;
+            let query_row: u32 = score_index / params.TokenCount;
+            let query_position: u32 = query_row % params.TokenCount;
+            let query_head: u32 = query_row / params.TokenCount;
+            let kv_head: u32 = query_head / (params.QueryHeadCount / params.KeyHeadCount);
+            let query_base: u32 = (query_position * params.QueryHeadCount + query_head) * params.HeadDim;
+            let key_base: u32 = (key_position * params.KeyHeadCount + kv_head) * params.HeadDim;
+            var accumulator: f32 = 0.0;
+            for coordinate in 0u..params.HeadDim {
+                accumulator = accumulator + Query[query_base + coordinate] * Key[key_base + coordinate];
+            }
+            Score[score_index] = accumulator * params.Scale;
+        }
+        return;
+    }
+}

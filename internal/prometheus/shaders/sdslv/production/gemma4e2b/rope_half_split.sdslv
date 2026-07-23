@@ -1,12 +1,14 @@
 // Gemma 4 E2B M1 model-private RoPE. Inputs and outputs are flattened
-// [token, head, component] BF16-reexpanded FP32 values. Each output reads both
-// original half-pair members, so reuse can never introduce an in-place hazard.
+// [token, head, component] BF16-reexpanded FP32 values. The cosine and sine
+// tables are the accepted BF16 fixture values, also re-expanded to FP32. Each
+// output reads both original half-pair members, so reuse can never introduce an
+// in-place hazard.
 namespace Prometheus.Production.Gemma4E2BM1;
 
 stream RopeIO {
     [binding(0)] Input: readonly array<f32>;
-    [binding(1)] Reserved0: readwrite array<f32>;
-    [binding(2)] Reserved1: readwrite array<f32>;
+    [binding(1)] Cosine: readonly array<f32>;
+    [binding(2)] Sine: readonly array<f32>;
     [binding(3)] Output: readwrite array<f32>;
 }
 
@@ -47,13 +49,16 @@ shader Gemma4E2BM1RopeHalfSplit {
             if component < half { pair_element = element + half; }
             let source: f32 = Input[element];
             let pair_source: f32 = Input[pair_element];
-            let transformed: f32 = HLSL<f32>(source, pair_source, token, frequency_index, component, half) {
-                float angle = (float)token * pow(10000.0, -((float)(frequency_index * 2u) / 256.0));
-                float cosine = asfloat((asuint(cos(angle)) + 0x7fffu + ((asuint(cos(angle)) >> 16u) & 1u)) & 0xffff0000u);
-                float sine = asfloat((asuint(sin(angle)) + 0x7fffu + ((asuint(sin(angle)) >> 16u) & 1u)) & 0xffff0000u);
-                return component < half ? source * cosine - pair_source * sine : source * cosine + pair_source * sine;
-            };
-            Output[element] = RoundtripBF16(transformed);
+            let table_element: u32 = token * params.HeadDim + frequency_index;
+            let cosine: f32 = Cosine[table_element];
+            let sine: f32 = Sine[table_element];
+            // The accepted portable BF16 authority rounds each product and
+            // the final sum/difference at the positional boundary.
+            let first_product: f32 = RoundtripBF16(source * cosine);
+            let second_product: f32 = RoundtripBF16(pair_source * sine);
+            var transformed: f32 = RoundtripBF16(first_product - second_product);
+            if component >= half { transformed = RoundtripBF16(first_product + second_product); }
+            Output[element] = transformed;
         }
         return;
     }

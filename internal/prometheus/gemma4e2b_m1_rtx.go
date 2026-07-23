@@ -104,6 +104,15 @@ type gemma4e2bCanonicalSliceResult struct {
 	KNormalizedStable        bool
 	QNormalizedNative        reactorGemma4E2BM1InputRMSNormResult
 	KNormalizedNative        reactorGemma4E2BM1InputRMSNormResult
+	QRopeNative              reactorGemma4E2BM1HeadRMSNormRopeResult
+	KRopeNative              reactorGemma4E2BM1HeadRMSNormRopeResult
+	QRope                    gemma4e2bPortableProjectionComparison
+	KRope                    gemma4e2bPortableProjectionComparison
+	QRopeResidentContract    gemma4e2bPortableProjectionComparison
+	KRopeResidentContract    gemma4e2bPortableProjectionComparison
+	QRopeStable              bool
+	KRopeStable              bool
+	RopeRecoveredAfterReject bool
 	QOperands                gemma4e2bProjectionOperandAuthority
 	KOperands                gemma4e2bProjectionOperandAuthority
 	VOperands                gemma4e2bProjectionOperandAuthority
@@ -364,6 +373,72 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	result.KNormalizedCPU = compareAgainstOracle(kNormalizedCPU, kNormalized)
 	result.KNormalizedPortable = comparePortableProjection(kNormalizedCPU, kNormalized)
 
+	ropeCosine, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_rope_cos.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	ropeSine, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_rope_sin.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	qRopeReference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_q_rope.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1QHeads*gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	kRopeReference, err := loadBF16Fixture(filepath.Join(tempRoot, "g4e2b-m1-fixtures", "layer0_k_rope.bf16le.bin"), gemma4e2bM1Tokens*gemma4e2bM1KVHeads*gemma4e2bM1HeadWidth)
+	if err != nil {
+		return result, err
+	}
+	qRope, qRopeNative, err := runtime.Gemma4E2BM1HeadRMSNormRope(qOutput, qNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 6, 6, 1, gemma4e2bM1QHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("q rope: %w", err)
+	}
+	result.QRopeNative = qRopeNative
+	result.QRope = comparePortableProjection(qRopeReference, qRope)
+	result.QRopeResidentContract = comparePortableProjection(cpuGemma4e2bRope(qNormalized, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1HeadWidth), qRope)
+	kRope, kRopeNative, err := runtime.Gemma4E2BM1HeadRMSNormRope(kOutput, kNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 7, 7, 1, gemma4e2bM1KHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("k rope: %w", err)
+	}
+	result.KRopeNative = kRopeNative
+	result.KRope = comparePortableProjection(kRopeReference, kRope)
+	result.KRopeResidentContract = comparePortableProjection(cpuGemma4e2bRope(kNormalized, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth), kRope)
+	// The same persistent descriptor set must be rewritten across the Q/K
+	// shape change. Repeat both directions to prove that no stale range or
+	// source binding is retained by the package-backed pipeline.
+	qRopeRepeated, _, err := runtime.Gemma4E2BM1HeadRMSNormRope(qOutput, qNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 8, 8, 1, gemma4e2bM1QHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("repeat q rope: %w", err)
+	}
+	qRopeRepeatedAgain, _, err := runtime.Gemma4E2BM1HeadRMSNormRope(qOutput, qNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 9, 9, 1, gemma4e2bM1QHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("second repeat q rope: %w", err)
+	}
+	kRopeRepeated, _, err := runtime.Gemma4E2BM1HeadRMSNormRope(kOutput, kNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 10, 10, 1, gemma4e2bM1KHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("repeat k rope: %w", err)
+	}
+	kRopeRepeatedAgain, _, err := runtime.Gemma4E2BM1HeadRMSNormRope(kOutput, kNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 11, 11, 1, gemma4e2bM1KHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("second repeat k rope: %w", err)
+	}
+	result.QRopeStable = equalFloat32Bits(qRope, qRopeRepeated) && equalFloat32Bits(qRope, qRopeRepeatedAgain)
+	result.KRopeStable = equalFloat32Bits(kRope, kRopeRepeated) && equalFloat32Bits(kRope, kRopeRepeatedAgain)
+	// Invalid head count is rejected before command recording. The immediately
+	// following valid calls prove the runtime remains reusable after rejection.
+	if _, _, rejected := runtime.Gemma4E2BM1HeadRMSNormRope(kOutput, kNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, 2, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 12, 12, 1, gemma4e2bM1KHeadSourceHash); rejected == nil {
+		return result, fmt.Errorf("rope invalid-head rejection unexpectedly succeeded")
+	}
+	qRopeRecovered, _, err := runtime.Gemma4E2BM1HeadRMSNormRope(qOutput, qNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 13, 13, 1, gemma4e2bM1QHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("q rope after rejection: %w", err)
+	}
+	kRopeRecovered, _, err := runtime.Gemma4E2BM1HeadRMSNormRope(kOutput, kNormWeight, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 14, 14, 1, gemma4e2bM1KHeadSourceHash)
+	if err != nil {
+		return result, fmt.Errorf("k rope after rejection: %w", err)
+	}
+	result.RopeRecoveredAfterReject = equalFloat32Bits(qRope, qRopeRecovered) && equalFloat32Bits(kRope, kRopeRecovered)
+
 	qRepeated, _, err := projectionRuntime.SGEMMWithStatus(int(gemma4e2bM1Tokens), gemma4e2bM1QColumns, gemma4e2bM1Width, normOutput, qWeight)
 	if err != nil {
 		return result, fmt.Errorf("repeat q projection: %w", err)
@@ -379,11 +454,16 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	result.QRepeatedStable = equalFloat32Bits(qOutput, qRepeated)
 	result.KRepeatedStable = equalFloat32Bits(kOutput, kRepeated)
 	result.VRepeatedStable = equalFloat32Bits(vOutput, vRepeated)
-	qNormalizedRepeated, _, _, err := runtime.Gemma4E2BM1HeadRMSNorm(qOutput, qNormWeight, gemma4e2bM1Tokens*gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 4, 4, gemma4e2bM1QHeadSourceHash)
+	normalizationRuntime, err := newNativeRuntime()
+	if err != nil {
+		return result, err
+	}
+	defer normalizationRuntime.Close()
+	qNormalizedRepeated, _, _, err := normalizationRuntime.Gemma4E2BM1HeadRMSNorm(qOutput, qNormWeight, gemma4e2bM1Tokens*gemma4e2bM1QHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 4, 4, gemma4e2bM1QHeadSourceHash)
 	if err != nil {
 		return result, fmt.Errorf("repeat q head normalization: %w", err)
 	}
-	kNormalizedRepeated, _, _, err := runtime.Gemma4E2BM1HeadRMSNorm(kOutput, kNormWeight, gemma4e2bM1Tokens*gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 5, 5, gemma4e2bM1KHeadSourceHash)
+	kNormalizedRepeated, _, _, err := normalizationRuntime.Gemma4E2BM1HeadRMSNorm(kOutput, kNormWeight, gemma4e2bM1Tokens*gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth, gemma4e2bM1HeadWidth, gemma4e2bM1RMSNormEpsilon, 5, 5, gemma4e2bM1KHeadSourceHash)
 	if err != nil {
 		return result, fmt.Errorf("repeat k head normalization: %w", err)
 	}
@@ -627,6 +707,36 @@ func cpuHeadRMSNorm(input, weight []float32, headWidth int, epsilon float32) []f
 		invRMS := float32(1.0 / math.Sqrt(float64(sum/float32(headWidth)+epsilon)))
 		for channel := 0; channel < headWidth; channel++ {
 			output[start+channel] = input[start+channel] * invRMS * weight[channel]
+		}
+	}
+	return output
+}
+
+// cpuGemma4e2bRope is an implementation-boundary witness only. It reproduces
+// the accepted BF16 storage graph from the supplied resident source image:
+// BF16 product, BF16 sum/difference, and half-split pairing.
+func cpuGemma4e2bRope(source, cosine, sine []float32, tokens, heads, headWidth int) []float32 {
+	if tokens != gemma4e2bM1Tokens || (heads != gemma4e2bM1QHeads && heads != gemma4e2bM1KVHeads) || headWidth != gemma4e2bM1HeadWidth || len(source) != tokens*heads*headWidth || len(cosine) != tokens*headWidth || len(sine) != tokens*headWidth {
+		return nil
+	}
+	output := make([]float32, len(source))
+	for token := 0; token < tokens; token++ {
+		for head := 0; head < heads; head++ {
+			base := (token*heads + head) * headWidth
+			for component := 0; component < headWidth; component++ {
+				frequency := component % (headWidth / 2)
+				mate := base + frequency + headWidth/2
+				if component >= headWidth/2 {
+					mate = base + frequency
+				}
+				first := bf16ToFloat32(float32ToBF16(source[base+component] * cosine[token*headWidth+frequency]))
+				second := bf16ToFloat32(float32ToBF16(source[mate] * sine[token*headWidth+frequency]))
+				value := first - second
+				if component >= headWidth/2 {
+					value = first + second
+				}
+				output[base+component] = bf16ToFloat32(float32ToBF16(value))
+			}
 		}
 	}
 	return output

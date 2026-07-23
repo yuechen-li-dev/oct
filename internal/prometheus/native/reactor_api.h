@@ -1823,6 +1823,93 @@ typedef struct PrometheusGemma4E2BM1InputRmsNormResult {
 typedef PrometheusGemma4E2BM1InputRmsNormRequest PrometheusGemma4E2BM1HeadRmsNormRequest;
 typedef PrometheusGemma4E2BM1InputRmsNormResult PrometheusGemma4E2BM1HeadRmsNormResult;
 
+/* Model-private half-split RoPE boundary. All four arrays contain FP32 values
+   which are exact BF16 re-expansions at the API boundary. The tables are
+   [token, component] and source/output are flattened [token, head, component]. */
+typedef struct PrometheusGemma4E2BM1RopeRequest {
+  uint32_t struct_size;
+  const float* source;
+  const float* cosine;
+  const float* sine;
+  float* output;
+  uint64_t source_element_count;
+  uint64_t cosine_element_count;
+  uint64_t sine_element_count;
+  uint64_t output_element_count;
+  uint32_t tokens;
+  uint32_t heads;
+  uint32_t head_width;
+  uint32_t reserved0;
+  uint64_t source_generation;
+  uint64_t table_generation;
+} PrometheusGemma4E2BM1RopeRequest;
+
+typedef struct PrometheusGemma4E2BM1RopeResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t output_written;
+  uint32_t dispatch_count;
+  uint64_t source_hash;
+  uint64_t cosine_hash;
+  uint64_t sine_hash;
+  uint64_t output_hash;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+} PrometheusGemma4E2BM1RopeResult;
+
+/* Model-private M1 Q/K continuation.  This is deliberately not a general
+   device-buffer API: it owns the RMSNorm -> RoPE dependency inside one
+   serialized runtime submission.  `input` is the accepted projection
+   boundary, while the normalized intermediate never crosses the host. */
+typedef struct PrometheusGemma4E2BM1HeadRmsNormRopeRequest {
+  uint32_t struct_size;
+  const float* input;
+  const float* weight;
+  const float* cosine;
+  const float* sine;
+  float* output;
+  uint64_t input_element_count;
+  uint64_t weight_element_count;
+  uint64_t cosine_element_count;
+  uint64_t sine_element_count;
+  uint64_t output_element_count;
+  uint32_t tokens;
+  uint32_t heads;
+  uint32_t head_width;
+  uint32_t reserved0;
+  float epsilon;
+  uint64_t input_generation;
+  uint64_t weight_generation;
+  uint64_t table_generation;
+  uint64_t exact_source_hash;
+} PrometheusGemma4E2BM1HeadRmsNormRopeRequest;
+
+typedef struct PrometheusGemma4E2BM1HeadRmsNormRopeResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t output_written;
+  uint32_t dispatch_count;
+  uint32_t resident_source_bound;
+  uint32_t normalized_readback_count;
+  uint64_t source_byte_offset;
+  uint64_t source_byte_range;
+  uint64_t destination_byte_offset;
+  uint64_t destination_byte_range;
+  uint64_t input_hash;
+  uint64_t weight_hash;
+  uint64_t output_hash;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+} PrometheusGemma4E2BM1HeadRmsNormRopeResult;
+
 typedef struct PrometheusSgemmAsyncTaskDiagnostics {
   int32_t task_id;
   uint32_t generation;
@@ -2536,6 +2623,14 @@ PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm(
     void* handle,
     const PrometheusGemma4E2BM1HeadRmsNormRequest* request,
     PrometheusGemma4E2BM1HeadRmsNormResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_rope(
+    void* handle,
+    const PrometheusGemma4E2BM1RopeRequest* request,
+    PrometheusGemma4E2BM1RopeResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
+    void* handle,
+    const PrometheusGemma4E2BM1HeadRmsNormRopeRequest* request,
+    PrometheusGemma4E2BM1HeadRmsNormRopeResult* out_result);
 
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,

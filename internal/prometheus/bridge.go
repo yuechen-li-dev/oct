@@ -25,6 +25,8 @@ const (
 	reactorSymbolGemmaInputRN                = "prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm"
 	reactorSymbolGemmaProjectionActivationRN = "prometheus_reactor_runtime_gemma4e2b_m1_projection_activation_rmsnorm"
 	reactorSymbolGemmaHeadRN                 = "prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm"
+	reactorSymbolGemmaRope                   = "prometheus_reactor_runtime_gemma4e2b_m1_rope"
+	reactorSymbolGemmaHeadRNRope             = "prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope"
 )
 
 type ReactorIssueCode string
@@ -106,6 +108,8 @@ type reactorConsumeAsync func(reactorRuntimeHandle, int, []float32) (reactorCall
 type reactorAbandonAsync func(reactorRuntimeHandle, int) error
 type reactorGemma4E2BM1InputRMSNorm func(reactorRuntimeHandle, []float32, []float32, uint32, uint32, uint32, float32, uint64, uint64, uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error)
 type reactorGemma4E2BM1HeadRMSNorm = reactorGemma4E2BM1InputRMSNorm
+type reactorGemma4E2BM1Rope func(reactorRuntimeHandle, []float32, []float32, []float32, uint32, uint32, uint32, uint64, uint64) ([]float32, reactorGemma4E2BM1RopeResult, error)
+type reactorGemma4E2BM1HeadRMSNormRope func(reactorRuntimeHandle, []float32, []float32, []float32, []float32, uint32, uint32, uint32, float32, uint64, uint64, uint64, uint64) ([]float32, reactorGemma4E2BM1HeadRMSNormRopeResult, error)
 
 type reactorGemma4E2BM1InputRMSNormResult struct {
 	StageCode                    uint32
@@ -130,6 +134,41 @@ type reactorGemma4E2BM1InputRMSNormResult struct {
 	InvRMSGPUNanoseconds         uint64
 	ApplyGPUNanoseconds          uint64
 	EndToEndNanoseconds          uint64
+}
+
+type reactorGemma4E2BM1RopeResult struct {
+	StageCode               uint32
+	DetailCode              int
+	OutputWritten           bool
+	DispatchCount           uint32
+	SourceHash              uint64
+	CosineHash              uint64
+	SineHash                uint64
+	OutputHash              uint64
+	BufferAllocationCount   uint64
+	BufferReuseCount        uint64
+	DescriptorUpdateCount   uint64
+	PipelineCreateCount     uint64
+	CommandBufferReuseCount uint64
+}
+
+type reactorGemma4E2BM1HeadRMSNormRopeResult struct {
+	StageCode               uint32
+	DetailCode              int
+	OutputWritten           bool
+	DispatchCount           uint32
+	ResidentSourceBound     bool
+	NormalizedReadbackCount uint32
+	SourceByteRange         uint64
+	DestinationByteRange    uint64
+	InputHash               uint64
+	WeightHash              uint64
+	OutputHash              uint64
+	BufferAllocationCount   uint64
+	BufferReuseCount        uint64
+	DescriptorUpdateCount   uint64
+	PipelineCreateCount     uint64
+	CommandBufferReuseCount uint64
 }
 
 type dynamicLibrary interface {
@@ -168,6 +207,8 @@ type nativeRuntime struct {
 	gemmaInputRN                reactorGemma4E2BM1InputRMSNorm
 	gemmaProjectionActivationRN reactorGemma4E2BM1InputRMSNorm
 	gemmaHeadRN                 reactorGemma4E2BM1HeadRMSNorm
+	gemmaRope                   reactorGemma4E2BM1Rope
+	gemmaHeadRNRope             reactorGemma4E2BM1HeadRMSNormRope
 	handle                      reactorRuntimeHandle
 	caps                        reactorCaps
 	lib                         dynamicLibrary
@@ -311,6 +352,16 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 			rt.gemmaHeadRN = gemmaFn
 		}
 	}
+	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaRope); err == nil {
+		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1Rope); ok {
+			rt.gemmaRope = gemmaFn
+		}
+	}
+	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaHeadRNRope); err == nil {
+		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1HeadRMSNormRope); ok {
+			rt.gemmaHeadRNRope = gemmaFn
+		}
+	}
 
 	return rt, nil
 }
@@ -408,6 +459,24 @@ func (r *nativeRuntime) Gemma4E2BM1HeadRMSNorm(input, weight []float32, rows, he
 		return nil, nil, reactorGemma4E2BM1InputRMSNormResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 head rmsnorm entrypoint unavailable")
 	}
 	return r.gemmaHeadRN(r.handle, input, weight, rows, headWidth, inputRowStride, epsilon, inputGeneration, weightGeneration, exactSourceHash)
+}
+
+// Gemma4E2BM1Rope dispatches only the accepted 15-token half-split Q/K RoPE
+// contract. Its source and tables are BF16-reexpanded FP32 boundary values.
+func (r *nativeRuntime) Gemma4E2BM1Rope(source, cosine, sine []float32, tokens, heads, headWidth uint32, sourceGeneration, tableGeneration uint64) ([]float32, reactorGemma4E2BM1RopeResult, error) {
+	if r == nil || r.gemmaRope == nil {
+		return nil, reactorGemma4E2BM1RopeResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 rope entrypoint unavailable")
+	}
+	return r.gemmaRope(r.handle, source, cosine, sine, tokens, heads, headWidth, sourceGeneration, tableGeneration)
+}
+
+// Gemma4E2BM1HeadRMSNormRope owns the M1 normalized-device-output to
+// package-backed RoPE handoff. It does not expose arbitrary Vulkan ownership.
+func (r *nativeRuntime) Gemma4E2BM1HeadRMSNormRope(input, weight, cosine, sine []float32, tokens, heads, headWidth uint32, epsilon float32, inputGeneration, weightGeneration, tableGeneration, exactSourceHash uint64) ([]float32, reactorGemma4E2BM1HeadRMSNormRopeResult, error) {
+	if r == nil || r.gemmaHeadRNRope == nil {
+		return nil, reactorGemma4E2BM1HeadRMSNormRopeResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 resident head rmsnorm-rope entrypoint unavailable")
+	}
+	return r.gemmaHeadRNRope(r.handle, input, weight, cosine, sine, tokens, heads, headWidth, epsilon, inputGeneration, weightGeneration, tableGeneration, exactSourceHash)
 }
 
 func (r *nativeRuntime) Environment() string {

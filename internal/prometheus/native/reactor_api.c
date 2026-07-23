@@ -396,6 +396,111 @@ int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm(
                                                                out_result, 1u, 1u);
 }
 
+int prometheus_reactor_runtime_gemma4e2b_m1_rope(
+    void* handle,
+    const PrometheusGemma4E2BM1RopeRequest* request,
+    PrometheusGemma4E2BM1RopeResult* out_result) {
+  return prom_reactor_runtime_gemma4e2b_m1_rope(handle, request, out_result);
+}
+
+int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
+    void* handle,
+    const PrometheusGemma4E2BM1HeadRmsNormRopeRequest* request,
+    PrometheusGemma4E2BM1HeadRmsNormRopeResult* out_result) {
+  prom_m46_weight_prepare_request weight_request;
+  prom_m46_weight_prepare_result weight_result;
+  prom_m49a_m46_request execute_request;
+  prom_m49a_m46_result execute_result;
+  uint64_t rows;
+  uint64_t input_hash;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->struct_size = sizeof(*out_result);
+  if (request == NULL || request->struct_size < sizeof(*request) ||
+      request->input == NULL || request->weight == NULL || request->cosine == NULL ||
+      request->sine == NULL || request->output == NULL || request->tokens != 15u ||
+      (request->heads != 1u && request->heads != 8u) || request->head_width != 256u ||
+      request->epsilon != 0.000001f || request->input_generation == 0u ||
+      request->weight_generation == 0u || request->table_generation == 0u ||
+      request->exact_source_hash == 0u) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  rows = (uint64_t)request->tokens * request->heads;
+  if (request->input_element_count != rows * request->head_width ||
+      request->weight_element_count != request->head_width ||
+      request->cosine_element_count != (uint64_t)request->tokens * request->head_width ||
+      request->sine_element_count != (uint64_t)request->tokens * request->head_width ||
+      request->output_element_count != request->input_element_count) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  memset(&weight_request, 0, sizeof(weight_request));
+  weight_request.values = request->weight;
+  weight_request.element_count = request->weight_element_count;
+  weight_request.model_width = request->head_width;
+  weight_request.generation = request->weight_generation;
+  memset(&weight_result, 0, sizeof(weight_result));
+  if (prom_reactor_runtime_m46_prepare_weight(handle, &weight_request, &weight_result) != PROM_OK) {
+    out_result->stage = weight_result.stage;
+    out_result->detail_code = weight_result.detail_code;
+    out_result->weight_hash = weight_result.hash;
+    return PROM_ERROR;
+  }
+  input_hash = prom_num_hash_float_bits(request->input, request->input_element_count);
+  memset(&execute_request, 0, sizeof(execute_request));
+  execute_request.matched_z = request->input;
+  execute_request.matched_storage_element_count = request->input_element_count;
+  execute_request.tokens = (uint32_t)rows;
+  execute_request.model_width = request->head_width;
+  execute_request.z_row_stride = request->head_width;
+  execute_request.strategy = PROM_M46_STRATEGY_SEPARATE_OUTPUT;
+  execute_request.requested_reduction_plan = PROM_M46_REDUCTION_AUTO;
+  execute_request.epsilon = request->epsilon;
+  execute_request.input_generation = request->input_generation;
+  execute_request.reference_input_hash = input_hash;
+  execute_request.required_weight_generation = weight_result.generation;
+  execute_request.required_weight_hash = weight_result.hash;
+  execute_request.exact_source_hash = request->exact_source_hash;
+  execute_request.bf16_roundtrip_input = 1u;
+  execute_request.bf16_roundtrip_output = 1u;
+  execute_request.direct_rope = 1u;
+  execute_request.rope_cosine = request->cosine;
+  execute_request.rope_sine = request->sine;
+  execute_request.rope_output = request->output;
+  execute_request.rope_cosine_element_count = request->cosine_element_count;
+  execute_request.rope_sine_element_count = request->sine_element_count;
+  execute_request.rope_output_element_count = request->output_element_count;
+  execute_request.rope_tokens = request->tokens;
+  execute_request.rope_heads = request->heads;
+  execute_request.rope_table_generation = request->table_generation;
+  memset(&execute_result, 0, sizeof(execute_result));
+  if (prom_reactor_runtime_m49a_execute_m46(handle, &execute_request, &execute_result) != PROM_OK) {
+    out_result->stage = execute_result.stage;
+    out_result->detail_code = execute_result.detail_code;
+    return PROM_ERROR;
+  }
+  out_result->stage = execute_result.stage;
+  out_result->detail_code = execute_result.detail_code;
+  out_result->output_written = 1u;
+  out_result->dispatch_count = 1u;
+  out_result->resident_source_bound = execute_result.resident_rope_source_bound;
+  out_result->normalized_readback_count = execute_result.normalized_readback_count;
+  out_result->source_byte_range = execute_result.rope_source_byte_range;
+  out_result->destination_byte_range = execute_result.rope_destination_byte_range;
+  out_result->input_hash = execute_result.input_hash;
+  out_result->weight_hash = execute_result.weight_hash;
+  out_result->output_hash = execute_result.output_hash;
+  out_result->buffer_allocation_count = execute_result.rmsnorm.buffer_allocation_count;
+  out_result->buffer_reuse_count = execute_result.rmsnorm.buffer_reuse_count;
+  out_result->descriptor_update_count = execute_result.rope_descriptor_update_count;
+  out_result->pipeline_create_count = execute_result.rope_pipeline_create_count;
+  out_result->command_buffer_reuse_count = execute_result.rmsnorm.command_buffer_reuse_count;
+  return PROM_OK;
+}
+
 int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,
     PrometheusModelBlockEvidence* out_evidence) {

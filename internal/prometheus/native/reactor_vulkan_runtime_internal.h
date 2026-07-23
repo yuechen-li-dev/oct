@@ -545,6 +545,10 @@ typedef struct prom_reduction_slot {
   prom_vk_buffer m46_inv_rms;
   prom_vk_buffer m46_output;
   prom_vk_buffer m46_readback;
+  /* M1 RoPE retains a distinct device-local destination.  M46 owns
+     m46_output as the normalized source in the chained submission. */
+  prom_vk_buffer gemma4e2b_m1_rope_output;
+  prom_vk_buffer gemma4e2b_m1_rope_readback;
   prom_vk_buffer m49a_m46_z;
   prom_vk_buffer gemma4e2b_m1_bf16_roundtrip;
   prom_vk_buffer m47_n_packed;
@@ -711,6 +715,23 @@ typedef struct prom_reduction_runtime_state {
   uint64_t m45_pipeline_create_count;
   prom_reduction_pipeline m46_pipelines[PROM_M46_PIPELINE_COUNT];
   prom_reduction_pipeline gemma4e2b_m1_bf16_roundtrip_pipeline;
+  prom_reduction_pipeline gemma4e2b_m1_rope_pipeline;
+  prom_vk_buffer gemma4e2b_m1_rope_cosine_upload;
+  prom_vk_buffer gemma4e2b_m1_rope_cosine;
+  prom_vk_buffer gemma4e2b_m1_rope_sine_upload;
+  prom_vk_buffer gemma4e2b_m1_rope_sine;
+  uint64_t gemma4e2b_m1_rope_buffer_grow_count;
+  uint64_t gemma4e2b_m1_rope_buffer_reuse_count;
+  uint64_t gemma4e2b_m1_rope_descriptor_update_count;
+  uint64_t gemma4e2b_m1_rope_pipeline_create_count;
+  /* The most recent completed kernel-68 Q and K destinations are pinned by
+     role until the model-private score consumer releases them. */
+  uint32_t gemma4e2b_m1_rope_q_slot_id;
+  uint32_t gemma4e2b_m1_rope_q_slot_generation;
+  uint32_t gemma4e2b_m1_rope_q_valid;
+  uint32_t gemma4e2b_m1_rope_k_slot_id;
+  uint32_t gemma4e2b_m1_rope_k_slot_generation;
+  uint32_t gemma4e2b_m1_rope_k_valid;
   prom_vk_buffer m46_weight_upload;
   prom_vk_buffer m46_weight;
   uint64_t m46_weight_generation;

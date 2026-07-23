@@ -2359,6 +2359,72 @@ static int prom_gemma4e2b_m1_ensure_bf16_roundtrip_pipeline(
   return 1;
 }
 
+typedef struct prom_gemma4e2b_m1_rope_push {
+  uint32_t token_count;
+  uint32_t head_count;
+  uint32_t head_dim;
+  uint32_t reserved[5];
+} prom_gemma4e2b_m1_rope_push;
+
+static int prom_gemma4e2b_m1_ensure_rope_pipeline(
+    prom_reduction_runtime_state* state) {
+  prom_reduction_pipeline* destination;
+  const char* entry_point = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
+  VkPipelineShaderStageCreateInfo stage_info;
+  VkComputePipelineCreateInfo pipeline_info;
+  if (state == NULL || state->pipeline_layout == VK_NULL_HANDLE) return 0;
+  destination = &state->gemma4e2b_m1_rope_pipeline;
+  if (destination->pipeline != VK_NULL_HANDLE) return 1;
+  if (state->shader_package == NULL ||
+      !prom_shader_package_create_module(state->shader_package, state->device,
+                                         "kernel-68-default", &destination->shader_module,
+                                         &entry_point, &package_diagnostic)) return 0;
+  memset(&stage_info, 0, sizeof(stage_info));
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = destination->shader_module;
+  stage_info.pName = entry_point;
+  memset(&pipeline_info, 0, sizeof(pipeline_info));
+  pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  pipeline_info.stage = stage_info;
+  pipeline_info.layout = state->pipeline_layout;
+  if (vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1u, &pipeline_info,
+                               NULL, &destination->pipeline) != VK_SUCCESS) {
+    prom_reduction_destroy_pipeline(state->device, destination);
+    return 0;
+  }
+  destination->implementation_id = 68u;
+  state->gemma4e2b_m1_rope_pipeline_create_count += 1u;
+  return 1;
+}
+
+static int prom_gemma4e2b_m1_ensure_rope_buffer(
+    prom_reduction_runtime_state* state, prom_vk_buffer* buffer,
+    VkDeviceSize size, VkBufferUsageFlags usage,
+    VkMemoryPropertyFlags properties, int map_memory) {
+  const uint64_t allocations_before = state->diagnostics.buffer_allocation_count;
+  if (!prom_reduction_ensure_buffer(state, buffer, size, usage, properties, map_memory)) return 0;
+  if (state->diagnostics.buffer_allocation_count != allocations_before)
+    state->gemma4e2b_m1_rope_buffer_grow_count += 1u;
+  else
+    state->gemma4e2b_m1_rope_buffer_reuse_count += 1u;
+  return 1;
+}
+
+static void prom_gemma4e2b_m1_update_rope_descriptor(
+    prom_reduction_runtime_state* state, VkDescriptorSet set,
+    const prom_vk_buffer* source, const prom_vk_buffer* cosine,
+    const prom_vk_buffer* sine, const prom_vk_buffer* destination) {
+  prom_reduction_buffer_bindings bindings;
+  bindings.input = source;
+  bindings.auxiliary0 = cosine;
+  bindings.auxiliary1 = sine;
+  bindings.output = destination;
+  prom_reduction_update_descriptor_set(state, set, &bindings);
+  state->gemma4e2b_m1_rope_descriptor_update_count += 1u;
+}
+
 static int prom_m46_ensure_buffer(prom_reduction_runtime_state* state,
                                   prom_vk_buffer* buffer,
                                   VkDeviceSize size,
@@ -11076,6 +11142,8 @@ int prom_reactor_runtime_m49a_execute_m46(
   uint64_t input_bytes;
   uint64_t output_bytes;
   uint64_t inv_rms_bytes;
+  uint64_t rope_table_elements = 0u;
+  uint64_t rope_table_bytes = 0u;
   uint64_t input_hash;
   uint64_t timestamps[PROM_M46_QUERY_BASE + PROM_M46_QUERY_COUNT];
   uint32_t finite = 0u;
@@ -11089,8 +11157,7 @@ int prom_reactor_runtime_m49a_execute_m46(
   memset(out_result, 0, sizeof(*out_result));
   out_result->audit_only = 1u;
   out_result->no_product_intermediate_readback_change = 1u;
-  if (request == NULL || request->matched_z == NULL || request->output == NULL ||
-      request->inv_rms_output == NULL || request->tokens == 0u ||
+  if (request == NULL || request->matched_z == NULL || request->tokens == 0u ||
       request->model_width == 0u || request->z_row_stride < request->model_width ||
       request->strategy < PROM_M46_STRATEGY_SEPARATE_OUTPUT ||
       request->strategy > PROM_M46_STRATEGY_IN_PLACE_Z ||
@@ -11104,9 +11171,26 @@ int prom_reactor_runtime_m49a_execute_m46(
       !prom_m40b_checked_product_u64(request->tokens, request->model_width,
                                      &logical_elements) ||
       request->matched_storage_element_count != storage_elements ||
-      request->output_element_count != logical_elements ||
-      request->inv_rms_output_element_count != request->tokens ||
+      ((request->direct_rope == 0u) &&
+       (request->output == NULL || request->inv_rms_output == NULL ||
+        request->output_element_count != logical_elements ||
+        request->inv_rms_output_element_count != request->tokens)) ||
+      request->direct_rope > 1u ||
       storage_elements > SIZE_MAX / sizeof(float) || logical_elements > SIZE_MAX / sizeof(float)) {
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  if (request->direct_rope != 0u &&
+      (request->model_width != 256u || request->z_row_stride != 256u ||
+       request->rope_tokens != 15u || (request->rope_heads != 1u && request->rope_heads != 8u) ||
+       request->tokens != request->rope_tokens * request->rope_heads ||
+       request->rope_cosine == NULL || request->rope_sine == NULL || request->rope_output == NULL ||
+       !prom_m40b_checked_product_u64(request->rope_tokens, request->model_width,
+                                      &rope_table_elements) ||
+       request->rope_cosine_element_count != rope_table_elements ||
+       request->rope_sine_element_count != rope_table_elements ||
+       request->rope_output_element_count != logical_elements ||
+       rope_table_elements > SIZE_MAX / sizeof(float))) {
     out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
     return PROM_ERROR;
   }
@@ -11119,6 +11203,7 @@ int prom_reactor_runtime_m49a_execute_m46(
   }
   state = prom_reduction_ensure_state(handle, &detail);
   if (state == NULL || !prom_m46_ensure_pipelines(state) ||
+      (request->direct_rope != 0u && !prom_gemma4e2b_m1_ensure_rope_pipeline(state)) ||
       ((request->bf16_roundtrip_input != 0u || request->bf16_roundtrip_output != 0u) &&
        !prom_gemma4e2b_m1_ensure_bf16_roundtrip_pipeline(state))) {
     out_result->detail_code = state == NULL ? detail : PROM_M46_DETAIL_RESOURCE;
@@ -11139,6 +11224,7 @@ int prom_reactor_runtime_m49a_execute_m46(
   input_bytes = storage_elements * sizeof(float);
   output_bytes = logical_elements * sizeof(float);
   inv_rms_bytes = (uint64_t)request->tokens * sizeof(float);
+  rope_table_bytes = rope_table_elements * sizeof(float);
   if (!prom_m48_ensure_buffer(state, &slot->m48_host_initial_upload,
                               (VkDeviceSize)input_bytes,
                               VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -11156,17 +11242,48 @@ int prom_reactor_runtime_m49a_execute_m46(
                                 (VkDeviceSize)input_bytes,
                                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0, NULL)) ||
-      !prom_m48_ensure_buffer(state, &slot->m48_readback,
+      (request->direct_rope == 0u && !prom_m48_ensure_buffer(state, &slot->m48_readback,
                               (VkDeviceSize)inv_rms_bytes,
                               VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                              1, NULL)) {
+                              1, NULL)) ||
+      (request->direct_rope != 0u &&
+       (!prom_gemma4e2b_m1_ensure_rope_buffer(
+            state, &state->gemma4e2b_m1_rope_cosine_upload, (VkDeviceSize)rope_table_bytes,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1) ||
+        !prom_gemma4e2b_m1_ensure_rope_buffer(
+            state, &state->gemma4e2b_m1_rope_cosine, (VkDeviceSize)rope_table_bytes,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+        !prom_gemma4e2b_m1_ensure_rope_buffer(
+            state, &state->gemma4e2b_m1_rope_sine_upload, (VkDeviceSize)rope_table_bytes,
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1) ||
+        !prom_gemma4e2b_m1_ensure_rope_buffer(
+            state, &state->gemma4e2b_m1_rope_sine, (VkDeviceSize)rope_table_bytes,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+        !prom_gemma4e2b_m1_ensure_rope_buffer(
+            state, &slot->gemma4e2b_m1_rope_output, (VkDeviceSize)output_bytes,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+        !prom_gemma4e2b_m1_ensure_rope_buffer(
+            state, &slot->gemma4e2b_m1_rope_readback, (VkDeviceSize)output_bytes,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1)))) {
     slot->state = PROM_ASYNC_PHYSICAL_READY;
     out_result->detail_code = PROM_M46_DETAIL_RESOURCE;
     return PROM_ERROR;
   }
   memcpy(slot->m48_host_initial_upload.mapped, request->matched_z, (size_t)input_bytes);
+  if (request->direct_rope != 0u) {
+    memcpy(state->gemma4e2b_m1_rope_cosine_upload.mapped, request->rope_cosine,
+           (size_t)rope_table_bytes);
+    memcpy(state->gemma4e2b_m1_rope_sine_upload.mapped, request->rope_sine,
+           (size_t)rope_table_bytes);
+  }
   memset(&upstream, 0, sizeof(upstream));
   upstream.logical_request_id = state->next_logical_request_id - 1u;
   upstream.residual_plan.tokens = request->tokens;
@@ -11195,7 +11312,7 @@ int prom_reactor_runtime_m49a_execute_m46(
   memset(&rms_request, 0, sizeof(rms_request));
   rms_request.upstream.attention.tokens = request->tokens;
   rms_request.upstream.attention.model_width = request->model_width;
-  rms_request.output = request->output;
+  rms_request.output = request->direct_rope != 0u ? NULL : request->output;
   rms_request.output_element_count = logical_elements;
   rms_request.strategy = request->strategy;
   rms_request.submit_policy = PROM_M46_SUBMIT_ONE_COMMAND_BUFFER;
@@ -11265,7 +11382,77 @@ int prom_reactor_runtime_m49a_execute_m46(
                            &out_result->rmsnorm.rmsnorm_plan,
                            continuation.z, continuation.n,
                            slot->command_buffer, 1u, 1u, &partial_fault) != 1 ||
-      partial_fault != 0u ||
+      partial_fault != 0u)
+    goto m49a_m46_command_fail;
+  if (request->direct_rope != 0u) {
+    prom_gemma4e2b_m1_rope_push push;
+    prom_m42_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_cosine_upload,
+                            VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                            VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    prom_m42_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_sine_upload,
+                            VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                            VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    memset(&copy, 0, sizeof(copy));
+    copy.size = (VkDeviceSize)rope_table_bytes;
+    vkCmdCopyBuffer(slot->command_buffer, state->gemma4e2b_m1_rope_cosine_upload.buffer,
+                    state->gemma4e2b_m1_rope_cosine.buffer, 1u, &copy);
+    vkCmdCopyBuffer(slot->command_buffer, state->gemma4e2b_m1_rope_sine_upload.buffer,
+                    state->gemma4e2b_m1_rope_sine.buffer, 1u, &copy);
+    if (!prom_m43_one_buffer_barrier(slot->command_buffer, continuation.n,
+                                     (VkDeviceSize)output_bytes,
+                                     VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) ||
+        !prom_m43_one_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_cosine,
+                                     (VkDeviceSize)rope_table_bytes,
+                                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) ||
+        !prom_m43_one_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_sine,
+                                     (VkDeviceSize)rope_table_bytes,
+                                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT))
+      goto m49a_m46_command_fail;
+    prom_gemma4e2b_m1_update_rope_descriptor(
+        state, slot->descriptor_sets[3], continuation.n,
+        &state->gemma4e2b_m1_rope_cosine, &state->gemma4e2b_m1_rope_sine,
+        &slot->gemma4e2b_m1_rope_output);
+    memset(&push, 0, sizeof(push));
+    push.token_count = request->rope_tokens;
+    push.head_count = request->rope_heads;
+    push.head_dim = request->model_width;
+    vkCmdBindPipeline(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                      state->gemma4e2b_m1_rope_pipeline.pipeline);
+    vkCmdBindDescriptorSets(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                            state->pipeline_layout, 0u, 1u, &slot->descriptor_sets[3],
+                            0u, NULL);
+    vkCmdPushConstants(slot->command_buffer, state->pipeline_layout,
+                       VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(push), &push);
+    vkCmdDispatch(slot->command_buffer,
+                  prom_reduction_ceil_div_u32((uint32_t)logical_elements, 256u), 1u, 1u);
+    if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->gemma4e2b_m1_rope_output,
+                                     (VkDeviceSize)output_bytes,
+                                     VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                                     VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT) ||
+        !prom_m43_one_buffer_barrier(slot->command_buffer, &slot->gemma4e2b_m1_rope_readback,
+                                     (VkDeviceSize)output_bytes,
+                                     VK_ACCESS_HOST_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                                     VK_PIPELINE_STAGE_HOST_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT))
+      goto m49a_m46_command_fail;
+    memset(&copy, 0, sizeof(copy));
+    copy.size = (VkDeviceSize)output_bytes;
+    vkCmdCopyBuffer(slot->command_buffer, slot->gemma4e2b_m1_rope_output.buffer,
+                    slot->gemma4e2b_m1_rope_readback.buffer, 1u, &copy);
+    if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->gemma4e2b_m1_rope_readback,
+                                     (VkDeviceSize)output_bytes,
+                                     VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                     VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                     VK_PIPELINE_STAGE_HOST_BIT))
+      goto m49a_m46_command_fail;
+  } else if (
       !prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m46_inv_rms,
                                    (VkDeviceSize)inv_rms_bytes,
                                    VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT,
@@ -11277,15 +11464,18 @@ int prom_reactor_runtime_m49a_execute_m46(
                                    VK_PIPELINE_STAGE_HOST_BIT,
                                    VK_PIPELINE_STAGE_TRANSFER_BIT))
     goto m49a_m46_command_fail;
-  memset(&copy, 0, sizeof(copy));
-  copy.size = (VkDeviceSize)inv_rms_bytes;
-  vkCmdCopyBuffer(slot->command_buffer, slot->m46_inv_rms.buffer,
-                  slot->m48_readback.buffer, 1u, &copy);
-  if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m48_readback,
-                                   (VkDeviceSize)inv_rms_bytes,
-                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
-                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                   VK_PIPELINE_STAGE_HOST_BIT) ||
+  if (request->direct_rope == 0u) {
+    memset(&copy, 0, sizeof(copy));
+    copy.size = (VkDeviceSize)inv_rms_bytes;
+    vkCmdCopyBuffer(slot->command_buffer, slot->m46_inv_rms.buffer,
+                    slot->m48_readback.buffer, 1u, &copy);
+  }
+  if ((request->direct_rope == 0u &&
+       !prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m48_readback,
+                                    (VkDeviceSize)inv_rms_bytes,
+                                    VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                    VK_PIPELINE_STAGE_HOST_BIT)) ||
       vkEndCommandBuffer(slot->command_buffer) != VK_SUCCESS ||
       vkResetFences(state->device, 1u, &slot->fence) != VK_SUCCESS)
     goto m49a_m46_command_fail;
@@ -11303,34 +11493,58 @@ int prom_reactor_runtime_m49a_execute_m46(
     return PROM_ERROR;
   }
   memset(timestamps, 0, sizeof(timestamps));
-  if (state->timestamp_supported == 0u || state->query_pool == VK_NULL_HANDLE ||
-      vkGetQueryPoolResults(state->device, state->query_pool,
-                            slot->active_query_base + PROM_M46_QUERY_BASE,
-                            PROM_M46_QUERY_COUNT,
-                            PROM_M46_QUERY_COUNT * sizeof(uint64_t),
-                            &timestamps[PROM_M46_QUERY_BASE], sizeof(uint64_t),
-                            VK_QUERY_RESULT_64_BIT) != VK_SUCCESS ||
+  if ((request->direct_rope == 0u &&
+       (state->timestamp_supported == 0u || state->query_pool == VK_NULL_HANDLE ||
+        vkGetQueryPoolResults(state->device, state->query_pool,
+                              slot->active_query_base + PROM_M46_QUERY_BASE,
+                              PROM_M46_QUERY_COUNT,
+                              PROM_M46_QUERY_COUNT * sizeof(uint64_t),
+                              &timestamps[PROM_M46_QUERY_BASE], sizeof(uint64_t),
+                              VK_QUERY_RESULT_64_BIT) != VK_SUCCESS)) ||
       !prom_m46_complete_continuation(state, slot, &upstream, &continuation,
                                       timestamps, begin_ns)) {
     slot->state = PROM_ASYNC_PHYSICAL_READY;
     out_result->detail_code = PROM_M46_DETAIL_QUERY;
     return PROM_ERROR;
   }
-  memcpy(request->inv_rms_output, slot->m48_readback.mapped, (size_t)inv_rms_bytes);
-  (void)prom_m42_hash_finite_matrix(request->output, logical_elements, &finite);
-  out_result->output_hash = prom_num_hash_float_bits(request->output, logical_elements);
+  if (request->direct_rope != 0u) {
+    memcpy(request->rope_output, slot->gemma4e2b_m1_rope_readback.mapped, (size_t)output_bytes);
+    (void)prom_m42_hash_finite_matrix(request->rope_output, logical_elements, &finite);
+    out_result->output_hash = prom_num_hash_float_bits(request->rope_output, logical_elements);
+    out_result->resident_rope_source_bound = 1u;
+    out_result->normalized_readback_count = 0u;
+    out_result->rope_source_byte_range = output_bytes;
+    out_result->rope_destination_byte_range = output_bytes;
+    out_result->rope_descriptor_update_count = state->gemma4e2b_m1_rope_descriptor_update_count;
+    out_result->rope_pipeline_create_count = state->gemma4e2b_m1_rope_pipeline_create_count;
+    if (request->rope_heads == 8u) {
+      state->gemma4e2b_m1_rope_q_slot_id = slot->slot_id;
+      state->gemma4e2b_m1_rope_q_slot_generation = slot->generation;
+      state->gemma4e2b_m1_rope_q_valid = 1u;
+    } else {
+      state->gemma4e2b_m1_rope_k_slot_id = slot->slot_id;
+      state->gemma4e2b_m1_rope_k_slot_generation = slot->generation;
+      state->gemma4e2b_m1_rope_k_valid = 1u;
+    }
+  } else {
+    memcpy(request->inv_rms_output, slot->m48_readback.mapped, (size_t)inv_rms_bytes);
+    (void)prom_m42_hash_finite_matrix(request->output, logical_elements, &finite);
+    out_result->output_hash = prom_num_hash_float_bits(request->output, logical_elements);
+  }
   if (finite == 0u || out_result->output_hash == 0u) {
     slot->state = PROM_ASYNC_PHYSICAL_READY;
     out_result->detail_code = PROM_M46_DETAIL_READBACK;
     return PROM_ERROR;
   }
-  (void)prom_m42_hash_finite_matrix(request->inv_rms_output, request->tokens, &finite);
-  out_result->inv_rms_hash =
-      prom_num_hash_float_bits(request->inv_rms_output, request->tokens);
-  if (finite == 0u || out_result->inv_rms_hash == 0u) {
-    slot->state = PROM_ASYNC_PHYSICAL_READY;
-    out_result->detail_code = PROM_M46_DETAIL_READBACK;
-    return PROM_ERROR;
+  if (request->direct_rope == 0u) {
+    (void)prom_m42_hash_finite_matrix(request->inv_rms_output, request->tokens, &finite);
+    out_result->inv_rms_hash =
+        prom_num_hash_float_bits(request->inv_rms_output, request->tokens);
+    if (finite == 0u || out_result->inv_rms_hash == 0u) {
+      slot->state = PROM_ASYNC_PHYSICAL_READY;
+      out_result->detail_code = PROM_M46_DETAIL_READBACK;
+      return PROM_ERROR;
+    }
   }
   out_result->matched_input = 1u;
   out_result->input_generation = request->input_generation;
@@ -12950,4 +13164,241 @@ cleanup:
   free(activation[1]);
   free(activation[0]);
   return status;
+}
+
+int prom_reactor_runtime_gemma4e2b_m1_rope(
+    void* handle, const PrometheusGemma4E2BM1RopeRequest* request,
+    PrometheusGemma4E2BM1RopeResult* out_result) {
+  prom_reduction_runtime_state* state;
+  prom_reduction_slot* slot;
+  prom_gemma4e2b_m1_rope_push push;
+  VkCommandBufferBeginInfo begin_info;
+  VkBufferCopy copy;
+  VkSubmitInfo submit;
+  VkResult vk_result;
+  uint64_t source_elements;
+  uint64_t table_elements;
+  uint64_t source_bytes;
+  uint64_t table_bytes;
+  uint64_t allocations_before;
+  uint64_t reuses_before;
+  uint32_t finite = 0u;
+  int32_t detail = 0;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->struct_size = sizeof(*out_result);
+  if (request == NULL || request->struct_size < sizeof(*request) ||
+      request->source == NULL || request->cosine == NULL || request->sine == NULL ||
+      request->output == NULL || request->source == request->output ||
+      request->cosine == request->output || request->sine == request->output ||
+      request->cosine == request->sine || request->tokens != 15u ||
+      (request->heads != 1u && request->heads != 8u) || request->head_width != 256u ||
+      request->source_generation == 0u || request->table_generation == 0u ||
+      !prom_m40b_checked_product_u64(request->tokens, request->heads, &source_elements) ||
+      !prom_m40b_checked_product_u64(source_elements, request->head_width, &source_elements) ||
+      !prom_m40b_checked_product_u64(request->tokens, request->head_width, &table_elements) ||
+      request->source_element_count != source_elements ||
+      request->output_element_count != source_elements ||
+      request->cosine_element_count != table_elements ||
+      request->sine_element_count != table_elements ||
+      source_elements > UINT32_MAX || source_elements > SIZE_MAX / sizeof(float) ||
+      table_elements > SIZE_MAX / sizeof(float)) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  out_result->source_hash = prom_m42_hash_finite_matrix(request->source, source_elements, &finite);
+  if (finite == 0u || out_result->source_hash == 0u) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  out_result->cosine_hash = prom_m42_hash_finite_matrix(request->cosine, table_elements, &finite);
+  if (finite == 0u || out_result->cosine_hash == 0u) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  out_result->sine_hash = prom_m42_hash_finite_matrix(request->sine, table_elements, &finite);
+  if (finite == 0u || out_result->sine_hash == 0u) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_NONFINITE_INPUT;
+    return PROM_ERROR;
+  }
+  state = prom_reduction_ensure_state(handle, &detail);
+  if (state == NULL || !prom_gemma4e2b_m1_ensure_rope_pipeline(state)) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = state == NULL ? detail : PROM_M46_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  slot = prom_reduction_acquire_slot(state, state->next_logical_request_id++);
+  if (slot == NULL) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_COMPLETION_UNCERTAIN;
+    return PROM_ERROR;
+  }
+  source_bytes = source_elements * sizeof(float);
+  table_bytes = table_elements * sizeof(float);
+  allocations_before = state->gemma4e2b_m1_rope_buffer_grow_count;
+  reuses_before = state->gemma4e2b_m1_rope_buffer_reuse_count;
+  if (!prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &slot->m48_host_initial_upload, (VkDeviceSize)source_bytes,
+          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &slot->m49a_m46_z, (VkDeviceSize)source_bytes,
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &state->gemma4e2b_m1_rope_cosine_upload, (VkDeviceSize)table_bytes,
+          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &state->gemma4e2b_m1_rope_cosine, (VkDeviceSize)table_bytes,
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &state->gemma4e2b_m1_rope_sine_upload, (VkDeviceSize)table_bytes,
+          VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &state->gemma4e2b_m1_rope_sine, (VkDeviceSize)table_bytes,
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &slot->m46_output, (VkDeviceSize)source_bytes,
+          VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0) ||
+      !prom_gemma4e2b_m1_ensure_rope_buffer(
+          state, &slot->m46_readback, (VkDeviceSize)source_bytes,
+          VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1)) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_RESOURCE;
+    return PROM_ERROR;
+  }
+  memcpy(slot->m48_host_initial_upload.mapped, request->source, (size_t)source_bytes);
+  memcpy(state->gemma4e2b_m1_rope_cosine_upload.mapped, request->cosine, (size_t)table_bytes);
+  memcpy(state->gemma4e2b_m1_rope_sine_upload.mapped, request->sine, (size_t)table_bytes);
+  prom_gemma4e2b_m1_update_rope_descriptor(
+      state, slot->descriptor_sets[3], &slot->m49a_m46_z,
+      &state->gemma4e2b_m1_rope_cosine, &state->gemma4e2b_m1_rope_sine,
+      &slot->m46_output);
+  memset(&begin_info, 0, sizeof(begin_info));
+  begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+  if (vkResetCommandBuffer(slot->command_buffer, 0u) != VK_SUCCESS ||
+      vkBeginCommandBuffer(slot->command_buffer, &begin_info) != VK_SUCCESS)
+    goto rope_command_fail;
+  prom_m42_buffer_barrier(slot->command_buffer, &slot->m48_host_initial_upload,
+                          VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  prom_m42_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_cosine_upload,
+                          VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  prom_m42_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_sine_upload,
+                          VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                          VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+  memset(&copy, 0, sizeof(copy));
+  copy.size = (VkDeviceSize)source_bytes;
+  vkCmdCopyBuffer(slot->command_buffer, slot->m48_host_initial_upload.buffer,
+                  slot->m49a_m46_z.buffer, 1u, &copy);
+  copy.size = (VkDeviceSize)table_bytes;
+  vkCmdCopyBuffer(slot->command_buffer, state->gemma4e2b_m1_rope_cosine_upload.buffer,
+                  state->gemma4e2b_m1_rope_cosine.buffer, 1u, &copy);
+  vkCmdCopyBuffer(slot->command_buffer, state->gemma4e2b_m1_rope_sine_upload.buffer,
+                  state->gemma4e2b_m1_rope_sine.buffer, 1u, &copy);
+  if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m49a_m46_z,
+                                   (VkDeviceSize)source_bytes,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) ||
+      !prom_m43_one_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_cosine,
+                                   (VkDeviceSize)table_bytes,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) ||
+      !prom_m43_one_buffer_barrier(slot->command_buffer, &state->gemma4e2b_m1_rope_sine,
+                                   (VkDeviceSize)table_bytes,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT))
+    goto rope_command_fail;
+  memset(&push, 0, sizeof(push));
+  push.token_count = request->tokens;
+  push.head_count = request->heads;
+  push.head_dim = request->head_width;
+  vkCmdBindPipeline(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                    state->gemma4e2b_m1_rope_pipeline.pipeline);
+  vkCmdBindDescriptorSets(slot->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                          state->pipeline_layout, 0u, 1u, &slot->descriptor_sets[3], 0u, NULL);
+  vkCmdPushConstants(slot->command_buffer, state->pipeline_layout,
+                     VK_SHADER_STAGE_COMPUTE_BIT, 0u, sizeof(push), &push);
+  vkCmdDispatch(slot->command_buffer,
+                prom_reduction_ceil_div_u32((uint32_t)source_elements, 256u), 1u, 1u);
+  if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m46_output,
+                                   (VkDeviceSize)source_bytes,
+                                   VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_TRANSFER_READ_BIT,
+                                   VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT))
+    goto rope_command_fail;
+  memset(&copy, 0, sizeof(copy));
+  copy.size = (VkDeviceSize)source_bytes;
+  vkCmdCopyBuffer(slot->command_buffer, slot->m46_output.buffer,
+                  slot->m46_readback.buffer, 1u, &copy);
+  if (!prom_m43_one_buffer_barrier(slot->command_buffer, &slot->m46_readback,
+                                   (VkDeviceSize)source_bytes,
+                                   VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT,
+                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                   VK_PIPELINE_STAGE_HOST_BIT) ||
+      vkEndCommandBuffer(slot->command_buffer) != VK_SUCCESS ||
+      vkResetFences(state->device, 1u, &slot->fence) != VK_SUCCESS)
+    goto rope_command_fail;
+  memset(&submit, 0, sizeof(submit));
+  submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+  submit.commandBufferCount = 1u;
+  submit.pCommandBuffers = &slot->command_buffer;
+  if (vkQueueSubmit(state->queue, 1u, &submit, slot->fence) != VK_SUCCESS)
+    goto rope_submit_fail;
+  slot->state = PROM_ASYNC_PHYSICAL_SUBMITTED;
+  vk_result = vkWaitForFences(state->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+  if (vk_result != VK_SUCCESS) {
+    slot->state = PROM_ASYNC_PHYSICAL_QUARANTINED;
+    out_result->stage = PROM_STAGE_SUBMIT;
+    out_result->detail_code = PROM_M46_DETAIL_COMPLETION_UNCERTAIN;
+    return PROM_ERROR;
+  }
+  memcpy(request->output, slot->m46_readback.mapped, (size_t)source_bytes);
+  out_result->output_hash = prom_m42_hash_finite_matrix(request->output, source_elements, &finite);
+  if (finite == 0u || out_result->output_hash == 0u) {
+    slot->state = PROM_ASYNC_PHYSICAL_READY;
+    out_result->stage = PROM_STAGE_TRANSFER_OUT;
+    out_result->detail_code = PROM_M46_DETAIL_READBACK;
+    return PROM_ERROR;
+  }
+  out_result->stage = 0u;
+  out_result->detail_code = 0;
+  out_result->output_written = 1u;
+  out_result->dispatch_count = 1u;
+  out_result->buffer_allocation_count =
+      state->gemma4e2b_m1_rope_buffer_grow_count - allocations_before;
+  out_result->buffer_reuse_count =
+      state->gemma4e2b_m1_rope_buffer_reuse_count - reuses_before;
+  out_result->descriptor_update_count = state->gemma4e2b_m1_rope_descriptor_update_count;
+  out_result->pipeline_create_count = state->gemma4e2b_m1_rope_pipeline_create_count;
+  out_result->command_buffer_reuse_count = slot->m46_command_reuse_count;
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  return PROM_OK;
+
+rope_command_fail:
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  out_result->stage = PROM_STAGE_SUBMIT;
+  out_result->detail_code = PROM_M46_DETAIL_COMMAND;
+  return PROM_ERROR;
+rope_submit_fail:
+  slot->state = PROM_ASYNC_PHYSICAL_READY;
+  out_result->stage = PROM_STAGE_SUBMIT;
+  out_result->detail_code = PROM_M46_DETAIL_SUBMIT;
+  return PROM_ERROR;
 }

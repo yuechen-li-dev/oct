@@ -26,6 +26,8 @@ func TestGemma4E2BM1CanonicalQKVRTX(t *testing.T) {
 	t.Logf("oneDNN-enabled diagnostic captures against strict portable reference: Q=%+v K=%+v V=%+v", result.QActivationBF16CPU, result.KActivationBF16CPU, result.VActivationBF16CPU)
 	t.Logf("portable Vulkan projections: Q=%+v K=%+v V=%+v", result.QPortableProjection, result.KPortableProjection, result.VPortableProjection)
 	t.Logf("portable Vulkan Q/K normalization: Q=%+v K=%+v", result.QNormalizedPortable, result.KNormalizedPortable)
+	t.Logf("package-backed Vulkan Q/K RoPE: Q=%+v K=%+v", result.QRope, result.KRope)
+	t.Logf("package-backed Vulkan Q/K RoPE lifecycle: Q=%+v K=%+v", result.QRopeNative, result.KRopeNative)
 	for _, projection := range []struct {
 		name   string
 		policy gemma4e2bPortableProjectionComparison
@@ -69,5 +71,30 @@ func TestGemma4E2BM1CanonicalQKVRTX(t *testing.T) {
 		if !normalization.stable || !normalization.native.OutputWritten || !normalization.native.MatchedInput {
 			t.Fatalf("%s head normalization was not fully written and stable: %+v", normalization.name, normalization.native)
 		}
+	}
+	for _, rope := range []struct {
+		name     string
+		policy   gemma4e2bPortableProjectionComparison
+		resident gemma4e2bPortableProjectionComparison
+		stable   bool
+		native   reactorGemma4E2BM1HeadRMSNormRopeResult
+	}{
+		{"Q", result.QRope, result.QRopeResidentContract, result.QRopeStable, result.QRopeNative},
+		{"K", result.KRope, result.KRopeResidentContract, result.KRopeStable, result.KRopeNative},
+	} {
+		if !rope.policy.WithinBF16StagePolicy {
+			t.Fatalf("%s RoPE exceeds the accepted positional authority: %+v", rope.name, rope.policy)
+		}
+		if rope.resident.Differing != 0 {
+			t.Fatalf("%s RoPE differs from the accepted BF16 graph over its resident source: %+v", rope.name, rope.resident)
+		}
+		if !rope.stable || !rope.native.OutputWritten || rope.native.DispatchCount != 1 ||
+			!rope.native.ResidentSourceBound || rope.native.NormalizedReadbackCount != 0 ||
+			rope.native.SourceByteRange == 0 || rope.native.SourceByteRange != rope.native.DestinationByteRange {
+			t.Fatalf("%s RoPE was not fully written and bit-stable: %+v", rope.name, rope.native)
+		}
+	}
+	if !result.RopeRecoveredAfterReject {
+		t.Fatal("RoPE runtime did not recover after pre-dispatch rejection")
 	}
 }

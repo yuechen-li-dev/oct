@@ -2414,6 +2414,16 @@ typedef struct prom_m49a_m46_request {
   uint64_t exact_source_hash;
   uint32_t bf16_roundtrip_input;
   uint32_t bf16_roundtrip_output;
+  uint32_t direct_rope;
+  const float* rope_cosine;
+  const float* rope_sine;
+  float* rope_output;
+  uint64_t rope_cosine_element_count;
+  uint64_t rope_sine_element_count;
+  uint64_t rope_output_element_count;
+  uint32_t rope_tokens;
+  uint32_t rope_heads;
+  uint64_t rope_table_generation;
 } prom_m49a_m46_request;
 
 typedef struct prom_m49a_m46_result {
@@ -2430,6 +2440,12 @@ typedef struct prom_m49a_m46_result {
   uint64_t input_generation;
   uint64_t weight_generation;
   uint64_t weight_hash;
+  uint32_t resident_rope_source_bound;
+  uint32_t normalized_readback_count;
+  uint64_t rope_source_byte_range;
+  uint64_t rope_destination_byte_range;
+  uint64_t rope_descriptor_update_count;
+  uint64_t rope_pipeline_create_count;
   prom_m46_composed_result rmsnorm;
 } prom_m49a_m46_result;
 
@@ -3447,6 +3463,9 @@ int prom_reactor_runtime_m49a_execute_m44(
 int prom_reactor_runtime_m49a_execute_m46(
     void* handle, const prom_m49a_m46_request* request,
     prom_m49a_m46_result* out_result);
+int prom_reactor_runtime_gemma4e2b_m1_rope(
+    void* handle, const PrometheusGemma4E2BM1RopeRequest* request,
+    PrometheusGemma4E2BM1RopeResult* out_result);
 uint32_t prom_m48_attention_resource_index(uint32_t head, uint32_t weight_kind);
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
                                           prom_m48_transformer_stack_plan* out_plan);

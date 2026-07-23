@@ -13,16 +13,16 @@ struct RopeParams
     uint Reserved4;
 };
 
+[[vk::binding(1, 0)]] StructuredBuffer<float> Cosine;
 [[vk::binding(0, 0)]] StructuredBuffer<float> Input;
 [[vk::binding(3, 0)]] RWStructuredBuffer<float> Output;
-[[vk::binding(1, 0)]] RWStructuredBuffer<float> Reserved0;
-[[vk::binding(2, 0)]] RWStructuredBuffer<float> Reserved1;
+[[vk::binding(2, 0)]] StructuredBuffer<float> Sine;
 
 float RoundtripBF16(float value)
 {
     float __sdslv_inline_hlsl_0;
     {
-        // BEGIN INLINE HLSL internal\prometheus\shaders\sdslv\production\gemma4e2b\rope_half_split.sdslv:25
+        // BEGIN INLINE HLSL internal/prometheus/shaders/sdslv/production/gemma4e2b/rope_half_split.sdslv:27
         
                 uint bits = asuint(value); uint exponent = bits & 0x7f800000u;
                 uint mantissa = bits & 0x007fffffu;
@@ -57,19 +57,17 @@ void Gemma4E2BM1RopeHalfSplit_CS(uint3 DispatchThreadID : SV_DispatchThreadID)
         }
         float source = Input[element];
         float pair_source = Input[pair_element];
-        float __sdslv_inline_hlsl_1;
+        uint table_element = ((token * params.HeadDim) + frequency_index);
+        float cosine = Cosine[table_element];
+        float sine = Sine[table_element];
+        float first_product = RoundtripBF16((source * cosine));
+        float second_product = RoundtripBF16((pair_source * sine));
+        float transformed = RoundtripBF16((first_product - second_product));
+        if ((component >= half))
         {
-            // BEGIN INLINE HLSL internal\prometheus\shaders\sdslv\production\gemma4e2b\rope_half_split.sdslv:50
-            
-                            float angle = (float)token * pow(10000.0, -((float)(frequency_index * 2u) / 256.0));
-                            float cosine = asfloat((asuint(cos(angle)) + 0x7fffu + ((asuint(cos(angle)) >> 16u) & 1u)) & 0xffff0000u);
-                            float sine = asfloat((asuint(sin(angle)) + 0x7fffu + ((asuint(sin(angle)) >> 16u) & 1u)) & 0xffff0000u);
-                            __sdslv_inline_hlsl_1 = component < half ? source * cosine - pair_source * sine : source * cosine + pair_source * sine;
-                        
-            // END INLINE HLSL
+            transformed = RoundtripBF16((first_product + second_product));
         }
-        float transformed = __sdslv_inline_hlsl_1;
-        Output[element] = RoundtripBF16(transformed);
+        Output[element] = transformed;
     }
     return;
 }

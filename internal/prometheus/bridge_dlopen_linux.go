@@ -19,6 +19,8 @@ typedef int (*oct_prom_query_async_fn)(void*, int, void*);
 typedef int (*oct_prom_consume_async_fn)(void*, int, float*, uint32_t, uint32_t*, int*);
 typedef int (*oct_prom_abandon_async_fn)(void*, int);
 typedef int (*oct_prom_gemma4e2b_input_rmsnorm_fn)(void*, const void*, void*);
+typedef int (*oct_prom_gemma4e2b_rope_fn)(void*, const void*, void*);
+typedef int (*oct_prom_gemma4e2b_head_rmsnorm_rope_fn)(void*, const void*, void*);
 
 typedef struct oct_prom_caps {
 	uint32_t available;
@@ -92,6 +94,55 @@ typedef struct oct_prom_gemma4e2b_input_rmsnorm_result {
 	uint64_t apply_gpu_ns;
 	uint64_t end_to_end_ns;
 } oct_prom_gemma4e2b_input_rmsnorm_result;
+
+typedef struct oct_prom_gemma4e2b_rope_request {
+	uint32_t struct_size;
+	const float* source;
+	const float* cosine;
+	const float* sine;
+	float* output;
+	uint64_t source_element_count;
+	uint64_t cosine_element_count;
+	uint64_t sine_element_count;
+	uint64_t output_element_count;
+	uint32_t tokens;
+	uint32_t heads;
+	uint32_t head_width;
+	uint32_t reserved0;
+	uint64_t source_generation;
+	uint64_t table_generation;
+} oct_prom_gemma4e2b_rope_request;
+
+typedef struct oct_prom_gemma4e2b_rope_result {
+	uint32_t struct_size;
+	uint32_t stage;
+	int32_t detail_code;
+	uint32_t output_written;
+	uint32_t dispatch_count;
+	uint64_t source_hash;
+	uint64_t cosine_hash;
+	uint64_t sine_hash;
+	uint64_t output_hash;
+	uint64_t buffer_allocation_count;
+	uint64_t buffer_reuse_count;
+	uint64_t descriptor_update_count;
+	uint64_t pipeline_create_count;
+	uint64_t command_buffer_reuse_count;
+} oct_prom_gemma4e2b_rope_result;
+
+typedef struct oct_prom_gemma4e2b_head_rmsnorm_rope_request {
+	uint32_t struct_size; const float* input; const float* weight; const float* cosine; const float* sine; float* output;
+	uint64_t input_element_count; uint64_t weight_element_count; uint64_t cosine_element_count; uint64_t sine_element_count; uint64_t output_element_count;
+	uint32_t tokens; uint32_t heads; uint32_t head_width; uint32_t reserved0; float epsilon;
+	uint64_t input_generation; uint64_t weight_generation; uint64_t table_generation; uint64_t exact_source_hash;
+} oct_prom_gemma4e2b_head_rmsnorm_rope_request;
+typedef struct oct_prom_gemma4e2b_head_rmsnorm_rope_result {
+	uint32_t struct_size; uint32_t stage; int32_t detail_code; uint32_t output_written; uint32_t dispatch_count;
+	uint32_t resident_source_bound; uint32_t normalized_readback_count;
+	uint64_t source_byte_offset; uint64_t source_byte_range; uint64_t destination_byte_offset; uint64_t destination_byte_range;
+	uint64_t input_hash; uint64_t weight_hash; uint64_t output_hash; uint64_t buffer_allocation_count; uint64_t buffer_reuse_count;
+	uint64_t descriptor_update_count; uint64_t pipeline_create_count; uint64_t command_buffer_reuse_count;
+} oct_prom_gemma4e2b_head_rmsnorm_rope_result;
 
 static void* oct_prom_dlopen(const char* path) {
 	return dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -211,6 +262,37 @@ static int oct_prom_call_gemma4e2b_input_rmsnorm(void* symbol,
 	request.weight_generation = weight_generation;
 	request.exact_source_hash = exact_source_hash;
 	return ((oct_prom_gemma4e2b_input_rmsnorm_fn)symbol)((void*)handle, &request, out_result);
+}
+
+static int oct_prom_call_gemma4e2b_rope(void* symbol, uintptr_t handle,
+	const float* source, const float* cosine, const float* sine, float* output,
+	uint64_t source_count, uint64_t cosine_count, uint64_t sine_count, uint64_t output_count,
+	uint32_t tokens, uint32_t heads, uint32_t head_width,
+	uint64_t source_generation, uint64_t table_generation,
+	oct_prom_gemma4e2b_rope_result* out_result) {
+	oct_prom_gemma4e2b_rope_request request;
+	memset(&request, 0, sizeof(request));
+	request.struct_size = (uint32_t)sizeof(request);
+	request.source = source; request.cosine = cosine; request.sine = sine; request.output = output;
+	request.source_element_count = source_count; request.cosine_element_count = cosine_count;
+	request.sine_element_count = sine_count; request.output_element_count = output_count;
+	request.tokens = tokens; request.heads = heads; request.head_width = head_width;
+	request.source_generation = source_generation; request.table_generation = table_generation;
+	return ((oct_prom_gemma4e2b_rope_fn)symbol)((void*)handle, &request, out_result);
+}
+
+static int oct_prom_call_gemma4e2b_head_rmsnorm_rope(void* symbol, uintptr_t handle,
+	const float* input, const float* weight, const float* cosine, const float* sine, float* output,
+	uint64_t input_count, uint64_t weight_count, uint64_t cosine_count, uint64_t sine_count, uint64_t output_count,
+	uint32_t tokens, uint32_t heads, uint32_t head_width, float epsilon,
+	uint64_t input_generation, uint64_t weight_generation, uint64_t table_generation, uint64_t exact_source_hash,
+	oct_prom_gemma4e2b_head_rmsnorm_rope_result* out_result) {
+	oct_prom_gemma4e2b_head_rmsnorm_rope_request request; memset(&request, 0, sizeof(request));
+	request.struct_size = sizeof(request); request.input = input; request.weight = weight; request.cosine = cosine; request.sine = sine; request.output = output;
+	request.input_element_count = input_count; request.weight_element_count = weight_count; request.cosine_element_count = cosine_count; request.sine_element_count = sine_count; request.output_element_count = output_count;
+	request.tokens = tokens; request.heads = heads; request.head_width = head_width; request.epsilon = epsilon;
+	request.input_generation = input_generation; request.weight_generation = weight_generation; request.table_generation = table_generation; request.exact_source_hash = exact_source_hash;
+	return ((oct_prom_gemma4e2b_head_rmsnorm_rope_fn)symbol)((void*)handle, &request, out_result);
 }
 */
 import "C"
@@ -446,6 +528,44 @@ func (l *dlLibrary) Resolve(symbol string) (any, error) {
 				return nil, nil, result, fmt.Errorf("gemma4e2b input rmsnorm status=%d", status)
 			}
 			return output, invRMS, result, nil
+		}), nil
+	case reactorSymbolGemmaRope:
+		return reactorGemma4E2BM1Rope(func(handle reactorRuntimeHandle, source, cosine, sine []float32, tokens, heads, headWidth uint32, sourceGeneration, tableGeneration uint64) ([]float32, reactorGemma4E2BM1RopeResult, error) {
+			output := make([]float32, int(tokens*heads*headWidth))
+			var out C.oct_prom_gemma4e2b_rope_result
+			status := int(C.oct_prom_call_gemma4e2b_rope(
+				sym, C.uintptr_t(handle.ptr), floatSlicePointer(source), floatSlicePointer(cosine),
+				floatSlicePointer(sine), floatSlicePointer(output), C.uint64_t(len(source)),
+				C.uint64_t(len(cosine)), C.uint64_t(len(sine)), C.uint64_t(len(output)),
+				C.uint32_t(tokens), C.uint32_t(heads), C.uint32_t(headWidth),
+				C.uint64_t(sourceGeneration), C.uint64_t(tableGeneration), &out,
+			))
+			result := reactorGemma4E2BM1RopeResult{
+				StageCode: uint32(out.stage), DetailCode: int(out.detail_code),
+				OutputWritten: out.output_written != 0, DispatchCount: uint32(out.dispatch_count),
+				SourceHash: uint64(out.source_hash), CosineHash: uint64(out.cosine_hash),
+				SineHash: uint64(out.sine_hash), OutputHash: uint64(out.output_hash),
+				BufferAllocationCount:   uint64(out.buffer_allocation_count),
+				BufferReuseCount:        uint64(out.buffer_reuse_count),
+				DescriptorUpdateCount:   uint64(out.descriptor_update_count),
+				PipelineCreateCount:     uint64(out.pipeline_create_count),
+				CommandBufferReuseCount: uint64(out.command_buffer_reuse_count),
+			}
+			if status != 0 {
+				return nil, result, fmt.Errorf("gemma4e2b rope status=%d", status)
+			}
+			return output, result, nil
+		}), nil
+	case reactorSymbolGemmaHeadRNRope:
+		return reactorGemma4E2BM1HeadRMSNormRope(func(handle reactorRuntimeHandle, input, weight, cosine, sine []float32, tokens, heads, headWidth uint32, epsilon float32, inputGeneration, weightGeneration, tableGeneration, exactSourceHash uint64) ([]float32, reactorGemma4E2BM1HeadRMSNormRopeResult, error) {
+			output := make([]float32, int(tokens*heads*headWidth))
+			var out C.oct_prom_gemma4e2b_head_rmsnorm_rope_result
+			status := int(C.oct_prom_call_gemma4e2b_head_rmsnorm_rope(sym, C.uintptr_t(handle.ptr), floatSlicePointer(input), floatSlicePointer(weight), floatSlicePointer(cosine), floatSlicePointer(sine), floatSlicePointer(output), C.uint64_t(len(input)), C.uint64_t(len(weight)), C.uint64_t(len(cosine)), C.uint64_t(len(sine)), C.uint64_t(len(output)), C.uint32_t(tokens), C.uint32_t(heads), C.uint32_t(headWidth), C.float(epsilon), C.uint64_t(inputGeneration), C.uint64_t(weightGeneration), C.uint64_t(tableGeneration), C.uint64_t(exactSourceHash), &out))
+			result := reactorGemma4E2BM1HeadRMSNormRopeResult{StageCode: uint32(out.stage), DetailCode: int(out.detail_code), OutputWritten: out.output_written != 0, DispatchCount: uint32(out.dispatch_count), ResidentSourceBound: out.resident_source_bound != 0, NormalizedReadbackCount: uint32(out.normalized_readback_count), SourceByteRange: uint64(out.source_byte_range), DestinationByteRange: uint64(out.destination_byte_range), InputHash: uint64(out.input_hash), WeightHash: uint64(out.weight_hash), OutputHash: uint64(out.output_hash), BufferAllocationCount: uint64(out.buffer_allocation_count), BufferReuseCount: uint64(out.buffer_reuse_count), DescriptorUpdateCount: uint64(out.descriptor_update_count), PipelineCreateCount: uint64(out.pipeline_create_count), CommandBufferReuseCount: uint64(out.command_buffer_reuse_count)}
+			if status != 0 {
+				return nil, result, fmt.Errorf("gemma4e2b resident head rmsnorm-rope failed: stage=%d detail=%d", result.StageCode, result.DetailCode)
+			}
+			return output, result, nil
 		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported reactor symbol %q", symbol)
