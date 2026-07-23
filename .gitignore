@@ -112,3 +112,5 @@ markdown_smoke.md
 # Reproducible but machine-local llama.cpp benchmark checkouts, builds, and models.
 work/
 
+*.json
+
