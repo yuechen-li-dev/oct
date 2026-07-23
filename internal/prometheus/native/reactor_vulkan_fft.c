@@ -1,6 +1,5 @@
 #include "reactor_vulkan.h"
-#include "reactor_vulkan_fft_bit_reverse_spirv.h"
-#include "reactor_vulkan_fft_butterfly_spirv.h"
+#include "reactor_shader_package.h"
 
 #include <string.h>
 
@@ -102,10 +101,10 @@ static void prom_fft_barrier(VkCommandBuffer command, VkBuffer buffer, VkAccessF
   vkCmdPipelineBarrier(command, source_stage, destination_stage, 0u, 0u, NULL, 1u, &barrier, 0u, NULL);
 }
 
-static VkResult prom_fft_make_pipeline(VkDevice device, VkPipelineLayout layout, const uint32_t* words, size_t bytes, const char* entry, VkPipeline* out_pipeline) {
-  VkShaderModule module = VK_NULL_HANDLE; VkShaderModuleCreateInfo module_info; VkComputePipelineCreateInfo pipeline_info; VkResult result;
-  memset(out_pipeline, 0, sizeof(*out_pipeline)); memset(&module_info, 0, sizeof(module_info)); module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; module_info.codeSize = bytes; module_info.pCode = words;
-  result = vkCreateShaderModule(device, &module_info, NULL, &module); if (result != VK_SUCCESS) return result;
+static VkResult prom_fft_make_pipeline(prom_shader_package* package, VkDevice device, VkPipelineLayout layout, const char* variant_id, VkPipeline* out_pipeline) {
+  VkShaderModule module = VK_NULL_HANDLE; VkComputePipelineCreateInfo pipeline_info; VkResult result; const char* entry = NULL; prom_shader_package_diagnostic diagnostic;
+  memset(out_pipeline, 0, sizeof(*out_pipeline));
+  if (!prom_shader_package_create_module(package, device, variant_id, &module, &entry, &diagnostic)) return VK_ERROR_INITIALIZATION_FAILED;
   memset(&pipeline_info, 0, sizeof(pipeline_info)); pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO; pipeline_info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; pipeline_info.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT; pipeline_info.stage.module = module; pipeline_info.stage.pName = entry; pipeline_info.layout = layout;
   result = vkCreateComputePipelines(device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, out_pipeline); vkDestroyShaderModule(device, module, NULL); return result;
 }
@@ -117,11 +116,11 @@ static void prom_fft_write_descriptors(VkDevice device, VkDescriptorSet set, VkB
   vkUpdateDescriptorSets(device, 2u, writes, 0u, NULL);
 }
 
-static int prom_fft_execute_vulkan(const prom_vk_runtime_services* services, const PrometheusFftRequest* request, const prom_fft_plan* plan, uint64_t bytes, uint32_t* out_stage, int* out_detail) {
+static int prom_fft_execute_vulkan(prom_shader_package* package, const prom_vk_runtime_services* services, const PrometheusFftRequest* request, const prom_fft_plan* plan, uint64_t bytes, uint32_t* out_stage, int* out_detail) {
   prom_vk_buffer input_stage, output_stage, input_device, ping, pong; VkDescriptorSetLayout set_layout = VK_NULL_HANDLE; VkDescriptorPool pool = VK_NULL_HANDLE; VkDescriptorSet set = VK_NULL_HANDLE; VkPipelineLayout pipeline_layout = VK_NULL_HANDLE; VkPipeline bit_pipeline = VK_NULL_HANDLE, butterfly_pipeline = VK_NULL_HANDLE; VkCommandBuffer command = VK_NULL_HANDLE; VkFence fence = VK_NULL_HANDLE; int detail = PROM_FFT_DETAIL_ALLOCATION_FAILED; int result_status = PROM_ERROR; VkResult result;
   memset(&input_stage, 0, sizeof(input_stage)); memset(&output_stage, 0, sizeof(output_stage)); memset(&input_device, 0, sizeof(input_device)); memset(&ping, 0, sizeof(ping)); memset(&pong, 0, sizeof(pong));
   if (services->backend_available == 0u || services->device == VK_NULL_HANDLE || services->compute_queue == VK_NULL_HANDLE || services->compute_command_pool == VK_NULL_HANDLE) { *out_detail = PROM_FFT_DETAIL_VULKAN_UNAVAILABLE; *out_stage = PROM_STAGE_INIT; return PROM_ERROR; }
-  if (prom_shader_registry_find_shader(PROM_FFT_SHADER_BIT_REVERSE) == NULL || prom_shader_registry_find_shader(PROM_FFT_SHADER_BUTTERFLY) == NULL) { *out_detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; *out_stage = PROM_STAGE_INIT; return PROM_ERROR; }
+  if (package == NULL) { *out_detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; *out_stage = PROM_STAGE_INIT; return PROM_ERROR; }
   result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &input_stage); if (result != VK_SUCCESS) goto done;
   result = prom_vk_create_buffer(services->physical_device, services->device, services->test_flags, bytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &output_stage); if (result != VK_SUCCESS) goto done;
   memcpy(input_stage.mapped, request->input, (size_t)bytes); memcpy(output_stage.mapped, request->output, (size_t)bytes);
@@ -136,8 +135,8 @@ static int prom_fft_execute_vulkan(const prom_vk_runtime_services* services, con
     memset(&set_info, 0, sizeof(set_info)); set_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO; set_info.descriptorPool = pool; set_info.descriptorSetCount = 1u; set_info.pSetLayouts = &set_layout; result = vkAllocateDescriptorSets(services->device, &set_info, &set); if (result != VK_SUCCESS) goto done;
     memset(&push, 0, sizeof(push)); push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; push.size = sizeof(prom_fft_butterfly_push); memset(&pipe_layout_info, 0, sizeof(pipe_layout_info)); pipe_layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO; pipe_layout_info.setLayoutCount = 1u; pipe_layout_info.pSetLayouts = &set_layout; pipe_layout_info.pushConstantRangeCount = 1u; pipe_layout_info.pPushConstantRanges = &push; result = vkCreatePipelineLayout(services->device, &pipe_layout_info, NULL, &pipeline_layout); if (result != VK_SUCCESS) goto done;
     if ((services->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) { detail = PROM_FFT_DETAIL_DISPATCH_FAILED; *out_stage = PROM_STAGE_INIT; goto done; }
-    result = prom_fft_make_pipeline(services->device, pipeline_layout, k_prom_fft_bit_reverse_spirv, sizeof(k_prom_fft_bit_reverse_spirv), "FftRadix2BitReverse_CS", &bit_pipeline); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; goto done; }
-    result = prom_fft_make_pipeline(services->device, pipeline_layout, k_prom_fft_butterfly_spirv, sizeof(k_prom_fft_butterfly_spirv), "FftRadix2Butterfly_CS", &butterfly_pipeline); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; goto done; }
+    result = prom_fft_make_pipeline(package, services->device, pipeline_layout, "kernel-52-default", &bit_pipeline); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; goto done; }
+    result = prom_fft_make_pipeline(package, services->device, pipeline_layout, "kernel-53-default", &butterfly_pipeline); if (result != VK_SUCCESS) { detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; goto done; }
     memset(&command_info, 0, sizeof(command_info)); command_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO; command_info.commandPool = services->compute_command_pool; command_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; command_info.commandBufferCount = 1u; result = vkAllocateCommandBuffers(services->device, &command_info, &command); if (result != VK_SUCCESS) goto done;
     memset(&fence_info, 0, sizeof(fence_info)); fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO; result = vkCreateFence(services->device, &fence_info, NULL, &fence); if (result != VK_SUCCESS) goto done;
   }
@@ -161,18 +160,19 @@ done:
 }
 
 int prom_reactor_runtime_fft_impl(void* handle, const PrometheusFftRequest* request, uint32_t* out_stage, int* out_detail_code) {
-  PrometheusFftDiagnostics* diag; prom_fft_plan plan; prom_vk_runtime_services services; int detail = PROM_FFT_DETAIL_UNAVAILABLE; uint32_t direction = PROM_FFT_DIRECTION_FORWARD; uint64_t bytes = 0u; int status;
+  PrometheusFftDiagnostics* diag; prom_fft_plan plan; prom_vk_runtime_services services; prom_shader_package* package = NULL; int detail = PROM_FFT_DETAIL_UNAVAILABLE; uint32_t direction = PROM_FFT_DIRECTION_FORWARD; uint64_t bytes = 0u; int status;
   if (!prom_reactor_runtime_validate_handle(handle)) { prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE); return PROM_INVALID_HANDLE; }
   diag = prom_fft_diag_for_handle(handle); if (diag == NULL) { prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INTERNAL_ERROR); return PROM_INTERNAL_ERROR; }
   *diag = prom_fft_default_diag(); prom_fft_stage_request(diag, request);
   if (!prom_fft_validate_request(request, &detail, &direction, &bytes)) { diag->last_direction = direction; diag->last_failure_detail = detail; prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, detail); return PROM_ERROR; }
   prom_fft_build_plan(request, direction, &plan); prom_fft_apply_plan_diag(diag, &plan); diag->last_direction = direction; diag->requested_path_id = PROM_FFT_PATH_VULKAN_RADIX2_RESERVED; diag->requested_radix = PROM_FFT_RADIX_BASELINE;
   if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) { diag->last_failure_detail = PROM_FFT_DETAIL_VULKAN_UNAVAILABLE; prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_FFT_DETAIL_VULKAN_UNAVAILABLE); return PROM_ERROR; }
+  if (prom_reactor_runtime_get_shader_package(handle, &package) != PROM_OK) { diag->last_failure_detail = PROM_FFT_DETAIL_SHADER_UNAVAILABLE; prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_FFT_DETAIL_SHADER_UNAVAILABLE); return PROM_ERROR; }
   /* M5/M6 has a production-generated shader portfolio and a real Vulkan
      execution route. A particular call can still fail later at allocation,
      upload, dispatch, or readback; that outcome is recorded separately. */
   diag->capability_reported = 1u; diag->production_enabled = 1u; diag->benchmark_enabled = 1u; diag->last_validation_status = PROM_FFT_PATH_STATUS_BENCHMARK_ENABLED;
-  status = prom_fft_execute_vulkan(&services, request, &plan, bytes, out_stage, out_detail_code);
+  status = prom_fft_execute_vulkan(package, &services, request, &plan, bytes, out_stage, out_detail_code);
   if (status == PROM_OK) { diag->executed_path_id = PROM_FFT_PATH_VULKAN_RADIX2_RESERVED; diag->executed_radix = PROM_FFT_RADIX_BASELINE; diag->last_failure_detail = 0; return PROM_OK; }
   diag->executed_path_id = PROM_FFT_PATH_UNAVAILABLE; diag->last_failure_detail = out_detail_code != NULL ? *out_detail_code : PROM_FFT_DETAIL_DISPATCH_FAILED; return PROM_ERROR;
 }

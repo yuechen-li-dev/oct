@@ -3198,6 +3198,8 @@ int prom_reactor_runtime_model_block_test_bf16_ingress_impl(
 
 int prom_reactor_runtime_validate_handle(void* handle);
 int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services* out_services);
+struct prom_shader_package;
+int prom_reactor_runtime_get_shader_package(void* handle, struct prom_shader_package** out_package);
 int prom_reactor_runtime_mark_cooperative_matrix_executable(void* handle);
 
 int prom_reactor_runtime_fft_impl(void* handle,

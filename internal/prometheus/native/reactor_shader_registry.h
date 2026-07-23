@@ -84,8 +84,9 @@ typedef struct prom_shader_asset {
   uint32_t shader_id;
   const char* name;
   prom_shader_stage stage;
-  const uint32_t* spirv_words;
-  size_t spirv_size_bytes;
+  /* Exact immutable package identity. Binary bytes belong exclusively to the
+   * per-runtime shader package, never to this selector metadata projection. */
+  const char* package_variant_id;
   const char* entry_point;
   uint64_t capability_mask;
   prom_shader_source_language source_language;

@@ -26,6 +26,55 @@ bool valid(std::vector<prom_shader_asset>& a, std::vector<prom_compute_implement
   return prom_shader_registry_validate_tables(a.data(), a.size(), i.data(), i.size()) != 0u;
 }
 std::string read_file(const std::filesystem::path& path) { std::ifstream file(path); return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>()); }
+std::string staged_shader_package_root() {
+  std::filesystem::path cursor = std::filesystem::current_path();
+  for (;;) {
+    const auto candidate = cursor / "out" / "prometheus" / "native" / "SerialCanonical" / "shaders";
+    if (std::filesystem::exists(candidate / "manifest.json")) return candidate.string();
+    if (cursor == cursor.root_path()) return {};
+    cursor = cursor.parent_path();
+  }
+}
+}
+
+FACT(PrometheusShaderPackageRootConfigIsStructSizeGatedAndRuntimeOwned) {
+  PrometheusReactorConfig old{};
+  old.struct_size = static_cast<std::uint32_t>(offsetof(PrometheusReactorConfig, shader_package_root));
+  old.test_flags = PROM_TESTCFG_SKIP_VULKAN_INIT;
+  void* oldRuntime = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&old, &oldRuntime), "pre-package config remains ABI compatible");
+  prom_shader_package* absent = nullptr;
+  ASSERT_EQUAL(PROM_ERROR, prom_reactor_runtime_get_shader_package(oldRuntime, &absent), "incomplete field is not read");
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(oldRuntime), "old configuration destruction succeeds");
+
+  std::string root = staged_shader_package_root();
+  ASSERT_TRUE(!root.empty(), "staged package is available to native ABI coverage");
+  PrometheusReactorConfig exact{};
+  exact.struct_size = static_cast<std::uint32_t>(offsetof(PrometheusReactorConfig, shader_package_root) + sizeof(exact.shader_package_root));
+  exact.test_flags = PROM_TESTCFG_SKIP_VULKAN_INIT;
+  exact.shader_package_root = root.c_str();
+  void* first = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&exact, &first), "complete package field is read");
+  prom_shader_package* firstPackage = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_shader_package(first, &firstPackage), "runtime owns the package");
+  const std::string copiedRoot = prom_shader_package_root(firstPackage);
+  root.assign("caller storage changed");
+  ASSERT_TRUE(copiedRoot == prom_shader_package_root(firstPackage), "runtime never borrows caller root storage");
+
+  std::string secondRoot = copiedRoot + "/.";
+  PrometheusReactorConfig second{};
+  second.struct_size = static_cast<std::uint32_t>(sizeof(second));
+  second.test_flags = PROM_TESTCFG_SKIP_VULKAN_INIT;
+  second.shader_package_root = secondRoot.c_str();
+  void* secondRuntime = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&second, &secondRuntime), "second runtime opens an independent package instance");
+  prom_shader_package* secondPackage = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_shader_package(secondRuntime, &secondPackage), "second runtime exposes its own package");
+  ASSERT_NOT_EQUAL(firstPackage, secondPackage, "two live runtimes do not share package state");
+  ASSERT_EQUAL(0u, prom_shader_package_artifact_open_count(firstPackage), "unopened first package counter starts independently");
+  ASSERT_EQUAL(0u, prom_shader_package_artifact_open_count(secondPackage), "unopened second package counter starts independently");
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(secondRuntime), "second package is released once with its runtime");
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(first), "first package is released once with its runtime");
 }
 
 DOOM_FACT(PrometheusForcedAttentionRouteRejectionReturnsOrdinaryExit)
@@ -55,7 +104,7 @@ FACT(PrometheusForcedAttentionRouteRejectionIsAnOrdinaryProcessFailure)
 
 FACT(PrometheusShaderRegistryIdsAreUnique) {
   ASSERT_TRUE(prom_shader_registry_validate() != 0u, "production registry must validate");
-  ASSERT_EQUAL(static_cast<std::size_t>(44), prom_shader_registry_shader_asset_count(), "registered assets must include the production routes and isolated experimental M5b/M6A payloads");
+  ASSERT_EQUAL(static_cast<std::size_t>(40), prom_shader_registry_shader_asset_count(), "ray-query and FFT package-only assets retain their identities outside the embedded registry");
   ASSERT_EQUAL(static_cast<std::size_t>(7), prom_shader_registry_reduction_shader_asset_count(), "M39b production reduction assets, including packed-short variants, must be present");
   ASSERT_EQUAL(static_cast<std::size_t>(0), prom_shader_registry_experimental_shader_asset_count(), "promoted reduction assets must not remain experimental");
 }
@@ -298,7 +347,7 @@ FACT(PrometheusShaderRegistryNegativeValidationCoverage) {
   i[1].implementation_id = i[0].implementation_id; ASSERT_FALSE(valid(a, i), "duplicate implementation ID must fail"); i = implementations();
   i[0].shader_id = 999u; ASSERT_FALSE(valid(a, i), "missing shader reference must fail"); i = implementations();
   a[0].stage = PROM_SHADER_STAGE_VERTEX; ASSERT_FALSE(valid(a, i), "wrong shader stage must fail"); a = assets();
-  a[0].spirv_size_bytes = 3u; ASSERT_FALSE(valid(a, i), "invalid SPIR-V byte size must fail"); a = assets();
+  a[0].package_variant_id = nullptr; ASSERT_FALSE(valid(a, i), "missing package variant identity must fail"); a = assets();
   i[0].dispatchable = 0u; ASSERT_FALSE(valid(a, i), "selector-eligible nondispatchable implementation must fail"); i = implementations();
   i[0].authority = PROM_SHADER_AUTHORITY_EXPERIMENTAL; ASSERT_FALSE(valid(a, i), "implementation and shader authority mismatch must fail"); i = implementations();
   i[0].pipeline_family = PROM_COMPUTE_PIPELINE_FAMILY_REDUCTION; ASSERT_FALSE(valid(a, i), "SGEMM implementation in reduction family must fail"); i = implementations();

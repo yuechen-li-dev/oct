@@ -33,6 +33,7 @@ type shaderAsset struct {
 	SourceLanguage string `json:"source_language"`
 	Source         string `json:"source"`
 	Header         string `json:"header"`
+	ExternalPackage bool   `json:"external_package"`
 }
 
 type computeImplementation struct {
@@ -466,7 +467,7 @@ func check(root string, inventory bool) error {
 		if err := mustExist(root, asset.Source); err != nil {
 			return err
 		}
-		if !strings.Contains(string(registry), `"`+asset.Source+`"`) {
+		if !asset.ExternalPackage && !strings.Contains(string(registry), `"`+asset.Source+`"`) {
 			return fmt.Errorf("registry does not own manifest source %s", asset.Source)
 		}
 		headerPath := filepath.Join(root, "internal", "prometheus", "native", filepath.FromSlash(asset.Header))

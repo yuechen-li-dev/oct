@@ -662,7 +662,9 @@ static int prom_model_block_create_descriptor_resources(prom_reduction_runtime_s
 static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
                                             prom_model_block_state* block) {
   const prom_shader_asset* asset;
-  VkShaderModuleCreateInfo module_info;
+  char variant_id[32];
+  const char* entry_point = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   if (state == NULL || block == NULL) return 0;
@@ -670,19 +672,18 @@ static int prom_model_block_create_pipeline(prom_reduction_runtime_state* state,
   if (asset == NULL || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
       asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
       asset->descriptor_binding_count != 3u || asset->push_constant_bytes != sizeof(prom_model_block_push_constants) ||
-      asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL ||
+      state->shader_package == NULL || asset->entry_point == NULL ||
       (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
-  memset(&module_info, 0, sizeof(module_info));
-  module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  module_info.codeSize = asset->spirv_size_bytes;
-  module_info.pCode = asset->spirv_words;
-  if (vkCreateShaderModule(state->device, &module_info, NULL, &block->pipeline.shader_module) != VK_SUCCESS) return 0;
+  if (snprintf(variant_id, sizeof(variant_id), "kernel-%u-default", asset->shader_id) < 0 ||
+      !prom_shader_package_create_module(state->shader_package, state->device, variant_id,
+                                         &block->pipeline.shader_module, &entry_point,
+                                         &package_diagnostic)) return 0;
   block->vk_create_shader_module_count += 1u;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = block->pipeline.shader_module;
-  stage_info.pName = asset->entry_point;
+  stage_info.pName = entry_point;
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
@@ -735,7 +736,9 @@ static int prom_model_block_m1b_create_pipeline(
   VkPipelineLayoutCreateInfo pipeline_layout_info;
   VkDescriptorBufferInfo buffer_infos[8];
   VkWriteDescriptorSet writes[8];
-  VkShaderModuleCreateInfo module_info;
+  char variant_id[32];
+  const char* entry_point = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo compute_info;
   VkResult create_result;
@@ -747,17 +750,17 @@ static int prom_model_block_m1b_create_pipeline(
   asset = prom_shader_registry_find_shader(shader_id);
   if (diagnostics_enabled && (!prom_model_block_m1b_shader_asset_is_admitted(asset, shader_id) ||
       asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
-      asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL)) {
-    fprintf(stderr, "EVT2_M1C_CREATE_PRECHECK shader=%u asset=%p bindings=%u expected_bindings=%u push=%u expected_push=%u stage=%u authority=%u source=%u spirv=%zu entry=%p\n",
+      state->shader_package == NULL || asset->entry_point == NULL)) {
+    fprintf(stderr, "EVT2_M1C_CREATE_PRECHECK shader=%u asset=%p bindings=%u expected_bindings=%u push=%u expected_push=%u stage=%u authority=%u source=%u package=%u entry=%p\n",
             shader_id, (const void*)asset, asset == NULL ? 0u : asset->descriptor_binding_count, buffer_count,
             asset == NULL ? 0u : asset->push_constant_bytes, expected_push_constant_bytes,
             asset == NULL ? 0u : (uint32_t)asset->stage, asset == NULL ? 0u : (uint32_t)asset->authority,
-            asset == NULL ? 0u : (uint32_t)asset->source_language, asset == NULL ? 0u : asset->spirv_size_bytes,
+            asset == NULL ? 0u : (uint32_t)asset->source_language, 0u,
             asset == NULL ? NULL : (const void*)asset->entry_point);
   }
   if (!prom_model_block_m1b_shader_asset_is_admitted(asset, shader_id) ||
       asset->descriptor_binding_count != buffer_count || asset->push_constant_bytes != expected_push_constant_bytes ||
-      asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL ||
+      state->shader_package == NULL || asset->entry_point == NULL ||
       (block->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) return 0;
   memset(bindings, 0, sizeof(bindings));
   for (index = 0u; index < buffer_count; ++index) {
@@ -816,19 +819,17 @@ static int prom_model_block_m1b_create_pipeline(
   }
   vkUpdateDescriptorSets(state->device, buffer_count, writes, 0u, NULL);
   block->vk_update_descriptor_sets_count += 1u;
-  memset(&module_info, 0, sizeof(module_info));
-  module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  module_info.codeSize = asset->spirv_size_bytes;
-  module_info.pCode = asset->spirv_words;
-  create_result = vkCreateShaderModule(state->device, &module_info, NULL, &pipeline->pipeline.shader_module);
-  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u shader_module=%d spirv_bytes=%zu\n", shader_id, create_result, asset->spirv_size_bytes);
-  if (create_result != VK_SUCCESS) return 0;
+  if (snprintf(variant_id, sizeof(variant_id), "kernel-%u-default", shader_id) < 0 ||
+      !prom_shader_package_create_module(state->shader_package, state->device, variant_id,
+                                         &pipeline->pipeline.shader_module, &entry_point,
+                                         &package_diagnostic)) return 0;
+  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u shader_module=0 package=verified\n", shader_id);
   block->vk_create_shader_module_count += 1u;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = pipeline->pipeline.shader_module;
-  stage_info.pName = asset->entry_point;
+  stage_info.pName = entry_point;
 #if defined(PROMETHEUS_DVT2_M6A_COOPERATIVE_W1W3_EXPERIMENT) && \
     defined(VK_PIPELINE_SHADER_STAGE_CREATE_REQUIRE_FULL_SUBGROUPS_BIT)
   if (shader_id == PROM_MODEL_BLOCK_M6A_COOPERATIVE_SHADER_ID)
@@ -840,7 +841,7 @@ static int prom_model_block_m1b_create_pipeline(
   compute_info.layout = pipeline->pipeline_layout;
   create_result = vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1u, &compute_info, NULL,
                                             &pipeline->pipeline.pipeline);
-  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u compute_pipeline=%d entry=%s\n", shader_id, create_result, asset->entry_point);
+  if (diagnostics_enabled) fprintf(stderr, "EVT2_M1C_CREATE shader=%u compute_pipeline=%d entry=%s\n", shader_id, create_result, entry_point);
   if (create_result != VK_SUCCESS) return 0;
   block->vk_create_compute_pipelines_count += 1u;
   pipeline->shader_id = asset->shader_id;

@@ -14,6 +14,7 @@ PROMETHEUS_COMMON_C=(
   "$NATIVE_DIR/reactor_slot_hfsm.c"
   "$NATIVE_DIR/reactor_vulkan_common.c"
   "$NATIVE_DIR/reactor_shader_registry.c"
+  "$NATIVE_DIR/reactor_shader_package.c"
   "$NATIVE_DIR/reactor_vulkan_sgemm.c"
   "$NATIVE_DIR/reactor_vulkan_ray_query.c"
   "$NATIVE_DIR/reactor_batch.c"

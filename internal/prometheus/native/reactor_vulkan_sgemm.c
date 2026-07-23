@@ -118,105 +118,6 @@ static void registry_unlock(void) {
  * SPIR-V confirms offsets m=0, n=4, k=8.
  * ... naive row-major SGEMM C=A*B
  */
-const uint32_t k_prom_sgemm_spirv[] = {
-    0x07230203u, 0x00010000u, 0x0008000bu, 0x00000066u, 0x00000000u, 0x00020011u, 0x00000001u,
-    0x0006000bu, 0x00000001u, 0x4c534c47u, 0x6474732eu, 0x3035342eu, 0x00000000u, 0x0003000eu,
-    0x00000000u, 0x00000001u, 0x0006000fu, 0x00000005u, 0x00000004u, 0x6e69616du, 0x00000000u,
-    0x0000000bu, 0x00060010u, 0x00000004u, 0x00000011u, 0x00000008u, 0x00000008u, 0x00000001u,
-    0x00030003u, 0x00000002u, 0x000001c2u, 0x00040005u, 0x00000004u, 0x6e69616du, 0x00000000u,
-    0x00030005u, 0x00000008u, 0x00776f72u, 0x00080005u, 0x0000000bu, 0x475f6c67u, 0x61626f6cu,
-    0x766e496cu, 0x7461636fu, 0x496e6f69u, 0x00000044u, 0x00030005u, 0x00000010u, 0x006c6f63u,
-    0x00040005u, 0x00000016u, 0x68737550u, 0x00000000u, 0x00040006u, 0x00000016u, 0x00000000u,
-    0x0000006du, 0x00040006u, 0x00000016u, 0x00000001u, 0x0000006eu, 0x00040006u, 0x00000016u,
-    0x00000002u, 0x0000006bu, 0x00030005u, 0x00000018u, 0x00006370u, 0x00030005u, 0x0000002du,
-    0x006d7573u, 0x00030005u, 0x0000002fu, 0x00006b6bu, 0x00040005u, 0x0000003bu, 0x66754241u,
-    0x00726566u, 0x00040006u, 0x0000003bu, 0x00000000u, 0x00000061u, 0x00030005u, 0x0000003du,
-    0x00000000u, 0x00040005u, 0x00000048u, 0x66754242u, 0x00726566u, 0x00040006u, 0x00000048u,
-    0x00000000u, 0x00000062u, 0x00030005u, 0x0000004au, 0x00000000u, 0x00040005u, 0x00000059u,
-    0x66754243u, 0x00726566u, 0x00040006u, 0x00000059u, 0x00000000u, 0x00000063u, 0x00030005u,
-    0x0000005bu, 0x00000000u, 0x00040047u, 0x0000000bu, 0x0000000bu, 0x0000001cu, 0x00030047u,
-    0x00000016u, 0x00000002u, 0x00050048u, 0x00000016u, 0x00000000u, 0x00000023u, 0x00000000u,
-    0x00050048u, 0x00000016u, 0x00000001u, 0x00000023u, 0x00000004u, 0x00050048u, 0x00000016u,
-    0x00000002u, 0x00000023u, 0x00000008u, 0x00040047u, 0x0000003au, 0x00000006u, 0x00000004u,
-    0x00030047u, 0x0000003bu, 0x00000003u, 0x00040048u, 0x0000003bu, 0x00000000u, 0x00000018u,
-    0x00050048u, 0x0000003bu, 0x00000000u, 0x00000023u, 0x00000000u, 0x00030047u, 0x0000003du,
-    0x00000018u, 0x00040047u, 0x0000003du, 0x00000021u, 0x00000000u, 0x00040047u, 0x0000003du,
-    0x00000022u, 0x00000000u, 0x00040047u, 0x00000047u, 0x00000006u, 0x00000004u, 0x00030047u,
-    0x00000048u, 0x00000003u, 0x00040048u, 0x00000048u, 0x00000000u, 0x00000018u, 0x00050048u,
-    0x00000048u, 0x00000000u, 0x00000023u, 0x00000000u, 0x00030047u, 0x0000004au, 0x00000018u,
-    0x00040047u, 0x0000004au, 0x00000021u, 0x00000001u, 0x00040047u, 0x0000004au, 0x00000022u,
-    0x00000000u, 0x00040047u, 0x00000058u, 0x00000006u, 0x00000004u, 0x00030047u, 0x00000059u,
-    0x00000003u, 0x00040048u, 0x00000059u, 0x00000000u, 0x00000019u, 0x00050048u, 0x00000059u,
-    0x00000000u, 0x00000023u, 0x00000000u, 0x00030047u, 0x0000005bu, 0x00000019u, 0x00040047u,
-    0x0000005bu, 0x00000021u, 0x00000002u, 0x00040047u, 0x0000005bu, 0x00000022u, 0x00000000u,
-    0x00040047u, 0x00000065u, 0x0000000bu, 0x00000019u, 0x00020013u, 0x00000002u, 0x00030021u,
-    0x00000003u, 0x00000002u, 0x00040015u, 0x00000006u, 0x00000020u, 0x00000000u, 0x00040020u,
-    0x00000007u, 0x00000007u, 0x00000006u, 0x00040017u, 0x00000009u, 0x00000006u, 0x00000003u,
-    0x00040020u, 0x0000000au, 0x00000001u, 0x00000009u, 0x0004003bu, 0x0000000au, 0x0000000bu,
-    0x00000001u, 0x0004002bu, 0x00000006u, 0x0000000cu, 0x00000000u, 0x00040020u, 0x0000000du,
-    0x00000001u, 0x00000006u, 0x0004002bu, 0x00000006u, 0x00000011u, 0x00000001u, 0x00020014u,
-    0x00000014u, 0x0005001eu, 0x00000016u, 0x00000006u, 0x00000006u, 0x00000006u, 0x00040020u,
-    0x00000017u, 0x00000009u, 0x00000016u, 0x0004003bu, 0x00000017u, 0x00000018u, 0x00000009u,
-    0x00040015u, 0x00000019u, 0x00000020u, 0x00000001u, 0x0004002bu, 0x00000019u, 0x0000001au,
-    0x00000000u, 0x00040020u, 0x0000001bu, 0x00000009u, 0x00000006u, 0x0004002bu, 0x00000019u,
-    0x00000023u, 0x00000001u, 0x00030016u, 0x0000002bu, 0x00000020u, 0x00040020u, 0x0000002cu,
-    0x00000007u, 0x0000002bu, 0x0004002bu, 0x0000002bu, 0x0000002eu, 0x00000000u, 0x0004002bu,
-    0x00000019u, 0x00000036u, 0x00000002u, 0x0003001du, 0x0000003au, 0x0000002bu, 0x0003001eu,
-    0x0000003bu, 0x0000003au, 0x00040020u, 0x0000003cu, 0x00000002u, 0x0000003bu, 0x0004003bu,
-    0x0000003cu, 0x0000003du, 0x00000002u, 0x00040020u, 0x00000044u, 0x00000002u, 0x0000002bu,
-    0x0003001du, 0x00000047u, 0x0000002bu, 0x0003001eu, 0x00000048u, 0x00000047u, 0x00040020u,
-    0x00000049u, 0x00000002u, 0x00000048u, 0x0004003bu, 0x00000049u, 0x0000004au, 0x00000002u,
-    0x0003001du, 0x00000058u, 0x0000002bu, 0x0003001eu, 0x00000059u, 0x00000058u, 0x00040020u,
-    0x0000005au, 0x00000002u, 0x00000059u, 0x0004003bu, 0x0000005au, 0x0000005bu, 0x00000002u,
-    0x0004002bu, 0x00000006u, 0x00000064u, 0x00000008u, 0x0006002cu, 0x00000009u, 0x00000065u,
-    0x00000064u, 0x00000064u, 0x00000011u, 0x00050036u, 0x00000002u, 0x00000004u, 0x00000000u,
-    0x00000003u, 0x000200f8u, 0x00000005u, 0x0004003bu, 0x00000007u, 0x00000008u, 0x00000007u,
-    0x0004003bu, 0x00000007u, 0x00000010u, 0x00000007u, 0x0004003bu, 0x0000002cu, 0x0000002du,
-    0x00000007u, 0x0004003bu, 0x00000007u, 0x0000002fu, 0x00000007u, 0x00050041u, 0x0000000du,
-    0x0000000eu, 0x0000000bu, 0x0000000cu, 0x0004003du, 0x00000006u, 0x0000000fu, 0x0000000eu,
-    0x0003003eu, 0x00000008u, 0x0000000fu, 0x00050041u, 0x0000000du, 0x00000012u, 0x0000000bu,
-    0x00000011u, 0x0004003du, 0x00000006u, 0x00000013u, 0x00000012u, 0x0003003eu, 0x00000010u,
-    0x00000013u, 0x0004003du, 0x00000006u, 0x00000015u, 0x00000008u, 0x00050041u, 0x0000001bu,
-    0x0000001cu, 0x00000018u, 0x0000001au, 0x0004003du, 0x00000006u, 0x0000001du, 0x0000001cu,
-    0x000500aeu, 0x00000014u, 0x0000001eu, 0x00000015u, 0x0000001du, 0x000400a8u, 0x00000014u,
-    0x0000001fu, 0x0000001eu, 0x000300f7u, 0x00000021u, 0x00000000u, 0x000400fau, 0x0000001fu,
-    0x00000020u, 0x00000021u, 0x000200f8u, 0x00000020u, 0x0004003du, 0x00000006u, 0x00000022u,
-    0x00000010u, 0x00050041u, 0x0000001bu, 0x00000024u, 0x00000018u, 0x00000023u, 0x0004003du,
-    0x00000006u, 0x00000025u, 0x00000024u, 0x000500aeu, 0x00000014u, 0x00000026u, 0x00000022u,
-    0x00000025u, 0x000200f9u, 0x00000021u, 0x000200f8u, 0x00000021u, 0x000700f5u, 0x00000014u,
-    0x00000027u, 0x0000001eu, 0x00000005u, 0x00000026u, 0x00000020u, 0x000300f7u, 0x00000029u,
-    0x00000000u, 0x000400fau, 0x00000027u, 0x00000028u, 0x00000029u, 0x000200f8u, 0x00000028u,
-    0x000100fdu, 0x000200f8u, 0x00000029u, 0x0003003eu, 0x0000002du, 0x0000002eu, 0x0003003eu,
-    0x0000002fu, 0x0000000cu, 0x000200f9u, 0x00000030u, 0x000200f8u, 0x00000030u, 0x000400f6u,
-    0x00000032u, 0x00000033u, 0x00000000u, 0x000200f9u, 0x00000034u, 0x000200f8u, 0x00000034u,
-    0x0004003du, 0x00000006u, 0x00000035u, 0x0000002fu, 0x00050041u, 0x0000001bu, 0x00000037u,
-    0x00000018u, 0x00000036u, 0x0004003du, 0x00000006u, 0x00000038u, 0x00000037u, 0x000500b0u,
-    0x00000014u, 0x00000039u, 0x00000035u, 0x00000038u, 0x000400fau, 0x00000039u, 0x00000031u,
-    0x00000032u, 0x000200f8u, 0x00000031u, 0x0004003du, 0x00000006u, 0x0000003eu, 0x00000008u,
-    0x00050041u, 0x0000001bu, 0x0000003fu, 0x00000018u, 0x00000036u, 0x0004003du, 0x00000006u,
-    0x00000040u, 0x0000003fu, 0x00050084u, 0x00000006u, 0x00000041u, 0x0000003eu, 0x00000040u,
-    0x0004003du, 0x00000006u, 0x00000042u, 0x0000002fu, 0x00050080u, 0x00000006u, 0x00000043u,
-    0x00000041u, 0x00000042u, 0x00060041u, 0x00000044u, 0x00000045u, 0x0000003du, 0x0000001au,
-    0x00000043u, 0x0004003du, 0x0000002bu, 0x00000046u, 0x00000045u, 0x0004003du, 0x00000006u,
-    0x0000004bu, 0x0000002fu, 0x00050041u, 0x0000001bu, 0x0000004cu, 0x00000018u, 0x00000023u,
-    0x0004003du, 0x00000006u, 0x0000004du, 0x0000004cu, 0x00050084u, 0x00000006u, 0x0000004eu,
-    0x0000004bu, 0x0000004du, 0x0004003du, 0x00000006u, 0x0000004fu, 0x00000010u, 0x00050080u,
-    0x00000006u, 0x00000050u, 0x0000004eu, 0x0000004fu, 0x00060041u, 0x00000044u, 0x00000051u,
-    0x0000004au, 0x0000001au, 0x00000050u, 0x0004003du, 0x0000002bu, 0x00000052u, 0x00000051u,
-    0x00050085u, 0x0000002bu, 0x00000053u, 0x00000046u, 0x00000052u, 0x0004003du, 0x0000002bu,
-    0x00000054u, 0x0000002du, 0x00050081u, 0x0000002bu, 0x00000055u, 0x00000054u, 0x00000053u,
-    0x0003003eu, 0x0000002du, 0x00000055u, 0x000200f9u, 0x00000033u, 0x000200f8u, 0x00000033u,
-    0x0004003du, 0x00000006u, 0x00000056u, 0x0000002fu, 0x00050080u, 0x00000006u, 0x00000057u,
-    0x00000056u, 0x00000023u, 0x0003003eu, 0x0000002fu, 0x00000057u, 0x000200f9u, 0x00000030u,
-    0x000200f8u, 0x00000032u, 0x0004003du, 0x00000006u, 0x0000005cu, 0x00000008u, 0x00050041u,
-    0x0000001bu, 0x0000005du, 0x00000018u, 0x00000023u, 0x0004003du, 0x00000006u, 0x0000005eu,
-    0x0000005du, 0x00050084u, 0x00000006u, 0x0000005fu, 0x0000005cu, 0x0000005eu, 0x0004003du,
-    0x00000006u, 0x00000060u, 0x00000010u, 0x00050080u, 0x00000006u, 0x00000061u, 0x0000005fu,
-    0x00000060u, 0x0004003du, 0x0000002bu, 0x00000062u, 0x0000002du, 0x00060041u, 0x00000044u,
-    0x00000063u, 0x0000005bu, 0x0000001au, 0x00000061u, 0x0003003eu, 0x00000063u, 0x00000062u,
-    0x000100fdu, 0x00010038u,
-};
-const size_t k_prom_sgemm_spirv_size_bytes = sizeof(k_prom_sgemm_spirv);
 
 static uint32_t prom_runtime_request_resource_lease(prometheus_runtime* rt,
                                                     const prom_resource_lease_facts* facts,
@@ -1541,6 +1442,17 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   return PROM_OK;
 }
 
+int prom_reactor_runtime_get_shader_package(void* handle, prom_shader_package** out_package) {
+  prometheus_runtime* runtime;
+  if (out_package == NULL) return PROM_ERROR;
+  *out_package = NULL;
+  if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
+  runtime = (prometheus_runtime*)handle;
+  if (runtime->shader_package == NULL) return PROM_ERROR;
+  *out_package = runtime->shader_package;
+  return PROM_OK;
+}
+
 const char* prom_vk_subgroup_owned_attention_admission_reason(
     const prom_vk_runtime_services* services) {
   if (services == NULL || services->subgroup_compute_supported == 0u) return "missing compute-stage subgroup support";
@@ -1602,8 +1514,8 @@ const char* prom_main_attention_route_asset_rejection_reason(
     return "selected main attention shader is not a compute asset";
   if (asset->source_language != PROM_SHADER_SOURCE_SDSLV)
     return "selected main attention shader is not SDSL-V owned";
-  if (asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL)
-    return "selected main attention shader payload is incomplete";
+  if (asset->package_variant_id == NULL || asset->entry_point == NULL)
+    return "selected main attention shader package identity is incomplete";
   return NULL;
 }
 
@@ -2832,6 +2744,34 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   }
 }
 
+static VkResult prom_runtime_create_package_module(prometheus_runtime* rt,
+                                                   const char* variant_id,
+                                                   VkShaderModule* out_module,
+                                                   const char** out_entry_point) {
+  prom_shader_package_diagnostic diagnostic;
+  if (rt == NULL || rt->shader_package == NULL || variant_id == NULL ||
+      out_module == NULL || out_entry_point == NULL) return VK_ERROR_INITIALIZATION_FAILED;
+  if (!prom_shader_package_create_module(rt->shader_package, rt->device, variant_id,
+                                         out_module, out_entry_point, &diagnostic)) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  return VK_SUCCESS;
+}
+
+/* This deliberately remains separate from production package execution.  The
+ * two public audit benchmarks accept caller-owned synthetic SPIR-V to compare
+ * compiler artifacts; no production selector or registry entry can reach it. */
+static VkResult prom_audit_create_arbitrary_spirv_module(
+    VkDevice device, const prom_sgemm_audit_execution_descriptor* descriptor, VkShaderModule* out_module) {
+  VkShaderModuleCreateInfo shader_info;
+  if (descriptor == NULL || out_module == NULL) return VK_ERROR_INITIALIZATION_FAILED;
+  memset(&shader_info, 0, sizeof(shader_info));
+  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+  shader_info.codeSize = descriptor->spirv_size_bytes;
+  shader_info.pCode = descriptor->spirv_words;
+  return vkCreateShaderModule(device, &shader_info, NULL, out_module);
+}
+
 static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkResult result;
   VkApplicationInfo application_info;
@@ -2850,6 +2790,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkPipelineLayoutCreateInfo pipeline_layout_info;
   VkShaderModuleCreateInfo shader_info;
   VkShaderModule shader_module = VK_NULL_HANDLE;
+  const char* package_entry_point = NULL;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   VkDescriptorPoolSize pool_size;
@@ -3530,11 +3471,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_memory_conservative_spirv);
-  shader_info.pCode = k_prom_sgemm_memory_conservative_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->memory_conservative_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-3-default",
+                                              &rt->memory_conservative_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3542,7 +3481,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->memory_conservative_shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3553,11 +3492,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_scalar_plus_spirv);
-  shader_info.pCode = k_prom_sgemm_scalar_plus_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_scalar_plus_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-4-default",
+                                              &rt->sdsl_scalar_plus_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3565,7 +3502,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->sdsl_scalar_plus_shader_module;
-  stage_info.pName = "SgemmScalarBaselinePlus8x8_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3576,11 +3513,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_tile16x16_shared_fp32_spirv);
-  shader_info.pCode = k_prom_sgemm_tile16x16_shared_fp32_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_tile16x16_shared_fp32_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-5-default",
+                                              &rt->sdsl_tile16x16_shared_fp32_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3588,7 +3523,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->sdsl_tile16x16_shared_fp32_shader_module;
-  stage_info.pName = "SgemmTile16x16SharedFp32_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3599,11 +3534,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_reg2x2_tile16x16_fp32_spirv);
-  shader_info.pCode = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_reg2x2_tile16x16_fp32_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-6-default",
+                                              &rt->sdsl_reg2x2_tile16x16_fp32_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3611,7 +3544,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->sdsl_reg2x2_tile16x16_fp32_shader_module;
-  stage_info.pName = "SgemmReg2x2Tile16x16Fp32Kernel_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3622,11 +3555,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv);
-  shader_info.pCode = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-7-default",
+                                              &rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3634,7 +3565,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module;
-  stage_info.pName = "SgemmReg2x2Tile16x16ExactTailFp32Kernel_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3650,11 +3581,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv);
-  shader_info.pCode = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-8-default",
+                                              &rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3662,7 +3591,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module;
-  stage_info.pName = "SgemmReg2x2Tile16x16FlowBoardFp32Kernel_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3678,11 +3607,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv);
-  shader_info.pCode = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-9-default",
+                                              &rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3690,7 +3617,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module;
-  stage_info.pName = "SgemmReg2x2Tile16x16DeriveFp32Kernel_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3706,11 +3633,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_srt_2accum_k_spirv);
-  shader_info.pCode = k_prom_sgemm_srt_2accum_k_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-10-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3718,7 +3642,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3730,11 +3654,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_b2x2_row_major_biased_spirv);
-  shader_info.pCode = k_prom_sgemm_b2x2_row_major_biased_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-11-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3742,7 +3663,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = package_entry_point;
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
@@ -3754,11 +3675,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_a2x4_row_biased_accum8_spirv);
-  shader_info.pCode = k_prom_sgemm_a2x4_row_biased_accum8_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-12-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3766,7 +3684,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = package_entry_point;
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
@@ -3778,11 +3696,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_spirv);
-  shader_info.pCode = k_prom_sgemm_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-1-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3791,7 +3706,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3803,11 +3718,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_tiled_spirv);
-  shader_info.pCode = k_prom_sgemm_tiled_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-2-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3815,7 +3727,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "main";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3827,11 +3739,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_packed4_spirv);
-  shader_info.pCode = k_prom_sgemm_packed4_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-13-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3839,7 +3748,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "SgemmPacked4_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3851,11 +3760,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     return result;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = sizeof(k_prom_sgemm_fp16_storage_fp32accum_spirv);
-  shader_info.pCode = k_prom_sgemm_fp16_storage_fp32accum_spirv;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &shader_module);
+  result = prom_runtime_create_package_module(rt, "kernel-14-default", &shader_module,
+                                              &package_entry_point);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3863,7 +3769,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = shader_module;
-  stage_info.pName = "SgemmFp16StorageFp32Accum_CS";
+  stage_info.pName = package_entry_point;
 
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
@@ -3957,6 +3863,46 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 // Public SGEMM ABI Entrypoints
 // ============================================================================
 
+static int prom_runtime_copy_shader_package_root(prometheus_runtime* runtime,
+                                                 const PrometheusReactorConfig* config) {
+  size_t length;
+  if (runtime == NULL || config == NULL ||
+      config->struct_size < offsetof(PrometheusReactorConfig, shader_package_root) +
+                                sizeof(config->shader_package_root) ||
+      config->shader_package_root == NULL || config->shader_package_root[0] == '\0') {
+    return 1;
+  }
+  length = strlen(config->shader_package_root);
+  runtime->shader_package_root = (char*)malloc(length + 1u);
+  if (runtime->shader_package_root == NULL) return 0;
+  memcpy(runtime->shader_package_root, config->shader_package_root, length + 1u);
+  return 1;
+}
+
+static int prom_runtime_discover_adjacent_shader_package(prometheus_runtime* runtime) {
+#if defined(_WIN32)
+  char module_path[MAX_PATH];
+  char* separator;
+  size_t length;
+  if (runtime == NULL || runtime->shader_package_root != NULL) return runtime != NULL;
+  if (GetModuleFileNameA(NULL, module_path, (DWORD)sizeof(module_path)) == 0u ||
+      GetLastError() == ERROR_INSUFFICIENT_BUFFER) return 0;
+  separator = strrchr(module_path, '\\');
+  if (separator == NULL) return 0;
+  *separator = '\0';
+  length = strlen(module_path);
+  if (length > SIZE_MAX - sizeof("\\shaders")) return 0;
+  runtime->shader_package_root = (char*)malloc(length + sizeof("\\shaders"));
+  if (runtime->shader_package_root == NULL) return 0;
+  memcpy(runtime->shader_package_root, module_path, length);
+  memcpy(runtime->shader_package_root + length, "\\shaders", sizeof("\\shaders"));
+  return 1;
+#else
+  (void)runtime;
+  return 0;
+#endif
+}
+
 int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   VkResult result;
   prometheus_runtime* runtime;
@@ -4010,6 +3956,10 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
 
   if (config != NULL) {
     const PrometheusReactorConfig* cfg = (const PrometheusReactorConfig*)config;
+    if (!prom_runtime_copy_shader_package_root(runtime, cfg)) {
+      free(runtime);
+      return PROM_INTERNAL_ERROR;
+    }
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, batch_ring_depth) + sizeof(cfg->batch_ring_depth) &&
         cfg->batch_ring_depth >= 1u && cfg->batch_ring_depth <= PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH) {
       runtime->submission_ring_diag.configured_depth = cfg->batch_ring_depth;
@@ -4031,6 +3981,18 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, reduction_ring_depth) + sizeof(cfg->reduction_ring_depth) &&
         cfg->reduction_ring_depth >= 1u && cfg->reduction_ring_depth <= 4u) {
       runtime->reduction_ring_depth = cfg->reduction_ring_depth;
+    }
+  }
+  if (runtime->shader_package_root == NULL && !prom_runtime_discover_adjacent_shader_package(runtime)) {
+    free(runtime);
+    return PROM_ERROR;
+  }
+  if (runtime->shader_package_root != NULL) {
+    prom_shader_package_diagnostic package_diagnostic;
+    if (!prom_shader_package_open(runtime->shader_package_root, &runtime->shader_package, &package_diagnostic)) {
+      free(runtime->shader_package_root);
+      free(runtime);
+      return PROM_ERROR;
     }
   }
   runtime->arena_budget_limit_bytes = PROM_ARENA_DEFAULT_BUDGET_BYTES;
@@ -4114,6 +4076,8 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
 
   if (!registry_add(runtime)) {
     vk_runtime_cleanup(runtime);
+    prom_shader_package_destroy(runtime->shader_package);
+    free(runtime->shader_package_root);
     free(runtime);
     return PROM_INTERNAL_ERROR;
   }
@@ -4142,6 +4106,8 @@ int prom_reactor_runtime_destroy_impl(void* handle) {
   prom_ray_query_scene_runtime_destroy_all(handle);
   prom_fft_diag_forget_handle(handle);
   vk_runtime_cleanup(runtime);
+  prom_shader_package_destroy(runtime->shader_package);
+  free(runtime->shader_package_root);
   free(runtime);
   return PROM_OK;
 }
@@ -4490,7 +4456,6 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
   prometheus_runtime* rt;
   VkShaderModule module = VK_NULL_HANDLE;
   VkPipeline pipeline = VK_NULL_HANDLE;
-  VkShaderModuleCreateInfo shader_info;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   VkResult result;
@@ -4533,11 +4498,7 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
     return PROM_ERROR;
   }
 
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = descriptor->spirv_size_bytes;
-  shader_info.pCode = descriptor->spirv_words;
-  result = vkCreateShaderModule(rt->device, &shader_info, NULL, &module);
+  result = prom_audit_create_arbitrary_spirv_module(rt->device, descriptor, &module);
   if (result != VK_SUCCESS) { if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = (int)result; } return PROM_ERROR; }
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -4780,7 +4741,6 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
   VkShaderModule module = VK_NULL_HANDLE;
   VkPipeline pipeline = VK_NULL_HANDLE;
   VkQueryPool timing_query_pool = VK_NULL_HANDLE;
-  VkShaderModuleCreateInfo shader_info;
   VkPipelineShaderStageCreateInfo shader_stage;
   VkComputePipelineCreateInfo pipeline_info;
   VkQueryPoolCreateInfo query_pool_info;
@@ -4838,11 +4798,7 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     if (packed_a == NULL || packed_b == NULL) goto cleanup;
     a_payload = packed_a; b_payload = packed_b;
   }
-  memset(&shader_info, 0, sizeof(shader_info));
-  shader_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  shader_info.codeSize = descriptor->spirv_size_bytes;
-  shader_info.pCode = descriptor->spirv_words;
-  vk_result = vkCreateShaderModule(rt->device, &shader_info, NULL, &module);
+  vk_result = prom_audit_create_arbitrary_spirv_module(rt->device, descriptor, &module);
   if (vk_result != VK_SUCCESS) goto cleanup;
   memset(&shader_stage, 0, sizeof(shader_stage));
   shader_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;

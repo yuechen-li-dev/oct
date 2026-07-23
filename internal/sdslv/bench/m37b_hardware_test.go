@@ -1,7 +1,9 @@
 package bench
 
 import (
+	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -104,7 +106,7 @@ func TestM37bKaijuProductionRows(t *testing.T) {
 
 func m37bKernels() []m37bKernel {
 	return []m37bKernel{
-		{name: "scalar", path: "internal/prometheus/native/reactor_vulkan_sgemm.c", symbol: "k_prom_sgemm_spirv", entry: "main", tx: 8, ty: 8, fm: 1, fn: 1, mode: "f32", tolerance: .002},
+		{name: "scalar", path: "internal/prometheus/native/shaders/historical/sgemm_baseline_scalar.spv.base64", symbol: "", entry: "main", tx: 8, ty: 8, fm: 1, fn: 1, mode: "f32", tolerance: .002},
 		{name: "tiled", path: "internal/prometheus/native/reactor_vulkan_tiled_spirv.h", symbol: "k_prom_sgemm_tiled_spirv", entry: "main", tx: 8, ty: 8, fm: 1, fn: 1, mode: "f32", tolerance: .002},
 		{name: "memory-conservative", path: "internal/prometheus/native/reactor_vulkan_memory_conservative_spirv.h", symbol: "k_prom_sgemm_memory_conservative_spirv", entry: "main", tx: 8, ty: 8, fm: 1, fn: 1, mode: "f32", tolerance: .002},
 		{name: "scalar-plus", path: "internal/prometheus/native/reactor_vulkan_sgemm_scalar_plus_spirv.h", symbol: "k_prom_sgemm_scalar_plus_spirv", entry: "SgemmScalarBaselinePlus8x8_CS", tx: 8, ty: 8, fm: 1, fn: 1, mode: "f32", tolerance: .002},
@@ -192,6 +194,13 @@ func m37bArtifact(t *testing.T, path, symbol string) []byte {
 	b, e := os.ReadFile(path)
 	if e != nil {
 		t.Fatal(e)
+	}
+	if filepath.Ext(path) == ".base64" {
+		out, err := base64.StdEncoding.DecodeString(string(bytes.TrimSpace(b)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
 	}
 	m := regexp.MustCompile(`(?s)(?:static\s+)?const uint32_t\s+` + regexp.QuoteMeta(symbol) + `\[\]\s*=\s*\{(.*?)\};`).FindSubmatch(b)
 	if len(m) != 2 {

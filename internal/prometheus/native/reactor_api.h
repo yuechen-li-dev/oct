@@ -1631,6 +1631,9 @@ typedef struct PrometheusReactorConfig {
   uint32_t reduction_test_flags;
   /* Zero preserves the reduction production default depth two. */
   uint32_t reduction_ring_depth;
+  /* Optional immutable package root.  This tail field is gated by struct_size
+     so callers compiled against older ABI revisions remain valid. */
+  const char* shader_package_root;
 } PrometheusReactorConfig;
 
 typedef struct PrometheusAsyncStatus {

@@ -36,16 +36,24 @@
 #include <string>
 #include <vector>
 
-extern "C" {
-extern const uint32_t k_prom_sgemm_spirv[];
-extern const size_t k_prom_sgemm_spirv_size_bytes;
-}
-
 namespace
 {
 constexpr std::uint64_t kAuditSeed = 99u;
 constexpr std::uint32_t kTimingWarmupIterations = 1u;
 constexpr std::uint32_t kTimingMeasuredIterations = 5u;
+
+std::vector<std::uint32_t> package_baseline_words() {
+    const auto path = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) /
+        "out/prometheus/native/SerialCanonical/shaders/objects/sha256/e5610fc9a63daea8e83188a1cb9c63856225f85b2e6d61bd1e3fc7dcf560a5d9.spv";
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) return {};
+    const auto size = input.tellg();
+    if (size <= 0 || (static_cast<std::size_t>(size) % sizeof(std::uint32_t)) != 0u) return {};
+    std::vector<std::uint32_t> words(static_cast<std::size_t>(size) / sizeof(std::uint32_t));
+    input.seekg(0);
+    if (!input.read(reinterpret_cast<char*>(words.data()), size)) return {};
+    return words;
+}
 
 struct ValidationAccounting {
     bool requested = false;
@@ -654,6 +662,8 @@ FACT(PrometheusAuditOriginalFivePairwiseHardware)
 // passed to the established audit seam without changing selector ownership.
 FACT(PrometheusM37bProductionTimingRows)
 {
+    const auto scalar_words = package_baseline_words();
+    ASSERT_FALSE(scalar_words.empty(), "baseline audit input must come from the staged package object");
     struct M37bKernel {
         const char* name;
         const uint32_t* words;
@@ -664,7 +674,7 @@ FACT(PrometheusM37bProductionTimingRows)
         float tolerance;
     };
     const std::array<M37bKernel, 10> kernels = {{
-        {"scalar", k_prom_sgemm_spirv, k_prom_sgemm_spirv_size_bytes, "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_BASELINE), 0.002f},
+        {"scalar", scalar_words.data(), scalar_words.size() * sizeof(uint32_t), "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_BASELINE), 0.002f},
         {"tiled", k_prom_sgemm_tiled_spirv, sizeof(k_prom_sgemm_tiled_spirv), "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
         {"memory-conservative", k_prom_sgemm_memory_conservative_spirv, sizeof(k_prom_sgemm_memory_conservative_spirv), "main", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
         {"scalar-plus", k_prom_sgemm_scalar_plus_spirv, sizeof(k_prom_sgemm_scalar_plus_spirv), "SgemmScalarBaselinePlus8x8_CS", {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, static_cast<uint32_t>(PROM_VK_COMPUTE_TILED), 0.002f},
@@ -1221,6 +1231,8 @@ void AppendM38bPlacementRun(std::ostringstream& report,
 
 FACT(PrometheusM38bPackedMemoryPlacementExperiment)
 {
+    const auto scalar_words = package_baseline_words();
+    ASSERT_FALSE(scalar_words.empty(), "baseline audit input must come from the staged package object");
     const std::array<M38bKernel, 2> packedKernels = {{
         {"Packed4", k_prom_sgemm_packed4_spirv, sizeof(k_prom_sgemm_packed4_spirv), "SgemmPacked4_CS",
          {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_PACKED4_FP32, 0.002f},
@@ -1229,7 +1241,7 @@ FACT(PrometheusM38bPackedMemoryPlacementExperiment)
          PROM_VK_COMPUTE_FP16_STORAGE_FP32_ACCUM, 0.03f},
     }};
     const std::array<M38bKernel, 5> competitors = {{
-        {"scalar", k_prom_sgemm_spirv, k_prom_sgemm_spirv_size_bytes, "main",
+        {"scalar", scalar_words.data(), scalar_words.size() * sizeof(uint32_t), "main",
          {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_BASELINE, 0.002f},
         {"tiled", k_prom_sgemm_tiled_spirv, sizeof(k_prom_sgemm_tiled_spirv), "main",
          {8u, 8u, 1u, 1u, 1u, 0u, 0u, 0u, 0u}, PROM_VK_COMPUTE_TILED, 0.002f},

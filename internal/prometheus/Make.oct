@@ -22,6 +22,16 @@ fn Plan() -> Make.Plan {
         Config: ProductionConfig()
         CommandTargets: [
             Make.CommandTarget {
+                Name: "StageShaderPackage"
+                Inputs: ["native/shaders/manifest.json", "native/native_manifest.json"]
+                Outputs: ["../../out/prometheus/native/SerialCanonical/shaders/manifest.json", "../../out/prometheus/native/SerialCanonical/reactor_shader_ids.generated.h"]
+                Deps: []
+                Program: "go"
+                Args: ["run", "./cmd/oct", "sdslv", "package", "build", "--manifest", "internal/prometheus/native/shaders/manifest.json", "--repo", ".", "--out", "out/prometheus/native/SerialCanonical/shaders", "--ids", "out/prometheus/native/SerialCanonical/reactor_shader_ids.generated.h"]
+                Cwd: "../.."
+                Env: []
+            },
+            Make.CommandTarget {
                 Name: "RunSmoke"
                 Inputs: ["../../out/prometheus/native/SerialCanonical/marionette_tests"]
                 Outputs: []
@@ -37,7 +47,7 @@ fn Plan() -> Make.Plan {
         PhonyTargets: [
             Make.PhonyTarget {
                 Name: "BuildNative"
-                Deps: ["Reactor", "SdslvTestHost", "MarionetteTests"]
+                Deps: ["StageShaderPackage", "Reactor", "SdslvTestHost", "MarionetteTests"]
             },
             Make.PhonyTarget {
                 Name: "BuildBenchmarks"

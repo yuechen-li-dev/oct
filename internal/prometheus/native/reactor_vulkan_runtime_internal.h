@@ -9,6 +9,7 @@
    structurally mixed; this header makes that debt explicit while the reduction
    implementation is extracted from the transformer remainder. */
 #include "reactor_vulkan.h"
+#include "reactor_shader_package.h"
 #include <string.h>
 
 #if defined(_WIN32)
@@ -621,6 +622,9 @@ typedef struct prom_reduction_runtime_state {
   VkDevice device;
   VkQueue queue;
   VkCommandPool command_pool;
+  /* Borrowed from the owning common runtime. The package outlives this
+     lazily-created state and remains immutable for its whole lifetime. */
+  prom_shader_package* shader_package;
   VkDescriptorSetLayout descriptor_set_layout;
   VkDescriptorPool descriptor_pool;
   VkPipelineLayout pipeline_layout;

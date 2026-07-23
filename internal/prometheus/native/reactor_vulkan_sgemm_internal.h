@@ -7,6 +7,7 @@
 
 #include "reactor_vulkan.h"
 #include "reactor_shader_registry.h"
+#include "reactor_shader_package.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -36,20 +37,7 @@
 #include "reactor_dominatus_prestage.h"
 #include "reactor_judgment_engine.h"
 #include "reactor_slot_hfsm.h"
-#include "reactor_vulkan_fp16_spirv.h"
-#include "reactor_vulkan_packed4_spirv.h"
-#include "reactor_vulkan_b2x2_row_major_biased_spirv.h"
-#include "reactor_vulkan_a2x4_row_biased_accum8_spirv.h"
-#include "reactor_vulkan_memory_conservative_spirv.h"
 #include "reactor_sgemm_dispatch_metadata.h"
-#include "reactor_vulkan_sgemm_scalar_plus_spirv.h"
-#include "reactor_vulkan_sgemm_reg2x2_tile16x16_fp32_spirv.h"
-#include "reactor_vulkan_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv.h"
-#include "reactor_vulkan_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv.h"
-#include "reactor_vulkan_sgemm_reg2x2_tile16x16_derive_fp32_spirv.h"
-#include "reactor_vulkan_sgemm_tile16x16_shared_fp32_spirv.h"
-#include "reactor_vulkan_srt_2accum_k_spirv.h"
-#include "reactor_vulkan_tiled_spirv.h"
 
 #define PROMETHEUS_RUNTIME_MAGIC 0x50524f4du
 #define PROMETHEUS_MAX_TRACKED_HANDLES 256
@@ -149,114 +137,6 @@ static const prom_sgemm_kernel_dispatch_metadata* prom_sgemm_generated_dispatch_
   const prom_sgemm_kernel_dispatch_metadata* registered = prom_shader_registry_dispatch_metadata(variant);
   if (registered != NULL) {
     return registered;
-  }
-  static prom_sgemm_kernel_dispatch_metadata scalar_plus_metadata;
-  static prom_sgemm_kernel_dispatch_metadata reg2x2_metadata;
-  static prom_sgemm_kernel_dispatch_metadata reg2x2_exacttail_metadata;
-  static prom_sgemm_kernel_dispatch_metadata reg2x2_flowboard_metadata;
-  static prom_sgemm_kernel_dispatch_metadata reg2x2_derive_metadata;
-  static prom_sgemm_kernel_dispatch_metadata tile16_metadata;
-  static uint32_t scalar_plus_metadata_initialized = 0u;
-  static uint32_t reg2x2_metadata_initialized = 0u;
-  static uint32_t reg2x2_exacttail_metadata_initialized = 0u;
-  static uint32_t reg2x2_flowboard_metadata_initialized = 0u;
-  static uint32_t reg2x2_derive_metadata_initialized = 0u;
-  static uint32_t tile16_metadata_initialized = 0u;
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_SCALAR_PLUS) {
-    if (scalar_plus_metadata_initialized == 0u) {
-      scalar_plus_metadata.threads_x = k_prom_sgemm_scalar_plus_spirv_numthreads_x;
-      scalar_plus_metadata.threads_y = k_prom_sgemm_scalar_plus_spirv_numthreads_y;
-      scalar_plus_metadata.threads_z = k_prom_sgemm_scalar_plus_spirv_numthreads_z;
-      scalar_plus_metadata.outputs_per_invocation_m = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_m;
-      scalar_plus_metadata.outputs_per_invocation_n = k_prom_sgemm_scalar_plus_spirv_outputs_per_invocation_n;
-      scalar_plus_metadata.tile_m = k_prom_sgemm_scalar_plus_spirv_tile_m;
-      scalar_plus_metadata.tile_n = k_prom_sgemm_scalar_plus_spirv_tile_n;
-      scalar_plus_metadata.tile_k = 0u;
-      scalar_plus_metadata.unroll_k = k_prom_sgemm_scalar_plus_spirv_unroll_k;
-      scalar_plus_metadata_initialized = 1u;
-    }
-    return &scalar_plus_metadata;
-  }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FP32) {
-    if (reg2x2_metadata_initialized == 0u) {
-      reg2x2_metadata.threads_x = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_x;
-      reg2x2_metadata.threads_y = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_y;
-      reg2x2_metadata.threads_z = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_numthreads_z;
-      reg2x2_metadata.outputs_per_invocation_m = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_outputs_per_invocation_m;
-      reg2x2_metadata.outputs_per_invocation_n = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_outputs_per_invocation_n;
-      reg2x2_metadata.tile_m = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_m;
-      reg2x2_metadata.tile_n = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_n;
-      reg2x2_metadata.tile_k = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_tile_k;
-      reg2x2_metadata.unroll_k = k_prom_sgemm_reg2x2_tile16x16_fp32_spirv_unroll_k;
-      reg2x2_metadata_initialized = 1u;
-    }
-    return &reg2x2_metadata;
-  }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_EXACTTAIL_FP32) {
-    if (reg2x2_exacttail_metadata_initialized == 0u) {
-      reg2x2_exacttail_metadata.threads_x = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_x;
-      reg2x2_exacttail_metadata.threads_y = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_y;
-      reg2x2_exacttail_metadata.threads_z = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_numthreads_z;
-      reg2x2_exacttail_metadata.outputs_per_invocation_m =
-          k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_m;
-      reg2x2_exacttail_metadata.outputs_per_invocation_n =
-          k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_outputs_per_invocation_n;
-      reg2x2_exacttail_metadata.tile_m = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_m;
-      reg2x2_exacttail_metadata.tile_n = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_n;
-      reg2x2_exacttail_metadata.tile_k = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_tile_k;
-      reg2x2_exacttail_metadata.unroll_k = k_prom_sgemm_reg2x2_tile16x16_exacttail_fp32_spirv_unroll_k;
-      reg2x2_exacttail_metadata_initialized = 1u;
-    }
-    return &reg2x2_exacttail_metadata;
-  }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_FLOWBOARD_FP32) {
-    if (reg2x2_flowboard_metadata_initialized == 0u) {
-      reg2x2_flowboard_metadata.threads_x = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_numthreads_x;
-      reg2x2_flowboard_metadata.threads_y = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_numthreads_y;
-      reg2x2_flowboard_metadata.threads_z = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_numthreads_z;
-      reg2x2_flowboard_metadata.outputs_per_invocation_m =
-          k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_outputs_per_invocation_m;
-      reg2x2_flowboard_metadata.outputs_per_invocation_n =
-          k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_outputs_per_invocation_n;
-      reg2x2_flowboard_metadata.tile_m = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_tile_m;
-      reg2x2_flowboard_metadata.tile_n = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_tile_n;
-      reg2x2_flowboard_metadata.tile_k = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_tile_k;
-      reg2x2_flowboard_metadata.unroll_k = k_prom_sgemm_reg2x2_tile16x16_flowboard_fp32_spirv_unroll_k;
-      reg2x2_flowboard_metadata_initialized = 1u;
-    }
-    return &reg2x2_flowboard_metadata;
-  }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_REG2X2_TILE16X16_DERIVE_FP32) {
-    if (reg2x2_derive_metadata_initialized == 0u) {
-      reg2x2_derive_metadata.threads_x = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_numthreads_x;
-      reg2x2_derive_metadata.threads_y = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_numthreads_y;
-      reg2x2_derive_metadata.threads_z = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_numthreads_z;
-      reg2x2_derive_metadata.outputs_per_invocation_m =
-          k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_outputs_per_invocation_m;
-      reg2x2_derive_metadata.outputs_per_invocation_n =
-          k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_outputs_per_invocation_n;
-      reg2x2_derive_metadata.tile_m = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_tile_m;
-      reg2x2_derive_metadata.tile_n = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_tile_n;
-      reg2x2_derive_metadata.tile_k = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_tile_k;
-      reg2x2_derive_metadata.unroll_k = k_prom_sgemm_reg2x2_tile16x16_derive_fp32_spirv_unroll_k;
-      reg2x2_derive_metadata_initialized = 1u;
-    }
-    return &reg2x2_derive_metadata;
-  }
-  if (variant == PROM_OCCUPANCY_KERNEL_VARIANT_SDSL_TILE16X16_SHARED_FP32) {
-    if (tile16_metadata_initialized == 0u) {
-      tile16_metadata.threads_x = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_x;
-      tile16_metadata.threads_y = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_y;
-      tile16_metadata.threads_z = k_prom_sgemm_tile16x16_shared_fp32_spirv_numthreads_z;
-      tile16_metadata.outputs_per_invocation_m = k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_m;
-      tile16_metadata.outputs_per_invocation_n = k_prom_sgemm_tile16x16_shared_fp32_spirv_outputs_per_invocation_n;
-      tile16_metadata.tile_m = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_m;
-      tile16_metadata.tile_n = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_n;
-      tile16_metadata.tile_k = k_prom_sgemm_tile16x16_shared_fp32_spirv_tile_k;
-      tile16_metadata.unroll_k = k_prom_sgemm_tile16x16_shared_fp32_spirv_unroll_k;
-      tile16_metadata_initialized = 1u;
-    }
-    return &tile16_metadata;
   }
   return NULL;
 }
@@ -644,6 +524,10 @@ typedef struct prom_p15_feedforward_reservation_probe {
 
 typedef struct prometheus_runtime {
   uint32_t magic;
+  /* Owned configuration copy; no caller-owned configuration memory is retained. */
+  char* shader_package_root;
+  /* Common runtime ownership, not an SGEMM-specific singleton. */
+  prom_shader_package* shader_package;
   uint32_t available;
   uint32_t reason_code;
   int init_detail_code;

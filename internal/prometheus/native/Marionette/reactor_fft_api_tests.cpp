@@ -2,12 +2,14 @@
 
 #include "../reactor_api.h"
 #include "../reactor_vulkan.h"
+#include "../reactor_shader_package.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <vector>
@@ -80,6 +82,23 @@ static bool rq_near(double expected, double actual) {
     return delta <= absoluteTolerance || delta <= relativeTolerance*std::fabs(expected);
 }
 static std::uint32_t rq_u32_from_float(float value) { std::uint32_t bits=0u; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
+static std::string ray_query_shader_package_root() {
+    std::filesystem::path cursor = std::filesystem::current_path();
+    for (;;) {
+        const std::filesystem::path candidate = cursor / "out" / "prometheus" / "native" / "SerialCanonical" / "shaders";
+        if (std::filesystem::exists(candidate / "manifest.json")) return candidate.string();
+        if (cursor == cursor.root_path()) break;
+        cursor = cursor.parent_path();
+    }
+    return {};
+}
+static PrometheusReactorConfig raw_hit_runtime_config() {
+    static const std::string root = ray_query_shader_package_root();
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.shader_package_root = root.c_str();
+    return config;
+}
 
 static void assert_ray_query_matches_oracle(::marionette::tests::TestContext& context, void* handle, const char* name,
                                              const PrometheusRayQueryTriangle* triangles, std::uint32_t triangleCount,
@@ -255,7 +274,8 @@ FACT(PrometheusReactor_RayQueryAdmissionIsOptionalAndCompleteWhenEnabled)
 FACT(PrometheusReactor_RayQueryTriangleBlasTlasProbeUsesPersistentHardwareTraversal)
 {
     void* handle = nullptr;
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusReactorConfig config = raw_hit_runtime_config();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
 
     prom_vk_runtime_services services{};
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services), "runtime services should be available");
@@ -316,7 +336,8 @@ FACT(PrometheusReactor_RayQueryTriangleBlasTlasProbeUsesPersistentHardwareTraver
 FACT(PrometheusReactor_RayQueryTriangleScenesRemainIsolated)
 {
     void* handle = nullptr;
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusReactorConfig config = raw_hit_runtime_config();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
     prom_vk_runtime_services services{};
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services), "runtime services should be available");
     if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED)
@@ -361,7 +382,9 @@ FACT(PrometheusReactor_RayQueryTriangleScenesRemainIsolated)
 FACT(PrometheusReactor_RayQueryRawSphereAndTriangleTraversal)
 {
     void* handle = nullptr;
-    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    PrometheusReactorConfig config = raw_hit_runtime_config();
+    ASSERT_TRUE(config.shader_package_root != nullptr && config.shader_package_root[0] != '\0', "raw-hit test receives staged shader package root");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle), "runtime create should succeed");
     prom_vk_runtime_services services{};
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services), "runtime services should be available");
     if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED)
@@ -376,6 +399,10 @@ FACT(PrometheusReactor_RayQueryRawSphereAndTriangleTraversal)
     sceneRequest.spheres = spheres; sceneRequest.sphere_count = 1u;
     std::uint64_t scene = 0u;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_create(handle, &sceneRequest, &scene), "mixed scene must build triangle and procedural BLAS before TLAS");
+    prom_shader_package* package = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_shader_package(handle, &package), "raw-hit runtime owns a package");
+    const std::uint64_t objectOpensAfterPipelineCreate = prom_shader_package_artifact_open_count(package);
+    ASSERT_EQUAL(1u, objectOpensAfterPipelineCreate, "raw-hit pipeline opens its external object once");
     PrometheusRayQueryRawRequest ray{};
     ray.struct_size = static_cast<std::uint32_t>(sizeof(ray));
     ray.origin[0] = 0.0f; ray.origin[1] = 0.0f; ray.origin[2] = 0.0f; ray.t_min = 0.0f;
@@ -394,6 +421,7 @@ FACT(PrometheusReactor_RayQueryRawSphereAndTriangleTraversal)
     PrometheusRayQueryRawHit warm{};
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_trace(handle, scene, &ray, &warm), "warm traversal must reuse the persistent AS");
     ASSERT_NEAR(hit.t_primitive[0], warm.t_primitive[0], 0.0f, "warm trace retains committed t");
+    ASSERT_EQUAL(objectOpensAfterPipelineCreate, prom_shader_package_artifact_open_count(package), "warm raw-hit dispatch does not reopen or rehash the object");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_destroy(handle, scene), "mixed scene destroy should release TLAS before both BLAS objects");
     ASSERT_EQUAL(PROM_INVALID_HANDLE, prometheus_reactor_runtime_ray_query_scene_trace(handle, scene, &ray, &warm), "destroyed mixed scene must be rejected");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
@@ -401,7 +429,9 @@ FACT(PrometheusReactor_RayQueryRawSphereAndTriangleTraversal)
 
 FACT(PrometheusReactor_RayQueryRawNumericalCorpusAgreesWithDoubleOracle)
 {
-    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(nullptr,&handle),"runtime create");
+    PrometheusReactorConfig config = raw_hit_runtime_config();
+    ASSERT_TRUE(config.shader_package_root != nullptr && config.shader_package_root[0] != '\0', "raw corpus receives staged shader package root");
+    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(&config,&handle),"runtime create");
     prom_vk_runtime_services services{}; ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_get_vk_services(handle,&services),"services");
     if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) { SKIP("ray-query feature bundle is unavailable on this device"); }
     g_ray_query_error_stats = {};
@@ -448,7 +478,9 @@ FACT(PrometheusReactor_RayQueryRawNumericalCorpusAgreesWithDoubleOracle)
 
 FACT(PrometheusReactor_RayQueryMixedScenesRemainIsolated)
 {
-    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(nullptr,&handle),"runtime create");
+    PrometheusReactorConfig config = raw_hit_runtime_config();
+    ASSERT_TRUE(config.shader_package_root != nullptr && config.shader_package_root[0] != '\0', "raw isolation receives staged shader package root");
+    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(&config,&handle),"runtime create");
     prom_vk_runtime_services services{}; ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_get_vk_services(handle,&services),"services");
     if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) { SKIP("ray-query feature bundle is unavailable on this device"); }
     const PrometheusRayQueryTriangle tri[] = {{{-1,-1,4,1,-1,4,0,1,4}}};
@@ -466,7 +498,9 @@ FACT(PrometheusReactor_RayQueryMixedScenesRemainIsolated)
 
 FACT(PrometheusReactor_RayQueryRawRejectsInvalidInputs)
 {
-    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(nullptr,&handle),"runtime create");
+    PrometheusReactorConfig config = raw_hit_runtime_config();
+    ASSERT_TRUE(config.shader_package_root != nullptr && config.shader_package_root[0] != '\0', "raw validation receives staged shader package root");
+    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(&config,&handle),"runtime create");
     prom_vk_runtime_services services{}; ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_get_vk_services(handle,&services),"services");
     if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) { SKIP("ray-query feature bundle is unavailable on this device"); }
     const PrometheusRayQuerySphere valid[] = {{{0,0,3},1,{1,1,1},1u}};

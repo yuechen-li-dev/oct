@@ -2,13 +2,14 @@
    validation, and the shared Vulkan lifecycle used by transformer recording. */
 #include "reactor_vulkan_runtime_internal.h"
 #include "reactor_shader_registry.h"
+#include "reactor_shader_package.h"
 #include "reactor_numerical_research.h"
-#include "../shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16_spirv.h"
 
 #include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 int prom_m40b_calculate_padding_plan(uint32_t m, uint32_t n, uint32_t k,
@@ -759,25 +760,25 @@ static int prom_reduction_create_pipelines(prom_reduction_runtime_state* state) 
     const prom_compute_implementation* implementation =
         prom_shader_registry_find_compute_implementation(implementation_ids[index]);
     const prom_shader_asset* asset;
-    VkShaderModuleCreateInfo module_info;
+    char variant_id[32];
+    const char* entry_point = NULL;
+    prom_shader_package_diagnostic package_diagnostic;
     VkPipelineShaderStageCreateInfo stage_info;
     VkComputePipelineCreateInfo pipeline_info;
     VkResult result;
     if (implementation == NULL || implementation->reduction_dispatch == NULL || implementation->dispatchable == 0u) return 0;
     asset = prom_shader_registry_find_shader(implementation->shader_id);
-    if (asset == NULL || asset->spirv_words == NULL || asset->spirv_size_bytes == 0u ||
+    if (asset == NULL || state->shader_package == NULL ||
         asset->entry_point == NULL || asset->descriptor_binding_count != 4u || asset->push_constant_bytes != 32u) return 0;
-    memset(&module_info, 0, sizeof(module_info));
-    module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    module_info.codeSize = asset->spirv_size_bytes;
-    module_info.pCode = asset->spirv_words;
-    result = vkCreateShaderModule(state->device, &module_info, NULL, &state->pipelines[index].shader_module);
-    if (result != VK_SUCCESS) return 0;
+    if (snprintf(variant_id, sizeof(variant_id), "kernel-%u-default", asset->shader_id) < 0 ||
+        !prom_shader_package_create_module(state->shader_package, state->device, variant_id,
+                                           &state->pipelines[index].shader_module, &entry_point,
+                                           &package_diagnostic)) return 0;
     memset(&stage_info, 0, sizeof(stage_info));
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     stage_info.module = state->pipelines[index].shader_module;
-    stage_info.pName = asset->entry_point;
+    stage_info.pName = entry_point;
     memset(&pipeline_info, 0, sizeof(pipeline_info));
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipeline_info.stage = stage_info;
@@ -793,6 +794,7 @@ static int prom_reduction_create_pipelines(prom_reduction_runtime_state* state) 
 }
 
 static int prom_reduction_initialize_state(const prom_vk_runtime_services* services,
+                                           prom_shader_package* shader_package,
                                            prom_reduction_runtime_state** out_state) {
   prom_reduction_runtime_state* state;
   VkDescriptorSetLayoutBinding bindings[4];
@@ -833,6 +835,7 @@ static int prom_reduction_initialize_state(const prom_vk_runtime_services* servi
   state->device = services->device;
   state->queue = services->compute_queue;
   state->command_pool = services->compute_command_pool;
+  state->shader_package = shader_package;
   state->timestamp_supported = services->timestamp_query_supported;
   state->timestamp_period_ns = services->timestamp_period_ns;
   state->reduction_test_flags = services->reduction_test_flags;
@@ -1050,12 +1053,15 @@ fail:
 prom_reduction_runtime_state* prom_reduction_ensure_state(void* handle, int32_t* out_detail) {
   prom_reduction_runtime_state* state = (prom_reduction_runtime_state*)prom_reactor_runtime_reduction_state(handle);
   prom_vk_runtime_services services;
+  prom_shader_package* shader_package = NULL;
   if (state != NULL) return state;
   if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) {
     if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_RUNTIME_UNAVAILABLE;
     return NULL;
   }
-  if (!prom_shader_registry_validate() || !prom_reduction_initialize_state(&services, &state)) {
+  if (prom_reactor_runtime_get_shader_package(handle, &shader_package) != PROM_OK ||
+      shader_package == NULL || !prom_shader_registry_validate() ||
+      !prom_reduction_initialize_state(&services, shader_package, &state)) {
     if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_RESOURCE_CREATE_FAILED;
     return NULL;
   }
@@ -1571,11 +1577,10 @@ int prom_reactor_runtime_m40b_prepare_resident_a(void* handle,
 
 int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_t kernel) {
   prom_reduction_pipeline* destination;
-  const uint32_t* words = NULL;
-  size_t bytes = 0u;
   const char* entry = NULL;
   const prom_shader_asset* asset = NULL;
-  VkShaderModuleCreateInfo module_info;
+  const char* variant_id = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   VkResult result;
@@ -1583,19 +1588,15 @@ int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_
   destination = &state->m40b_sgemm_pipelines[kernel - 1u];
   if (destination->pipeline != VK_NULL_HANDLE) return 1;
   if (kernel == PROM_M40B_KERNEL_COOPERATIVE) {
-    words = k_prom_m40a_cooperative_sgemm_spirv;
-    bytes = sizeof(k_prom_m40a_cooperative_sgemm_spirv);
-    entry = "CooperativeSgemmF16F32M16N16K16_CS";
+    variant_id = "kernel-56-default";
   } else {
     asset = prom_shader_registry_find_shader(kernel == PROM_M40B_KERNEL_A2X4 ? 12u : 14u);
     if (asset == NULL) return 0;
-    words = asset->spirv_words; bytes = asset->spirv_size_bytes; entry = asset->entry_point;
+    variant_id = kernel == PROM_M40B_KERNEL_A2X4 ? "kernel-12-default" : "kernel-14-default";
   }
-  memset(&module_info, 0, sizeof(module_info));
-  module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  module_info.codeSize = bytes; module_info.pCode = words;
-  result = vkCreateShaderModule(state->device, &module_info, NULL, &destination->shader_module);
-  if (result != VK_SUCCESS) return 0;
+  if (state->shader_package == NULL ||
+      !prom_shader_package_create_module(state->shader_package, state->device, variant_id,
+                                         &destination->shader_module, &entry, &package_diagnostic)) return 0;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -1613,7 +1614,7 @@ int prom_m40b_ensure_sgemm_pipeline(prom_reduction_runtime_state* state, uint32_
     prom_reduction_destroy_pipeline(state->device, destination);
     return 0;
   }
-  destination->shader_id = kernel == PROM_M40B_KERNEL_COOPERATIVE ? 0u : asset->shader_id;
+  destination->shader_id = kernel == PROM_M40B_KERNEL_COOPERATIVE ? 56u : asset->shader_id;
   destination->implementation_id = kernel;
   state->m40b_pipeline_create_count += 1u;
   return 1;

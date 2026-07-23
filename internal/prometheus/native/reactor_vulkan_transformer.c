@@ -6,17 +6,6 @@
 #include "reactor_shader_registry.h"
 #include "reactor_numerical_research.h"
 #include "reactor_vulkan_transformer_control.h"
-#include "../shaders/sdslv/experimental/sgemm/cooperative/sgemm_cooperative_f16_f32_m16n16k16_spirv.h"
-#include "../shaders/sdslv/experimental/attention/attention_pack_f32_to_f16_spirv.h"
-#include "../shaders/sdslv/experimental/attention/attention_transpose_f32_spirv.h"
-#include "../shaders/sdslv/experimental/attention/attention_scale_scores_f32_spirv.h"
-#include "../shaders/sdslv/experimental/attention/interleave_heads_spirv.h"
-#include "../shaders/sdslv/experimental/attention/direct_segmented_projection_spirv.h"
-#include "../shaders/sdslv/experimental/transformer/residual_add_spirv.h"
-#include "../shaders/sdslv/experimental/transformer/rmsnorm_reduce_spirv.h"
-#include "../shaders/sdslv/experimental/transformer/rmsnorm_apply_spirv.h"
-#include "../shaders/sdslv/experimental/transformer/silu_gate_spirv.h"
-#include "../shaders/sdslv/experimental/transformer/silu_gate_pack_spirv.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -2198,39 +2187,25 @@ static int prom_m42_ensure_buffer(prom_reduction_runtime_state* state,
 }
 
 static int prom_m42_ensure_pipelines(prom_reduction_runtime_state* state) {
-  static const uint32_t* words[PROM_M42_PIPELINE_COUNT] = {
-      k_prom_m42_attention_pack_f32_to_f16_spirv,
-      k_prom_m42_attention_transpose_f32_spirv,
-      k_prom_m42_attention_scale_scores_f32_spirv,
-  };
-  static const size_t bytes[PROM_M42_PIPELINE_COUNT] = {
-      sizeof(k_prom_m42_attention_pack_f32_to_f16_spirv),
-      sizeof(k_prom_m42_attention_transpose_f32_spirv),
-      sizeof(k_prom_m42_attention_scale_scores_f32_spirv),
-  };
-  static const char* entries[PROM_M42_PIPELINE_COUNT] = {
-      "AttentionPackF32ToF16_CS",
-      "AttentionTransposeF32_CS",
-      "AttentionScaleScoresF32_CS",
-  };
+  static const char* const variants[PROM_M42_PIPELINE_COUNT] = {
+      "kernel-57-default", "kernel-58-default", "kernel-59-default"};
   uint32_t index;
   if (state == NULL) return 0;
   for (index = 0u; index < PROM_M42_PIPELINE_COUNT; ++index) {
     prom_reduction_pipeline* destination = &state->m42_pipelines[index];
-    VkShaderModuleCreateInfo module_info;
+    const char* entry_point = NULL;
+    prom_shader_package_diagnostic package_diagnostic;
     VkPipelineShaderStageCreateInfo stage_info;
     VkComputePipelineCreateInfo pipeline_info;
     if (destination->pipeline != VK_NULL_HANDLE) continue;
-    memset(&module_info, 0, sizeof(module_info));
-    module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    module_info.codeSize = bytes[index];
-    module_info.pCode = words[index];
-    if (vkCreateShaderModule(state->device, &module_info, NULL, &destination->shader_module) != VK_SUCCESS) return 0;
+    if (state->shader_package == NULL ||
+        !prom_shader_package_create_module(state->shader_package, state->device, variants[index],
+                                           &destination->shader_module, &entry_point, &package_diagnostic)) return 0;
     memset(&stage_info, 0, sizeof(stage_info));
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     stage_info.module = destination->shader_module;
-    stage_info.pName = entries[index];
+    stage_info.pName = entry_point;
     memset(&pipeline_info, 0, sizeof(pipeline_info));
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipeline_info.stage = stage_info;
@@ -2247,37 +2222,25 @@ static int prom_m42_ensure_pipelines(prom_reduction_runtime_state* state) {
 }
 
 static int prom_m44_ensure_pipelines(prom_reduction_runtime_state* state) {
-  static const uint32_t* words[PROM_M44_PIPELINE_COUNT] = {
-      k_prom_m44_interleave_heads_spirv,
-      k_prom_m44_direct_segmented_projection_spirv,
-  };
-  static const size_t bytes[PROM_M44_PIPELINE_COUNT] = {
-      sizeof(k_prom_m44_interleave_heads_spirv),
-      sizeof(k_prom_m44_direct_segmented_projection_spirv),
-  };
-  static const char* entries[PROM_M44_PIPELINE_COUNT] = {
-      "AttentionInterleaveHeads_CS",
-      "AttentionDirectSegmentedProjection_CS",
-  };
+  static const char* const variants[PROM_M44_PIPELINE_COUNT] = {
+      "kernel-60-default", "kernel-61-default"};
   uint32_t index;
   if (state == NULL || state->m44_pipeline_layout == VK_NULL_HANDLE) return 0;
   for (index = 0u; index < PROM_M44_PIPELINE_COUNT; ++index) {
     prom_reduction_pipeline* destination = &state->m44_pipelines[index];
-    VkShaderModuleCreateInfo module_info;
+    const char* entry_point = NULL;
+    prom_shader_package_diagnostic package_diagnostic;
     VkPipelineShaderStageCreateInfo stage_info;
     VkComputePipelineCreateInfo pipeline_info;
     if (destination->pipeline != VK_NULL_HANDLE) continue;
-    memset(&module_info, 0, sizeof(module_info));
-    module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    module_info.codeSize = bytes[index];
-    module_info.pCode = words[index];
-    if (vkCreateShaderModule(state->device, &module_info, NULL, &destination->shader_module) != VK_SUCCESS)
-      return 0;
+    if (state->shader_package == NULL ||
+        !prom_shader_package_create_module(state->shader_package, state->device, variants[index],
+                                           &destination->shader_module, &entry_point, &package_diagnostic)) return 0;
     memset(&stage_info, 0, sizeof(stage_info));
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     stage_info.module = destination->shader_module;
-    stage_info.pName = entries[index];
+    stage_info.pName = entry_point;
     memset(&pipeline_info, 0, sizeof(pipeline_info));
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipeline_info.stage = stage_info;
@@ -2295,23 +2258,21 @@ static int prom_m44_ensure_pipelines(prom_reduction_runtime_state* state) {
 
 static int prom_m45_ensure_pipeline(prom_reduction_runtime_state* state) {
   prom_reduction_pipeline* destination;
-  VkShaderModuleCreateInfo module_info;
+  const char* entry_point = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   if (state == NULL || state->pipeline_layout == VK_NULL_HANDLE) return 0;
   destination = &state->m45_pipelines[0];
   if (destination->pipeline != VK_NULL_HANDLE) return 1;
-  memset(&module_info, 0, sizeof(module_info));
-  module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  module_info.codeSize = sizeof(k_prom_m45_residual_add_spirv);
-  module_info.pCode = k_prom_m45_residual_add_spirv;
-  if (vkCreateShaderModule(state->device, &module_info, NULL, &destination->shader_module) != VK_SUCCESS)
-    return 0;
+  if (state->shader_package == NULL ||
+      !prom_shader_package_create_module(state->shader_package, state->device, "kernel-62-default",
+                                         &destination->shader_module, &entry_point, &package_diagnostic)) return 0;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = destination->shader_module;
-  stage_info.pName = "ResidualAdd_CS";
+  stage_info.pName = entry_point;
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
@@ -2327,37 +2288,25 @@ static int prom_m45_ensure_pipeline(prom_reduction_runtime_state* state) {
 }
 
 static int prom_m46_ensure_pipelines(prom_reduction_runtime_state* state) {
-  static const uint32_t* const words[PROM_M46_PIPELINE_COUNT] = {
-      k_prom_m46_rmsnorm_reduce_spirv,
-      k_prom_m46_rmsnorm_apply_spirv,
-  };
-  static const size_t bytes[PROM_M46_PIPELINE_COUNT] = {
-      sizeof(k_prom_m46_rmsnorm_reduce_spirv),
-      sizeof(k_prom_m46_rmsnorm_apply_spirv),
-  };
-  static const char* const entries[PROM_M46_PIPELINE_COUNT] = {
-      "RmsNormReduce_CS",
-      "RmsNormApply_CS",
-  };
+  static const char* const variants[PROM_M46_PIPELINE_COUNT] = {
+      "kernel-63-default", "kernel-64-default"};
   uint32_t index;
   if (state == NULL || state->pipeline_layout == VK_NULL_HANDLE) return 0;
   for (index = 0u; index < PROM_M46_PIPELINE_COUNT; ++index) {
     prom_reduction_pipeline* destination = &state->m46_pipelines[index];
-    VkShaderModuleCreateInfo module_info;
+    const char* entry_point = NULL;
+    prom_shader_package_diagnostic package_diagnostic;
     VkPipelineShaderStageCreateInfo stage_info;
     VkComputePipelineCreateInfo pipeline_info;
     if (destination->pipeline != VK_NULL_HANDLE) continue;
-    memset(&module_info, 0, sizeof(module_info));
-    module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    module_info.codeSize = bytes[index];
-    module_info.pCode = words[index];
-    if (vkCreateShaderModule(state->device, &module_info, NULL, &destination->shader_module) != VK_SUCCESS)
-      return 0;
+    if (state->shader_package == NULL ||
+        !prom_shader_package_create_module(state->shader_package, state->device, variants[index],
+                                           &destination->shader_module, &entry_point, &package_diagnostic)) return 0;
     memset(&stage_info, 0, sizeof(stage_info));
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     stage_info.module = destination->shader_module;
-    stage_info.pName = entries[index];
+    stage_info.pName = entry_point;
     memset(&pipeline_info, 0, sizeof(pipeline_info));
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipeline_info.stage = stage_info;
@@ -2404,37 +2353,25 @@ static void prom_m46_update_descriptor(prom_reduction_runtime_state* state,
 }
 
 static int prom_m47_ensure_pipelines(prom_reduction_runtime_state* state) {
-  static const uint32_t* const words[PROM_M47_PIPELINE_COUNT] = {
-      k_prom_m47_silu_gate_spirv,
-      k_prom_m47_silu_gate_pack_spirv,
-  };
-  static const size_t bytes[PROM_M47_PIPELINE_COUNT] = {
-      sizeof(k_prom_m47_silu_gate_spirv),
-      sizeof(k_prom_m47_silu_gate_pack_spirv),
-  };
-  static const char* const entries[PROM_M47_PIPELINE_COUNT] = {
-      "SiluGate_CS",
-      "SiluGatePack_CS",
-  };
+  static const char* const variants[PROM_M47_PIPELINE_COUNT] = {
+      "kernel-65-default", "kernel-66-default"};
   uint32_t index;
   if (state == NULL || state->pipeline_layout == VK_NULL_HANDLE) return 0;
   for (index = 0u; index < PROM_M47_PIPELINE_COUNT; ++index) {
     prom_reduction_pipeline* destination = &state->m47_pipelines[index];
-    VkShaderModuleCreateInfo module_info;
+    const char* entry_point = NULL;
+    prom_shader_package_diagnostic package_diagnostic;
     VkPipelineShaderStageCreateInfo stage_info;
     VkComputePipelineCreateInfo pipeline_info;
     if (destination->pipeline != VK_NULL_HANDLE) continue;
-    memset(&module_info, 0, sizeof(module_info));
-    module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    module_info.codeSize = bytes[index];
-    module_info.pCode = words[index];
-    if (vkCreateShaderModule(state->device, &module_info, NULL,
-                             &destination->shader_module) != VK_SUCCESS) return 0;
+    if (state->shader_package == NULL ||
+        !prom_shader_package_create_module(state->shader_package, state->device, variants[index],
+                                           &destination->shader_module, &entry_point, &package_diagnostic)) return 0;
     memset(&stage_info, 0, sizeof(stage_info));
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     stage_info.module = destination->shader_module;
-    stage_info.pName = entries[index];
+    stage_info.pName = entry_point;
     memset(&pipeline_info, 0, sizeof(pipeline_info));
     pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipeline_info.stage = stage_info;

@@ -16,6 +16,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/ocfmt"
 	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
 	"github.com/yuechen-li-dev/oct/internal/prometheus"
+	"github.com/yuechen-li-dev/oct/internal/prometheus/shaderpackage"
 	"github.com/yuechen-li-dev/oct/internal/run"
 	"github.com/yuechen-li-dev/oct/internal/sdslv"
 	"github.com/yuechen-li-dev/oct/internal/sdslv/bench"
@@ -396,9 +397,70 @@ func executeSDSLv(args []string, stdout io.Writer, stderr io.Writer) error {
 			}
 		}
 		return nil
+	case "package":
+		if isHelpArg(args[1:]) || len(args) < 2 {
+			return writeSDSLvHelp(stdout)
+		}
+		switch args[1] {
+		case "build":
+			opts, err := parseSDSLvPackageBuildArgs(args[2:])
+			if err != nil {
+				return reportCommandError(stderr, "sdslv package build", err)
+			}
+			manifest, err := shaderpackage.Build(opts)
+			if err != nil {
+				return reportCommandError(stderr, "sdslv package build", err)
+			}
+			_, err = fmt.Fprintf(stdout, "sdslv shader package built: %s\nartifacts: %d\nkernels: %d\n", opts.OutputRoot, len(manifest.Tables.Artifacts), len(manifest.Tables.Kernels))
+			return err
+		case "check":
+			if len(args) != 3 {
+				return reportCommandError(stderr, "sdslv package check", fmt.Errorf("usage: oct sdslv package check <package-root>"))
+			}
+			manifest, err := shaderpackage.Check(args[2])
+			if err != nil {
+				return reportCommandError(stderr, "sdslv package check", err)
+			}
+			_, err = fmt.Fprintf(stdout, "sdslv shader package valid: %s\nartifacts: %d\nkernels: %d\n", args[2], len(manifest.Tables.Artifacts), len(manifest.Tables.Kernels))
+			return err
+		default:
+			return reportCommandError(stderr, "sdslv package", fmt.Errorf("usage: oct sdslv package <build|check> ..."))
+		}
 	default:
-		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|compile-graphics|generate-header|test|bench> ..."))
+		return reportCommandError(stderr, "sdslv", fmt.Errorf("usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|compile-graphics|generate-header|package|test|bench> ..."))
 	}
+}
+
+func parseSDSLvPackageBuildArgs(args []string) (shaderpackage.BuildOptions, error) {
+	if len(args) == 0 {
+		return shaderpackage.BuildOptions{}, fmt.Errorf("usage: oct sdslv package build --manifest <source-manifest.json> --repo <repository-root> --out <package-root> [--ids <generated-header.h>]")
+	}
+	var opts shaderpackage.BuildOptions
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--manifest", "--repo", "--out", "--ids":
+			if i+1 >= len(args) {
+				return shaderpackage.BuildOptions{}, fmt.Errorf("missing value after %s", args[i])
+			}
+			i++
+			switch args[i-1] {
+			case "--manifest":
+				opts.SourceManifest = args[i]
+			case "--repo":
+				opts.RepositoryRoot = args[i]
+			case "--out":
+				opts.OutputRoot = args[i]
+			case "--ids":
+				opts.IDHeader = args[i]
+			}
+		default:
+			return shaderpackage.BuildOptions{}, fmt.Errorf("unknown shader package build option %q", args[i])
+		}
+	}
+	if opts.SourceManifest == "" || opts.RepositoryRoot == "" || opts.OutputRoot == "" {
+		return shaderpackage.BuildOptions{}, fmt.Errorf("usage: oct sdslv package build --manifest <source-manifest.json> --repo <repository-root> --out <package-root> [--ids <generated-header.h>]")
+	}
+	return opts, nil
 }
 
 func parseSDSLvGraphicsBundleArgs(args []string) (toolchain.GraphicsBundleOptions, error) {
@@ -1352,7 +1414,7 @@ func writeFmtHelp(out io.Writer) error {
 	return err
 }
 func writeSDSLvHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|compile-graphics|generate-header|test|bench> ...\n\ncommands:\n  check <file.sdslv>                                                                  Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                                Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                             Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]                     Emit HLSL, compile SPIR-V, and write SPIR-V\n  compile-graphics <file.sdslv> -o directory [--program Name]                         Compile a deterministic paired vertex/pixel bundle\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]                  Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]                       Discover deterministic GPU test cases\n  bench <file.sdslvbench> [--list] [--case <stable-id>] [--json] [--backend <auto|godot|kaiju>]  Inspect or run GPU benchmark declarations")
+	_, err := fmt.Fprintln(out, "usage: oct sdslv <check|emit-hlsl|emit-vdmir|compile-spv|compile-graphics|generate-header|package|test|bench> ...\n\ncommands:\n  check <file.sdslv>                                                                  Parse and validate an SDSL-V module\n  emit-hlsl <file.sdslv> [-o out.hlsl]                                                Emit deterministic HLSL from VD-MIR\n  emit-vdmir <file.sdslv>                                                             Dump deterministic VD-MIR for inspection\n  compile-spv <file.sdslv> -o out.spv [--entry Name] [--dxc path]                     Emit HLSL, compile SPIR-V, and write SPIR-V\n  compile-graphics <file.sdslv> -o directory [--program Name]                         Compile a deterministic paired vertex/pixel bundle\n  generate-header <file.sdslv> -o out.h --symbol name [--entry Name]                  Emit HLSL, compile SPIR-V, and generate a deterministic C header\n  package build --manifest <json> --repo <root> --out <root> [--ids <header>]          Stage prometheus.core content-addressed SPIR-V\n  package check <package-root>                                                         Strictly validate a staged shader package\n  test <file.sdslvtest|directory> [--list] [--case <stable-id>]                       Discover deterministic GPU test cases\n  bench <file.sdslvbench> [--list] [--case <stable-id>] [--json] [--backend <auto|godot|kaiju>]  Inspect or run GPU benchmark declarations")
 	return err
 }
 func writeTestHelp(out io.Writer) error {

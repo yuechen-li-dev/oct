@@ -8,6 +8,14 @@ fn ProductionPlanUsesRealBuildTarget() -> Void {
 }
 
 [Fact]
+fn ProductionPlanStagesDeclarativeShaderPackage() -> Void {
+    let target = Plan().CommandTargets[0]
+    Assert.Equal("StageShaderPackage", target.Name, "the Oct build owns shader package staging")
+    Assert.Equal("go", target.Program, "the build calls the typed Oct CLI rather than PowerShell generation")
+    Assert.Equal("../../out/prometheus/native/SerialCanonical/shaders/manifest.json", target.Outputs[0], "the staged package is colocated with the native variant")
+}
+
+[Fact]
 fn NativePlanDeclaresVariantIsolation() -> Void {
     let targets = NativePlan().Targets
     Assert.Equal("SerialCanonical", targets[0].Variant, "default objects have an explicit identity")

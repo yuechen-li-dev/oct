@@ -1,6 +1,5 @@
 #include "reactor_vulkan.h"
-#include "reactor_vulkan_ray_query_capability_probe_spirv.h"
-#include "reactor_vulkan_ray_query_raw_hit_spirv.h"
+#include "reactor_shader_package.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -454,7 +453,7 @@ static int prom_ray_build_tlas(prom_ray_query_scene* scene) {
 }
 
 static int prom_ray_create_compute_resources(prom_ray_query_scene* scene) {
-  const prom_shader_asset* asset;
+  prom_shader_package* package;
   VkDescriptorSetLayoutBinding bindings[2];
   VkDescriptorSetLayoutCreateInfo layout_info;
   VkPipelineLayoutCreateInfo pipeline_layout_info;
@@ -464,17 +463,14 @@ static int prom_ray_create_compute_resources(prom_ray_query_scene* scene) {
   VkWriteDescriptorSet writes[2];
   VkWriteDescriptorSetAccelerationStructureKHR acceleration_write;
   VkDescriptorBufferInfo evidence_info;
-  VkShaderModuleCreateInfo module_info;
   VkShaderModule module = VK_NULL_HANDLE;
+  const char* entry_point = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   VkResult result;
   if (scene == NULL || scene->tlas.handle == VK_NULL_HANDLE) return 0;
-  asset = prom_shader_registry_find_shader(54u);
-  if (asset == NULL || asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION ||
-      asset->source_language != PROM_SHADER_SOURCE_SDSLV || asset->stage != PROM_SHADER_STAGE_COMPUTE ||
-      asset->spirv_words == NULL || asset->spirv_size_bytes == 0u || asset->entry_point == NULL ||
-      asset->descriptor_binding_count != 2u) return 0;
+  if (prom_reactor_runtime_get_shader_package(scene->runtime_handle, &package) != PROM_OK) return 0;
   if (prom_vk_create_buffer(scene->services.physical_device, scene->services.device, scene->services.test_flags,
                             sizeof(uint32_t), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1,
@@ -540,17 +536,12 @@ static int prom_ray_create_compute_resources(prom_ray_query_scene* scene) {
   writes[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
   writes[1].pBufferInfo = &evidence_info;
   vkUpdateDescriptorSets(scene->services.device, 2u, writes, 0u, NULL);
-  memset(&module_info, 0, sizeof(module_info));
-  module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-  module_info.codeSize = asset->spirv_size_bytes;
-  module_info.pCode = asset->spirv_words;
-  result = vkCreateShaderModule(scene->services.device, &module_info, NULL, &module);
-  if (result != VK_SUCCESS) return 0;
+  if (!prom_shader_package_create_module(package, scene->services.device, "kernel-54-default", &module, &entry_point, &package_diagnostic)) return 0;
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
   stage_info.module = module;
-  stage_info.pName = asset->entry_point;
+  stage_info.pName = entry_point;
   memset(&pipeline_info, 0, sizeof(pipeline_info));
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
@@ -561,7 +552,7 @@ static int prom_ray_create_compute_resources(prom_ray_query_scene* scene) {
 }
 
 static int prom_ray_create_raw_compute_resources(prom_ray_query_scene* scene) {
-  const prom_shader_asset* asset;
+  prom_shader_package* package;
   VkDescriptorSetLayoutBinding bindings[5];
   VkDescriptorSetLayoutCreateInfo layout_info;
   VkPipelineLayoutCreateInfo pipeline_layout_info;
@@ -571,15 +562,14 @@ static int prom_ray_create_raw_compute_resources(prom_ray_query_scene* scene) {
   VkWriteDescriptorSet writes[5];
   VkWriteDescriptorSetAccelerationStructureKHR acceleration_write;
   VkDescriptorBufferInfo infos[4];
-  VkShaderModuleCreateInfo module_info;
   VkPipelineShaderStageCreateInfo stage_info;
   VkComputePipelineCreateInfo pipeline_info;
   VkShaderModule module = VK_NULL_HANDLE;
+  const char* entry_point = NULL;
+  prom_shader_package_diagnostic package_diagnostic;
   VkResult result;
   if (scene == NULL || scene->tlas.handle == VK_NULL_HANDLE) return 0;
-  asset = prom_shader_registry_find_shader(55u);
-  if (asset == NULL || asset->authority != PROM_SHADER_AUTHORITY_PRODUCTION || asset->source_language != PROM_SHADER_SOURCE_SDSLV ||
-      asset->stage != PROM_SHADER_STAGE_COMPUTE || asset->descriptor_binding_count != 5u) return 0;
+  if (prom_reactor_runtime_get_shader_package(scene->runtime_handle, &package) != PROM_OK) return 0;
   if (prom_vk_create_buffer(scene->services.physical_device, scene->services.device, scene->services.test_flags,
                             2u * sizeof(float) * 4u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &scene->ray_buffer) != VK_SUCCESS ||
@@ -608,9 +598,8 @@ static int prom_ray_create_raw_compute_resources(prom_ray_query_scene* scene) {
   writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[0].pNext = &acceleration_write; writes[0].dstSet = scene->descriptor_set; writes[0].dstBinding = 0u; writes[0].descriptorCount = 1u; writes[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
   for (uint32_t i = 1u; i < 5u; ++i) { writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = scene->descriptor_set; writes[i].dstBinding = i; writes[i].descriptorCount = 1u; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].pBufferInfo = &infos[i - 1u]; }
   vkUpdateDescriptorSets(scene->services.device, 5u, writes, 0u, NULL);
-  memset(&module_info, 0, sizeof(module_info)); module_info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO; module_info.codeSize = asset->spirv_size_bytes; module_info.pCode = asset->spirv_words;
-  result = vkCreateShaderModule(scene->services.device, &module_info, NULL, &module); if (result != VK_SUCCESS) return 0;
-  memset(&stage_info, 0, sizeof(stage_info)); stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT; stage_info.module = module; stage_info.pName = asset->entry_point;
+  if (!prom_shader_package_create_module(package, scene->services.device, "kernel-55-default", &module, &entry_point, &package_diagnostic)) return 0;
+  memset(&stage_info, 0, sizeof(stage_info)); stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO; stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT; stage_info.module = module; stage_info.pName = entry_point;
   memset(&pipeline_info, 0, sizeof(pipeline_info)); pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO; pipeline_info.stage = stage_info; pipeline_info.layout = scene->pipeline_layout;
   result = vkCreateComputePipelines(scene->services.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &scene->pipeline);
   vkDestroyShaderModule(scene->services.device, module, NULL);
