@@ -22,6 +22,7 @@ const (
 	reactorSymbolQueryAsync   = "prometheus_reactor_runtime_sgemm_query_async"
 	reactorSymbolConsumeAsync = "prometheus_reactor_runtime_sgemm_consume_async"
 	reactorSymbolAbandonAsync = "prometheus_reactor_runtime_sgemm_abandon_async"
+	reactorSymbolGemmaInputRN = "prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm"
 )
 
 type ReactorIssueCode string
@@ -70,7 +71,8 @@ type reactorRuntimeHandle struct {
 	ptr uintptr
 }
 type reactorCreateConfig struct {
-	TestFlags uint32
+	TestFlags         uint32
+	ShaderPackageRoot string
 }
 type reactorCaps struct {
 	Available   bool
@@ -100,6 +102,32 @@ type reactorSubmitAsync func(reactorRuntimeHandle, int, int, int, []float32, []f
 type reactorQueryAsync func(reactorRuntimeHandle, int) (reactorAsyncStatus, error)
 type reactorConsumeAsync func(reactorRuntimeHandle, int, []float32) (reactorCallStatus, error)
 type reactorAbandonAsync func(reactorRuntimeHandle, int) error
+type reactorGemma4E2BM1InputRMSNorm func(reactorRuntimeHandle, []float32, []float32, uint32, uint32, uint32, float32, uint64, uint64, uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error)
+
+type reactorGemma4E2BM1InputRMSNormResult struct {
+	StageCode                    uint32
+	DetailCode                   int
+	OutputWritten                bool
+	MatchedInput                 bool
+	InputHash                    uint64
+	WeightHash                   uint64
+	OutputHash                   uint64
+	InvRMSHash                   uint64
+	SubmitCount                  uint32
+	FinalReadbackCount           uint32
+	NoIntermediateReadbackChange bool
+	RetainedBytes                uint64
+	BufferAllocationCount        uint64
+	BufferReuseCount             uint64
+	DescriptorUpdateCount        uint64
+	PipelineCreateCount          uint64
+	CommandBufferReuseCount      uint64
+	ReductionGPUNanoseconds      uint64
+	FinalReductionGPUNanoseconds uint64
+	InvRMSGPUNanoseconds         uint64
+	ApplyGPUNanoseconds          uint64
+	EndToEndNanoseconds          uint64
+}
 
 type dynamicLibrary interface {
 	Resolve(symbol string) (any, error)
@@ -134,6 +162,7 @@ type nativeRuntime struct {
 	queryAsync   reactorQueryAsync
 	consumeAsync reactorConsumeAsync
 	abandonAsync reactorAbandonAsync
+	gemmaInputRN reactorGemma4E2BM1InputRMSNorm
 	handle       reactorRuntimeHandle
 	caps         reactorCaps
 	lib          dynamicLibrary
@@ -216,7 +245,10 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 		return nil, &ReactorIssue{Code: ReactorIssueSymbolMissing, Path: path, Symbol: reactorSymbolProbe, Err: fmt.Errorf("symbol has unexpected type")}
 	}
 
-	handle, err := createFn(reactorCreateConfig{TestFlags: reactorTestFlagsFromEnv()})
+	handle, err := createFn(reactorCreateConfig{
+		TestFlags:         reactorTestFlagsFromEnv(),
+		ShaderPackageRoot: discoverShaderPackageRoot(path),
+	})
 	if err != nil {
 		return nil, &ReactorIssue{Code: ReactorIssueCreateFailed, Path: path, Err: err}
 	}
@@ -257,6 +289,11 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 	if abandonAny, err := lib.Resolve(reactorSymbolAbandonAsync); err == nil {
 		if abandonFn, ok := abandonAny.(reactorAbandonAsync); ok {
 			rt.abandonAsync = abandonFn
+		}
+	}
+	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaInputRN); err == nil {
+		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1InputRMSNorm); ok {
+			rt.gemmaInputRN = gemmaFn
 		}
 	}
 
@@ -331,6 +368,13 @@ func (r *nativeRuntime) AbandonAsync(taskID int) error {
 		return fmt.Errorf("reactor async abandon entrypoint unavailable")
 	}
 	return r.abandonAsync(r.handle, taskID)
+}
+
+func (r *nativeRuntime) Gemma4E2BM1InputRMSNorm(input, weight []float32, tokens, modelWidth, inputRowStride uint32, epsilon float32, inputGeneration, weightGeneration, exactSourceHash uint64) ([]float32, []float32, reactorGemma4E2BM1InputRMSNormResult, error) {
+	if r == nil || r.gemmaInputRN == nil {
+		return nil, nil, reactorGemma4E2BM1InputRMSNormResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 input rmsnorm entrypoint unavailable")
+	}
+	return r.gemmaInputRN(r.handle, input, weight, tokens, modelWidth, inputRowStride, epsilon, inputGeneration, weightGeneration, exactSourceHash)
 }
 
 func (r *nativeRuntime) Environment() string {
@@ -416,4 +460,32 @@ func reactorLibraryBasename() string {
 		return "prometheus_reactor.dll"
 	}
 	return "libprometheus_reactor.so"
+}
+
+func discoverShaderPackageRoot(reactorPath string) string {
+	if reactorPath == "" {
+		return ""
+	}
+	base := filepath.Dir(reactorPath)
+	candidates := []string{
+		filepath.Join(base, "shaders"),
+		filepath.Join(base, "SerialCanonical", "shaders"),
+		filepath.Join(base, "..", "SerialCanonical", "shaders"),
+	}
+	if _, file, _, ok := runtime.Caller(0); ok {
+		pkgDir := filepath.Dir(file)
+		candidates = append(candidates,
+			filepath.Join(pkgDir, "..", "..", "out", "prometheus", "native", "shaders"),
+			filepath.Join(pkgDir, "..", "..", "out", "prometheus", "native", "SerialCanonical", "shaders"),
+		)
+	}
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(candidate, "manifest.json")); err == nil {
+			return filepath.Clean(candidate)
+		}
+	}
+	return ""
 }

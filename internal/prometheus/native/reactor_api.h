@@ -1769,6 +1769,52 @@ typedef struct PrometheusAsyncStatus {
   uint32_t outstanding_tasks;
 } PrometheusAsyncStatus;
 
+typedef struct PrometheusGemma4E2BM1InputRmsNormRequest {
+  uint32_t struct_size;
+  const float* input;
+  const float* weight;
+  float* output;
+  float* inv_rms_output;
+  uint64_t input_element_count;
+  uint64_t weight_element_count;
+  uint64_t output_element_count;
+  uint64_t inv_rms_output_element_count;
+  uint32_t tokens;
+  uint32_t model_width;
+  uint32_t input_row_stride;
+  float epsilon;
+  uint64_t input_generation;
+  uint64_t weight_generation;
+  uint64_t exact_source_hash;
+} PrometheusGemma4E2BM1InputRmsNormRequest;
+
+typedef struct PrometheusGemma4E2BM1InputRmsNormResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t output_written;
+  uint32_t matched_input;
+  uint64_t input_hash;
+  uint64_t weight_hash;
+  uint64_t output_hash;
+  uint64_t inv_rms_hash;
+  uint32_t submit_count;
+  uint32_t final_readback_count;
+  uint32_t no_product_intermediate_readback_change;
+  uint32_t reserved0;
+  uint64_t retained_bytes;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t command_buffer_reuse_count;
+  uint64_t reduction_gpu_ns;
+  uint64_t final_reduction_gpu_ns;
+  uint64_t inv_rms_gpu_ns;
+  uint64_t apply_gpu_ns;
+  uint64_t end_to_end_ns;
+} PrometheusGemma4E2BM1InputRmsNormResult;
+
 typedef struct PrometheusSgemmAsyncTaskDiagnostics {
   int32_t task_id;
   uint32_t generation;
@@ -2468,6 +2514,10 @@ PROM_REACTOR_API int prometheus_reactor_runtime_row_wise_softmax(
     void* handle,
     const PrometheusRowWiseSoftmaxRequest* request,
     PrometheusRowWiseSoftmaxResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1InputRmsNormRequest* request,
+    PrometheusGemma4E2BM1InputRmsNormResult* out_result);
 
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,

@@ -1,6 +1,7 @@
 #include "reactor_api.h"
 
 #include "reactor_vulkan.h"
+#include "reactor_numerical_research.h"
 
 #include <string.h>
 
@@ -246,6 +247,106 @@ int prometheus_reactor_runtime_row_wise_softmax(
     const PrometheusRowWiseSoftmaxRequest* request,
     PrometheusRowWiseSoftmaxResult* out_result) {
   return prom_reactor_runtime_row_wise_softmax_impl(handle, request, out_result);
+}
+
+int prometheus_reactor_runtime_gemma4e2b_m1_input_rmsnorm(
+    void* handle,
+    const PrometheusGemma4E2BM1InputRmsNormRequest* request,
+    PrometheusGemma4E2BM1InputRmsNormResult* out_result) {
+  prom_m46_weight_prepare_request weight_request;
+  prom_m46_weight_prepare_result weight_result;
+  prom_m49a_m46_request execute_request;
+  prom_m49a_m46_result execute_result;
+  uint64_t input_hash;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->struct_size = sizeof(*out_result);
+  if (request == NULL || request->struct_size < sizeof(*request) ||
+      request->input == NULL || request->weight == NULL || request->output == NULL ||
+      request->inv_rms_output == NULL || request->tokens == 0u ||
+      request->model_width == 0u || request->input_row_stride < request->model_width ||
+      request->input_generation == 0u || request->weight_generation == 0u ||
+      request->exact_source_hash == 0u) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  memset(&weight_request, 0, sizeof(weight_request));
+  weight_request.values = request->weight;
+  weight_request.element_count = request->weight_element_count;
+  weight_request.model_width = request->model_width;
+  weight_request.generation = request->weight_generation;
+  memset(&weight_result, 0, sizeof(weight_result));
+  if (prom_reactor_runtime_m46_prepare_weight(handle, &weight_request, &weight_result) != PROM_OK) {
+    out_result->stage = weight_result.stage;
+    out_result->detail_code = weight_result.detail_code;
+    out_result->weight_hash = weight_result.hash;
+    out_result->retained_bytes = weight_result.retained_bytes;
+    out_result->end_to_end_ns = weight_result.preparation_ns;
+    return PROM_ERROR;
+  }
+  input_hash = prom_num_hash_float_bits(request->input, request->input_element_count);
+  memset(&execute_request, 0, sizeof(execute_request));
+  execute_request.matched_z = request->input;
+  execute_request.matched_storage_element_count = request->input_element_count;
+  execute_request.output = request->output;
+  execute_request.output_element_count = request->output_element_count;
+  execute_request.inv_rms_output = request->inv_rms_output;
+  execute_request.inv_rms_output_element_count = request->inv_rms_output_element_count;
+  execute_request.tokens = request->tokens;
+  execute_request.model_width = request->model_width;
+  execute_request.z_row_stride = request->input_row_stride;
+  execute_request.strategy = PROM_M46_STRATEGY_SEPARATE_OUTPUT;
+  execute_request.requested_reduction_plan = PROM_M46_REDUCTION_AUTO;
+  execute_request.epsilon = request->epsilon;
+  execute_request.input_generation = request->input_generation;
+  execute_request.reference_input_hash = input_hash;
+  execute_request.required_weight_generation = weight_result.generation;
+  execute_request.required_weight_hash = weight_result.hash;
+  execute_request.exact_source_hash = request->exact_source_hash;
+  memset(&execute_result, 0, sizeof(execute_result));
+  if (prom_reactor_runtime_m49a_execute_m46(handle, &execute_request, &execute_result) != PROM_OK) {
+    out_result->stage = execute_result.stage;
+    out_result->detail_code = execute_result.detail_code;
+    out_result->matched_input = execute_result.matched_input;
+    out_result->input_hash = execute_result.input_hash;
+    out_result->weight_hash = execute_result.weight_hash;
+    out_result->retained_bytes = execute_result.rmsnorm.retained_bytes;
+    out_result->buffer_allocation_count = execute_result.rmsnorm.buffer_allocation_count;
+    out_result->buffer_reuse_count = execute_result.rmsnorm.buffer_reuse_count;
+    out_result->descriptor_update_count = execute_result.rmsnorm.descriptor_update_count;
+    out_result->pipeline_create_count = execute_result.rmsnorm.pipeline_create_count;
+    out_result->command_buffer_reuse_count = execute_result.rmsnorm.command_buffer_reuse_count;
+    out_result->reduction_gpu_ns = execute_result.rmsnorm.reduction_gpu_ns;
+    out_result->final_reduction_gpu_ns = execute_result.rmsnorm.final_reduction_gpu_ns;
+    out_result->inv_rms_gpu_ns = execute_result.rmsnorm.inv_rms_gpu_ns;
+    out_result->apply_gpu_ns = execute_result.rmsnorm.apply_gpu_ns;
+    out_result->end_to_end_ns = execute_result.rmsnorm.end_to_end_ns;
+    return PROM_ERROR;
+  }
+  out_result->stage = execute_result.stage;
+  out_result->detail_code = execute_result.detail_code;
+  out_result->output_written = 1u;
+  out_result->matched_input = execute_result.matched_input;
+  out_result->input_hash = execute_result.input_hash;
+  out_result->weight_hash = execute_result.weight_hash;
+  out_result->output_hash = execute_result.output_hash;
+  out_result->inv_rms_hash = execute_result.inv_rms_hash;
+  out_result->submit_count = execute_result.rmsnorm.submit_count;
+  out_result->final_readback_count = execute_result.rmsnorm.final_readback_count;
+  out_result->no_product_intermediate_readback_change = execute_result.no_product_intermediate_readback_change;
+  out_result->retained_bytes = execute_result.rmsnorm.retained_bytes;
+  out_result->buffer_allocation_count = execute_result.rmsnorm.buffer_allocation_count;
+  out_result->buffer_reuse_count = execute_result.rmsnorm.buffer_reuse_count;
+  out_result->descriptor_update_count = execute_result.rmsnorm.descriptor_update_count;
+  out_result->pipeline_create_count = execute_result.rmsnorm.pipeline_create_count;
+  out_result->command_buffer_reuse_count = execute_result.rmsnorm.command_buffer_reuse_count;
+  out_result->reduction_gpu_ns = execute_result.rmsnorm.reduction_gpu_ns;
+  out_result->final_reduction_gpu_ns = execute_result.rmsnorm.final_reduction_gpu_ns;
+  out_result->inv_rms_gpu_ns = execute_result.rmsnorm.inv_rms_gpu_ns;
+  out_result->apply_gpu_ns = execute_result.rmsnorm.apply_gpu_ns;
+  out_result->end_to_end_ns = execute_result.rmsnorm.end_to_end_ns;
+  return PROM_OK;
 }
 
 int prometheus_reactor_runtime_model_block_create(
