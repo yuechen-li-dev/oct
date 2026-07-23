@@ -34,6 +34,25 @@ func TestCooperativeMatrixIntrinsicClosedContract(t *testing.T) {
 	}
 }
 
+func TestRayQueryTraceClosestIsStatementOnlyAndClosed(t *testing.T) {
+	const source = `record Sphere { CenterRadius:float4; AlbedoMaterial:float4; }
+record Hit { Meta:uint4; TPrimitive:float4; Position:float4; Normal:float4; Barycentrics:float4; AlbedoMaterial:float4; }
+stream IO { [binding(0)] Scene:readonly acceleration_structure; [binding(1)] Spheres:readonly array<Sphere>; [binding(2)] Rays:readonly array<float4>; [binding(3)] Result:readwrite array<Hit>; [binding(4)] Vertices:readonly array<float4>; }
+shader S { resources IO; stage compute [numthreads(1,1,1)] fn CS() -> void { RayQueryTraceClosest(Scene,Spheres,Rays,Result,Vertices); return; } }`
+	if err := validateSource(source); err != nil { t.Fatalf("valid statement-only ray query: %v", err) }
+	for _, tc := range []struct{ name, old, replacement, want string }{
+		{"arity", "Scene,Spheres,Rays,Result,Vertices", "Scene,Spheres,Rays,Result", "SDSL-V4211"},
+		{"output-access", "Result:readwrite", "Result:readonly", "SDSL-V4212"},
+		{"scene-type", "Scene:readonly acceleration_structure", "Scene:readonly array<float4>", "SDSL-V4211"},
+		{"value-use", "RayQueryTraceClosest(Scene,Spheres,Rays,Result,Vertices);", "let query:bool = RayQueryTraceClosest(Scene,Spheres,Rays,Result,Vertices);", "cannot assign void"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSource(strings.Replace(source, tc.old, tc.replacement, 1))
+			if err == nil || !strings.Contains(err.Error(), tc.want) { t.Fatalf("error = %v, want %s", err, tc.want) }
+		})
+	}
+}
+
 func TestModuleRejectsDuplicateRecordFields(t *testing.T) {
 	err := validateSource(`record Params { M: u32; M: u32; }`)
 	if err == nil || !strings.Contains(err.Error(), "duplicate record field") {

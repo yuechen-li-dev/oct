@@ -38,6 +38,21 @@ int prometheus_reactor_runtime_ray_query_triangle_scene_destroy(void* handle, ui
   return prom_ray_query_triangle_scene_destroy_impl(handle, scene_id);
 }
 
+int prometheus_reactor_runtime_ray_query_scene_create(
+    void* handle, const PrometheusRayQuerySceneCreateRequest* request, uint64_t* out_scene_id) {
+  return prom_ray_query_scene_create_impl(handle, request, out_scene_id);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_trace(
+    void* handle, uint64_t scene_id, const PrometheusRayQueryRawRequest* request,
+    PrometheusRayQueryRawHit* out_hit) {
+  return prom_ray_query_scene_trace_impl(handle, scene_id, request, out_hit);
+}
+
+int prometheus_reactor_runtime_ray_query_scene_destroy(void* handle, uint64_t scene_id) {
+  return prom_ray_query_scene_destroy_impl(handle, scene_id);
+}
+
 
 int prometheus_reactor_runtime_sgemm(void* handle,
                                      const float* a,

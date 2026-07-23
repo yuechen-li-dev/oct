@@ -2062,6 +2062,8 @@ func (v *validator) callType(call ast.CallExpr, scope map[string]varInfo, shader
 			return v.sampleType(call, scope, shaderName, templateParam)
 		case "RayQueryAny":
 			return v.rayQueryAnyType(call, scope, shaderName, templateParam)
+		case "RayQueryTraceClosest":
+			return v.rayQueryTraceClosestType(call, scope, shaderName, templateParam)
 		}
 		if id.Name == "reg_tile_zero" {
 			if len(call.Arguments) != 0 {
@@ -2147,6 +2149,44 @@ func (v *validator) rayQueryAnyType(call ast.CallExpr, scope map[string]varInfo,
 		v.errorAt(call.Span, "SDSL-V4202", "RayQueryAny is supported only in compute stages")
 	}
 	return ast.TypeRef{Name: "bool"}
+}
+
+// RayQueryTraceClosest is a compiler-owned stateful command. Its opaque HLSL
+// query is not representable in source, preventing accidental copying or ABI
+// escape while preserving explicit candidate progression and commitment.
+func (v *validator) rayQueryTraceClosestType(call ast.CallExpr, scope map[string]varInfo, shaderName string, templateParam *ast.TemplateParam) ast.TypeRef {
+	if len(call.Arguments) != 5 {
+		v.errorAt(call.Span, "SDSL-V4211", "RayQueryTraceClosest expects acceleration_structure, readonly sphere array, readonly ray array, readwrite raw-hit array, and readonly triangle-vertex array")
+		return ast.TypeRef{Name: "<error>"}
+	}
+	for i, arg := range call.Arguments {
+		id, ok := arg.(ast.IdentifierExpr)
+		if !ok {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4211", "RayQueryTraceClosest argument %d must be a named resource", i+1)
+			continue
+		}
+		info, ok := scope[id.Name]
+		if !ok || info.origin != varResource {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4211", "RayQueryTraceClosest argument %d must be a resource", i+1)
+			continue
+		}
+		if i == 0 && v.resolveAlias(info.typ).Name != "acceleration_structure" {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4211", "RayQueryTraceClosest first argument must be acceleration_structure")
+		}
+		if i > 0 && v.resolveAlias(info.typ).Name != "array" {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4211", "RayQueryTraceClosest arguments 2 through 5 must be resource arrays")
+		}
+		if i != 3 && info.access != "readonly" {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4212", "RayQueryTraceClosest input resources must be readonly")
+		}
+		if i == 3 && info.access != "readwrite" {
+			v.errorAt(ast.ExprSpan(arg), "SDSL-V4212", "RayQueryTraceClosest raw-hit output must be readwrite")
+		}
+	}
+	if v.currentStage != "compute" {
+		v.errorAt(call.Span, "SDSL-V4213", "RayQueryTraceClosest is supported only in compute stages")
+	}
+	return ast.TypeRef{Name: "void"}
 }
 
 func (v *validator) semanticSpaceMismatch(span source.Span, operation string, expected, actual ast.TypeRef) bool {

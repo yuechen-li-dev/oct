@@ -5,9 +5,105 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <string>
 #include <vector>
+
+namespace {
+
+struct RayQueryOracleHit
+{
+    std::uint32_t hit = 0u, kind = 0u, primitive = UINT32_MAX;
+    double t = -1.0;
+    double position[3]{};
+    double normal[3]{};
+    double bary[2]{-1.0, -1.0};
+    std::uint32_t frontFace = UINT32_MAX;
+};
+
+struct RayQueryErrorStats { double t=0.0, position=0.0, normal=0.0, barycentric=0.0; const char* tName=""; const char* positionName=""; const char* normalName=""; const char* baryName=""; };
+static RayQueryErrorStats g_ray_query_error_stats;
+static void rq_record_error(double value, double* maximum, const char** fixture, const char* name) { if (value > *maximum) { *maximum=value; *fixture=name; } }
+
+static double rq_dot(const double a[3], const double b[3]) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+static void rq_cross(const double a[3], const double b[3], double out[3]) { out[0]=a[1]*b[2]-a[2]*b[1]; out[1]=a[2]*b[0]-a[0]*b[2]; out[2]=a[0]*b[1]-a[1]*b[0]; }
+static void rq_normalize(double v[3]) { const double length = std::sqrt(rq_dot(v,v)); if (length != 0.0) { v[0]/=length; v[1]/=length; v[2]/=length; } }
+
+// Independent double-precision authority. This deliberately has no shared
+// shader code or production dependency: Moller-Trumbore for triangles and a
+// full quadratic for analytic spheres. Intervals are closed and ties retain
+// the earlier triangle fixture order; corpus fixtures avoid cross-kind ties.
+static RayQueryOracleHit ray_query_oracle(const PrometheusRayQueryTriangle* triangles, std::uint32_t triangleCount,
+                                          const PrometheusRayQuerySphere* spheres, std::uint32_t sphereCount,
+                                          const PrometheusRayQueryRawRequest& ray)
+{
+    RayQueryOracleHit best;
+    const double origin[3] = {ray.origin[0], ray.origin[1], ray.origin[2]};
+    const double direction[3] = {ray.direction[0], ray.direction[1], ray.direction[2]};
+    auto accept = [&](std::uint32_t kind, std::uint32_t primitive, double t, const double normal[3], const double bary[2], std::uint32_t front) {
+        if (t < static_cast<double>(ray.t_min) || t > static_cast<double>(ray.t_max) || (best.hit && t >= best.t)) return;
+        best.hit=1u; best.kind=kind; best.primitive=primitive; best.t=t; best.frontFace=front;
+        for (int k=0;k<3;++k) { best.position[k]=origin[k]+t*direction[k]; best.normal[k]=normal[k]; }
+        best.bary[0]=bary[0]; best.bary[1]=bary[1];
+    };
+    for (std::uint32_t i=0u;i<triangleCount;++i) {
+        const float* p=triangles[i].positions;
+        const double a[3]={p[0],p[1],p[2]}, e1[3]={p[3]-p[0],p[4]-p[1],p[5]-p[2]}, e2[3]={p[6]-p[0],p[7]-p[1],p[8]-p[2]};
+        double pv[3], tv[3], qv[3]; rq_cross(direction,e2,pv); const double determinant=rq_dot(e1,pv);
+        if (std::fabs(determinant) <= 1.0e-12) continue;
+        const double inverse=1.0/determinant; for(int k=0;k<3;++k) tv[k]=origin[k]-a[k]; const double u=rq_dot(tv,pv)*inverse;
+        if (u < 0.0 || u > 1.0) continue;
+        rq_cross(tv,e1,qv); const double v=rq_dot(direction,qv)*inverse;
+        if (v < 0.0 || u+v > 1.0) continue;
+        const double t=rq_dot(e2,qv)*inverse; double n[3]; rq_cross(e1,e2,n); rq_normalize(n); const double bary[2]={u,v};
+        accept(1u,i,t,n,bary,rq_dot(n,direction)<0.0 ? 1u : 0u);
+    }
+    for (std::uint32_t i=0u;i<sphereCount;++i) {
+        const double center[3]={spheres[i].center[0],spheres[i].center[1],spheres[i].center[2]}; double oc[3]; for(int k=0;k<3;++k) oc[k]=origin[k]-center[k];
+        const double qa=rq_dot(direction,direction), qb=rq_dot(oc,direction), qc=rq_dot(oc,oc)-static_cast<double>(spheres[i].radius)*spheres[i].radius;
+        const double discriminant=qb*qb-qa*qc; if (discriminant < 0.0) continue;
+        const double root=std::sqrt(discriminant), nearT=(-qb-root)/qa, farT=(-qb+root)/qa;
+        const double t=(nearT >= ray.t_min && nearT <= ray.t_max) ? nearT : farT;
+        if (t < ray.t_min || t > ray.t_max) continue;
+        double position[3], n[3]; for(int k=0;k<3;++k) { position[k]=origin[k]+t*direction[k]; n[k]=position[k]-center[k]; } rq_normalize(n); const double bary[2]={-1.0,-1.0};
+        accept(2u,i,t,n,bary,UINT32_MAX);
+    }
+    return best;
+}
+
+static bool rq_near(double expected, double actual) {
+    constexpr double absoluteTolerance=2.0e-5, relativeTolerance=2.0e-5;
+    const double delta=std::fabs(expected-actual);
+    return delta <= absoluteTolerance || delta <= relativeTolerance*std::fabs(expected);
+}
+static std::uint32_t rq_u32_from_float(float value) { std::uint32_t bits=0u; std::memcpy(&bits,&value,sizeof(bits)); return bits; }
+
+static void assert_ray_query_matches_oracle(::marionette::tests::TestContext& context, void* handle, const char* name,
+                                             const PrometheusRayQueryTriangle* triangles, std::uint32_t triangleCount,
+                                             const PrometheusRayQuerySphere* spheres, std::uint32_t sphereCount,
+                                             const PrometheusRayQueryRawRequest& ray)
+{
+    PrometheusRayQuerySceneCreateRequest create{}; create.struct_size=static_cast<std::uint32_t>(sizeof(create)); create.triangles=triangles; create.triangle_count=triangleCount; create.spheres=spheres; create.sphere_count=sphereCount;
+    const RayQueryOracleHit expected=ray_query_oracle(triangles,triangleCount,spheres,sphereCount,ray);
+    std::uint64_t scene=0u; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_create(handle,&create,&scene),std::string(name)+" scene create");
+    PrometheusRayQueryRawHit actual{}; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&actual),std::string(name)+" trace");
+    ASSERT_EQUAL(expected.hit,actual.meta[0],std::string(name)+" hit"); ASSERT_EQUAL(expected.kind,actual.meta[1],std::string(name)+" kind");
+    if (expected.hit) {
+        ASSERT_EQUAL(expected.kind==1u?0u:1u,actual.meta[2],std::string(name)+" instance"); ASSERT_EQUAL(0u,actual.meta[3],std::string(name)+" geometry");
+        ASSERT_EQUAL(expected.primitive,rq_u32_from_float(actual.t_primitive[1]),std::string(name)+" primitive");
+        ASSERT_TRUE(rq_near(expected.t,actual.t_primitive[0]),std::string(name)+" t");
+        rq_record_error(std::fabs(expected.t-actual.t_primitive[0]),&g_ray_query_error_stats.t,&g_ray_query_error_stats.tName,name);
+        for(int k=0;k<3;++k) { rq_record_error(std::fabs(expected.position[k]-actual.position[k]),&g_ray_query_error_stats.position,&g_ray_query_error_stats.positionName,name); rq_record_error(std::fabs(expected.normal[k]-actual.normal[k]),&g_ray_query_error_stats.normal,&g_ray_query_error_stats.normalName,name); ASSERT_TRUE(rq_near(expected.position[k],actual.position[k]),std::string(name)+" position"); ASSERT_TRUE(rq_near(expected.normal[k],actual.normal[k]),std::string(name)+" normal"); }
+        if (expected.kind==1u) { rq_record_error(std::fabs(expected.bary[0]-actual.barycentrics[0]),&g_ray_query_error_stats.barycentric,&g_ray_query_error_stats.baryName,name); rq_record_error(std::fabs(expected.bary[1]-actual.barycentrics[1]),&g_ray_query_error_stats.barycentric,&g_ray_query_error_stats.baryName,name); ASSERT_TRUE(rq_near(expected.bary[0],actual.barycentrics[0]),std::string(name)+" bary u"); ASSERT_TRUE(rq_near(expected.bary[1],actual.barycentrics[1]),std::string(name)+" bary v"); ASSERT_EQUAL(expected.frontFace,static_cast<std::uint32_t>(actual.t_primitive[2]),std::string(name)+" front face"); }
+        if (expected.kind==2u) { ASSERT_NEAR(spheres[expected.primitive].albedo[0],actual.albedo_material[0],0.0f,std::string(name)+" albedo r"); ASSERT_NEAR(spheres[expected.primitive].albedo[1],actual.albedo_material[1],0.0f,std::string(name)+" albedo g"); ASSERT_NEAR(spheres[expected.primitive].albedo[2],actual.albedo_material[2],0.0f,std::string(name)+" albedo b"); ASSERT_NEAR(static_cast<float>(spheres[expected.primitive].material_id),actual.albedo_material[3],0.0f,std::string(name)+" material"); }
+    } else { ASSERT_EQUAL(UINT32_MAX,actual.meta[2],std::string(name)+" miss instance sentinel"); ASSERT_EQUAL(UINT32_MAX,actual.meta[3],std::string(name)+" miss geometry sentinel"); ASSERT_NEAR(-1.0f,actual.t_primitive[0],0.0f,std::string(name)+" miss t sentinel"); }
+    ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_destroy(handle,scene),std::string(name)+" scene destroy");
+}
+
+} // namespace
 
 FACT(PrometheusReactor_FftDiagnosticsDefaultState)
 {
@@ -260,6 +356,133 @@ FACT(PrometheusReactor_RayQueryTriangleScenesRemainIsolated)
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_triangle_scene_destroy(handle, hitScene),
                  "first scene destroy should succeed");
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_RayQueryRawSphereAndTriangleTraversal)
+{
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(nullptr, &handle), "runtime create should succeed");
+    prom_vk_runtime_services services{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_get_vk_services(handle, &services), "runtime services should be available");
+    if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED)
+    {
+        SKIP("ray-query feature bundle is unavailable on this device");
+    }
+    const PrometheusRayQueryTriangle triangles[] = {{{-1.0f, -1.0f, 4.0f, 1.0f, -1.0f, 4.0f, 0.0f, 1.0f, 4.0f}}};
+    const PrometheusRayQuerySphere spheres[] = {{{0.0f, 0.0f, 3.0f}, 1.0f, {0.25f, 0.5f, 0.75f}, 7u}};
+    PrometheusRayQuerySceneCreateRequest sceneRequest{};
+    sceneRequest.struct_size = static_cast<std::uint32_t>(sizeof(sceneRequest));
+    sceneRequest.triangles = triangles; sceneRequest.triangle_count = 1u;
+    sceneRequest.spheres = spheres; sceneRequest.sphere_count = 1u;
+    std::uint64_t scene = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_create(handle, &sceneRequest, &scene), "mixed scene must build triangle and procedural BLAS before TLAS");
+    PrometheusRayQueryRawRequest ray{};
+    ray.struct_size = static_cast<std::uint32_t>(sizeof(ray));
+    ray.origin[0] = 0.0f; ray.origin[1] = 0.0f; ray.origin[2] = 0.0f; ray.t_min = 0.0f;
+    ray.direction[0] = 0.0f; ray.direction[1] = 0.0f; ray.direction[2] = 1.0f; ray.t_max = 100.0f;
+    PrometheusRayQueryRawHit hit{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_trace(handle, scene, &ray, &hit), "stateful production traversal should dispatch");
+    ASSERT_EQUAL(1u, hit.meta[0], "analytic sphere must commit a hit");
+    ASSERT_EQUAL(2u, hit.meta[1], "nearest procedural candidate must be reported as a sphere");
+    ASSERT_NEAR(2.0f, hit.t_primitive[0], 2.0e-5f, "sphere entry root must be committed");
+    ASSERT_NEAR(0.0f, hit.position[0], 2.0e-5f, "sphere x position");
+    ASSERT_NEAR(0.0f, hit.position[1], 2.0e-5f, "sphere y position");
+    ASSERT_NEAR(2.0f, hit.position[2], 2.0e-5f, "sphere z position");
+    ASSERT_NEAR(0.0f, hit.normal[0], 2.0e-5f, "analytic sphere normal x");
+    ASSERT_NEAR(0.0f, hit.normal[1], 2.0e-5f, "analytic sphere normal y");
+    ASSERT_NEAR(-1.0f, hit.normal[2], 2.0e-5f, "analytic sphere normal z");
+    PrometheusRayQueryRawHit warm{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_trace(handle, scene, &ray, &warm), "warm traversal must reuse the persistent AS");
+    ASSERT_NEAR(hit.t_primitive[0], warm.t_primitive[0], 0.0f, "warm trace retains committed t");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_ray_query_scene_destroy(handle, scene), "mixed scene destroy should release TLAS before both BLAS objects");
+    ASSERT_EQUAL(PROM_INVALID_HANDLE, prometheus_reactor_runtime_ray_query_scene_trace(handle, scene, &ray, &warm), "destroyed mixed scene must be rejected");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy should succeed");
+}
+
+FACT(PrometheusReactor_RayQueryRawNumericalCorpusAgreesWithDoubleOracle)
+{
+    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(nullptr,&handle),"runtime create");
+    prom_vk_runtime_services services{}; ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_get_vk_services(handle,&services),"services");
+    if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) { SKIP("ray-query feature bundle is unavailable on this device"); }
+    g_ray_query_error_stats = {};
+    const PrometheusRayQueryTriangle triangle[] = {{{-1.0f,-1.0f,2.0f, 1.0f,-1.0f,2.0f, 0.0f,1.0f,2.0f}}};
+    const PrometheusRayQueryTriangle depthTriangles[] = {{{-1.0f,-1.0f,2.0f,1.0f,-1.0f,2.0f,0.0f,1.0f,2.0f}},{{-1.0f,-1.0f,6.0f,1.0f,-1.0f,6.0f,0.0f,1.0f,6.0f}}};
+    const PrometheusRayQuerySphere sphere[] = {{{0.0f,0.0f,4.0f},1.0f,{0.2f,0.4f,0.6f},3u}};
+    const PrometheusRayQuerySphere overlap[] = {{{0.0f,0.0f,5.0f},1.5f,{1,0,0},1u},{{0.0f,0.0f,4.0f},1.0f,{0,1,0},2u}};
+    const PrometheusRayQuerySphere aabbFalse[] = {{{0.9f,0.9f,4.0f},1.0f,{1,0,0},1u}};
+    const PrometheusRayQuerySphere tangent[] = {{{1.0f,0.0f,4.0f},1.0f,{1,0,0},1u}};
+    const PrometheusRayQuerySphere nearTangentHit[] = {{{0.999f,0.0f,4.0f},1.0f,{1,0,0},1u}};
+    const PrometheusRayQuerySphere nearTangentMiss[] = {{{1.001f,0.0f,4.0f},1.0f,{1,0,0},1u}};
+    auto ray = [](float ox,float oy,float oz,float dx,float dy,float dz,float tmin,float tmax) { PrometheusRayQueryRawRequest r{}; r.struct_size=static_cast<std::uint32_t>(sizeof(r)); r.origin[0]=ox;r.origin[1]=oy;r.origin[2]=oz;r.direction[0]=dx;r.direction[1]=dy;r.direction[2]=dz;r.t_min=tmin;r.t_max=tmax;return r; };
+    // Triangle hit/miss, both faces, nontrivial barycentrics, normal, nearest and interval cases.
+    assert_ray_query_matches_oracle(context,handle,"triangle-centered",triangle,1u,nullptr,0u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-miss",triangle,1u,nullptr,0u,ray(3,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-back-face",triangle,1u,nullptr,0u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-front-face",triangle,1u,nullptr,0u,ray(0,0,5,0,0,-1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-interior-bary",triangle,1u,nullptr,0u,ray(0.2f,0.1f,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-nearest",depthTriangles,2u,nullptr,0u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-before-tmin",triangle,1u,nullptr,0u,ray(0,0,0,0,0,1,2.1f,100));
+    assert_ray_query_matches_oracle(context,handle,"triangle-after-tmax",triangle,1u,nullptr,0u,ray(0,0,0,0,0,1,0,1.9f));
+    // Sphere external/miss/AABB false-positive/inside/interval/tangent/near-tangent/depth cases.
+    assert_ray_query_matches_oracle(context,handle,"sphere-exterior",nullptr,0u,sphere,1u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-nonunit-direction",nullptr,0u,sphere,1u,ray(0,0,0,0,0,2,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-miss",nullptr,0u,sphere,1u,ray(3,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-inside-exit",nullptr,0u,sphere,1u,ray(0,0,4,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-behind",nullptr,0u,sphere,1u,ray(0,0,0,0,0,-1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-exit-after-tmin",nullptr,0u,sphere,1u,ray(0,0,0,0,0,1,3.5f,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-both-before-tmin",nullptr,0u,sphere,1u,ray(0,0,0,0,0,1,5.1f,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-after-tmax",nullptr,0u,sphere,1u,ray(0,0,0,0,0,1,0,2.9f));
+    assert_ray_query_matches_oracle(context,handle,"sphere-tangent",nullptr,0u,tangent,1u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-near-tangent-hit",nullptr,0u,nearTangentHit,1u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-near-tangent-miss",nullptr,0u,nearTangentMiss,1u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"sphere-overlap-nearest",nullptr,0u,overlap,2u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"aabb-false-positive",triangle,1u,aabbFalse,1u,ray(0,0,0,0,0,1,0,100));
+    // Mixed nearest ordering and topology cases.
+    const PrometheusRayQuerySphere nearSphere[] = {{{0,0,2},1,{1,1,1},1u}};
+    const PrometheusRayQuerySphere farSphere[] = {{{0,0,8},1,{1,1,1},1u}};
+    assert_ray_query_matches_oracle(context,handle,"mixed-sphere-wins",triangle,1u,nearSphere,1u,ray(0,0,0,0,0,1,0,100));
+    assert_ray_query_matches_oracle(context,handle,"mixed-triangle-wins",triangle,1u,farSphere,1u,ray(0,0,0,0,0,1,0,100));
+    std::fprintf(stderr,"ray-query numerical maxima: t=%.9g (%s), position=%.9g (%s), normal=%.9g (%s), barycentric=%.9g (%s)\n",g_ray_query_error_stats.t,g_ray_query_error_stats.tName,g_ray_query_error_stats.position,g_ray_query_error_stats.positionName,g_ray_query_error_stats.normal,g_ray_query_error_stats.normalName,g_ray_query_error_stats.barycentric,g_ray_query_error_stats.baryName);
+    ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_destroy(handle),"runtime destroy");
+}
+
+FACT(PrometheusReactor_RayQueryMixedScenesRemainIsolated)
+{
+    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(nullptr,&handle),"runtime create");
+    prom_vk_runtime_services services{}; ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_get_vk_services(handle,&services),"services");
+    if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) { SKIP("ray-query feature bundle is unavailable on this device"); }
+    const PrometheusRayQueryTriangle tri[] = {{{-1,-1,4,1,-1,4,0,1,4}}};
+    const PrometheusRayQuerySphere hitSphere[] = {{{0,0,3},1,{1,0,0},1u}};
+    const PrometheusRayQuerySphere missSphere[] = {{{10,0,3},1,{0,1,0},2u}};
+    PrometheusRayQuerySceneCreateRequest a{}; a.struct_size=static_cast<std::uint32_t>(sizeof(a)); a.triangles=tri;a.triangle_count=1u;a.spheres=hitSphere;a.sphere_count=1u;
+    PrometheusRayQuerySceneCreateRequest b=a; b.spheres=missSphere;
+    std::uint64_t sceneA=0u,sceneB=0u; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_create(handle,&a,&sceneA),"first mixed scene"); ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_create(handle,&b,&sceneB),"second mixed scene");
+    PrometheusRayQueryRawRequest ray{};ray.struct_size=static_cast<std::uint32_t>(sizeof(ray));ray.direction[2]=1.0f;ray.t_max=100.0f;
+    PrometheusRayQueryRawHit hitA{},hitB{},againA{}; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_trace(handle,sceneA,&ray,&hitA),"first scene trace"); ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_trace(handle,sceneB,&ray,&hitB),"second scene trace"); ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_trace(handle,sceneA,&ray,&againA),"alternate first scene trace");
+    ASSERT_EQUAL(2u,hitA.meta[1],"first scene retains its sphere"); ASSERT_EQUAL(1u,hitB.meta[1],"second scene retains its triangle"); ASSERT_NEAR(hitA.t_primitive[0],againA.t_primitive[0],0.0f,"alternating trace does not cross-contaminate scene state");
+    ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_destroy(handle,sceneA),"destroy first mixed scene"); ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_trace(handle,sceneB,&ray,&hitB),"destroying first scene leaves second scene live"); ASSERT_EQUAL(PROM_INVALID_HANDLE,prometheus_reactor_runtime_ray_query_scene_trace(handle,sceneA,&ray,&againA),"destroyed mixed handle rejected");
+    ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_destroy(handle,sceneB),"destroy second mixed scene"); ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_destroy(handle),"runtime destroy");
+}
+
+FACT(PrometheusReactor_RayQueryRawRejectsInvalidInputs)
+{
+    void* handle=nullptr; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_create(nullptr,&handle),"runtime create");
+    prom_vk_runtime_services services{}; ASSERT_EQUAL(PROM_OK,prom_reactor_runtime_get_vk_services(handle,&services),"services");
+    if (services.ray_query_state != PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED) { SKIP("ray-query feature bundle is unavailable on this device"); }
+    const PrometheusRayQuerySphere valid[] = {{{0,0,3},1,{1,1,1},1u}};
+    PrometheusRayQuerySceneCreateRequest request{}; request.struct_size=static_cast<std::uint32_t>(sizeof(request)); request.spheres=valid; request.sphere_count=1u;
+    std::uint64_t scene=0u; ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_create(handle,&request,&scene),"valid scene");
+    PrometheusRayQueryRawRequest ray{}; ray.struct_size=static_cast<std::uint32_t>(sizeof(ray)); ray.direction[2]=1.0f;ray.t_max=100.0f; PrometheusRayQueryRawHit out{};
+    const float nan=std::numeric_limits<float>::quiet_NaN();
+    ray.origin[0]=nan; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"nonfinite origin"); ray.origin[0]=0.0f;
+    ray.direction[1]=nan; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"nonfinite direction"); ray.direction[1]=0.0f;
+    ray.direction[2]=0.0f; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"zero direction"); ray.direction[2]=1.0f;
+    ray.t_min=nan; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"nonfinite tmin"); ray.t_min=0.0f;
+    ray.t_max=nan; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"nonfinite tmax"); ray.t_max=100.0f;
+    ray.t_min=-1.0f; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"negative tmin"); ray.t_min=2.0f;ray.t_max=1.0f; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"inverted interval"); ray.t_min=0.0f; ray.t_max=100.0f;
+    ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,nullptr),"malformed raw output");
+    PrometheusRayQuerySphere invalidSphere=valid[0]; invalidSphere.radius=0.0f; request.spheres=&invalidSphere; std::uint64_t bad=0u; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_create(handle,&request,&bad),"zero sphere radius"); invalidSphere.radius=-1.0f; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_create(handle,&request,&bad),"negative sphere radius"); invalidSphere.radius=1.0f;invalidSphere.center[0]=nan; ASSERT_EQUAL(PROM_ERROR,prometheus_reactor_runtime_ray_query_scene_create(handle,&request,&bad),"nonfinite sphere center");
+    ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_ray_query_scene_destroy(handle,scene),"destroy valid scene"); ASSERT_EQUAL(PROM_INVALID_HANDLE,prometheus_reactor_runtime_ray_query_scene_trace(handle,scene,&ray,&out),"destroyed handle"); ASSERT_EQUAL(PROM_INVALID_HANDLE,prometheus_reactor_runtime_ray_query_scene_trace(handle,0u,&ray,&out),"invalid handle"); ASSERT_EQUAL(PROM_OK,prometheus_reactor_runtime_destroy(handle),"runtime destroy");
 }
 
 static std::vector<PrometheusComplex32> fft_dft_oracle(const std::vector<PrometheusComplex32>& input,

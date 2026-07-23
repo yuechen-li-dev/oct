@@ -2956,6 +2956,9 @@ func (l *lowering) lowerExprWithExpected(expr ast.Expr, scope map[string]binding
 			if intrinsic == vdmir.IntrinsicRayQueryAny {
 				l.requireRayQuery()
 			}
+			if intrinsic == vdmir.IntrinsicRayQueryTraceClosest {
+				l.requireRayQuery()
+			}
 			resultType := l.callResultType(e, scope, shaderName)
 			if id.Name == "Sample" && len(args) != 0 && args[0].Type().Element != nil {
 				resultType = *args[0].Type().Element
@@ -3494,6 +3497,8 @@ func (l *lowering) callResultType(call ast.CallExpr, scope map[string]binding, s
 			return vdmir.Type{Kind: vdmir.TypeF32, Name: "f32"}
 		case "RayQueryAny":
 			return vdmir.Type{Kind: vdmir.TypeBool, Name: "bool"}
+		case "RayQueryTraceClosest":
+			return vdmir.Type{Kind: vdmir.TypeVoid, Name: "void"}
 		case "Cross":
 			return vdmir.Type{Kind: vdmir.TypeFloat3, Name: "float3"}
 		case "Normalize", "Saturate", "Reflect":
@@ -4191,6 +4196,8 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 		return vdmir.IntrinsicSampleTexture2D, vdmir.Type{}
 	case "RayQueryAny":
 		return vdmir.IntrinsicRayQueryAny, vdmir.Type{}
+	case "RayQueryTraceClosest":
+		return vdmir.IntrinsicRayQueryTraceClosest, vdmir.Type{}
 	default:
 		return vdmir.IntrinsicDot, vdmir.Type{}
 	}
@@ -4198,7 +4205,7 @@ func lowerCompilerIntrinsic(name string, arg *ast.TypeRef) (vdmir.Intrinsic, vdm
 
 func isCompilerIntrinsicCall(name string) bool {
 	switch name {
-	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample", "RayQueryAny":
+	case "Dot", "Cross", "Normalize", "Saturate", "Lerp", "Reflect", "Sample", "RayQueryAny", "RayQueryTraceClosest":
 		return true
 	default:
 		return false

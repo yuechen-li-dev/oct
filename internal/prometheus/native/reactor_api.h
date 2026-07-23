@@ -1582,6 +1582,43 @@ typedef struct PrometheusRayQueryProbeResult {
   uint64_t tlas_device_address;
 } PrometheusRayQueryProbeResult;
 
+/* M1 stateful raw traversal ABI.  The record is six sixteen-byte lanes to
+   match the generated StructuredBuffer layout exactly.  Meta =
+   (hit, kind: 1 triangle/2 sphere, instance, geometry); TPrimitive =
+   (t, primitive bits-as-f32, front-face/-1, committed status bits-as-f32).
+   Miss uses hit=0, kind=0, instance=geometry=UINT32_MAX, t=-1, bary=-1. */
+typedef struct PrometheusRayQuerySphere {
+  float center[3];
+  float radius;
+  float albedo[3];
+  uint32_t material_id;
+} PrometheusRayQuerySphere;
+
+typedef struct PrometheusRayQuerySceneCreateRequest {
+  uint32_t struct_size;
+  const PrometheusRayQueryTriangle* triangles;
+  uint32_t triangle_count;
+  const PrometheusRayQuerySphere* spheres;
+  uint32_t sphere_count;
+} PrometheusRayQuerySceneCreateRequest;
+
+typedef struct PrometheusRayQueryRawRequest {
+  uint32_t struct_size;
+  float origin[3];
+  float t_min;
+  float direction[3];
+  float t_max;
+} PrometheusRayQueryRawRequest;
+
+typedef struct PrometheusRayQueryRawHit {
+  uint32_t meta[4];
+  float t_primitive[4];
+  float position[4];
+  float normal[4];
+  float barycentrics[4];
+  float albedo_material[4];
+} PrometheusRayQueryRawHit;
+
 typedef struct PrometheusReactorConfig {
   uint32_t struct_size;
   uint32_t test_flags;
@@ -2187,7 +2224,13 @@ PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_triangle_scene_create(
 PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_triangle_scene_probe(
     void* handle, uint64_t scene_id, PrometheusRayQueryProbeResult* out_result);
 PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_triangle_scene_destroy(void* handle,
-                                                                                   uint64_t scene_id);
+                                                                                  uint64_t scene_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_create(
+    void* handle, const PrometheusRayQuerySceneCreateRequest* request, uint64_t* out_scene_id);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_trace(
+    void* handle, uint64_t scene_id, const PrometheusRayQueryRawRequest* request,
+    PrometheusRayQueryRawHit* out_hit);
+PROM_REACTOR_API int prometheus_reactor_runtime_ray_query_scene_destroy(void* handle, uint64_t scene_id);
 PROM_REACTOR_API int prometheus_reactor_runtime_sgemm(void* handle,
                                                       const float* a,
                                                       const float* b,

@@ -3073,6 +3073,13 @@ int prom_ray_query_triangle_scene_create_impl(
 int prom_ray_query_triangle_scene_probe_impl(void* handle, uint64_t scene_id,
                                              PrometheusRayQueryProbeResult* out_result);
 int prom_ray_query_triangle_scene_destroy_impl(void* handle, uint64_t scene_id);
+int prom_ray_query_scene_create_impl(void* handle,
+                                     const PrometheusRayQuerySceneCreateRequest* request,
+                                     uint64_t* out_scene_id);
+int prom_ray_query_scene_trace_impl(void* handle, uint64_t scene_id,
+                                    const PrometheusRayQueryRawRequest* request,
+                                    PrometheusRayQueryRawHit* out_hit);
+int prom_ray_query_scene_destroy_impl(void* handle, uint64_t scene_id);
 /* Called by the sole Vulkan-owner teardown path before the device is destroyed. */
 void prom_ray_query_scene_runtime_destroy_all(void* runtime_handle);
 int prom_reactor_runtime_model_block_create_impl(

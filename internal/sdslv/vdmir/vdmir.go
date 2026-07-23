@@ -646,6 +646,9 @@ const (
 	IntrinsicConvert                                  Intrinsic = "Convert"
 	IntrinsicCooperativeMatMulF16F32M16N16K16Subgroup Intrinsic = "CooperativeMatMulF16F32M16N16K16Subgroup"
 	IntrinsicRayQueryAny                              Intrinsic = "RayQueryAny"
+	// Statement-only M1 traversal: the backend owns the mutable opaque query
+	// local so it cannot escape through source-level values, storage, or ABI.
+	IntrinsicRayQueryTraceClosest Intrinsic = "RayQueryTraceClosest"
 )
 
 type LiteralExpr struct {

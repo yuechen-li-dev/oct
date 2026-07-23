@@ -1,0 +1,37 @@
+namespace Prometheus.Production.RayQuery;
+
+// The M1 raw traversal contract. RayWords[0] is (origin.xyz, tMin) and
+// RayWords[1] is (direction.xyz, tMax). A sphere is not tessellated: its
+// procedural AABB points at this exact analytic record.
+record RayQuerySphere {
+    CenterRadius: float4;
+    AlbedoMaterial: float4;
+}
+
+record RayQueryRawHitRecord {
+    Meta: uint4;
+    TPrimitive: float4;
+    Position: float4;
+    Normal: float4;
+    Barycentrics: float4;
+    AlbedoMaterial: float4;
+}
+
+stream RayQueryRawHitIO {
+    [binding(0)] Scene: readonly acceleration_structure;
+    [binding(1)] Spheres: readonly array<RayQuerySphere>;
+    [binding(2)] RayWords: readonly array<float4>;
+    [binding(3)] Result: readwrite array<RayQueryRawHitRecord>;
+    [binding(4)] TriangleVertices: readonly array<float4>;
+}
+
+shader RayQueryRawHit {
+    resources RayQueryRawHitIO;
+
+    stage compute [numthreads(1u, 1u, 1u)] fn CS() -> void {
+        // Compiler-owned stateful inline traversal. The emitter owns the
+        // opaque query local, candidate progression, and procedural commit.
+        RayQueryTraceClosest(Scene, Spheres, RayWords, Result, TriangleVertices);
+        return;
+    }
+}
