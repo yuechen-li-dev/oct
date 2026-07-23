@@ -3906,6 +3906,7 @@ static int prom_runtime_discover_adjacent_shader_package(prometheus_runtime* run
 int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   VkResult result;
   prometheus_runtime* runtime;
+  uint32_t legacy_test_without_package = 0u;
   (void)config;
 
   if (out_handle == NULL) {
@@ -3982,8 +3983,15 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
         cfg->reduction_ring_depth >= 1u && cfg->reduction_ring_depth <= 4u) {
       runtime->reduction_ring_depth = cfg->reduction_ring_depth;
     }
+    legacy_test_without_package =
+        cfg->struct_size < offsetof(PrometheusReactorConfig, shader_package_root) + sizeof(cfg->shader_package_root) &&
+        (runtime->test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u;
   }
-  if (runtime->shader_package_root == NULL && !prom_runtime_discover_adjacent_shader_package(runtime)) {
+  /* Older header-sized test configurations predate package selection. Their
+     explicit no-Vulkan probe skips discovery without relaxing executable
+     admission, which still requires a resolved package. */
+  if (runtime->shader_package_root == NULL && legacy_test_without_package == 0u &&
+      !prom_runtime_discover_adjacent_shader_package(runtime)) {
     free(runtime);
     return PROM_ERROR;
   }

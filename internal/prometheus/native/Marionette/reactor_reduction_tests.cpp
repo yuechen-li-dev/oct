@@ -6,8 +6,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <iomanip>
 #include <limits>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
@@ -48,6 +52,28 @@ PrometheusReductionRequest make_request(const std::vector<float>& input,
     return request;
 }
 
+PrometheusRowWiseSoftmaxRequest make_row_wise_softmax_request(const std::vector<float>& input,
+                                                               std::vector<float>& output,
+                                                               std::uint32_t rows,
+                                                               std::uint32_t width)
+{
+    PrometheusRowWiseSoftmaxRequest request{};
+    request.struct_size = static_cast<std::uint32_t>(sizeof(request));
+    request.input = input.data();
+    request.output = output.data();
+    request.row_count = rows;
+    request.elements_per_row = width;
+    request.input_element_count = static_cast<std::uint64_t>(rows) * width;
+    request.output_element_count = static_cast<std::uint64_t>(rows) * width;
+    return request;
+}
+
+std::string staged_fr_m0_package_root()
+{
+    return (std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) / "out" / "prometheus" / "native" /
+            "SerialCanonical" / "shaders").string();
+}
+
 std::vector<float> deterministic_input(std::uint32_t rows, std::uint32_t width, float bias = 0.0f)
 {
     std::vector<float> values(static_cast<std::size_t>(rows) * width);
@@ -58,6 +84,99 @@ std::vector<float> deterministic_input(std::uint32_t rows, std::uint32_t width, 
         }
     }
     return values;
+}
+
+std::vector<float> fr_m0_input(std::uint32_t rows,
+                                std::uint32_t width,
+                                std::string_view distribution,
+                                float bias = 0.0f)
+{
+    std::vector<float> values = deterministic_input(rows, width, bias);
+    for (std::uint32_t row = 0u; row < rows; ++row) {
+        for (std::uint32_t column = 0u; column < width; ++column) {
+            const std::size_t index = static_cast<std::size_t>(row) * width + column;
+            if (distribution == "constant") {
+                values[index] = 3.25f;
+            } else if (distribution == "positive-extreme") {
+                values[index] = 10000.0f + static_cast<float>(static_cast<int>(column % 17u) - 8);
+            } else if (distribution == "negative-extreme") {
+                values[index] = -10000.0f + static_cast<float>(static_cast<int>(column % 17u) - 8);
+            } else if (distribution == "heterogeneous") {
+                const std::uint32_t mode = row % 4u;
+                if (mode == 0u) values[index] = 2.0f;
+                else if (mode == 1u) values[index] = static_cast<float>(static_cast<int>(column % 101u) - 50) / 8.0f;
+                else if (mode == 2u) values[index] = 10000.0f + static_cast<float>(static_cast<int>(column % 17u) - 8);
+                else values[index] = -10000.0f + static_cast<float>(static_cast<int>(column % 17u) - 8);
+            }
+        }
+    }
+    return values;
+}
+
+struct FrM0NumericalMetrics
+{
+    double maximum_absolute_error = 0.0;
+    double maximum_relative_error = 0.0;
+    double maximum_row_sum_error = 0.0;
+    double maximum_shift_invariance_error = 0.0;
+    double minimum_output = std::numeric_limits<double>::infinity();
+    std::uint64_t ordering_violations = 0u;
+};
+
+void observe_fr_m0_metrics(const std::vector<float>& input,
+                            const std::vector<float>& expected,
+                            const std::vector<float>& actual,
+                            std::uint32_t rows,
+                            std::uint32_t width,
+                            FrM0NumericalMetrics& metrics)
+{
+    for (std::uint32_t row = 0u; row < rows; ++row) {
+        double row_sum = 0.0;
+        const std::size_t base = static_cast<std::size_t>(row) * width;
+        for (std::uint32_t column = 0u; column < width; ++column) {
+            const std::size_t index = base + column;
+            const double difference = std::fabs(static_cast<double>(actual[index]) - expected[index]);
+            const double relative_scale = std::max(std::fabs(static_cast<double>(expected[index])), 1.0e-6);
+            metrics.maximum_absolute_error = std::max(metrics.maximum_absolute_error, difference);
+            metrics.maximum_relative_error = std::max(metrics.maximum_relative_error, difference / relative_scale);
+            metrics.minimum_output = std::min(metrics.minimum_output, static_cast<double>(actual[index]));
+            row_sum += actual[index];
+        }
+        metrics.maximum_row_sum_error = std::max(metrics.maximum_row_sum_error, std::fabs(row_sum - 1.0));
+        for (std::uint32_t left = 0u; left < width; ++left) {
+            for (std::uint32_t right = left + 1u; right < width; ++right) {
+                const std::size_t left_index = base + left;
+                const std::size_t right_index = base + right;
+                if (input[left_index] < input[right_index] && actual[left_index] > actual[right_index] + 2.0e-6f) {
+                    ++metrics.ordering_violations;
+                }
+                if (input[right_index] < input[left_index] && actual[right_index] > actual[left_index] + 2.0e-6f) {
+                    ++metrics.ordering_violations;
+                }
+            }
+        }
+    }
+}
+
+bool execute_fr_m0_and_compare(void* handle,
+                                const std::vector<float>& input,
+                                std::vector<float>& output,
+                                std::uint32_t rows,
+                                std::uint32_t width,
+                                FrM0NumericalMetrics& metrics,
+                                PrometheusRowWiseSoftmaxResult& result)
+{
+    std::vector<float> expected(input.size(), 0.0f);
+    PrometheusRowWiseSoftmaxRequest request = make_row_wise_softmax_request(input, output, rows, width);
+    PrometheusReductionRequest authority = make_request(input, expected, rows, width, PROM_REDUCTION_OPERATION_SOFTMAX);
+    PrometheusReductionBenchmarkResult comparison{};
+    int detail = 0;
+    comparison.struct_size = static_cast<std::uint32_t>(sizeof(comparison));
+    if (prom_reduction_cpu_reference(&authority, expected.data(), &detail) != PROM_OK) return false;
+    if (prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result) != PROM_OK) return false;
+    if (prom_reduction_compare(&authority, expected.data(), output.data(), &comparison) != PROM_OK) return false;
+    observe_fr_m0_metrics(input, expected, output, rows, width, metrics);
+    return true;
 }
 
 bool execute_and_compare(void* handle,
@@ -241,6 +360,214 @@ FACT(PrometheusReduction_NonfinitePolicyIsExplicitAndStable)
         ASSERT_EQUAL(PROM_REDUCTION_DETAIL_NONFINITE_INPUT, detail, "CPU nonfinite detail must match runtime policy");
     }
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "validation runtime destroy must succeed");
+}
+
+FACT(PrometheusFrM0_RowWiseSoftmaxBoundaryRejectsNonfiniteAndPreservesOutput)
+{
+    void* handle = nullptr;
+    std::vector<float> input = {1.0f, std::numeric_limits<float>::infinity(), 2.0f};
+    std::vector<float> output = {-7.0f, -7.0f, -7.0f};
+    PrometheusRowWiseSoftmaxRequest request = make_row_wise_softmax_request(input, output, 1u, 3u);
+    PrometheusRowWiseSoftmaxResult result{};
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result),
+                 "positive infinity must be rejected before dispatch");
+    ASSERT_EQUAL(PROM_SOFTMAX_DETAIL_NONFINITE_INPUT, result.detail_code, "nonfinite diagnostic must be stable");
+    ASSERT_EQUAL(static_cast<uint64_t>(1u), result.first_nonfinite_index, "first nonfinite index must be reported");
+    ASSERT_EQUAL(0u, result.output_written, "failed execution must not claim output freshness");
+    for (const float value : output) ASSERT_EQUAL(-7.0f, value, "failed execution must preserve caller output");
+
+    input[1] = std::numeric_limits<float>::quiet_NaN();
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result),
+                 "NaN must be rejected before dispatch");
+    ASSERT_EQUAL(PROM_SOFTMAX_DETAIL_NONFINITE_INPUT, result.detail_code, "NaN detail must be stable");
+    input[1] = -std::numeric_limits<float>::infinity();
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result),
+                 "negative infinity must be rejected before dispatch");
+    ASSERT_EQUAL(PROM_SOFTMAX_DETAIL_NONFINITE_INPUT, result.detail_code, "negative infinity detail must be stable");
+
+    request.row_count = 0u;
+    request.elements_per_row = 3u;
+    request.input = nullptr;
+    request.output = nullptr;
+    request.input_element_count = 0u;
+    request.output_element_count = 0u;
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result),
+                 "zero-row operation must be a synchronous no-dispatch no-op");
+    ASSERT_EQUAL(0u, result.physical_dispatch_count, "zero-row operation must record no dispatch");
+    ASSERT_EQUAL(0u, result.physical_submission_count, "zero-row operation must submit nothing");
+
+    std::vector<float> overlap = {1.0f, 2.0f, 3.0f, 4.0f};
+    request = {};
+    request.struct_size = static_cast<std::uint32_t>(sizeof(request));
+    request.input = overlap.data();
+    request.output = overlap.data() + 1u;
+    request.row_count = 1u;
+    request.elements_per_row = 3u;
+    request.input_element_count = 3u;
+    request.output_element_count = 3u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result),
+                 "partial alias must be rejected");
+    ASSERT_EQUAL(PROM_SOFTMAX_DETAIL_PARTIAL_ALIAS, result.detail_code, "partial alias detail must be stable");
+    std::vector<float> valid_output(3u, 0.0f);
+    request = make_row_wise_softmax_request(overlap, valid_output, 1u, 3u);
+    ASSERT_EQUAL(PROM_INVALID_HANDLE, prometheus_reactor_runtime_row_wise_softmax(handle, &request, &result),
+                 "invalid handles must be rejected after semantic validation");
+}
+
+FACT(PrometheusFrM0_RowWiseSoftmaxUsesOneWorkgroupOwnedDispatchPerBatchedCall)
+{
+    void* handle = nullptr;
+    const std::string package_root = staged_fr_m0_package_root();
+    ASSERT_TRUE(std::filesystem::exists(std::filesystem::path(package_root) / "manifest.json"),
+                "FR-M0 GPU authority must use the staged external package");
+    PrometheusReactorConfig config{};
+    config.struct_size = static_cast<std::uint32_t>(sizeof(config));
+    config.shader_package_root = package_root.c_str();
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&config, &handle),
+                 "FR-M0 GPU authority must create a package-backed runtime");
+    if (!runtime_available(handle)) {
+        ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "unavailable runtime cleanup must succeed");
+        SKIP("Vulkan unavailable; FR-M0 GPU route cannot execute");
+    }
+    FrM0NumericalMetrics metrics{};
+    PrometheusReductionDiagnostics after_small{};
+    PrometheusReductionDiagnostics after_growth{};
+    PrometheusReductionDiagnostics settled{};
+    PrometheusReductionDiagnostics reused{};
+    const auto run_case = [&](std::uint32_t rows, std::uint32_t width, std::string_view distribution, float bias = 0.0f) {
+        std::vector<float> input = fr_m0_input(rows, width, distribution, bias);
+        std::vector<float> output(input.size(), -99.0f);
+        PrometheusRowWiseSoftmaxResult result{};
+        ASSERT_TRUE(execute_fr_m0_and_compare(handle, input, output, rows, width, metrics, result),
+                    "FR-M0 must agree elementwise with the independent double-precision CPU authority");
+        ASSERT_EQUAL(1u, result.output_written, "successful FR-M0 execution must report fresh output");
+        ASSERT_EQUAL(1u, result.physical_dispatch_count, "all rows must be batched into one physical dispatch");
+        ASSERT_EQUAL(1u, result.physical_submission_count, "one FR-M0 call must use one synchronous submission");
+        return output;
+    };
+
+    (void)run_case(1u, 1u, "mixed");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction_diagnostics(handle, &after_small),
+                 "small FR-M0 diagnostics must be available");
+    (void)run_case(3u, 31u, "mixed");
+    (void)run_case(3u, 32u, "mixed");
+    (void)run_case(4u, 33u, "constant");
+    (void)run_case(3u, 64u, "mixed");
+    (void)run_case(3u, 129u, "mixed");
+    (void)run_case(3u, 256u, "mixed");
+    (void)run_case(3u, 257u, "mixed");
+    (void)run_case(3u, 1023u, "mixed");
+    (void)run_case(3u, 1024u, "positive-extreme");
+    (void)run_case(3u, 1025u, "negative-extreme");
+    (void)run_case(3u, 1055u, "mixed");
+    (void)run_case(5u, 1056u, "heterogeneous");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction_diagnostics(handle, &after_growth),
+                 "growth diagnostics must be available");
+    ASSERT_TRUE(after_growth.buffer_allocation_count > after_small.buffer_allocation_count,
+                "larger admitted rows must grow reusable Vulkan buffer capacity");
+    ASSERT_TRUE(after_growth.descriptor_update_count > after_small.descriptor_update_count,
+                "capacity growth must rebind the production descriptors");
+
+    // Grow both persistent slots to the maximum admitted FR-M0 shape before proving reuse.
+    (void)run_case(5u, 1056u, "heterogeneous", 0.25f);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction_diagnostics(handle, &settled),
+                 "settled capacity diagnostics must be available");
+    (void)run_case(1u, 1u, "constant");
+    (void)run_case(5u, 1056u, "heterogeneous", -0.25f);
+    (void)run_case(1u, 1u, "mixed", 0.5f);
+    (void)run_case(5u, 1056u, "heterogeneous", -0.5f);
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_reduction_diagnostics(handle, &reused),
+                 "reuse diagnostics must be available");
+    ASSERT_EQUAL(settled.buffer_allocation_count, reused.buffer_allocation_count,
+                 "alternating small and large calls must not allocate after capacity settles");
+    ASSERT_TRUE(reused.buffer_reuse_count > settled.buffer_reuse_count,
+                "alternating calls must reuse the persistent Vulkan buffers");
+    ASSERT_EQUAL(0u, reused.validation_error_count, "FR-M0 RTX corpus must remain Vulkan-validation clean");
+
+    std::vector<float> shift_input = fr_m0_input(3u, 257u, "mixed");
+    std::vector<float> shift_output(shift_input.size(), -99.0f);
+    PrometheusRowWiseSoftmaxResult shift_result{};
+    ASSERT_TRUE(execute_fr_m0_and_compare(handle, shift_input, shift_output, 3u, 257u, metrics, shift_result),
+                "unshifted shift-invariance authority input must execute");
+    std::vector<float> shifted_input = shift_input;
+    for (float& value : shifted_input) value += 17.25f;
+    std::vector<float> shifted_output(shifted_input.size(), -99.0f);
+    PrometheusRowWiseSoftmaxResult shifted_result{};
+    ASSERT_TRUE(execute_fr_m0_and_compare(handle, shifted_input, shifted_output, 3u, 257u, metrics, shifted_result),
+                "shifted shift-invariance authority input must execute");
+    for (std::size_t index = 0u; index < shift_output.size(); ++index) {
+        metrics.maximum_shift_invariance_error = std::max(metrics.maximum_shift_invariance_error,
+                                                          std::fabs(static_cast<double>(shift_output[index]) - shifted_output[index]));
+    }
+
+    std::vector<float> in_place = fr_m0_input(3u, 1056u, "heterogeneous");
+    const std::vector<float> in_place_snapshot = in_place;
+    std::vector<float> in_place_expected(in_place.size(), 0.0f);
+    PrometheusReductionRequest in_place_authority = make_request(in_place_snapshot, in_place_expected, 3u, 1056u,
+                                                                  PROM_REDUCTION_OPERATION_SOFTMAX);
+    int in_place_detail = 0;
+    ASSERT_EQUAL(PROM_OK, prom_reduction_cpu_reference(&in_place_authority, in_place_expected.data(), &in_place_detail),
+                 "in-place input must be accepted by the independent CPU authority");
+    PrometheusRowWiseSoftmaxRequest in_place_request = make_row_wise_softmax_request(in_place, in_place, 3u, 1056u);
+    PrometheusRowWiseSoftmaxResult in_place_result{};
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_row_wise_softmax(handle, &in_place_request, &in_place_result),
+                 "exact in-place FR-M0 execution must be admitted");
+    ASSERT_EQUAL(1u, in_place_result.output_written, "in-place execution must report fresh output");
+    ASSERT_EQUAL(1u, in_place_result.physical_dispatch_count, "in-place rows remain one batched dispatch");
+    ASSERT_EQUAL(1u, in_place_result.physical_submission_count, "in-place rows remain one submission");
+    PrometheusReductionBenchmarkResult in_place_comparison{};
+    in_place_comparison.struct_size = static_cast<std::uint32_t>(sizeof(in_place_comparison));
+    ASSERT_EQUAL(PROM_OK, prom_reduction_compare(&in_place_authority, in_place_expected.data(), in_place.data(), &in_place_comparison),
+                 "exact in-place output must agree with the independent CPU authority");
+    observe_fr_m0_metrics(in_place_snapshot, in_place_expected, in_place, 3u, 1056u, metrics);
+
+    std::vector<float> rejected_input = {1.0f, std::numeric_limits<float>::quiet_NaN(), 2.0f};
+    std::vector<float> rejected_output = {-7.0f, -7.0f, -7.0f};
+    PrometheusRowWiseSoftmaxRequest rejected_request = make_row_wise_softmax_request(rejected_input, rejected_output, 1u, 3u);
+    PrometheusRowWiseSoftmaxResult rejected_result{};
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_row_wise_softmax(handle, &rejected_request, &rejected_result),
+                 "nonfinite input must be rejected before an admitted runtime executes");
+    ASSERT_EQUAL(0u, rejected_result.output_written, "failed pre-transfer validation must not claim fresh output");
+    for (const float value : rejected_output) ASSERT_EQUAL(-7.0f, value, "failed validation must preserve caller output");
+    std::vector<float> partial_alias = {1.0f, 2.0f, 3.0f, 4.0f};
+    PrometheusRowWiseSoftmaxRequest partial_request{};
+    partial_request.struct_size = static_cast<std::uint32_t>(sizeof(partial_request));
+    partial_request.input = partial_alias.data();
+    partial_request.output = partial_alias.data() + 1u;
+    partial_request.row_count = 1u;
+    partial_request.elements_per_row = 3u;
+    partial_request.input_element_count = 3u;
+    partial_request.output_element_count = 3u;
+    ASSERT_EQUAL(PROM_ERROR, prometheus_reactor_runtime_row_wise_softmax(handle, &partial_request, &rejected_result),
+                 "partial aliasing must remain rejected on the admitted runtime");
+    (void)run_case(3u, 257u, "mixed", 1.0f);
+
+    ASSERT_TRUE(metrics.minimum_output >= -1.0e-7, "softmax output must remain non-negative within FP32 roundoff");
+    ASSERT_EQUAL(static_cast<std::uint64_t>(0u), metrics.ordering_violations,
+                 "softmax output must preserve strict input ordering");
+    ASSERT_TRUE(metrics.maximum_shift_invariance_error <= 3.0e-5,
+                "stable softmax must preserve shift invariance within the accepted FP32 tolerance");
+    std::ostringstream artifact;
+    artifact << std::setprecision(12)
+             << "{\n"
+             << "  \"gpu\": \"NVIDIA GeForce RTX 3070\",\n"
+             << "  \"package_kernel\": \"kernel-20-default\",\n"
+             << "  \"tested_widths\": [1,31,32,33,64,129,256,257,1023,1024,1025,1055,1056],\n"
+             << "  \"maximum_absolute_error\": " << metrics.maximum_absolute_error << ",\n"
+             << "  \"maximum_relative_error_near_zero_floor_1e-6\": " << metrics.maximum_relative_error << ",\n"
+             << "  \"maximum_row_sum_error\": " << metrics.maximum_row_sum_error << ",\n"
+             << "  \"maximum_shift_invariance_error\": " << metrics.maximum_shift_invariance_error << ",\n"
+             << "  \"minimum_output\": " << metrics.minimum_output << ",\n"
+             << "  \"ordering_violations\": " << metrics.ordering_violations << ",\n"
+             << "  \"dispatches_per_nonempty_call\": 1,\n"
+             << "  \"submissions_per_nonempty_call\": 1,\n"
+             << "  \"validation_error_count\": " << reused.validation_error_count << ",\n"
+             << "  \"capacity_allocations_after_growth\": " << settled.buffer_allocation_count << ",\n"
+             << "  \"capacity_reuses_after_alternation\": " << reused.buffer_reuse_count << "\n"
+             << "}\n";
+    ASSERT_TRUE(context.WriteArtifactFile(std::filesystem::path("prometheus_fr_m0_rtx_authority.json"), artifact.str()),
+                "FR-M0 RTX authority artifact must be written");
+    ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_destroy(handle), "runtime destroy must succeed");
 }
 
 FACT(PrometheusReduction_VulkanSumMaxAndStableSoftmaxCorrectness)

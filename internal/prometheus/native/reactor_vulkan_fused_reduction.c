@@ -322,7 +322,7 @@ static int prom_reduction_validate_request(const PrometheusReductionRequest* req
     return 0;
   }
   if ((request->flags & PROM_REDUCTION_FLAG_FORCE_FUSED) != 0u &&
-      request->elements_per_row > PROM_REDUCTION_SINGLE_STAGE_THRESHOLD) {
+      request->elements_per_row > PROM_REDUCTION_FORCE_FUSED_MAX_ELEMENTS_PER_ROW) {
     if (out_detail != NULL) *out_detail = PROM_REDUCTION_DETAIL_UNSUPPORTED_STRATEGY;
     return 0;
   }
@@ -465,7 +465,8 @@ int prom_reactor_reduction_plan_impl(const PrometheusReductionRequest* request,
     }
   } else {
     composed = (request->flags & PROM_REDUCTION_FLAG_FORCE_COMPOSED) != 0u ||
-               request->elements_per_row > PROM_REDUCTION_SINGLE_STAGE_THRESHOLD;
+               ((request->flags & PROM_REDUCTION_FLAG_FORCE_FUSED) == 0u &&
+                request->elements_per_row > PROM_REDUCTION_SINGLE_STAGE_THRESHOLD);
     const uint32_t packed_short = prom_reduction_select_packed_short(request);
     if (packed_short != 0u) {
       out_plan->strategy = PROM_REDUCTION_STRATEGY_PACKED_SHORT_ROWS;
@@ -2094,6 +2095,132 @@ int prom_reduction_find_nonfinite(const float* input, uint64_t count, uint64_t* 
     }
   }
   return 0;
+}
+
+static int prom_softmax_partial_overlap(const float* input, float* output, uint64_t element_count) {
+  const uintptr_t input_begin = (uintptr_t)input;
+  const uintptr_t output_begin = (uintptr_t)output;
+  const uint64_t byte_count = element_count * sizeof(float);
+  uintptr_t input_end;
+  uintptr_t output_end;
+  if (input == output) return 0;
+  if (byte_count > (uint64_t)UINTPTR_MAX ||
+      input_begin > UINTPTR_MAX - (uintptr_t)byte_count ||
+      output_begin > UINTPTR_MAX - (uintptr_t)byte_count) return 1;
+  input_end = input_begin + (uintptr_t)byte_count;
+  output_end = output_begin + (uintptr_t)byte_count;
+  return input_begin < output_end && output_begin < input_end;
+}
+
+static void prom_softmax_result_failure(PrometheusRowWiseSoftmaxResult* result,
+                                        uint32_t stage, int32_t detail) {
+  result->stage = stage;
+  result->detail_code = detail;
+  result->output_written = 0u;
+}
+
+int prom_reactor_runtime_row_wise_softmax_impl(
+    void* handle, const PrometheusRowWiseSoftmaxRequest* request,
+    PrometheusRowWiseSoftmaxResult* out_result) {
+  PrometheusRowWiseSoftmaxResult local_result;
+  PrometheusRowWiseSoftmaxResult* result = out_result != NULL ? out_result : &local_result;
+  PrometheusReductionRequest reduction_request;
+  PrometheusReductionExecutionResult reduction_result;
+  prom_vk_runtime_services services;
+  uint64_t total_elements;
+  int status;
+
+  memset(result, 0, sizeof(*result));
+  result->struct_size = sizeof(*result);
+  result->first_nonfinite_index = UINT64_MAX;
+  if (request == NULL || request->struct_size < sizeof(*request)) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_INVALID_REQUEST);
+    return PROM_ERROR;
+  }
+  total_elements = (uint64_t)request->row_count * (uint64_t)request->elements_per_row;
+  if (request->input_element_count != total_elements || request->output_element_count != total_elements) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_COUNT_MISMATCH);
+    return PROM_ERROR;
+  }
+  if (total_elements == 0u) {
+    result->stage = PROM_STAGE_NONE;
+    result->detail_code = 0;
+    return PROM_OK;
+  }
+  if (request->input == NULL) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_NULL_INPUT);
+    return PROM_ERROR;
+  }
+  if (request->output == NULL) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_NULL_OUTPUT);
+    return PROM_ERROR;
+  }
+  if (request->row_count > PROM_ROW_WISE_SOFTMAX_MAX_ROWS) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_ROW_LIMIT);
+    return PROM_ERROR;
+  }
+  if (request->elements_per_row > PROM_ROW_WISE_SOFTMAX_MAX_ELEMENTS_PER_ROW) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_WIDTH_LIMIT);
+    return PROM_ERROR;
+  }
+  if (total_elements > PROM_ROW_WISE_SOFTMAX_MAX_TOTAL_ELEMENTS ||
+      total_elements > UINT64_MAX / sizeof(float)) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_ELEMENT_LIMIT);
+    return PROM_ERROR;
+  }
+  if (prom_softmax_partial_overlap(request->input, request->output, total_elements)) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_PARTIAL_ALIAS);
+    return PROM_ERROR;
+  }
+  if (prom_reduction_find_nonfinite(request->input, total_elements, &result->first_nonfinite_index)) {
+    prom_softmax_result_failure(result, PROM_STAGE_TRANSFER_IN, PROM_SOFTMAX_DETAIL_NONFINITE_INPUT);
+    return PROM_ERROR;
+  }
+  if (!prom_reactor_runtime_validate_handle(handle)) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_RUNTIME_UNAVAILABLE);
+    return PROM_INVALID_HANDLE;
+  }
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_RUNTIME_UNAVAILABLE);
+    return PROM_ERROR;
+  }
+  if (services.subgroup_compute_supported == 0u || services.subgroup_arithmetic_supported == 0u ||
+      services.subgroup_basic_supported == 0u) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_SUBGROUP_UNSUPPORTED);
+    return PROM_ERROR;
+  }
+  if (services.subgroup_size == 0u || services.subgroup_size > PROM_REDUCTION_LOCAL_SIZE ||
+      PROM_REDUCTION_LOCAL_SIZE % services.subgroup_size != 0u) {
+    prom_softmax_result_failure(result, PROM_STAGE_INIT, PROM_SOFTMAX_DETAIL_TOPOLOGY_UNSUPPORTED);
+    return PROM_ERROR;
+  }
+
+  memset(&reduction_request, 0, sizeof(reduction_request));
+  reduction_request.struct_size = sizeof(reduction_request);
+  reduction_request.input = request->input;
+  reduction_request.output = request->output;
+  reduction_request.row_count = request->row_count;
+  reduction_request.elements_per_row = request->elements_per_row;
+  reduction_request.input_element_count = total_elements;
+  reduction_request.output_element_count = total_elements;
+  reduction_request.operation = PROM_REDUCTION_OPERATION_SOFTMAX;
+  reduction_request.finalization = PROM_REDUCTION_FINALIZATION_STABLE_SOFTMAX;
+  reduction_request.flags = PROM_REDUCTION_FLAG_FORCE_FUSED;
+  memset(&reduction_result, 0, sizeof(reduction_result));
+  status = prom_reactor_runtime_reduction_impl(handle, &reduction_request, &reduction_result);
+  result->stage = reduction_result.stage;
+  result->detail_code = reduction_result.detail_code;
+  result->gpu_timestamp_valid = reduction_result.gpu_timestamp_valid;
+  result->gpu_duration_ns = reduction_result.gpu_duration_ns;
+  result->end_to_end_ns = reduction_result.end_to_end_ns;
+  result->first_nonfinite_index = reduction_result.first_nonfinite_index;
+  if (status != PROM_OK) return status;
+  /* The forced fused plan is structurally one group per row, one command
+     dispatch, and one synchronous queue submission for every nonempty call. */
+  result->physical_dispatch_count = 1u;
+  result->physical_submission_count = 1u;
+  result->output_written = 1u;
+  return PROM_OK;
 }
 
 int prom_reactor_runtime_reduction_impl(void* handle,

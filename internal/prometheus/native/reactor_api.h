@@ -444,6 +444,24 @@ enum {
   PROM_REDUCTION_DETAIL_RUNTIME_UNAVAILABLE = -6825,
 };
 
+/* FR-M0 is intentionally narrower than the historical reduction planner. It
+   accepts only contiguous caller-owned FP32 rows and exposes no Vulkan state. */
+enum {
+  PROM_SOFTMAX_DETAIL_INVALID_REQUEST = -6851,
+  PROM_SOFTMAX_DETAIL_NULL_INPUT = -6852,
+  PROM_SOFTMAX_DETAIL_NULL_OUTPUT = -6853,
+  PROM_SOFTMAX_DETAIL_COUNT_MISMATCH = -6854,
+  PROM_SOFTMAX_DETAIL_SIZE_OVERFLOW = -6855,
+  PROM_SOFTMAX_DETAIL_ROW_LIMIT = -6856,
+  PROM_SOFTMAX_DETAIL_WIDTH_LIMIT = -6857,
+  PROM_SOFTMAX_DETAIL_ELEMENT_LIMIT = -6858,
+  PROM_SOFTMAX_DETAIL_PARTIAL_ALIAS = -6859,
+  PROM_SOFTMAX_DETAIL_NONFINITE_INPUT = -6860,
+  PROM_SOFTMAX_DETAIL_RUNTIME_UNAVAILABLE = -6861,
+  PROM_SOFTMAX_DETAIL_SUBGROUP_UNSUPPORTED = -6862,
+  PROM_SOFTMAX_DETAIL_TOPOLOGY_UNSUPPORTED = -6863,
+};
+
 enum {
   PROM_REDUCTION_SHADER_ROW_SUM = 16u,
   PROM_REDUCTION_SHADER_ROW_MAX = 17u,
@@ -471,11 +489,48 @@ enum {
 #define PROM_REDUCTION_LOCAL_SIZE 256u
 #define PROM_REDUCTION_ELEMENTS_PER_PARTIAL 1024u
 #define PROM_REDUCTION_SINGLE_STAGE_THRESHOLD 1024u
+/* The ordinary M39b planner stages rows above 1024. A caller that explicitly
+   forces the one-workgroup fused route may use the separately audited 1056
+   envelope; it never implies cross-workgroup reduction. */
+#define PROM_REDUCTION_FORCE_FUSED_MAX_ELEMENTS_PER_ROW 1056u
 #define PROM_REDUCTION_PACKED_SHORT_WIDTH_MAX 128u
 #define PROM_REDUCTION_PACKED_SHORT_SUM_MIN_ROWS 512u
 #define PROM_REDUCTION_PACKED_SHORT_SUM_WIDE_MIN_ROWS 1024u
 #define PROM_REDUCTION_PACKED_SHORT_ROWS_PER_GROUP 8u
 #define PROM_REDUCTION_PACKED_SHORT_LANES_PER_ROW 32u
+
+#define PROM_ROW_WISE_SOFTMAX_MAX_ROWS PROM_REDUCTION_MAX_ROWS
+#define PROM_ROW_WISE_SOFTMAX_MAX_ELEMENTS_PER_ROW PROM_REDUCTION_FORCE_FUSED_MAX_ELEMENTS_PER_ROW
+#define PROM_ROW_WISE_SOFTMAX_MAX_TOTAL_ELEMENTS PROM_REDUCTION_MAX_TOTAL_ELEMENTS
+
+/* Input and output are contiguous row-major FP32 arrays. Counts must both
+   equal row_count * elements_per_row. Exact in-place use is supported; any
+   other overlapping ranges are rejected. A zero dimension with zero counts is
+   a synchronous no-op and may use NULL pointers. */
+typedef struct PrometheusRowWiseSoftmaxRequest {
+  uint32_t struct_size;
+  const float* input;
+  float* output;
+  uint32_t row_count;
+  uint32_t elements_per_row;
+  uint64_t input_element_count;
+  uint64_t output_element_count;
+} PrometheusRowWiseSoftmaxRequest;
+
+/* output_written is set only after all rows have reached caller-owned output.
+   It remains zero on any failure, preserving output freshness. */
+typedef struct PrometheusRowWiseSoftmaxResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t output_written;
+  uint32_t physical_dispatch_count;
+  uint32_t physical_submission_count;
+  uint32_t gpu_timestamp_valid;
+  uint64_t gpu_duration_ns;
+  uint64_t end_to_end_ns;
+  uint64_t first_nonfinite_index;
+} PrometheusRowWiseSoftmaxResult;
 
 typedef struct PrometheusReductionRequest {
   uint32_t struct_size;
@@ -2409,6 +2464,10 @@ PROM_REACTOR_API int prometheus_reactor_runtime_reduction_benchmark(
     void* handle,
     const PrometheusReductionBenchmarkRequest* request,
     PrometheusReductionBenchmarkResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_row_wise_softmax(
+    void* handle,
+    const PrometheusRowWiseSoftmaxRequest* request,
+    PrometheusRowWiseSoftmaxResult* out_result);
 
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,

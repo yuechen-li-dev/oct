@@ -3250,6 +3250,9 @@ int prom_reactor_runtime_reduction_diagnostics_impl(void* handle,
 int prom_reactor_runtime_reduction_benchmark_impl(void* handle,
                                                   const PrometheusReductionBenchmarkRequest* request,
                                                   PrometheusReductionBenchmarkResult* out_result);
+int prom_reactor_runtime_row_wise_softmax_impl(void* handle,
+                                               const PrometheusRowWiseSoftmaxRequest* request,
+                                               PrometheusRowWiseSoftmaxResult* out_result);
 int prom_reduction_validate_plan_for_test(const PrometheusReductionPlan* plan,
                                           uint64_t available_temporary_bytes,
                                           int32_t* out_detail);

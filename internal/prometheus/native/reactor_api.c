@@ -241,6 +241,13 @@ int prometheus_reactor_runtime_reduction_benchmark(void* handle,
   return prom_reactor_runtime_reduction_benchmark_impl(handle, request, out_result);
 }
 
+int prometheus_reactor_runtime_row_wise_softmax(
+    void* handle,
+    const PrometheusRowWiseSoftmaxRequest* request,
+    PrometheusRowWiseSoftmaxResult* out_result) {
+  return prom_reactor_runtime_row_wise_softmax_impl(handle, request, out_result);
+}
+
 int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,
     PrometheusModelBlockEvidence* out_evidence) {
