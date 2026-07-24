@@ -42,15 +42,17 @@ func GenerateEVT1(module EVT1Module, source []byte) (Outputs, error) {
 	}
 	mirJSON = append(mirJSON, '\n')
 	l.mapDoc = map[string]any{
-		"schema":     "concept-vulkan-evt1-source-map.v1",
-		"source":     module.Path,
-		"structs":    l.mir.Structs,
-		"concepts":   l.mir.Concepts,
-		"assertions": l.mir.Assertions,
-		"templates":  l.mir.Templates,
-		"instances":  l.mir.Instances,
-		"functions":  evt1MapFunctions(module, env),
-		"mir":        l.mir.Functions,
+		"schema":         "concept-vulkan-evt1-source-map.v1",
+		"source":         module.Path,
+		"structs":        l.mir.Structs,
+		"concepts":       l.mir.Concepts,
+		"assertions":     l.mir.Assertions,
+		"comptime_decls": l.mir.ComptimeDecls,
+		"static_asserts": l.mir.StaticAsserts,
+		"templates":      l.mir.Templates,
+		"instances":      l.mir.Instances,
+		"functions":      evt1MapFunctions(module, env),
+		"mir":            l.mir.Functions,
 	}
 	mapJSON, err := json.MarshalIndent(l.mapDoc, "", "  ")
 	if err != nil {
@@ -153,6 +155,28 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 			SourceSpan:   assertion.Span,
 		})
 	}
+	for _, decl := range module.ComptimeDecls {
+		mir.ComptimeDecls = append(mir.ComptimeDecls, EVT1MIRComptimeDecl{
+			Name:       decl.Name,
+			Type:       decl.Type,
+			Value:      env.comptimeValues[decl.Name].Render(),
+			SourceSpan: decl.Span,
+		})
+	}
+	for _, assertion := range module.StaticAsserts {
+		message := ""
+		if assertion.Message != nil {
+			if value, err := evt1EvalExpr(newEVT1ComptimeState(env), evt1SeedComptimeScope(env), assertion.Message); err == nil {
+				message = value.Render()
+			}
+		}
+		mir.StaticAsserts = append(mir.StaticAsserts, EVT1MIRStaticAssert{
+			Condition:  exprLabel(assertion.Condition),
+			Message:    message,
+			Satisfied:  true,
+			SourceSpan: assertion.Span,
+		})
+	}
 	for _, templateDecl := range module.Templates {
 		info := env.templateInfos[templateDecl.Name]
 		mirTemplate := EVT1MIRTemplate{
@@ -250,6 +274,16 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 		}
 		mir.Functions = append(mir.Functions, mirFn)
 	}
+	for _, fn := range module.ComptimeFns {
+		mirFn := EVT1MIRFunction{Name: fn.Name, ReturnType: fn.ReturnType, SourceSpan: fn.Span}
+		for _, param := range fn.Params {
+			mirFn.Params = append(mirFn.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+		}
+		if fn.Body != nil {
+			collectMIROps(env, fn.Body, &mirFn, nil)
+		}
+		mir.ComptimeFns = append(mir.ComptimeFns, mirFn)
+	}
 	return mir
 }
 
@@ -259,6 +293,9 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, template
 		switch s := stmt.(type) {
 		case *EVT1VarDecl:
 			kind := "var_decl"
+			if s.Comptime {
+				kind = "comptime_decl"
+			}
 			if _, ok := s.Value.(*EVT1StructConstructExpr); ok {
 				if !evt1TypeCopyable(env, s.Type) {
 					kind = "final_storage_construct"
@@ -280,6 +317,12 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, template
 		case *EVT1ExprStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "expr_stmt", SourceSpan: s.Span})
 			collectExprMIROps(env, s.Value, fn, templateInfo)
+		case *EVT1StaticAssertStmt:
+			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "static_assert", SourceSpan: s.Span})
+			collectExprMIROps(env, s.Condition, fn, templateInfo)
+			if s.Message != nil {
+				collectExprMIROps(env, s.Message, fn, templateInfo)
+			}
 		case *EVT1MatchStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "match_stmt", Detail: fmt.Sprintf("%d arms", len(s.Arms)), SourceSpan: s.Span})
 			collectExprMIROps(env, s.Subject, fn, templateInfo)
@@ -294,6 +337,17 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, template
 			}
 		case *EVT1Block:
 			collectMIROps(env, s, fn, templateInfo)
+		case *EVT1WhileStmt:
+			kind := "while"
+			if s.Bound != nil {
+				kind = "bounded_while"
+			}
+			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, SourceSpan: s.Span})
+			collectExprMIROps(env, s.Condition, fn, templateInfo)
+			if s.Bound != nil {
+				collectExprMIROps(env, s.Bound, fn, templateInfo)
+			}
+			collectMIROps(env, &s.Body, fn, templateInfo)
 		}
 	}
 }
@@ -352,12 +406,24 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction, templat
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "binary", Detail: e.Op, SourceSpan: e.Span})
 		collectExprMIROps(env, e.Left, fn, templateInfo)
 		collectExprMIROps(env, e.Right, fn, templateInfo)
+	case *EVT1UnaryExpr:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "unary", Detail: e.Op, SourceSpan: e.Span})
+		collectExprMIROps(env, e.Value, fn, templateInfo)
 	case *EVT1NameExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "name", Detail: e.Name, SourceSpan: e.Span})
 	case *EVT1IntLiteral:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "literal", Detail: fmt.Sprintf("%d", e.Value), SourceSpan: e.Span})
+	case *EVT1StringLiteral:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "string_literal", Detail: e.Value, SourceSpan: e.Span})
 	case *EVT1BoolLiteral:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "bool_literal", Detail: fmt.Sprintf("%t", e.Value), SourceSpan: e.Span})
+	case *EVT1IfExpr:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "if_expr", SourceSpan: e.Span})
+		collectExprMIROps(env, e.Condition, fn, templateInfo)
+		collectExprMIROps(env, e.Then, fn, templateInfo)
+		collectExprMIROps(env, e.Else, fn, templateInfo)
+	case *EVT1ParenExpr:
+		collectExprMIROps(env, e.Value, fn, templateInfo)
 	}
 }
 
@@ -575,6 +641,8 @@ func evt1CType(t EVT1Type) string {
 		return "void"
 	case "bool":
 		return "bool"
+	case "string":
+		return "const char*"
 	case "uint64":
 		return "uint64_t"
 	case "PipelineLayout":
@@ -721,8 +789,10 @@ type evt1FunctionLowerer struct {
 }
 
 type evt1Binding struct {
-	cName string
-	t     EVT1Type
+	cName    string
+	t        EVT1Type
+	comptime bool
+	value    EVT1Value
 }
 
 func newEVT1FunctionLowerer(l *evt1Lowering, fn EVT1FunctionDecl, symbol string, private bool) *evt1FunctionLowerer {
@@ -765,6 +835,13 @@ func (f *evt1FunctionLowerer) lowerBlock(block EVT1Block, indent int) string {
 func (f *evt1FunctionLowerer) lowerStatement(stmt EVT1Statement, indent int) string {
 	switch s := stmt.(type) {
 	case *EVT1VarDecl:
+		if s.Comptime {
+			value, err := evt1EvalExpr(newEVT1ComptimeState(f.l.env), f.evalScope(), s.Value)
+			if err == nil {
+				f.bindComptimeName(s.Name, s.Type, value)
+			}
+			return ""
+		}
 		if construct, ok := s.Value.(*EVT1StructConstructExpr); ok && construct.StructName == s.Type.Name {
 			return f.lowerLocalStructConstruct(s.Type, s.Name, *construct, indent)
 		}
@@ -787,8 +864,12 @@ func (f *evt1FunctionLowerer) lowerStatement(stmt EVT1Statement, indent int) str
 			return prelude + ind(indent) + value + ";\n"
 		}
 		return prelude + ind(indent) + "(void)" + value + ";\n"
+	case *EVT1StaticAssertStmt:
+		return ""
 	case *EVT1MatchStmt:
 		return f.lowerMatchStmt(*s, indent)
+	case *EVT1WhileStmt:
+		return f.lowerWhileStmt(*s, indent)
 	case *EVT1Block:
 		var b strings.Builder
 		b.WriteString(ind(indent) + "{\n")
@@ -798,6 +879,34 @@ func (f *evt1FunctionLowerer) lowerStatement(stmt EVT1Statement, indent int) str
 	default:
 		return ind(indent) + "/* unsupported statement */\n"
 	}
+}
+
+func (f *evt1FunctionLowerer) lowerWhileStmt(stmt EVT1WhileStmt, indent int) string {
+	var b strings.Builder
+	if stmt.Bound != nil {
+		boundValue, err := evt1EvalExpr(newEVT1ComptimeState(f.l.env), f.evalScope(), stmt.Bound)
+		if err == nil {
+			limitName := f.nextTemp("limit")
+			iterName := f.nextTemp("iter")
+			b.WriteString(ind(indent) + fmt.Sprintf("int %s = %d;\n", limitName, boundValue.IntValue))
+			b.WriteString(ind(indent) + fmt.Sprintf("int %s = 0;\n", iterName))
+			b.WriteString(ind(indent) + fmt.Sprintf("while (%s < %s) {\n", iterName, limitName))
+			condPrelude, condExpr, _ := f.lowerExpr(stmt.Condition, indent+1)
+			b.WriteString(condPrelude)
+			b.WriteString(ind(indent+1) + fmt.Sprintf("if (!(%s)) { break; }\n", condExpr))
+			b.WriteString(ind(indent+1) + fmt.Sprintf("%s = %s + 1;\n", iterName, iterName))
+			b.WriteString(f.lowerBlock(stmt.Body, indent+1))
+			b.WriteString(ind(indent) + "}\n")
+			return b.String()
+		}
+	}
+	b.WriteString(ind(indent) + "while (1) {\n")
+	condPrelude, condExpr, _ := f.lowerExpr(stmt.Condition, indent+1)
+	b.WriteString(condPrelude)
+	b.WriteString(ind(indent+1) + fmt.Sprintf("if (!(%s)) { break; }\n", condExpr))
+	b.WriteString(f.lowerBlock(stmt.Body, indent+1))
+	b.WriteString(ind(indent) + "}\n")
+	return b.String()
 }
 
 func (f *evt1FunctionLowerer) lowerLocalStructConstruct(targetType EVT1Type, name string, construct EVT1StructConstructExpr, indent int) string {
@@ -853,15 +962,27 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 	case *EVT1IntLiteral:
 		t, _ := evt1BuiltinType("int", e.Span)
 		return "", fmt.Sprintf("%d", e.Value), t
+	case *EVT1StringLiteral:
+		t, _ := evt1BuiltinType("string", e.Span)
+		return "", fmt.Sprintf("%q", e.Value), t
 	case *EVT1BoolLiteral:
 		t, _ := evt1BuiltinType("bool", e.Span)
 		if e.Value {
 			return "", "true", t
 		}
 		return "", "false", t
+	case *EVT1ParenExpr:
+		prelude, value, t := f.lowerExpr(e.Value, indent)
+		return prelude, "(" + value + ")", t
 	case *EVT1NameExpr:
 		if binding, ok := scopeLookup(e.Name, f.scope); ok {
+			if binding.comptime {
+				return "", evt1RenderCValue(f.l.env, binding.value), binding.t
+			}
 			return "", binding.cName, binding.t
+		}
+		if value, ok := f.l.env.comptimeValues[e.Name]; ok {
+			return "", evt1RenderCValue(f.l.env, value), value.Type
 		}
 		if fns, ok := f.l.env.functions[e.Name]; ok && len(fns) == 1 {
 			return "", evt1FunctionSymbolForDecl(f.l.outputBase, f.l.env, fns[0]), fns[0].ReturnType
@@ -878,11 +999,27 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 	case *EVT1BinaryExpr:
 		leftPrelude, left, leftType := f.lowerExpr(e.Left, indent)
 		rightPrelude, right, _ := f.lowerExpr(e.Right, indent)
-		if e.Op == "<" || e.Op == ">" {
+		if e.Op == "<" || e.Op == ">" || e.Op == "<=" || e.Op == ">=" || e.Op == "==" || e.Op == "!=" || e.Op == "and" || e.Op == "or" {
 			boolType, _ := evt1BuiltinType("bool", e.Span)
-			return leftPrelude + rightPrelude, fmt.Sprintf("(%s %s %s)", left, e.Op, right), boolType
+			op := e.Op
+			if op == "and" {
+				op = "&&"
+			}
+			if op == "or" {
+				op = "||"
+			}
+			return leftPrelude + rightPrelude, fmt.Sprintf("(%s %s %s)", left, op, right), boolType
+		}
+		if e.Op == "*" || e.Op == "-" {
+			return leftPrelude + rightPrelude, fmt.Sprintf("(%s %s %s)", left, e.Op, right), leftType
 		}
 		return leftPrelude + rightPrelude, fmt.Sprintf("(%s + %s)", left, right), leftType
+	case *EVT1UnaryExpr:
+		prelude, value, valueType := f.lowerExpr(e.Value, indent)
+		if e.Op == "not" {
+			return prelude, "(!" + value + ")", EVT1Type{Name: "bool", Kind: EVT1TypeBuiltin}
+		}
+		return prelude, "(" + e.Op + value + ")", valueType
 	case *EVT1CallExpr:
 		var prelude strings.Builder
 		var rawArgs []string
@@ -967,7 +1104,7 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 		subPrelude, subjectExpr, subjectType := f.lowerExpr(e.Subject, indent)
 		enumDecl := f.l.env.enums[subjectType.Name]
 		scope := f.typeScope()
-		resultType, _ := validateMatchExpr(f.l.env, scope, *e, nil)
+		resultType, _ := validateMatchExpr(f.l.env, scope, *e, nil, false)
 		subjectTemp := f.nextTemp("match_subject")
 		resultTemp := f.nextTemp("match_result")
 		var b strings.Builder
@@ -994,6 +1131,24 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 		}
 		b.WriteString(ind(indent) + "default:\n")
 		b.WriteString(ind(indent+1) + fmt.Sprintf("concept_vulkan_abort_invalid_tag(\"%s\");\n", enumDecl.Name))
+		b.WriteString(ind(indent) + "}\n")
+		return b.String(), resultTemp, resultType
+	case *EVT1IfExpr:
+		conditionPrelude, conditionExpr, _ := f.lowerExpr(e.Condition, indent)
+		scope := f.typeScope()
+		resultType, _ := validateExpr(f.l.env, scope, e, nil, false)
+		resultTemp := f.nextTemp("if_result")
+		var b strings.Builder
+		b.WriteString(conditionPrelude)
+		b.WriteString(ind(indent) + fmt.Sprintf("%s %s;\n", evt1CType(resultType), resultTemp))
+		b.WriteString(ind(indent) + fmt.Sprintf("if (%s) {\n", conditionExpr))
+		thenPrelude, thenExpr, _ := f.lowerExpr(e.Then, indent+1)
+		b.WriteString(thenPrelude)
+		b.WriteString(ind(indent+1) + fmt.Sprintf("%s = %s;\n", resultTemp, thenExpr))
+		b.WriteString(ind(indent) + "} else {\n")
+		elsePrelude, elseExpr, _ := f.lowerExpr(e.Else, indent+1)
+		b.WriteString(elsePrelude)
+		b.WriteString(ind(indent+1) + fmt.Sprintf("%s = %s;\n", resultTemp, elseExpr))
 		b.WriteString(ind(indent) + "}\n")
 		return b.String(), resultTemp, resultType
 	default:
@@ -1042,13 +1197,31 @@ func (f *evt1FunctionLowerer) bindName(name string, t EVT1Type) string {
 	return unique
 }
 
+func (f *evt1FunctionLowerer) bindComptimeName(name string, t EVT1Type, value EVT1Value) {
+	f.currentScope()[name] = evt1Binding{cName: name, t: t, comptime: true, value: value}
+}
+
 func (f *evt1FunctionLowerer) typeScope() *evt1Scope {
-	var root *evt1Scope
+	root := evt1ModuleScope(f.l.env)
 	for _, layer := range f.scope {
 		root = newEVT1Scope(root)
 		for name, binding := range layer {
-			root.declare(name, evt1ValueBinding{t: binding.t, mutable: true})
+			root.declare(name, evt1ValueBinding{t: binding.t, mutable: true, comptime: binding.comptime, hasValue: binding.comptime, value: binding.value})
 		}
+	}
+	return root
+}
+
+func (f *evt1FunctionLowerer) evalScope() *evt1EvalScope {
+	root := evt1SeedComptimeScope(f.l.env)
+	for _, layer := range f.scope {
+		next := newEVT1EvalScope(root)
+		for name, binding := range layer {
+			if binding.comptime {
+				next.declare(name, evt1EvalBinding{value: binding.value, mutable: false, comptime: true})
+			}
+		}
+		root = next
 	}
 	return root
 }
@@ -1093,6 +1266,35 @@ func evt1ResolveGeneratedCall(env *evt1Env, name string, argTypes []EVT1Type) (E
 		}
 	}
 	return EVT1FunctionDecl{}, false
+}
+
+func evt1RenderCValue(env *evt1Env, value EVT1Value) string {
+	switch value.Kind {
+	case EVT1ValueInt:
+		return fmt.Sprintf("%d", value.IntValue)
+	case EVT1ValueBool:
+		if value.BoolValue {
+			return "true"
+		}
+		return "false"
+	case EVT1ValueString:
+		return fmt.Sprintf("%q", value.StringValue)
+	case EVT1ValueStruct:
+		structDecl := env.structs[value.StructName]
+		parts := make([]string, 0, len(structDecl.Fields))
+		for _, field := range structDecl.Fields {
+			parts = append(parts, evt1RenderCValue(env, value.Fields[field.Name]))
+		}
+		return evt1StructConstructorName(value.StructName) + "(" + strings.Join(parts, ", ") + ")"
+	case EVT1ValueEnum:
+		parts := make([]string, 0, len(value.Payload))
+		for _, entry := range value.Payload {
+			parts = append(parts, evt1RenderCValue(env, entry))
+		}
+		return evt1ConstructorName(value.EnumName, value.Variant) + "(" + strings.Join(parts, ", ") + ")"
+	default:
+		return "0"
+	}
 }
 
 func ind(level int) string {

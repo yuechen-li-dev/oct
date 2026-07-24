@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-B constitution; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, and constrained template monomorphization implemented; production remains handwritten**
+Status: **normative EVT1 M1B-C constitution in meaningful-progression state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, and foundational control flow implemented; fixed-size comptime arrays remain unfinished; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -229,6 +229,33 @@ Templates remain compile-time recipes only. Concepts remain compile-time
 propositions only. There is no runtime generic machinery, deduction,
 specialization, SFINAE, witness table, vtable, or public ABI growth.
 
+## 2.6 EVT1 M1B-C bounded pure comptime evaluation and foundational control flow
+
+EVT1 M1B-C adds a deliberately bounded compile-time evaluation surface:
+
+```concept
+comptime int ClampCount(int value, int maximum)
+{
+    return if (value < maximum) value else maximum;
+}
+
+comptime int LoopBound = 4;
+static_assert(LoopBound > 0, "LoopBound must be positive");
+```
+
+Compile-time declarations and free functions use the explicit `comptime`
+keyword. `static_assert` accepts a compile-time `bool` condition and optional
+compile-time `string` message. Expression-valued `if` uses the exact form
+`if (condition) then_expression else else_expression`. Ordinary `while`
+becomes available as foundational runtime control flow, while compile-time
+`while` is accepted only with an explicit `bounded(limit)` clause.
+
+The accepted compile-time value domain now includes `int`, `bool`, `string`,
+enums, and structs composed from those values. Fixed-size arrays remain the
+isolated unfinished M1B-C portion, so this constitution records the M1B-C
+surface while the implementation status remains honestly classified as
+meaningful progression rather than full closure.
+
 ## 3. Static and runtime facts
 
 Compile time may consume only deterministic compiler-owned or
@@ -430,7 +457,7 @@ EVT1 M1B-A fixes the first user-visible static requirement surface:
 These checks are structural, deterministic, and compile-time-only. They do not
 create runtime interface machinery or widen the public ABI.
 
-EVT1 M1B-B now adds the bounded constrained-template consumer:
+EVT1 M1B-B adds the bounded constrained-template consumer:
 
 - `template <typename T>` declares exactly one type parameter;
 - `requires ConceptName<T>` is required and must name exactly one existing
@@ -441,8 +468,24 @@ EVT1 M1B-B now adds the bounded constrained-template consumer:
 - each unique `(template, concrete type)` pair emits one deterministic private
   C11 helper and is reused for repeated calls.
 
-Bounded pure compile-time evaluation remains a separate later EVT1 M1B-C
-milestone.
+EVT1 M1B-C now adds bounded pure compile-time evaluation and foundational
+control flow:
+
+- `comptime Type Name = Expression;` declares deterministic compile-time
+  values at module or statement scope;
+- `comptime ReturnType Name(...) { ... }` declares compile-time-only free
+  functions;
+- `static_assert(condition, optionalMessage);` checks compile-time boolean
+  facts without emitting runtime machinery;
+- `if (condition) then_expression else else_expression` is the accepted
+  expression-form conditional;
+- `while (condition)` is accepted at runtime, and compile-time `while`
+  additionally requires `bounded(limit)`;
+- the evaluator is deterministic, bounded, and pure over the currently
+  accepted compile-time value domain.
+
+Fixed-size arrays remain outside the currently accepted compile-time value
+domain and therefore remain the isolated blocker to full M1B-C closure.
 
 ## 10. Escape hatch
 
@@ -589,6 +632,38 @@ constraint-consumer vertical:
 12. one hardware-independent native specimen and one Vulkan-shaped native
     specimen proving explicit-only instantiation, deduplication, exact
     concrete operation binding, and immovable borrowed use.
+
+## 12.4 EVT1 M1B-C semantic minimum
+
+EVT1 M1B-C extends the accepted M1B-B proof with the smallest coherent bounded
+compile-time and control-flow vertical:
+
+1. module-scope and statement-scope `comptime` declarations with explicit
+   types and deterministic evaluation;
+2. compile-time-only free functions with compile-time-safe parameter and
+   return types;
+3. module-scope and statement-scope `static_assert` with compile-time `bool`
+   conditions and optional compile-time `string` messages;
+4. expression-valued `if (condition) then_expression else else_expression`
+   with exact branch-type agreement;
+5. ordinary runtime `while` plus compile-time `while` gated by explicit
+   `bounded(limit)` syntax;
+6. deterministic evaluator fuel, call-depth, and bounded-loop limits with
+   rejection of runtime calls during compile-time evaluation;
+7. structural rejection of direct or indirect compile-time recursion;
+8. accepted compile-time values for `int`, `bool`, `string`, enums, and
+   structs composed from accepted compile-time values;
+9. runtime lowering that erases compile-time declarations and assertions while
+   substituting final literal or aggregate values into generated C11;
+10. typed MIR and source-map evidence for compile-time declarations, static
+    asserts, `if_expr`, `while`, `bounded_while`, unary operations, and string
+    literals;
+11. one hardware-independent native specimen and one Vulkan-shaped native
+    specimen proving compile-time evaluation, bounded loops, and preserved
+    earlier EVT1 behavior.
+
+Fixed-size arrays are intentionally not listed here because they are not yet
+implemented in the accepted M1B-C value domain.
 
 ## 13. Profile MIR boundary
 

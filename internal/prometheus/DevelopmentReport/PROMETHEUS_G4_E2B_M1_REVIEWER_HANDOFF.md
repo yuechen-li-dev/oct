@@ -18,20 +18,21 @@ The accepted proof foundation is:
 - the proposed M1E handwritten create-path failure seam is not the active
   assignment.
 
-The most recent closed assignment is now recorded in
-`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_B_CONCEPT_CONSTRAINED_TEMPLATES_AND_DETERMINISTIC_MONOMORPHIZATION.md`:
+The most recent assignment is now recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_C_BOUNDED_PURE_COMPTIME_EVALUATION_AND_FOUNDATIONAL_CONTROL_FLOW.md`:
 
 ```text
-Concept/Vulkan EVT1 M1B-B — Concept-Constrained Templates and Deterministic Monomorphization
+Concept/Vulkan EVT1 M1B-C — Bounded Pure Comptime Evaluation and Foundational Control Flow
 ```
 
-M1A is accepted and closed. M1B-A is accepted and closed. M1B-B is now
-accepted and closed: constrained one-parameter free-function templates,
-exactly one named concept constraint, symbolic requirement-bound body
-checking, explicit concrete invocation, deterministic instance reuse, and one
-private C11 function per unique `(template, concrete type)` key. EVT1 M1B-C
-bounded pure compile-time evaluation remains deferred. Production remains
-handwritten.
+M1A is accepted and closed. M1B-A is accepted and closed. M1B-B is accepted
+and closed. EVT1 M1B-C is now honestly classified as `MEANINGFUL PROGRESSION`:
+bounded pure compile-time evaluation, expression-valued `if`, ordinary runtime
+and bounded compile-time `while`, `static_assert`, top-level/local `comptime`
+declarations, and top-level `comptime` free functions all run through the EVT1
+typed MIR, generated C, checked outputs, and native specimens. The isolated
+remaining blocker is fixed-size arrays inside the compile-time value domain, so
+M1B-C is not yet an honest `SUCCESS`. Production remains handwritten.
 
 Concept/Vulkan is the bounded host-side mechanism profile implemented through
 the working Go Oct/SDSL-V compiler lineage. Dominatus remains the Prometheus
@@ -49,11 +50,11 @@ RQ-M1's accepted physical batch is also preserved: supported nonzero batches
 record one `vkCmdDispatch(ray_count,1,1)` and one synchronous submission with
 paired capacity and descriptor rebind-before-retire. Expanded image/cost
 authority is paused, not completed or abandoned. EVT1 language work remains
-separate from resumed batch or stage-7 work. The exact next language milestone
+separate from resumed batch or stage-7 work. The exact next language blocker
 is now:
 
 ```text
-Concept/Vulkan EVT1 M1B-C — Bounded Pure Compile-Time Evaluation
+Fixed-size arrays in the EVT1 M1B-C compile-time value domain
 ```
 
 The historical kernel-54 milestone named `M1C` must not be confused with the

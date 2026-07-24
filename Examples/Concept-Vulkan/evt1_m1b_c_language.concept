@@ -1,0 +1,73 @@
+profile Vulkan;
+
+struct Limits
+{
+    int bound;
+    bool fast;
+};
+
+comptime int MaxIterations = 4;
+comptime bool UseFastPath = true;
+comptime string KernelEntry = "kernel-54-default";
+comptime Limits DefaultLimits = Limits{3, true};
+
+static_assert(MaxIterations == 4);
+static_assert(DefaultLimits.bound == 3, "default bound");
+static_assert(KernelEntry == "kernel-54-default");
+
+comptime int ClampCount(int value, int maximum)
+{
+    return if (value < maximum) value else maximum;
+}
+
+comptime int SumTo(int limit)
+{
+    int cursor = 0;
+    int total = 0;
+    while (cursor < limit) bounded(32)
+    {
+        total = total + cursor;
+        cursor = cursor + 1;
+    }
+    return total;
+}
+
+static_assert(ClampCount(9, 7) == 7);
+static_assert(SumTo(4) == 6, "sum mismatch");
+
+int SelectedArm(bool chooseThen, int thenValue, int elseValue)
+{
+    return if (chooseThen) thenValue else elseValue;
+}
+
+int CountUp(int input)
+{
+    comptime int RuntimeBound = ClampCount(MaxIterations * 2, 6);
+    int value = 0;
+    int cursor = 0;
+    while (cursor < input) bounded(RuntimeBound)
+    {
+        value = value + 1;
+        cursor = cursor + 1;
+    }
+    while (value < MaxIterations)
+    {
+        value = value + 1;
+    }
+    return if (UseFastPath) value else input;
+}
+
+int ZeroBound(int input)
+{
+    int value = 99;
+    while (input > 0) bounded(0)
+    {
+        value = 0;
+    }
+    return value;
+}
+
+int DefaultBound()
+{
+    return if (DefaultLimits.fast) DefaultLimits.bound else 0;
+}

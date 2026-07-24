@@ -11,8 +11,11 @@ type evt1Scope struct {
 }
 
 type evt1ValueBinding struct {
-	t       EVT1Type
-	mutable bool
+	t         EVT1Type
+	mutable   bool
+	comptime  bool
+	hasValue  bool
+	value     EVT1Value
 }
 
 type evt1LValue struct {
@@ -78,6 +81,15 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		}
 		env.templates[templateDecl.Name] = templateDecl
 	}
+	for _, decl := range module.ComptimeDecls {
+		if _, exists := env.comptimeDecls[decl.Name]; exists {
+			return nil, evt1Diagnostic("CV4203", fmt.Sprintf("duplicate comptime declaration %s", decl.Name), decl.Span)
+		}
+		if len(env.functions[decl.Name]) > 0 || env.templates[decl.Name].Name != "" || env.comptimeFunctions[decl.Name].Name != "" {
+			return nil, evt1Diagnostic("CV4203", fmt.Sprintf("comptime declaration %s conflicts with an existing symbol", decl.Name), decl.Span)
+		}
+		env.comptimeDecls[decl.Name] = decl
+	}
 	for _, fn := range module.Functions {
 		for _, existing := range env.functions[fn.Name] {
 			if evt1FunctionParamSignature(existing) == evt1FunctionParamSignature(fn) {
@@ -85,6 +97,12 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 			}
 		}
 		env.functions[fn.Name] = append(env.functions[fn.Name], fn)
+	}
+	for _, fn := range module.ComptimeFns {
+		if len(env.functions[fn.Name]) > 0 || env.templates[fn.Name].Name != "" || env.comptimeDecls[fn.Name].Name != "" || env.comptimeFunctions[fn.Name].Name != "" {
+			return nil, evt1Diagnostic("CV4214", fmt.Sprintf("comptime function %s conflicts with an existing symbol", fn.Name), fn.Span)
+		}
+		env.comptimeFunctions[fn.Name] = fn
 	}
 	for _, structDecl := range module.Structs {
 		fields := map[string]EVT1Type{}
@@ -182,15 +200,39 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 			return nil, err
 		}
 	}
+	for _, fn := range module.ComptimeFns {
+		if err := validateFunctionSignature(env, fn); err != nil {
+			return nil, err
+		}
+		if fn.Body == nil {
+			return nil, evt1Diagnostic("CV4215", fmt.Sprintf("comptime function %s requires a body", fn.Name), fn.Span)
+		}
+		if fn.ReturnType.Name != "void" && !evt1IsComptimeType(env, fn.ReturnType) {
+			return nil, evt1Diagnostic("CV4216", fmt.Sprintf("comptime return type %s is not supported", fn.ReturnType.String()), fn.ReturnType.Span)
+		}
+		for _, param := range fn.Params {
+			if !evt1IsComptimeType(env, param.Type) {
+				return nil, evt1Diagnostic("CV4216", fmt.Sprintf("comptime parameter type %s is not supported", param.Type.String()), param.Span)
+			}
+		}
+	}
+	for _, decl := range module.ComptimeDecls {
+		if err := validateKnownType(env, decl.Type, decl.Span, "", false); err != nil {
+			return nil, err
+		}
+		if !evt1IsComptimeType(env, decl.Type) {
+			return nil, evt1Diagnostic("CV4216", fmt.Sprintf("comptime declaration type %s is not supported", decl.Type.String()), decl.Span)
+		}
+	}
 	for _, templateDecl := range module.Templates {
-		scope := newEVT1Scope(nil)
+		scope := evt1ModuleScope(env)
 		for _, param := range templateDecl.Params {
 			scope.declare(param.Name, evt1ValueBinding{
 				t:       evt1CanonicalType(env, param.Type),
 				mutable: !(param.Type.isBorrowLike() && param.Type.Const),
 			})
 		}
-		if err := validateBlock(env, scope, templateDecl.ReturnType, *templateDecl.Body, env.templateInfos[templateDecl.Name]); err != nil {
+		if err := validateBlock(env, scope, templateDecl.ReturnType, *templateDecl.Body, env.templateInfos[templateDecl.Name], false); err != nil {
 			return nil, err
 		}
 	}
@@ -198,7 +240,7 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		if fn.Body == nil {
 			continue
 		}
-		scope := newEVT1Scope(nil)
+		scope := evt1ModuleScope(env)
 		for _, param := range fn.Params {
 			scope.declare(param.Name, evt1ValueBinding{
 				t:       evt1CanonicalType(env, param.Type),
@@ -206,9 +248,26 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 			})
 		}
 		collectEscapedArmBindings(fn.Body, env)
-		if err := validateBlock(env, scope, fn.ReturnType, *fn.Body, nil); err != nil {
+		if err := validateBlock(env, scope, fn.ReturnType, *fn.Body, nil, false); err != nil {
 			return nil, err
 		}
+	}
+	for _, fn := range module.ComptimeFns {
+		scope := evt1ModuleScope(env)
+		for _, param := range fn.Params {
+			scope.declare(param.Name, evt1ValueBinding{
+				t:        evt1CanonicalType(env, param.Type),
+				mutable:  true,
+				comptime: true,
+			})
+		}
+		collectEscapedArmBindings(fn.Body, env)
+		if err := validateBlock(env, scope, fn.ReturnType, *fn.Body, nil, true); err != nil {
+			return nil, err
+		}
+	}
+	if err := validateComptimeFunctionCycles(module, env); err != nil {
+		return nil, err
 	}
 	for _, assertion := range module.Assertions {
 		if _, ok := env.concepts[assertion.ConceptName]; !ok {
@@ -221,7 +280,156 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 			return nil, err
 		}
 	}
+	if err := evt1EvaluateModuleComptime(env, module); err != nil {
+		return nil, err
+	}
 	return env, nil
+}
+
+func evt1ModuleScope(env *evt1Env) *evt1Scope {
+	scope := newEVT1Scope(nil)
+	for _, decl := range env.comptimeDecls {
+		scope.declare(decl.Name, evt1ValueBinding{
+			t:        evt1CanonicalType(env, decl.Type),
+			mutable:  false,
+			comptime: true,
+		})
+	}
+	return scope
+}
+
+func validateComptimeFunctionCycles(module EVT1Module, env *evt1Env) error {
+	graph := map[string][]string{}
+	for _, fn := range module.ComptimeFns {
+		if fn.Body == nil {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, callee := range evt1CollectComptimeCallsFromBlock(*fn.Body, env) {
+			if !seen[callee] {
+				graph[fn.Name] = append(graph[fn.Name], callee)
+				seen[callee] = true
+			}
+		}
+	}
+	visiting := map[string]bool{}
+	visited := map[string]bool{}
+	var dfs func(name string, path []string) error
+	dfs = func(name string, path []string) error {
+		if visiting[name] {
+			cycle := append(path, name)
+			return evt1Diagnostic("CV4217", "comptime recursion is not allowed: "+strings.Join(cycle, " -> "), env.comptimeFunctions[name].Span)
+		}
+		if visited[name] {
+			return nil
+		}
+		visiting[name] = true
+		visited[name] = true
+		for _, callee := range graph[name] {
+			if err := dfs(callee, append(path, name)); err != nil {
+				return err
+			}
+		}
+		visiting[name] = false
+		return nil
+	}
+	for _, fn := range module.ComptimeFns {
+		if err := dfs(fn.Name, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func evt1CollectComptimeCallsFromBlock(block EVT1Block, env *evt1Env) []string {
+	var out []string
+	for _, stmt := range block.Statements {
+		switch s := stmt.(type) {
+		case *EVT1VarDecl:
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Value, env)...)
+		case *EVT1AssignStmt:
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Target, env)...)
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Value, env)...)
+		case *EVT1ReturnStmt:
+			if s.Value != nil {
+				out = append(out, evt1CollectComptimeCallsFromExpr(s.Value, env)...)
+			}
+		case *EVT1ExprStmt:
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Value, env)...)
+		case *EVT1StaticAssertStmt:
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Condition, env)...)
+			if s.Message != nil {
+				out = append(out, evt1CollectComptimeCallsFromExpr(s.Message, env)...)
+			}
+		case *EVT1MatchStmt:
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Subject, env)...)
+			for _, arm := range s.Arms {
+				out = append(out, evt1CollectComptimeCallsFromBlock(arm.Block, env)...)
+			}
+		case *EVT1WhileStmt:
+			out = append(out, evt1CollectComptimeCallsFromExpr(s.Condition, env)...)
+			if s.Bound != nil {
+				out = append(out, evt1CollectComptimeCallsFromExpr(s.Bound, env)...)
+			}
+			out = append(out, evt1CollectComptimeCallsFromBlock(s.Body, env)...)
+		case *EVT1Block:
+			out = append(out, evt1CollectComptimeCallsFromBlock(*s, env)...)
+		}
+	}
+	return out
+}
+
+func evt1CollectComptimeCallsFromExpr(expr EVT1Expr, env *evt1Env) []string {
+	switch e := expr.(type) {
+	case *EVT1ParenExpr:
+		return evt1CollectComptimeCallsFromExpr(e.Value, env)
+	case *EVT1UnaryExpr:
+		return evt1CollectComptimeCallsFromExpr(e.Value, env)
+	case *EVT1FieldExpr:
+		return evt1CollectComptimeCallsFromExpr(e.Receiver, env)
+	case *EVT1BinaryExpr:
+		return append(evt1CollectComptimeCallsFromExpr(e.Left, env), evt1CollectComptimeCallsFromExpr(e.Right, env)...)
+	case *EVT1CallExpr:
+		var out []string
+		if _, ok := env.comptimeFunctions[e.Callee]; ok {
+			out = append(out, e.Callee)
+		}
+		for _, arg := range e.Args {
+			out = append(out, evt1CollectComptimeCallsFromExpr(arg, env)...)
+		}
+		return out
+	case *EVT1TemplateCallExpr:
+		var out []string
+		for _, arg := range e.Args {
+			out = append(out, evt1CollectComptimeCallsFromExpr(arg, env)...)
+		}
+		return out
+	case *EVT1ConstructExpr:
+		var out []string
+		for _, arg := range e.Args {
+			out = append(out, evt1CollectComptimeCallsFromExpr(arg, env)...)
+		}
+		return out
+	case *EVT1StructConstructExpr:
+		var out []string
+		for _, arg := range e.Args {
+			out = append(out, evt1CollectComptimeCallsFromExpr(arg, env)...)
+		}
+		return out
+	case *EVT1MatchExpr:
+		out := evt1CollectComptimeCallsFromExpr(e.Subject, env)
+		for _, arm := range e.Arms {
+			out = append(out, evt1CollectComptimeCallsFromExpr(arm.Value, env)...)
+		}
+		return out
+	case *EVT1IfExpr:
+		out := evt1CollectComptimeCallsFromExpr(e.Condition, env)
+		out = append(out, evt1CollectComptimeCallsFromExpr(e.Then, env)...)
+		out = append(out, evt1CollectComptimeCallsFromExpr(e.Else, env)...)
+		return out
+	default:
+		return nil
+	}
 }
 
 func validateFunctionSignature(env *evt1Env, fn EVT1FunctionDecl) error {
@@ -311,7 +519,7 @@ func collectEscapedArmBindings(block *EVT1Block, env *evt1Env) {
 	}
 }
 
-func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EVT1Block, templateInfo *evt1TemplateInfo) error {
+func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EVT1Block, templateInfo *evt1TemplateInfo, inComptimeFn bool) error {
 	local := newEVT1Scope(scope)
 	for _, stmt := range block.Statements {
 		switch s := stmt.(type) {
@@ -323,20 +531,31 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 			if err := validateKnownType(env, s.Type, s.Span, typeParam, false); err != nil {
 				return err
 			}
-			valueType, err := validateExpr(env, local, s.Value, templateInfo)
+			valueType, err := validateExpr(env, local, s.Value, templateInfo, inComptimeFn || s.Comptime)
 			if err != nil {
 				return err
 			}
 			if !evt1TypesCompatible(env, s.Type, valueType, typeParam) {
 				return evt1Diagnostic("CV4106", fmt.Sprintf("constructor or initializer for %s expected %s but got %s", s.Name, s.Type.String(), valueType.String()), s.Value.exprSpan())
 			}
-			if !evt1CanDirectInitialize(env, s.Type, s.Value) && !evt1TypeCopyable(env, s.Type) && !evt1TypeDependsOnParam(s.Type, typeParam) {
+			if !s.Comptime && !evt1CanDirectInitialize(env, s.Type, s.Value) && !evt1TypeCopyable(env, s.Type) && !evt1TypeDependsOnParam(s.Type, typeParam) {
 				if evt1IsImmovableValueType(env, s.Type) {
 					return evt1Diagnostic("CV4134", fmt.Sprintf("immovable value %s must be constructed directly in final storage", s.Type.String()), s.Span)
 				}
 				return evt1Diagnostic("CV4133", fmt.Sprintf("copy of non-copyable type %s is not allowed", s.Type.String()), s.Span)
 			}
-			local.declare(s.Name, evt1ValueBinding{t: evt1CanonicalType(env, s.Type), mutable: true})
+			if s.Comptime {
+				if !evt1IsComptimeType(env, s.Type) {
+					return evt1Diagnostic("CV4216", fmt.Sprintf("comptime declaration type %s is not supported", s.Type.String()), s.Span)
+				}
+				value, err := evt1EvalExpr(newEVT1ComptimeState(env), evt1EvalScopeFromValidation(local, env), s.Value)
+				if err != nil {
+					return err
+				}
+				local.declare(s.Name, evt1ValueBinding{t: evt1CanonicalType(env, s.Type), mutable: false, comptime: true, hasValue: true, value: value})
+				continue
+			}
+			local.declare(s.Name, evt1ValueBinding{t: evt1CanonicalType(env, s.Type), mutable: true, comptime: inComptimeFn})
 		case *EVT1AssignStmt:
 			target, err := validateAssignable(env, local, s.Target, templateInfo)
 			if err != nil {
@@ -345,7 +564,7 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 			if !target.mutable {
 				return evt1Diagnostic("CV4128", "mutation through a const access path is not allowed", s.Target.exprSpan())
 			}
-			valueType, err := validateExpr(env, local, s.Value, templateInfo)
+			valueType, err := validateExpr(env, local, s.Value, templateInfo, inComptimeFn)
 			if err != nil {
 				return err
 			}
@@ -369,7 +588,7 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 				}
 				continue
 			}
-			valueType, err := validateExpr(env, local, s.Value, templateInfo)
+			valueType, err := validateExpr(env, local, s.Value, templateInfo, inComptimeFn)
 			if err != nil {
 				return err
 			}
@@ -381,15 +600,31 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 				return evt1Diagnostic("CV4116", fmt.Sprintf("expression result type mismatch: expected %s but got %s", returnType.String(), valueType.String()), s.Value.exprSpan())
 			}
 		case *EVT1ExprStmt:
-			if _, err := validateExpr(env, local, s.Value, templateInfo); err != nil {
+			if _, err := validateExpr(env, local, s.Value, templateInfo, inComptimeFn); err != nil {
+				return err
+			}
+		case *EVT1StaticAssertStmt:
+			if _, err := validateExpr(env, local, s.Condition, templateInfo, true); err != nil {
+				return err
+			}
+			if s.Message != nil {
+				if _, err := validateExpr(env, local, s.Message, templateInfo, true); err != nil {
+					return err
+				}
+			}
+			if err := evt1EvaluateStaticAssert(newEVT1ComptimeState(env), evt1EvalScopeFromValidation(local, env), &EVT1StaticAssert{Condition: s.Condition, Message: s.Message, Span: s.Span}); err != nil {
 				return err
 			}
 		case *EVT1MatchStmt:
-			if err := validateMatchStmt(env, local, *s, returnType, templateInfo); err != nil {
+			if err := validateMatchStmt(env, local, *s, returnType, templateInfo, inComptimeFn); err != nil {
+				return err
+			}
+		case *EVT1WhileStmt:
+			if err := validateWhileStmt(env, local, *s, templateInfo, inComptimeFn); err != nil {
 				return err
 			}
 		case *EVT1Block:
-			if err := validateBlock(env, local, returnType, *s, templateInfo); err != nil {
+			if err := validateBlock(env, local, returnType, *s, templateInfo, inComptimeFn); err != nil {
 				return err
 			}
 		default:
@@ -397,6 +632,29 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 		}
 	}
 	return nil
+}
+
+func evt1EvalScopeFromValidation(scope *evt1Scope, env *evt1Env) *evt1EvalScope {
+	var root *evt1EvalScope
+	if scope.parent != nil {
+		root = evt1EvalScopeFromValidation(scope.parent, env)
+	} else {
+		root = evt1SeedComptimeScope(env)
+	}
+	current := newEVT1EvalScope(root)
+	for name, binding := range scope.values {
+		if !binding.comptime {
+			continue
+		}
+		if binding.hasValue {
+			current.declare(name, evt1EvalBinding{value: binding.value, mutable: binding.mutable, comptime: true})
+			continue
+		}
+		if value, ok := env.comptimeValues[name]; ok {
+			current.declare(name, evt1EvalBinding{value: value, mutable: false, comptime: true})
+		}
+	}
+	return current
 }
 
 func validateKnownType(env *evt1Env, t EVT1Type, span Span, conceptParam string, allowConceptApp bool) error {
@@ -433,14 +691,19 @@ func validateKnownType(env *evt1Env, t EVT1Type, span Span, conceptParam string,
 	return evt1Diagnostic("CV4102", fmt.Sprintf("unknown enum or type %s", t.Name), span)
 }
 
-func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *evt1TemplateInfo) (EVT1Type, error) {
+func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *evt1TemplateInfo, inComptimeFn bool) (EVT1Type, error) {
 	switch e := expr.(type) {
 	case *EVT1IntLiteral:
 		t, _ := evt1BuiltinType("int", e.Span)
 		return t, nil
+	case *EVT1StringLiteral:
+		t, _ := evt1BuiltinType("string", e.Span)
+		return t, nil
 	case *EVT1BoolLiteral:
 		t, _ := evt1BuiltinType("bool", e.Span)
 		return t, nil
+	case *EVT1ParenExpr:
+		return validateExpr(env, scope, e.Value, templateInfo, inComptimeFn)
 	case *EVT1NameExpr:
 		if binding, ok := scope.lookup(e.Name); ok {
 			return evt1CanonicalType(env, binding.t), nil
@@ -450,7 +713,7 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		}
 		return EVT1Type{}, evt1Diagnostic("CV4024", fmt.Sprintf("unknown name %s", e.Name), e.Span)
 	case *EVT1FieldExpr:
-		receiverType, err := validateExpr(env, scope, e.Receiver, templateInfo)
+		receiverType, err := validateExpr(env, scope, e.Receiver, templateInfo, inComptimeFn)
 		if err != nil {
 			return EVT1Type{}, err
 		}
@@ -470,13 +733,29 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		if templateInfo != nil {
 			return validateTemplateCallExpr(env, scope, *e, templateInfo)
 		}
+		if _, exists := env.comptimeFunctions[e.Callee]; exists && !inComptimeFn {
+			return EVT1Type{}, evt1Diagnostic("CV4210", fmt.Sprintf("comptime function %s cannot be called from runtime code", e.Callee), e.Span)
+		}
 		argTypes := make([]EVT1Type, 0, len(e.Args))
 		for _, arg := range e.Args {
-			argType, err := validateExpr(env, scope, arg, templateInfo)
+			argType, err := validateExpr(env, scope, arg, templateInfo, inComptimeFn)
 			if err != nil {
 				return EVT1Type{}, err
 			}
 			argTypes = append(argTypes, argType)
+		}
+		if inComptimeFn {
+			if comptimeFn, ok := env.comptimeFunctions[e.Callee]; ok {
+				if len(comptimeFn.Params) != len(e.Args) {
+					return EVT1Type{}, evt1Diagnostic("CV4106", fmt.Sprintf("wrong constructor or call payload count for %s: expected %d but got %d", e.Callee, len(comptimeFn.Params), len(e.Args)), e.Span)
+				}
+				for i, arg := range e.Args {
+					if err := validateCallArgument(env, scope, comptimeFn.Params[i].Type, arg, argTypes[i], templateInfo); err != nil {
+						return EVT1Type{}, err
+					}
+				}
+				return evt1CanonicalType(env, comptimeFn.ReturnType), nil
+			}
 		}
 		fn, err := evt1ResolveOrdinaryCall(env, scope, e.Callee, e.Args, argTypes, templateInfo, e.Span)
 		if err != nil {
@@ -492,6 +771,9 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		}
 		return evt1CanonicalType(env, fn.ReturnType), nil
 	case *EVT1TemplateCallExpr:
+		if inComptimeFn {
+			return EVT1Type{}, evt1Diagnostic("CV4201", "templates are not available during comptime evaluation", e.Span)
+		}
 		if templateInfo != nil {
 			return EVT1Type{}, evt1Diagnostic("CV4174", "templates cannot invoke templates in EVT1 M1B-B", e.Span)
 		}
@@ -503,7 +785,7 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 			return EVT1Type{}, evt1Diagnostic("CV4106", fmt.Sprintf("wrong constructor or call payload count for %s: expected %d but got %d", e.Callee, len(instance.Function.Params), len(e.Args)), e.Span)
 		}
 		for i, arg := range e.Args {
-			argType, err := validateExpr(env, scope, arg, nil)
+			argType, err := validateExpr(env, scope, arg, nil, false)
 			if err != nil {
 				return EVT1Type{}, err
 			}
@@ -513,27 +795,71 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		}
 		instance.InvocationSpans = append(instance.InvocationSpans, e.Span)
 		return evt1CanonicalType(env, instance.Function.ReturnType), nil
-	case *EVT1BinaryExpr:
-		leftType, err := validateExpr(env, scope, e.Left, templateInfo)
+	case *EVT1UnaryExpr:
+		valueType, err := validateExpr(env, scope, e.Value, templateInfo, inComptimeFn)
 		if err != nil {
 			return EVT1Type{}, err
 		}
-		rightType, err := validateExpr(env, scope, e.Right, templateInfo)
+		switch e.Op {
+		case "-":
+			if valueType.Name != "int" {
+				return EVT1Type{}, evt1Diagnostic("CV4028", "unary - requires int", e.Span)
+			}
+			return valueType, nil
+		case "not":
+			if valueType.Name != "bool" {
+				return EVT1Type{}, evt1Diagnostic("CV4028", "not requires bool", e.Span)
+			}
+			out, _ := evt1BuiltinType("bool", e.Span)
+			return out, nil
+		default:
+			return EVT1Type{}, evt1Diagnostic("CV4028", "unsupported unary operator "+e.Op, e.Span)
+		}
+	case *EVT1BinaryExpr:
+		leftType, err := validateExpr(env, scope, e.Left, templateInfo, inComptimeFn)
+		if err != nil {
+			return EVT1Type{}, err
+		}
+		rightType, err := validateExpr(env, scope, e.Right, templateInfo, inComptimeFn)
 		if err != nil {
 			return EVT1Type{}, err
 		}
 		if templateInfo != nil && (evt1TypeDependsOnParam(leftType, templateInfo.Decl.TypeParam) || evt1TypeDependsOnParam(rightType, templateInfo.Decl.TypeParam)) {
 			return EVT1Type{}, evt1Diagnostic("CV4175", "dependent operators are not allowed in EVT1 M1B-B templates", e.Span)
 		}
+		if leftType.Name == "bool" && rightType.Name == "bool" && (e.Op == "and" || e.Op == "or" || e.Op == "==" || e.Op == "!=") {
+			out, _ := evt1BuiltinType("bool", e.Span)
+			return out, nil
+		}
+		if leftType.Name == "string" && rightType.Name == "string" && (e.Op == "==" || e.Op == "!=") {
+			out, _ := evt1BuiltinType("bool", e.Span)
+			return out, nil
+		}
 		if leftType.Name == "int" && rightType.Name == "int" {
-			if e.Op == "<" || e.Op == ">" {
+			if e.Op == "<" || e.Op == ">" || e.Op == "<=" || e.Op == ">=" || e.Op == "==" || e.Op == "!=" {
 				out, _ := evt1BuiltinType("bool", e.Span)
 				return out, nil
 			}
-			return leftType, nil
+			if e.Op == "+" || e.Op == "-" || e.Op == "*" {
+				return leftType, nil
+			}
+		}
+		if leftType.Name == "bool" && rightType.Name == "bool" {
+			if e.Op == "==" || e.Op == "!=" {
+				out, _ := evt1BuiltinType("bool", e.Span)
+				return out, nil
+			}
+		}
+		if leftType.Name == rightType.Name && leftType.Kind == EVT1TypeEnum && (e.Op == "==" || e.Op == "!=") {
+			out, _ := evt1BuiltinType("bool", e.Span)
+			return out, nil
+		}
+		if leftType.Name == rightType.Name && leftType.Kind == EVT1TypeStruct && (e.Op == "==" || e.Op == "!=") && evt1IsComptimeType(env, leftType) {
+			out, _ := evt1BuiltinType("bool", e.Span)
+			return out, nil
 		}
 		if leftType.Name == "uint64" && rightType.Name == "uint64" {
-			if e.Op == "<" || e.Op == ">" {
+			if e.Op == "<" || e.Op == ">" || e.Op == "<=" || e.Op == ">=" {
 				out, _ := evt1BuiltinType("bool", e.Span)
 				return out, nil
 			}
@@ -544,8 +870,28 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		return validateConstructExpr(env, scope, *e)
 	case *EVT1StructConstructExpr:
 		return validateStructConstructExpr(env, scope, *e)
+	case *EVT1IfExpr:
+		conditionType, err := validateExpr(env, scope, e.Condition, templateInfo, inComptimeFn)
+		if err != nil {
+			return EVT1Type{}, err
+		}
+		if conditionType.Name != "bool" {
+			return EVT1Type{}, evt1Diagnostic("CV4186", "if expression condition must be bool", e.Condition.exprSpan())
+		}
+		thenType, err := validateExpr(env, scope, e.Then, templateInfo, inComptimeFn)
+		if err != nil {
+			return EVT1Type{}, err
+		}
+		elseType, err := validateExpr(env, scope, e.Else, templateInfo, inComptimeFn)
+		if err != nil {
+			return EVT1Type{}, err
+		}
+		if !evt1TypesCompatible(env, thenType, elseType, "") {
+			return EVT1Type{}, evt1Diagnostic("CV4116", fmt.Sprintf("if expression arms must have the same type: got %s and %s", thenType.String(), elseType.String()), e.Span)
+		}
+		return evt1CanonicalType(env, thenType), nil
 	case *EVT1MatchExpr:
-		return validateMatchExpr(env, scope, *e, templateInfo)
+		return validateMatchExpr(env, scope, *e, templateInfo, inComptimeFn)
 	default:
 		return EVT1Type{}, evt1Diagnostic("CV4029", fmt.Sprintf("unsupported expression %s", evt1Unexpected(expr)), expr.exprSpan())
 	}
@@ -649,7 +995,7 @@ func validateConstructExpr(env *evt1Env, scope *evt1Scope, expr EVT1ConstructExp
 		return EVT1Type{}, evt1Diagnostic("CV4106", fmt.Sprintf("wrong constructor payload count for %s::%s: expected %d but got %d", expr.EnumName, expr.VariantName, len(variant.Payload), len(expr.Args)), expr.Span)
 	}
 	for i, arg := range expr.Args {
-		argType, err := validateExpr(env, scope, arg, nil)
+		argType, err := validateExpr(env, scope, arg, nil, false)
 		if err != nil {
 			return EVT1Type{}, err
 		}
@@ -672,7 +1018,7 @@ func validateStructConstructExpr(env *evt1Env, scope *evt1Scope, expr EVT1Struct
 		return EVT1Type{}, evt1Diagnostic("CV4126", fmt.Sprintf("wrong initializer count for %s: expected %d but got %d", expr.StructName, len(structDecl.Fields), len(expr.Args)), expr.Span)
 	}
 	for i, arg := range expr.Args {
-		argType, err := validateExpr(env, scope, arg, nil)
+		argType, err := validateExpr(env, scope, arg, nil, false)
 		if err != nil {
 			return EVT1Type{}, err
 		}
@@ -683,8 +1029,8 @@ func validateStructConstructExpr(env *evt1Env, scope *evt1Scope, expr EVT1Struct
 	return EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct, Span: expr.Span}, nil
 }
 
-func validateMatchExpr(env *evt1Env, scope *evt1Scope, expr EVT1MatchExpr, templateInfo *evt1TemplateInfo) (EVT1Type, error) {
-	subjectType, enumDecl, err := validateMatchSubject(env, scope, expr.Subject, templateInfo)
+func validateMatchExpr(env *evt1Env, scope *evt1Scope, expr EVT1MatchExpr, templateInfo *evt1TemplateInfo, inComptimeFn bool) (EVT1Type, error) {
+	subjectType, enumDecl, err := validateMatchSubject(env, scope, expr.Subject, templateInfo, inComptimeFn)
 	if err != nil {
 		return EVT1Type{}, err
 	}
@@ -695,7 +1041,7 @@ func validateMatchExpr(env *evt1Env, scope *evt1Scope, expr EVT1MatchExpr, templ
 		if err != nil {
 			return EVT1Type{}, err
 		}
-		valueType, err := validateExpr(env, armScope, arm.Value, templateInfo)
+		valueType, err := validateExpr(env, armScope, arm.Value, templateInfo, inComptimeFn)
 		if err != nil {
 			return EVT1Type{}, err
 		}
@@ -711,8 +1057,8 @@ func validateMatchExpr(env *evt1Env, scope *evt1Scope, expr EVT1MatchExpr, templ
 	return resultType, nil
 }
 
-func validateMatchStmt(env *evt1Env, scope *evt1Scope, stmt EVT1MatchStmt, returnType EVT1Type, templateInfo *evt1TemplateInfo) error {
-	subjectType, enumDecl, err := validateMatchSubject(env, scope, stmt.Subject, templateInfo)
+func validateMatchStmt(env *evt1Env, scope *evt1Scope, stmt EVT1MatchStmt, returnType EVT1Type, templateInfo *evt1TemplateInfo, inComptimeFn bool) error {
+	subjectType, enumDecl, err := validateMatchSubject(env, scope, stmt.Subject, templateInfo, inComptimeFn)
 	if err != nil {
 		return err
 	}
@@ -722,7 +1068,7 @@ func validateMatchStmt(env *evt1Env, scope *evt1Scope, stmt EVT1MatchStmt, retur
 		if err != nil {
 			return err
 		}
-		if err := validateBlock(env, armScope, returnType, arm.Block, templateInfo); err != nil {
+		if err := validateBlock(env, armScope, returnType, arm.Block, templateInfo, inComptimeFn); err != nil {
 			return err
 		}
 	}
@@ -732,8 +1078,8 @@ func validateMatchStmt(env *evt1Env, scope *evt1Scope, stmt EVT1MatchStmt, retur
 	return nil
 }
 
-func validateMatchSubject(env *evt1Env, scope *evt1Scope, subject EVT1Expr, templateInfo *evt1TemplateInfo) (EVT1Type, EVT1EnumDecl, error) {
-	subjectType, err := validateExpr(env, scope, subject, templateInfo)
+func validateMatchSubject(env *evt1Env, scope *evt1Scope, subject EVT1Expr, templateInfo *evt1TemplateInfo, inComptimeFn bool) (EVT1Type, EVT1EnumDecl, error) {
+	subjectType, err := validateExpr(env, scope, subject, templateInfo, inComptimeFn)
 	if err != nil {
 		return EVT1Type{}, EVT1EnumDecl{}, err
 	}
@@ -774,11 +1120,44 @@ func validatePattern(env *evt1Env, scope *evt1Scope, subjectType EVT1Type, enumD
 	for i, binding := range pattern.Bindings {
 		if seenBindings[binding] {
 			return nil, EVT1VariantDecl{}, evt1Diagnostic("CV4112", fmt.Sprintf("duplicate payload binding name %s", binding), pattern.Span)
-		}
-		seenBindings[binding] = true
+	}
+	seenBindings[binding] = true
 		armScope.declare(binding, evt1ValueBinding{t: evt1CanonicalType(env, variant.Payload[i].Type), mutable: true})
 	}
 	return armScope, variant, nil
+}
+
+func validateWhileStmt(env *evt1Env, scope *evt1Scope, stmt EVT1WhileStmt, templateInfo *evt1TemplateInfo, inComptimeFn bool) error {
+	conditionType, err := validateExpr(env, scope, stmt.Condition, templateInfo, inComptimeFn)
+	if err != nil {
+		return err
+	}
+	if conditionType.Name != "bool" {
+		return evt1Diagnostic("CV4187", "while condition must be bool", stmt.Condition.exprSpan())
+	}
+	if inComptimeFn && stmt.Bound == nil {
+		return evt1Diagnostic("CV4205", "comptime while requires an explicit bounded(limit) clause", stmt.Span)
+	}
+	if stmt.Bound != nil {
+		boundType, err := validateExpr(env, scope, stmt.Bound, templateInfo, true)
+		if err != nil {
+			return err
+		}
+		if boundType.Name != "int" {
+			return evt1Diagnostic("CV4205", "bounded while requires a compile-time int bound", stmt.Bound.exprSpan())
+		}
+		value, err := evt1EvalExpr(newEVT1ComptimeState(env), evt1EvalScopeFromValidation(scope, env), stmt.Bound)
+		if err != nil {
+			return err
+		}
+		if value.Kind != EVT1ValueInt || value.IntValue < 0 {
+			return evt1Diagnostic("CV4205", "bounded while requires a non-negative compile-time int bound", stmt.Bound.exprSpan())
+		}
+		if inComptimeFn && value.IntValue > evt1ComptimeMaxLoopBound {
+			return evt1Diagnostic("CV4206", fmt.Sprintf("comptime loop bound %d exceeds limit %d", value.IntValue, evt1ComptimeMaxLoopBound), stmt.Bound.exprSpan())
+		}
+	}
+	return validateBlock(env, scope, EVT1Type{Name: "void", Kind: EVT1TypeBuiltin}, stmt.Body, templateInfo, inComptimeFn)
 }
 
 func validateValueLayoutCycles(env *evt1Env) error {
@@ -1246,7 +1625,7 @@ func validateTemplateCallExpr(env *evt1Env, scope *evt1Scope, call EVT1CallExpr,
 	argTypes := make([]EVT1Type, 0, len(call.Args))
 	dependent := false
 	for _, arg := range call.Args {
-		argType, err := validateExpr(env, scope, arg, templateInfo)
+		argType, err := validateExpr(env, scope, arg, templateInfo, false)
 		if err != nil {
 			return EVT1Type{}, err
 		}
@@ -1342,7 +1721,7 @@ func instantiateTemplate(env *evt1Env, templateName string, concreteType EVT1Typ
 			mutable: !(param.Type.isBorrowLike() && param.Type.Const),
 		})
 	}
-	if err := validateBlock(env, scope, instFn.ReturnType, *instFn.Body, nil); err != nil {
+	if err := validateBlock(env, scope, instFn.ReturnType, *instFn.Body, nil, false); err != nil {
 		return nil, err
 	}
 	instance := &evt1TemplateInstance{

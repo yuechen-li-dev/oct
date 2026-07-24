@@ -1,0 +1,45 @@
+profile Vulkan;
+
+struct RangeConfig
+{
+    int step;
+    bool active;
+};
+
+comptime int DefaultBound = 3;
+comptime string PackageEntry = "kernel-54-default";
+comptime RangeConfig DefaultConfig = RangeConfig{2, true};
+
+static_assert(DefaultBound == 3);
+static_assert(PackageEntry == "kernel-54-default");
+static_assert(DefaultConfig.step == 2, "step mismatch");
+
+comptime int ClampIterations(int value)
+{
+    return if (value < DefaultBound) value else DefaultBound;
+}
+
+static_assert(ClampIterations(7) == 3);
+
+int ClassifyRange(VkBuffer buffer)
+{
+    comptime int LocalBound = ClampIterations(5);
+    int total = 0;
+    int cursor = 0;
+    while (cursor < LocalBound) bounded(DefaultConfig.step + 1)
+    {
+        total = total + 1;
+        cursor = cursor + 1;
+    }
+    return if (DefaultConfig.active) total else 0;
+}
+
+bool PoolReady(VkCommandPool pool, bool ready)
+{
+    int count = 0;
+    while (count < 2)
+    {
+        count = count + 1;
+    }
+    return if (ready) count > 0 else false;
+}

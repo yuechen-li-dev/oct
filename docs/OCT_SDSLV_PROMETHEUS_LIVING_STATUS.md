@@ -25,7 +25,13 @@ accepted and closed. **Concept/Vulkan EVT1 M1B-B** is now complete:
 constrained one-parameter free-function templates, explicit concrete
 invocation, symbolic body checking against named concept closures, and
 deterministic private C11 monomorphization all run through the EVT1 typed MIR
-without introducing runtime generic machinery. Production remains handwritten.
+without introducing runtime generic machinery. **Concept/Vulkan EVT1 M1B-C**
+is now honestly classified as `MEANINGFUL PROGRESSION`: bounded pure comptime
+evaluation, expression-valued `if`, runtime and bounded `while`, `static_assert`,
+and compile-time declaration/function support run through parsing, validation,
+typed MIR, generated C, checked outputs, and native specimens, but fixed-size
+arrays are still absent from the accepted compile-time value domain. Production
+remains handwritten.
 
 The owner direction is:
 
@@ -117,20 +123,28 @@ Concept/Vulkan EVT1 now includes:
 - symbolic dependent-call binding to ordered concept requirements and
   deterministic concrete monomorphization to one private C11 helper per unique
   `(template, concrete type)` key;
+- top-level and local `comptime` declarations plus top-level `comptime`
+  free functions;
+- compile-time-only `static_assert`, expression-valued `if`, ordinary runtime
+  `while`, and compile-time `while` gated by explicit `bounded(limit)`;
+- deterministic bounded compile-time evaluation over `int`, `bool`, `string`,
+  enums, and structs composed from accepted compile-time values;
 - focused hardware-independent and Vulkan-shaped specimens proving structs,
   immovability, concept satisfaction, explicit-only template instantiation,
-  deterministic instance reuse, and preserved M1A enum/`match` behavior.
+  deterministic instance reuse, bounded compile-time evaluation, and preserved
+  M1A enum/`match` behavior.
 
 The owner-preserved paused states are unchanged:
 
 - Prometheus RQ-M1 physical batching is preserved but paused;
 - DVT-2 optimization is preserved but paused;
-- EVT1 M1B-C bounded pure compile-time evaluation remains deferred after the
-  now-accepted M1B-B substrate;
+- EVT1 M1B-C now exists as meaningful progression; the isolated remaining
+  blocker is fixed-size arrays inside the compile-time value domain;
 - the historical kernel-54 milestone named `M1C` remains distinct from the
   later planned EVT1 milestone named `M1B-C`;
 - DragonGod lifecycle automata remain deferred until after the required
-  language substrate and the later M1B-C bounded evaluator;
+  language substrate and completion of the remaining M1B-C fixed-size-array
+  work;
 - the first production mechanism reconstruction remains deferred to EVT1 M1C;
 - backporting accepted EVT1 semantics into the broader Zig Concept bootstrap
   remains outside this assignment and another reviewer’s boundary;

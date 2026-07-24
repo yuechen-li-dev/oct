@@ -94,11 +94,27 @@ func lexEVT1(text string) ([]Token, error) {
 			tokens = append(tokens, Token{Lexeme: "::", Span: start})
 			i += 2
 			column += 2
+		case i+1 < len(text) && text[i:i+2] == "!=":
+			tokens = append(tokens, Token{Lexeme: "!=", Span: start})
+			i += 2
+			column += 2
+		case i+1 < len(text) && text[i:i+2] == "==":
+			tokens = append(tokens, Token{Lexeme: "==", Span: start})
+			i += 2
+			column += 2
+		case i+1 < len(text) && text[i:i+2] == "<=":
+			tokens = append(tokens, Token{Lexeme: "<=", Span: start})
+			i += 2
+			column += 2
+		case i+1 < len(text) && text[i:i+2] == ">=":
+			tokens = append(tokens, Token{Lexeme: ">=", Span: start})
+			i += 2
+			column += 2
 		case i+1 < len(text) && text[i:i+2] == "=>":
 			tokens = append(tokens, Token{Lexeme: "=>", Span: start})
 			i += 2
 			column += 2
-		case strings.ContainsRune("(){};,.*+=<>", rune(c)):
+		case strings.ContainsRune("(){};,.*+-=<>!", rune(c)):
 			tokens = append(tokens, Token{Lexeme: string(c), Span: start})
 			i++
 			column++
@@ -141,6 +157,30 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 	}
 	for !p.done() {
 		switch p.peekLexeme() {
+		case "comptime":
+			isFunction, err := p.looksLikeComptimeFunction()
+			if err != nil {
+				return module, err
+			}
+			if isFunction {
+				fn, err := p.parseFunctionDecl("", true)
+				if err != nil {
+					return module, err
+				}
+				module.ComptimeFns = append(module.ComptimeFns, fn)
+				continue
+			}
+			decl, err := p.parseComptimeDecl()
+			if err != nil {
+				return module, err
+			}
+			module.ComptimeDecls = append(module.ComptimeDecls, decl)
+		case "static_assert":
+			assertion, err := p.parseStaticAssert()
+			if err != nil {
+				return module, err
+			}
+			module.StaticAsserts = append(module.StaticAsserts, assertion)
 		case "template":
 			templateDecl, err := p.parseTemplateDecl()
 			if err != nil {
@@ -178,7 +218,7 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 			}
 			module.Assertions = append(module.Assertions, assertion)
 		default:
-			fn, err := p.parseFunctionDecl("")
+			fn, err := p.parseFunctionDecl("", false)
 			if err != nil {
 				return module, err
 			}
@@ -214,7 +254,7 @@ func (p *evt1Parser) parseTemplateDecl() (EVT1TemplateDecl, error) {
 	if err != nil {
 		return EVT1TemplateDecl{}, err
 	}
-	fn, err := p.parseFunctionDecl(paramTok.Lexeme)
+	fn, err := p.parseFunctionDecl(paramTok.Lexeme, false)
 	if err != nil {
 		return EVT1TemplateDecl{}, err
 	}
@@ -235,6 +275,79 @@ func (p *evt1Parser) parseTemplateDecl() (EVT1TemplateDecl, error) {
 		Body:       fn.Body,
 		Span:       start.Span,
 	}, nil
+}
+
+func (p *evt1Parser) looksLikeComptimeFunction() (bool, error) {
+	if p.peekLexeme() != "comptime" {
+		return false, nil
+	}
+	save := p.pos
+	defer func() { p.pos = save }()
+	p.next()
+	if _, err := p.parseType(""); err != nil {
+		return false, err
+	}
+	if !isIdentifier(p.peekLexeme()) {
+		return false, evt1Diagnostic("CV4183", "expected comptime declaration name", p.currentSpan())
+	}
+	p.next()
+	return p.peekLexeme() == "(", nil
+}
+
+func (p *evt1Parser) parseComptimeDecl() (EVT1ComptimeDecl, error) {
+	start, err := p.expect("comptime")
+	if err != nil {
+		return EVT1ComptimeDecl{}, err
+	}
+	t, err := p.parseType("")
+	if err != nil {
+		return EVT1ComptimeDecl{}, err
+	}
+	nameTok, err := p.expectIdentifier("CV4183", "expected comptime declaration name")
+	if err != nil {
+		return EVT1ComptimeDecl{}, err
+	}
+	if _, err := p.expect("="); err != nil {
+		return EVT1ComptimeDecl{}, err
+	}
+	value, err := p.parseExpr()
+	if err != nil {
+		return EVT1ComptimeDecl{}, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return EVT1ComptimeDecl{}, err
+	}
+	return EVT1ComptimeDecl{Type: t, Name: nameTok.Lexeme, Value: value, Span: start.Span}, nil
+}
+
+func (p *evt1Parser) parseStaticAssert() (EVT1StaticAssert, error) {
+	start, err := p.expect("static_assert")
+	if err != nil {
+		return EVT1StaticAssert{}, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return EVT1StaticAssert{}, err
+	}
+	condition, err := p.parseExpr()
+	if err != nil {
+		return EVT1StaticAssert{}, err
+	}
+	assertion := EVT1StaticAssert{Condition: condition, Span: start.Span}
+	if p.peekLexeme() == "," {
+		p.next()
+		message, err := p.parseExpr()
+		if err != nil {
+			return EVT1StaticAssert{}, err
+		}
+		assertion.Message = message
+	}
+	if _, err := p.expect(")"); err != nil {
+		return EVT1StaticAssert{}, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return EVT1StaticAssert{}, err
+	}
+	return assertion, nil
 }
 
 func (p *evt1Parser) parseStructDecl(immovable bool) (EVT1StructDecl, error) {
@@ -430,7 +543,12 @@ func (p *evt1Parser) parseConceptAssertion() (EVT1ConceptAssertion, error) {
 	return EVT1ConceptAssertion{ConceptName: ref.Name, ConcreteType: ref.TypeArgs[0], Span: start.Span}, nil
 }
 
-func (p *evt1Parser) parseFunctionDecl(conceptParam string) (EVT1FunctionDecl, error) {
+func (p *evt1Parser) parseFunctionDecl(conceptParam string, comptime bool) (EVT1FunctionDecl, error) {
+	if comptime {
+		if _, err := p.expect("comptime"); err != nil {
+			return EVT1FunctionDecl{}, err
+		}
+	}
 	retType, err := p.parseType(conceptParam)
 	if err != nil {
 		return EVT1FunctionDecl{}, err
@@ -442,7 +560,7 @@ func (p *evt1Parser) parseFunctionDecl(conceptParam string) (EVT1FunctionDecl, e
 	if _, err := p.expect("("); err != nil {
 		return EVT1FunctionDecl{}, err
 	}
-	fn := EVT1FunctionDecl{Name: nameTok.Lexeme, ReturnType: retType, Span: nameTok.Span}
+	fn := EVT1FunctionDecl{Comptime: comptime, Name: nameTok.Lexeme, ReturnType: retType, Span: nameTok.Span}
 	if p.peekLexeme() != ")" {
 		for {
 			paramType, err := p.parseType(conceptParam)
@@ -588,6 +706,14 @@ func (p *evt1Parser) parseBlock() (EVT1Block, error) {
 
 func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 	switch p.peekLexeme() {
+	case "comptime":
+		return p.parseLocalComptimeDecl()
+	case "static_assert":
+		assertion, err := p.parseStaticAssert()
+		if err != nil {
+			return nil, err
+		}
+		return &EVT1StaticAssertStmt{Condition: assertion.Condition, Message: assertion.Message, Span: assertion.Span}, nil
 	case "return":
 		start := p.next().Span
 		if p.peekLexeme() == ";" {
@@ -604,6 +730,8 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 		return &EVT1ReturnStmt{Value: value, Span: start}, nil
 	case "match":
 		return p.parseMatchStmt()
+	case "while":
+		return p.parseWhileStmt()
 	case "{":
 		block, err := p.parseBlock()
 		if err != nil {
@@ -634,6 +762,14 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 		}
 		return &EVT1ExprStmt{Value: value, Span: value.exprSpan()}, nil
 	}
+}
+
+func (p *evt1Parser) parseLocalComptimeDecl() (EVT1Statement, error) {
+	decl, err := p.parseComptimeDecl()
+	if err != nil {
+		return nil, err
+	}
+	return &EVT1VarDecl{Comptime: true, Type: decl.Type, Name: decl.Name, Value: decl.Value, Span: decl.Span}, nil
 }
 
 func (p *evt1Parser) looksLikeVarDecl() bool {
@@ -752,7 +888,98 @@ func (p *evt1Parser) parsePattern() (EVT1Pattern, error) {
 }
 
 func (p *evt1Parser) parseExpr() (EVT1Expr, error) {
-	return p.parseComparison()
+	return p.parseIfExpr()
+}
+
+func (p *evt1Parser) parseIfExpr() (EVT1Expr, error) {
+	if p.peekLexeme() != "if" {
+		return p.parseLogicalOr()
+	}
+	start := p.next().Span
+	if _, err := p.expect("("); err != nil {
+		return nil, err
+	}
+	condition, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return nil, err
+	}
+	thenExpr, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("else"); err != nil {
+		return nil, evt1Diagnostic("CV4184", "if expressions require an else branch", p.currentSpan())
+	}
+	elseExpr, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if evt1IsDirectIfExpr(elseExpr) {
+		return nil, evt1Diagnostic("CV4185", "else-if ladders are not supported; use match for multi-branch selection", elseExpr.exprSpan())
+	}
+	return &EVT1IfExpr{Condition: condition, Then: thenExpr, Else: elseExpr, Span: start}, nil
+}
+
+func evt1IsDirectIfExpr(expr EVT1Expr) bool {
+	switch e := expr.(type) {
+	case *EVT1IfExpr:
+		return true
+	case *EVT1ParenExpr:
+		return evt1IsDirectIfExpr(e.Value)
+	default:
+		return false
+	}
+}
+
+func (p *evt1Parser) parseLogicalOr() (EVT1Expr, error) {
+	left, err := p.parseLogicalAnd()
+	if err != nil {
+		return nil, err
+	}
+	for p.peekLexeme() == "or" {
+		op := p.next()
+		right, err := p.parseLogicalAnd()
+		if err != nil {
+			return nil, err
+		}
+		left = &EVT1BinaryExpr{Op: op.Lexeme, Left: left, Right: right, Span: op.Span}
+	}
+	return left, nil
+}
+
+func (p *evt1Parser) parseLogicalAnd() (EVT1Expr, error) {
+	left, err := p.parseEquality()
+	if err != nil {
+		return nil, err
+	}
+	for p.peekLexeme() == "and" {
+		op := p.next()
+		right, err := p.parseEquality()
+		if err != nil {
+			return nil, err
+		}
+		left = &EVT1BinaryExpr{Op: op.Lexeme, Left: left, Right: right, Span: op.Span}
+	}
+	return left, nil
+}
+
+func (p *evt1Parser) parseEquality() (EVT1Expr, error) {
+	left, err := p.parseComparison()
+	if err != nil {
+		return nil, err
+	}
+	for p.peekLexeme() == "==" || p.peekLexeme() == "!=" {
+		op := p.next()
+		right, err := p.parseComparison()
+		if err != nil {
+			return nil, err
+		}
+		left = &EVT1BinaryExpr{Op: op.Lexeme, Left: left, Right: right, Span: op.Span}
+	}
+	return left, nil
 }
 
 func (p *evt1Parser) parseComparison() (EVT1Expr, error) {
@@ -760,7 +987,7 @@ func (p *evt1Parser) parseComparison() (EVT1Expr, error) {
 	if err != nil {
 		return nil, err
 	}
-	for p.peekLexeme() == "<" || p.peekLexeme() == ">" {
+	for p.peekLexeme() == "<" || p.peekLexeme() == ">" || p.peekLexeme() == "<=" || p.peekLexeme() == ">=" {
 		op := p.next()
 		right, err := p.parseAdditive()
 		if err != nil {
@@ -772,13 +999,13 @@ func (p *evt1Parser) parseComparison() (EVT1Expr, error) {
 }
 
 func (p *evt1Parser) parseAdditive() (EVT1Expr, error) {
-	left, err := p.parsePrimary()
+	left, err := p.parseMultiplicative()
 	if err != nil {
 		return nil, err
 	}
-	for p.peekLexeme() == "+" {
+	for p.peekLexeme() == "+" || p.peekLexeme() == "-" {
 		op := p.next()
-		right, err := p.parsePrimary()
+		right, err := p.parseMultiplicative()
 		if err != nil {
 			return nil, err
 		}
@@ -787,12 +1014,40 @@ func (p *evt1Parser) parseAdditive() (EVT1Expr, error) {
 	return left, nil
 }
 
+func (p *evt1Parser) parseMultiplicative() (EVT1Expr, error) {
+	left, err := p.parseUnary()
+	if err != nil {
+		return nil, err
+	}
+	for p.peekLexeme() == "*" {
+		op := p.next()
+		right, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		left = &EVT1BinaryExpr{Op: op.Lexeme, Left: left, Right: right, Span: op.Span}
+	}
+	return left, nil
+}
+
+func (p *evt1Parser) parseUnary() (EVT1Expr, error) {
+	if p.peekLexeme() == "-" || p.peekLexeme() == "not" {
+		op := p.next()
+		value, err := p.parseUnary()
+		if err != nil {
+			return nil, err
+		}
+		return &EVT1UnaryExpr{Op: op.Lexeme, Value: value, Span: op.Span}, nil
+	}
+	return p.parsePrimary()
+}
+
 func (p *evt1Parser) parsePrimary() (EVT1Expr, error) {
 	switch {
 	case p.done():
 		return nil, evt1Diagnostic("CV4013", "unexpected end of expression", p.currentSpan())
 	case p.peekLexeme() == "(":
-		p.next()
+		start := p.next().Span
 		expr, err := p.parseExpr()
 		if err != nil {
 			return nil, err
@@ -800,12 +1055,21 @@ func (p *evt1Parser) parsePrimary() (EVT1Expr, error) {
 		if _, err := p.expect(")"); err != nil {
 			return nil, err
 		}
-		return expr, nil
+		return &EVT1ParenExpr{Value: expr, Span: start}, nil
+	case p.peekLexeme() == "if":
+		return p.parseIfExpr()
 	case p.peekLexeme() == "match":
 		return p.parseMatchExpr()
 	case p.peekLexeme() == "true" || p.peekLexeme() == "false":
 		tok := p.next()
 		return &EVT1BoolLiteral{Value: tok.Lexeme == "true", Span: tok.Span}, nil
+	case strings.HasPrefix(p.peekLexeme(), "\""):
+		tok := p.next()
+		value, err := strconv.Unquote(tok.Lexeme)
+		if err != nil {
+			return nil, evt1Diagnostic("CV4000", "invalid string literal", tok.Span)
+		}
+		return &EVT1StringLiteral{Value: value, Span: tok.Span}, nil
 	case isNumber(p.peekLexeme()):
 		tok := p.next()
 		value, _ := strconv.Atoi(tok.Lexeme)
@@ -813,6 +1077,44 @@ func (p *evt1Parser) parsePrimary() (EVT1Expr, error) {
 	default:
 		return p.parseNameLikeExpr()
 	}
+}
+
+func (p *evt1Parser) parseWhileStmt() (EVT1Statement, error) {
+	start, err := p.expect("while")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return nil, err
+	}
+	condition, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return nil, err
+	}
+	stmt := &EVT1WhileStmt{Condition: condition, Span: start.Span}
+	if p.peekLexeme() == "bounded" {
+		p.next()
+		if _, err := p.expect("("); err != nil {
+			return nil, err
+		}
+		bound, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(")"); err != nil {
+			return nil, err
+		}
+		stmt.Bound = bound
+	}
+	body, err := p.parseBlock()
+	if err != nil {
+		return nil, err
+	}
+	stmt.Body = body
+	return stmt, nil
 }
 
 func (p *evt1Parser) parseMatchExpr() (EVT1Expr, error) {

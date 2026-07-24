@@ -28,6 +28,8 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 		"evt1_m1b_a_vulkan.concept",
 		"evt1_m1b_b_language.concept",
 		"evt1_m1b_b_vulkan.concept",
+		"evt1_m1b_c_language.concept",
+		"evt1_m1b_c_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -92,6 +94,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 		"evt1_m1b_a_vulkan.concept",
 		"evt1_m1b_b_language.concept",
 		"evt1_m1b_b_vulkan.concept",
+		"evt1_m1b_c_language.concept",
+		"evt1_m1b_c_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -391,6 +395,85 @@ bool Chained() { return 3 > 2 > 1; }
 	}
 }
 
+func TestEVT1M1BCDiagnosticsAreStable(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code string
+	}{
+		{
+			name: "if requires else",
+			src:  "profile Vulkan;\nint Use(bool flag) { return if (flag) 1; }\n",
+			code: "CV4184",
+		},
+		{
+			name: "else if rejected",
+			src:  "profile Vulkan;\nint Use(bool a, bool b) { return if (a) 1 else if (b) 2 else 3; }\n",
+			code: "CV4185",
+		},
+		{
+			name: "runtime cannot call comptime function",
+			src:  "profile Vulkan;\ncomptime int Bound(int value) { return value; }\nint Use() { return Bound(1); }\n",
+			code: "CV4210",
+		},
+		{
+			name: "runtime value rejected in comptime local",
+			src:  "profile Vulkan;\nint Use(int value) { comptime int Local = value; return Local; }\n",
+			code: "CV4200",
+		},
+		{
+			name: "comptime while must be bounded",
+			src:  "profile Vulkan;\ncomptime int Sum(int limit) { int cursor = 0; while (cursor < limit) { cursor = cursor + 1; } return cursor; }\nstatic_assert(Sum(1) == 1);\n",
+			code: "CV4205",
+		},
+		{
+			name: "bounded while requires comptime int",
+			src:  "profile Vulkan;\nint Use(int limit) { int cursor = 0; while (cursor < limit) bounded(limit) { cursor = cursor + 1; } return cursor; }\n",
+			code: "CV4200",
+		},
+		{
+			name: "comptime recursion rejected",
+			src:  "profile Vulkan;\ncomptime int First(int value) { return Second(value); }\ncomptime int Second(int value) { return First(value); }\nstatic_assert(First(1) == 1);\n",
+			code: "CV4217",
+		},
+		{
+			name: "static assert message must be string",
+			src:  "profile Vulkan;\nstatic_assert(true, 1);\n",
+			code: "CV4208",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseEVT1("test.concept", tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("err=%v want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestEVT1M1BCGenerationErasesComptimeRuntime(t *testing.T) {
+	src := readEVT1Fixture(t, "evt1_m1b_c_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_c_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := string(outputs["evt1_m1b_c_language.generated.h"])
+	body := string(outputs["evt1_m1b_c_language.generated.c"])
+	if strings.Contains(header, "ClampCount") || strings.Contains(body, "ClampCount(") || strings.Contains(body, "SumTo(") {
+		t.Fatalf("comptime functions leaked into generated runtime output:\n%s", body)
+	}
+	for _, needle := range []string{"while (", "if (", "concept_vulkan_limits_make(3, true)"} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("generated C missing %q\n%s", needle, body)
+		}
+	}
+}
+
 func TestEVT1CheckRejectsHandEdit(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_a_language.concept")
 	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
@@ -630,6 +713,62 @@ int main(void) {
 }
 `
 	runNativeHarness(t, outputs, "evt1_m1b_b_vulkan_harness.c", harness, nil)
+}
+
+func TestEVT1M1BCLanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_m1b_c_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_c_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_m1b_c_language.generated.h"
+
+int main(void) {
+  if (concept_vulkan_evt1_m1b_c_language_selected_arm(true, 7, 3) != 7) return 1;
+  if (concept_vulkan_evt1_m1b_c_language_selected_arm(false, 7, 3) != 3) return 2;
+  if (concept_vulkan_evt1_m1b_c_language_count_up(2) != 4) return 3;
+  if (concept_vulkan_evt1_m1b_c_language_count_up(10) != 6) return 4;
+  if (concept_vulkan_evt1_m1b_c_language_zero_bound(5) != 99) return 5;
+  if (concept_vulkan_evt1_m1b_c_language_default_bound() != 3) return 6;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_m1b_c_language_harness.c", harness, nil)
+}
+
+func TestEVT1M1BCVulkanSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_m1b_c_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_c_vulkan.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_m1b_c_vulkan.generated.h"
+#include <stdint.h>
+
+int main(void) {
+  VkBuffer buffer = (VkBuffer)(uintptr_t)0x10u;
+  VkCommandPool pool = (VkCommandPool)(uintptr_t)0x20u;
+  if (concept_vulkan_evt1_m1b_c_vulkan_classify_range(buffer) != 3) return 1;
+  if (!concept_vulkan_evt1_m1b_c_vulkan_pool_ready(pool, true)) return 2;
+  if (concept_vulkan_evt1_m1b_c_vulkan_pool_ready(pool, false)) return 3;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_m1b_c_vulkan_harness.c", harness, nil)
 }
 
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {
