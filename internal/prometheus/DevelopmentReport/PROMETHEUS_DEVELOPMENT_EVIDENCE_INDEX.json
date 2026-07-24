@@ -80,6 +80,13 @@
       "role": "production Vulkan characterization, Oct/SDSL-V reuse decision, PoC3 classification, bounded M1 specimen, profile MIR mapping, and generated-authority boundary"
     },
     {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M1_KERNEL54_COMPILER_VERTICAL.md",
+      "subsystem_or_era": "Concept/Vulkan M1",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "bounded kernel-54 compiler, deterministic generated-conformance artifact, and explicit private-adapter/runtime-equivalence limitation"
+    },
+    {
       "path": "docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md",
       "subsystem_or_era": "Concept/Vulkan language",
       "status": "current",

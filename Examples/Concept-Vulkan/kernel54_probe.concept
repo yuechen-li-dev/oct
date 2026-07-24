@@ -1,0 +1,15 @@
+profile Vulkan;
+import Prometheus.Vulkan;
+
+fn Execute(borrow context: MechanismContext, unsafe imported borrow admittedTlas: AccelerationStructure) -> Result<ProbeEvidence, PrometheusError> {
+    owned evidence = CreateMappedEvidenceBuffer(context)?;
+    owned pipeline = CreatePackagePipeline(context, "prometheus.core@1", "kernel-54-default")?;
+    owned descriptors = BindDescriptor(context, admittedTlas, evidence, 0, 1)?;
+    owned command = BeginCommands(context)?;
+    DeclareAccess(admittedTlas, AccelerationStructureRead);
+    DeclareAccess(evidence, ShaderWrite);
+    Dispatch(command, 1, 1, 1);
+    owned submission = SubmitAndWait(context, move command)?;
+    ReadObservation(evidence);
+    return Ok;
+}

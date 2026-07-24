@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative M0 constitution; no compiler or production source exists yet**
+Status: **normative M1 constitution; bounded kernel-54 compiler implemented; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -70,6 +70,17 @@ repository-owned metadata. Current examples are:
 - failure branches that preserve an existing Prometheus error and cleanup order.
 
 Generation must not erase an essential decision or invent policy.
+
+## 2.1 M1 source naming
+
+Concept/Vulkan follows the Go/C#/Oct capitalization family. User-facing
+functions, compiler-known operations, and type names use `PascalCase`; parameters
+and locals use `camelCase`. Existing C ABI spelling is retained only at the
+backend boundary, and MIR opcodes remain compiler snake_case. The canonical M1
+source uses `Execute`, `CreateMappedEvidenceBuffer`, `BindDescriptor`,
+`BeginCommands`, `DeclareAccess`, `Dispatch`, `SubmitAndWait`, and
+`ReadObservation`. M1 enforces function/local naming in its bounded parser;
+this is not a general style-lint subsystem.
 
 ## 3. Static and runtime facts
 

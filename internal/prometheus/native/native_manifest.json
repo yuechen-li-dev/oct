@@ -40,6 +40,7 @@
   },
   "sdslv_test_host_source": "sdslv_test_host.c",
   "generated_headers": [
+    "reactor_concept_vulkan_kernel54.generated.h",
     "reactor_shader_ids.generated.h",
     "reactor_vulkan_a2x4_row_biased_accum8_spirv.h",
     "reactor_vulkan_b2x2_row_major_biased_spirv.h",
@@ -101,6 +102,28 @@
     "reactor_vulkan_zimage_nr0_q_norm_rope_spirv.h"
   ],
   "generated_artifact_sets": [
+    {
+      "id": "concept-vulkan-m1-kernel54-conformance",
+      "paths": [
+        "internal/prometheus/native/reactor_concept_vulkan_kernel54.generated.c",
+        "internal/prometheus/native/reactor_concept_vulkan_kernel54.generated.h",
+        "internal/prometheus/native/reactor_concept_vulkan_kernel54.manifest.json",
+        "internal/prometheus/native/reactor_concept_vulkan_kernel54.map.json",
+        "internal/prometheus/native/reactor_concept_vulkan_kernel54.mir.json"
+      ],
+      "generator": "go run ./cmd/concept-vulkan generate",
+      "declared_input_authority": ["Examples/Concept-Vulkan/kernel54_probe.concept", "internal/conceptvulkan"],
+      "required_for_clean_clone": true,
+      "required_for_build": false,
+      "reproducibility_check": "go run ./cmd/concept-vulkan check",
+      "source_controlled_intentionally": true,
+      "packaged": false,
+      "content_addressed": true,
+      "bytes_authoritative": "deterministic private conformance artifact; do not hand edit",
+      "known_consumers": ["Concept/Vulkan M1 review and conformance tests"],
+      "delete_regenerate_result": "regenerate with the bounded compiler; checked output is rejected on drift",
+      "status": "normative"
+    },
     {
       "id": "native-generated-headers-declared",
       "paths": [

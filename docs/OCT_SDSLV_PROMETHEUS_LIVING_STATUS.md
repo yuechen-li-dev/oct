@@ -14,9 +14,11 @@ kernel.
 The immediate project is **Concept/Vulkan**: a bounded host-side language
 profile for expressing Prometheus Vulkan mechanisms without continuing to
 author the repetitive bulk of new mechanisms directly in raw Vulkan C.
-Concept/Vulkan M0 fixes the language constitution and implementation boundary;
-M1 will implement one package-backed capability-probe vertical slice through
-the working Go-based Oct/SDSL-V compiler lineage.
+Concept/Vulkan M0 fixed the language constitution and implementation boundary.
+M1 now provides the hermetic package-backed kernel-54 compiler/source/MIR/C-H
+artifact vertical, while keeping production handwritten because the required
+private scene/command helper boundary is not reusable without a separate
+approved adapter.
 
 The owner direction is:
 
@@ -88,8 +90,8 @@ generated path proves behavioral and failure-path equivalence.
 
 ## Next bounded slice
 
-Concept/Vulkan M1 will express the current package-backed ray-query capability
-probe with:
+Concept/Vulkan M1 expresses the current package-backed ray-query capability
+probe in a checked-in conformance artifact with:
 
 - a borrowed admitted mechanism context and acceleration structure;
 - exact `prometheus.core@1` / `kernel-54-default` identity;
@@ -100,8 +102,10 @@ probe with:
 - existing Prometheus errors and failure ordering;
 - deterministic C/H, source map, and generation manifest.
 
-Full physical ray-query batch equivalence is M2. Production ray-query migration
-is M3. A bounded Stage 4 SGEMM expression pressure proof is M4.
+Runtime equivalence remains blocked on the private adapter; M2 first resolves
+that non-public conformance boundary, then evaluates physical ray-query batch
+equivalence. Production ray-query migration is M3. A bounded Stage 4 SGEMM
+expression pressure proof is M4.
 
 ## Provenance note
 

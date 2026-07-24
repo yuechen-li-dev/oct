@@ -1,0 +1,122 @@
+{
+  "function": "Execute",
+  "generated_c_lines": {
+    "end": 9,
+    "start": 6
+  },
+  "generated_symbol": "prom_concept_vulkan_kernel54_plan_verify",
+  "mir": [
+    {
+      "ID": "m1.01",
+      "Opcode": "create_buffer",
+      "Ownership": "owned evidence initialized",
+      "Fallibility": "yes",
+      "Mapping": "prom_vk_create_buffer",
+      "span": {
+        "line": 5,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.02",
+      "Opcode": "create_pipeline",
+      "Ownership": "owned pipeline initialized",
+      "Fallibility": "yes",
+      "Mapping": "prom_reactor_runtime_get_shader_package; prom_shader_package_create_module; vkCreateComputePipelines",
+      "span": {
+        "line": 6,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.03",
+      "Opcode": "bind_descriptor",
+      "Ownership": "owned descriptors initialized",
+      "Fallibility": "yes",
+      "Mapping": "vkUpdateDescriptorSets bindings 0/1",
+      "span": {
+        "line": 7,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.04",
+      "Opcode": "begin_recording",
+      "Ownership": "owned command initialized",
+      "Fallibility": "yes",
+      "Mapping": "prom_ray_begin_command",
+      "span": {
+        "line": 8,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.05",
+      "Opcode": "declare_tlas_access",
+      "Ownership": "",
+      "Fallibility": "no",
+      "Mapping": "kernel-54 acceleration_structure_read",
+      "span": {
+        "line": 9,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.06",
+      "Opcode": "declare_evidence_access",
+      "Ownership": "",
+      "Fallibility": "no",
+      "Mapping": "kernel-54 shader_write -\u003e host_read completion",
+      "span": {
+        "line": 10,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.07",
+      "Opcode": "dispatch",
+      "Ownership": "",
+      "Fallibility": "no",
+      "Mapping": "vkCmdDispatch(1, 1, 1)",
+      "span": {
+        "line": 11,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.08",
+      "Opcode": "submit_wait",
+      "Ownership": "command moved; submission completed",
+      "Fallibility": "yes",
+      "Mapping": "prom_ray_end_submit_and_free",
+      "span": {
+        "line": 12,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.09",
+      "Opcode": "observe",
+      "Ownership": "borrow evidence",
+      "Fallibility": "no",
+      "Mapping": "memcpy mapped evidence",
+      "span": {
+        "line": 13,
+        "column": 5
+      }
+    },
+    {
+      "ID": "m1.10",
+      "Opcode": "return",
+      "Ownership": "drop descriptors, pipeline, evidence",
+      "Fallibility": "no",
+      "Mapping": "reverse initialized cleanup",
+      "span": {
+        "line": 14,
+        "column": 5
+      }
+    }
+  ],
+  "schema": "concept-vulkan-source-map.v1",
+  "source": "Examples/Concept-Vulkan/kernel54_probe.concept"
+}

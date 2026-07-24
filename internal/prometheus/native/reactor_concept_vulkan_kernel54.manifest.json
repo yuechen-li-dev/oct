@@ -1,0 +1,33 @@
+{
+  "compiler": "concept-vulkan-m1",
+  "descriptor_contract": "binding 0 acceleration_structure read; binding 1 storage_buffer write",
+  "entry": "kernel-54-default",
+  "files": [
+    {
+      "path": "reactor_concept_vulkan_kernel54.generated.c",
+      "sha256": "df5249d8c9630df32a7f655ed64f56d97d0dfcd1da59d196b3d76c055cf20566"
+    },
+    {
+      "path": "reactor_concept_vulkan_kernel54.generated.h",
+      "sha256": "b24dbc737982e4877246062c1543884be4379c6a274eef64fef16bf2db70fd39"
+    },
+    {
+      "path": "reactor_concept_vulkan_kernel54.mir.json",
+      "sha256": "bb257f3ae74cd25685d66b992a49467e1192cadf4207b6867a07ebcd82f80fd1"
+    },
+    {
+      "path": "reactor_concept_vulkan_kernel54.map.json",
+      "sha256": "2327f0da721eed92b5be90ff1818247e8af5d89fc2dd0d6cf3132e8943c44c8c"
+    }
+  ],
+  "options": {
+    "paths": "repository-relative",
+    "timestamps": "forbidden"
+  },
+  "package": "prometheus.core@1",
+  "profile": "Vulkan",
+  "schema": "concept-vulkan-generation-manifest.v1",
+  "source": "Examples/Concept-Vulkan/kernel54_probe.concept",
+  "source_sha256": "d0a9c521268d65c37aa4ea20655a23e3716472c1915f5a90a1033a68036fd26c",
+  "target": "Prometheus Vulkan kernel-54 M1"
+}
