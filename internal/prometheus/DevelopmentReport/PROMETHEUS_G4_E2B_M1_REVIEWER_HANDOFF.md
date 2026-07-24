@@ -1,11 +1,13 @@
 # PROMETHEUS G4-E2B-M1 — raw-score stabilization handoff
 
-## Current repository handoff — Stage 2
+## Current repository handoff — Stage 3
 
 The repository/generated-authority hygiene pass is recorded in
 `internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE1_REPOSITORY_AND_GENERATED_AUTHORITY.md`.
 The mechanical ABI and vocabulary pass is recorded in
 `internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE2_ABI_AND_VOCABULARY_CONSOLIDATION.md`.
+The common Vulkan runtime ownership extraction is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE3_VULKAN_RUNTIME_OWNERSHIP_EXTRACTION.md`.
 The compact corpus index is
 `internal/prometheus/DevelopmentReport/PROMETHEUS_DEVELOPMENT_EVIDENCE_INDEX.json`,
 and the canonical repository-authority check is:
@@ -14,13 +16,17 @@ and the canonical repository-authority check is:
 powershell -NoProfile -File .\tools\prometheus_authority.ps1
 ```
 
-Stage 0 remains the frozen lifecycle characterization and vocabulary authority.
+Stage 0 remains the frozen lifecycle characterization and vocabulary authority, and Stage 2
+remains the ABI/layout/detail preservation authority. Stage 3 establishes the concrete
+`prom_vk_runtime` owner in `native/reactor_vulkan_runtime.[ch]`; SGEMM now borrows its device,
+queues, command pools, capabilities, validation state, and package through that internal owner
+while retaining SGEMM execution resources and policy locally. Construction failure cleanup and
+reverse destruction order are explicit in the owner and SGEMM wrapper.
 The three required-live Gemma lanes remain outstanding because the external
-checkpoint is unavailable. Stage 2 is now allowed as a mechanical/static pass;
-it makes no live Gemma equivalence claim and does not repair `-7406`, the
-repeated `MainTransformer1` topology, generated-header provenance, or
-registry/package projection differences. Stage 3 common Vulkan ownership
-extraction remains deferred.
+checkpoint is unavailable. Stage 3 makes no live Gemma equivalence claim and does not repair
+`-7406`, the repeated `MainTransformer1` topology, generated-header provenance, or registry/package
+projection differences. The available Windows Vulkan preflight and lifecycle tests are separate
+from the deferred payload-backed lanes.
 
 ## Stage 0 supersession
 
@@ -108,8 +114,8 @@ advancement. The exact handoff to inspect is M46 `weight_result.generation` /
 ## Relevant files and commands
 
 - Native lifecycle and diagnostics: `native/reactor_api.c`,
-  `native/reactor_api.h`, `native/reactor_vulkan_transformer.c`, and
-  `native/reactor_vulkan_runtime_internal.h`.
+  `native/reactor_api.h`, `native/reactor_vulkan_transformer.c`,
+  `native/reactor_vulkan_runtime.[ch]`, and `native/reactor_vulkan_sgemm_internal.h`.
 - Closed Go seam and live harness: `bridge.go`, `bridge_dlopen_windows.go`,
   `bridge_dlopen_linux.go`, `gemma4e2b_m1_rtx.go`, and
   `gemma4e2b_m1_rtx_test.go`.
@@ -122,3 +128,8 @@ same-session `-7406`, allocation/teardown, and canonical Z-Image witnesses
 against the reorganized checkpoint. A live failure is a regression
 investigation, not an automatic attribution to the historical checkpoint.
 Do not automatically resume implementation of the `-7406` defect.
+
+The exact Stage 4 candidate boundary is the SGEMM-to-reactor execution handoff: slots,
+weight ownership, required generations/hashes, and any snapshot or preparation contract
+that a second reactor would genuinely consume. It is not begun here; no slots, sessions,
+leases, weight registries, binding snapshots, plans, or reactor registries were introduced.

@@ -380,9 +380,9 @@ int prom_sgemm_batch_execute(prometheus_runtime* rt,
       task->batch_entry_id = plan_entry->entry_id; task->batch_plan_generation = plan_entry->plan_generation;
       task->submission_sequence = rt->async_next_submission_sequence++; task->selected_path = plan_entry->selected_path;
       task->compute_mode = plan_entry->compute_mode; task->requested_variant = plan_entry->requested_variant; task->executed_variant = plan_entry->executed_variant;
-      result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)plan_entry->a_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->a);
-      if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)plan_entry->b_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->b);
-      if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags, (VkDeviceSize)plan_entry->c_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->c);
+      result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags, (VkDeviceSize)plan_entry->a_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->a);
+      if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags, (VkDeviceSize)plan_entry->b_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->b);
+      if (result == VK_SUCCESS) result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags, (VkDeviceSize)plan_entry->c_byte_count, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, 1, &task->c);
       if (result != VK_SUCCESS) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_TRANSFER_IN; failure_detail = (int)result; prom_batch_failure_offer(&primary_failure, &runtime_entries[next], PROM_BATCH_FAILURE_PHASE_COMMAND_RECORD, failure_detail, ++observation_sequence); break; }
       memcpy(task->a.mapped, plan_entry->a, plan_entry->a_byte_count); memcpy(task->b.mapped, plan_entry->b, plan_entry->b_byte_count); memset(task->c.mapped, 0, plan_entry->c_byte_count);
       if (prom_async_record_slot(rt, slot, task) != PROM_OK || prom_sgemm_ring_submit_slot(rt, slot) != PROM_OK) { slot->state = PROM_SGEMM_SUBMISSION_SLOT_EMPTY; prom_async_task_release(rt, task); failed = 1; failed_entry = plan_entry->entry_id; failed_worker = plan_entry->logical_lane; failure_stage = PROM_STAGE_SUBMIT; failure_detail = PROM_DETAIL_BATCH_QUEUE_SUBMIT_FAILED; prom_batch_failure_offer(&primary_failure, &runtime_entries[next], PROM_BATCH_FAILURE_PHASE_SUBMIT, failure_detail, ++observation_sequence); break; }
@@ -472,7 +472,7 @@ int prom_sgemm_batch_execute(prometheus_runtime* rt,
     if (task->lifecycle_state == PROM_ASYNC_STATE_SUBMITTED) {
       VkFence fence = rt->submission_ring[task->physical_slot_id].fence;
       rt->submission_ring_diag.total_forced_waits += 1u;
-      (void)vkWaitForFences(rt->device, 1u, &fence, VK_TRUE, UINT64_MAX);
+      (void)vkWaitForFences(rt->vulkan.device, 1u, &fence, VK_TRUE, UINT64_MAX);
       (void)prom_async_poll_task(rt, task);
     }
     prom_async_process_completion_feedback(rt);

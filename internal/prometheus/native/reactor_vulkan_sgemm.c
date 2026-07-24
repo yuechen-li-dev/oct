@@ -11,27 +11,6 @@ typedef struct prom_vk_push {
   uint32_t k;
 } prom_vk_push;
 
-static VKAPI_ATTR VkBool32 VKAPI_CALL prom_validation_callback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT severity,
-    VkDebugUtilsMessageTypeFlagsEXT type,
-    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
-    void* user_data) {
-  prometheus_runtime* rt = (prometheus_runtime*)user_data;
-  if (rt == NULL) return VK_FALSE;
-  rt->validation_message_count += 1u;
-  rt->validation_last_severity = severity;
-  rt->validation_last_type = type;
-  if (callback_data != NULL) {
-    strncpy(rt->validation_last_message_id, callback_data->pMessageIdName == NULL ? "" : callback_data->pMessageIdName, sizeof(rt->validation_last_message_id) - 1u);
-    rt->validation_last_message_id[sizeof(rt->validation_last_message_id) - 1u] = '\0';
-    strncpy(rt->validation_last_message, callback_data->pMessage == NULL ? "" : callback_data->pMessage, sizeof(rt->validation_last_message) - 1u);
-    rt->validation_last_message[sizeof(rt->validation_last_message) - 1u] = '\0';
-  }
-  if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0u) rt->validation_warning_count += 1u;
-  if ((severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0u) rt->validation_error_count += 1u;
-  return VK_FALSE;
-}
-
 enum {
   PROM_VK_PUSH_FIELD_OFFSET_M = 0,
   PROM_VK_PUSH_FIELD_OFFSET_N = 4,
@@ -207,7 +186,7 @@ static uint32_t selector_cache_enabled(const prometheus_runtime* rt) {
   if (rt == NULL) {
     return 0u;
   }
-  return ((rt->test_flags & PROM_TESTCFG_DISABLE_SELECTOR_CACHE) == 0u) ? 1u : 0u;
+  return ((rt->vulkan.test_flags & PROM_TESTCFG_DISABLE_SELECTOR_CACHE) == 0u) ? 1u : 0u;
 }
 
 static void invalidate_selector_caches(prometheus_runtime* rt) {
@@ -406,7 +385,7 @@ static int update_async_progress(prometheus_runtime* rt) {
   if (rt->async_state != PROM_ASYNC_STATE_SUBMITTED) {
     return PROM_OK;
   }
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_ASYNC_POLL) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_ASYNC_POLL) != 0u) {
     rt->in_flight_submit = 0u;
     set_async_state(rt, PROM_ASYNC_STATE_FAILED, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE);
     if (rt->slot_diag.async_slot_id >= 0) {
@@ -415,7 +394,7 @@ static int update_async_progress(prometheus_runtime* rt) {
     return PROM_ERROR;
   }
   if (rt->slot_diag.transfer_queue_used != 0u && rt->slot_diag.async_transfer_complete == 0u) {
-    vk_result = vkGetFenceStatus(rt->device, rt->transfer_submit_fence);
+    vk_result = vkGetFenceStatus(rt->vulkan.device, rt->transfer_submit_fence);
     if (vk_result == VK_SUCCESS) {
       stage_transfer_complete_telemetry(rt, 1u, rt->slot_diag.async_slot_id < 0 ? 0u : (uint32_t)rt->slot_diag.async_slot_id, 0);
     } else if (vk_result == VK_NOT_READY) {
@@ -432,7 +411,7 @@ static int update_async_progress(prometheus_runtime* rt) {
       return PROM_ERROR;
     }
   }
-  vk_result = vkGetFenceStatus(rt->device, rt->submit_fence);
+  vk_result = vkGetFenceStatus(rt->vulkan.device, rt->submit_fence);
   if (vk_result == VK_SUCCESS) {
     rt->in_flight_submit = 0u;
     if (rt->slot_diag.async_slot_id >= 0 && !prom_slot_mark_complete(rt, (uint32_t)rt->slot_diag.async_slot_id)) {
@@ -1175,7 +1154,7 @@ static void prom_apply_debug_row_major_oracle(prometheus_runtime* rt,
   size_t compare_index;
   size_t compare_len = (size_t)m * (size_t)n;
   float* row_major_oracle;
-  if (rt == NULL || (rt->test_flags & PROM_TESTCFG_PACKED4_DEBUG_ORACLE_CHECK) == 0u) {
+  if (rt == NULL || (rt->vulkan.test_flags & PROM_TESTCFG_PACKED4_DEBUG_ORACLE_CHECK) == 0u) {
     return;
   }
   row_major_oracle = (float*)malloc(compare_len * sizeof(float));
@@ -1404,61 +1383,61 @@ int prom_reactor_runtime_get_vk_services(void* handle, prom_vk_runtime_services*
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
 
   rt = (prometheus_runtime*)handle;
-  out_services->instance = rt->instance;
-  out_services->physical_device = rt->physical_device;
-  out_services->device = rt->device;
-  out_services->compute_queue = rt->compute_queue;
-  out_services->compute_queue_family_index = rt->queue_family_index;
-  out_services->compute_command_pool = rt->command_pool;
-  out_services->transfer_queue = rt->transfer_queue;
-  out_services->transfer_queue_family_index = rt->transfer_queue_family_index;
-  out_services->transfer_command_pool = rt->transfer_command_pool;
-  out_services->transfer_queue_available = rt->transfer_queue_enabled;
-  out_services->backend_available = rt->available;
-  out_services->backend_reason_code = rt->reason_code;
-  out_services->test_flags = rt->test_flags;
+  out_services->instance = rt->vulkan.instance;
+  out_services->physical_device = rt->vulkan.physical_device;
+  out_services->device = rt->vulkan.device;
+  out_services->compute_queue = rt->vulkan.compute_queue;
+  out_services->compute_queue_family_index = rt->vulkan.queue_family_index;
+  out_services->compute_command_pool = rt->vulkan.command_pool;
+  out_services->transfer_queue = rt->vulkan.transfer_queue;
+  out_services->transfer_queue_family_index = rt->vulkan.transfer_queue_family_index;
+  out_services->transfer_command_pool = rt->vulkan.transfer_command_pool;
+  out_services->transfer_queue_available = rt->vulkan.transfer_queue_enabled;
+  out_services->backend_available = rt->vulkan.available;
+  out_services->backend_reason_code = rt->vulkan.reason_code;
+  out_services->test_flags = rt->vulkan.test_flags;
   out_services->reduction_test_flags = rt->reduction_test_flags;
   out_services->reduction_ring_depth = rt->reduction_ring_depth;
   out_services->timestamp_query_supported = rt->timestamp_query_supported;
-  out_services->timestamp_valid_bits = rt->timestamp_valid_bits;
-  out_services->timestamp_period_ns = rt->timestamp_period_ns;
-  out_services->validation_enabled = rt->validation_enabled;
-  out_services->validation_warning_count = rt->validation_warning_count;
-  out_services->validation_error_count = rt->validation_error_count;
-  out_services->cooperative_matrix_state = rt->cooperative_matrix_state;
-  out_services->cooperative_matrix_extension_spec_version = rt->cooperative_matrix_extension_spec_version;
-  out_services->cooperative_matrix_feature_enabled = rt->cooperative_matrix_feature_enabled;
-  out_services->cooperative_matrix_shader_float16_enabled = rt->cooperative_matrix_shader_float16_enabled;
-  out_services->cooperative_matrix_vulkan_memory_model_enabled = rt->cooperative_matrix_vulkan_memory_model_enabled;
-  out_services->cooperative_matrix_tuple_count = rt->cooperative_matrix_tuple_count;
-  out_services->cooperative_matrix_selected_m = rt->cooperative_matrix_selected_m;
-  out_services->cooperative_matrix_selected_n = rt->cooperative_matrix_selected_n;
-  out_services->cooperative_matrix_selected_k = rt->cooperative_matrix_selected_k;
-  out_services->subgroup_size = rt->subgroup_size;
-  out_services->subgroup_supported_stages = rt->subgroup_supported_stages;
-  out_services->subgroup_supported_operations = rt->subgroup_supported_operations;
-  out_services->subgroup_compute_supported = rt->subgroup_compute_supported;
-  out_services->subgroup_arithmetic_supported = rt->subgroup_arithmetic_supported;
-  out_services->subgroup_basic_supported = rt->subgroup_basic_supported;
-  out_services->subgroup_shuffle_supported = rt->subgroup_shuffle_supported;
-  out_services->subgroup_fixed_size_32_admitted = rt->subgroup_fixed_size_32_admitted;
-  out_services->subgroup_owned_attention_admitted = rt->subgroup_owned_attention_admitted;
-  out_services->subgroup_owned_attention_topology_proven = rt->subgroup_owned_attention_topology_proven;
-  out_services->ray_query_state = rt->ray_query_state;
-  out_services->ray_query_acceleration_structure_extension_supported = rt->ray_query_acceleration_structure_extension_supported;
-  out_services->ray_query_extension_supported = rt->ray_query_extension_supported;
-  out_services->ray_query_deferred_host_operations_extension_supported = rt->ray_query_deferred_host_operations_extension_supported;
-  out_services->ray_query_buffer_device_address_supported = rt->ray_query_buffer_device_address_supported;
-  out_services->ray_query_acceleration_structure_supported = rt->ray_query_acceleration_structure_supported;
-  out_services->ray_query_supported = rt->ray_query_supported;
-  out_services->create_acceleration_structure = rt->create_acceleration_structure;
-  out_services->destroy_acceleration_structure = rt->destroy_acceleration_structure;
-  out_services->get_acceleration_structure_build_sizes = rt->get_acceleration_structure_build_sizes;
-  out_services->cmd_build_acceleration_structures = rt->cmd_build_acceleration_structures;
-  out_services->get_acceleration_structure_device_address = rt->get_acceleration_structure_device_address;
+  out_services->timestamp_valid_bits = rt->vulkan.timestamp_valid_bits;
+  out_services->timestamp_period_ns = rt->vulkan.timestamp_period_ns;
+  out_services->validation_enabled = rt->vulkan.validation_enabled;
+  out_services->validation_warning_count = rt->vulkan.validation_warning_count;
+  out_services->validation_error_count = rt->vulkan.validation_error_count;
+  out_services->cooperative_matrix_state = rt->vulkan.cooperative_matrix_state;
+  out_services->cooperative_matrix_extension_spec_version = rt->vulkan.cooperative_matrix_extension_spec_version;
+  out_services->cooperative_matrix_feature_enabled = rt->vulkan.cooperative_matrix_feature_enabled;
+  out_services->cooperative_matrix_shader_float16_enabled = rt->vulkan.cooperative_matrix_shader_float16_enabled;
+  out_services->cooperative_matrix_vulkan_memory_model_enabled = rt->vulkan.cooperative_matrix_vulkan_memory_model_enabled;
+  out_services->cooperative_matrix_tuple_count = rt->vulkan.cooperative_matrix_tuple_count;
+  out_services->cooperative_matrix_selected_m = rt->vulkan.cooperative_matrix_selected_m;
+  out_services->cooperative_matrix_selected_n = rt->vulkan.cooperative_matrix_selected_n;
+  out_services->cooperative_matrix_selected_k = rt->vulkan.cooperative_matrix_selected_k;
+  out_services->subgroup_size = rt->vulkan.subgroup_size;
+  out_services->subgroup_supported_stages = rt->vulkan.subgroup_supported_stages;
+  out_services->subgroup_supported_operations = rt->vulkan.subgroup_supported_operations;
+  out_services->subgroup_compute_supported = rt->vulkan.subgroup_compute_supported;
+  out_services->subgroup_arithmetic_supported = rt->vulkan.subgroup_arithmetic_supported;
+  out_services->subgroup_basic_supported = rt->vulkan.subgroup_basic_supported;
+  out_services->subgroup_shuffle_supported = rt->vulkan.subgroup_shuffle_supported;
+  out_services->subgroup_fixed_size_32_admitted = rt->vulkan.subgroup_fixed_size_32_admitted;
+  out_services->subgroup_owned_attention_admitted = rt->vulkan.subgroup_owned_attention_admitted;
+  out_services->subgroup_owned_attention_topology_proven = rt->vulkan.subgroup_owned_attention_topology_proven;
+  out_services->ray_query_state = rt->vulkan.ray_query_state;
+  out_services->ray_query_acceleration_structure_extension_supported = rt->vulkan.ray_query_acceleration_structure_extension_supported;
+  out_services->ray_query_extension_supported = rt->vulkan.ray_query_extension_supported;
+  out_services->ray_query_deferred_host_operations_extension_supported = rt->vulkan.ray_query_deferred_host_operations_extension_supported;
+  out_services->ray_query_buffer_device_address_supported = rt->vulkan.ray_query_buffer_device_address_supported;
+  out_services->ray_query_acceleration_structure_supported = rt->vulkan.ray_query_acceleration_structure_supported;
+  out_services->ray_query_supported = rt->vulkan.ray_query_supported;
+  out_services->create_acceleration_structure = rt->vulkan.create_acceleration_structure;
+  out_services->destroy_acceleration_structure = rt->vulkan.destroy_acceleration_structure;
+  out_services->get_acceleration_structure_build_sizes = rt->vulkan.get_acceleration_structure_build_sizes;
+  out_services->cmd_build_acceleration_structures = rt->vulkan.cmd_build_acceleration_structures;
+  out_services->get_acceleration_structure_device_address = rt->vulkan.get_acceleration_structure_device_address;
 
-  if (rt->available == 0u) return PROM_ERROR;
-  if (rt->device == VK_NULL_HANDLE || rt->compute_queue == VK_NULL_HANDLE || rt->command_pool == VK_NULL_HANDLE) {
+  if (rt->vulkan.available == 0u) return PROM_ERROR;
+  if (rt->vulkan.device == VK_NULL_HANDLE || rt->vulkan.compute_queue == VK_NULL_HANDLE || rt->vulkan.command_pool == VK_NULL_HANDLE) {
     return PROM_ERROR;
   }
   return PROM_OK;
@@ -1470,8 +1449,8 @@ int prom_reactor_runtime_get_shader_package(void* handle, prom_shader_package** 
   *out_package = NULL;
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
   runtime = (prometheus_runtime*)handle;
-  if (runtime->shader_package == NULL) return PROM_ERROR;
-  *out_package = runtime->shader_package;
+  if (runtime->vulkan.shader_package == NULL) return PROM_ERROR;
+  *out_package = runtime->vulkan.shader_package;
   return PROM_OK;
 }
 
@@ -1573,57 +1552,20 @@ static void registry_remove(void* handle) {
 // Vulkan Common Integration
 // ============================================================================
 
-static int text_contains_llvmpipe(const char* value) {
-  size_t i;
-  const char* needle = "llvmpipe";
-  if (value == NULL) {
-    return 0;
-  }
-  for (i = 0u; value[i] != '\0'; ++i) {
-    size_t j = 0u;
-    while (needle[j] != '\0') {
-      char left = value[i + j];
-      char right = needle[j];
-      if (left == '\0') {
-        break;
-      }
-      if (left >= 'A' && left <= 'Z') {
-        left = (char)(left - 'A' + 'a');
-      }
-      if (left != right) {
-        break;
-      }
-      ++j;
-    }
-    if (needle[j] == '\0') {
-      return 1;
-    }
-  }
-  return 0;
-}
-
-static uint32_t classify_capability_bucket(uint32_t value, uint32_t t1, uint32_t t2, uint32_t t3, uint32_t t4) {
-  if (value <= t1) return 1u;
-  if (value <= t2) return 2u;
-  if (value <= t3) return 3u;
-  if (value <= t4) return 4u;
-  return 5u;
-}
-
 static void destroy_all_execution_buffers(prometheus_runtime* rt) {
   uint32_t i = 0u;
   if (rt == NULL) {
     return;
   }
-  prom_vk_destroy_buffer(rt->device, &rt->direct_c);
-  prom_vk_destroy_buffer(rt->device, &rt->direct_b);
-  prom_vk_destroy_buffer(rt->device, &rt->direct_a);
-  prom_vk_destroy_buffer(rt->device, &rt->staged_readback_c);
-  prom_vk_destroy_buffer(rt->device, &rt->staged_upload_b);
-  prom_vk_destroy_buffer(rt->device, &rt->staged_upload_a);
-  prom_vk_destroy_buffer(rt->device, &rt->staged_device_c);
-  prom_vk_destroy_buffer(rt->device, &rt->staged_device_b);
-  prom_vk_destroy_buffer(rt->device, &rt->staged_device_a);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->direct_c);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->direct_b);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->direct_a);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_readback_c);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_b);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_a);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_c);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_b);
+  prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_a);
   rt->has_direct_buffers = 0u;
   rt->has_staged_buffers = 0u;
   memset(&rt->direct_a_key, 0, sizeof(rt->direct_a_key));
@@ -1839,7 +1781,7 @@ static int arena_shrink_single_buffer(prometheus_runtime* rt,
     return 1;
   }
   memset(&replacement, 0, sizeof(replacement));
-  result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+  result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                          (VkDeviceSize)shrink_target,
                          usage,
                          memory_props,
@@ -1849,7 +1791,7 @@ static int arena_shrink_single_buffer(prometheus_runtime* rt,
     arena->last_failure_reason = (int)result;
     return 0;
   }
-  prom_vk_destroy_buffer(rt->device, buffer);
+  prom_vk_destroy_buffer(rt->vulkan.device, buffer);
   *buffer = replacement;
   arena_finish_shrink(rt, arena, shrink_target);
   return 1;
@@ -1885,7 +1827,7 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
   }
   memset(&replacement_first, 0, sizeof(replacement_first));
   memset(&replacement_second, 0, sizeof(replacement_second));
-  first_result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+  first_result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                                (VkDeviceSize)shrink_target,
                                first_usage,
                                first_memory_props,
@@ -1895,19 +1837,19 @@ static int arena_shrink_paired_buffers(prometheus_runtime* rt,
     arena->last_failure_reason = (int)first_result;
     return 0;
   }
-  second_result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+  second_result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                                 (VkDeviceSize)shrink_target,
                                 second_usage,
                                 second_memory_props,
                                 second_map_memory,
                                 &replacement_second);
   if (second_result != VK_SUCCESS) {
-    prom_vk_destroy_buffer(rt->device, &replacement_first);
+    prom_vk_destroy_buffer(rt->vulkan.device, &replacement_first);
     arena->last_failure_reason = (int)second_result;
     return 0;
   }
-  prom_vk_destroy_buffer(rt->device, first);
-  prom_vk_destroy_buffer(rt->device, second);
+  prom_vk_destroy_buffer(rt->vulkan.device, first);
+  prom_vk_destroy_buffer(rt->vulkan.device, second);
   *first = replacement_first;
   *second = replacement_second;
   arena_finish_shrink(rt, arena, shrink_target);
@@ -2087,9 +2029,9 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
   arena_a->owner_slot_id = owner_slot_id;
   arena_b->owner_slot_id = owner_slot_id;
   arena_c->owner_slot_id = owner_slot_id;
-  arena_a->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
-  arena_b->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
-  arena_c->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_a->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_b->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_c->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
 
   if (rt->has_staged_buffers != 0u) {
     destroy_all_execution_buffers(rt);
@@ -2132,8 +2074,8 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    prom_vk_destroy_buffer(rt->device, &rt->direct_a);
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->direct_a);
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2172,8 +2114,8 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    prom_vk_destroy_buffer(rt->device, &rt->direct_b);
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->direct_b);
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2212,8 +2154,8 @@ static int ensure_direct_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    prom_vk_destroy_buffer(rt->device, &rt->direct_c);
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->direct_c);
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)c_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2306,10 +2248,10 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
   arena_b->owner_slot_id = owner_slot_id;
   arena_c->owner_slot_id = owner_slot_id;
   arena_upload->owner_slot_id = owner_slot_id;
-  arena_a->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
-  arena_b->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
-  arena_c->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
-  arena_upload->in_flight = (rt->in_flight_submit != 0u || (rt->test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_a->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_b->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_c->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
+  arena_upload->in_flight = (rt->in_flight_submit != 0u || (rt->vulkan.test_flags & PROM_TESTCFG_P11_ARENA_FORCE_INFLIGHT) != 0u) ? 1u : 0u;
 
   if (rt->has_direct_buffers != 0u) {
     destroy_all_execution_buffers(rt);
@@ -2355,9 +2297,9 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    prom_vk_destroy_buffer(rt->device, &rt->staged_upload_a);
-    prom_vk_destroy_buffer(rt->device, &rt->staged_device_a);
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_a);
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_a);
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2368,7 +2310,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)a_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2407,9 +2349,9 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    prom_vk_destroy_buffer(rt->device, &rt->staged_upload_b);
-    prom_vk_destroy_buffer(rt->device, &rt->staged_device_b);
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_upload_b);
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_b);
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2420,7 +2362,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)b_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2459,9 +2401,9 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       *out_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
       return 0;
     }
-    prom_vk_destroy_buffer(rt->device, &rt->staged_device_c);
-    prom_vk_destroy_buffer(rt->device, &rt->staged_readback_c);
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_device_c);
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->staged_readback_c);
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)c_required->required_bytes,
                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -2472,7 +2414,7 @@ static int ensure_staged_execution_buffers(prometheus_runtime* rt,
       destroy_all_execution_buffers(rt);
       return 0;
     }
-    result = prom_vk_create_buffer(rt->physical_device, rt->device, rt->test_flags,
+    result = prom_vk_create_buffer(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                            (VkDeviceSize)c_required->required_bytes,
                            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
@@ -2568,9 +2510,9 @@ int prom_reactor_runtime_mark_cooperative_matrix_executable(void* handle) {
   prometheus_runtime* rt;
   if (!prom_reactor_runtime_validate_handle(handle)) return PROM_INVALID_HANDLE;
   rt = (prometheus_runtime*)handle;
-  if (rt->cooperative_matrix_feature_enabled == 0u ||
-      rt->cooperative_matrix_state < PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED) return PROM_ERROR;
-  rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
+  if (rt->vulkan.cooperative_matrix_feature_enabled == 0u ||
+      rt->vulkan.cooperative_matrix_state < PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED) return PROM_ERROR;
+  rt->vulkan.cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
   return PROM_OK;
 }
 
@@ -2640,18 +2582,18 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
   /* Destruction is the one blocking recovery path: no slot-owned Vulkan
      resource is destroyed until quarantined work has been drained or the
      device teardown path owns the failure. */
-  if (rt->device != VK_NULL_HANDLE) {
+  if (rt->vulkan.device != VK_NULL_HANDLE) {
     (void)prom_async_reap_quarantined_slots(rt, 1u);
-    vkDeviceWaitIdle(rt->device);
+    prom_vk_runtime_wait_idle(&rt->vulkan);
   }
   if (rt->reduction_state != NULL) {
-    prom_reactor_runtime_reduction_cleanup_state(rt->reduction_state, rt->device);
+    prom_reactor_runtime_reduction_cleanup_state(rt->reduction_state, rt->vulkan.device);
     rt->reduction_state = NULL;
   }
   for (uint32_t async_index = 0u; async_index < PROM_SGEMM_ASYNC_MAX_TASKS; ++async_index) {
-    prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].c);
-    prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].b);
-    prom_vk_destroy_buffer(rt->device, &rt->async_tasks[async_index].a);
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].c);
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].b);
+    prom_vk_destroy_buffer(rt->vulkan.device, &rt->async_tasks[async_index].a);
   }
   destroy_all_execution_buffers(rt);
   /* Pipeline handles are mutable instances; descriptors remain immutable. */
@@ -2666,7 +2608,7 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     };
     for (uint32_t i = 0u; i < PROM_COMPUTE_PIPELINE_COUNT; ++i) {
       if (*pipeline_fields[i] != VK_NULL_HANDLE) {
-        vkDestroyPipeline(rt->device, *pipeline_fields[i], NULL);
+        vkDestroyPipeline(rt->vulkan.device, *pipeline_fields[i], NULL);
         *pipeline_fields[i] = VK_NULL_HANDLE;
       }
     }
@@ -2676,58 +2618,58 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     }
   }
   if (rt->memory_conservative_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->memory_conservative_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->memory_conservative_shader_module, NULL);
     rt->memory_conservative_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_scalar_plus_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->sdsl_scalar_plus_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->sdsl_scalar_plus_shader_module, NULL);
     rt->sdsl_scalar_plus_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_reg2x2_tile16x16_fp32_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->sdsl_reg2x2_tile16x16_fp32_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->sdsl_reg2x2_tile16x16_fp32_shader_module, NULL);
     rt->sdsl_reg2x2_tile16x16_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module, NULL);
     rt->sdsl_reg2x2_tile16x16_exacttail_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module, NULL);
     rt->sdsl_reg2x2_tile16x16_flowboard_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module, NULL);
     rt->sdsl_reg2x2_tile16x16_derive_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->sdsl_tile16x16_shared_fp32_shader_module != VK_NULL_HANDLE) {
-    vkDestroyShaderModule(rt->device, rt->sdsl_tile16x16_shared_fp32_shader_module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, rt->sdsl_tile16x16_shared_fp32_shader_module, NULL);
     rt->sdsl_tile16x16_shared_fp32_shader_module = VK_NULL_HANDLE;
   }
   if (rt->pipeline_layout != VK_NULL_HANDLE) {
-    vkDestroyPipelineLayout(rt->device, rt->pipeline_layout, NULL);
+    vkDestroyPipelineLayout(rt->vulkan.device, rt->pipeline_layout, NULL);
     rt->pipeline_layout = VK_NULL_HANDLE;
   }
   if (rt->descriptor_set_layout != VK_NULL_HANDLE) {
-    vkDestroyDescriptorSetLayout(rt->device, rt->descriptor_set_layout, NULL);
+    vkDestroyDescriptorSetLayout(rt->vulkan.device, rt->descriptor_set_layout, NULL);
     rt->descriptor_set_layout = VK_NULL_HANDLE;
   }
   if (rt->descriptor_pool != VK_NULL_HANDLE) {
-    vkDestroyDescriptorPool(rt->device, rt->descriptor_pool, NULL);
+    vkDestroyDescriptorPool(rt->vulkan.device, rt->descriptor_pool, NULL);
     rt->descriptor_pool = VK_NULL_HANDLE;
   }
   if (rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
-    vkDestroyQueryPool(rt->device, rt->sgemm_timestamp_query_pool, NULL);
+    vkDestroyQueryPool(rt->vulkan.device, rt->sgemm_timestamp_query_pool, NULL);
     rt->sgemm_timestamp_query_pool = VK_NULL_HANDLE;
   }
   if (rt->submit_fence != VK_NULL_HANDLE) {
-    vkDestroyFence(rt->device, rt->submit_fence, NULL);
+    vkDestroyFence(rt->vulkan.device, rt->submit_fence, NULL);
     rt->submit_fence = VK_NULL_HANDLE;
   }
   {
     uint32_t ring_index;
     for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
       if (rt->submission_ring[ring_index].fence != VK_NULL_HANDLE) {
-        vkDestroyFence(rt->device, rt->submission_ring[ring_index].fence, NULL);
+        vkDestroyFence(rt->vulkan.device, rt->submission_ring[ring_index].fence, NULL);
         rt->submission_ring[ring_index].fence = VK_NULL_HANDLE;
       }
       rt->submission_ring[ring_index].command_buffer = VK_NULL_HANDLE;
@@ -2735,35 +2677,16 @@ static void vk_runtime_cleanup(prometheus_runtime* rt) {
     }
   }
   if (rt->transfer_submit_fence != VK_NULL_HANDLE) {
-    vkDestroyFence(rt->device, rt->transfer_submit_fence, NULL);
+    vkDestroyFence(rt->vulkan.device, rt->transfer_submit_fence, NULL);
     rt->transfer_submit_fence = VK_NULL_HANDLE;
   }
   if (rt->transfer_ready_semaphore != VK_NULL_HANDLE) {
-    vkDestroySemaphore(rt->device, rt->transfer_ready_semaphore, NULL);
+    vkDestroySemaphore(rt->vulkan.device, rt->transfer_ready_semaphore, NULL);
     rt->transfer_ready_semaphore = VK_NULL_HANDLE;
   }
-  if (rt->transfer_command_pool != VK_NULL_HANDLE) {
-    vkDestroyCommandPool(rt->device, rt->transfer_command_pool, NULL);
-    rt->transfer_command_pool = VK_NULL_HANDLE;
-  }
-  if (rt->command_pool != VK_NULL_HANDLE) {
-    vkDestroyCommandPool(rt->device, rt->command_pool, NULL);
-    rt->command_pool = VK_NULL_HANDLE;
-  }
-  if (rt->device != VK_NULL_HANDLE) {
-    vkDestroyDevice(rt->device, NULL);
-    rt->device = VK_NULL_HANDLE;
-  }
-  if (rt->instance != VK_NULL_HANDLE) {
-    if (rt->validation_debug_messenger != VK_NULL_HANDLE) {
-      PFN_vkDestroyDebugUtilsMessengerEXT destroy_debug_messenger =
-          (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(rt->instance, "vkDestroyDebugUtilsMessengerEXT");
-      if (destroy_debug_messenger != NULL) destroy_debug_messenger(rt->instance, rt->validation_debug_messenger, NULL);
-      rt->validation_debug_messenger = VK_NULL_HANDLE;
-    }
-    vkDestroyInstance(rt->instance, NULL);
-    rt->instance = VK_NULL_HANDLE;
-  }
+  /* SGEMM objects above borrow the device and command pools.  The common
+     owner is destroyed only after those operation resources are gone. */
+  prom_vk_runtime_cleanup(&rt->vulkan);
 }
 
 static VkResult prom_runtime_create_package_module(prometheus_runtime* rt,
@@ -2771,9 +2694,9 @@ static VkResult prom_runtime_create_package_module(prometheus_runtime* rt,
                                                    VkShaderModule* out_module,
                                                    const char** out_entry_point) {
   prom_shader_package_diagnostic diagnostic;
-  if (rt == NULL || rt->shader_package == NULL || variant_id == NULL ||
+  if (rt == NULL || rt->vulkan.shader_package == NULL || variant_id == NULL ||
       out_module == NULL || out_entry_point == NULL) return VK_ERROR_INITIALIZATION_FAILED;
-  if (!prom_shader_package_create_module(rt->shader_package, rt->device, variant_id,
+  if (!prom_shader_package_create_module(rt->vulkan.shader_package, rt->vulkan.device, variant_id,
                                          out_module, out_entry_point, &diagnostic)) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
@@ -2796,21 +2719,10 @@ static VkResult prom_audit_create_arbitrary_spirv_module(
 
 static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkResult result;
-  VkApplicationInfo application_info;
-  VkInstanceCreateInfo instance_info;
-  uint32_t loader_api_version = VK_API_VERSION_1_0;
-  uint32_t device_count = 0u;
-  VkPhysicalDevice devices[16];
-  uint32_t i;
-  VkDeviceQueueCreateInfo queue_infos[2];
-  VkDeviceCreateInfo device_info;
-  float queue_priorities[8];
-  VkCommandPoolCreateInfo pool_info;
   VkDescriptorSetLayoutBinding bindings[3];
   VkDescriptorSetLayoutCreateInfo set_layout_info;
   VkPushConstantRange push_range;
   VkPipelineLayoutCreateInfo pipeline_layout_info;
-  VkShaderModuleCreateInfo shader_info;
   VkShaderModule shader_module = VK_NULL_HANDLE;
   const char* package_entry_point = NULL;
   VkPipelineShaderStageCreateInfo stage_info;
@@ -2818,526 +2730,21 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   VkDescriptorPoolSize pool_size;
   VkDescriptorPoolCreateInfo descriptor_pool_info;
   VkDescriptorSetAllocateInfo set_alloc_info;
-  for (i = 0u; i < 8u; ++i) {
-    queue_priorities[i] = 1.0f;
-  }
   VkCommandBufferAllocateInfo cmd_alloc_info;
   VkFenceCreateInfo fence_info;
   VkQueryPoolCreateInfo query_pool_info;
-  const char* validation_layer = "VK_LAYER_KHRONOS_validation";
-  const char* debug_extension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-  uint32_t layer_count = 0u;
-  VkLayerProperties layers[64];
-  VkDebugUtilsMessengerCreateInfoEXT debug_info;
-#ifdef VK_KHR_cooperative_matrix
-  VkPhysicalDeviceFeatures2 cooperative_features2;
-  VkPhysicalDeviceShaderFloat16Int8Features shader_float16_features;
-  VkPhysicalDeviceVulkanMemoryModelFeatures vulkan_memory_model_features;
-  VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_features;
-  VkPhysicalDeviceShaderFloat16Int8Features shader_float16_enable;
-  VkPhysicalDeviceVulkanMemoryModelFeatures vulkan_memory_model_enable;
-  VkPhysicalDeviceCooperativeMatrixFeaturesKHR cooperative_enable;
-  const char* cooperative_device_extensions[1];
-  uint32_t cooperative_device_extension_count = 0u;
-#endif
-#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
-  VkPhysicalDeviceFeatures2 ray_query_features2;
-  VkPhysicalDeviceBufferDeviceAddressFeatures ray_query_buffer_device_address_features;
-  VkPhysicalDeviceAccelerationStructureFeaturesKHR ray_query_acceleration_structure_features;
-  VkPhysicalDeviceRayQueryFeaturesKHR ray_query_features;
-  VkPhysicalDeviceBufferDeviceAddressFeatures ray_query_buffer_device_address_enable;
-  VkPhysicalDeviceAccelerationStructureFeaturesKHR ray_query_acceleration_structure_enable;
-  VkPhysicalDeviceRayQueryFeaturesKHR ray_query_enable;
-  const char* ray_query_device_extensions[3];
-  uint32_t ray_query_device_extension_count = 0u;
-#endif
-  const char* optional_device_extensions[4];
-  uint32_t optional_device_extension_count = 0u;
-  void* optional_device_feature_chain = NULL;
 
-  memset(&application_info, 0, sizeof(application_info));
-  application_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-  application_info.pApplicationName = "Prometheus";
-  application_info.applicationVersion = 1u;
-  application_info.pEngineName = "Prometheus";
-  application_info.engineVersion = 1u;
-#ifdef VK_VERSION_1_1
-  {
-    PFN_vkEnumerateInstanceVersion enumerate_instance_version =
-      (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
-    if (enumerate_instance_version != NULL) (void)enumerate_instance_version(&loader_api_version);
-  }
-#endif
-  /* Production shader artifacts are SPIR-V 1.6 validated under Vulkan 1.4.
-     Do not silently lower the runtime contract to the loader's older API. */
-  if (loader_api_version < VK_API_VERSION_1_4) {
-    return VK_ERROR_INCOMPATIBLE_DRIVER;
-  }
-  application_info.apiVersion = VK_API_VERSION_1_4;
-  memset(&instance_info, 0, sizeof(instance_info));
-  instance_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-  instance_info.pApplicationInfo = &application_info;
-  rt->validation_requested = getenv("PROMETHEUS_VK_VALIDATION") != NULL && strcmp(getenv("PROMETHEUS_VK_VALIDATION"), "1") == 0 ? 1u : 0u;
-  if (rt->validation_requested != 0u) {
-    result = vkEnumerateInstanceLayerProperties(&layer_count, NULL);
-    if (result != VK_SUCCESS) return result;
-    if (layer_count > 64u) layer_count = 64u;
-    result = vkEnumerateInstanceLayerProperties(&layer_count, layers);
-    if (result != VK_SUCCESS) return result;
-    for (i = 0u; i < layer_count; ++i) if (strcmp(layers[i].layerName, validation_layer) == 0) rt->validation_available = 1u;
-    if (rt->validation_available == 0u) return VK_ERROR_LAYER_NOT_PRESENT;
-    instance_info.enabledLayerCount = 1u;
-    instance_info.ppEnabledLayerNames = &validation_layer;
-    instance_info.enabledExtensionCount = 1u;
-    instance_info.ppEnabledExtensionNames = &debug_extension;
-  }
-  result = vkCreateInstance(&instance_info, NULL, &rt->instance);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = vkEnumeratePhysicalDevices(rt->instance, &device_count, NULL);
-  if (result != VK_SUCCESS || device_count == 0u) {
-    return result == VK_SUCCESS ? VK_ERROR_INITIALIZATION_FAILED : result;
-  }
-
-  if (device_count > 16u) {
-    device_count = 16u;
-  }
-  result = vkEnumeratePhysicalDevices(rt->instance, &device_count, devices);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  rt->physical_device = VK_NULL_HANDLE;
-  rt->queue_family_index = UINT32_MAX;
-  rt->transfer_queue_family_index = UINT32_MAX;
-  rt->dedicated_transfer_available = 0u;
-  rt->transfer_queue_enabled = 0u;
-  for (i = 0u; i < device_count; ++i) {
-    uint32_t family_count = 0u;
-    uint32_t family_index;
-    VkQueueFamilyProperties families[32];
-
-    vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &family_count, NULL);
-    if (family_count == 0u) {
-      continue;
-    }
-    if (family_count > 32u) {
-      family_count = 32u;
-    }
-    vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &family_count, families);
-    for (family_index = 0u; family_index < family_count; ++family_index) {
-      if ((families[family_index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0u) {
-        rt->physical_device = devices[i];
-        rt->queue_family_index = family_index;
-        break;
-      }
-    }
-    if (rt->physical_device != VK_NULL_HANDLE) {
-      break;
-    }
-  }
-
-  if (rt->physical_device == VK_NULL_HANDLE || rt->queue_family_index == UINT32_MAX) {
-    return VK_ERROR_FEATURE_NOT_PRESENT;
-  }
-  {
-    VkPhysicalDeviceProperties platform_properties;
-    vkGetPhysicalDeviceProperties(rt->physical_device, &platform_properties);
-    if (platform_properties.apiVersion < VK_API_VERSION_1_4) {
-      return VK_ERROR_INCOMPATIBLE_DRIVER;
-    }
-  }
-  {
-    uint32_t family_count = 0u;
-    uint32_t family_index;
-    VkQueueFamilyProperties families[32];
-    vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, NULL);
-    if (family_count > 32u) {
-      family_count = 32u;
-    }
-    if (family_count > 0u) {
-      vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, families);
-    }
-    for (family_index = 0u; family_index < family_count; ++family_index) {
-      if ((families[family_index].queueFlags & VK_QUEUE_TRANSFER_BIT) == 0u) {
-        continue;
-      }
-      if ((families[family_index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0u) {
-        continue;
-      }
-      rt->transfer_queue_family_index = family_index;
-      rt->dedicated_transfer_available = 1u;
-      break;
-    }
-    if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEDICATED_TRANSFER) != 0u) {
-      rt->dedicated_transfer_available = 0u;
-      rt->transfer_queue_family_index = UINT32_MAX;
-    }
-    if ((rt->test_flags & PROM_TESTCFG_FORCE_SHARED_TRANSFER) != 0u) {
-      rt->transfer_queue_family_index = rt->queue_family_index;
-      rt->dedicated_transfer_available = 1u;
-    }
-    if (rt->dedicated_transfer_available != 0u && (rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) == 0u) {
-      rt->transfer_queue_enabled = 1u;
-    }
-  }
-  {
-    VkPhysicalDeviceProperties props;
-    VkPhysicalDeviceMemoryProperties memory_props;
-    uint32_t memory_index;
-    vkGetPhysicalDeviceProperties(rt->physical_device, &props);
-    rt->timestamp_period_ns = props.limits.timestampPeriod;
-    if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU || text_contains_llvmpipe(props.deviceName)) {
-      rt->software_vulkan = 1u;
-    } else {
-      rt->software_vulkan = 0u;
-    }
-    rt->occupancy_shared_memory_class =
-        classify_capability_bucket(props.limits.maxComputeSharedMemorySize, 32768u, 65536u, 98304u, 131072u);
-    rt->occupancy_max_workgroup_class =
-        classify_capability_bucket(props.limits.maxComputeWorkGroupInvocations, 128u, 256u, 512u, 1024u);
-    rt->occupancy_register_file_class = rt->occupancy_max_workgroup_class;
-    rt->occupancy_has_exact_profile = 0u;
-    if (rt->software_vulkan != 0u) {
-      rt->occupancy_memory_bandwidth_class = 1u;
-      rt->occupancy_fp32_throughput_class = 1u;
-    } else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-      rt->occupancy_memory_bandwidth_class = 4u;
-      rt->occupancy_fp32_throughput_class = 4u;
-    } else if (props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
-      rt->occupancy_memory_bandwidth_class = 3u;
-      rt->occupancy_fp32_throughput_class = 3u;
-    } else {
-      rt->occupancy_memory_bandwidth_class = 2u;
-      rt->occupancy_fp32_throughput_class = 2u;
-    }
-
-    rt->has_device_local_memory = 0u;
-    rt->has_host_visible_memory = 0u;
-    vkGetPhysicalDeviceMemoryProperties(rt->physical_device, &memory_props);
-    for (memory_index = 0u; memory_index < memory_props.memoryTypeCount; ++memory_index) {
-      VkMemoryPropertyFlags flags = memory_props.memoryTypes[memory_index].propertyFlags;
-      if ((flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0u) {
-        rt->has_device_local_memory = 1u;
-      }
-      if ((flags & (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) ==
-          (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
-        rt->has_host_visible_memory = 1u;
-      }
-    }
-    rt->occupancy_queue_capability_class = rt->dedicated_transfer_available != 0u ? 4u : 3u;
-  }
-  {
-    uint32_t family_count = 0u;
-    VkQueueFamilyProperties families[32];
-    rt->timestamp_valid_bits = 0u;
-    vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, NULL);
-    if (family_count > 32u) {
-      family_count = 32u;
-    }
-    if (family_count > 0u) {
-      vkGetPhysicalDeviceQueueFamilyProperties(rt->physical_device, &family_count, families);
-      if (rt->queue_family_index < family_count) {
-        rt->timestamp_valid_bits = families[rt->queue_family_index].timestampValidBits;
-      }
-    }
-  }
-  rt->capability_fp16_storage = ((rt->test_flags & PROM_TESTCFG_FORCE_NO_FP16_STORAGE) == 0u) ? 1u : 0u;
-  rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_UNAVAILABLE;
-  rt->cooperative_matrix_extension_spec_version = 0u;
-  rt->cooperative_matrix_feature_enabled = 0u;
-  rt->cooperative_matrix_shader_float16_enabled = 0u;
-  rt->cooperative_matrix_vulkan_memory_model_enabled = 0u;
-  rt->cooperative_matrix_tuple_count = 0u;
-  rt->cooperative_matrix_selected_m = 0u;
-  rt->cooperative_matrix_selected_n = 0u;
-  rt->cooperative_matrix_selected_k = 0u;
-  rt->subgroup_size = 0u;
-  rt->subgroup_supported_stages = 0u;
-  rt->subgroup_supported_operations = 0u;
-  rt->subgroup_compute_supported = 0u;
-  rt->subgroup_arithmetic_supported = 0u;
-  rt->subgroup_basic_supported = 0u;
-  rt->subgroup_shuffle_supported = 0u;
-  rt->subgroup_fixed_size_32_admitted = 0u;
-  rt->subgroup_owned_attention_admitted = 0u;
-  rt->subgroup_owned_attention_topology_proven = 0u;
-  rt->ray_query_state = PROM_VK_RAY_QUERY_UNSUPPORTED;
-  rt->ray_query_acceleration_structure_extension_supported = 0u;
-  rt->ray_query_extension_supported = 0u;
-  rt->ray_query_deferred_host_operations_extension_supported = 0u;
-  rt->ray_query_buffer_device_address_supported = 0u;
-  rt->ray_query_acceleration_structure_supported = 0u;
-  rt->ray_query_supported = 0u;
-  {
-    VkPhysicalDeviceSubgroupProperties subgroup_properties;
-    VkPhysicalDeviceProperties2 properties2;
-    memset(&subgroup_properties, 0, sizeof(subgroup_properties));
-    subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-    memset(&properties2, 0, sizeof(properties2));
-    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-    properties2.pNext = &subgroup_properties;
-    vkGetPhysicalDeviceProperties2(rt->physical_device, &properties2);
-    rt->subgroup_size = subgroup_properties.subgroupSize;
-    rt->subgroup_supported_stages = (uint32_t)subgroup_properties.supportedStages;
-    rt->subgroup_supported_operations = (uint32_t)subgroup_properties.supportedOperations;
-    rt->subgroup_compute_supported =
-        (subgroup_properties.supportedStages & VK_SHADER_STAGE_COMPUTE_BIT) != 0u ? 1u : 0u;
-    rt->subgroup_arithmetic_supported =
-        (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_ARITHMETIC_BIT) != 0u ? 1u : 0u;
-    rt->subgroup_basic_supported =
-        (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_BASIC_BIT) != 0u ? 1u : 0u;
-    rt->subgroup_shuffle_supported =
-        (subgroup_properties.supportedOperations & VK_SUBGROUP_FEATURE_SHUFFLE_BIT) != 0u ? 1u : 0u;
-    rt->subgroup_fixed_size_32_admitted =
-        (rt->subgroup_size == 32u && rt->subgroup_compute_supported != 0u &&
-         rt->subgroup_arithmetic_supported != 0u && rt->subgroup_basic_supported != 0u) ? 1u : 0u;
-    rt->subgroup_owned_attention_admitted =
-        (rt->subgroup_fixed_size_32_admitted != 0u && rt->subgroup_shuffle_supported != 0u) ? 1u : 0u;
-    /* This remains false until the bounded 256-invocation compute/readback
-       proof has completed for this physical-device/driver session.  It must
-       never be inferred from subgroup size or advertised capabilities. */
-    rt->subgroup_owned_attention_topology_proven = 0u;
-  }
-
-#ifdef VK_KHR_cooperative_matrix
-  {
-  if (application_info.apiVersion >= VK_API_VERSION_1_1) {
-    uint32_t extension_count = 0u;
-    VkExtensionProperties* extensions = NULL;
-    uint32_t extension_index;
-    VkPhysicalDeviceProperties physical_properties;
-    VkPhysicalDeviceSubgroupProperties subgroup_properties;
-    VkPhysicalDeviceProperties2 properties2;
-    PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR get_properties = NULL;
-    uint32_t tuple_count = 0u;
-    VkCooperativeMatrixPropertiesKHR tuples[64];
-    const char* disabled = getenv("PROMETHEUS_VK_DISABLE_COOPERATIVE_MATRIX");
-    vkGetPhysicalDeviceProperties(rt->physical_device, &physical_properties);
-    memset(&subgroup_properties, 0, sizeof(subgroup_properties));
-    subgroup_properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES;
-    memset(&properties2, 0, sizeof(properties2));
-    properties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-    properties2.pNext = &subgroup_properties;
-    vkGetPhysicalDeviceProperties2(rt->physical_device, &properties2);
-    rt->subgroup_size = subgroup_properties.subgroupSize;
-    if (disabled == NULL || strcmp(disabled, "1") != 0) {
-      result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, NULL);
-      if (result == VK_SUCCESS && extension_count != 0u) {
-        extensions = (VkExtensionProperties*)calloc(extension_count, sizeof(*extensions));
-        if (extensions == NULL) return VK_ERROR_OUT_OF_HOST_MEMORY;
-        result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, extensions);
-      }
-      if (result == VK_SUCCESS) {
-        for (extension_index = 0u; extension_index < extension_count; ++extension_index) {
-          if (strcmp(extensions[extension_index].extensionName, VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME) == 0) {
-            rt->cooperative_matrix_extension_spec_version = extensions[extension_index].specVersion;
-            break;
-          }
-        }
-      }
-      free(extensions);
-    }
-    memset(&cooperative_features2, 0, sizeof(cooperative_features2));
-    memset(&shader_float16_features, 0, sizeof(shader_float16_features));
-    memset(&vulkan_memory_model_features, 0, sizeof(vulkan_memory_model_features));
-    memset(&cooperative_features, 0, sizeof(cooperative_features));
-    cooperative_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    shader_float16_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
-    vulkan_memory_model_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
-    cooperative_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR;
-    cooperative_features2.pNext = &shader_float16_features;
-    shader_float16_features.pNext = &vulkan_memory_model_features;
-    vulkan_memory_model_features.pNext = &cooperative_features;
-    if (rt->cooperative_matrix_extension_spec_version != 0u) {
-      rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXTENSION_NO_USEFUL_TUPLE;
-      vkGetPhysicalDeviceFeatures2(rt->physical_device, &cooperative_features2);
-      get_properties = (PFN_vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR)
-        vkGetInstanceProcAddr(rt->instance, "vkGetPhysicalDeviceCooperativeMatrixPropertiesKHR");
-      if (get_properties != NULL && get_properties(rt->physical_device, &tuple_count, NULL) == VK_SUCCESS) {
-        if (tuple_count > 64u) tuple_count = 64u;
-        memset(tuples, 0, sizeof(tuples));
-        for (i = 0u; i < tuple_count; ++i) tuples[i].sType = VK_STRUCTURE_TYPE_COOPERATIVE_MATRIX_PROPERTIES_KHR;
-        if (get_properties(rt->physical_device, &tuple_count, tuples) != VK_SUCCESS) tuple_count = 0u;
-      }
-      rt->cooperative_matrix_tuple_count = tuple_count;
-      for (i = 0u; i < tuple_count; ++i) {
-        if (tuples[i].scope == VK_SCOPE_SUBGROUP_KHR && tuples[i].MSize == 16u && tuples[i].NSize == 16u &&
-          tuples[i].KSize == 16u && tuples[i].AType == VK_COMPONENT_TYPE_FLOAT16_KHR &&
-          tuples[i].BType == VK_COMPONENT_TYPE_FLOAT16_KHR && tuples[i].CType == VK_COMPONENT_TYPE_FLOAT32_KHR &&
-          tuples[i].ResultType == VK_COMPONENT_TYPE_FLOAT32_KHR) {
-          rt->cooperative_matrix_selected_m = 16u;
-          rt->cooperative_matrix_selected_n = 16u;
-          rt->cooperative_matrix_selected_k = 16u;
-          rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_USEFUL_TUPLE_AVAILABLE;
-          break;
-        }
-      }
-      if (rt->cooperative_matrix_state == PROM_VK_COOPERATIVE_MATRIX_USEFUL_TUPLE_AVAILABLE &&
-        cooperative_features.cooperativeMatrix == VK_TRUE && shader_float16_features.shaderFloat16 == VK_TRUE &&
-        vulkan_memory_model_features.vulkanMemoryModel == VK_TRUE &&
-        physical_properties.apiVersion >= VK_API_VERSION_1_3) {
-        cooperative_device_extensions[0] = VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME;
-        cooperative_device_extension_count = 1u;
-      }
-    }
-  }
-  }
-#endif
-
-#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
-  {
-    uint32_t extension_count = 0u;
-    uint32_t extension_index;
-    VkExtensionProperties* extensions = NULL;
-    result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, NULL);
-    if (result == VK_SUCCESS && extension_count != 0u) {
-      extensions = (VkExtensionProperties*)calloc(extension_count, sizeof(*extensions));
-      if (extensions == NULL) return VK_ERROR_OUT_OF_HOST_MEMORY;
-      result = vkEnumerateDeviceExtensionProperties(rt->physical_device, NULL, &extension_count, extensions);
-    }
-    if (result != VK_SUCCESS) {
-      free(extensions);
-      return result;
-    }
-    for (extension_index = 0u; extension_index < extension_count; ++extension_index) {
-      const char* name = extensions[extension_index].extensionName;
-      if (strcmp(name, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0) {
-        rt->ray_query_acceleration_structure_extension_supported = 1u;
-      } else if (strcmp(name, VK_KHR_RAY_QUERY_EXTENSION_NAME) == 0) {
-        rt->ray_query_extension_supported = 1u;
-      } else if (strcmp(name, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0) {
-        rt->ray_query_deferred_host_operations_extension_supported = 1u;
-      }
-    }
-    free(extensions);
-    if (rt->ray_query_acceleration_structure_extension_supported == 0u ||
-        rt->ray_query_extension_supported == 0u ||
-        rt->ray_query_deferred_host_operations_extension_supported == 0u) {
-      rt->ray_query_state = PROM_VK_RAY_QUERY_EXTENSION_MISSING;
-    } else {
-      memset(&ray_query_features2, 0, sizeof(ray_query_features2));
-      memset(&ray_query_buffer_device_address_features, 0, sizeof(ray_query_buffer_device_address_features));
-      memset(&ray_query_acceleration_structure_features, 0, sizeof(ray_query_acceleration_structure_features));
-      memset(&ray_query_features, 0, sizeof(ray_query_features));
-      ray_query_features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-      ray_query_buffer_device_address_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-      ray_query_acceleration_structure_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-      ray_query_features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
-      ray_query_features2.pNext = &ray_query_buffer_device_address_features;
-      ray_query_buffer_device_address_features.pNext = &ray_query_acceleration_structure_features;
-      ray_query_acceleration_structure_features.pNext = &ray_query_features;
-      vkGetPhysicalDeviceFeatures2(rt->physical_device, &ray_query_features2);
-      rt->ray_query_buffer_device_address_supported = ray_query_buffer_device_address_features.bufferDeviceAddress == VK_TRUE ? 1u : 0u;
-      rt->ray_query_acceleration_structure_supported = ray_query_acceleration_structure_features.accelerationStructure == VK_TRUE ? 1u : 0u;
-      rt->ray_query_supported = ray_query_features.rayQuery == VK_TRUE ? 1u : 0u;
-      if (rt->ray_query_buffer_device_address_supported == 0u || rt->ray_query_acceleration_structure_supported == 0u || rt->ray_query_supported == 0u) {
-        rt->ray_query_state = PROM_VK_RAY_QUERY_FEATURE_MISSING;
-      } else {
-        ray_query_device_extensions[ray_query_device_extension_count++] = VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME;
-        ray_query_device_extensions[ray_query_device_extension_count++] = VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME;
-        ray_query_device_extensions[ray_query_device_extension_count++] = VK_KHR_RAY_QUERY_EXTENSION_NAME;
-      }
-    }
-  }
-#endif
-
-  memset(queue_infos, 0, sizeof(queue_infos));
-  queue_infos[0].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queue_infos[0].queueFamilyIndex = rt->queue_family_index;
-  queue_infos[0].queueCount = 1u;
-  queue_infos[0].pQueuePriorities = queue_priorities;
-  if (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) {
-    queue_infos[1].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-    queue_infos[1].queueFamilyIndex = rt->transfer_queue_family_index;
-    queue_infos[1].queueCount = 1u;
-    queue_infos[1].pQueuePriorities = queue_priorities;
-  }
-
-  memset(&device_info, 0, sizeof(device_info));
-  device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-  device_info.queueCreateInfoCount =
-      (rt->transfer_queue_enabled != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 2u : 1u;
-  device_info.pQueueCreateInfos = queue_infos;
-#ifdef VK_KHR_cooperative_matrix
-  if (cooperative_device_extension_count != 0u) {
-    memset(&shader_float16_enable, 0, sizeof(shader_float16_enable));
-    memset(&vulkan_memory_model_enable, 0, sizeof(vulkan_memory_model_enable));
-    memset(&cooperative_enable, 0, sizeof(cooperative_enable));
-    shader_float16_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
-    shader_float16_enable.shaderFloat16 = VK_TRUE;
-    vulkan_memory_model_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES;
-    vulkan_memory_model_enable.vulkanMemoryModel = VK_TRUE;
-    cooperative_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR;
-    cooperative_enable.cooperativeMatrix = VK_TRUE;
-    shader_float16_enable.pNext = &vulkan_memory_model_enable;
-    vulkan_memory_model_enable.pNext = &cooperative_enable;
-    cooperative_enable.pNext = optional_device_feature_chain;
-    optional_device_feature_chain = &shader_float16_enable;
-    for (i = 0u; i < cooperative_device_extension_count; ++i) {
-      optional_device_extensions[optional_device_extension_count++] = cooperative_device_extensions[i];
-    }
-  }
-#endif
-#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
-  if (ray_query_device_extension_count != 0u) {
-    memset(&ray_query_buffer_device_address_enable, 0, sizeof(ray_query_buffer_device_address_enable));
-    memset(&ray_query_acceleration_structure_enable, 0, sizeof(ray_query_acceleration_structure_enable));
-    memset(&ray_query_enable, 0, sizeof(ray_query_enable));
-    ray_query_buffer_device_address_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-    ray_query_buffer_device_address_enable.bufferDeviceAddress = VK_TRUE;
-    ray_query_acceleration_structure_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-    ray_query_acceleration_structure_enable.accelerationStructure = VK_TRUE;
-    ray_query_enable.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
-    ray_query_enable.rayQuery = VK_TRUE;
-    ray_query_enable.pNext = optional_device_feature_chain;
-    ray_query_acceleration_structure_enable.pNext = &ray_query_enable;
-    ray_query_buffer_device_address_enable.pNext = &ray_query_acceleration_structure_enable;
-    optional_device_feature_chain = &ray_query_buffer_device_address_enable;
-    for (i = 0u; i < ray_query_device_extension_count; ++i) {
-      optional_device_extensions[optional_device_extension_count++] = ray_query_device_extensions[i];
-    }
-  }
-#endif
-  device_info.pNext = optional_device_feature_chain;
-  device_info.enabledExtensionCount = optional_device_extension_count;
-  device_info.ppEnabledExtensionNames = optional_device_extension_count == 0u ? NULL : optional_device_extensions;
-
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_DEVICE_CREATE) != 0u) {
-    return VK_ERROR_INITIALIZATION_FAILED;
-  }
-
-  result = vkCreateDevice(rt->physical_device, &device_info, NULL, &rt->device);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-#if defined(VK_KHR_acceleration_structure) && defined(VK_KHR_ray_query)
-  if (ray_query_device_extension_count != 0u) {
-    rt->create_acceleration_structure = (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(rt->device, "vkCreateAccelerationStructureKHR");
-    rt->destroy_acceleration_structure = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(rt->device, "vkDestroyAccelerationStructureKHR");
-    rt->get_acceleration_structure_build_sizes = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(rt->device, "vkGetAccelerationStructureBuildSizesKHR");
-    rt->cmd_build_acceleration_structures = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(rt->device, "vkCmdBuildAccelerationStructuresKHR");
-    rt->get_acceleration_structure_device_address = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(rt->device, "vkGetAccelerationStructureDeviceAddressKHR");
-    if (rt->create_acceleration_structure == NULL || rt->destroy_acceleration_structure == NULL ||
-        rt->get_acceleration_structure_build_sizes == NULL || rt->cmd_build_acceleration_structures == NULL ||
-        rt->get_acceleration_structure_device_address == NULL) {
-      rt->ray_query_state = PROM_VK_RAY_QUERY_ENTRY_POINT_MISSING;
-    } else {
-      rt->ray_query_state = PROM_VK_RAY_QUERY_DEVICE_FEATURE_ENABLED;
-    }
-  }
-#endif
-
+  if (rt == NULL) return VK_ERROR_INITIALIZATION_FAILED;
+  result = prom_vk_runtime_init(&rt->vulkan, rt->vulkan.test_flags);
+  if (result != VK_SUCCESS) return result;
   rt->timestamp_query_supported = 0u;
-  if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {
+  if (rt->vulkan.timestamp_period_ns > 0.0f && rt->vulkan.timestamp_valid_bits > 0u) {
     memset(&query_pool_info, 0, sizeof(query_pool_info));
     query_pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
     query_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
     /* Legacy async/synchronous timing owns 0/1; M29 slots own 2..9. */
     query_pool_info.queryCount = 2u + (2u * PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH);
-    result = vkCreateQueryPool(rt->device, &query_pool_info, NULL, &rt->sgemm_timestamp_query_pool);
+    result = vkCreateQueryPool(rt->vulkan.device, &query_pool_info, NULL, &rt->sgemm_timestamp_query_pool);
     if (result == VK_SUCCESS) {
       rt->timestamp_query_supported = 1u;
     } else {
@@ -3346,36 +2753,15 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   }
   if (rt->timestamp_query_supported != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_NONE);
-  } else if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {
+  } else if (rt->vulkan.timestamp_period_ns > 0.0f && rt->vulkan.timestamp_valid_bits > 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_POOL_UNAVAILABLE);
-  } else if (rt->timestamp_period_ns <= 0.0f) {
+  } else if (rt->vulkan.timestamp_period_ns <= 0.0f) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
   } else {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED);
   }
-
-  vkGetDeviceQueue(rt->device, rt->queue_family_index, 0u, &rt->compute_queue);
-  rt->transfer_queue = VK_NULL_HANDLE;
-  if (rt->transfer_queue_enabled != 0u) {
-    vkGetDeviceQueue(rt->device, rt->transfer_queue_family_index, 0u, &rt->transfer_queue);
-  }
-
-  memset(&pool_info, 0, sizeof(pool_info));
-  pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-  pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-  pool_info.queueFamilyIndex = rt->queue_family_index;
-  result = vkCreateCommandPool(rt->device, &pool_info, NULL, &rt->command_pool);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-  if (rt->transfer_queue_enabled != 0u) {
-    pool_info.queueFamilyIndex = rt->transfer_queue_family_index;
-    result = vkCreateCommandPool(rt->device, &pool_info, NULL, &rt->transfer_command_pool);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
-  }
-
+  result = prom_vk_runtime_enable_validation(&rt->vulkan);
+  if (result != VK_SUCCESS) return result;
   memset(bindings, 0, sizeof(bindings));
   bindings[0].binding = 0u;
   bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -3394,7 +2780,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   set_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
   set_layout_info.bindingCount = 3u;
   set_layout_info.pBindings = bindings;
-  result = vkCreateDescriptorSetLayout(rt->device, &set_layout_info, NULL, &rt->descriptor_set_layout);
+  result = vkCreateDescriptorSetLayout(rt->vulkan.device, &set_layout_info, NULL, &rt->descriptor_set_layout);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3406,7 +2792,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   descriptor_pool_info.poolSizeCount = 1u;
   descriptor_pool_info.pPoolSizes = &pool_size;
   descriptor_pool_info.maxSets = 1u + PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
-  result = vkCreateDescriptorPool(rt->device, &descriptor_pool_info, NULL, &rt->descriptor_pool);
+  result = vkCreateDescriptorPool(rt->vulkan.device, &descriptor_pool_info, NULL, &rt->descriptor_pool);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3416,41 +2802,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   set_alloc_info.descriptorPool = rt->descriptor_pool;
   set_alloc_info.descriptorSetCount = 1u;
   set_alloc_info.pSetLayouts = &rt->descriptor_set_layout;
-  result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, &rt->descriptor_set);
+  result = vkAllocateDescriptorSets(rt->vulkan.device, &set_alloc_info, &rt->descriptor_set);
   if (result != VK_SUCCESS) {
     return result;
-  }
-#ifdef VK_KHR_cooperative_matrix
-  if (cooperative_device_extension_count != 0u) {
-    rt->cooperative_matrix_feature_enabled = 1u;
-    rt->cooperative_matrix_shader_float16_enabled = 1u;
-    rt->cooperative_matrix_vulkan_memory_model_enabled = 1u;
-    rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_DEVICE_FEATURE_ENABLED;
-    /* The checked-in cooperative shader has LocalSize.x = 32 and subgroup
-       scope.  Do not admit it merely from extension/tuple bits on a wave64
-       device: Vulkan requires LocalSize.x to be a multiple of the effective
-       subgroup size.  Keep the independently useful FP16 device features
-       enabled for conventional paths, but classify this shader route as
-       unavailable so transformer planning takes its established fallback. */
-    if (rt->subgroup_size != 32u) {
-      rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_COMPILER_ROUTE_UNAVAILABLE;
-    }
-  }
-#endif
-  if (rt->validation_requested != 0u) {
-    PFN_vkCreateDebugUtilsMessengerEXT create_debug_messenger =
-        (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(rt->instance, "vkCreateDebugUtilsMessengerEXT");
-    if (create_debug_messenger == NULL) return VK_ERROR_EXTENSION_NOT_PRESENT;
-    memset(&debug_info, 0, sizeof(debug_info));
-    debug_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    debug_info.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    debug_info.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    debug_info.pfnUserCallback = prom_validation_callback;
-    debug_info.pUserData = rt;
-    result = create_debug_messenger(rt->instance, &debug_info, NULL, &rt->validation_debug_messenger);
-    if (result != VK_SUCCESS) return result;
-    rt->validation_enabled = 1u;
-    rt->validation_debug_utils_active = 1u;
   }
   {
     VkDescriptorSetLayout ring_layouts[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
@@ -3461,7 +2815,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     }
     set_alloc_info.descriptorSetCount = PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH;
     set_alloc_info.pSetLayouts = ring_layouts;
-    result = vkAllocateDescriptorSets(rt->device, &set_alloc_info, ring_sets);
+    result = vkAllocateDescriptorSets(rt->vulkan.device, &set_alloc_info, ring_sets);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -3484,12 +2838,12 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_layout_info.pSetLayouts = &rt->descriptor_set_layout;
   pipeline_layout_info.pushConstantRangeCount = 1u;
   pipeline_layout_info.pPushConstantRanges = &push_range;
-  result = vkCreatePipelineLayout(rt->device, &pipeline_layout_info, NULL, &rt->pipeline_layout);
+  result = vkCreatePipelineLayout(rt->vulkan.device, &pipeline_layout_info, NULL, &rt->pipeline_layout);
   if (result != VK_SUCCESS) {
     return result;
   }
 
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_PIPELINE_CREATE) != 0u) {
     return VK_ERROR_INITIALIZATION_FAILED;
   }
 
@@ -3509,7 +2863,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->memory_conservative_pipeline);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->memory_conservative_pipeline);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3530,7 +2884,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_scalar_plus_pipeline);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_scalar_plus_pipeline);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3551,7 +2905,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_tile16x16_shared_fp32_pipeline);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_tile16x16_shared_fp32_pipeline);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3572,7 +2926,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_reg2x2_tile16x16_fp32_pipeline);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->sdsl_reg2x2_tile16x16_fp32_pipeline);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3593,7 +2947,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device,
+  result = vkCreateComputePipelines(rt->vulkan.device,
                                     VK_NULL_HANDLE,
                                     1u,
                                     &pipeline_info,
@@ -3619,7 +2973,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device,
+  result = vkCreateComputePipelines(rt->vulkan.device,
                                     VK_NULL_HANDLE,
                                     1u,
                                     &pipeline_info,
@@ -3645,7 +2999,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device,
+  result = vkCreateComputePipelines(rt->vulkan.device,
                                     VK_NULL_HANDLE,
                                     1u,
                                     &pipeline_info,
@@ -3670,8 +3024,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->srt_2accum_k_pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->srt_2accum_k_pipeline);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3690,9 +3044,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
                                     &rt->b2x2_row_major_biased_pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3711,9 +3065,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL,
                                     &rt->a2x4_row_biased_accum8_pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3734,8 +3088,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->pipeline);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3755,8 +3109,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->tiled_pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->tiled_pipeline);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3776,8 +3130,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->packed4_pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->packed4_pipeline);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3797,8 +3151,8 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->fp16_pipeline);
-  vkDestroyShaderModule(rt->device, shader_module, NULL);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &rt->fp16_pipeline);
+  vkDestroyShaderModule(rt->vulkan.device, shader_module, NULL);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3822,10 +3176,10 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   memset(&cmd_alloc_info, 0, sizeof(cmd_alloc_info));
   cmd_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-  cmd_alloc_info.commandPool = rt->command_pool;
+  cmd_alloc_info.commandPool = rt->vulkan.command_pool;
   cmd_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
   cmd_alloc_info.commandBufferCount = 1u;
-  result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, &rt->command_buffer);
+  result = vkAllocateCommandBuffers(rt->vulkan.device, &cmd_alloc_info, &rt->command_buffer);
   if (result != VK_SUCCESS) {
     return result;
   }
@@ -3833,7 +3187,7 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   {
     VkCommandBuffer ring_command_buffers[PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH];
     uint32_t ring_index;
-    result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, ring_command_buffers);
+    result = vkAllocateCommandBuffers(rt->vulkan.device, &cmd_alloc_info, ring_command_buffers);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -3842,9 +3196,9 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
     }
   }
   cmd_alloc_info.commandBufferCount = 1u;
-  if (rt->transfer_queue_enabled != 0u) {
-    cmd_alloc_info.commandPool = rt->transfer_command_pool;
-    result = vkAllocateCommandBuffers(rt->device, &cmd_alloc_info, &rt->transfer_command_buffer);
+  if (rt->vulkan.transfer_queue_enabled != 0u) {
+    cmd_alloc_info.commandPool = rt->vulkan.transfer_command_pool;
+    result = vkAllocateCommandBuffers(rt->vulkan.device, &cmd_alloc_info, &rt->transfer_command_buffer);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -3852,28 +3206,28 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
 
   memset(&fence_info, 0, sizeof(fence_info));
   fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-  result = vkCreateFence(rt->device, &fence_info, NULL, &rt->submit_fence);
+  result = vkCreateFence(rt->vulkan.device, &fence_info, NULL, &rt->submit_fence);
   if (result != VK_SUCCESS) {
     return result;
   }
   {
     uint32_t ring_index;
     for (ring_index = 0u; ring_index < PROM_SGEMM_SUBMISSION_RING_MAX_DEPTH; ++ring_index) {
-      result = vkCreateFence(rt->device, &fence_info, NULL, &rt->submission_ring[ring_index].fence);
+      result = vkCreateFence(rt->vulkan.device, &fence_info, NULL, &rt->submission_ring[ring_index].fence);
       if (result != VK_SUCCESS) {
         return result;
       }
     }
   }
-  if (rt->transfer_queue_enabled != 0u) {
+  if (rt->vulkan.transfer_queue_enabled != 0u) {
     VkSemaphoreCreateInfo semaphore_info;
-    result = vkCreateFence(rt->device, &fence_info, NULL, &rt->transfer_submit_fence);
+    result = vkCreateFence(rt->vulkan.device, &fence_info, NULL, &rt->transfer_submit_fence);
     if (result != VK_SUCCESS) {
       return result;
     }
     memset(&semaphore_info, 0, sizeof(semaphore_info));
     semaphore_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    result = vkCreateSemaphore(rt->device, &semaphore_info, NULL, &rt->transfer_ready_semaphore);
+    result = vkCreateSemaphore(rt->vulkan.device, &semaphore_info, NULL, &rt->transfer_ready_semaphore);
     if (result != VK_SUCCESS) {
       return result;
     }
@@ -3881,8 +3235,6 @@ static VkResult vk_runtime_init(prometheus_runtime* rt) {
   return VK_SUCCESS;
 }
 
-// ============================================================================
-// Public SGEMM ABI Entrypoints
 // ============================================================================
 
 static int prom_runtime_copy_shader_package_root(prometheus_runtime* runtime,
@@ -3895,9 +3247,9 @@ static int prom_runtime_copy_shader_package_root(prometheus_runtime* runtime,
     return 1;
   }
   length = strlen(config->shader_package_root);
-  runtime->shader_package_root = (char*)malloc(length + 1u);
-  if (runtime->shader_package_root == NULL) return 0;
-  memcpy(runtime->shader_package_root, config->shader_package_root, length + 1u);
+  runtime->vulkan.shader_package_root = (char*)malloc(length + 1u);
+  if (runtime->vulkan.shader_package_root == NULL) return 0;
+  memcpy(runtime->vulkan.shader_package_root, config->shader_package_root, length + 1u);
   return 1;
 }
 
@@ -3906,7 +3258,7 @@ static int prom_runtime_discover_adjacent_shader_package(prometheus_runtime* run
   char module_path[MAX_PATH];
   char* separator;
   size_t length;
-  if (runtime == NULL || runtime->shader_package_root != NULL) return runtime != NULL;
+  if (runtime == NULL || runtime->vulkan.shader_package_root != NULL) return runtime != NULL;
   if (GetModuleFileNameA(NULL, module_path, (DWORD)sizeof(module_path)) == 0u ||
       GetLastError() == ERROR_INSUFFICIENT_BUFFER) return 0;
   separator = strrchr(module_path, '\\');
@@ -3914,10 +3266,10 @@ static int prom_runtime_discover_adjacent_shader_package(prometheus_runtime* run
   *separator = '\0';
   length = strlen(module_path);
   if (length > SIZE_MAX - sizeof("\\shaders")) return 0;
-  runtime->shader_package_root = (char*)malloc(length + sizeof("\\shaders"));
-  if (runtime->shader_package_root == NULL) return 0;
-  memcpy(runtime->shader_package_root, module_path, length);
-  memcpy(runtime->shader_package_root + length, "\\shaders", sizeof("\\shaders"));
+  runtime->vulkan.shader_package_root = (char*)malloc(length + sizeof("\\shaders"));
+  if (runtime->vulkan.shader_package_root == NULL) return 0;
+  memcpy(runtime->vulkan.shader_package_root, module_path, length);
+  memcpy(runtime->vulkan.shader_package_root + length, "\\shaders", sizeof("\\shaders"));
   return 1;
 #else
   (void)runtime;
@@ -3942,7 +3294,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   }
   memset(runtime, 0, sizeof(*runtime));
   runtime->magic = PROMETHEUS_RUNTIME_MAGIC;
-  runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
+  runtime->vulkan.reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
   prom_dom_blackboard_init(&runtime->blackboard);
   prom_dominatus_measurement_filter_init(&runtime->p14_measurement_filter_state, NULL);
   memset(&runtime->p14_last_filtered_evidence, 0, sizeof(runtime->p14_last_filtered_evidence));
@@ -3988,7 +3340,7 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
       runtime->submission_ring_diag.configured_depth = cfg->batch_ring_depth;
     }
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, test_flags) + sizeof(cfg->test_flags)) {
-      runtime->test_flags = cfg->test_flags;
+      runtime->vulkan.test_flags = cfg->test_flags;
     }
     if (cfg->struct_size >= offsetof(PrometheusReactorConfig, async_test_flags) + sizeof(cfg->async_test_flags)) {
       runtime->async_test_flags = cfg->async_test_flags;
@@ -4007,27 +3359,27 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
     }
     legacy_test_without_package =
         cfg->struct_size < offsetof(PrometheusReactorConfig, shader_package_root) + sizeof(cfg->shader_package_root) &&
-        (runtime->test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u;
+        (runtime->vulkan.test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u;
   }
   /* Older header-sized test configurations predate package selection. Their
      explicit no-Vulkan probe skips discovery without relaxing executable
      admission, which still requires a resolved package. */
-  if (runtime->shader_package_root == NULL && legacy_test_without_package == 0u &&
+  if (runtime->vulkan.shader_package_root == NULL && legacy_test_without_package == 0u &&
       !prom_runtime_discover_adjacent_shader_package(runtime)) {
     free(runtime);
     return PROM_ERROR;
   }
-  if (runtime->shader_package_root != NULL) {
+  if (runtime->vulkan.shader_package_root != NULL) {
     prom_shader_package_diagnostic package_diagnostic;
-    if (!prom_shader_package_open(runtime->shader_package_root, &runtime->shader_package, &package_diagnostic)) {
-      free(runtime->shader_package_root);
+    if (!prom_shader_package_open(runtime->vulkan.shader_package_root, &runtime->vulkan.shader_package, &package_diagnostic)) {
+      free(runtime->vulkan.shader_package_root);
       free(runtime);
       return PROM_ERROR;
     }
   }
   runtime->arena_budget_limit_bytes = PROM_ARENA_DEFAULT_BUDGET_BYTES;
   runtime->arena_floor_bytes = PROM_ARENA_DEFAULT_SHRINK_FLOOR_BYTES;
-  if (runtime->test_flags != 0u) {
+  if (runtime->vulkan.test_flags != 0u) {
     runtime->arena_floor_bytes = 1ull * 1024ull * 1024ull;
     runtime->arena_budget_limit_bytes = 32ull * 1024ull * 1024ull;
   }
@@ -4049,28 +3401,28 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
   runtime->arenas[PROM_ARENA_ROLE_UPLOAD].owner_slot_id = -1;
   runtime->slot_diag.p11_m3_budget_limit_bytes = runtime->arena_budget_limit_bytes;
 
-  if ((runtime->test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u) {
-    runtime->available = 0u;
-    runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
-    runtime->init_detail_code = (int)VK_ERROR_INITIALIZATION_FAILED;
+  if ((runtime->vulkan.test_flags & PROM_TESTCFG_SKIP_VULKAN_INIT) != 0u) {
+    runtime->vulkan.available = 0u;
+    runtime->vulkan.reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
+    runtime->vulkan.init_detail_code = (int)VK_ERROR_INITIALIZATION_FAILED;
   } else {
     result = vk_runtime_init(runtime);
     if (result == VK_SUCCESS) {
       prom_dom_transfer_queue_facts transfer_facts;
       prom_dom_transfer_queue_decision transfer_decision;
-      runtime->available = 1u;
-      runtime->reason_code = PROM_REASON_NONE;
-      runtime->init_detail_code = 0;
+      runtime->vulkan.available = 1u;
+      runtime->vulkan.reason_code = PROM_REASON_NONE;
+      runtime->vulkan.init_detail_code = 0;
       memset(&transfer_facts, 0, sizeof(transfer_facts));
-      transfer_facts.dedicated_transfer_available = runtime->dedicated_transfer_available;
-      transfer_facts.transfer_queue_family_index = runtime->transfer_queue_family_index;
-      transfer_facts.compute_queue_family_index = runtime->queue_family_index;
+      transfer_facts.dedicated_transfer_available = runtime->vulkan.dedicated_transfer_available;
+      transfer_facts.transfer_queue_family_index = runtime->vulkan.transfer_queue_family_index;
+      transfer_facts.compute_queue_family_index = runtime->vulkan.queue_family_index;
       transfer_facts.queue_families_differ =
-          (runtime->dedicated_transfer_available != 0u && runtime->transfer_queue_family_index != runtime->queue_family_index) ? 1u : 0u;
-      transfer_facts.transfer_queue_supported = runtime->transfer_queue_enabled;
-      transfer_facts.transfer_queue_disabled_by_config = ((runtime->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
+          (runtime->vulkan.dedicated_transfer_available != 0u && runtime->vulkan.transfer_queue_family_index != runtime->vulkan.queue_family_index) ? 1u : 0u;
+      transfer_facts.transfer_queue_supported = runtime->vulkan.transfer_queue_enabled;
+      transfer_facts.transfer_queue_disabled_by_config = ((runtime->vulkan.test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
       transfer_facts.transfer_workload_large_enough = 1u;
-      transfer_facts.transfer_sync_ownership_supported = runtime->transfer_queue_enabled;
+      transfer_facts.transfer_sync_ownership_supported = runtime->vulkan.transfer_queue_enabled;
       transfer_facts.transfer_fallback_available = 1u;
       transfer_facts.upload_only_policy_eligible = 1u;
       transfer_facts.upload_readback_supported = 0u;
@@ -4078,12 +3430,12 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
         prom_dom_sgemm_commit(&runtime->blackboard);
       }
       memset(&transfer_decision, 0, sizeof(transfer_decision));
-      transfer_decision.transfer_policy_selected = runtime->transfer_queue_enabled;
-      transfer_decision.selected_transfer_policy = runtime->transfer_queue_enabled != 0u ? 1u : 0u;
-      transfer_decision.transfer_queue_used = runtime->transfer_queue_enabled;
+      transfer_decision.transfer_policy_selected = runtime->vulkan.transfer_queue_enabled;
+      transfer_decision.selected_transfer_policy = runtime->vulkan.transfer_queue_enabled != 0u ? 1u : 0u;
+      transfer_decision.transfer_queue_used = runtime->vulkan.transfer_queue_enabled;
       transfer_decision.transfer_fallback_reason =
-          runtime->transfer_queue_enabled != 0u ? PROM_TRANSFER_FALLBACK_NONE
-                                                : (((runtime->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u)
+          runtime->vulkan.transfer_queue_enabled != 0u ? PROM_TRANSFER_FALLBACK_NONE
+                                                : (((runtime->vulkan.test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u)
                                                        ? PROM_TRANSFER_FALLBACK_DISABLED_BY_CONFIG
                                                        : PROM_TRANSFER_FALLBACK_NO_DEDICATED_QUEUE);
       if (prom_dom_sgemm_stage_transfer_queue_decision(&runtime->blackboard, &transfer_decision) != 0u) {
@@ -4097,17 +3449,16 @@ int prom_reactor_runtime_create_impl(void* config, void** out_handle) {
       }
       sync_transfer_diag_from_visible(runtime);
     } else {
-      runtime->available = 0u;
-      runtime->reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
-      runtime->init_detail_code = (int)result;
+      runtime->vulkan.available = 0u;
+      runtime->vulkan.reason_code = PROM_REASON_VULKAN_UNAVAILABLE;
+      runtime->vulkan.init_detail_code = (int)result;
       vk_runtime_cleanup(runtime);
     }
   }
 
   if (!registry_add(runtime)) {
     vk_runtime_cleanup(runtime);
-    prom_shader_package_destroy(runtime->shader_package);
-    free(runtime->shader_package_root);
+    prom_vk_runtime_destroy_package(&runtime->vulkan);
     free(runtime);
     return PROM_INTERNAL_ERROR;
   }
@@ -4136,8 +3487,7 @@ int prom_reactor_runtime_destroy_impl(void* handle) {
   prom_ray_query_scene_runtime_destroy_all(handle);
   prom_fft_diag_forget_handle(handle);
   vk_runtime_cleanup(runtime);
-  prom_shader_package_destroy(runtime->shader_package);
-  free(runtime->shader_package_root);
+  prom_vk_runtime_destroy_package(&runtime->vulkan);
   free(runtime);
   return PROM_OK;
 }
@@ -4152,15 +3502,15 @@ int prom_reactor_runtime_probe_impl(void* handle, PrometheusCaps* out_caps) {
   }
 
   runtime = (prometheus_runtime*)handle;
-  out_caps->available = runtime->available;
-  if (runtime->available == 0u) {
+  out_caps->available = runtime->vulkan.available;
+  if (runtime->vulkan.available == 0u) {
     out_caps->backend_type = PROM_BACKEND_UNKNOWN;
-  } else if (runtime->software_vulkan != 0u) {
+  } else if (runtime->vulkan.software_vulkan != 0u) {
     out_caps->backend_type = PROM_BACKEND_VULKAN_SOFTWARE;
   } else {
     out_caps->backend_type = PROM_BACKEND_VULKAN;
   }
-  out_caps->reason_code = runtime->reason_code;
+  out_caps->reason_code = runtime->vulkan.reason_code;
   return PROM_OK;
 }
 
@@ -4179,17 +3529,17 @@ int prom_reactor_runtime_vulkan_device_diagnostics_impl(void* handle, Prometheus
   memset(out_diag, 0, sizeof(*out_diag));
   if (handle == NULL || !registry_contains(handle)) return PROM_INVALID_HANDLE;
   rt = (prometheus_runtime*)handle;
-  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->physical_device == VK_NULL_HANDLE) return PROM_INVALID_HANDLE;
-  vkGetPhysicalDeviceProperties(rt->physical_device, &props);
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->vulkan.physical_device == VK_NULL_HANDLE) return PROM_INVALID_HANDLE;
+  vkGetPhysicalDeviceProperties(rt->vulkan.physical_device, &props);
   memcpy(out_diag->device_name, props.deviceName, sizeof(out_diag->device_name) - 1u);
   out_diag->vendor_id = props.vendorID;
   out_diag->device_id = props.deviceID;
   out_diag->device_type = (uint32_t)props.deviceType;
   out_diag->driver_version = props.driverVersion;
   out_diag->api_version = props.apiVersion;
-  out_diag->software_vulkan = rt->software_vulkan;
-  out_diag->compute_queue_family = rt->queue_family_index;
-  out_diag->transfer_queue_family = rt->transfer_queue_family_index;
+  out_diag->software_vulkan = rt->vulkan.software_vulkan;
+  out_diag->compute_queue_family = rt->vulkan.queue_family_index;
+  out_diag->transfer_queue_family = rt->vulkan.transfer_queue_family_index;
   return PROM_OK;
 }
 
@@ -4508,8 +3858,8 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
   }
   if (!registry_contains(handle)) return PROM_INVALID_HANDLE;
   rt = (prometheus_runtime*)handle;
-  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->available == 0u) return PROM_ERROR;
-  if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u) return PROM_ERROR;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->vulkan.available == 0u) return PROM_ERROR;
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u) return PROM_ERROR;
   if (descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_BASELINE &&
       descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_TILED &&
       descriptor->compute_mode != (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 &&
@@ -4523,12 +3873,12 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
     return PROM_ERROR;
   }
   if (descriptor->require_full_subgroups != 0u &&
-    (rt->cooperative_matrix_feature_enabled == 0u || rt->subgroup_size != descriptor->dispatch.threads_x)) {
+    (rt->vulkan.cooperative_matrix_feature_enabled == 0u || rt->vulkan.subgroup_size != descriptor->dispatch.threads_x)) {
     if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = VK_ERROR_FEATURE_NOT_PRESENT; }
     return PROM_ERROR;
   }
 
-  result = prom_audit_create_arbitrary_spirv_module(rt->device, descriptor, &module);
+  result = prom_audit_create_arbitrary_spirv_module(rt->vulkan.device, descriptor, &module);
   if (result != VK_SUCCESS) { if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = (int)result; } return PROM_ERROR; }
   memset(&stage_info, 0, sizeof(stage_info));
   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -4544,9 +3894,9 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = stage_info;
   pipeline_info.layout = rt->pipeline_layout;
-  result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &pipeline);
+  result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &pipeline);
   if (result != VK_SUCCESS) {
-    vkDestroyShaderModule(rt->device, module, NULL);
+    vkDestroyShaderModule(rt->vulkan.device, module, NULL);
     if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = (int)result; }
     return PROM_ERROR;
   }
@@ -4573,8 +3923,8 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
       }
     }
   }
-  vkDestroyPipeline(rt->device, pipeline, NULL);
-  vkDestroyShaderModule(rt->device, module, NULL);
+  vkDestroyPipeline(rt->vulkan.device, pipeline, NULL);
+  vkDestroyShaderModule(rt->vulkan.device, module, NULL);
   if (out_result != NULL) {
     const prom_vk_buffer* result_a;
     const prom_vk_buffer* result_b;
@@ -4593,7 +3943,7 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
     out_result->fence_wait_before_query_results = 1u;
     out_result->selected_path = rt->slot_diag.px16_m6_selected_path;
     out_result->compute_mode = descriptor->compute_mode;
-    out_result->compute_queue_family_index = rt->queue_family_index;
+    out_result->compute_queue_family_index = rt->vulkan.queue_family_index;
     out_result->push_constant_m = m;
     out_result->push_constant_n = n;
     out_result->push_constant_k = descriptor->compute_mode == (uint32_t)PROM_VK_COMPUTE_PACKED4_FP32 ? prom_round_up4_u32(k) : k;
@@ -4626,7 +3976,7 @@ int prom_reactor_runtime_sgemm_audit_benchmark_impl(void* handle,
     out_result->c_memory_offset = (uint64_t)result_c->memory_offset;
   }
   if (execution_result == PROM_OK && descriptor->require_full_subgroups != 0u) {
-    rt->cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
+    rt->vulkan.cooperative_matrix_state = PROM_VK_COOPERATIVE_MATRIX_EXECUTABLE;
   }
   return execution_result == PROM_OK && completed_warmup == warmup && completed_measured == iterations ? PROM_OK : PROM_ERROR;
 }
@@ -4662,17 +4012,17 @@ static VkResult prom_sgemm_placement_create_role(prometheus_runtime* rt,
   if (placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
     usage |= is_input != 0u ? VK_BUFFER_USAGE_TRANSFER_DST_BIT : VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   }
-  result = prom_vk_create_buffer_for_placement(rt->physical_device, rt->device, rt->test_flags, size, usage,
+  result = prom_vk_create_buffer_for_placement(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags, size, usage,
                                                 placement, placement != PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL,
                                                 &role->storage);
   if (result != VK_SUCCESS) return result;
   if (placement == PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL) {
     const VkBufferUsageFlags transfer_usage = is_input != 0u ? VK_BUFFER_USAGE_TRANSFER_SRC_BIT : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    result = prom_vk_create_buffer_for_placement(rt->physical_device, rt->device, rt->test_flags, size, transfer_usage,
+    result = prom_vk_create_buffer_for_placement(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags, size, transfer_usage,
                                                   PROM_SGEMM_MEMORY_PLACEMENT_HOST_VISIBLE_COHERENT_SYSTEM, 1,
                                                   &role->transfer);
     if (result != VK_SUCCESS) {
-      prom_sgemm_placement_destroy_role(rt->device, role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, role);
     }
   }
   return result;
@@ -4685,7 +4035,7 @@ static void prom_sgemm_placement_capture_role(const prometheus_runtime* rt,
                                               uint32_t* out_heap) {
   VkPhysicalDeviceMemoryProperties properties;
   if (rt == NULL || role == NULL || out_type == NULL || out_flags == NULL || out_heap == NULL) return;
-  vkGetPhysicalDeviceMemoryProperties(rt->physical_device, &properties);
+  vkGetPhysicalDeviceMemoryProperties(rt->vulkan.physical_device, &properties);
   *out_type = role->storage.memory_type_index;
   *out_flags = (uint32_t)role->storage.memory_property_flags;
   *out_heap = role->storage.memory_type_index < properties.memoryTypeCount
@@ -4705,9 +4055,9 @@ static VkResult prom_sgemm_placement_allocate_roles(prometheus_runtime* rt,
   if (result == VK_SUCCESS) result = prom_sgemm_placement_create_role(rt, b_size, options->b_placement, 1u, b_role);
   if (result == VK_SUCCESS) result = prom_sgemm_placement_create_role(rt, c_size, options->c_placement, 0u, c_role);
   if (result != VK_SUCCESS) {
-    prom_sgemm_placement_destroy_role(rt->device, c_role);
-    prom_sgemm_placement_destroy_role(rt->device, b_role);
-    prom_sgemm_placement_destroy_role(rt->device, a_role);
+    prom_sgemm_placement_destroy_role(rt->vulkan.device, c_role);
+    prom_sgemm_placement_destroy_role(rt->vulkan.device, b_role);
+    prom_sgemm_placement_destroy_role(rt->vulkan.device, a_role);
   }
   return result;
 }
@@ -4732,7 +4082,7 @@ static void prom_sgemm_placement_update_descriptors(prometheus_runtime* rt,
     writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writes[i].pBufferInfo = &infos[i];
   }
-  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
 }
 
 static void prom_sgemm_placement_write_payload(prom_sgemm_placement_role_buffer* role,
@@ -4800,14 +4150,14 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     return PROM_ERROR;
   }
   rt = (prometheus_runtime*)handle;
-  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->available == 0u || rt->timestamp_query_supported == 0u) return PROM_ERROR;
+  if (rt->magic != PROMETHEUS_RUNTIME_MAGIC || rt->vulkan.available == 0u || rt->timestamp_query_supported == 0u) return PROM_ERROR;
   if ((descriptor->dispatch.workgroup_output_m == 0u) != (descriptor->dispatch.workgroup_output_n == 0u) ||
     (descriptor->dispatch.workgroup_output_m != 0u &&
      ((m % descriptor->dispatch.workgroup_output_m) != 0u ||
       (n % descriptor->dispatch.workgroup_output_n) != 0u ||
       (descriptor->dispatch.tile_k != 0u && (k % descriptor->dispatch.tile_k) != 0u))) ||
     (descriptor->require_full_subgroups != 0u &&
-     (rt->cooperative_matrix_feature_enabled == 0u || rt->subgroup_size != descriptor->dispatch.threads_x))) {
+     (rt->vulkan.cooperative_matrix_feature_enabled == 0u || rt->vulkan.subgroup_size != descriptor->dispatch.threads_x))) {
     if (out_result != NULL) { out_result->stage = PROM_STAGE_INIT; out_result->detail_code = VK_ERROR_FEATURE_NOT_PRESENT; }
     return PROM_ERROR;
   }
@@ -4828,7 +4178,7 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     if (packed_a == NULL || packed_b == NULL) goto cleanup;
     a_payload = packed_a; b_payload = packed_b;
   }
-  vk_result = prom_audit_create_arbitrary_spirv_module(rt->device, descriptor, &module);
+  vk_result = prom_audit_create_arbitrary_spirv_module(rt->vulkan.device, descriptor, &module);
   if (vk_result != VK_SUCCESS) goto cleanup;
   memset(&shader_stage, 0, sizeof(shader_stage));
   shader_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -4844,13 +4194,13 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
   pipeline_info.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
   pipeline_info.stage = shader_stage;
   pipeline_info.layout = rt->pipeline_layout;
-  vk_result = vkCreateComputePipelines(rt->device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &pipeline);
+  vk_result = vkCreateComputePipelines(rt->vulkan.device, VK_NULL_HANDLE, 1u, &pipeline_info, NULL, &pipeline);
   if (vk_result != VK_SUCCESS) goto cleanup;
   memset(&query_pool_info, 0, sizeof(query_pool_info));
   query_pool_info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
   query_pool_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
   query_pool_info.queryCount = 4u;
-  vk_result = vkCreateQueryPool(rt->device, &query_pool_info, NULL, &timing_query_pool);
+  vk_result = vkCreateQueryPool(rt->vulkan.device, &query_pool_info, NULL, &timing_query_pool);
   if (vk_result != VK_SUCCESS) goto cleanup;
   initial_begin = prom_wall_clock_now_ns();
   if (options->reuse_mode != PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
@@ -4861,7 +4211,7 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     if (out_result != NULL) { out_result->allocation_count += 3u; out_result->descriptor_update_count += 1u; }
   }
   if (options->perturb_cache != 0u && options->cache_perturbation_bytes >= 4u) {
-    vk_result = prom_vk_create_buffer_for_placement(rt->physical_device, rt->device, rt->test_flags,
+    vk_result = prom_vk_create_buffer_for_placement(rt->vulkan.physical_device, rt->vulkan.device, rt->vulkan.test_flags,
                                                      (VkDeviceSize)(options->cache_perturbation_bytes & ~3ull),
                                                      VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                                                      PROM_SGEMM_MEMORY_PLACEMENT_PURE_DEVICE_LOCAL, 0, &perturbation);
@@ -5005,15 +4355,15 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing_query_pool, 3u);
     vk_result = vkEndCommandBuffer(rt->command_buffer);
     if (vk_result != VK_SUCCESS) goto cleanup;
-    vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+    vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
     if (vk_result != VK_SUCCESS) goto cleanup;
     memset(&submit_info, 0, sizeof(submit_info)); submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submit_info.commandBufferCount = 1u; submit_info.pCommandBuffers = &rt->command_buffer;
-    vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+    vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
     if (vk_result != VK_SUCCESS) goto cleanup;
-    vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     if (vk_result != VK_SUCCESS) goto cleanup;
-    vk_result = vkGetQueryPoolResults(rt->device, timing_query_pool, 0u, 4u, sizeof(timestamps),
+    vk_result = vkGetQueryPoolResults(rt->vulkan.device, timing_query_pool, 0u, 4u, sizeof(timestamps),
                                       timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
     if (vk_result != VK_SUCCESS || timestamps[1] < timestamps[0] || timestamps[2] <= timestamps[1] ||
         timestamps[3] < timestamps[2]) goto cleanup;
@@ -5024,20 +4374,20 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     if (dispatch_index >= options->warmup) {
       const uint32_t sample_index = dispatch_index - options->warmup;
       const uint64_t gpu_transfer_ticks = (timestamps[1] - timestamps[0]) + (timestamps[3] - timestamps[2]);
-      out_gpu_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[2] - timestamps[1])) * rt->timestamp_period_ns);
+      out_gpu_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[2] - timestamps[1])) * rt->vulkan.timestamp_period_ns);
     if (out_conversion_samples_ns != NULL) {
       out_conversion_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(prep_begin, prep_end);
     }
     if (out_upload_samples_ns != NULL) {
-      out_upload_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[1] - timestamps[0])) * rt->timestamp_period_ns);
+      out_upload_samples_ns[sample_index] = (uint64_t)(((double)(timestamps[1] - timestamps[0])) * rt->vulkan.timestamp_period_ns);
     }
     if (out_readback_samples_ns != NULL) {
       out_readback_samples_ns[sample_index] =
-        (uint64_t)(((double)(timestamps[3] - timestamps[2])) * rt->timestamp_period_ns) +
+        (uint64_t)(((double)(timestamps[3] - timestamps[2])) * rt->vulkan.timestamp_period_ns) +
         prom_wall_clock_elapsed_ns(readback_begin, readback_end);
     }
       out_preparation_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(prep_begin, prep_end) +
-          (uint64_t)(((double)gpu_transfer_ticks) * rt->timestamp_period_ns) +
+          (uint64_t)(((double)gpu_transfer_ticks) * rt->vulkan.timestamp_period_ns) +
           prom_wall_clock_elapsed_ns(readback_begin, readback_end);
       out_end_to_end_samples_ns[sample_index] = prom_wall_clock_elapsed_ns(e2e_begin, prom_wall_clock_now_ns());
       completed += 1u;
@@ -5045,9 +4395,9 @@ int prom_reactor_runtime_sgemm_placement_benchmark_detailed_impl(void* handle,
     }
     if (out_result != NULL) out_result->dispatch_count += 1u;
     if (options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
-      prom_sgemm_placement_destroy_role(rt->device, &c_role);
-      prom_sgemm_placement_destroy_role(rt->device, &b_role);
-      prom_sgemm_placement_destroy_role(rt->device, &a_role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, &c_role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, &b_role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, &a_role);
     }
   }
   status = PROM_OK;
@@ -5064,16 +4414,16 @@ cleanup:
     out_result->detail_code = (int)(vk_result == VK_SUCCESS ? VK_ERROR_UNKNOWN : vk_result);
     out_result->stage = PROM_STAGE_SUBMIT;
   }
-  prom_vk_destroy_buffer(rt != NULL ? rt->device : VK_NULL_HANDLE, &perturbation);
+  prom_vk_destroy_buffer(rt != NULL ? rt->vulkan.device : VK_NULL_HANDLE, &perturbation);
   if (rt != NULL) {
     if (persistent_allocated != 0u || options->reuse_mode == PROM_SGEMM_PLACEMENT_REUSE_COLD_ALLOCATION) {
-      prom_sgemm_placement_destroy_role(rt->device, &c_role);
-      prom_sgemm_placement_destroy_role(rt->device, &b_role);
-      prom_sgemm_placement_destroy_role(rt->device, &a_role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, &c_role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, &b_role);
+      prom_sgemm_placement_destroy_role(rt->vulkan.device, &a_role);
     }
-    if (pipeline != VK_NULL_HANDLE) vkDestroyPipeline(rt->device, pipeline, NULL);
-    if (timing_query_pool != VK_NULL_HANDLE) vkDestroyQueryPool(rt->device, timing_query_pool, NULL);
-    if (module != VK_NULL_HANDLE) vkDestroyShaderModule(rt->device, module, NULL);
+    if (pipeline != VK_NULL_HANDLE) vkDestroyPipeline(rt->vulkan.device, pipeline, NULL);
+    if (timing_query_pool != VK_NULL_HANDLE) vkDestroyQueryPool(rt->vulkan.device, timing_query_pool, NULL);
+    if (module != VK_NULL_HANDLE) vkDestroyShaderModule(rt->vulkan.device, module, NULL);
   }
   free(packed_b); free(packed_a);
   return status;
@@ -5220,7 +4570,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
 
   rt = (prometheus_runtime*)handle;
-  request_async = (((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u) && c == NULL) ? 1u : 0u;
+  request_async = (((rt->vulkan.test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) != 0u) && c == NULL) ? 1u : 0u;
   if (a == NULL || b == NULL || (request_async == 0u && c == NULL)) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
     return PROM_ERROR;
@@ -5233,15 +4583,15 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_INVALID_HANDLE);
     return PROM_INVALID_HANDLE;
   }
-  if (rt->available == 0u) {
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->init_detail_code);
+  if (rt->vulkan.available == 0u) {
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, rt->vulkan.init_detail_code);
     return PROM_ERROR;
   }
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
-  } else if (rt->timestamp_period_ns > 0.0f && rt->timestamp_valid_bits > 0u) {
+  } else if (rt->vulkan.timestamp_period_ns > 0.0f && rt->vulkan.timestamp_valid_bits > 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_POOL_UNAVAILABLE);
-  } else if (rt->timestamp_period_ns <= 0.0f) {
+  } else if (rt->vulkan.timestamp_period_ns <= 0.0f) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
   } else {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_UNSUPPORTED);
@@ -5274,7 +4624,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     return PROM_ERROR;
   }
   if (rt->in_flight_submit != 0u) {
-    vk_result = vkGetFenceStatus(rt->device, rt->submit_fence);
+    vk_result = vkGetFenceStatus(rt->vulkan.device, rt->submit_fence);
     if (vk_result == VK_SUCCESS) {
       rt->in_flight_submit = 0u;
     } else {
@@ -5285,19 +4635,19 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     }
   }
 
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_UPLOAD) != 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_DETAIL_INJECTED_UPLOAD_FAILURE);
     return PROM_ERROR;
   }
 
-  can_stage = rt->has_device_local_memory;
-  can_direct = rt->has_host_visible_memory;
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
+  can_stage = rt->vulkan.has_device_local_memory;
+  can_direct = rt->vulkan.has_host_visible_memory;
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
     can_stage = 0u;
   }
-  readback_required = ((rt->test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
+  readback_required = ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_UPLOAD_ONLY) == 0u) ? 1u : 0u;
   work_units = (uint64_t)work_units_u32;
-  policy_mode = prom_sgemm_controller_step(&rt->sgemm_controller, m, n, k, work_units, rt->software_vulkan);
+  policy_mode = prom_sgemm_controller_step(&rt->sgemm_controller, m, n, k, work_units, rt->vulkan.software_vulkan);
   packed4_waste_permille = prom_packed4_padding_waste_permille(m, n, k);
   packed4_budget_permille = prom_packed4_mode_budget_permille(policy_mode);
   packed4_small_shape = (m < 4u || n < 4u || k < 4u) ? 1u : 0u;
@@ -5309,7 +4659,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   rt->px16_m17_last_tolerance_eval_wall_ns = 0u;
   rt->px16_m17_last_tolerance_eval_in_dispatch = 0u;
   rt->px16_m17_last_tolerance_eval_source = 1u;
-  if ((rt->test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_FP16_UTILITY_WIN) != 0u) {
     fp16_utility_score = 1201;
   }
   tiled_shape = (work_units >= (uint64_t)PROM_JUDGMENT_TILED_WORK_THRESHOLD && m >= PROM_VK_LOCAL_SIZE_X &&
@@ -5317,13 +4667,13 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                     ? 1u
                     : 0u;
   memset(&occupancy_facts, 0, sizeof(occupancy_facts));
-  occupancy_facts.register_file_class = rt->occupancy_register_file_class;
-  occupancy_facts.shared_memory_class = rt->occupancy_shared_memory_class;
-  occupancy_facts.memory_bandwidth_class = rt->occupancy_memory_bandwidth_class;
-  occupancy_facts.fp32_throughput_class = rt->occupancy_fp32_throughput_class;
-  occupancy_facts.max_workgroup_class = rt->occupancy_max_workgroup_class;
-  occupancy_facts.queue_capability_class = rt->occupancy_queue_capability_class;
-  occupancy_facts.has_exact_profile = rt->occupancy_has_exact_profile;
+  occupancy_facts.register_file_class = rt->vulkan.occupancy_register_file_class;
+  occupancy_facts.shared_memory_class = rt->vulkan.occupancy_shared_memory_class;
+  occupancy_facts.memory_bandwidth_class = rt->vulkan.occupancy_memory_bandwidth_class;
+  occupancy_facts.fp32_throughput_class = rt->vulkan.occupancy_fp32_throughput_class;
+  occupancy_facts.max_workgroup_class = rt->vulkan.occupancy_max_workgroup_class;
+  occupancy_facts.queue_capability_class = rt->vulkan.occupancy_queue_capability_class;
+  occupancy_facts.has_exact_profile = rt->vulkan.occupancy_has_exact_profile;
   occupancy_facts.manual_override_enabled = 0u;
   occupancy_facts.manual_override_variant = 0u;
   occupancy_facts.m = m;
@@ -5473,15 +4823,15 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   path_compute_facts.work_units = work_units;
   path_compute_facts.can_stage = can_stage;
   path_compute_facts.can_direct = can_direct;
-  path_compute_facts.allow_fallback = ((rt->test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
+  path_compute_facts.allow_fallback = ((rt->vulkan.test_flags & PROM_TESTCFG_DISABLE_STAGING_FALLBACK) == 0u) ? 1u : 0u;
   path_compute_facts.readback_required = readback_required;
-  path_compute_facts.force_direct = ((rt->test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
+  path_compute_facts.force_direct = ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_DIRECT_PATH) != 0u) ? 1u : 0u;
   path_compute_facts.force_direct_reason =
       path_compute_facts.force_direct != 0u ? PROM_SGEMM_FORCE_DIRECT_REASON_EXPLICIT_OVERRIDE : PROM_SGEMM_FORCE_DIRECT_REASON_NONE;
-  path_compute_facts.force_staged = ((rt->test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
-  path_compute_facts.force_tiled = ((rt->test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
+  path_compute_facts.force_staged = ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_STAGED_PATH) != 0u) ? 1u : 0u;
+  path_compute_facts.force_tiled = ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_TILED_PATH) != 0u) ? 1u : 0u;
   path_compute_facts.tiled_shape = tiled_shape;
-  path_compute_facts.software_vulkan = rt->software_vulkan;
+  path_compute_facts.software_vulkan = rt->vulkan.software_vulkan;
   path_compute_facts.policy_mode = (uint32_t)policy_mode;
   if (prom_dom_sgemm_stage_path_compute_facts(&rt->blackboard, &path_compute_facts) == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
@@ -5514,11 +4864,11 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   layout_precision_facts.packed4_mode_budget_permille = packed4_budget_permille;
   layout_precision_facts.packed4_row_major_valid = 1u;
   layout_precision_facts.packed4_tail_valid = 1u;
-  layout_precision_facts.strict_fp32 = ((rt->test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u) ? 1u : 0u;
+  layout_precision_facts.strict_fp32 = ((rt->vulkan.test_flags & PROM_TESTCFG_FORCE_STRICT_FP32) != 0u) ? 1u : 0u;
   layout_precision_facts.tolerance_known = rt->sgemm_controller.fp16_tolerance_known;
   layout_precision_facts.tolerance_pass = rt->sgemm_controller.fp16_tolerance_pass;
   layout_precision_facts.has_special_values = fp16_has_special_values;
-  layout_precision_facts.capability_fp16_storage = rt->capability_fp16_storage;
+  layout_precision_facts.capability_fp16_storage = rt->vulkan.capability_fp16_storage;
   layout_precision_facts.fallback_available = (path_compute_projection.facts.allow_fallback != 0u && path_compute_projection.facts.can_direct != 0u) ? 1u : 0u;
   layout_precision_facts.fp16_utility_score = fp16_utility_score;
   if (prom_dom_sgemm_stage_layout_precision_facts(&rt->blackboard, &layout_precision_facts) == 0u) {
@@ -5544,15 +4894,15 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   judgment_facts.fallback_available = layout_precision_projection.facts.fallback_available;
   judgment_facts.fp16_utility_score = layout_precision_projection.facts.fp16_utility_score;
   memset(&transfer_queue_facts, 0, sizeof(transfer_queue_facts));
-  transfer_queue_facts.dedicated_transfer_available = rt->dedicated_transfer_available;
-  transfer_queue_facts.transfer_queue_family_index = rt->transfer_queue_family_index;
-  transfer_queue_facts.compute_queue_family_index = rt->queue_family_index;
+  transfer_queue_facts.dedicated_transfer_available = rt->vulkan.dedicated_transfer_available;
+  transfer_queue_facts.transfer_queue_family_index = rt->vulkan.transfer_queue_family_index;
+  transfer_queue_facts.compute_queue_family_index = rt->vulkan.queue_family_index;
   transfer_queue_facts.queue_families_differ =
-      (rt->dedicated_transfer_available != 0u && rt->transfer_queue_family_index != rt->queue_family_index) ? 1u : 0u;
-  transfer_queue_facts.transfer_queue_supported = rt->transfer_queue_enabled;
-  transfer_queue_facts.transfer_queue_disabled_by_config = ((rt->test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
+      (rt->vulkan.dedicated_transfer_available != 0u && rt->vulkan.transfer_queue_family_index != rt->vulkan.queue_family_index) ? 1u : 0u;
+  transfer_queue_facts.transfer_queue_supported = rt->vulkan.transfer_queue_enabled;
+  transfer_queue_facts.transfer_queue_disabled_by_config = ((rt->vulkan.test_flags & PROM_TESTCFG_DISABLE_TRANSFER_QUEUE) != 0u) ? 1u : 0u;
   transfer_queue_facts.transfer_workload_large_enough = work_units >= (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
-  transfer_queue_facts.transfer_sync_ownership_supported = rt->transfer_queue_enabled;
+  transfer_queue_facts.transfer_sync_ownership_supported = rt->vulkan.transfer_queue_enabled;
   transfer_queue_facts.transfer_fallback_available = 1u;
   transfer_queue_facts.upload_only_policy_eligible = readback_required == 0u ? 1u : 0u;
   transfer_queue_facts.upload_readback_supported = 0u;
@@ -5787,9 +5137,9 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   buffering_facts.required_pull_lag_peak_slots_permille = 1500u;
   buffering_facts.required_serial_slots_permille = 1000u;
   buffering_facts.fallback_available = judgment_facts.allow_fallback;
-  if (judgment_facts.transfer_queue_dedicated_available != 0u && rt->software_vulkan == 0u) {
+  if (judgment_facts.transfer_queue_dedicated_available != 0u && rt->vulkan.software_vulkan == 0u) {
     variance_class = PROM_VARIANCE_LOW;
-  } else if (rt->software_vulkan != 0u) {
+  } else if (rt->vulkan.software_vulkan != 0u) {
     variance_class = PROM_VARIANCE_HIGH;
   } else {
     variance_class = PROM_VARIANCE_MODERATE;
@@ -5804,7 +5154,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   buffering_facts.transfer_variance_class = variance_class;
   buffering_facts.compute_predictability_class = predictability_class;
   buffering_facts.pull_lag_wip_waste_exceeded = rt->sgemm_controller.pending_waste_units > PROM_SGEMM_WASTE_BUDGET_UNITS ? 1u : 0u;
-  buffering_facts.starvation_risk_high = rt->software_vulkan != 0u && work_units > (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
+  buffering_facts.starvation_risk_high = rt->vulkan.software_vulkan != 0u && work_units > (uint64_t)PROM_JUDGMENT_STAGING_WORK_THRESHOLD ? 1u : 0u;
   if (can_stage != 0u && can_direct != 0u) {
     buffering_facts.memory_budget_slots_permille = 2200u;
   } else if (can_stage != 0u || can_direct != 0u) {
@@ -6003,7 +5353,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   memset(&async_facts, 0, sizeof(async_facts));
   async_facts.request_async = request_async;
   async_facts.in_flight = rt->in_flight_submit;
-  async_facts.software_vulkan = rt->software_vulkan;
+  async_facts.software_vulkan = rt->vulkan.software_vulkan;
   prom_judgment_engine_select_async_submission(&async_facts, &async_decision);
   if (async_decision.success == 0u) {
     free(packed_a_upload);
@@ -6120,7 +5470,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   command_record_begin_ns = prom_wall_clock_now_ns();
   rt->px16_m8_last_pre_dispatch_wall_ns =
       prom_wall_clock_elapsed_ns(pre_dispatch_begin_ns, command_record_begin_ns);
-  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
 
   if (use_dedicated_transfer_upload != 0u && selected_path == PROM_VK_PATH_STAGED_UPLOAD) {
     stage_transfer_complete_telemetry(rt, 0u, work_slot_id, 0);
@@ -6161,8 +5511,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     vkCmdCopyBuffer(rt->transfer_command_buffer, rt->staged_upload_b.buffer, rt->staged_device_b.buffer, 1u, &copies[1]);
     barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
     barriers[0].dstAccessMask = 0u;
-    barriers[0].srcQueueFamilyIndex = rt->transfer_queue_family_index;
-    barriers[0].dstQueueFamilyIndex = rt->queue_family_index;
+    barriers[0].srcQueueFamilyIndex = rt->vulkan.transfer_queue_family_index;
+    barriers[0].dstQueueFamilyIndex = rt->vulkan.queue_family_index;
     barriers[0].buffer = rt->staged_device_a.buffer;
     barriers[0].size = rt->staged_device_a.size;
     barriers[1] = barriers[0];
@@ -6177,7 +5527,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
       return PROM_ERROR;
     }
-    vk_result = vkResetFences(rt->device, 1u, &rt->transfer_submit_fence);
+    vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
@@ -6190,13 +5540,13 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     transfer_submit_info.pCommandBuffers = &rt->transfer_command_buffer;
     transfer_submit_info.signalSemaphoreCount = 1u;
     transfer_submit_info.pSignalSemaphores = &rt->transfer_ready_semaphore;
-    if ((rt->test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT) != 0u) {
+    if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_TRANSFER_SUBMIT) != 0u) {
       prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
       stage_transfer_failure_telemetry(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
       prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
       return PROM_ERROR;
     }
-    vk_result = vkQueueSubmit(rt->transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
+    vk_result = vkQueueSubmit(rt->vulkan.transfer_queue, 1u, &transfer_submit_info, rt->transfer_submit_fence);
     if (vk_result != VK_SUCCESS) {
       prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
       stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
@@ -6222,8 +5572,8 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     barriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barriers[0].srcAccessMask = 0u;
     barriers[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    barriers[0].srcQueueFamilyIndex = rt->transfer_queue_family_index;
-    barriers[0].dstQueueFamilyIndex = rt->queue_family_index;
+    barriers[0].srcQueueFamilyIndex = rt->vulkan.transfer_queue_family_index;
+    barriers[0].dstQueueFamilyIndex = rt->vulkan.queue_family_index;
     barriers[0].buffer = rt->staged_device_a.buffer;
     barriers[0].offset = 0;
     barriers[0].size = rt->staged_device_a.size;
@@ -6378,7 +5728,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
   lease_facts.lease_held = 1u;
   lease_facts.current_outstanding_depth = 1u;
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_DISPATCH) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_INJECTED_DISPATCH_FAILURE);
@@ -6460,7 +5810,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                          NULL);
   }
 
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
@@ -6476,13 +5826,13 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   rt->px16_m8_last_command_record_wall_ns =
       prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
 
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
-  vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+  vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -6502,13 +5852,13 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     submit_info.pWaitDstStageMask = &wait_stage_mask;
     stage_transfer_wait_telemetry(rt, work_slot_id, 0);
   }
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, VK_ERROR_DEVICE_LOST);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, VK_ERROR_DEVICE_LOST);
     return PROM_ERROR;
   }
-  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+  vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
@@ -6539,10 +5889,10 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     return PROM_OK;
   }
 
-  if ((rt->test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_SKIP_SUBMIT_WAIT) == 0u) {
     sync_wait_begin_ns = prom_wall_clock_now_ns();
     if (use_dedicated_transfer_upload != 0u) {
-      vk_result = vkWaitForFences(rt->device, 1u, &rt->transfer_submit_fence, VK_TRUE, UINT64_MAX);
+      vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->transfer_submit_fence, VK_TRUE, UINT64_MAX);
       if (vk_result != VK_SUCCESS) {
         prom_slot_mark_failure(rt, work_slot_id, (int)vk_result);
         stage_transfer_failure_telemetry(rt, work_slot_id, (int)vk_result);
@@ -6551,7 +5901,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
       }
       stage_transfer_complete_telemetry(rt, 1u, work_slot_id, 0);
     }
-    vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+    vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
     sync_wait_end_ns = prom_wall_clock_now_ns();
     rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
     post_sync_begin_ns = sync_wait_end_ns;
@@ -6563,7 +5913,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     }
     if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
       uint64_t timestamps[2];
-      vk_result = vkGetQueryPoolResults(rt->device,
+      vk_result = vkGetQueryPoolResults(rt->vulkan.device,
                                         rt->sgemm_timestamp_query_pool,
                                         0u,
                                         2u,
@@ -6573,12 +5923,12 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
                                         VK_QUERY_RESULT_64_BIT);
       if (vk_result != VK_SUCCESS) {
         reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
-      } else if (rt->timestamp_period_ns <= 0.0f) {
+      } else if (rt->vulkan.timestamp_period_ns <= 0.0f) {
         reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
       } else if (timestamps[1] <= timestamps[0]) {
         reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
       } else {
-        const double duration = ((double)(timestamps[1] - timestamps[0])) * (double)rt->timestamp_period_ns;
+        const double duration = ((double)(timestamps[1] - timestamps[0])) * (double)rt->vulkan.timestamp_period_ns;
         if (duration <= 0.0) {
           reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
         } else {
@@ -6690,7 +6040,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     return PROM_ERROR;
   }
 
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_DOWNLOAD) != 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, PROM_DETAIL_INJECTED_DOWNLOAD_FAILURE);
     return PROM_ERROR;
   }
@@ -6861,12 +6211,12 @@ static int prom_sgemm_ring_harvest_slot(prometheus_runtime* rt, prom_sgemm_submi
       rt->async_test_flags &= ~PROM_ASYNC_TESTCFG_FAIL_QUERY_RESULT;
       result = VK_ERROR_UNKNOWN;
     } else {
-      result = vkGetQueryPoolResults(rt->device, rt->sgemm_timestamp_query_pool, slot->query_base, 2u,
+      result = vkGetQueryPoolResults(rt->vulkan.device, rt->sgemm_timestamp_query_pool, slot->query_base, 2u,
                                      sizeof(timestamps), timestamps, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT);
     }
     rt->submission_ring_diag.total_query_harvests += 1u;
-    if (result == VK_SUCCESS && rt->timestamp_period_ns > 0.0f && timestamps[1] > timestamps[0]) {
-      slot->gpu_duration_ns = (uint64_t)(((double)(timestamps[1] - timestamps[0]) * (double)rt->timestamp_period_ns));
+    if (result == VK_SUCCESS && rt->vulkan.timestamp_period_ns > 0.0f && timestamps[1] > timestamps[0]) {
+      slot->gpu_duration_ns = (uint64_t)(((double)(timestamps[1] - timestamps[0]) * (double)rt->vulkan.timestamp_period_ns));
       slot->timing_valid = slot->gpu_duration_ns > 0u ? 1u : 0u;
       if (slot->timing_valid != 0u) {
         rt->submission_ring_diag.total_gpu_duration_ns += slot->gpu_duration_ns;
@@ -6890,7 +6240,7 @@ static int prom_sgemm_ring_poll_slot(prometheus_runtime* rt, prom_sgemm_submissi
   VkResult result;
   if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED) return PROM_OK;
   rt->submission_ring_diag.total_polls += 1u;
-  result = vkGetFenceStatus(rt->device, slot->fence);
+  result = vkGetFenceStatus(rt->vulkan.device, slot->fence);
   if (result == VK_NOT_READY) return PROM_OK;
   if (result != VK_SUCCESS) {
     slot->state = PROM_SGEMM_SUBMISSION_SLOT_FAILED;
@@ -6914,7 +6264,7 @@ int prom_sgemm_ring_wait_oldest(prometheus_runtime* rt) {
   }
   if (oldest == NULL) return PROM_OK;
   rt->submission_ring_diag.total_forced_waits += 1u;
-  result = vkWaitForFences(rt->device, 1u, &oldest->fence, VK_TRUE, UINT64_MAX);
+  result = vkWaitForFences(rt->vulkan.device, 1u, &oldest->fence, VK_TRUE, UINT64_MAX);
   if (result != VK_SUCCESS) return PROM_ERROR;
   return prom_sgemm_ring_harvest_slot(rt, oldest);
 }
@@ -6933,7 +6283,7 @@ static int prom_sgemm_record_resident_slot(prometheus_runtime* rt, prom_sgemm_su
   infos[2].buffer = rt->staged_device_c.buffer; infos[2].range = rt->staged_device_c.size;
   memset(writes, 0, sizeof(writes));
   for (uint32_t i = 0u; i < 3u; ++i) { writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet = slot->descriptor_set; writes[i].dstBinding = i; writes[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].descriptorCount = 1u; writes[i].pBufferInfo = &infos[i]; }
-  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
   result = vkResetCommandBuffer(slot->command_buffer, 0u); if (result != VK_SUCCESS) goto failed;
   memset(&begin, 0, sizeof(begin)); begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   result = vkBeginCommandBuffer(slot->command_buffer, &begin); if (result != VK_SUCCESS) goto failed;
@@ -6954,10 +6304,10 @@ failed:
 int prom_sgemm_ring_submit_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* slot) {
   VkSubmitInfo info; VkResult result;
   if (rt == NULL || slot == NULL || slot->state != PROM_SGEMM_SUBMISSION_SLOT_RECORDED) return PROM_ERROR;
-  result = (rt->test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkResetFences(rt->device, 1u, &slot->fence);
+  result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_RESET_FENCE) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkResetFences(rt->vulkan.device, 1u, &slot->fence);
   if (result != VK_SUCCESS) goto failed;
   memset(&info, 0, sizeof(info)); info.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO; info.commandBufferCount=1u; info.pCommandBuffers=&slot->command_buffer;
-  result = (rt->test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkQueueSubmit(rt->compute_queue, 1u, &info, slot->fence);
+  result = (rt->vulkan.test_flags & PROM_TESTCFG_FAIL_QUEUE_SUBMIT) != 0u ? VK_ERROR_INITIALIZATION_FAILED : vkQueueSubmit(rt->vulkan.compute_queue, 1u, &info, slot->fence);
   if (result != VK_SUCCESS) goto failed;
   slot->state=PROM_SGEMM_SUBMISSION_SLOT_SUBMITTED; rt->submission_ring_diag.total_submits += 1u; rt->submission_ring_diag.outstanding += 1u;
   if (rt->submission_ring_diag.outstanding > rt->submission_ring_diag.max_outstanding) rt->submission_ring_diag.max_outstanding=rt->submission_ring_diag.outstanding;
@@ -7055,7 +6405,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   writes[2].dstBinding = 2u;
   writes[2].pBufferInfo = &buffer_infos[2];
   command_record_begin_ns = prom_wall_clock_now_ns();
-  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
 
   vk_result = vkResetCommandBuffer(rt->command_buffer, 0u);
   if (vk_result != VK_SUCCESS) {
@@ -7136,7 +6486,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   rt->px16_m8_last_command_record_wall_ns =
       prom_wall_clock_elapsed_ns(command_record_begin_ns, prom_wall_clock_now_ns());
 
-  vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+  vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_COMMAND_FAILED);
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, (int)vk_result);
@@ -7147,7 +6497,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
   dispatch_submit_begin_ns = prom_wall_clock_now_ns();
-  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+  vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
   dispatch_submit_end_ns = prom_wall_clock_now_ns();
   rt->px16_m8_last_dispatch_submit_wall_ns =
       prom_wall_clock_elapsed_ns(dispatch_submit_begin_ns, dispatch_submit_end_ns);
@@ -7158,7 +6508,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   }
 
   sync_wait_begin_ns = prom_wall_clock_now_ns();
-  vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+  vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
   sync_wait_end_ns = prom_wall_clock_now_ns();
   rt->px16_m8_last_sync_wait_wall_ns = prom_wall_clock_elapsed_ns(sync_wait_begin_ns, sync_wait_end_ns);
   if (vk_result != VK_SUCCESS) {
@@ -7170,7 +6520,7 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     uint64_t timestamps[2];
     const uint64_t query_begin_ns = prom_wall_clock_now_ns();
-    vk_result = vkGetQueryPoolResults(rt->device,
+    vk_result = vkGetQueryPoolResults(rt->vulkan.device,
                                       rt->sgemm_timestamp_query_pool,
                                       0u,
                                       2u,
@@ -7181,12 +6531,12 @@ static int prom_sgemm_resident_dispatch_once(prometheus_runtime* rt,
     rt->px16_m8_last_query_result_wall_ns = prom_wall_clock_elapsed_ns(query_begin_ns, prom_wall_clock_now_ns());
     if (vk_result != VK_SUCCESS) {
       reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_QUERY_UNAVAILABLE);
-    } else if (rt->timestamp_period_ns <= 0.0f) {
+    } else if (rt->vulkan.timestamp_period_ns <= 0.0f) {
       reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_PERIOD);
     } else if (timestamps[1] <= timestamps[0]) {
       reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
     } else {
-      const double duration = ((double)(timestamps[1] - timestamps[0])) * (double)rt->timestamp_period_ns;
+      const double duration = ((double)(timestamps[1] - timestamps[0])) * (double)rt->vulkan.timestamp_period_ns;
       if (duration <= 0.0) {
         reset_last_gpu_timing(rt, PROM_SGEMM_GPU_TIMING_FAILURE_INVALID_ORDER);
       } else {
@@ -7267,7 +6617,7 @@ static int prom_sgemm_resident_readback_once(prometheus_runtime* rt,
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
     return PROM_ERROR;
   }
-  vk_result = vkResetFences(rt->device, 1u, &rt->submit_fence);
+  vk_result = vkResetFences(rt->vulkan.device, 1u, &rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
     return PROM_ERROR;
@@ -7276,12 +6626,12 @@ static int prom_sgemm_resident_readback_once(prometheus_runtime* rt,
   submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
-  vk_result = vkQueueSubmit(rt->compute_queue, 1u, &submit_info, rt->submit_fence);
+  vk_result = vkQueueSubmit(rt->vulkan.compute_queue, 1u, &submit_info, rt->submit_fence);
   if (vk_result != VK_SUCCESS) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
     return PROM_ERROR;
   }
-  vk_result = vkWaitForFences(rt->device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
+  vk_result = vkWaitForFences(rt->vulkan.device, 1u, &rt->submit_fence, VK_TRUE, UINT64_MAX);
   if (vk_result != VK_SUCCESS) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_OUT, (int)vk_result);
     return PROM_ERROR;
@@ -7334,9 +6684,9 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
   }
   rt = (prometheus_runtime*)handle;
   out_result->resident_mode_available =
-      (rt->available != 0u &&
-       rt->has_device_local_memory != 0u &&
-       (rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) == 0u)
+      (rt->vulkan.available != 0u &&
+       rt->vulkan.has_device_local_memory != 0u &&
+       (rt->vulkan.test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) == 0u)
           ? 1u
           : 0u;
   if (request == NULL || request->a == NULL || request->b == NULL ||
@@ -7351,11 +6701,11 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
     out_result->setup_detail_code = PROM_INVALID_HANDLE;
     return PROM_INVALID_HANDLE;
   }
-  if (rt->available == 0u ||
-      rt->has_device_local_memory == 0u ||
-      (rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
+  if (rt->vulkan.available == 0u ||
+      rt->vulkan.has_device_local_memory == 0u ||
+      (rt->vulkan.test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) {
     out_result->setup_stage = PROM_STAGE_INIT;
-    out_result->setup_detail_code = rt->available == 0u ? rt->init_detail_code : PROM_ERROR;
+    out_result->setup_detail_code = rt->vulkan.available == 0u ? rt->vulkan.init_detail_code : PROM_ERROR;
     return PROM_ERROR;
   }
   if (!prom_vk_checked_mul_u32(request->m, request->n, &compute_k) ||
@@ -7391,8 +6741,8 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
     return PROM_ERROR;
   }
 
-  saved_flags = rt->test_flags;
-  rt->test_flags = saved_flags | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY;
+  saved_flags = rt->vulkan.test_flags;
+  rt->vulkan.test_flags = saved_flags | PROM_TESTCFG_FORCE_STAGED_PATH | PROM_TESTCFG_FORCE_UPLOAD_ONLY;
   setup_begin_ns = prom_wall_clock_now_ns();
   if (request->mode == PROM_SGEMM_RESIDENT_MODE_EXPLICIT_VARIANT) {
     status = prom_reactor_runtime_sgemm_benchmark_variant_impl(handle,
@@ -7417,7 +6767,7 @@ int prom_reactor_runtime_sgemm_resident_benchmark_impl(void* handle,
                                              &detail_code);
   }
   setup_end_ns = prom_wall_clock_now_ns();
-  rt->test_flags = saved_flags;
+  rt->vulkan.test_flags = saved_flags;
   out_result->setup_stage = stage;
   out_result->setup_detail_code = detail_code;
   out_result->setup_wall_ns = prom_wall_clock_elapsed_ns(setup_begin_ns, setup_end_ns);
@@ -7666,7 +7016,7 @@ int prom_reactor_runtime_sgemm_batch_impl(void* handle,
   if ((flags & ~PROM_BATCH_PRODUCTION_FLAG_MASK) != 0u) {
     return prom_sgemm_batch_reject_unsupported_options(rt, entry_count, flags, out_stage, out_detail_code);
   }
-  if (rt->available == 0u || rt->submission_ring_diag.configured_depth == 0u) {
+  if (rt->vulkan.available == 0u || rt->submission_ring_diag.configured_depth == 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_INIT, PROM_DETAIL_BATCH_EXECUTION_FAILED);
     return PROM_ERROR;
   }
@@ -7712,9 +7062,9 @@ static prom_sgemm_async_task* prom_async_task_lookup(prometheus_runtime* rt, int
 
 static void prom_async_task_destroy_buffers(prometheus_runtime* rt, prom_sgemm_async_task* task) {
   if (rt == NULL || task == NULL) return;
-  prom_vk_destroy_buffer(rt->device, &task->c);
-  prom_vk_destroy_buffer(rt->device, &task->b);
-  prom_vk_destroy_buffer(rt->device, &task->a);
+  prom_vk_destroy_buffer(rt->vulkan.device, &task->c);
+  prom_vk_destroy_buffer(rt->vulkan.device, &task->b);
+  prom_vk_destroy_buffer(rt->vulkan.device, &task->a);
 }
 
 void prom_async_task_release(prometheus_runtime* rt, prom_sgemm_async_task* task) {
@@ -7802,10 +7152,10 @@ int prom_async_reap_quarantined_slots(prometheus_runtime* rt, uint32_t allow_wai
     if (slot->state != PROM_SGEMM_SUBMISSION_SLOT_QUARANTINED) continue;
     task = prom_async_task_for_slot(rt, slot);
     rt->async_reap_poll_count += 1u;
-    result = vkGetFenceStatus(rt->device, slot->fence);
+    result = vkGetFenceStatus(rt->vulkan.device, slot->fence);
     if (result == VK_NOT_READY && allow_wait != 0u) {
       rt->async_reap_wait_count += 1u;
-      result = vkWaitForFences(rt->device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
+      result = vkWaitForFences(rt->vulkan.device, 1u, &slot->fence, VK_TRUE, UINT64_MAX);
     }
     if (result == VK_NOT_READY) continue;
     if (result != VK_SUCCESS) {
@@ -7854,7 +7204,7 @@ int prom_async_record_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* s
   infos[2].buffer=task->c.buffer; infos[2].range=task->c.size;
   memset(writes, 0, sizeof(writes));
   for (uint32_t i=0u;i<3u;++i) { writes[i].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET; writes[i].dstSet=slot->descriptor_set; writes[i].dstBinding=i; writes[i].descriptorType=VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; writes[i].descriptorCount=1u; writes[i].pBufferInfo=&infos[i]; }
-  vkUpdateDescriptorSets(rt->device, 3u, writes, 0u, NULL);
+  vkUpdateDescriptorSets(rt->vulkan.device, 3u, writes, 0u, NULL);
   result=vkResetCommandBuffer(slot->command_buffer,0u); if(result!=VK_SUCCESS) goto failed;
   memset(&begin,0,sizeof(begin)); begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   result=vkBeginCommandBuffer(slot->command_buffer,&begin); if(result!=VK_SUCCESS) goto failed;
@@ -7868,7 +7218,7 @@ int prom_async_record_slot(prometheus_runtime* rt, prom_sgemm_submission_slot* s
   geometry=prom_sgemm_dispatch_geometry_for_variant(0u,task->m,task->n); vkCmdDispatch(slot->command_buffer,geometry.groups_x,geometry.groups_y,geometry.groups_z);
   if(rt->timestamp_query_supported!=0u)vkCmdWriteTimestamp(slot->command_buffer,VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,rt->sgemm_timestamp_query_pool,slot->query_base+1u);
   result=vkEndCommandBuffer(slot->command_buffer);
-  if ((rt->test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) result = VK_ERROR_INITIALIZATION_FAILED;
+  if ((rt->vulkan.test_flags & PROM_TESTCFG_FAIL_COMMAND_END) != 0u) result = VK_ERROR_INITIALIZATION_FAILED;
   if(result!=VK_SUCCESS)goto failed;
   slot->m=task->m;slot->n=task->n;slot->compute_k=task->k;slot->compute_mode=PROM_VK_COMPUTE_BASELINE;slot->variant=0u;slot->state=PROM_SGEMM_SUBMISSION_SLOT_RECORDED;return PROM_OK;
 failed: slot->state=PROM_SGEMM_SUBMISSION_SLOT_FAILED;slot->failure_stage=PROM_STAGE_SUBMIT;slot->failure_detail=(int)result;return PROM_ERROR;
@@ -7896,8 +7246,8 @@ int prom_async_poll_task(prometheus_runtime* rt, prom_sgemm_async_task* task) {
     }
     return PROM_ERROR;
   }
-  if((rt->test_flags&PROM_TESTCFG_FAIL_ASYNC_POLL)!=0u){
-    rt->test_flags &= ~PROM_TESTCFG_FAIL_ASYNC_POLL;
+  if((rt->vulkan.test_flags&PROM_TESTCFG_FAIL_ASYNC_POLL)!=0u){
+    rt->vulkan.test_flags &= ~PROM_TESTCFG_FAIL_ASYNC_POLL;
     prom_async_fail_task(rt,task,PROM_ASYNC_FAILURE_OBSERVATION,PROM_STAGE_SUBMIT,
                          PROM_DETAIL_INJECTED_ASYNC_POLL_FAILURE,0u);
     return PROM_ERROR;
@@ -7998,7 +7348,7 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
   }
 
   rt = (prometheus_runtime*)handle;
-  if(rt->magic!=PROMETHEUS_RUNTIME_MAGIC||rt->available==0u||a==NULL||b==NULL||m==0u||n==0u||k==0u||!prom_vk_checked_mul_u32(m,k,&a_count)||!prom_vk_checked_mul_u32(k,n,&b_count)||!prom_vk_checked_mul_u32(m,n,&c_count)){prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_INIT,PROM_ERROR);return PROM_ERROR;}
+  if(rt->magic!=PROMETHEUS_RUNTIME_MAGIC||rt->vulkan.available==0u||a==NULL||b==NULL||m==0u||n==0u||k==0u||!prom_vk_checked_mul_u32(m,k,&a_count)||!prom_vk_checked_mul_u32(k,n,&b_count)||!prom_vk_checked_mul_u32(m,n,&c_count)){prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_INIT,PROM_ERROR);return PROM_ERROR;}
   if (rt->async_runtime_unsafe_to_reuse != 0u) {
     prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_SUBMIT, PROM_DETAIL_ASYNC_FAILED);
     return PROM_ERROR;
@@ -8013,7 +7363,7 @@ int prom_reactor_runtime_sgemm_submit_async_impl(void* handle,
   if(slot==NULL){prom_async_task_release(rt,task);rt->async_queue_full_count++;prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,PROM_DETAIL_ASYNC_QUEUE_FULL);return PROM_ERROR;}
   slot->state=PROM_SGEMM_SUBMISSION_SLOT_PREPARING;slot->generation+=1u;slot->submission_sequence=rt->submission_ring_diag.next_sequence++;slot->physical_completion_confirmed=0u;
   task->m=m;task->n=n;task->k=k;task->compute_k=k;task->physical_slot_id=slot->slot_id;task->physical_slot_generation=slot->generation;task->submission_sequence=rt->async_next_submission_sequence++;task->selected_path=PROM_VK_PATH_DIRECT;task->compute_mode=PROM_VK_COMPUTE_BASELINE;task->final_detail=PROM_DETAIL_PATH_DIRECT;
-  result=prom_vk_create_buffer(rt->physical_device,rt->device,rt->test_flags,(VkDeviceSize)a_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->a); if(result==VK_SUCCESS)result=prom_vk_create_buffer(rt->physical_device,rt->device,rt->test_flags,(VkDeviceSize)b_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->b); if(result==VK_SUCCESS)result=prom_vk_create_buffer(rt->physical_device,rt->device,rt->test_flags,(VkDeviceSize)c_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->c);
+  result=prom_vk_create_buffer(rt->vulkan.physical_device,rt->vulkan.device,rt->vulkan.test_flags,(VkDeviceSize)a_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->a); if(result==VK_SUCCESS)result=prom_vk_create_buffer(rt->vulkan.physical_device,rt->vulkan.device,rt->vulkan.test_flags,(VkDeviceSize)b_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->b); if(result==VK_SUCCESS)result=prom_vk_create_buffer(rt->vulkan.physical_device,rt->vulkan.device,rt->vulkan.test_flags,(VkDeviceSize)c_count*sizeof(float),VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,1,&task->c);
   if(result!=VK_SUCCESS){slot->state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;prom_async_task_release(rt,task);prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_TRANSFER_IN,(int)result);return PROM_ERROR;}
   memcpy(task->a.mapped,a,(size_t)a_count*sizeof(float));memcpy(task->b.mapped,b,(size_t)b_count*sizeof(float));memset(task->c.mapped,0,(size_t)c_count*sizeof(float));
   if(prom_async_record_slot(rt,slot,task)!=PROM_OK||prom_sgemm_ring_submit_slot(rt,slot)!=PROM_OK){slot->state=PROM_SGEMM_SUBMISSION_SLOT_EMPTY;prom_async_task_release(rt,task);prom_vk_set_status(out_stage,out_detail_code,PROM_STAGE_SUBMIT,PROM_ERROR);return PROM_ERROR;}
@@ -8738,17 +8088,17 @@ static int prom_reactor_runtime_sgemm_policy_diagnostics_fill(void* handle, Prom
   out_diag->px16_m8_last_total_wall_ns = rt->px16_m8_last_total_wall_ns;
   out_diag->px16_m8_last_gpu_timestamp_valid = rt->last_gpu_timing_valid;
   out_diag->px16_m8_resident_device_mode_available =
-      (rt->available != 0u &&
-       rt->has_device_local_memory != 0u &&
-       (rt->test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) == 0u)
+      (rt->vulkan.available != 0u &&
+       rt->vulkan.has_device_local_memory != 0u &&
+       (rt->vulkan.test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) == 0u)
           ? 1u
           : 0u;
   out_diag->px16_m8_last_executed_explicit_variant_request = rt->px16_m8_last_executed_explicit_variant_request;
   out_diag->px16_m17_last_tolerance_eval_wall_ns = rt->px16_m17_last_tolerance_eval_wall_ns;
   out_diag->px16_m17_last_tolerance_eval_in_dispatch = rt->px16_m17_last_tolerance_eval_in_dispatch;
   out_diag->px16_m17_last_tolerance_eval_source = rt->px16_m17_last_tolerance_eval_source;
-  out_diag->p13_m5_timestamp_valid_bits = rt->timestamp_valid_bits;
-  out_diag->p13_m5_timestamp_period_ns = rt->timestamp_period_ns;
+  out_diag->p13_m5_timestamp_valid_bits = rt->vulkan.timestamp_valid_bits;
+  out_diag->p13_m5_timestamp_period_ns = rt->vulkan.timestamp_period_ns;
   if (prom_dom_slot_read_last_commit(&rt->blackboard, 0u, &slot_snapshot) != 0u && slot_snapshot.committed_event_count > 0u) {
     out_diag->p10_m4_last_slot_event_kind = (uint32_t)slot_snapshot.last_event.kind;
     out_diag->p10_m4_last_slot_event_slot_id = slot_snapshot.last_event.slot_id;

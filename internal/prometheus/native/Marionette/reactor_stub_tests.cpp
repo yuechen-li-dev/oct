@@ -6,7 +6,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -16,6 +18,13 @@ namespace
 {
     constexpr std::uint32_t kExpectedAbiVersion = 1;
     constexpr float kGpuOracleTolerance = 1e-4f;
+
+    std::string staged_shader_package_root()
+    {
+        const std::filesystem::path root = std::filesystem::path(MARIONETTE_TEST_REPO_ROOT) /
+            "out" / "prometheus" / "native" / "SerialCanonical" / "shaders";
+        return std::filesystem::exists(root / "manifest.json") ? root.string() : std::string{};
+    }
 
     struct ShapeCase {
         const char* name;
@@ -140,7 +149,11 @@ FACT(PrometheusReactor_ABIVersionIsStable)
 FACT(PrometheusReactor_CreateDestroyLifecycle)
 {
     void* handle = nullptr;
-    const int create_status = prometheus_reactor_runtime_create(nullptr, &handle);
+    const std::string package_root = staged_shader_package_root();
+    PrometheusReactorConfig config{};
+    config.struct_size = sizeof(config);
+    config.shader_package_root = package_root.c_str();
+    const int create_status = prometheus_reactor_runtime_create(&config, &handle);
     ASSERT_EQUAL(PROM_OK, create_status, "runtime create should succeed");
     ASSERT_TRUE(handle != nullptr, "runtime create should produce an opaque handle");
 
@@ -828,9 +841,11 @@ FACT(PrometheusReactor_SgemmRejectsInvalidArguments)
 
 FACT(PrometheusReactor_InitFailurePathsReportExplicitStages)
 {
-    void* handle = nullptr;
-    PrometheusReactorConfig cfg{};
-    cfg.struct_size = sizeof(cfg);
+  void* handle = nullptr;
+  PrometheusReactorConfig cfg{};
+  cfg.struct_size = sizeof(cfg);
+  const std::string package_root = staged_shader_package_root();
+  cfg.shader_package_root = package_root.c_str();
 
     cfg.test_flags = PROM_TESTCFG_FAIL_DEVICE_CREATE;
     ASSERT_EQUAL(PROM_OK, prometheus_reactor_runtime_create(&cfg, &handle), "runtime create should return handle even on unavailable runtime");
@@ -865,6 +880,8 @@ FACT(PrometheusReactor_RuntimeFailurePathsReportExplicitStages)
     for (const FailureCase& failure : cases) {
         PrometheusReactorConfig cfg{};
         cfg.struct_size = sizeof(cfg);
+        const std::string package_root = staged_shader_package_root();
+        cfg.shader_package_root = package_root.c_str();
         cfg.test_flags = failure.flag;
 
         void* handle = nullptr;

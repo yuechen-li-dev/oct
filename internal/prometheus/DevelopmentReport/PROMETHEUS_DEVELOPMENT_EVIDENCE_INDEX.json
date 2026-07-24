@@ -1,7 +1,7 @@
 {
   "schema": "prometheus.development-evidence-index.v1",
   "scope": "internal/prometheus/DevelopmentReport",
-  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; no bulk report moves are performed in Stage 2.",
+  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Stage 3 adds the Vulkan runtime ownership authority without rewriting historical reports or moving artifacts.",
   "corpus": {
     "tracked_file_count_at_stage0_checkpoint": 596,
     "markdown_file_count_at_stage0_checkpoint": 218,
@@ -43,6 +43,13 @@
       "status": "current",
       "superseding_authority": null,
       "role": "mechanical ABI authority, projection map, vocabulary map, and deferred-live boundary"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE3_VULKAN_RUNTIME_OWNERSHIP_EXTRACTION.md",
+      "subsystem_or_era": "Stage 3 Vulkan runtime ownership extraction",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "common Vulkan runtime/device ownership boundary, SGEMM contract, lifecycle evidence, and deferred-live disclosure"
     }
   ],
   "current_reviewer_handoffs": [
@@ -50,7 +57,7 @@
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md",
       "subsystem_or_era": "G4 E2B M1",
       "status": "current",
-      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE2_ABI_AND_VOCABULARY_CONSOLIDATION.md"
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE3_VULKAN_RUNTIME_OWNERSHIP_EXTRACTION.md"
     }
   ],
   "current_validation_characterization": [
@@ -69,6 +76,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE2_ABI_AND_VOCABULARY_CONSOLIDATION.md",
       "subsystem_or_era": "Stage 2",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE3_VULKAN_RUNTIME_OWNERSHIP_EXTRACTION.md",
+      "subsystem_or_era": "Stage 3",
       "status": "current",
       "superseding_authority": null
     }

@@ -230,12 +230,12 @@ ValidationAccounting CollectValidationAccounting()
 void CaptureRuntimeValidationAccounting(const prometheus_runtime* runtime, ValidationAccounting* accounting)
 {
     if (runtime == nullptr || accounting == nullptr) return;
-    accounting->requested = runtime->validation_requested != 0u;
-    accounting->available = runtime->validation_available != 0u;
-    accounting->enabled = runtime->validation_enabled != 0u;
-    accounting->debug_utils_active = runtime->validation_debug_utils_active != 0u;
-    accounting->warning_count = runtime->validation_warning_count;
-    accounting->error_count = runtime->validation_error_count;
+    accounting->requested = runtime->vulkan.validation_requested != 0u;
+    accounting->available = runtime->vulkan.validation_available != 0u;
+    accounting->enabled = runtime->vulkan.validation_enabled != 0u;
+    accounting->debug_utils_active = runtime->vulkan.validation_debug_utils_active != 0u;
+    accounting->warning_count = runtime->vulkan.validation_warning_count;
+    accounting->error_count = runtime->vulkan.validation_error_count;
     if (accounting->enabled && accounting->enabled_layers.empty()) {
         accounting->enabled_layers.push_back("VK_LAYER_KHRONOS_validation");
     }

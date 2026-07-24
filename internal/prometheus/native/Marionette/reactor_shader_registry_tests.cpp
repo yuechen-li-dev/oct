@@ -98,6 +98,43 @@ FACT(PrometheusShaderPackageRootConfigIsStructSizeGatedAndRuntimeOwned) {
   ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(first), "first package is released once with its runtime");
 }
 
+FACT(PrometheusVulkanRuntimeOwnerPartialFailureAndIdempotentCleanup) {
+  const std::string root = staged_shader_package_root();
+  ASSERT_TRUE(!root.empty(), "staged package is available to runtime ownership coverage");
+
+  prom_vk_runtime owner{};
+  prom_shader_package_diagnostic diagnostic{};
+  ASSERT_TRUE(prom_shader_package_open(root.c_str(), &owner.shader_package, &diagnostic),
+              "common owner can acquire the package it destroys");
+  owner.shader_package_root = static_cast<char*>(std::malloc(root.size() + 1u));
+  ASSERT_TRUE(owner.shader_package_root != nullptr, "common owner package root allocation succeeds");
+  if (owner.shader_package_root != nullptr) {
+    std::memcpy(owner.shader_package_root, root.c_str(), root.size() + 1u);
+  }
+  prom_vk_runtime_destroy_package(&owner);
+  ASSERT_TRUE(owner.shader_package == nullptr && owner.shader_package_root == nullptr,
+              "package ownership is cleared after destruction");
+  prom_vk_runtime_destroy_package(&owner);
+  prom_vk_runtime_cleanup(&owner);
+
+  for (int cycle = 0; cycle < 2; ++cycle) {
+    PrometheusReactorConfig config{};
+    config.struct_size = sizeof(config);
+    config.test_flags = PROM_TESTCFG_FAIL_DEVICE_CREATE;
+    config.shader_package_root = root.c_str();
+    void* handle = nullptr;
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&config, &handle),
+                 "partial common-runtime construction returns an owned handle");
+    ASSERT_TRUE(handle != nullptr, "partial construction retains a destroyable runtime");
+    PrometheusCaps caps{};
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_probe_impl(handle, &caps),
+                 "partial construction remains probeable");
+    ASSERT_EQUAL(0u, caps.available, "injected device-create rejection remains unavailable");
+    ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle),
+                 "partial common-runtime construction destroys cleanly");
+  }
+}
+
 DOOM_FACT(PrometheusForcedAttentionRouteRejectionReturnsOrdinaryExit)
 {
   prom_main_attention_route_decision decision{};
@@ -469,18 +506,22 @@ FACT(PrometheusM34bValidationEnabledProductionVariants) {
 #ifdef _WIN32
   ASSERT_EQUAL(0, _putenv_s("PROMETHEUS_VK_VALIDATION", "1"), "validation environment must be set");
 #endif
+  const std::string package_root = staged_shader_package_root();
+  PrometheusReactorConfig config{};
+  config.struct_size = sizeof(config);
+  config.shader_package_root = package_root.c_str();
   void* handle = nullptr;
-  const int create_status = prom_reactor_runtime_create_impl(nullptr, &handle);
+  const int create_status = prom_reactor_runtime_create_impl(&config, &handle);
 #ifdef _WIN32
   _putenv_s("PROMETHEUS_VK_VALIDATION", "");
 #endif
   ASSERT_EQUAL(PROM_OK, create_status, "validation-enabled runtime creation must succeed");
   ASSERT_TRUE(handle != nullptr, "validation-enabled runtime must be returned");
   auto* runtime = static_cast<prometheus_runtime*>(handle);
-  ASSERT_EQUAL(1u, runtime->validation_requested, "validation must be explicitly requested");
-  ASSERT_EQUAL(1u, runtime->validation_available, "validation layer must be available");
-  ASSERT_EQUAL(1u, runtime->validation_enabled, "validation layer must be enabled");
-  ASSERT_EQUAL(1u, runtime->validation_debug_utils_active, "debug-utils capture must be active");
+  ASSERT_EQUAL(1u, runtime->vulkan.validation_requested, "validation must be explicitly requested");
+  ASSERT_EQUAL(1u, runtime->vulkan.validation_available, "validation layer must be available");
+  ASSERT_EQUAL(1u, runtime->vulkan.validation_enabled, "validation layer must be enabled");
+  ASSERT_EQUAL(1u, runtime->vulkan.validation_debug_utils_active, "debug-utils capture must be active");
   constexpr uint32_t m = 3u, n = 17u, k = 7u;
   std::vector<float> a(m * k), b(k * n), expected(m * n, 0.0f), output(m * n, 0.0f);
   for (std::size_t i = 0; i < a.size(); ++i) a[i] = static_cast<float>((i % 7u) + 1u) / 8.0f;
@@ -490,19 +531,25 @@ FACT(PrometheusM34bValidationEnabledProductionVariants) {
     std::fill(output.begin(), output.end(), 0.0f);
     uint32_t stage = PROM_STAGE_NONE; int detail = 0;
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_sgemm_benchmark_variant_impl(handle, a.data(), b.data(), output.data(), m, n, k, variant, &stage, &detail), "production registry variant must execute");
-    for (std::size_t i = 0; i < output.size(); ++i) ASSERT_NEAR(expected[i], output[i], 0.002f, "production variant must match CPU oracle");
+    for (std::size_t i = 0; i < output.size(); ++i) {
+      ASSERT_NEAR(expected[i], output[i], 0.002f, "production variant must match CPU oracle");
+    }
   }
-  ASSERT_EQUAL(0u, runtime->validation_warning_count, "validation warnings must be zero");
-  ASSERT_EQUAL(0u, runtime->validation_error_count, "validation errors must be zero");
+  ASSERT_EQUAL(0u, runtime->vulkan.validation_warning_count, "validation warnings must be zero");
+  ASSERT_EQUAL(0u, runtime->vulkan.validation_error_count, "validation errors must be zero");
   ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle), "validation runtime must be destroyed");
 }
 FACT(PrometheusVulkanRuntimePreflight) {
   void* handle = nullptr;
-  const int create_result = prometheus_reactor_runtime_create(nullptr, &handle);
+  const std::string package_root = staged_shader_package_root();
+  PrometheusReactorConfig config{};
+  config.struct_size = sizeof(config);
+  config.shader_package_root = package_root.c_str();
+  const int create_result = prometheus_reactor_runtime_create(&config, &handle);
   PrometheusCaps caps{};
   const int probe_result = handle == nullptr ? PROM_ERROR : prometheus_reactor_runtime_probe(handle, &caps);
   const prometheus_runtime* runtime = static_cast<const prometheus_runtime*>(handle);
-  const int vk_result = runtime == nullptr ? 0 : runtime->init_detail_code;
+  const int vk_result = runtime == nullptr ? 0 : runtime->vulkan.init_detail_code;
   std::string artifact = "create_result=" + std::to_string(create_result) + "\nprobe_result=" + std::to_string(probe_result) +
       "\ncaps_available=" + std::to_string(caps.available) + "\nreason_code=" + std::to_string(caps.reason_code) +
       "\nvk_result=" + std::to_string(vk_result) + "\n";
