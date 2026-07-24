@@ -137,6 +137,69 @@ void prom_sgemm_memory_profile_allocation_failed(prom_sgemm_memory_profile_decis
   decision->reason = PROM_SGEMM_MEMORY_PROFILE_REASON_ALLOCATION_FAILURE;
 }
 
+/* These helpers own only repeated Vulkan buffer/allocation mechanics.
+   Callers retain typed resource meaning, memory-selection policy, and their
+   existing partial-failure cleanup decision. */
+static VkResult prom_vk_buffer_create_mechanics(VkDevice device,
+                                                 VkDeviceSize size,
+                                                 VkBufferUsageFlags usage,
+                                                 VkSharingMode sharing_mode,
+                                                 uint32_t queue_family_count,
+                                                 const uint32_t* queue_families,
+                                                 prom_vk_buffer* out_buffer,
+                                                 VkMemoryRequirements* out_requirements) {
+  VkBufferCreateInfo buffer_info;
+  VkResult result;
+  if (out_buffer == NULL || out_requirements == NULL) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  memset(out_buffer, 0, sizeof(*out_buffer));
+  out_buffer->size = size;
+  out_buffer->usage_flags = usage;
+  out_buffer->sharing_mode = sharing_mode;
+  out_buffer->memory_offset = 0u;
+  memset(&buffer_info, 0, sizeof(buffer_info));
+  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+  buffer_info.size = size;
+  buffer_info.usage = usage;
+  buffer_info.sharingMode = sharing_mode;
+  buffer_info.queueFamilyIndexCount = queue_family_count;
+  buffer_info.pQueueFamilyIndices = queue_families;
+  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  if (result != VK_SUCCESS) {
+    return result;
+  }
+  vkGetBufferMemoryRequirements(device, out_buffer->buffer, out_requirements);
+  out_buffer->memory_alignment = out_requirements->alignment;
+  return VK_SUCCESS;
+}
+
+static VkResult prom_vk_buffer_allocate_bind_map_mechanics(VkDevice device,
+                                                            const VkMemoryRequirements* requirements,
+                                                            uint32_t memory_type_index,
+                                                            const void* allocation_pnext,
+                                                            int map_memory,
+                                                            prom_vk_buffer* out_buffer) {
+  VkMemoryAllocateInfo alloc_info;
+  VkResult result;
+  if (requirements == NULL || out_buffer == NULL) {
+    return VK_ERROR_INITIALIZATION_FAILED;
+  }
+  memset(&alloc_info, 0, sizeof(alloc_info));
+  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+  alloc_info.pNext = allocation_pnext;
+  alloc_info.allocationSize = requirements->size;
+  alloc_info.memoryTypeIndex = memory_type_index;
+  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
+  if (result == VK_SUCCESS) {
+    result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0u);
+  }
+  if (result == VK_SUCCESS && map_memory != 0) {
+    result = vkMapMemory(device, out_buffer->memory, 0u, out_buffer->size, 0u, &out_buffer->mapped);
+  }
+  return result;
+}
+
 VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
                                VkDevice device,
                                uint32_t test_flags,
@@ -146,9 +209,7 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
                                int map_memory,
                                prom_vk_buffer* out_buffer) {
   VkResult result;
-  VkBufferCreateInfo buffer_info;
   VkMemoryRequirements requirements;
-  VkMemoryAllocateInfo alloc_info;
   VkPhysicalDeviceMemoryProperties physical_memory_properties;
   uint32_t memory_type_index;
 
@@ -160,25 +221,11 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
     return VK_ERROR_OUT_OF_DEVICE_MEMORY;
   }
 
-  memset(out_buffer, 0, sizeof(*out_buffer));
-  out_buffer->size = size;
-  out_buffer->usage_flags = usage;
-  out_buffer->sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
-  out_buffer->memory_offset = 0u;
-
-  memset(&buffer_info, 0, sizeof(buffer_info));
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
-  buffer_info.usage = usage;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  result = prom_vk_buffer_create_mechanics(device, size, usage, VK_SHARING_MODE_EXCLUSIVE,
+                                            0u, NULL, out_buffer, &requirements);
   if (result != VK_SUCCESS) {
     return result;
   }
-
-  vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
-  out_buffer->memory_alignment = requirements.alignment;
   memory_type_index = prom_vk_find_memory_type(physical_device, requirements.memoryTypeBits, memory_properties);
   if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
       (((test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
@@ -192,28 +239,8 @@ VkResult prom_vk_create_buffer(VkPhysicalDevice physical_device,
   out_buffer->memory_type_index = memory_type_index;
   out_buffer->memory_property_flags = physical_memory_properties.memoryTypes[memory_type_index].propertyFlags;
 
-  memset(&alloc_info, 0, sizeof(alloc_info));
-  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  alloc_info.allocationSize = requirements.size;
-  alloc_info.memoryTypeIndex = memory_type_index;
-
-  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0);
-  if (result != VK_SUCCESS) {
-    return result;
-  }
-
-  if (map_memory != 0) {
-    result = vkMapMemory(device, out_buffer->memory, 0, size, 0, &out_buffer->mapped);
-    if (result != VK_SUCCESS) {
-      return result;
-    }
-  }
-  return VK_SUCCESS;
+  return prom_vk_buffer_allocate_bind_map_mechanics(device, &requirements, memory_type_index,
+                                                     NULL, map_memory, out_buffer);
 }
 
 VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
@@ -225,9 +252,7 @@ VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
                                               int map_memory,
                                               prom_vk_buffer* out_buffer) {
   VkResult result;
-  VkBufferCreateInfo buffer_info;
   VkMemoryRequirements requirements;
-  VkMemoryAllocateInfo alloc_info;
   VkMemoryAllocateFlagsInfo address_flags;
   VkPhysicalDeviceMemoryProperties physical_memory_properties;
   uint32_t memory_type_index;
@@ -239,23 +264,13 @@ VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
     return VK_ERROR_OUT_OF_DEVICE_MEMORY;
   }
 
-  memset(out_buffer, 0, sizeof(*out_buffer));
-  out_buffer->size = size;
-  out_buffer->usage_flags = usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-  out_buffer->sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
-
-  memset(&buffer_info, 0, sizeof(buffer_info));
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
-  buffer_info.usage = out_buffer->usage_flags;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  result = prom_vk_buffer_create_mechanics(device, size,
+                                            usage | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                                            VK_SHARING_MODE_EXCLUSIVE, 0u, NULL,
+                                            out_buffer, &requirements);
   if (result != VK_SUCCESS) {
     return result;
   }
-
-  vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
-  out_buffer->memory_alignment = requirements.alignment;
   memory_type_index = prom_vk_find_memory_type(physical_device, requirements.memoryTypeBits, memory_properties);
   if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
       (((test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
@@ -273,18 +288,8 @@ VkResult prom_vk_create_device_address_buffer(VkPhysicalDevice physical_device,
   memset(&address_flags, 0, sizeof(address_flags));
   address_flags.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
   address_flags.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-  memset(&alloc_info, 0, sizeof(alloc_info));
-  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  alloc_info.pNext = &address_flags;
-  alloc_info.allocationSize = requirements.size;
-  alloc_info.memoryTypeIndex = memory_type_index;
-  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
-  if (result == VK_SUCCESS) {
-    result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0u);
-  }
-  if (result == VK_SUCCESS && map_memory != 0) {
-    result = vkMapMemory(device, out_buffer->memory, 0u, size, 0u, &out_buffer->mapped);
-  }
+  result = prom_vk_buffer_allocate_bind_map_mechanics(device, &requirements, memory_type_index,
+                                                       &address_flags, map_memory, out_buffer);
   if (result != VK_SUCCESS) {
     prom_vk_destroy_buffer(device, out_buffer);
   }
@@ -300,32 +305,18 @@ VkResult prom_vk_create_buffer_shared_between_families(
     VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, int map_memory,
     uint32_t first_queue_family, uint32_t second_queue_family, prom_vk_buffer* out_buffer) {
   VkResult result;
-  VkBufferCreateInfo buffer_info;
   VkMemoryRequirements requirements;
-  VkMemoryAllocateInfo alloc_info;
   VkPhysicalDeviceMemoryProperties physical_memory_properties;
   uint32_t memory_type_index;
   uint32_t families[2];
   if (device == VK_NULL_HANDLE || out_buffer == NULL || first_queue_family == UINT32_MAX ||
       second_queue_family == UINT32_MAX || first_queue_family == second_queue_family) return VK_ERROR_INITIALIZATION_FAILED;
   if ((test_flags & PROM_TESTCFG_FAIL_BUFFER_ALLOC) != 0u) return VK_ERROR_OUT_OF_DEVICE_MEMORY;
-  memset(out_buffer, 0, sizeof(*out_buffer));
   families[0] = first_queue_family;
   families[1] = second_queue_family;
-  out_buffer->size = size;
-  out_buffer->usage_flags = usage;
-  out_buffer->sharing_mode = VK_SHARING_MODE_CONCURRENT;
-  memset(&buffer_info, 0, sizeof(buffer_info));
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
-  buffer_info.usage = usage;
-  buffer_info.sharingMode = VK_SHARING_MODE_CONCURRENT;
-  buffer_info.queueFamilyIndexCount = 2u;
-  buffer_info.pQueueFamilyIndices = families;
-  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  result = prom_vk_buffer_create_mechanics(device, size, usage, VK_SHARING_MODE_CONCURRENT,
+                                            2u, families, out_buffer, &requirements);
   if (result != VK_SUCCESS) return result;
-  vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
-  out_buffer->memory_alignment = requirements.alignment;
   memory_type_index = prom_vk_find_memory_type(physical_device, requirements.memoryTypeBits, memory_properties);
   if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
       (((test_flags & PROM_TESTCFG_FORCE_NO_DEVICE_LOCAL_MEMORY) != 0u) &&
@@ -337,28 +328,10 @@ VkResult prom_vk_create_buffer_shared_between_families(
   vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_memory_properties);
   out_buffer->memory_type_index = memory_type_index;
   out_buffer->memory_property_flags = physical_memory_properties.memoryTypes[memory_type_index].propertyFlags;
-  memset(&alloc_info, 0, sizeof(alloc_info));
-  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  alloc_info.allocationSize = requirements.size;
-  alloc_info.memoryTypeIndex = memory_type_index;
-  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
-  if (result != VK_SUCCESS) {
-    prom_vk_destroy_buffer(device, out_buffer);
-    return result;
-  }
-  result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0);
-  if (result != VK_SUCCESS) {
-    prom_vk_destroy_buffer(device, out_buffer);
-    return result;
-  }
-  if (map_memory != 0) {
-    result = vkMapMemory(device, out_buffer->memory, 0, size, 0, &out_buffer->mapped);
-    if (result != VK_SUCCESS) {
-      prom_vk_destroy_buffer(device, out_buffer);
-      return result;
-    }
-  }
-  return VK_SUCCESS;
+  result = prom_vk_buffer_allocate_bind_map_mechanics(device, &requirements, memory_type_index,
+                                                       NULL, map_memory, out_buffer);
+  if (result != VK_SUCCESS) prom_vk_destroy_buffer(device, out_buffer);
+  return result;
 }
 
 VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
@@ -370,9 +343,7 @@ VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
                                              int map_memory,
                                              prom_vk_buffer* out_buffer) {
   VkResult result;
-  VkBufferCreateInfo buffer_info;
   VkMemoryRequirements requirements;
-  VkMemoryAllocateInfo alloc_info;
   VkPhysicalDeviceMemoryProperties memory_properties;
   uint32_t memory_type_index;
   if (device == VK_NULL_HANDLE || out_buffer == NULL) {
@@ -381,21 +352,11 @@ VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
   if ((test_flags & PROM_TESTCFG_FAIL_BUFFER_ALLOC) != 0u) {
     return VK_ERROR_OUT_OF_DEVICE_MEMORY;
   }
-  memset(out_buffer, 0, sizeof(*out_buffer));
-  out_buffer->size = size;
-  out_buffer->usage_flags = usage;
-  out_buffer->sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
-  memset(&buffer_info, 0, sizeof(buffer_info));
-  buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-  buffer_info.size = size;
-  buffer_info.usage = usage;
-  buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-  result = vkCreateBuffer(device, &buffer_info, NULL, &out_buffer->buffer);
+  result = prom_vk_buffer_create_mechanics(device, size, usage, VK_SHARING_MODE_EXCLUSIVE,
+                                            0u, NULL, out_buffer, &requirements);
   if (result != VK_SUCCESS) {
     return result;
   }
-  vkGetBufferMemoryRequirements(device, out_buffer->buffer, &requirements);
-  out_buffer->memory_alignment = requirements.alignment;
   vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
   memory_type_index = prom_vk_find_memory_type_for_placement(&memory_properties, requirements.memoryTypeBits, placement);
   if ((test_flags & PROM_TESTCFG_FORCE_NO_MEMORY_TYPE) != 0u ||
@@ -409,17 +370,8 @@ VkResult prom_vk_create_buffer_for_placement(VkPhysicalDevice physical_device,
   }
   out_buffer->memory_type_index = memory_type_index;
   out_buffer->memory_property_flags = memory_properties.memoryTypes[memory_type_index].propertyFlags;
-  memset(&alloc_info, 0, sizeof(alloc_info));
-  alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-  alloc_info.allocationSize = requirements.size;
-  alloc_info.memoryTypeIndex = memory_type_index;
-  result = vkAllocateMemory(device, &alloc_info, NULL, &out_buffer->memory);
-  if (result == VK_SUCCESS) {
-    result = vkBindBufferMemory(device, out_buffer->buffer, out_buffer->memory, 0u);
-  }
-  if (result == VK_SUCCESS && map_memory != 0) {
-    result = vkMapMemory(device, out_buffer->memory, 0u, size, 0u, &out_buffer->mapped);
-  }
+  result = prom_vk_buffer_allocate_bind_map_mechanics(device, &requirements, memory_type_index,
+                                                       NULL, map_memory, out_buffer);
   if (result != VK_SUCCESS) {
     prom_vk_destroy_buffer(device, out_buffer);
   }

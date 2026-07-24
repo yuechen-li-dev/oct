@@ -57,6 +57,13 @@
       "status": "current",
       "superseding_authority": null,
       "role": "Dominatus-controlled SGEMM resource-state authority, bounded execution handoff, and retained typed-role boundary"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE5_MECHANICAL_ALLOCATION_AND_CLEANUP_SUBSTRATE.md",
+      "subsystem_or_era": "Stage 5 mechanical allocation and cleanup substrate",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "policy-free repeated Vulkan buffer allocation/cleanup mechanics, preservation evidence, and retained semantic boundary"
     }
   ],
   "current_reviewer_handoffs": [
@@ -95,6 +102,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE4_RESOURCE_STATE_AND_EXECUTION_HANDOFF.md",
       "subsystem_or_era": "Stage 4",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE5_MECHANICAL_ALLOCATION_AND_CLEANUP_SUBSTRATE.md",
+      "subsystem_or_era": "Stage 5",
       "status": "current",
       "superseding_authority": null
     }

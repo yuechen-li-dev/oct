@@ -135,6 +135,57 @@ FACT(PrometheusVulkanRuntimeOwnerPartialFailureAndIdempotentCleanup) {
   }
 }
 
+FACT(PrometheusStage5MechanicalBufferAllocationAndCleanupPreserveMappedState) {
+  const std::string root = staged_shader_package_root();
+  ASSERT_TRUE(!root.empty(), "staged package is available to the mechanical-buffer witness");
+  PrometheusReactorConfig config{};
+  config.struct_size = sizeof(config);
+  config.shader_package_root = root.c_str();
+  void* handle = nullptr;
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_create_impl(&config, &handle),
+               "runtime creation succeeds before buffer-mechanics coverage");
+  auto* runtime = static_cast<prometheus_runtime*>(handle);
+  if (runtime == nullptr || runtime->vulkan.available == 0u) {
+    if (handle != nullptr) {
+      ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle), "unavailable runtime cleanup succeeds");
+    }
+    SKIP("Vulkan runtime unavailable; mechanical buffer witness requires a real device");
+  }
+
+  prom_vk_buffer mapped{};
+  ASSERT_EQUAL(VK_SUCCESS,
+               prom_vk_create_buffer(runtime->vulkan.physical_device, runtime->vulkan.device,
+                                     runtime->vulkan.test_flags, 64u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                     1, &mapped),
+               "mapped storage allocation succeeds");
+  ASSERT_EQUAL(static_cast<VkDeviceSize>(64u), mapped.size, "requested buffer size is retained");
+  ASSERT_TRUE(mapped.memory_alignment > 0u, "Vulkan requirement alignment is retained");
+  ASSERT_EQUAL(static_cast<VkDeviceSize>(0u), mapped.memory_offset, "binding remains at offset zero");
+  ASSERT_TRUE(mapped.mapped != nullptr, "mapped allocation retains its mapped pointer");
+  ASSERT_TRUE((mapped.memory_property_flags &
+               (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) ==
+                  (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+              "selected mapped type retains required coherent host-visible properties");
+  prom_vk_destroy_buffer(runtime->vulkan.device, &mapped);
+  ASSERT_TRUE(mapped.buffer == VK_NULL_HANDLE && mapped.memory == VK_NULL_HANDLE && mapped.mapped == nullptr,
+              "mapped allocation cleanup clears every acquired handle");
+  prom_vk_destroy_buffer(runtime->vulkan.device, &mapped);
+
+  prom_vk_buffer unmapped{};
+  ASSERT_EQUAL(VK_SUCCESS,
+               prom_vk_create_buffer(runtime->vulkan.physical_device, runtime->vulkan.device,
+                                     runtime->vulkan.test_flags, 64u, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                                     0, &unmapped),
+               "unmapped storage allocation succeeds");
+  ASSERT_TRUE(unmapped.mapped == nullptr, "unmapped allocation remains unmapped");
+  ASSERT_EQUAL(static_cast<VkDeviceSize>(0u), unmapped.memory_offset, "unmapped binding remains at offset zero");
+  prom_vk_destroy_buffer(runtime->vulkan.device, &unmapped);
+  prom_vk_destroy_buffer(runtime->vulkan.device, &unmapped);
+  ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_destroy_impl(handle), "runtime destruction follows dependent buffer cleanup");
+}
+
 DOOM_FACT(PrometheusForcedAttentionRouteRejectionReturnsOrdinaryExit)
 {
   prom_main_attention_route_decision decision{};

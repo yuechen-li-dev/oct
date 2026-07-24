@@ -170,3 +170,37 @@ unclaimed.
 The exact Stage 5 candidate boundary is a demonstrated shared mechanical
 allocation/cleanup substrate only; it must not generalize SGEMM weight semantics
 or add a reactor framework.
+
+## Current repository handoff — Stage 5
+
+Stage 5 is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE5_MECHANICAL_ALLOCATION_AND_CLEANUP_SUBSTRATE.md`.
+It proved four current buffer constructors repeated only concrete Vulkan
+mechanics, then consolidated buffer creation, requirement discovery,
+allocation, zero-offset binding, and caller-requested mapping into two private
+functions in `reactor_vulkan_common.c`. The existing wrappers retain all
+memory-type/placement selection, queue-family sharing, device-address `pNext`,
+mapping choice, and partial-failure cleanup decisions. No generic resource
+model or allocation policy was added.
+
+`prom_vk_runtime` remains the common Vulkan owner. Dominatus remains the
+control kernel; its committed visible snapshot and the Stage 4 private SGEMM
+execution handoff are unchanged. SGEMM retains typed A/B/C/upload roles,
+arenas, descriptors, command resources, submission, synchronization, and
+readback. Model weights/windows and ray acceleration-structure semantics stay
+separate.
+
+The focused real-Vulkan test passed for mapped and unmapped buffers, required
+flags, alignment, offset-zero binding, and repeated cleanup. ABI signature,
+84 exports, generated/shader/package authority, `prometheus.core@1`, and
+kernel 68/69 identities are unchanged. M34b remains the exact inherited
+deterministic failure (`m=3`, `n=17`, `k=7`, variant 4, three final-column
+cells expected `1.6458333730697632`, observed `0`); the five A2x4 footprint
+failures are unchanged. Required-live Gemma, payload-backed teardown/Z-Image,
+and Linux remain unclaimed.
+
+The exact Stage 6 candidate boundary is closed model execution planning: move
+Z-Image stage order into a bounded plan and Gemma orchestration out of the API
+veneer without changing generated identities, dispatch order, residency,
+allocation ceilings, or numerical authority. Do not begin that work as part of
+Stage 5.
