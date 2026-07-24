@@ -87,6 +87,13 @@
       "role": "bounded kernel-54 compiler, deterministic generated-conformance artifact, and explicit private-adapter/runtime-equivalence limitation"
     },
     {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M1C_NATIVE_CONFORMANCE_CLOSURE.md",
+      "subsystem_or_era": "Concept/Vulkan M1C",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "real native generated-object/link evidence and macro-gated kernel-54 conformance adapter boundary"
+    },
+    {
       "path": "docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md",
       "subsystem_or_era": "Concept/Vulkan language",
       "status": "current",

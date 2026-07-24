@@ -1,10 +1,10 @@
 {
   "function": "Execute",
   "generated_c_lines": {
-    "end": 9,
+    "end": 31,
     "start": 6
   },
-  "generated_symbol": "prom_concept_vulkan_kernel54_plan_verify",
+  "generated_symbol": "prom_concept_vulkan_kernel54_execute",
   "mir": [
     {
       "ID": "m1.01",

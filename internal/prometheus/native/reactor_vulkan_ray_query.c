@@ -798,6 +798,40 @@ int prom_ray_query_triangle_scene_probe_impl(void* handle, uint64_t scene_id,
   return PROM_OK;
 }
 
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+/* This seam exists only in the conformance build. It remains in this
+ * translation unit specifically so it exercises the real static scene lookup,
+ * package lookup, and handwritten probe rather than a copied implementation. */
+#include "reactor_concept_vulkan_kernel54.generated.h"
+int prom_concept_vulkan_kernel54_handwritten_adapter(void* handle, uint64_t scene_id,
+                                                      PrometheusRayQueryProbeResult* out_result) {
+  return prom_ray_query_triangle_scene_probe_impl(handle, scene_id, out_result);
+}
+
+int prom_concept_vulkan_kernel54_generated_adapter(void* handle, uint64_t scene_id,
+                                                    PrometheusRayQueryProbeResult* out_result) {
+  prom_ray_query_scene* scene;
+  prom_vk_runtime_services services;
+  prom_shader_package* package;
+  uint32_t evidence = 0u;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) return PROM_INVALID_HANDLE;
+  scene = prom_ray_scene_find(handle, scene_id);
+  if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC || scene->services.device != services.device) return PROM_INVALID_HANDLE;
+  if (prom_reactor_runtime_get_shader_package(scene->runtime_handle, &package) != PROM_OK) return PROM_ERROR;
+  if (prom_concept_vulkan_kernel54_execute(&scene->services, package, scene->tlas.handle, &evidence) != PROM_OK) return PROM_ERROR;
+  out_result->hit = evidence != 0u ? 1u : 0u;
+  out_result->triangle_count = scene->triangle_count;
+  out_result->blas_built = scene->triangle_blas.handle != VK_NULL_HANDLE ? 1u : 0u;
+  out_result->tlas_built = scene->tlas.handle != VK_NULL_HANDLE ? 1u : 0u;
+  out_result->vertex_device_address = scene->vertex_buffer.buffer != VK_NULL_HANDLE ? (uint64_t)prom_ray_buffer_address(scene->services.device, scene->vertex_buffer.buffer) : 0u;
+  out_result->blas_device_address = (uint64_t)scene->triangle_blas.device_address;
+  out_result->tlas_device_address = (uint64_t)scene->tlas.device_address;
+  return PROM_OK;
+}
+#endif
+
 static int prom_ray_scene_trace_direct(prom_ray_query_scene* scene,
                                        const PrometheusRayQueryRawRequest* request,
                                        uint32_t visibility_mask,

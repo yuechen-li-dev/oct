@@ -15,10 +15,10 @@ The immediate project is **Concept/Vulkan**: a bounded host-side language
 profile for expressing Prometheus Vulkan mechanisms without continuing to
 author the repetitive bulk of new mechanisms directly in raw Vulkan C.
 Concept/Vulkan M0 fixed the language constitution and implementation boundary.
-M1 now provides the hermetic package-backed kernel-54 compiler/source/MIR/C-H
-artifact vertical, while keeping production handwritten because the required
-private scene/command helper boundary is not reusable without a separate
-approved adapter.
+M1C is the active native/conformance closure: generated kernel-54 C now builds
+and links against the real Vulkan contract, with a macro-gated private adapter
+beside the handwritten route. Production remains handwritten while admitted
+runtime equivalence and failure traces are collected.
 
 The owner direction is:
 

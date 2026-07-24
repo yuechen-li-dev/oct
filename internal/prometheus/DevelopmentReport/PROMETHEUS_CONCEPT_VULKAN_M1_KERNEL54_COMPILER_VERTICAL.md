@@ -88,8 +88,8 @@ baseline is preserved because no public symbol is added.
 | static witness correspondence | PASS — MIR/witness review |
 | runtime success/failure/cleanup/validation | NOT RUN — private adapter absent |
 
-M2 assignment: establish a reviewed non-public kernel-54 conformance adapter
-with exact ownership/failure contract, then run generated and handwritten paths
-against the same admitted scene/TLAS for result, cleanup, failure-injection and
-validation equivalence. Only then assess kernel-55 physical-batch equivalence.
+M1C now owns the private kernel-54 adapter and native conformance evidence.
+M2 begins only after M1C runs it against the same admitted scene/TLAS for
+result, cleanup, failure-injection, and validation equivalence; M2 then assesses
+kernel-55 physical-batch equivalence.
 Rollback removes these additive compiler/source/generated/report/evidence files.
