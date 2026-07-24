@@ -15,13 +15,13 @@ The immediate project is **Concept/Vulkan**: a bounded host-side language
 profile for expressing Prometheus Vulkan mechanisms without continuing to
 author the repetitive bulk of new mechanisms directly in raw Vulkan C.
 Concept/Vulkan M0 fixed the language constitution and implementation boundary.
-M1D is the active executable-equivalence closure: one private executable now
-links and invokes the real handwritten and generated kernel-54 paths on an
-admitted live runtime, with passing validation-layer and same-runtime reuse
-evidence on this machine. Production remains handwritten. The remaining M1
-gap is the narrow handwritten create-path seam required for stage-by-stage
-partial-construction failure equivalence; physical batching (RQ-M1) remains
-paused while that closure is finished.
+The original kernel-54 proof vertical is now accepted as sufficient proof of
+compiler/native viability. M1D remains honestly classified as
+`MEANINGFUL PROGRESSION`: one private executable linked and invoked the real
+handwritten and generated kernel-54 paths on an admitted live runtime, but the
+proposed M1E handwritten create-path failure seam is not the active
+assignment. The active assignment is **Concept/Vulkan EVT1 M1A**: payload
+enums and exhaustive `match`. Production remains handwritten.
 
 The owner direction is:
 
@@ -93,24 +93,25 @@ generated path proves behavioral and failure-path equivalence.
 
 ## Next bounded slice
 
-Concept/Vulkan M1 expresses the current package-backed ray-query capability
-probe in a checked-in conformance artifact with:
+Concept/Vulkan EVT1 M1A adds:
 
-- a borrowed admitted mechanism context and acceleration structure;
-- exact `prometheus.core@1` / `kernel-54-default` identity;
-- one owned mapped evidence buffer;
-- typed bindings 0 and 1;
-- one compute pipeline, command scope, `(1,1,1)` dispatch, submission/wait,
-  observation, and deterministic cleanup;
-- existing Prometheus errors and failure ordering;
-- deterministic C/H, source map, and generation manifest.
+- one real payload-enum and exhaustive-`match` language vertical from
+  `.concept` source through typed MIR, deterministic C11, native compilation,
+  and executable behavior;
+- mixed unit, single-payload, multi-payload, and enum-payload variants;
+- qualified variant construction only;
+- expression-form and statement-form `match`;
+- explicit tag-plus-union C11 lowering with single-evaluation guarantees;
+- focused hardware-independent and Vulkan-shaped specimens.
 
-Live success equivalence is no longer blocked on the private adapter. The next
-bounded Concept/Vulkan step is to close handwritten create-path partial-failure
-equivalence without widening public ABI or duplicating the implementation.
-Only after that closure does physical ray-query batch equivalence resume.
-Production ray-query migration remains later work. DVT-2 optimization remains
-paused.
+The owner-preserved paused states are unchanged:
+
+- Prometheus RQ-M1 physical batching is preserved but paused;
+- DVT-2 optimization is preserved but paused;
+- EVT1 M1B (concepts-first templates and compile-time evaluation) is deferred
+  until after M1A;
+- the previously proposed M1E failure-equivalence seam is not the current
+  assignment.
 
 ## Provenance note
 

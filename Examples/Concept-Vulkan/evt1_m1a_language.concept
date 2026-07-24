@@ -1,0 +1,108 @@
+profile Vulkan;
+
+enum InnerStatus
+{
+    Idle,
+    Counted(int value)
+}
+
+enum DemoState
+{
+    Empty,
+    Counted(int value),
+    Pair(int first, int second),
+    Wrapped(InnerStatus inner)
+}
+
+int Add(int left, int right);
+DemoState ObserveState();
+int ObserveCalls();
+void RecordInt(int value);
+void RecordPair(int first, int second);
+
+DemoState MakeEmpty()
+{
+    return DemoState::Empty;
+}
+
+InnerStatus MakeInnerIdle()
+{
+    return InnerStatus::Idle;
+}
+
+InnerStatus MakeInnerCounted(int value)
+{
+    return InnerStatus::Counted(value);
+}
+
+DemoState MakeCounted(int value)
+{
+    return DemoState::Counted(value);
+}
+
+DemoState MakePair(int first, int second)
+{
+    return DemoState::Pair(first, second);
+}
+
+DemoState MakeWrapped(InnerStatus inner)
+{
+    return DemoState::Wrapped(inner);
+}
+
+int Classify(DemoState state)
+{
+    return match (state)
+    {
+        DemoState::Empty => 0,
+        DemoState::Counted(value) => value,
+        DemoState::Pair(first, second) => Add(first, second),
+        DemoState::Wrapped(inner) => match (inner)
+        {
+            InnerStatus::Idle => 100,
+            InnerStatus::Counted(value) => Add(value, 100)
+        },
+    };
+}
+
+int ObserveAndClassify()
+{
+    return Classify(ObserveState());
+}
+
+void Visit(DemoState state)
+{
+    match (state)
+    {
+        DemoState::Empty =>
+        {
+            RecordInt(0);
+        }
+
+        DemoState::Counted(value) =>
+        {
+            RecordInt(value);
+        }
+
+        DemoState::Pair(first, second) =>
+        {
+            RecordPair(first, second);
+        }
+
+        DemoState::Wrapped(inner) =>
+        {
+            match (inner)
+            {
+                InnerStatus::Idle =>
+                {
+                    RecordInt(1000);
+                }
+
+                InnerStatus::Counted(value) =>
+                {
+                    RecordInt(Add(value, 1000));
+                }
+            }
+        }
+    }
+}

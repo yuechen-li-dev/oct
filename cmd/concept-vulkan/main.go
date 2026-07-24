@@ -10,9 +10,10 @@ import (
 )
 
 func main() {
-	var source, out string
+	var source, out, mode string
 	flag.StringVar(&source, "source", "Examples/Concept-Vulkan/kernel54_probe.concept", "canonical .concept source")
 	flag.StringVar(&out, "out", "internal/prometheus/native", "output directory")
+	flag.StringVar(&mode, "mode", "m1", "compiler mode: m1 or evt1-m1a")
 	flag.Parse()
 	if flag.NArg() != 1 || (flag.Arg(0) != "generate" && flag.Arg(0) != "check") {
 		fmt.Fprintln(os.Stderr, "usage: concept-vulkan [flags] generate|check")
@@ -22,11 +23,7 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
-	p, err := conceptvulkan.Parse(filepath.ToSlash(source), string(b))
-	if err != nil {
-		fail(err)
-	}
-	outputs, err := conceptvulkan.Generate(p, b)
+	outputs, err := compile(mode, filepath.ToSlash(source), b)
 	if err != nil {
 		fail(err)
 	}
@@ -39,4 +36,24 @@ func main() {
 		fail(err)
 	}
 }
+
+func compile(mode, source string, body []byte) (conceptvulkan.Outputs, error) {
+	switch mode {
+	case "m1":
+		p, err := conceptvulkan.Parse(source, string(body))
+		if err != nil {
+			return nil, err
+		}
+		return conceptvulkan.Generate(p, body)
+	case "evt1-m1a":
+		module, err := conceptvulkan.ParseEVT1(source, string(body))
+		if err != nil {
+			return nil, err
+		}
+		return conceptvulkan.GenerateEVT1(module, body)
+	default:
+		return nil, fmt.Errorf("unknown concept-vulkan mode %q", mode)
+	}
+}
+
 func fail(err error) { fmt.Fprintln(os.Stderr, err); os.Exit(1) }

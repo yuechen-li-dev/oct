@@ -1,6 +1,6 @@
 # PROMETHEUS G4-E2B-M1 — raw-score stabilization handoff
 
-## Current repository handoff — Concept/Vulkan detour
+## Current repository handoff — Concept/Vulkan EVT1
 
 The immediate assignment is no longer Prometheus Stage 7 or additional
 ray-query image work. Concept/Vulkan M0 is recorded in
@@ -8,6 +8,22 @@ ray-query image work. Concept/Vulkan M0 is recorded in
 with the normative language constitution at
 `docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md` and current
 project briefing at `docs/OCT_SDSLV_PROMETHEUS_LIVING_STATUS.md`.
+
+The accepted proof foundation is:
+
+- M1 through M1D proved a real `.concept -> typed MIR -> generated C ->
+  native build -> live executable` vertical beside the handwritten kernel-54
+  witness;
+- M1D remains honestly classified as `MEANINGFUL PROGRESSION`;
+- the proposed M1E handwritten create-path failure seam is not the active
+  assignment.
+
+The active assignment is now recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md`:
+
+```text
+Concept/Vulkan EVT1 M1A — Payload Enums and Exhaustive Match
+```
 
 Concept/Vulkan is the bounded host-side mechanism profile implemented through
 the working Go Oct/SDSL-V compiler lineage. Dominatus remains the Prometheus
@@ -24,9 +40,9 @@ initial Concept/Vulkan proof.
 RQ-M1's accepted physical batch is also preserved: supported nonzero batches
 record one `vkCmdDispatch(ray_count,1,1)` and one synchronous submission with
 paired capacity and descriptor rebind-before-retire. Expanded image/cost
-authority is paused, not completed or abandoned. M1 instead implements the
-smaller existing package-backed kernel-54 capability-probe witness; full
-physical ray-batch equivalence is Concept/Vulkan M2.
+authority is paused, not completed or abandoned. EVT1 M1A is language work,
+not resumed batch or stage-7 work. EVT1 M1B (concepts-first templates and
+compile-time evaluation) is explicitly deferred until after M1A.
 
 ## Historical repository handoff — Stage 3
 

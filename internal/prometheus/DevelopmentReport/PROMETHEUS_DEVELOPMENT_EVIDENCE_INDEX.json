@@ -1,7 +1,7 @@
 {
   "schema": "prometheus.development-evidence-index.v1",
   "scope": "internal/prometheus/DevelopmentReport",
-  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Concept/Vulkan M0 adds the host-mechanism language constitution and implementation boundary without changing production, generated, shader, package, ABI, or Stage 3-6 authority.",
+  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Concept/Vulkan M0 adds the host-mechanism language constitution and implementation boundary, M1D preserves the accepted kernel-54 proof as meaningful progression, and EVT1 M1A adds payload enums and exhaustive match without changing production, shader, package, ABI, or Stage 3-6 authority.",
   "corpus": {
     "tracked_file_count_at_stage0_checkpoint": 596,
     "markdown_file_count_at_stage0_checkpoint": 218,
@@ -101,11 +101,18 @@
       "role": "one-harness live handwritten/generated executable equivalence, validation-layer result, production exclusion audit, and explicit remaining create-path failure-equivalence blocker"
     },
     {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md",
+      "subsystem_or_era": "Concept/Vulkan EVT1 M1A",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "payload-enum and exhaustive-match language vertical, deterministic specimen authority, native proof, and owner transition from the accepted M1D proof foundation"
+    },
+    {
       "path": "docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md",
       "subsystem_or_era": "Concept/Vulkan language",
       "status": "current",
       "superseding_authority": null,
-      "role": "normative Concept/Vulkan identity, ownership, fallibility, access, synchronization, metaprogramming, M1 semantic minimum, and migration constitution"
+      "role": "normative Concept/Vulkan identity, ownership, fallibility, access, synchronization, metaprogramming, EVT1 M1A payload-enum/match minimum, and migration constitution"
     },
     {
       "path": "docs/OCT_SDSLV_PROMETHEUS_LIVING_STATUS.md",
@@ -120,7 +127,7 @@
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md",
       "subsystem_or_era": "G4 E2B M1",
       "status": "current",
-      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M0_CHARACTERIZATION.md"
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md"
     }
   ],
   "current_validation_characterization": [
@@ -175,6 +182,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M1D_EXECUTABLE_EQUIVALENCE_CLOSURE.md",
       "subsystem_or_era": "Concept/Vulkan M1D",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md",
+      "subsystem_or_era": "Concept/Vulkan EVT1 M1A",
       "status": "current",
       "superseding_authority": null
     }

@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative M1 constitution; bounded kernel-54 compiler implemented; production remains handwritten**
+Status: **normative EVT1 M1A constitution; kernel-54 proof accepted; payload enums and exhaustive match implemented; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -105,6 +105,46 @@ bounded fallibility meaning. `MappedEvidenceBuffer` is the narrow source
 spelling of M1's existing mapped host-visible evidence-buffer capability;
 `ComputePipeline`, `DescriptorSet`, `CommandRecording`, and `Submission` are
 the existing M1 capability names, not new runtime abstractions.
+
+## 2.3 EVT1 M1A payload enums and exhaustive match
+
+EVT1 M1A adds payload enums and exhaustive `match` without changing the
+established C++-shaped declaration form:
+
+```concept
+enum PipelineState
+{
+    Empty,
+    LayoutCreated(PipelineLayout layout),
+    Ready(PipelineLayout layout, Pipeline pipeline),
+    Failed(VulkanError error)
+}
+```
+
+Variant construction and patterns stay qualified by the enum type:
+
+```concept
+PipelineState::Ready(layout, pipeline)
+PipelineState::Failed(error)
+PipelineState::Empty
+```
+
+`match` uses Rust-style fat-arrow arms while keeping Concept/Vulkan source
+otherwise C++-shaped:
+
+```concept
+return match (state)
+{
+    PipelineState::Empty => 0,
+    PipelineState::Ready(layout, pipeline) => 2,
+    PipelineState::Failed(error) => error.Code,
+};
+```
+
+Statement-form `match` requires braced blocks, expression-form `match` requires
+single expressions, the subject is evaluated exactly once, and every declared
+variant must be covered exactly once. M1A does not add wildcard arms, guards,
+or nested destructuring patterns.
 
 ## 3. Static and runtime facts
 
@@ -378,6 +418,27 @@ M1 does not require topology, Dominatus progression, adaptive choice, multiple
 queues, scheduling, graph compilation, general templates, dynamic interfaces,
 reflection, async, package management, or the full Concept language.
 
+## 12.1 EVT1 M1A semantic minimum
+
+EVT1 M1A adds the smallest coherent language vertical above the accepted M1D
+proof foundation:
+
+1. mixed unit and payload enums;
+2. qualified unit and payload variant construction;
+3. positional payload destructuring in `match` arms;
+4. exhaustive statement-form and expression-form `match`;
+5. deterministic typed MIR that preserves enum identity, variant order, tags,
+   constructor nodes, and explicit match/pattern nodes;
+6. deterministic C11 lowering to one explicit tag plus one explicit payload
+   union with source-ordered fields;
+7. exactly-once subject evaluation and exactly-once payload evaluation;
+8. explicit invalid-tag handling through a private abort path;
+9. native strict-C11 compilation and executable behavior for one
+   hardware-independent specimen and one Vulkan-shaped specimen.
+
+This milestone is intentionally language-focused. It does not widen production
+Prometheus routing, public ABI, or the earlier kernel-54 handwritten witness.
+
 ## 13. Profile MIR boundary
 
 The M1 MIR is profile-specific and typed. Its operation vocabulary is:
@@ -445,10 +506,13 @@ part of that rollback.
 
 ## 16. Explicit exclusions
 
-M1 excludes Concept machines/transitions, `decide`, `yield`, dynamic interfaces,
-vtables, runtime reflection, general heap/containers, general async,
-exceptions, package-manager ambitions, DragonGod facilities, full RT
+M1/EVT1 excludes Concept machines/transitions, `decide`, `yield`, dynamic
+interfaces, vtables, runtime reflection, general heap/containers, general
+async, exceptions, package-manager ambitions, DragonGod facilities, full RT
 pipelines/SBT, shader mathematics, model topology, and lifecycle/progression
-policy. PoC3 is design history; only its local ownership, explicit move,
-deterministic drop, error-as-value, unsafe quarantine, C ABI, bounded comptime,
-profiles, and MIR-first principles are adopted here.
+policy. EVT1 M1A additionally excludes wildcard arms, guards, or-patterns,
+literal/range/recursive patterns, enum methods, concepts, templates, generic
+enums, compile-time evaluation, and a new ownership model. PoC3 is design
+history; only its local ownership, explicit move, deterministic drop,
+error-as-value, unsafe quarantine, C ABI, bounded comptime, profiles, and
+MIR-first principles are adopted here.

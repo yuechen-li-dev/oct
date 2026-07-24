@@ -1,0 +1,70 @@
+profile Vulkan;
+
+enum PipelineState
+{
+    Empty,
+    LayoutCreated(PipelineLayout layout),
+    Ready(PipelineLayout layout, Pipeline pipeline),
+    Failed(VulkanError error)
+}
+
+void DestroyPipeline(Pipeline pipeline);
+void DestroyPipelineLayout(PipelineLayout layout);
+void RecordFailure(VulkanError error);
+
+PipelineState MakeEmptyState()
+{
+    return PipelineState::Empty;
+}
+
+PipelineState MakeLayoutCreatedState(PipelineLayout layout)
+{
+    return PipelineState::LayoutCreated(layout);
+}
+
+PipelineState MakeReadyState(PipelineLayout layout, Pipeline pipeline)
+{
+    return PipelineState::Ready(layout, pipeline);
+}
+
+PipelineState MakeFailedState(VulkanError error)
+{
+    return PipelineState::Failed(error);
+}
+
+int GetStatusCode(PipelineState state)
+{
+    return match (state)
+    {
+        PipelineState::Empty => 0,
+        PipelineState::LayoutCreated(layout) => 1,
+        PipelineState::Ready(layout, pipeline) => 2,
+        PipelineState::Failed(error) => error.Code,
+    };
+}
+
+void DestroyPipelineState(PipelineState state)
+{
+    match (state)
+    {
+        PipelineState::Empty =>
+        {
+        }
+
+        PipelineState::LayoutCreated(layout) =>
+        {
+            DestroyPipelineLayout(layout);
+        }
+
+        PipelineState::Ready(layout, pipeline) =>
+        {
+            DestroyPipeline(pipeline);
+            DestroyPipelineLayout(layout);
+        }
+
+        PipelineState::Failed(error) =>
+        {
+            RecordFailure(error);
+        }
+    }
+}
