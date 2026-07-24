@@ -8,6 +8,7 @@ package prometheus
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "native/reactor_api.h"
 
 typedef uint32_t (__cdecl *oct_prom_abi_fn)(void);
 typedef int (__cdecl *oct_prom_create_fn)(void*, void**);
@@ -21,6 +22,7 @@ typedef int (__cdecl *oct_prom_abandon_async_fn)(void*, int);
 typedef int (__cdecl *oct_prom_gemma4e2b_input_rmsnorm_fn)(void*, const void*, void*);
 typedef int (__cdecl *oct_prom_gemma4e2b_rope_fn)(void*, const void*, void*);
 typedef int (__cdecl *oct_prom_gemma4e2b_head_rmsnorm_rope_fn)(void*, const void*, void*);
+typedef int (__cdecl *oct_prom_gemma4e2b_attention_scores_fn)(void*, const PrometheusGemma4E2BM1AttentionScoresRequest*, PrometheusGemma4E2BM1AttentionScoresResult*);
 
 typedef struct oct_prom_caps {
 	uint32_t available;
@@ -141,7 +143,7 @@ typedef struct oct_prom_gemma4e2b_head_rmsnorm_rope_result {
 	uint32_t resident_source_bound; uint32_t normalized_readback_count;
 	uint64_t source_byte_offset; uint64_t source_byte_range; uint64_t destination_byte_offset; uint64_t destination_byte_range;
 	uint64_t input_hash; uint64_t weight_hash; uint64_t output_hash; uint64_t buffer_allocation_count; uint64_t buffer_reuse_count;
-	uint64_t descriptor_update_count; uint64_t pipeline_create_count; uint64_t command_buffer_reuse_count;
+	uint64_t descriptor_update_count; uint64_t pipeline_create_count; uint64_t command_buffer_reuse_count; uint64_t observed_weight_generation; uint64_t requested_weight_generation;
 } oct_prom_gemma4e2b_head_rmsnorm_rope_result;
 
 static HMODULE oct_prom_load_library(const char* path) {
@@ -294,6 +296,29 @@ static int oct_prom_call_gemma4e2b_head_rmsnorm_rope(FARPROC symbol, uintptr_t h
 	request.input_generation = input_generation; request.weight_generation = weight_generation; request.table_generation = table_generation; request.exact_source_hash = exact_source_hash;
 	return ((oct_prom_gemma4e2b_head_rmsnorm_rope_fn)symbol)((void*)handle, &request, out_result);
 }
+
+static int oct_prom_call_gemma4e2b_attention_scores(
+	FARPROC symbol, uintptr_t handle,
+	const float* query_input, const float* key_input, const float* query_weight, const float* key_weight,
+	const float* cosine, const float* sine, float* scores,
+	uint64_t query_count, uint64_t key_count, uint64_t query_weight_count, uint64_t key_weight_count,
+	uint64_t cosine_count, uint64_t sine_count, uint64_t score_count,
+	uint32_t tokens, uint32_t query_heads, uint32_t key_heads, uint32_t head_width, float epsilon, float scale, uint32_t preparation_order,
+	uint64_t query_generation, uint64_t key_generation, uint64_t query_weight_generation, uint64_t key_weight_generation,
+	uint64_t table_generation, uint64_t query_source_hash, uint64_t key_source_hash,
+	PrometheusGemma4E2BM1AttentionScoresResult* out_result) {
+	PrometheusGemma4E2BM1AttentionScoresRequest request; memset(&request, 0, sizeof(request));
+	request.struct_size = sizeof(request); request.query_input = query_input; request.key_input = key_input;
+	request.query_weight = query_weight; request.key_weight = key_weight; request.cosine = cosine; request.sine = sine; request.scores = scores;
+	request.query_input_element_count = query_count; request.key_input_element_count = key_count;
+	request.query_weight_element_count = query_weight_count; request.key_weight_element_count = key_weight_count;
+	request.cosine_element_count = cosine_count; request.sine_element_count = sine_count; request.score_element_count = score_count;
+	request.tokens = tokens; request.query_heads = query_heads; request.key_heads = key_heads; request.head_width = head_width; request.epsilon = epsilon; request.scale = scale; request.preparation_order = preparation_order;
+	request.query_input_generation = query_generation; request.key_input_generation = key_generation;
+	request.query_weight_generation = query_weight_generation; request.key_weight_generation = key_weight_generation;
+	request.table_generation = table_generation; request.query_exact_source_hash = query_source_hash; request.key_exact_source_hash = key_source_hash;
+	return ((oct_prom_gemma4e2b_attention_scores_fn)symbol)((void*)handle, &request, out_result);
+}
 */
 import "C"
 
@@ -354,7 +379,7 @@ func (l *winDLLLibrary) Resolve(symbol string) (any, error) {
 				async_test_flags:          0,
 				batch_ring_depth:          0,
 				reduction_test_flags:      0,
-				reduction_ring_depth:      0,
+				reduction_ring_depth:      C.uint32_t(cfg.ReductionRingDepth),
 			}
 			var cRoot *C.char
 			if cfg.ShaderPackageRoot != "" {
@@ -561,9 +586,20 @@ func (l *winDLLLibrary) Resolve(symbol string) (any, error) {
 			output := make([]float32, int(tokens*heads*headWidth))
 			var out C.oct_prom_gemma4e2b_head_rmsnorm_rope_result
 			status := int(C.oct_prom_call_gemma4e2b_head_rmsnorm_rope(sym, C.uintptr_t(handle.ptr), floatSlicePointer(input), floatSlicePointer(weight), floatSlicePointer(cosine), floatSlicePointer(sine), floatSlicePointer(output), C.uint64_t(len(input)), C.uint64_t(len(weight)), C.uint64_t(len(cosine)), C.uint64_t(len(sine)), C.uint64_t(len(output)), C.uint32_t(tokens), C.uint32_t(heads), C.uint32_t(headWidth), C.float(epsilon), C.uint64_t(inputGeneration), C.uint64_t(weightGeneration), C.uint64_t(tableGeneration), C.uint64_t(exactSourceHash), &out))
-			result := reactorGemma4E2BM1HeadRMSNormRopeResult{StageCode: uint32(out.stage), DetailCode: int(out.detail_code), OutputWritten: out.output_written != 0, DispatchCount: uint32(out.dispatch_count), ResidentSourceBound: out.resident_source_bound != 0, NormalizedReadbackCount: uint32(out.normalized_readback_count), SourceByteRange: uint64(out.source_byte_range), DestinationByteRange: uint64(out.destination_byte_range), InputHash: uint64(out.input_hash), WeightHash: uint64(out.weight_hash), OutputHash: uint64(out.output_hash), BufferAllocationCount: uint64(out.buffer_allocation_count), BufferReuseCount: uint64(out.buffer_reuse_count), DescriptorUpdateCount: uint64(out.descriptor_update_count), PipelineCreateCount: uint64(out.pipeline_create_count), CommandBufferReuseCount: uint64(out.command_buffer_reuse_count)}
+			result := reactorGemma4E2BM1HeadRMSNormRopeResult{StageCode: uint32(out.stage), DetailCode: int(out.detail_code), OutputWritten: out.output_written != 0, DispatchCount: uint32(out.dispatch_count), ResidentSourceBound: out.resident_source_bound != 0, NormalizedReadbackCount: uint32(out.normalized_readback_count), SourceByteRange: uint64(out.source_byte_range), DestinationByteRange: uint64(out.destination_byte_range), InputHash: uint64(out.input_hash), WeightHash: uint64(out.weight_hash), OutputHash: uint64(out.output_hash), BufferAllocationCount: uint64(out.buffer_allocation_count), BufferReuseCount: uint64(out.buffer_reuse_count), DescriptorUpdateCount: uint64(out.descriptor_update_count), PipelineCreateCount: uint64(out.pipeline_create_count), CommandBufferReuseCount: uint64(out.command_buffer_reuse_count), ObservedWeightGeneration: uint64(out.observed_weight_generation), RequestedWeightGeneration: uint64(out.requested_weight_generation)}
 			if status != 0 {
 				return nil, result, fmt.Errorf("gemma4e2b resident head rmsnorm-rope failed: stage=%d detail=%d", result.StageCode, result.DetailCode)
+			}
+			return output, result, nil
+		}), nil
+	case reactorSymbolGemmaAttentionScores:
+		return reactorGemma4E2BM1AttentionScores(func(handle reactorRuntimeHandle, query, key, queryWeight, keyWeight, cosine, sine []float32, tokens, queryHeads, keyHeads, headWidth uint32, epsilon, scale float32, preparationOrder uint32, queryGeneration, keyGeneration, queryWeightGeneration, keyWeightGeneration, tableGeneration, querySourceHash, keySourceHash uint64) ([]float32, reactorGemma4E2BM1AttentionScoresResult, error) {
+			output := make([]float32, int(queryHeads*tokens*tokens))
+			var out C.PrometheusGemma4E2BM1AttentionScoresResult
+			status := int(C.oct_prom_call_gemma4e2b_attention_scores(sym, C.uintptr_t(handle.ptr), floatSlicePointer(query), floatSlicePointer(key), floatSlicePointer(queryWeight), floatSlicePointer(keyWeight), floatSlicePointer(cosine), floatSlicePointer(sine), floatSlicePointer(output), C.uint64_t(len(query)), C.uint64_t(len(key)), C.uint64_t(len(queryWeight)), C.uint64_t(len(keyWeight)), C.uint64_t(len(cosine)), C.uint64_t(len(sine)), C.uint64_t(len(output)), C.uint32_t(tokens), C.uint32_t(queryHeads), C.uint32_t(keyHeads), C.uint32_t(headWidth), C.float(epsilon), C.float(scale), C.uint32_t(preparationOrder), C.uint64_t(queryGeneration), C.uint64_t(keyGeneration), C.uint64_t(queryWeightGeneration), C.uint64_t(keyWeightGeneration), C.uint64_t(tableGeneration), C.uint64_t(querySourceHash), C.uint64_t(keySourceHash), &out))
+			result := reactorGemma4E2BM1AttentionScoresResult{StageCode: uint32(out.stage), DetailCode: int(out.detail_code), ScoreWritten: out.score_written != 0, PositionalDispatchCount: uint32(out.positional_dispatch_count), ScoreDispatchCount: uint32(out.score_dispatch_count), ScoreReadbackCount: uint32(out.score_readback_count), HostDetourCount: uint32(out.host_detour_count), QuerySlotID: uint32(out.query_slot_id), QuerySlotGeneration: uint32(out.query_slot_generation), KeySlotID: uint32(out.key_slot_id), KeySlotGeneration: uint32(out.key_slot_generation), ScoreSlotID: uint32(out.score_slot_id), ScoreSlotGeneration: uint32(out.score_slot_generation), QueryByteRange: uint64(out.query_byte_range), KeyByteRange: uint64(out.key_byte_range), ScoreByteRange: uint64(out.score_byte_range), ScoreHash: uint64(out.score_hash), BufferAllocationCount: uint64(out.buffer_allocation_count), BufferReuseCount: uint64(out.buffer_reuse_count), DescriptorUpdateCount: uint64(out.descriptor_update_count), PipelineCreateCount: uint64(out.pipeline_create_count), ObservedWeightGeneration: uint64(out.observed_weight_generation), RequestedWeightGeneration: uint64(out.requested_weight_generation)}
+			if status != 0 {
+				return nil, result, fmt.Errorf("gemma4e2b resident attention scores failed: stage=%d detail=%d positional_dispatches=%d observed_weight_generation=%d requested_weight_generation=%d", result.StageCode, result.DetailCode, result.PositionalDispatchCount, result.ObservedWeightGeneration, result.RequestedWeightGeneration)
 			}
 			return output, result, nil
 		}), nil

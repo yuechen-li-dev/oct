@@ -27,6 +27,7 @@ const (
 	reactorSymbolGemmaHeadRN                 = "prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm"
 	reactorSymbolGemmaRope                   = "prometheus_reactor_runtime_gemma4e2b_m1_rope"
 	reactorSymbolGemmaHeadRNRope             = "prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope"
+	reactorSymbolGemmaAttentionScores        = "prometheus_reactor_runtime_gemma4e2b_m1_attention_scores"
 )
 
 type ReactorIssueCode string
@@ -77,6 +78,10 @@ type reactorRuntimeHandle struct {
 type reactorCreateConfig struct {
 	TestFlags         uint32
 	ShaderPackageRoot string
+	// The raw-score chain simultaneously pins positional Q and K while it
+	// acquires its distinct score destination.  Three reusable slots are the
+	// smallest bounded configuration that can express those roles.
+	ReductionRingDepth uint32
 }
 type reactorCaps struct {
 	Available   bool
@@ -110,6 +115,7 @@ type reactorGemma4E2BM1InputRMSNorm func(reactorRuntimeHandle, []float32, []floa
 type reactorGemma4E2BM1HeadRMSNorm = reactorGemma4E2BM1InputRMSNorm
 type reactorGemma4E2BM1Rope func(reactorRuntimeHandle, []float32, []float32, []float32, uint32, uint32, uint32, uint64, uint64) ([]float32, reactorGemma4E2BM1RopeResult, error)
 type reactorGemma4E2BM1HeadRMSNormRope func(reactorRuntimeHandle, []float32, []float32, []float32, []float32, uint32, uint32, uint32, float32, uint64, uint64, uint64, uint64) ([]float32, reactorGemma4E2BM1HeadRMSNormRopeResult, error)
+type reactorGemma4E2BM1AttentionScores func(reactorRuntimeHandle, []float32, []float32, []float32, []float32, []float32, []float32, uint32, uint32, uint32, uint32, float32, float32, uint32, uint64, uint64, uint64, uint64, uint64, uint64, uint64) ([]float32, reactorGemma4E2BM1AttentionScoresResult, error)
 
 type reactorGemma4E2BM1InputRMSNormResult struct {
 	StageCode                    uint32
@@ -137,38 +143,52 @@ type reactorGemma4E2BM1InputRMSNormResult struct {
 }
 
 type reactorGemma4E2BM1RopeResult struct {
-	StageCode               uint32
-	DetailCode              int
-	OutputWritten           bool
-	DispatchCount           uint32
-	SourceHash              uint64
-	CosineHash              uint64
-	SineHash                uint64
-	OutputHash              uint64
-	BufferAllocationCount   uint64
-	BufferReuseCount        uint64
-	DescriptorUpdateCount   uint64
-	PipelineCreateCount     uint64
-	CommandBufferReuseCount uint64
+	StageCode                 uint32
+	DetailCode                int
+	OutputWritten             bool
+	DispatchCount             uint32
+	SourceHash                uint64
+	CosineHash                uint64
+	SineHash                  uint64
+	OutputHash                uint64
+	BufferAllocationCount     uint64
+	BufferReuseCount          uint64
+	DescriptorUpdateCount     uint64
+	PipelineCreateCount       uint64
+	CommandBufferReuseCount   uint64
+	ObservedWeightGeneration  uint64
+	RequestedWeightGeneration uint64
 }
 
 type reactorGemma4E2BM1HeadRMSNormRopeResult struct {
-	StageCode               uint32
-	DetailCode              int
-	OutputWritten           bool
-	DispatchCount           uint32
-	ResidentSourceBound     bool
-	NormalizedReadbackCount uint32
-	SourceByteRange         uint64
-	DestinationByteRange    uint64
-	InputHash               uint64
-	WeightHash              uint64
-	OutputHash              uint64
-	BufferAllocationCount   uint64
-	BufferReuseCount        uint64
-	DescriptorUpdateCount   uint64
-	PipelineCreateCount     uint64
-	CommandBufferReuseCount uint64
+	StageCode                 uint32
+	DetailCode                int
+	OutputWritten             bool
+	DispatchCount             uint32
+	ResidentSourceBound       bool
+	NormalizedReadbackCount   uint32
+	SourceByteRange           uint64
+	DestinationByteRange      uint64
+	InputHash                 uint64
+	WeightHash                uint64
+	OutputHash                uint64
+	BufferAllocationCount     uint64
+	BufferReuseCount          uint64
+	DescriptorUpdateCount     uint64
+	PipelineCreateCount       uint64
+	CommandBufferReuseCount   uint64
+	ObservedWeightGeneration  uint64
+	RequestedWeightGeneration uint64
+}
+
+type reactorGemma4E2BM1AttentionScoresResult struct {
+	StageCode, PositionalDispatchCount, ScoreDispatchCount, ScoreReadbackCount, HostDetourCount      uint32
+	DetailCode                                                                                       int
+	ScoreWritten                                                                                     bool
+	QuerySlotID, QuerySlotGeneration, KeySlotID, KeySlotGeneration, ScoreSlotID, ScoreSlotGeneration uint32
+	QueryByteRange, KeyByteRange, ScoreByteRange, ScoreHash                                          uint64
+	BufferAllocationCount, BufferReuseCount, DescriptorUpdateCount, PipelineCreateCount              uint64
+	ObservedWeightGeneration, RequestedWeightGeneration                                              uint64
 }
 
 type dynamicLibrary interface {
@@ -209,6 +229,7 @@ type nativeRuntime struct {
 	gemmaHeadRN                 reactorGemma4E2BM1HeadRMSNorm
 	gemmaRope                   reactorGemma4E2BM1Rope
 	gemmaHeadRNRope             reactorGemma4E2BM1HeadRMSNormRope
+	gemmaAttentionScores        reactorGemma4E2BM1AttentionScores
 	handle                      reactorRuntimeHandle
 	caps                        reactorCaps
 	lib                         dynamicLibrary
@@ -292,8 +313,9 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 	}
 
 	handle, err := createFn(reactorCreateConfig{
-		TestFlags:         reactorTestFlagsFromEnv(),
-		ShaderPackageRoot: discoverShaderPackageRoot(path),
+		TestFlags:          reactorTestFlagsFromEnv(),
+		ShaderPackageRoot:  discoverShaderPackageRoot(path),
+		ReductionRingDepth: 3,
 	})
 	if err != nil {
 		return nil, &ReactorIssue{Code: ReactorIssueCreateFailed, Path: path, Err: err}
@@ -360,6 +382,11 @@ func runtimeFromLibrary(path string, lib dynamicLibrary) (*nativeRuntime, error)
 	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaHeadRNRope); err == nil {
 		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1HeadRMSNormRope); ok {
 			rt.gemmaHeadRNRope = gemmaFn
+		}
+	}
+	if gemmaAny, err := lib.Resolve(reactorSymbolGemmaAttentionScores); err == nil {
+		if gemmaFn, ok := gemmaAny.(reactorGemma4E2BM1AttentionScores); ok {
+			rt.gemmaAttentionScores = gemmaFn
 		}
 	}
 
@@ -477,6 +504,15 @@ func (r *nativeRuntime) Gemma4E2BM1HeadRMSNormRope(input, weight, cosine, sine [
 		return nil, reactorGemma4E2BM1HeadRMSNormRopeResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 resident head rmsnorm-rope entrypoint unavailable")
 	}
 	return r.gemmaHeadRNRope(r.handle, input, weight, cosine, sine, tokens, heads, headWidth, epsilon, inputGeneration, weightGeneration, tableGeneration, exactSourceHash)
+}
+
+// Gemma4E2BM1AttentionScores is a closed model-private RTX chain: it owns Q/K
+// RMSNorm, retained kernel-68 outputs, kernel 69, and the sole final readback.
+func (r *nativeRuntime) Gemma4E2BM1AttentionScores(query, key, queryWeight, keyWeight, cosine, sine []float32, tokens, queryHeads, keyHeads, headWidth uint32, epsilon, scale float32, preparationOrder uint32, queryGeneration, keyGeneration, queryWeightGeneration, keyWeightGeneration, tableGeneration, querySourceHash, keySourceHash uint64) ([]float32, reactorGemma4E2BM1AttentionScoresResult, error) {
+	if r == nil || r.gemmaAttentionScores == nil {
+		return nil, reactorGemma4E2BM1AttentionScoresResult{StageCode: 1, DetailCode: -3}, fmt.Errorf("gemma4e2b m1 resident attention-score entrypoint unavailable")
+	}
+	return r.gemmaAttentionScores(r.handle, query, key, queryWeight, keyWeight, cosine, sine, tokens, queryHeads, keyHeads, headWidth, epsilon, scale, preparationOrder, queryGeneration, keyGeneration, queryWeightGeneration, keyWeightGeneration, tableGeneration, querySourceHash, keySourceHash)
 }
 
 func (r *nativeRuntime) Environment() string {

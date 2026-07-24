@@ -716,6 +716,7 @@ typedef struct prom_reduction_runtime_state {
   prom_reduction_pipeline m46_pipelines[PROM_M46_PIPELINE_COUNT];
   prom_reduction_pipeline gemma4e2b_m1_bf16_roundtrip_pipeline;
   prom_reduction_pipeline gemma4e2b_m1_rope_pipeline;
+  prom_reduction_pipeline gemma4e2b_m1_attention_scores_pipeline;
   prom_vk_buffer gemma4e2b_m1_rope_cosine_upload;
   prom_vk_buffer gemma4e2b_m1_rope_cosine;
   prom_vk_buffer gemma4e2b_m1_rope_sine_upload;
@@ -724,6 +725,8 @@ typedef struct prom_reduction_runtime_state {
   uint64_t gemma4e2b_m1_rope_buffer_reuse_count;
   uint64_t gemma4e2b_m1_rope_descriptor_update_count;
   uint64_t gemma4e2b_m1_rope_pipeline_create_count;
+  uint64_t gemma4e2b_m1_attention_scores_descriptor_update_count;
+  uint64_t gemma4e2b_m1_attention_scores_pipeline_create_count;
   /* The most recent completed kernel-68 Q and K destinations are pinned by
      role until the model-private score consumer releases them. */
   uint32_t gemma4e2b_m1_rope_q_slot_id;

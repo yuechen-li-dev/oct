@@ -1908,7 +1908,72 @@ typedef struct PrometheusGemma4E2BM1HeadRmsNormRopeResult {
   uint64_t descriptor_update_count;
   uint64_t pipeline_create_count;
   uint64_t command_buffer_reuse_count;
+  uint64_t observed_weight_generation;
+  uint64_t requested_weight_generation;
 } PrometheusGemma4E2BM1HeadRmsNormRopeResult;
+
+/* Closed M1 raw pre-mask score chain. It accepts only the two accepted
+   projection boundaries, retains both model-private RoPE destinations, and
+   reads back only the resulting FP32 score tensor. */
+typedef struct PrometheusGemma4E2BM1AttentionScoresRequest {
+  uint32_t struct_size;
+  const float* query_input;
+  const float* key_input;
+  const float* query_weight;
+  const float* key_weight;
+  const float* cosine;
+  const float* sine;
+  float* scores;
+  uint64_t query_input_element_count;
+  uint64_t key_input_element_count;
+  uint64_t query_weight_element_count;
+  uint64_t key_weight_element_count;
+  uint64_t cosine_element_count;
+  uint64_t sine_element_count;
+  uint64_t score_element_count;
+  uint32_t tokens;
+  uint32_t query_heads;
+  uint32_t key_heads;
+  uint32_t head_width;
+  float epsilon;
+  float scale;
+  /* 0: retain positional Q then K; 1: retain positional K then Q. */
+  uint32_t preparation_order;
+  uint64_t query_input_generation;
+  uint64_t key_input_generation;
+  uint64_t query_weight_generation;
+  uint64_t key_weight_generation;
+  uint64_t table_generation;
+  uint64_t query_exact_source_hash;
+  uint64_t key_exact_source_hash;
+} PrometheusGemma4E2BM1AttentionScoresRequest;
+
+typedef struct PrometheusGemma4E2BM1AttentionScoresResult {
+  uint32_t struct_size;
+  uint32_t stage;
+  int32_t detail_code;
+  uint32_t score_written;
+  uint32_t positional_dispatch_count;
+  uint32_t score_dispatch_count;
+  uint32_t score_readback_count;
+  uint32_t host_detour_count;
+  uint32_t query_slot_id;
+  uint32_t query_slot_generation;
+  uint32_t key_slot_id;
+  uint32_t key_slot_generation;
+  uint32_t score_slot_id;
+  uint32_t score_slot_generation;
+  uint64_t query_byte_range;
+  uint64_t key_byte_range;
+  uint64_t score_byte_range;
+  uint64_t score_hash;
+  uint64_t buffer_allocation_count;
+  uint64_t buffer_reuse_count;
+  uint64_t descriptor_update_count;
+  uint64_t pipeline_create_count;
+  uint64_t observed_weight_generation;
+  uint64_t requested_weight_generation;
+} PrometheusGemma4E2BM1AttentionScoresResult;
 
 typedef struct PrometheusSgemmAsyncTaskDiagnostics {
   int32_t task_id;
@@ -2631,6 +2696,10 @@ PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
     void* handle,
     const PrometheusGemma4E2BM1HeadRmsNormRopeRequest* request,
     PrometheusGemma4E2BM1HeadRmsNormRopeResult* out_result);
+PROM_REACTOR_API int prometheus_reactor_runtime_gemma4e2b_m1_attention_scores(
+    void* handle,
+    const PrometheusGemma4E2BM1AttentionScoresRequest* request,
+    PrometheusGemma4E2BM1AttentionScoresResult* out_result);
 
 PROM_REACTOR_API int prometheus_reactor_runtime_model_block_create(
     void* handle, const PrometheusModelBlockCreateRequest* request, uint64_t* out_block_id,

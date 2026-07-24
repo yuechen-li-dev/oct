@@ -7,6 +7,13 @@
 
 #define PROMETHEUS_REACTOR_ABI_V1 1u
 
+static int prom_reactor_api_checked_product_u64(uint64_t left, uint64_t right,
+                                                uint64_t* out_value) {
+  if (out_value == NULL || (right != 0u && left > UINT64_MAX / right)) return 0;
+  *out_value = left * right;
+  return 1;
+}
+
 uint32_t prometheus_reactor_abi_version(void) {
   return PROMETHEUS_REACTOR_ABI_V1;
 }
@@ -418,7 +425,8 @@ int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
   out_result->struct_size = sizeof(*out_result);
   if (request == NULL || request->struct_size < sizeof(*request) ||
       request->input == NULL || request->weight == NULL || request->cosine == NULL ||
-      request->sine == NULL || request->output == NULL || request->tokens != 15u ||
+      request->sine == NULL || (request->output == NULL && request->output_element_count != 0u) ||
+      request->tokens != 15u ||
       (request->heads != 1u && request->heads != 8u) || request->head_width != 256u ||
       request->epsilon != 0.000001f || request->input_generation == 0u ||
       request->weight_generation == 0u || request->table_generation == 0u ||
@@ -432,7 +440,7 @@ int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
       request->weight_element_count != request->head_width ||
       request->cosine_element_count != (uint64_t)request->tokens * request->head_width ||
       request->sine_element_count != (uint64_t)request->tokens * request->head_width ||
-      request->output_element_count != request->input_element_count) {
+      (request->output != NULL && request->output_element_count != request->input_element_count)) {
     out_result->stage = PROM_STAGE_INIT;
     out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
     return PROM_ERROR;
@@ -447,6 +455,8 @@ int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
     out_result->stage = weight_result.stage;
     out_result->detail_code = weight_result.detail_code;
     out_result->weight_hash = weight_result.hash;
+    out_result->observed_weight_generation = weight_result.observed_generation;
+    out_result->requested_weight_generation = weight_result.requested_generation;
     return PROM_ERROR;
   }
   input_hash = prom_num_hash_float_bits(request->input, request->input_element_count);
@@ -484,7 +494,7 @@ int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
   }
   out_result->stage = execute_result.stage;
   out_result->detail_code = execute_result.detail_code;
-  out_result->output_written = 1u;
+  out_result->output_written = request->output != NULL ? 1u : 0u;
   out_result->dispatch_count = 1u;
   out_result->resident_source_bound = execute_result.resident_rope_source_bound;
   out_result->normalized_readback_count = execute_result.normalized_readback_count;
@@ -492,12 +502,96 @@ int prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
   out_result->destination_byte_range = execute_result.rope_destination_byte_range;
   out_result->input_hash = execute_result.input_hash;
   out_result->weight_hash = execute_result.weight_hash;
+  out_result->observed_weight_generation = weight_result.observed_generation;
+  out_result->requested_weight_generation = weight_result.requested_generation;
   out_result->output_hash = execute_result.output_hash;
   out_result->buffer_allocation_count = execute_result.rmsnorm.buffer_allocation_count;
   out_result->buffer_reuse_count = execute_result.rmsnorm.buffer_reuse_count;
   out_result->descriptor_update_count = execute_result.rope_descriptor_update_count;
   out_result->pipeline_create_count = execute_result.rope_pipeline_create_count;
   out_result->command_buffer_reuse_count = execute_result.rmsnorm.command_buffer_reuse_count;
+  return PROM_OK;
+}
+
+int prometheus_reactor_runtime_gemma4e2b_m1_attention_scores(
+    void* handle, const PrometheusGemma4E2BM1AttentionScoresRequest* request,
+    PrometheusGemma4E2BM1AttentionScoresResult* out_result) {
+  PrometheusGemma4E2BM1HeadRmsNormRopeRequest positional;
+  PrometheusGemma4E2BM1HeadRmsNormRopeResult positional_result;
+  uint64_t query_elements;
+  uint64_t key_elements;
+  uint64_t score_elements;
+  uint32_t preparation_index;
+  if (out_result == NULL) return PROM_ERROR;
+  memset(out_result, 0, sizeof(*out_result));
+  out_result->struct_size = sizeof(*out_result);
+  if (request == NULL || request->struct_size < sizeof(*request) ||
+      request->query_input == NULL || request->key_input == NULL ||
+      request->query_weight == NULL || request->key_weight == NULL ||
+      request->cosine == NULL || request->sine == NULL || request->scores == NULL ||
+      request->tokens != 15u || request->query_heads != 8u || request->key_heads != 1u ||
+      request->head_width != 256u || request->epsilon != 0.000001f ||
+      request->scale != 0.0625f || request->preparation_order > 1u ||
+      request->query_input_generation == 0u ||
+      request->key_input_generation == 0u || request->query_weight_generation == 0u ||
+      request->key_weight_generation == 0u || request->table_generation == 0u ||
+      request->query_exact_source_hash == 0u || request->key_exact_source_hash == 0u ||
+      !prom_reactor_api_checked_product_u64(request->tokens, request->query_heads, &query_elements) ||
+      !prom_reactor_api_checked_product_u64(query_elements, request->head_width, &query_elements) ||
+      !prom_reactor_api_checked_product_u64(request->tokens, request->key_heads, &key_elements) ||
+      !prom_reactor_api_checked_product_u64(key_elements, request->head_width, &key_elements) ||
+      !prom_reactor_api_checked_product_u64(request->query_heads, request->tokens, &score_elements) ||
+      !prom_reactor_api_checked_product_u64(score_elements, request->tokens, &score_elements) ||
+      request->query_input_element_count != query_elements ||
+      request->key_input_element_count != key_elements ||
+      request->query_weight_element_count != request->head_width ||
+      request->key_weight_element_count != request->head_width ||
+      request->cosine_element_count != (uint64_t)request->tokens * request->head_width ||
+      request->sine_element_count != (uint64_t)request->tokens * request->head_width ||
+      request->score_element_count != score_elements) {
+    out_result->stage = PROM_STAGE_INIT;
+    out_result->detail_code = PROM_M46_DETAIL_INVALID_REQUEST;
+    return PROM_ERROR;
+  }
+  memset(&positional, 0, sizeof(positional));
+  positional.struct_size = sizeof(positional);
+  positional.cosine = request->cosine;
+  positional.sine = request->sine;
+  positional.cosine_element_count = request->cosine_element_count;
+  positional.sine_element_count = request->sine_element_count;
+  positional.tokens = request->tokens;
+  positional.head_width = request->head_width;
+  positional.epsilon = request->epsilon;
+  positional.table_generation = request->table_generation;
+  for (preparation_index = 0u; preparation_index < 2u; ++preparation_index) {
+    const uint32_t prepare_key = request->preparation_order == 0u
+                                     ? preparation_index == 1u
+                                     : preparation_index == 0u;
+    positional.input = prepare_key != 0u ? request->key_input : request->query_input;
+    positional.weight = prepare_key != 0u ? request->key_weight : request->query_weight;
+    positional.input_element_count = prepare_key != 0u ? key_elements : query_elements;
+    positional.weight_element_count = request->head_width;
+    positional.heads = prepare_key != 0u ? request->key_heads : request->query_heads;
+    positional.input_generation = prepare_key != 0u ? request->key_input_generation
+                                                     : request->query_input_generation;
+    positional.weight_generation = prepare_key != 0u ? request->key_weight_generation
+                                                      : request->query_weight_generation;
+    positional.exact_source_hash = prepare_key != 0u ? request->key_exact_source_hash
+                                                      : request->query_exact_source_hash;
+    memset(&positional_result, 0, sizeof(positional_result));
+    if (prometheus_reactor_runtime_gemma4e2b_m1_head_rmsnorm_rope(
+            handle, &positional, &positional_result) != PROM_OK) {
+      out_result->stage = positional_result.stage;
+      out_result->detail_code = positional_result.detail_code;
+      out_result->observed_weight_generation = positional_result.observed_weight_generation;
+      out_result->requested_weight_generation = positional_result.requested_weight_generation;
+      return PROM_ERROR;
+    }
+    out_result->positional_dispatch_count = preparation_index + 1u;
+  }
+  if (prom_reactor_runtime_gemma4e2b_m1_attention_scores(handle, request, out_result) != PROM_OK)
+    return PROM_ERROR;
+  out_result->positional_dispatch_count = 2u;
   return PROM_OK;
 }
 

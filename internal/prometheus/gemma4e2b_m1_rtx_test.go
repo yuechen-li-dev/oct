@@ -97,4 +97,26 @@ func TestGemma4E2BM1CanonicalQKVRTX(t *testing.T) {
 	if !result.RopeRecoveredAfterReject {
 		t.Fatal("RoPE runtime did not recover after pre-dispatch rejection")
 	}
+	if !result.ScoreNative.ScoreWritten || result.ScoreNative.PositionalDispatchCount != 2 ||
+		result.ScoreNative.ScoreDispatchCount != 1 || result.ScoreNative.ScoreReadbackCount != 1 ||
+		result.ScoreNative.HostDetourCount != 0 || result.ScoreNative.QueryByteRange != 122880 ||
+		result.ScoreNative.KeyByteRange != 15360 || result.ScoreNative.ScoreByteRange != 7200 ||
+		result.ScoreNative.QuerySlotID == result.ScoreNative.KeySlotID ||
+		result.ScoreNative.ScoreSlotID == result.ScoreNative.QuerySlotID ||
+		result.ScoreNative.ScoreSlotID == result.ScoreNative.KeySlotID {
+		t.Fatalf("resident score lifecycle/ABI witness failed: %+v", result.ScoreNative)
+	}
+	if len(result.Scores) != 1800 || !result.ScoreStageLocalExact {
+		t.Fatalf("resident score tensor differs from sequential stage-local authority: %+v", result.ScoreStageLocal)
+	}
+	if !result.ScoreOppositeOrderExact || !result.ScoreRepeatedExact {
+		t.Fatalf("same-session Q/K ordering or repeated score freshness failed: opposite=%+v repeated=%+v", result.ScoreOppositeOrderNative, result.ScoreRepeatedNative)
+	}
+	if result.ScoreOppositeOrderNative.QuerySlotID == result.ScoreOppositeOrderNative.KeySlotID ||
+		result.ScoreOppositeOrderNative.ScoreSlotID == result.ScoreOppositeOrderNative.QuerySlotID ||
+		result.ScoreOppositeOrderNative.ScoreSlotID == result.ScoreOppositeOrderNative.KeySlotID ||
+		result.ScoreRepeatedNative.BufferAllocationCount != 0 {
+		t.Fatalf("same-session score slot reuse failed: opposite=%+v repeated=%+v", result.ScoreOppositeOrderNative, result.ScoreRepeatedNative)
+	}
+	t.Logf("pristine score comparison: %+v", result.ScorePristine)
 }

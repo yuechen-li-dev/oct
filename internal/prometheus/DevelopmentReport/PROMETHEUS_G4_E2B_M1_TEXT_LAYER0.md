@@ -13,7 +13,7 @@ RoPE now has an authority fixture and validated package artifact, but its native
 device invocation seam remains unimplemented. M0 remains accepted and
 unchanged. No checkpoint cache or checkpoint copy was added in this progression.
 
-The owner-local checkpoint at `C:\Models\gemma-4-E2B-it` passed the unchanged
+The configured local checkpoint root (`G4E2B_CHECKPOINT_ROOT`) passed the unchanged
 full authority check: exact repository/revision, all nine required objects,
 the 10,246,621,918-byte safetensors SHA-256, header, and all 2,011 tensor
 records.  The repair-stage and owner-backup siblings were not touched.
@@ -490,21 +490,22 @@ began in this continuation.
 ## Validation run
 
 ```powershell
-go run ./tools/gemma4e2b_forensics -root C:\Models\gemma-4-E2B-it `
+go run ./tools/gemma4e2b_forensics -root $env:G4E2B_CHECKPOINT_ROOT `
   -authority internal\prometheus\DevelopmentReport\artifacts\G4E2BM0\checkpoint_authority.json
 
 $env:PYTHONPATH = "$env:TEMP\g4e2b-transformers-5.6.2"
-C:\ComfyUI Files\.venv\Scripts\python.exe tools\gemma4e2b_m1_reference.py ...
+<validated-python> tools\gemma4e2b_m1_reference.py ...
 
-C:\ComfyUI Files\.venv\Scripts\python.exe -m py_compile tools\gemma4e2b_m1_reference.py
+<validated-python> -m py_compile tools\gemma4e2b_m1_reference.py
 go test ./tools/gemma4e2b_forensics ./internal/prometheus/zimage
-G4E2B_CHECKPOINT_ROOT=C:\Models\gemma-4-E2B-it go test -count=1 -v ./internal/prometheus/gemma4e2b
+$env:G4E2B_CHECKPOINT_ROOT='<validated checkpoint root>'
+go test -count=1 -v ./internal/prometheus/gemma4e2b
 $env:OCT_RUN_PROMETHEUS_INTEGRATION='1'
-$env:G4E2B_CHECKPOINT_ROOT='C:\Models\gemma-4-E2B-it'
-$env:OCT_PROMETHEUS_REACTOR='C:\Users\yuech\source\repos\oct\internal\prometheus\reactor\prometheus_reactor.dll'
+$env:G4E2B_CHECKPOINT_ROOT='<validated checkpoint root>'
+$env:OCT_PROMETHEUS_REACTOR=(Join-Path (Get-Location) 'internal\prometheus\reactor\prometheus_reactor.dll')
 go test -run TestGemma4E2BM1CanonicalQKVRTX -count=1 -v ./internal/prometheus
 
-$env:OCT_PROMETHEUS_REACTOR='C:\Users\yuech\source\repos\oct\internal\prometheus\reactor\prometheus_reactor.dll'
+$env:OCT_PROMETHEUS_REACTOR=(Join-Path (Get-Location) 'internal\prometheus\reactor\prometheus_reactor.dll')
 go test -tags native -run TestWindowsRunSGEMMUsesRealReactorWhenDLLAvailable -count=1 -v ./internal/prometheus
 go test -run TestGemma4E2BM1ProductionSGEMMSmallMCorpusRTX -count=1 -v ./internal/prometheus
 go test -count=1 ./internal/prometheus/zimage
@@ -749,3 +750,204 @@ binds those exact slot buffers to kernel 69 without a host round-trip. No RTX
 score tensor, numerical acceptance, or score-stage Vulkan dispatch is claimed
 yet. Attention masking, softmax, V aggregation, and all downstream stages have
 not been started.
+
+### Raw-score resident seam implementation (pending live RTX acceptance)
+
+The native seam is now implemented as a closed M1 API rather than as a public
+Vulkan-buffer surface. `PrometheusGemma4E2BM1AttentionScoresRequest` accepts
+only the accepted Q/K projection boundaries, their head RMSNorm weights, the
+shared RoPE tables, and the final FP32 score host destination. It runs the
+existing RMSNorm-to-kernel-68 continuation for Q and K with their individual
+RoPE host outputs absent. The two slot-owned kernel-68 destinations therefore
+remain resident together, with independent Q/K slot ids and generations; the
+existing bounded slot allocator skips either pin until score completion.
+
+Kernel 69 resolves only through `prometheus.core@1` / `kernel-69-default`.
+Its direct descriptor map is binding 0 = retained positional Q, binding 1 =
+retained positional K, binding 3 = distinct FP32 score output. The shared
+four-binding layout also receives K at unused binding 2, which kernel 69 does
+not declare or read. Its 32-byte push block carries exactly token count 15,
+query heads 8, key heads 1, head width 256, and scale 1/16.
+
+The recorder uses compute-write to compute-read barriers for both retained
+RoPE sources before kernel 69, then compute-write to transfer-read for the
+score output, and transfer-write to host-read for the sole final readback. The
+resident-only positional path has no Q/K readback, reconstruction, upload,
+staging transfer, or device copy between kernels 68 and 69. The pins release
+only after score completion. Runtime cleanup owns kernel-69 pipeline teardown.
+
+The added bounded warm-up allocation is one reusable score device/readback pair:
+`8*15*15*4 = 7,200` bytes each (14,400 bytes total). The accepted positional
+sources remain BF16-reexpanded FP32 storage (Q 122,880 bytes, K 15,360 bytes),
+and no checkpoint-wide device residency or allocation framework was added.
+
+The authoritative Windows native build completed on 2026-07-23. The broad
+Marionette executable is not a pass signal here: hardware cases report Vulkan
+runtime unavailable, and the run later reaches the known pre-existing
+`PrometheusM34bA2x4UsesCanonicalDispatchFootprint` scalar-SGEMM registry
+source-literal failure before crashing. This did not exercise kernel 69.
+
+Accordingly, no live RTX score tensor, complete 1,800-value stage-local
+comparison, pristine-source provenance, descriptor-freshness corpus, or clean
+Vulkan-validation claim is made yet. The first remaining boundary is bridge and
+harness exposure of this closed native entrypoint followed by the full live RTX
+acceptance corpus. Masking and softmax remain explicitly out of scope.
+
+### Go RTX bridge and focused authority harness (pending checkpoint-backed run)
+
+The closed native score-chain symbol is now resolved by both Windows and Linux
+dynamic bridge shims and exposed only through
+`nativeRuntime.Gemma4E2BM1AttentionScores`. The Go call accepts the two fixed
+projection images, the fixed Q/K head-normalization weights, shared RoPE tables,
+and fixed geometry/generation identity; it does not expose a buffer handle,
+Vulkan object, arbitrary descriptor, or general graph API. It allocates only
+the final `[8,15,15]` FP32 result slice returned by the native final readback.
+
+`runGemma4e2bCanonicalQKVRTX` now invokes that real bridge operation after the
+accepted Q/K continuation. The accompanying stage-local checker evaluates the
+same scalar sequential graph over the accepted positional Q/K values: token
+major Q `[15,8,256]`, K `[15,1,256]`, KV head 0 for every Q head, coordinates
+0 through 255 in order, then one post-sum multiply by `1/16`. It contains no
+mask, softmax, query prescale, or attention-logit cap. The focused test asserts
+the final-only readback count, zero host detours, two positional dispatches,
+one score dispatch, distinct Q/K/score physical slots, exact source/destination
+ranges (122,880 / 15,360 / 7,200 bytes), 1,800 outputs, and exact stage-local
+bit agreement.
+
+Focused non-live checks on 2026-07-23 passed:
+
+- `go test ./internal/prometheus -count=1`;
+- SDSL-V check for `attention_scores.sdslv`;
+- DXC compilation of kernel 69; and
+- `spirv-val` under the accepted Vulkan 1.4 platform contract.
+
+The live focused invocation was attempted with
+`OCT_RUN_PROMETHEUS_INTEGRATION=1`, but this workspace has no
+`G4E2B_CHECKPOINT_ROOT`; the test correctly skips before it can construct the
+validated external checkpoint-backed inputs. Therefore no live RTX tensor,
+pristine comparison/provenance, alternating preparation corpus, transactional
+rejection/recovery, allocation-reuse measurement, or zero-error Vulkan
+validation claim is made. The next concrete step is to rerun this focused test
+with the validated checkpoint root and a Vulkan-capable runtime. Linux native
+build was attempted through `build_linux.sh` but exceeded a practical
+64-second window without completing; its remaining process was terminated. No
+Linux pass is claimed.
+
+### Checkpoint-backed live score dispatch — July 23, 2026
+
+Bounded discovery found the configured local checkpoint root. It was first
+checked with
+`go run ./tools/gemma4e2b_forensics -root $env:G4E2B_CHECKPOINT_ROOT -authority internal\\prometheus\\DevelopmentReport\\artifacts\\G4E2BM0\\checkpoint_authority.json`;
+the authority report is valid and includes the expected
+`model.safetensors` SHA-256
+`2db5482b20d746879bb3ef79b5203e9075a2e2b98f54ec7c2f281c1477ddc550`
+(10,246,621,918 bytes). No checkpoint payload was copied or downloaded.
+
+The live focused Go test then passed with that root, the real bridge DLL,
+hardware required, and Vulkan validation requested. It invokes the packaged
+kernel-69 operation; the native result proves two positional dispatches, one
+kernel-69 dispatch, one final score readback, zero Q/K host detours, and
+three distinct reusable slot identities. The final tensor has 1,800 FP32
+values and is bit-exact against the accepted sequential stage-local graph.
+The direct source/destination ranges are Q 122,880 bytes, K 15,360 bytes,
+and score 7,200 bytes. The score runtime begins in a fresh model-private
+session so that the accepted positional comparison lane's retained evidence
+cannot become an untracked input to the score chain.
+
+Live execution exposed and corrected two lifecycle defects before this pass:
+the default depth-two reusable ring could not retain Q and K while acquiring
+a distinct score slot, so the internal bridge now requests the minimum depth
+three; and resident-only RoPE had incorrectly made allocation of its device
+destination conditional on a host readback request. The destination is now
+always allocated for direct RoPE while its host readback remains conditional.
+The Windows native build passed after that correction (139.5 s), targeted Go
+tests passed, and `git diff --check` passed. Generated import-library build
+outputs were restored and remain unmodified.
+
+This is not yet a complete raw-score closure. The focused live test proves
+the real resident Q-first chain and all 1,800 stage-local score bits, but it
+does not yet emit the required pristine-source causal-provenance report,
+structural/future-key witnesses, K-first complete-score chain, malformed
+score-invocation recovery corpus, or repeated score allocation/freshness
+measurements. Those are the first remaining layer-0 boundary. Masking and
+softmax remain out of scope. The broad Marionette result remains separate:
+Vulkan is unavailable in that lane and it subsequently reaches the known
+pre-existing scalar-SGEMM registry source-literal failure before crashing.
+
+### Lifecycle/provenance continuation — July 23, 2026
+
+The closed score request now has an explicit model-private preparation-order
+scalar: `0` retains Q then K and `1` retains K then Q. It does not expose a
+Vulkan buffer, descriptor, or ownership handle. Fresh-session live execution
+passes for either selected order, and the original Q-first score proof remains
+bit-exact across all 1,800 FP32 scores. The Go harness also evaluates the
+complete pristine positional fixture score graph beside the resident graph so
+that the pending provenance table has both authorities available.
+
+The same-session lifecycle corpus exposed the first remaining native defect.
+After one successful complete score chain releases its Q/K pins, the first
+positional preparation of the next chain is rejected before dispatch with
+`PROM_M46_DETAIL_STALE_WEIGHT_GENERATION` (`-7406`), even when the second
+chain supplies strictly larger generations (the reproduction was repeated
+with generations 20/21 and 100/101). The native result records zero completed
+positional dispatches for the rejected second chain. This localizes the issue
+to M46 same-session weight-generation reset/reacquisition after score
+completion; it is neither score arithmetic nor Q/K role ordering. The live
+test intentionally preserves this reproducer. Consequently, repeated/
+alternating freshness, same-session allocation settling, transactional
+recovery, and the final causal-provenance closure cannot yet be claimed.
+
+Follow-up instrumentation narrows the transition further: the second chain's
+M46 weight preparation succeeds, but its immediately following M49 execution
+returns `-7406` at required-weight validation before the outer positional
+dispatch counter can advance. The closed diagnostic fields are therefore zero
+on the outer score result: no M46 preparation rejection occurred. The first
+divergence is the handoff from a successfully prepared M46 weight authority to
+M49's required-weight-generation/hash validation after score completion.
+
+### Stabilization checkpoint — July 23, 2026
+
+This checkpoint freezes the live raw-score prefix without attempting the
+remaining same-session repair. The authority-verified checkpoint-backed RTX
+path has two numerically accepted fresh-session orders: Q-first and K-first.
+Each dispatches the package-backed kernel 69 against the exact resident
+kernel-68 positional destinations and returns all `1,800 / 1,800` FP32 scores
+bit-exact against the accepted sequential stage-local graph. Q is retained in
+role/slot 0, K in role/slot 1, and the distinct FP32 score destination is slot
+3; direct ranges are 122,880, 15,360, and 7,200 bytes respectively. The
+ring depth is bounded at three reusable resident roles, and resident-only
+RoPE allocates its destination without a host Q/K readback or host detour.
+
+The open defect is deliberately preserved and reproducible in one reusable
+native session: the second chain's M46 preparation succeeds, then the
+immediately following M49 required-weight validation rejects with
+`PROM_M46_DETAIL_STALE_WEIGHT_GENERATION` (`-7406`) before any second-chain
+positional dispatch. `observed_weight_generation` and
+`requested_weight_generation` are the closed M46 diagnostic fields. They are
+zero in this particular outer failure because the current result propagation
+returns them for an M46 preparation failure or completed M46/M49 execution;
+M49's early required-weight rejection has no separate propagated observation
+yet. The exact handoff is M46 `weight_result.generation` /
+`weight_result.hash` to M49 `required_weight_generation` /
+`required_weight_hash`. This is evidence of that M46-to-M49 generation/hash
+boundary, not evidence that M46 admission itself failed. No cause is asserted.
+
+The Windows native build passed in 143.7 seconds. Targeted Prometheus Go tests,
+kernel 68/69 SDSL-V and package checks, DXC/`spirv-val` validation, and
+`git diff --check` passed for this checkpoint. Focused live first-chain
+Q-first/K-first tests remain the numerical pass signals. The narrow
+same-session diagnostic must continue to fail at the M46-success-to-M49-`-7406`
+boundary until its lifecycle state is repaired. Linux has not completed within
+the bounded build window; no Linux pass is claimed. The broad Marionette
+Vulkan-unavailable run and its pre-existing scalar-SGEMM registry source-literal
+failure remain unrelated.
+
+Still open before raw pre-mask score construction can be closed are
+same-session lifecycle reuse, pristine-score causal provenance, malformed-call
+rejection/recovery, and allocation/freshness corpus evidence. Masking,
+softmax, V aggregation, output projection, residual work, FFN, PLE, M2, and
+later layer-0 work have not begun. Resume with architectural regrouping, not
+by automatically implementing the `-7406` repair. The first focused command
+is `go test -run TestGemma4E2BM1CanonicalQKVRTX -count=1 -v ./internal/prometheus`
+with the validated checkpoint root, reactor DLL, hardware-required, and
+Vulkan-validation environment variables set as above.

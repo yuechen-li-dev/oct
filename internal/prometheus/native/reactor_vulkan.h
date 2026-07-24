@@ -1884,6 +1884,8 @@ typedef struct prom_m46_weight_prepare_result {
   uint64_t hash;
   uint64_t preparation_ns;
   uint64_t retained_bytes;
+  uint64_t observed_generation;
+  uint64_t requested_generation;
   uint32_t replaced;
 } prom_m46_weight_prepare_result;
 
@@ -3466,6 +3468,9 @@ int prom_reactor_runtime_m49a_execute_m46(
 int prom_reactor_runtime_gemma4e2b_m1_rope(
     void* handle, const PrometheusGemma4E2BM1RopeRequest* request,
     PrometheusGemma4E2BM1RopeResult* out_result);
+int prom_reactor_runtime_gemma4e2b_m1_attention_scores(
+    void* handle, const PrometheusGemma4E2BM1AttentionScoresRequest* request,
+    PrometheusGemma4E2BM1AttentionScoresResult* out_result);
 uint32_t prom_m48_attention_resource_index(uint32_t head, uint32_t weight_kind);
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
                                           prom_m48_transformer_stack_plan* out_plan);

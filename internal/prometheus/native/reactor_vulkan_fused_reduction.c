@@ -692,6 +692,7 @@ void prom_reactor_runtime_reduction_cleanup_state(void* opaque_state, VkDevice d
   }
   prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_bf16_roundtrip_pipeline);
   prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_rope_pipeline);
+  prom_reduction_destroy_pipeline(device, &state->gemma4e2b_m1_attention_scores_pipeline);
   for (pipeline_index = 0u; pipeline_index < PROM_M47_PIPELINE_COUNT; ++pipeline_index) {
     prom_reduction_destroy_pipeline(device, &state->m47_pipelines[pipeline_index]);
   }

@@ -113,6 +113,16 @@ type gemma4e2bCanonicalSliceResult struct {
 	QRopeStable              bool
 	KRopeStable              bool
 	RopeRecoveredAfterReject bool
+	Scores                   []float32
+	ScoreNative              reactorGemma4E2BM1AttentionScoresResult
+	ScoreStageLocal          gemma4e2bComparison
+	ScoreStageLocalExact     bool
+	ScorePristine            gemma4e2bComparison
+	ScorePristineExact       bool
+	ScoreOppositeOrderNative reactorGemma4E2BM1AttentionScoresResult
+	ScoreOppositeOrderExact  bool
+	ScoreRepeatedNative      reactorGemma4E2BM1AttentionScoresResult
+	ScoreRepeatedExact       bool
 	QOperands                gemma4e2bProjectionOperandAuthority
 	KOperands                gemma4e2bProjectionOperandAuthority
 	VOperands                gemma4e2bProjectionOperandAuthority
@@ -403,6 +413,61 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	result.KRopeNative = kRopeNative
 	result.KRope = comparePortableProjection(kRopeReference, kRope)
 	result.KRopeResidentContract = comparePortableProjection(cpuGemma4e2bRope(kNormalized, ropeCosine, ropeSine, gemma4e2bM1Tokens, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth), kRope)
+	// This is the closed resident chain: the native operation prepares Q and K
+	// without individual RoPE readbacks, retains both kernel-68 destinations,
+	// dispatches package-backed kernel 69, and returns only final FP32 scores.
+	// Keep the live score proof in its own model-private runtime. The accepted
+	// positional comparison above deliberately retains Q/K for its own evidence;
+	// sharing that session would make its old pins part of this operation's
+	// lifetime contract instead of proving the score chain's fresh ownership.
+	scoreRuntime, err := newNativeRuntime()
+	if err != nil {
+		return result, err
+	}
+	defer scoreRuntime.Close()
+	scores, scoreNative, err := scoreRuntime.Gemma4E2BM1AttentionScores(
+		qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
+		gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
+		gemma4e2bM1RMSNormEpsilon, 0.0625,
+		1, 16, 15, 16, 15, 2, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
+	)
+	if err != nil {
+		return result, fmt.Errorf("resident raw attention scores: %w", err)
+	}
+	result.Scores = scores
+	result.ScoreNative = scoreNative
+	result.ScoreStageLocal = compareVectors(scores, cpuGemma4e2bRawScores(qRope, kRope))
+	result.ScoreStageLocalExact = equalFloat32Bits(scores, cpuGemma4e2bRawScores(qRope, kRope))
+	pristineScores := cpuGemma4e2bRawScores(qRopeReference, kRopeReference)
+	result.ScorePristine = compareVectors(scores, pristineScores)
+	result.ScorePristineExact = equalFloat32Bits(scores, pristineScores)
+	// Reuse the same closed native session with Q prepared first. Generations
+	// remain strictly increasing, while the role order is intentionally reversed.
+	oppositeScores, oppositeNative, err := scoreRuntime.Gemma4E2BM1AttentionScores(
+		qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
+		gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
+		gemma4e2bM1RMSNormEpsilon, 0.0625,
+		0, 100, 101, 100, 101, 3, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
+	)
+	if err != nil {
+		return result, fmt.Errorf("resident raw attention scores Q-first: %w", err)
+	}
+	result.ScoreOppositeOrderNative = oppositeNative
+	result.ScoreOppositeOrderExact = equalFloat32Bits(oppositeScores, cpuGemma4e2bRawScores(qRope, kRope))
+	// A third dispatch returns to Q-first on the same allocations and verifies
+	// that score output is written afresh after the intervening K-first cycle.
+	repeatedScores, repeatedNative, err := scoreRuntime.Gemma4E2BM1AttentionScores(
+		qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
+		gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
+		gemma4e2bM1RMSNormEpsilon, 0.0625,
+		0, 102, 103, 102, 103, 4, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
+	)
+	if err != nil {
+		return result, fmt.Errorf("repeated resident raw attention scores: %w", err)
+	}
+	result.ScoreRepeatedNative = repeatedNative
+	result.ScoreRepeatedExact = equalFloat32Bits(repeatedScores, scores) &&
+		equalFloat32Bits(repeatedScores, cpuGemma4e2bRawScores(qRope, kRope))
 	// The same persistent descriptor set must be rewritten across the Q/K
 	// shape change. Repeat both directions to prove that no stale range or
 	// source binding is retained by the package-backed pipeline.
@@ -740,6 +805,30 @@ func cpuGemma4e2bRope(source, cosine, sine []float32, tokens, heads, headWidth i
 		}
 	}
 	return output
+}
+
+// cpuGemma4e2bRawScores is the explicit stage-local pre-mask authority. It
+// intentionally has no masking, softmax, query pre-scale, or logit soft-cap.
+func cpuGemma4e2bRawScores(query, key []float32) []float32 {
+	if len(query) != gemma4e2bM1Tokens*gemma4e2bM1QHeads*gemma4e2bM1HeadWidth ||
+		len(key) != gemma4e2bM1Tokens*gemma4e2bM1KVHeads*gemma4e2bM1HeadWidth {
+		return nil
+	}
+	scores := make([]float32, gemma4e2bM1QHeads*gemma4e2bM1Tokens*gemma4e2bM1Tokens)
+	for queryHead := 0; queryHead < gemma4e2bM1QHeads; queryHead++ {
+		for queryPosition := 0; queryPosition < gemma4e2bM1Tokens; queryPosition++ {
+			queryBase := (queryPosition*gemma4e2bM1QHeads + queryHead) * gemma4e2bM1HeadWidth
+			for keyPosition := 0; keyPosition < gemma4e2bM1Tokens; keyPosition++ {
+				keyBase := keyPosition * gemma4e2bM1HeadWidth // Every Q head maps to KV head 0.
+				accumulator := float32(0)
+				for coordinate := 0; coordinate < gemma4e2bM1HeadWidth; coordinate++ {
+					accumulator += query[queryBase+coordinate] * key[keyBase+coordinate]
+				}
+				scores[(queryHead*gemma4e2bM1Tokens+queryPosition)*gemma4e2bM1Tokens+keyPosition] = accumulator * 0.0625
+			}
+		}
+	}
+	return scores
 }
 
 func compareVectors(actual, reference []float32) gemma4e2bComparison {
