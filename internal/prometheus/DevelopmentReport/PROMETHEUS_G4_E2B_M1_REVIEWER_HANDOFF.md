@@ -204,3 +204,23 @@ Z-Image stage order into a bounded plan and Gemma orchestration out of the API
 veneer without changing generated identities, dispatch order, residency,
 allocation ceilings, or numerical authority. Do not begin that work as part of
 Stage 5.
+
+## Current repository handoff — Stage 6
+
+Stage 6 is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE6_CLOSED_MODEL_EXECUTION_PLAN.md`.
+It establishes that the Z-Image model-session path contains a finite implicit
+34-position weight-retarget sequence (NoiseRefiner0/1, ContextRefiner0/1,
+MainTransformer0--29), duplicated in retarget and prefetch selectors.  The
+current model session owns `retarget_position`; public façade calls separately
+control capture, composition, and block execution.  No model-operation
+authorization/completion edge currently passes through Dominatus.
+
+Stage 6 therefore rejects a static-table-only extraction: it would not be a
+closed model execution plan and would conceal mechanism-owned semantic
+progress.  No production code, topology, `MainTransformer1` repeated successor
+projection, weights/generations/hashes/bindings, allocation/teardown behavior,
+Stage 4 SGEMM handoff, ABI, generated authority, shader/package identity,
+M46/M49 behavior, `-7406`, or M34b result changed.  The next narrow boundary is
+a private Dominatus model-operation authorization/observation seam; it is not
+begun here.
