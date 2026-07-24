@@ -26,6 +26,8 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 		"evt1_m1a_vulkan.concept",
 		"evt1_m1b_a_language.concept",
 		"evt1_m1b_a_vulkan.concept",
+		"evt1_m1b_b_language.concept",
+		"evt1_m1b_b_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -60,6 +62,9 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 			if strings.Contains(name, "m1b_a") && !strings.Contains(mirText, "struct_construct") {
 				t.Fatal("MIR text omitted struct_construct")
 			}
+			if strings.Contains(name, "m1b_b") && !strings.Contains(mirText, "requirement_call") {
+				t.Fatal("MIR text omitted requirement_call")
+			}
 			for _, suffix := range []string{".mir.json", ".map.json", ".manifest.json"} {
 				found := false
 				for key, body := range outA {
@@ -85,6 +90,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 		"evt1_m1a_vulkan.concept",
 		"evt1_m1b_a_language.concept",
 		"evt1_m1b_a_vulkan.concept",
+		"evt1_m1b_b_language.concept",
+		"evt1_m1b_b_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -104,8 +111,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 }
 
 func TestEVT1DoubleGenerationMatchesAcrossDirectories(t *testing.T) {
-	src := readEVT1Fixture(t, "evt1_m1b_a_vulkan.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_vulkan.concept", src)
+	src := readEVT1Fixture(t, "evt1_m1b_b_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,8 +148,8 @@ func TestEVT1DoubleGenerationMatchesAcrossDirectories(t *testing.T) {
 }
 
 func TestEVT1CGenerationUsesTransparentStructsAndNoConceptRuntime(t *testing.T) {
-	src := readEVT1Fixture(t, "evt1_m1b_a_language.concept")
-	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
+	src := readEVT1Fixture(t, "evt1_m1b_b_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,27 +157,26 @@ func TestEVT1CGenerationUsesTransparentStructsAndNoConceptRuntime(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := string(outputs["evt1_m1b_a_language.generated.h"])
-	body := string(outputs["evt1_m1b_a_language.generated.c"])
+	header := string(outputs["evt1_m1b_b_language.generated.h"])
+	body := string(outputs["evt1_m1b_b_language.generated.c"])
 	for _, needle := range []string{
 		"typedef struct concept_vulkan_buffer_range {\n  int bufferId;\n  int offset;\n  int size;\n}",
-		"typedef struct concept_vulkan_command_pool_state {\n  int poolId;\n  bool initialized;\n}",
-		"typedef enum concept_vulkan_outcome_tag",
+		"typedef struct concept_vulkan_pipeline_state {\n  int handle;\n  bool alive;\n}",
 	} {
 		if !strings.Contains(header, needle) {
 			t.Fatalf("header missing %q\n%s", needle, header)
 		}
 	}
 	for _, needle := range []string{
-		"state->initialized = true;",
-		"concept_vulkan_buffer_range_make",
-		"concept_vulkan_outcome_make_ready",
+		"static int concept_vulkan_template_score_resource__buffer_range(",
+		"static void concept_vulkan_template_destroy_resource__pipeline_state(",
+		"concept_vulkan_evt1_m1b_b_language_measure__buffer_range",
 	} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("body missing %q\n%s", needle, body)
 		}
 	}
-	for _, forbidden := range []string{"ResourceState", "Validatable", "Destroyable"} {
+	for _, forbidden := range []string{"template <", "VulkanResource", "Measurable", "Destroyable"} {
 		if strings.Contains(header, forbidden) || strings.Contains(body, forbidden) {
 			t.Fatalf("concept runtime name %q leaked into generated C", forbidden)
 		}
@@ -296,7 +302,7 @@ func TestEVT1DiagnosticsAreStable(t *testing.T) {
 		{
 			name: "constrained template rejected",
 			src: "profile Vulkan;\ntemplate <typename T>\nint Identity(T value);\n",
-			code: "CV4165",
+			code: "CV4166",
 		},
 		{
 			name: "m1a non exhaustive regression",
@@ -311,6 +317,77 @@ func TestEVT1DiagnosticsAreStable(t *testing.T) {
 				t.Fatalf("err=%v want %s", err, tc.code)
 			}
 		})
+	}
+}
+
+func TestEVT1TemplateDiagnosticsAreStable(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code string
+	}{
+		{
+			name: "constraint uses concrete type",
+			src: "profile Vulkan;\nstruct BufferRange { int offset; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\ntemplate <typename T>\nrequires Resource<BufferRange>\nint Score(borrow const T value) { return Measure(value); }\n",
+			code: "CV4170",
+		},
+		{
+			name: "dependent field access",
+			src: "profile Vulkan;\nstruct BufferRange { int offset; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\nint Measure(borrow const BufferRange value);\ntemplate <typename T>\nrequires Resource<T>\nint Score(borrow const T value) { return value.offset; }\n",
+			code: "CV4172",
+		},
+		{
+			name: "explicit template call required",
+			src: "profile Vulkan;\nstruct BufferRange { int offset; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\nint Measure(borrow const BufferRange value);\nrequires Resource<BufferRange>;\ntemplate <typename T>\nrequires Resource<T>\nint Score(borrow const T value) { return Measure(value); }\nint Use() { BufferRange range = BufferRange{1}; return Score(range); }\n",
+			code: "CV4173",
+		},
+		{
+			name: "nested template call rejected",
+			src: "profile Vulkan;\nstruct BufferRange { int offset; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\nint Measure(borrow const BufferRange value);\nrequires Resource<BufferRange>;\ntemplate <typename T>\nrequires Resource<T>\nint Score(borrow const T value) { return Measure(value); }\ntemplate <typename T>\nrequires Resource<T>\nint Forward(borrow const T value) { return Score<T>(value); }\n",
+			code: "CV4174",
+		},
+		{
+			name: "dependent operator rejected",
+			src: "profile Vulkan;\nstruct BufferRange { int offset; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\nint Measure(borrow const BufferRange value);\ntemplate <typename T>\nrequires Resource<T>\nbool Larger(borrow const T left, borrow const T right) { return left > right; }\n",
+			code: "CV4175",
+		},
+		{
+			name: "call not guaranteed by constraint",
+			src: "profile Vulkan;\nstruct BufferRange { int offset; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\nint Measure(borrow const BufferRange value);\ntemplate <typename T>\nrequires Resource<T>\nint Score(borrow const T value) { return Destroy(value); }\n",
+			code: "CV4176",
+		},
+		{
+			name: "by value immovable instantiation rejected",
+			src: "profile Vulkan;\nimmovable struct PipelineState { int handle; bool alive; };\nconcept Resource<T> { requires int Measure(borrow const T value); }\nint Measure(borrow const PipelineState value);\nrequires Resource<PipelineState>;\ntemplate <typename T>\nrequires Resource<T>\nint CopyResource(T value) { return Measure(value); }\nint Use() { PipelineState state = PipelineState{1, true}; return CopyResource<PipelineState>(state); }\n",
+			code: "CV4136",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseEVT1("test.concept", tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("err=%v want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestEVT1TemplateInvocationPreservesComparisonParsing(t *testing.T) {
+	src := `profile Vulkan;
+struct BufferRange { int offset; };
+concept Resource<T> { requires int Measure(borrow const T value); }
+int Measure(borrow const BufferRange value);
+requires Resource<BufferRange>;
+template <typename T>
+requires Resource<T>
+int Score(borrow const T value) { return Measure(value); }
+bool Less() { return 1 < 2; }
+bool GreaterFromTemplate() { BufferRange range = BufferRange{1}; return Score<BufferRange>(range) > 0; }
+bool Chained() { return 3 > 2 > 1; }
+`
+	_, err := ParseEVT1("test.concept", src)
+	if err == nil || !strings.Contains(err.Error(), "CV4028") {
+		t.Fatalf("err=%v want CV4028 type-check failure from chained comparison", err)
 	}
 }
 
@@ -333,6 +410,40 @@ func TestEVT1CheckRejectsHandEdit(t *testing.T) {
 	}
 	if err := Check(dir, outputs); err == nil || !strings.Contains(err.Error(), "CV3001") {
 		t.Fatalf("check error=%v", err)
+	}
+}
+
+func TestEVT1TemplateInstancesAreDeterministicAndDeduplicated(t *testing.T) {
+	src := readEVT1Fixture(t, "evt1_m1b_b_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(outputs["evt1_m1b_b_language.generated.c"])
+	for _, needle := range []string{
+		"static int concept_vulkan_template_score_resource__buffer_range(",
+		"static int concept_vulkan_template_score_resource__pipeline_state(",
+		"static void concept_vulkan_template_destroy_resource__buffer_range(",
+		"static void concept_vulkan_template_destroy_resource__pipeline_state(",
+	} {
+		if strings.Count(body, needle) != 1 {
+			t.Fatalf("expected one instance for %q\n%s", needle, body)
+		}
+	}
+	env, err := analyzeEVT1Module(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mir := buildEVT1MIR(module, env)
+	if len(mir.Templates) != 2 {
+		t.Fatalf("template count=%d", len(mir.Templates))
+	}
+	if len(mir.Instances) != 4 {
+		t.Fatalf("instance count=%d", len(mir.Instances))
 	}
 }
 
@@ -419,6 +530,106 @@ int main(void) {
 }
 `
 	runNativeHarness(t, outputs, "evt1_m1b_a_vulkan_harness.c", harness, nil)
+}
+
+func TestEVT1TemplateLanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_m1b_b_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_m1b_b_language.generated.h"
+#include <stdint.h>
+
+static int g_destroy_count = 0;
+static int g_destroy_codes[4] = {0, 0, 0, 0};
+
+int concept_vulkan_evt1_m1b_b_language_measure__buffer_range(const concept_vulkan_buffer_range* value) {
+  return value->offset + value->size;
+}
+int concept_vulkan_evt1_m1b_b_language_measure__pipeline_state(const concept_vulkan_pipeline_state* value) {
+  return value->handle + (value->alive ? 1 : 0);
+}
+void concept_vulkan_evt1_m1b_b_language_destroy__buffer_range(concept_vulkan_buffer_range* value) {
+  g_destroy_codes[g_destroy_count++] = value->offset;
+}
+void concept_vulkan_evt1_m1b_b_language_destroy__pipeline_state(concept_vulkan_pipeline_state* value) {
+  g_destroy_codes[g_destroy_count++] = value->handle;
+}
+void concept_vulkan_evt1_m1b_b_language_set_alive(concept_vulkan_pipeline_state* value) {
+  value->alive = true;
+}
+
+int main(void) {
+  concept_vulkan_destroy_audit audit;
+  if (concept_vulkan_evt1_m1b_b_language_repeated_score() != 14) return 1;
+  if (concept_vulkan_evt1_m1b_b_language_score_pipeline() != 12) return 2;
+  audit = concept_vulkan_evt1_m1b_b_language_use_destroyers();
+  if (audit.first != 1 || audit.second != 13 || !audit.third) return 3;
+  if (!concept_vulkan_evt1_m1b_b_language_use_immovable()) return 4;
+  if (!concept_vulkan_evt1_m1b_b_language_compare_template_score()) return 5;
+  if (g_destroy_count != 4) return 6;
+  if (g_destroy_codes[0] != 1 || g_destroy_codes[1] != 13 || g_destroy_codes[2] != 13 || g_destroy_codes[3] != 5) return 7;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_m1b_b_language_harness.c", harness, nil)
+}
+
+func TestEVT1TemplateVulkanSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_m1b_b_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_b_vulkan.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_m1b_b_vulkan.generated.h"
+#include <stdint.h>
+
+static int g_destroy_calls = 0;
+
+int concept_vulkan_evt1_m1b_b_vulkan_measure__buffer_range(const concept_vulkan_buffer_range* value) {
+  return value->offset + value->size;
+}
+int concept_vulkan_evt1_m1b_b_vulkan_measure__pipeline_state(const concept_vulkan_pipeline_state* value) {
+  return value->alive ? 100 : 0;
+}
+void concept_vulkan_evt1_m1b_b_vulkan_destroy__buffer_range(concept_vulkan_buffer_range* value) {
+  (void)value;
+}
+void concept_vulkan_evt1_m1b_b_vulkan_destroy__pipeline_state(concept_vulkan_pipeline_state* value) {
+  (void)value;
+  g_destroy_calls += 1;
+}
+void concept_vulkan_evt1_m1b_b_vulkan_set_alive(concept_vulkan_pipeline_state* value) {
+  value->alive = true;
+}
+
+int main(void) {
+  VkBuffer first = (VkBuffer)(uintptr_t)0x10u;
+  VkBuffer second = (VkBuffer)(uintptr_t)0x20u;
+  VkCommandPool pool = (VkCommandPool)(uintptr_t)0x30u;
+  if (concept_vulkan_evt1_m1b_b_vulkan_classify_range(first) != 5) return 1;
+  if (concept_vulkan_evt1_m1b_b_vulkan_double_range_score(first, second) != 22) return 2;
+  if (!concept_vulkan_evt1_m1b_b_vulkan_build_and_destroy(pool)) return 3;
+  if (g_destroy_calls != 1) return 4;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_m1b_b_vulkan_harness.c", harness, nil)
 }
 
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {

@@ -1,0 +1,100 @@
+profile Vulkan;
+
+struct BufferRange
+{
+    int bufferId;
+    int offset;
+    int size;
+};
+
+immovable struct PipelineState
+{
+    int handle;
+    bool alive;
+};
+
+struct DestroyAudit
+{
+    int first;
+    int second;
+    bool third;
+};
+
+concept Measurable<T>
+{
+    requires int Measure(borrow const T value);
+}
+
+concept Destroyable<T>
+{
+    requires void Destroy(borrow T value);
+}
+
+concept VulkanResource<T>
+{
+    requires Measurable<T>;
+    requires Destroyable<T>;
+}
+
+int Measure(borrow const BufferRange value);
+int Measure(borrow const PipelineState value);
+void Destroy(borrow BufferRange value);
+void Destroy(borrow PipelineState value);
+int NextDestroySlot();
+void RecordDestroy(int slot, int code);
+void SetAlive(borrow PipelineState value);
+
+requires VulkanResource<BufferRange>;
+requires VulkanResource<PipelineState>;
+
+template <typename T>
+requires VulkanResource<T>
+int ScoreResource(borrow const T value)
+{
+    return Measure(value);
+}
+
+template <typename T>
+requires VulkanResource<T>
+void DestroyResource(borrow T value)
+{
+    Destroy(value);
+}
+
+int RepeatedScore()
+{
+    BufferRange first = BufferRange{7, 2, 3};
+    BufferRange second = BufferRange{8, 4, 5};
+    return ScoreResource<BufferRange>(first) + ScoreResource<BufferRange>(second);
+}
+
+int ScorePipeline()
+{
+    PipelineState state = PipelineState{11, true};
+    return ScoreResource<PipelineState>(state);
+}
+
+DestroyAudit UseDestroyers()
+{
+    BufferRange range = BufferRange{9, 1, 2};
+    PipelineState state = PipelineState{13, true};
+    DestroyResource<BufferRange>(range);
+    DestroyResource<PipelineState>(state);
+    DestroyResource<PipelineState>(state);
+    DestroyAudit audit = DestroyAudit{range.offset, state.handle, state.alive};
+    return audit;
+}
+
+bool UseImmovable()
+{
+    PipelineState state = PipelineState{5, false};
+    SetAlive(state);
+    DestroyResource<PipelineState>(state);
+    return state.alive;
+}
+
+bool CompareTemplateScore()
+{
+    BufferRange range = BufferRange{3, 6, 1};
+    return ScoreResource<BufferRange>(range) > 0;
+}

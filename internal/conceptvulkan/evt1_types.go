@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const EVT1CompilerID = "concept-vulkan-evt1-m1b-a"
+const EVT1CompilerID = "concept-vulkan-evt1-m1b-b"
 
 type EVT1TypeKind string
 
@@ -179,9 +179,26 @@ type EVT1ConceptDecl struct {
 }
 
 type EVT1ConceptAssertion struct {
-	ConceptName string   `json:"concept_name"`
+	ConceptName  string   `json:"concept_name"`
 	ConcreteType EVT1Type `json:"concrete_type"`
+	Span         Span     `json:"span"`
+}
+
+type EVT1TemplateConstraint struct {
+	ConceptName string   `json:"concept_name"`
+	TypeArg     EVT1Type `json:"type_arg"`
 	Span        Span     `json:"span"`
+}
+
+type EVT1TemplateDecl struct {
+	Name          string                 `json:"name"`
+	TypeParam     string                 `json:"type_param"`
+	TypeParamSpan Span                   `json:"type_param_span"`
+	Constraint    EVT1TemplateConstraint `json:"constraint"`
+	ReturnType    EVT1Type               `json:"return_type"`
+	Params        []EVT1Param            `json:"params,omitempty"`
+	Body          *EVT1Block             `json:"body,omitempty"`
+	Span          Span                   `json:"span"`
 }
 
 type EVT1FunctionDecl struct {
@@ -199,6 +216,7 @@ type EVT1Module struct {
 	Enums      []EVT1EnumDecl         `json:"enums,omitempty"`
 	Concepts   []EVT1ConceptDecl      `json:"concepts,omitempty"`
 	Assertions []EVT1ConceptAssertion `json:"assertions,omitempty"`
+	Templates  []EVT1TemplateDecl     `json:"templates,omitempty"`
 	Functions  []EVT1FunctionDecl     `json:"functions,omitempty"`
 }
 
@@ -319,6 +337,16 @@ type EVT1CallExpr struct {
 func (*EVT1CallExpr) evt1Expr()     {}
 func (e *EVT1CallExpr) exprSpan() Span { return e.Span }
 
+type EVT1TemplateCallExpr struct {
+	Callee  string     `json:"callee"`
+	TypeArg EVT1Type   `json:"type_arg"`
+	Args    []EVT1Expr `json:"args,omitempty"`
+	Span    Span       `json:"span"`
+}
+
+func (*EVT1TemplateCallExpr) evt1Expr()     {}
+func (e *EVT1TemplateCallExpr) exprSpan() Span { return e.Span }
+
 type EVT1BinaryExpr struct {
 	Op    string   `json:"op"`
 	Left  EVT1Expr `json:"left"`
@@ -370,6 +398,8 @@ type EVT1MIR struct {
 	Enums      []EVT1MIREnum         `json:"enums,omitempty"`
 	Concepts   []EVT1MIRConcept      `json:"concepts,omitempty"`
 	Assertions []EVT1MIRAssertion    `json:"assertions,omitempty"`
+	Templates  []EVT1MIRTemplate     `json:"templates,omitempty"`
+	Instances  []EVT1MIRInstance     `json:"instances,omitempty"`
 	Functions  []EVT1MIRFunction     `json:"functions"`
 }
 
@@ -425,6 +455,52 @@ type EVT1MIRAssertion struct {
 	SourceSpan   Span     `json:"source_span"`
 }
 
+type EVT1MIRTemplateConstraint struct {
+	ConceptName string   `json:"concept_name"`
+	TypeParam   string   `json:"type_param"`
+	SourceSpan  Span     `json:"source_span"`
+}
+
+type EVT1MIRClosureEntry struct {
+	ConceptName string   `json:"concept_name"`
+	Path        []string `json:"path,omitempty"`
+}
+
+type EVT1MIRRequirementBinding struct {
+	RequirementID string   `json:"requirement_id"`
+	ConceptName   string   `json:"concept_name"`
+	Name          string   `json:"name"`
+	Signature     string   `json:"signature"`
+	Path          []string `json:"path,omitempty"`
+}
+
+type EVT1MIRTemplate struct {
+	Name         string                    `json:"name"`
+	TypeParam    string                    `json:"type_param"`
+	Constraint   EVT1MIRTemplateConstraint `json:"constraint"`
+	Closure      []EVT1MIRClosureEntry     `json:"closure,omitempty"`
+	Requirements []EVT1MIRRequirementBinding `json:"requirements,omitempty"`
+	ReturnType   EVT1Type                  `json:"return_type"`
+	Params       []EVT1MIRName             `json:"params,omitempty"`
+	Operations   []EVT1MIROperation        `json:"operations,omitempty"`
+	SourceSpan   Span                      `json:"source_span"`
+}
+
+type EVT1MIRInstance struct {
+	ID                  string                  `json:"id"`
+	TemplateName        string                  `json:"template_name"`
+	ConcreteType        EVT1Type                `json:"concrete_type"`
+	GeneratedSymbol     string                  `json:"generated_symbol"`
+	ConstraintConcept   string                  `json:"constraint_concept"`
+	Closure             []EVT1MIRClosureEntry   `json:"closure,omitempty"`
+	RequirementBindings []EVT1MIRRequirementBinding `json:"requirement_bindings,omitempty"`
+	ReturnType          EVT1Type                `json:"return_type"`
+	Params              []EVT1MIRName           `json:"params,omitempty"`
+	Operations          []EVT1MIROperation      `json:"operations,omitempty"`
+	InvocationSpans     []Span                  `json:"invocation_spans,omitempty"`
+	SourceSpan          Span                    `json:"source_span"`
+}
+
 type EVT1MIRFunction struct {
 	Name       string             `json:"name"`
 	ReturnType EVT1Type           `json:"return_type"`
@@ -444,11 +520,14 @@ type EVT1MIROperation struct {
 type evt1Env struct {
 	enums             map[string]EVT1EnumDecl
 	structs           map[string]EVT1StructDecl
-	functions         map[string]EVT1FunctionDecl
+	functions         map[string][]EVT1FunctionDecl
+	templates         map[string]EVT1TemplateDecl
 	concepts          map[string]EVT1ConceptDecl
 	fieldSets         map[string]map[string]EVT1Type
 	escapedArmBinding map[string]Span
 	copyableCache     map[string]bool
+	templateInfos     map[string]*evt1TemplateInfo
+	templateInstances map[string]*evt1TemplateInstance
 }
 
 func newEVT1Env() *evt1Env {
@@ -456,7 +535,8 @@ func newEVT1Env() *evt1Env {
 	return &evt1Env{
 		enums:     map[string]EVT1EnumDecl{},
 		structs:   map[string]EVT1StructDecl{},
-		functions: map[string]EVT1FunctionDecl{},
+		functions: map[string][]EVT1FunctionDecl{},
+		templates: map[string]EVT1TemplateDecl{},
 		concepts:  map[string]EVT1ConceptDecl{},
 		fieldSets: map[string]map[string]EVT1Type{
 			"VulkanError": {
@@ -465,7 +545,52 @@ func newEVT1Env() *evt1Env {
 		},
 		escapedArmBinding: map[string]Span{},
 		copyableCache:     map[string]bool{},
+		templateInfos:     map[string]*evt1TemplateInfo{},
+		templateInstances: map[string]*evt1TemplateInstance{},
 	}
+}
+
+type evt1TemplateRequirement struct {
+	ID        string
+	Path      []string
+	Concept   string
+	Operation EVT1OperationRequirement
+}
+
+type evt1TemplateClosureEntry struct {
+	Concept string
+	Path    []string
+}
+
+type evt1TemplateCallBinding struct {
+	CallSpan     Span
+	Requirement  evt1TemplateRequirement
+}
+
+type evt1TemplateInfo struct {
+	Decl         EVT1TemplateDecl
+	Closure      []evt1TemplateClosureEntry
+	Requirements []evt1TemplateRequirement
+	CallBindings map[string]evt1TemplateCallBinding
+}
+
+type evt1InstanceRequirementBinding struct {
+	Requirement evt1TemplateRequirement
+	Function    EVT1FunctionDecl
+}
+
+type evt1TemplateInstance struct {
+	Key                 string
+	TemplateName        string
+	ConcreteType        EVT1Type
+	TypeIdentity        string
+	GeneratedSymbol     string
+	ConstraintConcept   string
+	Closure             []evt1TemplateClosureEntry
+	RequirementBindings []evt1InstanceRequirementBinding
+	Function            EVT1FunctionDecl
+	InvocationSpans     []Span
+	SourceSpan          Span
 }
 
 func evt1BuiltinType(name string, span Span) (EVT1Type, bool) {

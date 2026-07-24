@@ -1,0 +1,74 @@
+profile Vulkan;
+
+struct BufferRange
+{
+    VkBuffer buffer;
+    int offset;
+    int size;
+};
+
+immovable struct PipelineState
+{
+    VkCommandPool pool;
+    bool alive;
+};
+
+concept Measurable<T>
+{
+    requires int Measure(borrow const T value);
+}
+
+concept Destroyable<T>
+{
+    requires void Destroy(borrow T value);
+}
+
+concept VulkanResource<T>
+{
+    requires Measurable<T>;
+    requires Destroyable<T>;
+}
+
+int Measure(borrow const BufferRange value);
+int Measure(borrow const PipelineState value);
+void Destroy(borrow BufferRange value);
+void Destroy(borrow PipelineState value);
+void SetAlive(borrow PipelineState value);
+
+requires VulkanResource<BufferRange>;
+requires VulkanResource<PipelineState>;
+
+template <typename T>
+requires VulkanResource<T>
+int ScoreResource(borrow const T value)
+{
+    return Measure(value);
+}
+
+template <typename T>
+requires VulkanResource<T>
+void DestroyResource(borrow T value)
+{
+    Destroy(value);
+}
+
+int ClassifyRange(VkBuffer buffer)
+{
+    BufferRange range = BufferRange{buffer, 2, 3};
+    return ScoreResource<BufferRange>(range);
+}
+
+int DoubleRangeScore(VkBuffer first, VkBuffer second)
+{
+    BufferRange left = BufferRange{first, 4, 5};
+    BufferRange right = BufferRange{second, 6, 7};
+    return ScoreResource<BufferRange>(left) + ScoreResource<BufferRange>(right);
+}
+
+bool BuildAndDestroy(VkCommandPool pool)
+{
+    PipelineState state = PipelineState{pool, false};
+    SetAlive(state);
+    DestroyResource<PipelineState>(state);
+    return ScoreResource<PipelineState>(state) > 0;
+}

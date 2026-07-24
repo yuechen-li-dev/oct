@@ -18,19 +18,20 @@ The accepted proof foundation is:
 - the proposed M1E handwritten create-path failure seam is not the active
   assignment.
 
-The active assignment is now recorded in
-`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_A_MUTABLE_STRUCTS_AND_NAMED_CONCEPT_REQUIREMENTS.md`:
+The most recent closed assignment is now recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_B_CONCEPT_CONSTRAINED_TEMPLATES_AND_DETERMINISTIC_MONOMORPHIZATION.md`:
 
 ```text
-Concept/Vulkan EVT1 M1B-A — Mutable Structs and Named Concept Requirements
+Concept/Vulkan EVT1 M1B-B — Concept-Constrained Templates and Deterministic Monomorphization
 ```
 
-M1A is accepted and closed. M1B-A adds ordinary mutable value structs,
-bounded `immovable struct`, one-parameter named concepts, prerequisite
-concepts, exact-signature requirement matching, and explicit compile-time-only
-concrete satisfaction assertions. EVT1 M1B-B constrained templates and
-deterministic monomorphization remain deferred. EVT1 M1B-C bounded pure
-compile-time evaluation remains deferred. Production remains handwritten.
+M1A is accepted and closed. M1B-A is accepted and closed. M1B-B is now
+accepted and closed: constrained one-parameter free-function templates,
+exactly one named concept constraint, symbolic requirement-bound body
+checking, explicit concrete invocation, deterministic instance reuse, and one
+private C11 function per unique `(template, concrete type)` key. EVT1 M1B-C
+bounded pure compile-time evaluation remains deferred. Production remains
+handwritten.
 
 Concept/Vulkan is the bounded host-side mechanism profile implemented through
 the working Go Oct/SDSL-V compiler lineage. Dominatus remains the Prometheus
@@ -47,9 +48,18 @@ initial Concept/Vulkan proof.
 RQ-M1's accepted physical batch is also preserved: supported nonzero batches
 record one `vkCmdDispatch(ray_count,1,1)` and one synchronous submission with
 paired capacity and descriptor rebind-before-retire. Expanded image/cost
-authority is paused, not completed or abandoned. EVT1 M1A is language work,
-not resumed batch or stage-7 work. EVT1 M1B (concepts-first templates and
-compile-time evaluation) is explicitly deferred until after M1A.
+authority is paused, not completed or abandoned. EVT1 language work remains
+separate from resumed batch or stage-7 work. The exact next language milestone
+is now:
+
+```text
+Concept/Vulkan EVT1 M1B-C — Bounded Pure Compile-Time Evaluation
+```
+
+The historical kernel-54 milestone named `M1C` must not be confused with the
+later EVT1 milestone named `M1B-C`. DragonGod remains the intended first
+serious post-substrate framework direction after the required language
+substrate; it is still deferred and not begun here.
 
 ## Historical repository handoff — Stage 3
 

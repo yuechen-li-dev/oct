@@ -142,7 +142,11 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 	for !p.done() {
 		switch p.peekLexeme() {
 		case "template":
-			return module, evt1Diagnostic("CV4165", "constrained templates are deferred to EVT1 M1B-B", p.currentSpan())
+			templateDecl, err := p.parseTemplateDecl()
+			if err != nil {
+				return module, err
+			}
+			module.Templates = append(module.Templates, templateDecl)
 		case "immovable":
 			structDecl, err := p.parseStructDecl(true)
 			if err != nil {
@@ -174,7 +178,7 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 			}
 			module.Assertions = append(module.Assertions, assertion)
 		default:
-			fn, err := p.parseFunctionDecl()
+			fn, err := p.parseFunctionDecl("")
 			if err != nil {
 				return module, err
 			}
@@ -182,6 +186,55 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 		}
 	}
 	return module, nil
+}
+
+func (p *evt1Parser) parseTemplateDecl() (EVT1TemplateDecl, error) {
+	start, err := p.expect("template")
+	if err != nil {
+		return EVT1TemplateDecl{}, err
+	}
+	if _, err := p.expect("<"); err != nil {
+		return EVT1TemplateDecl{}, err
+	}
+	if _, err := p.expect("typename"); err != nil {
+		return EVT1TemplateDecl{}, evt1Diagnostic("CV4165", "template declarations require exactly `template <typename T>`", p.currentSpan())
+	}
+	paramTok, err := p.expectIdentifier("CV4165", "expected one template type parameter")
+	if err != nil {
+		return EVT1TemplateDecl{}, err
+	}
+	if _, err := p.expect(">"); err != nil {
+		return EVT1TemplateDecl{}, err
+	}
+	reqTok, err := p.expect("requires")
+	if err != nil {
+		return EVT1TemplateDecl{}, evt1Diagnostic("CV4166", "template declarations require exactly one named concept constraint", p.currentSpan())
+	}
+	ref, err := p.parseConceptUse(paramTok.Lexeme)
+	if err != nil {
+		return EVT1TemplateDecl{}, err
+	}
+	fn, err := p.parseFunctionDecl(paramTok.Lexeme)
+	if err != nil {
+		return EVT1TemplateDecl{}, err
+	}
+	if fn.Body == nil {
+		return EVT1TemplateDecl{}, evt1Diagnostic("CV4167", "template declarations require a function body", fn.Span)
+	}
+	return EVT1TemplateDecl{
+		Name:          fn.Name,
+		TypeParam:     paramTok.Lexeme,
+		TypeParamSpan: paramTok.Span,
+		Constraint: EVT1TemplateConstraint{
+			ConceptName: ref.Name,
+			TypeArg:     ref.TypeArgs[0],
+			Span:        reqTok.Span,
+		},
+		ReturnType: fn.ReturnType,
+		Params:     fn.Params,
+		Body:       fn.Body,
+		Span:       start.Span,
+	}, nil
 }
 
 func (p *evt1Parser) parseStructDecl(immovable bool) (EVT1StructDecl, error) {
@@ -377,8 +430,8 @@ func (p *evt1Parser) parseConceptAssertion() (EVT1ConceptAssertion, error) {
 	return EVT1ConceptAssertion{ConceptName: ref.Name, ConcreteType: ref.TypeArgs[0], Span: start.Span}, nil
 }
 
-func (p *evt1Parser) parseFunctionDecl() (EVT1FunctionDecl, error) {
-	retType, err := p.parseType("")
+func (p *evt1Parser) parseFunctionDecl(conceptParam string) (EVT1FunctionDecl, error) {
+	retType, err := p.parseType(conceptParam)
 	if err != nil {
 		return EVT1FunctionDecl{}, err
 	}
@@ -386,16 +439,13 @@ func (p *evt1Parser) parseFunctionDecl() (EVT1FunctionDecl, error) {
 	if err != nil {
 		return EVT1FunctionDecl{}, err
 	}
-	if p.peekLexeme() == "<" {
-		return EVT1FunctionDecl{}, evt1Diagnostic("CV4165", "constrained templates are deferred to EVT1 M1B-B", p.currentSpan())
-	}
 	if _, err := p.expect("("); err != nil {
 		return EVT1FunctionDecl{}, err
 	}
 	fn := EVT1FunctionDecl{Name: nameTok.Lexeme, ReturnType: retType, Span: nameTok.Span}
 	if p.peekLexeme() != ")" {
 		for {
-			paramType, err := p.parseType("")
+			paramType, err := p.parseType(conceptParam)
 			if err != nil {
 				return EVT1FunctionDecl{}, err
 			}
@@ -590,17 +640,16 @@ func (p *evt1Parser) looksLikeVarDecl() bool {
 	if p.done() {
 		return false
 	}
-	switch p.peekLexeme() {
-	case "owned", "borrow", "unsafe", "imported", "const":
-		return true
+	save := p.pos
+	defer func() { p.pos = save }()
+	if _, err := p.parseType(""); err != nil {
+		return false
 	}
 	if !isIdentifier(p.peekLexeme()) {
 		return false
 	}
-	if p.peekLexemeN(1) == "<" {
-		return true
-	}
-	return isIdentifier(p.peekLexemeN(1))
+	p.next()
+	return p.peekLexeme() == "="
 }
 
 func (p *evt1Parser) parseVarDecl() (EVT1Statement, error) {
@@ -703,7 +752,23 @@ func (p *evt1Parser) parsePattern() (EVT1Pattern, error) {
 }
 
 func (p *evt1Parser) parseExpr() (EVT1Expr, error) {
-	return p.parseAdditive()
+	return p.parseComparison()
+}
+
+func (p *evt1Parser) parseComparison() (EVT1Expr, error) {
+	left, err := p.parseAdditive()
+	if err != nil {
+		return nil, err
+	}
+	for p.peekLexeme() == "<" || p.peekLexeme() == ">" {
+		op := p.next()
+		right, err := p.parseAdditive()
+		if err != nil {
+			return nil, err
+		}
+		left = &EVT1BinaryExpr{Op: op.Lexeme, Left: left, Right: right, Span: op.Span}
+	}
+	return left, nil
 }
 
 func (p *evt1Parser) parseAdditive() (EVT1Expr, error) {
@@ -851,6 +916,40 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 	}
 	for {
 		switch p.peekLexeme() {
+		case "<":
+			nameExpr, ok := expr.(*EVT1NameExpr)
+			if !ok || !p.looksLikeTemplateInvocation() {
+				return expr, nil
+			}
+			p.next()
+			typeArg, err := p.parseType("")
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect(">"); err != nil {
+				return nil, err
+			}
+			if _, err := p.expect("("); err != nil {
+				return nil, err
+			}
+			var args []EVT1Expr
+			if p.peekLexeme() != ")" {
+				for {
+					arg, err := p.parseExpr()
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, arg)
+					if p.peekLexeme() != "," {
+						break
+					}
+					p.next()
+				}
+			}
+			if _, err := p.expect(")"); err != nil {
+				return nil, err
+			}
+			expr = &EVT1TemplateCallExpr{Callee: nameExpr.Name, TypeArg: typeArg, Args: args, Span: nameTok.Span}
 		case "(":
 			nameExpr, ok := expr.(*EVT1NameExpr)
 			if !ok {
@@ -886,6 +985,23 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 			return expr, nil
 		}
 	}
+}
+
+func (p *evt1Parser) looksLikeTemplateInvocation() bool {
+	if p.peekLexeme() != "<" {
+		return false
+	}
+	save := p.pos
+	defer func() { p.pos = save }()
+	p.next()
+	if _, err := p.parseType(""); err != nil {
+		return false
+	}
+	if p.peekLexeme() != ">" {
+		return false
+	}
+	p.next()
+	return p.peekLexeme() == "("
 }
 
 func (p *evt1Parser) expectKeyword(keyword string) error {

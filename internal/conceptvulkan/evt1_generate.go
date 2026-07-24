@@ -47,7 +47,9 @@ func GenerateEVT1(module EVT1Module, source []byte) (Outputs, error) {
 		"structs":    l.mir.Structs,
 		"concepts":   l.mir.Concepts,
 		"assertions": l.mir.Assertions,
-		"functions":  evt1MapFunctions(module),
+		"templates":  l.mir.Templates,
+		"instances":  l.mir.Instances,
+		"functions":  evt1MapFunctions(module, env),
 		"mir":        l.mir.Functions,
 	}
 	mapJSON, err := json.MarshalIndent(l.mapDoc, "", "  ")
@@ -151,20 +153,107 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 			SourceSpan:   assertion.Span,
 		})
 	}
+	for _, templateDecl := range module.Templates {
+		info := env.templateInfos[templateDecl.Name]
+		mirTemplate := EVT1MIRTemplate{
+			Name:      templateDecl.Name,
+			TypeParam: templateDecl.TypeParam,
+			Constraint: EVT1MIRTemplateConstraint{
+				ConceptName: templateDecl.Constraint.ConceptName,
+				TypeParam:   templateDecl.TypeParam,
+				SourceSpan:  templateDecl.Constraint.Span,
+			},
+			ReturnType: templateDecl.ReturnType,
+			SourceSpan: templateDecl.Span,
+		}
+		for _, entry := range info.Closure {
+			mirTemplate.Closure = append(mirTemplate.Closure, EVT1MIRClosureEntry{
+				ConceptName: entry.Concept,
+				Path:        append([]string{}, entry.Path...),
+			})
+		}
+		for _, req := range info.Requirements {
+			mirTemplate.Requirements = append(mirTemplate.Requirements, EVT1MIRRequirementBinding{
+				RequirementID: req.ID,
+				ConceptName:   req.Concept,
+				Name:          req.Operation.Name,
+				Signature:     evt1Signature(req.Operation.ReturnType, req.Operation.Name, req.Operation.Params),
+				Path:          append([]string{}, req.Path...),
+			})
+		}
+		for _, param := range templateDecl.Params {
+			mirTemplate.Params = append(mirTemplate.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+		}
+		if templateDecl.Body != nil {
+			tmpFn := EVT1MIRFunction{Name: templateDecl.Name}
+			collectMIROps(env, templateDecl.Body, &tmpFn, info)
+			mirTemplate.Operations = append(mirTemplate.Operations, tmpFn.Operations...)
+		}
+		mir.Templates = append(mir.Templates, mirTemplate)
+	}
+	for _, templateDecl := range module.Templates {
+		var instances []*evt1TemplateInstance
+		for _, instance := range env.templateInstances {
+			if instance.TemplateName == templateDecl.Name {
+				instances = append(instances, instance)
+			}
+		}
+		sort.Slice(instances, func(i, j int) bool {
+			return instances[i].TypeIdentity < instances[j].TypeIdentity
+		})
+		for _, instance := range instances {
+			mirInstance := EVT1MIRInstance{
+				ID:                instance.Key,
+				TemplateName:      instance.TemplateName,
+				ConcreteType:      instance.ConcreteType,
+				GeneratedSymbol:   instance.GeneratedSymbol,
+				ConstraintConcept: instance.ConstraintConcept,
+				ReturnType:        instance.Function.ReturnType,
+				InvocationSpans:   append([]Span{}, instance.InvocationSpans...),
+				SourceSpan:        instance.SourceSpan,
+			}
+			for _, entry := range instance.Closure {
+				mirInstance.Closure = append(mirInstance.Closure, EVT1MIRClosureEntry{
+					ConceptName: entry.Concept,
+					Path:        append([]string{}, entry.Path...),
+				})
+			}
+			for _, binding := range instance.RequirementBindings {
+				req := binding.Requirement
+				concreteReq := evt1SubstituteRequirement(req.Operation, templateDecl.TypeParam, instance.ConcreteType)
+				mirInstance.RequirementBindings = append(mirInstance.RequirementBindings, EVT1MIRRequirementBinding{
+					RequirementID: req.ID,
+					ConceptName:   req.Concept,
+					Name:          concreteReq.Name,
+					Signature:     evt1Signature(concreteReq.ReturnType, concreteReq.Name, concreteReq.Params),
+					Path:          append([]string{}, req.Path...),
+				})
+			}
+			for _, param := range instance.Function.Params {
+				mirInstance.Params = append(mirInstance.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+			}
+			if instance.Function.Body != nil {
+				tmpFn := EVT1MIRFunction{Name: instance.GeneratedSymbol}
+				collectMIROps(env, instance.Function.Body, &tmpFn, nil)
+				mirInstance.Operations = append(mirInstance.Operations, tmpFn.Operations...)
+			}
+			mir.Instances = append(mir.Instances, mirInstance)
+		}
+	}
 	for _, fn := range module.Functions {
 		mirFn := EVT1MIRFunction{Name: fn.Name, ReturnType: fn.ReturnType, SourceSpan: fn.Span}
 		for _, param := range fn.Params {
 			mirFn.Params = append(mirFn.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
 		}
 		if fn.Body != nil {
-			collectMIROps(env, fn.Body, &mirFn)
+			collectMIROps(env, fn.Body, &mirFn, nil)
 		}
 		mir.Functions = append(mir.Functions, mirFn)
 	}
 	return mir
 }
 
-func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction) {
+func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, templateInfo *evt1TemplateInfo) {
 	for _, stmt := range block.Statements {
 		id := fmt.Sprintf("%s.%02d", fn.Name, len(fn.Operations)+1)
 		switch s := stmt.(type) {
@@ -178,22 +267,22 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction) {
 				}
 			}
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Type: s.Type.String(), Detail: s.Name, SourceSpan: s.Span})
-			collectExprMIROps(env, s.Value, fn)
+			collectExprMIROps(env, s.Value, fn, templateInfo)
 		case *EVT1AssignStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "assign", Type: exprLabel(s.Target), Detail: exprLabel(s.Target), SourceSpan: s.Span})
-			collectExprMIROps(env, s.Target, fn)
-			collectExprMIROps(env, s.Value, fn)
+			collectExprMIROps(env, s.Target, fn, templateInfo)
+			collectExprMIROps(env, s.Value, fn, templateInfo)
 		case *EVT1ReturnStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "return", Type: fn.ReturnType.String(), SourceSpan: s.Span})
 			if s.Value != nil {
-				collectExprMIROps(env, s.Value, fn)
+				collectExprMIROps(env, s.Value, fn, templateInfo)
 			}
 		case *EVT1ExprStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "expr_stmt", SourceSpan: s.Span})
-			collectExprMIROps(env, s.Value, fn)
+			collectExprMIROps(env, s.Value, fn, templateInfo)
 		case *EVT1MatchStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "match_stmt", Detail: fmt.Sprintf("%d arms", len(s.Arms)), SourceSpan: s.Span})
-			collectExprMIROps(env, s.Subject, fn)
+			collectExprMIROps(env, s.Subject, fn, templateInfo)
 			for _, arm := range s.Arms {
 				fn.Operations = append(fn.Operations, EVT1MIROperation{
 					ID:         fmt.Sprintf("%s.%02d", fn.Name, len(fn.Operations)+1),
@@ -201,15 +290,15 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction) {
 					Detail:     arm.Pattern.EnumName + "::" + arm.Pattern.VariantName,
 					SourceSpan: arm.Pattern.Span,
 				})
-				collectMIROps(env, &arm.Block, fn)
+				collectMIROps(env, &arm.Block, fn, templateInfo)
 			}
 		case *EVT1Block:
-			collectMIROps(env, s, fn)
+			collectMIROps(env, s, fn, templateInfo)
 		}
 	}
 }
 
-func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction) {
+func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction, templateInfo *evt1TemplateInfo) {
 	id := fmt.Sprintf("%s.%02d", fn.Name, len(fn.Operations)+1)
 	switch e := expr.(type) {
 	case *EVT1StructConstructExpr:
@@ -219,16 +308,16 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction) {
 		}
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Detail: e.StructName, SourceSpan: e.Span})
 		for _, arg := range e.Args {
-			collectExprMIROps(env, arg, fn)
+			collectExprMIROps(env, arg, fn, templateInfo)
 		}
 	case *EVT1ConstructExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "enum_construct", Detail: e.EnumName + "::" + e.VariantName, SourceSpan: e.Span})
 		for _, arg := range e.Args {
-			collectExprMIROps(env, arg, fn)
+			collectExprMIROps(env, arg, fn, templateInfo)
 		}
 	case *EVT1MatchExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "match_expr", Detail: fmt.Sprintf("%d arms", len(e.Arms)), SourceSpan: e.Span})
-		collectExprMIROps(env, e.Subject, fn)
+		collectExprMIROps(env, e.Subject, fn, templateInfo)
 		for _, arm := range e.Arms {
 			fn.Operations = append(fn.Operations, EVT1MIROperation{
 				ID:         fmt.Sprintf("%s.%02d", fn.Name, len(fn.Operations)+1),
@@ -236,20 +325,33 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction) {
 				Detail:     arm.Pattern.EnumName + "::" + arm.Pattern.VariantName,
 				SourceSpan: arm.Pattern.Span,
 			})
-			collectExprMIROps(env, arm.Value, fn)
+			collectExprMIROps(env, arm.Value, fn, templateInfo)
 		}
 	case *EVT1CallExpr:
-		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "call", Detail: e.Callee, SourceSpan: e.Span})
+		kind := "call"
+		detail := e.Callee
+		if templateInfo != nil {
+			if binding, ok := templateInfo.CallBindings[evt1SpanKey(e.Span)]; ok {
+				kind = "requirement_call"
+				detail = binding.Requirement.ID + " -> " + binding.Requirement.Operation.Name
+			}
+		}
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Detail: detail, SourceSpan: e.Span})
 		for _, arg := range e.Args {
-			collectExprMIROps(env, arg, fn)
+			collectExprMIROps(env, arg, fn, templateInfo)
+		}
+	case *EVT1TemplateCallExpr:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "template_call", Detail: e.Callee + "<" + e.TypeArg.String() + ">", SourceSpan: e.Span})
+		for _, arg := range e.Args {
+			collectExprMIROps(env, arg, fn, templateInfo)
 		}
 	case *EVT1FieldExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "field_access", Detail: e.Field, SourceSpan: e.Span})
-		collectExprMIROps(env, e.Receiver, fn)
+		collectExprMIROps(env, e.Receiver, fn, templateInfo)
 	case *EVT1BinaryExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "binary", Detail: e.Op, SourceSpan: e.Span})
-		collectExprMIROps(env, e.Left, fn)
-		collectExprMIROps(env, e.Right, fn)
+		collectExprMIROps(env, e.Left, fn, templateInfo)
+		collectExprMIROps(env, e.Right, fn, templateInfo)
 	case *EVT1NameExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "name", Detail: e.Name, SourceSpan: e.Span})
 	case *EVT1IntLiteral:
@@ -259,13 +361,13 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction) {
 	}
 }
 
-func evt1MapFunctions(module EVT1Module) []map[string]any {
+func evt1MapFunctions(module EVT1Module, env *evt1Env) []map[string]any {
 	out := make([]map[string]any, 0, len(module.Functions))
 	for _, fn := range module.Functions {
 		out = append(out, map[string]any{
 			"name":   fn.Name,
 			"span":   fn.Span,
-			"symbol": evt1FunctionSymbol(evt1OutputBase(module.Path), fn.Name),
+			"symbol": evt1FunctionSymbolForDecl(evt1OutputBase(module.Path), env, fn),
 		})
 	}
 	return out
@@ -279,6 +381,17 @@ func evt1OutputBase(path string) string {
 
 func evt1FunctionSymbol(base, name string) string {
 	return "concept_vulkan_" + base + "_" + evt1CName(name)[len("concept_vulkan_"):]
+}
+
+func evt1FunctionSymbolForDecl(base string, env *evt1Env, fn EVT1FunctionDecl) string {
+	if len(env.functions[fn.Name]) <= 1 {
+		return evt1FunctionSymbol(base, fn.Name)
+	}
+	var parts []string
+	for _, param := range fn.Params {
+		parts = append(parts, evt1TypeIdentity(evt1CanonicalType(env, param.Type)))
+	}
+	return evt1FunctionSymbol(base, fn.Name) + "__" + strings.Join(parts, "_")
 }
 
 func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
@@ -321,6 +434,21 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 	}
 	for _, enumDecl := range l.module.Enums {
 		body.WriteString(l.enumConstructors(enumDecl))
+	}
+	for _, templateDecl := range l.module.Templates {
+		var instances []*evt1TemplateInstance
+		for _, instance := range l.env.templateInstances {
+			if instance.TemplateName == templateDecl.Name {
+				instances = append(instances, instance)
+			}
+		}
+		sort.Slice(instances, func(i, j int) bool {
+			return instances[i].TypeIdentity < instances[j].TypeIdentity
+		})
+		for _, instance := range instances {
+			body.WriteString(l.templateInstanceBody(instance))
+			body.WriteByte('\n')
+		}
 	}
 	for _, sym := range symbols {
 		if sym.Body != "" {
@@ -530,6 +658,19 @@ func evt1TypeUsed(module EVT1Module, match func(EVT1Type) bool) bool {
 			return true
 		}
 	}
+	for _, templateDecl := range module.Templates {
+		if visitType(templateDecl.ReturnType) {
+			return true
+		}
+		if visitType(templateDecl.Constraint.TypeArg) {
+			return true
+		}
+		for _, param := range templateDecl.Params {
+			if visitType(param.Type) {
+				return true
+			}
+		}
+	}
 	for _, fn := range module.Functions {
 		if visitType(fn.ReturnType) {
 			return true
@@ -546,7 +687,7 @@ func evt1TypeUsed(module EVT1Module, match func(EVT1Type) bool) bool {
 func (l *evt1Lowering) functionSymbols(fn EVT1FunctionDecl) evt1FunctionSymbols {
 	var prototype strings.Builder
 	cReturn := evt1CType(fn.ReturnType)
-	name := evt1FunctionSymbol(l.outputBase, fn.Name)
+	name := evt1FunctionSymbolForDecl(l.outputBase, l.env, fn)
 	prototype.WriteString(fmt.Sprintf("%s %s(", cReturn, name))
 	for i, param := range fn.Params {
 		if i > 0 {
@@ -558,16 +699,23 @@ func (l *evt1Lowering) functionSymbols(fn EVT1FunctionDecl) evt1FunctionSymbols 
 	if fn.Body == nil {
 		return evt1FunctionSymbols{Prototype: prototype.String()}
 	}
-	lower := newEVT1FunctionLowerer(l, fn)
+	lower := newEVT1FunctionLowerer(l, fn, name, false)
 	return evt1FunctionSymbols{
 		Prototype: prototype.String(),
 		Body:      lower.lower(),
 	}
 }
 
+func (l *evt1Lowering) templateInstanceBody(instance *evt1TemplateInstance) string {
+	lower := newEVT1FunctionLowerer(l, instance.Function, instance.GeneratedSymbol, true)
+	return lower.lower()
+}
+
 type evt1FunctionLowerer struct {
 	l           *evt1Lowering
 	fn          EVT1FunctionDecl
+	symbol      string
+	private     bool
 	scope       []map[string]evt1Binding
 	tempCounter int
 }
@@ -577,18 +725,21 @@ type evt1Binding struct {
 	t     EVT1Type
 }
 
-func newEVT1FunctionLowerer(l *evt1Lowering, fn EVT1FunctionDecl) *evt1FunctionLowerer {
+func newEVT1FunctionLowerer(l *evt1Lowering, fn EVT1FunctionDecl, symbol string, private bool) *evt1FunctionLowerer {
 	scope := []map[string]evt1Binding{{}}
 	for _, param := range fn.Params {
 		scope[0][param.Name] = evt1Binding{cName: param.Name, t: param.Type}
 	}
-	return &evt1FunctionLowerer{l: l, fn: fn, scope: scope}
+	return &evt1FunctionLowerer{l: l, fn: fn, symbol: symbol, private: private, scope: scope}
 }
 
 func (f *evt1FunctionLowerer) lower() string {
 	var b strings.Builder
-	name := evt1FunctionSymbol(f.l.outputBase, f.fn.Name)
-	b.WriteString(fmt.Sprintf("%s %s(", evt1CType(f.fn.ReturnType), name))
+	prefix := ""
+	if f.private {
+		prefix = "static "
+	}
+	b.WriteString(fmt.Sprintf("%s%s %s(", prefix, evt1CType(f.fn.ReturnType), f.symbol))
 	for i, param := range f.fn.Params {
 		if i > 0 {
 			b.WriteString(", ")
@@ -712,8 +863,8 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 		if binding, ok := scopeLookup(e.Name, f.scope); ok {
 			return "", binding.cName, binding.t
 		}
-		if fn, ok := f.l.env.functions[e.Name]; ok {
-			return "", evt1FunctionSymbol(f.l.outputBase, e.Name), fn.ReturnType
+		if fns, ok := f.l.env.functions[e.Name]; ok && len(fns) == 1 {
+			return "", evt1FunctionSymbolForDecl(f.l.outputBase, f.l.env, fns[0]), fns[0].ReturnType
 		}
 		return "", e.Name, EVT1Type{}
 	case *EVT1FieldExpr:
@@ -727,14 +878,28 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 	case *EVT1BinaryExpr:
 		leftPrelude, left, leftType := f.lowerExpr(e.Left, indent)
 		rightPrelude, right, _ := f.lowerExpr(e.Right, indent)
+		if e.Op == "<" || e.Op == ">" {
+			boolType, _ := evt1BuiltinType("bool", e.Span)
+			return leftPrelude + rightPrelude, fmt.Sprintf("(%s %s %s)", left, e.Op, right), boolType
+		}
 		return leftPrelude + rightPrelude, fmt.Sprintf("(%s + %s)", left, right), leftType
 	case *EVT1CallExpr:
-		fn := f.l.env.functions[e.Callee]
 		var prelude strings.Builder
-		var args []string
-		for i, arg := range e.Args {
+		var rawArgs []string
+		var argTypes []EVT1Type
+		for _, arg := range e.Args {
 			argPrelude, argExpr, argType := f.lowerExpr(arg, indent)
 			prelude.WriteString(argPrelude)
+			argTypes = append(argTypes, argType)
+			rawArgs = append(rawArgs, argExpr)
+		}
+		fn, ok := evt1ResolveGeneratedCall(f.l.env, e.Callee, argTypes)
+		if !ok {
+			return prelude.String(), "/* unresolved_call */", EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
+		}
+		var args []string
+		for i, argType := range argTypes {
+			argExpr := rawArgs[i]
 			if fn.Params[i].Type.isBorrow() {
 				if argType.isBorrowLike() {
 					args = append(args, argExpr)
@@ -747,7 +912,30 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 			prelude.WriteString(ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(argType), temp, argExpr))
 			args = append(args, temp)
 		}
-		return prelude.String(), evt1FunctionSymbol(f.l.outputBase, e.Callee) + "(" + strings.Join(args, ", ") + ")", fn.ReturnType
+		return prelude.String(), evt1FunctionSymbolForDecl(f.l.outputBase, f.l.env, fn) + "(" + strings.Join(args, ", ") + ")", fn.ReturnType
+	case *EVT1TemplateCallExpr:
+		instance, ok := f.l.env.templateInstances[e.Callee+"|"+evt1TypeIdentity(evt1CanonicalType(f.l.env, e.TypeArg))]
+		if !ok {
+			return "", "/* missing_template_instance */", EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
+		}
+		var prelude strings.Builder
+		var args []string
+		for i, arg := range e.Args {
+			argPrelude, argExpr, argType := f.lowerExpr(arg, indent)
+			prelude.WriteString(argPrelude)
+			if instance.Function.Params[i].Type.isBorrow() {
+				if argType.isBorrowLike() {
+					args = append(args, argExpr)
+				} else {
+					args = append(args, "&"+argExpr)
+				}
+				continue
+			}
+			temp := f.nextTemp("arg")
+			prelude.WriteString(ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(argType), temp, argExpr))
+			args = append(args, temp)
+		}
+		return prelude.String(), instance.GeneratedSymbol + "(" + strings.Join(args, ", ") + ")", instance.Function.ReturnType
 	case *EVT1ConstructExpr:
 		enumType := EVT1Type{Name: e.EnumName, Kind: EVT1TypeEnum, Span: e.Span}
 		var prelude strings.Builder
@@ -779,7 +967,7 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 		subPrelude, subjectExpr, subjectType := f.lowerExpr(e.Subject, indent)
 		enumDecl := f.l.env.enums[subjectType.Name]
 		scope := f.typeScope()
-		resultType, _ := validateMatchExpr(f.l.env, scope, *e)
+		resultType, _ := validateMatchExpr(f.l.env, scope, *e, nil)
 		subjectTemp := f.nextTemp("match_subject")
 		resultTemp := f.nextTemp("match_result")
 		var b strings.Builder
@@ -879,12 +1067,50 @@ func scopeLookup(name string, scopes []map[string]evt1Binding) (evt1Binding, boo
 	return evt1Binding{}, false
 }
 
+func evt1ResolveGeneratedCall(env *evt1Env, name string, argTypes []EVT1Type) (EVT1FunctionDecl, bool) {
+	candidates := env.functions[name]
+	for _, fn := range candidates {
+		if len(fn.Params) != len(argTypes) {
+			continue
+		}
+		match := true
+		for i := range fn.Params {
+			expected := evt1CanonicalType(env, fn.Params[i].Type.valueType())
+			actual := evt1CanonicalType(env, argTypes[i].valueType())
+			if fn.Params[i].Type.isBorrow() {
+				expected = evt1CanonicalType(env, fn.Params[i].Type.borrowBase())
+				if argTypes[i].isBorrowLike() {
+					actual = evt1CanonicalType(env, argTypes[i].borrowBase())
+				}
+			}
+			if !expected.Equal(actual) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return fn, true
+		}
+	}
+	return EVT1FunctionDecl{}, false
+}
+
 func ind(level int) string {
 	return strings.Repeat("  ", level)
 }
 
 func MIRTextEVT1(m EVT1MIR) string {
 	var lines []string
+	for _, tpl := range m.Templates {
+		for _, op := range tpl.Operations {
+			lines = append(lines, fmt.Sprintf("%s %s %s %s", tpl.Name, op.ID, op.Kind, op.Detail))
+		}
+	}
+	for _, inst := range m.Instances {
+		for _, op := range inst.Operations {
+			lines = append(lines, fmt.Sprintf("%s %s %s %s", inst.ID, op.ID, op.Kind, op.Detail))
+		}
+	}
 	for _, fn := range m.Functions {
 		for _, op := range fn.Operations {
 			lines = append(lines, fmt.Sprintf("%s %s %s %s", fn.Name, op.ID, op.Kind, op.Detail))

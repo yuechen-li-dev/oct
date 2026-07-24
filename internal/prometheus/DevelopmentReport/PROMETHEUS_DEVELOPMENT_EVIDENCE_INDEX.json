@@ -1,7 +1,7 @@
 {
   "schema": "prometheus.development-evidence-index.v1",
   "scope": "internal/prometheus/DevelopmentReport",
-  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Concept/Vulkan M0 adds the host-mechanism language constitution and implementation boundary, M1D preserves the accepted kernel-54 proof as meaningful progression, EVT1 M1A adds payload enums and exhaustive match, and EVT1 M1B-A adds mutable structs plus named compile-time-only concept requirements without changing production, shader, package, ABI, or Stage 3-6 authority.",
+  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Concept/Vulkan M0 adds the host-mechanism language constitution and implementation boundary, M1D preserves the accepted kernel-54 proof as meaningful progression, EVT1 M1A adds payload enums and exhaustive match, EVT1 M1B-A adds mutable structs plus named compile-time-only concept requirements, and EVT1 M1B-B adds concept-constrained templates plus deterministic monomorphization without changing production, shader, package, ABI, or Stage 3-6 authority.",
   "corpus": {
     "tracked_file_count_at_stage0_checkpoint": 596,
     "markdown_file_count_at_stage0_checkpoint": 218,
@@ -115,6 +115,13 @@
       "role": "mutable-struct, immovable-struct, and named-concept requirement authority, deterministic specimen authority, native proof, and M1A regression preservation"
     },
     {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_B_CONCEPT_CONSTRAINED_TEMPLATES_AND_DETERMINISTIC_MONOMORPHIZATION.md",
+      "subsystem_or_era": "Concept/Vulkan EVT1 M1B-B",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "concept-constrained template and deterministic monomorphization authority, explicit-instance specimen authority, native proof, and M1A/M1B-A regression preservation"
+    },
+    {
       "path": "docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md",
       "subsystem_or_era": "Concept/Vulkan language",
       "status": "current",
@@ -134,7 +141,7 @@
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md",
       "subsystem_or_era": "G4 E2B M1",
       "status": "current",
-      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_A_MUTABLE_STRUCTS_AND_NAMED_CONCEPT_REQUIREMENTS.md"
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_B_CONCEPT_CONSTRAINED_TEMPLATES_AND_DETERMINISTIC_MONOMORPHIZATION.md"
     }
   ],
   "current_validation_characterization": [
@@ -201,6 +208,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_A_MUTABLE_STRUCTS_AND_NAMED_CONCEPT_REQUIREMENTS.md",
       "subsystem_or_era": "Concept/Vulkan EVT1 M1B-A",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_B_CONCEPT_CONSTRAINED_TEMPLATES_AND_DETERMINISTIC_MONOMORPHIZATION.md",
+      "subsystem_or_era": "Concept/Vulkan EVT1 M1B-B",
       "status": "current",
       "superseding_authority": null
     }

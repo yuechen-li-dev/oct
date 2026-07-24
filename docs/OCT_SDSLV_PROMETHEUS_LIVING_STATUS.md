@@ -21,10 +21,11 @@ compiler/native viability. M1D remains honestly classified as
 handwritten and generated kernel-54 paths on an admitted live runtime, but the
 proposed M1E handwritten create-path failure seam is not the active
 assignment. EVT1 M1A is accepted and closed. **Concept/Vulkan EVT1 M1B-A** is
-now complete: mutable ordinary structs, bounded `immovable struct`, named
-compile-time-only concepts, prerequisite concepts, and explicit concrete
-satisfaction assertions all run through the EVT1 typed MIR and deterministic
-C11 path. Production remains handwritten.
+accepted and closed. **Concept/Vulkan EVT1 M1B-B** is now complete:
+constrained one-parameter free-function templates, explicit concrete
+invocation, symbolic body checking against named concept closures, and
+deterministic private C11 monomorphization all run through the EVT1 typed MIR
+without introducing runtime generic machinery. Production remains handwritten.
 
 The owner direction is:
 
@@ -96,7 +97,7 @@ generated path proves behavioral and failure-path equivalence.
 
 ## Current bounded slice
 
-Concept/Vulkan EVT1 M1B-A now adds:
+Concept/Vulkan EVT1 now includes:
 
 - ordinary mutable `struct` declaration, positional construction, field read,
   field mutation, value-copy, nested-field access, and deterministic transparent
@@ -110,18 +111,29 @@ Concept/Vulkan EVT1 M1B-A now adds:
 - declaration-level concrete satisfaction assertions that remain
   compile-time-only and emit no runtime tables, vtables, witness objects, or
   public symbols;
+- constrained free-function templates with exactly one type parameter and
+  exactly one named concept constraint over that same parameter;
+- explicit `TemplateName<ConcreteType>(...)` invocation with no deduction;
+- symbolic dependent-call binding to ordered concept requirements and
+  deterministic concrete monomorphization to one private C11 helper per unique
+  `(template, concrete type)` key;
 - focused hardware-independent and Vulkan-shaped specimens proving structs,
-  immovability, concept satisfaction, and preserved M1A enum/`match`
-  behavior.
+  immovability, concept satisfaction, explicit-only template instantiation,
+  deterministic instance reuse, and preserved M1A enum/`match` behavior.
 
 The owner-preserved paused states are unchanged:
 
 - Prometheus RQ-M1 physical batching is preserved but paused;
 - DVT-2 optimization is preserved but paused;
-- EVT1 M1B-B constrained templates and deterministic monomorphization are
-  deferred until after M1B-A;
-- EVT1 M1B-C bounded pure compile-time evaluation is deferred until after
-  M1B-B;
+- EVT1 M1B-C bounded pure compile-time evaluation remains deferred after the
+  now-accepted M1B-B substrate;
+- the historical kernel-54 milestone named `M1C` remains distinct from the
+  later planned EVT1 milestone named `M1B-C`;
+- DragonGod lifecycle automata remain deferred until after the required
+  language substrate and the later M1B-C bounded evaluator;
+- the first production mechanism reconstruction remains deferred to EVT1 M1C;
+- backporting accepted EVT1 semantics into the broader Zig Concept bootstrap
+  remains outside this assignment and another reviewer’s boundary;
 - the previously proposed M1E failure-equivalence seam is not the current
   assignment.
 

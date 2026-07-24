@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-A constitution; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, and named concept requirements implemented; production remains handwritten**
+Status: **normative EVT1 M1B-B constitution; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, and constrained template monomorphization implemented; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -200,6 +200,35 @@ required free-function signatures and prerequisite named concepts. Concrete
 assertions emit no runtime table, vtable, witness object, registry, or public
 symbol.
 
+## 2.5 EVT1 M1B-B constrained templates and deterministic monomorphization
+
+EVT1 M1B-B adds one deliberately bounded compile-time generic facility:
+
+```concept
+template <typename T>
+requires VulkanResource<T>
+void DestroyResource(borrow T value)
+{
+    Destroy(value);
+}
+```
+
+Invocation is explicit and concrete:
+
+```concept
+DestroyResource<PipelineState>(state);
+```
+
+M1B-B supports exactly one free-function template parameter, exactly one named
+concept constraint over that same parameter, symbolic body checking against the
+constraint closure, and deterministic monomorphization of each invoked
+`(template identity, concrete type identity)` pair into one private C11
+function instance.
+
+Templates remain compile-time recipes only. Concepts remain compile-time
+propositions only. There is no runtime generic machinery, deduction,
+specialization, SFINAE, witness table, vtable, or public ABI growth.
+
 ## 3. Static and runtime facts
 
 Compile time may consume only deterministic compiler-owned or
@@ -388,7 +417,7 @@ The three mechanisms remain separate:
 - `comptime` performs deterministic, bounded evaluation;
 - runtime polymorphism is unrelated and absent from M1.
 
-EVT1 M1B-A now fixes the first user-visible static requirement surface:
+EVT1 M1B-A fixes the first user-visible static requirement surface:
 
 - `concept Name<T> { ... }` declares one named proposition over one type
   parameter;
@@ -399,10 +428,21 @@ EVT1 M1B-A now fixes the first user-visible static requirement surface:
   a concrete type satisfies a named concept.
 
 These checks are structural, deterministic, and compile-time-only. They do not
-instantiate templates, create runtime interface machinery, or widen the public
-ABI. Constrained templates and deterministic monomorphization remain a later
-EVT1 M1B-B milestone. Bounded pure compile-time evaluation remains a separate
-later EVT1 M1B-C milestone.
+create runtime interface machinery or widen the public ABI.
+
+EVT1 M1B-B now adds the bounded constrained-template consumer:
+
+- `template <typename T>` declares exactly one type parameter;
+- `requires ConceptName<T>` is required and must name exactly one existing
+  one-parameter concept over that same template parameter;
+- template bodies are checked symbolically against the named concept's ordered
+  prerequisite closure and required operation set;
+- `TemplateName<ConcreteType>(...)` performs explicit-only instantiation;
+- each unique `(template, concrete type)` pair emits one deterministic private
+  C11 helper and is reused for repeated calls.
+
+Bounded pure compile-time evaluation remains a separate later EVT1 M1B-C
+milestone.
 
 ## 10. Escape hatch
 
@@ -524,6 +564,32 @@ type-and-requirement vertical:
    specimen proving structs, immovability, concepts, and preserved M1A enum /
    `match` behavior.
 
+## 12.3 EVT1 M1B-B semantic minimum
+
+EVT1 M1B-B extends the accepted M1B-A proof with the smallest coherent
+constraint-consumer vertical:
+
+1. one-parameter free-function templates with the exact header spelling
+   `template <typename T>`;
+2. exactly one named concept constraint over that same template parameter;
+3. symbolic template-body checking against the ordered prerequisite closure;
+4. exact requirement-bound dependent free-function calls in typed MIR;
+5. explicit concrete invocation `TemplateName<ConcreteType>(...)`;
+6. satisfaction checking before instantiation using the existing named-concept
+   engine;
+7. deterministic concrete substitution and exact concrete operation binding;
+8. revalidation of ownership, borrowing, copyability, and immovability after
+   substitution;
+9. rejection of nested template invocation, recursive instantiation, type
+   deduction, specialization, and runtime generic machinery;
+10. one private deterministic C11 function per unique `(template, concrete
+    type)` key with deduplication of repeated calls;
+11. typed MIR that preserves template identity, constraint closure,
+    requirement-bound calls, concrete instances, and generated symbols;
+12. one hardware-independent native specimen and one Vulkan-shaped native
+    specimen proving explicit-only instantiation, deduplication, exact
+    concrete operation binding, and immovable borrowed use.
+
 ## 13. Profile MIR boundary
 
 The M1 MIR is profile-specific and typed. Its operation vocabulary is:
@@ -597,9 +663,12 @@ async, exceptions, package-manager ambitions, DragonGod facilities, full RT
 pipelines/SBT, shader mathematics, model topology, and lifecycle/progression
 policy. EVT1 M1A exclusions for wildcard arms, guards, or-patterns,
 literal/range/recursive patterns, and enum methods remain. EVT1 M1B-A further
-excludes constrained templates, monomorphization, multiple concept parameters,
-concept specialization, compile-time user functions, general compile-time
-evaluation, methods, constructors, destructors, implicit cleanup, and any new
-move or borrow system. PoC3 is design history; only its local ownership,
+excludes multiple concept parameters, concept specialization, compile-time
+user functions, general compile-time evaluation, methods, constructors,
+destructors, implicit cleanup, and any new move or borrow system. EVT1 M1B-B
+still excludes template types, template structs/enums, multiple type
+parameters, deduction, specialization, overload ranking, SFINAE, recursive or
+nested template instantiation, and runtime generic machinery. PoC3 is design
+history; only its local ownership,
 explicit move, deterministic drop, error-as-value, unsafe quarantine, C ABI,
 bounded comptime, profiles, and MIR-first principles are adopted here.
