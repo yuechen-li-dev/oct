@@ -4,6 +4,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -100,8 +101,22 @@ type report struct {
 		Status                   string `json:"status"`
 	} `json:"topology"`
 	ABI struct {
-		ExportedSymbols int `json:"exported_symbols"`
-		StaleWeightCode int `json:"stale_weight_detail_code"`
+		ExportedSymbols               int      `json:"exported_symbols"`
+		ExportedSymbolNames           []string `json:"exported_symbol_names"`
+		CanonicalFunctionSignatureSHA string   `json:"canonical_function_signature_sha256"`
+		DefinitionCoverage            bool     `json:"definition_coverage"`
+		PublicStructs                 int      `json:"public_structs"`
+		PublicStructNames             []string `json:"public_struct_names"`
+		PublicDetailDeclarations      int      `json:"public_detail_declarations"`
+		InternalDetailDeclarations    int      `json:"internal_detail_declarations"`
+		DetailDistinctValues          int      `json:"detail_distinct_values"`
+		StaleWeightCode               int      `json:"stale_weight_detail_code"`
+		BridgeProjection              struct {
+			SharedHeader                string `json:"shared_header"`
+			PlatformIncludes            int    `json:"platform_includes"`
+			CanonicalTypeAliases        int    `json:"canonical_type_aliases"`
+			DuplicateStructDeclarations int    `json:"duplicate_struct_declarations"`
+		} `json:"bridge_projection"`
 	} `json:"abi"`
 }
 
@@ -140,6 +155,22 @@ func sortedMissing(left, right map[uint32]bool) []uint32 {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
+}
+
+func canonicalExportSignatures(header string) ([]string, string) {
+	declarations := regexp.MustCompile(`(?ms)^PROM_REACTOR_API\s+.*?;`).FindAllString(header, -1)
+	namePattern := regexp.MustCompile(`PROM_REACTOR_API.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
+	canonical := make([]string, 0, len(declarations))
+	for _, declaration := range declarations {
+		normalized := strings.Join(strings.Fields(declaration), " ")
+		match := namePattern.FindStringSubmatch(normalized)
+		if len(match) != 2 {
+			panic(fmt.Sprintf("unable to extract exported symbol from %q", normalized))
+		}
+		canonical = append(canonical, normalized)
+	}
+	digest := sha256.Sum256([]byte(strings.Join(canonical, "\n")))
+	return canonical, fmt.Sprintf("%x", digest[:])
 }
 
 func main() {
@@ -260,9 +291,65 @@ func main() {
 	}
 
 	apiHeader := string(mustRead(filepath.Join(root, "internal", "prometheus", "native", "reactor_api.h")))
-	result.ABI.ExportedSymbols = len(regexp.MustCompile(`PROM_REACTOR_API\s+[A-Za-z_][A-Za-z0-9_\s\*]*\([^;]*\);`).FindAllString(apiHeader, -1))
+	exportedDeclarations, signatureDigest := canonicalExportSignatures(apiHeader)
+	result.ABI.ExportedSymbols = len(exportedDeclarations)
+	for _, declaration := range exportedDeclarations {
+		match := regexp.MustCompile(`PROM_REACTOR_API.*?\b([A-Za-z_][A-Za-z0-9_]*)\s*\(`).FindStringSubmatch(declaration)
+		result.ABI.ExportedSymbolNames = append(result.ABI.ExportedSymbolNames, match[1])
+	}
+	result.ABI.CanonicalFunctionSignatureSHA = signatureDigest
+	for _, match := range regexp.MustCompile(`typedef\s+struct\s+(Prometheus[A-Za-z0-9_]*)\s*\{`).FindAllStringSubmatch(apiHeader, -1) {
+		result.ABI.PublicStructNames = append(result.ABI.PublicStructNames, match[1])
+	}
+	result.ABI.PublicStructs = len(result.ABI.PublicStructNames)
+	detailHeader := string(mustRead(filepath.Join(root, "internal", "prometheus", "native", "reactor_vulkan.h")))
+	detailValues := map[string]bool{}
+	for _, match := range regexp.MustCompile(`\bPROM_[A-Z0-9_]*DETAIL[A-Z0-9_]*\s*=\s*(-?[0-9]+)`).FindAllStringSubmatch(apiHeader, -1) {
+		result.ABI.PublicDetailDeclarations++
+		detailValues[match[1]] = true
+	}
+	for _, match := range regexp.MustCompile(`\bPROM_[A-Z0-9_]*DETAIL[A-Z0-9_]*\s*=\s*(-?[0-9]+)`).FindAllStringSubmatch(detailHeader, -1) {
+		result.ABI.InternalDetailDeclarations++
+		detailValues[match[1]] = true
+	}
+	result.ABI.DetailDistinctValues = len(detailValues)
+	bridgeHeaderPath := filepath.Join(root, "internal", "prometheus", "native", "prometheus_bridge_abi.h")
+	bridgeHeader := string(mustRead(bridgeHeaderPath))
+	result.ABI.BridgeProjection.SharedHeader = filepath.ToSlash(filepath.Join("internal", "prometheus", "native", "prometheus_bridge_abi.h"))
+	for _, path := range []string{
+		filepath.Join(root, "internal", "prometheus", "bridge_dlopen_linux.go"),
+		filepath.Join(root, "internal", "prometheus", "bridge_dlopen_windows.go"),
+	} {
+		if strings.Contains(string(mustRead(path)), `native/prometheus_bridge_abi.h`) {
+			result.ABI.BridgeProjection.PlatformIncludes++
+		}
+	}
+	result.ABI.BridgeProjection.CanonicalTypeAliases = len(regexp.MustCompile(`typedef\s+Prometheus[A-Za-z0-9_]+\s+oct_prom_[A-Za-z0-9_]+\s*;`).FindAllString(bridgeHeader, -1))
+	for _, path := range []string{
+		filepath.Join(root, "internal", "prometheus", "bridge_dlopen_linux.go"),
+		filepath.Join(root, "internal", "prometheus", "bridge_dlopen_windows.go"),
+	} {
+		result.ABI.BridgeProjection.DuplicateStructDeclarations += len(regexp.MustCompile(`typedef\s+struct\s+oct_prom_`).FindAllString(string(mustRead(path)), -1))
+	}
+	if result.ABI.ExportedSymbols != 84 || result.ABI.CanonicalFunctionSignatureSHA != "89053790ac5a18d29a21141527e017efc2faa03932d3adc2307891fdb8da0262" ||
+		result.ABI.PublicStructs == 0 || result.ABI.BridgeProjection.PlatformIncludes != 2 ||
+		result.ABI.BridgeProjection.CanonicalTypeAliases != 9 || result.ABI.BridgeProjection.DuplicateStructDeclarations != 0 {
+		panic("canonical ABI declaration or bridge projection changed")
+	}
+	apiC := string(mustRead(filepath.Join(root, "internal", "prometheus", "native", "reactor_api.c")))
+	result.ABI.DefinitionCoverage = true
+	for _, declaration := range result.ABI.ExportedSymbolNames {
+		if !strings.Contains(apiC, declaration+"(") {
+			result.ABI.DefinitionCoverage = false
+			break
+		}
+	}
+	bridgeGo := string(mustRead(filepath.Join(root, "internal", "prometheus", "bridge.go")))
+	if !strings.Contains(apiHeader, "PROM_REACTOR_ABI_V1 = 1u") || !strings.Contains(bridgeGo, "reactorExpectedABIVersion = uint32(1)") {
+		panic("ABI version authority or host projection changed")
+	}
 	result.ABI.StaleWeightCode = -7406
-	if result.ABI.ExportedSymbols != 84 || !strings.Contains(string(mustRead(filepath.Join(root, "internal", "prometheus", "native", "reactor_vulkan.h"))), "PROM_M46_DETAIL_STALE_WEIGHT_GENERATION = -7406") {
+	if !result.ABI.DefinitionCoverage || !strings.Contains(detailHeader, "PROM_M46_DETAIL_STALE_WEIGHT_GENERATION = -7406") {
 		panic("public export or known detail-code snapshot changed")
 	}
 

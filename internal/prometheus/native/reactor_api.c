@@ -5,8 +5,6 @@
 
 #include <string.h>
 
-#define PROMETHEUS_REACTOR_ABI_V1 1u
-
 static int prom_reactor_api_checked_product_u64(uint64_t left, uint64_t right,
                                                 uint64_t* out_value) {
   if (out_value == NULL || (right != 0u && left > UINT64_MAX / right)) return 0;
@@ -15,7 +13,7 @@ static int prom_reactor_api_checked_product_u64(uint64_t left, uint64_t right,
 }
 
 uint32_t prometheus_reactor_abi_version(void) {
-  return PROMETHEUS_REACTOR_ABI_V1;
+  return PROM_REACTOR_ABI_V1;
 }
 
 int prometheus_reactor_runtime_create(void* config, void** out_handle) {

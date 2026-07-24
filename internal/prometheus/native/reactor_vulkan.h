@@ -700,7 +700,7 @@ typedef struct prom_m42_resident_x_prepare_result {
   uint32_t buffer_reused;
 } prom_m42_resident_x_prepare_result;
 
-typedef struct prom_m42_attention_request {
+typedef struct prom_single_head_attention_request {
   const float* host_x;
   float* output;
   float* audit_q;
@@ -725,7 +725,10 @@ typedef struct prom_m42_attention_request {
   uint64_t required_wk_generation;
   uint64_t required_wv_generation;
   uint64_t required_x_generation;
-} prom_m42_attention_request;
+} prom_single_head_attention_request;
+
+/* Historical M42 spelling retained as a direct source-compatibility alias. */
+typedef prom_single_head_attention_request prom_m42_attention_request;
 
 typedef struct prom_m42_attention_result {
   uint32_t stage;
@@ -946,7 +949,7 @@ typedef struct prom_m43_plan_request {
   uint64_t weight_hash[PROM_M43_HEAD_COUNT][PROM_M43_WEIGHT_KIND_COUNT];
 } prom_m43_plan_request;
 
-typedef struct prom_m43_attention_plan {
+typedef struct prom_grouped_attention_plan {
   uint32_t head_count;
   uint32_t tokens;
   uint32_t model_width;
@@ -986,7 +989,10 @@ typedef struct prom_m43_attention_plan {
   prom_m43_memory_plan memory;
   prom_m42_attention_plan head_plan[PROM_M43_HEAD_COUNT];
   prom_m43_stage_plan stages[PROM_M43_MAX_STAGES];
-} prom_m43_attention_plan;
+} prom_grouped_attention_plan;
+
+/* Historical M43 spelling retained as a direct source-compatibility alias. */
+typedef prom_grouped_attention_plan prom_m43_attention_plan;
 
 typedef struct prom_m43_weight_prepare_request {
   const float* values;
@@ -1115,7 +1121,7 @@ typedef struct prom_m43_attention_group_result {
   uint64_t command_buffer_reuse_count;
   uint64_t shared_x_generation;
   uint64_t weight_generation[PROM_M43_HEAD_COUNT][PROM_M43_WEIGHT_KIND_COUNT];
-  prom_m43_attention_plan plan;
+  prom_grouped_attention_plan plan;
   prom_device_buffer_view head_output_view[PROM_M43_HEAD_COUNT];
 } prom_m43_attention_group_result;
 
@@ -1286,7 +1292,7 @@ typedef struct prom_m44_plan_request {
   uint64_t m43_aggregate_replay_id;
 } prom_m44_plan_request;
 
-typedef struct prom_m44_output_projection_plan {
+typedef struct prom_attention_output_projection_plan {
   uint32_t head_count;
   uint32_t tokens;
   uint32_t head_dim;
@@ -1318,7 +1324,10 @@ typedef struct prom_m44_output_projection_plan {
   prom_m44_eligibility_decision eligibility;
   prom_m44_memory_plan memory;
   prom_m44_stage_plan stages[PROM_M44_MAX_STAGES];
-} prom_m44_output_projection_plan;
+} prom_attention_output_projection_plan;
+
+/* Historical M44 spelling retained as a direct source-compatibility alias. */
+typedef prom_attention_output_projection_plan prom_m44_output_projection_plan;
 
 typedef struct prom_m44_wo_prepare_request {
   const float* values;
@@ -1384,7 +1393,7 @@ typedef struct prom_m44_composed_result {
   uint64_t command_buffer_reuse_count;
   uint64_t wo_generation;
   prom_m43_attention_group_result attention;
-  prom_m44_output_projection_plan plan;
+  prom_attention_output_projection_plan plan;
   prom_device_buffer_view output_view;
 } prom_m44_composed_result;
 
@@ -1579,7 +1588,7 @@ typedef struct prom_m45_plan_request {
   uint64_t m44_replay_id;
 } prom_m45_plan_request;
 
-typedef struct prom_m45_residual_plan {
+typedef struct prom_attention_residual_plan {
   uint32_t tokens;
   uint32_t model_width;
   uint32_t x_row_stride;
@@ -1607,7 +1616,10 @@ typedef struct prom_m45_residual_plan {
   prom_m45_memory_plan memory;
   prom_m45_stage_plan stages[PROM_M45_MAX_STAGES];
   prom_m45_barrier_trace barriers[PROM_M45_MAX_BARRIERS];
-} prom_m45_residual_plan;
+} prom_attention_residual_plan;
+
+/* Historical M45 spelling retained as a direct source-compatibility alias. */
+typedef prom_attention_residual_plan prom_m45_residual_plan;
 
 typedef struct prom_m45_composed_request {
   prom_m43_attention_group_request attention;
@@ -1654,8 +1666,8 @@ typedef struct prom_m45_composed_result {
   uint64_t y_generation;
   uint64_t z_generation;
   prom_m43_attention_group_result attention;
-  prom_m44_output_projection_plan projection_plan;
-  prom_m45_residual_plan residual_plan;
+  prom_attention_output_projection_plan projection_plan;
+  prom_attention_residual_plan residual_plan;
   prom_device_buffer_view x_view;
   prom_device_buffer_view y_view;
   prom_device_buffer_view z_view;
@@ -1836,7 +1848,7 @@ typedef struct prom_m46_plan_request {
   uint64_t m45_replay_id;
 } prom_m46_plan_request;
 
-typedef struct prom_m46_rmsnorm_plan {
+typedef struct prom_rmsnorm_plan {
   uint32_t tokens;
   uint32_t model_width;
   uint32_t z_row_stride;
@@ -1868,7 +1880,10 @@ typedef struct prom_m46_rmsnorm_plan {
   prom_m46_memory_plan memory;
   prom_m46_stage_plan stages[PROM_M46_MAX_STAGES];
   prom_m46_barrier_trace barriers[PROM_M46_MAX_BARRIERS];
-} prom_m46_rmsnorm_plan;
+} prom_rmsnorm_plan;
+
+/* Historical M46 spelling retained as a direct source-compatibility alias. */
+typedef prom_rmsnorm_plan prom_m46_rmsnorm_plan;
 
 typedef struct prom_m46_weight_prepare_request {
   const float* values;
@@ -1933,7 +1948,7 @@ typedef struct prom_m46_composed_result {
   uint64_t weight_generation;
   uint64_t n_generation;
   prom_m45_composed_result upstream;
-  prom_m46_rmsnorm_plan rmsnorm_plan;
+  prom_rmsnorm_plan rmsnorm_plan;
   prom_device_buffer_view n_view;
 } prom_m46_composed_result;
 
@@ -2134,7 +2149,7 @@ typedef struct prom_m47_plan_request {
   uint64_t m46_replay_id;
 } prom_m47_plan_request;
 
-typedef struct prom_m47_gated_ffn_plan {
+typedef struct prom_gated_feed_forward_plan {
   uint32_t tokens;
   uint32_t model_width;
   uint32_t ffn_width;
@@ -2178,7 +2193,10 @@ typedef struct prom_m47_gated_ffn_plan {
   prom_m47_memory_plan memory;
   prom_m47_stage_plan stages[PROM_M47_MAX_STAGES];
   prom_m47_barrier_trace barriers[PROM_M47_MAX_BARRIERS];
-} prom_m47_gated_ffn_plan;
+} prom_gated_feed_forward_plan;
+
+/* Historical M47 spelling retained as a direct source-compatibility alias. */
+typedef prom_gated_feed_forward_plan prom_m47_gated_ffn_plan;
 
 typedef struct prom_m47_weight_prepare_request {
   const float* values;
@@ -2254,7 +2272,7 @@ typedef struct prom_m47_composed_result {
   uint64_t weight_generation[PROM_M47_WEIGHT_COUNT];
   uint64_t output_generation;
   prom_m46_composed_result upstream;
-  prom_m47_gated_ffn_plan ffn_plan;
+  prom_gated_feed_forward_plan ffn_plan;
   prom_device_buffer_view output_view;
 } prom_m47_composed_result;
 
@@ -2626,7 +2644,7 @@ typedef struct prom_m48_memory_plan {
   uint32_t timestamp_query_count;
 } prom_m48_memory_plan;
 
-typedef struct prom_m48_transformer_stack_plan {
+typedef struct prom_transformer_stack_plan {
   uint32_t layer_count;
   uint32_t audit_mode;
   uint32_t tokens;
@@ -2659,7 +2677,10 @@ typedef struct prom_m48_transformer_stack_plan {
   prom_m48_layer_plan layer[PROM_M48_LAYER_COUNT];
   prom_m48_boundary_trace boundary[PROM_M48_MAX_BOUNDARIES];
   prom_m48_memory_plan memory;
-} prom_m48_transformer_stack_plan;
+} prom_transformer_stack_plan;
+
+/* Historical M48 spelling retained as a direct source-compatibility alias. */
+typedef prom_transformer_stack_plan prom_m48_transformer_stack_plan;
 
 typedef struct prom_m48_reference_layer {
   const float* attention_weight[PROM_M43_HEAD_COUNT][PROM_M43_WEIGHT_KIND_COUNT];
@@ -2878,7 +2899,7 @@ typedef struct prom_m48_stack_result {
   uint64_t numerical_witness_end_to_end_ns;
   float numerical_witness_confidence;
   prom_m48_layer_execution_result layer[PROM_M48_LAYER_COUNT];
-  prom_m48_transformer_stack_plan plan;
+  prom_transformer_stack_plan plan;
   prom_device_buffer_view output_view;
 } prom_m48_stack_result;
 
@@ -3335,12 +3356,12 @@ int prom_reactor_runtime_m42_prepare_resident_x(void* handle,
                                                 const prom_m42_resident_x_prepare_request* request,
                                                 prom_m42_resident_x_prepare_result* out_result);
 int prom_reactor_runtime_m42_execute(void* handle,
-                                     const prom_m42_attention_request* request,
+                                     const prom_single_head_attention_request* request,
                                      prom_m42_attention_result* out_result);
 void prom_m43_eligibility_evaluate(const prom_m43_eligibility_facts* facts,
                                    prom_m43_eligibility_decision* out_decision);
 int prom_m43_attention_plan_build(const prom_m43_plan_request* request,
-                                  prom_m43_attention_plan* out_plan);
+                                  prom_grouped_attention_plan* out_plan);
 int prom_m43_attention_cpu_reference(const prom_m43_reference_request* request,
                                      prom_m43_reference_result* out_result);
 int prom_m43_attention_compare(const float* expected,
@@ -3350,7 +3371,7 @@ int prom_m43_attention_compare(const float* expected,
                                uint32_t head_dim,
                                float absolute_tolerance,
                                float relative_tolerance,
-                               const prom_m43_attention_plan* plan,
+                               const prom_grouped_attention_plan* plan,
                                prom_m43_mismatch* out_mismatch);
 uint64_t prom_m43_output_index(uint32_t head,
                                uint32_t token,
@@ -3369,7 +3390,7 @@ int prom_reactor_runtime_m43_execute(void* handle,
 void prom_m44_eligibility_evaluate(const prom_m44_eligibility_facts* facts,
                                    prom_m44_eligibility_decision* out_decision);
 int prom_m44_output_projection_plan_build(const prom_m44_plan_request* request,
-                                          prom_m44_output_projection_plan* out_plan);
+                                          prom_attention_output_projection_plan* out_plan);
 uint64_t prom_m44_concat_index(uint32_t token,
                                uint32_t head,
                                uint32_t column,
@@ -3398,7 +3419,7 @@ int prom_reactor_runtime_m44_execute_host_bounce(void* handle,
                                                  const prom_m44_host_bounce_request* request,
                                                  prom_m44_host_bounce_result* out_result);
 int prom_m45_residual_plan_build(const prom_m45_plan_request* request,
-                                 prom_m45_residual_plan* out_plan);
+                                 prom_attention_residual_plan* out_plan);
 int prom_m45_residual_cpu_reference(const prom_m45_reference_request* request);
 int prom_m45_residual_compare(const float* expected,
                               const float* actual,
@@ -3406,7 +3427,7 @@ int prom_m45_residual_compare(const float* expected,
                               uint32_t model_width,
                               float absolute_tolerance,
                               float relative_tolerance,
-                              const prom_m45_residual_plan* plan,
+                              const prom_attention_residual_plan* plan,
                               prom_m45_mismatch* out_mismatch);
 int prom_reactor_runtime_m45_execute_composed(void* handle,
                                               const prom_m45_composed_request* request,
@@ -3415,7 +3436,7 @@ int prom_reactor_runtime_m45_read_resident_x(void* handle,
                                              const prom_m45_resident_x_readback_request* request,
                                              prom_m45_resident_x_readback_result* out_result);
 int prom_m46_rmsnorm_plan_build(const prom_m46_plan_request* request,
-                                prom_m46_rmsnorm_plan* out_plan);
+                                prom_rmsnorm_plan* out_plan);
 int prom_m46_rmsnorm_cpu_reference(const prom_m46_reference_request* request);
 int prom_m46_rmsnorm_compare(const float* expected,
                              const float* actual,
@@ -3423,7 +3444,7 @@ int prom_m46_rmsnorm_compare(const float* expected,
                              uint32_t model_width,
                              float absolute_tolerance,
                              float relative_tolerance,
-                             const prom_m46_rmsnorm_plan* plan,
+                             const prom_rmsnorm_plan* plan,
                              const float* sumsq,
                              const float* inv_rms,
                              prom_m46_mismatch* out_mismatch);
@@ -3434,7 +3455,7 @@ int prom_reactor_runtime_m46_execute_composed(void* handle,
                                               const prom_m46_composed_request* request,
                                               prom_m46_composed_result* out_result);
 int prom_m47_gated_ffn_plan_build(const prom_m47_plan_request* request,
-                                  prom_m47_gated_ffn_plan* out_plan);
+                                  prom_gated_feed_forward_plan* out_plan);
 int prom_m47_gated_ffn_cpu_reference(const prom_m47_reference_request* request);
 int prom_m47_gated_ffn_compare(const float* expected,
                                const float* actual,
@@ -3444,7 +3465,7 @@ int prom_m47_gated_ffn_compare(const float* expected,
                                uint32_t actual_row_stride,
                                float absolute_tolerance,
                                float relative_tolerance,
-                               const prom_m47_gated_ffn_plan* plan,
+                               const prom_gated_feed_forward_plan* plan,
                                const float* gate,
                                const float* up,
                                const float* hidden,
@@ -3473,7 +3494,7 @@ int prom_reactor_runtime_gemma4e2b_m1_attention_scores(
     PrometheusGemma4E2BM1AttentionScoresResult* out_result);
 uint32_t prom_m48_attention_resource_index(uint32_t head, uint32_t weight_kind);
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
-                                          prom_m48_transformer_stack_plan* out_plan);
+                                          prom_transformer_stack_plan* out_plan);
 int prom_m48_transformer_stack_cpu_reference(const prom_m48_reference_request* request,
                                               prom_m48_reference_result* out_result);
 int prom_reactor_runtime_m48_prepare_layer_weight(

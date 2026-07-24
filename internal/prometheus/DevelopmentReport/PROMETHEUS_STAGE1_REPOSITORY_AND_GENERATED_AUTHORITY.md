@@ -371,12 +371,12 @@ Stage 1 authority/index files. No production runtime source, public ABI, shader
 source/object, package identity, or durable evidence is part of the rollback
 boundary.
 
-## 20. Explicit Stage 2 prerequisite
+## 20. Revised Stage 2 boundary
 
-Do not begin Stage 2 mechanical ABI/semantic naming consolidation until the
-three Stage 0 live witnesses are closed with the required checkpoint-backed
-wrapper and the current authority checks remain green. Stage 3 common Vulkan
-runtime/device ownership extraction is later still. The repeated topology,
-registry/package discrepancies, and generated-header provenance ambiguity must
-remain visible until their owner decisions are made in the authorized later
-pass.
+The original Stage 1 sequencing note deferred Stage 2 until the three live
+witnesses were closed. The revised project decision permits the mechanical
+Stage 2 ABI/vocabulary pass while the external Gemma checkpoint remains
+unavailable. That pass must preserve the Stage 0 live boundary and must not
+repair `-7406`, generated topology, registry/package discrepancies, or
+generated-header provenance ambiguity. Stage 3 common Vulkan runtime/device
+ownership extraction remains later still and is not authorized by Stage 2.

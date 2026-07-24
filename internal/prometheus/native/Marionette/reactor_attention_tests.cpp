@@ -874,7 +874,7 @@ FACT(PrometheusM42DeviceResidentAttentionHardwareProof)
     std::vector<float> auditV(output.size());
     std::vector<float> auditScores(static_cast<std::size_t>(tokens) * tokens);
     std::vector<float> auditP(auditScores.size());
-    prom_m42_attention_request request{};
+    prom_single_head_attention_request request{};
     request.host_x = x.data(); request.output = output.data();
     request.audit_q = auditQ.data(); request.audit_k = auditK.data(); request.audit_v = auditV.data();
     request.audit_scores = auditScores.data(); request.audit_probabilities = auditP.data();
@@ -1000,7 +1000,7 @@ FACT(PrometheusM42FaultInjectionPreservesLifecycle)
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m42_prepare_weights(runtime, &prepare, &prepared),
                  "fault test prepares persistent weights");
     std::vector<float> output(static_cast<std::size_t>(tokens) * headDim);
-    prom_m42_attention_request request{};
+    prom_single_head_attention_request request{};
     request.host_x = x.data(); request.output = output.data(); request.tokens = tokens;
     request.model_width = modelWidth; request.head_dim = headDim; request.value_dim = headDim;
     request.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
@@ -1074,7 +1074,7 @@ FACT(PrometheusM42ExtensionAbsentUsesConventionalFallback)
     ASSERT_EQUAL(PROM_OK, prom_reactor_runtime_m42_prepare_weights(runtime, &prepare, &prepared),
                  "persistent weights prepare without the extension");
     std::vector<float> output(static_cast<std::size_t>(tokens) * headDim);
-    prom_m42_attention_request request{};
+    prom_single_head_attention_request request{};
     request.host_x = x.data(); request.output = output.data(); request.tokens = tokens;
     request.model_width = modelWidth; request.head_dim = headDim; request.value_dim = headDim;
     request.precision_policy = PROM_M42_PRECISION_F16_ROUNDED;
@@ -1193,7 +1193,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM42AttentionCorpus, 1u)
 
         for (const Path& path : paths) {
             std::vector<float> output(static_cast<std::size_t>(workload.tokens) * workload.headDim);
-            prom_m42_attention_request request{};
+            prom_single_head_attention_request request{};
             request.host_x = x.data(); request.output = output.data();
             request.tokens = workload.tokens; request.model_width = workload.modelWidth;
             request.head_dim = workload.headDim; request.value_dim = workload.headDim;
@@ -1356,7 +1356,7 @@ FACT(PrometheusM43BoundedGroupedAttentionContracts)
     prom_m43_plan_request request{};
     FillGroupPlanRequest(&request, 128u, 1024u, 128u,
                          PROM_M43_STRATEGY_PROJECTION_GROUPED, PROM_M42_INPUT_HOST_X);
-    prom_m43_attention_plan grouped{};
+    prom_grouped_attention_plan grouped{};
     ASSERT_EQUAL(PROM_OK, prom_m43_attention_plan_build(&request, &grouped),
                  "the fixed eight-head grouped plan builds");
     ASSERT_EQUAL(PROM_M43_HEAD_COUNT, grouped.head_count, "head count is fixed at eight");
@@ -1406,7 +1406,7 @@ FACT(PrometheusM43BoundedGroupedAttentionContracts)
                      "one compute queue owns every grouped stage");
     }
 
-    prom_m43_attention_plan replay{};
+    prom_grouped_attention_plan replay{};
     ASSERT_EQUAL(PROM_OK, prom_m43_attention_plan_build(&request, &replay),
                  "identical grouped requests replan");
     ASSERT_EQUAL(grouped.aggregate_replay_id, replay.aggregate_replay_id,
@@ -1443,7 +1443,7 @@ FACT(PrometheusM43BoundedGroupedAttentionContracts)
 
     FillGroupPlanRequest(&request, 128u, 1024u, 128u,
                          PROM_M43_STRATEGY_COMPLETE_HEADS, PROM_M42_INPUT_RESIDENT_X);
-    prom_m43_attention_plan completeHeads{};
+    prom_grouped_attention_plan completeHeads{};
     ASSERT_EQUAL(PROM_OK, prom_m43_attention_plan_build(&request, &completeHeads),
                  "complete-head ordering is a second bounded one-submit plan");
     ASSERT_EQUAL(1u, completeHeads.submit_count, "alternate grouped ordering still submits once");
@@ -1452,7 +1452,7 @@ FACT(PrometheusM43BoundedGroupedAttentionContracts)
                 "projection grouping collapses Q/K/V visibility into fewer barrier calls");
 
     request.execution_strategy = PROM_M43_STRATEGY_EIGHT_SEQUENTIAL_M42;
-    prom_m43_attention_plan sequential{};
+    prom_grouped_attention_plan sequential{};
     ASSERT_EQUAL(PROM_OK, prom_m43_attention_plan_build(&request, &sequential),
                  "the eight-M42 baseline has a deterministic plan");
     ASSERT_EQUAL(PROM_M43_HEAD_COUNT, sequential.submit_count,
@@ -1513,7 +1513,7 @@ FACT(PrometheusM43GroupedCpuOracleAndMismatchLocalization)
     prom_m43_plan_request planRequest{};
     FillGroupPlanRequest(&planRequest, tokens, modelWidth, headDim,
                          PROM_M43_STRATEGY_PROJECTION_GROUPED, PROM_M42_INPUT_RESIDENT_X);
-    prom_m43_attention_plan plan{};
+    prom_grouped_attention_plan plan{};
     ASSERT_EQUAL(PROM_OK, prom_m43_attention_plan_build(&planRequest, &plan),
                  "oracle comparison plan builds");
     prom_m43_mismatch mismatch{};
@@ -1568,7 +1568,7 @@ FACT(PrometheusM44OutputProjectionContracts)
         view.owning_slot_id = 1u;
         view.owning_slot_generation = 4u;
     }
-    prom_m44_output_projection_plan interleave{};
+    prom_attention_output_projection_plan interleave{};
     ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &interleave),
                  "the primary eight-view interleave plan builds");
     ASSERT_EQUAL(1024u, interleave.concatenated_width,
@@ -1600,7 +1600,7 @@ FACT(PrometheusM44OutputProjectionContracts)
                      interleave.stages[stage].destination_queue_family,
                      "M44 retains the shared compute queue");
     }
-    prom_m44_output_projection_plan replay{};
+    prom_attention_output_projection_plan replay{};
     ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &replay),
                  "the identical plan rebuilds");
     ASSERT_EQUAL(interleave.replay_id, replay.replay_id,
@@ -1614,7 +1614,7 @@ FACT(PrometheusM44OutputProjectionContracts)
 
     request.aggregation_strategy = PROM_M44_AGGREGATION_DIRECT_SEGMENTED;
     request.projection_path = PROM_M44_PROJECTION_DIRECT_SEGMENTED_FP16;
-    prom_m44_output_projection_plan direct{};
+    prom_attention_output_projection_plan direct{};
     ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &direct),
                  "the bounded direct segmented plan builds");
     ASSERT_EQUAL(0u, direct.memory.contiguous_packed_bytes,
@@ -1628,7 +1628,7 @@ FACT(PrometheusM44OutputProjectionContracts)
                  "the direct stage is explicit in the command trace");
 
     request.head_views[1].buffer = request.head_views[0].buffer;
-    prom_m44_output_projection_plan overlap{};
+    prom_attention_output_projection_plan overlap{};
     ASSERT_EQUAL(PROM_OK, prom_m44_output_projection_plan_build(&request, &overlap),
                  "overlap is represented as a deterministic eligibility result");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M44_INELIGIBLE_VIEW_OVERLAP),
@@ -1744,7 +1744,7 @@ FACT(PrometheusM45ResidualOwnershipContracts)
     request.y_view.owning_lifetime_id = 72u;
     request.y_view.owning_slot_id = 1u;
     request.y_view.owning_slot_generation = 10u;
-    prom_m45_residual_plan separate{};
+    prom_attention_residual_plan separate{};
     ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &separate),
                  "the awkward-stride separate residual plan builds");
     ASSERT_EQUAL(1u, separate.eligibility.eligible,
@@ -1770,7 +1770,7 @@ FACT(PrometheusM45ResidualOwnershipContracts)
 
     request.strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
     request.submit_policy = PROM_M45_SUBMIT_TWO_BOUNDED;
-    prom_m45_residual_plan inPlace{};
+    prom_attention_residual_plan inPlace{};
     ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &inPlace),
                  "the exclusive in-place-Y residual plan builds");
     ASSERT_EQUAL(1u, inPlace.eligibility.eligible, "exclusive Y ownership is mechanically accepted");
@@ -1786,13 +1786,13 @@ FACT(PrometheusM45ResidualOwnershipContracts)
                 "unchanged physical storage receives a distinct post-residual content generation");
     ASSERT_TRUE(inPlace.replay_id != separate.replay_id,
                 "strategy, aliasing, and submit topology participate in replay identity");
-    prom_m45_residual_plan replay{};
+    prom_attention_residual_plan replay{};
     ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &replay),
                  "the identical in-place plan rebuilds");
     ASSERT_EQUAL(inPlace.replay_id, replay.replay_id, "M45 replay identity is deterministic");
 
     request.final_readback = 0u;
-    prom_m45_residual_plan retainedOnly{};
+    prom_attention_residual_plan retainedOnly{};
     ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &retainedOnly),
                  "a retained-only Z plan builds");
     ASSERT_EQUAL(0u, retainedOnly.final_readback_count, "final Z readback is optional");
@@ -1835,7 +1835,7 @@ FACT(PrometheusM45ResidualValidationAndAliasing)
     };
     fillView(&request.x_view, 201u, 7u, 11u);
     fillView(&request.y_view, 202u, 8u, 12u);
-    prom_m45_residual_plan plan{};
+    prom_attention_residual_plan plan{};
     request.y_exclusive = 0u;
     ASSERT_EQUAL(PROM_OK, prom_m45_residual_plan_build(&request, &plan),
                  "missing exclusivity remains inspectable");
@@ -1930,7 +1930,7 @@ FACT(PrometheusM45ResidualCpuOracleAndMismatch)
             compact[token * width + column] = z[token * zStride + column];
         }
     }
-    prom_m45_residual_plan plan{};
+    prom_attention_residual_plan plan{};
     plan.strategy = PROM_M45_STRATEGY_IN_PLACE_Y;
     plan.x_generation = 11u;
     plan.y_generation = 12u;
@@ -1984,7 +1984,7 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
     request.z_view.owning_slot_id = 1u;
     request.z_view.owning_slot_generation = 9u;
 
-    prom_m46_rmsnorm_plan separate{};
+    prom_rmsnorm_plan separate{};
     ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_plan_build(&request, &separate),
                  "awkward fused RMSNorm planning succeeds");
     ASSERT_EQUAL(1u, separate.eligibility_eligible, "the valid retained Z view is eligible");
@@ -2006,7 +2006,7 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
                  "padding is excluded without a host compaction step");
 
     request.requested_reduction_plan = PROM_M46_REDUCTION_FORCE_STAGED;
-    prom_m46_rmsnorm_plan forcedStaged{};
+    prom_rmsnorm_plan forcedStaged{};
     ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_plan_build(&request, &forcedStaged),
                  "a staged audit may be forced where fused is also legal");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M46_REDUCTION_STAGED),
@@ -2020,7 +2020,7 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
 
     request.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
     request.submit_policy = PROM_M46_SUBMIT_TWO_BOUNDED;
-    prom_m46_rmsnorm_plan inPlace{};
+    prom_rmsnorm_plan inPlace{};
     ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_plan_build(&request, &inPlace),
                  "exclusive in-place Z RMSNorm planning succeeds");
     ASSERT_EQUAL(1024u, inPlace.n_row_stride, "in-place N retains Z's physical stride");
@@ -2033,7 +2033,7 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
     ASSERT_EQUAL(2u, inPlace.submit_count, "split execution has exactly two submits");
     ASSERT_TRUE(inPlace.n_generation != inPlace.z_generation,
                 "an aliased physical buffer receives a new N content generation");
-    prom_m46_rmsnorm_plan replay{};
+    prom_rmsnorm_plan replay{};
     ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_plan_build(&request, &replay),
                  "identical M46 planning repeats");
     ASSERT_EQUAL(inPlace.replay_id, replay.replay_id, "M46 replay identity is deterministic");
@@ -2042,7 +2042,7 @@ FACT(PrometheusM46RmsNormPlanningAndOwnershipContracts)
     request.z_view.logical_columns = 4096u;
     request.z_view.row_stride_elements = 4096u;
     request.z_view.byte_length = static_cast<VkDeviceSize>(127u * 4096u * sizeof(float));
-    prom_m46_rmsnorm_plan staged{};
+    prom_rmsnorm_plan staged{};
     ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_plan_build(&request, &staged),
                  "4096-wide staged RMSNorm planning succeeds");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M46_REDUCTION_STAGED),
@@ -2097,7 +2097,7 @@ FACT(PrometheusM46RmsNormValidationOracleAndMismatch)
             compact[token * width + column] = n[token * nStride + column];
         }
     }
-    prom_m46_rmsnorm_plan plan{};
+    prom_rmsnorm_plan plan{};
     plan.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
     plan.epsilon = reference.epsilon;
     plan.z_generation = 21u;
@@ -2167,7 +2167,7 @@ FACT(PrometheusM47GatedFfnPlanningOwnershipAndMemory)
         request.weight_generation[weight] = 101u + weight;
         request.weight_hash[weight] = 201u + weight;
     }
-    prom_m47_gated_ffn_plan direct{};
+    prom_gated_feed_forward_plan direct{};
     ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_plan_build(&request, &direct),
                  "awkward direct-packed gated FFN planning succeeds");
     ASSERT_EQUAL(1u, direct.eligibility_eligible, "the retained M46 N view is eligible");
@@ -2190,14 +2190,14 @@ FACT(PrometheusM47GatedFfnPlanningOwnershipAndMemory)
                  direct.barriers[direct.barrier_count - 3u].destination_access_mask,
                  "Down becomes residual read/write only after Wdown completes");
 
-    prom_m47_gated_ffn_plan replay{};
+    prom_gated_feed_forward_plan replay{};
     ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_plan_build(&request, &replay),
                  "identical M47 planning repeats");
     ASSERT_EQUAL(direct.replay_id, replay.replay_id, "M47 replay identity is deterministic");
 
     request.gating_strategy = PROM_M47_GATING_SEPARATE;
     request.residual_strategy = PROM_M47_RESIDUAL_SEPARATE_OUTPUT;
-    prom_m47_gated_ffn_plan separate{};
+    prom_gated_feed_forward_plan separate{};
     ASSERT_EQUAL(PROM_OK, prom_m47_gated_ffn_plan_build(&request, &separate),
                  "separate activation/multiply and output planning succeeds");
     ASSERT_TRUE(separate.memory.activated_gate_bytes > 0u,
@@ -2210,7 +2210,7 @@ FACT(PrometheusM47GatedFfnPlanningOwnershipAndMemory)
                 "separate gating adds the activation, multiply, and pack passes");
 
     request.residual_strategy = PROM_M47_RESIDUAL_IN_PLACE_N_AUDIT;
-    prom_m47_gated_ffn_plan rejected{};
+    prom_gated_feed_forward_plan rejected{};
     ASSERT_TRUE(prom_m47_gated_ffn_plan_build(&request, &rejected) != PROM_OK,
                 "in-place N is mechanically rejected");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_INELIGIBLE_EXCLUSIVITY),
@@ -2280,7 +2280,7 @@ FACT(PrometheusM47GatedFfnOracleSiluPrecisionAndMismatch)
     ASSERT_TRUE(output[0] != roundedOutput[0],
                 "the explicit rounded route is observably distinct from exact FP32");
 
-    prom_m47_gated_ffn_plan plan{};
+    prom_gated_feed_forward_plan plan{};
     plan.ffn_width = ffnWidth;
     plan.gating_strategy = PROM_M47_GATING_FUSED_FP32;
     plan.n_generation = 301u;
@@ -2335,7 +2335,7 @@ FACT(PrometheusFp16ConversionUsesRoundToNearestEven)
 FACT(PrometheusM48FixedStackTopologyOwnershipAndMemory)
 {
     prom_m48_plan_request request = M48ResidentPlanRequest();
-    prom_m48_transformer_stack_plan plan{};
+    prom_transformer_stack_plan plan{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&request, &plan),
                  "the primary fixed four-layer stack plan is eligible");
     ASSERT_EQUAL(1u, plan.eligibility_eligible, "M48 eligibility is explicit");
@@ -2400,10 +2400,10 @@ FACT(PrometheusM48FixedStackTopologyOwnershipAndMemory)
 FACT(PrometheusM48ReplayIdentityReplacementAndLayerOrder)
 {
     const prom_m48_plan_request originalRequest = M48ResidentPlanRequest();
-    prom_m48_transformer_stack_plan original{};
+    prom_transformer_stack_plan original{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&originalRequest, &original),
                  "baseline M48 identity plan succeeds");
-    prom_m48_transformer_stack_plan repeated{};
+    prom_transformer_stack_plan repeated{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&originalRequest, &repeated),
                  "identical stack planning repeats");
     ASSERT_EQUAL(original.replay_id, repeated.replay_id,
@@ -2421,7 +2421,7 @@ FACT(PrometheusM48ReplayIdentityReplacementAndLayerOrder)
         prom_m48_plan_request changedRequest = originalRequest;
         changedRequest.layer[replacement.first].generation[replacement.second] += 1000u;
         changedRequest.layer[replacement.first].content_hash[replacement.second] += 1000u;
-        prom_m48_transformer_stack_plan changed{};
+        prom_transformer_stack_plan changed{};
         ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&changedRequest, &changed),
                      "one independently replaced resource replans the stack");
         for (std::uint32_t layer = 0u; layer < PROM_M48_LAYER_COUNT; ++layer) {
@@ -2447,7 +2447,7 @@ FACT(PrometheusM48ReplayIdentityReplacementAndLayerOrder)
 
     prom_m48_plan_request swappedRequest = originalRequest;
     std::swap(swappedRequest.layer[1], swappedRequest.layer[2]);
-    prom_m48_transformer_stack_plan swapped{};
+    prom_transformer_stack_plan swapped{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&swappedRequest, &swapped),
                  "the same resources in a different order still form a legal plan");
     ASSERT_TRUE(original.replay_id != swapped.replay_id,
@@ -2459,11 +2459,11 @@ FACT(PrometheusM48ReplayIdentityReplacementAndLayerOrder)
 FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
 {
     prom_m48_plan_request request = M48ResidentPlanRequest();
-    prom_m48_transformer_stack_plan oneSubmit{};
+    prom_transformer_stack_plan oneSubmit{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&request, &oneSubmit),
                  "one-submit product plan succeeds");
     request.submit_topology = PROM_M48_SUBMIT_PER_LAYER;
-    prom_m48_transformer_stack_plan perLayer{};
+    prom_transformer_stack_plan perLayer{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&request, &perLayer),
                  "same-queue per-layer submit plan succeeds");
     ASSERT_EQUAL(PROM_M48_LAYER_COUNT, perLayer.submit_count,
@@ -2476,7 +2476,7 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
 
     for (const std::uint32_t layers : {1u, 2u, 4u}) {
         prom_m48_plan_request audit = M48ResidentPlanRequest(layers, 1u);
-        prom_m48_transformer_stack_plan auditPlan{};
+        prom_transformer_stack_plan auditPlan{};
         ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&audit, &auditPlan),
                      "bounded one/two/four layer audit planning succeeds");
         ASSERT_EQUAL(layers, auditPlan.layer_count, "audit layer count remains exact");
@@ -2484,7 +2484,7 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
     prom_m48_plan_request mixed = M48ResidentPlanRequest(PROM_M48_LAYER_COUNT, 1u);
     mixed.audit_layer_projection_path[1u] = PROM_M47_PROJECTION_A2X4_FP32;
     mixed.audit_layer_projection_path[3u] = PROM_M47_PROJECTION_A2X4_FP32;
-    prom_m48_transformer_stack_plan mixedPlan{};
+    prom_transformer_stack_plan mixedPlan{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&mixed, &mixedPlan),
                  "audit planning accepts one fixed interval-two checkpoint pattern");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
@@ -2504,7 +2504,7 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
     controlled.controller_execution_identity = 4901u;
     controlled.controller_layer_projection_path[1u] = PROM_M47_PROJECTION_A2X4_FP32;
     controlled.controller_layer_projection_path[3u] = PROM_M47_PROJECTION_A2X4_FP32;
-    prom_m48_transformer_stack_plan controlledPlan{};
+    prom_transformer_stack_plan controlledPlan{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&controlled, &controlledPlan),
                  "M49b controller authority owns a first-class fixed checkpoint pattern");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M47_PROJECTION_A2X4_FP32),
@@ -2515,7 +2515,7 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
     ASSERT_TRUE(controlledPlan.replay_id != oneSubmit.replay_id,
                 "controller generation and bounded pattern participate in execution replay");
     prom_m48_plan_request witness = controlled;
-    prom_m48_transformer_stack_plan witnessPlan{};
+    prom_transformer_stack_plan witnessPlan{};
     witness.numerical_witness_mode = 1u;
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&witness, &witnessPlan),
                  "the internal full-A2x4 witness has a first-class fixed-stack plan");
@@ -2525,7 +2525,7 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
     ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&controlled, &controlledPlan) != PROM_OK,
                 "controller and audit overrides cannot be confused");
     prom_m48_plan_request invalid = M48ResidentPlanRequest(2u, 0u);
-    prom_m48_transformer_stack_plan rejected{};
+    prom_transformer_stack_plan rejected{};
     ASSERT_TRUE(prom_m48_transformer_stack_plan_build(&invalid, &rejected) != PROM_OK,
                 "two layers cannot masquerade as the product contract");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_M48_INELIGIBLE_LAYER_COUNT),
@@ -2551,7 +2551,7 @@ FACT(PrometheusM48ValidationSubmitPlansAndCapacity)
                  rejected.eligibility_reason, "capacity rejection is deterministic");
     invalid = M48ResidentPlanRequest();
     invalid.optional_final_readback = 0u;
-    prom_m48_transformer_stack_plan noReadback{};
+    prom_transformer_stack_plan noReadback{};
     ASSERT_EQUAL(PROM_OK, prom_m48_transformer_stack_plan_build(&invalid, &noReadback),
                  "pure resident benchmarking omits even the final readback");
     ASSERT_EQUAL(0u, noReadback.final_readback_count, "zero-readback product mode is explicit");
@@ -7113,7 +7113,7 @@ VALIDATED_BENCHMARK_WITH_ITERATIONS(PrometheusM46DeviceResidentRmsNormCorpus, 1u
             const auto cpuNs = static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(cpuEnd - cpuBegin).count());
             prom_m46_mismatch mismatch{};
-            prom_m46_rmsnorm_plan hostPlan{};
+            prom_rmsnorm_plan hostPlan{};
             hostPlan.strategy = PROM_M46_STRATEGY_IN_PLACE_Z;
             ASSERT_EQUAL(PROM_OK, prom_m46_rmsnorm_compare(
                 expected.data(), hostN.data(), workload.tokens, workload.modelWidth,

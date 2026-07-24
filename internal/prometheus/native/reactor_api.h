@@ -19,6 +19,11 @@
 extern "C" {
 #endif
 
+/* Canonical public ABI version. Host-language projections validate against it. */
+enum {
+  PROM_REACTOR_ABI_V1 = 1u,
+};
+
 enum {
   /* Closed DVT-2 execution policy.  This is intentionally not a window count:
      the only legal production choices are the established one-window path and

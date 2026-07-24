@@ -1,9 +1,11 @@
 # PROMETHEUS G4-E2B-M1 — raw-score stabilization handoff
 
-## Current repository handoff — Stage 1
+## Current repository handoff — Stage 2
 
 The repository/generated-authority hygiene pass is recorded in
 `internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE1_REPOSITORY_AND_GENERATED_AUTHORITY.md`.
+The mechanical ABI and vocabulary pass is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE2_ABI_AND_VOCABULARY_CONSOLIDATION.md`.
 The compact corpus index is
 `internal/prometheus/DevelopmentReport/PROMETHEUS_DEVELOPMENT_EVIDENCE_INDEX.json`,
 and the canonical repository-authority check is:
@@ -13,13 +15,12 @@ powershell -NoProfile -File .\tools\prometheus_authority.ps1
 ```
 
 Stage 0 remains the frozen lifecycle characterization and vocabulary authority.
-The three required-live Gemma lanes remain outstanding when the validated
-reactor and external checkpoint are not configured. Stage 2 naming/ABI
-consolidation and Stage 3 common Vulkan ownership extraction must not begin
-until those witnesses are closed. The repeated `MainTransformer1` topology,
-generated-header provenance gap, and registry/package projection differences
-remain descriptive/disputed evidence; this handoff does not authorize repairing
-them or changing `-7406`.
+The three required-live Gemma lanes remain outstanding because the external
+checkpoint is unavailable. Stage 2 is now allowed as a mechanical/static pass;
+it makes no live Gemma equivalence claim and does not repair `-7406`, the
+repeated `MainTransformer1` topology, generated-header provenance, or
+registry/package projection differences. Stage 3 common Vulkan ownership
+extraction remains deferred.
 
 ## Stage 0 supersession
 
@@ -116,7 +117,8 @@ advancement. The exact handoff to inspect is M46 `weight_result.generation` /
   environment variables configured):
   `go test -run TestGemma4E2BM1CanonicalQKVRTX -count=1 -v ./internal/prometheus`.
 
-First regroup architecturally: decide whether to finish the handwritten Gemma
-layer-0 specimen before extracting the semantic model compiler, or pause
-model-specific Vulkan work and establish that compiler boundary now. Do not
-automatically resume implementation of the `-7406` defect.
+The next payload-enabled action is to rerun the existing Q-first, K-first,
+same-session `-7406`, allocation/teardown, and canonical Z-Image witnesses
+against the reorganized checkpoint. A live failure is a regression
+investigation, not an automatic attribution to the historical checkpoint.
+Do not automatically resume implementation of the `-7406` defect.

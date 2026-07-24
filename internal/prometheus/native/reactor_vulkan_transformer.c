@@ -744,7 +744,7 @@ static const prom_m42_stage_plan* prom_m43_find_head_stage(const prom_m42_attent
   return NULL;
 }
 
-static int prom_m43_add_stage(prom_m43_attention_plan* plan,
+static int prom_m43_add_stage(prom_grouped_attention_plan* plan,
                               uint32_t head_index,
                               uint32_t operation,
                               uint32_t selected_path,
@@ -780,7 +780,7 @@ static int prom_m43_add_stage(prom_m43_attention_plan* plan,
   return 1;
 }
 
-static int prom_m43_add_head_operation(prom_m43_attention_plan* plan,
+static int prom_m43_add_head_operation(prom_grouped_attention_plan* plan,
                                        uint32_t head_index,
                                        uint32_t operation,
                                        uint32_t barrier_calls,
@@ -795,7 +795,7 @@ static int prom_m43_add_head_operation(prom_m43_attention_plan* plan,
                             timestamp_begin, timestamp_begin + 1u);
 }
 
-static int prom_m43_add_head_tail(prom_m43_attention_plan* plan, uint32_t head_index) {
+static int prom_m43_add_head_tail(prom_grouped_attention_plan* plan, uint32_t head_index) {
   const uint32_t reduced = plan->selected_path[head_index] != PROM_M42_PATH_A2X4;
   return prom_m43_add_head_operation(plan, head_index, PROM_M42_STAGE_PACK_Q, reduced, reduced) &&
          prom_m43_add_head_operation(plan, head_index, PROM_M42_STAGE_LAYOUT_K, 1u, 1u) &&
@@ -808,7 +808,7 @@ static int prom_m43_add_head_tail(prom_m43_attention_plan* plan, uint32_t head_i
 }
 
 int prom_m43_attention_plan_build(const prom_m43_plan_request* request,
-                                  prom_m43_attention_plan* out_plan) {
+                                  prom_grouped_attention_plan* out_plan) {
   uint32_t padded_tokens;
   uint32_t padded_model;
   uint32_t padded_head;
@@ -1043,7 +1043,7 @@ int prom_m43_attention_compare(const float* expected,
                                uint32_t head_dim,
                                float absolute_tolerance,
                                float relative_tolerance,
-                               const prom_m43_attention_plan* plan,
+                               const prom_grouped_attention_plan* plan,
                                prom_m43_mismatch* out_mismatch) {
   uint32_t head;
   const uint64_t head_elements = (uint64_t)tokens * head_dim;
@@ -1151,7 +1151,7 @@ static int prom_m44_ranges_overlap(const prom_device_buffer_view* left,
   return left->offset < right_end && right->offset < left_end;
 }
 
-static int prom_m44_add_stage(prom_m44_output_projection_plan* plan,
+static int prom_m44_add_stage(prom_attention_output_projection_plan* plan,
                               uint32_t operation,
                               uint32_t dispatch_count,
                               uint32_t barrier_calls,
@@ -1250,7 +1250,7 @@ static int prom_m44_memory_plan_build(const prom_m44_plan_request* request,
 }
 
 int prom_m44_output_projection_plan_build(const prom_m44_plan_request* request,
-                                          prom_m44_output_projection_plan* out_plan) {
+                                          prom_attention_output_projection_plan* out_plan) {
   uint32_t padded_tokens;
   uint32_t padded_concat;
   uint32_t padded_model;
@@ -1550,7 +1550,7 @@ static int prom_m45_used_ranges_overlap(const prom_device_buffer_view* left,
   return left->offset < right_end && right->offset < left_end;
 }
 
-static void prom_m45_add_barrier(prom_m45_residual_plan* plan,
+static void prom_m45_add_barrier(prom_attention_residual_plan* plan,
                                  uint32_t buffer_identity,
                                  uint64_t byte_offset,
                                  uint64_t byte_length,
@@ -1573,7 +1573,7 @@ static void prom_m45_add_barrier(prom_m45_residual_plan* plan,
   plan->barrier_count += 1u;
 }
 
-static void prom_m45_add_stage(prom_m45_residual_plan* plan,
+static void prom_m45_add_stage(prom_attention_residual_plan* plan,
                                uint32_t operation,
                                uint32_t dispatch_count,
                                uint32_t barrier_begin,
@@ -1597,7 +1597,7 @@ static void prom_m45_add_stage(prom_m45_residual_plan* plan,
 }
 
 int prom_m45_residual_plan_build(const prom_m45_plan_request* request,
-                                 prom_m45_residual_plan* out_plan) {
+                                 prom_attention_residual_plan* out_plan) {
   uint64_t x_bytes = 0u;
   uint64_t y_bytes = 0u;
   uint64_t logical_elements = 0u;
@@ -1802,7 +1802,7 @@ int prom_m45_residual_compare(const float* expected,
                               uint32_t model_width,
                               float absolute_tolerance,
                               float relative_tolerance,
-                              const prom_m45_residual_plan* plan,
+                              const prom_attention_residual_plan* plan,
                               prom_m45_mismatch* out_mismatch) {
   uint32_t token;
   if (out_mismatch == NULL) return PROM_ERROR;
@@ -1840,7 +1840,7 @@ int prom_m45_residual_compare(const float* expected,
   return PROM_OK;
 }
 
-static void prom_m46_add_barrier(prom_m46_rmsnorm_plan* plan,
+static void prom_m46_add_barrier(prom_rmsnorm_plan* plan,
                                  uint32_t buffer_identity,
                                  uint64_t byte_offset,
                                  uint64_t byte_length,
@@ -1863,7 +1863,7 @@ static void prom_m46_add_barrier(prom_m46_rmsnorm_plan* plan,
   plan->barrier_count += 1u;
 }
 
-static void prom_m46_add_stage(prom_m46_rmsnorm_plan* plan,
+static void prom_m46_add_stage(prom_rmsnorm_plan* plan,
                                uint32_t operation,
                                uint32_t dispatch_count,
                                uint32_t barrier_begin,
@@ -1887,7 +1887,7 @@ static void prom_m46_add_stage(prom_m46_rmsnorm_plan* plan,
 }
 
 int prom_m46_rmsnorm_plan_build(const prom_m46_plan_request* request,
-                                prom_m46_rmsnorm_plan* out_plan) {
+                                prom_rmsnorm_plan* out_plan) {
   uint64_t z_bytes = 0u;
   uint64_t logical_elements = 0u;
   uint64_t compact_bytes = 0u;
@@ -2122,7 +2122,7 @@ int prom_m46_rmsnorm_compare(const float* expected,
                              uint32_t model_width,
                              float absolute_tolerance,
                              float relative_tolerance,
-                             const prom_m46_rmsnorm_plan* plan,
+                             const prom_rmsnorm_plan* plan,
                              const float* sumsq,
                              const float* inv_rms,
                              prom_m46_mismatch* out_mismatch) {
@@ -3215,7 +3215,7 @@ static void prom_m42_record_scale(prom_reduction_runtime_state* state,
 
 static int prom_m42_prepare_execution_buffers(prom_reduction_runtime_state* state,
                                               prom_reduction_slot* slot,
-                                              const prom_m42_attention_request* request,
+                                              const prom_single_head_attention_request* request,
                                               const prom_m42_attention_plan* plan,
                                               const PrometheusReductionPlan* reduction_plan) {
   const uint32_t reduced = plan->selected_path != PROM_M42_PATH_A2X4;
@@ -3324,7 +3324,7 @@ static void prom_m42_write_timestamp(const prom_reduction_runtime_state* state,
 
 static int prom_m42_record_attention(prom_reduction_runtime_state* state,
                                      prom_reduction_slot* slot,
-                                     const prom_m42_attention_request* request,
+                                     const prom_single_head_attention_request* request,
                                      const prom_m42_attention_plan* plan,
                                      const PrometheusReductionPlan* reduction_plan,
                                      const prom_vk_buffer* x_buffer,
@@ -3512,7 +3512,7 @@ static int prom_m42_record_attention(prom_reduction_runtime_state* state,
 
 static int prom_m42_audit_readback(prom_reduction_runtime_state* state,
                                    prom_reduction_slot* slot,
-                                   const prom_m42_attention_request* request,
+                                   const prom_single_head_attention_request* request,
                                    const prom_m42_attention_plan* plan,
                                    uint64_t* out_ns) {
   const uint32_t reduced = plan->selected_path != PROM_M42_PATH_A2X4;
@@ -3612,7 +3612,7 @@ static uint64_t prom_m42_retained_bytes(const prom_reduction_runtime_state* stat
 }
 
 int prom_reactor_runtime_m42_execute(void* handle,
-                                     const prom_m42_attention_request* request,
+                                     const prom_single_head_attention_request* request,
                                      prom_m42_attention_result* out_result) {
   prom_reduction_runtime_state* state;
   prom_reduction_slot* slot = NULL;
@@ -5122,7 +5122,7 @@ int prom_reactor_runtime_m48_prepare_initial_activation(
 static int prom_m43_prepare_execution_buffers(prom_reduction_runtime_state* state,
                                               prom_reduction_slot* slot,
                                               const prom_m43_attention_group_request* request,
-                                              const prom_m43_attention_plan* plan,
+                                              const prom_grouped_attention_plan* plan,
                                               uint32_t require_readback) {
   const uint64_t logical_x_elements = (uint64_t)request->tokens * request->model_width;
   const uint64_t padded_x_elements = (uint64_t)plan->padded_tokens * plan->padded_model_width;
@@ -5333,7 +5333,7 @@ static void prom_m43_record_projection(prom_reduction_runtime_state* state,
                                        prom_reduction_slot* slot,
                                        VkCommandBuffer command_buffer,
                                        const prom_m43_attention_group_request* request,
-                                       const prom_m43_attention_plan* plan,
+                                       const prom_grouped_attention_plan* plan,
                                        uint32_t head,
                                        uint32_t operation) {
   const uint32_t reduced = plan->selected_path[head] != PROM_M42_PATH_A2X4;
@@ -5350,7 +5350,7 @@ static void prom_m43_record_projection(prom_reduction_runtime_state* state,
 static int prom_m43_record_projection_barrier(VkCommandBuffer command_buffer,
                                               prom_reduction_slot* slot,
                                               const prom_m43_attention_group_request* request,
-                                              const prom_m43_attention_plan* plan,
+                                              const prom_grouped_attention_plan* plan,
                                               uint32_t first_head,
                                               uint32_t head_count) {
   const prom_vk_buffer* buffers[PROM_M43_HEAD_COUNT * PROM_M43_WEIGHT_KIND_COUNT];
@@ -5376,7 +5376,7 @@ static int prom_m43_record_head_tail(prom_reduction_runtime_state* state,
                                      prom_reduction_slot* slot,
                                      VkCommandBuffer command_buffer,
                                      const prom_m43_attention_group_request* request,
-                                     const prom_m43_attention_plan* plan,
+                                     const prom_grouped_attention_plan* plan,
                                      const PrometheusReductionPlan* reduction_plan,
                                      uint32_t head,
                                      uint32_t* out_partial_fault,
@@ -5534,7 +5534,7 @@ static int prom_m43_record_head_tail(prom_reduction_runtime_state* state,
 static int prom_m43_record_grouped_internal(prom_reduction_runtime_state* state,
                                             prom_reduction_slot* slot,
                                             const prom_m43_attention_group_request* request,
-                                            const prom_m43_attention_plan* plan,
+                                            const prom_grouped_attention_plan* plan,
                                             const PrometheusReductionPlan* reduction_plan,
                                             uint32_t* out_partial_fault,
                                             uint32_t* out_uncertain_fault,
@@ -5701,7 +5701,7 @@ static int prom_m43_record_grouped_internal(prom_reduction_runtime_state* state,
 static int prom_m43_record_grouped(prom_reduction_runtime_state* state,
                                    prom_reduction_slot* slot,
                                    const prom_m43_attention_group_request* request,
-                                   const prom_m43_attention_plan* plan,
+                                   const prom_grouped_attention_plan* plan,
                                    const PrometheusReductionPlan* reduction_plan,
                                    uint32_t* out_partial_fault,
                                    uint32_t* out_uncertain_fault) {
@@ -5713,7 +5713,7 @@ static int prom_m43_record_grouped(prom_reduction_runtime_state* state,
 static int prom_m43_execute_sequential_baseline(prom_reduction_runtime_state* state,
                                                 prom_reduction_slot* slot,
                                                 const prom_m43_attention_group_request* request,
-                                                const prom_m43_attention_plan* plan,
+                                                const prom_grouped_attention_plan* plan,
                                                 const PrometheusReductionPlan* reduction_plan,
                                                 uint64_t* timestamps,
                                                 uint64_t* out_recording_ns,
@@ -6227,7 +6227,7 @@ int prom_reactor_runtime_m43_execute(void* handle,
 
 static int prom_m44_prepare_execution_buffers(prom_reduction_runtime_state* state,
                                               prom_reduction_slot* slot,
-                                              const prom_m44_output_projection_plan* plan,
+                                              const prom_attention_output_projection_plan* plan,
                                               uint32_t host_upload,
                                               uint32_t final_readback) {
   const uint64_t logical_concat_elements = (uint64_t)plan->tokens * plan->concatenated_width;
@@ -6270,7 +6270,7 @@ static int prom_m44_prepare_execution_buffers(prom_reduction_runtime_state* stat
 
 static int prom_m44_setup_descriptors(prom_reduction_runtime_state* state,
                                       prom_reduction_slot* slot,
-                                      const prom_m44_output_projection_plan* plan) {
+                                      const prom_attention_output_projection_plan* plan) {
   const prom_vk_buffer* buffers[PROM_M44_WIDE_DESCRIPTOR_BINDING_COUNT];
   const prom_vk_buffer* concatenated;
   uint32_t head;
@@ -6299,7 +6299,7 @@ static int prom_m44_setup_descriptors(prom_reduction_runtime_state* state,
 static int prom_m44_record_projection_tail(prom_reduction_runtime_state* state,
                                            prom_reduction_slot* slot,
                                            const prom_m44_composed_request* request,
-                                           const prom_m44_output_projection_plan* plan,
+                                           const prom_attention_output_projection_plan* plan,
                                            VkCommandBuffer command_buffer,
                                            uint32_t already_open,
                                            uint32_t final_readback,
@@ -6456,7 +6456,7 @@ static int prom_m44_record_projection_tail(prom_reduction_runtime_state* state,
 static int prom_m45_record_residual_tail(prom_reduction_runtime_state* state,
                                          prom_reduction_slot* slot,
                                          const prom_m45_composed_request* request,
-                                         const prom_m45_residual_plan* plan,
+                                         const prom_attention_residual_plan* plan,
                                          const prom_vk_buffer* x,
                                          const prom_vk_buffer* z,
                                          VkCommandBuffer command_buffer,
@@ -6571,7 +6571,7 @@ typedef struct prom_m46_continuation {
 static int prom_m46_record_tail(prom_reduction_runtime_state* state,
                                 prom_reduction_slot* slot,
                                 const prom_m46_composed_request* request,
-                                const prom_m46_rmsnorm_plan* plan,
+                                const prom_rmsnorm_plan* plan,
                                 prom_vk_buffer* z,
                                 prom_vk_buffer* n,
                                 VkCommandBuffer command_buffer,
@@ -6837,7 +6837,7 @@ static int prom_m46_complete_continuation(prom_reduction_runtime_state* state,
                                           uint64_t begin_ns) {
   prom_m46_composed_result* result = continuation->result;
   const prom_m46_composed_request* request = continuation->request;
-  const prom_m46_rmsnorm_plan* plan = &result->rmsnorm_plan;
+  const prom_rmsnorm_plan* plan = &result->rmsnorm_plan;
   const uint64_t logical_elements = (uint64_t)plan->tokens * plan->model_width;
   uint64_t readback_begin;
   result->reduction_gpu_ns =
@@ -7058,7 +7058,7 @@ static int prom_m47_prepare_continuation(prom_reduction_runtime_state* state,
 static int prom_m47_record_tail(prom_reduction_runtime_state* state,
                                 prom_reduction_slot* slot,
                                 const prom_m47_composed_request* request,
-                                const prom_m47_gated_ffn_plan* plan,
+                                const prom_gated_feed_forward_plan* plan,
                                 prom_vk_buffer* n,
                                 prom_vk_buffer* output,
                                 VkCommandBuffer command_buffer,
@@ -7346,7 +7346,7 @@ static int prom_m47_complete_continuation(prom_reduction_runtime_state* state,
                                           uint64_t begin_ns) {
   prom_m47_composed_result* result = continuation->result;
   const prom_m47_composed_request* request = continuation->request;
-  const prom_m47_gated_ffn_plan* plan = &result->ffn_plan;
+  const prom_gated_feed_forward_plan* plan = &result->ffn_plan;
   uint64_t readback_begin;
 #define PROM_M47_DURATION(first, last) \
   ((uint64_t)((double)(timestamps[(last)] - timestamps[(first)]) * state->timestamp_period_ns))
@@ -7487,7 +7487,7 @@ static int prom_m44_fill_m43_timings(const prom_reduction_runtime_state* state,
   return 1;
 }
 
-static int prom_m44_strip_m43_final_readback(prom_m43_attention_plan* plan) {
+static int prom_m44_strip_m43_final_readback(prom_grouped_attention_plan* plan) {
   prom_m43_stage_plan* stage;
   uint64_t command_hash = 1469598103934665603ull;
   uint64_t aggregate_hash = 1469598103934665603ull;
@@ -7536,7 +7536,7 @@ static int prom_m44_strip_m43_final_readback(prom_m43_attention_plan* plan) {
   return 1;
 }
 
-static int prom_m45_strip_m44_final_readback(prom_m44_output_projection_plan* plan) {
+static int prom_m45_strip_m44_final_readback(prom_attention_output_projection_plan* plan) {
   prom_m44_stage_plan* stage;
   uint64_t command_hash;
   uint64_t replay_hash;
@@ -8036,17 +8036,17 @@ int prom_reactor_runtime_m44_execute_composed(void* handle,
 
 typedef struct prom_transformer_recorded_block {
   prom_m43_attention_group_request attention_request;
-  prom_m43_attention_plan attention_plan;
+  prom_grouped_attention_plan attention_plan;
   prom_device_buffer_view head_view[PROM_M43_HEAD_COUNT];
   PrometheusReductionPlan reduction_plan;
   prom_m44_composed_request projection_request;
-  prom_m44_output_projection_plan projection_plan;
+  prom_attention_output_projection_plan projection_plan;
   prom_m45_composed_request residual_request;
-  prom_m45_residual_plan residual_plan;
+  prom_attention_residual_plan residual_plan;
   prom_m46_composed_request norm_request;
-  prom_m46_rmsnorm_plan norm_plan;
+  prom_rmsnorm_plan norm_plan;
   prom_m47_composed_request ffn_request;
-  prom_m47_gated_ffn_plan ffn_plan;
+  prom_gated_feed_forward_plan ffn_plan;
   prom_device_buffer_view input_view;
   prom_device_buffer_view y_view;
   prom_device_buffer_view z_view;
@@ -8160,7 +8160,7 @@ static int prom_transformer_setup_projection_descriptors(
     prom_reduction_runtime_state* state,
     prom_reduction_slot* slot,
     const prom_transformer_layer_resources* layer,
-    const prom_m44_output_projection_plan* plan,
+    const prom_attention_output_projection_plan* plan,
     prom_transformer_descriptor_bank* bank) {
   const prom_vk_buffer* buffers[PROM_M44_WIDE_DESCRIPTOR_BINDING_COUNT];
   const prom_vk_buffer* concatenated;
@@ -11646,7 +11646,7 @@ int prom_reactor_runtime_m44_execute_host_bounce(void* handle,
   prom_reduction_slot* slot;
   prom_vk_runtime_services services;
   prom_m44_plan_request plan_request;
-  prom_m44_output_projection_plan plan;
+  prom_attention_output_projection_plan plan;
   prom_m44_host_bounce_request effective_request;
   float* concatenated = NULL;
   void* payload = NULL;
@@ -12115,7 +12115,7 @@ static int prom_m47_accumulate(uint64_t* total, uint64_t value) {
   return prom_m47_add_u64(*total, value, total);
 }
 
-static void prom_m47_add_barrier(prom_m47_gated_ffn_plan* plan,
+static void prom_m47_add_barrier(prom_gated_feed_forward_plan* plan,
                                  uint32_t buffer_identity,
                                  uint64_t byte_offset,
                                  uint64_t byte_length,
@@ -12138,7 +12138,7 @@ static void prom_m47_add_barrier(prom_m47_gated_ffn_plan* plan,
   plan->barrier_count += 1u;
 }
 
-static void prom_m47_add_stage(prom_m47_gated_ffn_plan* plan,
+static void prom_m47_add_stage(prom_gated_feed_forward_plan* plan,
                                uint32_t operation,
                                uint32_t dispatch_count,
                                uint32_t barrier_begin,
@@ -12170,7 +12170,7 @@ static uint64_t prom_m47_generation(uint64_t seed, uint64_t value0, uint64_t val
 }
 
 int prom_m47_gated_ffn_plan_build(const prom_m47_plan_request* request,
-                                  prom_m47_gated_ffn_plan* out_plan) {
+                                  prom_gated_feed_forward_plan* out_plan) {
   uint64_t logical_n_elements;
   uint64_t logical_hidden_elements;
   uint64_t padded_n_elements;
@@ -12541,7 +12541,7 @@ int prom_m47_gated_ffn_compare(const float* expected,
                                uint32_t actual_row_stride,
                                float absolute_tolerance,
                                float relative_tolerance,
-                               const prom_m47_gated_ffn_plan* plan,
+                               const prom_gated_feed_forward_plan* plan,
                                const float* gate,
                                const float* up,
                                const float* hidden,
@@ -12768,7 +12768,7 @@ static uint32_t prom_m48_layer_projection_path(const prom_m48_plan_request* requ
 }
 
 int prom_m48_transformer_stack_plan_build(const prom_m48_plan_request* request,
-                                          prom_m48_transformer_stack_plan* out_plan) {
+                                          prom_transformer_stack_plan* out_plan) {
   uint64_t logical_elements;
   uint64_t activation_range_bytes;
   uint64_t slot_bytes = 0u;
