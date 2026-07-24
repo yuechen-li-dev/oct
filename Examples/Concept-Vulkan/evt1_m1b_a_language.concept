@@ -1,0 +1,121 @@
+profile Vulkan;
+
+struct BufferRange
+{
+    int bufferId;
+    int offset;
+    int size;
+};
+
+struct Allocation
+{
+    BufferRange range;
+    int generation;
+};
+
+struct ObservedValues
+{
+    int first;
+    int second;
+    int third;
+};
+
+struct CopyResult
+{
+    int firstOffset;
+    int secondOffset;
+};
+
+immovable struct CommandPoolState
+{
+    int poolId;
+    bool initialized;
+};
+
+enum Outcome
+{
+    Empty,
+    Ready(Allocation allocation),
+    Failed(int code)
+}
+
+concept Validatable<T>
+{
+    requires bool IsValid(borrow const T value);
+}
+
+concept Destroyable<T>
+{
+    requires void Destroy(borrow T value);
+}
+
+concept ResourceState<T>
+{
+    requires Validatable<T>;
+    requires Destroyable<T>;
+}
+
+bool IsValid(borrow const CommandPoolState value);
+void Destroy(borrow CommandPoolState value);
+int NextValue();
+int Add(int left, int right);
+
+requires ResourceState<CommandPoolState>;
+
+BufferRange MakeRange(int bufferId, int offset, int size)
+{
+    BufferRange range = BufferRange{bufferId, offset, size};
+    return range;
+}
+
+Allocation MakeAllocation(BufferRange range, int generation)
+{
+    Allocation allocation = Allocation{range, generation};
+    return allocation;
+}
+
+ObservedValues ObserveConstruction()
+{
+    BufferRange range = BufferRange{NextValue(), NextValue(), NextValue()};
+    ObservedValues observed = ObservedValues{range.bufferId, range.offset, range.size};
+    return observed;
+}
+
+CopyResult CopyAndMutate()
+{
+    BufferRange first = BufferRange{7, 1, 3};
+    BufferRange second = first;
+    second.offset = 9;
+    CopyResult result = CopyResult{first.offset, second.offset};
+    return result;
+}
+
+int ClassifyOutcome(Outcome outcome)
+{
+    return match (outcome)
+    {
+        Outcome::Empty => 0,
+        Outcome::Ready(allocation) => Add(Add(allocation.range.offset, allocation.range.size), allocation.generation),
+        Outcome::Failed(code) => code,
+    };
+}
+
+int MatchAllocation()
+{
+    BufferRange range = BufferRange{4, 5, 6};
+    Allocation allocation = Allocation{range, 7};
+    Outcome outcome = Outcome::Ready(allocation);
+    return ClassifyOutcome(outcome);
+}
+
+void InitializePool(borrow CommandPoolState state)
+{
+    state.initialized = true;
+}
+
+bool UseImmovable()
+{
+    CommandPoolState state = CommandPoolState{11, false};
+    InitializePool(state);
+    return IsValid(state);
+}

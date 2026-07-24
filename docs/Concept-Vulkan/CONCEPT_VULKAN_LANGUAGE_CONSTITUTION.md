@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1A constitution; kernel-54 proof accepted; payload enums and exhaustive match implemented; production remains handwritten**
+Status: **normative EVT1 M1B-A constitution; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, and named concept requirements implemented; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -145,6 +145,60 @@ Statement-form `match` requires braced blocks, expression-form `match` requires
 single expressions, the subject is evaluated exactly once, and every declared
 variant must be covered exactly once. M1A does not add wildcard arms, guards,
 or nested destructuring patterns.
+
+## 2.4 EVT1 M1B-A structs and named concepts
+
+EVT1 M1B-A adds ordinary mutable `struct`, bounded `immovable struct`, and
+named compile-time-only `concept` requirements without changing the established
+C++-shaped declaration direction:
+
+```concept
+struct BufferRange
+{
+    VkBuffer buffer;
+    int offset;
+    int size;
+};
+
+immovable struct CommandPoolState
+{
+    VkCommandPool pool;
+    bool initialized;
+};
+
+concept Validatable<T>
+{
+    requires bool IsValid(borrow const T value);
+}
+
+requires Validatable<CommandPoolState>;
+```
+
+Ordinary structs are mutable value types with declaration-ordered fields and
+transparent field-ordered C11 layout. Positional aggregate construction uses
+exactly one canonical surface:
+
+```concept
+BufferRange range = BufferRange{buffer, 0, 4096};
+```
+
+Field access remains dotted and nested field access is preserved:
+
+```concept
+range.offset
+allocation.range.size
+```
+
+`immovable struct` means mutable but non-relocatable under the current bounded
+rules: it may be constructed directly in final local storage and mutated
+through valid mutable borrow paths, but it may not be copied, whole-value
+assigned, passed by value, returned by value, embedded by value, or placed
+into enum payloads by value.
+
+Named concepts are one-parameter compile-time propositions only. They describe
+required free-function signatures and prerequisite named concepts. Concrete
+assertions emit no runtime table, vtable, witness object, registry, or public
+symbol.
 
 ## 3. Static and runtime facts
 
@@ -334,17 +388,21 @@ The three mechanisms remain separate:
 - `comptime` performs deterministic, bounded evaluation;
 - runtime polymorphism is unrelated and absent from M1.
 
-M1 needs static package/binding contract declarations and `static_assert`.
-It does not require user-defined general-purpose templates. If one tiny
-compiler-owned buffer/binding schema is parameterized, specialization is
-finite and monomorphic before MIR.
+EVT1 M1B-A now fixes the first user-visible static requirement surface:
 
-M1 comptime supports integer/Boolean/string constants, fixed arrays/records,
-field selection, bounded arithmetic/comparison, and static assertions over
-repository-owned package metadata. It has a deterministic operation/fuel
-limit and no recursion, arbitrary functions, generated identifiers, reflection,
-live runtime inspection, or host side effects. SDSL-V's 256-statement
-`comptime for` guard is useful precedent, not automatically the M1 limit.
+- `concept Name<T> { ... }` declares one named proposition over one type
+  parameter;
+- `requires ReturnType Function(Params...);` describes an exact required
+  free-function signature;
+- `requires OtherConcept<T>;` composes prerequisite concepts;
+- `requires ConceptName<ConcreteType>;` explicitly asks the compiler to prove
+  a concrete type satisfies a named concept.
+
+These checks are structural, deterministic, and compile-time-only. They do not
+instantiate templates, create runtime interface machinery, or widen the public
+ABI. Constrained templates and deterministic monomorphization remain a later
+EVT1 M1B-B milestone. Bounded pure compile-time evaluation remains a separate
+later EVT1 M1B-C milestone.
 
 ## 10. Escape hatch
 
@@ -439,6 +497,33 @@ proof foundation:
 This milestone is intentionally language-focused. It does not widen production
 Prometheus routing, public ABI, or the earlier kernel-54 handwritten witness.
 
+## 12.2 EVT1 M1B-A semantic minimum
+
+EVT1 M1B-A extends the accepted M1A proof with the smallest coherent host-side
+type-and-requirement vertical:
+
+1. ordinary mutable user-defined structs;
+2. positional aggregate construction with exact arity and type checking;
+3. field reads, nested field reads, and field mutation;
+4. ordinary struct value-copy where all fields remain copyable under existing
+   ownership authority;
+5. explicit rejection of ownership-illegal struct copying;
+6. bounded `immovable struct` final-storage construction and mutable borrow use;
+7. rejection of immovable copy, whole-value assignment, by-value
+   parameter/return, embedding, and enum-payload placement;
+8. one-parameter named concepts with required free-function signatures;
+9. prerequisite concepts, deterministic prerequisite traversal, and cycle
+   rejection;
+10. declaration-level concrete satisfaction assertions with exact-signature
+   checking and no runtime representation;
+11. typed MIR that preserves struct identity, field order, immovability,
+   concept identity, requirements, and concrete assertions;
+12. deterministic strict-C11 lowering for ordinary and immovable structs plus
+   compile-time-only concept erasure;
+13. one hardware-independent native specimen and one Vulkan-shaped native
+   specimen proving structs, immovability, concepts, and preserved M1A enum /
+   `match` behavior.
+
 ## 13. Profile MIR boundary
 
 The M1 MIR is profile-specific and typed. Its operation vocabulary is:
@@ -510,9 +595,11 @@ M1/EVT1 excludes Concept machines/transitions, `decide`, `yield`, dynamic
 interfaces, vtables, runtime reflection, general heap/containers, general
 async, exceptions, package-manager ambitions, DragonGod facilities, full RT
 pipelines/SBT, shader mathematics, model topology, and lifecycle/progression
-policy. EVT1 M1A additionally excludes wildcard arms, guards, or-patterns,
-literal/range/recursive patterns, enum methods, concepts, templates, generic
-enums, compile-time evaluation, and a new ownership model. PoC3 is design
-history; only its local ownership, explicit move, deterministic drop,
-error-as-value, unsafe quarantine, C ABI, bounded comptime, profiles, and
-MIR-first principles are adopted here.
+policy. EVT1 M1A exclusions for wildcard arms, guards, or-patterns,
+literal/range/recursive patterns, and enum methods remain. EVT1 M1B-A further
+excludes constrained templates, monomorphization, multiple concept parameters,
+concept specialization, compile-time user functions, general compile-time
+evaluation, methods, constructors, destructors, implicit cleanup, and any new
+move or borrow system. PoC3 is design history; only its local ownership,
+explicit move, deterministic drop, error-as-value, unsafe quarantine, C ABI,
+bounded comptime, profiles, and MIR-first principles are adopted here.

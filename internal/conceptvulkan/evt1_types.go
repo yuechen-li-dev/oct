@@ -5,37 +5,73 @@ import (
 	"strings"
 )
 
-const EVT1CompilerID = "concept-vulkan-evt1-m1a"
+const EVT1CompilerID = "concept-vulkan-evt1-m1b-a"
 
 type EVT1TypeKind string
 
 const (
-	EVT1TypeBuiltin EVT1TypeKind = "builtin"
-	EVT1TypeEnum    EVT1TypeKind = "enum"
-	EVT1TypePointer EVT1TypeKind = "pointer"
+	EVT1TypeBuiltin      EVT1TypeKind = "builtin"
+	EVT1TypeEnum         EVT1TypeKind = "enum"
+	EVT1TypeStruct       EVT1TypeKind = "struct"
+	EVT1TypePointer      EVT1TypeKind = "pointer"
+	EVT1TypeConceptParam EVT1TypeKind = "concept_param"
+	EVT1TypeApplied      EVT1TypeKind = "applied"
 )
 
 type EVT1Type struct {
-	Qualifier string       `json:"qualifier,omitempty"`
 	Name      string       `json:"name"`
 	Kind      EVT1TypeKind `json:"kind"`
+	Ownership string       `json:"ownership,omitempty"`
+	Const     bool         `json:"const,omitempty"`
+	Imported  bool         `json:"imported,omitempty"`
+	Unsafe    bool         `json:"unsafe,omitempty"`
 	PointerTo *EVT1Type    `json:"pointer_to,omitempty"`
+	TypeArgs  []EVT1Type   `json:"type_args,omitempty"`
 	Span      Span         `json:"span"`
 }
 
 func (t EVT1Type) String() string {
+	var parts []string
+	if t.Unsafe {
+		parts = append(parts, "unsafe")
+	}
+	if t.Imported {
+		parts = append(parts, "imported")
+	}
+	if t.Ownership != "" {
+		parts = append(parts, t.Ownership)
+	}
+	if t.Const {
+		parts = append(parts, "const")
+	}
+	base := t.Name
 	if t.PointerTo != nil {
-		return t.PointerTo.String() + "*"
+		base = t.PointerTo.String() + "*"
+	} else if len(t.TypeArgs) > 0 {
+		var args []string
+		for _, arg := range t.TypeArgs {
+			args = append(args, arg.String())
+		}
+		base = base + "<" + strings.Join(args, ", ") + ">"
 	}
-	if t.Qualifier != "" {
-		return t.Qualifier + " " + t.Name
-	}
-	return t.Name
+	parts = append(parts, base)
+	return strings.Join(parts, " ")
 }
 
 func (t EVT1Type) Equal(other EVT1Type) bool {
-	if t.Qualifier != other.Qualifier || t.Name != other.Name || t.Kind != other.Kind {
+	if t.Name != other.Name ||
+		t.Kind != other.Kind ||
+		t.Ownership != other.Ownership ||
+		t.Const != other.Const ||
+		t.Imported != other.Imported ||
+		t.Unsafe != other.Unsafe ||
+		len(t.TypeArgs) != len(other.TypeArgs) {
 		return false
+	}
+	for i := range t.TypeArgs {
+		if !t.TypeArgs[i].Equal(other.TypeArgs[i]) {
+			return false
+		}
 	}
 	if t.PointerTo == nil || other.PointerTo == nil {
 		return t.PointerTo == nil && other.PointerTo == nil
@@ -43,10 +79,53 @@ func (t EVT1Type) Equal(other EVT1Type) bool {
 	return t.PointerTo.Equal(*other.PointerTo)
 }
 
+func (t EVT1Type) SameValueType(other EVT1Type) bool {
+	a := t.valueType()
+	b := other.valueType()
+	return a.Equal(b)
+}
+
+func (t EVT1Type) valueType() EVT1Type {
+	out := t
+	out.Ownership = ""
+	out.Const = false
+	out.Imported = false
+	out.Unsafe = false
+	return out
+}
+
+func (t EVT1Type) isBorrow() bool {
+	return t.Ownership == "borrow"
+}
+
+func (t EVT1Type) isOwned() bool {
+	return t.Ownership == "owned"
+}
+
+func (t EVT1Type) isBorrowLike() bool {
+	return t.isBorrow() || t.PointerTo != nil
+}
+
+func (t EVT1Type) borrowBase() EVT1Type {
+	if t.PointerTo != nil {
+		base := *t.PointerTo
+		base.Const = base.Const || t.Const
+		return base.valueType()
+	}
+	return t.valueType()
+}
+
 type EVT1Field struct {
 	Type EVT1Type `json:"type"`
 	Name string   `json:"name"`
 	Span Span     `json:"span"`
+}
+
+type EVT1StructDecl struct {
+	Name      string      `json:"name"`
+	Immovable bool        `json:"immovable"`
+	Fields    []EVT1Field `json:"fields"`
+	Span      Span        `json:"span"`
 }
 
 type EVT1VariantDecl struct {
@@ -68,6 +147,43 @@ type EVT1Param struct {
 	Span Span     `json:"span"`
 }
 
+type EVT1ConceptRequirement interface {
+	evt1ConceptRequirement()
+	requirementSpan() Span
+}
+
+type EVT1OperationRequirement struct {
+	ReturnType EVT1Type    `json:"return_type"`
+	Name       string      `json:"name"`
+	Params     []EVT1Param `json:"params,omitempty"`
+	Span       Span        `json:"span"`
+}
+
+func (*EVT1OperationRequirement) evt1ConceptRequirement() {}
+func (r *EVT1OperationRequirement) requirementSpan() Span { return r.Span }
+
+type EVT1PrerequisiteRequirement struct {
+	ConceptName string   `json:"concept_name"`
+	TypeArg     EVT1Type `json:"type_arg"`
+	Span        Span     `json:"span"`
+}
+
+func (*EVT1PrerequisiteRequirement) evt1ConceptRequirement() {}
+func (r *EVT1PrerequisiteRequirement) requirementSpan() Span { return r.Span }
+
+type EVT1ConceptDecl struct {
+	Name         string                   `json:"name"`
+	TypeParam    string                   `json:"type_param"`
+	Requirements []EVT1ConceptRequirement `json:"requirements,omitempty"`
+	Span         Span                     `json:"span"`
+}
+
+type EVT1ConceptAssertion struct {
+	ConceptName string   `json:"concept_name"`
+	ConcreteType EVT1Type `json:"concrete_type"`
+	Span        Span     `json:"span"`
+}
+
 type EVT1FunctionDecl struct {
 	Name       string      `json:"name"`
 	ReturnType EVT1Type    `json:"return_type"`
@@ -77,10 +193,13 @@ type EVT1FunctionDecl struct {
 }
 
 type EVT1Module struct {
-	Path      string             `json:"path"`
-	Imports   []string           `json:"imports,omitempty"`
-	Enums     []EVT1EnumDecl     `json:"enums,omitempty"`
-	Functions []EVT1FunctionDecl `json:"functions,omitempty"`
+	Path       string                 `json:"path"`
+	Imports    []string               `json:"imports,omitempty"`
+	Structs    []EVT1StructDecl       `json:"structs,omitempty"`
+	Enums      []EVT1EnumDecl         `json:"enums,omitempty"`
+	Concepts   []EVT1ConceptDecl      `json:"concepts,omitempty"`
+	Assertions []EVT1ConceptAssertion `json:"assertions,omitempty"`
+	Functions  []EVT1FunctionDecl     `json:"functions,omitempty"`
 }
 
 type EVT1Block struct {
@@ -88,7 +207,7 @@ type EVT1Block struct {
 	Span       Span            `json:"span"`
 }
 
-func (*EVT1Block) evt1Statement()      {}
+func (*EVT1Block) evt1Statement()        {}
 func (s *EVT1Block) statementSpan() Span { return s.Span }
 
 type EVT1Statement interface {
@@ -97,22 +216,30 @@ type EVT1Statement interface {
 }
 
 type EVT1VarDecl struct {
-	Type  EVT1Type     `json:"type"`
-	Name  string       `json:"name"`
-	Value EVT1Expr     `json:"value"`
-	Span  Span         `json:"span"`
-	Typed *EVT1TypedID `json:"typed,omitempty"`
+	Type  EVT1Type `json:"type"`
+	Name  string   `json:"name"`
+	Value EVT1Expr `json:"value"`
+	Span  Span     `json:"span"`
 }
 
-func (*EVT1VarDecl) evt1Statement()      {}
+func (*EVT1VarDecl) evt1Statement()        {}
 func (s *EVT1VarDecl) statementSpan() Span { return s.Span }
+
+type EVT1AssignStmt struct {
+	Target EVT1Expr `json:"target"`
+	Value  EVT1Expr `json:"value"`
+	Span   Span     `json:"span"`
+}
+
+func (*EVT1AssignStmt) evt1Statement()        {}
+func (s *EVT1AssignStmt) statementSpan() Span { return s.Span }
 
 type EVT1ReturnStmt struct {
 	Value EVT1Expr `json:"value,omitempty"`
 	Span  Span     `json:"span"`
 }
 
-func (*EVT1ReturnStmt) evt1Statement()      {}
+func (*EVT1ReturnStmt) evt1Statement()        {}
 func (s *EVT1ReturnStmt) statementSpan() Span { return s.Span }
 
 type EVT1ExprStmt struct {
@@ -120,16 +247,16 @@ type EVT1ExprStmt struct {
 	Span  Span     `json:"span"`
 }
 
-func (*EVT1ExprStmt) evt1Statement()      {}
+func (*EVT1ExprStmt) evt1Statement()        {}
 func (s *EVT1ExprStmt) statementSpan() Span { return s.Span }
 
 type EVT1MatchStmt struct {
-	Subject EVT1Expr          `json:"subject"`
+	Subject EVT1Expr           `json:"subject"`
 	Arms    []EVT1StatementArm `json:"arms"`
-	Span    Span              `json:"span"`
+	Span    Span               `json:"span"`
 }
 
-func (*EVT1MatchStmt) evt1Statement()      {}
+func (*EVT1MatchStmt) evt1Statement()        {}
 func (s *EVT1MatchStmt) statementSpan() Span { return s.Span }
 
 type EVT1StatementArm struct {
@@ -159,12 +286,20 @@ func (*EVT1NameExpr) evt1Expr()     {}
 func (e *EVT1NameExpr) exprSpan() Span { return e.Span }
 
 type EVT1IntLiteral struct {
-	Value int `json:"value"`
+	Value int  `json:"value"`
 	Span  Span `json:"span"`
 }
 
 func (*EVT1IntLiteral) evt1Expr()     {}
 func (e *EVT1IntLiteral) exprSpan() Span { return e.Span }
+
+type EVT1BoolLiteral struct {
+	Value bool `json:"value"`
+	Span  Span `json:"span"`
+}
+
+func (*EVT1BoolLiteral) evt1Expr()     {}
+func (e *EVT1BoolLiteral) exprSpan() Span { return e.Span }
 
 type EVT1FieldExpr struct {
 	Receiver EVT1Expr `json:"receiver"`
@@ -204,6 +339,15 @@ type EVT1ConstructExpr struct {
 func (*EVT1ConstructExpr) evt1Expr()     {}
 func (e *EVT1ConstructExpr) exprSpan() Span { return e.Span }
 
+type EVT1StructConstructExpr struct {
+	StructName string     `json:"struct_name"`
+	Args       []EVT1Expr `json:"args,omitempty"`
+	Span       Span       `json:"span"`
+}
+
+func (*EVT1StructConstructExpr) evt1Expr()     {}
+func (e *EVT1StructConstructExpr) exprSpan() Span { return e.Span }
+
 type EVT1MatchExpr struct {
 	Subject EVT1Expr      `json:"subject"`
 	Arms    []EVT1ExprArm `json:"arms"`
@@ -219,29 +363,30 @@ type EVT1ExprArm struct {
 	Span    Span        `json:"span"`
 }
 
-type EVT1TypedID struct {
-	Name string   `json:"name"`
-	Type EVT1Type `json:"type"`
-}
-
-type EVT1TypedExpr struct {
-	Type EVT1Type `json:"type"`
-	Kind string   `json:"kind"`
-	Span Span     `json:"span"`
-}
-
 type EVT1MIR struct {
-	Schema    string             `json:"schema"`
-	Module    string             `json:"module"`
-	Enums     []EVT1MIREnum      `json:"enums"`
-	Functions []EVT1MIRFunction  `json:"functions"`
+	Schema     string                `json:"schema"`
+	Module     string                `json:"module"`
+	Structs    []EVT1MIRStruct       `json:"structs,omitempty"`
+	Enums      []EVT1MIREnum         `json:"enums,omitempty"`
+	Concepts   []EVT1MIRConcept      `json:"concepts,omitempty"`
+	Assertions []EVT1MIRAssertion    `json:"assertions,omitempty"`
+	Functions  []EVT1MIRFunction     `json:"functions"`
+}
+
+type EVT1MIRStruct struct {
+	Name       string         `json:"name"`
+	CName      string         `json:"c_name"`
+	Immovable  bool           `json:"immovable"`
+	Copyable   bool           `json:"copyable"`
+	Fields     []EVT1MIRName  `json:"fields,omitempty"`
+	SourceSpan Span           `json:"source_span"`
 }
 
 type EVT1MIREnum struct {
-	Name       string             `json:"name"`
-	CName      string             `json:"c_name"`
-	SourceSpan Span               `json:"source_span"`
-	Variants   []EVT1MIRVariant   `json:"variants"`
+	Name       string           `json:"name"`
+	CName      string           `json:"c_name"`
+	SourceSpan Span             `json:"source_span"`
+	Variants   []EVT1MIRVariant `json:"variants"`
 }
 
 type EVT1MIRVariant struct {
@@ -257,46 +402,75 @@ type EVT1MIRName struct {
 	Type EVT1Type `json:"type"`
 }
 
+type EVT1MIRConcept struct {
+	Name         string                      `json:"name"`
+	TypeParam    string                      `json:"type_param"`
+	Requirements []EVT1MIRConceptRequirement `json:"requirements,omitempty"`
+	SourceSpan   Span                        `json:"source_span"`
+}
+
+type EVT1MIRConceptRequirement struct {
+	Kind       string        `json:"kind"`
+	Name       string        `json:"name"`
+	ReturnType *EVT1Type     `json:"return_type,omitempty"`
+	Params     []EVT1MIRName `json:"params,omitempty"`
+	Detail     string        `json:"detail,omitempty"`
+	SourceSpan Span          `json:"source_span"`
+}
+
+type EVT1MIRAssertion struct {
+	ConceptName  string   `json:"concept_name"`
+	ConcreteType EVT1Type `json:"concrete_type"`
+	Satisfied    bool     `json:"satisfied"`
+	SourceSpan   Span     `json:"source_span"`
+}
+
 type EVT1MIRFunction struct {
-	Name       string            `json:"name"`
-	ReturnType EVT1Type          `json:"return_type"`
-	Params     []EVT1MIRName     `json:"params,omitempty"`
+	Name       string             `json:"name"`
+	ReturnType EVT1Type           `json:"return_type"`
+	Params     []EVT1MIRName      `json:"params,omitempty"`
 	Operations []EVT1MIROperation `json:"operations"`
-	SourceSpan Span              `json:"source_span"`
+	SourceSpan Span               `json:"source_span"`
 }
 
 type EVT1MIROperation struct {
-	ID         string   `json:"id"`
-	Kind       string   `json:"kind"`
-	Type       string   `json:"type,omitempty"`
-	Detail     string   `json:"detail,omitempty"`
-	SourceSpan Span     `json:"source_span"`
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Type       string `json:"type,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	SourceSpan Span   `json:"source_span"`
 }
 
 type evt1Env struct {
 	enums             map[string]EVT1EnumDecl
+	structs           map[string]EVT1StructDecl
 	functions         map[string]EVT1FunctionDecl
-	recordFields      map[string]map[string]EVT1Type
+	concepts          map[string]EVT1ConceptDecl
+	fieldSets         map[string]map[string]EVT1Type
 	escapedArmBinding map[string]Span
+	copyableCache     map[string]bool
 }
 
 func newEVT1Env() *evt1Env {
 	intType := EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
 	return &evt1Env{
 		enums:     map[string]EVT1EnumDecl{},
+		structs:   map[string]EVT1StructDecl{},
 		functions: map[string]EVT1FunctionDecl{},
-		recordFields: map[string]map[string]EVT1Type{
+		concepts:  map[string]EVT1ConceptDecl{},
+		fieldSets: map[string]map[string]EVT1Type{
 			"VulkanError": {
 				"Code": intType,
 			},
 		},
 		escapedArmBinding: map[string]Span{},
+		copyableCache:     map[string]bool{},
 	}
 }
 
 func evt1BuiltinType(name string, span Span) (EVT1Type, bool) {
 	switch name {
-	case "int", "void", "PipelineLayout", "Pipeline", "VulkanError":
+	case "int", "void", "bool", "uint64", "PipelineLayout", "Pipeline", "VulkanError", "VkBuffer", "VkCommandPool":
 		return EVT1Type{Name: name, Kind: EVT1TypeBuiltin, Span: span}, true
 	default:
 		return EVT1Type{}, false
@@ -364,10 +538,6 @@ func evt1Require(cond bool, code, message string, span Span) error {
 
 func evt1TypeNameOrDie(t EVT1Type) string {
 	return t.String()
-}
-
-func evt1Typed(kind string, t EVT1Type, span Span) *EVT1TypedExpr {
-	return &EVT1TypedExpr{Kind: kind, Type: t, Span: span}
 }
 
 func evt1Unexpected(expr EVT1Expr) string {

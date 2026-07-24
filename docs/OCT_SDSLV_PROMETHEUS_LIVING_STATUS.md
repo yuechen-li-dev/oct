@@ -20,8 +20,11 @@ compiler/native viability. M1D remains honestly classified as
 `MEANINGFUL PROGRESSION`: one private executable linked and invoked the real
 handwritten and generated kernel-54 paths on an admitted live runtime, but the
 proposed M1E handwritten create-path failure seam is not the active
-assignment. The active assignment is **Concept/Vulkan EVT1 M1A**: payload
-enums and exhaustive `match`. Production remains handwritten.
+assignment. EVT1 M1A is accepted and closed. **Concept/Vulkan EVT1 M1B-A** is
+now complete: mutable ordinary structs, bounded `immovable struct`, named
+compile-time-only concepts, prerequisite concepts, and explicit concrete
+satisfaction assertions all run through the EVT1 typed MIR and deterministic
+C11 path. Production remains handwritten.
 
 The owner direction is:
 
@@ -91,25 +94,34 @@ Raw Vulkan C is no longer the intended authoring surface for new Prometheus
 reactors. Existing handwritten mechanisms remain production authority until a
 generated path proves behavioral and failure-path equivalence.
 
-## Next bounded slice
+## Current bounded slice
 
-Concept/Vulkan EVT1 M1A adds:
+Concept/Vulkan EVT1 M1B-A now adds:
 
-- one real payload-enum and exhaustive-`match` language vertical from
-  `.concept` source through typed MIR, deterministic C11, native compilation,
-  and executable behavior;
-- mixed unit, single-payload, multi-payload, and enum-payload variants;
-- qualified variant construction only;
-- expression-form and statement-form `match`;
-- explicit tag-plus-union C11 lowering with single-evaluation guarantees;
-- focused hardware-independent and Vulkan-shaped specimens.
+- ordinary mutable `struct` declaration, positional construction, field read,
+  field mutation, value-copy, nested-field access, and deterministic transparent
+  C11 representation;
+- bounded `immovable struct` semantics: mutable final-storage construction,
+  borrow-based mutation, and explicit rejection of copy, whole-value
+  assignment, by-value passing/return, embedding, and enum payload use;
+- named one-parameter `concept` declarations, free-function operation
+  requirements, prerequisite concepts, cycle rejection, and exact-signature
+  checking;
+- declaration-level concrete satisfaction assertions that remain
+  compile-time-only and emit no runtime tables, vtables, witness objects, or
+  public symbols;
+- focused hardware-independent and Vulkan-shaped specimens proving structs,
+  immovability, concept satisfaction, and preserved M1A enum/`match`
+  behavior.
 
 The owner-preserved paused states are unchanged:
 
 - Prometheus RQ-M1 physical batching is preserved but paused;
 - DVT-2 optimization is preserved but paused;
-- EVT1 M1B (concepts-first templates and compile-time evaluation) is deferred
-  until after M1A;
+- EVT1 M1B-B constrained templates and deterministic monomorphization are
+  deferred until after M1B-A;
+- EVT1 M1B-C bounded pure compile-time evaluation is deferred until after
+  M1B-B;
 - the previously proposed M1E failure-equivalence seam is not the current
   assignment.
 

@@ -19,11 +19,18 @@ The accepted proof foundation is:
   assignment.
 
 The active assignment is now recorded in
-`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1A_PAYLOAD_ENUMS_AND_EXHAUSTIVE_MATCH.md`:
+`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_A_MUTABLE_STRUCTS_AND_NAMED_CONCEPT_REQUIREMENTS.md`:
 
 ```text
-Concept/Vulkan EVT1 M1A — Payload Enums and Exhaustive Match
+Concept/Vulkan EVT1 M1B-A — Mutable Structs and Named Concept Requirements
 ```
+
+M1A is accepted and closed. M1B-A adds ordinary mutable value structs,
+bounded `immovable struct`, one-parameter named concepts, prerequisite
+concepts, exact-signature requirement matching, and explicit compile-time-only
+concrete satisfaction assertions. EVT1 M1B-B constrained templates and
+deterministic monomorphization remain deferred. EVT1 M1B-C bounded pure
+compile-time evaluation remains deferred. Production remains handwritten.
 
 Concept/Vulkan is the bounded host-side mechanism profile implemented through
 the working Go Oct/SDSL-V compiler lineage. Dominatus remains the Prometheus

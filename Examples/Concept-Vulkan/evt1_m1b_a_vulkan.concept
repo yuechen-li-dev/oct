@@ -1,0 +1,84 @@
+profile Vulkan;
+
+struct BufferRange
+{
+    VkBuffer buffer;
+    int offset;
+    int size;
+};
+
+immovable struct CommandPoolState
+{
+    VkCommandPool pool;
+    bool initialized;
+};
+
+enum ResourceEvent
+{
+    Idle,
+    Range(BufferRange range),
+    Failed(int code)
+}
+
+concept Validatable<T>
+{
+    requires bool IsValid(borrow const T value);
+}
+
+concept Destroyable<T>
+{
+    requires void Destroy(borrow T value);
+}
+
+concept VulkanResource<T>
+{
+    requires Validatable<T>;
+    requires Destroyable<T>;
+}
+
+bool IsValid(borrow const CommandPoolState value);
+void Destroy(borrow CommandPoolState value);
+
+requires VulkanResource<CommandPoolState>;
+
+BufferRange MakeRange(VkBuffer buffer, int offset, int size)
+{
+    BufferRange range = BufferRange{buffer, offset, size};
+    return range;
+}
+
+void MarkInitialized(borrow CommandPoolState state)
+{
+    state.initialized = true;
+}
+
+bool BuildAndValidate(VkCommandPool pool)
+{
+    CommandPoolState state = CommandPoolState{pool, false};
+    MarkInitialized(state);
+    return IsValid(state);
+}
+
+int DescribeEvent(ResourceEvent event)
+{
+    return match (event)
+    {
+        ResourceEvent::Idle => 0,
+        ResourceEvent::Range(range) => range.offset + range.size,
+        ResourceEvent::Failed(code) => code,
+    };
+}
+
+int ClassifyRange(VkBuffer buffer)
+{
+    BufferRange range = BufferRange{buffer, 2, 3};
+    ResourceEvent event = ResourceEvent::Range(range);
+    return DescribeEvent(event);
+}
+
+void CleanupState(VkCommandPool pool)
+{
+    CommandPoolState state = CommandPoolState{pool, false};
+    MarkInitialized(state);
+    Destroy(state);
+}
