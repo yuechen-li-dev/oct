@@ -146,3 +146,27 @@ The exact Stage 4 candidate boundary is the SGEMM-to-reactor execution handoff: 
 weight ownership, required generations/hashes, and any snapshot or preparation contract
 that a second reactor would genuinely consume. It is not begun here; no slots, sessions,
 leases, weight registries, binding snapshots, plans, or reactor registries were introduced.
+
+## Current repository handoff — Stage 4
+
+Stage 4 is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE4_RESOURCE_STATE_AND_EXECUTION_HANDOFF.md`.
+It keeps Dominatus as the authority for SGEMM path/compute, layout/precision,
+transfer, buffering, and lease decisions; the M35 mechanical branch now consumes
+the committed visible Dominatus snapshot. SGEMM uses one private bounded handoff
+containing only resolved mechanical command facts (dimensions, selected mode/
+variant, slot, descriptor ranges, pipeline, dispatch geometry, and transfer wait
+dependency); the pre-existing lease grant remains the final admission edge before
+dispatch. `prom_vk_runtime` remains the common
+mechanical Vulkan owner, while SGEMM retains its typed roles and execution state.
+
+No M46/M49 weight generation/hash behavior, `-7406`, allocation/residency policy,
+shader/package/generated authority, ABI, or model topology changed. The exact M34b
+variant-4 final-column witness remains an inherited deterministic failure: expected
+`1.6458333730697632`, observed `0`, with the related A2x4 footprint mismatch also
+unchanged. Required-live Gemma, payload-backed teardown/Z-Image, and Linux remain
+unclaimed.
+
+The exact Stage 5 candidate boundary is a demonstrated shared mechanical
+allocation/cleanup substrate only; it must not generalize SGEMM weight semantics
+or add a reactor framework.

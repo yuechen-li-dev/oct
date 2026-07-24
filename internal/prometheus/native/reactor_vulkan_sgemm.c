@@ -4507,6 +4507,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_buffering_selector_facts buffering_facts;
   prom_dom_sgemm_buffering_projection buffering_projection;
   prom_buffering_selector_decision buffering_decision;
+  prom_dom_sgemm_m35_snapshot buffering_snapshot;
   prom_occupancy_selector_facts occupancy_facts;
   prom_occupancy_selector_decision occupancy_decision;
   prom_dom_transfer_queue_facts transfer_queue_facts;
@@ -4521,6 +4522,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   prom_dom_sgemm_path_compute_projection path_compute_projection;
   prom_dom_sgemm_path_compute_decision path_compute_decision;
   prom_dom_sgemm_path_compute_snapshot path_compute_snapshot;
+  prom_sgemm_execution_handoff execution_handoff;
   prom_buffering_mode buffering_mode = PROM_BUFFERING_MODE_FIXED_DOUBLE_DEFAULT;
   prom_variance_class variance_class = PROM_VARIANCE_MODERATE;
   prom_predictability_class predictability_class = PROM_PREDICTABILITY_STABLE;
@@ -5211,41 +5213,40 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   }
   prom_dom_sgemm_commit(&rt->blackboard);
   {
-    prom_dom_sgemm_m35_snapshot m35_snapshot;
-    if (prom_dom_sgemm_read_visible_m35(&rt->blackboard, &m35_snapshot) == 0u) {
+    if (prom_dom_sgemm_read_visible_m35(&rt->blackboard, &buffering_snapshot) == 0u) {
       prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, PROM_ERROR);
       return PROM_ERROR;
     }
-    rt->slot_diag.m35_selected_mode = m35_snapshot.selected_mode;
-    rt->slot_diag.m35_fixed_feasible = m35_snapshot.fixed_feasible;
-    rt->slot_diag.m35_pull_lag_feasible = m35_snapshot.pull_lag_feasible;
-    rt->slot_diag.m35_serial_feasible = m35_snapshot.serial_feasible;
-    rt->slot_diag.m35_fixed_rejected = m35_snapshot.fixed_rejected;
-    rt->slot_diag.m35_pull_lag_rejected = m35_snapshot.pull_lag_rejected;
-    rt->slot_diag.m35_serial_rejected = m35_snapshot.serial_rejected;
-    rt->slot_diag.m35_fixed_score = m35_snapshot.fixed_score;
-    rt->slot_diag.m35_pull_lag_score = m35_snapshot.pull_lag_score;
-    rt->slot_diag.m35_serial_score = m35_snapshot.serial_score;
-    rt->slot_diag.m35_reason_code = m35_snapshot.reason_code;
-    rt->slot_diag.m35_final_reason_code = m35_snapshot.final_reason_code;
-    rt->slot_diag.m35_fixed_double_rejection_reason = m35_snapshot.fixed_double_rejection_reason;
-    rt->slot_diag.m35_pull_lag_rejection_reason = m35_snapshot.pull_lag_rejection_reason;
-    rt->slot_diag.m35_serial_jit_rejection_reason = m35_snapshot.serial_jit_rejection_reason;
-    rt->slot_diag.m35_memory_budget_slots_permille = m35_snapshot.memory_budget_slots_permille;
-    rt->slot_diag.m35_required_fixed_slots_permille = m35_snapshot.required_fixed_slots_permille;
-    rt->slot_diag.m35_required_pull_lag_slots_permille = m35_snapshot.required_pull_lag_peak_slots_permille;
-    rt->slot_diag.m35_required_serial_slots_permille = m35_snapshot.required_serial_slots_permille;
-    rt->slot_diag.m35_fixed_double_headroom_slots_permille = (int64_t)m35_snapshot.fixed_double_headroom_slots_permille;
-    rt->slot_diag.m35_pull_lag_headroom_slots_permille = (int64_t)m35_snapshot.pull_lag_headroom_slots_permille;
-    rt->slot_diag.m35_serial_jit_headroom_slots_permille = (int64_t)m35_snapshot.serial_jit_headroom_slots_permille;
+    rt->slot_diag.m35_selected_mode = buffering_snapshot.selected_mode;
+    rt->slot_diag.m35_fixed_feasible = buffering_snapshot.fixed_feasible;
+    rt->slot_diag.m35_pull_lag_feasible = buffering_snapshot.pull_lag_feasible;
+    rt->slot_diag.m35_serial_feasible = buffering_snapshot.serial_feasible;
+    rt->slot_diag.m35_fixed_rejected = buffering_snapshot.fixed_rejected;
+    rt->slot_diag.m35_pull_lag_rejected = buffering_snapshot.pull_lag_rejected;
+    rt->slot_diag.m35_serial_rejected = buffering_snapshot.serial_rejected;
+    rt->slot_diag.m35_fixed_score = buffering_snapshot.fixed_score;
+    rt->slot_diag.m35_pull_lag_score = buffering_snapshot.pull_lag_score;
+    rt->slot_diag.m35_serial_score = buffering_snapshot.serial_score;
+    rt->slot_diag.m35_reason_code = buffering_snapshot.reason_code;
+    rt->slot_diag.m35_final_reason_code = buffering_snapshot.final_reason_code;
+    rt->slot_diag.m35_fixed_double_rejection_reason = buffering_snapshot.fixed_double_rejection_reason;
+    rt->slot_diag.m35_pull_lag_rejection_reason = buffering_snapshot.pull_lag_rejection_reason;
+    rt->slot_diag.m35_serial_jit_rejection_reason = buffering_snapshot.serial_jit_rejection_reason;
+    rt->slot_diag.m35_memory_budget_slots_permille = buffering_snapshot.memory_budget_slots_permille;
+    rt->slot_diag.m35_required_fixed_slots_permille = buffering_snapshot.required_fixed_slots_permille;
+    rt->slot_diag.m35_required_pull_lag_slots_permille = buffering_snapshot.required_pull_lag_peak_slots_permille;
+    rt->slot_diag.m35_required_serial_slots_permille = buffering_snapshot.required_serial_slots_permille;
+    rt->slot_diag.m35_fixed_double_headroom_slots_permille = (int64_t)buffering_snapshot.fixed_double_headroom_slots_permille;
+    rt->slot_diag.m35_pull_lag_headroom_slots_permille = (int64_t)buffering_snapshot.pull_lag_headroom_slots_permille;
+    rt->slot_diag.m35_serial_jit_headroom_slots_permille = (int64_t)buffering_snapshot.serial_jit_headroom_slots_permille;
   }
-  if (buffering_decision.success == 0u) {
+  if (buffering_snapshot.success == 0u) {
     rt->slot_diag.m35_rejection_count += 1u;
     rt->slot_diag.m35_budget_rejection_count += 1u;
-    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(buffering_decision.reason_code));
+    prom_vk_set_status(out_stage, out_detail_code, PROM_STAGE_TRANSFER_IN, prom_buffering_reason_to_detail(buffering_snapshot.reason_code));
     return PROM_ERROR;
   }
-  buffering_mode = buffering_decision.selected_mode;
+  buffering_mode = (prom_buffering_mode)buffering_snapshot.selected_mode;
   if (buffering_mode == PROM_BUFFERING_MODE_PULL_LAG_PRESSURE) {
     rt->slot_diag.m35_pull_lag_predicted_demand_proxy_units += work_units;
     rt->slot_diag.m35_pull_lag_transfer_lead_proxy_units += work_units / 4u;
@@ -5688,19 +5689,35 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     }
   }
 
-  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, selected_pipeline);
+  /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
+  dispatch_geometry = audit_override != NULL && audit_override->descriptor != NULL
+                          ? prom_sgemm_dispatch_geometry_for_metadata(m, n, &audit_override->descriptor->dispatch)
+                          : prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
+  execution_handoff = prom_sgemm_make_execution_handoff(m,
+                                                         n,
+                                                         k,
+                                                         compute_k,
+                                                         (uint32_t)selected_path,
+                                                         (uint32_t)compute_mode,
+                                                         requested_variant,
+                                                         work_slot_id,
+                                                         use_dedicated_transfer_upload,
+                                                         selected_pipeline,
+                                                         rt->descriptor_set,
+                                                         buffer_infos,
+                                                         &dispatch_geometry);
+  vkCmdBindPipeline(rt->command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, execution_handoff.pipeline);
   vkCmdBindDescriptorSets(rt->command_buffer,
                           VK_PIPELINE_BIND_POINT_COMPUTE,
                           rt->pipeline_layout,
                           0u,
                           1u,
-                          &rt->descriptor_set,
+                          &execution_handoff.descriptor_set,
                           0u,
                           NULL);
-
-  push.m = m;
-  push.n = n;
-  push.k = compute_k;
+  push.m = execution_handoff.m;
+  push.n = execution_handoff.n;
+  push.k = execution_handoff.compute_k;
   vkCmdPushConstants(rt->command_buffer,
                      rt->pipeline_layout,
                      VK_SHADER_STAGE_COMPUTE_BIT,
@@ -5740,14 +5757,10 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 0u);
   }
 
-  /* Dispatch/indexing contract: x maps rows (m), y maps columns (n); host and shader must match this. */
-  dispatch_geometry = audit_override != NULL && audit_override->descriptor != NULL
-                          ? prom_sgemm_dispatch_geometry_for_metadata(m, n, &audit_override->descriptor->dispatch)
-                          : prom_sgemm_dispatch_geometry_for_variant(requested_variant, m, n);
   vkCmdDispatch(rt->command_buffer,
-                dispatch_geometry.groups_x,
-                dispatch_geometry.groups_y,
-                dispatch_geometry.groups_z);
+                execution_handoff.dispatch_geometry.groups_x,
+                execution_handoff.dispatch_geometry.groups_y,
+                execution_handoff.dispatch_geometry.groups_z);
   if (rt->timestamp_query_supported != 0u && rt->sgemm_timestamp_query_pool != VK_NULL_HANDLE) {
     vkCmdWriteTimestamp(rt->command_buffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, rt->sgemm_timestamp_query_pool, 1u);
   }
@@ -5845,7 +5858,7 @@ static int prom_reactor_runtime_sgemm_impl_with_variant(void* handle,
   submit_info.commandBufferCount = 1u;
   submit_info.pCommandBuffers = &rt->command_buffer;
   dispatch_submit_begin_ns = prom_wall_clock_now_ns();
-  if (use_dedicated_transfer_upload != 0u) {
+  if (execution_handoff.wait_for_transfer != 0u) {
     wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     submit_info.waitSemaphoreCount = 1u;
     submit_info.pWaitSemaphores = &rt->transfer_ready_semaphore;

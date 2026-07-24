@@ -1,4 +1,5 @@
 #include "../reactor_dominatus_sgemm_adapter.h"
+#include "../reactor_vulkan_sgemm_internal.h"
 #include "test_harness.h"
 
 #include <cstdint>
@@ -1053,4 +1054,39 @@ FACT(PrometheusDominatusSgemmAdapter_P13M9_ResourceLeaseStagedVisibleAndLifecycl
     ASSERT_TRUE(prom_dom_sgemm_read_visible_resource_lease_diagnostics(&board, &snapshot) == 1u, "yield diagnostics should read");
     ASSERT_EQUAL(static_cast<std::uint32_t>(PROM_LEASE_STATE_YIELDED), snapshot.decision.lease_state, "yield state should be visible");
     ASSERT_EQUAL(1u, snapshot.yield_count, "yield counter should increment");
+}
+
+FACT(PrometheusStage4_ExecutionHandoffPreservesResolvedMechanicalValues)
+{
+    VkDescriptorBufferInfo inputs[3]{};
+    prom_sgemm_dispatch_geometry geometry{};
+    inputs[0].offset = 16u;
+    inputs[0].range = 64u;
+    inputs[1].offset = 32u;
+    inputs[1].range = 128u;
+    inputs[2].offset = 48u;
+    inputs[2].range = 192u;
+    geometry.groups_x = 3u;
+    geometry.groups_y = 5u;
+    geometry.groups_z = 1u;
+    geometry.logical_m_per_group = 8u;
+    geometry.logical_n_per_group = 8u;
+
+    const prom_sgemm_execution_handoff handoff = prom_sgemm_make_execution_handoff(
+        3u, 17u, 7u, 7u,
+        static_cast<std::uint32_t>(PROM_VK_PATH_STAGED_UPLOAD_READBACK),
+        static_cast<std::uint32_t>(PROM_VK_COMPUTE_TILED),
+        4u, 1u, 1u, VK_NULL_HANDLE, VK_NULL_HANDLE, inputs, &geometry);
+
+    ASSERT_EQUAL(3u, handoff.m, "handoff must preserve resolved M");
+    ASSERT_EQUAL(17u, handoff.n, "handoff must preserve resolved N");
+    ASSERT_EQUAL(7u, handoff.k, "handoff must preserve logical K");
+    ASSERT_EQUAL(7u, handoff.compute_k, "handoff must preserve mechanical K");
+    ASSERT_EQUAL(4u, handoff.selected_variant, "handoff must preserve the selected variant without reselection");
+    ASSERT_EQUAL(1u, handoff.slot_id, "handoff must preserve the already-selected SGEMM slot");
+    ASSERT_EQUAL(1u, handoff.wait_for_transfer, "handoff must preserve the synchronization dependency");
+    ASSERT_EQUAL(inputs[1].offset, handoff.descriptor_inputs[1].offset, "handoff must preserve descriptor offsets");
+    ASSERT_EQUAL(inputs[2].range, handoff.descriptor_inputs[2].range, "handoff must preserve descriptor ranges");
+    ASSERT_EQUAL(geometry.groups_x, handoff.dispatch_geometry.groups_x, "handoff must preserve dispatch X");
+    ASSERT_EQUAL(geometry.groups_y, handoff.dispatch_geometry.groups_y, "handoff must preserve dispatch Y");
 }

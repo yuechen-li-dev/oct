@@ -240,6 +240,69 @@ typedef struct prom_buffer_artifact_key {
   uint64_t required_bytes;
 } prom_buffer_artifact_key;
 
+/*
+ * This is the deliberately narrow boundary between a committed Dominatus
+ * decision and mechanical SGEMM command recording. It is a value snapshot,
+ * not a plan, registry, or second lifecycle state machine: the mechanism may
+ * only bind, record, submit, and report the already-resolved values below.
+ *
+ * Logical identity, content hash, generation, arena allocation, Vulkan
+ * buffer, descriptor binding, and in-flight ownership remain separate. The
+ * descriptor inputs are a mechanical binding view; they do not name a tensor
+ * or weight and they do not carry ownership.
+ */
+typedef struct prom_sgemm_execution_handoff {
+  uint32_t m;
+  uint32_t n;
+  uint32_t k;
+  uint32_t compute_k;
+  uint32_t selected_path;
+  uint32_t compute_mode;
+  uint32_t selected_variant;
+  uint32_t slot_id;
+  uint32_t wait_for_transfer;
+  VkPipeline pipeline;
+  VkDescriptorSet descriptor_set;
+  VkDescriptorBufferInfo descriptor_inputs[3];
+  prom_sgemm_dispatch_geometry dispatch_geometry;
+} prom_sgemm_execution_handoff;
+
+static inline prom_sgemm_execution_handoff prom_sgemm_make_execution_handoff(
+    uint32_t m,
+    uint32_t n,
+    uint32_t k,
+    uint32_t compute_k,
+    uint32_t selected_path,
+    uint32_t compute_mode,
+    uint32_t selected_variant,
+    uint32_t slot_id,
+    uint32_t wait_for_transfer,
+    VkPipeline pipeline,
+    VkDescriptorSet descriptor_set,
+    const VkDescriptorBufferInfo descriptor_inputs[3],
+    const prom_sgemm_dispatch_geometry* dispatch_geometry) {
+  prom_sgemm_execution_handoff handoff;
+  memset(&handoff, 0, sizeof(handoff));
+  handoff.m = m;
+  handoff.n = n;
+  handoff.k = k;
+  handoff.compute_k = compute_k;
+  handoff.selected_path = selected_path;
+  handoff.compute_mode = compute_mode;
+  handoff.selected_variant = selected_variant;
+  handoff.slot_id = slot_id;
+  handoff.wait_for_transfer = wait_for_transfer;
+  handoff.pipeline = pipeline;
+  handoff.descriptor_set = descriptor_set;
+  if (descriptor_inputs != NULL) {
+    memcpy(handoff.descriptor_inputs, descriptor_inputs, sizeof(handoff.descriptor_inputs));
+  }
+  if (dispatch_geometry != NULL) {
+    handoff.dispatch_geometry = *dispatch_geometry;
+  }
+  return handoff;
+}
+
 typedef struct prom_sgemm_controller_defaults {
   uint32_t lookahead_default;
   uint32_t lookahead_min;

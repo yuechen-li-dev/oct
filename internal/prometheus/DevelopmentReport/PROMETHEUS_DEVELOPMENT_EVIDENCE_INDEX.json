@@ -50,6 +50,13 @@
       "status": "current",
       "superseding_authority": null,
       "role": "common Vulkan runtime/device ownership boundary, SGEMM contract, lifecycle evidence, and deferred-live disclosure"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE4_RESOURCE_STATE_AND_EXECUTION_HANDOFF.md",
+      "subsystem_or_era": "Stage 4 resource state and execution handoff",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "Dominatus-controlled SGEMM resource-state authority, bounded execution handoff, and retained typed-role boundary"
     }
   ],
   "current_reviewer_handoffs": [
@@ -82,6 +89,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE3_VULKAN_RUNTIME_OWNERSHIP_EXTRACTION.md",
       "subsystem_or_era": "Stage 3",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE4_RESOURCE_STATE_AND_EXECUTION_HANDOFF.md",
+      "subsystem_or_era": "Stage 4",
       "status": "current",
       "superseding_authority": null
     }
