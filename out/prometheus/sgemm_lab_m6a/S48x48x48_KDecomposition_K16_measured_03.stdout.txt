@@ -1,8 +1,0 @@
-RUN  PrometheusSgemmAlgorithmLab.M6a_S48x48x48_KDecomposition_K16 (prometheus_sgemm_algorithm_lab_m4.octest)
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1016800ns
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1169400ns
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1733300ns
-110592
-0
-PASS PrometheusSgemmAlgorithmLab.M6a_S48x48x48_KDecomposition_K16 797.092ms (prometheus_sgemm_algorithm_lab_m4.octest)
-Result: 1 benchmark(s) passed, 0 failed

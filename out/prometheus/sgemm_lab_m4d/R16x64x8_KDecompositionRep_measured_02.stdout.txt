@@ -1,9 +1,0 @@
-RUN  PrometheusSgemmAlgorithmLab.M4d_R16x64x8_KDecompositionRep (prometheus_sgemm_algorithm_lab_m4d.octest)
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1936500ns
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=502200ns
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1357400ns
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=930200ns
-8192
-0
-PASS PrometheusSgemmAlgorithmLab.M4d_R16x64x8_KDecompositionRep 904.066ms (prometheus_sgemm_algorithm_lab_m4d.octest)
-Result: 1 benchmark(s) passed, 0 failed

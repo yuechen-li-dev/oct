@@ -1,0 +1,205 @@
+{
+  "schema": "prometheus.development-evidence-index.v1",
+  "scope": "internal/prometheus/DevelopmentReport",
+  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; no bulk report moves are performed in Stage 1.",
+  "corpus": {
+    "tracked_file_count_at_stage0_checkpoint": 596,
+    "markdown_file_count_at_stage0_checkpoint": 218,
+    "artifact_file_count_at_stage0_checkpoint": 378,
+    "current_non_artifact_documents_at_stage0_checkpoint": 218
+  },
+  "current_authorities": [
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_FULL_ARCHITECTURE_AUDIT.md",
+      "subsystem_or_era": "full Prometheus architecture audit",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "primary architecture and sequencing authority"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md",
+      "subsystem_or_era": "Stage 0 lifecycle characterization",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "frozen executable vocabulary, counts, ABI/detail, and live-lane boundary"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md",
+      "subsystem_or_era": "G4 E2B M1 reviewer handoff",
+      "status": "current",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md",
+      "role": "current reviewer entry point; Stage 0 supersedes its immediate implementation advice"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE1_REPOSITORY_AND_GENERATED_AUTHORITY.md",
+      "subsystem_or_era": "Stage 1 repository and generated authority hygiene",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "repository policy, generated inventory, and next-pass boundary"
+    }
+  ],
+  "current_reviewer_handoffs": [
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md",
+      "subsystem_or_era": "G4 E2B M1",
+      "status": "current",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md"
+    }
+  ],
+  "current_validation_characterization": [
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md",
+      "subsystem_or_era": "Stage 0",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_FULL_ARCHITECTURE_AUDIT.md",
+      "subsystem_or_era": "architecture audit",
+      "status": "current",
+      "superseding_authority": null
+    }
+  ],
+  "historical_entries": [
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_DVT2_REVIEWER_HANDOFF.md",
+      "subsystem_or_era": "DVT2 Z-Image",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_FULL_ARCHITECTURE_AUDIT.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M0_GEMMA4_AUTHORITY.md",
+      "subsystem_or_era": "G4 E2B M0 Gemma",
+      "status": "superseded",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_R0_FORENSIC_ARCHITECTURE_AUDIT.md",
+      "subsystem_or_era": "R0 forensic architecture",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_FULL_ARCHITECTURE_AUDIT.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_R2D_BATCH_AUTHORITY_SWITCH.md",
+      "subsystem_or_era": "R2D batch authority",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_FULL_ARCHITECTURE_AUDIT.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_M34A_AUDIT_SHADER_REGISTRY.md",
+      "subsystem_or_era": "M34A shader registry",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_M48_MULTI_BLOCK_GOLDEN_PATH_EVT_CLOSEOUT.md",
+      "subsystem_or_era": "M48 multi-block closeout",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_SHADER_ID_POLICY.md",
+      "subsystem_or_era": "shader identity policy",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_FULL_ARCHITECTURE_AUDIT.md"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_EVT2_M2D_MAIN_TRANSFORMER_CHAIN.md",
+      "subsystem_or_era": "EVT2 M2D main transformer chain",
+      "status": "historical",
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md"
+    }
+  ],
+  "generated_or_measured_artifacts": [
+    {
+      "path": "internal/prometheus/DevelopmentReport/artifacts",
+      "subsystem_or_era": "all Prometheus development-report artifacts",
+      "status": "generated evidence",
+      "superseding_authority": null,
+      "scope_count_at_stage0_checkpoint": 378,
+      "classification": "durable measured, numerical, oracle, and generated evidence; retain unless a later owner decision archives it"
+    },
+    {
+      "path": "out/prometheus/native/p6c/summary.json",
+      "subsystem_or_era": "P6C benchmark authority",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus/native/p6c/summary.md",
+      "subsystem_or_era": "P6C benchmark authority",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus/sgemm_lab_m4d/summary.json",
+      "subsystem_or_era": "M4D SGEMM algorithm lab",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus/sgemm_lab_m4d/summary.md",
+      "subsystem_or_era": "M4D SGEMM algorithm lab",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus_fft_algorithm_lab/m1/m1_fft_cases.octagon",
+      "subsystem_or_era": "FFT M1 artifact audit",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus_fft_algorithm_lab/m1/m1_fft_plan_traces.octagon",
+      "subsystem_or_era": "FFT M1 artifact audit",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus_fft_algorithm_lab/m1/m1_fft_report.md",
+      "subsystem_or_era": "FFT M1 artifact audit",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/prometheus_fft_algorithm_lab/m1/m1_fft_results.octagon",
+      "subsystem_or_era": "FFT M1 artifact audit",
+      "status": "generated evidence",
+      "superseding_authority": null
+    },
+    {
+      "path": "out/test-artifacts/P13_M5_DVT2_Rtx3070ValidationArtifact/p13_dvt2_rtx3070_validation.txt",
+      "subsystem_or_era": "P13 DVT2 RTX 3070 validation",
+      "status": "generated evidence",
+      "superseding_authority": null
+    }
+  ],
+  "unknown_entries": [
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCURRENCY_FUTURE_DIRECTIONS.md",
+      "subsystem_or_era": "future concurrency direction",
+      "status": "unknown",
+      "superseding_authority": null,
+      "reason": "retained historical planning material; current applicability is not inferred from its filename"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_P14_PLUS_ROADMAP.md",
+      "subsystem_or_era": "P14+ roadmap",
+      "status": "unknown",
+      "superseding_authority": null,
+      "reason": "retained roadmap material; no current owner is asserted in Stage 1"
+    }
+  ],
+  "path_classification_rules": [
+    {
+      "path_prefix": "internal/prometheus/DevelopmentReport/artifacts/",
+      "status": "generated evidence",
+      "note": "Historical measured/oracle/generated artifacts; not runtime source and not deleted by Stage 1."
+    },
+    {
+      "path_prefix": "internal/prometheus/DevelopmentReport/",
+      "status": "historical unless listed above",
+      "note": "No report is current authority merely because its filename contains a milestone."
+    }
+  ]
+}

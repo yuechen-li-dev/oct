@@ -1,7 +1,0 @@
-RUN  PrometheusSgemmAlgorithmLab.EmitM4ChooseStrategySelections (prometheus_sgemm_algorithm_lab_m4.octest)
-PASS PrometheusSgemmAlgorithmLab.EmitM4ChooseStrategySelections (prometheus_sgemm_algorithm_lab_m4.octest)
-RUN  PrometheusSgemmAlgorithmLab.EmitM6DecisionProbeSelections (prometheus_sgemm_algorithm_lab_m4.octest)
-PASS PrometheusSgemmAlgorithmLab.EmitM6DecisionProbeSelections (prometheus_sgemm_algorithm_lab_m4.octest)
-RUN  PrometheusSgemmAlgorithmLab.EmitM4dChooseStrategySelections (prometheus_sgemm_algorithm_lab_m4d.octest)
-PASS PrometheusSgemmAlgorithmLab.EmitM4dChooseStrategySelections (prometheus_sgemm_algorithm_lab_m4d.octest)
-Result: 3 artifact(s) passed, 0 failed

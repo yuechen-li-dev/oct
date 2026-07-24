@@ -1,6 +1,0 @@
-RUN  PrometheusSgemmAlgorithmLab.M4d_K8x8x256_SingleCallRep (prometheus_sgemm_algorithm_lab_m4d.octest)
-backend_requested=prometheus backend_used=prometheus status=ok correctness=true vulkan_env=windows_native_vulkan wall=1926100ns
-16384
-0
-PASS PrometheusSgemmAlgorithmLab.M4d_K8x8x256_SingleCallRep 700.771ms (prometheus_sgemm_algorithm_lab_m4d.octest)
-Result: 1 benchmark(s) passed, 0 failed

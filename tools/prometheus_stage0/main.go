@@ -145,6 +145,7 @@ func sortedMissing(left, right map[uint32]bool) []uint32 {
 func main() {
 	root, _ := os.Getwd()
 	check := flag.Bool("check", false, "check the current Stage 0 authority surface")
+	packageDir := flag.String("package-dir", filepath.Join("out", "prometheus", "native", "SerialCanonical", "shaders"), "shader package directory; may point to a temporary clean-clone build")
 	flag.Parse()
 	if !*check {
 		*check = true
@@ -153,7 +154,11 @@ func main() {
 	var source sourceManifest
 	var pkg packageManifest
 	sourcePath := filepath.Join(root, "internal", "prometheus", "native", "shaders", "manifest.json")
-	packagePath := filepath.Join(root, "out", "prometheus", "native", "SerialCanonical", "shaders", "manifest.json")
+	resolvedPackageDir := *packageDir
+	if !filepath.IsAbs(resolvedPackageDir) {
+		resolvedPackageDir = filepath.Join(root, resolvedPackageDir)
+	}
+	packagePath := filepath.Join(resolvedPackageDir, "manifest.json")
 	mustJSON(sourcePath, &source)
 	mustJSON(packagePath, &pkg)
 
@@ -166,7 +171,7 @@ func main() {
 	result.Package.Artifacts = len(pkg.Tables.Artifacts)
 	result.Package.Implementations = len(pkg.Tables.Implementations)
 	result.Package.Provenance = len(pkg.Tables.Provenance)
-	objects, err := os.ReadDir(filepath.Join(root, "out", "prometheus", "native", "SerialCanonical", "shaders", "objects", "sha256"))
+	objects, err := os.ReadDir(filepath.Join(resolvedPackageDir, "objects", "sha256"))
 	if err != nil {
 		panic(err)
 	}

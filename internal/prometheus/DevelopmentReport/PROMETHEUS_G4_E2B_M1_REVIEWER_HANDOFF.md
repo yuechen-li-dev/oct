@@ -1,5 +1,26 @@
 # PROMETHEUS G4-E2B-M1 — raw-score stabilization handoff
 
+## Current repository handoff — Stage 1
+
+The repository/generated-authority hygiene pass is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE1_REPOSITORY_AND_GENERATED_AUTHORITY.md`.
+The compact corpus index is
+`internal/prometheus/DevelopmentReport/PROMETHEUS_DEVELOPMENT_EVIDENCE_INDEX.json`,
+and the canonical repository-authority check is:
+
+```powershell
+powershell -NoProfile -File .\tools\prometheus_authority.ps1
+```
+
+Stage 0 remains the frozen lifecycle characterization and vocabulary authority.
+The three required-live Gemma lanes remain outstanding when the validated
+reactor and external checkpoint are not configured. Stage 2 naming/ABI
+consolidation and Stage 3 common Vulkan ownership extraction must not begin
+until those witnesses are closed. The repeated `MainTransformer1` topology,
+generated-header provenance gap, and registry/package projection differences
+remain descriptive/disputed evidence; this handoff does not authorize repairing
+them or changing `-7406`.
+
 ## Stage 0 supersession
 
 Stage 0 has frozen the current implementation vocabulary and executable characterization in

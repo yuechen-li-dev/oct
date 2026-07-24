@@ -68,7 +68,17 @@ Thumbs.db
 dist/
 .tmp/
 temp/
+# Build products and test output are local state. Explicitly tracked durable
+# evidence under out/ is allowlisted by tools/prometheus_authority.ps1.
 out/
+
+# Oct make state is run-local, including nested project state directories.
+.octmake/
+**/.octmake/
+
+# Python bytecode is never repository material.
+*.pyc
+**/__pycache__/
 
 # Native SDSL-V header generation keeps these compiler intermediates beside
 # the checked-in header; only the generated .h is repository material.
@@ -113,4 +123,5 @@ markdown_smoke.md
 work/
 
 *.json
+!internal/prometheus/DevelopmentReport/PROMETHEUS_DEVELOPMENT_EVIDENCE_INDEX.json
 
