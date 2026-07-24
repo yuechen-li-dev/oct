@@ -1,7 +1,7 @@
 {
   "schema": "prometheus.development-evidence-index.v1",
   "scope": "internal/prometheus/DevelopmentReport",
-  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Stage 3 adds the Vulkan runtime ownership authority without rewriting historical reports or moving artifacts.",
+  "classification_basis": "Explicit current documents plus deterministic path/prefix classes; Concept/Vulkan M0 adds the host-mechanism language constitution and implementation boundary without changing production, generated, shader, package, ABI, or Stage 3-6 authority.",
   "corpus": {
     "tracked_file_count_at_stage0_checkpoint": 596,
     "markdown_file_count_at_stage0_checkpoint": 218,
@@ -71,6 +71,27 @@
       "status": "current",
       "superseding_authority": null,
       "role": "evidence-based rejection of a premature closed-plan extraction; records the Vulkan-owned model-progress coupling and exact Dominatus authorization prerequisite"
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M0_CHARACTERIZATION.md",
+      "subsystem_or_era": "Concept/Vulkan M0",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "production Vulkan characterization, Oct/SDSL-V reuse decision, PoC3 classification, bounded M1 specimen, profile MIR mapping, and generated-authority boundary"
+    },
+    {
+      "path": "docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md",
+      "subsystem_or_era": "Concept/Vulkan language",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "normative Concept/Vulkan identity, ownership, fallibility, access, synchronization, metaprogramming, M1 semantic minimum, and migration constitution"
+    },
+    {
+      "path": "docs/OCT_SDSLV_PROMETHEUS_LIVING_STATUS.md",
+      "subsystem_or_era": "Oct/SDSL-V/Prometheus current project briefing",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "canonical in-repository living status and system-responsibility boundary as of 2026-07-24"
     }
   ],
   "current_reviewer_handoffs": [
@@ -78,7 +99,7 @@
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md",
       "subsystem_or_era": "G4 E2B M1",
       "status": "current",
-      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE3_VULKAN_RUNTIME_OWNERSHIP_EXTRACTION.md"
+      "superseding_authority": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M0_CHARACTERIZATION.md"
     }
   ],
   "current_validation_characterization": [
@@ -121,6 +142,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE6_CLOSED_MODEL_EXECUTION_PLAN.md",
       "subsystem_or_era": "Stage 6",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M0_CHARACTERIZATION.md",
+      "subsystem_or_era": "Concept/Vulkan M0",
       "status": "current",
       "superseding_authority": null
     }

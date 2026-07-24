@@ -1,6 +1,34 @@
 # PROMETHEUS G4-E2B-M1 — raw-score stabilization handoff
 
-## Current repository handoff — Stage 3
+## Current repository handoff — Concept/Vulkan detour
+
+The immediate assignment is no longer Prometheus Stage 7 or additional
+ray-query image work. Concept/Vulkan M0 is recorded in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M0_CHARACTERIZATION.md`,
+with the normative language constitution at
+`docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md` and current
+project briefing at `docs/OCT_SDSLV_PROMETHEUS_LIVING_STATUS.md`.
+
+Concept/Vulkan is the bounded host-side mechanism profile implemented through
+the working Go Oct/SDSL-V compiler lineage. Dominatus remains the Prometheus
+control kernel; Concept/Vulkan consumes committed work and cannot authorize or
+advance it. SDSL-V remains shader-side. Generated C/H remains the checked-in
+Prometheus native boundary.
+
+Stage 6 remains exact completed history: the 34-position Z-Image retarget
+sequence is finite, but a static plan extraction was rejected because model
+authorization/progression remains Vulkan-session owned and no Dominatus
+authorization/completion seam exists. Stage 7 remains deferred until after the
+initial Concept/Vulkan proof.
+
+RQ-M1's accepted physical batch is also preserved: supported nonzero batches
+record one `vkCmdDispatch(ray_count,1,1)` and one synchronous submission with
+paired capacity and descriptor rebind-before-retire. Expanded image/cost
+authority is paused, not completed or abandoned. M1 instead implements the
+smaller existing package-backed kernel-54 capability-probe witness; full
+physical ray-batch equivalence is Concept/Vulkan M2.
+
+## Historical repository handoff — Stage 3
 
 The repository/generated-authority hygiene pass is recorded in
 `internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE1_REPOSITORY_AND_GENERATED_AUTHORITY.md`.
