@@ -125,27 +125,31 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 	for _, automataDecl := range module.Automata {
 		info := env.automataInfo[automataDecl.Name]
 		mirAutomata := EVT1MIRAutomata{
-			Name:           automataDecl.Name,
-			SignalEnum:     info.SignalEnum.Name,
-			RootMachine:    info.RootMachine,
-			MaxActiveDepth: info.MaxActiveDepth,
-			GraphIdentity:  info.GraphIdentity,
-			SourceSpan:     automataDecl.Span,
+			Name:                 automataDecl.Name,
+			SignalEnum:           info.SignalEnum.Name,
+			RootMachine:          info.RootMachine,
+			MaxActiveDepth:       info.MaxActiveDepth,
+			ContinuationCapacity: info.ContinuationCapacity,
+			CompletionStepBound:  info.CompletionStepBound,
+			GraphIdentity:        info.GraphIdentity,
+			SourceSpan:           automataDecl.Span,
 		}
 		for _, machine := range automataDecl.Machines {
 			mirMachine := EVT1MIRMachine{
-				Name:       machine.Name,
-				Initial:    machine.Initial,
-				Reachable:  info.MachineReachable[machine.Name],
-				SourceSpan: machine.Span,
+				Name:           machine.Name,
+				Initial:        machine.Initial,
+				RuntimeOrdinal: info.MachineOrdinal[machine.Name],
+				Reachable:      info.MachineReachable[machine.Name],
+				SourceSpan:     machine.Span,
 			}
 			for _, state := range machine.States {
 				mirState := EVT1MIRState{
-					Name:       state.Name,
-					Initial:    state.Initial,
-					Terminal:   state.Terminal,
-					Reachable:  info.StateReachable[machine.Name][state.Name],
-					SourceSpan: state.Span,
+					Name:           state.Name,
+					Initial:        state.Initial,
+					Terminal:       state.Terminal,
+					RuntimeOrdinal: info.StateOrdinal[machine.Name][state.Name],
+					Reachable:      info.StateReachable[machine.Name][state.Name],
+					SourceSpan:     state.Span,
 				}
 				if len(state.Completion) == 1 {
 					mirState.Completion = state.Completion[0].Kind
@@ -354,6 +358,8 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, template
 			}
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Type: evt1MIRType(env, s.Type).String(), Detail: s.Name, SourceSpan: s.Span})
 			collectExprMIROps(env, s.Value, fn, templateInfo)
+		case *EVT1InstanceDecl:
+			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "instance_decl", Detail: s.AutomataName + " " + s.Name, SourceSpan: s.Span})
 		case *EVT1AssignStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "assign", Type: exprLabel(s.Target), Detail: exprLabel(s.Target), SourceSpan: s.Span})
 			collectExprMIROps(env, s.Target, fn, templateInfo)
@@ -446,6 +452,9 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction, templat
 		for _, arg := range e.Args {
 			collectExprMIROps(env, arg, fn, templateInfo)
 		}
+	case *EVT1DispatchExpr:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "dispatch", Detail: e.InstanceName, SourceSpan: e.Span})
+		collectExprMIROps(env, e.Signal, fn, templateInfo)
 	case *EVT1TemplateCallExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "template_call", Detail: e.Callee + "<" + e.TypeArg.String() + ">", SourceSpan: e.Span})
 		for _, arg := range e.Args {
@@ -560,6 +569,17 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 	body.WriteString("static void concept_vulkan_abort_invalid_tag(const char* enum_name) {\n")
 	body.WriteString("  fprintf(stderr, \"invalid enum tag for %s\\n\", enum_name);\n")
 	body.WriteString("  abort();\n}\n\n")
+	if len(evt1RuntimeAutomataUsage(l.module)) > 0 {
+		body.WriteString("static void concept_vulkan_abort_invalid_automata_state(const char* automata_name, int machine, int state) {\n")
+		body.WriteString("  fprintf(stderr, \"invalid automata state for %s: machine=%d state=%d\\n\", automata_name, machine, state);\n")
+		body.WriteString("  abort();\n}\n\n")
+		body.WriteString("static void concept_vulkan_abort_automata_stack(const char* automata_name, const char* reason) {\n")
+		body.WriteString("  fprintf(stderr, \"invalid automata stack for %s: %s\\n\", automata_name, reason);\n")
+		body.WriteString("  abort();\n}\n\n")
+		body.WriteString("static void concept_vulkan_abort_automata_completion(const char* automata_name, int steps) {\n")
+		body.WriteString("  fprintf(stderr, \"automata completion bound exceeded for %s: steps=%d\\n\", automata_name, steps);\n")
+		body.WriteString("  abort();\n}\n\n")
+	}
 	for _, structDecl := range l.module.Structs {
 		if evt1RuntimeTypeSafe(l.env, EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct}) && evt1TypeCopyable(l.env, EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct}) {
 			body.WriteString(l.structConstructor(structDecl))
@@ -569,6 +589,12 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 		if evt1RuntimeTypeSafe(l.env, EVT1Type{Name: enumDecl.Name, Kind: EVT1TypeEnum}) {
 			body.WriteString(l.enumConstructors(enumDecl))
 		}
+	}
+	if evt1ModuleUsesAutomataDispatchOutcome(l.module) {
+		body.WriteString(l.enumConstructors(evt1BuiltinAutomataDispatchOutcomeEnum()))
+	}
+	for _, automataName := range evt1RuntimeAutomataUsageOrder(l.module) {
+		body.WriteString(l.automataRuntimeSupport(l.env.automataInfo[automataName]))
 	}
 	for _, templateDecl := range l.module.Templates {
 		var instances []*evt1TemplateInstance
@@ -620,6 +646,11 @@ func (l *evt1Lowering) runtimeTypeDeclarations() ([]evt1RuntimeTypeDecl, error) 
 		decl := enumDecl
 		index[enumDecl.Name] = evt1RuntimeTypeDecl{Name: enumDecl.Name, Enum: &decl}
 		order = append(order, enumDecl.Name)
+	}
+	if evt1ModuleUsesAutomataDispatchOutcome(l.module) {
+		outcome := evt1BuiltinAutomataDispatchOutcomeEnum()
+		index[outcome.Name] = evt1RuntimeTypeDecl{Name: outcome.Name, Enum: &outcome}
+		order = append(order, outcome.Name)
 	}
 
 	seen := make(map[string]bool, len(index))
@@ -701,6 +732,181 @@ func (l *evt1Lowering) runtimeTypeDeclExists(name string) bool {
 	return false
 }
 
+func evt1RuntimeAutomataUsage(module EVT1Module) map[string]bool {
+	used := map[string]bool{}
+	var visitBlock func(EVT1Block)
+	visitBlock = func(block EVT1Block) {
+		for _, stmt := range block.Statements {
+			switch s := stmt.(type) {
+			case *EVT1InstanceDecl:
+				used[s.AutomataName] = true
+			case *EVT1MatchStmt:
+				for _, arm := range s.Arms {
+					visitBlock(arm.Block)
+				}
+			case *EVT1WhileStmt:
+				visitBlock(s.Body)
+			case *EVT1Block:
+				visitBlock(*s)
+			}
+		}
+	}
+	for _, tpl := range module.Templates {
+		if tpl.Body != nil {
+			visitBlock(*tpl.Body)
+		}
+	}
+	for _, fn := range module.Functions {
+		if fn.Body != nil {
+			visitBlock(*fn.Body)
+		}
+	}
+	return used
+}
+
+func evt1RuntimeAutomataUsageOrder(module EVT1Module) []string {
+	used := evt1RuntimeAutomataUsage(module)
+	var order []string
+	for _, decl := range module.Automata {
+		if used[decl.Name] {
+			order = append(order, decl.Name)
+		}
+	}
+	return order
+}
+
+func evt1ModuleUsesAutomataDispatchOutcome(module EVT1Module) bool {
+	var usesExpr func(EVT1Expr) bool
+	usesExpr = func(expr EVT1Expr) bool {
+		switch e := expr.(type) {
+		case *EVT1DispatchExpr:
+			return true
+		case *EVT1ParenExpr:
+			return usesExpr(e.Value)
+		case *EVT1UnaryExpr:
+			return usesExpr(e.Value)
+		case *EVT1FieldExpr:
+			return usesExpr(e.Receiver)
+		case *EVT1IndexExpr:
+			return usesExpr(e.Base) || usesExpr(e.Index)
+		case *EVT1BinaryExpr:
+			return usesExpr(e.Left) || usesExpr(e.Right)
+		case *EVT1CallExpr:
+			for _, arg := range e.Args {
+				if usesExpr(arg) {
+					return true
+				}
+			}
+		case *EVT1TemplateCallExpr:
+			for _, arg := range e.Args {
+				if usesExpr(arg) {
+					return true
+				}
+			}
+		case *EVT1ConstructExpr:
+			if e.EnumName == evt1AutomataDispatchOutcomeTypeName {
+				return true
+			}
+			for _, arg := range e.Args {
+				if usesExpr(arg) {
+					return true
+				}
+			}
+		case *EVT1StructConstructExpr:
+			for _, arg := range e.Args {
+				if usesExpr(arg) {
+					return true
+				}
+			}
+		case *EVT1ArrayLiteralExpr:
+			for _, arg := range e.Elements {
+				if usesExpr(arg) {
+					return true
+				}
+			}
+		case *EVT1MatchExpr:
+			if usesExpr(e.Subject) {
+				return true
+			}
+			for _, arm := range e.Arms {
+				if usesExpr(arm.Value) {
+					return true
+				}
+			}
+		case *EVT1IfExpr:
+			return usesExpr(e.Condition) || usesExpr(e.Then) || usesExpr(e.Else)
+		}
+		return false
+	}
+	var visitBlock func(EVT1Block) bool
+	visitBlock = func(block EVT1Block) bool {
+		for _, stmt := range block.Statements {
+			switch s := stmt.(type) {
+			case *EVT1VarDecl:
+				if s.Type.Name == evt1AutomataDispatchOutcomeTypeName || usesExpr(s.Value) {
+					return true
+				}
+			case *EVT1AssignStmt:
+				if usesExpr(s.Target) || usesExpr(s.Value) {
+					return true
+				}
+			case *EVT1ReturnStmt:
+				if s.Value != nil && usesExpr(s.Value) {
+					return true
+				}
+			case *EVT1ExprStmt:
+				if usesExpr(s.Value) {
+					return true
+				}
+			case *EVT1StaticAssertStmt:
+				if usesExpr(s.Condition) || (s.Message != nil && usesExpr(s.Message)) {
+					return true
+				}
+			case *EVT1MatchStmt:
+				if usesExpr(s.Subject) {
+					return true
+				}
+				for _, arm := range s.Arms {
+					if visitBlock(arm.Block) {
+						return true
+					}
+				}
+			case *EVT1WhileStmt:
+				if usesExpr(s.Condition) || (s.Bound != nil && usesExpr(s.Bound)) || visitBlock(s.Body) {
+					return true
+				}
+			case *EVT1Block:
+				if visitBlock(*s) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	for _, tpl := range module.Templates {
+		if tpl.ReturnType.Name == evt1AutomataDispatchOutcomeTypeName {
+			return true
+		}
+		if tpl.Body != nil && visitBlock(*tpl.Body) {
+			return true
+		}
+	}
+	for _, fn := range module.Functions {
+		if fn.ReturnType.Name == evt1AutomataDispatchOutcomeTypeName {
+			return true
+		}
+		for _, param := range fn.Params {
+			if param.Type.Name == evt1AutomataDispatchOutcomeTypeName {
+				return true
+			}
+		}
+		if fn.Body != nil && visitBlock(*fn.Body) {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *evt1Lowering) runtimeTypeDeps(t EVT1Type) []string {
 	if t.Ownership == "borrow" {
 		return l.runtimeTypeDeps(t.borrowBase())
@@ -715,6 +921,212 @@ func (l *evt1Lowering) runtimeTypeDeps(t EVT1Type) []string {
 	default:
 		return nil
 	}
+}
+
+func evt1AutomataRuntimeInstanceCName(automataName string) string {
+	return evt1CName(automataName) + "_instance"
+}
+
+func evt1AutomataRuntimeContinuationCName(automataName string) string {
+	return evt1CName(automataName) + "_continuation"
+}
+
+func evt1AutomataRuntimeInitName(automataName string) string {
+	return evt1CName(automataName) + "_init"
+}
+
+func evt1AutomataRuntimeNormalizeName(automataName string) string {
+	return evt1CName(automataName) + "_normalize"
+}
+
+func evt1AutomataRuntimeDispatchName(automataName string) string {
+	return evt1CName(automataName) + "_dispatch"
+}
+
+func evt1AutomataMachineConstName(automataName, machineName string) string {
+	return evt1CName(automataName) + "_machine_" + evt1PayloadFieldName(machineName)
+}
+
+func evt1AutomataStateConstName(automataName, machineName, stateName string) string {
+	return evt1CName(automataName) + "_state_" + evt1PayloadFieldName(machineName) + "_" + evt1PayloadFieldName(stateName)
+}
+
+func evt1InitialStateName(machine EVT1MachineDecl) string {
+	for _, state := range machine.States {
+		if state.Initial {
+			return state.Name
+		}
+	}
+	return ""
+}
+
+func (l *evt1Lowering) automataRuntimeSupport(info *evt1AutomataInfo) string {
+	var b strings.Builder
+	instanceType := evt1AutomataRuntimeInstanceCName(info.Decl.Name)
+	continuationType := evt1AutomataRuntimeContinuationCName(info.Decl.Name)
+	initName := evt1AutomataRuntimeInitName(info.Decl.Name)
+	normalizeName := evt1AutomataRuntimeNormalizeName(info.Decl.Name)
+	dispatchName := evt1AutomataRuntimeDispatchName(info.Decl.Name)
+	signalType := evt1CType(info.Decl.SignalType)
+	outcomeType := evt1CType(EVT1Type{Name: evt1AutomataDispatchOutcomeTypeName, Kind: EVT1TypeEnum})
+	outcomeCtor := func(name string) string {
+		return evt1ConstructorName(evt1AutomataDispatchOutcomeTypeName, name) + "()"
+	}
+	machineIndex := map[string]EVT1MachineDecl{}
+	for _, machine := range info.Decl.Machines {
+		machineIndex[machine.Name] = machine
+	}
+
+	b.WriteString(fmt.Sprintf("enum {\n"))
+	for _, machine := range info.Decl.Machines {
+		b.WriteString(fmt.Sprintf("  %s = %d,\n", evt1AutomataMachineConstName(info.Decl.Name, machine.Name), info.MachineOrdinal[machine.Name]))
+	}
+	b.WriteString("};\n\n")
+	for _, machine := range info.Decl.Machines {
+		b.WriteString("enum {\n")
+		for _, state := range machine.States {
+			b.WriteString(fmt.Sprintf("  %s = %d,\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, state.Name), info.StateOrdinal[machine.Name][state.Name]))
+		}
+		b.WriteString("};\n\n")
+	}
+	if info.ContinuationCapacity > 0 {
+		b.WriteString(fmt.Sprintf("typedef struct %s {\n", continuationType))
+		b.WriteString("  uint8_t caller_machine;\n")
+		b.WriteString("  uint8_t resume_state;\n")
+		b.WriteString(fmt.Sprintf("} %s;\n\n", continuationType))
+	}
+	b.WriteString(fmt.Sprintf("typedef struct %s {\n", instanceType))
+	b.WriteString("  bool finished;\n")
+	b.WriteString("  uint8_t current_machine;\n")
+	b.WriteString("  uint8_t current_state;\n")
+	b.WriteString("  uint8_t continuation_count;\n")
+	if info.ContinuationCapacity > 0 {
+		b.WriteString(fmt.Sprintf("  %s continuations[%d];\n", continuationType, info.ContinuationCapacity))
+	}
+	b.WriteString(fmt.Sprintf("} %s;\n\n", instanceType))
+
+	b.WriteString(fmt.Sprintf("static void %s(%s* instance) {\n", normalizeName, instanceType))
+	b.WriteString("  int steps = 0;\n")
+	b.WriteString("  while (!instance->finished) {\n")
+	b.WriteString("    steps = steps + 1;\n")
+	b.WriteString(fmt.Sprintf("    if (steps > %d) {\n", info.CompletionStepBound))
+	b.WriteString(fmt.Sprintf("      concept_vulkan_abort_automata_completion(\"%s\", steps);\n", info.Decl.Name))
+	b.WriteString("    }\n")
+	b.WriteString("    switch (instance->current_machine) {\n")
+	for _, machine := range info.Decl.Machines {
+		b.WriteString(fmt.Sprintf("      case %s:\n", evt1AutomataMachineConstName(info.Decl.Name, machine.Name)))
+		b.WriteString("        switch (instance->current_state) {\n")
+		for _, state := range machine.States {
+			b.WriteString(fmt.Sprintf("          case %s:\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, state.Name)))
+			if !state.Terminal {
+				b.WriteString("            return;\n")
+				continue
+			}
+			switch state.Completion[0].Kind {
+			case "finish":
+				b.WriteString("            instance->finished = true;\n")
+				b.WriteString("            instance->continuation_count = 0;\n")
+				b.WriteString("            return;\n")
+			case "pop":
+				if info.ContinuationCapacity == 0 {
+					b.WriteString(fmt.Sprintf("            concept_vulkan_abort_automata_stack(\"%s\", \"pop with zero continuation capacity\");\n", info.Decl.Name))
+					b.WriteString("            return;\n")
+					break
+				}
+				b.WriteString("            if (instance->continuation_count == 0) {\n")
+				b.WriteString(fmt.Sprintf("              concept_vulkan_abort_automata_stack(\"%s\", \"pop underflow\");\n", info.Decl.Name))
+				b.WriteString("            }\n")
+				b.WriteString("            instance->continuation_count = (uint8_t)(instance->continuation_count - 1);\n")
+				b.WriteString("            instance->current_machine = instance->continuations[instance->continuation_count].caller_machine;\n")
+				b.WriteString("            instance->current_state = instance->continuations[instance->continuation_count].resume_state;\n")
+				b.WriteString("            break;\n")
+			default:
+				b.WriteString(fmt.Sprintf("            concept_vulkan_abort_invalid_automata_state(\"%s\", instance->current_machine, instance->current_state);\n", info.Decl.Name))
+				b.WriteString("            return;\n")
+			}
+		}
+		b.WriteString("          default:\n")
+		b.WriteString(fmt.Sprintf("            concept_vulkan_abort_invalid_automata_state(\"%s\", instance->current_machine, instance->current_state);\n", info.Decl.Name))
+		b.WriteString("            return;\n")
+		b.WriteString("        }\n")
+		b.WriteString("        break;\n")
+	}
+	b.WriteString("      default:\n")
+	b.WriteString(fmt.Sprintf("        concept_vulkan_abort_invalid_automata_state(\"%s\", instance->current_machine, instance->current_state);\n", info.Decl.Name))
+	b.WriteString("        return;\n")
+	b.WriteString("    }\n")
+	b.WriteString("  }\n")
+	b.WriteString("}\n\n")
+
+	rootMachine := machineIndex[info.RootMachine]
+	rootInitialState := evt1InitialStateName(rootMachine)
+	b.WriteString(fmt.Sprintf("static void %s(%s* instance) {\n", initName, instanceType))
+	b.WriteString("  instance->finished = false;\n")
+	b.WriteString(fmt.Sprintf("  instance->current_machine = %s;\n", evt1AutomataMachineConstName(info.Decl.Name, info.RootMachine)))
+	b.WriteString(fmt.Sprintf("  instance->current_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, info.RootMachine, rootInitialState)))
+	b.WriteString("  instance->continuation_count = 0;\n")
+	b.WriteString(fmt.Sprintf("  %s(instance);\n", normalizeName))
+	b.WriteString("}\n\n")
+
+	b.WriteString(fmt.Sprintf("static %s %s(%s* instance, %s signal) {\n", outcomeType, dispatchName, instanceType, signalType))
+	b.WriteString("  if (instance->finished) {\n")
+	b.WriteString(fmt.Sprintf("    return %s;\n", outcomeCtor("AlreadyFinished")))
+	b.WriteString("  }\n")
+	b.WriteString("  switch (instance->current_machine) {\n")
+	for _, machine := range info.Decl.Machines {
+		b.WriteString(fmt.Sprintf("    case %s:\n", evt1AutomataMachineConstName(info.Decl.Name, machine.Name)))
+		b.WriteString("      switch (instance->current_state) {\n")
+		for _, state := range machine.States {
+			b.WriteString(fmt.Sprintf("        case %s:\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, state.Name)))
+			if state.Terminal {
+				b.WriteString(fmt.Sprintf("          concept_vulkan_abort_invalid_automata_state(\"%s\", instance->current_machine, instance->current_state);\n", info.Decl.Name))
+				b.WriteString(fmt.Sprintf("          return %s;\n", outcomeCtor("AlreadyFinished")))
+				continue
+			}
+			b.WriteString("          switch (signal.tag) {\n")
+			for _, handler := range state.Handlers {
+				b.WriteString(fmt.Sprintf("            case %s:\n", evt1TagName(info.SignalEnum.Name, handler.Signal.MemberName)))
+				switch handler.Kind {
+				case EVT1TransitionGoto:
+					b.WriteString(fmt.Sprintf("              instance->current_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, handler.TargetState.StateName)))
+				case EVT1TransitionPush:
+					if info.ContinuationCapacity == 0 {
+						b.WriteString(fmt.Sprintf("              concept_vulkan_abort_automata_stack(\"%s\", \"push with zero continuation capacity\");\n", info.Decl.Name))
+						b.WriteString(fmt.Sprintf("              return %s;\n", outcomeCtor("AlreadyFinished")))
+						break
+					}
+					targetMachine := machineIndex[handler.PushMachine]
+					targetInitialState := evt1InitialStateName(targetMachine)
+					b.WriteString(fmt.Sprintf("              if (instance->continuation_count >= %d) {\n", info.ContinuationCapacity))
+					b.WriteString(fmt.Sprintf("                concept_vulkan_abort_automata_stack(\"%s\", \"push overflow\");\n", info.Decl.Name))
+					b.WriteString("              }\n")
+					b.WriteString("              instance->continuations[instance->continuation_count].caller_machine = instance->current_machine;\n")
+					b.WriteString(fmt.Sprintf("              instance->continuations[instance->continuation_count].resume_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, handler.Continuation.StateName)))
+					b.WriteString("              instance->continuation_count = (uint8_t)(instance->continuation_count + 1);\n")
+					b.WriteString(fmt.Sprintf("              instance->current_machine = %s;\n", evt1AutomataMachineConstName(info.Decl.Name, handler.PushMachine)))
+					b.WriteString(fmt.Sprintf("              instance->current_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, targetMachine.Name, targetInitialState)))
+				}
+				b.WriteString(fmt.Sprintf("              %s(instance);\n", normalizeName))
+				b.WriteString("              if (instance->finished) {\n")
+				b.WriteString(fmt.Sprintf("                return %s;\n", outcomeCtor("Finished")))
+				b.WriteString("              }\n")
+				b.WriteString(fmt.Sprintf("              return %s;\n", outcomeCtor("Transitioned")))
+			}
+			b.WriteString("            default:\n")
+			b.WriteString(fmt.Sprintf("              return %s;\n", outcomeCtor("Unhandled")))
+			b.WriteString("          }\n")
+		}
+		b.WriteString("        default:\n")
+		b.WriteString(fmt.Sprintf("          concept_vulkan_abort_invalid_automata_state(\"%s\", instance->current_machine, instance->current_state);\n", info.Decl.Name))
+		b.WriteString(fmt.Sprintf("          return %s;\n", outcomeCtor("AlreadyFinished")))
+		b.WriteString("      }\n")
+	}
+	b.WriteString("    default:\n")
+	b.WriteString(fmt.Sprintf("      concept_vulkan_abort_invalid_automata_state(\"%s\", instance->current_machine, instance->current_state);\n", info.Decl.Name))
+	b.WriteString(fmt.Sprintf("      return %s;\n", outcomeCtor("AlreadyFinished")))
+	b.WriteString("  }\n")
+	b.WriteString("}\n\n")
+	return b.String()
 }
 
 func (l *evt1Lowering) structHeader(structDecl EVT1StructDecl) string {
@@ -984,10 +1396,11 @@ type evt1FunctionLowerer struct {
 }
 
 type evt1Binding struct {
-	cName    string
-	t        EVT1Type
-	comptime bool
-	value    EVT1Value
+	cName            string
+	t                EVT1Type
+	comptime         bool
+	value            EVT1Value
+	instanceAutomata string
 }
 
 func newEVT1FunctionLowerer(l *evt1Lowering, fn EVT1FunctionDecl, symbol string, private bool) *evt1FunctionLowerer {
@@ -1043,6 +1456,12 @@ func (f *evt1FunctionLowerer) lowerStatement(stmt EVT1Statement, indent int) str
 		prelude, value, _ := f.lowerExpr(s.Value, indent)
 		cName := f.bindName(s.Name, s.Type)
 		return prelude + ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(s.Type), cName, value)
+	case *EVT1InstanceDecl:
+		cName := f.bindInstanceName(s.Name, s.AutomataName)
+		instanceType := evt1AutomataRuntimeInstanceCName(s.AutomataName)
+		initName := evt1AutomataRuntimeInitName(s.AutomataName)
+		return ind(indent) + fmt.Sprintf("%s %s;\n", instanceType, cName) +
+			ind(indent) + fmt.Sprintf("%s(&%s);\n", initName, cName)
 	case *EVT1AssignStmt:
 		prelude, target, _, _ := f.lowerLValue(s.Target, indent)
 		rhsPrelude, value, _ := f.lowerExpr(s.Value, indent)
@@ -1250,6 +1669,17 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 			args = append(args, temp)
 		}
 		return prelude.String(), evt1FunctionSymbolForDecl(f.l.outputBase, f.l.env, fn) + "(" + strings.Join(args, ", ") + ")", fn.ReturnType
+	case *EVT1DispatchExpr:
+		binding, _ := scopeLookup(e.InstanceName, f.scope)
+		info := f.l.env.automataInfo[binding.instanceAutomata]
+		signalPrelude, signalExpr, signalType := f.lowerExpr(e.Signal, indent)
+		signalTemp := f.nextTemp("signal")
+		var prelude strings.Builder
+		prelude.WriteString(signalPrelude)
+		prelude.WriteString(ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(signalType), signalTemp, signalExpr))
+		return prelude.String(),
+			fmt.Sprintf("%s(&%s, %s)", evt1AutomataRuntimeDispatchName(info.Decl.Name), binding.cName, signalTemp),
+			EVT1Type{Name: evt1AutomataDispatchOutcomeTypeName, Kind: EVT1TypeEnum, Span: e.Span}
 	case *EVT1TemplateCallExpr:
 		instance, ok := f.l.env.templateInstances[e.Callee+"|"+evt1TypeIdentity(evt1CanonicalType(f.l.env, e.TypeArg))]
 		if !ok {
@@ -1397,6 +1827,17 @@ func (f *evt1FunctionLowerer) bindName(name string, t EVT1Type) string {
 	return unique
 }
 
+func (f *evt1FunctionLowerer) bindInstanceName(name, automataName string) string {
+	scope := f.currentScope()
+	if _, exists := scope[name]; !exists {
+		scope[name] = evt1Binding{cName: name, instanceAutomata: automataName}
+		return name
+	}
+	unique := f.nextTemp(name)
+	scope[name] = evt1Binding{cName: unique, instanceAutomata: automataName}
+	return unique
+}
+
 func (f *evt1FunctionLowerer) bindComptimeName(name string, t EVT1Type, value EVT1Value) {
 	f.currentScope()[name] = evt1Binding{cName: name, t: t, comptime: true, value: value}
 }
@@ -1406,7 +1847,14 @@ func (f *evt1FunctionLowerer) typeScope() *evt1Scope {
 	for _, layer := range f.scope {
 		root = newEVT1Scope(root)
 		for name, binding := range layer {
-			root.declare(name, evt1ValueBinding{t: binding.t, mutable: true, comptime: binding.comptime, hasValue: binding.comptime, value: binding.value})
+			root.declare(name, evt1ValueBinding{
+				t:                binding.t,
+				mutable:          true,
+				comptime:         binding.comptime,
+				hasValue:         binding.comptime,
+				value:            binding.value,
+				instanceAutomata: binding.instanceAutomata,
+			})
 		}
 	}
 	return root

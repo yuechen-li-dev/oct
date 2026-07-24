@@ -1,13 +1,13 @@
 # DragonGod M0 — Typed Pushdown-Automata Declaration and Deterministic Static Validation
 
-Status: **MEANINGFUL PROGRESSION**
+Status: **SUCCESS**
 
 Intended commit message if/when the full milestone closes cleanly:
 `concept-vulkan: add typed lifecycle automata declarations`
 
 ## Completion assessment
 
-Assessment: **DRAGONGOD M0: MEANINGFUL PROGRESSION**
+Assessment: **DRAGONGOD M0: SUCCESS**
 
 This pass establishes the first working DragonGod M0 compiler vertical inside
 the EVT1 Concept/Vulkan path:
@@ -24,10 +24,12 @@ the EVT1 Concept/Vulkan path:
 - hardware-independent and Vulkan-shaped DragonGod specimens in the checked
   EVT1 corpus.
 
-The remaining blocker to honest milestone closure is evidence closure rather
-than a newly isolated parser/type bug: the full requested native/doc/report
-matrix was not completed in this shell, and the MSVC developer include
-environment was unavailable for the new native specimen lane.
+The original blocker was evidence closure rather than a parser/type bug: the
+first implementation shell did not have the full MSVC developer include
+environment loaded for the native specimen lane. That blocker is now resolved.
+On Friday, July 24, 2026, both native C11 specimen lanes were rerun from a
+fully loaded Visual Studio developer environment with Windows SDK headers and
+the configured Vulkan SDK include path available, and both passed cleanly.
 
 ## Starting point
 
@@ -98,7 +100,10 @@ resource lifecycle names without widening the runtime mechanism surface.
 - `go test ./internal/conceptvulkan -count=1`
 - `go test ./cmd/concept-vulkan ./internal/conceptvulkan -count=1`
 - `go build ./cmd/concept-vulkan`
-- `go test ./internal/conceptvulkan -run 'DragonGodM0.*NativeC11' -count=1 -v`
+- initial implementation shell:
+  `go test ./internal/conceptvulkan -run 'DragonGodM0.*NativeC11' -count=1 -v`
+- reconciled native rerun on Friday, July 24, 2026:
+  `cmd /c 'call "C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" >nul && go test ./internal/conceptvulkan -run "DragonGodM0.*NativeC11" -count=1 -v'`
 
 ### Generated-output lanes
 
@@ -111,8 +116,14 @@ resource lifecycle names without widening the runtime mechanism surface.
 - focused EVT1 Go compiler/test lanes: **PASS**
 - checked-output regeneration: **PASS**
 - `git diff --check`: **PASS** (line-ending warnings only)
-- DragonGod native specimen lane: **SKIPPED** in this shell because the MSVC
-  developer include environment was unavailable
+- DragonGod native language specimen lane: **PASS**
+- DragonGod native Vulkan-shaped specimen lane: **PASS**
+- reconciled native environment:
+  - Visual Studio developer shell: `VsDevCmd.bat`
+  - MSVC compiler: `19.51.36248.0`
+  - VC tools: `14.51.36231`
+  - Windows SDK: `10.0.26100.0`
+  - Vulkan SDK: `C:\VulkanSDK\1.4.350.0`
 
 ## Scope preserved
 
@@ -120,7 +131,8 @@ resource lifecycle names without widening the runtime mechanism surface.
   scheduler integration, or Dominatus bridge was added;
 - no production Prometheus route, shader source, package metadata, public ABI,
   or paused RQ-M1 / DVT-2 work was intentionally widened;
-- DragonGod remains declaration-and-validation only in this pass.
+- DragonGod remains declaration-and-validation only in this pass; runtime
+  execution is added separately in DragonGod M1.
 
 ## Files added or changed in this pass
 
@@ -140,17 +152,12 @@ resource lifecycle names without widening the runtime mechanism surface.
   `docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md`,
   `internal/prometheus/DevelopmentReport/PROMETHEUS_G4_E2B_M1_REVIEWER_HANDOFF.md`
 
-## Known remaining blocker
+## Reconciliation note
 
-The current blocker is evidence closure:
-
-- the requested Windows-native DragonGod lane did not run to completion in this
-  shell because the MSVC developer include environment was unavailable;
-- the broader milestone-sized documentation and regression matrix from the
-  assignment remains larger than the focused compiler lanes executed here.
-
-That leaves the codebase in a materially better state than the starting point:
-the language feature exists end-to-end in parser/validator/MIR/erasure form,
-the key graph rules are enforced deterministically, the checked specimens are
-added, and the next missing proof is isolated to validation closure rather than
-to an unresolved compiler-design ambiguity.
+The original classification as `MEANINGFUL PROGRESSION` was accurate for the
+first implementation shell only: that shell lacked the complete MSVC developer
+include environment and therefore could not honestly claim native C11 success.
+No repository code changes were required to close that gap. After the rerun on
+Friday, July 24, 2026 with the full developer environment loaded, the native
+language and Vulkan-shaped specimens both passed, so DragonGod M0 is now
+reconciled to `SUCCESS`.

@@ -6,14 +6,14 @@ import (
 )
 
 const (
-	evt1AutomataMaxDecls             = 8
-	evt1AutomataMaxMachinesPerDecl   = 16
-	evt1AutomataMaxStatesPerMachine  = 32
-	evt1AutomataMaxHandlersPerState  = 16
-	evt1AutomataMaxStatesPerDecl     = 128
+	evt1AutomataMaxDecls              = 8
+	evt1AutomataMaxMachinesPerDecl    = 16
+	evt1AutomataMaxStatesPerMachine   = 32
+	evt1AutomataMaxHandlersPerState   = 16
+	evt1AutomataMaxStatesPerDecl      = 128
 	evt1AutomataMaxTransitionsPerDecl = 256
-	evt1AutomataMaxPushDepth         = 8
-	evt1AutomataMaxValidationWork    = 2048
+	evt1AutomataMaxPushDepth          = 8
+	evt1AutomataMaxValidationWork     = 2048
 )
 
 type EVT1QualifiedEnumMember struct {
@@ -76,12 +76,16 @@ type evt1AutomataInfo struct {
 	Decl                 EVT1AutomataDecl
 	SignalEnum           EVT1EnumDecl
 	RootMachine          string
+	MachineOrdinal       map[string]int
+	StateOrdinal         map[string]map[string]int
 	MachineReachable     map[string]bool
 	StateReachable       map[string]map[string]bool
 	ReachablePushTargets map[string]bool
 	HasReachableFinish   map[string]bool
 	HasReachablePop      map[string]bool
 	MaxActiveDepth       int
+	ContinuationCapacity int
+	CompletionStepBound  int
 	GraphIdentity        string
 }
 
@@ -90,6 +94,8 @@ type EVT1MIRAutomata struct {
 	SignalEnum      string               `json:"signal_enum"`
 	RootMachine     string               `json:"root_machine"`
 	MaxActiveDepth  int                  `json:"max_active_depth"`
+	ContinuationCapacity int             `json:"continuation_capacity"`
+	CompletionStepBound  int             `json:"completion_step_bound"`
 	GraphIdentity   string               `json:"graph_identity"`
 	SourceSpan      Span                 `json:"source_span"`
 	Machines        []EVT1MIRMachine     `json:"machines,omitempty"`
@@ -98,6 +104,7 @@ type EVT1MIRAutomata struct {
 type EVT1MIRMachine struct {
 	Name       string              `json:"name"`
 	Initial    bool                `json:"initial,omitempty"`
+	RuntimeOrdinal int             `json:"runtime_ordinal"`
 	Reachable  bool                `json:"reachable,omitempty"`
 	SourceSpan Span                `json:"source_span"`
 	States     []EVT1MIRState      `json:"states,omitempty"`
@@ -107,6 +114,7 @@ type EVT1MIRState struct {
 	Name       string                 `json:"name"`
 	Initial    bool                   `json:"initial,omitempty"`
 	Terminal   bool                   `json:"terminal,omitempty"`
+	RuntimeOrdinal int                `json:"runtime_ordinal"`
 	Reachable  bool                   `json:"reachable,omitempty"`
 	Completion string                 `json:"completion,omitempty"`
 	SourceSpan Span                   `json:"source_span"`
@@ -162,20 +170,29 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 	info := &evt1AutomataInfo{
 		Decl:                 decl,
 		SignalEnum:           env.enums[signalType.Name],
+		MachineOrdinal:       map[string]int{},
+		StateOrdinal:         map[string]map[string]int{},
 		MachineReachable:     map[string]bool{},
 		StateReachable:       map[string]map[string]bool{},
 		ReachablePushTargets: map[string]bool{},
 		HasReachableFinish:   map[string]bool{},
 		HasReachablePop:      map[string]bool{},
 	}
+	for _, variant := range info.SignalEnum.Variants {
+		if len(variant.Payload) > 0 {
+			return nil, evt1Diagnostic("CV4269", fmt.Sprintf("automata %s signal enum %s must use only nullary variants in M1, but %s carries payload", decl.Name, info.SignalEnum.Name, variant.Name), variant.Span)
+		}
+	}
 	machineNames := map[string]Span{}
 	initialMachines := 0
 	totalStates := 0
 	totalTransitions := 0
-	for _, machine := range decl.Machines {
+	for machineIndex, machine := range decl.Machines {
 		if _, exists := machineNames[machine.Name]; exists {
 			return nil, evt1Diagnostic("CV4244", fmt.Sprintf("duplicate machine %s in automata %s", machine.Name, decl.Name), machine.Span)
 		}
+		info.MachineOrdinal[machine.Name] = machineIndex
+		info.StateOrdinal[machine.Name] = map[string]int{}
 		machineNames[machine.Name] = machine.Span
 		if machine.Initial {
 			initialMachines++
@@ -190,10 +207,11 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 		totalStates += len(machine.States)
 		stateNames := map[string]Span{}
 		initialStates := 0
-		for _, state := range machine.States {
+		for stateIndex, state := range machine.States {
 			if _, exists := stateNames[state.Name]; exists {
 				return nil, evt1Diagnostic("CV4247", fmt.Sprintf("duplicate state %s in machine %s", state.Name, machine.Name), state.Span)
 			}
+			info.StateOrdinal[machine.Name][state.Name] = stateIndex
 			stateNames[state.Name] = state.Span
 			if state.Initial {
 				initialStates++
@@ -258,6 +276,8 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 	if info.MaxActiveDepth > evt1AutomataMaxPushDepth {
 		return nil, evt1Diagnostic("CV4266", fmt.Sprintf("automata %s maximum active machine depth %d exceeds limit %d", decl.Name, info.MaxActiveDepth, evt1AutomataMaxPushDepth), decl.Span)
 	}
+	info.ContinuationCapacity = info.MaxActiveDepth - 1
+	info.CompletionStepBound = info.MaxActiveDepth
 	info.GraphIdentity = evt1AutomataGraphIdentity(info)
 	return info, nil
 }

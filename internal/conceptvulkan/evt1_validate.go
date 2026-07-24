@@ -11,11 +11,12 @@ type evt1Scope struct {
 }
 
 type evt1ValueBinding struct {
-	t        EVT1Type
-	mutable  bool
-	comptime bool
-	hasValue bool
-	value    EVT1Value
+	t               EVT1Type
+	mutable         bool
+	comptime        bool
+	hasValue        bool
+	value           EVT1Value
+	instanceAutomata string
 }
 
 type evt1LValue struct {
@@ -41,6 +42,10 @@ func (s *evt1Scope) lookup(name string) (evt1ValueBinding, bool) {
 	return evt1ValueBinding{}, false
 }
 
+func (b evt1ValueBinding) isInstance() bool {
+	return b.instanceAutomata != ""
+}
+
 func validateEVT1Module(module EVT1Module) error {
 	_, err := analyzeEVT1Module(module)
 	return err
@@ -50,6 +55,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 	env := newEVT1Env()
 	typeNames := map[string]Span{}
 	for _, enumDecl := range module.Enums {
+		if enumDecl.Name == evt1AutomataDispatchOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), enumDecl.Span)
+		}
 		if _, exists := env.enums[enumDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4101", fmt.Sprintf("duplicate enum declaration %s", enumDecl.Name), enumDecl.Span)
 		}
@@ -60,6 +68,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.enums[enumDecl.Name] = enumDecl
 	}
 	for _, structDecl := range module.Structs {
+		if structDecl.Name == evt1AutomataDispatchOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), structDecl.Span)
+		}
 		if _, exists := env.structs[structDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4122", fmt.Sprintf("duplicate struct declaration %s", structDecl.Name), structDecl.Span)
 		}
@@ -70,6 +81,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.structs[structDecl.Name] = structDecl
 	}
 	for _, automataDecl := range module.Automata {
+		if automataDecl.Name == evt1AutomataDispatchOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), automataDecl.Span)
+		}
 		if _, exists := env.automata[automataDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate automata declaration %s", automataDecl.Name), automataDecl.Span)
 		}
@@ -79,6 +93,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.automata[automataDecl.Name] = automataDecl
 	}
 	for _, conceptDecl := range module.Concepts {
+		if conceptDecl.Name == evt1AutomataDispatchOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), conceptDecl.Span)
+		}
 		if _, exists := env.concepts[conceptDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4146", fmt.Sprintf("duplicate concept declaration %s", conceptDecl.Name), conceptDecl.Span)
 		}
@@ -88,6 +105,12 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.concepts[conceptDecl.Name] = conceptDecl
 	}
 	for _, templateDecl := range module.Templates {
+		if templateDecl.Name == evt1AutomataDispatchOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), templateDecl.Span)
+		}
+		if templateDecl.Name == "dispatch" {
+			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", templateDecl.Span)
+		}
 		if _, exists := env.templates[templateDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4168", fmt.Sprintf("duplicate template declaration %s", templateDecl.Name), templateDecl.Span)
 		}
@@ -106,6 +129,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.comptimeDecls[decl.Name] = decl
 	}
 	for _, fn := range module.Functions {
+		if fn.Name == "dispatch" {
+			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", fn.Span)
+		}
 		if env.automata[fn.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate declaration %s", fn.Name), fn.Span)
 		}
@@ -117,6 +143,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.functions[fn.Name] = append(env.functions[fn.Name], fn)
 	}
 	for _, fn := range module.ComptimeFns {
+		if fn.Name == "dispatch" {
+			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", fn.Span)
+		}
 		if len(env.functions[fn.Name]) > 0 || env.templates[fn.Name].Name != "" || env.comptimeDecls[fn.Name].Name != "" || env.comptimeFunctions[fn.Name].Name != "" || env.automata[fn.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4214", fmt.Sprintf("comptime function %s conflicts with an existing symbol", fn.Name), fn.Span)
 		}
@@ -400,6 +429,8 @@ func evt1CollectComptimeCallsFromBlock(block EVT1Block, env *evt1Env) []string {
 		switch s := stmt.(type) {
 		case *EVT1VarDecl:
 			out = append(out, evt1CollectComptimeCallsFromExpr(s.Value, env)...)
+		case *EVT1InstanceDecl:
+			continue
 		case *EVT1AssignStmt:
 			out = append(out, evt1CollectComptimeCallsFromExpr(s.Target, env)...)
 			out = append(out, evt1CollectComptimeCallsFromExpr(s.Value, env)...)
@@ -453,6 +484,8 @@ func evt1CollectComptimeCallsFromExpr(expr EVT1Expr, env *evt1Env) []string {
 			out = append(out, evt1CollectComptimeCallsFromExpr(arg, env)...)
 		}
 		return out
+	case *EVT1DispatchExpr:
+		return evt1CollectComptimeCallsFromExpr(e.Signal, env)
 	case *EVT1TemplateCallExpr:
 		var out []string
 		for _, arg := range e.Args {
@@ -636,6 +669,18 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 				continue
 			}
 			local.declare(s.Name, evt1ValueBinding{t: resolvedType, mutable: true, comptime: inComptimeFn})
+		case *EVT1InstanceDecl:
+			if inComptimeFn {
+				return evt1Diagnostic("CV4271", fmt.Sprintf("instance %s cannot be declared in comptime code", s.Name), s.Span)
+			}
+			info, ok := env.automataInfo[s.AutomataName]
+			if !ok {
+				return evt1Diagnostic("CV4270", fmt.Sprintf("instance declaration requires an automata name, got %s", s.AutomataName), s.Span)
+			}
+			local.declare(s.Name, evt1ValueBinding{
+				mutable:          true,
+				instanceAutomata: info.Decl.Name,
+			})
 		case *EVT1AssignStmt:
 			target, err := validateAssignable(env, local, s.Target, templateInfo)
 			if err != nil {
@@ -1014,6 +1059,9 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		return validateExpr(env, scope, e.Value, templateInfo, inComptimeFn)
 	case *EVT1NameExpr:
 		if binding, ok := scope.lookup(e.Name); ok {
+			if binding.isInstance() {
+				return EVT1Type{}, evt1Diagnostic("CV4272", fmt.Sprintf("instance %s of automata %s cannot be used as an ordinary value; use dispatch(%s, signal)", e.Name, binding.instanceAutomata, e.Name), e.Span)
+			}
 			return evt1CanonicalType(env, binding.t), nil
 		}
 		if _, ok := env.automata[e.Name]; ok {
@@ -1095,6 +1143,27 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 			}
 		}
 		return evt1CanonicalType(env, fn.ReturnType), nil
+	case *EVT1DispatchExpr:
+		if inComptimeFn {
+			return EVT1Type{}, evt1Diagnostic("CV4275", "dispatch is not available during comptime evaluation", e.Span)
+		}
+		binding, ok := scope.lookup(e.InstanceName)
+		if !ok {
+			return EVT1Type{}, evt1Diagnostic("CV4273", fmt.Sprintf("dispatch requires a local instance, but %s is unknown", e.InstanceName), e.Span)
+		}
+		if !binding.isInstance() {
+			return EVT1Type{}, evt1Diagnostic("CV4273", fmt.Sprintf("dispatch requires a local instance as its first operand, but %s is not an instance", e.InstanceName), e.Span)
+		}
+		info := env.automataInfo[binding.instanceAutomata]
+		expected := evt1CanonicalType(env, info.Decl.SignalType)
+		signalType, err := validateExprAgainstExpected(env, scope, e.Signal, expected, templateInfo, false)
+		if err != nil {
+			return EVT1Type{}, err
+		}
+		if !evt1CanonicalType(env, signalType.valueType()).Equal(evt1CanonicalType(env, expected.valueType())) {
+			return EVT1Type{}, evt1Diagnostic("CV4274", fmt.Sprintf("dispatch(%s, ...) expects signal type %s but got %s", e.InstanceName, expected.String(), signalType.String()), e.Signal.exprSpan())
+		}
+		return EVT1Type{Name: evt1AutomataDispatchOutcomeTypeName, Kind: EVT1TypeEnum, Span: e.Span}, nil
 	case *EVT1TemplateCallExpr:
 		if inComptimeFn {
 			return EVT1Type{}, evt1Diagnostic("CV4201", "templates are not available during comptime evaluation", e.Span)
@@ -1315,6 +1384,9 @@ func validateAssignable(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateI
 		binding, ok := scope.lookup(e.Name)
 		if !ok {
 			return evt1LValue{}, evt1Diagnostic("CV4127", fmt.Sprintf("unknown assignable target %s", e.Name), e.Span)
+		}
+		if binding.isInstance() {
+			return evt1LValue{}, evt1Diagnostic("CV4272", fmt.Sprintf("instance %s of automata %s cannot be assigned or copied as a value", e.Name, binding.instanceAutomata), e.Span)
 		}
 		return evt1LValue{t: evt1CanonicalType(env, binding.t), mutable: binding.mutable, wholeValue: true}, nil
 	case *EVT1FieldExpr:
@@ -1870,6 +1942,8 @@ func exprLabel(expr EVT1Expr) string {
 		return exprLabel(e.Base) + "[index]"
 	case *EVT1ArrayLiteralExpr:
 		return "array_literal"
+	case *EVT1DispatchExpr:
+		return "dispatch(" + e.InstanceName + ", ...)"
 	default:
 		return "expression"
 	}
@@ -2217,6 +2291,8 @@ func evt1SubstituteStatement(stmt EVT1Statement, typeParam string, concreteType 
 			return nil, err
 		}
 		return &EVT1VarDecl{Type: evt1SubstituteType(s.Type, typeParam, concreteType), Name: s.Name, Value: value, Span: s.Span}, nil
+	case *EVT1InstanceDecl:
+		return &EVT1InstanceDecl{AutomataName: s.AutomataName, Name: s.Name, Span: s.Span}, nil
 	case *EVT1AssignStmt:
 		target, err := evt1SubstituteExpr(s.Target, typeParam, concreteType)
 		if err != nil {
@@ -2291,6 +2367,12 @@ func evt1SubstituteExpr(expr EVT1Expr, typeParam string, concreteType EVT1Type) 
 			out.Args = append(out.Args, sub)
 		}
 		return out, nil
+	case *EVT1DispatchExpr:
+		signal, err := evt1SubstituteExpr(e.Signal, typeParam, concreteType)
+		if err != nil {
+			return nil, err
+		}
+		return &EVT1DispatchExpr{InstanceName: e.InstanceName, Signal: signal, Span: e.Span}, nil
 	case *EVT1TemplateCallExpr:
 		return nil, evt1Diagnostic("CV4174", "templates cannot invoke templates in EVT1 M1B-B", e.Span)
 	case *EVT1BinaryExpr:

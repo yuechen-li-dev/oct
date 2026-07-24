@@ -51,7 +51,7 @@ record one `vkCmdDispatch(ray_count,1,1)` and one synchronous submission with
 paired capacity and descriptor rebind-before-retire. Expanded image/cost
 authority is paused, not completed or abandoned. EVT1 language work remains
 separate from resumed batch or stage-7 work. The exact next intended
-post-substrate direction is now:
+post-substrate direction was:
 
 ```text
 DragonGod typed lifecycle validation over the now-complete EVT1 substrate
@@ -59,15 +59,17 @@ DragonGod typed lifecycle validation over the now-complete EVT1 substrate
 
 The historical kernel-54 milestone named `M1C` must not be confused with the
 later EVT1 milestone named `M1B-C`. DragonGod remains the intended first
-serious post-substrate framework direction; it is still deferred and not begun
-here.
+serious post-substrate framework direction. That direction is no longer
+deferred: DragonGod M0 and DragonGod M1 are now implemented in the current
+repository state.
 
-The current worktree also contains an initial DragonGod M0 compiler vertical
+The current repository now contains the accepted DragonGod M0 compiler vertical
 recorded in
 `internal/prometheus/DevelopmentReport/DRAGONGOD_M0_TYPED_PUSHDOWN_AUTOMATA_DECLARATION_AND_DETERMINISTIC_STATIC_VALIDATION.md`.
-That report should be treated as in-progress implementation evidence rather than
-accepted closure until its broader validation/documentation matrix is fully
-reconciled.
+That report is reconciled to `SUCCESS` after rerunning both native C11
+specimens in a fully loaded Visual Studio developer environment on Friday,
+July 24, 2026. The follow-on DragonGod M1 runtime vertical is recorded in
+`internal/prometheus/DevelopmentReport/DRAGONGOD_M1_TYPED_AUTOMATA_INSTANCES_AND_DETERMINISTIC_RUNTIME_DISPATCH.md`.
 
 ## Historical repository handoff — Stage 3
 

@@ -1,0 +1,209 @@
+profile Vulkan;
+
+enum LifecycleSignal
+{
+    Create,
+    Begin,
+    Clean,
+    Release,
+    Sweep,
+    Confirm,
+    Stop,
+    Tick
+}
+
+automata ResourceLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial state Empty
+        {
+            on LifecycleSignal::Create goto Ready;
+        }
+
+        state Ready
+        {
+            on LifecycleSignal::Tick goto Ready;
+            on LifecycleSignal::Begin goto Running;
+            on LifecycleSignal::Clean push Cleanup goto AwaitingResume;
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Running
+        {
+            on LifecycleSignal::Clean push Cleanup goto Finished;
+        }
+
+        state AwaitingResume
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+
+    machine Cleanup
+    {
+        initial state Begin
+        {
+            on LifecycleSignal::Release push SweepMachine goto Resume;
+        }
+
+        state Resume
+        {
+            on LifecycleSignal::Tick goto Resume;
+            on LifecycleSignal::Confirm goto Complete;
+            on LifecycleSignal::Stop goto AbortAll;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+
+        terminal state AbortAll
+        {
+            finish;
+        }
+    }
+
+    machine SweepMachine
+    {
+        initial state Begin
+        {
+            on LifecycleSignal::Sweep goto Complete;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+    }
+}
+
+automata ImmediateLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+automata SingleStepLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial state Idle
+        {
+            on LifecycleSignal::Create goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4
+    };
+}
+
+int InitialTerminalOutcomeCode()
+{
+    instance ImmediateLifecycle lifecycle;
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Create));
+}
+
+int ZeroCapacityOutcomeCode()
+{
+    instance SingleStepLifecycle lifecycle;
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Create));
+}
+
+int UnhandledPreservesStateCode()
+{
+    instance ResourceLifecycle lifecycle;
+    AutomataDispatchOutcome first = dispatch(lifecycle, LifecycleSignal::Stop);
+    AutomataDispatchOutcome second = dispatch(lifecycle, LifecycleSignal::Create);
+    return OutcomeCode(first) * 10 + OutcomeCode(second);
+}
+
+int NestedPushResumesCallerCode()
+{
+    instance ResourceLifecycle lifecycle;
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Create);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Clean);
+    AutomataDispatchOutcome c = dispatch(lifecycle, LifecycleSignal::Release);
+    AutomataDispatchOutcome d = dispatch(lifecycle, LifecycleSignal::Sweep);
+    AutomataDispatchOutcome e = dispatch(lifecycle, LifecycleSignal::Confirm);
+    AutomataDispatchOutcome f = dispatch(lifecycle, LifecycleSignal::Stop);
+    return OutcomeCode(a) * 100000 +
+        OutcomeCode(b) * 10000 +
+        OutcomeCode(c) * 1000 +
+        OutcomeCode(d) * 100 +
+        OutcomeCode(e) * 10 +
+        OutcomeCode(f);
+}
+
+int RootTerminalContinuationFinishesImmediatelyCode()
+{
+    instance ResourceLifecycle lifecycle;
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Create);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Begin);
+    AutomataDispatchOutcome c = dispatch(lifecycle, LifecycleSignal::Clean);
+    AutomataDispatchOutcome d = dispatch(lifecycle, LifecycleSignal::Release);
+    AutomataDispatchOutcome e = dispatch(lifecycle, LifecycleSignal::Sweep);
+    AutomataDispatchOutcome f = dispatch(lifecycle, LifecycleSignal::Confirm);
+    AutomataDispatchOutcome g = dispatch(lifecycle, LifecycleSignal::Tick);
+    return OutcomeCode(a) * 1000000 +
+        OutcomeCode(b) * 100000 +
+        OutcomeCode(c) * 10000 +
+        OutcomeCode(d) * 1000 +
+        OutcomeCode(e) * 100 +
+        OutcomeCode(f) * 10 +
+        OutcomeCode(g);
+}
+
+int NonRootFinishTerminatesWholeInstanceCode()
+{
+    instance ResourceLifecycle lifecycle;
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Create);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Clean);
+    AutomataDispatchOutcome c = dispatch(lifecycle, LifecycleSignal::Release);
+    AutomataDispatchOutcome d = dispatch(lifecycle, LifecycleSignal::Sweep);
+    AutomataDispatchOutcome e = dispatch(lifecycle, LifecycleSignal::Stop);
+    AutomataDispatchOutcome f = dispatch(lifecycle, LifecycleSignal::Tick);
+    return OutcomeCode(a) * 100000 +
+        OutcomeCode(b) * 10000 +
+        OutcomeCode(c) * 1000 +
+        OutcomeCode(d) * 100 +
+        OutcomeCode(e) * 10 +
+        OutcomeCode(f);
+}
+
+int IndependentInstancesStayIndependentCode()
+{
+    instance ResourceLifecycle left;
+    instance ResourceLifecycle right;
+    AutomataDispatchOutcome a = dispatch(left, LifecycleSignal::Create);
+    AutomataDispatchOutcome b = dispatch(left, LifecycleSignal::Tick);
+    AutomataDispatchOutcome c = dispatch(right, LifecycleSignal::Stop);
+    AutomataDispatchOutcome d = dispatch(right, LifecycleSignal::Create);
+    return OutcomeCode(a) * 1000 +
+        OutcomeCode(b) * 100 +
+        OutcomeCode(c) * 10 +
+        OutcomeCode(d);
+}

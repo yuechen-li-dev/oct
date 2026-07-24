@@ -6,6 +6,8 @@
       "signal_enum": "ResourceSignal",
       "root_machine": "Main",
       "max_active_depth": 3,
+      "continuation_capacity": 2,
+      "completion_step_bound": 3,
       "graph_identity": "42b357cd37a9da188e9b6efbfa5060dcb62b6071c5ce758d3f32dd3e8d539734",
       "source_span": {
         "line": 14,
@@ -15,6 +17,7 @@
         {
           "name": "Main",
           "initial": true,
+          "runtime_ordinal": 0,
           "reachable": true,
           "source_span": {
             "line": 16,
@@ -24,6 +27,7 @@
             {
               "name": "Empty",
               "initial": true,
+              "runtime_ordinal": 0,
               "reachable": true,
               "source_span": {
                 "line": 18,
@@ -43,6 +47,7 @@
             },
             {
               "name": "Ready",
+              "runtime_ordinal": 1,
               "reachable": true,
               "source_span": {
                 "line": 23,
@@ -90,6 +95,7 @@
             },
             {
               "name": "Recording",
+              "runtime_ordinal": 2,
               "reachable": true,
               "source_span": {
                 "line": 31,
@@ -110,6 +116,7 @@
             },
             {
               "name": "ReadyAfterCleanup",
+              "runtime_ordinal": 3,
               "reachable": true,
               "source_span": {
                 "line": 36,
@@ -130,6 +137,7 @@
             {
               "name": "Finished",
               "terminal": true,
+              "runtime_ordinal": 4,
               "reachable": true,
               "completion": "finish",
               "source_span": {
@@ -141,6 +149,7 @@
         },
         {
           "name": "CleanupMachine",
+          "runtime_ordinal": 1,
           "reachable": true,
           "source_span": {
             "line": 47,
@@ -150,6 +159,7 @@
             {
               "name": "Begin",
               "initial": true,
+              "runtime_ordinal": 0,
               "reachable": true,
               "source_span": {
                 "line": 49,
@@ -170,6 +180,7 @@
             },
             {
               "name": "Resume",
+              "runtime_ordinal": 1,
               "reachable": true,
               "source_span": {
                 "line": 54,
@@ -199,6 +210,7 @@
             {
               "name": "Complete",
               "terminal": true,
+              "runtime_ordinal": 2,
               "reachable": true,
               "completion": "pop",
               "source_span": {
@@ -210,6 +222,7 @@
         },
         {
           "name": "SubmitMachine",
+          "runtime_ordinal": 2,
           "reachable": true,
           "source_span": {
             "line": 66,
@@ -219,6 +232,7 @@
             {
               "name": "Begin",
               "initial": true,
+              "runtime_ordinal": 0,
               "reachable": true,
               "source_span": {
                 "line": 68,
@@ -239,6 +253,7 @@
             {
               "name": "Complete",
               "terminal": true,
+              "runtime_ordinal": 1,
               "reachable": true,
               "completion": "pop",
               "source_span": {

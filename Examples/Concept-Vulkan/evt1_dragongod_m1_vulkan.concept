@@ -1,0 +1,134 @@
+profile Vulkan;
+
+enum ResourceSignal
+{
+    Create,
+    Record,
+    Cleanup,
+    Release,
+    Submit,
+    Stop,
+    Tick
+}
+
+automata BufferLifecycle(ResourceSignal)
+{
+    initial machine Main
+    {
+        initial state Empty
+        {
+            on ResourceSignal::Create goto Ready;
+        }
+
+        state Ready
+        {
+            on ResourceSignal::Tick goto Ready;
+            on ResourceSignal::Record goto Recording;
+            on ResourceSignal::Cleanup push CleanupMachine goto ReadyAfterCleanup;
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Recording
+        {
+            on ResourceSignal::Cleanup push CleanupMachine goto Finished;
+        }
+
+        state ReadyAfterCleanup
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+
+    machine CleanupMachine
+    {
+        initial state Begin
+        {
+            on ResourceSignal::Release push SubmitMachine goto Resume;
+        }
+
+        state Resume
+        {
+            on ResourceSignal::Tick goto Resume;
+            on ResourceSignal::Submit goto Complete;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+    }
+
+    machine SubmitMachine
+    {
+        initial state Begin
+        {
+            on ResourceSignal::Submit goto Complete;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+    }
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4
+    };
+}
+
+AutomataDispatchOutcome BufferCleanupFinishes(VkBuffer buffer)
+{
+    instance BufferLifecycle lifecycle;
+    dispatch(lifecycle, ResourceSignal::Create);
+    dispatch(lifecycle, ResourceSignal::Record);
+    dispatch(lifecycle, ResourceSignal::Cleanup);
+    dispatch(lifecycle, ResourceSignal::Release);
+    dispatch(lifecycle, ResourceSignal::Submit);
+    return dispatch(lifecycle, ResourceSignal::Submit);
+}
+
+int BufferCleanupTrace(VkBuffer buffer)
+{
+    instance BufferLifecycle lifecycle;
+    AutomataDispatchOutcome a = dispatch(lifecycle, ResourceSignal::Create);
+    AutomataDispatchOutcome b = dispatch(lifecycle, ResourceSignal::Record);
+    AutomataDispatchOutcome c = dispatch(lifecycle, ResourceSignal::Cleanup);
+    AutomataDispatchOutcome d = dispatch(lifecycle, ResourceSignal::Release);
+    AutomataDispatchOutcome e = dispatch(lifecycle, ResourceSignal::Submit);
+    AutomataDispatchOutcome f = dispatch(lifecycle, ResourceSignal::Submit);
+    return OutcomeCode(a) * 100000 +
+        OutcomeCode(b) * 10000 +
+        OutcomeCode(c) * 1000 +
+        OutcomeCode(d) * 100 +
+        OutcomeCode(e) * 10 +
+        OutcomeCode(f);
+}
+
+AutomataDispatchOutcome BufferLifecycleAlreadyFinishedOutcome(VkCommandPool pool)
+{
+    instance BufferLifecycle lifecycle;
+    dispatch(lifecycle, ResourceSignal::Create);
+    dispatch(lifecycle, ResourceSignal::Record);
+    dispatch(lifecycle, ResourceSignal::Cleanup);
+    dispatch(lifecycle, ResourceSignal::Release);
+    dispatch(lifecycle, ResourceSignal::Submit);
+    dispatch(lifecycle, ResourceSignal::Submit);
+    return dispatch(lifecycle, ResourceSignal::Tick);
+}
+
+int VulkanDispatchAudit(VkBuffer buffer, VkCommandPool pool)
+{
+    return BufferCleanupTrace(buffer) * 10 +
+        OutcomeCode(BufferLifecycleAlreadyFinishedOutcome(pool));
+}

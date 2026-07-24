@@ -34,6 +34,8 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 		"evt1_m1b_d_vulkan.concept",
 		"evt1_dragongod_m0_language.concept",
 		"evt1_dragongod_m0_vulkan.concept",
+		"evt1_dragongod_m1_language.concept",
+		"evt1_dragongod_m1_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -110,6 +112,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 		"evt1_m1b_d_vulkan.concept",
 		"evt1_dragongod_m0_language.concept",
 		"evt1_dragongod_m0_vulkan.concept",
+		"evt1_dragongod_m1_language.concept",
+		"evt1_dragongod_m1_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -598,6 +602,31 @@ func TestDragonGodM0GenerationErasesAutomataRuntime(t *testing.T) {
 	}
 }
 
+func TestDragonGodM1GenerationIncludesRuntimeDispatch(t *testing.T) {
+	src := readEVT1Fixture(t, "evt1_dragongod_m1_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m1_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := string(outputs["evt1_dragongod_m1_language.generated.h"])
+	body := string(outputs["evt1_dragongod_m1_language.generated.c"])
+	for _, needle := range []string{
+		"concept_vulkan_automata_dispatch_outcome",
+		"concept_vulkan_resource_lifecycle_instance",
+		"concept_vulkan_resource_lifecycle_dispatch(",
+		"concept_vulkan_resource_lifecycle_normalize(",
+		"concept_vulkan_single_step_lifecycle_instance",
+	} {
+		if !strings.Contains(header, needle) && !strings.Contains(body, needle) {
+			t.Fatalf("generated output missing %q\nHEADER:\n%s\nBODY:\n%s", needle, header, body)
+		}
+	}
+}
+
 func TestDragonGodM0IdentityIgnoresWhitespaceAndLocation(t *testing.T) {
 	left := `profile Vulkan;
 enum Signal
@@ -750,6 +779,41 @@ func TestDragonGodM0DiagnosticsAreStable(t *testing.T) {
 			name: "machine count limit",
 			src: "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) {\ninitial machine M0 { initial state S { on Signal::Go goto D; } terminal state D { finish; } }\nmachine M1 { initial terminal state S { pop; } }\nmachine M2 { initial terminal state S { pop; } }\nmachine M3 { initial terminal state S { pop; } }\nmachine M4 { initial terminal state S { pop; } }\nmachine M5 { initial terminal state S { pop; } }\nmachine M6 { initial terminal state S { pop; } }\nmachine M7 { initial terminal state S { pop; } }\nmachine M8 { initial terminal state S { pop; } }\nmachine M9 { initial terminal state S { pop; } }\nmachine M10 { initial terminal state S { pop; } }\nmachine M11 { initial terminal state S { pop; } }\nmachine M12 { initial terminal state S { pop; } }\nmachine M13 { initial terminal state S { pop; } }\nmachine M14 { initial terminal state S { pop; } }\nmachine M15 { initial terminal state S { pop; } }\nmachine M16 { initial terminal state S { pop; } }\n}\nint Value() { return 1; }\n",
 			code: "CV4265",
+		},
+		{
+			name: "compiler owned outcome redeclaration",
+			src:  "profile Vulkan;\nenum AutomataDispatchOutcome { Value }\nint Value() { return 1; }\n",
+			code: "CV4267",
+		},
+		{
+			name: "signal payload variant rejected",
+			src:  "profile Vulkan;\nenum Signal { Go(int payload) }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4269",
+		},
+		{
+			name: "instance requires automata",
+			src:  "profile Vulkan;\nenum Signal { Go }\nint Value() { instance Signal value; return 1; }\n",
+			code: "CV4270",
+		},
+		{
+			name: "ordinary use of instance rejected",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { instance Demo value; return value; }\n",
+			code: "CV4272",
+		},
+		{
+			name: "dispatch first operand must be instance",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { int value = 1; dispatch(value, Signal::Go); return 1; }\n",
+			code: "CV4273",
+		},
+		{
+			name: "dispatch wrong signal enum",
+			src:  "profile Vulkan;\nenum Left { Go }\nenum Right { Go }\nautomata Demo(Left) { initial machine Main { initial state Start { on Left::Go goto Done; } terminal state Done { finish; } } }\nint Value() { instance Demo value; dispatch(value, Right::Go); return 1; }\n",
+			code: "CV4274",
+		},
+		{
+			name: "dispatch name redeclaration rejected",
+			src:  "profile Vulkan;\nint dispatch() { return 1; }\nint Value() { return 2; }\n",
+			code: "CV4268",
 		},
 	}
 	for _, tc := range cases {
@@ -1166,6 +1230,64 @@ int main(void) {
 }
 `
 	runNativeHarness(t, outputs, "evt1_dragongod_m0_vulkan_harness.c", harness, nil)
+}
+
+func TestDragonGodM1LanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m1_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m1_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m1_language.generated.h"
+
+int main(void) {
+  if (concept_vulkan_evt1_dragongod_m1_language_initial_terminal_outcome_code() != 4) return 1;
+  if (concept_vulkan_evt1_dragongod_m1_language_zero_capacity_outcome_code() != 3) return 2;
+  if (concept_vulkan_evt1_dragongod_m1_language_unhandled_preserves_state_code() != 21) return 3;
+  if (concept_vulkan_evt1_dragongod_m1_language_nested_push_resumes_caller_code() != 111113) return 4;
+  if (concept_vulkan_evt1_dragongod_m1_language_root_terminal_continuation_finishes_immediately_code() != 1111134) return 5;
+  if (concept_vulkan_evt1_dragongod_m1_language_non_root_finish_terminates_whole_instance_code() != 111134) return 6;
+  if (concept_vulkan_evt1_dragongod_m1_language_independent_instances_stay_independent_code() != 1121) return 7;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_dragongod_m1_language_harness.c", harness, nil)
+}
+
+func TestDragonGodM1VulkanSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m1_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m1_vulkan.generated.h"
+#include <stdint.h>
+
+int main(void) {
+  VkBuffer buffer = (VkBuffer)(uintptr_t)0x10u;
+  VkCommandPool pool = (VkCommandPool)(uintptr_t)0x20u;
+  if (concept_vulkan_evt1_dragongod_m1_vulkan_buffer_cleanup_finishes(buffer).tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_FINISHED) return 1;
+  if (concept_vulkan_evt1_dragongod_m1_vulkan_buffer_lifecycle_already_finished_outcome(pool).tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_ALREADY_FINISHED) return 2;
+  if (concept_vulkan_evt1_dragongod_m1_vulkan_buffer_cleanup_trace(buffer) != 111113) return 3;
+  if (concept_vulkan_evt1_dragongod_m1_vulkan_vulkan_dispatch_audit(buffer, pool) != 1111134) return 4;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_dragongod_m1_vulkan_harness.c", harness, nil)
 }
 
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {

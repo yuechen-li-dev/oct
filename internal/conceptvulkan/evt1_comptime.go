@@ -248,6 +248,8 @@ func evt1EvalExprTyped(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1
 			return evt1EvaluateGlobalComptimeDecl(state, decl)
 		}
 		return EVT1Value{}, evt1Diagnostic("CV4200", fmt.Sprintf("name %s is not available in comptime evaluation", e.Name), e.Span)
+	case *EVT1DispatchExpr:
+		return EVT1Value{}, evt1Diagnostic("CV4275", "dispatch is not available during comptime evaluation", e.Span)
 	case *EVT1UnaryExpr:
 		value, err := evt1EvalExpr(state, scope, e.Value)
 		if err != nil {
@@ -578,6 +580,8 @@ func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block
 				return nil, err
 			}
 			local.declare(s.Name, evt1EvalBinding{value: value, mutable: !s.Comptime, comptime: true})
+		case *EVT1InstanceDecl:
+			return nil, evt1Diagnostic("CV4271", fmt.Sprintf("instance %s cannot be declared in comptime code", s.Name), s.Span)
 		case *EVT1AssignStmt:
 			nameExpr, ok := s.Target.(*EVT1NameExpr)
 			if !ok {

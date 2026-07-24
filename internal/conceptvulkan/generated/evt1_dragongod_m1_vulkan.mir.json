@@ -1,0 +1,1475 @@
+{
+  "schema": "concept-vulkan-evt1-mir.v1",
+  "module": "examples/Concept-Vulkan/evt1_dragongod_m1_vulkan.concept",
+  "enums": [
+    {
+      "name": "ResourceSignal",
+      "c_name": "concept_vulkan_resource_signal",
+      "source_span": {
+        "line": 3,
+        "column": 1
+      },
+      "variants": [
+        {
+          "name": "Create",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_CREATE",
+          "tag": 0,
+          "source_span": {
+            "line": 5,
+            "column": 5
+          }
+        },
+        {
+          "name": "Record",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_RECORD",
+          "tag": 1,
+          "source_span": {
+            "line": 6,
+            "column": 5
+          }
+        },
+        {
+          "name": "Cleanup",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_CLEANUP",
+          "tag": 2,
+          "source_span": {
+            "line": 7,
+            "column": 5
+          }
+        },
+        {
+          "name": "Release",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_RELEASE",
+          "tag": 3,
+          "source_span": {
+            "line": 8,
+            "column": 5
+          }
+        },
+        {
+          "name": "Submit",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_SUBMIT",
+          "tag": 4,
+          "source_span": {
+            "line": 9,
+            "column": 5
+          }
+        },
+        {
+          "name": "Stop",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_STOP",
+          "tag": 5,
+          "source_span": {
+            "line": 10,
+            "column": 5
+          }
+        },
+        {
+          "name": "Tick",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_TICK",
+          "tag": 6,
+          "source_span": {
+            "line": 11,
+            "column": 5
+          }
+        }
+      ]
+    }
+  ],
+  "automata": [
+    {
+      "name": "BufferLifecycle",
+      "signal_enum": "ResourceSignal",
+      "root_machine": "Main",
+      "max_active_depth": 3,
+      "continuation_capacity": 2,
+      "completion_step_bound": 3,
+      "graph_identity": "42b357cd37a9da188e9b6efbfa5060dcb62b6071c5ce758d3f32dd3e8d539734",
+      "source_span": {
+        "line": 14,
+        "column": 1
+      },
+      "machines": [
+        {
+          "name": "Main",
+          "initial": true,
+          "runtime_ordinal": 0,
+          "reachable": true,
+          "source_span": {
+            "line": 16,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Empty",
+              "initial": true,
+              "runtime_ordinal": 0,
+              "reachable": true,
+              "source_span": {
+                "line": 18,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Create",
+                  "kind": "goto",
+                  "target_state": "Ready",
+                  "source_span": {
+                    "line": 20,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Ready",
+              "runtime_ordinal": 1,
+              "reachable": true,
+              "source_span": {
+                "line": 23,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Tick",
+                  "kind": "goto",
+                  "target_state": "Ready",
+                  "source_span": {
+                    "line": 25,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Record",
+                  "kind": "goto",
+                  "target_state": "Recording",
+                  "source_span": {
+                    "line": 26,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Cleanup",
+                  "kind": "push",
+                  "push_machine": "CleanupMachine",
+                  "continuation_state": "ReadyAfterCleanup",
+                  "source_span": {
+                    "line": 27,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 28,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Recording",
+              "runtime_ordinal": 2,
+              "reachable": true,
+              "source_span": {
+                "line": 31,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Cleanup",
+                  "kind": "push",
+                  "push_machine": "CleanupMachine",
+                  "continuation_state": "Finished",
+                  "source_span": {
+                    "line": 33,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "ReadyAfterCleanup",
+              "runtime_ordinal": 3,
+              "reachable": true,
+              "source_span": {
+                "line": 36,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 38,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Finished",
+              "terminal": true,
+              "runtime_ordinal": 4,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 41,
+                "column": 9
+              }
+            }
+          ]
+        },
+        {
+          "name": "CleanupMachine",
+          "runtime_ordinal": 1,
+          "reachable": true,
+          "source_span": {
+            "line": 47,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Begin",
+              "initial": true,
+              "runtime_ordinal": 0,
+              "reachable": true,
+              "source_span": {
+                "line": 49,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Release",
+                  "kind": "push",
+                  "push_machine": "SubmitMachine",
+                  "continuation_state": "Resume",
+                  "source_span": {
+                    "line": 51,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Resume",
+              "runtime_ordinal": 1,
+              "reachable": true,
+              "source_span": {
+                "line": 54,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Tick",
+                  "kind": "goto",
+                  "target_state": "Resume",
+                  "source_span": {
+                    "line": 56,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "kind": "goto",
+                  "target_state": "Complete",
+                  "source_span": {
+                    "line": 57,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Complete",
+              "terminal": true,
+              "runtime_ordinal": 2,
+              "reachable": true,
+              "completion": "pop",
+              "source_span": {
+                "line": 60,
+                "column": 9
+              }
+            }
+          ]
+        },
+        {
+          "name": "SubmitMachine",
+          "runtime_ordinal": 2,
+          "reachable": true,
+          "source_span": {
+            "line": 66,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Begin",
+              "initial": true,
+              "runtime_ordinal": 0,
+              "reachable": true,
+              "source_span": {
+                "line": 68,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "kind": "goto",
+                  "target_state": "Complete",
+                  "source_span": {
+                    "line": 70,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Complete",
+              "terminal": true,
+              "runtime_ordinal": 1,
+              "reachable": true,
+              "completion": "pop",
+              "source_span": {
+                "line": 73,
+                "column": 9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "OutcomeCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 80,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "outcome",
+          "type": {
+            "name": "AutomataDispatchOutcome",
+            "kind": "enum",
+            "span": {
+              "line": 80,
+              "column": 17
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "OutcomeCode.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 82,
+            "column": 5
+          }
+        },
+        {
+          "id": "OutcomeCode.02",
+          "kind": "match_expr",
+          "detail": "4 arms",
+          "source_span": {
+            "line": 82,
+            "column": 12
+          }
+        },
+        {
+          "id": "OutcomeCode.03",
+          "kind": "name",
+          "detail": "outcome",
+          "source_span": {
+            "line": 82,
+            "column": 19
+          }
+        },
+        {
+          "id": "OutcomeCode.04",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Transitioned",
+          "source_span": {
+            "line": 83,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.05",
+          "kind": "literal",
+          "detail": "1",
+          "source_span": {
+            "line": 83,
+            "column": 50
+          }
+        },
+        {
+          "id": "OutcomeCode.06",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Unhandled",
+          "source_span": {
+            "line": 84,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.07",
+          "kind": "literal",
+          "detail": "2",
+          "source_span": {
+            "line": 84,
+            "column": 47
+          }
+        },
+        {
+          "id": "OutcomeCode.08",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Finished",
+          "source_span": {
+            "line": 85,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.09",
+          "kind": "literal",
+          "detail": "3",
+          "source_span": {
+            "line": 85,
+            "column": 46
+          }
+        },
+        {
+          "id": "OutcomeCode.10",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::AlreadyFinished",
+          "source_span": {
+            "line": 86,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.11",
+          "kind": "literal",
+          "detail": "4",
+          "source_span": {
+            "line": 86,
+            "column": 53
+          }
+        }
+      ],
+      "source_span": {
+        "line": 80,
+        "column": 5
+      }
+    },
+    {
+      "name": "BufferCleanupFinishes",
+      "return_type": {
+        "name": "AutomataDispatchOutcome",
+        "kind": "enum",
+        "span": {
+          "line": 90,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "buffer",
+          "type": {
+            "name": "VkBuffer",
+            "kind": "builtin",
+            "span": {
+              "line": 90,
+              "column": 47
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "BufferCleanupFinishes.01",
+          "kind": "instance_decl",
+          "detail": "BufferLifecycle lifecycle",
+          "source_span": {
+            "line": 92,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.02",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 93,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 93,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.04",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Create",
+          "source_span": {
+            "line": 93,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.05",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 94,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 94,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.07",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Record",
+          "source_span": {
+            "line": 94,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.08",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 95,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.09",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 95,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.10",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Cleanup",
+          "source_span": {
+            "line": 95,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.11",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 96,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.12",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 96,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.13",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Release",
+          "source_span": {
+            "line": 96,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.14",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 97,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.15",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 97,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.16",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 97,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.17",
+          "kind": "return",
+          "type": "AutomataDispatchOutcome",
+          "source_span": {
+            "line": 98,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.18",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 98,
+            "column": 12
+          }
+        },
+        {
+          "id": "BufferCleanupFinishes.19",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 98,
+            "column": 32
+          }
+        }
+      ],
+      "source_span": {
+        "line": 90,
+        "column": 25
+      }
+    },
+    {
+      "name": "BufferCleanupTrace",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 101,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "buffer",
+          "type": {
+            "name": "VkBuffer",
+            "kind": "builtin",
+            "span": {
+              "line": 101,
+              "column": 24
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "BufferCleanupTrace.01",
+          "kind": "instance_decl",
+          "detail": "BufferLifecycle lifecycle",
+          "source_span": {
+            "line": 103,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.02",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "a",
+          "source_span": {
+            "line": 104,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 104,
+            "column": 33
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.04",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Create",
+          "source_span": {
+            "line": 104,
+            "column": 53
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.05",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "b",
+          "source_span": {
+            "line": 105,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 105,
+            "column": 33
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.07",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Record",
+          "source_span": {
+            "line": 105,
+            "column": 53
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.08",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "c",
+          "source_span": {
+            "line": 106,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.09",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 106,
+            "column": 33
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.10",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Cleanup",
+          "source_span": {
+            "line": 106,
+            "column": 53
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.11",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "d",
+          "source_span": {
+            "line": 107,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.12",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 107,
+            "column": 33
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.13",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Release",
+          "source_span": {
+            "line": 107,
+            "column": 53
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.14",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "e",
+          "source_span": {
+            "line": 108,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.15",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 108,
+            "column": 33
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.16",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 108,
+            "column": 53
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.17",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "f",
+          "source_span": {
+            "line": 109,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.18",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 109,
+            "column": 33
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.19",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 109,
+            "column": 53
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.20",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 110,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.21",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 114,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.22",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 113,
+            "column": 30
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.23",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 112,
+            "column": 31
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.24",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 111,
+            "column": 32
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.25",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 110,
+            "column": 36
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.26",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 110,
+            "column": 27
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.27",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 110,
+            "column": 12
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.28",
+          "kind": "name",
+          "detail": "a",
+          "source_span": {
+            "line": 110,
+            "column": 24
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.29",
+          "kind": "literal",
+          "detail": "100000",
+          "source_span": {
+            "line": 110,
+            "column": 29
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.30",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 111,
+            "column": 24
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.31",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 111,
+            "column": 9
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.32",
+          "kind": "name",
+          "detail": "b",
+          "source_span": {
+            "line": 111,
+            "column": 21
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.33",
+          "kind": "literal",
+          "detail": "10000",
+          "source_span": {
+            "line": 111,
+            "column": 26
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.34",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 112,
+            "column": 24
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.35",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 112,
+            "column": 9
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.36",
+          "kind": "name",
+          "detail": "c",
+          "source_span": {
+            "line": 112,
+            "column": 21
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.37",
+          "kind": "literal",
+          "detail": "1000",
+          "source_span": {
+            "line": 112,
+            "column": 26
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.38",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 113,
+            "column": 24
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.39",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 113,
+            "column": 9
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.40",
+          "kind": "name",
+          "detail": "d",
+          "source_span": {
+            "line": 113,
+            "column": 21
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.41",
+          "kind": "literal",
+          "detail": "100",
+          "source_span": {
+            "line": 113,
+            "column": 26
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.42",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 114,
+            "column": 24
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.43",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 114,
+            "column": 9
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.44",
+          "kind": "name",
+          "detail": "e",
+          "source_span": {
+            "line": 114,
+            "column": 21
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.45",
+          "kind": "literal",
+          "detail": "10",
+          "source_span": {
+            "line": 114,
+            "column": 26
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.46",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 115,
+            "column": 9
+          }
+        },
+        {
+          "id": "BufferCleanupTrace.47",
+          "kind": "name",
+          "detail": "f",
+          "source_span": {
+            "line": 115,
+            "column": 21
+          }
+        }
+      ],
+      "source_span": {
+        "line": 101,
+        "column": 5
+      }
+    },
+    {
+      "name": "BufferLifecycleAlreadyFinishedOutcome",
+      "return_type": {
+        "name": "AutomataDispatchOutcome",
+        "kind": "enum",
+        "span": {
+          "line": 118,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "pool",
+          "type": {
+            "name": "VkCommandPool",
+            "kind": "builtin",
+            "span": {
+              "line": 118,
+              "column": 63
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.01",
+          "kind": "instance_decl",
+          "detail": "BufferLifecycle lifecycle",
+          "source_span": {
+            "line": 120,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.02",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 121,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 121,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.04",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Create",
+          "source_span": {
+            "line": 121,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.05",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 122,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 122,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.07",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Record",
+          "source_span": {
+            "line": 122,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.08",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 123,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.09",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 123,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.10",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Cleanup",
+          "source_span": {
+            "line": 123,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.11",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 124,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.12",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 124,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.13",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Release",
+          "source_span": {
+            "line": 124,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.14",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 125,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.15",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 125,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.16",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 125,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.17",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 126,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.18",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 126,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.19",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 126,
+            "column": 25
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.20",
+          "kind": "return",
+          "type": "AutomataDispatchOutcome",
+          "source_span": {
+            "line": 127,
+            "column": 5
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.21",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 127,
+            "column": 12
+          }
+        },
+        {
+          "id": "BufferLifecycleAlreadyFinishedOutcome.22",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Tick",
+          "source_span": {
+            "line": 127,
+            "column": 32
+          }
+        }
+      ],
+      "source_span": {
+        "line": 118,
+        "column": 25
+      }
+    },
+    {
+      "name": "VulkanDispatchAudit",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 130,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "buffer",
+          "type": {
+            "name": "VkBuffer",
+            "kind": "builtin",
+            "span": {
+              "line": 130,
+              "column": 25
+            }
+          }
+        },
+        {
+          "name": "pool",
+          "type": {
+            "name": "VkCommandPool",
+            "kind": "builtin",
+            "span": {
+              "line": 130,
+              "column": 42
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "VulkanDispatchAudit.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 132,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.02",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 132,
+            "column": 44
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.03",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 132,
+            "column": 39
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.04",
+          "kind": "call",
+          "detail": "BufferCleanupTrace",
+          "source_span": {
+            "line": 132,
+            "column": 12
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.05",
+          "kind": "name",
+          "detail": "buffer",
+          "source_span": {
+            "line": 132,
+            "column": 31
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.06",
+          "kind": "literal",
+          "detail": "10",
+          "source_span": {
+            "line": 132,
+            "column": 41
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.07",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 133,
+            "column": 9
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.08",
+          "kind": "call",
+          "detail": "BufferLifecycleAlreadyFinishedOutcome",
+          "source_span": {
+            "line": 133,
+            "column": 21
+          }
+        },
+        {
+          "id": "VulkanDispatchAudit.09",
+          "kind": "name",
+          "detail": "pool",
+          "source_span": {
+            "line": 133,
+            "column": 59
+          }
+        }
+      ],
+      "source_span": {
+        "line": 130,
+        "column": 5
+      }
+    }
+  ]
+}

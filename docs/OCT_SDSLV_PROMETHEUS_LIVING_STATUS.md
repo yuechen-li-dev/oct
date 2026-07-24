@@ -33,13 +33,17 @@ structural equality over valid element domains, bounded `while` traversal, and
 finite structural validation all run through parsing, validation, typed MIR,
 generated C, checked outputs, and native specimens without introducing runtime
 collections or changing production authority. Production remains handwritten.
-The current worktree also carries the first DragonGod vertical in compiler
-form: declaration-only typed pushdown automata with the exact `automata ->
-machine -> state` hierarchy, exact signal-enum binding, deterministic graph
-identity, acyclic machine-push validation, derived maximum active machine
-depth, machine/state reachability checks, MIR/source-map visibility, and full
-runtime erasure. Acceptance of that DragonGod M0 surface still depends on a
-broader validation/documentation closure than this living-status note alone.
+The current worktree also carries the first DragonGod runtime vertical in
+compiler form: validated typed automata with the exact `automata -> machine ->
+state` hierarchy, exact signal-enum binding, deterministic graph identity,
+acyclic machine-push validation, derived maximum active machine depth,
+machine/state reachability checks, fixed local `instance` storage, exact typed
+`dispatch(instance, signal)`, fixed continuation capacity, synchronous
+`goto`/`push`/`pop`/`finish` normalization, typed
+`AutomataDispatchOutcome`, and deterministic strict-C11 lowering. DragonGod M0
+is now accepted as `SUCCESS` after rerunning both native C11 specimens in a
+fully loaded Visual Studio developer environment with Windows SDK headers
+available on Friday, July 24, 2026.
 
 The owner direction is:
 
@@ -139,11 +143,13 @@ Concept/Vulkan EVT1 now includes:
   enums, structs, and fixed arrays composed from accepted compile-time values;
 - exact fixed-array literals, indexing, and `Len(...)` in compile-time
   contexts only, with complete erasure before runtime C11 lowering;
-- declaration-only DragonGod M0 automata families with exact `automata ->
-  machine -> state` structure, exact signal-enum handlers, typed
+- DragonGod M1 typed automata families with exact `automata -> machine ->
+  state` structure, exact signal-enum handlers, typed
   `goto`/`push`/`pop`/`finish` topology, acyclic machine-push validation,
-  derived maximum active machine depth, deterministic graph identity, and
-  MIR/source-map visibility with no emitted runtime dispatcher or stack;
+  derived maximum active machine depth, fixed local `instance` storage, exact
+  typed `dispatch(instance, signal)`, synchronous completion normalization,
+  deterministic private machine/state ordinals, and runtime lowering that
+  remains non-reflective and heap-free;
 - focused hardware-independent and Vulkan-shaped specimens proving structs,
   immovability, concept satisfaction, explicit-only template instantiation,
   deterministic instance reuse, bounded compile-time evaluation, finite
@@ -158,9 +164,8 @@ The owner-preserved paused states are unchanged:
   bounded EVT1 compile-time substrate needed for the first DragonGod vertical;
 - the historical kernel-54 milestone named `M1C` remains distinct from the
   later planned EVT1 milestone named `M1B-C`;
-- DragonGod lifecycle automata are now active compiler work rather than a
-  deferred post-substrate placeholder, but runtime DragonGod execution remains
-  deferred past M0;
+- DragonGod lifecycle automata runtime execution is now active compiler work
+  rather than a deferred post-substrate placeholder;
 - the first production mechanism reconstruction remains deferred to EVT1 M1C;
 - backporting accepted EVT1 semantics into the broader Zig Concept bootstrap
   remains outside this assignment and another reviewer’s boundary;

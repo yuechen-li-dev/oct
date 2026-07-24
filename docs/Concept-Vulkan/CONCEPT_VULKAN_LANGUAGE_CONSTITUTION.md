@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree also carries an experimental DragonGod M0 declaration-and-validation vertical; production remains handwritten**
+Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree also carries an experimental DragonGod M1 typed-automata runtime vertical with fixed local instances and deterministic dispatch; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -284,9 +284,10 @@ be traversed only through the existing bounded `while` form. No runtime
 collection, iterator, metadata table, or `for` loop is introduced, and all
 compile-time array structure erases before runtime C11 lowering.
 
-## 2.8 DragonGod M0 typed pushdown-automata declarations
+## 2.8 DragonGod M1 typed automata instances and deterministic dispatch
 
-The current DragonGod M0 surface is declaration-only and compile-time-only:
+DragonGod now includes the validated M0 declaration surface plus the smallest
+runtime heartbeat:
 
 ```concept
 automata ResourceLifecycle(LifecycleSignal)
@@ -306,6 +307,12 @@ automata ResourceLifecycle(LifecycleSignal)
 }
 ```
 
+```concept
+instance ResourceLifecycle lifecycle;
+AutomataDispatchOutcome outcome =
+    dispatch(lifecycle, LifecycleSignal::Create);
+```
+
 The source hierarchy is exact and non-aliasing: `automata` declares one
 validated family, `machine` declares one pushable finite-state machine within
 that family, and `state` declares one state within a machine. `goto` targets a
@@ -322,8 +329,26 @@ depth and a stable graph identity in MIR/source-map evidence, and rejects
 unreachable machines, unreachable states, root-machine `pop`, pushed machines
 with no reachable `pop`, and root machines with no reachable `finish`.
 
-DragonGod M0 emits no runtime dispatcher, stack, table, registry, or reflection
-metadata. The complete automata declaration erases before runtime C11 lowering.
+DragonGod M1 adds one dedicated local runtime form: `instance AutomataName
+localName;`. Instance initialization is compiler-generated, fixed-size, rooted
+at the declared initial machine/state, and immediately normalizes terminal
+completion until the instance is waiting in a nonterminal state or is finished.
+
+`dispatch(instance, signal)` accepts only the instance family's exact nullary
+signal enum and returns the compiler-owned `AutomataDispatchOutcome` enum with
+members `Transitioned`, `Unhandled`, `Finished`, and `AlreadyFinished`.
+Unhandled dispatch is non-mutating. `goto` changes state in-place. `push`
+stores the caller machine plus explicit continuation state in a fixed stack
+whose capacity is exactly `maximum_active_machine_depth - 1`. `pop` restores
+that retained continuation. `finish` terminates the complete instance and
+discards continuation state. Terminal completion is synchronous, so pushed
+initial terminal states and resumed terminal continuations normalize
+immediately in the same dispatch.
+
+DragonGod M1 still emits no reflection registry, heap allocation, dynamic
+graph lookup, string dispatch, function-pointer dispatch table, payload
+runtime, or public Prometheus ABI growth. Declaration-only automata with no
+`instance` usage still erase completely before runtime C11 lowering.
 
 ## 3. Static and runtime facts
 
@@ -761,10 +786,10 @@ array and finite-structural-validation vertical:
     specimen proving finite ordered structural validation and complete runtime
     erasure without runtime collections.
 
-## 12.6 DragonGod M0 semantic minimum
+## 12.6 DragonGod M1 semantic minimum
 
-DragonGod M0 extends the accepted EVT1 substrate with the smallest coherent
-typed pushdown-automata declaration vertical:
+DragonGod M1 extends the accepted EVT1 substrate with the smallest coherent
+typed automata runtime vertical:
 
 1. exact `automata -> machine -> state` declaration nesting with no aliases;
 2. one exact signal enum type per automata family;
@@ -778,8 +803,18 @@ typed pushdown-automata declaration vertical:
    and root reachable-`finish` validation;
 9. exact maximum active machine depth derivation and deterministic graph
    identity in MIR/source-map evidence;
-10. complete runtime erasure with no emitted dispatcher, stack, table, or
-    reflection registry.
+10. fixed local `instance AutomataName localName;` storage with private machine
+    and state ordinals plus continuation capacity derived from the validated
+    maximum active depth;
+11. exact typed `dispatch(instance, signal)` returning compiler-owned
+    `AutomataDispatchOutcome`;
+12. synchronous terminal normalization covering initial terminal states, pushed
+    initial terminal states, resumed terminal continuations, root `finish`, and
+    non-root `finish`;
+13. deterministic strict-C11 lowering with no heap allocation, string lookup,
+    runtime reflection, or public ABI exposure of automata internals;
+14. complete runtime erasure for declaration-only automata that are never used
+    through `instance`.
 
 ## 13. Profile MIR boundary
 

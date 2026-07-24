@@ -944,6 +944,8 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 			return nil, err
 		}
 		return &EVT1StaticAssertStmt{Condition: assertion.Condition, Message: assertion.Message, Span: assertion.Span}, nil
+	case "instance":
+		return p.parseInstanceDecl()
 	case "return":
 		start := p.next().Span
 		if p.peekLexeme() == ";" {
@@ -992,6 +994,25 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 		}
 		return &EVT1ExprStmt{Value: value, Span: value.exprSpan()}, nil
 	}
+}
+
+func (p *evt1Parser) parseInstanceDecl() (EVT1Statement, error) {
+	start, err := p.expect("instance")
+	if err != nil {
+		return nil, err
+	}
+	automataTok, err := p.expectIdentifier("CV4270", "expected automata name after instance")
+	if err != nil {
+		return nil, err
+	}
+	nameTok, err := p.expectIdentifier("CV4270", "expected local instance name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return nil, err
+	}
+	return &EVT1InstanceDecl{AutomataName: automataTok.Lexeme, Name: nameTok.Lexeme, Span: start.Span}, nil
 }
 
 func (p *evt1Parser) parseLocalComptimeDecl() (EVT1Statement, error) {
@@ -1394,6 +1415,9 @@ func (p *evt1Parser) parseMatchExpr() (EVT1Expr, error) {
 }
 
 func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
+	if p.peekLexeme() == "dispatch" {
+		return p.parseDispatchExpr()
+	}
 	nameTok, err := p.expectIdentifier("CV4015", "expected expression")
 	if err != nil {
 		return nil, err
@@ -1449,6 +1473,31 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 		expr = &EVT1StructConstructExpr{StructName: nameTok.Lexeme, Args: args, Span: nameTok.Span}
 	}
 	return p.parsePostfixExpr(expr, nameTok.Span)
+}
+
+func (p *evt1Parser) parseDispatchExpr() (EVT1Expr, error) {
+	start, err := p.expect("dispatch")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return nil, err
+	}
+	instanceTok, err := p.expectIdentifier("CV4273", "expected local instance name in dispatch")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(","); err != nil {
+		return nil, err
+	}
+	signal, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return nil, err
+	}
+	return p.parsePostfixExpr(&EVT1DispatchExpr{InstanceName: instanceTok.Lexeme, Signal: signal, Span: start.Span}, start.Span)
 }
 
 func (p *evt1Parser) parseArrayLiteralExpr() (EVT1Expr, error) {

@@ -285,6 +285,15 @@ type EVT1VarDecl struct {
 func (*EVT1VarDecl) evt1Statement()        {}
 func (s *EVT1VarDecl) statementSpan() Span { return s.Span }
 
+type EVT1InstanceDecl struct {
+	AutomataName string `json:"automata_name"`
+	Name         string `json:"name"`
+	Span         Span   `json:"span"`
+}
+
+func (*EVT1InstanceDecl) evt1Statement()        {}
+func (s *EVT1InstanceDecl) statementSpan() Span { return s.Span }
+
 type EVT1AssignStmt struct {
 	Target EVT1Expr `json:"target"`
 	Value  EVT1Expr `json:"value"`
@@ -405,6 +414,15 @@ type EVT1CallExpr struct {
 
 func (*EVT1CallExpr) evt1Expr()        {}
 func (e *EVT1CallExpr) exprSpan() Span { return e.Span }
+
+type EVT1DispatchExpr struct {
+	InstanceName string   `json:"instance_name"`
+	Signal       EVT1Expr `json:"signal"`
+	Span         Span     `json:"span"`
+}
+
+func (*EVT1DispatchExpr) evt1Expr()        {}
+func (e *EVT1DispatchExpr) exprSpan() Span { return e.Span }
 
 type EVT1TemplateCallExpr struct {
 	Callee  string     `json:"callee"`
@@ -666,10 +684,27 @@ type evt1Env struct {
 	templateInstances map[string]*evt1TemplateInstance
 }
 
+const evt1AutomataDispatchOutcomeTypeName = "AutomataDispatchOutcome"
+
+func evt1BuiltinAutomataDispatchOutcomeEnum() EVT1EnumDecl {
+	return EVT1EnumDecl{
+		Name: evt1AutomataDispatchOutcomeTypeName,
+		Variants: []EVT1VariantDecl{
+			{Name: "Transitioned", Tag: 0},
+			{Name: "Unhandled", Tag: 1},
+			{Name: "Finished", Tag: 2},
+			{Name: "AlreadyFinished", Tag: 3},
+		},
+	}
+}
+
 func newEVT1Env() *evt1Env {
 	intType := EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
+	outcome := evt1BuiltinAutomataDispatchOutcomeEnum()
 	return &evt1Env{
-		enums:             map[string]EVT1EnumDecl{},
+		enums: map[string]EVT1EnumDecl{
+			outcome.Name: outcome,
+		},
 		structs:           map[string]EVT1StructDecl{},
 		automata:          map[string]EVT1AutomataDecl{},
 		automataInfo:      map[string]*evt1AutomataInfo{},
