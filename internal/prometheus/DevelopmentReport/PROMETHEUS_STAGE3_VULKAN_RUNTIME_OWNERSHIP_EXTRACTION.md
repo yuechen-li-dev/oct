@@ -322,3 +322,86 @@ M34b lane remains a visible FAIL and package configuration/open remains coordina
 by SGEMM, this checkpoint is reported as:
 
 PROMETHEUS STAGE 3: MEANINGFUL PROGRESSION
+
+## 19. M34b regression-classification addendum
+
+This addendum classifies the visible M34b witness before any Stage 4 work.  No
+production source, shader, generated authority, package, or test expectation was
+changed during this pass.
+
+### Exact comparison
+
+The canonical command was:
+
+```powershell
+& .\out\prometheus\native\marionette_tests.exe PrometheusM34bValidationEnabledProductionVariants
+```
+
+The test itself requests existing Vulkan validation with
+`PROMETHEUS_VK_VALIDATION=1`.  It uses `m=3`, `n=17`, and `k=7`, and exercises
+production variants 3 (SRT), 4 (B2x2), and 5 (A2x4).  Each checkpoint was built
+from its own worktree and package output.  The Stage 2 package was rebuilt at
+`out/prometheus/native/shaders`; the Stage 3 package was rebuilt at
+`out/prometheus/native/SerialCanonical/shaders`.  Their `manifest.json` SHA-256
+values were identical:
+`A110CEBC3ABC737BB450C53D5F2A5ED46CDD7C48DFD300688A0AB567A64EF19C`.
+
+| checkpoint | repetitions | result | variant / cells | expected | observed |
+| --- | ---: | --- | --- | ---: | ---: |
+| Stage 2 `1f2fc2a5c95cbbefcb3dcc0b76751b752d5fed46` | 3 | FAIL | 4 / final column of all three rows | 1.6458333730697632 | 0 |
+| Stage 3 `2bb06095a1755a30f5d5ab8f140838f59ee51be4` | 3 | FAIL | 4 / final column of all three rows | 1.6458333730697632 | 0 |
+
+Variants 3 and 5 completed through the direct path.  Every run produced exactly
+three assertion failures at the CPU-oracle comparison and no Vulkan validation
+warning or error was reported by the exercised test surface.  The result is
+therefore **INHERITED DETERMINISTIC FAILURE**, not a Stage 3 regression.  The
+related `PrometheusM34bA2x4UsesCanonicalDispatchFootprint` witness is also
+inherited: both checkpoints report the same five geometry assertions (expected
+Z/row/column coverage `1/2/4/16/32`, observed `2/4/16/32/128`).  These are
+unresolved behavioral authorities and were deliberately not repaired here.
+
+### Command-pool extraction audit
+
+The compute and optional transfer pools remain proven device mechanisms.  The
+extracted owner preserves the selected compute and transfer queue-family indices,
+gets queue index zero from those same families, and creates each pool with exactly
+`VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT`.  SGEMM, FFT, and fused
+reduction continue to allocate and free their own command buffers from the
+borrowed pool handles; SGEMM retains all command-buffer reset/reuse, submission
+ordering, fence association, external synchronization assumptions, and execution
+state.  No thread ownership or scheduling policy moved into `prom_vk_runtime`.
+
+SGEMM first waits idle, then destroys its pipelines, descriptors, query pool,
+fences, semaphores, buffers, and command buffers before calling owner cleanup.
+The owner then destroys transfer pool, compute pool, device, debug messenger, and
+instance, and nulls every handle.  The focused
+`PrometheusVulkanRuntimeOwnerPartialFailureAndIdempotentCleanup` test passed.
+Partial creation failure therefore follows the same reverse cleanup path.  The
+pools remain in `prom_vk_runtime`: their creation is device/queue-family-bound,
+their allocation clients are already multiple mechanisms, and this extraction did
+not change their concurrency, reset, reuse, or lifetime semantics.
+
+### Dominatus boundary
+
+`reactor_vulkan_runtime.[ch]` contains only Vulkan construction facts, immutable
+capabilities, handles, dispatch loading, validation counters, and deterministic
+cleanup bookkeeping.  It adds no semantic lifecycle state machine, shadow
+blackboard, utility judgment, adaptive policy, admission decision, hysteresis,
+or scheduler.  Capability-state fields report Vulkan facts only; policy remains
+in the established Dominatus and SGEMM paths.
+
+**Dominatus decides and coordinates. Vulkan mechanisms execute and report facts.**
+
+### Validation after classification
+
+PASS: detached Stage 2 and current Stage 3 Windows native builds; three M34b
+repetitions at each checkpoint; focused lifecycle, preflight, package-root, and
+runtime-owner cleanup tests (six of seven combined focused tests); canonical
+repository authority; Stage 0 static authority; required-live skip-detection
+self-test; `go test ./internal/prometheus/...`; and `git diff --check`.
+
+FAIL (preserved, inherited): M34b production-variant witness and its narrower
+A2x4 footprint witness as described above.  SKIP: required-live Gemma because
+the checkpoint is unavailable.  NOT RUN: live Gemma equivalence,
+checkpoint-dependent Z-Image, fresh payload-backed allocation/teardown, and
+Linux validation.  Stage 4 has not begun.

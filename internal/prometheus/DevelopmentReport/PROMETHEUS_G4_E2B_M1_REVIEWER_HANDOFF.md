@@ -22,6 +22,19 @@ remains the ABI/layout/detail preservation authority. Stage 3 establishes the co
 queues, command pools, capabilities, validation state, and package through that internal owner
 while retaining SGEMM execution resources and policy locally. Construction failure cleanup and
 reverse destruction order are explicit in the owner and SGEMM wrapper.
+The Stage 3 M34b classification is **INHERITED DETERMINISTIC FAILURE**: the exact
+validation-enabled production-variant command failed three times at both Stage 2
+(`1f2fc2a5c95cbbefcb3dcc0b76751b752d5fed46`) and Stage 3
+(`2bb06095a1755a30f5d5ab8f140838f59ee51be4`).  With `m=3`, `n=17`, and `k=7`,
+variant 4 returns zero for each final-column cell where the CPU oracle expects
+`1.6458333730697632`; variants 3 and 5 complete through the direct path.  The
+independently rebuilt Stage 2/Stage 3 package manifests had identical SHA-256
+values.  Do not change M34b, variants, shader bytes, descriptor/pipeline behavior,
+or expected results to conceal this inherited behavioral authority.  The related
+A2x4 footprint mismatch is inherited too.  Command pools remain in the concrete
+Vulkan owner because they are queue-family-bound mechanical resources; SGEMM keeps
+command buffers, reset/reuse, fences, submissions, and execution synchronization.
+Dominatus decides and coordinates. Vulkan mechanisms execute and report facts.
 The three required-live Gemma lanes remain outstanding because the external
 checkpoint is unavailable. Stage 3 makes no live Gemma equivalence claim and does not repair
 `-7406`, the repeated `MainTransformer1` topology, generated-header provenance, or registry/package
