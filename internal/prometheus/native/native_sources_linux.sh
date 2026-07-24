@@ -31,6 +31,7 @@ PROMETHEUS_MARIONETTE_CPP=(
   "$NATIVE_DIR/Marionette/smoke_tests.cpp"
   "$NATIVE_DIR/Marionette/test_harness_phase1_tests.cpp"
   "$NATIVE_DIR/Marionette/test_harness_doom_tests.cpp"
+  "$NATIVE_DIR/Marionette/stage0_characterization_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_stub_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_judgment_engine_tests.cpp"
   "$NATIVE_DIR/Marionette/reactor_shader_registry_tests.cpp"

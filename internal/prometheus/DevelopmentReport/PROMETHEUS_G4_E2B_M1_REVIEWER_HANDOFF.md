@@ -1,5 +1,53 @@
 # PROMETHEUS G4-E2B-M1 — raw-score stabilization handoff
 
+## Stage 0 supersession
+
+Stage 0 has frozen the current implementation vocabulary and executable characterization in
+`internal/prometheus/DevelopmentReport/PROMETHEUS_STAGE0_CHARACTERIZATION_AND_VOCABULARY.md`.
+This handoff's historical evidence remains valuable, but its immediate-next-milestone advice is
+superseded: a future session must begin with the Stage 0 witnesses, not automatic Gemma feature
+implementation.
+
+The three independent Gemma lanes are:
+
+- `TestGemma4E2BM1FreshSessionQFirstAuthority`
+- `TestGemma4E2BM1FreshSessionKFirstAuthority`
+- `TestGemma4E2BM1SameSession7406Characterization`
+
+Run the required-live wrapper with a validated reactor and checkpoint:
+
+```powershell
+$env:OCT_PROMETHEUS_REACTOR = "<validated reactor DLL path>"
+$env:G4E2B_CHECKPOINT_ROOT = "<validated external Gemma checkpoint root>"
+powershell -NoProfile -File .\tools\prometheus_stage0_required_live.ps1
+```
+
+The wrapper fails on an environmental skip, missing PASS case, or zero meaningful work. The
+ordinary test command may still skip when setup is absent, but a skip is never Stage 0 success.
+The exact same-session boundary remains: first chain succeeds; second-chain M46 preparation
+succeeds; immediately following M49 required-weight validation rejects with
+`PROM_M46_DETAIL_STALE_WEIGHT_GENERATION` (`-7406`); positional dispatch has not begun. Do not
+fix, bypass, weaken, move, or reinterpret `-7406` automatically.
+
+The generated-authority check is:
+
+```powershell
+go run ./tools/prometheus_stage0 -check
+```
+
+It characterizes the `prometheus.core@1` package, source/package counts, kernel 68/69 identities,
+partial generated/static projections, and the disputed repeated `MainTransformer1` topology
+without repairing it. Accepted numerical authorities remain 1,800/1,800 bit-exact Q-first and
+K-first scores, resident kernel-68 → kernel-69 execution, and no host Q/K detour. Accepted model
+ceilings remain `643,587,076` bytes MinimumMemory and `1,005,407,748` bytes Prefetch. ABI/detail,
+allocation, residency, teardown, and Windows policy witnesses are documented in the Stage 0 report.
+
+Windows is the accepted live platform. Linux remains unclaimed. Do not start another reactor or
+add more handwritten model execution. The first future implementation pass recommended by the
+full audit is to establish the common Vulkan runtime/device ownership boundary, then make later
+owner decisions for slots, sessions, weight snapshots, and generated authority using these frozen
+witnesses.
+
 ## Proven
 
 - The authority-verified checkpoint-backed Vulkan path runs package-backed

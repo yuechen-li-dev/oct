@@ -12,7 +12,7 @@
   ],
   "native_test_sources": [
     "Marionette/test_harness.cpp", "Marionette/test_doom.cpp", "Marionette/smoke_tests.cpp",
-    "Marionette/test_harness_phase1_tests.cpp", "Marionette/test_harness_doom_tests.cpp",
+    "Marionette/test_harness_phase1_tests.cpp", "Marionette/test_harness_doom_tests.cpp", "Marionette/stage0_characterization_tests.cpp",
     "Marionette/reactor_stub_tests.cpp", "Marionette/reactor_judgment_engine_tests.cpp", "Marionette/reactor_shader_registry_tests.cpp", "reactor_prometheus_audit.cpp", "Marionette/reactor_prometheus_audit_tests.cpp",
     "Marionette/reactor_dominatus_blackboard_tests.cpp", "Marionette/reactor_dominatus_filter_tests.cpp",
     "Marionette/reactor_dominatus_filter_policy_tests.cpp", "Marionette/reactor_dominatus_future_lease_seam_tests.cpp",

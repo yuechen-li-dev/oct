@@ -119,14 +119,32 @@ type gemma4e2bCanonicalSliceResult struct {
 	ScoreStageLocalExact     bool
 	ScorePristine            gemma4e2bComparison
 	ScorePristineExact       bool
-	ScoreOppositeOrderNative reactorGemma4E2BM1AttentionScoresResult
-	ScoreOppositeOrderExact  bool
-	ScoreRepeatedNative      reactorGemma4E2BM1AttentionScoresResult
-	ScoreRepeatedExact       bool
 	QOperands                gemma4e2bProjectionOperandAuthority
 	KOperands                gemma4e2bProjectionOperandAuthority
 	VOperands                gemma4e2bProjectionOperandAuthority
 	RMSNormNative            reactorGemma4E2BM1InputRMSNormResult
+	PreparationOrder         uint32
+	SameSession              *gemma4e2bSameSessionTrace
+}
+
+// gemma4e2bSameSessionTrace is a compact observation of the known lifecycle
+// boundary.  It deliberately records only values exposed by the existing
+// native result ABI; it does not manufacture a runtime/session owner ID or a
+// hidden M46 snapshot that the current ABI does not return.
+type gemma4e2bSameSessionTrace struct {
+	SessionLabel                         string
+	FirstOperationEpoch                  uint64
+	SecondOperationEpoch                 uint64
+	FirstPreparationOrder                uint32
+	SecondPreparationOrder               uint32
+	FirstScore                           reactorGemma4E2BM1AttentionScoresResult
+	SecondBoundary                       reactorGemma4E2BM1AttentionScoresResult
+	SecondCallError                      string
+	SecondM46PreparationBoundaryObserved bool
+	M49RequiredWeightValidationRejected  bool
+	PositionalDispatchBegun              bool
+	ScoreDispatchBegun                   bool
+	ScoreDestinationWritten              bool
 }
 
 type gemma4e2bProjectionOperandAuthority struct {
@@ -185,8 +203,35 @@ type gemma4e2bPortableProjectionComparison struct {
 	WithinBF16StagePolicy bool
 }
 
+type gemma4e2bValidationLane uint8
+
+const (
+	gemma4e2bFreshSessionLane gemma4e2bValidationLane = iota
+	gemma4e2bSameSessionLane
+)
+
 func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSliceResult, error) {
+	return runGemma4e2bValidationLane(checkpointRoot, 1, gemma4e2bFreshSessionLane)
+}
+
+func runGemma4e2bFreshSessionRawScoreAuthority(checkpointRoot string, preparationOrder uint32) (gemma4e2bCanonicalSliceResult, error) {
+	return runGemma4e2bValidationLane(checkpointRoot, preparationOrder, gemma4e2bFreshSessionLane)
+}
+
+func runGemma4e2bSameSessionLifecycleCharacterization(checkpointRoot string) (gemma4e2bCanonicalSliceResult, error) {
+	return runGemma4e2bValidationLane(checkpointRoot, 1, gemma4e2bSameSessionLane)
+}
+
+func errorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func runGemma4e2bValidationLane(checkpointRoot string, preparationOrder uint32, lane gemma4e2bValidationLane) (gemma4e2bCanonicalSliceResult, error) {
 	var result gemma4e2bCanonicalSliceResult
+	result.PreparationOrder = preparationOrder
 	tempRoot := os.TempDir()
 	referencePath := filepath.Join(tempRoot, "g4e2b-m1-reference.json")
 	fixturePath := filepath.Join(tempRoot, "g4e2b-m1-fixtures", "base_token_embedding.bf16le.bin")
@@ -429,7 +474,7 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 		qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
 		gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
 		gemma4e2bM1RMSNormEpsilon, 0.0625,
-		1, 16, 15, 16, 15, 2, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
+		preparationOrder, 16, 15, 16, 15, 2, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
 	)
 	if err != nil {
 		return result, fmt.Errorf("resident raw attention scores: %w", err)
@@ -441,33 +486,39 @@ func runGemma4e2bCanonicalQKVRTX(checkpointRoot string) (gemma4e2bCanonicalSlice
 	pristineScores := cpuGemma4e2bRawScores(qRopeReference, kRopeReference)
 	result.ScorePristine = compareVectors(scores, pristineScores)
 	result.ScorePristineExact = equalFloat32Bits(scores, pristineScores)
-	// Reuse the same closed native session with Q prepared first. Generations
-	// remain strictly increasing, while the role order is intentionally reversed.
-	oppositeScores, oppositeNative, err := scoreRuntime.Gemma4E2BM1AttentionScores(
-		qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
-		gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
-		gemma4e2bM1RMSNormEpsilon, 0.0625,
-		0, 100, 101, 100, 101, 3, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
-	)
-	if err != nil {
-		return result, fmt.Errorf("resident raw attention scores Q-first: %w", err)
+	if lane == gemma4e2bSameSessionLane {
+		// The second call is intentionally expected to reject.  The current
+		// outer ABI does not return the successful M46 generation/hash on the
+		// following M49 early rejection; zero propagation fields plus the exact
+		// M49 detail and boundary are the available observation.
+		_, secondNative, secondErr := scoreRuntime.Gemma4E2BM1AttentionScores(
+			qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
+			gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
+			gemma4e2bM1RMSNormEpsilon, 0.0625,
+			0, 100, 101, 100, 101, 3, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
+		)
+		trace := &gemma4e2bSameSessionTrace{
+			SessionLabel:                        "one native runtime handle; identity not exported by current ABI",
+			FirstOperationEpoch:                 1,
+			SecondOperationEpoch:                2,
+			FirstPreparationOrder:               preparationOrder,
+			SecondPreparationOrder:              0,
+			FirstScore:                          scoreNative,
+			SecondBoundary:                      secondNative,
+			SecondCallError:                     errorString(secondErr),
+			M49RequiredWeightValidationRejected: secondErr != nil && secondNative.DetailCode == -7406 && secondNative.PositionalDispatchCount == 0,
+			PositionalDispatchBegun:             secondNative.PositionalDispatchCount != 0,
+			ScoreDispatchBegun:                  secondNative.ScoreDispatchCount != 0,
+			ScoreDestinationWritten:             secondNative.ScoreWritten,
+		}
+		trace.SecondM46PreparationBoundaryObserved = trace.M49RequiredWeightValidationRejected &&
+			secondNative.ObservedWeightGeneration == 0 && secondNative.RequestedWeightGeneration == 0
+		result.SameSession = trace
+		if secondErr == nil {
+			return result, fmt.Errorf("same-session characterization: M49 unexpectedly succeeded")
+		}
+		return result, nil
 	}
-	result.ScoreOppositeOrderNative = oppositeNative
-	result.ScoreOppositeOrderExact = equalFloat32Bits(oppositeScores, cpuGemma4e2bRawScores(qRope, kRope))
-	// A third dispatch returns to Q-first on the same allocations and verifies
-	// that score output is written afresh after the intervening K-first cycle.
-	repeatedScores, repeatedNative, err := scoreRuntime.Gemma4E2BM1AttentionScores(
-		qOutput, kOutput, qNormWeight, kNormWeight, ropeCosine, ropeSine,
-		gemma4e2bM1Tokens, gemma4e2bM1QHeads, gemma4e2bM1KVHeads, gemma4e2bM1HeadWidth,
-		gemma4e2bM1RMSNormEpsilon, 0.0625,
-		0, 102, 103, 102, 103, 4, gemma4e2bM1QHeadSourceHash, gemma4e2bM1KHeadSourceHash,
-	)
-	if err != nil {
-		return result, fmt.Errorf("repeated resident raw attention scores: %w", err)
-	}
-	result.ScoreRepeatedNative = repeatedNative
-	result.ScoreRepeatedExact = equalFloat32Bits(repeatedScores, scores) &&
-		equalFloat32Bits(repeatedScores, cpuGemma4e2bRawScores(qRope, kRope))
 	// The same persistent descriptor set must be rewritten across the Q/K
 	// shape change. Repeat both directions to prove that no stale range or
 	// source binding is retained by the package-backed pipeline.
