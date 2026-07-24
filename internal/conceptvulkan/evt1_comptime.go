@@ -6,9 +6,13 @@ import (
 )
 
 const (
-	evt1ComptimeMaxFuel      = 4096
-	evt1ComptimeMaxLoopBound = 256
-	evt1ComptimeMaxCallDepth = 32
+	evt1ComptimeMaxFuel            = 4096
+	evt1ComptimeMaxLoopBound       = 256
+	evt1ComptimeMaxCallDepth       = 32
+	evt1ComptimeMaxArrayLength     = 64
+	evt1ComptimeMaxArrayNesting    = 8
+	evt1ComptimeMaxArrayCells      = 512
+	evt1ComptimeMaxLiteralElements = 512
 )
 
 type evt1EvalBinding struct {
@@ -98,6 +102,9 @@ func evt1IsComptimeType(env *evt1Env, t EVT1Type) bool {
 	if t.PointerTo != nil || t.isBorrowLike() || t.isOwned() || len(t.TypeArgs) > 0 {
 		return false
 	}
+	if t.ArrayElem != nil {
+		return evt1IsComptimeType(env, *t.ArrayElem)
+	}
 	if _, ok := evt1BuiltinType(t.Name, t.Span); ok {
 		return t.Name == "int" || t.Name == "bool" || t.Name == "string"
 	}
@@ -166,12 +173,16 @@ func evt1EvaluateGlobalComptimeDecl(state *evt1ComptimeState, decl EVT1ComptimeD
 	}
 	defer state.pop()
 	scope := evt1SeedComptimeScope(state.env)
-	value, err := evt1EvalExpr(state, scope, decl.Value)
+	resolvedType, err := evt1ResolveType(state.env, nil, decl.Type)
 	if err != nil {
 		return EVT1Value{}, err
 	}
-	if !evt1CanonicalType(state.env, decl.Type).Equal(evt1CanonicalType(state.env, value.Type)) {
-		return EVT1Value{}, evt1Diagnostic("CV4202", fmt.Sprintf("comptime declaration %s expected %s but got %s", decl.Name, decl.Type.String(), value.Type.String()), decl.Span)
+	value, err := evt1EvalExprTyped(state, scope, decl.Value, &resolvedType)
+	if err != nil {
+		return EVT1Value{}, err
+	}
+	if !evt1CanonicalType(state.env, resolvedType).Equal(evt1CanonicalType(state.env, value.Type)) {
+		return EVT1Value{}, evt1Diagnostic("CV4202", fmt.Sprintf("comptime declaration %s expected %s but got %s", decl.Name, resolvedType.String(), value.Type.String()), decl.Span)
 	}
 	state.env.comptimeValues[decl.Name] = value
 	return value, nil
@@ -210,12 +221,16 @@ func evt1EvaluateStaticAssert(state *evt1ComptimeState, scope *evt1EvalScope, as
 }
 
 func evt1EvalExpr(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1Expr) (EVT1Value, error) {
+	return evt1EvalExprTyped(state, scope, expr, nil)
+}
+
+func evt1EvalExprTyped(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1Expr, expected *EVT1Type) (EVT1Value, error) {
 	if err := state.spend(expr.exprSpan(), 1); err != nil {
 		return EVT1Value{}, err
 	}
 	switch e := expr.(type) {
 	case *EVT1ParenExpr:
-		return evt1EvalExpr(state, scope, e.Value)
+		return evt1EvalExprTyped(state, scope, e.Value, expected)
 	case *EVT1IntLiteral:
 		t, _ := evt1BuiltinType("int", e.Span)
 		return EVT1Value{Kind: EVT1ValueInt, Type: t, IntValue: e.Value}, nil
@@ -264,6 +279,27 @@ func evt1EvalExpr(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1Expr)
 			return EVT1Value{}, evt1Diagnostic("CV4201", fmt.Sprintf("field %s is not available in comptime value", e.Field), e.Span)
 		}
 		return value, nil
+	case *EVT1ArrayLiteralExpr:
+		return evt1EvalArrayLiteral(state, scope, *e, expected)
+	case *EVT1IndexExpr:
+		base, err := evt1EvalExpr(state, scope, e.Base)
+		if err != nil {
+			return EVT1Value{}, err
+		}
+		if base.Kind != EVT1ValueArray {
+			return EVT1Value{}, evt1Diagnostic("CV4231", "indexing requires a fixed compile-time array", e.Base.exprSpan())
+		}
+		index, err := evt1EvalExpr(state, scope, e.Index)
+		if err != nil {
+			return EVT1Value{}, err
+		}
+		if index.Kind != EVT1ValueInt {
+			return EVT1Value{}, evt1Diagnostic("CV4232", "array index must evaluate to int", e.Index.exprSpan())
+		}
+		if index.IntValue < 0 || index.IntValue >= len(base.Elements) {
+			return EVT1Value{}, evt1Diagnostic("CV4233", fmt.Sprintf("array index %d is out of range for length %d", index.IntValue, len(base.Elements)), e.Index.exprSpan())
+		}
+		return base.Elements[index.IntValue], nil
 	case *EVT1StructConstructExpr:
 		structDecl := state.env.structs[e.StructName]
 		fields := map[string]EVT1Value{}
@@ -290,11 +326,11 @@ func evt1EvalExpr(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1Expr)
 			payload = append(payload, value)
 		}
 		return EVT1Value{
-			Kind:    EVT1ValueEnum,
-			Type:    EVT1Type{Name: e.EnumName, Kind: EVT1TypeEnum, Span: e.Span},
+			Kind:     EVT1ValueEnum,
+			Type:     EVT1Type{Name: e.EnumName, Kind: EVT1TypeEnum, Span: e.Span},
 			EnumName: e.EnumName,
-			Variant: e.VariantName,
-			Payload: payload,
+			Variant:  e.VariantName,
+			Payload:  payload,
 		}, nil
 	case *EVT1IfExpr:
 		condition, err := evt1EvalExpr(state, scope, e.Condition)
@@ -311,6 +347,20 @@ func evt1EvalExpr(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1Expr)
 	case *EVT1MatchExpr:
 		return evt1EvalMatchExpr(state, scope, *e)
 	case *EVT1CallExpr:
+		if e.Callee == "Len" {
+			if len(e.Args) != 1 {
+				return EVT1Value{}, evt1Diagnostic("CV4234", fmt.Sprintf("Len expects exactly one argument, got %d", len(e.Args)), e.Span)
+			}
+			value, err := evt1EvalExpr(state, scope, e.Args[0])
+			if err != nil {
+				return EVT1Value{}, err
+			}
+			if value.Kind != EVT1ValueArray {
+				return EVT1Value{}, evt1Diagnostic("CV4235", "Len requires a fixed compile-time array", e.Args[0].exprSpan())
+			}
+			t, _ := evt1BuiltinType("int", e.Span)
+			return EVT1Value{Kind: EVT1ValueInt, Type: t, IntValue: len(value.Elements)}, nil
+		}
 		return evt1EvalComptimeCall(state, scope, e.Callee, e.Args, e.Span)
 	case *EVT1TemplateCallExpr:
 		return EVT1Value{}, evt1Diagnostic("CV4201", "templates are not available during comptime evaluation", e.Span)
@@ -357,6 +407,9 @@ func evt1EvalBinaryExpr(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT
 	if err != nil {
 		return EVT1Value{}, err
 	}
+	if (left.Kind == EVT1ValueArray || right.Kind == EVT1ValueArray) && (expr.Op == "<" || expr.Op == ">" || expr.Op == "<=" || expr.Op == ">=") {
+		return EVT1Value{}, evt1Diagnostic("CV4236", "array ordering comparisons are not supported", expr.Span)
+	}
 	switch expr.Op {
 	case "+", "-", "*", "<", ">", "<=", ">=":
 		if left.Kind != EVT1ValueInt || right.Kind != EVT1ValueInt {
@@ -374,6 +427,12 @@ func evt1EvalBinaryExpr(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT
 			return EVT1Value{Kind: EVT1ValueBool, Type: t, BoolValue: evt1CompareInts(left.IntValue, right.IntValue, expr.Op)}, nil
 		}
 	case "==", "!=":
+		if left.Kind == EVT1ValueArray || right.Kind == EVT1ValueArray {
+			if !evt1ValueEqual(left, right) && expr.Op == "==" {
+				t, _ := evt1BuiltinType("bool", expr.Span)
+				return EVT1Value{Kind: EVT1ValueBool, Type: t, BoolValue: false}, nil
+			}
+		}
 		equal := evt1ValueEqual(left, right)
 		t, _ := evt1BuiltinType("bool", expr.Span)
 		if expr.Op == "==" {
@@ -432,6 +491,16 @@ func evt1ValueEqual(left, right EVT1Value) bool {
 			}
 		}
 		return true
+	case EVT1ValueArray:
+		if right.Kind != EVT1ValueArray || len(left.Elements) != len(right.Elements) {
+			return false
+		}
+		for i := range left.Elements {
+			if !evt1ValueEqual(left.Elements[i], right.Elements[i]) {
+				return false
+			}
+		}
+		return true
 	default:
 		return false
 	}
@@ -472,13 +541,21 @@ func evt1EvalComptimeCall(state *evt1ComptimeState, scope *evt1EvalScope, name s
 	defer state.pop()
 	callScope := evt1SeedComptimeScope(state.env)
 	for i, arg := range args {
-		value, err := evt1EvalExpr(state, scope, arg)
+		paramType, err := evt1ResolveType(state.env, nil, fn.Params[i].Type)
+		if err != nil {
+			return EVT1Value{}, err
+		}
+		value, err := evt1EvalExprTyped(state, scope, arg, &paramType)
 		if err != nil {
 			return EVT1Value{}, err
 		}
 		callScope.declare(fn.Params[i].Name, evt1EvalBinding{value: value, mutable: true, comptime: true})
 	}
-	result, err := evt1ExecComptimeBlock(state, callScope, *fn.Body)
+	resolvedReturn, err := evt1ResolveType(state.env, nil, fn.ReturnType)
+	if err != nil {
+		return EVT1Value{}, err
+	}
+	result, err := evt1ExecComptimeBlock(state, callScope, *fn.Body, resolvedReturn)
 	if err != nil {
 		return EVT1Value{}, err
 	}
@@ -491,12 +568,12 @@ func evt1EvalComptimeCall(state *evt1ComptimeState, scope *evt1EvalScope, name s
 	return *result, nil
 }
 
-func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block EVT1Block) (*EVT1Value, error) {
+func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block EVT1Block, returnType EVT1Type) (*EVT1Value, error) {
 	local := newEVT1EvalScope(scope)
 	for _, stmt := range block.Statements {
 		switch s := stmt.(type) {
 		case *EVT1VarDecl:
-			value, err := evt1EvalExpr(state, local, s.Value)
+			value, err := evt1EvalExprTyped(state, local, s.Value, &s.Type)
 			if err != nil {
 				return nil, err
 			}
@@ -519,7 +596,7 @@ func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block
 			if s.Value == nil {
 				return nil, nil
 			}
-			value, err := evt1EvalExpr(state, local, s.Value)
+			value, err := evt1EvalExprTyped(state, local, s.Value, &returnType)
 			if err != nil {
 				return nil, err
 			}
@@ -565,7 +642,7 @@ func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block
 				if !condition.BoolValue {
 					break
 				}
-				result, err := evt1ExecComptimeBlock(state, local, s.Body)
+				result, err := evt1ExecComptimeBlock(state, local, s.Body, returnType)
 				if err != nil {
 					state.pop()
 					return nil, err
@@ -594,7 +671,7 @@ func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block
 				for i, binding := range arm.Pattern.Bindings {
 					armScope.declare(binding, evt1EvalBinding{value: subject.Payload[i], mutable: false, comptime: true})
 				}
-				result, err := evt1ExecComptimeBlock(state, armScope, arm.Block)
+				result, err := evt1ExecComptimeBlock(state, armScope, arm.Block, returnType)
 				if err != nil {
 					return nil, err
 				}
@@ -607,7 +684,7 @@ func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block
 				return nil, evt1Diagnostic("CV4201", "comptime match found no selected arm", s.Span)
 			}
 		case *EVT1Block:
-			result, err := evt1ExecComptimeBlock(state, local, *s)
+			result, err := evt1ExecComptimeBlock(state, local, *s, returnType)
 			if err != nil {
 				return nil, err
 			}
@@ -619,4 +696,45 @@ func evt1ExecComptimeBlock(state *evt1ComptimeState, scope *evt1EvalScope, block
 		}
 	}
 	return nil, nil
+}
+
+func evt1EvalArrayLiteral(state *evt1ComptimeState, scope *evt1EvalScope, expr EVT1ArrayLiteralExpr, expected *EVT1Type) (EVT1Value, error) {
+	var arrayType EVT1Type
+	if expected != nil && expected.ArrayElem != nil {
+		arrayType = expected.valueType()
+		if len(expr.Elements) != arrayType.ArrayLength {
+			return EVT1Value{}, evt1Diagnostic("CV4226", fmt.Sprintf("array literal expected %d elements but got %d", arrayType.ArrayLength, len(expr.Elements)), expr.Span)
+		}
+	} else if len(expr.Elements) == 0 {
+		return EVT1Value{}, evt1Diagnostic("CV4225", "empty array literal requires an explicit fixed-array type", expr.Span)
+	}
+	if len(expr.Elements) > evt1ComptimeMaxLiteralElements {
+		return EVT1Value{}, evt1Diagnostic("CV4224", fmt.Sprintf("array literal element count %d exceeds limit %d", len(expr.Elements), evt1ComptimeMaxLiteralElements), expr.Span)
+	}
+	elements := make([]EVT1Value, 0, len(expr.Elements))
+	for i, element := range expr.Elements {
+		var elemExpected *EVT1Type
+		if arrayType.ArrayElem != nil {
+			elemExpected = arrayType.ArrayElem
+		}
+		value, err := evt1EvalExprTyped(state, scope, element, elemExpected)
+		if err != nil {
+			return EVT1Value{}, err
+		}
+		if i == 0 && arrayType.ArrayElem == nil {
+			elemType := value.Type.valueType()
+			arrayType = EVT1Type{
+				Name:        elemType.String() + "[]",
+				Kind:        EVT1TypeArray,
+				ArrayElem:   &elemType,
+				ArrayLength: len(expr.Elements),
+				Span:        expr.Span,
+			}
+		}
+		if arrayType.ArrayElem != nil && !arrayType.ArrayElem.valueType().Equal(value.Type.valueType()) {
+			return EVT1Value{}, evt1Diagnostic("CV4227", fmt.Sprintf("array literal element %d expected %s but got %s", i+1, arrayType.ArrayElem.String(), value.Type.String()), element.exprSpan())
+		}
+		elements = append(elements, value)
+	}
+	return EVT1Value{Kind: EVT1ValueArray, Type: arrayType, Elements: elements}, nil
 }

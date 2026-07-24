@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-C constitution in meaningful-progression state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, and foundational control flow implemented; fixed-size comptime arrays remain unfinished; production remains handwritten**
+Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -251,10 +251,38 @@ becomes available as foundational runtime control flow, while compile-time
 `while` is accepted only with an explicit `bounded(limit)` clause.
 
 The accepted compile-time value domain now includes `int`, `bool`, `string`,
-enums, and structs composed from those values. Fixed-size arrays remain the
-isolated unfinished M1B-C portion, so this constitution records the M1B-C
-surface while the implementation status remains honestly classified as
-meaningful progression rather than full closure.
+enums, and structs composed from those values. EVT1 M1B-D extends that domain
+with fixed-size compile-time arrays and leaves M1B-C itself as the accepted
+foundational evaluator/control-flow substrate.
+
+## 2.7 EVT1 M1B-D fixed compile-time arrays and finite structural validation
+
+EVT1 M1B-D extends the accepted M1B-C substrate with a deliberately bounded
+fixed-array facility for compile-time structure:
+
+```concept
+comptime int[3] RetryBudgets = [1, 2, 4];
+comptime int[2][3] RetryMatrix = [[1, 2], [3, 4], [5, 6]];
+static_assert(Len(RetryBudgets) == 3);
+static_assert(RetryMatrix[2][1] == 6);
+```
+
+Array types use the exact suffix form `ElementType[LengthExpression]`, where
+the length expression is evaluated in compile-time context and must produce a
+non-negative `int`. Array literals use bracket form in source order; empty
+literals require explicit contextual type. Indexing uses `array[index]`, where
+the index must be a compile-time `int` and out-of-range access is rejected
+deterministically. `Len(array)` returns the exact declared length.
+
+Fixed arrays remain compile-time-only in EVT1: they are accepted in top-level
+and local `comptime` declarations and in compile-time free-function parameter
+and return types, but runtime locals, runtime parameters, and runtime return
+types containing arrays remain rejected. Arrays may nest subject to explicit
+bounds, may contain accepted compile-time enums and structs, may participate in
+structural equality when their element types already support equality, and may
+be traversed only through the existing bounded `while` form. No runtime
+collection, iterator, metadata table, or `for` loop is introduced, and all
+compile-time array structure erases before runtime C11 lowering.
 
 ## 3. Static and runtime facts
 
@@ -484,8 +512,9 @@ control flow:
 - the evaluator is deterministic, bounded, and pure over the currently
   accepted compile-time value domain.
 
-Fixed-size arrays remain outside the currently accepted compile-time value
-domain and therefore remain the isolated blocker to full M1B-C closure.
+EVT1 M1B-D closes the remaining fixed-array gap with compile-time-only array
+types, literals, indexing, exact `Len(...)`, structural equality where valid,
+and finite structural validation over ordered arrays.
 
 ## 10. Escape hatch
 
@@ -662,8 +691,34 @@ compile-time and control-flow vertical:
     specimen proving compile-time evaluation, bounded loops, and preserved
     earlier EVT1 behavior.
 
-Fixed-size arrays are intentionally not listed here because they are not yet
-implemented in the accepted M1B-C value domain.
+EVT1 M1B-D extends this minimum with the fixed-array closure listed next.
+
+## 12.5 EVT1 M1B-D semantic minimum
+
+EVT1 M1B-D extends the accepted M1B-C proof with the smallest coherent fixed
+array and finite-structural-validation vertical:
+
+1. fixed-array type spelling `ElementType[LengthExpression]` with deterministic
+   compile-time length evaluation and explicit nested-suffix association;
+2. fixed-array literals in source order with exact contextual typing and
+   rejection of heterogeneous fallback or context-free empty literals;
+3. compile-time-only fixed-array declarations, locals, parameters, and return
+   types, with explicit rejection of runtime arrays;
+4. exact `array[index]` validation and evaluation with compile-time `int`
+   indexes and deterministic out-of-range rejection;
+5. exact `Len(array)` validation and evaluation with no runtime metadata
+   emission;
+6. nested arrays plus arrays of accepted enums and structs, and structs
+   containing accepted arrays;
+7. structural equality for arrays only when element equality already exists,
+   and explicit rejection of array ordering comparisons;
+8. bounded `while` traversal over arrays with no new iteration protocol and no
+   `for` syntax;
+9. typed MIR/source-map/generated-C evidence for array literals, indexing,
+   length inspection, and erased compile-time array results;
+10. one hardware-independent native specimen and one Vulkan-shaped native
+    specimen proving finite ordered structural validation and complete runtime
+    erasure without runtime collections.
 
 ## 13. Profile MIR boundary
 

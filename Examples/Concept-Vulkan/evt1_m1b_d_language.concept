@@ -1,0 +1,120 @@
+profile Vulkan;
+
+enum LifecycleState
+{
+    Empty,
+    Ready,
+    Submitted
+}
+
+struct Transition
+{
+    LifecycleState from;
+    int signal;
+    LifecycleState to;
+};
+
+struct RetrySummary
+{
+    int[2] values;
+};
+
+comptime int[0] EmptyRetryBudgets = [];
+comptime int[3] RetryBudgets = [1, 2, 4];
+comptime int[2][3] RetryMatrix = [[1, 2], [3, 4], [5, 6]];
+comptime Transition[4] Transitions =
+[
+    Transition{LifecycleState::Empty, 0, LifecycleState::Ready},
+    Transition{LifecycleState::Ready, 1, LifecycleState::Submitted},
+    Transition{LifecycleState::Submitted, 2, LifecycleState::Ready},
+    Transition{LifecycleState::Ready, 3, LifecycleState::Empty},
+];
+comptime RetrySummary Summary = RetrySummary{[Len(RetryBudgets), RetryBudgets[2]]};
+comptime bool TransitionTableIsStable = not HasDuplicateTransitionKeys(Transitions);
+comptime int RetryBudgetTotal = SumBudgets(RetryBudgets);
+
+comptime int[3] CanonicalRetryBudgets()
+{
+    return [1, 2, 4];
+}
+
+comptime int SumBudgets(int[3] values)
+{
+    int cursor = 0;
+    int total = 0;
+    while (cursor < Len(values)) bounded(16)
+    {
+        total = total + values[cursor];
+        cursor = cursor + 1;
+    }
+    return total;
+}
+
+comptime bool HasDuplicateTransitionKeys(Transition[4] values)
+{
+    int outer = 0;
+    bool duplicate = false;
+    while (outer < Len(values)) bounded(16)
+    {
+        int inner = outer + 1;
+        while (inner < Len(values)) bounded(16)
+        {
+            bool sameFrom = values[outer].from == values[inner].from;
+            bool sameSignal = values[outer].signal == values[inner].signal;
+            duplicate = duplicate or (sameFrom and sameSignal);
+            inner = inner + 1;
+        }
+        outer = outer + 1;
+    }
+    return duplicate;
+}
+
+comptime LifecycleState LookupTransition(Transition[4] values, LifecycleState from, int signal)
+{
+    int cursor = 0;
+    LifecycleState result = LifecycleState::Empty;
+    while (cursor < Len(values)) bounded(16)
+    {
+        bool sameFrom = values[cursor].from == from;
+        bool sameSignal = values[cursor].signal == signal;
+        result = if (sameFrom and sameSignal) values[cursor].to else result;
+        cursor = cursor + 1;
+    }
+    return result;
+}
+
+static_assert(Len(EmptyRetryBudgets) == 0);
+static_assert(Len(RetryBudgets) == 3);
+static_assert(RetryBudgets[2] == 4);
+static_assert(RetryMatrix[2][1] == 6);
+static_assert(CanonicalRetryBudgets() == RetryBudgets);
+static_assert(SumBudgets(RetryBudgets) == 7);
+static_assert(TransitionTableIsStable, "duplicate transition key");
+static_assert(LookupTransition(Transitions, LifecycleState::Ready, 1) == LifecycleState::Submitted);
+static_assert(Summary.values[0] == 3);
+static_assert(Summary.values[1] == 4);
+
+int DefaultRetryBudget()
+{
+    return RetryBudgets[1];
+}
+
+int MatrixCorner()
+{
+    return RetryMatrix[2][1];
+}
+
+int SummaryValue()
+{
+    return Summary.values[0] + Summary.values[1];
+}
+
+bool TransitionTableStable()
+{
+    return TransitionTableIsStable;
+}
+
+int TotalRetryBudget()
+{
+    return RetryBudgetTotal;
+}

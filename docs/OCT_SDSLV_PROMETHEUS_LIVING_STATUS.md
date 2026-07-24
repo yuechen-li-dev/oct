@@ -26,12 +26,13 @@ constrained one-parameter free-function templates, explicit concrete
 invocation, symbolic body checking against named concept closures, and
 deterministic private C11 monomorphization all run through the EVT1 typed MIR
 without introducing runtime generic machinery. **Concept/Vulkan EVT1 M1B-C**
-is now honestly classified as `MEANINGFUL PROGRESSION`: bounded pure comptime
-evaluation, expression-valued `if`, runtime and bounded `while`, `static_assert`,
-and compile-time declaration/function support run through parsing, validation,
-typed MIR, generated C, checked outputs, and native specimens, but fixed-size
-arrays are still absent from the accepted compile-time value domain. Production
-remains handwritten.
+is accepted and closed. **Concept/Vulkan EVT1 M1B-D** is now complete:
+fixed-size compile-time arrays, typed array literals, deterministic indexing,
+exact `Len(...)`, array-valued compile-time declarations/functions/locals,
+structural equality over valid element domains, bounded `while` traversal, and
+finite structural validation all run through parsing, validation, typed MIR,
+generated C, checked outputs, and native specimens without introducing runtime
+collections or changing production authority. Production remains handwritten.
 
 The owner direction is:
 
@@ -128,23 +129,26 @@ Concept/Vulkan EVT1 now includes:
 - compile-time-only `static_assert`, expression-valued `if`, ordinary runtime
   `while`, and compile-time `while` gated by explicit `bounded(limit)`;
 - deterministic bounded compile-time evaluation over `int`, `bool`, `string`,
-  enums, and structs composed from accepted compile-time values;
+  enums, structs, and fixed arrays composed from accepted compile-time values;
+- exact fixed-array literals, indexing, and `Len(...)` in compile-time
+  contexts only, with complete erasure before runtime C11 lowering;
 - focused hardware-independent and Vulkan-shaped specimens proving structs,
   immovability, concept satisfaction, explicit-only template instantiation,
-  deterministic instance reuse, bounded compile-time evaluation, and preserved
-  M1A enum/`match` behavior.
+  deterministic instance reuse, bounded compile-time evaluation, finite
+  structural validation over ordered arrays, and preserved M1A enum/`match`
+  behavior.
 
 The owner-preserved paused states are unchanged:
 
 - Prometheus RQ-M1 physical batching is preserved but paused;
 - DVT-2 optimization is preserved but paused;
-- EVT1 M1B-C now exists as meaningful progression; the isolated remaining
-  blocker is fixed-size arrays inside the compile-time value domain;
+- EVT1 M1B-D now closes the fixed-size compile-time array gap and completes the
+  bounded EVT1 compile-time substrate needed for the first DragonGod vertical;
 - the historical kernel-54 milestone named `M1C` remains distinct from the
   later planned EVT1 milestone named `M1B-C`;
-- DragonGod lifecycle automata remain deferred until after the required
-  language substrate and completion of the remaining M1B-C fixed-size-array
-  work;
+- DragonGod lifecycle automata remain deferred, but they are now the intended
+  first serious post-substrate direction rather than waiting on another EVT1
+  compile-time language blocker;
 - the first production mechanism reconstruction remains deferred to EVT1 M1C;
 - backporting accepted EVT1 semantics into the broader Zig Concept bootstrap
   remains outside this assignment and another reviewer’s boundary;

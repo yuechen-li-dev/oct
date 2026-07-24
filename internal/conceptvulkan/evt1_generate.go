@@ -101,7 +101,7 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 			SourceSpan: structDecl.Span,
 		}
 		for _, field := range structDecl.Fields {
-			mirStruct.Fields = append(mirStruct.Fields, EVT1MIRName{Name: field.Name, Type: field.Type})
+			mirStruct.Fields = append(mirStruct.Fields, EVT1MIRName{Name: field.Name, Type: evt1MIRType(env, field.Type)})
 		}
 		mir.Structs = append(mir.Structs, mirStruct)
 	}
@@ -115,7 +115,7 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 				SourceSpan: variant.Span,
 			}
 			for _, payload := range variant.Payload {
-				mirVariant.Payload = append(mirVariant.Payload, EVT1MIRName{Name: payload.Name, Type: payload.Type})
+				mirVariant.Payload = append(mirVariant.Payload, EVT1MIRName{Name: payload.Name, Type: evt1MIRType(env, payload.Type)})
 			}
 			mirEnum.Variants = append(mirEnum.Variants, mirVariant)
 		}
@@ -158,7 +158,7 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 	for _, decl := range module.ComptimeDecls {
 		mir.ComptimeDecls = append(mir.ComptimeDecls, EVT1MIRComptimeDecl{
 			Name:       decl.Name,
-			Type:       decl.Type,
+			Type:       evt1MIRType(env, decl.Type),
 			Value:      env.comptimeValues[decl.Name].Render(),
 			SourceSpan: decl.Span,
 		})
@@ -206,7 +206,7 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 			})
 		}
 		for _, param := range templateDecl.Params {
-			mirTemplate.Params = append(mirTemplate.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+			mirTemplate.Params = append(mirTemplate.Params, EVT1MIRName{Name: param.Name, Type: evt1MIRType(env, param.Type)})
 		}
 		if templateDecl.Body != nil {
 			tmpFn := EVT1MIRFunction{Name: templateDecl.Name}
@@ -254,7 +254,7 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 				})
 			}
 			for _, param := range instance.Function.Params {
-				mirInstance.Params = append(mirInstance.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+				mirInstance.Params = append(mirInstance.Params, EVT1MIRName{Name: param.Name, Type: evt1MIRType(env, param.Type)})
 			}
 			if instance.Function.Body != nil {
 				tmpFn := EVT1MIRFunction{Name: instance.GeneratedSymbol}
@@ -265,9 +265,9 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 		}
 	}
 	for _, fn := range module.Functions {
-		mirFn := EVT1MIRFunction{Name: fn.Name, ReturnType: fn.ReturnType, SourceSpan: fn.Span}
+		mirFn := EVT1MIRFunction{Name: fn.Name, ReturnType: evt1MIRType(env, fn.ReturnType), SourceSpan: fn.Span}
 		for _, param := range fn.Params {
-			mirFn.Params = append(mirFn.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+			mirFn.Params = append(mirFn.Params, EVT1MIRName{Name: param.Name, Type: evt1MIRType(env, param.Type)})
 		}
 		if fn.Body != nil {
 			collectMIROps(env, fn.Body, &mirFn, nil)
@@ -275,9 +275,9 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 		mir.Functions = append(mir.Functions, mirFn)
 	}
 	for _, fn := range module.ComptimeFns {
-		mirFn := EVT1MIRFunction{Name: fn.Name, ReturnType: fn.ReturnType, SourceSpan: fn.Span}
+		mirFn := EVT1MIRFunction{Name: fn.Name, ReturnType: evt1MIRType(env, fn.ReturnType), SourceSpan: fn.Span}
 		for _, param := range fn.Params {
-			mirFn.Params = append(mirFn.Params, EVT1MIRName{Name: param.Name, Type: param.Type})
+			mirFn.Params = append(mirFn.Params, EVT1MIRName{Name: param.Name, Type: evt1MIRType(env, param.Type)})
 		}
 		if fn.Body != nil {
 			collectMIROps(env, fn.Body, &mirFn, nil)
@@ -303,7 +303,7 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, template
 					kind = "struct_construct"
 				}
 			}
-			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Type: s.Type.String(), Detail: s.Name, SourceSpan: s.Span})
+			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Type: evt1MIRType(env, s.Type).String(), Detail: s.Name, SourceSpan: s.Span})
 			collectExprMIROps(env, s.Value, fn, templateInfo)
 		case *EVT1AssignStmt:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "assign", Type: exprLabel(s.Target), Detail: exprLabel(s.Target), SourceSpan: s.Span})
@@ -384,6 +384,9 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction, templat
 	case *EVT1CallExpr:
 		kind := "call"
 		detail := e.Callee
+		if e.Callee == "Len" {
+			kind = "array_len"
+		}
 		if templateInfo != nil {
 			if binding, ok := templateInfo.CallBindings[evt1SpanKey(e.Span)]; ok {
 				kind = "requirement_call"
@@ -402,6 +405,15 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction, templat
 	case *EVT1FieldExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "field_access", Detail: e.Field, SourceSpan: e.Span})
 		collectExprMIROps(env, e.Receiver, fn, templateInfo)
+	case *EVT1ArrayLiteralExpr:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "array_literal", Detail: fmt.Sprintf("%d elements", len(e.Elements)), SourceSpan: e.Span})
+		for _, element := range e.Elements {
+			collectExprMIROps(env, element, fn, templateInfo)
+		}
+	case *EVT1IndexExpr:
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "array_index", SourceSpan: e.Span})
+		collectExprMIROps(env, e.Base, fn, templateInfo)
+		collectExprMIROps(env, e.Index, fn, templateInfo)
 	case *EVT1BinaryExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "binary", Detail: e.Op, SourceSpan: e.Span})
 		collectExprMIROps(env, e.Left, fn, templateInfo)
@@ -463,6 +475,10 @@ func evt1FunctionSymbolForDecl(base string, env *evt1Env, fn EVT1FunctionDecl) s
 func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 	var header, body strings.Builder
 	guard := strings.ToUpper("PROM_" + l.outputBase + "_GENERATED_H")
+	typeDecls, err := l.runtimeTypeDeclarations()
+	if err != nil {
+		return nil, nil, err
+	}
 	body.WriteString(fmt.Sprintf("/* Generated by %s. DO NOT EDIT. Source: %s */\n", EVT1CompilerID, l.module.Path))
 	body.WriteString(fmt.Sprintf("#include \"%s.generated.h\"\n", l.outputBase))
 	body.WriteString("#include <stdio.h>\n#include <stdlib.h>\n\n")
@@ -475,11 +491,13 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 	if evt1UsesVulkanError(l.module) {
 		header.WriteString("typedef struct concept_vulkan_vulkan_error {\n  int Code;\n} concept_vulkan_vulkan_error;\n\n")
 	}
-	for _, structDecl := range l.module.Structs {
-		header.WriteString(l.structHeader(structDecl))
-	}
-	for _, enumDecl := range l.module.Enums {
-		header.WriteString(l.enumHeader(enumDecl))
+	for _, decl := range typeDecls {
+		switch {
+		case decl.Struct != nil:
+			header.WriteString(l.structHeader(*decl.Struct))
+		case decl.Enum != nil:
+			header.WriteString(l.enumHeader(*decl.Enum))
+		}
 	}
 	var symbols []evt1FunctionSymbols
 	for _, fn := range l.module.Functions {
@@ -494,12 +512,14 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 	body.WriteString("  fprintf(stderr, \"invalid enum tag for %s\\n\", enum_name);\n")
 	body.WriteString("  abort();\n}\n\n")
 	for _, structDecl := range l.module.Structs {
-		if evt1TypeCopyable(l.env, EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct}) {
+		if evt1RuntimeTypeSafe(l.env, EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct}) && evt1TypeCopyable(l.env, EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct}) {
 			body.WriteString(l.structConstructor(structDecl))
 		}
 	}
 	for _, enumDecl := range l.module.Enums {
-		body.WriteString(l.enumConstructors(enumDecl))
+		if evt1RuntimeTypeSafe(l.env, EVT1Type{Name: enumDecl.Name, Kind: EVT1TypeEnum}) {
+			body.WriteString(l.enumConstructors(enumDecl))
+		}
 	}
 	for _, templateDecl := range l.module.Templates {
 		var instances []*evt1TemplateInstance
@@ -523,6 +543,129 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 		}
 	}
 	return []byte(header.String()), []byte(body.String()), nil
+}
+
+type evt1RuntimeTypeDecl struct {
+	Name   string
+	Struct *EVT1StructDecl
+	Enum   *EVT1EnumDecl
+}
+
+func (l *evt1Lowering) runtimeTypeDeclarations() ([]evt1RuntimeTypeDecl, error) {
+	index := make(map[string]evt1RuntimeTypeDecl)
+	order := make([]string, 0, len(l.module.Structs)+len(l.module.Enums))
+	for _, structDecl := range l.module.Structs {
+		t := EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct}
+		if !evt1RuntimeTypeSafe(l.env, t) {
+			continue
+		}
+		decl := structDecl
+		index[structDecl.Name] = evt1RuntimeTypeDecl{Name: structDecl.Name, Struct: &decl}
+		order = append(order, structDecl.Name)
+	}
+	for _, enumDecl := range l.module.Enums {
+		t := EVT1Type{Name: enumDecl.Name, Kind: EVT1TypeEnum}
+		if !evt1RuntimeTypeSafe(l.env, t) {
+			continue
+		}
+		decl := enumDecl
+		index[enumDecl.Name] = evt1RuntimeTypeDecl{Name: enumDecl.Name, Enum: &decl}
+		order = append(order, enumDecl.Name)
+	}
+
+	seen := make(map[string]bool, len(index))
+	active := make(map[string]bool, len(index))
+	var sorted []evt1RuntimeTypeDecl
+	var visit func(string) error
+	visit = func(name string) error {
+		if seen[name] {
+			return nil
+		}
+		if active[name] {
+			return fmt.Errorf("Concept/Vulkan EVT1 runtime type cycle requires unsupported forward declarations: %s", name)
+		}
+		decl, ok := index[name]
+		if !ok {
+			return nil
+		}
+		active[name] = true
+		for _, dep := range l.runtimeTypeDeclDeps(decl) {
+			if err := visit(dep); err != nil {
+				return err
+			}
+		}
+		active[name] = false
+		seen[name] = true
+		sorted = append(sorted, decl)
+		return nil
+	}
+	for _, name := range order {
+		if err := visit(name); err != nil {
+			return nil, err
+		}
+	}
+	return sorted, nil
+}
+
+func (l *evt1Lowering) runtimeTypeDeclDeps(decl evt1RuntimeTypeDecl) []string {
+	var deps []string
+	seen := map[string]bool{decl.Name: true}
+	add := func(t EVT1Type) {
+		for _, dep := range l.runtimeTypeDeps(t) {
+			if seen[dep] {
+				continue
+			}
+			if _, ok := l.env.structs[dep]; !ok {
+				if _, ok := l.env.enums[dep]; !ok {
+					continue
+				}
+			}
+			if !l.runtimeTypeDeclExists(dep) {
+				continue
+			}
+			seen[dep] = true
+			deps = append(deps, dep)
+		}
+	}
+	switch {
+	case decl.Struct != nil:
+		for _, field := range decl.Struct.Fields {
+			add(field.Type)
+		}
+	case decl.Enum != nil:
+		for _, variant := range decl.Enum.Variants {
+			for _, field := range variant.Payload {
+				add(field.Type)
+			}
+		}
+	}
+	return deps
+}
+
+func (l *evt1Lowering) runtimeTypeDeclExists(name string) bool {
+	if structDecl, ok := l.env.structs[name]; ok {
+		return evt1RuntimeTypeSafe(l.env, EVT1Type{Name: structDecl.Name, Kind: EVT1TypeStruct})
+	}
+	if enumDecl, ok := l.env.enums[name]; ok {
+		return evt1RuntimeTypeSafe(l.env, EVT1Type{Name: enumDecl.Name, Kind: EVT1TypeEnum})
+	}
+	return false
+}
+
+func (l *evt1Lowering) runtimeTypeDeps(t EVT1Type) []string {
+	if t.Ownership == "borrow" {
+		return l.runtimeTypeDeps(t.borrowBase())
+	}
+	switch t.Kind {
+	case EVT1TypePointer:
+		return l.runtimeTypeDeps(*t.PointerTo)
+	case EVT1TypeArray:
+		return l.runtimeTypeDeps(*t.ArrayElem)
+	case EVT1TypeStruct, EVT1TypeEnum:
+		return []string{t.Name}
+	default:
+		return nil
+	}
 }
 
 func (l *evt1Lowering) structHeader(structDecl EVT1StructDecl) string {
@@ -677,6 +820,9 @@ func evt1TypeUsed(module EVT1Module, match func(EVT1Type) bool) bool {
 			return true
 		}
 		if t.PointerTo != nil && visitType(*t.PointerTo) {
+			return true
+		}
+		if t.ArrayElem != nil && visitType(*t.ArrayElem) {
 			return true
 		}
 		for _, arg := range t.TypeArgs {
@@ -958,6 +1104,9 @@ func (f *evt1FunctionLowerer) lowerMatchStmt(stmt EVT1MatchStmt, indent int) str
 }
 
 func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, string, EVT1Type) {
+	if value, ok := evt1TryEvalRuntimeExpr(f.l.env, f.evalScope(), expr); ok && evt1RuntimeTypeSafe(f.l.env, value.Type) {
+		return "", evt1RenderCValue(f.l.env, value), value.Type
+	}
 	switch e := expr.(type) {
 	case *EVT1IntLiteral:
 		t, _ := evt1BuiltinType("int", e.Span)
@@ -996,6 +1145,8 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 			op = "->"
 		}
 		return prelude, recv + op + e.Field, fieldType
+	case *EVT1IndexExpr:
+		return "", "/* comptime_array_index */", EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
 	case *EVT1BinaryExpr:
 		leftPrelude, left, leftType := f.lowerExpr(e.Left, indent)
 		rightPrelude, right, _ := f.lowerExpr(e.Right, indent)
@@ -1292,9 +1443,58 @@ func evt1RenderCValue(env *evt1Env, value EVT1Value) string {
 			parts = append(parts, evt1RenderCValue(env, entry))
 		}
 		return evt1ConstructorName(value.EnumName, value.Variant) + "(" + strings.Join(parts, ", ") + ")"
+	case EVT1ValueArray:
+		return "/* comptime_array */"
 	default:
 		return "0"
 	}
+}
+
+func evt1TryEvalRuntimeExpr(env *evt1Env, scope *evt1EvalScope, expr EVT1Expr) (EVT1Value, bool) {
+	value, err := evt1EvalExpr(newEVT1ComptimeState(env), scope, expr)
+	if err != nil {
+		return EVT1Value{}, false
+	}
+	return value, true
+}
+
+func evt1RuntimeTypeSafe(env *evt1Env, t EVT1Type) bool {
+	if t.ArrayElem != nil {
+		return false
+	}
+	if t.PointerTo != nil {
+		return evt1RuntimeTypeSafe(env, *t.PointerTo)
+	}
+	for _, arg := range t.TypeArgs {
+		if !evt1RuntimeTypeSafe(env, arg) {
+			return false
+		}
+	}
+	if structDecl, ok := env.structs[t.Name]; ok {
+		for _, field := range structDecl.Fields {
+			if !evt1RuntimeTypeSafe(env, field.Type) {
+				return false
+			}
+		}
+	}
+	if enumDecl, ok := env.enums[t.Name]; ok {
+		for _, variant := range enumDecl.Variants {
+			for _, field := range variant.Payload {
+				if !evt1RuntimeTypeSafe(env, field.Type) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func evt1MIRType(env *evt1Env, t EVT1Type) EVT1Type {
+	resolved, err := evt1ResolveType(env, nil, t)
+	if err != nil {
+		return evt1CanonicalType(env, t)
+	}
+	return resolved
 }
 
 func ind(level int) string {

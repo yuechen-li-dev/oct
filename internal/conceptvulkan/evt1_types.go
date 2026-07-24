@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const EVT1CompilerID = "concept-vulkan-evt1-m1b-c"
+const EVT1CompilerID = "concept-vulkan-evt1-m1b-d"
 
 type EVT1TypeKind string
 
@@ -15,20 +15,24 @@ const (
 	EVT1TypeEnum         EVT1TypeKind = "enum"
 	EVT1TypeStruct       EVT1TypeKind = "struct"
 	EVT1TypePointer      EVT1TypeKind = "pointer"
+	EVT1TypeArray        EVT1TypeKind = "array"
 	EVT1TypeConceptParam EVT1TypeKind = "concept_param"
 	EVT1TypeApplied      EVT1TypeKind = "applied"
 )
 
 type EVT1Type struct {
-	Name      string       `json:"name"`
-	Kind      EVT1TypeKind `json:"kind"`
-	Ownership string       `json:"ownership,omitempty"`
-	Const     bool         `json:"const,omitempty"`
-	Imported  bool         `json:"imported,omitempty"`
-	Unsafe    bool         `json:"unsafe,omitempty"`
-	PointerTo *EVT1Type    `json:"pointer_to,omitempty"`
-	TypeArgs  []EVT1Type   `json:"type_args,omitempty"`
-	Span      Span         `json:"span"`
+	Name            string       `json:"name"`
+	Kind            EVT1TypeKind `json:"kind"`
+	Ownership       string       `json:"ownership,omitempty"`
+	Const           bool         `json:"const,omitempty"`
+	Imported        bool         `json:"imported,omitempty"`
+	Unsafe          bool         `json:"unsafe,omitempty"`
+	PointerTo       *EVT1Type    `json:"pointer_to,omitempty"`
+	TypeArgs        []EVT1Type   `json:"type_args,omitempty"`
+	ArrayElem       *EVT1Type    `json:"array_elem,omitempty"`
+	ArrayLength     int          `json:"array_length,omitempty"`
+	ArrayLengthExpr EVT1Expr     `json:"-"`
+	Span            Span         `json:"span"`
 }
 
 func (t EVT1Type) String() string {
@@ -48,6 +52,8 @@ func (t EVT1Type) String() string {
 	base := t.Name
 	if t.PointerTo != nil {
 		base = t.PointerTo.String() + "*"
+	} else if t.ArrayElem != nil {
+		base = fmt.Sprintf("%s[%s]", t.ArrayElem.String(), evt1ArrayLengthString(t))
 	} else if len(t.TypeArgs) > 0 {
 		var args []string
 		for _, arg := range t.TypeArgs {
@@ -66,7 +72,8 @@ func (t EVT1Type) Equal(other EVT1Type) bool {
 		t.Const != other.Const ||
 		t.Imported != other.Imported ||
 		t.Unsafe != other.Unsafe ||
-		len(t.TypeArgs) != len(other.TypeArgs) {
+		len(t.TypeArgs) != len(other.TypeArgs) ||
+		t.ArrayLength != other.ArrayLength {
 		return false
 	}
 	for i := range t.TypeArgs {
@@ -75,9 +82,16 @@ func (t EVT1Type) Equal(other EVT1Type) bool {
 		}
 	}
 	if t.PointerTo == nil || other.PointerTo == nil {
-		return t.PointerTo == nil && other.PointerTo == nil
+		if t.PointerTo != nil || other.PointerTo != nil {
+			return false
+		}
+	} else if !t.PointerTo.Equal(*other.PointerTo) {
+		return false
 	}
-	return t.PointerTo.Equal(*other.PointerTo)
+	if t.ArrayElem == nil || other.ArrayElem == nil {
+		return t.ArrayElem == nil && other.ArrayElem == nil
+	}
+	return t.ArrayElem.Equal(*other.ArrayElem)
 }
 
 func (t EVT1Type) SameValueType(other EVT1Type) bool {
@@ -92,6 +106,14 @@ func (t EVT1Type) valueType() EVT1Type {
 	out.Const = false
 	out.Imported = false
 	out.Unsafe = false
+	if out.PointerTo != nil {
+		base := out.PointerTo.valueType()
+		out.PointerTo = &base
+	}
+	if out.ArrayElem != nil {
+		elem := out.ArrayElem.valueType()
+		out.ArrayElem = &elem
+	}
 	return out
 }
 
@@ -225,17 +247,17 @@ type EVT1StaticAssert struct {
 }
 
 type EVT1Module struct {
-	Path            string                 `json:"path"`
-	Imports         []string               `json:"imports,omitempty"`
-	Structs         []EVT1StructDecl       `json:"structs,omitempty"`
-	Enums           []EVT1EnumDecl         `json:"enums,omitempty"`
-	Concepts        []EVT1ConceptDecl      `json:"concepts,omitempty"`
-	Assertions      []EVT1ConceptAssertion `json:"assertions,omitempty"`
-	ComptimeDecls   []EVT1ComptimeDecl     `json:"comptime_decls,omitempty"`
-	StaticAsserts   []EVT1StaticAssert     `json:"static_asserts,omitempty"`
-	Templates       []EVT1TemplateDecl     `json:"templates,omitempty"`
-	Functions       []EVT1FunctionDecl     `json:"functions,omitempty"`
-	ComptimeFns     []EVT1FunctionDecl     `json:"comptime_functions,omitempty"`
+	Path          string                 `json:"path"`
+	Imports       []string               `json:"imports,omitempty"`
+	Structs       []EVT1StructDecl       `json:"structs,omitempty"`
+	Enums         []EVT1EnumDecl         `json:"enums,omitempty"`
+	Concepts      []EVT1ConceptDecl      `json:"concepts,omitempty"`
+	Assertions    []EVT1ConceptAssertion `json:"assertions,omitempty"`
+	ComptimeDecls []EVT1ComptimeDecl     `json:"comptime_decls,omitempty"`
+	StaticAsserts []EVT1StaticAssert     `json:"static_asserts,omitempty"`
+	Templates     []EVT1TemplateDecl     `json:"templates,omitempty"`
+	Functions     []EVT1FunctionDecl     `json:"functions,omitempty"`
+	ComptimeFns   []EVT1FunctionDecl     `json:"comptime_functions,omitempty"`
 }
 
 type EVT1Block struct {
@@ -253,10 +275,10 @@ type EVT1Statement interface {
 
 type EVT1VarDecl struct {
 	Comptime bool     `json:"comptime,omitempty"`
-	Type  EVT1Type `json:"type"`
-	Name  string   `json:"name"`
-	Value EVT1Expr `json:"value"`
-	Span  Span     `json:"span"`
+	Type     EVT1Type `json:"type"`
+	Name     string   `json:"name"`
+	Value    EVT1Expr `json:"value"`
+	Span     Span     `json:"span"`
 }
 
 func (*EVT1VarDecl) evt1Statement()        {}
@@ -312,10 +334,10 @@ type EVT1StatementArm struct {
 }
 
 type EVT1WhileStmt struct {
-	Condition EVT1Expr `json:"condition"`
-	Bound     EVT1Expr `json:"bound,omitempty"`
+	Condition EVT1Expr  `json:"condition"`
+	Bound     EVT1Expr  `json:"bound,omitempty"`
 	Body      EVT1Block `json:"body"`
-	Span      Span     `json:"span"`
+	Span      Span      `json:"span"`
 }
 
 func (*EVT1WhileStmt) evt1Statement()        {}
@@ -338,7 +360,7 @@ type EVT1NameExpr struct {
 	Span Span   `json:"span"`
 }
 
-func (*EVT1NameExpr) evt1Expr()     {}
+func (*EVT1NameExpr) evt1Expr()        {}
 func (e *EVT1NameExpr) exprSpan() Span { return e.Span }
 
 type EVT1IntLiteral struct {
@@ -346,7 +368,7 @@ type EVT1IntLiteral struct {
 	Span  Span `json:"span"`
 }
 
-func (*EVT1IntLiteral) evt1Expr()     {}
+func (*EVT1IntLiteral) evt1Expr()        {}
 func (e *EVT1IntLiteral) exprSpan() Span { return e.Span }
 
 type EVT1StringLiteral struct {
@@ -354,7 +376,7 @@ type EVT1StringLiteral struct {
 	Span  Span   `json:"span"`
 }
 
-func (*EVT1StringLiteral) evt1Expr()     {}
+func (*EVT1StringLiteral) evt1Expr()        {}
 func (e *EVT1StringLiteral) exprSpan() Span { return e.Span }
 
 type EVT1BoolLiteral struct {
@@ -362,7 +384,7 @@ type EVT1BoolLiteral struct {
 	Span  Span `json:"span"`
 }
 
-func (*EVT1BoolLiteral) evt1Expr()     {}
+func (*EVT1BoolLiteral) evt1Expr()        {}
 func (e *EVT1BoolLiteral) exprSpan() Span { return e.Span }
 
 type EVT1FieldExpr struct {
@@ -371,7 +393,7 @@ type EVT1FieldExpr struct {
 	Span     Span     `json:"span"`
 }
 
-func (*EVT1FieldExpr) evt1Expr()     {}
+func (*EVT1FieldExpr) evt1Expr()        {}
 func (e *EVT1FieldExpr) exprSpan() Span { return e.Span }
 
 type EVT1CallExpr struct {
@@ -380,7 +402,7 @@ type EVT1CallExpr struct {
 	Span   Span       `json:"span"`
 }
 
-func (*EVT1CallExpr) evt1Expr()     {}
+func (*EVT1CallExpr) evt1Expr()        {}
 func (e *EVT1CallExpr) exprSpan() Span { return e.Span }
 
 type EVT1TemplateCallExpr struct {
@@ -390,7 +412,7 @@ type EVT1TemplateCallExpr struct {
 	Span    Span       `json:"span"`
 }
 
-func (*EVT1TemplateCallExpr) evt1Expr()     {}
+func (*EVT1TemplateCallExpr) evt1Expr()        {}
 func (e *EVT1TemplateCallExpr) exprSpan() Span { return e.Span }
 
 type EVT1BinaryExpr struct {
@@ -400,7 +422,7 @@ type EVT1BinaryExpr struct {
 	Span  Span     `json:"span"`
 }
 
-func (*EVT1BinaryExpr) evt1Expr()     {}
+func (*EVT1BinaryExpr) evt1Expr()        {}
 func (e *EVT1BinaryExpr) exprSpan() Span { return e.Span }
 
 type EVT1UnaryExpr struct {
@@ -409,7 +431,7 @@ type EVT1UnaryExpr struct {
 	Span  Span     `json:"span"`
 }
 
-func (*EVT1UnaryExpr) evt1Expr()     {}
+func (*EVT1UnaryExpr) evt1Expr()        {}
 func (e *EVT1UnaryExpr) exprSpan() Span { return e.Span }
 
 type EVT1ConstructExpr struct {
@@ -419,7 +441,7 @@ type EVT1ConstructExpr struct {
 	Span        Span       `json:"span"`
 }
 
-func (*EVT1ConstructExpr) evt1Expr()     {}
+func (*EVT1ConstructExpr) evt1Expr()        {}
 func (e *EVT1ConstructExpr) exprSpan() Span { return e.Span }
 
 type EVT1StructConstructExpr struct {
@@ -428,8 +450,25 @@ type EVT1StructConstructExpr struct {
 	Span       Span       `json:"span"`
 }
 
-func (*EVT1StructConstructExpr) evt1Expr()     {}
+func (*EVT1StructConstructExpr) evt1Expr()        {}
 func (e *EVT1StructConstructExpr) exprSpan() Span { return e.Span }
+
+type EVT1ArrayLiteralExpr struct {
+	Elements []EVT1Expr `json:"elements,omitempty"`
+	Span     Span       `json:"span"`
+}
+
+func (*EVT1ArrayLiteralExpr) evt1Expr()        {}
+func (e *EVT1ArrayLiteralExpr) exprSpan() Span { return e.Span }
+
+type EVT1IndexExpr struct {
+	Base  EVT1Expr `json:"base"`
+	Index EVT1Expr `json:"index"`
+	Span  Span     `json:"span"`
+}
+
+func (*EVT1IndexExpr) evt1Expr()        {}
+func (e *EVT1IndexExpr) exprSpan() Span { return e.Span }
 
 type EVT1MatchExpr struct {
 	Subject EVT1Expr      `json:"subject"`
@@ -437,7 +476,7 @@ type EVT1MatchExpr struct {
 	Span    Span          `json:"span"`
 }
 
-func (*EVT1MatchExpr) evt1Expr()     {}
+func (*EVT1MatchExpr) evt1Expr()        {}
 func (e *EVT1MatchExpr) exprSpan() Span { return e.Span }
 
 type EVT1ExprArm struct {
@@ -453,7 +492,7 @@ type EVT1IfExpr struct {
 	Span      Span     `json:"span"`
 }
 
-func (*EVT1IfExpr) evt1Expr()     {}
+func (*EVT1IfExpr) evt1Expr()        {}
 func (e *EVT1IfExpr) exprSpan() Span { return e.Span }
 
 type EVT1ParenExpr struct {
@@ -461,31 +500,31 @@ type EVT1ParenExpr struct {
 	Span  Span     `json:"span"`
 }
 
-func (*EVT1ParenExpr) evt1Expr()     {}
+func (*EVT1ParenExpr) evt1Expr()        {}
 func (e *EVT1ParenExpr) exprSpan() Span { return e.Span }
 
 type EVT1MIR struct {
-	Schema       string                  `json:"schema"`
-	Module       string                  `json:"module"`
-	Structs      []EVT1MIRStruct         `json:"structs,omitempty"`
-	Enums        []EVT1MIREnum           `json:"enums,omitempty"`
-	Concepts     []EVT1MIRConcept        `json:"concepts,omitempty"`
-	Assertions   []EVT1MIRAssertion      `json:"assertions,omitempty"`
-	ComptimeDecls []EVT1MIRComptimeDecl  `json:"comptime_decls,omitempty"`
-	StaticAsserts []EVT1MIRStaticAssert  `json:"static_asserts,omitempty"`
-	Templates    []EVT1MIRTemplate       `json:"templates,omitempty"`
-	Instances    []EVT1MIRInstance       `json:"instances,omitempty"`
-	Functions    []EVT1MIRFunction       `json:"functions"`
-	ComptimeFns  []EVT1MIRFunction       `json:"comptime_functions,omitempty"`
+	Schema        string                `json:"schema"`
+	Module        string                `json:"module"`
+	Structs       []EVT1MIRStruct       `json:"structs,omitempty"`
+	Enums         []EVT1MIREnum         `json:"enums,omitempty"`
+	Concepts      []EVT1MIRConcept      `json:"concepts,omitempty"`
+	Assertions    []EVT1MIRAssertion    `json:"assertions,omitempty"`
+	ComptimeDecls []EVT1MIRComptimeDecl `json:"comptime_decls,omitempty"`
+	StaticAsserts []EVT1MIRStaticAssert `json:"static_asserts,omitempty"`
+	Templates     []EVT1MIRTemplate     `json:"templates,omitempty"`
+	Instances     []EVT1MIRInstance     `json:"instances,omitempty"`
+	Functions     []EVT1MIRFunction     `json:"functions"`
+	ComptimeFns   []EVT1MIRFunction     `json:"comptime_functions,omitempty"`
 }
 
 type EVT1MIRStruct struct {
-	Name       string         `json:"name"`
-	CName      string         `json:"c_name"`
-	Immovable  bool           `json:"immovable"`
-	Copyable   bool           `json:"copyable"`
-	Fields     []EVT1MIRName  `json:"fields,omitempty"`
-	SourceSpan Span           `json:"source_span"`
+	Name       string        `json:"name"`
+	CName      string        `json:"c_name"`
+	Immovable  bool          `json:"immovable"`
+	Copyable   bool          `json:"copyable"`
+	Fields     []EVT1MIRName `json:"fields,omitempty"`
+	SourceSpan Span          `json:"source_span"`
 }
 
 type EVT1MIREnum struct {
@@ -546,9 +585,9 @@ type EVT1MIRStaticAssert struct {
 }
 
 type EVT1MIRTemplateConstraint struct {
-	ConceptName string   `json:"concept_name"`
-	TypeParam   string   `json:"type_param"`
-	SourceSpan  Span     `json:"source_span"`
+	ConceptName string `json:"concept_name"`
+	TypeParam   string `json:"type_param"`
+	SourceSpan  Span   `json:"source_span"`
 }
 
 type EVT1MIRClosureEntry struct {
@@ -565,30 +604,30 @@ type EVT1MIRRequirementBinding struct {
 }
 
 type EVT1MIRTemplate struct {
-	Name         string                    `json:"name"`
-	TypeParam    string                    `json:"type_param"`
-	Constraint   EVT1MIRTemplateConstraint `json:"constraint"`
-	Closure      []EVT1MIRClosureEntry     `json:"closure,omitempty"`
+	Name         string                      `json:"name"`
+	TypeParam    string                      `json:"type_param"`
+	Constraint   EVT1MIRTemplateConstraint   `json:"constraint"`
+	Closure      []EVT1MIRClosureEntry       `json:"closure,omitempty"`
 	Requirements []EVT1MIRRequirementBinding `json:"requirements,omitempty"`
-	ReturnType   EVT1Type                  `json:"return_type"`
-	Params       []EVT1MIRName             `json:"params,omitempty"`
-	Operations   []EVT1MIROperation        `json:"operations,omitempty"`
-	SourceSpan   Span                      `json:"source_span"`
+	ReturnType   EVT1Type                    `json:"return_type"`
+	Params       []EVT1MIRName               `json:"params,omitempty"`
+	Operations   []EVT1MIROperation          `json:"operations,omitempty"`
+	SourceSpan   Span                        `json:"source_span"`
 }
 
 type EVT1MIRInstance struct {
-	ID                  string                  `json:"id"`
-	TemplateName        string                  `json:"template_name"`
-	ConcreteType        EVT1Type                `json:"concrete_type"`
-	GeneratedSymbol     string                  `json:"generated_symbol"`
-	ConstraintConcept   string                  `json:"constraint_concept"`
-	Closure             []EVT1MIRClosureEntry   `json:"closure,omitempty"`
+	ID                  string                      `json:"id"`
+	TemplateName        string                      `json:"template_name"`
+	ConcreteType        EVT1Type                    `json:"concrete_type"`
+	GeneratedSymbol     string                      `json:"generated_symbol"`
+	ConstraintConcept   string                      `json:"constraint_concept"`
+	Closure             []EVT1MIRClosureEntry       `json:"closure,omitempty"`
 	RequirementBindings []EVT1MIRRequirementBinding `json:"requirement_bindings,omitempty"`
-	ReturnType          EVT1Type                `json:"return_type"`
-	Params              []EVT1MIRName           `json:"params,omitempty"`
-	Operations          []EVT1MIROperation      `json:"operations,omitempty"`
-	InvocationSpans     []Span                  `json:"invocation_spans,omitempty"`
-	SourceSpan          Span                    `json:"source_span"`
+	ReturnType          EVT1Type                    `json:"return_type"`
+	Params              []EVT1MIRName               `json:"params,omitempty"`
+	Operations          []EVT1MIROperation          `json:"operations,omitempty"`
+	InvocationSpans     []Span                      `json:"invocation_spans,omitempty"`
+	SourceSpan          Span                        `json:"source_span"`
 }
 
 type EVT1MIRFunction struct {
@@ -608,32 +647,32 @@ type EVT1MIROperation struct {
 }
 
 type evt1Env struct {
-	enums              map[string]EVT1EnumDecl
-	structs            map[string]EVT1StructDecl
-	functions          map[string][]EVT1FunctionDecl
-	comptimeFunctions  map[string]EVT1FunctionDecl
-	templates          map[string]EVT1TemplateDecl
-	concepts           map[string]EVT1ConceptDecl
-	comptimeDecls      map[string]EVT1ComptimeDecl
-	comptimeValues     map[string]EVT1Value
-	fieldSets          map[string]map[string]EVT1Type
-	escapedArmBinding  map[string]Span
-	copyableCache      map[string]bool
-	templateInfos      map[string]*evt1TemplateInfo
-	templateInstances  map[string]*evt1TemplateInstance
+	enums             map[string]EVT1EnumDecl
+	structs           map[string]EVT1StructDecl
+	functions         map[string][]EVT1FunctionDecl
+	comptimeFunctions map[string]EVT1FunctionDecl
+	templates         map[string]EVT1TemplateDecl
+	concepts          map[string]EVT1ConceptDecl
+	comptimeDecls     map[string]EVT1ComptimeDecl
+	comptimeValues    map[string]EVT1Value
+	fieldSets         map[string]map[string]EVT1Type
+	escapedArmBinding map[string]Span
+	copyableCache     map[string]bool
+	templateInfos     map[string]*evt1TemplateInfo
+	templateInstances map[string]*evt1TemplateInstance
 }
 
 func newEVT1Env() *evt1Env {
 	intType := EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
 	return &evt1Env{
-		enums:     map[string]EVT1EnumDecl{},
-		structs:   map[string]EVT1StructDecl{},
-		functions: map[string][]EVT1FunctionDecl{},
+		enums:             map[string]EVT1EnumDecl{},
+		structs:           map[string]EVT1StructDecl{},
+		functions:         map[string][]EVT1FunctionDecl{},
 		comptimeFunctions: map[string]EVT1FunctionDecl{},
-		templates: map[string]EVT1TemplateDecl{},
-		concepts:  map[string]EVT1ConceptDecl{},
-		comptimeDecls: map[string]EVT1ComptimeDecl{},
-		comptimeValues: map[string]EVT1Value{},
+		templates:         map[string]EVT1TemplateDecl{},
+		concepts:          map[string]EVT1ConceptDecl{},
+		comptimeDecls:     map[string]EVT1ComptimeDecl{},
+		comptimeValues:    map[string]EVT1Value{},
 		fieldSets: map[string]map[string]EVT1Type{
 			"VulkanError": {
 				"Code": intType,
@@ -659,8 +698,8 @@ type evt1TemplateClosureEntry struct {
 }
 
 type evt1TemplateCallBinding struct {
-	CallSpan     Span
-	Requirement  evt1TemplateRequirement
+	CallSpan    Span
+	Requirement evt1TemplateRequirement
 }
 
 type evt1TemplateInfo struct {
@@ -706,19 +745,21 @@ const (
 	EVT1ValueString EVT1ValueKind = "string"
 	EVT1ValueStruct EVT1ValueKind = "struct"
 	EVT1ValueEnum   EVT1ValueKind = "enum"
+	EVT1ValueArray  EVT1ValueKind = "array"
 )
 
 type EVT1Value struct {
-	Kind       EVT1ValueKind
-	Type       EVT1Type
-	IntValue   int
-	BoolValue  bool
+	Kind        EVT1ValueKind
+	Type        EVT1Type
+	IntValue    int
+	BoolValue   bool
 	StringValue string
-	StructName string
-	Fields     map[string]EVT1Value
-	EnumName   string
-	Variant    string
-	Payload    []EVT1Value
+	StructName  string
+	Fields      map[string]EVT1Value
+	EnumName    string
+	Variant     string
+	Payload     []EVT1Value
+	Elements    []EVT1Value
 }
 
 func (v EVT1Value) Render() string {
@@ -751,9 +792,25 @@ func (v EVT1Value) Render() string {
 			parts = append(parts, entry.Render())
 		}
 		return v.EnumName + "::" + v.Variant + "(" + strings.Join(parts, ", ") + ")"
+	case EVT1ValueArray:
+		var parts []string
+		for _, entry := range v.Elements {
+			parts = append(parts, entry.Render())
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
 	default:
 		return "<invalid>"
 	}
+}
+
+func evt1ArrayLengthString(t EVT1Type) string {
+	if t.ArrayElem == nil {
+		return ""
+	}
+	if t.ArrayLengthExpr != nil {
+		return "?"
+	}
+	return fmt.Sprintf("%d", t.ArrayLength)
 }
 
 func sortedValueKeys(m map[string]EVT1Value) []string {

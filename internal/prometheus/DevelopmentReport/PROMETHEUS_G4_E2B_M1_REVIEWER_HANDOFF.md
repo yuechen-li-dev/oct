@@ -19,20 +19,20 @@ The accepted proof foundation is:
   assignment.
 
 The most recent assignment is now recorded in
-`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_C_BOUNDED_PURE_COMPTIME_EVALUATION_AND_FOUNDATIONAL_CONTROL_FLOW.md`:
+`internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_EVT1_M1B_D_FIXED_COMPILE_TIME_ARRAYS_AND_FINITE_STRUCTURAL_VALIDATION.md`:
 
 ```text
-Concept/Vulkan EVT1 M1B-C — Bounded Pure Comptime Evaluation and Foundational Control Flow
+Concept/Vulkan EVT1 M1B-D — Fixed Compile-Time Arrays and Finite Structural Validation
 ```
 
 M1A is accepted and closed. M1B-A is accepted and closed. M1B-B is accepted
-and closed. EVT1 M1B-C is now honestly classified as `MEANINGFUL PROGRESSION`:
-bounded pure compile-time evaluation, expression-valued `if`, ordinary runtime
-and bounded compile-time `while`, `static_assert`, top-level/local `comptime`
-declarations, and top-level `comptime` free functions all run through the EVT1
-typed MIR, generated C, checked outputs, and native specimens. The isolated
-remaining blocker is fixed-size arrays inside the compile-time value domain, so
-M1B-C is not yet an honest `SUCCESS`. Production remains handwritten.
+and closed. EVT1 M1B-C is accepted and closed. EVT1 M1B-D is now honestly
+classified as `SUCCESS`: fixed-size compile-time arrays, typed array literals,
+deterministic indexing, exact `Len(...)`, array-valued compile-time
+declarations/functions/locals, structural equality where valid, bounded
+`while` traversal, finite structural validation, checked outputs, and native
+specimens all run through the EVT1 typed MIR and generated C while erasing
+completely before runtime. Production remains handwritten.
 
 Concept/Vulkan is the bounded host-side mechanism profile implemented through
 the working Go Oct/SDSL-V compiler lineage. Dominatus remains the Prometheus
@@ -50,17 +50,17 @@ RQ-M1's accepted physical batch is also preserved: supported nonzero batches
 record one `vkCmdDispatch(ray_count,1,1)` and one synchronous submission with
 paired capacity and descriptor rebind-before-retire. Expanded image/cost
 authority is paused, not completed or abandoned. EVT1 language work remains
-separate from resumed batch or stage-7 work. The exact next language blocker
-is now:
+separate from resumed batch or stage-7 work. The exact next intended
+post-substrate direction is now:
 
 ```text
-Fixed-size arrays in the EVT1 M1B-C compile-time value domain
+DragonGod typed lifecycle validation over the now-complete EVT1 substrate
 ```
 
 The historical kernel-54 milestone named `M1C` must not be confused with the
 later EVT1 milestone named `M1B-C`. DragonGod remains the intended first
-serious post-substrate framework direction after the required language
-substrate; it is still deferred and not begun here.
+serious post-substrate framework direction; it is still deferred and not begun
+here.
 
 ## Historical repository handoff — Stage 3
 

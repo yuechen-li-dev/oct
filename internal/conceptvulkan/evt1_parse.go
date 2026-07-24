@@ -114,7 +114,7 @@ func lexEVT1(text string) ([]Token, error) {
 			tokens = append(tokens, Token{Lexeme: "=>", Span: start})
 			i += 2
 			column += 2
-		case strings.ContainsRune("(){};,.*+-=<>!", rune(c)):
+		case strings.ContainsRune("(){}[];,.*+-=<>!", rune(c)):
 			tokens = append(tokens, Token{Lexeme: string(c), Span: start})
 			i++
 			column++
@@ -664,6 +664,24 @@ done:
 			Span:      nameTok.Span,
 		}
 	}
+	for p.peekLexeme() == "[" {
+		p.next()
+		lengthExpr, err := p.parseExpr()
+		if err != nil {
+			return EVT1Type{}, err
+		}
+		if _, err := p.expect("]"); err != nil {
+			return EVT1Type{}, err
+		}
+		elem := t
+		t = EVT1Type{
+			Name:            elem.String() + "[]",
+			Kind:            EVT1TypeArray,
+			ArrayElem:       &elem,
+			ArrayLengthExpr: lengthExpr,
+			Span:            nameTok.Span,
+		}
+	}
 	return t, nil
 }
 
@@ -706,6 +724,8 @@ func (p *evt1Parser) parseBlock() (EVT1Block, error) {
 
 func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 	switch p.peekLexeme() {
+	case "for":
+		return nil, evt1Diagnostic("CV4237", "for loops are not supported in EVT1 M1B-D; use while (...) bounded(N)", p.currentSpan())
 	case "comptime":
 		return p.parseLocalComptimeDecl()
 	case "static_assert":
@@ -1055,25 +1075,27 @@ func (p *evt1Parser) parsePrimary() (EVT1Expr, error) {
 		if _, err := p.expect(")"); err != nil {
 			return nil, err
 		}
-		return &EVT1ParenExpr{Value: expr, Span: start}, nil
+		return p.parsePostfixExpr(&EVT1ParenExpr{Value: expr, Span: start}, start)
+	case p.peekLexeme() == "[":
+		return p.parseArrayLiteralExpr()
 	case p.peekLexeme() == "if":
 		return p.parseIfExpr()
 	case p.peekLexeme() == "match":
 		return p.parseMatchExpr()
 	case p.peekLexeme() == "true" || p.peekLexeme() == "false":
 		tok := p.next()
-		return &EVT1BoolLiteral{Value: tok.Lexeme == "true", Span: tok.Span}, nil
+		return p.parsePostfixExpr(&EVT1BoolLiteral{Value: tok.Lexeme == "true", Span: tok.Span}, tok.Span)
 	case strings.HasPrefix(p.peekLexeme(), "\""):
 		tok := p.next()
 		value, err := strconv.Unquote(tok.Lexeme)
 		if err != nil {
 			return nil, evt1Diagnostic("CV4000", "invalid string literal", tok.Span)
 		}
-		return &EVT1StringLiteral{Value: value, Span: tok.Span}, nil
+		return p.parsePostfixExpr(&EVT1StringLiteral{Value: value, Span: tok.Span}, tok.Span)
 	case isNumber(p.peekLexeme()):
 		tok := p.next()
 		value, _ := strconv.Atoi(tok.Lexeme)
-		return &EVT1IntLiteral{Value: value, Span: tok.Span}, nil
+		return p.parsePostfixExpr(&EVT1IntLiteral{Value: value, Span: tok.Span}, tok.Span)
 	default:
 		return p.parseNameLikeExpr()
 	}
@@ -1216,6 +1238,38 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 		}
 		expr = &EVT1StructConstructExpr{StructName: nameTok.Lexeme, Args: args, Span: nameTok.Span}
 	}
+	return p.parsePostfixExpr(expr, nameTok.Span)
+}
+
+func (p *evt1Parser) parseArrayLiteralExpr() (EVT1Expr, error) {
+	start, err := p.expect("[")
+	if err != nil {
+		return nil, err
+	}
+	lit := &EVT1ArrayLiteralExpr{Span: start.Span}
+	if p.peekLexeme() != "]" {
+		for {
+			element, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			lit.Elements = append(lit.Elements, element)
+			if p.peekLexeme() != "," {
+				break
+			}
+			p.next()
+			if p.peekLexeme() == "]" {
+				break
+			}
+		}
+	}
+	if _, err := p.expect("]"); err != nil {
+		return nil, err
+	}
+	return p.parsePostfixExpr(lit, start.Span)
+}
+
+func (p *evt1Parser) parsePostfixExpr(expr EVT1Expr, span Span) (EVT1Expr, error) {
 	for {
 		switch p.peekLexeme() {
 		case "<":
@@ -1251,7 +1305,7 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 			if _, err := p.expect(")"); err != nil {
 				return nil, err
 			}
-			expr = &EVT1TemplateCallExpr{Callee: nameExpr.Name, TypeArg: typeArg, Args: args, Span: nameTok.Span}
+			expr = &EVT1TemplateCallExpr{Callee: nameExpr.Name, TypeArg: typeArg, Args: args, Span: span}
 		case "(":
 			nameExpr, ok := expr.(*EVT1NameExpr)
 			if !ok {
@@ -1275,7 +1329,7 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 			if _, err := p.expect(")"); err != nil {
 				return nil, err
 			}
-			expr = &EVT1CallExpr{Callee: nameExpr.Name, Args: args, Span: nameTok.Span}
+			expr = &EVT1CallExpr{Callee: nameExpr.Name, Args: args, Span: span}
 		case ".":
 			p.next()
 			fieldTok, err := p.expectIdentifier("CV4018", "expected field name after .")
@@ -1283,6 +1337,16 @@ func (p *evt1Parser) parseNameLikeExpr() (EVT1Expr, error) {
 				return nil, err
 			}
 			expr = &EVT1FieldExpr{Receiver: expr, Field: fieldTok.Lexeme, Span: fieldTok.Span}
+		case "[":
+			p.next()
+			index, err := p.parseExpr()
+			if err != nil {
+				return nil, err
+			}
+			if _, err := p.expect("]"); err != nil {
+				return nil, err
+			}
+			expr = &EVT1IndexExpr{Base: expr, Index: index, Span: span}
 		default:
 			return expr, nil
 		}

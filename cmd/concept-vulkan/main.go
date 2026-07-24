@@ -1,4 +1,4 @@
-// concept-vulkan generates or checks the bounded M1 kernel-54 conformance artifacts.
+// concept-vulkan generates or checks the bounded M1 / EVT1 conformance artifacts.
 package main
 
 import (
@@ -13,7 +13,7 @@ func main() {
 	var source, out, mode string
 	flag.StringVar(&source, "source", "Examples/Concept-Vulkan/kernel54_probe.concept", "canonical .concept source")
 	flag.StringVar(&out, "out", "internal/prometheus/native", "output directory")
-	flag.StringVar(&mode, "mode", "m1", "compiler mode: m1, evt1-m1a, evt1-m1b-a, evt1-m1b-b, or evt1-m1b-c")
+	flag.StringVar(&mode, "mode", "m1", "compiler mode: m1, evt1-m1a, evt1-m1b-a, evt1-m1b-b, evt1-m1b-c, or evt1-m1b-d")
 	flag.Parse()
 	if flag.NArg() != 1 || (flag.Arg(0) != "generate" && flag.Arg(0) != "check") {
 		fmt.Fprintln(os.Stderr, "usage: concept-vulkan [flags] generate|check")
@@ -45,7 +45,7 @@ func compile(mode, source string, body []byte) (conceptvulkan.Outputs, error) {
 			return nil, err
 		}
 		return conceptvulkan.Generate(p, body)
-	case "evt1-m1a", "evt1-m1b-a", "evt1-m1b-b", "evt1-m1b-c":
+	case "evt1-m1a", "evt1-m1b-a", "evt1-m1b-b", "evt1-m1b-c", "evt1-m1b-d":
 		module, err := conceptvulkan.ParseEVT1(source, string(body))
 		if err != nil {
 			return nil, err

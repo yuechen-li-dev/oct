@@ -1,0 +1,75 @@
+profile Vulkan;
+
+struct DescriptorBinding
+{
+    int set;
+    int binding;
+    bool write;
+};
+
+struct BindingSummary
+{
+    int[2] slots;
+};
+
+comptime DescriptorBinding[3] Bindings =
+[
+    DescriptorBinding{0, 0, false},
+    DescriptorBinding{0, 1, true},
+    DescriptorBinding{1, 0, true},
+];
+comptime BindingSummary Summary = BindingSummary{[Len(Bindings), Bindings[2].binding]};
+comptime int[2][2] StageMatrix = [[1, 2], [3, 4]];
+comptime int WriteCount = ActiveWriteCount(Bindings);
+
+comptime bool HasDuplicateBindings(DescriptorBinding[3] values)
+{
+    int outer = 0;
+    bool duplicate = false;
+    while (outer < Len(values)) bounded(16)
+    {
+        int inner = outer + 1;
+        while (inner < Len(values)) bounded(16)
+        {
+            bool sameSet = values[outer].set == values[inner].set;
+            bool sameBinding = values[outer].binding == values[inner].binding;
+            duplicate = duplicate or (sameSet and sameBinding);
+            inner = inner + 1;
+        }
+        outer = outer + 1;
+    }
+    return duplicate;
+}
+
+comptime int ActiveWriteCount(DescriptorBinding[3] values)
+{
+    int cursor = 0;
+    int total = 0;
+    while (cursor < Len(values)) bounded(16)
+    {
+        total = total + if (values[cursor].write) 1 else 0;
+        cursor = cursor + 1;
+    }
+    return total;
+}
+
+static_assert(not HasDuplicateBindings(Bindings), "duplicate binding key");
+static_assert(WriteCount == 2);
+static_assert(Summary.slots[0] == 3);
+static_assert(Summary.slots[1] == 0);
+static_assert(StageMatrix[1][1] == 4);
+
+int ClassifyRange(VkBuffer buffer)
+{
+    return Summary.slots[0] + WriteCount;
+}
+
+int PipelineStride(VkBuffer buffer)
+{
+    return StageMatrix[1][1];
+}
+
+bool PoolReady(VkCommandPool pool, bool ready)
+{
+    return if (ready) Bindings[1].write else false;
+}
