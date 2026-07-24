@@ -32,6 +32,8 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 		"evt1_m1b_c_vulkan.concept",
 		"evt1_m1b_d_language.concept",
 		"evt1_m1b_d_vulkan.concept",
+		"evt1_dragongod_m0_language.concept",
+		"evt1_dragongod_m0_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -72,6 +74,9 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 			if strings.Contains(name, "m1b_d") && !strings.Contains(mirText, "array_index") {
 				t.Fatal("MIR text omitted array_index")
 			}
+			if strings.Contains(name, "dragongod") && !strings.Contains(mirText, "automata") {
+				t.Fatal("MIR text omitted automata")
+			}
 			for _, suffix := range []string{".mir.json", ".map.json", ".manifest.json"} {
 				found := false
 				for key, body := range outA {
@@ -103,6 +108,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 		"evt1_m1b_c_vulkan.concept",
 		"evt1_m1b_d_language.concept",
 		"evt1_m1b_d_vulkan.concept",
+		"evt1_dragongod_m0_language.concept",
+		"evt1_dragongod_m0_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -572,6 +579,189 @@ func TestEVT1M1BDGenerationErasesComptimeRuntime(t *testing.T) {
 	}
 }
 
+func TestDragonGodM0GenerationErasesAutomataRuntime(t *testing.T) {
+	src := readEVT1Fixture(t, "evt1_dragongod_m0_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m0_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := string(outputs["evt1_dragongod_m0_language.generated.h"])
+	body := string(outputs["evt1_dragongod_m0_language.generated.c"])
+	for _, forbidden := range []string{"ResourceLifecycle", "SweepMachine", "AwaitingResume", "Cleanup", "LifecycleSignal"} {
+		if strings.Contains(header, forbidden) || strings.Contains(body, forbidden) {
+			t.Fatalf("automata-only symbol leaked into generated runtime output: %s", forbidden)
+		}
+	}
+}
+
+func TestDragonGodM0IdentityIgnoresWhitespaceAndLocation(t *testing.T) {
+	left := `profile Vulkan;
+enum Signal
+{
+    Go,
+    Stop
+}
+automata Demo(Signal)
+{
+    initial machine Main
+    {
+        initial state Start
+        {
+            on Signal::Go goto Done;
+        }
+        terminal state Done
+        {
+            finish;
+        }
+    }
+}
+int Value() { return 1; }
+`
+	right := `profile Vulkan;
+
+enum Signal { Go, Stop }
+
+automata Demo(Signal)
+{
+    initial machine Main
+    {
+
+        initial state Start
+        {
+            on Signal::Go goto Done;
+        }
+
+        terminal state Done
+        {
+            finish;
+        }
+    }
+}
+
+int Value()
+{
+    return 1;
+}
+`
+	leftModule, err := ParseEVT1("left.concept", left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightModule, err := ParseEVT1("right.concept", right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftEnv, err := analyzeEVT1Module(leftModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightEnv, err := analyzeEVT1Module(rightModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftID := buildEVT1MIR(leftModule, leftEnv).Automata[0].GraphIdentity
+	rightID := buildEVT1MIR(rightModule, rightEnv).Automata[0].GraphIdentity
+	if leftID != rightID {
+		t.Fatalf("graph identity changed across whitespace/location-only edits: %s != %s", leftID, rightID)
+	}
+}
+
+func TestDragonGodM0DiagnosticsAreStable(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code string
+	}{
+		{
+			name: "non enum signal type",
+			src:  "profile Vulkan;\nstruct SignalSet { int value; };\nautomata Demo(SignalSet) { initial machine Main { initial state Start { on SignalSet::Value goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4241",
+		},
+		{
+			name: "missing initial machine",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4243",
+		},
+		{
+			name: "terminal modifier order",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { terminal initial state Start { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4248",
+		},
+		{
+			name: "duplicate transition key",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; on Signal::Go goto Start; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4253",
+		},
+		{
+			name: "cross machine goto",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Other::Done; } terminal state Done { finish; } } machine Other { initial terminal state Done { pop; } } }\nint Value() { return 1; }\n",
+			code: "CV4254",
+		},
+		{
+			name: "push continuation resolved in pushed machine",
+			src:  "profile Vulkan;\nenum Signal { Go, Return }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go push Other goto Other::Done; } terminal state Done { finish; } } machine Other { initial state Begin { on Signal::Return goto Done; } terminal state Done { pop; } } }\nint Value() { return 1; }\n",
+			code: "CV4256",
+		},
+		{
+			name: "push cycle",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go push Other goto Done; } terminal state Done { finish; } } machine Other { initial state Begin { on Signal::Go push Main goto Begin; } terminal state Done { pop; } } }\nint Value() { return 1; }\n",
+			code: "CV4257",
+		},
+		{
+			name: "unreachable machine",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } machine Other { initial terminal state Begin { pop; } } }\nint Value() { return 1; }\n",
+			code: "CV4258",
+		},
+		{
+			name: "unreachable state",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } state Dead { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4259",
+		},
+		{
+			name: "missing reachable pop",
+			src:  "profile Vulkan;\nenum Signal { Go, Stop }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go push Other goto Done; } terminal state Done { finish; } } machine Other { initial terminal state Begin { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4260",
+		},
+		{
+			name: "missing reachable finish",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Loop; } state Loop { on Signal::Go goto Loop; } } }\nint Value() { return 1; }\n",
+			code: "CV4261",
+		},
+		{
+			name: "root pop invalid",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial terminal state Start { pop; } } }\nint Value() { return 1; }\n",
+			code: "CV4262",
+		},
+		{
+			name: "automata first class expression",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return Demo; }\n",
+			code: "CV4263",
+		},
+		{
+			name: "ordinary statement inside state body",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { int value = 1; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4264",
+		},
+		{
+			name: "machine count limit",
+			src: "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) {\ninitial machine M0 { initial state S { on Signal::Go goto D; } terminal state D { finish; } }\nmachine M1 { initial terminal state S { pop; } }\nmachine M2 { initial terminal state S { pop; } }\nmachine M3 { initial terminal state S { pop; } }\nmachine M4 { initial terminal state S { pop; } }\nmachine M5 { initial terminal state S { pop; } }\nmachine M6 { initial terminal state S { pop; } }\nmachine M7 { initial terminal state S { pop; } }\nmachine M8 { initial terminal state S { pop; } }\nmachine M9 { initial terminal state S { pop; } }\nmachine M10 { initial terminal state S { pop; } }\nmachine M11 { initial terminal state S { pop; } }\nmachine M12 { initial terminal state S { pop; } }\nmachine M13 { initial terminal state S { pop; } }\nmachine M14 { initial terminal state S { pop; } }\nmachine M15 { initial terminal state S { pop; } }\nmachine M16 { initial terminal state S { pop; } }\n}\nint Value() { return 1; }\n",
+			code: "CV4265",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseEVT1("test.concept", tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("err=%v want %s", err, tc.code)
+			}
+		})
+	}
+}
+
 func TestEVT1CheckRejectsHandEdit(t *testing.T) {
 	src := readEVT1Fixture(t, "evt1_m1b_a_language.concept")
 	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_m1b_a_language.concept", src)
@@ -923,6 +1113,59 @@ int main(void) {
 }
 `
 	runNativeHarness(t, outputs, "evt1_m1b_d_vulkan_harness.c", harness, nil)
+}
+
+func TestDragonGodM0LanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m0_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m0_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m0_language.generated.h"
+
+int main(void) {
+  if (concept_vulkan_evt1_dragongod_m0_language_root_retry_budget() != 2) return 1;
+  if (concept_vulkan_evt1_dragongod_m0_language_derived_stack_depth() != 3) return 2;
+  if (!concept_vulkan_evt1_dragongod_m0_language_finish_is_explicit()) return 3;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_dragongod_m0_language_harness.c", harness, nil)
+}
+
+func TestDragonGodM0VulkanSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m0_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m0_vulkan.generated.h"
+#include <stdint.h>
+
+int main(void) {
+  VkBuffer buffer = (VkBuffer)(uintptr_t)0x10u;
+  VkCommandPool pool = (VkCommandPool)(uintptr_t)0x20u;
+  if (concept_vulkan_evt1_dragongod_m0_vulkan_classify_range(buffer) != 5) return 1;
+  if (concept_vulkan_evt1_dragongod_m0_vulkan_derived_machine_depth(pool) != 3) return 2;
+  if (!concept_vulkan_evt1_dragongod_m0_vulkan_pool_ready(pool, true)) return 3;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_dragongod_m0_vulkan_harness.c", harness, nil)
 }
 
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {

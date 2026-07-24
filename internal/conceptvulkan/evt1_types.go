@@ -251,6 +251,7 @@ type EVT1Module struct {
 	Imports       []string               `json:"imports,omitempty"`
 	Structs       []EVT1StructDecl       `json:"structs,omitempty"`
 	Enums         []EVT1EnumDecl         `json:"enums,omitempty"`
+	Automata      []EVT1AutomataDecl     `json:"automata,omitempty"`
 	Concepts      []EVT1ConceptDecl      `json:"concepts,omitempty"`
 	Assertions    []EVT1ConceptAssertion `json:"assertions,omitempty"`
 	ComptimeDecls []EVT1ComptimeDecl     `json:"comptime_decls,omitempty"`
@@ -508,6 +509,7 @@ type EVT1MIR struct {
 	Module        string                `json:"module"`
 	Structs       []EVT1MIRStruct       `json:"structs,omitempty"`
 	Enums         []EVT1MIREnum         `json:"enums,omitempty"`
+	Automata      []EVT1MIRAutomata     `json:"automata,omitempty"`
 	Concepts      []EVT1MIRConcept      `json:"concepts,omitempty"`
 	Assertions    []EVT1MIRAssertion    `json:"assertions,omitempty"`
 	ComptimeDecls []EVT1MIRComptimeDecl `json:"comptime_decls,omitempty"`
@@ -649,6 +651,8 @@ type EVT1MIROperation struct {
 type evt1Env struct {
 	enums             map[string]EVT1EnumDecl
 	structs           map[string]EVT1StructDecl
+	automata          map[string]EVT1AutomataDecl
+	automataInfo      map[string]*evt1AutomataInfo
 	functions         map[string][]EVT1FunctionDecl
 	comptimeFunctions map[string]EVT1FunctionDecl
 	templates         map[string]EVT1TemplateDecl
@@ -667,6 +671,8 @@ func newEVT1Env() *evt1Env {
 	return &evt1Env{
 		enums:             map[string]EVT1EnumDecl{},
 		structs:           map[string]EVT1StructDecl{},
+		automata:          map[string]EVT1AutomataDecl{},
+		automataInfo:      map[string]*evt1AutomataInfo{},
 		functions:         map[string][]EVT1FunctionDecl{},
 		comptimeFunctions: map[string]EVT1FunctionDecl{},
 		templates:         map[string]EVT1TemplateDecl{},

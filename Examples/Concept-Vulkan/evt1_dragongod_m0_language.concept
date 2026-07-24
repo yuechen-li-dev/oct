@@ -1,0 +1,100 @@
+profile Vulkan;
+
+enum LifecycleSignal
+{
+    Create,
+    Begin,
+    Clean,
+    Release,
+    Sweep,
+    Confirm,
+    Stop,
+    Tick
+}
+
+automata ResourceLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial state Empty
+        {
+            on LifecycleSignal::Create goto Ready;
+        }
+
+        state Ready
+        {
+            on LifecycleSignal::Tick goto Ready;
+            on LifecycleSignal::Begin goto Running;
+            on LifecycleSignal::Clean push Cleanup goto AwaitingResume;
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Running
+        {
+            on LifecycleSignal::Clean push Cleanup goto Finished;
+        }
+
+        state AwaitingResume
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+
+    machine Cleanup
+    {
+        initial state Begin
+        {
+            on LifecycleSignal::Release push SweepMachine goto Resume;
+        }
+
+        state Resume
+        {
+            on LifecycleSignal::Tick goto Resume;
+            on LifecycleSignal::Confirm goto Complete;
+            on LifecycleSignal::Stop goto AbortAll;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+
+        terminal state AbortAll
+        {
+            finish;
+        }
+    }
+
+    machine SweepMachine
+    {
+        initial state Begin
+        {
+            on LifecycleSignal::Sweep goto Complete;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+    }
+}
+
+int RootRetryBudget()
+{
+    return 2;
+}
+
+int DerivedStackDepth()
+{
+    return 3;
+}
+
+bool FinishIsExplicit()
+{
+    return true;
+}

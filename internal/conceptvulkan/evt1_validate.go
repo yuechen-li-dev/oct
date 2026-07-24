@@ -69,9 +69,21 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		typeNames[structDecl.Name] = structDecl.Span
 		env.structs[structDecl.Name] = structDecl
 	}
+	for _, automataDecl := range module.Automata {
+		if _, exists := env.automata[automataDecl.Name]; exists {
+			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate automata declaration %s", automataDecl.Name), automataDecl.Span)
+		}
+		if _, exists := typeNames[automataDecl.Name]; exists {
+			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate declaration %s", automataDecl.Name), automataDecl.Span)
+		}
+		env.automata[automataDecl.Name] = automataDecl
+	}
 	for _, conceptDecl := range module.Concepts {
 		if _, exists := env.concepts[conceptDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4146", fmt.Sprintf("duplicate concept declaration %s", conceptDecl.Name), conceptDecl.Span)
+		}
+		if _, exists := env.automata[conceptDecl.Name]; exists {
+			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate declaration %s", conceptDecl.Name), conceptDecl.Span)
 		}
 		env.concepts[conceptDecl.Name] = conceptDecl
 	}
@@ -79,18 +91,24 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		if _, exists := env.templates[templateDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4168", fmt.Sprintf("duplicate template declaration %s", templateDecl.Name), templateDecl.Span)
 		}
+		if _, exists := env.automata[templateDecl.Name]; exists {
+			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate declaration %s", templateDecl.Name), templateDecl.Span)
+		}
 		env.templates[templateDecl.Name] = templateDecl
 	}
 	for _, decl := range module.ComptimeDecls {
 		if _, exists := env.comptimeDecls[decl.Name]; exists {
 			return nil, evt1Diagnostic("CV4203", fmt.Sprintf("duplicate comptime declaration %s", decl.Name), decl.Span)
 		}
-		if len(env.functions[decl.Name]) > 0 || env.templates[decl.Name].Name != "" || env.comptimeFunctions[decl.Name].Name != "" {
+		if len(env.functions[decl.Name]) > 0 || env.templates[decl.Name].Name != "" || env.comptimeFunctions[decl.Name].Name != "" || env.automata[decl.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4203", fmt.Sprintf("comptime declaration %s conflicts with an existing symbol", decl.Name), decl.Span)
 		}
 		env.comptimeDecls[decl.Name] = decl
 	}
 	for _, fn := range module.Functions {
+		if env.automata[fn.Name].Name != "" {
+			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate declaration %s", fn.Name), fn.Span)
+		}
 		for _, existing := range env.functions[fn.Name] {
 			if evt1FunctionParamSignature(existing) == evt1FunctionParamSignature(fn) {
 				return nil, evt1Diagnostic("CV4021", fmt.Sprintf("duplicate function declaration %s", fn.Name), fn.Span)
@@ -99,10 +117,13 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.functions[fn.Name] = append(env.functions[fn.Name], fn)
 	}
 	for _, fn := range module.ComptimeFns {
-		if len(env.functions[fn.Name]) > 0 || env.templates[fn.Name].Name != "" || env.comptimeDecls[fn.Name].Name != "" || env.comptimeFunctions[fn.Name].Name != "" {
+		if len(env.functions[fn.Name]) > 0 || env.templates[fn.Name].Name != "" || env.comptimeDecls[fn.Name].Name != "" || env.comptimeFunctions[fn.Name].Name != "" || env.automata[fn.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4214", fmt.Sprintf("comptime function %s conflicts with an existing symbol", fn.Name), fn.Span)
 		}
 		env.comptimeFunctions[fn.Name] = fn
+	}
+	if err := evt1ValidateAutomataDecls(env, module); err != nil {
+		return nil, err
 	}
 	for _, structDecl := range module.Structs {
 		fields := map[string]EVT1Type{}
@@ -970,6 +991,9 @@ func validateKnownType(env *evt1Env, t EVT1Type, span Span, conceptParam string,
 	if _, ok := env.structs[t.Name]; ok {
 		return nil
 	}
+	if _, ok := env.automata[t.Name]; ok {
+		return evt1Diagnostic("CV4263", fmt.Sprintf("automata %s cannot be used as a runtime type", t.Name), span)
+	}
 	return evt1Diagnostic("CV4102", fmt.Sprintf("unknown enum or type %s", t.Name), span)
 }
 
@@ -991,6 +1015,9 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 	case *EVT1NameExpr:
 		if binding, ok := scope.lookup(e.Name); ok {
 			return evt1CanonicalType(env, binding.t), nil
+		}
+		if _, ok := env.automata[e.Name]; ok {
+			return EVT1Type{}, evt1Diagnostic("CV4263", fmt.Sprintf("automata %s cannot be used as a runtime expression", e.Name), e.Span)
 		}
 		if bindingSpan, ok := env.escapedArmBinding[e.Name]; ok {
 			return EVT1Type{}, evt1Diagnostic("CV4114", fmt.Sprintf("payload binding %s is scoped to its match arm", e.Name), bindingSpan)

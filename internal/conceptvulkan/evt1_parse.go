@@ -205,6 +205,12 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 				return module, err
 			}
 			module.Enums = append(module.Enums, enumDecl)
+		case "automata":
+			automataDecl, err := p.parseAutomataDecl()
+			if err != nil {
+				return module, err
+			}
+			module.Automata = append(module.Automata, automataDecl)
 		case "concept":
 			conceptDecl, err := p.parseConceptDecl()
 			if err != nil {
@@ -226,6 +232,210 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 		}
 	}
 	return module, nil
+}
+
+func (p *evt1Parser) parseAutomataDecl() (EVT1AutomataDecl, error) {
+	start, err := p.expect("automata")
+	if err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	nameTok, err := p.expectIdentifier("CV4240", "expected automata name")
+	if err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	signalType, err := p.parseType("")
+	if err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	if _, err := p.expect("{"); err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	decl := EVT1AutomataDecl{Name: nameTok.Lexeme, SignalType: signalType, Span: start.Span}
+	for !p.done() && p.peekLexeme() != "}" {
+		machine, err := p.parseMachineDecl()
+		if err != nil {
+			return EVT1AutomataDecl{}, err
+		}
+		decl.Machines = append(decl.Machines, machine)
+	}
+	if _, err := p.expect("}"); err != nil {
+		return EVT1AutomataDecl{}, err
+	}
+	return decl, nil
+}
+
+func (p *evt1Parser) parseMachineDecl() (EVT1MachineDecl, error) {
+	start := p.currentSpan()
+	machine := EVT1MachineDecl{Span: start}
+	if p.peekLexeme() == "initial" {
+		p.next()
+		machine.Initial = true
+	}
+	if _, err := p.expect("machine"); err != nil {
+		return EVT1MachineDecl{}, evt1Diagnostic("CV4243", "expected machine declaration", p.currentSpan())
+	}
+	nameTok, err := p.expectIdentifier("CV4244", "expected machine name")
+	if err != nil {
+		return EVT1MachineDecl{}, err
+	}
+	machine.Name = nameTok.Lexeme
+	if _, err := p.expect("{"); err != nil {
+		return EVT1MachineDecl{}, err
+	}
+	for !p.done() && p.peekLexeme() != "}" {
+		state, err := p.parseStateDecl()
+		if err != nil {
+			return EVT1MachineDecl{}, err
+		}
+		machine.States = append(machine.States, state)
+	}
+	if _, err := p.expect("}"); err != nil {
+		return EVT1MachineDecl{}, err
+	}
+	return machine, nil
+}
+
+func (p *evt1Parser) parseStateDecl() (EVT1StateDecl, error) {
+	start := p.currentSpan()
+	state := EVT1StateDecl{Span: start}
+	if p.peekLexeme() == "initial" {
+		p.next()
+		state.Initial = true
+		if p.peekLexeme() == "terminal" {
+			p.next()
+			state.Terminal = true
+		}
+	} else if p.peekLexeme() == "terminal" {
+		p.next()
+		state.Terminal = true
+		if p.peekLexeme() == "initial" {
+			return EVT1StateDecl{}, evt1Diagnostic("CV4248", "state modifiers must use `initial terminal state`, not `terminal initial state`", p.currentSpan())
+		}
+	}
+	if _, err := p.expect("state"); err != nil {
+		return EVT1StateDecl{}, evt1Diagnostic("CV4247", "expected state declaration", p.currentSpan())
+	}
+	nameTok, err := p.expectIdentifier("CV4247", "expected state name")
+	if err != nil {
+		return EVT1StateDecl{}, err
+	}
+	state.Name = nameTok.Lexeme
+	if _, err := p.expect("{"); err != nil {
+		return EVT1StateDecl{}, err
+	}
+	for !p.done() && p.peekLexeme() != "}" {
+		switch p.peekLexeme() {
+		case "on":
+			handler, err := p.parseAutomataHandler()
+			if err != nil {
+				return EVT1StateDecl{}, err
+			}
+			state.Handlers = append(state.Handlers, handler)
+		case "pop", "finish":
+			completion, err := p.parseAutomataCompletion()
+			if err != nil {
+				return EVT1StateDecl{}, err
+			}
+			state.Completion = append(state.Completion, completion)
+		default:
+			return EVT1StateDecl{}, evt1Diagnostic("CV4264", "state bodies only allow `on`, `pop`, or `finish` clauses", p.currentSpan())
+		}
+	}
+	if _, err := p.expect("}"); err != nil {
+		return EVT1StateDecl{}, err
+	}
+	return state, nil
+}
+
+func (p *evt1Parser) parseAutomataHandler() (EVT1TransitionDecl, error) {
+	start, err := p.expect("on")
+	if err != nil {
+		return EVT1TransitionDecl{}, err
+	}
+	signal, err := p.parseQualifiedEnumMember()
+	if err != nil {
+		return EVT1TransitionDecl{}, err
+	}
+	handler := EVT1TransitionDecl{Signal: signal, Span: start.Span}
+	switch p.peekLexeme() {
+	case "goto":
+		p.next()
+		target, err := p.parseStateRef()
+		if err != nil {
+			return EVT1TransitionDecl{}, err
+		}
+		handler.Kind = EVT1TransitionGoto
+		handler.TargetState = target
+	case "push":
+		p.next()
+		machineTok, err := p.expectIdentifier("CV4255", "expected pushed machine name")
+		if err != nil {
+			return EVT1TransitionDecl{}, err
+		}
+		if _, err := p.expect("goto"); err != nil {
+			return EVT1TransitionDecl{}, err
+		}
+		continuation, err := p.parseStateRef()
+		if err != nil {
+			return EVT1TransitionDecl{}, err
+		}
+		handler.Kind = EVT1TransitionPush
+		handler.PushMachine = machineTok.Lexeme
+		handler.Continuation = continuation
+	default:
+		return EVT1TransitionDecl{}, evt1Diagnostic("CV4264", "state handlers require `goto` or `push ... goto ...`", p.currentSpan())
+	}
+	if _, err := p.expect(";"); err != nil {
+		return EVT1TransitionDecl{}, err
+	}
+	return handler, nil
+}
+
+func (p *evt1Parser) parseAutomataCompletion() (EVT1CompletionDecl, error) {
+	tok := p.next()
+	if _, err := p.expect(";"); err != nil {
+		return EVT1CompletionDecl{}, err
+	}
+	return EVT1CompletionDecl{Kind: tok.Lexeme, Span: tok.Span}, nil
+}
+
+func (p *evt1Parser) parseQualifiedEnumMember() (EVT1QualifiedEnumMember, error) {
+	enumTok, err := p.expectIdentifier("CV4252", "expected enum name")
+	if err != nil {
+		return EVT1QualifiedEnumMember{}, err
+	}
+	if _, err := p.expect("::"); err != nil {
+		return EVT1QualifiedEnumMember{}, err
+	}
+	memberTok, err := p.expectIdentifier("CV4252", "expected enum member name")
+	if err != nil {
+		return EVT1QualifiedEnumMember{}, err
+	}
+	return EVT1QualifiedEnumMember{EnumName: enumTok.Lexeme, MemberName: memberTok.Lexeme, Span: enumTok.Span}, nil
+}
+
+func (p *evt1Parser) parseStateRef() (EVT1StateRef, error) {
+	first, err := p.expectIdentifier("CV4254", "expected state name")
+	if err != nil {
+		return EVT1StateRef{}, err
+	}
+	ref := EVT1StateRef{StateName: first.Lexeme, Span: first.Span}
+	if p.peekLexeme() == "::" {
+		p.next()
+		second, err := p.expectIdentifier("CV4254", "expected qualified state name")
+		if err != nil {
+			return EVT1StateRef{}, err
+		}
+		ref.MachineName = first.Lexeme
+		ref.StateName = second.Lexeme
+	}
+	return ref, nil
 }
 
 func (p *evt1Parser) parseTemplateDecl() (EVT1TemplateDecl, error) {

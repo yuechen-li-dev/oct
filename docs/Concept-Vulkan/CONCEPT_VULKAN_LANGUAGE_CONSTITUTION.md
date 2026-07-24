@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; production remains handwritten**
+Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree also carries an experimental DragonGod M0 declaration-and-validation vertical; production remains handwritten**
 
 Date: 2026-07-24
 
@@ -283,6 +283,47 @@ structural equality when their element types already support equality, and may
 be traversed only through the existing bounded `while` form. No runtime
 collection, iterator, metadata table, or `for` loop is introduced, and all
 compile-time array structure erases before runtime C11 lowering.
+
+## 2.8 DragonGod M0 typed pushdown-automata declarations
+
+The current DragonGod M0 surface is declaration-only and compile-time-only:
+
+```concept
+automata ResourceLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial state Empty
+        {
+            on LifecycleSignal::Create goto Ready;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+```
+
+The source hierarchy is exact and non-aliasing: `automata` declares one
+validated family, `machine` declares one pushable finite-state machine within
+that family, and `state` declares one state within a machine. `goto` targets a
+state in the current machine. `push` targets another machine and retains an
+explicit caller continuation state. `pop` resumes that retained caller
+continuation, and `finish` terminates the full automaton.
+
+DragonGod M0 binds one exact enum signal type per automata declaration. State
+handlers use exact qualified nullary enum members with no wildcard, guard,
+priority, or implicit fallthrough. Machine-local state cycles remain legal, but
+the machine-push graph must be acyclic in M0. The compiler derives exact
+maximum active machine depth from the longest reachable push chain, records that
+depth and a stable graph identity in MIR/source-map evidence, and rejects
+unreachable machines, unreachable states, root-machine `pop`, pushed machines
+with no reachable `pop`, and root machines with no reachable `finish`.
+
+DragonGod M0 emits no runtime dispatcher, stack, table, registry, or reflection
+metadata. The complete automata declaration erases before runtime C11 lowering.
 
 ## 3. Static and runtime facts
 
@@ -720,6 +761,26 @@ array and finite-structural-validation vertical:
     specimen proving finite ordered structural validation and complete runtime
     erasure without runtime collections.
 
+## 12.6 DragonGod M0 semantic minimum
+
+DragonGod M0 extends the accepted EVT1 substrate with the smallest coherent
+typed pushdown-automata declaration vertical:
+
+1. exact `automata -> machine -> state` declaration nesting with no aliases;
+2. one exact signal enum type per automata family;
+3. exactly one initial/root machine and exactly one initial state per machine;
+4. explicit terminal states whose sole completion is `pop;` or `finish;`;
+5. exact typed `goto` within one machine and exact typed `push` to another
+   machine with an explicit caller continuation state;
+6. duplicate `(machine, state, signal)` rejection;
+7. acyclic machine-push topology with machine-local state cycles still legal;
+8. deterministic machine/state reachability, pushed-machine reachable-`pop`,
+   and root reachable-`finish` validation;
+9. exact maximum active machine depth derivation and deterministic graph
+   identity in MIR/source-map evidence;
+10. complete runtime erasure with no emitted dispatcher, stack, table, or
+    reflection registry.
+
 ## 13. Profile MIR boundary
 
 The M1 MIR is profile-specific and typed. Its operation vocabulary is:
@@ -789,7 +850,8 @@ part of that rollback.
 
 M1/EVT1 excludes Concept machines/transitions, `decide`, `yield`, dynamic
 interfaces, vtables, runtime reflection, general heap/containers, general
-async, exceptions, package-manager ambitions, DragonGod facilities, full RT
+async, exceptions, package-manager ambitions, DragonGod runtime instances,
+runtime dispatch, effects, rollback, `yield`, scheduler integration, full RT
 pipelines/SBT, shader mathematics, model topology, and lifecycle/progression
 policy. EVT1 M1A exclusions for wildcard arms, guards, or-patterns,
 literal/range/recursive patterns, and enum methods remain. EVT1 M1B-A further

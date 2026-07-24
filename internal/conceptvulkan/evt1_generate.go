@@ -45,6 +45,7 @@ func GenerateEVT1(module EVT1Module, source []byte) (Outputs, error) {
 		"schema":         "concept-vulkan-evt1-source-map.v1",
 		"source":         module.Path,
 		"structs":        l.mir.Structs,
+		"automata":       l.mir.Automata,
 		"concepts":       l.mir.Concepts,
 		"assertions":     l.mir.Assertions,
 		"comptime_decls": l.mir.ComptimeDecls,
@@ -120,6 +121,54 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 			mirEnum.Variants = append(mirEnum.Variants, mirVariant)
 		}
 		mir.Enums = append(mir.Enums, mirEnum)
+	}
+	for _, automataDecl := range module.Automata {
+		info := env.automataInfo[automataDecl.Name]
+		mirAutomata := EVT1MIRAutomata{
+			Name:           automataDecl.Name,
+			SignalEnum:     info.SignalEnum.Name,
+			RootMachine:    info.RootMachine,
+			MaxActiveDepth: info.MaxActiveDepth,
+			GraphIdentity:  info.GraphIdentity,
+			SourceSpan:     automataDecl.Span,
+		}
+		for _, machine := range automataDecl.Machines {
+			mirMachine := EVT1MIRMachine{
+				Name:       machine.Name,
+				Initial:    machine.Initial,
+				Reachable:  info.MachineReachable[machine.Name],
+				SourceSpan: machine.Span,
+			}
+			for _, state := range machine.States {
+				mirState := EVT1MIRState{
+					Name:       state.Name,
+					Initial:    state.Initial,
+					Terminal:   state.Terminal,
+					Reachable:  info.StateReachable[machine.Name][state.Name],
+					SourceSpan: state.Span,
+				}
+				if len(state.Completion) == 1 {
+					mirState.Completion = state.Completion[0].Kind
+				}
+				for _, handler := range state.Handlers {
+					entry := EVT1MIRTransition{
+						Signal:     handler.Signal.EnumName + "::" + handler.Signal.MemberName,
+						Kind:       string(handler.Kind),
+						SourceSpan: handler.Span,
+					}
+					if handler.Kind == EVT1TransitionGoto {
+						entry.TargetState = handler.TargetState.StateName
+					} else {
+						entry.PushMachine = handler.PushMachine
+						entry.ContinuationState = handler.Continuation.StateName
+					}
+					mirState.Handlers = append(mirState.Handlers, entry)
+				}
+				mirMachine.States = append(mirMachine.States, mirState)
+			}
+			mirAutomata.Machines = append(mirAutomata.Machines, mirMachine)
+		}
+		mir.Automata = append(mir.Automata, mirAutomata)
 	}
 	for _, conceptDecl := range module.Concepts {
 		mirConcept := EVT1MIRConcept{Name: conceptDecl.Name, TypeParam: conceptDecl.TypeParam, SourceSpan: conceptDecl.Span}
@@ -1503,6 +1552,18 @@ func ind(level int) string {
 
 func MIRTextEVT1(m EVT1MIR) string {
 	var lines []string
+	for _, automata := range m.Automata {
+		lines = append(lines, fmt.Sprintf("automata %s identity %s depth %d", automata.Name, automata.GraphIdentity, automata.MaxActiveDepth))
+		for _, machine := range automata.Machines {
+			lines = append(lines, fmt.Sprintf("automata %s machine %s reachable=%t", automata.Name, machine.Name, machine.Reachable))
+			for _, state := range machine.States {
+				lines = append(lines, fmt.Sprintf("automata %s state %s::%s reachable=%t completion=%s", automata.Name, machine.Name, state.Name, state.Reachable, state.Completion))
+				for _, handler := range state.Handlers {
+					lines = append(lines, fmt.Sprintf("automata %s %s::%s %s %s %s %s", automata.Name, machine.Name, state.Name, handler.Signal, handler.Kind, handler.PushMachine, handler.ContinuationState+handler.TargetState))
+				}
+			}
+		}
+	}
 	for _, tpl := range m.Templates {
 		for _, op := range tpl.Operations {
 			lines = append(lines, fmt.Sprintf("%s %s %s %s", tpl.Name, op.ID, op.Kind, op.Detail))

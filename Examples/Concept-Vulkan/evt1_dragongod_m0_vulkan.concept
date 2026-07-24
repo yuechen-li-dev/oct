@@ -1,0 +1,93 @@
+profile Vulkan;
+
+enum ResourceSignal
+{
+    Create,
+    Record,
+    Cleanup,
+    Release,
+    Submit,
+    Stop,
+    Tick
+}
+
+automata BufferLifecycle(ResourceSignal)
+{
+    initial machine Main
+    {
+        initial state Empty
+        {
+            on ResourceSignal::Create goto Ready;
+        }
+
+        state Ready
+        {
+            on ResourceSignal::Tick goto Ready;
+            on ResourceSignal::Record goto Recording;
+            on ResourceSignal::Cleanup push CleanupMachine goto ReadyAfterCleanup;
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Recording
+        {
+            on ResourceSignal::Cleanup push CleanupMachine goto Finished;
+        }
+
+        state ReadyAfterCleanup
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+
+    machine CleanupMachine
+    {
+        initial state Begin
+        {
+            on ResourceSignal::Release push SubmitMachine goto Resume;
+        }
+
+        state Resume
+        {
+            on ResourceSignal::Tick goto Resume;
+            on ResourceSignal::Submit goto Complete;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+    }
+
+    machine SubmitMachine
+    {
+        initial state Begin
+        {
+            on ResourceSignal::Submit goto Complete;
+        }
+
+        terminal state Complete
+        {
+            pop;
+        }
+    }
+}
+
+int ClassifyRange(VkBuffer buffer)
+{
+    return 5;
+}
+
+int DerivedMachineDepth(VkCommandPool pool)
+{
+    return 3;
+}
+
+bool PoolReady(VkCommandPool pool, bool ready)
+{
+    return ready;
+}

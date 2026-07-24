@@ -62,6 +62,13 @@ later EVT1 milestone named `M1B-C`. DragonGod remains the intended first
 serious post-substrate framework direction; it is still deferred and not begun
 here.
 
+The current worktree also contains an initial DragonGod M0 compiler vertical
+recorded in
+`internal/prometheus/DevelopmentReport/DRAGONGOD_M0_TYPED_PUSHDOWN_AUTOMATA_DECLARATION_AND_DETERMINISTIC_STATIC_VALIDATION.md`.
+That report should be treated as in-progress implementation evidence rather than
+accepted closure until its broader validation/documentation matrix is fully
+reconciled.
+
 ## Historical repository handoff — Stage 3
 
 The repository/generated-authority hygiene pass is recorded in

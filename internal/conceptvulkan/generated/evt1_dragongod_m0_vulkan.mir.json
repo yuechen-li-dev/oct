@@ -1,0 +1,487 @@
+{
+  "schema": "concept-vulkan-evt1-mir.v1",
+  "module": "examples/Concept-Vulkan/evt1_dragongod_m0_vulkan.concept",
+  "enums": [
+    {
+      "name": "ResourceSignal",
+      "c_name": "concept_vulkan_resource_signal",
+      "source_span": {
+        "line": 3,
+        "column": 1
+      },
+      "variants": [
+        {
+          "name": "Create",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_CREATE",
+          "tag": 0,
+          "source_span": {
+            "line": 5,
+            "column": 5
+          }
+        },
+        {
+          "name": "Record",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_RECORD",
+          "tag": 1,
+          "source_span": {
+            "line": 6,
+            "column": 5
+          }
+        },
+        {
+          "name": "Cleanup",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_CLEANUP",
+          "tag": 2,
+          "source_span": {
+            "line": 7,
+            "column": 5
+          }
+        },
+        {
+          "name": "Release",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_RELEASE",
+          "tag": 3,
+          "source_span": {
+            "line": 8,
+            "column": 5
+          }
+        },
+        {
+          "name": "Submit",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_SUBMIT",
+          "tag": 4,
+          "source_span": {
+            "line": 9,
+            "column": 5
+          }
+        },
+        {
+          "name": "Stop",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_STOP",
+          "tag": 5,
+          "source_span": {
+            "line": 10,
+            "column": 5
+          }
+        },
+        {
+          "name": "Tick",
+          "tag_name": "CONCEPT_VULKAN_RESOURCE_SIGNAL_TICK",
+          "tag": 6,
+          "source_span": {
+            "line": 11,
+            "column": 5
+          }
+        }
+      ]
+    }
+  ],
+  "automata": [
+    {
+      "name": "BufferLifecycle",
+      "signal_enum": "ResourceSignal",
+      "root_machine": "Main",
+      "max_active_depth": 3,
+      "graph_identity": "42b357cd37a9da188e9b6efbfa5060dcb62b6071c5ce758d3f32dd3e8d539734",
+      "source_span": {
+        "line": 14,
+        "column": 1
+      },
+      "machines": [
+        {
+          "name": "Main",
+          "initial": true,
+          "reachable": true,
+          "source_span": {
+            "line": 16,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Empty",
+              "initial": true,
+              "reachable": true,
+              "source_span": {
+                "line": 18,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Create",
+                  "kind": "goto",
+                  "target_state": "Ready",
+                  "source_span": {
+                    "line": 20,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Ready",
+              "reachable": true,
+              "source_span": {
+                "line": 23,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Tick",
+                  "kind": "goto",
+                  "target_state": "Ready",
+                  "source_span": {
+                    "line": 25,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Record",
+                  "kind": "goto",
+                  "target_state": "Recording",
+                  "source_span": {
+                    "line": 26,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Cleanup",
+                  "kind": "push",
+                  "push_machine": "CleanupMachine",
+                  "continuation_state": "ReadyAfterCleanup",
+                  "source_span": {
+                    "line": 27,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 28,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Recording",
+              "reachable": true,
+              "source_span": {
+                "line": 31,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Cleanup",
+                  "kind": "push",
+                  "push_machine": "CleanupMachine",
+                  "continuation_state": "Finished",
+                  "source_span": {
+                    "line": 33,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "ReadyAfterCleanup",
+              "reachable": true,
+              "source_span": {
+                "line": 36,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 38,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Finished",
+              "terminal": true,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 41,
+                "column": 9
+              }
+            }
+          ]
+        },
+        {
+          "name": "CleanupMachine",
+          "reachable": true,
+          "source_span": {
+            "line": 47,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Begin",
+              "initial": true,
+              "reachable": true,
+              "source_span": {
+                "line": 49,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Release",
+                  "kind": "push",
+                  "push_machine": "SubmitMachine",
+                  "continuation_state": "Resume",
+                  "source_span": {
+                    "line": 51,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Resume",
+              "reachable": true,
+              "source_span": {
+                "line": 54,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Tick",
+                  "kind": "goto",
+                  "target_state": "Resume",
+                  "source_span": {
+                    "line": 56,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "kind": "goto",
+                  "target_state": "Complete",
+                  "source_span": {
+                    "line": 57,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Complete",
+              "terminal": true,
+              "reachable": true,
+              "completion": "pop",
+              "source_span": {
+                "line": 60,
+                "column": 9
+              }
+            }
+          ]
+        },
+        {
+          "name": "SubmitMachine",
+          "reachable": true,
+          "source_span": {
+            "line": 66,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Begin",
+              "initial": true,
+              "reachable": true,
+              "source_span": {
+                "line": 68,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "kind": "goto",
+                  "target_state": "Complete",
+                  "source_span": {
+                    "line": 70,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Complete",
+              "terminal": true,
+              "reachable": true,
+              "completion": "pop",
+              "source_span": {
+                "line": 73,
+                "column": 9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "ClassifyRange",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 80,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "buffer",
+          "type": {
+            "name": "VkBuffer",
+            "kind": "builtin",
+            "span": {
+              "line": 80,
+              "column": 19
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "ClassifyRange.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 82,
+            "column": 5
+          }
+        },
+        {
+          "id": "ClassifyRange.02",
+          "kind": "literal",
+          "detail": "5",
+          "source_span": {
+            "line": 82,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 80,
+        "column": 5
+      }
+    },
+    {
+      "name": "DerivedMachineDepth",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 85,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "pool",
+          "type": {
+            "name": "VkCommandPool",
+            "kind": "builtin",
+            "span": {
+              "line": 85,
+              "column": 25
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "DerivedMachineDepth.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 87,
+            "column": 5
+          }
+        },
+        {
+          "id": "DerivedMachineDepth.02",
+          "kind": "literal",
+          "detail": "3",
+          "source_span": {
+            "line": 87,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 85,
+        "column": 5
+      }
+    },
+    {
+      "name": "PoolReady",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 90,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "pool",
+          "type": {
+            "name": "VkCommandPool",
+            "kind": "builtin",
+            "span": {
+              "line": 90,
+              "column": 16
+            }
+          }
+        },
+        {
+          "name": "ready",
+          "type": {
+            "name": "bool",
+            "kind": "builtin",
+            "span": {
+              "line": 90,
+              "column": 36
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "PoolReady.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 92,
+            "column": 5
+          }
+        },
+        {
+          "id": "PoolReady.02",
+          "kind": "name",
+          "detail": "ready",
+          "source_span": {
+            "line": 92,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 90,
+        "column": 6
+      }
+    }
+  ]
+}

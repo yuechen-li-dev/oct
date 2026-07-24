@@ -1,0 +1,414 @@
+{
+  "assertions": null,
+  "automata": [
+    {
+      "name": "ResourceLifecycle",
+      "signal_enum": "LifecycleSignal",
+      "root_machine": "Main",
+      "max_active_depth": 3,
+      "graph_identity": "f193cab7c15eb7312425719b8ed962e2527cf12b731931579f7be2e9e17efd79",
+      "source_span": {
+        "line": 15,
+        "column": 1
+      },
+      "machines": [
+        {
+          "name": "Main",
+          "initial": true,
+          "reachable": true,
+          "source_span": {
+            "line": 17,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Empty",
+              "initial": true,
+              "reachable": true,
+              "source_span": {
+                "line": 19,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Create",
+                  "kind": "goto",
+                  "target_state": "Ready",
+                  "source_span": {
+                    "line": 21,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Ready",
+              "reachable": true,
+              "source_span": {
+                "line": 24,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Tick",
+                  "kind": "goto",
+                  "target_state": "Ready",
+                  "source_span": {
+                    "line": 26,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Begin",
+                  "kind": "goto",
+                  "target_state": "Running",
+                  "source_span": {
+                    "line": 27,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Clean",
+                  "kind": "push",
+                  "push_machine": "Cleanup",
+                  "continuation_state": "AwaitingResume",
+                  "source_span": {
+                    "line": 28,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 29,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Running",
+              "reachable": true,
+              "source_span": {
+                "line": 32,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Clean",
+                  "kind": "push",
+                  "push_machine": "Cleanup",
+                  "continuation_state": "Finished",
+                  "source_span": {
+                    "line": 34,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "AwaitingResume",
+              "reachable": true,
+              "source_span": {
+                "line": 37,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 39,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Finished",
+              "terminal": true,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 42,
+                "column": 9
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cleanup",
+          "reachable": true,
+          "source_span": {
+            "line": 48,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Begin",
+              "initial": true,
+              "reachable": true,
+              "source_span": {
+                "line": 50,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Release",
+                  "kind": "push",
+                  "push_machine": "SweepMachine",
+                  "continuation_state": "Resume",
+                  "source_span": {
+                    "line": 52,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Resume",
+              "reachable": true,
+              "source_span": {
+                "line": 55,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Tick",
+                  "kind": "goto",
+                  "target_state": "Resume",
+                  "source_span": {
+                    "line": 57,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Confirm",
+                  "kind": "goto",
+                  "target_state": "Complete",
+                  "source_span": {
+                    "line": 58,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "AbortAll",
+                  "source_span": {
+                    "line": 59,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Complete",
+              "terminal": true,
+              "reachable": true,
+              "completion": "pop",
+              "source_span": {
+                "line": 62,
+                "column": 9
+              }
+            },
+            {
+              "name": "AbortAll",
+              "terminal": true,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 67,
+                "column": 9
+              }
+            }
+          ]
+        },
+        {
+          "name": "SweepMachine",
+          "reachable": true,
+          "source_span": {
+            "line": 73,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Begin",
+              "initial": true,
+              "reachable": true,
+              "source_span": {
+                "line": 75,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Sweep",
+                  "kind": "goto",
+                  "target_state": "Complete",
+                  "source_span": {
+                    "line": 77,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Complete",
+              "terminal": true,
+              "reachable": true,
+              "completion": "pop",
+              "source_span": {
+                "line": 80,
+                "column": 9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comptime_decls": null,
+  "concepts": null,
+  "functions": [
+    {
+      "name": "RootRetryBudget",
+      "span": {
+        "line": 87,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m0_language_root_retry_budget"
+    },
+    {
+      "name": "DerivedStackDepth",
+      "span": {
+        "line": 92,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m0_language_derived_stack_depth"
+    },
+    {
+      "name": "FinishIsExplicit",
+      "span": {
+        "line": 97,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m0_language_finish_is_explicit"
+    }
+  ],
+  "instances": null,
+  "mir": [
+    {
+      "name": "RootRetryBudget",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 87,
+          "column": 1
+        }
+      },
+      "operations": [
+        {
+          "id": "RootRetryBudget.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 89,
+            "column": 5
+          }
+        },
+        {
+          "id": "RootRetryBudget.02",
+          "kind": "literal",
+          "detail": "2",
+          "source_span": {
+            "line": 89,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 87,
+        "column": 5
+      }
+    },
+    {
+      "name": "DerivedStackDepth",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 92,
+          "column": 1
+        }
+      },
+      "operations": [
+        {
+          "id": "DerivedStackDepth.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 94,
+            "column": 5
+          }
+        },
+        {
+          "id": "DerivedStackDepth.02",
+          "kind": "literal",
+          "detail": "3",
+          "source_span": {
+            "line": 94,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 92,
+        "column": 5
+      }
+    },
+    {
+      "name": "FinishIsExplicit",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 97,
+          "column": 1
+        }
+      },
+      "operations": [
+        {
+          "id": "FinishIsExplicit.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 99,
+            "column": 5
+          }
+        },
+        {
+          "id": "FinishIsExplicit.02",
+          "kind": "bool_literal",
+          "detail": "true",
+          "source_span": {
+            "line": 99,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 97,
+        "column": 6
+      }
+    }
+  ],
+  "schema": "concept-vulkan-evt1-source-map.v1",
+  "source": "examples/Concept-Vulkan/evt1_dragongod_m0_language.concept",
+  "static_asserts": null,
+  "structs": null,
+  "templates": null
+}
