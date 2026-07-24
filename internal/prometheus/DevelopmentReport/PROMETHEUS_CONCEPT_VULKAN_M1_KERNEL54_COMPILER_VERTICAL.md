@@ -1,6 +1,6 @@
 # Prometheus Concept/Vulkan M1 — kernel-54 compiler vertical
 
-Status: **MEANINGFUL PROGRESSION — the hermetic compiler/artifact vertical is complete; private handwritten helper access prevents runtime-equivalent generated invocation without a production seam.**
+Status: **MEANINGFUL PROGRESSION — the hermetic compiler/artifact vertical is complete; M1D has now proven live success-path executable equivalence, while handwritten create-path partial-failure equivalence remains the final narrow seam before full closure.**
 
 Starting checkpoint: `be293f5f14fc1c0b324ce57ed44492395926474f`
 (`concept-vulkan: establish M0 language constitution`), with empty porcelain.
@@ -88,8 +88,9 @@ baseline is preserved because no public symbol is added.
 | static witness correspondence | PASS — MIR/witness review |
 | runtime success/failure/cleanup/validation | NOT RUN — private adapter absent |
 
-M1C now owns the private kernel-54 adapter and native conformance evidence.
-M2 begins only after M1C runs it against the same admitted scene/TLAS for
-result, cleanup, failure-injection, and validation equivalence; M2 then assesses
-kernel-55 physical-batch equivalence.
+M1C/M1D now own the private kernel-54 adapter, native conformance evidence, and
+live success-path executable equivalence. The remaining blocker is not success
+execution but the absence of a narrow handwritten create-path seam for
+stage-by-stage partial-construction failure comparison. Physical kernel-55
+batch equivalence remains subsequent work.
 Rollback removes these additive compiler/source/generated/report/evidence files.

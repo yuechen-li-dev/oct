@@ -1,8 +1,10 @@
 # Prometheus Concept/Vulkan M1C — native and conformance closure
 
 Status: **MEANINGFUL PROGRESSION — generated kernel-54 C now compiles to a real
-native object and links against the real Prometheus/Vulkan contract; the
-private adapter is compiled, but no admitted runtime was exercised.**
+native object and links against the real Prometheus/Vulkan contract; M1D has
+since proven one admitted live handwritten/generated executable equivalence
+path, but exhaustive handwritten create-path failure equivalence remains a
+separate narrow closure seam.**
 
 Starting checkpoint: `0ca7aa219e8a975020d57a2e5fc501e01f4fc0ad`; porcelain was
 empty. M1C does not change Concept grammar, public API, production routing,
@@ -61,8 +63,9 @@ successfully with the real headers.
 | Vulkan validation/repeated lifecycle | NOT RUN |
 | production routing, public ABI/export, package/shader/lock preservation | PASS by isolated macro/private artifact review |
 
-The next M1C action is to run the two adapters against the existing admitted
-triangle scene and record deterministic operation/cleanup traces and safe
-failure seams. M2 remains kernel-55 physical-batch equivalence only after that
-closure. Rollback removes this generated lowering, macro-gated adapter, and
-M1C evidence; handwritten production remains authoritative.
+M1D now owns the live executable harness and validation-layer evidence. The
+remaining closure is the handwritten create-path partial-failure seam needed
+for stage-by-stage cleanup equivalence. M2 remains kernel-55 physical-batch
+equivalence only after that closure. Rollback removes this generated lowering,
+macro-gated adapter, and M1C evidence; handwritten production remains
+authoritative.

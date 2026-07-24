@@ -94,6 +94,13 @@
       "role": "real native generated-object/link evidence and macro-gated kernel-54 conformance adapter boundary"
     },
     {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M1D_EXECUTABLE_EQUIVALENCE_CLOSURE.md",
+      "subsystem_or_era": "Concept/Vulkan M1D",
+      "status": "current",
+      "superseding_authority": null,
+      "role": "one-harness live handwritten/generated executable equivalence, validation-layer result, production exclusion audit, and explicit remaining create-path failure-equivalence blocker"
+    },
+    {
       "path": "docs/Concept-Vulkan/CONCEPT_VULKAN_LANGUAGE_CONSTITUTION.md",
       "subsystem_or_era": "Concept/Vulkan language",
       "status": "current",
@@ -162,6 +169,12 @@
     {
       "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M0_CHARACTERIZATION.md",
       "subsystem_or_era": "Concept/Vulkan M0",
+      "status": "current",
+      "superseding_authority": null
+    },
+    {
+      "path": "internal/prometheus/DevelopmentReport/PROMETHEUS_CONCEPT_VULKAN_M1D_EXECUTABLE_EQUIVALENCE_CLOSURE.md",
+      "subsystem_or_era": "Concept/Vulkan M1D",
       "status": "current",
       "superseding_authority": null
     }

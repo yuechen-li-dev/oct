@@ -15,10 +15,13 @@ The immediate project is **Concept/Vulkan**: a bounded host-side language
 profile for expressing Prometheus Vulkan mechanisms without continuing to
 author the repetitive bulk of new mechanisms directly in raw Vulkan C.
 Concept/Vulkan M0 fixed the language constitution and implementation boundary.
-M1C is the active native/conformance closure: generated kernel-54 C now builds
-and links against the real Vulkan contract, with a macro-gated private adapter
-beside the handwritten route. Production remains handwritten while admitted
-runtime equivalence and failure traces are collected.
+M1D is the active executable-equivalence closure: one private executable now
+links and invokes the real handwritten and generated kernel-54 paths on an
+admitted live runtime, with passing validation-layer and same-runtime reuse
+evidence on this machine. Production remains handwritten. The remaining M1
+gap is the narrow handwritten create-path seam required for stage-by-stage
+partial-construction failure equivalence; physical batching (RQ-M1) remains
+paused while that closure is finished.
 
 The owner direction is:
 
@@ -102,10 +105,12 @@ probe in a checked-in conformance artifact with:
 - existing Prometheus errors and failure ordering;
 - deterministic C/H, source map, and generation manifest.
 
-Runtime equivalence remains blocked on the private adapter; M2 first resolves
-that non-public conformance boundary, then evaluates physical ray-query batch
-equivalence. Production ray-query migration is M3. A bounded Stage 4 SGEMM
-expression pressure proof is M4.
+Live success equivalence is no longer blocked on the private adapter. The next
+bounded Concept/Vulkan step is to close handwritten create-path partial-failure
+equivalence without widening public ABI or duplicating the implementation.
+Only after that closure does physical ray-query batch equivalence resume.
+Production ray-query migration remains later work. DVT-2 optimization remains
+paused.
 
 ## Provenance note
 

@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+#include "reactor_concept_vulkan_m1d_trace.h"
+#endif
+
 #if defined(_WIN32)
 #include <windows.h>
 #else
@@ -252,6 +256,9 @@ static void prom_ray_destroy_as(const prom_ray_query_scene* scene, prom_ray_quer
 
 static void prom_ray_scene_destroy(prom_ray_query_scene* scene) {
   if (scene == NULL) return;
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_CLEANUP);
+#endif
   if (scene->committed_scene != NULL) {
     prom_ray_scene_destroy(scene->committed_scene);
     scene->committed_scene = NULL;
@@ -779,14 +786,34 @@ int prom_ray_query_triangle_scene_probe_impl(void* handle, uint64_t scene_id,
   scene = prom_ray_scene_find(handle, scene_id);
   if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC || scene->services.device != services.device) return PROM_INVALID_HANDLE;
   if (scene->evidence_buffer.mapped == NULL || scene->pipeline == VK_NULL_HANDLE) return PROM_ERROR;
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_PERSISTENT_RESOURCES);
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_EVIDENCE);
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_COMMAND_ALLOCATE);
+#endif
   memcpy(scene->evidence_buffer.mapped, &evidence, sizeof(evidence));
   if (!prom_ray_begin_command(scene, &command_buffer)) return PROM_ERROR;
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_COMMAND_BEGIN);
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_TLAS_READ);
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_EVIDENCE_WRITE);
+#endif
   vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, scene->pipeline);
   vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, scene->pipeline_layout,
                           0u, 1u, &scene->descriptor_set, 0u, NULL);
   vkCmdDispatch(command_buffer, 1u, 1u, 1u);
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_DISPATCH);
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_COMMAND_END);
+#endif
   if (!prom_ray_end_submit_and_free(scene, command_buffer)) return PROM_ERROR;
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_SUBMIT_WAIT);
+#endif
   memcpy(&evidence, scene->evidence_buffer.mapped, sizeof(evidence));
+#ifdef PROM_CONCEPT_VULKAN_CONFORMANCE
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_OBSERVE);
+#endif
   out_result->hit = evidence != 0u ? 1u : 0u;
   out_result->triangle_count = scene->triangle_count;
   out_result->blas_built = scene->triangle_blas.handle != VK_NULL_HANDLE ? 1u : 0u;
@@ -805,7 +832,13 @@ int prom_ray_query_triangle_scene_probe_impl(void* handle, uint64_t scene_id,
 #include "reactor_concept_vulkan_kernel54.generated.h"
 int prom_concept_vulkan_kernel54_handwritten_adapter(void* handle, uint64_t scene_id,
                                                       PrometheusRayQueryProbeResult* out_result) {
-  return prom_ray_query_triangle_scene_probe_impl(handle, scene_id, out_result);
+  int result;
+  prom_concept_vulkan_m1d_trace_begin(PROM_CONCEPT_VULKAN_M1D_HANDWRITTEN);
+  if (out_result == NULL) return PROM_ERROR;
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_PACKAGE);
+  result = prom_ray_query_triangle_scene_probe_impl(handle, scene_id, out_result);
+  prom_concept_vulkan_m1d_trace_result(result);
+  return result;
 }
 
 int prom_concept_vulkan_kernel54_generated_adapter(void* handle, uint64_t scene_id,
@@ -815,12 +848,17 @@ int prom_concept_vulkan_kernel54_generated_adapter(void* handle, uint64_t scene_
   prom_shader_package* package;
   uint32_t evidence = 0u;
   if (out_result == NULL) return PROM_ERROR;
+  prom_concept_vulkan_m1d_trace_begin(PROM_CONCEPT_VULKAN_M1D_GENERATED);
   memset(out_result, 0, sizeof(*out_result));
   if (prom_reactor_runtime_get_vk_services(handle, &services) != PROM_OK) return PROM_INVALID_HANDLE;
   scene = prom_ray_scene_find(handle, scene_id);
   if (scene == NULL || scene->magic != PROM_RAY_QUERY_SCENE_MAGIC || scene->services.device != services.device) return PROM_INVALID_HANDLE;
   if (prom_reactor_runtime_get_shader_package(scene->runtime_handle, &package) != PROM_OK) return PROM_ERROR;
-  if (prom_concept_vulkan_kernel54_execute(&scene->services, package, scene->tlas.handle, &evidence) != PROM_OK) return PROM_ERROR;
+  prom_concept_vulkan_m1d_trace_event(PROM_CONCEPT_VULKAN_M1D_PACKAGE);
+  if (prom_concept_vulkan_kernel54_execute(&scene->services, package, scene->tlas.handle, &evidence) != PROM_OK) {
+    prom_concept_vulkan_m1d_trace_result(PROM_ERROR);
+    return PROM_ERROR;
+  }
   out_result->hit = evidence != 0u ? 1u : 0u;
   out_result->triangle_count = scene->triangle_count;
   out_result->blas_built = scene->triangle_blas.handle != VK_NULL_HANDLE ? 1u : 0u;
@@ -828,6 +866,7 @@ int prom_concept_vulkan_kernel54_generated_adapter(void* handle, uint64_t scene_
   out_result->vertex_device_address = scene->vertex_buffer.buffer != VK_NULL_HANDLE ? (uint64_t)prom_ray_buffer_address(scene->services.device, scene->vertex_buffer.buffer) : 0u;
   out_result->blas_device_address = (uint64_t)scene->triangle_blas.device_address;
   out_result->tlas_device_address = (uint64_t)scene->tlas.device_address;
+  prom_concept_vulkan_m1d_trace_result(PROM_OK);
   return PROM_OK;
 }
 #endif
