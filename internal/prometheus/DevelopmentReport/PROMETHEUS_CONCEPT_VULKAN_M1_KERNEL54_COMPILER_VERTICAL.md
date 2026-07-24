@@ -16,6 +16,14 @@ dispatch, explicit command move, observation, and return. General Concept,
 effects, async, policy, graphs, shader code, C embedding, and package
 management are deferred.
 
+The source grammar is C++-shaped: `ReturnType Function(Type parameter)` and
+`owned LocalType local = expression;`. The earlier M1 `fn`, `name: Type`,
+`-> ReturnType`, and untyped owned-local sketch was corrected after M1; it is
+not accepted as compatibility syntax. `let` and `var` are likewise rejected.
+The canonical local types are the existing M1 capabilities: concrete mapped
+evidence buffer, `ComputePipeline`, `DescriptorSet`, `CommandRecording`, and
+`Submission`; this correction introduces no runtime abstraction.
+
 Compile-time facts are source plus fixed `prometheus.core@1` /
 `kernel-54-default` and descriptor facts; no GPU, environment, network,
 package-service, or absolute-path query occurs. Runtime facts remain admitted
@@ -23,7 +31,7 @@ context and TLAS.
 
 ## Type/MIR/outputs
 
-Stable `CV1001`–`CV1202` diagnostics retain line/column spans. Validation
+Stable `CV1000`–`CV1202` diagnostics retain line/column spans. Validation
 requires the kernel-54 order: evidence/pipeline/descriptors/command ownership;
 TLAS read and evidence shader-write; `Dispatch(1,1,1)`; command move and
 synchronous completion; observation; reverse cleanup. It rejects malformed

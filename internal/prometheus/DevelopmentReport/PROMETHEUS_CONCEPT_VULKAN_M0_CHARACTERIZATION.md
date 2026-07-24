@@ -493,52 +493,31 @@ scarred Dominatus/slot/placement/variant handoff.
 
 ## 19. Specimen A — M1 vertical operation
 
-This is normative design syntax, not implemented code. Labels are part of the
-M0 classification. A label on a declaration or control-scope line applies to
-its nested field/call lines unless a nested line carries a different label.
+This M0 sketch is reconciled to the M1 C++-shaped syntax. Its package/concept
+declarations remain deferred illustrative syntax; the function body below is
+the now-canonical M1 grammar and capability spelling.
 
 ```concept
 profile Vulkan;                                      // REQUIRED FOR M1
 import Prometheus.Vulkan;                            // REQUIRED FOR M1
 
-concept CapabilityProbeBindings {                   // REQUIRED FOR M1
-    binding 0: borrow AccelerationStructure read;
-    binding 1: Buffer<HostVisibleCoherent, Storage,
-                      ProbeEvidence> write;
+Result<ProbeEvidence, PrometheusError> Execute(
+    borrow MechanismContext context,
+    unsafe imported borrow AccelerationStructure admittedTlas)
+{
+    owned MappedEvidenceBuffer evidence = CreateMappedEvidenceBuffer(context)?;
+    owned ComputePipeline pipeline = CreatePackagePipeline(
+        context, "prometheus.core@1", "kernel-54-default")?;
+    owned DescriptorSet descriptors = BindDescriptor(
+        context, admittedTlas, evidence, 0, 1)?;
+    owned CommandRecording command = BeginCommands(context)?;
+    DeclareAccess(admittedTlas, AccelerationStructureRead);
+    DeclareAccess(evidence, ShaderWrite);
+    Dispatch(command, 1, 1, 1);
+    owned Submission submission = SubmitAndWait(context, move command)?;
+    ReadObservation(evidence);
+    return Ok;
 }
-
-package compute CapabilityProbe =                   // REQUIRED FOR M1
-    "prometheus.core@1"::"kernel-54-default"
-    bindings CapabilityProbeBindings
-    push_constants 0;
-
-fn probe(
-    borrow context: MechanismContext,
-    unsafe imported borrow scene_tlas: AccelerationStructure
-) -> Result<ProbeEvidence, PrometheusError> {         // REQUIRED FOR M1
-    owned evidence = Buffer<HostVisibleCoherent,
-                            Storage, ProbeEvidence>
-        ::create(context, count: 1)?;                 // REQUIRED FOR M1
-    evidence.map()?.write(ProbeEvidence::zero());     // REQUIRED FOR M1
-
-    owned pipeline = ComputePipeline::create(
-        context, CapabilityProbe)?;                   // REQUIRED FOR M1
-    owned descriptors = CapabilityProbeBindings::bind(
-        context, scene_tlas, evidence)?;              // REQUIRED FOR M1
-
-    owned command = context.record()?;                // REQUIRED FOR M1
-    with recording borrow mut command {               // REQUIRED FOR M1
-        command.bind(pipeline, descriptors);
-        command.access(scene_tlas, acceleration_structure_read);
-        command.access(evidence, shader_write);
-        command.dispatch(1, 1, 1);
-    }
-
-    owned submission = context.submit(move command)?; // REQUIRED FOR M1
-    context.wait(move submission)?;                   // REQUIRED FOR M1
-    access(evidence, host_read after shader_write);   // REQUIRED FOR M1
-    return Ok(evidence.map()?.read(0));
-} // reverse drop: descriptors/pipeline/evidence; context/TLAS remain borrowed
 ```
 
 The exact spelling of `unsafe imported`, `with command`, and `access` is
@@ -556,16 +535,16 @@ profile Vulkan;                                      // REQUIRED FOR M1 identity
 import Prometheus.Vulkan;                            // REQUIRED FOR M1
 import Prometheus.SgemmMechanism;                    // DEFERRED, EXPECTED
 
-fn execute_committed_sgemm(
-    borrow context: MechanismContext,
-    borrow committed: SgemmExecutionHandoff,
-    borrow a: BufferRange<Storage, read>,
-    borrow b: BufferRange<Storage, read>,
-    borrow c: BufferRange<Storage, write>
-) -> Result<SgemmObservation, PrometheusError> {      // DEFERRED, EXPECTED
+Result<SgemmObservation, PrometheusError> ExecuteCommittedSgemm(
+    borrow MechanismContext context,
+    borrow SgemmExecutionHandoff committed,
+    borrow BufferRange<Storage, read> a,
+    borrow BufferRange<Storage, read> b,
+    borrow BufferRange<Storage, write> c)
+{                                                      // DEFERRED, EXPECTED
     static_assert(committed.bindings == [0, 1, 2]);  // ILLUSTRATIVE
 
-    owned command = context.record()?;
+    owned CommandBuffer command = context.record()?;
     with recording borrow mut command {
         command.bind(committed.pipeline,
                      committed.descriptor_set);

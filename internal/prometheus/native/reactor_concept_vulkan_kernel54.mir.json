@@ -9,7 +9,7 @@
       "Fallibility": "yes",
       "Mapping": "prom_vk_create_buffer",
       "span": {
-        "line": 5,
+        "line": 8,
         "column": 5
       }
     },
@@ -20,7 +20,7 @@
       "Fallibility": "yes",
       "Mapping": "prom_reactor_runtime_get_shader_package; prom_shader_package_create_module; vkCreateComputePipelines",
       "span": {
-        "line": 6,
+        "line": 10,
         "column": 5
       }
     },
@@ -31,7 +31,7 @@
       "Fallibility": "yes",
       "Mapping": "vkUpdateDescriptorSets bindings 0/1",
       "span": {
-        "line": 7,
+        "line": 15,
         "column": 5
       }
     },
@@ -42,7 +42,7 @@
       "Fallibility": "yes",
       "Mapping": "prom_ray_begin_command",
       "span": {
-        "line": 8,
+        "line": 17,
         "column": 5
       }
     },
@@ -53,7 +53,7 @@
       "Fallibility": "no",
       "Mapping": "kernel-54 acceleration_structure_read",
       "span": {
-        "line": 9,
+        "line": 19,
         "column": 5
       }
     },
@@ -64,7 +64,7 @@
       "Fallibility": "no",
       "Mapping": "kernel-54 shader_write -\u003e host_read completion",
       "span": {
-        "line": 10,
+        "line": 20,
         "column": 5
       }
     },
@@ -75,7 +75,7 @@
       "Fallibility": "no",
       "Mapping": "vkCmdDispatch(1, 1, 1)",
       "span": {
-        "line": 11,
+        "line": 21,
         "column": 5
       }
     },
@@ -86,7 +86,7 @@
       "Fallibility": "yes",
       "Mapping": "prom_ray_end_submit_and_free",
       "span": {
-        "line": 12,
+        "line": 22,
         "column": 5
       }
     },
@@ -97,7 +97,7 @@
       "Fallibility": "no",
       "Mapping": "memcpy mapped evidence",
       "span": {
-        "line": 13,
+        "line": 24,
         "column": 5
       }
     },
@@ -108,7 +108,7 @@
       "Fallibility": "no",
       "Mapping": "reverse initialized cleanup",
       "span": {
-        "line": 14,
+        "line": 25,
         "column": 5
       }
     }

@@ -73,7 +73,7 @@ Generation must not erase an essential decision or invent policy.
 
 ## 2.1 M1 source naming
 
-Concept/Vulkan follows the Go/C#/Oct capitalization family. User-facing
+Concept/Vulkan follows the C++/Concept syntactic lineage. User-facing
 functions, compiler-known operations, and type names use `PascalCase`; parameters
 and locals use `camelCase`. Existing C ABI spelling is retained only at the
 backend boundary, and MIR opcodes remain compiler snake_case. The canonical M1
@@ -81,6 +81,30 @@ source uses `Execute`, `CreateMappedEvidenceBuffer`, `BindDescriptor`,
 `BeginCommands`, `DeclareAccess`, `Dispatch`, `SubmitAndWait`, and
 `ReadObservation`. M1 enforces function/local naming in its bounded parser;
 this is not a general style-lint subsystem.
+
+## 2.2 M1 declaration grammar
+
+Concept/Vulkan uses C++-shaped declarations, deliberately distinct from Oct,
+SDSL-V, and Rust:
+
+```concept
+Result<ProbeEvidence, PrometheusError> Execute(
+    borrow MechanismContext context,
+    unsafe imported borrow AccelerationStructure admittedTlas)
+{
+    owned MappedEvidenceBuffer evidence =
+        CreateMappedEvidenceBuffer(context)?;
+}
+```
+
+Return types precede function names; parameter and local types precede their
+names. `fn`, `name: Type`, `-> ReturnType`, `let`, and `var` are rejected;
+there are no compatibility aliases. `borrow`, `owned`, `unsafe`, `imported`,
+and `move` remain explicit ownership/boundary vocabulary, while `?` retains its
+bounded fallibility meaning. `MappedEvidenceBuffer` is the narrow source
+spelling of M1's existing mapped host-visible evidence-buffer capability;
+`ComputePipeline`, `DescriptorSet`, `CommandRecording`, and `Submission` are
+the existing M1 capability names, not new runtime abstractions.
 
 ## 3. Static and runtime facts
 

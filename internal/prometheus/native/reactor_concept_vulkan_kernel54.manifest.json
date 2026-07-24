@@ -13,11 +13,11 @@
     },
     {
       "path": "reactor_concept_vulkan_kernel54.mir.json",
-      "sha256": "bb257f3ae74cd25685d66b992a49467e1192cadf4207b6867a07ebcd82f80fd1"
+      "sha256": "6176447e4ac15898fd3fc2fb55a1ee87531cf451dc252c3e65cb008e8056083b"
     },
     {
       "path": "reactor_concept_vulkan_kernel54.map.json",
-      "sha256": "2327f0da721eed92b5be90ff1818247e8af5d89fc2dd0d6cf3132e8943c44c8c"
+      "sha256": "78fdb3c4095c5bc73de5aed4410b9a809e253def2c0c916dc6e6b4bfe00c7490"
     }
   ],
   "options": {
@@ -28,6 +28,6 @@
   "profile": "Vulkan",
   "schema": "concept-vulkan-generation-manifest.v1",
   "source": "Examples/Concept-Vulkan/kernel54_probe.concept",
-  "source_sha256": "d0a9c521268d65c37aa4ea20655a23e3716472c1915f5a90a1033a68036fd26c",
+  "source_sha256": "f22e6210228f7d08811899fa5dc854bfbe1a9f11597cf05aa3ae6187d481f199",
   "target": "Prometheus Vulkan kernel-54 M1"
 }

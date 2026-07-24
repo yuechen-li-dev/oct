@@ -11,15 +11,26 @@ import (
 const canonical = `profile Vulkan;
 import Prometheus.Vulkan;
 
-fn Execute(borrow context: MechanismContext, unsafe imported borrow admittedTlas: AccelerationStructure) -> Result<ProbeEvidence, PrometheusError> {
-    owned evidence = CreateMappedEvidenceBuffer(context)?;
-    owned pipeline = CreatePackagePipeline(context, "prometheus.core@1", "kernel-54-default")?;
-    owned descriptors = BindDescriptor(context, admittedTlas, evidence, 0, 1)?;
-    owned command = BeginCommands(context)?;
+Result<ProbeEvidence, PrometheusError> Execute(
+    borrow MechanismContext context,
+    unsafe imported borrow AccelerationStructure admittedTlas)
+{
+    owned MappedEvidenceBuffer evidence =
+        CreateMappedEvidenceBuffer(context)?;
+    owned ComputePipeline pipeline =
+        CreatePackagePipeline(
+            context,
+            "prometheus.core@1",
+            "kernel-54-default")?;
+    owned DescriptorSet descriptors =
+        BindDescriptor(context, admittedTlas, evidence, 0, 1)?;
+    owned CommandRecording command =
+        BeginCommands(context)?;
     DeclareAccess(admittedTlas, AccelerationStructureRead);
     DeclareAccess(evidence, ShaderWrite);
     Dispatch(command, 1, 1, 1);
-    owned submission = SubmitAndWait(context, move command)?;
+    owned Submission submission =
+        SubmitAndWait(context, move command)?;
     ReadObservation(evidence);
     return Ok;
 }
@@ -30,7 +41,7 @@ func TestCanonicalParseLowerAndGenerateAreDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Function != "Execute" || len(p.Operations) != 10 || p.Operations[0].Span.Line != 5 {
+	if p.Function != "Execute" || len(p.Operations) != 10 || p.Operations[0].Span.Line != 8 {
 		t.Fatalf("unexpected parsed program: %#v", p)
 	}
 	a, err := Generate(p, []byte(canonical))
@@ -60,10 +71,15 @@ func TestCanonicalParseLowerAndGenerateAreDeterministic(t *testing.T) {
 func TestDiagnosticsAreStableAndLocated(t *testing.T) {
 	cases := []struct{ name, src, code string }{
 		{"profile", strings.Replace(canonical, "profile Vulkan;", "profile Metal;", 1), "CV1001"},
-		{"function naming", strings.Replace(canonical, "fn Execute", "fn execute", 1), "CV1201"},
-		{"local naming", strings.Replace(canonical, "owned evidence", "owned evidence_buffer", 1), "CV1202"},
+		{"function naming", strings.Replace(canonical, " Execute(", " execute(", 1), "CV1201"},
+		{"local naming", strings.Replace(canonical, "MappedEvidenceBuffer evidence", "MappedEvidenceBuffer evidence_buffer", 1), "CV1202"},
 		{"dispatch", strings.Replace(canonical, "Dispatch(command, 1, 1, 1);", "Dispatch(command, 2, 1, 1);", 1), "CV1004"},
 		{"unsupported", strings.Replace(canonical, "return Ok;", "yield;", 1), "CV1003"},
+		{"alien fn", "profile Vulkan;\nfn Execute() {}\n", "CV1005"},
+		{"alien parameter", "profile Vulkan;\nResult Execute(context: MechanismContext) {}\n", "CV1005"},
+		{"alien arrow", "profile Vulkan;\nResult Execute() -> ProbeEvidence {}\n", "CV1005"},
+		{"alien let", strings.Replace(canonical, "owned MappedEvidenceBuffer evidence =\n        CreateMappedEvidenceBuffer(context)?;", "let evidence = CreateMappedEvidenceBuffer(context)?;", 1), "CV1005"},
+		{"alien var", strings.Replace(canonical, "owned MappedEvidenceBuffer evidence =\n        CreateMappedEvidenceBuffer(context)?;", "var evidence = CreateMappedEvidenceBuffer(context)?;", 1), "CV1005"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,6 +88,16 @@ func TestDiagnosticsAreStableAndLocated(t *testing.T) {
 				t.Fatalf("err=%v want %s", err, tc.code)
 			}
 		})
+	}
+}
+
+func TestLexerRetainsSourceSpans(t *testing.T) {
+	tokens, err := Lex("profile Vulkan;\nResult Probe;\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 6 || tokens[3].Lexeme != "Result" || tokens[3].Span != (Span{Line: 2, Column: 1}) {
+		t.Fatalf("tokens = %#v", tokens)
 	}
 }
 

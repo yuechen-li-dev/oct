@@ -38,55 +38,162 @@ type Program struct {
 	Operations     []Operation
 }
 
-var fnRE = regexp.MustCompile(`^fn\s+([A-Za-z_][A-Za-z0-9_]*)\(borrow context: MechanismContext, unsafe imported borrow admittedTlas: AccelerationStructure\) -> Result<ProbeEvidence, PrometheusError> \{$`)
-var localRE = regexp.MustCompile(`^owned ([A-Za-z_][A-Za-z0-9_]*) = ([A-Za-z_][A-Za-z0-9_]*)\(`)
+var fnRE = regexp.MustCompile(`^Result<ProbeEvidence, PrometheusError> ([A-Za-z_][A-Za-z0-9_]*)\(borrow MechanismContext context, unsafe imported borrow AccelerationStructure admittedTlas\) \{$`)
+var localRE = regexp.MustCompile(`^owned\s+[A-Za-z_][A-Za-z0-9_]*(?:<[^>]+>)?\s+([A-Za-z_][A-Za-z0-9_]*)\s*=`)
+
+// Token is a source-facing token with stable line/column provenance. The M1
+// parser deliberately consumes only the bounded declaration/statement forms.
+type Token struct {
+	Lexeme string
+	Span   Span
+}
+
+func Lex(text string) ([]Token, error) {
+	var tokens []Token
+	line, column := 1, 1
+	for i := 0; i < len(text); {
+		c := text[i]
+		if c == '\n' {
+			line++
+			column = 1
+			i++
+			continue
+		}
+		if c == ' ' || c == '\t' || c == '\r' {
+			column++
+			i++
+			continue
+		}
+		if c == '/' && i+1 < len(text) && text[i+1] == '/' {
+			for i < len(text) && text[i] != '\n' {
+				i++
+				column++
+			}
+			continue
+		}
+		start, j := Span{line, column}, i
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' {
+			for j < len(text) && ((text[j] >= 'a' && text[j] <= 'z') || (text[j] >= 'A' && text[j] <= 'Z') || (text[j] >= '0' && text[j] <= '9') || text[j] == '_') {
+				j++
+			}
+		} else if c >= '0' && c <= '9' {
+			for j < len(text) && text[j] >= '0' && text[j] <= '9' {
+				j++
+			}
+		} else if c == '"' {
+			j++
+			for j < len(text) && text[j] != '"' {
+				if text[j] == '\n' {
+					return nil, Diagnostic{"CV1000", "unterminated string literal", start}
+				}
+				j++
+			}
+			if j == len(text) {
+				return nil, Diagnostic{"CV1000", "unterminated string literal", start}
+			}
+			j++
+		} else if c == '-' && j+1 < len(text) && text[j+1] == '>' {
+			j += 2
+		} else if strings.ContainsRune("(){};,.?<>:=", rune(c)) {
+			j++
+		} else {
+			return nil, Diagnostic{"CV1000", fmt.Sprintf("invalid token %q", c), start}
+		}
+		tokens = append(tokens, Token{Lexeme: text[i:j], Span: start})
+		column += j - i
+		i = j
+	}
+	return tokens, nil
+}
 
 // Parse accepts only the M1 grammar. Its line-oriented shape is deliberate:
 // no general expression language or embedded C is admitted by this profile.
 func Parse(path, text string) (Program, error) {
+	if _, err := Lex(text); err != nil {
+		return Program{}, err
+	}
 	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "profile Vulkan;" {
 		return Program{}, Diagnostic{"CV1001", "expected `profile Vulkan;`", Span{1, 1}}
 	}
 	p := Program{Path: filepath.ToSlash(path)}
-	seenFn := false
-	for n, raw := range lines {
+	headerStart, headerEnd := -1, -1
+	var header []string
+	for i, raw := range lines {
 		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "//") || n == 0 || line == "import Prometheus.Vulkan;" {
+		if line == "" || strings.HasPrefix(line, "//") || i == 0 || line == "import Prometheus.Vulkan;" {
 			continue
 		}
-		span := Span{n + 1, len(raw) - len(strings.TrimLeft(raw, " \t")) + 1}
-		if !seenFn {
-			m := fnRE.FindStringSubmatch(line)
-			if m == nil {
-				return Program{}, Diagnostic{"CV1002", "expected the bounded M1 function declaration", span}
-			}
-			if !pascal(m[1]) {
-				return Program{}, Diagnostic{"CV1201", "function names must be PascalCase", span}
-			}
-			p.Function = m[1]
-			seenFn = true
+		if headerStart < 0 {
+			headerStart = i
+		}
+		header = append(header, line)
+		if strings.Contains(line, "{") {
+			headerEnd = i
+			break
+		}
+	}
+	if headerStart < 0 || headerEnd < 0 {
+		return Program{}, Diagnostic{"CV1002", "missing M1 function declaration", Span{1, 1}}
+	}
+	headerText := normalize(strings.Join(header, " "))
+	headerSpan := lineSpan(lines[headerStart], headerStart)
+	if strings.HasPrefix(headerText, "fn ") || strings.Contains(headerText, "->") || strings.Contains(headerText, ": ") {
+		return Program{}, Diagnostic{"CV1005", "Concept/Vulkan uses C++-shaped typed declarations, not fn/:/-> syntax", headerSpan}
+	}
+	m := fnRE.FindStringSubmatch(headerText)
+	if m == nil {
+		return Program{}, Diagnostic{"CV1002", "expected the bounded C++-shaped M1 function declaration", headerSpan}
+	}
+	if !pascal(m[1]) {
+		return Program{}, Diagnostic{"CV1201", "function names must be PascalCase", headerSpan}
+	}
+	p.Function = m[1]
+	var statement []string
+	statementSpan := Span{}
+	for i := headerEnd + 1; i < len(lines); i++ {
+		raw := lines[i]
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "//") {
 			continue
 		}
 		if line == "}" {
+			if len(statement) == 0 {
+				break
+			}
+			return Program{}, Diagnostic{"CV1004", "unterminated M1 statement", statementSpan}
+		}
+		if len(statement) == 0 {
+			statementSpan = lineSpan(raw, i)
+		}
+		statement = append(statement, line)
+		if !strings.HasSuffix(line, ";") {
 			continue
 		}
-		if strings.Contains(line, "concept ") || strings.Contains(line, "decide") || strings.Contains(line, "yield") || strings.Contains(line, "HLSL") {
-			return Program{}, Diagnostic{"CV1003", "unsupported Concept/Vulkan construct", span}
+		joined := normalize(strings.Join(statement, " "))
+		statement = nil
+		if strings.HasPrefix(joined, "let ") || strings.HasPrefix(joined, "var ") {
+			return Program{}, Diagnostic{"CV1005", "Concept/Vulkan locals require an explicit type, never let or var", statementSpan}
 		}
-		if m := localRE.FindStringSubmatch(line); m != nil && !camel(m[1]) {
-			return Program{}, Diagnostic{"CV1202", "owned local names must be camelCase", span}
+		if strings.Contains(joined, "concept ") || strings.Contains(joined, "decide") || strings.Contains(joined, "yield") || strings.Contains(joined, "HLSL") {
+			return Program{}, Diagnostic{"CV1003", "unsupported Concept/Vulkan construct", statementSpan}
 		}
-		name := operationName(line)
+		if local := localRE.FindStringSubmatch(joined); local != nil && !camel(local[1]) {
+			return Program{}, Diagnostic{"CV1202", "owned local names must be camelCase", statementSpan}
+		}
+		name := operationName(joined)
 		if name == "" {
-			return Program{}, Diagnostic{"CV1004", "unsupported or malformed M1 statement", span}
+			return Program{}, Diagnostic{"CV1004", "unsupported or malformed M1 statement", statementSpan}
 		}
-		p.Operations = append(p.Operations, Operation{Name: name, Span: span})
-	}
-	if !seenFn {
-		return Program{}, Diagnostic{"CV1002", "missing M1 function declaration", Span{1, 1}}
+		p.Operations = append(p.Operations, Operation{Name: name, Span: statementSpan})
 	}
 	return p, Validate(p)
+}
+func lineSpan(raw string, zeroLine int) Span {
+	return Span{zeroLine + 1, len(raw) - len(strings.TrimLeft(raw, " \t")) + 1}
+}
+func normalize(s string) string {
+	return strings.NewReplacer("( ", "(", " ,", ",").Replace(strings.Join(strings.Fields(s), " "))
 }
 func pascal(s string) bool {
 	return len(s) > 0 && s[0] >= 'A' && s[0] <= 'Z' && !strings.Contains(s, "_")
@@ -96,7 +203,7 @@ func camel(s string) bool {
 }
 func operationName(s string) string {
 	for prefix, name := range map[string]string{
-		"owned evidence = CreateMappedEvidenceBuffer(context)?;": "create_buffer", "owned pipeline = CreatePackagePipeline(context, \"prometheus.core@1\", \"kernel-54-default\")?;": "create_pipeline", "owned descriptors = BindDescriptor(context, admittedTlas, evidence, 0, 1)?;": "bind_descriptor", "owned command = BeginCommands(context)?;": "begin_recording", "DeclareAccess(admittedTlas, AccelerationStructureRead);": "declare_tlas_access", "DeclareAccess(evidence, ShaderWrite);": "declare_evidence_access", "Dispatch(command, 1, 1, 1);": "dispatch", "owned submission = SubmitAndWait(context, move command)?;": "submit_wait", "ReadObservation(evidence);": "observe", "return Ok;": "return",
+		"owned MappedEvidenceBuffer evidence = CreateMappedEvidenceBuffer(context)?;": "create_buffer", "owned ComputePipeline pipeline = CreatePackagePipeline(context, \"prometheus.core@1\", \"kernel-54-default\")?;": "create_pipeline", "owned DescriptorSet descriptors = BindDescriptor(context, admittedTlas, evidence, 0, 1)?;": "bind_descriptor", "owned CommandRecording command = BeginCommands(context)?;": "begin_recording", "DeclareAccess(admittedTlas, AccelerationStructureRead);": "declare_tlas_access", "DeclareAccess(evidence, ShaderWrite);": "declare_evidence_access", "Dispatch(command, 1, 1, 1);": "dispatch", "owned Submission submission = SubmitAndWait(context, move command)?;": "submit_wait", "ReadObservation(evidence);": "observe", "return Ok;": "return",
 	} {
 		if s == prefix {
 			return name
