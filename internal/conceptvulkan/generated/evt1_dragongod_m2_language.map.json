@@ -1,0 +1,2095 @@
+{
+  "assertions": null,
+  "automata": [
+    {
+      "name": "GuardedLifecycle",
+      "signal_enum": "LifecycleSignal",
+      "context_name": "context",
+      "context_type": {
+        "name": "LifecycleContext",
+        "kind": "struct",
+        "span": {
+          "line": 38,
+          "column": 21
+        }
+      },
+      "root_machine": "Main",
+      "max_active_depth": 1,
+      "continuation_capacity": 0,
+      "completion_step_bound": 1,
+      "graph_identity": "83007e0e0f71b7cacc8e2391a8a72f5d256d16b3808d9fee8e4a814d5e6c2018",
+      "source_span": {
+        "line": 36,
+        "column": 1
+      },
+      "machines": [
+        {
+          "name": "Main",
+          "initial": true,
+          "runtime_ordinal": 0,
+          "reachable": true,
+          "source_span": {
+            "line": 40,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Idle",
+              "initial": true,
+              "runtime_ordinal": 0,
+              "reachable": true,
+              "source_span": {
+                "line": 42,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Submit",
+                  "guard": "CanSubmit(context)",
+                  "kind": "goto",
+                  "target_state": "Submitted",
+                  "source_span": {
+                    "line": 44,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Submit",
+                  "guard": "MustRelease(context)",
+                  "kind": "goto",
+                  "target_state": "Released",
+                  "source_span": {
+                    "line": 45,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Submit",
+                  "otherwise": true,
+                  "kind": "goto",
+                  "target_state": "Deferred",
+                  "source_span": {
+                    "line": 46,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Resolve",
+                  "kind": "goto",
+                  "target_state": "GuardOnly",
+                  "source_span": {
+                    "line": 47,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "GuardOnly",
+              "runtime_ordinal": 1,
+              "reachable": true,
+              "source_span": {
+                "line": 50,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Submit",
+                  "guard": "CanSubmit(context)",
+                  "kind": "goto",
+                  "target_state": "Submitted",
+                  "source_span": {
+                    "line": 52,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Submit",
+                  "guard": "MustRelease(context)",
+                  "kind": "goto",
+                  "target_state": "Released",
+                  "source_span": {
+                    "line": 53,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "LifecycleSignal::Resolve",
+                  "kind": "goto",
+                  "target_state": "Resolved",
+                  "source_span": {
+                    "line": 54,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Deferred",
+              "runtime_ordinal": 2,
+              "reachable": true,
+              "source_span": {
+                "line": 57,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Resolve",
+                  "kind": "goto",
+                  "target_state": "Resolved",
+                  "source_span": {
+                    "line": 59,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Submitted",
+              "runtime_ordinal": 3,
+              "reachable": true,
+              "source_span": {
+                "line": 62,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 64,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Released",
+              "runtime_ordinal": 4,
+              "reachable": true,
+              "source_span": {
+                "line": 67,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 69,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Resolved",
+              "runtime_ordinal": 5,
+              "reachable": true,
+              "source_span": {
+                "line": 72,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 74,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Finished",
+              "terminal": true,
+              "runtime_ordinal": 6,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 77,
+                "column": 9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "ImmediateLifecycle",
+      "signal_enum": "LifecycleSignal",
+      "root_machine": "Main",
+      "max_active_depth": 1,
+      "continuation_capacity": 0,
+      "completion_step_bound": 1,
+      "graph_identity": "737b82de37cd44d4f36bf10d98097ac436a9604ce1dbffe57fc1b6e7b57a8d45",
+      "source_span": {
+        "line": 84,
+        "column": 1
+      },
+      "machines": [
+        {
+          "name": "Main",
+          "initial": true,
+          "runtime_ordinal": 0,
+          "reachable": true,
+          "source_span": {
+            "line": 86,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Idle",
+              "initial": true,
+              "runtime_ordinal": 0,
+              "reachable": true,
+              "source_span": {
+                "line": 88,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "LifecycleSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 90,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Finished",
+              "terminal": true,
+              "runtime_ordinal": 1,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 93,
+                "column": 9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comptime_decls": null,
+  "concepts": null,
+  "functions": [
+    {
+      "name": "QueueOpen",
+      "span": {
+        "line": 16,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_queue_open"
+    },
+    {
+      "name": "ReleaseRequested",
+      "span": {
+        "line": 21,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_release_requested"
+    },
+    {
+      "name": "CanSubmit",
+      "span": {
+        "line": 26,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_can_submit"
+    },
+    {
+      "name": "MustRelease",
+      "span": {
+        "line": 31,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_must_release"
+    },
+    {
+      "name": "OutcomeCode",
+      "span": {
+        "line": 100,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_outcome_code"
+    },
+    {
+      "name": "UniqueGuardSelectionCode",
+      "span": {
+        "line": 111,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_unique_guard_selection_code"
+    },
+    {
+      "name": "FallbackSelectionCode",
+      "span": {
+        "line": 119,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_fallback_selection_code"
+    },
+    {
+      "name": "GuardedUnhandledPreservesStateCode",
+      "span": {
+        "line": 130,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_guarded_unhandled_preserves_state_code"
+    },
+    {
+      "name": "AmbiguousPreservesStateCode",
+      "span": {
+        "line": 143,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_ambiguous_preserves_state_code"
+    },
+    {
+      "name": "AlreadyFinishedSkipsGuardSelectionCode",
+      "span": {
+        "line": 158,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_already_finished_skips_guard_selection_code"
+    },
+    {
+      "name": "ContextlessCompatibilityCode",
+      "span": {
+        "line": 166,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m2_language_contextless_compatibility_code"
+    }
+  ],
+  "instances": null,
+  "mir": [
+    {
+      "name": "QueueOpen",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 16,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "ownership": "borrow",
+            "const": true,
+            "span": {
+              "line": 16,
+              "column": 16
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "QueueOpen.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 18,
+            "column": 5
+          }
+        },
+        {
+          "id": "QueueOpen.02",
+          "kind": "field_access",
+          "detail": "queueAvailable",
+          "source_span": {
+            "line": 18,
+            "column": 20
+          }
+        },
+        {
+          "id": "QueueOpen.03",
+          "kind": "name",
+          "detail": "context",
+          "source_span": {
+            "line": 18,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 16,
+        "column": 6
+      }
+    },
+    {
+      "name": "ReleaseRequested",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 21,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "ownership": "borrow",
+            "const": true,
+            "span": {
+              "line": 21,
+              "column": 23
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "ReleaseRequested.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 23,
+            "column": 5
+          }
+        },
+        {
+          "id": "ReleaseRequested.02",
+          "kind": "field_access",
+          "detail": "releaseRequested",
+          "source_span": {
+            "line": 23,
+            "column": 20
+          }
+        },
+        {
+          "id": "ReleaseRequested.03",
+          "kind": "name",
+          "detail": "context",
+          "source_span": {
+            "line": 23,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 21,
+        "column": 6
+      }
+    },
+    {
+      "name": "CanSubmit",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 26,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "ownership": "borrow",
+            "const": true,
+            "span": {
+              "line": 26,
+              "column": 16
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "CanSubmit.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 28,
+            "column": 5
+          }
+        },
+        {
+          "id": "CanSubmit.02",
+          "kind": "call",
+          "detail": "QueueOpen",
+          "source_span": {
+            "line": 28,
+            "column": 12
+          }
+        },
+        {
+          "id": "CanSubmit.03",
+          "kind": "name",
+          "detail": "context",
+          "source_span": {
+            "line": 28,
+            "column": 22
+          }
+        }
+      ],
+      "source_span": {
+        "line": 26,
+        "column": 6
+      }
+    },
+    {
+      "name": "MustRelease",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 31,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "ownership": "borrow",
+            "const": true,
+            "span": {
+              "line": 31,
+              "column": 18
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "MustRelease.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 33,
+            "column": 5
+          }
+        },
+        {
+          "id": "MustRelease.02",
+          "kind": "call",
+          "detail": "ReleaseRequested",
+          "source_span": {
+            "line": 33,
+            "column": 12
+          }
+        },
+        {
+          "id": "MustRelease.03",
+          "kind": "name",
+          "detail": "context",
+          "source_span": {
+            "line": 33,
+            "column": 29
+          }
+        }
+      ],
+      "source_span": {
+        "line": 31,
+        "column": 6
+      }
+    },
+    {
+      "name": "OutcomeCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 100,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "outcome",
+          "type": {
+            "name": "AutomataDispatchOutcome",
+            "kind": "enum",
+            "span": {
+              "line": 100,
+              "column": 17
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "OutcomeCode.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 102,
+            "column": 5
+          }
+        },
+        {
+          "id": "OutcomeCode.02",
+          "kind": "match_expr",
+          "detail": "5 arms",
+          "source_span": {
+            "line": 102,
+            "column": 12
+          }
+        },
+        {
+          "id": "OutcomeCode.03",
+          "kind": "name",
+          "detail": "outcome",
+          "source_span": {
+            "line": 102,
+            "column": 19
+          }
+        },
+        {
+          "id": "OutcomeCode.04",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Transitioned",
+          "source_span": {
+            "line": 103,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.05",
+          "kind": "literal",
+          "detail": "1",
+          "source_span": {
+            "line": 103,
+            "column": 50
+          }
+        },
+        {
+          "id": "OutcomeCode.06",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Unhandled",
+          "source_span": {
+            "line": 104,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.07",
+          "kind": "literal",
+          "detail": "2",
+          "source_span": {
+            "line": 104,
+            "column": 47
+          }
+        },
+        {
+          "id": "OutcomeCode.08",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Ambiguous",
+          "source_span": {
+            "line": 105,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.09",
+          "kind": "literal",
+          "detail": "5",
+          "source_span": {
+            "line": 105,
+            "column": 47
+          }
+        },
+        {
+          "id": "OutcomeCode.10",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Finished",
+          "source_span": {
+            "line": 106,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.11",
+          "kind": "literal",
+          "detail": "3",
+          "source_span": {
+            "line": 106,
+            "column": 46
+          }
+        },
+        {
+          "id": "OutcomeCode.12",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::AlreadyFinished",
+          "source_span": {
+            "line": 107,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.13",
+          "kind": "literal",
+          "detail": "4",
+          "source_span": {
+            "line": 107,
+            "column": 53
+          }
+        }
+      ],
+      "source_span": {
+        "line": 100,
+        "column": 5
+      }
+    },
+    {
+      "name": "UniqueGuardSelectionCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 111,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "span": {
+              "line": 111,
+              "column": 30
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "UniqueGuardSelectionCode.01",
+          "kind": "instance_decl",
+          "detail": "GuardedLifecycle lifecycle",
+          "source_span": {
+            "line": 113,
+            "column": 5
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.02",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "a",
+          "source_span": {
+            "line": 114,
+            "column": 29
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 114,
+            "column": 33
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.04",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 114,
+            "column": 53
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.05",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "b",
+          "source_span": {
+            "line": 115,
+            "column": 29
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 115,
+            "column": 33
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.07",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Stop",
+          "source_span": {
+            "line": 115,
+            "column": 53
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.08",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 116,
+            "column": 5
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.09",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 116,
+            "column": 32
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.10",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 116,
+            "column": 27
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.11",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 116,
+            "column": 12
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.12",
+          "kind": "name",
+          "detail": "a",
+          "source_span": {
+            "line": 116,
+            "column": 24
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.13",
+          "kind": "literal",
+          "detail": "10",
+          "source_span": {
+            "line": 116,
+            "column": 29
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.14",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 116,
+            "column": 34
+          }
+        },
+        {
+          "id": "UniqueGuardSelectionCode.15",
+          "kind": "name",
+          "detail": "b",
+          "source_span": {
+            "line": 116,
+            "column": 46
+          }
+        }
+      ],
+      "source_span": {
+        "line": 111,
+        "column": 5
+      }
+    },
+    {
+      "name": "FallbackSelectionCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 119,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "span": {
+              "line": 119,
+              "column": 27
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "FallbackSelectionCode.01",
+          "kind": "instance_decl",
+          "detail": "GuardedLifecycle lifecycle",
+          "source_span": {
+            "line": 121,
+            "column": 5
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.02",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "a",
+          "source_span": {
+            "line": 122,
+            "column": 29
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 122,
+            "column": 33
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.04",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 122,
+            "column": 53
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.05",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "b",
+          "source_span": {
+            "line": 123,
+            "column": 29
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 123,
+            "column": 33
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.07",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Resolve",
+          "source_span": {
+            "line": 123,
+            "column": 53
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.08",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "c",
+          "source_span": {
+            "line": 124,
+            "column": 29
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.09",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 124,
+            "column": 33
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.10",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Stop",
+          "source_span": {
+            "line": 124,
+            "column": 53
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.11",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 125,
+            "column": 5
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.12",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 126,
+            "column": 29
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.13",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 125,
+            "column": 33
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.14",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 125,
+            "column": 27
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.15",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 125,
+            "column": 12
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.16",
+          "kind": "name",
+          "detail": "a",
+          "source_span": {
+            "line": 125,
+            "column": 24
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.17",
+          "kind": "literal",
+          "detail": "100",
+          "source_span": {
+            "line": 125,
+            "column": 29
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.18",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 126,
+            "column": 24
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.19",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 126,
+            "column": 9
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.20",
+          "kind": "name",
+          "detail": "b",
+          "source_span": {
+            "line": 126,
+            "column": 21
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.21",
+          "kind": "literal",
+          "detail": "10",
+          "source_span": {
+            "line": 126,
+            "column": 26
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.22",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 127,
+            "column": 9
+          }
+        },
+        {
+          "id": "FallbackSelectionCode.23",
+          "kind": "name",
+          "detail": "c",
+          "source_span": {
+            "line": 127,
+            "column": 21
+          }
+        }
+      ],
+      "source_span": {
+        "line": 119,
+        "column": 5
+      }
+    },
+    {
+      "name": "GuardedUnhandledPreservesStateCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 130,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "span": {
+              "line": 130,
+              "column": 40
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "GuardedUnhandledPreservesStateCode.01",
+          "kind": "instance_decl",
+          "detail": "GuardedLifecycle lifecycle",
+          "source_span": {
+            "line": 132,
+            "column": 5
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.02",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "a",
+          "source_span": {
+            "line": 133,
+            "column": 29
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 133,
+            "column": 33
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.04",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Resolve",
+          "source_span": {
+            "line": 133,
+            "column": 53
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.05",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "b",
+          "source_span": {
+            "line": 134,
+            "column": 29
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 134,
+            "column": 33
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.07",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 134,
+            "column": 53
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.08",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "c",
+          "source_span": {
+            "line": 135,
+            "column": 29
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.09",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 135,
+            "column": 33
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.10",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Resolve",
+          "source_span": {
+            "line": 135,
+            "column": 53
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.11",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "d",
+          "source_span": {
+            "line": 136,
+            "column": 29
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.12",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 136,
+            "column": 33
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.13",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Stop",
+          "source_span": {
+            "line": 136,
+            "column": 53
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.14",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 137,
+            "column": 5
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.15",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 139,
+            "column": 29
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.16",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 138,
+            "column": 30
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.17",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 137,
+            "column": 34
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.18",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 137,
+            "column": 27
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.19",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 137,
+            "column": 12
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.20",
+          "kind": "name",
+          "detail": "a",
+          "source_span": {
+            "line": 137,
+            "column": 24
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.21",
+          "kind": "literal",
+          "detail": "1000",
+          "source_span": {
+            "line": 137,
+            "column": 29
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.22",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 138,
+            "column": 24
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.23",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 138,
+            "column": 9
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.24",
+          "kind": "name",
+          "detail": "b",
+          "source_span": {
+            "line": 138,
+            "column": 21
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.25",
+          "kind": "literal",
+          "detail": "100",
+          "source_span": {
+            "line": 138,
+            "column": 26
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.26",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 139,
+            "column": 24
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.27",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 139,
+            "column": 9
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.28",
+          "kind": "name",
+          "detail": "c",
+          "source_span": {
+            "line": 139,
+            "column": 21
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.29",
+          "kind": "literal",
+          "detail": "10",
+          "source_span": {
+            "line": 139,
+            "column": 26
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.30",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 140,
+            "column": 9
+          }
+        },
+        {
+          "id": "GuardedUnhandledPreservesStateCode.31",
+          "kind": "name",
+          "detail": "d",
+          "source_span": {
+            "line": 140,
+            "column": 21
+          }
+        }
+      ],
+      "source_span": {
+        "line": 130,
+        "column": 5
+      }
+    },
+    {
+      "name": "AmbiguousPreservesStateCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 143,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "span": {
+              "line": 143,
+              "column": 33
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "AmbiguousPreservesStateCode.01",
+          "kind": "instance_decl",
+          "detail": "GuardedLifecycle lifecycle",
+          "source_span": {
+            "line": 145,
+            "column": 5
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.02",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "a",
+          "source_span": {
+            "line": 146,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 146,
+            "column": 33
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.04",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 146,
+            "column": 53
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.05",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "b",
+          "source_span": {
+            "line": 147,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 147,
+            "column": 33
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.07",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Resolve",
+          "source_span": {
+            "line": 147,
+            "column": 53
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.08",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "c",
+          "source_span": {
+            "line": 148,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.09",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 148,
+            "column": 33
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.10",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 148,
+            "column": 53
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.11",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "d",
+          "source_span": {
+            "line": 149,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.12",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 149,
+            "column": 33
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.13",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Resolve",
+          "source_span": {
+            "line": 149,
+            "column": 53
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.14",
+          "kind": "var_decl",
+          "type": "AutomataDispatchOutcome",
+          "detail": "e",
+          "source_span": {
+            "line": 150,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.15",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 150,
+            "column": 33
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.16",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Stop",
+          "source_span": {
+            "line": 150,
+            "column": 53
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.17",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 151,
+            "column": 5
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.18",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 154,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.19",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 153,
+            "column": 30
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.20",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 152,
+            "column": 31
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.21",
+          "kind": "binary",
+          "detail": "+",
+          "source_span": {
+            "line": 151,
+            "column": 35
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.22",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 151,
+            "column": 27
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.23",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 151,
+            "column": 12
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.24",
+          "kind": "name",
+          "detail": "a",
+          "source_span": {
+            "line": 151,
+            "column": 24
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.25",
+          "kind": "literal",
+          "detail": "10000",
+          "source_span": {
+            "line": 151,
+            "column": 29
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.26",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 152,
+            "column": 24
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.27",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 152,
+            "column": 9
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.28",
+          "kind": "name",
+          "detail": "b",
+          "source_span": {
+            "line": 152,
+            "column": 21
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.29",
+          "kind": "literal",
+          "detail": "1000",
+          "source_span": {
+            "line": 152,
+            "column": 26
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.30",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 153,
+            "column": 24
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.31",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 153,
+            "column": 9
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.32",
+          "kind": "name",
+          "detail": "c",
+          "source_span": {
+            "line": 153,
+            "column": 21
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.33",
+          "kind": "literal",
+          "detail": "100",
+          "source_span": {
+            "line": 153,
+            "column": 26
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.34",
+          "kind": "binary",
+          "detail": "*",
+          "source_span": {
+            "line": 154,
+            "column": 24
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.35",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 154,
+            "column": 9
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.36",
+          "kind": "name",
+          "detail": "d",
+          "source_span": {
+            "line": 154,
+            "column": 21
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.37",
+          "kind": "literal",
+          "detail": "10",
+          "source_span": {
+            "line": 154,
+            "column": 26
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.38",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 155,
+            "column": 9
+          }
+        },
+        {
+          "id": "AmbiguousPreservesStateCode.39",
+          "kind": "name",
+          "detail": "e",
+          "source_span": {
+            "line": 155,
+            "column": 21
+          }
+        }
+      ],
+      "source_span": {
+        "line": 143,
+        "column": 5
+      }
+    },
+    {
+      "name": "AlreadyFinishedSkipsGuardSelectionCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 158,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "LifecycleContext",
+            "kind": "struct",
+            "span": {
+              "line": 158,
+              "column": 44
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.01",
+          "kind": "instance_decl",
+          "detail": "GuardedLifecycle lifecycle",
+          "source_span": {
+            "line": 160,
+            "column": 5
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.02",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 161,
+            "column": 5
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.03",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 161,
+            "column": 5
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.04",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 161,
+            "column": 25
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.05",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 162,
+            "column": 5
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.06",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 162,
+            "column": 5
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.07",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Stop",
+          "source_span": {
+            "line": 162,
+            "column": 25
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.08",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 163,
+            "column": 5
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.09",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 163,
+            "column": 12
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.10",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 163,
+            "column": 24
+          }
+        },
+        {
+          "id": "AlreadyFinishedSkipsGuardSelectionCode.11",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Submit",
+          "source_span": {
+            "line": 163,
+            "column": 44
+          }
+        }
+      ],
+      "source_span": {
+        "line": 158,
+        "column": 5
+      }
+    },
+    {
+      "name": "ContextlessCompatibilityCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 166,
+          "column": 1
+        }
+      },
+      "operations": [
+        {
+          "id": "ContextlessCompatibilityCode.01",
+          "kind": "instance_decl",
+          "detail": "ImmediateLifecycle lifecycle",
+          "source_span": {
+            "line": 168,
+            "column": 5
+          }
+        },
+        {
+          "id": "ContextlessCompatibilityCode.02",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 169,
+            "column": 5
+          }
+        },
+        {
+          "id": "ContextlessCompatibilityCode.03",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 169,
+            "column": 12
+          }
+        },
+        {
+          "id": "ContextlessCompatibilityCode.04",
+          "kind": "dispatch",
+          "detail": "lifecycle",
+          "source_span": {
+            "line": 169,
+            "column": 24
+          }
+        },
+        {
+          "id": "ContextlessCompatibilityCode.05",
+          "kind": "enum_construct",
+          "detail": "LifecycleSignal::Stop",
+          "source_span": {
+            "line": 169,
+            "column": 44
+          }
+        }
+      ],
+      "source_span": {
+        "line": 166,
+        "column": 5
+      }
+    }
+  ],
+  "schema": "concept-vulkan-evt1-source-map.v1",
+  "source": "examples/Concept-Vulkan/evt1_dragongod_m2_language.concept",
+  "static_asserts": null,
+  "structs": [
+    {
+      "name": "LifecycleContext",
+      "c_name": "concept_vulkan_lifecycle_context",
+      "immovable": false,
+      "copyable": true,
+      "fields": [
+        {
+          "name": "queueAvailable",
+          "type": {
+            "name": "bool",
+            "kind": "builtin",
+            "span": {
+              "line": 12,
+              "column": 5
+            }
+          }
+        },
+        {
+          "name": "releaseRequested",
+          "type": {
+            "name": "bool",
+            "kind": "builtin",
+            "span": {
+              "line": 13,
+              "column": 5
+            }
+          }
+        }
+      ],
+      "source_span": {
+        "line": 10,
+        "column": 1
+      }
+    }
+  ],
+  "templates": null
+}

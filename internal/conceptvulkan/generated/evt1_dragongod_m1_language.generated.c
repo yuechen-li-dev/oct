@@ -93,6 +93,13 @@ static concept_vulkan_automata_dispatch_outcome concept_vulkan_automata_dispatch
   return out;
 }
 
+static concept_vulkan_automata_dispatch_outcome concept_vulkan_automata_dispatch_outcome_make_ambiguous() {
+  concept_vulkan_automata_dispatch_outcome out;
+  out.tag = CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_AMBIGUOUS;
+  out.payload.none.unused = 0u;
+  return out;
+}
+
 static concept_vulkan_automata_dispatch_outcome concept_vulkan_automata_dispatch_outcome_make_finished() {
   concept_vulkan_automata_dispatch_outcome out;
   out.tag = CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_FINISHED;
@@ -574,6 +581,11 @@ int concept_vulkan_evt1_dragongod_m1_language_outcome_code(concept_vulkan_automa
   case CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_UNHANDLED:
     {
       cv_match_result_02 = 2;
+      break;
+    }
+  case CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_AMBIGUOUS:
+    {
+      cv_match_result_02 = 5;
       break;
     }
   case CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_FINISHED:

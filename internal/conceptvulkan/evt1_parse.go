@@ -114,7 +114,7 @@ func lexEVT1(text string) ([]Token, error) {
 			tokens = append(tokens, Token{Lexeme: "=>", Span: start})
 			i += 2
 			column += 2
-		case strings.ContainsRune("(){}[];,.*+-=<>!", rune(c)):
+		case strings.ContainsRune("(){}[];,:.*+-=<>!", rune(c)):
 			tokens = append(tokens, Token{Lexeme: string(c), Span: start})
 			i++
 			column++
@@ -250,13 +250,36 @@ func (p *evt1Parser) parseAutomataDecl() (EVT1AutomataDecl, error) {
 	if err != nil {
 		return EVT1AutomataDecl{}, err
 	}
+	var context *EVT1Field
+	if p.peekLexeme() == "," {
+		p.next()
+		if p.peekLexeme() != "borrow" {
+			return EVT1AutomataDecl{}, evt1Diagnostic("CV4276", "automata context parameter must use `borrow name: Type`", p.currentSpan())
+		}
+		p.next()
+		nameTok, err := p.expectIdentifier("CV4277", "expected automata context binding name")
+		if err != nil {
+			return EVT1AutomataDecl{}, err
+		}
+		if _, err := p.expect(":"); err != nil {
+			return EVT1AutomataDecl{}, err
+		}
+		contextType, err := p.parseType("")
+		if err != nil {
+			return EVT1AutomataDecl{}, err
+		}
+		context = &EVT1Field{Name: nameTok.Lexeme, Type: contextType, Span: nameTok.Span}
+		if p.peekLexeme() == "," {
+			return EVT1AutomataDecl{}, evt1Diagnostic("CV4278", "automata declarations admit at most one borrowed context parameter", p.currentSpan())
+		}
+	}
 	if _, err := p.expect(")"); err != nil {
 		return EVT1AutomataDecl{}, err
 	}
 	if _, err := p.expect("{"); err != nil {
 		return EVT1AutomataDecl{}, err
 	}
-	decl := EVT1AutomataDecl{Name: nameTok.Lexeme, SignalType: signalType, Span: start.Span}
+	decl := EVT1AutomataDecl{Name: nameTok.Lexeme, SignalType: signalType, Context: context, Span: start.Span}
 	for !p.done() && p.peekLexeme() != "}" {
 		machine, err := p.parseMachineDecl()
 		if err != nil {
@@ -364,37 +387,63 @@ func (p *evt1Parser) parseAutomataHandler() (EVT1TransitionDecl, error) {
 	}
 	handler := EVT1TransitionDecl{Signal: signal, Span: start.Span}
 	switch p.peekLexeme() {
-	case "goto":
+	case "when":
 		p.next()
-		target, err := p.parseStateRef()
+		guard, err := p.parseExpr()
 		if err != nil {
 			return EVT1TransitionDecl{}, err
 		}
-		handler.Kind = EVT1TransitionGoto
-		handler.TargetState = target
-	case "push":
+		handler.Guard = guard
+		if _, err := p.expect("=>"); err != nil {
+			return EVT1TransitionDecl{}, evt1Diagnostic("CV4279", "guarded handlers require `=>` before the control action", p.currentSpan())
+		}
+	case "otherwise":
 		p.next()
-		machineTok, err := p.expectIdentifier("CV4255", "expected pushed machine name")
-		if err != nil {
-			return EVT1TransitionDecl{}, err
+		handler.Otherwise = true
+		if _, err := p.expect("=>"); err != nil {
+			return EVT1TransitionDecl{}, evt1Diagnostic("CV4280", "fallback handlers require `=>` before the control action", p.currentSpan())
 		}
-		if _, err := p.expect("goto"); err != nil {
-			return EVT1TransitionDecl{}, err
-		}
-		continuation, err := p.parseStateRef()
-		if err != nil {
-			return EVT1TransitionDecl{}, err
-		}
-		handler.Kind = EVT1TransitionPush
-		handler.PushMachine = machineTok.Lexeme
-		handler.Continuation = continuation
-	default:
-		return EVT1TransitionDecl{}, evt1Diagnostic("CV4264", "state handlers require `goto` or `push ... goto ...`", p.currentSpan())
+	}
+	if err := p.parseAutomataControlAction(&handler); err != nil {
+		return EVT1TransitionDecl{}, err
 	}
 	if _, err := p.expect(";"); err != nil {
 		return EVT1TransitionDecl{}, err
 	}
 	return handler, nil
+}
+
+func (p *evt1Parser) parseAutomataControlAction(handler *EVT1TransitionDecl) error {
+	switch p.peekLexeme() {
+	case "goto":
+		p.next()
+		target, err := p.parseStateRef()
+		if err != nil {
+			return err
+		}
+		handler.Kind = EVT1TransitionGoto
+		handler.TargetState = target
+		return nil
+	case "push":
+		p.next()
+		machineTok, err := p.expectIdentifier("CV4255", "expected pushed machine name")
+		if err != nil {
+			return err
+		}
+		if _, err := p.expect("goto"); err != nil {
+			return err
+		}
+		continuation, err := p.parseStateRef()
+		if err != nil {
+			return err
+		}
+		handler.Kind = EVT1TransitionPush
+		handler.PushMachine = machineTok.Lexeme
+		handler.Continuation = continuation
+		return nil
+	default:
+		return evt1Diagnostic("CV4264", "state handlers require `goto` or `push ... goto ...`", p.currentSpan())
+	}
 }
 
 func (p *evt1Parser) parseAutomataCompletion() (EVT1CompletionDecl, error) {
@@ -1009,10 +1058,21 @@ func (p *evt1Parser) parseInstanceDecl() (EVT1Statement, error) {
 	if err != nil {
 		return nil, err
 	}
+	var context EVT1Expr
+	if p.peekLexeme() == "(" {
+		p.next()
+		context, err = p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := p.expect(")"); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := p.expect(";"); err != nil {
 		return nil, err
 	}
-	return &EVT1InstanceDecl{AutomataName: automataTok.Lexeme, Name: nameTok.Lexeme, Span: start.Span}, nil
+	return &EVT1InstanceDecl{AutomataName: automataTok.Lexeme, Name: nameTok.Lexeme, Context: context, Span: start.Span}, nil
 }
 
 func (p *evt1Parser) parseLocalComptimeDecl() (EVT1Statement, error) {

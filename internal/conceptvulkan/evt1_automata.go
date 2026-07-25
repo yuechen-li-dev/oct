@@ -10,6 +10,7 @@ const (
 	evt1AutomataMaxMachinesPerDecl    = 16
 	evt1AutomataMaxStatesPerMachine   = 32
 	evt1AutomataMaxHandlersPerState   = 16
+	evt1AutomataMaxCandidatesPerSignalGroup = 16
 	evt1AutomataMaxStatesPerDecl      = 128
 	evt1AutomataMaxTransitionsPerDecl = 256
 	evt1AutomataMaxPushDepth          = 8
@@ -37,6 +38,8 @@ const (
 
 type EVT1TransitionDecl struct {
 	Signal        EVT1QualifiedEnumMember `json:"signal"`
+	Guard         EVT1Expr                `json:"guard,omitempty"`
+	Otherwise     bool                    `json:"otherwise,omitempty"`
 	Kind          EVT1TransitionKind      `json:"kind"`
 	TargetState   EVT1StateRef            `json:"target_state,omitempty"`
 	PushMachine   string                  `json:"push_machine,omitempty"`
@@ -68,6 +71,7 @@ type EVT1MachineDecl struct {
 type EVT1AutomataDecl struct {
 	Name       string          `json:"name"`
 	SignalType EVT1Type        `json:"signal_type"`
+	Context    *EVT1Field      `json:"context,omitempty"`
 	Machines   []EVT1MachineDecl `json:"machines,omitempty"`
 	Span       Span            `json:"span"`
 }
@@ -92,6 +96,8 @@ type evt1AutomataInfo struct {
 type EVT1MIRAutomata struct {
 	Name            string               `json:"name"`
 	SignalEnum      string               `json:"signal_enum"`
+	ContextName     string               `json:"context_name,omitempty"`
+	ContextType     *EVT1Type            `json:"context_type,omitempty"`
 	RootMachine     string               `json:"root_machine"`
 	MaxActiveDepth  int                  `json:"max_active_depth"`
 	ContinuationCapacity int             `json:"continuation_capacity"`
@@ -123,6 +129,8 @@ type EVT1MIRState struct {
 
 type EVT1MIRTransition struct {
 	Signal            string `json:"signal"`
+	Guard             string `json:"guard,omitempty"`
+	Otherwise         bool   `json:"otherwise,omitempty"`
 	Kind              string `json:"kind"`
 	TargetState       string `json:"target_state,omitempty"`
 	PushMachine       string `json:"push_machine,omitempty"`
@@ -157,6 +165,24 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 	signalType, err := evt1ResolveType(env, nil, decl.SignalType)
 	if err != nil {
 		return nil, err
+	}
+	if decl.Context != nil {
+		if decl.Context.Type.Ownership != "" || decl.Context.Type.Const || decl.Context.Type.Imported || decl.Context.Type.Unsafe || decl.Context.Type.PointerTo != nil || decl.Context.Type.ArrayElem != nil || len(decl.Context.Type.TypeArgs) > 0 {
+			return nil, evt1Diagnostic("CV4281", fmt.Sprintf("automata %s context %s must use one exact plain runtime type, got %s", decl.Name, decl.Context.Name, decl.Context.Type.String()), decl.Context.Span)
+		}
+		if err := validateKnownType(env, decl.Context.Type, decl.Context.Span, "", false); err != nil {
+			return nil, err
+		}
+		contextType, err := evt1ResolveType(env, nil, decl.Context.Type)
+		if err != nil {
+			return nil, err
+		}
+		if !evt1RuntimeTypeSafe(env, contextType) {
+			return nil, evt1Diagnostic("CV4282", fmt.Sprintf("automata %s context %s must use a legal runtime type, got %s", decl.Name, decl.Context.Name, contextType.String()), decl.Context.Span)
+		}
+		context := *decl.Context
+		context.Type = contextType
+		decl.Context = &context
 	}
 	if signalType.Kind != EVT1TypeEnum {
 		return nil, evt1Diagnostic("CV4241", fmt.Sprintf("automata %s signal type must name an enum, got %s", decl.Name, signalType.String()), decl.SignalType.Span)
@@ -232,13 +258,7 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 				return nil, evt1Diagnostic("CV4265", fmt.Sprintf("state %s in machine %s handler count %d exceeds limit %d", state.Name, machine.Name, len(state.Handlers), evt1AutomataMaxHandlersPerState), state.Span)
 			}
 			totalTransitions += len(state.Handlers)
-			seenSignals := map[string]Span{}
 			for _, handler := range state.Handlers {
-				key := handler.Signal.EnumName + "::" + handler.Signal.MemberName
-				if other, exists := seenSignals[key]; exists {
-					return nil, evt1Diagnostic("CV4253", fmt.Sprintf("duplicate transition for (%s, %s, %s)", machine.Name, state.Name, key), other)
-				}
-				seenSignals[key] = handler.Signal.Span
 				if handler.Signal.EnumName != signalType.Name {
 					return nil, evt1Diagnostic("CV4252", fmt.Sprintf("state handler in %s::%s must use signal enum %s, got %s", machine.Name, state.Name, signalType.Name, handler.Signal.EnumName), handler.Signal.Span)
 				}
@@ -249,6 +269,9 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 				if len(variant.Payload) > 0 {
 					return nil, evt1Diagnostic("CV4252", fmt.Sprintf("signal handler %s::%s must use a nullary enum member in M0", handler.Signal.EnumName, handler.Signal.MemberName), handler.Signal.Span)
 				}
+			}
+			if err := evt1ValidateAutomataCandidateGroups(env, info, machine, state); err != nil {
+				return nil, err
 			}
 		}
 		if initialStates != 1 {
@@ -529,6 +552,12 @@ func evt1AutomataGraphIdentity(info *evt1AutomataInfo) string {
 	b.WriteString(info.Decl.Name)
 	b.WriteString("|")
 	b.WriteString(info.SignalEnum.Name)
+	if info.Decl.Context != nil {
+		b.WriteString("|context:")
+		b.WriteString(info.Decl.Context.Name)
+		b.WriteString(":")
+		b.WriteString(info.Decl.Context.Type.String())
+	}
 	b.WriteString("|")
 	b.WriteString(info.RootMachine)
 	b.WriteString("|")
@@ -553,6 +582,13 @@ func evt1AutomataGraphIdentity(info *evt1AutomataInfo) string {
 				b.WriteString(handler.Signal.EnumName)
 				b.WriteString("::")
 				b.WriteString(handler.Signal.MemberName)
+				if handler.Guard != nil {
+					b.WriteString(":when:")
+					b.WriteString(evt1ExprIdentity(handler.Guard))
+				}
+				if handler.Otherwise {
+					b.WriteString(":otherwise")
+				}
 				b.WriteString(":")
 				b.WriteString(string(handler.Kind))
 				switch handler.Kind {
@@ -581,4 +617,58 @@ func evt1AutomataGraphIdentity(info *evt1AutomataInfo) string {
 		}
 	}
 	return digest([]byte(b.String()))
+}
+
+func evt1ValidateAutomataCandidateGroups(env *evt1Env, info *evt1AutomataInfo, machine EVT1MachineDecl, state EVT1StateDecl) error {
+	groups := map[string][]EVT1TransitionDecl{}
+	var order []string
+	for _, handler := range state.Handlers {
+		key := handler.Signal.EnumName + "::" + handler.Signal.MemberName
+		if _, ok := groups[key]; !ok {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], handler)
+	}
+	for _, key := range order {
+		candidates := groups[key]
+		if len(candidates) > evt1AutomataMaxCandidatesPerSignalGroup {
+			return evt1Diagnostic("CV4286", fmt.Sprintf("candidate group (%s, %s, %s) count %d exceeds limit %d", machine.Name, state.Name, key, len(candidates), evt1AutomataMaxCandidatesPerSignalGroup), candidates[evt1AutomataMaxCandidatesPerSignalGroup].Span)
+		}
+		ordinary := 0
+		guarded := 0
+		fallback := 0
+		for i, candidate := range candidates {
+			if candidate.Otherwise {
+				fallback++
+				if i != len(candidates)-1 {
+					return evt1Diagnostic("CV4288", fmt.Sprintf("otherwise for (%s, %s, %s) must be the final candidate in its group", machine.Name, state.Name, key), candidate.Span)
+				}
+				continue
+			}
+			if candidate.Guard == nil {
+				ordinary++
+				continue
+			}
+			guarded++
+			if err := evt1ValidateAutomataGuard(env, info, candidate.Guard); err != nil {
+				return err
+			}
+		}
+		if ordinary > 0 {
+			if ordinary > 1 {
+				return evt1Diagnostic("CV4253", fmt.Sprintf("duplicate transition for (%s, %s, %s)", machine.Name, state.Name, key), candidates[1].Span)
+			}
+			if guarded > 0 || fallback > 0 || len(candidates) != 1 {
+				return evt1Diagnostic("CV4287", fmt.Sprintf("ordinary unguarded handler for (%s, %s, %s) cannot coexist with guarded or fallback candidates", machine.Name, state.Name, key), candidates[0].Span)
+			}
+			continue
+		}
+		if fallback > 1 {
+			return evt1Diagnostic("CV4288", fmt.Sprintf("signal group (%s, %s, %s) cannot declare more than one otherwise fallback", machine.Name, state.Name, key), candidates[len(candidates)-1].Span)
+		}
+		if guarded == 0 && fallback == 1 {
+			return evt1Diagnostic("CV4289", fmt.Sprintf("signal group (%s, %s, %s) cannot use otherwise without at least one guarded candidate", machine.Name, state.Name, key), candidates[0].Span)
+		}
+	}
+	return nil
 }

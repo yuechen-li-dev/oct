@@ -6,23 +6,40 @@ import (
 )
 
 type evt1Scope struct {
-	parent *evt1Scope
-	values map[string]evt1ValueBinding
+	parent  *evt1Scope
+	values  map[string]evt1ValueBinding
+	borrows []evt1RetainedBorrow
 }
 
 type evt1ValueBinding struct {
-	t               EVT1Type
-	mutable         bool
-	comptime        bool
-	hasValue        bool
-	value           EVT1Value
+	t                EVT1Type
+	mutable          bool
+	comptime         bool
+	hasValue         bool
+	value            EVT1Value
 	instanceAutomata string
+}
+
+type evt1AccessPath struct {
+	Root   string
+	Fields []string
+	Span   Span
+}
+
+type evt1RetainedBorrow struct {
+	InstanceName string
+	AutomataName string
+	ContextName  string
+	Path         evt1AccessPath
+	Type         EVT1Type
+	Span         Span
 }
 
 type evt1LValue struct {
 	t          EVT1Type
 	mutable    bool
 	wholeValue bool
+	path       evt1AccessPath
 }
 
 func newEVT1Scope(parent *evt1Scope) *evt1Scope {
@@ -33,6 +50,10 @@ func (s *evt1Scope) declare(name string, binding evt1ValueBinding) {
 	s.values[name] = binding
 }
 
+func (s *evt1Scope) addBorrow(binding evt1RetainedBorrow) {
+	s.borrows = append(s.borrows, binding)
+}
+
 func (s *evt1Scope) lookup(name string) (evt1ValueBinding, bool) {
 	for scope := s; scope != nil; scope = scope.parent {
 		if t, ok := scope.values[name]; ok {
@@ -40,6 +61,14 @@ func (s *evt1Scope) lookup(name string) (evt1ValueBinding, bool) {
 		}
 	}
 	return evt1ValueBinding{}, false
+}
+
+func (s *evt1Scope) activeBorrows() []evt1RetainedBorrow {
+	var out []evt1RetainedBorrow
+	for scope := s; scope != nil; scope = scope.parent {
+		out = append(out, scope.borrows...)
+	}
+	return out
 }
 
 func (b evt1ValueBinding) isInstance() bool {
@@ -151,9 +180,6 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		}
 		env.comptimeFunctions[fn.Name] = fn
 	}
-	if err := evt1ValidateAutomataDecls(env, module); err != nil {
-		return nil, err
-	}
 	for _, structDecl := range module.Structs {
 		fields := map[string]EVT1Type{}
 		if len(structDecl.Fields) == 0 {
@@ -211,6 +237,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 				}
 			}
 		}
+	}
+	if err := evt1ValidateAutomataDecls(env, module); err != nil {
+		return nil, err
 	}
 	for _, conceptDecl := range module.Concepts {
 		for _, req := range conceptDecl.Requirements {
@@ -677,6 +706,36 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 			if !ok {
 				return evt1Diagnostic("CV4270", fmt.Sprintf("instance declaration requires an automata name, got %s", s.AutomataName), s.Span)
 			}
+			if info.Decl.Context != nil {
+				if s.Context == nil {
+					return evt1Diagnostic("CV4283", fmt.Sprintf("instance %s of automata %s requires a context argument", s.Name, s.AutomataName), s.Span)
+				}
+				contextType := info.Decl.Context.Type
+				argType, err := validateExpr(env, local, s.Context, templateInfo, false)
+				if err != nil {
+					return err
+				}
+				paramType := contextType
+				paramType.Ownership = "borrow"
+				paramType.Const = true
+				if err := validateCallArgument(env, local, paramType, s.Context, argType, templateInfo); err != nil {
+					return err
+				}
+				lvalue, err := validateAssignable(env, local, s.Context, templateInfo)
+				if err != nil {
+					return evt1Diagnostic("CV4285", fmt.Sprintf("context binding for instance %s requires an assignable access path", s.Name), s.Context.exprSpan())
+				}
+				local.addBorrow(evt1RetainedBorrow{
+					InstanceName: s.Name,
+					AutomataName: s.AutomataName,
+					ContextName:  info.Decl.Context.Name,
+					Path:         lvalue.path,
+					Type:         contextType,
+					Span:         s.Span,
+				})
+			} else if s.Context != nil {
+				return evt1Diagnostic("CV4284", fmt.Sprintf("contextless automata %s does not accept a context argument", s.AutomataName), s.Context.exprSpan())
+			}
 			local.declare(s.Name, evt1ValueBinding{
 				mutable:          true,
 				instanceAutomata: info.Decl.Name,
@@ -688,6 +747,9 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 			}
 			if !target.mutable {
 				return evt1Diagnostic("CV4128", "mutation through a const access path is not allowed", s.Target.exprSpan())
+			}
+			if borrow, ok := evt1FindOverlappingBorrow(local.activeBorrows(), target.path); ok {
+				return evt1Diagnostic("CV4291", fmt.Sprintf("assignment to %s overlaps retained immutable automata context for instance %s of %s", exprLabel(s.Target), borrow.InstanceName, borrow.AutomataName), s.Target.exprSpan())
 			}
 			valueType, err := validateExprAgainstExpected(env, local, s.Value, target.t, templateInfo, inComptimeFn)
 			if err != nil {
@@ -1388,7 +1450,15 @@ func validateAssignable(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateI
 		if binding.isInstance() {
 			return evt1LValue{}, evt1Diagnostic("CV4272", fmt.Sprintf("instance %s of automata %s cannot be assigned or copied as a value", e.Name, binding.instanceAutomata), e.Span)
 		}
-		return evt1LValue{t: evt1CanonicalType(env, binding.t), mutable: binding.mutable, wholeValue: true}, nil
+		return evt1LValue{
+			t:          evt1CanonicalType(env, binding.t),
+			mutable:    binding.mutable,
+			wholeValue: true,
+			path: evt1AccessPath{
+				Root: e.Name,
+				Span: e.Span,
+			},
+		}, nil
 	case *EVT1FieldExpr:
 		receiver, err := validateAssignable(env, scope, e.Receiver, templateInfo)
 		if err != nil {
@@ -1405,12 +1475,40 @@ func validateAssignable(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateI
 		if !ok {
 			return evt1LValue{}, evt1Diagnostic("CV4026", fmt.Sprintf("unknown field %s on %s", e.Field, baseName), e.Span)
 		}
-		return evt1LValue{t: evt1CanonicalType(env, fieldType), mutable: receiver.mutable, wholeValue: false}, nil
+		path := receiver.path
+		path.Fields = append(append([]string{}, receiver.path.Fields...), e.Field)
+		path.Span = e.Span
+		return evt1LValue{t: evt1CanonicalType(env, fieldType), mutable: receiver.mutable, wholeValue: false, path: path}, nil
 	case *EVT1IndexExpr:
 		return evt1LValue{}, evt1Diagnostic("CV4231", "fixed compile-time array elements are immutable in EVT1 M1B-D", expr.exprSpan())
 	default:
 		return evt1LValue{}, evt1Diagnostic("CV4127", "assignment requires a local or field access target", expr.exprSpan())
 	}
+}
+
+func evt1FindOverlappingBorrow(borrows []evt1RetainedBorrow, path evt1AccessPath) (evt1RetainedBorrow, bool) {
+	for _, borrow := range borrows {
+		if evt1AccessPathsOverlap(borrow.Path, path) {
+			return borrow, true
+		}
+	}
+	return evt1RetainedBorrow{}, false
+}
+
+func evt1AccessPathsOverlap(a, b evt1AccessPath) bool {
+	if a.Root == "" || b.Root == "" || a.Root != b.Root {
+		return false
+	}
+	shared := len(a.Fields)
+	if len(b.Fields) < shared {
+		shared = len(b.Fields)
+	}
+	for i := 0; i < shared; i++ {
+		if a.Fields[i] != b.Fields[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func evt1FieldSet(env *evt1Env, t EVT1Type) (map[string]EVT1Type, string, error) {
@@ -1607,6 +1705,376 @@ func validateWhileStmt(env *evt1Env, scope *evt1Scope, stmt EVT1WhileStmt, templ
 		}
 	}
 	return validateBlock(env, scope, EVT1Type{Name: "void", Kind: EVT1TypeBuiltin}, stmt.Body, templateInfo, inComptimeFn)
+}
+
+const (
+	evt1AutomataMaxGuardExprNodes      = 128
+	evt1AutomataMaxGuardCallDepth      = 8
+	evt1AutomataMaxGuardCallGraphNodes = 16
+	evt1AutomataMaxGuardCallGraphEdges = 32
+)
+
+type evt1GuardCheckState struct {
+	checked map[string]bool
+	visiting map[string]bool
+	nodes   int
+	edges   int
+}
+
+func evt1ValidateAutomataGuard(env *evt1Env, info *evt1AutomataInfo, expr EVT1Expr) error {
+	scope := evt1ModuleScope(env)
+	if info.Decl.Context != nil {
+		contextType := info.Decl.Context.Type
+		contextType.Ownership = "borrow"
+		contextType.Const = true
+		scope.declare(info.Decl.Context.Name, evt1ValueBinding{
+			t:        contextType,
+			mutable:  false,
+			comptime: false,
+		})
+	}
+	guardType, err := validateExpr(env, scope, expr, nil, false)
+	if err != nil {
+		return err
+	}
+	if guardType.Name != "bool" {
+		return evt1Diagnostic("CV4290", fmt.Sprintf("guard expression must have exact type bool, got %s", guardType.String()), expr.exprSpan())
+	}
+	if nodes := evt1GuardExprNodeCount(expr); nodes > evt1AutomataMaxGuardExprNodes {
+		return evt1Diagnostic("CV4297", fmt.Sprintf("guard expression node count %d exceeds limit %d", nodes, evt1AutomataMaxGuardExprNodes), expr.exprSpan())
+	}
+	state := &evt1GuardCheckState{
+		checked:  map[string]bool{},
+		visiting: map[string]bool{},
+	}
+	return evt1ValidateGuardExpr(env, scope, expr, state, 0)
+}
+
+func evt1ValidateGuardExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, state *evt1GuardCheckState, depth int) error {
+	switch e := expr.(type) {
+	case *EVT1NameExpr, *EVT1IntLiteral, *EVT1StringLiteral, *EVT1BoolLiteral:
+		return nil
+	case *EVT1FieldExpr:
+		return evt1ValidateGuardExpr(env, scope, e.Receiver, state, depth)
+	case *EVT1ParenExpr:
+		return evt1ValidateGuardExpr(env, scope, e.Value, state, depth)
+	case *EVT1UnaryExpr:
+		return evt1ValidateGuardExpr(env, scope, e.Value, state, depth)
+	case *EVT1BinaryExpr:
+		if err := evt1ValidateGuardExpr(env, scope, e.Left, state, depth); err != nil {
+			return err
+		}
+		return evt1ValidateGuardExpr(env, scope, e.Right, state, depth)
+	case *EVT1IfExpr:
+		if err := evt1ValidateGuardExpr(env, scope, e.Condition, state, depth); err != nil {
+			return err
+		}
+		if err := evt1ValidateGuardExpr(env, scope, e.Then, state, depth); err != nil {
+			return err
+		}
+		return evt1ValidateGuardExpr(env, scope, e.Else, state, depth)
+	case *EVT1MatchExpr:
+		if err := evt1ValidateGuardExpr(env, scope, e.Subject, state, depth); err != nil {
+			return err
+		}
+		for _, arm := range e.Arms {
+			if err := evt1ValidateGuardExpr(env, scope, arm.Value, state, depth); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *EVT1ConstructExpr:
+		for _, arg := range e.Args {
+			if err := evt1ValidateGuardExpr(env, scope, arg, state, depth); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *EVT1StructConstructExpr:
+		for _, arg := range e.Args {
+			if err := evt1ValidateGuardExpr(env, scope, arg, state, depth); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *EVT1ArrayLiteralExpr:
+		for _, element := range e.Elements {
+			if err := evt1ValidateGuardExpr(env, scope, element, state, depth); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *EVT1IndexExpr:
+		if err := evt1ValidateGuardExpr(env, scope, e.Base, state, depth); err != nil {
+			return err
+		}
+		return evt1ValidateGuardExpr(env, scope, e.Index, state, depth)
+	case *EVT1DispatchExpr:
+		return evt1Diagnostic("CV4292", "dispatch is not allowed in automata guards", e.Span)
+	case *EVT1TemplateCallExpr:
+		return evt1Diagnostic("CV4293", "template calls are not allowed in automata guards", e.Span)
+	case *EVT1CallExpr:
+		if e.Callee == "Len" {
+			for _, arg := range e.Args {
+				if err := evt1ValidateGuardExpr(env, scope, arg, state, depth); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		argTypes := make([]EVT1Type, 0, len(e.Args))
+		for _, arg := range e.Args {
+			if err := evt1ValidateGuardExpr(env, scope, arg, state, depth); err != nil {
+				return err
+			}
+			argType, err := validateExpr(env, scope, arg, nil, false)
+			if err != nil {
+				return err
+			}
+			argTypes = append(argTypes, argType)
+		}
+		fn, err := evt1ResolveOrdinaryCall(env, scope, e.Callee, e.Args, argTypes, nil, e.Span)
+		if err != nil {
+			return err
+		}
+		return evt1ValidateGuardFunction(env, fn, state, depth+1)
+	default:
+		return evt1Diagnostic("CV4294", "unsupported guard expression form", expr.exprSpan())
+	}
+}
+
+func evt1ValidateGuardFunction(env *evt1Env, fn EVT1FunctionDecl, state *evt1GuardCheckState, depth int) error {
+	if depth > evt1AutomataMaxGuardCallDepth {
+		return evt1Diagnostic("CV4298", fmt.Sprintf("guard call depth %d exceeds limit %d", depth, evt1AutomataMaxGuardCallDepth), fn.Span)
+	}
+	key := fn.Name + "|" + evt1FunctionParamSignature(fn)
+	if state.visiting[key] {
+		return evt1Diagnostic("CV4296", "recursive guard call graph is not allowed: "+key, fn.Span)
+	}
+	if state.checked[key] {
+		return nil
+	}
+	state.nodes++
+	if state.nodes > evt1AutomataMaxGuardCallGraphNodes {
+		return evt1Diagnostic("CV4298", fmt.Sprintf("guard call graph node count %d exceeds limit %d", state.nodes, evt1AutomataMaxGuardCallGraphNodes), fn.Span)
+	}
+	if fn.Body == nil {
+		return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s requires a local function body so purity can be verified", fn.Name), fn.Span)
+	}
+	if fn.ReturnType.Name == "void" {
+		return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s must return a runtime value", fn.Name), fn.Span)
+	}
+	for _, param := range fn.Params {
+		if param.Type.isOwned() {
+			return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s cannot take owned parameter %s", fn.Name, param.Type.String()), param.Span)
+		}
+		if param.Type.isBorrow() && !param.Type.Const {
+			return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s cannot take mutable borrow parameter %s", fn.Name, param.Type.String()), param.Span)
+		}
+		if param.Type.PointerTo != nil {
+			return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s cannot take pointer parameter %s", fn.Name, param.Type.String()), param.Span)
+		}
+		if !param.Type.isBorrowLike() && !evt1TypeCopyable(env, param.Type) {
+			return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s cannot take non-copyable parameter %s", fn.Name, param.Type.String()), param.Span)
+		}
+	}
+	state.visiting[key] = true
+	guardScope := newEVT1Scope(evt1ModuleScope(env))
+	for _, param := range fn.Params {
+		guardScope.declare(param.Name, evt1ValueBinding{
+			t:        evt1CanonicalType(env, param.Type),
+			mutable:  false,
+			comptime: false,
+		})
+	}
+	if err := evt1ValidateGuardFunctionBlock(env, guardScope, *fn.Body, fn, state, depth); err != nil {
+		delete(state.visiting, key)
+		return err
+	}
+	delete(state.visiting, key)
+	state.checked[key] = true
+	return nil
+}
+
+func evt1ValidateGuardFunctionBlock(env *evt1Env, scope *evt1Scope, block EVT1Block, fn EVT1FunctionDecl, state *evt1GuardCheckState, depth int) error {
+	for _, stmt := range block.Statements {
+		switch s := stmt.(type) {
+		case *EVT1VarDecl:
+			if s.Comptime {
+				return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s cannot use comptime locals", fn.Name), s.Span)
+			}
+			if _, err := validateExpr(env, scope, s.Value, nil, false); err != nil {
+				return err
+			}
+			if err := evt1ValidateGuardExpr(env, scope, s.Value, state, depth); err != nil {
+				return err
+			}
+			resolvedType, err := evt1ResolveType(env, scope, s.Type)
+			if err != nil {
+				return err
+			}
+			scope.declare(s.Name, evt1ValueBinding{t: evt1CanonicalType(env, resolvedType), mutable: false})
+		case *EVT1ReturnStmt:
+			if s.Value != nil {
+				if _, err := validateExpr(env, scope, s.Value, nil, false); err != nil {
+					return err
+				}
+				if err := evt1ValidateGuardExpr(env, scope, s.Value, state, depth); err != nil {
+					return err
+				}
+			}
+		case *EVT1ExprStmt:
+			if _, err := validateExpr(env, scope, s.Value, nil, false); err != nil {
+				return err
+			}
+			if err := evt1ValidateGuardExpr(env, scope, s.Value, state, depth); err != nil {
+				return err
+			}
+		case *EVT1Block:
+			child := newEVT1Scope(scope)
+			if err := evt1ValidateGuardFunctionBlock(env, child, *s, fn, state, depth); err != nil {
+				return err
+			}
+		default:
+			return evt1Diagnostic("CV4295", fmt.Sprintf("guard call target %s cannot use %s", fn.Name, evt1GuardStatementLabel(stmt)), stmt.statementSpan())
+		}
+	}
+	return nil
+}
+
+func evt1GuardStatementLabel(stmt EVT1Statement) string {
+	switch stmt.(type) {
+	case *EVT1AssignStmt:
+		return "assignment"
+	case *EVT1InstanceDecl:
+		return "instance declarations"
+	case *EVT1MatchStmt:
+		return "statement-form match"
+	case *EVT1WhileStmt:
+		return "while loops"
+	case *EVT1StaticAssertStmt:
+		return "static_assert"
+	default:
+		return "that statement form"
+	}
+}
+
+func evt1GuardExprNodeCount(expr EVT1Expr) int {
+	count := 1
+	switch e := expr.(type) {
+	case *EVT1FieldExpr:
+		count += evt1GuardExprNodeCount(e.Receiver)
+	case *EVT1CallExpr:
+		for _, arg := range e.Args {
+			count += evt1GuardExprNodeCount(arg)
+		}
+	case *EVT1DispatchExpr:
+		count += evt1GuardExprNodeCount(e.Signal)
+	case *EVT1TemplateCallExpr:
+		for _, arg := range e.Args {
+			count += evt1GuardExprNodeCount(arg)
+		}
+	case *EVT1BinaryExpr:
+		count += evt1GuardExprNodeCount(e.Left)
+		count += evt1GuardExprNodeCount(e.Right)
+	case *EVT1UnaryExpr:
+		count += evt1GuardExprNodeCount(e.Value)
+	case *EVT1ConstructExpr:
+		for _, arg := range e.Args {
+			count += evt1GuardExprNodeCount(arg)
+		}
+	case *EVT1StructConstructExpr:
+		for _, arg := range e.Args {
+			count += evt1GuardExprNodeCount(arg)
+		}
+	case *EVT1ArrayLiteralExpr:
+		for _, element := range e.Elements {
+			count += evt1GuardExprNodeCount(element)
+		}
+	case *EVT1IndexExpr:
+		count += evt1GuardExprNodeCount(e.Base)
+		count += evt1GuardExprNodeCount(e.Index)
+	case *EVT1MatchExpr:
+		count += evt1GuardExprNodeCount(e.Subject)
+		for _, arm := range e.Arms {
+			count += evt1GuardExprNodeCount(arm.Value)
+		}
+	case *EVT1IfExpr:
+		count += evt1GuardExprNodeCount(e.Condition)
+		count += evt1GuardExprNodeCount(e.Then)
+		count += evt1GuardExprNodeCount(e.Else)
+	case *EVT1ParenExpr:
+		count += evt1GuardExprNodeCount(e.Value)
+	}
+	return count
+}
+
+func evt1ExprIdentity(expr EVT1Expr) string {
+	switch e := expr.(type) {
+	case *EVT1NameExpr:
+		return e.Name
+	case *EVT1IntLiteral:
+		return fmt.Sprintf("%d", e.Value)
+	case *EVT1StringLiteral:
+		return fmt.Sprintf("%q", e.Value)
+	case *EVT1BoolLiteral:
+		if e.Value {
+			return "true"
+		}
+		return "false"
+	case *EVT1FieldExpr:
+		return evt1ExprIdentity(e.Receiver) + "." + e.Field
+	case *EVT1CallExpr:
+		var args []string
+		for _, arg := range e.Args {
+			args = append(args, evt1ExprIdentity(arg))
+		}
+		return e.Callee + "(" + strings.Join(args, ",") + ")"
+	case *EVT1DispatchExpr:
+		return "dispatch(" + e.InstanceName + "," + evt1ExprIdentity(e.Signal) + ")"
+	case *EVT1TemplateCallExpr:
+		var args []string
+		for _, arg := range e.Args {
+			args = append(args, evt1ExprIdentity(arg))
+		}
+		return e.Callee + "<" + e.TypeArg.String() + ">(" + strings.Join(args, ",") + ")"
+	case *EVT1BinaryExpr:
+		return "(" + evt1ExprIdentity(e.Left) + " " + e.Op + " " + evt1ExprIdentity(e.Right) + ")"
+	case *EVT1UnaryExpr:
+		return "(" + e.Op + " " + evt1ExprIdentity(e.Value) + ")"
+	case *EVT1ConstructExpr:
+		var args []string
+		for _, arg := range e.Args {
+			args = append(args, evt1ExprIdentity(arg))
+		}
+		return e.EnumName + "::" + e.VariantName + "(" + strings.Join(args, ",") + ")"
+	case *EVT1StructConstructExpr:
+		var args []string
+		for _, arg := range e.Args {
+			args = append(args, evt1ExprIdentity(arg))
+		}
+		return e.StructName + "{" + strings.Join(args, ",") + "}"
+	case *EVT1ArrayLiteralExpr:
+		var parts []string
+		for _, element := range e.Elements {
+			parts = append(parts, evt1ExprIdentity(element))
+		}
+		return "[" + strings.Join(parts, ",") + "]"
+	case *EVT1IndexExpr:
+		return evt1ExprIdentity(e.Base) + "[" + evt1ExprIdentity(e.Index) + "]"
+	case *EVT1MatchExpr:
+		var arms []string
+		for _, arm := range e.Arms {
+			arms = append(arms, arm.Pattern.EnumName+"::"+arm.Pattern.VariantName+"=>"+evt1ExprIdentity(arm.Value))
+		}
+		return "match(" + evt1ExprIdentity(e.Subject) + "){" + strings.Join(arms, ",") + "}"
+	case *EVT1IfExpr:
+		return "if(" + evt1ExprIdentity(e.Condition) + ") " + evt1ExprIdentity(e.Then) + " else " + evt1ExprIdentity(e.Else)
+	case *EVT1ParenExpr:
+		return "(" + evt1ExprIdentity(e.Value) + ")"
+	default:
+		return "<expr>"
+	}
 }
 
 func validateValueLayoutCycles(env *evt1Env) error {

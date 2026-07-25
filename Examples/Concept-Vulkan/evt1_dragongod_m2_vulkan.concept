@@ -1,0 +1,117 @@
+profile Vulkan;
+
+enum ResourceSignal
+{
+    Submit,
+    Resolve,
+    Stop
+}
+
+struct BufferContext
+{
+    bool queueAvailable;
+    bool releaseRequested;
+};
+
+bool QueueOpen(borrow const BufferContext context)
+{
+    return context.queueAvailable;
+}
+
+bool ReleaseRequested(borrow const BufferContext context)
+{
+    return context.releaseRequested;
+}
+
+automata BufferLifecycle(
+    ResourceSignal,
+    borrow context: BufferContext)
+{
+    initial machine Main
+    {
+        initial state Idle
+        {
+            on ResourceSignal::Submit when QueueOpen(context) => goto Submitted;
+            on ResourceSignal::Submit when ReleaseRequested(context) => goto Released;
+            on ResourceSignal::Submit otherwise => goto Deferred;
+            on ResourceSignal::Resolve goto GuardOnly;
+        }
+
+        state GuardOnly
+        {
+            on ResourceSignal::Submit when QueueOpen(context) => goto Submitted;
+            on ResourceSignal::Submit when ReleaseRequested(context) => goto Released;
+            on ResourceSignal::Resolve goto Resolved;
+        }
+
+        state Deferred
+        {
+            on ResourceSignal::Resolve goto Resolved;
+        }
+
+        state Submitted
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Released
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Resolved
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Ambiguous => 5,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4
+    };
+}
+
+int VulkanFallbackTrace(BufferContext context, VkBuffer buffer)
+{
+    instance BufferLifecycle lifecycle(context);
+    AutomataDispatchOutcome a = dispatch(lifecycle, ResourceSignal::Submit);
+    AutomataDispatchOutcome b = dispatch(lifecycle, ResourceSignal::Resolve);
+    AutomataDispatchOutcome c = dispatch(lifecycle, ResourceSignal::Stop);
+    return OutcomeCode(a) * 100 +
+        OutcomeCode(b) * 10 +
+        OutcomeCode(c);
+}
+
+int VulkanAmbiguousTrace(BufferContext context, VkCommandPool pool)
+{
+    instance BufferLifecycle lifecycle(context);
+    AutomataDispatchOutcome a = dispatch(lifecycle, ResourceSignal::Submit);
+    AutomataDispatchOutcome b = dispatch(lifecycle, ResourceSignal::Resolve);
+    AutomataDispatchOutcome c = dispatch(lifecycle, ResourceSignal::Submit);
+    AutomataDispatchOutcome d = dispatch(lifecycle, ResourceSignal::Resolve);
+    AutomataDispatchOutcome e = dispatch(lifecycle, ResourceSignal::Stop);
+    return OutcomeCode(a) * 10000 +
+        OutcomeCode(b) * 1000 +
+        OutcomeCode(c) * 100 +
+        OutcomeCode(d) * 10 +
+        OutcomeCode(e);
+}
+
+AutomataDispatchOutcome BufferAlreadyFinishedOutcome(BufferContext context, VkBuffer buffer)
+{
+    instance BufferLifecycle lifecycle(context);
+    dispatch(lifecycle, ResourceSignal::Submit);
+    dispatch(lifecycle, ResourceSignal::Stop);
+    return dispatch(lifecycle, ResourceSignal::Submit);
+}

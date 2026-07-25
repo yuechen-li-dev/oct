@@ -288,6 +288,7 @@ func (s *EVT1VarDecl) statementSpan() Span { return s.Span }
 type EVT1InstanceDecl struct {
 	AutomataName string `json:"automata_name"`
 	Name         string `json:"name"`
+	Context      EVT1Expr `json:"context,omitempty"`
 	Span         Span   `json:"span"`
 }
 
@@ -692,8 +693,9 @@ func evt1BuiltinAutomataDispatchOutcomeEnum() EVT1EnumDecl {
 		Variants: []EVT1VariantDecl{
 			{Name: "Transitioned", Tag: 0},
 			{Name: "Unhandled", Tag: 1},
-			{Name: "Finished", Tag: 2},
-			{Name: "AlreadyFinished", Tag: 3},
+			{Name: "Ambiguous", Tag: 2},
+			{Name: "Finished", Tag: 3},
+			{Name: "AlreadyFinished", Tag: 4},
 		},
 	}
 }

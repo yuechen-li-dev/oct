@@ -36,6 +36,8 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 		"evt1_dragongod_m0_vulkan.concept",
 		"evt1_dragongod_m1_language.concept",
 		"evt1_dragongod_m1_vulkan.concept",
+		"evt1_dragongod_m2_language.concept",
+		"evt1_dragongod_m2_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -114,6 +116,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 		"evt1_dragongod_m0_vulkan.concept",
 		"evt1_dragongod_m1_language.concept",
 		"evt1_dragongod_m1_vulkan.concept",
+		"evt1_dragongod_m2_language.concept",
+		"evt1_dragongod_m2_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -627,6 +631,31 @@ func TestDragonGodM1GenerationIncludesRuntimeDispatch(t *testing.T) {
 	}
 }
 
+func TestDragonGodM2GenerationIncludesGuardedDispatch(t *testing.T) {
+	src := readEVT1Fixture(t, "evt1_dragongod_m2_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m2_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := string(outputs["evt1_dragongod_m2_language.generated.h"])
+	body := string(outputs["evt1_dragongod_m2_language.generated.c"])
+	for _, needle := range []string{
+		"concept_vulkan_guarded_lifecycle_instance",
+		"eligible_count",
+		"selected_candidate",
+		"instance->context",
+		"AMBIGUOUS",
+	} {
+		if !strings.Contains(header, needle) && !strings.Contains(body, needle) {
+			t.Fatalf("generated output missing %q\nHEADER:\n%s\nBODY:\n%s", needle, header, body)
+		}
+	}
+}
+
 func TestDragonGodM0IdentityIgnoresWhitespaceAndLocation(t *testing.T) {
 	left := `profile Vulkan;
 enum Signal
@@ -814,6 +843,78 @@ func TestDragonGodM0DiagnosticsAreStable(t *testing.T) {
 			name: "dispatch name redeclaration rejected",
 			src:  "profile Vulkan;\nint dispatch() { return 1; }\nint Value() { return 2; }\n",
 			code: "CV4268",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseEVT1("test.concept", tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("err=%v want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestDragonGodM2DiagnosticsAreStable(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code string
+	}{
+		{
+			name: "context missing borrow",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, Context context) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4276",
+		},
+		{
+			name: "duplicate context params",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow left: Context, borrow right: Context) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4278",
+		},
+		{
+			name: "pointer context rejected",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal, borrow context: int*) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4281",
+		},
+		{
+			name: "instance missing required context",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { instance Demo value; return 1; }\n",
+			code: "CV4283",
+		},
+		{
+			name: "context argument supplied to contextless automata",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { Context context = Context{true}; instance Demo value(context); return 1; }\n",
+			code: "CV4284",
+		},
+		{
+			name: "guard must be bool",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go when 1 => goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4290",
+		},
+		{
+			name: "ordinary plus guarded mix rejected",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go goto Done; on Signal::Go when context.ready => goto Start; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4287",
+		},
+		{
+			name: "otherwise must be last",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go otherwise => goto Done; on Signal::Go when context.ready => goto Start; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4288",
+		},
+		{
+			name: "fallback only group rejected",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go otherwise => goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4289",
+		},
+		{
+			name: "retained context blocks mutation",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go when context.ready => goto Done; on Signal::Go otherwise => goto Start; } terminal state Done { finish; } } }\nint Value() { Context context = Context{true}; instance Demo value(context); context.ready = false; return 1; }\n",
+			code: "CV4291",
+		},
+		{
+			name: "recursive guard call rejected",
+			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nbool Loop(borrow const Context context) { return Loop(context); }\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go when Loop(context) => goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4296",
 		},
 	}
 	for _, tc := range cases {
@@ -1288,6 +1389,68 @@ int main(void) {
 }
 `
 	runNativeHarness(t, outputs, "evt1_dragongod_m1_vulkan_harness.c", harness, nil)
+}
+
+func TestDragonGodM2LanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m2_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m2_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m2_language.generated.h"
+
+int main(void) {
+  concept_vulkan_lifecycle_context unique = {true, false};
+  concept_vulkan_lifecycle_context fallback = {false, false};
+  concept_vulkan_lifecycle_context ambiguous = {true, true};
+  if (concept_vulkan_evt1_dragongod_m2_language_unique_guard_selection_code(unique) != 13) return 1;
+  if (concept_vulkan_evt1_dragongod_m2_language_fallback_selection_code(fallback) != 113) return 2;
+  if (concept_vulkan_evt1_dragongod_m2_language_guarded_unhandled_preserves_state_code(fallback) != 1213) return 3;
+  if (concept_vulkan_evt1_dragongod_m2_language_ambiguous_preserves_state_code(ambiguous) != 51513) return 4;
+  if (concept_vulkan_evt1_dragongod_m2_language_already_finished_skips_guard_selection_code(unique) != 4) return 5;
+  if (concept_vulkan_evt1_dragongod_m2_language_contextless_compatibility_code() != 3) return 6;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_dragongod_m2_language_harness.c", harness, nil)
+}
+
+func TestDragonGodM2VulkanSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m2_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m2_vulkan.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m2_vulkan.generated.h"
+#include <stdint.h>
+
+int main(void) {
+  concept_vulkan_buffer_context unique = {true, false};
+  concept_vulkan_buffer_context fallback = {false, false};
+  concept_vulkan_buffer_context ambiguous = {true, true};
+  VkBuffer buffer = (VkBuffer)(uintptr_t)0x10u;
+  VkCommandPool pool = (VkCommandPool)(uintptr_t)0x20u;
+  if (concept_vulkan_evt1_dragongod_m2_vulkan_vulkan_fallback_trace(fallback, buffer) != 113) return 1;
+  if (concept_vulkan_evt1_dragongod_m2_vulkan_vulkan_ambiguous_trace(ambiguous, pool) != 51513) return 2;
+  if (concept_vulkan_evt1_dragongod_m2_vulkan_buffer_already_finished_outcome(unique, buffer).tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_ALREADY_FINISHED) return 3;
+  return 0;
+}
+`
+	runNativeHarness(t, outputs, "evt1_dragongod_m2_vulkan_harness.c", harness, nil)
 }
 
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {

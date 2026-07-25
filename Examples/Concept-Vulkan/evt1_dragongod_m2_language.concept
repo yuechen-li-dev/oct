@@ -1,0 +1,170 @@
+profile Vulkan;
+
+enum LifecycleSignal
+{
+    Submit,
+    Resolve,
+    Stop
+}
+
+struct LifecycleContext
+{
+    bool queueAvailable;
+    bool releaseRequested;
+};
+
+bool QueueOpen(borrow const LifecycleContext context)
+{
+    return context.queueAvailable;
+}
+
+bool ReleaseRequested(borrow const LifecycleContext context)
+{
+    return context.releaseRequested;
+}
+
+bool CanSubmit(borrow const LifecycleContext context)
+{
+    return QueueOpen(context);
+}
+
+bool MustRelease(borrow const LifecycleContext context)
+{
+    return ReleaseRequested(context);
+}
+
+automata GuardedLifecycle(
+    LifecycleSignal,
+    borrow context: LifecycleContext)
+{
+    initial machine Main
+    {
+        initial state Idle
+        {
+            on LifecycleSignal::Submit when CanSubmit(context) => goto Submitted;
+            on LifecycleSignal::Submit when MustRelease(context) => goto Released;
+            on LifecycleSignal::Submit otherwise => goto Deferred;
+            on LifecycleSignal::Resolve goto GuardOnly;
+        }
+
+        state GuardOnly
+        {
+            on LifecycleSignal::Submit when CanSubmit(context) => goto Submitted;
+            on LifecycleSignal::Submit when MustRelease(context) => goto Released;
+            on LifecycleSignal::Resolve goto Resolved;
+        }
+
+        state Deferred
+        {
+            on LifecycleSignal::Resolve goto Resolved;
+        }
+
+        state Submitted
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Released
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Resolved
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+automata ImmediateLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial state Idle
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Ambiguous => 5,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4
+    };
+}
+
+int UniqueGuardSelectionCode(LifecycleContext context)
+{
+    instance GuardedLifecycle lifecycle(context);
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Submit);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Stop);
+    return OutcomeCode(a) * 10 + OutcomeCode(b);
+}
+
+int FallbackSelectionCode(LifecycleContext context)
+{
+    instance GuardedLifecycle lifecycle(context);
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Submit);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Resolve);
+    AutomataDispatchOutcome c = dispatch(lifecycle, LifecycleSignal::Stop);
+    return OutcomeCode(a) * 100 +
+        OutcomeCode(b) * 10 +
+        OutcomeCode(c);
+}
+
+int GuardedUnhandledPreservesStateCode(LifecycleContext context)
+{
+    instance GuardedLifecycle lifecycle(context);
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Resolve);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Submit);
+    AutomataDispatchOutcome c = dispatch(lifecycle, LifecycleSignal::Resolve);
+    AutomataDispatchOutcome d = dispatch(lifecycle, LifecycleSignal::Stop);
+    return OutcomeCode(a) * 1000 +
+        OutcomeCode(b) * 100 +
+        OutcomeCode(c) * 10 +
+        OutcomeCode(d);
+}
+
+int AmbiguousPreservesStateCode(LifecycleContext context)
+{
+    instance GuardedLifecycle lifecycle(context);
+    AutomataDispatchOutcome a = dispatch(lifecycle, LifecycleSignal::Submit);
+    AutomataDispatchOutcome b = dispatch(lifecycle, LifecycleSignal::Resolve);
+    AutomataDispatchOutcome c = dispatch(lifecycle, LifecycleSignal::Submit);
+    AutomataDispatchOutcome d = dispatch(lifecycle, LifecycleSignal::Resolve);
+    AutomataDispatchOutcome e = dispatch(lifecycle, LifecycleSignal::Stop);
+    return OutcomeCode(a) * 10000 +
+        OutcomeCode(b) * 1000 +
+        OutcomeCode(c) * 100 +
+        OutcomeCode(d) * 10 +
+        OutcomeCode(e);
+}
+
+int AlreadyFinishedSkipsGuardSelectionCode(LifecycleContext context)
+{
+    instance GuardedLifecycle lifecycle(context);
+    dispatch(lifecycle, LifecycleSignal::Submit);
+    dispatch(lifecycle, LifecycleSignal::Stop);
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Submit));
+}
+
+int ContextlessCompatibilityCode()
+{
+    instance ImmediateLifecycle lifecycle;
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Stop));
+}

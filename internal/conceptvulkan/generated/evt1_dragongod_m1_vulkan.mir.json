@@ -379,7 +379,7 @@
         {
           "id": "OutcomeCode.02",
           "kind": "match_expr",
-          "detail": "4 arms",
+          "detail": "5 arms",
           "source_span": {
             "line": 82,
             "column": 12
@@ -433,7 +433,7 @@
         {
           "id": "OutcomeCode.08",
           "kind": "pattern",
-          "detail": "AutomataDispatchOutcome::Finished",
+          "detail": "AutomataDispatchOutcome::Ambiguous",
           "source_span": {
             "line": 85,
             "column": 9
@@ -442,16 +442,16 @@
         {
           "id": "OutcomeCode.09",
           "kind": "literal",
-          "detail": "3",
+          "detail": "5",
           "source_span": {
             "line": 85,
-            "column": 46
+            "column": 47
           }
         },
         {
           "id": "OutcomeCode.10",
           "kind": "pattern",
-          "detail": "AutomataDispatchOutcome::AlreadyFinished",
+          "detail": "AutomataDispatchOutcome::Finished",
           "source_span": {
             "line": 86,
             "column": 9
@@ -460,9 +460,27 @@
         {
           "id": "OutcomeCode.11",
           "kind": "literal",
-          "detail": "4",
+          "detail": "3",
           "source_span": {
             "line": 86,
+            "column": 46
+          }
+        },
+        {
+          "id": "OutcomeCode.12",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::AlreadyFinished",
+          "source_span": {
+            "line": 87,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.13",
+          "kind": "literal",
+          "detail": "4",
+          "source_span": {
+            "line": 87,
             "column": 53
           }
         }
@@ -478,7 +496,7 @@
         "name": "AutomataDispatchOutcome",
         "kind": "enum",
         "span": {
-          "line": 90,
+          "line": 91,
           "column": 1
         }
       },
@@ -489,7 +507,7 @@
             "name": "VkBuffer",
             "kind": "builtin",
             "span": {
-              "line": 90,
+              "line": 91,
               "column": 47
             }
           }
@@ -501,7 +519,7 @@
           "kind": "instance_decl",
           "detail": "BufferLifecycle lifecycle",
           "source_span": {
-            "line": 92,
+            "line": 93,
             "column": 5
           }
         },
@@ -509,7 +527,7 @@
           "id": "BufferCleanupFinishes.02",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 93,
+            "line": 94,
             "column": 5
           }
         },
@@ -518,7 +536,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 93,
+            "line": 94,
             "column": 5
           }
         },
@@ -527,7 +545,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Create",
           "source_span": {
-            "line": 93,
+            "line": 94,
             "column": 25
           }
         },
@@ -535,7 +553,7 @@
           "id": "BufferCleanupFinishes.05",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 94,
+            "line": 95,
             "column": 5
           }
         },
@@ -544,7 +562,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 94,
+            "line": 95,
             "column": 5
           }
         },
@@ -553,7 +571,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Record",
           "source_span": {
-            "line": 94,
+            "line": 95,
             "column": 25
           }
         },
@@ -561,7 +579,7 @@
           "id": "BufferCleanupFinishes.08",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 95,
+            "line": 96,
             "column": 5
           }
         },
@@ -570,7 +588,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 95,
+            "line": 96,
             "column": 5
           }
         },
@@ -579,7 +597,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Cleanup",
           "source_span": {
-            "line": 95,
+            "line": 96,
             "column": 25
           }
         },
@@ -587,7 +605,7 @@
           "id": "BufferCleanupFinishes.11",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 96,
+            "line": 97,
             "column": 5
           }
         },
@@ -596,7 +614,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 96,
+            "line": 97,
             "column": 5
           }
         },
@@ -605,7 +623,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Release",
           "source_span": {
-            "line": 96,
+            "line": 97,
             "column": 25
           }
         },
@@ -613,7 +631,7 @@
           "id": "BufferCleanupFinishes.14",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 97,
+            "line": 98,
             "column": 5
           }
         },
@@ -622,7 +640,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 97,
+            "line": 98,
             "column": 5
           }
         },
@@ -631,7 +649,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 97,
+            "line": 98,
             "column": 25
           }
         },
@@ -640,7 +658,7 @@
           "kind": "return",
           "type": "AutomataDispatchOutcome",
           "source_span": {
-            "line": 98,
+            "line": 99,
             "column": 5
           }
         },
@@ -649,7 +667,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 98,
+            "line": 99,
             "column": 12
           }
         },
@@ -658,13 +676,13 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 98,
+            "line": 99,
             "column": 32
           }
         }
       ],
       "source_span": {
-        "line": 90,
+        "line": 91,
         "column": 25
       }
     },
@@ -674,7 +692,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 101,
+          "line": 102,
           "column": 1
         }
       },
@@ -685,7 +703,7 @@
             "name": "VkBuffer",
             "kind": "builtin",
             "span": {
-              "line": 101,
+              "line": 102,
               "column": 24
             }
           }
@@ -697,7 +715,7 @@
           "kind": "instance_decl",
           "detail": "BufferLifecycle lifecycle",
           "source_span": {
-            "line": 103,
+            "line": 104,
             "column": 5
           }
         },
@@ -707,7 +725,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "a",
           "source_span": {
-            "line": 104,
+            "line": 105,
             "column": 29
           }
         },
@@ -716,7 +734,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 104,
+            "line": 105,
             "column": 33
           }
         },
@@ -725,7 +743,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Create",
           "source_span": {
-            "line": 104,
+            "line": 105,
             "column": 53
           }
         },
@@ -735,7 +753,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "b",
           "source_span": {
-            "line": 105,
+            "line": 106,
             "column": 29
           }
         },
@@ -744,7 +762,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 105,
+            "line": 106,
             "column": 33
           }
         },
@@ -753,7 +771,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Record",
           "source_span": {
-            "line": 105,
+            "line": 106,
             "column": 53
           }
         },
@@ -763,7 +781,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "c",
           "source_span": {
-            "line": 106,
+            "line": 107,
             "column": 29
           }
         },
@@ -772,7 +790,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 106,
+            "line": 107,
             "column": 33
           }
         },
@@ -781,7 +799,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Cleanup",
           "source_span": {
-            "line": 106,
+            "line": 107,
             "column": 53
           }
         },
@@ -791,7 +809,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "d",
           "source_span": {
-            "line": 107,
+            "line": 108,
             "column": 29
           }
         },
@@ -800,7 +818,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 107,
+            "line": 108,
             "column": 33
           }
         },
@@ -809,7 +827,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Release",
           "source_span": {
-            "line": 107,
+            "line": 108,
             "column": 53
           }
         },
@@ -819,7 +837,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "e",
           "source_span": {
-            "line": 108,
+            "line": 109,
             "column": 29
           }
         },
@@ -828,7 +846,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 108,
+            "line": 109,
             "column": 33
           }
         },
@@ -837,7 +855,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 108,
+            "line": 109,
             "column": 53
           }
         },
@@ -847,7 +865,7 @@
           "type": "AutomataDispatchOutcome",
           "detail": "f",
           "source_span": {
-            "line": 109,
+            "line": 110,
             "column": 29
           }
         },
@@ -856,7 +874,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 109,
+            "line": 110,
             "column": 33
           }
         },
@@ -865,7 +883,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 109,
+            "line": 110,
             "column": 53
           }
         },
@@ -874,7 +892,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 5
           }
         },
@@ -883,7 +901,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 29
           }
         },
@@ -892,7 +910,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 113,
+            "line": 114,
             "column": 30
           }
         },
@@ -901,7 +919,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 112,
+            "line": 113,
             "column": 31
           }
         },
@@ -910,7 +928,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 32
           }
         },
@@ -919,7 +937,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 36
           }
         },
@@ -928,7 +946,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 27
           }
         },
@@ -937,7 +955,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 12
           }
         },
@@ -946,7 +964,7 @@
           "kind": "name",
           "detail": "a",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 24
           }
         },
@@ -955,7 +973,7 @@
           "kind": "literal",
           "detail": "100000",
           "source_span": {
-            "line": 110,
+            "line": 111,
             "column": 29
           }
         },
@@ -964,7 +982,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 24
           }
         },
@@ -973,7 +991,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 9
           }
         },
@@ -982,7 +1000,7 @@
           "kind": "name",
           "detail": "b",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 21
           }
         },
@@ -991,7 +1009,7 @@
           "kind": "literal",
           "detail": "10000",
           "source_span": {
-            "line": 111,
+            "line": 112,
             "column": 26
           }
         },
@@ -1000,7 +1018,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 112,
+            "line": 113,
             "column": 24
           }
         },
@@ -1009,7 +1027,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 112,
+            "line": 113,
             "column": 9
           }
         },
@@ -1018,7 +1036,7 @@
           "kind": "name",
           "detail": "c",
           "source_span": {
-            "line": 112,
+            "line": 113,
             "column": 21
           }
         },
@@ -1027,7 +1045,7 @@
           "kind": "literal",
           "detail": "1000",
           "source_span": {
-            "line": 112,
+            "line": 113,
             "column": 26
           }
         },
@@ -1036,7 +1054,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 113,
+            "line": 114,
             "column": 24
           }
         },
@@ -1045,7 +1063,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 113,
+            "line": 114,
             "column": 9
           }
         },
@@ -1054,7 +1072,7 @@
           "kind": "name",
           "detail": "d",
           "source_span": {
-            "line": 113,
+            "line": 114,
             "column": 21
           }
         },
@@ -1063,7 +1081,7 @@
           "kind": "literal",
           "detail": "100",
           "source_span": {
-            "line": 113,
+            "line": 114,
             "column": 26
           }
         },
@@ -1072,7 +1090,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 24
           }
         },
@@ -1081,7 +1099,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 9
           }
         },
@@ -1090,7 +1108,7 @@
           "kind": "name",
           "detail": "e",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 21
           }
         },
@@ -1099,7 +1117,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 114,
+            "line": 115,
             "column": 26
           }
         },
@@ -1108,7 +1126,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 115,
+            "line": 116,
             "column": 9
           }
         },
@@ -1117,13 +1135,13 @@
           "kind": "name",
           "detail": "f",
           "source_span": {
-            "line": 115,
+            "line": 116,
             "column": 21
           }
         }
       ],
       "source_span": {
-        "line": 101,
+        "line": 102,
         "column": 5
       }
     },
@@ -1133,7 +1151,7 @@
         "name": "AutomataDispatchOutcome",
         "kind": "enum",
         "span": {
-          "line": 118,
+          "line": 119,
           "column": 1
         }
       },
@@ -1144,7 +1162,7 @@
             "name": "VkCommandPool",
             "kind": "builtin",
             "span": {
-              "line": 118,
+              "line": 119,
               "column": 63
             }
           }
@@ -1156,7 +1174,7 @@
           "kind": "instance_decl",
           "detail": "BufferLifecycle lifecycle",
           "source_span": {
-            "line": 120,
+            "line": 121,
             "column": 5
           }
         },
@@ -1164,7 +1182,7 @@
           "id": "BufferLifecycleAlreadyFinishedOutcome.02",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 121,
+            "line": 122,
             "column": 5
           }
         },
@@ -1173,7 +1191,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 121,
+            "line": 122,
             "column": 5
           }
         },
@@ -1182,7 +1200,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Create",
           "source_span": {
-            "line": 121,
+            "line": 122,
             "column": 25
           }
         },
@@ -1190,7 +1208,7 @@
           "id": "BufferLifecycleAlreadyFinishedOutcome.05",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 122,
+            "line": 123,
             "column": 5
           }
         },
@@ -1199,7 +1217,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 122,
+            "line": 123,
             "column": 5
           }
         },
@@ -1208,7 +1226,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Record",
           "source_span": {
-            "line": 122,
+            "line": 123,
             "column": 25
           }
         },
@@ -1216,7 +1234,7 @@
           "id": "BufferLifecycleAlreadyFinishedOutcome.08",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 123,
+            "line": 124,
             "column": 5
           }
         },
@@ -1225,7 +1243,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 123,
+            "line": 124,
             "column": 5
           }
         },
@@ -1234,7 +1252,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Cleanup",
           "source_span": {
-            "line": 123,
+            "line": 124,
             "column": 25
           }
         },
@@ -1242,7 +1260,7 @@
           "id": "BufferLifecycleAlreadyFinishedOutcome.11",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 124,
+            "line": 125,
             "column": 5
           }
         },
@@ -1251,7 +1269,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 124,
+            "line": 125,
             "column": 5
           }
         },
@@ -1260,7 +1278,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Release",
           "source_span": {
-            "line": 124,
+            "line": 125,
             "column": 25
           }
         },
@@ -1268,7 +1286,7 @@
           "id": "BufferLifecycleAlreadyFinishedOutcome.14",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 5
           }
         },
@@ -1277,7 +1295,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 5
           }
         },
@@ -1286,7 +1304,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 125,
+            "line": 126,
             "column": 25
           }
         },
@@ -1294,7 +1312,7 @@
           "id": "BufferLifecycleAlreadyFinishedOutcome.17",
           "kind": "expr_stmt",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 5
           }
         },
@@ -1303,7 +1321,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 5
           }
         },
@@ -1312,7 +1330,7 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Submit",
           "source_span": {
-            "line": 126,
+            "line": 127,
             "column": 25
           }
         },
@@ -1321,7 +1339,7 @@
           "kind": "return",
           "type": "AutomataDispatchOutcome",
           "source_span": {
-            "line": 127,
+            "line": 128,
             "column": 5
           }
         },
@@ -1330,7 +1348,7 @@
           "kind": "dispatch",
           "detail": "lifecycle",
           "source_span": {
-            "line": 127,
+            "line": 128,
             "column": 12
           }
         },
@@ -1339,13 +1357,13 @@
           "kind": "enum_construct",
           "detail": "ResourceSignal::Tick",
           "source_span": {
-            "line": 127,
+            "line": 128,
             "column": 32
           }
         }
       ],
       "source_span": {
-        "line": 118,
+        "line": 119,
         "column": 25
       }
     },
@@ -1355,7 +1373,7 @@
         "name": "int",
         "kind": "builtin",
         "span": {
-          "line": 130,
+          "line": 131,
           "column": 1
         }
       },
@@ -1366,7 +1384,7 @@
             "name": "VkBuffer",
             "kind": "builtin",
             "span": {
-              "line": 130,
+              "line": 131,
               "column": 25
             }
           }
@@ -1377,7 +1395,7 @@
             "name": "VkCommandPool",
             "kind": "builtin",
             "span": {
-              "line": 130,
+              "line": 131,
               "column": 42
             }
           }
@@ -1389,7 +1407,7 @@
           "kind": "return",
           "type": "int",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 5
           }
         },
@@ -1398,7 +1416,7 @@
           "kind": "binary",
           "detail": "+",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 44
           }
         },
@@ -1407,7 +1425,7 @@
           "kind": "binary",
           "detail": "*",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 39
           }
         },
@@ -1416,7 +1434,7 @@
           "kind": "call",
           "detail": "BufferCleanupTrace",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 12
           }
         },
@@ -1425,7 +1443,7 @@
           "kind": "name",
           "detail": "buffer",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 31
           }
         },
@@ -1434,7 +1452,7 @@
           "kind": "literal",
           "detail": "10",
           "source_span": {
-            "line": 132,
+            "line": 133,
             "column": 41
           }
         },
@@ -1443,7 +1461,7 @@
           "kind": "call",
           "detail": "OutcomeCode",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 9
           }
         },
@@ -1452,7 +1470,7 @@
           "kind": "call",
           "detail": "BufferLifecycleAlreadyFinishedOutcome",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 21
           }
         },
@@ -1461,13 +1479,13 @@
           "kind": "name",
           "detail": "pool",
           "source_span": {
-            "line": 133,
+            "line": 134,
             "column": 59
           }
         }
       ],
       "source_span": {
-        "line": 130,
+        "line": 131,
         "column": 5
       }
     }

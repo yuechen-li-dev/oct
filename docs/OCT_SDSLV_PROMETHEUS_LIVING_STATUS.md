@@ -1,6 +1,6 @@
 # Oct / SDSL-V / Prometheus living project status
 
-Date: 2026-07-24
+Date: 2026-07-25
 
 Status: current in-repository briefing
 
@@ -33,17 +33,18 @@ structural equality over valid element domains, bounded `while` traversal, and
 finite structural validation all run through parsing, validation, typed MIR,
 generated C, checked outputs, and native specimens without introducing runtime
 collections or changing production authority. Production remains handwritten.
-The current worktree also carries the first DragonGod runtime vertical in
-compiler form: validated typed automata with the exact `automata -> machine ->
-state` hierarchy, exact signal-enum binding, deterministic graph identity,
-acyclic machine-push validation, derived maximum active machine depth,
-machine/state reachability checks, fixed local `instance` storage, exact typed
-`dispatch(instance, signal)`, fixed continuation capacity, synchronous
-`goto`/`push`/`pop`/`finish` normalization, typed
-`AutomataDispatchOutcome`, and deterministic strict-C11 lowering. DragonGod M0
-is now accepted as `SUCCESS` after rerunning both native C11 specimens in a
-fully loaded Visual Studio developer environment with Windows SDK headers
-available on Friday, July 24, 2026.
+The current worktree now carries DragonGod M2 in compiler form: validated typed
+automata with the exact `automata -> machine -> state` hierarchy, exact
+signal-enum binding, deterministic graph identity, acyclic machine-push
+validation, derived maximum active machine depth, fixed local `instance`
+storage, exact typed `dispatch(instance, signal)`, one exact optional borrowed
+automata context binding, guarded candidates, explicit `otherwise` fallback,
+typed `AutomataDispatchOutcome::{Transitioned, Unhandled, Ambiguous, Finished,
+AlreadyFinished}`, exact-once guard evaluation for the matched state/signal
+group, and deterministic strict-C11 lowering. DragonGod M0 and M1 remain
+accepted as `SUCCESS`, and DragonGod M2 is now accepted as `SUCCESS` after
+rerunning the native C11 language and Vulkan-shaped specimens from a fully
+loaded Visual Studio developer environment on Saturday, July 25, 2026.
 
 The owner direction is:
 
@@ -143,13 +144,13 @@ Concept/Vulkan EVT1 now includes:
   enums, structs, and fixed arrays composed from accepted compile-time values;
 - exact fixed-array literals, indexing, and `Len(...)` in compile-time
   contexts only, with complete erasure before runtime C11 lowering;
-- DragonGod M1 typed automata families with exact `automata -> machine ->
-  state` structure, exact signal-enum handlers, typed
-  `goto`/`push`/`pop`/`finish` topology, acyclic machine-push validation,
+- DragonGod M2 typed automata families with exact `automata -> machine ->
+  state` structure, exact signal-enum handlers, one exact optional borrowed
+  context binding, grouped guarded candidates, explicit fallback, typed
+  `goto`/`push`/`pop`/`finish` topology, deterministic `Ambiguous` reporting,
   derived maximum active machine depth, fixed local `instance` storage, exact
-  typed `dispatch(instance, signal)`, synchronous completion normalization,
-  deterministic private machine/state ordinals, and runtime lowering that
-  remains non-reflective and heap-free;
+  typed `dispatch(instance, signal)`, synchronous completion normalization, and
+  runtime lowering that remains non-reflective and heap-free;
 - focused hardware-independent and Vulkan-shaped specimens proving structs,
   immovability, concept satisfaction, explicit-only template instantiation,
   deterministic instance reuse, bounded compile-time evaluation, finite

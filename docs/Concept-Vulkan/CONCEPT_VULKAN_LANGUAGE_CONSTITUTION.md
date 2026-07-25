@@ -1,8 +1,8 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree also carries an experimental DragonGod M1 typed-automata runtime vertical with fixed local instances and deterministic dispatch; production remains handwritten**
+Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree now carries an experimental DragonGod M2 typed-automata control vertical with fixed local instances, one exact optional borrowed context binding, guarded candidates, explicit fallback, deterministic ambiguity reporting, and strict-C11 lowering; production remains handwritten**
 
-Date: 2026-07-24
+Date: 2026-07-25
 
 ## 1. Identity and authority
 
@@ -349,6 +349,62 @@ DragonGod M1 still emits no reflection registry, heap allocation, dynamic
 graph lookup, string dispatch, function-pointer dispatch table, payload
 runtime, or public Prometheus ABI growth. Declaration-only automata with no
 `instance` usage still erase completely before runtime C11 lowering.
+
+## 2.9 DragonGod M2 typed automata context and guarded dispatch
+
+DragonGod M2 extends the accepted M1 runtime surface with explicit legality
+selection ahead of control mutation:
+
+```concept
+automata ResourceLifecycle(
+    LifecycleSignal,
+    borrow context: LifecycleContext)
+{
+    initial machine Main
+    {
+        initial state Idle
+        {
+            on LifecycleSignal::Submit when CanSubmit(context) => goto Submitted;
+            on LifecycleSignal::Submit otherwise => goto Deferred;
+        }
+    }
+}
+```
+
+```concept
+instance ResourceLifecycle lifecycle(context);
+AutomataDispatchOutcome outcome =
+    dispatch(lifecycle, LifecycleSignal::Submit);
+```
+
+The second automata header parameter is optional and names exactly one
+immutable borrowed runtime context binding. Contextless M1 automata remain
+valid unchanged. Contextful instances bind that borrow exactly once at local
+instance initialization; no per-dispatch context argument, context rebinding,
+copied context record, or public first-class context identity is introduced.
+
+State/signal candidates are now grouped by exact `(automata, machine, state,
+signal)` identity. A group is either one ordinary M1 unguarded handler, or one
+or more guarded `when BoolExpression => ControlAction` candidates optionally
+followed by one final `otherwise => ControlAction` fallback. Ordinary handlers
+may not coexist with guarded or fallback candidates for the same group.
+
+Guard expressions must have exact type `bool`, are evaluated only for the
+active state's exact matched signal group, and are evaluated exactly once in
+declaration order. M2 still does not attach source-order winner semantics:
+zero true guards plus no fallback returns `Unhandled`, zero true guards plus
+one fallback selects that fallback, exactly one true guard selects its control
+action, and more than one true guard returns
+`AutomataDispatchOutcome::Ambiguous` without mutating the automata control
+representation.
+
+Guards are compiler-verified as pure and bounded under the current EVT1 rules:
+they may read the declared immutable context, field projections, literals,
+ordinary Boolean/int/string expressions, and bounded pure helper calls. They
+may not dispatch, allocate, mutate, perform Vulkan operations, use mutable
+borrows, consume owned values, recurse, or execute unbounded runtime control
+flow. Guard-aware reachability remains conservative: every guarded and fallback
+edge still participates in topology validation and maximum-depth derivation.
 
 ## 3. Static and runtime facts
 
@@ -815,6 +871,39 @@ typed automata runtime vertical:
     runtime reflection, or public ABI exposure of automata internals;
 14. complete runtime erasure for declaration-only automata that are never used
     through `instance`.
+
+## 12.7 DragonGod M2 semantic minimum
+
+DragonGod M2 extends the accepted M1 vertical with the smallest coherent
+context-and-legality slice:
+
+1. one optional exact `borrow contextName: ContextType` automata parameter;
+2. exact `instance AutomataName localName(contextExpr);` binding for contextful
+   automata and preserved M1 `instance AutomataName localName;` for
+   contextless automata;
+3. immutable retained context storage with no copied context record, no
+   rebinding, and no per-dispatch context injection;
+4. guarded handlers `on Signal::Value when BoolExpression => ControlAction;`;
+5. explicit fallback handlers `on Signal::Value otherwise => ControlAction;`;
+6. exact `bool` guard typing plus compiler-verified pure, bounded helper-call
+   checking;
+7. deterministic candidate-group validation: one ordinary unguarded handler, or
+   guarded candidates plus one optional final fallback;
+8. exact-once guard evaluation in declaration order for the matched state/signal
+   group only;
+9. unique true-guard selection, false-guard fallback selection, false-guard
+   `Unhandled`, and multi-true `Ambiguous`;
+10. no mutation of machine/state/continuation/finished/context storage on
+    `Unhandled` or `Ambiguous`;
+11. preserved M1 `goto`/`push`/`pop`/`finish` semantics after unique candidate
+    selection only;
+12. conservative reachability and maximum-depth validation over every guarded
+    and fallback edge;
+13. guard-aware MIR, graph identity, source-map evidence, and strict-C11
+    lowering with no heap allocation, runtime reflection, function-pointer
+    dispatch, or public Prometheus ABI growth;
+14. preserved acceptance of declaration-only automata and contextless M1
+    automata.
 
 ## 13. Profile MIR boundary
 
