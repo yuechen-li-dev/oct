@@ -112,4 +112,3 @@ void concept_vulkan_evt1_m1b_a_vulkan_cleanup_state(VkCommandPool pool) {
   concept_vulkan_evt1_m1b_a_vulkan_mark_initialized(&state);
   concept_vulkan_evt1_m1b_a_vulkan_destroy(&state);
 }
-

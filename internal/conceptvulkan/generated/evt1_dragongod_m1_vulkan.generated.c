@@ -495,4 +495,3 @@ int concept_vulkan_evt1_dragongod_m1_vulkan_vulkan_dispatch_audit(VkBuffer buffe
   concept_vulkan_automata_dispatch_outcome cv_arg_03 = concept_vulkan_evt1_dragongod_m1_vulkan_buffer_lifecycle_already_finished_outcome(cv_arg_02);
   return ((concept_vulkan_evt1_dragongod_m1_vulkan_buffer_cleanup_trace(cv_arg_01) * 10) + concept_vulkan_evt1_dragongod_m1_vulkan_outcome_code(cv_arg_03));
 }
-

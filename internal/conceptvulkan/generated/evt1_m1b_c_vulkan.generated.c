@@ -49,4 +49,3 @@ bool concept_vulkan_evt1_m1b_c_vulkan_pool_ready(VkCommandPool pool, bool ready)
   }
   return cv_if_result_01;
 }
-

@@ -726,4 +726,3 @@ int concept_vulkan_evt1_dragongod_m1_language_independent_instances_stay_indepen
   concept_vulkan_automata_dispatch_outcome cv_arg_08 = d;
   return ((((concept_vulkan_evt1_dragongod_m1_language_outcome_code(cv_arg_05) * 1000) + (concept_vulkan_evt1_dragongod_m1_language_outcome_code(cv_arg_06) * 100)) + (concept_vulkan_evt1_dragongod_m1_language_outcome_code(cv_arg_07) * 10)) + concept_vulkan_evt1_dragongod_m1_language_outcome_code(cv_arg_08));
 }
-

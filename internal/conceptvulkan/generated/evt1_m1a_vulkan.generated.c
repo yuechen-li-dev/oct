@@ -126,4 +126,3 @@ void concept_vulkan_evt1_m1a_vulkan_destroy_pipeline_state(concept_vulkan_pipeli
     concept_vulkan_abort_invalid_tag("PipelineState");
   }
 }
-

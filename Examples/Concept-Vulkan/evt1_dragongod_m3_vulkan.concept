@@ -1,0 +1,120 @@
+profile Vulkan;
+
+enum ResourceSignal
+{
+    Submit,
+    Submitted,
+    SubmitFailed,
+    FinishNow,
+    Stop
+}
+
+enum QueueClass
+{
+    Graphics,
+    Transfer
+}
+
+struct BufferContext
+{
+    bool queueAvailable;
+    bool failRequested;
+    int bufferId;
+    QueueClass queue;
+    int failureCode;
+};
+
+effect RecordBufferSubmission(int bufferId);
+effect BeginBufferSubmission(int bufferId, QueueClass queue);
+effect MarkBufferFailure(int failureCode);
+
+bool QueueOpen(borrow const BufferContext context)
+{
+    return context.queueAvailable;
+}
+
+bool FailRequested(borrow const BufferContext context)
+{
+    return context.failRequested;
+}
+
+automata BufferLifecycle(
+    ResourceSignal,
+    borrow context: BufferContext)
+{
+    initial machine Main
+    {
+        initial state Ready
+        {
+            on ResourceSignal::Submit when QueueOpen(context) => {
+                emit RecordBufferSubmission(context.bufferId);
+                emit BeginBufferSubmission(context.bufferId, context.queue);
+                goto Submitting;
+            }
+            on ResourceSignal::Submit when FailRequested(context) => {
+                emit MarkBufferFailure(context.failureCode);
+                goto Failed;
+            }
+            on ResourceSignal::Submit otherwise => {
+                emit MarkBufferFailure(context.failureCode);
+                goto Deferred;
+            }
+            on ResourceSignal::FinishNow => {
+                emit MarkBufferFailure(context.failureCode);
+                goto Finished;
+            }
+        }
+
+        state Deferred
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Submitting
+        {
+            on ResourceSignal::Submitted goto Active;
+            on ResourceSignal::SubmitFailed goto Failed;
+        }
+
+        state Active
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Failed
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Ambiguous => 5,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4
+    };
+}
+
+int VulkanEffectfulSubmitCode(BufferContext context, VkBuffer buffer)
+{
+    instance BufferLifecycle lifecycle(context);
+    effects BufferLifecycle emitted;
+    return OutcomeCode(dispatch(lifecycle, ResourceSignal::Submit, emitted));
+}
+
+int VulkanZeroEmitTransitionCode(BufferContext context, VkCommandPool pool)
+{
+    instance BufferLifecycle lifecycle(context);
+    effects BufferLifecycle emitted;
+    dispatch(lifecycle, ResourceSignal::Submit, emitted);
+    return OutcomeCode(dispatch(lifecycle, ResourceSignal::Submitted, emitted));
+}

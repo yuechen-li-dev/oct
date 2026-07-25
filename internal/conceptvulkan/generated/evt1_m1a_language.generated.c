@@ -194,4 +194,3 @@ void concept_vulkan_evt1_m1a_language_visit(concept_vulkan_demo_state state) {
     concept_vulkan_abort_invalid_tag("DemoState");
   }
 }
-

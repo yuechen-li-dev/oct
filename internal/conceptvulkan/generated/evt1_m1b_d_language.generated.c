@@ -56,4 +56,3 @@ bool concept_vulkan_evt1_m1b_d_language_transition_table_stable() {
 int concept_vulkan_evt1_m1b_d_language_total_retry_budget() {
   return 7;
 }
-

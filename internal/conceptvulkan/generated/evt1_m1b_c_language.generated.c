@@ -64,4 +64,3 @@ int concept_vulkan_evt1_m1b_c_language_zero_bound(int input) {
 int concept_vulkan_evt1_m1b_c_language_default_bound() {
   return 3;
 }
-

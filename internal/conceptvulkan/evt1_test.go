@@ -38,6 +38,8 @@ func TestParseEVT1SpecimensAndGenerateDeterministically(t *testing.T) {
 		"evt1_dragongod_m1_vulkan.concept",
 		"evt1_dragongod_m2_language.concept",
 		"evt1_dragongod_m2_vulkan.concept",
+		"evt1_dragongod_m3_language.concept",
+		"evt1_dragongod_m3_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -118,6 +120,8 @@ func TestEVT1CheckedOutputsMatch(t *testing.T) {
 		"evt1_dragongod_m1_vulkan.concept",
 		"evt1_dragongod_m2_language.concept",
 		"evt1_dragongod_m2_vulkan.concept",
+		"evt1_dragongod_m3_language.concept",
+		"evt1_dragongod_m3_vulkan.concept",
 	} {
 		t.Run(name, func(t *testing.T) {
 			src := readEVT1Fixture(t, name)
@@ -656,6 +660,34 @@ func TestDragonGodM2GenerationIncludesGuardedDispatch(t *testing.T) {
 	}
 }
 
+func TestDragonGodM3GenerationIncludesEffectBatchStaging(t *testing.T) {
+	src := readEVT1Fixture(t, "evt1_dragongod_m3_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m3_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(outputs["evt1_dragongod_m3_language.generated.c"])
+	for _, needle := range []string{
+		"concept_vulkan_resource_lifecycle_effects",
+		"staged_batch = {0};",
+		"staged_instance = *instance;",
+		"*instance = staged_instance;",
+		"staged_batch.count = staged_count;",
+		"*batch = staged_batch;",
+		"batch->count = 0;",
+		"CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_RECORD_SUBMISSION",
+		"CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_BEGIN_SUBMISSION",
+	} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("generated C missing %q\n%s", needle, body)
+		}
+	}
+}
+
 func TestDragonGodM0IdentityIgnoresWhitespaceAndLocation(t *testing.T) {
 	left := `profile Vulkan;
 enum Signal
@@ -725,6 +757,69 @@ int Value()
 	rightID := buildEVT1MIR(rightModule, rightEnv).Automata[0].GraphIdentity
 	if leftID != rightID {
 		t.Fatalf("graph identity changed across whitespace/location-only edits: %s != %s", leftID, rightID)
+	}
+}
+
+func TestDragonGodM3EffectIdentityTracksEmitOrderWithoutChangingTopology(t *testing.T) {
+	left := `profile Vulkan;
+enum Signal { Go }
+effect First(int value);
+effect Second(int value);
+automata Demo(Signal) {
+  initial machine Main {
+    initial state Start {
+      on Signal::Go => {
+        emit First(1);
+        emit Second(2);
+        goto Done;
+      }
+    }
+    terminal state Done { finish; }
+  }
+}
+int Value() { return 1; }
+`
+	right := `profile Vulkan;
+enum Signal { Go }
+effect First(int value);
+effect Second(int value);
+automata Demo(Signal) {
+  initial machine Main {
+    initial state Start {
+      on Signal::Go => {
+        emit Second(2);
+        emit First(1);
+        goto Done;
+      }
+    }
+    terminal state Done { finish; }
+  }
+}
+int Value() { return 1; }
+`
+	leftModule, err := ParseEVT1("left.concept", left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightModule, err := ParseEVT1("right.concept", right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftEnv, err := analyzeEVT1Module(leftModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightEnv, err := analyzeEVT1Module(rightModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leftAutomata := buildEVT1MIR(leftModule, leftEnv).Automata[0]
+	rightAutomata := buildEVT1MIR(rightModule, rightEnv).Automata[0]
+	if leftAutomata.TopologyIdentity != rightAutomata.TopologyIdentity {
+		t.Fatalf("topology identity changed across emit reorder: %s != %s", leftAutomata.TopologyIdentity, rightAutomata.TopologyIdentity)
+	}
+	if leftAutomata.EffectIdentity == rightAutomata.EffectIdentity {
+		t.Fatalf("effect identity ignored emit reorder: %s", leftAutomata.EffectIdentity)
 	}
 }
 
@@ -915,6 +1010,53 @@ func TestDragonGodM2DiagnosticsAreStable(t *testing.T) {
 			name: "recursive guard call rejected",
 			src:  "profile Vulkan;\nenum Signal { Go }\nstruct Context { bool ready; };\nbool Loop(borrow const Context context) { return Loop(context); }\nautomata Demo(Signal, borrow context: Context) { initial machine Main { initial state Start { on Signal::Go when Loop(context) => goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
 			code: "CV4296",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseEVT1("test.concept", tc.src)
+			if err == nil || !strings.Contains(err.Error(), tc.code) {
+				t.Fatalf("err=%v want %s", err, tc.code)
+			}
+		})
+	}
+}
+
+func TestDragonGodM3DiagnosticsAreStable(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		code string
+	}{
+		{
+			name: "string payload rejected",
+			src:  "profile Vulkan;\neffect Bad(string text);\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4303",
+		},
+		{
+			name: "unknown emitted effect rejected",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go => { emit Missing(); goto Done; } } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4301",
+		},
+		{
+			name: "effectful dispatch requires batch",
+			src:  "profile Vulkan;\neffect Mark(int value);\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go => { emit Mark(1); goto Done; } } terminal state Done { finish; } } }\nint Value() { instance Demo lifecycle; return 1 + dispatch(lifecycle, Signal::Go).tag; }\n",
+			code: "CV4306",
+		},
+		{
+			name: "batch ordinary use rejected",
+			src:  "profile Vulkan;\neffect Mark(int value);\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go => { emit Mark(1); goto Done; } } terminal state Done { finish; } } }\nint Value() { instance Demo lifecycle; effects Demo emitted; dispatch(lifecycle, Signal::Go, emitted); return emitted; }\n",
+			code: "CV4305",
+		},
+		{
+			name: "effect free dispatch rejects third operand",
+			src:  "profile Vulkan;\nenum Signal { Go }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go goto Done; } terminal state Done { finish; } } }\nint Value() { instance Demo lifecycle; effects Demo emitted; return 1 + dispatch(lifecycle, Signal::Go, emitted).tag; }\n",
+			code: "CV4309",
+		},
+		{
+			name: "payload call rejected",
+			src:  "profile Vulkan;\neffect Mark(int value);\nenum Signal { Go }\nint ValueOf() { return 1; }\nautomata Demo(Signal) { initial machine Main { initial state Start { on Signal::Go => { emit Mark(ValueOf()); goto Done; } } terminal state Done { finish; } } }\nint Value() { return 1; }\n",
+			code: "CV4312",
 		},
 	}
 	for _, tc := range cases {
@@ -1453,6 +1595,137 @@ int main(void) {
 	runNativeHarness(t, outputs, "evt1_dragongod_m2_vulkan_harness.c", harness, nil)
 }
 
+func TestDragonGodM3LanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m3_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m3_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m3_language.generated.c"
+
+int main(void) {
+  concept_vulkan_lifecycle_context unique = {true, false, 41, concept_vulkan_queue_class_make_graphics(), 7};
+  concept_vulkan_lifecycle_context fallback = {false, false, 12, concept_vulkan_queue_class_make_compute(), 99};
+  concept_vulkan_lifecycle_context ambiguous = {true, true, 8, concept_vulkan_queue_class_make_graphics(), 55};
+  concept_vulkan_resource_lifecycle_instance lifecycle;
+  concept_vulkan_resource_lifecycle_instance fallbackLifecycle;
+  concept_vulkan_resource_lifecycle_instance ambiguousLifecycle;
+  concept_vulkan_resource_lifecycle_effects emitted = {0};
+  concept_vulkan_resource_lifecycle_effects fallbackBatch = {0};
+  concept_vulkan_resource_lifecycle_effects ambiguousBatch = {0};
+  concept_vulkan_automata_dispatch_outcome a;
+  concept_vulkan_automata_dispatch_outcome b;
+  concept_vulkan_automata_dispatch_outcome c;
+  concept_vulkan_automata_dispatch_outcome d;
+  concept_vulkan_automata_dispatch_outcome e;
+  concept_vulkan_automata_dispatch_outcome f;
+
+  concept_vulkan_resource_lifecycle_init(&lifecycle, &unique);
+  a = concept_vulkan_resource_lifecycle_dispatch(&lifecycle, concept_vulkan_lifecycle_signal_make_submit(), &emitted);
+  if (a.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_TRANSITIONED) return 1;
+  if (emitted.count != 2) return 2;
+  if (emitted.entries[0].tag != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_RECORD_SUBMISSION) return 3;
+  if (emitted.entries[0].payload.record_submission.submission != 41) return 4;
+  if (emitted.entries[1].tag != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_BEGIN_SUBMISSION) return 5;
+  if (emitted.entries[1].payload.begin_submission.submission != 41) return 6;
+  if (emitted.entries[1].payload.begin_submission.queue.tag != CONCEPT_VULKAN_QUEUE_CLASS_GRAPHICS) return 7;
+
+  b = concept_vulkan_resource_lifecycle_dispatch(&lifecycle, concept_vulkan_lifecycle_signal_make_submitted(), &emitted);
+  if (b.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_TRANSITIONED) return 8;
+  if (emitted.count != 0) return 9;
+
+  concept_vulkan_resource_lifecycle_init(&fallbackLifecycle, &fallback);
+  c = concept_vulkan_resource_lifecycle_dispatch(&fallbackLifecycle, concept_vulkan_lifecycle_signal_make_submit(), &fallbackBatch);
+  if (c.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_TRANSITIONED) return 10;
+  if (fallbackBatch.count != 1) return 11;
+  if (fallbackBatch.entries[0].tag != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_FINALIZE_TICKET) return 12;
+  if (fallbackBatch.entries[0].payload.finalize_ticket.ticket != 99) return 13;
+
+  concept_vulkan_resource_lifecycle_init(&ambiguousLifecycle, &ambiguous);
+  d = concept_vulkan_resource_lifecycle_dispatch(&ambiguousLifecycle, concept_vulkan_lifecycle_signal_make_submit(), &ambiguousBatch);
+  if (d.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_AMBIGUOUS) return 14;
+  if (ambiguousBatch.count != 0) return 15;
+
+  e = concept_vulkan_resource_lifecycle_dispatch(&ambiguousLifecycle, concept_vulkan_lifecycle_signal_make_finish_now(), &ambiguousBatch);
+  if (e.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_FINISHED) return 16;
+  if (ambiguousBatch.count != 1) return 17;
+  if (ambiguousBatch.entries[0].payload.finalize_ticket.ticket != 55) return 18;
+
+  f = concept_vulkan_resource_lifecycle_dispatch(&ambiguousLifecycle, concept_vulkan_lifecycle_signal_make_submit(), &ambiguousBatch);
+  if (f.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_ALREADY_FINISHED) return 19;
+  if (ambiguousBatch.count != 0) return 20;
+
+  if (concept_vulkan_evt1_dragongod_m3_language_contextless_compatibility_code() != 3) return 21;
+  return 0;
+}
+`
+	runNativeHarnessIncludingGeneratedC(t, outputs, "evt1_dragongod_m3_language_harness.c", harness, nil)
+}
+
+func TestDragonGodM3VulkanSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m3_vulkan.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m3_vulkan.generated.c"
+#include <stdint.h>
+
+int main(void) {
+  concept_vulkan_buffer_context unique = {true, false, 21, concept_vulkan_queue_class_make_graphics(), 5};
+  concept_vulkan_buffer_context fallback = {false, false, 22, concept_vulkan_queue_class_make_transfer(), 8};
+  concept_vulkan_buffer_context ambiguous = {true, true, 23, concept_vulkan_queue_class_make_graphics(), 13};
+  concept_vulkan_buffer_lifecycle_instance lifecycle;
+  concept_vulkan_buffer_lifecycle_instance fallbackLifecycle;
+  concept_vulkan_buffer_lifecycle_instance ambiguousLifecycle;
+  concept_vulkan_buffer_lifecycle_effects emitted = {0};
+  concept_vulkan_buffer_lifecycle_effects fallbackBatch = {0};
+  concept_vulkan_buffer_lifecycle_effects ambiguousBatch = {0};
+  concept_vulkan_automata_dispatch_outcome a;
+  concept_vulkan_automata_dispatch_outcome b;
+  concept_vulkan_automata_dispatch_outcome c;
+  VkBuffer buffer = (VkBuffer)(uintptr_t)0x10u;
+  VkCommandPool pool = (VkCommandPool)(uintptr_t)0x20u;
+  (void)buffer;
+  (void)pool;
+
+  concept_vulkan_buffer_lifecycle_init(&lifecycle, &unique);
+  a = concept_vulkan_buffer_lifecycle_dispatch(&lifecycle, concept_vulkan_resource_signal_make_submit(), &emitted);
+  if (a.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_TRANSITIONED) return 1;
+  if (emitted.count != 2) return 2;
+  if (emitted.entries[0].payload.record_buffer_submission.bufferId != 21) return 3;
+  if (emitted.entries[1].payload.begin_buffer_submission.queue.tag != CONCEPT_VULKAN_QUEUE_CLASS_GRAPHICS) return 4;
+
+  concept_vulkan_buffer_lifecycle_init(&fallbackLifecycle, &fallback);
+  b = concept_vulkan_buffer_lifecycle_dispatch(&fallbackLifecycle, concept_vulkan_resource_signal_make_submit(), &fallbackBatch);
+  if (b.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_TRANSITIONED) return 5;
+  if (fallbackBatch.count != 1) return 6;
+  if (fallbackBatch.entries[0].payload.mark_buffer_failure.failureCode != 8) return 7;
+
+  concept_vulkan_buffer_lifecycle_init(&ambiguousLifecycle, &ambiguous);
+  c = concept_vulkan_buffer_lifecycle_dispatch(&ambiguousLifecycle, concept_vulkan_resource_signal_make_submit(), &ambiguousBatch);
+  if (c.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_AMBIGUOUS) return 8;
+  if (ambiguousBatch.count != 0) return 9;
+  return 0;
+}
+`
+	runNativeHarnessIncludingGeneratedC(t, outputs, "evt1_dragongod_m3_vulkan_harness.c", harness, nil)
+}
+
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {
 	t.Helper()
 	if _, err := exec.LookPath("cl"); err != nil {
@@ -1481,6 +1754,48 @@ func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource 
 		args = append(args, "/I"+filepath.Join(sdk, "Include"))
 	}
 	args = append(args, generatedC, harnessPath, "/Fe:"+filepath.Join(dir, "specimen.exe"))
+	args = append(args, extraArgs...)
+	build := exec.Command("cl", args...)
+	build.Dir = dir
+	out, err := build.CombinedOutput()
+	if err != nil {
+		text := strings.ToLower(string(out))
+		if strings.Contains(text, "cannot open include file: 'vulkan/vulkan.h'") {
+			t.Skip("Vulkan SDK headers are unavailable in this environment")
+		}
+		if strings.Contains(text, "cannot open include file: 'stdbool.h'") ||
+			strings.Contains(text, "cannot open include file: 'stdint.h'") ||
+			strings.Contains(text, "cannot open include file: 'stddef.h'") {
+			t.Skip("MSVC developer include environment is unavailable in this shell")
+		}
+		t.Fatalf("cl failed:\n%s", out)
+	}
+	run := exec.Command(filepath.Join(dir, "specimen.exe"))
+	run.Dir = dir
+	runOut, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("specimen failed: %v\n%s", err, runOut)
+	}
+}
+
+func runNativeHarnessIncludingGeneratedC(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {
+	t.Helper()
+	if _, err := exec.LookPath("cl"); err != nil {
+		t.Skip("cl not found on PATH")
+	}
+	dir := t.TempDir()
+	if err := Write(dir, outputs); err != nil {
+		t.Fatal(err)
+	}
+	harnessPath := filepath.Join(dir, harnessName)
+	if err := os.WriteFile(harnessPath, []byte(harnessSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"/nologo", "/std:c11", "/W4", "/I" + dir}
+	if sdk := os.Getenv("VULKAN_SDK"); sdk != "" {
+		args = append(args, "/I"+filepath.Join(sdk, "Include"))
+	}
+	args = append(args, harnessPath, "/Fe:"+filepath.Join(dir, "specimen.exe"))
 	args = append(args, extraArgs...)
 	build := exec.Command("cl", args...)
 	build.Dir = dir

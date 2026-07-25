@@ -36,10 +36,17 @@ const (
 	EVT1TransitionPush EVT1TransitionKind = "push"
 )
 
+type EVT1EmitStmt struct {
+	EffectName string     `json:"effect_name"`
+	Args       []EVT1Expr `json:"args,omitempty"`
+	Span       Span       `json:"span"`
+}
+
 type EVT1TransitionDecl struct {
 	Signal        EVT1QualifiedEnumMember `json:"signal"`
 	Guard         EVT1Expr                `json:"guard,omitempty"`
 	Otherwise     bool                    `json:"otherwise,omitempty"`
+	Emits         []EVT1EmitStmt          `json:"emits,omitempty"`
 	Kind          EVT1TransitionKind      `json:"kind"`
 	TargetState   EVT1StateRef            `json:"target_state,omitempty"`
 	PushMachine   string                  `json:"push_machine,omitempty"`
@@ -91,6 +98,13 @@ type evt1AutomataInfo struct {
 	ContinuationCapacity int
 	CompletionStepBound  int
 	GraphIdentity        string
+	TopologyIdentity     string
+	GuardIdentity        string
+	EffectIdentity       string
+	RuntimeIdentity      string
+	EffectSet            []string
+	EffectOrdinal        map[string]int
+	MaxEffectBatch       int
 }
 
 type EVT1MIRAutomata struct {
@@ -103,6 +117,12 @@ type EVT1MIRAutomata struct {
 	ContinuationCapacity int             `json:"continuation_capacity"`
 	CompletionStepBound  int             `json:"completion_step_bound"`
 	GraphIdentity   string               `json:"graph_identity"`
+	TopologyIdentity string              `json:"topology_identity,omitempty"`
+	GuardIdentity   string               `json:"guard_identity,omitempty"`
+	EffectIdentity  string               `json:"effect_identity,omitempty"`
+	RuntimeIdentity string               `json:"runtime_identity,omitempty"`
+	EffectSet       []string             `json:"effect_set,omitempty"`
+	MaxEffectBatch  int                  `json:"max_effect_batch,omitempty"`
 	SourceSpan      Span                 `json:"source_span"`
 	Machines        []EVT1MIRMachine     `json:"machines,omitempty"`
 }
@@ -135,7 +155,14 @@ type EVT1MIRTransition struct {
 	TargetState       string `json:"target_state,omitempty"`
 	PushMachine       string `json:"push_machine,omitempty"`
 	ContinuationState string `json:"continuation_state,omitempty"`
+	Emits             []EVT1MIREmit `json:"emits,omitempty"`
 	SourceSpan        Span   `json:"source_span"`
+}
+
+type EVT1MIREmit struct {
+	Effect     string   `json:"effect"`
+	Args       []string `json:"args,omitempty"`
+	SourceSpan Span     `json:"source_span"`
 }
 
 type evt1AutomataPushEdge struct {
@@ -203,6 +230,7 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 		ReachablePushTargets: map[string]bool{},
 		HasReachableFinish:   map[string]bool{},
 		HasReachablePop:      map[string]bool{},
+		EffectOrdinal:        map[string]int{},
 	}
 	for _, variant := range info.SignalEnum.Variants {
 		if len(variant.Payload) > 0 {
@@ -269,6 +297,9 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 				if len(variant.Payload) > 0 {
 					return nil, evt1Diagnostic("CV4252", fmt.Sprintf("signal handler %s::%s must use a nullary enum member in M0", handler.Signal.EnumName, handler.Signal.MemberName), handler.Signal.Span)
 				}
+				if err := evt1ValidateAutomataEmits(env, info, handler); err != nil {
+					return nil, err
+				}
 			}
 			if err := evt1ValidateAutomataCandidateGroups(env, info, machine, state); err != nil {
 				return nil, err
@@ -301,7 +332,16 @@ func evt1ValidateAutomataDecl(env *evt1Env, decl EVT1AutomataDecl) (*evt1Automat
 	}
 	info.ContinuationCapacity = info.MaxActiveDepth - 1
 	info.CompletionStepBound = info.MaxActiveDepth
+	info.EffectSet = evt1AutomataEffectSet(env, info)
+	for index, name := range info.EffectSet {
+		info.EffectOrdinal[name] = index
+	}
+	info.MaxEffectBatch = evt1AutomataMaxEffectBatch(info)
 	info.GraphIdentity = evt1AutomataGraphIdentity(info)
+	info.TopologyIdentity = evt1AutomataTopologyIdentity(info)
+	info.GuardIdentity = evt1AutomataGuardIdentity(info)
+	info.EffectIdentity = evt1AutomataEffectIdentity(env, info)
+	info.RuntimeIdentity = digest([]byte(info.TopologyIdentity + "|" + info.GuardIdentity + "|" + info.EffectIdentity))
 	return info, nil
 }
 
@@ -617,6 +657,224 @@ func evt1AutomataGraphIdentity(info *evt1AutomataInfo) string {
 		}
 	}
 	return digest([]byte(b.String()))
+}
+
+func evt1AutomataTopologyIdentity(info *evt1AutomataInfo) string {
+	var b strings.Builder
+	b.WriteString(info.Decl.Name)
+	b.WriteString("|")
+	b.WriteString(info.SignalEnum.Name)
+	b.WriteString("|")
+	b.WriteString(info.RootMachine)
+	for _, machine := range info.Decl.Machines {
+		b.WriteString("|machine:")
+		if machine.Initial {
+			b.WriteString("initial:")
+		}
+		b.WriteString(machine.Name)
+		for _, state := range machine.States {
+			b.WriteString("|state:")
+			if state.Initial {
+				b.WriteString("initial:")
+			}
+			if state.Terminal {
+				b.WriteString("terminal:")
+			}
+			b.WriteString(state.Name)
+			for _, handler := range state.Handlers {
+				b.WriteString("|on:")
+				b.WriteString(handler.Signal.EnumName)
+				b.WriteString("::")
+				b.WriteString(handler.Signal.MemberName)
+				b.WriteString(":")
+				b.WriteString(string(handler.Kind))
+				switch handler.Kind {
+				case EVT1TransitionGoto:
+					b.WriteString(":")
+					b.WriteString(handler.TargetState.StateName)
+				case EVT1TransitionPush:
+					b.WriteString(":")
+					b.WriteString(handler.PushMachine)
+					b.WriteString(":")
+					b.WriteString(handler.Continuation.StateName)
+				}
+			}
+			for _, completion := range state.Completion {
+				b.WriteString("|complete:")
+				b.WriteString(completion.Kind)
+			}
+		}
+	}
+	return digest([]byte(b.String()))
+}
+
+func evt1AutomataGuardIdentity(info *evt1AutomataInfo) string {
+	var b strings.Builder
+	b.WriteString(info.Decl.Name)
+	for _, machine := range info.Decl.Machines {
+		for _, state := range machine.States {
+			for _, handler := range state.Handlers {
+				b.WriteString("|")
+				b.WriteString(machine.Name)
+				b.WriteString("::")
+				b.WriteString(state.Name)
+				b.WriteString("|")
+				b.WriteString(handler.Signal.EnumName)
+				b.WriteString("::")
+				b.WriteString(handler.Signal.MemberName)
+				if handler.Guard != nil {
+					b.WriteString("|when:")
+					b.WriteString(evt1ExprIdentity(handler.Guard))
+				}
+				if handler.Otherwise {
+					b.WriteString("|otherwise")
+				}
+			}
+		}
+	}
+	return digest([]byte(b.String()))
+}
+
+func evt1AutomataEffectIdentity(env *evt1Env, info *evt1AutomataInfo) string {
+	var b strings.Builder
+	b.WriteString(info.Decl.Name)
+	for _, effectName := range info.EffectSet {
+		effectDecl := env.effects[effectName]
+		b.WriteString("|effect:")
+		b.WriteString(effectDecl.Name)
+		for _, param := range effectDecl.Params {
+			b.WriteString("|param:")
+			b.WriteString(param.Type.String())
+			b.WriteString(":")
+			b.WriteString(param.Name)
+		}
+	}
+	b.WriteString(fmt.Sprintf("|max=%d", info.MaxEffectBatch))
+	for _, machine := range info.Decl.Machines {
+		for _, state := range machine.States {
+			for _, handler := range state.Handlers {
+				b.WriteString("|handler:")
+				b.WriteString(machine.Name)
+				b.WriteString("::")
+				b.WriteString(state.Name)
+				for _, emit := range handler.Emits {
+					b.WriteString("|emit:")
+					b.WriteString(emit.EffectName)
+					for _, arg := range emit.Args {
+						b.WriteString(":")
+						b.WriteString(evt1ExprIdentity(arg))
+					}
+				}
+			}
+		}
+	}
+	return digest([]byte(b.String()))
+}
+
+func evt1AutomataEffectSet(env *evt1Env, info *evt1AutomataInfo) []string {
+	used := map[string]bool{}
+	for _, machine := range info.Decl.Machines {
+		for _, state := range machine.States {
+			for _, handler := range state.Handlers {
+				for _, emit := range handler.Emits {
+					used[emit.EffectName] = true
+				}
+			}
+		}
+	}
+	var out []string
+	for _, name := range env.effectOrder {
+		if used[name] {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+func evt1AutomataMaxEffectBatch(info *evt1AutomataInfo) int {
+	best := 0
+	for _, machine := range info.Decl.Machines {
+		for _, state := range machine.States {
+			for _, handler := range state.Handlers {
+				if len(handler.Emits) > best {
+					best = len(handler.Emits)
+				}
+			}
+		}
+	}
+	return best
+}
+
+func evt1ValidateAutomataEmits(env *evt1Env, info *evt1AutomataInfo, handler EVT1TransitionDecl) error {
+	scope := evt1ModuleScope(env)
+	if info.Decl.Context != nil {
+		contextType := info.Decl.Context.Type
+		contextType.Ownership = "borrow"
+		contextType.Const = true
+		scope.declare(info.Decl.Context.Name, evt1ValueBinding{
+			t:       contextType,
+			mutable: false,
+		})
+	}
+	for _, emit := range handler.Emits {
+		effectDecl, ok := env.effects[emit.EffectName]
+		if !ok {
+			return evt1Diagnostic("CV4301", fmt.Sprintf("unknown emitted effect %s", emit.EffectName), emit.Span)
+		}
+		if len(effectDecl.Params) != len(emit.Args) {
+			return evt1Diagnostic("CV4310", fmt.Sprintf("wrong payload count for effect %s: expected %d but got %d", effectDecl.Name, len(effectDecl.Params), len(emit.Args)), emit.Span)
+		}
+		for i, arg := range emit.Args {
+			if err := evt1ValidateEffectPayloadExpr(env, scope, arg); err != nil {
+				return err
+			}
+			argType, err := validateExprAgainstExpected(env, scope, arg, effectDecl.Params[i].Type, nil, false)
+			if err != nil {
+				return err
+			}
+			if !evt1CanonicalType(env, argType.valueType()).Equal(evt1CanonicalType(env, effectDecl.Params[i].Type.valueType())) {
+				return evt1Diagnostic("CV4311", fmt.Sprintf("effect %s argument %d expected %s but got %s", effectDecl.Name, i+1, effectDecl.Params[i].Type.String(), argType.String()), arg.exprSpan())
+			}
+		}
+	}
+	return nil
+}
+
+func evt1ValidateEffectPayloadExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr) error {
+	if _, err := validateExpr(env, scope, expr, nil, false); err != nil {
+		return err
+	}
+	switch e := expr.(type) {
+	case *EVT1IntLiteral, *EVT1BoolLiteral, *EVT1NameExpr:
+		return nil
+	case *EVT1ParenExpr:
+		return evt1ValidateEffectPayloadExpr(env, scope, e.Value)
+	case *EVT1FieldExpr:
+		return evt1ValidateEffectPayloadExpr(env, scope, e.Receiver)
+	case *EVT1UnaryExpr:
+		return evt1ValidateEffectPayloadExpr(env, scope, e.Value)
+	case *EVT1BinaryExpr:
+		if err := evt1ValidateEffectPayloadExpr(env, scope, e.Left); err != nil {
+			return err
+		}
+		return evt1ValidateEffectPayloadExpr(env, scope, e.Right)
+	case *EVT1ConstructExpr:
+		for _, arg := range e.Args {
+			if err := evt1ValidateEffectPayloadExpr(env, scope, arg); err != nil {
+				return err
+			}
+		}
+		return nil
+	case *EVT1StructConstructExpr:
+		for _, arg := range e.Args {
+			if err := evt1ValidateEffectPayloadExpr(env, scope, arg); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return evt1Diagnostic("CV4312", "effect payload expressions must use pure value construction only in M3", expr.exprSpan())
+	}
 }
 
 func evt1ValidateAutomataCandidateGroups(env *evt1Env, info *evt1AutomataInfo, machine EVT1MachineDecl, state EVT1StateDecl) error {

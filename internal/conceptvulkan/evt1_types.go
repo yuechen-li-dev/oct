@@ -170,6 +170,12 @@ type EVT1Param struct {
 	Span Span     `json:"span"`
 }
 
+type EVT1EffectDecl struct {
+	Name   string      `json:"name"`
+	Params []EVT1Param `json:"params,omitempty"`
+	Span   Span        `json:"span"`
+}
+
 type EVT1ConceptRequirement interface {
 	evt1ConceptRequirement()
 	requirementSpan() Span
@@ -251,6 +257,7 @@ type EVT1Module struct {
 	Imports       []string               `json:"imports,omitempty"`
 	Structs       []EVT1StructDecl       `json:"structs,omitempty"`
 	Enums         []EVT1EnumDecl         `json:"enums,omitempty"`
+	Effects       []EVT1EffectDecl       `json:"effects,omitempty"`
 	Automata      []EVT1AutomataDecl     `json:"automata,omitempty"`
 	Concepts      []EVT1ConceptDecl      `json:"concepts,omitempty"`
 	Assertions    []EVT1ConceptAssertion `json:"assertions,omitempty"`
@@ -284,6 +291,15 @@ type EVT1VarDecl struct {
 
 func (*EVT1VarDecl) evt1Statement()        {}
 func (s *EVT1VarDecl) statementSpan() Span { return s.Span }
+
+type EVT1EffectsDecl struct {
+	AutomataName string `json:"automata_name"`
+	Name         string `json:"name"`
+	Span         Span   `json:"span"`
+}
+
+func (*EVT1EffectsDecl) evt1Statement()        {}
+func (s *EVT1EffectsDecl) statementSpan() Span { return s.Span }
 
 type EVT1InstanceDecl struct {
 	AutomataName string `json:"automata_name"`
@@ -419,6 +435,7 @@ func (e *EVT1CallExpr) exprSpan() Span { return e.Span }
 type EVT1DispatchExpr struct {
 	InstanceName string   `json:"instance_name"`
 	Signal       EVT1Expr `json:"signal"`
+	BatchName    string   `json:"batch_name,omitempty"`
 	Span         Span     `json:"span"`
 }
 
@@ -523,11 +540,18 @@ type EVT1ParenExpr struct {
 func (*EVT1ParenExpr) evt1Expr()        {}
 func (e *EVT1ParenExpr) exprSpan() Span { return e.Span }
 
+type EVT1MIREffect struct {
+	Name       string        `json:"name"`
+	Params     []EVT1MIRName `json:"params,omitempty"`
+	SourceSpan Span          `json:"source_span"`
+}
+
 type EVT1MIR struct {
 	Schema        string                `json:"schema"`
 	Module        string                `json:"module"`
 	Structs       []EVT1MIRStruct       `json:"structs,omitempty"`
 	Enums         []EVT1MIREnum         `json:"enums,omitempty"`
+	Effects       []EVT1MIREffect       `json:"effects,omitempty"`
 	Automata      []EVT1MIRAutomata     `json:"automata,omitempty"`
 	Concepts      []EVT1MIRConcept      `json:"concepts,omitempty"`
 	Assertions    []EVT1MIRAssertion    `json:"assertions,omitempty"`
@@ -670,6 +694,8 @@ type EVT1MIROperation struct {
 type evt1Env struct {
 	enums             map[string]EVT1EnumDecl
 	structs           map[string]EVT1StructDecl
+	effects           map[string]EVT1EffectDecl
+	effectOrder       []string
 	automata          map[string]EVT1AutomataDecl
 	automataInfo      map[string]*evt1AutomataInfo
 	functions         map[string][]EVT1FunctionDecl
@@ -708,6 +734,8 @@ func newEVT1Env() *evt1Env {
 			outcome.Name: outcome,
 		},
 		structs:           map[string]EVT1StructDecl{},
+		effects:           map[string]EVT1EffectDecl{},
+		effectOrder:       nil,
 		automata:          map[string]EVT1AutomataDecl{},
 		automataInfo:      map[string]*evt1AutomataInfo{},
 		functions:         map[string][]EVT1FunctionDecl{},

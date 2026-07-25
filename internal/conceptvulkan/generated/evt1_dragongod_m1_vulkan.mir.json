@@ -85,6 +85,10 @@
       "continuation_capacity": 2,
       "completion_step_bound": 3,
       "graph_identity": "42b357cd37a9da188e9b6efbfa5060dcb62b6071c5ce758d3f32dd3e8d539734",
+      "topology_identity": "2985053afbfd87c999c72d48ac86b7f90533cf2be22a71c6a53aa5e07f62b801",
+      "guard_identity": "ab3f76039c9919cc05cd5942f07f3eb7a0291e4c998e934df3a21293860bb77d",
+      "effect_identity": "0b8f1cb878f3989746b46a7570c6f9b225071d52f4036b68812aa55a74c8184b",
+      "runtime_identity": "928aac237db6904fe6cb8bcb68ddfb9d08ccf5bad1c790717db240c9aa239224",
       "source_span": {
         "line": 14,
         "column": 1

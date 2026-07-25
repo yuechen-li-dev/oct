@@ -1,6 +1,6 @@
 # Concept/Vulkan language constitution
 
-Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree now carries an experimental DragonGod M2 typed-automata control vertical with fixed local instances, one exact optional borrowed context binding, guarded candidates, explicit fallback, deterministic ambiguity reporting, and strict-C11 lowering; production remains handwritten**
+Status: **normative EVT1 M1B-D constitution in success state; kernel-54 proof accepted; payload enums, exhaustive match, mutable structs, named concept requirements, constrained template monomorphization, bounded pure comptime evaluation, foundational control flow, fixed-size compile-time arrays, and finite structural validation implemented; the current worktree now carries an experimental DragonGod M3 typed-automata control-and-effect vertical with fixed local instances, one exact optional borrowed context binding, guarded candidates, explicit fallback, deterministic ambiguity reporting, ordered typed effect emission, and strict-C11 lowering; production remains handwritten**
 
 Date: 2026-07-25
 
@@ -405,6 +405,76 @@ may not dispatch, allocate, mutate, perform Vulkan operations, use mutable
 borrows, consume owned values, recurse, or execute unbounded runtime control
 flow. Guard-aware reachability remains conservative: every guarded and fallback
 edge still participates in topology validation and maximum-depth derivation.
+
+## 2.10 DragonGod M3 typed ordered effect emission
+
+DragonGod M3 extends the accepted M2 runtime surface with typed ordered work
+description emission while preserving the separation between committed control
+state and later physical execution:
+
+```concept
+effect RecordSubmission(int submission);
+effect BeginSubmission(int submission, QueueClass queue);
+
+automata ResourceLifecycle(
+    LifecycleSignal,
+    borrow context: LifecycleContext)
+{
+    initial machine Main
+    {
+        state Ready
+        {
+            on LifecycleSignal::Submit
+                when context.queueAvailable
+                => {
+                    emit RecordSubmission(context.submission);
+                    emit BeginSubmission(context.submission, context.queue);
+                    goto Submitting;
+                }
+        }
+    }
+}
+```
+
+```concept
+instance ResourceLifecycle lifecycle(context);
+effects ResourceLifecycle emitted;
+
+AutomataDispatchOutcome outcome =
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+```
+
+Top-level `effect` declares one typed work-description constructor. M3 accepts
+only exact closed payload domains: `int`, `bool`, `uint64`, nullary enums, and
+structs recursively composed from those types. Strings, arrays, pointers,
+ownership-qualified values, imported/unsafe forms, and Vulkan handles remain
+outside the accepted M3 payload surface.
+
+`effects AutomataName localName;` declares one compiler-owned exact local batch
+associated with that validated automata family. Batches are not ordinary
+runtime values and cannot be copied, assigned, returned, or dispatched through
+ordinary functions.
+
+Emit-capable handlers use the exact block form `=> { ... }`. Within such a
+body, zero or more ordered `emit EffectName(...)` statements may appear, and
+the body must end with exactly one existing DragonGod control action
+(`goto`, `push`, `pop`, or `finish`). Emission remains descriptive only:
+dispatch does not execute Vulkan, invoke an actuator, or report physical
+success.
+
+Effectful dispatch uses the exact third batch operand
+`dispatch(instance, signal, emitted)`. Automata whose closed effect set is
+empty preserve M1/M2 two-operand dispatch and reject a third operand. Automata
+whose closed effect set is non-empty require the exact third `effects` operand
+of the same automata family.
+
+Guard selection still happens before any state mutation or payload evaluation.
+On unique candidate selection, emitted payload expressions are evaluated
+exactly once in source order under the current bounded pure-expression subset,
+the control transition is staged, synchronous completion normalization runs on
+the staged instance, and only then are the settled control state and full batch
+published atomically. `Unhandled`, `Ambiguous`, and `AlreadyFinished` publish
+an empty batch and leave the established no-partial-publication rule intact.
 
 ## 3. Static and runtime facts
 
@@ -904,6 +974,42 @@ context-and-legality slice:
     dispatch, or public Prometheus ABI growth;
 14. preserved acceptance of declaration-only automata and contextless M1
     automata.
+
+## 12.8 DragonGod M3 semantic minimum
+
+DragonGod M3 extends the accepted M2 vertical with the smallest coherent
+typed ordered effect-emission slice:
+
+1. top-level exact `effect Name(paramTypes...);` declarations with globally
+   unique names;
+2. a closed accepted effect-payload domain consisting only of `int`, `bool`,
+   `uint64`, nullary enums, and structs recursively composed from accepted
+   payload types;
+3. exact local `effects AutomataName localName;` storage associated with one
+   validated automata family;
+4. effectful handler block bodies containing ordered `emit` statements followed
+   by exactly one existing DragonGod control action;
+5. exact typed three-operand `dispatch(instance, signal, emitted)` for
+   automata whose validated closed effect set is non-empty;
+6. preserved exact two-operand `dispatch(instance, signal)` for automata whose
+   validated closed effect set is empty, plus rejection of a third operand in
+   that case;
+7. exact batch-family matching between the dispatched instance and the third
+   batch operand;
+8. exact-once payload evaluation in source order only for the uniquely
+   selected candidate;
+9. preservation of M2 guard selection semantics ahead of payload evaluation and
+   control mutation;
+10. compiler-derived closed effect-tag/payload unions and exact maximum emitted
+    batch length per automata family;
+11. staged control mutation plus synchronous completion normalization before
+    publishing a selected batch;
+12. atomic publication of both the fully settled control state and the complete
+    ordered effect batch with no partial exposure;
+13. empty-batch publication on `Unhandled`, `Ambiguous`, and `AlreadyFinished`;
+14. effect-aware MIR, semantic identity, source-map evidence, and strict-C11
+    lowering with no heap allocation, runtime reflection, or public Prometheus
+    ABI growth.
 
 ## 13. Profile MIR boundary
 

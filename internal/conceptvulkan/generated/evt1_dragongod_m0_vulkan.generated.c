@@ -68,4 +68,3 @@ int concept_vulkan_evt1_dragongod_m0_vulkan_derived_machine_depth(VkCommandPool 
 bool concept_vulkan_evt1_dragongod_m0_vulkan_pool_ready(VkCommandPool pool, bool ready) {
   return ready;
 }
-

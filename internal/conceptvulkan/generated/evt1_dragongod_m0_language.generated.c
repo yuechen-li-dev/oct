@@ -75,4 +75,3 @@ int concept_vulkan_evt1_dragongod_m0_language_derived_stack_depth() {
 bool concept_vulkan_evt1_dragongod_m0_language_finish_is_explicit() {
   return true;
 }
-

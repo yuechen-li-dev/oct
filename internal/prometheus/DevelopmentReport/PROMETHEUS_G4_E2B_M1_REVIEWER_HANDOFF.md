@@ -60,8 +60,8 @@ DragonGod typed lifecycle validation over the now-complete EVT1 substrate
 The historical kernel-54 milestone named `M1C` must not be confused with the
 later EVT1 milestone named `M1B-C`. DragonGod remains the intended first
 serious post-substrate framework direction. That direction is no longer
-deferred: DragonGod M0, DragonGod M1, and DragonGod M2 are now implemented in
-the current repository state.
+deferred: DragonGod M0, DragonGod M1, DragonGod M2, and DragonGod M3 are now
+implemented in the current repository state.
 
 The current repository now contains the accepted DragonGod M0 compiler vertical
 recorded in
@@ -73,6 +73,9 @@ July 24, 2026. The follow-on DragonGod M1 runtime vertical is recorded in
 The next accepted closure, DragonGod M2 typed automata context and guarded
 transitions, is recorded in
 `internal/prometheus/DevelopmentReport/DRAGONGOD_M2_TYPED_AUTOMATA_CONTEXT_AND_GUARDED_TRANSITIONS.md`
+with native C11 reruns completed on Saturday, July 25, 2026. The next accepted
+closure, DragonGod M3 typed ordered effect emission, is recorded in
+`internal/prometheus/DevelopmentReport/DRAGONGOD_M3_TYPED_ORDERED_EFFECT_EMISSION.md`
 with native C11 reruns completed on Saturday, July 25, 2026.
 
 ## Historical repository handoff — Stage 3

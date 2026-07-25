@@ -1,0 +1,142 @@
+profile Vulkan;
+
+enum LifecycleSignal
+{
+    Submit,
+    Submitted,
+    SubmitFailed,
+    FinishNow,
+    Stop
+}
+
+enum QueueClass
+{
+    Graphics,
+    Compute
+}
+
+struct LifecycleContext
+{
+    bool queueAvailable;
+    bool failRequested;
+    int submission;
+    QueueClass queue;
+    int ticket;
+};
+
+effect RecordSubmission(int submission);
+effect BeginSubmission(int submission, QueueClass queue);
+effect FinalizeTicket(int ticket);
+
+bool QueueOpen(borrow const LifecycleContext context)
+{
+    return context.queueAvailable;
+}
+
+bool FailRequested(borrow const LifecycleContext context)
+{
+    return context.failRequested;
+}
+
+automata ResourceLifecycle(
+    LifecycleSignal,
+    borrow context: LifecycleContext)
+{
+    initial machine Main
+    {
+        initial state Ready
+        {
+            on LifecycleSignal::Submit when QueueOpen(context) => {
+                emit RecordSubmission(context.submission);
+                emit BeginSubmission(context.submission, context.queue);
+                goto Submitting;
+            }
+            on LifecycleSignal::Submit when FailRequested(context) => {
+                emit FinalizeTicket(context.ticket);
+                goto Failed;
+            }
+            on LifecycleSignal::Submit otherwise => {
+                emit FinalizeTicket(context.ticket);
+                goto Deferred;
+            }
+            on LifecycleSignal::FinishNow => {
+                emit FinalizeTicket(context.ticket);
+                goto Finished;
+            }
+        }
+
+        state Deferred
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Submitting
+        {
+            on LifecycleSignal::Submitted goto Active;
+            on LifecycleSignal::SubmitFailed goto Failed;
+        }
+
+        state Active
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Failed
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+automata ImmediateLifecycle(LifecycleSignal)
+{
+    initial machine Main
+    {
+        initial state Idle
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Ambiguous => 5,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4
+    };
+}
+
+int EffectfulSubmitCode(LifecycleContext context)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Submit, emitted));
+}
+
+int ZeroEmitTransitionCode(LifecycleContext context)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Submitted, emitted));
+}
+
+int ContextlessCompatibilityCode()
+{
+    instance ImmediateLifecycle lifecycle;
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Stop));
+}

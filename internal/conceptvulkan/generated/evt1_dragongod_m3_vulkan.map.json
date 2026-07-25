@@ -1,0 +1,862 @@
+{
+  "assertions": null,
+  "automata": [
+    {
+      "name": "BufferLifecycle",
+      "signal_enum": "ResourceSignal",
+      "context_name": "context",
+      "context_type": {
+        "name": "BufferContext",
+        "kind": "struct",
+        "span": {
+          "line": 43,
+          "column": 21
+        }
+      },
+      "root_machine": "Main",
+      "max_active_depth": 1,
+      "continuation_capacity": 0,
+      "completion_step_bound": 1,
+      "graph_identity": "329d383b182c612d86d6cd71f712cc6c0327425d43ccbf4d5be23a96e64a7906",
+      "topology_identity": "3e0a10a47dda0073fb5ac63ec1dc2f03923ab831e5e1978393959c4863d0b61b",
+      "guard_identity": "b49a8a57fab17e494339ba3ac02672dac72cf6fb2d97f796e0d4049995c2e154",
+      "effect_identity": "7b3434729bb347752fafd9ff91168d8bf75a8330eff0b2a6ae7e3a93b676082c",
+      "runtime_identity": "0405d0b80a1f80e2feb7feaef43fed6a677a50666b269702575a9b9c6accd1f8",
+      "effect_set": [
+        "RecordBufferSubmission",
+        "BeginBufferSubmission",
+        "MarkBufferFailure"
+      ],
+      "max_effect_batch": 2,
+      "source_span": {
+        "line": 41,
+        "column": 1
+      },
+      "machines": [
+        {
+          "name": "Main",
+          "initial": true,
+          "runtime_ordinal": 0,
+          "reachable": true,
+          "source_span": {
+            "line": 45,
+            "column": 5
+          },
+          "states": [
+            {
+              "name": "Ready",
+              "initial": true,
+              "runtime_ordinal": 0,
+              "reachable": true,
+              "source_span": {
+                "line": 47,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "guard": "QueueOpen(context)",
+                  "kind": "goto",
+                  "target_state": "Submitting",
+                  "emits": [
+                    {
+                      "effect": "RecordBufferSubmission",
+                      "args": [
+                        "context.bufferId"
+                      ],
+                      "source_span": {
+                        "line": 50,
+                        "column": 17
+                      }
+                    },
+                    {
+                      "effect": "BeginBufferSubmission",
+                      "args": [
+                        "context.bufferId",
+                        "context.queue"
+                      ],
+                      "source_span": {
+                        "line": 51,
+                        "column": 17
+                      }
+                    }
+                  ],
+                  "source_span": {
+                    "line": 49,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "guard": "FailRequested(context)",
+                  "kind": "goto",
+                  "target_state": "Failed",
+                  "emits": [
+                    {
+                      "effect": "MarkBufferFailure",
+                      "args": [
+                        "context.failureCode"
+                      ],
+                      "source_span": {
+                        "line": 55,
+                        "column": 17
+                      }
+                    }
+                  ],
+                  "source_span": {
+                    "line": 54,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::Submit",
+                  "otherwise": true,
+                  "kind": "goto",
+                  "target_state": "Deferred",
+                  "emits": [
+                    {
+                      "effect": "MarkBufferFailure",
+                      "args": [
+                        "context.failureCode"
+                      ],
+                      "source_span": {
+                        "line": 59,
+                        "column": 17
+                      }
+                    }
+                  ],
+                  "source_span": {
+                    "line": 58,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::FinishNow",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "emits": [
+                    {
+                      "effect": "MarkBufferFailure",
+                      "args": [
+                        "context.failureCode"
+                      ],
+                      "source_span": {
+                        "line": 63,
+                        "column": 17
+                      }
+                    }
+                  ],
+                  "source_span": {
+                    "line": 62,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Deferred",
+              "runtime_ordinal": 1,
+              "reachable": true,
+              "source_span": {
+                "line": 68,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 70,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Submitting",
+              "runtime_ordinal": 2,
+              "reachable": true,
+              "source_span": {
+                "line": 73,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Submitted",
+                  "kind": "goto",
+                  "target_state": "Active",
+                  "source_span": {
+                    "line": 75,
+                    "column": 13
+                  }
+                },
+                {
+                  "signal": "ResourceSignal::SubmitFailed",
+                  "kind": "goto",
+                  "target_state": "Failed",
+                  "source_span": {
+                    "line": 76,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Active",
+              "runtime_ordinal": 3,
+              "reachable": true,
+              "source_span": {
+                "line": 79,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 81,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Failed",
+              "runtime_ordinal": 4,
+              "reachable": true,
+              "source_span": {
+                "line": 84,
+                "column": 9
+              },
+              "handlers": [
+                {
+                  "signal": "ResourceSignal::Stop",
+                  "kind": "goto",
+                  "target_state": "Finished",
+                  "source_span": {
+                    "line": 86,
+                    "column": 13
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Finished",
+              "terminal": true,
+              "runtime_ordinal": 5,
+              "reachable": true,
+              "completion": "finish",
+              "source_span": {
+                "line": 89,
+                "column": 9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "comptime_decls": null,
+  "concepts": null,
+  "functions": [
+    {
+      "name": "QueueOpen",
+      "span": {
+        "line": 31,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_queue_open"
+    },
+    {
+      "name": "FailRequested",
+      "span": {
+        "line": 36,
+        "column": 6
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_fail_requested"
+    },
+    {
+      "name": "OutcomeCode",
+      "span": {
+        "line": 96,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_outcome_code"
+    },
+    {
+      "name": "VulkanEffectfulSubmitCode",
+      "span": {
+        "line": 107,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_vulkan_effectful_submit_code"
+    },
+    {
+      "name": "VulkanZeroEmitTransitionCode",
+      "span": {
+        "line": 114,
+        "column": 5
+      },
+      "symbol": "concept_vulkan_evt1_dragongod_m3_vulkan_vulkan_zero_emit_transition_code"
+    }
+  ],
+  "instances": null,
+  "mir": [
+    {
+      "name": "QueueOpen",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 31,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "BufferContext",
+            "kind": "struct",
+            "ownership": "borrow",
+            "const": true,
+            "span": {
+              "line": 31,
+              "column": 16
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "QueueOpen.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 33,
+            "column": 5
+          }
+        },
+        {
+          "id": "QueueOpen.02",
+          "kind": "field_access",
+          "detail": "queueAvailable",
+          "source_span": {
+            "line": 33,
+            "column": 20
+          }
+        },
+        {
+          "id": "QueueOpen.03",
+          "kind": "name",
+          "detail": "context",
+          "source_span": {
+            "line": 33,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 31,
+        "column": 6
+      }
+    },
+    {
+      "name": "FailRequested",
+      "return_type": {
+        "name": "bool",
+        "kind": "builtin",
+        "span": {
+          "line": 36,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "BufferContext",
+            "kind": "struct",
+            "ownership": "borrow",
+            "const": true,
+            "span": {
+              "line": 36,
+              "column": 20
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "FailRequested.01",
+          "kind": "return",
+          "type": "bool",
+          "source_span": {
+            "line": 38,
+            "column": 5
+          }
+        },
+        {
+          "id": "FailRequested.02",
+          "kind": "field_access",
+          "detail": "failRequested",
+          "source_span": {
+            "line": 38,
+            "column": 20
+          }
+        },
+        {
+          "id": "FailRequested.03",
+          "kind": "name",
+          "detail": "context",
+          "source_span": {
+            "line": 38,
+            "column": 12
+          }
+        }
+      ],
+      "source_span": {
+        "line": 36,
+        "column": 6
+      }
+    },
+    {
+      "name": "OutcomeCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 96,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "outcome",
+          "type": {
+            "name": "AutomataDispatchOutcome",
+            "kind": "enum",
+            "span": {
+              "line": 96,
+              "column": 17
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "OutcomeCode.01",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 98,
+            "column": 5
+          }
+        },
+        {
+          "id": "OutcomeCode.02",
+          "kind": "match_expr",
+          "detail": "5 arms",
+          "source_span": {
+            "line": 98,
+            "column": 12
+          }
+        },
+        {
+          "id": "OutcomeCode.03",
+          "kind": "name",
+          "detail": "outcome",
+          "source_span": {
+            "line": 98,
+            "column": 19
+          }
+        },
+        {
+          "id": "OutcomeCode.04",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Transitioned",
+          "source_span": {
+            "line": 99,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.05",
+          "kind": "literal",
+          "detail": "1",
+          "source_span": {
+            "line": 99,
+            "column": 50
+          }
+        },
+        {
+          "id": "OutcomeCode.06",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Unhandled",
+          "source_span": {
+            "line": 100,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.07",
+          "kind": "literal",
+          "detail": "2",
+          "source_span": {
+            "line": 100,
+            "column": 47
+          }
+        },
+        {
+          "id": "OutcomeCode.08",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Ambiguous",
+          "source_span": {
+            "line": 101,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.09",
+          "kind": "literal",
+          "detail": "5",
+          "source_span": {
+            "line": 101,
+            "column": 47
+          }
+        },
+        {
+          "id": "OutcomeCode.10",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::Finished",
+          "source_span": {
+            "line": 102,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.11",
+          "kind": "literal",
+          "detail": "3",
+          "source_span": {
+            "line": 102,
+            "column": 46
+          }
+        },
+        {
+          "id": "OutcomeCode.12",
+          "kind": "pattern",
+          "detail": "AutomataDispatchOutcome::AlreadyFinished",
+          "source_span": {
+            "line": 103,
+            "column": 9
+          }
+        },
+        {
+          "id": "OutcomeCode.13",
+          "kind": "literal",
+          "detail": "4",
+          "source_span": {
+            "line": 103,
+            "column": 53
+          }
+        }
+      ],
+      "source_span": {
+        "line": 96,
+        "column": 5
+      }
+    },
+    {
+      "name": "VulkanEffectfulSubmitCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 107,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "BufferContext",
+            "kind": "struct",
+            "span": {
+              "line": 107,
+              "column": 31
+            }
+          }
+        },
+        {
+          "name": "buffer",
+          "type": {
+            "name": "VkBuffer",
+            "kind": "builtin",
+            "span": {
+              "line": 107,
+              "column": 54
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "VulkanEffectfulSubmitCode.01",
+          "kind": "instance_decl",
+          "detail": "BufferLifecycle lifecycle",
+          "source_span": {
+            "line": 109,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanEffectfulSubmitCode.02",
+          "kind": "effects_decl",
+          "detail": "BufferLifecycle emitted",
+          "source_span": {
+            "line": 110,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanEffectfulSubmitCode.03",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 111,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanEffectfulSubmitCode.04",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 111,
+            "column": 12
+          }
+        },
+        {
+          "id": "VulkanEffectfulSubmitCode.05",
+          "kind": "dispatch",
+          "detail": "lifecycle -\u003e emitted",
+          "source_span": {
+            "line": 111,
+            "column": 24
+          }
+        },
+        {
+          "id": "VulkanEffectfulSubmitCode.06",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 111,
+            "column": 44
+          }
+        }
+      ],
+      "source_span": {
+        "line": 107,
+        "column": 5
+      }
+    },
+    {
+      "name": "VulkanZeroEmitTransitionCode",
+      "return_type": {
+        "name": "int",
+        "kind": "builtin",
+        "span": {
+          "line": 114,
+          "column": 1
+        }
+      },
+      "params": [
+        {
+          "name": "context",
+          "type": {
+            "name": "BufferContext",
+            "kind": "struct",
+            "span": {
+              "line": 114,
+              "column": 34
+            }
+          }
+        },
+        {
+          "name": "pool",
+          "type": {
+            "name": "VkCommandPool",
+            "kind": "builtin",
+            "span": {
+              "line": 114,
+              "column": 57
+            }
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "VulkanZeroEmitTransitionCode.01",
+          "kind": "instance_decl",
+          "detail": "BufferLifecycle lifecycle",
+          "source_span": {
+            "line": 116,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.02",
+          "kind": "effects_decl",
+          "detail": "BufferLifecycle emitted",
+          "source_span": {
+            "line": 117,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.03",
+          "kind": "expr_stmt",
+          "source_span": {
+            "line": 118,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.04",
+          "kind": "dispatch",
+          "detail": "lifecycle -\u003e emitted",
+          "source_span": {
+            "line": 118,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.05",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submit",
+          "source_span": {
+            "line": 118,
+            "column": 25
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.06",
+          "kind": "return",
+          "type": "int",
+          "source_span": {
+            "line": 119,
+            "column": 5
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.07",
+          "kind": "call",
+          "detail": "OutcomeCode",
+          "source_span": {
+            "line": 119,
+            "column": 12
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.08",
+          "kind": "dispatch",
+          "detail": "lifecycle -\u003e emitted",
+          "source_span": {
+            "line": 119,
+            "column": 24
+          }
+        },
+        {
+          "id": "VulkanZeroEmitTransitionCode.09",
+          "kind": "enum_construct",
+          "detail": "ResourceSignal::Submitted",
+          "source_span": {
+            "line": 119,
+            "column": 44
+          }
+        }
+      ],
+      "source_span": {
+        "line": 114,
+        "column": 5
+      }
+    }
+  ],
+  "schema": "concept-vulkan-evt1-source-map.v1",
+  "source": "examples/Concept-Vulkan/evt1_dragongod_m3_vulkan.concept",
+  "static_asserts": null,
+  "structs": [
+    {
+      "name": "BufferContext",
+      "c_name": "concept_vulkan_buffer_context",
+      "immovable": false,
+      "copyable": true,
+      "fields": [
+        {
+          "name": "queueAvailable",
+          "type": {
+            "name": "bool",
+            "kind": "builtin",
+            "span": {
+              "line": 20,
+              "column": 5
+            }
+          }
+        },
+        {
+          "name": "failRequested",
+          "type": {
+            "name": "bool",
+            "kind": "builtin",
+            "span": {
+              "line": 21,
+              "column": 5
+            }
+          }
+        },
+        {
+          "name": "bufferId",
+          "type": {
+            "name": "int",
+            "kind": "builtin",
+            "span": {
+              "line": 22,
+              "column": 5
+            }
+          }
+        },
+        {
+          "name": "queue",
+          "type": {
+            "name": "QueueClass",
+            "kind": "enum",
+            "span": {
+              "line": 23,
+              "column": 5
+            }
+          }
+        },
+        {
+          "name": "failureCode",
+          "type": {
+            "name": "int",
+            "kind": "builtin",
+            "span": {
+              "line": 24,
+              "column": 5
+            }
+          }
+        }
+      ],
+      "source_span": {
+        "line": 18,
+        "column": 1
+      }
+    }
+  ],
+  "templates": null
+}

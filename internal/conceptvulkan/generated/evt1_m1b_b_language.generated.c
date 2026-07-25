@@ -114,4 +114,3 @@ bool concept_vulkan_evt1_m1b_b_language_compare_template_score() {
   range.size = cv_init_3_03;
   return (concept_vulkan_template_score_resource__buffer_range(&range) > 0);
 }
-

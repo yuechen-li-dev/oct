@@ -94,6 +94,10 @@
       "continuation_capacity": 0,
       "completion_step_bound": 1,
       "graph_identity": "83923f3388bc33de77bdc5886bca749c94a09344417379a46a799d3494b0a486",
+      "topology_identity": "d391011fb73966765a2906ab4a4065ff1b7e72cca21ce5238e18dede73b96ee1",
+      "guard_identity": "faef0c90196bcbcb726065d61e98ef07e1862f2b39470b0140bfb3f247dcea88",
+      "effect_identity": "535e67f4be4ecb5580e68908cf77fc69e0a1cc55f6211097a242a8c731123769",
+      "runtime_identity": "d6fd88d0e6d86b6c16049ec3b3c696786c060f94b7c2605fbc8b9680bd017e2f",
       "source_span": {
         "line": 26,
         "column": 1

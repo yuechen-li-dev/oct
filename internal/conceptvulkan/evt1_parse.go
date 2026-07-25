@@ -205,6 +205,12 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 				return module, err
 			}
 			module.Enums = append(module.Enums, enumDecl)
+		case "effect":
+			effectDecl, err := p.parseEffectDecl()
+			if err != nil {
+				return module, err
+			}
+			module.Effects = append(module.Effects, effectDecl)
 		case "automata":
 			automataDecl, err := p.parseAutomataDecl()
 			if err != nil {
@@ -289,6 +295,45 @@ func (p *evt1Parser) parseAutomataDecl() (EVT1AutomataDecl, error) {
 	}
 	if _, err := p.expect("}"); err != nil {
 		return EVT1AutomataDecl{}, err
+	}
+	return decl, nil
+}
+
+func (p *evt1Parser) parseEffectDecl() (EVT1EffectDecl, error) {
+	start, err := p.expect("effect")
+	if err != nil {
+		return EVT1EffectDecl{}, err
+	}
+	nameTok, err := p.expectIdentifier("CV4298", "expected effect name")
+	if err != nil {
+		return EVT1EffectDecl{}, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return EVT1EffectDecl{}, err
+	}
+	decl := EVT1EffectDecl{Name: nameTok.Lexeme, Span: start.Span}
+	if p.peekLexeme() != ")" {
+		for {
+			paramType, err := p.parseType("")
+			if err != nil {
+				return EVT1EffectDecl{}, err
+			}
+			paramName, err := p.expectIdentifier("CV4299", "expected effect parameter name")
+			if err != nil {
+				return EVT1EffectDecl{}, err
+			}
+			decl.Params = append(decl.Params, EVT1Param{Type: paramType, Name: paramName.Lexeme, Span: paramName.Span})
+			if p.peekLexeme() != "," {
+				break
+			}
+			p.next()
+		}
+	}
+	if _, err := p.expect(")"); err != nil {
+		return EVT1EffectDecl{}, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return EVT1EffectDecl{}, err
 	}
 	return decl, nil
 }
@@ -403,6 +448,18 @@ func (p *evt1Parser) parseAutomataHandler() (EVT1TransitionDecl, error) {
 		if _, err := p.expect("=>"); err != nil {
 			return EVT1TransitionDecl{}, evt1Diagnostic("CV4280", "fallback handlers require `=>` before the control action", p.currentSpan())
 		}
+	case "=>":
+		p.next()
+		if err := p.parseAutomataEffectBody(&handler); err != nil {
+			return EVT1TransitionDecl{}, err
+		}
+		return handler, nil
+	}
+	if p.peekLexeme() == "{" {
+		if err := p.parseAutomataEffectBody(&handler); err != nil {
+			return EVT1TransitionDecl{}, err
+		}
+		return handler, nil
 	}
 	if err := p.parseAutomataControlAction(&handler); err != nil {
 		return EVT1TransitionDecl{}, err
@@ -411,6 +468,64 @@ func (p *evt1Parser) parseAutomataHandler() (EVT1TransitionDecl, error) {
 		return EVT1TransitionDecl{}, err
 	}
 	return handler, nil
+}
+
+func (p *evt1Parser) parseAutomataEffectBody(handler *EVT1TransitionDecl) error {
+	if _, err := p.expect("{"); err != nil {
+		return err
+	}
+	for p.peekLexeme() == "emit" {
+		emit, err := p.parseAutomataEmit()
+		if err != nil {
+			return err
+		}
+		handler.Emits = append(handler.Emits, emit)
+	}
+	if err := p.parseAutomataControlAction(handler); err != nil {
+		return err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return err
+	}
+	if _, err := p.expect("}"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (p *evt1Parser) parseAutomataEmit() (EVT1EmitStmt, error) {
+	start, err := p.expect("emit")
+	if err != nil {
+		return EVT1EmitStmt{}, err
+	}
+	nameTok, err := p.expectIdentifier("CV4301", "expected effect name after emit")
+	if err != nil {
+		return EVT1EmitStmt{}, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return EVT1EmitStmt{}, err
+	}
+	stmt := EVT1EmitStmt{EffectName: nameTok.Lexeme, Span: start.Span}
+	if p.peekLexeme() != ")" {
+		for {
+			arg, err := p.parseExpr()
+			if err != nil {
+				return EVT1EmitStmt{}, err
+			}
+			stmt.Args = append(stmt.Args, arg)
+			if p.peekLexeme() != "," {
+				break
+			}
+			p.next()
+		}
+	}
+	if _, err := p.expect(")"); err != nil {
+		return EVT1EmitStmt{}, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return EVT1EmitStmt{}, err
+	}
+	return stmt, nil
 }
 
 func (p *evt1Parser) parseAutomataControlAction(handler *EVT1TransitionDecl) error {
@@ -993,6 +1108,8 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 			return nil, err
 		}
 		return &EVT1StaticAssertStmt{Condition: assertion.Condition, Message: assertion.Message, Span: assertion.Span}, nil
+	case "effects":
+		return p.parseEffectsDecl()
 	case "instance":
 		return p.parseInstanceDecl()
 	case "return":
@@ -1043,6 +1160,25 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 		}
 		return &EVT1ExprStmt{Value: value, Span: value.exprSpan()}, nil
 	}
+}
+
+func (p *evt1Parser) parseEffectsDecl() (EVT1Statement, error) {
+	start, err := p.expect("effects")
+	if err != nil {
+		return nil, err
+	}
+	automataTok, err := p.expectIdentifier("CV4300", "expected automata name after effects")
+	if err != nil {
+		return nil, err
+	}
+	nameTok, err := p.expectIdentifier("CV4300", "expected local effects name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return nil, err
+	}
+	return &EVT1EffectsDecl{AutomataName: automataTok.Lexeme, Name: nameTok.Lexeme, Span: start.Span}, nil
 }
 
 func (p *evt1Parser) parseInstanceDecl() (EVT1Statement, error) {
@@ -1554,10 +1690,19 @@ func (p *evt1Parser) parseDispatchExpr() (EVT1Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	batchName := ""
+	if p.peekLexeme() == "," {
+		p.next()
+		batchTok, err := p.expectIdentifier("CV4302", "expected local effects batch name in dispatch")
+		if err != nil {
+			return nil, err
+		}
+		batchName = batchTok.Lexeme
+	}
 	if _, err := p.expect(")"); err != nil {
 		return nil, err
 	}
-	return p.parsePostfixExpr(&EVT1DispatchExpr{InstanceName: instanceTok.Lexeme, Signal: signal, Span: start.Span}, start.Span)
+	return p.parsePostfixExpr(&EVT1DispatchExpr{InstanceName: instanceTok.Lexeme, Signal: signal, BatchName: batchName, Span: start.Span}, start.Span)
 }
 
 func (p *evt1Parser) parseArrayLiteralExpr() (EVT1Expr, error) {

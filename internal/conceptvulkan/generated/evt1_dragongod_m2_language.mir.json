@@ -94,6 +94,10 @@
       "continuation_capacity": 0,
       "completion_step_bound": 1,
       "graph_identity": "83007e0e0f71b7cacc8e2391a8a72f5d256d16b3808d9fee8e4a814d5e6c2018",
+      "topology_identity": "340ed9d13410cd769d0f02031ddf4711a353e0b3f459a2616ea4aa13b32d8d3a",
+      "guard_identity": "3f19ca42ba61d87365aba5b30e9e64757bc64fb84cf78183c274d7c154e74e85",
+      "effect_identity": "b4b0b135f65d3defa069424934819a0956a974cc2f24264cd0d9095ceb1095ea",
+      "runtime_identity": "a81bbd88808c70f0808cf80f9bf10fa09427a06940e02613d927d4be17f9dba9",
       "source_span": {
         "line": 36,
         "column": 1
@@ -303,6 +307,10 @@
       "continuation_capacity": 0,
       "completion_step_bound": 1,
       "graph_identity": "737b82de37cd44d4f36bf10d98097ac436a9604ce1dbffe57fc1b6e7b57a8d45",
+      "topology_identity": "8bd07c8de0b0ddbf1bd0041a2900a5dae0d0cb7cce6c3dab3cceab6d97b73b8d",
+      "guard_identity": "b7d8b8cdbd2359d2714892623426f8a0ce1cb23512c2730931c78e5ebb10f787",
+      "effect_identity": "87dd60e6b6a2177985973fb1eacea035c1e08233f39576c55ed92ad3b5958862",
+      "runtime_identity": "d4cb6d8d914c4d70b8724f045666593fb382e5920bff79ee559cee3187df76a4",
       "source_span": {
         "line": 84,
         "column": 1

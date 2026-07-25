@@ -122,6 +122,13 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 		}
 		mir.Enums = append(mir.Enums, mirEnum)
 	}
+	for _, effectDecl := range module.Effects {
+		mirEffect := EVT1MIREffect{Name: effectDecl.Name, SourceSpan: effectDecl.Span}
+		for _, param := range effectDecl.Params {
+			mirEffect.Params = append(mirEffect.Params, EVT1MIRName{Name: param.Name, Type: evt1MIRType(env, param.Type)})
+		}
+		mir.Effects = append(mir.Effects, mirEffect)
+	}
 	for _, automataDecl := range module.Automata {
 		info := env.automataInfo[automataDecl.Name]
 		mirAutomata := EVT1MIRAutomata{
@@ -132,6 +139,12 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 			ContinuationCapacity: info.ContinuationCapacity,
 			CompletionStepBound:  info.CompletionStepBound,
 			GraphIdentity:        info.GraphIdentity,
+			TopologyIdentity:     info.TopologyIdentity,
+			GuardIdentity:        info.GuardIdentity,
+			EffectIdentity:       info.EffectIdentity,
+			RuntimeIdentity:      info.RuntimeIdentity,
+			EffectSet:            append([]string{}, info.EffectSet...),
+			MaxEffectBatch:       info.MaxEffectBatch,
 			SourceSpan:           automataDecl.Span,
 		}
 		if automataDecl.Context != nil {
@@ -169,6 +182,13 @@ func buildEVT1MIR(module EVT1Module, env *evt1Env) EVT1MIR {
 						entry.Guard = evt1ExprIdentity(handler.Guard)
 					}
 					entry.Otherwise = handler.Otherwise
+					for _, emit := range handler.Emits {
+						mirEmit := EVT1MIREmit{Effect: emit.EffectName, SourceSpan: emit.Span}
+						for _, arg := range emit.Args {
+							mirEmit.Args = append(mirEmit.Args, evt1ExprIdentity(arg))
+						}
+						entry.Emits = append(entry.Emits, mirEmit)
+					}
 					if handler.Kind == EVT1TransitionGoto {
 						entry.TargetState = handler.TargetState.StateName
 					} else {
@@ -367,6 +387,8 @@ func collectMIROps(env *evt1Env, block *EVT1Block, fn *EVT1MIRFunction, template
 			}
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: kind, Type: evt1MIRType(env, s.Type).String(), Detail: s.Name, SourceSpan: s.Span})
 			collectExprMIROps(env, s.Value, fn, templateInfo)
+		case *EVT1EffectsDecl:
+			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "effects_decl", Detail: s.AutomataName + " " + s.Name, SourceSpan: s.Span})
 		case *EVT1InstanceDecl:
 			fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "instance_decl", Detail: s.AutomataName + " " + s.Name, SourceSpan: s.Span})
 		case *EVT1AssignStmt:
@@ -462,7 +484,11 @@ func collectExprMIROps(env *evt1Env, expr EVT1Expr, fn *EVT1MIRFunction, templat
 			collectExprMIROps(env, arg, fn, templateInfo)
 		}
 	case *EVT1DispatchExpr:
-		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "dispatch", Detail: e.InstanceName, SourceSpan: e.Span})
+		detail := e.InstanceName
+		if e.BatchName != "" {
+			detail += " -> " + e.BatchName
+		}
+		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "dispatch", Detail: detail, SourceSpan: e.Span})
 		collectExprMIROps(env, e.Signal, fn, templateInfo)
 	case *EVT1TemplateCallExpr:
 		fn.Operations = append(fn.Operations, EVT1MIROperation{ID: id, Kind: "template_call", Detail: e.Callee + "<" + e.TypeArg.String() + ">", SourceSpan: e.Span})
@@ -626,7 +652,9 @@ func (l *evt1Lowering) generateC() ([]byte, []byte, error) {
 			body.WriteByte('\n')
 		}
 	}
-	return []byte(header.String()), []byte(body.String()), nil
+	headerText := strings.TrimRight(header.String(), "\n") + "\n"
+	bodyText := strings.TrimRight(body.String(), "\n") + "\n"
+	return []byte(headerText), []byte(bodyText), nil
 }
 
 type evt1RuntimeTypeDecl struct {
@@ -747,6 +775,8 @@ func evt1RuntimeAutomataUsage(module EVT1Module) map[string]bool {
 	visitBlock = func(block EVT1Block) {
 		for _, stmt := range block.Statements {
 			switch s := stmt.(type) {
+			case *EVT1EffectsDecl:
+				used[s.AutomataName] = true
 			case *EVT1InstanceDecl:
 				used[s.AutomataName] = true
 			case *EVT1MatchStmt:
@@ -952,6 +982,22 @@ func evt1AutomataRuntimeDispatchName(automataName string) string {
 	return evt1CName(automataName) + "_dispatch"
 }
 
+func evt1AutomataEffectTagTypeCName(automataName string) string {
+	return evt1CName(automataName) + "_effect_tag"
+}
+
+func evt1AutomataEffectEntryCName(automataName string) string {
+	return evt1CName(automataName) + "_effect_entry"
+}
+
+func evt1AutomataEffectBatchCName(automataName string) string {
+	return evt1CName(automataName) + "_effects"
+}
+
+func evt1AutomataEffectTagConstName(automataName, effectName string) string {
+	return strings.ToUpper(evt1CName(automataName) + "_effect_" + evt1PayloadFieldName(effectName))
+}
+
 func evt1AutomataMachineConstName(automataName, machineName string) string {
 	return evt1CName(automataName) + "_machine_" + evt1PayloadFieldName(machineName)
 }
@@ -1094,6 +1140,12 @@ func (l *evt1Lowering) automataRuntimeSupport(info *evt1AutomataInfo) string {
 	b.WriteString(fmt.Sprintf("  %s(instance);\n", normalizeName))
 	b.WriteString("}\n\n")
 
+	if len(info.EffectSet) > 0 {
+		b.WriteString(l.automataEffectBatchTypes(info))
+		b.WriteString(l.automataEffectfulDispatch(info, machineIndex, instanceType, signalType, outcomeType, dispatchName, normalizeName))
+		return b.String()
+	}
+
 	b.WriteString(fmt.Sprintf("static %s %s(%s* instance, %s signal) {\n", outcomeType, dispatchName, instanceType, signalType))
 	b.WriteString("  if (instance->finished) {\n")
 	b.WriteString(fmt.Sprintf("    return %s;\n", outcomeCtor("AlreadyFinished")))
@@ -1113,7 +1165,7 @@ func (l *evt1Lowering) automataRuntimeSupport(info *evt1AutomataInfo) string {
 			for _, group := range evt1AutomataHandlerGroups(state) {
 				b.WriteString(fmt.Sprintf("            case %s:\n", evt1TagName(info.SignalEnum.Name, group[0].Signal.MemberName)))
 				if len(group) == 1 && group[0].Guard == nil && !group[0].Otherwise {
-					b.WriteString(l.automataDispatchAction(info, machine, machineIndex, group[0], 7))
+					b.WriteString(l.automataDispatchAction(info, machine, machineIndex, group[0], 7, "instance", "", ""))
 					b.WriteString(fmt.Sprintf("              %s(instance);\n", normalizeName))
 					b.WriteString("              if (instance->finished) {\n")
 					b.WriteString(fmt.Sprintf("                return %s;\n", outcomeCtor("Finished")))
@@ -1131,7 +1183,7 @@ func (l *evt1Lowering) automataRuntimeSupport(info *evt1AutomataInfo) string {
 						continue
 					}
 					guardedOrdinal++
-					prelude, guardExpr := l.lowerAutomataGuard(info, handler.Guard, 7)
+					prelude, guardExpr := l.lowerAutomataGuard(info, handler.Guard, 7, "instance")
 					b.WriteString(prelude)
 					b.WriteString(ind(7) + fmt.Sprintf("if (%s) {\n", guardExpr))
 					b.WriteString(ind(8) + "eligible_count = (uint8_t)(eligible_count + 1);\n")
@@ -1153,7 +1205,7 @@ func (l *evt1Lowering) automataRuntimeSupport(info *evt1AutomataInfo) string {
 				for _, handler := range group {
 					candidateOrdinal++
 					b.WriteString(fmt.Sprintf("                case %d:\n", candidateOrdinal))
-					b.WriteString(l.automataDispatchAction(info, machine, machineIndex, handler, 9))
+					b.WriteString(l.automataDispatchAction(info, machine, machineIndex, handler, 9, "instance", "", ""))
 					b.WriteString("                  break;\n")
 				}
 				b.WriteString("                default:\n")
@@ -1199,11 +1251,173 @@ func evt1AutomataHandlerGroups(state EVT1StateDecl) [][]EVT1TransitionDecl {
 	return out
 }
 
-func (l *evt1Lowering) automataDispatchAction(info *evt1AutomataInfo, machine EVT1MachineDecl, machineIndex map[string]EVT1MachineDecl, handler EVT1TransitionDecl, indent int) string {
+func (l *evt1Lowering) automataEffectBatchTypes(info *evt1AutomataInfo) string {
 	var b strings.Builder
+	tagType := evt1AutomataEffectTagTypeCName(info.Decl.Name)
+	entryType := evt1AutomataEffectEntryCName(info.Decl.Name)
+	batchType := evt1AutomataEffectBatchCName(info.Decl.Name)
+	b.WriteString(fmt.Sprintf("typedef enum %s {\n", tagType))
+	for index, effectName := range info.EffectSet {
+		b.WriteString(fmt.Sprintf("  %s = %d,\n", evt1AutomataEffectTagConstName(info.Decl.Name, effectName), index))
+	}
+	b.WriteString(fmt.Sprintf("} %s;\n\n", tagType))
+	b.WriteString(fmt.Sprintf("typedef struct %s {\n", entryType))
+	b.WriteString(fmt.Sprintf("  %s tag;\n", tagType))
+	b.WriteString("  union {\n")
+	for _, effectName := range info.EffectSet {
+		effectDecl := l.env.effects[effectName]
+		b.WriteString("    struct {\n")
+		if len(effectDecl.Params) == 0 {
+			b.WriteString("      unsigned char unused;\n")
+		} else {
+			for _, param := range effectDecl.Params {
+				b.WriteString(fmt.Sprintf("      %s %s;\n", evt1CType(param.Type), param.Name))
+			}
+		}
+		b.WriteString(fmt.Sprintf("    } %s;\n", evt1PayloadFieldName(effectDecl.Name)))
+	}
+	b.WriteString("  } payload;\n")
+	b.WriteString(fmt.Sprintf("} %s;\n\n", entryType))
+	b.WriteString(fmt.Sprintf("typedef struct %s {\n", batchType))
+	b.WriteString("  uint8_t count;\n")
+	b.WriteString(fmt.Sprintf("  %s entries[%d];\n", entryType, info.MaxEffectBatch))
+	b.WriteString(fmt.Sprintf("} %s;\n\n", batchType))
+	return b.String()
+}
+
+func (l *evt1Lowering) automataEffectfulDispatch(info *evt1AutomataInfo, machineIndex map[string]EVT1MachineDecl, instanceType, signalType, outcomeType, dispatchName, normalizeName string) string {
+	var b strings.Builder
+	batchType := evt1AutomataEffectBatchCName(info.Decl.Name)
+	outcomeCtor := func(name string) string {
+		return evt1ConstructorName(evt1AutomataDispatchOutcomeTypeName, name) + "()"
+	}
+	b.WriteString(fmt.Sprintf("static %s %s(%s* instance, %s signal, %s* batch) {\n", outcomeType, dispatchName, instanceType, signalType, batchType))
+	b.WriteString(ind(1) + "if (instance->finished) {\n")
+	b.WriteString(ind(2) + "batch->count = 0;\n")
+	b.WriteString(ind(2) + fmt.Sprintf("return %s;\n", outcomeCtor("AlreadyFinished")))
+	b.WriteString(ind(1) + "}\n")
+	b.WriteString(ind(1) + fmt.Sprintf("%s staged_batch = {0};\n", batchType))
+	b.WriteString(ind(1) + "uint8_t staged_count = 0;\n")
+	b.WriteString(ind(1) + fmt.Sprintf("%s staged_instance = *instance;\n", instanceType))
+	b.WriteString(ind(1) + fmt.Sprintf("%s* staged = &staged_instance;\n", instanceType))
+	b.WriteString(ind(1) + "switch (staged->current_machine) {\n")
+	for _, machine := range info.Decl.Machines {
+		b.WriteString(ind(2) + fmt.Sprintf("case %s:\n", evt1AutomataMachineConstName(info.Decl.Name, machine.Name)))
+		b.WriteString(ind(3) + "switch (staged->current_state) {\n")
+		for _, state := range machine.States {
+			b.WriteString(ind(4) + fmt.Sprintf("case %s:\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, state.Name)))
+			if state.Terminal {
+				b.WriteString(ind(5) + fmt.Sprintf("concept_vulkan_abort_invalid_automata_state(\"%s\", staged->current_machine, staged->current_state);\n", info.Decl.Name))
+				b.WriteString(ind(5) + "batch->count = 0;\n")
+				b.WriteString(ind(5) + fmt.Sprintf("return %s;\n", outcomeCtor("AlreadyFinished")))
+				continue
+			}
+			b.WriteString(ind(5) + "switch (signal.tag) {\n")
+			for _, group := range evt1AutomataHandlerGroups(state) {
+				b.WriteString(ind(6) + fmt.Sprintf("case %s:\n", evt1TagName(info.SignalEnum.Name, group[0].Signal.MemberName)))
+				if len(group) == 1 && group[0].Guard == nil && !group[0].Otherwise {
+					b.WriteString(l.automataDispatchAction(info, machine, machineIndex, group[0], 7, "staged", "staged_batch", "staged_count"))
+					b.WriteString(ind(7) + fmt.Sprintf("%s(&staged_instance);\n", normalizeName))
+					b.WriteString(ind(7) + "*instance = staged_instance;\n")
+					b.WriteString(ind(7) + "staged_batch.count = staged_count;\n")
+					b.WriteString(ind(7) + "*batch = staged_batch;\n")
+					b.WriteString(ind(7) + "if (staged->finished) {\n")
+					b.WriteString(ind(8) + fmt.Sprintf("return %s;\n", outcomeCtor("Finished")))
+					b.WriteString(ind(7) + "}\n")
+					b.WriteString(ind(7) + fmt.Sprintf("return %s;\n", outcomeCtor("Transitioned")))
+					continue
+				}
+				b.WriteString(ind(7) + "uint8_t eligible_count = 0;\n")
+				b.WriteString(ind(7) + "uint8_t selected_candidate = 0;\n")
+				fallbackOrdinal := 0
+				guardedOrdinal := 0
+				for _, handler := range group {
+					if handler.Otherwise {
+						fallbackOrdinal = guardedOrdinal + 1
+						continue
+					}
+					guardedOrdinal++
+					prelude, guardExpr := l.lowerAutomataGuard(info, handler.Guard, 7, "staged")
+					b.WriteString(prelude)
+					b.WriteString(ind(7) + fmt.Sprintf("if (%s) {\n", guardExpr))
+					b.WriteString(ind(8) + "eligible_count = (uint8_t)(eligible_count + 1);\n")
+					b.WriteString(ind(8) + fmt.Sprintf("selected_candidate = %d;\n", guardedOrdinal))
+					b.WriteString(ind(7) + "}\n")
+				}
+				b.WriteString(ind(7) + "if (eligible_count > 1) {\n")
+				b.WriteString(ind(8) + "batch->count = 0;\n")
+				b.WriteString(ind(8) + fmt.Sprintf("return %s;\n", outcomeCtor("Ambiguous")))
+				b.WriteString(ind(7) + "}\n")
+				b.WriteString(ind(7) + "if (eligible_count == 0) {\n")
+				if fallbackOrdinal > 0 {
+					b.WriteString(ind(8) + fmt.Sprintf("selected_candidate = %d;\n", fallbackOrdinal))
+				} else {
+					b.WriteString(ind(8) + "batch->count = 0;\n")
+					b.WriteString(ind(8) + fmt.Sprintf("return %s;\n", outcomeCtor("Unhandled")))
+				}
+				b.WriteString(ind(7) + "}\n")
+				b.WriteString(ind(7) + "switch (selected_candidate) {\n")
+				candidateOrdinal := 0
+				for _, handler := range group {
+					candidateOrdinal++
+					b.WriteString(ind(8) + fmt.Sprintf("case %d:\n", candidateOrdinal))
+					b.WriteString(ind(9) + "{\n")
+					b.WriteString(l.automataDispatchAction(info, machine, machineIndex, handler, 9, "staged", "staged_batch", "staged_count"))
+					b.WriteString(ind(10) + "break;\n")
+					b.WriteString(ind(9) + "}\n")
+				}
+				b.WriteString(ind(8) + "default:\n")
+				b.WriteString(ind(9) + "batch->count = 0;\n")
+				b.WriteString(ind(9) + fmt.Sprintf("return %s;\n", outcomeCtor("Unhandled")))
+				b.WriteString(ind(7) + "}\n")
+				b.WriteString(ind(7) + fmt.Sprintf("%s(&staged_instance);\n", normalizeName))
+				b.WriteString(ind(7) + "*instance = staged_instance;\n")
+				b.WriteString(ind(7) + "staged_batch.count = staged_count;\n")
+				b.WriteString(ind(7) + "*batch = staged_batch;\n")
+				b.WriteString(ind(7) + "if (staged->finished) {\n")
+				b.WriteString(ind(8) + fmt.Sprintf("return %s;\n", outcomeCtor("Finished")))
+				b.WriteString(ind(7) + "}\n")
+				b.WriteString(ind(7) + fmt.Sprintf("return %s;\n", outcomeCtor("Transitioned")))
+			}
+			b.WriteString(ind(6) + "default:\n")
+			b.WriteString(ind(7) + "batch->count = 0;\n")
+			b.WriteString(ind(7) + fmt.Sprintf("return %s;\n", outcomeCtor("Unhandled")))
+			b.WriteString(ind(5) + "}\n")
+		}
+		b.WriteString(ind(4) + "default:\n")
+		b.WriteString(ind(5) + fmt.Sprintf("concept_vulkan_abort_invalid_automata_state(\"%s\", staged->current_machine, staged->current_state);\n", info.Decl.Name))
+		b.WriteString(ind(5) + "batch->count = 0;\n")
+		b.WriteString(ind(5) + fmt.Sprintf("return %s;\n", outcomeCtor("AlreadyFinished")))
+		b.WriteString(ind(3) + "}\n")
+	}
+	b.WriteString(ind(2) + "default:\n")
+	b.WriteString(ind(3) + fmt.Sprintf("concept_vulkan_abort_invalid_automata_state(\"%s\", staged->current_machine, staged->current_state);\n", info.Decl.Name))
+	b.WriteString(ind(3) + "batch->count = 0;\n")
+	b.WriteString(ind(3) + fmt.Sprintf("return %s;\n", outcomeCtor("AlreadyFinished")))
+	b.WriteString(ind(1) + "}\n")
+	b.WriteString("}\n\n")
+	return b.String()
+}
+
+func (l *evt1Lowering) automataDispatchAction(info *evt1AutomataInfo, machine EVT1MachineDecl, machineIndex map[string]EVT1MachineDecl, handler EVT1TransitionDecl, indent int, instanceName, batchName, countName string) string {
+	var b strings.Builder
+	if batchName != "" {
+		for emitIndex, emit := range handler.Emits {
+			effectDecl := l.env.effects[emit.EffectName]
+			for i, arg := range emit.Args {
+				prelude, value, valueType := l.lowerAutomataPayloadExpr(info, arg, indent, instanceName)
+				b.WriteString(prelude)
+				temp := evt1PayloadFieldName(effectDecl.Name) + fmt.Sprintf("_%02d_%02d", emitIndex+1, i+1)
+				b.WriteString(ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(valueType), temp, value))
+				b.WriteString(ind(indent) + fmt.Sprintf("%s.entries[%s].payload.%s.%s = %s;\n", batchName, countName, evt1PayloadFieldName(effectDecl.Name), effectDecl.Params[i].Name, temp))
+			}
+			b.WriteString(ind(indent) + fmt.Sprintf("%s.entries[%s].tag = %s;\n", batchName, countName, evt1AutomataEffectTagConstName(info.Decl.Name, effectDecl.Name)))
+			b.WriteString(ind(indent) + fmt.Sprintf("%s = (uint8_t)(%s + 1);\n", countName, countName))
+		}
+	}
 	switch handler.Kind {
 	case EVT1TransitionGoto:
-		b.WriteString(ind(indent) + fmt.Sprintf("instance->current_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, handler.TargetState.StateName)))
+		b.WriteString(ind(indent) + fmt.Sprintf("%s->current_state = %s;\n", instanceName, evt1AutomataStateConstName(info.Decl.Name, machine.Name, handler.TargetState.StateName)))
 	case EVT1TransitionPush:
 		if info.ContinuationCapacity == 0 {
 			b.WriteString(ind(indent) + fmt.Sprintf("concept_vulkan_abort_automata_stack(\"%s\", \"push with zero continuation capacity\");\n", info.Decl.Name))
@@ -1211,19 +1425,28 @@ func (l *evt1Lowering) automataDispatchAction(info *evt1AutomataInfo, machine EV
 		}
 		targetMachine := machineIndex[handler.PushMachine]
 		targetInitialState := evt1InitialStateName(targetMachine)
-		b.WriteString(ind(indent) + fmt.Sprintf("if (instance->continuation_count >= %d) {\n", info.ContinuationCapacity))
+		b.WriteString(ind(indent) + fmt.Sprintf("if (%s->continuation_count >= %d) {\n", instanceName, info.ContinuationCapacity))
 		b.WriteString(ind(indent+1) + fmt.Sprintf("concept_vulkan_abort_automata_stack(\"%s\", \"push overflow\");\n", info.Decl.Name))
 		b.WriteString(ind(indent) + "}\n")
-		b.WriteString(ind(indent) + "instance->continuations[instance->continuation_count].caller_machine = instance->current_machine;\n")
-		b.WriteString(ind(indent) + fmt.Sprintf("instance->continuations[instance->continuation_count].resume_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, machine.Name, handler.Continuation.StateName)))
-		b.WriteString(ind(indent) + "instance->continuation_count = (uint8_t)(instance->continuation_count + 1);\n")
-		b.WriteString(ind(indent) + fmt.Sprintf("instance->current_machine = %s;\n", evt1AutomataMachineConstName(info.Decl.Name, handler.PushMachine)))
-		b.WriteString(ind(indent) + fmt.Sprintf("instance->current_state = %s;\n", evt1AutomataStateConstName(info.Decl.Name, targetMachine.Name, targetInitialState)))
+		b.WriteString(ind(indent) + fmt.Sprintf("%s->continuations[%s->continuation_count].caller_machine = %s->current_machine;\n", instanceName, instanceName, instanceName))
+		b.WriteString(ind(indent) + fmt.Sprintf("%s->continuations[%s->continuation_count].resume_state = %s;\n", instanceName, instanceName, evt1AutomataStateConstName(info.Decl.Name, machine.Name, handler.Continuation.StateName)))
+		b.WriteString(ind(indent) + fmt.Sprintf("%s->continuation_count = (uint8_t)(%s->continuation_count + 1);\n", instanceName, instanceName))
+		b.WriteString(ind(indent) + fmt.Sprintf("%s->current_machine = %s;\n", instanceName, evt1AutomataMachineConstName(info.Decl.Name, handler.PushMachine)))
+		b.WriteString(ind(indent) + fmt.Sprintf("%s->current_state = %s;\n", instanceName, evt1AutomataStateConstName(info.Decl.Name, targetMachine.Name, targetInitialState)))
 	}
 	return b.String()
 }
 
-func (l *evt1Lowering) lowerAutomataGuard(info *evt1AutomataInfo, expr EVT1Expr, indent int) (string, string) {
+func (l *evt1Lowering) lowerAutomataGuard(info *evt1AutomataInfo, expr EVT1Expr, indent int, instanceName string) (string, string) {
+	prelude, value, _ := l.lowerAutomataExpr(info, expr, indent, instanceName)
+	return prelude, value
+}
+
+func (l *evt1Lowering) lowerAutomataPayloadExpr(info *evt1AutomataInfo, expr EVT1Expr, indent int, instanceName string) (string, string, EVT1Type) {
+	return l.lowerAutomataExpr(info, expr, indent, instanceName)
+}
+
+func (l *evt1Lowering) lowerAutomataExpr(info *evt1AutomataInfo, expr EVT1Expr, indent int, instanceName string) (string, string, EVT1Type) {
 	f := &evt1FunctionLowerer{
 		l:     l,
 		scope: []map[string]evt1Binding{{}},
@@ -1233,12 +1456,11 @@ func (l *evt1Lowering) lowerAutomataGuard(info *evt1AutomataInfo, expr EVT1Expr,
 		contextType.Ownership = "borrow"
 		contextType.Const = true
 		f.scope[0][info.Decl.Context.Name] = evt1Binding{
-			cName: "instance->context",
+			cName: instanceName + "->context",
 			t:     contextType,
 		}
 	}
-	prelude, value, _ := f.lowerExpr(expr, indent)
-	return prelude, value
+	return f.lowerExpr(expr, indent)
 }
 
 func (l *evt1Lowering) structHeader(structDecl EVT1StructDecl) string {
@@ -1518,6 +1740,7 @@ type evt1Binding struct {
 	comptime         bool
 	value            EVT1Value
 	instanceAutomata string
+	batchAutomata    string
 }
 
 func newEVT1FunctionLowerer(l *evt1Lowering, fn EVT1FunctionDecl, symbol string, private bool) *evt1FunctionLowerer {
@@ -1573,6 +1796,10 @@ func (f *evt1FunctionLowerer) lowerStatement(stmt EVT1Statement, indent int) str
 		prelude, value, _ := f.lowerExpr(s.Value, indent)
 		cName := f.bindName(s.Name, s.Type)
 		return prelude + ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(s.Type), cName, value)
+	case *EVT1EffectsDecl:
+		cName := f.bindBatchName(s.Name, s.AutomataName)
+		batchType := evt1AutomataEffectBatchCName(s.AutomataName)
+		return ind(indent) + fmt.Sprintf("%s %s = {0};\n", batchType, cName)
 	case *EVT1InstanceDecl:
 		cName := f.bindInstanceName(s.Name, s.AutomataName)
 		instanceType := evt1AutomataRuntimeInstanceCName(s.AutomataName)
@@ -1807,8 +2034,15 @@ func (f *evt1FunctionLowerer) lowerExpr(expr EVT1Expr, indent int) (string, stri
 		var prelude strings.Builder
 		prelude.WriteString(signalPrelude)
 		prelude.WriteString(ind(indent) + fmt.Sprintf("%s %s = %s;\n", evt1CType(signalType), signalTemp, signalExpr))
+		dispatchCall := ""
+		if e.BatchName != "" {
+			batchBinding, _ := scopeLookup(e.BatchName, f.scope)
+			dispatchCall = fmt.Sprintf("%s(&%s, %s, &%s)", evt1AutomataRuntimeDispatchName(info.Decl.Name), binding.cName, signalTemp, batchBinding.cName)
+		} else {
+			dispatchCall = fmt.Sprintf("%s(&%s, %s)", evt1AutomataRuntimeDispatchName(info.Decl.Name), binding.cName, signalTemp)
+		}
 		return prelude.String(),
-			fmt.Sprintf("%s(&%s, %s)", evt1AutomataRuntimeDispatchName(info.Decl.Name), binding.cName, signalTemp),
+			dispatchCall,
 			EVT1Type{Name: evt1AutomataDispatchOutcomeTypeName, Kind: EVT1TypeEnum, Span: e.Span}
 	case *EVT1TemplateCallExpr:
 		instance, ok := f.l.env.templateInstances[e.Callee+"|"+evt1TypeIdentity(evt1CanonicalType(f.l.env, e.TypeArg))]
@@ -1968,6 +2202,17 @@ func (f *evt1FunctionLowerer) bindInstanceName(name, automataName string) string
 	return unique
 }
 
+func (f *evt1FunctionLowerer) bindBatchName(name, automataName string) string {
+	scope := f.currentScope()
+	if _, exists := scope[name]; !exists {
+		scope[name] = evt1Binding{cName: name, batchAutomata: automataName}
+		return name
+	}
+	unique := f.nextTemp(name)
+	scope[name] = evt1Binding{cName: unique, batchAutomata: automataName}
+	return unique
+}
+
 func (f *evt1FunctionLowerer) bindComptimeName(name string, t EVT1Type, value EVT1Value) {
 	f.currentScope()[name] = evt1Binding{cName: name, t: t, comptime: true, value: value}
 }
@@ -1984,6 +2229,7 @@ func (f *evt1FunctionLowerer) typeScope() *evt1Scope {
 				hasValue:         binding.comptime,
 				value:            binding.value,
 				instanceAutomata: binding.instanceAutomata,
+				batchAutomata:    binding.batchAutomata,
 			})
 		}
 	}
@@ -2135,7 +2381,13 @@ func MIRTextEVT1(m EVT1MIR) string {
 		if automata.ContextType != nil {
 			line += fmt.Sprintf(" context %s:%s", automata.ContextName, automata.ContextType.String())
 		}
+		if automata.TopologyIdentity != "" {
+			line += fmt.Sprintf(" topology %s guard %s effect %s runtime %s max_effect_batch %d", automata.TopologyIdentity, automata.GuardIdentity, automata.EffectIdentity, automata.RuntimeIdentity, automata.MaxEffectBatch)
+		}
 		lines = append(lines, line)
+		for _, effectName := range automata.EffectSet {
+			lines = append(lines, fmt.Sprintf("automata %s effect %s", automata.Name, effectName))
+		}
 		for _, machine := range automata.Machines {
 			lines = append(lines, fmt.Sprintf("automata %s machine %s reachable=%t", automata.Name, machine.Name, machine.Reachable))
 			for _, state := range machine.States {
@@ -2150,9 +2402,19 @@ func MIRTextEVT1(m EVT1MIR) string {
 					}
 					handlerLine += fmt.Sprintf(" %s %s %s", handler.Kind, handler.PushMachine, handler.ContinuationState+handler.TargetState)
 					lines = append(lines, handlerLine)
+					for _, emit := range handler.Emits {
+						lines = append(lines, fmt.Sprintf("automata %s %s::%s emit %s %s", automata.Name, machine.Name, state.Name, emit.Effect, strings.Join(emit.Args, ",")))
+					}
 				}
 			}
 		}
+	}
+	for _, effectDecl := range m.Effects {
+		var params []string
+		for _, param := range effectDecl.Params {
+			params = append(params, param.Type.String()+" "+param.Name)
+		}
+		lines = append(lines, fmt.Sprintf("effect %s (%s)", effectDecl.Name, strings.Join(params, ", ")))
 	}
 	for _, tpl := range m.Templates {
 		for _, op := range tpl.Operations {

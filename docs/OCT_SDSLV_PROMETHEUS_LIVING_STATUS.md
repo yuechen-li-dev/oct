@@ -33,18 +33,22 @@ structural equality over valid element domains, bounded `while` traversal, and
 finite structural validation all run through parsing, validation, typed MIR,
 generated C, checked outputs, and native specimens without introducing runtime
 collections or changing production authority. Production remains handwritten.
-The current worktree now carries DragonGod M2 in compiler form: validated typed
+The current worktree now carries DragonGod M3 in compiler form: validated typed
 automata with the exact `automata -> machine -> state` hierarchy, exact
-signal-enum binding, deterministic graph identity, acyclic machine-push
-validation, derived maximum active machine depth, fixed local `instance`
-storage, exact typed `dispatch(instance, signal)`, one exact optional borrowed
-automata context binding, guarded candidates, explicit `otherwise` fallback,
-typed `AutomataDispatchOutcome::{Transitioned, Unhandled, Ambiguous, Finished,
-AlreadyFinished}`, exact-once guard evaluation for the matched state/signal
-group, and deterministic strict-C11 lowering. DragonGod M0 and M1 remain
-accepted as `SUCCESS`, and DragonGod M2 is now accepted as `SUCCESS` after
-rerunning the native C11 language and Vulkan-shaped specimens from a fully
-loaded Visual Studio developer environment on Saturday, July 25, 2026.
+signal-enum binding, deterministic topology/guard/effect/runtime identity,
+acyclic machine-push validation, derived maximum active machine depth, fixed
+local `instance` storage, exact typed `dispatch(instance, signal)` and
+`dispatch(instance, signal, emitted)`, one exact optional borrowed automata
+context binding, guarded candidates, explicit `otherwise` fallback, typed
+ordered `effect` declarations and `emit` statements, compiler-owned exact local
+effect batches, typed `AutomataDispatchOutcome::{Transitioned, Unhandled,
+Ambiguous, Finished, AlreadyFinished}`, exact-once guard evaluation for the
+matched state/signal group, exact-once payload evaluation for the uniquely
+selected candidate, atomic publication of settled control state plus complete
+effect batch, and deterministic strict-C11 lowering. DragonGod M0, M1, and M2
+remain accepted as `SUCCESS`, and DragonGod M3 is now accepted as `SUCCESS`
+after rerunning the native C11 language and Vulkan-shaped specimens from a
+fully loaded Visual Studio developer environment on Saturday, July 25, 2026.
 
 The owner direction is:
 
@@ -144,13 +148,15 @@ Concept/Vulkan EVT1 now includes:
   enums, structs, and fixed arrays composed from accepted compile-time values;
 - exact fixed-array literals, indexing, and `Len(...)` in compile-time
   contexts only, with complete erasure before runtime C11 lowering;
-- DragonGod M2 typed automata families with exact `automata -> machine ->
+- DragonGod M3 typed automata families with exact `automata -> machine ->
   state` structure, exact signal-enum handlers, one exact optional borrowed
   context binding, grouped guarded candidates, explicit fallback, typed
   `goto`/`push`/`pop`/`finish` topology, deterministic `Ambiguous` reporting,
-  derived maximum active machine depth, fixed local `instance` storage, exact
-  typed `dispatch(instance, signal)`, synchronous completion normalization, and
-  runtime lowering that remains non-reflective and heap-free;
+  top-level typed `effect` declarations, ordered transition-local `emit`
+  statements, compiler-owned exact local effect batches, exact typed
+  `dispatch(instance, signal)` and `dispatch(instance, signal, emitted)`,
+  staged completion normalization with atomic control-plus-batch publication,
+  and runtime lowering that remains non-reflective and heap-free;
 - focused hardware-independent and Vulkan-shaped specimens proving structs,
   immovability, concept satisfaction, explicit-only template instantiation,
   deterministic instance reuse, bounded compile-time evaluation, finite
@@ -168,6 +174,8 @@ The owner-preserved paused states are unchanged:
 - DragonGod lifecycle automata runtime execution is now active compiler work
   rather than a deferred post-substrate placeholder;
 - the first production mechanism reconstruction remains deferred to EVT1 M1C;
+- typed work-description emission is now proven separately from physical
+  execution, which remains a later Prometheus or actuator responsibility;
 - backporting accepted EVT1 semantics into the broader Zig Concept bootstrap
   remains outside this assignment and another reviewer’s boundary;
 - the previously proposed M1E failure-equivalence seam is not the current

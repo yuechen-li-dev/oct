@@ -94,6 +94,10 @@
       "continuation_capacity": 2,
       "completion_step_bound": 3,
       "graph_identity": "f193cab7c15eb7312425719b8ed962e2527cf12b731931579f7be2e9e17efd79",
+      "topology_identity": "49baf8a27a2b603e08e0f472860c27c69405673fd5c1e6b6b84b2bb6a317cd82",
+      "guard_identity": "ea8cce3cb0981dd32667ac9b3dbf11f30666582c7c5be671472a1fbff8c40ee6",
+      "effect_identity": "9d98c58990e3946db21d84845e9212ecdf0082a7cee28ce9055fcb48fc4f3d3f",
+      "runtime_identity": "262f0b4f877bc5eaf3c8c8e9f09da49e30c56af133be8f2b93b0715ede65de5d",
       "source_span": {
         "line": 15,
         "column": 1
@@ -378,6 +382,10 @@
       "continuation_capacity": 0,
       "completion_step_bound": 1,
       "graph_identity": "5034b410d6bef9d6734ba1e08d2618905642f730ea2e6c85459364e21fbed6d0",
+      "topology_identity": "a88218545d8741d8108105d9621e18ac0443a00155d5700dacca561af28e495d",
+      "guard_identity": "bb20ef6b500c1379a9ffa73716a4b3b6ee5b7f877f6cfe1babc1fa99058496df",
+      "effect_identity": "13717c19f9a14e45ee08934ea218117057c38b0ea3ffd25f15312549d9530aaa",
+      "runtime_identity": "295354206477da9124e3a6b54cf8caf2a2a39af340d01fa0446e5404c1052316",
       "source_span": {
         "line": 87,
         "column": 1
@@ -417,6 +425,10 @@
       "continuation_capacity": 0,
       "completion_step_bound": 1,
       "graph_identity": "f877b9b39ebf7a1f8fab0de4bbe2ef05a9092a3dac4d7fe13d13ba43827e365e",
+      "topology_identity": "e5cca3cb76d6ad575392c51b6c8b1737cec7a8113b4b40c1a3155adf501a6ca9",
+      "guard_identity": "fbf84e7ac7e1bb6054e533545088da5c576390eaa7e5b7e58f82264bdf1d7e80",
+      "effect_identity": "1770dc5b1049b4346206b576386d8489a3061a1bd6f255fc545fab68d5aed55f",
+      "runtime_identity": "fb264611f22aa6a58cf8a6ea1f86016c66a2b2a3ff626b0b7c430c54cf4be9d7",
       "source_span": {
         "line": 98,
         "column": 1

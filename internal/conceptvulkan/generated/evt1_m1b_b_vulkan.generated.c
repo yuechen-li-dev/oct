@@ -67,4 +67,3 @@ bool concept_vulkan_evt1_m1b_b_vulkan_build_and_destroy(VkCommandPool pool) {
   concept_vulkan_template_destroy_resource__pipeline_state(&state);
   return (concept_vulkan_template_score_resource__pipeline_state(&state) > 0);
 }
-

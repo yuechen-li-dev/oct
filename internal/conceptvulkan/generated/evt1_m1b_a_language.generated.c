@@ -178,4 +178,3 @@ bool concept_vulkan_evt1_m1b_a_language_use_immovable() {
   concept_vulkan_evt1_m1b_a_language_initialize_pool(&state);
   return concept_vulkan_evt1_m1b_a_language_is_valid(&state);
 }
-
