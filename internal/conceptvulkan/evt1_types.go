@@ -176,6 +176,24 @@ type EVT1EffectDecl struct {
 	Span   Span        `json:"span"`
 }
 
+type EVT1ActuatorMapping struct {
+	EffectName         string     `json:"effect_name"`
+	Params             []EVT1Param `json:"params,omitempty"`
+	ImplementationName string     `json:"implementation_name"`
+	ImplementationArgs []EVT1Expr `json:"implementation_args,omitempty"`
+	Span               Span       `json:"span"`
+}
+
+type EVT1ActuatorDecl struct {
+	Name          string               `json:"name"`
+	AutomataName  string               `json:"automata_name"`
+	MechanismType EVT1Type             `json:"mechanism_type"`
+	MechanismName string               `json:"mechanism_name"`
+	ErrorType     EVT1Type             `json:"error_type"`
+	Mappings      []EVT1ActuatorMapping `json:"mappings,omitempty"`
+	Span          Span                 `json:"span"`
+}
+
 type EVT1ConceptRequirement interface {
 	evt1ConceptRequirement()
 	requirementSpan() Span
@@ -258,6 +276,7 @@ type EVT1Module struct {
 	Structs       []EVT1StructDecl       `json:"structs,omitempty"`
 	Enums         []EVT1EnumDecl         `json:"enums,omitempty"`
 	Effects       []EVT1EffectDecl       `json:"effects,omitempty"`
+	Actuators     []EVT1ActuatorDecl     `json:"actuators,omitempty"`
 	Automata      []EVT1AutomataDecl     `json:"automata,omitempty"`
 	Concepts      []EVT1ConceptDecl      `json:"concepts,omitempty"`
 	Assertions    []EVT1ConceptAssertion `json:"assertions,omitempty"`
@@ -301,6 +320,16 @@ type EVT1EffectsDecl struct {
 func (*EVT1EffectsDecl) evt1Statement()        {}
 func (s *EVT1EffectsDecl) statementSpan() Span { return s.Span }
 
+type EVT1ActuatorLocalDecl struct {
+	ActuatorName string   `json:"actuator_name"`
+	Name         string   `json:"name"`
+	Mechanism    EVT1Expr `json:"mechanism"`
+	Span         Span     `json:"span"`
+}
+
+func (*EVT1ActuatorLocalDecl) evt1Statement()        {}
+func (s *EVT1ActuatorLocalDecl) statementSpan() Span { return s.Span }
+
 type EVT1InstanceDecl struct {
 	AutomataName string `json:"automata_name"`
 	Name         string `json:"name"`
@@ -310,6 +339,17 @@ type EVT1InstanceDecl struct {
 
 func (*EVT1InstanceDecl) evt1Statement()        {}
 func (s *EVT1InstanceDecl) statementSpan() Span { return s.Span }
+
+type EVT1ActuationDecl struct {
+	ActuatorName string `json:"actuator_name"`
+	Name         string `json:"name"`
+	BatchName    string `json:"batch_name"`
+	ExecutorName string `json:"executor_name"`
+	Span         Span   `json:"span"`
+}
+
+func (*EVT1ActuationDecl) evt1Statement()        {}
+func (s *EVT1ActuationDecl) statementSpan() Span { return s.Span }
 
 type EVT1AssignStmt struct {
 	Target EVT1Expr `json:"target"`
@@ -546,12 +586,33 @@ type EVT1MIREffect struct {
 	SourceSpan Span          `json:"source_span"`
 }
 
+type EVT1MIRActuator struct {
+	Name          string                  `json:"name"`
+	AutomataName  string                  `json:"automata_name"`
+	MechanismName string                  `json:"mechanism_name"`
+	MechanismType EVT1Type                `json:"mechanism_type"`
+	ErrorType     EVT1Type                `json:"error_type"`
+	Identity      string                  `json:"identity"`
+	ResultType    string                  `json:"result_type"`
+	FailureSlot   string                  `json:"failure_slot"`
+	Mappings      []EVT1MIRActuatorMapping `json:"mappings,omitempty"`
+	SourceSpan    Span                    `json:"source_span"`
+}
+
+type EVT1MIRActuatorMapping struct {
+	EffectName         string   `json:"effect_name"`
+	ImplementationName string   `json:"implementation_name"`
+	ImplementationArgs []string `json:"implementation_args,omitempty"`
+	SourceSpan         Span     `json:"source_span"`
+}
+
 type EVT1MIR struct {
 	Schema        string                `json:"schema"`
 	Module        string                `json:"module"`
 	Structs       []EVT1MIRStruct       `json:"structs,omitempty"`
 	Enums         []EVT1MIREnum         `json:"enums,omitempty"`
 	Effects       []EVT1MIREffect       `json:"effects,omitempty"`
+	Actuators     []EVT1MIRActuator     `json:"actuators,omitempty"`
 	Automata      []EVT1MIRAutomata     `json:"automata,omitempty"`
 	Concepts      []EVT1MIRConcept      `json:"concepts,omitempty"`
 	Assertions    []EVT1MIRAssertion    `json:"assertions,omitempty"`
@@ -696,6 +757,8 @@ type evt1Env struct {
 	structs           map[string]EVT1StructDecl
 	effects           map[string]EVT1EffectDecl
 	effectOrder       []string
+	actuators         map[string]EVT1ActuatorDecl
+	actuatorInfo      map[string]*evt1ActuatorInfo
 	automata          map[string]EVT1AutomataDecl
 	automataInfo      map[string]*evt1AutomataInfo
 	functions         map[string][]EVT1FunctionDecl
@@ -712,6 +775,7 @@ type evt1Env struct {
 }
 
 const evt1AutomataDispatchOutcomeTypeName = "AutomataDispatchOutcome"
+const evt1ActuationOutcomeTypeName = "ActuationOutcome"
 
 func evt1BuiltinAutomataDispatchOutcomeEnum() EVT1EnumDecl {
 	return EVT1EnumDecl{
@@ -722,6 +786,19 @@ func evt1BuiltinAutomataDispatchOutcomeEnum() EVT1EnumDecl {
 			{Name: "Ambiguous", Tag: 2},
 			{Name: "Finished", Tag: 3},
 			{Name: "AlreadyFinished", Tag: 4},
+			{Name: "EffectBatchOccupied", Tag: 5},
+		},
+	}
+}
+
+func evt1BuiltinActuationOutcomeEnum() EVT1EnumDecl {
+	return EVT1EnumDecl{
+		Name: evt1ActuationOutcomeTypeName,
+		Variants: []EVT1VariantDecl{
+			{Name: "Completed", Tag: 0},
+			{Name: "Failed", Tag: 1},
+			{Name: "NoBatch", Tag: 2},
+			{Name: "AlreadyConsumed", Tag: 3},
 		},
 	}
 }
@@ -729,13 +806,17 @@ func evt1BuiltinAutomataDispatchOutcomeEnum() EVT1EnumDecl {
 func newEVT1Env() *evt1Env {
 	intType := EVT1Type{Name: "int", Kind: EVT1TypeBuiltin}
 	outcome := evt1BuiltinAutomataDispatchOutcomeEnum()
+	actuationOutcome := evt1BuiltinActuationOutcomeEnum()
 	return &evt1Env{
 		enums: map[string]EVT1EnumDecl{
-			outcome.Name: outcome,
+			outcome.Name:          outcome,
+			actuationOutcome.Name: actuationOutcome,
 		},
 		structs:           map[string]EVT1StructDecl{},
 		effects:           map[string]EVT1EffectDecl{},
 		effectOrder:       nil,
+		actuators:         map[string]EVT1ActuatorDecl{},
+		actuatorInfo:      map[string]*evt1ActuatorInfo{},
 		automata:          map[string]EVT1AutomataDecl{},
 		automataInfo:      map[string]*evt1AutomataInfo{},
 		functions:         map[string][]EVT1FunctionDecl{},

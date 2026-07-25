@@ -104,7 +104,8 @@ int OutcomeCode(AutomataDispatchOutcome outcome)
         AutomataDispatchOutcome::Unhandled => 2,
         AutomataDispatchOutcome::Ambiguous => 5,
         AutomataDispatchOutcome::Finished => 3,
-        AutomataDispatchOutcome::AlreadyFinished => 4
+        AutomataDispatchOutcome::AlreadyFinished => 4,
+        AutomataDispatchOutcome::EffectBatchOccupied => 6
     };
 }
 

@@ -688,6 +688,24 @@ func TestDragonGodM3GenerationIncludesEffectBatchStaging(t *testing.T) {
 	}
 }
 
+func TestDragonGodM4SpecimensParseAndGenerate(t *testing.T) {
+	for _, fixture := range []string{
+		"evt1_dragongod_m4_language.concept",
+		"evt1_dragongod_m4_vulkan.concept",
+	} {
+		t.Run(fixture, func(t *testing.T) {
+			src := readEVT1Fixture(t, fixture)
+			module, err := ParseEVT1("examples/Concept-Vulkan/"+fixture, src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := GenerateEVT1(module, []byte(src)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestDragonGodM0IdentityIgnoresWhitespaceAndLocation(t *testing.T) {
 	left := `profile Vulkan;
 enum Signal
@@ -1724,6 +1742,109 @@ int main(void) {
 }
 `
 	runNativeHarnessIncludingGeneratedC(t, outputs, "evt1_dragongod_m3_vulkan_harness.c", harness, nil)
+}
+
+func TestDragonGodM4LanguageSpecimenNativeC11(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("native C11 harness is only configured for Windows in this repository")
+	}
+	src := readEVT1Fixture(t, "evt1_dragongod_m4_language.concept")
+	module, err := ParseEVT1("examples/Concept-Vulkan/evt1_dragongod_m4_language.concept", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outputs, err := GenerateEVT1(module, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	harness := `#include "evt1_dragongod_m4_language.generated.c"
+
+static concept_vulkan_result_void_resource_actuation_error ok_result(void) {
+  concept_vulkan_result_void_resource_actuation_error out = {0};
+  out.is_error = false;
+  return out;
+}
+
+static concept_vulkan_result_void_resource_actuation_error err_result(concept_vulkan_resource_actuation_error error) {
+  concept_vulkan_result_void_resource_actuation_error out = {0};
+  out.is_error = true;
+  out.error = error;
+  return out;
+}
+
+concept_vulkan_result_void_resource_actuation_error concept_vulkan_evt1_dragongod_m4_language_execute_record_submission(concept_vulkan_resource_mechanism* mechanism, int submission) {
+  mechanism->observed0 = submission;
+  mechanism->count = mechanism->count + 1;
+  if (mechanism->failAt == 0) return err_result(concept_vulkan_resource_actuation_error_make_record_failed());
+  return ok_result();
+}
+
+concept_vulkan_result_void_resource_actuation_error concept_vulkan_evt1_dragongod_m4_language_execute_begin_submission(concept_vulkan_resource_mechanism* mechanism, int submission, concept_vulkan_queue_class queue) {
+  mechanism->observed1 = submission + queue.tag;
+  mechanism->count = mechanism->count + 1;
+  if (mechanism->failAt == 1) return err_result(concept_vulkan_resource_actuation_error_make_begin_failed());
+  return ok_result();
+}
+
+concept_vulkan_result_void_resource_actuation_error concept_vulkan_evt1_dragongod_m4_language_execute_finalize_ticket(concept_vulkan_resource_mechanism* mechanism, int ticket) {
+  mechanism->observed2 = ticket;
+  mechanism->count = mechanism->count + 1;
+  if (mechanism->failAt == 2) return err_result(concept_vulkan_resource_actuation_error_make_finalize_failed());
+  return ok_result();
+}
+
+int main(void) {
+  concept_vulkan_lifecycle_context ready = {true, false, 41, concept_vulkan_queue_class_make_graphics(), 7};
+  concept_vulkan_lifecycle_context fallback = {false, false, 12, concept_vulkan_queue_class_make_compute(), 99};
+  concept_vulkan_resource_mechanism mechanism = {-1, 0, 0, 0, 0};
+  concept_vulkan_resource_mechanism failureMechanism = {1, 0, 0, 0, 0};
+  concept_vulkan_resource_lifecycle_instance lifecycle;
+  concept_vulkan_resource_lifecycle_effects emitted = {0};
+  concept_vulkan_resource_lifecycle_effects failedBatch = {0};
+  concept_vulkan_resource_lifecycle_executor executor;
+  concept_vulkan_resource_lifecycle_executor failedExecutor;
+  concept_vulkan_automata_dispatch_outcome dispatchOutcome;
+  concept_vulkan_actuation_result__resource_lifecycle_actuator successResult;
+  concept_vulkan_actuation_result__resource_lifecycle_actuator repeatResult;
+  concept_vulkan_actuation_result__resource_lifecycle_actuator noBatchResult;
+  concept_vulkan_actuation_result__resource_lifecycle_actuator failedResult;
+
+  concept_vulkan_resource_lifecycle_init(&lifecycle, &ready);
+  dispatchOutcome = concept_vulkan_resource_lifecycle_dispatch(&lifecycle, concept_vulkan_lifecycle_signal_make_submit(), &emitted);
+  if (dispatchOutcome.tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_TRANSITIONED) return 1;
+  if (emitted.state != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_BATCH_PENDING) return 2;
+  if (concept_vulkan_resource_lifecycle_dispatch(&lifecycle, concept_vulkan_lifecycle_signal_make_submitted(), &emitted).tag != CONCEPT_VULKAN_AUTOMATA_DISPATCH_OUTCOME_EFFECT_BATCH_OCCUPIED) return 3;
+
+  concept_vulkan_resource_lifecycle_executor_init(&executor, &mechanism);
+  successResult = concept_vulkan_resource_lifecycle_actuator_actuate(&emitted, &executor);
+  if (successResult.outcome.tag != CONCEPT_VULKAN_ACTUATION_OUTCOME_COMPLETED) return 4;
+  if (successResult.completedCount != 2) return 5;
+  if (emitted.state != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_BATCH_COMPLETED) return 6;
+  if (mechanism.count != 2 || mechanism.observed0 != 41 || mechanism.observed1 != 41) return 7;
+
+  repeatResult = concept_vulkan_resource_lifecycle_actuator_actuate(&emitted, &executor);
+  if (repeatResult.outcome.tag != CONCEPT_VULKAN_ACTUATION_OUTCOME_ALREADY_CONSUMED) return 8;
+
+  concept_vulkan_resource_lifecycle_effects_discard(&emitted);
+  if (emitted.state != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_BATCH_VACANT) return 9;
+  if (concept_vulkan_evt1_dragongod_m4_language_busy_dispatch_code(ready) != 6) return 10;
+  if (concept_vulkan_evt1_dragongod_m4_language_no_batch_actuation_code(&mechanism) != 3) return 11;
+
+  concept_vulkan_resource_lifecycle_init(&lifecycle, &ready);
+  concept_vulkan_resource_lifecycle_dispatch(&lifecycle, concept_vulkan_lifecycle_signal_make_submit(), &failedBatch);
+  concept_vulkan_resource_lifecycle_executor_init(&failedExecutor, &failureMechanism);
+  failedResult = concept_vulkan_resource_lifecycle_actuator_actuate(&failedBatch, &failedExecutor);
+  if (failedResult.outcome.tag != CONCEPT_VULKAN_ACTUATION_OUTCOME_FAILED) return 12;
+  if (failedResult.failedIndex != 1) return 13;
+  if (failedBatch.state != CONCEPT_VULKAN_RESOURCE_LIFECYCLE_EFFECT_BATCH_FAILED) return 14;
+  if (failedBatch.cursor != 1) return 15;
+  if (failureMechanism.count != 2) return 16;
+
+  if (concept_vulkan_evt1_dragongod_m4_language_discard_and_reuse_code(fallback, &mechanism) <= 0) return 17;
+  return 0;
+}
+`
+	runNativeHarnessIncludingGeneratedC(t, outputs, "evt1_dragongod_m4_language_harness.c", harness, nil)
 }
 
 func runNativeHarness(t *testing.T, outputs Outputs, harnessName, harnessSource string, extraArgs []string) {

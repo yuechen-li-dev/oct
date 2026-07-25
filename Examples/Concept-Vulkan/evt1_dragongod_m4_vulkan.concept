@@ -1,0 +1,140 @@
+profile Vulkan;
+
+enum ResourceSignal
+{
+    Submit,
+    Submitted,
+    SubmitFailed,
+    Stop
+}
+
+enum QueueClass
+{
+    Graphics,
+    Transfer
+}
+
+enum BufferActuationError
+{
+    RecordFailed,
+    BarrierFailed,
+    DispatchFailed
+}
+
+struct BufferContext
+{
+    bool queueAvailable;
+    bool failRequested;
+    int bufferId;
+    QueueClass queue;
+    int ticket;
+};
+
+struct BufferMechanism
+{
+    int failAt;
+    int observed0;
+    int observed1;
+    int observed2;
+    int count;
+};
+
+effect RecordPass(int bufferId);
+effect RequestBarrier(int ticket);
+effect RequestDispatch(int bufferId, QueueClass queue);
+
+bool QueueOpen(borrow const BufferContext context)
+{
+    return context.queueAvailable;
+}
+
+bool FailRequested(borrow const BufferContext context)
+{
+    return context.failRequested;
+}
+
+Result<void, BufferActuationError> ExecuteRecordPass(borrow BufferMechanism mechanism, int bufferId);
+Result<void, BufferActuationError> ExecuteRequestBarrier(borrow BufferMechanism mechanism, int ticket);
+Result<void, BufferActuationError> ExecuteRequestDispatch(borrow BufferMechanism mechanism, int bufferId, QueueClass queue);
+
+automata BufferLifecycle(
+    ResourceSignal,
+    borrow context: BufferContext)
+{
+    initial machine Main
+    {
+        initial state Ready
+        {
+            on ResourceSignal::Submit when QueueOpen(context) => {
+                emit RecordPass(context.bufferId);
+                emit RequestBarrier(context.ticket);
+                emit RequestDispatch(context.bufferId, context.queue);
+                goto Submitting;
+            }
+            on ResourceSignal::Submit when FailRequested(context) => {
+                emit RequestBarrier(context.ticket);
+                goto Failed;
+            }
+            on ResourceSignal::Submit otherwise => {
+                emit RequestBarrier(context.ticket);
+                goto Failed;
+            }
+        }
+
+        state Submitting
+        {
+            on ResourceSignal::Submitted => {
+                goto Active;
+            }
+            on ResourceSignal::SubmitFailed goto Failed;
+        }
+
+        state Active
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        state Failed
+        {
+            on ResourceSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+actuator BufferLifecycleActuator(
+    BufferLifecycle,
+    borrow BufferMechanism mechanism,
+    BufferActuationError)
+{
+    on RecordPass(int bufferId)
+        => ExecuteRecordPass(mechanism, bufferId);
+    on RequestBarrier(int ticket)
+        => ExecuteRequestBarrier(mechanism, ticket);
+    on RequestDispatch(int bufferId, QueueClass queue)
+        => ExecuteRequestDispatch(mechanism, bufferId, queue);
+}
+
+int ActuationOutcomeCode(ActuationOutcome outcome)
+{
+    return match (outcome) {
+        ActuationOutcome::Completed => 1,
+        ActuationOutcome::Failed => 2,
+        ActuationOutcome::NoBatch => 3,
+        ActuationOutcome::AlreadyConsumed => 4
+    };
+}
+
+int VulkanActuationCode(BufferContext context, borrow BufferMechanism mechanism, VkBuffer buffer)
+{
+    instance BufferLifecycle lifecycle(context);
+    effects BufferLifecycle emitted;
+    actuator BufferLifecycleActuator executor(mechanism);
+    dispatch(lifecycle, ResourceSignal::Submit, emitted);
+    actuation BufferLifecycleActuator result = actuate(emitted, executor);
+    return ActuationOutcomeCode(result.outcome) * 100 + result.completedCount;
+}

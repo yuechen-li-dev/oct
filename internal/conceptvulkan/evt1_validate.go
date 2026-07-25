@@ -19,6 +19,7 @@ type evt1ValueBinding struct {
 	value            EVT1Value
 	instanceAutomata string
 	batchAutomata    string
+	actuatorName     string
 }
 
 type evt1AccessPath struct {
@@ -80,6 +81,10 @@ func (b evt1ValueBinding) isBatch() bool {
 	return b.batchAutomata != ""
 }
 
+func (b evt1ValueBinding) isActuatorLocal() bool {
+	return b.actuatorName != ""
+}
+
 func validateEVT1Module(module EVT1Module) error {
 	_, err := analyzeEVT1Module(module)
 	return err
@@ -89,8 +94,8 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 	env := newEVT1Env()
 	typeNames := map[string]Span{}
 	for _, enumDecl := range module.Enums {
-		if enumDecl.Name == evt1AutomataDispatchOutcomeTypeName {
-			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), enumDecl.Span)
+		if enumDecl.Name == evt1AutomataDispatchOutcomeTypeName || enumDecl.Name == evt1ActuationOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", enumDecl.Name), enumDecl.Span)
 		}
 		if _, exists := env.enums[enumDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4101", fmt.Sprintf("duplicate enum declaration %s", enumDecl.Name), enumDecl.Span)
@@ -102,8 +107,8 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.enums[enumDecl.Name] = enumDecl
 	}
 	for _, structDecl := range module.Structs {
-		if structDecl.Name == evt1AutomataDispatchOutcomeTypeName {
-			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), structDecl.Span)
+		if structDecl.Name == evt1AutomataDispatchOutcomeTypeName || structDecl.Name == evt1ActuationOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", structDecl.Name), structDecl.Span)
 		}
 		if _, exists := env.structs[structDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4122", fmt.Sprintf("duplicate struct declaration %s", structDecl.Name), structDecl.Span)
@@ -115,8 +120,8 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.structs[structDecl.Name] = structDecl
 	}
 	for _, effectDecl := range module.Effects {
-		if effectDecl.Name == "dispatch" {
-			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", effectDecl.Span)
+		if effectDecl.Name == "dispatch" || effectDecl.Name == "actuate" || effectDecl.Name == "discard" {
+			return nil, evt1Diagnostic("CV4268", fmt.Sprintf("%s is a compiler-owned operation name and cannot be redeclared", effectDecl.Name), effectDecl.Span)
 		}
 		if _, exists := env.effects[effectDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4298", fmt.Sprintf("duplicate effect declaration %s", effectDecl.Name), effectDecl.Span)
@@ -127,9 +132,21 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.effects[effectDecl.Name] = effectDecl
 		env.effectOrder = append(env.effectOrder, effectDecl.Name)
 	}
+	for _, actuatorDecl := range module.Actuators {
+		if actuatorDecl.Name == evt1AutomataDispatchOutcomeTypeName || actuatorDecl.Name == evt1ActuationOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", actuatorDecl.Name), actuatorDecl.Span)
+		}
+		if _, exists := env.actuators[actuatorDecl.Name]; exists {
+			return nil, evt1Diagnostic("CV4313", fmt.Sprintf("duplicate actuator declaration %s", actuatorDecl.Name), actuatorDecl.Span)
+		}
+		if _, exists := typeNames[actuatorDecl.Name]; exists {
+			return nil, evt1Diagnostic("CV4313", fmt.Sprintf("duplicate declaration %s", actuatorDecl.Name), actuatorDecl.Span)
+		}
+		env.actuators[actuatorDecl.Name] = actuatorDecl
+	}
 	for _, automataDecl := range module.Automata {
-		if automataDecl.Name == evt1AutomataDispatchOutcomeTypeName {
-			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), automataDecl.Span)
+		if automataDecl.Name == evt1AutomataDispatchOutcomeTypeName || automataDecl.Name == evt1ActuationOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", automataDecl.Name), automataDecl.Span)
 		}
 		if _, exists := env.automata[automataDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate automata declaration %s", automataDecl.Name), automataDecl.Span)
@@ -140,8 +157,8 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.automata[automataDecl.Name] = automataDecl
 	}
 	for _, conceptDecl := range module.Concepts {
-		if conceptDecl.Name == evt1AutomataDispatchOutcomeTypeName {
-			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), conceptDecl.Span)
+		if conceptDecl.Name == evt1AutomataDispatchOutcomeTypeName || conceptDecl.Name == evt1ActuationOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", conceptDecl.Name), conceptDecl.Span)
 		}
 		if _, exists := env.concepts[conceptDecl.Name]; exists {
 			return nil, evt1Diagnostic("CV4146", fmt.Sprintf("duplicate concept declaration %s", conceptDecl.Name), conceptDecl.Span)
@@ -152,11 +169,11 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.concepts[conceptDecl.Name] = conceptDecl
 	}
 	for _, templateDecl := range module.Templates {
-		if templateDecl.Name == evt1AutomataDispatchOutcomeTypeName {
-			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", evt1AutomataDispatchOutcomeTypeName), templateDecl.Span)
+		if templateDecl.Name == evt1AutomataDispatchOutcomeTypeName || templateDecl.Name == evt1ActuationOutcomeTypeName {
+			return nil, evt1Diagnostic("CV4267", fmt.Sprintf("%s is a compiler-owned runtime type and cannot be redeclared", templateDecl.Name), templateDecl.Span)
 		}
-		if templateDecl.Name == "dispatch" {
-			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", templateDecl.Span)
+		if templateDecl.Name == "dispatch" || templateDecl.Name == "actuate" || templateDecl.Name == "discard" {
+			return nil, evt1Diagnostic("CV4268", fmt.Sprintf("%s is a compiler-owned operation name and cannot be redeclared", templateDecl.Name), templateDecl.Span)
 		}
 		if env.effects[templateDecl.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4298", fmt.Sprintf("duplicate declaration %s", templateDecl.Name), templateDecl.Span)
@@ -173,19 +190,19 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		if _, exists := env.comptimeDecls[decl.Name]; exists {
 			return nil, evt1Diagnostic("CV4203", fmt.Sprintf("duplicate comptime declaration %s", decl.Name), decl.Span)
 		}
-		if len(env.functions[decl.Name]) > 0 || env.templates[decl.Name].Name != "" || env.comptimeFunctions[decl.Name].Name != "" || env.automata[decl.Name].Name != "" || env.effects[decl.Name].Name != "" {
+		if len(env.functions[decl.Name]) > 0 || env.templates[decl.Name].Name != "" || env.comptimeFunctions[decl.Name].Name != "" || env.automata[decl.Name].Name != "" || env.effects[decl.Name].Name != "" || env.actuators[decl.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4203", fmt.Sprintf("comptime declaration %s conflicts with an existing symbol", decl.Name), decl.Span)
 		}
 		env.comptimeDecls[decl.Name] = decl
 	}
 	for _, fn := range module.Functions {
-		if fn.Name == "dispatch" {
-			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", fn.Span)
+		if fn.Name == "dispatch" || fn.Name == "actuate" || fn.Name == "discard" {
+			return nil, evt1Diagnostic("CV4268", fmt.Sprintf("%s is a compiler-owned operation name and cannot be redeclared", fn.Name), fn.Span)
 		}
 		if env.effects[fn.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4298", fmt.Sprintf("duplicate declaration %s", fn.Name), fn.Span)
 		}
-		if env.automata[fn.Name].Name != "" {
+		if env.automata[fn.Name].Name != "" || env.actuators[fn.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4240", fmt.Sprintf("duplicate declaration %s", fn.Name), fn.Span)
 		}
 		for _, existing := range env.functions[fn.Name] {
@@ -196,10 +213,10 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.functions[fn.Name] = append(env.functions[fn.Name], fn)
 	}
 	for _, fn := range module.ComptimeFns {
-		if fn.Name == "dispatch" {
-			return nil, evt1Diagnostic("CV4268", "dispatch is a compiler-owned operation name and cannot be redeclared", fn.Span)
+		if fn.Name == "dispatch" || fn.Name == "actuate" || fn.Name == "discard" {
+			return nil, evt1Diagnostic("CV4268", fmt.Sprintf("%s is a compiler-owned operation name and cannot be redeclared", fn.Name), fn.Span)
 		}
-		if len(env.functions[fn.Name]) > 0 || env.templates[fn.Name].Name != "" || env.comptimeDecls[fn.Name].Name != "" || env.comptimeFunctions[fn.Name].Name != "" || env.automata[fn.Name].Name != "" || env.effects[fn.Name].Name != "" {
+		if len(env.functions[fn.Name]) > 0 || env.templates[fn.Name].Name != "" || env.comptimeDecls[fn.Name].Name != "" || env.comptimeFunctions[fn.Name].Name != "" || env.automata[fn.Name].Name != "" || env.effects[fn.Name].Name != "" || env.actuators[fn.Name].Name != "" {
 			return nil, evt1Diagnostic("CV4214", fmt.Sprintf("comptime function %s conflicts with an existing symbol", fn.Name), fn.Span)
 		}
 		env.comptimeFunctions[fn.Name] = fn
@@ -279,6 +296,9 @@ func analyzeEVT1Module(module EVT1Module) (*evt1Env, error) {
 		env.effects[effectDecl.Name] = module.Effects[i]
 	}
 	if err := evt1ValidateAutomataDecls(env, module); err != nil {
+		return nil, err
+	}
+	if err := evt1ValidateActuatorDecls(env, module); err != nil {
 		return nil, err
 	}
 	for _, conceptDecl := range module.Concepts {
@@ -787,6 +807,25 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 				mutable:       true,
 				batchAutomata: info.Decl.Name,
 			})
+		case *EVT1ActuatorLocalDecl:
+			if inComptimeFn {
+				return evt1Diagnostic("CV4319", fmt.Sprintf("actuator local %s cannot be declared in comptime code", s.Name), s.Span)
+			}
+			info, ok := env.actuatorInfo[s.ActuatorName]
+			if !ok {
+				return evt1Diagnostic("CV4319", fmt.Sprintf("unknown actuator %s", s.ActuatorName), s.Span)
+			}
+			mechanismType, err := validateExpr(env, local, s.Mechanism, templateInfo, false)
+			if err != nil {
+				return err
+			}
+			if err := validateCallArgument(env, local, info.MechanismType, s.Mechanism, mechanismType, templateInfo); err != nil {
+				return err
+			}
+			local.declare(s.Name, evt1ValueBinding{
+				mutable:      false,
+				actuatorName: info.Decl.Name,
+			})
 		case *EVT1InstanceDecl:
 			if inComptimeFn {
 				return evt1Diagnostic("CV4271", fmt.Sprintf("instance %s cannot be declared in comptime code", s.Name), s.Span)
@@ -828,6 +867,29 @@ func validateBlock(env *evt1Env, scope *evt1Scope, returnType EVT1Type, block EV
 			local.declare(s.Name, evt1ValueBinding{
 				mutable:          true,
 				instanceAutomata: info.Decl.Name,
+			})
+		case *EVT1ActuationDecl:
+			info, ok := env.actuatorInfo[s.ActuatorName]
+			if !ok {
+				return evt1Diagnostic("CV4320", fmt.Sprintf("unknown actuator %s in actuation", s.ActuatorName), s.Span)
+			}
+			batchBinding, ok := local.lookup(s.BatchName)
+			if !ok || !batchBinding.isBatch() {
+				return evt1Diagnostic("CV4321", fmt.Sprintf("actuate requires a local effects batch, but %s is not one", s.BatchName), s.Span)
+			}
+			if batchBinding.batchAutomata != info.Automata.Decl.Name {
+				return evt1Diagnostic("CV4321", fmt.Sprintf("actuate requires a batch for automata %s, but %s belongs to %s", info.Automata.Decl.Name, s.BatchName, batchBinding.batchAutomata), s.Span)
+			}
+			executorBinding, ok := local.lookup(s.ExecutorName)
+			if !ok || !executorBinding.isActuatorLocal() {
+				return evt1Diagnostic("CV4321", fmt.Sprintf("actuate requires a local actuator executor, but %s is not one", s.ExecutorName), s.Span)
+			}
+			if executorBinding.actuatorName != info.Decl.Name {
+				return evt1Diagnostic("CV4321", fmt.Sprintf("actuation %s expects an executor for actuator %s, but %s belongs to %s", s.Name, info.Decl.Name, s.ExecutorName, executorBinding.actuatorName), s.Span)
+			}
+			local.declare(s.Name, evt1ValueBinding{
+				t:       EVT1Type{Name: info.ResultTypeName, Kind: EVT1TypeStruct, Span: s.Span},
+				mutable: false,
 			})
 		case *EVT1AssignStmt:
 			target, err := validateAssignable(env, local, s.Target, templateInfo)
@@ -1167,6 +1229,24 @@ func validateKnownType(env *evt1Env, t EVT1Type, span Span, conceptParam string,
 		return evt1Diagnostic("CV4148", fmt.Sprintf("unknown concept parameter %s", t.Name), span)
 	}
 	if len(t.TypeArgs) > 0 {
+		if t.Name == "Result" {
+			if len(t.TypeArgs) != 2 {
+				return evt1Diagnostic("CV4322", fmt.Sprintf("Result requires exactly two type arguments, got %d", len(t.TypeArgs)), span)
+			}
+			if err := validateKnownType(env, t.TypeArgs[0], span, conceptParam, false); err != nil {
+				return err
+			}
+			if err := validateKnownType(env, t.TypeArgs[1], span, conceptParam, false); err != nil {
+				return err
+			}
+			if t.TypeArgs[0].Name != "void" {
+				return evt1Diagnostic("CV4322", fmt.Sprintf("EVT1 M4 supports only Result<void, Error>, got %s", t.String()), span)
+			}
+			if !evt1ActuatorErrorTypeAllowed(env, evt1CanonicalType(env, t.TypeArgs[1])) {
+				return evt1Diagnostic("CV4322", fmt.Sprintf("Result error type must be a fixed copyable runtime value, got %s", t.TypeArgs[1].String()), span)
+			}
+			return nil
+		}
 		if _, ok := env.concepts[t.Name]; ok {
 			if !allowConceptApp {
 				return evt1Diagnostic("CV4164", fmt.Sprintf("concept %s cannot be used as a runtime type", t.String()), span)
@@ -1216,6 +1296,9 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 			if binding.isBatch() {
 				return EVT1Type{}, evt1Diagnostic("CV4305", fmt.Sprintf("effects batch %s for automata %s cannot be used as an ordinary value; use dispatch(instance, signal, %s)", e.Name, binding.batchAutomata, e.Name), e.Span)
 			}
+			if binding.isActuatorLocal() {
+				return EVT1Type{}, evt1Diagnostic("CV4319", fmt.Sprintf("actuator local %s of actuator %s cannot be used as an ordinary value; use actuation ... = actuate(batch, %s)", e.Name, binding.actuatorName, e.Name), e.Span)
+			}
 			return evt1CanonicalType(env, binding.t), nil
 		}
 		if _, ok := env.automata[e.Name]; ok {
@@ -1243,6 +1326,20 @@ func validateExpr(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateInfo *e
 		}
 		return evt1CanonicalType(env, fieldType), nil
 	case *EVT1CallExpr:
+		if e.Callee == "discard" {
+			if len(e.Args) != 1 {
+				return EVT1Type{}, evt1Diagnostic("CV4323", fmt.Sprintf("discard requires exactly one batch argument, got %d", len(e.Args)), e.Span)
+			}
+			nameExpr, ok := e.Args[0].(*EVT1NameExpr)
+			if !ok {
+				return EVT1Type{}, evt1Diagnostic("CV4323", "discard requires a local effects batch name", e.Args[0].exprSpan())
+			}
+			binding, ok := scope.lookup(nameExpr.Name)
+			if !ok || !binding.isBatch() {
+				return EVT1Type{}, evt1Diagnostic("CV4323", fmt.Sprintf("discard requires a local effects batch, but %s is not one", nameExpr.Name), e.Args[0].exprSpan())
+			}
+			return EVT1Type{Name: "void", Kind: EVT1TypeBuiltin, Span: e.Span}, nil
+		}
 		if e.Callee == "Len" {
 			if len(e.Args) != 1 {
 				return EVT1Type{}, evt1Diagnostic("CV4234", fmt.Sprintf("Len expects exactly one argument, got %d", len(e.Args)), e.Span)
@@ -1558,6 +1655,9 @@ func validateAssignable(env *evt1Env, scope *evt1Scope, expr EVT1Expr, templateI
 		}
 		if binding.isBatch() {
 			return evt1LValue{}, evt1Diagnostic("CV4305", fmt.Sprintf("effects batch %s of automata %s cannot be assigned or copied as a value", e.Name, binding.batchAutomata), e.Span)
+		}
+		if binding.isActuatorLocal() {
+			return evt1LValue{}, evt1Diagnostic("CV4319", fmt.Sprintf("actuator local %s of actuator %s cannot be assigned or copied as a value", e.Name, binding.actuatorName), e.Span)
 		}
 		return evt1LValue{
 			t:          evt1CanonicalType(env, binding.t),
@@ -2258,6 +2358,9 @@ func evt1TypeCopyable(env *evt1Env, t EVT1Type) bool {
 	}
 	if t.isOwned() {
 		return false
+	}
+	if t.Name == "Result" && len(t.TypeArgs) == 2 {
+		return evt1CanonicalType(env, t.TypeArgs[0]).Name == "void" && evt1TypeCopyable(env, t.TypeArgs[1])
 	}
 	if len(t.TypeArgs) > 0 {
 		return false

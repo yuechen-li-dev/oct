@@ -1,0 +1,206 @@
+profile Vulkan;
+
+enum LifecycleSignal
+{
+    Submit,
+    Submitted,
+    SubmitFailed,
+    FinishNow,
+    Stop
+}
+
+enum QueueClass
+{
+    Graphics,
+    Compute
+}
+
+enum ResourceActuationError
+{
+    RecordFailed,
+    BeginFailed,
+    FinalizeFailed
+}
+
+struct LifecycleContext
+{
+    bool queueAvailable;
+    bool failRequested;
+    int submission;
+    QueueClass queue;
+    int ticket;
+};
+
+struct ResourceMechanism
+{
+    int failAt;
+    int observed0;
+    int observed1;
+    int observed2;
+    int count;
+};
+
+effect RecordSubmission(int submission);
+effect BeginSubmission(int submission, QueueClass queue);
+effect FinalizeTicket(int ticket);
+
+bool QueueOpen(borrow const LifecycleContext context)
+{
+    return context.queueAvailable;
+}
+
+bool FailRequested(borrow const LifecycleContext context)
+{
+    return context.failRequested;
+}
+
+Result<void, ResourceActuationError> ExecuteRecordSubmission(borrow ResourceMechanism mechanism, int submission);
+Result<void, ResourceActuationError> ExecuteBeginSubmission(borrow ResourceMechanism mechanism, int submission, QueueClass queue);
+Result<void, ResourceActuationError> ExecuteFinalizeTicket(borrow ResourceMechanism mechanism, int ticket);
+
+automata ResourceLifecycle(
+    LifecycleSignal,
+    borrow context: LifecycleContext)
+{
+    initial machine Main
+    {
+        initial state Ready
+        {
+            on LifecycleSignal::Submit when QueueOpen(context) => {
+                emit RecordSubmission(context.submission);
+                emit BeginSubmission(context.submission, context.queue);
+                goto Submitting;
+            }
+            on LifecycleSignal::Submit when FailRequested(context) => {
+                emit FinalizeTicket(context.ticket);
+                goto Failed;
+            }
+            on LifecycleSignal::Submit otherwise => {
+                emit FinalizeTicket(context.ticket);
+                goto Deferred;
+            }
+        }
+
+        state Deferred
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Submitting
+        {
+            on LifecycleSignal::Submitted => {
+                goto Active;
+            }
+            on LifecycleSignal::SubmitFailed goto Failed;
+        }
+
+        state Active
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        state Failed
+        {
+            on LifecycleSignal::Stop goto Finished;
+        }
+
+        terminal state Finished
+        {
+            finish;
+        }
+    }
+}
+
+actuator ResourceLifecycleActuator(
+    ResourceLifecycle,
+    borrow ResourceMechanism mechanism,
+    ResourceActuationError)
+{
+    on RecordSubmission(int submission)
+        => ExecuteRecordSubmission(mechanism, submission);
+    on BeginSubmission(int submission, QueueClass queue)
+        => ExecuteBeginSubmission(mechanism, submission, queue);
+    on FinalizeTicket(int ticket)
+        => ExecuteFinalizeTicket(mechanism, ticket);
+}
+
+int OutcomeCode(AutomataDispatchOutcome outcome)
+{
+    return match (outcome) {
+        AutomataDispatchOutcome::Transitioned => 1,
+        AutomataDispatchOutcome::Unhandled => 2,
+        AutomataDispatchOutcome::Ambiguous => 5,
+        AutomataDispatchOutcome::Finished => 3,
+        AutomataDispatchOutcome::AlreadyFinished => 4,
+        AutomataDispatchOutcome::EffectBatchOccupied => 6
+    };
+}
+
+int ActuationOutcomeCode(ActuationOutcome outcome)
+{
+    return match (outcome) {
+        ActuationOutcome::Completed => 1,
+        ActuationOutcome::Failed => 2,
+        ActuationOutcome::NoBatch => 3,
+        ActuationOutcome::AlreadyConsumed => 4
+    };
+}
+
+int BusyDispatchCode(LifecycleContext context)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    return OutcomeCode(dispatch(lifecycle, LifecycleSignal::Submitted, emitted));
+}
+
+int SuccessfulActuationCode(LifecycleContext context, borrow ResourceMechanism mechanism)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    actuator ResourceLifecycleActuator executor(mechanism);
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    actuation ResourceLifecycleActuator result = actuate(emitted, executor);
+    return ActuationOutcomeCode(result.outcome) * 100 + result.completedCount;
+}
+
+int FailedActuationCode(LifecycleContext context, borrow ResourceMechanism mechanism)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    actuator ResourceLifecycleActuator executor(mechanism);
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    actuation ResourceLifecycleActuator result = actuate(emitted, executor);
+    return ActuationOutcomeCode(result.outcome) * 100 + result.failedIndex;
+}
+
+int RepeatActuationCode(LifecycleContext context, borrow ResourceMechanism mechanism)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    actuator ResourceLifecycleActuator executor(mechanism);
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    actuation ResourceLifecycleActuator first = actuate(emitted, executor);
+    actuation ResourceLifecycleActuator second = actuate(emitted, executor);
+    return ActuationOutcomeCode(first.outcome) * 10 + ActuationOutcomeCode(second.outcome);
+}
+
+int DiscardAndReuseCode(LifecycleContext context, borrow ResourceMechanism mechanism)
+{
+    instance ResourceLifecycle lifecycle(context);
+    effects ResourceLifecycle emitted;
+    actuator ResourceLifecycleActuator executor(mechanism);
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    discard(emitted);
+    dispatch(lifecycle, LifecycleSignal::Submit, emitted);
+    actuation ResourceLifecycleActuator result = actuate(emitted, executor);
+    return ActuationOutcomeCode(result.outcome) * 100 + result.completedCount;
+}
+
+int NoBatchActuationCode(borrow ResourceMechanism mechanism)
+{
+    effects ResourceLifecycle emitted;
+    actuator ResourceLifecycleActuator executor(mechanism);
+    actuation ResourceLifecycleActuator result = actuate(emitted, executor);
+    return ActuationOutcomeCode(result.outcome);
+}

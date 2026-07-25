@@ -211,6 +211,12 @@ func (p *evt1Parser) parseModule() (EVT1Module, error) {
 				return module, err
 			}
 			module.Effects = append(module.Effects, effectDecl)
+		case "actuator":
+			actuatorDecl, err := p.parseActuatorDecl()
+			if err != nil {
+				return module, err
+			}
+			module.Actuators = append(module.Actuators, actuatorDecl)
 		case "automata":
 			automataDecl, err := p.parseAutomataDecl()
 			if err != nil {
@@ -336,6 +342,119 @@ func (p *evt1Parser) parseEffectDecl() (EVT1EffectDecl, error) {
 		return EVT1EffectDecl{}, err
 	}
 	return decl, nil
+}
+
+func (p *evt1Parser) parseActuatorDecl() (EVT1ActuatorDecl, error) {
+	start, err := p.expect("actuator")
+	if err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	nameTok, err := p.expectIdentifier("CV4313", "expected actuator name")
+	if err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	automataTok, err := p.expectIdentifier("CV4314", "expected automata name in actuator declaration")
+	if err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	if _, err := p.expect(","); err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	mechanismType, err := p.parseType("")
+	if err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	mechanismTok, err := p.expectIdentifier("CV4315", "expected actuator mechanism binding name")
+	if err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	if _, err := p.expect(","); err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	errorType, err := p.parseType("")
+	if err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	if _, err := p.expect("{"); err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	decl := EVT1ActuatorDecl{
+		Name:          nameTok.Lexeme,
+		AutomataName:  automataTok.Lexeme,
+		MechanismType: mechanismType,
+		MechanismName: mechanismTok.Lexeme,
+		ErrorType:     errorType,
+		Span:          start.Span,
+	}
+	for !p.done() && p.peekLexeme() != "}" {
+		mapping, err := p.parseActuatorMapping()
+		if err != nil {
+			return EVT1ActuatorDecl{}, err
+		}
+		decl.Mappings = append(decl.Mappings, mapping)
+	}
+	if _, err := p.expect("}"); err != nil {
+		return EVT1ActuatorDecl{}, err
+	}
+	return decl, nil
+}
+
+func (p *evt1Parser) parseActuatorMapping() (EVT1ActuatorMapping, error) {
+	start, err := p.expect("on")
+	if err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	effectTok, err := p.expectIdentifier("CV4316", "expected effect name in actuator mapping")
+	if err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	mapping := EVT1ActuatorMapping{EffectName: effectTok.Lexeme, Span: start.Span}
+	if p.peekLexeme() != ")" {
+		for {
+			paramType, err := p.parseType("")
+			if err != nil {
+				return EVT1ActuatorMapping{}, err
+			}
+			paramName, err := p.expectIdentifier("CV4317", "expected actuator mapping parameter name")
+			if err != nil {
+				return EVT1ActuatorMapping{}, err
+			}
+			mapping.Params = append(mapping.Params, EVT1Param{Type: paramType, Name: paramName.Lexeme, Span: paramName.Span})
+			if p.peekLexeme() != "," {
+				break
+			}
+			p.next()
+		}
+	}
+	if _, err := p.expect(")"); err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	if _, err := p.expect("=>"); err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	callExpr, err := p.parseExpr()
+	if err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	call, ok := callExpr.(*EVT1CallExpr)
+	if !ok {
+		return EVT1ActuatorMapping{}, evt1Diagnostic("CV4318", "actuator mappings require one direct implementation call", callExpr.exprSpan())
+	}
+	mapping.ImplementationName = call.Callee
+	mapping.ImplementationArgs = call.Args
+	if _, err := p.expect(";"); err != nil {
+		return EVT1ActuatorMapping{}, err
+	}
+	return mapping, nil
 }
 
 func (p *evt1Parser) parseMachineDecl() (EVT1MachineDecl, error) {
@@ -1110,6 +1229,10 @@ func (p *evt1Parser) parseStatement() (EVT1Statement, error) {
 		return &EVT1StaticAssertStmt{Condition: assertion.Condition, Message: assertion.Message, Span: assertion.Span}, nil
 	case "effects":
 		return p.parseEffectsDecl()
+	case "actuation":
+		return p.parseActuationDecl()
+	case "actuator":
+		return p.parseActuatorLocalDecl()
 	case "instance":
 		return p.parseInstanceDecl()
 	case "return":
@@ -1181,6 +1304,35 @@ func (p *evt1Parser) parseEffectsDecl() (EVT1Statement, error) {
 	return &EVT1EffectsDecl{AutomataName: automataTok.Lexeme, Name: nameTok.Lexeme, Span: start.Span}, nil
 }
 
+func (p *evt1Parser) parseActuatorLocalDecl() (EVT1Statement, error) {
+	start, err := p.expect("actuator")
+	if err != nil {
+		return nil, err
+	}
+	actuatorTok, err := p.expectIdentifier("CV4319", "expected actuator name after actuator")
+	if err != nil {
+		return nil, err
+	}
+	nameTok, err := p.expectIdentifier("CV4319", "expected local actuator name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("("); err != nil {
+		return nil, err
+	}
+	mechanism, err := p.parseExpr()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return nil, err
+	}
+	return &EVT1ActuatorLocalDecl{ActuatorName: actuatorTok.Lexeme, Name: nameTok.Lexeme, Mechanism: mechanism, Span: start.Span}, nil
+}
+
 func (p *evt1Parser) parseInstanceDecl() (EVT1Statement, error) {
 	start, err := p.expect("instance")
 	if err != nil {
@@ -1209,6 +1361,54 @@ func (p *evt1Parser) parseInstanceDecl() (EVT1Statement, error) {
 		return nil, err
 	}
 	return &EVT1InstanceDecl{AutomataName: automataTok.Lexeme, Name: nameTok.Lexeme, Context: context, Span: start.Span}, nil
+}
+
+func (p *evt1Parser) parseActuationDecl() (EVT1Statement, error) {
+	start, err := p.expect("actuation")
+	if err != nil {
+		return nil, err
+	}
+	actuatorTok, err := p.expectIdentifier("CV4320", "expected actuator name after actuation")
+	if err != nil {
+		return nil, err
+	}
+	nameTok, err := p.expectIdentifier("CV4320", "expected actuation result name")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("="); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect("actuate"); err != nil {
+		return nil, evt1Diagnostic("CV4321", "actuation declarations require actuate(batch, executor)", p.currentSpan())
+	}
+	if _, err := p.expect("("); err != nil {
+		return nil, err
+	}
+	batchTok, err := p.expectIdentifier("CV4321", "expected effects batch name in actuate")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(","); err != nil {
+		return nil, err
+	}
+	executorTok, err := p.expectIdentifier("CV4321", "expected actuator local name in actuate")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(")"); err != nil {
+		return nil, err
+	}
+	if _, err := p.expect(";"); err != nil {
+		return nil, err
+	}
+	return &EVT1ActuationDecl{
+		ActuatorName: actuatorTok.Lexeme,
+		Name:         nameTok.Lexeme,
+		BatchName:    batchTok.Lexeme,
+		ExecutorName: executorTok.Lexeme,
+		Span:         start.Span,
+	}, nil
 }
 
 func (p *evt1Parser) parseLocalComptimeDecl() (EVT1Statement, error) {
