@@ -770,6 +770,9 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 			module.Flows = append(module.Flows, mirFlow)
 		}
 		for _, fn := range pkg.Functions {
+			if fn.IsGoImport {
+				continue
+			}
 			if options.selectedReachableOnly && !isReachableFunction(reachable, pkgName, fn.Name) {
 				continue
 			}
@@ -842,6 +845,9 @@ func lowerProgram(program project.Program, options compileOptions) (MIRModule, e
 		}
 		for pkgName, pkg := range program.Packages {
 			for _, fn := range pkg.Functions {
+				if fn.IsGoImport {
+					continue
+				}
 				if !isReachableFunction(reachable, pkgName, fn.Name) {
 					continue
 				}
@@ -9892,10 +9898,15 @@ func CompileForTestWithSelectedFilesInPackage(path string, packageDir string, se
 
 // CompileTestHarnessWithSelectedFilesInPackage emits one native executable
 // that dispatches to the supplied generated helper functions by --case ID.
-func CompileTestHarnessWithSelectedFilesInPackage(path string, packageDir string, selectedFiles []string, cases []TestHarnessCase) (Result, error) {
+func CompileTestHarnessWithSelectedFilesInPackage(path string, packageDir string, selectedFiles []string, cases []TestHarnessCase, wrappers []project.WrapperMetadata) (Result, error) {
 	program, err := project.LoadForTestWithSelectedFilesInPackage(path, packageDir, selectedFiles)
 	if err != nil {
 		return Result{}, err
+	}
+	if len(wrappers) > 0 {
+		pkg := program.Packages[program.Entry]
+		pkg.Wrappers = append([]project.WrapperMetadata(nil), wrappers...)
+		program.Packages[program.Entry] = pkg
 	}
 	return compileProgram(program, compileOptions{selectedReachableOnly: true, testHarnessCases: cases, testArtifactLayout: true})
 }

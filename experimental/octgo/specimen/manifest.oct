@@ -8,7 +8,6 @@ record PackageManifest {
     Date: String
     Kind: String
     Dependencies: Dependency[]
-    Wrappers: Wrapper[]
 }
 
 record Dependency {
@@ -16,44 +15,14 @@ record Dependency {
     VersionRequirement: String
 }
 
-record Wrapper {
-    Name: String
-    Family: String
-    Protocol: String
-    SidecarCommand: String
-    GoModuleDir: String
-    Functions: WrapperFunction[]
-}
-
-record WrapperFunction {
-    OctName: String
-    WireName: String
-    Args: String[]
-    Return: String
-    Fallible: Bool
-}
-
 fn Manifest() -> PackageManifest {
     return PackageManifest {
         Name: "Specimen"
         Version: "0.1.0"
-        Description: "OCTGO-M0 typed Go semantic companion specimen"
+        Description: "OCTGO-M1 single-source typed Go semantic companion specimen"
         Authors: ["Yuechen Li"]
         Date: "2026-08-12"
-        Kind: "wrapper"
+        Kind: "experiment"
         Dependencies: []
-        Wrappers: [
-            Wrapper {
-                Name: "octgo"
-                Family: "OctGo:github.com/yuechen-li-dev/oct/experimental/octgo/specimen"
-                Protocol: "octxiliary.v0"
-                SidecarCommand: "octgo-specimen"
-                GoModuleDir: "octgo_bridge"
-                Functions: [
-                    WrapperFunction { OctName: "Residual" WireName: "Residual" Args: ["Int", "Int", "Int"] Return: "Int" Fallible: false },
-                    WrapperFunction { OctName: "StrictlyAbove" WireName: "StrictlyAbove" Args: ["Int", "Int"] Return: "Bool" Fallible: false }
-                ]
-            }
-        ]
     }
 }

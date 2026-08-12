@@ -1489,6 +1489,7 @@ func prepareOctGoTest(path string, options *tester.TestOptions) (*octgo.TestSess
 	}
 	options.Execution = "compiled"
 	options.WrapperPath = session.WrapperPath
+	options.Wrappers = append(options.Wrappers[:0], session.Wrappers...)
 	return session, nil
 }
 func writeMakeHelp(out io.Writer) error {

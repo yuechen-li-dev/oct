@@ -75,6 +75,18 @@ func TestBuildFileParsesFunctionWithNoParameters(t *testing.T) {
 	}
 }
 
+func TestBuildFileParsesBodylessOctGoImportOnlyInCompanion(t *testing.T) {
+	file := parseSourceWithPath(t, "science.contracts.oct", "package Science\ngo fn StrictlyAbove(value: Int, threshold: Int) -> Bool\n")
+	if len(file.Functions) != 1 {
+		t.Fatalf("expected one import declaration, got %d", len(file.Functions))
+	}
+	fn := file.Functions[0]
+	if !fn.IsGoImport || fn.Name != "StrictlyAbove" || len(fn.Parameters) != 2 || fn.ReturnType.Name != "Bool" || len(fn.Body.Statements) != 0 {
+		t.Fatalf("unexpected OctGo import AST: %+v", fn)
+	}
+	assertParseErrorContainsWithPath(t, "science.oct", "package Science\ngo fn StrictlyAbove(value: Int, threshold: Int) -> Bool\n", "only valid in OctGo *.contracts.oct companions")
+}
+
 func TestBuildFileParsesNamedAndRecordConcepts(t *testing.T) {
 	file := parseSource(t, "concept Length = Float<m>\nconcept Position { X: Length Y: Length }\nfn Main(p: Position) -> Length { return p.X }")
 	if len(file.Concepts) != 1 || file.Concepts[0].Name != "Length" || file.Concepts[0].Target.Name != "Float" || !file.Concepts[0].Target.HasUnit {

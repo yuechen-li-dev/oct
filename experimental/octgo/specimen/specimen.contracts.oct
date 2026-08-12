@@ -4,13 +4,9 @@ concept Threshold = Int {
     Require(Self >= 0, "a theorem threshold must be non-negative")
 }
 
-fn StrictlyAbove(value: Int, threshold: Int) -> Bool {
-    return false
-}
+go fn StrictlyAbove(value: Int, threshold: Int) -> Bool
 
-fn Residual(trace: Int, dimension: Int, threshold: Int) -> Int {
-    return 0
-}
+go fn Residual(trace: Int, dimension: Int, threshold: Int) -> Int
 
 fn StaticThresholdAndDimensionContract() -> Void {
     let boundary: Threshold = 0

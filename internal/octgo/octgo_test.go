@@ -2,10 +2,16 @@ package octgo
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/yuechen-li-dev/oct/internal/ast"
+	"github.com/yuechen-li-dev/oct/internal/interpret"
+	"github.com/yuechen-li-dev/oct/internal/project"
 )
 
 func TestLoadPackageProducesDeterministicBoundedModel(t *testing.T) {
@@ -62,7 +68,7 @@ func TestImportedGoConstantUsesExistingConceptAdmission(t *testing.T) {
 func TestSignatureMismatchReportsBothSidesBeforeExecution(t *testing.T) {
 	directory := copySpecimen(t)
 	path := filepath.Join(directory, "specimen.contracts.oct")
-	replaceFile(t, path, "fn StrictlyAbove(value: Int, threshold: Int) -> Bool", "fn StrictlyAbove(value: Int, threshold: Float) -> Bool")
+	replaceFile(t, path, "go fn StrictlyAbove(value: Int, threshold: Int) -> Bool", "go fn StrictlyAbove(value: Int, threshold: Float) -> Bool")
 	_, err := Check(directory, false)
 	if err == nil {
 		t.Fatal("expected signature disagreement")
@@ -77,14 +83,39 @@ func TestSignatureMismatchReportsBothSidesBeforeExecution(t *testing.T) {
 
 func TestUnsupportedShapeIsRejectedPrecisely(t *testing.T) {
 	directory := copySpecimen(t)
-	appendFile(t, filepath.Join(directory, "specimen.go"), "\nfunc Unsupported(value int) (int, int) { return value, value }\n")
-	manifest := filepath.Join(directory, "manifest.oct")
-	replaceFile(t, manifest, "Functions: [\n", "Functions: [\n                    WrapperFunction { OctName: \"Unsupported\" WireName: \"Unsupported\" Args: [\"Int\"] Return: \"Int\" Fallible: false },\n")
+	appendFile(t, filepath.Join(directory, "specimen.go"), "\nfunc Bad(values []int) int { return len(values) }\n")
 	contract := filepath.Join(directory, "specimen.contracts.oct")
-	appendFile(t, contract, "\nfn Unsupported(value: Int) -> Int { return 0 }\n")
-	_, err := Check(directory, false)
-	if err == nil || !strings.Contains(err.Error(), "multiple results are outside OCTGO-M0") {
+	appendFile(t, contract, "\ngo fn Bad(values: Int) -> Int\n")
+	_, err := Check(directory, true)
+	if err == nil || !strings.Contains(err.Error(), "parameter 1: type []int is outside bounded OctGo") {
 		t.Fatalf("unexpected unsupported-shape diagnostic: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(directory, "octgo_bridge", "main.go")); !os.IsNotExist(statErr) {
+		t.Fatalf("unsupported import partially generated a bridge: %v", statErr)
+	}
+}
+
+func TestAuthoritativeImportsLowerToCanonicalWrapperMetadata(t *testing.T) {
+	c, _, err := loadContract(specimenDirectory(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imports []ast.FunctionDecl
+	for _, fn := range c.companion.Functions {
+		if fn.IsGoImport {
+			imports = append(imports, fn)
+		}
+	}
+	first := derivedWrapperMetadata(c.model, imports)
+	second := derivedWrapperMetadata(c.model, imports)
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("wrapper lowering is not deterministic:\nfirst=%+v\nsecond=%+v", first, second)
+	}
+	if len(first.Functions) != 2 || first.Functions[0].OctName != "Residual" || first.Functions[1].OctName != "StrictlyAbove" {
+		t.Fatalf("wrapper functions are not canonical: %+v", first.Functions)
+	}
+	if first.Functions[1].WireName != "StrictlyAbove" || !reflect.DeepEqual(first.Functions[1].Args, []string{"Int", "Int"}) || first.Functions[1].Return != "Bool" {
+		t.Fatalf("wrapper signature was not derived from the import: %+v", first.Functions[1])
 	}
 }
 
@@ -119,18 +150,69 @@ func TestGeneratedBridgeIsDeterministicAndStaleCheckDoesNotMutate(t *testing.T) 
 	}
 }
 
-func TestGoSignatureChangeMakesCommittedBridgeStale(t *testing.T) {
+func TestGoSignatureDriftReportsSemanticMismatchBeforeStaleness(t *testing.T) {
 	directory := copySpecimen(t)
 	if _, err := Check(directory, true); err != nil {
 		t.Fatal(err)
 	}
 	replaceFile(t, filepath.Join(directory, "specimen.go"), "func StrictlyAbove(value, threshold int) bool {", "func StrictlyAbove(value, threshold, margin int) bool {")
 	replaceFile(t, filepath.Join(directory, "specimen.go"), "return value > threshold", "return value > threshold+margin")
-	replaceFile(t, filepath.Join(directory, "specimen.contracts.oct"), "fn StrictlyAbove(value: Int, threshold: Int) -> Bool", "fn StrictlyAbove(value: Int, threshold: Int, margin: Int) -> Bool")
-	replaceFile(t, filepath.Join(directory, "manifest.oct"), `Args: ["Int", "Int"] Return: "Bool"`, `Args: ["Int", "Int", "Int"] Return: "Bool"`)
+	_, err := Check(directory, false)
+	if err == nil || !strings.Contains(err.Error(), "parameter count differs: Go has 3, Oct expects 2") || strings.Contains(err.Error(), "bridge is stale") {
+		t.Fatalf("typed Go signature drift should report the semantic mismatch first, got %v", err)
+	}
+}
+
+func TestValidCompanionSelectionChangeMakesBridgeStale(t *testing.T) {
+	directory := copySpecimen(t)
+	if _, err := Check(directory, true); err != nil {
+		t.Fatal(err)
+	}
+	appendFile(t, filepath.Join(directory, "specimen.go"), "\nfunc Below(value, threshold int) bool { return value < threshold }\n")
+	appendFile(t, filepath.Join(directory, "specimen.contracts.oct"), "\ngo fn Below(value: Int, threshold: Int) -> Bool\n")
 	_, err := Check(directory, false)
 	if err == nil || !strings.Contains(err.Error(), "bridge is stale") {
-		t.Fatalf("typed Go signature change should make committed adapter stale, got %v", err)
+		t.Fatalf("valid authoritative declaration change should stale the bridge: %v", err)
+	}
+}
+
+func TestRemovedGoFunctionReportsMissingIdentity(t *testing.T) {
+	directory := copySpecimen(t)
+	replaceFile(t, filepath.Join(directory, "specimen.go"), "func StrictlyAbove(value, threshold int) bool {", "func noLongerExported(value, threshold int) bool {")
+	_, err := Check(directory, false)
+	if err == nil || !strings.Contains(err.Error(), "has no exported Go function identity") || strings.Contains(err.Error(), "bridge is stale") {
+		t.Fatalf("removed Go function should fail semantic binding before freshness: %v", err)
+	}
+}
+
+func TestImportedGoCallIsRejectedByCompileTimeRequire(t *testing.T) {
+	directory := copySpecimen(t)
+	contract := filepath.Join(directory, "specimen.contracts.oct")
+	replaceFile(t, contract, `Require(boundary >= 0, "the equality boundary is an admissible threshold")`, `Require(StrictlyAbove(2, 1), "imports are not compile-time operations")`)
+	_, err := Check(directory, false)
+	if err == nil || !strings.Contains(err.Error(), "cannot be evaluated at compile time") {
+		t.Fatalf("compile-time Require unexpectedly admitted an imported Go call: %v", err)
+	}
+}
+
+func TestCheckWithoutOctestStillValidatesCompanion(t *testing.T) {
+	directory := copySpecimen(t)
+	if err := os.Remove(filepath.Join(directory, "specimen.octest")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Check(directory, true); err != nil {
+		t.Fatalf("check should not require Octest: %v", err)
+	}
+}
+
+func TestInterpretedImportedCallHasPreciseCompiledOnlyDiagnostic(t *testing.T) {
+	program, err := project.LoadForTest(specimenDirectory(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = interpret.ExecuteFunction(program, "Specimen", "EqualityIsExcludedByStrictThreshold", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "OctGo import Specimen.StrictlyAbove is compiled-only") {
+		t.Fatalf("unexpected interpreted import behavior: %v", err)
 	}
 }
 

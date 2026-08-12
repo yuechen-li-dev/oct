@@ -159,7 +159,7 @@ func typeModel(fset *token.FileSet, decl *types.TypeName) TypeModel {
 	default:
 		model.Kind = "unsupported"
 		model.Supported = false
-		model.UnsupportedReason = fmt.Sprintf("underlying type %s is outside OCTGO-M0", types.TypeString(underlying, qualifier))
+		model.UnsupportedReason = fmt.Sprintf("underlying type %s is outside bounded OctGo", types.TypeString(underlying, qualifier))
 	}
 	return model
 }
@@ -185,17 +185,17 @@ func functionModel(fset *token.FileSet, decl *types.Func) FunctionModel {
 	}
 	if sig.Recv() != nil {
 		model.Supported = false
-		model.UnsupportedReason = "methods are outside OCTGO-M0"
+		model.UnsupportedReason = "methods are outside bounded OctGo"
 		return model
 	}
 	if sig.TypeParams() != nil && sig.TypeParams().Len() != 0 {
 		model.Supported = false
-		model.UnsupportedReason = "generic functions are outside OCTGO-M0"
+		model.UnsupportedReason = "generic functions are outside bounded OctGo"
 	}
 	model.Variadic = sig.Variadic()
 	if sig.Variadic() {
 		model.Supported = false
-		model.UnsupportedReason = "variadic functions are outside OCTGO-M0"
+		model.UnsupportedReason = "variadic functions are outside bounded OctGo"
 	}
 	for index := 0; index < sig.Params().Len(); index++ {
 		ref, supported, reason := projectType(sig.Params().At(index).Type())
@@ -215,7 +215,7 @@ func functionModel(fset *token.FileSet, decl *types.Func) FunctionModel {
 	}
 	if len(model.Results) > 1 {
 		model.Supported = false
-		model.UnsupportedReason = "multiple results are outside OCTGO-M0"
+		model.UnsupportedReason = "multiple results are outside bounded OctGo"
 	}
 	return model
 }
@@ -236,7 +236,7 @@ func projectType(typ types.Type) (TypeRef, bool, string) {
 	}
 	basic, ok := typ.(*types.Basic)
 	if !ok {
-		return TypeRef{Kind: "unsupported"}, false, fmt.Sprintf("type %s is outside OCTGO-M0", types.TypeString(typ, qualifier))
+		return TypeRef{Kind: "unsupported"}, false, fmt.Sprintf("type %s is outside bounded OctGo", types.TypeString(typ, qualifier))
 	}
 	switch basic.Kind() {
 	case types.Bool:
@@ -248,7 +248,7 @@ func projectType(typ types.Type) (TypeRef, bool, string) {
 	case types.String:
 		return TypeRef{Kind: "String"}, true, ""
 	default:
-		return TypeRef{Kind: "unsupported"}, false, fmt.Sprintf("Go primitive %s has no honest OCTGO-M0 mapping", basic.Name())
+		return TypeRef{Kind: "unsupported"}, false, fmt.Sprintf("Go primitive %s has no honest bounded OctGo mapping", basic.Name())
 	}
 }
 
@@ -266,11 +266,11 @@ func octConstantLiteral(value constant.Value, ref TypeRef) (string, bool, string
 	case constant.Float:
 		text := value.String()
 		if strings.Contains(text, "/") {
-			return "", false, "non-decimal exact Go float constant is outside OCTGO-M0"
+			return "", false, "non-decimal exact Go float constant is outside bounded OctGo"
 		}
 		return text, true, ""
 	default:
-		return "", false, fmt.Sprintf("constant kind %s is outside OCTGO-M0", value.Kind())
+		return "", false, fmt.Sprintf("constant kind %s is outside bounded OctGo", value.Kind())
 	}
 }
 

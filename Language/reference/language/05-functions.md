@@ -19,6 +19,22 @@ Fallibility is part of the function signature.
 - Each argument type must match the corresponding parameter type.
 - Builtin names cannot be redeclared.
 
+## OctGo companion imports
+
+An OctGo `*.contracts.oct` companion may declare a selected free Go function
+with the narrow bodyless form:
+
+```oct
+go fn StrictlyAbove(value: Int, threshold: Int) -> Bool
+```
+
+This is an OctGo host binding, not a general foreign-function declaration.
+The declaration is valid only in `*.contracts.oct`, preserves the same Go and
+Oct name, is non-fallible, and has no Oct implementation body. The OctGo host
+must validate the exported Go function and exact supported `go/types`
+signature before deriving static wrapper metadata. Imported calls are
+compiled-only and cannot be evaluated by compile-time `Require`.
+
 ## Examples
 
 Valid:

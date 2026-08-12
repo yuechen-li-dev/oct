@@ -772,6 +772,9 @@ func (i interpreter) findMain(entryPackage string) (ast.FunctionDecl, error) {
 }
 
 func (i interpreter) executeFunction(function ast.FunctionDecl, pkgName string, arguments []Value) (callResult, error) {
+	if function.IsGoImport {
+		return callResult{}, fmt.Errorf("OctGo import %s.%s is compiled-only; interpreted execution cannot call imported Go functions", pkgName, function.Name)
+	}
 	env := newEnvironment(nil)
 	for index, parameter := range function.Parameters {
 		env.define(parameter.Name, arguments[index], false)

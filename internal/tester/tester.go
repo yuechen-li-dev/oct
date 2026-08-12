@@ -61,6 +61,9 @@ type TestOptions struct {
 	// such as OCTGO. It is not a public CLI flag and does not grant Oct code a
 	// general process or filesystem capability.
 	WrapperPath string
+	// Wrappers is host-derived metadata for bounded integrations such as
+	// OctGo. It is injected after loading and is not user-authored manifest data.
+	Wrappers []project.WrapperMetadata
 }
 
 func Execute(path string, stdout io.Writer) error {
@@ -93,6 +96,11 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 
 	program, loadErr := project.LoadForTest(path)
 	if loadErr == nil {
+		if len(options.Wrappers) > 0 {
+			pkg := program.Packages[program.Entry]
+			pkg.Wrappers = append([]project.WrapperMetadata(nil), options.Wrappers...)
+			program.Packages[program.Entry] = pkg
+		}
 		if err := typecheck.CheckProgram(program); err != nil {
 			return err
 		}
@@ -389,7 +397,7 @@ func executeCompiledHarnessGroup(program project.Program, group compiledHarnessG
 	}
 	selected := append([]string{runnerPath}, group.files...)
 	metrics.nativeCompilations++
-	result, err := build.CompileTestHarnessWithSelectedFilesInPackage(runnerPath, pkg.Directory, selected, cases)
+	result, err := build.CompileTestHarnessWithSelectedFilesInPackage(runnerPath, pkg.Directory, selected, cases, pkg.Wrappers)
 	if err != nil {
 		for _, tc := range group.testCase {
 			results[testCaseID(tc)] = err

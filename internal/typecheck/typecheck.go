@@ -759,6 +759,9 @@ func (c checker) resolveFlowSignature(flow ast.FlowDecl) (flowSignature, error) 
 }
 
 func (c checker) checkFunction(function ast.FunctionDecl) error {
+	if function.IsGoImport {
+		return nil
+	}
 	signature := c.functions[function.Name]
 	if function.IsTheory {
 		for rowIndex, row := range function.InlineData {

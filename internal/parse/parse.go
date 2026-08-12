@@ -194,6 +194,18 @@ func (p *parser) parseFile(src source.File) (ast.File, error) {
 			continue
 		}
 		switch p.current().Kind {
+		case lex.Identifier:
+			if p.current().Lexeme != "go" {
+				return ast.File{}, p.errorAtCurrent("expected top-level declaration")
+			}
+			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority || pendingFact || pendingTheory || pendingArtifact || pendingBenchmark || len(pendingInlineData) > 0 || len(pendingSuites) > 0 || pendingCycleTime != nil {
+				return ast.File{}, p.errorAtCurrent("attributes cannot apply to an OctGo import declaration")
+			}
+			function, err := p.parseGoImportDecl()
+			if err != nil {
+				return ast.File{}, err
+			}
+			file.Functions = append(file.Functions, function)
 		case lex.KeywordConcept:
 			if pendingMakePlan || pendingMakePure || pendingMakeNoWhile || pendingRequiresMakeAuthority {
 				return ast.File{}, p.errorAtCurrent("Make attributes must apply to a function declaration")
@@ -855,6 +867,54 @@ func (p *parser) parseFunctionDecl() (ast.FunctionDecl, error) {
 	function.Body = body
 
 	return function, nil
+}
+
+func (p *parser) parseGoImportDecl() (ast.FunctionDecl, error) {
+	goToken, err := p.expect(lex.Identifier, "expected 'go' at top level")
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	if goToken.Lexeme != "go" {
+		return ast.FunctionDecl{}, p.errorAtCurrent("expected 'go fn' import declaration")
+	}
+	if !strings.HasSuffix(strings.ToLower(p.sourcePath), ".contracts.oct") {
+		return ast.FunctionDecl{}, p.errorAtCurrent("'go fn' declarations are only valid in OctGo *.contracts.oct companions")
+	}
+	if _, err := p.expect(lex.KeywordFn, "expected 'fn' after 'go'"); err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	name, err := p.expect(lex.Identifier, "expected imported Go function name")
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	if _, err := p.expect(lex.LeftParen, "expected '(' after imported Go function name"); err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	parameters, err := p.parseParameters()
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	if _, err := p.expect(lex.RightParen, "expected ')' after parameter list"); err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	if _, err := p.expect(lex.Arrow, "expected arrow before return type"); err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	returnType, err := p.parseTypeRef()
+	if err != nil {
+		return ast.FunctionDecl{}, err
+	}
+	if p.current().Kind == lex.Bang {
+		return ast.FunctionDecl{}, p.errorAtCurrent("OctGo imports cannot be fallible")
+	}
+	return ast.FunctionDecl{
+		Name:       name.Lexeme,
+		Doc:        p.docCommentAtLine(goToken.Line),
+		SourcePath: p.sourcePath,
+		IsGoImport: true,
+		Parameters: parameters,
+		ReturnType: returnType,
+	}, nil
 }
 
 func (p *parser) parseFlowDecl() (ast.FlowDecl, error) {

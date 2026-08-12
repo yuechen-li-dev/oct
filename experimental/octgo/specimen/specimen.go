@@ -1,4 +1,4 @@
-// Package specimen is an ordinary Go package used to dogfood OCTGO-M0.
+// Package specimen is an ordinary Go package used to dogfood OctGo.
 // It has no dependency on Oct and exposes no interop-specific runtime API.
 package specimen
 

@@ -11,13 +11,14 @@ import (
 
 	"github.com/yuechen-li-dev/oct/internal/ast"
 	"github.com/yuechen-li-dev/oct/internal/lex"
+	"github.com/yuechen-li-dev/oct/internal/manifestwrapper"
 	"github.com/yuechen-li-dev/oct/internal/parse"
 	"github.com/yuechen-li-dev/oct/internal/project"
 	"github.com/yuechen-li-dev/oct/internal/source"
 	"github.com/yuechen-li-dev/oct/internal/typecheck"
 )
 
-var ErrNoCompanion = errors.New("no OCTGO-M0 companion")
+var ErrNoCompanion = errors.New("no OctGo companion")
 
 type Report struct {
 	Package           PackageIdentity
@@ -31,6 +32,7 @@ type Report struct {
 	ConstantWitnesses int
 	BridgeGenerated   bool
 	BridgeFresh       bool
+	wrappers          []project.WrapperMetadata
 }
 
 type contract struct {
@@ -40,12 +42,12 @@ type contract struct {
 	program   project.Program
 	model     PackageModel
 	functions []bridgeFunction
+	wrapper   project.WrapperMetadata
 }
 
 type bridgeFunction struct {
-	Go      FunctionModel
-	Oct     ast.FunctionDecl
-	Wrapper project.WrapperMetadata
+	Go  FunctionModel
+	Oct ast.FunctionDecl
 }
 
 func Check(path string, generate bool) (Report, error) {
@@ -55,6 +57,9 @@ func Check(path string, generate bool) (Report, error) {
 	}
 	if err := validateContract(&c, &report); err != nil {
 		return Report{}, err
+	}
+	if len(c.functions) > 0 {
+		report.wrappers = []project.WrapperMetadata{c.wrapper}
 	}
 	if len(c.functions) == 0 {
 		return report, nil
@@ -100,7 +105,7 @@ func loadContract(path string) (contract, Report, error) {
 		return contract{}, Report{}, ErrNoCompanion
 	}
 	if len(companions) != 1 {
-		return contract{}, Report{}, fmt.Errorf("OCTGO-M0 requires exactly one *.contracts.oct companion in %s, found %d", directory, len(companions))
+		return contract{}, Report{}, fmt.Errorf("OctGo requires exactly one *.contracts.oct companion in %s, found %d", directory, len(companions))
 	}
 	companion, err := parseCompanion(companions[0])
 	if err != nil {
@@ -136,7 +141,7 @@ func validateContract(c *contract, report *Report) error {
 			return fmt.Errorf("Oct concept %s at %s:%d has no Go type identity %s.%s", concept.Name, c.path, concept.Line, c.model.Package.Path, concept.Name)
 		}
 		if !goType.Supported {
-			return fmt.Errorf("Go type %s.%s at %s:%d is outside OCTGO-M0: %s", c.model.Package.Path, goType.Name, goType.Position.File, goType.Position.Line, goType.UnsupportedReason)
+			return fmt.Errorf("Go type %s.%s at %s:%d is outside bounded OctGo: %s", c.model.Package.Path, goType.Name, goType.Position.File, goType.Position.Line, goType.UnsupportedReason)
 		}
 		if goType.Kind != "scalar" {
 			return fmt.Errorf("Go type %s.%s has %s shape, but Oct companion declares scalar concept %s = %s", c.model.Package.Path, goType.Name, goType.Kind, concept.Name, octType(concept.Target))
@@ -156,7 +161,7 @@ func validateContract(c *contract, report *Report) error {
 			return fmt.Errorf("Oct record concept %s in %s has no Go type identity %s.%s", record.Name, c.path, c.model.Package.Path, record.Name)
 		}
 		if !goType.Supported {
-			return fmt.Errorf("Go type %s.%s is outside OCTGO-M0: %s", c.model.Package.Path, goType.Name, goType.UnsupportedReason)
+			return fmt.Errorf("Go type %s.%s is outside bounded OctGo: %s", c.model.Package.Path, goType.Name, goType.UnsupportedReason)
 		}
 		if goType.Kind != "struct" || len(goType.Fields) != len(record.Fields) {
 			return fmt.Errorf("Go type %s.%s does not match Oct record concept %s: field count/shape differs", c.model.Package.Path, goType.Name, record.Name)
@@ -171,36 +176,27 @@ func validateContract(c *contract, report *Report) error {
 		report.SelectedConcepts++
 	}
 
-	pkg := c.program.Packages[c.program.Entry]
-	companionFunctions := map[string]ast.FunctionDecl{}
+	imports := make([]ast.FunctionDecl, 0)
 	for _, fn := range c.companion.Functions {
-		companionFunctions[fn.Name] = fn
-	}
-	for _, wrapper := range pkg.Wrappers {
-		if wrapper.Name != "octgo" {
+		if !fn.IsGoImport {
 			continue
 		}
-		if err := validateWrapperIdentity(c.model, wrapper); err != nil {
+		imports = append(imports, fn)
+	}
+	sort.Slice(imports, func(i, j int) bool { return imports[i].Name < imports[j].Name })
+	for _, octFn := range imports {
+		goFn, ok := c.model.FindFunction(octFn.Name)
+		if !ok {
+			return fmt.Errorf("OctGo import %s in %s has no exported Go function identity %s.%s", octFn.Name, c.path, c.model.Package.Path, octFn.Name)
+		}
+		if err := validateFunctionSignature(*c, goFn, octFn); err != nil {
 			return err
 		}
-		for _, metadata := range wrapper.Functions {
-			octFn, ok := companionFunctions[metadata.OctName]
-			if !ok {
-				return fmt.Errorf("OCTGO wrapper selects %s, but %s does not declare that function", metadata.OctName, c.path)
-			}
-			goFn, ok := c.model.FindFunction(metadata.WireName)
-			if !ok {
-				return fmt.Errorf("Oct companion selects Go function %s.%s, but no typed Go function with that identity exists", c.model.Package.Path, metadata.WireName)
-			}
-			if metadata.OctName != metadata.WireName {
-				return fmt.Errorf("OCTGO-M0 semantic identity requires OctName and WireName to equal the Go declaration name; got %q and %q", metadata.OctName, metadata.WireName)
-			}
-			if err := validateFunctionSignature(*c, goFn, octFn, metadata.Args, metadata.Return, metadata.Fallible); err != nil {
-				return err
-			}
-			c.functions = append(c.functions, bridgeFunction{Go: goFn, Oct: octFn, Wrapper: wrapper})
-			report.SelectedFunctions++
-		}
+		c.functions = append(c.functions, bridgeFunction{Go: goFn, Oct: octFn})
+		report.SelectedFunctions++
+	}
+	if len(c.functions) > 0 {
+		c.wrapper = derivedWrapperMetadata(c.model, imports)
 	}
 	if len(c.functions) == 0 && len(selectedConcepts) == 0 {
 		return fmt.Errorf("%s selects no Go concepts or functions", c.path)
@@ -208,21 +204,12 @@ func validateContract(c *contract, report *Report) error {
 	return validateConstantsWithConcepts(*c, selectedConcepts, report)
 }
 
-func validateWrapperIdentity(model PackageModel, wrapper project.WrapperMetadata) error {
-	wantFamily := "OctGo:" + model.Package.Path
-	wantCommand := sidecarCommand(model.Package.Name)
-	if wrapper.Family != wantFamily || wrapper.Protocol != "octxiliary.v0" || wrapper.SidecarCommand != wantCommand || filepath.ToSlash(wrapper.GoModuleDir) != "octgo_bridge" {
-		return fmt.Errorf("OCTGO wrapper identity mismatch for %s: expected family %q, protocol octxiliary.v0, command %q, module octgo_bridge", model.Package.Path, wantFamily, wantCommand)
-	}
-	return nil
-}
-
-func validateFunctionSignature(c contract, goFn FunctionModel, octFn ast.FunctionDecl, manifestArgs []string, manifestReturn string, manifestFallible bool) error {
+func validateFunctionSignature(c contract, goFn FunctionModel, octFn ast.FunctionDecl) error {
 	if !goFn.Supported {
 		return fmt.Errorf("Go function %s.%s\nhas signature:\n    %s\nerror: %s", c.model.Package.Path, goFn.Name, goFn.Signature, goFn.UnsupportedReason)
 	}
-	if octFn.IsFallible || manifestFallible {
-		return fmt.Errorf("Go function %s.%s is non-fallible; OCTGO-M0 bridge declarations must also be non-fallible", c.model.Package.Path, goFn.Name)
+	if octFn.IsFallible {
+		return fmt.Errorf("Go function %s.%s is non-fallible; OctGo import declarations must also be non-fallible", c.model.Package.Path, goFn.Name)
 	}
 	if len(goFn.Parameters) != len(octFn.Parameters) {
 		return signatureError(c, goFn, octFn, fmt.Sprintf("parameter count differs: Go has %d, Oct expects %d", len(goFn.Parameters), len(octFn.Parameters)))
@@ -233,9 +220,6 @@ func validateFunctionSignature(c contract, goFn FunctionModel, octFn ast.Functio
 		if want != got {
 			return signatureError(c, goFn, octFn, fmt.Sprintf("parameter %d is incompatible: Go maps to %s, Oct expects %s", index+1, want, got))
 		}
-		if index >= len(manifestArgs) || manifestArgs[index] != got {
-			return signatureError(c, goFn, octFn, fmt.Sprintf("manifest parameter %d is %q, Oct declaration is %s", index+1, valueAt(manifestArgs, index), got))
-		}
 	}
 	wantReturn := "Void"
 	if len(goFn.Results) == 1 {
@@ -245,10 +229,30 @@ func validateFunctionSignature(c contract, goFn FunctionModel, octFn ast.Functio
 	if wantReturn != gotReturn {
 		return signatureError(c, goFn, octFn, fmt.Sprintf("return is incompatible: Go maps to %s, Oct expects %s", wantReturn, gotReturn))
 	}
-	if manifestReturn != gotReturn {
-		return signatureError(c, goFn, octFn, fmt.Sprintf("manifest return is %q, Oct declaration is %s", manifestReturn, gotReturn))
-	}
 	return nil
+}
+
+func derivedWrapperMetadata(model PackageModel, imports []ast.FunctionDecl) project.WrapperMetadata {
+	ordered := append([]ast.FunctionDecl(nil), imports...)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Name < ordered[j].Name })
+	wrapper := project.WrapperMetadata{
+		Name:           "octgo",
+		Family:         "OctGo:" + model.Package.Path,
+		Protocol:       "octxiliary.v0",
+		SidecarCommand: sidecarCommand(model.Package.Name),
+		GoModuleDir:    "octgo_bridge",
+	}
+	for _, imported := range ordered {
+		args := make([]string, 0, len(imported.Parameters))
+		for _, parameter := range imported.Parameters {
+			args = append(args, octType(parameter.Type))
+		}
+		wrapper.Functions = append(wrapper.Functions, manifestwrapper.FunctionMetadata{
+			OctName: imported.Name, WireName: imported.Name, Args: args,
+			Return: octType(imported.ReturnType), Fallible: false,
+		})
+	}
+	return wrapper
 }
 
 func signatureError(c contract, goFn FunctionModel, octFn ast.FunctionDecl, detail string) error {
@@ -341,13 +345,6 @@ func projectedOctType(ref TypeRef, packagePath string) string {
 		return ref.Name
 	}
 	return ref.Kind
-}
-
-func valueAt(values []string, index int) string {
-	if index < 0 || index >= len(values) {
-		return "<missing>"
-	}
-	return values[index]
 }
 
 func sidecarCommand(packageName string) string {

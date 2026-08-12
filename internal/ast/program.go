@@ -81,6 +81,10 @@ type FunctionDecl struct {
 	Name       string
 	Doc        *DocComment
 	SourcePath string
+	// IsGoImport marks the narrow, bodyless `go fn` declaration accepted only
+	// in an OctGo *.contracts.oct companion. The Go host validates and binds it;
+	// ordinary Oct execution never supplies an implementation body.
+	IsGoImport bool
 	IsTestFile bool
 	IsFact     bool
 	IsTheory   bool
