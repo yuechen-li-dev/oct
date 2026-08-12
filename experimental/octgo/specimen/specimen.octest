@@ -1,0 +1,27 @@
+package Specimen
+
+[Fact]
+fn EqualityIsExcludedByStrictThreshold() -> Void {
+    Assert.False(StrictlyAbove(2, 2), "strict threshold equality must remain rejected")
+}
+
+[Theory]
+[InlineData(3, 2, true)]
+[InlineData(2, 2, false)]
+[InlineData(1, 2, false)]
+fn StrictThresholdTable(value: Int, threshold: Int, expected: Bool) -> Void {
+    Assert.Equal(expected, StrictlyAbove(value, threshold), "strict threshold table")
+}
+
+[Fact]
+fn DimensionCorrectionControlsResidual() -> Void {
+    Assert.Equal(2, Residual(14, 3, 4), "three threshold dimensions leave residual two")
+    Assert.Equal(0, Residual(11, 3, 4), "negative residual is clamped")
+}
+
+[Fact]
+fn DimensionFreeResidualIsARecordedFalseGeneralization() -> Void {
+    let dimensionAware = Residual(14, 3, 4)
+    let dimensionFree = 14 - 4
+    Assert.False(dimensionAware == dimensionFree, "dropping dimension correction changes the theorem seam")
+}

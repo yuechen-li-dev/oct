@@ -9,6 +9,9 @@
 ## Rules
 
 - `oct run <path>` executes an Oct entry file.
+- `oct check <go-package-directory>` validates an optional typed Go semantic
+  companion and any committed static bridge without executing Octest. The
+  experimental `--generate` mode explicitly writes that deterministic bridge.
 - `oct build <path>` compiles and writes a native executable beside the entry
   source. On Windows, `Main.oct` produces `Main.oct.exe`; on Linux and macOS
   the executable has no suffix. `.octbin` is reserved for a future portable

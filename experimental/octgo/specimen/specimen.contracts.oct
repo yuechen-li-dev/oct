@@ -1,0 +1,19 @@
+package Specimen
+
+concept Threshold = Int {
+    Require(Self >= 0, "a theorem threshold must be non-negative")
+}
+
+fn StrictlyAbove(value: Int, threshold: Int) -> Bool {
+    return false
+}
+
+fn Residual(trace: Int, dimension: Int, threshold: Int) -> Int {
+    return 0
+}
+
+fn StaticThresholdAndDimensionContract() -> Void {
+    let boundary: Threshold = 0
+    Require(boundary >= 0, "the equality boundary is an admissible threshold")
+    Require(14 - 3 * 4 == 2, "dimension-sensitive residual arithmetic must remain stable")
+}

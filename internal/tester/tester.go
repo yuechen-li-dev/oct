@@ -57,6 +57,10 @@ type TestOptions struct {
 	Execution   string
 	AllPackages bool
 	JSON        bool
+	// WrapperPath is a host-selected sidecar directory for bounded integrations
+	// such as OCTGO. It is not a public CLI flag and does not grant Oct code a
+	// general process or filesystem capability.
+	WrapperPath string
 }
 
 func Execute(path string, stdout io.Writer) error {
@@ -185,7 +189,7 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 	compiled := map[string]error{}
 	metrics := testMetrics{}
 	if executionMode != "interpreted" {
-		compiled, metrics = executeCompiledHarnessGroups(program, tests, stdout)
+		compiled, metrics = executeCompiledHarnessGroups(program, tests, stdout, options.WrapperPath)
 	}
 	for _, testCase := range tests {
 		total++
@@ -276,11 +280,11 @@ func executeTestsSingleRoot(path string, stdout io.Writer, options TestOptions) 
 }
 
 func executeCompiledTestCase(program project.Program, tc testCase, diagnostic io.Writer) error {
-	results, _ := executeCompiledHarnessGroups(program, []testCase{tc}, diagnostic)
+	results, _ := executeCompiledHarnessGroups(program, []testCase{tc}, diagnostic, "")
 	return results[testCaseID(tc)]
 }
 
-func executeCompiledHarnessGroups(program project.Program, tests []testCase, diagnostic io.Writer) (map[string]error, testMetrics) {
+func executeCompiledHarnessGroups(program project.Program, tests []testCase, diagnostic io.Writer, wrapperPath string) (map[string]error, testMetrics) {
 	results := make(map[string]error, len(tests))
 	metrics := testMetrics{}
 	groups := groupCompiledTestCases(tests)
@@ -291,7 +295,7 @@ func executeCompiledHarnessGroups(program project.Program, tests []testCase, dia
 		} else {
 			metrics.fileGroups++
 		}
-		groupResults, groupMetrics := executeCompiledHarnessGroup(program, group, diagnostic)
+		groupResults, groupMetrics := executeCompiledHarnessGroup(program, group, diagnostic, wrapperPath)
 		metrics.nativeCompilations += groupMetrics.nativeCompilations
 		metrics.processLaunches += groupMetrics.processLaunches
 		metrics.artifactScopesMade += groupMetrics.artifactScopesMade
@@ -345,7 +349,7 @@ func testCaseID(tc testCase) string {
 	return tc.pkg + "|" + filepath.Clean(tc.filePath) + "|" + tc.displayName
 }
 
-func executeCompiledHarnessGroup(program project.Program, group compiledHarnessGroup, diagnostic io.Writer) (results map[string]error, metrics testMetrics) {
+func executeCompiledHarnessGroup(program project.Program, group compiledHarnessGroup, diagnostic io.Writer, wrapperPath string) (results map[string]error, metrics testMetrics) {
 	results = make(map[string]error, len(group.testCase))
 	pkg, ok := program.Packages[group.pkg]
 	if !ok {
@@ -396,7 +400,7 @@ func executeCompiledHarnessGroup(program project.Program, group compiledHarnessG
 		ctx, cancel := context.WithTimeout(context.Background(), tc.cycleTime)
 		cmd := exec.CommandContext(ctx, result.ArtifactPath, "--case", testCaseID(tc))
 		metrics.processLaunches++
-		cmd.Env = append(os.Environ(), "OCT_ENFORCE_ASSERTIONS=1")
+		cmd.Env = testCommandEnvironment(wrapperPath)
 		output, runErr := cmd.CombinedOutput()
 		cancel()
 		if runErr != nil {
@@ -413,6 +417,22 @@ func executeCompiledHarnessGroup(program project.Program, group compiledHarnessG
 		}
 	}
 	return results, metrics
+}
+
+func testCommandEnvironment(wrapperPath string) []string {
+	environment := os.Environ()
+	if wrapperPath == "" {
+		return append(environment, "OCT_ENFORCE_ASSERTIONS=1")
+	}
+	filtered := make([]string, 0, len(environment)+2)
+	for _, entry := range environment {
+		name, _, _ := strings.Cut(entry, "=")
+		if strings.EqualFold(name, "OCT_WRAPPER_PATH") || strings.EqualFold(name, "OCT_ENFORCE_ASSERTIONS") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return append(filtered, "OCT_ENFORCE_ASSERTIONS=1", "OCT_WRAPPER_PATH="+wrapperPath)
 }
 
 func writeCompiledTestRunner(runnerPath string, pkgName string, testCase testCase) (string, error) {

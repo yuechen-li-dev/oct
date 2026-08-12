@@ -14,6 +14,7 @@ import (
 	"github.com/yuechen-li-dev/oct/internal/makecmd"
 	"github.com/yuechen-li-dev/oct/internal/newpkg"
 	"github.com/yuechen-li-dev/oct/internal/ocfmt"
+	"github.com/yuechen-li-dev/oct/internal/octgo"
 	"github.com/yuechen-li-dev/oct/internal/pkgmgr"
 	"github.com/yuechen-li-dev/oct/internal/prometheus"
 	"github.com/yuechen-li-dev/oct/internal/prometheus/shaderpackage"
@@ -109,6 +110,19 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 		}
 		_, err = fmt.Fprintf(stdout, "build succeeded: %s\n", result.ArtifactPath)
 		return err
+	case "check":
+		if isHelpArg(args[1:]) {
+			return writeCheckHelp(stdout)
+		}
+		path, generate, err := parseCheckOptions(args[1:])
+		if err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		report, err := octgo.Check(resolveWorkingPath(workingDir, path), generate)
+		if err != nil {
+			return reportCommandError(stderr, command, err)
+		}
+		return writeCheckReport(stdout, report)
 	case "make":
 		if isHelpArg(args[1:]) {
 			return writeMakeHelp(stdout)
@@ -150,12 +164,31 @@ func ExecuteWithContext(args []string, ctx ExecutionContext) error {
 			if len(paths) != 1 {
 				return reportCommandError(stderr, command, fmt.Errorf("--json requires exactly one file-or-root target"))
 			}
-			return executeTestJSON(resolveWorkingPath(workingDir, paths[0]), stdout, options)
+			path := resolveWorkingPath(workingDir, paths[0])
+			session, err := prepareOctGoTest(path, &options)
+			if err != nil {
+				return reportCommandError(stderr, command, err)
+			}
+			if session != nil {
+				defer session.Close()
+			}
+			return executeTestJSON(path, stdout, options)
 		}
 		for _, path := range paths {
 			path = resolveWorkingPath(workingDir, path)
-			if err := tester.ExecuteWithOptions(path, stdout, options); err != nil {
+			pathOptions := options
+			session, err := prepareOctGoTest(path, &pathOptions)
+			if err != nil {
 				return reportCommandError(stderr, command, err)
+			}
+			if err := tester.ExecuteWithOptions(path, stdout, pathOptions); err != nil {
+				if session != nil {
+					session.Close()
+				}
+				return reportCommandError(stderr, command, err)
+			}
+			if session != nil {
+				session.Close()
 			}
 		}
 		return nil
@@ -1328,7 +1361,7 @@ func parseFmtOptions(args []string) (fmtOptions, error) {
 	return result, nil
 }
 func writeTopLevelHelp(out io.Writer) error {
-	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
+	_, err := fmt.Fprintln(out, "usage: oct <command> [options]\n\ncommands:\n  run        Run a program\n  build      Compile a program\n  check      Validate external semantic contracts\n  test       Run octest suites\n  artifact   Run artifact generators\n  bench      Run benchmark suites\n  make       Run Make.oct targets\n  fmt        Format Oct source files\n  sdslv      Check, test, emit HLSL, and generate SPIR-V/header artifacts from SDSL-V\n  new        Create a new package scaffold\n  pkg        Package manager commands\n  exp        Run experiment repos\n  version    Print Oct version information\n\nrun 'oct <command> --help' for command details.")
 	return err
 }
 
@@ -1403,6 +1436,60 @@ func writeRunHelp(out io.Writer) error {
 func writeBuildHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct build <file-or-root>\nCompile a program and emit an artifact.")
 	return err
+}
+
+func writeCheckHelp(out io.Writer) error {
+	_, err := fmt.Fprintln(out, "usage: oct check <go-package-directory> [--generate]\nValidate a typed Go package against its single *.contracts.oct companion without executing Octest. The optional --generate mode writes the deterministic static adapter; normal check only verifies freshness.")
+	return err
+}
+
+func parseCheckOptions(args []string) (string, bool, error) {
+	path := ""
+	generate := false
+	for _, arg := range args {
+		switch arg {
+		case "--generate":
+			generate = true
+		default:
+			if strings.HasPrefix(arg, "-") || path != "" {
+				return "", false, fmt.Errorf("usage: oct check <go-package-directory> [--generate]")
+			}
+			path = arg
+		}
+	}
+	if path == "" {
+		return "", false, fmt.Errorf("missing path; run oct check --help for usage")
+	}
+	return path, generate, nil
+}
+
+func writeCheckReport(out io.Writer, report octgo.Report) error {
+	bridge := "not required"
+	if report.BridgePath != "" {
+		bridge = "fresh: " + report.BridgePath
+		if report.BridgeGenerated {
+			bridge = "generated: " + report.BridgePath
+		}
+	}
+	_, err := fmt.Fprintf(out, "check succeeded: %s (%s)\ncompanion: %s\nsemantic model: %d types, %d constants, %d functions\nselected contracts: %d concepts, %d functions, %d constant witnesses\nbridge: %s\n", report.Package.Path, report.Package.Name, report.CompanionPath, report.TypeCount, report.ConstantCount, report.FunctionCount, report.SelectedConcepts, report.SelectedFunctions, report.ConstantWitnesses, bridge)
+	return err
+}
+
+func prepareOctGoTest(path string, options *tester.TestOptions) (*octgo.TestSession, error) {
+	session, err := octgo.PrepareTest(path)
+	if errors.Is(err, octgo.ErrNoCompanion) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if options.Execution == "interpreted" {
+		session.Close()
+		return nil, fmt.Errorf("OCTGO tests require compiled execution so selected calls reach the typed static Go adapter")
+	}
+	options.Execution = "compiled"
+	options.WrapperPath = session.WrapperPath
+	return session, nil
 }
 func writeMakeHelp(out io.Writer) error {
 	_, err := fmt.Fprintln(out, "usage: oct make [target] [--file <path>] [--backend direct] [--list] [--dry-run] [--trace] [--plan-out <file.octagon>]\n       oct make explain [target] [--file <path>]\n       oct make doctor [--file <path>]\nRun Make.oct targets with the direct backend. Make.oct is discovered at the project root unless --file is provided. Project configuration belongs in Make.Plan.Config records; compose profiles with record `with` updates. CLI flags select execution behavior only. --backend only accepts direct; Ninja is not implemented. FlowTarget actions run only on the direct backend and use Int result code semantics.")
