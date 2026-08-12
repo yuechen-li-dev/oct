@@ -27,8 +27,10 @@ type ArtifactNativeDispatchRecorder interface {
 // staging implementation; the interpreter only routes writes through it.
 type ArtifactOutputRequest struct {
 	Path       string
+	Package    string
 	Function   string
 	SourcePath string
+	Kind       string
 }
 
 // ArtifactWriteCapability is the narrow mutation seam available during the
@@ -60,8 +62,10 @@ func (i *interpreter) prepareArtifactOutput(path string) (actual string, logical
 	}
 	actual, err = i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{
 		Path:       logical,
+		Package:    i.artifactPackage,
 		Function:   i.currentFunctionName,
 		SourcePath: i.artifactSourcePath,
+		Kind:       "file",
 	})
 	return actual, logical, err
 }

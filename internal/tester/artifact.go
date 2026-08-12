@@ -75,8 +75,12 @@ type ArtifactCapabilityProvenance struct {
 }
 
 type GeneratedArtifact struct {
+	Identity   string `json:"identity"`
+	Package    string `json:"package"`
 	Function   string `json:"function"`
 	SourcePath string `json:"sourcePath"`
+	Kind       string `json:"kind"`
+	Execution  string `json:"execution"`
 	Path       string `json:"path"`
 	Status     string `json:"status"`
 	MIMEType   string `json:"mimeType"`
@@ -121,6 +125,7 @@ func ExecuteArtifactsWithOptions(path string, stdout io.Writer, options Artifact
 	if err != nil {
 		return err
 	}
+	publisher.execution = "build-time-interpreted"
 	defer func() {
 		if cleanupErr := publisher.close(); cleanupErr != nil && retErr == nil {
 			retErr = cleanupErr
@@ -262,6 +267,7 @@ func evaluateArtifactsSingleRoot(path string, stdout io.Writer, allPackages bool
 			ArtifactCapability:  publisher,
 			ArtifactNativeGrant: grant,
 			ArtifactSourcePath:  artifact.filePath,
+			ArtifactPackage:     artifact.pkg,
 			ArtifactProgressRecorder: func(event interpret.ArtifactProgressEvent) {
 				if event.Kind == "checkpoint" {
 					_, _ = fmt.Fprintf(stdout, "CHECKPOINT %s: %s\n", qualified, event.Label)
@@ -428,6 +434,7 @@ type artifactPublisher struct {
 	root      string
 	stageRoot string
 	outputs   map[string]stagedArtifactOutput
+	execution string
 }
 
 func newArtifactPublisher(root string) (*artifactPublisher, error) {
@@ -534,8 +541,12 @@ func (p *artifactPublisher) publish() ([]GeneratedArtifact, error) {
 		}
 		sum := sha256.Sum256(contents)
 		reports = append(reports, GeneratedArtifact{
+			Identity:   output.request.Package + "." + output.request.Function + ":" + filepath.ToSlash(output.relative),
+			Package:    output.request.Package,
 			Function:   output.request.Function,
 			SourcePath: filepath.ToSlash(output.request.SourcePath),
+			Kind:       output.request.Kind,
+			Execution:  p.execution,
 			Path:       filepath.ToSlash(output.relative),
 			Status:     status,
 			MIMEType:   artifactMIMEType(filepath.Ext(output.relative)),

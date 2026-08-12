@@ -334,6 +334,7 @@ type interpreter struct {
 	artifactNativeGrant      ArtifactNativeGrant
 	requestDiscovery         bool
 	artifactSourcePath       string
+	artifactPackage          string
 	artifactWriteDepth       int
 	currentFunctionName      string
 	ctx                      context.Context
@@ -352,6 +353,7 @@ type ExecuteOptions struct {
 	ArtifactNativeGrant      ArtifactNativeGrant
 	RequestDiscovery         bool
 	ArtifactSourcePath       string
+	ArtifactPackage          string
 	Context                  context.Context
 }
 
@@ -478,6 +480,7 @@ func CallFunctionWithArgsAndOptions(program project.Program, pkgName string, fun
 	interpreter.artifactNativeGrant = options.ArtifactNativeGrant
 	interpreter.requestDiscovery = options.RequestDiscovery
 	interpreter.artifactSourcePath = options.ArtifactSourcePath
+	interpreter.artifactPackage = options.ArtifactPackage
 	interpreter.ctx = options.Context
 	interpreter.currentFunctionName = functionName
 	key := pkgName + "." + functionName
@@ -4949,7 +4952,7 @@ func (i interpreter) evalWriteOctagonBuiltinCallExpr(env *environment, pkgName s
 	actualPath := logicalPath
 	if i.artifactCapability != nil {
 		var stageErr error
-		actualPath, stageErr = i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{Path: logicalPath, Function: i.currentFunctionName, SourcePath: i.artifactSourcePath})
+		actualPath, stageErr = i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{Path: logicalPath, Package: i.artifactPackage, Function: i.currentFunctionName, SourcePath: i.artifactSourcePath, Kind: "octagon"})
 		if stageErr != nil {
 			return evalResult{}, fmt.Errorf("runtime error: %w", stageErr)
 		}

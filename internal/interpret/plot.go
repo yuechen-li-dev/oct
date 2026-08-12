@@ -86,12 +86,23 @@ func (i interpreter) evalPlotBuiltinCallExpr(env *environment, pkgName string, c
 	if err != nil {
 		return Value{}, err
 	}
+	logicalPath := attributedOutputPath(pathResult.value.Text)
+	actualPath := logicalPath
+	if i.artifactCapability != nil {
+		actualPath, err = i.artifactCapability.StageArtifactOutput(ArtifactOutputRequest{
+			Path: logicalPath, Package: i.artifactPackage, Function: i.currentFunctionName,
+			SourcePath: i.artifactSourcePath, Kind: "plot.line",
+		})
+		if err != nil {
+			return Value{}, fmt.Errorf("runtime error: %w", err)
+		}
+	}
 	if err := renderPlot(plotRenderRequest{
 		functionName: callee,
 		kind:         kind,
 		xs:           xs,
 		ys:           ys,
-		outputPath:   pathResult.value.Text,
+		outputPath:   actualPath,
 		width:        defaultPlotWidth,
 		height:       defaultPlotHeight,
 		xLabel:       "x",
@@ -99,6 +110,7 @@ func (i interpreter) evalPlotBuiltinCallExpr(env *environment, pkgName string, c
 	}); err != nil {
 		return Value{}, err
 	}
+	i.recordArtifactWrite(logicalPath)
 
 	return Value{Kind: ValueInt, Int: 0}, nil
 }
